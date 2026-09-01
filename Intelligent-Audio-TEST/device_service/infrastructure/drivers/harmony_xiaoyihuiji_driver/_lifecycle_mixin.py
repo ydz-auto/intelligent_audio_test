@@ -2,6 +2,7 @@ import time
 import subprocess
 
 from ..utils import check_stop, By, with_rpc_retry
+from ..driver_constants import *
 from ._constants import LOG_DEVICE_PATH
 
 
@@ -39,7 +40,7 @@ class LifecycleMixin:
             # 点击小艺
             driver.click(By.key('AppIcon_Image_com.huawei.hmos.vassistantVoicePcFreeAbilityvoice_pc0_AppCenterItem_2'))
             # 点击工具栏
-            time.sleep(0.1)
+            time.sleep(SHORT_WAIT)
             driver.click(By.key('PluginRootComponent_Stack_status_bar_control_center'))
             # 点击小艺慧记
             driver.click(By.key('Ctrl.NewToggleBaseComponent_Image_meeting'))
@@ -81,11 +82,11 @@ class LifecycleMixin:
             return False
         try:
             driver.click(By.xpath('//Row/__Common__/Row/Button[2]/Image'))
-            time.sleep(0.1)
+            time.sleep(SHORT_WAIT)
             driver.click(By.xpath('//Dialog/Column/Column/Column[1]/Row[2]/Checkbox'))
             driver.click(By.text('结束并保存'))
             while driver.find_component(By.text('正在保存')):
-                time.sleep(1)
+                time.sleep(NORMAL_WAIT)
             return True
 
         except Exception as e:

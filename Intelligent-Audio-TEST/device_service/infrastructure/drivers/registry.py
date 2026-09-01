@@ -1,4 +1,4 @@
-"""驱动注册表 — 装饰器注册 + 依赖检测 + 版本降级 resolve。
+"""驱动注册表 — 装饰器注册 + 依赖检测 + 版本降级 resolve + 热更新。
 
 核心入口:
     from .registry import register_driver, driver_registry, DriverRegistry
@@ -11,12 +11,22 @@
 
 调度器使用:
     driver_cls = driver_registry.resolve(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID)
+
+热更新:
+    driver_registry.reload_module('device_service.infrastructure.drivers.android_plaud')
+    driver_registry.unregister(AppType.PLAUD, AppVersion.V1, DevicePlatform.ANDROID)
+    driver_registry.register(NewDriverClass)
 """
 
+import importlib
 import importlib.util
-from typing import Optional, Union
+import logging
+import threading
+from typing import Optional
 
 from .driver_types import AppType, AppVersion, DevicePlatform, DriverStatus
+
+logger = logging.getLogger(__name__)
 
 
 class DriverNotFoundError(Exception):
@@ -51,7 +61,8 @@ def _check_dependencies(dependencies: list[str]) -> tuple[bool, str]:
 class DriverEntry:
     """注册表中单个驱动条目"""
 
-    def __init__(self, driver_cls, status: DriverStatus, missing_dep: str = ""):
+    def __init__(self, driver_cls, status: DriverStatus, missing_dep: str = "",
+                 module_name: str = ""):
         self.driver_cls = driver_cls
         self.app_type: AppType = driver_cls.app_type
         self.version: AppVersion = driver_cls.version
@@ -60,6 +71,8 @@ class DriverEntry:
         self.dependencies: list[str] = getattr(driver_cls, "dependencies", [])
         self.status = status
         self.missing_dep = missing_dep
+        # 记录来源模块，供 hot_reload 定位
+        self.module_name = module_name or driver_cls.__module__
 
     @property
     def is_available(self) -> bool:
@@ -75,6 +88,8 @@ class DriverEntry:
             "status": self.status.value,
             "missing_dependency": self.missing_dep or None,
             "dependencies": self.dependencies,
+            "module": self.module_name,
+            "class": self.driver_cls.__name__,
         }
 
 
@@ -83,10 +98,12 @@ class DriverRegistry:
 
     Key = (AppType, AppVersion, DevicePlatform) 三元组
     同一 key 只能注册一个驱动，后注册覆盖先注册（并告警）。
+    线程安全：所有写操作加锁，读操作走快照。
     """
 
     def __init__(self):
         self._table: dict[tuple, DriverEntry] = {}
+        self._lock = threading.RLock()
 
     # —— 注册 ——
 
@@ -96,26 +113,25 @@ class DriverRegistry:
         自动检测依赖，缺失时标记为 MISSING_DEPENDENCY 但仍注册（供 list_drivers 展示）。
         可作为装饰器使用。
         """
-        # 校验元数据
         self._validate_metadata(driver_cls)
 
-        # 依赖检测
         deps = getattr(driver_cls, "dependencies", [])
         is_ok, missing = _check_dependencies(deps)
         status = DriverStatus.AVAILABLE if is_ok else DriverStatus.MISSING_DEPENDENCY
 
         key = (driver_cls.app_type, driver_cls.version, driver_cls.platform)
-        entry = DriverEntry(driver_cls, status, missing)
+        entry = DriverEntry(driver_cls, status, missing,
+                            module_name=driver_cls.__module__)
 
-        if key in self._table:
-            old = self._table[key]
-            # 静默覆盖（可能是 reload 场景）
-            import logging
-            logging.getLogger(__name__).warning(
-                "Driver overwritten: %s → %s (was %s)",
-                key, driver_cls.__name__, old.driver_cls.__name__
-            )
-        self._table[key] = entry
+        with self._lock:
+            old = self._table.get(key)
+            if old:
+                logger.info(
+                    "驱动覆盖: %s → %s (旧: %s)",
+                    key, driver_cls.__name__, old.driver_cls.__name__
+                )
+            self._table[key] = entry
+
         return driver_cls
 
     def _validate_metadata(self, driver_cls):
@@ -134,7 +150,87 @@ class DriverRegistry:
                     f"而不是 {type(val).__name__}"
                 )
 
-    # —— 查询 ——
+    # —— 注销 ——
+
+    def unregister(
+        self, app_type: AppType, version: AppVersion, platform: DevicePlatform
+    ) -> Optional[DriverEntry]:
+        """从注册表移除一个驱动（热删）
+
+        Returns:
+            被移除的 DriverEntry；不存在时返回 None
+        """
+        key = (app_type, version, platform)
+        with self._lock:
+            entry = self._table.pop(key, None)
+        if entry:
+            logger.info("驱动注销: %s (%s)", key, entry.driver_cls.__name__)
+        return entry
+
+    def unregister_module(self, module_name: str) -> list[DriverEntry]:
+        """移除指定模块注册的所有驱动（热删整个文件）
+
+        Args:
+            module_name: 模块全限定名
+
+        Returns:
+            被移除的条目列表
+        """
+        removed = []
+        with self._lock:
+            keys_to_remove = [
+                key for key, entry in self._table.items()
+                if entry.module_name == module_name
+            ]
+            for key in keys_to_remove:
+                removed.append(self._table.pop(key))
+        if removed:
+            logger.info("按模块注销 %d 个驱动: %s", len(removed), module_name)
+        return removed
+
+    # —— 热重载 ——
+
+    def reload_module(self, module_name: str) -> list[DriverEntry]:
+        """热重载一个驱动模块（热改）
+
+        流程:
+            1. 先注销该模块的旧驱动
+            2. importlib.reload 重新加载模块
+            3. 扫描 reload 后的模块中所有带 @register_driver 标记的类
+               （reload 会自动触发装饰器重新注册）
+
+        Returns:
+            reload 后该模块注册的驱动条目列表
+        """
+        with self._lock:
+            # 1. 先记录旧条目
+            old_entries = self.unregister_module(module_name)
+
+            # 2. reload 模块（装饰器会在 reload 过程中自动注册新类）
+            try:
+                mod = importlib.import_module(module_name)
+                mod = importlib.reload(mod)
+            except Exception as e:
+                # reload 失败：恢复旧条目
+                for entry in old_entries:
+                    key = (entry.app_type, entry.version, entry.platform)
+                    self._table[key] = entry
+                logger.error("模块 %s reload 失败，已恢复旧驱动: %s", module_name, e)
+                raise
+
+            # 3. 收集 reload 后新注册的条目
+            new_entries = [
+                entry for entry in self._table.values()
+                if entry.module_name == module_name
+            ]
+
+        logger.info(
+            "模块 %s 热重载完成: 旧 %d 个 → 新 %d 个",
+            module_name, len(old_entries), len(new_entries)
+        )
+        return new_entries
+
+    # —— 查询（无锁，走 dict 快照）——
 
     def resolve(
         self,
@@ -188,16 +284,18 @@ class DriverRegistry:
 
     def list_drivers(self) -> list[dict]:
         """列出所有已注册驱动（供管理界面/调试）"""
-        return [entry.to_dict() for entry in self._table.values()]
+        with self._lock:
+            return [entry.to_dict() for entry in self._table.values()]
 
     def list_available(self, platform: Optional[DevicePlatform] = None) -> list[dict]:
         """列出可用驱动"""
-        return [
-            entry.to_dict()
-            for entry in self._table.values()
-            if entry.is_available
-            and (platform is None or entry.platform == platform)
-        ]
+        with self._lock:
+            return [
+                entry.to_dict()
+                for entry in self._table.values()
+                if entry.is_available
+                and (platform is None or entry.platform == platform)
+            ]
 
     def is_available(
         self, app_type: AppType, version: AppVersion, platform: DevicePlatform

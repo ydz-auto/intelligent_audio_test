@@ -1,6 +1,7 @@
 import { ref, computed, type Ref } from 'vue'
 import { tasksApi } from '../../utils/api'
 import type { APIConfig, TestCase } from '../../shared/types'
+import { TestType, TaskStatus } from '@/shared/types/enums'
 
 interface UseTaskExecutionOptions {
   testType: 'e2e' | 'api'
@@ -72,7 +73,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
 
       const payload = {
         name: taskName.value || `E2E测试任务_${new Date().toLocaleString()}`,
-        type: 'e2e',
+        type: TestType.E2E,
         deviceIds: selectedDeviceIds.value,
         caseIds: selectedCaseIds,
         config: { parallel: true, concurrentTasks: concurrentTasks.value },
@@ -85,9 +86,9 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       associatedCases.value = selectedCaseIds.map((id: any) => ({
         id,
         name: e2eTestCases.value.find((c: any) => String(c.id) === String(id))?.name || `用例 ${id}`,
-        status: 'pending',
-        executionStatus: 'pending',
-        evaluationStatus: 'pending',
+        status: TaskStatus.PENDING,
+        executionStatus: TaskStatus.PENDING,
+        evaluationStatus: TaskStatus.PENDING,
       }))
 
       totalTestCases.value = associatedCases.value.length
@@ -155,7 +156,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       const taskData = {
         name: taskName.value || 'API测试任务',
         description: '通过API测试任务',
-        type: 'api',
+        type: TestType.API,
         caseIds: selectedTestCaseIds.value,
         apiIds: selectedAPIIds.value,
         tags: [],
@@ -170,10 +171,10 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
           const testCase = allCases.find(tc => String(tc.id) === String(id))
           return testCase ? {
             ...testCase,
-            status: 'pending',
+            status: TaskStatus.PENDING,
             duration: '0',
-            executionStatus: 'pending',
-            evaluationStatus: 'pending',
+            executionStatus: TaskStatus.PENDING,
+            evaluationStatus: TaskStatus.PENDING,
           } as any : undefined
         })
         .filter((item): item is any => item !== undefined)

@@ -4,6 +4,7 @@ import type { AudioUploadFile, AudioUploadTask, APIResponse } from '../../shared
 import { calculateMd5 } from './md5Utils';
 import { getLocalTasks, saveLocalTask } from './taskPersistence';
 import { updateOverallProgress, type UploadProcessContext } from './uploadProcess';
+import { UploadStatus } from '@/shared/types/enums';
 
 /**
  * 任务控制：暂停/恢复/重试/移除/检查未完成任务
@@ -26,8 +27,8 @@ export const pauseUploadTask = (
 ) => {
   const { currentTask, uploadStatus, setAbortController } = ctx;
   if (currentTask.value?.id === taskId) {
-    uploadStatus.value = 'paused';
-    currentTask.value.status = 'paused';
+    uploadStatus.value = UploadStatus.PAUSED;
+    currentTask.value.status = UploadStatus.PAUSED;
     saveLocalTask(currentTask.value, ctx.uploadTasks);
     ctx.getAbortController()?.abort();
   }
@@ -45,23 +46,24 @@ export async function resumeUploadTask(
   if (!task) return;
 
   currentTask.value = task;
-  uploadStatus.value = 'uploading';
-  task.status = 'uploading';
+  uploadStatus.value = UploadStatus.UPLOADING;
+  task.status = UploadStatus.UPLOADING;
   setAbortController(new AbortController());
   const taskOptions = task.options || uploadOptions;
 
   for (const fileTask of task.files) {
-    if ((uploadStatus.value as string) === 'paused' || (uploadStatus.value as string) === 'stopped') break;
-    if (fileTask.status !== 'completed') {
+    // as string 规避 TS 对 .value 赋值后的字面量窄化
+    if ((uploadStatus.value as string) === UploadStatus.PAUSED || (uploadStatus.value as string) === UploadStatus.STOPPED) break;
+    if (fileTask.status !== UploadStatus.COMPLETED) {
       try {
-        fileTask.status = 'uploading';
+        fileTask.status = UploadStatus.UPLOADING;
         currentUploadingFile.value = fileTask.name;
         await uploadFileChunks(ctx, taskId, fileTask, taskOptions);
-        fileTask.status = 'completed';
+        fileTask.status = UploadStatus.COMPLETED;
         fileTask.progress = 100;
         saveLocalTask(task, ctx.uploadTasks);
       } catch (err) {
-        fileTask.status = 'failed';
+        fileTask.status = UploadStatus.FAILED;
         fileTask.error = err instanceof Error ? err.message : String(err);
         saveLocalTask(task, ctx.uploadTasks);
       }
@@ -69,10 +71,10 @@ export async function resumeUploadTask(
     }
   }
 
-  task.completedFiles = task.files.filter(f => f.status === 'completed').length;
-  task.failedFiles = task.files.filter(f => f.status === 'failed').length;
+  task.completedFiles = task.files.filter(f => f.status === UploadStatus.COMPLETED).length;
+  task.failedFiles = task.files.filter(f => f.status === UploadStatus.FAILED).length;
 
-  uploadStatus.value = task.failedFiles > 0 ? 'failed' : 'completed';
+  uploadStatus.value = task.failedFiles > 0 ? UploadStatus.FAILED : UploadStatus.COMPLETED;
   task.status = uploadStatus.value;
   task.endTime = new Date().toISOString();
   saveLocalTask(task, ctx.uploadTasks);
@@ -93,7 +95,7 @@ export async function retryFailedFiles(
   if (!task) return;
 
   isRetryingFailed.value = true;
-  const previousFailedFiles = task.files.filter(f => f.status === 'failed');
+  const previousFailedFiles = task.files.filter(f => f.status === UploadStatus.FAILED);
   const fileData = [];
   let canReRegister = true;
   let needReSelectFiles = false;
@@ -143,7 +145,7 @@ export async function retryFailedFiles(
                 name: file.name,
                 size: file.size,
                 md5,
-                status: 'pending' as const,
+                status: UploadStatus.PENDING,
                 progress: 0,
                 uploadedSize: 0,
                 uploadedChunks: []
@@ -152,10 +154,10 @@ export async function retryFailedFiles(
           }
 
           if (newFileTasks.length > 0) {
-            task.files = task.files.filter(f => f.status !== 'failed');
+            task.files = task.files.filter(f => f.status !== UploadStatus.FAILED);
             task.files.push(...newFileTasks);
             task.failedFiles = 0;
-            task.completedFiles = task.files.filter(f => f.status === 'completed').length;
+            task.completedFiles = task.files.filter(f => f.status === UploadStatus.COMPLETED).length;
             task.totalFiles = task.files.length;
             saveLocalTask(task, ctx.uploadTasks);
 
@@ -213,7 +215,7 @@ export async function retryFailedFiles(
             fileTask.uploadedChunks = [];
             fileTask.progress = 0;
             fileTask.uploadedSize = 0;
-            fileTask.status = 'pending';
+            fileTask.status = UploadStatus.PENDING;
             fileTask.error = undefined;
           }
         });
@@ -224,7 +226,7 @@ export async function retryFailedFiles(
   }
 
   task.files.forEach(f => {
-    if (f.status === 'failed') f.status = 'pending';
+    if (f.status === UploadStatus.FAILED) f.status = UploadStatus.PENDING;
   });
 
   task.failedFiles = 0;
@@ -244,7 +246,7 @@ export function removeLocalTask(
   uploadTasks.value = tasks;
   if (currentTask.value?.id === taskId) {
     currentTask.value = null;
-    uploadStatus.value = 'idle';
+    uploadStatus.value = UploadStatus.IDLE;
     uploadProgress.value = 0;
   }
 }
@@ -263,7 +265,7 @@ export function checkAndResumeTasks(
   onUploadComplete?: () => void
 ) {
   const tasks = getLocalTasks();
-  const unfinished = tasks.find(t => t.status === 'uploading' || t.status === 'paused');
+  const unfinished = tasks.find(t => t.status === UploadStatus.UPLOADING || t.status === UploadStatus.PAUSED);
   if (unfinished && unfinished.id) {
     resumeUploadTask(ctx, unfinished.id, false, onUploadComplete);
   }

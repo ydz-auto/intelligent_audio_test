@@ -370,6 +370,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { TaskStatus } from '@/shared/types/enums';
 
 const props = defineProps({
   testType: {type: String, required: true, validator: (value) => ['API', 'E2E'].includes(value)},
@@ -403,15 +404,18 @@ const emit = defineEmits([
   'loadMoreLogs'
 ]);
 
-const shouldShowPauseResumeButton = computed(() => {
-  const completedStatuses = ['completed', 'finished', 'success', 'failed', 'stopped'];
-  return !completedStatuses.includes(props.taskStatus);
-});
+// 已结束的任务状态（finished/success 为后端历史遗留状态值，暂无对应枚举）
+const finishedTaskStatuses = [
+  TaskStatus.COMPLETED,
+  'finished',
+  'success',
+  TaskStatus.FAILED,
+  TaskStatus.STOPPED,
+];
 
-const shouldShowStopButton = computed(() => {
-  const completedStatuses = ['completed', 'finished', 'success', 'failed', 'stopped'];
-  return !completedStatuses.includes(props.taskStatus);
-});
+const shouldShowPauseResumeButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
+
+const shouldShowStopButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
 
 const formatLogTime = (timeStr) => {
   try {

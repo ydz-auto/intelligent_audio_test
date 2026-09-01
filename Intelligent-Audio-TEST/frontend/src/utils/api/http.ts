@@ -4,6 +4,7 @@
  */
 
 import { API_CONFIG } from '../config';
+import { HttpStatus } from '@/shared/types/enums';
 
 const apiBaseUrl = API_CONFIG.baseUrl;
 
@@ -135,7 +136,8 @@ export async function request<T = any>(
 
       console.log(`[IPC Response] ${method} ${normalizedUrl}:`, result);
 
-      if (result && result.code !== undefined && result.code !== 0 && result.code !== 200 && result.code !== 201) {
+      // IPC 返回的业务状态码非成功值（0 表示无业务错误，200/201 为 HTTP 成功）则抛错
+      if (result && result.code !== undefined && result.code !== 0 && result.code !== HttpStatus.OK && result.code !== HttpStatus.CREATED) {
         const error : any = new Error(result.message || 'IPC Request failed');
         error.code = result.code;
         error.detail = result.detail || result.error;
@@ -242,7 +244,7 @@ async function handleResponse(response: Response, responseType: string = 'json',
 
   if (!response.ok) {
     // 401 未授权：清除登录态并跳转登录页（仅当后端开启认证模式时）
-    if (response.status === 401) {
+    if (response.status === HttpStatus.UNAUTHORIZED) {
       const authMode = (import.meta as any).env?.VITE_AUTH_MODE || 'off'
       if (authMode !== 'off') {
         import('../../store/authStore').then(({ useAuthStore }) => {
@@ -264,7 +266,7 @@ async function handleResponse(response: Response, responseType: string = 'json',
     if (data.code !== undefined) {
       const code = Number(data.code);
       // 允许更多的成功状态码，包括测试连接API的返回
-      if (code !== 0 && code !== 200 && code !== 201) {
+      if (code !== 0 && code !== HttpStatus.OK && code !== HttpStatus.CREATED) {
         const error : any = new Error(data.message || 'API Request failed');
         error.code = data.code;
         error.detail = data.detail;

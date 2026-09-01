@@ -279,7 +279,8 @@ class ReportCompareHelpers:
 
                 case_obj["results"].append({
                     "resource": resource,
-                    "status": "成功" if exec_status == "completed" else "失败",
+                    # 执行状态取值与 common_enums.TaskStatus.COMPLETED 一致
+                    "status": "成功" if exec_status == TaskStatus.COMPLETED.value else "失败",
                     "start_time": created_at.isoformat() if hasattr(created_at, 'isoformat') else (created_at if isinstance(created_at, str) else None),
                     "end_time": created_at.isoformat() if hasattr(created_at, 'isoformat') else (created_at if isinstance(created_at, str) else None),
                 })
@@ -387,7 +388,7 @@ class ReportCompareHelpers:
             res_response_time = res.get('response_time') if isinstance(res, dict) else res.response_time
 
             comparison_matrix[res_tc_id][f"task_{res_task_id}"] = {
-                "status": 'completed' if res_exec_status == 'completed' else 'failed',
+                "status": TaskStatus.COMPLETED.value if res_exec_status == TaskStatus.COMPLETED.value else TaskStatus.FAILED.value,
                 "response_time": res_response_time or 0,
                 "values": dim_values
             }
@@ -616,7 +617,7 @@ class ReportCompareHelpers:
             res_response_time = res.get('response_time') if isinstance(res, dict) else res.response_time
 
             comparison_matrix[res_tc_id][f"task_{res_task_id}"] = {
-                "status": 'completed' if res_exec_status == 'completed' else 'failed',
+                "status": TaskStatus.COMPLETED.value if res_exec_status == TaskStatus.COMPLETED.value else TaskStatus.FAILED.value,
                 "response_time": res_response_time or 0,
                 "values": dim_values
             }

@@ -3,7 +3,10 @@
 P0 DDD 改造：移除模块级 infrastructure/acl import，改用方法内延迟导入。
 """
 from datetime import datetime, timezone, timedelta
-from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus
+from shared.utils.status_constants import (
+    ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus,
+    FINISHED_EXECUTION_STATUSES, FINISHED_CASE_STATUSES, ACTIVE_EVALUATION_STATUSES,
+)
 
 
 class PostEvaluationMixin:
@@ -41,7 +44,7 @@ class PostEvaluationMixin:
         any_updated = False
         for tc in tc_rels:
             if (tc.evaluation_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING]
-                    and tc.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]):
+                    and tc.execution_status in FINISHED_EXECUTION_STATUSES):
                 new_status = tc.execution_status if tc.status == TaskCaseStatus.PENDING else tc.status
                 ok = self._task_acl_repo.update_task_case_status(
                     task_id=task_id,
@@ -55,7 +58,7 @@ class PostEvaluationMixin:
                     any_updated = True
             elif (tc.evaluation_status == EvaluationStatus.COMPLETED
                     and tc.status == TaskCaseStatus.PENDING
-                    and tc.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]):
+                    and tc.execution_status in FINISHED_EXECUTION_STATUSES):
                 # 已完成评估的用例：同步 status 字段（覆盖服务重启后 status 停留在 pending 的情况）
                 new_status = tc.execution_status
                 ok = self._task_acl_repo.update_task_case_status(
@@ -69,7 +72,7 @@ class PostEvaluationMixin:
 
         # 3. 统计已处理/失败/完成的用例数
         total_cases = len(tc_rels)
-        processed_cases = sum(1 for tc in tc_rels if tc.status in [TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED])
+        processed_cases = sum(1 for tc in tc_rels if tc.status in FINISHED_CASE_STATUSES)
         failed_cases = sum(1 for tc in tc_rels if tc.status == TaskCaseStatus.FAILED)
         completed_cases = sum(1 for tc in tc_rels if tc.status == TaskCaseStatus.COMPLETED)
 
@@ -82,7 +85,7 @@ class PostEvaluationMixin:
         if task.status == TaskStatus.EVALUATING:
             pending_eval_count = sum(
                 1 for tc in tc_rels
-                if tc.evaluation_status in [EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING, EvaluationStatus.QUEUED, EvaluationStatus.PENDING]
+                if tc.evaluation_status in ACTIVE_EVALUATION_STATUSES
             )
             if pending_eval_count == 0:
                 # 所有用例评估完成，通过 gRPC 更新任务最终状态

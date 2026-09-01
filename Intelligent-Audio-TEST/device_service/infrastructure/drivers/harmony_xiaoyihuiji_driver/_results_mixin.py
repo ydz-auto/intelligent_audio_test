@@ -7,7 +7,9 @@ import shutil
 import logging
 
 from ..utils import check_stop, By
+from ..driver_constants import *
 from shared.infrastructure.storage import storage
+from shared.utils.config_manager import config_manager
 from ._constants import LOG_DEVICE_PATH
 
 logger = logging.getLogger(__name__)
@@ -40,22 +42,22 @@ class ResultsMixin:
         local_dir = tempfile.mkdtemp(prefix=f'case_{task_id_path}_{test_case_id_path}_')
 
         while driver.find_component(By.text('正在保存')):
-            time.sleep(1)
-        time.sleep(3)
+            time.sleep(NORMAL_WAIT)
+        time.sleep(config_manager.get_value('device_timing', 'huiji_save_wait', 3))
         # 点击记录
         driver.click(By.xpath('//Row/__Common__/__Common__/Row/Column/Row'))
         # 点击工具栏
         while driver.find_component(
                 By.xpath('//NavDestinationContent/Stack/Column/Row/__Common__[2]/Column/Image')) is None:
-            time.sleep(1)
+            time.sleep(NORMAL_WAIT)
         driver.click(By.xpath('//NavDestinationContent/Stack/Column/Row/__Common__[2]/Column/Image'))
         # 点击导出文件至本地
-        time.sleep(1)
+        time.sleep(NORMAL_WAIT)
         driver.click(By.text('导出文件至本地'))
-        time.sleep(1)
+        time.sleep(NORMAL_WAIT)
         if driver.find_component(By.text('同意')):
             driver.click(By.text('同意'))
-        time.sleep(1)
+        time.sleep(NORMAL_WAIT)
         # file_name_ele.inputText(f'{test_case_id}_{file_name[-18:]}')
         # 获取文件路径
         # driver.find_component(By.xpath('//SideBarContainer/Column/Row[2]/Row[3]/Row[1]/Flex/Row/Blank')).click()
@@ -63,7 +65,7 @@ class ResultsMixin:
         file_real_path = '/storage/media/100/local/files/Docs/Desktop'
 
         while not driver.find_component(By.text('安全访问文件')):
-            time.sleep(1)
+            time.sleep(NORMAL_WAIT)
         file_name_ele = driver.find_component(By.key(
             'pickerFileNameTextInput'))
         file_name = file_name_ele.getText()
@@ -96,14 +98,14 @@ class ResultsMixin:
                 self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}", task_id=task_id, test_case_id=test_case_id)
 
                 self._log(level='INFO', content=f"文件名", task_id=task_id, test_case_id=test_case_id)
-                shell_commands = f"cp {file_real_path}/*{file_name[-18:]} /data/local/tmp/test.zip"
+                shell_commands = f"cp {file_real_path}/*{file_name[-18:]} {DEVICE_TMP_DIR}/test.zip"
                 self._log(level='INFO', content=f"复制最新的小艺慧记zip文件到临时目录:{shell_commands}", task_id=task_id, test_case_id=test_case_id)
                 result = subprocess.run(['hdc', '-t', device_sn, 'shell', 'sh', '-c', shell_commands], check=False,
                                         capture_output=True, text=True)
 
                 if 'bad' in result.stdout:
                     self._log(level='WARNING', content=f"文件复制到临时目录失败：{result.stdout}", task_id=task_id, test_case_id=test_case_id)
-                    shell_commands = f"cp {file_real_path}/{file_name} /data/local/tmp/test.zip"
+                    shell_commands = f"cp {file_real_path}/{file_name} {DEVICE_TMP_DIR}/test.zip"
                     subprocess.run(['hdc', '-t', device_sn, 'shell', 'sh', '-c', shell_commands], check=False,
                                    capture_output=True, text=True)
 
@@ -113,10 +115,10 @@ class ResultsMixin:
                     local_file_name = "test.zip"
                 local_file_path = os.path.join(local_dir, local_file_name)
                 local_file_path = os.path.abspath(local_file_path)
-                self._log(level='INFO', content=f"拉取文件，源: /data/local/tmp/test.zip, 目标: {local_file_path}", task_id=task_id, test_case_id=test_case_id)
+                self._log(level='INFO', content=f"拉取文件，源: {DEVICE_TMP_DIR}/test.zip, 目标: {local_file_path}", task_id=task_id, test_case_id=test_case_id)
 
                 recv_result = subprocess.run(
-                    ['hdc', '-t', device_sn, 'file', 'recv', '/data/local/tmp/test.zip', local_file_path],
+                    ['hdc', '-t', device_sn, 'file', 'recv', f'{DEVICE_TMP_DIR}/test.zip', local_file_path],
                     check=False, capture_output=True, text=True)
                 if 'Fail' in recv_result.stdout:
                     self._log(level='ERROR', content=f"文件拉取失败：{recv_result.stderr}", task_id=task_id, test_case_id=test_case_id)
@@ -124,7 +126,7 @@ class ResultsMixin:
                 else:
                     self._log(level='INFO', content=f"文件拉取成功：{file_name} -> {local_file_path}", task_id=task_id, test_case_id=test_case_id)
 
-                subprocess.run(['hdc', '-t', device_sn, 'shell', 'rm', '/data/local/tmp/test.zip'], check=False,
+                subprocess.run(['hdc', '-t', device_sn, 'shell', 'rm', f'{DEVICE_TMP_DIR}/test.zip'], check=False,
                                capture_output=True, text=True)
 
                 return local_dir

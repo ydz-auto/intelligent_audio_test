@@ -1,6 +1,8 @@
 import { ref, computed, type Ref } from 'vue';
 import { tasksApi, algorithmApi } from '../../utils/api';
 import type { Task } from '../../shared/types';
+import { TaskStatus } from '@/shared/types/enums';
+import { usePagination } from '../usePagination';
 
 /**
  * 任务列表管理组合式函数
@@ -62,24 +64,21 @@ export function useTaskList(options?: UseTaskListOptions) {
     return Array.from(tags);
   });
 
-  const totalTagPages = computed(() => Math.ceil(allTags.value.length / tagPageSize.value) || 1);
-  const currentTags = computed(() => {
-    const start = (tagCurrentPage.value - 1) * tagPageSize.value;
-    return allTags.value.slice(start, start + tagPageSize.value);
-  });
+  // 标签分页：使用通用分页 composable
+  const { totalPages: totalTagPages, paginatedItems: currentTags } = usePagination(allTags, tagPageSize, { currentPage: tagCurrentPage });
 
   const totalTasks = computed(() => totalItems.value);
-  const pendingTasks = computed(() => tasks.value.filter(t => t.status === 'pending' || t.status === 'queued').length);
-  const inProgressTasks = computed(() => tasks.value.filter(t => t.status === 'running').length);
-  const completedTasks = computed(() => tasks.value.filter(t => t.status === 'completed').length);
-  const failedTasks = computed(() => tasks.value.filter(t => t.status === 'failed').length);
+  const pendingTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.PENDING || t.status === TaskStatus.QUEUED).length);
+  const inProgressTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.RUNNING).length);
+  const completedTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.COMPLETED).length);
+  const failedTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.FAILED).length);
   const deletedTasks = computed(() => tasks.value.filter(t => t.deleted).length);
-  const queuedTasks = computed(() => tasks.value.filter(t => t.status === 'queued').length);
+  const queuedTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.QUEUED).length);
 
-  const totalPages = computed(() => {
-    const pages = Math.ceil(totalItems.value / pageSize.value) || 1;
-    return pages;
-  });
+  // 任务分页为服务端分页，totalItems 由 API 返回
+  // 此处用 totalItems 长度的占位数组驱动 totalPages 计算
+  const placeholderForTotal = computed(() => Array(totalItems.value).fill(0));
+  const { totalPages } = usePagination(placeholderForTotal, pageSize, { currentPage });
   const paginatedTasks = computed(() => filteredTasks.value);
 
   const isAllSelected = computed(() => {

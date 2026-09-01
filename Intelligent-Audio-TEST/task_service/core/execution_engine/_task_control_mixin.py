@@ -5,7 +5,9 @@ from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.database import get_db_session
 from shared.utils import distributed_coordinator as _dc
 from shared.utils.status_utils import derive_task_case_status
-from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
+from shared.utils.status_constants import (
+    TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, FINISHED_CASE_STATUSES,
+)
 
 import logging
 
@@ -276,7 +278,7 @@ class TaskControlMixin:
                 # 只处理未完成的用例（执行中、排队中、待执行），保留已完成用例的状态
                 cases = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
-                    ~TaskCase.status.in_([TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED, TaskCaseStatus.SKIPPED])
+                    ~TaskCase.status.in_(FINISHED_CASE_STATUSES)
                 ).all()
                 for tc in cases:
                     tc.execution_status = ExecutionStatus.STOPPED

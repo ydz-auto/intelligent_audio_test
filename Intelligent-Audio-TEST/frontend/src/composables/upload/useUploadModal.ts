@@ -5,6 +5,8 @@ import type { AudioUploadOptions } from '../../shared/types';
 import type { useDeviceManagement } from '../device/useDeviceManagement';
 import type { useAlgorithmParams } from '../algorithm/useAlgorithmParams';
 import type { useAudioUpload } from '../audio/useAudioUpload';
+// 引入测试类型枚举，消除魔法字符串
+import { TestType } from '@/shared/types/enums';
 
 interface DeviceApi {
   playbackDevices: Ref<ReturnType<typeof useDeviceManagement>['playbackDevices']['value']>;
@@ -158,8 +160,8 @@ function buildUploadOptionsConfig(
       label: '测试类型',
       type: 'checkbox',
       options: [
-        { label: 'E2E测试', value: 'e2e' },
-        { label: 'API测试', value: 'api' }
+        { label: 'E2E测试', value: TestType.E2E },
+        { label: 'API测试', value: TestType.API }
       ],
       defaultValue: uploadOptions.test_types
     },
@@ -253,8 +255,8 @@ function buildFolderImportOptionsConfig(
       label: '测试类型',
       type: 'checkbox',
       options: [
-        { label: 'E2E测试', value: 'e2e' },
-        { label: 'API测试', value: 'api' }
+        { label: 'E2E测试', value: TestType.E2E },
+        { label: 'API测试', value: TestType.API }
       ],
       defaultValue: uploadOptions.test_types
     },

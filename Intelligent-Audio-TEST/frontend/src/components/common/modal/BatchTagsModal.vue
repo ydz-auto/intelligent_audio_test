@@ -148,6 +148,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { testcasesApi } from '../../../utils/api'
+import { usePagination } from '../../../composables/usePagination'
 
 interface Props {
   modalId: string
@@ -205,25 +206,21 @@ const availableSuggestions = computed(() => {
   return existingTags.value.filter(tag => !selectedTags.value.includes(tag))
 })
 
-const totalTagPages = computed(() => {
-  return Math.ceil(availableSuggestions.value.length / TAGS_PER_PAGE)
-})
+// 使用通用分页 composable 统一处理标签建议分页
+const {
+  totalPages: totalTagPages,
+  paginatedItems: paginatedSuggestions,
+  prevPage: prevTagPage,
+  nextPage: nextTagPage
+} = usePagination(availableSuggestions, ref(TAGS_PER_PAGE), { currentPage: currentTagPage })
 
-const paginatedSuggestions = computed(() => {
-  const start = (currentTagPage.value - 1) * TAGS_PER_PAGE
-  const end = start + TAGS_PER_PAGE
-  return availableSuggestions.value.slice(start, end)
-})
-
-const totalRenameTagPages = computed(() => {
-  return Math.ceil(existingTags.value.length / TAGS_PER_PAGE)
-})
-
-const paginatedExistingTags = computed(() => {
-  const start = (currentRenameTagPage.value - 1) * TAGS_PER_PAGE
-  const end = start + TAGS_PER_PAGE
-  return existingTags.value.slice(start, end)
-})
+// 使用通用分页 composable 统一处理已有标签分页
+const {
+  totalPages: totalRenameTagPages,
+  paginatedItems: paginatedExistingTags,
+  prevPage: prevRenameTagPage,
+  nextPage: nextRenameTagPage
+} = usePagination(existingTags, ref(TAGS_PER_PAGE), { currentPage: currentRenameTagPage })
 
 async function loadExistingTags() {
   try {
@@ -270,30 +267,6 @@ function removeTag(tag: string) {
 
 function selectOldTag(tag: string) {
   selectedOldTag.value = tag
-}
-
-function prevTagPage() {
-  if (currentTagPage.value > 1) {
-    currentTagPage.value--
-  }
-}
-
-function nextTagPage() {
-  if (currentTagPage.value < totalTagPages.value) {
-    currentTagPage.value++
-  }
-}
-
-function prevRenameTagPage() {
-  if (currentRenameTagPage.value > 1) {
-    currentRenameTagPage.value--
-  }
-}
-
-function nextRenameTagPage() {
-  if (currentRenameTagPage.value < totalRenameTagPages.value) {
-    currentRenameTagPage.value++
-  }
 }
 
 watch(action, () => {

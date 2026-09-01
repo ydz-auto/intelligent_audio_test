@@ -6,6 +6,7 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { HttpStatus } from '@/shared/types/enums'
 
 const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
@@ -88,7 +89,7 @@ export const useAuthStore = defineStore('auth', () => {
       const resp = await fetch('/api/v1/auth/me', {
         headers: { Authorization: `Bearer ${token.value}` },
       })
-      if (resp.status === 401) {
+      if (resp.status === HttpStatus.UNAUTHORIZED) {
         logout()
         return
       }

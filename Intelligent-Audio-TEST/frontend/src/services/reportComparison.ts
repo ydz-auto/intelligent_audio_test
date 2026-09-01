@@ -7,6 +7,7 @@ import type {
   Device,
   APIConfig
 } from './reportTypes';
+import { TaskStatus, ReportStatus } from '../shared/types/enums';
 import {
   devices,
   deviceApiComparisonData,
@@ -263,14 +264,14 @@ export function updateComparisonData(tasks?: Task[], report?: Report): void {
         completedCases = 0;
       }
 
-      return {id: d.id, name: d.name, type: d.type, version: (d as any).version || '', status: currentReport?.status || 'completed', totalCases, successRate: totalCases ? Math.round((completedCases / totalCases) * 100) : 0, avgResponseTime, stability};
+      return {id: d.id, name: d.name, type: d.type, version: (d as any).version || '', status: currentReport?.status || ReportStatus.COMPLETED, totalCases, successRate: totalCases ? Math.round((completedCases / totalCases) * 100) : 0, avgResponseTime, stability};
     });
 
   if (currentReport) {
     const detailedResults = currentReport.detailedResults || [];
     const totalCasesCount = detailedResults.length || 0;
     const completedCasesCount = detailedResults.filter((result: any) =>
-      result.status === 'completed' ||
+      result.status === TaskStatus.COMPLETED ||
       result.status === 'passed'
     ).length || 0;
 

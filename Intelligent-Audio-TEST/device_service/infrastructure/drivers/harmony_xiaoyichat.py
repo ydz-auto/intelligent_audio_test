@@ -14,9 +14,11 @@ from .harmony_driver import HarmonyDriver
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+from .driver_constants import *
 from device_service.config.config import Config
 from shared.infrastructure.storage import storage
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
+from shared.utils.config_manager import config_manager
 
 
 @register_driver
@@ -48,7 +50,7 @@ class Xiaoyilivechat(HarmonyDriver):
         cmd = [Config.FFMPEG_PATH, '-y', '-i', mp4_path,
                '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', wav_path]
         try:
-            r = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=300)
+            r = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=LONG_HDC_TIMEOUT)
             if r.returncode != 0 or not os.path.exists(wav_path):
                 self._log(level='ERROR',
                           content=f"mp4转wav失败: {r.stderr[-500:] if r.stderr else ''}",
@@ -65,7 +67,7 @@ class Xiaoyilivechat(HarmonyDriver):
     def _hdc_shell(self, device_sn, *args):
         return subprocess.run(
             ['hdc', '-t', device_sn, 'shell'] + list(args),
-            check=False, capture_output=True, text=True, timeout=10
+            check=False, capture_output=True, text=True, timeout=HDC_TIMEOUT
         )
 
     def _list_device_mp4_set(self, device_sn):
@@ -127,7 +129,8 @@ class Xiaoyilivechat(HarmonyDriver):
 
         # 轮询：发现新文件 + 等待首帧写入（size 从 0 变非0）
         first_frame_ms = None
-        deadline = int(time.time() * 1000) + 30000  # 30 秒超时
+        recorder_timeout_ms = int(config_manager.get_value('device_timing', 'recorder_start_timeout', 30)) * 1000
+        deadline = int(time.time() * 1000) + recorder_timeout_ms  # 超时毫秒
         while int(time.time() * 1000) < deadline:
             current_paths = self._list_device_mp4_set(device_sn)
             new_paths = current_paths - existing_paths
@@ -137,7 +140,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 if size > 0:
                     first_frame_ms = int(time.time() * 1000)
                     break
-            time.sleep(0.1)
+            time.sleep(SHORT_WAIT)
 
         self._recorder_first_frame_ms = first_frame_ms
         return True
@@ -164,28 +167,28 @@ class Xiaoyilivechat(HarmonyDriver):
         user_center = driver.find_component(By.text("小艺"))
         if user_center:
             user_center.click()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
         # 清除上下文
         # 进入设置界面
         driver.touch(By.isAfter(By.type('Image')).isBefore(By.key('water_mark.build.stack')).type('SymbolGlyph'))
-        driver.wait(2)
+        driver.wait(LONG_WAIT)
         clear_text = driver.find_component(By.text('清除上下文'))
         if clear_text:
             clear_text.click()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
         # 进入设置界面删除对话记录
         driver.touch(By.isAfter(By.type('Image')).isBefore(By.key('water_mark.build.stack')).type('SymbolGlyph'))
-        driver.wait(2)
+        driver.wait(LONG_WAIT)
         driver.swipe(UiParam.UP, 30, side=UiParam.LEFT)
         clear_chat = driver.find_component(By.text("删除对话记录"))
         if clear_chat:
             clear_chat.click()
-            time.sleep(1)
+            time.sleep(NORMAL_WAIT)
             # 确认删除
             delete_button = driver.find_component(By.text("删除"))
             if delete_button:
                 delete_button.click()
-                time.sleep(1)
+                time.sleep(NORMAL_WAIT)
 
 
         return True
@@ -217,7 +220,7 @@ class Xiaoyilivechat(HarmonyDriver):
 
         driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type(
             'SymbolGlyph'))
-        driver.wait(2)
+        driver.wait(LONG_WAIT)
         try:
             if driver.find_component(By.text("小艺")):
                 self._log(level='DEBUG', content="成功进行通话", task_id=task_id, test_case_id=test_case_id)
@@ -234,7 +237,7 @@ class Xiaoyilivechat(HarmonyDriver):
         self._recording = True
         self._log(level='INFO', content=f"启动录屏成功: {self._record_file_name}", task_id=task_id,
                   test_case_id=test_case_id)
-        time.sleep(2)
+        time.sleep(LONG_WAIT)
         return True
 
     @with_rpc_retry()
@@ -250,9 +253,11 @@ class Xiaoyilivechat(HarmonyDriver):
                           f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
                   task_id=task_id, test_case_id=test_case_id)
 
+        # 模型回复等待超时（秒）
+        _reply_timeout = int(config_manager.get_value('device_timing', 'model_reply_timeout', 60))
         replied=self._wait_for_condition(
             lambda:driver.find_component(By.text("说话可打断"))  is None,
-            timeout=60,interval=1,
+            timeout=_reply_timeout,interval=NORMAL_WAIT,
             operation_name='等待回复开始',
         )
 
@@ -265,11 +270,11 @@ class Xiaoyilivechat(HarmonyDriver):
             # 等待小艺回复结束（带超时和停止检查）
             self._wait_for_condition(
                 lambda: driver.find_component(By.text('说话可打断')),
-                timeout=60, interval=1, operation_name="post_process_说话可打断"
+                timeout=_reply_timeout, interval=NORMAL_WAIT, operation_name="post_process_说话可打断"
             )
             self._wait_for_condition(
                 lambda: driver.find_component(By.text('正在听…')),
-                timeout=60, interval=1, operation_name="post_process_正在听"
+                timeout=_reply_timeout, interval=NORMAL_WAIT, operation_name="post_process_正在听"
             )
         # 停止录屏
         if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
@@ -277,7 +282,7 @@ class Xiaoyilivechat(HarmonyDriver):
         else:
             self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
         self._recording = False
-        time.sleep(5)
+        time.sleep(EXTRA_LONG_WAIT)
         # 通话挂断
         try:
             hangup_btn = driver.find_component(
@@ -286,7 +291,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 hangup_btn.click()
         except Exception as e:
             self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
-        driver.wait(5)
+        driver.wait(EXTRA_LONG_WAIT)
         if not replied:
             return True
         # 提取聊天文本，取最后一条（本轮），未识别到则返回 None
@@ -340,10 +345,10 @@ class Xiaoyilivechat(HarmonyDriver):
             device_path = lines[1].strip() if len(lines) > 1 else ''
             if 'uri' in query.stdout and len(lines) > 2:
                 subprocess.run(
-                    ['hdc', '-t', device_sn, 'shell', 'mediatool', 'recv', lines[2].strip(), '/data/local/tmp'],
-                    check=False, capture_output=True, text=True, timeout=120
+                    ['hdc', '-t', device_sn, 'shell', 'mediatool', 'recv', lines[2].strip(), DEVICE_TMP_DIR],
+                    check=False, capture_output=True, text=True, timeout=EXTRA_LONG_HDC_TIMEOUT
                 )
-                device_path = f'/data/local/tmp/{record_file_name}'
+                device_path = f'{DEVICE_TMP_DIR}/{record_file_name}'
             if not device_path:
                 self._log(level='ERROR',
                           content=f"录屏文件设备路径为空，无法拉取: record_file_name={record_file_name}, mediatool stdout={query.stdout if query else 'N/A'}",
@@ -355,7 +360,7 @@ class Xiaoyilivechat(HarmonyDriver):
             local_dir = tempfile.mkdtemp(prefix=f'case_{task_id_path}_{test_case_id_path}_')
             local_path = os.path.join(local_dir, record_file_name)
             recv_result = subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', device_path, local_path],
-                                         check=False, capture_output=True, text=True, timeout=120)
+                                         check=False, capture_output=True, text=True, timeout=EXTRA_LONG_HDC_TIMEOUT)
             if not os.path.exists(local_path):
                 shutil.rmtree(local_dir, ignore_errors=True)
                 self._log(level='ERROR', content=f"录屏文件拉取失败: {recv_result.stderr}",
@@ -468,14 +473,14 @@ class Xiaoyilivechat(HarmonyDriver):
             if hangup_btn:
                 hangup_btn.click()
                 self._log(level='DEBUG', content="teardown: 挂断残留通话", task_id=task_id, test_case_id=test_case_id)
-                time.sleep(2)
+                time.sleep(LONG_WAIT)
         except Exception as e:
             self._log(level='DEBUG', content=f"teardown: 无残留通话或挂断失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
         # 3. 回桌面（退出小艺聊天界面）
         try:
             driver.press_home()
-            time.sleep(1)
+            time.sleep(NORMAL_WAIT)
         except Exception as e:
             self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}", task_id=task_id, test_case_id=test_case_id)
 

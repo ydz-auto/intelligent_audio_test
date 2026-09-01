@@ -117,8 +117,8 @@
             <label for="type-filter">任务类型：</label>
             <select class="filter-select" id="type-filter" v-model="filters.type" @change="applyFilters">
               <option value="all">全部类型</option>
-              <option value="e2e">端到端测试</option>
-              <option value="api">API测试</option>
+              <option :value="TestType.E2E">端到端测试</option>
+              <option :value="TestType.API">API测试</option>
             </select>
           </div>
           
@@ -261,7 +261,7 @@
               { id: 'regenerate-report', label: '重新生成报告', icon: 'fa-sync', type: 'warning', show: (task: any) => [...FINISHED_STATUSES].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'pause', label: '暂停', icon: 'fa-pause', type: 'secondary', show: (task: any) => task.status === TaskStatus.RUNNING, disabled: (task: any) => isControlling.has(task.id) },
               { id: 'resume', label: '继续', icon: 'fa-play', type: 'secondary', show: (task: any) => [TaskStatus.PAUSED, TaskStatus.STOPPED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => [TaskStatus.RUNNING, TaskStatus.PAUSED, 'queued'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => [TaskStatus.RUNNING, TaskStatus.PAUSED, TaskStatus.QUEUED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'retry', label: '重新执行', icon: 'fa-redo', type: 'success', show: (task: any) => [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.STOPPED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => [...FINISHED_STATUSES].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.has(task.id) }
@@ -314,7 +314,7 @@
 
 <script setup lang="ts">
 import { useTasks } from './tasks';
-import { TaskStatus, FINISHED_STATUSES } from '@/shared/types/enums';
+import { TaskStatus, FINISHED_STATUSES, TestType } from '@/shared/types/enums';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';

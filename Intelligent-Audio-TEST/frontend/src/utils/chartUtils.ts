@@ -1,4 +1,5 @@
 import { Chart, ChartConfiguration } from 'chart.js/auto';
+import { TestType, TaskStatus } from '@/shared/types/enums';
 
 /**
  * 图表工具函数
@@ -14,8 +15,8 @@ export function createTaskTypeChart(ctx: HTMLCanvasElement | CanvasRenderingCont
 {
   // 从实际任务数据计算任务类型分布
   const taskTypeCounts = {
-    'api': 0,
-    'e2e': 0
+    [TestType.API]: 0,
+    [TestType.E2E]: 0
   };
   
   tasks.forEach(task => {
@@ -31,7 +32,7 @@ export function createTaskTypeChart(ctx: HTMLCanvasElement | CanvasRenderingCont
   const chartData = {
     labels: ['API测试', '端到端测试'],
     datasets: [{
-      data: [taskTypeCounts.api, taskTypeCounts.e2e],
+      data: [taskTypeCounts[TestType.API], taskTypeCounts[TestType.E2E]],
       backgroundColor: ['#FF6A00', '#1677FF'],
       borderColor: '#ffffff',
       borderWidth: 2,
@@ -176,7 +177,7 @@ export function createTaskTrendChart(ctx: HTMLCanvasElement | CanvasRenderingCon
   const granularity = options.granularity || 'day';
   
   // 从实际任务数据中获取已完成任务
-  const completedTasks = tasks.filter(task => task.status === 'completed' && !task.deleted);
+  const completedTasks = tasks.filter(task => task.status === TaskStatus.COMPLETED && !task.deleted);
   
   // 按时间粒度分组统计已完成任务
   const tasksByTime: Record<string, number> = {};
@@ -333,11 +334,11 @@ export function createTaskStatusChart(ctx: HTMLCanvasElement | CanvasRenderingCo
 {
   // 从实际任务数据计算任务状态分布
   const taskStatusCounts = {
-    'pending': 0,
-    'queued': 0,
-    'running': 0,
-    'completed': 0,
-    'failed': 0
+    [TaskStatus.PENDING]: 0,
+    [TaskStatus.QUEUED]: 0,
+    [TaskStatus.RUNNING]: 0,
+    [TaskStatus.COMPLETED]: 0,
+    [TaskStatus.FAILED]: 0
   };
   
   tasks.forEach(task => {

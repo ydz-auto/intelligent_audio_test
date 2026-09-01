@@ -19,6 +19,34 @@ import logging
 import threading
 import socket
 
+# 从端口注册表集中引入所有端口常量，避免散落硬编码
+from shared.config.service_ports import (
+    API_GATEWAY_PORT,
+    TASK_SERVICE_HTTP_PORT,
+    TASK_SERVICE_GRPC_PORT,
+    E2E_TEST_HTTP_PORT,
+    E2E_TEST_GRPC_PORT,
+    API_TEST_HTTP_PORT,
+    API_TEST_SERVICE_GRPC_PORT,
+    EVALUATION_SERVICE_HTTP_PORT,
+    EVALUATION_SERVICE_GRPC_PORT,
+    ALGORITHM_SERVICE_HTTP_PORT,
+    ALGORITHM_SERVICE_GRPC_PORT,
+    REPORT_SERVICE_HTTP_PORT,
+    REPORT_SERVICE_GRPC_PORT,
+    AUTH_SERVICE_HTTP_PORT,
+    AUTH_SERVICE_GRPC_PORT,
+    API_ADAPTER_SERVICE_HTTP_PORT,
+    API_ADAPTER_SERVICE_GRPC_PORT,
+    AUDIO_SERVICE_GRPC_PORT,
+    DEVICE_SERVICE_GRPC_PORT,
+    REDIS_PORT,
+    POSTGRESQL_PORT,
+    MINIO_PORT,
+    MINIO_CONSOLE_PORT,
+    FRONTEND_DEV_PORT,
+)
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s %(name)s: %(message)s')
 
@@ -46,18 +74,18 @@ CHILD_ENV = os.environ.copy()
 # - gRPC-only 服务（audio_service / device_service）用 python -m {dir}.interfaces.grpc.server 启动
 # - report_service HTTP 端口改为 5006，避免与 api_adapter_service 的 5008 冲突
 services = [
-    {'name': 'api_gateway',        'port': 5000, 'grpc_port': None,   'dir': 'api_gateway',         'http': True},
-    {'name': 'task_service',        'port': 5001, 'grpc_port': 50061, 'dir': 'task_service',        'http': True},
-    {'name': 'e2e_test_service',    'port': 5002, 'grpc_port': 50051, 'dir': 'e2e_test_service',    'http': True},
-    {'name': 'api_test_service',    'port': 5003, 'grpc_port': 50071, 'dir': 'api_test_service',    'http': True},
-    {'name': 'evaluation_service',  'port': 5004, 'grpc_port': 50091, 'dir': 'evaluation_service',  'http': True},
-    {'name': 'algorithm_service',   'port': 5007, 'grpc_port': 50067, 'dir': 'algorithm_service',   'http': True},
-    {'name': 'report_service',      'port': 5006, 'grpc_port': 50068, 'dir': 'report_service',      'http': True},
-    {'name': 'auth_service',        'port': 5009, 'grpc_port': 50069, 'dir': 'auth_service',        'http': True},
-    {'name': 'api_adapter_service', 'port': 5008, 'grpc_port': 50081, 'dir': 'api_adapter_service', 'http': True},
+    {'name': 'api_gateway',        'port': API_GATEWAY_PORT,            'grpc_port': None,                          'dir': 'api_gateway',         'http': True},
+    {'name': 'task_service',        'port': TASK_SERVICE_HTTP_PORT,     'grpc_port': TASK_SERVICE_GRPC_PORT,        'dir': 'task_service',        'http': True},
+    {'name': 'e2e_test_service',    'port': E2E_TEST_HTTP_PORT,         'grpc_port': E2E_TEST_GRPC_PORT,            'dir': 'e2e_test_service',    'http': True},
+    {'name': 'api_test_service',    'port': API_TEST_HTTP_PORT,         'grpc_port': API_TEST_SERVICE_GRPC_PORT,     'dir': 'api_test_service',    'http': True},
+    {'name': 'evaluation_service',  'port': EVALUATION_SERVICE_HTTP_PORT, 'grpc_port': EVALUATION_SERVICE_GRPC_PORT, 'dir': 'evaluation_service',  'http': True},
+    {'name': 'algorithm_service',   'port': ALGORITHM_SERVICE_HTTP_PORT,'grpc_port': ALGORITHM_SERVICE_GRPC_PORT,   'dir': 'algorithm_service',   'http': True},
+    {'name': 'report_service',      'port': REPORT_SERVICE_HTTP_PORT,   'grpc_port': REPORT_SERVICE_GRPC_PORT,      'dir': 'report_service',      'http': True},
+    {'name': 'auth_service',        'port': AUTH_SERVICE_HTTP_PORT,      'grpc_port': AUTH_SERVICE_GRPC_PORT,         'dir': 'auth_service',        'http': True},
+    {'name': 'api_adapter_service', 'port': API_ADAPTER_SERVICE_HTTP_PORT, 'grpc_port': API_ADAPTER_SERVICE_GRPC_PORT, 'dir': 'api_adapter_service', 'http': True},
     # gRPC-only 服务：无 app.py，仅启动 gRPC server
-    {'name': 'audio_service',       'port': None, 'grpc_port': 50052, 'dir': 'audio_service',      'http': False},
-    {'name': 'device_service',      'port': None, 'grpc_port': 50053, 'dir': 'device_service',      'http': False},
+    {'name': 'audio_service',       'port': None,                       'grpc_port': AUDIO_SERVICE_GRPC_PORT,        'dir': 'audio_service',      'http': False},
+    {'name': 'device_service',      'port': None,                       'grpc_port': DEVICE_SERVICE_GRPC_PORT,       'dir': 'device_service',      'http': False},
 ]
 
 # 前端 Vite dev server
@@ -67,7 +95,7 @@ services = [
 # 新 FastAPI 网关在 5000，必须在子进程环境里注入 VITE_API_TARGET=http://localhost:5000，
 # 否则前端会连到旧项目 6000 端口。
 FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend')
-FRONTEND_PORT = 5173
+FRONTEND_PORT = FRONTEND_DEV_PORT
 # 新 FastAPI 网关地址，注入给 vite proxy
 API_GATEWAY_URL = f"http://localhost:{services[0]['port']}"
 
@@ -253,8 +281,8 @@ def start_service(svc):
 
 def start_redis():
     """本地直接启动 redis-server（Windows 下用 redis-server.exe）。"""
-    if _is_port_open('localhost', 6379):
-        print("[INFO] redis already running on :6379", flush=True)
+    if _is_port_open('localhost', REDIS_PORT):
+        print(f"[INFO] redis already running on :{REDIS_PORT}", flush=True)
         return
     candidates = []
     if os.name == 'nt':
@@ -273,7 +301,7 @@ def start_redis():
         except Exception:
             redis_bin = None
     if not redis_bin:
-        print("[WARN] redis-server not found, please start redis manually on :6379", flush=True)
+        print(f"[WARN] redis-server not found, please start redis manually on :{REDIS_PORT}", flush=True)
         return
     print(f"[START] redis-server: {redis_bin}", flush=True)
     # 纯运行时状态（Pub/Sub + 服务注册），无需持久化：禁用 RDB，AOF 默认关闭。
@@ -288,13 +316,13 @@ def start_redis():
     t = threading.Thread(target=_stream, args=(proc, 'redis'), daemon=True)
     t.start()
     processes.append({'name': 'redis', 'proc': proc, 'thread': t})
-    _wait_port('localhost', 6379, 'redis')
+    _wait_port('localhost', REDIS_PORT, 'redis')
 
 
 def start_postgres():
     """本地直接启动 Postgres（Windows 下用 pg_ctl start）。"""
-    if _is_port_open('localhost', 5432):
-        print("[INFO] postgres already running on :5432", flush=True)
+    if _is_port_open('localhost', POSTGRESQL_PORT):
+        print(f"[INFO] postgres already running on :{POSTGRESQL_PORT}", flush=True)
         return
     candidates = []
     if os.name == 'nt':
@@ -312,7 +340,7 @@ def start_postgres():
         except Exception:
             pg_ctl = None
     if not pg_ctl:
-        print("[WARN] pg_ctl not found, please start postgres manually on :5432", flush=True)
+        print(f"[WARN] pg_ctl not found, please start postgres manually on :{POSTGRESQL_PORT}", flush=True)
         return
     data_dir = os.path.join(os.path.dirname(os.path.dirname(pg_ctl)), 'data')
     if not os.path.isdir(data_dir):
@@ -332,13 +360,13 @@ def start_postgres():
             print(f"[WARN] pg_ctl start returned {result.returncode}", flush=True)
     except Exception as e:
         print(f"[WARN] postgres startup failed: {e}", flush=True)
-    _wait_port('localhost', 5432, 'postgres')
+    _wait_port('localhost', POSTGRESQL_PORT, 'postgres')
 
 
 def start_minio():
     """本地直接启动 MinIO（Windows 下用 minio.exe server）。"""
-    if _is_port_open('localhost', 9000):
-        print("[INFO] minio already running on :9000", flush=True)
+    if _is_port_open('localhost', MINIO_PORT):
+        print(f"[INFO] minio already running on :{MINIO_PORT}", flush=True)
         return
     candidates = []
     if os.name == 'nt':
@@ -356,7 +384,7 @@ def start_minio():
         except Exception:
             minio_bin = None
     if not minio_bin:
-        print("[WARN] minio not found, please start minio manually on :9000", flush=True)
+        print(f"[WARN] minio not found, please start minio manually on :{MINIO_PORT}", flush=True)
         return
     minio_root_user = CHILD_ENV.get('OSS_ACCESS_KEY', 'minio')
     minio_root_password = CHILD_ENV.get('OSS_SECRET_KEY', 'minio123')
@@ -366,7 +394,7 @@ def start_minio():
     env['MINIO_ROOT_USER'] = minio_root_user
     env['MINIO_ROOT_PASSWORD'] = minio_root_password
     proc = subprocess.Popen(
-        [minio_bin, 'server', minio_data_dir, '--console-address', ':9001'],
+        [minio_bin, 'server', minio_data_dir, '--console-address', f':{MINIO_CONSOLE_PORT}'],
         cwd=os.path.dirname(minio_bin) or None,
         env=env,
         stdout=subprocess.PIPE,
@@ -376,7 +404,7 @@ def start_minio():
     t = threading.Thread(target=_stream, args=(proc, 'minio'), daemon=True)
     t.start()
     processes.append({'name': 'minio', 'proc': proc, 'thread': t})
-    _wait_port('localhost', 9000, 'minio')
+    _wait_port('localhost', MINIO_PORT, 'minio')
 
 
 def start_frontend():
@@ -422,19 +450,19 @@ def start_all():
         start_service(svc)
     start_frontend()
     print(f"\n[OK] Started {len(processes)} processes (3 infra + 11 backend + 1 frontend).", flush=True)
-    print("[INFO] Frontend:            http://localhost:5173", flush=True)
-    print("[INFO] API Gateway:        http://localhost:5000", flush=True)
-    print("[INFO] Task Service:       http://localhost:5001", flush=True)
-    print("[INFO] E2E Test Service:   http://localhost:5002", flush=True)
-    print("[INFO] API Test Service:   http://localhost:5003", flush=True)
-    print("[INFO] Evaluation Service: http://localhost:5004", flush=True)
-    print("[INFO] Report Service:     http://localhost:5006", flush=True)
-    print("[INFO] Algorithm Service:  http://localhost:5007", flush=True)
-    print("[INFO] Adapter Service:    http://localhost:5008", flush=True)
-    print("[INFO] Auth Service:       http://localhost:5009", flush=True)
-    print("[INFO] Audio Service:      gRPC :50052", flush=True)
-    print("[INFO] Device Service:     gRPC :50053", flush=True)
-    print("[INFO] MinIO Console:      http://localhost:9001", flush=True)
+    print(f"[INFO] Frontend:            http://localhost:{FRONTEND_DEV_PORT}", flush=True)
+    print(f"[INFO] API Gateway:        http://localhost:{API_GATEWAY_PORT}", flush=True)
+    print(f"[INFO] Task Service:       http://localhost:{TASK_SERVICE_HTTP_PORT}", flush=True)
+    print(f"[INFO] E2E Test Service:   http://localhost:{E2E_TEST_HTTP_PORT}", flush=True)
+    print(f"[INFO] API Test Service:   http://localhost:{API_TEST_HTTP_PORT}", flush=True)
+    print(f"[INFO] Evaluation Service: http://localhost:{EVALUATION_SERVICE_HTTP_PORT}", flush=True)
+    print(f"[INFO] Report Service:     http://localhost:{REPORT_SERVICE_HTTP_PORT}", flush=True)
+    print(f"[INFO] Algorithm Service:  http://localhost:{ALGORITHM_SERVICE_HTTP_PORT}", flush=True)
+    print(f"[INFO] Adapter Service:    http://localhost:{API_ADAPTER_SERVICE_HTTP_PORT}", flush=True)
+    print(f"[INFO] Auth Service:       http://localhost:{AUTH_SERVICE_HTTP_PORT}", flush=True)
+    print(f"[INFO] Audio Service:      gRPC :{AUDIO_SERVICE_GRPC_PORT}", flush=True)
+    print(f"[INFO] Device Service:     gRPC :{DEVICE_SERVICE_GRPC_PORT}", flush=True)
+    print(f"[INFO] MinIO Console:      http://localhost:{MINIO_CONSOLE_PORT}", flush=True)
     print("[INFO] Ctrl+C to stop all.", flush=True)
 
 

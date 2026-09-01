@@ -14,6 +14,7 @@ import { useTestReport } from '../shared/useTestReport'
 import { useTestCaseStore } from '../../store/testCaseStore'
 import { type Report, type Log, type TestCase, type TestCaseFormData } from '../../shared/types'
 import reportService from '../../services/reportService'
+import { TaskStatus, TestType } from '@/shared/types/enums'
 
 export function normalizeSelectedCaseIds(ids: (string | number)[]) {
   const normalizedIds = ids.filter((id): id is string | number => {
@@ -264,8 +265,8 @@ export function useE2eView() {
       const reportData = await reportService.viewTaskReport({
         id: currentTaskId.value,
         name: taskName.value || 'E2E测试任务',
-        type: 'e2e',
-        status: 'completed',
+        type: TestType.E2E,
+        status: TaskStatus.COMPLETED,
         progress: 100,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
@@ -335,7 +336,7 @@ export function useE2eView() {
 
       const payload = {
         name: taskName.value || `E2E测试任务_${new Date().toLocaleString()}`,
-        type: 'e2e',
+        type: TestType.E2E,
         deviceIds: selectedDeviceIds,
         caseIds: selectedCaseIds,
         config: { parallel: true, concurrentTasks: concurrentTasks.value }
@@ -358,9 +359,9 @@ export function useE2eView() {
           groupName: tc?.groupName,
           tags: tc?.tags,
           algorithmType: tc?.algorithmType,
-          status: 'pending',
-          executionStatus: 'pending',
-          evaluationStatus: 'pending'
+          status: TaskStatus.PENDING,
+          executionStatus: TaskStatus.PENDING,
+          evaluationStatus: TaskStatus.PENDING
         }
       })
       

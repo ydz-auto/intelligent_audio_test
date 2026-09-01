@@ -27,6 +27,20 @@ def _now():
 class TestCaseRepository(TestCaseGroupRepositoryABC):
     """测试用例仓储"""
 
+    @classmethod
+    def _build_dim_id_filter(cls, dim_str: str):
+        """构建按维度ID过滤的 OR 条件（匹配 config JSON 中的 dimension id）。
+
+        兼容 JSON 序列化时 id 与引号/空格的多种排列组合。
+        """
+        cast_text = TestCase.config.cast(Text)
+        return (
+            cast_text.like(f'"id": {dim_str}') |
+            cast_text.like(f'"id":{dim_str}') |
+            cast_text.like(f'"id": "{dim_str}"') |
+            cast_text.like(f'"id":"{dim_str}"')
+        )
+
     # ========== TestCase 基础 CRUD ==========
 
     def create_testcase(self, data: dict) -> TestCase:
@@ -208,12 +222,7 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
                     case_filters.append(TestCase.test_type == test_type)
                 if dimension_id:
                     dim_str = str(dimension_id)
-                    case_filters.append(
-                        TestCase.config.cast(Text).like(f'"id": {dim_str}') |
-                        TestCase.config.cast(Text).like(f'"id":{dim_str}') |
-                        TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
-                        TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
-                    )
+                    case_filters.append(self._build_dim_id_filter(dim_str))
                 if keyword:
                     case_filters.append(
                         (TestCase.id.like(f'%{keyword}%')) |
@@ -455,12 +464,7 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
                 query = query.filter(TestCase.test_type == test_type)
             if dimension_id:
                 dim_str = str(dimension_id)
-                query = query.filter(
-                    TestCase.config.cast(Text).like(f'"id": {dim_str}') |
-                    TestCase.config.cast(Text).like(f'"id":{dim_str}') |
-                    TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
-                    TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
-                )
+                query = query.filter(self._build_dim_id_filter(dim_str))
 
             if group_by:
                 allowed = {'algorithm_type': TestCase.algorithm_type,
@@ -479,12 +483,7 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
                     rows = rows.filter(TestCase.test_type == test_type)
                 if dimension_id:
                     dim_str = str(dimension_id)
-                    rows = rows.filter(
-                        TestCase.config.cast(Text).like(f'"id": {dim_str}') |
-                        TestCase.config.cast(Text).like(f'"id":{dim_str}') |
-                        TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
-                        TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
-                    )
+                    rows = rows.filter(self._build_dim_id_filter(dim_str))
                 rows = rows.group_by(col).all()
                 items = [{'key': str(k) if k is not None else '', 'count': int(c)} for k, c in rows]
                 return {'items': items}
@@ -875,12 +874,7 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         # 按评估维度过滤：搜索 config JSON 中包含该 dimension_id 的用例
         if dimension_id:
             dim_str = str(dimension_id)
-            query = query.filter(
-                TestCase.config.cast(Text).like(f'"id": {dim_str}') |
-                TestCase.config.cast(Text).like(f'"id":{dim_str}') |
-                TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
-                TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
-            )
+            query = query.filter(self._build_dim_id_filter(dim_str))
 
         return query.paginate(page=page, per_page=per_page, error_out=False)
 
@@ -917,12 +911,7 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         # 按评估维度过滤
         if dimension_id:
             dim_str = str(dimension_id)
-            tc_query = tc_query.filter(
-                TestCase.config.cast(Text).like(f'"id": {dim_str}') |
-                TestCase.config.cast(Text).like(f'"id":{dim_str}') |
-                TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
-                TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
-            )
+            tc_query = tc_query.filter(self._build_dim_id_filter(dim_str))
 
         return tc_query.all()
 
@@ -960,12 +949,7 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
 
         if dimension_id:
             dim_str = str(dimension_id)
-            query = query.filter(
-                TestCase.config.cast(Text).like(f'"id": {dim_str}') |
-                TestCase.config.cast(Text).like(f'"id":{dim_str}') |
-                TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
-                TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
-            )
+            query = query.filter(self._build_dim_id_filter(dim_str))
 
         if search:
             keyword = f"%{search}%"

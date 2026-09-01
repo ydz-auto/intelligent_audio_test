@@ -13,7 +13,9 @@ from typing import Any, Dict, List, Optional  # noqa: F401
 from shared.models.database import get_db_session
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.query_utils import now_cst
-from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
+from shared.utils.status_constants import (
+    TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EXECUTION_STATUSES,
+)
 from shared.models.common_enums import TestType
 from sqlalchemy import and_, or_
 
@@ -312,7 +314,7 @@ class TaskReadModel:
 
             in_progress_count = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
-                (TaskCase.execution_status.in_([ExecutionStatus.RUNNING, ExecutionStatus.QUEUED])) | (TaskCase.evaluation_status == EvaluationStatus.RUNNING) |
+                (TaskCase.execution_status.in_(ACTIVE_EXECUTION_STATUSES)) | (TaskCase.evaluation_status == EvaluationStatus.RUNNING) |
                 (TaskCase.evaluation_status == EvaluationStatus.CALCULATING)
             ).count()
 

@@ -7,7 +7,9 @@ from evaluation_service.infrastructure.persistence.orm_models import Dimension, 
 from evaluation_service.infrastructure.acl import task_acl_repository
 from shared.models.database import get_db_session
 from shared.utils.status_utils import derive_task_case_status
-from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus
+from shared.utils.status_constants import (
+    ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus, ACTIVE_EVALUATION_STATUSES,
+)
 from shared.models.common_enums import TestType
 from evaluation_service.domain.services.evaluation_utils import extract_by_path, calculate_score
 from evaluation_service.infrastructure.persistence.round_aggregator import RoundAggregator
@@ -367,7 +369,7 @@ class EvaluationResultProcessor(RoundAggregator):
                 res_failed = False
                 for dim in dims:
                     # 如果有任何维度还在进行中，说明这个 TestResult 还没完成
-                    if dim.evaluation_status in [EvaluationStatus.PENDING, EvaluationStatus.RUNNING, EvaluationStatus.QUEUED, EvaluationStatus.CALCULATING]:
+                    if dim.evaluation_status in ACTIVE_EVALUATION_STATUSES:
                         res_finished = False
                         break
                     # 如果有任何维度评估失败，这个 TestResult 就是失败的
@@ -594,7 +596,7 @@ class EvaluationResultProcessor(RoundAggregator):
                 # 检查是否所有维度都已经不是进行中状态
                 all_completed = True
                 for dim in dimensions:
-                    if dim.evaluation_status in [EvaluationStatus.PENDING, EvaluationStatus.RUNNING, EvaluationStatus.QUEUED, EvaluationStatus.CALCULATING]:
+                    if dim.evaluation_status in ACTIVE_EVALUATION_STATUSES:
                         all_completed = False
                         break
 

@@ -1,13 +1,16 @@
+import { TaskStatus } from '@/shared/types/enums';
+
 export const TASK_STATUS_MAP: Record<string, string> = {
-  'pending': '待执行',
-  'running': '执行中',
-  'completed': '已完成',
-  'failed': '执行失败',
-  'paused': '已暂停',
-  'stopped': '已停止',
-  'queued': '排队中',
-  'skipped': '已跳过',
-  'merged': '已合并',
+  [TaskStatus.PENDING]: '待执行',
+  [TaskStatus.RUNNING]: '执行中',
+  [TaskStatus.COMPLETED]: '已完成',
+  [TaskStatus.FAILED]: '执行失败',
+  [TaskStatus.PAUSED]: '已暂停',
+  [TaskStatus.STOPPED]: '已停止',
+  [TaskStatus.QUEUED]: '排队中',
+  [TaskStatus.SKIPPED]: '已跳过',
+  [TaskStatus.MERGED]: '已合并',
+  // 后端扩展状态（暂未纳入 TaskStatus 枚举）
   'evaluating': '评估中',
   'reevaluate_queued': '重新评估排队中',
   'reevaluating': '重新评估中'

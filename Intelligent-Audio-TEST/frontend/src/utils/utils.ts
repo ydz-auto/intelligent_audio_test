@@ -1,4 +1,5 @@
 import type { TestCaseFormData } from '../shared/types';
+import { TestType } from '@/shared/types/enums';
 
 /**
  * AlgorithmSelector 会把 schema 定义（caseAlgorithmParams / algorithmFormSchema）塞进 params 对象，
@@ -277,8 +278,8 @@ export function normalizeTestCaseConfig(config: Record<string, any>) {
   }));
 
   // Convert legacy flat audios into rounds grouped by testType
-  const apiAudios = normalizedAudios.filter((a: any) => (a.test_type ?? 'api') === 'api');
-  const e2eAudios = normalizedAudios.filter((a: any) => (a.test_type) === 'e2e');
+  const apiAudios = normalizedAudios.filter((a: any) => (a.test_type ?? TestType.API) === TestType.API);
+  const e2eAudios = normalizedAudios.filter((a: any) => (a.test_type) === TestType.E2E);
   const legacyRounds: any[] = [];
   if (apiAudios.length > 0) {
     legacyRounds.push({

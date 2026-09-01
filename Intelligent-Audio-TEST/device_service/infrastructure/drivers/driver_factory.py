@@ -280,6 +280,95 @@ class DeviceDriverFactory:
         """列出注册表中所有驱动（代理给 DriverRegistry）"""
         return driver_registry.list_drivers()
 
+    # —— 热更新：不停服增删改驱动 ——
+
+    def unregister_driver(
+        self, app_type: AppType, version: AppVersion, platform: DevicePlatform
+    ) -> bool:
+        """热删：从注册表和工厂实例列表中同时移除一个驱动
+
+        已在执行中的用例持有旧实例引用，不受影响；
+        新请求 resolve 将找不到该驱动。
+
+        Returns:
+            True 如果成功移除
+        """
+        entry = driver_registry.unregister(app_type, version, platform)
+        if not entry:
+            return False
+
+        # 同步移除工厂持有的实例
+        old_cls = entry.driver_cls
+        self._specialized_drivers = [
+            e for e in self._specialized_drivers
+            if not isinstance(e['driver'], old_cls)
+        ]
+        # 基础驱动不从 _base_drivers 移除（平台基类不可删）
+        return True
+
+    def reload_driver_module(self, module_name: str) -> list[dict]:
+        """热改：reload 一个驱动模块
+
+        流程:
+            1. driver_registry.reload_module 重载注册表
+            2. 对该模块的每个驱动类，在工厂中重新实例化并替换旧实例
+            3. 新实例继承 mock_mode 设置
+
+        Returns:
+            reload 后的驱动信息列表
+        """
+        new_entries = driver_registry.reload_module(module_name)
+
+        # 在工厂中同步替换实例
+        for entry in new_entries:
+            new_cls = entry.driver_cls
+            new_instance = new_cls()
+            if hasattr(new_instance, 'set_mock_mode'):
+                new_instance.set_mock_mode(self._mock_mode)
+
+            # 先移除旧实例
+            self._specialized_drivers = [
+                e for e in self._specialized_drivers
+                if not isinstance(e['driver'], new_cls)
+            ]
+            # 加入新实例（保留旧体系的关键字映射）
+            old_entry = None
+            for e in self._specialized_drivers:
+                if isinstance(e['driver'], new_cls):
+                    old_entry = e
+                    break
+            if old_entry:
+                old_entry['driver'] = new_instance
+
+        return [e.to_dict() for e in new_entries]
+
+    def register_driver_class(self, driver_cls, keywords=None, system=None, name=None):
+        """热增：动态注册一个驱动类到注册表和工厂
+
+        Args:
+            driver_cls: 驱动类（必须有 app_type/version/platform 元数据）
+            keywords: 旧体系关键字（可选，默认从 app_type 生成）
+            system: 旧体系系统名（可选，默认从 platform 生成）
+            name: 显示名（可选，默认用 display_name）
+        """
+        # 注册到注册表
+        driver_registry.register(driver_cls)
+
+        # 注册到工厂实例列表
+        instance = driver_cls()
+        if hasattr(instance, 'set_mock_mode'):
+            instance.set_mock_mode(self._mock_mode)
+
+        # 旧体系兼容：自动生成关键字和系统名
+        if keywords is None:
+            keywords = [driver_cls.app_type.value]
+        if system is None:
+            system = driver_cls.platform.value
+        if name is None:
+            name = getattr(driver_cls, 'display_name', driver_cls.__name__)
+
+        self.register_specialized_driver(instance, keywords, system, name)
+
     # —— 旧体系：关键字匹配（保持兼容）——
 
     def get_driver(self, system, keywords=None, device_sn=None):

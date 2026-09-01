@@ -5,6 +5,8 @@ import { useTestCaseCard } from '../testCase/useTestCaseCard';
 import { useModal } from '../modal/useModal';
 import { testcasesApi } from '../../utils/api';
 import { MODAL_TYPES, type TestCase, type TestCaseFormData } from '../../shared/types';
+// 引入测试类型枚举，消除魔法字符串
+import { TestType } from '@/shared/types/enums';
 
 export function useApiTest() {
   const testCaseStore = useTestCaseStore();
@@ -41,7 +43,7 @@ export function useApiTest() {
     
     // 优先检查记录级 testType 字段
     const recordType = (caseItem.test_type || caseItem.type || '').toLowerCase();
-    if (recordType === 'api' || recordType === 'api_test') return true;
+    if (recordType === TestType.API || recordType === 'api_test') return true;
     
     // 回退：检查 config 中是否有音频（支持 rounds 格式）
     const config: any = caseItem.config || {};
@@ -52,7 +54,7 @@ export function useApiTest() {
     }
     // 旧 flat 格式
     const audios = config.audios || [];
-    return audios.some((a: any) => (a.test_type) === 'api');
+    return audios.some((a: any) => (a.test_type) === TestType.API);
   };
 
   const apiTestCases = computed(() => {
@@ -103,9 +105,9 @@ export function useApiTest() {
   };
 
   const addApiTestCase = (testCaseData: Partial<TestCase>) => {
-    const apiTestCase = { ...testCaseData, type: 'api', config: {
+    const apiTestCase = { ...testCaseData, type: TestType.API, config: {
         ...(testCaseData.config || {}),
-        type: 'api'
+        type: TestType.API
       }
     };
     return addTestCase(apiTestCase as any);
@@ -115,9 +117,9 @@ export function useApiTest() {
     if (!updatedTestCase?.id) {
       throw new Error('Update requires a valid test case ID');
     }
-    const apiTestCase = { ...updatedTestCase, type: 'api', config: {
+    const apiTestCase = { ...updatedTestCase, type: TestType.API, config: {
         ...(updatedTestCase.config || {}),
-        type: 'api'
+        type: TestType.API
       }
     };
     return updateTestCase(apiTestCase.id, apiTestCase as any);
@@ -134,16 +136,16 @@ export function useApiTest() {
   const openAddApiTestCaseModal = (group = '默认分组') => {
     modalManager.open(MODAL_TYPES.ADD_TEST_CASE, {
       group: group,
-      config: { type: 'api' },
+      config: { type: TestType.API },
       mode: 'add'
     });
   };
 
   const handleApiTestCaseSave = async (data: TestCaseFormData & { id?: string }) => {
     try {
-      data.type = 'api';
+      data.type = TestType.API;
       if (!data.config) data.config = {};
-      data.config.type = 'api';
+      data.config.type = TestType.API;
 
       if (data.id) {
         return await updateApiTestCase(data as unknown as TestCase);
@@ -161,7 +163,7 @@ export function useApiTest() {
   const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     fetchTagView({
       keyword: filters.keyword,
-      testType: 'api',
+      testType: TestType.API,
       algorithmType: filters.algorithmType,
       dimensionId: filters.dimensionId,
     });
@@ -171,7 +173,7 @@ export function useApiTest() {
   const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     fetchTestCases({
       keyword: filters.keyword,
-      testType: 'api',
+      testType: TestType.API,
       algorithmType: filters.algorithmType,
       dimensionId: filters.dimensionId,
     });

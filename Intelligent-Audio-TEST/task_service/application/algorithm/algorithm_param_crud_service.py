@@ -34,6 +34,7 @@ import logging
 from dataclasses import asdict
 from typing import Any, Dict
 
+from shared.utils.camel_case import camel_to_snake
 from task_service.infrastructure.acl.algorithm_acl_repository import (
     AlgorithmRepository,
 )
@@ -127,22 +128,14 @@ class AlgorithmParamCrudService(
                 'required', 'default_value', 'validation_rules', 'help_text',
                 'ui_order', 'hidden'
             ]
-            # camelCase → snake_case 映射，兼容前端直接透传的 camelCase 键
-            camel_to_snake = {
-                'paramCode': 'param_code', 'paramName': 'param_name',
-                'paramType': 'param_type', 'uiOrder': 'ui_order',
-                'defaultValue': 'default_value', 'validationRules': 'validation_rules',
-                'helpText': 'help_text',
-            }
+            # 动态构建 camelCase → snake_case 映射，兼容前端直接透传的 camelCase 键
+            camel_to_snake_map = {camel_to_snake(f): f for f in updatable_fields}
             update_fields = {}
             for field in updatable_fields:
                 if field in data:
                     update_fields[field] = data[field]
-                elif field in camel_to_snake and camel_to_snake[field] in data:
-                    # Also check if the camelCase version exists
-                    pass
-            # Also check camelCase keys
-            for camel_key, snake_key in camel_to_snake.items():
+            # 兼容前端 camelCase 键
+            for camel_key, snake_key in camel_to_snake_map.items():
                 if snake_key in updatable_fields and camel_key in data:
                     update_fields[snake_key] = data[camel_key]
 

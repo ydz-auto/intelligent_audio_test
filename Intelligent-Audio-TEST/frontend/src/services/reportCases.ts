@@ -1,3 +1,5 @@
+import { TaskStatus } from '../shared/types/enums';
+
 export function convertDetailedResultsToCases(report: any): any[] {
   const detailedResults = report.detailedResults || [];
   if (detailedResults.length === 0) return [];
@@ -46,7 +48,7 @@ export function convertDetailedResultsToCases(report: any): any[] {
     });
 
     const status = result.executionStatus || result.status;
-    caseObj.results[resourceKey] = {status: status === 'completed' || status === 'passed' ? '成功' : '失败', startTime: result.createdAt, endTime: result.createdAt};
+    caseObj.results[resourceKey] = {status: status === TaskStatus.COMPLETED || status === 'passed' ? '成功' : '失败', startTime: result.createdAt, endTime: result.createdAt};
 
     caseObj.asr.results[resourceKey] = {text: result.asr?.resultText || ''};
 

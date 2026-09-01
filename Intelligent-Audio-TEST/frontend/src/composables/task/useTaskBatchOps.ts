@@ -2,6 +2,7 @@ import { type Ref } from 'vue';
 import { tasksApi } from '../../utils/api';
 import { reportService } from '../../services/reportService';
 import type { Task } from '../../shared/types';
+import { TaskStatus } from '@/shared/types/enums';
 import { useModalControl, MODAL_TYPES } from '../modal/useModal';
 
 
@@ -130,7 +131,7 @@ export function useTaskBatchOps(
     }
 
     const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
-    const incompleteTasks = selectedTasksArray.filter(t => t.status !== 'completed');
+    const incompleteTasks = selectedTasksArray.filter(t => t.status !== TaskStatus.COMPLETED);
     if (incompleteTasks.length > 0) {
       const names = incompleteTasks.map(t => t.name).join(', ');
       alert(`以下任务未完成，无法合并: ${names}`);

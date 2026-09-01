@@ -6,6 +6,7 @@ from .harmony_driver import HarmonyDriver
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+from .driver_constants import *
 try:
     from hypium.model import UiParam
 except ImportError:
@@ -33,35 +34,35 @@ class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
         if user_center:
             self._log(level='DEBUG', content="Clicking User Center...", task_id=task_id, test_case_id=test_case_id)
             user_center.click()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
 
         # 4. 点击"设置"
         settings_btn = driver.find_component(By.text("设置"))
         if settings_btn:
             self._log(level='DEBUG', content="Clicking Settings...", task_id=task_id, test_case_id=test_case_id)
             settings_btn.click()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
 
         # 5. 点击"小艺翻译"
         trans_setting = driver.find_component(By.text("小艺翻译"))
         if trans_setting:
             self._log(level='DEBUG', content="Clicking Celia Translation...", task_id=task_id, test_case_id=test_case_id)
             trans_setting.click()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
 
         # 6. 检查并点击"启用"
         enable_btn = driver.find_component(By.text("启用小艺翻译"))
         if enable_btn:
             self._log(level='DEBUG', content="Enabling service...", task_id=task_id, test_case_id=test_case_id)
             enable_btn.click()
-            time.sleep(1.5)
+            time.sleep(TRANSLATION_WAIT)
 
         # 7. 点击"小艺翻译助手"
         assistant_btn = driver.find_component(By.text("小艺翻译助手"))
         if assistant_btn:
             self._log(level='DEBUG', content="Entering Assistant...", task_id=task_id, test_case_id=test_case_id)
             assistant_btn.click()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
             return True
 
         return False
@@ -93,7 +94,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             if mode_btn:
                 self._log(level='DEBUG', content=f"Clicking Mode...{mode_text}", task_id=task_id, test_case_id=test_case_id)
                 mode_btn.click()
-                time.sleep(1)
+                time.sleep(NORMAL_WAIT)
             self._log(level='INFO', content=f"Mode: {mode_text}", task_id=task_id, test_case_id=test_case_id)
             if driver.find_component(By.text('点击下方按钮说话')):
                 self._log(level='INFO', content=f"成功打开面对面翻译", task_id=task_id, test_case_id=test_case_id)
@@ -165,7 +166,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
             if mode_btn:
                 self._log(level='DEBUG', content=f"Clicking Mode...{mode_text}", task_id=task_id, test_case_id=test_case_id)
                 mode_btn.click()
-                time.sleep(1)
+                time.sleep(NORMAL_WAIT)
             self._log(level='INFO', content=f"Mode: {mode_text}", task_id=task_id, test_case_id=test_case_id)
             if driver.find_component(By.text('开启同传')):
                 self._log(level='INFO', content=f"成功打开同传", task_id=task_id, test_case_id=test_case_id)
@@ -185,7 +186,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
                 # 点击中文按钮
                 if driver.find_component(By.xpath('//RelativeContainer/Column/Text')).getText() != '中文 (简体)':
                     driver.touch(By.id('language_selector.build.image'))
-                time.sleep(1)
+                time.sleep(NORMAL_WAIT)
                 if driver.find_component(By.xpath('//RelativeContainer/Column/Text[2]')).getText() != '英语':
                     driver.touch(By.xpath('//RelativeContainer/Column/Text[2]'))
                     driver.touch(By.xpath('//Row/Flex/Text[@text="英语"]'))
@@ -193,7 +194,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
                 # 点击中文按钮
                 if driver.find_component(By.xpath('//RelativeContainer/Column/Text')).getText() != '英语':
                     driver.touch(By.id('language_selector.build.image'))
-                time.sleep(1)
+                time.sleep(NORMAL_WAIT)
                 if driver.find_component(By.xpath('//RelativeContainer/Column/Text[2]')).getText() != '中文 (简体)':
                     driver.touch(By.xpath('//RelativeContainer/Column/Text[2]'))
                     driver.touch(By.xpath('//Row/Flex/Text[@text="中文"]'))
@@ -203,7 +204,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
         if start_btn:
             self._log(level='DEBUG', content=f"Clicking Start Button...", task_id=task_id, test_case_id=test_case_id)
             start_btn.click()
-            time.sleep(0.2)
+            time.sleep(UI_WAIT)
         #
         if driver.find_component(By.text('暂停')) or driver.find_component(By.text('完成')):
             self._log(level='INFO', content=f"成功打开同传", task_id=task_id, test_case_id=test_case_id)
@@ -219,12 +220,12 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
         if end_btn:
             self._log(level='DEBUG', content=f"Clicking 完成 Button...", task_id=task_id, test_case_id=test_case_id)
             end_btn.click()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
         end_btn = driver.find_component(By.text('结束'))
         if end_btn:
             self._log(level='DEBUG', content=f"Clicking 结束 Button...", task_id=task_id, test_case_id=test_case_id)
             end_btn.click()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
             return True
         return False
 
@@ -270,7 +271,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
                 if new_pair_found:
                     retry_count = 0
                     driver.swipe(UiParam.UP, 15, speed=2000, start_point=list1.getBoundsCenter())
-                    time.sleep(0.1)
+                    time.sleep(SHORT_WAIT)
                 else:
                     retry_count += 1
             asr_final_result_list = list(dict.fromkeys(asr_result).keys())

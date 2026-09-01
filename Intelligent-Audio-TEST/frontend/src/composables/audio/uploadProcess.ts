@@ -11,6 +11,8 @@ import type {
 import type { UploadStatus } from '../upload/useUploadState';
 import { calculateMd5 } from './md5Utils';
 import { saveLocalTask } from './taskPersistence';
+// 引入上传状态与 HTTP 状态码枚举，消除魔法字符串与魔法数字
+import { UploadStatus as UploadStatusEnum, HttpStatus } from '@/shared/types/enums';
 
 /**
  * 上传流程相关逻辑：进度管理、上传初始化、分片上传、秒传/已存在文件处理
@@ -63,7 +65,7 @@ export async function startUploadProcess(
 
   if (files.length === 0) return;
 
-  uploadStatus.value = 'preparing';
+  uploadStatus.value = UploadStatusEnum.PREPARING;
   uploadProgress.value = 1;
   setAbortController(new AbortController());
   generatedTestCaseTotal.value = 0;
@@ -169,7 +171,7 @@ export async function startUploadProcess(
         name: file.name,
         size: file.size,
         md5,
-        status: 'pending',
+        status: UploadStatusEnum.PENDING,
         progress: 0,
         uploadedSize: 0,
         folder_group_name: folderGroupName,
@@ -202,7 +204,7 @@ export async function startUploadProcess(
     const tasks: AudioUploadFile[] = preparedFiles.map((pf, idx) => {
       const reg = registeredFiles[idx];
       if (!reg) {
-        return { ...pf, status: 'failed', error: 'Registration failed' } as AudioUploadFile;
+        return { ...pf, status: UploadStatusEnum.FAILED, error: 'Registration failed' } as AudioUploadFile;
       }
       return {
         ...pf,
@@ -210,9 +212,9 @@ export async function startUploadProcess(
         totalChunks: reg.totalChunks,
         chunkSize: reg.chunkSize,
         uploadedChunks: [],
-        status: reg.status || 'pending',
-        progress: reg.status === 'completed' ? 100 : 0,
-        uploadedSize: reg.status === 'completed' ? pf.size : 0,
+        status: reg.status || UploadStatusEnum.PENDING,
+        progress: reg.status === UploadStatusEnum.COMPLETED ? 100 : 0,
+        uploadedSize: reg.status === UploadStatusEnum.COMPLETED ? pf.size : 0,
         asr_text: pf.asr_text,
         translations: pf.translations
       };
@@ -227,11 +229,11 @@ export async function startUploadProcess(
 
     const task: AudioUploadTask = {
       id: taskId,
-      status: 'uploading',
+      status: UploadStatusEnum.UPLOADING,
       progress: 0,
       total_files: audioFiles.length,
-      completed_files: tasks.filter(f => f.status === 'completed').length,
-      failed_files: tasks.filter(f => f.status === 'failed').length,
+      completed_files: tasks.filter(f => f.status === UploadStatusEnum.COMPLETED).length,
+      failed_files: tasks.filter(f => f.status === UploadStatusEnum.FAILED).length,
       total_size: tasks.reduce((sum, f) => sum + f.size, 0),
       uploaded_size: tasks.reduce((sum, f) => sum + (f.uploadedSize || 0), 0),
       files: tasks,
@@ -241,7 +243,7 @@ export async function startUploadProcess(
 
     currentTask.value = task;
     saveLocalTask(task, ctx.uploadTasks);
-    uploadStatus.value = 'uploading';
+    uploadStatus.value = UploadStatusEnum.UPLOADING;
     updateOverallProgress(ctx);
 
     // 按分组创建测试用例：每个分组（最子级文件夹）独立一个测试用例
@@ -252,17 +254,18 @@ export async function startUploadProcess(
     const groupPendingCounts = new Map<string, number>()
     const groupProcessedCounts = new Map<string, number>()
     for (const t of tasks) {
-      if (t.status === 'failed') continue
+      if (t.status === UploadStatusEnum.FAILED) continue
       const gk = t.group_key || t.name.replace(/\.[^.]+$/, '')
       groupPendingCounts.set(gk, (groupPendingCounts.get(gk) || 0) + 1)
       groupProcessedCounts.set(gk, 0)
     }
 
     for (const fileTask of tasks) {
-      if ((uploadStatus.value as string) === 'paused' || (uploadStatus.value as string) === 'stopped') break;
+      // as string 规避 TS 对 .value 赋值后的字面量窄化
+    if ((uploadStatus.value as string) === UploadStatusEnum.PAUSED || (uploadStatus.value as string) === UploadStatusEnum.STOPPED) break;
 
       // 跳过已失败文件（不参与 pending 序列）
-      if (fileTask.status === 'failed') {
+      if (fileTask.status === UploadStatusEnum.FAILED) {
         continue;
       }
 
@@ -278,17 +281,17 @@ export async function startUploadProcess(
         ? { ...uploadOptions, create_test_case: false }
         : uploadOptions;
 
-      if (fileTask.status === 'completed' && fileTask.totalChunks === 0) {
-        fileTask.status = 'uploading';
+      if (fileTask.status === UploadStatusEnum.COMPLETED && fileTask.totalChunks === 0) {
+        fileTask.status = UploadStatusEnum.UPLOADING;
         currentUploadingFile.value = fileTask.name;
 
         try {
           await processMergeForExistingFile(ctx, taskId, fileTask, effectiveOptions, groupConfig);
-          fileTask.status = 'completed';
+          fileTask.status = UploadStatusEnum.COMPLETED;
           saveLocalTask(task, ctx.uploadTasks);
         } catch (err) {
           console.error(`处理已存在文件失败 ${fileTask.name}:`, err);
-          fileTask.status = 'failed';
+          fileTask.status = UploadStatusEnum.FAILED;
           fileTask.error = err instanceof Error ? err.message : String(err);
           task.failed_files = (task.failed_files || 0) + 1;
           saveLocalTask(task, ctx.uploadTasks);
@@ -298,22 +301,22 @@ export async function startUploadProcess(
         continue;
       }
 
-      if (fileTask.status === 'completed') {
+      if (fileTask.status === UploadStatusEnum.COMPLETED) {
         continue;
       }
 
-      fileTask.status = 'uploading';
+      fileTask.status = UploadStatusEnum.UPLOADING;
       currentUploadingFile.value = fileTask.name;
 
       try {
         await uploadFileChunks(ctx, taskId, fileTask, effectiveOptions, groupConfig);
-        fileTask.status = 'completed';
+        fileTask.status = UploadStatusEnum.COMPLETED;
         fileTask.progress = 100;
         task.completed_files = (task.completed_files || 0) + 1;
         saveLocalTask(task, ctx.uploadTasks);
       } catch (err) {
         console.error(`Upload failed for ${fileTask.name}:`, err);
-        fileTask.status = 'failed';
+        fileTask.status = UploadStatusEnum.FAILED;
         fileTask.error = err instanceof Error ? err.message : String(err);
         task.failed_files = (task.failed_files || 0) + 1;
         saveLocalTask(task, ctx.uploadTasks);
@@ -322,7 +325,7 @@ export async function startUploadProcess(
       groupProcessedCounts.set(gk, processedInGroup + 1)
     }
 
-    uploadStatus.value = (task.failed_files || 0) > 0 ? 'failed' : 'completed';
+    uploadStatus.value = (task.failed_files || 0) > 0 ? UploadStatusEnum.FAILED : UploadStatusEnum.COMPLETED;
     task.status = uploadStatus.value;
     task.end_time = new Date().toISOString();
     saveLocalTask(task, ctx.uploadTasks);
@@ -336,10 +339,10 @@ export async function startUploadProcess(
     }
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      uploadStatus.value = 'stopped';
+      uploadStatus.value = UploadStatusEnum.STOPPED;
     } else {
       console.error('Upload process failed:', err);
-      uploadStatus.value = 'failed';
+      uploadStatus.value = UploadStatusEnum.FAILED;
     }
   } finally {
     setAbortController(null);
@@ -389,7 +392,7 @@ export async function processMergeForExistingFile(
     unwrapResponse: false
   }) as APIResponse<{ audioId: string | number }>;
 
-  if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== 200 && mergeResponse.code !== 201) {
+  if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== HttpStatus.OK && mergeResponse.code !== HttpStatus.CREATED) {
     throw new Error(mergeResponse.message || 'Failed to process existing file');
   }
 
@@ -447,7 +450,7 @@ export async function uploadFileChunks(
   // 秒传命中
   if (presignResponse.data?.instantUpload) {
     fileTask.audio_id = presignResponse.data.audio_id ?? presignResponse.data.audioId;
-    fileTask.status = 'completed';
+    fileTask.status = UploadStatusEnum.COMPLETED;
     fileTask.progress = 100;
     fileTask.uploadedSize = fileTask.size;
     await processMergeForExistingFile(ctx, taskId, fileTask, options, tcConfig);
@@ -462,8 +465,8 @@ export async function uploadFileChunks(
   // 2. 分片直传 OSS
   const uploadedParts: Array<{ PartNumber: number; ETag: string }> = [];
   for (let i = 0; i < totalParts; i++) {
-    if ((uploadStatus.value as string) === 'paused' || (uploadStatus.value as string) === 'stopped') {
-      fileTask.status = (uploadStatus.value as string) === 'paused' ? 'paused' : 'stopped';
+    if ((uploadStatus.value as string) === UploadStatusEnum.PAUSED || (uploadStatus.value as string) === UploadStatusEnum.STOPPED) {
+      fileTask.status = uploadStatus.value === UploadStatusEnum.PAUSED ? UploadStatusEnum.PAUSED : UploadStatusEnum.STOPPED;
       throw new Error(`Upload ${fileTask.status}`);
     }
 
@@ -517,7 +520,7 @@ export async function uploadFileChunks(
       unwrapResponse: false,
     }) as APIResponse<any>;
 
-    if (completeResp.code !== undefined && completeResp.code !== 0 && completeResp.code !== 200) {
+    if (completeResp.code !== undefined && completeResp.code !== 0 && completeResp.code !== HttpStatus.OK) {
       throw new Error(completeResp.message || '直传完成失败');
     }
     fileTask.audio_id = completeResp.data?.audio_id ?? completeResp.data?.audioId;
@@ -556,7 +559,7 @@ export async function uploadFileChunks(
       unwrapResponse: false,
     }) as APIResponse<{ audioId: string | number }>;
 
-    if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== 200 && mergeResponse.code !== 201) {
+    if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== HttpStatus.OK && mergeResponse.code !== HttpStatus.CREATED) {
       throw new Error(mergeResponse.message || 'Failed to merge chunks');
     }
 

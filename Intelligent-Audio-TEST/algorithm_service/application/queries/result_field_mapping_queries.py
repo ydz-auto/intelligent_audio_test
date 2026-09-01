@@ -13,6 +13,7 @@ from algorithm_service.infrastructure.persistence.param_repository import (
     mapping_repository,
 )
 from shared.utils.log_handler import log_not_emit
+from shared.domain.algorithm_result_strategy import AlgorithmStrategyFactory
 
 
 class ResultFieldMappingQueryHandler:
@@ -34,8 +35,11 @@ class ResultFieldMappingQueryHandler:
 
     @classmethod
     def get_output_fields(cls, algorithm_type: str, test_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        if algorithm_type == 'voice_llm':
-            return cls._get_voice_llm_output_fields(test_type)
+        # 通过策略模式消除 voice_llm 硬编码分支
+        strategy = AlgorithmStrategyFactory.get_strategy(algorithm_type)
+        strategy_fields = strategy.get_output_fields(test_type)
+        if strategy_fields is not None:
+            return strategy_fields
 
         if algorithm_type in cls._output_field_cache:
             return cls._output_field_cache[algorithm_type]
@@ -199,34 +203,13 @@ class ResultFieldMappingQueryHandler:
 
         return {'result': result_fields, 'reference': reference_fields}
 
-    @staticmethod
-    def _get_voice_llm_output_fields(test_type=None):
-        if test_type == 'e2e':
-            return [
-                {'source_param': 'test_type', 'target_param': 'test_type', 'param_type': 'text', 'dimension_name': 'test type'},
-                {'source_param': 'algorithm_type', 'target_param': 'algorithm_type', 'param_type': 'text', 'dimension_name': 'algorithm type'},
-                {'source_param': 'session_id', 'target_param': 'session_id', 'param_type': 'text', 'dimension_name': 'session ID'},
-                {'source_param': 'rail_distance', 'target_param': 'rail_distance', 'param_type': 'number', 'dimension_name': 'rail distance(cm)'},
-                {'source_param': 'voiceprint_registered', 'target_param': 'voiceprint_registered', 'param_type': 'boolean', 'dimension_name': 'voiceprint registered'},
-                {'source_param': 'total_rounds', 'target_param': 'total_rounds', 'param_type': 'number', 'dimension_name': 'total rounds'},
-                {'source_param': 'rounds', 'target_param': 'rounds', 'param_type': 'json', 'dimension_name': 'round results'},
-                {'source_param': 'aggregated', 'target_param': 'aggregated', 'param_type': 'json', 'dimension_name': 'aggregated metrics'},
-            ]
-        else:
-            return [
-                {'source_param': 'session_id', 'target_param': 'session_id', 'param_type': 'text', 'dimension_name': 'session ID'},
-                {'source_param': 'round_count', 'target_param': 'round_count', 'param_type': 'number', 'dimension_name': 'round count'},
-                {'source_param': 'total_latency', 'target_param': 'total_latency', 'param_type': 'number', 'dimension_name': 'total latency(ms)'},
-                {'source_param': 'context_mode', 'target_param': 'context_mode', 'param_type': 'text', 'dimension_name': 'context mode'},
-                {'source_param': 'history_count', 'target_param': 'history_count', 'param_type': 'number', 'dimension_name': 'history count'},
-                {'source_param': 'error', 'target_param': 'error', 'param_type': 'text', 'dimension_name': 'error'},
-                {'source_param': 'rounds', 'target_param': 'rounds', 'param_type': 'json', 'dimension_name': 'round results'},
-            ]
-
     @classmethod
     def map_api_results(cls, algorithm_type, raw_results, test_type=None):
-        if algorithm_type == 'voice_llm':
-            return cls._map_voice_llm_results(raw_results, test_type)
+        # 通过策略模式消除 voice_llm 硬编码分支
+        strategy = AlgorithmStrategyFactory.get_strategy(algorithm_type)
+        mapped = strategy.map_api_results(raw_results, test_type)
+        if mapped is not None:
+            return mapped
 
         output_fields = cls.get_output_fields(algorithm_type)
         mapped = {}
@@ -236,30 +219,6 @@ class ResultFieldMappingQueryHandler:
             if source_param and source_param in raw_results:
                 mapped[target_param] = raw_results[source_param]
         return mapped
-
-    @classmethod
-    def _map_voice_llm_results(cls, raw_results, test_type=None):
-        if test_type == 'e2e':
-            return {
-                'test_type': raw_results.get('test_type', 'e2e'),
-                'algorithm_type': raw_results.get('algorithm_type', 'voice_llm'),
-                'session_id': raw_results.get('session_id'),
-                'rail_distance': raw_results.get('rail_distance', 50),
-                'voiceprint_registered': raw_results.get('voiceprint_registered', False),
-                'total_rounds': raw_results.get('total_rounds', 0),
-                'rounds': raw_results.get('rounds', []),
-                'aggregated': raw_results.get('aggregated', {}),
-            }
-        else:
-            return {
-                'session_id': raw_results.get('session_id', ''),
-                'round_count': raw_results.get('round_count', 0),
-                'total_latency': raw_results.get('total_latency', 0),
-                'context_mode': raw_results.get('context_mode', ''),
-                'history_count': raw_results.get('history_count', 0),
-                'error': raw_results.get('error'),
-                'rounds': raw_results.get('rounds', []),
-            }
 
     @classmethod
     def extract_round_results(cls, algorithm_result, test_type=None):

@@ -6,19 +6,10 @@
 """
 import re
 
+from shared.utils.camel_case import camel_to_snake
+
 _SNAKE_LIKE_KEY_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
 _HAS_UPPER_RE = re.compile(r"[A-Z]")
-
-
-def _camel_to_snake(name):
-    """将驼峰命名转为蛇形命名，保留连字符不变。
-
-    仅处理 camelCase/PascalCase，不修改 kebab-case 中的连字符。
-    """
-    # 先处理连续大写字母的情况（如 WEREn -> wer_en）
-    s1 = re.sub('([a-z0-9])([A-Z])', r'\1_\2', name)
-    s2 = re.sub('([A-Z]+)([A-Z][a-z])', r'\1_\2', s1)
-    return s2.lower()
 
 
 def normalize_keys_to_snake(data, depth=0):
@@ -38,7 +29,7 @@ def normalize_keys_to_snake(data, depth=0):
                 elif '-' in k and not _HAS_UPPER_RE.search(k):
                     key = k
                 else:
-                    key = _camel_to_snake(k)
+                    key = camel_to_snake(k)
             else:
                 key = k
             out[key] = normalize_keys_to_snake(v, depth + 1)

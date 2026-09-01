@@ -8,9 +8,13 @@ from shared.utils.log_handler import log_and_emit
 from evaluation_service.infrastructure.evaluation_service_host import evaluation_service
 from evaluation_service.domain.services.reevaluation_service import reevaluation_service
 from shared.utils.result_data_store import load_full_result_data
-from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus
+from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, ACTIVE_EVALUATION_STATUSES
 from shared.models.common_enums import TestType
 from sqlalchemy import and_
+
+# 重新评估类型判别符（非任务/用例状态，与 task_service 下发的 reevaluate_type 参数对应）
+REEVALUATE_TYPE_ALL = 'all'
+REEVALUATE_TYPE_FAILED = 'failed'
 
 
 class ReevaluationExecutor:
@@ -109,11 +113,11 @@ class ReevaluationExecutor:
                 test_results = task_acl_repository.get_test_results_by_task_and_case(task_id=task_id)
 
             # 2. 收集需要重新评估的用例
-            if reevaluate_type == 'all':
+            if reevaluate_type == REEVALUATE_TYPE_ALL:
                 cases_to_reevaluate = self._collect_reevaluation_cases_all(
                     task_id, test_results, reextract_device_output
                 )
-            elif reevaluate_type == 'failed':
+            elif reevaluate_type == REEVALUATE_TYPE_FAILED:
                 cases_to_reevaluate = self._collect_reevaluation_cases_failed(
                     task_id, test_results, reextract_device_output
                 )
@@ -135,7 +139,7 @@ class ReevaluationExecutor:
                 tc_case_id = tc_rel.test_case_id
                 if (tc_case_id not in reevaluated_case_ids
                         and tc_rel.execution_status == ExecutionStatus.COMPLETED
-                        and tc_rel.evaluation_status in [EvaluationStatus.PENDING, EvaluationStatus.QUEUED, EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING]):
+                        and tc_rel.evaluation_status in ACTIVE_EVALUATION_STATUSES):
                     task_acl_repository.update_task_case_status(
                         task_id=task_id,
                         case_id=str(tc_case_id),

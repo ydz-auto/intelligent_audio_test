@@ -1,4 +1,5 @@
 import type { RouteLocationRaw } from 'vue-router'
+import { TestType } from '@/shared/types/enums'
 
 export interface StatItem {
   to: RouteLocationRaw
@@ -95,7 +96,7 @@ export interface TestTypeCard {
   title: string
   description: string
   list: string[]
-  variant: 'e2e' | 'api'
+  variant: (typeof TestType)[keyof typeof TestType]
 }
 
 export const testTypeCards: TestTypeCard[] = [
@@ -106,7 +107,7 @@ export const testTypeCards: TestTypeCard[] = [
     description:
       '在真实设备上执行端到端语音测试，支持多设备并行测试，实时监控测试进度和结果。',
     list: ['多设备并行测试', '实时进度监控', '自动化测试流程'],
-    variant: 'e2e'
+    variant: TestType.E2E
   },
   {
     to: '/APITest',
@@ -115,7 +116,7 @@ export const testTypeCards: TestTypeCard[] = [
     description:
       '测试语音识别和翻译API等的性能和准确率，支持批量测试和结果对比分析。',
     list: ['API性能测试', '批量测试执行', '结果对比分析'],
-    variant: 'api'
+    variant: TestType.API
   }
 ]
 

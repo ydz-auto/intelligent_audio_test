@@ -172,6 +172,7 @@ import AudioPlayerModal from '../../components/common/audio/AudioPlayerModal.vue
 import BatchAnnotationModal from '../../components/common/modal/BatchAnnotationModal.vue';
 import ConvertModal from './ConvertModal.vue';
 import { useAudioImport } from './audioImport';
+import { UploadStatus } from '@/shared/types/enums';
 import { useUploadState } from '../../composables/upload/useUploadState';
 import { formatAudioData } from '../../utils/audioUtils';
 

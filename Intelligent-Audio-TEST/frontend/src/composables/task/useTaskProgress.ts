@@ -1,6 +1,7 @@
 import { ref, onMounted, onUnmounted, type Ref } from 'vue'
 import socketService from '../../utils/socket'
 import { transformTestCaseStatus } from '../../utils/statusUtils'
+import { TaskStatus, ExecutionStatus, EvaluationStatus, type TaskStatusType } from '@/shared/types/enums'
 import type { Log } from '../../shared/types'
 
 interface RoundProgress {
@@ -50,7 +51,7 @@ export function useTaskProgress(options: TaskProgressOptions) {
   const executionFailedTests = ref(0)
   const evaluationFailedTests = ref(0)
   const totalTestCases = ref(0)
-  const taskStatus = ref('pending')
+  const taskStatus = ref<TaskStatusType>(TaskStatus.PENDING)
   const elapsedTime = ref('0分钟')
   const estimatedTime = ref('')
   const expectedCompleteTime = ref('--')
@@ -127,10 +128,10 @@ export function useTaskProgress(options: TaskProgressOptions) {
 
     if (progressData.status) {
       taskStatus.value = progressData.status
-      if (progressData.status === 'failed' && onFailed && !hasCalledFailedCallback.value) {
+      if (progressData.status === TaskStatus.FAILED && onFailed && !hasCalledFailedCallback.value) {
         hasCalledFailedCallback.value = true
         onFailed(progressData)
-      } else if (progressData.status === 'completed' && onCompleted && !hasCalledCompletedCallback.value) {
+      } else if (progressData.status === TaskStatus.COMPLETED && onCompleted && !hasCalledCompletedCallback.value) {
         hasCalledCompletedCallback.value = true
         onCompleted(progressData)
       }
@@ -154,23 +155,23 @@ export function useTaskProgress(options: TaskProgressOptions) {
         const transformed = transformTestCaseStatus(testCaseProgress) as any
         
         // 只计算真正完成的用例
-        if (transformed.status === 'completed' && transformed.executionStatus !== 'failed' && transformed.evaluationStatus !== 'failed') {
+        if (transformed.status === TaskStatus.COMPLETED && transformed.executionStatus !== ExecutionStatus.FAILED && transformed.evaluationStatus !== EvaluationStatus.FAILED) {
           completedCount++
-        } 
+        }
         // 计算进行中的用例（真正执行中）
-        else if (transformed.status === 'in_progress' || transformed.status === 'calculating') {
+        else if (transformed.status === ExecutionStatus.IN_PROGRESS || transformed.status === EvaluationStatus.CALCULATING) {
           inProgressCount++
         }
         // 计算排队中的用例
-        else if (transformed.status === 'queued') {
+        else if (transformed.status === ExecutionStatus.QUEUED) {
           inProgressCount++
         }
         // 计算失败的用例
-        else if (transformed.executionStatus === 'failed' || transformed.evaluationStatus === 'failed') {
+        else if (transformed.executionStatus === ExecutionStatus.FAILED || transformed.evaluationStatus === EvaluationStatus.FAILED) {
           failedCount++
         }
         // 计算待执行的用例
-        else if (transformed.executionStatus === 'pending' && transformed.evaluationStatus === 'pending') {
+        else if (transformed.executionStatus === ExecutionStatus.PENDING && transformed.evaluationStatus === EvaluationStatus.PENDING) {
           pendingCount++
         }
         
@@ -202,10 +203,10 @@ export function useTaskProgress(options: TaskProgressOptions) {
       completedTests.value = Math.min(totalCount, Math.max(0, completedCount))
       inProgressTests.value = Math.min(totalCount, Math.max(0, inProgressCount))
       executionFailedTests.value = Math.min(totalCount, Math.max(0, progressData.testCases.reduce((sum: number, tc: any) => {
-        return sum + (tc?.executionStatus === 'failed' ? 1 : 0)
+        return sum + (tc?.executionStatus === ExecutionStatus.FAILED ? 1 : 0)
       }, 0)))
       evaluationFailedTests.value = Math.min(totalCount, Math.max(0, progressData.testCases.reduce((sum: number, tc: any) => {
-        return sum + (tc?.evaluationStatus === 'failed' && tc?.executionStatus !== 'failed' ? 1 : 0)
+        return sum + (tc?.evaluationStatus === EvaluationStatus.FAILED && tc?.executionStatus !== ExecutionStatus.FAILED ? 1 : 0)
       }, 0)))
       pendingTests.value = Math.max(0, pendingCount)
       
@@ -303,7 +304,7 @@ export function useTaskProgress(options: TaskProgressOptions) {
     inProgressTests.value = 0
     pendingTests.value = 0
     totalTestCases.value = 0
-    taskStatus.value = 'pending'
+    taskStatus.value = TaskStatus.PENDING
     elapsedTime.value = '0分钟'
     estimatedTime.value = ''
     expectedCompleteTime.value = '--'

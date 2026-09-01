@@ -16,6 +16,7 @@ from report_service.domain.repositories.acl.evaluation_acl_repository import (
     EvaluationDataAclRepository,
 )
 from shared.utils.dto_utils import dict_to_dto, dict_list_to_dto
+from shared.config.query_constants import QueryConstants
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,7 @@ class EvaluationConfigAclRepositoryImpl(EvaluationConfigAclRepository):
         try:
             stub = get_evaluation_config_service_stub()
             resp = stub.ListDimensions(eval_pb.ListDimensionsRequest(
-                category_id=0, page=1, per_page=10000, search='',
+                category_id=0, page=1, per_page=QueryConstants.EXPORT_PAGE_SIZE, search='',
             ))
             if not resp.success:
                 return []

@@ -4,6 +4,8 @@ import { useTestCaseCard } from '../../composables/testCase/useTestCaseCard';
 import { useTestCaseStore } from '../../store/testCaseStore';
 import { useDeleteConfirm } from '../../composables/modal/useDeleteConfirm';
 import type { TestCase, ModalSaveData } from '../../shared/types';
+// 引入视图模式枚举，消除魔法字符串
+import { ViewMode } from '@/shared/types/enums';
 
 export function useTestCaseManager() {
   const {
@@ -25,14 +27,14 @@ export function useTestCaseManager() {
   const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination, tagViewLoading } = storeToRefs(store);
   const { fetchTestCases, fetchTagView, loadMoreTagView, deleteGroup: deleteGroupFromStore, deleteTestCase, resetGroupCache } = store;
 
-  // 视图模式：'group' 分组视图 | 'tag' 标签视图
-  const viewMode = ref<'group' | 'tag'>('group');
+  // 视图模式：ViewMode.GROUP 分组视图 | ViewMode.TAG 标签视图
+  const viewMode = ref<ViewMode.GROUP | ViewMode.TAG>(ViewMode.GROUP);
 
   // 当前筛选条件（由 TestCaseListContainer 上报）
   const currentFilters = ref<{ keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }>({});
 
   const refreshCurrentView = async () => {
-    if (viewMode.value === 'tag') {
+    if (viewMode.value === ViewMode.TAG) {
       await fetchTagView({
         keyword: currentFilters.value.keyword,
         testType: currentFilters.value.testType,
@@ -57,7 +59,7 @@ export function useTestCaseManager() {
   // 由 TestCaseListContainer 上报筛选条件变化（标签视图）
   const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     currentFilters.value = filters;
-    if (viewMode.value === 'tag') {
+    if (viewMode.value === ViewMode.TAG) {
       fetchTagView({
         keyword: filters.keyword,
         testType: filters.testType,
@@ -70,7 +72,7 @@ export function useTestCaseManager() {
   // 由 TestCaseListContainer 上报筛选条件变化（分组视图）
   const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     currentFilters.value = filters;
-    if (viewMode.value === 'group') {
+    if (viewMode.value === ViewMode.GROUP) {
       // 清空已加载分组用例,避免展开时显示旧筛选下的缓存数据。
       resetGroupCache();
       fetchTestCases({

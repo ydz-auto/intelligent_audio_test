@@ -1,5 +1,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal'
+import { usePagination } from '../../composables/usePagination'
 
 interface AlgorithmRecord {
   type: string
@@ -52,9 +53,6 @@ export function useAlgorithmConfigPage() {
   const modalVisible = ref(false)
   const modalMode = ref<'list' | 'create' | 'edit'>('list')
 
-  const currentPage = ref(1)
-  const pageSize = ref(10)
-
   const filteredAlgorithms = computed(() => {
     let result = algorithms.value
 
@@ -77,11 +75,8 @@ export function useAlgorithmConfigPage() {
     return result
   })
 
-  const paginatedAlgorithms = computed(() => {
-    const start = (currentPage.value - 1) * pageSize.value
-    const end = start + pageSize.value
-    return filteredAlgorithms.value.slice(start, end)
-  })
+  // 使用通用分页 composable
+  const { currentPage, pageSize, totalPages, paginatedItems: paginatedAlgorithms } = usePagination(filteredAlgorithms, ref(10))
 
   function getGroupName(group: string | undefined): string {
     const names: Record<string, string> = {
@@ -265,8 +260,7 @@ export function useAlgorithmConfigPage() {
   }
 
   function handleNextPage() {
-    const totalPages = Math.ceil(filteredAlgorithms.value.length / pageSize.value)
-    if (currentPage.value < totalPages) {
+    if (currentPage.value < totalPages.value) {
       currentPage.value++
     }
   }

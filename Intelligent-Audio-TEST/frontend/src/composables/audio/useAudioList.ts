@@ -4,6 +4,7 @@ import { useTagFilter } from '../shared/useTagFilter';
 import { useFolderSelection } from '../shared/useFolderSelection';
 import { normalizeSampleRate } from '../shared/useFolderTree';
 import type { AudioInfo, AudioQueryParams, AudioStats, APIResponse } from '../../shared/types';
+import { usePagination } from '../usePagination';
 
 /**
  * 音频列表管理组合式函数
@@ -291,9 +292,11 @@ export function useAudioList() {
     });
   });
 
-  const totalPages = computed(() => {
-    return Math.ceil(totalAudios.value / pageSize.value);
-  });
+  // 使用通用分页 composable 计算总页数
+  // 说明：音频分页为服务端分页，totalAudios 由 API 返回
+  // 此处用 totalAudios 长度的占位数组驱动 totalPages 计算
+  const placeholderForTotal = computed(() => Array(totalAudios.value).fill(0));
+  const { totalPages } = usePagination(placeholderForTotal, pageSize, { currentPage });
 
   // ========== 过滤控制 ==========
 

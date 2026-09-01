@@ -3,6 +3,7 @@ import { reportsApi } from '../../utils/api'
 import { useCollapse, useMetricCollapse, useTableRefs, useDisplayTypes, useSaveSummary, useResourceHeaders, chartColors, chartBorderColors, generateDistributionChartData } from './shared/useReportShared'
 import { extractInitialMetricData, computeMetricDataFromCases, createCategoryChartData, createCategoryMetricValueGetters } from './caseCategoryComparisonHelpers'
 import { createResourceLabelGetter } from './caseTagResourceHelpers'
+import { usePagination } from '../../composables/usePagination'
 
 export function useCaseCategoryComparison(props) {
   // Collapse state
@@ -50,13 +51,11 @@ export function useCaseCategoryComparison(props) {
     return allAvailableCategories.value.filter(cat => cat.toLowerCase().includes(query))
   })
 
-  const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
-
-  const paginatedCategories = computed(() => {
-    const start = (categoryPage.value - 1) * categoryPageSize.value
-    const end = start + categoryPageSize.value
-    return filteredCategoriesForSelection.value.slice(start, end)
-  })
+  // 使用通用分页 composable 统一处理分类选择分页
+  const {
+    totalPages: totalCategoryPages,
+    paginatedItems: paginatedCategories,
+  } = usePagination(filteredCategoriesForSelection, categoryPageSize, { currentPage: categoryPage })
 
   // Search and pagination for tags
   const tagSearchQuery = ref('')
@@ -71,13 +70,11 @@ export function useCaseCategoryComparison(props) {
     return allAvailableTags.value.filter(tag => tag.toLowerCase().includes(query))
   })
 
-  const totalTagPages = computed(() => Math.ceil(filteredTagsForSelection.value.length / tagPageSize.value) || 1)
-
-  const paginatedTags = computed(() => {
-    const start = (tagPage.value - 1) * tagPageSize.value
-    const end = start + tagPageSize.value
-    return filteredTagsForSelection.value.slice(start, end)
-  })
+  // 使用通用分页 composable 统一处理标签选择分页
+  const {
+    totalPages: totalTagPages,
+    paginatedItems: paginatedTags,
+  } = usePagination(filteredTagsForSelection, tagPageSize, { currentPage: tagPage })
 
   // Metrics configuration
   const allMetrics = ref(props.reportData.all_metrics || props.reportData.summary?.all_metrics || [])
@@ -97,13 +94,11 @@ export function useCaseCategoryComparison(props) {
     return allMetrics.value.filter(metric => metric.name.toLowerCase().includes(query))
   })
 
-  const totalMetricPages = computed(() => Math.ceil(filteredMetricsForDisplay.value.length / metricPageSize.value) || 1)
-
-  const paginatedMetrics = computed(() => {
-    const start = (metricPage.value - 1) * metricPageSize.value
-    const end = start + metricPageSize.value
-    return filteredMetricsForDisplay.value.slice(start, end)
-  })
+  // 使用通用分页 composable 统一处理指标选择分页
+  const {
+    totalPages: totalMetricPages,
+    paginatedItems: paginatedMetrics,
+  } = usePagination(filteredMetricsForDisplay, metricPageSize, { currentPage: metricPage })
 
   const metricDecimalPlacesMap = computed(() => {
     const map = {}

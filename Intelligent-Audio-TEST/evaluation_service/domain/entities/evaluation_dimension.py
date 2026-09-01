@@ -15,6 +15,20 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+# ===== 领域状态/类型常量（evaluation_service 自有，非任务/用例状态枚举） =====
+
+# DimensionScore.evaluation_status: 维度评估过程状态
+SCORE_EVAL_STATUS_PENDING = 'pending'
+SCORE_EVAL_STATUS_RUNNING = 'running'
+SCORE_EVAL_STATUS_COMPLETED = 'completed'
+
+# DimensionScore.status: 维度评估结论
+SCORE_PASSED = 'passed'
+SCORE_FAILED = 'failed'
+
+# DimensionSnapshot.api_status: 维度评估 API 在线状态
+API_STATUS_ONLINE = 'online'
+
 
 @dataclass
 class ScoringRule:
@@ -169,28 +183,28 @@ class DimensionScore:
     dimension_value: Optional[float] = None
     score: Optional[float] = None
     status: Optional[str] = None  # passed / failed
-    evaluation_status: str = 'pending'  # pending / running / completed / stopped
+    evaluation_status: str = SCORE_EVAL_STATUS_PENDING  # pending / running / completed
     error_message: Optional[str] = None
     rounds: List[RoundResult] = field(default_factory=list)
 
     def is_completed(self) -> bool:
-        return self.evaluation_status == 'completed'
+        return self.evaluation_status == SCORE_EVAL_STATUS_COMPLETED
 
     def is_multi_round(self) -> bool:
         return self.round_number is None and len(self.rounds) > 0
 
     def mark_running(self) -> None:
-        self.evaluation_status = 'running'
+        self.evaluation_status = SCORE_EVAL_STATUS_RUNNING
 
-    def mark_completed(self, score: float, status: str = 'passed') -> None:
+    def mark_completed(self, score: float, status: str = SCORE_PASSED) -> None:
         self.score = score
         self.status = status
-        self.evaluation_status = 'completed'
+        self.evaluation_status = SCORE_EVAL_STATUS_COMPLETED
 
     def mark_failed(self, error: str) -> None:
         self.error_message = error
-        self.evaluation_status = 'completed'
-        self.status = 'failed'
+        self.evaluation_status = SCORE_EVAL_STATUS_COMPLETED
+        self.status = SCORE_FAILED
 
 
 @dataclass
@@ -214,4 +228,4 @@ class EvaluationDimension:
 
     def is_active(self) -> bool:
         """维度是否可用（API 在线）"""
-        return self.snapshot.api_status == 'online'
+        return self.snapshot.api_status == API_STATUS_ONLINE

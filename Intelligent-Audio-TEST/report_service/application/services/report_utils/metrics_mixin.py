@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from shared.models.common_enums import TaskStatus
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_dimension_results_by_result_ids,
     _grpc_list_dimensions_all,
@@ -252,7 +253,7 @@ class MetricsMixin:
                     tag_accumulator[tag][resource]['success_rate'] = {'sum': 0, 'count': 0}
 
             # 8. 累加数据
-            is_success = result.execution_status == 'completed'
+            is_success = result.execution_status == TaskStatus.COMPLETED.value
             success_val = 100 if is_success else 0
 
             # 累加通过率
@@ -570,7 +571,7 @@ class MetricsMixin:
 
             metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map)
             total = len(res_list)
-            completed = len([r for r in res_list if r.execution_status == 'completed'])
+            completed = len([r for r in res_list if r.execution_status == TaskStatus.COMPLETED.value])
 
             device_stats.append({
                 "id": device.get('id'), "name": device.get('name'), "model": device.get('model'), "type": device.get('type'),
@@ -586,7 +587,7 @@ class MetricsMixin:
 
             metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map)
             total = len(res_list)
-            completed = len([r for r in res_list if r.execution_status == 'completed'])
+            completed = len([r for r in res_list if r.execution_status == TaskStatus.COMPLETED.value])
 
             api_stats.append({
                 "id": api.get('id'), "name": api.get('name'), "status": api.get('status'), "max_process": api.get('max_process'),

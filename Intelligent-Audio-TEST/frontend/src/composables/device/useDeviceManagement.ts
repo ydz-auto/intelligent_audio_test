@@ -1,4 +1,4 @@
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { devicesApi, playbackApi, apisApi } from '../../utils/api';
 import { useModalControl } from '../modal/useModal';
 import { useNotification } from '../modal/useNotification';
@@ -6,6 +6,7 @@ import {
   MODAL_TYPES,
   type PlaybackDevice
 } from '../../shared/types';
+import { usePagination } from '../usePagination';
 
 // Define local types since they're not exported from shared/types
 type DeviceBase = {
@@ -49,8 +50,6 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
   // 分页状态
   const currentPage = ref(1);
   const pageSize = ref(12);
-  const totalItems = ref(0);
-  const totalPages = computed(() => Math.ceil(totalItems.value / pageSize.value));
 
   // 初始化模态框管理器
   const modalManager = useModalControl();
@@ -124,7 +123,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
               const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === deviceId);
               if (deviceIndex > -1) {
                 // 检查是否是404错误（设备不存在）
-                if (error.response?.status === 404) {
+                if (error.response?.status === HttpStatus.NOT_FOUND) {
                   // 从设备列表中移除不存在的设备
                   devices.value = devices.value.filter((d: DeviceUnion) => String(d.id) !== String(deviceId));
                   console.log(`API设备 ${deviceId} 不存在，已从列表中移除`);
@@ -168,21 +167,8 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
     return result;
   });
 
-  // 分页后的设备列表
-  const filteredDevices = computed(() => {
-    const start = (currentPage.value - 1) * pageSize.value;
-    const end = start + pageSize.value;
-    return allFilteredDevices.value.slice(start, end);
-  });
-
-  // 更新总数
-  watch(allFilteredDevices, (newVal) => {
-    totalItems.value = newVal.length;
-    // 如果当前页超出范围，重置到第一页
-    if (currentPage.value > totalPages.value && totalPages.value > 0) {
-      currentPage.value = 1;
-    }
-  }, { immediate: true });
+  // 使用通用分页 composable（分页后的设备列表即 filteredDevices）
+  const { totalItems, totalPages, paginatedItems: filteredDevices } = usePagination(allFilteredDevices, pageSize, { currentPage });
 
   // 分页方法
   const handlePageChange = (page: number) => {

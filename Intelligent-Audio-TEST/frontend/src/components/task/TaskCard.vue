@@ -15,11 +15,11 @@
             <span class="task-status" :class="task.status">
               <i class="fas task-indicator" :class="{
                 'fa-clock': task.status === TaskStatus.PENDING,
-                'fa-hourglass': task.status === 'queued',
+                'fa-hourglass': task.status === TaskStatus.QUEUED,
                 'fa-spinner fa-spin': task.status === TaskStatus.RUNNING,
-                'fa-sync-alt fa-spin': task.status === 'evaluating',
-                'fa-sync-alt fa-spin': task.status === 'reevaluating',
-                'fa-hourglass-half': task.status === 'reevaluate_queued',
+                'fa-sync-alt fa-spin': task.status === TaskStatus.EVALUATING,
+                'fa-sync-alt fa-spin': task.status === TaskStatus.REEVALUATING,
+                'fa-hourglass-half': task.status === TaskStatus.REEVALUATE_QUEUED,
                 'fa-check-circle': task.status === TaskStatus.COMPLETED,
                 'fa-times-circle': task.status === TaskStatus.FAILED,
                 'fa-pause-circle': task.status === TaskStatus.PAUSED,
@@ -79,7 +79,7 @@
           <span class="task-status" :class="task.status">
             <i class="fas task-indicator" :class="{
               'fa-clock': task.status === TaskStatus.PENDING,
-              'fa-hourglass': task.status === 'queued',
+              'fa-hourglass': task.status === TaskStatus.QUEUED,
               'fa-spinner fa-spin': task.status === TaskStatus.RUNNING,
               'fa-sync-alt fa-spin': task.status === 'evaluating',
               'fa-sync-alt fa-spin': task.status === 'reevaluating',

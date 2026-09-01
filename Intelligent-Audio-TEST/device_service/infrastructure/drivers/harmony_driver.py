@@ -7,6 +7,7 @@ from .device_config import get_device_config
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, with_rpc_retry
+from .driver_constants import *
 
 logger = logging.getLogger(__name__)
 
@@ -99,17 +100,17 @@ class HarmonyDriver(BaseDeviceDriver):
             return
 
         subprocess.run(['hdc', '-t', device_sn, 'shell', 'power-shell', 'wakeup'], check=False)
-        time.sleep(1)
+        time.sleep(NORMAL_WAIT)
 
         if self._check_stop("unlock"):
             return
         try:
             subprocess.run(['hdc', '-t', device_sn, 'shell', 'uinput', '-T', '-m', '540', '1800', '540', '400', '200'],
                            check=False)
-            time.sleep(0.5)
+            time.sleep(UNLOCK_SWIPE_WAIT)
         except Exception as e:
             self._log(level='WARNING', content=f"Wakeup interaction failed: {e}")
-        time.sleep(2)
+        time.sleep(LONG_WAIT)
 
         if self._check_stop("unlock"):
             return
@@ -165,7 +166,7 @@ class HarmonyDriver(BaseDeviceDriver):
                                 driver.click(pos[0], pos[1])
                             else:
                                 self._log(level='ERROR', content=f"Digit {digit} not found on screen and no fallback.")
-                    time.sleep(1.0)
+                    time.sleep(NORMAL_WAIT)
 
                 if self._check_stop("unlock"):
                     return
@@ -177,7 +178,7 @@ class HarmonyDriver(BaseDeviceDriver):
         except Exception as e:
             self._log(level='ERROR', content=f"Unlock via clicking digits failed: {e}")
 
-        time.sleep(1)
+        time.sleep(NORMAL_WAIT)
 
     def scan(self):
         """使用 hdc list targets 扫描设备"""
@@ -238,7 +239,7 @@ class HarmonyDriver(BaseDeviceDriver):
                 driver.swipe_to_home()
             except:
                 driver.press_home()
-            time.sleep(2)
+            time.sleep(LONG_WAIT)
 
             driver.stop_app(self.app_name)
 
@@ -250,13 +251,13 @@ class HarmonyDriver(BaseDeviceDriver):
             if icon:
                 self._log(level='DEBUG', content=f"Clicking app icon...")
                 icon.click()
-                time.sleep(3)
+                time.sleep(APP_LAUNCH_WAIT)
                 # 启动应用后再次检查弹窗
                 self.close_popups(device_sn)
             else:
                 self._log(level='WARNING', content="App icon not found, trying aa start...")
                 subprocess.run(['hdc', '-t', device_sn, 'shell', 'aa', 'start', '-b', self.app_name], check=False)
-                time.sleep(3)
+                time.sleep(APP_LAUNCH_WAIT)
                 # 启动应用后再次检查弹窗
                 self.close_popups(device_sn)
 
@@ -304,7 +305,7 @@ class HarmonyDriver(BaseDeviceDriver):
                         result = driver.find_components(by_obj, 1)
                         break
                     except Exception:
-                        time.sleep(0.5)
+                        time.sleep(POPUP_CLOSE_WAIT)
                         continue
             except Exception:
                 logger.debug("safe_find_components 查找组件时发生异常 device_sn=%s", device_sn, exc_info=True)
@@ -341,7 +342,7 @@ class HarmonyDriver(BaseDeviceDriver):
                                 best_btn.click()
                             except Exception as e:
                                 self._log(level='DEBUG', content=f"Failed to click button: {e}")
-                            time.sleep(0.5)
+                            time.sleep(POPUP_CLOSE_WAIT)
                             continue
                 except Exception as e:
                     self._log(level='DEBUG', content=f"Error checking button '{btn_text}' on HarmonyOS: {e}")
@@ -362,7 +363,7 @@ class HarmonyDriver(BaseDeviceDriver):
                         btn = driver.find_component(By.text(btn_text))
                         if btn and hasattr(btn, 'click'):
                             btn.click()
-                            time.sleep(0.5)
+                            time.sleep(POPUP_CLOSE_WAIT)
                             break
                     except Exception as e:
                         self._log(level='DEBUG', content=f"Error clicking button '{btn_text}' on HarmonyOS: {e}")
@@ -389,7 +390,7 @@ class HarmonyDriver(BaseDeviceDriver):
             device_level = round(level * 15 / 100)
             subprocess.run(
                 ['hdc', '-t', device_sn, 'shell', 'audioctl', '-s', str(device_level)],
-                check=False, capture_output=True, timeout=10
+                check=False, capture_output=True, timeout=HDC_TIMEOUT
             )
             self._log(level='INFO', content=f"HarmonyOS 设备 {device_sn} 音量已设为 {level} (设备值: {device_level})")
             return True
@@ -409,7 +410,7 @@ class HarmonyDriver(BaseDeviceDriver):
         try:
             result = subprocess.run(
                 ['hdc', '-t', device_sn, 'shell', 'audioctl', '-g'],
-                capture_output=True, text=True, timeout=10
+                capture_output=True, text=True, timeout=HDC_TIMEOUT
             )
             if result.returncode == 0:
                 output = result.stdout.strip()

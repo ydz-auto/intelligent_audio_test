@@ -7,6 +7,7 @@ import { useAlgorithmParams } from '../../composables/algorithm/useAlgorithmPara
 import { useDeviceManagement } from '../../composables/device/useDeviceManagement';
 import { useAudioBatchOps } from '../../composables/audio/useAudioBatchOps';
 import { useUploadModal } from '../../composables/upload/useUploadModal';
+import { TestType, UploadStatus } from '@/shared/types/enums';
 
 /**
  * useAudioImport - 轻量级协调层
@@ -69,7 +70,7 @@ export function useAudioImport() {
   const goToTestCaseManager = () => {
     uploadModule.showTestCaseGeneratedTip.value = false;
     const types = uploadModule.uploadOptions.testTypes || [];
-    if (types.length === 1 && types[0] === 'e2e') {
+    if (types.length === 1 && types[0] === TestType.E2E) {
       router.push('/E2ETest');
     } else {
       router.push('/TestCaseManager');
@@ -178,7 +179,7 @@ export function useAudioImport() {
 
     // 初始化 currentTask，如果有未完成的任务
     const tasks = uploadModule.getLocalTasks();
-    const unfinished = tasks.find(t => t.status === 'uploading' || t.status === 'paused' || t.status === 'failed');
+    const unfinished = tasks.find(t => t.status === UploadStatus.UPLOADING || t.status === UploadStatus.PAUSED || t.status === UploadStatus.FAILED);
     if (unfinished) {
       uploadModule.currentTask.value = unfinished;
       uploadModule.updateOverallProgress();

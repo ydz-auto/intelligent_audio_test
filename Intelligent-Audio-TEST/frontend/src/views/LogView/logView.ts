@@ -6,6 +6,9 @@ const LOG_LEVEL_OPTIONS = [{ value: 'debug', label: 'Debug' }, { value: 'info', 
 const LOG_LEVEL_MAP: Record<string, string> = { debug: 'DEBUG', info: 'INFO', warning: 'WARNING', error: 'ERROR' };
 import { useModalControl } from '../../composables/modal/useModal';
 import { Log, LogFilters, AdvancedLogFilters, LogStats, LogQueryParams, LogLevelOption, MODAL_TYPES } from '../../shared/types';
+import { usePagination } from '../../composables/usePagination';
+// 引入视图模式枚举，消除魔法字符串
+import { ViewMode, TestType } from '@/shared/types/enums';
 
 interface UILog extends Log {
   selected: boolean;
@@ -32,10 +35,10 @@ export function useLogView(refs?: LogViewRefs) {
   const filters = ref<LogFilters>({
     startDateTime: '',
     endDateTime: '',
-    logCategory: 'all',
-    logModule: 'all',
-    markFilter: 'all',
-    algorithmType: 'all'
+    logCategory: ViewMode.ALL,
+    logModule: ViewMode.ALL,
+    markFilter: ViewMode.ALL,
+    algorithmType: ViewMode.ALL
   });
 
   const advancedFilters = ref<AdvancedLogFilters>({
@@ -70,11 +73,17 @@ export function useLogView(refs?: LogViewRefs) {
 
   const currentPage = ref(1);
   const pageSize = ref(10);
+
+  // 使用通用分页 composable 计算总页数
+  // 说明：日志分页为服务端分页，totalLogs 由 API 返回
+  // 此处用 totalLogs 长度的占位数组驱动 totalPages 计算，分页数据由后端返回
+  const placeholderForTotal = computed(() => Array(totalLogs.value).fill(0));
+  const { totalPages } = usePagination(placeholderForTotal, pageSize, { currentPage });
   const algorithmOptions = ref<{ value: string; label: string }[]>([]);
 
   // 日志配置默认值
   const LOGCategoryOptions = [{ value: 'all', label: '所有分类' }, { value: 'system', label: '系统日志' }, { value: 'test', label: '测试日志' }, { value: 'error', label: '错误日志' }];
-  const LOGModuleOptions = [{ value: 'all', label: '所有模块' }, { value: 'api', label: 'API模块' }, { value: 'e2e', label: 'E2E测试' }, { value: 'device', label: '设备管理' }];
+  const LOGModuleOptions = [{ value: 'all', label: '所有模块' }, { value: TestType.API, label: 'API模块' }, { value: TestType.E2E, label: 'E2E测试' }, { value: 'device', label: '设备管理' }];
   const LOGMarkOptions = [{ value: 'all', label: '所有标记' }, { value: 'yellow', label: '黄色标记' }, { value: 'red', label: '红色标记' }, { value: 'green', label: '绿色标记' }, { value: 'blue', label: '蓝色标记' }];
 
   const getAlgorithmLabel = (algorithmType: string): string => {
@@ -107,10 +116,10 @@ export function useLogView(refs?: LogViewRefs) {
   const buildQueryParams = (): LogQueryParams => {
     const params : LogQueryParams = {keyword: searchTerm.value, startTime: filters.value.startDateTime, endTime: filters.value.endDateTime, ...advancedFilters.value};
     
-    if (filters.value.logCategory !== 'all') params.category = filters.value.logCategory;
-    if (filters.value.logModule !== 'all') params.module = filters.value.logModule;
-    if (filters.value.markFilter !== 'all') params.mark = filters.value.markFilter;
-    if (filters.value.algorithmType !== 'all') params.algorithmType = filters.value.algorithmType;
+    if (filters.value.logCategory !== ViewMode.ALL) params.category = filters.value.logCategory;
+    if (filters.value.logModule !== ViewMode.ALL) params.module = filters.value.logModule;
+    if (filters.value.markFilter !== ViewMode.ALL) params.mark = filters.value.markFilter;
+    if (filters.value.algorithmType !== ViewMode.ALL) params.algorithmType = filters.value.algorithmType;
     
     if (selectedLevels.value.length < logLevels.value.length && selectedLevels.value.length > 0) {
       const backendLevels = selectedLevels.value.map(level => LOG_LEVEL_MAP[level] || level);
@@ -209,13 +218,11 @@ export function useLogView(refs?: LogViewRefs) {
   };
 
   const handleNextPage = () => {
-    const totalPages = Math.ceil(totalLogs.value / pageSize.value);
-    if (currentPage.value < totalPages) currentPage.value++;
+    if (currentPage.value < totalPages.value) currentPage.value++;
   };
 
   const handleGoToPage = (page: number) => {
-    const totalPages = Math.ceil(totalLogs.value / pageSize.value);
-    if (page >= 1 && page <= totalPages) currentPage.value = page;
+    if (page >= 1 && page <= totalPages.value) currentPage.value = page;
   };
 
   const handlePageSizeChange = (newPageSize: number) => {
@@ -264,10 +271,10 @@ export function useLogView(refs?: LogViewRefs) {
     Object.assign(filters.value, {
       startDateTime: '',
       endDateTime: '',
-      logCategory: 'all',
-      logModule: 'all',
-      markFilter: 'all',
-      algorithmType: 'all'
+      logCategory: ViewMode.ALL,
+      logModule: ViewMode.ALL,
+      markFilter: ViewMode.ALL,
+      algorithmType: ViewMode.ALL
     });
     
     Object.assign(advancedFilters.value, {

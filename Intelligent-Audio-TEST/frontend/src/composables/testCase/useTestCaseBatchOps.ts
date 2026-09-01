@@ -1,5 +1,6 @@
 import { testcasesApi } from '../../utils/api'
 import { useNotification } from '../modal/useNotification'
+import { TestType, TaskStatus } from '@/shared/types/enums'
 import type { TestCase } from '../../shared/types'
 
 /**
@@ -91,8 +92,8 @@ export function useTestCaseBatchOps(store: {
           else if (config.audios) {
             ;(config as any).audios = (config as any).audios.map((audio: any) => {
               const audioType = (audio.test_type || '').toLowerCase()
-              if (audioType === 'e2e') {
-                return { ...audio, testType: 'e2e', playbackDeviceId: playbackDevices.deviceId }
+              if (audioType === TestType.E2E) {
+                return { ...audio, testType: TestType.E2E, playbackDeviceId: playbackDevices.deviceId }
               }
               return audio
             })
@@ -147,8 +148,8 @@ export function useTestCaseBatchOps(store: {
           } else if (config.audios) {
             ;(config as any).audios = (config as any).audios.map((audio: any) => {
               const audioType = (audio.test_type || '').toLowerCase()
-              if (audioType === 'e2e') {
-                return { ...audio, testType: 'e2e', spl: spl.value }
+              if (audioType === TestType.E2E) {
+                return { ...audio, testType: TestType.E2E, spl: spl.value }
               }
               return audio
             })
@@ -439,9 +440,9 @@ export function useTestCaseBatchOps(store: {
             onProgress(status.progress)
           }
 
-          if (status.status === 'completed' || status.status === 'failed') {
+          if (status.status === TaskStatus.COMPLETED || status.status === TaskStatus.FAILED) {
             resolve({
-              success: status.status === 'completed',
+              success: status.status === TaskStatus.COMPLETED,
               updated: status.updated || 0,
               failed: status.failed || 0
             })

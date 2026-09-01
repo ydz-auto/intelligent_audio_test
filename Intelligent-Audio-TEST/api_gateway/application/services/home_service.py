@@ -13,6 +13,7 @@ from api_gateway.utils.response import success_response, error_response
 from api_gateway.application.services.stats_cache import refresh_stats_cache, _CACHE_KEY
 from shared.infrastructure.config import BaseConfig
 from api_gateway.infrastructure.grpc_proxies import task_data_service
+from shared.config.query_constants import QueryConstants
 
 _task_acl = TaskConfigAclRepositoryImpl()
 _device_acl = DeviceAclRepositoryImpl()
@@ -152,7 +153,7 @@ class HomeService:
             online_count = 0
             offline_count = 0
             try:
-                dev_result = _device_acl.get_all(page=1, per_page=10000)
+                dev_result = _device_acl.get_all(page=1, per_page=QueryConstants.EXPORT_PAGE_SIZE)
                 if dev_result.get('success'):
                     for dev in (dev_result.get('data') or {}).get('items', []):
                         if dev.get('status') == 'online':

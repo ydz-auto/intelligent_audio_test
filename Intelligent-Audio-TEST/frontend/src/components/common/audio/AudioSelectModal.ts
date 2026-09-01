@@ -6,6 +6,7 @@ import { getModalManager } from '../../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../../shared/types';
 import { audiosApi } from '../../../utils/api';
 import { parseDuration, formatDurationLong } from '../../../utils/audioUtils';
+import { UploadStatus } from '@/shared/types/enums';
 
 export function useAudioSelectModal(
   props: { visible: boolean; title: string; audioType: string; isMultiSelect?: boolean },
@@ -409,7 +410,7 @@ export function useAudioSelectModal(
   };
 
   watch(uploadStatus, (newStatus) => {
-    if (newStatus === 'completed') {
+    if (newStatus === UploadStatus.COMPLETED) {
       setTimeout(() => {
         loadAudios();
       }, 500);

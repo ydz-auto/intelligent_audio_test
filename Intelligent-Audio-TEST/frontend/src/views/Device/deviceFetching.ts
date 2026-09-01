@@ -163,7 +163,7 @@ export async function autoHealthCheck() {
             const device = apiDevices.value.find(d => String(d.id) === String(deviceId));
             if (device) {
               // 检查是否是404错误（设备不存在）
-              if (err.response?.status === 404) {
+              if (err.response?.status === HttpStatus.NOT_FOUND) {
                 // 从设备列表中移除不存在的设备
                 apiDevices.value = apiDevices.value.filter(d => String(d.id) !== String(deviceId));
                 // 同时更新deviceManagement.devices

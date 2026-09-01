@@ -6,6 +6,7 @@
  */
 import { ref, computed } from 'vue'
 import { reportsApi } from '../../../utils/api'
+import { usePagination } from '../../../composables/usePagination'
 
 /** 折叠状态（isCollapsed + toggleCollapse） */
 export function useCollapse() {
@@ -109,15 +110,8 @@ export function usePaginatedSelection<T>(
     )
   })
 
-  const totalPages = computed(() =>
-    Math.ceil(filtered.value.length / pageSize.value) || 1
-  )
-
-  const paginated = computed(() => {
-    const start = (page.value - 1) * pageSize.value
-    const end = start + pageSize.value
-    return filtered.value.slice(start, end)
-  })
+  // 使用通用分页 composable
+  const { totalPages, paginatedItems: paginated } = usePagination(filtered, pageSize, { currentPage: page })
 
   const toggle = (item: T) => {
     const idx = (selected.value as T[]).indexOf(item)

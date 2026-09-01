@@ -39,12 +39,12 @@
             <span class="file-name">{{ file.name }}</span>
             <span class="file-status" :class="file.status">
               <i class="fas" :class="{
-                'fa-check-circle': file.status === 'completed',
-                'fa-exclamation-circle': file.status === 'failed',
-                'fa-spinner fa-spin': file.status === 'uploading',
-                'fa-clock': file.status === 'pending'
+                'fa-check-circle': file.status === UploadStatus.COMPLETED,
+                'fa-exclamation-circle': file.status === UploadStatus.FAILED,
+                'fa-spinner fa-spin': file.status === UploadStatus.UPLOADING,
+                'fa-clock': file.status === UploadStatus.PENDING
               }"></i>
-              {{ file.status === 'completed' ? '已完成' : file.status === 'failed' ? '失败' : file.status === 'uploading' ? '上传中' : '待上传' }}
+              {{ file.status === UploadStatus.COMPLETED ? '已完成' : file.status === UploadStatus.FAILED ? '失败' : file.status === UploadStatus.UPLOADING ? '上传中' : '待上传' }}
               <span class="error-message" v-if="file.errorMessage">({{ file.errorMessage }})</span>
             </span>
           </div>
@@ -74,12 +74,13 @@
 
 <script setup lang="ts">
 import { ref, computed, type Ref } from 'vue';
+import { UploadStatus } from '@/shared/types/enums';
 
 interface AudioUploadFile {
   name: string;
   size: number;
   uploadedSize: number;
-  status: 'pending' | 'uploading' | 'completed' | 'failed';
+  status: UploadStatus[keyof UploadStatus];
   errorMessage?: string;
 }
 

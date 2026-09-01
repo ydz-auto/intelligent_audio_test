@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { devicesApi } from '../../utils/api'
+import { APP_CONFIG } from '../../utils/config'
 
 export function useDeviceScanning() {
   const isScanning = ref(false)
@@ -11,7 +12,7 @@ export function useDeviceScanning() {
 
   const fetchAddedPlaybackDevices = async () => {
     try {
-      const response = await fetch('/api/v1/playback-devices?page=1&per_page=1000')
+      const response = await fetch(`/api/v1/playback-devices?page=1&per_page=${APP_CONFIG.defaultBatchPageSize}`)
       const result = await response.json()
       
       let devices = []
@@ -44,7 +45,7 @@ export function useDeviceScanning() {
 
   const fetchAddedTestDevices = async () => {
     try {
-      const response = await fetch('/api/v1/test-devices?page=1&per_page=1000')
+      const response = await fetch(`/api/v1/test-devices?page=1&per_page=${APP_CONFIG.defaultBatchPageSize}`)
       const result = await response.json()
       
       let devices = []
@@ -103,7 +104,7 @@ export function useDeviceScanning() {
           fetchedDevices = response.data
         } else if (response.devices && Array.isArray(response.devices)) {
           fetchedDevices = response.devices
-        } else if (response.success === true || response.code === 0 || response.code === 200) {
+        } else if (response.success === true || response.code === 0 || response.code === HttpStatus.OK) {
           if (response.data && Array.isArray(response.data)) {
             fetchedDevices = response.data
           }

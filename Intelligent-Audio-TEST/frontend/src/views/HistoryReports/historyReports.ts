@@ -5,6 +5,7 @@ import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabe
 import { getReportTypeLabel } from '../../shared/constants/reportConstants';
 import type { Report, ReportListParams } from '../../shared/types/index';
 import socketService from '../../utils/socket';
+import { usePagination } from '../../composables/usePagination';
 
 interface AlgorithmOption {
   value: string;
@@ -195,7 +196,11 @@ export function useHistoryReports() {
     handleFilterChange();
   };
 
-  const totalPages = computed(() => Math.ceil(totalItems.value / pageSize.value));
+  // 使用通用分页 composable 计算总页数
+  // 说明：报告分页为服务端分页，totalItems 由 API 返回
+  // 此处用 totalItems 长度的占位数组驱动 totalPages 计算
+  const placeholderForTotal = computed(() => Array(totalItems.value).fill(0));
+  const { totalPages } = usePagination(placeholderForTotal, pageSize, { currentPage });
 
   const handlePrevPage = () => {
     if (currentPage.value > 1) {

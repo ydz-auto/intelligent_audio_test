@@ -9,6 +9,7 @@ import { useTestCaseOps } from './useTestCaseOps'
 import { useResourceSelection } from './useResourceSelection'
 import { useTaskExecution } from './useTaskExecution'
 import { useTestCaseStore } from '../../store/testCaseStore'
+import { TestType, TaskStatus } from '@/shared/types/enums'
 
 export function normalizeSelectedCaseIds(ids: (string | number)[]) {
   const normalizedIds = ids.filter((id): id is string | number => {
@@ -184,14 +185,14 @@ export function useTestFlow(testType: 'e2e' | 'api') {
         e2eIsExecuting.value = false
         stopTimeUpdateTimer()
       }
-      await handleTaskEnd('completed', 100)
+      await handleTaskEnd(TaskStatus.COMPLETED, 100)
     },
     onFailed: async () => {
       if (testType === 'e2e') {
         e2eIsExecuting.value = false
         stopTimeUpdateTimer()
       }
-      await handleTaskEnd('failed', progressPercentage.value)
+      await handleTaskEnd(TaskStatus.FAILED, progressPercentage.value)
     },
   }
 
@@ -212,7 +213,7 @@ export function useTestFlow(testType: 'e2e' | 'api') {
   // ============ isExecuting 统一 ============
   const isExecuting = computed(() => {
     if (testType === 'e2e') return e2eIsExecuting.value
-    return taskStatus.value === 'running' || taskStatus.value === 'starting' || taskStatus.value === 'pending'
+    return (taskStatus.value as string) === TaskStatus.RUNNING || (taskStatus.value as string) === TaskStatus.STARTING || (taskStatus.value as string) === TaskStatus.PENDING
   })
 
   const executionProgress = computed(() => progressPercentage.value)

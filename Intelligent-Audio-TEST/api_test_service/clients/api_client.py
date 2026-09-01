@@ -8,6 +8,8 @@ try:
 except ImportError:
     websocket = None
 
+from shared.utils.path_extractor import extract_by_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -133,7 +135,7 @@ class APIClient:
                             last_json = msg_json
 
                             if session_end_path:
-                                if APIClient._extract_by_path(msg_json, session_end_path) is True:
+                                if extract_by_path(msg_json, session_end_path) is True:
                                     break
                         except Exception:
                             logger.debug("解析WebSocket消息JSON失败: endpoint=%s", endpoint, exc_info=True)
@@ -185,21 +187,5 @@ class APIClient:
             "error": error,
             "retry_count": retry_count
         }
-
-    @staticmethod
-    def _extract_by_path(data, path):
-        """从字典中根据路径提取值"""
-        if not path or not data: return None
-        try:
-            for key in path.split('.'):
-                if isinstance(data, dict):
-                    data = data.get(key)
-                elif isinstance(data, list) and key.isdigit():
-                    data = data[int(key)]
-                else:
-                    return None
-            return data
-        except:
-            return None
 
 api_client = APIClient()

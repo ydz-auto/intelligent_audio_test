@@ -80,6 +80,17 @@ class ConfigManager:
                     "e2e_test_service_workers": 5,
                     "api_adapter_service_workers": 8,
                     "api_test_service_workers": 8
+                },
+                "device_timing": {
+                    "ui_wait": 0.2,
+                    "short_wait": 0.1,
+                    "normal_wait": 1.0,
+                    "long_wait": 2.0,
+                    "extra_long_wait": 5.0,
+                    "adb_timeout": 10,
+                    "hdc_timeout": 30,
+                    "long_hdc_timeout": 300,
+                    "extra_long_hdc_timeout": 120
                 }
             }
         except json.JSONDecodeError:
@@ -116,6 +127,17 @@ class ConfigManager:
                     "e2e_test_service_workers": 5,
                     "api_adapter_service_workers": 8,
                     "api_test_service_workers": 8
+                },
+                "device_timing": {
+                    "ui_wait": 0.2,
+                    "short_wait": 0.1,
+                    "normal_wait": 1.0,
+                    "long_wait": 2.0,
+                    "extra_long_wait": 5.0,
+                    "adb_timeout": 10,
+                    "hdc_timeout": 30,
+                    "long_hdc_timeout": 300,
+                    "extra_long_hdc_timeout": 120
                 }
             }
 

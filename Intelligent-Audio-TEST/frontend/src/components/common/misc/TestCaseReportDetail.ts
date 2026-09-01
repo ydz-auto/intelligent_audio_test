@@ -1,6 +1,7 @@
 import { ref, computed, watch } from 'vue';
 import { buildAudioUrl, normalizeAudioItem } from '../../../utils/audioUtils';
 import reportService from '../../../services/reportService';
+import { usePagination } from '../../../composables/usePagination';
 
 export function useTestCaseReportDetail(props) {
   const multiRoundAlgorithmResult = computed(() => {
@@ -662,21 +663,17 @@ export function useTestCaseReportDetail(props) {
   const showAudioModal = ref(false);
   const currentPlayingAudio = ref(null);
   const audioLoadedStates = ref({});
-  const audioPageSize = 5;
+  const audioPageSize = ref(5);
   const audioCurrentPage = ref(1);
 
-  const totalAudioPages = computed(() => {
-    return Math.ceil(props.audioList.length / audioPageSize);
-  });
-
-  const paginatedAudioList = computed(() => {
-    const start = (audioCurrentPage.value - 1) * audioPageSize;
-    const end = start + audioPageSize;
-    return props.audioList.slice(start, end);
-  });
+  // 使用通用分页 composable 统一处理音频列表分页
+  const {
+    totalPages: totalAudioPages,
+    paginatedItems: paginatedAudioList,
+  } = usePagination(computed(() => props.audioList), audioPageSize, { currentPage: audioCurrentPage });
 
   const getGlobalAudioIndex = (localIndex) => {
-    return (audioCurrentPage.value - 1) * audioPageSize + localIndex;
+    return (audioCurrentPage.value - 1) * audioPageSize.value + localIndex;
   };
 
   const formatDuration = (seconds) => {

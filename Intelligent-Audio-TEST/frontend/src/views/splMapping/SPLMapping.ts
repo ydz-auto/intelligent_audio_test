@@ -9,6 +9,7 @@ import type {
 } from '../../shared/types';
 import { MODAL_TYPES } from '../../shared/types';
 import { volumeToDb, DB_MIN, DB_MAX } from '../../utils/audioUtils';
+import { usePagination } from '../../composables/usePagination';
 
 export function useSplMapping() {
   // 响应式数据
@@ -107,26 +108,8 @@ export function useSplMapping() {
     });
   });
 
-  // 分页状态
-  const currentPage = ref(1);
-  const pageSize = ref(6);
-  const totalItems = ref(0);
-  const totalPages = computed(() => Math.ceil(totalItems.value / pageSize.value));
-
-  // 分页后的映射列表
-  const paginatedMappings = computed(() => {
-    const start = (currentPage.value - 1) * pageSize.value;
-    const end = start + pageSize.value;
-    return filteredMappings.value.slice(start, end);
-  });
-
-  // 更新总数
-  watch(filteredMappings, (newVal) => {
-    totalItems.value = newVal.length;
-    if (currentPage.value > totalPages.value && totalPages.value > 0) {
-      currentPage.value = 1;
-    }
-  }, { immediate: true });
+  // 使用通用分页 composable
+  const { currentPage, pageSize, totalItems, totalPages, paginatedItems: paginatedMappings } = usePagination(filteredMappings, ref(6));
 
   // 分页方法
   const handlePageChange = (page: number) => {

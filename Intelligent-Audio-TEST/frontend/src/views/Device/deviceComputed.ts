@@ -22,6 +22,8 @@ import {
   apiTotalItems,
   apiTotalPages
 } from './deviceState';
+// 引入视图模式枚举，消除魔法字符串
+import { ViewMode } from '@/shared/types/enums';
 
 export const addButtonText = computed(() => {
   switch (activeTab.value) {
@@ -66,11 +68,11 @@ export const allFilteredPlaybackDevices = computed(() => {
       (device.name && device.name.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
       (device.model && device.model.toLowerCase().includes(searchQuery.value.toLowerCase()));
 
-    const matchesStatus = statusFilter.value === 'all' || device.status === statusFilter.value;
+    const matchesStatus = statusFilter.value === ViewMode.ALL || device.status === statusFilter.value;
 
     const typeMapping: Record<string, string> = { '干声': 'dry', '噪声': 'noise' };
-    const actualFilterType = playbackTypeFilter.value === 'all' ? 'all' : typeMapping[playbackTypeFilter.value] || playbackTypeFilter.value;
-    const matchesPlaybackType = actualFilterType === 'all' || device.type === actualFilterType;
+    const actualFilterType = playbackTypeFilter.value === ViewMode.ALL ? ViewMode.ALL : typeMapping[playbackTypeFilter.value] || playbackTypeFilter.value;
+    const matchesPlaybackType = actualFilterType === ViewMode.ALL || device.type === actualFilterType;
 
     return matchesSearch && matchesStatus && matchesPlaybackType;
   });
@@ -96,8 +98,8 @@ export const allFilteredTestDevices = computed(() => {
       (device.name && device.name.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
       (device.model && device.model.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
       (device.category && device.category.toLowerCase().includes(searchQuery.value.toLowerCase()));
-    const matchesStatus = statusFilter.value === 'all' || device.status === statusFilter.value;
-    const matchesAlgorithm = algorithmFilter.value === 'all' ||
+    const matchesStatus = statusFilter.value === ViewMode.ALL || device.status === statusFilter.value;
+    const matchesAlgorithm = algorithmFilter.value === ViewMode.ALL ||
       (device.supportedAlgorithms && device.supportedAlgorithms.includes(algorithmFilter.value));
     return matchesSearch && matchesStatus && matchesAlgorithm;
   });
@@ -123,8 +125,8 @@ export const allFilteredAPIDevices = computed(() => {
       (device.name && device.name.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
       (device.model && device.model.toLowerCase().includes(searchQuery.value.toLowerCase())) ||
       (device.category && device.category.toLowerCase().includes(searchQuery.value.toLowerCase()));
-    const matchesStatus = statusFilter.value === 'all' || device.status === statusFilter.value;
-    const matchesAlgorithmType = algorithmTypeFilter.value === 'all' ||
+    const matchesStatus = statusFilter.value === ViewMode.ALL || device.status === statusFilter.value;
+    const matchesAlgorithmType = algorithmTypeFilter.value === ViewMode.ALL ||
       (device as any).algorithm_type === algorithmTypeFilter.value ||
       (device as any).algorithmType === algorithmTypeFilter.value;
     return matchesSearch && matchesStatus && matchesAlgorithmType;

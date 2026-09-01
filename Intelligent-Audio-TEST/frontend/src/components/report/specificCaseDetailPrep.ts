@@ -1,4 +1,5 @@
 import { toMetricsMap, toTextMap } from './specificCaseDataHelpers'
+import { TestType } from '@/shared/types/enums'
 
 export function createCaseDetailPrep(deps: {
   props: any
@@ -96,10 +97,10 @@ export function createCaseDetailPrep(deps: {
     }
 
     return caseItem.audioList.filter((audio: any) => {
-      if (taskType === 'api') {
-        return audio.type === 'api'
-      } else if (taskType === 'e2e') {
-        return audio.type === 'e2e' || audio.type === 'noise'
+      if (taskType === TestType.API) {
+        return audio.type === TestType.API
+      } else if (taskType === TestType.E2E) {
+        return audio.type === TestType.E2E || audio.type === 'noise'
       } else {
         return true
       }

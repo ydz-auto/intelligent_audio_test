@@ -11,6 +11,8 @@ import type {
   TestCaseFormData,
   TestCaseGroup
 } from '../shared/types'
+// 引入测试类型枚举，消除魔法字符串
+import { TestType } from '../shared/types/enums'
 
 interface GroupWithCount {
   id: string | number;
@@ -219,7 +221,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       testCases.value = testCasesData.map(tc => {
         return {
           ...tc,
-          type: tc.type || 'api',
+          type: tc.type || TestType.API,
           deleted: tc.deleted || false
         } as TestCase;
       });
@@ -389,7 +391,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     } else {
       testCases.value.push({
         ...testCase,
-        type: testCase.type || 'api',
+        type: testCase.type || TestType.API,
         deleted: testCase.deleted || false
       });
     }

@@ -22,7 +22,9 @@ from datetime import datetime
 from shared.utils.result_data_store import load_full_result_data
 from shared.utils.json_utils import deserialize_algorithm_result
 from shared.utils.status_utils import derive_task_case_status
-from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
+from shared.utils.status_constants import (
+    TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EXECUTION_STATUSES,
+)
 
 from task_service.infrastructure.persistence.task_repository import task_repository
 
@@ -174,7 +176,7 @@ class TaskLifecycleService:
                 if tc is None:
                     return {'success': False, 'message': '未找到指定用例关联', 'data': None, 'code': 404}
 
-                if tc.execution_status in [ExecutionStatus.QUEUED, ExecutionStatus.RUNNING] or tc.evaluation_status == EvaluationStatus.RUNNING:
+                if tc.execution_status in ACTIVE_EXECUTION_STATUSES or tc.evaluation_status == EvaluationStatus.RUNNING:
                     return {'success': False, 'message': '用例执行中不允许此操作', 'data': None, 'code': 400}
 
                 if action == 'skip':

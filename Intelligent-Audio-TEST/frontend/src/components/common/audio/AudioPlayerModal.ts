@@ -312,7 +312,7 @@ export function useAudioPlayerModal(props: any, emit: any) {
     } catch (error: any) {
       console.error('音频播放失败:', error);
       isPlaying.value = false;
-      if (error.response && error.response.status === 400) {
+      if (error.response && error.response.status === HttpStatus.BAD_REQUEST) {
         playError.value = '服务器返回400错误。音频文件可能不存在或格式不正确';
       } else if (error.message) {
         playError.value = `音频播放失败: ${error.message}`;

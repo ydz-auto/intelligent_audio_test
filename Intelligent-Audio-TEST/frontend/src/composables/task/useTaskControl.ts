@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router';
 import { tasksApi, reportsApi } from '../../utils/api';
 import { reportService } from '../../services/reportService';
 import type { Task } from '../../shared/types';
+import { TaskStatus } from '@/shared/types/enums';
 import { useModalControl, MODAL_TYPES } from '../modal/useModal';
 import { useNotification } from '../modal/useNotification';
 
@@ -56,7 +57,7 @@ export function useTaskControl(
     isControlling.value.add(taskId);
     try {
       const task = tasks.value.find(t => t.id === taskId);
-      if (task?.status === 'stopped') {
+      if (task?.status === TaskStatus.STOPPED) {
         await tasksApi.start(taskId);
       } else {
         await tasksApi.control(taskId, 'resume');
@@ -263,12 +264,12 @@ export function useTaskControl(
           await fetchTasks();
           const task = tasks.value.find((t: any) => t.id === taskId);
           console.log('poll task status:', task?.status);
-          if (task && task.status === 'completed') {
+          if (task && task.status === TaskStatus.COMPLETED) {
             clearInterval(pollInterval);
             pollInterval = null;
             isControlling.value.delete(taskId);
             notification.success('评估完成');
-          } else if (task && task.status !== 'evaluating') {
+          } else if (task && task.status !== TaskStatus.EVALUATING) {
             clearInterval(pollInterval);
             pollInterval = null;
             isControlling.value.delete(taskId);
@@ -353,27 +354,27 @@ export function useTaskControl(
   const getStatusText = (status: string) => reportService.getStatusText(status);
   const getStatusIcon = (status: string) => {
     const icons: Record<string, string> = {
-      'pending': 'clock',
-      'queued': 'hourglass',
-      'running': 'play-circle',
-      'completed': 'check-circle',
-      'failed': 'exclamation-circle',
-      'paused': 'pause-circle',
-      'stopped': 'stop-circle',
-      'skipped': 'minus-circle'
+      [TaskStatus.PENDING]: 'clock',
+      [TaskStatus.QUEUED]: 'hourglass',
+      [TaskStatus.RUNNING]: 'play-circle',
+      [TaskStatus.COMPLETED]: 'check-circle',
+      [TaskStatus.FAILED]: 'exclamation-circle',
+      [TaskStatus.PAUSED]: 'pause-circle',
+      [TaskStatus.STOPPED]: 'stop-circle',
+      [TaskStatus.SKIPPED]: 'minus-circle'
     };
     return icons[status] || 'question-circle';
   };
   const getStepStatusText = (status: string) => {
     const texts: Record<string, string> = {
-      'pending': '等待中',
-      'queued': '排队中',
-      'running': '执行中',
-      'completed': '已完成',
-      'failed': '失败',
-      'paused': '已暂停',
-      'stopped': '已停止',
-      'skipped': '已跳过'
+      [TaskStatus.PENDING]: '等待中',
+      [TaskStatus.QUEUED]: '排队中',
+      [TaskStatus.RUNNING]: '执行中',
+      [TaskStatus.COMPLETED]: '已完成',
+      [TaskStatus.FAILED]: '失败',
+      [TaskStatus.PAUSED]: '已暂停',
+      [TaskStatus.STOPPED]: '已停止',
+      [TaskStatus.SKIPPED]: '已跳过'
     };
     return texts[status] || status;
   };

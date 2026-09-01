@@ -4,6 +4,13 @@ from datetime import datetime, timezone, timedelta
 from shared.models.database import get_db_session
 from shared.models.common_enums import TestType
 from shared.utils.event_manager._common import get_socketio
+from shared.utils.status_constants import (
+    ACTIVE_EXECUTION_STATUSES,
+    ExecutionStatus,
+    EvaluationStatus,
+    TaskCaseStatus,
+    TaskStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -197,7 +204,7 @@ class ProgressMixin:
                         if completed_at.tzinfo is None:
                             completed_at = completed_at.replace(tzinfo=timezone(timedelta(hours=8)))
                         end_reference = completed_at
-                    elif task_status in ('completed', 'failed'):
+                    elif task_status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                         updated_at_str = grpc_progress.get('updated_at')
                         if updated_at_str:
                             updated_at = datetime.fromisoformat(updated_at_str)
@@ -257,7 +264,7 @@ class ProgressMixin:
 
                 self._log(level='DEBUG', content=f"使用 PO 回退路径生成进度数据，task_id={task_id}, force={force}", task_id=task_id)
 
-                current_tc = local_db_session.query(TaskCase).filter_by(task_id=db_task.id, execution_status='running').first()
+                current_tc = local_db_session.query(TaskCase).filter_by(task_id=db_task.id, execution_status=ExecutionStatus.RUNNING).first()
                 if current_tc:
                     case_info = local_db_session.get(TestCase, current_tc.test_case_id)
                     current_case_data = {
@@ -319,8 +326,8 @@ class ProgressMixin:
 
                 in_progress_count = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == db_task.id,
-                    (TaskCase.execution_status.in_(['running', 'queued'])) | (TaskCase.evaluation_status == 'running') |
-                    (TaskCase.evaluation_status == 'calculating')
+                    (TaskCase.execution_status.in_(ACTIVE_EXECUTION_STATUSES)) | (TaskCase.evaluation_status == EvaluationStatus.RUNNING) |
+                    (TaskCase.evaluation_status == EvaluationStatus.CALCULATING)
                 ).count()
 
                 api_resources_status = []
@@ -339,18 +346,18 @@ class ProgressMixin:
                                     for url, status in url_status.items():
                                         pending_cases = local_db_session.query(TaskCase).filter(
                                             TaskCase.task_id == db_task.id,
-                                            TaskCase.execution_status == 'pending'
+                                            TaskCase.execution_status == ExecutionStatus.PENDING
                                         ).count()
                                         avg_response_time = 0
                                         completed_cases = local_db_session.query(TaskCase).filter(
                                             TaskCase.task_id == db_task.id,
-                                            TaskCase.execution_status == 'completed'
+                                            TaskCase.execution_status == ExecutionStatus.COMPLETED
                                         ).count()
                                         if completed_cases > 0:
                                             total_response_time = 0
                                             completed_results = local_db_session.query(TestResult).filter(
                                                 TestResult.task_id == db_task.id,
-                                                TestResult.execution_status == 'completed'
+                                                TestResult.execution_status == ExecutionStatus.COMPLETED
                                             ).all()
                                             for result in completed_results:
                                                 if result.response_time:
@@ -379,7 +386,7 @@ class ProgressMixin:
                         if not completed_at.tzinfo:
                             completed_at = completed_at.replace(tzinfo=timezone(timedelta(hours=8)))
                         end_reference = completed_at
-                    elif db_task.status in ('completed', 'failed'):
+                    elif db_task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                         updated_at = db_task.updated_at
                         if updated_at:
                             if not updated_at.tzinfo:
@@ -395,17 +402,17 @@ class ProgressMixin:
                     local_db_session.commit()
                 actual_completed_cases = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == db_task.id,
-                    TaskCase.execution_status == 'completed',
-                    TaskCase.status == 'completed'
+                    TaskCase.execution_status == ExecutionStatus.COMPLETED,
+                    TaskCase.status == TaskCaseStatus.COMPLETED
                 ).count()
                 progress_percentage = round(actual_completed_cases / actual_total_cases * 100, 2) if actual_total_cases > 0 else 0
                 progress_percentage = min(progress_percentage, 100.0)
 
                 execution_failed_count = sum(
-                    1 for tc in test_cases_data if tc.get("executionStatus") == "failed"
+                    1 for tc in test_cases_data if tc.get("executionStatus") == ExecutionStatus.FAILED
                 )
                 evaluation_failed_count = sum(
-                    1 for tc in test_cases_data if tc.get("evaluationStatus") == "failed"
+                    1 for tc in test_cases_data if tc.get("evaluationStatus") == EvaluationStatus.FAILED
                 )
 
                 progress_data = {
@@ -443,7 +450,7 @@ class ProgressMixin:
                     if not completed_at.tzinfo:
                         completed_at = completed_at.replace(tzinfo=timezone(timedelta(hours=8)))
                     end_reference = completed_at
-                elif db_task.status in ('completed', 'failed'):
+                elif db_task.status in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                     updated_at = db_task.updated_at
                     if updated_at:
                         if not updated_at.tzinfo:
@@ -505,13 +512,13 @@ class ProgressMixin:
             elif min_interval <= 0:
                 need_update = True
                 self._log(level='DEBUG', content=f"最小更新间隔为0，更新进度，task_id={task_id}", task_id=task_id)
-            elif db_task.status == 'running' and last_status != 'running':
+            elif db_task.status == TaskStatus.RUNNING and last_status != TaskStatus.RUNNING:
                 need_update = True
                 self._log(level='DEBUG', content=f"任务开始执行，更新进度，task_id={task_id}", task_id=task_id)
-            elif db_task.status == 'completed' and last_status != 'completed':
+            elif db_task.status == TaskStatus.COMPLETED and last_status != TaskStatus.COMPLETED:
                 need_update = True
                 self._log(level='DEBUG', content=f"任务完成，更新进度，task_id={task_id}", task_id=task_id)
-            elif db_task.status == 'failed' and last_status != 'failed':
+            elif db_task.status == TaskStatus.FAILED and last_status != TaskStatus.FAILED:
                 need_update = True
                 self._log(level='DEBUG', content=f"任务失败，更新进度，task_id={task_id}", task_id=task_id)
             elif current_time - last_time >= min_interval:

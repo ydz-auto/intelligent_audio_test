@@ -13,7 +13,7 @@
 
 import logging
 
-from shared.models.common_enums import TestType
+from shared.models.common_enums import TaskStatus, TestType
 from shared.utils.log_handler import log_not_emit
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
@@ -310,7 +310,7 @@ class ReportHelpers:
     @staticmethod
     def build_result_info(result):
         return {
-            "status": "成功" if result.execution_status == "completed" else "失败",
+            "status": "成功" if result.execution_status == TaskStatus.COMPLETED.value else "失败",
             "start_time": result.created_at.isoformat() if result.created_at else None,
             "end_time": result.created_at.isoformat() if result.created_at else None
         }

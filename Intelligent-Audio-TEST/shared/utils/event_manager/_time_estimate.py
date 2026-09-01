@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 import logging
 from shared.models.database import get_db_session
 from shared.models.common_enums import TestType
+from shared.utils.status_constants import TaskStatus
 
 logger = logging.getLogger(__name__)
 # TODO(gRPC): _time_estimate 属于 event_manager 实时进度估算模块，
@@ -91,7 +92,7 @@ class TimeEstimateMixin:
                 # 查询最近完成的API测试任务
                 recent_api_tasks = local_db_session.query(TaskModel).filter(
                     TaskModel.type == TestType.API.value,
-                    TaskModel.status == 'completed',
+                    TaskModel.status == TaskStatus.COMPLETED,
                     TaskModel.total_cases > 0,
                     TaskModel.actual_duration > 0,
                     TaskModel.id != task.id
@@ -184,7 +185,7 @@ class TimeEstimateMixin:
                 # 查询最近完成的E2E测试任务
                 recent_e2e_tasks = local_db_session.query(TaskModel).filter(
                     TaskModel.type == TestType.E2E.value,
-                    TaskModel.status == 'completed',
+                    TaskModel.status == TaskStatus.COMPLETED,
                     TaskModel.total_cases > 0,
                     TaskModel.actual_duration > 0,
                     TaskModel.id != task.id

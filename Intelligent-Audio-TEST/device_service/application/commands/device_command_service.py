@@ -15,6 +15,7 @@ from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit, log_and_emit
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from device_service.domain.repositories import DeviceRepositoryInterface
+from shared.config.query_constants import QueryConstants
 
 logger = logging.getLogger(__name__)
 
@@ -240,7 +241,7 @@ class DeviceCommandService:
 
         if not device_ids:
             # 查询所有设备
-            result = self.repo.list_devices(page=1, per_page=99999)
+            result = self.repo.list_devices(page=1, per_page=QueryConstants.UNLIMITED_PAGE_SIZE)
             devices = result['items']
         else:
             devices = []

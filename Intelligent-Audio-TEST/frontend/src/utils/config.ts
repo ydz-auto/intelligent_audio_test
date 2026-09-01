@@ -20,6 +20,8 @@ export const APP_CONFIG = {
   appName: 'Task Manager',
   appVersion: '1.0.0',
   defaultPageSize: 10,
+  // 默认批量大小（用于全量获取场景）
+  defaultBatchPageSize: 1000,
   supportedAudioFormats: ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma', 'alac', 'opus']
 } as const;
 

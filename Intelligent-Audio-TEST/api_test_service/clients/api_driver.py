@@ -2,6 +2,7 @@ import time
 import json
 from api_test_service.clients.api_client import api_client
 from shared.utils.log_handler import log_and_emit
+from shared.utils.path_extractor import extract_by_path
 
 class APIDriver:
     """
@@ -185,8 +186,8 @@ class APIDriver:
             resp_text = resp_info.get("raw_response", "")
 
             # 提取业务错误信息
-            biz_code = self._extract_by_path(resp_json, error_code_mapping)
-            biz_msg = self._extract_by_path(resp_json, error_msg_mapping)
+            biz_code = extract_by_path(resp_json, error_code_mapping)
+            biz_msg = extract_by_path(resp_json, error_msg_mapping)
 
             # 如果业务码非0且非None，更新错误信息
             if biz_code is not None and str(biz_code) != '0':
@@ -196,10 +197,10 @@ class APIDriver:
             data = resp_json.get('data', resp_json)
 
             return {
-                "asr": self._extract_by_path(data, asr_mapping) or (resp_text if not resp_json else ""),
-                "trans": self._extract_by_path(data, trans_mapping) or "",
-                "is_sentence_end": self._extract_by_path(data, sentence_end_mapping),
-                "is_session_end": self._extract_by_path(data, session_end_mapping),
+                "asr": extract_by_path(data, asr_mapping) or (resp_text if not resp_json else ""),
+                "trans": extract_by_path(data, trans_mapping) or "",
+                "is_sentence_end": extract_by_path(data, sentence_end_mapping),
+                "is_session_end": extract_by_path(data, session_end_mapping),
                 "biz_code": biz_code,
                 "biz_msg": biz_msg
             }
@@ -221,18 +222,18 @@ class APIDriver:
                 msg_json = json.loads(msg)
 
                 # 提取业务错误
-                biz_code = self._extract_by_path(msg_json, error_code_mapping)
+                biz_code = extract_by_path(msg_json, error_code_mapping)
                 if biz_code is not None and str(biz_code) != '0':
                     latest_biz_code = biz_code
-                    latest_biz_msg = self._extract_by_path(msg_json, error_msg_mapping)
+                    latest_biz_msg = extract_by_path(msg_json, error_msg_mapping)
 
                 # 处理标准API响应格式: {"code": 0, "msg": "success", "data": {...}}
                 data = msg_json.get('data', msg_json)
 
                 # 提取当前消息的 ASR/翻译
-                asr_val = self._extract_by_path(data, asr_mapping)
-                trans_val = self._extract_by_path(data, trans_mapping)
-                is_sentence_end = self._extract_by_path(data, sentence_end_mapping)
+                asr_val = extract_by_path(data, asr_mapping)
+                trans_val = extract_by_path(data, trans_mapping)
+                is_sentence_end = extract_by_path(data, sentence_end_mapping)
 
                 if asr_val:
                     if append_mode:
@@ -248,7 +249,7 @@ class APIDriver:
                     else:
                         latest_trans = trans_val
 
-                if self._extract_by_path(data, session_end_mapping) is True:
+                if extract_by_path(data, session_end_mapping) is True:
                     is_session_end = True
             except:
                 continue
@@ -265,20 +266,3 @@ class APIDriver:
             "biz_code": latest_biz_code,
             "biz_msg": latest_biz_msg
         }
-
-    def _extract_by_path(self, data, path):
-        """
-        辅助方法：从字典/列表中根据路径提取值 (支持 a.b.c 或 a.0.b 格式)
-        """
-        if not path or not data: return None
-        try:
-            for key in path.split('.'):
-                if isinstance(data, dict):
-                    data = data.get(key)
-                elif isinstance(data, list) and key.isdigit():
-                    data = data[int(key)]
-                else:
-                    return None
-            return data
-        except:
-            return None

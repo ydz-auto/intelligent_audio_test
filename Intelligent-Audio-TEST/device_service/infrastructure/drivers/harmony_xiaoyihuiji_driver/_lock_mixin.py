@@ -2,6 +2,7 @@ import time
 import subprocess
 
 from ..utils import check_stop, By, MatchPattern
+from ..driver_constants import *
 from ._constants import LOG_DEVICE_PATH
 
 
@@ -38,16 +39,16 @@ class LockMixin:
             return
 
         subprocess.run(['hdc', '-t', device_sn, 'shell', 'power-shell', 'wakeup'], check=False)
-        time.sleep(1)
+        time.sleep(NORMAL_WAIT)
 
         try:
             subprocess.run(['hdc', '-t', device_sn, 'shell', 'uinput', '-T', '-m', '540', '1800', '540', '400', '200'],
                            check=False)
-            time.sleep(0.5)
+            time.sleep(UNLOCK_SWIPE_WAIT)
             # 点击屏幕即解锁
             driver.click((1560, 1040))
             return
         except Exception as e:
             self._log(level='WARNING', content=f"Wakeup interaction failed: {e}")
 
-        time.sleep(1)
+        time.sleep(NORMAL_WAIT)

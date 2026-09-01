@@ -6,6 +6,7 @@ from .device_config import get_device_config
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, u2, log_and_emit
+from .driver_constants import *
 import re
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ class AndroidDriver(BaseDeviceDriver):
         if driver:
             try:
                 driver.sceen_on()
-                time.sleep(0.5)
+                time.sleep(UNLOCK_SWIPE_WAIT)
                 flashlight_elem = driver(resourcId="com.android.systemui:id/flashlight_imageview")
                 if flashlight_elem.exists(timeout=1):
                     return True
@@ -120,7 +121,7 @@ class AndroidDriver(BaseDeviceDriver):
                 if self._check_stop("initialize"):
                     return False
                 driver.app_start(self.app_name, stop=True)
-                time.sleep(3)
+                time.sleep(APP_LAUNCH_WAIT)
                 # 启动应用后再次检查弹窗
                 self.close_popups(device_sn)
                 self._log(level='INFO', content=f"Android device {device_sn} initialized successfully", task_id=task_id, test_case_id=test_case_id)
@@ -140,7 +141,7 @@ class AndroidDriver(BaseDeviceDriver):
         if self._check_stop("unlock"):
             return 
         driver.screen_on()
-        time.sleep(1)
+        time.sleep(NORMAL_WAIT)
         self._log(level='DEBUG', content=f"Screen turned on for device {device_sn}")
 
         is_locked = self.is_locked(device_sn)
@@ -164,7 +165,7 @@ class AndroidDriver(BaseDeviceDriver):
             return False
         try:
             driver.swipe(0.5, 0.8, 0.5, 0.2)
-            time.sleep(1)
+            time.sleep(NORMAL_WAIT)
             self._log(level='DEBUG', content=f"Swiped up to unlock device {device_sn}")
 
             if self._check_stop("unlock"):
@@ -205,7 +206,7 @@ class AndroidDriver(BaseDeviceDriver):
                         keycode = int(digit) + 7
                         subprocess.run(['adb', '-s', device_sn, 'shell', 'input', 'keyevent', str(keycode)],
                                         check=False)
-                time.sleep(1.0)
+                time.sleep(NORMAL_WAIT)
 
             if self._check_stop("unlock"):
                 return
@@ -279,7 +280,7 @@ class AndroidDriver(BaseDeviceDriver):
                         self._log(level='DEBUG',
                                   content=f"Found popup button '{btn_text}' at {btn_center}, clicking...")
                         btn.click()
-                        time.sleep(1)
+                        time.sleep(NORMAL_WAIT)
                         # 点击后可能还有其他弹窗，继续检查
                         continue
 
@@ -297,7 +298,7 @@ class AndroidDriver(BaseDeviceDriver):
                         btn = driver(text=btn_text)
                         if btn.exists:
                             btn.click()
-                            time.sleep(1)
+                            time.sleep(NORMAL_WAIT)
                             break
 
             self._log(level='INFO', content=f"Popup check completed for Android device {device_sn}")
@@ -321,7 +322,7 @@ class AndroidDriver(BaseDeviceDriver):
             device_level = round(level * 15 / 100)
             subprocess.run(
                 ['adb', '-s', device_sn, 'shell', 'media', 'volume', '--set', str(device_level)],
-                check=False, capture_output=True, timeout=10
+                check=False, capture_output=True, timeout=ADB_TIMEOUT
             )
             self._log(level='INFO', content=f"Android 设备 {device_sn} 音量已设为 {level} (设备值: {device_level})")
             return True
@@ -341,7 +342,7 @@ class AndroidDriver(BaseDeviceDriver):
         try:
             result = subprocess.run(
                 ['adb', '-s', device_sn, 'shell', 'media', 'volume', '--show'],
-                capture_output=True, text=True, timeout=10
+                capture_output=True, text=True, timeout=ADB_TIMEOUT
             )
             if result.returncode == 0:
                 match = re.search(r'Current volume is (\d+) out of (\d+)', result.stdout)

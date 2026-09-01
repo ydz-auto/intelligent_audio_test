@@ -145,6 +145,8 @@
 </template>
 
 <script>
+import { TaskStatus, ReportStatus } from '@/shared/types/enums';
+
 export default {
   name: 'ComparisonTableComponent',
   props: {

@@ -15,6 +15,34 @@ import socket
 import logging
 import subprocess
 
+# 从端口注册表集中引入所有端口常量，避免散落硬编码
+from shared.config.service_ports import (
+    API_GATEWAY_PORT,
+    TASK_SERVICE_HTTP_PORT,
+    TASK_SERVICE_GRPC_PORT,
+    E2E_TEST_HTTP_PORT,
+    E2E_TEST_GRPC_PORT,
+    API_TEST_HTTP_PORT,
+    API_TEST_SERVICE_GRPC_PORT,
+    EVALUATION_SERVICE_HTTP_PORT,
+    EVALUATION_SERVICE_GRPC_PORT,
+    ALGORITHM_SERVICE_HTTP_PORT,
+    ALGORITHM_SERVICE_GRPC_PORT,
+    REPORT_SERVICE_HTTP_PORT,
+    REPORT_SERVICE_GRPC_PORT,
+    AUTH_SERVICE_HTTP_PORT,
+    AUTH_SERVICE_GRPC_PORT,
+    API_ADAPTER_SERVICE_HTTP_PORT,
+    API_ADAPTER_SERVICE_GRPC_PORT,
+    AUDIO_SERVICE_GRPC_PORT,
+    DEVICE_SERVICE_GRPC_PORT,
+    REDIS_PORT,
+    POSTGRESQL_PORT,
+    MINIO_PORT,
+    MINIO_CONSOLE_PORT,
+    FRONTEND_DEV_PORT,
+)
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s %(name)s: %(message)s')
 
@@ -23,22 +51,22 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 11 个后端微服务 + 前端的端口配置（与 run_all.py 保持一致）
 # 停止时只需端口即可定位进程，不需要 dir/http 等启动参数
 SERVICES_TO_STOP = [
-    {'name': 'api_gateway',        'port': 5000,   'grpc_port': None},
-    {'name': 'task_service',       'port': 5001,   'grpc_port': 50061},
-    {'name': 'e2e_test_service',   'port': 5002,   'grpc_port': 50051},
-    {'name': 'api_test_service',   'port': 5003,   'grpc_port': 50071},
-    {'name': 'evaluation_service', 'port': 5004,   'grpc_port': 50091},
-    {'name': 'algorithm_service',  'port': 5007,   'grpc_port': 50067},
-    {'name': 'report_service',     'port': 5006,   'grpc_port': 50068},
-    {'name': 'auth_service',       'port': 5009,   'grpc_port': 50069},
-    {'name': 'api_adapter_service','port': 5008,   'grpc_port': 50081},
-    {'name': 'audio_service',      'port': None,   'grpc_port': 50052},
-    {'name': 'device_service',     'port': None,   'grpc_port': 50053},
-    {'name': 'frontend',           'port': 5173,   'grpc_port': None},
+    {'name': 'api_gateway',        'port': API_GATEWAY_PORT,               'grpc_port': None},
+    {'name': 'task_service',       'port': TASK_SERVICE_HTTP_PORT,         'grpc_port': TASK_SERVICE_GRPC_PORT},
+    {'name': 'e2e_test_service',   'port': E2E_TEST_HTTP_PORT,             'grpc_port': E2E_TEST_GRPC_PORT},
+    {'name': 'api_test_service',   'port': API_TEST_HTTP_PORT,             'grpc_port': API_TEST_SERVICE_GRPC_PORT},
+    {'name': 'evaluation_service', 'port': EVALUATION_SERVICE_HTTP_PORT,   'grpc_port': EVALUATION_SERVICE_GRPC_PORT},
+    {'name': 'algorithm_service',  'port': ALGORITHM_SERVICE_HTTP_PORT,    'grpc_port': ALGORITHM_SERVICE_GRPC_PORT},
+    {'name': 'report_service',     'port': REPORT_SERVICE_HTTP_PORT,      'grpc_port': REPORT_SERVICE_GRPC_PORT},
+    {'name': 'auth_service',       'port': AUTH_SERVICE_HTTP_PORT,         'grpc_port': AUTH_SERVICE_GRPC_PORT},
+    {'name': 'api_adapter_service','port': API_ADAPTER_SERVICE_HTTP_PORT,   'grpc_port': API_ADAPTER_SERVICE_GRPC_PORT},
+    {'name': 'audio_service',      'port': None,                           'grpc_port': AUDIO_SERVICE_GRPC_PORT},
+    {'name': 'device_service',     'port': None,                           'grpc_port': DEVICE_SERVICE_GRPC_PORT},
+    {'name': 'frontend',           'port': FRONTEND_DEV_PORT,              'grpc_port': None},
 ]
 
 # 基础设施端口——明确排除，绝不触碰
-INFRA_PORTS = {6379, 5432, 9000, 9001}
+INFRA_PORTS = {REDIS_PORT, POSTGRESQL_PORT, MINIO_PORT, MINIO_CONSOLE_PORT}
 
 
 def _is_port_open(host, port):
@@ -159,9 +187,9 @@ def stop_all():
     # 确认基础设施仍在运行
     print("", flush=True)
     infra_check = [
-        ('redis', 6379),
-        ('postgres', 5432),
-        ('minio', 9000),
+        ('redis', REDIS_PORT),
+        ('postgres', POSTGRESQL_PORT),
+        ('minio', MINIO_PORT),
     ]
     for name, port in infra_check:
         if _is_port_open('localhost', port):

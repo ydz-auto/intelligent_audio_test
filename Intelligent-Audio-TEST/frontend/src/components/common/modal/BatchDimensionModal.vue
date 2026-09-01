@@ -249,6 +249,21 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useDimensions } from '../../../composables/shared/useDimensions'
+import { TestType } from '@/shared/types/enums'
+
+// === 常量定义 ===
+/** 默认权重 */
+const DEFAULT_WEIGHT = 50
+/** 默认阈值 */
+const DEFAULT_THRESHOLD = 60
+/** 最后一轮的特殊标识（-1 代表动态解析的"最后一轮"） */
+const LAST_ROUND_NUMBER = -1
+/** 轮次范围模式枚举 */
+const ROUND_MODE = {
+  ALL: 'all',
+  SPECIFIC: 'specific',
+  PER_ROUND: 'per_round',
+} as const
 
 interface Dimension {
   id: string
@@ -283,7 +298,7 @@ const props = withDefaults(defineProps<Props>(), {
   title: '批量设置评价维度',
   caseCount: 0,
   algorithmType: '',
-  testType: 'e2e',
+  testType: TestType.E2E,
   maxRoundNumbers: 3,
   selectionMode: 'all'
 })
@@ -297,7 +312,7 @@ const availableDimensions = ref<Dimension[]>([])
 // === 统一模式状态 ===
 const selectedDimensions = ref<Dimension[]>([])
 const dimConfigs = ref<Record<string, { weight: number; threshold: number }>>({})
-const roundMode = ref<'all' | 'specific' | 'per_round'>('all')
+const roundMode = ref<'all' | 'specific' | 'per_round'>(ROUND_MODE.ALL)
 const roundNumbers = ref<number[]>([])
 
 // === 逐轮设置模式状态 ===
@@ -375,7 +390,7 @@ const toggleDimension = (dim: Dimension) => {
     delete dimConfigs.value[dim.id]
   } else {
     selectedDimensions.value.push(dim)
-    dimConfigs.value[dim.id] = { weight: 50, threshold: 60 }
+    dimConfigs.value[dim.id] = { weight: DEFAULT_WEIGHT, threshold: DEFAULT_THRESHOLD }
   }
 }
 
@@ -407,7 +422,7 @@ function toggleRoundDimension(rn: number, dim: Dimension) {
     delete roundDimConfigs.value[rn][dim.id]
   } else {
     roundSelectedDimensions.value[rn].push(dim)
-    roundDimConfigs.value[rn][dim.id] = { weight: 50, threshold: 60 }
+    roundDimConfigs.value[rn][dim.id] = { weight: DEFAULT_WEIGHT, threshold: DEFAULT_THRESHOLD }
   }
 }
 
@@ -431,9 +446,8 @@ function copyFromRound(_rn: number) {
   }
 }
 
-function doCopyFromRound() {
-  const srcRn = copySourceRound.value
-  const dstRn = activeRoundTab.value
+// 复制源轮次的维度和配置到目标轮次（提取公共逻辑，消除重复）
+function copyRoundState(srcRn: number, dstRn: number) {
   ensureRoundState(srcRn)
   ensureRoundState(dstRn)
   roundSelectedDimensions.value[dstRn] = roundSelectedDimensions.value[srcRn].map(d => ({ ...d }))
@@ -441,6 +455,10 @@ function doCopyFromRound() {
   for (const key in roundDimConfigs.value[srcRn]) {
     roundDimConfigs.value[dstRn][key] = { ...roundDimConfigs.value[srcRn][key] }
   }
+}
+
+function doCopyFromRound() {
+  copyRoundState(copySourceRound.value, activeRoundTab.value)
   showCopySource.value = false
 }
 
@@ -454,23 +472,18 @@ function applyToAllRounds(srcRn: number) {
   ensureRoundState(srcRn)
   for (const rn of allRoundTabs.value) {
     if (rn === srcRn) continue
-    ensureRoundState(rn)
-    roundSelectedDimensions.value[rn] = roundSelectedDimensions.value[srcRn].map(d => ({ ...d }))
-    roundDimConfigs.value[rn] = {}
-    for (const key in roundDimConfigs.value[srcRn]) {
-      roundDimConfigs.value[rn][key] = { ...roundDimConfigs.value[srcRn][key] }
-    }
+    copyRoundState(srcRn, rn)
   }
 }
 
 // 切换到逐轮设置时初始化各轮次状态
 watch(roundMode, (newMode) => {
-  if (newMode === 'per_round') {
+  if (newMode === ROUND_MODE.PER_ROUND) {
     for (const rn of allRoundTabs.value) {
       ensureRoundState(rn)
     }
   }
-  if (newMode !== 'per_round') {
+  if (newMode !== ROUND_MODE.PER_ROUND) {
     showCopySource.value = false
   }
 })
@@ -486,7 +499,7 @@ const toggleMultiDimension = (dim: Dimension) => {
     delete multiDimConfigs.value[dim.id]
   } else {
     multiSelectedDimensions.value.push(dim)
-    multiDimConfigs.value[dim.id] = { weight: 50, threshold: 60 }
+    multiDimConfigs.value[dim.id] = { weight: DEFAULT_WEIGHT, threshold: DEFAULT_THRESHOLD }
   }
 }
 
@@ -496,63 +509,62 @@ const removeMultiDimension = (index: number) => {
   multiSelectedDimensions.value.splice(index, 1)
 }
 
+// 将后端维度对象转换为前端 Dimension 接口（提取公共逻辑，消除两处重复映射）
+function toDimension(d: any): Dimension {
+  return {
+    id: d.id?.toString() || d.dimension_id?.toString() || '',
+    name: d.name || d.dimension_name || '',
+    description: d.description
+  }
+}
+
 async function loadDimensions() {
   try {
-    if (props.algorithmType) {
-      const dims = await fetchDimensionsByAlgorithmType(props.algorithmType)
-      availableDimensions.value = dims.map((d: any) => ({
-        id: d.id?.toString() || d.dimension_id?.toString() || '',
-        name: d.name || d.dimension_name || '',
-        description: d.description
-      }))
-    } else {
-      const dims = await fetchAllDimensions({ forceRefresh: true })
-      availableDimensions.value = dims.map((d: any) => ({
-        id: d.id?.toString() || d.dimension_id?.toString() || '',
-        name: d.name || d.dimension_name || '',
-        description: d.description
-      }))
-    }
+    const dims = props.algorithmType
+      ? await fetchDimensionsByAlgorithmType(props.algorithmType)
+      : await fetchAllDimensions({ forceRefresh: true })
+    availableDimensions.value = dims.map(toDimension)
   } catch (error) {
     console.error('加载评价维度失败:', error)
     availableDimensions.value = []
   }
 }
 
-function handleConfirm() {
-  const multiDimensions = multiSelectedDimensions.value.map(dim => ({
+// 将维度数组转换为带权重和阈值的配置对象（提取公共逻辑，消除三处重复）
+function buildDimensionConfigs(
+  dims: Dimension[],
+  configs: Record<string, { weight: number; threshold: number }>
+): Array<{id: string; name: string; weight: number; threshold: number}> {
+  return dims.map(dim => ({
     id: dim.id,
     name: dim.name,
-    weight: multiDimConfigs.value[dim.id]?.weight ?? 50,
-    threshold: multiDimConfigs.value[dim.id]?.threshold ?? 60
+    weight: configs[dim.id]?.weight ?? DEFAULT_WEIGHT,
+    threshold: configs[dim.id]?.threshold ?? DEFAULT_THRESHOLD
   }))
+}
 
-  if (roundMode.value === 'per_round') {
+function handleConfirm() {
+  const multiDimensions = buildDimensionConfigs(multiSelectedDimensions.value, multiDimConfigs.value)
+
+  if (roundMode.value === ROUND_MODE.PER_ROUND) {
     const roundDimensions: Record<number, Array<{id: string; name: string; weight: number; threshold: number}>> = {}
     for (const rn of allRoundTabs.value) {
       ensureRoundState(rn)
-      roundDimensions[rn] = roundSelectedDimensions.value[rn].map(dim => ({
-        id: dim.id,
-        name: dim.name,
-        weight: roundDimConfigs.value[rn][dim.id]?.weight ?? 50,
-        threshold: roundDimConfigs.value[rn][dim.id]?.threshold ?? 60
-      }))
+      roundDimensions[rn] = buildDimensionConfigs(
+        roundSelectedDimensions.value[rn],
+        roundDimConfigs.value[rn]
+      )
     }
     emit('confirm', {
       dimensions: [],
       testType: props.testType,
-      roundMode: 'per_round',
+      roundMode: ROUND_MODE.PER_ROUND,
       roundNumbers: [],
       roundDimensions,
       multiDimensions
     })
   } else {
-    const dimensions = selectedDimensions.value.map(dim => ({
-      id: dim.id,
-      name: dim.name,
-      weight: dimConfigs.value[dim.id]?.weight ?? 50,
-      threshold: dimConfigs.value[dim.id]?.threshold ?? 60
-    }))
+    const dimensions = buildDimensionConfigs(selectedDimensions.value, dimConfigs.value)
     emit('confirm', {
       dimensions,
       testType: props.testType,

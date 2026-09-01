@@ -9,6 +9,36 @@ import {
   APIHealthResultModalData
 } from '../../shared/types';
 
+// === 常量定义 ===
+/** 新建分类的特殊标识 */
+const NEW_CATEGORY_FLAG = '__new__';
+/** 维度类型：主维度 */
+const DIMENSION_TYPE_MAIN = 'main';
+/** 维度类型：子维度 */
+const DIMENSION_TYPE_SUB = 'sub';
+/** 默认分类图标 */
+const DEFAULT_CATEGORY_ICON = 'fas fa-tachometer-alt';
+/** 默认 LLM 最大 Token 数 */
+const DEFAULT_LLM_MAX_TOKENS = 1024;
+/** 默认 LLM 温度 */
+const DEFAULT_LLM_TEMPERATURE = 0.7;
+/** 默认 API 端点最大并发数 */
+const DEFAULT_MAX_PROCESS = 5;
+/** 默认 API 端点超时（秒） */
+const DEFAULT_MAX_TIMEOUT = 30;
+/** 默认 API 端点最大音频时长（秒） */
+const DEFAULT_MAX_AUDIO_DURATION = 60;
+/** 默认 API 超时（毫秒） */
+const DEFAULT_API_TIMEOUT = 30000;
+/** 编辑模态框默认 API 超时（毫秒） */
+const DEFAULT_EDITOR_API_TIMEOUT = 5000;
+/** 默认分页大小 */
+const DEFAULT_PAGE_SIZE = 10;
+/** 保存操作类型：新增 */
+const SAVE_TYPE_ADD = 'add';
+/** 保存操作类型：编辑 */
+const SAVE_TYPE_EDIT = 'edit';
+
 /**
  * 扩展的 API 设置（编辑模态框使用）
  *
@@ -53,7 +83,7 @@ export function useEvaluationDimensions() {
   const selectedDimensions = ref<(number | string)[]>([]);
 
   const currentPage = ref(1);
-  const pageSize = ref(10);
+  const pageSize = ref(DEFAULT_PAGE_SIZE);
   const totalItems = ref(0);
   const totalPages = ref(0);
 
@@ -69,7 +99,7 @@ export function useEvaluationDimensions() {
   const dimensionTemplate = {
     name: '',
     description: '',
-    apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 }],
+    apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: DEFAULT_MAX_PROCESS, maxTimeout: DEFAULT_MAX_TIMEOUT, maxAudioDuration: DEFAULT_MAX_AUDIO_DURATION }],
     apiUrl: '',
     scoreUnit: '',
     apiSettings: {
@@ -85,7 +115,7 @@ export function useEvaluationDimensions() {
           }
         ]
       },
-      timeout: 30000
+      timeout: DEFAULT_API_TIMEOUT
     },
     type: 'auto',
     categoryId: undefined,
@@ -114,15 +144,15 @@ export function useEvaluationDimensions() {
     llmJudgeConfig: {
       model: '',
       promptTemplate: '',
-      maxTokens: 1024,
-      temperature: 0.7
+      maxTokens: DEFAULT_LLM_MAX_TOKENS,
+      temperature: DEFAULT_LLM_TEMPERATURE
     }
   };
 
   const newDimension = ref<Partial<EvaluationDimension>>({
     name: '',
     description: '',
-    apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 }],
+    apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: DEFAULT_MAX_PROCESS, maxTimeout: DEFAULT_MAX_TIMEOUT, maxAudioDuration: DEFAULT_MAX_AUDIO_DURATION }],
     apiUrl: '',
     scoreUnit: '',
     apiSettings: {
@@ -138,7 +168,7 @@ export function useEvaluationDimensions() {
           }
         ]
       },
-      timeout: 30000
+      timeout: DEFAULT_API_TIMEOUT
     },
     type: 'auto',
     categoryId: undefined,
@@ -158,8 +188,8 @@ export function useEvaluationDimensions() {
     llmJudgeConfig: {
       model: '',
       promptTemplate: '',
-      maxTokens: 1024,
-      temperature: 0.7
+      maxTokens: DEFAULT_LLM_MAX_TOKENS,
+      temperature: DEFAULT_LLM_TEMPERATURE
     }
   } as any);
 
@@ -167,7 +197,7 @@ export function useEvaluationDimensions() {
     id: '',
     url: '',
     method: 'POST',
-    timeout: 5000,
+    timeout: DEFAULT_EDITOR_API_TIMEOUT,
     headers: '',
     body: '',
     responseMapping: ''
@@ -200,8 +230,8 @@ export function useEvaluationDimensions() {
   // 层级维度：主维度在前，子维度紧跟其父维度
   const hierarchicalDimensions = computed(() => {
     const filtered = filteredDimensions.value;
-    const mainDims = filtered.filter(d => !d.parent_dimension_id && d.dimension_type !== 'sub');
-    const subDims = filtered.filter(d => d.parent_dimension_id || d.dimension_type === 'sub');
+    const mainDims = filtered.filter(d => !d.parent_dimension_id && d.dimension_type !== DIMENSION_TYPE_SUB);
+    const subDims = filtered.filter(d => d.parent_dimension_id || d.dimension_type === DIMENSION_TYPE_SUB);
 
     const result: any[] = [];
     const placedIds = new Set<number | string>();
@@ -229,6 +259,15 @@ export function useEvaluationDimensions() {
     return result;
   });
 
+  // 条件显示常量：仅主维度显示
+  const CONDITION_MAIN = { field: 'dimensionType', value: DIMENSION_TYPE_MAIN };
+  // 条件显示常量：仅子维度显示
+  const CONDITION_SUB = { field: 'dimensionType', value: DIMENSION_TYPE_SUB };
+  // 条件显示常量：新建分类时显示
+  const CONDITION_NEW_CATEGORY = { field: 'categoryId', value: NEW_CATEGORY_FLAG };
+  // 条件显示常量：LLM Judge 类型时显示
+  const CONDITION_LLM_JUDGE = { field: 'resultType', value: 'llm_judge' };
+
   const evaluationFields = computed(() => [
     { key: 'id', type: 'hidden' },
     { key: 'name', label: '维度名称', type: 'text', required: true, placeholder: '请输入维度名称', group: '基本信息' },
@@ -239,30 +278,30 @@ export function useEvaluationDimensions() {
     ], group: '基本信息' },
     { key: 'categoryId', label: '所属分类', type: 'select', required: false, options: [
       { value: '', label: '请选择分类' },
-      { value: '__new__', label: '+ 新建分类' },
+      { value: NEW_CATEGORY_FLAG, label: '+ 新建分类' },
       ...categories.value.map(c => ({ value: c.id, label: c.name }))
     ], group: '基本信息' },
-    { key: 'newCategoryName', label: '新分类名称', type: 'text', required: false, placeholder: '输入新分类名称', conditional: { field: 'categoryId', value: '__new__' }, group: '基本信息' },
+    { key: 'newCategoryName', label: '新分类名称', type: 'text', required: false, placeholder: '输入新分类名称', conditional: CONDITION_NEW_CATEGORY, group: '基本信息' },
     { key: 'dimensionType', label: '维度类型', type: 'select', required: true, options: [
-      { value: 'main', label: '主维度' },
-      { value: 'sub', label: '子维度' }
-    ], defaultValue: 'main', group: '层级配置' },
+      { value: DIMENSION_TYPE_MAIN, label: '主维度' },
+      { value: DIMENSION_TYPE_SUB, label: '子维度' }
+    ], defaultValue: DIMENSION_TYPE_MAIN, group: '层级配置' },
     { key: 'parentDimensionId', label: '所属主维度', type: 'select', required: false, options: [
       { value: '', label: '请选择所属主维度' },
-      ...dimensions.value.filter(d => d.dimension_type === 'main' || !d.dimension_type).map(d => ({
+      ...dimensions.value.filter(d => d.dimension_type === DIMENSION_TYPE_MAIN || !d.dimension_type).map(d => ({
         value: d.id,
         label: d.name,
         taskTypeCode: d.task_type_code,
         apiSettings: d.api_settings,
         requiredInputs: (d as any).required_inputs || []
       }))
-    ], conditional: { field: 'dimensionType', value: 'sub' }, group: '层级配置' },
-    { key: 'parentApiInfo', label: '继承API配置', type: 'info', conditional: { field: 'dimensionType', value: 'sub' },
+    ], conditional: CONDITION_SUB, group: '层级配置' },
+    { key: 'parentApiInfo', label: '继承API配置', type: 'info', conditional: CONDITION_SUB,
       helpText: '子维度将自动使用父维度的API配置，无需手动配置', group: '层级配置' },
     { key: 'taskTypeCode', label: '评估任务关键字', type: 'text', placeholder: '如: wer, asr, translation 等', helpText: '调用API时使用的任务关键字', group: '层级配置',
-      conditional: { field: 'dimensionType', value: 'main' } },
+      conditional: CONDITION_MAIN },
     { key: 'apiUrl', label: 'Master入口URL', type: 'text', required: false, placeholder: '请输入Master调度节点URL (分布式架构必填)', group: 'API配置',
-      conditional: { field: 'dimensionType', value: 'main' } },
+      conditional: CONDITION_MAIN },
     { key: 'scoreUnit', label: '分数单位', type: 'text', required: false, placeholder: '如: %, 分, 秒等', group: '结果配置' },
     { key: 'resultType', label: '结果类型', type: 'select', required: true, options: [
       { value: 1, label: '数值 (1)' },
@@ -271,12 +310,12 @@ export function useEvaluationDimensions() {
       { value: 'llm_judge', label: 'LLM Judge' }
     ], group: '结果配置' },
     { key: 'llmJudgeConfig', label: 'LLM Judge 配置', type: 'object', required: false, group: '结果配置',
-      conditional: { field: 'resultType', value: 'llm_judge' },
+      conditional: CONDITION_LLM_JUDGE,
       fields: [
         { key: 'model', label: '模型', type: 'text', required: true, placeholder: '如: gpt-4, qwen-max' },
         { key: 'promptTemplate', label: 'Prompt 模板', type: 'textarea', required: true, placeholder: '输入评估 prompt 模板，可使用 {{asr_result}} {{asr_ref}} 等变量' },
-        { key: 'maxTokens', label: '最大 Token 数', type: 'number', required: false, min: 1, max: 8192, default: 1024 },
-        { key: 'temperature', label: 'Temperature', type: 'number', required: false, min: 0, max: 2, step: 0.1, default: 0.7 }
+        { key: 'maxTokens', label: '最大 Token 数', type: 'number', required: false, min: 1, max: 8192, default: DEFAULT_LLM_MAX_TOKENS },
+        { key: 'temperature', label: 'Temperature', type: 'number', required: false, min: 0, max: 2, step: 0.1, default: DEFAULT_LLM_TEMPERATURE }
       ]
     },
     { key: 'resultMin', label: '结果最小值', type: 'number', required: true, group: '结果配置' },
@@ -286,19 +325,19 @@ export function useEvaluationDimensions() {
     { key: 'estimatedExecTime', label: '预计执行时间(s)', type: 'number', required: true, min: 1, group: '结果配置' },
     { key: 'rule', label: '评分规则', type: 'ruleEditor', required: false, fullWidth: true, group: '结果配置' },
     { key: 'apiSettings', label: 'API设置', type: 'apiSettingsEditor', required: false, fullWidth: true, group: 'API配置',
-      conditional: { field: 'dimensionType', value: 'main' } },
+      conditional: CONDITION_MAIN },
     { key: 'requiredInputs', label: '所需输入配置', type: 'requiredInputs', required: false, fullWidth: true, group: 'API配置',
-      conditional: { field: 'dimensionType', value: 'main' } },
+      conditional: CONDITION_MAIN },
     { key: 'outputFields', label: '输出字段配置', type: 'outputFields', required: false, fullWidth: true, group: 'API配置',
-      conditional: { field: 'dimensionType', value: 'main' } },
+      conditional: CONDITION_MAIN },
     { key: 'statisticMethod', label: '统计方式', type: 'select', required: false, default: 'average', group: 'API配置',
       options: [
         { value: 'average', label: '简单平均' },
         { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' }
       ],
-      conditional: { field: 'dimensionType', value: 'main' } },
-    { key: 'apiEndpoints', label: 'API端点配置', type: 'array', arrayItemType: 'apiEndpoint', required: false, fullWidth: true, arrayItemTemplate: { url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 }, group: 'API配置',
-      conditional: { field: 'dimensionType', value: 'main' } },
+      conditional: CONDITION_MAIN },
+    { key: 'apiEndpoints', label: 'API端点配置', type: 'array', arrayItemType: 'apiEndpoint', required: false, fullWidth: true, arrayItemTemplate: { url: '', name: '', priority: 1, maxProcess: DEFAULT_MAX_PROCESS, maxTimeout: DEFAULT_MAX_TIMEOUT, maxAudioDuration: DEFAULT_MAX_AUDIO_DURATION }, group: 'API配置',
+      conditional: CONDITION_MAIN },
     { key: 'associatedAlgorithms', label: '关联算法', type: 'multi-select-tags', required: false, options: algorithms.value.length > 0 ? algorithms.value : [
       { value: 'asr', label: 'ASR语音识别' },
       { value: 'translation', label: '翻译' },
@@ -306,7 +345,7 @@ export function useEvaluationDimensions() {
       { value: 'speaker_recognition', label: '说话人识别' },
       { value: 'noise_reduction', label: '降噪' },
       { value: 'vad', label: '语音活动检测' }
-    ], placeholder: '选择关联的算法类型', group: '关联算法', conditional: { field: 'dimensionType', value: 'main' } },
+    ], placeholder: '选择关联的算法类型', group: '关联算法', conditional: CONDITION_MAIN },
     { key: 'status', label: '状态', type: 'switch', default: true, group: '基础信息' }
   ]);
 
@@ -455,289 +494,272 @@ export function useEvaluationDimensions() {
   }
 
   // ========== 维度 CRUD ==========
-  async function saveDimension(payload: any, type: 'add' | 'edit' = 'add') {
-    console.log(`[Evaluation] saveDimension called, type: ${type}`);
-    console.log('[Evaluation] Received payload keys:', Object.keys(payload));
-    console.log('[Evaluation] Received payload:', JSON.stringify(payload, null, 2));
 
-    const data = payload.data !== undefined ? payload.data : payload;
-
-    console.log('[Evaluation] Extracted data keys:', Object.keys(data));
-    console.log('[Evaluation] Extracted data:', JSON.stringify(data, null, 2));
-
-    loading.value = true;
-    error.value = null;
-    try {
-      const dimensionData = { ...data };
-      console.log('[Evaluation] dimensionData after spread:', JSON.stringify(dimensionData, null, 2));
-
-      if (typeof dimensionData.rule === 'object' && dimensionData.rule !== null) {
-        console.log('[Evaluation] Converting rule object to JSON string');
-        dimensionData.rule = JSON.stringify(dimensionData.rule);
-      } else if (typeof dimensionData.rule === 'string' && dimensionData.rule.trim()) {
-        try {
-          console.log('[Evaluation] Parsing rule JSON');
-          dimensionData.rule = JSON.parse(dimensionData.rule);
-          dimensionData.rule = JSON.stringify(dimensionData.rule);
-        } catch (e) {
-          console.error('[Evaluation] Rule JSON parse failed:', e);
-          throw new Error('评分规则格式不正确，请检查 JSON 格式');
-        }
-      } else if (typeof dimensionData.rule === 'string') {
-        delete dimensionData.rule;
+  // 处理 rule 字段：对象转 JSON 字符串，字符串解析后再序列化，空字符串删除
+  function normalizeRule(dimensionData: any) {
+    if (typeof dimensionData.rule === 'object' && dimensionData.rule !== null) {
+      dimensionData.rule = JSON.stringify(dimensionData.rule);
+    } else if (typeof dimensionData.rule === 'string' && dimensionData.rule.trim()) {
+      try {
+        dimensionData.rule = JSON.stringify(JSON.parse(dimensionData.rule));
+      } catch (e) {
+        throw new Error('评分规则格式不正确，请检查 JSON 格式');
       }
+    } else if (typeof dimensionData.rule === 'string') {
+      delete dimensionData.rule;
+    }
+  }
 
-      if (dimensionData.requiredInputs !== undefined) {
-        if (typeof dimensionData.requiredInputs === 'string' && dimensionData.requiredInputs.trim()) {
-          try {
-            console.log('[Evaluation] Parsing required_inputs JSON');
-            const parsed = JSON.parse(dimensionData.requiredInputs);
-            dimensionData.requiredInputs = parsed;
-          } catch (e) {
-            console.error('[Evaluation] requiredInputs JSON parse failed:', e);
-            throw new Error('所需输入配置格式不正确，请检查 JSON 格式');
-          }
-        } else if (Array.isArray(dimensionData.requiredInputs)) {
-          dimensionData.requiredInputs = dimensionData.requiredInputs;
+  // 将 requiredInputs 同步到 apiSettings.bodyTemplate.rounds[0]
+  function syncRequiredInputsToBodyTemplate(dimensionData: any) {
+    if (!Array.isArray(dimensionData.requiredInputs) || dimensionData.requiredInputs.length === 0) return;
+    if (!dimensionData.apiSettings) dimensionData.apiSettings = {};
+    if (!dimensionData.apiSettings.bodyTemplate) dimensionData.apiSettings.bodyTemplate = {};
+    // 确保 bodyTemplate 有 rounds 结构
+    if (!dimensionData.apiSettings.bodyTemplate.rounds) {
+      dimensionData.apiSettings.bodyTemplate.rounds = [{}];
+    }
+    const roundTpl = dimensionData.apiSettings.bodyTemplate.rounds[0];
 
-          if (Array.isArray(dimensionData.requiredInputs) && dimensionData.requiredInputs.length > 0) {
-            if (!dimensionData.apiSettings) {
-              dimensionData.apiSettings = {};
-            }
-            if (!dimensionData.apiSettings.bodyTemplate) {
-              dimensionData.apiSettings.bodyTemplate = {};
-            }
-            // 确保 bodyTemplate 有 rounds 结构
-            if (!dimensionData.apiSettings.bodyTemplate.rounds) {
-              dimensionData.apiSettings.bodyTemplate.rounds = [{}];
-            }
-            const roundTpl = dimensionData.apiSettings.bodyTemplate.rounds[0];
+    // 添加 requiredInputs 中缺失的 key
+    dimensionData.requiredInputs.forEach((input: any) => {
+      const inputKey = input.param_code || input.key;
+      if (inputKey && !roundTpl[inputKey]) {
+        roundTpl[inputKey] = `{{${inputKey}}}`;
+      }
+    });
+    // 清理 rounds 内不在 requiredInputs 中的 key
+    Object.keys(roundTpl).forEach(key => {
+      const exists = dimensionData.requiredInputs.some((input: any) => {
+        const inputKey = input.param_code || input.key;
+        return inputKey === key;
+      });
+      if (!exists) delete roundTpl[key];
+    });
+  }
 
-            dimensionData.requiredInputs.forEach((input: any) => {
-              const inputKey = input.param_code || input.key;
-              if (inputKey && !roundTpl[inputKey]) {
-                roundTpl[inputKey] = `{{${inputKey}}}`;
-              }
-            });
+  // 处理 requiredInputs：字符串解析为数组、数组同步 bodyTemplate、其他删除
+  function normalizeRequiredInputs(dimensionData: any) {
+    if (dimensionData.requiredInputs === undefined) return;
+    if (typeof dimensionData.requiredInputs === 'string' && dimensionData.requiredInputs.trim()) {
+      try {
+        dimensionData.requiredInputs = JSON.parse(dimensionData.requiredInputs);
+      } catch (e) {
+        throw new Error('所需输入配置格式不正确，请检查 JSON 格式');
+      }
+    } else if (Array.isArray(dimensionData.requiredInputs)) {
+      syncRequiredInputsToBodyTemplate(dimensionData);
+    } else {
+      delete dimensionData.requiredInputs;
+    }
+  }
 
-            // 清理 rounds 内不在 requiredInputs 中的 key
-            Object.keys(roundTpl).forEach(key => {
-              const exists = dimensionData.requiredInputs.some((input: any) => {
-                const inputKey = input.param_code || input.key;
-                return inputKey === key;
-              });
-              if (!exists) {
-                delete roundTpl[key];
-              }
-            });
-          }
+  // 处理 outputFields：字符串解析为数组、非数组删除
+  function normalizeOutputFields(dimensionData: any) {
+    if (dimensionData.outputFields === undefined) return;
+    if (typeof dimensionData.outputFields === 'string' && dimensionData.outputFields.trim()) {
+      try {
+        dimensionData.outputFields = JSON.parse(dimensionData.outputFields);
+      } catch (e) {
+        throw new Error('输出字段配置格式不正确，请检查 JSON 格式');
+      }
+    } else if (!Array.isArray(dimensionData.outputFields)) {
+      delete dimensionData.outputFields;
+    }
+  }
+
+  // 处理 apiSettings：字符串解析为对象、对象保留、其他删除
+  function normalizeApiSettings(dimensionData: any) {
+    if (dimensionData.apiSettings === undefined) return;
+    if (typeof dimensionData.apiSettings === 'string' && dimensionData.apiSettings.trim()) {
+      try {
+        dimensionData.apiSettings = JSON.parse(dimensionData.apiSettings);
+      } catch (e) {
+        throw new Error('API设置格式不正确，请检查 JSON 格式');
+      }
+    } else if (typeof dimensionData.apiSettings === 'object' && dimensionData.apiSettings !== null) {
+      // 对象类型直接保留
+    } else {
+      delete dimensionData.apiSettings;
+    }
+  }
+
+  // 处理 categoryId：空值转 null、新建分类则创建并回填
+  async function resolveCategory(dimensionData: any) {
+    if (dimensionData.categoryId === '' || dimensionData.categoryId === undefined) {
+      dimensionData.categoryId = null;
+    }
+    if (dimensionData.categoryId === NEW_CATEGORY_FLAG) {
+      if (dimensionData.newCategoryName && dimensionData.newCategoryName.trim()) {
+        const newCatName = dimensionData.newCategoryName.trim();
+        const existingCat = categories.value.find(c => c.name === newCatName);
+        if (existingCat) {
+          dimensionData.categoryId = existingCat.id;
         } else {
-          delete dimensionData.requiredInputs;
+          const newCat = await evaluationApi.createCategory({
+            name: newCatName, description: '', icon: DEFAULT_CATEGORY_ICON
+          });
+          dimensionData.categoryId = newCat.id;
+          categories.value.push({ id: newCat.id, name: newCat.name, description: '', icon: DEFAULT_CATEGORY_ICON });
         }
-      }
-
-      // 处理 outputFields
-      if (dimensionData.outputFields !== undefined) {
-        if (typeof dimensionData.outputFields === 'string' && dimensionData.outputFields.trim()) {
-          try {
-            dimensionData.outputFields = JSON.parse(dimensionData.outputFields);
-          } catch (e) {
-            throw new Error('输出字段配置格式不正确，请检查 JSON 格式');
-          }
-        } else if (!Array.isArray(dimensionData.outputFields)) {
-          delete dimensionData.outputFields;
-        }
-      }
-
-      if (dimensionData.apiSettings !== undefined) {
-        if (typeof dimensionData.apiSettings === 'string' && dimensionData.apiSettings.trim()) {
-          try {
-            console.log('[Evaluation] Parsing apiSettings JSON');
-            const parsed = JSON.parse(dimensionData.apiSettings);
-            dimensionData.apiSettings = parsed;
-          } catch (e) {
-            console.error('[Evaluation] apiSettings JSON parse failed:', e);
-            throw new Error('API设置格式不正确，请检查 JSON 格式');
-          }
-        } else if (typeof dimensionData.apiSettings === 'object' && dimensionData.apiSettings !== null) {
-          dimensionData.apiSettings = dimensionData.apiSettings;
-        } else {
-          delete dimensionData.apiSettings;
-        }
-      }
-
-      // apiUrl 现在是字符串类型，不需要 JSON 解析
-      if (dimensionData.apiUrl !== undefined && typeof dimensionData.apiUrl === 'string') {
-        // 只需要修剪空格
-        dimensionData.apiUrl = dimensionData.apiUrl.trim();
-      }
-
-      // 处理categoryId空字符串，转换为null
-      if (dimensionData.categoryId === '' || dimensionData.categoryId === undefined) {
+      } else {
         dimensionData.categoryId = null;
       }
+      delete dimensionData.newCategoryName;
+    }
+  }
 
-      // 处理选择新建分类
-      if (dimensionData.categoryId === '__new__') {
-        if (dimensionData.newCategoryName && dimensionData.newCategoryName.trim()) {
-          const newCatName = dimensionData.newCategoryName.trim();
-          const existingCat = categories.value.find(c => c.name === newCatName);
-          if (existingCat) {
-            dimensionData.categoryId = existingCat.id;
-          } else {
-            const newCat = await evaluationApi.createCategory({
-              name: newCatName,
-              description: '',
-              icon: 'fas fa-tachometer-alt'
-            });
-            dimensionData.categoryId = newCat.id;
-            categories.value.push({ id: newCat.id, name: newCat.name, description: '', icon: 'fas fa-tachometer-alt' });
-          }
-        } else {
-          dimensionData.categoryId = null;
-        }
-        delete dimensionData.newCategoryName;
-      }
-
-      // 处理子维度自动填充主维度的解析类型
-      if (dimensionData.dimensionType === 'sub' && dimensionData.parentDimensionId && !dimensionData.taskTypeCode) {
-        const parentDim = dimensions.value.find(d => d.id === dimensionData.parentDimensionId);
-        if (parentDim && parentDim.task_type_code) {
-          dimensionData.taskTypeCode = parentDim.task_type_code;
-        }
-      }
-
-      // 处理子维度继承父维度的关联算法
-      if (dimensionData.dimensionType === 'sub' && dimensionData.parentDimensionId) {
-        if (!dimensionData.associatedAlgorithms || dimensionData.associatedAlgorithms.length === 0) {
-          const parentDim = dimensions.value.find(d => d.id === dimensionData.parentDimensionId);
-          if (parentDim && parentDim.associated_algorithms && parentDim.associated_algorithms.length > 0) {
-            const parentAlgorithms = parentDim.associated_algorithms.map((item: any) =>
-              typeof item === 'string' ? item : item.algorithm_type
-            );
-            dimensionData.associatedAlgorithms = parentAlgorithms;
-          }
-        }
-      }
-
-      // 处理 parentDimensionId 空字符串，转换为 null
+  // 子维度继承父维度配置：taskTypeCode、associatedAlgorithms、parentDimensionId 空值处理
+  function inheritFromParentDimension(dimensionData: any) {
+    if (dimensionData.dimensionType !== DIMENSION_TYPE_SUB) {
+      // 非 sub 类型，parentDimensionId 空值转 null
       if (dimensionData.parentDimensionId === '' || dimensionData.parentDimensionId === undefined) {
         dimensionData.parentDimensionId = null;
       }
+      return;
+    }
+    const parentDim = dimensions.value.find(d => d.id === dimensionData.parentDimensionId);
+    // 自动填充主维度的 taskTypeCode
+    if (dimensionData.parentDimensionId && !dimensionData.taskTypeCode && parentDim?.task_type_code) {
+      dimensionData.taskTypeCode = parentDim.task_type_code;
+    }
+    // 继承父维度的关联算法
+    if (!dimensionData.associatedAlgorithms || dimensionData.associatedAlgorithms.length === 0) {
+      if (parentDim?.associated_algorithms && parentDim.associated_algorithms.length > 0) {
+        dimensionData.associatedAlgorithms = parentDim.associated_algorithms.map((item: any) =>
+          typeof item === 'string' ? item : item.algorithm_type
+        );
+      }
+    }
+    // parentDimensionId 空值转 null
+    if (dimensionData.parentDimensionId === '' || dimensionData.parentDimensionId === undefined) {
+      dimensionData.parentDimensionId = null;
+    }
+  }
 
-      if (Array.isArray(dimensionData.apiEndpoints)) {
-        console.log('[Evaluation] Normalizing apiEndpoints');
-        dimensionData.apiEndpoints = dimensionData.apiEndpoints.map((ep: any) => ({
-          ...ep,
-          url: ep.url || ep.endpoint || '',
-          maxProcess: ep.maxProcess || 5,
-          maxTimeout: ep.maxTimeout || 30,
-          maxAudioDuration: ep.maxAudioDuration || 60
+  // 规范化 apiEndpoints：补全默认字段
+  function normalizeApiEndpoints(dimensionData: any) {
+    if (!Array.isArray(dimensionData.apiEndpoints)) return;
+    dimensionData.apiEndpoints = dimensionData.apiEndpoints.map((ep: any) => ({
+      ...ep,
+      url: ep.url || ep.endpoint || '',
+      maxProcess: ep.maxProcess || DEFAULT_MAX_PROCESS,
+      maxTimeout: ep.maxTimeout || DEFAULT_MAX_TIMEOUT,
+      maxAudioDuration: ep.maxAudioDuration || DEFAULT_MAX_AUDIO_DURATION
+    }));
+  }
+
+  // 将 associatedAlgorithms 字符串数组转换为 AlgorithmAssociation 格式
+  function normalizeAssociatedAlgorithms(dimensionData: any) {
+    if (dimensionData.associatedAlgorithms === undefined) {
+      dimensionData.associatedAlgorithms = [];
+      return;
+    }
+    if (Array.isArray(dimensionData.associatedAlgorithms)) {
+      // 如果是字符串数组，转换为 AlgorithmAssociation 格式
+      if (dimensionData.associatedAlgorithms.length > 0 && typeof dimensionData.associatedAlgorithms[0] === 'string') {
+        dimensionData.associatedAlgorithms = dimensionData.associatedAlgorithms.map((algoType: string) => ({
+          algorithmType: algoType, isDefault: false, weight: 1.0
         }));
       }
+    } else {
+      dimensionData.associatedAlgorithms = [];
+    }
+  }
 
-      // 处理 associatedAlgorithms - 将字符串数组转换为 AlgorithmAssociation 数组
-      if (dimensionData.associatedAlgorithms !== undefined) {
-        if (Array.isArray(dimensionData.associatedAlgorithms)) {
-          // 如果是字符串数组，转换为 AlgorithmAssociation 格式
-          if (dimensionData.associatedAlgorithms.length > 0 && typeof dimensionData.associatedAlgorithms[0] === 'string') {
-            dimensionData.associatedAlgorithms = dimensionData.associatedAlgorithms.map((algoType: string) => ({
-              algorithmType: algoType,
-              isDefault: false,
-              weight: 1.0
-            }));
-          }
-        } else {
-          dimensionData.associatedAlgorithms = [];
+  // 处理 llmJudgeConfig：对象规范化、非对象删除
+  function normalizeLlmJudgeConfig(dimensionData: any) {
+    if (dimensionData.llmJudgeConfig === undefined) return;
+    if (typeof dimensionData.llmJudgeConfig === 'object' && dimensionData.llmJudgeConfig !== null) {
+      dimensionData.llmJudgeConfig = {
+        model: dimensionData.llmJudgeConfig.model || '',
+        promptTemplate: dimensionData.llmJudgeConfig.promptTemplate || '',
+        maxTokens: dimensionData.llmJudgeConfig.maxTokens || DEFAULT_LLM_MAX_TOKENS,
+        temperature: dimensionData.llmJudgeConfig.temperature ?? DEFAULT_LLM_TEMPERATURE
+      };
+    } else {
+      delete dimensionData.llmJudgeConfig;
+    }
+  }
+
+  // 校验必填字段，返回缺失字段标签列表
+  function validateRequiredFields(dimensionData: any): string[] {
+    const missingFields: string[] = [];
+    evaluationFields.value.forEach(field => {
+      if (!field.required) return;
+      const value = dimensionData[field.key];
+      if (field.type === 'textarea') {
+        // 对于JSON格式的textarea字段，不在这里验证JSON格式，而是在后面专门处理
+        if (value === undefined || value === null || value === '') {
+          missingFields.push(field.label);
         }
-      } else {
-        dimensionData.associatedAlgorithms = [];
-      }
-
-      // 处理 llmJudgeConfig
-      if (dimensionData.llmJudgeConfig !== undefined) {
-        if (typeof dimensionData.llmJudgeConfig === 'object' && dimensionData.llmJudgeConfig !== null) {
-          // 确保包含必要的字段
-          dimensionData.llmJudgeConfig = {
-            model: dimensionData.llmJudgeConfig.model || '',
-            promptTemplate: dimensionData.llmJudgeConfig.promptTemplate || '',
-            maxTokens: dimensionData.llmJudgeConfig.maxTokens || 1024,
-            temperature: dimensionData.llmJudgeConfig.temperature ?? 0.7
-          };
-        } else {
-          delete dimensionData.llmJudgeConfig;
-        }
-      }
-
-      console.log('[Evaluation] Validating required fields');
-      const missingFields: string[] = [];
-
-      evaluationFields.value.forEach(field => {
-        if (field.required) {
-          const value = dimensionData[field.key];
-
-          if (field.type === 'textarea') {
-            // 对于JSON格式的textarea字段，不在这里验证JSON格式，而是在后面专门处理
-            if (value === undefined || value === null || value === '') {
-              missingFields.push(field.label);
-            }
-          } else if (value === undefined || value === null || value === '') {
-            missingFields.push(field.label);
-          } else if (field.type === 'array') {
-            if (field.required) {
-              if (Array.isArray(value) && value.length === 0) {
-                missingFields.push(field.label);
-              } else if (Array.isArray(value)) {
-                value.forEach((item: any, index: number) => {
-                  if (field.arrayItemType === 'apiEndpoint') {
-                    // 只有当API端点字段是必填时，才验证URL是否为空
-                    const hasUrl = (item.url && item.url.trim() !== '') || (item.endpoint && item.endpoint.trim() !== '');
-                    if (field.required && !hasUrl) {
-                      missingFields.push(`${field.label}[${index + 1}]的URL`);
-                    }
-                  }
-                });
+      } else if (value === undefined || value === null || value === '') {
+        missingFields.push(field.label);
+      } else if (field.type === 'array') {
+        if (Array.isArray(value) && value.length === 0) {
+          missingFields.push(field.label);
+        } else if (Array.isArray(value)) {
+          value.forEach((item: any, index: number) => {
+            if (field.arrayItemType === 'apiEndpoint') {
+              // 只有当API端点字段是必填时，才验证URL是否为空
+              const hasUrl = (item.url && item.url.trim() !== '') || (item.endpoint && item.endpoint.trim() !== '');
+              if (field.required && !hasUrl) {
+                missingFields.push(`${field.label}[${index + 1}]的URL`);
               }
             }
-          }
+          });
         }
-      });
+      }
+    });
+    return missingFields;
+  }
 
+  // 打开结果提示模态框（提取公共逻辑，消除重复）
+  function showResultModal(title: string, content: string) {
+    modalManager.open(MODAL_TYPES.BASIC_CONFIRM, { title, content, onConfirm: () => {} });
+  }
+
+  async function saveDimension(payload: any, type: 'add' | 'edit' = SAVE_TYPE_ADD): Promise<void> {
+    loading.value = true;
+    error.value = null;
+    try {
+      const data = payload.data !== undefined ? payload.data : payload;
+      const dimensionData = { ...data };
+
+      // 依次规范化各字段
+      normalizeRule(dimensionData);
+      normalizeRequiredInputs(dimensionData);
+      normalizeOutputFields(dimensionData);
+      normalizeApiSettings(dimensionData);
+      // apiUrl 现在是字符串类型，只需修剪空格
+      if (dimensionData.apiUrl !== undefined && typeof dimensionData.apiUrl === 'string') {
+        dimensionData.apiUrl = dimensionData.apiUrl.trim();
+      }
+      await resolveCategory(dimensionData);
+      inheritFromParentDimension(dimensionData);
+      normalizeApiEndpoints(dimensionData);
+      normalizeAssociatedAlgorithms(dimensionData);
+      normalizeLlmJudgeConfig(dimensionData);
+
+      // 校验必填字段
+      const missingFields = validateRequiredFields(dimensionData);
       if (missingFields.length > 0) {
-        console.warn('[Evaluation] Validation failed:', missingFields);
         throw new Error(`以下必填字段缺失：${missingFields.join('、')}`);
       }
 
-      console.log('[Evaluation] Validation passed, calling API');
-      if (type === 'add') {
-        console.log('[Evaluation] Creating new dimension');
+      // 调用 API 创建/更新
+      if (type === SAVE_TYPE_ADD) {
         await evaluationApi.create(dimensionData);
-        console.log('[Evaluation] Dimension created successfully');
-        modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-          title: '成功',
-          content: '评估维度添加成功',
-          onConfirm: () => {
-          }
-        });
+        showResultModal('成功', '评估维度添加成功');
       } else {
         if (!dimensionData.id) throw new Error('维度 ID 缺失');
         await evaluationApi.update(dimensionData.id, dimensionData);
-        modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-          title: '成功',
-          content: '评估维度更新成功',
-          onConfirm: () => {
-          }
-        });
+        showResultModal('成功', '评估维度更新成功');
       }
       await fetchData();
     } catch (err: any) {
       console.error('Failed to save dimension:', err);
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '错误',
-        content: err.message || '保存失败',
-        onConfirm: () => {
-        }
-      });
+      showResultModal('错误', err.message || '保存失败');
       error.value = err.message || '保存评估维度失败';
     } finally {
       loading.value = false;
@@ -752,21 +774,11 @@ export function useEvaluationDimensions() {
         loading.value = true;
         try {
           await evaluationApi.delete(id);
-          modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-            title: '成功',
-            content: '维度已删除',
-            onConfirm: () => {
-            }
-          });
+          showResultModal('成功', '维度已删除');
           await fetchData();
         } catch (err: any) {
           console.error('Failed to delete dimension:', err);
-          modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-            title: '错误',
-            content: err.message || '删除维度失败',
-            onConfirm: () => {
-            }
-          });
+          showResultModal('错误', err.message || '删除维度失败');
         } finally {
           loading.value = false;
         }
@@ -789,12 +801,7 @@ export function useEvaluationDimensions() {
       });
     } catch (err: any) {
       console.error('Failed to test API health:', err);
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '错误',
-        content: `API测试失败: ${err.message || '未知错误'}`,
-        onConfirm: () => {
-        }
-      });
+      showResultModal('错误', `API测试失败: ${err.message || '未知错误'}`);
     } finally {
       loading.value = false;
     }
@@ -812,20 +819,10 @@ export function useEvaluationDimensions() {
         dimension.weight = weight;
       }
 
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '成功',
-        content: '权重更新成功',
-        onConfirm: () => {
-        }
-      });
+      showResultModal('成功', '权重更新成功');
     } catch (err: any) {
       console.error('Failed to update weight:', err);
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '错误',
-        content: `权重更新失败: ${err.message || '未知错误'}`,
-        onConfirm: () => {
-        }
-      });
+      showResultModal('错误', `权重更新失败: ${err.message || '未知错误'}`);
     } finally {
       loading.value = false;
     }

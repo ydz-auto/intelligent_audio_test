@@ -1,5 +1,6 @@
 import { ref } from 'vue';
 import { useModalControl } from '../composables/modal/useModal';
+import { ReportStatus } from '../shared/types/enums';
 import type {
   Report,
   ComparisonDevice,
@@ -14,7 +15,7 @@ export const createDefaultReport = (): Report => ({
   id: '',
   name: '任务对比报告',
   type: 'comparison',
-  status: 'draft',
+  status: ReportStatus.DRAFT,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   description: '',

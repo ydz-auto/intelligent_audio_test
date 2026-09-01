@@ -53,9 +53,9 @@ export function createDownloadLogic(deps: {
           const errorData = await response.json()
           errorMsg = errorData?.message || errorData?.detail || errorMsg
         } catch {
-          if (response.status === 404) {
+          if (response.status === HttpStatus.NOT_FOUND) {
             errorMsg = '未找到用例日志目录'
-          } else if (response.status === 500) {
+          } else if (response.status === HttpStatus.SERVER_ERROR) {
             errorMsg = '服务器内部错误'
           }
         }

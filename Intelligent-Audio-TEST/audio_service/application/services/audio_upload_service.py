@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
-"""音频上传应用服务
+"""音频上传应用服务（编排器）
 
-从 audio_crud_service.py 中提取的上传相关逻辑：
-- presign_upload / presign_part / complete_direct_upload
-- init_upload_task / register_upload_file / upload_chunk / merge_chunks
-- get_upload_progress / url_import
-- 以及内部辅助方法
+重构后仅保留上传流程编排，具体子能力委托给：
+- audio_transcoding_service: 转码/OSS/文件路径/分片合并
+- audio_metadata_service: 音频元数据提取
+- audio_round_config_service: 轮次配置/合并参数提取
+- audio_annotation_service: 标注持久化
+- audio_testcase_creation_service: 测试用例创建
+
+公共 API（AudioUploadService 的方法签名）保持不变，调用方无需修改。
 """
 import os
-import re
 import uuid
 import logging
 from datetime import timedelta
@@ -19,164 +21,39 @@ from api_gateway.application.services.stats_cache import refresh_stats_cache
 from shared.infrastructure.storage import storage
 from shared.clients.oss_client import oss
 from audio_service.domain.repositories.audio_repository_abc import AudioRepositoryInterface
+from audio_service.domain.entities import UploadStatus
 from audio_service.infrastructure.persistence.audio_repository import audio_repository
 from audio_service.application.services.audio_file_utils import (
     _retry_file_operation,
     _safe_makedirs,
-    _read_wav_header,
-    _convert_to_wav,
 )
 from audio_service.application.services.audio_annotation_service import audio_annotation_service
 from audio_service.application.services.audio_convert_service import _get_source_language_from_algorithm_params
 from audio_service.application.services.audio_testcase_creation_service import audio_testcase_creation_service
+from audio_service.application.services.audio_metadata_service import audio_metadata_service
+from audio_service.application.services.audio_transcoding_service import (
+    audio_transcoding_service,
+    _generate_audio_storage_path,
+    _persist_file_content,
+    _get_unique_filename,
+)
+from audio_service.application.services.audio_round_config_service import audio_round_config_service
 
 logger = logging.getLogger(__name__)
 
 
-def _sanitize_filename(filename):
-    """清理文件名，防止路径穿越，同时保留中文等非ASCII字符。
-
-    与 werkzeug.secure_filename 不同，不会将中文替换为下划线。
-    仅移除/替换路径穿越危险字符（.., /, \\, 空字符等）。
-    """
-    if not filename:
-        return ''
-    # 去掉路径分隔符和父目录引用，防止路径穿越
-    # 先把 \\ 转为 / 统一处理
-    cleaned = filename.replace('\\', '/').replace('\x00', '')
-    # 取 basename，去掉任何目录部分
-    cleaned = cleaned.split('/')[-1]
-    # 把路径穿越用的点序列中危险的部分替换掉（如 .. 变为 _）
-    # 但保留文件名中正常的点（扩展名分隔符）
-    # 替换 Windows 不允许的字符: < > : " | ? *
-    cleaned = re.sub(r'[<>:"|?*]', '_', cleaned)
-    # 去掉开头/结尾的点和空格（Windows 下不允许）
-    cleaned = cleaned.strip('. ')
-    return cleaned
-
-
-def _get_unique_filename(directory, original_filename):
-    safe_filename = _sanitize_filename(original_filename)
-    if not safe_filename:
-        safe_filename = f"audio_{uuid.uuid4().hex[:8]}"
-    base_name, ext = os.path.splitext(safe_filename)
-    counter = 1
-    unique_filename = safe_filename
-    while os.path.exists(os.path.join(directory, unique_filename)):
-        unique_filename = f"{base_name}_{counter}{ext}"
-        counter += 1
-    return unique_filename
-
-
-def _persist_file_content(file, file_path):
-    """保存文件内容到磁盘"""
-    content = file.read()
-    with open(file_path, 'wb') as f:
-        f.write(content)
-
-
-def _generate_audio_storage_path(filename, dirs, filename_prefix="", relative_path=""):
-    """生成音频存储路径"""
-    base_upload_dir = dirs if isinstance(dirs, str) else dirs.get('base')
-
-    if relative_path:
-        temp_file_path = os.path.join(base_upload_dir, relative_path)
-        os.makedirs(os.path.dirname(temp_file_path), exist_ok=True)
-        if os.path.exists(temp_file_path):
-            base_name, ext = os.path.splitext(temp_file_path)
-            counter = 1
-            while os.path.exists(temp_file_path):
-                temp_file_path = f"{base_name}_{counter}{ext}"
-                counter += 1
-    else:
-        if filename_prefix:
-            prefixed_filename = f"{filename_prefix}{filename}"
-        else:
-            prefixed_filename = filename
-        if not os.path.exists(base_upload_dir):
-            os.makedirs(base_upload_dir, exist_ok=True)
-        safe_filename = _get_unique_filename(base_upload_dir, prefixed_filename)
-        temp_file_path = os.path.join(base_upload_dir, safe_filename)
-
-    return temp_file_path
-
-
-def _create_audio_db_record(temp_file_path, filename, relative_path=""):
-    """转换音频为WAV，上传到OSS，提取元数据，返回音频记录数据"""
-    original_filename = filename
-    try:
-        wav_file_path, wav_filename, sample_rate, bits_per_sample = _convert_to_wav(temp_file_path)
-        if os.path.exists(temp_file_path) and temp_file_path != wav_file_path:
-            _retry_file_operation(os.remove, temp_file_path)
-
-        if relative_path:
-            safe_path = relative_path.replace('\\', '/').lstrip('/')
-            safe_path = '/'.join(p for p in safe_path.split('/') if p and p != '..')
-            oss_key = f"direct/{safe_path}"
-        else:
-            oss_key = f"direct/{wav_filename}"
-
-        if storage.exists(f'audios/{oss_key}'):
-            base, ext_part = os.path.splitext(oss_key)
-            counter = 1
-            while storage.exists(f'audios/{base}_{counter}{ext_part}'):
-                counter += 1
-            oss_key = f"{base}_{counter}{ext_part}"
-        file_path = storage.save_file(wav_file_path, 'audios', oss_key)
-        if os.path.exists(wav_file_path):
-            _retry_file_operation(os.remove, wav_file_path)
-        original_filename = wav_filename
-    except Exception as e:
-        if os.path.exists(temp_file_path):
-            _retry_file_operation(os.remove, temp_file_path)
-        raise ValueError(f"音频转换/上传OSS失败: {str(e)}")
-
-    meta_tmp_path = None
-    try:
-        import tempfile
-        meta_tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
-        storage.load_file(f'audios/{oss_key}', meta_tmp_path)
-        file_size = os.path.getsize(meta_tmp_path)
-        from pydub import AudioSegment
-        audio_seg = AudioSegment.from_file(meta_tmp_path)
-        duration = len(audio_seg) / 1000.0
-        channels = audio_seg.channels
-        bitrate = bits_per_sample * sample_rate * channels
-        if duration <= 0:
-            raise ValueError("音频时长为0，可能是无效的音频文件")
-    except Exception as e:
-        try:
-            storage.delete(f'audios/{oss_key}')
-        except Exception:
-            logger.debug("解析音频元数据失败后清理OSS文件失败: oss_key=%s", oss_key, exc_info=True)
-        raise ValueError(f"无法识别的音频格式或文件已损坏: {str(e)}")
-    finally:
-        if meta_tmp_path and os.path.exists(meta_tmp_path):
-            try:
-                os.remove(meta_tmp_path)
-            except Exception:
-                logger.debug("清理音频元数据临时文件失败: %s", meta_tmp_path, exc_info=True)
-
-    return {
-        'name': original_filename,
-        'original_filename': original_filename,
-        'file_path': file_path,
-        'size': file_size,
-        'duration': duration,
-        'sample_rate': sample_rate,
-        'channels': channels,
-        'bitrate': bitrate,
-        'format': 'wav',
-    }
-
-
 class AudioUploadService:
-    """音频上传应用服务"""
+    """音频上传应用服务（编排器）"""
 
     def __init__(self, repo: AudioRepositoryInterface = None):
         self.repo = repo or audio_repository
         self._annotation_service = audio_annotation_service
         self._testcase_creation_service = audio_testcase_creation_service
+        self._transcoding_service = audio_transcoding_service
+        self._metadata_service = audio_metadata_service
+        self._round_config_service = audio_round_config_service
+
+    # ===== 预签名相关 =====
 
     def presign_upload(self, data: dict) -> dict:
         """生成 S3 Multipart Upload 初始化信息和第一批分片预签名 URL"""
@@ -188,45 +65,22 @@ class AudioUploadService:
             is_wav = data.get('is_wav', data.get('isWav', False))
             relative_path = data.get('relative_path', data.get('relativePath'))
 
-            if md5:
-                existing = self.repo.get_audio_by_md5(md5)
-                if existing:
-                    return {
-                        'success': True, 'message': '秒传成功',
-                        'data': {
-                            'instantUpload': True,
-                            'audioId': existing.id,
-                            'name': existing.name,
-                        },
-                        'code': 200,
-                    }
+            # 秒传检查
+            instant = self._check_md5_instant_upload(md5)
+            if instant:
+                return instant
 
-            ext = os.path.splitext(filename)[1].lower()
+            oss_key = self._build_presign_oss_key(filename, relative_path)
             category = 'audios' if is_wav else 'raw_chunks'
-            if relative_path:
-                safe_path = relative_path.replace('\\', '/').lstrip('/')
-                safe_path = '/'.join(p for p in safe_path.split('/') if p and p != '..')
-                oss_key = f"direct/{safe_path}"
-            else:
-                oss_key = f"direct/{filename}"
-
-            if storage.exists(f'{category}/{oss_key}'):
-                base, ext_part = os.path.splitext(oss_key)
-                counter = 1
-                while storage.exists(f'{category}/{base}_{counter}{ext_part}'):
-                    counter += 1
-                oss_key = f"{base}_{counter}{ext_part}"
+            oss_key = self._dedupe_presign_oss_key(category, oss_key)
 
             upload_id = oss.create_multipart_upload(category, oss_key)
             chunk_size = chunk_size or (5 * 1024 * 1024)
             total_parts = max(1, (file_size + chunk_size - 1) // chunk_size)
             parts_to_presign = min(total_parts, 100)
-            presigned_parts = []
-            for part_num in range(1, parts_to_presign + 1):
-                url = oss.get_part_upload_presigned_url(
-                    category, oss_key, upload_id, part_num, expires=3600
-                )
-                presigned_parts.append({"partNumber": part_num, "url": url})
+            presigned_parts = self._presign_parts(
+                category, oss_key, upload_id, parts_to_presign
+            )
 
             return {
                 'success': True, 'message': '预签名 URL 生成成功',
@@ -244,6 +98,51 @@ class AudioUploadService:
         except Exception as e:
             logger.error(f"presign_upload failed: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
+
+    def _check_md5_instant_upload(self, md5):
+        """检查 MD5 秒传，命中则返回秒传响应，否则返回 None"""
+        if not md5:
+            return None
+        existing = self.repo.get_audio_by_md5(md5)
+        if not existing:
+            return None
+        return {
+            'success': True, 'message': '秒传成功',
+            'data': {
+                'instantUpload': True,
+                'audioId': existing.id,
+                'name': existing.name,
+            },
+            'code': 200,
+        }
+
+    def _build_presign_oss_key(self, filename, relative_path):
+        """构建预签名用的 OSS key"""
+        if relative_path:
+            safe_path = relative_path.replace('\\', '/').lstrip('/')
+            safe_path = '/'.join(p for p in safe_path.split('/') if p and p != '..')
+            return f"direct/{safe_path}"
+        return f"direct/{filename}"
+
+    def _dedupe_presign_oss_key(self, category, oss_key):
+        """OSS key 去重，若已存在则追加序号"""
+        if storage.exists(f'{category}/{oss_key}'):
+            base, ext_part = os.path.splitext(oss_key)
+            counter = 1
+            while storage.exists(f'{category}/{base}_{counter}{ext_part}'):
+                counter += 1
+            oss_key = f"{base}_{counter}{ext_part}"
+        return oss_key
+
+    def _presign_parts(self, category, oss_key, upload_id, parts_to_presign):
+        """生成前 N 个分片的预签名 URL"""
+        presigned_parts = []
+        for part_num in range(1, parts_to_presign + 1):
+            url = oss.get_part_upload_presigned_url(
+                category, oss_key, upload_id, part_num, expires=3600
+            )
+            presigned_parts.append({"partNumber": part_num, "url": url})
+        return presigned_parts
 
     def presign_part(self, data: dict) -> dict:
         """请求更多分片的预签名 URL"""
@@ -274,95 +173,118 @@ class AudioUploadService:
         """WAV 文件直传 OSS 完成后，合并分片 + 登记 DB"""
         temp_file = None
         try:
-            oss_key = data.get('oss_key') or data.get('ossKey', '')
-            upload_id = data.get('upload_id') or data.get('uploadId')
-            parts = data.get('parts', [])
-            filename = data.get('filename', '')
-            md5 = data.get('md5')
-            file_size = data.get('file_size', data.get('fileSize', 0))
-            sample_rate = data.get('sample_rate', data.get('sampleRate', 44100))
-            bits_per_sample = data.get('bits_per_sample', data.get('bitsPerSample', 16))
-            duration = data.get('duration', 0.0)
-            tags = data.get('tags', [])
-            audio_type = data.get('audio_type', data.get('audioType', 'dry'))
-            asr_text = data.get('asr_text', data.get('asrText', ''))
+            oss_key, upload_id, parts = self._extract_direct_upload_params(data)
+            filename, md5, audio_type, asr_text, tags = self._extract_direct_upload_meta(data)
 
             # 1. 完成 OSS 端分片合并
-            normalized_parts = []
-            for p in (parts or []):
-                if isinstance(p, dict):
-                    normalized_parts.append({
-                        'PartNumber': int(p.get('PartNumber') or p.get('partNumber') or 0),
-                        'ETag': p.get('ETag') or p.get('etag') or p.get('Etag') or '',
-                    })
-            if upload_id and normalized_parts:
-                oss.complete_multipart_upload('audios', oss_key, upload_id, normalized_parts)
+            self._complete_oss_multipart(oss_key, upload_id, parts)
 
             # 2. 下载到临时文件提取元数据
-            import tempfile as _tmp2
-            temp_file = _tmp2.NamedTemporaryFile(delete=False, suffix='.wav').name
-            storage.load_file(f'audios/{oss_key}', temp_file)
-            actual_file_size = os.path.getsize(temp_file)
-
-            try:
-                sr, bps = _read_wav_header(temp_file)
-                sample_rate = sr
-                bits_per_sample = bps
-            except Exception:
-                logger.debug("解析WAV头部信息失败: temp_file=%s", temp_file, exc_info=True)
-
-            try:
-                import wave
-                with wave.open(temp_file, 'rb') as wf:
-                    duration = wf.getnframes() / wf.getframerate() if wf.getframerate() else 0.0
-            except Exception:
-                logger.debug("解析音频时长失败: temp_file=%s", temp_file, exc_info=True)
+            temp_file, actual_file_size, sample_rate, bits_per_sample, duration = (
+                self._download_and_extract_direct_meta(oss_key)
+            )
 
             # 3. 创建 Audio 记录
             audio = self.repo.create_audio({
-                'name': filename,
-                'original_filename': filename,
-                'file_path': f'oss://audios/{oss_key}',
-                'format': 'wav',
-                'size': actual_file_size,
-                'duration': duration,
-                'sample_rate': sample_rate,
-                'md5': md5,
-                'audio_type': audio_type,
-                'asr_text': asr_text,
+                'name': filename, 'original_filename': filename,
+                'file_path': f'oss://audios/{oss_key}', 'format': 'wav',
+                'size': actual_file_size, 'duration': duration,
+                'sample_rate': sample_rate, 'md5': md5,
+                'audio_type': audio_type, 'asr_text': asr_text,
             })
 
             # 4. 处理标签
-            if tags:
-                for tag_name in tags:
-                    tag = self.repo.get_or_create_tag(tag_name)
-                    self.repo.add_audio_tag(audio.id, tag.id)
-
+            self._attach_direct_upload_tags(audio, tags)
             self.repo.commit()
 
-            return {
-                'success': True, 'message': '直传完成',
-                'data': {
-                    'audio_id': audio.id,
-                    'name': audio.name,
-                    'oss_key': oss_key,
-                    'size': actual_file_size,
-                    'duration': duration,
-                    'sample_rate': sample_rate,
-                    'bits_per_sample': bits_per_sample,
-                },
-                'code': 200,
-            }
+            return self._build_direct_upload_response(
+                audio, oss_key, actual_file_size, duration, sample_rate, bits_per_sample
+            )
         except Exception as e:
             self.repo.rollback()
             logger.error(f"complete_direct_upload failed: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
         finally:
-            if temp_file and os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except Exception:
-                    logger.debug("清理直传临时文件失败: %s", temp_file, exc_info=True)
+            self._cleanup_temp_file(temp_file)
+
+    def _extract_direct_upload_params(self, data):
+        """提取直传 OSS 参数：oss_key/upload_id/parts"""
+        oss_key = data.get('oss_key') or data.get('ossKey', '')
+        upload_id = data.get('upload_id') or data.get('uploadId')
+        parts = data.get('parts', [])
+        return oss_key, upload_id, parts
+
+    def _extract_direct_upload_meta(self, data):
+        """提取直传音频元数据：filename/md5/audio_type/asr_text/tags"""
+        filename = data.get('filename', '')
+        md5 = data.get('md5')
+        audio_type = data.get('audio_type', data.get('audioType', 'dry'))
+        asr_text = data.get('asr_text', data.get('asrText', ''))
+        tags = data.get('tags', [])
+        return filename, md5, audio_type, asr_text, tags
+
+    def _build_direct_upload_response(self, audio, oss_key, actual_file_size, duration, sample_rate, bits_per_sample):
+        """构建直传完成响应"""
+        return {
+            'success': True, 'message': '直传完成',
+            'data': {
+                'audio_id': audio.id, 'name': audio.name, 'oss_key': oss_key,
+                'size': actual_file_size, 'duration': duration,
+                'sample_rate': sample_rate, 'bits_per_sample': bits_per_sample,
+            },
+            'code': 200,
+        }
+
+    def _complete_oss_multipart(self, oss_key, upload_id, parts):
+        """完成 OSS 端分片合并"""
+        normalized_parts = []
+        for p in (parts or []):
+            if isinstance(p, dict):
+                normalized_parts.append({
+                    'PartNumber': int(p.get('PartNumber') or p.get('partNumber') or 0),
+                    'ETag': p.get('ETag') or p.get('etag') or p.get('Etag') or '',
+                })
+        if upload_id and normalized_parts:
+            oss.complete_multipart_upload('audios', oss_key, upload_id, normalized_parts)
+
+    def _download_and_extract_direct_meta(self, oss_key):
+        """下载 OSS 文件到临时文件并提取元数据，返回 (temp_file, size, sr, bps, duration)"""
+        import tempfile as _tmp2
+        temp_file = _tmp2.NamedTemporaryFile(delete=False, suffix='.wav').name
+        storage.load_file(f'audios/{oss_key}', temp_file)
+        actual_file_size = os.path.getsize(temp_file)
+
+        sample_rate = 44100
+        bits_per_sample = 16
+        duration = 0.0
+
+        sr = self._metadata_service.extract_wav_header(temp_file)
+        if sr:
+            sample_rate, bits_per_sample = sr
+
+        dur = self._metadata_service.extract_wav_duration(temp_file)
+        if dur is not None:
+            duration = dur
+
+        return temp_file, actual_file_size, sample_rate, bits_per_sample, duration
+
+    def _attach_direct_upload_tags(self, audio, tags):
+        """为直传音频附加标签"""
+        if not tags:
+            return
+        for tag_name in tags:
+            tag = self.repo.get_or_create_tag(tag_name)
+            self.repo.add_audio_tag(audio.id, tag.id)
+
+    def _cleanup_temp_file(self, temp_file):
+        """清理临时文件"""
+        if temp_file and os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except Exception:
+                logger.debug("清理直传临时文件失败: %s", temp_file, exc_info=True)
+
+    # ===== 上传任务相关 =====
 
     def init_upload_task(self, data: dict = None) -> dict:
         """初始化上传任务"""
@@ -402,29 +324,7 @@ class AudioUploadService:
             if not files:
                 return {'success': False, 'message': '缺少文件信息', 'data': None, 'code': 400}
 
-            registered_files = []
-            with self.repo.no_autoflush:
-                for file_info in files:
-                    record = self._create_upload_file_record(file_info, task_id)
-                    if record is None:
-                        continue
-                    registered_files.append({
-                        'file_id': record['file_id'],
-                        'filename': record['filename'],
-                        'total_chunks': record['total_chunks'],
-                        'chunk_size': record['chunk_size'],
-                        'status': record['status'],
-                    })
-                    task.total_files += 1
-                    task.total_size += record['file_size']
-                    if record['status'] == 'completed':
-                        task.completed_files += 1
-                        task.uploaded_size += record['file_size']
-
-                if task.completed_files >= task.total_files and task.total_files > 0:
-                    task.status = 'completed'
-                else:
-                    task.status = 'uploading'
+            registered_files = self._register_files_batch(task, files, task_id)
 
             self.repo.commit()
             return {
@@ -441,6 +341,41 @@ class AudioUploadService:
                 category='audio', source='backend',
             )
             return {'success': False, 'message': f'音频注册失败: {str(e)}', 'data': None, 'code': 400}
+
+    def _register_files_batch(self, task, files, task_id):
+        """批量注册文件，返回 registered_files 列表"""
+        registered_files = []
+        with self.repo.no_autoflush:
+            for file_info in files:
+                record = self._create_upload_file_record(file_info, task_id)
+                if record is None:
+                    continue
+                registered_files.append(self._format_registered_file(record))
+                self._accumulate_task_stats(task, record)
+
+            if task.completed_files >= task.total_files and task.total_files > 0:
+                task.status = 'completed'
+            else:
+                task.status = 'uploading'
+        return registered_files
+
+    def _format_registered_file(self, record):
+        """格式化注册文件响应"""
+        return {
+            'file_id': record['file_id'],
+            'filename': record['filename'],
+            'total_chunks': record['total_chunks'],
+            'chunk_size': record['chunk_size'],
+            'status': record['status'],
+        }
+
+    def _accumulate_task_stats(self, task, record):
+        """累加任务统计（文件数/大小/已完成）"""
+        task.total_files += 1
+        task.total_size += record['file_size']
+        if record['status'] == UploadStatus.completed.value:
+            task.completed_files += 1
+            task.uploaded_size += record['file_size']
 
     def _create_upload_file_record(self, file_info, task_id):
         """创建 UploadFile 记录"""
@@ -469,8 +404,8 @@ class AudioUploadService:
         self.repo.create_upload_file(
             file_id, task_id, file_name, file_name, relative_path,
             file_size, md5, status,
-            file_size if status == 'completed' else 0,
-            total_chunks if status == 'completed' else 0,
+            file_size if status == UploadStatus.completed.value else 0,
+            total_chunks if status == UploadStatus.completed.value else 0,
             total_chunks,
         )
 
@@ -483,12 +418,9 @@ class AudioUploadService:
     def upload_chunk(self, data: dict) -> dict:
         """上传分片"""
         try:
-            file_id = data.get('file_id') or data.get('fileId')
-            chunk_index = data.get('chunk_index', data.get('chunkIndex'))
-            total_chunks = data.get('total_chunks', data.get('totalChunks'))
-            task_id = data.get('task_id') or data.get('taskId')
-            chunk_content_b64 = data.get('chunk_content', data.get('chunkContent'))
-            chunk_size = data.get('chunk_size', data.get('chunkSize', 0))
+            file_id, chunk_index, total_chunks, task_id, chunk_content_b64, chunk_size = (
+                self._extract_chunk_params(data)
+            )
 
             if not file_id or chunk_index is None or not total_chunks or not task_id:
                 return {'success': False, 'message': '缺少分片信息', 'data': None, 'code': 400}
@@ -502,62 +434,19 @@ class AudioUploadService:
                 return {'success': False, 'message': '任务不存在', 'data': None, 'code': 404}
 
             # 保存分片到磁盘
-            import base64
-            from audio_service.config.config import Config
-            base_upload_dir = getattr(Config, 'AUDIO_STORAGE_PATH',
-                                     os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'audios'))
-            chunk_dir = os.path.join(base_upload_dir, 'chunks', file_id)
-            _safe_makedirs(chunk_dir)
-            chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_index}")
+            chunk_path, actual_chunk_size = self._save_chunk_to_disk(
+                file_id, chunk_index, chunk_content_b64, chunk_size
+            )
 
-            if chunk_content_b64:
-                chunk_data = base64.b64decode(chunk_content_b64)
-                with open(chunk_path, 'wb') as f:
-                    f.write(chunk_data)
-                actual_chunk_size = os.path.getsize(chunk_path)
-            else:
-                actual_chunk_size = chunk_size
-
-            with self.repo.no_autoflush:
-                existing_chunk = self.repo.get_upload_chunk(file_id, chunk_index)
-                if existing_chunk:
-                    self.repo.update_upload_file(existing_chunk, chunk_size=actual_chunk_size, status='completed')
-                else:
-                    self.repo.create_upload_chunk(file_id, chunk_index, actual_chunk_size, chunk_path)
-
-                upload_file.completed_chunks += 1
-                upload_file.uploaded_size += actual_chunk_size
-
-                if upload_file.completed_chunks >= total_chunks:
-                    upload_file.status = 'completed'
-                    task.completed_files += 1
-
-                task.uploaded_size += actual_chunk_size
-                task.status = 'uploading'
-
-                if task.completed_files >= task.total_files:
-                    task.status = 'completed'
+            # 更新分片与任务进度
+            self._update_chunk_progress(
+                upload_file, task, file_id, chunk_index, actual_chunk_size, total_chunks, chunk_path
+            )
 
             self.repo.commit()
-            return {
-                'success': True, 'message': '分片上传成功',
-                'data': {
-                    'file_id': file_id,
-                    'chunk_index': chunk_index,
-                    'completed_chunks': upload_file.completed_chunks,
-                    'total_chunks': total_chunks,
-                    'uploaded_size': upload_file.uploaded_size,
-                    'file_size': upload_file.size,
-                    'task_progress': {
-                        'uploaded_size': task.uploaded_size,
-                        'total_size': task.total_size,
-                        'completed_files': task.completed_files,
-                        'total_files': task.total_files,
-                        'status': task.status,
-                    },
-                },
-                'code': 200,
-            }
+            return self._build_chunk_upload_response(
+                file_id, chunk_index, total_chunks, upload_file, task
+            )
         except Exception as e:
             self.repo.rollback()
             import traceback
@@ -566,6 +455,87 @@ class AudioUploadService:
                 content=f'分片上传失败: {str(e)}', category='audio', source='backend',
             )
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
+
+    def _extract_chunk_params(self, data):
+        """提取分片上传参数"""
+        file_id = data.get('file_id') or data.get('fileId')
+        chunk_index = data.get('chunk_index', data.get('chunkIndex'))
+        total_chunks = data.get('total_chunks', data.get('totalChunks'))
+        task_id = data.get('task_id') or data.get('taskId')
+        chunk_content_b64 = data.get('chunk_content', data.get('chunkContent'))
+        chunk_size = data.get('chunk_size', data.get('chunkSize', 0))
+        return file_id, chunk_index, total_chunks, task_id, chunk_content_b64, chunk_size
+
+    def _build_chunk_upload_response(self, file_id, chunk_index, total_chunks, upload_file, task):
+        """构建分片上传成功响应"""
+        return {
+            'success': True, 'message': '分片上传成功',
+            'data': {
+                'file_id': file_id,
+                'chunk_index': chunk_index,
+                'completed_chunks': upload_file.completed_chunks,
+                'total_chunks': total_chunks,
+                'uploaded_size': upload_file.uploaded_size,
+                'file_size': upload_file.size,
+                'task_progress': self._build_task_progress(task),
+            },
+            'code': 200,
+        }
+
+    def _build_task_progress(self, task):
+        """构建任务进度数据"""
+        return {
+            'uploaded_size': task.uploaded_size,
+            'total_size': task.total_size,
+            'completed_files': task.completed_files,
+            'total_files': task.total_files,
+            'status': task.status,
+        }
+
+    def _save_chunk_to_disk(self, file_id, chunk_index, chunk_content_b64, chunk_size):
+        """保存分片到磁盘，返回 (chunk_path, 实际分片大小)"""
+        base_upload_dir = self._get_base_upload_dir()
+        chunk_dir = os.path.join(base_upload_dir, 'chunks', file_id)
+        _safe_makedirs(chunk_dir)
+        chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_index}")
+
+        if chunk_content_b64:
+            import base64
+            chunk_data = base64.b64decode(chunk_content_b64)
+            with open(chunk_path, 'wb') as f:
+                f.write(chunk_data)
+            return chunk_path, os.path.getsize(chunk_path)
+        return chunk_path, chunk_size
+
+    def _update_chunk_progress(self, upload_file, task, file_id, chunk_index, actual_chunk_size, total_chunks, chunk_path):
+        """更新分片与任务进度"""
+        with self.repo.no_autoflush:
+            existing_chunk = self.repo.get_upload_chunk(file_id, chunk_index)
+            if existing_chunk:
+                self.repo.update_upload_file(existing_chunk, chunk_size=actual_chunk_size, status='completed')
+            else:
+                self.repo.create_upload_chunk(file_id, chunk_index, actual_chunk_size, chunk_path)
+
+            upload_file.completed_chunks += 1
+            upload_file.uploaded_size += actual_chunk_size
+
+            if upload_file.completed_chunks >= total_chunks:
+                upload_file.status = 'completed'
+                task.completed_files += 1
+
+            task.uploaded_size += actual_chunk_size
+            task.status = 'uploading'
+
+            if task.completed_files >= task.total_files:
+                task.status = 'completed'
+
+    def _get_base_upload_dir(self):
+        """获取音频存储根目录"""
+        from audio_service.config.config import Config
+        return getattr(Config, 'AUDIO_STORAGE_PATH',
+                       os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'audios'))
+
+    # ===== 合并分片相关 =====
 
     def merge_chunks(self, data: dict) -> dict:
         """合并分片"""
@@ -582,7 +552,7 @@ class AudioUploadService:
             if not task:
                 return {'success': False, 'message': '任务不存在', 'data': None, 'code': 404}
 
-            params = self._extract_merge_params(data)
+            params = self._round_config_service.extract_merge_params(data)
 
             # 检查秒传
             instant_result = self._check_instant_upload(upload_file, data, params)
@@ -593,7 +563,9 @@ class AudioUploadService:
             final_path = self._merge_file_parts(upload_file, data)
 
             # 转码并提取元数据
-            audio_meta = self._transcode_and_extract_metadata(final_path, upload_file, data)
+            audio_meta = self._transcoding_service.transcode_and_extract_metadata(
+                final_path, upload_file
+            )
 
             # 创建音频记录
             new_audio, audio_tags, raw_annotations_data = self._create_audio_record(
@@ -606,83 +578,28 @@ class AudioUploadService:
             )
 
             self.repo.commit()
-
-            response_data = {
-                'file_id': file_id,
-                'audio_id': new_audio.id,
-                'name': new_audio.name,
-                'status': 'completed',
-            }
-            if tc_result:
-                response_data['test_case_id'] = tc_result.get('tc_id')
-                response_data['test_case_count'] = tc_result.get('tc_count')
-
-            return {'success': True, 'message': '合并完成', 'data': response_data, 'code': 200}
-
+            return self._build_merge_response(file_id, new_audio, tc_result)
         except Exception as e:
             self.repo.rollback()
             logger.error(f"合并分片失败: {str(e)}", exc_info=True)
             return {'success': False, 'message': f'合并分片失败: {str(e)}', 'data': None, 'code': 400}
 
-    def _extract_merge_params(self, data):
-        """从 data 中提取合并参数"""
-        tc_config = data.get('test_case_config') or data.get('testCaseConfig')
-        rounds_config = None
-        if tc_config and isinstance(tc_config, dict):
-            rounds_config = tc_config.get('rounds')
-
-        tc_group_name = tc_config.get('group_name') if tc_config else None
-        tc_inherit_tags = tc_config.get('inherit_tags', True) if tc_config else True
-        # case 级背景噪声（rounds 外层），优先级高于轮次级
-        tc_case_background_noise = tc_config.get('background_noise') if tc_config else None
-
-        test_case_group_name = data.get('test_case_group_name') or data.get('testCaseGroupName')
-        if tc_group_name:
-            test_case_group_name = tc_group_name
-
-        algorithm_params = data.get('algorithm_params') or data.get('algorithmParams')
-        algorithm_params_dict = None
-        if isinstance(algorithm_params, list):
-            algorithm_params_dict = algorithm_params
-        elif isinstance(algorithm_params, dict):
-            algorithm_params_dict = [{'field_code': k, 'field_value': v} for k, v in algorithm_params.items()]
-
-        if tc_config and tc_config.get('algorithm_params') and not algorithm_params_dict:
-            # 通过 ACL 仓储规范化算法参数
-            from audio_service.infrastructure.acl.algorithm_acl_repository import (
-                AlgorithmACLRepositoryImpl,
-            )
-            algorithm_params_dict = AlgorithmACLRepositoryImpl().normalize_algorithm_params_to_list(
-                tc_config.get('algorithm_params')
-            )
-
-        dimensions_data = data.get('dimensions')
-        if tc_config and tc_config.get('dimensions') and not dimensions_data:
-            dimensions_data = tc_config.get('dimensions')
-
-        return {
-            'create_test_case': data.get('create_test_case', data.get('createTestCase', False)),
-            'test_types': data.get('test_types', data.get('testTypes', ['api'])),
-            'dimensions_data': dimensions_data,
-            'default_playback_device_id': data.get('default_playback_device_id') or data.get('defaultPlaybackDeviceId'),
-            'default_spl': data.get('default_spl', data.get('defaultSpl', 65.0)),
-            'noise_spl': data.get('noise_spl', data.get('noiseSpl', 60.0)),
-            'noise_audio_id': data.get('noise_audio_id') or data.get('noiseAudioId'),
-            'noise_device_ids': data.get('noise_device_ids') or data.get('noiseDeviceIds') or [],
-            'test_case_group_name': test_case_group_name,
-            'algorithm_type': data.get('algorithm_type') or data.get('algorithmType'),
-            'algorithm_params': algorithm_params,
-            'algorithm_params_dict': algorithm_params_dict,
-            'description': data.get('description', ''),
-            'user_tags': data.get('tags', []),
-            'rounds_config': rounds_config,
-            'tc_inherit_tags': tc_inherit_tags,
-            'case_background_noise': tc_case_background_noise,
+    def _build_merge_response(self, file_id, new_audio, tc_result):
+        """构建合并完成响应"""
+        response_data = {
+            'file_id': file_id,
+            'audio_id': new_audio.id,
+            'name': new_audio.name,
+            'status': 'completed',
         }
+        if tc_result:
+            response_data['test_case_id'] = tc_result.get('tc_id')
+            response_data['test_case_count'] = tc_result.get('tc_count')
+        return {'success': True, 'message': '合并完成', 'data': response_data, 'code': 200}
 
     def _check_instant_upload(self, upload_file, data, params):
-        """检查秒传场景"""
-        is_instant_upload = upload_file.total_chunks == 0 and upload_file.status == 'completed'
+        """检查秒传场景：返回响应 dict 表示已处理，返回 None 表示继续合并流程"""
+        is_instant_upload = upload_file.total_chunks == 0 and upload_file.status == UploadStatus.completed
 
         if not is_instant_upload and upload_file.md5:
             existing_audio = self.repo.get_audio_by_md5(upload_file.md5)
@@ -694,250 +611,103 @@ class AudioUploadService:
                 return {'success': False, 'message': '还有分片未上传完成', 'data': None, 'code': 400}
             return None
 
-        existing_audio_id = None
-        audio_tags = []
-        if upload_file.md5:
-            existing_audio = self.repo.get_audio_by_md5(upload_file.md5)
-            if existing_audio:
-                existing_audio_id = existing_audio.id
-                audio_tags = self.repo.get_audio_tag_names(existing_audio.id)
+        return self._handle_instant_upload(upload_file, data, params)
 
-                if params['create_test_case']:
-                    # 秒传场景：已有音频的 name 可能改过名，前端传的 audio_name 匹配不上，
-                    # 这里直接把 existing_audio.id 填进 rounds_config 里对应的项
-                    rounds_config = params['rounds_config']
-                    if rounds_config:
-                        # 先收集所有未匹配的音频项
-                        unmatched_items = []
-                        for r in rounds_config:
-                            if not isinstance(r, dict):
-                                continue
-                            for a in r.get('audios', []):
-                                if not isinstance(a, dict) or a.get('audio_id'):
-                                    continue
-                                unmatched_items.append(a)
-                        # 对未匹配项尝试按 name/original_filename/md5 匹配
-                        matched_count = 0
-                        for a in unmatched_items:
-                            item_name = a.get('audio_name') or ''
-                            if (item_name == existing_audio.name
-                                    or item_name == (existing_audio.original_filename or '')
-                                    or item_name == (existing_audio.md5 or '')
-                                    or not item_name):
-                                a['audio_id'] = existing_audio.id
-                                matched_count += 1
-                        # 兜底：若按名称都匹配不上，且仅剩1个未匹配项，直接赋值（秒传的音频就是它）
-                        if matched_count == 0 and len(unmatched_items) == 1:
-                            unmatched_items[0]['audio_id'] = existing_audio.id
-                    raw_annotations_data = self._annotation_service.persist_annotations_and_raw(
-                        existing_audio.id,
-                        data.get('annotations', []),
-                        params['algorithm_type'],
-                    )
-                    tc_ids = self._testcase_creation_service.create_test_case_from_audio(
-                        existing_audio.id,
-                        params['test_types'],
-                        audio_tags,
-                        params['default_playback_device_id'],
-                        params['default_spl'],
-                        params['noise_spl'],
-                        params['noise_audio_id'],
-                        params['test_case_group_name'],
-                        params['dimensions_data'],
-                        params['algorithm_type'],
-                        params['algorithm_params_dict'],
-                        rounds_config=params['rounds_config'],
-                        inherit_tags=params['tc_inherit_tags'],
-                        raw_annotations=raw_annotations_data,
-                        noise_device_ids=params.get('noise_device_ids'),
-                        case_background_noise=params.get('case_background_noise'),
-                    )
-                    self.repo.commit()
-                    return {
-                        'success': True, 'message': '秒传成功，测试用例已创建',
-                        'data': {
-                            'file_id': data.get('file_id') or data.get('fileId'),
-                            'audio_id': existing_audio.id,
-                            'name': existing_audio.name,
-                            'status': 'completed',
-                            'test_case_id': tc_ids[0] if tc_ids else None,
-                            'test_case_count': len(tc_ids) if isinstance(tc_ids, list) else (1 if tc_ids else 0),
-                            'instant_upload': True,
-                        },
-                        'code': 200,
-                    }
-                else:
-                    self._annotation_service.persist_annotations_and_raw(
-                        existing_audio.id,
-                        data.get('annotations', []),
-                        params['algorithm_type'],
-                    )
-                    self.repo.commit()
-                    return {
-                        'success': True, 'message': '秒传成功',
-                        'data': {
-                            'file_id': data.get('file_id') or data.get('fileId'),
-                            'audio_id': existing_audio.id,
-                            'name': existing_audio.name,
-                            'status': 'completed',
-                            'instant_upload': True,
-                        },
-                        'code': 200,
-                    }
-        return None
+    def _handle_instant_upload(self, upload_file, data, params):
+        """处理秒传：查找已有音频并按是否创建测试用例分支"""
+        if not upload_file.md5:
+            return None
+
+        existing_audio = self.repo.get_audio_by_md5(upload_file.md5)
+        if not existing_audio:
+            return None
+
+        audio_tags = self.repo.get_audio_tag_names(existing_audio.id)
+
+        if params['create_test_case']:
+            return self._instant_upload_with_testcase(existing_audio, data, params, audio_tags)
+        return self._instant_upload_without_testcase(existing_audio, data, params)
+
+    def _instant_upload_with_testcase(self, existing_audio, data, params, audio_tags):
+        """秒传 + 创建测试用例：匹配轮次、创建用例、返回响应"""
+        self._round_config_service.match_existing_audio_in_rounds(
+            params['rounds_config'], existing_audio
+        )
+        raw_annotations_data = self._annotation_service.persist_annotations_and_raw(
+            existing_audio.id,
+            data.get('annotations', []),
+            params['algorithm_type'],
+        )
+        tc_ids = self._testcase_creation_service.create_test_case_from_audio(
+            existing_audio.id,
+            params['test_types'],
+            audio_tags,
+            params['default_playback_device_id'],
+            params['default_spl'],
+            params['noise_spl'],
+            params['noise_audio_id'],
+            params['test_case_group_name'],
+            params['dimensions_data'],
+            params['algorithm_type'],
+            params['algorithm_params_dict'],
+            rounds_config=params['rounds_config'],
+            inherit_tags=params['tc_inherit_tags'],
+            raw_annotations=raw_annotations_data,
+            noise_device_ids=params.get('noise_device_ids'),
+            case_background_noise=params.get('case_background_noise'),
+        )
+        self.repo.commit()
+        return {
+            'success': True, 'message': '秒传成功，测试用例已创建',
+            'data': {
+                'file_id': data.get('file_id') or data.get('fileId'),
+                'audio_id': existing_audio.id,
+                'name': existing_audio.name,
+                'status': 'completed',
+                'test_case_id': tc_ids[0] if tc_ids else None,
+                'test_case_count': len(tc_ids) if isinstance(tc_ids, list) else (1 if tc_ids else 0),
+                'instant_upload': True,
+            },
+            'code': 200,
+        }
+
+    def _instant_upload_without_testcase(self, existing_audio, data, params):
+        """秒传不创建测试用例：仅持久化标注并返回响应"""
+        self._annotation_service.persist_annotations_and_raw(
+            existing_audio.id,
+            data.get('annotations', []),
+            params['algorithm_type'],
+        )
+        self.repo.commit()
+        return {
+            'success': True, 'message': '秒传成功',
+            'data': {
+                'file_id': data.get('file_id') or data.get('fileId'),
+                'audio_id': existing_audio.id,
+                'name': existing_audio.name,
+                'status': 'completed',
+                'instant_upload': True,
+            },
+            'code': 200,
+        }
 
     def _merge_file_parts(self, upload_file, data):
-        """合并分片，返回 final_path"""
-        from audio_service.config.config import Config
-        base_upload_dir = getattr(Config, 'AUDIO_STORAGE_PATH',
-                                  os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'audios'))
+        """合并分片，返回 final_path（委托转码服务）"""
+        base_upload_dir = self._get_base_upload_dir()
         chunk_base = os.path.join(base_upload_dir, 'chunks')
 
         is_direct_oss = data.get('is_direct_oss', data.get('isDirectOss', False))
         oss_key = data.get('oss_key', data.get('ossKey'))
         oss_upload_id = data.get('oss_upload_id', data.get('ossUploadId'))
         oss_parts = data.get('oss_parts', data.get('ossParts'))
-        file_id = data.get('file_id') or data.get('fileId')
 
         if is_direct_oss and oss_key and oss_upload_id:
-            normalized_oss_parts = []
-            for p in (oss_parts or []):
-                if isinstance(p, dict):
-                    normalized_oss_parts.append({
-                        'PartNumber': int(p.get('PartNumber') or p.get('partNumber') or 0),
-                        'ETag': p.get('ETag') or p.get('etag') or p.get('Etag') or '',
-                    })
-            if normalized_oss_parts:
-                oss.complete_multipart_upload('raw_chunks', oss_key, oss_upload_id, normalized_oss_parts)
-            ext = os.path.splitext(oss_key)[1].lower() or '.tmp'
-            import tempfile as _tmp3
-            final_path = _tmp3.NamedTemporaryFile(delete=False, suffix=ext).name
-            storage.load_file(f'raw_chunks/{oss_key}', final_path)
-            try:
-                storage.delete(f'raw_chunks/{oss_key}')
-            except Exception as e:
-                logger.warning(f"清理 raw-chunks 失败: {e}")
-        else:
-            chunk_dir = os.path.join(chunk_base, file_id)
-            if upload_file.relative_path:
-                final_path = os.path.join(base_upload_dir, upload_file.relative_path)
-                os.makedirs(os.path.dirname(final_path), exist_ok=True)
-            else:
-                safe_filename = _get_unique_filename(base_upload_dir, upload_file.filename)
-                final_path = os.path.join(base_upload_dir, safe_filename)
-
-            def perform_merge():
-                os.makedirs(os.path.dirname(final_path), exist_ok=True)
-                if os.path.exists(final_path):
-                    _retry_file_operation(os.remove, final_path)
-                with open(final_path, 'wb') as final_file:
-                    for i in range(upload_file.total_chunks):
-                        chunk_path = os.path.join(chunk_dir, f"chunk_{i}")
-                        if os.path.exists(chunk_path):
-                            with open(chunk_path, 'rb') as chunk_file:
-                                final_file.write(chunk_file.read())
-
-            _retry_file_operation(perform_merge)
-            final_path = os.path.normpath(final_path)
-
-        return final_path
-
-    def _transcode_and_extract_metadata(self, final_path, upload_file, data):
-        """转码为 WAV 并提取音频元数据"""
-        wav_file_path = None
-        oss_key = None
-        meta_tmp_path = None
-
-        try:
-            orig_ext = os.path.splitext(final_path)[1].lower()
-            if orig_ext == '.wav':
-                wav_file_path = final_path
-                wav_filename = os.path.basename(final_path)
-                sample_rate, bits_per_sample = _read_wav_header(final_path)
-            else:
-                wav_file_path, wav_filename, sample_rate, bits_per_sample = _convert_to_wav(final_path)
-                if os.path.exists(final_path) and final_path != wav_file_path:
-                    _retry_file_operation(os.remove, final_path)
-
-            if upload_file.relative_path:
-                safe_path = upload_file.relative_path.replace('\\', '/').lstrip('/')
-                safe_path = '/'.join(p for p in safe_path.split('/') if p and p != '..')
-                stem = os.path.splitext(safe_path)[0]
-                oss_key = f"direct/{stem}.wav"
-            else:
-                stem = os.path.splitext(upload_file.filename)[0]
-                oss_key = f"direct/{stem}.wav"
-
-            if storage.exists(f'audios/{oss_key}'):
-                base, ext_part = os.path.splitext(oss_key)
-                counter = 1
-                while storage.exists(f'audios/{base}_{counter}{ext_part}'):
-                    counter += 1
-                oss_key = f"{base}_{counter}{ext_part}"
-
-            final_path = storage.save_file(wav_file_path, 'audios', oss_key)
-            if os.path.exists(wav_file_path):
-                _retry_file_operation(os.remove, wav_file_path)
-
-            # 更新文件名为WAV文件名（转换后存储用的文件名）
-            # original_filename 保留注册时记录的原始上传名，不覆盖
-            upload_file.filename = wav_filename
-            self.repo.flush()
-
-        except Exception as e:
-            logger.warning(f"音频转换/上传OSS失败，将保留原始格式: {str(e)}")
-            if wav_file_path and os.path.exists(wav_file_path):
-                try:
-                    os.remove(wav_file_path)
-                except Exception:
-                    logger.debug("清理WAV转换临时文件失败: %s", wav_file_path, exc_info=True)
-            if oss_key:
-                try:
-                    storage.delete(f'audios/{oss_key}')
-                except Exception:
-                    logger.debug("音频转换失败后清理OSS文件失败: oss_key=%s", oss_key, exc_info=True)
-            sample_rate = 44100
-            bits_per_sample = 16
-
-        meta_source_path = final_path
-        if oss_key:
-            import tempfile as _tmp
-            meta_tmp_path = _tmp.NamedTemporaryFile(delete=False, suffix='.wav').name
-            storage.load_file(f'audios/{oss_key}', meta_tmp_path)
-            meta_source_path = meta_tmp_path
-
-        file_size = os.path.getsize(meta_source_path)
-        duration = 0.0
-        sample_rate = 44100
-        channels = 1  # 默认单声道
-        bitrate = 128000
-
-        try:
-            from pydub import AudioSegment
-            audio_seg = AudioSegment.from_file(meta_source_path)
-            duration = len(audio_seg) / 1000.0
-            sample_rate = audio_seg.frame_rate
-            channels = audio_seg.channels
-            bitrate = audio_seg.sample_width * 8 * sample_rate
-            if duration <= 0:
-                raise ValueError("音频时长为0，可能是无效的音频文件")
-        except Exception as e:
-            logger.info(f"音频元数据提取失败，使用默认值: {str(e)}")
-        finally:
-            if meta_tmp_path and os.path.exists(meta_tmp_path):
-                try:
-                    os.remove(meta_tmp_path)
-                except Exception:
-                    logger.debug("清理音频元数据临时文件失败: %s", meta_tmp_path, exc_info=True)
-
-        return {
-            'final_path': final_path,
-            'file_size': file_size,
-            'duration': duration,
-            'sample_rate': sample_rate,
-            'channels': channels,
-            'bitrate': bitrate,
-        }
+            return self._transcoding_service.merge_direct_oss_parts(
+                oss_key, oss_upload_id, oss_parts
+            )
+        return self._transcoding_service.merge_local_chunks(
+            upload_file, base_upload_dir, chunk_base
+        )
 
     def _create_audio_record(self, audio_meta, upload_file, data, params):
         """创建音频数据库记录，处理标签和算法关联"""
@@ -1045,6 +815,8 @@ class AudioUploadService:
 
         return {'tc_id': tc_id, 'tc_count': tc_count}
 
+    # ===== 查询与导入 =====
+
     def get_upload_progress(self, data: dict) -> dict:
         """获取上传任务进度"""
         try:
@@ -1057,20 +829,7 @@ class AudioUploadService:
                 return {'success': False, 'message': '任务不存在', 'data': None, 'code': 404}
 
             files = self.repo.list_upload_files(task_id)
-            file_progress = []
-            for file in files:
-                file_progress.append({
-                    'file_id': file.id,
-                    'filename': file.filename,
-                    'original_filename': file.original_filename,
-                    'relative_path': file.relative_path,
-                    'size': file.size,
-                    'uploaded_size': file.uploaded_size,
-                    'completed_chunks': file.completed_chunks,
-                    'total_chunks': file.total_chunks,
-                    'status': file.status,
-                    'md5': file.md5,
-                })
+            file_progress = [self._format_file_progress(f) for f in files]
 
             return {
                 'success': True, 'message': 'Success',
@@ -1091,6 +850,21 @@ class AudioUploadService:
             }
         except Exception as e:
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
+
+    def _format_file_progress(self, file):
+        """格式化单文件进度"""
+        return {
+            'file_id': file.id,
+            'filename': file.filename,
+            'original_filename': file.original_filename,
+            'relative_path': file.relative_path,
+            'size': file.size,
+            'uploaded_size': file.uploaded_size,
+            'completed_chunks': file.completed_chunks,
+            'total_chunks': file.total_chunks,
+            'status': file.status,
+            'md5': file.md5,
+        }
 
     def url_import(self, data: dict) -> dict:
         """URL 远程导入"""
@@ -1122,19 +896,7 @@ class AudioUploadService:
             new_audio = self.repo.create_audio(meta)
             self.repo.commit()
 
-            if relative_path:
-                path_parts = relative_path.split('/')
-                directory_parts = path_parts[:-1]
-                for tag_name in directory_parts:
-                    if tag_name:
-                        tag = self.repo.get_or_create_tag(tag_name)
-                        self.repo.add_audio_tag(new_audio.id, tag.id)
-                self.repo.commit()
-
-                try:
-                    refresh_stats_cache()
-                except Exception:
-                    logger.debug("URL导入后刷新统计缓存失败: audio_id=%s", new_audio.id, exc_info=True)
+            self._attach_url_import_tags(new_audio, relative_path)
 
             return {
                 'success': True, 'message': 'URL 导入成功',
@@ -1145,15 +907,34 @@ class AudioUploadService:
             self.repo.rollback()
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
 
+    def _attach_url_import_tags(self, new_audio, relative_path):
+        """URL 导入：根据相对路径附加目录标签并刷新统计缓存"""
+        if not relative_path:
+            return
+        path_parts = relative_path.split('/')
+        directory_parts = path_parts[:-1]
+        for tag_name in directory_parts:
+            if tag_name:
+                tag = self.repo.get_or_create_tag(tag_name)
+                self.repo.add_audio_tag(new_audio.id, tag.id)
+        self.repo.commit()
+
+        try:
+            refresh_stats_cache()
+        except Exception:
+            logger.debug("URL导入后刷新统计缓存失败: audio_id=%s", new_audio.id, exc_info=True)
+
     def _save_audio(self, file, filename_prefix="", relative_path=""):
-        """保存音频文件并提取元数据"""
-        from audio_service.config.config import Config
+        """保存音频文件并提取元数据（委托转码服务）"""
+        base_upload_dir = self._get_base_upload_dir()
         original_filename = file.filename
-        base_upload_dir = getattr(Config, 'AUDIO_STORAGE_PATH',
-                                  os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'audios'))
-        temp_file_path = _generate_audio_storage_path(original_filename, base_upload_dir, filename_prefix, relative_path)
+        temp_file_path = _generate_audio_storage_path(
+            original_filename, base_upload_dir, filename_prefix, relative_path
+        )
         _retry_file_operation(_persist_file_content, file, temp_file_path)
-        return _create_audio_db_record(temp_file_path, original_filename, relative_path)
+        return self._transcoding_service.create_record_from_file(
+            temp_file_path, original_filename, relative_path
+        )
 
 
 # 模块级实例

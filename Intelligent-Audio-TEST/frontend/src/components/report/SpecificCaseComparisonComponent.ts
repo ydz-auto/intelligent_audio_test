@@ -6,6 +6,7 @@ import { getValidResources, toMetricsMap, toTextMap, createCaseDataHelpers } fro
 import { createDownloadLogic } from './specificCaseDownload'
 import { createCaseDetailPrep } from './specificCaseDetailPrep'
 import { createCaseMetricsComputeds, createFilteredCases } from './specificCaseComputeds'
+import { usePagination } from '../../composables/usePagination'
 
 export function useSpecificCaseComparison(props: any) {
   // 导出模式：导出时展开所有用例、显示全部不分页
@@ -78,13 +79,8 @@ export function useSpecificCaseComparison(props: any) {
     return categories.value.filter((cat: string) => cat.toLowerCase().includes(query))
   })
 
-  const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
-
-  const paginatedCategories = computed(() => {
-    const start = (categoryPage.value - 1) * categoryPageSize.value
-    const end = start + categoryPageSize.value
-    return filteredCategoriesForSelection.value.slice(start, end)
-  })
+  // 类别分页：使用通用分页 composable
+  const { totalPages: totalCategoryPages, paginatedItems: paginatedCategories } = usePagination(filteredCategoriesForSelection, categoryPageSize, { currentPage: categoryPage })
 
   const selectedTags = ref<any[]>([])
   const selectedMetrics = ref<any[]>([])
@@ -188,9 +184,10 @@ export function useSpecificCaseComparison(props: any) {
     return (filteredCases.value || []).filter((c: any) => c && !pinnedIds.has(c.id))
   })
 
-  const totalPages = computed(() => {
-    return Math.max(1, Math.ceil(totalCases.value / pageSize.value))
-  })
+  // 用例分页为服务端分页，totalCases 由 API 返回
+  // 此处用 totalCases 长度的占位数组驱动 totalPages 计算
+  const placeholderForTotalCases = computed(() => Array(totalCases.value).fill(0))
+  const { totalPages } = usePagination(placeholderForTotalCases, pageSize, { currentPage })
 
   const paginatedCases = computed(() => filteredCases.value)
 
@@ -233,13 +230,8 @@ export function useSpecificCaseComparison(props: any) {
     return allTags.value.filter((tag: string) => tag.toLowerCase().includes(query))
   })
 
-  const totalTagPages = computed(() => Math.ceil(filteredTags.value.length / tagPageSize.value) || 1)
-
-  const paginatedTags = computed(() => {
-    const start = (tagPage.value - 1) * tagPageSize.value
-    const end = start + tagPageSize.value
-    return filteredTags.value.slice(start, end)
-  })
+  // 标签分页：使用通用分页 composable
+  const { totalPages: totalTagPages, paginatedItems: paginatedTags } = usePagination(filteredTags, tagPageSize, { currentPage: tagPage })
 
   // Search and pagination for metrics
   const metricSearchQuery = ref('')
@@ -254,13 +246,8 @@ export function useSpecificCaseComparison(props: any) {
     return actualAllMetrics.value.filter((metric: any) => metric.name.toLowerCase().includes(query))
   })
 
-  const totalMetricPages = computed(() => Math.ceil(filteredMetricsForDisplay.value.length / metricPageSize.value) || 1)
-
-  const paginatedMetrics = computed(() => {
-    const start = (metricPage.value - 1) * metricPageSize.value
-    const end = start + metricPageSize.value
-    return filteredMetricsForDisplay.value.slice(start, end)
-  })
+  // 维度分页：使用通用分页 composable
+  const { totalPages: totalMetricPages, paginatedItems: paginatedMetrics } = usePagination(filteredMetricsForDisplay, metricPageSize, { currentPage: metricPage })
 
   const paginatedCasesWithPreparedData = computed(() => {
     const sourceCases = paginatedCases.value

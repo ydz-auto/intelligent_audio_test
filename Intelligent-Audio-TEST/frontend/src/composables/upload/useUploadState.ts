@@ -1,7 +1,19 @@
 import { ref, type Ref } from 'vue';
 import type { AudioUploadTask } from '../../shared/types';
+import { UploadStatus as UploadStatusEnum } from '@/shared/types/enums';
 
-export type UploadStatus = 'idle' | 'preparing' | 'uploading' | 'paused' | 'completed' | 'failed' | 'stopped';
+/** 上传状态机：idle → preparing → uploading → completed/failed，可进入 paused/stopped */
+export const UploadStatus = {
+  IDLE: UploadStatusEnum.IDLE,
+  PREPARING: UploadStatusEnum.PREPARING,
+  UPLOADING: UploadStatusEnum.UPLOADING,
+  PAUSED: UploadStatusEnum.PAUSED,
+  COMPLETED: UploadStatusEnum.COMPLETED,
+  FAILED: UploadStatusEnum.FAILED,
+  STOPPED: UploadStatusEnum.STOPPED,
+} as const;
+
+export type UploadStatus = typeof UploadStatus[keyof typeof UploadStatus];
 
 export type UploadAction = 'openUploadModal' | 'openFolderImport' | 'dismissTask' | 'pauseTask' | 'retryTask' | null;
 
@@ -44,7 +56,7 @@ export function useUploadState(): UploadState {
   const currentTask = ref<AudioUploadTask | null>(null);
   const currentUploadingFile = ref<string | null>(null);
   const isRetryingFailed = ref(false);
-  const uploadStatus = ref<UploadStatus>('idle');
+  const uploadStatus = ref<UploadStatus>(UploadStatus.IDLE);
   const pendingAction = ref<UploadActionPayload>({ action: null });
 
   const requestAction = (action: UploadAction, taskId?: string) => {

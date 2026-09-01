@@ -3,12 +3,31 @@
  */
 
 import { API_CONFIG } from './config';
+import { TestType } from '@/shared/types/enums';
 
 const _apiBaseUrl = API_CONFIG.baseUrl;
 const _apiBaseNoV1 = _apiBaseUrl.replace('/v1', '');
 
 export const DB_MIN = -60;
 export const DB_MAX = 0;
+
+// 时间换算常量（秒）
+const SECONDS_PER_MINUTE = 60;
+const SECONDS_PER_HOUR = 3600;
+const SECONDS_PER_DAY = 86400;
+
+// 音频时长筛选阈值（秒）
+const DURATION_SHORT_MAX = 30;     // 短音频上限
+const DURATION_MEDIUM_MAX = 300;   // 中等音频上限（长音频下限）
+
+// 默认置信度
+const DEFAULT_CONFIDENCE = 1.0;
+
+// 文件大小换算基数
+const FILE_SIZE_BASE = 1024;
+
+// 音频流播放接口路径
+const AUDIO_STREAM_BY_PATH = '/audio/stream-by-path';
 
 export function volumeToDb(volume: number, minDb: number = DB_MIN, maxDb: number = DB_MAX): number {
   if (volume < 0 || volume > 100) {
@@ -72,8 +91,8 @@ export const formatFileSize = (size: number | string): string => {
   let currentSize = parseInt(size as unknown as string) || 0;
   let unitIndex = 0;
   
-  while (currentSize >= 1024 && unitIndex < units.length - 1) {
-    currentSize /= 1024;
+  while (currentSize >= FILE_SIZE_BASE && unitIndex < units.length - 1) {
+    currentSize /= FILE_SIZE_BASE;
     unitIndex++;
   }
   
@@ -87,8 +106,8 @@ export const formatFileSize = (size: number | string): string => {
  */
 export const formatDuration = (seconds: number | null | undefined): string => {
   if (!seconds) return '0:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
+  const mins = Math.floor(seconds / SECONDS_PER_MINUTE);
+  const secs = Math.floor(seconds % SECONDS_PER_MINUTE);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
@@ -105,9 +124,9 @@ export const parseDuration = (durationStr: string | number | null | undefined): 
   if (str.includes(':')) {
     const parts = str.split(':').map(p => parseInt(p, 10) || 0);
     if (parts.length === 2) {
-      return parts[0] * 60 + parts[1];
+      return parts[0] * SECONDS_PER_MINUTE + parts[1];
     } else if (parts.length === 3) {
-      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      return parts[0] * SECONDS_PER_HOUR + parts[1] * SECONDS_PER_MINUTE + parts[2];
     }
   }
   const parsed = parseFloat(str);
@@ -121,10 +140,10 @@ export const parseDuration = (durationStr: string | number | null | undefined): 
  */
 export const formatDurationLong = (seconds: number | null | undefined): string => {
   if (!seconds) return '0秒';
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
+  const days = Math.floor(seconds / SECONDS_PER_DAY);
+  const hours = Math.floor((seconds % SECONDS_PER_DAY) / SECONDS_PER_HOUR);
+  const mins = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+  const secs = Math.floor(seconds % SECONDS_PER_MINUTE);
   const parts: string[] = [];
   if (days > 0) parts.push(`${days}天`);
   if (hours > 0) parts.push(`${hours}时`);
@@ -299,9 +318,9 @@ export const filterAudios = (
 
     if (filters.duration !== 'all') {
       const duration = parseFloat(audio.duration) || 0;
-      if (filters.duration === 'short' && duration > 30) return false;
-      if (filters.duration === 'medium' && (duration <= 30 || duration > 300)) return false;
-      if (filters.duration === 'long' && duration <= 300) return false;
+      if (filters.duration === 'short' && duration > DURATION_SHORT_MAX) return false;
+      if (filters.duration === 'medium' && (duration <= DURATION_SHORT_MAX || duration > DURATION_MEDIUM_MAX)) return false;
+      if (filters.duration === 'long' && duration <= DURATION_MEDIUM_MAX) return false;
     }
 
     if (filters.format !== 'all' && audio.format !== filters.format) {
@@ -507,7 +526,7 @@ export const parseAnnotationFormat = (content: string, format: string): {
           start: 0,
           end: 0,
           text: data.text || '',
-          confidence: 1.0,
+          confidence: DEFAULT_CONFIDENCE,
           ...segExtra
         });
         // 清除 data 顶层的业务字段（已移入 segments），避免 data 与 segments 重复
@@ -528,7 +547,7 @@ export const parseAnnotationFormat = (content: string, format: string): {
               start: 0,
               end: 0,
               text: ann.text,
-              confidence: 1.0
+              confidence: DEFAULT_CONFIDENCE
             });
           } else if (ann.txt && Array.isArray(ann.txt)) {
             for (const item of ann.txt) {
@@ -597,7 +616,7 @@ export const parseAnnotationFormat = (content: string, format: string): {
           start: parseFloat(parts[3]) || 0,
           end: (parseFloat(parts[3]) || 0) + (parseFloat(parts[4]) || 0),
           text: '',
-          confidence: 1.0
+          confidence: DEFAULT_CONFIDENCE
         });
       } else if (formatLower === 'stm' && parts.length >= 6) {
         segments.push({
@@ -605,7 +624,7 @@ export const parseAnnotationFormat = (content: string, format: string): {
           start: parseFloat(parts[2]) || 0,
           end: parseFloat(parts[3]) || 0,
           text: parts.slice(5).join(' ') || '',
-          confidence: 1.0
+          confidence: DEFAULT_CONFIDENCE
         });
       }
     }
@@ -729,7 +748,7 @@ export function buildAudioUrl(audio: any): string {
 
   // 兼容直接传入路径字符串
   if (typeof audio === 'string') {
-    return `${_apiBaseNoV1}/audio/stream-by-path?path=${encodeURIComponent(audio)}`;
+    return `${_apiBaseNoV1}${AUDIO_STREAM_BY_PATH}?path=${encodeURIComponent(audio)}`;
   }
 
   // 完整 URL（http 开头），直接返回
@@ -749,13 +768,13 @@ export function buildAudioUrl(audio: any): string {
 
   // 优先使用 ID 获取音频
   if (audio.id) {
-    const taskType = audio.type || 'api';
+    const taskType = audio.type || TestType.API;
     return `${_apiBaseUrl}/audios/${audio.id}/stream?task_type=${taskType}`;
   }
 
   // 回退到路径
   if (audio.path) {
-    return `${_apiBaseNoV1}/audio/stream-by-path?path=${encodeURIComponent(audio.path)}`;
+    return `${_apiBaseNoV1}${AUDIO_STREAM_BY_PATH}?path=${encodeURIComponent(audio.path)}`;
   }
 
   return '';
@@ -765,8 +784,8 @@ export function buildAudioUrl(audio: any): string {
  * 音频类型标签映射
  */
 const AUDIO_TYPE_LABELS: Record<string, string> = {
-  api: 'API测试音频',
-  e2e: 'E2E测试音频',
+  [TestType.API]: 'API测试音频',
+  [TestType.E2E]: 'E2E测试音频',
   noise: '噪声',
   dry: '干声',
 };
@@ -789,7 +808,7 @@ export function getAudioTypeLabel(audioType: string): string {
 export function normalizeAudioItem(audio: any, fallbackTestType?: string): any {
   if (!audio || typeof audio !== 'object') return audio;
 
-  const audioType = audio.test_type ?? audio.audio_type ?? fallbackTestType ?? 'api';
+  const audioType = audio.test_type ?? audio.audio_type ?? fallbackTestType ?? TestType.API;
   const timelineStart = audio.timeline_start ?? 0;
 
   return {
@@ -823,7 +842,7 @@ export function normalizeAudioFields(caseItem: any, taskType?: string): any {
   if (!caseItem || typeof caseItem !== 'object') return caseItem;
   const normalized = { ...caseItem };
 
-  const caseTestType = normalized.test_type ?? taskType ?? 'api';
+  const caseTestType = normalized.test_type ?? taskType ?? TestType.API;
 
   if (normalized.audios && Array.isArray(normalized.audios) && normalized.audios.length > 0) {
     normalized.audioList = normalized.audios.map((audio: any, idx: number) => {

@@ -13,6 +13,7 @@ import { useAlgorithmSelection } from '../../composables/algorithm/useAlgorithmS
 import { useTestReport } from '../../composables/shared/useTestReport'
 import { apisApi, tasksApi, reportsApi } from '../../utils/api'
 import { generateDeviceFields } from '../../utils/utils'
+import { TaskStatus, ExecutionStatus, EvaluationStatus, TestType } from '@/shared/types/enums'
 import type { 
   TestCase, 
   Report, 
@@ -115,7 +116,7 @@ export function useApiTest() {
   const taskName = ref('API测试任务')
   const concurrentTasks = ref(5)
   const currentTaskId = ref<string | number | null>(null)
-  const isExecuting = computed(() => taskStatus.value === 'running' || taskStatus.value === 'starting' || taskStatus.value === 'pending')
+  const isExecuting = computed(() => taskStatus.value === TaskStatus.RUNNING || taskStatus.value === TaskStatus.STARTING || taskStatus.value === TaskStatus.PENDING)
   const executionProgress = computed(() => progressPercentage.value)
   
   const {
@@ -190,7 +191,7 @@ export function useApiTest() {
             id: currentTaskId.value,
             name: taskName.value || 'API测试任务',
             type: 'api',
-            status: 'failed',
+            status: TaskStatus.FAILED,
             progress: progressPercentage.value,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
@@ -398,7 +399,7 @@ export function useApiTest() {
         } else {
           // 没勾选 → 从后端按筛选条件拉取全量ID
           caseIds = await testCaseStore.fetchCaseIdsByFilter({
-            testType: 'api',
+            testType: TestType.API,
             algorithmType: selectedAlgorithmType.value || undefined,
           })
         }
@@ -444,10 +445,10 @@ export function useApiTest() {
             const testCase = allCases.find(tc => String(tc.id) === String(id))
             return testCase ? {
               ...testCase,
-              status: 'pending',
+              status: TaskStatus.PENDING,
               duration: '0',
-              executionStatus: 'pending',
-              evaluationStatus: 'pending'
+              executionStatus: ExecutionStatus.PENDING,
+              evaluationStatus: EvaluationStatus.PENDING
             } as AssociatedCase : undefined
           })
           .filter((item): item is AssociatedCase => item !== undefined)
