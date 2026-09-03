@@ -1,0 +1,414 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1950" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#dc2626"/>
+    </marker>
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .phase-title { font-size: 15px; font-weight: 700; }
+      .phase-sub   { font-size: 11px; fill: #64748b; }
+      .step-name   { font-size: 13px; font-weight: 600; fill: #1e293b; }
+      .step-name-s { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .step-desc   { font-size: 10.5px; fill: #64748b; }
+      .note        { font-size: 10.5px; fill: #64748b; }
+      .num-badge   { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .flow        { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red    { stroke: #dc2626; stroke-width: 1.5; fill: none; marker-end: url(#arrowRed); }
+      .decision    { fill: #fefce8; stroke: #ca8a04; stroke-width: 1.4; }
+      .decision-t  { font-size: 12px; font-weight: 600; fill: #854d0e; text-anchor: middle; }
+      .label       { font-size: 10px; fill: #64748b; text-anchor: middle; }
+      .pill-t      { font-size: 9px; font-weight: 600; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <!-- ===================== 背景 ===================== -->
+  <rect x="0" y="0" width="1240" height="1950" fill="#f1f5f9"/>
+
+  <!-- ===================== 标题区 ===================== -->
+  <text x="620" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#0f172a">端到端（E2E）用例执行 · 步骤流程图</text>
+  <text x="620" y="66" text-anchor="middle" class="phase-sub">Intelligent-Audio-TEST · ExecutionEngine 调度 → E2EExecutor 多轮编排 → 采集 / 聚合 / 评估 → 设备清理</text>
+
+  <!-- ===================== ① 前端配置向导 ===================== -->
+  <g filter="url(#softShadow)">
+    <rect x="40" y="100" width="1160" height="118" rx="12" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.5"/>
+    <rect x="40" y="100" width="6" height="118" rx="3" fill="#2563eb"/>
+  </g>
+  <text x="64" y="128" class="phase-title" fill="#2563eb">① 前端配置向导</text>
+  <text x="196" y="128" class="phase-sub">E2ETest.vue · currentStep 0→4 · useE2eView.startTest()</text>
+
+  <g>
+    <rect x="60" y="142" width="200" height="52" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+    <circle cx="76" cy="156" r="9" fill="#2563eb"/><text x="76" y="159.5" class="num-badge">0</text>
+    <text x="92" y="161" class="step-name-s">选择用例</text>
+    <text x="74" y="181" class="step-desc">勾选 E2E 测试用例</text>
+
+    <rect x="290" y="142" width="200" height="52" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+    <circle cx="306" cy="156" r="9" fill="#2563eb"/><text x="306" y="159.5" class="num-badge">1</text>
+    <text x="322" y="161" class="step-name-s">选择设备</text>
+    <text x="304" y="181" class="step-desc">被测设备 + 播放设备</text>
+
+    <rect x="520" y="142" width="200" height="52" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+    <circle cx="536" cy="156" r="9" fill="#2563eb"/><text x="536" y="159.5" class="num-badge">2</text>
+    <text x="552" y="161" class="step-name-s">配置并执行</text>
+    <text x="534" y="181" class="step-desc">POST /tasks → /start</text>
+
+    <rect x="750" y="142" width="200" height="52" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+    <circle cx="766" cy="156" r="9" fill="#2563eb"/><text x="766" y="159.5" class="num-badge">3</text>
+    <text x="782" y="161" class="step-name-s">执行监控</text>
+    <text x="764" y="181" class="step-desc">WebSocket 实时进度</text>
+
+    <rect x="980" y="142" width="200" height="52" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+    <circle cx="996" cy="156" r="9" fill="#2563eb"/><text x="996" y="159.5" class="num-badge">4</text>
+    <text x="1012" y="161" class="step-name-s">查看报告</text>
+    <text x="994" y="181" class="step-desc">聚合结果与评估分</text>
+
+    <line x1="260" y1="168" x2="286" y2="168" class="flow"/>
+    <line x1="490" y1="168" x2="516" y2="168" class="flow"/>
+    <line x1="720" y1="168" x2="746" y2="168" class="flow"/>
+    <line x1="950" y1="168" x2="976" y2="168" class="flow"/>
+  </g>
+
+  <!-- 连接：向导 → 调度 -->
+  <line x1="620" y1="194" x2="620" y2="242" class="flow"/>
+
+  <!-- ===================== ② 任务创建与调度 ===================== -->
+  <g filter="url(#softShadow)">
+    <rect x="40" y="246" width="1160" height="150" rx="12" fill="#ffffff" stroke="#ddd6fe" stroke-width="1.5"/>
+    <rect x="40" y="246" width="6" height="150" rx="3" fill="#7c3aed"/>
+  </g>
+  <text x="64" y="274" class="phase-title" fill="#7c3aed">② 任务创建与调度</text>
+  <text x="212" y="274" class="phase-sub">execution_bp / task_bp → ExecutionEngine.start_task()</text>
+
+  <g>
+    <rect x="70" y="296" width="180" height="48" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+    <text x="160" y="316" text-anchor="middle" class="step-name-s">POST /tasks</text>
+    <text x="160" y="334" text-anchor="middle" class="step-desc">创建任务（type=e2e）</text>
+
+    <rect x="290" y="296" width="180" height="48" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+    <text x="380" y="316" text-anchor="middle" class="step-name-s">POST /tasks/&lt;id&gt;/start</text>
+    <text x="380" y="334" text-anchor="middle" class="step-desc">请求启动任务</text>
+
+    <polygon points="600,286 668,320 600,354 532,320" class="decision"/>
+    <text x="600" y="316" class="decision-t">running_e2e</text>
+    <text x="600" y="333" class="decision-t" font-size="11">全局锁占用？</text>
+
+    <rect x="770" y="288" width="200" height="40" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.2"/>
+    <text x="870" y="304" text-anchor="middle" class="step-name-s">空闲 → 置 running</text>
+    <text x="870" y="320" text-anchor="middle" class="step-desc">启动任务线程</text>
+
+    <rect x="770" y="336" width="200" height="40" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" stroke-dasharray="4 3"/>
+    <text x="870" y="352" text-anchor="middle" class="step-name-s">占用 → 入 task_queue</text>
+    <text x="870" y="368" text-anchor="middle" class="step-desc">置 queued 等待调度</text>
+
+    <line x1="250" y1="320" x2="286" y2="320" class="flow"/>
+    <line x1="470" y1="320" x2="528" y2="320" class="flow"/>
+    <line x1="668" y1="320" x2="766" y2="308" class="flow"/>
+    <line x1="668" y1="320" x2="766" y2="356" class="flow"/>
+    <text x="712" y="303" class="label">空闲</text>
+    <text x="712" y="350" class="label">占用</text>
+  </g>
+  <text x="70" y="384" class="note">调度线程 _scheduler_loop 周期拉起 pending 任务 · 任务结束 _check_queue() 启动队首 · E2E 全局同时仅 1 个任务</text>
+
+  <!-- 连接：调度 → 主循环 -->
+  <line x1="620" y1="396" x2="620" y2="416" class="flow"/>
+
+  <!-- ===================== ③ 任务主循环 ===================== -->
+  <g filter="url(#softShadow)">
+    <rect x="40" y="420" width="1160" height="170" rx="12" fill="#ffffff" stroke="#c7d2fe" stroke-width="1.5"/>
+    <rect x="40" y="420" width="6" height="170" rx="3" fill="#4f46e5"/>
+  </g>
+  <text x="64" y="448" class="phase-title" fill="#4f46e5">③ 任务主循环</text>
+  <text x="188" y="448" class="phase-sub">_run_task() · while not stop_event</text>
+
+  <g>
+    <rect x="70" y="466" width="240" height="56" rx="8" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1.2"/>
+    <text x="190" y="488" text-anchor="middle" class="step-name-s">取下一个 pending TaskCase</text>
+    <text x="190" y="507" text-anchor="middle" class="step-desc">按 created_at 升序调度</text>
+
+    <polygon points="400,458 478,494 400,530 322,494" class="decision"/>
+    <text x="400" y="490" class="decision-t">设备全部在线？</text>
+    <text x="400" y="507" class="decision-t" font-size="10.5">被测 + 播放设备</text>
+
+    <rect x="520" y="466" width="250" height="56" rx="8" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1.2"/>
+    <text x="645" y="488" text-anchor="middle" class="step-name-s">同步执行 E2E 用例</text>
+    <text x="645" y="507" text-anchor="middle" class="step-desc">E2EExecutor.execute_e2e_case()</text>
+
+    <rect x="810" y="466" width="230" height="56" rx="8" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1.2"/>
+    <text x="925" y="488" text-anchor="middle" class="step-name-s">更新统计 + 推送进度</text>
+    <text x="925" y="507" text-anchor="middle" class="step-desc">completed/failed 计数 · _emit_progress</text>
+
+    <rect x="310" y="560" width="180" height="24" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.2"/>
+    <text x="400" y="576" text-anchor="middle" font-size="10" fill="#b91c1c">设备离线 → 用例置 failed</text>
+
+    <line x1="310" y1="494" x2="318" y2="494" class="flow"/>
+    <line x1="478" y1="494" x2="516" y2="494" class="flow"/>
+    <line x1="770" y1="494" x2="806" y2="494" class="flow"/>
+    <line x1="400" y1="530" x2="400" y2="556" class="flow-red"/>
+
+    <!-- 循环回线 -->
+    <polyline points="1040,494 1085,494 1085,552 190,552 190,526" class="flow"/>
+    <text x="640" y="546" class="label">仍有 pending 用例 → 继续下一个用例</text>
+  </g>
+  <text x="520" y="578" class="note">无待执行用例 → 等待执行/评估中用例完成（notify_case_completed）后收尾 · 响应 pause / resume / stop</text>
+
+  <!-- 连接：主循环 → 准备 -->
+  <line x1="645" y1="522" x2="645" y2="610" class="flow"/>
+
+  <!-- ===================== ④ 阶段一 循环前准备 ===================== -->
+  <g filter="url(#softShadow)">
+    <rect x="40" y="614" width="1160" height="146" rx="12" fill="#ffffff" stroke="#a5f3fc" stroke-width="1.5"/>
+    <rect x="40" y="614" width="6" height="146" rx="3" fill="#0891b2"/>
+  </g>
+  <text x="64" y="642" class="phase-title" fill="#0891b2">④ 单用例执行 · 阶段一 循环前准备</text>
+  <text x="352" y="642" class="phase-sub">_prepare_rounds()</text>
+
+  <g>
+    <rect x="75" y="656" width="250" height="64" rx="8" fill="#ecfeff" stroke="#67e8f9" stroke-width="1.2"/>
+    <text x="200" y="676" text-anchor="middle" class="step-name-s">get_device_info()</text>
+    <text x="200" y="694" text-anchor="middle" class="step-desc">查询任务关联设备 · 匹配厂商驱动</text>
+    <text x="200" y="709" text-anchor="middle" class="step-desc">device_driver_factory</text>
+
+    <rect x="355" y="656" width="250" height="64" rx="8" fill="#ecfeff" stroke="#67e8f9" stroke-width="1.2"/>
+    <text x="480" y="676" text-anchor="middle" class="step-name-s">register_task_devices()</text>
+    <text x="480" y="694" text-anchor="middle" class="step-desc">注册设备到驱动工厂</text>
+    <text x="480" y="709" text-anchor="middle" class="step-desc">建立驱动会话</text>
+
+    <rect x="635" y="656" width="250" height="64" rx="8" fill="#ecfeff" stroke="#67e8f9" stroke-width="1.2"/>
+    <text x="760" y="676" text-anchor="middle" class="step-name-s">initialize_devices()</text>
+    <text x="760" y="694" text-anchor="middle" class="step-desc">并行 driver.initialize()（设备控制线程池）</text>
+    <text x="760" y="709" text-anchor="middle" class="step-desc">超时保护 60s</text>
+
+    <rect x="915" y="656" width="250" height="64" rx="8" fill="#ecfeff" stroke="#67e8f9" stroke-width="1.2"/>
+    <text x="1040" y="676" text-anchor="middle" class="step-name-s">预创建 TestResult</text>
+    <text x="1040" y="694" text-anchor="middle" class="step-desc">execution_status = running</text>
+    <text x="1040" y="709" text-anchor="middle" class="step-desc">多轮结果增量写入</text>
+
+    <line x1="325" y1="688" x2="351" y2="688" class="flow"/>
+    <line x1="605" y1="688" x2="631" y2="688" class="flow"/>
+    <line x1="885" y1="688" x2="911" y2="688" class="flow"/>
+  </g>
+  <rect x="75" y="728" width="1090" height="26" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.2" stroke-dasharray="5 3"/>
+  <text x="620" y="745" text-anchor="middle" font-size="10.5" fill="#92400e">阶段 1.5 · start_background_noise() — 启动全局背景噪声，跨所有轮次持续播放（轮内检测到全局噪声则跳过轮次级噪声）</text>
+
+  <!-- 连接：准备 → 多轮循环 -->
+  <line x1="620" y1="760" x2="620" y2="780" class="flow"/>
+
+  <!-- ===================== ⑤ 阶段二 多轮循环（核心） ===================== -->
+  <g filter="url(#softShadow)">
+    <rect x="40" y="784" width="1160" height="516" rx="12" fill="#ffffff" stroke="#fde68a" stroke-width="1.8"/>
+    <rect x="40" y="784" width="6" height="516" rx="3" fill="#d97706"/>
+  </g>
+  <text x="64" y="812" class="phase-title" fill="#d97706">⑤ 阶段二 多轮循环（核心）</text>
+  <text x="290" y="812" class="phase-sub">_run_rounds_loop() → 每轮 _execute_single_round() · 任一步失败 → 本轮失败并跳过剩余轮次</text>
+  <rect x="1010" y="794" width="170" height="22" rx="11" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="1095" y="809" text-anchor="middle" font-size="10.5" font-weight="600" fill="#92400e">× N 轮 · rounds 顺序执行</text>
+
+  <g>
+    <!-- 步骤 1 -->
+    <rect x="90" y="830" width="380" height="72" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.3"/>
+    <circle cx="116" cy="854" r="11" fill="#d97706"/><text x="116" y="858" class="num-badge">1</text>
+    <text x="136" y="858" class="step-name">环境设备 setup</text>
+    <text x="106" y="878" class="step-desc">setup_env_devices_for_round()：导轨 rail_distance 等</text>
+    <text x="106" y="893" class="step-desc">环境参数来自本轮 algorithm_params</text>
+
+    <!-- 步骤 2 -->
+    <rect x="640" y="830" width="380" height="72" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.3"/>
+    <circle cx="666" cy="854" r="11" fill="#d97706"/><text x="666" y="858" class="num-badge">2</text>
+    <text x="686" y="858" class="step-name">声纹注册</text>
+    <text x="656" y="878" class="step-desc">_register_voiceprint()：按本轮配置播放声纹音频</text>
+    <text x="656" y="893" class="step-desc">失败则中止测试</text>
+
+    <!-- 步骤 3 -->
+    <rect x="640" y="942" width="380" height="72" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.3"/>
+    <circle cx="666" cy="966" r="11" fill="#d97706"/><text x="666" y="970" class="num-badge">3</text>
+    <text x="686" y="970" class="step-name">设备预处理</text>
+    <text x="656" y="990" class="step-desc">pre_process_devices()：并行 driver.pre_process()</text>
+    <text x="656" y="1005" class="step-desc">启动录音 / 进入待录状态</text>
+
+    <!-- 步骤 4 -->
+    <rect x="90" y="942" width="380" height="72" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.3"/>
+    <circle cx="116" cy="966" r="11" fill="#d97706"/><text x="116" y="970" class="num-badge">4</text>
+    <text x="136" y="970" class="step-name">音频播放</text>
+    <text x="106" y="990" class="step-desc">playback_orchestrator.play_round()：干声→噪声→干扰人</text>
+    <text x="106" y="1005" class="step-desc">时间轴含 overlap 交叠 · 同步播放 · 产出 audio_timelines</text>
+
+    <!-- 步骤 5 -->
+    <rect x="90" y="1054" width="380" height="72" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.3"/>
+    <circle cx="116" cy="1078" r="11" fill="#d97706"/><text x="116" y="1082" class="num-badge">5</text>
+    <text x="136" y="1082" class="step-name">设备后处理</text>
+    <text x="106" y="1102" class="step-desc">post_process_devices()：并行 driver.post_process()</text>
+    <text x="106" y="1117" class="step-desc">携带播放起止时间戳</text>
+
+    <!-- 步骤 6 -->
+    <rect x="640" y="1054" width="380" height="72" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.3"/>
+    <circle cx="666" cy="1078" r="11" fill="#d97706"/><text x="666" y="1082" class="num-badge">6</text>
+    <text x="686" y="1082" class="step-name">结果采集</text>
+    <text x="656" y="1102" class="step-desc">E2ECollector.collect_results()：计算实际播放偏移</text>
+    <text x="656" y="1117" class="step-desc">collect_raw_results() 内部调用 driver.get_results()</text>
+
+    <!-- 步骤 7 -->
+    <rect x="640" y="1166" width="380" height="72" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.3"/>
+    <circle cx="666" cy="1190" r="11" fill="#d97706"/><text x="666" y="1194" class="num-badge">7</text>
+    <text x="686" y="1194" class="step-name">字段映射 + 单轮评估</text>
+    <text x="656" y="1214" class="step-desc">convert_results() 映射 target 字段 · 增量写入 rounds[i]</text>
+    <text x="656" y="1229" class="step-desc">evaluation.enabled 时提交单轮评估（round_number=round_idx）</text>
+
+    <!-- 步骤 8 -->
+    <rect x="90" y="1166" width="380" height="72" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.3"/>
+    <circle cx="116" cy="1190" r="11" fill="#d97706"/><text x="116" y="1194" class="num-badge">8</text>
+    <text x="136" y="1194" class="step-name">环境设备恢复</text>
+    <text x="106" y="1214" class="step-desc">teardown_env_devices_for_round()：恢复导轨等环境</text>
+    <text x="106" y="1229" class="step-desc">→ 进入下一轮（每轮经 update_case_round_progress 推进度）</text>
+
+    <!-- 蛇形箭头 -->
+    <line x1="470" y1="866" x2="636" y2="866" class="flow"/>
+    <line x1="830" y1="902" x2="830" y2="938" class="flow"/>
+    <line x1="640" y1="978" x2="474" y2="978" class="flow"/>
+    <line x1="280" y1="1014" x2="280" y2="1050" class="flow"/>
+    <line x1="470" y1="1090" x2="636" y2="1090" class="flow"/>
+    <line x1="830" y1="1126" x2="830" y2="1162" class="flow"/>
+    <line x1="640" y1="1202" x2="474" y2="1202" class="flow"/>
+
+    <!-- 失败提示条 -->
+    <rect x="90" y="1250" width="954" height="36" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.3" stroke-dasharray="6 3"/>
+    <text x="567" y="1273" text-anchor="middle" font-size="11" fill="#b91c1c" font-weight="600">! 任一步骤失败 → 本轮标记失败并跳过剩余轮次（设备状态已损坏）· 失败路径见红色虚线</text>
+    <polyline points="1022,866 1044,866 1044,1246" fill="none" stroke="#dc2626" stroke-width="1.4" stroke-dasharray="6 3" marker-end="url(#arrowRed)"/>
+  </g>
+
+  <!-- 连接：多轮 → 聚合 -->
+  <line x1="620" y1="1300" x2="620" y2="1320" class="flow"/>
+
+  <!-- ===================== ⑥ 阶段三 循环后聚合 + 评估 ===================== -->
+  <g filter="url(#softShadow)">
+    <rect x="40" y="1324" width="1160" height="244" rx="12" fill="#ffffff" stroke="#a7f3d0" stroke-width="1.5"/>
+    <rect x="40" y="1324" width="6" height="244" rx="3" fill="#059669"/>
+  </g>
+  <text x="64" y="1352" class="phase-title" fill="#059669">⑥ 阶段三 循环后聚合 + 评估</text>
+  <text x="288" y="1352" class="phase-sub">_finalize_rounds()</text>
+
+  <g>
+    <rect x="80" y="1364" width="520" height="48" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+    <text x="100" y="1384" class="step-name-s">get_final_results()（可选）</text>
+    <text x="100" y="1401" class="step-desc">驱动覆写时优先返回最终结果，跳过逐轮聚合</text>
+
+    <rect x="640" y="1364" width="520" height="48" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+    <text x="660" y="1384" class="step-name-s">E2EAggregator.build_algorithm_result()</text>
+    <text x="660" y="1401" class="step-desc">构建 {test_type: e2e, rounds: [...], aggregated: {avg_latency, ...}}</text>
+
+    <rect x="640" y="1436" width="520" height="48" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+    <text x="660" y="1456" class="step-name-s">持久化原始结果</text>
+    <text x="660" y="1473" class="step-desc">write_result_data_file() → update_test_result（completed/failed）</text>
+
+    <rect x="80" y="1436" width="520" height="48" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+    <text x="100" y="1456" class="step-name-s">提交整体评估</text>
+    <text x="100" y="1473" class="step-desc">顶层 config.dimensions 存在时（round_number = None）</text>
+
+    <rect x="80" y="1508" width="520" height="48" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+    <text x="100" y="1528" class="step-name-s">回填评估分数</text>
+    <text x="100" y="1545" class="step-desc">update_algorithm_result_evaluation() → rounds[].evaluation</text>
+
+    <rect x="640" y="1508" width="520" height="48" rx="8" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.2"/>
+    <text x="660" y="1528" class="step-name-s">更新用例终态</text>
+    <text x="660" y="1545" class="step-desc">E2EAggregator.process_results() → TaskCase completed/failed</text>
+
+    <line x1="600" y1="1388" x2="636" y2="1388" class="flow"/>
+    <line x1="900" y1="1412" x2="900" y2="1432" class="flow"/>
+    <line x1="640" y1="1460" x2="604" y2="1460" class="flow"/>
+    <line x1="340" y1="1484" x2="340" y2="1504" class="flow"/>
+    <line x1="600" y1="1532" x2="636" y2="1532" class="flow"/>
+  </g>
+
+  <!-- 连接：聚合 → 清理 -->
+  <line x1="620" y1="1568" x2="620" y2="1588" class="flow"/>
+
+  <!-- ===================== ⑦ 阶段四 收尾清理 ===================== -->
+  <g filter="url(#softShadow)">
+    <rect x="40" y="1592" width="1160" height="104" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+    <rect x="40" y="1592" width="6" height="104" rx="3" fill="#64748b"/>
+  </g>
+  <text x="64" y="1620" class="phase-title" fill="#64748b">⑦ 阶段四 收尾清理（finally 保证执行）</text>
+  <text x="404" y="1620" class="phase-sub">无论成功 / 失败 / 停止均执行</text>
+
+  <g>
+    <rect x="80" y="1634" width="460" height="52" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+    <text x="310" y="1655" text-anchor="middle" class="step-name-s">stop_background_noise()</text>
+    <text x="310" y="1674" text-anchor="middle" class="step-desc">停止全局背景噪声</text>
+
+    <rect x="640" y="1634" width="460" height="52" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2"/>
+    <text x="870" y="1655" text-anchor="middle" class="step-name-s">E2EDeviceManager.teardown_devices()</text>
+    <text x="870" y="1674" text-anchor="middle" class="step-desc">并行 driver.teardown() · 与 initialize 对称</text>
+
+    <line x1="540" y1="1660" x2="636" y2="1660" class="flow"/>
+  </g>
+
+  <!-- 连接：清理 → 图例 -->
+  <line x1="620" y1="1696" x2="620" y2="1716" class="flow" stroke-dasharray="4 3"/>
+
+  <!-- ===================== 状态流转图例 ===================== -->
+  <g filter="url(#softShadow)">
+    <rect x="40" y="1720" width="1160" height="190" rx="12" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.5"/>
+    <rect x="40" y="1720" width="6" height="190" rx="3" fill="#334155"/>
+  </g>
+  <text x="64" y="1748" class="phase-title" fill="#334155">状态流转图例</text>
+
+  <!-- 小卡 1：Task 状态 -->
+  <rect x="70" y="1762" width="350" height="130" rx="10" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1.2"/>
+  <text x="86" y="1784" font-size="12" font-weight="700" fill="#4f46e5">Task.status 主干</text>
+  <g>
+    <rect x="86" y="1794" width="52" height="20" rx="10" fill="#ffffff" stroke="#a5b4fc"/><text x="112" y="1807.5" class="pill-t" fill="#4f46e5">pending</text>
+    <line x1="138" y1="1804" x2="146" y2="1804" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="148" y="1794" width="52" height="20" rx="10" fill="#ffffff" stroke="#a5b4fc"/><text x="174" y="1807.5" class="pill-t" fill="#4f46e5">queued</text>
+    <line x1="200" y1="1804" x2="208" y2="1804" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="210" y="1794" width="52" height="20" rx="10" fill="#c7d2fe" stroke="#818cf8"/><text x="236" y="1807.5" class="pill-t" fill="#312e81">running</text>
+    <line x1="262" y1="1804" x2="270" y2="1804" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="272" y="1794" width="52" height="20" rx="10" fill="#fefce8" stroke="#facc15"/><text x="298" y="1807.5" class="pill-t" fill="#854d0e">evaluating</text>
+    <line x1="324" y1="1804" x2="332" y2="1804" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="334" y="1794" width="52" height="20" rx="10" fill="#dcfce7" stroke="#4ade80"/><text x="360" y="1807.5" class="pill-t" fill="#166534">completed</text>
+  </g>
+  <g>
+    <rect x="86" y="1826" width="54" height="20" rx="10" fill="#c7d2fe" stroke="#818cf8"/><text x="113" y="1839.5" class="pill-t" fill="#312e81">running</text>
+    <line x1="140" y1="1836" x2="152" y2="1836" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="154" y="1826" width="48" height="20" rx="10" fill="#ffffff" stroke="#94a3b8"/><text x="178" y="1839.5" class="pill-t" fill="#475569">paused</text>
+    <rect x="212" y="1826" width="54" height="20" rx="10" fill="#fee2e2" stroke="#f87171"/><text x="239" y="1839.5" class="pill-t" fill="#991b1b">failed</text>
+    <rect x="276" y="1826" width="54" height="20" rx="10" fill="#fee2e2" stroke="#f87171"/><text x="303" y="1839.5" class="pill-t" fill="#991b1b">stopped</text>
+  </g>
+  <text x="86" y="1872" class="note">evaluating 为评估过渡态 · merged 仅合并任务</text>
+
+  <!-- 小卡 2：TaskCase 状态 -->
+  <rect x="445" y="1762" width="350" height="130" rx="10" fill="#ecfeff" stroke="#67e8f9" stroke-width="1.2"/>
+  <text x="461" y="1784" font-size="12" font-weight="700" fill="#0891b2">TaskCase 状态（E2E）</text>
+  <text x="461" y="1804" class="note">execution_status</text>
+  <g>
+    <rect x="560" y="1790" width="50" height="20" rx="10" fill="#ffffff" stroke="#67e8f9"/><text x="585" y="1803.5" class="pill-t" fill="#0e7490">pending</text>
+    <line x1="610" y1="1800" x2="622" y2="1800" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="624" y="1790" width="50" height="20" rx="10" fill="#a5f3fc" stroke="#22d3ee"/><text x="649" y="1803.5" class="pill-t" fill="#155e75">running</text>
+    <line x1="674" y1="1800" x2="686" y2="1800" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="688" y="1790" width="54" height="20" rx="10" fill="#dcfce7" stroke="#4ade80"/><text x="715" y="1803.5" class="pill-t" fill="#166534">completed</text>
+    <rect x="744" y="1790" width="36" height="20" rx="10" fill="#fee2e2" stroke="#f87171"/><text x="762" y="1803.5" class="pill-t" fill="#991b1b">failed</text>
+  </g>
+  <text x="461" y="1836" class="note">evaluation_status</text>
+  <g>
+    <rect x="560" y="1822" width="50" height="20" rx="10" fill="#ffffff" stroke="#67e8f9"/><text x="585" y="1835.5" class="pill-t" fill="#0e7490">queued</text>
+    <line x1="610" y1="1832" x2="622" y2="1832" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="624" y="1822" width="52" height="20" rx="10" fill="#a5f3fc" stroke="#22d3ee"/><text x="650" y="1835.5" class="pill-t" fill="#155e75">running</text>
+    <line x1="676" y1="1832" x2="688" y2="1832" stroke="#94a3b8" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="690" y="1822" width="58" height="20" rx="10" fill="#dcfce7" stroke="#4ade80"/><text x="719" y="1835.5" class="pill-t" fill="#166534">completed</text>
+  </g>
+  <text x="461" y="1872" class="note">任务停止 → 未完成用例置 stopped / skipped</text>
+
+  <!-- 小卡 3：联动与约束 -->
+  <rect x="820" y="1762" width="350" height="130" rx="10" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="836" y="1784" font-size="12" font-weight="700" fill="#b45309">联动与约束规则</text>
+  <text x="836" y="1810" class="note">· 设备离线 → 用例直接置 failed</text>
+  <text x="836" y="1832" class="note">· 轮内任一步骤失败 → 跳过剩余轮次</text>
+  <text x="836" y="1854" class="note">· execution 置 running ⇒ evaluation 自动置 queued</text>
+  <text x="836" y="1876" class="note">· 全局互斥：E2E 任务同时仅允许 1 个</text>
+
+  <!-- 底部落款 -->
+  <text x="620" y="1936" text-anchor="middle" class="note">依据代码：execution_engine.py · e2e_executor.py · e2e_device_manager.py · e2e_collector.py · e2e_aggregator.py · playback_orchestrator.py</text>
+</svg>
