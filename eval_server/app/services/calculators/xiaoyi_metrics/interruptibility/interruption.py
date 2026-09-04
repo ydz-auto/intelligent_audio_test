@@ -21,67 +21,33 @@ interruption.py
      字段名保留 _s 历史后缀以便兼容既有维度 field_path，但值为毫秒。
 """
 import logging
-import re
 from typing import Any, Dict, List, Optional, Tuple
+
+from app.services.calculators.base import BaseCalculator
+from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    ASR_USER_SEG_MERGE_GAP_S,
+    ASR_MODEL_SEG_MERGE_GAP_S,
+    YIELD_GRACE_S,
+    EPS_S,
+)
+from app.services.calculators.xiaoyi_metrics.shared.asr_utils import (
+    is_punct_or_empty,
+    to_chunks,
+    valid_ts,
+)
 
 logger = logging.getLogger(__name__)
 
 # ─────────── 阈值 ───────────
 # 用户侧/模型侧用不同阈值合并字词为语音段：用户 1.5s（句内停顿宽松），
 # 模型 0.7s（更敏感，以识别打断后短停顿 + 恢复，避免把"停下又恢复"并成一段而漏判）
-USER_SEG_MERGE_GAP_S = 1.5      # 用户侧：合并相邻词为语音段的间隙阈值(秒)
-MODEL_SEG_MERGE_GAP_S = 0.7     # 模型侧：合并相邻词为语音段的间隙阈值(秒)
-# 让出宽限：模型语音段结尾比用户打断结尾晚 YIELD_GRACE_S 以内，仍视为"让出"（模型把当前词说完的自然过延）；
-# 超过则视为"说穿"（模型无视打断继续说）。0.05 太严会把词尾过延误判成说穿。
-YIELD_GRACE_S = 0.5
-EPS_S = 1e-6
+USER_SEG_MERGE_GAP_S = ASR_USER_SEG_MERGE_GAP_S
+MODEL_SEG_MERGE_GAP_S = ASR_MODEL_SEG_MERGE_GAP_S
 
-# 含实际词字符（CJK / 字母 / 数字）才算是"说话"，纯标点/空白 chunk 的时间戳是 ASR 标点模型伪造的，需剔除
-_WORD_RE = re.compile(r'[\w一-鿿]')
-
-
-def _is_punct_or_empty(text: Any) -> bool:
-    """chunk 文本是否纯标点/空白（无实际词字符）"""
-    if not text:
-        return True
-    return not _WORD_RE.search(str(text))
+# _is_punct_or_empty / _to_chunks / _valid_ts 由 shared.asr_utils 提供（消除重复实现）
 
 
 # ─────────── ASR 结果归一化 ───────────
-def _to_chunks(val: Any) -> List[Dict[str, Any]]:
-    """把 user_asr / model_asr 归一成 chunks 列表
-
-    接受:
-        - [{"text":..., "timestamp":[s,e]}, ...]
-        - {"text":..., "chunks":[...]}
-        - 直接 chunks 列表
-    """
-    if val is None:
-        return []
-    if isinstance(val, dict):
-        chunks = val.get('chunks')
-        if isinstance(chunks, list):
-            return chunks
-        return []
-    if isinstance(val, list):
-        return val
-    return []
-
-
-def _valid_ts(ts: Any) -> Optional[Tuple[float, float]]:
-    """取 chunk 的 timestamp=[start,end]，非法返回 None"""
-    if not isinstance(ts, (list, tuple)) or len(ts) < 2:
-        return None
-    s, e = ts[0], ts[1]
-    if s is None or e is None:
-        return None
-    try:
-        s_f, e_f = float(s), float(e)
-    except (TypeError, ValueError):
-        return None
-    if e_f < s_f:
-        return None
-    return s_f, e_f
 
 
 def _to_segments(chunks: List[Dict[str, Any]], gap: float = USER_SEG_MERGE_GAP_S) -> List[Dict[str, Any]]:
@@ -99,10 +65,10 @@ def _to_segments(chunks: List[Dict[str, Any]], gap: float = USER_SEG_MERGE_GAP_S
         if not isinstance(c, dict):
             continue
         # 跳过纯标点/空白 chunk：其时间戳是 ASR 标点模型伪造的，不代表真实语音
-        if _is_punct_or_empty(c.get('text')):
+        if is_punct_or_empty(c.get('text')):
             continue
-        iv = _valid_ts(c.get('timestamp'))
-        if iv is None:
+        iv = valid_ts(c.get('timestamp'))
+        if iv == (0.0, 0.0):  # 无效时间戳（valid_ts 的哨兵返回值）
             continue
         words.append({'text': str(c.get('text', '')), 'timestamp': [iv[0], iv[1]]})
 
@@ -282,8 +248,8 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
             'message': str,
         }
     """
-    user_chunks = _to_chunks(user_asr)
-    model_chunks = _to_chunks(model_asr)
+    user_chunks = to_chunks(user_asr)
+    model_chunks = to_chunks(model_asr)
 
     result: Dict[str, Any] = {
         'interruption_success_rate': 0.0,
@@ -383,13 +349,10 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
     overlaps = [e['overlap_s'] for e in interruption_events if e['overlap_s'] is not None]
     silences = [e['silence_gap_s'] for e in per_event if e['silence_gap_s'] is not None]
 
-    def _avg(lst):
-        return round(sum(lst) / len(lst), 3) if lst else None
-
-    result['avg_stop_latency_s'] = _avg(stop_lats)
-    result['avg_recovery_latency_s'] = _avg(recov_lats)
-    result['avg_overlap_s'] = _avg(overlaps)
-    result['avg_silence_gap_s'] = _avg(silences)
+    result['avg_stop_latency_s'] = BaseCalculator._avg(stop_lats)
+    result['avg_recovery_latency_s'] = BaseCalculator._avg(recov_lats)
+    result['avg_overlap_s'] = BaseCalculator._avg(overlaps)
+    result['avg_silence_gap_s'] = BaseCalculator._avg(silences)
 
     if n == 0 and result['n_recovery_only'] > 0:
         result['message'] = (
@@ -413,6 +376,7 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
 if __name__ == '__main__':
     import argparse
     import json
+    from app.services.calculators.xiaoyi_metrics.shared.asr_utils import load_json
 
     parser = argparse.ArgumentParser(description='计算打断三项指标（用户流 + 模型恢复流 ASR）')
     parser.add_argument('--user_asr', required=True,
@@ -425,12 +389,8 @@ if __name__ == '__main__':
                         help=f'模型侧词合并为段的间隙阈值(秒)，默认 {MODEL_SEG_MERGE_GAP_S}')
     args = parser.parse_args()
 
-    def _load(p):
-        with open(p, 'r', encoding='utf-8') as f:
-            return json.load(f)
-
     r = compute_interruption_metrics(
-        _load(args.user_asr), _load(args.model_asr),
+        load_json(args.user_asr), load_json(args.model_asr),
         user_seg_merge_gap_s=args.user_merge_gap,
         model_seg_merge_gap_s=args.model_merge_gap,
     )

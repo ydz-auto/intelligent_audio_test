@@ -8,8 +8,8 @@
 xiaoyi_metrics/
 ├── __init__.py
 ├── README.md                        # 本文档
-├── turn_taking/                     # 话轮接管与打断指标子包（统一 ASR 入口）
-│   ├── __init__.py                  #   统一入口：calculate_xiaoyi_metrics 等
+├── turn_taking/                     # 话轮接管指标子包（统一 ASR 入口 _get_asr_chunks）
+│   ├── __init__.py                  #   _get_asr_chunks：ASR 词级时间戳唯一出口
 │   ├── strategy.py                  #   TurnTakingCalculator + 6 个子维度 Calculator
 │   ├── tor.py                       #   接话率（Turn-Over Rate）
 │   ├── false_takeover.py            #   误接管率（用户停顿期间是否抢话）
@@ -17,9 +17,9 @@ xiaoyi_metrics/
 │   ├── input_asr.py                 #   输入识别准确率（query vs question 文本匹配）
 │   ├── high_freq_turn_taking.py     #   高频轮换每轮回复时延（飞花令/成语接龙/快问快答）
 │   ├── high_freq_llm_judge.py      #   高频轮换 LLM 裁判（模型回复音频 → 逐轮 pass/fail）
-│   └── _show_segments.py            #   调试脚本：可视化 ASR 分段
-├── interruptbility/                  # 打断指标实现子包
-│   ├── __init__.py
+├── interruptibility/                  # 打断指标实现子包
+│   ├── __init__.py                  #   calculate_interruption_metrics 统一入口
+│   ├── strategy.py                  #   InterruptionMetricsCalculator 策略类
 │   ├── interruption.py              #   打断指标（停得下 / 恢复得来）
 │   └── interruption_llm.py         #   打断 LLM 评估（回复连贯性/相关性/适应性）
 ├── rejection_scene_awareness/        # 拒识与场景感知子包
@@ -62,19 +62,19 @@ calculators/__init__.py              # import 即自动注册全部 calculator
 
 ## 子包说明
 
-### turn_taking —— 话轮接管与打断指标
+### turn_taking —— 话轮接管指标
 
-所有时序类指标的统一入口，位于 [turn_taking/__init__.py](turn_taking/__init__.py)。
+ASR 词级时间戳统一出口 `_get_asr_chunks`，位于 [turn_taking/__init__.py](turn_taking/__init__.py)。
 
-#### 统一入口
+#### 统一入口（策略类，经 TaskService.CALCULATORS 注册表分发）
 
-| 函数 | 用途 | 对应 task_type |
+| 策略类 | 用途 | 对应 task_type |
 |------|------|----------------|
-| `calculate_xiaoyi_metrics(task_params)` | 调一次 ASR，多维共享结果（tor / false_takeover / takeover_latency / interruption / non_interactive_latency / high_freq_turn_taking / high_freq_llm_judge） | `turn_taking` |
-| `calculate_interruption_metrics(task_params)` | 打断指标独立入口，由调用方直接传两路已对齐 ASR 结果（不内部调 ASR） | `interruption_metrics` |
-| `calculate_takeover_metrics(task_params)` | 只算 tor / false_takeover / takeover_latency 三项 | — |
-| `calculate_high_freq_turn_taking_metrics(task_params)` | 高频轮换每轮回复时延独立入口 | `high_freq_turn_taking` |
-| `calculate_high_freq_llm_judge(task_params)` | 高频轮换 LLM 裁判独立入口 | `high_freq_llm_judge` |
+| `TurnTakingCalculator` | 调一次双路 ASR，遍历子维度共享结果（tor / false_takeover / takeover_latency / interruption / non_interactive_latency / high_freq_turn_taking / high_freq_llm_judge） | `turn_taking` |
+| `InterruptionMetricsCalculator` | 打断指标独立入口（interruptibility 域） | `interruption_metrics` |
+| `TorCalculator` / `FalseTakeoverCalculator` / `TakeoverLatencyCalculator` | tor / false_takeover / takeover_latency 三项独立入口 | `tor` / `false_takeover` / `takeover_latency` |
+| `HighFreqTurnTakingCalculator` | 高频轮换每轮回复时延独立入口 | `high_freq_turn_taking` |
+| `HighFreqLlmJudgeCalculator` | 高频轮换 LLM 裁判独立入口 | `high_freq_llm_judge` |
 
 #### 核心概念：双路 ASR
 
@@ -161,9 +161,9 @@ SEG_MERGE_GAP_S = 0.7  # 词合并为段的间隙阈值（秒）
 - 复用 `config.LLM_JUDGE`（api_base_url / api_key / default_model）
 - 返回 `{per_round: [{round, pass, reason}], overall_pass_rate, summary, ...}`
 
-### interruptbility —— 打断指标实现
+### interruptibility —— 打断指标实现
 
-##### 7. interruption —— 打断指标 [interruption.py](interruptbility/interruption.py)
+##### 7. interruption —— 打断指标 [interruption.py](interruptibility/interruption.py)
 
 用户打断正在说话的小艺时，衡量"停得下、恢复得来"。对每个用户打断段 `u=[u_s, u_e]`：
 
@@ -190,7 +190,7 @@ YIELD_GRACE_S   = 0.5   # 让出宽限
 **success 全本地**：`interruption_success_rate` 始终由本地时序算出（让出且恢复 / 有效打断事件）。
 `n_events=0` 时 success_rate=0.0，不再走 LLM 兜底（旧 `evaluate_interruption_success_llm` 已移除）。
 
-##### 8. interruption_llm —— 打断 LLM 评估 [interruption_llm.py](interruptbility/interruption_llm.py)
+##### 8. interruption_llm —— 打断 LLM 评估 [interruption_llm.py](interruptibility/interruption_llm.py)
 
 打断指标的**可选**大模型语义评估。仅在 `enable_llm_eval=True` 且配置 `LLM_JUDGE_API_KEY` 时触发。
 LLM 直接吃 `compute_interruption_metrics` 富集后的 `per_event`（用户与模型的**字词级 ASR**），
@@ -322,7 +322,7 @@ _SUB_DIMENSIONS = {
 
 可通过 `task_params['sub_tasks']` 指定只计算部分子维度，例如 `sub_tasks: ['tor', 'takeover_latency']`。
 
-统一入口内部 ASR 调用走 `app.utils.asr_adapator`（`call_modelscope_asr_word`），LLM 配置走 `app.config.config.LLM_JUDGE`。
+统一入口内部 ASR 调用走 `app.utils.asr_adapter`（`call_modelscope_asr_word`），LLM 配置走 `app.config.config.LLM_JUDGE`。
 
 ## 关键设计
 

@@ -18,92 +18,18 @@ high_freq_turn_taking.py
 
     ASR 调用由 xiaoyi_metrics/__init__.py 统一完成，本模块只接收 chunks。
 """
-import re
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+
+from ..shared.asr_utils import to_chunks, to_segments_with_text
+from ..shared.constants import ASR_HIGH_FREQ_SEG_MERGE_GAP_S
 
 logger = logging.getLogger(__name__)
 
 # ─────────── 阈值 ───────────
-SEG_MERGE_GAP_S = 0.7  # 合并相邻词为语音段的间隙阈值（秒），与 non_interactive_latency 对齐
+SEG_MERGE_GAP_S = ASR_HIGH_FREQ_SEG_MERGE_GAP_S  # 合并相邻词为语音段的间隙阈值（秒）
 
-# 含实际词字符（CJK / 字母 / 数字）才算是"说话"，纯标点/空白 chunk 的时间戳是 ASR 标点模型伪造的，需剔除
-_WORD_RE = re.compile(r'[\w一-鿿]')
-
-
-def _is_punct_or_empty(text: Any) -> bool:
-    """chunk 文本是否纯标点/空白（无实际词字符）"""
-    if not text:
-        return True
-    return not _WORD_RE.search(str(text))
-
-
-# ─────────── ASR 结果归一化 ───────────
-def _to_chunks(val: Any) -> List[Dict[str, Any]]:
-    """把 user_asr / ai_asr 归一成 chunks 列表
-
-    接受:
-        - [{"text":..., "timestamp":[s,e]}, ...]
-        - {"text":..., "chunks":[...]}
-        - 直接 chunks 列表
-    """
-    if val is None:
-        return []
-    if isinstance(val, dict):
-        chunks = val.get('chunks')
-        if isinstance(chunks, list):
-            return chunks
-        return []
-    if isinstance(val, list):
-        return val
-    return []
-
-
-def _valid_ts(ts: Any) -> Optional[Tuple[float, float]]:
-    """取 chunk 的 timestamp=[start,end]，非法返回 None"""
-    if not isinstance(ts, (list, tuple)) or len(ts) < 2:
-        return None
-    s, e = ts[0], ts[1]
-    if s is None or e is None:
-        return None
-    try:
-        s_f, e_f = float(s), float(e)
-    except (TypeError, ValueError):
-        return None
-    if e_f < s_f:
-        return None
-    return s_f, e_f
-
-
-def _to_segments(chunks: List[Dict[str, Any]], gap: float = SEG_MERGE_GAP_S
-                 ) -> List[Tuple[float, float, str]]:
-    """把词级 chunks 合并成语音段 [(start, end, text), ...]
-
-    按时间排序、相邻间隙 < gap 合并。返回纯语音段（不含段间静默），单位秒。
-    """
-    intervals: List[Tuple[float, float, str]] = []
-    for c in chunks:
-        if not isinstance(c, dict):
-            continue
-        if _is_punct_or_empty(c.get('text')):
-            continue
-        iv = _valid_ts(c.get('timestamp'))
-        if iv is None:
-            continue
-        intervals.append((iv[0], iv[1], str(c.get('text', ''))))
-
-    if not intervals:
-        return []
-
-    intervals.sort(key=lambda x: x[0])
-    merged: List[Tuple[float, float, str]] = [intervals[0]]
-    for s, e, t in intervals[1:]:
-        ps, pe, pt = merged[-1]
-        if s - pe <= gap:
-            merged[-1] = (ps, max(pe, e), pt + t)
-        else:
-            merged.append((s, e, t))
-    return merged
+# _to_segments / _to_chunks 由 shared.asr_utils 提供（消除重复实现）
 
 
 # ─────────── 主逻辑 ───────────
@@ -165,11 +91,11 @@ def compute_high_freq_turn_taking(
         'message': '',
     }
 
-    user_chunks = _to_chunks(user_chunks)
-    ai_chunks = _to_chunks(ai_chunks)
+    user_chunks = to_chunks(user_chunks)
+    ai_chunks = to_chunks(ai_chunks)
 
-    u_segs = _to_segments(user_chunks, gap=seg_merge_gap_s)
-    m_segs = _to_segments(ai_chunks, gap=seg_merge_gap_s)
+    u_segs = to_segments_with_text(user_chunks, seg_merge_gap_s=seg_merge_gap_s)
+    m_segs = to_segments_with_text(ai_chunks, seg_merge_gap_s=seg_merge_gap_s)
 
     result['n_user_segments'] = len(u_segs)
     result['n_ai_segments'] = len(m_segs)
@@ -264,6 +190,7 @@ def compute_high_freq_turn_taking(
 if __name__ == '__main__':
     import argparse
     import json
+    from ..shared.asr_utils import load_json
 
     parser = argparse.ArgumentParser(
         description='计算高频轮换场景下每轮回复时延（飞花令/成语接龙/快问快答等）'
@@ -276,16 +203,12 @@ if __name__ == '__main__':
                         help=f'词合并为段的间隙阈值(秒)，默认 {SEG_MERGE_GAP_S}')
     args = parser.parse_args()
 
-    def _load(p):
-        with open(p, 'r', encoding='utf-8') as f:
-            return json.load(f)
-
-    user_data = _load(args.user_asr)
-    ai_data = _load(args.ai_asr)
+    user_data = load_json(args.user_asr)
+    ai_data = load_json(args.ai_asr)
 
     # 先展示所有段
-    u_segs = _to_segments(_to_chunks(user_data), gap=args.merge_gap)
-    m_segs = _to_segments(_to_chunks(ai_data), gap=args.merge_gap)
+    u_segs = to_segments_with_text(to_chunks(user_data), seg_merge_gap_s=args.merge_gap)
+    m_segs = to_segments_with_text(to_chunks(ai_data), seg_merge_gap_s=args.merge_gap)
 
     print('── 用户每段讲话 ──')
     for i, (s, e, t) in enumerate(u_segs):

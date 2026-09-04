@@ -34,6 +34,8 @@ noise_latency.py
 import logging
 from typing import Any, Dict
 
+from ..shared.constants import MS_PER_S
+
 try:
     from .non_interactive_latency import (
         SEG_MERGE_GAP_S, _compute_from_asr, _get_asr,
@@ -80,8 +82,8 @@ def compute_noise_latency(ai_wav: str, start_ms: float, end_ms: float,
         message                                状态说明
     """
     # 噪声绝对毫秒 → 模型音频相对秒
-    n_s = (start_ms - pcm_first_ms) / 1000.0
-    n_e = (end_ms - pcm_first_ms) / 1000.0
+    n_s = (start_ms - pcm_first_ms) / MS_PER_S
+    n_e = (end_ms - pcm_first_ms) / MS_PER_S
     # 包装成 ASR chunk，复用 non_interactive 的段提取(0.7s 合并、剔除标点)
     # 添加伪提问段 [0, 0.001] 使 non_interactive 的 prev_idx 逻辑可用：
     #   non_interactive 需要 target_segment_index >= 1 来定位"前一段提问"，
@@ -110,24 +112,24 @@ def compute_noise_latency(ai_wav: str, start_ms: float, end_ms: float,
 
     # stop_latency 毫秒
     if r.get('stop_latency_s') is not None:
-        result['stop_latency_ms'] = round(r['stop_latency_s'] * 1000.0, 1)
+        result['stop_latency_ms'] = round(r['stop_latency_s'] * MS_PER_S, 1)
 
     # 模型当前回复段(绝对毫秒)
     if r.get('model_active_segment'):
         ms, me, mt = r['model_active_segment']
         result['model_active_segment_abs'] = [
-            round(pcm_first_ms + ms * 1000.0, 1),
-            round(pcm_first_ms + me * 1000.0, 1), mt]
+            round(pcm_first_ms + ms * MS_PER_S, 1),
+            round(pcm_first_ms + me * MS_PER_S, 1), mt]
 
     # 恢复回复段(绝对毫秒)+ 恢复时延毫秒 + 恢复绝对时刻
     if r.get('model_recovery_segment'):
         rs, re_, rt = r['model_recovery_segment']
-        rec_abs = pcm_first_ms + rs * 1000.0
+        rec_abs = pcm_first_ms + rs * MS_PER_S
         result['model_recovery_segment_abs'] = [
-            round(rec_abs, 1), round(pcm_first_ms + re_ * 1000.0, 1), rt]
+            round(rec_abs, 1), round(pcm_first_ms + re_ * MS_PER_S, 1), rt]
         result['model_recovery_abs_ms'] = round(rec_abs, 1)
         if r.get('recovery_latency_s') is not None:
-            result['recovery_latency_ms'] = round(r['recovery_latency_s'] * 1000.0, 1)
+            result['recovery_latency_ms'] = round(r['recovery_latency_s'] * MS_PER_S, 1)
 
     logger.info(
         f"[噪声打断时延] noise=[{start_ms},{end_ms}]ms pcm_first={pcm_first_ms} "
@@ -168,8 +170,8 @@ if __name__ == '__main__':
           f"  (持续 {r['noise_end_ms'] - r['noise_start_ms']:.0f} ms)")
     print(f"PCM 创建时刻: {r['pcm_first_ms']:.0f} ms")
     # 噪声相对秒
-    ns = (r['noise_start_ms'] - r['pcm_first_ms']) / 1000.0
-    ne = (r['noise_end_ms'] - r['pcm_first_ms']) / 1000.0
+    ns = (r['noise_start_ms'] - r['pcm_first_ms']) / MS_PER_S
+    ne = (r['noise_end_ms'] - r['pcm_first_ms']) / MS_PER_S
     print(f"噪声(模型轴): {ns:.3f}s -> {ne:.3f}s")
     print(f"模型回复段数: {r['n_model_segments']}")
 

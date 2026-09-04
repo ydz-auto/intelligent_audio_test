@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-ASR_JSON.py
+asr_adapter.py
 流程：本地 wav → 调用远程 ASR 服务（ModelScope Paraformer-large-vad-punc） → 生成 JSON
 
 ASR 推理部署在独立的 ASR 主机上（asr_server.py），本机只负责上传 wav 文件

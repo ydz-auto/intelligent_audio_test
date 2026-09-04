@@ -20,11 +20,22 @@ xiaoyi_false_takeover.py
 import json
 import logging
 
-logger = logging.getLogger(__name__)
+from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
+    call_llm,
+    parse_json,
+    get_llm_config,
+    resolve_model,
+)
+from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    LLM_DEFAULT_MAX_TOKENS,
+    LLM_DEFAULT_TEMPERATURE,
+    TURN_DURATION_THRESHOLD,
+    TURN_NUM_WORDS_THRESHOLD,
+    TIMELINE_MAX_ITEMS_CHUNKS,
+    TIMELINE_MAX_ITEMS_PAUSES,
+)
 
-# ─────────── 阈值（与 daily_chat_TOR 保持一致） ───────────
-TURN_DURATION_THRESHOLD = 1   # 秒：命中词时长 ≥ 1s 算抢话
-TURN_NUM_WORDS_THRESHOLD = 3  # 词数 > 3 算抢话
+logger = logging.getLogger(__name__)
 
 
 def _intervals_overlap(a, b):
@@ -148,7 +159,7 @@ def compute_false_takeover_from_files(asr_json_path, pause_json_path,
 
 # ─────────── LLM 语义判断 ───────────
 
-def _format_chunks_timeline(chunks, max_items=30):
+def _format_chunks_timeline(chunks, max_items=TIMELINE_MAX_ITEMS_CHUNKS):
     """将 ASR chunks 格式化为带时间戳的时间线文本
 
     Args:
@@ -174,7 +185,7 @@ def _format_chunks_timeline(chunks, max_items=30):
     return '\n'.join(lines)
 
 
-def _format_pause_timeline(pause_intervals, max_items=20):
+def _format_pause_timeline(pause_intervals, max_items=TIMELINE_MAX_ITEMS_PAUSES):
     """将停顿区间格式化为时间线文本"""
     lines = []
     for p in pause_intervals[:max_items]:
@@ -269,9 +280,7 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
             'takeover_latency': dict|None, 接管时延结果（false_takeover=1 时为 None）
         } 或 None（未配置/调用失败/无数据）
     """
-    from app.config import config
-
-    llm_config = getattr(config, 'LLM_JUDGE', {})
+    llm_config = get_llm_config()
     if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
         return None
 
@@ -282,16 +291,21 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
     if task_params:
         model = task_params.get('llm_model') or ''
     if not model:
-        model = llm_config.get('default_model', 'gemini-3.7-flash')
+        model = resolve_model(dimension='false_takeover')
 
-    # 复用 interruption_llm 的 LLM 调用工具
-    from ..interruptbility.interruption_llm import _call_llm_json, _parse_json
+    max_tokens = int(task_params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS) or LLM_DEFAULT_MAX_TOKENS) if task_params else LLM_DEFAULT_MAX_TOKENS
+    temperature = float(task_params.get('temperature', LLM_DEFAULT_TEMPERATURE) or LLM_DEFAULT_TEMPERATURE) if task_params else LLM_DEFAULT_TEMPERATURE
 
     prompt = _build_false_takeover_llm_prompt(user_chunks, ai_chunks, pause_intervals)
 
     try:
-        resp = _call_llm_json(prompt, model)
-        parsed = _parse_json(resp['content']) or {}
+        resp = call_llm(
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        parsed = parse_json(resp['content']) or {}
 
         # 新格式: {"judge_result": "true/false", "explanation": "...", "evidence": {...}}
         judge = parsed.get('judge_result')

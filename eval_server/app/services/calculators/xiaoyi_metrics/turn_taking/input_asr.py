@@ -18,10 +18,15 @@ import re
 import logging
 import difflib
 
+from app.services.calculators.base import BaseCalculator
+from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    INPUT_ASR_SIMILARITY_THRESHOLD,
+)
+
 logger = logging.getLogger(__name__)
 
-# 相似度阈值，达到则视为匹配成功
-SIMILARITY_THRESHOLD = 0.8
+# 相似度阈值，达到则视为匹配成功（统一由 shared.constants 提供）
+SIMILARITY_THRESHOLD = INPUT_ASR_SIMILARITY_THRESHOLD
 
 
 def _normalize_text(text):
@@ -37,13 +42,6 @@ def _normalize_text(text):
     return text
 
 
-def _unwrap_value(val):
-    """解包 {'text': '...'} 格式的值为纯字符串（与 task_service._unwrap_value 一致）"""
-    if isinstance(val, dict) and 'text' in val:
-        return val['text']
-    return val
-
-
 def _extract_query_question(task_params):
     """从 task_params 中提取 query 和 question
 
@@ -51,8 +49,8 @@ def _extract_query_question(task_params):
     - 顶层有 query/question 直接用
     - 否则从 rounds 中逐轮拼接
     """
-    query = _unwrap_value(task_params.get('query', ''))
-    question = _unwrap_value(task_params.get('question', ''))
+    query = BaseCalculator._unwrap_value(task_params.get('query', ''))
+    question = BaseCalculator._unwrap_value(task_params.get('question', ''))
 
     if query and question:
         return query, question
@@ -64,8 +62,8 @@ def _extract_query_question(task_params):
         for rd in rounds:
             if not isinstance(rd, dict):
                 continue
-            q = _unwrap_value(rd.get('query', ''))
-            qs = _unwrap_value(rd.get('question', ''))
+            q = BaseCalculator._unwrap_value(rd.get('query', ''))
+            qs = BaseCalculator._unwrap_value(rd.get('question', ''))
             if q:
                 queries.append(q)
             if qs:

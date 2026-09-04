@@ -5,12 +5,18 @@ validate() 用于在 API 层拦截参数缺失，返回 (is_valid, error_msg)。
 prepare_params() 默认走通用 _prepare_params，子类可覆写。
 
 参数模式说明：
-  - 单轮模式：task_params 顶层直接存放各字段（asr_ref / asr_hyp / answer 等）
-  - 多轮模式：task_params['rounds'] 是 list[dict]，每轮含同名字段
+  - 单轮模式：task_params['round_number'] 有值（0/1/2...），取 rounds[round_number]
+  - 多轮模式：task_params['round_number'] 不存在，遍历所有 rounds 或取最后一轮
 
-子类通过覆写 prepare_params 实现各自的单轮/多轮取参逻辑。
-公共方法 _is_multi_round / _get_round0 / _collect_flat_from_rounds /
-_collect_audio_from_rounds / _collect_scalar_from_rounds 供子类复用。
+公共方法（round_number 语义）：
+  _is_multi_round        : round_number 不存在 → 多轮
+  _get_target_round_index: round_number 有值则取它，否则 -1（末轮）
+  _get_round_safe        : 安全取 rounds[index]，支持负索引
+  _get_audio_from_round  : 从指定轮取双路音频（顶层优先）
+  _iter_rounds           : 遍历轮次，yield (index, round_dict)
+  _aggregate_results     : 聚合多轮结果：数值取平均，非数值取最后一轮
+  _unwrap_value          : 解包 {'text': '...'} 格式
+  _collect_flat_from_rounds: 从多轮按 key 收集各轮值拼接（wer/der 用）
 """
 
 
@@ -55,44 +61,95 @@ class BaseCalculator:
         """子类必须实现：接收 prepare_params 的返回值，执行计算。"""
         raise NotImplementedError(f"{self.__class__.__name__} 未实现 calculate()")
 
-    # ─────────── 单轮/多轮公共提取方法 ───────────
+    # ─────────── 单轮/多轮公共方法（round_number 语义）───────────
 
     @staticmethod
     def _is_multi_round(task_params):
-        """判断是否为多轮模式：task_params['rounds'] 非空 list"""
-        rounds = (task_params or {}).get('rounds')
-        return bool(rounds and isinstance(rounds, list) and len(rounds) > 0)
+        """判断是否为多轮模式：round_number 不存在 → 多轮"""
+        return (task_params or {}).get('round_number') is None
 
     @staticmethod
-    def _get_round0(task_params):
-        """获取 rounds[0]（首轮），不存在时返回空 dict"""
-        rounds = (task_params or {}).get('rounds')
-        if rounds and isinstance(rounds, list) and len(rounds) > 0:
-            r0 = rounds[0]
-            return r0 if isinstance(r0, dict) else {}
-        return {}
+    def _get_target_round_index(task_params):
+        """获取目标轮次索引
+
+        单轮：round_number（0-indexed）
+        多轮：-1（最后一轮）
+        """
+        rn = (task_params or {}).get('round_number')
+        if rn is not None:
+            return rn
+        return -1
 
     @staticmethod
-    def _get_round(task_params, index):
-        """获取 rounds[index]，不存在时返回空 dict"""
-        rounds = (task_params or {}).get('rounds')
-        if rounds and isinstance(rounds, list) and 0 <= index < len(rounds):
-            r = rounds[index]
-            return r if isinstance(r, dict) else {}
-        return {}
+    def _get_round_safe(task_params, index):
+        """安全获取 rounds[index]，越界或不存在返回 {}
 
-    @staticmethod
-    def _get_round_or_last(task_params):
-        """获取 rounds[-1]（末轮），不存在时返回空 dict。
-
-        用于 api.py 字段提升逻辑对应的取值方式：
-        单轮取 rounds[0]，多轮取 rounds[-1]。
+        支持负索引（-1 = 末轮）。
         """
         rounds = (task_params or {}).get('rounds')
-        if rounds and isinstance(rounds, list) and len(rounds) > 0:
-            r = rounds[-1]
-            return r if isinstance(r, dict) else {}
+        if not (rounds and isinstance(rounds, list)):
+            return {}
+        idx = index if index >= 0 else len(rounds) + index
+        if 0 <= idx < len(rounds) and isinstance(rounds[idx], dict):
+            return rounds[idx]
         return {}
+
+    @classmethod
+    def _get_audio_from_round(cls, task_params, index):
+        """从指定轮次取双路音频（顶层优先）
+
+        Returns:
+            (user_wav, ai_wav)
+        """
+        rd = cls._get_round_safe(task_params, index)
+        user_wav = task_params.get('user_wav') or rd.get('user_wav') or ''
+        ai_wav = task_params.get('ai_wav') or rd.get('ai_wav') or ''
+        return user_wav, ai_wav
+
+    @staticmethod
+    def _iter_rounds(task_params):
+        """遍历轮次，yield (round_index, round_dict)
+
+        单轮：只 yield (round_number, rounds[round_number])
+        多轮：yield 每一轮
+        """
+        rounds = (task_params or {}).get('rounds')
+        if not (rounds and isinstance(rounds, list)):
+            return
+        rn = (task_params or {}).get('round_number')
+        if rn is not None:
+            if 0 <= rn < len(rounds) and isinstance(rounds[rn], dict):
+                yield rn, rounds[rn]
+        else:
+            for i, rd in enumerate(rounds):
+                if isinstance(rd, dict):
+                    yield i, rd
+
+    @staticmethod
+    def _aggregate_results(per_round_results, agg_keys=None):
+        """聚合多轮结果：数值字段取平均，非数值取最后一轮
+
+        Args:
+            per_round_results: [{...}, {...}, ...] 每轮结果
+            agg_keys: 需要取平均的数值字段名列表，为 None 则自动检测
+        """
+        if not per_round_results:
+            return {}
+        if len(per_round_results) == 1:
+            return dict(per_round_results[0])
+
+        # 取最后一轮作为基础
+        result = dict(per_round_results[-1])
+        # 数值字段取平均
+        first = per_round_results[0]
+        for k, v in first.items():
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                vals = [r.get(k) for r in per_round_results if r.get(k) is not None]
+                if vals:
+                    result[k] = round(sum(vals) / len(vals), 3)
+        result['n_rounds'] = len(per_round_results)
+        result['per_round'] = per_round_results
+        return result
 
     @staticmethod
     def _unwrap_value(val):
@@ -100,6 +157,16 @@ class BaseCalculator:
         if isinstance(val, dict) and 'text' in val:
             return val['text']
         return val
+
+    @staticmethod
+    def _avg(values):
+        """取平均，保留 3 位小数；过滤非数值项，空列表返回 None"""
+        vals = [v for v in (values or []) if isinstance(v, (int, float)) and not isinstance(v, bool)]
+        if not vals:
+            return None
+        return round(sum(vals) / len(vals), 3)
+
+    # ─────────── 扁平字段收集（wer/der 多轮拼接用）───────────
 
     @staticmethod
     def _collect_flat_from_rounds(task_params, keys, separator='\n'):
@@ -143,100 +210,3 @@ class BaseCalculator:
                 result[k] = v
 
         return result
-
-    @staticmethod
-    def _collect_audio_from_rounds(task_params, keys):
-        """从多轮 rounds 中按 key 收集音频文件路径列表。
-
-        与 _collect_flat_from_rounds 不同：音频路径不拼接，而是返回 list，
-        供逐轮 ASR / LLM 处理。单轮模式下返回单元素 list 或空 list。
-
-        Args:
-            task_params: 原始参数
-            keys: 需收集的字段名列表（如 ['ai_wav', 'user_wav']）
-
-        Returns:
-            dict: {key: [path1, path2, ...] 或 []}
-        """
-        task_params = task_params or {}
-        result = {}
-
-        rounds = task_params.get('rounds')
-        if rounds and isinstance(rounds, list):
-            for k in keys:
-                paths = []
-                for rd in rounds:
-                    if not isinstance(rd, dict):
-                        continue
-                    v = rd.get(k)
-                    if isinstance(v, dict) and 'text' in v:
-                        v = v['text']
-                    if v and v != '':
-                        paths.append(str(v))
-                result[k] = paths
-        else:
-            for k in keys:
-                v = task_params.get(k)
-                if isinstance(v, dict) and 'text' in v:
-                    v = v['text']
-                result[k] = [str(v)] if v and v != '' else []
-
-        return result
-
-    @staticmethod
-    def _collect_scalar_from_rounds(task_params, keys):
-        """从多轮 rounds 中按 key 收集标量值（数字/字符串），返回 list。
-
-        单轮模式下从顶层取值，返回单元素 list 或空 list。
-
-        Args:
-            task_params: 原始参数
-            keys: 需收集的字段名列表（如 ['start_ms', 'end_ms']）
-
-        Returns:
-            dict: {key: [val1, val2, ...] 或 []}
-        """
-        task_params = task_params or {}
-        result = {}
-
-        rounds = task_params.get('rounds')
-        if rounds and isinstance(rounds, list):
-            for k in keys:
-                values = []
-                for rd in rounds:
-                    if not isinstance(rd, dict):
-                        continue
-                    v = rd.get(k)
-                    if v is not None and v != '':
-                        values.append(v)
-                result[k] = values
-        else:
-            for k in keys:
-                v = task_params.get(k)
-                if v is not None and v != '':
-                    result[k] = [v]
-                else:
-                    result[k] = []
-
-        return result
-
-    @staticmethod
-    def _pick_field(task_params, key, default=None, round_index=0):
-        """从顶层或 rounds[round_index] 取单个字段值（顶层优先）。
-
-        Args:
-            task_params: 原始参数
-            key: 字段名
-            default: 缺省值
-            round_index: rounds 的轮次索引，默认 0（首轮）
-
-        Returns:
-            字段值或 default
-        """
-        task_params = task_params or {}
-        val = task_params.get(key)
-        if val is not None:
-            return val
-        r = BaseCalculator._get_round(task_params, round_index)
-        val = r.get(key)
-        return val if val is not None else default

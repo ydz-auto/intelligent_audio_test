@@ -8,31 +8,26 @@ high_freq_llm_judge.py
 避免字面内容被糊掉），结合 rounds 文本上下文（用户提问/预期答案），逐轮判断模型回复
 是否符合预期，返回 pass/fail + reason。不合并两路音频；video_path 保留为 legacy 回退。
 
-参考 env_judge.py 的多模态请求格式（音频 input_audio / 视频 image_url），
+参考 shared.llm_client 的多模态请求格式（音频 input_audio / 视频 image_url），
 复用 config.LLM_JUDGE 配置（api_base_url / api_key / default_model）。
 """
 import json
 import os
-import re
-import time
-import base64
 import logging
 from typing import Any, Dict, List, Optional
 
-import httpx
+from app.services.calculators.base import BaseCalculator
+from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
+    call_llm,
+    parse_json,
+    resolve_model,
+)
+from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    LLM_DEFAULT_MAX_TOKENS,
+    LLM_DEFAULT_TEMPERATURE,
+)
 
 logger = logging.getLogger(__name__)
-
-LLM_DEFAULT_TIMEOUT = 120
-LLM_MAX_RETRIES = 3
-LLM_RETRY_BASE_DELAY = 2  # 秒
-
-# ─────────── 文件扩展名 ───────────
-_AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.aac', '.ogg', '.opus', '.m4a'}
-_VIDEO_EXTS = {
-    '.mp4', '.avi', '.mkv', '.webm', '.mov', '.flv',
-    '.wmv', '.m4v', '.ts', '.3gp',
-}
 
 # ─────────── 场景规则 ───────────
 _SCENARIO_RULES: Dict[str, str] = {
@@ -52,234 +47,25 @@ _SCENARIO_RULES: Dict[str, str] = {
 }
 
 
-# ─────────── 文件编码 ───────────
-def _is_audio(file_path: str) -> bool:
-    return os.path.splitext(file_path)[1].lower() in _AUDIO_EXTS
-
-
-def _encode_file_to_data(file_path: str) -> str:
-    """将音频文件编码为纯 base64 字符串（不带 data URI 前缀，用于 input_audio）。
-
-    OpenAI input_audio 的 data 字段要求纯 base64，不能带 `data:;base64,` 前缀，
-    否则部分代理/模型会静默忽略音频。
-    """
-    with open(file_path, 'rb') as f:
-        return base64.b64encode(f.read()).decode()
-
-
-def _encode_video_to_data_uri(file_path: str) -> str:
-    """将视频文件编码为带 MIME 的 base64 data URI（用于 image_url）"""
-    ext = os.path.splitext(file_path)[1].lower()
-    mime_map = {
-        '.mp4': 'video/mp4', '.avi': 'video/x-msvideo',
-        '.mkv': 'video/x-matroska', '.webm': 'video/webm',
-        '.mov': 'video/quicktime', '.flv': 'video/x-flv',
-        '.wmv': 'video/x-ms-wmv', '.m4v': 'video/x-m4v',
-        '.ts': 'video/mp2t', '.3gp': 'video/3gpp',
-    }
-    mime = mime_map.get(ext, 'application/octet-stream')
-    with open(file_path, 'rb') as f:
-        encoded = base64.b64encode(f.read()).decode()
-    return f'data:{mime};base64,{encoded}'
-
-
-def _get_audio_format(file_path: str) -> str:
-    ext = os.path.splitext(file_path)[1].lower()
-    fmt_map = {'.wav': 'wav', '.mp3': 'mp3', '.flac': 'flac',
-               '.aac': 'aac', '.ogg': 'ogg', '.opus': 'opus', '.m4a': 'm4a'}
-    return fmt_map.get(ext, 'wav')
-
-
-def _build_content(prompt: str, file_paths: Optional[List[str]] = None) -> list:
-    """构建 user message content，音频在前、视频在后、文本最后"""
-    content: list = []
-    audio_parts: List[str] = []
-    video_parts: List[str] = []
-    if file_paths:
-        for fp in file_paths:
-            if _is_audio(fp):
-                audio_parts.append(fp)
-            else:
-                video_parts.append(fp)
-
-    for ap in audio_parts:
-        b64_data = _encode_file_to_data(ap)
-        audio_fmt = _get_audio_format(ap)
-        content.append({
-            'type': 'input_audio',
-            'input_audio': {'data': b64_data, 'format': audio_fmt},
-        })
-    for vp in video_parts:
-        data_uri = _encode_video_to_data_uri(vp)
-        content.append({
-            'type': 'image_url',
-            'image_url': {'url': data_uri},
-        })
-    content.append({'type': 'text', 'text': prompt})
-    return content
-
-
-# ─────────── LLM 调用 ───────────
-def _call_llm_api(model: str, prompt: str,
-                  max_tokens: int = 4096,
-                  temperature: float = 0.1,
-                  file_paths: Optional[List[str]] = None) -> Dict[str, Any]:
-    """调用 OpenAI 兼容的 LLM API（多模态：文本 + 音频/录屏）
-
-    音频文件使用 input_audio 格式，视频文件使用 image_url 格式。
-    支持 stream 模式以兼容 Qwen omni 等模型。
-    """
-    from app.config import config
-
-    llm_config = getattr(config, 'LLM_JUDGE', {})
-    api_base = llm_config.get('api_base_url', '')
-    api_key = llm_config.get('api_key', '')
-    timeout = llm_config.get('timeout', LLM_DEFAULT_TIMEOUT)
-
-    if not api_base or not api_key:
-        raise ValueError(
-            'LLM 评估未配置：请在 eval_server 设置 '
-            'LLM_JUDGE_API_BASE 与 LLM_JUDGE_API_KEY'
-        )
-
-    headers = {
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json',
-    }
-
-    if file_paths:
-        user_content = _build_content(prompt, file_paths)
-    else:
-        user_content = [{'type': 'text', 'text': prompt}]
-
-    # 判断模型类型：omni(需 stream) / 其他音频模型(如 gpt-audio，不支持 response_format) / 普通文本模型
-    m_low = model.lower()
-    is_omni = 'omni' in m_low
-    is_audio = is_omni or ('audio' in m_low)
-
-    payload: Dict[str, Any] = {
-        'model': model,
-        'messages': [
-            {'role': 'user', 'content': user_content},
-        ],
-        'max_tokens': max_tokens,
-        'temperature': temperature,
-    }
-
-    if is_omni:
-        payload['stream'] = True
-        payload['stream_options'] = {'include_usage': True}
-        payload['timeout'] = 300
-    elif not is_audio:
-        # 普通文本模型用 response_format 强制 JSON；gpt-audio 等音频模型不支持 response_format，不设
-        payload['response_format'] = {'type': 'json_object'}
-
-    url = f'{api_base.rstrip("/")}/chat/completions'
-    max_retries = llm_config.get('max_retries', LLM_MAX_RETRIES)
-
-    last_exc = None
-    for attempt in range(max_retries + 1):
-        try:
-            with httpx.Client(trust_env=False, timeout=timeout) as client:
-                response = client.post(url, headers=headers, json=payload)
-
-            response.raise_for_status()
-
-            if is_omni:
-                content_text = ''
-                usage_data: Dict[str, Any] = {}
-                for line in response.text.split('\n'):
-                    line = line.strip()
-                    if not line or not line.startswith('data: '):
-                        continue
-                    chunk_str = line[6:]
-                    if chunk_str == '[DONE]':
-                        break
-                    try:
-                        chunk = json.loads(chunk_str)
-                    except json.JSONDecodeError:
-                        continue
-                    choices = chunk.get('choices', [])
-                    if choices:
-                        delta = choices[0].get('delta', {})
-                        content_text += delta.get('content', '')
-                    if chunk.get('usage'):
-                        usage_data = chunk['usage']
-                data = {
-                    'choices': [{'message': {'content': content_text}}],
-                    'usage': usage_data,
-                }
-            else:
-                data = response.json()
-            break
-        except httpx.HTTPStatusError as e:
-            last_exc = e
-            status_code = e.response.status_code
-            if 500 <= status_code < 600:
-                try:
-                    err_body = e.response.text[:500]
-                except Exception:
-                    err_body = '<无法读取>'
-                logger.warning(f'LLM API 返回 {status_code}，响应体: {err_body}')
-            if status_code != 429 and not (500 <= status_code < 600):
-                raise
-            if attempt >= max_retries:
-                logger.error(f'LLM API 返回 {status_code}，已达最大重试次数 {max_retries}')
-                raise
-            retry_after = e.response.headers.get('Retry-After')
-            if retry_after:
-                try:
-                    delay = float(retry_after)
-                except ValueError:
-                    delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
-            else:
-                delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
-            logger.warning(
-                f'LLM API 返回 {status_code}，{delay:.1f}s 后重试 '
-                f'(attempt {attempt + 1}/{max_retries})'
-            )
-            time.sleep(delay)
-        except httpx.RequestError as e:
-            last_exc = e
-            if attempt >= max_retries:
-                logger.error(f'LLM API 请求失败，已达最大重试次数 {max_retries}')
-                raise
-            delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
-            logger.warning(
-                f'LLM API 请求异常: {e}，{delay:.1f}s 后重试 '
-                f'(attempt {attempt + 1}/{max_retries})'
-            )
-            time.sleep(delay)
-    else:
-        raise last_exc
-
-    return {
-        'content': data['choices'][0]['message']['content'],
-        'tokens_used': data.get('usage', {}).get('total_tokens', 0),
-        'input_token': data.get('usage', {}).get('prompt_tokens', 0),
-        'output_token': data.get('usage', {}).get('completion_tokens', 0),
-    }
+# 文件编码 / content 构建 / LLM 调用 / JSON 解析
+# 已统一由 shared.llm_client 提供（call_llm / parse_json），消除本文件重复实现
+# _unwrap_value 由 BaseCalculator 统一提供
 
 
 # ─────────── prompt 构建 ───────────
-def _unwrap_value(val: Any) -> str:
-    """解包 {'text': '...'} 格式"""
-    if isinstance(val, dict) and 'text' in val:
-        return val['text']
-    return val or ''
 
 
 def _extract_round_fields(rd: Dict[str, Any]) -> Dict[str, str]:
     """从单轮数据中提取 query / answer / expected_answer"""
-    query = _unwrap_value(rd.get('query') or rd.get('question') or '')
-    answer = _unwrap_value(
+    query = BaseCalculator._unwrap_value(rd.get('query') or rd.get('question') or '') or ''
+    answer = BaseCalculator._unwrap_value(
         rd.get('answer') or rd.get('response') or rd.get('ai_answer') or ''
-    )
-    expected = _unwrap_value(
+    ) or ''
+    expected = BaseCalculator._unwrap_value(
         rd.get('expected_answer') or rd.get('reference_answer')
         or rd.get('reference') or rd.get('correct_answer')
         or rd.get('expected') or ''
-    )
+    ) or ''
     return {'query': query, 'answer': answer, 'expected_answer': expected}
 
 
@@ -364,24 +150,6 @@ def _build_prompt(rounds: List[Dict[str, Any]],
 - 若回复音频中某轮对话无法识别或不存在，pass 填 false、reason 说明原因"""
 
 
-# ─────────── 响应解析 ───────────
-def _parse_json(content: str) -> Optional[dict]:
-    """解析 LLM 输出为 dict。先 json.loads，失败用正则兜底。"""
-    if not content:
-        return None
-    try:
-        return json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        pass
-    m = re.search(r'\{.*\}', content, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group())
-        except (json.JSONDecodeError, TypeError):
-            return None
-    return None
-
-
 def _build_summary(per_round: List[Dict[str, Any]]) -> str:
     """将 per_round 结果聚合为自然语言摘要
 
@@ -414,8 +182,8 @@ def evaluate_high_freq_llm(
     scenario_type: str = '',
     scenario_rules: str = '',
     model: str = '',
-    max_tokens: int = 4096,
-    temperature: float = 0.1,
+    max_tokens: int = LLM_DEFAULT_MAX_TOKENS,
+    temperature: float = LLM_DEFAULT_TEMPERATURE,
     ai_wav: str = '',
     **kwargs,
 ) -> Dict[str, Any]:
@@ -452,11 +220,8 @@ def evaluate_high_freq_llm(
             'message': str,
         }
     """
-    from app.config import config
-
-    llm_config = getattr(config, 'LLM_JUDGE', {})
     if not model:
-        model = llm_config.get('default_model', 'gpt-4o')
+        model = resolve_model(dimension='high_freq_llm_judge')
 
     # 主音频：ai_wav（模型回复，被判定对象）
     file_paths: List[str] = []
@@ -491,7 +256,7 @@ def evaluate_high_freq_llm(
     }
 
     try:
-        response = _call_llm_api(
+        response = call_llm(
             model=model,
             prompt=prompt,
             max_tokens=max_tokens,
@@ -508,7 +273,7 @@ def evaluate_high_freq_llm(
     result['input_token'] = response.get('input_token', 0)
     result['output_token'] = response.get('output_token', 0)
 
-    parsed = _parse_json(response['content'])
+    parsed = parse_json(response['content'])
     if not parsed:
         result['message'] = 'LLM 输出解析失败'
         logger.error(
@@ -577,15 +342,15 @@ if __name__ == '__main__':
     parser.add_argument('--scenario_rules', default='',
                         help='自定义场景规则（scenario_type=自定义 时使用）')
     parser.add_argument('--model', default='', help='LLM 模型名')
-    parser.add_argument('--max_tokens', type=int, default=4096)
-    parser.add_argument('--temperature', type=float, default=0.1)
+    parser.add_argument('--max_tokens', type=int, default=LLM_DEFAULT_MAX_TOKENS)
+    parser.add_argument('--temperature', type=float, default=LLM_DEFAULT_TEMPERATURE)
     args = parser.parse_args()
 
     with open(args.rounds_json, encoding='utf-8') as f:
         rounds_data = json.load(f)
 
     r = evaluate_high_freq_llm(
-        video_path=args.video,
+        ai_wav=args.video,
         rounds=rounds_data,
         scenario_type=args.scenario_type,
         scenario_rules=args.scenario_rules,
@@ -597,7 +362,7 @@ if __name__ == '__main__':
     print('=' * 60)
     print(f'模型: {r["model"]}')
     print(f'场景: {r.get("scenario_type", "") or "N/A"}')
-    print(f'录屏: {r["video_path"]}')
+    print(f'音频: {r["ai_wav"]}')
     print(f'tokens: {r["tokens_used"]} (in={r["input_token"]}, out={r["output_token"]})')
     print(f'message: {r["message"]}')
     print('-' * 60)

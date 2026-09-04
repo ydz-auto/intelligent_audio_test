@@ -16,9 +16,11 @@ non_interactive_latency.py
 时间单位: 秒（timestamp=[start, end]）
 """
 import os
-import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple
+
+from ..shared.asr_utils import to_chunks, to_segments_with_text
+from ..shared.constants import ASR_NON_INTERACTIVE_SEG_MERGE_GAP_S, ROUND_DIGITS
 
 logger = logging.getLogger(__name__)
 
@@ -27,90 +29,14 @@ def _get_asr(wav_path: str) -> Dict[str, Any]:
     """调用远程 ASR 服务获取词级时间戳，返回 {text, chunks} 结构"""
     if not wav_path or not os.path.isfile(wav_path):
         raise FileNotFoundError(f"wav 文件不存在: {wav_path}")
-    from app.utils.asr_adapator import call_modelscope_asr_word, parse_result
+    from app.utils.asr_adapter import call_modelscope_asr_word, parse_result
     raw = call_modelscope_asr_word(wav_path)
     return parse_result(raw)
 
 # ─────────── 阈值 ───────────
-SEG_MERGE_GAP_S = 0.7  # 合并相邻词为语音段的间隙阈值（秒），0.7s 适配句内最大停顿 ~0.5s
+SEG_MERGE_GAP_S = ASR_NON_INTERACTIVE_SEG_MERGE_GAP_S  # 合并相邻词为语音段的间隙阈值（秒）
 
-# 含实际词字符（CJK / 字母 / 数字）才算是"说话"，纯标点/空白 chunk 的时间戳是 ASR 标点模型伪造的，需剔除
-_WORD_RE = re.compile(r'[\w一-鿿]')
-
-
-def _is_punct_or_empty(text: Any) -> bool:
-    """chunk 文本是否纯标点/空白（无实际词字符）"""
-    if not text:
-        return True
-    return not _WORD_RE.search(str(text))
-
-
-# ─────────── ASR 结果归一化 ───────────
-def _to_chunks(val: Any) -> List[Dict[str, Any]]:
-    """把 user_asr / model_asr 归一成 chunks 列表
-
-    接受:
-        - [{"text":..., "timestamp":[s,e]}, ...]
-        - {"text":..., "chunks":[...]}
-        - 直接 chunks 列表
-    """
-    if val is None:
-        return []
-    if isinstance(val, dict):
-        chunks = val.get('chunks')
-        if isinstance(chunks, list):
-            return chunks
-        return []
-    if isinstance(val, list):
-        return val
-    return []
-
-
-def _valid_ts(ts: Any) -> Optional[Tuple[float, float]]:
-    """取 chunk 的 timestamp=[start,end]，非法返回 None"""
-    if not isinstance(ts, (list, tuple)) or len(ts) < 2:
-        return None
-    s, e = ts[0], ts[1]
-    if s is None or e is None:
-        return None
-    try:
-        s_f, e_f = float(s), float(e)
-    except (TypeError, ValueError):
-        return None
-    if e_f < s_f:
-        return None
-    return s_f, e_f
-
-
-def _to_segments(chunks: List[Dict[str, Any]], gap: float = SEG_MERGE_GAP_S
-                 ) -> List[Tuple[float, float, str]]:
-    """把词级 chunks 合并成语音段 [(start, end, text), ...]
-
-    按时间排序、相邻间隙 < gap 合并。返回纯语音段（不含段间静默），单位秒。
-    """
-    intervals: List[Tuple[float, float, str]] = []
-    for c in chunks:
-        if not isinstance(c, dict):
-            continue
-        if _is_punct_or_empty(c.get('text')):
-            continue
-        iv = _valid_ts(c.get('timestamp'))
-        if iv is None:
-            continue
-        intervals.append((iv[0], iv[1], str(c.get('text', ''))))
-
-    if not intervals:
-        return []
-
-    intervals.sort(key=lambda x: x[0])
-    merged: List[Tuple[float, float, str]] = [intervals[0]]
-    for s, e, t in intervals[1:]:
-        ps, pe, pt = merged[-1]
-        if s - pe <= gap:
-            merged[-1] = (ps, max(pe, e), pt + t)
-        else:
-            merged.append((s, e, t))
-    return merged
+# _to_segments 由 shared.asr_utils.to_segments_with_text 提供（消除重复实现）
 
 
 # ─────────── 主逻辑 ───────────
@@ -152,11 +78,11 @@ def _compute_from_asr(user_asr: Any, model_asr: Any,
         'message': '',
     }
 
-    user_chunks = _to_chunks(user_asr)
-    model_chunks = _to_chunks(model_asr)
+    user_chunks = to_chunks(user_asr)
+    model_chunks = to_chunks(model_asr)
 
-    u_segs = _to_segments(user_chunks, gap=seg_merge_gap_s)
-    m_segs = _to_segments(model_chunks, gap=seg_merge_gap_s)
+    u_segs = to_segments_with_text(user_chunks, seg_merge_gap_s=seg_merge_gap_s)
+    m_segs = to_segments_with_text(model_chunks, seg_merge_gap_s=seg_merge_gap_s)
 
     result['n_user_segments'] = len(u_segs)
     result['n_model_segments'] = len(m_segs)
@@ -175,7 +101,7 @@ def _compute_from_asr(user_asr: Any, model_asr: Any,
 
     # 目标用户段
     u_s, u_e, u_t = u_segs[target_segment_index]
-    result['user_segment'] = [round(u_s, 3), round(u_e, 3), u_t]
+    result['user_segment'] = [round(u_s, ROUND_DIGITS), round(u_e, ROUND_DIGITS), u_t]
 
     # ── 1. 定位被插话的模型回复段 ──
     # 用目标段的前一段（提问段）结束时间，找模型在该时间之后、且与用户目标段有重叠或紧邻的回复段
@@ -201,15 +127,15 @@ def _compute_from_asr(user_asr: Any, model_asr: Any,
 
     if m_active is not None:
         m_s, m_e, m_t = m_active
-        result['model_active_segment'] = [round(m_s, 3), round(m_e, 3), m_t]
+        result['model_active_segment'] = [round(m_s, ROUND_DIGITS), round(m_e, ROUND_DIGITS), m_t]
 
         # 用户开始讲话 → 模型停止回复（模型在用户说话时还在继续，持续了多久才停）
         # 如果模型在用户开始前就已结束，说明没有被打断，stop_latency=0
-        result['stop_latency_s'] = round(max(0.0, m_e - u_s), 3)
+        result['stop_latency_s'] = round(max(0.0, m_e - u_s), ROUND_DIGITS)
 
         # 重叠时长
         ov_s = max(0.0, min(m_e, u_e) - max(m_s, u_s))
-        result['overlap_s'] = round(ov_s, 3)
+        result['overlap_s'] = round(ov_s, ROUND_DIGITS)
 
         # ── 2. 找模型再次回复的段（第一次回复结束之后的新段）──
         m_next: Optional[Tuple[float, float, str]] = None
@@ -219,9 +145,9 @@ def _compute_from_asr(user_asr: Any, model_asr: Any,
                 break
 
         if m_next is not None:
-            result['model_recovery_segment'] = [round(m_next[0], 3), round(m_next[1], 3), m_next[2]]
-            result['recovery_latency_s'] = round(m_next[0] - u_e, 3)
-            result['silence_gap_s'] = round(m_next[0] - m_e, 3)
+            result['model_recovery_segment'] = [round(m_next[0], ROUND_DIGITS), round(m_next[1], ROUND_DIGITS), m_next[2]]
+            result['recovery_latency_s'] = round(m_next[0] - u_e, ROUND_DIGITS)
+            result['silence_gap_s'] = round(m_next[0] - m_e, ROUND_DIGITS)
         else:
             logger.warning('用户讲完后模型未再次回复，无法计算恢复时延')
 

@@ -18,7 +18,7 @@ ASR 时间线（seg_merge_gap_s=0.5；相邻同侧段间隙 >0.5s）：
 
 用法: cd eval_server && python tests/test_interruption_llm_scoring_v2.py
 """
-from app.services.calculators.xiaoyi_metrics.turn_taking import calculate_interruption_metrics
+from app.services.calculators.xiaoyi_metrics.interruptibility import calculate_interruption_metrics
 
 ORIGINAL_TOPIC = '帮我规划北京周末两日游'
 

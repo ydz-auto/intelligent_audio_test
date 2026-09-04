@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-"""测试 high_freq_turn_taking 和 high_freq_llm_judge 是否正确集成到 calculate_xiaoyi_metrics
+"""测试 high_freq_turn_taking 和 high_freq_llm_judge 是否正确集成到 TurnTakingCalculator
 
 运行方式:
     cd eval_server && python tests/test_high_freq_integration.py
 """
 import os
 import sys
-import json
 from unittest.mock import patch
 
 # 确保 eval_server 在 sys.path
@@ -16,13 +15,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def test_import():
     """1. 验证模块导入正常"""
-    from app.services.calculators.xiaoyi_metrics.turn_taking import (
-        calculate_xiaoyi_metrics,
-        calculate_high_freq_turn_taking_metrics,
-        calculate_high_freq_llm_judge,
-        compute_high_freq_turn_taking,
-    )
-    print("[PASS] 导入成功: calculate_xiaoyi_metrics, calculate_high_freq_turn_taking_metrics, calculate_high_freq_llm_judge, compute_high_freq_turn_taking")
+    from app.services.calculators.xiaoyi_metrics.turn_taking import compute_high_freq_turn_taking
+    from app.services.calculators.xiaoyi_metrics.turn_taking.strategy import TurnTakingCalculator
+    from app.services.calculators.xiaoyi_metrics import XiaoyiMetricsCalculator
+    print("[PASS] 导入成功: XiaoyiMetricsCalculator, TurnTakingCalculator, compute_high_freq_turn_taking")
     return True
 
 
@@ -76,10 +72,9 @@ def test_compute_high_freq_turn_taking():
     return True
 
 
-def test_calculate_xiaoyi_metrics_integration():
-    """3. 验证 calculate_xiaoyi_metrics 返回结果包含 high_freq_turn_taking 和 high_freq_llm_judge 键"""
+def test_xiaoyi_metrics_calculator_integration():
+    """3. 验证 XiaoyiMetricsCalculator 返回结果包含全部子维度键"""
 
-    # mock ASR 调用，避免真实网络请求
     mock_user_chunks = [
         {'text': '你好', 'timestamp': [1.0, 1.5]},
         {'text': '飞花令', 'timestamp': [2.0, 2.5]},
@@ -91,12 +86,9 @@ def test_calculate_xiaoyi_metrics_integration():
         {'text': '好的', 'timestamp': [3.0, 3.5]},
         {'text': '春风又绿', 'timestamp': [12.0, 12.5]},
     ]
-    mock_main_chunks = [
-        {'text': '测试', 'timestamp': [0.5, 1.0]},
-    ]
 
     import app.services.calculators.xiaoyi_metrics.turn_taking as tt_module
-    from app.services.calculators.xiaoyi_metrics.turn_taking import calculate_xiaoyi_metrics
+    from app.services.calculators.xiaoyi_metrics import XiaoyiMetricsCalculator
 
     task_params = {
         'record_file': '/tmp/fake.wav',
@@ -106,17 +98,19 @@ def test_calculate_xiaoyi_metrics_integration():
         'offset_ms': 40,
     }
 
-    with patch.object(tt_module, '_get_asr_chunks', side_effect=lambda w: mock_user_chunks if 'user' in w else mock_ai_chunks), \
-         patch.object(tt_module, '_get_asr_word_chunks', return_value=[]), \
-         patch('app.utils.asr_adapator.call_modelscope_asr_word', return_value={'text': '', 'chunks': mock_main_chunks}), \
-         patch('app.utils.asr_adapator.parse_result', return_value={'text': '', 'chunks': mock_main_chunks}), \
-         patch.object(tt_module, 'calculate_high_freq_llm_judge',
-               side_effect=lambda tp: {'enabled': False, 'message': 'mocked', 'n_rounds': 0, 'per_round': []}):
+    calc = XiaoyiMetricsCalculator()
 
-        result = calculate_xiaoyi_metrics(task_params)
+    with patch.object(tt_module, '_get_asr_chunks', side_effect=lambda w, **kw: mock_user_chunks if 'user' in w else mock_ai_chunks), \
+         patch('app.utils.asr_adapter.call_modelscope_asr_word', return_value={'text': '', 'chunks': mock_ai_chunks}), \
+         patch('app.utils.asr_adapter.parse_result', return_value={'text': '', 'chunks': mock_ai_chunks}), \
+         patch('app.services.calculators.xiaoyi_metrics.turn_taking.high_freq_llm_judge.evaluate_high_freq_llm',
+               side_effect=lambda **kw: {'enabled': False, 'message': 'mocked', 'n_rounds': 0, 'per_round': []}):
+
+        result = calc.run(task_params)
 
     assert 'high_freq_turn_taking' in result, "结果中缺少 high_freq_turn_taking 键"
     assert 'high_freq_llm_judge' in result, "结果中缺少 high_freq_llm_judge 键"
+    assert 'interruption' in result, "结果中缺少 interruption 键（跨域编排）"
 
     hf = result['high_freq_turn_taking']
     assert isinstance(hf, dict), "high_freq_turn_taking 应为 dict"
@@ -127,7 +121,7 @@ def test_calculate_xiaoyi_metrics_integration():
     assert isinstance(hl, dict), "high_freq_llm_judge 应为 dict"
     assert hl.get('message') == 'mocked', f"high_freq_llm_judge message 期望 'mocked'，实际 {hl.get('message')}"
 
-    print(f"[PASS] calculate_xiaoyi_metrics 集成验证通过")
+    print(f"[PASS] XiaoyiMetricsCalculator 集成验证通过")
     print(f"  结果键: {list(result.keys())}")
     print(f"  high_freq_turn_taking: n_rounds={hf.get('n_rounds')} "
           f"matched={hf.get('n_matched_rounds')} "
@@ -152,14 +146,14 @@ def test_task_service_no_high_freq_branch():
 
 if __name__ == '__main__':
     print("=" * 70)
-    print("测试 high_freq_turn_taking 和 high_freq_llm_judge 集成到 calculate_xiaoyi_metrics")
+    print("测试 high_freq_turn_taking 和 high_freq_llm_judge 集成到 TurnTakingCalculator")
     print("=" * 70)
 
     results = []
     for test_fn in [
         test_import,
         test_compute_high_freq_turn_taking,
-        test_calculate_xiaoyi_metrics_integration,
+        test_xiaoyi_metrics_calculator_integration,
         test_task_service_no_high_freq_branch,
     ]:
         print(f"\n── {test_fn.__name__} ──")

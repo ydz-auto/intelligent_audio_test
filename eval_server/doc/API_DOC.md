@@ -342,7 +342,7 @@ curl http://localhost:5001/api/status
 - **更新内容**：
   - 重构为策略模式 + 注册表架构，`calculate()` 和 `api.py` 不再需要 if-elif 链
   - 新增 `BaseCalculator` 基类，统一 `validate → prepare_params → calculate` 模板方法
-  - 按域分子包：wer / der / xiaoyi_metrics（turn_taking / interruptbility / rejection_scene_awareness / env_judge / llm_judge）
+  - 按域分子包：wer / der / xiaoyi_metrics（turn_taking / interruptibility / rejection_scene_awareness / env_judge / llm_judge）
   - 参数校验逻辑内聚到各自 Calculator 的 `validate()` 方法
   - 新增 task_type：`turn_taking`（原 `xiaoyi_metrics`）、`non_interactive_latency`、`noise_latency`、`env_judge`
   - 新增 `/api/create_task_upload` 接口支持 multipart 文件上传

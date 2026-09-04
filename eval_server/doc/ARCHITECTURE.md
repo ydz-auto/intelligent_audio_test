@@ -38,7 +38,7 @@ eval_server/
 │   │   │       │   ├── false_takeover.py       #   误接管率
 │   │   │       │   ├── takeover_latency.py     #   接管时延
 │   │   │       │   └── input_asr.py            #   输入识别准确率
-│   │   │       ├── interruptbility/            # 打断指标实现
+│   │   │       ├── interruptibility/            # 打断指标实现
 │   │   │       │   ├── interruption.py         #   打断指标（停得下 / 恢复得来）
 │   │   │       │   └── interruption_llm.py     #   打断 LLM 评估
 │   │   │       ├── rejection_scene_awareness/  # 拒识与场景感知
@@ -54,7 +54,7 @@ eval_server/
 │   │   ├── remote_service.py   # 远程端点调用
 │   │   └── task_service.py     # 任务调度入口（注册表查找 + worker 线程）
 │   └── utils/
-│       ├── asr_adapator.py     # ASR 适配层（HTTP 调用远程 asr_server.py）
+│       ├── asr_adapter.py      # ASR 适配层（HTTP 调用远程 asr_server.py）
 │       ├── concurrency.py      # 并发控制
 │       ├── decorators.py       # 装饰器
 │       ├── log_rotation.py     # 日志轮转
@@ -82,7 +82,7 @@ eval_server/
 | der | 说话人分离错误率 | DerCalculator | der_calculator.py |
 | llm_judge | LLM 语义评分 | LlmJudgeCalculator | llm_judge_calculator.py |
 | turn_taking | 话轮接管（tor + false_takeover + takeover_latency + input_asr） | TurnTakingCalculator | turn_taking/ |
-| interruption_metrics | 打断指标（停得下 + 恢复得来） | InterruptionMetricsCalculator | interruptbility/ |
+| interruption_metrics | 打断指标（停得下 + 恢复得来） | InterruptionMetricsCalculator | interruptibility/ |
 | non_interactive_latency | 非交互意图时延 | NonInteractiveLatencyCalculator | rejection_scene_awareness/ |
 | noise_latency | 噪声打断时延 | NoiseLatencyCalculator | rejection_scene_awareness/ |
 | env_judge | 环境音/打断能力录屏裁判 | EnvJudgeCalculator | env_judge/ |
@@ -252,7 +252,7 @@ SEG_MERGE_GAP_S = 0.7   # 句内最大停顿适配
 ```
 eval_server (port 5001)
     │
-    │  asr_adapator.py
+    │  asr_adapter.py
     │    call_modelscope_asr(wav_path)
     │       → HTTP POST → asr_server.py /asr (port 10095)
     │       → 上传 wav 文件
@@ -273,7 +273,7 @@ asr_server (port 10095, 独立主机 100.70.20.135)
 ## 8. 关键设计决策
 
 1. **策略模式 + 注册表**：每种 task_type 一个 Calculator 策略类，实现 `validate → prepare_params → calculate` 模板方法，由 `calculators/__init__.py` 自动注册。新增指标只需新建 strategy.py + 注册一行，无需改 `calculate()` 或 `api.py`
-2. **按域分子包**：策略类和实现函数放同一域子包，如 `wer/` 内含 `strategies.py` + `wer_calculator.py`，`xiaoyi_metrics/` 下按 turn_taking / interruptbility / rejection_scene_awareness / env_judge / llm_judge 分子包
+2. **按域分子包**：策略类和实现函数放同一域子包，如 `wer/` 内含 `strategies.py` + `wer_calculator.py`，`xiaoyi_metrics/` 下按 turn_taking / interruptibility / rejection_scene_awareness / env_judge / llm_judge 分子包
 3. **ASR 只调一次**：turn_taking 的三个子指标共享同一次 ASR 推理结果，通过返回值传递
 4. **不读写中间 JSON 文件**：ASR 结果直接通过内存对象传递
 5. **multipart 文件上传**：主服务上传 wav 文件到 eval_server，eval_server 再上传到 asr_server

@@ -2,279 +2,140 @@
 
 > **所属步骤**：04_执行测试 → eval_server  
 > **改造类型**：新增  
-> **涉及文件**：`eval_server/app/services/llm_judge_calculator.py`（新建）
+> **涉及文件**：`eval_server/app/services/calculators/xiaoyi_metrics/llm_judge/strategy.py`、`llm_judge_calculator.py`、`shared/llmClient.py`、`shared/constants.py`
 
 ---
 
 ## 背景
 
-LLM Judge 使用大语言模型（如 GPT-4）对对话输出进行语义级评分，适用于 voice_llm 场景中的对话质量评估。相比 WER 等自动化指标，LLM Judge 能评估语义准确性、流畅度、相关性等维度。
+LLM Judge 使用大语言模型（默认 `gpt-4o-mini`，见 config）对设备回答进行语义级评分（1-5 分），适用于 voice_llm 场景中的对话质量评估。相比 WER 等确定性自动化指标，LLM Judge 能评估语义准确性、流畅度、相关性等主观维度。
+
+在策略模式的 xiaoyi_metrics 家族中，`LlmJudgeCalculator` 是**独立的孤立策略节点**（不在 turn_taking 主维度的 `_SUB_DIMENSIONS` 内，注册 `llm_judge` 键，仅 1 键 1 类），但它复用了与 turn_taking 共享的两条基础设施：
+
+1. **shared/llmClient 统一 LLM 客户端**：`callLlm() / parseJson()` 取代了此前分散在各文件里的 5 处重复实现（llmClient docstring 明确列出收敛对象）
+2. **shared/constants 常量收敛**：`LLM_DEFAULT_MAX_TOKENS(4096)` / `LLM_DEFAULT_TEMPERATURE(0.1)` 等魔法数字不再散落
+
+架构链路：`POST /api/create_task(llm_judge)` → `_validate_and_dispatch_task`（白名单校验）→ `calculate_in_process` → `TaskService.calculate()` 注册表路由 → `LlmJudgeCalculator.run()`（参考 `02_评估维度架构` 第 3 章）。
 
 ---
 
-## 改造内容
+## 实际实现
 
-### 1. 新文件 `llm_judge_calculator.py`
+### 1. 策略类注册与调度
 
-```python
-"""LLM Judge calculator for voice_llm evaluation."""
+`LlmJudgeCalculator(BaseCalculator)`（strategy.py）实现三阶段接口：
 
-import json
-import time
-import requests
-from typing import Optional
-from app.utils.logger import logger
-
-
-# LLM API 配置（从环境变量或 config 读取）
-LLM_API_BASE_URL = None  # 运行时从 config 获取
-LLM_API_KEY = None
-LLM_DEFAULT_TIMEOUT = 120
-
-
-def evaluate_with_llm(
-    hypothesis: str,
-    reference: str,
-    model: str = 'gpt-4',
-    prompt_template: str = '',
-    max_tokens: int = 1024,
-    temperature: float = 0.1,
-    scoring_criteria: Optional[list] = None,
-    source_lang: str = 'zh',
-    target_lang: str = 'en',
-    **kwargs
-) -> dict:
-    """
-    使用 LLM 对 hypothesis 进行评分。
-
-    Args:
-        hypothesis: 被测系统输出文本
-        reference: 参考文本（标准答案）
-        model: LLM 模型名称
-        prompt_template: 评分 prompt 模板
-        max_tokens: 最大输出 token 数
-        temperature: 温度参数
-        scoring_criteria: 评分维度列表
-
-    Returns:
-        {
-            "llm_judge_score": 4.2,
-            "criteria_scores": {
-                "accuracy": 4.5,
-                "fluency": 4.0,
-                "relevance": 4.0
-            },
-            "reasoning": "...",
-            "model": "gpt-4",
-            "tokens_used": 256
-        }
-    """
-    # 构建评分 prompt
-    prompt = _build_evaluation_prompt(
-        hypothesis=hypothesis,
-        reference=reference,
-        prompt_template=prompt_template,
-        scoring_criteria=scoring_criteria,
-        source_lang=source_lang,
-        target_lang=target_lang,
-    )
-
-    # 调用 LLM API
-    response = _call_llm_api(
-        model=model,
-        prompt=prompt,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-
-    # 解析评分结果
-    result = _parse_llm_response(response)
-
-    result['model'] = model
-    result['source_lang'] = source_lang
-    result['target_lang'] = target_lang
-
-    return result
-```
-
-### 2. 评分 Prompt 构建
+- `validate()`：单轮要求 `rounds[round_number]` 有 `answer`；多轮要求**至少一轮**有 `answer`
+- `prepare_params()`：单轮取当前轮字段；多轮逐轮收集 `round_items`
+- `calculate()`：调 `callLlm() + parseJson()`
 
 ```python
-def _build_evaluation_prompt(hypothesis, reference, prompt_template,
-                              scoring_criteria, source_lang, target_lang):
-    """构建 LLM 评分 prompt"""
-    if prompt_template:
-        # 使用自定义模板
-        return prompt_template.format(
-            hypothesis=hypothesis,
-            reference=reference,
-        )
-
-    # 默认模板
-    criteria_text = ''
-    if scoring_criteria:
-        for idx, criterion in enumerate(scoring_criteria, 1):
-            criteria_text += f'{idx}. {criterion}\n'
-    else:
-        criteria_text = (
-            '1. Accuracy: How accurately does the hypothesis match the reference?\n'
-            '2. Fluency: How fluent and natural is the hypothesis?\n'
-            '3. Relevance: How relevant is the hypothesis to the context?\n'
-        )
-
-    return f"""You are a professional translation/ASR quality evaluator.
-
-Reference (ground truth):
-{reference}
-
-Hypothesis (system output):
-{hypothesis}
-
-Please evaluate the hypothesis on a scale of 1-5 for each criterion:
-{criteria_text}
-
-Respond in the following JSON format:
-{{
-    "scores": {{
-        "criterion_name": score
-    }},
-    "overall_score": average_score,
-    "reasoning": "brief explanation"
-}}
-
-Only respond with the JSON, no additional text."""
+TaskService.register_calculator('llm_judge', LlmJudgeCalculator())  # calculators/__init__.py
 ```
 
-### 3. LLM API 调用
+单轮/多轮判定由 `round_number` 驱动：
+
+- `round_number` 有值（0/1/2…）→ **单轮评估**：只取 `rounds[round_number]` 的 query/answer/correct_answer，算 1 次（`_iter_rounds` 只 yield 该轮）
+- `round_number` 不存在 → **多轮整体评估**：逐轮评分，数值字段取平均（`round(x, 3)`），非数值取最后一轮，附加 `n_rounds` / `per_round`（`_aggregate_results`）
+
+取参顺序（`_extract_round_fields`）：顶层 `query|question` → 当前轮 `query|question`；顶层 `answer` → 当前轮 `answer`；`correct_answer` 同理。`{'text': ..., 'json': [...]}` 格式值自动解包（`_unwrap_value`）为 text。
+
+### 2. 参数定义（与 param_mappings target_param 一致）
+
+| 字段 | 说明 |
+|------|------|
+| `answer` | 设备回答 |
+| `correct_answer` | 参考答案 |
+| `question` | 设备识别的问题 |
+| `query` | 参考问题 |
+| `record_file` | 音频文件路径（进入多模态） |
+| `rounds` | 多轮数据 `[{answer, correct_answer, ...}, ...]` |
+| `model` | LLM 模型名，默认 `config.LLM_JUDGE.default_model` |
+| `prompt` | 自定义评分 prompt 模板 |
+| `max_tokens` / `temperature` / `scoring_criteria` | LLM 调用参数（均有默认值） |
+
+### 3. 默认参数口径（三处需区分，以代码为准）
+
+| 位置 | model 默认 | max_tokens 默认 | temperature 默认 |
+|------|-----------|----------------|-----------------|
+| 策略类 `_extract_llm_config` (strategy.py) | `config.LLM_JUDGE.default_model`，无配置回退 `'gpt-4'` | `1024`（调用方或轮次未传时） | `0.1` |
+| 底层 `evaluate_with_llm` 签名 (llm_judge_calculator.py) | `'deepseek-r1'` | `LLM_DEFAULT_MAX_TOKENS` → `4096` | `LLM_DEFAULT_TEMPERATURE` → `0.1` |
+| `config.LLM_JUDGE` (config.py) | `gpt-4o-mini` | `4096` | `0.1` |
+
+> 当前环境实际生效：策略路由（API 调用）走 **config 默认 `gpt-4o-mini`**（`_extract_llm_config` 回退仅兜底）；`evaluate_with_llm` 作为非注册式复用函数，其 `deepseek-r1`/4096/0.1 是函数签名级默认值，调用方可覆盖。
+
+### 4. 策略类计算流程（calculate）
+
+统一走 **shared/llmClient.callLlm**（OpenAI 兼容、指数退避重试、json_object 解析，见 02 文档 shared 章节），结果经 `parseJson` 取 `score` / `reason`。
+
+**单轮出参**：
+
+```json
+{
+  "enabled": true,
+  "llm_judge_score": 4,
+  "criteria_scores": null,
+  "reasoning": "打分理由",
+  "model": "gpt-4o-mini"
+}
+```
+
+**多轮出参**：外层为 `_aggregate_results` 聚合结果（数值字段平均 + 最后一轮字段 + `n_rounds` + `per_round`），并 `setdefault('enabled', True)` / `setdefault('model', model)`。
+
+异常兜底：
+
+- 全部轮次无有效 answer → `{"enabled": False, "message": "所有轮次均无有效 answer"}`
+- `callLlm` 抛异常 → 该轮 `score=0, reason=str(e)`（错误不中断整批）
+- LLM 输出无法解析 → `score=0, reason='LLM 输出解析失败'`
+
+**prompt 填充**：`prompt_template.format(query=query, hypothesis=answer)`，`KeyError/IndexError` 时原样使用模板。
+
+### 5. 底层函数 evaluate_with_llm（非注册式复用）
+
+`llm_judge_calculator.py` 的 `evaluate_with_llm(...)` 供未走策略注册的调用方复用（含多模态），流程：
+
+1. **音频收集**：`extractVideoPaths(kwargs)`（音频/视频扩展名 + 文件存在）附加 `record_file`，非空则构建多模态消息（base64 data URI / image_url 格式）
+2. **prompt 构建**：有 `rounds` → `_build_rounds_prompt` 逐轮列出（不拼接），`custom_prompt.format(dialog=...)` 优先，否则内置中文模板；无 `rounds` → `_build_evaluation_prompt`，优先级 `custom_prompt → config.LLM_JUDGE.prompt_template → 内置模板`
+3. **LLM 调用**：`callLlm(model, prompt, maxTokens, temperature, filePaths)`（重试/超时/解析全部在 shared/llmClient 内）
+4. **结果构建** `_build_result`：`parseJson` 取 `score`/`reason`，失败时 `reason` 回退为原始 `content`
+
+**底层返回结构**：
+
+```json
+{
+  "llm_judge_score": 4,
+  "reasoning": "打分理由",
+  "tokens_used": 256,
+  "input_token": 100,
+  "output_token": 156,
+  "model": "gpt-4o-mini"
+}
+```
+
+### 6. 配置项（config.py）
 
 ```python
-def _call_llm_api(model, prompt, max_tokens, temperature):
-    """调用 LLM API（兼容 OpenAI API 格式）"""
-    from app.config import config
-
-    api_base = config.get('llm_judge', {}).get('api_base_url', '')
-    api_key = config.get('llm_judge', {}).get('api_key', '')
-
-    if not api_base or not api_key:
-        raise ValueError('LLM Judge API not configured')
-
-    headers = {
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json',
-    }
-
-    payload = {
-        'model': model,
-        'messages': [
-            {'role': 'system', 'content': 'You are a precise evaluator.'},
-            {'role': 'user', 'content': prompt},
-        ],
-        'max_tokens': max_tokens,
-        'temperature': temperature,
-        'response_format': {'type': 'json_object'},
-    }
-
-    response = requests.post(
-        f'{api_base}/chat/completions',
-        headers=headers,
-        json=payload,
-        timeout=LLM_DEFAULT_TIMEOUT,
-    )
-
-    response.raise_for_status()
-    data = response.json()
-
-    return {
-        'content': data['choices'][0]['message']['content'],
-        'tokens_used': data.get('usage', {}).get('total_tokens', 0),
-    }
+LLM_JUDGE = {
+    'api_base_url': os.environ.get('LLM_JUDGE_API_BASE', 'https://az.gptplus5.com/v1'),
+    'api_key': os.environ.get('LLM_JUDGE_API_KEY', ''),
+    'default_model': os.environ.get('LLM_JUDGE_DEFAULT_MODEL', 'gpt-4o-mini'),
+    'max_tokens': int(os.environ.get('LLM_JUDGE_MAX_TOKENS', '4096')),
+    'temperature': float(os.environ.get('LLM_JUDGE_TEMPERATURE', '0.1')),
+    'timeout': int(os.environ.get('LLM_JUDGE_TIMEOUT', '120')),
+    'prompt_template': '...',   # 中文评分规则模板（format: {query} / {hypothesis}）
+}
 ```
 
-### 4. 响应解析
-
-```python
-def _parse_llm_response(response):
-    """解析 LLM 返回的评分结果"""
-    content = response['content']
-
-    try:
-        result = json.loads(content)
-    except json.JSONDecodeError:
-        # 尝试从文本中提取 JSON
-        import re
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
-        if json_match:
-            result = json.loads(json_match.group())
-        else:
-            return {
-                'llm_judge_score': 0,
-                'criteria_scores': {},
-                'reasoning': f'Failed to parse LLM response: {content[:200]}',
-                'tokens_used': response.get('tokens_used', 0),
-            }
-
-    scores = result.get('scores', {})
-    overall = result.get('overall_score')
-
-    if overall is None and scores:
-        overall = sum(scores.values()) / len(scores)
-
-    return {
-        'llm_judge_score': round(overall or 0, 2),
-        'criteria_scores': {k: round(v, 2) for k, v in scores.items()},
-        'reasoning': result.get('reasoning', ''),
-        'tokens_used': response.get('tokens_used', 0),
-    }
-```
-
-### 5. 注册到 TaskService
-
-```python
-# task_service.py
-from app.services.llm_judge_calculator import evaluate_with_llm
-
-class TaskService:
-    @classmethod
-    def calculate(cls, task_type, task_params):
-        # ...
-        elif task_type == 'llm_judge':
-            return evaluate_with_llm(
-                hypothesis=task_params['hypothesis'],
-                reference=task_params['reference'],
-                model=task_params.get('model', 'gpt-4'),
-                prompt_template=task_params.get('prompt_template', ''),
-                max_tokens=task_params.get('max_tokens', 1024),
-                temperature=task_params.get('temperature', 0.1),
-                scoring_criteria=task_params.get('scoring_criteria'),
-                source_lang=task_params.get('source_lang', 'zh'),
-                target_lang=task_params.get('target_lang', 'en'),
-            )
-```
-
-### 6. 配置项
-
-在 `eval_server/app/config.py` 中新增：
-
-```python
-class Config:
-    # ... 现有配置 ...
-
-    # LLM Judge 配置
-    LLM_JUDGE = {
-        'api_base_url': os.environ.get('LLM_JUDGE_API_BASE', ''),
-        'api_key': os.environ.get('LLM_JUDGE_API_KEY', ''),
-        'default_model': 'gpt-4',
-        'timeout': 120,
-    }
-```
+`prompt_template` 用 `format(query=..., hypothesis=...)` 填充，模板未包含对应占位符时原样使用。
 
 ---
 
 ## 不变部分
 
-- 现有计算器不变
-- TaskService 调度框架不变
-- 任务存储不变
+- `BaseCalculator` 策略框架不变（validate/prepare_params/calculate 三阶段）
+- 其他计算器（wer/ser/der 等）不受影响
+- 任务存储（TaskModel）不变
+- 单轮/多轮判定与聚合语义不变
 
 ---
 
@@ -282,6 +143,8 @@ class Config:
 
 | 依赖文档 | 说明 |
 |---------|------|
-| `01_create_task新任务类型` | 任务入口 |
-| `24_evaluation_service_llm_judge分发` (主后端) | 请求发送方 |
-| `25_Evaluation页面_llm_judge维度` (frontend) | 维度配置 |
+| `02_评估维度架构_策略模式与主从维度` | 策略模式骨架、shared/llmClient 与 shared/constants 基础设施、孤立策略节点定位 |
+| `01_create_task新任务类型` | 任务入口与参数校验（llm_judge 白名单 15 项之一） |
+| `04_ConcurrencyManager动态类型` | llm_judge 并发限制 |
+| `25_evaluation_service单轮评估` (主后端) | 请求发送方与 round_number 驱动 |
+| `26_evaluation_api_client适配` (主后端) | 主后端请求构建与文件上传 |

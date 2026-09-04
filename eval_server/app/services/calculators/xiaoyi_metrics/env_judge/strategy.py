@@ -20,66 +20,22 @@
 """
 import logging
 from app.services.calculators.base import BaseCalculator
+from app.services.calculators.xiaoyi_metrics.shared.llm_client import get_llm_config
+from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    LLM_DEFAULT_MAX_TOKENS,
+    LLM_DEFAULT_TEMPERATURE,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class _BaseEnvJudgeCalculator(BaseCalculator):
-    """拒识/打断裁判公共基类"""
+    """拒识/打断裁判公共基类
 
-    # ─── 单轮/多轮公共方法 ───
-
-    @staticmethod
-    def _is_multi_round(task_params):
-        return task_params.get('round_number') is None
-
-    @staticmethod
-    def _get_target_round_index(task_params):
-        rn = task_params.get('round_number')
-        if rn is not None:
-            return rn
-        return -1
-
-    @staticmethod
-    def _get_round_safe(task_params, index):
-        rounds = (task_params or {}).get('rounds')
-        if not (rounds and isinstance(rounds, list)):
-            return {}
-        idx = index if index >= 0 else len(rounds) + index
-        if 0 <= idx < len(rounds) and isinstance(rounds[idx], dict):
-            return rounds[idx]
-        return {}
-
-    @staticmethod
-    def _iter_rounds(task_params):
-        rounds = (task_params or {}).get('rounds')
-        if not (rounds and isinstance(rounds, list)):
-            return
-        rn = task_params.get('round_number')
-        if rn is not None:
-            if 0 <= rn < len(rounds) and isinstance(rounds[rn], dict):
-                yield rn, rounds[rn]
-        else:
-            for i, rd in enumerate(rounds):
-                if isinstance(rd, dict):
-                    yield i, rd
-
-    @staticmethod
-    def _aggregate_results(per_round_results):
-        if not per_round_results:
-            return {}
-        if len(per_round_results) == 1:
-            return dict(per_round_results[0])
-        result = dict(per_round_results[-1])
-        first = per_round_results[0]
-        for k, v in first.items():
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                vals = [r.get(k) for r in per_round_results if r.get(k) is not None]
-                if vals:
-                    result[k] = round(sum(vals) / len(vals), 3)
-        result['n_rounds'] = len(per_round_results)
-        result['per_round'] = per_round_results
-        return result
+    单轮/多轮公共方法（_is_multi_round / _get_target_round_index /
+    _get_round_safe / _iter_rounds / _aggregate_results）由
+    BaseCalculator 统一提供。
+    """
 
     # ─── Calculator 实现 ───
 
@@ -91,32 +47,18 @@ class _BaseEnvJudgeCalculator(BaseCalculator):
         return True, None
 
     def prepare_params(self, task_params):
-        """单轮取当前轮，多轮所有字段取最后一轮；rounds 整体保留作上下文"""
+        """单轮/多轮统一取最后一轮字段；rounds 整体保留作上下文"""
         rounds = task_params.get('rounds') or []
-
-        if self._is_multi_round(task_params):
-            # 多轮：所有字段取最后一轮
-            rd_last = self._get_round_safe(task_params, -1)
-            item = self._extract_round_fields(task_params, rd_last)
-            llm_config = self._extract_llm_config(task_params, rd_last)
-            return {
-                'mode': 'single',
-                'rounds': rounds,  # 整体保留作上下文
-                **item,
-                **llm_config,
-            }
-        else:
-            # 单轮
-            idx = self._get_target_round_index(task_params)
-            rd = self._get_round_safe(task_params, idx)
-            item = self._extract_round_fields(task_params, rd)
-            llm_config = self._extract_llm_config(task_params, rd)
-            return {
-                'mode': 'single',
-                'rounds': rounds,  # 整体保留作上下文
-                **item,
-                **llm_config,
-            }
+        idx = self._get_target_round_index(task_params)
+        rd = self._get_round_safe(task_params, idx)
+        item = self._extract_round_fields(task_params, rd)
+        llm_config = self._extract_llm_config(task_params, rd)
+        return {
+            'mode': 'single',
+            'rounds': rounds,  # 整体保留作上下文
+            **item,
+            **llm_config,
+        }
 
     @staticmethod
     def _extract_round_fields(task_params, rd):
@@ -137,8 +79,7 @@ class _BaseEnvJudgeCalculator(BaseCalculator):
         scene 为新参数名，兼容旧 env_type 字段回退。
         model / max_tokens / temperature 缺省时回退到 config.LLM_JUDGE。
         """
-        from app.config import config
-        llm_config = getattr(config, 'LLM_JUDGE', {})
+        llm_config = get_llm_config()
 
         scene = task_params.get('scene') or rd.get('scene') or ''
         if not scene:
@@ -146,8 +87,8 @@ class _BaseEnvJudgeCalculator(BaseCalculator):
         return {
             'scene': scene,
             'model': task_params.get('model') or rd.get('model') or '',
-            'max_tokens': int(task_params.get('max_tokens') or rd.get('max_tokens') or llm_config.get('max_tokens', 4096)),
-            'temperature': float(task_params.get('temperature') or rd.get('temperature') or llm_config.get('temperature', 0.1)),
+            'max_tokens': int(task_params.get('max_tokens') or rd.get('max_tokens') or llm_config.get('max_tokens', LLM_DEFAULT_MAX_TOKENS)),
+            'temperature': float(task_params.get('temperature') or rd.get('temperature') or llm_config.get('temperature', LLM_DEFAULT_TEMPERATURE)),
         }
 
 
@@ -162,8 +103,8 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             ai_wav=params['ai_wav'],
             user_wav=params['user_wav'],
             model=params.get('model', ''),
-            max_tokens=params.get('max_tokens', 4096),
-            temperature=params.get('temperature', 0.1),
+            max_tokens=params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS),
+            temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
         )
 
 
@@ -178,6 +119,6 @@ class InterruptionJudgeCalculator(_BaseEnvJudgeCalculator):
             ai_wav=params['ai_wav'],
             user_wav=params['user_wav'],
             model=params.get('model', ''),
-            max_tokens=params.get('max_tokens', 4096),
-            temperature=params.get('temperature', 0.1),
+            max_tokens=params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS),
+            temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
         )

@@ -17,7 +17,7 @@ ASR 时间线设计（seg_merge_gap_s=0.5；相邻同侧段间隙 >0.5s，确保
 期望区分度：R2 高分(5) / R3 中分(3-4) / R4 低分(0-2)。
 原始话题：推荐一部适合周末看的电影
 """
-from app.services.calculators.xiaoyi_metrics.turn_taking import calculate_interruption_metrics
+from app.services.calculators.xiaoyi_metrics.interruptibility import calculate_interruption_metrics
 
 ORIGINAL_TOPIC = '推荐一部适合周末看的电影'
 

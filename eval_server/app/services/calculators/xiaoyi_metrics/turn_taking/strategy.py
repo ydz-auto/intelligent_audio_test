@@ -5,8 +5,10 @@
   - TurnTakingCalculator（主维度）：遍历所有子维度 Calculator，各自用自己的
     prepare_params 取参 + calculate 计算，最后合并结果。
   - 各子维度独立 Calculator（tor/false_takeover/takeover_latency/
-    high_freq_turn_taking/high_freq_llm_judge/interruption_metrics）：
-    继承 TurnTakingBase，各自实现 prepare_params（区分单轮/多轮）和 calculate。
+    high_freq_turn_taking/high_freq_llm_judge）：继承 TurnTakingBase，
+    各自实现 prepare_params（区分单轮/多轮）和 calculate。
+  - interruption_metrics 子维度已迁移到 interruptibility/strategy.py，
+    主维度通过 TaskService.CALCULATORS 查找它。
 
 单轮 vs 多轮区分：
   - round_number 有值（0/1/2...）→ 单轮评估，取 rounds[round_number]
@@ -25,143 +27,50 @@
   · high_freq_llm_judge：
       单轮 → rounds 只有 1 个元素，ai_wav 取当前轮
       多轮 → rounds 整体保留逐轮处理，ai_wav 取最后一轮
-  · interruption_metrics：
+  · interruption_metrics（在 interruptibility/strategy.py）：
       单轮 → 取当前轮双路音频
       多轮 → 取最后一轮双路音频（打断场景通常在最后一轮）
 """
 import logging
 from app.services.calculators.base import BaseCalculator
+from app.services.calculators.xiaoyi_metrics.shared.asr_utils import compute_pause_intervals
+from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    TAKEOVER_OFFSET_MS,
+    LLM_DEFAULT_MAX_TOKENS,
+    LLM_DEFAULT_TEMPERATURE,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class TurnTakingBase(BaseCalculator):
-    """turn_taking 域公共基类：共享 ASR 调用和单轮/多轮取参逻辑"""
+    """turn_taking 域公共基类：共享 ASR 调用和单轮/多轮取参逻辑
 
-    # ─── 轮次定位 ───
-
-    @staticmethod
-    def _is_multi_round(task_params):
-        """是否多轮评估（round_number 不存在）"""
-        return task_params.get('round_number') is None
-
-    @staticmethod
-    def _get_target_round_index(task_params):
-        """获取目标轮次索引
-
-        单轮：round_number（0-indexed）
-        多轮：-1（最后一轮）
-        """
-        rn = task_params.get('round_number')
-        if rn is not None:
-            return rn
-        return -1
-
-    @staticmethod
-    def _get_round_safe(task_params, index):
-        """安全获取 rounds[index]，越界或不存在返回 {}"""
-        rounds = (task_params or {}).get('rounds')
-        if not (rounds and isinstance(rounds, list)):
-            return {}
-        idx = index if index >= 0 else len(rounds) + index
-        if 0 <= idx < len(rounds) and isinstance(rounds[idx], dict):
-            return rounds[idx]
-        return {}
-
-    # ─── 音频取参（单轮/多轮通用）───
-
-    @classmethod
-    def _get_audio_from_round(cls, task_params, index):
-        """从指定轮次取双路音频（顶层优先）"""
-        rd = cls._get_round_safe(task_params, index)
-        user_wav = task_params.get('user_wav') or rd.get('user_wav') or ''
-        ai_wav = task_params.get('ai_wav') or rd.get('ai_wav') or ''
-        return user_wav, ai_wav
-
-    # ─── 多轮遍历 ───
-
-    @staticmethod
-    def _iter_rounds(task_params):
-        """遍历所有轮次，yield (round_index, round_dict)
-
-        单轮：只 yield (round_number, rounds[round_number])
-        多轮：yield 每一轮
-        """
-        rounds = (task_params or {}).get('rounds')
-        if not (rounds and isinstance(rounds, list)):
-            return
-        rn = task_params.get('round_number')
-        if rn is not None:
-            if 0 <= rn < len(rounds) and isinstance(rounds[rn], dict):
-                yield rn, rounds[rn]
-        else:
-            for i, rd in enumerate(rounds):
-                if isinstance(rd, dict):
-                    yield i, rd
+    单轮/多轮公共方法（_is_multi_round / _get_target_round_index /
+    _get_round_safe / _get_audio_from_round / _iter_rounds /
+    _aggregate_results）由 BaseCalculator 统一提供。
+    """
 
     # ─── ASR 共享 ───
 
     @staticmethod
-    def _get_asr_chunks(wav_path):
+    def _get_asr_chunks(wav_path, filter_punct=True):
         from app.services.calculators.xiaoyi_metrics.turn_taking import _get_asr_chunks
-        return _get_asr_chunks(wav_path)
-
-    @staticmethod
-    def _get_asr_word_chunks(wav_path):
-        from app.services.calculators.xiaoyi_metrics.turn_taking import _get_asr_word_chunks
-        return _get_asr_word_chunks(wav_path)
+        return _get_asr_chunks(wav_path, filter_punct=filter_punct)
 
     @staticmethod
     def _compute_pause_intervals(user_chunks):
-        """从 user_wav ASR 结果自动计算停顿区间"""
-        if not user_chunks:
-            return []
-        pause_intervals = []
-        for i in range(len(user_chunks) - 1):
-            prev_end = user_chunks[i]['timestamp'][1]
-            next_start = user_chunks[i + 1]['timestamp'][0]
-            gap = next_start - prev_end
-            if 0.2 <= gap <= 3.0:
-                pause_intervals.append({'text': '[PAUSE]', 'timestamp': [prev_end, next_start]})
-        return pause_intervals
-
-    @staticmethod
-    def _aggregate_results(per_round_results, agg_keys=None):
-        """聚合多轮结果：标量字段取平均，非标量字段取最后一轮
-
-        Args:
-            per_round_results: [{...}, {...}, ...] 每轮结果
-            agg_keys: 需要取平均的数值字段名列表，为 None 则自动检测
-        """
-        if not per_round_results:
-            return {}
-        if len(per_round_results) == 1:
-            return dict(per_round_results[0])
-
-        # 取最后一轮作为基础
-        result = dict(per_round_results[-1])
-        # 数值字段取平均
-        first = per_round_results[0]
-        for k, v in first.items():
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                vals = [r.get(k) for r in per_round_results if r.get(k) is not None]
-                if vals:
-                    result[k] = round(sum(vals) / len(vals), 3)
-        result['n_rounds'] = len(per_round_results)
-        result['per_round'] = per_round_results
-        return result
+        """从 user_wav ASR 结果自动计算停顿区间（复用 shared.asr_utils）"""
+        return compute_pause_intervals(user_chunks or [])
 
 
 # ─────────── 主维度：遍历子维度 ───────────
 
-# 主维度管理的子维度列表（按计算顺序）
-# key = 输出结果 key，value = TaskService.CALCULATORS 查找 key
+# turn_taking 域内子维度（跨域编排由 XiaoyiMetricsCalculator 负责）
 _SUB_DIMENSIONS = {
     'tor': 'tor',
     'false_takeover': 'false_takeover',
     'takeover_latency': 'takeover_latency',
-    'interruption': 'interruption_metrics',
-    'non_interactive_latency': 'non_interactive_latency',
     'high_freq_turn_taking': 'high_freq_turn_taking',
     'high_freq_llm_judge': 'high_freq_llm_judge',
 }
@@ -201,20 +110,22 @@ class TurnTakingCalculator(TurnTakingBase):
         sub_tasks = params.get('sub_tasks')  # None 或 list
         results = {}
 
-        # ── 主维度统一调一次 ASR，共享给各子维度 ──
-        idx = self._get_target_round_index(params)
-        user_wav, ai_wav = self._get_audio_from_round(params, idx)
-        shared_asr = {}
-        if user_wav:
-            shared_asr['user_chunks'] = self._get_asr_chunks(user_wav)
-        if ai_wav:
-            shared_asr['ai_chunks'] = self._get_asr_chunks(ai_wav)
-            shared_asr['ai_word_chunks'] = self._get_asr_word_chunks(ai_wav)
-        # pause 区间也从 user_chunks 统一算一次
-        if shared_asr.get('user_chunks'):
-            shared_asr['pause_intervals'] = self._compute_pause_intervals(shared_asr['user_chunks'])
-        else:
-            shared_asr['pause_intervals'] = []
+        # ── ASR 共享：优先使用上层编排器（XiaoyiMetricsCalculator）注入的结果 ──
+        shared_asr = params.get('_shared_asr')
+        if not shared_asr:
+            idx = self._get_target_round_index(params)
+            user_wav, ai_wav = self._get_audio_from_round(params, idx)
+            shared_asr = {}
+            if user_wav:
+                shared_asr['user_chunks'] = self._get_asr_chunks(user_wav)
+            if ai_wav:
+                shared_asr['ai_chunks'] = self._get_asr_chunks(ai_wav)
+                shared_asr['ai_word_chunks'] = self._get_asr_chunks(ai_wav, filter_punct=False)
+            # pause 区间也从 user_chunks 统一算一次
+            if shared_asr.get('user_chunks'):
+                shared_asr['pause_intervals'] = self._compute_pause_intervals(shared_asr['user_chunks'])
+            else:
+                shared_asr['pause_intervals'] = []
 
         logger.info(
             f"[turn_taking] 共享 ASR 完成: "
@@ -356,7 +267,7 @@ class FalseTakeoverCalculator(TurnTakingBase):
         ai_word_chunks = shared.get('ai_word_chunks')
         if ai_word_chunks is None:
             ai_wav = params.get('ai_wav')
-            ai_word_chunks = (self._get_asr_word_chunks(ai_wav) or []) if ai_wav else []
+            ai_word_chunks = (self._get_asr_chunks(ai_wav, filter_punct=False) or []) if ai_wav else []
 
         result = compute_false_takeover(ai_word_chunks, pause)
 
@@ -423,7 +334,7 @@ class TakeoverLatencyCalculator(TurnTakingBase):
             ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
         return compute_takeover_latency_from_raw(
             first_frame_ms=None, asr_hyp=None, start_ms=None,
-            input_words=[], offset_ms=40,
+            input_words=[], offset_ms=TAKEOVER_OFFSET_MS,
             user_chunks=user_chunks, ai_chunks=ai_chunks,
         )
 
@@ -522,8 +433,8 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
             'scenario_type': task_params.get('scenario_type') or rd.get('scenario_type') or '',
             'scenario_rules': task_params.get('scenario_rules') or rd.get('scenario_rules') or '',
             'model': task_params.get('llm_model') or rd.get('llm_model') or task_params.get('model') or '',
-            'max_tokens': int(task_params.get('max_tokens') or rd.get('max_tokens') or 4096),
-            'temperature': float(task_params.get('temperature') or rd.get('temperature') or 0.1),
+            'max_tokens': int(task_params.get('max_tokens') or rd.get('max_tokens') or LLM_DEFAULT_MAX_TOKENS),
+            'temperature': float(task_params.get('temperature') or rd.get('temperature') or LLM_DEFAULT_TEMPERATURE),
         }
 
     def run(self, task_params):
@@ -545,49 +456,5 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
         )
 
 
-# ─────────── 子维度：Interruption Metrics（打断指标）───────────
-
-class InterruptionMetricsCalculator(TurnTakingBase):
-    """打断指标：用户打断模型时，衡量"停得下、恢复得来"
-
-    单轮：取当前轮双路音频
-    多轮：取最后一轮双路音频算 1 次
-    """
-    task_type = 'interruption_metrics'
-
-    def validate(self, task_params):
-        idx = self._get_target_round_index(task_params)
-        user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
-        if not user_wav:
-            return False, f"Missing required field for {self.task_type}: user_wav"
-        if not ai_wav:
-            return False, f"Missing required field for {self.task_type}: ai_wav"
-        return True, None
-
-    def prepare_params(self, task_params):
-        idx = self._get_target_round_index(task_params)
-        user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
-        rd = self._get_round_safe(task_params, idx)
-        user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or rd.get('user_asr')
-        model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or rd.get('model_asr')
-        return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav,
-                'user_asr': user_asr, 'model_asr': model_asr,
-                'task_params': task_params}
-
-    def run(self, task_params):
-        """独立调用入口：结果包装为 {'interruption': result}
-
-        经 turn_taking 主维度调用时走 calculate()（由 TurnTakingCalculator
-        负责包装 results['interruption']），不经过此方法。
-        """
-        params = self.prepare_params(task_params)
-        result = self.calculate(params)
-        return {'interruption': result}
-
-    def calculate(self, params):
-        # 委托给 turn_taking.calculate_interruption_metrics 统一入口：
-        # 该入口内部完成 wav→ASR、时序指标(compute_interruption_metrics)、
-        # 可选 LLM 评估(enable_llm_eval)：吃 per_event 字词级 ASR 做是否真打断的语义复核 + 回复打分。
-        # 数值指标(success_rate/时延等)全部本地算，直接调 compute_interruption_metrics 会跳过 LLM，此处修正。
-        from app.services.calculators.xiaoyi_metrics.turn_taking import calculate_interruption_metrics
-        return calculate_interruption_metrics(params.get('task_params') or {})
+# InterruptionMetricsCalculator 已迁移到 interruptibility/strategy.py
+# （该子维度属 interruptibility 域，不应由 turn_taking 域承载）

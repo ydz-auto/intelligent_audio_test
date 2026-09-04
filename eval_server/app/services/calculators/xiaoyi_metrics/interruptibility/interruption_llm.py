@@ -25,16 +25,21 @@ model_recovery_text/words 及本地时序结论（success/stop_latency/recovery_
 """
 import json
 import logging
-import re
 from typing import Any, Dict, List, Optional
 
-import httpx
+from app.services.calculators.base import BaseCalculator
+from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
+    call_llm,
+    parse_json,
+    get_llm_config,
+    resolve_model,
+)
+from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    LLM_DEFAULT_MAX_TOKENS,
+    LLM_DEFAULT_TEMPERATURE,
+)
 
 logger = logging.getLogger(__name__)
-
-LLM_DEFAULT_TIMEOUT = 120
-LLM_DEFAULT_TEMPERATURE = 0.1
-LLM_DEFAULT_MAX_TOKENS = 1024
 
 
 # ─────────── prompt 构建 ───────────
@@ -173,84 +178,8 @@ def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '',
 
 
 # ─────────── LLM 调用 ───────────
-def _call_llm_json(prompt: str, model: str,
-                   max_tokens: int = LLM_DEFAULT_MAX_TOKENS,
-                   temperature: float = LLM_DEFAULT_TEMPERATURE) -> Dict[str, Any]:
-    """调用 OpenAI 兼容的 LLM，返回 content 文本。
 
-    复用 config.LLM_JUDGE（api_base_url/api_key/timeout）。未配置抛 ValueError。
-    """
-    from app.config import config
-
-    llm_config = getattr(config, 'LLM_JUDGE', {})
-    api_base = llm_config.get('api_base_url', '')
-    api_key = llm_config.get('api_key', '')
-    timeout = llm_config.get('timeout', LLM_DEFAULT_TIMEOUT)
-
-    if not api_base or not api_key:
-        raise ValueError(
-            'LLM 评估未配置：请在 eval_server 设置 LLM_JUDGE_API_BASE 与 LLM_JUDGE_API_KEY'
-        )
-
-    headers = {
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json',
-    }
-    payload = {
-        'model': model,
-        'messages': [
-            {'role': 'system', 'content': 'You are a precise dialog evaluator.'},
-            {'role': 'user', 'content': prompt},
-        ],
-        'max_tokens': max_tokens,
-        'temperature': temperature,
-        'response_format': {'type': 'json_object'},
-    }
-
-    with httpx.Client(trust_env=False, timeout=timeout) as client:
-        response = client.post(
-            f'{api_base.rstrip("/")}/chat/completions',
-            headers=headers,
-            json=payload,
-        )
-
-    response.raise_for_status()
-    data = response.json()
-    content = data['choices'][0]['message']['content']
-    tokens_used = data.get('usage', {}).get('total_tokens', 0)
-    return {'content': content, 'tokens_used': tokens_used}
-
-
-def _parse_json(content: str) -> Optional[dict]:
-    """解析 LLM 输出为 dict。先 json.loads，失败用正则兜底，再失败返回 None。"""
-    if not content:
-        return None
-    try:
-        return json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        pass
-    m = re.search(r'\{.*\}', content, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group())
-        except (json.JSONDecodeError, TypeError):
-            return None
-    return None
-
-
-def _unwrap_value(val: Any) -> str:
-    """解包 {'text': '...'} 格式（与 task_service._unwrap_value 一致）"""
-    if isinstance(val, dict) and 'text' in val:
-        return val['text']
-    return val
-
-
-def _avg(values: List[float]) -> Optional[float]:
-    """取平均，保留 3 位小数；空列表返回 None"""
-    values = [v for v in values if isinstance(v, (int, float))]
-    if not values:
-        return None
-    return round(sum(values) / len(values), 3)
+# _unwrap_value / _avg 由 BaseCalculator 统一提供
 
 
 def _score_field(parsed: dict, key: str) -> Optional[float]:
@@ -301,14 +230,11 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
             llm_return_*: 保留字段（空），向后兼容
             llm_eval 内的 interruption_real_rate: LLM 判定真正打断的事件占比
     """
-    from app.config import config
-
-    llm_config = getattr(config, 'LLM_JUDGE', {})
-    default_model = llm_config.get('default_model', 'gpt-4')
-    model = task_params.get('llm_model') or default_model
+    llm_config = get_llm_config()
+    model = task_params.get('llm_model') or resolve_model(dimension='interruption_llm')
     max_tokens = int(task_params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS) or LLM_DEFAULT_MAX_TOKENS)
     temperature = float(task_params.get('temperature', LLM_DEFAULT_TEMPERATURE) or LLM_DEFAULT_TEMPERATURE)
-    original_topic = _unwrap_value(task_params.get('original_topic', '')) or ''
+    original_topic = BaseCalculator._unwrap_value(task_params.get('original_topic', '')) or ''
 
     # 预检：未配置 API 则整体跳过，避免每事件都重复报错
     if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
@@ -344,8 +270,14 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
         }
         try:
             prompt = _build_event_prompt(ev, original_topic, user_segments, model_segments)
-            resp = _call_llm_json(prompt, model, max_tokens, temperature)
-            parsed = _parse_json(resp['content']) or {}
+            response = call_llm(
+                model=model,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system_message='You are a precise dialog evaluator.',
+            )
+            parsed = parse_json(response['content']) or {}
             item['is_real_interruption'] = _bool_field(parsed, 'is_real_interruption')
             item['interruption_reason'] = str(parsed.get('interruption_reason', ''))
             item['success'] = _bool_field(parsed, 'success')
@@ -357,7 +289,7 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
             if item['overall'] is None and any(
                 item[k] is not None for k in ('coherence', 'relevance', 'adaptability')
             ):
-                item['overall'] = _avg([item[k] for k in ('coherence', 'relevance', 'adaptability')])
+                item['overall'] = BaseCalculator._avg([item[k] for k in ('coherence', 'relevance', 'adaptability')])
             item['coherence_reason'] = str(parsed.get('coherence_reason', ''))
             item['relevance_reason'] = str(parsed.get('relevance_reason', ''))
             item['adaptability_reason'] = str(parsed.get('adaptability_reason', ''))
@@ -388,9 +320,9 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
         'llm_recovery_per_round': recovery_per_round,
         # 回到原话题独立打分链路已移除，保留字段为空以兼容既有维度
         'llm_return_scores_per_round': [],
-        'llm_recovery_avg_coherence': _avg([r['coherence'] for r in recovery_per_round]),
-        'llm_recovery_avg_relevance': _avg([r['relevance'] for r in recovery_per_round]),
-        'llm_recovery_avg_adaptability': _avg([r['adaptability'] for r in recovery_per_round]),
+        'llm_recovery_avg_coherence': BaseCalculator._avg([r['coherence'] for r in recovery_per_round]),
+        'llm_recovery_avg_relevance': BaseCalculator._avg([r['relevance'] for r in recovery_per_round]),
+        'llm_recovery_avg_adaptability': BaseCalculator._avg([r['adaptability'] for r in recovery_per_round]),
         # 三维分项理由(拼接各事件)，对应 seed 的 llm_recovery_*_reason field_path
         'llm_recovery_coherence_reason': _join_reasons('coherence_reason'),
         'llm_recovery_relevance_reason': _join_reasons('relevance_reason'),

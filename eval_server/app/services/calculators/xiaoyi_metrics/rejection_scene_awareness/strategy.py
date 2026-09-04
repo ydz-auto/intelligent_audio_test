@@ -20,69 +20,30 @@ logger = logging.getLogger(__name__)
 
 
 class _RejectionBase(BaseCalculator):
-    """rejection_scene_awareness 域公共基类：共享单轮/多轮取参逻辑"""
+    """rejection_scene_awareness 域公共基类
+
+    单轮/多轮公共方法（_is_multi_round / _get_target_round_index /
+    _get_round_safe / _get_audio_from_round / _iter_rounds /
+    _aggregate_results）由 BaseCalculator 统一提供。
+    """
 
     @staticmethod
-    def _is_multi_round(task_params):
-        return task_params.get('round_number') is None
-
-    @staticmethod
-    def _get_target_round_index(task_params):
-        rn = task_params.get('round_number')
-        if rn is not None:
-            return rn
-        return -1
-
-    @staticmethod
-    def _get_round_safe(task_params, index):
-        rounds = (task_params or {}).get('rounds')
-        if not (rounds and isinstance(rounds, list)):
-            return {}
-        idx = index if index >= 0 else len(rounds) + index
-        if 0 <= idx < len(rounds) and isinstance(rounds[idx], dict):
-            return rounds[idx]
-        return {}
-
-    @classmethod
-    def _get_audio_from_round(cls, task_params, index):
-        """从指定轮次取双路音频（顶层优先）"""
-        rd = cls._get_round_safe(task_params, index)
-        user_wav = task_params.get('user_wav') or rd.get('user_wav') or ''
-        ai_wav = task_params.get('ai_wav') or rd.get('ai_wav') or ''
-        return user_wav, ai_wav
-
-    @staticmethod
-    def _iter_rounds(task_params):
-        """遍历所有轮次，yield (round_index, round_dict)"""
-        rounds = (task_params or {}).get('rounds')
-        if not (rounds and isinstance(rounds, list)):
-            return
-        rn = task_params.get('round_number')
-        if rn is not None:
-            if 0 <= rn < len(rounds) and isinstance(rounds[rn], dict):
-                yield rn, rounds[rn]
-        else:
-            for i, rd in enumerate(rounds):
-                if isinstance(rd, dict):
-                    yield i, rd
-
-    @staticmethod
-    def _aggregate_results(per_round_results):
-        """聚合多轮结果：数值字段取平均，非数值取最后一轮"""
-        if not per_round_results:
-            return {}
-        if len(per_round_results) == 1:
-            return dict(per_round_results[0])
-        result = dict(per_round_results[-1])
-        first = per_round_results[0]
-        for k, v in first.items():
-            if isinstance(v, (int, float)) and not isinstance(v, bool):
-                vals = [r.get(k) for r in per_round_results if r.get(k) is not None]
-                if vals:
-                    result[k] = round(sum(vals) / len(vals), 3)
-        result['n_rounds'] = len(per_round_results)
-        result['per_round'] = per_round_results
-        return result
+    def _extract_kwargs(task_params, rd):
+        """提取可选参数（seg_merge_gap_s / target_segment_index）"""
+        kwargs = {}
+        gap = task_params.get('seg_merge_gap_s') or rd.get('seg_merge_gap_s')
+        if gap is not None:
+            try:
+                kwargs['seg_merge_gap_s'] = float(gap)
+            except (ValueError, TypeError):
+                pass
+        tsi = task_params.get('target_segment_index') or rd.get('target_segment_index')
+        if tsi is not None:
+            try:
+                kwargs['target_segment_index'] = int(tsi)
+            except (ValueError, TypeError):
+                pass
+        return kwargs
 
 
 class NonInteractiveLatencyCalculator(_RejectionBase):
@@ -126,23 +87,6 @@ class NonInteractiveLatencyCalculator(_RejectionBase):
             rd = self._get_round_safe(task_params, idx)
             kwargs = self._extract_kwargs(task_params, rd)
             return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav, 'kwargs': kwargs}
-
-    @staticmethod
-    def _extract_kwargs(task_params, rd):
-        kwargs = {}
-        gap = task_params.get('seg_merge_gap_s') or rd.get('seg_merge_gap_s')
-        if gap is not None:
-            try:
-                kwargs['seg_merge_gap_s'] = float(gap)
-            except (ValueError, TypeError):
-                pass
-        tsi = task_params.get('target_segment_index') or rd.get('target_segment_index')
-        if tsi is not None:
-            try:
-                kwargs['target_segment_index'] = int(tsi)
-            except (ValueError, TypeError):
-                pass
-        return kwargs
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency
@@ -238,17 +182,6 @@ class NoiseLatencyCalculator(_RejectionBase):
                 'mode': 'single', 'ai_wav': ai_wav, 'start_ms': start_ms,
                 'end_ms': end_ms, 'pcm_first_ms': pcm_first_ms, 'kwargs': kwargs,
             }
-
-    @staticmethod
-    def _extract_kwargs(task_params, rd):
-        kwargs = {}
-        gap = task_params.get('seg_merge_gap_s') or rd.get('seg_merge_gap_s')
-        if gap is not None:
-            try:
-                kwargs['seg_merge_gap_s'] = float(gap)
-            except (ValueError, TypeError):
-                pass
-        return kwargs
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.rejection_scene_awareness.noise_latency import compute_noise_latency

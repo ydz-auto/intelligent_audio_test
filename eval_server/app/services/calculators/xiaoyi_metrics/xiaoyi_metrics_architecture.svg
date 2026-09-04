@@ -1,0 +1,339 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowViolet); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">xiaoyi_metrics 指标计算模块 · 架构图（重构后）</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">eval_server / app / services / calculators / xiaoyi_metrics — 全域编排器 + 5 个独立主维度域 + 策略模式 + 注册表 · 依据重构后源码绘制</text>
+
+  <!-- ① 入口与注册分发 -->
+  <rect x="24" y="92" width="1192" height="306" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="111" r="11" fill="#3b82f6"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#1e3a8a">入口与注册分发 — task_type → CALCULATORS[task_type].run() 一键路由（xiaoyi 域 13 键）</text>
+
+  <rect x="44" y="150" width="196" height="64" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="142" y="176" class="box-name" text-anchor="middle">POST /submit</text>
+  <text x="142" y="196" class="box-desc" text-anchor="middle">评测任务（携带 task_type）</text>
+  <line x1="240" y1="182" x2="264" y2="182" class="flow"/>
+
+  <rect x="268" y="150" width="232" height="64" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="384" y="176" class="box-name" text-anchor="middle">controllers / api.py</text>
+  <text x="384" y="196" class="box-desc" text-anchor="middle">校验参数 · validate() 拦截缺失字段</text>
+  <line x1="500" y1="182" x2="524" y2="182" class="flow"/>
+
+  <rect x="528" y="150" width="262" height="64" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="659" y="176" class="box-name" text-anchor="middle">services / task_service.py</text>
+  <text x="659" y="196" class="box-desc" text-anchor="middle">TaskService.calculate(task_type)</text>
+  <line x1="790" y1="182" x2="842" y2="182" class="flow"/>
+
+  <polygon points="946,138 1046,182 946,226 846,182" fill="#fefce8" stroke="#ca8a04" stroke-width="1.4"/>
+  <text x="946" y="178" font-size="10.5" font-weight="600" fill="#854d0e" text-anchor="middle">task_type</text>
+  <text x="946" y="194" font-size="10.5" font-weight="600" fill="#854d0e" text-anchor="middle">已注册？</text>
+
+  <rect x="1092" y="154" width="104" height="56" rx="8" fill="#fff1f2" stroke="#ef4444" stroke-width="1.2"/>
+  <text x="1144" y="177" font-size="9.5" font-weight="600" fill="#9f1239" text-anchor="middle">未知 task_type</text>
+  <text x="1144" y="193" font-size="9.5" font-weight="600" fill="#9f1239" text-anchor="middle">分发失败 / 异常</text>
+  <line x1="1046" y1="182" x2="1088" y2="182" class="flow-red"/>
+
+  <line x1="946" y1="226" x2="946" y2="238" class="flow"/>
+  <text x="956" y="240" font-size="10" font-weight="600" fill="#16a34a">是</text>
+
+  <rect x="44" y="246" width="1172" height="136" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="60" y="266" font-size="11.5" font-weight="700" fill="#1e3a8a">CALCULATORS 注册表（TaskService 类属性 dict）— xiaoyi 域 13 键 · 颜色 = 所属子包（均为独立注册键）</text>
+
+  <rect x="60" y="276" width="180" height="24" rx="12" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="150" y="292" class="pill-t" fill="#5b21b6">xiaoyi_metrics（全域编排）</text>
+  <rect x="250" y="276" width="88" height="24" rx="12" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="294" y="292" class="pill-t" fill="#3730a3">turn_taking</text>
+  <rect x="348" y="276" width="44" height="24" rx="12" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="370" y="292" class="pill-t" fill="#3730a3">tor</text>
+  <rect x="402" y="276" width="104" height="24" rx="12" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="454" y="292" class="pill-t" fill="#3730a3">false_takeover</text>
+  <rect x="516" y="276" width="116" height="24" rx="12" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="574" y="292" class="pill-t" fill="#3730a3">takeover_latency</text>
+  <rect x="642" y="276" width="140" height="24" rx="12" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="712" y="292" class="pill-t" fill="#3730a3">high_freq_turn_taking</text>
+  <rect x="792" y="276" width="128" height="24" rx="12" fill="#e0e7ff" stroke="#6366f1" stroke-width="1"/>
+  <text x="856" y="292" class="pill-t" fill="#3730a3">high_freq_llm_judge</text>
+
+  <rect x="60" y="310" width="152" height="24" rx="12" fill="#e0f2fe" stroke="#0284c7" stroke-width="1"/>
+  <text x="136" y="326" class="pill-t" fill="#075985">interruption_metrics</text>
+  <rect x="222" y="310" width="158" height="24" rx="12" fill="#dcfce7" stroke="#22c55e" stroke-width="1"/>
+  <text x="301" y="326" class="pill-t" fill="#166534">non_interactive_latency</text>
+  <rect x="390" y="310" width="98" height="24" rx="12" fill="#dcfce7" stroke="#22c55e" stroke-width="1"/>
+  <text x="439" y="326" class="pill-t" fill="#166534">noise_latency</text>
+  <rect x="498" y="310" width="110" height="24" rx="12" fill="#cffafe" stroke="#06b6d4" stroke-width="1"/>
+  <text x="553" y="326" class="pill-t" fill="#155e75">rejection_judge</text>
+  <rect x="618" y="310" width="122" height="24" rx="12" fill="#cffafe" stroke="#06b6d4" stroke-width="1"/>
+  <text x="679" y="326" class="pill-t" fill="#155e75">interruption_judge</text>
+  <rect x="750" y="310" width="74" height="24" rx="12" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <text x="787" y="326" class="pill-t" fill="#92400e">llm_judge</text>
+  <rect x="834" y="310" width="188" height="24" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="928" y="326" class="pill-t" fill="#64748b">input_asr（CLI 工具 · 未注册）</text>
+  <text x="60" y="362" class="note">另有 wer / ser / cpwer / tcpwer / stm_wer / der（ASR 指标键，非本模块）· 全部注册键统一经 CALCULATORS[key].run() 分发</text>
+
+  <!-- ② 模板方法与继承体系 -->
+  <rect x="24" y="412" width="1192" height="210" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="412" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="438" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="431" r="11" fill="#8b5cf6"/>
+  <text x="46" y="435" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="436" class="sec-title" fill="#4c1d95">基类模板 — BaseCalculator 模板方法 + Phase3 单轮 / 多轮公共方法统一</text>
+
+  <rect x="44" y="466" width="560" height="100" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.2"/>
+  <text x="64" y="488" font-size="12" font-weight="700" fill="#4c1d95">BaseCalculator — calculators / base.py（模板方法）</text>
+  <rect x="64" y="500" width="130" height="30" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="129" y="519" class="body" fill="#4c1d95" text-anchor="middle">validate() 校验</text>
+  <line x1="194" y1="515" x2="210" y2="515" class="flow"/>
+  <rect x="212" y="500" width="160" height="30" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="292" y="519" class="body" fill="#4c1d95" text-anchor="middle">prepare_params() 装参</text>
+  <line x1="372" y1="515" x2="388" y2="515" class="flow"/>
+  <rect x="390" y="500" width="120" height="30" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="450" y="519" class="body" fill="#4c1d95" text-anchor="middle">calculate() 计算</text>
+  <text x="64" y="552" class="note">run() = prepare_params → calculate · validate() 返回 (is_valid, err) 供 API 层拦截</text>
+
+  <rect x="624" y="466" width="572" height="100" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.2"/>
+  <text x="644" y="488" font-size="12" font-weight="700" fill="#4c1d95">Phase3 已落地 — 单轮 / 多轮公共方法由基类统一提供</text>
+  <rect x="644" y="500" width="110" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="699" y="515" class="chip-t" fill="#4c1d95">_is_multi_round</text>
+  <rect x="762" y="500" width="150" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="837" y="515" class="chip-t" fill="#4c1d95">_get_target_round_index</text>
+  <rect x="920" y="500" width="110" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="975" y="515" class="chip-t" fill="#4c1d95">_get_round_safe</text>
+  <rect x="1038" y="500" width="140" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1108" y="515" class="chip-t" fill="#4c1d95">_get_audio_from_round</text>
+  <rect x="644" y="528" width="90" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="689" y="543" class="chip-t" fill="#4c1d95">_iter_rounds</text>
+  <rect x="742" y="528" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="807" y="543" class="chip-t" fill="#4c1d95">_aggregate_results</text>
+  <rect x="880" y="528" width="100" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="930" y="543" class="chip-t" fill="#4c1d95">_unwrap_value</text>
+  <rect x="988" y="528" width="160" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1068" y="543" class="chip-t" fill="#4c1d95">_collect_flat_from_rounds</text>
+  <text x="644" y="560" class="note">单轮：round_number 有值 → 取该轮 · 多轮：缺省 → 逐轮计算，数值取平均 / 末轮兜底</text>
+
+  <rect x="44" y="584" width="1172" height="26" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="630" y="601" class="body" fill="#4c1d95" text-anchor="middle">继承树：BaseCalculator → TurnTakingBase（5 维度类）· _RejectionBase（2 类）· _BaseEnvJudgeCalculator（2 类）· InterruptionMetricsCalculator · LlmJudgeCalculator — 12 实例类 + 1 全域编排器</text>
+
+  <line x1="630" y1="622" x2="630" y2="634" class="flow"/>
+
+  <!-- ③ 三层编排与 5 独立域 -->
+  <rect x="24" y="640" width="1192" height="800" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="640" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="666" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="659" r="11" fill="#6366f1"/>
+  <text x="46" y="663" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="664" class="sec-title" fill="#3730a3">三层编排 — 全域编排器 → 域内编排 → 子维度 Calculator · 5 个域完全独立</text>
+  <text x="1196" y="664" font-size="10" fill="#475569" text-anchor="end">虚线 = 注册表查找 · 域间无 import 依赖</text>
+
+  <!-- 全域编排器 -->
+  <rect x="44" y="694" width="1172" height="180" rx="10" fill="#ffffff" stroke="#7c3aed" stroke-width="1.8" filter="url(#softShadow)"/>
+  <rect x="44" y="694" width="1172" height="32" rx="10" fill="#7c3aed"/>
+  <rect x="44" y="714" width="1172" height="12" fill="#7c3aed"/>
+  <text x="64" y="715" font-size="13" font-weight="700" fill="#ffffff">XiaoyiMetricsCalculator — 全域编排器（根 __init__.py · 唯一编排入口）</text>
+  <text x="1196" y="715" font-size="10" fill="#ede9fe" text-anchor="end">task_type = xiaoyi_metrics</text>
+
+  <rect x="60" y="738" width="320" height="124" rx="8" fill="#f8fafc" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="76" y="760" font-size="11" font-weight="700" fill="#5b21b6">① 统一共享 ASR（双路各调一次）</text>
+  <text x="76" y="778" class="body">user_wav / ai_wav 双声道 → _get_asr_chunks()</text>
+  <text x="76" y="794" class="body">唯一 ASR 出口：turn_taking / __init__.py</text>
+  <text x="76" y="812" font-size="10" font-weight="600" fill="#5b21b6">产出 _shared_asr 注入各子维度：</text>
+  <rect x="76" y="820" width="130" height="18" rx="5" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="141" y="833" class="chip-t" fill="#5b21b6">user_chunks</text>
+  <rect x="214" y="820" width="130" height="18" rx="5" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="279" y="833" class="chip-t" fill="#5b21b6">ai_chunks</text>
+  <rect x="76" y="842" width="150" height="18" rx="5" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="151" y="855" class="chip-t" fill="#5b21b6">ai_word_chunks</text>
+  <rect x="234" y="842" width="130" height="18" rx="5" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="299" y="855" class="chip-t" fill="#5b21b6">pause_intervals</text>
+
+  <rect x="400" y="738" width="400" height="124" rx="8" fill="#f8fafc" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="416" y="760" font-size="11" font-weight="700" fill="#5b21b6">② 注册表查找子维度（域间零 import）</text>
+  <text x="416" y="776" class="body">_SUB_DIMENSIONS 白名单过滤 task_type</text>
+  <text x="416" y="792" class="body">→ TaskService.CALCULATORS[key] 定位实例</text>
+  <text x="416" y="808" class="body">→ run()：validate → prepare_params → calculate</text>
+  <text x="416" y="830" font-size="10" font-weight="600" fill="#5b21b6">策略模式：_shared_asr 经 prepare_params 注入</text>
+  <text x="416" y="848" class="note">子维度 Calculator 只依赖基类与 shared/，不感知其他域</text>
+
+  <rect x="820" y="738" width="380" height="124" rx="8" fill="#f8fafc" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="836" y="760" font-size="11" font-weight="700" fill="#5b21b6">③ 结果后处理（跨维度规则上提）</text>
+  <text x="836" y="776" class="body">false_takeover.tor = 1 时：</text>
+  <text x="836" y="792" class="body">tor / takeover_latency 结果置 null</text>
+  <text x="836" y="808" class="body">并附带解释性 message 字段</text>
+  <text x="836" y="830" class="note">原散落在 turn_taking 域内的跨维度规则</text>
+  <text x="836" y="848" class="note">统一上提至全域编排器负责</text>
+
+  <line x1="630" y1="874" x2="630" y2="896" class="flow-violet"/>
+  <text x="642" y="890" font-size="10" font-weight="600" fill="#7c3aed">分发到 5 个独立域（虚线 = 注册表查找）</text>
+
+  <!-- turn_taking 域 -->
+  <rect x="44" y="906" width="760" height="250" rx="10" fill="#ffffff" stroke="#6366f1" stroke-width="1.6" filter="url(#softShadow)"/>
+  <rect x="44" y="906" width="760" height="28" rx="10" fill="#6366f1"/>
+  <rect x="44" y="922" width="760" height="12" fill="#6366f1"/>
+  <text x="64" y="925" font-size="12.5" font-weight="700" fill="#ffffff">TurnTakingCalculator — 域内编排（对话轮次 · 5 子维度）</text>
+  <text x="796" y="925" font-size="9.5" fill="#e0e7ff" text-anchor="end">域键 turn_taking + 5 子维度键</text>
+  <text x="64" y="956" font-size="10.5" font-weight="700" fill="#3730a3">__init__.py（48 行）— _get_asr_chunks() ASR 词级时间戳唯一出口（shared/llm_client、env_judge 等复用）</text>
+  <rect x="64" y="966" width="720" height="26" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="80" y="983" font-size="10" font-weight="600" fill="#3730a3">TurnTakingBase(BaseCalculator) — _get_asr_chunks 转发（非副本）+ _compute_pause_intervals · 编排 strategy.py（375 行）</text>
+  <rect x="64" y="1002" width="132" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="130" y="1019" class="pill-t" fill="#3730a3">tor</text>
+  <text x="130" y="1038" class="chip-t" fill="#64748b">tor.py · 148 行</text>
+  <rect x="204" y="1002" width="140" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="274" y="1019" class="pill-t" fill="#3730a3">false_takeover</text>
+  <text x="274" y="1038" class="chip-t" fill="#64748b">false_takeover.py · 323</text>
+  <rect x="352" y="1002" width="140" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="422" y="1019" class="pill-t" fill="#3730a3">takeover_latency</text>
+  <text x="422" y="1038" class="chip-t" fill="#64748b">takeover_latency.py · 199</text>
+  <rect x="500" y="1002" width="140" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="570" y="1019" class="pill-t" fill="#3730a3">high_freq_turn_taking</text>
+  <text x="570" y="1038" class="chip-t" fill="#64748b">high_freq_turn_taking.py · 212</text>
+  <rect x="648" y="1002" width="136" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="716" y="1019" class="pill-t" fill="#3730a3">high_freq_llm_judge</text>
+  <text x="716" y="1038" class="chip-t" fill="#64748b">high_freq_llm_judge.py · 321</text>
+  <text x="64" y="1072" class="body">策略模式：5 个子维度独立 Calculator · 各自 task_type 注册 · 经 CALCULATORS 分发</text>
+  <text x="64" y="1090" class="body">跨维度规则（false_takeover.tor=1 → tor/takeover_latency 置 null）已上提全域编排器</text>
+  <text x="64" y="1108" class="note">常量化：TAKEOVER_OFFSET_MS=40 · TAKEOVER_FIRST_FRAME_OFFSET_MS=100 · TIMELINE_MAX_ITEMS_CHUNKS=30 / PAUSES=20</text>
+  <text x="64" y="1126" class="note">残留：strategy.py:432-433 兜底字面量（or 4096 / or 0.1）— 唯一未常量化点</text>
+  <text x="64" y="1144" class="note">CLI 入口 print × 80 → 建议改 logging（见 ④）</text>
+
+  <!-- interruptibility 域 -->
+  <rect x="824" y="906" width="392" height="250" rx="10" fill="#ffffff" stroke="#0284c7" stroke-width="1.6" filter="url(#softShadow)"/>
+  <rect x="824" y="906" width="392" height="28" rx="10" fill="#0284c7"/>
+  <rect x="824" y="922" width="392" height="12" fill="#0284c7"/>
+  <text x="844" y="925" font-size="12.5" font-weight="700" fill="#ffffff">InterruptionMetrics — 独立主维度</text>
+  <text x="1206" y="925" font-size="9.5" fill="#e0f2fe" text-anchor="end">interruption_metrics</text>
+  <text x="844" y="956" font-size="10.5" font-weight="700" fill="#075985">strategy.py（55 行）· 域内编排</text>
+  <rect x="844" y="966" width="352" height="26" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>
+  <text x="860" y="983" font-size="10" font-weight="600" fill="#075985">InterruptionMetricsCalculator(BaseCalculator)</text>
+  <rect x="844" y="1002" width="170" height="46" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>
+  <text x="929" y="1019" class="pill-t" fill="#075985">interruption.py</text>
+  <text x="929" y="1038" class="chip-t" fill="#64748b">342 行 · 指标计算</text>
+  <rect x="1022" y="1002" width="174" height="46" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>
+  <text x="1109" y="1019" class="pill-t" fill="#075985">interruption_llm.py</text>
+  <text x="1109" y="1038" class="chip-t" fill="#64748b">305 行 · LLM 评审</text>
+  <text x="844" y="1072" class="body">复用全域 _shared_asr：词级时间戳 + pause_intervals</text>
+  <text x="844" y="1090" class="body">打断时机窗口 / 打断行为判定</text>
+  <text x="844" y="1114" font-size="10" fill="#166534">✓ 目录拼写修复（interruptibility）· 由工具库升级为独立注册维度</text>
+  <text x="844" y="1130" class="note">✓ _unwrap_value / load_json 统一至 shared/asr_utils</text>
+  <text x="844" y="1146" class="note">✓ 单/多轮公共方法直接继承 BaseCalculator（Phase3）</text>
+
+  <!-- rejection_scene_awareness 域 -->
+  <rect x="44" y="1180" width="384" height="160" rx="10" fill="#ffffff" stroke="#22c55e" stroke-width="1.6" filter="url(#softShadow)"/>
+  <rect x="44" y="1180" width="384" height="26" rx="10" fill="#22c55e"/>
+  <rect x="44" y="1194" width="384" height="12" fill="#22c55e"/>
+  <text x="60" y="1197" font-size="12" font-weight="700" fill="#ffffff">RejectionSceneAwareness — 拒识场景（2 子维度）</text>
+  <text x="64" y="1226" font-size="10.5" font-weight="700" fill="#166534">strategy.py（170 行）· 域内编排</text>
+  <rect x="64" y="1236" width="344" height="24" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="80" y="1252" font-size="10" font-weight="600" fill="#166534">_RejectionBase(BaseCalculator) — 域内公共逻辑</text>
+  <rect x="64" y="1270" width="164" height="40" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="146" y="1286" class="pill-t" fill="#166534">non_interactive_latency</text>
+  <text x="146" y="1302" class="chip-t" fill="#64748b">195 行</text>
+  <rect x="236" y="1270" width="172" height="40" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="322" y="1286" class="pill-t" fill="#166534">noise_latency</text>
+  <text x="322" y="1302" class="chip-t" fill="#64748b">176 行</text>
+  <text x="64" y="1328" class="note">复用 _shared_asr · 两子维度各自注册、独立分发</text>
+
+  <!-- env_judge 域 -->
+  <rect x="448" y="1180" width="384" height="160" rx="10" fill="#ffffff" stroke="#06b6d4" stroke-width="1.6" filter="url(#softShadow)"/>
+  <rect x="448" y="1180" width="384" height="26" rx="10" fill="#06b6d4"/>
+  <rect x="448" y="1194" width="384" height="12" fill="#06b6d4"/>
+  <text x="468" y="1197" font-size="12" font-weight="700" fill="#ffffff">EnvJudge — 环境语义评审（2 子维度）</text>
+  <text x="468" y="1226" font-size="10.5" font-weight="700" fill="#155e75">strategy.py（101 行）· 域内编排</text>
+  <rect x="468" y="1236" width="348" height="24" rx="6" fill="#cffafe" stroke="#67e8f9" stroke-width="1"/>
+  <text x="484" y="1252" font-size="10" font-weight="600" fill="#155e75">_BaseEnvJudgeCalculator(BaseCalculator) — LLM 评审基类</text>
+  <rect x="468" y="1270" width="168" height="40" rx="6" fill="#cffafe" stroke="#67e8f9" stroke-width="1"/>
+  <text x="552" y="1286" class="pill-t" fill="#155e75">rejection_judge</text>
+  <text x="552" y="1302" class="chip-t" fill="#64748b">235 行</text>
+  <rect x="644" y="1270" width="172" height="40" rx="6" fill="#cffafe" stroke="#67e8f9" stroke-width="1"/>
+  <text x="730" y="1286" class="pill-t" fill="#155e75">interruption_judge</text>
+  <text x="730" y="1302" class="chip-t" fill="#64748b">225 行</text>
+  <text x="468" y="1328" class="note">LLM 默认值统一 LLM_DEFAULT_MAX_TOKENS / LLM_DEFAULT_TEMPERATURE</text>
+
+  <!-- llm_judge 域 -->
+  <rect x="852" y="1180" width="364" height="160" rx="10" fill="#ffffff" stroke="#f59e0b" stroke-width="1.6" filter="url(#softShadow)"/>
+  <rect x="852" y="1180" width="364" height="26" rx="10" fill="#f59e0b"/>
+  <rect x="852" y="1194" width="364" height="12" fill="#f59e0b"/>
+  <text x="872" y="1197" font-size="12" font-weight="700" fill="#ffffff">LlmJudge — LLM 评审（1 子维度）</text>
+  <text x="872" y="1226" font-size="10.5" font-weight="700" fill="#92400e">strategy.py（175 行）· 域内编排</text>
+  <rect x="872" y="1236" width="328" height="24" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="888" y="1252" font-size="10" font-weight="600" fill="#92400e">LlmJudgeCalculator — 高频问答 LLM 评审</text>
+  <rect x="872" y="1270" width="200" height="40" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="972" y="1286" class="pill-t" fill="#92400e">llm_judge_calculator.py</text>
+  <text x="972" y="1302" class="chip-t" fill="#64748b">189 行</text>
+  <rect x="1080" y="1270" width="120" height="40" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="1140" y="1286" class="pill-t" fill="#92400e">strategy.py</text>
+  <text x="1140" y="1302" class="chip-t" fill="#64748b">175 行</text>
+  <text x="872" y="1328" class="note">BEHAVIOR_LABELS / BEHAVIOR_FIELD_MAP 常量化</text>
+
+  <text x="630" y="1372" font-size="11" font-weight="600" fill="#3730a3" text-anchor="middle">5 个域相互零 import · 仅经注册表（①）+ shared/（④）协作 · 域内：编排 strategy → 子维度 Calculator（策略模式）</text>
+  <text x="630" y="1392" class="note" text-anchor="middle">虚线连接 = 注册表分发（XiaoyiMetricsCalculator → CALCULATORS[key]），并非 import 依赖</text>
+
+  <!-- ④ shared/ 基础设施与重构验收 -->
+  <rect x="24" y="1454" width="1192" height="380" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1454" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="1480" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="1473" r="11" fill="#16a34a"/>
+  <text x="46" y="1477" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="1478" class="sec-title" fill="#14532d">shared/ 基础设施 + 重构验收对照 — snake_case · 常量化 · enum 化 · 重复消除</text>
+
+  <rect x="44" y="1508" width="572" height="292" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="64" y="1530" font-size="12" font-weight="700" fill="#166534">shared/ — 模块内公共基础设施（snake_case · 零业务逻辑）</text>
+  <text x="64" y="1554" font-size="10.5" font-weight="600" fill="#166534">constants.py · 51 行 — 全部魔法数字收口</text>
+  <text x="76" y="1572" class="note">TAKEOVER_OFFSET_MS = 40 · TAKEOVER_FIRST_FRAME_OFFSET_MS = 100</text>
+  <text x="76" y="1588" class="note">LLM_DEFAULT_MAX_TOKENS = 4096 · LLM_DEFAULT_TEMPERATURE = 0.1</text>
+  <text x="76" y="1604" class="note">LLM_HTTP_CONNECT_TIMEOUT = 10.0 · TIMELINE_MAX_ITEMS_CHUNKS = 30 / PAUSES = 20</text>
+  <text x="76" y="1620" class="note">INPUT_ASR_SIMILARITY_THRESHOLD = 0.8 · AUDIO_EXTS / VIDEO_EXTS · BEHAVIOR_LABELS / FIELD_MAP</text>
+  <text x="64" y="1648" font-size="10.5" font-weight="600" fill="#166534">enums.py · 41 行 — 枚举化（enum 化要求落地）</text>
+  <text x="64" y="1676" font-size="10.5" font-weight="600" fill="#166534">llm_client.py — call_llm / parse_json / get_llm_config / resolve_model</text>
+  <text x="76" y="1694" class="note">消除 3 处重复 LLM 客户端实现（原各子维度各自实现）</text>
+  <text x="64" y="1722" font-size="10.5" font-weight="600" fill="#166534">asr_utils.py · 122 行 — load_json 等通用工具</text>
+  <text x="76" y="1740" class="note">消除 _unwrap_value / _avg / _load 等跨文件重复小函数</text>
+  <text x="76" y="1776" class="note">shared/ 不 import 任何域包 → 保证域间零依赖、可被全部 5 域复用</text>
+
+  <rect x="636" y="1508" width="580" height="292" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="656" y="1530" font-size="12" font-weight="700" fill="#14532d">重构验收对照（四轮复查 · 完成度 ≈98%）</text>
+  <text x="656" y="1554" font-size="10.5" font-weight="700" fill="#166534">✓ 主要坏味道已清零</text>
+  <text x="668" y="1572" class="note">✓ 目录拼写 interruptibility 修复 · 残留旧文件（env_judge.py / _common.py）已删除</text>
+  <text x="668" y="1588" class="note">✓ turn_taking/__init__.py 706 → 48 行 · _get_asr_word_chunks 并入 _get_asr_chunks</text>
+  <text x="668" y="1604" class="note">✓ Phase3：8 个单/多轮公共方法统一入 base.py（L64-L204）</text>
+  <text x="668" y="1620" class="note">✓ LLM 客户端去重 → shared/llm_client · 默认值统一 LLM_DEFAULT_*</text>
+  <text x="668" y="1636" class="note">✓ offset_ms / connect / max_items → TAKEOVER_OFFSET_MS 等常量</text>
+  <text x="668" y="1652" class="note">✓ 全域编排器 XiaoyiMetricsCalculator 注册 xiaoyi_metrics（第 13 键）</text>
+  <text x="656" y="1680" font-size="10.5" font-weight="700" fill="#92400e">△ 残留 3 项（低风险 · 建议后续收尾）</text>
+  <text x="668" y="1698" class="note">① turn_taking/strategy.py:432-433 兜底字面量（or 4096 / or 0.1）— 唯一真魔法数字</text>
+  <text x="668" y="1714" class="note">② CLI argparse 默认值（high_freq_llm_judge.py:345-346）</text>
+  <text x="668" y="1730" class="note">③ CLI 入口 print × 80 → 建议改造为 logging</text>
+  <text x="668" y="1768" font-size="10" fill="#166534">结构性结论：域拆分（DDD）✓ · 注册表分发 + 策略模式 + 模板方法 ✓ · 常量化 / 枚举化 ✓ · 域间零依赖 ✓</text>
+
+  <line x1="0" y1="1856" x2="1240" y2="1856" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1880" font-size="10.5" fill="#64748b">依据重构后源码逐文件实测绘制（base.py · 各域 __init__/strategy · shared/*）— 三层编排：全域编排器 → 域内编排 → 子维度 Calculator（策略模式）</text>
+  <text x="24" y="1900" font-size="10.5" fill="#64748b">修订：interruptibility / env_judge / rejection_scene_awareness / llm_judge 由“从属工具”更正为 5 个完全独立的主维度域 · 2026-09</text>
+</svg>

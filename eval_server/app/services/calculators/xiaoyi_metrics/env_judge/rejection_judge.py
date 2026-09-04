@@ -16,13 +16,19 @@ import os
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.services.calculators.xiaoyi_metrics.env_judge._common import (
-    call_llm_api,
+from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
+    call_llm as call_llm_api,
     build_timeline_text,
     parse_json,
     parse_evaluations,
     get_asr_chunks,
     get_asr_text,
+    get_llm_config,
+    resolve_model,
+)
+from app.services.calculators.xiaoyi_metrics.shared.constants import (
+    LLM_DEFAULT_MAX_TOKENS,
+    LLM_DEFAULT_TEMPERATURE,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,8 +113,8 @@ def evaluate_rejection_judge(
     ai_wav: str = '',
     user_wav: str = '',
     model: str = '',
-    max_tokens: int = 4096,
-    temperature: float = 0.1,
+    max_tokens: int = LLM_DEFAULT_MAX_TOKENS,
+    temperature: float = LLM_DEFAULT_TEMPERATURE,
 ) -> Dict[str, Any]:
     """拒识场景 LLM 裁判主入口
 
@@ -139,15 +145,13 @@ def evaluate_rejection_judge(
             'message': str,
         }
     """
-    from app.config import config
-
-    llm_config = getattr(config, 'LLM_JUDGE', {})
+    llm_config = get_llm_config()
     if not model:
-        model = llm_config.get('default_model', 'gpt-4o')
+        model = resolve_model(dimension='rejection_judge')
     if not max_tokens:
-        max_tokens = llm_config.get('max_tokens', 4096)
+        max_tokens = llm_config.get('max_tokens', LLM_DEFAULT_MAX_TOKENS)
     if temperature is None:
-        temperature = llm_config.get('temperature', 0.1)
+        temperature = llm_config.get('temperature', LLM_DEFAULT_TEMPERATURE)
 
     # 主音频：ai_wav（模型回复，被判定对象）
     if not ai_wav or not os.path.isfile(ai_wav):

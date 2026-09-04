@@ -87,6 +87,7 @@ eval_server/app/database/tasks/
 eval_server/app/database/uploads/
 eval_server/app/database/endpoints.json
 static/eval_server/
+static/asr_models/
 
 # Runtime data - test results & ref params
 Intelligent-Audio-TEST/static/
@@ -149,3 +150,8 @@ wjh/
 
 # eval_server temp tests
 eval_server/tests/test_xiaoyi_repro.py
+
+# eval_server 临时调试脚本（跑真实数据用的 scratch，不入库）
+eval_server/_run_real_xiaoyi.py
+eval_server/_show_result.py
+eval_server/_real_xiaoyi_result.json

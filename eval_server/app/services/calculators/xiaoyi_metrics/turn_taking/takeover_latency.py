@@ -17,11 +17,13 @@ xiaoyi_takeover_latency.py
 """
 import logging
 
+from ..shared.constants import TAKEOVER_OFFSET_MS, TAKEOVER_FIRST_FRAME_OFFSET_MS
+
 logger = logging.getLogger(__name__)
 
 
 def compute_takeover_latency_from_raw(first_frame_ms, asr_hyp, start_ms, input_words,
-                                      offset_ms=40, **kwargs):
+                                      offset_ms=TAKEOVER_OFFSET_MS, **kwargs):
     """兼容旧调用入口，委托到 compute_takeover_latency_from_chunks
 
     当调用方提供 user_chunks/ai_chunks 时走新逻辑；
@@ -170,13 +172,12 @@ def compute_takeover_latency_from_chunks(user_chunks, ai_chunks):
 
 
 def _compute_takeover_latency_legacy(first_frame_ms, asr_hyp, start_ms, input_words,
-                                      offset_ms=40):
+                                      offset_ms=TAKEOVER_OFFSET_MS):
     """旧版接管时延计算（基于 first_frame_ms + 录屏 ASR），保留兼容
 
     公式: takeover_latency_ms = model_first_word_ms - (start_ms + t2_ms + offset_ms)
            model_first_word_ms = first_frame_ms + first_word_begin_ms
     """
-    DEFAULT_FIRST_FRAME_OFFSET_MS = 100
 
     result = {
         'takeover_latency_ms': None,
@@ -206,7 +207,7 @@ def _compute_takeover_latency_legacy(first_frame_ms, asr_hyp, start_ms, input_wo
     first_word_begin_ms = int(first_word_begin_s * 1000)
     result['first_word_begin_ms'] = first_word_begin_ms
 
-    first_frame_corrected_ms = first_frame_ms - DEFAULT_FIRST_FRAME_OFFSET_MS
+    first_frame_corrected_ms = first_frame_ms - TAKEOVER_FIRST_FRAME_OFFSET_MS
     model_first_word_ms = first_frame_corrected_ms + first_word_begin_ms
     result['model_first_word_ms'] = model_first_word_ms
 

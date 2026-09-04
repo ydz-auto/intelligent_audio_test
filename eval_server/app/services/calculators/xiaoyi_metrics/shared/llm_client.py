@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
-"""_common.py
-拒识场景 / 打断场景 LLM 裁判共享工具模块
+"""xiaoyi_metrics 共享 LLM 客户端
 
-包含：
-    - 常量（超时、重试、文件扩展名、行为标签）
-    - 文件编码（音频 base64 / 视频 data URI）
-    - 多模态 content 构建
-    - LLM API 调用（支持 omni stream / audio 模型 / 普通文本模型）
-    - 时间线构建（用户侧 ASR + 环境声事件窗）
-    - JSON 解析与 evaluations 归一化
+统一 LLM API 调用实现，消除 5 处重复代码:
+  - env_judge/_common.py:call_llm_api      (omni stream + 重试 + 多模态)
+  - env_judge/env_judge.py:_call_llm_api    (legacy 重复)
+  - interruptibility/interruption_llm.py:_call_llm_json (无重试)
+  - llm_judge/strategy.py:_call_llm        (无重试)
+  - llm_judge/llm_judge_calculator.py:_call_llm_api (重试 + 多模态)
+
+统一入口: call_llm(prompt, model, file_paths, ...) -> dict
 """
 import json
 import os
@@ -20,33 +20,31 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from .constants import (
+    LLM_DEFAULT_TIMEOUT,
+    LLM_HTTP_CONNECT_TIMEOUT,
+    LLM_MAX_RETRIES,
+    LLM_RETRY_BASE_DELAY,
+    LLM_DEFAULT_TEMPERATURE,
+    LLM_DEFAULT_MAX_TOKENS,
+    LLM_DEFAULT_MODEL,
+    AUDIO_EXTS,
+    VIDEO_EXTS,
+)
+
 logger = logging.getLogger(__name__)
-
-# ─────────── 常量 ───────────
-LLM_DEFAULT_TIMEOUT = 300
-LLM_MAX_RETRIES = 3
-LLM_RETRY_BASE_DELAY = 2  # 秒
-
-_AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.aac', '.ogg', '.opus', '.m4a'}
-_VIDEO_EXTS = {
-    '.mp4', '.avi', '.mkv', '.webm', '.mov', '.flv',
-    '.wmv', '.m4v', '.ts', '.3gp',
-}
-
-# 行为分类的合法取值（四选一）
-BEHAVIOR_LABELS = ['回应', '恢复', '不确定询问', '未知']
 
 
 # ─────────── 文件编码 ───────────
 def is_audio(file_path: str) -> bool:
-    return os.path.splitext(file_path)[1].lower() in _AUDIO_EXTS
+    return os.path.splitext(file_path)[1].lower() in AUDIO_EXTS
 
 
-def encode_file_to_data(file_path: str) -> str:
+def encode_file_to_base64(file_path: str) -> str:
     """将音频文件编码为纯 base64 字符串（不带 data URI 前缀）。
 
     用于 OpenAI input_audio 格式的 data 字段——该字段要求纯 base64，
-    不能带 `data:;base64,` 前缀，否则部分代理/模型会静默忽略音频。
+    不能带 ``data:;base64,`` 前缀，否则部分代理/模型会静默忽略音频。
     """
     with open(file_path, 'rb') as f:
         return base64.b64encode(f.read()).decode()
@@ -91,7 +89,7 @@ def build_content(prompt: str, file_paths: Optional[List[str]] = None) -> list:
                 video_parts.append(fp)
 
     for ap in audio_parts:
-        b64_data = encode_file_to_data(ap)
+        b64_data = encode_file_to_base64(ap)
         audio_fmt = get_audio_format(ap)
         content.append({
             'type': 'input_audio',
@@ -107,24 +105,57 @@ def build_content(prompt: str, file_paths: Optional[List[str]] = None) -> list:
     return content
 
 
+# ─────────── LLM 配置读取 ───────────
+def get_llm_config() -> Dict[str, Any]:
+    """读取 config.LLM_JUDGE，返回统一配置 dict"""
+    from app.config import config
+    return getattr(config, 'LLM_JUDGE', {})
+
+
+def resolve_model(model: str = '', dimension: str = '') -> str:
+    """解析模型名（优先级：显式参数 > 维度配置 > 全局默认）
+
+    Args:
+        model: 显式传入的模型名，非空直接返回
+        dimension: 维度标识（如 'rejection_judge'），从 config 读取
+                   LLM_JUDGE_MODEL_REJECTION_JUDGE 环境变量
+    """
+    if model:
+        return model
+    llm_config = get_llm_config()
+    # 维度级配置优先
+    if dimension:
+        dim_model = llm_config.get('dimension_models', {}).get(dimension, '')
+        if dim_model:
+            return dim_model
+    return llm_config.get('default_model', LLM_DEFAULT_MODEL)
+
+
 # ─────────── LLM 调用 ───────────
-def call_llm_api(model: str, prompt: str,
-                 max_tokens: int = 4096,
-                 temperature: float = 0.1,
-                 file_paths: Optional[List[str]] = None) -> Dict[str, Any]:
+def call_llm(model: str,
+             prompt: str,
+             max_tokens: int = LLM_DEFAULT_MAX_TOKENS,
+             temperature: float = LLM_DEFAULT_TEMPERATURE,
+             file_paths: Optional[List[str]] = None,
+             system_message: str = '',
+             ) -> Dict[str, Any]:
     """调用 OpenAI 兼容的 LLM API（多模态：文本 + 音频/录屏）。
 
-    音频文件使用 input_audio 格式，视频文件使用 image_url 格式。
-    支持 stream 模式以兼容 Qwen omni 等模型。
-    """
-    from app.config import config
+    - 音频文件使用 input_audio 格式，视频文件使用 image_url 格式。
+    - 支持 stream 模式以兼容 Qwen omni 等模型。
+    - 429 / 5xx 指数退避重试。
 
-    llm_config = getattr(config, 'LLM_JUDGE', {})
+    Returns:
+        dict: {content, tokens_used, input_token, output_token}
+    """
+    llm_config = get_llm_config()
     api_base = llm_config.get('api_base_url', '')
     api_key = llm_config.get('api_key', '')
     timeout = llm_config.get('timeout', LLM_DEFAULT_TIMEOUT)
-    # httpx Timeout: connect=10s, write=timeout(音频base64上传慢), read=timeout, pool=timeout
-    httpx_timeout = httpx.Timeout(connect=10.0, write=float(timeout), read=float(timeout), pool=float(timeout))
+    httpx_timeout = httpx.Timeout(
+        connect=LLM_HTTP_CONNECT_TIMEOUT,
+        write=float(timeout), read=float(timeout), pool=float(timeout),
+    )
 
     if not api_base or not api_key:
         raise ValueError(
@@ -142,16 +173,19 @@ def call_llm_api(model: str, prompt: str,
     else:
         user_content = [{'type': 'text', 'text': prompt}]
 
-    # 判断模型类型：omni(需 stream) / 其他音频模型(如 gpt-audio，不支持 response_format) / 普通文本模型
-    m_low = model.lower()
-    is_omni = 'omni' in m_low
-    is_audio = is_omni or ('audio' in m_low)
+    messages: List[Dict[str, Any]] = []
+    if system_message:
+        messages.append({'role': 'system', 'content': system_message})
+    messages.append({'role': 'user', 'content': user_content})
+
+    # 判断模型类型
+    model_lower = model.lower()
+    is_omni = 'omni' in model_lower
+    is_audio_model = is_omni or ('audio' in model_lower)
 
     payload: Dict[str, Any] = {
         'model': model,
-        'messages': [
-            {'role': 'user', 'content': user_content},
-        ],
+        'messages': messages,
         'max_tokens': max_tokens,
         'temperature': temperature,
     }
@@ -159,8 +193,8 @@ def call_llm_api(model: str, prompt: str,
     if is_omni:
         payload['stream'] = True
         payload['stream_options'] = {'include_usage': True}
-        payload['timeout'] = 300
-    elif not is_audio:
+        payload['timeout'] = LLM_DEFAULT_TIMEOUT
+    elif not is_audio_model:
         payload['response_format'] = {'type': 'json_object'}
 
     url = f'{api_base.rstrip("/")}/chat/completions'
@@ -209,16 +243,11 @@ def call_llm_api(model: str, prompt: str,
                     err_body = e.response.text[:500]
                 except Exception:
                     err_body = '<无法读取>'
-                logger.warning(
-                    f'LLM API 返回 {status_code}，响应体: {err_body}'
-                )
+                logger.warning(f'LLM API 返回 {status_code}，响应体: {err_body}')
             if status_code != 429 and not (500 <= status_code < 600):
                 raise
             if attempt >= max_retries:
-                logger.error(
-                    f'LLM API 返回 {status_code}，'
-                    f'已达最大重试次数 {max_retries}'
-                )
+                logger.error(f'LLM API 返回 {status_code}，已达最大重试次数 {max_retries}')
                 raise
             retry_after = e.response.headers.get('Retry-After')
             if retry_after:
@@ -236,9 +265,7 @@ def call_llm_api(model: str, prompt: str,
         except httpx.RequestError as e:
             last_exc = e
             if attempt >= max_retries:
-                logger.error(
-                    f'LLM API 请求失败，已达最大重试次数 {max_retries}'
-                )
+                logger.error(f'LLM API 请求失败，已达最大重试次数 {max_retries}')
                 raise
             delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
             logger.warning(
@@ -255,6 +282,24 @@ def call_llm_api(model: str, prompt: str,
         'input_token': data.get('usage', {}).get('prompt_tokens', 0),
         'output_token': data.get('usage', {}).get('completion_tokens', 0),
     }
+
+
+# ─────────── JSON 解析 ───────────
+def parse_json(content: str) -> Optional[dict]:
+    """解析 LLM 输出为 dict。先 json.loads，失败用正则兜底。"""
+    if not content:
+        return None
+    try:
+        return json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    m = re.search(r'\{.*\}', content, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group())
+        except (json.JSONDecodeError, TypeError):
+            return None
+    return None
 
 
 # ─────────── 时间线构建 ───────────
@@ -307,12 +352,12 @@ def build_timeline_text(user_chunks: Optional[List[Dict[str, Any]]] = None,
                 continue
             s = ev.get('start_s')
             e = ev.get('end_s')
-            label = ev.get('label', '环境声')
+            lbl = ev.get('label', '环境声')
             if s is None or e is None:
                 continue
             try:
                 lines.append(
-                    f'  [{float(s):.2f}-{float(e):.2f}] {label}'
+                    f'  [{float(s):.2f}-{float(e):.2f}] {lbl}'
                     f'（环境声，不可ASR；模型在此窗内应保持沉默/不应被触发）'
                 )
             except (TypeError, ValueError):
@@ -323,36 +368,7 @@ def build_timeline_text(user_chunks: Optional[List[Dict[str, Any]]] = None,
     return '\n\n'.join(parts)
 
 
-def extract_video_paths(kwargs: dict) -> List[str]:
-    """从 kwargs 中提取存在的录屏/音频文件路径（legacy：录屏模式下的额外文件）"""
-    paths = []
-    for value in kwargs.values():
-        if not isinstance(value, str) or not value:
-            continue
-        ext = os.path.splitext(value)[1].lower()
-        if ext in (_VIDEO_EXTS | _AUDIO_EXTS) and os.path.isfile(value):
-            paths.append(value)
-    return paths
-
-
-# ─────────── JSON 解析 ───────────
-def parse_json(content: str) -> Optional[dict]:
-    """解析 LLM 输出为 dict。先 json.loads，失败用正则兜底。"""
-    if not content:
-        return None
-    try:
-        return json.loads(content)
-    except (json.JSONDecodeError, TypeError):
-        pass
-    m = re.search(r'\{.*\}', content, re.DOTALL)
-    if m:
-        try:
-            return json.loads(m.group())
-        except (json.JSONDecodeError, TypeError):
-            return None
-    return None
-
-
+# ─────────── evaluations 归一化 ───────────
 def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
     """从 parsed 中提取 evaluations 列表，归一化 behavior 标签。
 
@@ -361,6 +377,8 @@ def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
     - 单场景(含 scene): {"scene": "...", "behavior": "...", "reason": "..."}
     - 单条(无 scene): {"behavior": "...", "reason": "..."}
     """
+    from .constants import BEHAVIOR_LABELS
+
     if 'behavior' in parsed:
         evaluations = [parsed]
     else:
@@ -382,32 +400,45 @@ def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
     return evaluations
 
 
-def get_asr_chunks(user_wav: str) -> Optional[List[Dict[str, Any]]]:
+# ─────────── ASR 辅助 ───────────
+def get_asr_chunks(wav_path: str) -> Optional[List[Dict[str, Any]]]:
     """调用 ASR 获取用户侧 chunks（用于构建时间线上下文）"""
     try:
         from app.services.calculators.xiaoyi_metrics.turn_taking import _get_asr_chunks
-        return _get_asr_chunks(user_wav)
+        return _get_asr_chunks(wav_path)
     except Exception as e:
-        logger.warning(f'[env_judge] 用户侧 ASR 失败，时间线将缺用户段: {e}')
+        logger.warning(f'[llm_client] 用户侧 ASR 失败，时间线将缺用户段: {e}')
         return None
 
 
 def get_asr_text(wav_path: str) -> str:
     """从 ASR 结果 JSON 文件中读取 text 字段。
 
-    wav_path 对应的 ASR JSON 由 asr_adapator._save_asr_json 落盘，
+    wav_path 对应的 ASR JSON 由 asr_adapter._save_asr_json 落盘，
     路径由 _build_json_save_path(wav_path) 决定。
     """
     if not wav_path or not os.path.isfile(wav_path):
         return ''
     try:
-        from app.utils.asr_adapator import _build_json_save_path
+        from app.utils.asr_adapter import _build_json_save_path
         json_path = _build_json_save_path(wav_path)
         if os.path.isfile(json_path):
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             return data.get('text', '')
-        logger.warning(f'[env_judge] ASR JSON 不存在: {json_path}')
+        logger.warning(f'[llm_client] ASR JSON 不存在: {json_path}')
     except Exception as e:
-        logger.warning(f'[env_judge] 读取 ASR JSON 失败: {wav_path}: {e}')
+        logger.warning(f'[llm_client] 读取 ASR JSON 失败: {wav_path}: {e}')
     return ''
+
+
+def extract_video_paths(kwargs: dict) -> List[str]:
+    """从 kwargs 中提取存在的录屏/音频文件路径（legacy：录屏模式下的额外文件）"""
+    paths = []
+    for value in kwargs.values():
+        if not isinstance(value, str) or not value:
+            continue
+        ext = os.path.splitext(value)[1].lower()
+        if ext in (VIDEO_EXTS | AUDIO_EXTS) and os.path.isfile(value):
+            paths.append(value)
+    return paths

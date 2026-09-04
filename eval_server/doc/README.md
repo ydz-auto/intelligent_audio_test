@@ -41,11 +41,11 @@ eval_server/
 │   │   │   ├── base.py         #   BaseCalculator 基类（模板方法）
 │   │   │   ├── wer/            #   WER 系列域（strategies.py + wer_calculator.py）
 │   │   │   ├── der/            #   DER 域（strategy.py + der_calculator.py）
-│   │   │   └── xiaoyi_metrics/ #  小艺指标域（含 turn_taking / interruptbility / rejection_scene_awareness / env_judge / llm_judge）
+│   │   │   └── xiaoyi_metrics/ #  小艺指标域（含 turn_taking / interruptibility / rejection_scene_awareness / env_judge / llm_judge）
 │   │   ├── remote_service.py   # 远程端点调用
 │   │   └── task_service.py     # 任务调度入口（注册表查找 + worker 线程）
 │   └── utils/
-│       ├── asr_adapator.py     # ASR 适配层（HTTP 调用远程 asr_server）
+│       ├── asr_adapter.py      # ASR 适配层（HTTP 调用远程 asr_server）
 │       ├── concurrency.py      # 并发控制
 │       ├── decorators.py       # 装饰器
 │       ├── log_rotation.py     # 日志轮转

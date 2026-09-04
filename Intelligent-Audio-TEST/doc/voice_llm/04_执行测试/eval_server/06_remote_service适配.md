@@ -8,135 +8,65 @@
 
 ## 背景
 
-`RemoteService` 负责将评估任务分发到远程 worker 端点。当前端点选择逻辑基于 `capabilities` 中的 `task_type` 匹配和并发限制。新增的 `llm_judge` 类型需要端点支持，且 `llm_judge` 的超时和并发策略与标准类型不同。
+`RemoteService` 负责将评估任务分发到远程 worker 端点。当前实现支持**按 task_type 的端点能力匹配 + 内存级并发跟踪**，并适配了 llm_judge 的长超时与长轮询、文件字段的 multipart 转传（create_task_upload）、本地任务记录登记与后台轮询回写。
 
 ---
 
-## 改造内容
+## 实际实现
 
-### 1. 端点能力匹配适配
-
-```python
-def create_remote_task(self, task_type, task_params, endpoints):
-    """选择支持目标类型的端点"""
-    for endpoint in endpoints:
-        url = endpoint.get('url', '')
-
-        # 检查端点是否支持该任务类型
-        capabilities = endpoint.get('capabilities', {})
-        task_types = endpoint.get('task_types', [])
-
-        if task_type in capabilities or task_type in task_types:
-            # 检查并发
-            max_process = self._get_max_process(endpoint, task_type)
-            current = self._get_current_concurrency(url, task_type)
-
-            if current < max_process:
-                # 选中该端点
-                return self._forward_task(url, task_type, task_params)
-
-    raise RuntimeError(f'没有可用的端点处理 {task_type} 类型任务')
-```
-
-### 2. llm_judge 特殊处理
+### 1. create_remote_task 签名与端点选择
 
 ```python
-def _forward_task(self, endpoint_url, task_type, task_params):
-    """转发任务到远程端点"""
-    payload = {
-        'task_type': task_type,
-        'task_params': task_params,
-    }
-
-    # llm_judge 使用更长的超时
-    if task_type == 'llm_judge':
-        timeout = 180  # LLM 推理较慢
-    else:
-        timeout = 30
-
-    try:
-        response = requests.post(
-            f'{endpoint_url}/api/create_task',
-            json=payload,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        if data.get('code') == 0:
-            task_id = data['data']['task_id']
-            # 启动轮询线程
-            thread = threading.Thread(
-                target=self._poll_task_status,
-                args=(endpoint_url, task_id, task_type),
-                daemon=True,
-            )
-            thread.start()
-
-            return {'task_id': task_id, 'endpoint': endpoint_url}
-        else:
-            raise RuntimeError(f'端点返回错误: {data.get("msg")}')
-
-    except requests.exceptions.Timeout:
-        raise RuntimeError(f'端点 {endpoint_url} 超时')
+def create_remote_task(self, task_type, task_params=None,
+                       endpoints=None, caller_task_id=None) -> str:
 ```
 
-### 3. 轮询间隔适配
+端点选择在锁内遍历：
+
+1. `endpoints` 为空时从 `TaskModel.get_all_endpoints()` 取数据库配置
+2. 配置对象有两种形态：传入的 dict（`ep_config['endpoint']/['name']/['capabilities']/['task_types']/['max_process']`）与数据库记录；**传入端点优先查库合并**（`config_to_use = db_config if db_config else ep_config`）
+3. 能力判定优先级：`capabilities[task_type].max_process` → 命中 `task_types` 用默认 `max_process` → capabilities 与 task_types 都为空时通配允许
+4. 内存并发 `_endpoint_concurrency[url][task_type]` 未达到该端点该类型 limit 时选中，并立即 `+1`
+5. 无可用端点 → `RuntimeError(f"没有可用的远程端点可以处理类型为 '{task_type}' 的任务（并发已满或不支持）")`，上层转 `CODE_CONCURRENCY_EXCEEDED`
+
+### 2. llm_judge 特殊超时与轮询
 
 ```python
-def _poll_task_status(self, endpoint_url, task_id, task_type):
-    """后台轮询远程任务状态"""
-    # llm_judge 轮询间隔更长
-    if task_type == 'llm_judge':
-        poll_interval = 5  # 5 秒
-    else:
-        poll_interval = 2  # 2 秒
-
-    max_attempts = 60 if task_type == 'llm_judge' else 30
-
-    for attempt in range(max_attempts):
-        try:
-            resp = requests.get(
-                f'{endpoint_url}/api/get_status/{task_id}',
-                timeout=10,
-            )
-            data = resp.json().get('data', {})
-            status = data.get('status')
-
-            if status == 'completed':
-                result_resp = requests.get(
-                    f'{endpoint_url}/api/get_final_result/{task_id}',
-                    timeout=10,
-                )
-                result = result_resp.json().get('data', {})
-
-                # 更新本地数据库
-                TaskModel.update_task_status(
-                    task_id, status='completed',
-                    result=json.dumps(result)
-                )
-                return
-
-            elif status == 'failed':
-                TaskModel.update_task_status(
-                    task_id, status='failed',
-                    error_msg=data.get('error_msg', 'Remote task failed')
-                )
-                return
-
-        except Exception as e:
-            logger.warning(f'轮询远程任务失败: {e}')
-
-        time.sleep(poll_interval)
-
-    # 超时
-    TaskModel.update_task_status(
-        task_id, status='failed',
-        error_msg=f'Remote task timeout after {max_attempts * poll_interval}s'
-    )
+timeout = selected_endpoint_config.get('max_timeout', 30)
+if task_type == 'llm_judge':
+    timeout = max(timeout, 180)      # LLM 推理较慢
 ```
 
-### 4. 端点 capabilities 示例
+`_poll_task_status` 轮询节奏同样区分类型：
+
+| 类型 | poll_interval | max_attempts |
+|------|--------------|--------------|
+| `llm_judge` | 5s | 60（≈300s） |
+| 其他 | 2s | 30（≈60s） |
+
+### 3. 文件/JSON 分流转发
+
+转发前遍历 `task_params` 检测文件字段（`isinstance(value, str) and os.path.isabs(value) and os.path.exists(value)`）：
+
+- **含文件** → multipart：表单值 dict/list 转 JSON 字符串，文件字段以 `(filename, bytes, 'application/octet-stream')` 随 `data` + `files` POST 到 `{endpoint}/api/create_task_upload`
+- **无文件** → JSON：`task_params` **平铺到 payload 顶层**（`payload.update(task_params)`，非嵌套 `task_params` 字段），携带 `task_id`（caller_task_id）POST 到 `{endpoint}/api/create_task`
+
+响应校验：`status_code == 200` 且 `result.get('code') == 0`，取 `data.eval_task_id`；缺失抛 `RuntimeError`。
+
+### 4. 本地登记与轮询回写
+
+转发成功后：
+
+1. `TaskModel.create_task(eval_task_id=remote_eval_task_id, ..., endpoint_url=selected_endpoint, task_id=caller_task_id)` 本地登记（`endpoint_url` 标记该任务归属端点）
+2. `update_task_status(..., 'processing', started_at=...)`
+3. 启动守护线程 `_poll_task_status(endpoint, remote_eval_task_id, task_type)`：轮询 `get_status`，`completed` 时拉 `get_final_result` 回写 result；`failed` 回写 error_msg；404 标记失败；超时（attempts 用尽）标记超时失败；**finally 中 `_decrement_concurrency` 释放端点槽位**
+4. 转发异常（抛错）时先 `_decrement_concurrency` 再上抛
+
+### 5. 端点并发统计
+
+- `_endpoint_concurrency: dict[url][task_type] = current`，`get_endpoints_stats()` 返回其浅拷贝，供 `GET /api/status` 展示各端点按类型 current
+
+### 6. 端点 capabilities 示例
 
 ```json
 {
@@ -145,19 +75,23 @@ def _poll_task_status(self, endpoint_url, task_id, task_type):
   "capabilities": {
     "wer": {"max_process": 2},
     "ser": {"max_process": 1},
-    "llm_judge": {"max_process": 2}
+    "llm_judge": {"max_process": 2},
+    "turn_taking": {"max_process": 1}
   },
-  "task_types": ["wer", "ser", "llm_judge"]
+  "task_types": ["wer", "ser", "llm_judge", "turn_taking"]
 }
 ```
+
+> **维度口径**：远端分发的 `task_type` 走 `api.py` 白名单（15 项）。`turn_taking` 主维度的子维度（`tor`/`false_takeover`/`takeover_latency`）通过 `task_params['sub_tasks']` 在端点**内部**路由分发，不进 remote_service 的并发跟踪键；端点只需为 `turn_taking` 配置一个 capability 键即可（详见 `02_评估维度架构`）。
 
 ---
 
 ## 不变部分
 
 - 端点 CRUD 接口不变
-- 并发跟踪数据结构不变
-- `get_endpoints_stats()` 不变
+- 并发跟踪数据结构（`_endpoint_concurrency`）形态不变
+- `get_endpoints_stats()` 对外行为不变
+- 轮询完成后释放并发槽位的行为不变
 
 ---
 
@@ -165,5 +99,7 @@ def _poll_task_status(self, endpoint_url, task_id, task_type):
 
 | 依赖文档 | 说明 |
 |---------|------|
-| `01_create_task新任务类型` | 任务入口 |
-| `04_ConcurrencyManager动态类型` | 并发管理 |
+| `02_评估维度架构_策略模式与主从维度` | 主维度 `sub_tasks` 子维度分发、远端端点能力配置口径 |
+| `01_create_task新任务类型` | 任务入口与参数校验 |
+| `04_ConcurrencyManager动态类型` | 本地并发管理 |
+| `03_LLM_Judge计算器` | llm_judge 计算实现 |
