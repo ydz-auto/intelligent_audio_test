@@ -171,17 +171,25 @@ def _compute_from_asr(user_asr: Any, model_asr: Any,
 
 def compute_non_interactive_latency(user_wav: str, ai_wav: str,
                                     seg_merge_gap_s: float = SEG_MERGE_GAP_S,
-                                    target_segment_index: int = 1) -> Dict[str, Any]:
-    """计算用户在模型回复期间说话的时延（内部自动调 ASR 服务）
+                                    target_segment_index: int = 1,
+                                    user_asr: Any = None,
+                                    model_asr: Any = None) -> Dict[str, Any]:
+    """计算用户在模型回复期间说话的时延
+
+    优先使用已就绪的 user_asr/model_asr（共享 ASR 池注入），缺失时内部调 ASR 服务。
 
     Args:
         user_wav: 用户语音 wav 路径
         ai_wav: 模型语音 wav 路径
         seg_merge_gap_s: 词合并为段的间隙阈值（秒），默认 0.7
         target_segment_index: 目标用户段索引（0-based，默认 1=第 2 段）
+        user_asr: 已就绪的用户 ASR 结果（chunks 列表 或 {text, chunks}），可选
+        model_asr: 已就绪的模型 ASR 结果（同上），可选
     """
-    user_asr = _get_asr(user_wav)
-    model_asr = _get_asr(ai_wav)
+    if user_asr is None:
+        user_asr = _get_asr(user_wav)
+    if model_asr is None:
+        model_asr = _get_asr(ai_wav)
     return _compute_from_asr(user_asr, model_asr,
                              seg_merge_gap_s=seg_merge_gap_s,
                              target_segment_index=target_segment_index)

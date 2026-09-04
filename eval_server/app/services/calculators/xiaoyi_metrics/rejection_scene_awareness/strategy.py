@@ -45,6 +45,16 @@ class _RejectionBase(BaseCalculator):
                 pass
         return kwargs
 
+    @staticmethod
+    def _match_shared_asr(shared, user_wav, ai_wav):
+        """按音频来源匹配共享 ASR：仅当该轮音频与主编排器共享池来源一致时复用，
+        避免多轮场景错用其他轮的识别结果；不匹配返回 (None, None)，由底层自行调 ASR"""
+        if not shared:
+            return None, None
+        user_asr = shared.get('user_chunks') if shared.get('user_wav') == user_wav else None
+        model_asr = shared.get('ai_chunks') if shared.get('ai_wav') == ai_wav else None
+        return user_asr, model_asr
+
 
 class NonInteractiveLatencyCalculator(_RejectionBase):
     """非交互意图时延：用户在模型回复期间说话的 stop / recovery 时延
@@ -91,16 +101,27 @@ class NonInteractiveLatencyCalculator(_RejectionBase):
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency
 
+        # 共享 ASR 优先：主编排器统一算好的 chunks 按来源匹配注入，避免重复调用 ASR
+        shared = params.get('_shared_asr') or {}
+        kwargs = dict(params.get('kwargs') or {})
         if params.get('mode') == 'multi':
             per_round = []
             for a in params['audio_list']:
+                user_asr, model_asr = self._match_shared_asr(shared, a['user_wav'], a['ai_wav'])
                 per_round.append(
-                    compute_non_interactive_latency(a['user_wav'], a['ai_wav'], **params['kwargs'])
+                    compute_non_interactive_latency(
+                        a['user_wav'], a['ai_wav'],
+                        user_asr=user_asr, model_asr=model_asr, **kwargs,
+                    )
                 )
             return self._aggregate_results(per_round)
         else:
+            user_asr, model_asr = self._match_shared_asr(
+                shared, params['user_wav'], params['ai_wav']
+            )
             return compute_non_interactive_latency(
-                params['user_wav'], params['ai_wav'], **params['kwargs']
+                params['user_wav'], params['ai_wav'],
+                user_asr=user_asr, model_asr=model_asr, **kwargs,
             )
 
 
@@ -186,7 +207,12 @@ class NoiseLatencyCalculator(_RejectionBase):
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.rejection_scene_awareness.noise_latency import compute_noise_latency
 
+        # 共享 ASR 优先：仅当 ai_wav 与主编排器共享池来源一致时复用，避免重复调用 ASR
+        shared = params.get('_shared_asr') or {}
+        model_asr = shared.get('ai_chunks') if shared.get('ai_wav') == params.get('ai_wav') else None
+        # compute_noise_latency 不接受 target_segment_index（固定为噪声段 index=1）
+        kwargs = {k: v for k, v in (params.get('kwargs') or {}).items() if k != 'target_segment_index'}
         return compute_noise_latency(
             params['ai_wav'], params['start_ms'], params['end_ms'],
-            params['pcm_first_ms'], **params['kwargs']
+            params['pcm_first_ms'], model_asr=model_asr, **kwargs
         )

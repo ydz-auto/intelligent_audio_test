@@ -50,12 +50,14 @@ logger = logging.getLogger(__name__)
 
 def compute_noise_latency(ai_wav: str, start_ms: float, end_ms: float,
                           pcm_first_ms: float,
-                          seg_merge_gap_s: float = SEG_MERGE_GAP_S
-                          ) -> Dict[str, Any]:
+                          seg_merge_gap_s: float = SEG_MERGE_GAP_S,
+                          model_asr: Any = None) -> Dict[str, Any]:
     """计算噪声打断模型的时延(与 non_interactive 对称)
 
     把噪声 [start_ms, end_ms] 用 pcm_first_ms 换算到模型音频相对秒，
     作为"打断事件段"喂给 non_interactive_latency 的同套逻辑，再补充绝对毫秒输出。
+
+    优先使用已就绪的 model_asr（共享 ASR 池注入），缺失时内部调 ASR 服务。
 
     Args:
         ai_wav: 模型语音 wav 路径（内部自动调 ASR 服务）
@@ -63,6 +65,7 @@ def compute_noise_latency(ai_wav: str, start_ms: float, end_ms: float,
         end_ms: 噪声结束播放时间(绝对毫秒)
         pcm_first_ms: 模型 PCM 文件创建时间(绝对毫秒)
         seg_merge_gap_s: 词合并为段的间隙阈值(秒)，默认 0.7
+        model_asr: 已就绪的模型 ASR 结果（chunks 列表 或 {text, chunks}），可选
 
     Returns dict(non_interactive 原字段 + 绝对毫秒):
         stop_latency_s / stop_latency_ms          噪声开始→模型当前回复结束(秒/毫秒)
@@ -94,8 +97,9 @@ def compute_noise_latency(ai_wav: str, start_ms: float, end_ms: float,
         {"text": "noise", "timestamp": [n_s, n_e]},
     ]}
 
-    # 内部调 ASR 服务，把 ai_wav 路径转成词级时间戳
-    model_asr = _get_asr(ai_wav)
+    # 优先用共享池注入的模型 ASR，缺失时内部调 ASR 服务
+    if model_asr is None:
+        model_asr = _get_asr(ai_wav)
 
     r = _compute_from_asr(
         noise_asr, model_asr,

@@ -66,4 +66,15 @@ class InterruptionMetricsCalculator(BaseCalculator):
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.interruptibility import calculate_interruption_metrics
-        return calculate_interruption_metrics(params.get('task_params') or {})
+
+        task_params = dict(params.get('task_params') or {})
+        # ── 共享 ASR 优先：主编排器按目标轮统一算好的 chunks 直接注入，
+        #    避免重复调用 ASR，且与同请求其他子维度基于同一份词级时间戳 ──
+        shared = params.get('_shared_asr') or {}
+        if shared.get('user_chunks') and shared.get('user_wav') == params.get('user_wav') \
+                and not task_params.get('user_asr'):
+            task_params['user_asr'] = shared['user_chunks']
+        if shared.get('ai_chunks') and shared.get('ai_wav') == params.get('ai_wav') \
+                and not task_params.get('model_asr'):
+            task_params['model_asr'] = shared['ai_chunks']
+        return calculate_interruption_metrics(task_params)

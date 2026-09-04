@@ -79,8 +79,11 @@ class XiaoyiMetricsCalculator(BaseCalculator):
         user_wav, ai_wav = self._get_audio_from_round(params, idx)
         shared_asr = {}
         if user_wav:
+            # 记录来源 wav：子维度按来源匹配复用，防止多轮场景错用其他轮的识别结果
+            shared_asr['user_wav'] = user_wav
             shared_asr['user_chunks'] = TurnTakingBase._get_asr_chunks(user_wav)
         if ai_wav:
+            shared_asr['ai_wav'] = ai_wav
             shared_asr['ai_chunks'] = TurnTakingBase._get_asr_chunks(ai_wav)
             shared_asr['ai_word_chunks'] = TurnTakingBase._get_asr_chunks(ai_wav, filter_punct=False)
         # pause 区间也从 user_chunks 统一算一次
