@@ -1,0 +1,48 @@
+eval_server/app/services/calculators/xiaoyi_metrics/__init__.py
+  s_00fc19a279ffb0::t_5e6cfc01300e45 82-83,86
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/non_interactive_latency.py
+  s_00fc19a279ffb0::t_f6fb2a94b6be82 174-179,186-187,189-192
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/strategy.py
+  s_00fc19a279ffb0::t_eb7ffd9cd4c53d 210-214,217
+  s_00fc19a279ffb0::t_f1174790eb3cb6 48-57
+  s_00fc19a279ffb0::t_e8c25a221baa1d 104-106,110,112-115,119-121,123-124
+eval_server/app/services/calculators/xiaoyi_metrics/interruptibility/strategy.py
+  s_00fc19a279ffb0::t_3a109b9ddda9b6 69-80
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/noise_latency.py
+  s_00fc19a279ffb0::t_c3808ae96f964e 100-102
+  s_00fc19a279ffb0::t_16e6c2dc4f20bd 53-54,60-61,68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "4e6fb26ecbcf92700909cc384553ede2eed42702",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_00fc19a279ffb0": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a9960a9f5e2a8e941930ab3",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a9960a9f5e2a8e941930ab3",
+        "source_scene": "unknown",
+        "client_type": "ide",
+        "tool_type": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "edit_kind": "file_edit",
+        "operation_id": "6a9a768ff5e2a8e9419336fb",
+        "external_session_id": "6a9960a9f5e2a8e941930ab3",
+        "tool_id": "SearchReplace",
+        "dedupe_key": "6a9960a9f5e2a8e941930ab3:6a9a768ff5e2a8e9419336fb:afterEdit:a483a395",
+        "tool_use_id": "6a9a768ff5e2a8e9419336fb"
+      }
+    }
+  }
+}
