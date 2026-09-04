@@ -119,6 +119,10 @@ def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '',
     model_segs = model_segs or []
 
     # ── 标注本事件相关段，便于 LLM 在完整时间线里定位 ──
+    # 模型被打断段 m_active / 恢复段 m_next：从 ev 的字词级 words 取范围匹配
+    m_int_range = _words_range(ev.get('model_interrupted_words'))
+    m_rec_range = _words_range(ev.get('model_recovery_words'))
+
     # 用户打断段：ev['user_segment'] = [u_s, u_e]
     user_marks: Dict[int, str] = {}
     u_seg = ev.get('user_segment')
@@ -126,10 +130,37 @@ def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '',
         for i, s in enumerate(user_segs):
             if _seg_overlap(s, [u_seg[0], u_seg[1]]):
                 user_marks[i] = '本事件打断段'
-    # 模型被打断段 m_active / 恢复段 m_next：从 ev 的字词级 words 取范围匹配
+
+    # 打断延续段：打断段之后、模型恢复段开口之前的用户段。
+    # 用户打断时一句话可能因 1.5s 分段阈值被切成多段（如"我有一个问题"+"今天是几号"），
+    # 这些延续补充本属同一意图，标注并拼回完整文本，避免 LLM 仅凭打断段单句判 relevance 误判无关。
+    int_seg_indices = sorted(i for i, mk in user_marks.items() if mk == '本事件打断段')
+    if int_seg_indices and m_rec_range:
+        rec_start = m_rec_range[0]
+        last_int_idx = int_seg_indices[-1]
+        for i in range(last_int_idx + 1, len(user_segs)):
+            s = user_segs[i]
+            try:
+                s_start = float(s.get('start'))
+            except (TypeError, ValueError):
+                continue
+            if s_start >= rec_start:
+                break  # 用户段在模型恢复之后 → 下一轮，不再是延续
+            user_marks.setdefault(i, '打断延续段(本事件)')
+
+    # 本事件完整打断意图文本（打断段 + 延续段拼接，喂给 LLM 作 relevance 判定依据）
+    full_user_indices = sorted(
+        i for i, mk in user_marks.items()
+        if mk in ('本事件打断段', '打断延续段(本事件)')
+    )
+    if full_user_indices:
+        full_user_text = ''.join(
+            str(user_segs[i].get('text', '')).strip() for i in full_user_indices
+        )
+    else:
+        full_user_text = str(ev.get('user_text', '') or '')
+
     model_marks: Dict[int, str] = {}
-    m_int_range = _words_range(ev.get('model_interrupted_words'))
-    m_rec_range = _words_range(ev.get('model_recovery_words'))
     if m_int_range:
         for i, s in enumerate(model_segs):
             if _seg_overlap(s, m_int_range):
@@ -154,6 +185,7 @@ def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '',
 {user_tl}
 【模型侧完整时间线(AI)】：
 {model_tl}
+【用户本轮完整打断意图(打断段+延续补充，relevance 评分以此为准，勿只看打断段单句)】：{full_user_text}
 【本事件本地时序结论(仅供参考，勿照搬)】：user_interrupt_segment={ev.get('user_segment')} success={ev.get('success')} stop_latency_ms={ev.get('stop_latency_s')} recovery_latency_ms={ev.get('recovery_latency_s')}
 
 (A) is_real_interruption：是否真的打断(用户确有打断意图且在 AI 说话期间插入、AI 确有让出/停下)。给布尔+简短 interruption_reason。
@@ -167,7 +199,7 @@ def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '',
     每维各给一个简短理由(只解释该维为何这个分)；若模型未给恢复回复(停下后没恢复)，三维均给 0，但不影响(B)的 success：
     1. coherence(连贯性)：回复与被打断尾巴、与打断内容的衔接是否连贯自然。
        0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
-    2. relevance(相关性)：回复是否切合用户打断所表达的需求与意图。
+    2. relevance(相关性)：回复是否切合【用户本轮完整打断意图】（上方已给出，含打断段及延续补充，不是仅看打断段单句）。
        0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题
     3. adaptability(适应性)：AI 是否适应了打断带来的话题切换/调整，自然承接而非生硬。
        0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美适应
