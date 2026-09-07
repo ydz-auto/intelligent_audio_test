@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Dict, Any
 
+from shared.utils.camel_case import camel_to_snake
+
 from algorithm_service.infrastructure.persistence.models import (
     AlgorithmDeviceParam as AlgorithmDeviceParamPO,
     AlgorithmApiParam as AlgorithmApiParamPO,
@@ -16,6 +18,21 @@ from algorithm_service.infrastructure.persistence.models import (
 
 
 # ========== 辅助函数 ==========
+
+def _apply_update_fields(po, fields: Dict[str, Any]) -> None:
+    """将待更新字段应用到 PO。
+
+    - None 值跳过
+    - 键名兼容 camelCase（网关 update_param 原样透传请求体，如 paramName → param_name）
+    - PO 上不存在的字段忽略，避免 setattr 到非映射属性造成静默 no-op
+    """
+    for field, value in fields.items():
+        if value is None:
+            continue
+        if not hasattr(po, field):
+            field = camel_to_snake(field)
+        if hasattr(po, field):
+            setattr(po, field, value)
 
 def _po_to_dict(po) -> Dict[str, Any]:
     """将 PO 序列化为 dict（优先调用 PO.to_dict）。

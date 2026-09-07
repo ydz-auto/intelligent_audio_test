@@ -15,7 +15,7 @@
           <i class="fas fa-folder-open"></i>
           <h4>{{ dragMessage }}</h4>
           <p class="drop-zone-hint">
-            支持格式：{{ supportedFormats.join(', ') }}<br>
+            支持格式：{{ (supportedFormats || []).join(', ') }}<br>
             选择包含音频文件的文件夹进行批量导入
           </p>
           <label class="browse-btn">
@@ -50,7 +50,7 @@
           </div>
           <div class="stat-item">
             <span class="stat-label">支持的文件格式</span>
-            <span class="stat-value">{{ supportedFormats.join(', ') }}</span>
+            <span class="stat-value">{{ (supportedFormats || []).join(', ') }}</span>
           </div>
         </div>
       </div>
@@ -82,7 +82,7 @@
         :audio-type-options="audioTypeOptions"
         :playback-device-options="playbackDeviceOptions"
         :device-options="deviceOptions"
-        :algorithm-options="algorithmOptions"
+        :algorithm-options="algorithmOptions.map(o => ({ label: o.name || o.value, value: o.value }))"
         :show-tags-input="true"
       />
 
@@ -160,6 +160,9 @@ const emit = defineEmits([
   'selectFolder'
 ])
 
+// uploadOptions 为组件必传配置（无值时给出空数组兜底，避免模板/计算属性空引用）
+const uploadOptions: UploadOption[] = props.uploadOptions || []
+
 const {
   folderInput,
   importing,
@@ -188,7 +191,7 @@ const {
   handleImport,
   handleCancel,
   formatFileSize,
-} = useFolderImportModal(props, emit)
+} = useFolderImportModal({ ...props, uploadOptions } as any, emit as unknown as (event: string, ...args: any[]) => void)
 </script>
 
 <style scoped>

@@ -103,8 +103,8 @@ import type {
   RoundConfigItem,
   RoundEvaluationConfig,
   AlgorithmParamItem,
-} from './types'
-import type { Dimension, PlaybackDevice } from '../../../../shared/types'
+} from '@/domain'
+import type { Dimension, PlaybackDevice } from '../../../../domain'
 import RoundEvaluationEditor from './RoundEvaluationEditor.vue'
 import RoundNav from './sections/RoundNav.vue'
 import StepToc from './sections/StepToc.vue'
@@ -167,11 +167,11 @@ watch(
 const currentRound = computed(() => localRounds.value[activeRoundIndex.value] || null)
 const effectiveTestType = computed(() => props.testType || 'api')
 
-// 当前轮的算法参数（从独立列 algorithmParams 按 round_number 匹配）
+// 当前轮的算法参数（从独立列 algorithmParams 按 roundNumber 匹配）
 const currentRoundAlgoParams = computed<AlgorithmParamItem[]>(() => {
   if (!currentRound.value || !props.algorithmParams) return []
   const rn = currentRound.value.roundNumber ?? 1
-  const entry = props.algorithmParams.find((e: any) => e.round_number === rn)
+  const entry = props.algorithmParams.find((e: any) => e.roundNumber === rn)
   return (entry?.params as AlgorithmParamItem[]) || []
 })
 
@@ -180,11 +180,11 @@ function handleAlgoParamsUpdate(params: AlgorithmParamItem[]) {
   if (!currentRound.value) return
   const rn = currentRound.value.roundNumber ?? 1
   const grouped = Array.isArray(props.algorithmParams) ? [...props.algorithmParams] : []
-  const idx = grouped.findIndex((e: any) => e.round_number === rn)
+  const idx = grouped.findIndex((e: any) => e.roundNumber === rn)
   if (idx >= 0) {
-    grouped[idx] = { round_number: rn, params }
+    grouped[idx] = { roundNumber: rn, params }
   } else {
-    grouped.push({ round_number: rn, params })
+    grouped.push({ roundNumber: rn, params })
   }
   emit('update:algorithmParams', grouped)
 }
@@ -213,10 +213,10 @@ const filteredCaseParams = computed(() => {
 })
 
 const hasVoiceprintParam = computed(() =>
-  filteredCaseParams.value.some((p: any) => p.param_code === 'voiceprint')
+  filteredCaseParams.value.some((p: any) => p.paramCode === 'voiceprint')
 )
 const hasInterfererParam = computed(() =>
-  filteredCaseParams.value.some((p: any) => p.param_code === 'interferers')
+  filteredCaseParams.value.some((p: any) => p.paramCode === 'interferers')
 )
 
 // ---- 轮次操作 ----
@@ -264,11 +264,11 @@ function removeCurrentRound() {
     .filter((_, i) => i !== idx)
     .map((r, i) => ({ ...r, roundNumber: i + 1 }))
 
-  // 同步更新 algorithm_params 独立列：移除被删除轮次的参数，并重新编号 round_number
+  // 同步更新 algorithm_params 独立列：移除被删除轮次的参数，并重新编号 roundNumber
   if (Array.isArray(props.algorithmParams) && props.algorithmParams.length > 0) {
     const updatedAlgParams = props.algorithmParams
-      .filter((e: any) => e.round_number !== deletedRoundNumber)
-      .map((e: any, i: number) => ({ ...e, round_number: i + 1 }))
+      .filter((e: any) => e.roundNumber !== deletedRoundNumber)
+      .map((e: any, i: number) => ({ ...e, roundNumber: i + 1 }))
     emit('update:algorithmParams', updatedAlgParams)
   }
 
@@ -291,8 +291,10 @@ function updateCurrentRound(key: keyof RoundConfigItem, value: unknown) {
   emitUpdate()
 }
 
-function handleAudioSelect(audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void) {
-  emit('openAudioSelect', audioType, callback)
+type AudioSelectCallback = (audios: { id: string; name?: string }[]) => void
+
+function handleAudioSelect(audioType: 'dry' | 'noise', callback?: AudioSelectCallback) {
+  emit('openAudioSelect', audioType, callback as AudioSelectCallback)
 }
 
 defineExpose({

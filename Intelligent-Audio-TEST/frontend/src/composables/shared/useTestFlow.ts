@@ -9,7 +9,7 @@ import { useTestCaseOps } from './useTestCaseOps'
 import { useResourceSelection } from './useResourceSelection'
 import { useTaskExecution } from './useTaskExecution'
 import { useTestCaseStore } from '../../store/testCaseStore'
-import { TestType, TaskStatus } from '@/shared/types/enums'
+import { TestType, TaskStatus, DeviceStatus } from '../../domain/enums'
 
 export function normalizeSelectedCaseIds(ids: (string | number)[]) {
   const normalizedIds = ids.filter((id): id is string | number => {
@@ -32,11 +32,11 @@ export function normalizeSelectedCaseIds(ids: (string | number)[]) {
  * 测试流程编排层：组合各小 composable，对外暴露统一的 API
  * 仅做组合，不包含具体业务逻辑
  */
-export function useTestFlow(testType: 'e2e' | 'api') {
+export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
   // ============ 基础状态 ============
-  const taskName = ref(testType === 'e2e' ? '' : 'API测试任务')
+  const taskName = ref(testType === TestType.E2E ? '' : 'API测试任务')
   const activeTab = ref('cases')
-  const concurrentTasks = ref(testType === 'e2e' ? 4 : 5)
+  const concurrentTasks = ref(testType === TestType.E2E ? 4 : 5)
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const currentTaskId = ref<number | string | null>(null)
 
@@ -102,7 +102,7 @@ export function useTestFlow(testType: 'e2e' | 'api') {
     elapsedTime, estimatedTime, expectedCompleteTime, logs, associatedCases,
     apiResources, resetProgress, addLog,
   } = useTaskProgress({
-    testType: testType === 'e2e' ? 'E2E' : 'API',
+    testType: testType === TestType.E2E ? 'E2E' : 'API',
     currentTaskId: currentTaskId as any,
     onCompleted: async () => { await progressCallbacks.onCompleted?.() },
     onFailed: async () => { await progressCallbacks.onFailed?.() },
@@ -181,14 +181,14 @@ export function useTestFlow(testType: 'e2e' | 'api') {
   // ============ 延迟赋值 progress 回调（此时 e2eIsExecuting / stopTimeUpdateTimer 已定义） ============
   progressCallbacks = {
     onCompleted: async () => {
-      if (testType === 'e2e') {
+      if (testType === TestType.E2E) {
         e2eIsExecuting.value = false
         stopTimeUpdateTimer()
       }
       await handleTaskEnd(TaskStatus.COMPLETED, 100)
     },
     onFailed: async () => {
-      if (testType === 'e2e') {
+      if (testType === TestType.E2E) {
         e2eIsExecuting.value = false
         stopTimeUpdateTimer()
       }
@@ -202,17 +202,17 @@ export function useTestFlow(testType: 'e2e' | 'api') {
   } = useTestControl({
     currentTaskId: currentTaskId as any,
     onStopped: () => {
-      if (testType === 'e2e') {
+      if (testType === TestType.E2E) {
         e2eIsExecuting.value = false
         stopTimeUpdateTimer()
       }
     },
-    ...(testType === 'e2e' ? { addLog: (log: any) => addLogRef(log) } : {}),
+    ...(testType === TestType.E2E ? { addLog: (log: any) => addLogRef(log) } : {}),
   })
 
   // ============ isExecuting 统一 ============
   const isExecuting = computed(() => {
-    if (testType === 'e2e') return e2eIsExecuting.value
+    if (testType === TestType.E2E) return e2eIsExecuting.value
     return (taskStatus.value as string) === TaskStatus.RUNNING || (taskStatus.value as string) === TaskStatus.STARTING || (taskStatus.value as string) === TaskStatus.PENDING
   })
 
@@ -221,15 +221,15 @@ export function useTestFlow(testType: 'e2e' | 'api') {
   // ============ voice_llm 提示 ============
   const isVoiceLLM = computed(() => selectedAlgorithmType.value === 'voice_llm')
   const voiceLlmHint = computed(() => {
-    if (testType !== 'e2e' || !isVoiceLLM.value) return null
+    if (testType !== TestType.E2E || !isVoiceLLM.value) return null
     return 'voice_llm 测试可能需要设备支持：音量控制、导轨控制、打断检测。请确认设备能力后再选择。'
   })
   const concurrencyHint = computed(() => {
-    if (testType !== 'e2e' || !isVoiceLLM.value) return null
+    if (testType !== TestType.E2E || !isVoiceLLM.value) return null
     return 'voice_llm 多轮对话测试建议并发数为 2（默认 4），以获得更稳定的结果。'
   })
   const stepHints = computed(() => {
-    if (testType !== 'api' || !isVoiceLLM.value) return {} as Record<string, string>
+    if (testType !== TestType.API || !isVoiceLLM.value) return {} as Record<string, string>
     return { caseSelection: 'voice_llm 用例支持多轮对话，每个用例可配置多个轮次的输入文本/音频' }
   })
 
@@ -240,7 +240,7 @@ export function useTestFlow(testType: 'e2e' | 'api') {
 
   // ============ 更新选中用例 ============
   const updateSelectedCases = (ids: (string | number)[]) => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       selectedTestCaseIds.value = normalizeSelectedCaseIds(ids)
     } else {
       selectedTestCaseIds.value = ids
@@ -261,9 +261,9 @@ export function useTestFlow(testType: 'e2e' | 'api') {
 
   // ============ nextStep / prevStep ============
   const nextStep = async () => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       if (currentStep.value === 2) {
-        const nonOnlineDevices = associatedResources.value.filter((d: any) => d.status !== 'online')
+        const nonOnlineDevices = associatedResources.value.filter((d: any) => d.status !== DeviceStatus.ONLINE)
         if (associatedResources.value.length === 0) {
           addLog({ content: '请选择至少一个测试设备', level: 'warn' })
           return
@@ -291,7 +291,7 @@ export function useTestFlow(testType: 'e2e' | 'api') {
   }
 
   const prevStep = () => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       if (currentStep.value > 0) currentStep.value--
     } else {
       if (currentStep.value > 1) currentStep.value--
@@ -302,7 +302,7 @@ export function useTestFlow(testType: 'e2e' | 'api') {
   const steps = [
     { number: 0, title: '选择算法', description: '选择测试所使用的算法' },
     { number: 1, title: '选择用例', description: '选择需要执行的测试用例' },
-    { number: 2, title: testType === 'e2e' ? '选择测试设备' : '配置参数', description: testType === 'e2e' ? '选择测试设备' : '配置执行参数和设备' },
+    { number: 2, title: testType === TestType.E2E ? '选择测试设备' : '配置参数', description: testType === TestType.E2E ? '选择测试设备' : '配置执行参数和设备' },
     { number: 3, title: '执行测试', description: '运行测试并监控进度' },
     { number: 4, title: '查看报告', description: '查看和导出测试报告' },
   ]
@@ -312,13 +312,13 @@ export function useTestFlow(testType: 'e2e' | 'api') {
     await loadAlgorithms()
     const algorithmType = selectedAlgorithmType.value || undefined
     await initializeTestCases(algorithmType)
-    if (testType === 'api') {
+    if (testType === TestType.API) {
       await loadAPIs()
     }
   }
 
   onMounted(async () => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       await Promise.all([initializeTestCases(), loadAlgorithms()])
     } else {
       await initTest()
@@ -326,7 +326,7 @@ export function useTestFlow(testType: 'e2e' | 'api') {
   })
 
   onUnmounted(() => {
-    if (testType === 'e2e') stopTimeUpdateTimer()
+    if (testType === TestType.E2E) stopTimeUpdateTimer()
   })
 
   return {

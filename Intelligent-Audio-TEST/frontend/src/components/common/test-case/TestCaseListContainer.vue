@@ -13,8 +13,8 @@
           分组视图
         </button>
         <button
-          class="btn btn-toggle"
-          :class="{ active: innerViewMode === 'tag' }"
+           class="btn btn-toggle"
+          :class="{ active: innerViewMode === ViewMode.TAG }"
           @click="() => updateViewMode('tag')"
           title="标签视图"
         >
@@ -236,6 +236,23 @@
                 <span class="duration-tag">{{ formatGroupDuration(getTagDurationStats(tagName).totalDuration) }}</span>
               </span>
             </div>
+            <TestCaseGroupActions
+              @click.stop
+              :disabled-actions="['edit', 'addCase']"
+              @delete="() => handleTagDelete(tagName)"
+              @copyGroup="() => handleTagCopyGroup(tagName)"
+              @updateAlgorithmParams="() => handleTagUpdateAlgorithmParams(tagName)"
+              @updatePlaybackDevice="() => handleTagUpdatePlaybackDevice(tagName)"
+              @updateSPL="() => handleTagUpdateSPL(tagName)"
+              @adjustGroup="() => handleTagAdjustGroup(tagName)"
+              @updateDimensions="() => handleTagUpdateDimensions(tagName)"
+              @updateNoise="() => handleTagUpdateNoise(tagName)"
+              @autoGenerateName="() => handleTagAutoGenerateName(tagName)"
+              @updateTags="() => handleTagUpdateTags(tagName)"
+              @refreshReference="() => handleTagRefreshReference(tagName)"
+              @toggleBatchMenu="() => toggleBatchMenu(tagName)"
+              :showBatchMenu="openBatchMenuGroup === tagName"
+            />
           </div>
           <div class="category-content" :class="{ expanded: expandedTagCategories[tagName] }">
             <TestCaseListWithPagination
@@ -297,7 +314,7 @@
         </div>
         <div class="modal-body">
           <div class="audio-type-options">
-            <div class="audio-type-option" v-if="currentHasAPIConfig" @click="selectAudioType('api')">
+            <div class="audio-type-option" v-if="currentHasAPIConfig" @click="selectAudioType(TestType.API)">
               <i class="fas fa-microchip"></i>
               <span>API测试音频</span>
             </div>
@@ -312,7 +329,7 @@
     
     <AudioPreviewModal
       :visible="showAudioPreviewModal"
-      :audio-id="currentTestCaseCaseId"
+      :audio-id="currentTestCaseCaseId != null ? String(currentTestCaseCaseId) : undefined"
       :audio-type="'dry'"
       :playback-devices="playbackDevices.filter((d: PlaybackDevice) => d.deviceType === 'dry')"
       @close="handleAudioPreviewModalClose"
@@ -325,7 +342,7 @@
       :title="'测试用例预览'"
       :audio-id="currentTestCaseCaseId"
       :audio-title="'测试用例音频'"
-      :audio-type="selectedAudioType === 'api' ? 'api' : 'e2e'"
+      :audio-type="selectedAudioType === TestType.API ? TestType.API : TestType.E2E"
       :is-test-case-preview="true"
       :playback-mode="previewPlaybackMode"
       @close="handleAudioPlayerClose"
@@ -338,7 +355,8 @@ import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
-import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../shared/types';
+import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../domain';
+import { TestType, ViewMode } from '@/domain/enums';
 import { useTestCaseListContainer } from './TestCaseListContainer';
 
 const props = defineProps<{
@@ -413,6 +431,17 @@ const {
   handleUpdateTags,
   handleRefreshReference,
   showAudioPlayer,
+  handleTagDelete,
+  handleTagCopyGroup,
+  handleTagUpdateSPL,
+  handleTagUpdatePlaybackDevice,
+  handleTagUpdateNoise,
+  handleTagUpdateAlgorithmParams,
+  handleTagUpdateDimensions,
+  handleTagAdjustGroup,
+  handleTagAutoGenerateName,
+  handleTagUpdateTags,
+  handleTagRefreshReference,
   currentTestCaseCaseId,
   showAudioTypeModal,
   currentTestCase,

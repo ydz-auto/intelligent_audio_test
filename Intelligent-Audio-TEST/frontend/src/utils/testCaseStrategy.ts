@@ -2,19 +2,22 @@
  * 测试用例分组策略（策略模式）
  *
  * 支持同一文件夹下平铺多个 JSON，每个 JSON 各自定义一个独立用例。
- * JSON 通过 segment.audio 字段引用音频，未被任何 JSON 引用的音频回退到 folderParser 兜底。
+ * JSON 通过 segment.audioName 字段引用音频，未被任何 JSON 引用的音频回退到 folderParser 兜底。
  *
  * 4 种 use case：
- * 1. rounds 多轮 JSON  — { rounds: [{ round_number, segments: [{ audio, ... }] }] }
- * 2. flat 单轮 JSON     — 顶层直接是 segment 字段 { audio, query, spl, ... }
- * 3. txt 数组单轮 JSON  — { txt: [{ audio, query, ... }] }
+ * 1. rounds 多轮 JSON  — { rounds: [{ roundNumber, segments: [{ audioName, ... }] }] }
+ * 2. flat 单轮 JSON     — 顶层直接是 segment 字段 { audioName, query, spl, ... }
+ * 3. txt 数组单轮 JSON  — { txt: [{ audioName, query, ... }] }
  * 4. 纯音频无 JSON      — folderParser.buildRoundsConfig 兜底
+ *
+ * JSON 解析后经 camelizeKeys 深度转换，策略内统一只读 camelCase。
  */
 
 import type { RoundConfig, RoundAudioConfig } from './folderParser';
+import { camelizeKeys } from './keyTransform';
 
-// 策略统一输出
-export interface TestCaseGroup {
+// 策略统一输出（原 TestCaseGroup 改名，区别于 domain/model/testCase.ts 的后端分组实体）
+export interface TestCaseGroupStrategy {
   /** 分组键：JSON 文件名去扩展名 */
   groupKey: string;
   /** 轮次配置 */
@@ -29,8 +32,8 @@ export interface TestCaseGroup {
 interface TestCaseStrategy {
   /** 判断该 JSON 是否匹配此策略 */
   matches(rawJson: any): boolean;
-  /** 构建 TestCaseGroup */
-  build(rawJson: any, annFileBaseKey: string): TestCaseGroup;
+  /** 构建 TestCaseGroupStrategy */
+  build(rawJson: any, annFileBaseKey: string): TestCaseGroupStrategy;
 }
 
 // ──────────────────────────────────────────────
@@ -41,7 +44,7 @@ class RoundsJsonStrategy implements TestCaseStrategy {
     return !!(rawJson && Array.isArray(rawJson.rounds));
   }
 
-  build(rawJson: any, annFileBaseKey: string): TestCaseGroup {
+  build(rawJson: any, annFileBaseKey: string): TestCaseGroupStrategy {
     const audioNames: string[] = [];
     const rounds: RoundConfig[] = (rawJson.rounds as any[])
       .map((round: any, ri: number) => {
@@ -49,44 +52,44 @@ class RoundsJsonStrategy implements TestCaseStrategy {
         const audios: RoundAudioConfig[] = round.segments
           .filter((seg: any) => seg && typeof seg === 'object')
           .map((seg: any, idx: number) => {
-            const audioName = seg.audio || seg.audio_name || '';
+            const audioName = seg.audioName || '';
             if (audioName) audioNames.push(audioName);
-            const cfg: any = { audio_name: audioName, play_order: idx };
+            const cfg: any = { audioName, playOrder: idx };
             if (seg.spl != null && seg.spl !== '') cfg.spl = Number(seg.spl);
-            if (seg.playback_device_name) {
-              cfg.playback_device_name = seg.playback_device_name;
+            if (seg.playbackDeviceName) {
+              cfg.playbackDeviceName = seg.playbackDeviceName;
             }
-            // interferers 不在此硬编码透传，由 extractParamsFromAnnotations 配置化提取到 algorithm_params
-            // background_noise 是结构性字段，保留在 rounds 中
-            if (seg.background_noise) {
-              cfg.background_noise = seg.background_noise;
+            // interferers 不在此硬编码透传，由 extractParamsFromAnnotations 配置化提取到 algorithmParams
+            // backgroundNoise 是结构性字段，保留在 rounds 中
+            if (seg.backgroundNoise) {
+              cfg.backgroundNoise = seg.backgroundNoise;
             }
-            // 收集 background_noise.audio（用于音频分组匹配）
-            const segBgAudio = seg.background_noise?.audio || seg.background_noise?.audio_name || '';
+            // 收集 backgroundNoise.audioName（用于音频分组匹配）
+            const segBgAudio = seg.backgroundNoise?.audioName || '';
             if (segBgAudio) audioNames.push(segBgAudio);
-            // 收集 interferers[].audio（用于音频分组匹配）
+            // 收集 interferers[].audioName（用于音频分组匹配）
             if (Array.isArray(seg.interferers)) {
               for (const interf of seg.interferers) {
                 if (!interf) continue;
-                const interfAudio = interf.audio || interf.audio_name || '';
+                const interfAudio = interf.audioName || '';
                 if (interfAudio) audioNames.push(interfAudio);
               }
             }
             return cfg;
           });
         const roundObj: any = {
-          roundNumber: round.round_number || ri + 1,
+          roundNumber: round.roundNumber || ri + 1,
           audios,
         };
-        if (round.background_noise) {
-          roundObj.background_noise = round.background_noise;
-          // 收集 round 级 background_noise.audio
-          const roundBgAudio = round.background_noise?.audio || round.background_noise?.audio_name || '';
+        if (round.backgroundNoise) {
+          roundObj.backgroundNoise = round.backgroundNoise;
+          // 收集 round 级 backgroundNoise.audioName
+          const roundBgAudio = round.backgroundNoise?.audioName || '';
           if (roundBgAudio) audioNames.push(roundBgAudio);
         }
         // segment 级执行控制字段提升到 round 级别（单 segment 时直接取值，多 segment 时取最后一个非空值）
-        // is_interruption / record_mode 是 config.rounds 结构字段，后端 RoundConfigItem extra='allow' 保留
-        const execControlFields = ['is_interruption', 'record_mode'];
+        // isInterruption / recordMode 是 config.rounds 结构字段，后端 RoundConfigItem extra='allow' 保留
+        const execControlFields = ['isInterruption', 'recordMode'];
         for (const field of execControlFields) {
           let v: any = undefined;
           for (const seg of round.segments) {
@@ -102,9 +105,9 @@ class RoundsJsonStrategy implements TestCaseStrategy {
       })
       .filter((r: any) => r !== null);
 
-    // 收集 case 级 background_noise.audio
-    if (rawJson.background_noise) {
-      const caseBgAudio = rawJson.background_noise.audio || rawJson.background_noise.audio_name || '';
+    // 收集 case 级 backgroundNoise.audioName
+    if (rawJson.backgroundNoise) {
+      const caseBgAudio = rawJson.backgroundNoise.audioName || '';
       if (caseBgAudio) audioNames.push(caseBgAudio);
     }
 
@@ -112,7 +115,7 @@ class RoundsJsonStrategy implements TestCaseStrategy {
     return {
       groupKey,
       rounds,
-      backgroundNoise: rawJson.background_noise,
+      backgroundNoise: rawJson.backgroundNoise,
       audioNames,
     };
   }
@@ -127,38 +130,38 @@ class FlatJsonStrategy implements TestCaseStrategy {
     if (Array.isArray(rawJson.rounds)) return false;
     if (Array.isArray(rawJson.txt)) return false;
     if (Array.isArray(rawJson.annotations)) return false;
-    // 必须有 audio 字段才算 flat 用例 JSON
-    return !!(rawJson.audio || rawJson.audio_name);
+    // 必须有 audioName 字段才算 flat 用例 JSON
+    return !!rawJson.audioName;
   }
 
-  build(rawJson: any, annFileBaseKey: string): TestCaseGroup {
+  build(rawJson: any, annFileBaseKey: string): TestCaseGroupStrategy {
     const audioNames: string[] = [];
-    const audioName = rawJson.audio || rawJson.audio_name || '';
+    const audioName = rawJson.audioName || '';
     if (audioName) audioNames.push(audioName);
-    const cfg: any = { audio_name: audioName, play_order: 0 };
+    const cfg: any = { audioName, playOrder: 0 };
     if (rawJson.spl != null && rawJson.spl !== '') cfg.spl = Number(rawJson.spl);
-    if (rawJson.playback_device_name) {
-      cfg.playback_device_name = rawJson.playback_device_name;
+    if (rawJson.playbackDeviceName) {
+      cfg.playbackDeviceName = rawJson.playbackDeviceName;
     }
-    // interferers 不硬编码到 cfg，由 extractParamsFromAnnotations 配置化提取到 algorithm_params
-    if (rawJson.background_noise) {
-      cfg.background_noise = rawJson.background_noise;
+    // interferers 不硬编码到 cfg，由 extractParamsFromAnnotations 配置化提取到 algorithmParams
+    if (rawJson.backgroundNoise) {
+      cfg.backgroundNoise = rawJson.backgroundNoise;
     }
-    // 收集 background_noise.audio（用于音频分组匹配）
-    const bgAudio = rawJson.background_noise?.audio || rawJson.background_noise?.audio_name || '';
+    // 收集 backgroundNoise.audioName（用于音频分组匹配）
+    const bgAudio = rawJson.backgroundNoise?.audioName || '';
     if (bgAudio) audioNames.push(bgAudio);
-    // 收集 interferers[].audio（用于音频分组匹配）
+    // 收集 interferers[].audioName（用于音频分组匹配）
     if (Array.isArray(rawJson.interferers)) {
       for (const interf of rawJson.interferers) {
         if (!interf) continue;
-        const interfAudio = interf.audio || interf.audio_name || '';
+        const interfAudio = interf.audioName || '';
         if (interfAudio) audioNames.push(interfAudio);
       }
     }
 
     const roundObj: any = { roundNumber: 1, audios: [cfg] };
     // 顶层执行控制字段直接放到 round 级别
-    const execControlFields = ['is_interruption', 'record_mode'];
+    const execControlFields = ['isInterruption', 'recordMode'];
     for (const field of execControlFields) {
       if (rawJson[field] !== undefined && rawJson[field] !== null && rawJson[field] !== '') {
         roundObj[field] = rawJson[field];
@@ -176,53 +179,53 @@ class FlatJsonStrategy implements TestCaseStrategy {
 }
 
 // ──────────────────────────────────────────────
-// 策略 3：txt 数组单轮 JSON（{ txt: [{ audio, query, ... }] }）
+// 策略 3：txt 数组单轮 JSON（{ txt: [{ audioName, query, ... }] }）
 // ──────────────────────────────────────────────
 class TxtArrayJsonStrategy implements TestCaseStrategy {
   matches(rawJson: any): boolean {
     return !!(rawJson && Array.isArray(rawJson.txt) && rawJson.txt.length > 0);
   }
 
-  build(rawJson: any, annFileBaseKey: string): TestCaseGroup {
+  build(rawJson: any, annFileBaseKey: string): TestCaseGroupStrategy {
     const audioNames: string[] = [];
     const audios: RoundAudioConfig[] = rawJson.txt
       .filter((item: any) => item && typeof item === 'object')
       .map((item: any, idx: number) => {
-        const audioName = item.audio || item.audio_name || '';
+        const audioName = item.audioName || '';
         if (audioName) audioNames.push(audioName);
-        const cfg: any = { audio_name: audioName, play_order: idx };
+        const cfg: any = { audioName, playOrder: idx };
         if (item.spl != null && item.spl !== '') cfg.spl = Number(item.spl);
-        if (item.playback_device_name) {
-          cfg.playback_device_name = item.playback_device_name;
+        if (item.playbackDeviceName) {
+          cfg.playbackDeviceName = item.playbackDeviceName;
         }
-        // interferers 不在此硬编码透传，由 extractParamsFromAnnotations 配置化提取到 algorithm_params
-        // background_noise 是结构性字段，保留在 rounds 中
-        if (item.background_noise) {
-          cfg.background_noise = item.background_noise;
+        // interferers 不在此硬编码透传，由 extractParamsFromAnnotations 配置化提取到 algorithmParams
+        // backgroundNoise 是结构性字段，保留在 rounds 中
+        if (item.backgroundNoise) {
+          cfg.backgroundNoise = item.backgroundNoise;
         }
-        // 收集 background_noise.audio（用于音频分组匹配）
-        const itemBgAudio = item.background_noise?.audio || item.background_noise?.audio_name || '';
+        // 收集 backgroundNoise.audioName（用于音频分组匹配）
+        const itemBgAudio = item.backgroundNoise?.audioName || '';
         if (itemBgAudio) audioNames.push(itemBgAudio);
-        // 收集 interferers[].audio（用于音频分组匹配）
+        // 收集 interferers[].audioName（用于音频分组匹配）
         if (Array.isArray(item.interferers)) {
           for (const interf of item.interferers) {
             if (!interf) continue;
-            const interfAudio = interf.audio || interf.audio_name || '';
+            const interfAudio = interf.audioName || '';
             if (interfAudio) audioNames.push(interfAudio);
           }
         }
         return cfg;
       });
 
-    // 收集 case 级 background_noise.audio
-    if (rawJson.background_noise) {
-      const caseBgAudio = rawJson.background_noise.audio || rawJson.background_noise.audio_name || '';
+    // 收集 case 级 backgroundNoise.audioName
+    if (rawJson.backgroundNoise) {
+      const caseBgAudio = rawJson.backgroundNoise.audioName || '';
       if (caseBgAudio) audioNames.push(caseBgAudio);
     }
 
     const roundObj: any = { roundNumber: 1, audios };
     // txt 项级执行控制字段提升到 round 级别（取最后一个非空值）
-    const execControlFields = ['is_interruption', 'record_mode'];
+    const execControlFields = ['isInterruption', 'recordMode'];
     for (const field of execControlFields) {
       let v: any = undefined;
       for (const item of rawJson.txt) {
@@ -239,7 +242,7 @@ class TxtArrayJsonStrategy implements TestCaseStrategy {
     return {
       groupKey,
       rounds: [roundObj],
-      backgroundNoise: rawJson.background_noise,
+      backgroundNoise: rawJson.backgroundNoise,
       audioNames,
     };
   }
@@ -276,20 +279,21 @@ function extractFileNameWithoutExt(baseKey: string): string {
 
 /**
  * 解析所有 JSON 标注文件，构建测试用例分组。
- * 每个 JSON 产生一个独立的 TestCaseGroup，分组键 = JSON 文件名去扩展名。
+ * 每个 JSON 产生一个独立的 TestCaseGroupStrategy，分组键 = JSON 文件名去扩展名。
+ * JSON 解析后经 camelizeKeys 深度转换 snake_case → camelCase。
  *
  * @param annFiles - JSON 标注文件数组（File 对象）
- * @returns Map<groupKey, TestCaseGroup>
+ * @returns Map<groupKey, TestCaseGroupStrategy>
  */
 export async function buildTestCaseGroups(
   annFiles: File[]
-): Promise<Map<string, TestCaseGroup>> {
-  const groups = new Map<string, TestCaseGroup>();
+): Promise<Map<string, TestCaseGroupStrategy>> {
+  const groups = new Map<string, TestCaseGroupStrategy>();
 
   for (const annFile of annFiles) {
     try {
       const content = await readFileAsText(annFile);
-      const rawJson = JSON.parse(content);
+      const rawJson = camelizeKeys(JSON.parse(content));
       const strategy = selectStrategy(rawJson);
       if (!strategy) continue;
 
@@ -319,7 +323,7 @@ export async function buildTestCaseGroups(
  */
 export function groupAudiosByTestCase(
   audioFiles: import('./folderParser').AudioFileInfo[],
-  testCaseGroups: Map<string, TestCaseGroup>
+  testCaseGroups: Map<string, TestCaseGroupStrategy>
 ): Map<string, import('./folderParser').AudioFileInfo[]> {
   // 构建 audioName → groupKey 的反向映射
   const audioNameToGroupKey = new Map<string, string>();
@@ -370,7 +374,7 @@ export function groupAudiosByTestCase(
 export function computeGroupKeyForAudio(
   audioName: string,
   audioRelativePath: string,
-  testCaseGroups: Map<string, TestCaseGroup>
+  testCaseGroups: Map<string, TestCaseGroupStrategy>
 ): string {
   // 先按完整文件名匹配
   let groupKey: string | undefined;

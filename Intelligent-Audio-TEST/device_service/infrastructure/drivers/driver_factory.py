@@ -21,6 +21,8 @@ try:
     from .harmony_xiaoyichat import Xiaoyilivechat
     from .harmony_xiaoyilivechat import XiaoyilivechatV2
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
+    from .harmony_doubaochat import DoubaoChat
+    from .harmony_chatgpt import ChatGptVoiceChat
     _HYPium_AVAILABLE = True
 except ImportError:
     XiaoyiFace2FaceDriver = None
@@ -29,6 +31,8 @@ except ImportError:
     Xiaoyilivechat = None
     XiaoyilivechatV2 = None
     HarmonyHardenXiaoyi_Input_MethodDriver = None
+    DoubaoChat = None
+    ChatGptVoiceChat = None
     _HYPium_AVAILABLE = False
 
 
@@ -135,6 +139,20 @@ class DeviceDriverFactory:
                 '鸿蒙小艺输入法ASR专用驱动'
             )
 
+            self.register_specialized_driver(
+                DoubaoChat(),
+                ['doubao', '豆包', 'doubao_livechat'],
+                'HarmonyOS',
+                '豆包HarmonyOS语音通话专用驱动'
+            )
+
+            self.register_specialized_driver(
+                ChatGptVoiceChat(),
+                ['chatgpt', 'chatgpt语音'],
+                'HarmonyOS',
+                'ChatGPT HarmonyOS语音通话专用驱动'
+            )
+
         self.register_specialized_driver(
             DouBaoAndroidAsrDriver(),
             ['doubao', '豆包', 'asr'],
@@ -230,6 +248,8 @@ class DeviceDriverFactory:
     _KEYWORD_TO_APP_TYPE: dict[str, AppType] = {
         'plaud': AppType.PLAUD,
         'doubao': AppType.DOUBAO_ASR,
+        'doubao_livechat': AppType.DOUBAO,
+        'chatgpt': AppType.CHATGPT,
         'face2face': AppType.XIAOYI_FACE2FACE,
         'simultaneous': AppType.XIAOYI_SIMULTANEOUS,
         'huiji': AppType.XIAOYI_HUIJI,

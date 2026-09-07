@@ -3,148 +3,27 @@
  * 算法配置 Composables
  *
  * 提供算法相关的状态管理和 API 调用
+ * Application 层只见 camelCase Domain 字段，snake_case 转换由 infrastructure 层负责
  */
+import { ref, computed } from 'vue'
+import { algorithmPort } from './algorithmPort'
+import { useNotification } from '../modal/useNotification'
+import type {
+  AlgorithmDefinition,
+  AlgorithmOption,
+  AlgorithmDimensions,
+  AlgorithmCaseParam,
+  FormSchema,
+} from '../../domain/model/algorithm'
 
-import { ref, computed, onMounted } from 'vue'
-import { algorithmApi } from '../../utils/api'
-
-// 简单的消息提示函数，替代 Ant Design message
-function showMessage(type: 'error' | 'success' | 'info' | 'warning', content: string) {
-  // 创建消息元素
-  const message = document.createElement('div')
-  message.className = `custom-message custom-message-${type}`
-  message.textContent = content
-  message.style.position = 'fixed'
-  message.style.top = '20px'
-  message.style.right = '20px'
-  message.style.padding = '12px 20px'
-  message.style.borderRadius = '4px'
-  message.style.color = '#fff'
-  message.style.zIndex = '9999'
-  message.style.fontSize = '14px'
-  message.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)'
-  message.style.transition = 'all 0.3s ease'
-  message.style.opacity = '0'
-  message.style.transform = 'translateX(100%)'
-
-  // 设置不同类型的背景色
-  switch (type) {
-    case 'success':
-      message.style.backgroundColor = '#52c41a'
-      break
-    case 'error':
-      message.style.backgroundColor = '#ff4d4f'
-      break
-    case 'info':
-      message.style.backgroundColor = '#1890ff'
-      break
-    case 'warning':
-      message.style.backgroundColor = '#faad14'
-      break
-  }
-
-  // 添加到页面
-  document.body.appendChild(message)
-
-  // 显示动画
-  setTimeout(() => {
-    message.style.opacity = '1'
-    message.style.transform = 'translateX(0)'
-  }, 10)
-
-  // 3秒后移除
-  setTimeout(() => {
-    message.style.opacity = '0'
-    message.style.transform = 'translateX(100%)'
-    setTimeout(() => {
-      if (message.parentNode) {
-        message.parentNode.removeChild(message)
-      }
-    }, 300)
-  }, 3000)
-}
-
-const message = {
-  error: (content: string) => showMessage('error', content),
-  success: (content: string) => showMessage('success', content),
-  info: (content: string) => showMessage('info', content),
-  warning: (content: string) => showMessage('warning', content)
-}
-
-export interface AlgorithmDefinition {
-  type: string
-  name: string
-  group_id?: number
-  group_name?: string
-  description?: string
-  status: string
-  icon?: string
-  display_order: number
-  params?: AlgorithmParam[]
-  mappings?: {
-    device: ParamMapping[]
-    api: ParamMapping[]
-    evaluation: ParamMapping[]
-  }
-}
-
-export interface AlgorithmParam {
-  id: number
-  algorithm_type: string
-  param_code: string
-  param_name?: string
-  param_type: string
-  required: boolean
-  default_value?: string
-  validation_rules?: string
-  help_text?: string
-  component?: string
-  ui_order: number
-  ui_group: string
-  hidden: boolean
-}
-
-export interface ParamMapping {
-  source_param: string
-  target_key: string
-  transform_type: 'none' | 'uppercase' | 'lowercase' | 'json_parse'
-}
-
-export interface FormSchema {
-  algorithmType: string
-  algorithmName: string
-  group_id?: number
-  group_name?: string
-  description?: string
-  groups: {
-    name: string
-    label: string
-    fields: FormField[]
-  }[]
-  fields: FormField[]
-}
-
-export interface FormField {
-  fieldCode: string
-  fieldName: string
-  fieldType: string
-  required: boolean
-  defaultValue?: any
-  component?: string
-  options?: { value: string; label: string }[]
-  validation?: string
-  helpText?: string
-  hidden: boolean
-  uiOrder: number
-  uiGroup: string
-}
+const { error: notifyError, success: notifySuccess } = useNotification()
 
 const algorithms = ref<AlgorithmDefinition[]>([])
 const loading = ref(false)
 const selectedAlgorithm = ref<AlgorithmDefinition | null>(null)
 const formSchemas = ref<Map<string, FormSchema>>(new Map())
 // 用例专属参数缓存，避免循环 watch 触发的重复请求
-const caseParamCache = ref<Map<string, any[]>>(new Map())
+const caseParamCache = ref<Map<string, AlgorithmCaseParam[]>>(new Map())
 
 export function getAlgorithmIcon(groupName?: string): string {
   const iconMap: Record<string, string> = {
@@ -165,10 +44,9 @@ export function getAlgorithmIcon(groupName?: string): string {
   return iconMap[groupName || ''] || iconMap['general'] || 'fa-cog'
 }
 
-export async function loadAlgorithmDetail(algorithmType: string): Promise<any> {
+export async function loadAlgorithmDetail(algorithmType: string): Promise<AlgorithmDefinition | null> {
   try {
-    const result = await algorithmApi.getDefinition(algorithmType)
-    return result
+    return await algorithmPort.getDefinition(algorithmType)
   } catch (error) {
     console.error('加载算法详情失败:', error)
     return null
@@ -179,16 +57,11 @@ export function useAlgorithmConfig() {
   async function loadAlgorithms(): Promise<AlgorithmDefinition[]> {
     loading.value = true
     try {
-      const response = await fetch('/api/v1/algorithm/definitions')
-      const result = await response.json()
-      if (result.success) {
-        algorithms.value = result.data.data || []
-        return algorithms.value
-      }
-      message.error(result.message || '加载算法列表失败')
-      return []
+      const result = await algorithmPort.getDefinitions()
+      algorithms.value = result?.data ?? []
+      return algorithms.value
     } catch (error) {
-      message.error('加载算法列表失败')
+      notifyError('加载算法列表失败')
       return []
     } finally {
       loading.value = false
@@ -197,28 +70,19 @@ export function useAlgorithmConfig() {
 
   async function getAlgorithm(algorithmType: string): Promise<AlgorithmDefinition | null> {
     try {
-      const response = await fetch(`/api/v1/algorithm/definitions/${algorithmType}`)
-      const result = await response.json()
-      if (result.success) {
-        return result.data
-      }
-      return null
+      return await algorithmPort.getDefinition(algorithmType)
     } catch (error) {
-      message.error('获取算法详情失败')
+      notifyError('获取算法详情失败')
       return null
     }
   }
 
-  async function getAlgorithmOptions(): Promise<{ value: string; name: string; group_id?: number; group_name?: string }[]> {
+  async function getAlgorithmOptions(): Promise<AlgorithmOption[]> {
     try {
-      const response = await fetch('/api/v1/algorithm/options')
-      const result = await response.json()
-      if (result.success) {
-        return result.data.algorithms || []
-      }
-      return []
+      const result = await algorithmPort.getOptions()
+      return result?.algorithms ?? []
     } catch (error) {
-      message.error('获取算法选项失败')
+      notifyError('获取算法选项失败')
       return []
     }
   }
@@ -229,33 +93,21 @@ export function useAlgorithmConfig() {
     }
 
     try {
-      const response = await fetch(`/api/v1/algorithm/form-schema/${algorithmType}`)
-      const result = await response.json()
-      if (result.success && result.data) {
-        const schema = result.data as FormSchema
+      const schema = await algorithmPort.getFormSchema(algorithmType)
+      if (schema) {
         formSchemas.value.set(algorithmType, schema)
         return schema
       }
       return null
     } catch (error) {
-      message.error('获取表单Schema失败')
+      notifyError('获取表单Schema失败')
       return null
     }
   }
 
-  async function getAssociatedDimensions(algorithmType: string): Promise<{
-    dimensions: Array<{ id: number; name: string; description?: string; type?: string; weight: number; is_default: boolean }>;
-    dimension_ids: number[];
-    default_dimension_id: number | null;
-    weights: Record<number, number>;
-  } | null> {
+  async function getAssociatedDimensions(algorithmType: string): Promise<AlgorithmDimensions | null> {
     try {
-      const response = await fetch(`/api/v1/algorithm/dimensions/${algorithmType}`)
-      const result = await response.json()
-      if (result.success) {
-        return result.data
-      }
-      return null
+      return await algorithmPort.getDimensions(algorithmType)
     } catch (error) {
       return null
     }
@@ -263,61 +115,36 @@ export function useAlgorithmConfig() {
 
   async function createAlgorithm(data: Partial<AlgorithmDefinition>): Promise<boolean> {
     try {
-      const response = await fetch('/api/v1/algorithm/definitions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      })
-      const result = await response.json()
-      if (result.success) {
-        message.success('创建成功')
-        await loadAlgorithms()
-        return true
-      }
-      message.error(result.message || '创建失败')
-      return false
+      await algorithmPort.createDefinition(data)
+      notifySuccess('创建成功')
+      await loadAlgorithms()
+      return true
     } catch (error) {
-      message.error('创建失败')
+      notifyError('创建失败')
       return false
     }
   }
 
   async function updateAlgorithm(algorithmType: string, data: Partial<AlgorithmDefinition>): Promise<boolean> {
     try {
-      const response = await fetch(`/api/v1/algorithm/definitions/${algorithmType}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      })
-      const result = await response.json()
-      if (result.success) {
-        message.success('更新成功')
-        await loadAlgorithms()
-        return true
-      }
-      message.error(result.message || '更新失败')
-      return false
+      await algorithmPort.updateDefinition(algorithmType, data)
+      notifySuccess('更新成功')
+      await loadAlgorithms()
+      return true
     } catch (error) {
-      message.error('更新失败')
+      notifyError('更新失败')
       return false
     }
   }
 
   async function deleteAlgorithm(algorithmType: string): Promise<boolean> {
     try {
-      const response = await fetch(`/api/v1/algorithm/definitions/${algorithmType}`, {
-        method: 'DELETE'
-      })
-      const result = await response.json()
-      if (result.success) {
-        message.success('删除成功')
-        await loadAlgorithms()
-        return true
-      }
-      message.error(result.message || '删除失败')
-      return false
+      await algorithmPort.deleteDefinition(algorithmType)
+      notifySuccess('删除成功')
+      await loadAlgorithms()
+      return true
     } catch (error) {
-      message.error('删除失败')
+      notifyError('删除失败')
       return false
     }
   }
@@ -331,26 +158,18 @@ export function useAlgorithmConfig() {
   }
 
   function getAlgorithmsByGroup(groupId: number): AlgorithmDefinition[] {
-    return algorithms.value.filter(a => a.group_id === groupId)
+    return algorithms.value.filter(a => a.groupId === groupId)
   }
 
-  async function getCaseAlgorithmParams(algorithmType: string): Promise<any[]> {
+  async function getCaseAlgorithmParams(algorithmType: string): Promise<AlgorithmCaseParam[]> {
     if (!algorithmType) return []
     // 命中缓存直接返回，避免循环 watch 导致的重复请求
     if (caseParamCache.value.has(algorithmType)) {
       return caseParamCache.value.get(algorithmType) || []
     }
     try {
-      const result = await algorithmApi.getCaseParams(algorithmType)
-      const params = (result?.parameters || []).map((p: any) => ({
-        ...p,
-        param_code: p.param_code,
-        param_name: p.param_name,
-        param_type: p.param_type,
-        default_value: p.default_value,
-        help_text: p.help_text,
-        ui_order: p.ui_order,
-      }))
+      const result = await algorithmPort.getCaseParams(algorithmType)
+      const params = result?.parameters ?? []
       caseParamCache.value.set(algorithmType, params)
       return params
     } catch (error) {
@@ -398,7 +217,9 @@ export function useAlgorithmForm(algorithmType: string | null) {
 
     loading.value = true
     try {
-      const schemaData = await getFormSchema(algorithmType)
+      // getFormSchema 定义在 useAlgorithmConfig() 内部，此处通过调用一次获取（模块级函数会复用 formSchemas 缓存）
+      const configApi = useAlgorithmConfig()
+      const schemaData = await configApi.getFormSchema(algorithmType)
       schema.value = schemaData
     } finally {
       loading.value = false

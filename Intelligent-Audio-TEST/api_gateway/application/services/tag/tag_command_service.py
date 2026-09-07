@@ -133,8 +133,8 @@ class TagCommandService:
         )
 
     @staticmethod
-    def delete(tag_id):
-        result = _tag_acl.delete_tag(tag_id)
+    def delete(tag_id, cascade: bool = False):
+        result = _tag_acl.delete_tag(tag_id, cascade=cascade)
 
         if not result.get('success'):
             code = result.get('code', 400)

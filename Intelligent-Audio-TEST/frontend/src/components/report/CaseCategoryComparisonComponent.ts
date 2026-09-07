@@ -1,11 +1,75 @@
-import { ref, computed, watch } from 'vue'
-import { reportsApi } from '../../utils/api'
-import { useCollapse, useMetricCollapse, useTableRefs, useDisplayTypes, useSaveSummary, useResourceHeaders, chartColors, chartBorderColors, generateDistributionChartData } from './shared/useReportShared'
+/**
+ * 分类对比区块 composable（useCaseCategoryComparison）
+ *
+ * Presentation 层：只消费 camelCase Domain（adapter 出口），内存矩阵为本地结构。
+ * 筛选查询（searchCases / getCaseAveragesByFilters）走 reportsPort（Application Port），
+ * 请求参数使用 camelCase（searchCases 内部双拼写归一化后转 snake_case 发后端）。
+ */
+import type {
+  Report,
+  ReportMetricConfig as MetricConfigItem,
+  MetricMatrix as CategoryMetricMatrix,
+  ComparisonColumn as CategoryColumn,
+} from '../../domain'
+import { ref, computed, watch, type Ref } from 'vue'
+import { reportsPort } from '@/composables/report/reportsPort'
+import { useCollapse, useMetricCollapse, useTableRefs, useDisplayTypes, useSaveSummary, useResourceHeaders, chartColors, chartBorderColors, generateDistributionChartData, toggle as toggleSelection, usePaginatedSelection } from './shared/useReportShared'
 import { extractInitialMetricData, computeMetricDataFromCases, createCategoryChartData, createCategoryMetricValueGetters } from './caseCategoryComparisonHelpers'
 import { createResourceLabelGetter } from './caseTagResourceHelpers'
 import { usePagination } from '../../composables/usePagination'
 
-export function useCaseCategoryComparison(props) {
+/** 分类对比组件 props（reportData 由父组件注入的 Report Domain） */
+interface CaseCategoryComparisonProps {
+  reportData?: Report | null
+}
+
+/** 表头保存事件载荷 */
+interface HeaderSavePayload {
+  colIndex: number
+  value: string
+  column?: { key: string; label: string }
+}
+
+/** 单元格保存事件载荷 */
+interface CellSavePayload {
+  rowIndex: number
+  colIndex: number
+  value: string
+}
+
+/** 从 Report Domain 读取分类列表（adapter 出口 summary.caseCategories） */
+function getCategories(data: Report | null | undefined): string[] {
+  const raw = data?.summary?.caseCategories ?? []
+  if (!Array.isArray(raw)) return []
+  return raw.map((cat: string) => String(cat))
+}
+
+/** 从 Report Domain 读取标签列表（adapter 出口 summary.allCaseTags） */
+function getTags(data: Report | null | undefined): string[] {
+  const raw = data?.summary?.allCaseTags ?? []
+  if (!Array.isArray(raw)) return []
+  return raw.map((tag: string) => String(tag))
+}
+
+/** 资源列表优先级：summary.resources → apis → devices（adapter 出口 camelCase） */
+function getValidResources(data: Report | null | undefined): string[] {
+  if (!data) return []
+  const candidates = [data.summary?.resources, data.summary?.apis, data.summary?.devices]
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      return candidate.map((item: string | { name: string }) => typeof item === 'object' && item !== null ? item.name : String(item))
+    }
+  }
+  return []
+}
+
+/** 指标配置列表读取（adapter 出口 summary.allMetrics） */
+function readAllMetrics(data: Report | null | undefined): MetricConfigItem[] {
+  const raw = data?.summary?.allMetrics
+  return Array.isArray(raw) ? raw : []
+}
+
+export function useCaseCategoryComparison(props: CaseCategoryComparisonProps) {
   // Collapse state
   const { isCollapsed, toggleCollapse } = useCollapse()
 
@@ -16,72 +80,39 @@ export function useCaseCategoryComparison(props) {
   const { tableRefs, setTableRef } = useTableRefs()
 
   // Data
-  const getCategories = (data) => {
-    if (!data) return []
-    const categories = data.case_categories || data.summary?.case_categories || []
-    if (!Array.isArray(categories)) return []
-    return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
-  }
-
-  const getTags = (data) => {
-    if (!data) return []
-    const tags = data.all_case_tags || data.summary?.all_case_tags || []
-    if (!Array.isArray(tags)) return []
-    return tags.map(tag => typeof tag === 'object' ? tag.name : tag)
-  }
-
-  const allAvailableCategories = ref(getCategories(props.reportData))
-  const allAvailableTags = ref(getTags(props.reportData))
-
-  const selectedCategories = ref([])
-  const selectedTags = ref([])
+  const allAvailableCategories = ref<string[]>(getCategories(props.reportData))
+  const allAvailableTags = ref<string[]>(getTags(props.reportData))
 
   const caseNameSearchQuery = ref('')
 
-  // Search and pagination for categories
-  const categorySearchQuery = ref('')
-  const categoryPage = ref(1)
-  const categoryPageSize = ref(50)
-
-  const filteredCategoriesForSelection = computed(() => {
-    if (!categorySearchQuery.value.trim()) {
-      return allAvailableCategories.value
-    }
-    const query = categorySearchQuery.value.toLowerCase()
-    return allAvailableCategories.value.filter(cat => cat.toLowerCase().includes(query))
-  })
-
-  // 使用通用分页 composable 统一处理分类选择分页
+  // 分类：搜索 + 分页 + 选择（消费 usePaginatedSelection）
   const {
+    searchQuery: categorySearchQuery,
+    page: categoryPage,
+    pageSize: categoryPageSize,
+    selected: selectedCategories,
+    filtered: filteredCategoriesForSelection,
     totalPages: totalCategoryPages,
-    paginatedItems: paginatedCategories,
-  } = usePagination(filteredCategoriesForSelection, categoryPageSize, { currentPage: categoryPage })
+    paginated: paginatedCategories,
+  } = usePaginatedSelection<string>(() => allAvailableCategories.value, 50)
 
-  // Search and pagination for tags
-  const tagSearchQuery = ref('')
-  const tagPage = ref(1)
-  const tagPageSize = ref(50)
-
-  const filteredTagsForSelection = computed(() => {
-    if (!tagSearchQuery.value.trim()) {
-      return allAvailableTags.value
-    }
-    const query = tagSearchQuery.value.toLowerCase()
-    return allAvailableTags.value.filter(tag => tag.toLowerCase().includes(query))
-  })
-
-  // 使用通用分页 composable 统一处理标签选择分页
+  // 标签：搜索 + 分页 + 选择（消费 usePaginatedSelection）
   const {
+    searchQuery: tagSearchQuery,
+    page: tagPage,
+    pageSize: tagPageSize,
+    selected: selectedTags,
+    filtered: filteredTagsForSelection,
     totalPages: totalTagPages,
-    paginatedItems: paginatedTags,
-  } = usePagination(filteredTagsForSelection, tagPageSize, { currentPage: tagPage })
+    paginated: paginatedTags,
+  } = usePaginatedSelection<string>(() => allAvailableTags.value, 50)
 
-  // Metrics configuration
-  const allMetrics = ref(props.reportData.all_metrics || props.reportData.summary?.all_metrics || [])
+  // Metrics configuration（adapter 出口为 camelCase：name/decimalPlaces）
+  const allMetrics = ref<MetricConfigItem[]>(readAllMetrics(props.reportData))
 
-  const selectedMetrics = ref([])
+  const selectedMetrics = ref<string[]>([])
 
-  // Search and pagination for metrics
+  // 指标：搜索 + 分页（源为对象数组，选择为 name 字符串，不兼容 usePaginatedSelection）
   const metricSearchQuery = ref('')
   const metricPage = ref(1)
   const metricPageSize = ref(30)
@@ -98,60 +129,42 @@ export function useCaseCategoryComparison(props) {
   const {
     totalPages: totalMetricPages,
     paginatedItems: paginatedMetrics,
-  } = usePagination(filteredMetricsForDisplay, metricPageSize, { currentPage: metricPage })
+  } = usePagination<MetricConfigItem>(filteredMetricsForDisplay, metricPageSize, { currentPage: metricPage })
 
-  const metricDecimalPlacesMap = computed(() => {
-    const map = {}
-    const list = Array.isArray(allMetrics.value) ? allMetrics.value : []
-    list.forEach(m => {
+  // 指标小数位映射（camelCase 字段 decimalPlaces）
+  const metricDecimalPlacesMap = computed<Record<string, number>>(() => {
+    const map: Record<string, number> = {}
+    allMetrics.value.forEach(m => {
       if (!m || !m.name) return
-      const dp = m.decimal_places
-      if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
+      const dp = m.decimalPlaces
+      if (Number.isInteger(dp) && dp !== null && dp !== undefined && dp >= 0) map[m.name] = dp
     })
     return map
   })
 
-  const formatMetricForDisplay = (metricName, value) => {
+  const formatMetricForDisplay = (metricName: string, value: unknown) => {
     if (value === '-' || value === null || value === undefined) return '-'
     const num = typeof value === 'number' ? value : Number(value)
     if (!Number.isFinite(num)) return String(value)
-    const dp = metricDecimalPlacesMap.value?.[String(metricName)]
+    const dp = metricDecimalPlacesMap.value[String(metricName)]
     if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp)
     return String(num)
   }
 
   // 同时使用设备和API作为资源
-  const getValidResources = (data) => {
-    const resources = [
-      data.resources,
-      data.devices,
-      data.apis,
-      data.summary?.resources,
-      data.summary?.apis,
-      data.summary?.devices
-    ];
-
-    for (const resource of resources) {
-      if (Array.isArray(resource) && resource.length > 0) {
-        return resource;
-      }
-    }
-    return [];
-  };
-
-  const devices = ref(getValidResources(props.reportData));
+  const devices = ref<string[]>(getValidResources(props.reportData))
 
   // 使用ref管理内部metricData状态
-  const metricData = ref(extractInitialMetricData(props.reportData));
+  const metricData = ref<CategoryMetricMatrix>(extractInitialMetricData(props.reportData))
 
   // 监听reportData变化，更新内部状态
   watch(() => props.reportData, (newReportData) => {
-    console.log('[CaseCategoryComparisonComponent] reportData变化:', newReportData);
+    console.log('[CaseCategoryComparisonComponent] reportData变化:', newReportData)
     allAvailableCategories.value = getCategories(newReportData)
     allAvailableTags.value = getTags(newReportData)
-    allMetrics.value = newReportData.all_metrics || newReportData.summary?.all_metrics || []
-    metricData.value = extractInitialMetricData(newReportData);
-    devices.value = getValidResources(newReportData);
+    allMetrics.value = readAllMetrics(newReportData)
+    metricData.value = extractInitialMetricData(newReportData)
+    devices.value = getValidResources(newReportData)
 
     selectedCategories.value = []
     selectedTags.value = []
@@ -176,31 +189,30 @@ export function useCaseCategoryComparison(props) {
     return allMetrics.value.filter(m => selectedMetrics.value.includes(m.name))
   })
 
-  const { reportId, scheduleSaveSummary } = useSaveSummary(props, 'CaseCategoryComparison')
+  const { reportId, scheduleSaveSummary } = useSaveSummary(props as { reportData?: unknown }, 'CaseCategoryComparison')
 
   const { resourceHeaderMap } = useResourceHeaders(props)
 
   const { getResourceLabel } = createResourceLabelGetter(resourceHeaderMap)
 
-  const editingResourceKey = ref(null)
+  const editingResourceKey = ref<string | null>(null)
   const editingResourceValue = ref('')
 
-  const startEditResource = (resourceKey) => {
+  const startEditResource = (resourceKey: string) => {
     editingResourceKey.value = resourceKey
     editingResourceValue.value = String(getResourceLabel(resourceKey) ?? '')
   }
 
-  const commitEditResource = (resourceKey, newValue) => {
+  const commitEditResource = (resourceKey: string, newValue?: string) => {
     const next = newValue !== undefined ? String(newValue ?? '').trim() : String(editingResourceValue.value ?? '').trim()
     if (editingResourceKey.value !== resourceKey && newValue === undefined) return
     editingResourceKey.value = null
     if (!next) return
 
-    const report = props.reportData || {}
-    const summary = report.summary || report
-    const headers = summary.resource_headers || report.resource_headers || []
+    // resourceHeaders 为 camelCase Domain 字段（ReportResourceHeader.key/label）
+    const headers = props.reportData?.summary?.resourceHeaders ?? []
     if (Array.isArray(headers)) {
-      const target = headers.find(h => h && (h.key === resourceKey || h.resource === resourceKey))
+      const target = headers.find(h => h && h.key === resourceKey)
       if (target) {
         target.label = next
       }
@@ -208,15 +220,15 @@ export function useCaseCategoryComparison(props) {
     scheduleSaveSummary({ resourceHeaders: headers })
   }
 
-  const editingCategoryKey = ref(null)
+  const editingCategoryKey = ref<string | null>(null)
   const editingCategoryValue = ref('')
 
-  const startEditCategory = (categoryName) => {
+  const startEditCategory = (categoryName: string) => {
     editingCategoryKey.value = categoryName
     editingCategoryValue.value = String(categoryName ?? '')
   }
 
-  const commitEditCategory = (oldName, newValue) => {
+  const commitEditCategory = (oldName: string, newValue?: string) => {
     const next = newValue !== undefined ? String(newValue ?? '').trim() : String(editingCategoryValue.value ?? '').trim()
     if (editingCategoryKey.value !== oldName && newValue === undefined) return
     editingCategoryKey.value = null
@@ -229,48 +241,32 @@ export function useCaseCategoryComparison(props) {
     allAvailableCategories.value = allAvailableCategories.value.map(c => (c === oldName ? next : c))
     selectedCategories.value = selectedCategories.value.map(c => (c === oldName ? next : c))
 
-    const report = props.reportData || {}
-    const summary = report.summary || report
-    const cats = summary.case_categories || report.case_categories || []
+    // caseCategories 为 camelCase Domain 字段（string[]：重命名 = 数组元素替换）
+    const cats = props.reportData?.summary?.caseCategories ?? []
     if (Array.isArray(cats)) {
-      const target = cats.find(c => c && typeof c === 'object' && c.name === oldName)
-      if (target) target.name = next
+      const index = cats.indexOf(oldName)
+      if (index >= 0) cats[index] = next
     }
     scheduleSaveSummary({ caseCategories: cats })
   }
 
   const processedDevices = computed(() => {
-    return devices.value.map(device => getResourceLabel(device))
+    return devices.value.map(device => String(getResourceLabel(device) ?? ''))
   })
 
   // Methods
-  const toggleCategory = (category) => {
-    const index = selectedCategories.value.indexOf(category)
-    if (index > -1) {
-      selectedCategories.value.splice(index, 1)
-    } else {
-      selectedCategories.value.push(category)
-    }
+  const toggleCategory = (category: string) => {
+    toggleSelection(selectedCategories, category)
     applyFilters()
   }
 
-  const toggleTag = (tag) => {
-    const index = selectedTags.value.indexOf(tag)
-    if (index > -1) {
-      selectedTags.value.splice(index, 1)
-    } else {
-      selectedTags.value.push(tag)
-    }
+  const toggleTag = (tag: string) => {
+    toggleSelection(selectedTags, tag)
     applyFilters()
   }
 
-  const toggleMetric = (metricName) => {
-    const index = selectedMetrics.value.indexOf(metricName)
-    if (index > -1) {
-      selectedMetrics.value.splice(index, 1)
-    } else {
-      selectedMetrics.value.push(metricName)
-    }
+  const toggleMetric = (metricName: string) => {
+    toggleSelection(selectedMetrics, metricName)
   }
 
   // 重置筛选条件
@@ -290,44 +286,38 @@ export function useCaseCategoryComparison(props) {
 
   // 应用筛选条件
   const applyFilters = async () => {
-    console.log('应用筛选条件', {
-      categories: selectedCategories.value,
-      tags: selectedTags.value
-    });
-
     try {
       const selectedTagList = selectedTags.value || []
       const includeUntagged = selectedTagList.includes('无标签') || selectedTagList.includes('未标记')
       const normalizedTags = selectedTagList.filter(t => t !== '无标签' && t !== '未标记')
 
-      const reportData = props.reportData || {}
-      const taskId =
-        reportData.task_id ||
-        reportData.summary?.task_id
+      const report = props.reportData
+      // taskId（聚合根为 camelCase）
+      const taskId = report?.taskId
 
       if (taskId) {
-        const result = await reportsApi.getCaseAveragesByFilters(taskId, {
+        const result = await reportsPort.getCaseAveragesByFilters(taskId, {
           tags: normalizedTags,
           includeUntagged,
           categories: selectedCategories.value
-        });
+        })
 
-        metricData.value = extractInitialMetricData(result);
+        metricData.value = extractInitialMetricData(result)
         return
       }
 
-      const reportId = reportData.id || reportData.report_id
-      if (reportId) {
+      const reportIdValue = report?.id
+      if (reportIdValue) {
         const body = {
           page: 1,
-          per_page: 5000,
+          perPage: 5000,
           tags: normalizedTags,
           includeUntagged,
           category: (selectedCategories.value || []).length === 1 ? selectedCategories.value[0] : null
         }
 
-        const res = await reportsApi.searchCases(reportId, body)
-        const cases = res?.items || res?.data?.items || []
+        const res = await reportsPort.searchCases(reportIdValue, body)
+        const cases = res?.items || []
         metricData.value = computeMetricDataFromCases(cases, {
           selectedCategories,
           selectedTags,
@@ -337,25 +327,25 @@ export function useCaseCategoryComparison(props) {
         return
       }
     } catch (error) {
-      console.error('调用API失败:', error);
+      console.error('调用API失败:', error)
     }
   }
 
   // 使用提取的 getMetricValue/getRawDataValue
   const { getMetricValue, getRawDataValue } = createCategoryMetricValueGetters({ metricData })
 
-  const getMetricDisplayValue = (category, device, metricName) => {
+  const getMetricDisplayValue = (category: string, device: string, metricName: string) => {
     return formatMetricForDisplay(metricName, getMetricValue(category, device, metricName))
   }
 
-  const getMetricUnit = (metricName) => {
+  const getMetricUnit = (metricName: string) => {
     const metric = allMetrics.value.find(m => m.name === metricName)
     return metric?.unit || ''
   }
 
-  const getTableColumns = (metricName) => {
+  const getTableColumns = (metricName: string): CategoryColumn[] => {
     const unit = getMetricUnit(metricName)
-    const columns = [
+    const columns: CategoryColumn[] = [
       {
         key: 'category',
         label: '用例分组',
@@ -368,7 +358,7 @@ export function useCaseCategoryComparison(props) {
     devices.value.forEach((device, index) => {
       columns.push({
         key: `device-${index}`,
-        label: processedDevices.value[index],
+        label: processedDevices.value[index] ?? '',
         editable: true,
         resize: true,
         class: 'device-column',
@@ -380,9 +370,9 @@ export function useCaseCategoryComparison(props) {
     return columns
   }
 
-  const getTableData = (metricName) => {
+  const getTableData = (metricName: string): Record<string, string>[] => {
     return filteredCategories.value.map(category => {
-      const row = {
+      const row: Record<string, string> = {
         category: category
       }
 
@@ -394,7 +384,7 @@ export function useCaseCategoryComparison(props) {
     })
   }
 
-  const handleHeaderSave = ({ colIndex, value, column }) => {
+  const handleHeaderSave = ({ colIndex, value, column }: HeaderSavePayload) => {
     if (colIndex === 0) {
       if (column && column.key === 'category') {
         const oldName = column.label
@@ -411,7 +401,7 @@ export function useCaseCategoryComparison(props) {
     }
   }
 
-  const handleCellSave = ({ rowIndex, colIndex, value }) => {
+  const handleCellSave = ({ rowIndex, colIndex, value }: CellSavePayload) => {
     if (colIndex === 0) {
       const category = filteredCategories.value[rowIndex]
       if (category) {
@@ -420,11 +410,12 @@ export function useCaseCategoryComparison(props) {
     }
   }
 
-  const handleCategoryCellClick = (metricName, rowIndex, colIndex, row) => {
+  const handleCategoryCellClick = (metricName: string, rowIndex: number, colIndex: number, row?: unknown) => {
     const tableRef = tableRefs.value[metricName]
     if (tableRef) {
       tableRef.startEditCell(rowIndex, colIndex)
     }
+    void row
   }
 
   // 使用提取的 getChartData
@@ -495,3 +486,6 @@ export function useCaseCategoryComparison(props) {
     applyFilters
   }
 }
+
+// 模块内引用：保持 Ref 类型在接口签名中可用
+export type { Ref }

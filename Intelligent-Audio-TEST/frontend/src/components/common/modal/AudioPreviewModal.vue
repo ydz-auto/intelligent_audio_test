@@ -42,7 +42,7 @@
 
 <script setup>
 import { ref, watch, onUnmounted } from 'vue';
-import { audiosApi } from '../../../utils/api';
+import { audiosPort } from '../../../composables/audio/audiosPort';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },

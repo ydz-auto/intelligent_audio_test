@@ -293,24 +293,26 @@ class TestConfig(unittest.TestCase):
             self.assertEqual(voice_llm.get('protocol'), 'http')
 
 
-class TestFlaskApp(unittest.TestCase):
-    """Integration tests for Flask app."""
+class TestFastAPIApp(unittest.TestCase):
+    """FastAPI 应用集成测试(httpx TestClient)。"""
 
     def setUp(self):
+        from fastapi.testclient import TestClient
         from api_adapter_service.app import create_app
         self.app = create_app()
-        self.client = self.app.test_client()
+        self.client = TestClient(self.app)
 
     def test_health_endpoint(self):
         resp = self.client.get('/health')
         self.assertEqual(resp.status_code, 200)
-        data = resp.get_json()
+        data = resp.json()
         self.assertEqual(data['status'], 'healthy')
         self.assertIn('dialog', data['supported_modes'])
 
     def test_v1_tasks_requires_body(self):
-        resp = self.client.post('/api/v1/tasks', content_type='application/json')
+        resp = self.client.post('/api/v1/tasks', json={})
         self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()['code'], 4000)
 
     def test_v1_tasks_requires_session_id(self):
         resp = self.client.post(
@@ -318,7 +320,7 @@ class TestFlaskApp(unittest.TestCase):
             json={'input': {'type': 'text', 'text': 'hello'}},
         )
         self.assertEqual(resp.status_code, 400)
-        data = resp.get_json()
+        data = resp.json()
         self.assertEqual(data['code'], 4000)
 
     def test_v1_tasks_mock_dialog(self):
@@ -335,7 +337,7 @@ class TestFlaskApp(unittest.TestCase):
             },
         )
         self.assertEqual(resp.status_code, 200)
-        data = resp.get_json()
+        data = resp.json()
         self.assertEqual(data['code'], 0)
         self.assertEqual(data['asr_text'], 'hello world')
         self.assertIn('trans_text', data)
@@ -357,7 +359,7 @@ class TestFlaskApp(unittest.TestCase):
                 },
             )
             self.assertEqual(resp.status_code, 200)
-            results.append(resp.get_json())
+            results.append(resp.json())
 
         # All rounds should succeed
         for r in results:
@@ -374,7 +376,7 @@ class TestFlaskApp(unittest.TestCase):
     def test_list_sessions(self):
         resp = self.client.get('/api/sessions')
         self.assertEqual(resp.status_code, 200)
-        data = resp.get_json()
+        data = resp.json()
         self.assertIn('active_count', data['data'])
 
     def test_create_dialog_task_async(self):
@@ -389,7 +391,7 @@ class TestFlaskApp(unittest.TestCase):
             },
         )
         self.assertEqual(resp.status_code, 200)
-        data = resp.get_json()
+        data = resp.json()
         self.assertEqual(data['code'], 0)
         self.assertIn('task_id', data['data'])
 

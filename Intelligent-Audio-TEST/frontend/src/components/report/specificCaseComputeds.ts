@@ -1,4 +1,5 @@
 import { computed } from 'vue'
+import { unwrapMetricValue } from './specificCaseDataHelpers'
 
 export function createCaseMetricsComputeds(deps: {
   allMetrics: any
@@ -57,7 +58,7 @@ export function createCaseMetricsComputeds(deps: {
           })
         } else if (metricsData && typeof metricsData === 'object') {
           Object.entries(metricsData).forEach(([metricName, metricValue]) => {
-            const n = typeof metricValue === 'number' ? metricValue : Number(metricValue)
+            const n = Number(unwrapMetricValue(metricValue))
             if (Number.isFinite(n)) usedMetricNames.add(metricName)
           })
         }

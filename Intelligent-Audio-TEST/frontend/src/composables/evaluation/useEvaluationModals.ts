@@ -1,6 +1,6 @@
 import { useModalControl } from '../modal/useModal';
-import { MODAL_TYPES } from '../../shared/types';
-import { evaluationApi } from '../../utils/api';
+import { MODAL_TYPES } from '../modal/constants';
+import { evaluationPort } from './evaluationPort';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
 
 /**
@@ -32,22 +32,24 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
   function openEditModal(id: number | string) {
     const dimension = dimensions.value.find(dim => dim.id === id);
     if (dimension) {
-      const rawEndpoints = (dimension as any).api_endpoints || [];
+      // Domain 侧为 camelCase：apiEndpoints / maxProcess / maxTimeout / maxAudioDuration
+      const rawEndpoints = dimension.apiEndpoints || [];
       const apiEndpoints = Array.isArray(rawEndpoints) ? rawEndpoints.map(ep => ({
-        url: ep.url || ep.endpoint || '',
+        url: ep.url || (ep as any).endpoint || '',
         name: ep.name || '',
         priority: ep.priority || 1,
-        maxProcess: ep.max_process || 5,
-        maxTimeout: ep.max_timeout || 30,
-        maxAudioDuration: ep.max_audio_duration || 60
+        maxProcess: ep.maxProcess || 5,
+        maxTimeout: ep.maxTimeout || 30,
+        maxAudioDuration: ep.maxAudioDuration || 60
       })) : [];
 
       if (apiEndpoints.length === 0) {
         apiEndpoints.push({ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 });
       }
 
-      const apiUrl = (dimension as any).api_url || '';
-      const rawApiSettings = dimension.api_settings || (dimension as any).apiSettings;
+      // Domain 侧为 camelCase（adapter 已完成 snake_case → camelCase 转换）
+      const apiUrl = dimension.apiUrl || '';
+      const rawApiSettings = dimension.apiSettings;
       // 使用 any 类型以兼容动态 bodyTemplate.rounds 结构
       let apiSettingsObj: any = { method: 'POST', headers: {}, bodyTemplate: {}, timeout: 30000 };
       if (rawApiSettings) {
@@ -63,7 +65,7 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
         }
       }
 
-      const rawRequiredInputs = (dimension as any).required_inputs || [];
+      const rawRequiredInputs = dimension.requiredInputs || [];
       const requiredInputsArray = Array.isArray(rawRequiredInputs) ? rawRequiredInputs : [];
       const requiredInputsObj = requiredInputsArray;
 
@@ -72,6 +74,7 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
         if (apiSettingsObj.bodyTemplate.rounds && Array.isArray(apiSettingsObj.bodyTemplate.rounds)) {
           const roundTpl = apiSettingsObj.bodyTemplate.rounds[0] || {};
           const requiredInputKeys = new Set(
+            // TODO: param_code 为后端原字段名，apiSettings bodyTemplate 透传结构
             requiredInputsArray.map((input: any) => input.param_code || input.key).filter(Boolean)
           );
           Object.keys(roundTpl).forEach(key => {
@@ -80,6 +83,7 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
             }
           });
           requiredInputsArray.forEach((input: any) => {
+            // TODO: param_code 为后端原字段名，apiSettings bodyTemplate 透传结构
             const inputKey = input.param_code || input.key;
             if (inputKey && !roundTpl[inputKey]) {
               roundTpl[inputKey] = `{{${inputKey}}}`;
@@ -104,29 +108,29 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
       }
 
       // 处理 associatedAlgorithms - 将对象数组转换为字符串数组
-      const rawAssociatedAlgorithms = (dimension as any).associated_algorithms || [];
+      const rawAssociatedAlgorithms = dimension.associatedAlgorithms || [];
       let associatedAlgorithmsArray = [];
       if (Array.isArray(rawAssociatedAlgorithms)) {
         if (rawAssociatedAlgorithms.length > 0 && typeof rawAssociatedAlgorithms[0] === 'object') {
           // 如果是对象数组，提取 algorithmType (驼峰格式，由后端 schema 转换)
-          associatedAlgorithmsArray = rawAssociatedAlgorithms.map((item: any) => item.algorithm_type);
+          associatedAlgorithmsArray = rawAssociatedAlgorithms.map((item: any) => item.algorithmType);
         } else {
           // 如果已经是字符串数组，直接使用
           associatedAlgorithmsArray = rawAssociatedAlgorithms;
         }
       }
 
-      const rawDimensionType = dimension.dimension_type || 'main';
+      const rawDimensionType = dimension.dimensionType || 'main';
       const dimensionType = (rawDimensionType === 'main' || rawDimensionType === 'sub') ? rawDimensionType : 'main';
-      const parentDimensionId = (dimension as any).parent_dimension_id || '';
+      const parentDimensionId = dimension.parentDimensionId || '';
 
-      // 处理 llmJudgeConfig
-      const rawLlmJudgeConfig = dimension.llm_judge_config || (dimension as any).llmJudgeConfig;
+      // 处理 llmJudgeConfig（Domain 侧 camelCase）
+      const rawLlmJudgeConfig = dimension.llmJudgeConfig;
       const llmJudgeConfig = rawLlmJudgeConfig
         ? {
             model: rawLlmJudgeConfig.model || '',
-            promptTemplate: rawLlmJudgeConfig.prompt_template || '',
-            maxTokens: rawLlmJudgeConfig.max_tokens || 1024,
+            promptTemplate: rawLlmJudgeConfig.promptTemplate || '',
+            maxTokens: rawLlmJudgeConfig.maxTokens || 1024,
             temperature: rawLlmJudgeConfig.temperature ?? 0.7
           }
         : {
@@ -136,13 +140,13 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
             temperature: 0.7
           };
 
-      const rawOutputFields = (dimension as any).output_fields || [];
+      const rawOutputFields = dimension.outputFields || [];
       const outputFieldsArray = Array.isArray(rawOutputFields) ? rawOutputFields : [];
-      const statisticMethod = (dimension as any).statistic_method || 'average';
+      const statisticMethod = dimension.statisticMethod || 'average';
 
       const editingData = {
         ...dimension,
-        categoryId: dimension.category_id || (dimension as any).categoryId,
+        categoryId: dimension.categoryId,
         apiEndpoints,
         apiUrl,
         apiSettings: apiSettingsObj,
@@ -154,7 +158,7 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
         status: String(dimension.status).toLowerCase() === 'true',
         dimensionType: dimensionType,
         parentDimensionId: parentDimensionId,
-        taskTypeCode: (dimension as any).task_type_code || '',
+        taskTypeCode: dimension.taskTypeCode || '',
         llmJudgeConfig: llmJudgeConfig
       };
 
@@ -265,8 +269,9 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
     try {
       const apiSettingsData = { ...apiSettings.value, ...settings };
 
-      await evaluationApi.update(apiSettingsData.id, {
-        api_settings: apiSettingsData
+      // Domain 为 camelCase（apiSettings），adapter 层负责转后端 api_settings
+      await evaluationPort.update(apiSettingsData.id, {
+        apiSettings: apiSettingsData
       });
 
       Object.assign(apiSettings.value, apiSettingsData);

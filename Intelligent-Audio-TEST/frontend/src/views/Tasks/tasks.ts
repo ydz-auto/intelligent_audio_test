@@ -1,8 +1,7 @@
 import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import { reportService } from '../../services/reportService';
-import type { Task } from '../../shared/types';
-import { TaskStatus } from '@/shared/types/enums';
+import type { Task } from '../../domain';
+import { TaskStatus } from '@/domain/enums';
 import { useTaskList } from '../../composables/task/useTaskList';
 import { useTaskControl } from '../../composables/task/useTaskControl';
 import { useTaskBatchOps } from '../../composables/task/useTaskBatchOps';
@@ -266,9 +265,6 @@ export function useTasks() {
     currentTask,
     createNewTask,
     handleCreateTask,
-
-    // 服务引用
-    reportService,
 
     // 生命周期
     initTasks,

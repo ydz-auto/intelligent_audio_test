@@ -1,7 +1,8 @@
 import { ref, type Ref } from 'vue';
-import type { TestCase } from '../../shared/types';
+import type { TestCase } from '../../domain';
 import { normalizeTestCaseConfig } from '../../utils/utils';
 import { useTestCaseStore } from '../../store/testCaseStore';
+import { TestType } from '@/domain/enums';
 
 /**
  * 测试用例音频预览 composable。
@@ -46,10 +47,10 @@ export function useTestCaseAudioPreview(
     });
 
     // In dual-record architecture, test_type is at the record level
-    // 后端列表接口返回字段名为 type，兼容 test_type / testType
-    const recordTestType = ((testCase as any).test_type || (testCase as any).type || 'api').toLowerCase();
-    const isApi = recordTestType === 'api';
-    const isE2e = recordTestType === 'e2e' || recordTestType === 'e2e_test';
+    // 后端原始字段 test_type → adapter 出口 testType；兜底 type
+    const recordTestType = (testCase.testType || testCase.type || TestType.API).toLowerCase();
+    const isApi = recordTestType === TestType.API;
+    const isE2e = recordTestType === TestType.E2E || recordTestType === 'e2e_test';
 
     const hasAPIConfig = isApi && allAudios.length > 0;
     const hasE2eConfig = isE2e && allAudios.length > 0;
@@ -70,9 +71,9 @@ export function useTestCaseAudioPreview(
     selectedAudioType.value = audioType;
     showAudioTypeModal.value = false;
 
-    if (audioType === 'api') {
+    if (audioType === TestType.API) {
       showAudioPlayer.value = true;
-    } else if (audioType === 'e2e') {
+    } else if (audioType === TestType.E2E) {
       showAudioPreviewModal.value = true;
     }
   };
@@ -121,10 +122,10 @@ export function useTestCaseAudioPreview(
             if (hasAPIConfig && hasE2eConfig) {
               showAudioTypeModal.value = true;
             } else if (hasAPIConfig) {
-              selectedAudioType.value = 'api';
+              selectedAudioType.value = TestType.API;
               showAudioPlayer.value = true;
             } else if (hasE2eConfig) {
-              selectedAudioType.value = 'e2e';
+              selectedAudioType.value = TestType.E2E;
               showAudioPreviewModal.value = true;
             }
           } catch (error: any) {

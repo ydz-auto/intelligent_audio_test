@@ -47,7 +47,12 @@
 import { ref, computed, watch } from 'vue';
 import TestCaseCard from './TestCaseCard.vue';
 
-interface TestCaseItem {
+/**
+ * 用例列表行展示态：Domain 的 TestCase 未包含前端展示态字段
+ * （status 过滤态 / selected 勾选态），且需兼容松散的历史行数据，
+ * 故保留组件本地类型，不归集到 Domain。
+ */
+interface TestCaseListItemState {
   id?: string | number;
   name?: string;
   description?: string;
@@ -84,13 +89,13 @@ watch(() => props.searchQuery, () => {
 });
 
 const filteredTestCases = computed(() => {
-  let cases = [...props.testCases] as TestCaseItem[];
+  let cases = [...props.testCases] as TestCaseListItemState[];
   
   cases = cases.filter(Boolean);
   
   if (props.searchQuery) {
     const query = props.searchQuery.toLowerCase();
-    cases = cases.filter((testCase: TestCaseItem) => {
+    cases = cases.filter((testCase: TestCaseListItemState) => {
       const idStr = String(testCase.id || '').toLowerCase();
       return idStr.includes(query) ||
              (testCase.name || '').toLowerCase().includes(query) ||
@@ -101,11 +106,11 @@ const filteredTestCases = computed(() => {
   
   if (props.filter) {
     if (props.filter.tag && props.filter.tag !== 'all') {
-      cases = cases.filter((testCase: TestCaseItem) => testCase.tags && testCase.tags.includes(props.filter.tag));
+      cases = cases.filter((testCase: TestCaseListItemState) => testCase.tags && testCase.tags.includes(props.filter.tag));
     }
     
     if (props.filter.status) {
-      cases = cases.filter((testCase: TestCaseItem) => testCase.status === props.filter.status);
+      cases = cases.filter((testCase: TestCaseListItemState) => testCase.status === props.filter.status);
     }
     
     if (props.filter.customFilter && typeof props.filter.customFilter === 'function') {

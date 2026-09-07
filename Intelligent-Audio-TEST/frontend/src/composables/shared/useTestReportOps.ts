@@ -1,9 +1,16 @@
-import { ref, computed, type Ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { reportsApi } from '../../utils/api'
+import { reportsPort } from '../report/reportsPort'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
 import { useTestReport } from './useTestReport'
-import reportService from '../../services/reportService'
+import { viewTaskReport } from '../report/useReportComparison'
+import {
+  deviceApiComparisonData as storeDeviceApiComparisonData,
+  caseExecutionData as storeCaseExecutionData,
+  deviceApiColumns as storeDeviceApiColumns,
+  caseExecutionColumns as storeCaseExecutionColumns,
+} from '../../store/reportComparisonStore'
+import { TaskStatus, TestType } from '@/domain/enums'
 
 interface UseTestReportOpsOptions {
   testType: 'e2e' | 'api'
@@ -41,12 +48,12 @@ export function useTestReportOps(options: UseTestReportOpsOptions) {
   const reportTables = ref<any[]>([])
 
   /** 查看任务报告（e2e/api 共用），完成后根据是否有 id 决定跳转或回退步骤 */
-  const fetchReport = async (status: 'completed' | 'failed' = 'completed', progress = 100) => {
+  const fetchReport = async (status: 'completed' | 'failed' = TaskStatus.COMPLETED, progress = 100) => {
     if (!currentTaskId.value) return
     try {
-      const reportData = await reportService.viewTaskReport({
+      const reportData = await viewTaskReport({
         id: currentTaskId.value,
-        name: taskName.value || (testType === 'e2e' ? 'E2E测试任务' : 'API测试任务'),
+        name: taskName.value || (testType === TestType.E2E ? 'E2E测试任务' : 'API测试任务'),
         type: testType,
         status,
         progress,
@@ -89,7 +96,7 @@ export function useTestReportOps(options: UseTestReportOpsOptions) {
       if (!reportId) {
         throw new Error('无法保存报告：报告ID为空')
       }
-      await reportsApi.update(reportId, report.value)
+      await reportsPort.update(reportId, report.value)
       isEditingReport.value = false
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '保存成功',
@@ -109,33 +116,13 @@ export function useTestReportOps(options: UseTestReportOpsOptions) {
     }
   }
 
-  // 报告表格的对比数据（来自 reportService）
-  const deviceApiComparisonData = computed(() => reportService.deviceApiComparisonData.value)
-  const caseExecutionData = computed(() => reportService.caseExecutionData.value)
+  // 报告表格的对比数据（来自 reportComparisonStore，模块级单例 ReadModel）
+  const deviceApiComparisonData = storeDeviceApiComparisonData
+  const caseExecutionData = storeCaseExecutionData
 
-  // 列定义
-  const deviceApiColumns = [
-    { key: 'name', label: '名称', type: 'text', sortable: true },
-    { key: 'type', label: '类型', type: 'text', sortable: true },
-    { key: 'version', label: '版本', type: 'text', sortable: true },
-    { key: 'status', label: '状态', type: 'status', sortable: true },
-    { key: 'totalCases', label: '总用例数', type: 'number', sortable: true },
-    { key: 'completedCases', label: '已完成用例数', type: 'number', sortable: true },
-    { key: 'failedCases', label: '失败用例数', type: 'number', sortable: true },
-    { key: 'successRate', label: '成功率(%)', type: 'number', sortable: true },
-    { key: 'avgResponseTime', label: '平均响应时间(ms)', type: 'number', sortable: true },
-    { key: 'stability', label: '稳定性(%)', type: 'number', sortable: true },
-  ]
-
-  const caseExecutionColumns = [
-    { key: 'name', label: '名称', type: 'text', sortable: true },
-    { key: 'total', label: '总用例数', type: 'number', sortable: true },
-    { key: 'executed', label: '已执行', type: 'number', sortable: true },
-    { key: 'passed', label: '通过', type: 'number', sortable: true },
-    { key: 'failed', label: '失败', type: 'number', sortable: true },
-    { key: 'successRate', label: '成功率', type: 'percentage', sortable: true },
-    { key: 'failedRate', label: '失败率', type: 'percentage', sortable: true },
-  ]
+  // 列定义（复用 store 中的唯一来源，消除重复）
+  const deviceApiColumns = storeDeviceApiColumns
+  const caseExecutionColumns = storeCaseExecutionColumns
 
   return {
     report,

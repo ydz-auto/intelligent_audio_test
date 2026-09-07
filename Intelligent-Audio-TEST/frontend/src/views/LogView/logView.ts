@@ -1,20 +1,41 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, onUnmounted, nextTick, type Ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { logsApi, algorithmApi } from '../../utils/api';
-// 移除不存在的导入，使用默认值
-const LOG_LEVEL_OPTIONS = [{ value: 'debug', label: 'Debug' }, { value: 'info', label: 'Info' }, { value: 'warning', label: 'Warning' }, { value: 'error', label: 'Error' }];
-const LOG_LEVEL_MAP: Record<string, string> = { debug: 'DEBUG', info: 'INFO', warning: 'WARNING', error: 'ERROR' };
+import { logsPort } from '../../composables/task/logsPort';
+import { algorithmPort } from '../../composables/algorithm/algorithmPort';
 import { useModalControl } from '../../composables/modal/useModal';
-import { Log, LogFilters, AdvancedLogFilters, LogStats, LogQueryParams, LogLevelOption, MODAL_TYPES } from '../../shared/types';
+import type {
+  Log,
+  LogFilters,
+  AdvancedLogFilters,
+  LogStats,
+  LogQuery as LogQueryParams,
+  LogLevelOption,
+  LogRow
+} from '../../domain';
+import { MODAL_TYPES } from '../../composables/modal/constants';
 import { usePagination } from '../../composables/usePagination';
+import { formatLogTime } from '../../utils/timeFormat';
 // 引入视图模式枚举，消除魔法字符串
-import { ViewMode, TestType } from '@/shared/types/enums';
+import { LogLevel, ViewMode, TestType } from '@/domain/enums';
 
-interface UILog extends Log {
-  selected: boolean;
-  isExpanded: boolean;
-  time: string;
-}
+// 日志级别选项/默认全选值由 domain 枚举 LogLevel 派生（value 小写用于筛选，label 首字母大写）
+const LOG_LEVEL_OPTIONS: LogLevelOption[] = Object.values(LogLevel).map(level => ({
+  value: level.toLowerCase(),
+  label: level.charAt(0) + level.slice(1).toLowerCase()
+}));
+// 默认选中的日志级别（小写 value）
+const DEFAULT_SELECTED_LEVELS: string[] = Object.values(LogLevel).map(level => level.toLowerCase());
+// 日志级别（小写）→ 后端查询参数（大写原值）映射，由领域枚举派生，消除悬空引用
+const LOG_LEVEL_MAP: Record<string, string> = Object.fromEntries(
+  Object.values(LogLevel).map(level => [level.toLowerCase(), level]),
+);
+// 实时日志轮询间隔（毫秒）
+const REALTIME_POLL_INTERVAL_MS = 5000;
+// 实时监控连接状态文案
+const CONNECTION_STATUS = { CONNECTED: '已连接', ERROR: '连接异常' } as const;
+
+// 日志行视图模型统一收敛至 domain/model/ui.ts 的 LogRow（与 useTaskLogs 共用）
+type UILog = LogRow;
 
 interface LogViewRefs {
   startDateTimeRef?: Ref<HTMLInputElement | null>;
@@ -28,7 +49,7 @@ export function useLogView(refs?: LogViewRefs) {
   const showMonitorIndicator = ref(false);
   const logRate = ref(0);
   const logDelay = ref(0);
-  const connectionStatus = ref('已连接');
+  const connectionStatus = ref<typeof CONNECTION_STATUS[keyof typeof CONNECTION_STATUS]>(CONNECTION_STATUS.CONNECTED);
   const autoScrollEnabled = ref(true);
   const realTimeLogInterval = ref<number | null>(null);
 
@@ -74,11 +95,8 @@ export function useLogView(refs?: LogViewRefs) {
   const currentPage = ref(1);
   const pageSize = ref(10);
 
-  // 使用通用分页 composable 计算总页数
-  // 说明：日志分页为服务端分页，totalLogs 由 API 返回
-  // 此处用 totalLogs 长度的占位数组驱动 totalPages 计算，分页数据由后端返回
-  const placeholderForTotal = computed(() => Array(totalLogs.value).fill(0));
-  const { totalPages } = usePagination(placeholderForTotal, pageSize, { currentPage });
+  // 日志为服务端分页：totalLogs 由后端返回，直接驱动 totalPages 计算
+  const { totalPages } = usePagination(undefined, pageSize, { currentPage, totalCount: totalLogs });
   const algorithmOptions = ref<{ value: string; label: string }[]>([]);
 
   // 日志配置默认值
@@ -93,7 +111,7 @@ export function useLogView(refs?: LogViewRefs) {
 
   async function loadAlgorithmOptions() {
     try {
-      const data = await algorithmApi.getOptions();
+      const data = await algorithmPort.getOptions();
       algorithmOptions.value = [
         { value: 'all', label: '全部算法' },
         ...(data?.algorithms || []).map((algo: any) => ({
@@ -132,7 +150,7 @@ export function useLogView(refs?: LogViewRefs) {
   const fetchStats = async () => {
     try {
       const params = buildQueryParams();
-      const response = await logsApi.getStats(params);
+      const response = await logsPort.getStats(params);
       
       const result : LogStats = {total: response.total || 0, error: 0, warning: 0, info: 0};
       
@@ -163,7 +181,7 @@ export function useLogView(refs?: LogViewRefs) {
       params.page = currentPage.value;
       params.perPage = pageSize.value;
 
-      const response = await logsApi.getAll(params);
+      const response = await logsPort.getAll(params);
       
       logs.value = (response.items || []).map((log: Log) => {
         let formattedTime = log.time?.toString() || log.timestamp?.toString() || '';
@@ -286,7 +304,7 @@ export function useLogView(refs?: LogViewRefs) {
       contentExclude: ''
     });
     
-    selectedLevels.value = ['debug', 'info', 'warning', 'error'];
+    selectedLevels.value = [...DEFAULT_SELECTED_LEVELS];
     searchTerm.value = '';
     filterLogs();
   };
@@ -309,7 +327,7 @@ export function useLogView(refs?: LogViewRefs) {
     isLoading.value = true;
     try {
       const lastId = logs.value.length > 0 ? logs.value[0].id : 0;
-      await logsApi.refresh(lastId);
+      await logsPort.refresh(lastId);
       await fetchLogs();
     } catch (error) {
       console.error('Failed to refresh logs:', error);
@@ -327,7 +345,7 @@ export function useLogView(refs?: LogViewRefs) {
       onConfirm: async () => {
         try {
           isLoading.value = true;
-          await logsApi.clear();
+          await logsPort.clear();
           currentPage.value = 1;
           await fetchLogs();
         } catch (error) {
@@ -373,7 +391,7 @@ export function useLogView(refs?: LogViewRefs) {
             (exportParams as any).logIds = logs.value.filter(l => l.selected).map(l => l.id).join(',');
           }
           
-          await logsApi.export({ ...exportParams, format: options.format } as any);
+          await logsPort.export({ ...exportParams, format: options.format } as any);
         } catch (error) {
           console.error('Failed to export logs:', error);
         } finally {
@@ -398,22 +416,25 @@ export function useLogView(refs?: LogViewRefs) {
     if (realTimeLogInterval.value) return;
 
     realTimeLogInterval.value = window.setInterval(async () => {
-      logRate.value = Math.floor(Math.random() * 10);
-      logDelay.value = Math.floor(Math.random() * 100);
-      connectionStatus.value = '已连接';
-      
       if (autoScrollEnabled.value && currentPage.value === 1) {
         const lastId = logs.value.length > 0 ? Math.max(...logs.value.map(l => l.id)) : 0;
+        const pollStartTime = performance.now();
         try {
-          const response = await logsApi.refresh(lastId) as { newCount: number };
-          if (response && response.newCount > 0) {
+          const response = await logsPort.refresh(lastId);
+          const newCount = response.newCount;
+          // 基于真实增量计算日志速率（条/秒）与响应延迟（毫秒）
+          logRate.value = Math.round((newCount * 1000 / REALTIME_POLL_INTERVAL_MS) * 10) / 10;
+          logDelay.value = Math.round(performance.now() - pollStartTime);
+          connectionStatus.value = CONNECTION_STATUS.CONNECTED;
+          if (newCount > 0) {
             fetchLogs();
           }
         } catch (e) {
+          connectionStatus.value = CONNECTION_STATUS.ERROR;
           console.error('Real-time refresh failed:', e);
         }
       }
-    }, 5000);
+    }, REALTIME_POLL_INTERVAL_MS);
   };
 
   const stopRealTimeLog = () => {
@@ -445,7 +466,7 @@ export function useLogView(refs?: LogViewRefs) {
     if (log) {
       const newMark = log.mark === markColor.value ? '' : markColor.value;
       try {
-        await logsApi.mark([logId], newMark);
+        await logsPort.mark([logId], newMark);
         log.mark = newMark;
       } catch (error) {
         console.error('Failed to mark log:', error);
@@ -464,7 +485,7 @@ export function useLogView(refs?: LogViewRefs) {
       cancelText: '取消',
       onConfirm: async () => {
         try {
-          await logsApi.mark(selectedLogIds, markColor.value);
+          await logsPort.mark(selectedLogIds, markColor.value);
           logs.value.forEach(log => {
             if (log.selected) log.mark = markColor.value;
           });

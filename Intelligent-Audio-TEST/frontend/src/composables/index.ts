@@ -14,8 +14,3 @@ export {
   MODAL_INJECTION_KEY,
   MODAL_TYPES
 } from './modal/useModal'
-
-export { registerGlobalModals } from './modal/modalRegistration'
-
-export { default as globalModalContainer } from '../components/common/modal/GlobalModalContainer.vue'
-export { default as modalConfirm } from '../components/common/modal/ModalConfirm.vue'

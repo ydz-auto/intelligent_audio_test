@@ -107,7 +107,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from 'vue'
-import { playbackApi } from '../../../utils/api'
+import { playbackPort } from '../../../composables/device/playbackPort'
 import { volumeToDb, dbToLinear, volumeToLinear, DB_MIN, DB_MAX, generateGainCurve } from '../../../utils/audioUtils'
 
 const props = defineProps<{
@@ -144,8 +144,8 @@ const curvePreview = computed(() => {
 
 onMounted(async () => {
   try {
-    const devices = await playbackApi.getAll()
-    playbackDevices.value = Array.isArray(devices) ? devices : (devices.items || [])
+    // playbackPort.getAll 已展平为 Domain 数组
+    playbackDevices.value = await playbackPort.getAll()
   } catch (error) {
     console.error('获取播放设备失败:', error)
   }

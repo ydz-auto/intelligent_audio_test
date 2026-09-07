@@ -118,9 +118,9 @@
                     <td class="dimension-description-col text-truncate" :title="dimension.description">{{ dimension.description || '-' }}</td>
                     <td class="dimension-category-col">{{ dimension.category || dimension.type }}</td>
                     <td class="dimension-algorithms-col">
-                      <div class="algorithm-tags" v-if="dimension.associated_algorithms && dimension.associated_algorithms.length > 0">
-                        <span class="algo-tag" v-for="algo in dimension.associated_algorithms" :key="algo.algorithm_type" :class="{ 'is-default': algo.is_default }">
-                          {{ getAlgorithmLabel(algo.algorithm_type) }}
+                      <div class="algorithm-tags" v-if="dimension.associatedAlgorithms && dimension.associatedAlgorithms.length > 0">
+                        <span class="algo-tag" v-for="algo in dimension.associatedAlgorithms" :key="algo.algorithmType" :class="{ 'is-default': algo.isDefault }">
+                          {{ getAlgorithmLabel(algo.algorithmType) }}
                         </span>
                       </div>
                       <span v-else class="text-muted">-</span>
@@ -135,8 +135,8 @@
                       <span v-if="isLlmJudge(dimension)" class="api-status llm-judge">
                         <i class="fas fa-robot"></i> LLM Judge
                       </span>
-                      <span v-else class="api-status" :class="dimension.api_status">
-                        <i class="fas fa-circle" :class="dimension.api_status === 'online' ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.api_status === 'online' ? '在线' : '离线' }}
+                      <span v-else class="api-status" :class="dimension.apiStatus">
+                        <i class="fas fa-circle" :class="dimension.apiStatus === ApiEndpointStatus.ONLINE ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.apiStatus === ApiEndpointStatus.ONLINE ? '在线' : '离线' }}
                       </span>
                     </td>
                     <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
@@ -191,6 +191,9 @@ import PaginationComponent from '../../components/common/data/PaginationComponen
 
 // 导入组件逻辑
 import { useEvaluation } from './evaluation';
+
+// 枚举
+import { ApiEndpointStatus } from '../../domain/enums';
 
 const {
   batchMenuRef,

@@ -105,7 +105,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { playbackApi } from '../../../utils/api'
+import { playbackPort } from '../../../composables/device/playbackPort'
 
 interface Props {
   modalId: string
@@ -157,8 +157,8 @@ const allDevicesComputed = computed(() => {
 
 async function loadDevices() {
   try {
-    const result = await playbackApi.getAll()
-    allDevices.value = (result as any).items || []
+    // playbackPort.getAll 已展平为 Domain 数组
+    allDevices.value = await playbackPort.getAll()
   } catch (error) {
     console.error('加载播放设备列表失败:', error)
     allDevices.value = []
@@ -170,7 +170,7 @@ async function scanAvailableDevices() {
   scanError.value = ''
   
   try {
-    const devices = await playbackApi.scan()
+    const devices = await playbackPort.scan()
     const scannedDevices = devices || []
     
     const existingKeys = new Set(allDevices.value.map(d => `${d.name}|${d.channelIndex}`))

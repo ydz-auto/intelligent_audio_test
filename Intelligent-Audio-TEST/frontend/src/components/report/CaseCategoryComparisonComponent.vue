@@ -271,7 +271,7 @@
 </template>
 
 <script setup>
-import { inject, watch } from 'vue'
+import { inject, ref, watch } from 'vue'
 import ChartComponent from './ChartComponent.vue'
 import DataTable from '../common/data/DataTable.vue'
 import '../../assets/styles/components/report-filter-card.css'
@@ -283,8 +283,8 @@ const props = defineProps({
   }
 })
 
-// 导出模式：导出时展开所有折叠区块
-const isExporting = inject('isExporting', false)
+// 导出模式：导出时展开所有折叠区块（默认值必须是 ref，供 watch 使用）
+const isExporting = inject('isExporting', ref(false))
 
 const {
   isCollapsed,

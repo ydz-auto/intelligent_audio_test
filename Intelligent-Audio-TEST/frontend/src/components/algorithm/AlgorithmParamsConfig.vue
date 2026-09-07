@@ -37,7 +37,7 @@
           <div v-show="isPanelExpanded(algoType)" class="params-panel-body">
             <DynamicForm
               v-if="formSchemas[algoType]"
-              :algorithm-type="algoType"
+              :schema="formSchemas[algoType]!"
               :model-value="getAlgorithmParams(algoType)"
               @update:model-value="handleParamsChange(algoType, $event)"
             />
@@ -54,9 +54,15 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import DynamicForm from './DynamicForm.vue'
-import { useAlgorithmConfig, type AlgorithmDefinition, type FormSchema } from '../../composables/algorithm/useAlgorithmConfig'
+import { useAlgorithmConfig } from '../../composables/algorithm/useAlgorithmConfig'
+import type { AlgorithmDefinition, FormSchema } from '../../domain/model/algorithm'
 
-interface AlgorithmConfig {
+/**
+ * 算法默认参数配置项。
+ * 注意：default_params 为后端 snake_case 字段（用例 config.algorithm_configs 契约），
+ * 待后端统一 camelCase 后迁移为 defaultParams，运行时字段名不可改动。
+ */
+interface AlgorithmParamConfig {
   enabled: boolean
   default_params?: Record<string, any>
   notes?: string
@@ -64,7 +70,7 @@ interface AlgorithmConfig {
 
 const props = withDefaults(defineProps<{
   supportedAlgorithms?: string[]
-  algorithmConfigs?: Record<string, AlgorithmConfig>
+  algorithmConfigs?: Record<string, AlgorithmParamConfig>
 }>(), {
   supportedAlgorithms: () => [],
   algorithmConfigs: () => ({})
@@ -72,13 +78,13 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'update:supportedAlgorithms': [value: string[]]
-  'update:algorithmConfigs': [value: Record<string, AlgorithmConfig>]
+  'update:algorithmConfigs': [value: Record<string, AlgorithmParamConfig>]
 }>()
 
 const { loadAlgorithms, getFormSchema, algorithms } = useAlgorithmConfig()
 
 const selectedAlgorithms = ref<string[]>([...props.supportedAlgorithms])
-const localConfigs = ref<Record<string, AlgorithmConfig>>({ ...props.algorithmConfigs })
+const localConfigs = ref<Record<string, AlgorithmParamConfig>>({ ...props.algorithmConfigs })
 const expandedPanels = ref<Set<string>>(new Set())
 const formSchemas = ref<Record<string, FormSchema | null>>({})
 

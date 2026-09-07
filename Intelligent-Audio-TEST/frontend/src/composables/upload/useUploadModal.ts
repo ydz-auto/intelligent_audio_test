@@ -1,12 +1,12 @@
 import { ref, type Ref } from 'vue';
 import { getModalManager } from '../../utils/modalManager';
-import { MODAL_TYPES } from '../../shared/types';
-import type { AudioUploadOptions } from '../../shared/types';
+import { MODAL_TYPES } from '../modal/constants';
+import type { AudioUploadOptions } from '../../domain';
 import type { useDeviceManagement } from '../device/useDeviceManagement';
 import type { useAlgorithmParams } from '../algorithm/useAlgorithmParams';
 import type { useAudioUpload } from '../audio/useAudioUpload';
 // 引入测试类型枚举，消除魔法字符串
-import { TestType } from '@/shared/types/enums';
+import { TestType } from '../../domain/enums';
 
 interface DeviceApi {
   playbackDevices: Ref<ReturnType<typeof useDeviceManagement>['playbackDevices']['value']>;
@@ -137,13 +137,13 @@ function buildUploadOptionsConfig(
         { label: '提示词', value: 'prompt' },
         { label: '混合', value: 'mixed' }
       ],
-      defaultValue: uploadOptions.audio_type
+      defaultValue: uploadOptions.audioType
     },
     {
       key: 'createTestCase',
       label: '生成测试用例',
       type: 'boolean',
-      defaultValue: uploadOptions.create_test_case
+      defaultValue: uploadOptions.createTestCase
     },
     {
       key: 'algorithmType',
@@ -153,7 +153,7 @@ function buildUploadOptionsConfig(
         { label: '请选择算法', value: '' },
         ...(Array.isArray(algorithmApi.algorithmOptions.value) ? algorithmApi.algorithmOptions.value : []).map(a => ({ label: a.name, value: a.value }))
       ],
-      defaultValue: uploadOptions.algorithm_type
+      defaultValue: uploadOptions.algorithmType
     },
     {
       key: 'testTypes',
@@ -163,7 +163,7 @@ function buildUploadOptionsConfig(
         { label: 'E2E测试', value: TestType.E2E },
         { label: 'API测试', value: TestType.API }
       ],
-      defaultValue: uploadOptions.test_types
+      defaultValue: uploadOptions.testTypes
     },
     {
       key: 'dimensions',
@@ -176,7 +176,7 @@ function buildUploadOptionsConfig(
       label: '播放设备',
       type: 'select',
       options: (Array.isArray(deviceApi.playbackDevices.value) ? deviceApi.playbackDevices.value : []).map(d => ({ label: d.name, value: d.id })),
-      defaultValue: uploadOptions.playback_device_id
+      defaultValue: uploadOptions.playbackDeviceId
     },
     {
       key: 'defaultSpl',
@@ -196,20 +196,20 @@ function buildUploadOptionsConfig(
         { label: '文件夹名', value: 'folder' },
         { label: '自定义', value: 'custom' }
       ],
-      defaultValue: uploadOptions.group_name_type
+      defaultValue: uploadOptions.groupNameType
     },
     {
       key: 'customGroupName',
       label: '自定义分组名称',
       type: 'text',
       placeholder: '请输入分组名称',
-      defaultValue: uploadOptions.custom_group_name
+      defaultValue: uploadOptions.customGroupName
     },
     {
       key: 'inheritTags',
       label: '继承音频标签',
       type: 'boolean',
-      defaultValue: uploadOptions.inherit_tags
+      defaultValue: uploadOptions.inheritTags
     }
   ];
 }
@@ -232,13 +232,13 @@ function buildFolderImportOptionsConfig(
         { label: '噪声', value: 'noise' },
         { label: '混合', value: 'mixed' }
       ],
-      defaultValue: uploadOptions.audio_type
+      defaultValue: uploadOptions.audioType
     },
     {
       key: 'createTestCase',
       label: '生成测试用例',
       type: 'boolean',
-      defaultValue: uploadOptions.create_test_case
+      defaultValue: uploadOptions.createTestCase
     },
     {
       key: 'algorithmType',
@@ -248,7 +248,7 @@ function buildFolderImportOptionsConfig(
         { label: '请选择算法', value: '' },
         ...(Array.isArray(algorithmApi.algorithmOptions.value) ? algorithmApi.algorithmOptions.value : []).map(a => ({ label: a.name, value: a.value }))
       ],
-      defaultValue: uploadOptions.algorithm_type
+      defaultValue: uploadOptions.algorithmType
     },
     {
       key: 'testTypes',
@@ -258,7 +258,7 @@ function buildFolderImportOptionsConfig(
         { label: 'E2E测试', value: TestType.E2E },
         { label: 'API测试', value: TestType.API }
       ],
-      defaultValue: uploadOptions.test_types
+      defaultValue: uploadOptions.testTypes
     },
     {
       key: 'dimensions',
@@ -271,7 +271,7 @@ function buildFolderImportOptionsConfig(
       label: '播放设备',
       type: 'select',
       options: (Array.isArray(deviceApi.playbackDevices.value) ? deviceApi.playbackDevices.value : []).map(d => ({ label: d.name, value: d.id })),
-      defaultValue: uploadOptions.playback_device_id
+      defaultValue: uploadOptions.playbackDeviceId
     },
     {
       key: 'defaultSpl',
@@ -291,20 +291,21 @@ function buildFolderImportOptionsConfig(
         { label: '文件夹名', value: 'folder' },
         { label: '自定义', value: 'custom' }
       ],
-      defaultValue: uploadOptions.group_name_type
+      defaultValue: uploadOptions.groupNameType
     },
     {
       key: 'customGroupName',
       label: '自定义分组名称',
       type: 'text',
       placeholder: '请输入分组名称',
-      defaultValue: uploadOptions.custom_group_name
+      defaultValue: uploadOptions.customGroupName
     },
     {
       key: 'inheritTags',
       label: '继承音频标签',
       type: 'boolean',
-      defaultValue: uploadOptions.inherit_tags
+      defaultValue: uploadOptions.inheritTags
     }
   ];
 }
+

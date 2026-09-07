@@ -52,11 +52,11 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { provideModal } from './composables/index'
-import { registerGlobalModals } from './composables/modal/modalRegistration'
-import { GlobalModalContainer } from './composables/modalIndex'
+import { registerGlobalModals } from './components/common/modal/modalRegistration'
+import GlobalModalContainer from './components/common/modal/GlobalModalContainer.vue'
 import { useAuthStore } from './store/authStore'
 import Notification from './components/common/modal/Notification.vue'
-import { provideNotification } from './composables/modal/useNotification'
+import { provideNotification, type NotificationInstance } from './composables/modal/useNotification'
 
 // ===== 导航配置 =====
 interface NavItem {
@@ -86,7 +86,7 @@ const navItems: NavItem[] = [
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const notificationRef = ref(null)
+const notificationRef = ref<NotificationInstance | null>(null)
 const mainContentRef = ref<HTMLElement | null>(null)
 
 // 按权限过滤导航
@@ -158,7 +158,9 @@ watch(() => route.fullPath, () => {
 })
 
 onMounted(() => {
-  provideNotification(notificationRef.value)
+  if (notificationRef.value) {
+    provideNotification(notificationRef.value)
+  }
   provideModal()
   registerGlobalModals()
 

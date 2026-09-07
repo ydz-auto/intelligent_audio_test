@@ -1,25 +1,6 @@
 import json
 
 
-def extract_by_path(data, path):
-    """
-    简单路径提取器，支持 a.b.c 格式
-    """
-    if not path or not data:
-        return None
-    try:
-        for part in path.split('.'):
-            if isinstance(data, dict):
-                data = data.get(part)
-            elif isinstance(data, list) and part.isdigit():
-                data = data[int(part)]
-            else:
-                return None
-        return data
-    except:
-        return None
-
-
 def calculate_score(value, rule):
     """
     根据评分规则计算分值

@@ -10,11 +10,11 @@
         <div class="hero-meta">
           <span class="meta-item">
             <i class="fas fa-calendar-alt"></i>
-            {{ formatDate(report.created_at) }}
+            {{ formatDateLocal(report.createdAt) }}
           </span>
           <span class="meta-item status" :class="report.status">
             <i class="fas fa-circle"></i>
-            {{ report.status === 'draft' ? '草稿' : '已发布' }}
+            {{ report.status === ReportStatus.DRAFT ? '草稿' : '已发布' }}
           </span>
         </div>
       </div>
@@ -47,20 +47,20 @@
                     <span class="device-name">{{ device.name }}</span>
                     <span class="device-model">{{ device.model || device.type || '设备' }}</span>
                   </div>
-                  <span class="device-status" :class="device.status">{{ device.status === 'online' ? '在线' : '离线' }}</span>
+                  <span class="device-status" :class="device.status">{{ device.status === DeviceStatus.ONLINE ? '在线' : '离线' }}</span>
                 </div>
                 <div class="device-card-body">
                   <div class="stat-row">
                     <span class="stat-label">总用例数</span>
-                    <span class="stat-value">{{ device.total_cases || 0 }} 个</span>
+                    <span class="stat-value">{{ device.totalCases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">完成数</span>
-                    <span class="stat-value success">{{ device.completed_cases || 0 }} 个</span>
+                    <span class="stat-value success">{{ device.completedCases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">失败数</span>
-                    <span class="stat-value danger">{{ device.failed_cases || 0 }} 个</span>
+                    <span class="stat-value danger">{{ device.failedCases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">成功率</span>
@@ -91,15 +91,15 @@
                 <div class="api-card-body">
                   <div class="stat-row">
                     <span class="stat-label">总用例数</span>
-                    <span class="stat-value">{{ api.total_cases || 0 }} 个</span>
+                    <span class="stat-value">{{ api.totalCases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">完成数</span>
-                    <span class="stat-value success">{{ api.completed_cases || 0 }} 个</span>
+                    <span class="stat-value success">{{ api.completedCases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">失败数</span>
-                    <span class="stat-value danger">{{ api.failed_cases || 0 }} 个</span>
+                    <span class="stat-value danger">{{ api.failedCases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">成功率</span>
@@ -192,6 +192,7 @@
 </template>
 
 <script setup>
+import { ReportStatus, DeviceStatus } from '@/domain/enums'
 import ComparisonTableComponent from './ComparisonTableComponent.vue'
 import CaseCategoryComparisonComponent from './CaseCategoryComparisonComponent.vue'
 import CaseTagComparisonComponent from './CaseTagComparisonComponent.vue'
@@ -229,6 +230,7 @@ const {
   formatMetricWithUnit,
   navItems,
   formatDate,
+  formatDateLocal,
   sanitizedAnalysisContent,
   startEdit,
   saveLocalConclusion,

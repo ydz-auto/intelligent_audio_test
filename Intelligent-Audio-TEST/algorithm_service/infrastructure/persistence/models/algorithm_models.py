@@ -283,7 +283,8 @@ class EvaluationDimensionParam(Base):
             'required': self.required,
             'default_value': self._parse_json(self.default_value),
             'help_text': self.help_text,
-            'ui_order': self.ui_order
+            'ui_order': self.ui_order,
+            'pass_threshold': self.pass_threshold
         }
 
     def _parse_json(self, json_str):

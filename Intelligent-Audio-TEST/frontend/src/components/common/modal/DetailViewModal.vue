@@ -1,6 +1,6 @@
 <template>
   <div class="detail-view-modal">
-    <div v-if="!data || (Object.keys(data).length === 0 && !isDetailDataFormat)" class="loading-state">
+    <div v-if="!data || Object.keys(data).length === 0" class="loading-state">
       <div class="spinner"></div>
       <p>加载中...</p>
     </div>
@@ -15,29 +15,8 @@
       <div class="info-card" v-if="hasBasicInfo">
         <h4>基本信息</h4>
         <div class="info-grid">
-          <!-- 处理detailData格式 -->
-          <template v-if="isDetailDataFormat">
-            <div 
-              v-for="(item, index) in props.detail_data.metadata" 
-              :key="index" 
-              class="info-item"
-            >
-              <span class="info-label">{{ item.label }}:</span>
-              
-              <!-- 音频类型可编辑 -->
-              <select v-if="item.key === 'audioType'" v-model="editableData[item.key]" class="form-input info-value">
-                <option value="dry">干声 (信号音频)</option>
-                <option value="noise">噪声</option>
-                <option value="prompt">提示词音频</option>
-              </select>
-              
-              <!-- 其他字段可编辑 -->
-              <input v-else type="text" v-model="editableData[item.key]" class="form-input info-value" :class="item.class_name">
-            </div>
-          </template>
-          
           <!-- 处理传统格式 -->
-          <template v-else>
+          <template>
             <div 
               v-for="(field, key) in basicInfoFields" 
               :key="key" 
@@ -373,51 +352,9 @@
         </div>
       </div>
       
-      <!-- 日志内容区域 (仅用于detailData格式) -->
-      <div class="content-card" v-if="isDetailDataFormat && detailData.content">
-        <h4>日志内容</h4>
-        <div class="log-content">
-          {{ detailData.content }}
-        </div>
-      </div>
-      
-      <!-- 上下文信息区域 (仅用于detailData格式) -->
-      <div class="context-card" v-if="isDetailDataFormat && detailData.context">
-        <h4>上下文信息</h4>
-        <pre class="log-context">{{ JSON.stringify(detailData.context, null, 2) }}</pre>
-      </div>
-      
       <!-- 自定义内容区域 -->
       <div class="custom-content" v-if="$slots.default">
         <slot></slot>
-      </div>
-      
-      <!-- 数据表格区域 -->
-      <div class="data-table-section" v-if="hasTableData">
-        <h4>{{ tableConfig.title || '数据列表' }}</h4>
-        <div class="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th v-for="column in tableConfig.columns" :key="column.key">
-                  {{ column.title }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(row, index) in tableConfig.data" :key="index">
-                <td v-for="column in tableConfig.columns" :key="column.key">
-                  {{ getTableCellValue(row, column) }}
-                </td>
-              </tr>
-              <tr v-if="tableConfig.data.length === 0">
-                <td :colspan="tableConfig.columns.length" class="empty-row">
-                  暂无数据
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
       </div>
       
       <!-- 按钮区域 -->
@@ -444,10 +381,6 @@
 import { useDetailViewModal } from './DetailViewModal'
 
 const props = defineProps({
-  modal_id: {
-    type: String,
-    default: ''
-  },
   data: {
     type: Object,
     default: () => ({})
@@ -459,27 +392,12 @@ const props = defineProps({
   fields: {
     type: Array,
     default: () => []
-  },
-  table_config: {
-    type: Object,
-    default: () => ({
-      columns: [],
-      data: []
-    })
-  },
-  // 支持从LogView传递的detailData格式
-  detail_data: {
-    type: Object,
-    default: null
   }
 })
 
 const emit = defineEmits(['close', 'save', 'action', 'confirm'])
 
 const {
-  isDetailDataFormat,
-  detailData,
-  tableConfig,
   editableData,
   addAnnotationItem,
   removeAnnotationItem,
@@ -505,10 +423,7 @@ const {
   handleSave,
   basicInfoFields,
   hasBasicInfo,
-  hasAnnotations,
-  hasTableData,
-  getFieldValue,
-  getTableCellValue
+  hasAnnotations
 } = useDetailViewModal(props, emit)
 </script>
 

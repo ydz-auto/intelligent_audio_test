@@ -69,6 +69,7 @@
 
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue';
+import { useNotification } from '@/composables/modal/useNotification';
 
 interface APIEditData {
   name?: string;
@@ -80,13 +81,14 @@ interface APIEditData {
 }
 
 const props = defineProps<{
-  modal_id?: string;
   title?: string;
   data?: APIEditData;
   onSave?: (settings: APIEditData) => void;
 }>();
 
 const emit = defineEmits(['close', 'save']);
+
+const notification = useNotification();
 
 const editableData = ref<APIEditData>({});
 const configJson = ref('');
@@ -118,7 +120,7 @@ const handleSave = () => {
     
     emit('close');
   } catch (e) {
-    alert('配置JSON格式不正确，请检查JSON语法');
+    notification.warning('配置JSON格式不正确，请检查JSON语法');
   }
 };
 </script>

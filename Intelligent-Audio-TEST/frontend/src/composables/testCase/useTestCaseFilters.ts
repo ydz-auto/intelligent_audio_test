@@ -1,4 +1,5 @@
 import { ref, watch, type Ref } from 'vue';
+import { ViewMode } from '@/domain/enums';
 
 /**
  * useDebounce: 为给定的响应式值生成防抖副本。
@@ -50,7 +51,7 @@ export function useTestCaseFilters(
   },
   options: {
     currentPage: Ref<number>;
-    innerViewMode: Ref<'group' | 'tag'>;
+    innerViewMode: Ref<typeof ViewMode[keyof typeof ViewMode]>;
     emitTagFilterChange: (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => void;
     emitGroupFilterChange: (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => void;
   }
@@ -99,7 +100,7 @@ export function useTestCaseFilters(
       algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
       dimensionId: dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined,
     };
-    if (options.innerViewMode.value === 'tag') {
+    if (options.innerViewMode.value === ViewMode.TAG) {
       options.emitTagFilterChange(filters);
     } else {
       options.emitGroupFilterChange(filters);
@@ -126,7 +127,7 @@ export function useTestCaseFilters(
       algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
       dimensionId: undefined,
     };
-    if (options.innerViewMode.value === 'tag') {
+    if (options.innerViewMode.value === ViewMode.TAG) {
       options.emitTagFilterChange(filters);
     } else {
       options.emitGroupFilterChange(filters);

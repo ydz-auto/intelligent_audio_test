@@ -26,7 +26,7 @@
   </Teleport>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { sanitizeForVHtml } from '../../../utils/sanitize'
 
@@ -35,10 +35,10 @@ const message = ref('')
 const type = ref('error')
 const details = ref('')
 const showDetails = ref(false)
-let timer = null
+let timer: ReturnType<typeof setTimeout> | null = null
 
 const iconClass = computed(() => {
-  const icons = {
+  const icons: Record<string, string> = {
     error: 'fas fa-exclamation-circle',
     warning: 'fas fa-exclamation-triangle',
     success: 'fas fa-check-circle',
@@ -51,7 +51,7 @@ const formattedMessage = computed(() => {
   return sanitizeForVHtml(message.value.replace(/\n/g, '<br>'))
 })
 
-function show(msg, msgType = 'error', msgDetails = '') {
+function show(msg: string, msgType: string = 'error', msgDetails: string = '') {
   message.value = msg
   type.value = msgType
   details.value = msgDetails
@@ -82,7 +82,7 @@ function copyDetails() {
   })
 }
 
-function handleKeydown(e) {
+function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && visible.value) {
     close()
   }

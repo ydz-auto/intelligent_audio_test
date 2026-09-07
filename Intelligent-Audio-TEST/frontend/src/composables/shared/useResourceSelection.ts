@@ -1,9 +1,10 @@
 import { ref, computed, watch, type Ref } from 'vue'
-import { apisApi } from '../../utils/api'
+import { apisPort } from '../apiTest/apisPort'
 import { generateDeviceFields } from '../../utils/utils'
 import { useDeviceManagement } from '../device/useDeviceManagement'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
-import type { APIConfig } from '../../shared/types'
+import type { APIConfig } from '../../domain'
+import { ViewMode, DeviceStatus, ApiEndpointStatus } from '@/domain/enums'
 
 interface UseResourceSelectionOptions {
   testType: 'e2e' | 'api'
@@ -25,7 +26,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
   // ============ api 模式独立状态 ============
   const apis = ref<APIConfig[]>([])
   const apiSearchQuery = ref('')
-  const apiFilter = ref('all')
+  const apiFilter = ref(ViewMode.ALL)
   const selectedAPIIds = ref<(string | number)[]>([])
 
   // api 分页
@@ -70,12 +71,13 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
 
       let matchesAlgorithm = true
       if (selectedAlgorithmType.value) {
-        matchesAlgorithm = api.algorithm_type === selectedAlgorithmType.value
+        // APIConfig Domain 已是 camelCase：algorithmType
+        matchesAlgorithm = api.algorithmType === selectedAlgorithmType.value
       }
 
       let matchesStatus = true
-      if (apiFilter.value !== 'all') {
-        const normalizedStatus = api.status === 'online' ? 'online' : 'offline'
+      if (apiFilter.value !== ViewMode.ALL) {
+        const normalizedStatus = api.status === ApiEndpointStatus.ONLINE ? ApiEndpointStatus.ONLINE : ApiEndpointStatus.OFFLINE
         matchesStatus = normalizedStatus === apiFilter.value
       }
 
@@ -84,7 +86,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
         const query = apiSearchQuery.value.toLowerCase()
         matchesSearch = Boolean(
           (api.name && api.name.toLowerCase().includes(query)) ||
-          (api.api_endpoints && api.api_endpoints.some((ep: any) => {
+          (api.endpoints && api.endpoints.some((ep: any) => {
             const urlValue = ep.url || ep.endpoint || ''
             return urlValue.toLowerCase().includes(query)
           }))
@@ -131,7 +133,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
     if (testType !== 'e2e') return
     const device = (deviceManagement.devices.value as any[]).find(d => String(d.id) === String(deviceId))
     if (device) {
-      if (device.status !== 'online') {
+      if (device.status !== DeviceStatus.ONLINE) {
         addLog({ content: '只能选择在线设备', level: 'warn' })
         return
       }
@@ -142,7 +144,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
   const toggleAPISelection = (apiId: string | number) => {
     if (testType !== 'api') return
     const api = apis.value.find(a => String(a?.id) === String(apiId))
-    if (!api || api.status !== 'online') {
+    if (!api || api.status !== ApiEndpointStatus.ONLINE) {
       addLog({ content: '只能选择在线API', level: 'warn' })
       return
     }
@@ -205,12 +207,13 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
           try {
             let response
             if (submitMode === 'create') {
-              response = await apisApi.create(deviceData)
+              response = await apisPort.create(deviceData)
             } else if (submitMode === 'edit' && deviceData.id) {
-              response = await apisApi.update(deviceData.id, deviceData)
+              response = await apisPort.update(deviceData.id, deviceData)
             }
-            const apiDataResult = await apisApi.getAll()
-            apis.value = (apiDataResult.items || apiDataResult) as APIConfig[]
+            const apiDataResult = await apisPort.getAll()
+            // apisPort.getAll 已通过 adapter 展平为 Domain 数组（camelCase），无需再取 items
+            apis.value = apiDataResult || []
             return response
           } catch (error) {
             console.error('[useResourceSelection] API操作失败:', error)
@@ -230,9 +233,10 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
       options: { closable: true },
       onConfirm: async () => {
         try {
-          await apisApi.delete(apiId)
-          const apiDataResult = await apisApi.getAll()
-          apis.value = (apiDataResult.items || apiDataResult) as APIConfig[]
+          await apisPort.delete(apiId)
+          const apiDataResult = await apisPort.getAll()
+          // apisPort.getAll 已通过 adapter 展平为 Domain 数组（camelCase），无需再取 items
+          apis.value = apiDataResult || []
         } catch (error) {
           console.error('[useResourceSelection] 删除API失败:', error)
         }
@@ -263,7 +267,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
   const loadAPIs = async () => {
     if (testType !== 'api') return
     try {
-      const apiDataResult = await apisApi.getAll()
+      const apiDataResult = await apisPort.getAll()
       if (Array.isArray(apiDataResult)) {
         apis.value = apiDataResult as APIConfig[]
       } else if (apiDataResult && (apiDataResult as any).items) {

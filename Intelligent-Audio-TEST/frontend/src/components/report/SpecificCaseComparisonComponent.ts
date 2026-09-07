@@ -1,14 +1,21 @@
 import { ref, computed, watch, onUnmounted, inject } from 'vue'
-import { useNotification } from '../../composables/modal/useNotification'
+import { ExecutionStatus } from '@/domain/enums'
+import type { Report } from '../../domain'
 import { debounce } from '../../utils/utils'
-import { useCollapse, useResourceHeaders } from './shared/useReportShared'
+import { useCollapse, useResourceHeaders, toggle as toggleSelection } from './shared/useReportShared'
 import { getValidResources, toMetricsMap, toTextMap, createCaseDataHelpers } from './specificCaseDataHelpers'
 import { createDownloadLogic } from './specificCaseDownload'
 import { createCaseDetailPrep } from './specificCaseDetailPrep'
 import { createCaseMetricsComputeds, createFilteredCases } from './specificCaseComputeds'
 import { usePagination } from '../../composables/usePagination'
+import { readCamel } from '../../utils/keyTransform'
 
-export function useSpecificCaseComparison(props: any) {
+/** 具体用例对比组件 props（reportData 由父组件注入的 Report Domain，adapter 出口 camelCase） */
+interface SpecificCaseComparisonProps {
+  reportData?: Report | null
+}
+
+export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   // 导出模式：导出时展开所有用例、显示全部不分页
   const isExporting = inject('isExporting', ref(false))
 
@@ -30,9 +37,9 @@ export function useSpecificCaseComparison(props: any) {
     currentAudioTypeLabel.value = typeLabel || audio.label || '测试音频'
     currentAudioType.value = type
     currentAudioSpl.value = audio.spl || null
-    currentAudioPlayOrder.value = audio.play_order || null
-    currentAudioNoiseSpl.value = audio.noise_spl || null
-    currentAudioDeviceName.value = audio.device_name || null
+    currentAudioPlayOrder.value = readCamel(audio, 'playOrder') || null
+    currentAudioNoiseSpl.value = readCamel(audio, 'noiseSpl') || null
+    currentAudioDeviceName.value = readCamel(audio, 'deviceName') || null
     showAudioModal.value = true
   }
 
@@ -40,12 +47,7 @@ export function useSpecificCaseComparison(props: any) {
   const { isCollapsed, toggleCollapse } = useCollapse()
 
   const resourceHeaders = computed(() => {
-    const data = props.reportData || {}
-    return (
-      data.resource_headers ||
-      data.summary?.resource_headers ||
-      []
-    )
+    return props.reportData?.summary?.resourceHeaders ?? []
   })
 
   const { resourceHeaderMap, getResourceLabel } = useResourceHeaders(props)
@@ -70,6 +72,12 @@ export function useSpecificCaseComparison(props: any) {
     if (!Array.isArray(categories)) return []
     return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
   }
+
+  // 二次对比报告中用例分组存储在 summary.caseCategories 字段中（adapter 出口 camelCase）
+  // 必须在 filteredCategoriesForSelection / usePagination 之前初始化，避免 TDZ
+  const categories = ref<any[]>(processCategories(props.reportData?.summary?.caseCategories))
+  const allTags = ref<any[]>(processTags(props.reportData?.summary?.allCaseTags ?? props.reportData?.summary?.allTags))
+  const allMetrics = ref<any[]>(props.reportData?.summary?.allMetrics || [])
 
   const filteredCategoriesForSelection = computed(() => {
     if (!categorySearchQuery.value.trim()) {
@@ -99,13 +107,7 @@ export function useSpecificCaseComparison(props: any) {
   const downloadSize = ref('')
   const downloadTotal = ref('')
 
-  // 从reportData中获取数据，优先使用reportData直接提供的数据，然后再使用summary中的数据
-  // 注意：二次对比报告中用例分组存储在caseCategories字段中，而不是categories字段中
-  const categories = ref<any[]>(processCategories(props.reportData.categories || props.reportData.summary?.categories || props.reportData.summary?.case_categories))
-  const allTags = ref<any[]>(processTags(props.reportData.all_tags || props.reportData.summary?.all_tags || props.reportData.summary?.all_case_tags))
-
-  // 所有评测维度，确保至少有一个默认维度
-  const allMetrics = ref<any[]>(props.reportData.all_metrics || props.reportData.summary?.all_metrics || [])
+  // 所有评测维度，确保至少有一个默认维度（初始化已上移，见 processCategories 之后）
 
   // 获取用例数据
   const cases = ref<any[]>([])
@@ -195,7 +197,7 @@ export function useSpecificCaseComparison(props: any) {
   watch(isExporting, async (exporting) => {
     if (exporting) {
       isCollapsed.value = false
-      const reportId = props.reportData?.id || props.reportData?.report_id
+      const reportId = props.reportData?.id
       if (reportId) {
         await loadAllCasesForExport(reportId)
       }
@@ -256,7 +258,7 @@ export function useSpecificCaseComparison(props: any) {
 
   // 筛选/排序条件变化时重新请求后端
   const debouncedReload = debounce(() => {
-    const reportId = props.reportData?.id || props.reportData?.report_id
+    const reportId = props.reportData?.id
     if (reportId && !isExporting.value) {
       currentPage.value = 1
       loadCasesPage(reportId)
@@ -268,10 +270,12 @@ export function useSpecificCaseComparison(props: any) {
   }, { deep: true })
 
   // 翻页/改页大小
+  // 注：此处分页导航函数需在页码变更后触发 loadCasesPage() 拉取服务端数据，
+  // 与 usePagination 的纯客户端导航语义不同，因此保留手写实现。
   const handlePrevPage = () => {
     if (currentPage.value > 1) {
       currentPage.value -= 1
-      const reportId = props.reportData?.id || props.reportData?.report_id
+      const reportId = props.reportData?.id
       if (reportId) loadCasesPage(reportId)
     }
   }
@@ -279,7 +283,7 @@ export function useSpecificCaseComparison(props: any) {
   const handleNextPage = () => {
     if (currentPage.value < totalPages.value) {
       currentPage.value += 1
-      const reportId = props.reportData?.id || props.reportData?.report_id
+      const reportId = props.reportData?.id
       if (reportId) loadCasesPage(reportId)
     }
   }
@@ -288,14 +292,14 @@ export function useSpecificCaseComparison(props: any) {
     const p = Number(page)
     if (!Number.isFinite(p)) return
     currentPage.value = Math.min(Math.max(1, p), totalPages.value)
-    const reportId = props.reportData?.id || props.reportData?.report_id
+    const reportId = props.reportData?.id
     if (reportId) loadCasesPage(reportId)
   }
 
   const handlePageSizeChange = (newSize: any) => {
     pageSize.value = Number(newSize)
     currentPage.value = 1
-    const reportId = props.reportData?.id || props.reportData?.report_id
+    const reportId = props.reportData?.id
     if (reportId) loadCasesPage(reportId)
   }
 
@@ -312,21 +316,11 @@ export function useSpecificCaseComparison(props: any) {
   }
 
   const toggleTag = (tag: any) => {
-    const index = selectedTags.value.indexOf(tag)
-    if (index > -1) {
-      selectedTags.value.splice(index, 1)
-    } else {
-      selectedTags.value.push(tag)
-    }
+    toggleSelection(selectedTags, tag)
   }
 
   const toggleCategoryFilter = (category: any) => {
-    const index = selectedCategories.value.indexOf(category)
-    if (index > -1) {
-      selectedCategories.value.splice(index, 1)
-    } else {
-      selectedCategories.value.push(category)
-    }
+    toggleSelection(selectedCategories, category)
   }
 
   const togglePin = (caseId: any) => {
@@ -370,25 +364,13 @@ export function useSpecificCaseComparison(props: any) {
 
   const getOverallStatus = (caseItem: any) => {
     const statuses = (Array.isArray(caseItem.results) ? caseItem.results : []).map((r: any) => r.status)
-    if (statuses.includes('失败') || statuses.includes('Failed')) return 'failed'
+    if (statuses.includes('失败') || statuses.includes('Failed')) return ExecutionStatus.FAILED
     if (statuses.includes('警告') || statuses.includes('Warning')) return 'warning'
     return 'success'
   }
 
   const getCaseTaskId = (caseItem: any) => {
-    return caseItem.task_id || props.reportData?.task_id || props.reportData?.summary?.task_id || ''
-  }
-
-  const copyToClipboard = (text: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text).then(() => {
-        const notification = useNotification()
-        notification.success('ID已复制到剪贴板')
-      }).catch(() => {
-        const notification = useNotification()
-        notification.error('复制失败')
-      })
-    }
+    return caseItem.taskId || props.reportData?.taskId || ''
   }
 
   // 使用提取的下载逻辑
@@ -407,12 +389,7 @@ export function useSpecificCaseComparison(props: any) {
   }
 
   const toggleMetric = (metricName: any) => {
-    const index = selectedMetrics.value.indexOf(metricName)
-    if (index > -1) {
-      selectedMetrics.value.splice(index, 1)
-    } else {
-      selectedMetrics.value.push(metricName)
-    }
+    toggleSelection(selectedMetrics, metricName)
   }
 
   const resetFilters = () => {
@@ -466,21 +443,20 @@ export function useSpecificCaseComparison(props: any) {
   // 监听reportData变化，更新内部状态
   watch([
     () => props.reportData?.id,
-    () => props.reportData?.report_id,
     () => props.reportData?.cases?.length,
-    () => props.reportData?.test_reports_cases?.length,
-    () => props.reportData?.summary?.cases?.length
-  ], async ([id, reportId, casesLen, testReportsCasesLen, summaryCasesLen]: any, [oldId, oldReportId]: any) => {
+    () => props.reportData?.summary?.cases?.length,
+    () => props.reportData?.summary?.detailedResults?.length
+  ], async ([id, casesLen, summaryCasesLen, summaryDetailedLen]: any, [oldId]: any) => {
     const newReportData = props.reportData
 
-    categories.value = processCategories(newReportData.categories || newReportData.summary?.categories || newReportData.summary?.case_categories)
-    allTags.value = processTags(newReportData.all_tags || newReportData.summary?.all_tags || newReportData.summary?.all_case_tags)
-    allMetrics.value = newReportData.all_metrics || newReportData.summary?.all_metrics || []
+    categories.value = processCategories(newReportData?.summary?.caseCategories)
+    allTags.value = processTags(newReportData?.summary?.allCaseTags ?? newReportData?.summary?.allTags)
+    allMetrics.value = newReportData?.summary?.allMetrics || []
     devices.value = getValidResources(newReportData);
 
-    const effectiveReportId = id || reportId
+    const effectiveReportId = id
     if (effectiveReportId) {
-      if (effectiveReportId !== loadedReportId && effectiveReportId !== oldId && effectiveReportId !== oldReportId) {
+      if (effectiveReportId !== loadedReportId && effectiveReportId !== oldId) {
         loadedReportId = effectiveReportId
         console.log('watch: 优先调用 /api/v1/reports/{id}/cases/search API 获取用例数据')
         currentPage.value = 1
@@ -525,7 +501,7 @@ export function useSpecificCaseComparison(props: any) {
     pinnedCases, togglePin,
     getResourceLabel, resourceHeaders,
     paginatedCasesWithPreparedData, toggleCaseExpand, getOverallStatus,
-    copyToClipboard, downloadCaseLogZip, expandedCases, allDevices,
+    downloadCaseLogZip, expandedCases, allDevices,
     unpinnedFilteredCases, totalCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage, handlePageSizeChange,
     currentCaseDetailWithPreparedData, closeCaseDetail, openCaseDetail,
     getResourceName, getCaseTaskId, formatTime,

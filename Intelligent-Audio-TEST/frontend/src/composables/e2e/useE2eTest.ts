@@ -3,8 +3,10 @@ import { storeToRefs } from 'pinia';
 import { useTestCaseStore } from '../../store';
 import { useTestCaseCard } from '../testCase/useTestCaseCard';
 import { useModal } from '../modal/useModal';
-import { testcasesApi  } from '../../utils/api';
-import { MODAL_TYPES, type TestCase, type TestCaseFormData } from '../../shared/types';
+import { testcasesPort } from '../testCase/testcasesPort';
+import { MODAL_TYPES } from '../modal/constants';
+import type { TestCase, TestCaseFormData } from '../../domain';
+import { TestType } from '@/domain/enums'
 
 export function useE2eTest() {
   const testCaseStore = useTestCaseStore();
@@ -42,13 +44,13 @@ export function useE2eTest() {
 
   const isE2eTestCase = (caseItem: TestCase): boolean => {
     if (caseItem.deleted) return false;
-    // 优先使用 test_type 字段（voice_llm 新架构）；后端列表接口返回的字段名为 type
-    const testType = ((caseItem as any).test_type || (caseItem as any).type || '').toLowerCase();
-    if (testType) return testType === 'e2e' || testType === 'e2e_test';
+    // 优先使用 testType 字段（voice_llm 新架构）；后端列表接口返回的字段名为 type
+    const testType = (caseItem.testType || caseItem.type || '').toLowerCase();
+    if (testType) return testType === TestType.E2E || testType === 'e2e_test';
     // 向后兼容：config 级别检查
     const config = (caseItem.config || {}) as any;
     const configType = (config.type || '').toLowerCase();
-    if (configType === 'e2e' || configType === 'e2e_test') return true;
+    if (configType === TestType.E2E || configType === 'e2e_test') return true;
     // 向后兼容：audios 级别检查（支持 rounds 格式）
     const rounds = config.rounds || [];
     if (Array.isArray(rounds) && rounds.length > 0) {
@@ -57,7 +59,7 @@ export function useE2eTest() {
     }
     // 旧 flat 格式
     const audios = config.audios || [];
-    return audios.some((a: any) => (a.test_type) === 'e2e');
+    return audios.some((a: any) => (a.test_type) === TestType.E2E);
   };
 
   const e2eTestCases = computed(() => {
@@ -78,9 +80,9 @@ export function useE2eTest() {
   });
 
   const addE2eTestCase = (newTestCase: Partial<TestCase>) => {
-    const e2eTestCase = { ...newTestCase, type: 'e2e', config: {
+    const e2eTestCase = { ...newTestCase, type: TestType.E2E, config: {
         ...(newTestCase.config || {}),
-        type: 'e2e'
+        type: TestType.E2E
       }
     };
     return addTestCase(e2eTestCase as any);
@@ -90,9 +92,9 @@ export function useE2eTest() {
     if (!updatedTestCase?.id) {
       throw new Error('Update requires a valid test case ID');
     }
-    const e2eTestCase = { ...updatedTestCase, type: 'e2e', config: {
+    const e2eTestCase = { ...updatedTestCase, type: TestType.E2E, config: {
         ...(updatedTestCase.config || {}),
-        type: 'e2e'
+        type: TestType.E2E
       }
     };
     return updateTestCase(e2eTestCase.id, e2eTestCase as any);
@@ -109,15 +111,15 @@ export function useE2eTest() {
   const openAddE2eTestCaseModal = (group = '默认分组') => {
     handleTestCaseAction({
       action: { id: 'add' },
-      testCase: { group: group, config: { type: 'e2e' } } as unknown as TestCase
+      testCase: { group: group, config: { type: TestType.E2E } } as unknown as TestCase
     });
   };
 
   const runE2eTest = async (testCase: TestCase) => {
     console.log('运行E2E测试:', testCase.id);
     try {
-      if (typeof (testcasesApi as any).preview === 'function') {
-        return await testcasesApi.preview(testCase.id);
+      if (typeof (testcasesPort as any).preview === 'function') {
+        return await testcasesPort.preview(testCase.id);
       } else {
         console.warn('后端暂不支持单条E2E用例预览，请通过任务流运行');
       }
@@ -144,14 +146,14 @@ export function useE2eTest() {
   };
 
   const initializeE2eTests = async (algorithmType?: string, keyword?: string, dimensionId?: number) => {
-    await fetchTestCases({ algorithmType, keyword, testType: 'e2e', dimensionId });
+    await fetchTestCases({ algorithmType, keyword, testType: TestType.E2E, dimensionId });
   };
 
   const handleE2eTestCaseSave = async (data: TestCaseFormData & { id?: string }) => {
     try {
-      data.type = 'e2e';
+      data.type = TestType.E2E;
       if (!data.config) data.config = {};
-      data.config.type = 'e2e';
+      data.config.type = TestType.E2E;
 
       if (data.id) {
         return await updateE2eTestCase(data as unknown as TestCase);

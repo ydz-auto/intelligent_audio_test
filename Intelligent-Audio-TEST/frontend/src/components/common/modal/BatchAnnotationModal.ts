@@ -1,6 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { parseAnnotationFormat, parseAudioTxtFile } from '../../../utils/audioUtils'
-import { audiosApi } from '../../../utils/api'
+import { audiosPort } from '../../../composables/audio/audiosPort'
 import SparkMD5 from 'spark-md5'
 
 export function useBatchAnnotationModal(props: any, emit: any) {
@@ -155,7 +155,7 @@ export function useBatchAnnotationModal(props: any, emit: any) {
       if (cancelled) break
       const chunk = md5List.slice(i, i + BATCH)
       progress.value.stage = `查询音频 (${i + chunk.length}/${md5List.length})`
-      const res = await audiosApi.getByMd5(chunk)
+      const res = await audiosPort.getByMd5(chunk)
       Object.assign(result, (res as any) || {})
     }
     return result
@@ -254,6 +254,7 @@ export function useBatchAnnotationModal(props: any, emit: any) {
   // 抽取标注解析逻辑
   const parseAnnotationContent = (fileName: string, text: string): any[] => {
     const annotations: any[] = []
+    // TODO: 提交体应走 Infrastructure adapter 转 snake_case（source_language/target_language/extra_fields 为后端原始 key）
     if (fileName.endsWith('.txt')) {
       const parsedInfo = parseAudioTxtFile(text)
       if (parsedInfo.asrText) {
@@ -264,9 +265,11 @@ export function useBatchAnnotationModal(props: any, emit: any) {
       }
       if (parsedInfo.translations && parsedInfo.translations.length > 0) {
         for (const trans of parsedInfo.translations) {
+          // translations 元素结构为 { text, direction }，源/目标语言需从 direction 拆分
+          const [source = '', target = ''] = (trans.direction || '').split('-')
           annotations.push({
             format: 'text', code: 'translation', data: { text: trans.text },
-            source_language: trans.source || '', target_language: trans.target || ''
+            source_language: source, target_language: target
           })
         }
       }
@@ -314,7 +317,7 @@ export function useBatchAnnotationModal(props: any, emit: any) {
     submitting.value = true
     errorMsg.value = ''
     try {
-      const res = await audiosApi.batchUpdateAnnotations({
+      const res = await audiosPort.batchUpdateAnnotations({
         items: matchedItemsList.map(item => ({
           audioId: item.audioId,
           annotations: item.annotations,
@@ -325,9 +328,9 @@ export function useBatchAnnotationModal(props: any, emit: any) {
 
       const data = (res as any) || {}
       const payload = {
-        updatedCount: data.updated_count || 0,
-        failedCount: data.failed_count || 0,
-        refreshedTestCaseIds: data.refreshed_test_case_ids || [],
+        updatedCount: data.updatedCount ?? 0,
+        failedCount: data.failedCount ?? 0,
+        refreshedTestCaseIds: data.refreshedTestCaseIds ?? [],
       }
       resultToast.value = {
         visible: true,

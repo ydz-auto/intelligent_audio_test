@@ -1,7 +1,8 @@
 import { ref } from 'vue';
-import { evaluationApi } from '../../utils/api';
+import { evaluationPort } from './evaluationPort';
 import { useModalControl } from '../modal/useModal';
-import { EvaluationCategory, MODAL_TYPES } from '../../shared/types';
+import { EvaluationCategory } from '../../domain';
+import { MODAL_TYPES } from '../modal/constants';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
 
 /**
@@ -45,7 +46,7 @@ export function useEvaluationCategories(dimensionsModule: UseEvaluationDimension
       onConfirm: async () => {
         loading.value = true;
         try {
-          await evaluationApi.deleteCategory(id);
+          await evaluationPort.deleteCategory(id);
           modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
             title: '成功',
             content: '分类已删除',
@@ -82,7 +83,7 @@ export function useEvaluationCategories(dimensionsModule: UseEvaluationDimension
       }
 
       if (type === 'add') {
-        await evaluationApi.createCategory(data);
+        await evaluationPort.createCategory(data);
         modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
           title: '成功',
           content: '分类添加成功',
@@ -92,7 +93,7 @@ export function useEvaluationCategories(dimensionsModule: UseEvaluationDimension
         newCategory.value = { name: '', description: '', icon: 'fas fa-tachometer-alt' };
       } else {
         if (!data.id) throw new Error('分类 ID 缺失');
-        await evaluationApi.updateCategory(data.id, data);
+        await evaluationPort.updateCategory(data.id, data);
         modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
           title: '成功',
           content: '分类更新成功',

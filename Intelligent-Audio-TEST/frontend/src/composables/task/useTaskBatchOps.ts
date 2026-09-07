@@ -1,9 +1,11 @@
 import { type Ref } from 'vue';
-import { tasksApi } from '../../utils/api';
-import { reportService } from '../../services/reportService';
-import type { Task } from '../../shared/types';
-import { TaskStatus } from '@/shared/types/enums';
+import { tasksPort } from './tasksPort';
+import { exportReport as exportReportApi, batchCompare as batchCompareApi } from '../report/useReportComparison';
+import type { Task } from '../../domain';
+import { TaskStatus } from '../../domain/enums';
 import { useModalControl, MODAL_TYPES } from '../modal/useModal';
+import { useNotification } from '../modal/useNotification';
+import { downloadBlob } from '../../utils/utils';
 
 
 /**
@@ -20,13 +22,14 @@ export function useTaskBatchOps(
   fetchTasks: () => Promise<void>
 ) {
   const modalControl = useModalControl();
+  const notification = useNotification();
 
   const batchDelete = async () => {
     if (selectedTasks.value.size === 0) return;
     if (confirm(`确定要删除选中的 ${selectedTasks.value.size} 个任务吗？`)) {
       try {
         const ids = Array.from(selectedTasks.value);
-        await tasksApi.batchAction('delete', ids as any);
+        await tasksPort.batchAction('delete', ids as any);
         selectedTasks.value.clear();
         await fetchTasks();
       } catch (error) {
@@ -76,14 +79,8 @@ export function useTaskBatchOps(
 
       if (result) {
         const format = result.config.format || 'excel';
-        const blob = await reportService.exportReport(ids[0], format);
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `tasks_export_${new Date().getTime()}.${format === 'excel' ? 'xlsx' : format}`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        const blob = await exportReportApi(ids[0], format);
+        downloadBlob(blob, `tasks_export_${new Date().getTime()}.${format === 'excel' ? 'xlsx' : format}`);
       }
     } catch (error) {
       console.error('Failed to batch export tasks:', error);
@@ -92,13 +89,13 @@ export function useTaskBatchOps(
 
   const batchCompare = async () => {
     if (selectedTasks.value.size < 2) {
-      alert('请至少选择两个任务进行对比');
+      notification.warning('请至少选择两个任务进行对比');
       return;
     }
     try {
       const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
       const taskIds = selectedTasksArray.map(t => t.id);
-      await reportService.batchCompare(taskIds, selectedTasksArray);
+      await batchCompareApi(taskIds, selectedTasksArray);
       // 滚动到报告区域
       setTimeout(() => {
         const reportElement = document.getElementById('task-comparison-report-container');
@@ -108,7 +105,7 @@ export function useTaskBatchOps(
       }, 100);
     } catch (error) {
       console.error('Failed to batch compare tasks:', error);
-      alert('生成对比报告失败，请稍后重试');
+      notification.error('生成对比报告失败，请稍后重试');
     }
   };
 
@@ -116,7 +113,7 @@ export function useTaskBatchOps(
     if (selectedTasks.value.size === 0) return;
     try {
       const ids = Array.from(selectedTasks.value);
-      await tasksApi.batchAction('restore', ids as any);
+      await tasksPort.batchAction('restore', ids as any);
       selectedTasks.value.clear();
       await fetchTasks();
     } catch (error) {
@@ -126,7 +123,7 @@ export function useTaskBatchOps(
 
   const batchMerge = async () => {
     if (selectedTasks.value.size < 2) {
-      alert('请至少选择两个任务进行合并');
+      notification.warning('请至少选择两个任务进行合并');
       return;
     }
 
@@ -134,7 +131,7 @@ export function useTaskBatchOps(
     const incompleteTasks = selectedTasksArray.filter(t => t.status !== TaskStatus.COMPLETED);
     if (incompleteTasks.length > 0) {
       const names = incompleteTasks.map(t => t.name).join(', ');
-      alert(`以下任务未完成，无法合并: ${names}`);
+      notification.warning(`以下任务未完成，无法合并: ${names}`);
       return;
     }
 
@@ -149,13 +146,13 @@ export function useTaskBatchOps(
 
     try {
       const ids = Array.from(selectedTasks.value);
-      const result = await tasksApi.mergeTasks(ids as any) as any;
+      const result = await tasksPort.mergeTasks(ids as any) as any;
       selectedTasks.value.clear();
       await fetchTasks();
-      alert(`合并成功！新任务: ${result.merged_task_name || result.name || '合并任务'}`);
+      notification.success(`合并成功！新任务: ${result.merged_task_name || result.name || '合并任务'}`);
     } catch (error: any) {
       console.error('Failed to merge tasks:', error);
-      alert(error.message || '合并失败，请稍后重试');
+      notification.error(error.message || '合并失败，请稍后重试');
     }
   };
 

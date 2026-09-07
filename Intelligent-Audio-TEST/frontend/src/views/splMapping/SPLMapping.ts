@@ -1,17 +1,21 @@
 import { ref, reactive, computed, watch, nextTick } from 'vue';
 import { getModalManager } from '../../composables/modal/useModal';
-import { splApi, playbackApi } from '../../utils/api';
+import { splPort } from '../../composables/device/splPort';
+import { playbackPort } from '../../composables/device/playbackPort';
 import Chart, { ChartDataset } from 'chart.js/auto';
 import type {
   SPLMapping,
-  SPLQueryParams,
+  SPLQuery as SPLQueryParams,
   Device
-} from '../../shared/types';
-import { MODAL_TYPES } from '../../shared/types';
+} from '../../domain';
+import { MODAL_TYPES } from '../../composables/modal/constants';
 import { volumeToDb, DB_MIN, DB_MAX } from '../../utils/audioUtils';
 import { usePagination } from '../../composables/usePagination';
+import { useNotification } from '../../composables/modal/useNotification';
 
 export function useSplMapping() {
+  const notification = useNotification();
+
   // 响应式数据
   const mappingData = ref<SPLMapping[]>([]);
   const searchTerm = ref<string>('');
@@ -51,41 +55,45 @@ export function useSplMapping() {
     
     if (searchTerm.value) {
       const term = searchTerm.value.toLowerCase();
-      result = result.filter(m => 
-        m.name.toLowerCase().includes(term) || 
+      result = result.filter(m =>
+        m.name.toLowerCase().includes(term) ||
         (m.description && m.description.toLowerCase().includes(term)) ||
-        ((m.device?.name && m.device.name.toLowerCase().includes(term)) || (m.device_name && m.device_name.toLowerCase().includes(term)))
+        // SPLMapping Domain 已是 camelCase：deviceName / device.name
+        (m.deviceName && m.deviceName.toLowerCase().includes(term)) || (m.device?.name && m.device.name.toLowerCase().includes(term))
       );
     }
     
     if (calibrationFilter.value !== 'all') {
       result = result.filter(m =>
-        m.calibration_status === calibrationFilter.value
+        // Domain 侧为 camelCase：calibrationStatus
+        m.calibrationStatus === calibrationFilter.value
       );
     }
 
     if (deviceFilter.value !== 'all') {
       result = result.filter(m =>
-        m.device_id?.toString() === deviceFilter.value
+        // Domain 侧为 camelCase：deviceId
+        m.deviceId?.toString() === deviceFilter.value
       );
     }
-    
+
     return result.map(m => {
-      const points = m.calibration_data?.points || [];
+      // Domain 侧为 camelCase：calibrationData
+      const points = m.calibrationData?.points || [];
       
       const validPoints = points.filter((p: any) => p && typeof p === 'object' && p.gainOffset !== undefined && p.spl !== undefined);
-      
-      let minOffset = null;
-      let maxOffset = null;
-      let minOffsetSpl = null;
-      let maxOffsetSpl = null;
-      
+
+      let minOffset: number | null = null;
+      let maxOffset: number | null = null;
+      let minOffsetSpl: number | null = null;
+      let maxOffsetSpl: number | null = null;
+
       if (validPoints.length > 0) {
         const sortedByOffset = [...validPoints].sort((a: any, b: any) => a.gainOffset - b.gainOffset);
-        minOffset = sortedByOffset[0].gainOffset;
-        maxOffset = sortedByOffset[sortedByOffset.length - 1].gainOffset;
-        minOffsetSpl = sortedByOffset[0].spl;
-        maxOffsetSpl = sortedByOffset[sortedByOffset.length - 1].spl;
+        minOffset = sortedByOffset[0].gainOffset ?? null;
+        maxOffset = sortedByOffset[sortedByOffset.length - 1].gainOffset ?? null;
+        minOffsetSpl = sortedByOffset[0].spl ?? null;
+        maxOffsetSpl = sortedByOffset[sortedByOffset.length - 1].spl ?? null;
       }
 
       const BASE_LEVEL_DBFS = -30;
@@ -103,7 +111,8 @@ export function useSplMapping() {
         baseLevel: baseLevel,
         finalLevelMin: finalLevelMin,
         finalLevelMax: finalLevelMax,
-        measurementDate: m.updated_at ? new Date(m.updated_at).toLocaleDateString() : undefined
+        // Domain 侧为 camelCase：updatedAt
+        measurementDate: m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : undefined
       };
     });
   });
@@ -137,14 +146,15 @@ export function useSplMapping() {
 
   async function searchMappings() {
     try {
+      // Domain 查询参数为 camelCase（SPLQuery），API 层负责转 snake_case
       const params : SPLQueryParams = {
         keyword: searchTerm.value,
-        calibration_status: calibrationFilter.value === 'all' ? undefined : calibrationFilter.value,
-        device_id: deviceFilter.value === 'all' ? undefined : deviceFilter.value,
+        calibrationStatus: calibrationFilter.value === 'all' ? undefined : calibrationFilter.value,
+        deviceId: deviceFilter.value === 'all' ? undefined : deviceFilter.value,
         page: 1,
-        per_page: 100
+        perPage: 100
       };
-      const response = await splApi.getAll(params);
+      const response = await splPort.getAll(params);
       if (response && response.items) {
         mappingData.value = response.items;
       }
@@ -155,7 +165,7 @@ export function useSplMapping() {
 
   async function fetchStats() {
     try {
-      const response = await splApi.getStats();
+      const response = await splPort.getStats();
       if (response) {
         stats.total = response.total || 0;
         stats.calibrated = response.calibrated || 0;
@@ -243,14 +253,14 @@ export function useSplMapping() {
             delete submitData.calibrationPoints;
           }
           
-          await splApi.create(submitData);
+          await splPort.create(submitData);
           await Promise.all([
             searchMappings(),
             fetchStats()
           ]);
           modalManager.close();
         } catch (error: any) {
-          alert(`添加失败: ${error.message || '未知错误'}`);
+          notification.error(`添加失败: ${error.message || '未知错误'}`);
         } finally {
           isSubmitting = false;
         }
@@ -267,11 +277,12 @@ export function useSplMapping() {
     Object.assign(formData, {
       name: mapping.name,
       description: mapping.description || '',
-      deviceId: String(mapping.device_id || ''),
-      deviceUniqueId: mapping.device?.device_unique_id || '',
+      // Domain 侧为 camelCase：deviceId / deviceUniqueId / testFrequency / calibrationData
+      deviceId: String(mapping.deviceId || ''),
+      deviceUniqueId: mapping.device?.deviceUniqueId || '',
       distance: mapping.distance || 1,
-      testFrequency: mapping.test_frequency || 1000,
-      calibrationPoints: mapping.calibration_data?.points || [{ digital_gain: null, spl: null }]
+      testFrequency: mapping.testFrequency || 1000,
+      calibrationPoints: mapping.calibrationData?.points || [{ digital_gain: null, spl: null }]
     });
     showModal.value = true;
 
@@ -330,14 +341,14 @@ export function useSplMapping() {
               delete submitData.calibrationPoints;
             }
             
-            await splApi.update(selectedMappingId.value, submitData);
+            await splPort.update(selectedMappingId.value, submitData);
             await Promise.all([
               searchMappings(),
               fetchStats()
             ]);
             modalManager.close();
           } catch (error: any) {
-            alert(`修改失败: ${error.message || '未知错误'}`);
+            notification.error(`修改失败: ${error.message || '未知错误'}`);
           } finally {
             isSubmitting = false;
           }
@@ -362,7 +373,7 @@ export function useSplMapping() {
       title: '确认删除',
       content: '确定要删除此映射吗？此操作不可撤销。',
       onConfirm: async () => {
-        await splApi.delete(id);
+        await splPort.delete(id);
         await Promise.all([
           searchMappings(),
           fetchStats()
@@ -393,8 +404,9 @@ export function useSplMapping() {
   }
 
   function generateChartData(mapping: SPLMapping) {
-    const calibrationStatus = mapping.calibration_status;
-    const calibrationData = mapping.calibration_data;
+    // Domain 侧为 camelCase：calibrationStatus / calibrationData
+    const calibrationStatus = mapping.calibrationStatus;
+    const calibrationData = mapping.calibrationData;
 
     const hasCalibrationData = calibrationData && calibrationData.points && calibrationData.points.length > 0;
 
@@ -410,7 +422,8 @@ export function useSplMapping() {
       };
     }
 
-    const points = calibrationData.points;
+    // points 为可选字段（CalibrationData.points?: CalibrationPoint[]），解构后需兜底空数组
+    const points = calibrationData.points ?? [];
     const sortedPoints = [...points].sort((a: any, b: any) => {
       const aGainOffset = a.gainOffset ?? a.gain ?? 0;
       const bGainOffset = b.gainOffset ?? b.gain ?? 0;
@@ -606,14 +619,8 @@ export function useSplMapping() {
 
   async function fetchDevices() {
     try {
-      const response = await playbackApi.getAll({ perPage: 1000 });
-      if (response) {
-        if (Array.isArray(response)) {
-          playbackDevices.value = response;
-        } else if (response.items) {
-          playbackDevices.value = response.items;
-        }
-      }
+      // playbackPort.getAll 已展平为 Domain 数组
+      playbackDevices.value = await playbackPort.getAll({ perPage: 1000 });
     } catch (error) {
       console.error('获取设备列表失败:', error);
     }

@@ -1,6 +1,7 @@
 import { ref, onMounted } from 'vue';
-import { reportsApi } from '../../utils/api';
-import type { Report, PaginatedResponse } from '../../shared/types';
+import { reportsPort } from '@/composables/report/reportsPort';
+import type { Report } from '../../domain';
+import type { PaginatedResult } from '../../domain';
 
 export function useTestReports() {
   const reports = ref<Report[]>([]);
@@ -10,7 +11,7 @@ export function useTestReports() {
   const fetchReports = async (params: any = {}) => {
     loading.value = true;
     try {
-      const response: PaginatedResponse<Report> = await reportsApi.getAll(params);
+      const response: PaginatedResult<Report> = await reportsPort.getAll(params);
       reports.value = response.items || [];
       total.value = response.total || 0;
     } catch (err) {

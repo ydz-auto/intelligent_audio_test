@@ -1,6 +1,6 @@
 import { ref } from 'vue'
-import { evaluationApi } from '../../utils/api'
-import type { EvaluationDimension } from '../../shared/types'
+import { evaluationPort } from '../evaluation/evaluationPort'
+import type { EvaluationDimension } from '../../domain'
 
 const dimensionsCache = ref<EvaluationDimension[]>([])
 const isLoading = ref(false)
@@ -32,21 +32,21 @@ export function useDimensions() {
       let pages = 1
 
       while (page <= pages) {
-        const params: Record<string, any> = { page, per_page: 200 }
-        if (options.categoryId) params.category_id = options.categoryId
+        const params: Record<string, any> = { page, perPage: 200 }
+        if (options.categoryId) params.categoryId = options.categoryId
         if (options.search) params.search = options.search
-        if (options.algorithmType) params.algorithm_type = options.algorithmType
+        if (options.algorithmType) params.algorithmType = options.algorithmType
 
-        const res = await evaluationApi.getAll(params)
+        const res = await evaluationPort.getAll(params)
         const items: EvaluationDimension[] = Array.isArray(res?.items) ? res.items : []
         pages = typeof res?.pages === 'number' ? res.pages : pages
 
         for (const dim of items) {
           if (!dim?.id || !dim?.name) continue
-          // 从 required_inputs 推导 requiresAudio 标记
-          const reqInputs = (dim as any).required_inputs
+          // 从 requiredInputs 推导 requiresAudio 标记
+          const reqInputs = dim.requiredInputs
           if (Array.isArray(reqInputs)) {
-            (dim as any).requiresAudio = reqInputs.some((p: any) => p?.field_type === 'audio' && p?.param_direction === 'input')
+            (dim as any).requiresAudio = reqInputs.some((p: any) => p?.fieldType === 'audio' && p?.paramDirection === 'input')
           }
           if (!byId.has(dim.id)) {
             byId.set(dim.id, dim)
@@ -69,14 +69,8 @@ export function useDimensions() {
   async function fetchDimensionsByAlgorithmType(algorithmType: string): Promise<EvaluationDimension[]> {
     isLoading.value = true
     try {
-      const res = await evaluationApi.getOptions({ algorithm_type: algorithmType })
+      const res = await evaluationPort.getOptions({ algorithmType })
       const dimensions = res?.dimensions || []
-      // 映射后端 requires_audio → requiresAudio
-      for (const dim of dimensions) {
-        if ((dim as any).requires_audio !== undefined) {
-          (dim as any).requiresAudio = (dim as any).requires_audio
-        }
-      }
       return dimensions
     } finally {
       isLoading.value = false
@@ -85,9 +79,9 @@ export function useDimensions() {
 
   function getDimensionsByAlgorithmType(algorithmType: string): EvaluationDimension[] {
     return dimensionsCache.value.filter(dim => {
-      const algorithms = (dim as any).associated_algorithms
+      const algorithms = dim.associatedAlgorithms
       return algorithms?.some(
-        (algo: any) => algo.algorithmType === algorithmType
+        (algo) => algo.algorithmType === algorithmType
       )
     })
   }

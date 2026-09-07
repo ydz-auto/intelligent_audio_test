@@ -191,10 +191,10 @@
                 <button class="case-view-btn" :class="{ active: caseViewMode === 'flat' }" @click="caseViewMode = 'flat'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
                   <i class="fas fa-list"></i> 平铺
                 </button>
-                <button class="case-view-btn" :class="{ active: caseViewMode === 'tag' }" @click="caseViewMode = 'tag'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                <button class="case-view-btn" :class="{ active: caseViewMode === ViewMode.TAG }" @click="caseViewMode = ViewMode.TAG" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
                   <i class="fas fa-tags"></i> 标签
                 </button>
-                <button class="case-view-btn" :class="{ active: caseViewMode === 'group' }" @click="caseViewMode = 'group'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                <button class="case-view-btn" :class="{ active: caseViewMode === ViewMode.GROUP }" @click="caseViewMode = ViewMode.GROUP" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
                   <i class="fas fa-folder"></i> 分组
                 </button>
               </div>
@@ -203,14 +203,14 @@
                 <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">状态:</label>
                 <select v-model="caseFilterStatus" class="form-input" style="height: 32px; padding: 0 8px; font-size: 13px; min-width: 110px;">
                   <option value="all">全部状态</option>
-                  <option value="pending">等待中</option>
-                  <option value="queued">排队中</option>
-                  <option value="in_progress">执行中</option>
-                  <option value="calculating">计算指标中</option>
-                  <option value="completed">已完成</option>
-                  <option value="failed">已失败</option>
-                  <option value="skipped">已跳过</option>
-                  <option value="stopped">已停止</option>
+                  <option :value="ExecutionStatus.PENDING">等待中</option>
+                  <option :value="ExecutionStatus.QUEUED">排队中</option>
+                  <option :value="ExecutionStatus.IN_PROGRESS">执行中</option>
+                  <option :value="EvaluationStatus.CALCULATING">计算指标中</option>
+                  <option :value="ExecutionStatus.COMPLETED">已完成</option>
+                  <option :value="ExecutionStatus.FAILED">已失败</option>
+                  <option :value="TaskStatus.SKIPPED">已跳过</option>
+                  <option :value="ExecutionStatus.STOPPED">已停止</option>
                   <option value="deleted">已删除</option>
                 </select>
               </div>
@@ -261,10 +261,10 @@
               <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
               暂无关联用例
             </div>
-            <div v-for="(cases, key) in (caseViewMode === 'tag' ? groupedCasesByTag : groupedCasesByGroupName)" :key="key" class="case-group-card" style="background-color: var(--background-secondary); border-radius: var(--border-radius-md); margin-bottom: 8px; border: 1px solid var(--border-color);">
+            <div v-for="(cases, key) in (caseViewMode === ViewMode.TAG ? groupedCasesByTag : groupedCasesByGroupName)" :key="key" class="case-group-card" style="background-color: var(--background-secondary); border-radius: var(--border-radius-md); margin-bottom: 8px; border: 1px solid var(--border-color);">
               <div class="case-group-header" @click="toggleCaseGroup(key)" style="padding: 10px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
                 <i class="fas fa-chevron-down" :class="{ expanded: expandedCaseGroups[key] }" style="font-size: 12px; transition: transform 0.2s; transform: rotate(-90deg);"></i>
-                <i v-if="caseViewMode === 'tag'" class="fas fa-tag" style="color: var(--primary-color, #4a90e2); font-size: 13px;"></i>
+                <i v-if="caseViewMode === ViewMode.TAG" class="fas fa-tag" style="color: var(--primary-color, #4a90e2); font-size: 13px;"></i>
                 <i v-else class="fas fa-folder" style="color: var(--primary-color, #4a90e2); font-size: 13px;"></i>
                 <span style="font-weight: 500; color: var(--text-primary);">{{ key }}</span>
                 <span style="background-color: var(--primary-color); color: white; font-size: 12px; padding: 2px 8px; border-radius: 12px; min-width: 20px; text-align: center;">{{ cases.length }}</span>
@@ -311,7 +311,7 @@
               <div class="device-info">
                 <div class="device-name" style="font-weight: 500; margin-bottom: 4px;">{{ device.name }}</div>
                 <div class="device-status" :class="`status-${device.status}`" style="font-size: 12px;">
-                  <i class="fas fa-circle" :class="device.status === 'online' ? 'online-indicator' : 'offline-indicator'" style="font-size: 8px; margin-right: 4px;"></i> {{ device.status === 'online' ? '在线' : '离线' }}
+                  <i class="fas fa-circle" :class="device.status === DeviceStatus.ONLINE ? 'online-indicator' : 'offline-indicator'" style="font-size: 8px; margin-right: 4px;"></i> {{ device.status === DeviceStatus.ONLINE ? '在线' : '离线' }}
                 </div>
               </div>
               <div v-if="device.currentConcurrent !== undefined" class="device-stats" style="display: flex; align-items: center; gap: 12px;">
@@ -370,7 +370,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { TaskStatus } from '@/shared/types/enums';
+import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus } from '@/domain/enums';
 
 const props = defineProps({
   testType: {type: String, required: true, validator: (value) => ['API', 'E2E'].includes(value)},

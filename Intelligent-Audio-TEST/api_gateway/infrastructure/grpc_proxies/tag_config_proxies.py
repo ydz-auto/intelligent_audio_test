@@ -117,13 +117,14 @@ class _TagConfigProxy:
             error_msg_prefix='更新标签失败',
         )
 
-    def delete_tag(self, tag_id):
+    def delete_tag(self, tag_id, cascade: bool = False):
         from shared.proto import task_service_pb2 as task_pb
 
         def _call():
             stub = get_tag_config_service_stub()
             resp = stub.DeleteTag(task_pb.DeleteTagRequest(
                 tag_id=int(tag_id),
+                cascade=cascade,
             ))
             return self._resp(resp)
 

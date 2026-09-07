@@ -1,10 +1,10 @@
 import { ref, computed, type Ref } from 'vue'
-import { tasksApi } from '../../utils/api'
-import type { APIConfig, TestCase } from '../../shared/types'
-import { TestType, TaskStatus } from '@/shared/types/enums'
+import { tasksPort } from '../task/tasksPort'
+import type { APIConfig, TestCase } from '../../domain'
+import { TestType, TaskStatus, ApiEndpointStatus } from '../../domain/enums'
 
 interface UseTaskExecutionOptions {
-  testType: 'e2e' | 'api'
+  testType: typeof TestType[keyof typeof TestType]
   currentTaskId: Ref<string | number | null>
   taskName: Ref<string>
   concurrentTasks: Ref<number>
@@ -46,13 +46,13 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
 
   /** e2e: 是否可以开始测试 */
   const canStartTest = computed(() => {
-    if (testType !== 'e2e') return false
+    if (testType !== TestType.E2E) return false
     return selectedDeviceIds.value.length > 0 && !e2eIsExecuting.value
   })
 
   /** e2e 启动测试 */
   const startE2eTest = async () => {
-    if (testType !== 'e2e') return false
+    if (testType !== TestType.E2E) return false
     if (!canStartTest.value) return false
 
     try {
@@ -80,7 +80,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       }
 
       addLog({ content: '正在创建测试任务...', level: 'info' })
-      const response = await tasksApi.create(payload)
+      const response = await tasksPort.create(payload)
       currentTaskId.value = response.id
 
       associatedCases.value = selectedCaseIds.map((id: any) => ({
@@ -95,7 +95,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       pendingTests.value = totalTestCases.value
 
       addLog({ content: '测试任务已创建，正在启动...', level: 'info' })
-      const startResponse = await tasksApi.start(response.id)
+      const startResponse = await tasksPort.start(response.id)
 
       onE2eStart?.(startResponse)
 
@@ -126,7 +126,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
 
   /** api 启动测试（在 nextStep 内调用） */
   const startApiTask = async () => {
-    if (testType !== 'api') return false
+    if (testType !== TestType.API) return false
 
     if (selectedTestCaseIds.value.length === 0) {
       addLog({ content: '请至少选择一个测试用例', level: 'warn' })
@@ -146,7 +146,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       return false
     }
 
-    const nonOnlineApis = selectedApis.filter(a => a.status !== 'online')
+    const nonOnlineApis = selectedApis.filter(a => a.status !== ApiEndpointStatus.ONLINE)
     if (nonOnlineApis.length > 0) {
       addLog({ content: `以下API处于离线状态，无法执行测试：${nonOnlineApis.map(a => a.name).join(', ')}`, level: 'warn' })
       return false
@@ -162,7 +162,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         tags: [],
       }
 
-      const taskResponse = await tasksApi.create(taskData)
+      const taskResponse = await tasksPort.create(taskData)
       currentTaskId.value = taskResponse.id
 
       associatedCases.value = selectedTestCaseIds.value
@@ -185,7 +185,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       const maxConcurrent = selectedApis.reduce((sum, api) => sum + (api.maxConcurrent || api.currentConcurrent || 5), 0)
       concurrentTasks.value = maxConcurrent
 
-      const startResponse = await tasksApi.start(taskResponse.id)
+      const startResponse = await tasksPort.start(taskResponse.id)
 
       if (startResponse.expectedTotalTime) {
         estimatedTime.value = String(startResponse.expectedTotalTime)
@@ -203,7 +203,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
 
   /** 统一启动入口 */
   const startTask = async () => {
-    if (testType === 'e2e') return startE2eTest()
+    if (testType === TestType.E2E) return startE2eTest()
     return startApiTask()
   }
 

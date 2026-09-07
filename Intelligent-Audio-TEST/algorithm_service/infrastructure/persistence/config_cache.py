@@ -300,6 +300,7 @@ class AlgorithmConfigCache:
             'default_value': param.get('default_value'),
             'help_text': param.get('help_text'),
             'ui_order': param.get('ui_order'),
+            'pass_threshold': param.get('pass_threshold'),
         }
 
     @staticmethod

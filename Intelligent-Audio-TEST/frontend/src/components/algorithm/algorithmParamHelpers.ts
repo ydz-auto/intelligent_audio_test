@@ -1,5 +1,3 @@
-import { algorithmApi } from '../../utils/api'
-
 export function getDefaultComponent(paramType: string): string {
   const typeComponentMap: Record<string, string> = {
     'text': 'input',
@@ -14,59 +12,62 @@ export function getDefaultComponent(paramType: string): string {
   return typeComponentMap[paramType] || 'input'
 }
 
+/** 归一化参数字段为 camelCase Domain 形状（algorithmPort 已返回 camelCase，此处仅做形状收敛） */
 export function normalizeParamFields(param: any) {
   return {
     ...param,
-    param_code: param.paramCode ?? param.param_code,
-    param_name: param.paramName ?? param.param_name,
-    param_type: param.paramType ?? param.param_type,
-    ui_group: param.uiGroup ?? param.ui_group,
-    ui_order: param.uiOrder ?? param.ui_order,
-    default_value: param.defaultValue ?? param.default_value,
+    paramCode: param.paramCode ?? '',
+    paramName: param.paramName ?? '',
+    paramType: param.paramType ?? 'text',
+    uiGroup: param.uiGroup ?? '',
+    uiOrder: param.uiOrder ?? 0,
+    defaultValue: param.defaultValue,
     required: param.required,
     hidden: param.hidden,
     direction: param.direction,
     label: param.label,
-    help_text: param.helpText ?? param.help_text
+    helpText: param.helpText ?? '',
   }
 }
 
+/** 归一化用例参数字段为 camelCase Domain 形状 */
 export function normalizeCaseParamFields(param: any) {
   const normalized = {
     ...param,
-    param_code: param.paramCode ?? param.param_code,
-    param_name: param.paramName ?? param.param_name,
-    param_type: param.paramType ?? param.param_type,
+    paramCode: param.paramCode ?? '',
+    paramName: param.paramName ?? '',
+    paramType: param.paramType ?? 'text',
     label: param.label,
     required: param.required,
-    default_value: param.defaultValue ?? param.default_value,
-    help_text: param.helpText ?? param.help_text,
-    ui_order: param.uiOrder ?? param.ui_order,
+    defaultValue: param.defaultValue,
+    helpText: param.helpText ?? '',
+    uiOrder: param.uiOrder ?? 0,
     hidden: param.hidden,
     scope: param.scope ?? 'common',
-    min_value: param.minValue ?? param.min_value ?? param.min ?? null,
-    max_value: param.maxValue ?? param.max_value ?? param.max ?? null,
+    minValue: param.minValue ?? param.min ?? null,
+    maxValue: param.maxValue ?? param.max ?? null,
     step: param.step ?? null,
     unit: param.unit ?? '',
-    annotation_code: param.annotationCode ?? param.annotation_code ?? null,
-    field_path: param.fieldPath ?? param.field_path ?? null
+    annotationCode: param.annotationCode ?? null,
+    fieldPath: param.fieldPath ?? null,
   }
-  // 确保 component 字段与 param_type 同步
+  // 确保 component 字段与 paramType 同步
   if (!normalized.component) {
-    normalized.component = getDefaultComponent(normalized.param_type || 'text')
+    normalized.component = getDefaultComponent(normalized.paramType || 'text')
   }
   return normalized
 }
 
+/** 构建参考参数请求体（camelCase Domain → snake_case 提交给后端） */
 export function buildReferenceParamData(p: any) {
   return {
     code: p.code,
     name: p.name,
     type: p.type,
-    annotation_code: p.annotation_code || p.code,
-    annotation_format: p.annotation_format || null,
-    field_path: p.field_path || null,
-    merge_mode: p.merge_mode || 'join',
-    help_text: p.help_text
+    annotationCode: p.annotationCode || p.code,
+    annotationFormat: p.annotationFormat || null,
+    fieldPath: p.fieldPath || null,
+    mergeMode: p.mergeMode || 'join',
+    helpText: p.helpText,
   }
 }

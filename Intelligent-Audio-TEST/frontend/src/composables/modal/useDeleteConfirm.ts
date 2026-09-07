@@ -1,5 +1,5 @@
 import { useModalControl } from './useModal';
-import { MODAL_TYPES } from '../../shared/types';
+import { MODAL_TYPES } from './constants';
 
 export function useDeleteConfirm() {
   const { open, closeAll } = useModalControl();

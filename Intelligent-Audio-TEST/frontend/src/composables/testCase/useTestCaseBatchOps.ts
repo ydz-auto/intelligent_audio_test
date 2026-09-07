@@ -1,7 +1,8 @@
-import { testcasesApi } from '../../utils/api'
+import { testcasesPort } from './testcasesPort'
 import { useNotification } from '../modal/useNotification'
-import { TestType, TaskStatus } from '@/shared/types/enums'
-import type { TestCase } from '../../shared/types'
+import { TestType, TaskStatus, ViewMode } from '../../domain/enums'
+import { readCamel } from '../../utils/keyTransform'
+import type { TestCase } from '../../domain'
 
 /**
  * 测试用例批量操作 composable。
@@ -14,7 +15,7 @@ import type { TestCase } from '../../shared/types'
 export function useTestCaseBatchOps(store: {
   testCases: import('vue').Ref<TestCase[]>
   error: import('vue').Ref<string | null>
-  fullGroupsMap: import('vue').Ref<Record<string, import('../shared/types').TestCaseGroup>>
+  fullGroupsMap: import('vue').Ref<Record<string, import('../../domain').TestCaseGroup>>
   organizeTestCasesByGroup: () => void
   extractTags: () => void
   fetchTestCases: (params?: Record<string, any>) => Promise<void>
@@ -40,14 +41,15 @@ export function useTestCaseBatchOps(store: {
     try {
       error.value = null
       const payload: Record<string, any> = { algorithmParams }
-      if (options?.roundMode) payload.round_mode = options.roundMode
-      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
-      await testcasesApi.batchAction('update_algorithm_params', ids, payload)
+      if (options?.roundMode) payload.roundMode = options.roundMode
+      if (options?.roundNumbers) payload.roundNumbers = options.roundNumbers
+      await testcasesPort.batchAction('update_algorithm_params', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
         if (tc) {
-          tc.algorithm_params = algorithmParams as any
+          // 本地 state 对象为 camelCase Domain 结构（与 batchAction 后端返回无关）
+          tc.algorithmParams = algorithmParams as any
         }
       })
       organizeTestCasesByGroup()
@@ -66,9 +68,9 @@ export function useTestCaseBatchOps(store: {
       error.value = null
       const payload: Record<string, any> = { playbackDevices }
       if (options?.targets) payload.targets = options.targets
-      if (options?.roundMode) payload.round_mode = options.roundMode
-      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
-      await testcasesApi.batchAction('update_playback_devices', ids, payload)
+      if (options?.roundMode) payload.roundMode = options.roundMode
+      if (options?.roundNumbers) payload.roundNumbers = options.roundNumbers
+      await testcasesPort.batchAction('update_playback_devices', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
@@ -91,7 +93,8 @@ export function useTestCaseBatchOps(store: {
           // Legacy flat format fallback
           else if (config.audios) {
             ;(config as any).audios = (config as any).audios.map((audio: any) => {
-              const audioType = (audio.test_type || '').toLowerCase()
+              // config 透传结构经 adapter 深度 camelize（test_type → testType），readCamel 兜底
+              const audioType = String(readCamel(audio, 'testType') ?? '').toLowerCase()
               if (audioType === TestType.E2E) {
                 return { ...audio, testType: TestType.E2E, playbackDeviceId: playbackDevices.deviceId }
               }
@@ -117,21 +120,21 @@ export function useTestCaseBatchOps(store: {
       error.value = null
       const payload: Record<string, any> = { spl }
       if (options?.targets) payload.targets = options.targets
-      if (options?.roundMode) payload.round_mode = options.roundMode
-      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
-      await testcasesApi.batchAction('update_spl', ids, payload)
+      if (options?.roundMode) payload.roundMode = options.roundMode
+      if (options?.roundNumbers) payload.roundNumbers = options.roundNumbers
+      await testcasesPort.batchAction('update_spl', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
         if (tc && tc.config) {
           const config = { ...tc.config }
           const targets = options?.targets || ['audio']
-          const roundMode = options?.roundMode || 'all'
+          const roundMode = options?.roundMode || ViewMode.ALL
           const roundNumbers = options?.roundNumbers || []
           const splValue = typeof spl === 'object' ? spl.value : spl
           if (config.rounds && Array.isArray(config.rounds)) {
             config.rounds = config.rounds.map((round: any) => {
-              const rn = round.roundNumber || round.round_number
+              const rn = readCamel<number>(round, 'roundNumber')
               if (roundMode === 'specific' && rn && !roundNumbers.includes(rn)) return round
               const newRound = { ...round }
               if (Array.isArray(newRound.audios)) {
@@ -147,7 +150,8 @@ export function useTestCaseBatchOps(store: {
             })
           } else if (config.audios) {
             ;(config as any).audios = (config as any).audios.map((audio: any) => {
-              const audioType = (audio.test_type || '').toLowerCase()
+              // config 透传结构经 adapter 深度 camelize（test_type → testType），readCamel 兜底
+              const audioType = String(readCamel(audio, 'testType') ?? '').toLowerCase()
               if (audioType === TestType.E2E) {
                 return { ...audio, testType: TestType.E2E, spl: spl.value }
               }
@@ -167,7 +171,7 @@ export function useTestCaseBatchOps(store: {
   const batchMoveCases = async (ids: (string | number)[], groupId: string) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('move_to_group', ids, { target_group_id: groupId })
+      await testcasesPort.batchAction('move_to_group', ids, { targetGroupId: groupId })
 
       const group = fullGroupsMap.value[groupId]
       const groupName = group?.name || '未知分组'
@@ -175,8 +179,9 @@ export function useTestCaseBatchOps(store: {
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
         if (tc) {
-          tc.group_id = groupId
-          tc.group_name = groupName
+          // 本地 state 对象为 camelCase Domain 结构
+          tc.groupId = groupId
+          tc.groupName = groupName
         }
       })
       organizeTestCasesByGroup()
@@ -189,7 +194,7 @@ export function useTestCaseBatchOps(store: {
   const batchCopyCases = async (ids: (string | number)[], groupId: string) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('copy_to_group', ids, { target_group_id: groupId })
+      await testcasesPort.batchAction('copy_to_group', ids, { targetGroupId: groupId })
       await fetchTestCases()
       return true
     } catch (err: any) {
@@ -205,13 +210,13 @@ export function useTestCaseBatchOps(store: {
   ) => {
     try {
       error.value = null
-      const payload: Record<string, any> = { dimensions, test_type: testType }
-      if (options?.roundMode) payload.round_mode = options.roundMode
-      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
+      const payload: Record<string, any> = { dimensions, testType: testType }
+      if (options?.roundMode) payload.roundMode = options.roundMode
+      if (options?.roundNumbers) payload.roundNumbers = options.roundNumbers
       if (options?.targets) payload.targets = options.targets
-      if (options?.roundDimensions) payload.round_dimensions = options.roundDimensions
-      if (options?.multiDimensions) payload.multi_dimensions = options.multiDimensions
-      await testcasesApi.batchAction('update_dimensions', ids, payload)
+      if (options?.roundDimensions) payload.roundDimensions = options.roundDimensions
+      if (options?.multiDimensions) payload.multiDimensions = options.multiDimensions
+      await testcasesPort.batchAction('update_dimensions', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
@@ -224,9 +229,9 @@ export function useTestCaseBatchOps(store: {
             if (config.rounds && Array.isArray(config.rounds)) {
               const lastRn = config.rounds.length
               config.rounds = config.rounds.map((round: any) => {
-                const rn = round.roundNumber || round.round_number
+                const rn = readCamel<number>(round, 'roundNumber')
                 // 先查精确轮次，-1 代表最后一轮，按实际轮次数解析
-                let roundDims = options.roundDimensions![rn] || []
+                let roundDims = (rn !== undefined ? options.roundDimensions![rn] : undefined) || []
                 if (rn === lastRn && options.roundDimensions![-1]) {
                   // 最后一轮的维度叠加到该轮
                   const lastDims = options.roundDimensions![-1] || []
@@ -249,10 +254,10 @@ export function useTestCaseBatchOps(store: {
             if (config.rounds && Array.isArray(config.rounds)) {
               const lastRn = config.rounds.length
               config.rounds = config.rounds.map((round: any) => {
-                const rn = round.roundNumber || round.round_number
+                const rn = readCamel<number>(round, 'roundNumber')
                 // 指定轮次模式下只更新选中的轮次（含 -1 = 最后一轮）
                 if (options?.roundMode === 'specific' && options.roundNumbers) {
-                  const isSelected = options.roundNumbers.includes(rn) ||
+                  const isSelected = (rn !== undefined && options.roundNumbers.includes(rn)) ||
                     (rn === lastRn && options.roundNumbers.includes(-1))
                   if (!isSelected) return round
                 }
@@ -291,14 +296,14 @@ export function useTestCaseBatchOps(store: {
     try {
       error.value = null
       const payload: Record<string, any> = {
-        noise_audio_id: audioId,
-        noise_spl: spl,
-        noise_device_ids: deviceIds
+        noiseAudioId: audioId,
+        noiseSpl: spl,
+        noiseDeviceIds: deviceIds
       }
       if (options?.targets) payload.targets = options.targets
-      if (options?.roundMode) payload.round_mode = options.roundMode
-      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
-      await testcasesApi.batchAction('update_noise', ids, payload)
+      if (options?.roundMode) payload.roundMode = options.roundMode
+      if (options?.roundNumbers) payload.roundNumbers = options.roundNumbers
+      await testcasesPort.batchAction('update_noise', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
@@ -333,7 +338,7 @@ export function useTestCaseBatchOps(store: {
   const batchAutoGenerateName = async (ids: (string | number)[]) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('auto_generate_name', ids, {})
+      await testcasesPort.batchAction('auto_generate_name', ids, {})
       await fetchTestCases()
       return true
     } catch (err: any) {
@@ -344,7 +349,7 @@ export function useTestCaseBatchOps(store: {
   const batchAddTags = async (ids: (string | number)[], newTags: string[]) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('add_tags', ids, { tags: newTags })
+      await testcasesPort.batchAction('add_tags', ids, { tags: newTags })
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
@@ -369,7 +374,7 @@ export function useTestCaseBatchOps(store: {
   const batchRemoveTags = async (ids: (string | number)[], tagsToRemove: string[]) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('remove_tags', ids, { tags: tagsToRemove })
+      await testcasesPort.batchAction('remove_tags', ids, { tags: tagsToRemove })
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
@@ -391,7 +396,7 @@ export function useTestCaseBatchOps(store: {
   const batchRenameTag = async (oldTagName: string, newTagName: string) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('rename_tag', [], { old_tag_name: oldTagName, new_tag_name: newTagName })
+      await testcasesPort.batchAction('rename_tag', [], { oldTagName: oldTagName, newTagName: newTagName })
 
       testCases.value.forEach(tc => {
         if (tc.tags) {
@@ -414,9 +419,11 @@ export function useTestCaseBatchOps(store: {
   const batchRefreshReference = async (ids: (string | number)[]) => {
     try {
       error.value = null
-      const result: any = await testcasesApi.batchAction('refresh_reference', ids, {})
-      if (result?.task_id) {
-        return { taskId: result.task_id }
+      const result: any = await testcasesPort.batchAction('refresh_reference', ids, {})
+      // Infrastructure 出口已归一 camelCase（task_id → taskId）
+      const refreshedTaskId = result?.taskId
+      if (refreshedTaskId) {
+        return { taskId: refreshedTaskId }
       }
       await fetchTestCases()
       return true
@@ -429,7 +436,7 @@ export function useTestCaseBatchOps(store: {
     return new Promise((resolve) => {
       const poll = async () => {
         try {
-          const status: any = await testcasesApi.getRefreshTaskStatus(taskId)
+          const status: any = await testcasesPort.getRefreshTaskStatus(taskId)
 
           if (status.status === 'not_found') {
             resolve({ success: false, updated: 0, failed: 0 })
@@ -470,9 +477,10 @@ export function useTestCaseBatchOps(store: {
     search?: string
     tag?: string
     algorithmType?: string
+    dimensionId?: number
   }): Promise<(string | number)[]> => {
     try {
-      const result: any = await testcasesApi.getIdsByFilter(filters)
+      const result: any = await testcasesPort.getIdsByFilter(filters)
       return (result as any)?.ids || []
     } catch (err: any) {
       console.error('[fetchCaseIdsByFilter] 获取用例ID失败:', err)

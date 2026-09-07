@@ -1,7 +1,8 @@
 import { ref, nextTick } from 'vue'
-import { algorithmApi } from '../../utils/api'
+import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { PARAM_CODE_PRESETS } from './algorithmConstants'
 import { getDefaultComponent, buildReferenceParamData } from './algorithmParamHelpers'
+import { useNotification } from '../../composables/modal/useNotification'
 
 export function useAlgorithmParamOps(
   formState: any,
@@ -9,6 +10,7 @@ export function useAlgorithmParamOps(
   effectiveMode: any,
   paramIdCounter: { value: number }
 ) {
+  const notification = useNotification()
   let saveTimeout: any = null
   let caseParamSaveTimeout: any = null
   let referenceParamSaveTimeout: any = null
@@ -17,32 +19,32 @@ export function useAlgorithmParamOps(
     const isCase = paramConfigType.value === 'case'
     const tempId = `temp_${++paramIdCounter.value}`
     if (isCase) {
-      formState.case_params.push({
+      formState.caseParams.push({
         tempId,
-        param_code: '',
-        param_name: '',
-        param_type: 'text',
+        paramCode: '',
+        paramName: '',
+        paramType: 'text',
         component: 'input',
         scope: 'common',
         required: false,
-        default_value: '',
-        min_value: null,
-        max_value: null,
+        defaultValue: '',
+        minValue: null,
+        maxValue: null,
         step: null,
         unit: '',
-        help_text: '',
-        annotation_code: null,
-        field_path: null,
-        ui_order: formState.case_params.length
+        helpText: '',
+        annotationCode: null,
+        fieldPath: null,
+        uiOrder: formState.caseParams.length
       })
     } else {
-      const params = paramConfigType.value === 'device' ? formState.device_params : formState.api_params
+      const params = paramConfigType.value === 'device' ? formState.deviceParams : formState.apiParams
       params.push({
         tempId,
-        param_code: '',
-        param_name: '',
+        paramCode: '',
+        paramName: '',
         direction: 'input',
-        param_type: 'text',
+        paramType: 'text',
         required: false
       })
     }
@@ -56,56 +58,56 @@ export function useAlgorithmParamOps(
   }
 
   function handleRemoveCaseParam(index: number) {
-    const param = formState.case_params[index]
+    const param = formState.caseParams[index]
     if (param && param.id) {
       const backup = { ...param }
-      formState.case_params.splice(index, 1)
-      algorithmApi.deleteCaseParam(param.id).catch(err => {
+      formState.caseParams.splice(index, 1)
+      algorithmPort.deleteCaseParam(param.id).catch(err => {
         console.error('删除用例参数失败:', err)
-        formState.case_params.splice(index, 0, backup)
-        alert('删除用例参数失败，已恢复')
+        formState.caseParams.splice(index, 0, backup)
+        notification.error('删除用例参数失败，已恢复')
       })
     } else {
-      formState.case_params.splice(index, 1)
+      formState.caseParams.splice(index, 1)
     }
   }
 
   function handleAddReferenceParam() {
-    formState.reference_params.push({
+    formState.referenceParams.push({
       tempId: `temp_ref_${++paramIdCounter.value}`,
       code: '',
       name: '',
       type: 'text',
-      annotation_code: formState.type || '',
-      annotation_format: '',
-      field_path: '',
-      merge_mode: 'join',
-      help_text: ''
+      annotationCode: formState.type || '',
+      annotationFormat: '',
+      fieldPath: '',
+      mergeMode: 'join',
+      helpText: ''
     })
   }
 
   function handleRemoveReferenceParam(index: number) {
-    const param = formState.reference_params[index]
+    const param = formState.referenceParams[index]
     if (param && param.id) {
       const backup = { ...param }
-      formState.reference_params.splice(index, 1)
-      algorithmApi.deleteReferenceParam(param.id, formState.type).catch(err => {
+      formState.referenceParams.splice(index, 1)
+      algorithmPort.deleteReferenceParam(param.id, formState.type).catch(err => {
         console.error('删除参考参数失败:', err)
-        formState.reference_params.splice(index, 0, backup)
-        alert('删除参考参数失败，已恢复')
+        formState.referenceParams.splice(index, 0, backup)
+        notification.error('删除参考参数失败，已恢复')
       })
     } else {
-      formState.reference_params.splice(index, 1)
+      formState.referenceParams.splice(index, 1)
     }
   }
 
   function handleCaseParamTypeChange(param: any, index: number) {
-    param.component = getDefaultComponent(param.param_type)
+    param.component = getDefaultComponent(param.paramType)
     handleCaseParamBlur(param, index)
   }
 
   async function handleParamBlur(param: any, index: number, paramType: string) {
-    if (!formState.type || !param.param_code) return
+    if (!formState.type || !param.paramCode) return
     if (saveTimeout) clearTimeout(saveTimeout)
     saveTimeout = setTimeout(async () => {
       await autoSaveParams(param, paramType)
@@ -113,15 +115,15 @@ export function useAlgorithmParamOps(
   }
 
   function handleParamCodeSelect(param: any, index: number) {
-    const preset = PARAM_CODE_PRESETS[param.param_code]
-    if (preset && !param.param_name) {
-      param.param_name = preset.param_name
-      param.param_type = preset.param_type
-      param.component = getDefaultComponent(preset.param_type)
-      if (preset.default_value !== undefined) param.default_value = preset.default_value
-      if (preset.help_text) param.help_text = preset.help_text
-      if (preset.min_value !== undefined) param.min_value = preset.min_value
-      if (preset.max_value !== undefined) param.max_value = preset.max_value
+    const preset = PARAM_CODE_PRESETS[param.paramCode]
+    if (preset && !param.paramName) {
+      param.paramName = preset.paramName
+      param.paramType = preset.paramType
+      param.component = getDefaultComponent(preset.paramType)
+      if (preset.defaultValue !== undefined) param.defaultValue = preset.defaultValue
+      if (preset.helpText) param.helpText = preset.helpText
+      if (preset.minValue !== undefined) param.minValue = preset.minValue
+      if (preset.maxValue !== undefined) param.maxValue = preset.maxValue
       if (preset.step !== undefined) param.step = preset.step
       if (preset.unit) param.unit = preset.unit
     }
@@ -129,7 +131,7 @@ export function useAlgorithmParamOps(
   }
 
   async function handleCaseParamBlur(param: any, index: number) {
-    if (!formState.type || !param.param_code) return
+    if (!formState.type || !param.paramCode) return
     if (caseParamSaveTimeout) clearTimeout(caseParamSaveTimeout)
     caseParamSaveTimeout = setTimeout(async () => {
       await autoSaveCaseParams(param, index)
@@ -137,27 +139,28 @@ export function useAlgorithmParamOps(
   }
 
   async function autoSaveParams(param: any, paramType: string) {
-    if (!formState.type || !param.param_code) return
+    if (!formState.type || !param.paramCode) return
     try {
+      // 提交 bodyData 为 camelCase Domain 字段，algorithmPort 内部做 snake_case 转换
       const bodyData: any = {
-        algorithm_type: formState.type,
-        param_type_source: paramType,
-        param_code: param.param_code,
-        param_name: param.param_name,
-        param_type: param.param_type,
+        algorithmType: formState.type,
+        paramTypeSource: paramType,
+        paramCode: param.paramCode,
+        paramName: param.paramName,
+        paramType: param.paramType,
         direction: param.direction,
         required: param.required,
-        default_value: param.default_value,
-        validation_rules: param.validation_rules,
-        help_text: param.help_text,
-        ui_order: param.ui_order,
+        defaultValue: param.defaultValue,
+        validationRules: param.validationRules,
+        helpText: param.helpText,
+        uiOrder: param.uiOrder,
         hidden: param.hidden
       }
       let result
       if (param.id) {
-        result = await algorithmApi.updateParam(param.id, bodyData)
+        result = await algorithmPort.updateParam(param.id, bodyData)
       } else {
-        result = await algorithmApi.createParam(bodyData)
+        result = await algorithmPort.createParam(bodyData)
         param.id = result.id
       }
     } catch (error) {
@@ -166,38 +169,38 @@ export function useAlgorithmParamOps(
   }
 
   async function autoSaveCaseParams(param: any, index: number) {
-    if (!formState.type || !param.param_code) return
-    // 检查 param_code 是否重复
-    const duplicates = formState.case_params.filter((p: any) => p.param_code === param.param_code)
+    if (!formState.type || !param.paramCode) return
+    // 检查 paramCode 是否重复
+    const duplicates = formState.caseParams.filter((p: any) => p.paramCode === param.paramCode)
     if (duplicates.length > 1) {
-      console.warn(`参数代码 "${param.param_code}" 重复，跳过自动保存`)
+      console.warn(`参数代码 "${param.paramCode}" 重复，跳过自动保存`)
       return
     }
     try {
       const bodyData: any = {
-        algorithm_type: formState.type,
-        param_code: param.param_code,
-        param_name: param.param_name,
-        param_type: param.param_type,
+        algorithmType: formState.type,
+        paramCode: param.paramCode,
+        paramName: param.paramName,
+        paramType: param.paramType,
         required: param.required,
-        default_value: param.default_value,
-        help_text: param.help_text,
+        defaultValue: param.defaultValue,
+        helpText: param.helpText,
         component: param.component,
-        ui_order: param.ui_order,
+        uiOrder: param.uiOrder,
         hidden: param.hidden,
         scope: param.scope || 'common',
-        min_value: param.min_value,
-        max_value: param.max_value,
+        minValue: param.minValue,
+        maxValue: param.maxValue,
         step: param.step,
         unit: param.unit,
-        annotation_code: param.annotation_code || null,
-        field_path: param.field_path || null
+        annotationCode: param.annotationCode || null,
+        fieldPath: param.fieldPath || null
       }
       let result
       if (param.id) {
-        result = await algorithmApi.updateCaseParam(param.id, bodyData)
+        result = await algorithmPort.updateCaseParam(param.id, bodyData)
       } else {
-        result = await algorithmApi.createCaseParam(bodyData)
+        result = await algorithmPort.createCaseParam(bodyData)
         param.id = result.id
       }
     } catch (error) {
@@ -206,9 +209,9 @@ export function useAlgorithmParamOps(
   }
 
   async function handleReferenceParamBlur(param: any, index: number) {
-    // 自动同步：annotation_code 为空时填充为 code
-    if (!param.annotation_code && param.code) {
-      param.annotation_code = param.code
+    // 自动同步：annotationCode 为空时填充为 code
+    if (!param.annotationCode && param.code) {
+      param.annotationCode = param.code
     }
     if (!formState.type || !param.code) return
     if (referenceParamSaveTimeout) clearTimeout(referenceParamSaveTimeout)
@@ -225,9 +228,9 @@ export function useAlgorithmParamOps(
       const bodyData = buildReferenceParamData(param)
       let result
       if (param.id) {
-        result = await algorithmApi.updateReferenceParam(param.id, formState.type, bodyData)
+        result = await algorithmPort.updateReferenceParam(param.id, formState.type, bodyData)
       } else {
-        result = await algorithmApi.createReferenceParam({ ...bodyData, algorithm_type: formState.type })
+        result = await algorithmPort.createReferenceParam({ ...bodyData, algorithmType: formState.type })
         param.id = result.id
       }
     } catch (error) {
@@ -237,10 +240,10 @@ export function useAlgorithmParamOps(
 
   async function savePendingReferenceParams() {
     // 新建模式下，参考参数此前被跳过（算法定义未创建）；算法创建成功后统一补存
-    for (const p of formState.reference_params as any[]) {
+    for (const p of formState.referenceParams as any[]) {
       if (p.id || !p.code) continue
       try {
-        const res = await algorithmApi.createReferenceParam({ ...buildReferenceParamData(p), algorithm_type: formState.type })
+        const res = await algorithmPort.createReferenceParam({ ...buildReferenceParamData(p), algorithmType: formState.type })
         p.id = res.id
       } catch (e) {
         console.error('保存参考参数失败:', e)
@@ -249,15 +252,15 @@ export function useAlgorithmParamOps(
   }
 
   function handleRemoveParam(index: number) {
-    const params = paramConfigType.value === 'device' ? formState.device_params : formState.api_params
+    const params = paramConfigType.value === 'device' ? formState.deviceParams : formState.apiParams
     const param = params[index]
     if (param && param.id) {
       const backup = { ...param }
       params.splice(index, 1)
-      algorithmApi.deleteParam(param.id).catch(err => {
+      algorithmPort.deleteParam(param.id).catch(err => {
         console.error('删除参数失败:', err)
         params.splice(index, 0, backup)
-        alert('删除参数失败，已恢复')
+        notification.error('删除参数失败，已恢复')
       })
     } else {
       params.splice(index, 1)

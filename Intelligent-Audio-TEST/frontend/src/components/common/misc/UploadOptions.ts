@@ -1,13 +1,11 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useTestCaseConfig } from '../../../composables/testCase/useTestCaseConfig'
 import type { AudioItem } from '../../../composables/audio/useAudioList'
+import type { AudioAlgorithmRelation } from '../../../domain/model/audio'
 
-export interface AlgorithmRelationItem {
-  algorithmType: string
-  isPrimary: boolean
-  weight: number
-  params?: Record<string, any>
-}
+// 音频-算法关联：归集到 Domain 的 AudioAlgorithmRelation（params 值类型 any → unknown 兼容），
+// AlgorithmRelationItem 仅作兼容别名 re-export（UploadOptions.vue 引用）
+export type AlgorithmRelationItem = AudioAlgorithmRelation
 
 export function useUploadOptions(props: any, emit: any) {
   const localConfig = ref<any>(null)

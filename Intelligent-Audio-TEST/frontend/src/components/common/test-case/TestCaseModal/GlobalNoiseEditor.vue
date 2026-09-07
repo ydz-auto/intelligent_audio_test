@@ -10,7 +10,7 @@
           全局背景噪声
           <span class="global-noise-badge">所有轮次共享</span>
         </div>
-        <div class="global-noise-subtitle">config.background_noise — 轮次内未配置噪声时回退使用</div>
+        <div class="global-noise-subtitle">config.backgroundNoiseCase — 轮次内未配置噪声时回退使用</div>
       </div>
     </div>
 
@@ -115,8 +115,9 @@
 </template>
 
 <script setup lang="ts">
-import type { BackgroundNoiseConfig, PlaybackDevice } from './types'
+import type { BackgroundNoiseConfig, PlaybackDevice } from '@/domain'
 import { inject, computed } from 'vue'
+import { useAudioConfigHelpers } from './useAudioConfigHelpers'
 
 const props = defineProps<{
   modelValue?: BackgroundNoiseConfig | Record<string, unknown> | null
@@ -130,24 +131,13 @@ const emit = defineEmits<{
 }>()
 
 const audioConfig = inject<any>('audioConfig', {})
+const { getAudioName, getAudioDuration, formatDuration } = useAudioConfigHelpers(audioConfig, (audioId) => String(audioId))
 
 const noiseConfig = computed<BackgroundNoiseConfig | null>(() => {
   const v = props.modelValue
   if (!v || (typeof v === 'object' && !(v as any).audioId)) return null
   return v as BackgroundNoiseConfig
 })
-
-function getAudioName(audioId: string): string {
-  return audioConfig?.getAudioName?.(audioId) || audioId
-}
-
-function getAudioDuration(audioId: string): number {
-  return audioConfig?.getAudioDuration?.(audioId) || 0
-}
-
-function formatDuration(seconds: number): string {
-  return audioConfig?.formatDuration?.(seconds) || '0s'
-}
 
 function addNoise() {
   emit('update:modelValue', { audioId: '', deviceIds: [], spl: 60, loop: true })

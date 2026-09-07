@@ -78,7 +78,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { TagCategory } from '@/utils/api'
+import type { TagCategory } from '@/domain/model/tag'
 
 const props = defineProps<{
   categories: TagCategory[]

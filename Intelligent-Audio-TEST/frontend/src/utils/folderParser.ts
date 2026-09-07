@@ -20,26 +20,29 @@ export interface AudioFileInfo {
 }
 
 export interface RoundAudioConfig {
-  audio_name: string
-  play_order: number
+  audioName: string
+  playOrder: number
   spl?: number
-  playback_device_id?: string
+  playbackDeviceId?: string
+  /** 上传合并后回填的音频 ID（测试用例按 ID 引用音频） */
+  audioId?: string | number
 }
 
+/** 文件解析策略专用类型（原样保留）：音频以 audioName 文件名引用；
+ * 与 TestCaseModal/types.ts 的 RoundConfigItem（audioId 引用、含 evaluation）结构不同，不可合并 */
 export interface RoundConfig {
   roundNumber: number
   audios: RoundAudioConfig[]
-  annotation_file?: string
+  annotationFile?: string
   algorithmParams?: any[]
 }
 
 export interface TestCaseConfig {
   rounds?: RoundConfig[]
-  group_name?: string
-  inherit_tags?: boolean
-  algorithm_params?: any[]
-  /** @deprecated use background_noise */
-  backgroundNoise?: any
+  groupName?: string
+  inheritTags?: boolean
+  algorithmParams?: any[]
+  /** 后端用例配置协议原文（round_config_service 仅读 background_noise，无 camelCase 兜底） */
   background_noise?: any
 }
 
@@ -166,14 +169,14 @@ export function buildRoundsConfig(
   const mode = determineRoundMode(audioFiles)
   const makeAudioConfig = (audio: AudioFileInfo, playOrder: number): RoundAudioConfig => {
     const cfg: RoundAudioConfig = {
-      audio_name: audio.name,
-      play_order: playOrder
+      audioName: audio.name,
+      playOrder: playOrder
     }
-    // spl 为有效数字时才写入（空字符串/undefined 不传，后端从标注提取）
-    if (spl != null && spl !== '' && !isNaN(Number(spl))) {
+    // spl 为有效数字时才写入（undefined 不传，后端从标注提取）
+    if (spl != null && !isNaN(Number(spl))) {
       cfg.spl = Number(spl)
     }
-    if (playbackDeviceId) cfg.playback_device_id = playbackDeviceId
+    if (playbackDeviceId) cfg.playbackDeviceId = playbackDeviceId
     return cfg
   }
 
@@ -189,7 +192,7 @@ export function buildRoundsConfig(
     return [{
       roundNumber: 1,
       audios,
-      annotation_file: annotationFile?.name
+      annotationFile: annotationFile?.name
     }]
   } else {
     // 每个音频一轮
@@ -203,7 +206,7 @@ export function buildRoundsConfig(
       rounds.push({
         roundNumber: idx + 1,
         audios: [makeAudioConfig(audio, 0)],
-        annotation_file: annotationFile?.name
+        annotationFile: annotationFile?.name
       })
     })
     return rounds
@@ -256,8 +259,8 @@ export function buildTestCaseConfig(
 
   return {
     rounds: rounds.length > 0 ? rounds : undefined,
-    group_name: options.groupName,
-    inherit_tags: options.inheritTags ?? true,
-    algorithm_params: normalizedParams.length > 0 ? normalizedParams : undefined
+    groupName: options.groupName,
+    inheritTags: options.inheritTags ?? true,
+    algorithmParams: normalizedParams.length > 0 ? normalizedParams : undefined
   }
 }

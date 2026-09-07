@@ -40,12 +40,18 @@ logger = logging.getLogger(__name__)
 # @with_session 装饰器
 # ------------------------------------------------------------------
 
-def with_session(auto_commit: bool = False, rollback_on_error: bool = True):
+def with_session(func=None, *, auto_commit: bool = False, rollback_on_error: bool = True):
     """装饰器：自动管理 DB session 生命周期。
 
     统一处理 try / commit / rollback / close 模板，消除 40+ 处重复。
 
+    同时支持两种用法::
+
+        @with_session                # 读操作（无括号）
+        @with_session(auto_commit=True)  # 写操作（带参数）
+
     Args:
+        func: 被装饰函数（无括号用法时由解释器自动传入）。
         auto_commit: 写操作设为 True，方法成功后自动 commit；
                      读操作设为 False（默认），仅 close。
         rollback_on_error: 异常时是否 rollback，默认 True。
@@ -61,12 +67,12 @@ def with_session(auto_commit: bool = False, rollback_on_error: bool = True):
             _apply_to_po(aggregate, po)
             return aggregate.id
     """
-    def decorator(func):
-        @functools.wraps(func)
+    def decorator(f):
+        @functools.wraps(f)
         def wrapper(*args, **kwargs):
             session = get_db_session()
             try:
-                result = func(*args, **kwargs)
+                result = f(*args, **kwargs)
                 if auto_commit:
                     session.commit()
                 return result
@@ -78,6 +84,10 @@ def with_session(auto_commit: bool = False, rollback_on_error: bool = True):
                 session.close()
 
         return wrapper
+
+    # 兼容 @with_session 无括号用法：func 直接是callable
+    if func is not None and callable(func):
+        return decorator(func)
 
     return decorator
 

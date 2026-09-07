@@ -1,10 +1,13 @@
 import { ref, computed, watch, reactive, onMounted, onUnmounted } from 'vue'
-import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType } from '../../../utils/audioUtils'
-import { evaluationApi, devicesApi, algorithmApi } from '../../../utils/api'
+import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType, formatFileSize } from '../../../utils/audioUtils'
+import { devicesPort } from '../../../composables/device/devicesPort'
+import { algorithmPort } from '../../../composables/algorithm/algorithmPort'
 import type { PropType } from 'vue'
 import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/testCase/useTestCaseConfig'
 import { buildTestCaseGroups } from '../../../utils/testCaseStrategy'
 import { useAlgorithmConfig } from '../../../composables/algorithm/useAlgorithmConfig'
+import { camelizeKeys, readCamel } from '../../../utils/keyTransform'
+import { APP_CONFIG } from '../../../utils/config'
 
 interface UploadOption {
   key: string
@@ -99,18 +102,16 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
     if (playbackDeviceLoading.value || (!playbackDeviceHasMore.value && !reset)) return
     playbackDeviceLoading.value = true
     try {
-      const response = await devicesApi.getPlaybackDevices({
-        params: { page: playbackDevicePage.value, per_page: 50 },
-        unwrapResponse: false
-      }) as unknown as { success: boolean; data: { items: Array<{ id: any; name: string }>; pages: number } }
-      if (response.success && response.data && Array.isArray(response.data.items)) {
-        const newOptions = response.data.items.map((d) => ({ label: d.name, value: d.id }))
+      // getPlaybackDevices 出口已是 Domain（Paginated<PlaybackDevice>），查询参数为 camelCase（Port 契约），snake_case 化在 Infrastructure 内部完成
+      const page = await devicesPort.getPlaybackDevices({ page: playbackDevicePage.value, perPage: APP_CONFIG.playbackDevicePageSize })
+      if (Array.isArray(page.items) && page.items.length > 0) {
+        const newOptions = page.items.map((d) => ({ label: d.name, value: d.id }))
         if (reset) {
           playbackDeviceOptions.value = newOptions
         } else {
           playbackDeviceOptions.value = [...playbackDeviceOptions.value, ...newOptions]
         }
-        playbackDevicePages.value = response.data.pages || 1
+        playbackDevicePages.value = page.pages || 1
         playbackDeviceHasMore.value = playbackDevicePage.value < playbackDevicePages.value
         if (playbackDeviceHasMore.value) {
           playbackDevicePage.value += 1
@@ -242,7 +243,7 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
     if (newType) {
       loadAlgorithmFormSchema(newType)
       try {
-        const res = await algorithmApi.getReferenceParams(newType)
+        const res = await algorithmPort.getReferenceParams(newType)
         referenceParamOptions.value = (res.data || []).map((p: any) => ({
           label: p.code ? `${p.code}${p.name ? ' - ' + p.name : ''}` : p.name,
           value: p.code || ''
@@ -420,12 +421,13 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
           const annDir = baseKey.includes('/') ? baseKey.substring(0, baseKey.lastIndexOf('/')) : ''
 
           if (parsedData.annotations && parsedData.annotations.length > 0) {
+            // 解析器原始输出为 snake_case，readCamel 兜底读取；上行 wire 转换由 Infrastructure toAnnotationDto 负责
             const annotationsList = parsedData.annotations.map(ann => ({
               format: format,
               code: ann.code || 'asr',
-              data: { segments: ann.segments, ...(ann.extra_fields || {}) },
-              source_language: ann.source_language || '',
-              target_language: ann.target_language || ''
+              data: { segments: ann.segments, ...(readCamel<Record<string, unknown>>(ann, 'extraFields') || {}) },
+              sourceLanguage: readCamel<string>(ann, 'sourceLanguage') || '',
+              targetLanguage: readCamel<string>(ann, 'targetLanguage') || ''
             }))
             annotationDataMap.set(baseKey, annotationsList)
           } else if (parsedData.segments && parsedData.segments.length > 0) {
@@ -433,9 +435,9 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
             annotationDataMap.set(baseKey, [{
               format: format,
               code: annotationCode,
-              data: { segments: parsedData.segments, ...(parsedData.extra_fields || {}) },
-              source_language: parsedData.source_language || '',
-              target_language: parsedData.target_language || ''
+              data: { segments: parsedData.segments, ...(readCamel<Record<string, unknown>>(parsedData, 'extraFields') || {}) },
+              sourceLanguage: readCamel<string>(parsedData, 'sourceLanguage') || '',
+              targetLanguage: readCamel<string>(parsedData, 'targetLanguage') || ''
             }])
           }
         } catch (e) {
@@ -460,7 +462,7 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
             reader.onerror = reject
             reader.readAsText(annFile)
           })
-          const rawJson = JSON.parse(content)
+          const rawJson = camelizeKeys(JSON.parse(content))
           const key = (annFile as any).webkitRelativePath || annFile.name
           const baseKey = key.substring(0, key.lastIndexOf('.'))
           const annDir = baseKey.includes('/') ? baseKey.substring(0, baseKey.lastIndexOf('/')) : ''
@@ -474,7 +476,7 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
               const segsByAudio = new Map<string, any[]>()
               for (const seg of round.segments) {
                 if (!seg || typeof seg !== 'object') continue
-                const audioPath = seg.audio || seg.audio_name || seg.audioName || ''
+                const audioPath = seg.audioName || ''
                 if (audioPath) {
                   const segs = segsByAudio.get(audioPath) || []
                   segs.push(seg)
@@ -493,9 +495,9 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
                 existing.push({
                   format: 'json',
                   code: annotationCode,
-                  data: { segments: segs, round_number: round.round_number || round.roundNumber || 1 },
-                  source_language: rawJson.source_language || '',
-                  target_language: rawJson.target_language || ''
+                  data: { segments: segs, roundNumber: round.roundNumber || 1 },
+                  sourceLanguage: rawJson.sourceLanguage || '',
+                  targetLanguage: rawJson.targetLanguage || ''
                 })
                 annotationDataMap.set(matchKey, existing)
               }
@@ -505,7 +507,7 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
             const annotationCode = rawJson.code || uploadConfig.algorithmType || determineAnnotationName(annFile.name, 'json')
             for (const item of rawJson.txt) {
               if (!item || typeof item !== 'object') continue
-              const audioPath = item.audio || item.audio_name || item.audioName || ''
+              const audioPath = item.audioName || ''
               if (audioPath) {
                 let matchKey = audioPath.replace(/\.[^.]+$/, '')
                 if (annDir) {
@@ -517,15 +519,15 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
                   format: 'json',
                   code: annotationCode,
                   data: { segments: [item] },
-                  source_language: rawJson.source_language || '',
-                  target_language: rawJson.target_language || ''
+                  sourceLanguage: rawJson.sourceLanguage || '',
+                  targetLanguage: rawJson.targetLanguage || ''
                 })
                 annotationDataMap.set(matchKey, existing)
               }
             }
           } else {
             // flat JSON：标注就是顶层字段，按 audio 分发
-            const audioPath = rawJson.audio || rawJson.audio_name || rawJson.audioName || ''
+            const audioPath = rawJson.audioName || ''
             if (audioPath) {
               const annotationCode = rawJson.code || uploadConfig.algorithmType || determineAnnotationName(annFile.name, 'json')
               let matchKey = audioPath.replace(/\.[^.]+$/, '')
@@ -538,8 +540,8 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
                 format: 'json',
                 code: annotationCode,
                 data: { segments: [rawJson] },
-                source_language: rawJson.source_language || '',
-                target_language: rawJson.target_language || ''
+                sourceLanguage: rawJson.sourceLanguage || '',
+                targetLanguage: rawJson.targetLanguage || ''
               })
               annotationDataMap.set(matchKey, existing)
             }
@@ -588,8 +590,8 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
               format: 'text',
               name: 'asr',
               data: { text: metadata.asrText },
-              source_language: '',
-              target_language: ''
+              sourceLanguage: '',
+              targetLanguage: ''
             })
           }
         }
@@ -600,8 +602,8 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
               format: 'text',
               name: 'translation',
               data: { text: trans.text },
-              source_language: trans.direction?.split('-')[0] || '',
-              target_language: trans.direction?.split('-')[1] || ''
+              sourceLanguage: trans.direction?.split('-')[0] || '',
+              targetLanguage: trans.direction?.split('-')[1] || ''
             })
           }
         }
@@ -664,14 +666,6 @@ export function useFolderImportModal(props: any, emit: (event: string, ...args: 
     folderGroupNames.value.clear()
     annotationCode.value = ''
     emit('close')
-  }
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
   }
 
   const determineAnnotationName = (fileName: string, format: string): string => {

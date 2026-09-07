@@ -46,25 +46,14 @@
             </div>
           </div>
             <div class="case-id-row">
-              <span
-                class="case-id-badge"
-                :title="idCopied ? '已复制' : '点击复制ID'"
-                @click.stop="copyCaseId"
-                @keydown.enter.prevent.stop="copyCaseId"
-                tabindex="0"
-                role="button"
-                :aria-label="`用例ID: ${testCase.id}, 点击复制`"
-              >
-                <i class="fas fa-copy"></i> 用例ID: {{ testCase.id }}
-                <span class="case-id-copied" v-if="idCopied">已复制</span>
-              </span>
+              <CaseIdBadge :case-id="testCase.id" />
             </div>
             <div class="case-description">{{ testCase.description || '' }}</div>
             <div v-if="testCase.lastEditTime || testCase.createdAt || testCase.updatedAt" style="margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">
               <span class="meta-label">最后编辑时间:</span> {{ testCase.lastEditTime || testCase.updatedAt || testCase.createdAt || '未知' }}
             </div>
             <div v-if="testCase.totalDuration" class="case-duration-info">
-              <span class="duration-tag">{{ formatDuration(testCase.totalDuration) }}</span>
+              <span class="duration-tag">{{ formatDurationLong(testCase.totalDuration) }}</span>
             </div>
             <div v-if="roundCount > 0" class="case-duration-info">
               <span class="round-count-tag" title="用例轮次数量">
@@ -148,7 +137,9 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useAlgorithmLabels } from '../../../composables/algorithm/useAlgorithmLabels';
-import { copyToClipboard } from '../../../utils/utils';
+import CaseIdBadge from '../CaseIdBadge.vue';
+import { TestType } from '@/domain/enums';
+import { getStatusText } from '../../../utils/statusUtils';
 
 const { loadAlgorithms, getAlgorithmLabel } = useAlgorithmLabels();
 
@@ -168,16 +159,16 @@ const emit = defineEmits(['toggle-selection', 'action']);
 
 const isTagsExpanded = ref(false);
 const isConfigExpanded = ref(true);
-const idCopied = ref(false);
-let idCopiedTimer = null;
 
 const roundCount = computed(() => {
   const tc = props.testCase;
   if (!tc) return 0;
   if (tc.config?.rounds && Array.isArray(tc.config.rounds)) return tc.config.rounds.length;
   if (tc.rounds && Array.isArray(tc.rounds)) return tc.rounds.length;
-  if (tc.algorithm_params && Array.isArray(tc.algorithm_params)) return tc.algorithm_params.length;
-  if (tc.reference_params && Array.isArray(tc.reference_params)) return tc.reference_params.length;
+  const algoParams = tc.algorithmParams;
+  if (algoParams && Array.isArray(algoParams)) return algoParams.length;
+  const refParams = tc.referenceParams;
+  if (refParams && Array.isArray(refParams)) return refParams.length;
   return 0;
 });
 
@@ -193,29 +184,11 @@ const toggleSelection = () => {
   emit('toggle-selection', props.testCase.id);
 };
 
-const copyCaseId = async () => {
-  const id = props.testCase?.id;
-  if (id === undefined || id === null) return;
-  const ok = await copyToClipboard(String(id));
-  if (ok) {
-    idCopied.value = true;
-    if (idCopiedTimer) clearTimeout(idCopiedTimer);
-    idCopiedTimer = setTimeout(() => {
-      idCopied.value = false;
-    }, 1500);
-  }
-};
-
 const handleAction = (action) => {
   emit('action', { action, testCase: props.testCase });
 };
 
-const getStatusText = (status) => {
-  const statusMap = { pending: '待处理', 'in-progress': '进行中', completed: '已完成', failed: '执行失败', deleted: '已删除' };
-  return statusMap[status] || status;
-};
-
-const formatDuration = (seconds) => {
+const formatDurationLong = (seconds) => {
   if (seconds === undefined || seconds === null || seconds === 0) return '0s';
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
   const minutes = Math.floor(seconds / 60);
@@ -282,7 +255,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
-  if (idCopiedTimer) clearTimeout(idCopiedTimer);
 });
 
 watch(() => props.testCase?.tags, () => {
@@ -438,41 +410,6 @@ const handleResize = () => {
   display: flex;
   align-items: center;
   margin-bottom: 8px;
-}
-
-.case-id-badge {
-  padding: 2px 10px;
-  background: white;
-  color: #1677ff;
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.case-id-badge:hover,
-.case-id-badge:focus-visible {
-  background: #f8fafc;
-  color: #1677ff;
-  outline: none;
-}
-
-.case-id-badge:active {
-  transform: translateY(1px);
-}
-
-.case-id-badge .fa-copy {
-  font-size: 10px;
-}
-
-.case-id-copied {
-  color: #16a34a;
-  font-weight: 600;
-  margin-left: 2px;
 }
 </style>
 

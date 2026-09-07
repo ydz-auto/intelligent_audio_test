@@ -1,12 +1,32 @@
 import { ref, computed, watch } from 'vue'
+import { readCamel } from '../../utils/keyTransform'
+import { FieldType } from '../../domain/enums'
+import { TIMELINE_PARAM_TYPES } from '../../domain/constants/paramTypeRules'
 
-export function useTimelineComparison(props) {
-  const selectedResource = ref(null)
-  const selectedSpeakers = ref([])
+/** 时间轴片段（RTTM/STM 解析结果的统一结构） */
+interface TimelineSegment {
+  speaker?: string
+  start?: number
+  end?: number
+  text?: string
+}
+
+/** useTimelineComparison 所需的组件 props 子集 */
+interface TimelineComparisonProps {
+  algorithmResults?: any[]
+  referenceParams?: Record<string, any>
+  fieldMapping?: Record<string, any[]>
+  results?: any[]
+  algorithmType?: string
+}
+
+export function useTimelineComparison(props: TimelineComparisonProps) {
+  const selectedResource = ref<string | null>(null)
+  const selectedSpeakers = ref<string[]>([])
   const scale = ref(1)
-  let _wheelTimeout = null
-  let _speakerMappingCache = null
-  let _speakerMappingCacheKey = null
+  let _wheelTimeout: ReturnType<typeof setTimeout> | null = null
+  let _speakerMappingCache: Record<string, string> | null = null
+  let _speakerMappingCacheKey: string | null = null
   const _mockReferenceData = [
     { speaker: 'spk1', start: 0.5, end: 3.2, text: '你好，欢迎光临' },
     { speaker: 'spk1', start: 5.8, end: 8.5, text: '今天天气不错' },
@@ -23,33 +43,33 @@ export function useTimelineComparison(props) {
     { speaker: 'spk4', start: 4.0, end: 5.2, text: '额外检测到的说话' }
   ]
 
-  const isTimelineField = (key) => {
-    const timelineKeywords = ['rttm', 'stm', 'segment', 'timeline']
+  const isTimelineField = (key: string) => {
+    const timelineKeywords = [FieldType.RTTM, FieldType.STM, 'segment', 'timeline']
     return timelineKeywords.some(k => key.toLowerCase().includes(k))
   }
 
-  const getTimelineData = (type) => {
+  const getTimelineData = (type: string): TimelineSegment[] => {
     const algoResults = props.algorithmResults || []
     const refParams = props.referenceParams || {}
     const currentSelectedResource = selectedResource.value
 
-    // 从 fieldMapping 获取动态字段名
-    const getDynamicKeys = (fieldType) => {
-      const fm = props.fieldMapping || {}
+    // 从 fieldMapping 获取动态字段名（fieldMapping 为配置原始数据，字段项为 camelCase）
+    const getDynamicKeys = (fieldType: string) => {
+      const fm: Record<string, any[]> = props.fieldMapping || {}
       const fields = (fm[fieldType] || []).filter(
-        f => ['rttm', 'stm', 'json'].includes(f.param_type)
+        (f: any) => TIMELINE_PARAM_TYPES.includes(f.paramType)
       )
-      return fields.map(f => f.paramCode || f.param_code || f.source_param || f.sourceParam).filter(Boolean);
+      return fields.map((f: any) => f.paramCode || f.sourceParam).filter(Boolean);
     }
 
-    const timelineTypes = ['rttm', 'stm', 'json']
+    const timelineTypes = TIMELINE_PARAM_TYPES
 
     if (type === 'result') {
-      // 扁平列表格式：按 device 和 param_type 过滤
+      // 扁平列表格式：按 device 和 paramType 过滤
       if (!Array.isArray(algoResults)) return []
 
       let items = algoResults.filter(
-        i => timelineTypes.includes(i.param_type)
+        i => timelineTypes.includes(i.paramType)
       )
       if (currentSelectedResource && currentSelectedResource !== 'default') {
         items = items.filter(i => i.device === currentSelectedResource)
@@ -64,14 +84,15 @@ export function useTimelineComparison(props) {
     }
 
     if (type === 'reference') {
-      // 从 referenceParams 查找
+      // 从 referenceParams 查找（key 经 readCamel 兜底后端原始 snake_case 数据键）
       const dynamicRefKeys = getDynamicKeys('reference')
-      const defaultRefKeys = ['stmRef', 'stm_ref', 'rttmRef', 'rttm_ref']
+      const defaultRefKeys = ['stmRef', 'rttmRef']
       const refKeys = dynamicRefKeys.length > 0 ? dynamicRefKeys : defaultRefKeys
 
       for (const key of refKeys) {
-        if (refParams[key]) {
-          const data = parseTimelineData(refParams[key])
+        const rawData = readCamel(refParams, key)
+        if (rawData) {
+          const data = parseTimelineData(rawData)
           if (Array.isArray(data) && data.length > 0) {
             return [...data]
           }
@@ -95,7 +116,7 @@ export function useTimelineComparison(props) {
     return []
   }
 
-  const parseTimelineData = (data) => {
+  const parseTimelineData = (data: any): TimelineSegment[] => {
     if (!data) return []
 
     if (Array.isArray(data)) {
@@ -136,7 +157,7 @@ export function useTimelineComparison(props) {
         if (stmResult.length > 0) return stmResult
       }
 
-      const stmJson = data.stm_res?.json || data.stmRef?.json || data.stm?.json
+      const stmJson = readCamel<Record<string, unknown>>(data, 'stmRes')?.json || data.stmRef?.json || data.stm?.json
       if (stmJson) {
         if (Array.isArray(stmJson)) {
           return stmJson
@@ -151,7 +172,7 @@ export function useTimelineComparison(props) {
       }
 
       // STM text
-      const stmText = data.stm_res?.text || data.stmRef?.text || data.stm?.text
+      const stmText = readCamel<Record<string, unknown>>(data, 'stmRes')?.text || data.stmRef?.text || data.stm?.text
       if (stmText && typeof stmText === 'string') {
         const stmResult = parseStmText(stmText)
         if (stmResult.length > 0) {
@@ -159,7 +180,7 @@ export function useTimelineComparison(props) {
         }
       }
 
-      const rttmJson = data.rttm_res?.json || data.rttmRef?.json || data.rttm?.json
+      const rttmJson = readCamel<Record<string, unknown>>(data, 'rttmRes')?.json || data.rttmRef?.json || data.rttm?.json
       if (rttmJson) {
         if (Array.isArray(rttmJson)) {
           return rttmJson
@@ -173,7 +194,7 @@ export function useTimelineComparison(props) {
         }
       }
 
-      const rttmText = data.rttm_res?.text || data.rttmRef?.text || data.rttm?.text
+      const rttmText = readCamel<Record<string, unknown>>(data, 'rttmRes')?.text || data.rttmRef?.text || data.rttm?.text
       if (rttmText && typeof rttmText === 'string') {
         const rttmResult = parseRttmText(rttmText)
         if (rttmResult.length > 0) {
@@ -204,7 +225,7 @@ export function useTimelineComparison(props) {
     return []
   }
 
-  const parseRttmText = (text) => {
+  const parseRttmText = (text: string): TimelineSegment[] => {
     if (!text || typeof text !== 'string') return []
     const lines = text.split('\n')
     const segments = []
@@ -232,7 +253,7 @@ export function useTimelineComparison(props) {
     return segments
   }
 
-  const parseStmText = (text) => {
+  const parseStmText = (text: string): TimelineSegment[] => {
     if (!text || typeof text !== 'string') return []
     const lines = text.split('\n')
     const segments = []
@@ -268,7 +289,7 @@ export function useTimelineComparison(props) {
     return segments
   }
 
-  const computeOverlapTime = (seg1, seg2) => {
+  const computeOverlapTime = (seg1: TimelineSegment[], seg2: TimelineSegment[]) => {
     let totalOverlap = 0
 
     for (const a of seg1) {
@@ -284,7 +305,7 @@ export function useTimelineComparison(props) {
     return totalOverlap
   }
 
-  const hungarianAlgorithm = (costMatrix) => {
+  const hungarianAlgorithm = (costMatrix: number[][]) => {
     const n = costMatrix.length
     if (n === 0) return []
 
@@ -349,9 +370,9 @@ export function useTimelineComparison(props) {
     return result
   }
 
-  const computeOptimalSpeakerMapping = (referenceSegments, resultSegments) => {
-    const refSpeakers = [...new Set(referenceSegments.map(s => s.speaker || 'spk0'))]
-    const resSpeakers = [...new Set(resultSegments.map(s => s.speaker || 'spk0'))]
+  const computeOptimalSpeakerMapping = (referenceSegments: TimelineSegment[], resultSegments: TimelineSegment[]): Record<string, string> => {
+    const refSpeakers = [...new Set(referenceSegments.map((s: TimelineSegment) => s.speaker || 'spk0'))]
+    const resSpeakers = [...new Set(resultSegments.map((s: TimelineSegment) => s.speaker || 'spk0'))]
 
     if (refSpeakers.length === 0 || resSpeakers.length === 0) {
       return {}
@@ -362,17 +383,17 @@ export function useTimelineComparison(props) {
     }
 
     // 预计算每个说话人的片段
-    const refSegsMap = {}
-    const resSegsMap = {}
+    const refSegsMap: Record<string, TimelineSegment[]> = {}
+    const resSegsMap: Record<string, TimelineSegment[]> = {}
     for (const spk of refSpeakers) {
-      refSegsMap[spk] = referenceSegments.filter(s => (s.speaker || 'spk0') === spk)
+      refSegsMap[spk] = referenceSegments.filter((s: TimelineSegment) => (s.speaker || 'spk0') === spk)
     }
     for (const spk of resSpeakers) {
-      resSegsMap[spk] = resultSegments.filter(s => (s.speaker || 'spk0') === spk)
+      resSegsMap[spk] = resultSegments.filter((s: TimelineSegment) => (s.speaker || 'spk0') === spk)
     }
 
     // 使用贪心算法计算最优匹配
-    const overlaps = []
+    const overlaps: Array<{ refSpk: string; resSpk: string; overlapTime: number }> = []
     for (const refSpk of refSpeakers) {
       for (const resSpk of resSpeakers) {
         const overlapTime = computeOverlapTime(refSegsMap[refSpk], resSegsMap[resSpk])
@@ -384,7 +405,7 @@ export function useTimelineComparison(props) {
     overlaps.sort((a, b) => b.overlapTime - a.overlapTime)
 
     // 贪心选择
-    const speakerMapping = {}
+    const speakerMapping: Record<string, string> = {}
     const usedRef = new Set()
     const usedRes = new Set()
 
@@ -407,7 +428,7 @@ export function useTimelineComparison(props) {
     return getTimelineData('result')
   })
 
-  const speakerMapping = computed(() => {
+  const speakerMapping = computed<Record<string, string>>(() => {
     const refData = cachedReferenceData.value || []
     const resData = cachedResultData.value || []
     const cacheKey = `${refData.length}-${resData.length}-${refData.map(s => s.speaker).join(',')}-${resData.map(s => s.speaker).join(',')}`
@@ -451,13 +472,13 @@ export function useTimelineComparison(props) {
     // 优先从 results 获取
     const results = props.results || []
     if (results.length > 0) {
-      return results.map(r => r.resource)
+      return results.map((r: any) => r.resource)
     }
 
     // 从 algorithmResults 数组获取唯一设备名
     const algoResults = props.algorithmResults || []
     if (Array.isArray(algoResults) && algoResults.length > 0) {
-      const devices = [...new Set(algoResults.map(i => i.device).filter(Boolean))]
+      const devices = [...new Set(algoResults.map((i: any) => i.device).filter(Boolean))]
       return devices.length > 0 ? devices : ['default']
     }
 
@@ -468,15 +489,6 @@ export function useTimelineComparison(props) {
     const refData = cachedReferenceData.value
     const resData = cachedResultData.value
     return (refData && refData.length > 0) || (resData && resData.length > 0)
-  })
-
-  const timelineFields = computed(() => {
-    const fields = ['rttm_res', 'stm_res', 'rttm_ref', 'stm_ref', 'rttmRes', 'stmRes', 'rttmRef', 'stmRef']
-    const algoType = props.algorithmType?.toLowerCase() || ''
-    if (algoType.includes('speaker') || algoType.includes('diarization')) {
-      return ['rttm_res', 'stm_res', 'rttmRes', 'stmRes', 'rttm_ref', 'stm_ref', 'rttmRef', 'stmRef']
-    }
-    return fields
   })
 
   const speakerList = computed(() => {
@@ -504,10 +516,10 @@ export function useTimelineComparison(props) {
     return [...refSpeakers.sort(), ...resOnlySpeakers.sort()]
   })
 
-  const referenceSegmentsBySpeaker = computed(() => {
+  const referenceSegmentsBySpeaker = computed<Record<string, TimelineSegment[]>>(() => {
     const data = cachedReferenceData.value || []
-    const grouped = {}
-    data.forEach(s => {
+    const grouped: Record<string, TimelineSegment[]> = {}
+    data.forEach((s: TimelineSegment) => {
       const speaker = s.speaker || 'spk0'
       if (!grouped[speaker]) grouped[speaker] = []
       grouped[speaker].push(s)
@@ -515,10 +527,10 @@ export function useTimelineComparison(props) {
     return grouped
   })
 
-  const resultSegmentsBySpeaker = computed(() => {
+  const resultSegmentsBySpeaker = computed<Record<string, TimelineSegment[]>>(() => {
     const data = cachedResultData.value || []
-    const grouped = {}
-    data.forEach(s => {
+    const grouped: Record<string, TimelineSegment[]> = {}
+    data.forEach((s: TimelineSegment) => {
       const speaker = s.speaker || 'spk0'
       if (!grouped[speaker]) grouped[speaker] = []
       grouped[speaker].push(s)
@@ -530,10 +542,10 @@ export function useTimelineComparison(props) {
     if (!selectedSpeakers.value || selectedSpeakers.value.length === 0 || selectedSpeakers.value.includes('all')) {
       return speakerList.value
     }
-    return speakerList.value.filter(s => selectedSpeakers.value.includes(s))
+    return speakerList.value.filter((s: string) => selectedSpeakers.value.includes(s))
   }
 
-  const getSegmentStyle = (seg) => {
+  const getSegmentStyle = (seg: TimelineSegment) => {
     const start = seg.start || 0
     const end = seg.end || start + 1
     const duration = end - start
@@ -545,21 +557,21 @@ export function useTimelineComparison(props) {
     }
   }
 
-  const isMatchSegment = (speaker, seg) => {
+  const isMatchSegment = (speaker: string, seg: TimelineSegment) => {
     const mappedSpeaker = speakerMapping.value[speaker]
     if (!mappedSpeaker) return false
 
     const resData = cachedResultData.value || []
-    const resSegments = resData.filter(s => (s.speaker || 'spk0') === mappedSpeaker)
+    const resSegments = resData.filter((s: TimelineSegment) => (s.speaker || 'spk0') === mappedSpeaker)
 
     const tolerance = 0.5
     return resSegments.some(resSeg =>
-      Math.abs(resSeg.start - seg.start) < tolerance &&
-      Math.abs(resSeg.end - seg.end) < tolerance
+      Math.abs((resSeg.start || 0) - (seg.start || 0)) < tolerance &&
+      Math.abs((resSeg.end || 0) - (seg.end || 0)) < tolerance
     )
   }
 
-  const getResultSegmentsForSpeaker = (refSpeaker) => {
+  const getResultSegmentsForSpeaker = (refSpeaker: string) => {
     const mappedSpeaker = speakerMapping.value[refSpeaker]
     if (mappedSpeaker) {
       return resultSegmentsBySpeaker.value[mappedSpeaker] || []
@@ -567,17 +579,17 @@ export function useTimelineComparison(props) {
     return resultSegmentsBySpeaker.value[refSpeaker] || []
   }
 
-  const handleResourceChange = (event) => {
-    selectedResource.value = event.target.value
+  const handleResourceChange = (event: Event) => {
+    selectedResource.value = (event.target as HTMLSelectElement).value
   }
 
-  const toggleAllSpeakers = (event) => {
-    if (event.target.checked) {
+  const toggleAllSpeakers = (event: Event) => {
+    if ((event.target as HTMLInputElement).checked) {
       selectedSpeakers.value = []
     }
   }
 
-  const handleWheelZoom = (event) => {
+  const handleWheelZoom = (event: WheelEvent) => {
     const factor = event.deltaY > 0 ? (1 / 1.2) : 1.2
     scale.value = Math.max(0.5, Math.min(100, scale.value * factor))
   }
@@ -594,7 +606,7 @@ export function useTimelineComparison(props) {
     scale.value = 1
   }
 
-  const formatResourceName = (res) => {
+  const formatResourceName = (res: string) => {
     if (!res) return '未知资源'
     if (res.includes('_')) {
       return res.split('_').slice(1).join(' ')
@@ -618,7 +630,6 @@ export function useTimelineComparison(props) {
     timeTicks,
     resources,
     hasTimelineData,
-    timelineFields,
     speakerList,
     cachedReferenceData,
     cachedResultData,

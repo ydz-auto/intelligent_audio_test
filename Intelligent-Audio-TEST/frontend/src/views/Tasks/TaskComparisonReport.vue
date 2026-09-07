@@ -20,7 +20,7 @@
           <h4 class="analysis-title">{{ reportName || '任务对比报告' }}</h4>
           <div class="analysis-status">
             <span class="status-dot"></span>
-            {{ reportServiceData?.status === 'draft' ? '草稿' : '已发布' }}
+            {{ reportServiceData?.status === ReportStatus.DRAFT ? '草稿' : '已发布' }}
           </div>
         </div>
         <div v-if="!isEditingReport" class="analysis-text">
@@ -85,7 +85,7 @@
           <h4 class="analysis-title">分析结论</h4>
           <div class="analysis-status" :class="reportServiceData.status">
             <span class="status-dot"></span>
-            {{ reportServiceData.status === 'draft' ? '草稿' : '已发布' }}
+            {{ reportServiceData.status === ReportStatus.DRAFT ? '草稿' : '已发布' }}
           </div>
         </div>
         <div v-if="!isEditingConclusion" class="analysis-text" id="task-analysis-conclusion" v-html="sanitizedConclusion"></div>
@@ -121,13 +121,13 @@
       <ComparisonTableComponent title="用例执行数量对比" :columns="caseExecutionColumns" :data="caseExecutionData" :default-collapsed="true" :show-search="false" />
     </div>
     <div class="comparison-section">
-      <CaseCategoryComparisonComponent :report-data="reportService.comparisonReport.value" />
+      <CaseCategoryComparisonComponent :report-data="comparisonReport" />
     </div>
     <div class="comparison-section">
-      <CaseTagComparisonComponent :report-data="reportService.comparisonReport.value" />
+      <CaseTagComparisonComponent :report-data="comparisonReport" />
     </div>
     <div class="comparison-section">
-      <SpecificCaseComparisonComponent :report-data="reportService.comparisonReport.value" />
+      <SpecificCaseComparisonComponent :report-data="comparisonReport" />
     </div>
 
     <!-- 浮动操作按钮 -->
@@ -152,10 +152,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { ReportStatus } from '@/domain/enums'
 import ComparisonTableComponent from '../../components/report/ComparisonTableComponent.vue'
 import CaseCategoryComparisonComponent from '../../components/report/CaseCategoryComparisonComponent.vue'
 import CaseTagComparisonComponent from '../../components/report/CaseTagComparisonComponent.vue'
 import SpecificCaseComparisonComponent from '../../components/report/SpecificCaseComparisonComponent.vue'
+import { comparisonReport } from '../../store/reportComparisonStore'
 
 defineProps<{
   reportServiceData: any
@@ -166,7 +168,6 @@ defineProps<{
   deviceApiComparisonData: any[]
   caseExecutionColumns: any[]
   caseExecutionData: any[]
-  reportService: any
 }>()
 
 // 双向绑定：reportName / reportConclusion 需要可写

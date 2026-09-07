@@ -50,8 +50,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue';
-import api from '@/utils/api';
-import type { TagItem, TagCategory } from '@/utils/api';
+import { tagsPort } from '@/composables/shared/tagsPort';
+import type { TagItem, TagCategory } from '@/domain/model/tag';
 
 const props = defineProps<{
   tag?: TagItem | null;
@@ -113,9 +113,9 @@ async function handleConfirm() {
     
     let result: TagItem;
     if (props.tag) {
-      result = await api.tags.updateTag(props.tag.id, data);
+      result = await tagsPort.updateTag(props.tag.id, data);
     } else {
-      result = await api.tags.createTag(data);
+      result = await tagsPort.createTag(data);
     }
     
     emit('confirm', result);

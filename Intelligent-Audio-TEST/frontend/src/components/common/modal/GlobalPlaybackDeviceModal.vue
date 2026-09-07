@@ -92,7 +92,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { playbackApi } from '../../../utils/api'
+import { playbackPort } from '../../../composables/device/playbackPort'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -156,7 +156,7 @@ const scanAvailableDevices = async () => {
   scanError.value = ''
   
   try {
-    const devices = await playbackApi.scan()
+    const devices = await playbackPort.scan()
     scanDevices.value = devices || []
   } catch (error) {
     console.error('扫描设备失败:', error)

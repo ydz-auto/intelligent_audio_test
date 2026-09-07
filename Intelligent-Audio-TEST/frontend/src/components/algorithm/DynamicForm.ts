@@ -1,43 +1,6 @@
 import { ref, computed, watch } from 'vue'
-
-interface FieldSchema {
-  fieldCode: string
-  fieldName: string
-  fieldType: string
-  required: boolean
-  defaultValue?: any
-  component?: string
-  options?: { value: string; label: string }[]
-  validation?: {
-    min?: number
-    max?: number
-    step?: number
-    pattern?: string
-    patternMessage?: string
-    minLength?: number
-    maxLength?: number
-  }
-  helpText?: string
-  hidden?: boolean
-  uiOrder?: number
-  uiGroup?: string
-  scope?: string
-}
-
-interface FormGroup {
-  name: string
-  label: string
-  fields: FieldSchema[]
-}
-
-interface FormSchema {
-  algorithmType: string
-  algorithmName: string
-  category?: string
-  description?: string
-  groups: FormGroup[]
-  fields: FieldSchema[]
-}
+import type { FormSchema, FormField as FieldSchema, FormFieldGroup as FormGroup } from '../../domain/model/algorithm'
+import { getFieldValidation } from '../../domain/model/algorithm'
 
 interface Props {
   schema: FormSchema
@@ -144,7 +107,7 @@ export function useDynamicForm(props: Props, emit: any) {
   }
 
   const formatSliderValue = (value: any, field: FieldSchema) => {
-    if (field.validation?.max === 1) {
+    if (getFieldValidation(field)?.max === 1) {
       return `${((value || 0) * 100).toFixed(0)}%`
     }
     return value ?? 0
@@ -152,31 +115,32 @@ export function useDynamicForm(props: Props, emit: any) {
 
   const validateFieldInternal = (field: FieldSchema): string | null => {
     const value = formData.value[field.fieldCode]
+    const validation = getFieldValidation(field)
 
     if (field.required && (value === null || value === undefined || value === '')) {
       return `请${field.component === 'select' ? '选择' : '输入'}${field.fieldName}`
     }
 
-    if (field.validation?.pattern && value) {
-      const regex = new RegExp(field.validation.pattern)
+    if (validation?.pattern && value) {
+      const regex = new RegExp(validation.pattern)
       if (!regex.test(value)) {
-        return field.validation.patternMessage || `${field.fieldName}格式不正确`
+        return validation.patternMessage || `${field.fieldName}格式不正确`
       }
     }
 
-    if (field.validation?.minLength && value && value.length < field.validation.minLength) {
-      return `${field.fieldName}长度不能少于${field.validation.minLength}个字符`
+    if (validation?.minLength && value && value.length < validation.minLength) {
+      return `${field.fieldName}长度不能少于${validation.minLength}个字符`
     }
-    if (field.validation?.maxLength && value && value.length > field.validation.maxLength) {
-      return `${field.fieldName}长度不能超过${field.validation.maxLength}个字符`
+    if (validation?.maxLength && value && value.length > validation.maxLength) {
+      return `${field.fieldName}长度不能超过${validation.maxLength}个字符`
     }
 
     if (field.component === 'input-number' && value !== null && value !== undefined) {
-      if (field.validation?.min !== undefined && value < field.validation.min) {
-        return `${field.fieldName}不能小于${field.validation.min}`
+      if (validation?.min !== undefined && value < validation.min) {
+        return `${field.fieldName}不能小于${validation.min}`
       }
-      if (field.validation?.max !== undefined && value > field.validation.max) {
-        return `${field.fieldName}不能大于${field.validation.max}`
+      if (validation?.max !== undefined && value > validation.max) {
+        return `${field.fieldName}不能大于${validation.max}`
       }
     }
 

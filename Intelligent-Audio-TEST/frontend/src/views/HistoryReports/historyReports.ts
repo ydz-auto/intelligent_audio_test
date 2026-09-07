@@ -1,18 +1,15 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
-import { reportsApi } from '../../utils/api';
+import { reportsPort } from '@/composables/report/reportsPort';
 import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabels';
-import { getReportTypeLabel } from '../../shared/constants/reportConstants';
-import type { Report, ReportListParams } from '../../shared/types/index';
+import { getReportTypeLabel } from '../../domain/constants/reportLabels';
+import type { Report, ReportListQuery as ReportListParams } from '../../domain';
+import type { ToastMessage } from '../../domain/model/ui';
 import socketService from '../../utils/socket';
+import { readCamel } from '../../utils/keyTransform';
 import { usePagination } from '../../composables/usePagination';
-
-interface AlgorithmOption {
-  value: string;
-  name: string;
-  group_id?: number;
-  group_name?: string;
-}
+import { ReportStatus } from '@/domain/enums';
+import { formatDate } from '@/utils/utils';
 
 type ReportTypeFilter = 'all' | 'comparison' | 'secondaryComparison' | 'task';
 type ReportStatusFilter = 'all' | 'draft' | 'published';
@@ -31,11 +28,6 @@ interface HistoryReportsFilters {
 interface HistoryReportsSort {
   sortBy: 'createdAt' | 'name' | 'type' | 'status' | 'updatedAt';
   order: 'asc' | 'desc';
-}
-
-interface ToastMessage {
-  type: 'success' | 'error' | 'warning' | 'info';
-  message: string;
 }
 
 const toast = ref<ToastMessage | null>(null);
@@ -90,7 +82,7 @@ export function useHistoryReports() {
       if (filters.value.endDate) params.endTime = filters.value.endDate;
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') params.algorithmType = filters.value.algorithmType;
       
-      const data = await reportsApi.getAll(params);
+      const data = await reportsPort.getAll(params);
       allReports.value = data?.items || [];
       totalItems.value = data?.total || 0;
     } catch (error) {
@@ -101,11 +93,6 @@ export function useHistoryReports() {
     } finally {
       loading.value = false;
     }
-  };
-
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleString();
   };
 
   const calculateDateRange = () => {
@@ -159,15 +146,16 @@ export function useHistoryReports() {
     if (!report.summary) return '暂无摘要';
     
     const summary = report.summary;
-    const totalCases = summary.total_cases || 0;
-    const completedCases = summary.completed_cases || 0;
-    const failedCases = summary.failed_cases || 0;
-    const successRate = summary.overall_success_rate || summary.pass_rate || 0;
+    const totalCases = summary.totalCases || 0;
+    // readCamel 先读 camelCase completedCases，兜底兼容未经 adapter 化的原始 summary
+    const completedCases = readCamel<number>(summary, 'completedCases') || 0;
+    const failedCases = summary.failedCases || 0;
+    const successRate = summary.overallSuccessRate || summary.passRate || 0;
     
     if (report.type === 'task') {
       return `共 ${totalCases} 个测试用例，通过 ${completedCases} 个，失败 ${failedCases} 个，通过率 ${successRate}%`;
     } else if (report.type === 'comparison') {
-      return `共对比 ${summary.task_count || 0} 个任务，包含 ${totalCases} 个测试用例`;
+      return `共对比 ${summary.taskCount || 0} 个任务，包含 ${totalCases} 个测试用例`;
     } else {
       return `共 ${totalCases} 个测试用例，通过 ${completedCases} 个，失败 ${failedCases} 个，通过率 ${successRate}%`;
     }
@@ -232,11 +220,11 @@ export function useHistoryReports() {
   });
 
   const publishedReports = computed(() => {
-    return allReports.value.filter(report => report.status === 'published');
+    return allReports.value.filter(report => report.status === ReportStatus.PUBLISHED);
   });
 
   const draftReports = computed(() => {
-    return allReports.value.filter(report => report.status === 'draft');
+    return allReports.value.filter(report => report.status === ReportStatus.DRAFT);
   });
 
   const toggleSelectAll = () => {
@@ -261,7 +249,7 @@ export function useHistoryReports() {
     if (confirm(`确定要删除选中的 ${selectedReports.value.size} 个报告吗？`)) {
       try {
         const ids = Array.from(selectedReports.value);
-        await reportsApi.batchDelete(ids);
+        await reportsPort.batchDelete(ids);
         selectedReports.value.clear();
         showToast('success', `成功删除 ${ids.length} 个报告`);
         loadReports();
@@ -284,13 +272,13 @@ export function useHistoryReports() {
     }
     try {
       const ids = Array.from(selectedReports.value);
-      const result = await reportsApi.secondaryCompare(ids);
+      const result = await reportsPort.secondaryCompare(ids);
 
       if (result.status === 'generating') {
         showToast('info', '对比报告生成中，请稍后...');
         socketService.connect();
 
-        const reportKey = result.reportKey.join(',');
+        const reportKey = (result.reportKey ?? []).join(',');
         const reportId = await new Promise<string | number>((resolve, reject) => {
           const timeout = setTimeout(() => {
             pendingSecondaryCompareReports.value.delete(reportKey);
@@ -338,7 +326,7 @@ export function useHistoryReports() {
   const deleteReport = async (reportId: string | number) => {
     if (confirm('确定要删除这个报告吗？')) {
       try {
-        await reportsApi.delete(reportId);
+        await reportsPort.delete(reportId);
         selectedReports.value.delete(reportId);
         showToast('success', '报告删除成功');
         loadReports();
@@ -351,7 +339,7 @@ export function useHistoryReports() {
   const publishReport = async (reportId: string | number) => {
     if (confirm('确定要发布这个报告吗？')) {
       try {
-        await reportsApi.publish(reportId);
+        await reportsPort.publish(reportId);
         showToast('success', '报告发布成功');
         loadReports();
       } catch (error: any) {

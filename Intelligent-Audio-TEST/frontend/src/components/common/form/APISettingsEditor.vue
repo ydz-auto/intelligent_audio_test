@@ -76,7 +76,7 @@ const emit = defineEmits(['update:modelValue', 'change'])
 const localValue = reactive({
   method: 'POST',
   headers: {},
-  body_template: {},
+  bodyTemplate: {},
   timeout: 30000
 })
 

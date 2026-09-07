@@ -1,3 +1,8 @@
+/** 判定是否普通对象（排除 null/数组） */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 export function createResourceLabelGetter(resourceHeaderMap: any) {
   const getResourceLabel = (resourceKey: any) => {
     const key = String(resourceKey ?? '')
@@ -77,7 +82,7 @@ export function createTagMetricValueGetters(deps: {
         const deviceName = typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device;
         for (const [resourceKey, data] of Object.entries(tagData)) {
           const currentResourceName = resourceKey.includes('-') ? resourceKey.split('-').slice(1).join('-') : resourceKey;
-          if (currentResourceName === deviceName && Array.isArray(data[rawDataKey])) {
+          if (currentResourceName === deviceName && isPlainObject(data) && Array.isArray(data[rawDataKey])) {
             return data[rawDataKey];
           }
         }

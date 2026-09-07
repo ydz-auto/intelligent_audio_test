@@ -1,6 +1,6 @@
 import { ref, type Ref } from 'vue';
-import type { AudioUploadTask } from '../../shared/types';
-import { UploadStatus as UploadStatusEnum } from '@/shared/types/enums';
+import type { AudioUploadTask } from '../../domain';
+import { UploadStatus as UploadStatusEnum } from '../../domain/enums';
 
 /** 上传状态机：idle → preparing → uploading → completed/failed，可进入 paused/stopped */
 export const UploadStatus = {

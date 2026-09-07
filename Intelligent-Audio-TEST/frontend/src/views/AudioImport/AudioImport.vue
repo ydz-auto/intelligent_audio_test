@@ -39,7 +39,7 @@
 
     <!-- 全局上传进度显示 -->
     <UploadProgressCard
-      v-if="uploadProgress > 0 && uploadStatus !== 'idle'"
+      v-if="uploadProgress > 0 && currentTask"
       :upload-progress="uploadProgress"
       :current-task="currentTask"
       :current-uploading-file="currentUploadingFile"
@@ -172,27 +172,8 @@ import AudioPlayerModal from '../../components/common/audio/AudioPlayerModal.vue
 import BatchAnnotationModal from '../../components/common/modal/BatchAnnotationModal.vue';
 import ConvertModal from './ConvertModal.vue';
 import { useAudioImport } from './audioImport';
-import { UploadStatus } from '@/shared/types/enums';
+import type { AudioUploadTask } from '@/domain/model/audio';
 import { useUploadState } from '../../composables/upload/useUploadState';
-import { formatAudioData } from '../../utils/audioUtils';
-
-interface AudioUploadTask {
-  id: string | number;
-  taskId: string | number;
-  totalFiles: number;
-  completedFiles: number;
-  failedFiles: number;
-  totalSize: number;
-  uploadedSize: number;
-  status: 'pending' | 'uploading' | 'completed' | 'failed' | 'paused';
-  files: Array<{
-    name: string;
-    size: number;
-    uploadedSize: number;
-    status: 'pending' | 'uploading' | 'completed' | 'failed';
-    errorMessage?: string;
-  }>;
-}
 
 const {
   audioList: audioList,
@@ -373,11 +354,8 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeyDown);
 });
 
-// 格式化音频数据以适配 AudioListComponent
-const formattedAudios = computed(() => {
-    const result = (filteredAudios.value || []).map(audio => formatAudioData(audio));
-    return result;
-  });
+// 行数据直接使用 Domain AudioInfo，展示格式化统一由 AudioListComponent 处理
+const formattedAudios = computed(() => filteredAudios.value || []);
 
   // 音频类型过滤器，用于AudioListComponent
   const audioTypeFilter = ref('all');

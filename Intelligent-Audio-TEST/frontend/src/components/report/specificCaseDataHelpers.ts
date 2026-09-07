@@ -1,4 +1,4 @@
-import { reportsApi } from '../../utils/api'
+import { reportsPort } from '@/composables/report/reportsPort'
 import { normalizeAudioFields } from '../../utils/audioUtils'
 
 export function getValidResources(data: any) {
@@ -22,6 +22,31 @@ export function getValidResources(data: any) {
 const _metricsMapCache = new WeakMap()
 const _textMapCache = new WeakMap()
 
+/** 指标条目对象值形态（保留维度归组信息；前端视图模型 camelCase，输入兼容后端 metrics 条目双形态） */
+export interface MetricEntryValue {
+  value: number | string | null
+  dimensionType: string
+  parentDimensionId: number | string | null
+  parentDimensionName: string | null
+}
+
+function toMetricEntry(m: { value?: unknown; dimension_type?: unknown; dimensionType?: unknown; parent_dimension_id?: unknown; parentDimensionId?: unknown; parent_dimension_name?: unknown; parentDimensionName?: unknown }): MetricEntryValue {
+  return {
+    value: (m.value ?? null) as MetricEntryValue['value'],
+    dimensionType: String(m.dimensionType || m.dimension_type || 'main'),
+    parentDimensionId: (m.parentDimensionId ?? m.parent_dimension_id ?? null) as MetricEntryValue['parentDimensionId'],
+    parentDimensionName: (m.parentDimensionName ?? m.parent_dimension_name ?? null) as MetricEntryValue['parentDimensionName']
+  }
+}
+
+/** 解包指标值：对象值形态 { value } 取内层，裸值原样返回 */
+export function unwrapMetricValue(raw: unknown): number | string | null | undefined {
+  if (raw !== null && typeof raw === 'object' && 'value' in (raw as Record<string, unknown>)) {
+    return (raw as MetricEntryValue).value
+  }
+  return raw as number | string | null | undefined
+}
+
 export function toMetricsMap(caseItem: any) {
   if (!caseItem || typeof caseItem !== 'object') return {}
   if (_metricsMapCache.has(caseItem)) {
@@ -39,7 +64,7 @@ export function toMetricsMap(caseItem: any) {
         if (Array.isArray(group.metrics)) {
           group.metrics.forEach((m: any) => {
             if (!m || !m.metric) return
-            map[resource][m.metric] = m.value
+            map[resource][m.metric] = toMetricEntry(m)
           })
         }
       })
@@ -48,7 +73,7 @@ export function toMetricsMap(caseItem: any) {
       const flatMap: any = {}
       metrics.forEach((m: any) => {
         if (!m || !m.metric) return
-        flatMap[m.metric] = m.value
+        flatMap[m.metric] = toMetricEntry(m)
       })
       result = flatMap
     }
@@ -106,35 +131,28 @@ export function createCaseDataHelpers(deps: {
   } = deps
 
   function extractCasesFromReportData(reportData: any) {
-    // 优先级1: 使用 test_reports_cases 字段（新格式）
-    if (reportData.test_reports_cases && Array.isArray(reportData.test_reports_cases) && reportData.test_reports_cases.length > 0) {
-      console.log('从 test_reports_cases 提取用例数据')
-      const taskType = reportData?.task_type || props.reportData?.task_type || 'all'
-      return reportData.test_reports_cases.map((c: any) => normalizeAudioFields(c, taskType))
-    }
-
-    // 优先级2: 使用 reportData.cases
+    // 优先级1: 使用 cases 字段（新格式）
     if (reportData.cases && Array.isArray(reportData.cases) && reportData.cases.length > 0) {
-      console.log('从 reportData.cases 提取用例数据')
-      const taskType = reportData?.task_type || props.reportData?.task_type || 'all'
+      console.log('从 cases 提取用例数据')
+      const taskType = reportData?.taskType || props.reportData?.taskType || 'all'
       return reportData.cases.map((c: any) => normalizeAudioFields(c, taskType))
     }
 
-    // 优先级3: 使用 summary.cases
+    // 优先级2: 使用 summary.cases
     if (reportData.summary?.cases && Array.isArray(reportData.summary.cases) && reportData.summary.cases.length > 0) {
       console.log('从 summary.cases 提取用例数据')
-      const taskType = reportData?.task_type || props.reportData?.task_type || 'all'
+      const taskType = reportData?.taskType || props.reportData?.taskType || 'all'
       return reportData.summary.cases.map((c: any) => normalizeAudioFields(c, taskType))
     }
 
-    // 优先级4: 使用 detailed_results
-    if (reportData.detailed_results && Array.isArray(reportData.detailed_results) && reportData.detailed_results.length > 0) {
-      console.log('从 detailed_results 提取用例数据')
+    // 优先级3: 使用 detailedResults
+    if (reportData.detailedResults && Array.isArray(reportData.detailedResults) && reportData.detailedResults.length > 0) {
+      console.log('从 detailedResults 提取用例数据')
       const casesMap = new Map();
 
-      reportData.detailed_results.forEach((result: any) => {
-        const testCaseId = result.test_case_id ?? result.test_case?.id;
-        const testCaseName = result.test_case_name ?? result.test_case?.name ?? '未知用例';
+      reportData.detailedResults.forEach((result: any) => {
+        const testCaseId = result.testCaseId ?? result.testCase?.id;
+        const testCaseName = result.testCaseName ?? result.testCase?.name ?? '未知用例';
 
         if (!testCaseId) return;
 
@@ -153,15 +171,15 @@ export function createCaseDataHelpers(deps: {
 
         let caseItem: any = casesMap.get(testCaseId);
         if (!caseItem) {
-          const asrRef = result.asr?.reference_text ?? ''
-          const tranRef = result.translation?.reference_text ?? ''
+          const asrRef = result.asr?.referenceText ?? ''
+          const tranRef = result.translation?.referenceText ?? ''
 
           caseItem = {
             id: testCaseId,
             name: testCaseName,
-            category: result.test_case_group?.name ?? result.test_case_type ?? '其他',
+            category: result.testCaseGroup?.name ?? result.testCaseType ?? '其他',
             description: result.description || '',
-            tags: processTags(result.test_case_tags ?? []),
+            tags: processTags(result.testCaseTags ?? []),
             audios: result.audios ?? [],
             asr: {
               referenceText: asrRef,
@@ -183,21 +201,21 @@ export function createCaseDataHelpers(deps: {
         }
 
         if (result.asr) {
-          caseItem.asr.results[resourceKey] = {text: result.asr.result_text ?? '', score: 0};
+          caseItem.asr.results[resourceKey] = {text: result.asr.resultText ?? '', score: 0};
         }
 
         if (result.translation) {
-          caseItem.translation.results[resourceKey] = {text: result.translation.result_text ?? '', score: 0};
+          caseItem.translation.results[resourceKey] = {text: result.translation.resultText ?? '', score: 0};
         }
 
         if (!caseItem.metrics[resourceKey]) {
           caseItem.metrics[resourceKey] = {};
         }
 
-        const dimensionScores = result.dimension_scores;
+        const dimensionScores = result.dimensionScores;
         if (Array.isArray(dimensionScores)) {
           dimensionScores.forEach((dim: any) => {
-            const dimName = dim.dimension_name;
+            const dimName = dim.dimensionName;
             if (dimName) {
               caseItem.metrics[resourceKey][dimName] = dim.score;
             }
@@ -208,7 +226,7 @@ export function createCaseDataHelpers(deps: {
           });
         }
 
-        const createdAt = result.created_at ?? 0;
+        const createdAt = result.createdAt ?? 0;
         if (!Array.isArray(caseItem.results)) {
           caseItem.results = [];
         }
@@ -221,16 +239,16 @@ export function createCaseDataHelpers(deps: {
         }
       });
 
-      const taskType = reportData?.task_type || props.reportData?.task_type || 'all'
+      const taskType = reportData?.taskType || props.reportData?.taskType || 'all'
       return Array.from(casesMap.values()).map((c: any) => normalizeAudioFields(c, taskType));
     }
 
     // 备选方案：使用reportData中的cases或summary中的cases
     if (reportData.cases) {
-      const taskType = reportData?.task_type || props.reportData?.task_type || 'all'
+      const taskType = reportData?.taskType || props.reportData?.taskType || 'all'
       return (reportData.cases || []).map((c: any) => normalizeAudioFields(c, taskType));
     } else if (reportData.summary?.cases) {
-      const taskType = reportData?.task_type || props.reportData?.task_type || 'all'
+      const taskType = reportData?.taskType || props.reportData?.taskType || 'all'
       return (reportData.summary.cases || []).map((c: any) => normalizeAudioFields(c, taskType));
     }
 
@@ -238,7 +256,7 @@ export function createCaseDataHelpers(deps: {
   }
 
   function normalizeCasesForUi(caseItems: any) {
-    const taskType = props.reportData?.task_type || 'all'
+    const taskType = props.reportData?.taskType || 'all'
     try {
       return (caseItems || []).map((c0: any) => {
         const c = normalizeAudioFields(c0, taskType)
@@ -247,17 +265,17 @@ export function createCaseDataHelpers(deps: {
         const asrMap = toTextMap(c.asr)
         const tranMap = toTextMap(c.translation)
 
-        const algoResults = c.algorithm_results || []
-        const refParams = c.reference_params || {}
+        const algoResults = c.algorithmResults || []
+        const refParams = c.referenceParams || {}
 
         return {
           ...c,
           metrics: metricsMap,
           asr: c.asr ? { ...c.asr, results: asrMap } : c.asr,
           translation: c.translation ? { ...c.translation, results: tranMap } : c.translation,
-          algorithm_results: algoResults,
-          algorithm_type: c.algorithm_type || '',
-          reference_params: refParams,
+          algorithmResults: algoResults,
+          algorithmType: c.algorithmType || '',
+          referenceParams: refParams,
           rttmRes: c.rttmRes,
           stmRes: c.stmRes,
           rttmRef: c.rttmRef,
@@ -277,21 +295,21 @@ export function createCaseDataHelpers(deps: {
     try {
       const params: any = {
         page: currentPage.value,
-        per_page: pageSize.value,
+        perPage: pageSize.value,
       }
       if (searchKeyword.value) params.keyword = searchKeyword.value
       if (selectedCategories.value.length > 0) params.categories = selectedCategories.value
       if (selectedTags.value.length > 0) params.tags = selectedTags.value
       if (selectedMetrics.value.length > 0) params.metrics = selectedMetrics.value
       if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
-        params.sort_by = 'metric'
-        params.sort_metric = selectedSortMetric.value
-        params.sort_order = sortOrder.value
+        params.sortBy = 'metric'
+        params.sortMetric = selectedSortMetric.value
+        params.sortOrder = sortOrder.value
       } else {
-        params.sort_by = sortDimension.value
-        params.sort_order = sortOrder.value
+        params.sortBy = sortDimension.value
+        params.sortOrder = sortOrder.value
       }
-      const data = await reportsApi.searchCases(reportId, params)
+      const data = await reportsPort.searchCases(reportId, params)
       const items = data?.items || []
       totalCases.value = data?.total || 0
       cases.value = normalizeCasesForUi(items)
@@ -308,20 +326,20 @@ export function createCaseDataHelpers(deps: {
     casesLoading.value = true
     casesLoadError.value = ''
     try {
-      const params: any = { page: 1, per_page: 999999 }
+      const params: any = { page: 1, perPage: 999999 }
       if (searchKeyword.value) params.keyword = searchKeyword.value
       if (selectedCategories.value.length > 0) params.categories = selectedCategories.value
       if (selectedTags.value.length > 0) params.tags = selectedTags.value
       if (selectedMetrics.value.length > 0) params.metrics = selectedMetrics.value
       if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
-        params.sort_by = 'metric'
-        params.sort_metric = selectedSortMetric.value
-        params.sort_order = sortOrder.value
+        params.sortBy = 'metric'
+        params.sortMetric = selectedSortMetric.value
+        params.sortOrder = sortOrder.value
       } else {
-        params.sort_by = sortDimension.value
-        params.sort_order = sortOrder.value
+        params.sortBy = sortDimension.value
+        params.sortOrder = sortOrder.value
       }
-      const data = await reportsApi.searchCases(reportId, params)
+      const data = await reportsPort.searchCases(reportId, params)
       const items = data?.items || []
       totalCases.value = data?.total || 0
       cases.value = normalizeCasesForUi(items)

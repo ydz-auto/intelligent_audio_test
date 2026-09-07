@@ -114,11 +114,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { readCamel } from '@/utils/keyTransform'
 import type {
   RoundEvaluationConfig,
   DimensionConfig,
-} from './types'
-import type { Dimension } from '../../../../shared/types'
+} from '@/domain'
+import type { Dimension } from '../../../../domain'
 
 const props = defineProps<{
   modelValue?: RoundEvaluationConfig
@@ -155,7 +156,7 @@ const filteredDimensions = computed(() => {
   const dims = props.availableDimensions || []
   if (!props.algorithmType) return dims
   return dims.filter((dim) => {
-    const algos = (dim as any).associated_algorithms
+    const algos = readCamel<unknown[]>(dim, 'associatedAlgorithms')
     if (!Array.isArray(algos) || algos.length === 0) return true
     return algos.some((a: any) => a.algorithmType === props.algorithmType)
   })

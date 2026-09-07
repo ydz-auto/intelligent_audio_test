@@ -13,7 +13,7 @@
 
 import logging
 
-from shared.models.common_enums import TaskStatus, TestType
+from shared.models.common_enums import FieldType, TaskStatus, TestType
 from shared.utils.log_handler import log_not_emit
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
@@ -45,19 +45,24 @@ class ReportHelpers:
     # ------------------------------------------------------------------
 
     # 公共函数：根据参数键名推断 param_type
-    @staticmethod
-    def _infer_param_type(param_key: str) -> str:
+    #
+    # 推断规则配置：按顺序匹配关键词 → FieldType。
+    # 与前端 domain/constants/paramTypeRules.ts 的 PARAM_TYPE_KEYWORD_RULES 保持一致。
+    # 注：'timestamp' 含 'time'，仅需匹配 'time'。
+    _PARAM_TYPE_KEYWORD_RULES = (
+        ('rttm', FieldType.RTTM),
+        ('stm', FieldType.STM),
+        ('audio', FieldType.AUDIO),
+        ('time', FieldType.TIMESTAMP),
+    )
+
+    @classmethod
+    def _infer_param_type(cls, param_key: str) -> str:
         key_lower = param_key.lower()
-        if 'rttm' in key_lower:
-            return 'rttm'
-        if 'stm' in key_lower:
-            return 'stm'
-        if 'audio' in key_lower:
-            return 'audio'
-        # 当 key 包含 time 或 timestamp 时，返回 timestamp 类型
-        if 'time' in key_lower or 'timestamp' in key_lower:
-            return 'timestamp'
-        return 'text'
+        for keyword, field_type in cls._PARAM_TYPE_KEYWORD_RULES:
+            if keyword in key_lower:
+                return field_type.value
+        return FieldType.TEXT.value
 
     # 公共函数：构建报告音频列表（统一 task 和 compare 两种模式）
     @staticmethod
@@ -254,56 +259,55 @@ class ReportHelpers:
     # 公共函数：提取维度得分
     @staticmethod
     def extract_dimension_values(result_id, all_dimensions, dim_results_map=None, fill_missing=True):
+        """提取测试结果的维度得分（多轮场景取值优先级）：
+
+        1. 有 overall（round_number=None）记录 → 取 overall 的值
+        2. 无 overall → 取各轮（round_number != None）记录的算术平均
+        3. 只有一轮 → 取该轮的值
+        """
         dim_values = {}
 
         if all_dimensions is None:
             log_not_emit('ERROR', 'report_controller_base', f'all_dimensions is None in extract_dimension_values for result {result_id}', category='report')
             return dim_values
 
+        # dim_id -> name 映射
+        dim_id_to_name = {_dim_id(d): _dim_name(d) for d in all_dimensions}
+
+        # 获取维度结果行：优先使用预先查询好的映射表，避免循环内查询数据库
         if dim_results_map is not None:
-            # 使用预先查询好的映射表，避免循环内查询数据库
             result_dims = dim_results_map.get(result_id, [])
-
-            # 支持字典格式或对象格式
-            for d in result_dims:
-                if isinstance(d, dict):
-                    dim_name = d.get('name') or d.get('dimension_name')
-                    dim_val = d.get('value') or d.get('dimension_value')
-                elif hasattr(d, 'dimension_name') or hasattr(d, 'name'):
-                    dim_name = getattr(d, 'dimension_name', None) or getattr(d, 'name', None)
-                    dim_val = getattr(d, 'dimension_value', None) or getattr(d, 'value', None)
-                else:
-                    dim_name = None
-                    dim_val = None
-
-                if dim_name is not None:
-                    dim_values[dim_name] = dim_val
-
-            if fill_missing:
-                for dim in all_dimensions:
-                    dim_name = _dim_name(dim)
-                    if dim_name and dim_name not in dim_values:
-                        dim_values[dim_name] = None
         else:
             # gRPC 兜底：通过 evaluation_service 查询单个 result 的维度结果
-            dim_map = _grpc_get_dim_results([result_id])
-            dim_results = dim_map.get(result_id, [])
-            # 构建 dim_id -> name 映射
-            dim_id_to_name = {_dim_id(d): _dim_name(d) for d in all_dimensions}
-            for dr in dim_results:
-                if isinstance(dr, dict):
-                    dim_id = dr.get('dimension_id')
-                    dim_val = dr.get('dimension_value')
-                else:
-                    dim_id = getattr(dr, 'dimension_id', None)
-                    dim_val = getattr(dr, 'dimension_value', None)
-                if dim_id and dim_id in dim_id_to_name:
-                    dim_values[dim_id_to_name[dim_id]] = dim_val
-            if fill_missing:
-                for dim in all_dimensions:
-                    dim_name = _dim_name(dim)
-                    if dim_name and dim_name not in dim_values:
-                        dim_values[dim_name] = None
+            result_dims = _grpc_get_dim_results([result_id]).get(result_id, [])
+
+        # 收集各维度的 overall 值和各轮值
+        dim_overall = {}   # dim_id -> value
+        dim_rounds = {}    # dim_id -> [value, ...]
+        for dr in result_dims:
+            if isinstance(dr, dict):
+                dim_id = dr.get('dimension_id')
+                dim_val = dr.get('dimension_value')
+                dim_round = dr.get('round_number')
+            else:
+                dim_id = getattr(dr, 'dimension_id', None)
+                dim_val = getattr(dr, 'dimension_value', None)
+                dim_round = getattr(dr, 'round_number', None)
+
+            if dim_id and dim_id in dim_id_to_name:
+                if dim_round is None:
+                    dim_overall[dim_id] = dim_val
+                elif dim_val is not None:
+                    dim_rounds.setdefault(dim_id, []).append(dim_val)
+
+        for dim_id, dim_name in dim_id_to_name.items():
+            if dim_overall.get(dim_id) is not None:
+                dim_values[dim_name] = dim_overall[dim_id]
+            elif dim_rounds.get(dim_id):
+                scores = dim_rounds[dim_id]
+                dim_values[dim_name] = round(sum(scores) / len(scores), 4)
+            elif fill_missing:
+                dim_values[dim_name] = None
         return dim_values
 
     # 公共函数：构建结果信息

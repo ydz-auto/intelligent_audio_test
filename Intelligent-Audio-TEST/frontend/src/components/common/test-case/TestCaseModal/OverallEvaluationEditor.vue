@@ -135,8 +135,9 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { DimensionConfig } from './types'
-import type { Dimension } from '../../../../shared/types'
+import type { DimensionConfig } from '@/domain'
+import type { Dimension } from '../../../../domain'
+import { readCamel } from '@/utils/keyTransform'
 
 const props = defineProps<{
   modelValue?: DimensionConfig[]
@@ -176,7 +177,7 @@ const filteredDimensions = computed(() => {
   const dims = props.availableDimensions || []
   if (!props.algorithmType) return dims
   return dims.filter((dim) => {
-    const algos = (dim as any).associated_algorithms
+    const algos = readCamel<unknown[]>(dim, 'associatedAlgorithms')
     if (!Array.isArray(algos) || algos.length === 0) return true
     return algos.some((a: any) => a.algorithmType === props.algorithmType)
   })

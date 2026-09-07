@@ -19,12 +19,10 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from shared.infrastructure.storage import storage
-from shared.models.common_enums import FieldType, TestType
+from shared.models.common_enums import TestType
 from shared.utils.status_constants import TaskStatus
-from shared.utils.path_extractor import extract_by_path
-from shared.constants.device_fields import DEVICE_FIELDS
 from shared.utils.audio_path_utils import normalize_audio_path
-from shared.domain.algorithm_result_strategy import AlgorithmStrategyFactory
+from shared.domain.algorithm_result_builder import build_algorithm_results_for_result
 
 from task_service.infrastructure.persistence.task_repository import task_repository
 from task_service.infrastructure.read_models.task_read_model import task_read_model
@@ -233,10 +231,11 @@ class TaskQueryService:
                     result_dim_rows = pr.get('dimensions') or []
 
                     algorithm_results.extend(
-                        TaskQueryService._build_algorithm_results_for_result(
+                        build_algorithm_results_for_result(
                             result, resource, algo_res, r_data,
                             aux_params_map, result_dim_rows,
-                            output_fields, algorithm_type
+                            output_fields, algorithm_type,
+                            normalize_audio_path_fn=_normalize_audio_path_for_task,
                         )
                     )
             except Exception as e:
@@ -356,109 +355,15 @@ class TaskQueryService:
             m = (secs % 3600) // 60
             return f"{h}小时" + (f"{m}分钟" if m > 0 else "")
 
-    @staticmethod
-    def _build_algorithm_results_for_result(
-        result, resource, algo_res, result_data, aux_params_map,
-        dim_result_rows, output_fields, algorithm_type
-    ):
-        """为单个 TestResult 构建 algorithm_results 扁平列表。
 
-        合并 aux 辅助参数 + 设备/API 原始结果，供详情页使用。
-        与 report_service.ReportDataBuilder.build_algorithm_results_for_result 逻辑一致。
-        """
-        import json
-        import os
-
-        algorithm_results = []
-
-        if not (algo_res or result_data):
-            return algorithm_results
-
-        # ── 1. 构建 param_code → (dimension_name, field_type) 全局映射 ──
-        param_to_dim = {}
-        param_to_type = {}
-        if aux_params_map:
-            for _dim_id, aux_list in aux_params_map.items():
-                for aux_info in aux_list:
-                    p = aux_info['param']
-                    param_code = p.get('param_code') if isinstance(p, dict) else getattr(p, 'param_code', None)
-                    if param_code:
-                        param_to_dim[param_code] = aux_info['dimension_name']
-                        param_to_type[param_code] = p.get('field_type', FieldType.TEXT.value) if isinstance(p, dict) else getattr(p, 'field_type', FieldType.TEXT.value)
-
-        # ── 2. 提取 aux 辅助参数值 ──
-        aux_values = {}
-
-        # 2a. 从 evaluation_data 提取
-        if result_data:
-            eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
-            if isinstance(eval_data, dict):
-                for param_code in param_to_dim:
-                    if param_code in eval_data:
-                        aux_values[param_code] = eval_data[param_code]
-
-        # 2b. 从 api_raw_response 补充
-        for dr in dim_result_rows:
-            if not isinstance(dr, dict):
-                continue
-            raw_resp = dr.get('api_raw_response')
-            if not raw_resp:
-                continue
-            if isinstance(raw_resp, str):
-                try:
-                    raw_resp = json.loads(raw_resp)
-                except Exception:
-                    continue
-            dim_id = dr.get('dimension_id') or dr.get('id')
-            for aux_info in (aux_params_map.get(dim_id, []) if aux_params_map else []):
-                p = aux_info['param']
-                param_code = p.get('param_code') if isinstance(p, dict) else getattr(p, 'param_code', None)
-                if not param_code or param_code in aux_values:
-                    continue
-                field_path = p.get('field_path') if isinstance(p, dict) else getattr(p, 'field_path', None)
-                value = _extract_by_path(raw_resp, field_path)
-                if value is not None:
-                    aux_values[param_code] = value
-
-        # 输出 aux 参数
-        for param_code, param_value in aux_values.items():
-            if param_value is None:
-                continue
-            algorithm_results.append({
-                'device': resource,
-                'param_code': param_code,
-                'param_type': param_to_type.get(param_code, FieldType.TEXT.value),
-                'label': param_code,
-                'value': param_value,
-                'dimension_name': param_to_dim.get(param_code),
-            })
-
-        # ── 3. 提取设备/API 原始执行结果 ──
-        combined_data = {**(algo_res or {}), **(result_data or {})}
-
-        try:
-            from task_service.config.config import Config
-            _static_base = getattr(Config, 'STATIC_BASE_PATH', '')
-        except Exception:
-            _static_base = ''
-
-        def _normalize_audio_path_wrapper(abs_path):
-            """将音频文件的绝对路径转换为相对 STATIC_BASE_PATH 的相对路径。"""
-            return normalize_audio_path(abs_path, _static_base)
-
-        # 通过策略模式消除 algorithm_type 硬编码分支
-        strategy = AlgorithmStrategyFactory.get_strategy(algorithm_type)
-        algorithm_results.extend(strategy.process_algorithm_result(
-            combined_data=combined_data,
-            output_fields=output_fields,
-            resource=resource,
-            device_fields=DEVICE_FIELDS,
-            algo_res=algo_res,
-            result_data=result_data,
-            normalize_audio_path_fn=_normalize_audio_path_wrapper,
-        ))
-
-        return algorithm_results
+def _normalize_audio_path_for_task(abs_path):
+    """将音频文件的绝对路径转换为相对 STATIC_BASE_PATH 的相对路径。"""
+    try:
+        from task_service.config.config import Config
+        _static_base = getattr(Config, 'STATIC_BASE_PATH', '')
+    except Exception:
+        _static_base = ''
+    return normalize_audio_path(abs_path, _static_base)
 
 
 # 模块级单例

@@ -50,11 +50,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import api from '@/utils/api';
-import type { TagCategory, TagItem } from '@/utils/api';
+import { tagsPort } from '@/composables/shared/tagsPort';
+import type { TagCategory, TagItem } from '@/domain/model/tag';
 import Notification from '@/components/common/modal/Notification.vue';
 import { useModalControl } from '@/composables';
-import { MODAL_TYPES } from '@/shared/types';
+import { MODAL_TYPES } from '@/composables/modal/constants';
 import CategorySidebar from './sections/CategorySidebar.vue';
 import TagGrid from './sections/TagGrid.vue';
 
@@ -109,7 +109,7 @@ function resetTagList() {
 
 async function loadAllCategories() {
   try {
-    const res = await api.tags.getCategories({ page: 1, per_page: 1000 });
+    const res = await tagsPort.getCategories({ page: 1, perPage: 1000 });
     allCategories.value = res.items || [];
   } catch (e: any) {
     console.error('加载全部分类失败:', e);
@@ -121,9 +121,10 @@ async function loadCategories(append: boolean = false) {
 
   categoryLoading.value = true;
   try {
+    // Domain 查询参数为 camelCase（TagListQuery），API 层负责转 snake_case
     const params: any = {
       page: categoryPage.value,
-      per_page: categoryPageSize.value
+      perPage: categoryPageSize.value
     };
 
     const sidebarKeyword = (categorySearchKeywordHolder.value || '').trim();
@@ -131,7 +132,7 @@ async function loadCategories(append: boolean = false) {
       params.keyword = sidebarKeyword;
     }
 
-    const res = await api.tags.getCategories(params);
+    const res = await tagsPort.getCategories(params);
     const newCategories = res.items || [];
 
     if (append) {
@@ -177,13 +178,14 @@ async function loadTags(append: boolean = false) {
 
   tagLoading.value = true;
   try {
+    // Domain 查询参数为 camelCase（TagListQuery），API 层负责转 snake_case
     const params: any = {
       page: tagPage.value,
-      per_page: tagPageSize.value
+      perPage: tagPageSize.value
     };
 
     if (selectedCategoryId.value !== null) {
-      params.category_id = selectedCategoryId.value;
+      params.categoryId = selectedCategoryId.value;
     }
 
     const tagKeyword = (tagSearchKeywordHolder.value || '').trim();
@@ -191,7 +193,7 @@ async function loadTags(append: boolean = false) {
       params.keyword = tagKeyword;
     }
 
-    const res = await api.tags.getTags(params);
+    const res = await tagsPort.getTags(params);
     const newTags = res.items || [];
 
     if (append) {
@@ -250,7 +252,7 @@ async function confirmDeleteCategory(cat: TagCategory) {
     content: `确定删除分类「${cat.name}」吗？此操作不可恢复。`
   }).then(async () => {
     try {
-      await api.tags.deleteCategory(cat.id);
+      await tagsPort.deleteCategory(cat.id);
       showNotification('分类删除成功', 'success');
       resetCategoryList();
       await loadCategories();
@@ -291,7 +293,7 @@ async function confirmDeleteTag(tag: TagItem) {
     content: `确定删除标签「${tag.name}」吗？`
   }).then(async () => {
     try {
-      await api.tags.deleteTag(tag.id);
+      await tagsPort.deleteTag(tag.id);
       showNotification('标签删除成功', 'success');
       resetTagList();
       await loadTags();

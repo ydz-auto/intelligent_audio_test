@@ -21,13 +21,13 @@
           <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
             <i class="fas fa-info-circle" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">状态: </span>
-            <span :class="'status-tag ' + (detail.executionStatus || 'pending').toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
+            <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
               {{ 
-                detail.executionStatus === 'completed' ? (
-                  (detail.evaluationStatus === 'completed' || detail.evaluationStatus === 'failed') ? '已完成' : '评估中'
+                detail.executionStatus === ExecutionStatus.COMPLETED ? (
+                  (detail.evaluationStatus === EvaluationStatus.COMPLETED || detail.evaluationStatus === EvaluationStatus.FAILED) ? '已完成' : '评估中'
                 ) : 
-                detail.executionStatus === 'failed' ? '执行失败' : 
-                detail.executionStatus === 'in_progress' ? '执行中' : '等待中'
+                detail.executionStatus === ExecutionStatus.FAILED ? '执行失败' : 
+                detail.executionStatus === ExecutionStatus.IN_PROGRESS ? '执行中' : '等待中'
               }}
             </span>
           </div>
@@ -38,9 +38,12 @@
           <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
             <i class="fas fa-star" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">评分: </span>
-            <span :class="'status-tag ' + (detail.evaluationStatus || 'pending').toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
-              {{ detail.evaluationStatus === 'completed' ? '评分完成' : '待评分' }}
+            <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
+              {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
             </span>
+          </div>
+          <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
+            <CaseIdBadge :case-id="caseId" />
           </div>
         </div>
       </div>
@@ -108,8 +111,11 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
-import { tasksApi, logsApi } from '../../../utils/api'
+import { tasksPort } from '@/composables/task/tasksPort'
+import { logsPort } from '@/composables/task/logsPort'
 import TestCaseReportDetail from '../misc/TestCaseReportDetail.vue'
+import CaseIdBadge from '../CaseIdBadge.vue'
+import { ExecutionStatus, EvaluationStatus } from '@/domain/enums'
 
 const props = defineProps({
   taskId: { type: [String, Number], required: true },
@@ -128,34 +134,46 @@ const logPages = ref(0)
 const logLoadingMore = ref(false)
 const logPerPage = 100
 
+// 日志 DTO → 展示模型（logsPort 出口已是 camelCase Log，时间字段为 time）
+const mapLogs = (items) => items.map(log => ({
+  id: log.id,
+  time: log.time,
+  level: log.level || 'INFO',
+  content: log.content
+}))
+
 // 准备对比数据：按设备分组指标和文本
 // 多轮场景：同一维度名会出现多次（每轮一次 + 可能的整体评估），
-// 用 round_number 区分：NULL=整体评估, 0-indexed=轮次
+// 用 roundNumber 区分：NULL=整体评估, 0-indexed=轮次
 // 指标 key 形如 "LLM语义评分" (单轮/整体) 或 "LLM语义评分@round:1" (第2轮) 或 "LLM语义评分@overall" (整体)
+// 数据源为 tasksPort 出口的 camelCase ReadModel（经 taskAdapter 归一化），直读即可
 const preparedComparisonData = computed(() => {
   if (!detail.value?.results || !detail.value.devices?.length) return {}
   // 先判断是否多轮：任一设备有任一维度带 roundNumber（非 NULL）即视为多轮
-  const isMultiRound = detail.value.results.some(r => (r.dimensions || []).some(d => (d.roundNumber ?? d.round_number) !== null && (d.roundNumber ?? d.round_number) !== undefined))
+  const isMultiRound = detail.value.results.some(r => (r.dimensions || []).some(d => {
+    const rn = d.roundNumber
+    return rn !== null && rn !== undefined
+  }))
   const data = {}
   detail.value.devices.forEach(device => {
-    const deviceResult = detail.value.results.find(r => (r.deviceName ?? r.device_name) === device)
+    const deviceResult = detail.value.results.find(r => r.deviceName === device)
     const metricsMap = {}
     if (deviceResult?.dimensions) {
       deviceResult.dimensions.forEach(d => {
         if (!d.name) return
-        const rn = d.roundNumber ?? d.round_number
+        const rn = d.roundNumber
         let key = d.name
         if (isMultiRound) {
           if (rn === null || rn === undefined) key = `${d.name}@overall`
           else key = `${d.name}@round:${rn + 1}`
         }
-        metricsMap[key] = { metric: d.name, value: d.score ?? d.value, round_number: rn }
+        metricsMap[key] = { metric: d.name, value: d.score ?? d.value, roundNumber: rn }
       })
     }
     data[device] = {
       metrics: metricsMap,
-      asr: { text: deviceResult?.asrResult || deviceResult?.asr_result || '-' },
-      trans: { text: deviceResult?.translationResult || deviceResult?.translation_result || '-' }
+      asr: { text: deviceResult?.asrResult ?? '-' },
+      trans: { text: deviceResult?.translationResult ?? '-' }
     }
   })
   return data
@@ -186,7 +204,7 @@ const hasAnyResultData = computed(() => {
   // 有指标数据
   if (d.metricConfigs && d.metricConfigs.length > 0) return true
   
-  // 有 field_mapping 中的数据
+  // 有 fieldMapping 中的数据
   if (d.fieldMapping) {
     if ((d.fieldMapping.result || []).length > 0) return true
     if ((d.fieldMapping.reference || []).length > 0) return true
@@ -211,35 +229,35 @@ const fetchDetail = async () => {
   error.value = null
   try {
     const [detailData, resultsData] = await Promise.all([
-      tasksApi.getCaseDetail(props.taskId, props.caseId),
-      tasksApi.getCaseResults(props.taskId, props.caseId)
+      tasksPort.getCaseDetail(props.taskId, props.caseId),
+      tasksPort.getCaseResults(props.taskId, props.caseId)
     ])
     
     detail.value = {
-      caseName: detailData.caseName ?? detailData.case_name,
-      executionStatus: detailData.executionStatus ?? detailData.execution_status,
-      evaluationStatus: detailData.evaluationStatus ?? detailData.evaluation_status,
+      caseName: detailData.caseName,
+      executionStatus: detailData.executionStatus,
+      evaluationStatus: detailData.evaluationStatus,
       duration: detailData.duration,
-      errorMessage: detailData.errorMessage ?? detailData.error_message,
-      results: resultsData.results || [],
+      errorMessage: detailData.errorMessage,
+      results: resultsData.results ?? [],
       // 后端返回完整的对比展示数据
-      audioList: detailData.audioList ?? detailData.audio_list ?? [],
-      referenceParams: detailData.referenceParams ?? detailData.reference_params ?? {},
-      algorithmResults: detailData.algorithmResults ?? detailData.algorithm_results ?? [],
-      algorithmType: detailData.algorithmType ?? detailData.algorithm_type ?? '',
+      audioList: detailData.audioList ?? [],
+      referenceParams: detailData.referenceParams ?? {},
+      algorithmResults: detailData.algorithmResults ?? [],
+      algorithmType: detailData.algorithmType ?? '',
       devices: detailData.devices ?? [],
-      metricConfigs: detailData.metricConfigs ?? detailData.metric_configs ?? [],
-      fieldMapping: detailData.fieldMapping ?? detailData.field_mapping ?? { result: [], reference: [] },
-      resultAudios: detailData.resultAudios ?? detailData.result_audios ?? {},
+      metricConfigs: detailData.metricConfigs ?? [],
+      fieldMapping: detailData.fieldMapping ?? { result: [], reference: [] },
+      resultAudios: detailData.resultAudios ?? {},
       logs: []
     }
     
     // 后端 get_case_detail 不包含日志，需要单独获取
     try {
       // 先获取第1页来拿到总页数
-      const firstPageResponse = await logsApi.getAll({
+      const firstPageResponse = await logsPort.getAll({
         taskId: String(props.taskId),
-        test_case_id: String(props.caseId),
+        testCaseId: String(props.caseId),
         page: 1,
         perPage: logPerPage
       })
@@ -250,27 +268,20 @@ const fetchDetail = async () => {
         logTotal.value = total
         logPages.value = pages
 
-        const mapLog = (items) => items.map(log => ({
-          id: log.id,
-          time: log.timestamp ?? log.time ?? log.createdAt,
-          level: log.level || 'INFO',
-          content: log.content
-        }))
-
         if (pages <= 1) {
           // 只有1页：后端返回DESC（最新在前），reverse为正序
-          detail.value.logs = mapLog([...firstPageResponse.items].reverse())
+          detail.value.logs = mapLogs([...firstPageResponse.items].reverse())
           logPage.value = 1
         } else {
           // 多页：从最后一页（最旧的日志）开始加载，按时间正序显示
-          const lastPageResponse = await logsApi.getAll({
+          const lastPageResponse = await logsPort.getAll({
             taskId: String(props.taskId),
-            test_case_id: String(props.caseId),
+            testCaseId: String(props.caseId),
             page: pages,
             perPage: logPerPage
           })
           if (lastPageResponse?.items) {
-            detail.value.logs = mapLog([...lastPageResponse.items].reverse())
+            detail.value.logs = mapLogs([...lastPageResponse.items].reverse())
             logPage.value = pages  // 记录当前已加载到第几页
           }
         }
@@ -316,20 +327,15 @@ const loadMoreLogs = async () => {
   if (prevPage < 1) return
 
   try {
-    const response = await logsApi.getAll({
+    const response = await logsPort.getAll({
       taskId: String(props.taskId),
-      test_case_id: String(props.caseId),
+      testCaseId: String(props.caseId),
       page: prevPage,
       perPage: logPerPage
     })
     if (response?.items) {
       // 后端返回DESC，reverse为正序后追加到列表末尾（更新的日志在后面）
-      const newerLogs = [...response.items].reverse().map(log => ({
-        id: log.id,
-        time: log.timestamp ?? log.time ?? log.createdAt,
-        level: log.level || 'INFO',
-        content: log.content
-      }))
+      const newerLogs = mapLogs([...response.items].reverse())
       detail.value.logs = [...detail.value.logs, ...newerLogs]
       logPage.value = prevPage
     }

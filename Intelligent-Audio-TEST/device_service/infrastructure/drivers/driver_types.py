@@ -25,6 +25,8 @@ class AppType(str, Enum):
     # 专用应用驱动
     PLAUD = "plaud"
     DOUBAO_ASR = "doubao_asr"
+    DOUBAO = "doubao"            # 豆包 HarmonyOS 语音通话
+    CHATGPT = "chatgpt"          # ChatGPT HarmonyOS 语音通话
     XIAOYI_FACE2FACE = "xiaoyi_face2face"
     XIAOYI_SIMULTANEOUS = "xiaoyi_simultaneous"
     XIAOYI_HUIJI = "xiaoyi_huiji"

@@ -64,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import type { PlaybackDevice } from '../../../shared/types';
+import type { PlaybackDevice } from '../../../domain';
 import { useAudioPlayerModal } from './AudioPlayerModal';
 
 interface Props {

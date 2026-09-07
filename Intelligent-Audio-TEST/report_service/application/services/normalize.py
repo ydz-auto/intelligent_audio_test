@@ -102,6 +102,28 @@ def normalize_summary_metrics(summary: dict, dimension_lookup: Optional[Callable
             and m.get('name') is not None
             and str(m.get('name')) in used_metric_names
         ]
+        # 补回有子维度被保留的主维度（主维度自身可能无值，但子维度有值）
+        filtered_names = {
+            str(fm.get('name'))
+            for fm in filtered_all_metrics_items
+            if isinstance(fm, dict) and fm.get('name') is not None
+        }
+        parent_names_to_preserve = {
+            str(m['parent_dimension_name'])
+            for m in all_metrics_items
+            if isinstance(m, dict)
+            and m.get('dimension_type') == 'sub'
+            and m.get('parent_dimension_name')
+            and str(m['parent_dimension_name']) not in filtered_names
+        }
+        if parent_names_to_preserve:
+            for m in all_metrics_items:
+                if (isinstance(m, dict)
+                        and m.get('dimension_type') == 'main'
+                        and m.get('name') is not None
+                        and str(m.get('name')) in parent_names_to_preserve
+                        and m not in filtered_all_metrics_items):
+                    filtered_all_metrics_items.append(m)
 
     metric_name_to_id = ReportUtils._build_metric_name_id_map(filtered_all_metrics_items)
 

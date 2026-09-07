@@ -1,6 +1,8 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { buildFolderTree, extractAllTags, filterAudios as filterAudiosUtil } from '../../../utils/audioUtils';
 import { useTagFilter, type TagFilterState } from '../../../composables/shared/useTagFilter';
+import { useNotification } from '../../../composables/modal/useNotification';
+import type { AudioInfo, FolderNode } from '../../../domain/model/audio';
 
 export interface AudioProblem {
   type: string;
@@ -8,26 +10,17 @@ export interface AudioProblem {
   severity: 'severe' | 'warning' | 'info';
 }
 
-export interface AudioItem {
-  id: string | number;
-  filename: string;
-  path: string;
-  format: string;
-  size: string;
-  duration: string;
-  type: string;
-  sourceLanguage?: string;
-  tags: string[];
+/** 列表行展示模型：以 Domain AudioInfo 为基底，补充组件渲染所需的可选扩展字段 */
+export interface AudioItem extends AudioInfo {
+  /** 遗留展示字段：上传/诊断状态（Domain 无此字段） */
   status?: string;
+  /** 诊断视图：音频问题列表 */
   problems?: AudioProblem[];
-  audioType?: string;
 }
 
-export interface FolderNode {
-  name: string;
-  files: AudioItem[];
-  folders: FolderNode[];
-}
+// FolderNode 统一定义见 domain/model/audio.ts；本文件不对 files 元素做类型化操作，
+// files: unknown[]（domain）可原样透传给 FolderNodeComponent 渲染
+export type { FolderNode };
 
 export interface AudioListProps {
   audios: AudioItem[];
@@ -51,6 +44,7 @@ export interface AudioListProps {
 }
 
 export function useAudioListComponent(props: AudioListProps, emit: any) {
+  const notification = useNotification();
   const viewMode = ref<'list' | 'folder' | 'diagnostics'>(props.viewMode ?? 'list');
 
   const searchQuery = ref('');
@@ -333,7 +327,7 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
 
   const editMetadata = (audioId: string | number) => {
     if (!audioId) {
-      alert('请先选择音频');
+      notification.warning('请先选择音频');
       return;
     }
     emit('edit', audioId);
@@ -341,7 +335,7 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
 
   const deleteAudio = (audioId: string | number) => {
     if (!audioId) {
-      alert('请先选择音频');
+      notification.warning('请先选择音频');
       return;
     }
     emit('delete', audioId);
@@ -349,7 +343,7 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
 
   const convertAudio = (audioId: string | number) => {
     if (!audioId) {
-      alert('请先选择音频');
+      notification.warning('请先选择音频');
       return;
     }
     emit('convert', audioId);
@@ -357,7 +351,7 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
 
   const downloadAudio = (audioId: string | number) => {
     if (!audioId) {
-      alert('请先选择音频');
+      notification.warning('请先选择音频');
       return;
     }
     emit('download', audioId);

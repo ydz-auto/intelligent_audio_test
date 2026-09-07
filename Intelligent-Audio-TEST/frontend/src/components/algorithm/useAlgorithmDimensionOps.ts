@@ -1,4 +1,4 @@
-import { algorithmApi } from '../../utils/api'
+import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 
 export function useAlgorithmDimensionOps(
   formState: any,
@@ -6,20 +6,20 @@ export function useAlgorithmDimensionOps(
   paramIdCounter: { value: number }
 ) {
   function handleAddDimension() {
-    formState.associated_dimensions.push({
+    formState.associatedDimensions.push({
       tempId: `temp_dim_${++paramIdCounter.value}`,
-      dimension_id: null,
+      dimensionId: null,
       weight: 1.0,
-      is_default: false
+      isDefault: false
     })
   }
 
   function handleRemoveDimension(index: number) {
-    const dim = formState.associated_dimensions[index]
-    formState.associated_dimensions.splice(index, 1)
+    const dim = formState.associatedDimensions[index]
+    formState.associatedDimensions.splice(index, 1)
     if (effectiveMode.value === 'edit' && formState.type && dim) {
       if (dim.id) {
-        algorithmApi.deleteDimensionRelation(dim.id).catch(err => {
+        algorithmPort.deleteDimensionRelation(dim.id).catch(err => {
           console.error('删除维度关联失败:', err)
         })
       } else if (dim.tempId) {
@@ -28,14 +28,14 @@ export function useAlgorithmDimensionOps(
   }
 
   async function handleDimensionChange(index: number) {
-    const dim = formState.associated_dimensions[index]
+    const dim = formState.associatedDimensions[index]
     if (!dim) return
 
-    if (dim.is_default) {
-      formState.associated_dimensions.forEach((d: any, i: number) => {
+    if (dim.isDefault) {
+      formState.associatedDimensions.forEach((d: any, i: number) => {
         if (i !== index && d.id) {
-          d.is_default = false
-          algorithmApi.updateDimensionRelation(d.id, { is_default: false }).catch(err => {
+          d.isDefault = false
+          algorithmPort.updateDimensionRelation(d.id, { isDefault: false }).catch(err => {
             console.error('更新默认维度失败:', err)
           })
         }
@@ -44,9 +44,9 @@ export function useAlgorithmDimensionOps(
 
     if (effectiveMode.value === 'edit' && formState.type && dim.id) {
       try {
-        await algorithmApi.updateDimensionRelation(dim.id, {
+        await algorithmPort.updateDimensionRelation(dim.id, {
           weight: dim.weight,
-          is_default: dim.is_default
+          isDefault: dim.isDefault
         })
       } catch (error) {
         console.error('自动保存维度关联失败:', error)
@@ -55,14 +55,14 @@ export function useAlgorithmDimensionOps(
   }
 
   async function handleDimensionBlur(index: number) {
-    const dim = formState.associated_dimensions[index]
+    const dim = formState.associatedDimensions[index]
     if (!dim) return
 
-    if (dim.is_default) {
-      formState.associated_dimensions.forEach((d: any, i: number) => {
+    if (dim.isDefault) {
+      formState.associatedDimensions.forEach((d: any, i: number) => {
         if (i !== index && d.id) {
-          d.is_default = false
-          algorithmApi.updateDimensionRelation(d.id, { is_default: false }).catch(err => {
+          d.isDefault = false
+          algorithmPort.updateDimensionRelation(d.id, { isDefault: false }).catch(err => {
             console.error('更新默认维度失败:', err)
           })
         }
@@ -72,17 +72,17 @@ export function useAlgorithmDimensionOps(
     if (effectiveMode.value === 'edit' && formState.type) {
       try {
         if (dim.id) {
-          await algorithmApi.updateDimensionRelation(dim.id, {
+          await algorithmPort.updateDimensionRelation(dim.id, {
             weight: dim.weight,
-            is_default: dim.is_default,
-            dimension_id: dim.dimension_id ?? undefined
+            isDefault: dim.isDefault,
+            dimensionId: dim.dimensionId ?? undefined
           })
-        } else if (dim.dimension_id) {
-          const result = await algorithmApi.createDimensionRelation({
-            algorithm_type: formState.type,
-            dimension_id: dim.dimension_id,
+        } else if (dim.dimensionId) {
+          const result = await algorithmPort.createDimensionRelation({
+            algorithmType: formState.type,
+            dimensionId: dim.dimensionId,
             weight: dim.weight,
-            is_default: dim.is_default
+            isDefault: dim.isDefault
           })
           dim.id = result.id
           dim.tempId = undefined

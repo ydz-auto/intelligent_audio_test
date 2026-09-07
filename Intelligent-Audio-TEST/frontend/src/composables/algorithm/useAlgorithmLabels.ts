@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import { algorithmApi } from '../../utils/api';
+import { algorithmPort } from './algorithmPort';
 
 const algorithms = ref<{ value: string; label: string }[]>([]);
 let isLoaded = false;
@@ -25,7 +25,7 @@ export function useAlgorithmLabels() {
     
     loadingPromise = (async () => {
       try {
-        const data = await algorithmApi.getOptions();
+        const data = await algorithmPort.getOptions();
         const algoList = data?.algorithms || [];
         if (algoList.length > 0) {
           algorithms.value = algoList.map((algo: any) => ({

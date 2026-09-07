@@ -1,11 +1,6 @@
 import { ref, computed } from 'vue'
-
-export interface AlgorithmOption {
-  value: string
-  name: string
-  group_id?: number
-  group_name?: string
-}
+import { algorithmPort } from './algorithmPort'
+import type { AlgorithmOption } from '../../domain/model/algorithm'
 
 export interface UseAlgorithmSelectionOptions {
   onSelectCallback?: (type: string | null) => Promise<void> | void
@@ -27,23 +22,15 @@ export function useAlgorithmSelection(options: UseAlgorithmSelectionOptions = {}
     const query = algorithmSearchQuery.value.toLowerCase().trim()
     return algorithmList.value.filter(algo =>
       algo.name?.toLowerCase().includes(query) ||
-      algo.group_name?.toLowerCase().includes(query) ||
+      algo.groupName?.toLowerCase().includes(query) ||
       algo.value?.toLowerCase().includes(query)
     )
   })
 
   async function loadAlgorithms() {
     try {
-      const response = await fetch('/api/v1/algorithm/options')
-      const result = await response.json()
-      if (result.success) {
-        // 后端 options 经响应层转为 camelCase，这里补回 snake_case 别名，供卡片/筛选读取
-        algorithmList.value = (result.data.algorithms || []).map((a: any) => ({
-          ...a,
-          group_id: a.group_id,
-          group_name: a.group_name,
-        }))
-      }
+      const result = await algorithmPort.getOptions()
+      algorithmList.value = result?.algorithms ?? []
     } catch (error) {
       console.error('加载算法列表失败:', error)
       algorithmList.value = []
@@ -91,13 +78,12 @@ export function useAlgorithmSelection(options: UseAlgorithmSelectionOptions = {}
   async function openAlgorithmConfigModal(algo?: AlgorithmOption) {
     if (algo) {
       try {
-        const response = await fetch(`/api/v1/algorithm/definitions/${algo.value}`)
-        const result = await response.json()
-        if (result.success && result.data) {
-          editingAlgorithm.value = result.data
-          algorithmEditData.value = result.data
+        const result = await algorithmPort.getDefinition(algo.value)
+        if (result) {
+          editingAlgorithm.value = result as any
+          algorithmEditData.value = result as any
         } else {
-          editingAlgorithm.value = algo
+          editingAlgorithm.value = algo as any
           algorithmEditData.value = algo as any
         }
       } catch (error) {

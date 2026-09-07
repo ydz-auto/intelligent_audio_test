@@ -128,16 +128,13 @@ class AlgorithmParamCrudService(
                 'required', 'default_value', 'validation_rules', 'help_text',
                 'ui_order', 'hidden'
             ]
-            # 动态构建 camelCase → snake_case 映射，兼容前端直接透传的 camelCase 键
-            camel_to_snake_map = {camel_to_snake(f): f for f in updatable_fields}
+            # 键名归一化：snake_case 直接命中；camelCase（paramName/uiOrder 等）转 snake_case 后再匹配；
+            # 未知字段忽略，避免作为空集更新造成静默 no-op
             update_fields = {}
-            for field in updatable_fields:
-                if field in data:
-                    update_fields[field] = data[field]
-            # 兼容前端 camelCase 键
-            for camel_key, snake_key in camel_to_snake_map.items():
-                if snake_key in updatable_fields and camel_key in data:
-                    update_fields[snake_key] = data[camel_key]
+            for key, value in data.items():
+                field = key if key in updatable_fields else camel_to_snake(key)
+                if field in updatable_fields:
+                    update_fields[field] = value
 
             self.repo.update_param_attrs(param, update_fields)
 

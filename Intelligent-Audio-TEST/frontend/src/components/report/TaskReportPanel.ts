@@ -1,5 +1,6 @@
 import { ref, watch, computed, onMounted, onUnmounted, inject } from 'vue';
 import { sanitizeConclusion } from '../../utils/sanitize';
+import { formatDate } from '@/utils/utils';
 
 export function useTaskReportPanel(props: any, emit: any) {
   const editableConclusion = ref('')
@@ -29,12 +30,12 @@ export function useTaskReportPanel(props: any, emit: any) {
   }
 
   const deviceStats = computed(() => {
-    const stats = props.report?.summary?.device_stats || []
+    const stats = props.report?.summary?.deviceStats || []
     return Array.isArray(stats) ? stats : []
   })
 
   const apiStats = computed(() => {
-    const stats = props.report?.summary?.api_stats || []
+    const stats = props.report?.summary?.apiStats || []
     return Array.isArray(stats) ? stats : []
   })
 
@@ -43,7 +44,7 @@ export function useTaskReportPanel(props: any, emit: any) {
   })
 
   const allMetrics = computed(() => {
-    const metrics = props.report?.summary?.all_metrics || []
+    const metrics = props.report?.summary?.allMetrics || []
     return Array.isArray(metrics) ? metrics : []
   })
 
@@ -97,7 +98,7 @@ export function useTaskReportPanel(props: any, emit: any) {
     return items
   })
 
-  const formatDate = (dateStr: any) => {
+  const formatDateLocal = (dateStr: any) => {
     if (!dateStr) return ''
     const date = new Date(dateStr)
     return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
@@ -195,6 +196,7 @@ export function useTaskReportPanel(props: any, emit: any) {
     formatMetricWithUnit,
     navItems,
     formatDate,
+    formatDateLocal,
     sanitizedAnalysisContent,
     startEdit,
     saveLocalConclusion,

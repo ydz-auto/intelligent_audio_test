@@ -90,9 +90,9 @@
                   <div class="filter-select">
                     <select class="form-input" v-model="statusFilter" @change="filterDevices" id="statusFilter">
                       <option value="all">所有状态</option>
-                      <option value="online">在线</option>
-                      <option value="offline">离线</option>
-                      <option value="testing">测试中</option>
+                      <option :value="DeviceStatus.ONLINE">在线</option>
+                      <option :value="DeviceStatus.OFFLINE">离线</option>
+                      <option :value="DeviceStatus.TESTING">测试中</option>
                     </select>
                   </div>
                   <div class="filter-select">
@@ -121,7 +121,7 @@
                   @toggle-select="toggleDeviceSelection(device.id)"
                   @edit="openEditModal(device.id)"
                   @delete="deleteDevice(device.id)"
-                  @test="device.status === 'testing' ? stopTest(device.id) : testDevice(device.id)"
+                  @test="device.status === DeviceStatus.TESTING ? stopTest(device.id) : testDevice(device.id)"
                   @health-check="healthCheckDevice(device.id)"
                 >
                   <template #meta="{ device }">
@@ -174,9 +174,9 @@
                   <div class="filter-select">
                     <select class="form-input" v-model="statusFilter" @change="filterDevices" id="testStatusFilter">
                       <option value="all">所有状态</option>
-                      <option value="online">在线</option>
-                      <option value="offline">离线</option>
-                      <option value="testing">测试中</option>
+                      <option :value="DeviceStatus.ONLINE">在线</option>
+                      <option :value="DeviceStatus.OFFLINE">离线</option>
+                      <option :value="DeviceStatus.TESTING">测试中</option>
                     </select>
                   </div>
                   <div class="filter-select">
@@ -204,7 +204,7 @@
                   @toggle-select="toggleDeviceSelection(device.id)"
                   @edit="openEditModal(device.id)"
                   @delete="deleteDevice(device.id)"
-                  @test="device.status === 'testing' ? stopTest(device.id) : testDevice(device.id)"
+                  @test="device.status === DeviceStatus.TESTING ? stopTest(device.id) : testDevice(device.id)"
                   @health-check="healthCheckDevice(device.id)"
                 >
                   <template #meta="{ device }">
@@ -259,9 +259,9 @@
                   <div class="filter-select">
                     <select class="form-input" v-model="statusFilter" @change="filterDevices" id="apiStatusFilter">
                       <option value="all">所有状态</option>
-                      <option value="online">在线</option>
-                      <option value="offline">离线</option>
-                      <option value="testing">测试中</option>
+                      <option :value="DeviceStatus.ONLINE">在线</option>
+                      <option :value="DeviceStatus.OFFLINE">离线</option>
+                      <option :value="DeviceStatus.TESTING">测试中</option>
                     </select>
                   </div>
                   <div class="filter-select">
@@ -294,7 +294,7 @@
                 >
                   <template #meta="{ device }">
                     <div class="device-meta">
-                      <span class="meta-item" v-if="device.algorithmType || device.algorithm_type"><i class="fas fa-microchip"></i> {{ getAlgorithmTypeName(device.algorithmType || device.algorithm_type) }}</span>
+                      <span class="meta-item" v-if="device.algorithmType"><i class="fas fa-microchip"></i> {{ getAlgorithmTypeName(device.algorithmType) }}</span>
                       <span class="meta-item"><i class="fas fa-tags"></i> {{ device.category }}</span>
                       <span class="meta-item"><i class="fas fa-exchange-alt"></i> {{ device.method }}</span>
                       <span class="meta-item"><i class="fas fa-clock"></i> {{ device.responseTime }}ms</span>
@@ -331,6 +331,7 @@
 <script setup lang="ts">
 import '../../assets/styles/main.css';
 import { useDevice } from './Device';
+import { DeviceStatus } from '../../domain/enums';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import DeviceCard from './DeviceCard.vue';
 

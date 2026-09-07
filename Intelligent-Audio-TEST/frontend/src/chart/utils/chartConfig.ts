@@ -1,6 +1,7 @@
 /**
  * 图表配置工具函数
  */
+import type { StatItem } from '../../domain/model/stats';
 
 export const colors: Record<string, string> = {
   primary: '#1677FF',
@@ -307,12 +308,7 @@ export const isCanvasInDom = (element: HTMLElement | null): boolean => {
   return !!(element && element.isConnected);
 };
 
-export interface DistributionStat {
-  label: string;
-  value: string | number;
-}
-
-const emptyDistributionStats: DistributionStat[] = [
+const emptyDistributionStats: StatItem[] = [
   { label: '样本数量', value: 0 },
   { label: '平均值 (μ)', value: '0.00' },
   { label: '标准差 (σ)', value: '0.00' },
@@ -331,7 +327,7 @@ const emptyDistributionStats: DistributionStat[] = [
   { label: '超出-3σ 百分比', value: '0.0%' }
 ];
 
-const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
+const calculateStatsFromData = (allData: number[]): StatItem[] => {
   if (allData.length === 0) {
     return emptyDistributionStats;
   }
@@ -406,7 +402,7 @@ const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
   return stats;
 };
 
-export const calculateDistributionStats = (data: any): DistributionStat[] => {
+export const calculateDistributionStats = (data: any): StatItem[] => {
   let allData: number[] = [];
 
   if (data.rawData && Array.isArray(data.rawData)) {
@@ -425,8 +421,8 @@ export const calculateDistributionStats = (data: any): DistributionStat[] => {
   return calculateStatsFromData(allData);
 };
 
-export const calculateDistributionStatsByDevice = (data: any): { [device: string]: DistributionStat[] } => {
-  const result: { [device: string]: DistributionStat[] } = {};
+export const calculateDistributionStatsByDevice = (data: any): { [device: string]: StatItem[] } => {
+  const result: { [device: string]: StatItem[] } = {};
 
   if (data.deviceRawData && typeof data.deviceRawData === 'object') {
     Object.keys(data.deviceRawData).forEach(device => {

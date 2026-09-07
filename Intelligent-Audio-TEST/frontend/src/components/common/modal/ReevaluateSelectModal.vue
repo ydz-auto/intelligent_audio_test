@@ -5,8 +5,8 @@
 
       <div
         class="reevaluate-option"
-        :class="{ active: selectedType === 'failed' }"
-        @click="selectedType = 'failed'"
+        :class="{ active: selectedType === TaskStatus.FAILED }"
+        @click="selectedType = TaskStatus.FAILED"
       >
         <div class="option-radio">
           <div class="radio-circle"></div>
@@ -18,8 +18,8 @@
       </div>
       <div
         class="reevaluate-option"
-        :class="{ active: selectedType === 'all' }"
-        @click="selectedType = 'all'"
+        :class="{ active: selectedType === ViewMode.ALL }"
+        @click="selectedType = ViewMode.ALL"
       >
         <div class="option-radio">
           <div class="radio-circle"></div>
@@ -58,6 +58,7 @@
 
 <script setup>
 import { ref } from 'vue'
+import { TaskStatus, ViewMode } from '@/domain/enums'
 
 const props = defineProps({
   modalId: { type: String, required: true },
@@ -66,7 +67,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'confirm'])
 
-const selectedType = ref('failed')
+const selectedType = ref(TaskStatus.FAILED)
 const reextractDeviceOutput = ref(false)
 
 const handleConfirm = () => {

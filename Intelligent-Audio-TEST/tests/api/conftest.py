@@ -23,7 +23,8 @@ SAMPLE_AUDIO_FILES = ['2026144010.wav', '2026144019.wav', '2026144026.wav']
 # ── 后端健康检查 ──────────────────────────────────────────
 def _backend_alive() -> bool:
     try:
-        r = httpx.get(HEALTH_URL, timeout=3)
+        # trust_env=False: 忽略系统代理（Windows 注册表代理会劫持 localhost 请求）
+        r = httpx.get(HEALTH_URL, timeout=3, trust_env=False)
         return r.status_code == 200
     except Exception:
         return False
@@ -39,7 +40,8 @@ def require_backend():
 # ── httpx 客户端 ──────────────────────────────────────────
 @pytest.fixture(scope='session')
 def api_client(require_backend):
-    with httpx.Client(base_url=API_BASE, timeout=30) as client:
+    # trust_env=False: 忽略系统代理（Windows 注册表代理会劫持 localhost 请求）
+    with httpx.Client(base_url=API_BASE, timeout=30, trust_env=False) as client:
         yield client
 
 

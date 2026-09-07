@@ -1,44 +1,20 @@
 import { ref, onMounted, onUnmounted, type Ref } from 'vue'
-import socketService from '../../utils/socket'
 import { transformTestCaseStatus } from '../../utils/statusUtils'
-import { TaskStatus, ExecutionStatus, EvaluationStatus, type TaskStatusType } from '@/shared/types/enums'
-import type { Log } from '../../shared/types'
-
-interface RoundProgress {
-  current: number;
-  total: number;
-}
-
-interface AssociatedCase {
-  id: string | number;
-  name?: string;
-  status: string;
-  executionStatus: string;
-  evaluationStatus: string;
-  duration?: string;
-  roundProgress?: RoundProgress;
-  /** 用例分组名，用于"用例分组视图" */
-  groupName?: string;
-  /** 用例标签，用于"标签视图" */
-  tags?: string[] | { id: number; name: string }[];
-  /** 算法类型 */
-  algorithm_type?: string;
-}
-
-interface APIResource {
-  id: string | number;
-  name: string;
-  currentConcurrent: number;
-  queueLength: number;
-  avgResponseTime: number;
-  maxConcurrent: number;
-}
+import { TaskStatus, ExecutionStatus, EvaluationStatus, type TaskStatusType } from '../../domain/enums'
+import { taskChannelPort } from './taskChannelPort'
+import type {
+  TaskProgress,
+  TaskProgressCaseItem,
+  AssociatedCase,
+  APIResource,
+} from '../../domain/model/taskProgress'
+import type { Log } from '../../domain'
 
 interface TaskProgressOptions {
   testType?: 'API' | 'E2E';
   currentTaskId: Ref<string | number | null>;
-  onCompleted?: (data: any) => void;
-  onFailed?: (data: any) => void;
+  onCompleted?: (data: TaskProgress) => void;
+  onFailed?: (data: TaskProgress) => void;
 }
 
 export function useTaskProgress(options: TaskProgressOptions) {
@@ -70,7 +46,8 @@ export function useTaskProgress(options: TaskProgressOptions) {
 
   const addLog = (logData: any) => {
     const logId = typeof logData.id === 'number' ? logData.id : (Number(logData.id) || 0)
-    const content = logData.content || logData.message || ''
+    // 进度日志字段为 message，HTTP 日志通道字段为 content
+    const content = logData.message || logData.content || ''
 
     // 主去重：通过数据库 id 匹配
     if (logId && logs.value.some(log => log.id === logId)) {
@@ -100,13 +77,13 @@ export function useTaskProgress(options: TaskProgressOptions) {
 
     const newLog: Log = {
       id: logId || Date.now(),
-      task_id: logData.task_id || currentTaskId.value,
+      taskId: logData.taskId ?? currentTaskId.value,
       level: logData.level || 'info',
       content,
       time: formattedTime || new Date().toLocaleTimeString(),
       timestamp: logData.timestamp ? new Date(logData.timestamp).toISOString() : new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      test_case_id: logData.test_case_id
+      createdAt: new Date().toISOString(),
+      testCaseId: logData.testCaseId
     }
 
     if (newLog.content) {
@@ -114,17 +91,88 @@ export function useTaskProgress(options: TaskProgressOptions) {
     }
   }
 
-  const handleTaskProgress = async (progressData: any) => {
-    console.log('[handleTaskProgress] 收到原始数据:', JSON.stringify(progressData, null, 2))
-    
-    if (String(progressData.task_id) !== String(currentTaskId.value)) {
-      console.log('[handleTaskProgress] taskId 不匹配，跳过处理')
-      console.log('  期望:', currentTaskId.value, '实际:', progressData.task_id)
+  const applyCaseCounts = (progress: TaskProgress) => {
+    // 重新计算各种状态的用例数量
+    let completedCount = 0
+    let inProgressCount = 0
+    let failedCount = 0
+    let pendingCount = 0
+
+    progress.testCases.forEach((transformed) => {
+      // 只计算真正完成的用例
+      if (transformed.status === TaskStatus.COMPLETED && transformed.executionStatus !== ExecutionStatus.FAILED && transformed.evaluationStatus !== EvaluationStatus.FAILED) {
+        completedCount++
+      }
+      // 计算进行中的用例（真正执行中）
+      else if (transformed.status === ExecutionStatus.IN_PROGRESS || transformed.status === EvaluationStatus.CALCULATING) {
+        inProgressCount++
+      }
+      // 计算排队中的用例
+      else if (transformed.status === ExecutionStatus.QUEUED) {
+        inProgressCount++
+      }
+      // 计算失败的用例
+      else if (transformed.executionStatus === ExecutionStatus.FAILED || transformed.evaluationStatus === EvaluationStatus.FAILED) {
+        failedCount++
+      }
+      // 计算待执行的用例
+      else if (transformed.executionStatus === ExecutionStatus.PENDING && transformed.evaluationStatus === EvaluationStatus.PENDING) {
+        pendingCount++
+      }
+    })
+
+    completedTests.value = Math.min(progress.totalCount, Math.max(0, completedCount))
+    inProgressTests.value = Math.min(progress.totalCount, Math.max(0, inProgressCount))
+    executionFailedTests.value = Math.min(progress.totalCount, Math.max(0,
+      progress.testCases.reduce((sum, tc) => sum + (tc.executionStatus === ExecutionStatus.FAILED ? 1 : 0), 0)))
+    evaluationFailedTests.value = Math.min(progress.totalCount, Math.max(0,
+      progress.testCases.reduce((sum, tc) => sum + (tc.evaluationStatus === EvaluationStatus.FAILED && tc.executionStatus !== ExecutionStatus.FAILED ? 1 : 0), 0)))
+    pendingTests.value = Math.max(0, pendingCount)
+
+    // 重新计算总进度，只基于真正完成的用例
+    progressPercentage.value = progress.totalCount > 0
+      ? Math.min(100, Math.max(0, Math.round((completedTests.value / progress.totalCount) * 100)))
+      : 0
+  }
+
+  const applyCountFallback = (progress: TaskProgress) => {
+    // 没有 testCases 数据时，使用后端提供的计数
+    completedTests.value = Math.min(progress.totalCount, Math.max(0, progress.completedCount))
+    inProgressTests.value = Math.min(progress.totalCount - completedTests.value, Math.max(0, progress.inProgressCount))
+    executionFailedTests.value = Math.min(progress.totalCount, Math.max(0, progress.executionFailedCount))
+    evaluationFailedTests.value = Math.min(progress.totalCount, Math.max(0, progress.evaluationFailedCount))
+
+    // 重新计算待执行数量与总进度
+    pendingTests.value = Math.max(0, progress.totalCount - completedTests.value - inProgressTests.value
+      - executionFailedTests.value - evaluationFailedTests.value)
+    progressPercentage.value = progress.totalCount > 0
+      ? Math.min(100, Math.max(0, Math.round((completedTests.value / progress.totalCount) * 100)))
+      : 0
+  }
+
+  const mergeAssociatedCase = (caseItem: TaskProgressCaseItem) => {
+    const index = associatedCases.value.findIndex(tc => String(tc.id) === String(caseItem.id))
+    if (index === -1) return
+    // 创建新对象以确保响应式更新
+    const updatedCases = [...associatedCases.value]
+    updatedCases[index] = {
+      ...updatedCases[index],
+      status: caseItem.status,
+      executionStatus: caseItem.executionStatus,
+      evaluationStatus: caseItem.evaluationStatus,
+      duration: caseItem.duration ? caseItem.duration.toString() : updatedCases[index].duration,
+      roundProgress: caseItem.roundProgress
+        ? { current: caseItem.roundProgress.current, total: caseItem.roundProgress.total }
+        : updatedCases[index].roundProgress
+    }
+    associatedCases.value = updatedCases
+  }
+
+  const handleTaskProgress = async (progressData: TaskProgress) => {
+    // Socket 通道 payload 已由 taskChannel 转 camelCase Domain
+    if (progressData.taskId !== String(currentTaskId.value ?? '')) {
       return
     }
-
-    const timestamp = new Date().toLocaleTimeString()
-    console.log(`[${timestamp}] [${testType}测试] 收到进度更新:`, progressData)
 
     if (progressData.status) {
       taskStatus.value = progressData.status
@@ -138,125 +186,25 @@ export function useTaskProgress(options: TaskProgressOptions) {
     }
 
     const totalCount = progressData.totalCount || associatedCases.value.length
-    totalTestCases.value = totalCount
-    console.log('[handleTaskProgress] 更新 totalTestCases:', totalCount)
+    progressData.totalCount = totalCount
 
-    // 处理测试用例数据
-    if (progressData.testCases) {
-      console.log('[handleTaskProgress] 处理 testCases，数量:', progressData.testCases.length)
-      
-      // 重新计算各种状态的用例数量
-      let completedCount = 0
-      let inProgressCount = 0
-      let failedCount = 0
-      let pendingCount = 0
-      
-      progressData.testCases.forEach((testCaseProgress: any) => {
-        const transformed = transformTestCaseStatus(testCaseProgress) as any
-        
-        // 只计算真正完成的用例
-        if (transformed.status === TaskStatus.COMPLETED && transformed.executionStatus !== ExecutionStatus.FAILED && transformed.evaluationStatus !== EvaluationStatus.FAILED) {
-          completedCount++
-        }
-        // 计算进行中的用例（真正执行中）
-        else if (transformed.status === ExecutionStatus.IN_PROGRESS || transformed.status === EvaluationStatus.CALCULATING) {
-          inProgressCount++
-        }
-        // 计算排队中的用例
-        else if (transformed.status === ExecutionStatus.QUEUED) {
-          inProgressCount++
-        }
-        // 计算失败的用例
-        else if (transformed.executionStatus === ExecutionStatus.FAILED || transformed.evaluationStatus === EvaluationStatus.FAILED) {
-          failedCount++
-        }
-        // 计算待执行的用例
-        else if (transformed.executionStatus === ExecutionStatus.PENDING && transformed.evaluationStatus === EvaluationStatus.PENDING) {
-          pendingCount++
-        }
-        
-        // 更新关联用例列表
-        const caseProgressId = testCaseProgress.caseId || testCaseProgress.id
-        const index = associatedCases.value.findIndex(tc => String(tc.id) === String(caseProgressId))
-        console.log('[handleTaskProgress] 更新用例', caseProgressId, '在索引', index)
-        if (index !== -1) {
-          // 创建新对象以确保响应式更新
-          const updatedCases = [...associatedCases.value]
-          updatedCases[index] = {
-            ...updatedCases[index],
-            status: transformed.status,
-            executionStatus: transformed.executionStatus,
-            evaluationStatus: transformed.evaluationStatus,
-            duration: testCaseProgress.duration ? testCaseProgress.duration.toString() : updatedCases[index].duration,
-            roundProgress: testCaseProgress.roundProgress
-              ? {
-                  current: testCaseProgress.roundProgress.current,
-                  total: testCaseProgress.roundProgress.total,
-                }
-              : updatedCases[index].roundProgress
-          }
-          associatedCases.value = updatedCases
-        }
+    if (progressData.testCases.length > 0) {
+      progressData.testCases.forEach(tc => {
+        const transformed = transformTestCaseStatus(tc) as any
+        tc.status = transformed.status
+        tc.executionStatus = transformed.executionStatus
+        tc.evaluationStatus = transformed.evaluationStatus
+        mergeAssociatedCase(tc)
       })
-      
-      // 更新状态计数
-      completedTests.value = Math.min(totalCount, Math.max(0, completedCount))
-      inProgressTests.value = Math.min(totalCount, Math.max(0, inProgressCount))
-      executionFailedTests.value = Math.min(totalCount, Math.max(0, progressData.testCases.reduce((sum: number, tc: any) => {
-        return sum + (tc?.executionStatus === ExecutionStatus.FAILED ? 1 : 0)
-      }, 0)))
-      evaluationFailedTests.value = Math.min(totalCount, Math.max(0, progressData.testCases.reduce((sum: number, tc: any) => {
-        return sum + (tc?.evaluationStatus === EvaluationStatus.FAILED && tc?.executionStatus !== ExecutionStatus.FAILED ? 1 : 0)
-      }, 0)))
-      pendingTests.value = Math.max(0, pendingCount)
-      
-      // 重新计算总进度，只基于真正完成的用例
-      if (totalCount > 0) {
-        progressPercentage.value = Math.min(100, Math.max(0, Math.round((completedTests.value / totalCount) * 100)))
-      } else {
-        progressPercentage.value = 0
-      }
-      
-      console.log('[handleTaskProgress] 重新计算状态计数:')
-      console.log('  完成:', completedTests.value)
-      console.log('  进行中:', inProgressTests.value)
-      console.log('  失败:', executionFailedTests.value + evaluationFailedTests.value)
-      console.log('  待执行:', pendingTests.value)
-      console.log('  总进度:', progressPercentage.value + '%')
+      applyCaseCounts(progressData)
     } else {
-      // 如果没有testCases数据，使用提供的计数
-      if (progressData.completed_count !== undefined) {
-        // 只接受真正完成的数量，不包括失败
-        completedTests.value = Math.min(totalCount, Math.max(0, progressData.completed_count))
-      }
-
-      if (progressData.inProgressCount !== undefined) {
-        inProgressTests.value = Math.min(totalCount - completedTests.value, Math.max(0, progressData.inProgressCount))
-      }
-
-      if (progressData.executionFailedCount !== undefined) {
-        executionFailedTests.value = Math.min(totalCount, Math.max(0, Number(progressData.executionFailedCount) || 0))
-      }
-
-      if (progressData.evaluationFailedCount !== undefined) {
-        evaluationFailedTests.value = Math.min(totalCount, Math.max(0, Number(progressData.evaluationFailedCount) || 0))
-      }
-
-      // 重新计算待执行数量
-      pendingTests.value = Math.max(0, totalCount - completedTests.value - inProgressTests.value - executionFailedTests.value - evaluationFailedTests.value)
-      
-      // 重新计算总进度
-      if (totalCount > 0) {
-        progressPercentage.value = Math.min(100, Math.max(0, Math.round((completedTests.value / totalCount) * 100)))
-      } else {
-        progressPercentage.value = 0
-      }
+      applyCountFallback(progressData)
     }
 
     if (progressData.usedTime && progressData.usedTime !== elapsedTime.value) {
       elapsedTime.value = normalizeMinutesText(progressData.usedTime) || '0分钟'
     }
-    if (progressData.usedTime === 0) {
+    if (progressData.usedTime === '0') {
       elapsedTime.value = '0分钟'
     }
 
@@ -277,23 +225,14 @@ export function useTaskProgress(options: TaskProgressOptions) {
       }
     }
 
-    if (progressData.logs && Array.isArray(progressData.logs)) {
-      progressData.logs.forEach((log: any) => {
-        addLog(log)
-      })
-    }
+    progressData.logs.forEach(log => {
+      addLog(log)
+    })
 
-    if (progressData.apiResources && Array.isArray(progressData.apiResources)) {
-      console.log('[handleTaskProgress] 处理 apiResources，数量:', progressData.apiResources.length)
-      apiResources.value = progressData.apiResources.map((resource: any) => ({
-        id: resource.id,
-        name: resource.name,
-        currentConcurrent: resource.currentConcurrent || 0,
-        queueLength: resource.queueLength || 0,
-        avgResponseTime: resource.avgResponseTime || 0,
-        maxConcurrent: resource.maxConcurrent || 5
-      }))
-    } else if (progressData.apiResources === null || progressData.apiResources === undefined) {
+    if (progressData.apiResources.length > 0) {
+      apiResources.value = progressData.apiResources.map(resource => ({ ...resource }))
+    } else {
+      // adapter 已把 null/undefined 归一为空数组，此处不再感知原始 payload
       apiResources.value = []
     }
   }
@@ -317,38 +256,31 @@ export function useTaskProgress(options: TaskProgressOptions) {
     hasCalledFailedCallback.value = false
   }
 
-  const taskLogHandler = (data: any) => {
-    if (String(data.task_id) === String(currentTaskId.value)) {
-      addLog(data.log)
+  const taskLogHandler = (taskId: string, log: any) => {
+    // payload 已由 taskChannel 拆分，只比对当前任务
+    if (taskId === String(currentTaskId.value)) {
+      addLog(log)
     }
   }
 
+  let unsubscribeProgress: (() => void) | undefined
+  let unsubscribeLog: (() => void) | undefined
+
   onMounted(() => {
-    console.log('[TaskProgress] 正在监听 task_progress 事件，testType:', testType)
-    socketService.on('task_progress', handleTaskProgress)
+    unsubscribeProgress = taskChannelPort.onTaskProgress(handleTaskProgress)
+    unsubscribeLog = taskChannelPort.onTaskLog(taskLogHandler)
 
-    console.log('[TaskProgress] 正在监听 task_log 事件 (namespace=/ws/logs)')
-    socketService.on('task_log', taskLogHandler, '/ws/logs')
-
-    // 订阅当前 task 的日志房间
     if (currentTaskId.value) {
-      console.log('[TaskProgress] 订阅 task 日志房间, task_id:', currentTaskId.value)
-      socketService.emit('subscribe_task', { task_id: currentTaskId.value }, '/ws/logs')
+      taskChannelPort.subscribeTask(currentTaskId.value)
     }
-
-    console.log('[TaskProgress] Socket 连接状态:', socketService.isConnected)
   })
 
   onUnmounted(() => {
-    console.log('[TaskProgress] 移除 task_progress 事件监听')
-    socketService.off('task_progress', handleTaskProgress)
+    if (unsubscribeProgress) unsubscribeProgress()
+    if (unsubscribeLog) unsubscribeLog()
 
-    console.log('[TaskProgress] 移除 task_log 事件监听')
-    socketService.off('task_log', taskLogHandler, '/ws/logs')
-
-    // 取消订阅 task 日志房间
     if (currentTaskId.value) {
-      socketService.emit('unsubscribe_task', { task_id: currentTaskId.value }, '/ws/logs')
+      taskChannelPort.unsubscribeTask(currentTaskId.value)
     }
   })
 

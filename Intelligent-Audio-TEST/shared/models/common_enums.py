@@ -44,6 +44,8 @@ class TestType(str, Enum):
 
 class FieldType(str, Enum):
     """字段类型枚举（用于参数/结果字段的类型标识）"""
+    RTTM = 'rttm'
+    STM = 'stm'
     TEXT = 'text'
     AUDIO_FILE = 'audio_file'
     AUDIO = 'audio'

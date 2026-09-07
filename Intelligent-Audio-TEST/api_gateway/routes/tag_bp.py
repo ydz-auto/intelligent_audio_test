@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from api_gateway.application.services.tag.tag_query_service import (
     TagCategoryQueryService,
@@ -70,8 +70,8 @@ def update_tag(tag_id: int, _: None = require_permission('tag:update')):
 
 
 @router.delete('/{tag_id}')
-def delete_tag(tag_id: int, _: None = require_permission('tag:delete')):
-    return to_response(TagCommandService.delete(tag_id))
+def delete_tag(tag_id: int, cascade: bool = Query(False), _: None = require_permission('tag:delete')):
+    return to_response(TagCommandService.delete(tag_id, cascade))
 
 
 @router.put('/batch-category')

@@ -15,7 +15,7 @@
           <span v-if="modelValue" class="single-value">
             {{ getAlgorithmName(modelValue as string) }}
             <span v-if="showStatus" class="status-badge" :class="getSelectedStatus()">
-              {{ getSelectedStatus() === 'online' ? '在线' : '离线' }}
+              {{ getSelectedStatus() === ApiEndpointStatus.ONLINE ? '在线' : '离线' }}
             </span>
           </span>
           <span v-else class="placeholder">{{ placeholder }}</span>
@@ -48,14 +48,14 @@
               class="option-item"
               :class="{
                 selected: isSelected(algo.type),
-                disabled: algo.status === 'offline'
+                disabled: algo.status === ApiEndpointStatus.OFFLINE
               }"
               @click="handleSelect(algo)"
             >
               <div class="option-content">
                 <span class="option-name">{{ algo.name }}</span>
                 <span v-if="showStatus" class="status-tag" :class="algo.status">
-                  {{ algo.status === 'online' ? '在线' : '离线' }}
+                  {{ algo.status === ApiEndpointStatus.ONLINE ? '在线' : '离线' }}
                 </span>
               </div>
               <i v-if="isSelected(algo.type)" class="fas fa-check check-icon"></i>
@@ -74,14 +74,16 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { algorithmApi } from '../../utils/api'
+import { algorithmPort } from '../../composables/algorithm/algorithmPort'
+import { ApiEndpointStatus, ApiEndpointStatusType } from '../../domain/enums'
 
-interface Algorithm {
+/** 组件本地视图模型，区别于 domain AlgorithmDefinition（仅本组件下拉选项使用） */
+interface AlgorithmOptionView {
   type: string
   name: string
-  group_id?: number
-  group_name?: string
-  status: 'online' | 'offline'
+  groupId?: number
+  groupName?: string
+  status: ApiEndpointStatusType
   description?: string
   icon?: string
 }
@@ -110,13 +112,13 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: string | string[]): void
-  (e: 'change', algorithm: Algorithm | Algorithm[] | null): void
+  (e: 'change', algorithm: AlgorithmOptionView | AlgorithmOptionView[] | null): void
 }>()
 
 const isOpen = ref(false)
 const isFocused = ref(false)
 const searchQuery = ref('')
-const algorithms = ref<Algorithm[]>([])
+const algorithms = ref<AlgorithmOptionView[]>([])
 
 const selectedValues = computed(() => {
   if (props.multiple && Array.isArray(props.modelValue)) {
@@ -126,7 +128,7 @@ const selectedValues = computed(() => {
 })
 
 const filteredGroupedAlgorithms = computed(() => {
-  const groups: Record<string, Algorithm[]> = {}
+  const groups: Record<string, AlgorithmOptionView[]> = {}
 
   let filteredList = algorithms.value
 
@@ -139,7 +141,7 @@ const filteredGroupedAlgorithms = computed(() => {
   }
 
   for (const algo of filteredList) {
-    const groupKey = algo.group_name || '未分组'
+    const groupKey = algo.groupName || '未分组'
     if (!groups[groupKey]) {
       groups[groupKey] = []
     }
@@ -171,8 +173,8 @@ const isSelected = (type: string): boolean => {
   return props.modelValue === type
 }
 
-const handleSelect = (algo: Algorithm) => {
-  if (algo.status === 'offline') return
+const handleSelect = (algo: AlgorithmOptionView) => {
+  if (algo.status === ApiEndpointStatus.OFFLINE) return
 
   if (props.multiple) {
     const currentValues = Array.isArray(props.modelValue) ? [...props.modelValue] as string[] : []
@@ -218,13 +220,9 @@ const toggleDropdown = () => {
 
 const loadAlgorithms = async () => {
   try {
-    const result = await algorithmApi.getDefinitions()
-    // 响应经层转为 camelCase，补回 snake_case 别名供分组/读取使用
-    algorithms.value = (result.data || []).map((a: any) => ({
-      ...a,
-      group_id: a.group_id ?? a.groupId,
-      group_name: a.group_name ?? a.groupName,
-    }))
+    const result = await algorithmPort.getDefinitions()
+    // 下拉选项只需展示字段（type/name/groupName/status），domain 字符串 status 收窄为本地视图模型
+    algorithms.value = (result.data || []) as AlgorithmOptionView[]
   } catch (error) {
     console.error('加载算法列表失败:', error)
   }
@@ -239,7 +237,7 @@ const clear = () => {
   emit('change', null)
 }
 
-const getSelectedAlgorithm = (): Algorithm | Algorithm[] | null => {
+const getSelectedAlgorithm = (): AlgorithmOptionView | AlgorithmOptionView[] | null => {
   if (!props.modelValue) return null
 
   if (props.multiple && Array.isArray(props.modelValue)) {

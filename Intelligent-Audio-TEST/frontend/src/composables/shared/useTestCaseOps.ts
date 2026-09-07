@@ -6,10 +6,11 @@ import { useTestCaseStore } from '../../store/testCaseStore'
 import { useE2eTest } from '../e2e/useE2eTest'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
 import { useDeleteConfirm } from '../modal/useDeleteConfirm'
-import type { TestCase, TestCaseFormData } from '../../shared/types'
+import type { TestCase, TestCaseFormData } from '../../domain'
+import { TestType } from '@/domain/enums'
 
 interface UseTestCaseOpsOptions {
-  testType: 'e2e' | 'api'
+  testType: typeof TestType[keyof typeof TestType]
   selectedAlgorithmType: Ref<string | null>
   addLog: (log: any) => void
 }
@@ -40,48 +41,48 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
   } = useTestCaseCard()
 
   // e2e 模式使用 useE2eTest；api 模式直接使用 store
-  const e2eTest = testType === 'e2e' ? useE2eTest() : null
-  const storeRefs = testType === 'api' ? storeToRefs(testCaseStore) : null
+  const e2eTest = testType === TestType.E2E ? useE2eTest() : null
+  const storeRefs = testType === TestType.API ? storeToRefs(testCaseStore) : null
 
   // 统一的访问器
   const testCaseGroups = computed<Record<string, TestCase[]>>(() => {
-    if (testType === 'e2e') return (e2eTest!.e2eTestCaseGroups.value || {}) as Record<string, TestCase[]>
+    if (testType === TestType.E2E) return (e2eTest!.e2eTestCaseGroups.value || {}) as Record<string, TestCase[]>
     return (storeRefs!.testCaseGroups.value || {}) as Record<string, TestCase[]>
   })
 
   const tags = computed<string[]>(() => {
-    if (testType === 'e2e') return (e2eTest!.tags.value || []) as string[]
+    if (testType === TestType.E2E) return (e2eTest!.tags.value || []) as string[]
     return (storeRefs!.tags.value || []) as string[]
   })
 
   const tagViewData = computed(() => {
-    if (testType === 'e2e') return (e2eTest!.tagViewData.value || {}) as any
+    if (testType === TestType.E2E) return (e2eTest!.tagViewData.value || {}) as any
     return (storeRefs!.tagViewData.value || {}) as any
   })
 
   const tagViewPagination = computed(() => {
-    if (testType === 'e2e') return (e2eTest!.tagViewPagination.value || {}) as any
+    if (testType === TestType.E2E) return (e2eTest!.tagViewPagination.value || {}) as any
     return (storeRefs!.tagViewPagination.value || {}) as any
   })
 
   const tagViewLoading = computed(() => {
-    if (testType === 'e2e') return !!e2eTest!.tagViewLoading.value
+    if (testType === TestType.E2E) return !!e2eTest!.tagViewLoading.value
     return !!storeRefs!.tagViewLoading.value
   })
 
   const isLoading = computed(() => {
-    if (testType === 'e2e') return !!e2eTest!.isLoading.value
+    if (testType === TestType.E2E) return !!e2eTest!.isLoading.value
     return !!storeRefs!.isLoading.value
   })
 
   const casePaginationInfo = computed(() => {
-    if (testType === 'e2e') return e2eTest!.paginationInfo.value
+    if (testType === TestType.E2E) return e2eTest!.paginationInfo.value
     return storeRefs!.paginationInfo.value
   })
 
   /** 统一的初始化用例方法 */
   const initializeTestCases = async (algorithmType?: string) => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       await e2eTest!.initializeE2eTests(algorithmType)
     } else {
       await testCaseStore.fetchTestCases({ algorithmType })
@@ -90,7 +91,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
 
   /** 统一的 fetchTagView */
   const fetchTagView = async (params: Record<string, any> = {}) => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       await e2eTest!.fetchTagView(params)
     } else {
       await testCaseStore.fetchTagView(params)
@@ -99,7 +100,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
 
   /** 统一的 loadMoreTagView（标签视图后端分页追加加载） */
   const loadMoreTagView = async () => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       await e2eTest!.loadMoreTagView()
     } else {
       await testCaseStore.loadMoreTagView()
@@ -118,7 +119,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
 
   /** 分组视图筛选变化时重新请求数据 */
   const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       e2eTest!.initializeE2eTests(
         filters.algorithmType || selectedAlgorithmType.value || undefined,
         filters.keyword,
@@ -180,25 +181,26 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
 
   /** 编辑用例模态窗：e2e 自定义打开流程，api 直接复用 useTestCaseCard */
   const handleOpenEditModal = async (testCase: TestCase) => {
-    if (testType === 'e2e') {
+    if (testType === TestType.E2E) {
       editingTestCase.value = testCase
 
       const normalized = normalizeTestCaseConfig(testCase.config || {})
-      const testCaseType = (testCase as any).test_type || 'e2e'
+      // TestCase Domain 已是 camelCase：testType / groupName / groupId / algorithmType / algorithmParams
+      const testCaseType = testCase.testType || TestType.E2E
 
       formData.value = {
         id: testCase.id,
         name: testCase.name || '',
-        group: testCase.group_name || '',
-        groupId: testCase.group_id || '',
+        group: testCase.groupName || '',
+        groupId: testCase.groupId || '',
         description: testCase.description || '',
         tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
         tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
         config: normalized as TestCaseFormData['config'],
-        algorithmType: (testCase as any).algorithm_type || '',
-        test_type: testCaseType as 'api' | 'e2e',
-        algorithm_params: Array.isArray((testCase as any).algorithm_params)
-          ? ((testCase as any).algorithm_params)
+        algorithmType: testCase.algorithmType || '',
+        testType: testCaseType as 'api' | 'e2e',
+        algorithmParams: Array.isArray(testCase.algorithmParams)
+          ? testCase.algorithmParams
           : [],
       } as TestCaseFormData
 

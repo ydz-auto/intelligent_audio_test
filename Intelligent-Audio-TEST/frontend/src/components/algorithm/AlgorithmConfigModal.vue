@@ -47,13 +47,13 @@
                 <td>{{ record.type }}</td>
                 <td>{{ record.name }}</td>
                 <td>
-                  <span class="status-tag" :class="getGroupTagClass(record.group_name)">
-                    {{ record.group_name || '-' }}
+                  <span class="status-tag" :class="getGroupTagClass(record.groupName)">
+                    {{ record.groupName || '-' }}
                   </span>
                 </td>
                 <td>
-                  <span class="status-badge" :class="record.status === 'online' ? 'active' : 'inactive'">
-                    {{ record.status === 'online' ? '上线' : '下线' }}
+                  <span class="status-badge" :class="record.status === ApiEndpointStatus.ONLINE ? 'active' : 'inactive'">
+                    {{ record.status === ApiEndpointStatus.ONLINE ? '上线' : '下线' }}
                   </span>
                 </td>
                 <td>
@@ -62,8 +62,8 @@
                       <i class="fas fa-edit btn-icon"></i>编辑
                     </button>
                     <button class="btn btn-text btn-sm" @click="handleToggleStatus(record)">
-                      <i :class="record.status === 'online' ? 'fas fa-toggle-off' : 'fas fa-toggle-on'" class="btn-icon"></i>
-                      {{ record.status === 'online' ? '禁用' : '启用' }}
+                      <i :class="record.status === ApiEndpointStatus.ONLINE ? 'fas fa-toggle-off' : 'fas fa-toggle-on'" class="btn-icon"></i>
+                      {{ record.status === ApiEndpointStatus.ONLINE ? '禁用' : '启用' }}
                     </button>
                     <button class="btn btn-text btn-sm" @click="handleSelect(record)">
                       <i class="fas fa-check btn-icon"></i>选择
@@ -133,7 +133,7 @@
             </div>
             <div class="form-group">
               <label>排序</label>
-              <input type="number" class="form-input" v-model.number="formState.display_order" min="0">
+              <input type="number" class="form-input" v-model.number="formState.displayOrder" min="0">
             </div>
           </div>
 
@@ -230,10 +230,10 @@
                 </tr>
                 <tr v-else v-for="(param, index) in currentParams" :key="param.id || param.tempId || index">
                   <td>
-                    <input type="text" class="form-input form-input-sm param-code-input" v-model="param.param_code" @blur="handleParamBlur(param, index, paramConfigType)">
+                    <input type="text" class="form-input form-input-sm param-code-input" v-model="param.paramCode" @blur="handleParamBlur(param, index, paramConfigType)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.param_name" @blur="handleParamBlur(param, index, paramConfigType)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.paramName" @blur="handleParamBlur(param, index, paramConfigType)">
                   </td>
                   <td>
                     <select class="form-input form-input-sm" v-model="param.direction" @change="handleParamBlur(param, index, paramConfigType)">
@@ -242,7 +242,7 @@
                     </select>
                   </td>
                   <td>
-                    <select class="form-input form-input-sm" v-model="param.param_type" @change="handleParamBlur(param, index, paramConfigType)">
+                    <select class="form-input form-input-sm" v-model="param.paramType" @change="handleParamBlur(param, index, paramConfigType)">
                       <option value="text">文本</option>
                       <option value="audio_stream">音频流</option>
                       <option value="audio_file">音频文件</option>
@@ -286,18 +286,18 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="formState.case_params.length === 0">
+                <tr v-if="formState.caseParams.length === 0">
                   <td colspan="11" class="empty-row">暂无用例参数</td>
                 </tr>
-                <tr v-else v-for="(param, index) in formState.case_params" :key="param.id || param.tempId || index">
+                <tr v-else v-for="(param, index) in formState.caseParams" :key="param.id || param.tempId || index">
                   <td>
-                    <input type="text" list="case-param-code-presets" class="form-input form-input-sm param-code-input" v-model="param.param_code" @change="handleParamCodeSelect(param, index)" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" list="case-param-code-presets" class="form-input form-input-sm param-code-input" v-model="param.paramCode" @change="handleParamCodeSelect(param, index)" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.param_name" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.paramName" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
-                    <select class="form-input form-input-sm" v-model="param.param_type" @change="handleCaseParamTypeChange(param, index)">
+                    <select class="form-input form-input-sm" v-model="param.paramType" @change="handleCaseParamTypeChange(param, index)">
                       <option value="text">文本</option>
                       <option value="number">数字</option>
                       <option value="textarea">多行文本</option>
@@ -311,8 +311,8 @@
                   <td>
                     <select class="form-input form-input-sm" v-model="param.scope" @change="handleCaseParamBlur(param, index)">
                       <option value="common">通用</option>
-                      <option value="api">API</option>
-                      <option value="e2e">E2E</option>
+                      <option :value="TestType.API">API</option>
+                      <option :value="TestType.E2E">E2E</option>
                     </select>
                   </td>
                   <td>
@@ -321,26 +321,26 @@
                     </label>
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.default_value" placeholder="默认值" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.defaultValue" placeholder="默认值" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
-                    <div v-if="['slider', 'number'].includes(param.param_type)" class="range-constraints">
-                      <input type="number" class="form-input form-input-sm range-input" v-model="param.min_value" placeholder="最小" @blur="handleCaseParamBlur(param, index)">
+                    <div v-if="['slider', 'number'].includes(param.paramType)" class="range-constraints">
+                      <input type="number" class="form-input form-input-sm range-input" v-model="param.minValue" placeholder="最小" @blur="handleCaseParamBlur(param, index)">
                       <span class="range-sep">~</span>
-                      <input type="number" class="form-input form-input-sm range-input" v-model="param.max_value" placeholder="最大" @blur="handleCaseParamBlur(param, index)">
+                      <input type="number" class="form-input form-input-sm range-input" v-model="param.maxValue" placeholder="最大" @blur="handleCaseParamBlur(param, index)">
                       <input type="number" class="form-input form-input-sm range-input" v-model="param.step" placeholder="步长" @blur="handleCaseParamBlur(param, index)">
                       <input type="text" class="form-input form-input-sm range-input range-unit" v-model="param.unit" placeholder="单位" @blur="handleCaseParamBlur(param, index)">
                     </div>
                     <span v-else class="text-muted">—</span>
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.annotation_code" placeholder="默认同算法类型" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.annotationCode" placeholder="默认同算法类型" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.field_path" placeholder="默认同参数代码" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.fieldPath" placeholder="默认同参数代码" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="帮助提示" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.helpText" placeholder="帮助提示" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
                     <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveCaseParam(index)">
@@ -352,7 +352,7 @@
             </table>
           </div>
           <datalist id="case-param-code-presets">
-            <option v-for="(preset, code) in PARAM_CODE_PRESETS" :key="code" :value="code">{{ preset.param_name }} ({{ preset.param_type }})</option>
+            <option v-for="(preset, code) in PARAM_CODE_PRESETS" :key="code" :value="code">{{ preset.paramName }} ({{ preset.paramType }})</option>
           </datalist>
         </div>
 
@@ -385,15 +385,15 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-if="formState.reference_params.length === 0">
+                  <tr v-if="formState.referenceParams.length === 0">
                     <td colspan="9" class="empty-row">暂无参考参数</td>
                   </tr>
-                <tr v-else v-for="(param, index) in formState.reference_params" :key="param.id || param.tempId || index">
+                <tr v-else v-for="(param, index) in formState.referenceParams" :key="param.id || param.tempId || index">
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.code" placeholder="如: asr_reference_text" @blur="handleReferenceParamBlur(param, index)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.annotation_code" placeholder="标注匹配代码，默认同算法代码" @blur="handleReferenceParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.annotationCode" placeholder="标注匹配代码，默认同算法代码" @blur="handleReferenceParamBlur(param, index)">
                   </td>
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.name" placeholder="参数名称" @blur="handleReferenceParamBlur(param, index)">
@@ -408,7 +408,7 @@
                     </select>
                   </td>
                   <td>
-                      <select class="form-input form-input-sm" v-model="param.annotation_format" @change="handleReferenceParamBlur(param, index)">
+                      <select class="form-input form-input-sm" v-model="param.annotationFormat" @change="handleReferenceParamBlur(param, index)">
                         <option value="">不指定</option>
                         <option value="text">文本</option>
                         <option value="json">JSON</option>
@@ -417,17 +417,17 @@
                       </select>
                     </td>
                     <td>
-                      <input type="text" class="form-input form-input-sm" v-model="param.field_path" placeholder="如: model 或 segments[].emotion" @blur="handleReferenceParamBlur(param, index)">
+                      <input type="text" class="form-input form-input-sm" v-model="param.fieldPath" placeholder="如: model 或 segments[].emotion" @blur="handleReferenceParamBlur(param, index)">
                     </td>
                     <td>
-                      <select class="form-input form-input-sm" v-model="param.merge_mode" @change="handleReferenceParamBlur(param, index)">
+                      <select class="form-input form-input-sm" v-model="param.mergeMode" @change="handleReferenceParamBlur(param, index)">
                         <option value="join">拼接</option>
                         <option value="collect">收集数组</option>
                         <option value="first">取第一个</option>
                       </select>
                     </td>
                     <td>
-                      <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="可选提示" @blur="handleReferenceParamBlur(param, index)">
+                      <input type="text" class="form-input form-input-sm" v-model="param.helpText" placeholder="可选提示" @blur="handleReferenceParamBlur(param, index)">
                     </td>
                   <td>
                     <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveReferenceParam(index)">
@@ -514,12 +514,12 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-if="formState.associated_dimensions.length === 0">
+                <tr v-if="formState.associatedDimensions.length === 0">
                   <td colspan="4" class="empty-row">暂无关联维度</td>
                 </tr>
-                <tr v-else v-for="(dim, index) in formState.associated_dimensions" :key="index">
+                <tr v-else v-for="(dim, index) in formState.associatedDimensions" :key="index">
                   <td>
-                    <select class="form-input form-input-sm" v-model="dim.dimension_id" @blur="handleDimensionBlur(index)">
+                    <select class="form-input form-input-sm" v-model="dim.dimensionId" @blur="handleDimensionBlur(index)">
                       <option :value="null">请选择维度</option>
                       <option v-for="dimension in availableDimensions" :key="dimension.id" :value="dimension.id">
                         {{ dimension.name }}
@@ -531,7 +531,7 @@
                   </td>
                   <td>
                     <label class="checkbox-container">
-                      <input type="checkbox" v-model="dim.is_default" @change="handleDimensionChange(index)">
+                      <input type="checkbox" v-model="dim.isDefault" @change="handleDimensionChange(index)">
                     </label>
                   </td>
                   <td>
@@ -553,7 +553,9 @@
 import BasicModal from '../common/modal/BasicModal.vue'
 import MappingEditor from './MappingEditor.vue'
 import { useAlgorithmConfigModal } from './AlgorithmConfigModal'
-import type { ModalProps, AlgorithmRecord } from './AlgorithmConfigModal'
+import type { ModalProps } from './AlgorithmConfigModal'
+import type { AlgorithmDefinition } from '@/domain'
+import { TestType, ApiEndpointStatus } from '@/domain/enums'
 
 const props = withDefaults(defineProps<ModalProps>(), {
   visible: false,
@@ -563,7 +565,7 @@ const props = withDefaults(defineProps<ModalProps>(), {
 
 const emit = defineEmits<{
   (e: 'update:visible', visible: boolean): void
-  (e: 'select', data: AlgorithmRecord): void
+  (e: 'select', data: AlgorithmDefinition): void
   (e: 'success'): void
 }>()
 

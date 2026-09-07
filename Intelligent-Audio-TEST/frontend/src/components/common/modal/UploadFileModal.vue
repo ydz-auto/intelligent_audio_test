@@ -26,7 +26,7 @@
                 type="file" 
                 :id="inputId"
                 ref="fileInput"
-                :accept="acceptedTypes"
+                :accept="acceptedTypes.join(',')"
                 :multiple="multiple"
                 @change="handleFileSelect"
               >
@@ -44,7 +44,7 @@
                 type="file" 
                 :id="inputId"
                 ref="fileInput"
-                :accept="acceptedTypes"
+                :accept="acceptedTypes.join(',')"
                 :multiple="multiple"
                 @change="handleFileSelect"
               >
@@ -169,20 +169,20 @@
 
 <script setup lang="ts">
 import UploadOptions from '../misc/UploadOptions.vue'
-import { useUploadFileModal } from './UploadFileModal'
+import { useUploadFileModal, type UploadFileModalProps } from './UploadFileModal'
 
-const props = defineProps({
-  modalId: { type: String, default: '' },
-  title: { type: String, default: '上传文件' },
-  acceptedTypes: { type: Array, default: () => ['audio/*', 'video/*', '.txt', '.json', '.rttm', '.stm'] },
-  maxSize: { type: Number, default: 100 * 1024 * 1024 },
-  multiple: { type: Boolean, default: false },
-  uploadOptions: { type: Array, default: () => [] },
-  showTagsInput: { type: Boolean, default: true },
-  autoUpload: { type: Boolean, default: false },
-  supportedFormats: { type: Array, default: () => ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg'] },
-  deviceOptions: { type: Array, default: () => [] },
-  algorithmOptions: { type: Array, default: () => [] }
+const props = withDefaults(defineProps<UploadFileModalProps>(), {
+  modalId: '',
+  title: '上传文件',
+  acceptedTypes: () => ['audio/*', 'video/*', '.txt', '.json', '.rttm', '.stm'],
+  maxSize: 100 * 1024 * 1024,
+  multiple: false,
+  uploadOptions: () => [],
+  showTagsInput: true,
+  autoUpload: false,
+  supportedFormats: () => ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg'],
+  deviceOptions: () => [],
+  algorithmOptions: () => []
 })
 
 const emit = defineEmits(['close', 'confirm', 'selectFolder'])

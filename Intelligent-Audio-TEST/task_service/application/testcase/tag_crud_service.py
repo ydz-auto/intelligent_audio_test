@@ -224,11 +224,30 @@ class TagCrudService:
             logger.error(f"更新标签失败: {e}")
             return {'success': False, 'message': '更新失败，请稍后重试', 'code': 500}
 
-    def delete_tag(self, tag_id: int) -> Dict[str, Any]:
+    def delete_tag(self, tag_id: int, cascade: bool = False) -> Dict[str, Any]:
+        """删除标签。
+
+        Args:
+            tag_id: 标签 ID
+            cascade: 为 True 时级联软删除标签及其下所有测试用例（对齐 V10 语义），
+                     否则保留原「有引用即拒绝删除」行为。
+        """
         try:
             tag = self.repo.get_tag_by_id(tag_id)
             if not tag or tag.deleted:
                 return {'success': False, 'message': '未找到标签', 'code': 404}
+
+            if cascade:
+                # 级联删除：软删除标签下所有未删除用例后再删除标签
+                test_cases = self.repo.query_testcases_by_tag_ids([tag_id])
+                case_ids = [tc.id for tc in test_cases]
+                if case_ids:
+                    self.repo.soft_delete_testcases_by_ids(case_ids)
+                self.repo.soft_delete_tag(tag)
+                self.repo.commit()
+                if case_ids:
+                    return {'success': True, 'message': f'标签及 {len(case_ids)} 个用例已删除'}
+                return {'success': True, 'message': '标签删除成功'}
 
             case_count = self.repo.count_tag_usage_in_cases(tag_id)
             audio_count = self.repo.count_tag_usage_in_audios(tag_id)

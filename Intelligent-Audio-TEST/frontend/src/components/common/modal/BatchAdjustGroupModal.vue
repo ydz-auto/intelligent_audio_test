@@ -55,7 +55,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { testcasesApi } from '../../../utils/api'
+import { testcasesPort } from '../../../composables/testCase/testcasesPort'
+import { useNotification } from '@/composables/modal/useNotification'
 
 interface GroupInfo {
   id: string
@@ -85,6 +86,8 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 
+const notification = useNotification()
+
 const availableGroups = ref<GroupInfo[]>([])
 const selectedGroup = ref('')
 const newGroupName = ref('')
@@ -100,7 +103,7 @@ const canConfirm = computed(() => {
 
 async function loadGroups() {
   try {
-    const result = await testcasesApi.getGroups()
+    const result = await testcasesPort.getGroups()
     const groups = (result as any).items || []
     availableGroups.value = groups.filter((g: any) => g.id !== props.currentGroupId)
   } catch (error) {
@@ -122,15 +125,15 @@ async function handleConfirm() {
 
   if (selectedGroup.value === '__NEW_GROUP__') {
     try {
-      const result = await testcasesApi.createGroup({ name: newGroupName.value.trim() })
+      const result = await testcasesPort.createGroup({ name: newGroupName.value.trim() })
       targetGroupId = (result as any)?.id
       if (!targetGroupId) {
-        alert('创建分组失败')
+        notification.error('创建分组失败')
         return
       }
     } catch (error) {
       console.error('创建分组失败:', error)
-      alert('创建分组失败')
+      notification.error('创建分组失败')
       return
     }
   }

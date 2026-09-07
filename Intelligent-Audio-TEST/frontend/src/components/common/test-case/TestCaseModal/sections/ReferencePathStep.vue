@@ -17,7 +17,7 @@
 </template>
 
 <script setup lang="ts">
-import type { RoundConfigItem } from '../types'
+import type { RoundConfigItem } from '@/domain'
 
 defineProps<{
   round: RoundConfigItem

@@ -36,7 +36,7 @@ def _put_to_oss(presigned_url: str, file_path: str) -> str:
     """直传文件到 OSS/MinIO 预签名 URL，返回 ETag。"""
     with open(file_path, 'rb') as f:
         content = f.read()
-    r = httpx.put(presigned_url, content=content, timeout=30)
+    r = httpx.put(presigned_url, content=content, timeout=30, trust_env=False)
     assert r.status_code == 200, f'OSS PUT 失败: {r.status_code} {r.text[:200]}'
     return r.headers.get('ETag', '').strip('"')
 

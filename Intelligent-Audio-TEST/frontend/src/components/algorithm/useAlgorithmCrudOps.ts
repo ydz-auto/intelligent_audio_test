@@ -1,7 +1,9 @@
-import { algorithmApi } from '../../utils/api'
+import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal'
 import { normalizeParamFields, normalizeCaseParamFields } from './algorithmParamHelpers'
-import type { AlgorithmRecord, AlgorithmGroup, Dimension } from './algorithmTypes'
+import { useNotification } from '../../composables/modal/useNotification'
+import type { AlgorithmDefinition, AlgorithmGroup, Dimension } from '@/domain'
+import { ApiEndpointStatus, ApiEndpointStatusType } from '@/domain/enums'
 
 // source 合法值校验：仅允许 case/reference/device/api
 const VALID_SOURCES = ['case', 'reference', 'device', 'api']
@@ -15,13 +17,13 @@ export function normalizeMappings(raw: any): { device: any[]; api: any[]; evalua
     return {
       id: m.id,
       source,
-      source_param: m.source_param ?? m.sourceParam ?? '',
-      param_name: m.param_name ?? m.paramName ?? m.source_param ?? m.sourceParam ?? '',
-      dimension_id: m.dimension_id ?? m.dimensionId ?? null,
-      dimension_name: m.dimension_name ?? m.dimensionName ?? '',
-      target_param: m.target_param ?? m.targetParam ?? '',
-      transform_type: m.transform_type ?? m.transformType ?? 'none',
-      source_direction: m.source_direction ?? m.sourceDirection ?? 'output'
+      sourceParam: m.sourceParam ?? '',
+      paramName: m.paramName ?? m.sourceParam ?? '',
+      dimensionId: m.dimensionId ?? null,
+      dimensionName: m.dimensionName ?? '',
+      targetParam: m.targetParam ?? '',
+      transformType: m.transformType ?? 'none',
+      sourceDirection: m.sourceDirection ?? 'output'
     }
   })
   return {
@@ -49,10 +51,11 @@ export function useAlgorithmCrudOps(
   paramConfigType: any
 ) {
   const modalControl = useModalControl()
+  const notification = useNotification()
 
   async function loadAlgorithms() {
     try {
-      const result = await algorithmApi.getDefinitions()
+      const result = await algorithmPort.getDefinitions()
       algorithms.value = result.data || []
     } catch (error) {
       console.error('加载算法列表失败:', error)
@@ -61,7 +64,7 @@ export function useAlgorithmCrudOps(
 
   async function loadGroups() {
     try {
-      const result = await algorithmApi.getGroups()
+      const result = await algorithmPort.getGroups()
       groups.value = result.data || []
     } catch (error) {
       console.error('加载分组列表失败:', error)
@@ -80,18 +83,18 @@ export function useAlgorithmCrudOps(
   function resetForm() {
     formState.type = ''
     formState.name = ''
-    formState.group_id = null
+    formState.groupId = null
     formState.description = ''
-    formState.status = 'online'
+    formState.status = ApiEndpointStatus.ONLINE
     formState.statusSwitch = true
     formState.icon = ''
-    formState.display_order = 0
-    formState.device_params = []
-    formState.api_params = []
-    formState.case_params = []
+    formState.displayOrder = 0
+    formState.deviceParams = []
+    formState.apiParams = []
+    formState.caseParams = []
     formState.mappings = { device: [], api: [], evaluation: [] }
-    formState.associated_dimensions = []
-    formState.reference_params = []
+    formState.associatedDimensions = []
+    formState.referenceParams = []
     creatingNewGroup.value = false
     newGroupName.value = ''
     activeTab.value = 'basic'
@@ -107,7 +110,6 @@ export function useAlgorithmCrudOps(
   }
 
   async function handleOk() {
-    console.log('handleOk:', { mode: effectiveMode.value, formState: JSON.stringify(formState) })
     if (effectiveMode.value === 'select') {
       if (props.editData) {
         emit('select', props.editData)
@@ -117,15 +119,15 @@ export function useAlgorithmCrudOps(
     }
 
     if (!formState.type || !formState.name) {
-      alert('请填写必填字段')
+      notification.warning('请填写必填字段')
       return
     }
     if (creatingNewGroup.value && !newGroupName.value.trim()) {
-      alert('请填写新分组名称')
+      notification.warning('请填写新分组名称')
       return
     }
-    if (!creatingNewGroup.value && !formState.group_id) {
-      alert('请填写必填字段')
+    if (!creatingNewGroup.value && !formState.groupId) {
+      notification.warning('请填写必填字段')
       return
     }
 
@@ -134,37 +136,38 @@ export function useAlgorithmCrudOps(
 
   async function saveAlgorithm() {
     try {
-      formState.status = formState.statusSwitch ? 'online' : 'offline'
+      formState.status = formState.statusSwitch ? ApiEndpointStatus.ONLINE : ApiEndpointStatus.OFFLINE
 
-      // 若选择了新建分组，先创建分组并回填 group_id
+      // 若选择了新建分组，先创建分组并回填 groupId
       if (creatingNewGroup.value) {
-        const newGroup = await algorithmApi.createGroup({ name: newGroupName.value.trim() })
+        const newGroup = await algorithmPort.createGroup({ name: newGroupName.value.trim() })
         await loadGroups()
-        formState.group_id = newGroup.id ?? null
+        formState.groupId = newGroup.id ?? null
         creatingNewGroup.value = false
         newGroupName.value = ''
       }
 
+      // 提交 bodyData 为 camelCase Domain 字段，algorithmPort 内部做 snake_case 转换
       const bodyData: any = {
         type: formState.type,
         name: formState.name,
-        group_id: formState.group_id,
+        groupId: formState.groupId,
         description: formState.description,
         status: formState.status,
         icon: formState.icon,
-        display_order: formState.display_order,
-        device_params: formState.device_params,
-        api_params: formState.api_params,
-        case_params: formState.case_params,
+        displayOrder: formState.displayOrder,
+        deviceParams: formState.deviceParams,
+        apiParams: formState.apiParams,
+        caseParams: formState.caseParams,
         mappings: formState.mappings,
-        associated_dimensions: formState.associated_dimensions,
-        reference_params: formState.reference_params
+        associatedDimensions: formState.associatedDimensions,
+        referenceParams: formState.referenceParams
       }
 
       if (effectiveMode.value === 'edit') {
-        await algorithmApi.updateDefinition(formState.type, bodyData)
+        await algorithmPort.updateDefinition(formState.type, bodyData)
       } else {
-        await algorithmApi.createDefinition(bodyData)
+        await algorithmPort.createDefinition(bodyData)
         // 新建模式下参考参数无法随 createDefinition 保存，算法创建成功后统一补存
         await savePendingReferenceParams()
       }
@@ -183,46 +186,46 @@ export function useAlgorithmCrudOps(
     internalMode.value = 'create'
   }
 
-  async function handleEdit(record: AlgorithmRecord) {
+  async function handleEdit(record: AlgorithmDefinition) {
     try {
-      const result = await algorithmApi.getDefinition(record.type)
+      const result = await algorithmPort.getDefinition(record.type)
       if (result) {
         const editData = result as any
-        const deviceParams = ((editData.device_params ?? editData.deviceParams) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
-        const apiParams = ((editData.api_params ?? editData.apiParams) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
-        const caseParams = ((editData.case_params ?? editData.caseParams) || []).map(normalizeCaseParamFields).map((p: any) => ({ ...p }))
-        const refConfig = editData.reference_params ?? editData.referenceConfig ?? editData.reference_config ?? editData.referenceParams
+        const deviceParams = (editData.deviceParams || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+        const apiParams = (editData.apiParams || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+        const caseParams = (editData.caseParams || []).map(normalizeCaseParamFields).map((p: any) => ({ ...p }))
+        const refConfig = editData.referenceParams
 
         Object.assign(formState, {
           type: editData.type,
           name: editData.name,
-          group_id: editData.group_id ?? editData.groupId ?? null,
+          groupId: editData.groupId ?? null,
           description: editData.description || '',
-          status: editData.status as 'online' | 'offline',
-          statusSwitch: editData.status === 'online',
+          status: editData.status as ApiEndpointStatusType,
+          statusSwitch: editData.status === ApiEndpointStatus.ONLINE,
           icon: editData.icon || '',
-          display_order: (editData.display_order ?? editData.displayOrder) || 0,
-          device_params: deviceParams,
-          api_params: apiParams,
-          case_params: caseParams,
+          displayOrder: editData.displayOrder || 0,
+          deviceParams: deviceParams,
+          apiParams: apiParams,
+          caseParams: caseParams,
           params: editData.params || [],
           mappings: normalizeMappings(editData.mappings),
-          associated_dimensions: ((editData.associated_dimensions ?? editData.associatedDimensions) || []).map((d: any) => ({
+          associatedDimensions: (editData.associatedDimensions || []).map((d: any) => ({
             id: d.id,
-            dimension_id: d.dimension_id ?? d.dimensionId,
+            dimensionId: d.dimensionId ?? null,
             weight: d.weight ?? 1.0,
-            is_default: d.is_default ?? d.isDefault ?? false
+            isDefault: d.isDefault ?? false
           })),
-          reference_params: (refConfig || []).map((p: any) => ({
+          referenceParams: (refConfig || []).map((p: any) => ({
             id: p.id,
             code: p.code || '',
             name: p.name || '',
             type: p.type || 'text',
-            annotation_code: p.annotation_code || p.code || '',
-            annotation_format: p.annotation_format || '',
-            field_path: p.field_path || '',
-            merge_mode: p.merge_mode || 'join',
-            help_text: p.help_text || ''
+            annotationCode: p.annotationCode || p.code || '',
+            annotationFormat: p.annotationFormat || '',
+            fieldPath: p.fieldPath || '',
+            mergeMode: p.mergeMode || 'join',
+            helpText: p.helpText || ''
           }))
         })
         paramConfigType.value = 'device'
@@ -235,24 +238,24 @@ export function useAlgorithmCrudOps(
     }
   }
 
-  function handleSelect(record: AlgorithmRecord) {
+  function handleSelect(record: AlgorithmDefinition) {
     emit('select', record)
     emit('update:visible', false)
   }
 
-  async function handleToggleStatus(record: AlgorithmRecord) {
-    const newStatus = record.status === 'online' ? 'offline' : 'online'
-    const action = newStatus === 'offline' ? '禁用' : '启用'
+  async function handleToggleStatus(record: AlgorithmDefinition) {
+    const newStatus = record.status === ApiEndpointStatus.ONLINE ? ApiEndpointStatus.OFFLINE : ApiEndpointStatus.ONLINE
+    const action = newStatus === ApiEndpointStatus.OFFLINE ? '禁用' : '启用'
 
     try {
-      await algorithmApi.updateDefinition(record.type, { status: newStatus })
+      await algorithmPort.updateDefinition(record.type, { status: newStatus })
       loadAlgorithms()
     } catch (error) {
       console.error(`${action}失败:`, error)
     }
   }
 
-  async function confirmDelete(record: AlgorithmRecord) {
+  async function confirmDelete(record: AlgorithmDefinition) {
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认删除',
       content: `确定要删除算法「${record.name}」吗？此操作不可恢复。`,
@@ -266,11 +269,11 @@ export function useAlgorithmCrudOps(
     }
   }
 
-  async function executeDelete(record: AlgorithmRecord) {
+  async function executeDelete(record: AlgorithmDefinition) {
     if (!record) return
 
     try {
-      await algorithmApi.deleteDefinition(record.type)
+      await algorithmPort.deleteDefinition(record.type)
       loadAlgorithms()
     } catch (error) {
       console.error('删除失败:', error)

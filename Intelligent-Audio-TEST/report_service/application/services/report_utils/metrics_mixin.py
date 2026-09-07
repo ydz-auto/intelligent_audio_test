@@ -166,6 +166,7 @@ class MetricsMixin:
                         'field_type': p.get('field_type'),
                         'agg_role': p.get('agg_role'),
                         'output_role': p.get('output_role'),
+                        'pass_threshold': p.get('pass_threshold'),
                         'visible_in_report': p.get('visible_in_report') if p.get('visible_in_report') is not None else True
                     })
 

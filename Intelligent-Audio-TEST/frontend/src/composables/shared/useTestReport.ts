@@ -1,27 +1,12 @@
 import { ref } from 'vue'
-import { reportsApi } from '../../utils/api'
+import { reportsPort } from '../report/reportsPort'
+import { ReportStatus } from '@/domain/enums'
+import type { Report } from '../../domain'
 
-export interface ReportData {
-  id?: string | number
-  title?: string
-  name?: string
-  description?: string
-  conclusion?: string
-  analysis?: string
-  status?: string
-  type?: string
-  createdAt?: string
-  updatedAt?: string
-  summary?: {
-    totalCases?: number
-    passedCases?: number
-    failedCases?: number
-    passRate?: number
-    avgScore?: number
-    [key: string]: any
-  }
-  [key: string]: any
-}
+/**
+ * 测试报告（复用 domain Report；analysis 为本地结论编辑缓冲，非领域概念）
+ */
+export type ReportData = Report & { analysis?: string }
 
 export interface UseTestReportOptions {
   initialReport?: ReportData
@@ -36,7 +21,7 @@ const DEFAULT_REPORT: ReportData = {
   conclusion: '',
   analysis: '',
   type: 'task',
-  status: 'draft',
+  status: ReportStatus.DRAFT,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   summary: { totalCases: 0, passedCases: 0, failedCases: 0, passRate: 0, avgScore: 0 }
@@ -86,7 +71,7 @@ export function useTestReport(options: UseTestReportOptions = {}) {
       report.value.analysis = content
       analysisContent.value = content
       if (report.value.id) {
-        await reportsApi.update(report.value.id, report.value)
+        await reportsPort.update(report.value.id, report.value)
       }
     }
     isEditingConclusion.value = false
@@ -106,7 +91,7 @@ export function useTestReport(options: UseTestReportOptions = {}) {
 
   function publishReport() {
     if (report.value) {
-      report.value.status = report.value.status === 'draft' ? 'published' : 'draft'
+      report.value.status = report.value.status === ReportStatus.DRAFT ? ReportStatus.PUBLISHED : ReportStatus.DRAFT
     }
   }
 

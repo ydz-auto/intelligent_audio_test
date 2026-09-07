@@ -93,7 +93,9 @@ class TagConfigServiceServicer(task_grpc.TagConfigServiceServicer):
     def DeleteTag(self, request, context=None):
         try:
             from task_service.application.commands.task_commands import DeleteTagCommand
-            return self._resp(self.cmd.handle_delete_tag(DeleteTagCommand(tag_id=request.tag_id)))
+            return self._resp(self.cmd.handle_delete_tag(
+                DeleteTagCommand(tag_id=request.tag_id, cascade=request.cascade)
+            ))
         except Exception as e:
             return task_pb.TagConfigResponse(success=False, message=str(e), data="")
 

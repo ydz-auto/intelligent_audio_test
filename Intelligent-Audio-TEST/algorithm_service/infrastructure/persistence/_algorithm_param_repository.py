@@ -21,6 +21,7 @@ from algorithm_service.domain.repositories.param_repositories import (
     IAlgorithmParamRepository,
 )
 from algorithm_service.infrastructure.persistence._param_converters import (
+    _apply_update_fields,
     _po_to_dict,
     _resolve_param_model,
 )
@@ -133,7 +134,8 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
     ) -> Dict[str, Any]:
         """按 ID 更新设备或 API 参数可写字段，返回更新后的 dict。
 
-        - 仅更新 fields 中非 None 的字段
+        - 键名兼容 camelCase（网关 update_param 原样透传前端请求体），
+          未知字段忽略，避免 setattr 到非映射属性造成静默 no-op
         - 当 param_type_source 指定时只查对应 PO；未指定时先查 device 再查 api
         """
         session = get_db_session()
@@ -154,9 +156,7 @@ class AlgorithmParamRepository(IAlgorithmParamRepository):
                     ).first()
             if po is None:
                 raise ValueError(f"Parameter id={param_id} 不存在，无法更新")
-            for field, value in fields.items():
-                if value is not None:
-                    setattr(po, field, value)
+            _apply_update_fields(po, fields)
             session.flush()
             session.commit()
             return _po_to_dict(po)

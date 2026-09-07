@@ -142,8 +142,9 @@
 
 <script setup lang="ts">
 import { computed, inject } from 'vue'
-import type { AlgorithmParamItem, InterfererConfigItem } from './types'
-import type { PlaybackDevice } from '../../../../shared/types'
+import type { AlgorithmParamItem, InterfererConfigItem } from '@/domain'
+import type { PlaybackDevice } from '../../../../domain'
+import { useAudioConfigHelpers } from './useAudioConfigHelpers'
 
 const props = defineProps<{
   modelValue: AlgorithmParamItem[]
@@ -159,76 +160,46 @@ const emit = defineEmits<{
 // inject audioConfig 和 playback devices
 const audioConfig = inject<any>('audioConfig', {})
 const playbackDevices = inject<PlaybackDevice[]>('playbackDevices', [])
-
-// ---- 音频信息查询 ----
-function getAudioName(audioId: string | number): string {
-  return audioConfig?.getAudioName?.(audioId) || '未知音频'
-}
-
-function getAudioTags(audioId: string | number): string {
-  return audioConfig?.getAudioTags?.(audioId) || ''
-}
-
-function getAudioDuration(audioId: string | number): number {
-  return audioConfig?.getAudioDuration?.(audioId) || 0
-}
-
-function formatDuration(seconds: number): string {
-  return audioConfig?.formatDuration?.(seconds) || '0s'
-}
-
-function getNormalizedTags(tagsStr: string): string[] {
-  if (!tagsStr) return []
-  try {
-    const parsed = JSON.parse(tagsStr)
-    if (Array.isArray(parsed)) return parsed.map(String)
-    if (typeof parsed === 'string') return parsed.split(',').map((s: string) => s.trim()).filter(Boolean)
-  } catch {
-    return String(tagsStr).split(',').map((s: string) => s.trim()).filter(Boolean)
-  }
-  return []
-}
+const { getAudioName, getAudioTags, getAudioDuration, formatDuration, getNormalizedTags } = useAudioConfigHelpers(audioConfig)
 
 // ---- algorithmParams 读写 ----
 function getParam(fieldCode: string, defaultValue?: unknown): unknown {
-  const item = props.modelValue?.find((p) => p.field_code === fieldCode)
-  return item?.field_value ?? defaultValue
+  const item = props.modelValue?.find((p) => p.fieldCode === fieldCode)
+  return item?.fieldValue ?? defaultValue
 }
 
+// 提交体走 Infrastructure adapter 转 snake_case
 function setParam(fieldCode: string, value: unknown) {
   const params = [...(props.modelValue ?? [])]
-  const idx = params.findIndex((p) => p.field_code === fieldCode)
+  const idx = params.findIndex((p) => p.fieldCode === fieldCode)
   if (idx >= 0) {
-    params[idx] = { field_code: fieldCode, field_value: value }
+    params[idx] = { fieldCode, fieldValue: value }
   } else {
-    params.push({ field_code: fieldCode, field_value: value })
+    params.push({ fieldCode, fieldValue: value })
   }
   emit('update:modelValue', params)
 }
 
 // ---- 干扰人列表读写 ----
-// 兼容三种存储格式：
-// - 嵌套结构（{audio:{id,name}, device:{id}, startDelay, ...}）
-// - 扁平 camelCase（{audioId, audioName, playbackDeviceId, startDelay, ...}）
-// - 扁平 snake_case（{audio_id, audio_name, playback_device_id, start_delay, ...}）
+// adapter 层已深度 camelize，此处统一只读 camelCase
 function normalizeInterfererItem(item: any): InterfererConfigItem {
   if (!item || typeof item !== 'object') return {
     audioId: '', audioName: '', playbackDeviceId: '', playbackDeviceName: '', spl: 70, startDelay: 0, loop: true,
   }
   // 嵌套结构
-  const audioId = item.audio?.id ?? item.audioId ?? item.audio_id ?? ''
+  const audioId = item.audio?.id ?? item.audioId ?? ''
   // 兼容 audio 为文件名字符串（统一标注文件格式）
-  const audioName = item.audio?.name ?? item.audioName ?? item.audio_name ?? (typeof item.audio === 'string' ? item.audio : '')
-  const playbackDeviceId = item.device?.id ?? item.playbackDeviceId ?? item.playback_device_id ?? ''
-  // 兼容 playback_device_name（设备名，统一标注文件格式）
-  const playbackDeviceName = item.device?.name ?? item.playbackDeviceName ?? item.playback_device_name ?? ''
+  const audioName = item.audio?.name ?? item.audioName ?? (typeof item.audio === 'string' ? item.audio : '')
+  const playbackDeviceId = item.device?.id ?? item.playbackDeviceId ?? ''
+  // 兼容 playbackDeviceName（设备名，统一标注文件格式）
+  const playbackDeviceName = item.device?.name ?? item.playbackDeviceName ?? ''
   return {
     audioId: String(audioId),
     audioName: String(audioName),
     playbackDeviceId: String(playbackDeviceId),
     playbackDeviceName: String(playbackDeviceName),
     spl: item.spl ?? 70,
-    startDelay: item.startDelay ?? item.start_delay ?? 0,
+    startDelay: item.startDelay ?? 0,
     loop: item.loop ?? true,
   }
 }

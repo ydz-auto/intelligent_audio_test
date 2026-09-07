@@ -1,9 +1,14 @@
 import { onMounted, onUnmounted } from 'vue';
 import { useDeviceManagement } from '../../composables/device/useDeviceManagement';
 
-// Re-export types and shared constants for consumers of useDevice
-export type { TestDevice, APIDevice, DeviceUnion } from './deviceTypes';
-import { tabs, deviceStatusText } from './deviceTypes';
+import { DEVICE_STATUS_TEXT } from '@/domain/constants/deviceLabels';
+
+// 设备管理页 Tab 配置（组件级 UI 常量）
+const tabs = [
+  { type: 'test', label: '测试设备管理', icon: 'fas fa-microphone' },
+  { type: 'api', label: '测试API管理', icon: 'fas fa-exchange-alt' },
+  { type: 'playback', label: '播放设备管理', icon: 'fas fa-headphones' }
+];
 
 import {
   activeTab,
@@ -134,7 +139,7 @@ export function useDevice() {
     algorithmTypeFilter,
     algorithmTypeOptions,
     getAlgorithmTypeName,
-    deviceStatusText,
+    deviceStatusText: DEVICE_STATUS_TEXT,
     playbackDevices,
     testDevices,
     apiDevices,

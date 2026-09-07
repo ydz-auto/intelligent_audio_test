@@ -110,7 +110,7 @@ export default {
       type: String, default: ''
     },
     status: {
-      type: String, default: 'draft'
+      type: String, default: ReportStatus.DRAFT
     },
     tags: {
       type: Array, default: () => []
@@ -135,7 +135,7 @@ export default {
   computed: {
     statusLabel() {
       const statusMap = {
-        'draft': '草稿', 'saved': '已保存', 'published': '已发布', 'updating': '更新中'
+        [ReportStatus.DRAFT]: '草稿', 'saved': '已保存', [ReportStatus.PUBLISHED]: '已发布', 'updating': '更新中'
       };
       return statusMap[this.status] || this.status;
     },

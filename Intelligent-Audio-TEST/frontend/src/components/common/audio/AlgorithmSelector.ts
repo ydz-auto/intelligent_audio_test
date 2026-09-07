@@ -1,34 +1,37 @@
 import { ref, watch, onMounted, computed, onUnmounted, nextTick } from 'vue'
 import { useAlgorithmConfig } from '../../../composables/algorithm/useAlgorithmConfig'
+import type { AlgorithmOption } from '../../../domain/model/algorithm'
+import type { AudioAlgorithmRelation } from '../../../domain/model/audio'
 
-interface AlgorithmOption {
-  value: string
-  name: string
-  group_id?: number
-  group_name?: string
-}
-
-interface AlgorithmRelation {
-  algorithmType: string
-  isPrimary: boolean
-  weight: number
-  params?: Record<string, any>
-}
+// 算法-音频关联：归集到 Domain 的 AudioAlgorithmRelation（params 值类型 any → unknown 兼容）
+export type AlgorithmRelation = AudioAlgorithmRelation
 
 interface AlgorithmGroup {
   name: string
   algorithms: AlgorithmOption[]
 }
 
+/** 组件 Props（.vue 与 composable 共用） */
+export interface AlgorithmSelectorProps {
+  modelValue?: string
+  algorithmRelations?: AlgorithmRelation[]
+  initialParams?: Record<string, any>
+  showParams?: boolean
+  single?: boolean
+}
+
+/** 组件 Emits（.vue 与 composable 共用） */
+export interface AlgorithmSelectorEmits {
+  (e: 'update:modelValue', value: string): void
+  (e: 'update:algorithmRelations', value: AlgorithmRelation[]): void
+  (e: 'paramsChange', params: Record<string, any>): void
+  (e: 'algorithmTypeChange', value: string): void
+  (e: 'dimensionsChange', dimensions: any[], dimensionIds: number[]): void
+}
+
 export function useAlgorithmSelector(
-  props: {
-    modelValue?: string
-    algorithmRelations?: AlgorithmRelation[]
-    initialParams?: Record<string, any>
-    showParams?: boolean
-    single?: boolean
-  },
-  emit: (event: string, ...args: any[]) => void
+  props: AlgorithmSelectorProps,
+  emit: AlgorithmSelectorEmits
 ) {
   const algorithmConfig = useAlgorithmConfig()
   const getAlgorithmOptions = algorithmConfig.getAlgorithmOptions
@@ -93,7 +96,7 @@ export function useAlgorithmSelector(
       : algorithmOptions.value
 
     filtered.forEach(opt => {
-      const groupName = opt.group_name || '其他算法'
+      const groupName = opt.groupName || '其他算法'
       if (!groups.has(groupName)) {
         groups.set(groupName, { name: groupName, algorithms: [] })
       }
@@ -194,8 +197,8 @@ export function useAlgorithmSelector(
       algorithmOptions.value = (options || []).map((opt: any) => ({
         value: opt.value,
         name: opt.name || opt.label || opt.value,
-        group_id: opt.group_id,
-        group_name: opt.group_name
+        groupId: opt.groupId,
+        groupName: opt.groupName
       }))
     } catch (error) {
       console.error('加载算法选项失败:', error)
@@ -225,7 +228,7 @@ export function useAlgorithmSelector(
         const dimensionsData = await getAssociatedDimensions(algorithmType)
         if (dimensionsData) {
           const dimensions = dimensionsData.dimensions || []
-          const dimensionIds = dimensionsData.dimension_ids || []
+          const dimensionIds = dimensionsData.dimensionIds || []
           emit('dimensionsChange', dimensions, dimensionIds)
         } else {
           emit('dimensionsChange', [], [])
@@ -282,7 +285,7 @@ export function useAlgorithmSelector(
       const dimensionsData = await getAssociatedDimensions(algorithmType)
       if (dimensionsData) {
         const dimensions = dimensionsData.dimensions || []
-        const dimensionIds = dimensionsData.dimension_ids || []
+        const dimensionIds = dimensionsData.dimensionIds || []
         emit('dimensionsChange', dimensions, dimensionIds)
       } else {
         emit('dimensionsChange', [], [])

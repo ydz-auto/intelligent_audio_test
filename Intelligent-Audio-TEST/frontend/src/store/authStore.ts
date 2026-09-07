@@ -6,18 +6,12 @@
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { HttpStatus } from '@/shared/types/enums'
+import { HttpStatus } from '../domain/enums'
+import type { AuthUser } from '../domain/model'
+import { authPort } from '../composables/auth/authPort'
 
 const TOKEN_KEY = 'auth_token'
 const USER_KEY = 'auth_user'
-
-interface AuthUser {
-  id: number
-  username: string
-  role_id: number | null
-  role_name: string
-  permissions: string[]
-}
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string>(localStorage.getItem(TOKEN_KEY) || '')
@@ -34,7 +28,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => !!token.value)
   const permissions = computed<string[]>(() => user.value?.permissions || [])
-  const roleName = computed(() => user.value?.role_name || '')
+  const roleName = computed(() => user.value?.roleName || '')
   const username = computed(() => user.value?.username || '')
 
   /** 检查是否拥有指定权限（支持 * 通配） */
@@ -49,6 +43,12 @@ export const useAuthStore = defineStore('auth', () => {
     const userPerms = permissions.value
     if (userPerms.includes('*')) return true
     return perms.some(p => userPerms.includes(p))
+  }
+
+  /** 登录：调用 authPort（camelCase Domain 契约）并落库 token/用户 */
+  async function login(username: string, password: string): Promise<void> {
+    const result = await authPort.login({ username, password })
+    setAuth(result.accessToken, result.user)
   }
 
   /** 登录成功后设置 token 和用户信息 */
@@ -79,34 +79,31 @@ export const useAuthStore = defineStore('auth', () => {
    * 应用启动时调用：若 token 存在则拉取最新用户信息。
    * - AUTH_MODE=off 时无 token，直接返回
    * - token 失效（401）则登出
-   * 使用 fetch 而非 http.ts，避免循环依赖与拦截器递归
+   * 走 composables/auth/authPort 的 authPort（JWT 由 client.ts 拦截器注入），
+   * 401 时由 request 抛错，此处捕获后登出
    */
   let initialized = false
   async function init() {
     if (initialized || !token.value) return
     initialized = true
     try {
-      const resp = await fetch('/api/v1/auth/me', {
-        headers: { Authorization: `Bearer ${token.value}` },
-      })
-      if (resp.status === HttpStatus.UNAUTHORIZED) {
+      // authPort.getMe 已返回 camelCase CurrentUserInfo（Domain），
+      // 此处合并至 AuthUser；/auth/me 不含角色名，roleName 兜底取旧会话缓存
+      const payload = await authPort.getMe()
+      user.value = {
+        id: payload.userId ?? user.value?.id ?? 0,
+        username: payload.username ?? user.value?.username ?? '',
+        roleId: payload.roleId ?? user.value?.roleId ?? null,
+        roleName: payload.roleName ?? user.value?.roleName ?? '',
+        permissions: payload.permissions ?? user.value?.permissions ?? [],
+      }
+      localStorage.setItem(USER_KEY, JSON.stringify(user.value))
+    } catch (e: any) {
+      if (e?.code === HttpStatus.UNAUTHORIZED) {
         logout()
         return
       }
-      if (!resp.ok) return
-      const data = await resp.json()
-      // /auth/me 返回 {user_id, username, role_id, permissions}（被 to_response 透传）
-      const payload = data.data ?? data
-      user.value = {
-        id: payload.user_id ?? payload.id ?? 0,
-        username: payload.username ?? '',
-        role_id: payload.role_id ?? null,
-        role_name: payload.role_name ?? user.value?.role_name ?? '',
-        permissions: payload.permissions ?? [],
-      }
-      localStorage.setItem(USER_KEY, JSON.stringify(user.value))
-    } catch {
-      // 网络错误：保留 localStorage 中的用户信息，下次重试
+      // 网络错误等其他异常：保留 localStorage 中的用户信息，下次重试
       initialized = false
     }
   }
@@ -120,6 +117,7 @@ export const useAuthStore = defineStore('auth', () => {
     username,
     hasPermission,
     hasAnyPermission,
+    login,
     setAuth,
     updateUser,
     logout,

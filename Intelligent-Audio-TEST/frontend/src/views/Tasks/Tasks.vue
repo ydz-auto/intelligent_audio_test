@@ -132,17 +132,17 @@
           <div class="filter-item">
             <label for="status-filter">任务状态：</label>
             <select class="filter-select" id="status-filter" v-model="filters.status" @change="applyFilters">
-              <option value="all">全部状态</option>
-              <option value="pending">待执行</option>
-              <option value="queued">排队中</option>
-              <option value="running">执行中</option>
-              <option value="evaluating">评估中</option>
-              <option value="reevaluate_queued">重新评估排队中</option>
-              <option value="reevaluating">重新评估中</option>
-              <option value="completed">已完成</option>
-              <option value="failed">执行失败</option>
+              <option :value="ViewMode.ALL">全部状态</option>
+              <option :value="TaskStatus.PENDING">待执行</option>
+              <option :value="TaskStatus.QUEUED">排队中</option>
+              <option :value="TaskStatus.RUNNING">执行中</option>
+              <option :value="TaskStatus.EVALUATING">评估中</option>
+              <option :value="TaskStatus.REEVALUATE_QUEUED">重新评估排队中</option>
+              <option :value="TaskStatus.REEVALUATING">重新评估中</option>
+              <option :value="TaskStatus.COMPLETED">已完成</option>
+              <option :value="TaskStatus.FAILED">执行失败</option>
               <option value="deleted">已删除</option>
-              <option value="merged">已合并</option>
+              <option :value="TaskStatus.MERGED">已合并</option>
             </select>
           </div>
         </div>
@@ -175,8 +175,8 @@
           
           <div class="sort-options">
             <span>排序：</span>
-            <div class="sort-item" :class="{ active: sortConfig.field === 'created_at' }" @click="toggleSort('created_at')">
-              创建时间 <i class="fas" :class="sortConfig.field === 'created_at' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
+            <div class="sort-item" :class="{ active: sortConfig.field === 'createdAt' }" @click="toggleSort('createdAt')">
+              创建时间 <i class="fas" :class="sortConfig.field === 'createdAt' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
             </div>
             <div class="sort-item" :class="{ active: sortConfig.field === 'status' }" @click="toggleSort('status')">
               状态 <i class="fas" :class="sortConfig.field === 'status' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
@@ -239,14 +239,14 @@
               description: task.description,
               type: task.type,
               status: task.status,
-              createdAt: formatDate(task.created_at),
+              createdAt: formatDate(task.createdAt),
               tags: task.tags,
-              deviceCount: task.device_count,
-              caseCount: task.case_count,
-              completedCases: task.completed_cases,
-              totalCases: task.total_cases,
-              algorithmType: task.algorithm_type,
-              algorithmParams: task.algorithm_params
+              deviceCount: task.deviceCount,
+              caseCount: task.caseCount,
+              completedCases: task.completedCases,
+              totalCases: task.totalCases,
+              algorithmType: task.algorithmType,
+              algorithmParams: task.algorithmParams
             }))"
             :is-selected="(task: any) => selectedTasks.has(task.id)"
             :show-checkbox="true"
@@ -289,7 +289,6 @@
         :device-api-comparison-data="deviceApiComparisonData"
         :case-execution-columns="caseExecutionColumns"
         :case-execution-data="caseExecutionData"
-        :report-service="reportService"
         @toggle-edit-report="toggleEditReport"
         @save-report="saveComparisonReport"
         @cancel-edit-report="cancelEditReport"
@@ -314,7 +313,7 @@
 
 <script setup lang="ts">
 import { useTasks } from './tasks';
-import { TaskStatus, FINISHED_STATUSES, TestType } from '@/shared/types/enums';
+import { TaskStatus, FINISHED_STATUSES, TestType, ViewMode } from '@/domain/enums';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
@@ -335,7 +334,6 @@ const {
   cancelEditConclusion, toggleEditReport, cancelEditReport,
   deviceApiColumns, caseExecutionColumns,
   toggleDeviceSelection, fetchTasks,
-  reportService,
   isEditingReport,
   reportConclusion,
   handlePageChange,

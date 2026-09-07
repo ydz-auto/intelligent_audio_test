@@ -1,19 +1,19 @@
 import { defineStore } from 'pinia'
 import { ref, reactive, computed, watch } from 'vue'
 
-export interface TestCaseGroup {
+/** 分组展示态（原 TestCaseGroup 改名，区别于 domain 后端分组实体）：含前端展示字段 expanded/cases */
+export interface TestCaseGroupState {
   id: string | number;
   name: string;
   description?: string;
   cases?: any[];
   expanded?: boolean;
-  [key: string]: any;
 }
 
 export const useTestCaseGroupStore = defineStore('testCaseGroup', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
-  const groups = reactive<Record<string | number, TestCaseGroup>>({})
+  const groups = reactive<Record<string | number, TestCaseGroupState>>({})
 
   const STORAGE_KEY = 'test-case-groups-store'
   const autoSave = ref(true)
@@ -48,7 +48,7 @@ export const useTestCaseGroupStore = defineStore('testCaseGroup', () => {
     }
   }
 
-  const setGroups = (groupList: TestCaseGroup[]) => {
+  const setGroups = (groupList: TestCaseGroupState[]) => {
     Object.keys(groups).forEach(key => delete groups[key])
     groupList.forEach(group => {
       groups[group.id] = { ...group, expanded: groups[group.id]?.expanded ?? false }
@@ -56,14 +56,14 @@ export const useTestCaseGroupStore = defineStore('testCaseGroup', () => {
     saveToStorage()
   }
 
-  const addGroup = (group: Partial<TestCaseGroup>) => {
+  const addGroup = (group: Partial<TestCaseGroupState>) => {
     const id = group.id || `group-${Date.now()}`
     groups[id] = { id, name: group.name || '未命名分组', description: group.description || '', cases: [], ...group, expanded: false }
     saveToStorage()
     return groups[id]
   }
 
-  const updateGroup = (groupId: string | number, updates: Partial<TestCaseGroup>) => {
+  const updateGroup = (groupId: string | number, updates: Partial<TestCaseGroupState>) => {
     if (groups[groupId]) {
       Object.assign(groups[groupId], updates)
       saveToStorage()

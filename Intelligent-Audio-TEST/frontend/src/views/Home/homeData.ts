@@ -1,7 +1,7 @@
 import type { RouteLocationRaw } from 'vue-router'
-import { TestType } from '@/shared/types/enums'
+import { TestType } from '@/domain/enums'
 
-export interface StatItem {
+export interface HomeStatCard {
   to: RouteLocationRaw
   icon: string
   numberKey: keyof typeof defaultAnimated
@@ -26,7 +26,7 @@ const defaultAnimated = {
   dimensionsEndpoints: 0
 }
 
-export const statCards: StatItem[] = [
+export const statCards: HomeStatCard[] = [
   {
     to: '/TestCaseManager',
     icon: 'fas fa-clipboard-list',
@@ -163,7 +163,7 @@ export const detailSections: DetailSection[] = [
       { icon: 'fas fa-exclamation-triangle', title: '异常处理', desc: '支持重试和跳过失败用例' }
     ],
     ctaTo: '/E2ETest',
-    ctaVariant: 'e2e',
+    ctaVariant: TestType.E2E,
     ctaText: '立即体验',
     reverse: false,
     altBg: false
@@ -171,7 +171,7 @@ export const detailSections: DetailSection[] = [
   {
     title: 'API测试系统',
     subtitle: '测试语音识别和翻译API的性能与准确率，支持批量测试和结果对比',
-    variant: 'api',
+    variant: TestType.API,
     iconLarge: 'fas fa-exchange-alt',
     mainTitle: 'API性能测试',
     mainDescription:
@@ -188,7 +188,7 @@ export const detailSections: DetailSection[] = [
       { icon: 'fas fa-file-export', title: '报告导出', desc: '支持CSV和PDF格式导出' }
     ],
     ctaTo: '/APITest',
-    ctaVariant: 'api',
+    ctaVariant: TestType.API,
     ctaText: '立即体验',
     reverse: true,
     altBg: true
@@ -412,7 +412,7 @@ export const featureCards: FeatureCard[] = [
     description: '在真实设备上执行端到端语音测试，支持多设备并行测试和实时进度监控。',
     list: ['多设备并行测试', '五步测试流程', '可视化报告'],
     link: '开始测试',
-    variant: 'e2e'
+    variant: TestType.E2E
   },
   {
     to: '/APITest',
@@ -421,7 +421,7 @@ export const featureCards: FeatureCard[] = [
     description: '测试语音识别和翻译API的性能与准确率，支持批量测试和结果对比分析。',
     list: ['API性能测试', '并发控制', '健康状态监控'],
     link: '开始测试',
-    variant: 'api'
+    variant: TestType.API
   },
   {
     to: '/AudioImport',

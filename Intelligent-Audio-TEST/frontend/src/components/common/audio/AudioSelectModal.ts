@@ -3,15 +3,17 @@ import { useAudioList, type AudioItem } from '../../../composables/audio/useAudi
 import { useUploadState } from '../../../composables/upload/useUploadState';
 import { useFolderSelection } from '../../../composables/shared/useFolderSelection';
 import { getModalManager } from '../../../composables/modal/useModal';
-import { MODAL_TYPES } from '../../../shared/types';
-import { audiosApi } from '../../../utils/api';
+import { useNotification } from '../../../composables/modal/useNotification';
+import { MODAL_TYPES } from '../../../composables/modal/constants';
+import { audiosPort } from '@/composables/audio/audiosPort';
 import { parseDuration, formatDurationLong } from '../../../utils/audioUtils';
-import { UploadStatus } from '@/shared/types/enums';
+import { UploadStatus } from '@/domain/enums';
 
 export function useAudioSelectModal(
   props: { visible: boolean; title: string; audioType: string; isMultiSelect?: boolean },
   emit: (e: any, ...args: any[]) => void
 ) {
+  const notification = useNotification();
   const {
     audioList: audios,
     totalAudios,
@@ -64,8 +66,8 @@ export function useAudioSelectModal(
     name: '音频文件',
     path: '',
     count: 0,
-    file_count: 0,
-    has_children: false,
+    fileCount: 0,
+    hasChildren: false,
     files: [],
     folders: []
   });
@@ -78,7 +80,7 @@ export function useAudioSelectModal(
   async function fetchFolderTree() {
     folderLoading.value = true;
     try {
-      const response: any = await audiosApi.getFolderTree({
+      const response: any = await audiosPort.getFolderTree({
         audioType: props.audioType ? props.audioType : undefined,
         depth: 1
       }, { unwrapResponse: false });
@@ -92,6 +94,7 @@ export function useAudioSelectModal(
     }
   }
 
+  // getFolderTree 已经通过 adapter 转为 camelCase
   function normalizeFile(file: any): any {
     return {
       ...file,
@@ -101,20 +104,20 @@ export function useAudioSelectModal(
       format: file.format || '',
       duration: file.duration || 0,
       size: file.size || 0,
-      audio_type: file.audio_type || file.audioType || file.type || 'dry',
-      type: file.type || file.audio_type || file.audioType || file.type || 'dry',
-      created_at: file.created_at || file.createdAt || '',
+      audioType: file.audioType ?? file.type ?? 'dry',
+      type: file.type ?? file.audioType ?? 'dry',
+      createdAt: file.createdAt ?? '',
     };
   }
 
   function normalizeTreeNode(node: any): any {
-    if (!node) return { name: 'root', path: '', count: 0, file_count: 0, has_children: false, files: [], folders: [] };
+    if (!node) return { name: 'root', path: '', count: 0, fileCount: 0, hasChildren: false, files: [], folders: [] };
     return {
       name: node.name || 'unnamed',
       path: node.path ?? '',
       count: node.count ?? node.total ?? 0,
-      file_count: node.file_count ?? node.fileCount ?? (Array.isArray(node.files) ? node.files.length : 0),
-      has_children: node.has_children ?? node.hasChildren ?? false,
+      fileCount: node.fileCount ?? (Array.isArray(node.files) ? node.files.length : 0),
+      hasChildren: node.hasChildren ?? false,
       files: Array.isArray(node.files) ? node.files.map(normalizeFile) : [],
       folders: Array.isArray(node.folders) ? node.folders.map(normalizeTreeNode) : [],
     };
@@ -133,7 +136,7 @@ export function useAudioSelectModal(
   async function loadSubTree(folderPath: string): Promise<any | null> {
     folderLoading.value = true;
     try {
-      const response: any = await audiosApi.getFolderTree({
+      const response: any = await audiosPort.getFolderTree({
         audioType: props.audioType ? props.audioType : undefined,
         parentPath: folderPath,
         depth: 10
@@ -165,8 +168,8 @@ export function useAudioSelectModal(
     function findAndUpdate(node: any): boolean {
       if (node.path === targetPath) {
         node.files = subNode.files;
-        node.file_count = subNode.file_count ?? subNode.files?.length ?? 0;
-        node.has_children = subNode.has_children;
+        node.fileCount = subNode.fileCount ?? subNode.files?.length ?? 0;
+        node.hasChildren = subNode.hasChildren;
         const existingFolders = new Map<string, any>((node.folders || []).map((f: any) => [f.path as string, f]));
         const merged: any[] = [];
         for (const newFolder of (subNode.folders || [])) {
@@ -174,8 +177,8 @@ export function useAudioSelectModal(
           if (existing) {
             existing.name = newFolder.name;
             existing.count = newFolder.count;
-            existing.file_count = newFolder.file_count;
-            existing.has_children = newFolder.has_children;
+            existing.fileCount = newFolder.fileCount;
+            existing.hasChildren = newFolder.hasChildren;
             if (newFolder.files && newFolder.files.length > 0) existing.files = newFolder.files;
             merged.push(existing);
           } else {
@@ -344,7 +347,7 @@ export function useAudioSelectModal(
     let audio: any | undefined = audios.value.find(a => a.id === audioId);
 
     try {
-      const fullAudio = await import('../../../utils/api').then(m => m.audiosApi.getOne(audioId));
+      const fullAudio = await import('@/composables/audio/audiosPort').then(m => m.audiosPort.getOne(audioId));
       if (fullAudio) {
         audio = fullAudio;
       }
@@ -395,11 +398,11 @@ export function useAudioSelectModal(
 
       if (payload && payload.action === 'save') {
         const editedData = payload.data;
-        const response: any = await import('../../../utils/api').then(m => m.audiosApi.updateMetadata(editedData.id, editedData, { unwrapResponse: false }));
+        const response: any = await import('@/composables/audio/audiosPort').then(m => m.audiosPort.updateMetadata(editedData.id, editedData, { unwrapResponse: false }));
         if (response?.success) {
           await loadAudios();
         } else {
-          alert('保存失败: ' + (response?.message || '未知错误'));
+          notification.error('保存失败: ' + (response?.message || '未知错误'));
         }
       }
     } catch (err: any) {

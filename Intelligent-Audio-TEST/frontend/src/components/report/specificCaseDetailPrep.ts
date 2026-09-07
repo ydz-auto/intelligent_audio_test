@@ -1,5 +1,5 @@
 import { toMetricsMap, toTextMap } from './specificCaseDataHelpers'
-import { TestType } from '@/shared/types/enums'
+import { inferParamType } from '@/domain'
 
 export function createCaseDetailPrep(deps: {
   props: any
@@ -33,16 +33,8 @@ export function createCaseDetailPrep(deps: {
     return data
   }
 
-  function _inferParamType(paramKey: string) {
-    const lower = paramKey.toLowerCase();
-    if (lower.includes('rttm')) return 'rttm';
-    if (lower.includes('stm')) return 'stm';
-    if (lower.includes('audio')) return 'audio';
-    return 'text';
-  }
-
   function getAlgorithmResults(caseItem: any) {
-    const algoResults = caseItem.algorithm_results;
+    const algoResults = caseItem.algorithmResults;
 
     if (Array.isArray(algoResults)) {
       return algoResults;
@@ -50,9 +42,9 @@ export function createCaseDetailPrep(deps: {
 
     const result: any[] = [];
     const excludedKeys = new Set([
-      'evaluation_data', 'eval_data', 'raw_response', 'result_type',
-      'error_message', 'status', 'duration', 'adjusted_reference_params',
-      'reference_params', 'config'
+      'evaluationData', 'evalData', 'rawResponse', 'resultType',
+      'errorMessage', 'status', 'duration', 'adjustedReferenceParams',
+      'referenceParams', 'config'
     ]);
 
     if (algoResults && typeof algoResults === 'object') {
@@ -62,8 +54,8 @@ export function createCaseDetailPrep(deps: {
             if (paramValue && !excludedKeys.has(paramKey)) {
               result.push({
                 device: resource,
-                param_code: paramKey,
-                param_type: _inferParamType(paramKey),
+                paramCode: paramKey,
+                paramType: inferParamType(paramKey),
                 label: paramKey,
                 value: paramValue
               });
@@ -73,13 +65,13 @@ export function createCaseDetailPrep(deps: {
       }
     }
 
-    const directKeys = ['rttmRes', 'stmRes', 'rttm_res', 'stm_res', 'rttm_hyp', 'stm_hyp', 'rttmHyp', 'stmHyp'];
+    const directKeys = ['rttmRes', 'stmRes', 'rttmHyp', 'stmHyp'];
     for (const key of directKeys) {
       if (caseItem[key]) {
         result.push({
           device: 'default',
-          param_code: key,
-          param_type: _inferParamType(key),
+          paramCode: key,
+          paramType: inferParamType(key),
           label: key,
           value: caseItem[key]
         });
@@ -89,31 +81,22 @@ export function createCaseDetailPrep(deps: {
     return result;
   }
 
+  // 原按 reportData.taskType 过滤音频的逻辑已移除：Report domain 无 taskType 字段（adapter 不产出），该分支恒为 'all'（全量返回），属死代码
   function prepareAudioList(caseItem: any) {
-    const taskType = props.reportData?.task_type || 'all'
-
     if (!caseItem.audioList || !Array.isArray(caseItem.audioList) || caseItem.audioList.length === 0) {
       return []
     }
 
-    return caseItem.audioList.filter((audio: any) => {
-      if (taskType === TestType.API) {
-        return audio.type === TestType.API
-      } else if (taskType === TestType.E2E) {
-        return audio.type === TestType.E2E || audio.type === 'noise'
-      } else {
-        return true
-      }
-    })
+    return caseItem.audioList
   }
 
   /**
    * 从 reportData.summary.fieldMappings 中按 algorithmType 获取 field_mapping 快照
    */
   function getFieldMapping(caseItem: any) {
-    const algoType = caseItem.algorithm_type || '';
+    const algoType = caseItem.algorithmType || '';
     if (!algoType) return { result: [], reference: [] };
-    const fieldMappings = props.reportData?.summary?.field_mappings || {};
+    const fieldMappings = props.reportData?.summary?.fieldMappings || {};
     return fieldMappings[algoType] || { result: [], reference: [] };
   }
 
@@ -122,11 +105,11 @@ export function createCaseDetailPrep(deps: {
       ...caseItem,
       _preparedComparisonData: prepareComparisonData(caseItem),
       _preparedAudioList: prepareAudioList(caseItem),
-      _preparedReferenceAsr: caseItem.asr?.reference_text || '',
-      _preparedReferenceTrans: caseItem.translation?.reference_text || '',
+      _preparedReferenceAsr: caseItem.asr?.referenceText || '',
+      _preparedReferenceTrans: caseItem.translation?.referenceText || '',
       _preparedAlgorithmResults: getAlgorithmResults(caseItem),
-      _preparedReferenceParams: caseItem.reference_params || {},
-      _preparedAlgorithmType: caseItem.algorithm_type || '',
+      _preparedReferenceParams: caseItem.referenceParams || {},
+      _preparedAlgorithmType: caseItem.algorithmType || '',
       _preparedFieldMapping: getFieldMapping(caseItem)
     }
   }

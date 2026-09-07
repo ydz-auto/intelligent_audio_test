@@ -107,9 +107,11 @@
 import { computed, watch } from 'vue'
 import { getModalManager } from '../../../composables/modal/useModal'
 import { useUploadState } from '../../../composables/upload/useUploadState'
-import { type ActiveModal, MODAL_TYPES } from '../../../shared/types'
+import { MODAL_TYPES } from '../../../composables/modal/constants'
+import type { ActiveModal } from '../../../composables/modal/types'
 import BasicModal from './BasicModal.vue'
-import { testcasesApi } from '../../../utils/api'
+import { testcasesPort } from '../../../composables/testCase/testcasesPort'
+import { useNotification } from '@/composables/modal/useNotification'
 import TestCaseModal from '../test-case/TestCaseModal/index.vue'
 import AddTestCaseModal from '../test-case/AddTestCaseModal.vue'
 import ModalConfirm from './ModalConfirm.vue'
@@ -139,6 +141,8 @@ import TestCaseDetailModal from './TestCaseDetailModal.vue'
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
 import AudioSelectModal from '../audio/AudioSelectModal.vue'
 import ReevaluateSelectModal from './ReevaluateSelectModal.vue'
+
+const notification = useNotification()
 
 const isNativeEvent = (data: any): boolean => {
   return data !== undefined && data !== null
@@ -348,12 +352,12 @@ const handleSave = async (modalId: string, data: any) => {
       console.log('[GlobalModalContainer] 导出参数:', { ids: ids.length, format, includeDeleted });
       
       if (ids.length === 0) {
-        alert('没有可导出的用例');
+        notification.warning('没有可导出的用例');
         handleClose(modalId);
         return;
       }
       
-      const response = await testcasesApi.export(ids, format, includeDeleted);
+      const response = await testcasesPort.export(ids, format, includeDeleted);
       
       console.log('[GlobalModalContainer] 导出响应类型:', typeof response);
       console.log('[GlobalModalContainer] 导出响应是否为Blob:', response instanceof Blob);
@@ -380,7 +384,7 @@ const handleSave = async (modalId: string, data: any) => {
     } catch (error) {
       console.error('[GlobalModalContainer] 导出失败:', error);
       const errorMessage = error instanceof Error ? error.message : '未知错误'
-      alert('导出失败: ' + errorMessage);
+      notification.error('导出失败: ' + errorMessage);
     }
   }
   

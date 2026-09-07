@@ -231,13 +231,13 @@
                     <i class="fas fa-file-audio"></i>
                   </div>
                   <div class="audio-details">
-                <div class="audio-name">{{ audio.filename }}</div>
+                <div class="audio-name">{{ audio.filename || audio.name }}</div>
               </div>
                 </div>
               </td>
-              <td class="core-col"><span class="format-badge" :class="audio.format">{{ audio.format.toUpperCase() }}</span></td>
-              <td class="secondary-col">{{ audio.size }}</td>
-              <td class="core-col">{{ audio.duration }}</td>
+              <td class="core-col"><span class="format-badge" :class="audio.format">{{ (audio.format || '').toUpperCase() }}</span></td>
+              <td class="secondary-col">{{ formatFileSize(audio.size ?? 0) }}</td>
+              <td class="core-col">{{ formatDuration(audio.duration) }}</td>
               <td class="secondary-col"><span class="audio-type-badge" :class="audio.type">
                 {{ audio.type === 'dry' ? '干声' : (audio.type === 'noise' ? '噪声' : (audio.type === 'mixed' ? '混合' : '提示词')) }}
               </span></td>
@@ -364,11 +364,11 @@
           <div class="audio-basic-info">
             <i class="fas fa-file-audio audio-icon"></i>
             <div class="audio-details">
-              <div class="audio-name">{{ audio.filename }}</div>
+              <div class="audio-name">{{ audio.filename || audio.name }}</div>
               <div class="audio-meta">
-                <span class="format-badge" :class="audio.format">{{ audio.format.toUpperCase() }}</span>
-                <span class="file-size">{{ audio.size }}</span>
-                <span class="file-duration">{{ audio.duration }}</span>
+                <span class="format-badge" :class="audio.format">{{ (audio.format || '').toUpperCase() }}</span>
+                <span class="file-size">{{ formatFileSize(audio.size ?? 0) }}</span>
+                <span class="file-duration">{{ formatDuration(audio.duration) }}</span>
               </div>
             </div>
           </div>
@@ -416,6 +416,7 @@
 <script setup lang="ts">
 import FolderNodeComponent from '../misc/FolderNodeComponent.vue';
 import PaginationComponent from '../data/PaginationComponent.vue';
+import { formatFileSize, formatDuration } from '../../../utils/audioUtils';
 import { useAudioListComponent } from './AudioListComponent';
 import type { AudioItem, AudioListProps } from './AudioListComponent';
 
@@ -438,7 +439,7 @@ const emit = defineEmits<{
   (e: 'selectCurrentPage'): void;
   (e: 'deselectCurrentPage'): void;
   (e: 'deselectAll'): void;
-  (e: 'view-change', mode: string): void;
+  (e: 'view-change', mode: 'list' | 'folder' | 'diagnostics'): void;
   (e: 'toggleTag', tag: string, mode?: 'or' | 'and'): void;
   (e: 'expand-folder', folderPath: string): void;
   (e: 'toggle-folder-selection', folder: any): void;

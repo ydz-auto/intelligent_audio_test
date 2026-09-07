@@ -4,7 +4,8 @@
 负责单个维度的评估结果解析（响应提取优先级、打分），
 以及结果维度完成状态检查。
 """
-from evaluation_service.domain.services.evaluation_utils import extract_by_path, calculate_score
+from shared.utils.path_extractor import extract_by_path
+from evaluation_service.domain.services.evaluation_utils import calculate_score
 
 
 class ParseDimensionMixin:

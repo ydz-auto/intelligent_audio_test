@@ -5,6 +5,10 @@
         <i :class="isSuccess ? 'fas fa-check-circle' : (isDanger ? 'fas fa-exclamation-triangle' : 'fas fa-question-circle')"></i>
       </div>
       <p class="modal-confirmMessage">{{ content }}</p>
+      <label v-if="checkboxLabel" class="modal-confirmCheckbox">
+        <input type="checkbox" v-model="checkboxChecked">
+        <span>{{ checkboxLabel }}</span>
+      </label>
     </div>
     <div class="modal-confirmActions">
       <button 
@@ -25,7 +29,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useModalControl } from '../../../composables/modal/useModal'
 
 const props = defineProps({
@@ -52,6 +56,11 @@ const props = defineProps({
   danger: {
     type: Boolean,
     default: false
+  },
+  /** 可选复选框文案；为空时不渲染复选框 */
+  checkboxLabel: {
+    type: String,
+    default: ''
   }
 })
 
@@ -67,8 +76,10 @@ const isDanger = computed(() => {
   return props.danger || props.title?.includes('错误') || props.title?.includes('失败') || props.title?.toLowerCase().includes('error') || props.title?.toLowerCase().includes('failed')
 })
 
+const checkboxChecked = ref(false)
+
 const handleConfirm = () => {
-  emit('confirm', { confirmed: true })
+  emit('confirm', { confirmed: true, checkboxValue: checkboxChecked.value })
 }
 
 const handleCancel = () => {
@@ -119,6 +130,19 @@ const handleCancel = () => {
   font-size: 15px;
   color: #475569;
   line-height: 1.6;
+}
+
+.modal-confirmCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #475569;
+  cursor: pointer;
+}
+
+.modal-confirmCheckbox input[type='checkbox'] {
+  cursor: pointer;
 }
 
 .modal-confirmActions {

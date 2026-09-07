@@ -1,4 +1,4 @@
-import { algorithmApi } from '../../utils/api'
+import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { PARAM_CODE_PRESETS, FEATURE_BUNDLES } from './algorithmConstants'
 
 export function useAlgorithmFeatureBundles(
@@ -9,7 +9,7 @@ export function useAlgorithmFeatureBundles(
   function isBundleActive(bundleKey: string): boolean {
     const bundle = FEATURE_BUNDLES[bundleKey]
     if (!bundle) return false
-    const codes = new Set(formState.case_params.map((p: any) => p.param_code))
+    const codes = new Set(formState.caseParams.map((p: any) => p.paramCode))
     return bundle.params.every((code) => codes.has(code))
   }
 
@@ -18,9 +18,9 @@ export function useAlgorithmFeatureBundles(
     for (const p of params) {
       if (p.id) {
         try {
-          await algorithmApi.deleteCaseParam(p.id)
+          await algorithmPort.deleteCaseParam(p.id)
         } catch (e) {
-          console.error('[toggleBundle] 删除参数失败:', p.param_code, e)
+          console.error('[toggleBundle] 删除参数失败:', p.paramCode, e)
         }
       }
     }
@@ -32,9 +32,9 @@ export function useAlgorithmFeatureBundles(
     if (!formState.type) return
     try {
       // 只保存没有 id 的新参数（已存在的参数不需要重复保存）
-      for (let i = 0; i < formState.case_params.length; i++) {
-        const p = formState.case_params[i]
-        if (!p.id && p.param_code) {
+      for (let i = 0; i < formState.caseParams.length; i++) {
+        const p = formState.caseParams[i]
+        if (!p.id && p.paramCode) {
           await autoSaveCaseParams(p, i)
         }
       }
@@ -46,12 +46,12 @@ export function useAlgorithmFeatureBundles(
   async function toggleBundle(bundleKey: string) {
     const bundle = FEATURE_BUNDLES[bundleKey]
     if (!bundle) return
-    const codes = new Set(formState.case_params.map((p: any) => p.param_code))
+    const codes = new Set(formState.caseParams.map((p: any) => p.paramCode))
     const hasAll = bundle.params.every((code) => codes.has(code))
     if (hasAll) {
       // 取消勾选：从 DB 删除该 bundle 的所有参数，并从 formState 移除
-      const removed = formState.case_params.filter((p: any) => bundle.params.includes(p.param_code))
-      formState.case_params = formState.case_params.filter((p: any) => !bundle.params.includes(p.param_code))
+      const removed = formState.caseParams.filter((p: any) => bundle.params.includes(p.paramCode))
+      formState.caseParams = formState.caseParams.filter((p: any) => !bundle.params.includes(p.paramCode))
       // 已入库的参数立即调用 DELETE，未入库的（无 id）无需处理
       await deleteCaseParams(removed)
     } else {
@@ -59,20 +59,20 @@ export function useAlgorithmFeatureBundles(
       for (const code of bundle.params) {
         if (!codes.has(code)) {
           const preset = PARAM_CODE_PRESETS[code]
-          formState.case_params.push({
-            param_code: code,
-            param_name: preset?.param_name || code,
-            param_type: preset?.param_type || 'text',
+          formState.caseParams.push({
+            paramCode: code,
+            paramName: preset?.paramName || code,
+            paramType: preset?.paramType || 'text',
             scope: bundle.scope,
             required: false,
-            default_value: preset?.default_value ?? '',
-            help_text: preset?.help_text || '',
-            min_value: preset?.min_value,
-            max_value: preset?.max_value,
+            defaultValue: preset?.defaultValue ?? '',
+            helpText: preset?.helpText || '',
+            minValue: preset?.minValue,
+            maxValue: preset?.maxValue,
             step: preset?.step,
             unit: preset?.unit,
-            annotation_code: null,
-            field_path: null,
+            annotationCode: null,
+            fieldPath: null,
             hidden: false,
             deleted: false,
             tempId: `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,

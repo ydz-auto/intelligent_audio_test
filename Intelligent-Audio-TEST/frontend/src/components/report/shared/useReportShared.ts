@@ -4,9 +4,10 @@
  * 从 SpecificCaseComparison / CaseTagComparison / CaseCategoryComparison
  * 三个组件中提取的公共逻辑。
  */
-import { ref, computed } from 'vue'
-import { reportsApi } from '../../../utils/api'
+import { ref, computed, type Ref } from 'vue'
+import { reportsPort } from '@/composables/report/reportsPort'
 import { usePagination } from '../../../composables/usePagination'
+import { readCamel } from '../../../utils/keyTransform'
 
 /** 折叠状态（isCollapsed + toggleCollapse） */
 export function useCollapse() {
@@ -50,7 +51,7 @@ export function useDisplayTypes() {
 
 /** 保存摘要（reportId computed + scheduleSaveSummary 防抖） */
 export function useSaveSummary(props: any, logTag = 'ReportComparison') {
-  const reportId = computed(() => props.reportData?.id || props.reportData?.report_id)
+  const reportId = computed(() => props.reportData?.id || readCamel<string | number>(props.reportData, 'reportId'))
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   const scheduleSaveSummary = (partialSummary: any) => {
@@ -59,7 +60,7 @@ export function useSaveSummary(props: any, logTag = 'ReportComparison') {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = setTimeout(async () => {
       try {
-        await reportsApi.update(id, { id, summary: partialSummary })
+        await reportsPort.update(id, { id, summary: partialSummary })
       } catch (e) {
         console.error(`[${logTag}] Failed to save header edits:`, e)
       }
@@ -89,6 +90,20 @@ export const chartBorderColors = [
 ]
 
 /**
+ * 通用 toggle：在数组中添加/移除一项
+ * 供 usePaginatedSelection 内部和外部组件直接消费
+ */
+export function toggle<T>(list: Ref<T[]>, item: T) {
+  const arr = list.value as any[]
+  const idx = arr.indexOf(item)
+  if (idx > -1) {
+    arr.splice(idx, 1)
+  } else {
+    arr.push(item)
+  }
+}
+
+/**
  * 通用分页 composables
  * 支持搜索过滤 + 分页的列表选择器
  */
@@ -113,13 +128,8 @@ export function usePaginatedSelection<T>(
   // 使用通用分页 composable
   const { totalPages, paginatedItems: paginated } = usePagination(filtered, pageSize, { currentPage: page })
 
-  const toggle = (item: T) => {
-    const idx = (selected.value as T[]).indexOf(item)
-    if (idx > -1) {
-      selected.value.splice(idx, 1)
-    } else {
-      selected.value.push(item as any)
-    }
+  const toggleItem = (item: T) => {
+    toggle(selected as Ref<T[]>, item as any)
   }
 
   return {
@@ -130,7 +140,7 @@ export function usePaginatedSelection<T>(
     filtered,
     totalPages,
     paginated,
-    toggle
+    toggleItem
   }
 }
 
@@ -142,8 +152,8 @@ export function useResourceHeaders(props: any) {
   const resourceHeaderMap = computed(() => {
     const data = props.reportData || {}
     const headers =
-      data.resource_headers ||
-      data.summary?.resource_headers ||
+      readCamel(data, 'resourceHeaders') ||
+      readCamel(readCamel(data, 'summary'), 'resourceHeaders') ||
       []
 
     const map: Record<string, string> = {}
@@ -176,7 +186,7 @@ export function useMetricFormat(allMetrics: () => any[]) {
     const map: Record<string, number> = {}
     allMetrics().forEach((m: any) => {
       if (m && m.name) {
-        const decimals = m.decimal_places
+        const decimals = readCamel<number>(m, 'decimalPlaces')
         if (decimals !== undefined && decimals !== null) {
           map[m.name] = Number(decimals)
         }

@@ -32,7 +32,7 @@
           <tr v-if="mappings.length === 0">
             <td :colspan="componentType === 'evaluation' ? 7 : 6" class="empty-row">暂无映射</td>
           </tr>
-          <tr v-else v-for="(record, index) in mappings" :key="record.id || `${record.source || ''}-${record.source_param}-${record.target_param}`">
+          <tr v-else v-for="(record, index) in mappings" :key="record.id || `${record.source || ''}-${record.sourceParam}-${record.targetParam}`">
             <template v-if="componentType === 'evaluation'">
               <td>
                 <select v-model="record.source" class="form-input form-input-sm" @blur="handleSourceTypeChange(index)">
@@ -43,26 +43,26 @@
                 </select>
               </td>
               <td>
-                <select v-model="record.source_param" class="form-input form-input-sm" @blur="handleSourceChange(index)">
+                <select v-model="record.sourceParam" class="form-input form-input-sm" @blur="handleSourceChange(index)">
                   <option value="">选择参数</option>
-                  <option v-for="param in getSourceParams(record.source, record.source_param)" :key="param.code" :value="param.code">{{ param.code }}</option>
+                  <option v-for="param in getSourceParams(record.source ?? 'case', record.sourceParam)" :key="param.code" :value="param.code">{{ param.code }}</option>
                 </select>
               </td>
-              <td class="param-name-cell">{{ getParamName(record.source_param, record.source) }}</td>
+              <td class="param-name-cell">{{ getParamName(record.sourceParam, record.source) }}</td>
               <td>
-                <select v-model="record.dimension_id" class="form-input form-input-sm" @blur="handleDimensionChange(index)">
+                <select v-model="record.dimensionId" class="form-input form-input-sm" @blur="handleDimensionChange(index)">
                   <option :value="null">选择维度</option>
                   <option v-for="dim in (mainDimensions && mainDimensions.length > 0 ? mainDimensions : availableDimensions)" :key="dim.id" :value="dim.id">{{ dim.name }}</option>
                 </select>
               </td>
               <td>
-                <select v-model="record.target_param" class="form-input form-input-sm" :disabled="!record.dimension_id" @blur="handleTargetChange(index)">
-                  <option value="">{{ record.dimension_id ? '选择参数' : '先选维度' }}</option>
-                  <option v-for="param in getTargetParamOptions(record.dimension_id, record.target_param)" :key="param.code" :value="param.code">{{ param.code }} - {{ param.name }}</option>
+                <select v-model="record.targetParam" class="form-input form-input-sm" :disabled="!record.dimensionId" @blur="handleTargetChange(index)">
+                  <option value="">{{ record.dimensionId ? '选择参数' : '先选维度' }}</option>
+                  <option v-for="param in getTargetParamOptions(record.dimensionId ?? null, record.targetParam)" :key="param.code" :value="param.code">{{ param.code }} - {{ param.name }}</option>
                 </select>
               </td>
               <td>
-                <select v-model="record.transform_type" class="form-input form-input-sm" @blur="handleTransformChange(index)">
+                <select v-model="record.transformType" class="form-input form-input-sm" @blur="handleTransformChange(index)">
                   <option value="none">无转换</option>
                   <option value="uppercase">转大写</option>
                   <option value="lowercase">转小写</option>
@@ -74,21 +74,21 @@
             </template>
             <template v-else>
               <td>
-                <select v-model="record.source_param" class="form-input form-input-sm" @blur="handleSourceChange(index)">
+                <select v-model="record.sourceParam" class="form-input form-input-sm" @blur="handleSourceChange(index)">
                   <option value="">选择参数</option>
-                  <option v-for="param in getSourceParams('case', record.source_param)" :key="param.code" :value="param.code">{{ param.code }}</option>
+                  <option v-for="param in getSourceParams('case', record.sourceParam)" :key="param.code" :value="param.code">{{ param.code }}</option>
                 </select>
               </td>
-              <td class="param-name-cell">{{ getParamName(record.source_param, 'case') }}</td>
+              <td class="param-name-cell">{{ getParamName(record.sourceParam, 'case') }}</td>
               <td>
-                <select v-model="record.target_param" class="form-input form-input-sm" @blur="handleTargetChange(index)">
+                <select v-model="record.targetParam" class="form-input form-input-sm" @blur="handleTargetChange(index)">
                   <option value="">选择参数</option>
-                  <option v-for="param in getTargetParamListForDeviceApi(componentType, record.target_param)" :key="param.code" :value="param.code">{{ param.code }}</option>
+                  <option v-for="param in getTargetParamListForDeviceApi(componentType, record.targetParam)" :key="param.code" :value="param.code">{{ param.code }}</option>
                 </select>
               </td>
-              <td class="param-name-cell">{{ getTargetParamName(record.target_param, componentType) }}</td>
+              <td class="param-name-cell">{{ getTargetParamName(record.targetParam, componentType) }}</td>
               <td>
-                <select v-model="record.transform_type" class="form-input form-input-sm" @blur="handleTransformChange(index)">
+                <select v-model="record.transformType" class="form-input form-input-sm" @blur="handleTransformChange(index)">
                   <option value="none">无转换</option>
                   <option value="uppercase">转大写</option>
                   <option value="lowercase">转小写</option>
@@ -112,20 +112,23 @@
 
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
-import { algorithmApi } from '../../utils/api'
+import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { useNotification } from '../../composables/modal/useNotification'
 
 const { warning, error } = useNotification()
 
 interface Mapping {
   id?: number
+  /** 前端新增行的临时 ID（未入库前供列表 :key 使用，不入后端） */
+  tempId?: string
   source?: 'case' | 'reference' | 'device' | 'api'
-  source_param: string
-  param_name?: string
-  dimension_id?: number | null
-  dimension_name?: string
-  target_param: string
-  transform_type: 'none' | 'uppercase' | 'lowercase' | 'json_parse' | 'rttm_to_obj' | 'stm_to_obj'
+  sourceParam: string
+  paramName?: string
+  dimensionId?: number | null
+  dimensionName?: string
+  targetParam: string
+  transformType: 'none' | 'uppercase' | 'lowercase' | 'json_parse' | 'rttm_to_obj' | 'stm_to_obj'
+  sourceDirection?: string
 }
 
 interface Props {
@@ -160,15 +163,15 @@ const loadingDimensionParams = ref<Record<number, boolean>>({})
 
 async function loadDimensions() {
   availableDimensions.value = []
-  
+
   if (props.mainDimensions && props.mainDimensions.length > 0) {
     availableDimensions.value = props.mainDimensions
     return
   }
-  
+
   if (props.componentType === 'evaluation' && props.algorithmType && typeof props.algorithmType === 'string') {
     try {
-      const result = await algorithmApi.getDimensions(props.algorithmType)
+      const result = await algorithmPort.getDimensions(props.algorithmType)
       if (result && result.dimensions) {
         availableDimensions.value = result.dimensions || []
       }
@@ -196,7 +199,7 @@ async function loadDimensionParams(dimensionId: number) {
   if (dimensionParamsMap.value[dimensionId] || loadingDimensionParams.value[dimensionId]) return
   loadingDimensionParams.value[dimensionId] = true
   try {
-    const result = await algorithmApi.getDimensionParams(dimensionId)
+    const result = await algorithmPort.getDimensionParams(dimensionId)
     if (result && result.params) {
       dimensionParamsMap.value[dimensionId] = result.params || []
     }
@@ -290,11 +293,11 @@ function getDimensionName(id: number): string {
 function handleSourceTypeChange(index: number) {
   const record = props.mappings[index]
   if (record) {
-    record.source_param = ''
-    record.param_name = ''
+    record.sourceParam = ''
+    record.paramName = ''
     if (record.source === 'case') {
-      record.dimension_id = null
-      record.dimension_name = ''
+      record.dimensionId = null
+      record.dimensionName = ''
     }
     emit('update', [...props.mappings])
     autoSaveMapping(record, index)
@@ -304,7 +307,7 @@ function handleSourceTypeChange(index: number) {
 function handleSourceChange(index: number) {
   const record = props.mappings[index]
   if (record) {
-    record.param_name = getParamName(record.source_param, record.source)
+    record.paramName = getParamName(record.sourceParam, record.source)
     emit('update', [...props.mappings])
     autoSaveMapping(record, index)
   }
@@ -313,10 +316,10 @@ function handleSourceChange(index: number) {
 function handleDimensionChange(index: number) {
   const record = props.mappings[index]
   if (record) {
-    record.dimension_name = getDimensionName(record.dimension_id || 0)
-    record.target_param = ''
-    if (record.dimension_id) {
-      loadDimensionParams(record.dimension_id)
+    record.dimensionName = getDimensionName(record.dimensionId || 0)
+    record.targetParam = ''
+    if (record.dimensionId) {
+      loadDimensionParams(record.dimensionId)
     }
     emit('update', [...props.mappings])
     autoSaveMapping(record, index)
@@ -325,17 +328,17 @@ function handleDimensionChange(index: number) {
 
 function checkDuplicateTargetParam(index: number): boolean {
   const record = props.mappings[index]
-  if (!record || !record.target_param) return true
+  if (!record || !record.targetParam) return true
 
-  // 全局按 target_param 判重，不同维度也不允许同一目标参数代码被多源映射
-  const targetKey = record.target_param
+  // 全局按 targetParam 判重，不同维度也不允许同一目标参数代码被多源映射
+  const targetKey = record.targetParam
 
   for (let i = 0; i < props.mappings.length; i++) {
     if (i === index) continue
     const other = props.mappings[i]
-    if (!other || !other.target_param) continue
-    if (other.target_param === targetKey) {
-      warning(`目标参数"${record.target_param}"已被其他映射占用，同一目标参数代码禁止被多源参数代码映射`)
+    if (!other || !other.targetParam) continue
+    if (other.targetParam === targetKey) {
+      warning(`目标参数"${record.targetParam}"已被其他映射占用，同一目标参数代码禁止被多源参数代码映射`)
       return false
     }
   }
@@ -347,7 +350,7 @@ function handleTargetChange(index: number) {
   if (record) {
     if (!checkDuplicateTargetParam(index)) {
       // 清空冲突的目标参数，阻止入库
-      record.target_param = ''
+      record.targetParam = ''
       emit('update', [...props.mappings])
       return
     }
@@ -372,18 +375,19 @@ async function autoSaveMapping(record: any, index: number) {
     return
   }
 
+  // 提交 camelCase Domain 字段，algorithmPort 内部做 snake_case 转换
   const mappingData = {
-    algorithm_type: props.algorithmType,
-    source_type: record.source,
+    algorithmType: props.algorithmType,
+    sourceType: record.source,
     source: record.source,
-    source_param: record.source_param,
-    source_direction: record.source_direction || 'output',
-    dimension_id: record.dimension_id,
-    target_param: record.target_param,
-    transform_type: record.transform_type || 'none'
+    sourceParam: record.sourceParam,
+    sourceDirection: record.sourceDirection || 'output',
+    dimensionId: record.dimensionId,
+    targetParam: record.targetParam,
+    transformType: record.transformType || 'none'
   }
 
-  if (!mappingData.source_param || !mappingData.target_param) {
+  if (!mappingData.sourceParam || !mappingData.targetParam) {
     return
   }
 
@@ -395,9 +399,9 @@ async function autoSaveMapping(record: any, index: number) {
 
   try {
     if (record.id) {
-      await algorithmApi.updateMapping(record.id, mappingData)
+      await algorithmPort.updateMapping(record.id, mappingData)
     } else {
-      const result = await algorithmApi.createMapping(mappingData)
+      const result = await algorithmPort.createMapping(mappingData)
       record.id = result.id
     }
   } catch (error) {
@@ -410,18 +414,18 @@ function handleAdd() {
   const newMapping: Mapping = props.componentType === 'evaluation' ? {
     tempId,
     source: 'case',
-    source_param: '',
-    param_name: '',
-    dimension_id: null,
-    dimension_name: '',
-    target_param: '',
-    transform_type: 'none'
+    sourceParam: '',
+    paramName: '',
+    dimensionId: null,
+    dimensionName: '',
+    targetParam: '',
+    transformType: 'none'
   } : {
     tempId,
-    source_param: '',
-    param_name: '',
-    target_param: '',
-    transform_type: 'none'
+    sourceParam: '',
+    paramName: '',
+    targetParam: '',
+    transformType: 'none'
   }
   emit('update', [...props.mappings, newMapping])
 }
@@ -431,9 +435,9 @@ function handleRemove(index: number) {
   const newMappings = [...props.mappings]
   newMappings.splice(index, 1)
   emit('update', newMappings)
-  
+
   if (mapping?.id) {
-    algorithmApi.deleteMapping(mapping.id).catch(err => console.error('删除映射失败:', err))
+    algorithmPort.deleteMapping(mapping.id).catch(err => console.error('删除映射失败:', err))
   }
 }
 </script>

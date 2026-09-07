@@ -1,18 +1,27 @@
 import type { Ref } from 'vue';
-import { audiosApi } from '../../utils/api';
+import { audiosPort } from './audiosPort';
 import { extractAudioFiles, buildTestCaseConfig, groupAudioFilesByLeafFolder, type TestCaseConfig } from '../../utils/folderParser';
-import { groupAudiosByTestCase, computeGroupKeyForAudio, type TestCaseGroup } from '../../utils/testCaseStrategy';
+import { groupAudiosByTestCase, computeGroupKeyForAudio, type TestCaseGroupStrategy } from '../../utils/testCaseStrategy';
 import type {
   AudioUploadFile,
   AudioUploadTask,
   AudioUploadOptions,
   APIResponse,
-} from '../../shared/types';
+} from '../../domain';
 import type { UploadStatus } from '../upload/useUploadState';
 import { calculateMd5 } from './md5Utils';
 import { saveLocalTask } from './taskPersistence';
 // 引入上传状态与 HTTP 状态码枚举，消除魔法字符串与魔法数字
-import { UploadStatus as UploadStatusEnum, HttpStatus } from '@/shared/types/enums';
+import { UploadStatus as UploadStatusEnum, HttpStatus } from '../../domain/enums';
+
+/**
+ * mergeChunks 响应 data 局部契约（Infrastructure 已归一为 camelCase 出口）
+ */
+interface MergeChunksData {
+  audioId?: string | number;
+  testCaseCount?: number;
+  name?: string;
+}
 
 /**
  * 上传流程相关逻辑：进度管理、上传初始化、分片上传、秒传/已存在文件处理
@@ -38,10 +47,10 @@ export interface UploadProcessContext {
 export function updateOverallProgress(ctx: UploadProcessContext): void {
   const { uploadProgress, currentTask } = ctx;
   if (!currentTask.value) return;
-  const totalSize = currentTask.value.total_size || 0;
+  const totalSize = currentTask.value.totalSize || 0;
   const uploadedSize = currentTask.value.files.reduce((sum, f) => sum + (f.uploadedSize || 0), 0);
   uploadProgress.value = totalSize > 0 ? Math.round((uploadedSize / totalSize) * 100) : 0;
-  currentTask.value.uploaded_size = uploadedSize;
+  currentTask.value.uploadedSize = uploadedSize;
 }
 
 export async function startUploadProcess(
@@ -80,10 +89,10 @@ export async function startUploadProcess(
   const audioFileInfos = extractAudioFiles(allRawFiles);
 
   // 将 testCaseGroupsData 转为 Map
-  const testCaseGroups = new Map<string, TestCaseGroup>()
+  const testCaseGroups = new Map<string, TestCaseGroupStrategy>()
   if (testCaseGroupsData) {
     for (const [key, val] of Object.entries(testCaseGroupsData)) {
-      testCaseGroups.set(key, val as TestCaseGroup)
+      testCaseGroups.set(key, val as TestCaseGroupStrategy)
     }
   }
 
@@ -94,20 +103,21 @@ export async function startUploadProcess(
   // 为每个分组构建独立的 testCaseConfig（分组键 = 最子级文件夹名）
   // 每个分组最后一个文件 mergeChunks 时才创建用例
   const groupTestCaseConfigs = new Map<string, TestCaseConfig | undefined>();
-  if (audioFileInfos.length > 0 && uploadOptions.create_test_case) {
+  if (audioFileInfos.length > 0 && uploadOptions.createTestCase) {
     audioGroups.forEach((groupFiles, groupKey) => {
       const groupConfig = buildTestCaseConfig(groupFiles, allRawFiles, {
-        spl: (uploadOptions as any).spl,
-        playbackDeviceId: (uploadOptions as any).playback_device_id,
+        spl: uploadOptions.spl,
+        playbackDeviceId: uploadOptions.playbackDeviceId != null ? String(uploadOptions.playbackDeviceId) : undefined,
         groupName: folderGroupMappings ? Object.values(folderGroupMappings)[0] : undefined,
-        inheritTags: uploadOptions.inherit_tags,
-        algorithmParams: uploadOptions.algorithm_params
+        inheritTags: uploadOptions.inheritTags,
+        algorithmParams: uploadOptions.algorithmParams
       });
       // 用该分组的 JSON rounds 覆盖 folderParser 自动推断的 rounds
       if (unifiedRoundsByGroup && unifiedRoundsByGroup[groupKey] && (unifiedRoundsByGroup[groupKey] as any).length > 0) {
         const groupRounds = unifiedRoundsByGroup[groupKey];
         groupConfig.rounds = groupRounds;
         // case 级背景噪声（rounds 外层），优先级高于轮次级
+        // background_noise 为后端用例配置协议原文（round_config_service 仅读 snake_case，无 camelCase 兜底）
         const caseBg = (groupRounds as any)?._caseBackgroundNoise;
         if (caseBg) {
           groupConfig.background_noise = caseBg;
@@ -118,7 +128,7 @@ export async function startUploadProcess(
   }
 
   try {
-    const initResponse = await audiosApi.initUpload({
+    const initResponse = await audiosPort.initUpload({
       signal: ctx.getAbortController()?.signal,
       unwrapResponse: false
     }) as APIResponse<{ taskId: string }>;
@@ -166,7 +176,7 @@ export async function startUploadProcess(
 
       preparedFiles.push({
         id: fileId,
-        file_id: fileId,
+        fileId: fileId,
         file,
         name: file.name,
         size: file.size,
@@ -174,9 +184,9 @@ export async function startUploadProcess(
         status: UploadStatusEnum.PENDING,
         progress: 0,
         uploadedSize: 0,
-        folder_group_name: folderGroupName,
-        group_key: groupKey,
-        asr_text: asrText,
+        folderGroupName: folderGroupName,
+        groupKey: groupKey,
+        asrText: asrText,
         translations,
         annotations: item.annotations || [],
         tags: item.tags || []
@@ -189,7 +199,7 @@ export async function startUploadProcess(
       });
     }
 
-    const regResponse = await audiosApi.registerUploadFiles(taskId, fileData, {
+    const regResponse = await audiosPort.registerUploadFiles(taskId, fileData, {
       signal: ctx.getAbortController()?.signal,
       unwrapResponse: false
     }) as APIResponse<{ files: any[] }>;
@@ -208,14 +218,14 @@ export async function startUploadProcess(
       }
       return {
         ...pf,
-        file_id: reg.file_id ?? reg.fileId,
+        fileId: reg.fileId,
         totalChunks: reg.totalChunks,
         chunkSize: reg.chunkSize,
         uploadedChunks: [],
         status: reg.status || UploadStatusEnum.PENDING,
         progress: reg.status === UploadStatusEnum.COMPLETED ? 100 : 0,
         uploadedSize: reg.status === UploadStatusEnum.COMPLETED ? pf.size : 0,
-        asr_text: pf.asr_text,
+        asrText: pf.asrText,
         translations: pf.translations
       };
     });
@@ -231,14 +241,14 @@ export async function startUploadProcess(
       id: taskId,
       status: UploadStatusEnum.UPLOADING,
       progress: 0,
-      total_files: audioFiles.length,
-      completed_files: tasks.filter(f => f.status === UploadStatusEnum.COMPLETED).length,
-      failed_files: tasks.filter(f => f.status === UploadStatusEnum.FAILED).length,
-      total_size: tasks.reduce((sum, f) => sum + f.size, 0),
-      uploaded_size: tasks.reduce((sum, f) => sum + (f.uploadedSize || 0), 0),
+      totalFiles: audioFiles.length,
+      completedFiles: tasks.filter(f => f.status === UploadStatusEnum.COMPLETED).length,
+      failedFiles: tasks.filter(f => f.status === UploadStatusEnum.FAILED).length,
+      totalSize: tasks.reduce((sum, f) => sum + f.size, 0),
+      uploadedSize: tasks.reduce((sum, f) => sum + (f.uploadedSize || 0), 0),
       files: tasks,
       options: { ...uploadOptions },
-      start_time: new Date().toISOString()
+      startTime: new Date().toISOString()
     };
 
     currentTask.value = task;
@@ -255,7 +265,7 @@ export async function startUploadProcess(
     const groupProcessedCounts = new Map<string, number>()
     for (const t of tasks) {
       if (t.status === UploadStatusEnum.FAILED) continue
-      const gk = t.group_key || t.name.replace(/\.[^.]+$/, '')
+      const gk = t.groupKey || t.name.replace(/\.[^.]+$/, '')
       groupPendingCounts.set(gk, (groupPendingCounts.get(gk) || 0) + 1)
       groupProcessedCounts.set(gk, 0)
     }
@@ -269,8 +279,8 @@ export async function startUploadProcess(
         continue;
       }
 
-      // 该文件所属分组键
-      const gk = fileTask.group_key || fileTask.name.replace(/\.[^.]+$/, '')
+      // 该文件所属分组键（camelCase 字段，Domain 类型已转换）
+      const gk = fileTask.groupKey || fileTask.name.replace(/\.[^.]+$/, '')
       const groupConfig = groupTestCaseConfigs.get(gk)
       const hasGroupRounds = !!groupConfig?.rounds?.length
       const processedInGroup = groupProcessedCounts.get(gk) || 0
@@ -278,7 +288,7 @@ export async function startUploadProcess(
       // 分组内最后一个待处理文件才创建用例
       const isGroupFinalMerge = hasGroupRounds && (processedInGroup === pendingInGroup - 1)
       const effectiveOptions = (hasGroupRounds && !isGroupFinalMerge)
-        ? { ...uploadOptions, create_test_case: false }
+        ? { ...uploadOptions, createTestCase: false }
         : uploadOptions;
 
       if (fileTask.status === UploadStatusEnum.COMPLETED && fileTask.totalChunks === 0) {
@@ -293,7 +303,7 @@ export async function startUploadProcess(
           console.error(`处理已存在文件失败 ${fileTask.name}:`, err);
           fileTask.status = UploadStatusEnum.FAILED;
           fileTask.error = err instanceof Error ? err.message : String(err);
-          task.failed_files = (task.failed_files || 0) + 1;
+          task.failedFiles = (task.failedFiles || 0) + 1;
           saveLocalTask(task, ctx.uploadTasks);
         }
         updateOverallProgress(ctx);
@@ -312,30 +322,30 @@ export async function startUploadProcess(
         await uploadFileChunks(ctx, taskId, fileTask, effectiveOptions, groupConfig);
         fileTask.status = UploadStatusEnum.COMPLETED;
         fileTask.progress = 100;
-        task.completed_files = (task.completed_files || 0) + 1;
+        task.completedFiles = (task.completedFiles || 0) + 1;
         saveLocalTask(task, ctx.uploadTasks);
       } catch (err) {
         console.error(`Upload failed for ${fileTask.name}:`, err);
         fileTask.status = UploadStatusEnum.FAILED;
         fileTask.error = err instanceof Error ? err.message : String(err);
-        task.failed_files = (task.failed_files || 0) + 1;
+        task.failedFiles = (task.failedFiles || 0) + 1;
         saveLocalTask(task, ctx.uploadTasks);
       }
       updateOverallProgress(ctx);
       groupProcessedCounts.set(gk, processedInGroup + 1)
     }
 
-    uploadStatus.value = (task.failed_files || 0) > 0 ? UploadStatusEnum.FAILED : UploadStatusEnum.COMPLETED;
+    uploadStatus.value = (task.failedFiles || 0) > 0 ? UploadStatusEnum.FAILED : UploadStatusEnum.COMPLETED;
     task.status = uploadStatus.value;
-    task.end_time = new Date().toISOString();
+    task.endTime = new Date().toISOString();
     saveLocalTask(task, ctx.uploadTasks);
 
     // 上传完成后回调（用于刷新列表等）
     if (onUploadComplete) onUploadComplete();
 
-    if (uploadOptions.create_test_case && (task.failed_files || 0) === 0) {
+    if (uploadOptions.createTestCase && (task.failedFiles || 0) === 0) {
       // 用例生成提示由主模块处理
-      ctx.onTestCaseGenerated?.(generatedTestCaseTotal.value, task.completed_files || 0);
+      ctx.onTestCaseGenerated?.(generatedTestCaseTotal.value, task.completedFiles || 0);
     }
   } catch (err: any) {
     if (err.name === 'AbortError') {
@@ -359,32 +369,32 @@ export async function processMergeForExistingFile(
 ) {
   const { uploadOptions, generatedTestCaseTotal, algorithmApi } = ctx;
 
-  await algorithmApi.dispatchParamsToRounds(tcConfig, options.algorithm_type, fileTask, options);
+  await algorithmApi.dispatchParamsToRounds(tcConfig, options.algorithmType, fileTask, options);
   const normalizedAlgorithmParams = await algorithmApi.resolveAlgorithmParamsFromAnnotations(
-    options.algorithm_type,
+    options.algorithmType,
     fileTask.annotations,
-    options.algorithm_params
+    options.algorithmParams
   );
 
-  const mergeResponse = await audiosApi.mergeChunks(fileTask.file_id, taskId, {
-    audioType: options.audio_type,
-    createTestCase: options.create_test_case,
+  const mergeResponse = await audiosPort.mergeChunks(fileTask.fileId, taskId, {
+    audioType: options.audioType,
+    createTestCase: options.createTestCase,
     tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
     description: options.description,
-    testTypes: options.test_types,
-    playbackDeviceId: options.playback_device_id,
+    testTypes: options.testTypes,
+    playbackDeviceId: options.playbackDeviceId,
     spl: options.spl,
-    groupNameType: options.group_name_type,
-    customGroupName: fileTask.folder_group_name || options.custom_group_name,
-    inheritTags: options.inherit_tags,
-    dimensions: options.create_test_case ? options.dimensions : undefined,
-    noiseAudioId: options.noise_audio_id,
-    noiseSpl: options.noise_spl,
-    asrText: fileTask.asr_text || '',
+    groupNameType: options.groupNameType,
+    customGroupName: fileTask.folderGroupName || options.customGroupName,
+    inheritTags: options.inheritTags,
+    dimensions: options.createTestCase ? options.dimensions : undefined,
+    noiseAudioId: options.noiseAudioId,
+    noiseSpl: options.noiseSpl,
+    asrText: fileTask.asrText || '',
     translations: fileTask.translations || [],
     annotations: fileTask.annotations || [],
-    algorithmType: options.algorithm_type,
-    algorithmRelations: options.algorithm_relations,
+    algorithmType: options.algorithmType,
+    algorithmRelations: options.algorithmRelations,
     algorithmParams: normalizedAlgorithmParams || [],
     testCaseConfig: tcConfig
   }, {
@@ -396,17 +406,21 @@ export async function processMergeForExistingFile(
     throw new Error(mergeResponse.message || 'Failed to process existing file');
   }
 
-  fileTask.audio_id = mergeResponse.data?.audio_id ?? mergeResponse.data?.audioId;
-  const cnt = mergeResponse.data?.test_case_count;
+  // 响应 data 局部映射（Infrastructure 已归一为 camelCase 出口）
+  const mergeData: MergeChunksData = mergeResponse.data || {};
+
+  fileTask.audioId = mergeData.audioId;
+  const cnt = mergeData.testCaseCount;
   if (typeof cnt === 'number' && cnt > 0) generatedTestCaseTotal.value += cnt;
 
-  if (tcConfig?.rounds && fileTask.audio_id) {
-    const realName = mergeResponse.data?.name || fileTask.name;
+  if (tcConfig?.rounds && fileTask.audioId) {
+    const realName = mergeData.name || fileTask.name;
     for (const r of tcConfig.rounds) {
       if (!r.audios) continue;
       for (const a of r.audios) {
-        if (a.audio_name === fileTask.name || a.audio_name === realName) {
-          a.audio_id = fileTask.audio_id;
+        // 回填音频 ID（camelCase，与消费方 useTestCaseAudioPreview 读取一致）
+        if (a.audioName === fileTask.name || a.audioName === realName) {
+          a.audioId = fileTask.audioId;
         }
       }
     }
@@ -422,11 +436,11 @@ export async function uploadFileChunks(
 ) {
   const { uploadStatus, generatedTestCaseTotal, algorithmApi } = ctx;
 
-  await algorithmApi.dispatchParamsToRounds(tcConfig, options.algorithm_type, fileTask, options);
+  await algorithmApi.dispatchParamsToRounds(tcConfig, options.algorithmType, fileTask, options);
   const normalizedAlgorithmParams = await algorithmApi.resolveAlgorithmParamsFromAnnotations(
-    options.algorithm_type,
+    options.algorithmType,
     fileTask.annotations,
-    options.algorithm_params
+    options.algorithmParams
   );
 
   const ext = fileTask.name.split('.').pop()?.toLowerCase() || '';
@@ -435,7 +449,7 @@ export async function uploadFileChunks(
   const totalChunks = Math.max(1, Math.ceil(fileTask.size / chunkSize));
 
   // 1. 请求预签名 URL
-  const presignResponse = await audiosApi.presignUpload({
+  const presignResponse = await audiosPort.presignUpload({
     filename: fileTask.name,
     fileSize: fileTask.size,
     md5: fileTask.md5,
@@ -447,9 +461,9 @@ export async function uploadFileChunks(
     unwrapResponse: false,
   }) as APIResponse<any>;
 
-  // 秒传命中
+  // 秒传命中：响应 data 已由 Infrastructure 归一为 camelCase
   if (presignResponse.data?.instantUpload) {
-    fileTask.audio_id = presignResponse.data.audio_id ?? presignResponse.data.audioId;
+    fileTask.audioId = presignResponse.data.audioId;
     fileTask.status = UploadStatusEnum.COMPLETED;
     fileTask.progress = 100;
     fileTask.uploadedSize = fileTask.size;
@@ -474,7 +488,7 @@ export async function uploadFileChunks(
     if (i < presignedParts.length) {
       partUrl = presignedParts[i].url;
     } else {
-      const partResp = await audiosApi.presignPart({
+      const partResp = await audiosPort.presignPart({
         uploadId,
         partNumber: i + 1,
       }, ossKey, category, { signal: ctx.getAbortController()?.signal, unwrapResponse: false }) as APIResponse<any>;
@@ -487,6 +501,7 @@ export async function uploadFileChunks(
     const chunk = fileTask.file.slice(start, end);
 
     const chunkBuf = await chunk.arrayBuffer();
+    // 预签名 URL 直传 OSS，非业务 API，无需 JWT
     const putResp = await fetch(partUrl, {
       method: 'PUT',
       body: chunkBuf,
@@ -505,7 +520,7 @@ export async function uploadFileChunks(
 
   // 3. 完成上传
   if (isWav) {
-    const completeResp = await audiosApi.completeDirectUpload({
+    const completeResp = await audiosPort.completeDirectUpload({
       ossKey,
       uploadId,
       parts: uploadedParts,
@@ -513,8 +528,8 @@ export async function uploadFileChunks(
       md5: fileTask.md5,
       fileSize: fileTask.size,
       tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
-      audioType: options.audio_type,
-      asrText: fileTask.asr_text || '',
+      audioType: options.audioType,
+      asrText: fileTask.asrText || '',
     }, {
       signal: ctx.getAbortController()?.signal,
       unwrapResponse: false,
@@ -523,31 +538,31 @@ export async function uploadFileChunks(
     if (completeResp.code !== undefined && completeResp.code !== 0 && completeResp.code !== HttpStatus.OK) {
       throw new Error(completeResp.message || '直传完成失败');
     }
-    fileTask.audio_id = completeResp.data?.audio_id ?? completeResp.data?.audioId;
+    fileTask.audioId = completeResp.data?.audioId;
 
-    if (tcConfig?.rounds?.length || options.create_test_case) {
+    if (tcConfig?.rounds?.length || options.createTestCase) {
       await processMergeForExistingFile(ctx, taskId, fileTask, options, tcConfig);
     }
   } else {
-    const mergeResponse = await audiosApi.mergeChunks(fileTask.file_id, taskId, {
-      audioType: options.audio_type,
-      createTestCase: options.create_test_case,
+    const mergeResponse = await audiosPort.mergeChunks(fileTask.fileId, taskId, {
+      audioType: options.audioType,
+      createTestCase: options.createTestCase,
       tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
       description: options.description,
-      testTypes: options.test_types,
-      playbackDeviceId: options.playback_device_id,
+      testTypes: options.testTypes,
+      playbackDeviceId: options.playbackDeviceId,
       spl: options.spl,
-      groupNameType: options.group_name_type,
-      customGroupName: fileTask.folder_group_name || options.custom_group_name,
-      inheritTags: options.inherit_tags,
-      dimensions: options.create_test_case ? options.dimensions : undefined,
-      noiseAudioId: options.noise_audio_id,
-      noiseSpl: options.noise_spl,
-      asrText: fileTask.asr_text || '',
+      groupNameType: options.groupNameType,
+      customGroupName: fileTask.folderGroupName || options.customGroupName,
+      inheritTags: options.inheritTags,
+      dimensions: options.createTestCase ? options.dimensions : undefined,
+      noiseAudioId: options.noiseAudioId,
+      noiseSpl: options.noiseSpl,
+      asrText: fileTask.asrText || '',
       translations: fileTask.translations || [],
       annotations: fileTask.annotations || [],
-      algorithmType: options.algorithm_type,
-      algorithmRelations: options.algorithm_relations,
+      algorithmType: options.algorithmType,
+      algorithmRelations: options.algorithmRelations,
       algorithmParams: normalizedAlgorithmParams || [],
       testCaseConfig: tcConfig,
       isDirectOss: true,
@@ -563,16 +578,20 @@ export async function uploadFileChunks(
       throw new Error(mergeResponse.message || 'Failed to merge chunks');
     }
 
-    fileTask.audio_id = mergeResponse.data?.audio_id ?? mergeResponse.data?.audioId;
-    const cnt = mergeResponse.data?.test_case_count;
+    // 响应 data 局部映射（Infrastructure 已归一为 camelCase 出口）
+    const mergeData: MergeChunksData = mergeResponse.data || {};
+
+    fileTask.audioId = mergeData.audioId;
+    const cnt = mergeData.testCaseCount;
     if (typeof cnt === 'number' && cnt > 0) generatedTestCaseTotal.value += cnt;
-    if (tcConfig?.rounds && fileTask.audio_id) {
-      const realName = mergeResponse.data?.name || fileTask.name;
+    if (tcConfig?.rounds && fileTask.audioId) {
+      const realName = mergeData.name || fileTask.name;
       for (const r of tcConfig.rounds) {
         if (!r.audios) continue;
         for (const a of r.audios) {
-          if (a.audio_name === fileTask.name || a.audio_name === realName) {
-            a.audio_id = fileTask.audio_id;
+          // 回填音频 ID（camelCase，与消费方 useTestCaseAudioPreview 读取一致）
+          if (a.audioName === fileTask.name || a.audioName === realName) {
+            a.audioId = fileTask.audioId;
           }
         }
       }

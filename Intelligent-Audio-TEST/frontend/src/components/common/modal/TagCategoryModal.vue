@@ -47,8 +47,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue';
-import api from '@/utils/api';
-import type { TagCategory } from '@/utils/api';
+import { tagsPort } from '@/composables/shared/tagsPort';
+import type { TagCategory } from '@/domain/model/tag';
 
 const props = defineProps<{
   category?: TagCategory | null;
@@ -109,9 +109,9 @@ async function handleConfirm() {
     
     let result: TagCategory;
     if (props.category) {
-      result = await api.tags.updateCategory(props.category.id, data);
+      result = await tagsPort.updateCategory(props.category.id, data);
     } else {
-      result = await api.tags.createCategory(data);
+      result = await tagsPort.createCategory(data);
     }
     
     emit('confirm', result);

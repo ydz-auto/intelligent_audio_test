@@ -42,7 +42,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import type { StatItem } from '@/shared/types';
+import type { StatItem } from '@/domain';
 
 interface Props {
   distributionStats?: StatItem[];

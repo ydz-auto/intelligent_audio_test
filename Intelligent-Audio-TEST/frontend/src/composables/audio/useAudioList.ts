@@ -1,9 +1,11 @@
 import { ref, computed, type Ref } from 'vue';
-import { audiosApi } from '../../utils/api';
+import { audiosPort } from './audiosPort';
 import { useTagFilter } from '../shared/useTagFilter';
 import { useFolderSelection } from '../shared/useFolderSelection';
 import { normalizeSampleRate } from '../shared/useFolderTree';
-import type { AudioInfo, AudioQueryParams, AudioStats, APIResponse } from '../../shared/types';
+import type { AudioInfo, AudioQueryParams, AudioStats, APIResponse } from '../../domain';
+import type { Paginated } from '../../domain/model/common';
+import type { AudioListStats } from '../../domain/model/audio';
 import { usePagination } from '../usePagination';
 
 /**
@@ -123,7 +125,7 @@ export function useAudioList() {
    */
   async function fetchAllTags() {
     try {
-      const response = await audiosApi.getAllTags({ unwrapResponse: false }) as APIResponse<any>;
+      const response = await audiosPort.getAllTags({ unwrapResponse: false }) as APIResponse<any>;
       if (response.success && response.data) {
         allTags.value = normalizeTagList(response.data.items ?? response.data.data ?? response.data ?? []);
         tagsLoaded.value = true;
@@ -158,6 +160,7 @@ export function useAudioList() {
 
   /**
    * 构建带模式的标签参数
+   * 返回值直接透传给 API 层（POST /audios body），带模式项为 { name, mode } 对象
    */
   function buildTagParams(): (string | { name: string; mode: string })[] | undefined {
     const shouldFilterByTags = selectedTags.value.length > 0 && !isAllTagsSelected();
@@ -180,50 +183,43 @@ export function useAudioList() {
         tags: buildTagParams()
       });
 
-      const response = await audiosApi.getAll(params, { unwrapResponse: false }) as APIResponse<any>;
+      // getAll 出口已是 Domain（Paginated<AudioInfo> & { stats? }），不再解 APIResponse 包装
+      const response = await audiosPort.getAll(params) as Paginated<AudioInfo> & { stats?: AudioListStats };
 
-      if (response.success && response.data) {
-        let items: any[] = [];
-        let total: number = 0;
-        let statsData: any;
+      if (response) {
+        // items 已是 camelCase Domain 对象
+        const items: AudioInfo[] = Array.isArray(response) ? response : (response.items ?? []);
+        const total: number = Array.isArray(response) ? response.length : (response.total ?? items.length);
+        const statsData = response.stats;
 
-        if (Array.isArray(response.data)) {
-          items = response.data;
-          total = response.data.length;
-        } else if (response.data.items) {
-          items = response.data.items;
-          total = response.data.total;
-          statsData = response.data.stats;
-        } else if (response.data.data) {
-          items = response.data.data;
-          total = response.data.total;
-          statsData = response.data.stats;
-        }
-
+        // items 已是 Domain 对象，此处仅做展示层默认值兜底
         audioList.value = items.map((audio: any) => ({
           id: audio.id,
           name: audio.name,
-          filename: audio.original_filename || audio.filename || '',
-          filepath: audio.filePath || audio.file_path || audio.filepath || '',
+          filename: audio.filename || '',
+          filepath: audio.filepath || '',
           size: audio.size || 0,
           duration: audio.duration || 0,
           format: audio.format || '',
-          sample_rate: audio.sample_rate || 0,
+          sampleRate: audio.sampleRate || 0,
           channels: audio.channels || 0,
-          type: audio.audio_type || audio.audioType || audio.type || 'dry',
-          audio_type: audio.audio_type || audio.audioType || audio.type || 'dry',
+          type: audio.audioType || audio.type || 'dry',
+          audioType: audio.audioType || audio.type || 'dry',
           tags: audio.tags || [],
-          created_at: audio.created_at || new Date().toISOString(),
-          updated_at: audio.updated_at || new Date().toISOString(),
-          asr_text: audio.asr_text || '',
+          createdAt: audio.createdAt || new Date().toISOString(),
+          updatedAt: audio.updatedAt || new Date().toISOString(),
+          asrText: audio.asrText || '',
           translations: audio.translations || [],
           annotations: audio.annotations || [],
           description: audio.description || '',
-          source_language: audio.source_language || ''
+          sourceLanguage: audio.sourceLanguage || ''
         }));
         totalAudios.value = total;
         if (statsData) {
-          stats.value = statsData;
+          stats.value = {
+            total: 0, dry: 0, noise: 0, prompt: 0, mixed: 0,
+            ...statsData,
+          } as AudioStats;
         }
 
         // 确保 selectedTags 只包含真实标签
@@ -243,13 +239,12 @@ export function useAudioList() {
 
   const filteredAudios = computed(() => {
     return audioList.value.filter(audio => {
-      // 搜索词过滤
+      // 搜索词过滤（Domain 字段为 camelCase：asrText / filepath）
       const matchesSearch = !searchQuery.value ||
         audio.name?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-        audio.asr_text?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+        audio.asrText?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
         audio.filename?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-        audio.filepath?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-        audio.filePath?.toLowerCase().includes(searchQuery.value.toLowerCase());
+        audio.filepath?.toLowerCase().includes(searchQuery.value.toLowerCase());
 
       // 音频类型过滤
       const matchesType = filters.value.audioType === 'all' || audio.type?.toLowerCase() === filters.value.audioType.toLowerCase();
@@ -259,7 +254,7 @@ export function useAudioList() {
 
       // 采样率过滤
       const filterSampleRate = normalizeSampleRate(filters.value.sampleRate);
-      const audioSampleRate = normalizeSampleRate(audio.sample_rate);
+      const audioSampleRate = normalizeSampleRate(audio.sampleRate);
       const matchesSampleRate =
         filters.value.sampleRate === 'all' ||
         (filterSampleRate !== null && audioSampleRate !== null && audioSampleRate === filterSampleRate);
@@ -292,11 +287,18 @@ export function useAudioList() {
     });
   });
 
-  // 使用通用分页 composable 计算总页数
+  // 使用通用分页 composable 计算总页数与导航
   // 说明：音频分页为服务端分页，totalAudios 由 API 返回
   // 此处用 totalAudios 长度的占位数组驱动 totalPages 计算
+  // 复用 usePagination 的 goToPage/prevPage/nextPage/setPageSize（均含边界检查）
   const placeholderForTotal = computed(() => Array(totalAudios.value).fill(0));
-  const { totalPages } = usePagination(placeholderForTotal, pageSize, { currentPage });
+  const {
+    totalPages,
+    goToPage,
+    nextPage: paginationNextPage,
+    prevPage: paginationPrevPage,
+    setPageSize: paginationSetPageSize,
+  } = usePagination(placeholderForTotal, pageSize, { currentPage });
 
   // ========== 过滤控制 ==========
 
@@ -304,8 +306,8 @@ export function useAudioList() {
     currentPage.value = 1;
   }
 
-  function resetFilters() {
-    filters.value.audioType = 'all';
+  function resetFilters(overrides?: Partial<Pick<AudioListFilters, 'audioType'>>) {
+    filters.value.audioType = overrides?.audioType ?? 'all';
     filters.value.format = 'all';
     filters.value.duration = 'all';
     filters.value.sampleRate = 'all';
@@ -374,7 +376,7 @@ export function useAudioList() {
 
       try {
         const idsParams = { ...params, page: 1, perPage: 10000 };
-        const response = await audiosApi.getAllIds(idsParams, { unwrapResponse: false }) as APIResponse<any>;
+        const response = await audiosPort.getAllIds(idsParams, { unwrapResponse: false }) as APIResponse<any>;
 
         if (response.success && response.data) {
           selectedAudios.value = response.data.ids || response.data || [];
@@ -392,17 +394,13 @@ export function useAudioList() {
         pageSize.value = 100;
 
         while (hasMorePages) {
-          const response = await audiosApi.getAll({ ...params, page: currentPageNum, perPage: pageSize.value }, { unwrapResponse: false }) as APIResponse<any>;
+          // getAll 出口已是 Domain 分页结构
+          const pageData = await audiosPort.getAll({ ...params, page: currentPageNum, perPage: pageSize.value }) as Paginated<AudioInfo>;
 
-          if (response.success && response.data) {
-            let items: AudioInfo[] = [];
-            if (Array.isArray(response.data)) {
-              items = response.data;
-            } else if (response.data.items) {
-              items = response.data.items as AudioInfo[];
-            } else if (response.data.data) {
-              items = response.data.data as AudioInfo[];
-            }
+          if (pageData) {
+            const items: AudioInfo[] = Array.isArray(pageData)
+              ? pageData
+              : (pageData.items ?? []);
 
             items.forEach(audio => {
               allSelectedIds.add(audio.id);
@@ -432,30 +430,14 @@ export function useAudioList() {
   }
 
   // ========== 分页控制 ==========
+  // 复用 usePagination 返回的导航函数，消除手写边界检查
+  function prevPage() { paginationPrevPage(); }
+  function nextPage() { paginationNextPage(); }
+  function handleGoToPage(page: number) { goToPage(page); }
+  function handlePageSizeChange(size: number) { paginationSetPageSize(size); }
 
-  function prevPage() {
-    if (currentPage.value > 1) {
-      currentPage.value--;
-    }
-  }
-
-  function nextPage() {
-    if (currentPage.value < totalPages.value) {
-      currentPage.value++;
-    }
-  }
-
-  function handleGoToPage(page: number) {
-    currentPage.value = page;
-  }
-
-  function handlePageSizeChange(size: number) {
-    pageSize.value = size;
-    currentPage.value = 1;
-  }
-
-  function switchView(mode: 'list' | 'folder') {
-    viewMode.value = mode;
+  function switchView(mode: 'list' | 'folder' | 'diagnostics') {
+    viewMode.value = mode as 'list' | 'folder';
   }
 
   function resetAllStates() {

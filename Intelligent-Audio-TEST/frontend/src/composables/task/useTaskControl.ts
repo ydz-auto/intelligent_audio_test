@@ -1,11 +1,14 @@
 import { ref, type Ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { tasksApi, reportsApi } from '../../utils/api';
-import { reportService } from '../../services/reportService';
-import type { Task } from '../../shared/types';
-import { TaskStatus } from '@/shared/types/enums';
+import { tasksPort } from './tasksPort';
+import { reportsPort } from '../report/reportsPort';
+import { viewTaskReport as viewTaskReportCase, regenerateTaskReport } from '../report/useReportComparison';
+import { getTaskStatusLabel } from '../../domain/constants/reportLabels';
+import type { Task } from '../../domain';
+import { TaskStatus } from '../../domain/enums';
 import { useModalControl, MODAL_TYPES } from '../modal/useModal';
 import { useNotification } from '../modal/useNotification';
+import { formatDate } from '@/utils/utils';
 
 /**
  * 任务控制组合式函数
@@ -41,7 +44,7 @@ export function useTaskControl(
     if (confirmed) {
       isControlling.value.add(taskId);
       try {
-        await tasksApi.control(taskId, 'pause');
+        await tasksPort.control(taskId, 'pause');
         await fetchTasks();
       } catch (error: any) {
         console.error('Failed to pause task:', error);
@@ -58,9 +61,9 @@ export function useTaskControl(
     try {
       const task = tasks.value.find(t => t.id === taskId);
       if (task?.status === TaskStatus.STOPPED) {
-        await tasksApi.start(taskId);
+        await tasksPort.start(taskId);
       } else {
-        await tasksApi.control(taskId, 'resume');
+        await tasksPort.control(taskId, 'resume');
       }
       await fetchTasks();
     } catch (error: any) {
@@ -84,7 +87,7 @@ export function useTaskControl(
     if (confirmed) {
       isControlling.value.add(taskId);
       try {
-        await tasksApi.control(taskId, 'stop');
+        await tasksPort.control(taskId, 'stop');
         await fetchTasks();
       } catch (error: any) {
         console.error('Failed to stop task:', error);
@@ -114,7 +117,7 @@ export function useTaskControl(
     isGeneratingReport.value = true;
     notification.info('正在生成报告，请稍候...');
     try {
-      const result = await reportService.viewTaskReport(task);
+      const result = await viewTaskReportCase(task);
       if (result && result.id) {
         notification.success('报告生成成功');
         router.push({ name: 'reportView', params: { id: result.id } });
@@ -142,7 +145,7 @@ export function useTaskControl(
     notification.info('正在查找已有报告...');
     let existingReportId: string | number | undefined;
     try {
-      const result = await reportsApi.generateTaskReport(task.id, `${task.name} - 测试报告`);
+      const result = await reportsPort.generateTaskReport(task.id, `${task.name} - 测试报告`);
       if (result && result.id) {
         existingReportId = result.id;
       }
@@ -176,7 +179,7 @@ export function useTaskControl(
     isGeneratingReport.value = true;
     notification.info('正在重新生成报告，请稍候...');
     try {
-      const result = await reportService.regenerateTaskReport(existingReportId, task);
+      const result = await regenerateTaskReport(existingReportId, task);
       if (result && result.id) {
         notification.success('报告重新生成成功');
         router.push({ name: 'reportView', params: { id: result.id } });
@@ -200,7 +203,7 @@ export function useTaskControl(
   const updateTaskName = async (taskId: string | number, newName: string) => {
     console.log('[DEBUG] updateTaskName called:', { taskId, newName });
     try {
-      await tasksApi.update(taskId, { name: newName });
+      await tasksPort.update(taskId, { name: newName });
       const taskIndex = tasks.value.findIndex(t => t.id === taskId);
       if (taskIndex !== -1) {
         tasks.value[taskIndex].name = newName;
@@ -225,7 +228,7 @@ export function useTaskControl(
     if (confirmed) {
       isControlling.value.add(taskId);
       try {
-        await tasksApi.retry(taskId);
+        await tasksPort.retry(taskId);
         await fetchTasks();
       } catch (error) {
         console.error('Failed to retry task:', error);
@@ -249,7 +252,7 @@ export function useTaskControl(
       let pollInterval: any = null;
 
       try {
-        const apiResult = await tasksApi.reevaluate(taskId, reevaluateType, reextractDeviceOutput) as any;
+        const apiResult = await tasksPort.reevaluate(taskId, reevaluateType, reextractDeviceOutput) as any;
         console.log('reevaluate result:', apiResult);
         await fetchTasks();
         console.log('tasks after reevaluate:', tasks.value.find((t: any) => t.id === taskId));
@@ -308,7 +311,7 @@ export function useTaskControl(
     if (confirmed) {
       isControlling.value.add(taskId);
       try {
-        await tasksApi.delete(taskId);
+        await tasksPort.delete(taskId);
         await fetchTasks();
       } catch (error) {
         console.error('Failed to delete task:', error);
@@ -351,7 +354,7 @@ export function useTaskControl(
     }
   };
 
-  const getStatusText = (status: string) => reportService.getStatusText(status);
+  const getStatusText = (status: string) => getTaskStatusLabel(status);
   const getStatusIcon = (status: string) => {
     const icons: Record<string, string> = {
       [TaskStatus.PENDING]: 'clock',
@@ -377,10 +380,6 @@ export function useTaskControl(
       [TaskStatus.SKIPPED]: '已跳过'
     };
     return texts[status] || status;
-  };
-  const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleString();
   };
 
   return {

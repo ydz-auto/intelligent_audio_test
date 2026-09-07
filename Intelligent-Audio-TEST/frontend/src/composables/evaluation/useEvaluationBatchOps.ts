@@ -1,7 +1,7 @@
 import { ref } from 'vue';
-import { evaluationApi } from '../../utils/api';
+import { evaluationPort } from './evaluationPort';
 import { useModalControl } from '../modal/useModal';
-import { MODAL_TYPES } from '../../shared/types';
+import { MODAL_TYPES } from '../modal/constants';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
 
 /**
@@ -74,7 +74,7 @@ export function useEvaluationBatchOps(dimensionsModule: UseEvaluationDimensionsR
     }
     loading.value = true;
     try {
-      await evaluationApi.batchAction('enable', selectedDimensions.value);
+      await evaluationPort.batchAction('enable', selectedDimensions.value);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '成功',
         content: '批量启用成功',
@@ -107,7 +107,7 @@ export function useEvaluationBatchOps(dimensionsModule: UseEvaluationDimensionsR
     }
     loading.value = true;
     try {
-      await evaluationApi.batchAction('disable', selectedDimensions.value);
+      await evaluationPort.batchAction('disable', selectedDimensions.value);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '成功',
         content: '批量禁用成功',
@@ -145,7 +145,7 @@ export function useEvaluationBatchOps(dimensionsModule: UseEvaluationDimensionsR
       onConfirm: async () => {
         loading.value = true;
         try {
-          await evaluationApi.batchAction('delete', selectedDimensions.value);
+          await evaluationPort.batchAction('delete', selectedDimensions.value);
           modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
             title: '成功',
             content: '批量删除成功',

@@ -8,13 +8,14 @@
       <div v-for="report in reports" :key="report.id" class="report-item">
         <h3>{{ report.name }}</h3>
         <p>{{ report.description }}</p>
-        <p>类型: {{ getReportTypeLabel(report.type) }}, 状态: {{ report.status === 'published' ? '发布' : '草稿' }}</p>
+        <p>类型: {{ getReportTypeLabel(report.type) }}, 状态: {{ report.status === ReportStatus.PUBLISHED ? '发布' : '草稿' }}</p>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ReportStatus } from '@/domain/enums';
 import { useTestReports } from './testReports';
 
 const {

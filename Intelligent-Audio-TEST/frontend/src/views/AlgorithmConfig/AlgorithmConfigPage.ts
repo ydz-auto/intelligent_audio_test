@@ -1,31 +1,9 @@
 import { ref, computed, onMounted } from 'vue'
+import { TestType } from '@/domain/enums'
+import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal'
 import { usePagination } from '../../composables/usePagination'
-
-interface AlgorithmRecord {
-  type: string
-  name: string
-  group_id?: number
-  group_name?: string
-  description?: string
-  status: string
-  icon?: string
-  display_order: number
-  params?: any[]
-  mappings?: {
-    device: any[]
-    api: any[]
-    evaluation: any[]
-  }
-}
-
-interface AlgorithmGroup {
-  id: number
-  name: string
-  description?: string
-  icon?: string
-  display_order: number
-}
+import type { AlgorithmGroup, AlgorithmDefinition } from '@/domain'
 
 export function useAlgorithmConfigPage() {
   const modalControl = useModalControl()
@@ -36,16 +14,16 @@ export function useAlgorithmConfigPage() {
 
   const mappingTabs = [
     { key: 'device', label: '设备参数' },
-    { key: 'api', label: 'API参数' },
+    { key: TestType.API, label: 'API参数' },
     { key: 'evaluation', label: '评估参数' }
   ]
 
   const activeTab = ref('list')
   const activeMappingTab = ref('device')
   const loading = ref(false)
-  const algorithms = ref<AlgorithmRecord[]>([])
+  const algorithms = ref<AlgorithmDefinition[]>([])
   const groups = ref<AlgorithmGroup[]>([])
-  const currentAlgorithm = ref<AlgorithmRecord | null>(null)
+  const currentAlgorithm = ref<AlgorithmDefinition | null>(null)
   const searchKeyword = ref('')
   const groupFilter = ref<number | string>('')
   const statusFilter = ref<string>('')
@@ -65,7 +43,7 @@ export function useAlgorithmConfigPage() {
     }
 
     if (groupFilter.value !== '') {
-      result = result.filter(a => a.group_id === Number(groupFilter.value))
+      result = result.filter(a => a.groupId === Number(groupFilter.value))
     }
 
     if (statusFilter.value !== '') {
@@ -90,11 +68,8 @@ export function useAlgorithmConfigPage() {
   async function loadAlgorithms() {
     loading.value = true
     try {
-      const response = await fetch('/api/v1/algorithm/definitions')
-      const result = await response.json()
-      if (result.success) {
-        algorithms.value = (result.data.data || []).map(normalizeAlgorithmFields)
-      }
+      const result = await algorithmPort.getDefinitions()
+      algorithms.value = (result?.data ?? []) as AlgorithmDefinition[]
     } catch (error) {
       console.error('加载算法列表失败:', error)
     } finally {
@@ -102,29 +77,10 @@ export function useAlgorithmConfigPage() {
     }
   }
 
-  function normalizeAlgorithmFields(algo: any) {
-    return {
-      ...algo,
-      group_id: algo.group_id,
-      group_name: algo.group_name,
-      display_order: algo.display_order,
-      device_params: algo.device_params ?? [],
-      api_params: algo.api_params ?? [],
-      case_params: algo.case_params ?? [],
-      params: algo.params ?? [],
-      mappings: algo.mappings ?? { device: [], api: [], evaluation: [] },
-      associated_dimensions: algo.associated_dimensions ?? [],
-      reference_params: algo.reference_params ?? []
-    }
-  }
-
   async function loadGroups() {
     try {
-      const response = await fetch('/api/v1/algorithm/groups')
-      const result = await response.json()
-      if (result.success) {
-        groups.value = result.data?.data || []
-      }
+      const result = await algorithmPort.getGroups()
+      groups.value = result?.data ?? []
     } catch (error) {
       console.error('加载分组列表失败:', error)
     }
@@ -136,7 +92,7 @@ export function useAlgorithmConfigPage() {
     modalVisible.value = true
   }
 
-  function handleEdit(record: AlgorithmRecord) {
+  function handleEdit(record: AlgorithmDefinition) {
     modalMode.value = 'edit'
     currentAlgorithm.value = JSON.parse(JSON.stringify(record))
     loadAlgorithmDetail(record.type).then(() => {
@@ -146,22 +102,21 @@ export function useAlgorithmConfigPage() {
 
   async function loadAlgorithmDetail(algoType: string) {
     try {
-      const response = await fetch(`/api/v1/algorithm/definitions/${algoType}`)
-      const result = await response.json()
-      if (result.success && result.data) {
-        currentAlgorithm.value = normalizeAlgorithmFields(result.data)
+      const result = await algorithmPort.getDefinition(algoType)
+      if (result) {
+        currentAlgorithm.value = result as unknown as AlgorithmDefinition
       }
     } catch (error) {
       console.error('加载算法详情失败:', error)
     }
   }
 
-  function handleView(record: AlgorithmRecord) {
+  function handleView(record: AlgorithmDefinition) {
     currentAlgorithm.value = record
     activeTab.value = 'detail'
   }
 
-  async function handleClone(record: AlgorithmRecord) {
+  async function handleClone(record: AlgorithmDefinition) {
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认复制',
       content: `确定要复制算法「${record.name}」吗？`,
@@ -172,34 +127,18 @@ export function useAlgorithmConfigPage() {
     if (!confirmed) return
 
     try {
-      const detailResponse = await fetch(`/api/v1/algorithm/definitions/${record.type}`)
-      const detailResult = await detailResponse.json()
-      let cloneData: any = { ...record }
-      if (detailResult.success && detailResult.data) {
-        cloneData = normalizeAlgorithmFields(detailResult.data)
-      }
-
-      const response = await fetch('/api/v1/algorithm/definitions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...cloneData,
-          type: `${record.type}_copy`,
-          name: `${record.name} (副本)`
-        })
-      })
-      const result = await response.json()
-      if (result.success) {
-        loadAlgorithms()
-      } else {
-        console.error('复制失败:', result.message)
-      }
+      const detail = await algorithmPort.getDefinition(record.type)
+      const cloneData: any = detail ? { ...detail } : { ...record }
+      cloneData.type = `${record.type}_copy`
+      cloneData.name = `${record.name} (副本)`
+      await algorithmPort.createDefinition(cloneData)
+      loadAlgorithms()
     } catch (error) {
       console.error('复制失败:', error)
     }
   }
 
-  async function confirmDelete(record: AlgorithmRecord) {
+  async function confirmDelete(record: AlgorithmDefinition) {
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认删除',
       content: `确定要删除算法「${record.name}」吗？此操作不可恢复。`,
@@ -213,28 +152,21 @@ export function useAlgorithmConfigPage() {
     }
   }
 
-  async function executeDelete(record: AlgorithmRecord) {
+  async function executeDelete(record: AlgorithmDefinition) {
     if (!record) return
 
     try {
-      const response = await fetch(`/api/v1/algorithm/definitions/${record.type}`, {
-        method: 'DELETE'
-      })
-      const result = await response.json()
-      if (result.success) {
-        loadAlgorithms()
-        if (activeTab.value === 'detail') {
-          activeTab.value = 'list'
-        }
-      } else {
-        console.error('删除失败:', result.message)
+      await algorithmPort.deleteDefinition(record.type)
+      loadAlgorithms()
+      if (activeTab.value === 'detail') {
+        activeTab.value = 'list'
       }
     } catch (error) {
       console.error('删除失败:', error)
     }
   }
 
-  function handleSelect(data: AlgorithmRecord) {
+  function handleSelect(data: AlgorithmDefinition) {
     console.log('Selected algorithm:', data)
   }
 

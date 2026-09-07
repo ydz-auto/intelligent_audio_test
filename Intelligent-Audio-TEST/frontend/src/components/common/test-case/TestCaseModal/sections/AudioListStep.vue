@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import type { RoundConfigItem } from '../types'
+import type { RoundConfigItem } from '@/domain'
 import { useAudioListStep } from './AudioListStep'
 
 const props = defineProps<{
@@ -201,7 +201,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:round': [value: RoundConfigItem]
-  'openAudioSelect': [callback: (audios: { id: string; name?: string }[]) => void]
+  'openAudioSelect': [audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void]
   'openDeviceModal': [audioIndex: number]
   'openBatchDeviceModal': []
   'openCrossDeviceModal': []
@@ -246,7 +246,7 @@ const {
   previewAudio,
   updateAudio,
   clearAllAudioConfigs
-} = useAudioListStep(props, emit)
+} = useAudioListStep(props, (event: string, ...args: any[]) => (emit as any)(event, ...args))
 </script>
 
 <style scoped>

@@ -65,7 +65,7 @@
         <select
           class="form-control form-control-sm"
           :value="voiceprintPlaybackDeviceId"
-          @change="updateVoiceprint({ playback_device_id: ($event.target as HTMLSelectElement).value })"
+          @change="updateVoiceprint({ playbackDeviceId: ($event.target as HTMLSelectElement).value })"
         >
           <option value="">请选择设备...</option>
           <option
@@ -100,7 +100,7 @@
           min="0"
           max="60"
           step="1"
-          @input="updateVoiceprint({ voiceprint_wait_time: Number(($event.target as HTMLInputElement).value) })"
+          @input="updateVoiceprint({ waitTime: Number(($event.target as HTMLInputElement).value) })"
         />
         <span class="vp-hint">声纹注册完成后等待设备处理的时间</span>
       </div>
@@ -110,8 +110,9 @@
 
 <script setup lang="ts">
 import { computed, inject } from 'vue'
-import type { AlgorithmParamItem } from './types'
-import type { PlaybackDevice } from '../../../../shared/types'
+import type { AlgorithmParamItem } from '@/domain'
+import type { PlaybackDevice } from '../../../../domain'
+import { useAudioConfigHelpers } from './useAudioConfigHelpers'
 
 const props = defineProps<{
   modelValue: AlgorithmParamItem[]
@@ -127,56 +128,33 @@ const emit = defineEmits<{
 // inject audioConfig 和 playback devices from parent
 const audioConfig = inject<any>('audioConfig', {})
 const playbackDevices = inject<PlaybackDevice[]>('playbackDevices', [])
-
-// ---- 音频信息查询 ----
-function getAudioName(audioId: string | number): string {
-  return audioConfig?.getAudioName?.(audioId) || '未知音频'
-}
-
-function getAudioTags(audioId: string | number): string {
-  return audioConfig?.getAudioTags?.(audioId) || ''
-}
-
-function getAudioDuration(audioId: string | number): number {
-  return audioConfig?.getAudioDuration?.(audioId) || 0
-}
-
-function formatDuration(seconds: number): string {
-  return audioConfig?.formatDuration?.(seconds) || '0s'
-}
-
-function getNormalizedTags(tagsStr: string): string[] {
-  if (!tagsStr) return []
-  try {
-    const parsed = JSON.parse(tagsStr)
-    if (Array.isArray(parsed)) return parsed.map(String)
-    if (typeof parsed === 'string') return parsed.split(',').map((s: string) => s.trim()).filter(Boolean)
-  } catch {
-    return String(tagsStr).split(',').map((s: string) => s.trim()).filter(Boolean)
-  }
-  return []
-}
+const { getAudioName, getAudioTags, getAudioDuration, formatDuration, getNormalizedTags } = useAudioConfigHelpers(audioConfig)
 
 // ---- voiceprint 单对象读写 ----
-// voiceprint 是单个对象，兼容 camelCase 和 snake_case 字段名
+// adapter 层已深度 camelize，此处统一只读 camelCase
 const VOICEPRINT_CODE = 'voiceprint'
 
 function getVoiceprintObj(): Record<string, any> {
-  const item = props.modelValue?.find((p) => p.field_code === VOICEPRINT_CODE)
-  const v = item?.field_value
+  const item = props.modelValue?.find((p) => p.fieldCode === VOICEPRINT_CODE)
+  const v = item?.fieldValue
   if (v && typeof v === 'object' && !Array.isArray(v)) return v
   return {}
 }
 
+// 提交体走 Infrastructure adapter 转 snake_case
 function updateVoiceprint(patch: Record<string, any>) {
   const params = [...(props.modelValue ?? [])]
-  const idx = params.findIndex((p) => p.field_code === VOICEPRINT_CODE)
-  const current = idx >= 0 ? { ...params[idx].field_value } : {}
+  const idx = params.findIndex((p) => p.fieldCode === VOICEPRINT_CODE)
+  // fieldValue 为 unknown 类型，对象展开前需先收窄为 Record
+  const current: Record<string, any> =
+    idx >= 0 && params[idx].fieldValue && typeof params[idx].fieldValue === 'object' && !Array.isArray(params[idx].fieldValue)
+      ? { ...(params[idx].fieldValue as Record<string, any>) }
+      : {}
   const updated = { ...current, ...patch }
   if (idx >= 0) {
-    params[idx] = { field_code: VOICEPRINT_CODE, field_value: updated }
+    params[idx] = { fieldCode: VOICEPRINT_CODE, fieldValue: updated }
   } else {
-    params.push({ field_code: VOICEPRINT_CODE, field_value: updated })
+    params.push({ fieldCode: VOICEPRINT_CODE, fieldValue: updated })
   }
   emit('update:modelValue', params)
 }
@@ -186,30 +164,30 @@ const enabled = computed(() => Object.keys(getVoiceprintObj()).length > 0)
 
 const voiceprintAudioId = computed(() => {
   const obj = getVoiceprintObj()
-  return String(obj.audio_id || obj.audioId || obj.audio || '')
+  return String(obj.audioId || obj.audio || '')
 })
 const voiceprintPlaybackDeviceId = computed(() => {
   const obj = getVoiceprintObj()
-  return String(obj.playback_device_id || obj.playbackDeviceId || obj.playback_device_name || obj.playbackDeviceName || '')
+  return String(obj.playbackDeviceId || obj.playbackDeviceName || '')
 })
 const voiceprintSpl = computed(() => Number(getVoiceprintObj().spl ?? 70))
 const voiceprintWaitTime = computed(() => {
   const obj = getVoiceprintObj()
-  return Number(obj.voiceprint_wait_time ?? obj.voiceprintWaitTime ?? 5)
+  return Number(obj.waitTime ?? 5)
 })
 
 function addVoiceprint() {
-  updateVoiceprint({ spl: 70, voiceprint_wait_time: 5 })
+  updateVoiceprint({ spl: 70, waitTime: 5 })
 }
 
 function removeVoiceprint() {
-  const params = (props.modelValue ?? []).filter((p) => p.field_code !== VOICEPRINT_CODE)
+  const params = (props.modelValue ?? []).filter((p) => p.fieldCode !== VOICEPRINT_CODE)
   emit('update:modelValue', params)
 }
 
 function openAudioModal() {
   emit('openAudioModal', (audioId: string) => {
-    updateVoiceprint({ audio_id: audioId })
+    updateVoiceprint({ audioId })
   })
 }
 
@@ -220,7 +198,7 @@ function previewAudio() {
 }
 
 function clearAudio() {
-  updateVoiceprint({ audio_id: '' })
+  updateVoiceprint({ audioId: '' })
 }
 </script>
 

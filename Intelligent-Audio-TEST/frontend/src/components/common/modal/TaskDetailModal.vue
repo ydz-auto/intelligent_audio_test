@@ -32,12 +32,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
-import { tasksApi, logsApi } from '../../../utils/api';
+import { tasksPort } from '@/composables/task/tasksPort';
+import { logsPort } from '@/composables/task/logsPort';
 import { useTaskProgress } from '../../../composables/task/useTaskProgress';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
 import { transformTestCaseStatus } from '../../../utils/statusUtils';
 import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
-import type { Task, Log } from '../../../shared/types';
+import type { Task, Log } from '../../../domain';
+import { TaskStatus, ExecutionStatus, EvaluationStatus } from '@/domain/enums';
 
 const props = defineProps({
   taskId: {type: [String, Number], required: true}
@@ -121,7 +123,7 @@ const logs = computed(() => {
   // localLogs 按时间升序存储（最老在前，最新在后），直接映射即可
   return localLogs.value.map((log) => ({
     id: log.id,
-    time: formatLogTime(log.timestamp ?? log.time ?? log.createdAt),
+    time: formatLogTime(String(log.timestamp ?? log.time ?? log.createdAt ?? '')),
     level: log.level || 'info',
     content: log.content,
     type: log.level || 'info'
@@ -136,7 +138,7 @@ async function loadOlderLogs(page: number, perPage = 100, maxRetries = 3, delayM
     try {
       console.log(`[TaskDetailModal] 尝试加载历史日志 (${attempt}/${maxRetries}), 页: ${page}`);
       
-      const response = await logsApi.getAll({ 
+      const response = await logsPort.getAll({ 
         taskId: String(props.taskId),
         page: page,
         perPage: perPage
@@ -185,7 +187,7 @@ async function startLogPolling() {
   pollInterval = setInterval(async () => {
     try {
       // 只获取最新的日志，避免重复加载
-      const response = await logsApi.getAll({ 
+      const response = await logsPort.getAll({ 
         taskId: String(props.taskId), 
         page: 1, 
         perPage: 50 
@@ -258,7 +260,7 @@ async function fetchTaskDetails() {
   loading.value = true;
   error.value = null;
   try {
-    const taskData = await tasksApi.getOne(props.taskId);
+    const taskData = await tasksPort.getOne(props.taskId);
     if (!taskData) {
       error.value = '未找到任务详情';
       loading.value = false;
@@ -278,22 +280,23 @@ async function fetchTaskDetails() {
       elapsedTime.value = String(taskData.usedTime);
     }
 
-    if (taskData.cases && taskData.cases.length > 0) {
-      associatedCases.value = taskData.cases.map((tc: any) => {
-        const transformed = transformTestCaseStatus(tc);
-        return {
-          id: tc.caseId || tc.id,
-          name: tc.name,
-          status: transformed.status,
-          duration: tc.duration || '',
-          executionStatus: transformed.executionStatus,
-          evaluationStatus: transformed.evaluationStatus,
-          groupName: tc.groupName,
-          tags: tc.tags,
-          algorithmType: tc.algorithmType
-        };
-      });
-    }
+  // Task 域类型为 camelCase，cases 为详情接口扩展字段（camelCase，无需转换）
+  if (taskData.cases && taskData.cases.length > 0) {
+    associatedCases.value = taskData.cases.map((tc: any) => {
+      const transformed = transformTestCaseStatus(tc);
+      return {
+        id: tc.caseId || tc.id,
+        name: tc.name,
+        status: transformed.status,
+        duration: tc.duration || '',
+        executionStatus: transformed.executionStatus,
+        evaluationStatus: transformed.evaluationStatus,
+        groupName: tc.groupName,
+        tags: tc.tags,
+        algorithmType: tc.algorithmType
+      };
+    });
+  }
     
     if (taskData.type === 'e2e') {
       associatedDevices.value = taskData.devices || [];
@@ -305,23 +308,23 @@ async function fetchTaskDetails() {
     
     const caseList = associatedCases.value;
     // 只计算真正完成的用例（status为completed且不是失败状态）
-    completedTests.value = caseList.filter((tc) => tc.status === 'completed' && tc.executionStatus !== 'failed' && tc.evaluationStatus !== 'failed').length;
+    completedTests.value = caseList.filter((tc) => tc.status === ExecutionStatus.COMPLETED && tc.executionStatus !== ExecutionStatus.FAILED && tc.evaluationStatus !== EvaluationStatus.FAILED).length;
     // 计算进行中的用例
     inProgressTests.value = caseList.filter((tc) => 
-      tc.status === 'in_progress' || 
-      tc.status === 'calculating' ||
-      tc.status === 'queued'
+      tc.status === ExecutionStatus.IN_PROGRESS || 
+      tc.status === EvaluationStatus.CALCULATING ||
+      tc.status === ExecutionStatus.QUEUED
     ).length;
     // 计算执行失败的用例
-    executionFailedTests.value = caseList.filter((tc) => tc.executionStatus === 'failed').length;
+    executionFailedTests.value = caseList.filter((tc) => tc.executionStatus === ExecutionStatus.FAILED).length;
     // 计算评估失败的用例
-    evaluationFailedTests.value = caseList.filter((tc) => tc.evaluationStatus === 'failed' && tc.executionStatus !== 'failed').length;
+    evaluationFailedTests.value = caseList.filter((tc) => tc.evaluationStatus === EvaluationStatus.FAILED && tc.executionStatus !== ExecutionStatus.FAILED).length;
     // 计算待执行的用例
     pendingTests.value = caseList.filter((tc) => 
-      tc.executionStatus === 'pending' && 
-      tc.evaluationStatus === 'pending' &&
-      tc.status !== 'completed' &&
-      tc.status !== 'failed'
+      tc.executionStatus === ExecutionStatus.PENDING && 
+      tc.evaluationStatus === EvaluationStatus.PENDING &&
+      tc.status !== ExecutionStatus.COMPLETED &&
+      tc.status !== ExecutionStatus.FAILED
     ).length;
     // 重新计算总进度，只基于完成的用例
     if (totalTestCases.value > 0) {
@@ -332,7 +335,7 @@ async function fetchTaskDetails() {
     logPagination.value.page = 1;
     logPagination.value.hasMore = true;
     
-    const firstResponse = await logsApi.getAll({
+    const firstResponse = await logsPort.getAll({
       taskId: String(props.taskId),
       page: 1,
       perPage: logPagination.value.perPage
@@ -346,7 +349,7 @@ async function fetchTaskDetails() {
       console.log(`[TaskDetailModal] 初始加载 ${localLogs.value.length}/${logPagination.value.total} 条最新日志`);
     }
     
-    if (String(taskData.status) === 'running' || String(taskData.status) === 'starting') {
+    if (String(taskData.status) === TaskStatus.RUNNING || String(taskData.status) === TaskStatus.STARTING) {
       startLogPolling();
     }
     
@@ -360,7 +363,7 @@ async function fetchTaskDetails() {
 
 async function pauseTest() {
   try {
-    await tasksApi.control(props.taskId, 'pause');
+    await tasksPort.control(props.taskId, 'pause');
     isPaused.value = true;
   } catch (err) {
     console.error('暂停任务失败:', err);
@@ -369,7 +372,7 @@ async function pauseTest() {
 
 async function resumeTest() {
   try {
-    await tasksApi.control(props.taskId, 'resume');
+    await tasksPort.control(props.taskId, 'resume');
     isPaused.value = false;
   } catch (err) {
     console.error('恢复任务失败:', err);
@@ -386,7 +389,7 @@ async function stopTest() {
       cancelText: '取消'
     });
     if (result?.confirmed === true) {
-      await tasksApi.stop(props.taskId);
+      await tasksPort.stop(props.taskId);
       stopLogPolling();
     }
   } catch (err) {
@@ -418,7 +421,7 @@ async function loadMoreLogs() {
 }
 
 watch(() => task.value?.status, (newStatus) => {
-  if (String(newStatus) === 'running' || String(newStatus) === 'starting') {
+  if (String(newStatus) === TaskStatus.RUNNING || String(newStatus) === TaskStatus.STARTING) {
     startLogPolling();
   } else {
     stopLogPolling();

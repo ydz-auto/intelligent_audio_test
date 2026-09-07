@@ -31,7 +31,7 @@
 import { ref, watch, onMounted } from 'vue';
 import { useAlgorithmConfig } from '../../../../composables/algorithm/useAlgorithmConfig';
 import { useAlgorithmLabels } from '../../../../composables/algorithm/useAlgorithmLabels';
-import type { GroupFormData } from './types';
+import type { GroupFormData } from '@/domain';
 
 const props = defineProps<{
   formData: Partial<GroupFormData>;

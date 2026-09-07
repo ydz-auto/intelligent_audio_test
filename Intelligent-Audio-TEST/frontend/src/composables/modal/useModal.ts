@@ -1,6 +1,6 @@
 import { inject, provide, ref, shallowRef, type Component, type InjectionKey, type Ref } from 'vue'
-import type { ModalConfig, ModalType } from '../../shared/types'
-import { MODAL_TYPES } from '../../shared/types'
+import type { ModalConfig, ModalType } from './types'
+import { MODAL_TYPES } from './constants'
 
 export const MODAL_MANAGER_KEY: InjectionKey<ModalManager> = Symbol('modalManager')
 export const MODAL_INJECTION_KEY = MODAL_MANAGER_KEY

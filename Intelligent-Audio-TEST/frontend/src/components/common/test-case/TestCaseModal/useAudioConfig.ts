@@ -1,11 +1,12 @@
 import { ref, computed, nextTick } from 'vue';
-import { playbackApi, audiosApi } from '../../../../utils/api';
-import type { AudioItem, PlaybackDevice, AudioConfig, BackgroundNoiseConfig } from './types';
+import { playbackPort } from '@/composables/device/playbackPort';
+import { audiosPort } from '@/composables/audio/audiosPort';
+import type { PlaybackDevice, AudioConfig, BackgroundNoiseConfig, AudioInfo } from '@/domain';
 
 export function useAudioConfig() {
   const playbackDevices = ref<PlaybackDevice[]>([]);
-  const dryAudios = ref<AudioItem[]>([]);
-  const noiseAudios = ref<AudioItem[]>([]);
+  const dryAudios = ref<AudioInfo[]>([]);
+  const noiseAudios = ref<AudioInfo[]>([]);
 
   const showAudioModal = ref(false);
   const showDeviceModal = ref(false);
@@ -44,40 +45,44 @@ export function useAudioConfig() {
   async function loadResources(configuredAudioIds: (string | number)[] = []) {
     try {
       const [devicesRes, allAudiosRes] = await Promise.all([
-        playbackApi.getAll({ perPage: 1000 }),
-        audiosApi.getAll({ perPage: 1000 })
+        playbackPort.getAll({ perPage: 1000 }),
+        audiosPort.getAll({ perPage: 1000 })
       ]);
 
-      playbackDevices.value = Array.isArray(devicesRes?.items)
-        ? devicesRes.items as PlaybackDevice[]
-        : [];
-      const audios: AudioItem[] = Array.isArray(allAudiosRes?.items)
-        ? allAudiosRes.items
-        : [];
-      
+      // playbackPort.getAll 已展平为 Domain 数组
+      const rawDevices: any[] = devicesRes;
+      playbackDevices.value = rawDevices.map(d => ({
+        id: d.id,
+        name: d.name,
+        channelIndex: d.channelIndex
+      }));
+      // audiosPort.getAll 已通过 audioAdapter 转换为 camelCase 分页（Paginated<AudioInfo> + stats）
+      const rawAudios: any[] = Array.isArray((allAudiosRes as any)?.items)
+        ? (allAudiosRes as any).items
+        : ((allAudiosRes as any)?.data ?? []);
+      const audios = rawAudios as AudioInfo[];
+
       console.log('[useAudioConfig] loaded audios count:', audios.length);
       if (audios.length > 0) {
         console.log('[useAudioConfig] first audio sample:', audios[0]);
         console.log('[useAudioConfig] first audio tags:', (audios[0] as any).tags, (audios[0] as any).tag);
       }
 
-      let dryAudioList: AudioItem[] = audios.filter((a: AudioItem) => a.audio_type === 'dry' || a.type === 'dry');
-      let noiseAudioList: AudioItem[] = audios.filter((a: AudioItem) => a.audio_type === 'noise' || a.type === 'noise');
+      let dryAudioList: AudioInfo[] = audios.filter(a => a.audioType === 'dry');
+      let noiseAudioList: AudioInfo[] = audios.filter(a => a.audioType === 'noise');
 
-      const firstPageIds = new Set(audios.map((a: AudioItem) => a.id));
+      const firstPageIds = new Set(audios.map(a => a.id));
       const missingAudioIds = configuredAudioIds.filter(id => !firstPageIds.has(id));
 
       if (missingAudioIds.length > 0) {
         try {
-          const missingAudiosRes = await audiosApi.getByIds(missingAudioIds);
-          const missingAudios: AudioItem[] = Array.isArray(missingAudiosRes)
-            ? missingAudiosRes
-            : (missingAudiosRes?.data ? missingAudiosRes.data : []);
+          // audiosPort.getByIds 已返回 camelCase AudioInfo[]，直接使用
+          const missingAudios = await audiosPort.getByIds(missingAudioIds);
 
           for (const missingAudio of missingAudios) {
-            if (missingAudio.audio_type === 'dry' || missingAudio.type === 'dry') {
+            if (missingAudio.audioType === 'dry') {
               dryAudioList.push(missingAudio);
-            } else if (missingAudio.audio_type === 'noise' || missingAudio.type === 'noise') {
+            } else if (missingAudio.audioType === 'noise') {
               noiseAudioList.push(missingAudio);
             } else {
               dryAudioList.push(missingAudio);
@@ -149,7 +154,8 @@ export function useAudioConfig() {
   function getDeviceName(deviceId: string | number): string {
     const device = playbackDevices.value.find(d => String(d.id) === String(deviceId));
     if (device) {
-      return `${device.name} (通道 ${device.channel_index})`;
+      // PlaybackDevice 为 camelCase：channelIndex
+      return `${device.name} (通道 ${device.channelIndex})`;
     }
     const deviceIdStr = String(deviceId);
     const scanDeviceMatch = deviceIdStr.match(/^(.*)-(\d+)$/);
@@ -196,7 +202,7 @@ export function useAudioConfig() {
     showBatchSplModal.value = true;
   }
 
-  function handleAudioSelect(audio: AudioItem, audios: AudioConfig[], backgroundNoise: BackgroundNoiseConfig) {
+  function handleAudioSelect(audio: AudioInfo, audios: AudioConfig[], backgroundNoise: BackgroundNoiseConfig) {
     const audioId = audio.id;
     if (currentAudioType.value === 'dry' && currentAudioIndex.value !== null) {
       audios[currentAudioIndex.value].audioId = String(audioId);
@@ -212,7 +218,7 @@ export function useAudioConfig() {
     showAudioModal.value = false;
   }
 
-  function handleMultipleAudioSelect(selectedAudios: AudioItem[], audios: AudioConfig[], backgroundNoise: BackgroundNoiseConfig) {
+  function handleMultipleAudioSelect(selectedAudios: AudioInfo[], audios: AudioConfig[], backgroundNoise: BackgroundNoiseConfig) {
     const sortedAudios = [...selectedAudios].sort((a, b) => {
       const nameA = (a.name || '').toLowerCase();
       const nameB = (b.name || '').toLowerCase();
@@ -229,7 +235,7 @@ export function useAudioConfig() {
         for (let i = 1; i < sortedAudios.length; i++) {
           audios.push({
             audioId: String(sortedAudios[i].id),
-            testType: sourceAudio.testType || 'api',
+            // testType 由父级用例的 testType 决定，AudioConfig 不再携带
             playbackDeviceId: sourceAudio.playbackDeviceId || '',
             spl: sourceAudio.spl ?? 65,
             playOrder: audios.length
@@ -242,7 +248,7 @@ export function useAudioConfig() {
         for (const audio of sortedAudios) {
           audios.push({
             audioId: String(audio.id),
-            testType: 'api',
+            // testType 由父级用例的 testType 决定，AudioConfig 不再携带
             playbackDeviceId: '',
             spl: 65,
             playOrder: audios.length
@@ -276,10 +282,9 @@ export function useAudioConfig() {
   function handleBatchDeviceSelect(selectedDevices: string[], audios: AudioConfig[]) {
     if (selectedDevices.length > 0) {
       const deviceId = selectedDevices[0];
+      // e2e 判断由用例级 testType 决定；批量操作对所有音频配置生效
       audios.forEach(audio => {
-        if (audio.testType === 'e2e') {
-          audio.playbackDeviceId = deviceId;
-        }
+        audio.playbackDeviceId = deviceId;
       });
     }
     showBatchDeviceModal.value = false;
@@ -287,8 +292,8 @@ export function useAudioConfig() {
 
   function handleCrossDeviceSelect(selectedDevices: string[], audios: AudioConfig[]) {
     if (selectedDevices.length > 0) {
-      const e2eAudioConfigs = audios.filter(audio => audio.testType === 'e2e');
-      e2eAudioConfigs.forEach((audio, index) => {
+      // 交叉分配到全部音频配置（e2e 判断由用例级 testType 决定）
+      audios.forEach((audio, index) => {
         audio.playbackDeviceId = selectedDevices[index % selectedDevices.length];
       });
     }
@@ -296,10 +301,9 @@ export function useAudioConfig() {
   }
 
   function handleBatchSplConfirm(spl: number, audios: AudioConfig[]) {
+    // 批量设置声压级对所有音频配置生效（e2e 判断由用例级 testType 决定）
     audios.forEach(audio => {
-      if (audio.testType === 'e2e') {
-        audio.spl = spl;
-      }
+      audio.spl = spl;
     });
     showBatchSplModal.value = false;
   }
@@ -307,7 +311,7 @@ export function useAudioConfig() {
   function addAudioConfig(audios: AudioConfig[]) {
     audios.push({
       audioId: '',
-      testType: 'api',
+      // testType 由父级用例的 test_type 决定，AudioConfig 不再携带
       playbackDeviceId: '',
       spl: 65,
       playOrder: audios.length
@@ -327,7 +331,7 @@ export function useAudioConfig() {
     const sourceConfig = audios[index];
     audios.splice(index + 1, 0, {
       audioId: sourceConfig.audioId || '',
-      testType: sourceConfig.testType || 'api',
+      // testType 由父级用例的 test_type 决定，AudioConfig 不再携带
       playbackDeviceId: sourceConfig.playbackDeviceId || '',
       spl: sourceConfig.spl || 65,
       playOrder: sourceConfig.playOrder + 1

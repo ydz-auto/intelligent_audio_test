@@ -94,7 +94,7 @@
       @algorithm-type-change="handleAlgorithmTypeChange"
     />
 
-    <!-- ===== test_type 切换器（仅用例管理页面显示） ===== -->
+    <!-- ===== testType 切换器（仅用例管理页面显示） ===== -->
     <div class="form-section test-type-section" v-if="!isTestTypeLocked">
       <div class="test-type-switcher-row">
         <label class="test-type-label">测试类型</label>
@@ -102,15 +102,15 @@
           <button
             type="button"
             class="test-type-btn"
-            :class="{ active: localFormData.test_type === 'api' }"
-            @click="switchTestType('api')"
+            :class="{ active: localFormData.testType === TestType.API }"
+            @click="switchTestType(TestType.API)"
           >
             <i class="fas fa-cloud"></i> API
           </button>
           <button
             type="button"
             class="test-type-btn"
-            :class="{ active: localFormData.test_type === 'e2e' }"
+            :class="{ active: localFormData.testType === 'e2e' }"
             @click="switchTestType('e2e')"
           >
             <i class="fas fa-microchip"></i> E2E
@@ -124,11 +124,11 @@
       <RoundConfigEditor
         ref="roundConfigRef"
         v-model="localFormData.config.rounds"
-        :test-type="localFormData.test_type || 'api'"
+        :test-type="localFormData.testType || 'api'"
         :case-algorithm-params="caseAlgorithmParams"
         :algorithm-type="localFormData.algorithmType"
         :algorithm-form-schema="algorithmFormSchema"
-        :algorithm-params="localFormData.algorithm_params"
+        :algorithm-params="localFormData.algorithmParams"
         @update:model-value="handleRoundsUpdate"
         @update:algorithm-params="handleAlgorithmParamsUpdate"
         @open-audio-select="handleAudioSelectRequest"
@@ -140,14 +140,14 @@
       />
     </div>
 
-    <!-- ===== 全局背景噪声（config.background_noise，多轮共享）===== -->
+    <!-- ===== 全局背景噪声（config.backgroundNoiseCase，多轮共享）===== -->
     <div v-if="localFormData.config.rounds && localFormData.config.rounds.length > 1" class="form-section global-noise-section">
       <GlobalNoiseEditor
-        v-model="localFormData.config.background_noise as any"
+        v-model="(localFormData.config as any).backgroundNoiseCase"
         :playback-devices="playbackDevices"
         @update:model-value="handleGlobalNoiseUpdate"
         @open-audio-select="handleAudioSelectRequest"
-        @preview-audio="(audioId: string) => emit('previewAudio', audioId)"
+        @preview-audio="(audioId: string) => emit('previewAudio', audioId, 'dry')"
       />
     </div>
 
@@ -170,8 +170,9 @@ import AlgorithmSelector from '../../audio/AlgorithmSelector.vue';
 import RoundConfigEditor from './RoundConfigEditor.vue';
 import OverallEvaluationEditor from './OverallEvaluationEditor.vue';
 import GlobalNoiseEditor from './GlobalNoiseEditor.vue';
-import type { TestCaseFormData } from './types';
 import { useCaseForm } from './CaseForm';
+import { TestType } from '@/domain/enums';
+import type { TestCaseFormData } from '@/domain';
 
 const props = defineProps<{
   formData: Partial<TestCaseFormData>;
@@ -226,6 +227,10 @@ const {
   applyBatchSpl,
   applySingleDevice,
   getCurrentRoundAudiosLocal,
+  // 模板使用的：已有标签列表 / 播放设备列表 / 全局背景噪声更新
+  availableTags,
+  playbackDevices,
+  handleGlobalNoiseUpdate,
 } = useCaseForm(props, emit);
 
 defineExpose({ syncConfigFromParent, initFormData, algorithmParams, newGroupName, currentRoundIndex, applyBatchDevice, applyCrossDevice, applyBatchSpl, applySingleDevice, getCurrentRoundAudiosLocal });

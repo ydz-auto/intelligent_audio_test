@@ -1,48 +1,25 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
-import { devicesApi, playbackApi, apisApi } from '../../utils/api';
+import { devicesPort } from './devicesPort';
+import { playbackPort } from './playbackPort';
+import { apisPort } from '../apiTest/apisPort';
 import { useModalControl } from '../modal/useModal';
 import { useNotification } from '../modal/useNotification';
-import {
-  MODAL_TYPES,
-  type PlaybackDevice
-} from '../../shared/types';
+import { HttpStatus, ViewMode, DeviceStatus } from '../../domain/enums';
+import type { PlaybackDevice, TestDeviceView, ApiDeviceView, DeviceUnion, APIResponse } from '@/domain';
+import { MODAL_TYPES } from '../modal/constants';
 import { usePagination } from '../usePagination';
 
-// Define local types since they're not exported from shared/types
-type DeviceBase = {
-  id: string | number;
-  name: string;
-  status: string;
-  selected?: boolean;
-  [key: string]: any;
-};
-
-type TestDevice = DeviceBase & {
-  model?: string;
-  serialNumber?: string;
-  ip?: string;
-  system?: string;
-  systemVersion?: string;
-  appName?: string;
-  appVersion?: string;
-  lastOnlineAt?: string;
-};
-
-type ApiDevice = DeviceBase & {
-  apiUrl?: string;
-  protocol?: string;
-};
-
-type DeviceUnion = TestDevice | PlaybackDevice | ApiDevice;
+// 设备类型已统一收敛至 domain/model/device.ts（TestDeviceView/ApiDeviceView），
+// 原 DeviceBase/TestDevice/ApiDevice/DeviceUnion 本地定义已删除
 import { generateDeviceFields } from '../../utils/utils';
-import type { APIResponse } from '../../shared/types';
+import { APP_CONFIG } from '../../utils/config';
 
 // 设备管理组合式函数
 export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 'test', onDevicesChanged?: () => Promise<void>) {
   // 状态定义
   const devices = ref<DeviceUnion[]>([]);
   const deviceSearchQuery = ref('');
-  const selectedDeviceStatus = ref('all');
+  const selectedDeviceStatus = ref(ViewMode.ALL);
   const availableSerials = ref<string[]>([]);
   const isLoading = ref(false);
   const activeDeviceType = ref(deviceType); // 当前激活的设备类型
@@ -71,14 +48,14 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
       // 只获取当前设备类型的设备ID
       let deviceIds: string[] = [];
       if (activeDeviceType.value === 'api') {
-        // 只获取API设备
+        // 只获取API设备（category/vendor 仅存在于 TestDeviceView/ApiDeviceView，用 in 收窄访问）
         deviceIds = devices.value
-          .filter((d: DeviceUnion) => d.category === 'API设备' || d.vendor) // 简单判断是否是API设备
+          .filter((d: DeviceUnion) => ('category' in d && d.category === 'API设备') || ('vendor' in d && d.vendor)) // 简单判断是否是API设备
           .map((d: DeviceUnion) => String(d.id));
       } else if (activeDeviceType.value === 'test') {
         // 只获取测试设备
         deviceIds = devices.value
-          .filter((d: DeviceUnion) => d.category === '测试设备') // 简单判断是否是测试设备
+          .filter((d: DeviceUnion) => ('category' in d && d.category === '测试设备')) // 简单判断是否是测试设备
           .map((d: DeviceUnion) => String(d.id));
       } else if (activeDeviceType.value === 'playback') {
         // 只获取播放设备
@@ -91,32 +68,32 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
         console.log(`执行${activeDeviceType.value}设备健康检查，设备ID:`, deviceIds);
 
         if (activeDeviceType.value === 'test') {
-          const result = await devicesApi.healthCheck(deviceIds);
-          result.forEach((item: { id: string | number; status: string; last_online_at?: string }) => {
+          const result = await devicesPort.healthCheck(deviceIds);
+          result.forEach((item) => {
             const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === String(item.id));
             if (deviceIndex > -1) {
-              const device = devices.value[deviceIndex] as TestDevice;
+              const device = devices.value[deviceIndex] as TestDeviceView;
               device.status = item.status as any;
-              if (item.last_online_at) {
-                device.lastOnlineAt = item.last_online_at;
+              if (item.lastOnlineAt) {
+                device.lastOnlineAt = item.lastOnlineAt;
               }
             }
           });
         } else if (activeDeviceType.value === 'playback') {
-          const result = await playbackApi.checkStatus();
+          const result = await playbackPort.checkStatus();
           result.forEach((item: { id: string | number; status: string }) => {
             const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === String(item.id));
             if (deviceIndex > -1) {
-              devices.value[deviceIndex].status = (item.status || 'offline') as any;
+              devices.value[deviceIndex].status = (item.status || DeviceStatus.OFFLINE) as any;
             }
           });
         } else if (activeDeviceType.value === 'api') {
           for (const deviceId of deviceIds) {
             try {
-              await apisApi.testConnection(deviceId);
+              await apisPort.testConnection(deviceId);
               const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === deviceId);
               if (deviceIndex > -1) {
-                devices.value[deviceIndex].status = 'online';
+                devices.value[deviceIndex].status = DeviceStatus.ONLINE;
               }
             } catch (error: any) {
               console.error(`API设备 ${deviceId} 健康检查失败:`, error);
@@ -129,7 +106,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
                   console.log(`API设备 ${deviceId} 不存在，已从列表中移除`);
                 } else {
                   // 其他错误（如网络超时等），标记为离线
-                  devices.value[deviceIndex].status = 'offline';
+                  devices.value[deviceIndex].status = DeviceStatus.OFFLINE;
                 }
               }
             }
@@ -143,7 +120,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
 
   const allFilteredDevices = computed(() => {
     let result = [...devices.value];
-    if (selectedDeviceStatus.value !== 'all') {
+    if (selectedDeviceStatus.value !== ViewMode.ALL) {
       result = result.filter(device => device.status === selectedDeviceStatus.value);
     }
     if (deviceSearchQuery.value) {
@@ -168,45 +145,37 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
   });
 
   // 使用通用分页 composable（分页后的设备列表即 filteredDevices）
-  const { totalItems, totalPages, paginatedItems: filteredDevices } = usePagination(allFilteredDevices, pageSize, { currentPage });
+  // 复用 usePagination 返回的导航函数，消除手写边界检查
+  const {
+    totalItems,
+    totalPages,
+    paginatedItems: filteredDevices,
+    goToPage,
+    nextPage: paginationNextPage,
+    prevPage: paginationPrevPage,
+    setPageSize: paginationSetPageSize,
+  } = usePagination(allFilteredDevices, pageSize, { currentPage });
 
   // 分页方法
-  const handlePageChange = (page: number) => {
-    if (page >= 1 && page <= totalPages.value) {
-      currentPage.value = page;
-    }
-  };
-
-  const handlePageSizeChange = (size: number) => {
-    pageSize.value = size;
-    currentPage.value = 1; // 重置到第一页
-  };
-
-  const handlePrevPage = () => {
-    if (currentPage.value > 1) {
-      currentPage.value--;
-    }
-  };
-
-  const handleNextPage = () => {
-    if (currentPage.value < totalPages.value) {
-      currentPage.value++;
-    }
-  };
+  const handlePageChange = (page: number) => { goToPage(page); };
+  const handlePageSizeChange = (size: number) => { paginationSetPageSize(size); };
+  const handlePrevPage = () => { paginationPrevPage(); };
+  const handleNextPage = () => { paginationNextPage(); };
 
   const fetchDevices = async () => {
     try {
       isLoading.value = true;
       let data: DeviceUnion[] = [];
       if (activeDeviceType.value === 'test') {
-        const response = await devicesApi.getAll();
-        data = (response.items || response) as TestDevice[];
+        const response = await devicesPort.getAll();
+        data = (response.items || response) as TestDeviceView[];
       } else if (activeDeviceType.value === 'playback') {
-        const response = await playbackApi.getAll();
-        data = (response.items || response) as PlaybackDevice[];
+        // playbackPort.getAll 已展平为 Domain 数组
+        data = await playbackPort.getAll() as PlaybackDevice[];
       } else if (activeDeviceType.value === 'api') {
-        const response = await apisApi.getAll();
-        data = (response.items || response) as ApiDevice[];
+        const response = await apisPort.getAll();
+        // apisPort.getAll 已通过 adapter 展平为 Domain 数组（camelCase），无需再取 items
+        data = response as ApiDeviceView[];
       }
       devices.value = Array.isArray(data) ? data : [];
     } catch (error) {
@@ -231,11 +200,11 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
       });
       if (confirmed) {
         if (targetType === 'test') {
-          await devicesApi.delete(id);
+          await devicesPort.delete(id);
         } else if (targetType === 'playback') {
-          await playbackApi.delete(id);
+          await playbackPort.delete(id);
         } else if (targetType === 'api') {
-          await apisApi.delete(id);
+          await apisPort.delete(id);
         }
         await fetchDevices();
         await notifyDevicesChanged();
@@ -244,7 +213,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
       console.error('删除设备失败:', error);
       // 向用户显示错误提示
       const errorMessage = error instanceof Error ? error.message : '删除设备失败，请重试';
-      alert(errorMessage);
+      notification.error(errorMessage);
     }
   };
 
@@ -260,11 +229,11 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
         try {
           const { data } = result;
           if (targetType === 'test') {
-            await devicesApi.create(data);
+            await devicesPort.create(data);
           } else if (targetType === 'playback') {
-            await playbackApi.create(data);
+            await playbackPort.create(data);
           } else if (targetType === 'api') {
-            await apisApi.create(data);
+            await apisPort.create(data);
           }
           await fetchDevices();
           await notifyDevicesChanged();
@@ -272,7 +241,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
           console.error('添加设备失败:', error);
           // 向用户显示错误提示
           const errorMessage = error instanceof Error ? error.message : '添加设备失败，请重试';
-          alert(errorMessage);
+          notification.error(errorMessage);
         }
       }
     });
@@ -284,11 +253,11 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
     try {
       let deviceData: any;
       if (targetType === 'test') {
-        deviceData = await devicesApi.getOne(id);
+        deviceData = await devicesPort.getOne(id);
       } else if (targetType === 'playback') {
-        deviceData = await playbackApi.getOne(id);
+        deviceData = await playbackPort.getOne(id);
       } else if (targetType === 'api') {
-        deviceData = await apisApi.getOne(id);
+        deviceData = await apisPort.getOne(id);
       }
 
       modalManager.open(MODAL_TYPES.EDIT_DEVICE, {
@@ -300,11 +269,11 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
           try {
           const { data } = result;
           if (targetType === 'test') {
-            await devicesApi.update(id, data);
+            await devicesPort.update(id, data);
           } else if (targetType === 'playback') {
-            await playbackApi.update(id, data);
+            await playbackPort.update(id, data);
           } else if (targetType === 'api') {
-            await apisApi.update(id, data);
+            await apisPort.update(id, data);
           }
           await fetchDevices();
           await notifyDevicesChanged();
@@ -312,7 +281,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
           console.error('编辑设备失败:', error);
           // 向用户显示错误提示
           const errorMessage = error instanceof Error ? error.message : '编辑设备失败，请重试';
-          alert(errorMessage);
+          notification.error(errorMessage);
         }
         }
       });
@@ -337,11 +306,11 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
         // 串行删除，确保稳定性（如果后端支持批量接口，应优先使用批量接口）
         for (const id of ids) {
           if (targetType === 'test') {
-            await devicesApi.delete(id);
+            await devicesPort.delete(id);
           } else if (targetType === 'playback') {
-            await playbackApi.delete(id);
+            await playbackPort.delete(id);
           } else if (targetType === 'api') {
-            await apisApi.delete(id);
+            await apisPort.delete(id);
           }
         }
         await fetchDevices();
@@ -351,7 +320,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
       console.error('批量删除设备失败:', error);
       // 向用户显示错误提示
       const errorMessage = error instanceof Error ? error.message : '批量删除设备失败，请重试';
-      alert(errorMessage);
+      notification.error(errorMessage);
     } finally {
       isLoading.value = false;
     }
@@ -383,14 +352,14 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
       if (targetType === 'test') {
         await healthCheckDevice(id);
       } else if (targetType === 'playback') {
-        await playbackApi.test(id);
+        await playbackPort.test(id);
       } else if (targetType === 'api') {
-        await apisApi.testConnection(id);
+        await apisPort.testConnection(id);
       }
     } catch (error) {
       console.error('测试设备连接失败:', error);
       const errorMessage = error instanceof Error ? error.message : '测试设备连接失败，请重试';
-      alert(errorMessage);
+      notification.error(errorMessage);
       throw error;
     }
   };
@@ -418,30 +387,30 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
           formData = {
             name: scannedDevice.name,
             model: scannedDevice.model,
-            serialNumber: scannedDevice.serial || scannedDevice.serial_number,
-            ip: scannedDevice.ip_address || scannedDevice.ip,
+            serialNumber: scannedDevice.serialNumber || scannedDevice.serial,
+            ip: scannedDevice.ip,
             system: system,
-            systemVersion: scannedDevice.system_version || 'Unknown',
-            appName: scannedDevice.app_name || 'Default App',
-            appVersion: scannedDevice.app_version || '1.0.0',
-            status: 'online'
+            systemVersion: scannedDevice.systemVersion || 'Unknown',
+            appName: scannedDevice.appName || 'Default App',
+            appVersion: scannedDevice.appVersion || '1.0.0',
+            status: DeviceStatus.ONLINE
           };
         } else if (targetType === 'playback') {
           formData = {
             name: scannedDevice.name,
             model: scannedDevice.model,
-            deviceUniqueId: scannedDevice.device_unique_id,
-            channelIndex: scannedDevice.channel_index !== undefined ? scannedDevice.channel_index : 0,
-            sampleRate: scannedDevice.sample_rate || 48000,
-            deviceType: scannedDevice.device_type || scannedDevice.type || 'dry',
-            status: 'online'
+            deviceUniqueId: scannedDevice.deviceUniqueId,
+            channelIndex: scannedDevice.channelIndex !== undefined ? scannedDevice.channelIndex : 0,
+            sampleRate: scannedDevice.sampleRate || 48000,
+            deviceType: scannedDevice.deviceType || scannedDevice.type || 'dry',
+            status: DeviceStatus.ONLINE
           };
         } else if (targetType === 'api') {
           formData = {
             name: scannedDevice.name,
             endpoint: scannedDevice.endpoint,
             protocol: scannedDevice.protocol || 'http',
-            status: 'online'
+            status: DeviceStatus.ONLINE
           };
         }
 
@@ -468,29 +437,19 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
   async function healthCheckDevice(id: string | number) {
     try {
       if (activeDeviceType.value === 'test') {
-        const response = await devicesApi.healthCheck([String(id)]);
-        const result = response?.data || response;
-        console.log('[healthCheckDevice] API响应:', result);
+        const result = await devicesPort.healthCheck([String(id)]);
         if (result && result.length > 0) {
           const item = result[0];
-          console.log('[healthCheckDevice] 设备ID:', id, '返回状态:', item.status);
           const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === String(item.id));
-          console.log('[healthCheckDevice] 设备索引:', deviceIndex);
           if (deviceIndex > -1) {
-            const newDevice = { ...devices.value[deviceIndex], status: item.status };
-            console.log('[healthCheckDevice] 更新前:', devices.value[deviceIndex].status);
-            console.log('[healthCheckDevice] 更新后:', newDevice.status);
-            devices.value.splice(deviceIndex, 1, newDevice);
-            console.log('[healthCheckDevice] 更新后实际值:', devices.value[deviceIndex].status);
-          } else {
-            console.log('[healthCheckDevice] 未找到匹配的设备');
+            devices.value.splice(deviceIndex, 1, { ...devices.value[deviceIndex], status: item.status });
           }
         }
       } else if (activeDeviceType.value === 'api') {
-        await apisApi.testConnection(String(id));
+        await apisPort.testConnection(String(id));
         const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === String(id));
         if (deviceIndex > -1) {
-          devices.value.splice(deviceIndex, 1, { ...devices.value[deviceIndex], status: 'online' });
+          devices.value.splice(deviceIndex, 1, { ...devices.value[deviceIndex], status: DeviceStatus.ONLINE });
         }
       }
       return true;
@@ -498,7 +457,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
       console.error('设备健康检查失败:', error);
       const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === String(id));
       if (deviceIndex > -1) {
-        devices.value.splice(deviceIndex, 1, { ...devices.value[deviceIndex], status: 'offline' });
+        devices.value.splice(deviceIndex, 1, { ...devices.value[deviceIndex], status: DeviceStatus.OFFLINE });
       }
       return false;
     }
@@ -532,17 +491,15 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
     if (playbackDeviceLoading.value || (!playbackDeviceHasMore.value && !reset)) return;
     playbackDeviceLoading.value = true;
     try {
-      const response = await devicesApi.getPlaybackDevices({
-        params: { page: playbackDevicePage.value, per_page: 50 },
-        unwrapResponse: false,
-      }) as APIResponse<{ items: PlaybackDevice[]; pages: number }>;
-      if (response.success && response.data && Array.isArray(response.data.items)) {
+      // getPlaybackDevices 出口已是 Domain（Paginated<PlaybackDevice>），查询参数为 camelCase（Port 契约），snake_case 化在 Infrastructure 内部完成
+      const page = await devicesPort.getPlaybackDevices({ page: playbackDevicePage.value, perPage: APP_CONFIG.playbackDevicePageSize });
+      if (Array.isArray(page.items) && page.items.length > 0) {
         if (reset) {
-          playbackDevices.value = response.data.items;
+          playbackDevices.value = page.items;
         } else {
-          playbackDevices.value = [...playbackDevices.value, ...response.data.items];
+          playbackDevices.value = [...playbackDevices.value, ...page.items];
         }
-        playbackDevicePages.value = response.data.pages || 1;
+        playbackDevicePages.value = page.pages || 1;
         playbackDeviceHasMore.value = playbackDevicePage.value < playbackDevicePages.value;
         if (playbackDeviceHasMore.value) playbackDevicePage.value += 1;
       } else {

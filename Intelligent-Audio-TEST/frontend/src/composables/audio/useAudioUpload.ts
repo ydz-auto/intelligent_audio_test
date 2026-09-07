@@ -4,8 +4,9 @@ import type {
   AudioUploadFile,
   AudioUploadTask,
   AudioUploadOptions,
-} from '../../shared/types';
+} from '../../domain';
 import type { useAlgorithmParams } from '../algorithm/useAlgorithmParams';
+import { TestType } from '@/domain/enums';
 import { calculateMd5 } from './md5Utils';
 import { getLocalTasks, saveLocalTask, pathBasename } from './taskPersistence';
 import {
@@ -73,7 +74,7 @@ export function useAudioUpload(algorithmApi: AlgorithmParamsApi) {
     createTestCase: false,
     tags: [],
     description: '',
-    testTypes: ['e2e'],
+    testTypes: [TestType.E2E],
     inheritTags: true,
     dimensions: [],
     algorithmType: '',
@@ -91,7 +92,7 @@ export function useAudioUpload(algorithmApi: AlgorithmParamsApi) {
     keepStructure: true,
     allowedExtensions: ['.wav', '.mp3', '.m4a', '.flac'],
     createTestCase: false,
-    testTypes: ['e2e'] as ('api' | 'e2e')[],
+    testTypes: [TestType.E2E] as (typeof TestType)[keyof typeof TestType][],
     playbackDeviceId: null as string | number | null,
     spl: 65.0,
     groupNameType: 'root' as 'root' | 'folder' | 'custom',

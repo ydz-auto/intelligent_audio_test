@@ -1,6 +1,10 @@
-import { devicesApi, playbackApi, apisApi, audiosApi } from '../../utils/api';
-import type { PlaybackDevice } from '../../shared/types';
-import type { TestDevice, APIDevice, DeviceUnion, ListResponse } from './deviceTypes';
+import { devicesPort, BATCH_LIST_PARAMS } from '../../composables/device/devicesPort';
+import { playbackPort } from '../../composables/device/playbackPort';
+import { apisPort } from '../../composables/apiTest/apisPort';
+import { audiosPort } from '../../composables/audio/audiosPort';
+import type { PlaybackDevice } from '../../domain';
+import type { TestDeviceView, ApiDeviceView, DeviceUnion, ListResponse } from '@/domain';
+import { HttpStatus, DeviceStatus } from '../../domain/enums';
 import {
   activeTab,
   loading,
@@ -18,9 +22,9 @@ export async function fetchAllDevices() {
   error.value = null;
   try {
     const basicResults = await Promise.allSettled([
-      devicesApi.getAll() as Promise<ListResponse<TestDevice> | TestDevice[]>,
-      apisApi.getAll() as Promise<ListResponse<APIDevice> | APIDevice[]>,
-      audiosApi.getAll({ audioType: 'prompt' }) as Promise<ListResponse<PlaybackDevice>>
+      devicesPort.getAll() as Promise<ListResponse<TestDeviceView> | TestDeviceView[]>,
+      apisPort.getAll() as Promise<ListResponse<ApiDeviceView> | ApiDeviceView[]>,
+      audiosPort.getAll({ audioType: 'prompt' }) as Promise<ListResponse<PlaybackDevice>>
     ]);
 
     if (basicResults[0].status === 'fulfilled') {
@@ -30,8 +34,8 @@ export async function fetchAllDevices() {
       testDevices.value = testDevicesData.map((d) => {
         const deviceId = d.id;
         const existingDevice = currentTestDevices.find(existing => existing.id === deviceId);
-        const currentStatus = existingDevice && existingDevice.status === 'testing' ? 'testing' : d.status;
-        return { ...d, category: d.category || '测试设备', status: currentStatus } as TestDevice;
+        const currentStatus = existingDevice && existingDevice.status === DeviceStatus.TESTING ? DeviceStatus.TESTING : d.status;
+        return { ...d, category: d.category || '测试设备', status: currentStatus } as TestDeviceView;
       });
     } else {
       console.error('Failed to fetch test devices:', basicResults[0].reason);
@@ -45,7 +49,7 @@ export async function fetchAllDevices() {
       apiDevices.value = apiDevicesData.map((d) => {
         const deviceId = d.id;
         const existingDevice = currentAPIDevices.find(existing => existing.id === deviceId);
-        const currentStatus = existingDevice && existingDevice.status === 'testing' ? 'testing' : d.status;
+        const currentStatus = existingDevice && existingDevice.status === DeviceStatus.TESTING ? DeviceStatus.TESTING : d.status;
 
         let processedEndpoints: { endpoint: string; url?: string }[] = [];
         if (d.endpoints && Array.isArray(d.endpoints)) {
@@ -55,7 +59,7 @@ export async function fetchAllDevices() {
           }));
         }
 
-        return { ...d, category: d.category || 'API设备', status: currentStatus, endpoints: processedEndpoints } as APIDevice;
+        return { ...d, category: d.category || 'API设备', status: currentStatus, endpoints: processedEndpoints } as ApiDeviceView;
       });
     } else {
       console.error('Failed to fetch API devices:', basicResults[1].reason);
@@ -63,28 +67,20 @@ export async function fetchAllDevices() {
     }
 
     if (basicResults[2].status === 'fulfilled') {
+      // audiosPort.getAll 已通过 audioAdapter 转换为 camelCase 分页
       const audioRes = basicResults[2].value as any;
-      promptAudios.value = (audioRes.items || []).filter((d: any) => d);
+      promptAudios.value = ((audioRes as any).items || (audioRes as any).data || []).filter((d: any) => d);
     } else {
       console.error('Failed to fetch prompt audios:', basicResults[2].reason);
       promptAudios.value = [];
     }
 
+    // playbackPort.getAll 已展平为 Domain 数组（大批量分页一次性拉取全部）
     let allPlaybackDevices: PlaybackDevice[] = [];
-    let currentPage = 1;
-    let totalPages = 1;
-
-    while (currentPage <= totalPages) {
-      try {
-        const playbackRes = await playbackApi.getAll({ page: currentPage, perPage: 100 }) as ListResponse<PlaybackDevice> | PlaybackDevice[];
-        const devicesData = (Array.isArray(playbackRes) ? playbackRes : (playbackRes.items || []));
-        allPlaybackDevices = [...allPlaybackDevices, ...devicesData];
-        totalPages = (!Array.isArray(playbackRes) && playbackRes.pages) || 1;
-        currentPage++;
-      } catch (err) {
-        console.error(`Failed to fetch playback devices page ${currentPage}:`, err);
-        break;
-      }
+    try {
+      allPlaybackDevices = await playbackPort.getAll(BATCH_LIST_PARAMS);
+    } catch (err) {
+      console.error('Failed to fetch playback devices:', err);
     }
 
     const currentPlaybackDevices = [...playbackDevices.value];
@@ -92,8 +88,8 @@ export async function fetchAllDevices() {
       const device = d || {} as PlaybackDevice;
       const deviceId = device.id;
       const existingDevice = currentPlaybackDevices.find(existing => existing.id === deviceId);
-      const currentStatus = existingDevice && existingDevice.status === 'testing' ? 'testing' :
-                         (device.status || 'offline');
+      const currentStatus = existingDevice && existingDevice.status === DeviceStatus.TESTING ? DeviceStatus.TESTING :
+                         (device.status || DeviceStatus.OFFLINE);
       return { ...device, status: currentStatus, name: device.name || '未命名设备', model: device.model || '未知型号', id: deviceId } as PlaybackDevice;
     });
 
@@ -132,7 +128,7 @@ export async function autoHealthCheck() {
       console.log(`自动运行健康检查，设备ID: ${deviceIds}`);
 
       if (activeTab.value === 'test') {
-        const results = await devicesApi.healthCheck(deviceIds) as any[];
+        const results = await devicesPort.healthCheck(deviceIds) as any[];
         results.forEach((item: any) => {
           const device = testDevices.value.find(d => String(d.id) === String(item.id));
           if (device) {
@@ -143,20 +139,20 @@ export async function autoHealthCheck() {
           }
         });
       } else if (activeTab.value === 'playback') {
-        const results = await playbackApi.checkStatus() as any[];
+        const results = await playbackPort.checkStatus() as any[];
         results.forEach((item: any) => {
           const device = playbackDevices.value.find(d => String(d.id) === String(item.id));
           if (device) {
-            device.status = item.status || 'offline';
+            device.status = item.status || DeviceStatus.OFFLINE;
           }
         });
       } else if (activeTab.value === 'api') {
         for (const deviceId of deviceIds) {
           try {
-            const result = await apisApi.testConnection(deviceId as string | number);
+            const result = await apisPort.testConnection(deviceId as string | number);
             const device = apiDevices.value.find(d => String(d.id) === String(deviceId));
             if (device && result) {
-              device.status = 'online';
+              device.status = DeviceStatus.ONLINE;
             }
           } catch (err: any) {
             console.error(`API设备 ${deviceId} 健康检查失败:`, err);
@@ -172,7 +168,7 @@ export async function autoHealthCheck() {
                 console.log(`API设备 ${deviceId} 不存在，已从列表中移除`);
               } else {
                 // 其他错误（如网络超时等），标记为离线
-                device.status = 'offline';
+                device.status = DeviceStatus.OFFLINE;
               }
             }
           }

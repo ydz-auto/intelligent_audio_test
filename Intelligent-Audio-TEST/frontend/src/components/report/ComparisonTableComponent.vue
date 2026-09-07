@@ -145,7 +145,7 @@
 </template>
 
 <script>
-import { TaskStatus, ReportStatus } from '@/shared/types/enums';
+import { TaskStatus, ReportStatus, ExecutionStatus } from '@/domain/enums';
 
 export default {
   name: 'ComparisonTableComponent',
@@ -289,7 +289,7 @@ export default {
       }
     },
     getStatusLabel(status) {
-      const statusMap = { 'pending': '排队中', 'in-progress': '执行中', 'completed': '已完成', 'failed': '执行失败', 'draft': '草稿', 'published': '已发布' };
+      const statusMap = { [ExecutionStatus.PENDING]: '排队中', 'in-progress': '执行中', [ExecutionStatus.COMPLETED]: '已完成', [ExecutionStatus.FAILED]: '执行失败', [ReportStatus.DRAFT]: '草稿', [ReportStatus.PUBLISHED]: '已发布' };
       return statusMap[status] || status;
     },
     getProgressColor(percentage) {

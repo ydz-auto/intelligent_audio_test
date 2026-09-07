@@ -48,21 +48,21 @@
               <i class="fas fa-tag"></i>
               {{ getTaskTypeText(task.type) }}
             </span>
-            <span class="task-meta-item algorithm-type" v-if="task.algorithm_type">
+            <span class="task-meta-item algorithm-type" v-if="task.algorithmType">
               <i class="fas fa-microchip"></i>
-              {{ getAlgorithmTypeText(task.algorithm_type) }}
+              {{ getAlgorithmTypeText(task.algorithmType) }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-calendar-alt"></i>
-              {{ task.created_at }}
+              {{ task.createdAt }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-tasks"></i>
-              用例数{{ task.case_count }}
+              用例数{{ task.caseCount }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-desktop"></i>
-              设备数{{ task.device_count }}
+              设备数{{ task.deviceCount }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-chart-pie"></i>
@@ -81,9 +81,9 @@
               'fa-clock': task.status === TaskStatus.PENDING,
               'fa-hourglass': task.status === TaskStatus.QUEUED,
               'fa-spinner fa-spin': task.status === TaskStatus.RUNNING,
-              'fa-sync-alt fa-spin': task.status === 'evaluating',
-              'fa-sync-alt fa-spin': task.status === 'reevaluating',
-              'fa-hourglass-half': task.status === 'reevaluate_queued',
+              'fa-sync-alt fa-spin': task.status === TaskStatus.EVALUATING,
+              'fa-sync-alt fa-spin': task.status === TaskStatus.REEVALUATING,
+              'fa-hourglass-half': task.status === TaskStatus.REEVALUATE_QUEUED,
               'fa-check-circle': task.status === TaskStatus.COMPLETED,
               'fa-times-circle': task.status === TaskStatus.FAILED,
               'fa-pause-circle': task.status === TaskStatus.PAUSED,
@@ -112,21 +112,21 @@
               <i class="fas fa-tag"></i>
               {{ getTaskTypeText(task.type) }}
             </span>
-            <span class="task-meta-item algorithm-type" v-if="task.algorithm_type">
+            <span class="task-meta-item algorithm-type" v-if="task.algorithmType">
               <i class="fas fa-microchip"></i>
-              {{ getAlgorithmTypeText(task.algorithm_type) }}
+              {{ getAlgorithmTypeText(task.algorithmType) }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-calendar-alt"></i>
-              {{ task.created_at }}
+              {{ task.createdAt }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-tasks"></i>
-              用例数{{ task.case_count }}
+              用例数{{ task.caseCount }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-desktop"></i>
-              设备数{{ task.device_count }}
+              设备数{{ task.deviceCount }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-chart-pie"></i>
@@ -177,7 +177,7 @@
 
 <script setup>
 import { useTaskCard } from './TaskCard'
-import { TaskStatus } from '@/shared/types/enums'
+import { TaskStatus } from '@/domain/enums'
 
 const props = defineProps({
   task: {type: Object, required: true},

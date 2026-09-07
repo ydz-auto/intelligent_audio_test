@@ -55,6 +55,28 @@ class RoundsLoopMixin:
 
         return all_round_results, rounds_data, execution_success, last_adjusted_ref_params
 
+    # 轮次级执行控制字段：前端将 segment 级控制字段提升到 round 级结构字段，
+    # 经 RoundConfigItem(extra='allow') 保留在 config.rounds[] 中；
+    # 需显式提取并转 snake_case 后经 kwargs 透传给设备驱动（驼峰/蛇形双兼容）
+    _EXEC_CONTROL_FIELD_ALIASES = (
+        ('is_interruption', 'isInterruption'),   # 打断轮：不等 AI 回复完成即进入下一轮（barge-in）
+        ('record_mode', 'recordMode'),           # 录屏模式：case=全程单文件 / round=每轮独立
+        ('ai_start_timeout', 'aiStartTimeout'),  # 打断轮等待 AI 开始回复的超时（秒）
+    )
+
+    def _extract_exec_control_params(self, round_config):
+        """从轮次配置提取执行控制字段，返回 snake_case kwargs dict（缺省字段不出现）"""
+        if not isinstance(round_config, dict):
+            return {}
+        result = {}
+        for snake_key, camel_key in self._EXEC_CONTROL_FIELD_ALIASES:
+            value = round_config.get(snake_key)
+            if value is None:
+                value = round_config.get(camel_key)
+            if value is not None:
+                result[snake_key] = value
+        return result
+
     def _execute_single_round(self, task_id, tc_rel_id, data, case_config, case_name,
                               algorithm_type, test_case_id, rounds,
                               device_info_list, result_id, case_reference_params,
@@ -68,6 +90,7 @@ class RoundsLoopMixin:
             device_info_list, task_id, test_case_id=test_case_id,
             extra_params={'round_number': round_idx,
                           'total_rounds': len(rounds),
+                          **self._extract_exec_control_params(round_config),
                           **round_algo_params},
         )
         if not pre_ok:
@@ -108,6 +131,7 @@ class RoundsLoopMixin:
         round_end_ms = playback_ts.get('current_round_end_ms')
         post_extra_params = {'round_number': round_idx,
                              'total_rounds': len(rounds),
+                             **self._extract_exec_control_params(round_config),
                              **round_algo_params}
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms

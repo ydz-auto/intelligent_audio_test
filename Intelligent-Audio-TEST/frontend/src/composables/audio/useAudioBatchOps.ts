@@ -1,8 +1,9 @@
 import { reactive, ref, type Ref } from 'vue';
-import { audiosApi } from '../../utils/api';
+import { audiosPort } from './audiosPort';
 import { getModalManager } from '../../utils/modalManager';
-import { MODAL_TYPES } from '../../shared/types';
-import type { AudioInfo, APIResponse } from '../../shared/types';
+import { downloadBlob } from '../../utils/utils';
+import { MODAL_TYPES } from '../modal/constants';
+import type { AudioInfo, APIResponse } from '../../domain';
 
 /**
  * 音频批量操作和单文件操作组合式函数
@@ -61,7 +62,7 @@ export function useAudioBatchOps(
 
     if (confirmed) {
       try {
-        const response = await audiosApi.batchAction('delete', selectedAudios.value, {}, { unwrapResponse: false }) as APIResponse<any>;
+        const response = await audiosPort.batchAction('delete', selectedAudios.value, {}, { unwrapResponse: false }) as APIResponse<any>;
         const hasError = response.message && (response.message.includes('失败') || response.message.includes('没有可删除') || response.message.includes('被其他资源引用') || response.message.includes('禁止删除'));
         if (response.success && !hasError) {
           selectedAudios.value = [];
@@ -92,15 +93,8 @@ export function useAudioBatchOps(
   async function batchExport() {
     if (selectedAudios.value.length === 0) return;
     try {
-      const response = await audiosApi.batchAction('export', selectedAudios.value, {}, { responseType: 'blob' }) as any;
-      const url = window.URL.createObjectURL(new Blob([response]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `audios_export_${new Date().getTime()}.zip`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const response = await audiosPort.batchAction('export', selectedAudios.value, {}, { responseType: 'blob' }) as any;
+      downloadBlob(new Blob([response]), `audios_export_${new Date().getTime()}.zip`);
     } catch (e) {
       console.error('Batch export failed:', e);
     }
@@ -117,7 +111,7 @@ export function useAudioBatchOps(
 
     if (confirmed) {
       try {
-        const response = await audiosApi.delete(id, { unwrapResponse: false }) as APIResponse;
+        const response = await audiosPort.delete(id, { unwrapResponse: false }) as APIResponse;
         const hasError = response.message && (response.message.includes('失败') || response.message.includes('没有可删除') || response.message.includes('被其他资源引用') || response.message.includes('禁止删除'));
         if (response.success && !hasError) {
           onRefresh();
@@ -158,15 +152,8 @@ export function useAudioBatchOps(
     }
 
     try {
-      const response = await audiosApi.stream(id, { responseType: 'blob' }) as any;
-      const url = window.URL.createObjectURL(new Blob([response]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', name);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      const response = await audiosPort.stream(id, { responseType: 'blob' }) as any;
+      downloadBlob(new Blob([response]), name);
     } catch (e) {
       console.error('Download audio failed:', e);
     }
@@ -193,9 +180,11 @@ export function useAudioBatchOps(
     }
 
     if (audio) {
+      // AudioInfo Domain 类型为 camelCase，统一读 audioType（type 为兜底别名）
       audioTitle.value = audio.name;
       currentPreviewAudioId.value = audio.id;
-      currentPreviewAudioType.value = audio.audio_type || audio.type || 'dry';
+      const t = audio.audioType || audio.type || 'dry';
+      currentPreviewAudioType.value = (['dry', 'noise', 'prompt', 'mixed'].includes(t) ? t : 'dry') as 'dry' | 'noise' | 'prompt' | 'mixed';
       showAudioPlayerModal.value = true;
     }
   }
@@ -224,13 +213,14 @@ export function useAudioBatchOps(
       const metadata = {
         id: audio.id,
         fileName: audio.name || '',
-        category: audio.filepath || audio.filePath || audio.file_path || '',
-        audioType: audio.audio_type || audio.type || 'dry',
-        asrText: audio.asr_text || '',
+        // filepath 为 Domain 契约字段（camelCase 改造后统一为小写 filepath）
+        category: audio.filepath || '',
+        audioType: audio.audioType || audio.type || 'dry',
+        asrText: audio.asrText || '',
         tags: tagsArray.join(','),
         format: audio.format || '',
         duration: audio.duration || 0,
-        sourceLanguage: audio.source_language || '',
+        sourceLanguage: audio.sourceLanguage || '',
         size: audio.size || 0,
         translations: audio.translations || [],
         annotations: audio.annotations || []
@@ -256,7 +246,7 @@ export function useAudioBatchOps(
         if (payload && payload.action === 'save') {
           const editedData = payload.data;
           try {
-            const response = await audiosApi.updateMetadata(editedData.id, editedData, { unwrapResponse: false }) as any;
+            const response = await audiosPort.updateMetadata(editedData.id, editedData, { unwrapResponse: false }) as any;
             if (response.success) {
               onRefresh();
               await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
@@ -292,7 +282,7 @@ export function useAudioBatchOps(
       convertAudioInfo.name = audio.name;
       convertAudioInfo.originalFileName = audio.filename || '';
       convertAudioInfo.originalFormat = audio.format || '';
-      convertAudioInfo.originalSampleRate = (audio.sample_rate || '').toString();
+      convertAudioInfo.originalSampleRate = (audio.sampleRate || '').toString();
       convertAudioInfo.originalChannels = (audio.channels || '').toString();
       convertAudioInfo.originalBitDepth = '';
 

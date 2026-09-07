@@ -21,8 +21,8 @@
                 <p>
                   {{ device.system || '未知系统' }} - {{ device.serial || '无序列号' }}
                 </p>
-                <p v-if="device.ipAddress || device.ip">
-                  IP{{ device.ipAddress || device.ip }}
+                <p v-if="device.ip">
+                  IP{{ device.ip }}
                 </p>
                 <p v-if="device.connectionType">
                   连接方式{{ device.connectionType === 'usb' ? 'usb连接' : '远程连接' }}
@@ -42,12 +42,12 @@
           <h5>播放设备 (系统音频通道)</h5>
           <div v-if="scanResults.length > 0" class="audio-channels-list">
             <div v-for="device in scanResults" 
-                 :key="(device.deviceUniqueId || device.deviceUniqueId) + '_' + (device.channelIndex || device.channelIndex || 0)" 
+                 :key="(device.deviceUniqueId || '') + '_' + (device.channelIndex || 0)" 
                  class="scan-device-item">
               <div class="scan-device-info">
                 <h5>{{ device.name }}</h5>
-                <p>通道索引{{ device.channelIndex || device.channelIndex || 0 }}</p>
-                <p>采样率{{ device.sampleRate || device.sampleRate || 48000 }} Hz</p>
+                <p>通道索引{{ device.channelIndex || 0 }}</p>
+                <p>采样率{{ device.sampleRate || 48000 }} Hz</p>
               </div>
               <div class="scan-device-actions">
                 <button class="btn btn-primary" @click="handleAddDevice($event, device)">
@@ -102,7 +102,8 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { devicesApi, playbackApi } from '../../../utils/api'
+import { devicesPort } from '../../../composables/device/devicesPort'
+import { playbackPort } from '../../../composables/device/playbackPort'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -180,15 +181,12 @@ const startScan = async () => {
       scanStatus.value = '正在扫描测试设备...'
       
       try {
-        const response = await devicesApi.scan()
+        // devicesPort.scan 已通过 adapter 返回 ScannedDevice[]（camelCase）
+        const response = await devicesPort.scan()
         console.log('[ScanDevicesModal] 测试设备扫描响应:', response)
         
-        if (response && response.code === 0 && Array.isArray(response.data)) {
-          devices = response.data
-        } else if (response && Array.isArray(response)) {
+        if (Array.isArray(response)) {
           devices = response
-        } else if (response && response.data && Array.isArray(response.data.devices)) {
-          devices = response.data.devices
         } else {
           console.log('[ScanDevicesModal] 无法解析测试设备扫描响应，使用模拟数据')
           devices = []
@@ -240,17 +238,12 @@ const startScan = async () => {
       scanStatus.value = '正在获取系统音频设备...'
       
       try {
-        const response = await playbackApi.scan()
+        // playbackPort.scan 已通过 adapter 返回 ScannedDevice[]（camelCase）
+        const response = await playbackPort.scan()
         console.log('[ScanDevicesModal] 播放设备扫描响应:', response)
         
-        if (response && response.code === 0 && Array.isArray(response.data)) {
-          devices = response.data
-        } else if (response && Array.isArray(response)) {
+        if (Array.isArray(response)) {
           devices = response
-        } else if (response && response.data && Array.isArray(response.data.devices)) {
-          devices = response.data.devices
-        } else if (response && response.devices && Array.isArray(response.devices)) {
-          devices = response.devices
         } else {
           console.log('[ScanDevicesModal] 无法解析播放设备扫描响应，使用模拟数据')
           devices = []

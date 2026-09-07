@@ -78,7 +78,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { TagItem } from '@/utils/api'
+import type { TagItem } from '@/domain/model/tag'
 
 const props = defineProps<{
   tags: TagItem[]

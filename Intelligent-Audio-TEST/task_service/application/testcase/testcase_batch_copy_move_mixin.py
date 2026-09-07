@@ -120,6 +120,43 @@ class TestCaseCopyMoveMixin:
             copied_count += 1
         return f"已成功复制分组 '{new_group_name}' 的 {copied_count} 个用例"
 
+    def _batch_copy_by_tag(self, data, common=None):
+        """按标签整体复制（复制标签下全部用例到 'tag_name_copy' 标签）。
+
+        copy_to_new_group 为 true 时另建 'tag_name_copy' 分组，否则保留原分组。
+        """
+        tag_name = data.get('tag_name')
+        if not tag_name:
+            return ("复制标签操作需要 'tag_name'", True)
+
+        source_tag = self.repo.get_active_tag_by_name(tag_name)
+        if not source_tag:
+            return (f"未找到标签: {tag_name}", True)
+
+        new_tag_name = f"{tag_name}_copy"
+        new_tag = self.repo.get_active_tag_by_name(new_tag_name)
+        if not new_tag:
+            new_tag = self.repo.get_or_create_tag(new_tag_name)
+
+        new_group = None
+        if data.get('copy_to_new_group'):
+            new_group_name = f"{tag_name}_copy"
+            new_group = self.repo.get_group_by_name(new_group_name)
+            if not new_group:
+                new_group = self.repo.create_group(
+                    str(uuid.uuid4()), new_group_name, f"从标签 '{tag_name}' 复制"
+                )
+
+        test_cases = self.repo.query_testcases_by_tag_ids([source_tag.id])
+        copied_count = 0
+        for tc in test_cases:
+            group_id = new_group.id if new_group else tc.group_id
+            new_tc = self._copy_one_testcase(tc, group_id)
+            if new_tag not in new_tc.tags:
+                new_tc.tags.append(new_tag)
+            copied_count += 1
+        return f"已成功复制标签 '{new_tag_name}' 的 {copied_count} 个用例"
+
     def _batch_auto_generate_name(self, data, common=None):
         """批量自动生成用例名称。"""
         ids = data.get('ids', [])

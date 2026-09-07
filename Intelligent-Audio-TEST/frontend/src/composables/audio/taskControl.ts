@@ -1,10 +1,10 @@
 import type { Ref } from 'vue';
-import { audiosApi } from '../../utils/api';
-import type { AudioUploadFile, AudioUploadTask, APIResponse } from '../../shared/types';
+import { audiosPort } from './audiosPort';
+import type { AudioUploadFile, AudioUploadTask, APIResponse } from '../../domain';
 import { calculateMd5 } from './md5Utils';
 import { getLocalTasks, saveLocalTask } from './taskPersistence';
 import { updateOverallProgress, type UploadProcessContext } from './uploadProcess';
-import { UploadStatus } from '@/shared/types/enums';
+import { UploadStatus } from '../../domain/enums';
 
 /**
  * 任务控制：暂停/恢复/重试/移除/检查未完成任务
@@ -131,8 +131,9 @@ export async function retryFailedFiles(
       input.onchange = async (e: any) => {
         const files = e.target.files;
         if (files && files.length > 0) {
-          const selectedFiles = Array.from(files);
-          const newFileTasks: typeof task.files = [];
+          // FileList → File[]，明确元素类型避免 unknown 推断
+          const selectedFiles = Array.from(files) as File[];
+          const newFileTasks: AudioUploadFile[] = [];
 
           for (const file of selectedFiles) {
             if (failedFileNames.includes(file.name)) {
@@ -168,7 +169,7 @@ export async function retryFailedFiles(
             }));
 
             try {
-              const regResponse = await audiosApi.registerUploadFiles(taskId, newFileData, {
+              const regResponse = await audiosPort.registerUploadFiles(taskId, newFileData, {
                 signal: ctx.getAbortController()?.signal,
                 unwrapResponse: false
               }) as APIResponse<{ files: any[] }>;
@@ -200,7 +201,7 @@ export async function retryFailedFiles(
 
   if (canReRegister && fileData.length > 0) {
     try {
-      const regResponse = await audiosApi.registerUploadFiles(taskId, fileData, {
+      const regResponse = await audiosPort.registerUploadFiles(taskId, fileData, {
         signal: ctx.getAbortController()?.signal,
         unwrapResponse: false
       }) as APIResponse<{ files: any[] }>;

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { testcasesApi } from '../utils/api'
+import { testcasesPort } from '../composables/testCase/testcasesPort'
+import { tagsPort } from '../composables/shared/tagsPort'
 import { convertTestCaseFormData } from '../utils/utils'
 import { useNotification } from '../composables/modal/useNotification'
 import { useTestCaseBatchOps } from '../composables/testCase/useTestCaseBatchOps'
@@ -9,24 +10,19 @@ import { useTestCaseImport } from '../composables/testCase/useTestCaseImport'
 import type {
   TestCase,
   TestCaseFormData,
-  TestCaseGroup
-} from '../shared/types'
+  TestCaseGroup,
+  PaginationInfo
+} from '../domain'
 // 引入测试类型枚举，消除魔法字符串
-import { TestType } from '../shared/types/enums'
+import { TestType, ViewMode } from '../domain/enums'
 
-interface GroupWithCount {
-  id: string | number;
-  name: string;
-  description?: string;
-  testCaseCount: number;
-}
+// 分组带用例数：TestCaseGroup 的展示子集（id/name/description/testCaseCount）
+export type GroupWithCount = Pick<TestCaseGroup, 'id' | 'name' | 'description' | 'testCaseCount'>
 
-interface GroupPaginationInfo {
-  page: number;
-  pages: number;
-  perPage: number;
-  total: number;
+/** 分组分页信息 = 分页信息 + 分组列表筛选字段（保留 filter 查询条件便于加载更多） */
+export interface GroupPaginationInfo extends PaginationInfo {
   algorithmType?: string;
+  testType?: string;
   keyword?: string;
   dimensionId?: number;
 }
@@ -46,21 +42,14 @@ export const useTestCaseStore = defineStore('testCase', () => {
 
   // 标签视图数据：按标签聚合的用例 { tagName: TestCase[] }
   const tagViewData = ref<Record<string, TestCase[]>>({});
-  const tagViewPagination = ref<{ page: number; pages: number; perPage: number; total: number }>({
+  const tagViewPagination = ref<PaginationInfo>({
     page: 1,
     pages: 1,
     perPage: 50,
     total: 0
   });
 
-  interface LocalPaginationInfo {
-    page: number;
-    pages: number;
-    perPage: number;
-    total: number;
-  }
-
-  const paginationInfo = ref<LocalPaginationInfo>({
+  const paginationInfo = ref<PaginationInfo>({
     page: 1,
     pages: 1,
     perPage: 50,
@@ -116,9 +105,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
     testCases.value.forEach(caseItem => {
       if (caseItem.deleted) return;
 
-      const groupId = caseItem.group_id || 'default';
+      // testcasesPort.getAll() 已返回 camelCase Domain 对象（TestCase）
+      const groupId = caseItem.groupId || 'default';
       const group = fullGroupsMap.value[groupId.toString()];
-      const groupName = group?.name || caseItem.group_name || '默认分组';
+      const groupName = group?.name || caseItem.groupName || '默认分组';
 
       if (!groups[groupName]) {
         groups[groupName] = [];
@@ -128,8 +118,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
 
     for (const groupName in groups) {
       groups[groupName].sort((a, b) => {
-        const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.updated_at ? new Date(a.updated_at).getTime() : 0);
-        const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.updated_at ? new Date(b.updated_at).getTime() : 0);
+        // TestCase Domain 对象为 camelCase（createdAt/updatedAt）
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
         return timeB - timeA;
       });
     }
@@ -166,17 +157,17 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
 
       const [groupsResponse, testCasesResponse] = await Promise.all([
-        testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType, type: params.testType, keyword: params.keyword, dimension_id: params.dimensionId }),
-        testcasesApi.getAll({
+        testcasesPort.getGroups({ page: 1, perPage: 1000, algorithmType: params.algorithmType, testType: params.testType, keyword: params.keyword, dimensionId: params.dimensionId }),
+        testcasesPort.getAll({
           page,
           perPage,
           keyword: params.keyword,
           tag: params.tag,
-          group_id: params.groupId,
-          type: params.testType,
-          algorithm_type: params.algorithmType,
-          dimension_id: params.dimensionId,
-          include_deleted: params.includeDeleted || false
+          groupId: params.groupId,
+          testType: params.testType,
+          algorithmType: params.algorithmType,
+          dimensionId: params.dimensionId,
+          includeDeleted: params.includeDeleted || false
         })
       ]);
 
@@ -201,7 +192,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           id,
           name: group.name || `未命名分组-${id}`,
           description: group.description,
-          testCaseCount: group.test_case_count ?? 0
+          testCaseCount: group.testCaseCount ?? 0,
         };
       });
 
@@ -255,15 +246,15 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
       tagViewLastParams.value = { ...params };
 
-      const response = await testcasesApi.getAll({
+      const response = await testcasesPort.getAll({
         page,
         perPage,
-        view: 'tag',
+        view: ViewMode.TAG,
         keyword: params.keyword,
-        type: params.testType,
-        algorithm_type: params.algorithmType,
-        dimension_id: params.dimensionId,
-        include_deleted: params.includeDeleted || false
+        testType: params.testType,
+        algorithmType: params.algorithmType,
+        dimensionId: params.dimensionId,
+        includeDeleted: params.includeDeleted || false
       });
 
       const items: Array<{ tag: string; testCases: TestCase[] }> =
@@ -312,15 +303,15 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const params = tagViewLastParams.value;
       const perPage = pagination.perPage || DEFAULT_FETCH_PAGE_SIZE;
 
-      const response = await testcasesApi.getAll({
+      const response = await testcasesPort.getAll({
         page: nextPage,
         perPage,
-        view: 'tag',
+        view: ViewMode.TAG,
         keyword: params.keyword,
-        type: params.testType,
-        algorithm_type: params.algorithmType,
-        dimension_id: params.dimensionId,
-        include_deleted: params.includeDeleted || false
+        testType: params.testType,
+        algorithmType: params.algorithmType,
+        dimensionId: params.dimensionId,
+        includeDeleted: params.includeDeleted || false
       });
 
       const items: Array<{ tag: string; testCases: TestCase[] }> =
@@ -414,10 +405,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const addTestCase = async (data: TestCaseFormData) => {
     try {
       error.value = null;
-      const response = await testcasesApi.create(convertTestCaseFormData(data));
+      const response = await testcasesPort.create(convertTestCaseFormData(data));
 
       if (response && response.id) {
-        const newTestCase = await testcasesApi.getOne(response.id);
+        const newTestCase = await testcasesPort.getOne(response.id);
         if (newTestCase) {
           upsertTestCaseLocal(newTestCase as TestCase);
         }
@@ -432,9 +423,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const updateTestCase = async (id: string | number, data: TestCaseFormData) => {
     try {
       error.value = null;
-      await testcasesApi.update(id, convertTestCaseFormData(data));
+      await testcasesPort.update(id, convertTestCaseFormData(data));
 
-      const updatedTestCase = await testcasesApi.getOne(id);
+      const updatedTestCase = await testcasesPort.getOne(id);
       if (updatedTestCase) {
         upsertTestCaseLocal(updatedTestCase as TestCase);
       }
@@ -448,7 +439,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const deleteTestCase = async (id: string | number) => {
     try {
       error.value = null;
-      await testcasesApi.delete(id);
+      await testcasesPort.delete(id);
       removeTestCaseLocal(id);
       return true;
     } catch (err: any) {
@@ -459,10 +450,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const copyTestCase = async (id: string | number) => {
     try {
       error.value = null;
-      const response = await testcasesApi.copy(id);
+      const response = await testcasesPort.copy(id);
 
       if (response && response.id) {
-        const newTestCase = await testcasesApi.getOne(response.id);
+        const newTestCase = await testcasesPort.getOne(response.id);
         if (newTestCase) {
           upsertTestCaseLocal(newTestCase as TestCase);
         }
@@ -477,11 +468,48 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const copyGroupCases = async (groupName: string) => {
     try {
       error.value = null;
-      await testcasesApi.batchAction('copy_by_group', [], { groupName });
+      await testcasesPort.batchAction('copy_by_group', [], { groupName });
       await fetchTestCases();
       return true;
     } catch (err: any) {
       return handleError(err, '复制分组用例失败');
+    }
+  };
+
+  /** 按标签整体复制：复制标签下全部用例到 '<标签名>_copy' 标签，可另建新分组 */
+  const copyTagCases = async (tagName: string, copyToNewGroup = false) => {
+    try {
+      error.value = null;
+      await testcasesPort.batchAction('copy_by_tag', [], { tagName, copyToNewGroup });
+      await refreshAfterCaseMutation();
+      return true;
+    } catch (err: any) {
+      return handleError(err, '复制标签用例失败');
+    }
+  };
+
+  /** 用例变更后统一刷新分组视图与标签视图（tagViewData 由父视图响应式透传） */
+  const refreshAfterCaseMutation = async () => {
+    await fetchTestCases();
+    await fetchTagView(tagViewLastParams.value);
+  };
+
+  /** 按标签级联删除：删除标签及其下所有测试用例（cascade=true） */
+  const deleteTagCases = async (tagName: string, cascade = true) => {
+    try {
+      error.value = null;
+      const tagList = await tagsPort.getTags({ keyword: tagName });
+      const tagItem = tagList.items.find(item => item.name === tagName);
+      if (!tagItem) {
+        notification.warning(`未找到标签"${tagName}"，可能已被删除`);
+        return false;
+      }
+      await tagsPort.deleteTag(tagItem.id, cascade);
+      await refreshAfterCaseMutation();
+      notification.success(`删除标签"${tagName}"成功`);
+      return true;
+    } catch (err: any) {
+      return handleError(err, '删除标签失败');
     }
   };
 
@@ -541,15 +569,15 @@ export const useTestCaseStore = defineStore('testCase', () => {
     dimensionId?: number;
   }): Promise<(string | number)[]> => {
     try {
-      // 后端期望 snake_case 键名
+      // Infrastructure 层（testcasesPort.getIdsByFilter）内部做 camelCase→snake_case 转换
       const payload: Record<string, any> = {};
       if (filters.group) payload.group = filters.group;
-      if (filters.testType) payload.test_type = filters.testType;
+      if (filters.testType) payload.testType = filters.testType;
       if (filters.search) payload.search = filters.search;
       if (filters.tag) payload.tag = filters.tag;
-      if (filters.algorithmType) payload.algorithm_type = filters.algorithmType;
-      if (filters.dimensionId) payload.dimension_id = filters.dimensionId;
-      const result: any = await testcasesApi.getIdsByFilter(payload);
+      if (filters.algorithmType) payload.algorithmType = filters.algorithmType;
+      if (filters.dimensionId) payload.dimensionId = filters.dimensionId;
+      const result: any = await testcasesPort.getIdsByFilter(payload);
       return result?.ids || [];
     } catch (error) {
       console.error('获取用例ID列表失败:', error);
@@ -586,12 +614,14 @@ export const useTestCaseStore = defineStore('testCase', () => {
     deleteTestCase,
     copyTestCase,
     copyGroupCases,
+    copyTagCases,
+    deleteTagCases,
     upsertTestCaseLocal,
     removeTestCaseLocal,
     organizeTestCasesByGroup,
     extractTags,
     resetGroupCache,
-    fetchCaseIdsByFilter,
+    // fetchCaseIdsByFilter 由 batchOps 委托提供（store 本地版本已收敛），避免重复键被覆盖
     // 委托：批量操作
     ...batchOps,
     // 委托：分组管理

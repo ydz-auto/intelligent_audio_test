@@ -42,7 +42,8 @@
 
 <script setup lang="ts">
 import { computed, inject } from 'vue'
-import type { AlgorithmParamItem } from './types'
+import type { AlgorithmParamItem } from '@/domain'
+import { useAudioConfigHelpers } from './useAudioConfigHelpers'
 
 const props = defineProps<{
   modelValue: AlgorithmParamItem[]
@@ -57,36 +58,12 @@ const emit = defineEmits<{
 }>()
 
 const audioConfig = inject<any>('audioConfig', {})
-
-// ---- 音频信息查询 ----
-function getAudioName(audioId: string | number): string {
-  return audioConfig?.getAudioName?.(audioId) || '未知音频'
-}
-function getAudioTags(audioId: string | number): string {
-  return audioConfig?.getAudioTags?.(audioId) || ''
-}
-function getAudioDuration(audioId: string | number): number {
-  return audioConfig?.getAudioDuration?.(audioId) || 0
-}
-function formatDuration(seconds: number): string {
-  return audioConfig?.formatDuration?.(seconds) || '0s'
-}
-function getNormalizedTags(tagsStr: string): string[] {
-  if (!tagsStr) return []
-  try {
-    const parsed = JSON.parse(tagsStr)
-    if (Array.isArray(parsed)) return parsed.map(String)
-    if (typeof parsed === 'string') return parsed.split(',').map((s: string) => s.trim()).filter(Boolean)
-  } catch {
-    return String(tagsStr).split(',').map((s: string) => s.trim()).filter(Boolean)
-  }
-  return []
-}
+const { getAudioName, getAudioTags, getAudioDuration, formatDuration, getNormalizedTags } = useAudioConfigHelpers(audioConfig)
 
 // ---- 参数读写 ----
 const audioId = computed(() => {
-  const item = props.modelValue?.find((p) => p.field_code === props.fieldCode)
-  const v = item?.field_value
+  const item = props.modelValue?.find((p) => p.fieldCode === props.fieldCode)
+  const v = item?.fieldValue
   return v ? String(v) : ''
 })
 const audioName = computed(() => getAudioName(audioId.value))
@@ -96,11 +73,11 @@ const normalizedTags = computed(() => getNormalizedTags(audioTags.value))
 
 function setAudioId(audioId: string) {
   const params = [...(props.modelValue ?? [])]
-  const idx = params.findIndex((p) => p.field_code === props.fieldCode)
+  const idx = params.findIndex((p) => p.fieldCode === props.fieldCode)
   if (idx >= 0) {
-    params[idx] = { field_code: props.fieldCode, field_value: audioId }
+    params[idx] = { fieldCode: props.fieldCode, fieldValue: audioId }
   } else {
-    params.push({ field_code: props.fieldCode, field_value: audioId })
+    params.push({ fieldCode: props.fieldCode, fieldValue: audioId })
   }
   emit('update:modelValue', params)
 }

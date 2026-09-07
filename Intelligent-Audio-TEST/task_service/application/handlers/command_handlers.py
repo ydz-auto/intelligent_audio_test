@@ -399,7 +399,7 @@ class TaskCommandHandler:
 
     def handle_delete_tag(self, cmd: DeleteTagCommand) -> Dict:
         """处理删除标签命令。委托 tag_crud_service.delete_tag。"""
-        return self.tag_crud_service.delete_tag(cmd.tag_id)
+        return self.tag_crud_service.delete_tag(cmd.tag_id, cascade=cmd.cascade)
 
     def handle_batch_update_tag_category(self, cmd: BatchUpdateTagCategoryCommand) -> Dict:
         """处理批量更新标签分类命令。委托 tag_crud_service.batch_update_category。"""

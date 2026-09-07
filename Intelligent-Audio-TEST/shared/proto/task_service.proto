@@ -348,6 +348,7 @@ message UpdateTagRequest {
 }
 message DeleteTagRequest {
   int32 tag_id = 1;
+  bool cascade = 2;  // true: 级联删除标签及其下所有测试用例
 }
 message BatchUpdateTagCategoryRequest {
   string data = 1;  // JSON: {tag_ids, category_id}

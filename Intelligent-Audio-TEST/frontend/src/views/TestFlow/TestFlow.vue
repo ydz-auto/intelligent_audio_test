@@ -67,7 +67,7 @@
           :tags="tags"
           :tag-view-pagination="tagViewPagination"
           :tag-view-loading="tagViewLoading"
-          :algorithm-type-filter="selectedAlgorithmType || 'all'"
+          :algorithm-type-filter="selectedAlgorithmType || ViewMode.ALL"
           :test-type-filter="testType"
           :is-loading="isLoading || false"
           @delete-group="handleDeleteGroup"
@@ -108,9 +108,9 @@
             </div>
             <div class="filter-select">
               <select class="form-input" v-model="resourceStatusFilter">
-                <option value="all">所有状态</option>
-                <option value="online">在线</option>
-                <option value="offline">离线</option>
+                <option :value="ViewMode.ALL">所有状态</option>
+                <option :value="DeviceStatus.ONLINE">在线</option>
+                <option :value="DeviceStatus.OFFLINE">离线</option>
               </select>
             </div>
           </div>
@@ -270,7 +270,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { TestType } from '@/shared/types/enums'
+import { TestType, ViewMode, DeviceStatus } from '@/domain/enums'
 import { useTestFlow } from '../../composables/shared/useTestFlow'
 import ProgressNav from '../../components/layout/ProgressNav.vue'
 import TestCaseListContainer from '../../components/common/test-case/TestCaseListContainer.vue'

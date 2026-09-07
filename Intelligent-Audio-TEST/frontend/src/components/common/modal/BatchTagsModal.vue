@@ -147,7 +147,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { testcasesApi } from '../../../utils/api'
+import { testcasesPort } from '../../../composables/testCase/testcasesPort'
 import { usePagination } from '../../../composables/usePagination'
 
 interface Props {
@@ -224,7 +224,7 @@ const {
 
 async function loadExistingTags() {
   try {
-    const result = await testcasesApi.getAll()
+    const result = await testcasesPort.getAll()
     const cases = (result as any).items || []
     const tagSet = new Set<string>()
     cases.forEach((tc: any) => {

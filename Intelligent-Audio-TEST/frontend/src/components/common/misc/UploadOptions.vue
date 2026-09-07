@@ -3,15 +3,16 @@ import AudioSelectModal from '../audio/AudioSelectModal.vue'
 import AlgorithmSelector from '../audio/AlgorithmSelector.vue'
 import { useUploadOptions } from './UploadOptions'
 import type { AlgorithmRelationItem } from './UploadOptions'
+import { TestType } from '@/domain/enums'
 
 interface Props {
   modelValue: {
     audioType?: string
     createTestCase?: boolean
     testTypes?: ('api' | 'e2e')[]
-    playbackDeviceId?: string | number
+    playbackDeviceId?: string | number | null
     spl?: number
-    noiseAudioId?: string | number
+    noiseAudioId?: string | number | null
     noiseAudioName?: string
     noiseSpl?: number
     inheritTags?: boolean
@@ -27,7 +28,7 @@ interface Props {
     promptDeviceId?: string | number
     algorithmType?: string
     algorithmRelations?: AlgorithmRelationItem[]
-    algorithmParams?: Record<string, any>
+    algorithmParams?: Record<string, any> | any[]
     promptSourceLanguage?: string
     promptTargetLanguage?: string
     promptTranslationDirection?: string
@@ -218,7 +219,7 @@ const {
             <label class="checkbox-label">
               <input
                 type="checkbox"
-                value="e2e"
+                :value="TestType.E2E"
                 v-model="uploadConfig.testTypes"
               >
               <span class="checkbox-text">E2E测试</span>
@@ -226,7 +227,7 @@ const {
             <label class="checkbox-label">
               <input
                 type="checkbox"
-                value="api"
+                :value="TestType.API"
                 v-model="uploadConfig.testTypes"
               >
               <span class="checkbox-text">API测试</span>

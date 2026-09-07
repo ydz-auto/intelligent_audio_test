@@ -109,8 +109,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { getModalManager } from '../../../composables/modal/useModal'
-import { MODAL_TYPES } from '../../../shared/types'
-import { playbackApi } from '../../../utils/api'
+import { MODAL_TYPES } from '../../../composables/modal/constants'
+import { playbackPort } from '../../../composables/device/playbackPort'
 
 interface Props {
   modalId: string
@@ -160,8 +160,8 @@ function toggleRoundNumber(rn: number) {
 
 onMounted(async () => {
   try {
-    const result = await playbackApi.getAll()
-    playbackDevices.value = (result as any)?.items || []
+    // playbackPort.getAll 已展平为 Domain 数组
+    playbackDevices.value = await playbackPort.getAll()
   } catch (error) {
     console.error('加载播放设备失败:', error)
     playbackDevices.value = []
@@ -213,8 +213,8 @@ async function openDeviceSelectModal() {
 
 async function loadDeviceNames(deviceIds: string[]) {
   try {
-    const result = await playbackApi.getAll()
-    const devices = (result as any).items || []
+    // playbackPort.getAll 已展平为 Domain 数组
+    const devices = await playbackPort.getAll()
     const names = deviceIds.map(id => {
       const device = devices.find((d: any) => d.id === id)
       return device ? device.name : id

@@ -25,7 +25,7 @@
           <h4 class="analysis-title">{{ reportName || report.name || '对比报告' }}</h4>
           <div class="analysis-status">
             <span class="status-dot"></span>
-            {{ report.status === 'draft' ? '草稿' : '已发布' }}
+            {{ report.status === ReportStatus.DRAFT ? '草稿' : '已发布' }}
           </div>
         </div>
 
@@ -68,15 +68,15 @@
       <div class="selector-content">
         <div id="unified-selector">
           <div
-            v-for="device in reportService.devices.value"
+            v-for="device in comparisonDevices"
             :key="device.id"
             class="device-select-item"
             :class="{ 'selected': device.selected, 'api-item': device.type === 'API' }"
-            @click="reportService.toggleDeviceSelection(device.id)"
+            @click="toggleDeviceSelection(device.id)"
             role="button"
             tabindex="0"
-            @keydown.enter.prevent="reportService.toggleDeviceSelection(device.id)"
-            @keydown.space.prevent="reportService.toggleDeviceSelection(device.id)"
+            @keydown.enter.prevent="toggleDeviceSelection(device.id)"
+            @keydown.space.prevent="toggleDeviceSelection(device.id)"
           >
             <div class="device-icon-wrapper">
               <i :class="device.type === '设备' ? 'fas fa-headphones' : 'fas fa-exchange-alt'"></i>
@@ -103,7 +103,7 @@
           <h4 class="analysis-title">分析结论</h4>
           <div class="analysis-status" :class="report.status">
             <span class="status-dot"></span>
-            {{ report.status === 'draft' ? '草稿' : '已发布' }}
+            {{ report.status === ReportStatus.DRAFT ? '草稿' : '已发布' }}
           </div>
         </div>
         <div v-if="!isEditingConclusion" class="analysis-text" v-html="sanitizedConclusion"></div>
@@ -130,8 +130,8 @@
     <div class="comparison-section">
       <ComparisonTableComponent
         title="设备/API信息对比"
-        :columns="reportService.deviceApiColumns"
-        :data="reportService.deviceApiComparisonData.value"
+        :columns="deviceApiColumns"
+        :data="deviceApiComparisonData"
         :default-collapsed="true"
         :show-search="false"
       />
@@ -141,8 +141,8 @@
     <div class="comparison-section">
       <ComparisonTableComponent
         title="用例执行数量对比"
-        :columns="reportService.caseExecutionColumns"
-        :data="reportService.caseExecutionData.value"
+        :columns="caseExecutionColumns"
+        :data="caseExecutionData"
         :default-collapsed="true"
         :show-search="false"
       />
@@ -167,11 +167,19 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { ReportStatus } from '@/domain/enums'
 import ComparisonTableComponent from '../../../components/report/ComparisonTableComponent.vue'
 import CaseCategoryComparisonComponent from '../../../components/report/CaseCategoryComparisonComponent.vue'
 import CaseTagComparisonComponent from '../../../components/report/CaseTagComparisonComponent.vue'
 import SpecificCaseComparisonComponent from '../../../components/report/SpecificCaseComparisonComponent.vue'
-import reportService from '../../../services/reportService'
+import {
+  comparisonDevices,
+  deviceApiColumns,
+  caseExecutionColumns,
+  deviceApiComparisonData,
+  caseExecutionData,
+} from '../../../store/reportComparisonStore'
+import { toggleDeviceSelection } from '../../../composables/report/useReportComparison'
 
 const props = defineProps<{
   report: any

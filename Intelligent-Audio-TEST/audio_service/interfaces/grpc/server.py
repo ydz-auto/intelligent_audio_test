@@ -17,7 +17,7 @@ import grpc
 
 from shared.proto import audio_service_pb2_grpc as audio_grpc
 from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
-from shared.infrastructure.config import Config
+from audio_service.config.config import Config
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import AUDIO_SERVICE_GRPC_PORT
 from audio_service.interfaces.grpc.servicers import (

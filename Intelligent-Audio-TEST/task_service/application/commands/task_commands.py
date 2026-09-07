@@ -263,6 +263,7 @@ class UpdateTagCommand(Command):
 class DeleteTagCommand(Command):
     """删除标签命令。委托 tag_crud_service.delete_tag。"""
     tag_id: int
+    cascade: bool = False
 
 
 @dataclass(frozen=True)

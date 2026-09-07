@@ -90,32 +90,9 @@
 
 <script setup lang="ts">
 import DynamicForm from '../../algorithm/DynamicForm.vue'
-import { useAlgorithmSelector } from './AlgorithmSelector'
+import { useAlgorithmSelector, type AlgorithmSelectorProps, type AlgorithmSelectorEmits } from './AlgorithmSelector'
 
-interface AlgorithmRelation {
-  algorithmType: string
-  isPrimary: boolean
-  weight: number
-  params?: Record<string, any>
-}
-
-interface Props {
-  modelValue?: string
-  algorithmRelations?: AlgorithmRelation[]
-  initialParams?: Record<string, any>
-  showParams?: boolean
-  single?: boolean
-}
-
-interface Emits {
-  (e: 'update:modelValue', value: string): void
-  (e: 'update:algorithmRelations', value: AlgorithmRelation[]): void
-  (e: 'paramsChange', params: Record<string, any>): void
-  (e: 'algorithmTypeChange', value: string): void
-  (e: 'dimensionsChange', dimensions: any[], dimensionIds: number[]): void
-}
-
-const props = withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<AlgorithmSelectorProps>(), {
   modelValue: '',
   algorithmRelations: () => [],
   initialParams: () => ({}),
@@ -123,7 +100,7 @@ const props = withDefaults(defineProps<Props>(), {
   single: false
 })
 
-const emit = defineEmits<Emits>()
+const emit = defineEmits<AlgorithmSelectorEmits>()
 
 const {
   selectedAlgorithms,

@@ -6,7 +6,8 @@
         <div class="progress-detail" v-if="currentTask">
           <span>已完成{{ currentTask.completedFiles }}/{{ currentTask.totalFiles }} 个文件</span>
           <span v-if="currentUploadingFile && uploadProgress < 100">当前上传{{ currentUploadingFile }}</span>
-          <span v-else-if="currentTask.failedFiles > 0" class="error-text"> ({{ currentTask.failedFiles }} 个文件上传失败)</span>
+          <!-- currentTask 数据源始终提供 failedFiles/uploadedSize，domain 中为可选字段，此处仅类型收窄 -->
+          <span v-else-if="(currentTask.failedFiles ?? 0) > 0" class="error-text"> ({{ currentTask.failedFiles }} 个文件上传失败)</span>
         </div>
       </div>
       <div class="progress-actions">
@@ -50,13 +51,13 @@
           </div>
           <div class="file-progress">
             <div class="file-progress-bar">
-              <div class="file-progress-fill" :style="{ width: (file.uploadedSize / file.size * 100) + '%' }"></div>
+              <div class="file-progress-fill" :style="{ width: ((file.uploadedSize ?? 0) / file.size * 100) + '%' }"></div>
             </div>
-            <span class="file-progress-text">{{ Math.round((file.uploadedSize / file.size * 100)) }}%</span>
+            <span class="file-progress-text">{{ Math.round(((file.uploadedSize ?? 0) / file.size * 100)) }}%</span>
           </div>
         </div>
       </div>
-      <div class="retry-section" v-if="currentTask.failedFiles > 0 || isRetryingFailed">
+      <div class="retry-section" v-if="(currentTask.failedFiles ?? 0) > 0 || isRetryingFailed">
         <button class="btn btn-primary" @click="handleRetry" :disabled="isRetryingFailed">
           <i class="fas fa-redo"></i>
           <span v-if="isRetryingFailed">正在重试上传...</span>
@@ -73,24 +74,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, type Ref } from 'vue';
-import { UploadStatus } from '@/shared/types/enums';
-
-interface AudioUploadFile {
-  name: string;
-  size: number;
-  uploadedSize: number;
-  status: UploadStatus[keyof UploadStatus];
-  errorMessage?: string;
-}
-
-interface AudioUploadTask {
-  id: string | number;
-  totalFiles: number;
-  completedFiles: number;
-  failedFiles: number;
-  files: AudioUploadFile[];
-}
+import { ref, computed } from 'vue';
+import { UploadStatus } from '@/domain/enums';
+import type { AudioUploadTask } from '@/domain/model/audio';
 
 const props = defineProps<{
   uploadProgress: number;

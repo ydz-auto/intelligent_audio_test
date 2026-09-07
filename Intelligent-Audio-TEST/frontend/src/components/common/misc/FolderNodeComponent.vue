@@ -2,7 +2,7 @@
   <div class="folder-node">
     <div class="folder-header" @click="handleToggle">
       <input
-        v-if="enableSelection && (folder.files?.length || folder.file_count || folderHasFiles)"
+        v-if="enableSelection && (folder.files?.length || getFileCount(folder) > 0 || folderHasFiles)"
         type="checkbox"
         class="folder-checkbox"
         :checked="isFolderAllSelected"
@@ -74,9 +74,9 @@
                 <div class="file-meta">
                   <span class="format-badge" :class="file.format">{{ (file.format || '').toUpperCase() }}</span>
                   <span class="file-size">{{ formatSize(file.size) }}</span>
-                  <span class="file-duration">{{ formatDuration(file.duration) }}</span>
-                  <span class="audio-type-badge" :class="file.audio_type || file.type">
-                    {{ getTypeLabel(file.audio_type || file.type) }}
+                  <span class="file-duration">{{ formatDurationLong(file.duration) }}</span>
+                  <span class="audio-type-badge" :class="file.audioType || file.type">
+                    {{ getTypeLabel(file.audioType || file.type) }}
                   </span>
                 </div>
               </div>
@@ -121,9 +121,9 @@
               <div class="file-meta">
                 <span class="format-badge" :class="file.format">{{ (file.format || '').toUpperCase() }}</span>
                 <span class="file-size">{{ formatSize(file.size) }}</span>
-                <span class="file-duration">{{ formatDuration(file.duration) }}</span>
-                <span class="audio-type-badge" :class="file.audio_type || file.type">
-                  {{ getTypeLabel(file.audio_type || file.type) }}
+                <span class="file-duration">{{ formatDurationLong(file.duration) }}</span>
+                <span class="audio-type-badge" :class="file.audioType || file.type">
+                  {{ getTypeLabel(file.audioType || file.type) }}
                 </span>
               </div>
             </div>
@@ -145,7 +145,7 @@
         </template>
       </div>
       <!-- Lazy loading indicator -->
-      <div v-if="isOpen && (!folder.files || folder.files.length === 0) && (folder.file_count ?? 0) > 0 && folder.folders?.length === 0" class="lazy-load-hint">
+      <div v-if="isOpen && (!folder.files || folder.files.length === 0) && (getFileCount(folder) > 0) && folder.folders?.length === 0" class="lazy-load-hint">
         <i class="fas fa-spinner fa-spin" v-if="isLoading"></i>
         <span v-else>点击文件夹加载文件...</span>
       </div>
@@ -155,16 +155,18 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import type { FolderNode as BaseFolderNode } from '../../../domain/model/audio';
+import { readCamel } from '../../../utils/keyTransform';
 
-interface FolderNode {
-  name: string;
-  path?: string;
-  count?: number;
-  file_count?: number;
-  has_children?: boolean;
+// 后端遗留 snake_case（file_count / has_children）经 readCamel 兜底读取，收敛于 utils 层；
+// files 保持 any[]：模板直接迭代渲染文件元素（无类型化操作），domain 版为 unknown[] 需放宽
+interface FolderNode extends BaseFolderNode {
   files: any[];
-  folders: FolderNode[];
 }
+
+/** 读取后端文件夹文件计数（camelCase 优先，snake_case 兜底） */
+const getFileCount = (folder: FolderNode | null): number =>
+  readCamel<number>(folder, 'fileCount') ?? 0;
 
 const VIRTUAL_THRESHOLD = 40;
 const ITEM_HEIGHT = 48;
@@ -210,7 +212,7 @@ const folderHasFiles = computed(() => {
     }
     return false;
   }
-  return hasFiles(props.folder) || (props.folder.file_count ?? 0) > 0;
+  return hasFiles(props.folder) || (getFileCount(props.folder) > 0);
 });
 
 const isFolderAllSelected = computed(() => {
@@ -230,7 +232,7 @@ const isFolderPartialSelected = computed(() => {
 async function handleFolderSelectionClick(event: Event) {
   event.stopPropagation();
   // 如果文件夹未展开且文件未加载（file_count > 0 但 files 为空），先懒加载再勾选
-  const fileCount = props.folder.file_count ?? 0;
+  const fileCount = getFileCount(props.folder);
   const loadedFiles = props.folder.files?.length ?? 0;
   if (!isOpen.value && fileCount > 0 && loadedFiles === 0) {
     emit('expandFolder', props.folder.path ?? '');
@@ -295,7 +297,7 @@ function formatSize(size: number): string {
   return s.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
 }
 
-function formatDuration(seconds: number): string {
+function formatDurationLong(seconds: number): string {
   if (!seconds) return '0s';
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);

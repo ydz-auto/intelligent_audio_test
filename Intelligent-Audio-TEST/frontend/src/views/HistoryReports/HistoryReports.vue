@@ -51,8 +51,8 @@
                   v-model="filters.reportStatus"
                   @change="handleFilterChange">
             <option value="all">全部状态</option>
-            <option value="draft">草稿</option>
-            <option value="published">已发布</option>
+            <option :value="ReportStatus.DRAFT">草稿</option>
+            <option :value="ReportStatus.PUBLISHED">已发布</option>
           </select>
         </div>
         
@@ -105,7 +105,7 @@
                   @change="handleFilterChange">
             <option value="all">全部类型</option>
             <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">
-              {{ option.name }}
+              {{ option.label }}
             </option>
           </select>
         </div>
@@ -182,8 +182,8 @@
               <div class="report-card-meta-tags">
                 <span class="report-card-type">{{ getReportTypeLabel(report.type) }}</span>
                 <span class="report-card-status published">已发布</span>
-                <span v-if="report.algorithm_type" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithm_type) }}</span>
-                <span v-if="report.task_name" class="report-card-test-type">{{ report.task_name }}</span>
+                <span v-if="report.algorithmType" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithmType) }}</span>
+                <span v-if="report.taskName" class="report-card-test-type">{{ report.taskName }}</span>
               </div>
             </div>
             <div class="card-actions">
@@ -203,22 +203,22 @@
             <div class="report-card-meta">
               <span class="report-card-meta-item">
                 <i class="fas fa-calendar-alt"></i>
-                {{ formatDate(report.created_at) }}
+                {{ formatDate(report.createdAt) }}
               </span>
               <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison'">
                 <span class="report-card-meta-item">
                   <i class="fas fa-cubes"></i>
-                  {{ report.summary?.task_count || 0 }} 个任务对比
+                  {{ report.summary?.taskCount || 0 }} 个任务对比
                 </span>
               </template>
               <template v-else>
                 <span class="report-card-meta-item">
                   <i class="fas fa-list-check"></i>
-                  {{ report.summary?.total_cases || report.summary?.total_tests || 0 }} 个测试用例
+                  {{ report.summary?.totalCases || 0 }} 个测试用例
                 </span>
                 <span class="report-card-meta-item">
                   <i class="fas fa-check-circle"></i>
-                  {{ report.summary?.overall_success_rate || report.summary?.pass_rate || 0 }}% 通过率
+                  {{ report.summary?.overallSuccessRate || report.summary?.passRate || 0 }}% 通过率
                 </span>
               </template>
             </div>
@@ -253,8 +253,8 @@
               <div class="report-card-meta-tags">
                 <span class="report-card-type">{{ getReportTypeLabel(report.type) }}</span>
                 <span class="report-card-status draft">草稿</span>
-                <span v-if="report.algorithm_type" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithm_type) }}</span>
-                <span v-if="report.task_name" class="report-card-test-type">{{ report.task_name }}</span>
+                <span v-if="report.algorithmType" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithmType) }}</span>
+                <span v-if="report.taskName" class="report-card-test-type">{{ report.taskName }}</span>
               </div>
             </div>
             <div class="card-actions">
@@ -277,22 +277,22 @@
             <div class="report-card-meta">
               <span class="report-card-meta-item">
                 <i class="fas fa-calendar-alt"></i>
-                {{ formatDate(report.created_at) }}
+                {{ formatDate(report.createdAt) }}
               </span>
               <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison'">
                 <span class="report-card-meta-item">
                   <i class="fas fa-cubes"></i>
-                  {{ report.summary?.task_count || 0 }} 个任务对比
+                  {{ report.summary?.taskCount || 0 }} 个任务对比
                 </span>
               </template>
               <template v-else>
                 <span class="report-card-meta-item">
                   <i class="fas fa-list-check"></i>
-                  {{ report.summary?.total_cases || report.summary?.total_tests || 0 }} 个测试用例
+                  {{ report.summary?.totalCases || 0 }} 个测试用例
                 </span>
                 <span class="report-card-meta-item">
                   <i class="fas fa-check-circle"></i>
-                  {{ report.summary?.overall_success_rate || report.summary?.pass_rate || 0 }}% 通过率
+                  {{ report.summary?.overallSuccessRate || report.summary?.passRate || 0 }}% 通过率
                 </span>
               </template>
             </div>
@@ -321,6 +321,7 @@
 </template>
 
 <script setup lang="ts">
+import { ReportStatus } from '@/domain/enums';
 import { useHistoryReports } from './historyReports';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 

@@ -29,7 +29,13 @@ class PreparationMixin:
         DeviceAclRepositoryImpl().register_task_devices(task_id, device_info_list)
 
         # 首轮自定义参数一并透传给 initialize（pcm_app、record_mode 等驱动级参数）
-        first_round_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(data.get('case_algorithm_params') or {})
+        # 首轮 round 级执行控制字段（record_mode/is_interruption 等）同样透传，
+        # 保证"仅配置在 config.rounds[] 结构字段"时首轮 initialize 也能拿到
+        _first_round = rounds[0] if rounds else {}
+        first_round_params = {
+            **self._extract_exec_control_params(_first_round if isinstance(_first_round, dict) else {}),
+            **AlgorithmAclRepositoryImpl.normalize_algorithm_params(data.get('case_algorithm_params') or {}),
+        }
 
         for info in device_info_list:
             if info.get("driver"):

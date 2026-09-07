@@ -1,9 +1,9 @@
 import { ref, computed } from 'vue';
 import { useModalControl } from '../../composables/modal/useModal';
-import type { PlaybackDevice, Audio } from '../../shared/types';
-import type { TestDevice, APIDevice, DeviceUnion } from './deviceTypes';
+import type { PlaybackDevice, Audio } from '../../domain';
+import type { TestDeviceView, ApiDeviceView, DeviceUnion } from '@/domain';
 // 引入视图模式枚举，消除魔法字符串
-import { ViewMode } from '@/shared/types/enums';
+import { ViewMode } from '@/domain/enums';
 
 export const activeTab = ref('test');
 export const loading = ref(false);
@@ -24,8 +24,8 @@ export const algorithmFilter = ref(ViewMode.ALL);
 export const algorithmTypeFilter = ref(ViewMode.ALL);
 export const selectedDevices = ref<(string | number)[]>([]);
 export const playbackDevices = ref<PlaybackDevice[]>([]);
-export const testDevices = ref<TestDevice[]>([]);
-export const apiDevices = ref<APIDevice[]>([]);
+export const testDevices = ref<TestDeviceView[]>([]);
+export const apiDevices = ref<ApiDeviceView[]>([]);
 
 export const promptAudios = ref<Audio[]>([]);
 export const availableSerials = ref<string[]>([]);

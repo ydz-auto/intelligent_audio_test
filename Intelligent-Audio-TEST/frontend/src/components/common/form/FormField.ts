@@ -1,9 +1,26 @@
 import { ref, watch, computed, onMounted } from 'vue'
 import { useAlgorithmConfig } from '../../../composables/algorithm/useAlgorithmConfig'
+import type { FormFieldConfig, FileUploadPayload } from './formFieldTypes'
 
-export function useFormField(props: any, emit: any) {
+/** FormField 组件 props 契约 */
+interface FormFieldProps {
+  field: FormFieldConfig
+  modelValue?: any
+  value?: any
+}
+
+/** FormField 组件 emit 契约 */
+interface FormFieldEmit {
+  (e: 'update:value', value: any): void
+  (e: 'update:modelValue', value: any): void
+  (e: 'input', value: any): void
+  (e: 'file-upload', payload: FileUploadPayload): void
+  (e: 'button-action', payload: { field: FormFieldConfig; value: any }): void
+}
+
+export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
   const fieldId = `field-${props.field.key}`
-  const uploadedFile = ref(null)
+  const uploadedFile = ref<File | null>(null)
 
   const isEmptySelect = computed(() => {
     if (props.field.type !== 'select' || !props.field.options) return false
@@ -46,7 +63,7 @@ export function useFormField(props: any, emit: any) {
       case 'multi-select-tags':
         return Array.isArray(val) ? val : [];
       case 'apiSettingsEditor':
-        return val !== undefined && val !== null && typeof val === 'object' ? val : {method: 'POST', headers: {}, body_template: {}, timeout: 30000};
+        return val !== undefined && val !== null && typeof val === 'object' ? val : {method: 'POST', headers: {}, bodyTemplate: {}, timeout: 30000};
       case 'ruleEditor':
         return val !== undefined && val !== null && typeof val === 'object' ? val : {rules: [], defaultScore: 0};
       default:
@@ -54,14 +71,14 @@ export function useFormField(props: any, emit: any) {
     }
   };
 
-  const localValue = ref(getInitialValue())
-  const algorithmConfigsValue = ref({})
-  const supportedAlgorithmsValue = ref([])
+  const localValue = ref<any>(getInitialValue())
+  const algorithmConfigsValue = ref<Record<string, any>>({})
+  const supportedAlgorithmsValue = ref<string[]>([])
 
   const { algorithms, loadAlgorithms } = useAlgorithmConfig()
 
   const algorithmOptions = computed(() => {
-    return (algorithms.value || []).map(algo => ({
+    return (algorithms.value || []).map((algo: any) => ({
       value: algo.type,
       label: algo.name
     }))
@@ -109,17 +126,17 @@ export function useFormField(props: any, emit: any) {
     console.log(`[FormField] ${props.field.key} value changed to:`, valueToEmit)
   }
 
-  const handleAlgorithmChange = (value) => {
+  const handleAlgorithmChange = (value: any) => {
     localValue.value = value
     handleInput()
   }
 
-  const handleAlgorithmConfigsChange = (value) => {
+  const handleAlgorithmConfigsChange = (value: any) => {
     localValue.value = value
     handleInput()
   }
 
-  const toggleSwitch = (event) => {
+  const toggleSwitch = (event: Event) => {
     if (!props.field.disabled) {
       localValue.value = !localValue.value
       handleInput()
@@ -127,12 +144,12 @@ export function useFormField(props: any, emit: any) {
     event.stopPropagation()
   }
 
-  const isTagSelected = (value) => {
+  const isTagSelected = (value: any) => {
     if (!localValue.value || !Array.isArray(localValue.value)) return false
     return localValue.value.includes(value)
   }
 
-  const toggleTag = (value) => {
+  const toggleTag = (value: any) => {
     if (!localValue.value) {
       localValue.value = []
     }
@@ -155,15 +172,15 @@ export function useFormField(props: any, emit: any) {
     handleInput();
   }
 
-  const removeArrayItem = (index) => {
+  const removeArrayItem = (index: number) => {
     if (localValue.value.length > 1) {
       localValue.value.splice(index, 1);
       handleInput();
     }
   }
 
-  const updateGainValue = (event, item, index) => {
-    const value = Number(event.target.value);
+  const updateGainValue = (event: Event, item: any, index: number) => {
+    const value = Number((event.target as HTMLInputElement).value);
     if (props.field.arrayItemTemplate && 'gain' in props.field.arrayItemTemplate) {
       localValue.value[index].gain = value;
     } else {
@@ -172,8 +189,8 @@ export function useFormField(props: any, emit: any) {
     handleInput();
   }
 
-  const handleFileUpload = (event) => {
-    const file = event.target.files[0]
+  const handleFileUpload = (event: Event) => {
+    const file = (event.target as HTMLInputElement).files?.[0]
     if (file) {
       uploadedFile.value = file
       emit('file-upload', { fieldKey: props.field.key, file })
@@ -187,13 +204,14 @@ export function useFormField(props: any, emit: any) {
     emit('file-upload', { fieldKey: props.field.key, file: null })
     emit('update:value', '')
     emit('update:modelValue', '')
-    const input = document.getElementById(fieldId)
+    const input = document.getElementById(fieldId) as HTMLInputElement | null
     if (input) {
+      // HTMLElement 无 value 语义，断言为 HTMLInputElement 再清空
       input.value = ''
     }
   }
 
-  const getFileName = (file) => {
+  const getFileName = (file: File | null) => {
     if (!file) return ''
     return file.name
   }

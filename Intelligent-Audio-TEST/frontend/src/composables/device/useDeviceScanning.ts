@@ -1,39 +1,162 @@
 import { ref } from 'vue'
-import { devicesApi } from '../../utils/api'
-import { APP_CONFIG } from '../../utils/config'
+import { devicesPort, BATCH_LIST_PARAMS } from './devicesPort'
+import { playbackPort } from './playbackPort'
+import type { PlaybackDevice, ScannedDevice } from '../../domain/model/device'
+
+/** 展示条目（本模块组装的 camelCase 视图对象，非 Domain 数据流） */
+type DeviceDisplayItem = {
+  displayKey: string | number | undefined
+  serial?: string | number
+  deviceUniqueId: string | number | undefined
+  name: string
+  model: string
+  system?: string
+  systemVersion?: string
+  sampleRate?: number
+  channelIndex?: number
+  index: number
+  isAdded: boolean
+  isCurrent: boolean
+}
+
+/**
+ * 设备标识结构类型 —— PlaybackDevice 与 ScannedDevice 的公共子集。
+ * 用于辅助函数签名，使两类设备可共用同一套标识收集 / 查找 / 兜底逻辑。
+ */
+interface DeviceIdentifier {
+  id?: string | number
+  name?: string
+  deviceUniqueId?: string
+  serial?: string
+  model?: string
+  system?: string
+  systemVersion?: string
+  sampleRate?: number
+  channelIndex?: number
+}
+
+/** 展示条目默认文案配置（配置化，避免魔法字符串散落） */
+const DISPLAY_LABELS = {
+  playbackNameFallback: '播放设备',
+  testDeviceNameFallback: '测试设备',
+  unknownModel: '未知型号',
+  unknownVersion: '未知版本',
+  unknownDevice: '未知设备',
+  defaultSystemVersion: '1.0.0',
+} as const
 
 export function useDeviceScanning() {
+  // 状态：全部为 camelCase Domain 类型（Application 层不感知 snake_case）
   const isScanning = ref(false)
-  const scanResults = ref<any[]>([])
-  const availableSerials = ref<any[]>([])
-  const addedPlaybackDevices = ref<any[]>([])
-  const addedTestDevices = ref<any[]>([])
-  const apiPlaybackDevices = ref<any[]>([])
+  const scanResults = ref<ScannedDevice[]>([])
+  const availableSerials = ref<ScannedDevice[]>([])
+  const addedPlaybackDevices = ref<PlaybackDevice[]>([])
+  const addedTestDevices = ref<ScannedDevice[]>([])
+  const apiPlaybackDevices = ref<ScannedDevice[]>([])
 
-  const fetchAddedPlaybackDevices = async () => {
-    try {
-      const response = await fetch(`/api/v1/playback-devices?page=1&per_page=${APP_CONFIG.defaultBatchPageSize}`)
-      const result = await response.json()
-      
-      let devices = []
-      if (result) {
-        if (Array.isArray(result)) {
-          devices = result
-        } else if (result.data) {
-          if (Array.isArray(result.data)) {
-            devices = result.data
-          } else if (result.data.items && Array.isArray(result.data.items)) {
-            devices = result.data.items
-          } else if (result.data.playback_devices && Array.isArray(result.data.playback_devices)) {
-            devices = result.data.playback_devices
-          }
-        } else if (result.playback_devices && Array.isArray(result.playback_devices)) {
-          devices = result.playback_devices
-        } else if (result.devices && Array.isArray(result.devices)) {
-          devices = result.devices
+  /** 收集已添加设备的多重标识集合（serial / deviceUniqueId / id / name，两处展示逻辑共用） */
+  const collectAddedIdentifiers = (devices: DeviceIdentifier[]): Set<string | number> => {
+    const addedIds = new Set<string | number>()
+    devices.forEach(d => {
+      if (d.serial) addedIds.add(d.serial)
+      if (d.deviceUniqueId) addedIds.add(d.deviceUniqueId)
+      if (d.id) addedIds.add(d.id)
+      if (d.name) addedIds.add(d.name)
+    })
+    return addedIds
+  }
+
+  /** 收集单个设备的多重标识集合（含 displayKey 兜底） */
+  const collectDeviceIdentifiers = (
+    device: DeviceIdentifier,
+    displayKey: string | number | undefined
+  ): Set<string | number> => {
+    const identifiers = new Set<string | number>()
+    if (displayKey) identifiers.add(displayKey)
+    if (device.name) identifiers.add(device.name)
+    if (device.deviceUniqueId) identifiers.add(device.deviceUniqueId)
+    if (device.serial) identifiers.add(device.serial)
+    if (device.id) identifiers.add(device.id)
+    return identifiers
+  }
+
+  /** 当前设备判定（displayKey / name / 标识集合多重匹配，两处展示逻辑共用） */
+  const isCurrentDevice = (
+    currentDeviceId: string | number | undefined,
+    displayKey: string | number | undefined,
+    deviceName: string,
+    identifiers: Set<string | number>
+  ): boolean => {
+    return Boolean(
+      currentDeviceId === displayKey ||
+      currentDeviceId === deviceName ||
+      (currentDeviceId && identifiers.has(currentDeviceId))
+    )
+  }
+
+  /** 展示排序：当前设备 → 未添加 → 已添加（两处展示逻辑共用） */
+  const sortDisplayList = (devices: DeviceDisplayItem[]): DeviceDisplayItem[] => {
+    return [
+      ...devices.filter(d => d.isCurrent),
+      ...devices.filter(d => !d.isCurrent && !d.isAdded),
+      ...devices.filter(d => !d.isCurrent && d.isAdded),
+    ]
+  }
+
+  /**
+   * 构建播放设备展示列表：map 转换 + 去重 + isAdded/isCurrent 标记。
+   * 原实现中 scanResults 与 apiPlaybackDevices 两段重复逻辑合并于此。
+   */
+  const buildPlaybackDisplayList = (
+    source: DeviceIdentifier[],
+    addedIds: Set<string | number>,
+    currentDeviceId: string | number | undefined
+  ): DeviceDisplayItem[] => {
+    const seen = new Set<string | number>()
+    return source
+      .filter(device => {
+        const id = device.deviceUniqueId || device.id || device.name
+        if (id === undefined) return false
+        if (seen.has(id)) return false
+        seen.add(id)
+        return true
+      })
+      .map((device, index) => {
+        const deviceId = device.deviceUniqueId || device.id || device.name
+        const name = device.name || `${DISPLAY_LABELS.playbackNameFallback} ${index + 1}`
+        const identifiers = collectDeviceIdentifiers(device, deviceId)
+
+        return {
+          displayKey: deviceId,
+          deviceUniqueId: deviceId,
+          name,
+          model: device.model || DISPLAY_LABELS.unknownModel,
+          sampleRate: device.sampleRate,
+          channelIndex: device.channelIndex,
+          index,
+          isAdded: [...identifiers].some(id => addedIds.has(id)),
+          isCurrent: isCurrentDevice(currentDeviceId, deviceId, name, identifiers),
         }
-      }
-      
+      })
+  }
+
+  /** 从已添加设备中按标识查找（编辑模式补齐当前设备用） */
+  const findAddedByCurrentId = <T extends DeviceIdentifier>(
+    added: T[],
+    currentDeviceId: string | number
+  ): T | undefined => {
+    return added.find(d => d.deviceUniqueId === currentDeviceId || d.id === currentDeviceId || d.name === currentDeviceId)
+  }
+
+  /** 已添加设备兜底标识（deviceUniqueId → id → name → serial） */
+  const resolveAddedDeviceId = (device: DeviceIdentifier): string | number | undefined => {
+    return device.deviceUniqueId || device.id || device.name || device.serial
+  }
+
+  /** 获取已添加的播放设备（走 infrastructure：playbackPort.getAll，已展平为 Domain 数组） */
+  const fetchAddedPlaybackDevices = async (): Promise<PlaybackDevice[]> => {
+    try {
+      const devices = await playbackPort.getAll(BATCH_LIST_PARAMS)
       addedPlaybackDevices.value = devices
       return devices
     } catch (error) {
@@ -43,45 +166,40 @@ export function useDeviceScanning() {
     }
   }
 
-  const fetchAddedTestDevices = async () => {
+  /** 获取已添加的测试设备（走 infrastructure：devicesPort.getAllFlat → Device → ScannedDevice 映射） */
+  const fetchAddedTestDevices = async (): Promise<ScannedDevice[]> => {
     try {
-      const response = await fetch(`/api/v1/test-devices?page=1&per_page=${APP_CONFIG.defaultBatchPageSize}`)
-      const result = await response.json()
-      
-      let devices = []
-      if (result && result.code === 0 && result.data && Array.isArray(result.data.items)) {
-        devices = result.data.items
-      } else if (result && Array.isArray(result)) {
-        devices = result
-      } else if (result && result.data && Array.isArray(result.data)) {
-        devices = result.data
-      }
-      
-      addedTestDevices.value = devices
-      return devices
+      const devices = await devicesPort.getAllFlat(BATCH_LIST_PARAMS)
+      // Device 有 serialNumber 而非 serial，映射为 ScannedDevice 统一标识字段
+      const mapped: ScannedDevice[] = devices.map(d => ({
+        id: d.id != null ? String(d.id) : undefined,
+        name: d.name,
+        model: d.model,
+        system: d.system,
+        systemVersion: d.systemVersion,
+        serial: d.serialNumber,
+        status: d.status,
+        type: d.type,
+      }))
+      addedTestDevices.value = mapped
+      return mapped
     } catch (error) {
       console.error('[useDeviceScanning] 获取已添加测试设备失败:', error)
+      addedTestDevices.value = []
       return []
     }
   }
 
-  const scanPlaybackDevices = async () => {
+  /** 扫描播放设备（走 infrastructure：playbackPort.scan，已转 Domain） */
+  const scanPlaybackDevices = async (): Promise<ScannedDevice[]> => {
     try {
       isScanning.value = true
-      const scanResult = await fetch('/api/v1/playback-devices/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      }).then(r => r.json())
-      
-      let scannedDevices = []
-      if (scanResult && scanResult.code === 0 && Array.isArray(scanResult.data)) {
-        scannedDevices = scanResult.data
-      }
-      
+      const scannedDevices = await playbackPort.scan()
+
       scanResults.value = scannedDevices
       apiPlaybackDevices.value = scannedDevices
       await fetchAddedPlaybackDevices()
-      
+
       return scannedDevices
     } catch (error) {
       console.error('[useDeviceScanning] 扫描播放设备失败:', error)
@@ -91,36 +209,14 @@ export function useDeviceScanning() {
     }
   }
 
-  const scanTestDeviceSerials = async () => {
+  /** 扫描测试设备序列号（走 infrastructure：devicesPort.getAvailableSerials，已转 Domain） */
+  const scanTestDeviceSerials = async (): Promise<ScannedDevice[]> => {
     try {
       isScanning.value = true
-      const response = await devicesApi.getAvailableSerials()
-      
-      let fetchedDevices = []
-      if (response) {
-        if (Array.isArray(response)) {
-          fetchedDevices = response
-        } else if (response.data && Array.isArray(response.data)) {
-          fetchedDevices = response.data
-        } else if (response.devices && Array.isArray(response.devices)) {
-          fetchedDevices = response.devices
-        } else if (response.success === true || response.code === 0 || response.code === HttpStatus.OK) {
-          if (response.data && Array.isArray(response.data)) {
-            fetchedDevices = response.data
-          }
-        }
-      }
-      
-      availableSerials.value = fetchedDevices.map(device => ({
-        serial: device.serial || device.serial_number || device.device_id || device.id || device.device_unique_id,
-        name: device.name || device.model || '未知设备',
-        system: device.system || device.platform || 'android',
-        model: device.model || '未知设备',
-        systemVersion: device.system_version || device.version || device.os_version || '1.0.0'
-      }))
-      
+      availableSerials.value = await devicesPort.getAvailableSerials()
+
       await fetchAddedTestDevices()
-      
+
       return availableSerials.value
     } catch (error) {
       console.error('[useDeviceScanning] 扫描测试设备失败:', error)
@@ -130,214 +226,126 @@ export function useDeviceScanning() {
     }
   }
 
-  const getPlaybackDevicesDisplay = (currentDeviceId, isEditMode) => {
-    const addedIds = new Set()
-    addedPlaybackDevices.value.forEach(d => {
-      if (d.device_unique_id) addedIds.add(d.device_unique_id)
-      if (d.id) addedIds.add(d.id)
-      if (d.name) addedIds.add(d.name)
-    })
-    
-    let devices = []
-    
+  /** 播放设备展示列表：扫描结果优先，扫描为空回退 api 列表，再补齐已添加设备 */
+  const getPlaybackDevicesDisplay = (
+    currentDeviceId?: string | number,
+    isEditMode?: boolean
+  ): DeviceDisplayItem[] => {
+    const addedIds = collectAddedIdentifiers(addedPlaybackDevices.value)
+
+    // 展示列表（本模块组装的视图对象，非 Domain 数据流）
+    let devices: DeviceDisplayItem[] = []
+
     if (scanResults.value && scanResults.value.length > 0) {
-      const seen = new Set()
-      devices = scanResults.value
-        .filter(device => {
-          const id = device.device_unique_id || device.id || device.name
-          if (seen.has(id)) return false
-          seen.add(id)
-          return true
-        })
-        .map((device, index) => {
-          const deviceId = device.device_unique_id || device.id || device.name
-          let isAdded = false
-          const deviceIdentifiers = new Set()
-          if (deviceId) deviceIdentifiers.add(deviceId)
-          if (device.name) deviceIdentifiers.add(device.name)
-          if (device.device_unique_id) deviceIdentifiers.add(device.device_unique_id)
-          if (device.id) deviceIdentifiers.add(device.id)
-          
-          for (const id of deviceIdentifiers) {
-            if (addedIds.has(id)) {
-              isAdded = true
-              break
-            }
-          }
-          
-          return {
-            displayKey: deviceId,
-            deviceUniqueId: deviceId,
-            name: device.name || `播放设备 ${index + 1}`,
-            model: device.model || '未知型号',
-            sampleRate: device.sample_rate,
-            channelIndex: device.channel_index,
-            index: index,
-            isAdded: isAdded,
-            isCurrent: currentDeviceId === deviceId || currentDeviceId === device.name ||
-                      (currentDeviceId && deviceIdentifiers.has(currentDeviceId))
-          }
-        })
+      devices = buildPlaybackDisplayList(scanResults.value, addedIds, currentDeviceId)
     }
-    
+
     if (devices.length === 0 && apiPlaybackDevices.value && apiPlaybackDevices.value.length > 0) {
-      const seen = new Set()
-      devices = apiPlaybackDevices.value
-        .filter(device => {
-          const id = device.device_unique_id || device.id || device.name
-          if (seen.has(id)) return false
-          seen.add(id)
-          return true
-        })
-        .map((device, index) => {
-          const deviceId = device.device_unique_id || device.id || device.name
-          let isAdded = false
-          const deviceIdentifiers = new Set()
-          if (deviceId) deviceIdentifiers.add(deviceId)
-          if (device.name) deviceIdentifiers.add(device.name)
-          if (device.device_unique_id) deviceIdentifiers.add(device.device_unique_id)
-          if (device.id) deviceIdentifiers.add(device.id)
-          
-          for (const id of deviceIdentifiers) {
-            if (addedIds.has(id)) {
-              isAdded = true
-              break
-            }
-          }
-          
-          return {
-            displayKey: deviceId,
-            deviceUniqueId: deviceId,
-            name: device.name || `播放设备 ${index + 1}`,
-            model: device.model || '未知型号',
-            sampleRate: device.sample_rate,
-            channelIndex: device.channel_index,
-            index: index,
-            isAdded: isAdded,
-            isCurrent: currentDeviceId === deviceId || currentDeviceId === device.name ||
-                      (currentDeviceId && deviceIdentifiers.has(currentDeviceId))
-          }
-        })
+      devices = buildPlaybackDisplayList(apiPlaybackDevices.value, addedIds, currentDeviceId)
     }
-    
+
+    // 编辑模式：当前设备不在列表中时补齐到首位
     if (isEditMode && currentDeviceId && !devices.find(d => d.displayKey === currentDeviceId)) {
-      const currentDevice = addedPlaybackDevices.value.find(d =>
-        d.device_unique_id === currentDeviceId ||
-        d.id === currentDeviceId ||
-        d.name === currentDeviceId
-      )
+      const currentDevice = findAddedByCurrentId(addedPlaybackDevices.value, currentDeviceId)
       if (currentDevice) {
         devices.unshift({
           displayKey: currentDeviceId,
           deviceUniqueId: currentDeviceId,
-          name: currentDevice.name || currentDeviceId,
-          model: currentDevice.model || '未知型号',
-          sampleRate: currentDevice.sample_rate,
-          channelIndex: currentDevice.channel_index,
+          // name 要求 string 类型，currentDeviceId 可能为 number，需显式转换
+          name: currentDevice.name || String(currentDeviceId),
+          model: currentDevice.model || DISPLAY_LABELS.unknownModel,
+          sampleRate: currentDevice.sampleRate,
+          channelIndex: currentDevice.channelIndex,
           index: -1,
           isAdded: true,
-          isCurrent: true
+          isCurrent: true,
         })
       }
     }
-    
-    const displayedDeviceIds = new Set(devices.map(d => d.displayKey))
-    const missingAddedDevices = addedPlaybackDevices.value.filter(d => {
-      const deviceId = d.device_unique_id || d.id || d.name
-      return !displayedDeviceIds.has(deviceId)
-    })
 
-    missingAddedDevices.forEach((d, index) => {
-      const deviceId = d.device_unique_id || d.id || d.name
-      devices.push({
-        displayKey: deviceId,
-        deviceUniqueId: deviceId,
-        name: d.name || `播放设备 ${index + 1}`,
-        model: d.model || '未知型号',
-        sampleRate: d.sample_rate,
-        channelIndex: d.channel_index,
-        index: devices.length + index,
-        isAdded: true,
-        isCurrent: currentDeviceId === deviceId
+    // 补齐扫描结果中缺失的已添加设备
+    const displayedDeviceIds = new Set(devices.map(d => d.displayKey))
+    addedPlaybackDevices.value
+      .filter(d => !displayedDeviceIds.has(resolveAddedDeviceId(d)))
+      .forEach(d => {
+        const deviceId = resolveAddedDeviceId(d)
+        devices.push({
+          displayKey: deviceId,
+          deviceUniqueId: deviceId,
+          name: d.name || DISPLAY_LABELS.unknownDevice,
+          model: d.model || DISPLAY_LABELS.unknownModel,
+          sampleRate: d.sampleRate,
+          channelIndex: d.channelIndex,
+          index: devices.length,
+          isAdded: true,
+          isCurrent: currentDeviceId === deviceId,
+        })
       })
-    })
-    
-    const sorted = [...devices.filter(d => d.isCurrent), ...devices.filter(d => !d.isCurrent && !d.isAdded), ...devices.filter(d => d.isCurrent === false && d.isAdded)]
-    
-    return sorted
+
+    return sortDisplayList(devices)
   }
 
-  const getTestDevicesDisplay = (currentDeviceId, isEditMode) => {
-    const addedIds = new Set()
-    addedTestDevices.value.forEach(d => {
-      if (d.serial) addedIds.add(d.serial)
-      if (d.device_unique_id) addedIds.add(d.device_unique_id)
-      if (d.id) addedIds.add(d.id)
-      if (d.name) addedIds.add(d.name)
-    })
-    
-    let devices = []
-    
+  /** 测试设备展示列表：扫描出的序列号条目 + 编辑模式补齐当前设备 */
+  const getTestDevicesDisplay = (
+    currentDeviceId?: string | number,
+    isEditMode?: boolean
+  ): DeviceDisplayItem[] => {
+    const addedIds = collectAddedIdentifiers(addedTestDevices.value)
+
+    // 展示列表（本模块组装的视图对象，非 Domain 数据流）
+    let devices: DeviceDisplayItem[] = []
+
     if (availableSerials.value && availableSerials.value.length > 0) {
-      const seen = new Set()
-      const uniqueSerials = availableSerials.value.filter(device => {
-        const serial = typeof device === 'object' ? (device.serial || device.device_unique_id || device.id || device.name) : device
+      const seen = new Set<string | number>()
+      const uniqueDevices = availableSerials.value.filter(device => {
+        const serial = device.serial || device.deviceUniqueId || device.id || device.name
+        if (serial === undefined) return false
         if (seen.has(serial)) return false
         seen.add(serial)
         return true
       })
-      
-      devices = uniqueSerials.map((device, index) => {
-        const serial = typeof device === 'object' ? (device.serial || device.device_unique_id || device.id || device.name) : device
-        const deviceId = typeof device === 'object' ? (device.device_unique_id || device.id || device.name) : serial
-        
-        const isAdded = addedIds.has(serial) || addedIds.has(deviceId) ||
-                      (typeof device === 'object' &&
-                       (addedIds.has(device.name || '') ||
-                        addedIds.has(device.serial || '') ||
-                        addedIds.has(device.device_unique_id || '')))
-        
+
+      devices = uniqueDevices.map((device, index) => {
+        const serial = device.serial || device.deviceUniqueId || device.id || device.name
+        const deviceId = device.deviceUniqueId || device.id || device.name
+        const identifiers = collectDeviceIdentifiers(device, serial)
+
         return {
           displayKey: serial,
-          serial: serial,
+          serial,
           deviceUniqueId: deviceId,
-          name: typeof device === 'object' ? (device.name || `测试设备 ${index + 1}`) : `测试设备 ${index + 1}`,
-          model: typeof device === 'object' ? (device.model || '未知型号') : '未知型号',
-          system: typeof device === 'object' ? device.system : undefined,
-          systemVersion: typeof device === 'object' ? device.system_version : undefined,
-          index: index,
-          isAdded: isAdded,
-          isCurrent: currentDeviceId === serial || currentDeviceId === deviceId
+          name: device.name || `${DISPLAY_LABELS.testDeviceNameFallback} ${index + 1}`,
+          model: device.model || DISPLAY_LABELS.unknownModel,
+          system: device.system,
+          systemVersion: device.systemVersion,
+          index,
+          isAdded: [...identifiers].some(id => addedIds.has(id)),
+          isCurrent: currentDeviceId === serial || currentDeviceId === deviceId,
         }
       })
     }
-    
+
+    // 编辑模式：当前设备不在列表中时补齐到首位
     if (isEditMode && currentDeviceId && !devices.find(d => d.displayKey === currentDeviceId)) {
-      const currentDevice = addedTestDevices.value.find(d =>
-        d.serial === currentDeviceId ||
-        d.device_unique_id === currentDeviceId ||
-        d.id === currentDeviceId ||
-        d.name === currentDeviceId
-      )
+      const currentDevice = findAddedByCurrentId(addedTestDevices.value, currentDeviceId)
       if (currentDevice) {
         devices.unshift({
           displayKey: currentDeviceId,
           serial: currentDeviceId,
-          deviceUniqueId: currentDevice.device_unique_id || currentDevice.id || currentDevice.name,
-          name: currentDevice.name || currentDeviceId,
-          model: currentDevice.model || '未知型号',
+          deviceUniqueId: currentDevice.deviceUniqueId || currentDevice.id || currentDevice.name,
+          // name 要求 string 类型，currentDeviceId 可能为 number，需显式转换
+          name: currentDevice.name || String(currentDeviceId),
+          model: currentDevice.model || DISPLAY_LABELS.unknownModel,
           system: currentDevice.system,
-          systemVersion: currentDevice.system_version || '未知版本',
+          systemVersion: currentDevice.systemVersion || DISPLAY_LABELS.unknownVersion,
           index: -1,
           isAdded: true,
-          isCurrent: true
+          isCurrent: true,
         })
       }
     }
-    
-    const sorted = [...devices.filter(d => d.isCurrent), ...devices.filter(d => !d.isCurrent && !d.isAdded), ...devices.filter(d => d.isCurrent === false && d.isAdded)]
-    
-    return sorted
+
+    return sortDisplayList(devices)
   }
 
   return {
@@ -352,6 +360,6 @@ export function useDeviceScanning() {
     scanPlaybackDevices,
     scanTestDeviceSerials,
     getPlaybackDevicesDisplay,
-    getTestDevicesDisplay
+    getTestDevicesDisplay,
   }
 }

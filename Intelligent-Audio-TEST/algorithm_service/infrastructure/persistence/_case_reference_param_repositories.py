@@ -21,6 +21,7 @@ from algorithm_service.domain.repositories.param_repositories import (
     IReferenceParamRepository,
 )
 from algorithm_service.infrastructure.persistence._param_converters import (
+    _apply_update_fields,
     _po_to_dict,
 )
 
@@ -115,7 +116,7 @@ class CaseParamRepository(ICaseParamRepository):
     ) -> Dict[str, Any]:
         """按 ID 更新用例参数可写字段，返回更新后的 dict。
 
-        - 仅更新 fields 中非 None 的字段
+        - 键名兼容 camelCase，未知字段忽略（见 _apply_update_fields）
         """
         session = get_db_session()
         try:
@@ -126,9 +127,7 @@ class CaseParamRepository(ICaseParamRepository):
                 raise ValueError(
                     f"Case parameter id={param_id} 不存在，无法更新"
                 )
-            for field, value in fields.items():
-                if value is not None:
-                    setattr(po, field, value)
+            _apply_update_fields(po, fields)
             session.flush()
             session.commit()
             return _po_to_dict(po)
@@ -254,7 +253,7 @@ class ReferenceParamRepository(IReferenceParamRepository):
     ) -> Dict[str, Any]:
         """按 ID 更新参考参数可写字段，返回更新后的 dict。
 
-        - 仅更新 fields 中非 None 的字段
+        - 键名兼容 camelCase，未知字段忽略（见 _apply_update_fields）
         """
         session = get_db_session()
         try:
@@ -265,9 +264,7 @@ class ReferenceParamRepository(IReferenceParamRepository):
                 raise ValueError(
                     f"Reference parameter id={param_id} 不存在，无法更新"
                 )
-            for field, value in fields.items():
-                if value is not None:
-                    setattr(po, field, value)
+            _apply_update_fields(po, fields)
             session.flush()
             session.commit()
             return _po_to_dict(po)

@@ -7,6 +7,7 @@ from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerM
 # P1.4: TestResult 改为通过 gRPC 调 task_service
 from evaluation_service.infrastructure.acl import task_acl_repository
 from shared.utils.status_constants import EvaluationStatus
+from shared.utils.json_utils import deserialize_algorithm_result
 
 
 class RoundAggregator(EvaluationLoggerMixin):
@@ -101,6 +102,9 @@ class RoundAggregator(EvaluationLoggerMixin):
                 ]
                 if completed:
                     avg_score = sum(r['score'] for r in completed) / len(completed)
+                    # 原始值(dimension_value)算术平均，仅统计已算出原始值的轮次（对齐 V10 蓝本）
+                    raw_values = [r['raw_value'] for r in completed if r['raw_value'] is not None]
+                    avg_raw = round(sum(raw_values) / len(raw_values), 4) if raw_values else None
                     aggregated[f'avg_{dim_name}'] = round(avg_score, 4)
 
                     # 创建/更新 round_number=NULL 的整体维度记录
@@ -113,9 +117,10 @@ class RoundAggregator(EvaluationLoggerMixin):
 
                     if existing_overall:
                         # 已有整体评估记录（由 round_number=None 评估产生），不覆盖其分数
-                        # 仅在整体评估未产生分数时用算术平均兜底
+                        # 仅在整体评估未产生分数时用算术平均兜底（含原始值）
                         if existing_overall.score is None:
                             existing_overall.score = round(avg_score, 4)
+                            existing_overall.dimension_value = avg_raw
                             existing_overall.evaluation_status = EvaluationStatus.COMPLETED
                     else:
                         # 没有整体评估记录，创建一条聚合记录
@@ -125,6 +130,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                             algorithm_type=info.get('algorithm_type'),
                             round_number=None,
                             score=round(avg_score, 4),
+                            dimension_value=avg_raw,
                             status=None,
                             evaluation_status=EvaluationStatus.COMPLETED,
                             error_message=None,
@@ -178,7 +184,12 @@ class RoundAggregator(EvaluationLoggerMixin):
         result_data = test_result.algorithm_result
         result_data = deserialize_algorithm_result(result_data)
 
-        result_data['aggregated'] = aggregated
+        # 合并到已有的 aggregated，而非覆盖（避免清掉其他维度先写入的聚合值）
+        existing_aggregated = result_data.get('aggregated', {})
+        if not isinstance(existing_aggregated, dict):
+            existing_aggregated = {}
+        existing_aggregated.update(aggregated)
+        result_data['aggregated'] = existing_aggregated
 
         # P1.4: 通过 gRPC 写回 task_service
         task_acl_repository.update_test_result_algorithm_result(

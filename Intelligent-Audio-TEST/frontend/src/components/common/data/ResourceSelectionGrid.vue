@@ -11,9 +11,9 @@
         <div class="card-header">
           <div class="card-info">
             <div class="card-name">{{ item?.name || '未命名资源' }}</div>
-            <div class="card-status" :class="`status-${item?.status || 'offline'}`">
-              <i class="fas fa-circle" :class="item?.status === 'online' ? 'online-indicator' : 'offline-indicator'"></i>
-              {{ item?.status === 'online' ? '在线' : '离线' }}
+            <div class="card-status" :class="`status-${item?.status || DeviceStatus.OFFLINE}`">
+              <i class="fas fa-circle" :class="item?.status === DeviceStatus.ONLINE ? 'online-indicator' : 'offline-indicator'"></i>
+              {{ item?.status === DeviceStatus.ONLINE ? '在线' : '离线' }}
             </div>
           </div>
           <div class="card-actions">
@@ -22,7 +22,7 @@
               :key="action.id"
               class="btn-icon-only" 
               :title="action.title"
-              :disabled="action.requireOnline && item?.status !== 'online'"
+              :disabled="action.requireOnline && item?.status !== DeviceStatus.ONLINE"
               @click.stop="item && $emit('action-click', { actionId: action.id, itemId: item.id })"
             >
               <i :class="action.icon"></i>
@@ -46,7 +46,7 @@
             type="checkbox" 
             :id="`check-${item?.id || ''}`" 
             class="resource-checkbox" 
-            :disabled="item?.status !== 'online'" 
+            :disabled="item?.status !== DeviceStatus.ONLINE" 
             :checked="item && isSelected(item.id)"
             @click.stop
             @change="item && $emit('toggle-selection', item.id)"
@@ -54,10 +54,10 @@
           <label 
             :for="`check-${item?.id || ''}`" 
             class="resource-select-btn" 
-            :class="{ disabled: item?.status !== 'online' }" 
+            :class="{ disabled: item?.status !== DeviceStatus.ONLINE }" 
             @click.stop
           >
-            {{ item?.status === 'online' ? '选择' : '离线' }}
+            {{ item?.status === DeviceStatus.ONLINE ? '选择' : '离线' }}
           </label>
         </div>
       </div>
@@ -72,6 +72,7 @@
 
 <script setup>
 import { computed } from 'vue';
+import { DeviceStatus } from '../../../domain/enums';
 
 const props = defineProps({
   items: { type: Array, required: true, default: () => [] },
@@ -91,7 +92,7 @@ const emit = defineEmits(['toggle-selection', 'action-click']);
 
 const isSelected = (id) => props.selectedIds.includes(id);
 
-const isItemOnline = (item) => item?.status === 'online';
+const isItemOnline = (item) => item?.status === DeviceStatus.ONLINE;
 
 const getDisplaySpecs = (item) => {
   if (!item) return {};

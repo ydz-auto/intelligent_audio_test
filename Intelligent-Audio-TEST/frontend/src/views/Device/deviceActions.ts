@@ -1,6 +1,10 @@
-import { devicesApi, playbackApi, apisApi } from '../../utils/api';
-import { MODAL_TYPES } from '../../shared/types';
-import type { DeviceUnion } from './deviceTypes';
+import { devicesPort } from '../../composables/device/devicesPort';
+import { playbackPort } from '../../composables/device/playbackPort';
+import { apisPort } from '../../composables/apiTest/apisPort';
+import { algorithmPort } from '../../composables/algorithm/algorithmPort';
+import { MODAL_TYPES } from '../../composables/modal/constants';
+import { DeviceStatus } from '../../domain/enums';
+import type { DeviceUnion } from '@/domain';
 import {
   activeTab,
   dropdowns,
@@ -21,6 +25,9 @@ import {
   getDeviceManagement
 } from './deviceState';
 import { fetchAllDevices } from './deviceFetching';
+import { useNotification } from '../../composables/modal/useNotification';
+
+const notification = useNotification();
 
 export function switchDeviceType(type: string) {
   activeTab.value = type;
@@ -44,11 +51,11 @@ export async function handleAddDevice() {
   getDeviceManagement()!.addDevice(activeTab.value);
 }
 
-export async function openEditModal(deviceId: string) {
+export async function openEditModal(deviceId: string | number) {
   await getDeviceManagement()!.editDevice(deviceId, activeTab.value);
 }
 
-export async function deleteDevice(deviceId: string) {
+export async function deleteDevice(deviceId: string | number) {
   getDeviceManagement()!.deleteDevice(deviceId, activeTab.value);
 }
 
@@ -102,7 +109,7 @@ export async function batchDeleteDevices() {
 
 export async function batchHealthCheck() {
   if (selectedDevices.value.length === 0) {
-    alert('请先选择要检查的设备');
+    notification.warning('请先选择要检查的设备');
     return;
   }
 
@@ -121,13 +128,13 @@ export async function batchHealthCheck() {
 
       const deviceIndex = deviceList.findIndex(d => d.id === deviceId);
       if (deviceIndex > -1) {
-        deviceList[deviceIndex].status = 'testing';
+        deviceList[deviceIndex].status = DeviceStatus.TESTING;
       }
 
       if (activeTab.value === 'test') {
-        await devicesApi.healthCheck([deviceId]);
+        await devicesPort.healthCheck([deviceId]);
       } else if (activeTab.value === 'playback') {
-        const result = await playbackApi.checkStatus() as { id: string | number; status: string }[];
+        const result = await playbackPort.checkStatus() as { id: string | number; status: string }[];
         result.forEach(item => {
           const playbackDeviceIndex = playbackDevices.value.findIndex(d => d.id === item.id);
           if (playbackDeviceIndex > -1) {
@@ -135,7 +142,7 @@ export async function batchHealthCheck() {
           }
         });
       } else if (activeTab.value === 'api') {
-        await apisApi.testConnection(deviceId as string | number);
+        await apisPort.testConnection(deviceId as string | number);
       }
     }
 
@@ -143,7 +150,7 @@ export async function batchHealthCheck() {
   } catch (error) {
     console.error('批量健康检查失败:', error);
     const errorMessage = error instanceof Error ? error.message : '未知错误';
-    alert('批量健康检查失败: ' + errorMessage);
+    notification.error('批量健康检查失败: ' + errorMessage);
   }
 }
 
@@ -186,7 +193,7 @@ export async function testDevice(deviceId: string | number) {
   if (result) {
     try {
       if (deviceIndex > -1) {
-        deviceList[deviceIndex].status = 'testing';
+        deviceList[deviceIndex].status = DeviceStatus.TESTING;
       }
       await getDeviceManagement()!.testDeviceConnection(deviceId, activeTab.value as 'test' | 'playback' | 'api');
     } catch (error) {
@@ -220,15 +227,15 @@ export async function stopTest(deviceId: string | number) {
 
         const deviceIndex = deviceList.findIndex(d => d.id === deviceId);
         if (deviceIndex > -1) {
-          deviceList[deviceIndex].status = 'online';
+          deviceList[deviceIndex].status = DeviceStatus.ONLINE;
         }
 
         if (activeTab.value === 'playback') {
-          await (playbackApi as any).stopTest(deviceId);
+          await (playbackPort as any).stopTest(deviceId);
         } else if (activeTab.value === 'test') {
-          await (devicesApi as any).stopTest(deviceId);
+          await (devicesPort as any).stopTest(deviceId);
         } else if (activeTab.value === 'api') {
-          await (apisApi as any).stopTest(deviceId);
+          await (apisPort as any).stopTest(deviceId);
         }
       } catch (error) {
         console.error('停止测试失败:', error);
@@ -253,11 +260,11 @@ export async function healthCheckDevice(deviceId: string | number) {
     deviceIndex = deviceList.findIndex(d => d.id === deviceId);
 
     if (deviceIndex > -1) {
-      deviceList[deviceIndex].status = 'testing';
+      deviceList[deviceIndex].status = DeviceStatus.TESTING;
     }
 
     if (activeTab.value === 'test') {
-      const healthCheckResult = await devicesApi.healthCheck([deviceId]) as { id: string | number; status: string }[];
+      const healthCheckResult = await devicesPort.healthCheck([deviceId]) as { id: string | number; status: string }[];
       if (healthCheckResult && Array.isArray(healthCheckResult)) {
         healthCheckResult.forEach(item => {
           const testDeviceIndex = testDevices.value.findIndex(d => d.id === item.id);
@@ -267,7 +274,7 @@ export async function healthCheckDevice(deviceId: string | number) {
         });
       }
     } else if (activeTab.value === 'playback') {
-      const healthCheckResult = await playbackApi.checkStatus() as { id: string | number; status: string }[];
+      const healthCheckResult = await playbackPort.checkStatus() as { id: string | number; status: string }[];
       if (healthCheckResult && Array.isArray(healthCheckResult)) {
         healthCheckResult.forEach(item => {
           const playbackDeviceIndex = playbackDevices.value.findIndex(d => d.id === item.id);
@@ -277,11 +284,11 @@ export async function healthCheckDevice(deviceId: string | number) {
         });
       }
     } else if (activeTab.value === 'api') {
-      const healthCheckResult = await apisApi.testConnection(deviceId as string | number);
+      const healthCheckResult = await apisPort.testConnection(deviceId as string | number);
       if (healthCheckResult) {
         const apiDeviceIndex = apiDevices.value.findIndex(d => d.id === deviceId);
         if (apiDeviceIndex > -1) {
-          apiDevices.value[apiDeviceIndex].status = 'online';
+          apiDevices.value[apiDeviceIndex].status = DeviceStatus.ONLINE;
         }
       }
     }
@@ -290,7 +297,7 @@ export async function healthCheckDevice(deviceId: string | number) {
   } catch (error) {
     console.error('健康检查失败:', error);
     if (deviceList && deviceIndex > -1) {
-      deviceList[deviceIndex].status = 'offline';
+      deviceList[deviceIndex].status = DeviceStatus.OFFLINE;
     }
   }
 }
@@ -304,9 +311,11 @@ export function startScanDevices() {
   scanDevices();
 }
 
-export function getDelayClass(delay: number) {
-  if (delay < 50) return 'delay-good';
-  if (delay < 100) return 'delay-warning';
+export function getDelayClass(delay?: number) {
+  // delay 缺省（undefined < 50 为 false）时与原行为一致：返回 delay-error
+  const d = delay ?? NaN;
+  if (d < 50) return 'delay-good';
+  if (d < 100) return 'delay-warning';
   return 'delay-error';
 }
 
@@ -336,10 +345,10 @@ export function resetAllStates() {
 
 export async function loadAlgorithmTypeOptions() {
   try {
-    const response = await fetch('/api/v1/algorithm/options');
-    const result = await response.json();
-    if (result.success && result.data && result.data.algorithms) {
-      algorithmTypeOptions.value = result.data.algorithms.map((algo: any) => ({
+    // 走 algorithmPort.getOptions（client unwrap 后返回 { algorithms: [...] }）
+    const result = await algorithmPort.getOptions();
+    if (result?.algorithms) {
+      algorithmTypeOptions.value = result.algorithms.map((algo: any) => ({
         value: algo.value || algo.type,
         label: algo.name || algo.label || algo.value || algo.type
       }));

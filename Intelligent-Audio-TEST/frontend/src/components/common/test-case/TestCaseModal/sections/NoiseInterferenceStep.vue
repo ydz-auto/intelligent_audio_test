@@ -132,18 +132,19 @@
 </template>
 
 <script setup lang="ts">
-import type { RoundConfigItem, AlgorithmParamItem, BackgroundNoiseConfig } from '../types'
-import type { PlaybackDevice } from '../../../../../shared/types'
+import type { RoundConfigItem, AlgorithmParamItem, BackgroundNoiseConfig } from '@/domain'
+import type { PlaybackDevice } from '../../../../../domain'
 import { inject, computed } from 'vue'
 import VoiceprintConfigEditor from '../VoiceprintConfigEditor.vue'
 import InterfererConfigEditor from '../InterfererConfigEditor.vue'
+import { useAudioConfigHelpers } from '../useAudioConfigHelpers'
 
 const props = defineProps<{
   round: RoundConfigItem
   playbackDevices: PlaybackDevice[]
   hasVoiceprintParam: boolean
   hasInterfererParam: boolean
-  /** 当前轮的算法参数（来自独立列 algorithm_params 按轮匹配后的 params 数组） */
+  /** 当前轮的算法参数（来自独立列 algorithmParams 按轮匹配后的 params 数组） */
   roundAlgorithmParams?: AlgorithmParamItem[]
 }>()
 
@@ -156,6 +157,7 @@ const emit = defineEmits<{
 }>()
 
 const audioConfig = inject<any>('audioConfig', {})
+const { getAudioName, getAudioTags, getAudioDuration, formatDuration, getNormalizedTags } = useAudioConfigHelpers(audioConfig, (audioId) => String(audioId))
 
 // 当前轮的算法参数：优先从独立列 roundAlgorithmParams 读取，兼容回退到 round.algorithmParams
 const currentAlgoParams = computed<AlgorithmParamItem[]>(() => {
@@ -172,47 +174,19 @@ function onAlgoParamsUpdate(params: AlgorithmParamItem[]) {
   emit('update:round', { ...props.round, algorithmParams: params })
 }
 
-function getAudioName(audioId: string): string {
-  return audioConfig?.getAudioName?.(audioId) || audioId
-}
-
-function getAudioTags(audioId: string): string {
-  return audioConfig?.getAudioTags?.(audioId) || ''
-}
-
-function getAudioDuration(audioId: string): number {
-  return audioConfig?.getAudioDuration?.(audioId) || 0
-}
-
-function formatDuration(seconds: number): string {
-  return audioConfig?.formatDuration?.(seconds) || '0s'
-}
-
-function getNormalizedTags(tagsStr: string): string[] {
-  if (!tagsStr) return []
-  try {
-    const parsed = JSON.parse(tagsStr)
-    if (Array.isArray(parsed)) return parsed.map(String)
-    if (typeof parsed === 'string') return parsed.split(',').map((s: string) => s.trim()).filter(Boolean)
-  } catch {
-    return String(tagsStr).split(',').map((s: string) => s.trim()).filter(Boolean)
-  }
-  return []
-}
-
 function getAlgoParam(fieldCode: string, defaultValue?: unknown): unknown {
   const params = currentAlgoParams.value
-  const item = params.find((p) => p.field_code === fieldCode)
-  return item?.field_value ?? defaultValue ?? ''
+  const item = params.find((p) => p.fieldCode === fieldCode)
+  return item?.fieldValue ?? defaultValue ?? ''
 }
 
 function setAlgoParam(fieldCode: string, value: unknown) {
   const params = [...currentAlgoParams.value]
-  const idx = params.findIndex((p) => p.field_code === fieldCode)
+  const idx = params.findIndex((p) => p.fieldCode === fieldCode)
   if (idx >= 0) {
-    params[idx] = { field_code: fieldCode, field_value: value }
+    params[idx] = { fieldCode, fieldValue: value }
   } else {
-    params.push({ field_code: fieldCode, field_value: value })
+    params.push({ fieldCode, fieldValue: value })
   }
   onAlgoParamsUpdate(params)
 }

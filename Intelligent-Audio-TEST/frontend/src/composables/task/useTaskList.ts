@@ -1,7 +1,8 @@
 import { ref, computed, type Ref } from 'vue';
-import { tasksApi, algorithmApi } from '../../utils/api';
-import type { Task } from '../../shared/types';
-import { TaskStatus } from '@/shared/types/enums';
+import { tasksPort } from './tasksPort';
+import { algorithmPort } from '../algorithm/algorithmPort';
+import type { Task } from '../../domain';
+import { TaskStatus } from '../../domain/enums';
 import { usePagination } from '../usePagination';
 
 /**
@@ -38,7 +39,7 @@ export function useTaskList(options?: UseTaskListOptions) {
   const currentPage = ref(1);
   const pageSize = ref(10);
   const totalItems = ref(0);
-  const sortConfig = ref({ field: 'created_at', order: 'desc' });
+  const sortConfig = ref({ field: 'createdAt', order: 'desc' });
   const selectedTags = ref<string[]>([]);
   const searchTerm = ref('');
   const filters = ref<TaskFilters>({
@@ -87,7 +88,7 @@ export function useTaskList(options?: UseTaskListOptions) {
 
   async function loadAlgorithmOptions() {
     try {
-      const data = await algorithmApi.getOptions();
+      const data = await algorithmPort.getOptions();
       algorithmOptions.value = [
         { value: 'all', label: '全部算法' },
         ...(data?.algorithms || []).map((algo: any) => ({
@@ -109,9 +110,10 @@ export function useTaskList(options?: UseTaskListOptions) {
 
   const fetchTasks = async () => {
     try {
+      // 查询参数保持 camelCase（TaskListQuery），snake_case 化由 tasksApi 内部完成
       const params: Record<string, any> = {
         page: currentPage.value,
-        per_page: pageSize.value
+        perPage: pageSize.value
       };
 
       if (searchTerm.value) {
@@ -125,7 +127,7 @@ export function useTaskList(options?: UseTaskListOptions) {
         params.type = filters.value.type;
       }
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
-        params.algorithm_type = filters.value.algorithmType;
+        params.algorithmType = filters.value.algorithmType;
       }
       if (filters.value.timeRange && filters.value.timeRange !== 'all') {
         const now = new Date();
@@ -133,35 +135,35 @@ export function useTaskList(options?: UseTaskListOptions) {
 
         switch (filters.value.timeRange) {
           case 'today':
-            params.start_date = today.toISOString();
+            params.startTime = today.toISOString();
             break;
           case 'yesterday':
             const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-            params.start_date = yesterday.toISOString();
-            params.end_date = today.toISOString();
+            params.startTime = yesterday.toISOString();
+            params.endTime = today.toISOString();
             break;
           case 'week':
             const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-            params.start_date = weekAgo.toISOString();
+            params.startTime = weekAgo.toISOString();
             break;
           case 'month':
             const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-            params.start_date = monthAgo.toISOString();
+            params.startTime = monthAgo.toISOString();
             break;
           case 'custom':
             if (customDateRange.value.start) {
-              params.start_date = new Date(customDateRange.value.start).toISOString();
+              params.startTime = new Date(customDateRange.value.start).toISOString();
             }
             if (customDateRange.value.end) {
               const endDate = new Date(customDateRange.value.end);
               endDate.setHours(23, 59, 59, 999);
-              params.end_date = endDate.toISOString();
+              params.endTime = endDate.toISOString();
             }
             break;
         }
       }
 
-      const response = await tasksApi.getAll(params) as any;
+      const response = await tasksPort.getAll(params) as any;
 
       let taskList: any[] = [];
       let total = 0;
@@ -203,6 +205,8 @@ export function useTaskList(options?: UseTaskListOptions) {
     fetchTasks();
   };
 
+  // 注：此处分页导航函数需在页码变更后触发 fetchTasks() 拉取服务端数据，
+  // 与 usePagination 的纯客户端导航语义不同，因此保留手写实现。
   const handlePageChange = (page: number) => {
     currentPage.value = page;
     fetchTasks();

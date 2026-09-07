@@ -32,11 +32,19 @@
           :min-column-width="60"
           :default-column-width="{ first: 200, others: 150 }"
           table-class="report-data-table"
-          row-key="dimension"
+          row-key="_rowId"
         >
-          <!-- 自定义第一列（维度名称） -->
-          <template #cell-dimension="{ row, value }">
-            <span>{{ row.dimension }}</span>
+          <!-- 自定义第一列（维度名称）：组标题行加粗，子维度缩进 -->
+          <template #cell-dimension="{ row }">
+            <span
+              v-if="row.isGroupHeader"
+              class="dim-group-header"
+            >{{ row.dimension }}</span>
+            <span
+              v-else
+              class="dim-name"
+              :class="{ 'dim-sub': row.isSubDim }"
+            >{{ row.dimension }}</span>
           </template>
 
           <!-- 空状态 -->
@@ -55,6 +63,7 @@
 <script setup>
 import { ref, computed, inject, watch } from 'vue'
 import DataTable from '../common/data/DataTable.vue'
+import { readCamel } from '../../utils/keyTransform'
 
 const props = defineProps({
   reportData: {
@@ -79,8 +88,10 @@ watch(isExporting, (exporting) => {
 // metricData 格式（后端 flatten_metric_data 输出）:
 //   [{resource: "xxx", metrics: [{id, metric, value}]}]（resource 级别全局平均）
 // 旧格式兼容: {category: {resource: {metric: value}}}（dict）
+// key 读取经 readCamel（camelCase 优先、snake_case 兜底收敛于 utils 层）
 const getMetricData = () => {
-  return props.reportData?.metric_data || props.reportData?.summary?.metric_data || {}
+  const summary = readCamel(props.reportData, 'summary') || {}
+  return readCamel(props.reportData, 'metricData') || readCamel(summary, 'metricData') || {}
 }
 
 // 把 metricData 归一化成 {resource: {metric: value}} 的 dict 格式
@@ -130,8 +141,8 @@ const getNormalizedMetricData = () => {
 const resourceHeaderMap = computed(() => {
   const data = props.reportData || {}
   const headers =
-    data.resource_headers ||
-    data.summary?.resource_headers ||
+    readCamel(data, 'resourceHeaders') ||
+    readCamel(readCamel(data, 'summary'), 'resourceHeaders') ||
     []
 
   const map = {}
@@ -201,7 +212,8 @@ const processedDevices = computed(() => {
 })
 
 const actualAllMetrics = computed(() => {
-  let metrics = props.reportData?.all_metrics || props.reportData?.summary?.all_metrics || []
+  const summary = readCamel(props.reportData, 'summary') || {}
+  let metrics = readCamel(props.reportData, 'allMetrics') || readCamel(summary, 'allMetrics') || []
 
   // 如果 allMetrics 为空，从 metricData 中提取维度名
   if (metrics.length === 0) {
@@ -225,7 +237,7 @@ const actualAllMetrics = computed(() => {
   return metrics
 })
 
-const totalCases = computed(() => props.reportData?.summary?.total_cases || 0)
+const totalCases = computed(() => readCamel(readCamel(props.reportData, 'summary'), 'totalCases') ?? 0)
 const metricsCount = computed(() => actualAllMetrics.value.length)
 const devicesCount = computed(() => devices.value.length)
 
@@ -253,19 +265,66 @@ const tableColumns = computed(() => {
 })
 
 const tableData = computed(() => {
-  return actualAllMetrics.value.map(metric => {
-    const row = {
-      dimension: metric.name
+  // 按主维度分组，子维度归入父维度组
+  const groupMap = new Map()
+  actualAllMetrics.value.forEach(metric => {
+    // 兼容 camelCase（Domain 归一化后）和 snake_case（原始格式）
+    const dimType = metric.dimensionType || metric.dimension_type || 'main'
+    const parentName = metric.parentDimensionName || metric.parent_dimension_name
+    const groupKey = (dimType === 'sub' && parentName) ? parentName : metric.name
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, { label: groupKey, main: null, subs: [] })
     }
-
-    devices.value.forEach((device, index) => {
-      const metricObj = actualAllMetrics.value.find(m => m.name === metric.name)
-      const unit = metricObj?.unit || ''
-      row[`device-${index}`] = formatMetricValue(metric.name, getAverageValue(metric.name, device)) + unit
-    })
-
-    return row
+    const group = groupMap.get(groupKey)
+    if (dimType === 'main' || !parentName) {
+      if (!group.main) group.main = metric
+      else group.subs.push(metric)
+    } else {
+      group.subs.push(metric)
+    }
   })
+  // 子维度按名称排序，分组按名称排序
+  const groups = Array.from(groupMap.values()).sort((a, b) =>
+    a.label.localeCompare(b.label, 'zh')
+  )
+  groups.forEach(g => g.subs.sort((a, b) => a.name.localeCompare(b.name, 'zh')))
+
+  // 构建表格行：分组标题行 + 主维度行 + 子维度行（缩进）
+  const rows = []
+  let rowSeq = 0
+  groups.forEach(group => {
+    // 当主维度名与分组名相同时，主维度行直接作为分组标题行，避免同名重复行
+    const mainIsHeader = group.main && group.main.name === group.label
+    // 仅当组内有子维度且主维度名与分组名不同时，才插入独立分组标题行
+    if (group.subs.length > 0 && !mainIsHeader) {
+      const headerRow = { _rowId: `hdr_${rowSeq++}`, dimension: group.label, isGroupHeader: true }
+      devices.value.forEach((device, index) => {
+        headerRow[`device-${index}`] = ''
+      })
+      rows.push(headerRow)
+    }
+    // 主维度行
+    if (group.main) {
+      const row = { _rowId: `main_${rowSeq++}`, dimension: group.main.name, isSubDim: false, isGroupHeader: mainIsHeader }
+      const unit = group.main.unit || ''
+      devices.value.forEach((device, index) => {
+        const val = formatMetricValue(group.main.name, getAverageValue(group.main.name, device))
+        row[`device-${index}`] = val === '-' ? '-' : val + unit
+      })
+      rows.push(row)
+    }
+    // 子维度行
+    group.subs.forEach(sub => {
+      const row = { _rowId: `sub_${rowSeq++}`, dimension: sub.name, isSubDim: true }
+      const unit = sub.unit || ''
+      devices.value.forEach((device, index) => {
+        const val = formatMetricValue(sub.name, getAverageValue(sub.name, device))
+        row[`device-${index}`] = val === '-' ? '-' : val + unit
+      })
+      rows.push(row)
+    })
+  })
+  return rows
 })
 
 const metricDecimalPlacesMap = computed(() => {
@@ -273,7 +332,7 @@ const metricDecimalPlacesMap = computed(() => {
   const list = Array.isArray(actualAllMetrics.value) ? actualAllMetrics.value : []
   list.forEach(m => {
     if (!m || !m.name) return
-    const dp = m.decimal_places
+    const dp = readCamel(m, 'decimalPlaces')
     if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
   })
   return map
@@ -408,5 +467,19 @@ const getAverageValue = (metricName, device) => {
 .empty-state p {
   margin: 0;
   font-size: 14px;
+}
+
+.dim-name.dim-sub {
+  padding-left: 20px;
+  color: #595959;
+  font-weight: 400;
+}
+
+.dim-group-header {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--primary-color, #1677ff);
+  display: inline-block;
+  padding: 2px 0;
 }
 </style>

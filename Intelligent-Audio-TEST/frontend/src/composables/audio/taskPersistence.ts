@@ -1,5 +1,5 @@
 import type { Ref } from 'vue';
-import type { AudioUploadTask } from '../../shared/types';
+import type { AudioUploadTask } from '../../domain';
 
 /**
  * 本地任务持久化（localStorage）

@@ -249,9 +249,7 @@
                 ></span>
                 <div class="case-name">{{ caseItem.name }}</div>
                 <span class="case-category">{{ caseItem.category || '未分类' }}</span>
-                <span v-if="caseItem.id" class="case-id-badge" @click.stop="copyToClipboard(caseItem.id)" title="点击复制ID">
-                  <i class="fas fa-copy"></i> 用例ID: {{ caseItem.id }}
-                </span>
+                <CaseIdBadge v-if="caseItem.id" :case-id="caseItem.id" />
               </div>
               <div class="case-tags-container" v-if="caseItem.tags && caseItem.tags.length > 0">
                 <div class="case-tags">
@@ -396,6 +394,7 @@
 import AudioPlayerModal from '../common/audio/AudioPlayerModal.vue'
 import TestCaseReportDetail from '../common/misc/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/data/PaginationComponent.vue'
+import CaseIdBadge from '../common/CaseIdBadge.vue'
 import '../../assets/styles/components/report-filter-card.css'
 import { useSpecificCaseComparison } from './SpecificCaseComparisonComponent'
 
@@ -457,7 +456,6 @@ const {
   paginatedCasesWithPreparedData,
   toggleCaseExpand,
   getOverallStatus,
-  copyToClipboard,
   downloadCaseLogZip,
   expandedCases,
   allDevices,

@@ -2,19 +2,32 @@
   <div class="test-case-report-detail">
     <div v-if="hasMetrics" class="detail-section">
       <h4 class="section-title"><i class="fas fa-chart-bar"></i> 评分指标</h4>
+      <!-- 轮次 Tab：多轮评估时切换轮次/整体 -->
+      <div v-if="isComparison && roundTabs.length > 1" class="round-tab-bar">
+        <button
+          v-for="(tab, idx) in roundTabs"
+          :key="tab.key"
+          class="round-tab-btn"
+          :class="{ active: activeRoundTab === idx }"
+          @click="activeRoundTab = idx"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
       <div class="metrics-table-wrapper">
         <DataTable
           v-if="isComparison"
           :columns="comparisonTableColumns"
-          :data="comparisonTableData"
+          :data="currentRoundTableData"
           :resizable="true"
           :min-column-width="60"
           :default-column-width="{ first: 200, others: 150 }"
           table-class="report-data-table"
-          row-key="metricName"
+          row-key="_rowId"
         >
-          <template #cell-metricName="{ row, value }">
-            <span class="dim-name">{{ row.metricName }}</span>
+          <template #cell-metricName="{ row }">
+            <span v-if="row.isGroupHeader" class="dim-group-header">{{ row.metricName }}</span>
+            <span v-else class="dim-name" :class="{ 'dim-sub': row.isSubDim }">{{ row.metricName }}</span>
           </template>
           <template #empty>
             <div style="padding: 20px; text-align: center; color: #94a3b8;">
@@ -61,6 +74,8 @@
     </div>
 
     <div v-if="isMultiRound" class="detail-section">
+      <!-- 聚合指标与轮次字段的 key（avg_wer/audio_name/asr_text/llm_judge 等）为后端协议原值，
+           由 utils/reportMultiRound 按原始结构解析产出，本组件按该契约消费 -->
       <h4 class="section-title"><i class="fas fa-layer-group"></i> 多轮对话结果 ({{ multiRoundData.totalRounds }} 轮)</h4>
       <div v-if="aggregatedMetrics" class="multi-round-aggregated">
         <div class="aggregated-card" v-if="aggregatedMetrics.avg_wer != null">
@@ -134,7 +149,7 @@
       :audioId="currentPlayingAudio.id"
       :audioPath="currentPlayingAudio.path"
       :audioTitle="currentPlayingAudio.label || '音频播放'"
-      :audioType="currentPlayingAudio.type || 'api'"
+      :audioType="currentPlayingAudio.type || TestType.API"
       :spl="currentPlayingAudio.spl"
       :offset="currentPlayingAudio.offset"
       @close="closeAudioModal"
@@ -143,20 +158,33 @@
     <!-- 统一执行结果卡片 -->
     <div v-if="hasExecutionResults" class="detail-section">
       <h4 class="section-title"><i class="fas fa-play-circle"></i> 执行结果</h4>
+      <!-- 轮次 Tab：多轮字段时切换轮次/整体，参考数据与评估结果随轮次过滤 -->
+      <div v-if="isMultiRoundFields && roundTabs.length > 1" class="round-tab-bar">
+        <button
+          v-for="(tab, idx) in roundTabs"
+          :key="tab.key"
+          class="round-tab-btn"
+          :class="{ active: activeRoundTab === idx }"
+          @click="activeRoundTab = idx"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
 
       <div class="execution-results-container">
         <!-- 参考数据表格 -->
-        <div v-if="referenceTextFields.length > 0" class="result-subsection">
+      <!-- paramCode/paramType 为 fields 子模块产出的渲染形状 key（值本身是后端协议标识），本组件按该契约消费 -->
+      <div v-if="referenceTextFields.length > 0" class="result-subsection">
           <div class="subsection-label"><i class="fas fa-bookmark"></i> 参考数据</div>
           <div class="kv-table">
-            <div class="kv-table-row" v-for="field in referenceTextFields" :key="'ref_' + field.param_code">
-              <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+            <div class="kv-table-row" v-for="field in referenceTextFields" :key="'ref_' + field.paramCode">
+              <div class="kv-table-key">{{ field.label || field.paramCode }}</div>
               <div class="kv-table-value">
                 <pre v-if="isJsonString(field.text)" class="json-formatted">{{ formatJson(field.text) }}</pre>
-                <span v-else-if="(field.text || '').length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['ref_' + field.param_code] }">
+                <span v-else-if="(field.text || '').length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['ref_' + field.paramCode] }">
                   <span class="text-content">{{ field.text }}</span>
-                  <span class="expand-toggle" @click="toggleText('ref_' + field.param_code)">
-                    {{ expandedTexts['ref_' + field.param_code] ? '收起' : '展开' }}
+                  <span class="expand-toggle" @click="toggleText('ref_' + field.paramCode)">
+                    {{ expandedTexts['ref_' + field.paramCode] ? '收起' : '展开' }}
                   </span>
                 </span>
                 <span v-else>{{ field.text }}</span>
@@ -306,7 +334,7 @@
               <div class="result-audio-title">{{ getDeviceName(device) }}</div>
               <div class="result-audio-list">
                 <div v-for="(audio, idx) in audios" :key="idx" class="result-audio-item">
-                  <span class="result-audio-label">{{ audio.filename || audio.param_code || '音频' + (idx + 1) }}</span>
+                  <span class="result-audio-label">{{ audio.filename || readCamel(audio, 'paramCode') || '音频' + (idx + 1) }}</span>
                   <a v-if="audio.url" :href="audio.url" target="_blank" class="result-audio-link">
                     <i class="fas fa-external-link-alt"></i> 播放
                   </a>
@@ -326,6 +354,8 @@ import TimelineComparison from '../../report/TimelineComparison.vue';
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
 import AudioTimelineVisualization from '../audio/AudioTimelineVisualization.vue';
 import { useTestCaseReportDetail } from './TestCaseReportDetail';
+import { TestType } from '@/domain/enums';
+import { readCamel } from '@/utils/keyTransform';
 
 const props = defineProps({
   dimensions: { type: Array, default: () => [] },
@@ -353,12 +383,15 @@ const props = defineProps({
 const {
   hasMetrics,
   comparisonTableColumns,
-  comparisonTableData,
   singleTableColumns,
   singleTableData,
   formatValue,
   expandedTexts,
   toggleText,
+  roundTabs,
+  activeRoundTab,
+  currentRoundTableData,
+  isMultiRoundFields,
   isMultiRound,
   multiRoundData,
   aggregatedMetrics,

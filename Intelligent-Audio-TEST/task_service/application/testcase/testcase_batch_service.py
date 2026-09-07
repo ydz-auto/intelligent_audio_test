@@ -84,6 +84,7 @@ class TestCaseBatchService(
             'copy_to_group': self._batch_copy_to_group,
             'copy': self._batch_copy,
             'copy_by_group': self._batch_copy_by_group,
+            'copy_by_tag': self._batch_copy_by_tag,
             'update_algorithm_params': self._batch_update_algorithm_params,
             'update_playback_devices': self._batch_update_playback_devices,
             'update_spl': self._batch_update_spl,

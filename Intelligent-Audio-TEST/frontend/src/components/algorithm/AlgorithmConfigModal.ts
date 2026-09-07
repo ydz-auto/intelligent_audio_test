@@ -8,16 +8,22 @@ import { useAlgorithmDimensionOps } from './useAlgorithmDimensionOps'
 import { useAlgorithmMappingOps } from './useAlgorithmMappingOps'
 import { useAlgorithmFeatureBundles } from './useAlgorithmFeatureBundles'
 import { useAlgorithmCrudOps, normalizeMappings } from './useAlgorithmCrudOps'
-import type { AlgorithmGroup, Dimension, AlgorithmRecord, ModalProps } from './algorithmTypes'
+import type { AlgorithmGroup, Dimension, AlgorithmDefinition } from '@/domain'
+import { TaskStatus, ApiEndpointStatus, ApiEndpointStatusType } from '@/domain/enums'
 
-// Re-export types so existing imports from './AlgorithmConfigModal' keep working
-export type { AlgorithmRecord, ModalProps }
+// 组件级 Modal 契约：可见性 / 模式 / 编辑数据
+export interface ModalProps {
+  visible: boolean
+  mode?: 'list' | 'create' | 'edit' | 'select'
+  editData?: AlgorithmDefinition | null
+}
 
 export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
-  const internalMode = ref<'list' | 'create' | 'edit' | 'select'>(props.mode)
+  // props.mode 为可选（ModalProps.mode?: ...），兜底为 'list'，避免 undefined 流入内部状态
+  const internalMode = ref<'list' | 'create' | 'edit' | 'select'>(props.mode ?? 'list')
 
   watch(() => props.mode, (newMode) => {
-    internalMode.value = newMode
+    internalMode.value = newMode ?? 'list'
   })
 
   const effectiveMode = computed(() => internalMode.value)
@@ -58,7 +64,7 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
   const activeTab = ref('basic')
   const paramConfigType = ref<'device' | 'api' | 'case'>('device')
 
-  const algorithms = ref<AlgorithmRecord[]>([])
+  const algorithms = ref<AlgorithmDefinition[]>([])
   const groups = ref<AlgorithmGroup[]>([])
   const availableDimensions = ref<Dimension[]>([])
 
@@ -70,73 +76,74 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
   const formState = reactive({
     type: '',
     name: '',
-    group_id: null as number | null,
+    groupId: null as number | null,
     description: '',
-    status: 'online' as 'online' | 'offline',
+    status: ApiEndpointStatus.ONLINE,
     statusSwitch: true,
     icon: '',
-    display_order: 0,
-    device_params: [] as any[],
-    api_params: [] as any[],
-    case_params: [] as any[],
+    displayOrder: 0,
+    deviceParams: [] as any[],
+    apiParams: [] as any[],
+    caseParams: [] as any[],
     mappings: {
       device: [] as any[],
       api: [] as any[],
       evaluation: [] as any[]
     },
-    associated_dimensions: [] as { dimension_id: number | null; weight: number; is_default: boolean }[],
-    reference_params: [] as { code: string; name: string; type: string; annotation_code: string; annotation_format: string; field_path: string; merge_mode: string; help_text: string }[]
+    associatedDimensions: [] as { dimensionId: number | null; weight: number; isDefault: boolean }[],
+    // 参考参数条目含后端 id 与前端新增行的临时 tempId（供列表 :key 使用）
+    referenceParams: [] as { id?: number; tempId?: string; code: string; name: string; type: string; annotationCode: string; annotationFormat: string; fieldPath: string; mergeMode: string; helpText: string }[]
   })
 
-  // 新建分组支持：选择「+ 新建分组」后展示输入框，保存算法时先创建分组再回填 group_id
+  // 新建分组支持：选择「+ 新建分组」后展示输入框，保存算法时先创建分组再回填 groupId
   const newGroupName = ref('')
   const creatingNewGroup = ref(false)
 
   const groupSelectValue = computed<number | string | null>({
-    get: () => (creatingNewGroup.value ? NEW_GROUP_SENTINEL : formState.group_id),
+    get: () => (creatingNewGroup.value ? NEW_GROUP_SENTINEL : formState.groupId),
     set: (val) => {
       if (val === NEW_GROUP_SENTINEL) {
         creatingNewGroup.value = true
         newGroupName.value = ''
       } else {
         creatingNewGroup.value = false
-        formState.group_id = val === null ? null : (Number(val) as number | null)
+        formState.groupId = val === null ? null : (Number(val) as number | null)
       }
     }
   })
 
   const currentParams = computed(() => {
     if (paramConfigType.value === 'device') {
-      return formState.device_params
+      return formState.deviceParams
     } else if (paramConfigType.value === 'api') {
-      return formState.api_params
+      return formState.apiParams
     }
     return []
   })
 
   const availableParams = computed(() => {
-    const params = paramConfigType.value === 'device' ? formState.device_params : formState.api_params
+    const params = paramConfigType.value === 'device' ? formState.deviceParams : formState.apiParams
     return params
-      .filter(param => param.param_code && !param.hidden)
+      .filter(param => param.paramCode && !param.hidden)
       .map(param => ({
-        code: param.param_code,
-        name: param.param_name || param.param_code,
+        code: param.paramCode,
+        name: param.paramName || param.paramCode,
         direction: param.direction
       }))
   })
 
   const caseParams = computed(() => {
-    return (formState.case_params || [])
-      .filter(param => param.param_code && !param.hidden)
+    return (formState.caseParams || [])
+      .filter(param => param.paramCode && !param.hidden)
       .map(param => ({
-        code: param.param_code,
-        name: param.param_name || param.param_code,
+        code: param.paramCode,
+        name: param.paramName || param.paramCode,
         direction: param.direction
       }))
   })
 
   const referenceParams = computed(() => {
-    return (formState.reference_params || [])
+    return (formState.referenceParams || [])
       .filter(param => param.code)
       .map(param => ({
         code: param.code,
@@ -146,43 +153,43 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
   })
 
   const deviceParams = computed(() => {
-    return (formState.device_params || [])
-      .filter(param => param.param_code && !param.hidden)
+    return (formState.deviceParams || [])
+      .filter(param => param.paramCode && !param.hidden)
       .map(param => ({
-        code: param.param_code,
-        name: param.param_name || param.param_code,
+        code: param.paramCode,
+        name: param.paramName || param.paramCode,
         direction: param.direction
       }))
   })
 
   const deviceOutputParams = computed(() => {
     const existingCodes = new Set(deviceParams.value.map(p => p.code))
-    return (formState.device_params || [])
-      .filter(param => param.param_code && !param.hidden && param.direction === 'output' && !existingCodes.has(param.param_code))
+    return (formState.deviceParams || [])
+      .filter(param => param.paramCode && !param.hidden && param.direction === 'output' && !existingCodes.has(param.paramCode))
       .map(param => ({
-        code: param.param_code,
-        name: param.param_name || param.param_code,
+        code: param.paramCode,
+        name: param.paramName || param.paramCode,
         direction: 'output'
       }))
   })
 
   const apiParams = computed(() => {
-    return (formState.api_params || [])
-      .filter(param => param.param_code && !param.hidden)
+    return (formState.apiParams || [])
+      .filter(param => param.paramCode && !param.hidden)
       .map(param => ({
-        code: param.param_code,
-        name: param.param_name || param.param_code,
+        code: param.paramCode,
+        name: param.paramName || param.paramCode,
         direction: param.direction
       }))
   })
 
   const apiOutputParams = computed(() => {
     const existingCodes = new Set(apiParams.value.map(p => p.code))
-    return (formState.api_params || [])
-      .filter(param => param.param_code && !param.hidden && param.direction === 'output' && !existingCodes.has(param.param_code))
+    return (formState.apiParams || [])
+      .filter(param => param.paramCode && !param.hidden && param.direction === 'output' && !existingCodes.has(param.paramCode))
       .map(param => ({
-        code: param.param_code,
-        name: param.param_name || param.param_code,
+        code: param.paramCode,
+        name: param.paramName || param.paramCode,
         direction: 'output'
       }))
   })
@@ -198,10 +205,10 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
   function getGroupTagClass(groupName: string | undefined): string {
     if (!groupName) return ''
     const classes: Record<string, string> = {
-      '翻译': 'pending',
-      '语音识别': 'completed',
+      '翻译': TaskStatus.PENDING,
+      '语音识别': TaskStatus.COMPLETED,
       '声纹识别': 'in-progress',
-      '语音合成': 'failed'
+      '语音合成': TaskStatus.FAILED
     }
     return classes[groupName] || ''
   }
@@ -219,43 +226,43 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
   })
 
   watch(() => [props.mode, props.editData] as const, ([mode, editData]) => {
-    console.log('watch mode:', mode, 'editData:', editData)
     if (mode === 'edit' && editData) {
-      const data = editData as AlgorithmRecord
-      const deviceParams = ((data.device_params ?? data.deviceParams) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
-      const apiParams = ((data.api_params ?? data.apiParams) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
-      const caseParams = ((data.case_params ?? data.caseParams) || []).map(normalizeCaseParamFields).map((p: any) => ({ ...p }))
-      const refConfig = data.reference_params ?? data.referenceConfig ?? data.reference_config ?? data.referenceParams
+      // algorithmApi 已返回 camelCase Domain 字段
+      const data = editData as AlgorithmDefinition
+      const deviceParams = (data.deviceParams || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+      const apiParams = (data.apiParams || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+      const caseParams = (data.caseParams || []).map(normalizeCaseParamFields).map((p: any) => ({ ...p }))
+      const refConfig = data.referenceParams
 
       Object.assign(formState, {
         type: data.type,
         name: data.name,
-        group_id: data.group_id ?? data.groupId ?? null,
+        groupId: data.groupId ?? null,
         description: data.description || '',
-        status: data.status as 'online' | 'offline',
-        statusSwitch: data.status === 'online',
+        status: data.status as ApiEndpointStatusType,
+        statusSwitch: data.status === ApiEndpointStatus.ONLINE,
         icon: data.icon || '',
-        display_order: (data.display_order ?? data.displayOrder) || 0,
-        device_params: deviceParams,
-        api_params: apiParams,
-        case_params: caseParams,
+        displayOrder: data.displayOrder || 0,
+        deviceParams: deviceParams,
+        apiParams: apiParams,
+        caseParams: caseParams,
         params: data.params || [],
         mappings: normalizeMappings(data.mappings),
-        associated_dimensions: ((data.associated_dimensions ?? data.associatedDimensions) || []).map((d: any) => ({
-          dimension_id: d.dimension_id ?? d.dimensionId,
+        associatedDimensions: (data.associatedDimensions || []).map((d: any) => ({
+          dimensionId: d.dimensionId,
           weight: d.weight ?? 1.0,
-          is_default: d.is_default ?? d.isDefault ?? false
+          isDefault: d.isDefault ?? false
         })),
-        reference_params: (refConfig || []).map((p: any) => ({
+        referenceParams: (refConfig || []).map((p: any) => ({
           id: p.id,
           code: p.code || '',
           name: p.name || '',
           type: p.type || 'text',
-          annotation_code: p.annotation_code || p.code || '',
-          annotation_format: p.annotation_format || '',
-          field_path: p.field_path || '',
-          merge_mode: p.merge_mode || 'join',
-          help_text: p.help_text || ''
+          annotationCode: p.annotationCode || p.code || '',
+          annotationFormat: p.annotationFormat || '',
+          fieldPath: p.fieldPath || '',
+          mergeMode: p.mergeMode || 'join',
+          helpText: p.helpText || ''
         }))
       })
     } else if (mode === 'create') {

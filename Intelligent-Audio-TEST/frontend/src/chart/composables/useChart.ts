@@ -1,7 +1,8 @@
 import { ref, watch, nextTick, Ref } from 'vue';
 import { Chart, ChartConfiguration } from 'chart.js/auto';
 import zoomPlugin from 'chartjs-plugin-zoom';
-import { getDefaultChartConfig, applyChartTypeConfig, mergeUserOptions, prepareChartData, calculateDistributionStats, calculateDistributionStatsByDevice, rebinDistributionData, DistributionStat } from '../utils/chartConfig';
+import type { StatItem } from '../../domain/model/stats';
+import { getDefaultChartConfig, applyChartTypeConfig, mergeUserOptions, prepareChartData, calculateDistributionStats, calculateDistributionStatsByDevice, rebinDistributionData } from '../utils/chartConfig';
 
 Chart.register(zoomPlugin);
 
@@ -10,8 +11,8 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
   const animationFrameId = ref<number | null>(null);
   const isMounted = ref(true);
   const hasData = ref(false);
-  const distributionStats = ref<DistributionStat[]>([]);
-  const distributionStatsByDevice = ref<{ [device: string]: DistributionStat[] }>({});
+  const distributionStats = ref<StatItem[]>([]);
+  const distributionStatsByDevice = ref<{ [device: string]: StatItem[] }>({});
   const chartSubType = ref<'line' | 'bar'>('line');
   const isSwitching = ref(false);
 

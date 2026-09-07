@@ -15,7 +15,7 @@
       >
         <div class="algorithm-card-header">
           <div class="card-info">
-            <span class="algorithm-icon"><i :class="['fas', getAlgorithmIcon(algo.group_name)]"></i></span>
+            <span class="algorithm-icon"><i :class="['fas', getAlgorithmIcon(algo.groupName)]"></i></span>
             <div class="algorithm-name">{{ algo.name }}</div>
           </div>
           <div class="card-actions">
@@ -28,7 +28,7 @@
           <div class="algorithm-meta">
             <div class="algorithm-meta-item">
               <span class="algorithm-meta-label">分组:</span>
-              <span class="algorithm-meta-value">{{ algo.group_name || '未分组' }}</span>
+              <span class="algorithm-meta-value">{{ algo.groupName || '未分组' }}</span>
             </div>
           </div>
         </div>
@@ -59,7 +59,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AlgorithmOption } from '@/composables/algorithm/useAlgorithmSelection'
+import type { AlgorithmOption } from '@/domain/model/algorithm'
 
 interface Props {
   algorithmList: AlgorithmOption[]
@@ -82,7 +82,7 @@ const filteredAlgorithmList = computed(() => {
   const query = props.searchQuery.toLowerCase().trim()
   return props.algorithmList.filter(algo =>
     algo.name?.toLowerCase().includes(query) ||
-    algo.group_name?.toLowerCase().includes(query) ||
+    algo.groupName?.toLowerCase().includes(query) ||
     algo.value?.toLowerCase().includes(query)
   )
 })

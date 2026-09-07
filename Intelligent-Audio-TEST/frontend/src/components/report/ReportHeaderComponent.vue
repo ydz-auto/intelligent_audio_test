@@ -4,7 +4,7 @@
       <h1 class="report-title">{{ report.title }}</h1>
       <div class="report-meta">
         <span class="report-type" :class="`report-type-${report.type}`">{{ reportTypeLabel }}</span>
-        <span class="report-date">{{ formatDate(report.created_at) }}</span>
+        <span class="report-date">{{ formatDate(report.createdAt) }}</span>
         <span class="report-status" :class="`report-status-${report.status}`">{{ reportStatusLabel }}</span>
       </div>
     </div>
@@ -18,11 +18,11 @@
       </button>
       <button 
         class="btn" 
-        :class="report.status === 'draft' ? 'btn-primary' : 'btn-warning'"
+        :class="report.status === ReportStatus.DRAFT ? 'btn-primary' : 'btn-warning'"
         @click="$emit('publish')"
       >
-        <i :class="report.status === 'draft' ? 'fas fa-paper-plane' : 'fas fa-times'" ></i> 
-        {{ report.status === 'draft' ? '发布' : '取消发布' }}
+        <i :class="report.status === ReportStatus.DRAFT ? 'fas fa-paper-plane' : 'fas fa-times'" ></i> 
+        {{ report.status === ReportStatus.DRAFT ? '发布' : '取消发布' }}
       </button>
       <button class="btn btn-danger" @click="$emit('close')">
         <i class="fas fa-times"></i> 关闭
@@ -32,12 +32,15 @@
 </template>
 
 <script>
+import { ReportStatus } from '@/domain/enums'
+import { formatDate } from '@/utils/utils'
+
 export default {
   name: 'ReportHeaderComponent',
   props: {
     report: {
       type: Object, required: true, default: () => ({
-        id: '', title: '报告标题', type: 'task', status: 'draft', created_at: new Date().toISOString(), updated_at: new Date().toISOString()
+        id: '', title: '报告标题', type: 'task', status: ReportStatus.DRAFT, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       })
     }
   },
@@ -50,16 +53,13 @@ export default {
       return typeMap[this.report.type] || '未知报告类型';
     },
     reportStatusLabel() {
-      const statusMap = { 'draft': '草稿', 'published': '已发布' };
+      const statusMap = { [ReportStatus.DRAFT]: '草稿', [ReportStatus.PUBLISHED]: '已发布' };
       return statusMap[this.report.status] || '未知状态';
     }
   },
   methods: {
     formatDate(dateString) {
-      const date = new Date(dateString);
-      return date.toLocaleString('zh-CN', {
-        year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit'
-      });
+      return formatDate(dateString);
     }
   }
 };

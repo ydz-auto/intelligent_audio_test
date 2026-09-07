@@ -1,6 +1,7 @@
 import { computed, inject } from 'vue'
-import type { RoundConfigItem, AudioConfig } from '../types'
-import type { PlaybackDevice } from '../../../../../shared/types'
+import type { RoundConfigItem, AudioConfig } from '@/domain'
+import type { PlaybackDevice } from '../../../../../domain'
+import { useAudioConfigHelpers } from '../useAudioConfigHelpers'
 
 export function useAudioListStep(
   props: { round: RoundConfigItem },
@@ -8,16 +9,9 @@ export function useAudioListStep(
 ) {
   // 注入 audioConfig（由 index.vue provide）
   const audioConfig = inject<any>('audioConfig', {})
+  const { getAudioName, getAudioTags, getAudioDuration, formatDuration, getNormalizedTags } = useAudioConfigHelpers(audioConfig)
 
   const playbackDevices = computed<PlaybackDevice[]>(() => audioConfig?.playbackDevices?.value || [])
-
-  function getAudioDuration(audioId: string | number): number {
-    return audioConfig?.getAudioDuration?.(audioId) || 0
-  }
-
-  function formatDuration(seconds: number): string {
-    return audioConfig?.formatDuration?.(seconds) || '0s'
-  }
 
   const totalDuration = computed(() => {
     let total = 0
@@ -155,18 +149,6 @@ export function useAudioListStep(
   // ---- 标签交错 ----
   const showTagSelector = computed(() => audioConfig?.showTagSelector?.value ?? false)
   const selectedTagsForInterleave = computed(() => audioConfig?.selectedTagsForInterleave?.value ?? [])
-
-  function getAudioName(audioId: string | number): string {
-    return audioConfig?.getAudioName?.(audioId) || '未知音频'
-  }
-
-  function getAudioTags(audioId: string | number): string {
-    return audioConfig?.getAudioTags?.(audioId) || ''
-  }
-
-  function getNormalizedTags(tagsStr: string): string[] {
-    return audioConfig?.getNormalizedTags?.(tagsStr) || []
-  }
 
   const uniqueTags = computed(() => {
     if (!audios.value.length) return []

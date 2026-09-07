@@ -22,6 +22,8 @@ export const APP_CONFIG = {
   defaultPageSize: 10,
   // 默认批量大小（用于全量获取场景）
   defaultBatchPageSize: 1000,
+  // 播放设备下拉分页大小（FolderImport / 设备管理的增量加载场景）
+  playbackDevicePageSize: 50,
   supportedAudioFormats: ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma', 'alac', 'opus']
 } as const;
 

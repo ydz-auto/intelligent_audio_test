@@ -209,9 +209,9 @@ class TagConfigAclRepositoryImpl(TagConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import tag_config_service
         return _wrap(tag_config_service.update_tag(tag_id, data))
 
-    def delete_tag(self, tag_id) -> CommandResultDTO:
+    def delete_tag(self, tag_id, cascade: bool = False) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import tag_config_service
-        return _wrap(tag_config_service.delete_tag(tag_id))
+        return _wrap(tag_config_service.delete_tag(tag_id, cascade=cascade))
 
     def batch_update_category(self, data) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import tag_config_service

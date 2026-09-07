@@ -273,6 +273,26 @@ class TestPrepareAudiosResponseContract:
 # --------------------------------------------------------------------------- #
 #  运行时重采样驱动(audio_driver._pre_resample)                                #
 # --------------------------------------------------------------------------- #
+# NumPy 2.x 的扩展模块每进程只允许动态加载一次;driver_env 使用
+# mock.patch.dict 包裹 sys.modules,退出时会把块内新增的 numpy/scipy 条目一并
+# 移除,导致第二个用例再次 import 时触发
+# "ImportError: cannot load module more than once per process"。
+# 因此把首次成功导入的真实模块对象缓存在进程级变量中,后续用例直接复用。
+_REAL_MODULES: dict = {}
+
+
+def _get_real_module(name: str):
+    """获取真实模块对象(成功则缓存),失败返回 None(环境缺失/损坏)。"""
+    if name in _REAL_MODULES:
+        return _REAL_MODULES[name]
+    try:
+        mod = importlib.import_module(name)
+    except Exception:
+        mod = None
+    _REAL_MODULES[name] = mod
+    return mod
+
+
 @pytest.fixture
 def driver_env(monkeypatch, tmp_path):
     """提供可实例化的 PyAudioDriver(桩 pyaudio/pydub/storage;numpy 真实可用则用真实)。"""
@@ -301,9 +321,17 @@ def driver_env(monkeypatch, tmp_path):
     st.storage = _S()
     stubs["shared.infrastructure.storage"] = st
 
-    if importlib.util.find_spec("numpy") is None:
+    real_numpy = _get_real_module("numpy")
+    if real_numpy is not None:
+        # 复用已加载实例:第二次用例不再触发扩展模块动态加载
+        stubs["numpy"] = real_numpy
+    else:
         stubs["numpy"] = types.ModuleType("numpy")
-    if importlib.util.find_spec("scipy") is None:
+
+    real_scipy = _get_real_module("scipy")
+    if real_scipy is not None:
+        stubs["scipy"] = real_scipy
+    else:
         sc = types.ModuleType("scipy")
         sc.signal = types.ModuleType("signal")
         stubs["scipy"] = sc
@@ -368,7 +396,10 @@ class TestPreResampleRuntime:
         assert len(temps) == 1
         with wave.open(temps[0], "rb") as out:
             assert out.getframerate() == 48000
-        # 清理临时文件
+        # 关闭 _pre_resample 返回的读句柄(Windows 文件锁),再清理临时文件
+        for f in res_files:
+            if f is not wf:
+                f.close()
         for t in temps:
             if os.path.exists(t):
                 os.remove(t)

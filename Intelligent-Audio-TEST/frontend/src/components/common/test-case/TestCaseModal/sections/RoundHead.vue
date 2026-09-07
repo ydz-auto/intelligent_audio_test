@@ -45,7 +45,7 @@
 
 <script setup lang="ts">
 import { inject } from 'vue'
-import type { RoundConfigItem } from '../types'
+import type { RoundConfigItem } from '@/domain'
 
 const audioConfig = inject<any>('audioConfig', {});
 

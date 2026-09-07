@@ -1,7 +1,8 @@
 import { ref } from 'vue';
-import { evaluationApi } from '../../utils/api';
+import { evaluationPort } from './evaluationPort';
 import { useModalControl } from '../modal/useModal';
-import { MODAL_TYPES } from '../../shared/types';
+import { MODAL_TYPES } from '../modal/constants';
+import { downloadBlob } from '../../utils/utils';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
 
 /**
@@ -67,10 +68,10 @@ export function useEvaluationImport(dimensionsModule: UseEvaluationDimensionsRet
       formData.append('updateExisting', importSettings.value.updateExisting ? 'true' : 'false');
       formData.append('skipErrors', importSettings.value.skipErrors ? 'true' : 'false');
 
-      const result = await evaluationApi.import(formData);
+      const result = await evaluationPort.import(formData);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '成功',
-        content: `导入成功: ${result.message || '已完成'}`,
+        content: `导入完成: 新增 ${result?.imported ?? 0} 条, 更新 ${result?.updated ?? 0} 条`,
         onConfirm: () => {
         }
       });
@@ -92,16 +93,9 @@ export function useEvaluationImport(dimensionsModule: UseEvaluationDimensionsRet
   async function exportData(format: 'json' | 'excel' = 'json') {
     loading.value = true;
     try {
-      const blob = await evaluationApi.export(format);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
+      const blob = await evaluationPort.export(format);
       const extension = format === 'excel' ? 'xlsx' : 'json';
-      link.download = `evaluation-dimensions-${new Date().toISOString().slice(0, 10)}.${extension}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, `evaluation-dimensions-${new Date().toISOString().slice(0, 10)}.${extension}`);
 
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '成功',

@@ -1,8 +1,9 @@
 import { ref, computed, watch, onMounted, inject, nextTick } from 'vue';
 import { useAlgorithmConfig } from '../../../../composables/algorithm/useAlgorithmConfig';
 import { useAlgorithmLabels } from '../../../../composables/algorithm/useAlgorithmLabels';
-import { tagsApi, algorithmApi } from '../../../../utils/api';
-import type { TestCaseFormData, RoundConfigItem, PlaybackDevice } from './types';
+import { tagsPort } from '../../../../composables/shared/tagsPort';
+import { algorithmPort } from '../../../../composables/algorithm/algorithmPort';
+import type { TestCaseFormData, RoundConfigItem, PlaybackDevice } from '@/domain';
 
 export function useCaseForm(props: any, emit: any) {
   const { getAlgorithmOptions, getCaseAlgorithmParams: fetchCaseAlgorithmParams } = useAlgorithmConfig();
@@ -38,20 +39,20 @@ export function useCaseForm(props: any, emit: any) {
       group: '',
       tags: [],
       algorithmType: '',
-      test_type: 'api',
+      testType: 'api',
       config: {
         rounds: [{ roundNumber: 1, audios: [] }],
         dimensions: [],
       },
-      // 新设计：algorithm_params 独立列（按轮分组），初始为空数组
-      algorithm_params: [],
+      // 新设计：algorithmParams 独立列（按轮分组），初始为空数组
+      algorithmParams: [],
     } as TestCaseFormData;
   }
 
-  // ---- test_type 切换 ----
+  // ---- testType 切换 ----
   function switchTestType(type: 'api' | 'e2e') {
     if (isTestTypeLocked.value && type !== props.testType) return;
-    localFormData.value.test_type = type;
+    localFormData.value.testType = type;
     emitFormData();
   }
 
@@ -63,7 +64,7 @@ export function useCaseForm(props: any, emit: any) {
 
   // ---- 算法参数独立列更新回调 ----
   function handleAlgorithmParamsUpdate(params: any[]) {
-    localFormData.value.algorithm_params = params;
+    localFormData.value.algorithmParams = params;
     emitFormData();
   }
 
@@ -74,7 +75,7 @@ export function useCaseForm(props: any, emit: any) {
   }
 
   function handleGlobalNoiseUpdate(noise: any) {
-    localFormData.value.config.background_noise = noise;
+    (localFormData.value.config as any).backgroundNoiseCase = noise;
     emitFormData();
   }
 
@@ -139,7 +140,7 @@ export function useCaseForm(props: any, emit: any) {
 
   async function loadAvailableTags() {
     try {
-      const response = await tagsApi.getTagNames({ perPage: 100 });
+      const response = await tagsPort.getTagNames({ perPage: 100 });
       if (response && response.items && Array.isArray(response.items)) {
         availableTags.value = response.items;
       } else if (Array.isArray(response)) {
@@ -156,94 +157,92 @@ export function useCaseForm(props: any, emit: any) {
     const raw = props.formData || {};
     // 当外部锁定 testType 时，强制使用该类型
     const forcedTestType = isTestTypeLocked.value ? (props.testType as 'api' | 'e2e') : null;
-    // 后端 success_response 会递归将 snake_case 键转为 camelCase，此处归一化回 snake_case 供下游组件统一使用
-    const rawAlgParams = (raw as any).algorithm_params;
+    // adapter 已深度 camelize，此处统一只读 camelCase
+    const rawAlgParams = (raw as any).algorithmParams;
     const normalizedAlgParams = Array.isArray(rawAlgParams)
       ? rawAlgParams.map((e: any) => ({
-          round_number: e.round_number ?? e.roundNumber,
+          roundNumber: e.roundNumber,
           params: (e.params || []).map((p: any) => ({
-            field_code: p.field_code ?? p.fieldCode,
-            field_value: p.field_value ?? p.fieldValue,
+            fieldCode: p.fieldCode,
+            fieldValue: p.fieldValue,
           })),
         }))
       : [];
-    // 新设计：algorithm_params 作为 test_cases 独立列（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
+    // 新设计：algorithmParams 作为 test_cases 独立列（按轮分组 [{roundNumber, params:[{fieldCode, fieldValue}]}]）
     localFormData.value = {
       id: raw.id,
       name: raw.name || '',
       description: raw.description || '',
-      group: raw.group || raw.groupName || raw.group_name || '',
+      group: raw.group || raw.groupName || '',
       tags: raw.tags || [],
-      algorithmType: raw.algorithmType || raw.algorithm_type || '',
-      test_type: forcedTestType || raw.test_type || 'api',
+      algorithmType: raw.algorithmType || '',
+      testType: forcedTestType || raw.testType || 'api',
       config: raw.config?.rounds ? {
         ...raw.config,
-        // 归一化全局背景噪声：camelCase → snake_case
-        background_noise: (raw.config as any).background_noise,
       } : {
         rounds: [{ roundNumber: 1, audios: [] }],
         dimensions: [],
       },
-      algorithm_params: normalizedAlgParams,
+      algorithmParams: normalizedAlgParams,
     };
     // 从独立列读取第一个 round 的 params，用于 AlgorithmSelector 的 initial-params（单轮编辑器）
-    const groupedAlgParams = localFormData.value.algorithm_params as any[];
-    const firstEntry = groupedAlgParams.find((e: any) => e.round_number === 1) || groupedAlgParams[0];
+    const groupedAlgParams = localFormData.value.algorithmParams as any[];
+    const firstEntry = groupedAlgParams.find((e: any) => e.roundNumber === 1) || groupedAlgParams[0];
     const roundAlgoParams = firstEntry?.params || [];
     algorithmParams.value = Array.isArray(roundAlgoParams)
-      ? roundAlgoParams.reduce((acc: Record<string, any>, p: any) => { if (p.field_code) acc[p.field_code] = p.field_value; return acc; }, {})
+      ? roundAlgoParams.reduce((acc: Record<string, any>, p: any) => { if (p.fieldCode) acc[p.fieldCode] = p.fieldValue; return acc; }, {})
       : {};
   }
 
   function emitFormData() {
-    // 同步结构化字段：从 algorithmParams 提取 voiceprint_config 和 interferers
-    // 写入后端期望的位置（case_config.voiceprint_config / round_config.interferers）
+    // 同步结构化字段：从 algorithmParams 提取 voiceprintConfig 和 interferers
+    // 写入后端期望的位置（case_config.voiceprintConfig / round_config.interferers）
     syncStructuredFields();
     emit('update', { ...localFormData.value });
   }
 
   /**
    * 将 algorithmParams 中的声纹/干扰人参数同步到后端期望的结构化字段：
-   * - voiceprint_config → config.voiceprint_config (case 级别)
+   * - voiceprintConfig → config.voiceprintConfig (case 级别)
    * - interferers → round.interferers (round 级别)
    *
-   * 新设计：algorithmParams 作为 test_cases 独立列（按轮分组 [{round_number, params:[...]}]）
-   * 这里从 localFormData 上的 algorithmParams 独立列按 round_number 读取对应轮的 params。
+   * 新设计：algorithmParams 作为 test_cases 独立列（按轮分组 [{roundNumber, params:[...]}]）
+   * 这里从 localFormData 上的 algorithmParams 独立列按 roundNumber 读取对应轮的 params。
    * 兼容回退：若独立列缺失，则从 round.algorithmParams 读取（子组件编辑期间仍写入 round）。
    */
   function syncStructuredFields() {
     const config = localFormData.value.config;
     if (!config) return;
 
-    // 独立列：按轮分组的 algorithm_params
-    const groupedAlgParams: any[] = Array.isArray((localFormData.value as any).algorithm_params)
-      ? (localFormData.value as any).algorithm_params
+    // 独立列：按轮分组的 algorithmParams
+    const groupedAlgParams: any[] = Array.isArray((localFormData.value as any).algorithmParams)
+      ? (localFormData.value as any).algorithmParams
       : [];
 
     const rounds = config.rounds || [];
     for (const round of rounds) {
       const roundNumber = round.roundNumber ?? 1;
-      // 从独立列按 round_number 读取对应轮的 params
-      const entry = groupedAlgParams.find((e: any) => e.round_number === roundNumber);
+      // 从独立列按 roundNumber 读取对应轮的 params
+      const entry = groupedAlgParams.find((e: any) => e.roundNumber === roundNumber);
       const params = entry?.params || round.algorithmParams || [];
       const getParam = (code: string) => {
-        const item = params.find((p: any) => p.field_code === code);
-        return item?.field_value;
+        const item = params.find((p: any) => p.fieldCode === code);
+        return item?.fieldValue;
       };
 
-      // ---- 声纹注册 → config.voiceprint_config ----
-      // voiceprint 是单个对象 { audio_id, spl, playback_device_id, voiceprint_wait_time }
+      // ---- 声纹注册 → config.voiceprintConfig ----
+      // voiceprint 是单个对象 { audioId, spl, playbackDeviceId, voiceprintWaitTime }
       const vpObj = getParam('voiceprint');
       if (vpObj && typeof vpObj === 'object' && !Array.isArray(vpObj)) {
-        config.voiceprint_config = {
+        config.voiceprintConfig = {
           enabled: true,
-          audio: vpObj.audio_id ? { id: String(vpObj.audio_id) } : {},
-          device: vpObj.playback_device_id ? { id: String(vpObj.playback_device_id) } : {},
+          audio: vpObj.audioId ? { id: String(vpObj.audioId) } : {},
+          device: vpObj.playbackDeviceId ? { id: String(vpObj.playbackDeviceId) } : {},
           spl: vpObj.spl !== undefined ? Number(vpObj.spl) : undefined,
-          waitTime: vpObj.voiceprint_wait_time !== undefined ? Number(vpObj.voiceprint_wait_time) * 1000 : undefined, // 秒→毫秒
+          waitTime: vpObj.voiceprintWaitTime !== undefined ? Number(vpObj.voiceprintWaitTime) * 1000 : undefined, // 秒→毫秒
         };
       } else {
-        delete config.voiceprint_config;
+        delete (config as any).voiceprintConfig;
       }
 
       // ---- 干扰人 → round.interferers ----
@@ -255,12 +254,12 @@ export function useCaseForm(props: any, emit: any) {
         } else if (Array.isArray(interferersRaw)) {
           interfererList = interferersRaw;
         }
-        // 转换为后端期望的嵌套结构（兼容 snake_case 和 camelCase）
+        // 转换为后端期望的嵌套结构（adapter 已 camelize）
         round.interferers = interfererList.map((item: any) => ({
-          audio: (item.audio_id || item.audioId) ? { id: String(item.audio_id || item.audioId), name: item.audio_name || item.audioName || '' } : {},
-          device: (item.playback_device_id || item.playbackDeviceId) ? { id: String(item.playback_device_id || item.playbackDeviceId) } : {},
+          audio: item.audioId ? { id: String(item.audioId), name: item.audioName || '' } : {},
+          device: item.playbackDeviceId ? { id: String(item.playbackDeviceId) } : {},
           spl: item.spl !== undefined ? Number(item.spl) : undefined,
-          startDelay: (item.start_delay ?? item.startDelay) !== undefined ? Number(item.start_delay ?? item.startDelay) * 1000 : 0, // 秒→毫秒
+          startDelay: item.startDelay !== undefined ? Number(item.startDelay) * 1000 : 0, // 秒→毫秒
           loop: item.loop ?? false,
         }));
       } else {
@@ -271,12 +270,12 @@ export function useCaseForm(props: any, emit: any) {
       const tdStr = getParam('translation_direction');
       const srcLang = getParam('source_language');
       const tgtLang = getParam('target_language');
-      if (tdStr !== undefined) config.translation_direction = tdStr;
-      if (srcLang !== undefined) config.source_language = srcLang;
-      if (tgtLang !== undefined) config.target_language = tgtLang;
-      // 如果没有直接的 translation_direction，则从 source/target 组合
-      if (!config.translation_direction && srcLang && tgtLang) {
-        config.translation_direction = `${srcLang}2${tgtLang}`;
+      if (tdStr !== undefined) (config as any).translationDirection = tdStr;
+      if (srcLang !== undefined) (config as any).sourceLanguage = srcLang;
+      if (tgtLang !== undefined) (config as any).targetLanguage = tgtLang;
+      // 如果没有直接的 translationDirection，则从 source/target 组合
+      if (!(config as any).translationDirection && srcLang && tgtLang) {
+        (config as any).translationDirection = `${srcLang}2${tgtLang}`;
       }
     }
   }
@@ -456,7 +455,7 @@ export function useCaseForm(props: any, emit: any) {
     if (!algoType) return;
     try {
       const [schema, caseParams] = await Promise.all([
-        algorithmApi.getFormSchema(algoType),
+        algorithmPort.getFormSchema(algoType),
         fetchCaseAlgorithmParams(algoType)
       ]);
       algorithmFormSchema.value = schema;

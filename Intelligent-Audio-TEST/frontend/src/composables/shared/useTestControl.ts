@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import { tasksApi } from '../../utils/api'
+import { tasksPort } from '../task/tasksPort'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
 
 export interface UseTestControlOptions {
@@ -37,7 +37,7 @@ export function useTestControl(options: UseTestControlOptions) {
     if (confirmed) {
       isControlling.value = true
       try {
-        await tasksApi.control(currentTaskId.value, 'pause')
+        await tasksPort.control(currentTaskId.value, 'pause')
         isPaused.value = true
         if (addLog) {
           addLog({ content: '测试任务已暂停', level: 'warn' })
@@ -66,7 +66,7 @@ export function useTestControl(options: UseTestControlOptions) {
 
     isControlling.value = true
     try {
-      await tasksApi.control(currentTaskId.value, 'resume')
+      await tasksPort.control(currentTaskId.value, 'resume')
       isPaused.value = false
       if (addLog) {
         addLog({ content: '测试任务已恢复', level: 'info' })
@@ -103,7 +103,7 @@ export function useTestControl(options: UseTestControlOptions) {
     if (confirmed) {
       isControlling.value = true
       try {
-        await tasksApi.stop(currentTaskId.value)
+        await tasksPort.stop(currentTaskId.value)
         isPaused.value = false
         if (addLog) {
           addLog({ content: '测试任务已停止', level: 'warn' })

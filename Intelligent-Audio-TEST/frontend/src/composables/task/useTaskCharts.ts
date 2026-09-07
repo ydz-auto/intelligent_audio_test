@@ -1,7 +1,7 @@
 import { ref, type Ref } from 'vue';
 import { Chart } from 'chart.js/auto';
 import { createTaskTypeChart, createTaskTrendChart, createTaskStatusChart } from '../../utils/chartUtils';
-import type { Task } from '../../shared/types';
+import type { Task } from '../../domain';
 
 /**
  * 任务图表组合式函数

@@ -83,8 +83,10 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
-import { testcasesApi } from '../../../../utils/api';
-import type { ExportFormData, GroupStat } from './types';
+import { testcasesPort } from '@/composables/testCase/testcasesPort';
+import { downloadBlob } from '../../../../utils/utils';
+import { useNotification } from '@/composables/modal/useNotification';
+import type { ExportFormData, GroupStat } from '@/domain';
 
 const props = defineProps<{
   testCaseGroups: string[];
@@ -95,6 +97,8 @@ const emit = defineEmits<{
   (e: 'update', data: ExportFormData & { ids: (string | number)[] }): void;
   (e: 'submit'): void;
 }>();
+
+const notification = useNotification();
 
 const localFormData = ref<ExportFormData>({
   groups: [],
@@ -135,7 +139,7 @@ async function updateExportPreview() {
       let hasMore = true;
 
       while (hasMore) {
-        const response = await testcasesApi.getAll({ page, perPage: 100 });
+        const response = await testcasesPort.getAll({ page, perPage: 100 });
         const items = response?.items || [];
         const pages = response?.pages || 1;
 
@@ -152,7 +156,7 @@ async function updateExportPreview() {
     };
 
     const getGroupName = (testCase: any): string => {
-      return String(testCase?.group_name || testCase?.group || testCase?.group_id);
+      return String(testCase?.groupName || testCase?.group || testCase?.groupId);
     };
 
     const getTypesSet = (testCase: any): Set<string> => {
@@ -227,31 +231,24 @@ async function updateExportPreview() {
 
 async function downloadTemplate() {
   try {
-    const response = await testcasesApi.downloadTemplate();
+    const response = await testcasesPort.downloadTemplate();
     const blob = response instanceof Blob ? response : new Blob([response]);
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `测试用例导入模板_${new Date().toLocaleDateString()}.xlsx`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    downloadBlob(blob, `测试用例导入模板_${new Date().toLocaleDateString()}.xlsx`);
   } catch (error: unknown) {
     console.error('下载模板失败:', error);
-    alert('下载模板失败: ' + ((error as Error).message || '未知错误'));
+    notification.error('下载模板失败: ' + ((error as Error).message || '未知错误'));
   }
 }
 
 function handleSubmit() {
   if (localFormData.value.groups.length === 0) {
-    alert('请至少选择一个测试组');
+    notification.warning('请至少选择一个测试组');
     return;
   }
 
   const ids = exportCaseIds.value;
   if (ids.length === 0) {
-    alert('没有可导出的用例');
+    notification.warning('没有可导出的用例');
     return;
   }
 

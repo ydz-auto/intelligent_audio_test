@@ -1,7 +1,24 @@
 import { ref, computed, type Ref } from 'vue';
-import { reportService } from '../../services/reportService';
-import type { Task } from '../../shared/types';
-
+import {
+  extractDevicesFromTasks,
+  updateComparisonData,
+  toggleDeviceSelection,
+  updateComparisonReportConclusion,
+  saveReport as saveReportApi,
+  publishReport as publishReportApi,
+  resetReportState,
+} from '../report/useReportComparison';
+import {
+  comparisonReport,
+  comparisonTasks,
+  comparisonDevices,
+  deviceApiColumns,
+  caseExecutionColumns,
+  deviceApiComparisonData,
+  caseExecutionData,
+} from '../../store/reportComparisonStore';
+import { useNotification } from '../modal/useNotification';
+import type { Task } from '../../domain';
 /**
  * 任务报告编辑组合式函数
  *
@@ -10,90 +27,51 @@ import type { Task } from '../../shared/types';
  * - 编辑报告（切换/取消）
  * - 报告保存/发布/关闭
  * - 报告相关计算属性（名称、结论、设备、数据）
+ *
+ * 对比报告 ReadModel 来自 composables/report/useReportComparison（模块级单例）。
  */
 
 export function useTaskReport(
   tasks: Ref<Task[]>,
   selectedTasks: Ref<Set<string | number>>
 ) {
+  const notification = useNotification();
   const isEditingReport = ref(false);
   const isEditingConclusion = ref(false);
 
   const reportConclusion = computed({
-    get: () => {
-      const report = reportService.comparisonReport.value;
-      return report?.conclusion || '';
-    },
+    get: () => comparisonReport.value?.conclusion || '',
     set: (val) => {
-      const report = reportService.comparisonReport.value;
-      if (report) {
-        report.conclusion = val;
+      if (comparisonReport.value) {
+        comparisonReport.value.conclusion = val;
       }
     }
   });
 
   const reportName = computed({
-    get: () => {
-      const report = reportService.comparisonReport.value;
-      return report?.title || report?.name || '';
-    },
+    get: () => comparisonReport.value?.title || comparisonReport.value?.name || '',
     set: (val) => {
-      const report = reportService.comparisonReport.value;
-      if (report) {
-        report.title = val;
-        report.name = val;
+      if (comparisonReport.value) {
+        comparisonReport.value.title = val;
+        comparisonReport.value.name = val;
       }
     }
   });
 
-  const reportDevices = computed(() => reportService.devices.value || []);
-  const reportServiceData = computed(() => reportService.comparisonReport.value);
+  const reportDevices = computed(() => comparisonDevices.value || []);
+  const reportServiceData = computed(() => comparisonReport.value);
 
-  const showComparisonReport = computed(() => reportService.comparisonTasks.value.length > 0);
-  const comparisonTasks = computed(() => reportService.comparisonTasks.value);
-  const comparisonReport = computed(() => reportService.comparisonReport.value);
-
-  const {
-    deviceApiColumns,
-    caseExecutionColumns,
-    extractDevicesFromTasks,
-    updateComparisonData,
-    toggleDeviceSelection,
-    deviceApiComparisonData,
-    caseExecutionData,
-    updateComparisonReportConclusion
-  } = reportService;
+  const showComparisonReport = computed(() => comparisonTasks.value.length > 0);
 
   const closeComparisonReport = () => {
-    reportService.comparisonTasks.value = [];
-    reportService.comparisonReport.value = {
-      id: '',
-      name: '任务对比报告',
-      type: 'comparison',
-      status: 'draft',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      description: '',
-      summary: {
-        totalCases: 0,
-        passedCases: 0,
-        failedCases: 0,
-        passRate: 0,
-        avgScore: 0,
-        completedCases: 0,
-        allMetrics: [],
-        detailedResults: [],
-        deviceStats: [],
-        apiStats: []
-      }
-    } as any;
+    resetReportState();
   };
 
   const saveComparisonReport = async () => {
     try {
-      if (reportService.comparisonReport.value) {
-        await reportService.saveReport(reportService.comparisonReport.value);
-        alert('报告已保存');
+      if (comparisonReport.value) {
+        await saveReportApi(comparisonReport.value);
+        notification.success('报告已保存');
       }
     } catch (error) {
       console.error('Failed to save report:', error);
@@ -102,9 +80,9 @@ export function useTaskReport(
 
   const publishComparisonReport = async () => {
     try {
-      if (reportService.comparisonReport.value?.id) {
-        await reportService.publishReport(reportService.comparisonReport.value.id);
-        alert('报告已发布');
+      if (comparisonReport.value?.id) {
+        await publishReportApi(comparisonReport.value.id);
+        notification.success('报告已发布');
       }
     } catch (error) {
       console.error('Failed to publish report:', error);
@@ -118,14 +96,14 @@ export function useTaskReport(
   const saveConclusion = async () => {
     try {
       const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
-      await reportService.updateComparisonReportConclusion(selectedTasksArray);
-      if (reportService.comparisonReport.value) {
-        await reportService.saveReport(reportService.comparisonReport.value);
+      await updateComparisonReportConclusion(selectedTasksArray);
+      if (comparisonReport.value) {
+        await saveReportApi(comparisonReport.value);
       }
       isEditingConclusion.value = false;
     } catch (error: any) {
       console.error('Failed to save conclusion:', error);
-      alert('结论保存失败: ' + (error.message || '未知错误'));
+      notification.error('结论保存失败: ' + (error.message || '未知错误'));
     }
   };
 

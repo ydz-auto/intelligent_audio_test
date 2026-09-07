@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue';
 import { useDimensions } from '../../../../composables/shared/useDimensions';
-import type { Dimension, DimensionConfig, AssociatedDimension } from './types';
+import type { Dimension, DimensionConfig, AlgorithmAssociatedDimension as AssociatedDimension } from '@/domain';
 
 export function useDimensionConfig() {
   const availableDimensions = ref<Dimension[]>([]);
@@ -39,7 +39,8 @@ export function useDimensionConfig() {
     if (!associatedDimensions.value || associatedDimensions.value.length === 0) {
       return availableDimensions.value;
     }
-    const associatedIds = new Set(associatedDimensions.value.map(d => d.id));
+    // Set 显式声明为 string|number，与 Dimension.id（string|number）可直接比较
+    const associatedIds = new Set<string | number>(associatedDimensions.value.map(d => d.id));
     return availableDimensions.value.filter(dim => associatedIds.has(dim.id));
   });
 
@@ -118,12 +119,12 @@ export function useDimensionConfig() {
     try {
       const dimensions = await fetchDimensionsByAlgorithmType(algorithmType);
       associatedDimensions.value = dimensions.map(d => ({
-        id: d.id,
+        id: d.id as number,
         name: d.name,
-        type: (d as any).type,
-        description: (d as any).description,
+        type: d.type as string | undefined,
+        description: d.description as string | undefined,
         weight: 50,
-        is_default: false
+        isDefault: false
       }));
     } catch (err) {
       console.error('加载关联维度失败:', err);

@@ -57,8 +57,8 @@
               <div class="filter-select">
                 <select class="form-input" v-model="statusFilter" @change="handleFilter">
                   <option value="">全部状态</option>
-                  <option value="online">上线</option>
-                  <option value="offline">下线</option>
+                  <option :value="ApiEndpointStatus.ONLINE">上线</option>
+                  <option :value="ApiEndpointStatus.OFFLINE">下线</option>
                 </select>
               </div>
             </div>
@@ -88,12 +88,12 @@
                     <td class="core-col">{{ record.type }}</td>
                     <td class="core-col">{{ record.name }}</td>
                     <td class="secondary-col">
-                      <span class="status-tag" v-if="record.group_name">{{ record.group_name }}</span>
+                      <span class="status-tag" v-if="record.groupName">{{ record.groupName }}</span>
                       <span v-else class="text-muted">-</span>
                     </td>
                     <td class="secondary-col">
-                      <span class="status-badge" :class="record.status === 'online' ? 'active' : 'inactive'">
-                        {{ record.status === 'online' ? '上线' : '下线' }}
+                      <span class="status-badge" :class="record.status === ApiEndpointStatus.ONLINE ? 'active' : 'inactive'">
+                        {{ record.status === ApiEndpointStatus.ONLINE ? '上线' : '下线' }}
                       </span>
                     </td>
                     <td class="secondary-col">{{ record.params?.length || 0 }}</td>
@@ -151,15 +151,15 @@
                   <div class="info-item">
                     <span class="info-label">分组</span>
                     <span class="info-value">
-                      <span class="status-tag" v-if="currentAlgorithm.group_name">{{ currentAlgorithm.group_name }}</span>
+                      <span class="status-tag" v-if="currentAlgorithm.groupName">{{ currentAlgorithm.groupName }}</span>
                       <span v-else class="text-muted">-</span>
                     </span>
                   </div>
                   <div class="info-item">
                     <span class="info-label">状态</span>
                     <span class="info-value">
-                      <span class="status-badge" :class="currentAlgorithm.status === 'online' ? 'active' : 'inactive'">
-                        {{ currentAlgorithm.status === 'online' ? '上线' : '下线' }}
+                      <span class="status-badge" :class="currentAlgorithm.status === ApiEndpointStatus.ONLINE ? 'active' : 'inactive'">
+                        {{ currentAlgorithm.status === ApiEndpointStatus.ONLINE ? '上线' : '下线' }}
                       </span>
                     </span>
                   </div>
@@ -169,7 +169,7 @@
                   </div>
                   <div class="info-item">
                     <span class="info-label">排序</span>
-                    <span class="info-value">{{ currentAlgorithm.display_order }}</span>
+                    <span class="info-value">{{ currentAlgorithm.displayOrder }}</span>
                   </div>
                   <div class="info-item">
                     <span class="info-label">参数数量</span>
@@ -198,17 +198,17 @@
                         <td colspan="7" class="empty-row">暂无参数</td>
                       </tr>
                       <tr v-else v-for="param in currentAlgorithm.params" :key="param.id">
-                        <td>{{ param.param_code }}</td>
-                        <td>{{ param.param_name }}</td>
-                        <td><span class="status-tag">{{ param.param_type }}</span></td>
+                        <td>{{ param.paramCode }}</td>
+                        <td>{{ param.paramName }}</td>
+                        <td><span class="status-tag">{{ param.paramType }}</span></td>
                         <td>
                           <span class="status-badge" :class="param.required ? 'active' : 'inactive'">
                             {{ param.required ? '是' : '否' }}
                           </span>
                         </td>
-                        <td><span class="status-tag" style="background-color: var(--secondary-light); color: var(--secondary-color);">{{ param.component }}</span></td>
-                        <td>{{ getGroupName(param.ui_group) }}</td>
-                        <td>{{ param.default_value || '-' }}</td>
+                        <td><span class="status-tag" style="background-color: var(--secondary-light); color: var(--secondary-color);">{{ (param as any).component || '-' }}</span></td>
+                        <td>{{ getGroupName((param as any).uiGroup) }}</td>
+                        <td>{{ param.defaultValue || '-' }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -238,13 +238,13 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-if="!currentAlgorithm.mappings?.[activeMappingTab]?.length">
+                      <tr v-if="!currentAlgorithm.mappings?.[activeMappingTab as MappingKey]?.length">
                         <td colspan="3" class="empty-row">暂无映射</td>
                       </tr>
-                      <tr v-else v-for="(mapping, index) in currentAlgorithm.mappings[activeMappingTab]" :key="index">
-                        <td>{{ mapping.source_param }}</td>
-                        <td>{{ mapping.target_key }}</td>
-                        <td>{{ mapping.transform_type }}</td>
+                      <tr v-else v-for="(mapping, index) in currentAlgorithm.mappings[activeMappingTab as MappingKey]" :key="index">
+                        <td>{{ mapping.sourceParam }}</td>
+                        <td>{{ mapping.targetParam }}</td>
+                        <td>{{ mapping.transformType }}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -274,6 +274,10 @@
 import AlgorithmConfigModal from '../../components/algorithm/AlgorithmConfigModal.vue'
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue'
 import { useAlgorithmConfigPage } from './AlgorithmConfigPage'
+import { ApiEndpointStatus } from '@/domain/enums'
+
+// 模板中 mappings 的键名收窄类型（device/api/evaluation，与页面 composable 定义一致）
+type MappingKey = 'device' | 'api' | 'evaluation'
 
 const {
   tabs,

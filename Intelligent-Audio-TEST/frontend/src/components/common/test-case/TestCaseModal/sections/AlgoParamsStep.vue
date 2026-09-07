@@ -24,13 +24,13 @@
     <!-- audio_select 类型参数（DynamicForm 不支持，用音频卡片渲染） -->
     <div
       v-for="p in audioSelectParams"
-      :key="p.fieldCode || p.param_code"
+      :key="p.fieldCode ?? p.paramCode"
       class="rce-section"
     >
       <AudioSelectEditor
         :model-value="currentAlgoParams"
-        :param-name="p.param_name || p.fieldName || p.param_code"
-        :field-code="p.fieldCode || p.param_code"
+        :param-name="p.paramName ?? p.fieldName ?? p.paramCode"
+        :field-code="p.fieldCode ?? p.paramCode"
         @update:model-value="onAlgoParamsUpdate"
         @open-audio-select="openAudioSelect"
       />
@@ -40,7 +40,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, watch, inject } from 'vue'
-import type { RoundConfigItem, AlgorithmParamItem } from '../types'
+import type { RoundConfigItem, AlgorithmParamItem } from '@/domain'
 import DynamicForm from '../../../../algorithm/DynamicForm.vue'
 import AudioSelectEditor from '../AudioSelectEditor.vue'
 
@@ -95,7 +95,7 @@ const eligibleParams = computed(() => {
     )
   }
   return (props.caseAlgorithmParams || []).filter(
-    (p: any) => !EXCLUDED_TYPES.has(p.param_type) && !EXCLUDED_CODES.has(p.param_code)
+    (p: any) => !EXCLUDED_TYPES.has(p.paramType) && !EXCLUDED_CODES.has(p.paramCode)
   )
 })
 
@@ -111,14 +111,14 @@ const dynamicSchema = computed(() => {
   }
   const fields = eligibleParams.value.map((p: any) => {
     return {
-      fieldCode: p.param_code,
-      fieldName: p.param_name || p.param_code,
-      fieldType: p.param_type || 'text',
-      component: PARAM_TYPE_TO_COMPONENT[p.param_type] || 'input',
+      fieldCode: p.paramCode,
+      fieldName: p.paramName ?? p.paramCode,
+      fieldType: p.paramType ?? 'text',
+      component: PARAM_TYPE_TO_COMPONENT[p.paramType] || 'input',
       required: p.required || false,
-      defaultValue: p.default_value,
+      defaultValue: p.defaultValue,
       validation: { min: p.min, max: p.max, step: p.step ?? 1 },
-      helpText: p.help_text || '',
+      helpText: p.helpText || '',
       scope: p.scope,
     }
   })
@@ -140,8 +140,8 @@ const audioSelectParams = computed(() => {
     ? props.algorithmFormSchema.fields
     : (props.caseAlgorithmParams || [])
   return all.filter((p: any) => {
-    const pType = p.fieldType || p.param_type
-    const pCode = p.fieldCode || p.param_code
+    const pType = p.fieldType ?? p.paramType
+    const pCode = p.fieldCode ?? p.paramCode
     return pType === 'audio_select' && !EXCLUDED_CODES.has(pCode)
   })
 })
@@ -160,11 +160,11 @@ function openAudioSelect(callback: (audios: { id: string; name?: string }[]) => 
 const initialDict = computed(() => {
   const dict: Record<string, any> = {}
   const algoParams = currentAlgoParams.value
-  const eligibleCodes = new Set(eligibleParams.value.map((p: any) => p.fieldCode || p.param_code))
+  const eligibleCodes = new Set(eligibleParams.value.map((p: any) => p.fieldCode ?? p.paramCode))
   for (const p of algoParams) {
-    const code = p.field_code
+    const code = p.fieldCode
     if (eligibleCodes.has(code)) {
-      dict[code] = p.field_value
+      dict[code] = p.fieldValue
     }
   }
   return dict
@@ -173,14 +173,14 @@ const initialDict = computed(() => {
 function onDynamicFormUpdate(values: Record<string, any>) {
   // 以独立列 params 为基础（若不存在则用 round.algorithmParams 兼容）
   const existingParams: AlgorithmParamItem[] = [...currentAlgoParams.value]
-  const eligibleCodes = new Set(eligibleParams.value.map((p: any) => p.fieldCode || p.param_code))
+  const eligibleCodes = new Set(eligibleParams.value.map((p: any) => p.fieldCode ?? p.paramCode))
   for (const [fieldCode, fieldValue] of Object.entries(values)) {
     if (!eligibleCodes.has(fieldCode)) continue
-    const idx = existingParams.findIndex((p) => p.field_code === fieldCode)
+    const idx = existingParams.findIndex((p) => p.fieldCode === fieldCode)
     if (idx >= 0) {
-      existingParams[idx] = { field_code: fieldCode, field_value: fieldValue }
+      existingParams[idx] = { fieldCode, fieldValue }
     } else {
-      existingParams.push({ field_code: fieldCode, field_value: fieldValue })
+      existingParams.push({ fieldCode, fieldValue })
     }
   }
   // 通知父级更新独立列 params

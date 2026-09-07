@@ -1,6 +1,6 @@
 import { ref, computed, type Ref } from 'vue';
-import { audiosApi } from '../../utils/api';
-import type { AudioInfo, AudioQueryParams, APIResponse } from '../../shared/types';
+import { audiosPort } from '../audio/audiosPort';
+import type { AudioInfo, AudioQueryParams, FolderNode, APIResponse } from '../../domain';
 
 /**
  * 文件夹树管理组合式函数
@@ -12,23 +12,16 @@ import type { AudioInfo, AudioQueryParams, APIResponse } from '../../shared/type
  * - 客户端扁平文件夹树计算
  */
 
-export interface FolderNode {
-  name: string;
-  path: string;
-  count: number;
-  file_count: number;
-  has_children: boolean;
-  files: any[];
-  folders: FolderNode[];
-}
+// FolderNode 统一定义已收敛至 domain/model/audio.ts，此处 re-export 保持消费方 import 路径不变
+export type { FolderNode };
 
 export function useFolderTree() {
   const serverFolderTree = ref<FolderNode>({
     name: '音频文件',
     path: '',
     count: 0,
-    file_count: 0,
-    has_children: false,
+    fileCount: 0,
+    hasChildren: false,
     files: [],
     folders: []
   });
@@ -48,20 +41,20 @@ export function useFolderTree() {
       format: file.format || '',
       duration: file.duration || 0,
       size: file.size || 0,
-      audio_type: file.audio_type || file.audioType || file.type || 'dry',
-      type: file.type || file.audio_type || 'dry',
-      created_at: file.created_at || file.createdAt || '',
+      audioType: file.audioType || file.type || 'dry',
+      type: file.type || file.audioType || 'dry',
+      createdAt: file.createdAt || '',
     };
   }
 
   function normalizeTreeNode(node: any): FolderNode {
-    if (!node) return { name: 'root', path: '', count: 0, file_count: 0, has_children: false, files: [], folders: [] };
+    if (!node) return { name: 'root', path: '', count: 0, fileCount: 0, hasChildren: false, files: [], folders: [] };
     return {
       name: node.name || 'unnamed',
       path: node.path ?? '',
       count: node.count ?? node.total ?? 0,
-      file_count: node.file_count ?? node.fileCount ?? (Array.isArray(node.files) ? node.files.length : 0),
-      has_children: node.has_children ?? node.hasChildren ?? false,
+      fileCount: node.fileCount ?? (Array.isArray(node.files) ? node.files.length : 0),
+      hasChildren: node.hasChildren ?? false,
       files: Array.isArray(node.files) ? node.files.map(normalizeFile) : [],
       folders: Array.isArray(node.folders) ? node.folders.map(normalizeTreeNode) : [],
     };
@@ -107,7 +100,7 @@ export function useFolderTree() {
         ? buildFolderTreeParams(searchQuery, filters, selectedTags, tagModes, algorithmType || '', { depth: 1, ...params })
         : { depth: 1, ...params };
 
-      const response = await audiosApi.getFolderTree(queryParams, { unwrapResponse: false });
+      const response = await audiosPort.getFolderTree(queryParams, { unwrapResponse: false });
 
       if (response.success && response.data) {
         serverFolderTree.value = normalizeTreeNode(response.data.tree);
@@ -147,7 +140,7 @@ export function useFolderTree() {
         ? buildFolderTreeParams(searchQuery, filters, selectedTags, tagModes, algorithmType || '', { parentPath: folderPath, depth: 10 })
         : { parentPath: folderPath, depth: 10 };
 
-      const response = await audiosApi.getFolderTree(queryParams, { unwrapResponse: false });
+      const response = await audiosPort.getFolderTree(queryParams, { unwrapResponse: false });
       if (response.success && response.data) {
         return normalizeTreeNode(response.data.tree);
       }
@@ -175,11 +168,11 @@ export function useFolderTree() {
     if (!subNode) return;
 
     // 浅合并：只更新 files 和 folder 元数据，按路径合并 folders，避免覆盖已展开子节点状态
-    function findAndUpdate(node: any): boolean {
-      if (node.path === targetPath) {
-        node.files = subNode.files;
-        node.file_count = subNode.file_count ?? subNode.files?.length ?? 0;
-        node.has_children = subNode.has_children;
+        function findAndUpdate(node: any): boolean {
+          if (node.path === targetPath) {
+            node.files = subNode.files;
+            node.fileCount = subNode.fileCount ?? subNode.files?.length ?? 0;
+            node.hasChildren = subNode.hasChildren;
         // 按路径合并子文件夹，保留已加载的子节点
         const existingFolders = new Map<string, any>((node.folders || []).map((f: any) => [f.path as string, f]));
         const mergedFolders: any[] = [];
@@ -189,8 +182,8 @@ export function useFolderTree() {
             // 保留已展开子节点的数据，仅更新元数据
             existing.name = newFolder.name;
             existing.count = newFolder.count;
-            existing.file_count = newFolder.file_count;
-            existing.has_children = newFolder.has_children;
+            existing.fileCount = newFolder.fileCount;
+            existing.hasChildren = newFolder.hasChildren;
             // 如果新数据带了 files（深度更大），则更新
             if (newFolder.files && newFolder.files.length > 0) {
               existing.files = newFolder.files;

@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { statsApi } from '../../utils/api'
+import { statsPort } from '@/composables/report/statsPort'
 import QuickStats from './sections/QuickStats.vue'
 import WorkflowSection from './sections/WorkflowSection.vue'
 import DetailSection from './sections/DetailSection.vue'
@@ -96,7 +96,7 @@ function animateNumber(targetValue: number, duration = 1200, onUpdate?: (val: nu
 
 onMounted(async () => {
   try {
-    const statsData = await statsApi.getStatsDetails()
+    const statsData = await statsPort.getStatsDetails()
     const getCaseInsensitive = (obj: any, key: string) => {
       if (!obj) return undefined
       return obj[key] || obj[key.toLowerCase()] || obj[key.charAt(0).toUpperCase() + key.slice(1).toLowerCase()]

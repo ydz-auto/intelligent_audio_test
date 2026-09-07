@@ -16,7 +16,8 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_task_apis,
     _grpc_get_task_merge_relations,
     _grpc_list_testcases_by_ids,
-    _dim_id, _dim_name,
+    _dim_id, _dim_name, _dim_type_and_parent,
+    _dim_statistic_method, _dim_score_unit, _dim_decimal_places,
 )
 
 
@@ -116,13 +117,30 @@ class ReportDataResourceMixin:
 
     @staticmethod
     def _build_all_metrics(all_dimensions):
+        # 维度ID→名称映射，用于补充 parent_dimension_name
+        dim_id_to_name = {_dim_id(d): _dim_name(d) for d in all_dimensions}
         all_metrics = []
         for dim in all_dimensions:
-            score_unit = dim.get('score_unit') if isinstance(dim, dict) else getattr(dim, 'score_unit', None)
-            unit = score_unit if score_unit and score_unit.strip() else "%"
-            decimal_places = dim.get('decimal_places') if isinstance(dim, dict) else getattr(dim, 'decimal_places', None)
+            statistic_method = _dim_statistic_method(dim) or 'average'
+            # 聚合方式决定 unit：pass_rate 产出百分比，强制为 %；其余用维度配置的 score_unit
+            if statistic_method == 'pass_rate':
+                unit = "%"
+            else:
+                score_unit = _dim_score_unit(dim)
+                unit = score_unit if score_unit and score_unit.strip() else ""
+            decimal_places = _dim_decimal_places(dim)
             decimal_places = decimal_places if decimal_places is not None else 2
             dim_id = _dim_id(dim)
             dim_name = _dim_name(dim)
-            all_metrics.append({"id": dim_id, "name": dim_name, "unit": unit, "decimal_places": decimal_places})
+            dim_type, parent_dim_id = _dim_type_and_parent(dim)
+            all_metrics.append({
+                "id": dim_id,
+                "name": dim_name,
+                "unit": unit,
+                "decimal_places": decimal_places,
+                "statistic_method": statistic_method,
+                "dimension_type": dim_type,
+                "parent_dimension_id": parent_dim_id,
+                "parent_dimension_name": dim_id_to_name.get(parent_dim_id) if parent_dim_id else None,
+            })
         return all_metrics

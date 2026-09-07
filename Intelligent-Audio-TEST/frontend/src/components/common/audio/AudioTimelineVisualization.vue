@@ -85,7 +85,7 @@
       :visible="showAudioModal"
       :audioId="currentPlayingAudio.id"
       :audioTitle="currentPlayingAudio.label || '音频播放'"
-      :audioType="currentPlayingAudio.type || currentPlayingAudio.testType || 'api'"
+      :audioType="currentPlayingAudio.type || currentPlayingAudio.testType || TestType.API"
       :spl="currentPlayingAudio.spl"
       :offset="currentPlayingAudio.offset"
       @close="closeAudioModal"
@@ -96,6 +96,9 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import AudioPlayerModal from './AudioPlayerModal.vue';
+import { TestType } from '@/domain/enums';
+import { formatDuration } from '@/utils/audioUtils';
+import { readCamel } from '@/utils/keyTransform';
 
 const props = defineProps({
   audioList: {
@@ -170,9 +173,9 @@ const timeTicks = computed(() => {
 });
 
 const getAudioClass = (audio) => {
-  const type = audio.testType || audio.type || audio.audio_type || 'api';
+  const type = audio.testType || audio.type || TestType.API;
   if (type === 'noise') return 'noise-segment';
-  if (type === 'e2e') return 'e2e-segment';
+  if (type === TestType.E2E) return 'e2e-segment';
   return 'api-segment';
 };
 
@@ -193,8 +196,8 @@ const getSegmentStyle = (audio) => {
 
 const getAudioLabel = (audio) => {
   const base = audio.label || audio.filename || `音频 ${audio.id || ''}`;
-  // 多轮场景：在标签前加轮次前缀
-  const rn = audio.round_number;
+  // 多轮场景：在标签前加轮次前缀（上游 Report 原始数据仍为 snake_case，readCamel 兜底）
+  const rn = readCamel(audio, 'roundNumber');
   if (rn !== undefined && rn !== null && rn > 1) return `[第${rn}轮] ${base}`;
   return base;
 };
@@ -203,26 +206,19 @@ const getAudioTooltip = (audio) => {
   const lines = [
     `名称: ${audio.filename || audio.label || '未知'}`,
   ];
-  const rn = audio.round_number;
+  const rn = readCamel(audio, 'roundNumber');
   if (rn !== undefined && rn !== null) lines.push(`轮次: 第${rn}轮`);
   lines.push(`时间: ${formatTime(audio.timelineStart)} - ${formatTime(audio.timelineEnd)}`);
   lines.push(`时长: ${formatDuration(audio.duration)}`);
   if (audio.spl) lines.push(`声压级: ${audio.spl}dB`);
   if (audio.playOrder !== undefined && audio.playOrder !== null) lines.push(`播放顺序: ${audio.playOrder}`);
-  if (audio.playbackDeviceName || audio.device_name) lines.push(`设备: ${audio.playbackDeviceName || audio.device_name}`);
+  if (audio.playbackDeviceName) lines.push(`设备: ${audio.playbackDeviceName}`);
   return lines.join('\n');
 };
 
 const formatTime = (seconds) => {
   if (seconds === undefined || seconds === null) return '0.0';
   return seconds.toFixed(1);
-};
-
-const formatDuration = (seconds) => {
-  if (!seconds) return '0:00';
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
 const handleWheelZoom = (event) => {

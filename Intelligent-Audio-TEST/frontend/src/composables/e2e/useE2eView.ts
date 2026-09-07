@@ -1,39 +1,18 @@
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { tasksApi, reportsApi, testcasesApi, groupsApi } from '../../utils/api'
 import { normalizeTestCaseConfig } from '../../utils/utils'
 import { useTestCaseCard } from '../testCase/useTestCaseCard'
 import { useDeviceManagement } from '../device/useDeviceManagement'
-import { useTaskProgress } from '../task/useTaskProgress'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
 import { useDeleteConfirm } from '../modal/useDeleteConfirm'
 import { useE2eTest } from './useE2eTest'
-import { useTestControl } from '../shared/useTestControl'
 import { useAlgorithmSelection } from '../algorithm/useAlgorithmSelection'
 import { useTestReport } from '../shared/useTestReport'
+import { normalizeSelectedCaseIds } from '../shared/useTestFlow'
 import { useTestCaseStore } from '../../store/testCaseStore'
-import { type Report, type Log, type TestCase, type TestCaseFormData } from '../../shared/types'
-import reportService from '../../services/reportService'
-import { TaskStatus, TestType } from '@/shared/types/enums'
-
-export function normalizeSelectedCaseIds(ids: (string | number)[]) {
-  const normalizedIds = ids.filter((id): id is string | number => {
-    if (id === null || id === undefined) return false
-    if (typeof id === 'number') return Number.isFinite(id)
-    return String(id).trim().length > 0
-  })
-
-  const seen = new Set<string>()
-  const uniqueIds: (string | number)[] = []
-  for (const id of normalizedIds) {
-    const key = String(id)
-    if (seen.has(key)) continue
-    seen.add(key)
-    uniqueIds.push(id)
-  }
-
-  return uniqueIds
-}
+import type { TestCase, TestCaseFormData } from '../../domain'
+import { TestType } from '../../domain/enums'
+import { useE2eExecution } from './useE2eExecution'
 
 export function useE2eView() {
   const router = useRouter()
@@ -79,23 +58,17 @@ export function useE2eView() {
   const { isLoading: testCasesLoading, e2eTestCaseGroups, e2eTestCases, tags, initializeE2eTests, paginationInfo, tagViewData, tagViewPagination, tagViewLoading, fetchTagView, loadMoreTagView } = useE2eTest()
 
   const currentStep = ref(0)
-  const currentTaskId = ref<number | null>(null)
-  const isExecuting = ref(false)
   const activeTab = ref('cases')
   const concurrentTasks = ref(4)
   const reportTables = ref([])
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const taskName = ref('')
-  const taskStartTime = ref<Date | null>(null)
-  const taskElapsedTimeDisplay = ref('00:00:00')
-  let timeUpdateTimer: ReturnType<typeof setInterval> | null = null
 
   const {
     report,
     isEditingReport,
     isEditingConclusion,
     analysisContent,
-    setReport,
     toggleEditReport,
     toggleEditConclusion,
     cancelEditReport,
@@ -107,89 +80,28 @@ export function useE2eView() {
   } = useTestReport()
 
   const {
-    isPaused,
-    isControlling,
-    pauseTest,
-    resumeTest,
-    stopTest
-  } = useTestControl({
-    currentTaskId: currentTaskId as any,
-    onStopped: () => {
-      isExecuting.value = false
-      stopTimeUpdateTimer()
-    },
-    addLog: (log) => addLog(log)
-  })
-
-  const stopTimeUpdateTimer = () => {
-    if (timeUpdateTimer) {
-      clearInterval(timeUpdateTimer)
-      timeUpdateTimer = null
-    }
-  }
-
-  const startTimeUpdateTimer = () => {
-    stopTimeUpdateTimer()
-    timeUpdateTimer = setInterval(() => {
-      if (!taskStartTime.value) return
-      const now = new Date()
-      const elapsedSeconds = Math.floor((now.getTime() - taskStartTime.value.getTime()) / 1000)
-      const hoursStr = String(Math.floor(elapsedSeconds / 3600)).padStart(2, '0')
-      const minutesStr = String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(2, '0')
-      const secondsStr = String(elapsedSeconds % 60).padStart(2, '0')
-      taskElapsedTimeDisplay.value = `${hoursStr}:${minutesStr}:${secondsStr}`
-      // 同步更新 elapsedTime，让组件显示已用时长
-      if (elapsedSeconds < 60) {
-        elapsedTime.value = `${elapsedSeconds}秒`
-      } else if (elapsedSeconds < 3600) {
-        const m = Math.floor(elapsedSeconds / 60)
-        const s = elapsedSeconds % 60
-        elapsedTime.value = s > 0 ? `${m}分钟${s}秒` : `${m}分钟`
+    algorithmList,
+    selectedAlgorithmType,
+    algorithmModalVisible,
+    algorithmModalMode,
+    algorithmEditData,
+    algorithmSearchQuery,
+    editingAlgorithm,
+    filteredAlgorithmList,
+    loadAlgorithms,
+    selectAlgorithm,
+    getAlgorithmName,
+    openAlgorithmModal,
+    openCreateAlgorithmModal,
+    openAlgorithmConfigModal,
+    closeAlgorithmModal,
+    searchAlgorithms
+  } = useAlgorithmSelection({
+    onSelectCallback: async (type: string | null) => {
+      if (type) {
+        await initializeE2eTests(type)
       } else {
-        const h = Math.floor(elapsedSeconds / 3600)
-        const m = Math.floor((elapsedSeconds % 3600) / 60)
-        elapsedTime.value = m > 0 ? `${h}小时${m}分钟` : `${h}小时`
-      }
-    }, 1000)
-  }
-
-  const {
-    progressPercentage,
-    completedTests,
-    inProgressTests,
-    pendingTests,
-    executionFailedTests,
-    evaluationFailedTests,
-    totalTestCases,
-    taskStatus,
-    elapsedTime,
-    estimatedTime,
-    expectedCompleteTime,
-    logs,
-    associatedCases,
-    resetProgress,
-    addLog
-  } = useTaskProgress({
-    testType: 'E2E',
-    currentTaskId,
-    onCompleted: async (data: any) => {
-      isExecuting.value = false
-      stopTimeUpdateTimer()
-      await fetchReport()
-      if (report.value?.id) {
-        router.push({ name: 'reportView', params: { id: report.value.id } })
-      } else {
-        currentStep.value = 4
-      }
-    },
-    onFailed: (data: any) => {
-      isExecuting.value = false
-      stopTimeUpdateTimer()
-      fetchReport()
-      if (report.value?.id) {
-        router.push({ name: 'reportView', params: { id: report.value.id } })
-      } else {
-        currentStep.value = 4
+        await initializeE2eTests()
       }
     }
   })
@@ -209,8 +121,48 @@ export function useE2eView() {
     { label: '状态', key: 'status', isStatus: true }
   ]
 
-  const canStartTest = computed(() => {
-    return associatedDevices.value.length > 0 && !isExecuting.value
+  // 任务执行编排（Application 层）：任务创建/启动、进度订阅、暂停恢复、报告拉取
+  const {
+    currentTaskId,
+    isExecuting,
+    isPaused,
+    isControlling,
+    pauseTest,
+    resumeTest,
+    stopTest,
+    progressPercentage,
+    completedTests,
+    inProgressTests,
+    pendingTests,
+    executionFailedTests,
+    evaluationFailedTests,
+    totalTestCases,
+    taskStatus,
+    elapsedTime,
+    estimatedTime,
+    expectedCompleteTime,
+    logs,
+    associatedCases,
+    addLog,
+    startTest,
+    saveReport,
+    stopTimeUpdateTimer
+  } = useE2eExecution({
+    router,
+    taskName,
+    concurrentTasks,
+    selectedTestCaseIds,
+    selectedAlgorithmType,
+    e2eTestCases,
+    associatedDevices,
+    report,
+    analysisContent,
+    reportTables,
+    isEditingReport,
+    modalManager,
+    onTaskIncomplete: () => {
+      currentStep.value = 4
+    }
   })
 
   const nextStep = async () => {
@@ -258,160 +210,11 @@ export function useE2eView() {
     currentStep.value = step
   }
 
-  const fetchReport = async () => {
-    if (!currentTaskId.value) return
-    try {
-      // 使用 reportService.viewTaskReport 统一处理异步报告生成（监听 socket report_generated 事件）
-      const reportData = await reportService.viewTaskReport({
-        id: currentTaskId.value,
-        name: taskName.value || 'E2E测试任务',
-        type: TestType.E2E,
-        status: TaskStatus.COMPLETED,
-        progress: 100,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      } as any)
-      if (reportData) {
-        report.value = { ...report.value, ...reportData } as any
-        analysisContent.value = (report.value as any)?.analysis || ''
-        reportTables.value = (report.value as any)?.tables || []
-      }
-    } catch (error) {
-      console.error('获取报告失败:', error)
-      const errorMessage = error instanceof Error ? error.message : '生成报告失败，请检查任务状态'
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '报告生成失败',
-        content: errorMessage,
-        confirmText: '确定',
-        cancelText: '关闭',
-        danger: true
-      })
-    }
-  }
-
-  const startTest = async () => {
-    console.log('[startTest] 开始执行, canStartTest:', canStartTest.value)
-    if (!canStartTest.value) {
-      console.log('[startTest] 无法开始测试，canStartTest为false')
-      return false
-    }
-
-    try {
-      if (associatedDevices.value.length === 0) {
-        console.log('[startTest] 没有选择设备')
-        throw new Error('请选择至少一个测试设备')
-      }
-
-      let selectedCaseIds: (string | number)[] = []
-      if (selectedTestCaseIds.value.length > 0) {
-        selectedCaseIds = selectedTestCaseIds.value
-      } else {
-        // 没勾选 → 从后端按筛选条件拉取全量ID
-        const store = useTestCaseStore()
-        selectedCaseIds = await store.fetchCaseIdsByFilter({
-          testType: 'e2e',
-          algorithmType: selectedAlgorithmType.value || undefined,
-        })
-      }
-      console.log('[startTest] selectedCaseIds数量:', selectedCaseIds.length, 'selectedTestCaseIds:', selectedTestCaseIds.value.length, 'e2eTestCases:', e2eTestCases.value.length)
-      if (selectedCaseIds.length === 0) {
-        console.log('[startTest] 没有可用的E2E测试用例')
-        throw new Error('当前筛选条件下没有可用的E2E测试用例，请选择用例或调整筛选条件')
-      }
-
-      const nonOnlineDevices = associatedDevices.value.filter((d: any) => d.status !== 'online')
-      if (nonOnlineDevices.length > 0) {
-        console.log('[startTest] 有离线设备:', nonOnlineDevices.map((d: any) => d.name))
-        throw new Error(`以下设备处于离线状态，无法执行测试：${nonOnlineDevices.map((d: any) => d.name).join(', ')}`)
-      }
-
-      isExecuting.value = true
-      isPaused.value = false
-      resetProgress()
-      // currentStep.value = 3  // 不在这里设置，由nextStep控制
-      console.log('[startTest] 准备创建任务')
-
-      const selectedDeviceIds = associatedDevices.value.map((d: any) => d.id)
-      console.log('[startTest] 选择的设备数量:', selectedDeviceIds.length)
-
-      const payload = {
-        name: taskName.value || `E2E测试任务_${new Date().toLocaleString()}`,
-        type: TestType.E2E,
-        deviceIds: selectedDeviceIds,
-        caseIds: selectedCaseIds,
-        config: { parallel: true, concurrentTasks: concurrentTasks.value }
-      }
-
-      addLog({ content: '正在创建测试任务...', level: 'info' })
-      console.log('[startTest] 发起创建任务API请求')
-      const response = await tasksApi.create(payload)
-      console.log('[startTest] 任务创建响应:', response)
-      currentTaskId.value = response.id
-
-      console.log('[E2E测试] selectedTestCaseIds:', selectedTestCaseIds.value)
-      console.log('[E2E测试] e2eTestCases数量:', e2eTestCases.value.length)
-      
-      associatedCases.value = selectedCaseIds.map((id: any) => {
-        const tc = e2eTestCases.value.find((c: any) => String(c.id) === String(id))
-        return {
-          id: id,
-          name: tc?.name || `用例 ${id}`,
-          groupName: tc?.groupName,
-          tags: tc?.tags,
-          algorithmType: tc?.algorithmType,
-          status: TaskStatus.PENDING,
-          executionStatus: TaskStatus.PENDING,
-          evaluationStatus: TaskStatus.PENDING
-        }
-      })
-      
-      console.log('[E2E测试] associatedCases:', associatedCases.value)
-      totalTestCases.value = associatedCases.value.length
-      pendingTests.value = totalTestCases.value
-
-      addLog({ content: '测试任务已创建，正在启动...', level: 'info' })
-      const startResponse = await tasksApi.start(response.id)
-      console.log('[startTest] 启动任务响应:', startResponse)
-
-      // 设置任务开始时间并启动本地已用时长计时器
-      taskStartTime.value = startResponse.startTime ? new Date(startResponse.startTime) : new Date()
-      startTimeUpdateTimer()
-
-      // 更新时间估计数据
-      if (startResponse.expectedTotalTime !== undefined && startResponse.expectedTotalTime !== null) {
-        // 后端返回的是秒数（数字），格式化为可读文本
-        const seconds = Number(startResponse.expectedTotalTime)
-        if (seconds > 0) {
-          if (seconds < 60) estimatedTime.value = `${Math.floor(seconds)}秒`
-          else if (seconds < 3600) estimatedTime.value = `${Math.floor(seconds / 60)}分钟`
-          else estimatedTime.value = `${Math.floor(seconds / 3600)}小时${Math.floor((seconds % 3600) / 60)}分钟`
-        } else {
-          estimatedTime.value = '--'
-        }
-      }
-      if (startResponse.expectedCompleteTime !== undefined && startResponse.expectedCompleteTime !== null && String(startResponse.expectedCompleteTime).trim() !== '') {
-        expectedCompleteTime.value = String(startResponse.expectedCompleteTime)
-      }
-      
-      addLog({ content: '测试任务已成功启动', level: 'info' })
-      console.log('[startTest] 测试启动成功，返回true')
-      
-      return true
-    } catch (error) {
-      isExecuting.value = false
-      console.error('[startTest] 启动测试失败:', error)
-      addLog({ content: `启动测试失败: ${error instanceof Error ? error.message : String(error)}`, level: 'error' })
-      // 不再使用 alert 弹窗
-      console.log('[startTest] 返回false，将触发步骤回退')
-      return false
-    }
-  }
-
   const handleOpenEditModal = async (testCase: TestCase) => {
     editingTestCase.value = testCase
     
     const normalized = normalizeTestCaseConfig(testCase.config || {})
-    const testCaseType = (testCase as any).test_type || 'e2e'
+    const testCaseType = testCase.testType || TestType.E2E
     
     formData.value = {
       id: testCase.id,
@@ -422,12 +225,10 @@ export function useE2eView() {
       tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
       config: normalized as TestCaseFormData['config'],
-      algorithmType: (testCase as any).algorithm_type || '',
-      test_type: testCaseType as 'api' | 'e2e',
-      // 新设计：algorithm_params 独立列（后端返回驼峰 algorithmParams）
-      algorithm_params: Array.isArray((testCase as any).algorithm_params)
-        ? ((testCase as any).algorithm_params)
-        : [],
+      algorithmType: testCase.algorithmType || '',
+      testType: testCaseType as typeof TestType[keyof typeof TestType],
+      // 新设计：算法参数独立列（Domain 对象为 camelCase algorithmParams）
+      algorithmParams: Array.isArray(testCase.algorithmParams) ? testCase.algorithmParams : [],
     } as TestCaseFormData
     
     try {
@@ -448,33 +249,6 @@ export function useE2eView() {
       console.error('[useE2eView] 打开编辑用例模态窗失败:', error);
     }
   }
-
-  const {
-    algorithmList,
-    selectedAlgorithmType,
-    algorithmModalVisible,
-    algorithmModalMode,
-    algorithmEditData,
-    algorithmSearchQuery,
-    editingAlgorithm,
-    filteredAlgorithmList,
-    loadAlgorithms,
-    selectAlgorithm,
-    getAlgorithmName,
-    openAlgorithmModal,
-    openCreateAlgorithmModal,
-    openAlgorithmConfigModal,
-    closeAlgorithmModal,
-    searchAlgorithms
-  } = useAlgorithmSelection({
-    onSelectCallback: async (type: string | null) => {
-      if (type) {
-        await initializeE2eTests(type)
-      } else {
-        await initializeE2eTests()
-      }
-    }
-  })
 
   const algorithmFilteredDevices = computed(() => {
     if (!selectedAlgorithmType.value) {
@@ -508,7 +282,9 @@ export function useE2eView() {
   }
 
   const handleToggleDeviceSelection = (deviceId: string | number) => {
-    const device = devices.value.find((d) => String(d.id) === String(deviceId))
+    const device = devices.value.find((d) => String(d.id) === String(deviceId)) as
+      | (Record<string, unknown> & { status?: string; selected?: boolean })
+      | undefined
     if (device) {
       if (device.status !== 'online') {
         addLog({ content: '只能选择在线设备', level: 'warn' })
@@ -580,32 +356,6 @@ export function useE2eView() {
   const updateSelectedCases = (ids: (string | number)[]) => {
     selectedTestCaseIds.value = normalizeSelectedCaseIds(ids)
     console.log('Selected cases updated:', selectedTestCaseIds.value)
-  }
-
-  const saveReport = async () => {
-    try {
-      const reportId = report.value?.id
-      if (!reportId) {
-        throw new Error('无法保存报告：报告ID为空')
-      }
-      await reportsApi.update(reportId, report.value)
-      isEditingReport.value = false
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '保存成功',
-        content: '报告已成功保存',
-        confirmText: '确定',
-        cancelText: ''
-      })
-    } catch (error) {
-      console.error('保存报告失败:', error)
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '保存失败',
-        content: `保存报告失败: ${error instanceof Error ? error.message : String(error)}`,
-        confirmText: '确定',
-        cancelText: '',
-        danger: true
-      })
-    }
   }
 
   const showTestCaseDetails = (testCaseId: string | number) => {

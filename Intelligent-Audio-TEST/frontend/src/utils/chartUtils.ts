@@ -1,5 +1,5 @@
 import { Chart, ChartConfiguration } from 'chart.js/auto';
-import { TestType, TaskStatus } from '@/shared/types/enums';
+import { TestType, TaskStatus } from '@/domain/enums';
 
 /**
  * 图表工具函数

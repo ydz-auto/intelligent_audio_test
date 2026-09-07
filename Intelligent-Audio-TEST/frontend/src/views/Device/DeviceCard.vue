@@ -17,7 +17,7 @@
       </div>
       <div class="device-status">
         <span class="status-badge" :class="device.status">
-          <i :class="device.status === 'testing' ? 'fas fa-play-circle testing-indicator' : 'fas fa-circle online-indicator'"></i>
+          <i :class="device.status === DeviceStatus.TESTING ? 'fas fa-play-circle testing-indicator' : 'fas fa-circle online-indicator'"></i>
           {{ statusText }}
         </span>
       </div>
@@ -67,12 +67,12 @@
         <button
           v-if="showTest"
           class="btn gradient-btn"
-          :class="device.status === 'testing' ? 'btn-danger' : 'btn-success'"
-          :disabled="device.status === 'offline'"
+          :class="device.status === DeviceStatus.TESTING ? 'btn-danger' : 'btn-success'"
+          :disabled="device.status === DeviceStatus.OFFLINE"
           @click.stop="$emit('test')"
         >
-          <i :class="device.status === 'testing' ? 'fas fa-stop btn-icon' : 'fas fa-play btn-icon'"></i>
-          {{ device.status === 'testing' ? '停止测试' : device.status === 'offline' ? '离线' : '测试' }}
+          <i :class="device.status === DeviceStatus.TESTING ? 'fas fa-stop btn-icon' : 'fas fa-play btn-icon'"></i>
+          {{ device.status === DeviceStatus.TESTING ? '停止测试' : device.status === DeviceStatus.OFFLINE ? '离线' : '测试' }}
         </button>
         <button class="btn btn-info" @click.stop="$emit('health-check')">
           <i class="fas fa-heartbeat btn-icon"></i>
@@ -86,14 +86,46 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AlgorithmTag from '../../components/algorithm/AlgorithmTag.vue'
+import type { Device } from '../../domain/model/device'
+import { DeviceStatus } from '../../domain/enums'
 
-interface DeviceLike {
-  id: string | number
-  name: string
-  status: string
-  description?: string
-  supportedAlgorithms?: string[]
-  [key: string]: any
+/**
+ * 卡片设备形状：从 Domain 的 Device 派生（归集内联类型）。
+ * 消费方实际传入 TestDevice / APIDevice / PlaybackDevice 联合，
+ * 且插槽中会访问视图层扩展展示字段（非 Domain 契约），
+ * 故以显式可选字段列出，替代原 [key: string]: any 索引签名兜底。
+ */
+type DeviceLike = Pick<Device, 'id' | 'name'> & Partial<Device> & {
+  /** API 设备端点地址（视图层扩展字段） */
+  url?: string
+  /** 设备分类（视图层扩展字段） */
+  category?: string
+  /** 固件版本（视图层扩展字段） */
+  firmwareVersion?: string
+  /** 最后在线时间（视图层扩展字段） */
+  lastOnline?: string
+  /** 延迟 ms（视图层扩展字段） */
+  delay?: number
+  /** 音量 dB（视图层扩展字段） */
+  volume?: number
+  /** 连接稳定性 %（视图层扩展字段） */
+  stability?: number
+  /** 采样率 kHz（视图层扩展字段） */
+  sampleRate?: number
+  /** API 调用方式（视图层扩展字段） */
+  method?: string
+  /** 响应时间 ms（视图层扩展字段） */
+  responseTime?: number
+  /** API 版本（视图层扩展字段） */
+  version?: string
+  /** 最后测试时间（视图层扩展字段） */
+  lastTested?: string
+  /** 成功率 %（视图层扩展字段） */
+  successRate?: number
+  /** 认证类型（视图层扩展字段） */
+  authType?: string
+  /** 关联算法类型（视图层扩展字段） */
+  algorithmType?: string
 }
 
 const props = withDefaults(defineProps<{
@@ -113,6 +145,6 @@ const emit = defineEmits<{
   (e: 'health-check'): void
 }>()
 
-const statusText = computed(() => props.statusTextMap[props.device.status] || props.device.status)
+const statusText = computed(() => props.statusTextMap[props.device.status ?? ''] || props.device.status || '')
 const subtitle = computed(() => props.device.model || props.device.url || '')
 </script>

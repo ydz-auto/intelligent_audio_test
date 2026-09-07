@@ -1,24 +1,11 @@
-import { testcasesApi, groupsApi } from '../../utils/api'
+import { testcasesPort } from './testcasesPort'
+import { groupsPort } from './groupsPort'
 import { useNotification } from '../modal/useNotification'
-import type { TestCase, TestCaseGroup, GroupFormData } from '../../shared/types'
-
-interface GroupWithCount {
-  id: string | number;
-  name: string;
-  description?: string;
-  testCaseCount: number;
-}
-
-interface GroupPaginationInfo {
-  page: number;
-  pages: number;
-  perPage: number;
-  total: number;
-  algorithmType?: string;
-  test_type?: string;
-  keyword?: string;
-  dimension_id?: number;
-}
+import type { TestCase, TestCaseGroup, GroupFormData } from '../../domain'
+import { TestType } from '@/domain/enums'
+// 分组视图类型统一从 testCaseStore 导出（GroupWithCount = TestCaseGroup 展示子集，
+// GroupPaginationInfo = PaginationInfo + 筛选字段），消除两处重复定义
+import type { GroupWithCount, GroupPaginationInfo } from '../../store/testCaseStore'
 
 /**
  * 测试用例分组管理 composable。
@@ -81,7 +68,7 @@ export function useTestCaseGroups(store: {
       const page = params.page || 1
       const perPage = params.perPage || 100
 
-      const response = await groupsApi.getAll({
+      const response = await groupsPort.getAll({
         page,
         perPage,
         algorithmType: params.algorithmType
@@ -92,7 +79,7 @@ export function useTestCaseGroups(store: {
           id: g.id,
           name: g.name,
           description: g.description,
-          testCaseCount: g.test_case_count ?? 0
+          testCaseCount: g.testCaseCount ?? 0
         }))
 
         fullGroupsMap.value = response.items.reduce((map: Record<string, TestCaseGroup>, g: any) => {
@@ -134,16 +121,17 @@ export function useTestCaseGroups(store: {
       const page = params.page || 1
       const perPage = params.perPage || DEFAULT_GROUP_PAGE_SIZE
 
-      const response = await testcasesApi.getAll({
+      // TODO: testcasesPort.getAll 尚未做 camelCase→snake_case 查询参数转换，adapter 补齐后此处保持 camelCase
+      const response = await testcasesPort.getAll({
         page,
         perPage,
-        group_id: groupId,
+        groupId: groupId,
         keyword: params.keyword,
         tag: params.tag,
-        algorithm_type: params.algorithmType,
-        type: params.test_type,
-        dimension_id: params.dimension_id,
-        include_deleted: params.include_deleted || false
+        algorithmType: params.algorithmType,
+        type: params.testType,
+        dimensionId: params.dimensionId,
+        includeDeleted: params.includeDeleted || false
       })
 
       let casesData: TestCase[] = []
@@ -151,7 +139,7 @@ export function useTestCaseGroups(store: {
         casesData = response.items.map((tc: any) => {
           return {
             ...tc,
-            type: tc.type || 'api',
+            type: tc.type || TestType.API,
             deleted: tc.deleted || false
           } as TestCase
         })
@@ -172,9 +160,9 @@ export function useTestCaseGroups(store: {
         perPage: response?.perPage || perPage,
         total: response?.total || 0,
         algorithmType: params.algorithmType,
-        test_type: params.test_type,
+        testType: params.testType,
         keyword: params.keyword,
-        dimension_id: params.dimension_id
+        dimensionId: params.dimensionId
       }
 
       const group = fullGroupsMap.value[groupKey]
@@ -217,16 +205,16 @@ export function useTestCaseGroups(store: {
     return fetchCasesByGroup(groupId, {
       page: currentPagination.page + 1,
       algorithmType: currentPagination.algorithmType,
-      test_type: currentPagination.test_type,
+      testType: currentPagination.testType,
       keyword: currentPagination.keyword,
-      dimension_id: currentPagination.dimension_id
+      dimensionId: currentPagination.dimensionId
     })
   }
 
   const addGroup = async (data: GroupFormData) => {
     try {
       error.value = null
-      const response = await testcasesApi.createGroup(data)
+      const response = await testcasesPort.createGroup(data)
       if (response) {
         const id = (response as any).id || `group-${Date.now()}`
         fullGroupsMap.value[id] = {
@@ -252,9 +240,9 @@ export function useTestCaseGroups(store: {
         if (groupEntry) {
           groupId = groupEntry[0]
         } else {
-          // fullGroupsMap 为空时（如按 algorithm_type 过滤后分组不匹配），从后端查找
+          // fullGroupsMap 为空时（如按 algorithmType 过滤后分组不匹配），从后端查找
           try {
-            const resp = await testcasesApi.getGroups({ page: 1, perPage: 1000 })
+            const resp = await testcasesPort.getGroups({ page: 1, perPage: 1000 })
             const found = resp?.items?.find((g: any) => g.name === idOrName)
             if (found) {
               groupId = found.id
@@ -269,13 +257,14 @@ export function useTestCaseGroups(store: {
         groupId = idOrName
       }
 
-      await testcasesApi.updateGroup(groupId, data)
+      await testcasesPort.updateGroup(groupId, data)
 
       if (fullGroupsMap.value[groupId.toString()]) {
         fullGroupsMap.value[groupId.toString()].name = data.name
         fullGroupsMap.value[groupId.toString()].description = data.description
         if (data.algorithmType !== undefined) {
-          fullGroupsMap.value[groupId.toString()].algorithm_type = data.algorithmType
+          // Domain 侧为 camelCase：algorithmType
+          fullGroupsMap.value[groupId.toString()].algorithmType = data.algorithmType
         }
       }
       organizeTestCasesByGroup()
@@ -297,7 +286,7 @@ export function useTestCaseGroups(store: {
         } else {
           // fullGroupsMap 为空时，从后端查找
           try {
-            const resp = await testcasesApi.getGroups({ page: 1, perPage: 1000 })
+            const resp = await testcasesPort.getGroups({ page: 1, perPage: 1000 })
             const found = resp?.items?.find((g: any) => g.name === idOrName)
             if (found) {
               groupId = found.id
@@ -312,10 +301,11 @@ export function useTestCaseGroups(store: {
         groupId = idOrName
       }
 
-      await testcasesApi.deleteGroup(groupId)
+      await testcasesPort.deleteGroup(groupId)
 
       delete fullGroupsMap.value[groupId.toString()]
-      testCases.value = testCases.value.filter(tc => tc.group_id?.toString() !== groupId.toString())
+      // Domain 侧为 camelCase：groupId
+      testCases.value = testCases.value.filter(tc => tc.groupId?.toString() !== groupId.toString())
 
       organizeTestCasesByGroup()
       notification.success('删除分组成功')

@@ -1,6 +1,6 @@
 import { ref, watch, type Ref } from 'vue';
-import { logsApi } from '../../utils/api';
-import type { Log, Task } from '../../shared/types';
+import { logsPort } from './logsPort';
+import type { Log, Task, LogRow } from '../../domain';
 
 /**
  * 任务日志查看组合式函数
@@ -11,9 +11,8 @@ import type { Log, Task } from '../../shared/types';
  * - 刷新日志
  */
 
-export interface UILog extends Log {
-  time: string;
-}
+// 日志行视图模型统一收敛至 domain/model/ui.ts 的 LogRow（Log + 格式化时间）
+export type UILog = LogRow
 
 export function useTaskLogs(filteredTasks: Ref<Task[]>) {
   const taskLogs = ref<UILog[]>([]);
@@ -40,7 +39,7 @@ export function useTaskLogs(filteredTasks: Ref<Task[]>) {
 
     if (taskLogFilter.value === 'current' && filteredTasks.value.length > 0) {
       const taskIds = new Set(filteredTasks.value.map(task => task.id));
-      result = result.filter(log => taskIds.has((log as any).task_id));
+      result = result.filter(log => log.taskId != null && taskIds.has(log.taskId));
     }
 
     filteredTaskLogs.value = result;
@@ -48,7 +47,7 @@ export function useTaskLogs(filteredTasks: Ref<Task[]>) {
 
   const fetchTaskLogs = async () => {
     try {
-      const response = await logsApi.getAll({
+      const response = await logsPort.getAll({
         module: 'task',
         page: 1,
         perPage: 20

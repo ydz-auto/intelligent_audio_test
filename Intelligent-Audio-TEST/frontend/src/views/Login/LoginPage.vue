@@ -53,24 +53,13 @@ async function handleLogin() {
   error.value = ''
   loading.value = true
   try {
-    const resp = await fetch('/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        username: form.username,
-        password: form.password,
-      }),
-    })
-    const data = await resp.json()
-    if (!resp.ok) {
-      error.value = data.detail || '登录失败'
-      return
-    }
-    authStore.setAuth(data.access_token, data.user)
+    // 走 Application 层 Port（authStore.login），视图不感知 infrastructure
+    await authStore.login(form.username, form.password)
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
   } catch (e: any) {
-    error.value = e.message || '网络错误'
+    // 后端 401 返回 {detail: "..."}，client.ts 构造的 error 含 detail 字段
+    error.value = e?.detail || e?.message || '登录失败'
   } finally {
     loading.value = false
   }

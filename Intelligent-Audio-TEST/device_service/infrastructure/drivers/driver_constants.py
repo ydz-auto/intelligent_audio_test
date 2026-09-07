@@ -23,5 +23,27 @@ HDC_TIMEOUT = config_manager.get_value('device_timing', 'hdc_timeout', 30)
 LONG_HDC_TIMEOUT = config_manager.get_value('device_timing', 'long_hdc_timeout', 300)
 EXTRA_LONG_HDC_TIMEOUT = config_manager.get_value('device_timing', 'extra_long_hdc_timeout', 120)
 
+# —— 语音通话驱动（小艺/豆包/ChatGPT）参数 ——
+# AI 回复检测（RMS 能量法，基于 AI PCM 尾部能量）
+RMS_THRESHOLD = config_manager.get_value('device_timing', 'rms_threshold', 300)
+RMS_SILENCE_SECONDS = config_manager.get_value('device_timing', 'rms_silence_seconds', 8)
+RMS_START_TIMEOUT = config_manager.get_value('device_timing', 'rms_start_timeout', 25)
+RMS_END_TIMEOUT = config_manager.get_value('device_timing', 'rms_end_timeout', 60)
+RMS_SCAN_SECONDS = config_manager.get_value('device_timing', 'rms_scan_seconds', 15)
+# PCM 尾部读取 hdc 超时（1s 音频 base64 传输 / 15s 历史扫描传输）
+RMS_READ_TIMEOUT = config_manager.get_value('device_timing', 'rms_read_timeout', 20)
+RMS_SCAN_HDC_TIMEOUT = config_manager.get_value('device_timing', 'rms_scan_hdc_timeout', 40)
+# ai PCM 首帧检测超时（毫秒）
+AI_PCM_FIRST_FRAME_TIMEOUT_MS = config_manager.get_value('device_timing', 'ai_pcm_first_frame_timeout_ms', 15000)
+# 小艺 UI 法回复检测超时（秒）：等回复开始 / 等"说话可打断"重现 / 等"正在听…"出现
+REPLY_START_TIMEOUT = config_manager.get_value('device_timing', 'reply_start_timeout', 300)
+REPLY_STATE_TIMEOUT = config_manager.get_value('device_timing', 'reply_state_timeout', 10)
+REPLY_LISTEN_TIMEOUT = config_manager.get_value('device_timing', 'reply_listen_timeout', 300)
+# barge-in 打断轮轮间延迟（秒）：检测到 AI 开口后延迟再放下一轮打断音频
+BARGE_IN_DELAY_SECONDS = config_manager.get_value('device_timing', 'barge_in_delay_seconds', 1)
+CASE_BARGE_IN_DELAY_SECONDS = config_manager.get_value('device_timing', 'case_barge_in_delay_seconds', 5)
+# 停止检查轮询间隔（秒）：长延迟分片 sleep，每片检查一次任务是否被停止/暂停（可随时打断）
+CHECK_STOP_POLL_INTERVAL = config_manager.get_value('device_timing', 'check_stop_poll_interval', 0.5)
+
 # 设备路径
 DEVICE_TMP_DIR = '/data/local/tmp'

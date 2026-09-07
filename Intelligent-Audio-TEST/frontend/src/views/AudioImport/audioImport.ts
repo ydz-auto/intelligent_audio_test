@@ -7,7 +7,7 @@ import { useAlgorithmParams } from '../../composables/algorithm/useAlgorithmPara
 import { useDeviceManagement } from '../../composables/device/useDeviceManagement';
 import { useAudioBatchOps } from '../../composables/audio/useAudioBatchOps';
 import { useUploadModal } from '../../composables/upload/useUploadModal';
-import { TestType, UploadStatus } from '@/shared/types/enums';
+import { TestType, UploadStatus } from '@/domain/enums';
 
 /**
  * useAudioImport - 轻量级协调层
@@ -107,7 +107,7 @@ export function useAudioImport() {
   };
 
   // 切换视图模式
-  const switchView = (mode: 'list' | 'folder') => {
+  const switchView = (mode: 'list' | 'folder' | 'diagnostics') => {
     audioListModule.switchView(mode);
     if (mode === 'folder') {
       folderTreeModule.fetchFolderTree(
@@ -192,7 +192,7 @@ export function useAudioImport() {
   });
 
   onUnmounted(() => {
-    if (uploadModule.uploadStatus.value === 'uploading') {
+    if (uploadModule.uploadStatus.value === UploadStatus.UPLOADING) {
       // abortController 是内部的，无法直接访问，通过暂停来中止
       // 实际上 onUnmounted 中不需要额外处理，因为组件销毁后 ref 会被 GC
     }

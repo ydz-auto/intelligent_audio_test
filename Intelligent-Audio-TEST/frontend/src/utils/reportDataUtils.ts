@@ -64,6 +64,6 @@ export const formatMetricForDisplay = (
   const num = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(num)) return String(value);
   const dp = decimalPlacesMap?.[metricName];
-  if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp);
+  if (typeof dp === 'number' && Number.isInteger(dp) && dp >= 0) return num.toFixed(dp);
   return String(num);
 };

@@ -1,22 +1,28 @@
 import { ref } from 'vue';
-import { testcasesApi, playbackApi } from '../../utils/api';
+import { testcasesPort } from './testcasesPort';
+import { playbackPort } from '../device/playbackPort';
 import { useTestCaseStore } from '../../store/testCaseStore';
 import { useModalControl } from '../modal/useModal';
-import { MODAL_TYPES } from '../../shared/types';
+import { useNotification } from '../modal/useNotification';
+import { MODAL_TYPES } from '../modal/constants';
 import { downloadBlob, normalizeTestCaseConfig } from '../../utils/utils';
+import { ViewMode, TestType } from '@/domain/enums';
 import type {
   TestCase,
-  ModalSaveData,
-  ModalSaveResult,
   TestCaseFormData,
   GroupFormData,
   TestCaseAction
-} from '../../shared/types';
+} from '../../domain';
+import type {
+  ModalSaveData,
+  ModalSaveResult,
+} from '../modal/types';
 
 export function useTestCaseCard() {
   const editingTestCase = ref<TestCase | null>(null);
   const editingGroup = ref<string | null>(null);
   const modalControl = useModalControl();
+  const notification = useNotification();
   
   const initialFormData: TestCaseFormData = {
     name: '',
@@ -24,7 +30,7 @@ export function useTestCaseCard() {
     description: '',
     tags: [],
     tagsInput: '',
-    test_type: 'e2e',
+    testType: TestType.E2E,
     config: {
       rounds: [{ roundNumber: 1, audios: [] }],
       dimensions: [],
@@ -42,12 +48,12 @@ export function useTestCaseCard() {
   const openAddTestCaseModal = async (group = '', options?: { algorithmType?: string; testType?: 'api' | 'e2e' }) => {
     console.log('[useTestCaseCard] 调用openAddTestCaseModal，分组:', group, '算法类型:', options?.algorithmType, '测试类型:', options?.testType);
     editingTestCase.value = null;
-    const testType = options?.testType || 'e2e';
+    const testType = options?.testType || TestType.E2E;
     formData.value = {
       ...initialFormData,
       group: group,
       algorithmType: options?.algorithmType || '',
-      test_type: testType
+      testType: testType
     };
     
     try {
@@ -75,22 +81,23 @@ export function useTestCaseCard() {
     editingTestCase.value = testCase;
     
     const normalized = normalizeTestCaseConfig(testCase.config || {});
-    const testCaseType = (testCase as any).test_type || 'e2e';
-    
+    // TestCase Domain 已是 camelCase：testType / groupName / groupId / algorithmType / algorithmParams
+    const testCaseType = testCase.testType || TestType.E2E;
+
     formData.value = {
       id: testCase.id,
       name: testCase.name || '',
-      group: testCase.group_name || '',
-      groupId: testCase.group_id || '',
+      group: testCase.groupName || '',
+      groupId: testCase.groupId || '',
       description: testCase.description || '',
       tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
       config: normalized as TestCaseFormData['config'],
-      algorithmType: (testCase as any).algorithm_type || '',
-      test_type: testCaseType as 'api' | 'e2e',
-      // 新设计：algorithm_params 独立列（后端返回驼峰 algorithmParams）
-      algorithm_params: Array.isArray((testCase as any).algorithm_params)
-        ? ((testCase as any).algorithm_params)
+      algorithmType: testCase.algorithmType || '',
+      testType: testCaseType as 'api' | 'e2e',
+      // 新设计：algorithm_params 独立列（Domain 侧为 algorithmParams）
+      algorithmParams: Array.isArray(testCase.algorithmParams)
+        ? testCase.algorithmParams
         : [],
     } as TestCaseFormData;
     
@@ -123,13 +130,14 @@ export function useTestCaseCard() {
 
     // 从后端加载分组的完整信息（包括 algorithmType）
     try {
-      const resp = await testcasesApi.getGroups({ page: 1, perPage: 1000 });
+      const resp = await testcasesPort.getGroups({ page: 1, perPage: 1000 });
       const found = resp?.items?.find((g: any) => g.name === groupName);
       if (found) {
         groupFormData.value = {
           name: found.name || groupName,
           description: found.description || '',
-          algorithmType: found.algorithm_type || ''
+          // Domain 侧为 camelCase：algorithmType
+          algorithmType: found.algorithmType || ''
         };
       }
     } catch (e) {
@@ -139,7 +147,7 @@ export function useTestCaseCard() {
     try {
       const result = await modalControl.open(MODAL_TYPES.TEST_GROUP, {
         visible: true,
-        mode: 'group',
+        mode: ViewMode.GROUP,
         formData: groupFormData.value,
         title: '编辑分组',
         width: '500px'
@@ -164,7 +172,7 @@ export function useTestCaseCard() {
     try {
       const result = await modalControl.open(MODAL_TYPES.TEST_GROUP, {
         visible: true,
-        mode: 'group',
+        mode: ViewMode.GROUP,
         formData: groupFormData.value,
         title: '创建分组',
         width: '500px'
@@ -200,7 +208,7 @@ export function useTestCaseCard() {
       const result = await modalControl.open(MODAL_TYPES.TEST_CASE_EXPORT, {
         visible: true,
         mode: 'export',
-        testType: 'e2e',
+        testType: TestType.E2E,
         title: '批量导出测试用例',
         width: '600px'
       });
@@ -220,18 +228,18 @@ export function useTestCaseCard() {
     
     if (hasAudioConfig) {
       try {
-        const playbackDevicesRes = await playbackApi.getAll();
-        const playbackDevices = playbackDevicesRes.items || [];
+        // playbackPort.getAll 已展平为 Domain 数组
+        const playbackDevices = await playbackPort.getAll();
         console.log('[useTestCaseCard] 可用播放设备:', playbackDevices.length);
         
-        await testcasesApi.preview(testCase.id);
+        await testcasesPort.preview(testCase.id);
         console.log(`[useTestCaseCard] 开始试听测试用例 ${testCase.id} 的音频`);
       } catch (err: any) {
         console.error('[useTestCaseCard] 音频试听失败:', err);
-        alert('音频试听失败: ' + (err.message || '未知错误'));
+        notification.error('音频试听失败: ' + (err.message || '未知错误'));
       }
     } else {
-      alert('该测试用例没有关联音频文件');
+      notification.warning('该测试用例没有关联音频文件');
     }
   };
 
@@ -242,11 +250,11 @@ export function useTestCaseCard() {
       if (success) {
         console.log('[useTestCaseCard] 复制测试用例成功:', testCase.id);
       } else {
-        alert('复制测试用例失败');
+        notification.error('复制测试用例失败');
       }
     } catch (error: any) {
       console.error('[useTestCaseCard] 复制测试用例失败:', error);
-      alert('复制测试用例失败: ' + (error.message || '未知错误'));
+      notification.error('复制测试用例失败: ' + (error.message || '未知错误'));
     }
   };
 
@@ -265,7 +273,7 @@ export function useTestCaseCard() {
       }
     } catch (error) {
       console.error('删除测试用例失败:', error);
-      alert('删除测试用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      notification.error('删除测试用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
     }
     return false;
   };
@@ -309,7 +317,7 @@ export function useTestCaseCard() {
           }
           success = await store.addTestCase(data);
         }
-      } else if (mode === 'group') {
+      } else if (mode === ViewMode.GROUP) {
         if (isEdit) {
           const groupId = editingGroup.value || id;
           console.log('[useTestCaseCard] 编辑分组，editingGroup:', editingGroup.value, 'id:', id, '最终使用的groupId:', groupId);
@@ -332,7 +340,7 @@ export function useTestCaseCard() {
       } else if (mode === 'export') {
         console.log('执行导出逻辑:', data);
         const format = data.format === 'xlsx' ? 'xlsx' : 'json';
-        const res = await testcasesApi.export(data.ids || [], format);
+        const res = await testcasesPort.export(data.ids || [], format);
         
         if (res instanceof Blob) {
           downloadBlob(res, `testcases_export_${Date.now()}.${format}`);
@@ -373,7 +381,7 @@ export function useTestCaseCard() {
     } catch (error) {
       console.error('保存失败:', error);
       const errorMessage = error instanceof Error ? error.message : '保存失败，请重试';
-      alert(errorMessage);
+      notification.error(errorMessage);
     }
     
     return { success: false, needRefresh: false };

@@ -1,4 +1,5 @@
-import { testcasesApi } from '../../utils/api'
+import { testcasesPort } from './testcasesPort'
+import { useNotification } from '../modal/useNotification'
 
 /**
  * 测试用例导入 composable。
@@ -13,6 +14,7 @@ export function useTestCaseImport(store: {
   handleError: (err: any, errorMessage: string) => boolean
 }) {
   const { error, fetchTestCases, handleError } = store
+  const notification = useNotification()
 
   const formatImportErrorsMessage = (title: string, errors: unknown) => {
     const list = Array.isArray(errors) ? errors.map(String).filter(Boolean) : []
@@ -26,10 +28,11 @@ export function useTestCaseImport(store: {
   const importTestCases = async (formData: FormData) => {
     try {
       error.value = null
-      const result: any = await testcasesApi.importCases(formData)
+      const result: any = await testcasesPort.importCases(formData)
 
-      const importedCount = Number(result?.imported_count ?? 0)
-      const updatedCount = Number(result?.updated_count ?? 0)
+      // Infrastructure 出口已归一 camelCase（imported_count → importedCount）
+      const importedCount = Number(result?.importedCount ?? 0)
+      const updatedCount = Number(result?.updatedCount ?? 0)
       const errors = Array.isArray(result?.errors) ? result.errors : []
 
       if (errors.length > 0) {
@@ -37,7 +40,7 @@ export function useTestCaseImport(store: {
           ? `导入完成，但有 ${errors.length} 个失败（成功导入 ${importedCount}，更新 ${updatedCount}）`
           : `导入失败：${errors.length} 个失败`
         error.value = title
-        alert(formatImportErrorsMessage(title, errors))
+        notification.warning(formatImportErrorsMessage(title, errors))
       }
 
       if (importedCount > 0 || updatedCount > 0) {

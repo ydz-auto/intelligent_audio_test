@@ -36,7 +36,7 @@
 
 <script setup lang="ts">
 import TestCaseListContainer from '../../components/common/test-case/TestCaseListContainer.vue';
-import { useTestCaseManager } from './testCaseManager';
+import { useTestCaseManager } from './TestCaseManager';
 
 const {
   testCaseGroups,

@@ -2,6 +2,7 @@
  * 日志配置文件
  * 从shared目录导入日志类型定义，并提供前端使用的具体选项数据
  */
+import { TestType } from '@/domain/enums'
 
 export interface OptionItem {
   value: string;
@@ -16,7 +17,7 @@ export const logCategoryOptions: OptionItem[] = [
   { value: 'system', label: '系统' },
   { value: 'test', label: '测试' },
   { value: 'device', label: '设备' },
-  { value: 'api', label: 'API' },
+  { value: TestType.API, label: 'API' },
   { value: 'audio', label: '音频' },
   { value: 'user', label: '用户' }
 ];
@@ -27,7 +28,7 @@ export const logModuleOptions: OptionItem[] = [
   { value: 'device', label: '设备' },
   { value: 'system', label: '系统' },
   { value: 'user', label: '用户' },
-  { value: 'api', label: 'API' },
+  { value: TestType.API, label: 'API' },
   { value: 'audio', label: '音频' },
   { value: 'execution', label: '执行' },
   { value: 'task', label: '任务' }

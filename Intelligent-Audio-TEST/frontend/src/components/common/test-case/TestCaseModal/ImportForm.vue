@@ -79,13 +79,17 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
-import { testcasesApi } from '../../../../utils/api';
-import type { ImportPreviewData } from './types';
+import { testcasesPort } from '@/composables/testCase/testcasesPort';
+import { downloadBlob } from '../../../../utils/utils';
+import { useNotification } from '@/composables/modal/useNotification';
+import type { ImportPreviewData } from '@/domain';
 
 const emit = defineEmits<{
   (e: 'update', data: { file: File | null }): void;
   (e: 'submit'): void;
 }>();
+
+const notification = useNotification();
 
 const localFile = ref<File | null>(null);
 const isDragging = ref(false);
@@ -119,7 +123,7 @@ function setFile(file: File | null) {
   }
 
   if (file.size > 10 * 1024 * 1024) {
-    alert('文件大小不能超过10MB');
+    notification.warning('文件大小不能超过10MB');
     return;
   }
 
@@ -127,7 +131,7 @@ function setFile(file: File | null) {
   const fileName = file.name.toLowerCase();
   const isValidType = validTypes.some(type => fileName.endsWith(type));
   if (!isValidType) {
-    alert('请选择 .json 或 .xlsx/.xls 格式的文件');
+    notification.warning('请选择 .json 或 .xlsx/.xls 格式的文件');
     return;
   }
 
@@ -153,7 +157,7 @@ async function updatePreview() {
     const formData = new FormData();
     formData.append('file', localFile.value);
 
-    const response = await testcasesApi.previewImport(formData);
+    const response = await testcasesPort.previewImport(formData);
     const data = (response && typeof response === 'object' && 'data' in response)
       ? (response as any).data
       : response;
@@ -170,16 +174,16 @@ async function updatePreview() {
       const maxLines = 50;
       const shown = previewErrors.slice(0, maxLines).map(String).join('\n');
       const more = previewErrors.length > maxLines ? `\n...（共${previewErrors.length}条）` : '';
-      alert(`获取导入预览失败：${previewErrors.length} 个错误\n${shown}${more}`);
+      notification.error(`获取导入预览失败：${previewErrors.length} 个错误\n${shown}${more}`);
       previewData.value = null;
       return;
     }
 
-    const audioConfigs = data.audioConfigs || data.audio_configs || [];
+    const audioConfigs = data.audioConfigs || [];
     const dimensions = data.dimensions || data.Dimensions || [];
 
     previewData.value = {
-      total: data.totalRows || data.total_rows || testCases.length,
+      total: data.totalRows || testCases.length,
       items: testCases.map((tc: Record<string, unknown>) => ({
         name: (tc.NAME || tc.name || '未命名') as string,
         type: (tc.TEST_TYPE || tc.testType || tc.type || 'api') as string,
@@ -196,32 +200,25 @@ async function updatePreview() {
     };
   } catch (error: any) {
     console.error('获取导入预览失败:', error);
-    alert('获取导入预览失败: ' + (error?.message || '未知错误'));
+    notification.error('获取导入预览失败: ' + (error?.message || '未知错误'));
     previewData.value = null;
   }
 }
 
 async function downloadTemplate() {
   try {
-    const response = await testcasesApi.downloadTemplate();
+    const response = await testcasesPort.downloadTemplate();
     const blob = response instanceof Blob ? response : new Blob([response]);
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `测试用例导入模板_${new Date().toLocaleDateString()}.xlsx`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(url);
+    downloadBlob(blob, `测试用例导入模板_${new Date().toLocaleDateString()}.xlsx`);
   } catch (error: unknown) {
     console.error('下载模板失败:', error);
-    alert('下载模板失败: ' + ((error as Error).message || '未知错误'));
+    notification.error('下载模板失败: ' + ((error as Error).message || '未知错误'));
   }
 }
 
 function handleSubmit() {
   if (!localFile.value) {
-    alert('请选择要导入的文件');
+    notification.warning('请选择要导入的文件');
     return;
   }
   emit('submit');

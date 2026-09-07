@@ -1,12 +1,131 @@
 import { ref, computed, watch } from 'vue'
-import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/testCase/useTestCaseConfig'
-import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType } from '../../../utils/audioUtils'
-import { algorithmApi } from '../../../utils/api'
+import { useTestCaseConfig, createDefaultUploadConfig, type AudioTypeOption } from '../../../composables/testCase/useTestCaseConfig'
+import { parseAnnotationFormat, formatFileSize } from '../../../utils/audioUtils'
+import { algorithmPort } from '../../../composables/algorithm/algorithmPort'
+import type { ReferenceParam } from '../../../domain/model/algorithm'
+import { readCamel } from '../../../utils/keyTransform'
 
-export function useUploadFileModal(props: any, emit: any) {
-  const fileInput = ref(null)
-  const selectedFiles = ref([])
-  const selectedTxtFiles = ref([])
+// ─── 类型定义 ───────────────────────────────────────────────
+
+/** 上传选项单项（父组件传入的上传配置项） */
+export interface UploadOptionItem {
+  key: string
+  label: string
+  type: string
+  defaultValue?: string | number | boolean
+  options?: Array<{ label: string; value: string | number }>
+}
+
+/** Props（与 UploadFileModal.vue defineProps 一一对应） */
+export interface UploadFileModalProps {
+  modalId?: string
+  title?: string
+  acceptedTypes?: string[]
+  maxSize?: number
+  multiple?: boolean
+  uploadOptions?: UploadOptionItem[]
+  showTagsInput?: boolean
+  autoUpload?: boolean
+  supportedFormats?: string[]
+  deviceOptions?: Array<{ label: string; value: string | number }>
+  algorithmOptions?: Array<{ label: string; value: string }>
+}
+
+/** 上传配置（基础默认值 + 父组件 option 覆盖） */
+export type UploadConfig = ReturnType<typeof createDefaultUploadConfig>
+
+/** 翻译条目 */
+export interface TranslationItem {
+  text: string
+  direction: string
+  source?: string
+  target?: string
+}
+
+/** 标注条目（上传给后端的标注载荷；上行 wire 格式由 Infrastructure toAnnotationDto 统一转 snake_case） */
+export interface AnnotationItem {
+  format: string
+  code: string
+  name?: string
+  type?: string
+  data: Record<string, unknown>
+  sourceLanguage: string
+  targetLanguage: string
+}
+
+/** 已选 txt 文件 */
+export interface SelectedTxtItem {
+  file: File
+  name: string
+}
+
+/** 已选音频项（含关联文本 / 标注解析结果） */
+export interface SelectedAudioItem {
+  file: File
+  name: string
+  asrText: string
+  translations: TranslationItem[]
+  annotations: AnnotationItem[]
+  hasTxtFile: boolean
+  speakerCount: number
+  speakerNames: string[]
+}
+
+/** confirm 事件上传载荷 */
+export interface UploadConfirmPayload {
+  files: Array<{
+    file: File
+    asrText: string
+    translations: TranslationItem[]
+    annotations: AnnotationItem[]
+    speakerCount: number
+    speakerNames: string[]
+  }>
+  tags: string[]
+  options: UploadConfig
+  progress: (p: number) => void
+}
+
+/** 标注解析结果（parseAnnotationFormat 返回结构） */
+type AnnotationParseResult = ReturnType<typeof parseAnnotationFormat>
+
+/** 说话人来源（extractSpeakersFromAnnotation 参数结构） */
+interface SpeakerSource {
+  segments?: Array<{ speaker?: unknown }>
+  data?: { segments?: Array<{ speaker?: unknown }> } | null
+  annotations?: Array<{
+    segments?: Array<{ speaker?: unknown }>
+    data?: { segments?: Array<{ speaker?: unknown }> } | null
+  }>
+}
+
+/** txt 标记解析结果 */
+interface MarkerTextResult {
+  asrText: string
+  translations: TranslationItem[]
+}
+
+/** 事件发射函数 */
+type EmitFn = (event: 'close' | 'confirm' | 'selectFolder', ...args: unknown[]) => void
+
+// ─── 默认配置构造 ───────────────────────────────────────────
+
+function buildUploadConfigDefaults(options: UploadOptionItem[]): Partial<UploadConfig> {
+  const defaults: Record<string, unknown> = {}
+  for (const option of options) {
+    defaults[option.key] = option.defaultValue ?? (option.type === 'boolean' ? false : '')
+  }
+  return defaults as Partial<UploadConfig>
+}
+
+// ─── Composable ─────────────────────────────────────────────
+
+export function useUploadFileModal(props: UploadFileModalProps, emit: EmitFn) {
+  const uploadOptionList = props.uploadOptions ?? []
+
+  const fileInput = ref<HTMLInputElement | null>(null)
+  const selectedFiles = ref<SelectedAudioItem[]>([])
+  const selectedTxtFiles = ref<SelectedTxtItem[]>([])
   const isDragging = ref(false)
   const uploading = ref(false)
   const tags = ref('')
@@ -15,23 +134,24 @@ export function useUploadFileModal(props: any, emit: any) {
 
   const inputId = computed(() => `file-input-${props.modalId || 'default'}`)
 
-  const hasUploadOptions = computed(() => props.uploadOptions.length > 0)
+  const hasUploadOptions = computed(() => uploadOptionList.length > 0)
 
-  const uploadConfig = ref(
+  const uploadConfig = ref<UploadConfig>(
     Object.assign(
       createDefaultUploadConfig(),
-      props.uploadOptions.reduce((acc, option) => {
-        acc[option.key] = option.defaultValue ?? (option.type === 'boolean' ? false : '')
-        return acc
-      }, {})
+      buildUploadConfigDefaults(uploadOptionList)
     )
   )
+
+  const audioTypeOption = uploadOptionList.find((o) => o.key === 'audioType')
 
   const {
     audioTypeOptions,
     hasAudioType
   } = useTestCaseConfig({
-    audioTypeOptions: props.uploadOptions.find((o) => o.key === 'audioType')?.options || []
+    audioTypeOptions: audioTypeOption?.options?.filter(
+      (o): o is AudioTypeOption => typeof o.value === 'string'
+    ) ?? []
   })
 
   watch(() => uploadConfig.value.algorithmType, async (newType) => {
@@ -39,8 +159,8 @@ export function useUploadFileModal(props: any, emit: any) {
     annotationCode.value = ''
     if (newType) {
       try {
-        const res = await algorithmApi.getReferenceParams(newType)
-        referenceParamOptions.value = (res.data || []).map((p: any) => ({
+        const res = await algorithmPort.getReferenceParams(newType)
+        referenceParamOptions.value = (res.data || []).map((p: ReferenceParam) => ({
           label: p.code ? `${p.code}${p.name ? ' - ' + p.name : ''}` : p.name,
           value: p.code || ''
         }))
@@ -51,7 +171,7 @@ export function useUploadFileModal(props: any, emit: any) {
   })
 
   const playbackDeviceOptions = computed(() => {
-    return props.uploadOptions.find((o) => o.key === 'playbackDeviceId')?.options || []
+    return uploadOptionList.find((o) => o.key === 'playbackDeviceId')?.options || []
   })
 
   const deviceOptions = computed(() => props.deviceOptions || [])
@@ -68,7 +188,7 @@ export function useUploadFileModal(props: any, emit: any) {
   })
 
   const audioFilesCount = computed(() => {
-    const supportedAudioExts = props.supportedFormats
+    const supportedAudioExts = props.supportedFormats ?? []
     return selectedFiles.value.filter(file => {
       const ext = file.file.name.split('.').pop()?.toLowerCase() || ''
       return supportedAudioExts.includes(ext)
@@ -79,14 +199,6 @@ export function useUploadFileModal(props: any, emit: any) {
     return selectedFiles.value.reduce((sum, file) => sum + file.file.size, 0)
   })
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
-
   const dragMessage = computed(() => {
     if (isDragging.value) {
       return '释放文件以上传'
@@ -94,30 +206,31 @@ export function useUploadFileModal(props: any, emit: any) {
     return '拖拽文件到此处或点击选择文件'
   })
 
-  const handleFileSelect = (event) => {
+  const handleFileSelect = (event: Event) => {
+    if (!(event.target instanceof HTMLInputElement) || !event.target.files) return
     const files = Array.from(event.target.files)
     if (files.length > 0) {
       processFiles(files)
     }
   }
 
-  const handleDragOver = (event) => {
+  const handleDragOver = (_event: DragEvent) => {
     isDragging.value = true
   }
 
-  const handleDragLeave = (event) => {
+  const handleDragLeave = (_event: DragEvent) => {
     isDragging.value = false
   }
 
-  const handleDrop = (event) => {
+  const handleDrop = (event: DragEvent) => {
     isDragging.value = false
-    const files = Array.from(event.dataTransfer.files)
+    const files = event.dataTransfer ? Array.from(event.dataTransfer.files) : []
     if (files.length > 0) {
       processFiles(files)
     }
   }
 
-  const processFiles = (files) => {
+  const processFiles = (files: File[]) => {
     const audioFiles = files.filter(file => file.type.startsWith('audio/') || file.type.startsWith('video/'))
     const txtFiles = files.filter(file => file.name.endsWith('.txt'))
     const annotationFiles = files.filter(file =>
@@ -129,8 +242,8 @@ export function useUploadFileModal(props: any, emit: any) {
       name: file.name
     }))
 
-    const txtMarkers = new Map()
-    const annotationData = new Map()
+    const txtMarkers = new Map<string, string>()
+    const annotationDataMap = new Map<string, AnnotationParseResult>()
 
     const readAnnotationFiles = async () => {
         for (const annFile of annotationFiles) {
@@ -142,7 +255,7 @@ export function useUploadFileModal(props: any, emit: any) {
             else if (annFile.name.endsWith('.jsonl')) format = 'jsonl'
 
             const parsed = parseAnnotationFormat(text, format)
-            annotationData.set(audioFileName, parsed)
+            annotationDataMap.set(audioFileName, parsed)
         }
     }
 
@@ -153,13 +266,13 @@ export function useUploadFileModal(props: any, emit: any) {
         txtMarkers.set(audioFileName, text)
       }
 
-      const processedFiles = await Promise.all(audioFiles.map(async (audioFile) => {
+      const processedFiles = await Promise.all(audioFiles.map(async (audioFile): Promise<SelectedAudioItem> => {
         const audioFileName = audioFile.name.replace(/\.[^/.]+$/, '')
         const markerText = txtMarkers.get(audioFileName) || ''
         const parsedInfo = parseMarkerText(markerText)
 
-        const annData = annotationData.get(audioFileName)
-        const annotations = []
+        const annData = annotationDataMap.get(audioFileName)
+        const annotations: AnnotationItem[] = []
 
         if (annData && annData.annotations && annData.annotations.length > 0) {
             for (const ann of annData.annotations) {
@@ -167,9 +280,10 @@ export function useUploadFileModal(props: any, emit: any) {
                 annotations.push({
                     format: annData.format,
                     code: code,
-                    data: { segments: ann.segments, ...(ann.extra_fields || {}) },
-                    source_language: ann.source_language || '',
-                    target_language: ann.target_language || ''
+                    // 解析器原始输出为 snake_case，readCamel 兜底读取（camelCase 优先）
+                    data: { segments: ann.segments, ...(readCamel<Record<string, unknown>>(ann, 'extraFields') || {}) },
+                    sourceLanguage: readCamel<string>(ann, 'sourceLanguage') || '',
+                    targetLanguage: readCamel<string>(ann, 'targetLanguage') || ''
                 })
             }
         } else if (annData && annData.segments && annData.segments.length > 0) {
@@ -177,17 +291,17 @@ export function useUploadFileModal(props: any, emit: any) {
             annotations.push({
                 format: annData.format,
                 code: annotationCodeVal,
-                data: { segments: annData.segments, ...(annData.extra_fields || {}) },
-                source_language: annData.source_language || '',
-                target_language: annData.target_language || ''
+                data: { segments: annData.segments, ...(readCamel<Record<string, unknown>>(annData, 'extraFields') || {}) },
+                sourceLanguage: readCamel<string>(annData, 'sourceLanguage') || '',
+                targetLanguage: readCamel<string>(annData, 'targetLanguage') || ''
             })
         } else if (markerText) {
             annotations.push({
                 format: 'text',
                 code: 'asr',
                 data: { text: markerText },
-                source_language: '',
-                target_language: ''
+                sourceLanguage: '',
+                targetLanguage: ''
             })
         }
 
@@ -199,8 +313,8 @@ export function useUploadFileModal(props: any, emit: any) {
                     code: 'translation',
                     type: 'translation',
                     data: { text: trans.text },
-                    source_language: trans.source || '',
-                    target_language: trans.target || ''
+                    sourceLanguage: trans.source || '',
+                    targetLanguage: trans.target || ''
                 })
             }
         }
@@ -211,7 +325,7 @@ export function useUploadFileModal(props: any, emit: any) {
           asrText: markerText || '',
           translations: parsedInfo.translations || [],
           annotations: annotations,
-          hasTxtFile: txtMarkers.has(audioFileName) || annotationData.has(audioFileName),
+          hasTxtFile: txtMarkers.has(audioFileName) || annotationDataMap.has(audioFileName),
           speakerCount: annData ? extractSpeakersFromAnnotation(annData).speakerCount : 0,
           speakerNames: annData ? extractSpeakersFromAnnotation(annData).speakerNames : []
         }
@@ -223,11 +337,12 @@ export function useUploadFileModal(props: any, emit: any) {
     readAnnotationFiles().then(() => readTxtFiles())
   }
 
-  const readFileAsText = (file) => {
-    return new Promise((resolve, reject) => {
+  const readFileAsText = (file: File): Promise<string> => {
+    return new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = (e) => {
-        resolve(e.target.result)
+        const result = e.target?.result
+        resolve(typeof result === 'string' ? result : '')
       }
       reader.onerror = reject
       reader.readAsText(file)
@@ -254,7 +369,7 @@ export function useUploadFileModal(props: any, emit: any) {
     return 'reference'
   }
 
-  const extractSpeakersFromAnnotation = (annotationData: any): { speakerCount: number; speakerNames: string[] } => {
+  const extractSpeakersFromAnnotation = (annotationData: SpeakerSource | SpeakerSource[] | null): { speakerCount: number; speakerNames: string[] } => {
     const speakerSet = new Set<string>()
 
     if (!annotationData) {
@@ -262,24 +377,22 @@ export function useUploadFileModal(props: any, emit: any) {
     }
 
     const annotations = Array.isArray(annotationData) ? annotationData : [annotationData]
-
-    for (const ann of annotations) {
-      const segments = ann.segments || (ann.data && ann.data.segments) || []
-      for (const seg of segments) {
-        if (seg.speaker && seg.speaker.trim()) {
-          speakerSet.add(seg.speaker.trim())
+    const collectSpeakers = (segments: Array<{ speaker?: unknown }> | undefined) => {
+      for (const seg of segments ?? []) {
+        const speaker = seg.speaker
+        if (typeof speaker === 'string' && speaker.trim()) {
+          speakerSet.add(speaker.trim())
         }
       }
+    }
 
-      if (ann.annotations) {
-        for (const nestedAnn of ann.annotations) {
-          const nestedSegments = nestedAnn.segments || (nestedAnn.data && nestedAnn.data.segments) || []
-          for (const seg of nestedSegments) {
-            if (seg.speaker && seg.speaker.trim()) {
-              speakerSet.add(seg.speaker.trim())
-            }
-          }
-        }
+    for (const ann of annotations) {
+      const segments = ann.segments || ann.data?.segments || []
+      collectSpeakers(segments)
+
+      for (const nestedAnn of ann.annotations ?? []) {
+        const nestedSegments = nestedAnn.segments || nestedAnn.data?.segments || []
+        collectSpeakers(nestedSegments)
       }
     }
 
@@ -289,10 +402,10 @@ export function useUploadFileModal(props: any, emit: any) {
     }
   }
 
-  // Placeholder for parseMarkerText - should be imported from utils or kept inline if needed
-  const parseMarkerText = (text) => {
+  // 解析 txt 标记：首行为 ASR 文本，后续行为「译文 方向」条目
+  const parseMarkerText = (text: string): MarkerTextResult => {
     const lines = text.split('\n').map(line => line.trim()).filter(line => line)
-    const result = {
+    const result: MarkerTextResult = {
       asrText: '',
       translations: []
     }
@@ -357,7 +470,7 @@ export function useUploadFileModal(props: any, emit: any) {
     try {
       const tagList = tags.value.split(',').map(t => t.trim()).filter(t => t)
 
-      const filesWithMetadata = selectedFiles.value.map(item => {
+      const filesWithMetadata: UploadConfirmPayload['files'] = selectedFiles.value.map(item => {
         const annotations = (item.annotations || []).map(ann => {
           if (ann.format === 'json' || ann.format === 'rttm' || ann.format === 'stm') {
             const code = uploadConfig.value.algorithmType || determineAnnotationName(item.name.replace(/\.[^/.]+$/, ''), ann.format)
@@ -389,7 +502,7 @@ export function useUploadFileModal(props: any, emit: any) {
         files: filesWithMetadata,
         tags: [...tagList, ...allSpeakerNames, ...speakerCountTag],
         options: uploadConfig.value,
-        progress: (p) => {}
+        progress: (p: number) => {}
       })
     } catch (error) {
       console.error('上传失败:', error)

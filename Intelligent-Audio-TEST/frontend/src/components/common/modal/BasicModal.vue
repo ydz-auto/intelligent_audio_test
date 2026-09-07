@@ -103,7 +103,7 @@ const handleClose = () => {
   emit('update:visible', false)
 }
 
-const handleMaskClick = (event) => {
+const handleMaskClick = (event: MouseEvent) => {
   if (props.maskClosable && event.target === event.currentTarget) {
     handleClose()
   }

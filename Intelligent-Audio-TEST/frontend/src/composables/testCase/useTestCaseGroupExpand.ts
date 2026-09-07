@@ -1,6 +1,7 @@
 import { ref, computed, watch, nextTick, type Ref } from 'vue';
 import { useTestCaseStore } from '../../store/testCaseStore';
-import type { TestCase } from '../../shared/types';
+import type { TestCase } from '../../domain';
+import { ViewMode } from '@/domain/enums';
 
 /**
  * 测试用例分组展开/折叠/加载 composable。
@@ -21,7 +22,7 @@ import type { TestCase } from '../../shared/types';
 export function useTestCaseGroupExpand(
   algorithmTypeFilter: Ref<string>,
   testTypeFilter: Ref<string>,
-  innerViewMode: Ref<'group' | 'tag'>,
+  innerViewMode: Ref<typeof ViewMode[keyof typeof ViewMode]>,
   paginatedGroups: Ref<string[]>,
   paginatedTags: Ref<string[]>,
   hasMoreGroups: Ref<boolean>,
@@ -43,7 +44,7 @@ export function useTestCaseGroupExpand(
   let loadMoreObserver: IntersectionObserver | null = null;
 
   const hasMore = computed(() =>
-    innerViewMode.value === 'tag' ? hasMoreTags.value : hasMoreGroups.value
+    innerViewMode.value === ViewMode.TAG ? hasMoreTags.value : hasMoreGroups.value
   );
 
   const toggleCategory = async (group: string) => {

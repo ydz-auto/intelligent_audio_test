@@ -49,9 +49,9 @@
                 v-model.number="formData[field.fieldCode]"
                 type="number"
                 class="form-input"
-                :min="field.validation?.min"
-                :max="field.validation?.max"
-                :step="field.validation?.step ?? 1"
+                :min="getFieldValidation(field)?.min"
+                :max="getFieldValidation(field)?.max"
+                :step="getFieldValidation(field)?.step ?? 1"
                 :disabled="disabled"
                 @change="handleFieldChange(field, $event)"
               />
@@ -80,9 +80,9 @@
                   v-model.number="formData[field.fieldCode]"
                   type="range"
                   class="slider-input"
-                  :min="field.validation?.min ?? 0"
-                  :max="field.validation?.max ?? 100"
-                  :step="field.validation?.step ?? 1"
+                  :min="getFieldValidation(field)?.min ?? 0"
+                  :max="getFieldValidation(field)?.max ?? 100"
+                  :step="getFieldValidation(field)?.step ?? 1"
                   :disabled="disabled"
                   @input="handleFieldChange(field, $event)"
                 />
@@ -90,9 +90,9 @@
                   v-model.number="formData[field.fieldCode]"
                   type="number"
                   class="slider-number-input form-control form-control-sm"
-                  :min="field.validation?.min ?? 0"
-                  :max="field.validation?.max ?? 100"
-                  :step="field.validation?.step ?? 1"
+                  :min="getFieldValidation(field)?.min ?? 0"
+                  :max="getFieldValidation(field)?.max ?? 100"
+                  :step="getFieldValidation(field)?.step ?? 1"
                   :disabled="disabled"
                   @input="handleFieldChange(field, $event)"
                 />
@@ -182,9 +182,9 @@
             v-model.number="formData[field.fieldCode]"
             type="number"
             class="form-input"
-            :min="field.validation?.min"
-            :max="field.validation?.max"
-            :step="field.validation?.step ?? 1"
+            :min="getFieldValidation(field)?.min"
+            :max="getFieldValidation(field)?.max"
+            :step="getFieldValidation(field)?.step ?? 1"
             :disabled="disabled"
             @change="handleFieldChange(field, $event)"
           />
@@ -213,9 +213,9 @@
               v-model.number="formData[field.fieldCode]"
               type="range"
               class="slider-input"
-              :min="field.validation?.min ?? 0"
-              :max="field.validation?.max ?? 100"
-              :step="field.validation?.step ?? 1"
+              :min="getFieldValidation(field)?.min ?? 0"
+              :max="getFieldValidation(field)?.max ?? 100"
+              :step="getFieldValidation(field)?.step ?? 1"
               :disabled="disabled"
               @input="handleFieldChange(field, $event)"
             />
@@ -223,9 +223,9 @@
               v-model.number="formData[field.fieldCode]"
               type="number"
               class="slider-number-input form-control form-control-sm"
-              :min="field.validation?.min ?? 0"
-              :max="field.validation?.max ?? 100"
-              :step="field.validation?.step ?? 1"
+              :min="getFieldValidation(field)?.min ?? 0"
+              :max="getFieldValidation(field)?.max ?? 100"
+              :step="getFieldValidation(field)?.step ?? 1"
               :disabled="disabled"
               @input="handleFieldChange(field, $event)"
             />
@@ -278,45 +278,8 @@
 
 <script setup lang="ts">
 import { useDynamicForm } from './DynamicForm'
-
-interface FieldSchema {
-  fieldCode: string
-  fieldName: string
-  fieldType: string
-  required: boolean
-  defaultValue?: any
-  component?: string
-  options?: { value: string; label: string }[]
-  validation?: {
-    min?: number
-    max?: number
-    step?: number
-    pattern?: string
-    patternMessage?: string
-    minLength?: number
-    maxLength?: number
-  }
-  helpText?: string
-  hidden?: boolean
-  uiOrder?: number
-  uiGroup?: string
-  scope?: string
-}
-
-interface FormGroup {
-  name: string
-  label: string
-  fields: FieldSchema[]
-}
-
-interface FormSchema {
-  algorithmType: string
-  algorithmName: string
-  category?: string
-  description?: string
-  groups: FormGroup[]
-  fields: FieldSchema[]
-}
+import type { FormSchema, FormField as FieldSchema } from '../../domain/model/algorithm'
+import { getFieldValidation } from '../../domain/model/algorithm'
 
 interface Props {
   schema: FormSchema

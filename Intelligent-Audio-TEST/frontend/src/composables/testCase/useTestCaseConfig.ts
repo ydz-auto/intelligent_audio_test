@@ -1,19 +1,17 @@
 import { ref, computed } from 'vue'
-import { evaluationApi } from '../../utils/api'
 import { useDimensions } from '../shared/useDimensions'
+import { TestType } from '@/domain/enums'
 
 export interface SelectedDimension {
   id: number | string
   name: string
   weight?: number
   threshold?: number
-  /** 维度使用范围：'single' = 每轮独立评估，'multi' = 多轮聚合评估 */
-  round_scope?: 'single' | 'multi'
 }
 
 export interface TestTypeOption {
   label: string
-  value: 'api' | 'e2e'
+  value: typeof TestType[keyof typeof TestType]
 }
 
 export interface GroupNameTypeOption {
@@ -61,8 +59,8 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
   ]
 
   const testTypeOptions: TestTypeOption[] = [
-    { label: 'E2E测试', value: 'e2e' },
-    { label: 'API测试', value: 'api' }
+    { label: 'E2E测试', value: TestType.E2E },
+    { label: 'API测试', value: TestType.API }
   ]
 
   const updateDimensionFilter = (ids: number[]) => {
@@ -171,7 +169,7 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
 
 export function createDefaultUploadConfig() {
   return {
-    testTypes: ['e2e'] as ('api' | 'e2e')[],
+    testTypes: [TestType.E2E] as (typeof TestType)[keyof typeof TestType][],
     apiDimensions: [] as SelectedDimension[],
     e2eDimensions: [] as SelectedDimension[],
     apiScopes: ['single'] as ('single' | 'multi')[],

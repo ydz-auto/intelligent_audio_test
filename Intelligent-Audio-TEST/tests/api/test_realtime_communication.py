@@ -15,6 +15,7 @@ import time
 import threading
 import pytest
 import httpx
+import requests
 import socketio
 import redis as redis_lib
 
@@ -22,6 +23,17 @@ from tests.api.conftest import API_BASE, HEALTH_URL, _backend_alive
 
 SOCKETIO_URL = 'http://localhost:5000'
 REDIS_URL = 'redis://localhost:6379'
+
+
+def _make_sio_client() -> socketio.Client:
+    """创建禁用系统代理的 Socket.IO 客户端。
+
+    Windows 注册表系统代理会劫持 requests 发出的 localhost 握手请求，
+    导致连接挂起；trust_env=False 强制直连本机服务。
+    """
+    session = requests.Session()
+    session.trust_env = False
+    return socketio.Client(reconnection=False, http_session=session)
 
 
 # ── SSE 验证 ──────────────────────────────────────────────
@@ -71,7 +83,7 @@ class TestWebSocketConnection:
 
     def test_connect_main_namespace(self, require_backend):
         """连接默认命名空间 / (task_progress)。"""
-        sio_client = socketio.Client(reconnection=False)
+        sio_client = _make_sio_client()
         connected = threading.Event()
 
         @sio_client.on('connect', namespace='/')
@@ -87,7 +99,7 @@ class TestWebSocketConnection:
 
     def test_connect_logs_namespace(self, require_backend):
         """连接 /ws/logs 命名空间 (task_log)。"""
-        sio_client = socketio.Client(reconnection=False)
+        sio_client = _make_sio_client()
         connected = threading.Event()
 
         @sio_client.on('connect', namespace='/ws/logs')
@@ -103,7 +115,7 @@ class TestWebSocketConnection:
 
     def test_subscribe_task_event(self, require_backend):
         """客户端 emit subscribe_task 后服务端正常处理。"""
-        sio_client = socketio.Client(reconnection=False)
+        sio_client = _make_sio_client()
         connected = threading.Event()
 
         @sio_client.on('connect', namespace='/ws/logs')
@@ -129,7 +141,7 @@ class TestRedisPubSubForwarding:
     def test_task_logs_forwarded_to_socketio(self, require_backend):
         """发布 task_logs 频道消息 → Socket.IO /ws/logs 命名空间收到 task_log 事件。"""
         r = redis_lib.from_url(REDIS_URL)
-        sio_client = socketio.Client(reconnection=False)
+        sio_client = _make_sio_client()
         connected = threading.Event()
         log_received = threading.Event()
         received_payload = {}
@@ -187,7 +199,7 @@ class TestRedisPubSubForwarding:
     def test_task_progress_forwarded_to_socketio(self, require_backend):
         """发布 task_progress 频道消息 → Socket.IO / 命名空间收到 task_progress 事件。"""
         r = redis_lib.from_url(REDIS_URL)
-        sio_client = socketio.Client(reconnection=False)
+        sio_client = _make_sio_client()
         connected = threading.Event()
         progress_received = threading.Event()
         received_payload = {}
@@ -246,14 +258,14 @@ class TestE2ETestService:
         except Exception:
             # 端点可能不在 api_gateway 上，尝试直接访问 e2e_test_service
             resp = httpx.get(f'{API_BASE.replace("/api/v1", "")}/e2e/progress',
-                           params={'task_id': '999999'}, timeout=10)
+                           params={'task_id': '999999'}, timeout=10, trust_env=False)
             assert resp.status_code < 500
 
     def test_e2e_admin_endpoints_accessible(self, require_backend):
         """验证 e2e_test_service admin 端点路由注册正常。"""
         # 直接访问 e2e_test_service (5002)
         try:
-            resp = httpx.get('http://localhost:5002/e2e/progress?task_id=999999', timeout=5)
+            resp = httpx.get('http://localhost:5002/e2e/progress?task_id=999999', timeout=5, trust_env=False)
             # 非 500 说明服务存活且路由注册
             assert resp.status_code < 500, \
                 f'e2e_test_service 返回 {resp.status_code}'
@@ -271,7 +283,8 @@ class TestAPITestService:
         try:
             resp = httpx.get(
                 'http://localhost:5003/admin/api-tests/tasks/999999/status',
-                timeout=5
+                timeout=5,
+                trust_env=False,
             )
             assert resp.status_code < 500, \
                 f'api_test_service 返回 {resp.status_code}'
@@ -281,7 +294,7 @@ class TestAPITestService:
     def test_api_test_health(self, require_backend):
         """验证 api_test_service 进程存活。"""
         try:
-            resp = httpx.get('http://localhost:5003/health', timeout=5)
+            resp = httpx.get('http://localhost:5003/health', timeout=5, trust_env=False)
             assert resp.status_code == 200
         except httpx.ConnectError:
             pytest.skip('api_test_service (5003) 不可连接')

@@ -1,9 +1,10 @@
 import { ref, computed, watch, provide } from 'vue';
-import { testcasesApi } from '../../../../utils/api';
+import { testcasesPort } from '@/composables/testCase/testcasesPort';
 import { useNotification } from '../../../../composables/modal/useNotification';
 import { useAudioConfig } from './useAudioConfig';
 import { useDimensionConfig } from './useDimensionConfig';
-import type { TestCaseFormData, GroupFormData, ExportFormData, AudioItem } from './types';
+import { readCamel } from '@/utils/keyTransform';
+import type { GroupFormData, ExportFormData, AudioInfo, TestCaseFormData } from '@/domain';
 
 export function useTestCaseModal(props: any, emit: any) {
   const notification = useNotification();
@@ -69,7 +70,7 @@ export function useTestCaseModal(props: any, emit: any) {
 
   async function loadTestGroups() {
     try {
-      const groupsRes = await testcasesApi.getGroups();
+      const groupsRes = await testcasesPort.getGroups();
       const groups = groupsRes?.items || [];
       testCaseGroups.value = Array.isArray(groups)
         ? groups.map((group: any) => group.name || group.group || group.id || String(group)).filter(Boolean)
@@ -113,7 +114,7 @@ export function useTestCaseModal(props: any, emit: any) {
 
   function openNoiseDeviceSelectModal() {
     // 优先读取 case 级全局背景噪声的设备，兼容旧 backgroundNoise 字段
-    const bg = (caseFormData.value.config as any)?.background_noise ?? (caseFormData.value.config as any)?.backgroundNoise;
+    const bg = (caseFormData.value.config as any)?.backgroundNoiseCase;
     audioConfig.noiseInitialSelectedDevices.value = bg?.deviceIds || [];
     audioConfig.showNoiseDeviceModal.value = true;
   }
@@ -156,44 +157,46 @@ export function useTestCaseModal(props: any, emit: any) {
     audioConfig.showCrossDeviceModal.value = true;
   }
 
-  function handleAudioSelect(audio: AudioItem) {
+  function handleAudioSelect(audio: AudioInfo) {
     // 优先使用轮次内音频选择的 callback
     if (pendingAudioCallback.value) {
       // 将选中的音频添加到缓存
-      const audioType = (audio as any).audioType || 'dry';
+      const audioType = audio.audioType || 'dry';
       const existing = audioType === 'noise' ? audioConfig.noiseAudios.value : audioConfig.dryAudios.value;
-      if (!existing.find((e: AudioItem) => String(e.id) === String(audio.id))) {
-        existing.push(audio as AudioItem);
+      if (!existing.find(e => String(e.id) === String(audio.id))) {
+        existing.push(audio);
       }
       pendingAudioCallback.value([{ id: String(audio.id), name: audio.name }]);
       pendingAudioCallback.value = null;
       return;
     }
-    // 回退：旧版 flat config 格式
-    if (caseFormData.value.config) {
-      audioConfig.handleAudioSelect(audio, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
+    // 回退：旧版 flat config 格式（audios 与 backgroundNoise 均存在才可回退）
+    const cfg = caseFormData.value.config;
+    if (cfg?.audios && cfg?.backgroundNoise) {
+      audioConfig.handleAudioSelect(audio, cfg.audios, cfg.backgroundNoise);
       caseFormRef.value?.syncConfigFromParent();
     }
   }
 
-  function handleMultipleAudioSelect(audios: AudioItem[]) {
+  function handleMultipleAudioSelect(audios: AudioInfo[]) {
     // 优先使用轮次内音频选择的 callback（传递全部选中音频）
     if (pendingAudioCallback.value) {
       // 将选中的音频添加到缓存，以便 getAudioDuration/getAudioTags 能查到
       audios.forEach(a => {
-        const audioType = (a as any).audioType || 'dry';
+        const audioType = a.audioType || 'dry';
         const existing = audioType === 'noise' ? audioConfig.noiseAudios.value : audioConfig.dryAudios.value;
-        if (!existing.find((e: AudioItem) => String(e.id) === String(a.id))) {
-          existing.push(a as AudioItem);
+        if (!existing.find(e => String(e.id) === String(a.id))) {
+          existing.push(a);
         }
       });
       pendingAudioCallback.value(audios.map(a => ({ id: String(a.id), name: a.name })));
       pendingAudioCallback.value = null;
       return;
     }
-    // 回退：旧版 flat config 格式
-    if (caseFormData.value.config) {
-      audioConfig.handleMultipleAudioSelect(audios, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
+    // 回退：旧版 flat config 格式（audios 与 backgroundNoise 均存在才可回退）
+    const cfg = caseFormData.value.config;
+    if (cfg?.audios && cfg?.backgroundNoise) {
+      audioConfig.handleMultipleAudioSelect(audios, cfg.audios, cfg.backgroundNoise);
       caseFormRef.value?.syncConfigFromParent();
     }
   }
@@ -215,9 +218,8 @@ export function useTestCaseModal(props: any, emit: any) {
     if (caseFormData.value.config) {
       const cfg = caseFormData.value.config as any;
       // 优先写入 case 级全局背景噪声
-      if (cfg.background_noise || cfg.backgroundNoise) {
-        const bg = cfg.background_noise ?? cfg.backgroundNoise;
-        bg.deviceIds = selectedDevices;
+      if (cfg.backgroundNoiseCase) {
+        cfg.backgroundNoiseCase.deviceIds = selectedDevices;
       } else {
         // 回退到旧版 backgroundNoise 字段
         if (!cfg.backgroundNoise) {
@@ -259,10 +261,9 @@ export function useTestCaseModal(props: any, emit: any) {
       caseFormRef.value.applyBatchSpl(spl);
     } else if (caseFormData.value.config?.audios) {
       console.log('[handleBatchSplConfirm] fallback to legacy mode');
+      // 旧版 flat 格式回退：批量设置声压级（e2e 判断由用例级 testType 决定）
       caseFormData.value.config.audios.forEach((audio: any) => {
-        if (audio.testType === 'e2e') {
-          audio.spl = spl;
-        }
+        audio.spl = spl;
       });
       caseFormRef.value?.syncConfigFromParent();
     }
@@ -307,7 +308,7 @@ export function useTestCaseModal(props: any, emit: any) {
   }) {
     try {
       const { getModalManager } = await import('../../../../utils/modalManager');
-      const { MODAL_TYPES } = await import('../../../../shared/types');
+      const { MODAL_TYPES } = await import('../../../../composables/modal/constants');
 
       const modalManager = getModalManager();
       modalManager.open(MODAL_TYPES.AUDIO_PLAYER, {
@@ -440,7 +441,8 @@ export function useTestCaseModal(props: any, emit: any) {
             if (audio.audioId) ids.push(audio.audioId);
           });
         }
-        const noiseId = round.backgroundNoise?.audioId ?? round.backgroundNoise?.audio_id;
+        // 后端原始配置可能残留 snake_case，经 readCamel 兜底归一化（snake_case 字面量收敛于 utils 层）
+        const noiseId = readCamel<string | number>(round.backgroundNoise, 'audioId');
         if (noiseId) ids.push(noiseId);
       });
     }
@@ -455,18 +457,18 @@ export function useTestCaseModal(props: any, emit: any) {
       ids.push(config.backgroundNoise.audioId);
     }
 
-    // algorithm_params 中的 voiceprint 和 interferers 的 audio_id
-    const algoParams = config.algorithm_params;
+    // algorithmParams 中的 voiceprint 和 interferers 的 audioId（adapter 已 camelize）
+    const algoParams = (formData as any).algorithmParams;
     if (algoParams) {
-      const vpObj = algoParams.find?.((p: any) => p.field_code === 'voiceprint')?.field_value;
+      const vpObj = algoParams.find?.((p: any) => p.fieldCode === 'voiceprint')?.fieldValue;
       if (vpObj) {
-        const vpAudioId = vpObj.audio_id || vpObj.audioId;
+        const vpAudioId = vpObj.audioId;
         if (vpAudioId) ids.push(vpAudioId);
       }
-      const interferers = algoParams.find?.((p: any) => p.field_code === 'interferers')?.field_value;
+      const interferers = algoParams.find?.((p: any) => p.fieldCode === 'interferers')?.fieldValue;
       if (Array.isArray(interferers)) {
         interferers.forEach((inf: any) => {
-          const infAudioId = inf.audio_id || inf.audioId;
+          const infAudioId = inf.audioId;
           if (infAudioId) ids.push(infAudioId);
         });
       }

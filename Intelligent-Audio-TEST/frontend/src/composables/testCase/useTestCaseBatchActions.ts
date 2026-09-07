@@ -1,7 +1,9 @@
 import type { Ref } from 'vue';
-import type { TestCase } from '../../shared/types';
+import type { TestCase } from '../../domain';
 import { useTestCaseStore } from '../../store/testCaseStore';
 import { useModalControl, MODAL_TYPES } from '../modal/useModal';
+import { useNotification } from '../modal/useNotification';
+import { TestType, ViewMode } from '@/domain/enums';
 
 /**
  * 测试用例列表批量操作 composable。
@@ -27,6 +29,7 @@ export function useTestCaseBatchActions(
 ) {
   const modalControl = useModalControl();
   const store = useTestCaseStore();
+  const notification = useNotification();
 
   // 本组件内部使用的批量操作上下文（保留原 let 变量语义）
   let currentBatchGroup = '';
@@ -40,7 +43,7 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ): Promise<{ ids: (string | number)[]; isEmpty: boolean; emptyMsg: string; selectionMode: 'selected' | 'all' }> => {
     const groupCaseIds = new Set(filteredCases.map(tc => tc.id));
     const selectedInGroup = selection.filter(id => groupCaseIds.has(id));
@@ -56,15 +59,15 @@ export function useTestCaseBatchActions(
 
     // 前端没有已加载用例 → 从后端拉取全量ID
     const allIds = await store.fetchCaseIdsByFilter({
-      group: viewMode === 'group' ? group : undefined,
-      tag: viewMode === 'tag' ? group : undefined,
+      group: viewMode === ViewMode.GROUP ? group : undefined,
+      tag: viewMode === ViewMode.TAG ? group : undefined,
     });
 
     if (allIds.length === 0) {
       return {
         ids: [],
         isEmpty: true,
-        emptyMsg: viewMode === 'tag' ? `标签"${group}"下没有用例` : `分组"${group}"下没有用例`,
+        emptyMsg: viewMode === ViewMode.TAG ? `标签"${group}"下没有用例` : `分组"${group}"下没有用例`,
         selectionMode: 'all'
       };
     }
@@ -78,7 +81,7 @@ export function useTestCaseBatchActions(
   const handleCopyGroup = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
     if (groupCases.length === 0) {
-      alert('该分组下没有用例');
+      notification.warning('该分组下没有用例');
       return;
     }
 
@@ -97,7 +100,7 @@ export function useTestCaseBatchActions(
       if (confirmed?.confirmed) {
         const result = await store.copyGroupCases(group);
         if (result) {
-          alert(`分组复制成功！\n\n原分组：${group}\n新分组：${group}_copy`);
+          notification.success(`分组复制成功！\n\n原分组：${group}\n新分组：${group}_copy`);
         }
       }
     } catch (error) {
@@ -112,11 +115,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -134,7 +137,7 @@ export function useTestCaseBatchActions(
         roundNumbers: result.roundNumbers,
       });
       if (success) {
-        alert(`已成功更新 ${ids.length} 个用例的声压`);
+        notification.success(`已成功更新 ${ids.length} 个用例的声压`);
       }
     }
   };
@@ -146,11 +149,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -167,7 +170,7 @@ export function useTestCaseBatchActions(
         roundNumbers: result.roundNumbers,
       });
       if (success) {
-        alert(`已成功更新 ${ids.length} 个用例的播放设备`);
+        notification.success(`已成功更新 ${ids.length} 个用例的播放设备`);
       }
     }
   };
@@ -179,11 +182,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -206,7 +209,7 @@ export function useTestCaseBatchActions(
         }
       );
       if (success) {
-        alert(`已成功更新 ${ids.length} 个用例的噪声配置`);
+        notification.success(`已成功更新 ${ids.length} 个用例的噪声配置`);
       }
     }
   };
@@ -218,11 +221,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -230,7 +233,7 @@ export function useTestCaseBatchActions(
       title: '批量设置用例专属参数',
       caseCount: ids.length,
       selectionMode,
-      algorithmType: filteredCases[0]?.algorithm_type || ''
+      algorithmType: filteredCases[0]?.algorithmType || ''
     });
 
     if (result?.algorithmType && result?.params) {
@@ -239,7 +242,7 @@ export function useTestCaseBatchActions(
         roundNumbers: result.roundNumbers,
       });
       if (success) {
-        alert(`已成功更新 ${ids.length} 个用例的专属参数`);
+        notification.success(`已成功更新 ${ids.length} 个用例的专属参数`);
       }
     }
   };
@@ -251,11 +254,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -263,8 +266,8 @@ export function useTestCaseBatchActions(
       title: '批量设置评价维度',
       caseCount: ids.length,
       selectionMode,
-      testType: (filteredCases[0] as any)?.test_type || 'e2e',
-      algorithmType: filteredCases[0]?.algorithm_type || ''
+      testType: filteredCases[0]?.testType || TestType.E2E,
+      algorithmType: filteredCases[0]?.algorithmType || ''
     });
 
     if (result?.dimensions) {
@@ -274,7 +277,7 @@ export function useTestCaseBatchActions(
         targets: result.targets,
       });
       if (success) {
-        alert(`已成功更新 ${ids.length} 个用例的评价维度`);
+        notification.success(`已成功更新 ${ids.length} 个用例的评价维度`);
       }
     }
   };
@@ -286,11 +289,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -309,7 +312,7 @@ export function useTestCaseBatchActions(
         success = await store.batchMoveCases(ids, result.groupId);
       }
       if (success) {
-        alert(`已成功将 ${ids.length} 个用例${result.isCopy ? '复制' : '移动'}到目标分组`);
+        notification.success(`已成功将 ${ids.length} 个用例${result.isCopy ? '复制' : '移动'}到目标分组`);
       }
     }
   };
@@ -321,11 +324,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -341,7 +344,7 @@ export function useTestCaseBatchActions(
     if (confirmed?.confirmed) {
       const success = await store.batchAutoGenerateName(ids);
       if (success) {
-        alert(`已成功为 ${ids.length} 个用例自动生成名称`);
+        notification.success(`已成功为 ${ids.length} 个用例自动生成名称`);
       }
     }
   };
@@ -353,11 +356,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -378,7 +381,7 @@ export function useTestCaseBatchActions(
       }
       if (success) {
         const actionText = result.action === 'add' ? '添加' : result.action === 'remove' ? '移除' : '重命名';
-        alert(`已成功${actionText}标签`);
+        notification.success(`已成功${actionText}标签`);
       }
     }
   };
@@ -390,11 +393,11 @@ export function useTestCaseBatchActions(
     group: string,
     selection: (string | number)[],
     filteredCases: TestCase[],
-    viewMode: 'group' | 'tag' = 'group'
+    viewMode: 'group' | 'tag' = ViewMode.GROUP
   ) => {
     const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selection, filteredCases, viewMode);
     if (isEmpty) {
-      alert(emptyMsg);
+      notification.warning(emptyMsg);
       return;
     }
 
@@ -412,12 +415,12 @@ export function useTestCaseBatchActions(
 
         if (status.success) {
           await store.fetchTestCases();
-          alert(`用例参考更新完成！\n\n成功刷新: ${status.updated} 个\n失败: ${status.failed} 个`);
+          notification.success(`用例参考更新完成！\n\n成功刷新: ${status.updated} 个\n失败: ${status.failed} 个`);
         } else {
-          alert('用例参考更新任务执行失败，请稍后重试');
+          notification.error('用例参考更新任务执行失败，请稍后重试');
         }
       } else if (result === true) {
-        alert(`已成功刷新 ${ids.length} 个用例的参考参数`);
+        notification.success(`已成功刷新 ${ids.length} 个用例的参考参数`);
       }
     }
   };
@@ -425,93 +428,152 @@ export function useTestCaseBatchActions(
   // ===== 分组视图包装方法（兼容原接口签名） =====
   const handleUpdateAlgorithmParams = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchSetAlgorithmParams(group, selectedCases.value, groupCases, 'group');
+    await batchSetAlgorithmParams(group, selectedCases.value, groupCases, ViewMode.GROUP);
   };
 
   const handleUpdatePlaybackDevice = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchSetPlaybackDevice(group, selectedCases.value, groupCases, 'group');
+    await batchSetPlaybackDevice(group, selectedCases.value, groupCases, ViewMode.GROUP);
   };
 
   const handleUpdateSPL = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchSetSPL(group, selectedCases.value, groupCases, 'group');
+    await batchSetSPL(group, selectedCases.value, groupCases, ViewMode.GROUP);
   };
 
   const handleAdjustGroup = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchAdjustGroup(group, selectedCases.value, groupCases, 'group');
+    await batchAdjustGroup(group, selectedCases.value, groupCases, ViewMode.GROUP);
   };
 
   const handleUpdateDimensions = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchSetDimensions(group, selectedCases.value, groupCases, 'group');
+    await batchSetDimensions(group, selectedCases.value, groupCases, ViewMode.GROUP);
   };
 
   const handleUpdateNoise = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchSetNoise(group, selectedCases.value, groupCases, 'group');
+    await batchSetNoise(group, selectedCases.value, groupCases, ViewMode.GROUP);
   };
 
   const handleAutoGenerateName = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchGenerateName(group, selectedCases.value, groupCases, 'group');
+    await batchGenerateName(group, selectedCases.value, groupCases, ViewMode.GROUP);
   };
 
   const handleUpdateTags = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchManageTags(group, selectedCases.value, groupCases, 'group');
+    await batchManageTags(group, selectedCases.value, groupCases, ViewMode.GROUP);
   };
 
   const handleRefreshReference = async (group: string) => {
     const groupCases = filteredTestCases.value[group] || [];
-    await batchRefreshReference(group, selectedCases.value, groupCases, 'group');
+    await batchRefreshReference(group, selectedCases.value, groupCases, ViewMode.GROUP);
+  };
+
+  // ===== 标签视图级操作 =====
+
+  /**
+   * 删除标签（级联删除标签及其下所有用例）
+   */
+  const handleTagDelete = async (tagName: string) => {
+    const tagCases = (filteredTagCases?.value || {})[tagName] || [];
+    const caseCount = tagCases.length;
+
+    try {
+      const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '删除标签',
+        content: `确定要删除标签 "${tagName}" 及其下所有测试用例吗？\n\n该操作将级联删除标签下的 ${caseCount} 个用例，不可恢复！`,
+        confirmText: '删除',
+        cancelText: '取消',
+        danger: true
+      });
+
+      if (confirmed?.confirmed) {
+        await store.deleteTagCases(tagName);
+      }
+    } catch (error) {
+      console.error('删除标签失败:', error);
+      notification.error('删除标签失败');
+    }
+  };
+
+  /**
+   * 复制标签下全部用例（复制为 '<标签名>_copy' 标签，可选同时复制到新分组）
+   */
+  const handleTagCopyGroup = async (tagName: string) => {
+    const tagCases = (filteredTagCases?.value || {})[tagName] || [];
+    if (tagCases.length === 0) {
+      notification.warning(`标签"${tagName}"下没有用例`);
+      return;
+    }
+
+    try {
+      const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '复制标签用例',
+        content: `确定要复制标签 "${tagName}" 下的 ${tagCases.length} 个用例吗？\n\n复制后将生成新标签：${tagName}_copy`,
+        confirmText: '复制',
+        cancelText: '取消',
+        danger: false,
+        checkboxLabel: '同时复制到新分组'
+      });
+
+      if (confirmed?.confirmed) {
+        const success = await store.copyTagCases(tagName, confirmed.checkboxValue === true);
+        if (success) {
+          notification.success(`标签用例复制成功，新标签：${tagName}_copy`);
+        }
+      }
+    } catch (error) {
+      console.error('复制标签用例失败:', error);
+      notification.error('复制标签用例失败');
+    }
   };
 
   // ===== 标签视图包装方法 =====
   const handleTagUpdateSPL = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchSetSPL(tagName, selectedCases.value, tagCases, 'tag');
+    await batchSetSPL(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   const handleTagUpdatePlaybackDevice = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchSetPlaybackDevice(tagName, selectedCases.value, tagCases, 'tag');
+    await batchSetPlaybackDevice(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   const handleTagUpdateNoise = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchSetNoise(tagName, selectedCases.value, tagCases, 'tag');
+    await batchSetNoise(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   const handleTagUpdateAlgorithmParams = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchSetAlgorithmParams(tagName, selectedCases.value, tagCases, 'tag');
+    await batchSetAlgorithmParams(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   const handleTagUpdateDimensions = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchSetDimensions(tagName, selectedCases.value, tagCases, 'tag');
+    await batchSetDimensions(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   const handleTagAdjustGroup = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchAdjustGroup(tagName, selectedCases.value, tagCases, 'tag');
+    await batchAdjustGroup(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   const handleTagAutoGenerateName = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchGenerateName(tagName, selectedCases.value, tagCases, 'tag');
+    await batchGenerateName(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   const handleTagUpdateTags = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchManageTags(tagName, selectedCases.value, tagCases, 'tag');
+    await batchManageTags(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   const handleTagRefreshReference = async (tagName: string) => {
     const tagCases = (filteredTagCases?.value || {})[tagName] || [];
-    await batchRefreshReference(tagName, selectedCases.value, tagCases, 'tag');
+    await batchRefreshReference(tagName, selectedCases.value, tagCases, ViewMode.TAG);
   };
 
   return {
@@ -527,6 +589,9 @@ export function useTestCaseBatchActions(
     handleAutoGenerateName,
     handleUpdateTags,
     handleRefreshReference,
+    // 标签视图级操作
+    handleTagDelete,
+    handleTagCopyGroup,
     // 标签视图包装方法
     handleTagUpdateSPL,
     handleTagUpdatePlaybackDevice,

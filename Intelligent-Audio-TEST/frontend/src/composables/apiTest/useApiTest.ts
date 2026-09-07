@@ -3,12 +3,15 @@ import { storeToRefs } from 'pinia';
 import { useTestCaseStore } from '../../store';
 import { useTestCaseCard } from '../testCase/useTestCaseCard';
 import { useModal } from '../modal/useModal';
-import { testcasesApi } from '../../utils/api';
-import { MODAL_TYPES, type TestCase, type TestCaseFormData } from '../../shared/types';
+import { testcasesPort } from '../testCase/testcasesPort';
+import { MODAL_TYPES } from '../modal/constants';
+import { useNotification } from '../modal/useNotification';
+import type { TestCase, TestCaseFormData } from '../../domain';
 // 引入测试类型枚举，消除魔法字符串
-import { TestType } from '@/shared/types/enums';
+import { TestType } from '../../domain/enums';
 
 export function useApiTest() {
+  const notification = useNotification();
   const testCaseStore = useTestCaseStore();
   const {
     testCases,
@@ -42,7 +45,7 @@ export function useApiTest() {
     if (caseItem.deleted) return false;
     
     // 优先检查记录级 testType 字段
-    const recordType = (caseItem.test_type || caseItem.type || '').toLowerCase();
+    const recordType = (caseItem.testType || caseItem.type || '').toLowerCase();
     if (recordType === TestType.API || recordType === 'api_test') return true;
     
     // 回退：检查 config 中是否有音频（支持 rounds 格式）
@@ -52,7 +55,7 @@ export function useApiTest() {
       // rounds 格式：检查是否有任何 round 包含音频
       return rounds.some((r: any) => Array.isArray(r.audios) && r.audios.length > 0);
     }
-    // 旧 flat 格式
+    // 旧 flat 格式（config 为透传结构，内部 snake_case 字段不转换）
     const audios = config.audios || [];
     return audios.some((a: any) => (a.test_type) === TestType.API);
   };
@@ -82,24 +85,24 @@ export function useApiTest() {
   const runApiTest = async (testCase: TestCase) => {
     console.log('运行API测试:', testCase.id);
     try {
-      await testcasesApi.preview(testCase.id);
+      await testcasesPort.preview(testCase.id);
       return true;
     } catch (error: any) {
       console.error('运行预览失败:', error);
       // 向用户显示错误提示
-      alert(`运行API测试失败: ${error.message || '未知错误'}`);
+      notification.error(`运行API测试失败: ${error.message || '未知错误'}`);
       throw error;
     }
   };
 
   const stopApiTest = async (testCase: TestCase) => {
     try {
-      await testcasesApi.stopPreview(testCase.id);
+      await testcasesPort.stopPreview(testCase.id);
       return true;
     } catch (error: any) {
       console.error('停止预览失败:', error);
       // 向用户显示错误提示
-      alert(`停止API测试失败: ${error.message || '未知错误'}`);
+      notification.error(`停止API测试失败: ${error.message || '未知错误'}`);
       throw error;
     }
   };
@@ -155,7 +158,7 @@ export function useApiTest() {
     } catch (error: any) {
       console.error('保存API测试用例失败:', error);
       // 向用户显示错误提示
-      alert(`保存API测试用例失败: ${error.message || '未知错误'}`);
+      notification.error(`保存API测试用例失败: ${error.message || '未知错误'}`);
       throw error;
     }
   };

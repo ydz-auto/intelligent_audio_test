@@ -1,6 +1,7 @@
 import type { Ref } from 'vue';
-import type { AudioUploadOptions } from '../../shared/types';
+import type { AudioUploadOptions } from '../../domain';
 import type { UploadProcessContext } from './uploadProcess';
+import { TestType } from '@/domain/enums';
 
 /**
  * 文件拖拽上传与上传选项工具
@@ -55,25 +56,27 @@ export async function pickFiles(
 export function expandDimensions(uploadOptions: AudioUploadOptions, options: any): void {
   const apiScopes: ('single' | 'multi')[] = (options as any)?.apiScopes || ['single'];
   const e2eScopes: ('single' | 'multi')[] = (options as any)?.e2eScopes || ['single'];
+  // camelCase 域模型（testType/roundScope）；上行 snake_case 化在 audiosApi 出口 toEvaluationDimensionDto
   const expandDims = (dims: any[], tt: string, scopes: ('single' | 'multi')[]) => {
     if (!dims || dims.length === 0) return [];
     const result: any[] = [];
     for (const d of dims) {
       for (const scope of scopes) {
-        result.push({ ...d, test_type: tt, round_scope: scope });
+        result.push({ ...d, testType: tt, roundScope: scope });
       }
     }
     return result;
   };
   (uploadOptions as any).dimensions = [
-    ...expandDims(options?.apiDimensions || [], 'api', apiScopes),
-    ...expandDims(options?.e2eDimensions || [], 'e2e', e2eScopes),
+    ...expandDims(options?.apiDimensions || [], TestType.API, apiScopes),
+    ...expandDims(options?.e2eDimensions || [], TestType.E2E, e2eScopes),
     ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
   ];
 }
 
 /**
  * 从模态框数据更新上传选项
+ * 模态框输入为 camelCase，AudioUploadOptions 本地状态为 camelCase（W1-D 起）
  */
 export function updateUploadOptionsFromModal(
   uploadOptions: AudioUploadOptions,
@@ -83,20 +86,20 @@ export function updateUploadOptionsFromModal(
     ? data.options
     : ((data && typeof data === 'object' && data.config && typeof data.config === 'object') ? data.config : data);
 
-  if (options?.audioType !== undefined) uploadOptions.audio_type = options.audioType;
-  if (options?.createTestCase !== undefined) uploadOptions.create_test_case = options.createTestCase;
+  if (options?.audioType !== undefined) uploadOptions.audioType = options.audioType;
+  if (options?.createTestCase !== undefined) uploadOptions.createTestCase = options.createTestCase;
   if (data?.tags !== undefined) uploadOptions.tags = data.tags;
-  if (options?.testTypes !== undefined) uploadOptions.test_types = options.testTypes;
-  if (options?.playbackDeviceId !== undefined) (uploadOptions as any).playback_device_id = options.playbackDeviceId;
-  if (options?.defaultSpl !== undefined) (uploadOptions as any).spl = options.defaultSpl;
-  if (options?.groupNameType !== undefined) (uploadOptions as any).group_name_type = options.groupNameType;
-  if (options?.customGroupName !== undefined) (uploadOptions as any).custom_group_name = options.customGroupName;
-  if (options?.inheritTags !== undefined) uploadOptions.inherit_tags = options.inheritTags;
+  if (options?.testTypes !== undefined) uploadOptions.testTypes = options.testTypes;
+  if (options?.playbackDeviceId !== undefined) uploadOptions.playbackDeviceId = options.playbackDeviceId;
+  if (options?.defaultSpl !== undefined) uploadOptions.spl = options.defaultSpl;
+  if (options?.groupNameType !== undefined) uploadOptions.groupNameType = options.groupNameType;
+  if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
+  if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
   expandDimensions(uploadOptions, options);
-  if (options?.noiseAudioId !== undefined) (uploadOptions as any).noise_audio_id = options.noiseAudioId;
-  if (options?.noiseSpl !== undefined) (uploadOptions as any).noise_spl = options.noiseSpl;
-  if (options?.algorithmType !== undefined) uploadOptions.algorithm_type = options.algorithmType;
-  if (options?.algorithmRelations !== undefined) uploadOptions.algorithm_relations = options.algorithmRelations;
-  if (options?.algorithmParams !== undefined) uploadOptions.algorithm_params = options.algorithmParams;
-  if (data?.algorithmRelations !== undefined) uploadOptions.algorithm_relations = data.algorithmRelations;
+  if (options?.noiseAudioId !== undefined) uploadOptions.noiseAudioId = options.noiseAudioId;
+  if (options?.noiseSpl !== undefined) uploadOptions.noiseSpl = options.noiseSpl;
+  if (options?.algorithmType !== undefined) uploadOptions.algorithmType = options.algorithmType;
+  if (options?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = options.algorithmRelations;
+  if (options?.algorithmParams !== undefined) uploadOptions.algorithmParams = options.algorithmParams;
+  if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
 }

@@ -3,19 +3,26 @@ import { ref, computed, watch, type Ref } from 'vue'
 /**
  * 通用分页 composable
  * 统一处理 totalPages 计算、slice 分页、页码导航
+ *
+ * 服务端分页场景：传 options.totalCount（后端返回的总条数 Ref）即可，
+ * totalItems/totalPages 基于该值计算，sourceList 可不传（本地分页才需要）。
  */
 export function usePagination<T>(
-  sourceList: Ref<T[]>,
+  sourceList?: Ref<T[]>,
   pageSize: Ref<number> = ref(10),
-  options?: { currentPage?: Ref<number> }
+  options?: { currentPage?: Ref<number>; totalCount?: Ref<number> }
 ) {
   const currentPage = options?.currentPage ?? ref(1)
-  const totalItems = computed(() => sourceList.value.length)
+  const totalCountRef = options?.totalCount
+  const totalItems = computed(() =>
+    totalCountRef ? totalCountRef.value : (sourceList?.value.length ?? 0)
+  )
   const totalPages = computed(() =>
     Math.max(1, Math.ceil(totalItems.value / pageSize.value))
   )
 
   const paginatedItems = computed(() => {
+    if (!sourceList) return []
     const start = (currentPage.value - 1) * pageSize.value
     const end = start + pageSize.value
     return sourceList.value.slice(start, end)
@@ -31,8 +38,8 @@ export function usePagination<T>(
     goToPage(1)
   }
 
-  // 源列表变化时重置到第一页
-  watch(() => sourceList.value.length, () => {
+  // 总条数变化时重置到第一页（服务端分页时监听 totalCount，否则监听源列表长度）
+  watch(() => (totalCountRef ? totalCountRef.value : (sourceList?.value.length ?? 0)), () => {
     if (currentPage.value > totalPages.value) {
       currentPage.value = 1
     }

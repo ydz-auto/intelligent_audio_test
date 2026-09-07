@@ -1,4 +1,5 @@
-import { APIResponse, ErrorCode } from '../shared/types';
+import { ErrorCode } from '../infrastructure/http/errorCode';
+import type { APIResponse } from '../domain';
 
 export class APIAdapter {
     static async request<T>(channel: string, ...args: any[]): Promise<APIResponse<T>> {
@@ -15,10 +16,10 @@ export class APIAdapter {
                 return response as APIResponse<T>;
             }
 
-            return {success: false, code: ErrorCode.SYSTEM_ERROR, message: 'Invalid response format from backend', detail: JSON.stringify(response)};
+            return {success: false, code: ErrorCode.SYSTEM_ERROR, message: 'Invalid response format from backend', detail: JSON.stringify(response), data: null as T};
         } catch (error: any) {
             console.error(`[APIAdapter] Request failed on channel ${channel}:`, error);
-            return {success: false, code: ErrorCode.NETWORK_ERROR, message: error.message || 'Network communication error', detail: error.stack};
+            return {success: false, code: ErrorCode.NETWORK_ERROR, message: error.message || 'Network communication error', detail: error.stack, data: null as T};
         }
     }
 

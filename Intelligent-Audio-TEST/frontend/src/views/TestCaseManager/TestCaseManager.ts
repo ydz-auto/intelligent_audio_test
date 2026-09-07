@@ -3,11 +3,20 @@ import { storeToRefs } from 'pinia';
 import { useTestCaseCard } from '../../composables/testCase/useTestCaseCard';
 import { useTestCaseStore } from '../../store/testCaseStore';
 import { useDeleteConfirm } from '../../composables/modal/useDeleteConfirm';
-import type { TestCase, ModalSaveData } from '../../shared/types';
+import { useNotification } from '../../composables/modal/useNotification';
+import type { TestCase } from '../../domain';
+import type { ModalSaveData } from '../../composables/modal/types';
 // 引入视图模式枚举，消除魔法字符串
-import { ViewMode } from '@/shared/types/enums';
+import { ViewMode, TestType } from '@/domain/enums';
+
+/** ViewMode 枚举值类型（'group' | 'tag' 等） */
+type ViewModeValue = typeof ViewMode[keyof typeof ViewMode];
+
+/** 视图模式（TestCaseListContainer 仅支持 group/tag 两种） */
+export type TestCaseViewMode = (typeof ViewMode.GROUP | typeof ViewMode.TAG);
 
 export function useTestCaseManager() {
+  const notification = useNotification();
   const {
     formData,
     groupFormData,
@@ -28,7 +37,7 @@ export function useTestCaseManager() {
   const { fetchTestCases, fetchTagView, loadMoreTagView, deleteGroup: deleteGroupFromStore, deleteTestCase, resetGroupCache } = store;
 
   // 视图模式：ViewMode.GROUP 分组视图 | ViewMode.TAG 标签视图
-  const viewMode = ref<ViewMode.GROUP | ViewMode.TAG>(ViewMode.GROUP);
+  const viewMode = ref<TestCaseViewMode>(ViewMode.GROUP);
 
   // 当前筛选条件（由 TestCaseListContainer 上报）
   const currentFilters = ref<{ keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }>({});
@@ -94,7 +103,7 @@ export function useTestCaseManager() {
       }
     } catch (error) {
       console.error('删除分组失败:', error);
-      alert('删除分组失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      notification.error('删除分组失败: ' + (error instanceof Error ? error.message : '未知错误'));
     }
   };
 
@@ -107,7 +116,7 @@ export function useTestCaseManager() {
       }
     } catch (error) {
       console.error('删除测试用例失败:', error);
-      alert('删除测试用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      notification.error('删除测试用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
     }
   };
 
@@ -118,7 +127,7 @@ export function useTestCaseManager() {
     }
   };
 
-  const handleOpenAddModal = async (group = '', options?: { algorithmType?: string; testType?: 'api' | 'e2e' }) => {
+  const handleOpenAddModal = async (group = '', options?: { algorithmType?: string; testType?: typeof TestType[keyof typeof TestType] }) => {
     const result = await openAddTestCaseModal(group, options);
     if (result?.needRefresh) {
       await refreshCurrentView();

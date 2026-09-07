@@ -166,3 +166,12 @@ Intelligent-Audio-TEST/graphify-out/
 
 # Temp diff scratch files
 **/_tmp_*_diff.txt
+
+# Frontend typecheck / audit scratch files
+Intelligent-Audio-TEST/frontend/tsc-*.txt
+Intelligent-Audio-TEST/frontend/.tsc-errors.txt
+Intelligent-Audio-TEST/frontend/typecheck_*.txt
+Intelligent-Audio-TEST/frontend/snake-props.txt
+
+# Split/verify scratch scripts
+/_split_*.*

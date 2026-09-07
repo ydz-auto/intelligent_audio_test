@@ -289,6 +289,13 @@ def _dim_name(dim):
     return getattr(dim, 'name', None)
 
 
+def _dim_type_and_parent(dim):
+    """从维度对象（dict 或 ORM/DTO）读取 (dimension_type, parent_dimension_id)。"""
+    if isinstance(dim, dict):
+        return dim.get('dimension_type') or 'main', dim.get('parent_dimension_id')
+    return getattr(dim, 'dimension_type', None) or 'main', getattr(dim, 'parent_dimension_id', None)
+
+
 def _dim_weight(dim):
     """从维度对象读取 weight。"""
     if isinstance(dim, dict):
