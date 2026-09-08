@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from .llm_call_logger import log_llm_call
 from .constants import (
     LLM_DEFAULT_TIMEOUT,
     LLM_HTTP_CONNECT_TIMEOUT,
@@ -138,12 +139,18 @@ def call_llm(model: str,
              temperature: float = LLM_DEFAULT_TEMPERATURE,
              file_paths: Optional[List[str]] = None,
              system_message: str = '',
+             log_context: Optional[Dict[str, Any]] = None,
              ) -> Dict[str, Any]:
     """调用 OpenAI 兼容的 LLM API（多模态：文本 + 音频/录屏）。
 
     - 音频文件使用 input_audio 格式，视频文件使用 image_url 格式。
     - 支持 stream 模式以兼容 Qwen omni 等模型。
     - 429 / 5xx 指数退避重试。
+    - 每次调用（成功或失败）写一条审计日志（剥离 base64，保留 token/原始请求响应/失败原因）。
+
+    Args:
+        log_context: 调用方上下文（如 {'dimension': 'interruption_llm', 'event_index': 3}），
+                     写入审计日志便于回溯定位。默认 None。
 
     Returns:
         dict: {content, tokens_used, input_token, output_token}
@@ -201,80 +208,92 @@ def call_llm(model: str,
     max_retries = llm_config.get('max_retries', LLM_MAX_RETRIES)
 
     last_exc = None
-    for attempt in range(max_retries + 1):
-        try:
-            with httpx.Client(trust_env=False, timeout=httpx_timeout) as client:
-                response = client.post(url, headers=headers, json=payload)
+    attempts_made = 0
+    try:
+        for attempt in range(max_retries + 1):
+            attempts_made = attempt + 1
+            try:
+                with httpx.Client(trust_env=False, timeout=httpx_timeout) as client:
+                    response = client.post(url, headers=headers, json=payload)
 
-            response.raise_for_status()
+                response.raise_for_status()
 
-            if is_omni:
-                content_text = ''
-                usage_data: Dict[str, Any] = {}
-                for line in response.text.split('\n'):
-                    line = line.strip()
-                    if not line or not line.startswith('data: '):
-                        continue
-                    chunk_str = line[6:]
-                    if chunk_str == '[DONE]':
-                        break
+                if is_omni:
+                    content_text = ''
+                    usage_data: Dict[str, Any] = {}
+                    for line in response.text.split('\n'):
+                        line = line.strip()
+                        if not line or not line.startswith('data: '):
+                            continue
+                        chunk_str = line[6:]
+                        if chunk_str == '[DONE]':
+                            break
+                        try:
+                            chunk = json.loads(chunk_str)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = chunk.get('choices', [])
+                        if choices:
+                            delta = choices[0].get('delta', {})
+                            content_text += delta.get('content', '')
+                        if chunk.get('usage'):
+                            usage_data = chunk['usage']
+                    data = {
+                        'choices': [{'message': {'content': content_text}}],
+                        'usage': usage_data,
+                    }
+                else:
+                    data = response.json()
+                break
+            except httpx.HTTPStatusError as e:
+                last_exc = e
+                status_code = e.response.status_code
+                if 500 <= status_code < 600:
                     try:
-                        chunk = json.loads(chunk_str)
-                    except json.JSONDecodeError:
-                        continue
-                    choices = chunk.get('choices', [])
-                    if choices:
-                        delta = choices[0].get('delta', {})
-                        content_text += delta.get('content', '')
-                    if chunk.get('usage'):
-                        usage_data = chunk['usage']
-                data = {
-                    'choices': [{'message': {'content': content_text}}],
-                    'usage': usage_data,
-                }
-            else:
-                data = response.json()
-            break
-        except httpx.HTTPStatusError as e:
-            last_exc = e
-            status_code = e.response.status_code
-            if 500 <= status_code < 600:
-                try:
-                    err_body = e.response.text[:500]
-                except Exception:
-                    err_body = '<无法读取>'
-                logger.warning(f'LLM API 返回 {status_code}，响应体: {err_body}')
-            if status_code != 429 and not (500 <= status_code < 600):
-                raise
-            if attempt >= max_retries:
-                logger.error(f'LLM API 返回 {status_code}，已达最大重试次数 {max_retries}')
-                raise
-            retry_after = e.response.headers.get('Retry-After')
-            if retry_after:
-                try:
-                    delay = float(retry_after)
-                except ValueError:
+                        err_body = e.response.text[:500]
+                    except Exception:
+                        err_body = '<无法读取>'
+                    logger.warning(f'LLM API 返回 {status_code}，响应体: {err_body}')
+                if status_code != 429 and not (500 <= status_code < 600):
+                    raise
+                if attempt >= max_retries:
+                    logger.error(f'LLM API 返回 {status_code}，已达最大重试次数 {max_retries}')
+                    raise
+                retry_after = e.response.headers.get('Retry-After')
+                if retry_after:
+                    try:
+                        delay = float(retry_after)
+                    except ValueError:
+                        delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+                else:
                     delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
-            else:
+                logger.warning(
+                    f'LLM API 返回 {status_code}，{delay:.1f}s 后重试 '
+                    f'(attempt {attempt + 1}/{max_retries})'
+                )
+                time.sleep(delay)
+            except httpx.RequestError as e:
+                last_exc = e
+                if attempt >= max_retries:
+                    logger.error(f'LLM API 请求失败，已达最大重试次数 {max_retries}')
+                    raise
                 delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
-            logger.warning(
-                f'LLM API 返回 {status_code}，{delay:.1f}s 后重试 '
-                f'(attempt {attempt + 1}/{max_retries})'
-            )
-            time.sleep(delay)
-        except httpx.RequestError as e:
-            last_exc = e
-            if attempt >= max_retries:
-                logger.error(f'LLM API 请求失败，已达最大重试次数 {max_retries}')
-                raise
-            delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
-            logger.warning(
-                f'LLM API 请求异常: {e}，{delay:.1f}s 后重试 '
-                f'(attempt {attempt + 1}/{max_retries})'
-            )
-            time.sleep(delay)
-    else:
-        raise last_exc
+                logger.warning(
+                    f'LLM API 请求异常: {e}，{delay:.1f}s 后重试 '
+                    f'(attempt {attempt + 1}/{max_retries})'
+                )
+                time.sleep(delay)
+        else:
+            raise last_exc
+    except Exception as e:
+        # 失败也记审计日志（含失败原因），再原样抛出，评估按原逻辑失败
+        log_llm_call(model, payload, None, log_context,
+                     status='failed', error=_extract_error(e), attempts=attempts_made)
+        raise
+
+    # 成功：记审计日志（剥离 base64，含 token/原始请求响应）
+    log_llm_call(model, payload, data, log_context,
+                 status='success', error=None, attempts=attempts_made)
 
     return {
         'content': data['choices'][0]['message']['content'],
@@ -282,6 +301,21 @@ def call_llm(model: str,
         'input_token': data.get('usage', {}).get('prompt_tokens', 0),
         'output_token': data.get('usage', {}).get('completion_tokens', 0),
     }
+
+
+def _extract_error(e: Exception) -> Dict[str, Any]:
+    """从异常提取失败原因，用于审计日志"""
+    err: Dict[str, Any] = {
+        'type': type(e).__name__,
+        'message': str(e),
+    }
+    if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
+        err['status_code'] = e.response.status_code
+        try:
+            err['body_snippet'] = e.response.text[:500]
+        except Exception:
+            err['body_snippet'] = '<无法读取>'
+    return err
 
 
 # ─────────── JSON 解析 ───────────

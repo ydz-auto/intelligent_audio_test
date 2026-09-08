@@ -198,6 +198,7 @@ def evaluate_rejection_judge(
             max_tokens=max_tokens,
             temperature=temperature,
             file_paths=file_paths,
+            log_context={'dimension': 'rejection_judge'},
         )
     except Exception as e:
         result['message'] = f'LLM 调用失败: {e}'

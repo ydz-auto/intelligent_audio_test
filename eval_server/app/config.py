@@ -25,6 +25,11 @@ class Config:
     TASKS_DIR = os.path.join(DATA_DIR, 'tasks')          # 按日分文件夹
     ENDPOINTS_FILE = os.path.join(DATA_DIR, 'endpoints.json')
 
+    # LLM 调用审计日志（每次 call_llm 一条 JSONL，记录原始请求/响应/token/失败原因）
+    # 与 LOG_DIR(应用日志) 完全分开，单独存放；永不轮转、不删除
+    LLM_CALL_LOG_DIR = os.path.join(DATA_DIR, 'llm_call_logs')
+    LLM_CALL_LOG_ENABLED = os.environ.get('LLM_CALL_LOG_ENABLED', '1') == '1'
+
     # 上传文件临时目录
     UPLOAD_DIR = os.path.join(DATA_DIR, 'uploads')
 

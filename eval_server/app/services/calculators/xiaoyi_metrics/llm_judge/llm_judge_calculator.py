@@ -81,6 +81,7 @@ def evaluate_with_llm(
         max_tokens=max_tokens,
         temperature=temperature,
         file_paths=filePaths or None,
+        log_context={'dimension': 'llm_judge'},
     )
 
     result = _build_result(response, model)

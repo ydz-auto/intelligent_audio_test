@@ -308,6 +308,7 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
                 max_tokens=max_tokens,
                 temperature=temperature,
                 system_message='You are a precise dialog evaluator.',
+                log_context={'dimension': 'interruption_llm', 'event_index': idx},
             )
             parsed = parse_json(response['content']) or {}
             item['is_real_interruption'] = _bool_field(parsed, 'is_real_interruption')

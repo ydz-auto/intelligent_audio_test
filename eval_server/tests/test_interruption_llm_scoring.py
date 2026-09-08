@@ -6,13 +6,13 @@
   (A) 是否真的打断（is_real_interruption）语义复核 + 简短原因
   (B) 模型恢复回复打分 连贯性/相关性/适应性（0-5，对标 Full-Duplex-Bench GPT-4o Score）
 
-ASR 时间线设计（seg_merge_gap_s=0.5；相邻同侧段间隙 >0.5s，确保打断事件真实发生：
-用户在模型说话期间插入语音）：
+ASR 时间线设计（用户侧阈值 1.5s / 模型侧阈值 0.7s；用户段间隙 >1.5s、模型段间隙 >0.7s，
+确保打断事件真实发生：用户在模型说话期间插入语音）：
   greeting(0.0-0.3) 被开场白过滤剔除
   u_init(1.0-1.8) 初始请求 → recovery_only（不计入打断事件，LLM 不评）
-  m_resp1(2.0-5.0) 模型正在推荐 → u2(3.0-4.6) 打断 → m_recovery2(5.7-7.5) 优秀回复
-  m_active2(8.2-10.2) → u3(8.7-9.3) 打断 → m_recovery3(10.9-11.6) 中等回复
-  m_active3(12.3-14.3) → u4(12.8-13.4) 打断 → m_recovery4(15.0-16.5) 答非所问
+  m_resp1(2.5-5.5) 模型正在推荐 → u2(3.6-5.1) 打断 → m_recovery2(6.3-8.1) 优秀回复
+  m_active2(8.9-10.9) → u3(9.4-10.0) 打断 → m_recovery3(11.7-12.4) 中等回复
+  m_active3(13.2-15.2) → u4(13.7-14.3) 打断 → m_recovery4(16.0-17.5) 答非所问
 
 期望区分度：R2 高分(5) / R3 中分(3-4) / R4 低分(0-2)。
 原始话题：推荐一部适合周末看的电影
@@ -25,35 +25,35 @@ ORIGINAL_TOPIC = '推荐一部适合周末看的电影'
 USER_ASR = [
     {'text': '推荐', 'timestamp': [1.0, 1.4]},
     {'text': '周末看的电影', 'timestamp': [1.4, 1.8]},
-    # u2: 在模型推荐期间打断
-    {'text': '别管电影了', 'timestamp': [3.0, 3.6]},
-    {'text': '附近有什么好吃的', 'timestamp': [3.6, 4.6]},
+    # u2: 在模型推荐期间打断（u_init→u2 间隙 1.8 > 1.5s，不并段）
+    {'text': '别管电影了', 'timestamp': [3.6, 4.2]},
+    {'text': '附近有什么好吃的', 'timestamp': [4.2, 5.1]},
     # u3: 中等打断
-    {'text': '现在几点了', 'timestamp': [8.7, 9.3]},
+    {'text': '现在几点了', 'timestamp': [9.4, 10.0]},
     # u4: 答非所问打断
-    {'text': '你会唱歌吗', 'timestamp': [12.8, 13.4]},
+    {'text': '你会唱歌吗', 'timestamp': [13.7, 14.3]},
 ]
 
 # 模型语音（含开场白 + 被打断的尾巴 + 停顿 + 恢复回复）
-# 注：相邻同侧段间隙 > 0.5s（编排层 seg_merge_gap_s 强制最小 0.5），避免恢复段与下一段合并
+# 注：相邻同侧段间隙 > 0.7s（模型侧默认阈值 0.7），避免恢复段与下一段合并
 MODEL_ASR = [
     # 开场白（被开场白过滤剔除，不作为打断判定依据）
     {'text': '你好', 'timestamp': [0.0, 0.3]},
     # m_resp1：模型正在推荐（u2 打断它）
-    {'text': '我给你推荐', 'timestamp': [2.0, 2.8]},
-    {'text': '奥本海默诺兰执导剧情紧凑', 'timestamp': [2.8, 5.0]},
+    {'text': '我给你推荐', 'timestamp': [2.5, 3.3]},
+    {'text': '奥本海默诺兰执导剧情紧凑', 'timestamp': [3.3, 5.5]},
     # m_recovery2：优秀回复（切题+衔接+主动引导）→ 期望高分
-    {'text': '附近有一家川菜馆评分4.8人均80', 'timestamp': [5.7, 6.9]},
-    {'text': '需要我帮你导航过去吗', 'timestamp': [6.9, 7.5]},
+    {'text': '附近有一家川菜馆评分4.8人均80', 'timestamp': [6.3, 7.5]},
+    {'text': '需要我帮你导航过去吗', 'timestamp': [7.5, 8.1]},
     # m_active2：模型继续说（u3 打断它）
-    {'text': '奥本海默周末看很合适', 'timestamp': [8.2, 10.2]},
+    {'text': '奥本海默周末看很合适', 'timestamp': [8.9, 10.9]},
     # m_recovery3：中等回复（回答了但简短、无上下文衔接）→ 期望中分
-    {'text': '现在是下午三点', 'timestamp': [10.9, 11.6]},
+    {'text': '现在是下午三点', 'timestamp': [11.7, 12.4]},
     # m_active3：模型继续（u4 打断它）
-    {'text': '你想看什么类型的', 'timestamp': [12.3, 14.3]},
+    {'text': '你想看什么类型的', 'timestamp': [13.2, 15.2]},
     # m_recovery4：低分回复（答非所问+兜底话术）→ 期望 0-2
-    {'text': '你好这个功能我还没学会', 'timestamp': [15.0, 15.9]},
-    {'text': '请问您需要什么帮助', 'timestamp': [15.9, 16.5]},
+    {'text': '你好这个功能我还没学会', 'timestamp': [16.0, 16.9]},
+    {'text': '请问您需要什么帮助', 'timestamp': [16.9, 17.5]},
 ]
 
 # 打断事件期望（按 u 出现顺序，仅 interruption 事件，供打印对照；key=合并后 user_text）
@@ -66,7 +66,8 @@ EXPECT = {
 INPUT = {
     'user_asr': USER_ASR,
     'model_asr': MODEL_ASR,
-    'seg_merge_gap_s': 0.5,
+    'user_seg_merge_gap_s': 1.5,
+    'model_seg_merge_gap_s': 0.7,
     'enable_llm_eval': True,
     'original_topic': ORIGINAL_TOPIC,
 }

@@ -132,6 +132,7 @@ class LlmJudgeCalculator(BaseCalculator):
             response = call_llm(
                 model=model, prompt=prompt,
                 max_tokens=max_tokens, temperature=temperature,
+                log_context={'dimension': 'llm_judge'},
             )
             parsed = parse_json(response['content'])
             if parsed:

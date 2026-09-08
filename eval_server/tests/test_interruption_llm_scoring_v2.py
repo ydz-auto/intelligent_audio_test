@@ -10,11 +10,11 @@
   R2 打断(中等:回答了但简短、无上下文衔接) → 期望中分 3-4
   R3 打断(低分:答非所问+兜底话术) → 期望 0-2
 
-ASR 时间线（seg_merge_gap_s=0.5；相邻同侧段间隙 >0.5s）：
+ASR 时间线（用户侧阈值 1.5s / 模型侧阈值 0.7s；用户段间隙 >1.5s、模型段间隙 >0.7s）：
   greeting(0.0-0.3) 被开场白过滤；u_init(1.0-2.0) 初始请求 → recovery_only（不评）
-  m_resp1(2.5-5.5) → u2(3.0-4.5) 打断 → m_recovery2(6.2-8.5) 优秀
-  m_active2(9.2-11.2) → u3(9.7-10.3) 打断 → m_recovery3(11.9-12.7) 中等
-  m_active3(13.4-15.4) → u4(13.9-14.5) 打断 → m_recovery4(16.1-17.8) 答非所问
+  m_resp1(2.5-5.5) → u2(3.6-5.1) 打断 → m_recovery2(6.3-8.4) 优秀
+  m_active2(9.2-11.2) → u3(9.7-10.3) 打断 → m_recovery3(12.0-12.7) 中等
+  m_active3(13.5-15.5) → u4(14.0-14.6) 打断 → m_recovery4(16.3-18.0) 答非所问
 
 用法: cd eval_server && python tests/test_interruption_llm_scoring_v2.py
 """
@@ -25,13 +25,13 @@ ORIGINAL_TOPIC = '帮我规划北京周末两日游'
 USER_ASR = [
     {'text': '帮我规划', 'timestamp': [1.0, 1.5]},
     {'text': '北京周末两日游', 'timestamp': [1.5, 2.0]},
-    # u2: 在模型介绍行程期间打断
-    {'text': '等等', 'timestamp': [3.0, 3.4]},
-    {'text': '今天北京天气怎么样', 'timestamp': [3.4, 4.5]},
+    # u2: 在模型介绍行程期间打断（u_init→u2 间隙 1.6 > 1.5s，不并段）
+    {'text': '等等', 'timestamp': [3.6, 4.0]},
+    {'text': '今天北京天气怎么样', 'timestamp': [4.0, 5.1]},
     # u3: 中等打断
     {'text': '现在几点了', 'timestamp': [9.7, 10.3]},
     # u4: 答非所问打断
-    {'text': '你会做饭吗', 'timestamp': [13.9, 14.5]},
+    {'text': '你会做饭吗', 'timestamp': [14.0, 14.6]},
 ]
 
 MODEL_ASR = [
@@ -41,17 +41,17 @@ MODEL_ASR = [
     {'text': '第一天上午故宫景山', 'timestamp': [2.5, 4.0]},
     {'text': '下午北海第二天颐和园圆明园', 'timestamp': [4.0, 5.5]},
     # m_recovery2：优秀回复（切题+衔接+主动引导回行程）→ 期望高分
-    {'text': '今天北京晴最高28度挺适合出游的', 'timestamp': [6.2, 7.7]},
-    {'text': '想继续看行程安排吗', 'timestamp': [7.7, 8.5]},
+    {'text': '今天北京晴最高28度挺适合出游的', 'timestamp': [6.3, 7.8]},
+    {'text': '想继续看行程安排吗', 'timestamp': [7.8, 8.4]},
     # m_active2：模型继续说（u3 打断它）
     {'text': '比如上午先去故宫', 'timestamp': [9.2, 11.2]},
     # m_recovery3：中等回复（回答了但简短）→ 期望中分
-    {'text': '现在是上午十点', 'timestamp': [11.9, 12.7]},
+    {'text': '现在是上午十点', 'timestamp': [12.0, 12.7]},
     # m_active3：模型继续（u4 打断它）
-    {'text': '下午逛景山', 'timestamp': [13.4, 15.4]},
+    {'text': '下午逛景山', 'timestamp': [13.5, 15.5]},
     # m_recovery4：低分回复（答非所问+兜底）→ 期望 0-2
-    {'text': '抱歉我是个语音助手', 'timestamp': [16.1, 17.0]},
-    {'text': '听不懂您的问题请重新说一遍', 'timestamp': [17.0, 17.8]},
+    {'text': '抱歉我是个语音助手', 'timestamp': [16.3, 17.2]},
+    {'text': '听不懂您的问题请重新说一遍', 'timestamp': [17.2, 18.0]},
 ]
 
 EXPECT = {
@@ -63,7 +63,8 @@ EXPECT = {
 INPUT = {
     'user_asr': USER_ASR,
     'model_asr': MODEL_ASR,
-    'seg_merge_gap_s': 0.5,
+    'user_seg_merge_gap_s': 1.5,
+    'model_seg_merge_gap_s': 0.7,
     'enable_llm_eval': True,
     'original_topic': ORIGINAL_TOPIC,
 }
