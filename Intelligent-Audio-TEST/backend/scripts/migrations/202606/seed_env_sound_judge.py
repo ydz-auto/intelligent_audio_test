@@ -130,6 +130,13 @@ _COMMON_PARAMS = [
      False, None, '裁判错误/成功说明', 99),
 ]
 
+# ── 打断裁判独有输出参数（rejection_judge 不返回 interaction_text，故不进 _COMMON_PARAMS） ──
+_INTERACTION_PARAM = (
+    'ej_interaction', '交互内容', '完整交互文字(带时间戳)', 'text', 'output',
+    'interaction_text', None, 'aux', True,
+    False, None, '用例完整交互文字，query/answer 按时间排序，含 [m:ss; m:ss] 时间戳，如 query [1:20; 1:30]今天天气怎么样', 63,
+)
+
 # ── 公共参数映射 ──
 _COMMON_PARAM_MAPPINGS = [
     ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
@@ -188,7 +195,7 @@ DIMENSIONS = [
         'estimated_exec_time': 120,  # LLM 调用
         'score_unit': '',
         'statistic_method': 'average',
-        'params': _COMMON_PARAMS,
+        'params': _COMMON_PARAMS + [_INTERACTION_PARAM],
         'param_mappings': _COMMON_PARAM_MAPPINGS,
     },
 ]

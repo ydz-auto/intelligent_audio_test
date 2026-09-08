@@ -402,6 +402,36 @@ def build_timeline_text(user_chunks: Optional[List[Dict[str, Any]]] = None,
     return '\n\n'.join(parts)
 
 
+def _fmt_mmss(sec: float) -> str:
+    """秒 → m:ss 显示格式"""
+    sec = int(round(sec))
+    return f'{sec // 60}:{sec % 60:02d}'
+
+
+def build_interaction_text(user_chunks: Optional[List[Dict[str, Any]]],
+                           model_chunks: Optional[List[Dict[str, Any]]]) -> str:
+    """两路词级 ASR 合并为完整交互文字时间线（query/answer + [m:ss; m:ss] 时间戳）。
+
+    与 build_timeline_text（仅用户侧、秒级、供 LLM prompt）不同：
+    本函数面向报告展示，用户=query / 模型=answer，按开始时间排序：
+        query [1:20; 1:30]今天天气怎么样
+        answer [1:31; 1:40]今天天气晴
+
+    词合并为段复用打断指标的 _to_segments（用户 1.5s / 模型 0.7s 间隙阈值），
+    保证与打断判定的分段口径一致。
+    """
+    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption import _to_segments
+
+    lines: List[tuple] = []
+    for chunks, label in ((user_chunks, 'query'), (model_chunks, 'answer')):
+        if not chunks:
+            continue
+        for s in _to_segments(chunks):
+            lines.append((s['start'], f"{label} [{_fmt_mmss(s['start'])}; {_fmt_mmss(s['end'])}]{s['text']}"))
+    lines.sort(key=lambda x: x[0])
+    return '\n'.join(t for _, t in lines)
+
+
 # ─────────── evaluations 归一化 ───────────
 def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
     """从 parsed 中提取 evaluations 列表，归一化 behavior 标签。

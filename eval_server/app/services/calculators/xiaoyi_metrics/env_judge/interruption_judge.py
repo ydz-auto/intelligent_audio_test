@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     call_llm as call_llm_api,
     build_timeline_text,
+    build_interaction_text,
     parse_json,
     parse_evaluations,
     get_asr_chunks,
@@ -130,6 +131,7 @@ def evaluate_interruption_judge(
             'model': str,
             'ai_wav': str,
             'evaluations': [{behavior, reason}, ...],
+            'interaction_text': str,  # 完整交互文字（query/answer + [m:ss; m:ss] 时间戳）
             'behavior_respond': int,   # 回应 → 1, 否则 0
             'behavior_recover': int,   # 恢复 → 1, 否则 0
             'behavior_uncertain': int, # 不确定询问 → 1, 否则 0
@@ -161,6 +163,10 @@ def evaluate_interruption_judge(
     if user_wav and os.path.isfile(user_wav):
         user_chunks = get_asr_chunks(user_wav)
 
+    # ── 完整交互文字（query/answer + 时间戳）：模型侧走词级 ASR，仅用于返回展示，不进 prompt ──
+    model_chunks: Optional[List[Dict[str, Any]]] = get_asr_chunks(ai_wav)
+    interaction_text = build_interaction_text(user_chunks, model_chunks)
+
     timeline_text = build_timeline_text(user_chunks)
     prompt = build_interruption_prompt(timeline_text)
 
@@ -169,6 +175,7 @@ def evaluate_interruption_judge(
         'model': model,
         'ai_wav': ai_wav,
         'evaluations': [],
+        'interaction_text': interaction_text,
         'behavior_respond': 0,
         'behavior_recover': 0,
         'behavior_uncertain': 0,
@@ -186,6 +193,7 @@ def evaluate_interruption_judge(
             max_tokens=max_tokens,
             temperature=temperature,
             file_paths=file_paths,
+            log_context={'dimension': 'interruption_judge'},
         )
     except Exception as e:
         result['message'] = f'LLM 调用失败: {e}'
