@@ -1,15 +1,12 @@
 import os
 import json
-import re
 import time
 import subprocess
-
-from hypium import MatchPattern
 
 from config.config import Config
 from .android_driver import AndroidDriver
 from .device_config import get_device_config
-from .utils import check_stop, u2, log_and_emit, By
+from .utils import check_stop, u2,  By
 
 LOG_DEVICE_PATH = '/storage/media/100/local/files/Docs/Huawei Share'
 LOG_DEVICE_ID = '3QC0124C11000914'
@@ -137,27 +134,41 @@ class PlaudDriver(AndroidDriver):
     @check_stop("post_process")
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """结束处理"""
-        self._log(level='INFO', content=f"--- Finished post-process for Android {device_sn} ---", task_id=task_id, test_case_id=test_case_id)
+        self._log(level='INFO', content=f"--- Starting post-process for Android {device_sn} ---", task_id=task_id, test_case_id=test_case_id)
         driver = self._get_driver(device_sn)
         if not driver:
             return False
         driver.xpath('//*[@content-desc="结束"]').click()
-        time.sleep(0.1)
-        driver.xpath('//*[@content-desc="结束并保存"]').click()
+        # 等待"结束录音?"确认弹窗出现；点击可能因界面切换丢失，未弹出则重试点击"结束"
+        for _ in range(10):
+            if driver.xpath('//*[@content-desc="结束并保存"]').exists:
+                break
+            if driver.xpath('//*[@content-desc="结束"]').exists:
+                driver.xpath('//*[@content-desc="结束"]').click()
+            time.sleep(1)
+        driver.xpath('//*[@content-desc="结束并保存"]').click(timeout=5)
         time.sleep(1)
         while driver.xpath('//*[@content-desc="快传"]').exists:
             time.sleep(1)
-        # 点击最新记录
-        # driver.xpath(
-        #     '//android.view.View[1]/android.view.View[1]/android.view.View[2]/android.widget.ScrollView[1]/android.view.View[1]').click()
-        driver.click(1018 / 2, (1256 + 1319) / 2)
-        driver.xpath('//*[@content-desc="生成"]').wait(10)
-        driver.xpath('//*[@content-desc="生成"]').click()
-        driver.xpath('//*[@content-desc="立即生成"]').wait(10)
-        while driver.xpath('//*[@content-desc="立即生成"]').exists:
-            driver.xpath('//*[@content-desc="立即生成"]').click()
+        # 点击最新记录（列表第一条按日期开头定位，固定坐标会因列表布局变化点错记录）
+        year = time.strftime('%Y')
+        driver.xpath(f'(//*[starts-with(@content-desc, "{year}-")])[1]').click(timeout=10)
+        # 点击"生成"并确认，直到笔记开始生成（生成中横幅或上传音频提示出现）
+        for _ in range(20):
+            if driver.xpath('//*[@content-desc="生成还需几分钟，离开页面不会影响进度"]').exists:
+                break
+            if driver.xpath('//*[contains(@content-desc, "正在上传音频文件")]').exists:
+                break
+            if driver.xpath('//*[@content-desc="立即生成"]').exists:
+                driver.xpath('//*[@content-desc="立即生成"]').click(timeout=2)
+            elif driver.xpath('//*[@content-desc="生成"]').exists:
+                driver.xpath('//*[@content-desc="生成"]').click(timeout=2)
             time.sleep(1)
-        driver.app_stop(self.app_name)
+        # 不退出应用，等待笔记生成完成（长录音显示生成中横幅，短录音先上传音频，两者消失后完成）
+        while (driver.xpath('//*[@content-desc="生成还需几分钟，离开页面不会影响进度"]').exists
+               or driver.xpath('//*[contains(@content-desc, "正在上传音频文件")]').exists):
+            time.sleep(2)
+        driver.xpath('//*[contains(@text, "内容由 AI 生成，仅供参考")]').wait(timeout=600)
         return True
 
     @check_stop("get_results")
@@ -170,13 +181,15 @@ class PlaudDriver(AndroidDriver):
         time.sleep(2)
         driver.app_start(self.app_name)
 
-        driver.click(1018 / 2, (1256 + 1319) / 2)
-        if driver.xpath('//*[@content-desc="生成"]').exists:
-            driver.xpath('//*[@content-desc="生成"]').click(timeout=10)
-            driver.xpath('//*[@content-desc="立即生成"]').wait(10)
-            while driver.xpath('//*[@content-desc="立即生成"]').exists:
-                driver.xpath('//*[@content-desc="立即生成"]').click()
-                time.sleep(1)
+        # post_process 不退出应用，通常已停留在最新笔记详情页；仅在不在笔记页时点击最新记录
+        if not driver.xpath('//*[contains(@text, "内容由 AI 生成，仅供参考")]').exists:
+            driver.click(1018 / 2, (1256 + 1319) / 2)
+            if driver.xpath('//*[@content-desc="生成"]').exists:
+                driver.xpath('//*[@content-desc="生成"]').click(timeout=10)
+                driver.xpath('//*[@content-desc="立即生成"]').wait(10)
+                while driver.xpath('//*[@content-desc="立即生成"]').exists:
+                    driver.xpath('//*[@content-desc="立即生成"]').click()
+                    time.sleep(1)
 
         time.sleep(2)
         last_press_home_time = time.time()
@@ -194,10 +207,8 @@ class PlaudDriver(AndroidDriver):
         driver.xpath('//*[contains(@text, "内容由 AI 生成，仅供参考")]').wait(timeout=5)
         # 要等很久，所以要解锁
         self.unlock(device_sn, **kwargs)
-        # 点击导出
-        driver.xpath(
-            '//android.widget.FrameLayout[1]/android.view.View[1]/android.view.View[1]/android.view.View[1]/android.view.View[1]/android.view.View[1]/android.widget.ImageView[2]').click(
-            timeout=10)
+        # 点击导出：笔记页顶栏"分享" → 弹层"导出文件"组的"转写"
+        driver.xpath('//*[@content-desc="分享"]').click(timeout=10)
         time.sleep(1)
         driver.xpath('(//*[@content-desc="转写"])[2]').click(timeout=10)
         driver.xpath('//*[@content-desc="导出转写"]').wait(timeout=10)
