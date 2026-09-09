@@ -37,6 +37,8 @@ class EngineAudioPrepareMixin:
         )
 
         _repo = AudioRepository()
+        # 清理历史遗留的重采样临时文件，防止跨任务长期累积占用磁盘/内存
+        self._cleanup_stale_temp_files()
 
         # 1. 收集 target_rate 集合
         target_rates = set()
@@ -123,6 +125,49 @@ class EngineAudioPrepareMixin:
         return result
 
     @staticmethod
+    def _cleanup_stale_temp_files(max_age_seconds=1800, grace_seconds=60):
+        """清理残留的重采样临时文件（磁盘/内存管理）。
+
+        删除条件（满足其一即删除）：
+        - 文件 mtime 超过 max_age_seconds（过期文件，涵盖历史进程遗留）
+        - 文件属于当前进程且其创建线程已不存在，并已超过 grace_seconds
+          （本进程上次 prepare 遗留；grace 防止误删刚写入、线程刚好退出的新文件）
+
+        临时文件名格式：prepare_{audio_id}_{target_rate}_{pid}_{thread_ident}.wav。
+        清理失败不影响主流程。
+        """
+        import threading
+        import time
+        try:
+            resample_temp_dir = os.environ.get(
+                'RESAMPLE_TEMP_PATH',
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
+            if not os.path.isdir(resample_temp_dir):
+                return
+            now = time.time()
+            current_pid = str(os.getpid())
+            live_idents = {t.ident for t in threading.enumerate() if t.ident is not None}
+            for name in os.listdir(resample_temp_dir):
+                if not (name.startswith('prepare_') and name.endswith('.wav')):
+                    continue
+                path = os.path.join(resample_temp_dir, name)
+                try:
+                    if now - os.path.getmtime(path) > max_age_seconds:
+                        os.remove(path)
+                        continue
+                    # 同进程残留：prepare_{audio_id}_{target_rate}_{pid}_{thread_ident}.wav
+                    parts = name.rsplit('_', 2)
+                    if (len(parts) == 3 and parts[1] == current_pid
+                            and parts[2][:-4].isdigit()
+                            and int(parts[2][:-4]) not in live_idents
+                            and now - os.path.getmtime(path) > grace_seconds):
+                        os.remove(path)
+                except OSError:
+                    continue
+        except Exception:
+            pass
+
+    @staticmethod
     def _resolve_device_unique_id(dev_id, get_playback_device_via_grpc, find_playback_device_by_unique_id):
         """把播放设备 ID（DB 主键或 device_unique_id）解析为 device_unique_id。"""
         try:
@@ -151,32 +196,45 @@ class EngineAudioPrepareMixin:
         return None
 
     def _resample_to_file(self, src_path, target_rate, nchannels, audio_id):
-        """将单个音频文件重采样到 target_rate，写入临时文件并返回路径。"""
+        """将单个音频文件重采样到 target_rate，写入临时文件并返回路径。
+
+        分块流式实现：逐块读取 -> 逐块重采样 -> 逐块写入，
+        避免整文件读入内存产生多份 numpy 副本（内存优化）。
+        分块边界处的重采样可能有轻微接缝，功能等价性优先。
+        """
         import wave
         import numpy as np
         import threading
+        orig_sr = None
         try:
             resample_temp_dir = os.environ.get(
                 'RESAMPLE_TEMP_PATH',
                 os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
             os.makedirs(resample_temp_dir, exist_ok=True)
 
-            with wave.open(src_path, 'rb') as wf:
-                orig_sr = wf.getframerate()
-                frames = wf.readframes(wf.getnframes())
-
-            audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
-            resampled_np = self._get_driver().resample_audio_data(audio_np, orig_sr, target_rate)
-            resampled_np = np.clip(resampled_np, -32768, 32767).astype(np.int16)
-
             temp_file = os.path.join(
                 resample_temp_dir,
                 f'prepare_{audio_id}_{target_rate}_{os.getpid()}_{threading.get_ident()}.wav')
-            with wave.open(temp_file, 'wb') as out_wf:
-                out_wf.setnchannels(nchannels)
-                out_wf.setsampwidth(2)
-                out_wf.setframerate(target_rate)
-                out_wf.writeframes(resampled_np.tobytes())
+
+            with wave.open(src_path, 'rb') as wf:
+                orig_sr = wf.getframerate()
+                # 分块大小：源采样率对应 1 秒音频
+                chunk_frames = orig_sr if orig_sr else 44100
+
+                with wave.open(temp_file, 'wb') as out_wf:
+                    out_wf.setnchannels(nchannels)
+                    out_wf.setsampwidth(2)
+                    out_wf.setframerate(target_rate)
+
+                    while True:
+                        frames = wf.readframes(chunk_frames)
+                        if not frames:
+                            break
+                        # 块内变量作用域自然释放，避免多份 numpy 副本长期驻留
+                        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+                        resampled_np = self._get_driver().resample_audio_data(audio_np, orig_sr, target_rate)
+                        resampled_np = np.clip(resampled_np, -32768, 32767).astype(np.int16)
+                        out_wf.writeframes(resampled_np.tobytes())
 
             log_and_emit('DEBUG', 'audio_engine',
                          f"[prepare_audios] resampled audio_id={audio_id}: {orig_sr} -> {target_rate}, "

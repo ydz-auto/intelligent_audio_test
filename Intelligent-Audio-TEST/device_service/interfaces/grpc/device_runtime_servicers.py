@@ -152,14 +152,18 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
 
     def DestroyDriver(self, request, context=None):
         """销毁设备驱动"""
+        task_id = getattr(request, 'task_id', None)
         try:
-            task_id = request.task_id
             self.factory.cleanup_devices(task_id)
             return e2e_pb.DestroyDriverResponse(
                 success=True, message="ok", data=_dumps({"task_id": str(task_id), "cleaned": True})
             )
         except Exception as e:
             return e2e_pb.DestroyDriverResponse(success=False, message=str(e), data="")
+        finally:
+            # 兜底: 即使 cleanup 中途异常,也确保 _task_device_map 条目被移除并关闭连接。
+            # cleanup_devices 幂等(task_id 不存在时直接返回),重复调用安全。
+            self.factory.cleanup_devices(task_id)
 
     def RegisterTaskEvents(self, request, context=None):
         """注册任务事件回调"""

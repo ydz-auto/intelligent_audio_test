@@ -23,6 +23,10 @@ HDC_TIMEOUT = config_manager.get_value('device_timing', 'hdc_timeout', 30)
 LONG_HDC_TIMEOUT = config_manager.get_value('device_timing', 'long_hdc_timeout', 300)
 EXTRA_LONG_HDC_TIMEOUT = config_manager.get_value('device_timing', 'extra_long_hdc_timeout', 120)
 
+# 安卓驱动缓存设备连接上限(条)：超过后按 LRU 淘汰最久未用的设备连接,
+# 防止长跑服务中 _drivers 连接只增不减导致内存泄漏
+MAX_CACHED_DEVICES = config_manager.get_value('device_timing', 'max_cached_devices', 10)
+
 # —— 语音通话驱动（小艺/豆包/ChatGPT）参数 ——
 # AI 回复检测（RMS 能量法，基于 AI PCM 尾部能量）
 RMS_THRESHOLD = config_manager.get_value('device_timing', 'rms_threshold', 300)

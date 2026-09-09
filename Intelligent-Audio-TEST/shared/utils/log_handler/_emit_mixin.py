@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta
 
 from shared.utils.log_handler._constants import (
     CONSOLE_LOG_MAX_LENGTH,
+    LOG_CONTENT_MAX_LENGTH,
 )
 
 
@@ -75,13 +76,17 @@ class _EmitMixin:
                 self.recent_logs = {fp: ts for fp, ts in self.recent_logs.items() if current_time - ts < self.log_ttl}
 
             # 准备异步写入的数据
+            # 超长日志截断：超过 LOG_CONTENT_MAX_LENGTH 字符时截断并追加标记，避免大日志长驻队列/DB 导致内存膨胀
+            _content = log_message
+            if len(_content) > LOG_CONTENT_MAX_LENGTH:
+                _content = _content[:LOG_CONTENT_MAX_LENGTH] + '... [truncated]'
             log_data = {
                 'time': datetime.now(timezone(timedelta(hours=8))),
                 'level': record.levelname.upper(),
                 'module': record.module if hasattr(record, 'module') else 'unknown',
                 'category': getattr(record, 'category', 'system').lower(),
                 'source': getattr(record, 'source', 'backend').lower(),
-                'content': log_message,
+                'content': _content,
                 'task_id': task_id,
                 'device_id': getattr(record, 'device_id', None),
                 'api_id': getattr(record, 'api_id', None),
@@ -91,11 +96,18 @@ class _EmitMixin:
                 'push_to_websocket': getattr(record, 'push_to_websocket', True)
             }
 
-            # 放入队列：非阻塞，满时打印 stderr（不被 console_log 开关屏蔽），便于发现丢日志
+            # 放入队列：非阻塞，满时丢弃最旧一条再入队最新日志（保证最新日志不丢），并打印 stderr 便于发现丢日志
             try:
                 self.queue.put_nowait(log_data)
             except queue.Full:
-                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - WARN - Log queue full (maxsize={self.queue.maxsize}), dropping log: [{log_data.get('level')}] {log_data.get('module')} - {log_data.get('content')[:200]}", file=sys.stderr)
+                try:
+                    # 队列满：丢弃最旧一条（FIFO 队头），腾出空间入队最新日志
+                    self.queue.get_nowait()
+                    self.queue.put_nowait(log_data)
+                except (queue.Empty, queue.Full):
+                    # 并发竞争下其他线程已取空/再次塞满：直接丢弃新日志并计数
+                    self._dropped_log_count = getattr(self, '_dropped_log_count', 0) + 1
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - WARN - Log queue full (maxsize={self.queue.maxsize}), dropped oldest log to make room for latest: [{log_data.get('level')}] {log_data.get('module')} - {log_data.get('content')[:200]}", file=sys.stderr)
             except Exception as qe:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - put queue failed: {qe}", file=sys.stderr)
 

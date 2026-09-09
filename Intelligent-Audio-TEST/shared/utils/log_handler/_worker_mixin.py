@@ -101,7 +101,8 @@ class _WorkerMixin:
             if self.enable_console_log:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DEBUG - Batch saved {len(batch)} logs via gRPC.")
         except Exception as e:
-            for data in batch:
-                data['id'] = None
-                data['_db_failed'] = True
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - gRPC ERROR - {str(e)}")
+            # 丢弃失败批次（原地清空，防止失败日志被反复重试导致 batch 无限增长/内存膨胀），失败计数 + 退避 1 秒
+            self._batch_fail_count = getattr(self, '_batch_fail_count', 0) + 1
+            batch.clear()
+            time.sleep(1.0)

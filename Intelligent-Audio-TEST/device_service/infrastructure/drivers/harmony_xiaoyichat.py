@@ -3,7 +3,7 @@ import subprocess
 import os
 import re
 import wave
-import struct
+import array
 import base64
 import tempfile
 import shutil
@@ -173,17 +173,23 @@ class Xiaoyilivechat(HarmonyDriver):
 
         wav_path = os.path.splitext(pcm_path)[0] + '.wav'
         try:
-            with open(pcm_path, 'rb') as f:
-                pcm_data = f.read()
-            # 校验数据长度对齐到帧大小, 避免尾部不完整帧导致 wave 写入异常
             frame_size = sample_width * channels
-            if frame_size > 0 and len(pcm_data) % frame_size != 0:
-                pcm_data = pcm_data[:len(pcm_data) - (len(pcm_data) % frame_size)]
+            # 分块读取写入,避免一次性把整个 pcm 读入内存(长音频可到数百 MB)
+            chunk_bytes = sample_rate * frame_size  # 每次读 1 秒
             with wave.open(wav_path, 'wb') as wf:
                 wf.setnchannels(channels)
                 wf.setsampwidth(sample_width)
                 wf.setframerate(sample_rate)
-                wf.writeframes(pcm_data)
+                with open(pcm_path, 'rb') as f:
+                    while True:
+                        raw = f.read(chunk_bytes)
+                        if not raw:
+                            break
+                        # 校验数据长度对齐到帧大小, 避免尾部不完整帧导致 wave 写入异常
+                        raw = raw[:len(raw) - (len(raw) % frame_size)]
+                        if not raw:
+                            break
+                        wf.writeframes(raw)
             self._log(level='INFO',
                       content=f"pcm转wav成功: {wav_path} (sr={sample_rate} ch={channels} bw={sample_width})",
                       task_id=task_id, test_case_id=test_case_id)
@@ -208,21 +214,29 @@ class Xiaoyilivechat(HarmonyDriver):
             return None
         wav_path = os.path.splitext(pcm_path)[0] + '.wav'
         try:
-            with open(pcm_path, 'rb') as f:
-                pcm_data = f.read()
             frame_size = sample_width * channels
-            if frame_size > 0 and len(pcm_data) % frame_size != 0:
-                pcm_data = pcm_data[:len(pcm_data) - (len(pcm_data) % frame_size)]
+            # 分块读取 + array 解样本,避免全量 struct.unpack 放大内存
+            # (20 分钟 pcm 全量解包成 int 元组峰值可达 ~800 MB, 分块后恒定 ~1 秒样本量)
+            chunk_bytes = sample_rate * frame_size  # 每次读 1 秒
             if extract_channel is not None:
-                # 抽单声道: 全部 16-bit 样本解包后按下标跨步取目标声道
-                total = len(pcm_data) // 2  # s16le 每样本 2 字节
-                samples = struct.unpack('<' + 'h' * total, pcm_data)
-                mono = samples[extract_channel::channels]
+                # 抽单声道: 分块取目标声道(隔 channels 取一),逐块写保持 mono 流
                 with wave.open(wav_path, 'wb') as wf:
                     wf.setnchannels(1)
                     wf.setsampwidth(sample_width)
                     wf.setframerate(sample_rate)
-                    wf.writeframes(struct.pack('<' + 'h' * len(mono), *mono))
+                    with open(pcm_path, 'rb') as f:
+                        while True:
+                            raw = f.read(chunk_bytes)
+                            if not raw:
+                                break
+                            # 对齐到完整帧, 避免尾部不完整帧干扰声道跨步
+                            raw = raw[:len(raw) - (len(raw) % frame_size)]
+                            if not raw:
+                                break
+                            samples = array.array('h')
+                            samples.frombytes(raw)
+                            mono = samples[extract_channel::channels]
+                            wf.writeframes(mono.tobytes())
                 self._log(level='INFO',
                           content=(f"pcm转wav成功(抽声道{extract_channel}/{channels}): {wav_path} "
                                    f"(sr={sample_rate} mono bw={sample_width})"),
@@ -232,7 +246,15 @@ class Xiaoyilivechat(HarmonyDriver):
                     wf.setnchannels(channels)
                     wf.setsampwidth(sample_width)
                     wf.setframerate(sample_rate)
-                    wf.writeframes(pcm_data)
+                    with open(pcm_path, 'rb') as f:
+                        while True:
+                            raw = f.read(chunk_bytes)
+                            if not raw:
+                                break
+                            raw = raw[:len(raw) - (len(raw) % frame_size)]
+                            if not raw:
+                                break
+                            wf.writeframes(raw)
                 self._log(level='INFO',
                           content=(f"pcm转wav成功(定参): {wav_path} "
                                    f"(sr={sample_rate} ch={channels} bw={sample_width})"),
@@ -552,7 +574,11 @@ class Xiaoyilivechat(HarmonyDriver):
             raw = base64.b64decode(r.stdout)
             if len(raw) < 4:
                 return None, size
-            samples = struct.unpack('<' + 'h' * (len(raw) // 2), raw)
+            # 只读尾部窗口,用 array 解样本避免全量 tuple 放大内存
+            frame_size = ch * sw
+            raw = raw[:len(raw) - (len(raw) % frame_size)]
+            samples = array.array('h')
+            samples.frombytes(raw)
             mono = samples[0::ch]  # 取第一声道(ch=1 取全部, ch=2 取左声道)
             rms = (sum(s * s for s in mono) / len(mono)) ** 0.5 if mono else 0
             return rms, size
@@ -586,11 +612,19 @@ class Xiaoyilivechat(HarmonyDriver):
                 capture_output=True, timeout=RMS_SCAN_HDC_TIMEOUT,
             )
             raw = base64.b64decode(r.stdout)
-            samples = struct.unpack('<' + 'h' * (len(raw) // 2), raw)
-            mono = samples[0::ch]  # 取第一声道(ch=1 取全部, ch=2 取左声道)
+            # 分窗解析: 每 0.5s 窗按帧对齐读入,窗内解样本取第一声道算 RMS,
+            # 处理完即丢弃,避免全量 unpack 放大内存(15s 双声道 48k 全量解包峰值可达 ~50 MB)
+            frame_size = ch * sw
+            raw = raw[:len(raw) - (len(raw) % frame_size)]
             win = int(0.5 * sr)
-            for i in range(0, len(mono), win):
-                c = mono[i:i + win]
+            win_bytes = win * frame_size  # 每窗字节数(含全部声道)
+            for i in range(0, len(raw), win_bytes):
+                c_raw = raw[i:i + win_bytes]
+                if len(c_raw) < frame_size:
+                    break
+                samples = array.array('h')
+                samples.frombytes(c_raw)
+                c = samples[0::ch]  # 取第一声道(ch=1 取全部, ch=2 取左声道)
                 if not c:
                     break
                 rms = (sum(s * s for s in c) / len(c)) ** 0.5

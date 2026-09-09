@@ -117,11 +117,11 @@ def get_engine():
     return _engine
 
 
-def init_db(pool_size=10):
+def init_db(pool_size=3):
     """初始化数据库连接池。
 
     Args:
-        pool_size: 连接池大小
+        pool_size: 连接池大小（默认 3，配合 max_overflow=5 上限 8 条，控制内存占用）
 
     Returns:
         scoped_session 对象
@@ -136,7 +136,7 @@ def init_db(pool_size=10):
         pool_size=pool_size,
         pool_recycle=3600,
         pool_pre_ping=True,
-        max_overflow=20,
+        max_overflow=5,
     )
 
     # 绑定 session 工厂到 engine

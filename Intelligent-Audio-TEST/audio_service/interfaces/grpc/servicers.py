@@ -243,8 +243,7 @@ class PlaybackServiceServicer(e2e_grpc.PlaybackServiceServicer):
                     data=_dumps({"result": result, "action": action, "timestamps": timestamps}),
                 )
             if action == 'stop_background_noise':
-                self.orchestrator.stop_background_noise(task_id)
-                timestamps = self.orchestrator.get_background_noise_timestamps(task_id) or {}
+                timestamps = self.orchestrator.stop_background_noise(task_id) or {}
                 return e2e_pb.StartPlaybackResponse(
                     success=True, message="ok",
                     data=_dumps({"result": True, "action": action, "timestamps": timestamps}),

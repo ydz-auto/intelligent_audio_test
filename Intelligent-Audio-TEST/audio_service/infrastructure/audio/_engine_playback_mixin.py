@@ -49,6 +49,18 @@ class EnginePlaybackMixin:
             "stop_event": stop_event
         }
 
+        # 播放完成后自动清理注册表，避免任务结束后条目常驻导致内存泄漏
+        def _cleanup_after_done(_fut, _task_id=task_id, _player_type=player_type):
+            players = self.active_players.get(_task_id)
+            if players is not None:
+                entry = players.get(_player_type)
+                if entry is not None and entry.get('future') is _fut:
+                    players.pop(_player_type, None)
+                    if not players:
+                        self.active_players.pop(_task_id, None)
+
+        future.add_done_callback(_cleanup_after_done)
+
         return future
 
     def _play_device_audios(self, device_index, audio_list_with_delays, initial_delay,
@@ -190,6 +202,18 @@ class EnginePlaybackMixin:
                 "playback_finished_event": playback_finished_event,
             }
 
+            # 播放完成后自动清理注册表，避免 device_* 条目任务结束后常驻导致内存泄漏
+            def _cleanup_after_done(_fut, _dev_idx=dev_idx):
+                players = self.active_players.get(task_id)
+                if players is not None:
+                    entry = players.get(f'device_{_dev_idx}')
+                    if entry is not None and entry.get('future') is _fut:
+                        players.pop(f'device_{_dev_idx}', None)
+                        if not players:
+                            self.active_players.pop(task_id, None)
+
+            future.add_done_callback(_cleanup_after_done)
+
             futures.append(future)
             playback_started_events.append(playback_started_event)
             playback_finished_events.append(playback_finished_event)
@@ -220,14 +244,20 @@ class EnginePlaybackMixin:
                         if p_type.startswith(prefix):
                             self.active_players[task_id_key][p_type]["stop_event"].set()
                             del self.active_players[task_id_key][p_type]
+                    if not self.active_players[task_id_key]:
+                        del self.active_players[task_id_key]
                 elif player_type in self.active_players[task_id_key]:
                     self.active_players[task_id_key][player_type]["stop_event"].set()
                     del self.active_players[task_id_key][player_type]
+                    if not self.active_players[task_id_key]:
+                        del self.active_players[task_id_key]
                 else:
                     for p_type in list(self.active_players[task_id_key].keys()):
                         if 'noise' in p_type.lower():
                             self.active_players[task_id_key][p_type]["stop_event"].set()
                             del self.active_players[task_id_key][p_type]
+                    if not self.active_players[task_id_key]:
+                        del self.active_players[task_id_key]
             else:
                 for p_type in list(self.active_players[task_id_key].keys()):
                     self.active_players[task_id_key][p_type]["stop_event"].set()

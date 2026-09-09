@@ -31,12 +31,53 @@ class AudioDriver(ABC):
     def calculate_gain_compensation(self, file_path):
         """计算增益补偿（根据音频实际 RMS 调整增益，确保达到预期的 SPL）"""
         try:
-            audio_seg = AudioSegment.from_file(file_path)
-            current_rms_db = audio_seg.dBFS
-            gain_db = -30.0 - current_rms_db
-            gain_compensation = 10 ** (gain_db / 20)
-            log_and_emit('DEBUG', 'audio_engine', f"[calculate_gain_compensation] file={os.path.basename(file_path)}, current_rms_db={current_rms_db:.2f} dBFS, target=-30 dBFS, gain_db={gain_db:.2f} dB, gain_compensation={gain_compensation:.4f} (linear)", category='audio')
-            return gain_compensation
+            import math
+            try:
+                # 优先使用 wave 分块读取计算 RMS，避免整文件解码（内存优化）
+                with wave.open(file_path, 'rb') as wf:
+                    sampwidth = wf.getsampwidth()
+                    framerate = wf.getframerate() or 44100
+                    # 分块大小：1 秒音频
+                    chunk_frames = framerate
+
+                    sum_sq = 0.0
+                    total_samples = 0
+                    while True:
+                        frames = wf.readframes(chunk_frames)
+                        if not frames:
+                            break
+                        # 与播放路径一致归一化到 int16 幅度范围；块内变量作用域自然释放
+                        if sampwidth == 1:
+                            audio_np = np.frombuffer(frames, dtype=np.uint8).astype(np.float32)
+                            audio_np = (audio_np - 128.0) * 256.0
+                        elif sampwidth == 2:
+                            audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+                        elif sampwidth == 4:
+                            audio_np = np.frombuffer(frames, dtype=np.int32).astype(np.float32)
+                            audio_np = audio_np / 65536.0
+                        else:
+                            audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+                        sum_sq += float(np.sum(audio_np * audio_np))
+                        total_samples += len(audio_np)
+
+                    if total_samples <= 0:
+                        return 1.0
+
+                    max_amplitude = 32768.0
+                    rms = math.sqrt(sum_sq / total_samples)
+                    current_rms_db = 20 * math.log10(rms / max_amplitude) if rms > 0 else -999.0
+                    gain_db = -30.0 - current_rms_db
+                    gain_compensation = 10 ** (gain_db / 20)
+                    log_and_emit('DEBUG', 'audio_engine', f"[calculate_gain_compensation] file={os.path.basename(file_path)}, current_rms_db={current_rms_db:.2f} dBFS, target=-30 dBFS, gain_db={gain_db:.2f} dB, gain_compensation={gain_compensation:.4f} (linear)", category='audio')
+                    return gain_compensation
+            except wave.Error:
+                # 非 PCM WAV（mp3 等）wave 模块不支持，回退 pydub 整文件解码
+                audio_seg = AudioSegment.from_file(file_path)
+                current_rms_db = audio_seg.dBFS
+                gain_db = -30.0 - current_rms_db
+                gain_compensation = 10 ** (gain_db / 20)
+                log_and_emit('DEBUG', 'audio_engine', f"[calculate_gain_compensation] file={os.path.basename(file_path)}, current_rms_db={current_rms_db:.2f} dBFS, target=-30 dBFS, gain_db={gain_db:.2f} dB, gain_compensation={gain_compensation:.4f} (linear)", category='audio')
+                return gain_compensation
         except Exception as e:
             log_and_emit('WARNING', 'audio_engine', f"Failed to calculate RMS for gain adjustment: {e}", category='audio')
             return 1.0
@@ -240,36 +281,47 @@ class PyAudioDriver(AudioDriver):
             else:
                 try:
                     wf.rewind()
-                    audio_data = wf.readframes(wf.getnframes())
                     sampwidth = wf.getsampwidth()
-                    # 根据采样宽度选择 dtype，统一归一化到 int16 幅度范围 [-32768, 32767]
-                    if sampwidth == 1:
-                        audio_np = np.frombuffer(audio_data, dtype=np.uint8).astype(np.float32)
-                        audio_np = (audio_np - 128.0) * 256.0  # uint8 中心在128，转到 int16 范围
-                    elif sampwidth == 2:
-                        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
-                    elif sampwidth == 4:
-                        audio_np = np.frombuffer(audio_data, dtype=np.int32).astype(np.float32)
-                        audio_np = audio_np / 65536.0  # int32 -> int16 范围
-                    else:
-                        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
-
-                    resampled_np = self.resample_audio_data(audio_np, file_rate, target_rate)
-                    resampled_np = np.clip(resampled_np, -32768, 32767).astype(np.int16)
+                    # 分块大小：源采样率对应 1 秒音频
+                    chunk_frames = file_rate if file_rate else 44100
 
                     temp_file = os.path.join(resample_temp_dir, f'resampled_{i}_{os.getpid()}_{threading.current_thread().ident}.wav')
                     log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Resampled temp file path: {temp_file}", category='audio')
+                    total_in = 0
+                    total_out = 0
                     with wave.open(temp_file, 'wb') as resampled_wf:
                         resampled_wf.setnchannels(audio_file_channels[i])
                         resampled_wf.setsampwidth(2)
                         resampled_wf.setframerate(target_rate)
-                        resampled_wf.writeframes(resampled_np.tobytes())
+
+                        while True:
+                            audio_data = wf.readframes(chunk_frames)
+                            if not audio_data:
+                                break
+                            # 根据采样宽度选择 dtype，统一归一化到 int16 幅度范围 [-32768, 32767]
+                            # 块内变量作用域自然释放，避免多份 numpy 副本长期驻留
+                            if sampwidth == 1:
+                                audio_np = np.frombuffer(audio_data, dtype=np.uint8).astype(np.float32)
+                                audio_np = (audio_np - 128.0) * 256.0  # uint8 中心在128，转到 int16 范围
+                            elif sampwidth == 2:
+                                audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+                            elif sampwidth == 4:
+                                audio_np = np.frombuffer(audio_data, dtype=np.int32).astype(np.float32)
+                                audio_np = audio_np / 65536.0  # int32 -> int16 范围
+                            else:
+                                audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+
+                            resampled_np = self.resample_audio_data(audio_np, file_rate, target_rate)
+                            resampled_np = np.clip(resampled_np, -32768, 32767).astype(np.int16)
+                            total_in += len(audio_np)
+                            total_out += len(resampled_np)
+                            resampled_wf.writeframes(resampled_np.tobytes())
 
                     resampled_temp_files.append(temp_file)
                     resampled_wf_new = wave.open(temp_file, 'rb')
                     resampled_audio_files.append(resampled_wf_new)
                     resampled_audio_rates.append(target_rate)
-                    log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Pre-resampled audio {i}: {file_rate} -> {target_rate}, frames: {len(audio_np)} -> {len(resampled_np)}", category='audio')
+                    log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Pre-resampled audio {i}: {file_rate} -> {target_rate}, frames: {total_in} -> {total_out}", category='audio')
                 except Exception as e:
                     log_and_emit('WARNING', 'audio_engine', f"[play_multi] Pre-resample failed for audio {i}, using original: {e}", category='audio')
                     resampled_audio_files.append(wf)

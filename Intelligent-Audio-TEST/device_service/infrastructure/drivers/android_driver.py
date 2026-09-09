@@ -1,6 +1,7 @@
 import time
 import subprocess
 import logging
+from collections import OrderedDict
 from .base_driver import BaseDeviceDriver
 from .device_config import get_device_config
 from .driver_types import AppType, AppVersion, DevicePlatform
@@ -24,7 +25,7 @@ class AndroidDriver(BaseDeviceDriver):
 
     def __init__(self):
         super().__init__()
-        self._drivers  = {}
+        self._drivers = OrderedDict()
         self._config = get_device_config('android')
         self.app_name = self._config.get('app_name', 'com.larus.nova')
         self._unlock_password = self._config.get('unlock_password', '000000')
@@ -64,6 +65,24 @@ class AndroidDriver(BaseDeviceDriver):
             except Exception as e:
                 self._log(level='ERROR', content=f"Failed to connect to android device {device_sn}: {e}")
                 return None
+        else:
+            # LRU 刷新: 最近使用的设备挪到末尾,保证淘汰顺序 = 最近最少使用
+            self._drivers.move_to_end(device_sn)
+        # 容量上限: 超过阈值时淘汰最久未用的设备连接(最前面的),防止连接只增不减
+        if len(self._drivers) > MAX_CACHED_DEVICES:
+            evicted_sn, evicted = self._drivers.popitem(last=False)
+            try:
+                if hasattr(evicted, 'app_stop'):
+                    evicted.app_stop(self.app_name)
+                if hasattr(evicted, 'quit'):
+                    evicted.quit()
+                elif hasattr(evicted, 'close'):
+                    evicted.close()
+            except Exception as e:
+                self._log(level='WARNING',
+                          content=f"LRU 淘汰设备 {evicted_sn} 连接关闭失败: {e}")
+            self._log(level='DEBUG',
+                      content=f"LRU 淘汰最久未用的安卓设备连接: {evicted_sn}")
         return self._drivers[device_sn]
 
     def scan(self):

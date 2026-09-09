@@ -18,10 +18,16 @@ from shared.config.query_constants import QueryConstants
 _task_acl = TaskConfigAclRepositoryImpl()
 _device_acl = DeviceAclRepositoryImpl()
 
+# 模块级 Redis 客户端单例：复用连接，避免每次请求新建导致连接/内存膨胀
+_redis_client = None
+
 
 def _get_redis():
-    """获取 Redis 客户端"""
-    return redis_lib.from_url(BaseConfig.REDIS_URL)
+    """获取/复用模块级 Redis 客户端（惰性单例）"""
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis_lib.from_url(BaseConfig.REDIS_URL)
+    return _redis_client
 
 
 class HomeService:

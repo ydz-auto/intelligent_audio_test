@@ -382,12 +382,15 @@ class PlaybackOrchestrator:
 
         在 _finalize_rounds 之后或 finally 中调用。
         仅停止 self._bg_noise_player_type 注册的 player，不影响其他播放。
+
+        Returns:
+            dict: {'audio_id', 'start_ms', 'end_ms'} 最终时间戳（毫秒），未启动返回 None
         """
         task_id_key = str(task_id)
         players = self.audio_service.active_players.get(task_id_key, {})
         keys_to_stop = [k for k in players if k.startswith(self._bg_noise_player_type)]
         if not keys_to_stop:
-            return
+            return None
         # 打点：发出停止信号前的毫秒时间戳
         record = self._bg_noise_timestamps.get(task_id_key)
         if record and record.get('end_ms') is None:
@@ -398,6 +401,8 @@ class PlaybackOrchestrator:
                 stop_event.set()
             players.pop(k, None)
         self._log('INFO', '全局背景噪声已停止', task_id=task_id)
+        # 清理账本条目（避免每个任务一个 dict 常驻导致内存增长），返回完整记录供调用方上报
+        return self._bg_noise_timestamps.pop(task_id_key, None)
 
     def get_background_noise_timestamps(self, task_id):
         """获取全局背景噪声启停时间戳（毫秒）。

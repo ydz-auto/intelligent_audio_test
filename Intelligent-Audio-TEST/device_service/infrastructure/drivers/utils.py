@@ -9,6 +9,11 @@ from shared.utils.log_handler import log_and_emit
 
 _task_control_events = {}
 _task_control_lock = threading.Lock()
+# 任务控制事件兜底清理: 超过该时长未被活跃访问(=24h)的条目视为过期可安全删除,
+# 防止调用方(客户端掉线等)未走 UnregisterTaskEvents 导致条目只增不减的内存泄漏。
+_TASK_EVENT_TTL_SECONDS = 24 * 3600
+_TASK_EVENTS_PRUNE_INTERVAL = 60  # 清理节流间隔(秒),避免每次 get 都全量扫描
+_task_events_last_prune = 0.0
 
 try:
     from hypium import UiDriver, BY as By, MatchPattern
@@ -111,27 +116,55 @@ except Exception as e:
     log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import facebook-wda: {e}")
     wda = None
 
+def _prune_task_events_locked(now):
+    """清理过期任务控制事件(保守兜底)。
+
+    仅清理超过 TTL 未被活跃访问(注册/获取会刷新时间戳)的条目;正在运行的任务
+    会持续 get 刷新,不受影响;长跑任务哪怕未 unregister,也因其持有 event 引用
+    依然可控。带节流(至少间隔 60s 扫一次)。调用方必须持有 _task_control_lock。
+    """
+    global _task_events_last_prune
+    if now - _task_events_last_prune < _TASK_EVENTS_PRUNE_INTERVAL:
+        return
+    _task_events_last_prune = now
+    ttl = _TASK_EVENT_TTL_SECONDS
+    for tid, ev in list(_task_control_events.items()):
+        if now - ev.get('registered_at', now) > ttl:
+            _task_control_events.pop(tid, None)
+            log_and_emit(level='DEBUG', module='DeviceDriver',
+                         content=f"清理过期任务控制事件(>24h未活跃): task_id={tid}")
+
+
 def register_task_events(task_id, stop_event, pause_event=None):
     """注册任务的控制事件，供驱动实时获取"""
     global _task_control_events
     with _task_control_lock:
         _task_control_events[task_id] = {
             'stop_event': stop_event,
-            'pause_event': pause_event
+            'pause_event': pause_event,
+            'registered_at': time.time()
         }
+        _prune_task_events_locked(time.time())
+
 
 def get_task_events(task_id):
     """获取任务的控制事件（实时获取最新引用）"""
     global _task_control_events
     with _task_control_lock:
-        return _task_control_events.get(task_id)
+        ev = _task_control_events.get(task_id)
+        if ev is not None:
+            # 活跃访问刷新时间戳,保证长生命周期任务不被误清理
+            ev['registered_at'] = time.time()
+        _prune_task_events_locked(time.time())
+        return ev
+
 
 def unregister_task_events(task_id):
     """注销任务的控制事件"""
     global _task_control_events
     with _task_control_lock:
-        if task_id in _task_control_events:
-            del _task_control_events[task_id]
+        # pop 语义: 条目不存在时静默返回,避免重复注销抛 KeyError
+        _task_control_events.pop(task_id, None)
 
 def check_stop(operation_name: str = "", check_pause: bool = True):
     """

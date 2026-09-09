@@ -18,6 +18,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# 模块级 Redis 客户端单例：SSE 连接复用同一连接，避免每连接新建导致连接/内存膨胀
+_redis_client = None
+
+
+def _get_redis():
+    """惰性创建并复用模块级 Redis 客户端"""
+    global _redis_client
+    if _redis_client is None:
+        from shared.infrastructure.config import BaseConfig
+        _redis_client = redis_lib.from_url(BaseConfig.REDIS_URL)
+    return _redis_client
+
 
 def format_sse(data, event=None, event_id=None):
     """格式化 SSE 事件"""
@@ -38,8 +50,7 @@ def format_sse(data, event=None, event_id=None):
 def stream_events(_: None = require_permission('sse:read')):
     """SSE 事件流端点 — 订阅 Redis PubSub 频道，实时推送日志/进度/报告事件"""
     def generate():
-        from shared.infrastructure.config import BaseConfig
-        r = redis_lib.from_url(BaseConfig.REDIS_URL)
+        r = _get_redis()
         pubsub = r.pubsub()
         pubsub.subscribe(['task_logs', 'task_progress', 'sse_events'])
         try:

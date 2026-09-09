@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化，关闭时清理"""
     Config.validate()
-    init_db(pool_size=5)
+    init_db(pool_size=3)
     app.state.audio_storage_path = Config.AUDIO_STORAGE_PATH
 
     # 初始化 WebSocket 日志推送回调
