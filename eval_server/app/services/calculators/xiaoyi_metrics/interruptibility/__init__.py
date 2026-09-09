@@ -31,6 +31,17 @@ def _empty_interruption(message):
         'message': message,
         'timing_success_rate': None,
         'llm_success_rate': None,
+        'interruption_real_rate': None,
+        'is_actual_interruption': None,
+        'interruption_rounds': [],
+        'dangling_interruption_rounds': [],
+        'behavior_respond': None,
+        'behavior_recover': None,
+        'behavior_uncertain': None,
+        'behavior_unknown': None,
+        'interaction_text': None,
+        'evaluations': [],
+        'behavior_judge': {'enabled': False, 'message': '未启用行为裁判'},
         'llm_eval': {'enabled': False, 'message': '未启用 LLM 评估'},
         'llm_recovery_avg_coherence': None,
         'llm_recovery_avg_relevance': None,
@@ -125,8 +136,15 @@ def calculate_interruption_metrics(task_params):
 
     kwargs['user_seg_merge_gap_s'] = _parse_gap(user_gap_raw, USER_SEG_MERGE_GAP_S, 'user_seg_merge_gap_s')
     kwargs['model_seg_merge_gap_s'] = _parse_gap(model_gap_raw, MODEL_SEG_MERGE_GAP_S, 'model_seg_merge_gap_s')
+    if 'is_actual_interruption' in task_params:
+        kwargs['actual_interruption'] = task_params.get('is_actual_interruption')
 
     result = compute_interruption_metrics(user_asr, model_asr, **kwargs)
+    result['is_actual_interruption'] = task_params.get('is_actual_interruption')
+    result['interruption_rounds'] = task_params.get('interruption_rounds') or []
+    result['dangling_interruption_rounds'] = task_params.get('dangling_interruption_rounds') or []
+    if result['dangling_interruption_rounds'] and not result['interruption_rounds']:
+        result['message'] = f"无有效实际打断轮；末轮 is_interruption 标记未闭合: {result['dangling_interruption_rounds']}"
     result['timing_success_rate'] = result.get('interruption_success_rate')
     logger.info(
         f"[interruption_metrics] success_rate={result['interruption_success_rate']} "
@@ -138,7 +156,18 @@ def calculate_interruption_metrics(task_params):
     # ── 可选：大模型评估 ──
     _raw = task_params.get('enable_llm_eval', True)
     enable_llm = str(_raw).lower() in ('true', '1', 'yes')
-    if enable_llm:
+    sub_tasks = task_params.get('sub_tasks')
+    legacy_full = sub_tasks is None
+    sub_tasks = set(sub_tasks or [])
+    need_text_llm = legacy_full or bool(sub_tasks.intersection({
+        'interruption_coherence', 'interruption_relevance', 'interruption_adaptability'
+    }))
+    need_behavior_judge = legacy_full or bool(sub_tasks.intersection({
+        'interruption_behavior_respond', 'interruption_behavior_recover',
+        'interruption_behavior_uncertain', 'interruption_behavior_unknown'
+    }))
+
+    if enable_llm and need_text_llm:
         try:
             llm_result = evaluate_interruption_llm(
                 result.get('per_event') or [], task_params,
@@ -147,7 +176,7 @@ def calculate_interruption_metrics(task_params):
             )
             result['llm_eval'] = llm_result
             if llm_result.get('llm_success_rate') is not None:
-                result['interruption_success_rate'] = llm_result['llm_success_rate']
+                # LLM 成功率仅作辅助诊断；主成功率由本地时序/实际轮次决定。
                 result['llm_success_rate'] = llm_result['llm_success_rate']
             for k in (
                 'llm_recovery_avg_coherence', 'llm_recovery_avg_relevance',
@@ -169,7 +198,32 @@ def calculate_interruption_metrics(task_params):
             logger.warning(f"[interruption_metrics] LLM 评估失败，跳过: {e}")
             result['llm_eval'] = {'enabled': False, 'message': f'LLM 评估失败: {e}'}
     else:
-        result['llm_eval'] = {'enabled': False, 'message': '未启用(enable_llm_eval=False)'}
-        logger.info("[interruption_metrics] LLM 评估跳过：未启用(enable_llm_eval=False)")
+        result['llm_eval'] = {'enabled': False, 'message': (
+            '未选文本 LLM 子维度' if not need_text_llm
+            else '未启用(enable_llm_eval=False)'
+        )}
+        logger.info("[interruption_metrics] 文本 LLM 评估跳过")
+
+    if enable_llm and need_behavior_judge:
+        try:
+            from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import evaluate_interruption_judge
+            judge_result = evaluate_interruption_judge(
+                ai_wav=ai_wav,
+                user_wav=user_wav,
+                model=task_params.get('model', ''),
+                max_tokens=task_params.get('max_tokens'),
+                temperature=task_params.get('temperature'),
+            )
+            result['behavior_judge'] = judge_result
+            for key in ('behavior_respond', 'behavior_recover', 'behavior_uncertain', 'behavior_unknown', 'interaction_text', 'evaluations'):
+                result[key] = judge_result.get(key)
+        except Exception as e:
+            result['behavior_judge'] = {'enabled': False, 'message': f'行为裁判失败: {e}'}
+            logger.warning(f"[interruption_metrics] 行为裁判失败，跳过: {e}")
+    else:
+        result['behavior_judge'] = {'enabled': False, 'message': (
+            '未启用(enable_llm_eval=False)' if not enable_llm
+            else '未选行为裁判子维度'
+        )}
 
     return result

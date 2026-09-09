@@ -16,6 +16,75 @@ class E2EAggregator:
     def _log(self):
         return self._executor._log
 
+    @staticmethod
+    def _as_bool(value):
+        """兼容配置中的 snake/camel 布尔值。"""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+        return False
+
+    @classmethod
+    def _round_is_interruption(cls, round_config):
+        """读取轮次的 is_interruption（兼容直接字段和 algorithm_params）。"""
+        if not isinstance(round_config, dict):
+            return False
+        value = round_config.get('is_interruption')
+        if value is None:
+            value = round_config.get('isInterruption')
+        if value is None:
+            params = round_config.get('algorithm_params') or round_config.get('algorithmParams')
+            if isinstance(params, dict):
+                value = params.get('is_interruption', params.get('isInterruption'))
+            elif isinstance(params, list):
+                for item in params:
+                    if not isinstance(item, dict):
+                        continue
+                    code = item.get('field_code') or item.get('fieldCode') or item.get('code')
+                    if code in ('is_interruption', 'isInterruption'):
+                        value = item.get('field_value', item.get('fieldValue', item.get('value')))
+                        break
+        return cls._as_bool(value)
+
+    @classmethod
+    def build_interruption_round_metadata(cls, case_rounds):
+        """根据驱动语义推导实际打断轮：标记轮的下一轮才是打断语音轮。"""
+        rounds = case_rounds if isinstance(case_rounds, list) else []
+        is_interruption = [cls._round_is_interruption(rd) for rd in rounds]
+        actual_rounds = [idx + 1 for idx, marked in enumerate(is_interruption)
+                         if marked and idx + 1 < len(rounds)]
+        dangling_rounds = [idx for idx, marked in enumerate(is_interruption)
+                           if marked and idx + 1 >= len(rounds)]
+        return {
+            'is_interruption': is_interruption,
+            'interruption_rounds': actual_rounds,
+            'dangling_interruption_rounds': dangling_rounds,
+        }
+
+    @classmethod
+    def _annotate_interruption_rounds(cls, rounds_list, case_rounds):
+        metadata = cls.build_interruption_round_metadata(case_rounds)
+        actual_rounds = set(metadata['interruption_rounds'])
+        for item in rounds_list:
+            if not isinstance(item, dict):
+                continue
+            idx = item.get('round', item.get('_round_index'))
+            if idx is None:
+                continue
+            try:
+                idx = int(idx)
+            except (TypeError, ValueError):
+                continue
+            item['is_interruption'] = (
+                metadata['is_interruption'][idx]
+                if idx < len(metadata['is_interruption']) else False
+            )
+            item['is_actual_interruption'] = idx in actual_rounds
+        return metadata
+
     def build_algorithm_result(self, task_id, all_round_results, case_config, algorithm_type):
         """从多轮原始结果构建 algo_result 结构（rounds[] + aggregated）"""
         from backend.utils.algorithm.field_mapper import get_field_mapper
@@ -100,6 +169,8 @@ class E2EAggregator:
                 'evaluation': {},
             })
 
+        interruption_metadata = self._annotate_interruption_rounds(rounds_list, case_rounds)
+
         avg_latency = None
         if latency_values:
             avg_latency = round(sum(latency_values) / len(latency_values), 4)
@@ -115,6 +186,8 @@ class E2EAggregator:
             'algorithm_type': algorithm_type,
             'total_rounds': len(rounds_list),
             'rounds': rounds_list,
+            'interruption_rounds': interruption_metadata['interruption_rounds'],
+            'dangling_interruption_rounds': interruption_metadata['dangling_interruption_rounds'],
             'aggregated': aggregated,
         }
 

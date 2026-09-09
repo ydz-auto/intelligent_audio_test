@@ -479,6 +479,16 @@ class E2EExecutor(BaseExecutor):
             'latency': latency,
             'evaluation': {},
         }
+        interruption_metadata = self._aggregator.build_interruption_round_metadata(
+            case_config.get('rounds', [])
+        )
+        round_data['is_interruption'] = (
+            interruption_metadata['is_interruption'][round_idx]
+            if round_idx < len(interruption_metadata['is_interruption']) else False
+        )
+        round_data['is_actual_interruption'] = round_idx in set(
+            interruption_metadata['interruption_rounds']
+        )
 
         # 构建含已执行轮次 + 本轮的 algo_result，使 _extract_round_eval_data(rounds[round_idx]) 能正确索引
         accumulated_rounds = list(rounds_data) + [round_data]
@@ -487,6 +497,8 @@ class E2EExecutor(BaseExecutor):
             'algorithm_type': algorithm_type,
             'total_rounds': len(rounds),
             'rounds': accumulated_rounds,
+            'interruption_rounds': interruption_metadata['interruption_rounds'],
+            'dangling_interruption_rounds': interruption_metadata['dangling_interruption_rounds'],
             'aggregated': {},
         }
         self._aggregator.update_test_result(

@@ -246,6 +246,11 @@ class EvaluationService(EvaluationLoggerMixin):
                 if value is not None:
                     item[target_param] = value
 
+            # 轮次控制元数据不是算法输出/参考参数，直接透传给评估端。
+            for meta_key in ('is_interruption', 'is_actual_interruption'):
+                if meta_key in rd:
+                    item[meta_key] = rd[meta_key]
+
             rounds_list.append(item)
 
         return rounds_list

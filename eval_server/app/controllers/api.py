@@ -153,9 +153,24 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
     elif task_type == 'interruption_metrics':
         # 走 wav：平台 driver 产 user_wav/ai_wav，由 calculate_interruption_metrics 内部调 asr_server 转 chunks
         # 兼容老调用方直接传已对齐 ASR 结果（user_asr/model_asr 或 *_chunks 别名）
-        if not (task_params.get('user_wav') or task_params.get('user_asr') or task_params.get('user_chunks')):
+        rounds = task_params.get('rounds') or []
+        round_dicts = [rd for rd in rounds if isinstance(rd, dict)] if isinstance(rounds, list) else []
+        has_user_input = bool(
+            task_params.get('user_wav') or task_params.get('user_asr') or task_params.get('user_chunks')
+            or any(rd.get('user_wav') or rd.get('user_asr') or rd.get('user_chunks') for rd in round_dicts)
+        )
+        has_model_input = bool(
+            task_params.get('ai_wav') or task_params.get('model_wav')
+            or task_params.get('model_asr') or task_params.get('model_chunks')
+            or any(
+                rd.get('ai_wav') or rd.get('model_wav')
+                or rd.get('model_asr') or rd.get('model_chunks')
+                for rd in round_dicts
+            )
+        )
+        if not has_user_input:
             return error_response("Missing required field for interruption_metrics: user_wav (或 user_asr，用户打断 wav/ASR)", code=CODE_VALIDATION_ERROR)
-        if not (task_params.get('ai_wav') or task_params.get('model_wav') or task_params.get('model_asr') or task_params.get('model_chunks')):
+        if not has_model_input:
             return error_response("Missing required field for interruption_metrics: ai_wav (或 model_asr，模型恢复 wav/ASR)", code=CODE_VALIDATION_ERROR)
     elif task_type == 'non_interactive_latency':
         # user_asr / model_asr / user_wav / ai_wav 可能为空（body_template 未包含），

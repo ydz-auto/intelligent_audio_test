@@ -72,6 +72,12 @@ class XiaoyiMetricsCalculator(BaseCalculator):
         from app.services.calculators.xiaoyi_metrics.turn_taking.strategy import TurnTakingBase
 
         sub_tasks = params.get('sub_tasks')  # None 或 list
+        # interruption_metrics 的子任务共享同一个 interruption 结果块。
+        if sub_tasks and any(
+            isinstance(task, str) and task.startswith('interruption_')
+            for task in sub_tasks
+        ):
+            sub_tasks = list(sub_tasks) + ['interruption']
         results = {}
 
         # ── 统一调一次 ASR，共享给所有子维度 ──

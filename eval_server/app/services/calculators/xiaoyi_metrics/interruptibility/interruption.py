@@ -218,7 +218,8 @@ def _evaluate_one_event(u: Dict[str, Any],
 # ─────────── 主入口 ───────────
 def compute_interruption_metrics(user_asr: Any, model_asr: Any,
                                   user_seg_merge_gap_s: float = USER_SEG_MERGE_GAP_S,
-                                  model_seg_merge_gap_s: float = MODEL_SEG_MERGE_GAP_S) -> Dict[str, Any]:
+                                  model_seg_merge_gap_s: float = MODEL_SEG_MERGE_GAP_S,
+                                  actual_interruption: Optional[bool] = None) -> Dict[str, Any]:
     """计算打断指标（时延类用数据算；成功率由调用方叠加 LLM 语义判定覆盖）
 
     用户侧/模型侧用不同阈值合并字词为语音段（user 1.5s / model 0.7s），
@@ -252,7 +253,7 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
     model_chunks = to_chunks(model_asr)
 
     result: Dict[str, Any] = {
-        'interruption_success_rate': 0.0,
+        'interruption_success_rate': 0 if actual_interruption is not None else 0.0,
         'stop_rate': 0.0,
         'resume_rate': 0.0,
         'avg_stop_latency_s': None,
@@ -336,12 +337,25 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
 
     n = len(interruption_events)
     if n > 0:
-        result['interruption_success_rate'] = round(
-            sum(1 for e in interruption_events if e['success']) / n, 3)
-        result['stop_rate'] = round(
-            sum(1 for e in interruption_events if e['stopped']) / n, 3)
-        result['resume_rate'] = round(
-            sum(1 for e in interruption_events if e['resumed']) / n, 3)
+        if actual_interruption is not None:
+            # 显式轮次模式：一轮只输出一个二值结果；ASR 分段仅保留为诊断明细。
+            result['interruption_success_rate'] = int(all(
+                bool(e.get('success')) for e in interruption_events
+            )) if actual_interruption else 0
+            result['stop_rate'] = int(all(bool(e.get('stopped')) for e in interruption_events)) if actual_interruption else 0
+            result['resume_rate'] = int(all(bool(e.get('resumed')) for e in interruption_events)) if actual_interruption else 0
+        else:
+            # 兼容旧的直接 ASR 调用：仍按事件统计，统一入口会在有轮次元数据时覆盖为二值。
+            result['interruption_success_rate'] = round(
+                sum(1 for e in interruption_events if e['success']) / n, 3)
+            result['stop_rate'] = round(
+                sum(1 for e in interruption_events if e['stopped']) / n, 3)
+            result['resume_rate'] = round(
+                sum(1 for e in interruption_events if e['resumed']) / n, 3)
+    elif actual_interruption is not None:
+        result['interruption_success_rate'] = 0
+        result['stop_rate'] = 0
+        result['resume_rate'] = 0
 
     # 时延均值：stop_latency/recovery_latency/overlap 仅统计 interruption 事件
     stop_lats = [e['stop_latency_s'] for e in interruption_events if e['stop_latency_s'] is not None]
@@ -353,6 +367,9 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
     result['avg_recovery_latency_s'] = BaseCalculator._avg(recov_lats)
     result['avg_overlap_s'] = BaseCalculator._avg(overlaps)
     result['avg_silence_gap_s'] = BaseCalculator._avg(silences)
+
+    if actual_interruption is not None:
+        result['timing_success_rate'] = result['interruption_success_rate']
 
     if n == 0 and result['n_recovery_only'] > 0:
         result['message'] = (
