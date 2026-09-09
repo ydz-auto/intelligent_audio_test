@@ -229,6 +229,14 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 }
             )
 
+        # 本地处理：解析 oss:// 路径为本地文件（双模式支持，与 multipart 上传并存）。
+        # 未配置 OSS 时原样返回，不影响既有传参方式。
+        from ..utils.oss_client import resolve_oss_paths
+        task_params = resolve_oss_paths(
+            task_params,
+            local_dir=os.path.join(config.UPLOAD_DIR, caller_task_id or eval_task_id),
+        )
+
         LocalConcurrencyManager.increment()
         try:
             TaskModel.create_task(

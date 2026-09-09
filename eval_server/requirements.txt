@@ -14,6 +14,9 @@ aiohttp>=3.9.0
 # Data
 numpy>=1.26.0
 
+# AWS S3 / MinIO 兼容对象存储
+boto3>=1.34.0
+
 # Evaluation Metrics
 pyannote.metrics>=4.0.0
 # meeteval>=0.4.0  # Optional: requires MSVC Build Tools for Cython compilation

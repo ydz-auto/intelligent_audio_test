@@ -33,6 +33,17 @@ class Config:
     # 上传文件临时目录
     UPLOAD_DIR = os.path.join(DATA_DIR, 'uploads')
 
+    # OSS/MinIO 配置（可选能力，不配置则仅支持 multipart 上传 / 本地路径）
+    # 配置后 create_task 的 task_params 中形如 oss://{category}/{key} 的值会在计算前
+    # 自动从 MinIO 下载为本地路径，与 multipart 上传方式并存（双模式支持）。
+    # 键规则与主项目 Intelligent-Audio-TEST 一致：S3 key = {OSS_KEY_PREFIX}/{category}/{key}
+    OSS_ENDPOINT = os.environ.get('OSS_ENDPOINT', '')
+    OSS_ACCESS_KEY = os.environ.get('OSS_ACCESS_KEY', '')
+    OSS_SECRET_KEY = os.environ.get('OSS_SECRET_KEY', '')
+    OSS_BUCKET_NAME = os.environ.get('OSS_BUCKET_NAME', '')
+    OSS_KEY_PREFIX = os.environ.get('OSS_KEY_PREFIX', '')
+    OSS_REGION = os.environ.get('OSS_REGION', 'us-east-1')
+
     # 日志配置（归档到 static 目录下）
     LOG_DIR = os.path.join(STATIC_BASE_PATH, 'logs', 'eval_server')
     LOG_FILE = os.path.join(LOG_DIR, 'eval_server.log')
