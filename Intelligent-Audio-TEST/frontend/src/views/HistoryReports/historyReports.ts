@@ -1,6 +1,8 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { reportsPort } from '@/composables/report/reportsPort';
+import { useModalControl } from '@/composables/modal/useModal';
+import { MODAL_TYPES } from '@/composables/modal/constants';
 import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabels';
 import { getReportTypeLabel } from '../../domain/constants/reportLabels';
 import type { Report, ReportListQuery as ReportListParams } from '../../domain';
@@ -41,6 +43,7 @@ function showToast(type: ToastMessage['type'], message: string): void {
 
 export function useHistoryReports() {
   const router = useRouter();
+  const modalManager = useModalControl();
   const allReports = ref<Report[]>([]);
   const totalItems = ref(0);
   const currentPage = ref(1);
@@ -244,19 +247,25 @@ export function useHistoryReports() {
     }
   };
 
-  const handleBatchDelete = async () => {
+  const handleBatchDelete = () => {
     if (selectedReports.value.size === 0) return;
-    if (confirm(`确定要删除选中的 ${selectedReports.value.size} 个报告吗？`)) {
-      try {
-        const ids = Array.from(selectedReports.value);
-        await reportsPort.batchDelete(ids);
-        selectedReports.value.clear();
-        showToast('success', `成功删除 ${ids.length} 个报告`);
-        loadReports();
-      } catch (error: any) {
-        showToast('error', '批量删除失败: ' + (error.message || '未知错误'));
+    modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
+      title: '批量删除报告',
+      content: `确定要删除选中的 ${selectedReports.value.size} 个报告吗？删除后不可恢复。`,
+      confirmText: '删除',
+      cancelText: '取消',
+      onConfirm: async () => {
+        try {
+          const ids = Array.from(selectedReports.value);
+          await reportsPort.batchDelete(ids);
+          selectedReports.value.clear();
+          showToast('success', `成功删除 ${ids.length} 个报告`);
+          loadReports();
+        } catch (error: any) {
+          showToast('error', '批量删除失败: ' + (error.message || '未知错误'));
+        }
       }
-    }
+    }).catch(() => {});
   };
 
   const handleBatchCancel = () => {
@@ -323,29 +332,41 @@ export function useHistoryReports() {
     router.push({ name: 'reportView', params: { id: reportId } });
   };
 
-  const deleteReport = async (reportId: string | number) => {
-    if (confirm('确定要删除这个报告吗？')) {
-      try {
-        await reportsPort.delete(reportId);
-        selectedReports.value.delete(reportId);
-        showToast('success', '报告删除成功');
-        loadReports();
-      } catch (error: any) {
-        showToast('error', '删除失败: ' + (error.message || '未知错误'));
+  const deleteReport = (reportId: string | number) => {
+    modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
+      title: '删除报告',
+      content: '确定要删除这个报告吗？删除后不可恢复。',
+      confirmText: '删除',
+      cancelText: '取消',
+      onConfirm: async () => {
+        try {
+          await reportsPort.delete(reportId);
+          selectedReports.value.delete(reportId);
+          showToast('success', '报告删除成功');
+          loadReports();
+        } catch (error: any) {
+          showToast('error', '删除失败: ' + (error.message || '未知错误'));
+        }
       }
-    }
+    }).catch(() => {});
   };
 
-  const publishReport = async (reportId: string | number) => {
-    if (confirm('确定要发布这个报告吗？')) {
-      try {
-        await reportsPort.publish(reportId);
-        showToast('success', '报告发布成功');
-        loadReports();
-      } catch (error: any) {
-        showToast('error', '发布失败: ' + (error.message || '未知错误'));
+  const publishReport = (reportId: string | number) => {
+    modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '发布报告',
+      content: '确定要发布这个报告吗？',
+      confirmText: '发布',
+      cancelText: '取消',
+      onConfirm: async () => {
+        try {
+          await reportsPort.publish(reportId);
+          showToast('success', '报告发布成功');
+          loadReports();
+        } catch (error: any) {
+          showToast('error', '发布失败: ' + (error.message || '未知错误'));
+        }
       }
-    }
+    }).catch(() => {});
   };
 
   onMounted(() => {

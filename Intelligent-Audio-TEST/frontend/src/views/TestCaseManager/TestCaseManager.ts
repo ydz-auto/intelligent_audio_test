@@ -100,6 +100,8 @@ export function useTestCaseManager() {
       const confirmed = await confirmDeleteGroup(groupName);
       if (confirmed) {
         await deleteGroupFromStore(groupName);
+        // 按当前视图刷新（标签视图下 tagViewData 需重新拉取）
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('删除分组失败:', error);
@@ -113,6 +115,8 @@ export function useTestCaseManager() {
       const confirmed = await confirmDeleteTestCase(testCase.name);
       if (confirmed) {
         await deleteTestCase(testCase.id);
+        // 按当前视图刷新（标签视图下 tagViewData 需重新拉取）
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('删除测试用例失败:', error);
@@ -127,7 +131,7 @@ export function useTestCaseManager() {
     }
   };
 
-  const handleOpenAddModal = async (group = '', options?: { algorithmType?: string; testType?: typeof TestType[keyof typeof TestType] }) => {
+  const handleOpenAddModal = async (group = '', options?: { algorithmType?: string; testType?: typeof TestType[keyof typeof TestType]; tags?: string[] }) => {
     const result = await openAddTestCaseModal(group, options);
     if (result?.needRefresh) {
       await refreshCurrentView();

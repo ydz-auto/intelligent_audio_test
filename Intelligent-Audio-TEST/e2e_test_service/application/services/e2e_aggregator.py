@@ -9,6 +9,7 @@ import logging
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
+from shared.utils.query_utils import now_cst
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import TaskDataAclRepositoryImpl
 
@@ -140,13 +141,15 @@ class E2EAggregator:
             content=f"[update_test_result] result_id={result_id}, exec_status={execution_status}, output_keys={_out_keys_dbg}, record_file={_rf_dbg}, has_path={result_data_path is not None}",
             task_id=task_id
         )
-        # 通过 ACL 仓储更新 algorithm_result
-        self._task_data_repo.update_test_result_algorithm_result(
-            int(result_id), _dumps(algo_result) if algo_result else ''
-        )
-        # 通过 ACL 仓储更新 execution_status
-        self._task_data_repo.update_test_result_status(
-            int(result_id), execution_status or ''
+        # 通过 ACL 仓储一次性更新终态字段（等价 V9.7.10 的单条 UPDATE：
+        # algorithm_result / execution_status / response_time / error_message / result_data_path）
+        self._task_data_repo.update_test_result_outcome(
+            int(result_id),
+            algorithm_result=_dumps(algo_result) if algo_result else None,
+            execution_status=execution_status or None,
+            response_time=int(response_time or 0),
+            error_message=error_message,
+            result_data_path=result_data_path,
         )
 
     def process_results(self, task_id, case_name, tc_rel_id, test_case_id, all_results, case_config=None,
@@ -280,6 +283,7 @@ class E2EAggregator:
                         status=derive_task_case_status(ExecutionStatus.FAILED, EvaluationStatus.FAILED),
                         execution_status=ExecutionStatus.FAILED,
                         evaluation_status=EvaluationStatus.FAILED,
+                        completed_at=now_cst().isoformat(),
                     )
 
                 if execution_success and all_eval_items:

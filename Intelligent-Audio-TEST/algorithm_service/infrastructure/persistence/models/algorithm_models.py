@@ -260,6 +260,7 @@ class EvaluationDimensionParam(Base):
     default_value = Column(Text, comment='默认值（JSON格式）')
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
+    pass_threshold = Column(Float, nullable=True, comment='评估通过阈值（agg_role=pass_le/pass_ge/pass_eq 时使用）')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')

@@ -5,7 +5,7 @@ from shared.infrastructure.config import BaseConfig
 
 class Config(BaseConfig):
     PORT = int(os.environ.get('PORT', 5001))
-    GRPC_PORT = int(os.environ.get('GRPC_PORT', 50061))
+    GRPC_PORT = int(os.environ.get('TASK_SERVICE_GRPC_PORT', os.environ.get('GRPC_PORT', 50061)))
     MAX_CONCURRENT = int(os.environ.get('MAX_CONCURRENT', 5))
     TASK_TIMEOUT = int(os.environ.get('TASK_TIMEOUT', 3600))
 

@@ -35,7 +35,12 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         return self._audio_service
 
     def PlayAudio(self, request, context=None):
-        """播放音频"""
+        """播放音频
+
+        loop=False（一次性播放，如提示音）时等待播放完成后返回，
+        对齐 V9.7.10 play_prompt_audio 的 future.result() 语义；
+        loop=True（循环播放，如校准测试音）无完成概念，异步提交后立即返回。
+        """
         try:
             play_config = _loads(request.play_config, {})
             file_path = request.audio_file_paths
@@ -47,7 +52,7 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
             player_type = play_config.get('player_type', 'dry')
             offset = play_config.get('offset', 0)
 
-            self.audio_service.play_audio(
+            future = self.audio_service.play_audio(
                 task_id=task_id,
                 file_path=file_path,
                 device_index=device_index,
@@ -57,6 +62,9 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
                 player_type=player_type,
                 offset=offset,
             )
+            if not loop:
+                # 一次性播放：等待播放完成，异常向上抛出由外层返回 success=False
+                future.result()
             return e2e_pb.PlayAudioResponse(
                 success=True,
                 message="ok",
@@ -229,15 +237,17 @@ class PlaybackServiceServicer(e2e_grpc.PlaybackServiceServicer):
             if action == 'start_background_noise':
                 case_config = playback_config.get('case_config', {})
                 result = self.orchestrator.start_background_noise(case_config, task_id)
+                timestamps = self.orchestrator.get_background_noise_timestamps(task_id) or {}
                 return e2e_pb.StartPlaybackResponse(
                     success=True, message="ok",
-                    data=_dumps({"result": result, "action": action}),
+                    data=_dumps({"result": result, "action": action, "timestamps": timestamps}),
                 )
             if action == 'stop_background_noise':
                 self.orchestrator.stop_background_noise(task_id)
+                timestamps = self.orchestrator.get_background_noise_timestamps(task_id) or {}
                 return e2e_pb.StartPlaybackResponse(
                     success=True, message="ok",
-                    data=_dumps({"result": True, "action": action}),
+                    data=_dumps({"result": True, "action": action, "timestamps": timestamps}),
                 )
 
             if mode == 'preview':

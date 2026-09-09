@@ -123,9 +123,11 @@ import {
   resetReportState,
 } from '../../composables/report/useReportComparison'
 import { generateExportZip } from './reportExport'
+import { useModalControl, MODAL_TYPES } from '@/composables/modal/useModal'
 
 const route = useRoute()
 const router = useRouter()
+const modalControl = useModalControl()
 
 const loading = ref(true)
 const error = ref('')
@@ -264,7 +266,16 @@ const cancelEditConclusion = () => {
 
 const publishReport = async () => {
   if (!report.value) return
-  if (!confirm('确定要发布该报告吗？')) return
+  try {
+    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '发布报告',
+      content: '确定要发布该报告吗？',
+      confirmText: '发布',
+      cancelText: '取消'
+    })
+  } catch {
+    return // 用户取消
+  }
   try {
     await reportsPort.publish(report.value.id)
     report.value.status = ReportStatus.PUBLISHED

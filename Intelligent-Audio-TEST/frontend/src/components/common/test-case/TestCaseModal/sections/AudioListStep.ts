@@ -2,11 +2,13 @@ import { computed, inject } from 'vue'
 import type { RoundConfigItem, AudioConfig } from '@/domain'
 import type { PlaybackDevice } from '../../../../../domain'
 import { useAudioConfigHelpers } from '../useAudioConfigHelpers'
+import { useModalControl, MODAL_TYPES } from '../../../../../composables/modal/useModal'
 
 export function useAudioListStep(
   props: { round: RoundConfigItem },
   emit: (event: string, ...args: any[]) => void
 ) {
+  const modalControl = useModalControl()
   // 注入 audioConfig（由 index.vue provide）
   const audioConfig = inject<any>('audioConfig', {})
   const { getAudioName, getAudioTags, getAudioDuration, formatDuration, getNormalizedTags } = useAudioConfigHelpers(audioConfig)
@@ -58,10 +60,19 @@ export function useAudioListStep(
     emitRound(list)
   }
 
-  function clearAllAudioConfigs() {
-    if (audios.value.length > 0 && confirm('确定要清空所有音频配置吗？')) {
-      emitRound([])
+  async function clearAllAudioConfigs() {
+    if (audios.value.length === 0) return
+    try {
+      await modalControl.open(MODAL_TYPES.DELETE_CONFIRM, {
+        title: '清空音频配置',
+        content: '确定要清空所有音频配置吗？',
+        confirmText: '清空',
+        cancelText: '取消'
+      })
+    } catch {
+      return // 用户取消
     }
+    emitRound([])
   }
 
   // ---- 音频选择 ----

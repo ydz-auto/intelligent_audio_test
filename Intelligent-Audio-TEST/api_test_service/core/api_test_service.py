@@ -112,6 +112,11 @@ class APITestService:
 
         executor = self.api_executor
 
+        # 引用计数：全部用例完成后才将任务标记为 idle，
+        # 避免首个用例完成即置 idle 导致状态误报与任务重复启动
+        pending_count = [0]
+        pending_lock = threading.Lock()
+
         def _run_case(tc_rel_id):
             try:
                 executor.execute_api_case(task_id, tc_rel_id)
@@ -119,7 +124,11 @@ class APITestService:
                 import traceback
                 self._log(task_id, 'ERROR', f"API 用例 {tc_rel_id} 执行异常: {str(e)}\n{traceback.format_exc()}")
             finally:
-                self._mark_task_idle(task_id)
+                with pending_lock:
+                    pending_count[0] -= 1
+                    is_last = pending_count[0] <= 0
+                if is_last:
+                    self._mark_task_idle(task_id)
 
         try:
             # 查询待执行的 TaskCase ID（如果调用方未提供 case_ids，
@@ -139,7 +148,8 @@ class APITestService:
                 self._mark_task_idle(task_id)
                 return {'success': True, 'task_id': task_id, 'message': '无可执行的用例'}
 
-            # 提交到固定线程池，任务完成后在 _run_case 的 finally 中自动清理
+            # 提交到固定线程池，全部用例完成后在 _run_case 的 finally 中自动清理
+            pending_count[0] = len(target_case_ids)
             for tc_rel_id in target_case_ids:
                 self._task_pool.submit(_run_case, tc_rel_id)
 
@@ -172,7 +182,15 @@ class APITestService:
         with self._running_tasks_lock:
             running = task_id in self._running_tasks
 
-        round_progress = self._engine.round_progress_cache.get(task_id)
+        # round_progress_cache 的 key 是 tc_rel_id（TaskCase.id），与写入侧 update_case_round_progress 一致。
+        # 任务级查询无法仅凭 task_id 精确匹配：单用例任务时命中该条目，多用例任务返回 None（避免误报）。
+        round_progress = None
+        rpc = self._engine.round_progress_cache
+        if rpc:
+            if len(rpc) == 1:
+                round_progress = next(iter(rpc.values()))
+            elif task_id in rpc:
+                round_progress = rpc[task_id]
 
         return {
             'task_id': task_id,

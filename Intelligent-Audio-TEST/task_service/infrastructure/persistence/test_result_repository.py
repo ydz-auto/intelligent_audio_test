@@ -189,6 +189,41 @@ class TestResultRepository(TestResultRepositoryABC):
         finally:
             session.close()
 
+    def update_outcome(
+        self,
+        result_id: int,
+        algorithm_result: Any = None,
+        execution_status: Optional[str] = None,
+        response_time: Optional[int] = None,
+        error_message: Optional[str] = None,
+        result_data_path: Optional[str] = None,
+    ) -> bool:
+        """一次性更新 TestResult 的终态字段（outcome 字段集）。
+
+        与 V9.7.10 e2e_aggregator 的单条 UPDATE 等价：
+        algorithm_result / execution_status / response_time / error_message 总是写入（None → NULL），
+        result_data_path 仅在非 None 时写入。
+        """
+        session = get_db_session()
+        try:
+            po = session.get(TestResult, result_id)
+            if po is None:
+                return False
+            po.algorithm_result = algorithm_result
+            po.execution_status = execution_status
+            po.response_time = response_time
+            po.error_message = error_message
+            if result_data_path is not None:
+                po.result_data_path = result_data_path
+            session.flush()
+            session.commit()
+            return True
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
 
 # 模块级单例
 test_result_repository = TestResultRepository()

@@ -2,8 +2,10 @@ import { ref, computed, watch } from 'vue'
 import { parseAnnotationFormat, parseAudioTxtFile } from '../../../utils/audioUtils'
 import { audiosPort } from '../../../composables/audio/audiosPort'
 import SparkMD5 from 'spark-md5'
+import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal'
 
 export function useBatchAnnotationModal(props: any, emit: any) {
+  const modalControl = useModalControl()
   const fileInput = ref(null)
   const isDragging = ref(false)
   const submitting = ref(false)
@@ -139,12 +141,19 @@ export function useBatchAnnotationModal(props: any, emit: any) {
 
   // 超阈值确认
   const LARGE_THRESHOLD = 500
-  const confirmLargeBatch = (count: number): Promise<boolean> => {
-    if (count <= LARGE_THRESHOLD) return Promise.resolve(true)
-    return new Promise(resolve => {
-      const ok = window.confirm(`即将处理 ${count} 个文件，可能耗时较长。是否继续？`)
-      resolve(ok)
-    })
+  const confirmLargeBatch = async (count: number): Promise<boolean> => {
+    if (count <= LARGE_THRESHOLD) return true
+    try {
+      await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '批量标注',
+        content: `即将处理 ${count} 个文件，可能耗时较长。是否继续？`,
+        confirmText: '继续',
+        cancelText: '取消'
+      })
+      return true
+    } catch {
+      return false // 用户取消
+    }
   }
 
   // 分块调用后端 by-md5，避免单次 IN 列表过大

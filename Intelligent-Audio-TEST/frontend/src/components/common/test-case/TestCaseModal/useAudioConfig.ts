@@ -1,9 +1,11 @@
 import { ref, computed, nextTick } from 'vue';
 import { playbackPort } from '@/composables/device/playbackPort';
 import { audiosPort } from '@/composables/audio/audiosPort';
+import { useModalControl, MODAL_TYPES } from '@/composables/modal/useModal';
 import type { PlaybackDevice, AudioConfig, BackgroundNoiseConfig, AudioInfo } from '@/domain';
 
 export function useAudioConfig() {
+  const modalControl = useModalControl();
   const playbackDevices = ref<PlaybackDevice[]>([]);
   const dryAudios = ref<AudioInfo[]>([]);
   const noiseAudios = ref<AudioInfo[]>([]);
@@ -341,10 +343,19 @@ export function useAudioConfig() {
     });
   }
 
-  function clearAllAudioConfigs(audios: AudioConfig[]) {
-    if (audios.length > 0 && confirm('确定要清空所有音频配置吗？')) {
-      audios.length = 0;
+  async function clearAllAudioConfigs(audios: AudioConfig[]) {
+    if (audios.length === 0) return;
+    try {
+      await modalControl.open(MODAL_TYPES.DELETE_CONFIRM, {
+        title: '清空音频配置',
+        content: '确定要清空所有音频配置吗？',
+        confirmText: '清空',
+        cancelText: '取消'
+      });
+    } catch {
+      return; // 用户取消
     }
+    audios.length = 0;
   }
 
   function handleAudioDragStart(index: number, event: DragEvent) {

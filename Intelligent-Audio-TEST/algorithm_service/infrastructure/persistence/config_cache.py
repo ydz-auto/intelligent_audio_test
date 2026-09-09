@@ -306,8 +306,8 @@ class AlgorithmConfigCache:
     @staticmethod
     def _serialize_mappings(mappings) -> Dict[str, Any]:
         # 合法来源值
-        VALID_SOURCES = {'case', 'reference', 'device', 'api'}
-        result = {'device': [], 'api': [], 'case': [], 'reference': []}
+        VALID_SOURCES = {'case', 'reference', 'device', 'api', 'case_config'}
+        result = {'device': [], 'api': [], 'case': [], 'reference': [], 'case_config': []}
         if isinstance(mappings, list):
             for m in mappings:
                 if not isinstance(m, dict):
@@ -427,8 +427,30 @@ class AlgorithmConfigCache:
     def _get_evaluation_mappings(self, algorithm_type: str) -> List[Dict[str, Any]]:
         mappings = self._config_cache.get('mappings', {}).get(algorithm_type, {})
         result = []
-        for source in ['device', 'api', 'case', 'reference', 'adjusted_reference']:
+        seen = set()
+        # 维度级映射（dimension_id 非空）在 _serialize_mappings 中统一归入 evaluation 桶，
+        # source 保留原值（case/reference/device/api/case_config）
+        for m in mappings.get('evaluation', []):
+            key = (m.get('source'), m.get('source_param'), m.get('target_param'), m.get('dimension_id'))
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append({
+                'source': m.get('source', 'api'),
+                'source_param': m.get('source_param'),
+                'target_param': m.get('target_param'),
+                'direction': 'output',
+                'dimension_id': m.get('dimension_id'),
+                'dimension_name': m.get('dimension_name'),
+                'transform_type': m.get('transform_type', 'none'),
+            })
+        # 非维度级映射仍分布在各来源桶
+        for source in ['device', 'api', 'case', 'case_config', 'reference', 'adjusted_reference']:
             for m in mappings.get(source, []):
+                key = (source, m.get('source_param'), m.get('target_param'), m.get('dimension_id'))
+                if key in seen:
+                    continue
+                seen.add(key)
                 result.append({
                     'source': source,
                     'source_param': m['source_param'],
@@ -439,10 +461,14 @@ class AlgorithmConfigCache:
                     'transform_type': m.get('transform_type', 'none'),
                 })
         if 'adjusted_reference' not in mappings:
-            for source in ['device', 'api', 'case', 'reference']:
+            for source in ['device', 'api', 'case', 'case_config', 'reference']:
                 for m in mappings.get(source, []):
                     target_param = m.get('target_param', '')
                     if target_param in ['rttm_ref', 'stm_ref', 'asr_ref']:
+                        key = ('adjusted_reference', target_param, target_param, m.get('dimension_id'))
+                        if key in seen:
+                            continue
+                        seen.add(key)
                         result.append({
                             'source': 'adjusted_reference',
                             'source_param': target_param,

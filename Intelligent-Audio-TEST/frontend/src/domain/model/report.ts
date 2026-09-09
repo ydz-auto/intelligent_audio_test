@@ -95,6 +95,8 @@ export interface ReportMetricCategoryGroup {
 export interface ReportMetricByResource {
   resource: string
   categories: ReportMetricCategoryGroup[]
+  /** 扁平行（resource 级别全局平均，无分类维度） */
+  metrics?: ReportMetricValue[]
 }
 
 export interface ReportTagMetricTagGroup {

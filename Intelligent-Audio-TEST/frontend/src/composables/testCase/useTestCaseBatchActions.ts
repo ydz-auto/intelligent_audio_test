@@ -138,6 +138,7 @@ export function useTestCaseBatchActions(
       });
       if (success) {
         notification.success(`已成功更新 ${ids.length} 个用例的声压`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };
@@ -171,6 +172,7 @@ export function useTestCaseBatchActions(
       });
       if (success) {
         notification.success(`已成功更新 ${ids.length} 个用例的播放设备`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };
@@ -210,6 +212,7 @@ export function useTestCaseBatchActions(
       );
       if (success) {
         notification.success(`已成功更新 ${ids.length} 个用例的噪声配置`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };
@@ -243,6 +246,7 @@ export function useTestCaseBatchActions(
       });
       if (success) {
         notification.success(`已成功更新 ${ids.length} 个用例的专属参数`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };
@@ -278,6 +282,7 @@ export function useTestCaseBatchActions(
       });
       if (success) {
         notification.success(`已成功更新 ${ids.length} 个用例的评价维度`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };
@@ -313,6 +318,7 @@ export function useTestCaseBatchActions(
       }
       if (success) {
         notification.success(`已成功将 ${ids.length} 个用例${result.isCopy ? '复制' : '移动'}到目标分组`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };
@@ -345,6 +351,7 @@ export function useTestCaseBatchActions(
       const success = await store.batchAutoGenerateName(ids);
       if (success) {
         notification.success(`已成功为 ${ids.length} 个用例自动生成名称`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };
@@ -382,6 +389,7 @@ export function useTestCaseBatchActions(
       if (success) {
         const actionText = result.action === 'add' ? '添加' : result.action === 'remove' ? '移除' : '重命名';
         notification.success(`已成功${actionText}标签`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };
@@ -415,12 +423,14 @@ export function useTestCaseBatchActions(
 
         if (status.success) {
           await store.fetchTestCases();
+          if (viewMode === ViewMode.TAG) await store.refreshTagView();
           notification.success(`用例参考更新完成！\n\n成功刷新: ${status.updated} 个\n失败: ${status.failed} 个`);
         } else {
           notification.error('用例参考更新任务执行失败，请稍后重试');
         }
       } else if (result === true) {
         notification.success(`已成功刷新 ${ids.length} 个用例的参考参数`);
+        if (viewMode === ViewMode.TAG) await store.refreshTagView();
       }
     }
   };

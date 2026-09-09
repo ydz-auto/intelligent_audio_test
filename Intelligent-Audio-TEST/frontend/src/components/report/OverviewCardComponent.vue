@@ -351,7 +351,7 @@ const formatMetricValue = (metricName, value) => {
 // metricData 已归一化为 {resource: {metric: value}}（resource 级别全局平均）
 const getAverageValue = (metricName, device) => {
   const metricData = getNormalizedMetricData()
-  if (!metricData || typeof metricData !== 'object') return 0
+  if (!metricData || typeof metricData !== 'object') return null
 
   const findValue = (resourceKey) => {
     if (resourceKey && metricData[resourceKey]) {
@@ -385,7 +385,7 @@ const getAverageValue = (metricName, device) => {
     }
   }
 
-  return 0
+  return null
 }
 </script>
 

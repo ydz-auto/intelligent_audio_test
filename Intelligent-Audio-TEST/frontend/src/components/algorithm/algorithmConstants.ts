@@ -15,6 +15,8 @@ export const PARAM_CODE_PRESETS: Record<string, {paramName: string; paramType: s
   'inputAudio': { paramName: '输入音频', paramType: 'audio_select', helpText: '发送给 API 的音频文件' },
   'asr_ref': { paramName: 'ASR参考文本', paramType: 'text', helpText: 'ASR识别参考文本' },
   'tran_ref': { paramName: '翻译参考文本', paramType: 'text', helpText: '翻译参考文本' },
+  'played_audios': { paramName: '被播放音频', paramType: 'audio_select', helpText: '本轮被播放音频（存于用例配置 rounds[].audios），评估时经 case_config→audios 映射取用' },
+  'background_noise': { paramName: '背景噪声', paramType: 'audio_select', helpText: '背景噪声配置（用例级 config.background_noise 全局，或轮次级 rounds[].background_noise），评估时经 case_config→background_noise 映射取用' },
 }
 
 // 功能特性快捷开关：每个 bundle 对应一组 param_code
@@ -25,6 +27,7 @@ export const FEATURE_BUNDLES: Record<string, { label: string; scope: string; par
   env_device: { label: '环境设备', scope: TestType.E2E, params: ['railDistance', 'volumeLevel'] },
   overlap: { label: '交叠播放', scope: TestType.E2E, params: ['overlap_rate', 'overlap_time'] },
   prompt_audio: { label: 'Prompt音频', scope: 'common', params: ['promptAudioId'] },
+  case_config: { label: '用例配置(被播放音频/背景噪声/干扰人)', scope: TestType.E2E, params: ['played_audios', 'background_noise', 'interferers'] },
 }
 
 export const NEW_GROUP_SENTINEL = '__new_group__'

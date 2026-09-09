@@ -119,7 +119,7 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             return self._resp(False, str(e))
 
     def UpdateTaskCaseStatus(self, request, context=None):
-        """更新 TaskCase 状态（evaluation_service 评估完成后调用）"""
+        """更新 TaskCase 状态（evaluation_service 评估完成后 / 执行引擎回写调用）"""
         try:
             updated = task_repository.update_task_case_status(
                 request.task_id, request.case_id,
@@ -127,6 +127,8 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 execution_status=request.execution_status,
                 evaluation_status=request.evaluation_status,
                 error_message=request.error_message,
+                started_at=request.started_at,
+                completed_at=request.completed_at,
             )
             return self._resp(True, 'ok', {'updated': updated})
         except Exception as e:
@@ -182,6 +184,28 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             })
         except Exception as e:
             logger.exception('UpdateTestResultStatus failed')
+            return self._resp(False, str(e))
+
+    def UpdateTestResultOutcome(self, request, context=None):
+        """一次性更新 TestResult 的终态字段（algorithm_result/execution_status/response_time/error_message/result_data_path）
+
+        与 V9.7.10 e2e_aggregator 的单条 UPDATE 等价，避免多次 gRPC 往返导致字段丢失。
+        """
+        try:
+            data = _loads(request.algorithm_result, None) if request.algorithm_result else None
+            ok = test_result_repository.update_outcome(
+                request.result_id,
+                algorithm_result=data,
+                execution_status=request.execution_status or None,
+                response_time=request.response_time,
+                error_message=request.error_message or None,
+                result_data_path=request.result_data_path or None,
+            )
+            if not ok:
+                return self._resp(False, f'TestResult {request.result_id} not found')
+            return self._resp(True, 'ok', {'result_id': request.result_id})
+        except Exception as e:
+            logger.exception('UpdateTestResultOutcome failed')
             return self._resp(False, str(e))
 
     def UpdateTaskStatus(self, request, context=None):
@@ -360,6 +384,7 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 algorithm_type=request.algorithm_type or '',
                 group_id=request.group_id or '',
                 group_by=request.group_by or '',
+                test_type=request.test_type or '',
             )
             if 'error' in result:
                 return self._resp(False, result['error'])

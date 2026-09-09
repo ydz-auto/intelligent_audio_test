@@ -117,14 +117,17 @@ class FlattenMixin:
                         metric = m.get('metric')
                         if metric is None:
                             continue
-                        value = m.get('value', 0)
-                        by_category["metrics"][str(metric)] = 0 if value is None else value
+                        value = m.get('value')
+                        # 无数据（None）的维度不写入，前端显示 '-'
+                        if value is not None:
+                            by_category["metrics"][str(metric)] = value
                 else:
                     metric = item.get('metric')
                     if metric is None:
                         continue
-                    value = item.get('value', 0)
-                    by_category["metrics"][str(metric)] = 0 if value is None else value
+                    value = item.get('value')
+                    if value is not None:
+                        by_category["metrics"][str(metric)] = value
 
             out = []
             for resource in sorted(grouped.keys(), key=lambda x: str(x)):
@@ -162,9 +165,11 @@ class FlattenMixin:
                 resource_metrics = metric_data.get(resource)
                 if not isinstance(resource_metrics, dict):
                     continue
+                # 无数据（None）的维度不写入，前端显示 '-'
                 metrics = [
-                    {"id": metric_name_to_id.get(k), "metric": k, "value": (0 if v is None else v)}
+                    {"id": metric_name_to_id.get(k), "metric": k, "value": v}
                     for k, v in sorted(resource_metrics.items(), key=lambda kv: kv[0])
+                    if v is not None
                 ]
                 out.append({"resource": str(resource), "metrics": metrics})
             return out
@@ -188,9 +193,9 @@ class FlattenMixin:
                 )
                 for metric in sorted(resource_metrics.keys(), key=lambda x: str(x)):
                     value = resource_metrics.get(metric)
-                    if value is None:
-                        value = 0
-                    by_category["metrics"][str(metric)] = value
+                    # 无数据（None）的维度不写入，前端显示 '-'
+                    if value is not None:
+                        by_category["metrics"][str(metric)] = value
 
         out = []
         for resource in sorted(grouped.keys(), key=lambda x: str(x)):

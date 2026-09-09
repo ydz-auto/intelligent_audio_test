@@ -54,7 +54,8 @@ export function createEvalDimensionForm(state: EvalDimensionState) {
         label: d.name,
         taskTypeCode: d.taskTypeCode,
         apiSettings: d.apiSettings,
-        requiredInputs: (d as any).requiredInputs || []
+        requiredInputs: d.requiredInputs || [],
+        outputFields: d.outputFields || []
       }))
     ], conditional: CONDITION_SUB, group: '层级配置' },
     { key: 'parentApiInfo', label: '继承API配置', type: 'info', conditional: CONDITION_SUB,
@@ -88,9 +89,9 @@ export function createEvalDimensionForm(state: EvalDimensionState) {
     { key: 'apiSettings', label: 'API设置', type: 'apiSettingsEditor', required: false, fullWidth: true, group: 'API配置',
       conditional: CONDITION_MAIN },
     { key: 'requiredInputs', label: '所需输入配置', type: 'requiredInputs', required: false, fullWidth: true, group: 'API配置',
-      conditional: CONDITION_MAIN },
+      helpText: '配置当前维度所需的输入参数；子维度默认继承父维度配置，可按需调整。' },
     { key: 'outputFields', label: '输出字段配置', type: 'outputFields', required: false, fullWidth: true, group: 'API配置',
-      conditional: CONDITION_MAIN },
+      helpText: '配置当前维度的结果提取字段及聚合角色。' },
     { key: 'statisticMethod', label: '统计方式', type: 'select', required: false, default: 'average', group: 'API配置',
       options: [
         { value: 'average', label: '简单平均' },

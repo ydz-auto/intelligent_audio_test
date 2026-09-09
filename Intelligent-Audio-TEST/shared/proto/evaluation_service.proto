@@ -94,6 +94,7 @@ service EvaluationConfigService {
 
   // ---- 读操作 ----
   rpc ListDimensions(ListDimensionsRequest) returns (EvaluationConfigResponse);
+  rpc GetDimension(GetDimensionRequest) returns (EvaluationConfigResponse);
   rpc GetDimensionOptions(GetDimensionOptionsRequest) returns (EvaluationConfigResponse);
   rpc GetDimensionByIds(GetDimensionByIdsRequest) returns (EvaluationConfigResponse);
   rpc HealthCheck(HealthCheckRequest) returns (EvaluationConfigResponse);
@@ -137,6 +138,9 @@ message ListDimensionsRequest {
   int32 page = 2;
   int32 per_page = 3;
   string search = 4;
+}
+message GetDimensionRequest {
+  int32 dim_id = 1;
 }
 message GetDimensionOptionsRequest {
   string algorithm_type = 1;

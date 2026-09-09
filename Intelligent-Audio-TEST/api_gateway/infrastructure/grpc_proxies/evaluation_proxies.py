@@ -232,6 +232,25 @@ class _EvaluationConfigProxy:
             error_msg_prefix='获取维度列表失败',
         )
 
+    def get_dimension(self, dim_id):
+        from shared.proto import evaluation_service_pb2 as eval_pb
+
+        def _call():
+            stub = get_evaluation_config_service_stub()
+            resp = stub.GetDimension(eval_pb.GetDimensionRequest(dim_id=int(dim_id)))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {
+                'success': False,
+                'message': f'获取维度详情失败: {e}',
+                'data': None,
+                'code': 500,
+            },
+            error_msg_prefix='获取维度详情失败',
+        )
+
     def get_dimension_options(self, algorithm_type=None):
         from shared.proto import evaluation_service_pb2 as eval_pb
         def _call():

@@ -59,12 +59,20 @@ class E2ECollector:
                             extra_params['playback_timestamps_detail'] = [
                                 {
                                     'audio_id': p.get('audio_id'),
+                                    'audio_type': p.get('audio_type'),
                                     'play_order': p.get('play_order'),
                                     'start_ms': p.get('playback_start_time_ms'),
                                     'end_ms': p.get('playback_end_time_ms'),
                                 }
                                 for p in playback_ts_list
                             ]
+            # 用例级全局背景噪声启停时间轴（毫秒），供设备驱动对齐降噪
+            if playback_timestamps.get('global_noise_start_ms') is not None:
+                extra_params['global_noise_timestamps'] = {
+                    'audio_id': playback_timestamps.get('global_noise_audio_id'),
+                    'start_ms': playback_timestamps.get('global_noise_start_ms'),
+                    'end_ms': playback_timestamps.get('global_noise_end_ms'),
+                }
 
         def log_callback(level, content, task_id, device_id):
             self._log(level=level, content=content, task_id=task_id, device_id=device_id)

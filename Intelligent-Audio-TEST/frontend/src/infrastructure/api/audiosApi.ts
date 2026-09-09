@@ -44,11 +44,12 @@ function toAnnotationDto(ann: unknown): unknown {
 function toEvaluationDimensionDto(dim: unknown): unknown {
   if (!dim || typeof dim !== 'object' || Array.isArray(dim)) return dim;
   const rec = dim as Record<string, unknown>;
-  const { testType, roundScope, ...rest } = rec;
+  const { testType, roundScope, roundNumber, ...rest } = rec;
   return {
     ...rest,
     test_type: testType ?? rec.test_type,
     round_scope: roundScope ?? rec.round_scope,
+    ...(roundNumber !== undefined ? { round_number: roundNumber } : {}),
   };
 }
 

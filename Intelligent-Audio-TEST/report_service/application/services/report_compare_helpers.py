@@ -362,7 +362,7 @@ class ReportCompareHelpers:
         for res in results:
             res_tc_id = res.get('test_case_id') if isinstance(res, dict) else res.test_case_id
             if res_tc_id not in comparison_matrix:
-                case = test_cases_map.get(res_tc_id) if isinstance(res_tc_id, int) else None
+                case = test_cases_map.get(str(res_tc_id)) if res_tc_id is not None else None
                 case_name = (case.get('name') if isinstance(case, dict) else getattr(case, 'name', None)) if case else res_tc_id
                 comparison_matrix[res_tc_id] = {
                     "case_id": res_tc_id,

@@ -4,10 +4,11 @@
  */
 import type { PaginatedResult } from '../../domain';
 import { request, type RequestOptions } from '../http/client';
-import { toTestCase } from '../adapters/testCaseAdapter';
+import { toTestCase, toTagViewItem } from '../adapters/testCaseAdapter';
 import { toPaginated } from '../adapters/commonAdapter';
-import type { TestCaseDto, TestCaseGroupDto, PaginatedDto } from '../dto';
-import type { TestCase, TestCaseGroup } from '../../domain/model/testCase';
+import { ViewMode } from '../../domain/enums';
+import type { TagViewItemDto, TestCaseDto, TestCaseGroupDto, PaginatedDto } from '../dto';
+import type { TestCase, TestCaseGroup, TagViewItem } from '../../domain/model/testCase';
 
 /**
  * camelCase 查询参数 → snake_case 映射表
@@ -71,6 +72,18 @@ export const testcasesApi = {
     const queryParams = toQueryParams(params);
     const dto = await request<PaginatedDto<TestCaseDto>>('GET', '/testcases', null, { ...options, params: queryParams });
     const domain = toPaginated(dto, toTestCase);
+    return { items: domain.items, total: domain.total, page: domain.page, perPage: domain.perPage, pages: domain.pages };
+  },
+
+  /**
+   * 标签视图分页 → PaginatedResult<TagViewItem>（camelCase）。
+   * 后端 view=tag 返回 {items: [{tag, testCases}]}，testCases 内层为 camelCase 用例行，
+   * 与普通列表（snake_case）结构不同，故走独立 adapter 而非 getAll。
+   */
+  async getTagView(params: Record<string, any> = {}, options: RequestOptions = {}): Promise<PaginatedResult<TagViewItem>> {
+    const queryParams = toQueryParams({ ...params, view: ViewMode.TAG });
+    const dto = await request<PaginatedDto<TagViewItemDto>>('GET', '/testcases', null, { ...options, params: queryParams });
+    const domain = toPaginated(dto, toTagViewItem);
     return { items: domain.items, total: domain.total, page: domain.page, perPage: domain.perPage, pages: domain.pages };
   },
 

@@ -197,7 +197,8 @@ class EndpointWorker(EvaluationLoggerMixin):
         # 1. 构建评估上下文（algo_results、context、input_params）
         payload = self._build_evaluation_context(
             task_id, test_case_id, algorithm_result, representative_dim_data,
-            algorithm_type, output_field_keys, dim_id, eval_input_fields, kwargs
+            algorithm_type, output_field_keys, dim_id, eval_input_fields, kwargs,
+            group_items
         )
 
         # 2. 准备API配置（endpoints, method, headers, dim_info, audio_field_names）
@@ -224,7 +225,8 @@ class EndpointWorker(EvaluationLoggerMixin):
         self._process_evaluation_result(resp_data, group_items, task_id, test_case_id, result_id, payload, test_type)
 
     def _build_evaluation_context(self, task_id, test_case_id, algorithm_result, representative_dim_data,
-                                  algorithm_type, output_field_keys, dim_id, eval_input_fields, kwargs):
+                                  algorithm_type, output_field_keys, dim_id, eval_input_fields, kwargs,
+                                  group_items=None):
         """构建评估上下文（包括algo_results、context、input_params），返回 payload"""
         self._log(
             level='DEBUG',

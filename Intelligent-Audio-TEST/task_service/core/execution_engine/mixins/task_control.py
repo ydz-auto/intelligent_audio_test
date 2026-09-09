@@ -387,7 +387,7 @@ class TaskControlMixin:
                             for rel in local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
                         ]
                         with self.queue_lock:
-                            self.task_queue.append({"id": task.id, "type": "api", "api_ids": api_ids, "app": app})
+                            self.task_queue.append({"id": task.id, "type": "api", "api_ids": api_ids})
                         task.status = TaskStatus.QUEUED
                         local_db_session.commit()
                         self._emit_progress(task)

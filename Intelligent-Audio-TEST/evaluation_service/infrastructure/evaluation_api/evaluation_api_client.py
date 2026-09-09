@@ -107,7 +107,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
         Phase 3.3 改造：使用 DistributedSemaphore 替代 threading.Semaphore。
         DistributedSemaphore 内部基于 Redis Lua 原子 INCR/DECR 实现，
-        Redis 不可用时自动降级放行（返回 True），不阻塞业务。
+        Redis 不可用/异常时自动降级为进程内信号量兜底，并发限制不失效。
 
         Args:
             endpoint: 端点URL
@@ -151,8 +151,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         semaphore = self._get_or_create_semaphore(endpoint, max_process)
 
         try:
-            # DistributedSemaphore.acquire 内部自带 Redis 降级逻辑：
-            # Redis 不可用时返回 True（放行），不阻塞业务
+            # DistributedSemaphore.acquire 内部自带降级逻辑：
+            # Redis 不可用/异常时降级为进程内信号量兜底，并发限制不失效
             acquired = semaphore.acquire(timeout=int(wait_timeout))
             if acquired:
                 return True

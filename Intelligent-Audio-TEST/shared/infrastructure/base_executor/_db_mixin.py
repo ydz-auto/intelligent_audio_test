@@ -282,7 +282,7 @@ def _get_case_fields(algorithm_type, algo_acl=None):
             comp_mappings = _get_map(algorithm_type, comp_type) or []
             for mapping in comp_mappings:
                 source_param = mapping.get('source_param', '')
-                target_key = mapping.get('target_param', source_param)
+                target_key = mapping.get('target_key', source_param)
                 source = mapping.get('source', '')
                 if source == 'case':
                     case_fields[target_key] = source_param
@@ -299,7 +299,7 @@ def _get_case_fields(algorithm_type, algo_acl=None):
         comp_mappings = algo_acl.get_param_mapping(algorithm_type, comp_type) or []
         for mapping in comp_mappings:
             source_param = mapping.get('source_param', '')
-            target_key = mapping.get('target_param', source_param)
+            target_key = mapping.get('target_key', source_param)
             source = mapping.get('source', '')
             if source == 'case':
                 case_fields[target_key] = source_param

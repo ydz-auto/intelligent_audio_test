@@ -27,6 +27,7 @@ import { toPaginated } from './commonAdapter'
 /** Record 标注 → AudioAnnotation（标注内容为自由结构，仅转已知键） */
 function toAnnotation(raw: Record<string, unknown>): AudioAnnotation {
   return {
+    code: typeof raw.code === 'string' ? raw.code : undefined,
     format: typeof raw.format === 'string' ? raw.format : undefined,
     name: typeof raw.name === 'string' ? raw.name : undefined,
     data: raw.data,

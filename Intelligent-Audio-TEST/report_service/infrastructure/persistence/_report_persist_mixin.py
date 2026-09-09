@@ -49,6 +49,7 @@ class ReportPersistMixin:
         session = get_db_session()
         po = self.PO_CLASS(
             task_id=aggregate.task_id,
+            name=aggregate.name or '',
             type=aggregate.report_type,
             status=aggregate.status,
             analysis=_safe_json_dumps(aggregate.config) or '',

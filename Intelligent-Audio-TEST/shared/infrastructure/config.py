@@ -31,6 +31,11 @@ class BaseConfig:
     """基础设施配置（所有服务共用）"""
 
     # --- 数据库 ---
+    AUDIO_STORAGE_PATH: str = os.environ.get(
+        'AUDIO_STORAGE_PATH',
+        os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'audios')
+    )
+
     DATABASE_URL: str = _get_env('DATABASE_URL', required=True)
 
     # --- Redis ---

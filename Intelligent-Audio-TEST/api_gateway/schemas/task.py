@@ -8,10 +8,12 @@ from api_gateway.schemas.common import PaginatedData
 
 
 class TaskReportItem(APIModel):
+    # 报告聚合（report_service）不含 name/type 字段（只有 report_type），
+    # 上游可能缺失，必须容错为 Optional，避免 /tasks 列表 500
     id: int = Field(...)
-    name: str = Field(...)
-    status: str = Field(...)
-    type: str = Field(...)
+    name: Optional[str] = Field(None)
+    status: Optional[str] = Field(None)
+    type: Optional[str] = Field(None)
     created_at: Optional[str] = Field(None)
 
 
@@ -172,7 +174,7 @@ class TaskControlRequest(APIModel):
 
 class TaskUpdateCasesRequest(APIModel):
     action: str = Field(...)
-    case_ids: List[int] = Field(default_factory=list)
+    case_ids: List[str] = Field(default_factory=list)
 
 
 class TaskBatchActionRequest(APIModel):

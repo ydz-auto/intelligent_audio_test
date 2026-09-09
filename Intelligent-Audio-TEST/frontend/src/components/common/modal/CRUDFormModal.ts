@@ -12,6 +12,7 @@ import { useNotification } from '../../../composables/modal/useNotification'
 import type { FormFieldConfig, FormValues, FieldOption, FileUploadPayload, SplTestPayload } from '../form/formFieldTypes'
 import type { SPLByDeviceItem } from '../../../domain/model/spl'
 import type { PlaybackDevice } from '../../../domain/model/device'
+import { matchDriverOptionValue } from '../../../domain/model/device'
 import type { Dimension } from '../../../domain/model/dimension'
 
 /** CRUD 弹窗 props 契约（与 CRUDFormModal.vue defineProps 保持一致） */
@@ -169,9 +170,27 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
           value: item.keywords.length > 0 ? item.keywords.join(', ') : '',
           label: `${item.name || ''} (${item.system || ''})`
         }))
+
+        // 编辑回显兼容：存储的关键字组合与注册表不一致时，按领域规则重匹配驱动选项
+        syncKeywordValueToOptions()
       }
     } catch (error) {
       console.error('加载驱动关键字失败:', error)
+    }
+  }
+
+  /** 编辑回显：当前关键字值未命中任何选项时，按关键字集合最大交集回填最接近的驱动组合值 */
+  const syncKeywordValueToOptions = () => {
+    const stored = formValues.value.keywords
+    if (typeof stored !== 'string' || stored === '') return
+    if (dynamicFieldOptions.value.keywords.some((option) => option.value === stored)) return
+
+    const matchedValue = matchDriverOptionValue(
+      stored,
+      dynamicFieldOptions.value.keywords.map((option) => option.value)
+    )
+    if (matchedValue) {
+      formValues.value.keywords = matchedValue
     }
   }
 
@@ -605,7 +624,13 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
     }
   }, { deep: true })
 
-  // 联动：选择父维度后，继承父维度的任务类型/API设置/必填输入（Dimension Domain 为 camelCase）
+  const hasConfiguredList = (value: unknown): boolean =>
+    Array.isArray(value) && value.length > 0
+
+  const cloneList = <T,>(value: unknown): T[] =>
+    Array.isArray(value) ? structuredClone(value) as T[] : []
+
+  // 联动：选择父维度后，继承父维度的任务类型/API设置/输入输出参数
   watch(() => formValues.value.parentDimensionId, (newParentId) => {
     if (newParentId && props.fields) {
       const parentField = props.fields.find((f: FormFieldConfig) => f.key === 'parentDimensionId')
@@ -621,14 +646,23 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
             if (parentOption.apiSettings !== undefined && !formValues.value.apiSettings) {
               formValues.value.apiSettings = parentOption.apiSettings
             }
-            if (parentOption.requiredInputs !== undefined && !formValues.value.requiredInputs) {
-              formValues.value.requiredInputs = parentOption.requiredInputs
+            if (
+              !hasConfiguredList(formValues.value.requiredInputs) &&
+              Array.isArray(parentOption.requiredInputs)
+            ) {
+              formValues.value.requiredInputs = cloneList(parentOption.requiredInputs)
+            }
+            if (
+              !hasConfiguredList(formValues.value.outputFields) &&
+              Array.isArray(parentOption.outputFields)
+            ) {
+              formValues.value.outputFields = cloneList(parentOption.outputFields)
             }
           }
         }
       }
     }
-  })
+  }, { immediate: true })
 
   // 联动：requiredInputs 变化时，同步 apiSettings.bodyTemplate.rounds[0] 的 key（值用 {{key}} 占位符）
   watch(() => formValues.value.requiredInputs, (newInputs) => {

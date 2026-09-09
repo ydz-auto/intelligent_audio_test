@@ -141,6 +141,7 @@ class RoundsLoopMixin:
                 post_extra_params['playback_timestamps_detail'] = [
                     {
                         'audio_id': p.get('audio_id'),
+                        'audio_type': p.get('audio_type'),
                         'play_order': p.get('play_order'),
                         'start_ms': p.get('playback_start_time_ms'),
                         'end_ms': p.get('playback_end_time_ms'),
@@ -302,14 +303,14 @@ class RoundsLoopMixin:
         round_start_ms = None
         round_end_ms = None
         for timeline in audio_timelines:
-            if timeline.get('is_noise', False):
-                continue
             audio_config = timeline.get('config', {})
             audio_obj = timeline.get('audio', {})
             # gRPC JSON 序列化后 audio 变成字符串，优先从 config 取 audio_id
-            audio_id = audio_config.get('audio_id') or getattr(audio_obj, 'id', None)
-            if not audio_id:
-                continue
+            audio_id = (
+                audio_config.get('audio_id')
+                or getattr(audio_obj, 'id', None)
+                or timeline.get('file')
+            )
 
             if task_id not in self._playback_timestamps:
                 self._playback_timestamps[task_id] = {
@@ -334,6 +335,8 @@ class RoundsLoopMixin:
                 'is_overlap': bool(overlap_rate and overlap_rate > 0),
                 'overlap_rate': overlap_rate,
                 'overlap_time': overlap_time,
+                'is_noise': bool(timeline.get('is_noise') or audio_config.get('is_noise')),
+                'audio_type': audio_config.get('type'),
             })
         # 记录本轮播放起止时间戳（毫秒），供 collect_results 传递给设备驱动
         if round_start_ms is not None and round_end_ms is not None:

@@ -240,7 +240,7 @@ class ReportTaskGenerator:
         completed_cases = completed_cases - failed_cases_val
         success_rate = (completed_cases / total_cases * 100) if total_cases > 0 else 0
 
-        res_ids = [r.id for r in results]
+        res_ids = [r.get('id') if isinstance(r, dict) else r.id for r in results]
 
         dim_results_map, dim_stats = ReportDataBuilder._get_dimension_results_batch(res_ids)
 
@@ -372,6 +372,14 @@ class ReportTaskGenerator:
                 return task.get(key, default)
             return getattr(task, key, default)
 
+        def _fmt_time(value):
+            """兼容 str / datetime 两种时间表示。"""
+            if value is None:
+                return None
+            if isinstance(value, str):
+                return value
+            return value.isoformat() if hasattr(value, 'isoformat') else None
+
         actual_duration = _task_get('actual_duration')
         started_at = _task_get('started_at')
         completed_at = _task_get('completed_at')
@@ -383,8 +391,8 @@ class ReportTaskGenerator:
             "overall_success_rate": round(data_dict["success_rate"], 2),
             "dimension_values": data_dict["summary_dim_values"],
             "duration": actual_duration,
-            "started_at": started_at.isoformat() if started_at else None,
-            "completed_at": completed_at.isoformat() if completed_at else None,
+            "started_at": _fmt_time(started_at),
+            "completed_at": _fmt_time(completed_at),
             "case_categories": data_dict["case_categories_list"],
             "all_case_tags": data_dict["case_tags_list"],
             "all_tags": data_dict["case_tags_list"],
@@ -448,16 +456,17 @@ class ReportTaskGenerator:
 
             summary = ReportTaskGenerator._build_task_summary(task, task_id, results, data_dict)
 
-            new_report = ReportDataBuilder._create_report_record(name, task_id, description)
-            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created report id={new_report.id}', task_id=task_id)
+            # _create_report_record 返回新报告的 id（int）
+            new_report_id = ReportDataBuilder._create_report_record(name, task_id, description)
+            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created report id={new_report_id}', task_id=task_id)
 
-            summary_info, summary_meta = ReportDataBuilder._create_report_summary(new_report.id, task, summary)
-            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created summary_info id={summary_info.id}, report_id={summary_info.report_id}', task_id=task_id)
+            summary_id, meta_id = ReportDataBuilder._create_report_summary(new_report_id, task, summary)
+            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created summary_info id={summary_id}, report_id={new_report_id}', task_id=task_id)
 
-            raw_data_record, metric_stats_record = ReportDataBuilder._create_report_detail_data(new_report.id, summary)
-            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report.id}', task_id=task_id)
+            raw_data_record, metric_stats_record = ReportDataBuilder._create_report_detail_data(new_report_id, summary)
+            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report_id}', task_id=task_id)
 
-            report_id = new_report.id
+            report_id = new_report_id
 
             # 报告生成完成，设置状态为 published
             try:

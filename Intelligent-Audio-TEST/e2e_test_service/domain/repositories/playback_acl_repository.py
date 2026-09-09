@@ -23,9 +23,18 @@ class PlaybackAclRepository(ABC):
         """播放本轮音频"""
 
     @abstractmethod
-    def start_background_noise(self, case_config: Dict, task_id: str) -> bool:
-        """启动全局背景噪声（跨轮次持续播放）"""
+    def start_background_noise(self, case_config: Dict, task_id: str) -> Optional[Dict]:
+        """启动全局背景噪声（跨轮次持续播放）
+
+        Returns:
+            dict: {'audio_id', 'start_ms', 'end_ms'} 启动时间戳（毫秒）
+            None: 启动失败
+        """
 
     @abstractmethod
-    def stop_background_noise(self, task_id: str) -> None:
-        """停止全局背景噪声"""
+    def stop_background_noise(self, task_id: str) -> Optional[Dict]:
+        """停止全局背景噪声
+
+        Returns:
+            dict: 含 end_ms 的最终时间戳；未启动或失败返回 None
+        """

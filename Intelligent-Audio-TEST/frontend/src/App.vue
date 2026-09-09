@@ -89,6 +89,10 @@ const route = useRoute()
 const notificationRef = ref<NotificationInstance | null>(null)
 const mainContentRef = ref<HTMLElement | null>(null)
 
+// provide() 必须在 setup 同步阶段调用，提供模态框管理器供子孙组件 inject
+provideModal()
+registerGlobalModals()
+
 // 按权限过滤导航
 const visibleNavItems = computed(() => {
   if (!authStore.isLoggedIn) {
@@ -161,8 +165,6 @@ onMounted(() => {
   if (notificationRef.value) {
     provideNotification(notificationRef.value)
   }
-  provideModal()
-  registerGlobalModals()
 
   // 恢复用户信息：token 存在时从后端 /auth/me 拉取最新权限
   authStore.init()

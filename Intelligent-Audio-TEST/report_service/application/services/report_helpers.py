@@ -74,7 +74,7 @@ class ReportHelpers:
         """
         from report_service.infrastructure.clients.grpc_clients import _grpc_algo_normalize_algorithm_params
 
-        config = test_case.config or {}
+        config = (test_case.get('config') if isinstance(test_case, dict) else test_case.config) or {}
         rounds = config.get('rounds', [])
         if not rounds:
             return []
@@ -123,7 +123,7 @@ class ReportHelpers:
                 dev_map = _grpc_get_playback_devices_by_ids(list(all_device_ids))
                 devices = {k: v.get('name') for k, v in dev_map.items()}
 
-        tc_test_type = test_case.test_type or TestType.API.value
+        tc_test_type = (test_case.get('test_type') if isinstance(test_case, dict) else test_case.test_type) or TestType.API.value
 
         per_round_dry = []
         noise_audios = []
@@ -313,10 +313,24 @@ class ReportHelpers:
     # 公共函数：构建结果信息
     @staticmethod
     def build_result_info(result):
+        if isinstance(result, dict):
+            execution_status = result.get('execution_status')
+            created_at = result.get('created_at')
+        else:
+            execution_status = getattr(result, 'execution_status', None)
+            created_at = getattr(result, 'created_at', None)
+
+        def _to_iso(value):
+            if value is None:
+                return None
+            if hasattr(value, 'isoformat'):
+                return value.isoformat()
+            return value if isinstance(value, str) else None
+
         return {
-            "status": "成功" if result.execution_status == TaskStatus.COMPLETED.value else "失败",
-            "start_time": result.created_at.isoformat() if result.created_at else None,
-            "end_time": result.created_at.isoformat() if result.created_at else None
+            "status": "成功" if execution_status == TaskStatus.COMPLETED.value else "失败",
+            "start_time": _to_iso(created_at),
+            "end_time": _to_iso(created_at)
         }
 
     # 公共函数：提取音频列表

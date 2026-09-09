@@ -55,6 +55,8 @@ class PlaybackOrchestrator:
         self.audio_service = audio_service or _default_audio_service
         # 全局背景噪声 player 标识，用于独立启停
         self._bg_noise_player_type = 'global_noise'
+        # 全局背景噪声启停打点：task_id_key -> {'audio_id', 'start_ms', 'end_ms'}
+        self._bg_noise_timestamps = {}
 
     # ------------------------------------------------------------------ #
     #                           高层 API                                  #
@@ -165,6 +167,11 @@ class PlaybackOrchestrator:
             audio_to_play.extend(dry_configs)
             audio_to_play.extend(interferer_configs)
 
+            # 主讲人时间轴之外的播放源也要记录，供设备侧按实际播放窗口切分。
+            audio_timelines.extend(self._build_auxiliary_audio_timelines(
+                noise_configs, interferer_configs, audio_timelines
+            ))
+
             if not audio_to_play:
                 self._log('WARNING', f'[play_round {round_tag}] no audio to play', task_id=task_id)
                 return None
@@ -220,14 +227,24 @@ class PlaybackOrchestrator:
             delay_map = {cfg.get('play_order', 0): d for cfg, d in audio_delays}
 
             for timeline in audio_timelines:
-                play_order = timeline.get('config', {}).get('play_order', 0)
-                timeline['actual_play_time'] = actual_play_time + delay_map.get(play_order, 0)
-                timeline['actual_end_time'] = actual_end_time
+                config = timeline.get('config', {})
+                is_auxiliary = config.get('type') in {'noise', 'interferer'}
+                if is_auxiliary:
+                    delay = 0 if config.get('is_noise') else max(float(config.get('delay') or 0), 0)
+                    timeline['actual_play_time'] = actual_play_time + delay
+                    timeline['actual_end_time'] = (
+                        actual_end_time if config.get('is_noise')
+                        else timeline['actual_play_time'] + max(float(config.get('duration') or 0), 0)
+                    )
+                else:
+                    play_order = config.get('play_order', 0)
+                    timeline['actual_play_time'] = actual_play_time + delay_map.get(play_order, 0)
+                    timeline['actual_end_time'] = actual_end_time
                 # 毫秒级时间戳，供设备驱动用于时延统计
                 timeline['playback_start_time_ms'] = int(round(
-                    (actual_play_time + delay_map.get(play_order, 0)) * 1000
+                    timeline['actual_play_time'] * 1000
                 ))
-                timeline['playback_end_time_ms'] = int(round(actual_end_time * 1000))
+                timeline['playback_end_time_ms'] = int(round(timeline['actual_end_time'] * 1000))
 
             return {
                 'audio_timelines': audio_timelines,
@@ -274,6 +291,15 @@ class PlaybackOrchestrator:
         if not noise_configs:
             self._log('WARNING', '全局背景噪声配置构建失败，跳过启动', task_id=task_id)
             return True
+
+        # 预登记打点记录，start_ms 在真正开始播放后补记（重复调用不覆盖）
+        task_id_key = str(task_id)
+        bg_audio_id = (
+            case_bg.get('audio_id') or case_bg.get('audio') or case_bg.get('audio_name')
+        )
+        self._bg_noise_timestamps.setdefault(task_id_key, {
+            'audio_id': bg_audio_id, 'start_ms': None, 'end_ms': None,
+        })
 
         try:
             # 用独立 player_type 注册，避免被 stop_task_audio(task_id) 无差别清空
@@ -324,6 +350,11 @@ class PlaybackOrchestrator:
                 if evt:
                     evt.wait(timeout=60)
 
+            # 打点：真正开始播放的毫秒时间戳（首次启动才记录，重复调用不覆盖）
+            record = self._bg_noise_timestamps.get(task_id_key)
+            if record and record.get('start_ms') is None:
+                record['start_ms'] = int(time.time() * 1000)
+
             self._log('INFO', '全局背景噪声已启动', task_id=task_id)
             return True
         except Exception as e:
@@ -357,12 +388,25 @@ class PlaybackOrchestrator:
         keys_to_stop = [k for k in players if k.startswith(self._bg_noise_player_type)]
         if not keys_to_stop:
             return
+        # 打点：发出停止信号前的毫秒时间戳
+        record = self._bg_noise_timestamps.get(task_id_key)
+        if record and record.get('end_ms') is None:
+            record['end_ms'] = int(time.time() * 1000)
         for k in keys_to_stop:
             stop_event = players[k].get('stop_event')
             if stop_event:
                 stop_event.set()
             players.pop(k, None)
         self._log('INFO', '全局背景噪声已停止', task_id=task_id)
+
+    def get_background_noise_timestamps(self, task_id):
+        """获取全局背景噪声启停时间戳（毫秒）。
+
+        Returns:
+            None: 未启动
+            dict: {'audio_id': ..., 'start_ms': 毫秒, 'end_ms': 毫秒或 None（播放中）}
+        """
+        return self._bg_noise_timestamps.get(str(task_id))
 
     def has_background_noise(self, case_config):
         """判断 case_config 是否配置了有效的全局背景噪声。
@@ -444,6 +488,11 @@ class PlaybackOrchestrator:
             audio_to_play.extend(noise_configs)
             audio_to_play.extend(offset_configs)
 
+            # 预览同样返回噪声/干扰音频的时间戳明细。
+            audio_timelines.extend(self._build_auxiliary_audio_timelines(
+                noise_configs, [], audio_timelines
+            ))
+
             if not audio_to_play:
                 self._log('WARNING', 'preview: no audio to play', task_id=task_id)
                 return None
@@ -474,13 +523,23 @@ class PlaybackOrchestrator:
             )
             delay_map = {cfg.get('play_order', 0): d for cfg, d in audio_delays}
             for timeline in audio_timelines:
-                play_order = timeline.get('config', {}).get('play_order', 0)
-                timeline['actual_play_time'] = actual_play_time + delay_map.get(play_order, 0)
-                timeline['actual_end_time'] = actual_end_time
+                config = timeline.get('config', {})
+                is_auxiliary = config.get('type') in {'noise', 'interferer'}
+                if is_auxiliary:
+                    delay = 0 if config.get('is_noise') else max(float(config.get('delay') or 0), 0)
+                    timeline['actual_play_time'] = actual_play_time + delay
+                    timeline['actual_end_time'] = (
+                        actual_end_time if config.get('is_noise')
+                        else timeline['actual_play_time'] + max(float(config.get('duration') or 0), 0)
+                    )
+                else:
+                    play_order = config.get('play_order', 0)
+                    timeline['actual_play_time'] = actual_play_time + delay_map.get(play_order, 0)
+                    timeline['actual_end_time'] = actual_end_time
                 timeline['playback_start_time_ms'] = int(round(
-                    (actual_play_time + delay_map.get(play_order, 0)) * 1000
+                    timeline['actual_play_time'] * 1000
                 ))
-                timeline['playback_end_time_ms'] = int(round(actual_end_time * 1000))
+                timeline['playback_end_time_ms'] = int(round(timeline['actual_end_time'] * 1000))
 
             return {
                 'audio_timelines': audio_timelines,
@@ -490,6 +549,26 @@ class PlaybackOrchestrator:
         except Exception as e:
             self._log('ERROR', f'preview failed: {e}', task_id=task_id)
             return None
+
+    @staticmethod
+    def _build_auxiliary_audio_timelines(noise_configs, interferer_configs, dry_timelines):
+        """为不参与主讲人交叠计算的播放源构建时间轴。"""
+        dry_end = max((timeline.get('end', 0) for timeline in dry_timelines), default=0)
+        timelines = []
+        for config in [*(noise_configs or []), *(interferer_configs or [])]:
+            duration = max(float(config.get('duration') or 0), 0)
+            start = 0 if config.get('is_noise') else max(float(config.get('delay') or 0), 0)
+            end = dry_end if config.get('is_noise') else start + duration
+            timelines.append({
+                'config': config,
+                'audio': None,
+                'file': config.get('file'),
+                'start': start,
+                'end': end,
+                'timeline_duration': duration,
+                'is_noise': bool(config.get('is_noise')),
+            })
+        return timelines
 
     def play_voiceprint(self, vp_config, task_id):
         """

@@ -24,6 +24,13 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
             data=_dumps(data) if data is not None else "",
         )
 
+    @staticmethod
+    def _from_result(result):
+        """将 Query/Command Service 返回的 dict 结构化为 _resp 三参数（(success, message, data)）。"""
+        if isinstance(result, dict):
+            return result.get('success', False), result.get('message', ''), result.get('data')
+        return bool(result), '', None
+
     def GetDimensionResultsByResultIds(self, request, context=None):
         """按 result_id 列表批量查询维度评估结果（含 dimension_name）。"""
         try:
@@ -36,7 +43,7 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
                 evaluation_query_service,
             )
             result = evaluation_query_service.get_dimension_results_by_result_ids(result_ids)
-            return self._resp(result)
+            return self._resp(*self._from_result(result))
         except Exception as e:
             return self._resp(False, str(e))
 
@@ -52,6 +59,6 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
                 evaluation_command_service,
             )
             result = evaluation_command_service.delete_dimension_results_by_result_ids(result_ids)
-            return self._resp(result)
+            return self._resp(*self._from_result(result))
         except Exception as e:
             return self._resp(False, str(e))

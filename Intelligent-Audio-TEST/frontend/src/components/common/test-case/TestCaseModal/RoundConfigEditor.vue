@@ -113,6 +113,7 @@ import AlgoParamsStep from './sections/AlgoParamsStep.vue'
 import AudioListStep from './sections/AudioListStep.vue'
 import NoiseInterferenceStep from './sections/NoiseInterferenceStep.vue'
 import ReferencePathStep from './sections/ReferencePathStep.vue'
+import { useModalControl, MODAL_TYPES } from '../../../../composables/modal/useModal'
 
 // ---- Props ----
 const props = defineProps<{
@@ -136,6 +137,8 @@ const emit = defineEmits<{
   'openBatchSplModal': []
   'previewAudio': [audioId: string, audioType: 'dry' | 'noise']
 }>()
+
+const modalControl = useModalControl()
 
 // ---- Injects ----
 const playbackDevices = inject<PlaybackDevice[]>('playbackDevices', [])
@@ -253,9 +256,18 @@ function copyCurrentRound() {
   emitUpdate()
 }
 
-function removeCurrentRound() {
+async function removeCurrentRound() {
   if (localRounds.value.length <= 1) return
-  if (!confirm('确定要删除第 ' + (activeRoundIndex.value + 1) + ' 轮吗？该操作不可撤销。')) return
+  try {
+    await modalControl.open(MODAL_TYPES.DELETE_CONFIRM, {
+      title: '删除轮次',
+      content: `确定要删除第 ${activeRoundIndex.value + 1} 轮吗？该操作不可撤销。`,
+      confirmText: '删除',
+      cancelText: '取消'
+    })
+  } catch {
+    return // 用户取消
+  }
   const idx = activeRoundIndex.value
   const deletedRoundNumber = localRounds.value[idx]?.roundNumber
 

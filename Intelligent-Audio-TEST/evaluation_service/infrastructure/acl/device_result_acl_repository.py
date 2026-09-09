@@ -25,21 +25,30 @@ class DeviceResultAclRepository:
         return get_device_result_service_stub()
 
     def convert_results(self, all_results: List[Dict], algorithm_type: str) -> List[Dict]:
-        """转换设备原始结果格式"""
+        """转换设备原始结果格式
+
+        与 device_service CollectResult 的 'convert' 模式对齐：
+        - 请求侧使用 mode=convert + tagged_results（旧代码用 action 键，
+          device_service 读不到 mode 会落入 raw 分支，导致结果错位）
+        - 响应侧是 {"results": [...], "count": N} 包装结构，需解包 results 列表
+        """
         from shared.proto import device_service_pb2
         try:
             req = device_service_pb2.CollectResultRequest(
                 task_id='',
                 collect_config=json.dumps({
-                    'action': 'convert_results',
-                    'all_results': all_results,
+                    'mode': 'convert',
+                    'tagged_results': all_results,
                     'algorithm_type': algorithm_type,
-                })
+                }, default=str)
             )
             resp = self._get_stub().CollectResult(req)
             if not resp.success or not resp.data:
                 return all_results
-            return json.loads(resp.data)
+            data = json.loads(resp.data)
+            if isinstance(data, dict) and 'results' in data:
+                return data['results'] if isinstance(data['results'], list) else []
+            return data if isinstance(data, list) else all_results
         except Exception as e:
             logger.error("convert_results 失败: %s", e)
             return all_results

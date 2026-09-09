@@ -12,6 +12,7 @@
  * 模块路径与导出面保持不变，消费方零改动。
  */
 import { computed, watch } from 'vue';
+import { useTestCaseStore } from '../../../store/testCaseStore';
 import { useTestCaseBatchActions } from '../../../composables/testCase/useTestCaseBatchActions';
 import { useTestCaseAudioPreview } from '../../../composables/testCase/useTestCaseAudioPreview';
 import { createContainerState } from './testCaseListContainer.state';
@@ -43,6 +44,9 @@ export function useTestCaseListContainer(props: any, emit: any) {
     paginatedTagsRef,
     hasMoreTagsRef
   } = state;
+
+  // 用例 store：复制用例等 CRUD 成功后按当前视图刷新数据
+  const testCaseStore = useTestCaseStore();
 
   // 2. 分组展开 + 筛选编排
   const {
@@ -147,7 +151,9 @@ export function useTestCaseListContainer(props: any, emit: any) {
   } = useTestCaseAudioPreview(
     (testCase) => emit('openEditModal', testCase),
     (testCase) => emit('deleteTestCase', testCase),
-    selectedCases
+    selectedCases,
+    // 复制成功后按当前视图刷新（标签视图下需重新拉取 tagViewData）
+    () => testCaseStore.refreshView(innerViewMode.value)
   );
 
   // 4. 用例选择与批量菜单

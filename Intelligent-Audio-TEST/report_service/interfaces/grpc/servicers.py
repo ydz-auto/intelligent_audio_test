@@ -49,13 +49,23 @@ def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[st
     """
     if aggregate is None:
         return None
+    config = dict(aggregate.config) if aggregate.config else {}
+    # 报告名来自聚合根 name（PO.name 列），config.name 为历史约定兜底，
+    # 提升为顶层字段供 task_service/api_gateway 等消费方直接读取
     return {
         'id': aggregate.id,
         'task_id': aggregate.task_id,
+        'name': aggregate.name or config.get('name') or '',
+        'description': config.get('description') or '',
+        # 对外契约字段名与 PO 列名保持一致（report_type 为聚合根内部命名）
+        'type': aggregate.report_type,
         'report_type': aggregate.report_type,
         'status': aggregate.status,
-        'config': dict(aggregate.config) if aggregate.config else {},
+        'config': config,
         'created_at': str(aggregate.created_at) if aggregate.created_at is not None else None,
+        # 详情接口输出完整摘要（all_metrics/case_categories/all_case_tags/...），
+        # 列表等场景无 full_summary 时回退为扁平统计（对齐 api_gateway ReportListItem.summary）
+        'summary': aggregate.full_summary if aggregate.full_summary else aggregate.flat_summary(),
         # 子实体集合（仅 summary 查询时填充）
         'summaries': [
             {
@@ -200,16 +210,16 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             command = DeleteReportCommand(
                 report_id=getattr(request, 'report_id'),
             )
-            deleted = self.command_handler.handle_delete(command)
-            # 查询报告关联的 task_id，用于重新生成
+            # 先查询报告关联的 task_id，用于重新生成
+            # 注意：需在删除前查询，软删后 get_by_id 会过滤已删除记录
             task_id = None
-            if deleted:
-                try:
-                    aggregate = self.query_handler.handle_get(GetReportQuery(report_id=command.report_id))
-                    if aggregate:
-                        task_id = aggregate.task_id
-                except Exception:
-                    pass
+            try:
+                aggregate = self.query_handler.handle_get(GetReportQuery(report_id=command.report_id))
+                if aggregate:
+                    task_id = aggregate.task_id
+            except Exception:
+                pass
+            deleted = self.command_handler.handle_delete(command)
             return self._resp(
                 deleted,
                 'ok' if deleted else 'report not found',

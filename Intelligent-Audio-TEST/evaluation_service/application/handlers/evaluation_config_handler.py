@@ -79,6 +79,10 @@ class EvaluationConfigHandler:
             category_id=category_id, page=page, per_page=per_page, search=search,
         )
 
+    def get_dimension(self, dim_id: int) -> Dict[str, Any]:
+        """查询单个评估维度的完整配置。"""
+        return self.query.get_dimension(dim_id)
+
     def get_dimension_options(self, algorithm_type: str = '') -> Dict[str, Any]:
         return self.query.get_dimension_options(algorithm_type)
 

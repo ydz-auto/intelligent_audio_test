@@ -238,8 +238,9 @@
             </div>
             <TestCaseGroupActions
               @click.stop
-              :disabled-actions="['edit', 'addCase']"
+              @edit="() => handleTagEdit(tagName)"
               @delete="() => handleTagDelete(tagName)"
+              @addCase="() => handleTagAddCase(tagName)"
               @copyGroup="() => handleTagCopyGroup(tagName)"
               @updateAlgorithmParams="() => handleTagUpdateAlgorithmParams(tagName)"
               @updatePlaybackDevice="() => handleTagUpdatePlaybackDevice(tagName)"
@@ -357,6 +358,10 @@ import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../domain';
 import { TestType, ViewMode } from '@/domain/enums';
+import { useTestCaseStore } from '../../../store/testCaseStore';
+import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
+import { useNotification } from '../../../composables/modal/useNotification';
+import { tagsPort } from '../../../composables/shared/tagsPort';
 import { useTestCaseListContainer } from './TestCaseListContainer';
 
 const props = defineProps<{
@@ -375,7 +380,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'deleteGroup', groupName: string): void;
   (e: 'deleteTestCase', testCase: TestCase): void;
-  (e: 'openAddModal', group?: string, options?: { algorithmType?: string; testType?: 'api' | 'e2e' }): void;
+  (e: 'openAddModal', group?: string, options?: { algorithmType?: string; testType?: 'api' | 'e2e'; tags?: string[] }): void;
   (e: 'openEditModal', testCase: TestCase): void;
   (e: 'openCreateGroupModal'): void;
   (e: 'openEditGroupModal', groupName: string): void;
@@ -481,6 +486,45 @@ const {
   openBatchMenuGroup,
   toggleBatchMenu
 } = useTestCaseListContainer(props, emit)
+
+const testCaseStore = useTestCaseStore()
+const modalControl = useModalControl()
+const notification = useNotification()
+
+/** 编辑标签（重命名/颜色/分类）：对齐 V9.7.10，成功后按当前视图刷新 */
+const handleTagEdit = async (tagName: string) => {
+  try {
+    // 先通过标签名查找标签对象（端口层 camelCase 契约：getTags({ keyword })）
+    const res = await tagsPort.getTags({ keyword: tagName })
+    const tagItem = (res as any)?.items?.find((t: any) => t.name === tagName)
+    if (!tagItem) {
+      notification.warning(`未找到标签"${tagName}"，可能已被删除`)
+      return
+    }
+    const result = await modalControl.open(MODAL_TYPES.TAG_EDIT, {
+      tag: tagItem,
+      categoryId: (tagItem as any).categoryId || null,
+      categories: []
+    })
+    if (result) {
+      notification.success(`标签"${tagName}"已更新`)
+      // 编辑后按当前视图刷新（标签视图下 tagViewData / tags 需重新拉取）
+      await testCaseStore.refreshView(innerViewMode.value)
+    }
+  } catch (error) {
+    console.error('编辑标签失败:', error)
+    notification.error('编辑标签失败')
+  }
+}
+
+/** 添加用例到标签：打开新增用例模态窗并预填当前标签 */
+const handleTagAddCase = (tagName: string) => {
+  emit('openAddModal', undefined, {
+    algorithmType: algorithmTypeFilter.value === 'all' ? '' : algorithmTypeFilter.value,
+    testType: testTypeFilter.value === 'all' ? undefined : testTypeFilter.value as 'api' | 'e2e',
+    tags: [tagName]
+  })
+}
 </script>
 
 <style scoped>

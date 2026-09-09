@@ -220,7 +220,7 @@ class _TaskConfigProxy:
             stub = get_task_config_service_stub()
             resp = stub.GetCaseDetail(task_pb.GetCaseDetailRequest(
                 task_id=int(task_id),
-                case_id=int(case_id),
+                case_id=str(case_id),
             ))
             return self._resp(resp)
 
@@ -237,7 +237,7 @@ class _TaskConfigProxy:
             stub = get_task_config_service_stub()
             resp = stub.GetCaseResults(task_pb.GetCaseResultsRequest(
                 task_id=int(task_id),
-                case_id=int(case_id),
+                case_id=str(case_id),
             ))
             return self._resp(resp)
 

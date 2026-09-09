@@ -36,14 +36,18 @@ class TagRepositoryMixin:
         return tag
 
     def list_tags_ordered_by_updated_at(self) -> List[Tag]:
-        """按更新时间倒序查询所有标签。"""
+        """按更新时间倒序查询所有未删除标签。"""
         session = get_db_session()
-        return session.query(Tag).order_by(Tag.updated_at.desc()).all()
+        return session.query(Tag).filter(
+            Tag.deleted == False  # noqa: E712
+        ).order_by(Tag.updated_at.desc()).all()
 
     def list_tags_paginated(self, page: int, per_page: int):
-        """分页查询标签。"""
+        """分页查询未删除标签（view=tag 数据源，需剔除软删除标签）。"""
         session = get_db_session()
-        return session.query(Tag).order_by(Tag.name).paginate(
+        return session.query(Tag).filter(
+            Tag.deleted == False  # noqa: E712
+        ).order_by(Tag.name).paginate(
             page=page, per_page=per_page, error_out=False
         )
 

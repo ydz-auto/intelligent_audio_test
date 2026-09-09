@@ -7,7 +7,8 @@
 设计原则：
 - 所有方法在 Redis 不可用时返回安全默认值（不阻塞业务），并打印降级日志
 - 锁带 TTL 防止持有者崩溃后死锁
-- 信号量用 INCR/DECR 原子实现，带 TTL 兜底
+- 信号量用 INCR/DECR 原子实现，带 TTL 兜底；Redis 不可用/异常时降级为进程内
+  BoundedSemaphore 兜底，保证独占实例场景下并发限制不失效
 - 控制标志位用 SET/GET，多实例可读
 """
 import logging
@@ -133,59 +134,100 @@ end
 """
 
 
+# 进程内信号量兜底注册表：Redis 不可用/异常时保持并发限制不失效（对齐 V9.7.10）
+# key -> threading.BoundedSemaphore；按 key 复用，跨实例共享，数量有限无需清理
+_LOCAL_SEMAPHORES = {}
+_LOCAL_SEM_LOCK = threading.Lock()
+
+
+def _get_local_semaphore(key, max_count):
+    """获取（或创建）key 对应的进程内兜底信号量"""
+    with _LOCAL_SEM_LOCK:
+        sem = _LOCAL_SEMAPHORES.get(key)
+        if sem is None:
+            sem = threading.BoundedSemaphore(max_count)
+            _LOCAL_SEMAPHORES[key] = sem
+        return sem
+
+
 class DistributedSemaphore:
     """分布式信号量（基于 Lua 原子 INCR/DECR + 兜底 TTL key）
 
     用于限制同一资源的全局并发数（如同一 API 的并发请求数）。
     用 Lua 脚本保证 INCR+判超限+回退+EXPIRE 是原子的，多进程并发安全。
+
+    降级策略（对齐 V9.7.10 的进程内 threading.Semaphore 行为）：
+    - Redis 不可用/异常时，acquire 降级为进程内 BoundedSemaphore 兜底，
+      并发限制不失效；release 与 acquire 路径对称降级，保证配对释放。
+    - ttl 为持有者崩溃后的名额泄漏兜底，必须大于最长持有时长
+      （如单条 API 用例的最长执行时间），否则计数 key 提前过期会导致并发控制失效。
     """
 
-    def __init__(self, key, max_count, ttl=30):
+    def __init__(self, key, max_count, ttl=3600):
         self.key = key
         self.max_count = max_count
         self.ttl = ttl
 
     def acquire(self, timeout=300):
-        """获取一个名额，成功返回 True，超时返回 False"""
-        if not _enabled():
-            return True
-        client = _client()
-        if client is None:
-            return True
-        if self.max_count <= 0:
-            return True  # 无限制，直接放行（用于 release 的占位实例）
+        """获取一个名额，成功返回 True，超时返回 False
 
-        start = time.time()
-        while time.time() - start < timeout:
-            try:
-                result = client.eval(
-                    _ACQUIRE_SEM_SCRIPT, 1, self.key, self.max_count, self.ttl
-                )
-                # 兼容 redis-py 不同版本返回 int 或 bytes
-                if isinstance(result, bytes):
-                    result = int(result)
-                if result != -1:
-                    return True
-            except Exception as e:
-                logger.warning(f"获取分布式信号量 {self.key} 失败: {e}")
-                return True  # Redis 异常降级放行
-            time.sleep(0.1)
-        return False
+        Redis 可用：Lua 原子 INCR 抢名额，抢不到则轮询直至成功或超时；
+        无论 timeout 多小都至少尝试一次（timeout=0 即非阻塞尝试）。
+        Redis 不可用/异常：降级为进程内 BoundedSemaphore 兜底。
+        """
+        if self.max_count <= 0:
+            return True  # 配置 0 表示不限制，直接放行
+
+        client = _client() if _enabled() else None
+        if client is not None:
+            start = time.time()
+            while True:
+                try:
+                    result = client.eval(
+                        _ACQUIRE_SEM_SCRIPT, 1, self.key, self.max_count, self.ttl
+                    )
+                    # 兼容 redis-py 不同版本返回 int 或 bytes
+                    if isinstance(result, bytes):
+                        result = int(result)
+                    if result != -1:
+                        return True
+                except Exception as e:
+                    logger.warning(
+                        f"获取分布式信号量 {self.key} 失败，降级为进程内信号量: {e}"
+                    )
+                    break
+                if time.time() - start >= timeout:
+                    return False
+                time.sleep(0.1)
+
+        # 进程内兜底（分布式关闭 / Redis 不可用 / Redis 异常）
+        local_sem = _get_local_semaphore(self.key, self.max_count)
+        return local_sem.acquire(timeout=timeout)
 
     def release(self):
-        """释放一个名额"""
-        if not _enabled():
-            return
-        client = _client()
-        if client is None:
-            return
+        """释放一个名额
+
+        与 acquire 路径对称：Redis 可用则 DECR；
+        Redis 不可用/异常则释放进程内兜底信号量（与降级获取配对）。
+        """
+        client = _client() if _enabled() else None
+        if client is not None:
+            try:
+                current = client.decr(self.key)
+                if current < 0:
+                    # 防御性：计数不能为负
+                    client.set(self.key, 0, ex=self.ttl)
+                return
+            except Exception as e:
+                logger.warning(
+                    f"释放分布式信号量 {self.key} 失败，回退进程内信号量: {e}"
+                )
+        local_sem = _get_local_semaphore(self.key, self.max_count)
         try:
-            current = client.decr(self.key)
-            if current < 0:
-                # 防御性：计数不能为负
-                client.set(self.key, 0, ex=self.ttl)
-        except Exception as e:
-            logger.warning(f"释放分布式信号量 {self.key} 失败: {e}")
+            local_sem.release()
+        except ValueError:
+            # 防过度释放（对齐 V9.7.10 release 捕获 ValueError 的处理）
+            pass
 
 
 def set_flag(key, value=1, ttl=86400):

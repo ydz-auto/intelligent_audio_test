@@ -52,7 +52,10 @@ export interface ReportMetricCategoryGroupDto {
 /** 分类 × 资源指标矩阵（metric_data 元素） */
 export interface ReportMetricByResourceDto {
   resource: string
-  categories: ReportMetricCategoryGroupDto[]
+  /** 含分类维度行（后端按分类分组时存在） */
+  categories?: ReportMetricCategoryGroupDto[]
+  /** 扁平行（resource 级别全局平均，无分类维度） */
+  metrics?: ReportMetricValueDto[]
 }
 
 /** 标签 × 指标均值组（tag_metric_data.tags 元素；后端含可选 category 冗余） */

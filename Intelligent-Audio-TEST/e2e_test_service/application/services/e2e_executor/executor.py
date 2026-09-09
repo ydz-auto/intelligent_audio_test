@@ -109,7 +109,12 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             )
 
             # 启动全局背景噪声（跨轮次持续播放，在轮次循环前启动）
-            self._playback_repo.start_background_noise(case_config, task_id)
+            # 桥接启停打点到播放账本，供 collect_results 注入 global_noise_timestamps
+            bg_ts = self._playback_repo.start_background_noise(case_config, task_id)
+            if bg_ts:
+                book = self._playback_timestamps.setdefault(task_id, {})
+                book['global_noise_audio_id'] = bg_ts.get('audio_id')
+                book['global_noise_start_ms'] = bg_ts.get('start_ms')
 
             # ── 阶段二：多轮循环 ──
             all_round_results, rounds_data, execution_success, last_adjusted_ref_params = \
@@ -149,7 +154,13 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         finally:
             # 停止全局背景噪声（与 start_background_noise 对称）
             try:
-                self._playback_repo.stop_background_noise(task_id)
+                bg_end_ts = self._playback_repo.stop_background_noise(task_id)
+                # 回写结束打点（stop 返回含 audio_id/start_ms/end_ms 的完整记录）
+                if bg_end_ts:
+                    book = self._playback_timestamps.setdefault(task_id, {})
+                    book['global_noise_audio_id'] = bg_end_ts.get('audio_id')
+                    book['global_noise_start_ms'] = bg_end_ts.get('start_ms')
+                    book['global_noise_end_ms'] = bg_end_ts.get('end_ms')
             except Exception as bg_err:
                 self._log(
                     level='WARNING',

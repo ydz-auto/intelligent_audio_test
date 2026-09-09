@@ -17,7 +17,8 @@ import { TestType } from '@/domain/enums';
 export function useTestCaseAudioPreview(
   onEditTestCase: (testCase: TestCase) => void,
   onDeleteTestCase: (testCase: TestCase) => void,
-  selectedCases: Ref<(string | number)[]>
+  selectedCases: Ref<(string | number)[]>,
+  onCopyDone?: () => void
 ) {
   const showAudioPlayer = ref(false);
   const currentTestCaseCaseId = ref<string | number | null>(null);
@@ -139,6 +140,8 @@ export function useTestCaseAudioPreview(
           const store = useTestCaseStore();
           await store.copyTestCase(testCase.id);
           selectedCases.value = [];
+          // 复制成功后按当前视图刷新（标签视图下 tagViewData 需重新拉取）
+          onCopyDone?.();
         } catch (error: any) {
           console.error('复制测试用例失败:', error);
         }

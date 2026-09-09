@@ -33,6 +33,10 @@ def start_grpc_server(port: int = REPORT_SERVICE_GRPC_PORT) -> grpc.Server:
     Returns:
         grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收
     """
+    # 初始化数据库连接池（report_service 无 FastAPI lifespan，在此处初始化）
+    from shared.models.database import init_db
+    init_db(pool_size=5)
+
     # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.report_service_workers
     _max_workers = config_manager.get_value('grpc', 'report_service_workers', 10)
     server = grpc.server(

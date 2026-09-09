@@ -76,8 +76,13 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
             logger.error("play_round 失败: %s", e)
             return None
 
-    def start_background_noise(self, case_config: Dict, task_id: str) -> bool:
-        """启动全局背景噪声（跨轮次持续播放）"""
+    def start_background_noise(self, case_config: Dict, task_id: str) -> Optional[Dict]:
+        """启动全局背景噪声（跨轮次持续播放）
+
+        Returns:
+            dict: {'audio_id', 'start_ms', 'end_ms'} 启动时间戳（毫秒）
+            None: 启动失败
+        """
         from shared.clients.grpc_clients import get_playback_service_stub
         from shared.proto import audio_service_pb2 as audio_pb
         try:
@@ -90,13 +95,23 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
                 task_id=str(task_id),
                 playback_config=json.dumps(playback_config),
             ))
-            return resp.success
+            if not resp.success or not resp.data:
+                return None
+            wrapper = json.loads(resp.data)
+            if not wrapper.get('result'):
+                return None
+            timestamps = wrapper.get('timestamps')
+            return timestamps if isinstance(timestamps, dict) else {}
         except Exception as e:
             logger.error("start_background_noise 失败: %s", e)
-            return False
+            return None
 
-    def stop_background_noise(self, task_id: str) -> None:
-        """停止全局背景噪声"""
+    def stop_background_noise(self, task_id: str) -> Optional[Dict]:
+        """停止全局背景噪声
+
+        Returns:
+            dict: 含 end_ms 的最终时间戳；未启动或失败返回 None
+        """
         from shared.clients.grpc_clients import get_playback_service_stub
         from shared.proto import audio_service_pb2 as audio_pb
         try:
@@ -104,9 +119,15 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
             playback_config = {
                 'action': 'stop_background_noise',
             }
-            stub.StartPlayback(audio_pb.StartPlaybackRequest(
+            resp = stub.StartPlayback(audio_pb.StartPlaybackRequest(
                 task_id=str(task_id),
                 playback_config=json.dumps(playback_config),
             ))
+            if not resp.success or not resp.data:
+                return None
+            wrapper = json.loads(resp.data)
+            timestamps = wrapper.get('timestamps')
+            return timestamps if isinstance(timestamps, dict) else None
         except Exception as e:
             logger.error("stop_background_noise 失败: %s", e)
+            return None

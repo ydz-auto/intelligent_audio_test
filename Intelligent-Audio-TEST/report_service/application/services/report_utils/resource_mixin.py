@@ -11,6 +11,11 @@ from report_service.infrastructure.clients.grpc_clients import (
 logger = logging.getLogger(__name__)
 
 
+def _res_get(obj, key, default=None):
+    """从测试结果（dict 或 ORM 对象）读取字段，兼容两种形态。"""
+    return obj.get(key, default) if isinstance(obj, dict) else getattr(obj, key, default)
+
+
 class ResourceMixin:
     @staticmethod
     def get_task_time_prefix(task):
@@ -49,8 +54,10 @@ class ResourceMixin:
         result_type_suffix = ""
 
         try:
-            if hasattr(result, 'result_data') and result.result_data:
-                full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+            result_data_raw = _res_get(result, 'result_data')
+            result_data_path = _res_get(result, 'result_data_path')
+            if result_data_raw:
+                full_data = load_full_result_data(result_data_raw, result_data_path)
                 if isinstance(full_data, dict):
                     result_type = full_data.get('result_type')
                     if result_type and result_type != 'default':
@@ -59,53 +66,18 @@ class ResourceMixin:
             import logging as _log
             _log.getLogger(__name__).warning(f"Failed to extract result_type: {_e}")
 
-        if use_time_prefix and task:
-            prefix = ReportUtils.get_task_time_prefix(task)
+        api_id = _res_get(result, 'api_id')
+        device_id = _res_get(result, 'device_id')
+        base_resource = None
 
-            if hasattr(result, 'api_id') and result.api_id:
-                api_id = result.api_id
-                api = _grpc_get_api(api_id)
-                if api:
-                    version = ReportUtils._extract_api_version(api)
-                    base_resource = f"{api.get('id')}-{str(api.get('name', '')).lower()}"
-                else:
-                    base_resource = f"{api_id}-未知api"
-
-            elif hasattr(result, 'device_id') and result.device_id:
-                device_id = result.device_id
-                device = _grpc_get_device(device_id)
-                if device:
-                    version = device.get("app_version")
-                    base_resource = f"{device.get('id')}-{str(device.get('name', '')).lower()}"
-                else:
-                    base_resource = f"{device_id}-未知设备"
-
-            if not base_resource:
-                if isinstance(result, dict):
-                    if result.get('api_id'):
-                        base_resource = f"{result.get('api_id')}-未知api"
-                    elif result.get('device_id'):
-                        base_resource = f"{result.get('device_id')}-未知设备"
-
-            if not base_resource:
-                base_resource = "0-默认资源"
-
-            resource = f"{prefix}-{base_resource}"
-            if version:
-                resource = f"{resource}-{version}"
-            return f"{resource}{result_type_suffix}"
-
-        if hasattr(result, 'api_id') and result.api_id:
-            api_id = result.api_id
+        if api_id:
             api = _grpc_get_api(api_id)
             if api:
                 version = ReportUtils._extract_api_version(api)
                 base_resource = f"{api.get('id')}-{str(api.get('name', '')).lower()}"
             else:
                 base_resource = f"{api_id}-未知api"
-
-        elif hasattr(result, 'device_id') and result.device_id:
-            device_id = result.device_id
+        elif device_id:
             device = _grpc_get_device(device_id)
             if device:
                 version = device.get("app_version")
@@ -114,16 +86,12 @@ class ResourceMixin:
                 base_resource = f"{device_id}-未知设备"
 
         if not base_resource:
-            if isinstance(result, dict):
-                if result.get('api_id'):
-                    base_resource = f"{result.get('api_id')}-未知api"
-                elif result.get('device_id'):
-                    base_resource = f"{result.get('device_id')}-未知设备"
-
-        if not base_resource:
             base_resource = "0-默认资源"
 
-        resource = base_resource
+        if use_time_prefix and task:
+            resource = f"{ReportUtils.get_task_time_prefix(task)}-{base_resource}"
+        else:
+            resource = base_resource
         if version:
             resource = f"{resource}-{version}"
         return f"{resource}{result_type_suffix}"
@@ -296,8 +264,9 @@ class ResourceMixin:
         if isinstance(results, list):
             for result in results:
                 task = None
-                if tasks_map and hasattr(result, "task_id"):
-                    task = tasks_map.get(result.task_id)
+                task_id = _res_get(result, 'task_id', None)
+                if tasks_map and task_id is not None:
+                    task = tasks_map.get(task_id)
 
                 key = ReportUtils.get_resource_name(result, task, use_time_prefix=use_time_prefix)
                 if not key or key in headers_by_key:
@@ -305,35 +274,40 @@ class ResourceMixin:
 
                 result_type = None
                 try:
-                    if hasattr(result, 'result_data') and result.result_data:
-                        full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+                    result_data_raw = _res_get(result, 'result_data')
+                    result_data_path = _res_get(result, 'result_data_path')
+                    if result_data_raw:
+                        full_data = load_full_result_data(result_data_raw, result_data_path)
                         if isinstance(full_data, dict):
                             result_type = full_data.get('result_type')
                             if result_type == 'default':
                                 result_type = None
                 except Exception:
-                    logger.debug("提取结果类型失败 result_id=%s", getattr(result, 'id', None), exc_info=True)
+                    logger.debug("提取结果类型失败 result_id=%s", _res_get(result, 'id', None), exc_info=True)
 
-                if getattr(result, "api_id", None):
-                    api = _grpc_get_api(result.api_id)
+                api_id = _res_get(result, 'api_id')
+                device_id = _res_get(result, 'device_id')
+
+                if api_id:
+                    api = _grpc_get_api(api_id)
                     headers_by_key[key] = {
                         "key": str(key),
                         "label": str(key),
                         "type": "api",
-                        "id": int(result.api_id),
-                        "name": str(api.get('name')) if api else str(result.api_id),
+                        "id": int(api_id),
+                        "name": str(api.get('name')) if api else str(api_id),
                         "version": ReportUtils._extract_api_version(api) if api else None,
                         "result_type": result_type,
                         "editable": True,
                     }
-                elif getattr(result, "device_id", None):
-                    device = _grpc_get_device(result.device_id)
+                elif device_id:
+                    device = _grpc_get_device(device_id)
                     headers_by_key[key] = {
                         "key": str(key),
                         "label": str(key),
                         "type": "device",
-                        "id": int(result.device_id),
-                        "name": str(device.get('name')) if device else str(result.device_id),
+                        "id": int(device_id),
+                        "name": str(device.get('name')) if device else str(device_id),
                         "version": str(device.get("app_version")) if device else None,
                         "result_type": result_type,
                         "editable": True,

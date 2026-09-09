@@ -132,6 +132,7 @@ class ReportAggregate:
     """
     id: int
     task_id: int
+    name: str = ''
     report_type: str = ReportType.STANDARD.value
     status: str = ReportStatus.PENDING.value
     config: Dict[str, Any] = field(default_factory=dict)
@@ -141,6 +142,9 @@ class ReportAggregate:
     metric_stats: List[ReportMetricStatsEntity] = field(default_factory=list)
     raw_data: List[ReportRawDataEntity] = field(default_factory=list)
     deleted: bool = False
+    # 完整摘要视图（详情接口使用）：含 all_metrics/case_categories/all_case_tags/
+    # metric_data/tag_metric_data 等，由仓储 load_full_summary 填充，序列化层优先使用。
+    full_summary: Optional[Dict[str, Any]] = None
 
     # ---- 状态查询 ----
     def is_completed(self) -> bool:
@@ -175,6 +179,27 @@ class ReportAggregate:
         if reason:
             self.config = dict(self.config)
             self.config['fail_reason'] = reason
+
+    # ---- 派生视图 ----
+    def flat_summary(self) -> Dict[str, Any]:
+        """汇总摘要实体为扁平统计字典（对齐列表项契约 summary 字段）。
+
+        各摘要行的 metadata 承载 total_cases/completed_cases/failed_cases/
+        pass_rate/task_ids 等统计，合并取值，供系列化层直接对外输出
+        （api_gateway ReportListItem.summary 契约）。
+        """
+        merged: Dict[str, Any] = {}
+        for s in self.summaries:
+            if isinstance(s.metadata, dict):
+                merged.update(s.metadata)
+        task_ids = merged.get('task_ids') or []
+        return {
+            'total_cases': merged.get('total_cases', 0),
+            'completed_cases': merged.get('completed_cases', 0),
+            'failed_cases': merged.get('failed_cases', 0),
+            'pass_rate': merged.get('pass_rate', 0.0),
+            'task_count': len(task_ids) if isinstance(task_ids, list) else 0,
+        }
 
     # ---- 子实体管理 ----
     def add_summary(self, summary: ReportSummaryEntity) -> None:

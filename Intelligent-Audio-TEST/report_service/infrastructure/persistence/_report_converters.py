@@ -216,6 +216,7 @@ def _report_po_to_entity(po: Report) -> ReportAggregate:
     return ReportAggregate(
         id=po.id,
         task_id=po.task_id or 0,
+        name=po.name or '',
         report_type=po.type or 'standard',
         status=po.status or ReportStatus.PENDING.value,
         config=config,
@@ -299,6 +300,8 @@ def _apply_report_to_po(aggregate: ReportAggregate, po: Report) -> None:
     config 序列化为 JSON 文本后写入 analysis 列。
     """
     po.task_id = aggregate.task_id
+    # 聚合根 name 为空时不覆盖 PO 既有名称（兼容未携带 name 的写路径）
+    po.name = aggregate.name or po.name or ''
     po.type = aggregate.report_type
     po.status = aggregate.status
     po.analysis = _safe_json_dumps(aggregate.config) or ''

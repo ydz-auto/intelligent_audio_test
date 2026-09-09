@@ -219,6 +219,12 @@ export function toMetricByResource(raw: ReportMetricByResourceDto): ReportMetric
         value: n(m.value),
       })),
     })),
+    // 扁平行（resource 级别全局平均）透传，供分类对比卡按已知分组复制解析
+    metrics: (raw.metrics ?? []).map(m => ({
+      id: m.id ?? null,
+      metric: m.metric,
+      value: n(m.value),
+    })),
   }
 }
 

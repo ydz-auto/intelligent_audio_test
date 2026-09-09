@@ -21,6 +21,8 @@ export interface AlgorithmDefinitionDto {
   case_params?: Record<string, unknown>[]
   /** 兼容字段：device_params 别名（微服务同时输出 params） */
   params?: Record<string, unknown>[]
+  /** 参考参数（对应 AlgorithmDetailResponse.reference_params） */
+  reference_params?: AlgorithmReferenceParamDto[]
   /** 参数映射（按 source 分组：device / api / evaluation） */
   mappings?: Record<string, Record<string, unknown>[]>
   associated_dimensions?: Record<string, unknown>[]
@@ -134,6 +136,7 @@ export interface AlgorithmOptionDto {
 export interface AlgorithmDimensionsDto {
   dimensions: Array<{
     id: number
+    dimension_id?: number
     name: string
     description?: string
     type?: string

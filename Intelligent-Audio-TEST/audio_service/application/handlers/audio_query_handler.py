@@ -246,7 +246,13 @@ class AudioQueryHandler:
                     return _fail('路径不在允许的目录范围内', 403)
 
         try:
-            presigned_url = storage.get_url(oss_key, expires=3600)
+            # 无 scheme 的逻辑 key 默认挂在 audios 分类下（与 handle_stream_audio 一致），
+            # 否则 _parse_path 会把 key 首段误判为 category 导致 404
+            presigned_url = storage.get_url(
+                oss_key if oss_key.startswith(('oss://', 'local://'))
+                else storage.build_path('audios', oss_key),
+                expires=3600,
+            )
             return _ok(data={'url': presigned_url})
         except Exception as e:
             logger.error(f"stream_by_path 获取存储 URL 失败: {e}, key={oss_key}")

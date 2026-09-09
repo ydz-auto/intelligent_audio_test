@@ -43,6 +43,15 @@ class TaskDataAclRepository(ABC):
         """更新 TestResult.execution_status"""
 
     @abstractmethod
+    def update_test_result_outcome(self, result_id: int,
+                                   algorithm_result: Optional[str] = None,
+                                   execution_status: Optional[str] = None,
+                                   response_time: Optional[int] = None,
+                                   error_message: Optional[str] = None,
+                                   result_data_path: Optional[str] = None) -> bool:
+        """一次性更新 TestResult 终态字段（algorithm_result/execution_status/response_time/error_message/result_data_path）"""
+
+    @abstractmethod
     def get_task_case_by_ids(self, task_id: str,
                              case_ids: List[str]) -> List[TaskCaseDTO]:
         """按 task_id 和 case_ids 查询 TaskCase"""
@@ -51,8 +60,9 @@ class TaskDataAclRepository(ABC):
     def update_task_case_status(self, task_id: str, case_id: str,
                                 status: str, execution_status: str = '',
                                 evaluation_status: str = '',
-                                error_message: str = '') -> bool:
-        """更新 TaskCase 状态"""
+                                error_message: str = '',
+                                started_at=None, completed_at=None) -> bool:
+        """更新 TaskCase 状态（started_at/completed_at 为 datetime 或 ISO8601 字符串，None 不更新）"""
 
     @abstractmethod
     def get_dimension_results_by_result_ids(self,

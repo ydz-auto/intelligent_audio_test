@@ -11,6 +11,7 @@ from shared.domain.algorithm_result_builder import build_algorithm_results_for_r
 from report_service.application.services.report_helpers import ReportHelpers
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_algo_get_reference_params_for_report,
+    _grpc_get_dimension_params,
     _dim_id, _dim_name, _dim_type_and_parent,
 )
 
@@ -266,6 +267,43 @@ class ReportDataCaseMixin:
             })
 
         return metrics_list
+
+    @staticmethod
+    def _get_aux_params_batch(dim_ids):
+        """批量查询维度的 aux output 参数（visible_in_report=True）。
+
+        通过 gRPC 逐维度查询 EvaluationDimensionParam，筛选 output_role='aux'
+        且 visible_in_report=True 的参数。
+
+        返回 {dimension_id: [{param: dict, dimension_name: str}, ...]} 映射。
+        """
+        if not dim_ids:
+            return {}
+        aux_map = {}
+        for dim_id in dim_ids:
+            try:
+                params = _grpc_get_dimension_params(dim_id)
+                if not params:
+                    continue
+                for p in params:
+                    if not isinstance(p, dict):
+                        continue
+                    if p.get('param_direction') != 'output':
+                        continue
+                    if p.get('output_role') != 'aux':
+                        continue
+                    if not p.get('visible_in_report'):
+                        continue
+                    dim_name = p.get('dimension_name') or ''
+                    if dim_id not in aux_map:
+                        aux_map[dim_id] = []
+                    aux_map[dim_id].append({
+                        'param': p,
+                        'dimension_name': dim_name,
+                    })
+            except Exception:
+                continue
+        return aux_map
 
     @staticmethod
     def _build_case_data(test_cases, results, all_dimensions, dim_results_map, task):

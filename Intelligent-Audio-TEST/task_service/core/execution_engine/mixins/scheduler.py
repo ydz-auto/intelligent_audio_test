@@ -4,7 +4,7 @@ from task_service.infrastructure.persistence.models import Task
 from shared.models.database import get_db_session
 from shared.utils.config_manager import config_manager
 from shared.utils.status_constants import TaskStatus
-from shared.utils.redis_pubsub import RedisPubSub
+from shared.utils.redis_pubsub import RedisPubSub, create_blocking_redis_client
 
 import logging
 
@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 # Redis 任务队列 key
 TASK_QUEUE_KEY = 'task:queue'
-# BRPOP 超时时间（秒），超时后回退到 DB 轮询兜底
-BRPOP_TIMEOUT = 5
+# BRPOP 阻塞等待默认超时（秒），可经 execution_engine.brpop_timeout 配置覆盖，超时后回退 DB 兜底
+DEFAULT_BRPOP_TIMEOUT = 5
 
 
 class SchedulerMixin:
@@ -29,6 +29,8 @@ class SchedulerMixin:
             return
 
         self.scheduler_stop_event = threading.Event()
+        # BRPOP 阻塞消费专用连接（socket_timeout=None，避免客户端读超时先于阻塞超时触发）
+        self.redis_blocking_client = create_blocking_redis_client()
         self.scheduler_thread = threading.Thread(
             target=self._scheduler_loop,
             name="TaskScheduler",
@@ -71,11 +73,12 @@ class SchedulerMixin:
             return
 
         db_check_interval = config_manager.get_value('execution_engine', 'scheduler_interval', 30)
+        brpop_timeout = config_manager.get_value('execution_engine', 'brpop_timeout', DEFAULT_BRPOP_TIMEOUT)
 
         while not self.scheduler_stop_event.is_set():
             try:
-                # 优先尝试从 Redis 队列消费（阻塞最多 BRPOP_TIMEOUT 秒）
-                self._consume_redis_queue()
+                # 优先尝试从 Redis 队列消费（阻塞最多 brpop_timeout 秒）
+                self._consume_redis_queue(brpop_timeout)
             except Exception as e:
                 logger.warning(f"[Scheduler] Redis 队列消费异常: {e}")
 
@@ -95,15 +98,14 @@ class SchedulerMixin:
             self.scheduler_event.wait(timeout=db_check_interval)
             self.scheduler_event.clear()
 
-    def _consume_redis_queue(self):
+    def _consume_redis_queue(self, brpop_timeout):
         """从 Redis 队列 BRPOP 消费任务 ID，立即尝试启动"""
         if self.scheduler_stop_event is not None and self.scheduler_stop_event.is_set():
             return
 
         try:
-            client = RedisPubSub().redis_client
-            # BRPOP 阻塞等待，超时后返回 None
-            result = client.brpop(TASK_QUEUE_KEY, timeout=BRPOP_TIMEOUT)
+            # BRPOP 阻塞等待，超时后返回 None（专用连接 socket_timeout=None，见 _init_scheduler）
+            result = self.redis_blocking_client.brpop(TASK_QUEUE_KEY, timeout=brpop_timeout)
             if result is None:
                 return
 

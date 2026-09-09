@@ -355,6 +355,9 @@ class EvaluationConfigAclRepository(ABC):
     def list_dimensions(self, **kwargs) -> CommandResultDTO: ...
 
     @abstractmethod
+    def get_dimension(self, dim_id) -> CommandResultDTO: ...
+
+    @abstractmethod
     def health_check(self, dim_id) -> CommandResultDTO: ...
 
     @abstractmethod

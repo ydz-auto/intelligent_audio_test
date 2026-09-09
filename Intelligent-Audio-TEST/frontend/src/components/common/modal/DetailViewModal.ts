@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import type { AudioInfo } from '../../../domain/model/audio'
+import { ANNOTATION_TYPES, BUILTIN_ANNOTATION_CODES } from '../../../constants/annotation'
 
 // 已知的 segment 字段（这些字段有专门列，不作为额外字段显示）
 const KNOWN_SEGMENT_FIELDS = ['speaker', 'start', 'end', 'text', 'duration', 'orthography', 'speaker_type', 'speaker_name', 'file', 'channel']
@@ -7,14 +8,14 @@ const KNOWN_SEGMENT_FIELDS = ['speaker', 'start', 'end', 'text', 'duration', 'or
 // 已知的 data 顶层字段（这些字段有专门 UI，不作为额外字段显示）
 const KNOWN_DATA_KEYS = ['segments', 'text', 'annotations', 'timestamps', 'timestamps_global']
 
-/** 标注项结构（与模板 editableData.annotations 的使用方式一致） */
+/** 标注项结构（与模板 editableData.annotations 的使用方式一致，camelCase Domain） */
 interface AnnotationItem {
   format: string
   name?: string
   code?: string
   data: any
-  source_language?: string
-  target_language?: string
+  sourceLanguage?: string
+  targetLanguage?: string
   [key: string]: any
 }
 
@@ -68,9 +69,10 @@ export function useDetailViewModal(props: any, emit: any) {
     editableData.value.annotations!.push({
       format: 'json',
       name: '',
+      code: '',
       data: { segments: [] },
-      source_language: '',
-      target_language: ''
+      sourceLanguage: '',
+      targetLanguage: ''
     })
 
     selectedAnnotationIndex.value = editableData.value.annotations!.length - 1
@@ -99,6 +101,21 @@ export function useDetailViewModal(props: any, emit: any) {
   const getCurrentAnnotation = (): AnnotationItem | undefined => {
     if (selectedAnnotationIndex.value === null) return undefined
     return editableData.value.annotations?.[selectedAnnotationIndex.value]
+  }
+
+  // 标注代码下拉选项：内置配置 + 动态补充当前值（历史/自定义 code 不丢失）
+  const annotationCodeOptions = computed(() => {
+    const options = [...ANNOTATION_TYPES]
+    const currentCode = getCurrentAnnotation()?.code
+    if (currentCode && !BUILTIN_ANNOTATION_CODES.includes(currentCode)) {
+      options.push({ value: currentCode, label: currentCode })
+    }
+    return options
+  })
+
+  // 是否为自定义标注代码（非内置且非空 → 显示自定义输入框）
+  const isCustomAnnotationCode = (code?: string): boolean => {
+    return !!code && !BUILTIN_ANNOTATION_CODES.includes(code)
   }
 
   // 选择标注
@@ -349,6 +366,8 @@ export function useDetailViewModal(props: any, emit: any) {
     annotationEditMode,
     rawAnnotationData,
     selectAnnotation,
+    annotationCodeOptions,
+    isCustomAnnotationCode,
     getCurrentSegments,
     extraSegmentFields,
     extraDataFields,

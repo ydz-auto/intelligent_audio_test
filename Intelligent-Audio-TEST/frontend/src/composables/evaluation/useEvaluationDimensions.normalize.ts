@@ -137,7 +137,10 @@ export function createEvalDimensionNormalizers(state: EvalDimensionState) {
     }
   }
 
-  // 子维度继承父维度配置：taskTypeCode、associatedAlgorithms、parentDimensionId 空值处理
+  const hasConfiguredList = (value: unknown): boolean =>
+    Array.isArray(value) && value.length > 0
+
+  // 子维度继承父维度配置：任务类型、输入输出参数、关联算法、parentDimensionId 空值处理
   function inheritFromParentDimension(dimensionData: any) {
     if (dimensionData.dimensionType !== DIMENSION_TYPE_SUB) {
       // 非 sub 类型，parentDimensionId 空值转 null
@@ -150,6 +153,12 @@ export function createEvalDimensionNormalizers(state: EvalDimensionState) {
     // 自动填充主维度的 taskTypeCode
     if (dimensionData.parentDimensionId && !dimensionData.taskTypeCode && parentDim?.taskTypeCode) {
       dimensionData.taskTypeCode = parentDim.taskTypeCode;
+    }
+    if (parentDim && !hasConfiguredList(dimensionData.requiredInputs) && hasConfiguredList(parentDim.requiredInputs)) {
+      dimensionData.requiredInputs = structuredClone(parentDim.requiredInputs);
+    }
+    if (parentDim && !hasConfiguredList(dimensionData.outputFields) && hasConfiguredList(parentDim.outputFields)) {
+      dimensionData.outputFields = structuredClone(parentDim.outputFields);
     }
     // 继承父维度的关联算法
     if (!dimensionData.associatedAlgorithms || dimensionData.associatedAlgorithms.length === 0) {

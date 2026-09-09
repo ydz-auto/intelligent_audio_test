@@ -13,7 +13,7 @@ import type {
   TestCaseGroup,
   PaginationInfo
 } from '../domain'
-// 引入测试类型枚举，消除魔法字符串
+// 引入测试类型/视图模式枚举，消除魔法字符串
 import { TestType, ViewMode } from '../domain/enums'
 
 // 分组带用例数：TestCaseGroup 的展示子集（id/name/description/testCaseCount）
@@ -246,10 +246,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
       tagViewLastParams.value = { ...params };
 
-      const response = await testcasesPort.getAll({
+      const response = await testcasesPort.getTagView({
         page,
         perPage,
-        view: ViewMode.TAG,
         keyword: params.keyword,
         testType: params.testType,
         algorithmType: params.algorithmType,
@@ -257,24 +256,23 @@ export const useTestCaseStore = defineStore('testCase', () => {
         includeDeleted: params.includeDeleted || false
       });
 
-      const items: Array<{ tag: string; testCases: TestCase[] }> =
-        response && Array.isArray((response as any).items) ? (response as any).items : [];
+      const items = response?.items ?? [];
 
       const groups: Record<string, TestCase[]> = {};
       items.forEach(item => {
         const tagName = item.tag || '未分类';
         groups[tagName] = Array.isArray(item.testCases)
-          ? item.testCases.map((tc: any) => tc as TestCase)
+          ? item.testCases
           : [];
       });
 
       // 重置时替换全部数据
       tagViewData.value = groups;
       tagViewPagination.value = {
-        page: (response as any)?.page || 1,
-        pages: (response as any)?.pages || 1,
-        perPage: (response as any)?.perPage || perPage,
-        total: typeof (response as any)?.total === 'number' ? (response as any).total : items.length
+        page: response?.page || 1,
+        pages: response?.pages || 1,
+        perPage: response?.perPage || perPage,
+        total: typeof response?.total === 'number' ? response.total : items.length
       };
 
       // 同步提取标签列表
@@ -303,10 +301,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const params = tagViewLastParams.value;
       const perPage = pagination.perPage || DEFAULT_FETCH_PAGE_SIZE;
 
-      const response = await testcasesPort.getAll({
+      const response = await testcasesPort.getTagView({
         page: nextPage,
         perPage,
-        view: ViewMode.TAG,
         keyword: params.keyword,
         testType: params.testType,
         algorithmType: params.algorithmType,
@@ -314,15 +311,14 @@ export const useTestCaseStore = defineStore('testCase', () => {
         includeDeleted: params.includeDeleted || false
       });
 
-      const items: Array<{ tag: string; testCases: TestCase[] }> =
-        response && Array.isArray((response as any).items) ? (response as any).items : [];
+      const items = response?.items ?? [];
 
       // 追加到已有数据
       const merged = { ...tagViewData.value };
       items.forEach(item => {
         const tagName = item.tag || '未分类';
         const newCases = Array.isArray(item.testCases)
-          ? item.testCases.map((tc: any) => tc as TestCase)
+          ? item.testCases
           : [];
         if (merged[tagName]) {
           merged[tagName] = [...merged[tagName], ...newCases];
@@ -333,10 +329,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
       tagViewData.value = merged;
 
       tagViewPagination.value = {
-        page: (response as any)?.page || nextPage,
-        pages: (response as any)?.pages || pagination.pages,
-        perPage: (response as any)?.perPage || perPage,
-        total: typeof (response as any)?.total === 'number' ? (response as any).total : pagination.total
+        page: response?.page || nextPage,
+        pages: response?.pages || pagination.pages,
+        perPage: response?.perPage || perPage,
+        total: typeof response?.total === 'number' ? response.total : pagination.total
       };
 
       // 累积标签列表
@@ -494,6 +490,20 @@ export const useTestCaseStore = defineStore('testCase', () => {
     await fetchTagView(tagViewLastParams.value);
   };
 
+  /** 按上次过滤参数刷新标签视图（无历史参数则直接抓取第一页） */
+  const refreshTagView = async () => {
+    await fetchTagView(tagViewLastParams.value);
+  };
+
+  /** 按当前视图模式刷新对应数据源（tag → 标签视图；group → 分组视图） */
+  const refreshView = async (viewMode: string) => {
+    if (viewMode === ViewMode.TAG) {
+      await refreshTagView();
+    } else {
+      await fetchTestCases();
+    }
+  };
+
   /** 按标签级联删除：删除标签及其下所有测试用例（cascade=true） */
   const deleteTagCases = async (tagName: string, cascade = true) => {
     try {
@@ -606,6 +616,8 @@ export const useTestCaseStore = defineStore('testCase', () => {
     fetchTestCases,
     fetchTagView,
     loadMoreTagView,
+    refreshTagView,
+    refreshView,
     isGroupLoading,
     hasMoreGroupCases,
     getGroupPagination,

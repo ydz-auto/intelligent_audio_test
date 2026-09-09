@@ -4,6 +4,7 @@ import logging
 
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus
+from shared.utils.query_utils import now_cst
 from shared.models.database import get_db_session
 from shared.infrastructure.base_executor import BaseExecutor
 from api_test_service.infrastructure.acl import (
@@ -50,10 +51,6 @@ class APIExecutor(BaseExecutor):
         return _task_data_acl
 
     # ── 并发控制委托 ──
-    @property
-    def api_semaphores(self):
-        return self._concurrency.api_semaphores
-
     @property
     def api_waiting_counts(self):
         return self._concurrency.api_waiting_counts
@@ -139,6 +136,7 @@ class APIExecutor(BaseExecutor):
                 task_id=task_id,
                 case_id=str(test_case_id),
                 execution_status=ExecutionStatus.RUNNING,
+                started_at=now_cst().isoformat(),
             )
             self.execution_engine._emit_progress(task_id, force=True)
             return True
@@ -205,6 +203,7 @@ class APIExecutor(BaseExecutor):
                     task_id=task_id,
                     case_id=str(tc_rel.get('test_case_id', test_case_id)),
                     execution_status=ExecutionStatus.RUNNING,
+                    started_at=now_cst().isoformat(),
                 )
                 self.execution_engine._emit_progress(task_id, force=True)
         except Exception as e:
@@ -240,6 +239,7 @@ class APIExecutor(BaseExecutor):
                             task_id=task_id,
                             case_id=str(tc_rel.get('test_case_id', test_case_id)),
                             execution_status=ExecutionStatus.FAILED,
+                            completed_at=now_cst().isoformat(),
                         )
                     eval_status = tc_rel.get('evaluation_status') if tc_rel else None
                     if eval_status and eval_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING]:
@@ -248,6 +248,7 @@ class APIExecutor(BaseExecutor):
                             case_id=str(tc_rel.get('test_case_id', test_case_id)),
                             status=TaskCaseStatus.FAILED,
                             evaluation_status=EvaluationStatus.COMPLETED,
+                            completed_at=now_cst().isoformat(),
                         )
                 except Exception as ue:
                     self._log(level='WARNING', content=f"更新 TaskCase 失败状态失败: {ue}", task_id=task_id)
@@ -646,6 +647,8 @@ class APIExecutor(BaseExecutor):
                 status=TaskCaseStatus.FAILED,
                 execution_status=ExecutionStatus.FAILED,
                 error_message=error_msg,
+                started_at=now_cst().isoformat(),
+                completed_at=now_cst().isoformat(),
             )
         except Exception as e:
             self._log(level='WARNING', content=f"更新 TaskCase {tc_rel_id} 失败状态失败: {e}", task_id=task_id)

@@ -29,9 +29,11 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
   } = dimensionsModule;
 
   // ========== 编辑维度模态框 ==========
-  function openEditModal(id: number | string) {
-    const dimension = dimensions.value.find(dim => dim.id === id);
-    if (dimension) {
+  async function openEditModal(id: number | string) {
+    try {
+      // 列表接口只返回轻量字段，编辑时按需加载完整参数配置。
+      const dimension = await evaluationPort.getOne(id);
+      if (!dimension) return;
       // Domain 侧为 camelCase：apiEndpoints / maxProcess / maxTimeout / maxAudioDuration
       const rawEndpoints = dimension.apiEndpoints || [];
       const apiEndpoints = Array.isArray(rawEndpoints) ? rawEndpoints.map(ep => ({
@@ -175,6 +177,8 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
           await saveDimension(payload, result.mode || 'edit');
         }
       });
+    } catch (error) {
+      console.error('[Evaluation] 加载评估维度详情失败:', error);
     }
   }
 

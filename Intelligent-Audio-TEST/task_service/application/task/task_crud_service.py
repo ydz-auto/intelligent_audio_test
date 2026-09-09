@@ -109,7 +109,7 @@ class TaskCrudService:
             if status in [TaskStatus.RUNNING, TaskStatus.PAUSED]:
                 try:
                     from task_service.core.execution_engine import execution_engine
-                    execution_engine.control_task(None, task_id, 'stop')
+                    execution_engine.control_task(task_id, 'stop')
                 except Exception:
                     logger.warning("删除任务时停止运行中任务失败 task_id=%s", task_id, exc_info=True)
                 try:
@@ -166,7 +166,7 @@ class TaskCrudService:
                     if task.get('success') and (task.get('data') or {}).get('status') in [TaskStatus.RUNNING, TaskStatus.PAUSED]:
                         try:
                             from task_service.core.execution_engine import execution_engine
-                            execution_engine.control_task(None, tid, 'stop')
+                            execution_engine.control_task(tid, 'stop')
                         except Exception:
                             logger.debug("批量删除时停止运行中任务失败 task_id=%s", tid, exc_info=True)
                         try:

@@ -6,35 +6,27 @@
     </div>
     
     <div v-else class="detail-content">
-      <!-- 标题区域 -->
-      <div class="detail-header" v-if="title">
-        <h3>{{ title }}</h3>
-      </div>
-      
-      <!-- 基础信息卡片 -->
+      <!-- 基础信息卡片（标题由外层 BasicModal 壳渲染，避免重复） -->
       <div class="info-card" v-if="hasBasicInfo">
         <h4>基本信息</h4>
         <div class="info-grid">
-          <!-- 处理传统格式 -->
-          <template>
-            <div 
-              v-for="(field, key) in basicInfoFields" 
-              :key="key" 
-              class="info-item"
-            >
-              <span class="info-label">{{ field.label }}:</span>
-              
-              <!-- 音频类型可编辑 -->
-              <select v-if="key === 'audioType'" v-model="editableData[key]" class="form-input info-value">
-                <option value="dry">干声 (信号音频)</option>
-                <option value="noise">噪声</option>
-                <option value="prompt">提示词音频</option>
-              </select>
-              
-              <!-- 其他字段可编辑 -->
-              <input v-else type="text" v-model="editableData[key]" class="form-input info-value" :class="field.class_name">
-            </div>
-          </template>
+          <div
+            v-for="(field, key) in basicInfoFields"
+            :key="key"
+            class="info-item"
+          >
+            <span class="info-label">{{ field.label }}:</span>
+
+            <!-- 音频类型可编辑 -->
+            <select v-if="key === 'audioType'" v-model="editableData[key]" class="form-input info-value">
+              <option value="dry">干声 (信号音频)</option>
+              <option value="noise">噪声</option>
+              <option value="prompt">提示词音频</option>
+            </select>
+
+            <!-- 其他字段可编辑 -->
+            <input v-else type="text" v-model="editableData[key]" class="form-input info-value" :class="field.class_name">
+          </div>
         </div>
       </div>
       
@@ -65,7 +57,7 @@
                   <span class="annotation-name">{{ ann.code || '未命名' }}</span>
                 </div>
                 <div class="annotation-item-meta">
-                  {{ ann.source_language || '-' }} → {{ ann.target_language || '-' }}
+                  {{ ann.sourceLanguage || '-' }} → {{ ann.targetLanguage || '-' }}
                 </div>
                 <button type="button" class="btn btn-danger btn-tiny" @click.stop="removeAnnotationItem(aIndex)">删除</button>
               </div>
@@ -105,12 +97,10 @@
                 <label>标注代码：</label>
                 <select v-model="editableData.annotations[selectedAnnotationIndex].code" class="form-input">
                   <option value="">自定义...</option>
-                  <option value="diarization">diarization</option>
-                  <option value="asr">asr</option>
-                  <option value="translation">translation</option>
+                  <option v-for="opt in annotationCodeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
                 <input 
-                  v-if="!['asr', 'translation', 'diarization'].includes(editableData.annotations[selectedAnnotationIndex].code)"
+                  v-if="isCustomAnnotationCode(editableData.annotations[selectedAnnotationIndex].code)"
                   type="text" 
                   v-model="editableData.annotations[selectedAnnotationIndex].code" 
                   class="form-input" 
@@ -130,11 +120,11 @@
               <div class="form-row-inline">
                 <div class="form-row">
                   <label>源语言：</label>
-                  <input type="text" v-model="editableData.annotations[selectedAnnotationIndex].source_language" class="form-input" placeholder="zh">
+                  <input type="text" v-model="editableData.annotations[selectedAnnotationIndex].sourceLanguage" class="form-input" placeholder="zh">
                 </div>
                 <div class="form-row">
                   <label>目标语言：</label>
-                  <input type="text" v-model="editableData.annotations[selectedAnnotationIndex].target_language" class="form-input" placeholder="en">
+                  <input type="text" v-model="editableData.annotations[selectedAnnotationIndex].targetLanguage" class="form-input" placeholder="en">
                 </div>
               </div>
             </div>
@@ -405,6 +395,8 @@ const {
   annotationEditMode,
   rawAnnotationData,
   selectAnnotation,
+  annotationCodeOptions,
+  isCustomAnnotationCode,
   getCurrentSegments,
   extraSegmentFields,
   extraDataFields,

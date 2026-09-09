@@ -1,7 +1,7 @@
 import type { Ref } from 'vue';
-import type { AudioUploadOptions } from '../../domain';
+import type { AudioUploadOptions, DimensionConfigData, SelectedEvaluationDimension } from '../../domain';
 import type { UploadProcessContext } from './uploadProcess';
-import { TestType } from '@/domain/enums';
+import { TestType, RoundMode } from '@/domain/enums';
 
 /**
  * 文件拖拽上传与上传选项工具
@@ -50,26 +50,69 @@ export async function pickFiles(
 }
 
 /**
- * 维度展开工具：将 API/E2E 维度按 scope 展开
- * 从 options 读取 scopes/dimensions，写入 uploadOptions.dimensions
+ * 单个维度配置块展开：按 roundMode 三分支
+ * - all：所有轮次统一维度，不携带 roundNumber（后端按全轮次生效）
+ * - specific：指定轮次共享同一组维度，每个轮次各生成一条 round_number
+ * - per_round：逐轮独立维度，roundDimensions 按 roundNumber → 维度列表展开
+ * 多轮整体评估（multiDimensions）始终 roundScope=multi，与轮次无关
+ * 输出 camelCase 域模型；上行 snake_case 化统一在 audiosApi 出口 toEvaluationDimensionDto
+ */
+function expandDimensionConfig(
+  cfg: DimensionConfigData | undefined,
+  testType: typeof TestType[keyof typeof TestType]
+): SelectedEvaluationDimension[] {
+  if (!cfg) return [];
+  const result: SelectedEvaluationDimension[] = [];
+
+  if (cfg.roundMode === RoundMode.PER_ROUND) {
+    const roundDimensions = cfg.roundDimensions || {};
+    for (const roundKey of Object.keys(roundDimensions)) {
+      const roundNumber = Number(roundKey);
+      for (const d of roundDimensions[roundNumber] || []) {
+        result.push({ ...d, testType, roundScope: 'single', roundNumber });
+      }
+    }
+  } else {
+    const dimensions = cfg.dimensions || [];
+    const roundNumbers = cfg.roundNumbers || [];
+    for (const d of dimensions) {
+      if (cfg.roundMode === RoundMode.SPECIFIC && roundNumbers.length > 0) {
+        for (const roundNumber of roundNumbers) {
+          result.push({ ...d, testType, roundScope: 'single', roundNumber });
+        }
+      } else {
+        result.push({ ...d, testType, roundScope: 'single' });
+      }
+    }
+  }
+
+  for (const d of cfg.multiDimensions || []) {
+    result.push({ ...d, testType, roundScope: 'multi' });
+  }
+  return result;
+}
+
+/**
+ * 维度展开工具：将 API/E2E 维度配置（DimensionConfigData）展开为评估维度列表
+ * 从 options 读取 apiDimensionConfig/e2eDimensionConfig，写入 uploadOptions.dimensions
+ * 兼容旧结构 apiDimensions/e2eDimensions + apiScopes/e2eScopes（展开为 all 模式等价物）
  */
 export function expandDimensions(uploadOptions: AudioUploadOptions, options: any): void {
-  const apiScopes: ('single' | 'multi')[] = (options as any)?.apiScopes || ['single'];
-  const e2eScopes: ('single' | 'multi')[] = (options as any)?.e2eScopes || ['single'];
-  // camelCase 域模型（testType/roundScope）；上行 snake_case 化在 audiosApi 出口 toEvaluationDimensionDto
-  const expandDims = (dims: any[], tt: string, scopes: ('single' | 'multi')[]) => {
+  const expandLegacy = (dims: any[], testType: typeof TestType[keyof typeof TestType], scopes: ('single' | 'multi')[]) => {
     if (!dims || dims.length === 0) return [];
-    const result: any[] = [];
+    const result: SelectedEvaluationDimension[] = [];
     for (const d of dims) {
       for (const scope of scopes) {
-        result.push({ ...d, testType: tt, roundScope: scope });
+        result.push({ ...d, testType, roundScope: scope });
       }
     }
     return result;
   };
   (uploadOptions as any).dimensions = [
-    ...expandDims(options?.apiDimensions || [], TestType.API, apiScopes),
-    ...expandDims(options?.e2eDimensions || [], TestType.E2E, e2eScopes),
+    ...expandDimensionConfig(options?.apiDimensionConfig, TestType.API),
+    ...expandDimensionConfig(options?.e2eDimensionConfig, TestType.E2E),
+    ...expandLegacy(options?.apiDimensions || [], TestType.API, options?.apiScopes || ['single']),
+    ...expandLegacy(options?.e2eDimensions || [], TestType.E2E, options?.e2eScopes || ['single']),
     ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
   ];
 }

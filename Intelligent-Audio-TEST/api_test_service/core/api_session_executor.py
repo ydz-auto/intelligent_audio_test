@@ -8,6 +8,7 @@ from datetime import timezone, timedelta
 
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.status_constants import ExecutionStatus
+from shared.utils.query_utils import now_cst
 from shared.utils.config_manager import config_manager
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
@@ -220,6 +221,7 @@ class APISessionExecutor:
                 task_id=task_id,
                 case_id=str(test_case_id),
                 execution_status=ExecutionStatus.RUNNING,
+                started_at=now_cst().isoformat(),
             )
             self._executor.execution_engine._emit_progress(task_id, force=True)
         except Exception as e:
@@ -329,7 +331,18 @@ class APISessionExecutor:
                     task_id, round_number, api_config, meta, rendered_headers,
                     rendered_body, timeout, input_text, input_type, start_time
                 )
+        except http_requests.Timeout:
+            latency = time.time() - start_time
+            self._log('WARNING', f"Round {round_number} timeout ({session.session_timeout}s)", task_id=task_id)
+            return {'round_number': round_number, 'input': input_text, 'output': '',
+                    'latency': round(latency, 3), 'error': 'timeout', 'success': False}
         except Exception as e:
+            # gRPC deadline 超时同样归类为 timeout（adapter 路径）
+            if type(e).__name__ == 'DeadlineExceeded' or 'DEADLINE_EXCEEDED' in str(e):
+                latency = time.time() - start_time
+                self._log('WARNING', f"Round {round_number} timeout ({session.session_timeout}s)", task_id=task_id)
+                return {'round_number': round_number, 'input': input_text, 'output': '',
+                        'latency': round(latency, 3), 'error': 'timeout', 'success': False}
             latency = time.time() - start_time
             self._log('ERROR', f"Round {round_number} failed: {e}", task_id=task_id)
             return {'round_number': round_number, 'input': input_text, 'output': '',

@@ -347,17 +347,23 @@ def start_postgres():
         print(f"[WARN] postgres data dir not found: {data_dir}", flush=True)
         return
     print(f"[START] postgres: {pg_ctl} (data: {data_dir})", flush=True)
+    log_file = os.path.join(data_dir, 'pg_startup.log')
     try:
+        # Windows 上 postgres 会继承 pg_ctl 的标准句柄：
+        # 若用管道捕获输出，即使 pg_ctl 退出，postgres 仍持有管道写端，
+        # communicate() 等不到 EOF 会永远阻塞（超时 kill 也无法解除）。
+        # 因此输出直接丢弃（诊断信息见 pg_startup.log），仅用超时兜底。
         result = subprocess.run(
-            [pg_ctl, 'start', '-D', data_dir, '-w', '-t', '30'],
-            env=CHILD_ENV, capture_output=True, text=True,
+            [pg_ctl, 'start', '-D', data_dir, '-l', log_file, '-w', '-t', '15'],
+            env=CHILD_ENV,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=20,
         )
-        if result.stdout:
-            print(f"[postgres] {result.stdout.strip()}", flush=True)
-        if result.stderr:
-            print(f"[postgres] {result.stderr.strip()}", flush=True)
         if result.returncode != 0:
-            print(f"[WARN] pg_ctl start returned {result.returncode}", flush=True)
+            print(f"[WARN] pg_ctl start returned {result.returncode}, see {log_file}", flush=True)
+    except subprocess.TimeoutExpired:
+        print("[WARN] pg_ctl start timed out; checking PostgreSQL readiness instead", flush=True)
     except Exception as e:
         print(f"[WARN] postgres startup failed: {e}", flush=True)
     _wait_port('localhost', POSTGRESQL_PORT, 'postgres')

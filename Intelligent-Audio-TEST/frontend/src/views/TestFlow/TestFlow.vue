@@ -72,7 +72,7 @@
           :is-loading="isLoading || false"
           @delete-group="handleDeleteGroup"
           @delete-test-case="handleDeleteTestCase"
-          @open-add-modal="openAddTestCaseModal"
+          @open-add-modal="handleOpenAddModal"
           @open-edit-modal="handleOpenEditModal"
           @open-create-group-modal="openCreateGroupModal"
           @open-edit-group-modal="openEditGroupModal"
@@ -311,7 +311,7 @@ const {
   filteredAPIs,
   goToStep, nextStep, prevStep,
   selectAlgorithm, openCreateAlgorithmModal, openAlgorithmConfigModal,
-  handleDeleteGroup, handleDeleteTestCase, openAddTestCaseModal, handleOpenEditModal,
+  handleDeleteGroup, handleDeleteTestCase, handleOpenAddModal, handleOpenEditModal,
   openCreateGroupModal, openEditGroupModal, openImportTestCaseModal, openExportTestCaseModal,
   updateSelectedCases, handleTagFilterChange, handleGroupFilterChange,
   loadMoreTagView,

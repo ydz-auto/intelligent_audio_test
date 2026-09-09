@@ -164,6 +164,7 @@ class TestCaseCrudService:
                         round_item.pop('algorithm_params', None)
                         round_item.pop('referenceParamsPath', None)
                         round_item.pop('reference_params_path', None)
+                        round_item.pop('interferers', None)
                 device_error = self._process_case_devices(merged_config, test_type_val, from_rounds=True, common=common)
                 if device_error is not None:
                     return {'success': False, 'message': device_error, 'data': None, 'code': 400}

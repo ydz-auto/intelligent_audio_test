@@ -303,6 +303,11 @@ class EvaluationConfigServiceStub:
                 request_serializer=evaluation__service__pb2.ListDimensionsRequest.SerializeToString,
                 response_deserializer=evaluation__service__pb2.EvaluationConfigResponse.FromString,
                 _registered_method=True)
+        self.GetDimension = channel.unary_unary(
+                '/evaluation_service.EvaluationConfigService/GetDimension',
+                request_serializer=evaluation__service__pb2.GetDimensionRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.EvaluationConfigResponse.FromString,
+                _registered_method=True)
         self.GetDimensionOptions = channel.unary_unary(
                 '/evaluation_service.EvaluationConfigService/GetDimensionOptions',
                 request_serializer=evaluation__service__pb2.GetDimensionOptionsRequest.SerializeToString,
@@ -388,6 +393,12 @@ class EvaluationConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetDimension(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetDimensionOptions(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -457,6 +468,11 @@ def add_EvaluationConfigServiceServicer_to_server(servicer, server):
             'ListDimensions': grpc.unary_unary_rpc_method_handler(
                     servicer.ListDimensions,
                     request_deserializer=evaluation__service__pb2.ListDimensionsRequest.FromString,
+                    response_serializer=evaluation__service__pb2.EvaluationConfigResponse.SerializeToString,
+            ),
+            'GetDimension': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDimension,
+                    request_deserializer=evaluation__service__pb2.GetDimensionRequest.FromString,
                     response_serializer=evaluation__service__pb2.EvaluationConfigResponse.SerializeToString,
             ),
             'GetDimensionOptions': grpc.unary_unary_rpc_method_handler(
@@ -746,6 +762,33 @@ class EvaluationConfigService:
             target,
             '/evaluation_service.EvaluationConfigService/ListDimensions',
             evaluation__service__pb2.ListDimensionsRequest.SerializeToString,
+            evaluation__service__pb2.EvaluationConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDimension(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationConfigService/GetDimension',
+            evaluation__service__pb2.GetDimensionRequest.SerializeToString,
             evaluation__service__pb2.EvaluationConfigResponse.FromString,
             options,
             channel_credentials,

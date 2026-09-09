@@ -33,6 +33,35 @@ export interface DimensionRule {
   [key: string]: unknown
 }
 
+export interface DimensionRequiredInput {
+  id?: number
+  dimensionId?: number
+  paramCode: string
+  paramName?: string
+  label?: string
+  fieldType?: string
+  required?: boolean
+  defaultValue?: unknown
+  helpText?: string
+  uiOrder?: number
+}
+
+export interface DimensionOutputField {
+  id?: number
+  dimensionId?: number
+  paramCode: string
+  paramName?: string
+  label?: string
+  fieldPath?: string
+  fieldType?: string
+  outputRole?: string
+  aggRole?: string
+  defaultValue?: unknown
+  visibleInReport?: boolean
+  helpText?: string
+  uiOrder?: number
+}
+
 /** 评估维度完整模型（对应 DimensionItem） */
 export interface Dimension {
   id: number | string
@@ -62,8 +91,8 @@ export interface Dimension {
   estimatedExecTime?: number
   /** 评分规则（对象或 JSON 字符串） */
   rule?: DimensionRule | string
-  requiredInputs?: string
-  outputFields?: unknown[]
+  requiredInputs?: DimensionRequiredInput[]
+  outputFields?: DimensionOutputField[]
   /** 统计方式（后端 statistic_method 原值） */
   statisticMethod?: string
   associatedAlgorithms?: AlgorithmAssociation[]

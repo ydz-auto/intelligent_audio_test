@@ -157,6 +157,9 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, ref, watch, nextTick, type Ref } from 'vue';
+import { useRoute } from 'vue-router';
+
+const route = useRoute();
 
 // 监听键盘事件，处理 ESC 退出
 const handleGlobalKeyDown = (event: KeyboardEvent) => {

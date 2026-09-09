@@ -195,7 +195,8 @@ export async function request<T = any>(
   }
 
   let finalUrl = normalizedUrl;
-  if (method === 'GET' && requestOptions.params) {
+  // query 参数对任意方法生效（DELETE ?cascade、POST presign 等均依赖此拼接）
+  if (requestOptions.params) {
     const filteredParams = Object.fromEntries(
       Object.entries(requestOptions.params).filter(([_, value]) => value !== undefined && value !== null)
     );

@@ -165,7 +165,7 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         self.repository = repository
 
     def handle_get(self, query: GetReportQuery) -> Optional[ReportAggregate]:
-        """处理按 ID 查询报告（不含子实体集合）。
+        """处理按 ID 查询报告详情（附完整摘要统计，不含 cases 等大体积子实体）。
 
         Args:
             query: GetReportQuery
@@ -173,7 +173,15 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         Returns:
             ReportAggregate 或 None（报告不存在或已软删除）
         """
-        return self.repository.get_by_id(query.report_id)
+        aggregate = self.repository.get_by_id(query.report_id)
+        if aggregate is None:
+            return None
+        # 加载摘要统计，供序列化层派生出对外契约 summary 字段
+        aggregate.summaries = self.repository.load_summaries(query.report_id)
+        # 详情接口补充完整摘要视图（all_metrics/case_categories/all_case_tags/
+        # metric_data/tag_metric_data 等），序列化层优先输出到 summary 字段
+        aggregate.full_summary = self.repository.load_full_report_data(query.report_id)
+        return aggregate
 
     def handle_get_by_task(self, query: GetReportByTaskQuery) -> Optional[ReportAggregate]:
         """处理按任务 ID 查询最新报告。
@@ -184,22 +192,32 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         Returns:
             ReportAggregate 或 None
         """
-        return self.repository.get_by_task(query.task_id)
+        aggregate = self.repository.get_by_task(query.task_id)
+        if aggregate is None:
+            return None
+        aggregate.summaries = self.repository.load_summaries(aggregate.id)
+        return aggregate
 
     def handle_list(self, query: ListReportsQuery) -> List[ReportAggregate]:
-        """处理分页列出报告。
+        """处理分页列出报告（各条附摘要统计）。
 
         Args:
             query: ListReportsQuery
 
         Returns:
-            聚合根列表（不含子实体集合）
+            聚合根列表（不含 cases 等大体积子实体）
         """
-        return self.repository.list_reports(
+        aggregates = self.repository.list_reports(
             status=query.status,
             page=query.page,
             page_size=query.page_size,
         )
+        # 逐条加载摘要统计（列表场景每页数据量小，避免默认空 summary）
+        for aggregate in aggregates:
+            if aggregate is None:
+                continue
+            aggregate.summaries = self.repository.load_summaries(aggregate.id)
+        return aggregates
 
     def handle_get_summary(self, query: GetReportSummaryQuery) -> Optional[ReportAggregate]:
         """处理查询报告摘要（含子实体集合）。

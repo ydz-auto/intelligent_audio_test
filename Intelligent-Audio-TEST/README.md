@@ -1,27 +1,18 @@
 # Intelligent Audio Test
 
-智能语音算法自动化测试平台，面向语音交互大模型/算法的端到端（E2E）与 API 自动化测试，覆盖测试用例管理、音频播放与采集、设备自动化驱动、多维度评估、报告对比全流程。
-
-## 仓库结构
-
-```
-.
-├── Intelligent-Audio-TEST/   # 主平台（FastAPI + Vue3 + Electron）
-├── eval_server/              # 评估维度计算服务（WER/SER/DER/LLM Judge/小艺指标）
-├── asr_server/                # 独立 ASR 推理服务（ModelScope Paraformer）
-└── 第三方/                    # 第三方 SDK / proto（如火山 AST）
-```
+智能语音算法自动化测试平台，面向语音交互大模型 / 算法的端到端（E2E）与 API 自动化测试，覆盖测试用例管理、音频播放与采集、设备自动化驱动、多维度评估、报告对比全流程。
 
 ## 核心特性
 
-- **多服务微服务架构**：5 个 FastAPI 后端 + 2 个 gRPC 服务，DDD 风格分层（application/domain/infrastructure/interfaces）
-- **双测试模式**：端到端测试（E2E，真机自动化）与 API 测试（HTTP/SSE/流式接口）
-- **音频引擎**：多音频并行播放、交叠播放、时间戳对齐、声压级（SPL）校准
+- **微服务架构（DDD + CQRS）**：11 个后端微服务（FastAPI + gRPC），按 `interfaces → application → domain → infrastructure` 分层
+- **双测试模式**：端到端测试（E2E，真机自动化）与 API 测试（HTTP/SSE/流式接口，多路并发）
+- **音频引擎**：多音频并行播放、交叠播放、时间戳对齐、声压级（SPL）校准与映射
 - **多设备驱动**：Android（adbutils/uiautomator2）、HarmonyOS（hypium/wda）、环境设备（Modbus/串口）
-- **多维度评估**：WER/SER/CPWER/TCPWER/STM_WER/DER/LLM Judge/小艺指标（tor/false_takeover/takeover_latency）
+- **多维度评估**：WER/SER/DER/LLM Judge/小艺/环境音/打断/时延等维度，动态可配置
 - **实时通信**：Socket.IO 日志推送 + Redis Pub/Sub 进度广播 + SSE 事件流
 - **算法配置化**：动态表单驱动算法接入，零代码新增被测算法
-- **报告对比**：任务级/用例级/标签级多维度对比，时间轴说话人自动匹配
+- **RBAC 权限**：基于 Redis 的认证/OAuth（本地与华为云模式）+ 角色权限模型
+- **报告对比**：任务级/用例级/标签级多维度对比，时间轴说话人自动匹配，异步生成
 - **桌面端**：Electron 封装，支持本地设备直连
 
 ## 技术栈
@@ -32,12 +23,13 @@
 |------|------|
 | Web 框架 | FastAPI + Uvicorn |
 | RPC | gRPC + Protocol Buffers |
-| 数据库 | PostgreSQL + SQLAlchemy 2.0 + Alembic |
-| 对象存储 | MinIO + boto3 |
-| 缓存/消息 | Redis（Pub/Sub + 服务注册） |
+| 数据库 | PostgreSQL 16 + SQLAlchemy 2.0 |
+| 对象存储 | MinIO（单桶模式 + 前端分片直传） |
+| 缓存 / 消息 | Redis（Pub/Sub + 服务发现 + 分布式协调） |
+| 认证 | OAuth2 + JWT + RBAC |
 | 数据校验 | Pydantic 2.0 |
 | 音频处理 | pydub / librosa / soundfile / scipy / pyaudio |
-| 设备自动化 | adbutils / uiautomator2 / playwright / pymodbus / hypium / wda |
+| 设备自动化 | adbutils / uiautomator2 / pymodbus / hypium / wda |
 
 ### 前端
 
@@ -46,11 +38,59 @@
 | 框架 | Vue 3.4 + TypeScript 5.9 |
 | 构建 | Vite 5 |
 | 状态管理 | Pinia |
-| 路由 | Vue Router 4 |
 | 通信 | Axios + socket.io-client |
 | 图表 | Chart.js + chartjs-plugin-zoom |
 | 桌面端 | Electron 31 |
-| 测试 | Vitest + jsdom + @vue/test-utils |
+| 测试 | Vitest + @vue/test-utils |
+
+## 架构总览
+
+```
+                      ┌───────────────────────────┐
+                      │ frontend (Vue3 + Electron) │
+                      └────────────┬──────────────┘
+                           HTTP / Socket.IO / SSE（Vite proxy → 5000）
+                                   ▼
+                       ┌───────────────────────┐
+                       │    api_gateway :5000   │
+                       │ 路由 · WS · SSE · 鉴权 │
+                       └───┬────┬────┬────┬────┘
+                    gRPC/HTTP│    │    │    │
+               ┌─────────────┘    │    │    └─────────────┐
+               ▼                  ▼    ▼                  ▼
+        ┌──────────────┐  ┌─────────────────┐   ┌──────────────────┐
+        │ 业务服务 (HTTP) │  │ 认证/算法/适配服务 │   │ gRPC-only 服务    │
+        │ task 5001     │  │ auth 5009       │   │ audio 50052       │
+        │ e2e 5002      │  │ algorithm 5007  │   │ device 50053      │
+        │ api_test 5003 │  │ adapter 5008    │   └──────────────────┘
+        │ eval 5004     │  └─────────────────┘
+        │ report 5006   │
+        └──────┬───────┘
+               │
+        ┌──────┴─────────────────────────────────┐
+        │ PostgreSQL 5432 · Redis 6379 · MinIO 9000 │
+        └────────────────────────────────────────┘
+```
+
+### 微服务清单
+
+端口统一注册在 [shared/config/service_ports.py](shared/config/service_ports.py)，禁止散落硬编码。
+
+| 服务 | HTTP | gRPC | 职责 |
+|------|------|------|------|
+| api_gateway | 5000 | - | HTTP 路由、WebSocket 日志、SSE 事件、服务注册 |
+| task_service | 5001 | 50061 | 任务执行引擎、评测调度、多轮聚合、分布式协调 |
+| e2e_test_service | 5002 | 50051 | 端到端测试、音频引擎、设备驱动、结果采集 |
+| api_test_service | 5003 | 50071 | API 测试、并发控制、会话执行 |
+| evaluation_service | 5004 | 50091 | 评估维度管理、指标计算（WER/DER/LLM Judge 等） |
+| report_service | 5006 | 50068 | 报告生成（异步）与查询、对比分析 |
+| algorithm_service | 5007 | 50067 | 被测算法配置、参考参数生成器 |
+| api_adapter_service | 5008 | 50081 | 被测算法适配（Qwen/火山 AST/SSE/HTTP） |
+| auth_service | 5009 | 50069 | 认证 / OAuth / RBAC 角色权限 |
+| audio_service | - | 50052 | 音频播放（gRPC-only） |
+| device_service | - | 50053 | 播放 / 环境设备驱动（gRPC-only） |
+
+基础设施：PostgreSQL `5432`、Redis `6379`、MinIO `9000`（控制台 `9001`）、前端 `5173`。
 
 ## 快速开始
 
@@ -58,161 +98,148 @@
 
 - Python 3.10+
 - Node.js 18+
-- PostgreSQL 16
-- Redis 7+
-- MinIO
+- PostgreSQL 16 / Redis 7+ / MinIO（也可由 `run_all.py` 自动拉起本地实例）
 - FFmpeg（音频处理依赖，需加入 PATH）
-- Android Platform Tools（adb，端到端测试）
-- Hypium（HarmonyOS 测试，可选）
+- Android Platform Tools（`adb`，端到端测试用）
 
-### 一键启动
+### 安装与启动
 
 ```bash
 cd Intelligent-Audio-TEST
 
-# 后端依赖
+# 1. 后端依赖
 pip install -r requirements.txt
 
-# 前端依赖
+# 2. 前端依赖
 cd frontend && npm install && cd ..
 
-# 配置环境变量（按需修改数据库/Redis/MinIO/ASR 地址）
-cp .env.example .env
+# 3. 配置环境变量
+cp .env.example .env   # 按需修改数据库/Redis/MinIO 地址、认证模式
 
-# 一键启动全部服务（Redis + PG + MinIO + 5 后端 + 前端）
+# 4. 初始化数据库表（详见下方「数据库初始化与迁移」）
+python scripts/create_all_tables.py
+
+# 5. 一键启动：3 基础设施 + 11 后端微服务 + 前端
 python run_all.py
 ```
 
-启动完成后：
+启动后各服务地址：
 
 | 服务 | 地址 |
 |------|------|
 | 前端 | http://localhost:5173 |
 | API Gateway | http://localhost:5000 |
-| Task Service | http://localhost:5001 |
-| E2E Test Service | http://localhost:5002 |
-| API Test Service | http://localhost:5003 |
-| Adapter Service | http://localhost:5008 |
 | MinIO Console | http://localhost:9001 |
+| 各微服务 | 见上方「微服务清单」 |
 
-### Docker 部署
+说明：
 
-所有 Docker 配置集中在仓库根 [docker/](docker/) 目录：
+- `run_all.py` 启动前会自动清理被占用的服务端口，并探测端口就绪后再启动下一个；`Ctrl+C` 优雅停止全部。
+- 前端请求经 Vite proxy 转发到 API Gateway（`run_all.py` 已注入 `VITE_API_TARGET=http://localhost:5000`）。
+- 单独启动前端：`cd frontend && VITE_API_TARGET=http://localhost:5000 npm run dev -- --port 5173 --strictPort`。
+- 本地 infra 已被占用（如已装 PG 服务）时会直接复用，不重复拉起。
 
-```bash
-# 一键启动全部服务（PG + Redis + MinIO + 5 后端微服务）
-docker compose -f docker/docker-compose.yml up -d --build
-```
+## 数据库初始化与迁移
 
-| 文件 | 说明 |
-|------|------|
-| [docker/docker-compose.yml](docker/docker-compose.yml) | 编排文件（含 PG/Redis/MinIO + 5 服务 + minio-init） |
-| [docker/Dockerfile.api_gateway](docker/Dockerfile.api_gateway) | API 网关镜像 |
-| [docker/Dockerfile.task_service](docker/Dockerfile.task_service) | 任务服务镜像 |
-| [docker/Dockerfile.e2e_test_service](docker/Dockerfile.e2e_test_service) | E2E 测试服务镜像 |
-| [docker/Dockerfile.api_test_service](docker/Dockerfile.api_test_service) | API 测试服务镜像 |
-| [docker/Dockerfile.api_adapter_service](docker/Dockerfile.api_adapter_service) | 算法适配服务镜像 |
-| [docker/.dockerignore](docker/.dockerignore) | 构建上下文排除规则 |
+> ⚠️ 迁移脚本需要 `ALTER TABLE` 排他锁。**在服务运行期间执行可能被阻塞**（本次排查发现的 `created_by_user_id 不存在` 等报错，正是迁移未执行导致），建议在服务停止或低峰期执行。所有脚本均为幂等（`IF NOT EXISTS` / 已存在即跳过），可重复执行。
 
-> 注：build context 为仓库根（`..`），Dockerfile 内通过 `COPY Intelligent-Audio-TEST/ .` 拷贝主平台代码。E2E 服务挂载 `/dev/bus/usb` 以直连 Android 设备。
-
-### 单独启动评估/ASR 服务
+### 1. 建表
 
 ```bash
-# 评估服务（端口 5001，需与主平台 task_service 区分端口）
-cd eval_server && python app.py
-
-# ASR 服务（端口 10095，需独立主机部署以保证时延测量准确性）
-cd asr_server && python asr_server.py
+python scripts/create_all_tables.py
 ```
 
-## 服务架构
+用 SQLAlchemy `Base.metadata.create_all()` 创建所有 ORM 表。**约定：模型变更后新增列，一律通过迁移脚本落地，禁止修改此脚本。**
 
-```
-                      ┌───────────────────┐
-                      │   frontend (Vue3)  │
-                      │  + Electron 桌面端 │
-                      └─────────┬─────────┘
-                            │  HTTP / Socket.IO / SSE
-                            ▼
-┌───────────────────────────────────────────────────────┐
-│                  api_gateway (FastAPI)                 │
-│  HTTP 路由 · WebSocket 日志 · SSE 事件 · Redis PubSub  │
-└───┬───────────┬──────────────┬───────────────┬───────┘
-    │ gRPC      │ gRPC         │ gRPC          │ HTTP
-    ▼           ▼              ▼               ▼
-┌────────┐ ┌────────┐   ┌────────────┐   ┌──────────────┐
-│ task_  │ │ e2e_   │   │ api_test_  │   │ api_adapter_ │
-│ service│ │ test_  │   │ service    │   │ service      │
-│        │ │ service│   │            │   │ (Qwen/火山)  │
-└───┬────┘ └───┬────┘   └────────────┘   └──────────────┘
-    │ HTTP      │ 设备自动化
-    ▼           ▼
-┌────────┐  ┌─────────────────┐
-│eval_   │  │ Android / Harmony│
-│server  │  │ 环境设备 / 串口   │
-└───┬────┘  └─────────────────┘
-    │ HTTP
-    ▼
-┌────────┐
-│asr_    │
-│server  │
-│(独立机) │
-└────────┘
-```
+### 2. 迁移脚本（按目录时间顺序执行）
 
-### 主平台微服务（Intelligent-Audio-TEST）
-
-| 服务 | 端口 | gRPC | 职责 |
-|------|------|------|------|
-| api_gateway | 5000 | - | HTTP 路由、WebSocket 日志、SSE、服务注册 |
-| task_service | 5001 | 50061 | 任务执行引擎、评测调度、多轮聚合 |
-| e2e_test_service | 5002 | 50051 | 端到端测试、音频引擎、设备驱动、结果采集 |
-| api_test_service | 5003 | 50071 | API 测试、并发控制、会话执行 |
-| api_adapter_service | 5008 | 50081 | 被测算法适配（Qwen/火山 AST/SSE/HTTP） |
-
-### 评估/识别服务（独立部署）
-
-| 服务 | 端口 | 职责 |
+| 目录 | 脚本 | 说明 |
 |------|------|------|
-| eval_server | 5001 | WER/SER/DER/LLM Judge/小艺指标计算 |
-| asr_server | 10095 | ModelScope Paraformer ASR 推理（独立主机） |
+| 202608 | [remove_foreign_keys_and_soft_delete.py](scripts/migrations/202608/remove_foreign_keys_and_soft_delete.py) | 12 步：删除全库外键约束、补软删除列（deleted/deleted_at）、补审计列（created_by/updated_by_user_id）、建 RBAC/OAuth 表、建软删除索引 |
+| 202608 | [add_laboratory_tables.py](scripts/migrations/202608/add_laboratory_tables.py) | 实验室 / 环境设备相关表 |
+| 202608 | [add_audit_columns.py](scripts/migrations/202608/add_audit_columns.py) | 补齐剩余审计/软删除列并为主键列建索引（覆盖 TASK_TAGS、TEST_CASE_TAGS 等全量表，`--dry-run` 可预览缺失） |
+| 202608 | [add_reevaluated_at.py](scripts/migrations/202608/add_reevaluated_at.py) | `test_tasks` 重新评估标记列（reevaluated_at / reevaluation_count） |
+| 202608 | [fix_audio_tags_types.py](scripts/migrations/202608/fix_audio_tags_types.py) | 修复 audio_tags 类型不一致 |
+| 202608 | [fix_partial_unique_indexes.py](scripts/migrations/202608/fix_partial_unique_indexes.py) | 修复局部唯一索引与软删除冲突 |
+| 202608 | [seed_rbac.py](scripts/migrations/202608/seed_rbac.py) | RBAC 角色 / 权限种子数据 |
+| 202609 | [add_pass_threshold_to_eval_params.py](scripts/migrations/202609/add_pass_threshold_to_eval_params.py) | 评估参数 pass_threshold 列 |
+| 202609 | [seed_voice_llm.py](scripts/migrations/202609/seed_voice_llm.py) 等 `seed_*.py` | 评估维度种子数据（VoiceLLM / 打断 / 环境音 / 时延 / 小艺指标等） |
+
+执行示例：
+
+```bash
+python scripts/migrations/202608/remove_foreign_keys_and_soft_delete.py
+python scripts/migrations/202608/add_audit_columns.py              # 可加 --dry-run 先预览
+python scripts/migrations/202608/add_reevaluated_at.py
+python scripts/migrations/202609/add_pass_threshold_to_eval_params.py
+python scripts/migrations/202609/seed_voice_llm.py                  # 按需
+```
+
+新增迁移约定：复制现有脚本风格（psycopg2 直连 + savepoint 逐表回滚 + SKIP 跳过），放入 `scripts/migrations/YYYYMM/`，脚本内注明用途与幂等性。
 
 ## 测试流程
 
-1. **用例管理**：创建测试用例，配置音频、参考参数、评估维度、干扰项
+1. **用例管理**：创建测试用例，配置音频、参考参数、评估维度、干扰项（支持用例共用与分组）
 2. **算法配置**：通过动态表单接入被测算法（HTTP/SSE/gRPC）
 3. **设备管理**：扫描并注册被测设备（Android/HarmonyOS）与播放/环境设备
 4. **任务执行**：
-   - E2E：编排音频播放 → 设备自动化 → 录音采集 → ASR → 评估
-   - API：并发调用被测接口 → 结果采集 → 评估
-5. **报告对比**：任务级/用例级/标签级对比，时间轴可视化
+   - E2E：编排音频播放 → 设备自动化 → 录音采集 → 评估（支持重跑、重新评估、重新提取、任务合并）
+   - API：多路并发调用被测接口 → 结果采集 → 评估
+5. **报告对比**：任务级/用例级/标签级对比，时间轴说话人自动匹配
 
-## 关键配置
+## 配置说明
 
-主配置在 `Intelligent-Audio-TEST/.env`，关键项：
+主配置在 [.env](.env)（模板：[.env.example](.env.example)）。关键项：
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis 地址 |
-| `OSS_ENDPOINT` | `localhost:9000` | MinIO 地址 |
-| `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` | - | MinIO 凭据 |
-| `ASR_SERVER_URL` | `http://127.0.0.1:10095` | ASR 服务地址 |
-| `EVAL_SERVER_URL` | `http://127.0.0.1:5001` | 评估服务地址 |
+| `REDIS_URL` | `redis://localhost:6379` | Redis 地址 |
+| `OSS_ENDPOINT` | `http://localhost:9000` | MinIO 地址 |
+| `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` | `minio` / `minio123` | MinIO 凭据 |
+| `AUTH_MODE` | `off` | 认证模式：`dev`(本地OAuth) / `prod`(华为云OAuth) / `off`(无认证) |
+| `DISTRIBUTED_COORDINATOR_ENABLED` | `true` | Redis 分布式锁/信号量，Redis 不可达自动降级 |
+| `LOG_LEVEL` | `INFO` | 日志级别 |
 
 ## 开发约定
 
-- 后端遵循 DDD 分层：`application/`（命令/查询）→ `domain/`（实体/事件）→ `infrastructure/`（持久化/适配器）→ `interfaces/`（API/gRPC）
-- 前端组件按域分组：`components/{algorithm,common,layout,report,task}`，composables 按域拆分
-- gRPC proto 定义位于 `shared/proto/`，修改后需重新生成 Python 桩代码
-- 前端样式按页面域归并至 `assets/styles/<domain>/`，组件级样式与组件同名
+- **后端 DDD 分层**：`interfaces/`（API/gRPC 路由）→ `application/`（用例编排）→ `domain/`（实体/事件/DTO）→ `infrastructure/`（持久化/适配器）
+- **枚举化 / 配置化**：业务状态一律使用枚举（[shared/models/common_enums.py](shared/models/common_enums.py)），禁止魔法数字 / 魔法字符串
+- **端口集中注册**：[shared/config/service_ports.py](shared/config/service_ports.py)，禁用散落硬编码
+- **gRPC proto** 位于 [shared/proto/](shared/proto/)，修改后需重新生成 Python 桩代码（`grpc_tools.protoc`）
+- **前端域分层**：`views/`（页面）+ `components/`（组件）→ `composables/` + `store/`（编排）→ `domain/model/` + `domain/enums.ts`（领域模型）→ `api/` + `dto/`（基础设施，唯一接触 snake_case 的层）
+- **命名规范**：后端模型 `shared/models/`，DTO 命名采用 camelCase；前后端字段经 `keyTransform` 适配
+
+## 目录导航
+
+```
+Intelligent-Audio-TEST/
+├── api_gateway/            # API 网关（路由/WS/SSE/鉴权）
+├── task_service/           # 任务执行引擎
+├── e2e_test_service/       # 端到端测试
+├── api_test_service/       # API 测试
+├── evaluation_service/     # 评估维度
+├── report_service/         # 报告生成
+├── algorithm_service/      # 算法配置
+├── api_adapter_service/    # 算法适配
+├── auth_service/           # 认证 / RBAC
+├── audio_service/          # 音频播放（gRPC-only）
+├── device_service/         # 设备驱动（gRPC-only）
+├── frontend/               # Vue3 + Electron
+├── shared/                 # 跨服务共享：models / config / proto / clients
+├── scripts/                # 建表、迁移、Seed 脚本
+├── docker/                 # Docker 部署编排与镜像
+├── docs/                   # 系统架构 / DDD / RBAC / OAuth 等设计文档
+└── doc/                    # 功能设计文档（按模块分目录）
+```
 
 ## 相关文档
 
-- [eval_server 评估服务](eval_server/doc/README.md) — 评估维度计算服务文档
-- [eval_server 架构](eval_server/doc/ARCHITECTURE.md) — 评估服务架构设计
-- [eval_server API](eval_server/doc/API_DOC.md) — 评估服务接口规范
-- [asr_server ASR 服务](asr_server/README.md) — ASR 推理服务文档
-- [gRPC Proto 接口](Intelligent-Audio-TEST/shared/proto/README.md) — 跨服务 gRPC 接口定义
-- [前端更新日志](Intelligent-Audio-TEST/frontend/docs/CHANGELOG.md) — 前端变更记录
+- [系统架构](docs/系统架构.md) / [微服务](docs/微服务.md) / [DDD 重构](docs/DDD重构.md)
+- [RBAC 权限划分](docs/RBAC权限划分.md) / [OAuth](docs/oauth.md) / [迁移验证报告](docs/迁移验证报告.md)
+- [分布式协调器](docs/分布式协调器.md)
+- [数据库设计](doc/数据库设计文档/数据库设计.md) / [数据库迁移文档](doc/数据库设计文档/数据库迁移文档.md)
+- [后端设计文档](doc/总架构/后端设计文档.md) / [分布式部署文档](doc/总架构/分布式部署文档.md)
+- [服务拆分方案](doc/总架构/服务拆分方案.md)
+- [gRPC Proto 接口](shared/proto/README.md)
+- [前端更新日志](frontend/docs/CHANGELOG.md)

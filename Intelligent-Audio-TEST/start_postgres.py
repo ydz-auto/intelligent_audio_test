@@ -10,9 +10,15 @@ PGSQL_PORT = 5432
 def is_postgres_running():
     try:
         result = subprocess.run(
-            [os.path.join(PGSQL_BIN, "pg_isready.exe"), "-p", str(PGSQL_PORT)],
+            [
+                os.path.join(PGSQL_BIN, "pg_isready.exe"),
+                "-h", "127.0.0.1",
+                "-p", str(PGSQL_PORT),
+                "-t", "2",
+            ],
             capture_output=True,
-            text=True
+            text=True,
+            timeout=5,
         )
         return result.returncode == 0
     except Exception:
@@ -85,7 +91,7 @@ def start_postgres():
 
     try:
         subprocess.Popen(
-            [pg_ctl, "start", "-D", PGSQL_DATA, "-l", log_file],
+            [pg_ctl, "start", "-D", PGSQL_DATA, "-l", log_file, "-w", "-t", "15"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP

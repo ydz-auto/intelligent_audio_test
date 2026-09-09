@@ -203,11 +203,11 @@ message GetTaskStatsRequest {
 }
 message GetCaseDetailRequest {
   int32 task_id = 1;
-  int32 case_id = 2;
+  string case_id = 2;
 }
 message GetCaseResultsRequest {
   int32 task_id = 1;
-  int32 case_id = 2;
+  string case_id = 2;
 }
 message StartTaskLifecycleRequest {
   int32 task_id = 1;
@@ -622,6 +622,8 @@ service TaskDataService {
   rpc GetTestResultsByTaskAndCase(GetTestResultsByTaskAndCaseRequest) returns (TaskDataResponse);
   // 更新 TestResult 的 execution_status（evaluation_service 标记完成时调用）
   rpc UpdateTestResultStatus(UpdateTestResultStatusRequest) returns (TaskDataResponse);
+  // 更新 TestResult 的执行结果字段（e2e_test_service 聚合完成后调用，一次写入全部结果字段）
+  rpc UpdateTestResultOutcome(UpdateTestResultOutcomeRequest) returns (TaskDataResponse);
   // 更新 Task 的 status（evaluation_service 重新评估流转时调用）
   rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (TaskDataResponse);
   // 查询 TaskMergeRelation（api_gateway 报告对比用）
@@ -692,6 +694,8 @@ message UpdateTaskCaseStatusRequest {
   string execution_status = 4;  // pending/running/completed/stopped/failed
   string evaluation_status = 5; // queued/pending/running/calculating/completed/stopped/failed
   string error_message = 6;
+  string started_at = 7;      // ISO8601，用例开始执行时间（空则不更新）
+  string completed_at = 8;    // ISO8601，用例结束执行时间（空则不更新）
 }
 message UpdateTestResultAlgorithmResultRequest {
   int32 result_id = 1;
@@ -709,6 +713,14 @@ message GetTestResultsByTaskAndCaseRequest {
 message UpdateTestResultStatusRequest {
   int32 result_id = 1;
   string execution_status = 2;  // pending/running/completed/stopped/failed
+}
+message UpdateTestResultOutcomeRequest {
+  int32 result_id = 1;
+  string algorithm_result = 2;  // JSON：完整的 algorithm_result 字段
+  string execution_status = 3;  // pending/running/completed/stopped/failed
+  int32 response_time = 4;      // 响应时间 (ms)
+  string error_message = 5;     // 错误信息（可为空）
+  string result_data_path = 6;  // 结果数据文件路径（为空则不更新该列）
 }
 message UpdateTaskStatusRequest {
   int32 task_id = 1;
@@ -776,6 +788,7 @@ message TestCaseAggStatsRequest {
   string algorithm_type = 1;  // 可选
   int32 group_id = 2;         // 可选
   string group_by = 3;        // 可选，分组字段（如 algorithm_type / group_id）
+  string test_type = 4;       // 可选，按用例类型过滤（api / e2e）
 }
 
 // ===== Log CRUD RPC（P0-3 新增，替代 api_gateway/shared/utils 直连 DB）=====

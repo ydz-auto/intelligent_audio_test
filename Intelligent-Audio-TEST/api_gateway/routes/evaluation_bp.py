@@ -28,6 +28,13 @@ def get_all(_: None = require_permission('evaluation:read')):
         return to_response(result)
     return result
 
+@router.get('/dimensions/{dim_id}')
+def get_one(dim_id: int, _: None = require_permission('evaluation:read')):
+    result = EvaluationQueryService.get_one(dim_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
+
 @router.post('/dimensions')
 def create(_: None = require_permission('evaluation:dim_manage')):
     result = EvaluationCommandService.create()

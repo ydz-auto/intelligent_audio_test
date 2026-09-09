@@ -75,6 +75,9 @@ def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[st
         'status': aggregate.status,
         'config': dict(aggregate.config) if aggregate.config else {},
         'created_at': str(aggregate.created_at) if aggregate.created_at is not None else None,
+        # 详情接口输出完整摘要（all_metrics/case_categories/all_case_tags/...），
+        # 列表等场景无 full_summary 时回退为扁平统计（对齐 api_gateway ReportListItem.summary）
+        'summary': aggregate.full_summary if aggregate.full_summary else aggregate.flat_summary(),
         'summaries': [
             {
                 'id': s.id,

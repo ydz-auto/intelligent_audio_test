@@ -102,7 +102,8 @@ def submit_result(task_id, result_data):
 
 
 def update_task_case_status(task_id, case_id, status=None, execution_status=None,
-                            evaluation_status=None, error_message=None):
+                            evaluation_status=None, error_message=None,
+                            started_at=None, completed_at=None):
     """通过 gRPC 调用 task_service.TaskDataService.UpdateTaskCaseStatus 更新 TaskCase 状态
 
     供 api_test_service / e2e_test_service 执行完成后更新 TaskCase 执行状态，
@@ -115,6 +116,8 @@ def update_task_case_status(task_id, case_id, status=None, execution_status=None
         execution_status: 可选，执行状态 (pending/running/completed/stopped/failed)
         evaluation_status: 可选，评估状态
         error_message: 可选，错误信息
+        started_at: 可选，开始执行时间（datetime / ISO8601 字符串，空则不更新）
+        completed_at: 可选，结束执行时间（datetime / ISO8601 字符串，空则不更新）
 
     Returns:
         bool: 是否有字段被更新
@@ -129,12 +132,23 @@ def update_task_case_status(task_id, case_id, status=None, execution_status=None
         execution_status=execution_status or '',
         evaluation_status=evaluation_status or '',
         error_message=error_message or '',
+        started_at=_to_iso8601(started_at),
+        completed_at=_to_iso8601(completed_at),
     )
     resp = stub.UpdateTaskCaseStatus(req)
     if not resp.success:
         raise RuntimeError(f"UpdateTaskCaseStatus gRPC 调用失败: {resp.message}")
     data = _json.loads(resp.data) if resp.data else {}
     return data.get('updated', False)
+
+
+def _to_iso8601(value):
+    """datetime / ISO8601 字符串 → ISO8601 字符串；None/空 → ''。"""
+    if value is None or value == '':
+        return ''
+    if isinstance(value, str):
+        return value
+    return value.isoformat()
 
 
 def notify_task_progress(task_id, force=False):

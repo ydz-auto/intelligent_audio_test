@@ -72,6 +72,7 @@ export function toAlgorithmDefinition(dto: AlgorithmDefinitionDto): AlgorithmDef
       : undefined,
     associatedDimensions: (dto?.associated_dimensions ?? []).map(toAlgorithmAssociatedDimensionFromRaw),
     dimensionRelations: dto?.dimension_relations,
+    referenceParams: (dto?.reference_params ?? []).map(toReferenceParam),
     createdAt: dto?.created_at,
     updatedAt: dto?.updated_at,
   }
@@ -125,6 +126,7 @@ export function toAlgorithmAssociatedDimensionFromRaw(raw: Record<string, unknow
   const rec = raw as Record<string, unknown>
   return {
     id: (rec?.id as number) ?? 0,
+    dimensionId: (rec?.dimension_id as number) ?? 0,
     name: (rec?.name as string) ?? '',
     description: rec?.description as string | undefined,
     type: rec?.type as string | undefined,
@@ -236,6 +238,7 @@ export function toAlgorithmDimensions(dto: AlgorithmDimensionsDto | null | undef
   return {
     dimensions: (dto?.dimensions ?? []).map(dim => ({
       id: dim?.id ?? 0,
+      dimensionId: dim?.dimension_id ?? 0,
       name: dim?.name ?? '',
       description: dim?.description,
       type: dim?.type,
@@ -401,6 +404,7 @@ export function toAlgorithmDefinitionDto(data: Partial<AlgorithmDefinition>): Re
   if (data.mappings !== undefined) result.mappings = data.mappings
   if (data.associatedDimensions !== undefined) result.associated_dimensions = data.associatedDimensions
   if (data.dimensionRelations !== undefined) result.dimension_relations = data.dimensionRelations
+  if (data.referenceParams !== undefined) result.reference_params = data.referenceParams
   return result
 }
 

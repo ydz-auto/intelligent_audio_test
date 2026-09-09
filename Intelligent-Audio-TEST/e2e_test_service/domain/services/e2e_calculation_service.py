@@ -45,6 +45,9 @@ class E2ECalculationService:
         audio_offsets: Dict[str, Any] = {}
 
         for play_time in audio_play_times:
+            # 噪声和干扰人需要保留播放明细，但不参与主讲人录音对齐基准。
+            if play_time.get('is_noise') or play_time.get('audio_type') == 'interferer':
+                continue
             audio_id = play_time.get('audio_id')
             if not audio_id:
                 continue
@@ -54,9 +57,12 @@ class E2ECalculationService:
             theory_offset = play_time.get('actual_start_offset', 0.0)
             actual_offset = actual_time - record_start_time - theory_offset
 
-            key = f"{audio_id}_{play_order}"
+            # key 前缀 audio_type，避免不同类型音频的 id/order 组合冲突
+            audio_type = play_time.get('audio_type') or 'dry'
+            key = f"{audio_type}_{audio_id}_{play_order}"
             audio_offsets[key] = {
                 'audio_id': audio_id,
+                'audio_type': audio_type,
                 'play_order': play_order,
                 'offset': actual_offset,
             }

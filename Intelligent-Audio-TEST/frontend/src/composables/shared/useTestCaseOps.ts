@@ -107,6 +107,15 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     }
   }
 
+  /**
+   * CRUD 成功后统一刷新数据：标签视图（按上次过滤参数）+ 分组视图。
+   * 标签视图与分组视图共用同一 store，按上次过滤参数拉取即可保持当前标签页的筛选上下文。
+   */
+  const refreshAfterOps = async () => {
+    await testCaseStore.refreshTagView()
+    await initializeTestCases(selectedAlgorithmType.value || undefined)
+  }
+
   /** 标签筛选变化（仅 testType 不同） */
   const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     fetchTagView({
@@ -141,7 +150,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
       const confirmed = await confirmDeleteGroup(groupName)
       if (confirmed) {
         await testCaseStore.deleteGroup(groupName)
-        await initializeTestCases(selectedAlgorithmType.value || undefined)
+        await refreshAfterOps()
       }
     } catch (error) {
       console.error('[useTestCaseOps] 删除分组失败:', error)
@@ -156,7 +165,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
       const confirmed = await confirmDeleteTestCase(testCase.name)
       if (confirmed) {
         await testCaseStore.deleteTestCase(testCase.id)
-        await initializeTestCases(selectedAlgorithmType.value || undefined)
+        await refreshAfterOps()
       }
     } catch (error) {
       console.error('[useTestCaseOps] 删除测试用例失败:', error)
@@ -170,7 +179,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     try {
       const result = await handleModalSave(data)
       if (result?.needRefresh) {
-        await initializeTestCases(selectedAlgorithmType.value || undefined)
+        await refreshAfterOps()
       }
     } catch (error) {
       console.error('[useTestCaseOps] 保存失败:', error)
@@ -179,7 +188,15 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     }
   }
 
-  /** 编辑用例模态窗：e2e 自定义打开流程，api 直接复用 useTestCaseCard */
+  /** 打开新增用例模态窗，保存成功后按当前视图刷新（含标签视图） */
+  const handleOpenAddModal = async (group = '', options?: { algorithmType?: string; testType?: typeof TestType[keyof typeof TestType]; tags?: string[] }) => {
+    const result = await openAddTestCaseModal(group, options)
+    if (result?.needRefresh) {
+      await refreshAfterOps()
+    }
+  }
+
+  /** 编辑用例模态窗：e2e 自定义打开流程，api 直接复用 useTestCaseCard；保存成功后按视图刷新 */
   const handleOpenEditModal = async (testCase: TestCase) => {
     if (testType === TestType.E2E) {
       editingTestCase.value = testCase
@@ -216,13 +233,19 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
         })
 
         if (result) {
-          await handleModalSave(result)
+          const saveResult = await handleModalSave(result)
+          if (saveResult?.needRefresh) {
+            await refreshAfterOps()
+          }
         }
       } catch (error) {
         console.error('[useTestCaseOps] 打开编辑用例模态窗失败:', error)
       }
     } else {
-      openEditTestCaseModal(testCase)
+      const saveResult = await openEditTestCaseModal(testCase)
+      if (saveResult?.needRefresh) {
+        await refreshAfterOps()
+      }
     }
   }
 
@@ -257,9 +280,9 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     handleDeleteGroup,
     handleDeleteTestCase,
     handleSaveModal,
+    handleOpenAddModal,
     handleOpenEditModal,
     showTestCaseDetails,
-    openAddTestCaseModal,
     openCreateGroupModal,
     openEditGroupModal,
     openImportTestCaseModal,

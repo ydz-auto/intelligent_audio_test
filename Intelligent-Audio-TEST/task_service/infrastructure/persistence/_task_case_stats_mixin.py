@@ -4,6 +4,7 @@
 供 gRPC servicer 使用的 dict 序列化读取、TaskCase 状态更新、聚合统计、
 TaskCaseRepositoryABC 接口适配。
 """
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from shared.models.database import get_db_session, utc8now
@@ -123,12 +124,19 @@ class TaskCaseStatsMixin:
     def update_task_case_status(self, task_id: int, case_id: str,
                                 status: str = '', execution_status: str = '',
                                 evaluation_status: str = '',
-                                error_message: str = '') -> bool:
-        """更新 TaskCase 状态，返回是否有更新。"""
+                                error_message: str = '',
+                                started_at=None, completed_at=None) -> bool:
+        """更新 TaskCase 状态，返回是否有更新。
+
+        started_at / completed_at 为 datetime 或 ISO8601 字符串，非 None 才写入。
+        与 V9.7.10 行为对齐：开始执行时写 started_at，结束时写 completed_at。
+        """
         session = get_db_session()
         try:
             status = self._derive_case_status(
                 session, task_id, case_id, status, execution_status, evaluation_status)
+            started_at = self._coerce_cst_datetime(started_at)
+            completed_at = self._coerce_cst_datetime(completed_at)
 
             update_fields = {}
             if status:
@@ -139,6 +147,10 @@ class TaskCaseStatsMixin:
                 update_fields['evaluation_status'] = evaluation_status
             if error_message:
                 update_fields['error_message'] = error_message
+            if started_at is not None:
+                update_fields['started_at'] = started_at
+            if completed_at is not None:
+                update_fields['completed_at'] = completed_at
 
             if update_fields:
                 session.query(TaskCase).filter(
@@ -152,6 +164,19 @@ class TaskCaseStatsMixin:
             raise
         finally:
             session.close()
+
+    @staticmethod
+    def _coerce_cst_datetime(value):
+        """datetime 或 ISO8601 字符串 → naive +08:00 datetime；None/空串 → None。"""
+        if value is None or value == '':
+            return None
+        if isinstance(value, datetime):
+            dt = value
+        else:
+            dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone(timedelta(hours=8))).replace(tzinfo=None)
+        return dt
 
     @staticmethod
     def _derive_case_status(session, task_id: int, case_id: str, status: str,

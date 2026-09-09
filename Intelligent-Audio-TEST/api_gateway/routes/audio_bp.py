@@ -36,6 +36,18 @@ def get_all_tags(_: None = require_permission('audio:read')):
     return to_response(AudioQueryService.get_all_tags())
 
 
+# 静态 GET 路由必须先于 /{audio_id} 泛路由注册（FastAPI 按注册顺序匹配，
+# 否则 /stream-by-path、/upload/progress 会被 /{audio_id} 捕获导致 422）
+@router.get('/stream-by-path')
+def stream_by_path(_: None = require_permission('audio:read')):
+    return to_response(AudioQueryService.stream_by_path())
+
+
+@router.get('/upload/progress')
+def get_upload_progress(_: None = require_permission('audio:read')):
+    return to_response(AudioUploadService.get_upload_progress())
+
+
 @router.get('/{audio_id}')
 def get_one(audio_id: int, _: None = require_permission('audio:read')):
     return to_response(AudioQueryService.get_one(audio_id))
@@ -88,11 +100,6 @@ def stop_preview(audio_id: int, _: None = require_permission('audio:read')):
     return to_response(AudioPreviewService.stop_preview(audio_id))
 
 
-@router.get('/stream-by-path')
-def stream_by_path(_: None = require_permission('audio:read')):
-    return to_response(AudioQueryService.stream_by_path())
-
-
 @router.delete('/{audio_id}')
 def delete(audio_id: int, _: None = require_permission('audio:delete')):
     return to_response(AudioCommandService.delete(audio_id))
@@ -117,11 +124,6 @@ def upload_chunk(_: None = require_permission('audio:upload')):
 @router.post('/upload/merge')
 def merge_chunks(_: None = require_permission('audio:upload')):
     return to_response(AudioUploadService.merge_chunks())
-
-
-@router.get('/upload/progress')
-def get_upload_progress(_: None = require_permission('audio:read')):
-    return to_response(AudioUploadService.get_upload_progress())
 
 
 # 前端直传 OSS 相关接口（生产环境多实例部署）

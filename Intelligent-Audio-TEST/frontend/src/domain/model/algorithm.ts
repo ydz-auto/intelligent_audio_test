@@ -92,6 +92,8 @@ export interface AlgorithmOption {
 /** 算法-维度关联维度项 */
 export interface AlgorithmAssociatedDimension {
   id: number
+  /** 关联的评估维度 id（后端字段 dimension_id） */
+  dimensionId: number
   name: string
   description?: string
   type?: string

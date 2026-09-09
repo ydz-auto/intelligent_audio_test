@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.result_data_store import write_result_data_file, split_result_data
 from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus, EvaluationStatus
+from shared.utils.query_utils import now_cst
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
     AlgorithmQueryAclRepositoryImpl,
@@ -83,33 +84,47 @@ class APIResultProcessor:
                       content=f"gRPC写入TestResult失败: {str(grpc_error)}\n{traceback.format_exc()}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        # 同步更新 TaskCase 状态
+        # 同步更新 TaskCase 状态（stopped 保护：任务停止后不回写状态、不广播事件，避免覆盖停止态）
+        tc_rel = None
         try:
-            _task_data_acl.update_task_case_status(
-                task_id=task_id,
-                case_id=test_case_id,
-                execution_status=ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
-            )
-            if self._executor.execution_engine:
-                self._executor.execution_engine._emit_progress(task_id, force=True)
-                self._executor.execution_engine.notify_case_completed(task_id)
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            tc_rel = next((tc for tc in tcs if str(tc.get('test_case_id')) == str(test_case_id)), None)
         except Exception as e:
             self._log(level='WARNING', category='database',
-                      content=f"更新 TaskCase 状态失败: {e}",
+                      content=f"查询 TaskCase 失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        # 发布用例执行完成事件到事件总线（异步通知 task_service）
-        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
-        EventBus().publish(
-            EventChannel.CASE_EVENTS,
-            EventType.CASE_EXECUTION_COMPLETED if success else EventType.CASE_FAILED,
-            {
-                'task_id': str(task_id),
-                'test_case_id': str(test_case_id),
-                'result_id': str(result_id) if result_id else None,
-                'success': success,
-            }
-        )
+        if tc_rel and tc_rel.get('execution_status') in [ExecutionStatus.STOPPED]:
+            self._log(level='INFO', category='database',
+                      content=f"任务已停止，跳过 TaskCase 状态回写: task_id={task_id}, test_case_id={test_case_id}",
+                      task_id=task_id, test_case_id=test_case_id)
+        else:
+            try:
+                _task_data_acl.update_task_case_status(
+                    task_id=task_id,
+                    case_id=test_case_id,
+                    execution_status=ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
+                )
+                if self._executor.execution_engine:
+                    self._executor.execution_engine._emit_progress(task_id, force=True)
+                    self._executor.execution_engine.notify_case_completed(task_id)
+            except Exception as e:
+                self._log(level='WARNING', category='database',
+                          content=f"更新 TaskCase 状态失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+
+            # 发布用例执行完成事件到事件总线（异步通知 task_service）
+            from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+            EventBus().publish(
+                EventChannel.CASE_EVENTS,
+                EventType.CASE_EXECUTION_COMPLETED if success else EventType.CASE_FAILED,
+                {
+                    'task_id': str(task_id),
+                    'test_case_id': str(test_case_id),
+                    'result_id': str(result_id) if result_id else None,
+                    'success': success,
+                }
+            )
 
         return result_id
 
@@ -239,6 +254,7 @@ class APIResultProcessor:
                 execution_status=ExecutionStatus.FAILED,
                 evaluation_status=EvaluationStatus.COMPLETED,
                 error_message=error_msg,
+                completed_at=now_cst().isoformat(),
             )
         except Exception as e:
             self._log(level='WARNING', content=f"更新 TaskCase 失败状态失败: {e}",

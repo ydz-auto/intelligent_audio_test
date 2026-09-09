@@ -1,11 +1,50 @@
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useTestCaseConfig } from '../../../composables/testCase/useTestCaseConfig'
 import type { AudioItem } from '../../../composables/audio/useAudioList'
-import type { AudioAlgorithmRelation } from '../../../domain/model/audio'
+import type { AudioAlgorithmRelation, DimensionConfigData } from '../../../domain/model/audio'
+import { TestType, RoundMode } from '../../../domain/enums'
 
 // 音频-算法关联：归集到 Domain 的 AudioAlgorithmRelation（params 值类型 any → unknown 兼容），
 // AlgorithmRelationItem 仅作兼容别名 re-export（UploadOptions.vue 引用）
 export type AlgorithmRelationItem = AudioAlgorithmRelation
+
+/** 空维度配置（DimensionConfigPanel 初始结构） */
+const EMPTY_DIMENSION_CONFIG: DimensionConfigData = {
+  dimensions: [],
+  roundMode: RoundMode.ALL,
+  roundNumbers: [],
+  multiDimensions: []
+}
+
+/** 判断维度配置是否已选维度（per_round 模式遍历逐轮配置） */
+function hasConfiguredDimensions(cfg?: DimensionConfigData): boolean {
+  if (!cfg) return false
+  if (cfg.roundMode === RoundMode.PER_ROUND) {
+    return Object.values(cfg.roundDimensions || {}).some(dims => dims.length > 0)
+  }
+  return (cfg.dimensions || []).length > 0
+}
+
+/** 按算法关联维度过滤维度配置（dimensions/roundDimensions/multiDimensions 同步过滤） */
+function filterDimensionConfig(
+  cfg: DimensionConfigData | undefined,
+  dimensionIds: number[]
+): DimensionConfigData | undefined {
+  if (!cfg) return cfg
+  const keep = (dims?: DimensionConfigData['dimensions']) =>
+    (dims || []).filter(d => dimensionIds.includes(Number(d.id)))
+  const roundDimensions = cfg.roundDimensions
+    ? (Object.fromEntries(
+        Object.entries(cfg.roundDimensions).map(([rn, dims]) => [rn, keep(dims)])
+      ) as DimensionConfigData['roundDimensions'])
+    : undefined
+  return {
+    ...cfg,
+    dimensions: keep(cfg.dimensions),
+    roundDimensions,
+    multiDimensions: keep(cfg.multiDimensions)
+  }
+}
 
 export function useUploadOptions(props: any, emit: any) {
   const localConfig = ref<any>(null)
@@ -45,14 +84,12 @@ export function useUploadOptions(props: any, emit: any) {
       uploadConfig.value = {
         ...uploadConfig.value,
         createTestCase: false,
-        testTypes: ['e2e'],
+        testTypes: [TestType.E2E],
         algorithmType: '',
         algorithmParams: [],
-        apiDimensions: [],
-        e2eDimensions: []
+        apiDimensionConfig: { ...EMPTY_DIMENSION_CONFIG },
+        e2eDimensionConfig: { ...EMPTY_DIMENSION_CONFIG }
       }
-      apiScopes.value = ['single']
-      e2eScopes.value = ['single']
     }
   })
 
@@ -62,9 +99,6 @@ export function useUploadOptions(props: any, emit: any) {
     testTypeOptions,
     filteredDimensions,
     e2eFilteredDimensions,
-    dimensionCount,
-    isDimensionSelected,
-    toggleDimensionSelection,
     ensureDimensionsLoaded,
     dimensionsLoading,
     dimensionsError,
@@ -75,60 +109,8 @@ export function useUploadOptions(props: any, emit: any) {
     audioTypeOptions: props.audioTypeOptions.length > 0 ? props.audioTypeOptions : undefined
   })
 
-  const hasApiDimensions = computed(() => (uploadConfig.value.apiDimensions || []).length > 0)
-  const hasE2eDimensions = computed(() => (uploadConfig.value.e2eDimensions || []).length > 0)
-
-  // API/E2E 维度的使用范围（可多选：单轮+多轮）
-  const apiScopes = ref<('single' | 'multi')[]>(
-    (props.modelValue as any).apiScopes || ['single']
-  )
-  const e2eScopes = ref<('single' | 'multi')[]>(
-    (props.modelValue as any).e2eScopes || ['single']
-  )
-
-  const toggleApiScope = (scope: 'single' | 'multi') => {
-    if (apiScopes.value.includes(scope)) {
-      if (apiScopes.value.length > 1) {
-        apiScopes.value = apiScopes.value.filter(s => s !== scope)
-      }
-    } else {
-      apiScopes.value = [...apiScopes.value, scope]
-    }
-    uploadConfig.value = { ...uploadConfig.value, apiScopes: apiScopes.value }
-  }
-
-  const toggleE2eScope = (scope: 'single' | 'multi') => {
-    if (e2eScopes.value.includes(scope)) {
-      if (e2eScopes.value.length > 1) {
-        e2eScopes.value = e2eScopes.value.filter(s => s !== scope)
-      }
-    } else {
-      e2eScopes.value = [...e2eScopes.value, scope]
-    }
-    uploadConfig.value = { ...uploadConfig.value, e2eScopes: e2eScopes.value }
-  }
-
-  const setApiDimensions = (dimensions: Array<{ id: string | number; name: string }>) => {
-    uploadConfig.value = {
-      ...uploadConfig.value,
-      apiDimensions: dimensions
-    }
-  }
-
-  const setE2eDimensions = (dimensions: Array<{ id: string | number; name: string }>) => {
-    uploadConfig.value = {
-      ...uploadConfig.value,
-      e2eDimensions: dimensions
-    }
-  }
-
-  const toggleApiDimension = (dim: any) => {
-    toggleDimensionSelection(dim, uploadConfig.value.apiDimensions, setApiDimensions)
-  }
-
-  const toggleE2eDimension = (dim: any) => {
-    toggleDimensionSelection(dim, uploadConfig.value.e2eDimensions, setE2eDimensions)
-  }
+  const hasApiDimensions = computed(() => hasConfiguredDimensions(uploadConfig.value.apiDimensionConfig))
+  const hasE2eDimensions = computed(() => hasConfiguredDimensions(uploadConfig.value.e2eDimensionConfig))
 
   const showTestCaseConfig = computed(() => uploadConfig.value.createTestCase)
   const showApiConfig = computed(() => uploadConfig.value.testTypes?.includes('api'))
@@ -165,16 +147,10 @@ export function useUploadOptions(props: any, emit: any) {
     associatedDimensionIds.value = dimensionIds
     updateDimensionFilter(dimensionIds)
     if (dimensionIds.length > 0) {
-      const filteredApi = (uploadConfig.value.apiDimensions || []).filter(
-        (d: any) => dimensionIds.includes(Number(d.id))
-      )
-      const filteredE2e = (uploadConfig.value.e2eDimensions || []).filter(
-        (d: any) => dimensionIds.includes(Number(d.id))
-      )
       uploadConfig.value = {
         ...uploadConfig.value,
-        apiDimensions: filteredApi,
-        e2eDimensions: filteredE2e
+        apiDimensionConfig: filterDimensionConfig(uploadConfig.value.apiDimensionConfig, dimensionIds),
+        e2eDimensionConfig: filterDimensionConfig(uploadConfig.value.e2eDimensionConfig, dimensionIds)
       }
     }
   }
@@ -208,9 +184,6 @@ export function useUploadOptions(props: any, emit: any) {
     testTypeOptions,
     filteredDimensions,
     e2eFilteredDimensions,
-    dimensionCount,
-    isDimensionSelected,
-    toggleDimensionSelection,
     ensureDimensionsLoaded,
     dimensionsLoading,
     dimensionsError,
@@ -219,14 +192,6 @@ export function useUploadOptions(props: any, emit: any) {
     updateDimensionFilter,
     hasApiDimensions,
     hasE2eDimensions,
-    apiScopes,
-    e2eScopes,
-    toggleApiScope,
-    toggleE2eScope,
-    setApiDimensions,
-    setE2eDimensions,
-    toggleApiDimension,
-    toggleE2eDimension,
     showTestCaseConfig,
     showApiConfig,
     showE2eConfig,

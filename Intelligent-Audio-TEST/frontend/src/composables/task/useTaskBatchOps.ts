@@ -26,15 +26,23 @@ export function useTaskBatchOps(
 
   const batchDelete = async () => {
     if (selectedTasks.value.size === 0) return;
-    if (confirm(`确定要删除选中的 ${selectedTasks.value.size} 个任务吗？`)) {
-      try {
-        const ids = Array.from(selectedTasks.value);
-        await tasksPort.batchAction('delete', ids as any);
-        selectedTasks.value.clear();
-        await fetchTasks();
-      } catch (error) {
-        console.error('Failed to batch delete tasks:', error);
-      }
+    try {
+      await modalControl.open(MODAL_TYPES.DELETE_CONFIRM, {
+        title: '批量删除任务',
+        content: `确定要删除选中的 ${selectedTasks.value.size} 个任务吗？删除后不可恢复。`,
+        confirmText: '删除',
+        cancelText: '取消'
+      });
+    } catch {
+      return; // 用户取消
+    }
+    try {
+      const ids = Array.from(selectedTasks.value);
+      await tasksPort.batchAction('delete', ids as any);
+      selectedTasks.value.clear();
+      await fetchTasks();
+    } catch (error) {
+      console.error('Failed to batch delete tasks:', error);
     }
   };
 

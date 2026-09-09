@@ -515,6 +515,10 @@ class TestCaseBatchActionRequest(APIModel):
     dimensions: Optional[List[Dict[str, Any]]] = Field(None)
     round_dimensions: Optional[Dict[str, Any]] = Field(None, alias='round_dimensions', validation_alias=AliasChoices('round_dimensions', 'roundDimensions'))
     multi_dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='multi_dimensions', validation_alias=AliasChoices('multi_dimensions', 'multiDimensions'))
+    # 逐轮设置（per_round）：round_values = {轮次号: 值}，"-1" 代表最后一轮动态解析
+    round_values: Optional[Dict[str, Any]] = Field(None, alias='round_values', validation_alias=AliasChoices('round_values', 'roundValues'))
+    # 整体设置（case 级，跨轮次）：仅作用于 config 级配置，如整体背景噪声
+    case_level: Optional[Dict[str, Any]] = Field(None, alias='case_level', validation_alias=AliasChoices('case_level', 'caseLevel'))
     old_tag_name: Optional[str] = Field(None)
     new_tag_name: Optional[str] = Field(None)
     # 批量操作轮次范围

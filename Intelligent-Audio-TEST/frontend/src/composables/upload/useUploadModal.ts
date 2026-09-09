@@ -65,6 +65,8 @@ export function useUploadModal(
 
       modalManager.open(MODAL_TYPES.AUDIO_IMPORT, {
         title: '上传音频',
+        width: '1800px',
+        maxWidth: '98vw',
         deviceOptions: deviceApi.deviceList.value,
         algorithmOptions: algorithmApi.algorithmOptions.value,
         uploadOptions: buildUploadOptionsConfig(uploadApi.uploadOptions, deviceApi, algorithmApi),
@@ -97,6 +99,8 @@ export function useUploadModal(
 
       modalManager.open(MODAL_TYPES.FOLDER_IMPORT, {
         title: '批量从文件夹导入',
+        width: '1800px',
+        maxWidth: '98vw',
         uploadOptions: buildFolderImportOptionsConfig(uploadApi.uploadOptions, deviceApi, algorithmApi),
         supportedFormats: ['wav', 'mp3', 'm4a', 'flac'],
         onConfirm: async (data: any) => {
@@ -164,12 +168,6 @@ function buildUploadOptionsConfig(
         { label: 'API测试', value: TestType.API }
       ],
       defaultValue: uploadOptions.testTypes
-    },
-    {
-      key: 'dimensions',
-      label: '评估维度',
-      type: 'dimensions',
-      defaultValue: uploadOptions.dimensions
     },
     {
       key: 'playbackDeviceId',
@@ -259,12 +257,6 @@ function buildFolderImportOptionsConfig(
         { label: 'API测试', value: TestType.API }
       ],
       defaultValue: uploadOptions.testTypes
-    },
-    {
-      key: 'dimensions',
-      label: '评估维度',
-      type: 'dimensions',
-      defaultValue: uploadOptions.dimensions
     },
     {
       key: 'playbackDeviceId',

@@ -92,6 +92,16 @@ class RedisPubSub:
                 time.sleep(3)
 
 
+def create_blocking_redis_client(redis_url=None):
+    """创建阻塞命令（BRPOP/BLPOP 等）专用 Redis 客户端
+
+    redis-py 8.x 起 socket_timeout 默认为 5s：当阻塞等待时长 >= socket_timeout 时，
+    客户端读超时会先于命令超时触发，抛出 "Timeout reading from socket"。
+    阻塞客户端必须将 socket_timeout 设为 None，等待时长由命令自身的 timeout 参数控制。
+    """
+    return redis.from_url(redis_url or BaseConfig.REDIS_URL, socket_timeout=None)
+
+
 # ========== 事件总线 ==========
 
 class EventBus:

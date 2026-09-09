@@ -23,6 +23,8 @@ import type {
   DimensionOptionsResult,
   DimensionOption,
   TaskReevaluateResult,
+  DimensionRequiredInput,
+  DimensionOutputField,
 } from '../../domain/model/dimension'
 import type {
   DimensionHealthCheckResult,
@@ -32,6 +34,82 @@ import { toPaginated } from './commonAdapter'
 import { camelizeKeys } from '../../utils/keyTransform'
 
 // ===== 评估维度 =====
+
+/** 评估维度输入参数 DTO -> Domain。嵌套参数同样只在 adapter 层转换命名。 */
+function toRequiredInput(raw: Record<string, any>): DimensionRequiredInput {
+  return {
+    id: raw.id,
+    dimensionId: raw.dimension_id ?? raw.dimensionId,
+    paramCode: raw.param_code ?? raw.paramCode ?? '',
+    paramName: raw.param_name ?? raw.paramName ?? raw.label ?? '',
+    label: raw.label ?? raw.param_name ?? raw.paramName ?? '',
+    fieldType: raw.field_type ?? raw.fieldType ?? 'text',
+    required: raw.required ?? true,
+    defaultValue: raw.default_value ?? raw.defaultValue ?? '',
+    helpText: raw.help_text ?? raw.helpText ?? '',
+    uiOrder: raw.ui_order ?? raw.uiOrder,
+  }
+}
+
+/** 评估维度输出字段 DTO -> Domain。 */
+function toOutputField(raw: Record<string, any>): DimensionOutputField {
+  return {
+    id: raw.id,
+    dimensionId: raw.dimension_id ?? raw.dimensionId,
+    paramCode: raw.param_code ?? raw.paramCode ?? '',
+    paramName: raw.param_name ?? raw.paramName ?? raw.label ?? '',
+    label: raw.label ?? raw.param_name ?? raw.paramName ?? '',
+    fieldPath: raw.field_path ?? raw.fieldPath ?? raw.param_code ?? raw.paramCode ?? '',
+    fieldType: raw.field_type ?? raw.fieldType ?? 'number',
+    outputRole: raw.output_role ?? raw.outputRole ?? 'main',
+    aggRole: raw.agg_role ?? raw.aggRole ?? '',
+    defaultValue: raw.default_value ?? raw.defaultValue ?? '',
+    visibleInReport: raw.visible_in_report ?? raw.visibleInReport ?? true,
+    helpText: raw.help_text ?? raw.helpText ?? '',
+    uiOrder: raw.ui_order ?? raw.uiOrder,
+  }
+}
+
+function toRequiredInputDto(raw: Record<string, any>): Record<string, any> {
+  return {
+    ...raw,
+    param_code: raw.param_code ?? raw.paramCode,
+    param_name: raw.param_name ?? raw.paramName ?? raw.label,
+    label: raw.label ?? raw.paramName ?? raw.param_name,
+    field_type: raw.field_type ?? raw.fieldType,
+    default_value: raw.default_value ?? raw.defaultValue,
+    help_text: raw.help_text ?? raw.helpText,
+    ui_order: raw.ui_order ?? raw.uiOrder,
+  }
+}
+
+function toOutputFieldDto(raw: Record<string, any>): Record<string, any> {
+  return {
+    ...raw,
+    param_code: raw.param_code ?? raw.paramCode,
+    param_name: raw.param_name ?? raw.paramName ?? raw.label,
+    label: raw.label ?? raw.paramName ?? raw.param_name,
+    field_path: raw.field_path ?? raw.fieldPath,
+    field_type: raw.field_type ?? raw.fieldType,
+    output_role: raw.output_role ?? raw.outputRole,
+    agg_role: raw.agg_role ?? raw.aggRole,
+    default_value: raw.default_value ?? raw.defaultValue,
+    visible_in_report: raw.visible_in_report ?? raw.visibleInReport,
+    help_text: raw.help_text ?? raw.helpText,
+    ui_order: raw.ui_order ?? raw.uiOrder,
+  }
+}
+
+function parseNestedList(value: unknown): Record<string, any>[] | undefined {
+  if (Array.isArray(value)) return value as Record<string, any>[]
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed : undefined
+  } catch {
+    return undefined
+  }
+}
 
 /** 维度关联算法（后端 associated_algorithms 列表项 → AlgorithmAssociation） */
 function toAssociation(raw: Record<string, unknown>): import('../../domain/model/dimension').AlgorithmAssociation {
@@ -65,8 +143,8 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     weight: dto?.weight,
     estimatedExecTime: dto?.estimated_exec_time,
     rule: (dto?.rule ?? undefined) as Dimension['rule'],
-    requiredInputs: dto?.required_inputs as string | undefined,
-    outputFields: dto?.output_fields,
+    requiredInputs: parseNestedList(dto?.required_inputs)?.map(item => toRequiredInput(item)),
+    outputFields: parseNestedList(dto?.output_fields)?.map(item => toOutputField(item)),
     statisticMethod: dto?.statistic_method,
     associatedAlgorithms: (dto?.associated_algorithms ?? []).map(toAssociation),
     status: dto?.status,
@@ -194,8 +272,14 @@ export function toDimensionDto(data: Partial<Dimension>): Record<string, any> {
   if (data.weight !== undefined) result.weight = data.weight
   if (data.estimatedExecTime !== undefined) result.estimated_exec_time = data.estimatedExecTime
   if (data.rule !== undefined) result.rule = data.rule
-  if (data.requiredInputs !== undefined) result.required_inputs = data.requiredInputs
-  if (data.outputFields !== undefined) result.output_fields = data.outputFields
+  if (data.requiredInputs !== undefined) {
+    const inputs = Array.isArray(data.requiredInputs) ? data.requiredInputs : []
+    result.required_inputs = inputs.map(item => toRequiredInputDto(item as Record<string, any>))
+  }
+  if (data.outputFields !== undefined) {
+    const fields = Array.isArray(data.outputFields) ? data.outputFields : []
+    result.output_fields = fields.map(item => toOutputFieldDto(item as Record<string, any>))
+  }
   if (data.statisticMethod !== undefined) result.statistic_method = data.statisticMethod
   if (data.associatedAlgorithms !== undefined) result.associated_algorithms = data.associatedAlgorithms
   if (data.status !== undefined) result.status = data.status

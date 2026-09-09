@@ -6,8 +6,8 @@
  * - 其内部结构（轮次、音频配置）由 camelizeKeys/snakifyKeys 做深度递归转换
  * 显式逐字段映射，禁止 ...raw/...dto 透传（分层架构对齐 W1-A）。
  */
-import type { TestCase, TestCaseDraft } from '../../domain/model/testCase'
-import type { TestCaseDto, TestCaseUpsertDto } from '../dto/testCaseDto'
+import type { TestCase, TestCaseDraft, TagViewItem } from '../../domain/model/testCase'
+import type { TagViewCaseDto, TagViewItemDto, TestCaseDto, TestCaseUpsertDto } from '../dto/testCaseDto'
 import { camelizeKeys, snakifyKeys } from '../../utils/keyTransform'
 
 // ===== DTO → Domain =====
@@ -35,6 +35,39 @@ export function toTestCase(dto: TestCaseDto): TestCase {
 
 export function toTestCaseList(dtos: TestCaseDto[] | null | undefined): TestCase[] {
   return (dtos ?? []).map(toTestCase)
+}
+
+/**
+ * 标签视图内层用例 → TestCase。
+ * 后端 view=tag 的用例行顶层直接输出 camelCase（groupId/groupName/...），
+ * 与普通列表 DTO（snake_case）不同；config/algorithmParams/referenceParams
+ * 仍为原始嵌套结构，需与 toTestCase 一致做深度 camelize。
+ */
+export function toTagViewCase(dto: TagViewCaseDto): TestCase {
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: dto.description ?? undefined,
+    type: dto.type ?? undefined,
+    config: dto.config ? camelizeKeys(dto.config) as TestCase['config'] : undefined,
+    algorithmParams: dto.algorithmParams ? camelizeKeys(dto.algorithmParams) as TestCase['algorithmParams'] : undefined,
+    referenceParams: dto.referenceParams ? camelizeKeys(dto.referenceParams) as TestCase['referenceParams'] : undefined,
+    groupId: dto.groupId ?? undefined,
+    groupName: dto.groupName ?? undefined,
+    tags: dto.tags ?? [],
+    algorithmType: dto.algorithmType ?? undefined,
+    createdAt: dto.createdAt ?? undefined,
+    updatedAt: dto.updatedAt ?? undefined,
+    totalDuration: dto.totalDuration ?? undefined,
+  }
+}
+
+/** 标签视图 item（DTO）→ TagViewItem（Domain） */
+export function toTagViewItem(dto: TagViewItemDto): TagViewItem {
+  return {
+    tag: dto.tag,
+    testCases: (dto.testCases ?? []).map(toTagViewCase),
+  }
 }
 
 // ===== Domain → DTO（请求体） =====

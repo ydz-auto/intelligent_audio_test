@@ -11,6 +11,13 @@ from report_service.infrastructure.clients.grpc_clients import (
 )
 
 
+def _r_get(r, key, default=None):
+    """从测试结果（dict 或 ORM 对象）读取字段，兼容两种形态。"""
+    if isinstance(r, dict):
+        return r.get(key, default)
+    return getattr(r, key, default)
+
+
 def _dim_id(dim):
     """从维度对象（dict 或 ORM）读取 id。"""
     if isinstance(dim, dict):
@@ -93,9 +100,11 @@ class MetricsMixin:
                 dim_val = None
 
                 # 情况1: dr 是字典
+                # dimension_id 优先：gRPC 返回行的 id 是 TestResultDimension 主键，
+                # 不能用于匹配维度表 id 映射
                 if isinstance(dr, dict):
-                    dim_id = dr.get('id') or dr.get('dimension_id')
-                    dim_val = dr.get('value') or dr.get('dimension_value')
+                    dim_id = dr.get('dimension_id') or dr.get('id')
+                    dim_val = dr.get('dimension_value') if dr.get('dimension_value') is not None else dr.get('value')
 
                 # 情况2: dr 是 TestResultDimension 对象
                 elif hasattr(dr, 'dimension_id'):
@@ -134,6 +143,9 @@ class MetricsMixin:
         """
         category_accumulator = {}
         tag_accumulator = {}
+        # tag 名称 -> category_id 映射；必须在循环外初始化，
+        # 避免结果集内 test_case 全部缺失（continue 跳过）时循环外访问未定义变量
+        tag_category_map = {}
 
         # 直接使用原始维度名称初始化 raw_data
         raw_data = {res: {_dim_name(dim): [] for dim in all_dimensions} for res in resources}
@@ -179,11 +191,11 @@ class MetricsMixin:
         resource_agg_items = {}
 
         # 预加载所有 TestCase，避免循环内 N+1 查询
-        test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
+        test_case_ids = list(set(_r_get(r, 'test_case_id') for r in results if _r_get(r, 'test_case_id')))
         test_cases_map = _grpc_list_testcases_by_ids(test_case_ids)
 
         for result in results:
-            task = tasks_map.get(result.task_id) if tasks_map else None
+            task = tasks_map.get(_r_get(result, 'task_id')) if tasks_map else None
             resource = ReportUtils.get_resource_name(result, task, use_time_prefix)
 
             if resource not in raw_data:
@@ -191,8 +203,8 @@ class MetricsMixin:
                 if resource not in resources:
                     resources.append(resource)
 
-            # 3. 获取用例信息（使用预加载的映射）
-            test_case = test_cases_map.get(result.test_case_id)
+            # 3. 获取用例信息（使用预加载的映射，key 为 str(test_case_id)）
+            test_case = test_cases_map.get(str(_r_get(result, 'test_case_id')))
             if not test_case:
                 continue
 
@@ -210,7 +222,6 @@ class MetricsMixin:
             if not tags:
                 tags = ["default_tag"]
 
-            tag_category_map = {}
             for tag in tc_tags:
                 cat_id = tag.get('category_id') if isinstance(tag, dict) else getattr(tag, 'category_id', None)
                 tag_name = tag.get('name') if isinstance(tag, dict) else getattr(tag, 'name', None)
@@ -223,7 +234,7 @@ class MetricsMixin:
             results_by_group[category].append(result)
 
             # 6. 提取维度值
-            dim_values = ReportUtils.extract_dimension_values(result.id, all_dimensions, dim_results_map)
+            dim_values = ReportUtils.extract_dimension_values(_r_get(result, 'id'), all_dimensions, dim_results_map)
 
             # 7. 更新累加器 (Category & Tags & Resource)
             # 初始化累加器结构
@@ -254,7 +265,7 @@ class MetricsMixin:
                     tag_accumulator[tag][resource]['success_rate'] = {'sum': 0, 'count': 0}
 
             # 8. 累加数据
-            is_success = result.execution_status == TaskStatus.COMPLETED.value
+            is_success = _r_get(result, 'execution_status') == TaskStatus.COMPLETED.value
             success_val = 100 if is_success else 0
 
             # 累加通过率
@@ -294,14 +305,15 @@ class MetricsMixin:
                     if dim_name in custom_agg_dims:
                         # 从 dim_results_map 拿 api_raw_response
                         raw_resp = None
-                        if dim_results_map and result.id in dim_results_map:
-                            for dr in dim_results_map[result.id]:
+                        result_id = _r_get(result, 'id')
+                        if dim_results_map and result_id in dim_results_map:
+                            for dr in dim_results_map[result_id]:
                                 dr_dim_id = _dim_result_dim_id(dr)
                                 if dr_dim_id and dim_name in dim_id_to_name_inv and dr_dim_id == dim_id_to_name_inv[dim_name]:
                                     raw_resp = _dim_result_raw_response(dr)
                                     break
 
-                        agg_item = {'dimension_value': score, 'api_raw_response': raw_resp, 'test_result_id': result.id}
+                        agg_item = {'dimension_value': score, 'api_raw_response': raw_resp, 'test_result_id': result_id}
                         category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
                         resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(agg_item)
                         for tag in tags:
@@ -351,7 +363,7 @@ class MetricsMixin:
                 if res not in result_data[key]:
                     result_data[key][res] = {}
                 for dim_name, stats in dims.items():
-                    result_data[key][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
+                    result_data[key][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
         return result_data
 
     @staticmethod
@@ -367,7 +379,7 @@ class MetricsMixin:
             if resource not in result_data:
                 result_data[resource] = {}
             for dim_name, stats in dims.items():
-                result_data[resource][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
+                result_data[resource][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
         return result_data
 
     @staticmethod
@@ -501,7 +513,7 @@ class MetricsMixin:
                     # 复用 extract_dimension_values 逻辑
                     # 注意：这里会重新查询维度值，如果有性能问题，应传入 dim_results_map
                     # 暂时为了简单直接查询
-                    dim_values = ReportUtils.extract_dimension_values(result.id, [dim])
+                    dim_values = ReportUtils.extract_dimension_values(_r_get(result, 'id'), [dim])
                     # 直接使用原始维度名称获取值
                     if dim_values.get(_dim_name(dim)) is not None:
                         dim_scores.append(dim_values[_dim_name(dim)])
@@ -518,11 +530,11 @@ class MetricsMixin:
         group_scores = {} # {group_id: {dim_name: [scores]}}
 
         # 预加载所有 TestCase，避免循环内 N+1 查询
-        test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
+        test_case_ids = list(set(_r_get(r, 'test_case_id') for r in results if _r_get(r, 'test_case_id')))
         test_cases_map = _grpc_list_testcases_by_ids(test_case_ids)
 
         for result in results:
-            test_case = test_cases_map.get(result.test_case_id)
+            test_case = test_cases_map.get(_r_get(result, 'test_case_id'))
             if not test_case:
                 continue
             group = test_case.get('group') if isinstance(test_case, dict) else getattr(test_case, 'group', None)
@@ -532,7 +544,7 @@ class MetricsMixin:
                 # 直接使用原始维度名称初始化
                 group_scores[group_id] = {_dim_name(dim): [] for dim in all_dimensions}
 
-            dim_values = ReportUtils.extract_dimension_values(result.id, all_dimensions, dim_results_map)
+            dim_values = ReportUtils.extract_dimension_values(_r_get(result, 'id'), all_dimensions, dim_results_map)
 
             for dim_name, score in dim_values.items():
                 if score is not None and dim_name in group_scores[group_id]:
@@ -555,15 +567,18 @@ class MetricsMixin:
         api_results = {}
 
         for result in results:
-            if result.device_id:
-                if result.device_id not in device_results:
-                    device_results[result.device_id] = []
-                device_results[result.device_id].append(result)
+            device_id = _r_get(result, 'device_id')
+            api_id = _r_get(result, 'api_id')
 
-            if result.api_id:
-                if result.api_id not in api_results:
-                    api_results[result.api_id] = []
-                api_results[result.api_id].append(result)
+            if device_id:
+                if device_id not in device_results:
+                    device_results[device_id] = []
+                device_results[device_id].append(result)
+
+            if api_id:
+                if api_id not in api_results:
+                    api_results[api_id] = []
+                api_results[api_id].append(result)
 
         device_stats = []
         for dev_id, res_list in device_results.items():
@@ -572,7 +587,7 @@ class MetricsMixin:
 
             metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map)
             total = len(res_list)
-            completed = len([r for r in res_list if r.execution_status == TaskStatus.COMPLETED.value])
+            completed = len([r for r in res_list if _r_get(r, 'execution_status') == TaskStatus.COMPLETED.value])
 
             device_stats.append({
                 "id": device.get('id'), "name": device.get('name'), "model": device.get('model'), "type": device.get('type'),
@@ -588,7 +603,7 @@ class MetricsMixin:
 
             metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map)
             total = len(res_list)
-            completed = len([r for r in res_list if r.execution_status == TaskStatus.COMPLETED.value])
+            completed = len([r for r in res_list if _r_get(r, 'execution_status') == TaskStatus.COMPLETED.value])
 
             api_stats.append({
                 "id": api.get('id'), "name": api.get('name'), "status": api.get('status'), "max_process": api.get('max_process'),
@@ -615,7 +630,7 @@ class MetricsMixin:
         for dim in all_dimensions:
             scores = []
             for result in results:
-                vals = ReportUtils.extract_dimension_values(result.id, all_dimensions, dim_results_map)
+                vals = ReportUtils.extract_dimension_values(_r_get(result, 'id'), all_dimensions, dim_results_map)
                 # 直接使用原始维度名称获取值
                 if vals.get(_dim_name(dim)) is not None:
                     scores.append(vals[_dim_name(dim)])

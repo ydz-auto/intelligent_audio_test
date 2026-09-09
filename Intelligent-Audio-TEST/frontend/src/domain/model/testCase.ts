@@ -161,6 +161,12 @@ export interface TestCaseGroup {
   testCaseCount?: number
 }
 
+/** 标签视图项 —— 单个标签及其下用例（GET /testcases?view=tag 的 item 结构） */
+export interface TagViewItem {
+  tag: string
+  testCases: TestCase[]
+}
+
 /** 用例创建/编辑表单（前端 Domain → adapter 转 DTO） */
 export interface TestCaseDraft {
   id?: string | number

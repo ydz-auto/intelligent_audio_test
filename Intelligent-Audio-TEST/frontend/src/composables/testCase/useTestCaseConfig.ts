@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { useDimensions } from '../shared/useDimensions'
-import { TestType } from '@/domain/enums'
+import { TestType, RoundMode } from '@/domain/enums'
+import type { DimensionConfigData } from '@/domain/model/audio'
 
 export interface SelectedDimension {
   id: number | string
@@ -168,12 +169,16 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
 }
 
 export function createDefaultUploadConfig() {
+  const emptyDimensionConfig: DimensionConfigData = {
+    dimensions: [],
+    roundMode: RoundMode.ALL,
+    roundNumbers: [],
+    multiDimensions: []
+  }
   return {
     testTypes: [TestType.E2E] as (typeof TestType)[keyof typeof TestType][],
-    apiDimensions: [] as SelectedDimension[],
-    e2eDimensions: [] as SelectedDimension[],
-    apiScopes: ['single'] as ('single' | 'multi')[],
-    e2eScopes: ['single'] as ('single' | 'multi')[],
+    apiDimensionConfig: { ...emptyDimensionConfig },
+    e2eDimensionConfig: { ...emptyDimensionConfig },
     spl: 65.0,
     noiseSpl: 60.0,
     noiseAudioId: null as string | number | null,

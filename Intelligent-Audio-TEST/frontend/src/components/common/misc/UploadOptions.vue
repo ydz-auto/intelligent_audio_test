@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import AudioSelectModal from '../audio/AudioSelectModal.vue'
 import AlgorithmSelector from '../audio/AlgorithmSelector.vue'
+import DimensionConfigPanel from './DimensionConfigPanel.vue'
 import { useUploadOptions } from './UploadOptions'
 import type { AlgorithmRelationItem } from './UploadOptions'
 import { TestType } from '@/domain/enums'
+import type { DimensionConfigData } from '@/domain/model/audio'
 
 interface Props {
   modelValue: {
@@ -16,15 +18,10 @@ interface Props {
     noiseAudioName?: string
     noiseSpl?: number
     inheritTags?: boolean
-    apiDimensions?: Array<{ id: string | number; name: string }>
-    e2eDimensions?: Array<{ id: string | number; name: string }>
-    /** API 维度使用范围（可多选） */
-    apiScopes?: ('single' | 'multi')[]
-    /** E2E 维度使用范围（可多选） */
-    e2eScopes?: ('single' | 'multi')[]
-    /** @deprecated 旧字段，兼容用 */
-    apiRoundScope?: 'single' | 'multi'
-    e2eRoundScope?: 'single' | 'multi'
+    /** API 维度配置（DimensionConfigPanel 结构：统一/指定轮次/逐轮 + 多轮整体评估） */
+    apiDimensionConfig?: DimensionConfigData
+    /** E2E 维度配置（DimensionConfigPanel 结构：统一/指定轮次/逐轮 + 多轮整体评估） */
+    e2eDimensionConfig?: DimensionConfigData
     promptDeviceId?: string | number
     algorithmType?: string
     algorithmRelations?: AlgorithmRelationItem[]
@@ -63,9 +60,6 @@ const {
   testTypeOptions,
   filteredDimensions,
   e2eFilteredDimensions,
-  dimensionCount,
-  isDimensionSelected,
-  toggleDimensionSelection,
   ensureDimensionsLoaded,
   dimensionsLoading,
   dimensionsError,
@@ -74,14 +68,6 @@ const {
   updateDimensionFilter,
   hasApiDimensions,
   hasE2eDimensions,
-  apiScopes,
-  e2eScopes,
-  toggleApiScope,
-  toggleE2eScope,
-  setApiDimensions,
-  setE2eDimensions,
-  toggleApiDimension,
-  toggleE2eDimension,
   showTestCaseConfig,
   showApiConfig,
   showE2eConfig,
@@ -237,122 +223,79 @@ const {
         </div>
       </div>
 
-      <!-- API测试配置区域 -->
-      <div class="test-type-config api-config" v-if="showApiConfig">
-        <div class="config-header">
-          <i class="fas fa-server"></i>
-          <span>API测试配置</span>
+      <!-- API + E2E 测试配置区域（并排显示） -->
+      <div class="test-type-config-row" v-if="showApiConfig && showE2eConfig">
+        <!-- API测试配置 -->
+        <div class="test-type-config api-config">
+          <div class="config-header">
+            <i class="fas fa-server"></i>
+            <span>API测试配置</span>
+          </div>
+          <label>API测试评估维度 <span class="required">*</span></label>
+          <DimensionConfigPanel
+            v-model="uploadConfig.apiDimensionConfig"
+            v-model:searchQuery="dimensionSearchQuery"
+            :available-dimensions="filteredDimensions"
+            :loading="dimensionsLoading"
+            :error="dimensionsError"
+            :required="true"
+          />
         </div>
-        <div class="options-grid">
-          <div class="option-item full-width">
-            <label>API测试评估维度 <span class="required">*</span></label>
-            <!-- 维度使用范围选择 -->
-            <div class="round-scope-selector">
-              <span class="round-scope-label">维度使用范围：</span>
-              <label class="checkbox-label">
-                <input type="checkbox" :checked="apiScopes.includes('single')" @change="toggleApiScope('single')">
-                <span class="checkbox-text">单轮评估</span>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" :checked="apiScopes.includes('multi')" @change="toggleApiScope('multi')">
-                <span class="checkbox-text">多轮聚合</span>
-              </label>
-              <span class="round-scope-hint" v-if="apiScopes.includes('single') && apiScopes.includes('multi')">每轮独立评估 + 多轮结果聚合</span>
-              <span class="round-scope-hint" v-else-if="apiScopes.includes('single')">每个轮次独立评估该维度</span>
-              <span class="round-scope-hint" v-else>多轮结果聚合后评估该维度</span>
-            </div>
-            <div class="dimension-toolbar">
-              <input
-                type="text"
-                class="form-input"
-                placeholder="搜索评估维度"
-                v-model="dimensionSearchQuery"
-                @click.stop
-              >
-              <div class="dimension-summary" :class="{ 'has-error': !hasApiDimensions }">
-                已选 {{ dimensionCount(uploadConfig.apiDimensions) }} 项
-              </div>
-            </div>
-            <div class="tag-filter" v-if="!dimensionsLoading">
-                <div
-                  v-for="dim in filteredDimensions"
-                  :key="dim.id"
-                  class="tag-filter-item"
-                  :class="{ 'active': isDimensionSelected(dim, uploadConfig.apiDimensions) }"
-                  @click.stop.prevent="toggleApiDimension(dim)"
-                >
-                  {{ dim.name }}
-                </div>
-                <div v-if="filteredDimensions.length === 0" class="dimension-empty">
-                  未找到匹配的维度
-                </div>
-              </div>
-            <div class="dimension-loading" v-else>
-              加载中...
-            </div>
-            <p class="option-hint" v-if="dimensionsError">{{ dimensionsError }}</p>
-            <p class="option-hint error" v-if="!hasApiDimensions">请至少选择一个评估维度</p>
+
+        <!-- E2E测试配置 -->
+        <div class="test-type-config e2e-config">
+          <div class="config-header">
+            <i class="fas fa-mobile-alt"></i>
+            <span>E2E测试配置</span>
+          </div>
+          <label>E2E测试评估维度 <span class="required">*</span></label>
+          <DimensionConfigPanel
+            v-model="uploadConfig.e2eDimensionConfig"
+            v-model:searchQuery="e2eDimensionSearchQuery"
+            :available-dimensions="e2eFilteredDimensions"
+            :loading="dimensionsLoading"
+            :error="dimensionsError"
+            :required="true"
+          />
+          <div class="config-hint">
+            <i class="fas fa-info-circle"></i>
+            <span>播放设备、声压级、噪声等参数将在用例编辑页面的轮次配置中填写</span>
           </div>
         </div>
       </div>
 
-      <!-- E2E测试配置区域 -->
-      <div class="test-type-config e2e-config" v-if="showE2eConfig">
+      <!-- 仅 API 时单独显示 -->
+      <div class="test-type-config api-config" v-if="showApiConfig && !showE2eConfig">
+        <div class="config-header">
+          <i class="fas fa-server"></i>
+          <span>API测试配置</span>
+        </div>
+        <label>API测试评估维度 <span class="required">*</span></label>
+        <DimensionConfigPanel
+          v-model="uploadConfig.apiDimensionConfig"
+          v-model:searchQuery="dimensionSearchQuery"
+          :available-dimensions="filteredDimensions"
+          :loading="dimensionsLoading"
+          :error="dimensionsError"
+          :required="true"
+        />
+      </div>
+
+      <!-- 仅 E2E 时单独显示 -->
+      <div class="test-type-config e2e-config" v-if="showE2eConfig && !showApiConfig">
         <div class="config-header">
           <i class="fas fa-mobile-alt"></i>
           <span>E2E测试配置</span>
         </div>
-        <div class="options-grid">
-          <div class="option-item full-width">
-            <label>E2E测试评估维度 <span class="required">*</span></label>
-            <!-- 维度使用范围选择 -->
-            <div class="round-scope-selector">
-              <span class="round-scope-label">维度使用范围：</span>
-              <label class="checkbox-label">
-                <input type="checkbox" :checked="e2eScopes.includes('single')" @change="toggleE2eScope('single')">
-                <span class="checkbox-text">单轮评估</span>
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" :checked="e2eScopes.includes('multi')" @change="toggleE2eScope('multi')">
-                <span class="checkbox-text">多轮聚合</span>
-              </label>
-              <span class="round-scope-hint" v-if="e2eScopes.includes('single') && e2eScopes.includes('multi')">每轮独立评估 + 多轮结果聚合</span>
-              <span class="round-scope-hint" v-else-if="e2eScopes.includes('single')">每个轮次独立评估该维度</span>
-              <span class="round-scope-hint" v-else>多轮结果聚合后评估该维度</span>
-            </div>
-            <div class="dimension-toolbar">
-              <input
-                type="text"
-                class="form-input"
-                placeholder="搜索评估维度"
-                v-model="e2eDimensionSearchQuery"
-                @click.stop
-              >
-              <div class="dimension-summary" :class="{ 'has-error': !hasE2eDimensions }">
-                已选 {{ dimensionCount(uploadConfig.e2eDimensions) }} 项
-              </div>
-            </div>
-            <div class="tag-filter" v-if="!dimensionsLoading">
-                <div
-                  v-for="dim in e2eFilteredDimensions"
-                  :key="dim.id"
-                  class="tag-filter-item"
-                  :class="{ 'active': isDimensionSelected(dim, uploadConfig.e2eDimensions) }"
-                  @click.stop.prevent="toggleE2eDimension(dim)"
-                >
-                  {{ dim.name }}
-                </div>
-                <div v-if="e2eFilteredDimensions.length === 0" class="dimension-empty">
-                  未找到匹配的维度
-                </div>
-              </div>
-            <div class="dimension-loading" v-else>
-              加载中...
-            </div>
-            <p class="option-hint error" v-if="!hasE2eDimensions">请至少选择一个评估维度</p>
-          </div>
-        </div>
-
+        <label>E2E测试评估维度 <span class="required">*</span></label>
+        <DimensionConfigPanel
+          v-model="uploadConfig.e2eDimensionConfig"
+          v-model:searchQuery="e2eDimensionSearchQuery"
+          :available-dimensions="e2eFilteredDimensions"
+          :loading="dimensionsLoading"
+          :error="dimensionsError"
+          :required="true"
+        />
         <div class="config-hint">
           <i class="fas fa-info-circle"></i>
           <span>播放设备、声压级、噪声等参数将在用例编辑页面的轮次配置中填写</span>

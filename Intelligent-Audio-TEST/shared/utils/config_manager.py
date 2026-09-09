@@ -67,7 +67,8 @@ class ConfigManager:
                     "test_case_wait_time": 3000,
                     "api_task_max_workers": 10,
                     "device_control_max_workers": 5,
-                    "audio_playback_max_workers": 12
+                    "audio_playback_max_workers": 12,
+                    "brpop_timeout": 5
                 },
                 "grpc": {
                     "report_service_workers": 10,
@@ -114,7 +115,8 @@ class ConfigManager:
                     "test_case_wait_time": 3000,
                     "api_task_max_workers": 10,
                     "device_control_max_workers": 5,
-                    "audio_playback_max_workers": 12
+                    "audio_playback_max_workers": 12,
+                    "brpop_timeout": 5
                 },
                 "grpc": {
                     "report_service_workers": 10,

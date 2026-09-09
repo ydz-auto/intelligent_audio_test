@@ -13,13 +13,15 @@ _API_SEM_KEY_PREFIX = 'api:sem:'
 class APIConcurrencyManager:
     """API 并发管理器
 
-    纯 Redis 分布式信号量：去掉进程内 threading.Semaphore，
-    同一 API 的全局并发数由 DistributedSemaphore 统一限制，支持多实例部署。
-    Redis 不可用时分布式信号量降级放行（见 DistributedSemaphore 实现）。
+    同一 API 的全局并发数由 DistributedSemaphore（Redis Lua 原子计数）统一限制，支持多实例部署。
+    Redis 不可用/异常时 DistributedSemaphore 降级为进程内 BoundedSemaphore 兜底，
+    并发限制不失效（对齐 V9.7.10 的 threading.Semaphore 行为，见 distributed_coordinator）。
     """
 
     def __init__(self, executor):
         self._executor = executor
+        # API 信号量实例缓存：进程内兜底信号量按 key 复用，acquire/release 必须用同一实例
+        self.api_semaphores = {}
         self.api_waiting_counts = {}
         self.global_lock = Lock()
         self.task_locks = {}
@@ -31,6 +33,18 @@ class APIConcurrencyManager:
     @property
     def _log(self):
         return self._executor._log
+
+    def _get_or_create_semaphore(self, api_id, max_process=None):
+        """获取或创建 API 的分布式信号量（按 api_id 缓存实例）"""
+        if max_process is None:
+            # 并发参数配置化：max_process 缺省时从 config_manager 取默认值
+            max_process = config_manager.get_value('api_executor', 'default_max_process', 5)
+        with self.global_lock:
+            if api_id not in self.api_semaphores:
+                self.api_semaphores[api_id] = dc.DistributedSemaphore(
+                    f'{_API_SEM_KEY_PREFIX}{api_id}', max_process
+                )
+            return self.api_semaphores[api_id]
 
     def get_task_lock(self, task_id):
         """获取任务级锁。
@@ -77,10 +91,7 @@ class APIConcurrencyManager:
             return self.api_waiting_counts[api_id]
 
     def acquire(self, api_id, task_id, current_test_case_id, max_process=None, timeout=None):
-        """获取 API 执行权（纯 Redis 分布式信号量）
-
-        去掉进程内 threading.Semaphore，全局并发数由 DistributedSemaphore 统一限制。
-        """
+        """获取 API 执行权（分布式信号量，Redis 不可用降级为进程内兜底）"""
         # 并发参数配置化：max_process 缺省时从 config_manager 取默认值
         if max_process is None:
             max_process = config_manager.get_value('api_executor', 'default_max_process', 5)
@@ -92,8 +103,8 @@ class APIConcurrencyManager:
             api_id=api_id
         )
 
-        # 纯分布式信号量：限制同一 API 的全局并发数
-        dist_sem = dc.DistributedSemaphore(f'{_API_SEM_KEY_PREFIX}{api_id}', max_process)
+        # 同一实例承载 Redis 计数与进程内兜底状态，acquire/release 必须配对
+        dist_sem = self._get_or_create_semaphore(api_id, max_process)
         start_time = time.time()
         waiting_incremented = False
 
@@ -168,9 +179,8 @@ class APIConcurrencyManager:
             return False
 
     def release(self, api_id, task_id):
-        """释放 API 执行权（纯 Redis 分布式信号量）"""
-        # 释放分布式信号量（max_process=0 的占位实例仅用于 release）
-        dc.DistributedSemaphore(f'{_API_SEM_KEY_PREFIX}{api_id}', 0).release()
+        """释放 API 执行权（与 acquire 使用同一分布式信号量实例）"""
+        self._get_or_create_semaphore(api_id).release()
         self._dec_waiting(api_id)
         self._log(
             level='DEBUG',

@@ -392,6 +392,7 @@ def build_noise_play_configs(noise_audio_info, noise_devices, audio_service,
             'loop': True,
             'is_noise': True,
             'type': 'noise',
+            'audio_id': noise_audio_id,
         })
 
     return configs
@@ -419,6 +420,8 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
     for idx, interferer in enumerate(interferer_config):
         if not isinstance(interferer, dict):
             continue
+
+        audio_obj = None
 
         # 兼容两种存储结构：
         # - 嵌套（前端 syncStructuredFields 生成）：{audio:{id,name}, device:{id}, start_delay, ...}
@@ -514,9 +517,12 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
             'channel': channel_index,
             'gain': gain,
             'delay': delay_s,
+            'duration': getattr(audio_obj, 'duration', 0) or 0,
             'loop': bool(loop),
             'is_noise': False,
             'type': 'interferer',
+            'audio_id': interferer_audio_id,
+            'play_order': idx,
         })
 
     if audio_to_play:

@@ -87,6 +87,16 @@ class EvaluationQueryService:
             )
         )
 
+    @staticmethod
+    def get_one(dim_id):
+        result = _evaluation_acl.get_dimension(dim_id)
+
+        if not result.get('success'):
+            code = result.get('code', 400)
+            return error_response(result.get('message', '获取维度详情失败'), code)
+
+        return success_response(result.get('data'))
+
     # 维度 API 健康探测
     @staticmethod
     def health_check(dim_id):

@@ -205,6 +205,7 @@ export function useAudioList() {
           channels: audio.channels || 0,
           type: audio.audioType || audio.type || 'dry',
           audioType: audio.audioType || audio.type || 'dry',
+          status: audio?.status || 'active',
           tags: audio.tags || [],
           createdAt: audio.createdAt || new Date().toISOString(),
           updatedAt: audio.updatedAt || new Date().toISOString(),
@@ -316,10 +317,15 @@ export function useAudioList() {
     searchQuery.value = '';
     selectedTags.value = tagsLoaded.value && allTags.value.length > 0 ? [...allTags.value] : [];
     applyFilters();
+    // 重置筛选后重新拉取列表（对齐旧版行为：弹窗打开/重置筛选即加载）
+    fetchAudios();
   }
 
   function toggleTag(tag: string, mode?: 'or' | 'and') {
     tagFilterToggleTag(tag, mode);
+    currentPage.value = 1;
+    // 标签切换后刷新列表（对齐旧版行为）
+    fetchAudios();
   }
 
   function filterAudios(newFilters?: any) {
@@ -328,10 +334,19 @@ export function useAudioList() {
       if (newFilters.sampleRate) filters.value.sampleRate = normalizeSampleRate(newFilters.sampleRate) ?? newFilters.sampleRate;
       if (newFilters.duration) filters.value.duration = newFilters.duration;
       if (newFilters.audioType) filters.value.audioType = newFilters.audioType;
+      if (newFilters.direction) filters.value.direction = newFilters.direction;
       if (newFilters.tags) {
         selectedTags.value = newFilters.tags || [];
       }
+      if (newFilters.resetSearch) {
+        searchQuery.value = '';
+      }
+      if (newFilters.resetPage !== false) {
+        currentPage.value = 1;
+      }
     }
+    // 筛选变更后重新拉取列表（对齐旧版行为）
+    fetchAudios();
   }
 
   // ========== 选择管理 ==========
@@ -431,10 +446,11 @@ export function useAudioList() {
 
   // ========== 分页控制 ==========
   // 复用 usePagination 返回的导航函数，消除手写边界检查
-  function prevPage() { paginationPrevPage(); }
-  function nextPage() { paginationNextPage(); }
-  function handleGoToPage(page: number) { goToPage(page); }
-  function handlePageSizeChange(size: number) { paginationSetPageSize(size); }
+  // 每次翻页/改页大小后重新拉取列表（对齐旧版行为）
+  function prevPage() { paginationPrevPage(); fetchAudios(); }
+  function nextPage() { paginationNextPage(); fetchAudios(); }
+  function handleGoToPage(page: number) { goToPage(page); fetchAudios(); }
+  function handlePageSizeChange(size: number) { paginationSetPageSize(size); fetchAudios(); }
 
   function switchView(mode: 'list' | 'folder' | 'diagnostics') {
     viewMode.value = mode as 'list' | 'folder';

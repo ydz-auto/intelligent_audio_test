@@ -36,6 +36,7 @@ from task_service.infrastructure.persistence._task_case_stats_mixin import (
 from task_service.infrastructure.persistence._task_lifecycle_mixin import (
     TaskLifecycleMixin,
 )
+from task_service.infrastructure.persistence.models import Task
 
 # 向后兼容：转换函数历史上定义在本模块，供潜在外部引用（如 audio_repository 的对等实现）
 from task_service.infrastructure.persistence._task_converters import (  # noqa: F401
@@ -65,7 +66,9 @@ class TaskRepository(
     P5+DOMAIN: 通过 PO ↔ Entity 显式转换，聚合根不再持有 ORM 引用。
     """
 
-    # PO_CLASS 由 TaskAggregateMixin 提供（PO_CLASS = Task）
+    # PO_CLASS 不能依赖 TaskAggregateMixin 提供：
+    # MRO 中 SoftDeleteMixin 在前，其 PO_CLASS=None 会遮蔽后者，必须显式声明
+    PO_CLASS = Task
 
 
 # 模块级单例

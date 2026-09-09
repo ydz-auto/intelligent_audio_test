@@ -124,7 +124,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     initializeTestCases, fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,
     handleDeleteGroup, handleDeleteTestCase, handleSaveModal,
     handleOpenEditModal, showTestCaseDetails: _showTestCaseDetails,
-    openAddTestCaseModal, openCreateGroupModal, openEditGroupModal,
+    handleOpenAddModal, openCreateGroupModal, openEditGroupModal,
     openImportTestCaseModal, openExportTestCaseModal,
   } = useTestCaseOps({
     testType,
@@ -358,7 +358,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     openCreateAlgorithmModal, openAlgorithmConfigModal, closeAlgorithmModal, searchAlgorithms,
     algorithmFilteredDevices, isVoiceLLM, voiceLlmHint, concurrencyHint, stepHints, canStartTest,
     goToStep, nextStep, prevStep,
-    handleDeleteGroup, handleDeleteTestCase, openAddTestCaseModal, handleOpenEditModal,
+    handleDeleteGroup, handleDeleteTestCase, handleOpenAddModal, handleOpenEditModal,
     openCreateGroupModal, openEditGroupModal, openImportTestCaseModal, openExportTestCaseModal,
     handleSaveModal, updateSelectedCases, showTestCaseDetails,
     deviceSearchQuery, selectedDeviceStatus,

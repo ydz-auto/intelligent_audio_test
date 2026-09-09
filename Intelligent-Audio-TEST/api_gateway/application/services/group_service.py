@@ -49,9 +49,10 @@ class GroupService:
 
         case_counts = {}
         if algorithm_type or test_type:
-            # gRPC GetTestCaseStats 支持 algorithm_type 过滤 + group_by='group_id'
-            # test_type 过滤暂无对应 gRPC 参数，在客户端按 test_type 过滤（如需要）
-            stats = _tds.get_testcase_stats(algorithm_type=algorithm_type, group_by='group_id')
+            # gRPC GetTestCaseStats 支持 algorithm_type / test_type 过滤 + group_by='group_id'
+            stats = _tds.get_testcase_stats(
+                algorithm_type=algorithm_type, test_type=test_type, group_by='group_id'
+            )
             items = stats.get('items') or []
             case_counts = {item.get('key', ''): item.get('count', 0) for item in items}
             all_groups = [g for g in all_groups if str(g.get('id')) in case_counts]

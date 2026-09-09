@@ -96,7 +96,7 @@ class TaskLifecycleService:
 
             if task.status in [TaskStatus.RUNNING, TaskStatus.PAUSED, TaskStatus.QUEUED]:
                 from task_service.core.execution_engine import execution_engine
-                execution_engine.control_task(None, task_id, 'stop')
+                execution_engine.control_task(task_id, 'stop')
 
             # 查询需要重试的用例
             retry_cases = task_repository.find_retry_cases(task_id)
@@ -224,7 +224,7 @@ class TaskLifecycleService:
 
             # 全局任务控制
             from task_service.core.execution_engine import execution_engine
-            success, message = execution_engine.control_task(None, task_id, action)
+            success, message = execution_engine.control_task(task_id, action)
             if not success:
                 return {'success': False, 'message': message, 'data': None, 'code': 400}
 
@@ -246,7 +246,7 @@ class TaskLifecycleService:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
 
             from task_service.core.execution_engine import execution_engine
-            success, message = execution_engine.control_task(None, task_id, 'stop')
+            success, message = execution_engine.control_task(task_id, 'stop')
             if not success:
                 return {'success': False, 'message': message, 'data': None, 'code': 400}
             return {'success': True, 'message': message, 'data': None}

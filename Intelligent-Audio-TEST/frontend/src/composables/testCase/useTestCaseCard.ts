@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { useRouter } from 'vue-router';
 import { testcasesPort } from './testcasesPort';
 import { playbackPort } from '../device/playbackPort';
 import { useTestCaseStore } from '../../store/testCaseStore';
@@ -19,6 +20,7 @@ import type {
 } from '../modal/types';
 
 export function useTestCaseCard() {
+  const router = useRouter();
   const editingTestCase = ref<TestCase | null>(null);
   const editingGroup = ref<string | null>(null);
   const modalControl = useModalControl();
@@ -45,15 +47,19 @@ export function useTestCaseCard() {
     algorithmType: ''
   });
 
-  const openAddTestCaseModal = async (group = '', options?: { algorithmType?: string; testType?: 'api' | 'e2e' }) => {
+  const openAddTestCaseModal = async (group = '', options?: { algorithmType?: string; testType?: 'api' | 'e2e'; tags?: string[] }) => {
     console.log('[useTestCaseCard] 调用openAddTestCaseModal，分组:', group, '算法类型:', options?.algorithmType, '测试类型:', options?.testType);
     editingTestCase.value = null;
     const testType = options?.testType || TestType.E2E;
+    const presetTags = options?.tags || [];
     formData.value = {
       ...initialFormData,
       group: group,
       algorithmType: options?.algorithmType || '',
-      testType: testType
+      testType: testType,
+      // 标签作为预设（如从标签卡片「添加用例」进入时预填当前标签）
+      tags: presetTags,
+      tagsInput: presetTags.join(', ')
     };
     
     try {
@@ -186,21 +192,16 @@ export function useTestCaseCard() {
     }
   };
 
-  const openImportTestCaseModal = async () => {
-    try {
-      const result = await modalControl.open(MODAL_TYPES.TEST_CASE_IMPORT, {
-        visible: true,
-        mode: 'import',
-        title: '批量导入测试用例',
-        width: '600px'
-      });
-      
-      if (result) {
-        await handleModalSave(result);
+  const openImportTestCaseModal = async (algorithmType?: string) => {
+    // 对齐 V9.7.10：跳转音频导入页，由 query 参数自动打开上传音频模态窗并默认勾选生成用例
+    router.push({
+      path: '/AudioImport',
+      query: {
+        autoOpen: '1',
+        createTestCase: 'true',
+        ...(algorithmType ? { algorithmType } : {})
       }
-    } catch (error) {
-      console.error('[useTestCaseCard] 打开导入模态窗失败:', error);
-    }
+    });
   };
 
   const openExportTestCaseModal = async () => {

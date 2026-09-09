@@ -106,6 +106,12 @@ class EvaluationConfigServiceServicer(eval_grpc.EvaluationConfigServiceServicer)
         except Exception as e:
             return eval_pb.EvaluationConfigResponse(success=False, message=str(e), data="")
 
+    def GetDimension(self, request, context=None):
+        try:
+            return self._resp(self.handler.get_dimension(request.dim_id))
+        except Exception as e:
+            return eval_pb.EvaluationConfigResponse(success=False, message=str(e), data="")
+
     def GetDimensionOptions(self, request, context=None):
         try:
             return self._resp(self.handler.get_dimension_options(request.algorithm_type))

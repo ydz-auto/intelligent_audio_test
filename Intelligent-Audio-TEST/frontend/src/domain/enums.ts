@@ -60,6 +60,16 @@ export const TestType = {
   E2E: 'e2e',
 } as const
 
+/** 评估维度轮次模式枚举（值 = 后端 round_mode 原值，禁止改动值） */
+export const RoundMode = {
+  ALL: 'all',
+  SPECIFIC: 'specific',
+  PER_ROUND: 'per_round',
+} as const
+
+/** 评估维度轮次模式类型 */
+export type RoundModeType = typeof RoundMode[keyof typeof RoundMode]
+
 /** 视图模式枚举 */
 export const ViewMode = {
   ALL: 'all',

@@ -128,7 +128,8 @@ export function extractInitialMetricData(reportData: unknown): CategoryMetricMat
     const mergedData: CategoryMetricMatrix = {}
     ;(preCalculatedRows as RawCategoryRow[]).forEach(row => {
       if (!row) return
-      if (Array.isArray(row.categories)) {
+      // adapter 对扁平行输出 categories: []（空数组），需与 undefined 同等视为扁平行走复制逻辑
+      if (Array.isArray(row.categories) && row.categories.length > 0) {
         const resourceKey = row.resource || '0-默认资源'
         row.categories.forEach(c => {
           if (!c) return
@@ -141,20 +142,30 @@ export function extractInitialMetricData(reportData: unknown): CategoryMetricMat
           })
         })
       } else {
-        const category = String(row.categoryName ?? row.categoryId ?? '未分类')
+        // 扁平行（resource 级别全局平均，无 category 维度）：将资源级数据复制到所有已知
+        // 分组下，保证按已知分组查找能命中（与 V9.7.10 行为一致）；无已知分组时回退行自带分类/未分类
+        const knownCategories = pickRawField(
+          (reportData ?? {}) as Record<string, unknown>, 'caseCategories')
+        const knownList = Array.isArray(knownCategories)
+          ? knownCategories.map(c => String(c)).filter(Boolean)
+          : []
+        const rowCategory = String(row.categoryName ?? row.categoryId ?? '未分类')
+        const categories = knownList.length > 0 ? knownList : [rowCategory]
         const resourceKey = row.resource || '0-默认资源'
-        if (!mergedData[category]) mergedData[category] = {}
-        if (!mergedData[category]![resourceKey]) mergedData[category]![resourceKey] = {}
-        if (Array.isArray(row.metrics)) {
-          row.metrics.forEach(m => {
-            if (!m || !m.metric) return
-            mergedData[category]![resourceKey]![m.metric] = Number(m.value ?? 0)
-          })
-        } else {
-          const metricName = row.metric
-          if (!metricName) return
-          mergedData[category]![resourceKey]![metricName] = Number(row.value ?? 0)
-        }
+        categories.forEach(category => {
+          if (!mergedData[category]) mergedData[category] = {}
+          if (!mergedData[category]![resourceKey]) mergedData[category]![resourceKey] = {}
+          if (Array.isArray(row.metrics)) {
+            row.metrics.forEach(m => {
+              if (!m || !m.metric) return
+              mergedData[category]![resourceKey]![m.metric] = Number(m.value ?? 0)
+            })
+          } else {
+            const metricName = row.metric
+            if (!metricName) return
+            mergedData[category]![resourceKey]![metricName] = Number(row.value ?? 0)
+          }
+        })
       }
     })
 

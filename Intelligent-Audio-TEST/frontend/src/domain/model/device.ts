@@ -170,6 +170,43 @@ export interface DriverKeyword {
   keywords: string[]
 }
 
+// ===== 驱动关键字领域规则 =====
+
+/** 设备关键字存储分隔符（后端原值契约为逗号分隔字符串） */
+const KEYWORDS_SEPARATOR = ','
+
+/** 关键字归一化：去首尾空白 + 小写（关键字匹配不区分大小写与空白） */
+const normalizeKeyword = (keyword: string): string => keyword.trim().toLowerCase()
+
+/** 关键字组合串 → 归一化关键字集合 */
+const toKeywordSet = (combined: string): Set<string> =>
+  new Set(combined.split(KEYWORDS_SEPARATOR).map(normalizeKeyword).filter(Boolean))
+
+/**
+ * 领域规则：驱动关键字回显匹配。
+ * 设备存储的 keywords 是创建时刻的驱动关键字组合快照；驱动注册表更新后，
+ * 存储组合串可能不再与任何选项组合精确相等，导致 select 回显失败。
+ * 按归一化关键字集合求最大交集，返回交集最大的驱动选项组合值；无交集返回 null。
+ */
+export function matchDriverOptionValue(storedKeywords: string, driverOptionValues: string[]): string | null {
+  if (!storedKeywords || driverOptionValues.length === 0) return null
+  const storedSet = toKeywordSet(storedKeywords)
+  if (storedSet.size === 0) return null
+
+  let best: { value: string; overlap: number } | null = null
+  for (const value of driverOptionValues) {
+    const optionSet = toKeywordSet(value)
+    let overlap = 0
+    storedSet.forEach((keyword) => {
+      if (optionSet.has(keyword)) overlap++
+    })
+    if (overlap > 0 && (!best || overlap > best.overlap)) {
+      best = { value, overlap }
+    }
+  }
+  return best?.value ?? null
+}
+
 // ===== 设备管理页 UI 扩展视图（原 views/Device/deviceTypes.ts 内联定义收敛） =====
 
 /**

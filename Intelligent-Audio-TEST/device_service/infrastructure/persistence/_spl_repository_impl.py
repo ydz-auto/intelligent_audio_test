@@ -110,8 +110,17 @@ class SPLRepository(SPLRepositoryInterface):
         pagination = query.order_by(SPLMapping.created_at.desc()).paginate(
             page=page, per_page=per_page, error_out=False
         )
+        # 批量解析关联播放设备，避免序列化时 device_name 回退为"未知设备"
+        mappings = pagination.items
+        device_ids = {m.device_id for m in mappings if m.device_id}
+        devices = {}
+        if device_ids:
+            devices = {
+                d.id: d
+                for d in session.query(PlaybackDevice).filter(PlaybackDevice.id.in_(device_ids))
+            }
         return {
-            'items': [_spl_mapping_to_dict(m) for m in pagination.items],
+            'items': [_spl_mapping_to_dict(m, devices.get(m.device_id)) for m in mappings],
             'total': pagination.total,
             'page': page,
             'per_page': per_page,

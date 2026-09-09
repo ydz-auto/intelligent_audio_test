@@ -462,6 +462,10 @@ class EvaluationConfigAclRepositoryImpl(EvaluationConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
         return _wrap(evaluation_config_service.list_dimensions(**kwargs))
 
+    def get_dimension(self, dim_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
+        return _wrap(evaluation_config_service.get_dimension(dim_id))
+
     def health_check(self, dim_id) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
         return _wrap(evaluation_config_service.health_check(dim_id))

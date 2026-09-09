@@ -120,6 +120,7 @@ export function useDimensionConfig() {
       const dimensions = await fetchDimensionsByAlgorithmType(algorithmType);
       associatedDimensions.value = dimensions.map(d => ({
         id: d.id as number,
+        dimensionId: d.id as number,
         name: d.name,
         type: d.type as string | undefined,
         description: d.description as string | undefined,

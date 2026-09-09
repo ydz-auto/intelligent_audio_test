@@ -5,12 +5,13 @@
  *
  * 枚举值保持后端原值（如 'dry' / 'noise' / 'prompt'），只转字段名。
  */
-import { UploadStatus, TestType } from '@/domain/enums'
+import { UploadStatus, TestType, RoundMode, type RoundModeType } from '@/domain/enums'
 
 export type AudioAssetType = 'dry' | 'noise' | 'prompt' | 'mixed' | (string & {})
 
 /** 音频标注条目（后端 annotations: List[Dict]，结构保持宽松但不开放索引签名） */
 export interface AudioAnnotation {
+  code?: string
   format?: string
   name?: string
   data?: unknown
@@ -147,8 +148,12 @@ export interface AudioUploadOptions {
   /** @deprecated 已移到 CaseForm 的 RoundConfigEditor 里配置 */
   noiseSpl?: number
   inheritTags?: boolean
-  /** 评估维度数组，每条可带 testType 标记属于 api/e2e */
+  /** 评估维度数组，每条可带 testType 标记属于 api/e2e（由 DimensionConfigData 展开而来） */
   dimensions?: SelectedEvaluationDimension[]
+  /** API 维度设置（DimensionConfigPanel 结构：统一/指定轮次/逐轮 + 多轮整体评估维度） */
+  apiDimensionConfig?: DimensionConfigData
+  /** E2E 维度设置（DimensionConfigPanel 结构：统一/指定轮次/逐轮 + 多轮整体评估维度） */
+  e2eDimensionConfig?: DimensionConfigData
   algorithmType?: string
   algorithmRelations?: Array<{
     algorithmType: string
@@ -176,6 +181,30 @@ export interface SelectedEvaluationDimension {
   testType?: typeof TestType[keyof typeof TestType]
   /** 维度使用范围：'single' = 每轮独立评估，'multi' = 多轮聚合评估。默认 'single' */
   roundScope?: 'single' | 'multi'
+  /** 指定生效轮次（specific 模式展开后携带）；未指定则适用所有轮次。-1 表示最后一轮 */
+  roundNumber?: number
+}
+
+/** 维度配置条目（维度设置面板的输出单元，可带权重/阈值） */
+export interface DimensionItem {
+  id: string | number
+  name: string
+  weight?: number
+  threshold?: number
+}
+
+/** 维度配置数据（上传选项中的维度设置面板结构，对齐 DimensionConfigPanel 输出） */
+export interface DimensionConfigData {
+  /** 统一模式（all）/ 指定轮次（specific）共用的维度列表 */
+  dimensions: DimensionItem[]
+  /** 轮次模式：all = 所有轮次统一，specific = 指定轮次，per_round = 逐轮设置 */
+  roundMode: RoundModeType
+  /** specific 模式下选中的轮次序号列表（-1 = 最后一轮） */
+  roundNumbers: number[]
+  /** per_round 模式下逐轮维度（key 为轮次序号，-1 = 最后一轮） */
+  roundDimensions?: Record<number, DimensionItem[]>
+  /** 多轮整体评估维度（roundScope = 'multi'） */
+  multiDimensions?: DimensionItem[]
 }
 
 /** 评估维度配置 */

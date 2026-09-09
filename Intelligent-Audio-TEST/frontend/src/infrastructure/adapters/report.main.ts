@@ -47,6 +47,14 @@ export function toReportSummary(dto: ReportSummaryDto): ReportSummary {
   const arr = <T,>(value: T[] | Record<string, unknown> | null | undefined): T[] =>
     Array.isArray(value) ? value : []
 
+  /** 用例分组/标签归一：后端可能返回 [{id,name}] 对象数组或字符串数组，统一归一化为 name 字符串数组（Domain 契约 string[]） */
+  const toNames = (rows: unknown): string[] =>
+    Array.isArray(rows)
+      ? rows
+          .map(r => (r !== null && typeof r === 'object' ? s((r as { name?: unknown }).name) : s(r)))
+          .filter(Boolean)
+      : []
+
   return {
     totalCases: n(dto.total_cases),
     completedCases: n(dto.completed_cases),
@@ -69,9 +77,9 @@ export function toReportSummary(dto: ReportSummaryDto): ReportSummary {
     devices: (dto.devices ?? []).map(d => (typeof d === 'string' ? d : toDeviceInfo(d))),
     apis: (dto.apis ?? []).map(a => (typeof a === 'string' ? a : toApiInfo(a))),
     resourceHeaders: arr(dto.resource_headers).map(toResourceHeader),
-    caseCategories: dto.case_categories ?? [],
-    allCaseTags: dto.all_case_tags ?? [],
-    allTags: dto.all_tags ?? [],
+    caseCategories: toNames(dto.case_categories),
+    allCaseTags: toNames(dto.all_case_tags),
+    allTags: toNames(dto.all_tags),
     resources: dto.resources ?? [],
     fieldMappings: toFieldMappings(dto.field_mappings),
   }

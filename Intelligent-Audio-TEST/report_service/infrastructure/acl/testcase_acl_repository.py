@@ -26,7 +26,7 @@ def _attach(dto, payload):
 class TestCaseConfigAclRepositoryImpl(TestCaseConfigAclRepository):
     """task_service.TestCaseConfigService 跨域只读查询 gRPC 实现。"""
 
-    def list_testcases_by_ids(self, test_case_ids) -> Dict[int, TestCaseDTO]:
+    def list_testcases_by_ids(self, test_case_ids) -> Dict[str, TestCaseDTO]:
         if not test_case_ids:
             return {}
         from shared.clients.grpc_clients import get_testcase_config_service_stub
@@ -34,8 +34,9 @@ class TestCaseConfigAclRepositoryImpl(TestCaseConfigAclRepository):
         from shared.utils.grpc_json import loads as _loads
         try:
             stub = get_testcase_config_service_stub()
-            id_set = {str(int(tid)) for tid in test_case_ids if tid is not None}
-            result_map: Dict[int, TestCaseDTO] = {}
+            # test_cases.id 主键为 varchar（UUID 或数字），统一按字符串比较
+            id_set = {str(tid) for tid in test_case_ids if tid is not None}
+            result_map: Dict[str, TestCaseDTO] = {}
             page = 1
             per_page = 1000
             max_pages = 200
@@ -62,8 +63,8 @@ class TestCaseConfigAclRepositoryImpl(TestCaseConfigAclRepository):
                     tc_id = tc.get('id')
                     if tc_id is None:
                         continue
-                    if str(int(tc_id)) in id_set:
-                        result_map[int(tc_id)] = _attach(dict_to_dto(tc, TestCaseDTO), tc)
+                    if str(tc_id) in id_set:
+                        result_map[str(tc_id)] = _attach(dict_to_dto(tc, TestCaseDTO), tc)
                 if len(result_map) >= len(id_set) or len(items) < per_page:
                     break
                 page += 1

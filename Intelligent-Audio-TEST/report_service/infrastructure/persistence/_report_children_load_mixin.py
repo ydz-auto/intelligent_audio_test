@@ -26,6 +26,14 @@ from report_service.infrastructure.persistence._report_converters import (
     _raw_data_po_to_entity,
     _comparison_po_to_entity,
 )
+from report_service.infrastructure.persistence.models import (
+    ReportSummary,
+    ReportSummaryMeta,
+    ReportRawData,
+    ReportCase,
+    ReportMetricStats,
+    ReportComparisonMatrix,
+)
 
 
 # ========== JSON 列转换工具 ==========
@@ -140,12 +148,6 @@ class ReportChildrenLoadMixin:
     @staticmethod
     def _load_full_data_in_session(session, report_id: int) -> Optional[dict]:
         """在给定 session 内加载报告完整数据（单一职责小方法）。"""
-        from report_service.infrastructure.persistence.models import (
-            ReportSummary,
-            ReportSummaryMeta,
-            ReportMetricStats,
-            ReportRawData,
-        )
         # 查询摘要 / 元数据 / 指标统计 / 原始数据
         summary_po = (
             session.query(ReportSummary)
@@ -190,9 +192,11 @@ class ReportChildrenLoadMixin:
             'resource_headers': _to_json(meta_po.resource_headers) if meta_po else [],
             'all_metrics': _to_json(meta_po.all_metrics) if meta_po else [],
             'field_mappings': _to_json_obj(meta_po.field_mappings) if meta_po else {},
-            'metric_data': _to_json_obj(stats_po.metric_data) if stats_po else {},
-            'tag_metric_data': _to_json_obj(stats_po.tag_metric_data) if stats_po else {},
-            'tag_category_metric_data': _to_json_obj(stats_po.tag_category_metric_data) if stats_po else {},
+            # metric_data/tag_metric_data/tag_category_metric_data 保存为 JSON 数组
+            #（部分版本为 dict），_to_json 统一保留原类型，避免数组被 _to_json_obj 丢弃
+            'metric_data': _to_json(stats_po.metric_data) if stats_po else [],
+            'tag_metric_data': _to_json(stats_po.tag_metric_data) if stats_po else [],
+            'tag_category_metric_data': _to_json(stats_po.tag_category_metric_data) if stats_po else [],
             'case_type_stats': _to_json(stats_po.case_type_stats) if stats_po else [],
             'device_stats': _to_json(stats_po.device_stats) if stats_po else [],
             'api_stats': _to_json(stats_po.api_stats) if stats_po else [],
