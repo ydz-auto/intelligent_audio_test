@@ -405,6 +405,68 @@ def build_audio_timelines(dry_audios_info, overlap_rate, overlap_time=0, speaker
     return audio_timelines
 
 
+def build_noise_timelines(noise_configs):
+    """
+    构建噪声音频时间轴。
+
+    噪声立即播放（delay=0）且强制循环，直到轮次结束才被停止，
+    因此理论 start=0、end=单轮时长；循环播放的实际结束时间以 actual_end_time 为准。
+
+    Args:
+        noise_configs: build_noise_play_configs 输出的播放配置列表
+
+    Returns:
+        list: 噪声时间轴列表
+    """
+    timelines = []
+    for config in noise_configs or []:
+        file_path = config.get('file')
+        duration = config.get('duration', 0) or get_audio_duration(file_path)
+        timelines.append({
+            'config': config,
+            'audio': None,
+            'file': file_path,
+            'start': 0,
+            'end': duration,
+            'timeline_duration': duration,
+            'audio_type': 'noise',
+            'is_noise': True,
+        })
+    return timelines
+
+
+def build_interferer_timelines(interferer_configs):
+    """
+    构建干扰人音频时间轴。
+
+    干扰人 start = startDelay（秒），由 calculate_speaker_aware_audio_delays
+    以 config['delay'] 下发；end = start + 音频时长（循环播放场景的实际结束
+    时间以 actual_end_time 为准）。
+
+    Args:
+        interferer_configs: build_interferer_configs 输出的播放配置列表
+
+    Returns:
+        list: 干扰人时间轴列表
+    """
+    timelines = []
+    for config in interferer_configs or []:
+        file_path = config.get('file')
+        duration = get_audio_duration(file_path)
+        delay_s = config.get('delay', 0) or 0
+        timelines.append({
+            'config': config,
+            'audio': None,
+            'file': file_path,
+            'start': delay_s,
+            'end': delay_s + duration,
+            'timeline_duration': duration,
+            'audio_type': 'interferer',
+            'is_noise': False,
+        })
+    return timelines
+
+
 def get_audio_configs_for_offset(audio_timelines, global_offset, playback_devices_map, noise_audio_info=None, noise_devices=None, audio_service=None, app=None):
     """
     根据全局 offset 获取需要播放的音频配置

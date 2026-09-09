@@ -1,3 +1,4 @@
+import copy
 import time
 import traceback
 import queue
@@ -171,14 +172,17 @@ class EvaluationService(EvaluationLoggerMixin):
 
     def _build_rounds_list(self, algorithm_result, reference_params_col,
                             field_mapper, algorithm_type, test_type, task_id, test_case_id,
-                            algorithm_params_col=None):
+                            algorithm_params_col=None, case_config=None):
         """从 algo_result.rounds 构建 [{reference, hypothesis, ...}, ...] 列表
 
         遍历 param_mappings，按 source 类型从每轮的 output（device/api）、
-        按轮加载的 reference_params（reference）和按轮加载的 case 参数（case）取值，
+        按轮加载的 reference_params（reference）、按轮加载的 case 参数（case）
+        和用例配置按轮字段（case_config，如被播放音频 audios）取值，
         用 target_param 作为 key。
         """
-        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from backend.utils.algorithm.case_parameter_extractor import (
+            CaseParameterExtractor, _get_config_round,
+        )
         from backend.utils.algorithm.reference_params_generator import (
             get_reference_value as gen_reference_value,
         )
@@ -243,12 +247,50 @@ class EvaluationService(EvaluationLoggerMixin):
                         algorithm_params_col, round_number + 1
                     ) if algorithm_params_col else {}
                     value = round_case_params.get(source_param)
+                elif source == 'case_config':
+                    # 从用例配置(config.rounds)按轮取结构性字段（如被播放音频 audios）
+                    # case_config 已由 _build_case_config 预处理（剥离维度配置、补全 audio_path）
+                    cfg_round = _get_config_round(
+                        case_config.get('rounds') if case_config else None, round_number
+                    )
+                    if cfg_round:
+                        value = cfg_round.get(source_param)
                 if value is not None:
                     item[target_param] = value
 
             rounds_list.append(item)
 
         return rounds_list
+
+    def _build_case_config(self, test_case_config, task_id=None, test_case_id=None):
+        """组装传给评估服务的 case_config
+
+        - 深拷贝用例 config，剥离 dimensions/evaluation（维度配置由主服务本地决定，不传给评估服务）
+        - rounds[].audios 中的 audio_id 运行时补全 audio_path（评估服务按二进制 multipart 接收文件）
+        """
+        from backend.utils.algorithm.case_parameter_extractor import _normalize_round_eval_fields
+
+        if not isinstance(test_case_config, dict):
+            return {}
+
+        cfg = copy.deepcopy(test_case_config)
+        cfg.pop('dimensions', None)
+        cfg.pop('evaluation', None)
+        for round_cfg in cfg.get('rounds') or []:
+            if not isinstance(round_cfg, dict):
+                continue
+            round_cfg.pop('evaluation', None)
+            # 归一化结构化音频字段：background_noise（轮次/用例级）、
+            # interferers（algorithm_params 提升）、三类音频 audio_path 补全
+            _normalize_round_eval_fields(round_cfg, cfg)
+
+        self._log(
+            level='DEBUG',
+            content=f"[_build_case_config] 组装 case_config: rounds={len(cfg.get('rounds') or [])}, keys={list(cfg.keys())}",
+            task_id=task_id,
+            test_case_id=test_case_id
+        )
+        return cfg
 
     def evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **kwargs):
         field_mapper = get_field_mapper()
@@ -258,11 +300,21 @@ class EvaluationService(EvaluationLoggerMixin):
 
         # 从 TestCase 独立列读取 algorithm_params（按轮分组），用于 _build_rounds_list 的 case 参数映射
         algorithm_params_col = None
+        case_config = None
         current_app = get_app()
         with current_app.app_context():
             tc = db.session.query(TestCase).get(test_case_id)
             if tc:
                 algorithm_params_col = getattr(tc, 'algorithm_params', None)
+                # 仅当评估映射用到 case_config 来源时才组装用例配置
+                # （剥离 dimensions/evaluation、audios 补全 audio_path）
+                eval_algo_type = tc.algorithm_type or kwargs.get('algorithm_type', 'translation')
+                from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
+                eval_mappings = CaseParameterExtractor._get_loader().get_param_mapping(eval_algo_type, 'evaluation')
+                if any(m.get('source') == 'case_config' for m in eval_mappings):
+                    case_config = self._build_case_config(
+                        tc.config or {}, task_id=task_id, test_case_id=test_case_id
+                    )
 
         # 多轮场景：统一构建 rounds 列表（单轮也走此路径，列表只有一个元素）
         if isinstance(algorithm_result, dict) and algorithm_result.get('rounds'):
@@ -270,7 +322,8 @@ class EvaluationService(EvaluationLoggerMixin):
                 algorithm_result, reference_params_col,
                 field_mapper, kwargs.get('algorithm_type', 'translation'),
                 test_type, task_id, test_case_id,
-                algorithm_params_col=algorithm_params_col
+                algorithm_params_col=algorithm_params_col,
+                case_config=case_config
             )
             if round_number is not None:
                 # 指定轮次：只取对应轮

@@ -172,7 +172,7 @@ class AlgorithmConfigLoader:
 
     def _serialize_mappings(self, mappings: List[ParamMapping]) -> Dict[str, Any]:
         """序列化参数映射"""
-        result = {'device': [], 'api': [], 'case': [], 'reference': []}
+        result = {'device': [], 'api': [], 'case': [], 'case_config': [], 'reference': []}
         for m in mappings:
             source = getattr(m, 'source', None) or 'api'
             if source in result:
@@ -288,7 +288,7 @@ class AlgorithmConfigLoader:
         """获取评估参数映射"""
         mappings = self._config_cache.get('mappings', {}).get(algorithm_type, {})
         result = []
-        for source in ['device', 'api', 'case', 'reference', 'adjusted_reference']:
+        for source in ['device', 'api', 'case', 'case_config', 'reference', 'adjusted_reference']:
             for m in mappings.get(source, []):
                 result.append({
                     'source': source,

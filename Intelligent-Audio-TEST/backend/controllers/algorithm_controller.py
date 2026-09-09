@@ -100,7 +100,7 @@ def _serialize_reference_param(param: AlgorithmReferenceParam) -> Dict[str, Any]
 
 def _resolve_actual_source(algo_type: str, source: str, source_param: str) -> str:
     """当 source 为 'evaluation' 或其他非法值时，根据 source_param 查对应参数表反推真实来源"""
-    valid_sources = ('case', 'reference', 'device', 'api')
+    valid_sources = ('case', 'reference', 'device', 'api', 'case_config')
     if source in valid_sources:
         return source
     if not source_param:
@@ -131,7 +131,7 @@ def _serialize_mappings(mappings: List[ParamMapping]) -> Dict[str, Any]:
     for m in mappings:
         mapping_dict = m.to_dict()
         # 修复历史脏数据：source='evaluation' 或其他非法值时反推真实来源
-        if m.source not in ('case', 'reference', 'device', 'api'):
+        if m.source not in ('case', 'reference', 'device', 'api', 'case_config'):
             actual_source = _resolve_actual_source(m.algorithm_type, m.source, m.source_param)
             mapping_dict['source'] = actual_source
         if m.dimension_id is not None:
@@ -467,7 +467,7 @@ def _update_mappings(algo_type: str, mappings: Dict):
                         mapping.source = mapping_data.get('source', 'case')
             else:
                 source_value = mapping_data.get('source', 'case') if source_type == 'evaluation' else source_type
-                source_value = source_value if source_value in ('device', 'api', 'case', 'reference') else 'api'
+                source_value = source_value if source_value in ('device', 'api', 'case', 'reference', 'case_config') else 'api'
                 mapping = ParamMapping(
                     algorithm_type=algo_type,
                     source=source_value,
@@ -714,8 +714,8 @@ def create_mapping():
         return error_response(f"请求数据验证失败: {str(e)}", 400)
 
     # source 必须是合法值，防止 'evaluation' 等非法值写入
-    if req.source_type not in ('case', 'reference', 'device', 'api'):
-        return error_response(f"source 必须是 case/reference/device/api，当前值: {req.source_type}", 400)
+    if req.source_type not in ('case', 'reference', 'device', 'api', 'case_config'):
+        return error_response(f"source 必须是 case/reference/device/api/case_config，当前值: {req.source_type}", 400)
 
     # 检查是否已存在（含软删除）的相同映射，避免违反唯一约束
     existing = ParamMapping.query.filter_by(

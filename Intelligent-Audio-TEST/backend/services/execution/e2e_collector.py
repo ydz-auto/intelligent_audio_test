@@ -54,12 +54,21 @@ class E2ECollector:
                             extra_params['playback_timestamps_detail'] = [
                                 {
                                     'audio_id': p.get('audio_id'),
+                                    'audio_type': p.get('audio_type'),
                                     'play_order': p.get('play_order'),
                                     'start_ms': p.get('playback_start_time_ms'),
                                     'end_ms': p.get('playback_end_time_ms'),
                                 }
                                 for p in playback_ts_list
                             ]
+                    # 用例级全局背景噪声起止时间戳（跨所有轮次持续播放）
+                    global_noise_start_ms = playback_timestamps.get('global_noise_start_ms')
+                    if global_noise_start_ms is not None:
+                        extra_params['global_noise_timestamps'] = {
+                            'audio_id': playback_timestamps.get('global_noise_audio_id'),
+                            'start_ms': global_noise_start_ms,
+                            'end_ms': playback_timestamps.get('global_noise_end_ms'),
+                        }
 
         collector = get_device_result_collector()
 
@@ -124,14 +133,17 @@ class E2ECollector:
             if not audio_id:
                 continue
 
+            audio_type = play_time.get('audio_type', 'dry')
             play_order = play_time.get('play_order', 0)
             actual_time = play_time.get('actual_time', record_start_time)
             theory_offset = play_time.get('actual_start_offset', 0.0)
             actual_offset = actual_time - record_start_time - theory_offset
 
-            key = f"{audio_id}_{play_order}"
+            # audio_type 入键：同一音频可能同时作为主讲人与噪声/干扰人出现
+            key = f"{audio_type}_{audio_id}_{play_order}"
             audio_offsets[key] = {
                 'audio_id': audio_id,
+                'audio_type': audio_type,
                 'play_order': play_order,
                 'offset': actual_offset
             }
