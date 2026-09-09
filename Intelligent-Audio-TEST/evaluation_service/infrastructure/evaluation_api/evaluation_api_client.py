@@ -228,9 +228,18 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
         return create_task_payload
 
+    def _has_oss_pass_through_value(self, form_fields):
+        """检测 form_fields 中是否保留了 oss:// 透传值。
+
+        oss:// 前缀本身即信号：音频字段以 oss:// 字符串留在 form_fields 中
+        （files 为空），此时仍须走 multipart 端点 create_task_upload，
+        以复用 eval_server 侧的 rounds 字段提升逻辑（interruption_metrics 等任务类型依赖）。
+        """
+        return any(isinstance(v, str) and 'oss://' in v for v in form_fields.values())
+
     def _create_async_task(self, selected_url, form_fields, files, create_task_payload, task_id, test_case_id, api_id):
         """调用API创建任务"""
-        if files:
+        if files or self._has_oss_pass_through_value(form_fields):
             create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id)
         else:
             create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
