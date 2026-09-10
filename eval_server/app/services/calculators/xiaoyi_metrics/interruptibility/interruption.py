@@ -114,7 +114,8 @@ def _overlap(a, b) -> Optional[Tuple[float, float]]:
 
 # ─────────── 单事件指标 ───────────
 def _evaluate_one_event(u: Dict[str, Any],
-                        m_segs: List[Dict[str, Any]]) -> Dict[str, Any]:
+                        m_segs: List[Dict[str, Any]],
+                        stop_intent: bool = False) -> Dict[str, Any]:
     """对单个用户打断段 u={start,end,text,words} 计算指标
 
     Args:
@@ -159,7 +160,10 @@ def _evaluate_one_event(u: Dict[str, Any],
         'stopped': None,
         'resumed': None,
         'success': None,
+        'stop_intent': False,
+        'stop_complied': None,
     }
+    result['stop_intent'] = bool(stop_intent)
 
     # ── 情形 A：模型当时在说话（完整打断事件）──
     if m_active is not None:
@@ -186,6 +190,9 @@ def _evaluate_one_event(u: Dict[str, Any],
         result['stopped'] = stopped
         result['resumed'] = resumed
         result['stop_latency_s'] = round(stop_latency * 1000, 1) if stopped else None
+        if stop_intent:
+            # 停止指令与普通打断语义相反：停下后不应再次恢复。
+            result['stop_complied'] = bool(m_active['end'] <= u_e and m_next_after_user is None)
         if m_next is not None:
             result['recovery_latency_s'] = round((m_next['start'] - u_e) * 1000, 1)
             result['silence_gap_s'] = round((m_next['start'] - m_active['end']) * 1000, 1)
@@ -219,7 +226,8 @@ def _evaluate_one_event(u: Dict[str, Any],
 def compute_interruption_metrics(user_asr: Any, model_asr: Any,
                                   user_seg_merge_gap_s: float = USER_SEG_MERGE_GAP_S,
                                   model_seg_merge_gap_s: float = MODEL_SEG_MERGE_GAP_S,
-                                  actual_interruption: Optional[bool] = None) -> Dict[str, Any]:
+                                  actual_interruption: Optional[bool] = None,
+                                  stop_intent: bool = False) -> Dict[str, Any]:
     """计算打断指标（时延类用数据算；成功率由调用方叠加 LLM 语义判定覆盖）
 
     用户侧/模型侧用不同阈值合并字词为语音段（user 1.5s / model 0.7s），
@@ -254,6 +262,15 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
 
     result: Dict[str, Any] = {
         'interruption_success_rate': 0 if actual_interruption is not None else 0.0,
+        'interruption_failure_rate': None,
+        'interruption_inquiry_rate': None,
+        'first_recovery_coherence': None,
+        'first_recovery_relevance': None,
+        'first_recovery_adaptability': None,
+        'first_recovery_overall': None,
+        'first_recovery_latency_s': None,
+        'stop_instruction_compliance_rate': None,
+        'stop_intent': bool(stop_intent),
         'stop_rate': 0.0,
         'resume_rate': 0.0,
         'avg_stop_latency_s': None,
@@ -313,13 +330,13 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
     if not m_segs:
         # 模型全程没说话：所有用户段都是 no_model_speech
         result['n_no_model_speech'] = len(u_segs)
-        result['per_event'] = [_evaluate_one_event(u, []) for u in u_segs]
+        result['per_event'] = [_evaluate_one_event(u, [], stop_intent=stop_intent) for u in u_segs]
         result['user_segments'] = u_segs   # 模型侧为空，保持默认 []
         result['message'] = 'model_asr 为空，模型全程未说话，无法计算打断指标'
         logger.warning(result['message'])
         return result
 
-    per_event = [_evaluate_one_event(u, m_segs) for u in u_segs]
+    per_event = [_evaluate_one_event(u, m_segs, stop_intent=stop_intent) for u in u_segs]
     result['per_event'] = per_event
     # 导出两路完整时间线（u_segs/m_segs 已在上方过滤开场白，含字词级 words），
     # 供 LLM 评估看到全局上下文，与本地判定使用同一份段数据
@@ -342,18 +359,25 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
             result['interruption_success_rate'] = int(all(
                 bool(e.get('success')) for e in interruption_events
             )) if actual_interruption else 0
+            if actual_interruption:
+                result['interruption_failure_rate'] = round(
+                    sum(not bool(e.get('success')) for e in interruption_events) / n, 3
+                )
             result['stop_rate'] = int(all(bool(e.get('stopped')) for e in interruption_events)) if actual_interruption else 0
             result['resume_rate'] = int(all(bool(e.get('resumed')) for e in interruption_events)) if actual_interruption else 0
         else:
             # 兼容旧的直接 ASR 调用：仍按事件统计，统一入口会在有轮次元数据时覆盖为二值。
             result['interruption_success_rate'] = round(
                 sum(1 for e in interruption_events if e['success']) / n, 3)
+            result['interruption_failure_rate'] = round(
+                sum(not bool(e.get('success')) for e in interruption_events) / n, 3)
             result['stop_rate'] = round(
                 sum(1 for e in interruption_events if e['stopped']) / n, 3)
             result['resume_rate'] = round(
                 sum(1 for e in interruption_events if e['resumed']) / n, 3)
     elif actual_interruption is not None:
         result['interruption_success_rate'] = 0
+        result['interruption_failure_rate'] = None
         result['stop_rate'] = 0
         result['resume_rate'] = 0
 

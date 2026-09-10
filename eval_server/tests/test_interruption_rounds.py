@@ -41,4 +41,27 @@ def test_non_actual_round_does_not_count_as_success():
         user_asr, model_asr, actual_interruption=False,
     )
     assert result['interruption_success_rate'] == 0
-    assert result['timing_success_rate'] == 0
+
+
+def test_failure_rate_is_binary_for_single_round_events():
+    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption import (
+        compute_interruption_metrics,
+    )
+
+    result = compute_interruption_metrics(
+        [{'text': '等', 'timestamp': [1.0, 1.4]}],
+        [{'text': '回答', 'timestamp': [1.0, 2.0]}],
+        actual_interruption=True,
+    )
+    assert result['interruption_success_rate'] == 0
+    assert result['interruption_failure_rate'] == 1.0
+
+
+def test_stop_intent_is_not_inferred_from_interruption():
+    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption import (
+        compute_interruption_metrics,
+    )
+
+    result = compute_interruption_metrics(*_asr_pair(), actual_interruption=True)
+    assert result['stop_instruction_compliance_rate'] is None
+    assert all(not event['stop_intent'] for event in result['per_event'])

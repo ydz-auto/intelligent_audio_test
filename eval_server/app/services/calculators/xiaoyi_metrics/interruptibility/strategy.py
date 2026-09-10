@@ -129,6 +129,10 @@ class InterruptionMetricsCalculator(BaseCalculator):
         )
         task_params['is_actual_interruption'] = True
         task_params['interruption_rounds'] = [round_index]
+        task_params['stop_intent'] = source.get('stop_intent', False)
+        if isinstance(source.get('stop_intent'), list) and round_index < len(source['stop_intent']):
+            task_params['stop_intent'] = source['stop_intent'][round_index]
+        task_params['stop_intent'] = rd.get('stop_intent', rd.get('is_stop_instruction', task_params['stop_intent']))
 
         child_params = {
             'user_wav': task_params.get('user_wav'),
@@ -187,6 +191,16 @@ class InterruptionMetricsCalculator(BaseCalculator):
             result['interruption_success_rate'] = int(all(
                 r.get('interruption_success_rate') == 1 for r in round_results
             ))
+            result['interruption_failure_rate'] = round(sum(
+                (r.get('interruption_failure_rate') or 0) for r in round_results
+            ) / len(round_results), 3)
+            result['interruption_inquiry_rate'] = self._average(
+                round_results, 'interruption_inquiry_rate'
+            )
+            for key in ('first_recovery_coherence', 'first_recovery_relevance',
+                        'first_recovery_adaptability', 'first_recovery_overall',
+                        'first_recovery_latency_s', 'stop_instruction_compliance_rate'):
+                result[key] = self._average(round_results, key)
             result['timing_success_rate'] = result['interruption_success_rate']
             result['stop_rate'] = int(all(r.get('stop_rate') == 1 for r in round_results))
             result['resume_rate'] = int(all(r.get('resume_rate') == 1 for r in round_results))

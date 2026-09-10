@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-打断指标维度种子数据（interruption_metrics 主维度 + 9 个子维度）
+打断指标维度种子数据（interruption_metrics 主维度 + 14 个子维度）
 
 功能：
 1. 软删除历史单维度 interruption_metrics（name='打断指标'，已被主+子维度方案替代）
 2. 注册/更新打断成功率主维度（dimension_type='main'）：
    - 配置两路 wav / 轮次控制元数据等 input params、api_settings、body_template、param_mappings
    - 配置当前 interruption_metrics 返回结构中的本地时序、轮次、事件诊断、LLM 辅助和行为裁判 output params
-3. 注册/更新 9 个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
+3. 注册/更新 14 个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
    - 打断检查时延 / 打断恢复时延
    - 平均连贯性 / 平均相关性 / 平均适应性
    - 回应 / 恢复 / 不确定询问 / 未知行为占比
    - 子维度 task_type_code 独立，平台按 parent_dimension_id 分组，
      提取各子维度 task_type_code 组成 sub_tasks 注入 payload，eval_server 按 sub_tasks 只算选中的附加指标
-4. 注册 voice_llm 算法与主维度 + 9 个子维度的关联（algorithm_dimension_relations）
+4. 注册 voice_llm 算法与主维度 + 14 个子维度的关联（algorithm_dimension_relations）
 5. 注册 voice_llm → 主维度的参数映射（param_mappings.dimension_id = 主维度id）
 
 执行链路：
@@ -82,6 +82,7 @@ MAIN_DIMENSION = {
         'user_seg_merge_gap_s': '{{user_seg_merge_gap_s}}',
         'model_seg_merge_gap_s': '{{model_seg_merge_gap_s}}',
         'enable_llm_eval': '{{enable_llm_eval}}',
+        'stop_intent': '{{stop_intent}}',
         'llm_model': '{{llm_model}}',
         'original_topic': '{{original_topic}}',
         'is_actual_interruption': '{{is_actual_interruption}}',
@@ -98,6 +99,7 @@ MAIN_DIMENSION = {
                 'is_return_to_topic': '{{is_return_to_topic}}',
                 'is_interruption': '{{is_interruption}}',
                 'is_actual_interruption': '{{is_actual_interruption}}',
+                'stop_intent': '{{stop_intent}}',
             }
         ],
     },
@@ -131,7 +133,7 @@ MAIN_DIMENSION = {
          'is_interruption 表示当前轮不等待模型完成，实际打断轮是下一轮；末轮未闭合标记由 dangling_interruption_rounds 记录。', 13),
         ('enable_llm_eval', '启用LLM评估', '是否启用大模型语义与回复质量评估', 'boolean', 'input',
          None, None, None, False,
-         False, 'true',
+         False, 'false',
          'LLM 可选：本地时序结果始终作为主成功率依据；LLM 成功率、回复质量和行为裁判仅写入辅助字段，'
          '不会覆盖 interruption_success_rate。显式传 false 时跳过 LLM 计算。', 14),
         ('llm_model', 'LLM模型', 'LLM 模型名称(覆盖默认)', 'text', 'input',
@@ -150,7 +152,33 @@ MAIN_DIMENSION = {
          None, None, None, False,
          False, None, '末轮 is_interruption=true 且没有下一轮可承接时记录，不参与有效实际打断成功率。', 19),
 
-        # ─── 输出参数: 本地时序、轮次与诊断（主成功率唯一主分）───
+        ('stop_intent', '停止指令意图', '是否为停止指令实际轮', 'boolean', 'input',
+         None, None, None, False, False, None, '显式停止指令标记；不从 is_interruption 推断。', 20),
+        ('interruption_failure_rate', '打断失败率', '打断失败率', 'number', 'output',
+         'interruption.interruption_failure_rate', None, 'aux', True,
+         False, None, '按有效实际打断轮统计的失败比例，无有效轮时为空。', 71),
+        ('interruption_inquiry_rate', '打断询问率', '打断询问率', 'number', 'output',
+         'interruption.interruption_inquiry_rate', None, 'aux', True,
+         False, None, '行为裁判判为不确定询问的有效轮比例。', 72),
+        ('first_recovery_coherence', '恢复首轮连贯性', '恢复首轮内容连贯性', 'number', 'output',
+         'interruption.first_recovery_coherence', None, 'aux', True,
+         False, None, '每个实际打断轮首个恢复回复的连贯性评分。', 73),
+        ('first_recovery_relevance', '恢复首轮相关性', '恢复首轮内容相关性', 'number', 'output',
+         'interruption.first_recovery_relevance', None, 'aux', True,
+         False, None, '每个实际打断轮首个恢复回复的相关性评分。', 74),
+        ('first_recovery_adaptability', '恢复首轮适应性', '恢复首轮内容适应性', 'number', 'output',
+         'interruption.first_recovery_adaptability', None, 'aux', True,
+         False, None, '每个实际打断轮首个恢复回复的适应性评分。', 75),
+        ('first_recovery_overall', '恢复首轮内容评分', '恢复首轮内容评分', 'number', 'output',
+         'interruption.first_recovery_overall', None, 'aux', True,
+         False, None, '每个实际打断轮首个恢复回复的 overall 评分。', 76),
+        ('first_recovery_latency_s', '恢复首轮内容时延', '恢复首轮内容时延(毫秒)', 'number', 'output',
+         'interruption.first_recovery_latency_s', None, 'aux', True,
+         False, None, '每个实际打断轮首个恢复回复时延，值为毫秒。', 77),
+        ('stop_instruction_compliance_rate', '停止指令遵从率', '停止指令遵从率', 'number', 'output',
+         'interruption.stop_instruction_compliance_rate', None, 'aux', True,
+         False, None, '仅统计显式停止指令且可判定的实际轮。', 78),
+
         ('interruption_timing_success_rate', '时序成功率', '本地时序成功率', 'number', 'output',
          'interruption.timing_success_rate', None, 'aux', True,
          False, None, '显式实际打断模式下与主 interruption_success_rate 一致。', 61),
@@ -276,15 +304,70 @@ MAIN_DIMENSION = {
 }
 
 # ============================================================
-# 子维度定义：各自只配自己的 output 参数（2 时延 + 3 LLM 质量 + 4 行为）
+# 子维度定义：各自只配自己的 output 参数（2 时延 + 3 LLM 质量 + 4 行为 + 5 新增指标）
 # ============================================================
-# params 元组顺序：
+# params 元组顺序:
 # (param_code, param_name, label, field_type, param_direction,
 #  field_path, agg_role, output_role, visible_in_report,
 #  required, default_value, help_text, ui_order, pass_threshold)
 # pass_threshold 可选，pass_rate 策略时用，默认 None
 
 SUB_DIMENSIONS = [
+    {
+        'task_type_code': 'interruption_failure_rate',
+        'name': '打断失败率', 'keywords': 'interruption,failure_rate,打断失败率',
+        'description': '按有效实际打断轮统计失败比例。', 'type': 'auto',
+        'result_type': 0, 'result_min': 0.0, 'result_max': 1.0,
+        'decimal_places': 2, 'weight': 1, 'estimated_exec_time': 30,
+        'score_unit': '%', 'statistic_method': 'average',
+        'params': [('interruption_failure_rate', '打断失败率', '打断失败率', 'number', 'output',
+                    'interruption.interruption_failure_rate', 'value', 'main', True,
+                    False, None, '实际打断轮中本地时序失败比例。', 130)],
+    },
+    {
+        'task_type_code': 'interruption_inquiry_rate',
+        'name': '打断询问率', 'keywords': 'interruption,inquiry_rate,打断询问率',
+        'description': '行为裁判判定为不确定询问的有效实际打断轮比例。', 'type': 'auto',
+        'result_type': 0, 'result_min': 0.0, 'result_max': 1.0,
+        'decimal_places': 2, 'weight': 1, 'estimated_exec_time': 30,
+        'score_unit': '%', 'statistic_method': 'average',
+        'params': [('interruption_inquiry_rate', '打断询问率', '打断询问率', 'number', 'output',
+                    'interruption.interruption_inquiry_rate', 'value', 'main', True,
+                    False, None, '仅统计行为裁判有效结果。', 131)],
+    },
+    {
+        'task_type_code': 'interruption_first_recovery_content',
+        'name': '恢复首轮内容评分', 'keywords': 'interruption,first_recovery,恢复首轮内容评分',
+        'description': '每个实际打断轮首个恢复回复的内容评分。', 'type': 'auto',
+        'result_type': 1, 'result_min': 0.0, 'result_max': 5.0,
+        'decimal_places': 2, 'weight': 1, 'estimated_exec_time': 30,
+        'score_unit': '分', 'statistic_method': 'average',
+        'params': [('first_recovery_overall', '恢复首轮内容评分', '恢复首轮内容评分', 'number', 'output',
+                    'interruption.first_recovery_overall', 'value', 'main', True,
+                    False, None, '首个恢复回复的 LLM overall 评分。', 132)],
+    },
+    {
+        'task_type_code': 'interruption_first_recovery_latency',
+        'name': '恢复首轮内容时延', 'keywords': 'interruption,first_recovery_latency,恢复首轮内容时延',
+        'description': '每个实际打断轮首个恢复回复时延。', 'type': 'auto',
+        'result_type': 1, 'result_min': 0.0, 'result_max': None,
+        'decimal_places': 0, 'weight': 1, 'estimated_exec_time': 30,
+        'score_unit': 'ms', 'statistic_method': 'average',
+        'params': [('first_recovery_latency_s', '恢复首轮内容时延', '恢复首轮内容时延(毫秒)', 'number', 'output',
+                    'interruption.first_recovery_latency_s', 'value', 'main', True,
+                    False, None, '首个恢复回复时延，值为毫秒。', 133)],
+    },
+    {
+        'task_type_code': 'interruption_stop_instruction_compliance',
+        'name': '停止指令遵从率', 'keywords': 'interruption,stop_instruction,停止指令遵从率',
+        'description': '显式停止指令实际轮中模型遵从停止的比例。', 'type': 'auto',
+        'result_type': 0, 'result_min': 0.0, 'result_max': 1.0,
+        'decimal_places': 2, 'weight': 1, 'estimated_exec_time': 30,
+        'score_unit': '%', 'statistic_method': 'average',
+        'params': [('stop_instruction_compliance_rate', '停止指令遵从率', '停止指令遵从率', 'number', 'output',
+                    'interruption.stop_instruction_compliance_rate', 'value', 'main', True,
+                    False, None, '仅统计显式停止指令且可判定的实际轮。', 134)],
+    },
     {
         'task_type_code': 'interruption_stop_latency',
         'name': '打断检查时延',
@@ -516,6 +599,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
         'user_seg_merge_gap_s': '{{user_seg_merge_gap_s}}',
         'model_seg_merge_gap_s': '{{model_seg_merge_gap_s}}',
         'enable_llm_eval': '{{enable_llm_eval}}',
+        'stop_intent': '{{stop_intent}}',
         'llm_model': '{{llm_model}}',
         'original_topic': '{{original_topic}}',
         'is_actual_interruption': '{{is_actual_interruption}}',
@@ -532,6 +616,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 'is_return_to_topic': '{{is_return_to_topic}}',
                 'is_interruption': '{{is_interruption}}',
                 'is_actual_interruption': '{{is_actual_interruption}}',
+                'stop_intent': '{{stop_intent}}',
             }
         ],
     })
@@ -858,10 +943,10 @@ def seed_interruption_dimensions():
         _upsert_param_mappings(conn, main_id, MAIN_DIMENSION)
 
         # ============================================================
-        # Step 2: 注册9个子维度
+        # Step 2: 注册14个子维度
         # ============================================================
         print(f"\n{'=' * 60}")
-        print(f"  Step 2: 注册9个子维度（parent_dimension_id={main_id}）")
+        print(f"  Step 2: 注册14个子维度（parent_dimension_id={main_id}）")
         print(f"{'=' * 60}")
         for sub_def in SUB_DIMENSIONS:
             print(f"\n  -- 子维度: {sub_def['name']} --")
@@ -874,7 +959,9 @@ def seed_interruption_dimensions():
         print(f"\n{'=' * 60}")
         print(f"  打断指标维度种子数据注册完成")
         print(f"  主维度 打断成功率 id={main_id}")
-        print(f"  9个子维度（各自 output field_path）:")
+        print(f"  14个子维度（各自 output field_path）:")
+        print(f"    - 打断失败率/询问率 → interruption.*_rate")
+        print(f"    - 恢复首轮内容评分/时延 → interruption.first_recovery_*")
         print(f"    - 打断检查时延 → interruption.avg_stop_latency_s")
         print(f"    - 打断恢复时延 → interruption.avg_recovery_latency_s")
         print(f"    - 平均连贯性/相关性/适应性 → interruption.llm_recovery_avg_*")
@@ -894,16 +981,16 @@ if __name__ == '__main__':
     print("2. 注册/更新打断成功率主维度（dimension_type=main）")
     print("   配置 input params + interruption_metrics 主输出/辅助输出")
     print("   + api_settings + param_mappings")
-    print("3. 注册/更新9个子维度（dimension_type=sub，parent_dimension_id=主维度id）：")
+    print("3. 注册/更新14个子维度（dimension_type=sub，parent_dimension_id=主维度id）：")
     print("   - 打断检查时延 / 打断恢复时延")
     print("   - 平均连贯性 / 平均相关性 / 平均适应性")
     print("   - 回应 / 恢复 / 不确定询问 / 未知行为占比")
     print("4. 子维度不重复 input params / param_mappings：")
     print("   - input_params 通过 evaluation_service._load_dimension_data 继承父维度")
     print("   - param_mappings 挂主维度 id 下，子维度共用（dimension_ids=None 不过滤）")
-    print("5. 注册 voice_llm → 主维度 + 9个子维度的关联")
+    print("5. 注册 voice_llm → 主维度 + 14个子维度的关联")
     print()
-    print("执行链路：用例选主维度 + 9个子维度 → 继承父维度 task_type_code/api 配置")
+    print("执行链路：用例选主维度 + 14个子维度 → 继承父维度 task_type_code/api 配置")
     print("→ 按 (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server")
     print("→ process_group_dimension_results 按各自 output field_path 分发提取")
     print()

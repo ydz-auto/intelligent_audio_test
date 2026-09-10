@@ -50,18 +50,44 @@ class E2EAggregator:
         return cls._as_bool(value)
 
     @classmethod
+    def _round_is_stop_instruction(cls, round_config):
+        """读取显式停止指令标记，不将 is_interruption 视为停止指令。"""
+        if not isinstance(round_config, dict):
+            return False
+        aliases = ('stop_intent', 'is_stop_instruction', 'stopInstruction', 'isStopInstruction')
+        for key in aliases:
+            if key in round_config:
+                return cls._as_bool(round_config.get(key))
+        params = round_config.get('algorithm_params') or round_config.get('algorithmParams')
+        if isinstance(params, dict):
+            return any(cls._as_bool(params.get(key)) for key in aliases if key in params)
+        if isinstance(params, list):
+            for item in params:
+                if not isinstance(item, dict):
+                    continue
+                code = item.get('field_code') or item.get('fieldCode') or item.get('code')
+                if code in aliases:
+                    return cls._as_bool(item.get('field_value', item.get('fieldValue', item.get('value'))))
+        return False
+
+    @classmethod
     def build_interruption_round_metadata(cls, case_rounds):
         """根据驱动语义推导实际打断轮：标记轮的下一轮才是打断语音轮。"""
         rounds = case_rounds if isinstance(case_rounds, list) else []
         is_interruption = [cls._round_is_interruption(rd) for rd in rounds]
+        stop_intent = [cls._round_is_stop_instruction(rd) for rd in rounds]
         actual_rounds = [idx + 1 for idx, marked in enumerate(is_interruption)
                          if marked and idx + 1 < len(rounds)]
         dangling_rounds = [idx for idx, marked in enumerate(is_interruption)
                            if marked and idx + 1 >= len(rounds)]
+        stop_instruction_rounds = [idx for idx, marked in enumerate(stop_intent)
+                                   if marked and idx in actual_rounds]
         return {
             'is_interruption': is_interruption,
             'interruption_rounds': actual_rounds,
             'dangling_interruption_rounds': dangling_rounds,
+            'stop_intent': stop_intent,
+            'stop_instruction_rounds': stop_instruction_rounds,
         }
 
     @classmethod
@@ -83,6 +109,11 @@ class E2EAggregator:
                 if idx < len(metadata['is_interruption']) else False
             )
             item['is_actual_interruption'] = idx in actual_rounds
+            item['stop_intent'] = (
+                metadata['stop_intent'][idx]
+                if idx < len(metadata['stop_intent']) else False
+            )
+            item['is_stop_instruction'] = item['stop_intent']
         return metadata
 
     def build_algorithm_result(self, task_id, all_round_results, case_config, algorithm_type):

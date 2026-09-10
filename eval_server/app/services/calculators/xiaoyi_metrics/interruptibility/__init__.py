@@ -13,10 +13,60 @@ from .interruption_llm import evaluate_interruption_llm
 logger = logging.getLogger(__name__)
 
 
+def _as_bool(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+    return False
+
+
+def _get_stop_intent(params, round_data=None):
+    """读取显式停止意图；不把 is_interruption 当作停止指令。"""
+    rd = round_data if isinstance(round_data, dict) else {}
+    sources = [rd, params or {}]
+    aliases = ('stop_intent', 'is_stop_instruction', 'stopInstruction', 'isStopInstruction')
+    for source in sources:
+        for key in aliases:
+            if key in source and source[key] is not None:
+                return _as_bool(source[key])
+        for nested_key in ('algorithm_params', 'algorithmParams'):
+            nested = source.get(nested_key)
+            if isinstance(nested, dict):
+                for key in aliases:
+                    if key in nested:
+                        return _as_bool(nested[key])
+            elif isinstance(nested, list):
+                for item in nested:
+                    if not isinstance(item, dict):
+                        continue
+                    code = item.get('field_code') or item.get('fieldCode') or item.get('code')
+                    if code in aliases:
+                        return _as_bool(item.get('field_value', item.get('fieldValue', item.get('value'))))
+    return False
+
+
+def _first_recovery_event(events):
+    return next((event for event in events or []
+                 if isinstance(event, dict)
+                 and event.get('event_type') == 'interruption'
+                 and event.get('model_recovery_text') is not None
+                 and event.get('recovery_latency_s') is not None), None)
+
 def _empty_interruption(message):
     """无双路音频或计算失败时返回的空打断结构（与 compute_interruption_metrics 输出键一致）"""
     return {
         'interruption_success_rate': 0.0,
+        'interruption_failure_rate': None,
+        'interruption_inquiry_rate': None,
+        'first_recovery_coherence': None,
+        'first_recovery_relevance': None,
+        'first_recovery_adaptability': None,
+        'first_recovery_overall': None,
+        'first_recovery_latency_s': None,
+        'stop_instruction_compliance_rate': None,
         'stop_rate': 0.0,
         'resume_rate': 0.0,
         'avg_stop_latency_s': None,
@@ -139,6 +189,8 @@ def calculate_interruption_metrics(task_params):
     if 'is_actual_interruption' in task_params:
         kwargs['actual_interruption'] = task_params.get('is_actual_interruption')
 
+    kwargs['stop_intent'] = _get_stop_intent(task_params, _r0)
+
     result = compute_interruption_metrics(user_asr, model_asr, **kwargs)
     result['is_actual_interruption'] = task_params.get('is_actual_interruption')
     result['interruption_rounds'] = task_params.get('interruption_rounds') or []
@@ -146,6 +198,21 @@ def calculate_interruption_metrics(task_params):
     if result['dangling_interruption_rounds'] and not result['interruption_rounds']:
         result['message'] = f"无有效实际打断轮；末轮 is_interruption 标记未闭合: {result['dangling_interruption_rounds']}"
     result['timing_success_rate'] = result.get('interruption_success_rate')
+    result['interruption_failure_rate'] = (
+        1.0 - result['interruption_success_rate']
+        if result.get('interruption_success_rate') in (0, 1)
+        and result.get('n_events', 0)
+        else result.get('interruption_failure_rate')
+    )
+    first = _first_recovery_event(result.get('per_event'))
+    if first:
+        result['first_recovery_latency_s'] = first.get('recovery_latency_s')
+    if result.get('stop_intent'):
+        stop_events = [e for e in result.get('per_event', []) if e.get('stop_intent')]
+        judged = [e.get('stop_complied') for e in stop_events if e.get('stop_complied') is not None]
+        result['stop_instruction_compliance_rate'] = (
+            round(sum(judged) / len(judged), 3) if judged else None
+        )
     logger.info(
         f"[interruption_metrics] success_rate={result['interruption_success_rate']} "
         f"stop_rate={result['stop_rate']} resume_rate={result['resume_rate']} "
@@ -154,17 +221,19 @@ def calculate_interruption_metrics(task_params):
     )
 
     # ── 可选：大模型评估 ──
-    _raw = task_params.get('enable_llm_eval', True)
+    _raw = task_params.get('enable_llm_eval', False)
     enable_llm = str(_raw).lower() in ('true', '1', 'yes')
     sub_tasks = task_params.get('sub_tasks')
     legacy_full = sub_tasks is None
     sub_tasks = set(sub_tasks or [])
     need_text_llm = legacy_full or bool(sub_tasks.intersection({
-        'interruption_coherence', 'interruption_relevance', 'interruption_adaptability'
+        'interruption_coherence', 'interruption_relevance', 'interruption_adaptability',
+        'interruption_first_recovery_content', 'interruption_recovery_first_turn_content',
     }))
     need_behavior_judge = legacy_full or bool(sub_tasks.intersection({
         'interruption_behavior_respond', 'interruption_behavior_recover',
-        'interruption_behavior_uncertain', 'interruption_behavior_unknown'
+        'interruption_behavior_uncertain', 'interruption_behavior_unknown',
+        'interruption_inquiry_rate',
     }))
 
     if enable_llm and need_text_llm:
@@ -187,11 +256,23 @@ def calculate_interruption_metrics(task_params):
                 'llm_return_avg_adaptability',
                 'llm_recovery_per_round', 'llm_return_scores_per_round',
                 'interruption_real_rate',
+                'first_recovery_coherence', 'first_recovery_relevance',
+                'first_recovery_adaptability', 'first_recovery_overall',
             ):
                 result[k] = llm_result.get(k)
+            first_llm = _first_recovery_event(result.get('per_event'))
+            if first_llm and result.get('llm_recovery_per_round'):
+                first_score = result['llm_recovery_per_round'][0]
+                for src, dst in (
+                    ('coherence', 'first_recovery_coherence'),
+                    ('relevance', 'first_recovery_relevance'),
+                    ('adaptability', 'first_recovery_adaptability'),
+                    ('overall', 'first_recovery_overall'),
+                ):
+                    result[dst] = first_score.get(src)
+
             logger.info(
-                f"[interruption_metrics] LLM 评估完成 model={llm_result.get('model')} "
-                f"n_events_evaluated={llm_result.get('n_events_evaluated')} "
+                f"[interruption_metrics] n_events_evaluated={llm_result.get('n_events_evaluated')} "
                 f"interruption_real_rate={llm_result.get('interruption_real_rate')}"
             )
         except Exception as e:
@@ -217,6 +298,11 @@ def calculate_interruption_metrics(task_params):
             result['behavior_judge'] = judge_result
             for key in ('behavior_respond', 'behavior_recover', 'behavior_uncertain', 'behavior_unknown', 'interaction_text', 'evaluations'):
                 result[key] = judge_result.get(key)
+            valid_evaluations = judge_result.get('evaluations') or []
+            if judge_result.get('enabled') and valid_evaluations:
+                result['interruption_inquiry_rate'] = int(
+                    valid_evaluations[0].get('behavior') == '不确定询问'
+                )
         except Exception as e:
             result['behavior_judge'] = {'enabled': False, 'message': f'行为裁判失败: {e}'}
             logger.warning(f"[interruption_metrics] 行为裁判失败，跳过: {e}")
