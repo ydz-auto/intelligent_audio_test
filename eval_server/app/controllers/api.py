@@ -118,6 +118,18 @@ def _get_calc_pool():
     return _calc_pool
 
 
+def _storage_id(*candidates):
+    """Build a safe filesystem segment from the first usable task ID."""
+    for candidate in candidates:
+        if candidate in (None, ''):
+            continue
+        value = str(candidate).strip()
+        if not value or value in ('.', '..') or any(sep in value for sep in ('/', '\\')):
+            continue
+        return secure_filename(value) or f'task_{uuid.uuid4().hex}'
+    return f'task_{uuid.uuid4().hex}'
+
+
 def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=None, eval_task_id=None):
     """
     验证任务参数并分发到本地或远程处理。
@@ -249,7 +261,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         from ..utils.oss_client import resolve_oss_paths
         task_params = resolve_oss_paths(
             task_params,
-            local_dir=os.path.join(config.UPLOAD_DIR, caller_task_id or eval_task_id),
+            local_dir=os.path.join(config.UPLOAD_DIR, _storage_id(caller_task_id, eval_task_id)),
         )
 
         LocalConcurrencyManager.increment()
@@ -379,7 +391,7 @@ def create_task_upload():
     task_type = request.form.get('task_type', 'wer')
     caller_task_id = request.form.get('task_id')
     eval_task_id = f"task_{uuid.uuid4().hex}"
-    storage_id = caller_task_id or eval_task_id
+    storage_id = _storage_id(caller_task_id, eval_task_id)
     upload_dir = os.path.join(config.UPLOAD_DIR, storage_id)
     os.makedirs(upload_dir, exist_ok=True)
 
