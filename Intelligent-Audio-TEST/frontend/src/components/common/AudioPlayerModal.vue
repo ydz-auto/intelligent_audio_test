@@ -24,7 +24,8 @@
           </div>
           
           <div class="audio-player">
-          <div class="progress-bar-container" 
+          <div class="progress-bar-container"
+               ref="progressBarRef"
                @mousedown="startDrag"
                @click="updateProgressOnClick">
             <div class="progress-bar" :style="{ width: progressPercentage + '%' }"></div>
@@ -117,6 +118,12 @@ const progressUpdateTimer = ref<ReturnType<typeof setInterval> | null>(null);
 const defaultSimulatedDuration = 10;
 const playError = ref('');
 
+// 进度条容器 DOM 引用（用于拖动 seek 计算，避免 event.currentTarget 指向 document）
+const progressBarRef = ref<HTMLElement | null>(null);
+// 模拟进度计时基准：基于 performance.now() 的墙钟时间，避免 setInterval 节流导致的漂移
+const progressClockStart = ref(0);
+const progressClockBase = ref(0);
+
 const audioTypeLabel = computed(() => {
   const typeMap: Record<string, string> = { 'dry': '干声 (信号音频)', 'noise': '噪声', 'prompt': '提示词音频', 'api': 'API测试音频' };
   return typeMap[props.audioType] || '未知类型';
@@ -143,11 +150,8 @@ const initAudio = () => {
     audio.value = null;
   }
   
-  if (progressUpdateTimer.value) {
-    clearInterval(progressUpdateTimer.value);
-    progressUpdateTimer.value = null;
-    console.log('Stopped simulated progress update timer on init');
-  }
+  stopSimulatedProgress();
+  console.log('Stopped simulated progress update timer on init');
   
   isPlaying.value = false;
   currentTime.value = 0;
@@ -258,11 +262,8 @@ const handleEnded = () => {
   try {
     console.log('Audio playback ended');
     
-    if (progressUpdateTimer.value) {
-      clearInterval(progressUpdateTimer.value);
-      progressUpdateTimer.value = null;
-      console.log('Stopped simulated progress update timer on ended');
-    }
+    stopSimulatedProgress();
+    console.log('Stopped simulated progress update timer on ended');
     
     isPlaying.value = false;
     currentTime.value = 0;
@@ -339,11 +340,32 @@ const togglePlay = async () => {
   }
 };
 
+const stopSimulatedProgress = () => {
+  if (progressUpdateTimer.value) {
+    clearInterval(progressUpdateTimer.value);
+    progressUpdateTimer.value = null;
+  }
+  progressClockStart.value = 0;
+  progressClockBase.value = 0;
+};
+
+const getSimulatedElapsed = (): number => {
+  if (progressClockStart.value <= 0) return progressClockBase.value;
+  return progressClockBase.value + (performance.now() - progressClockStart.value) / 1000;
+};
+
+const startSimulatedProgress = (baseTime = 0) => {
+  stopSimulatedProgress();
+  progressClockBase.value = baseTime;
+  progressClockStart.value = performance.now();
+  progressUpdateTimer.value = setInterval(updateProgressSimulated, 100);
+};
+
 const updateProgressSimulated = () => {
   if (isPlaying.value && duration.value > 0) {
-    const increment = 0.1;
-    currentTime.value += increment;
-    
+    // 基于墙钟时间推算，setInterval 被节流时不再累计漂移
+    currentTime.value = Math.min(getSimulatedElapsed(), duration.value);
+
     if (currentTime.value >= duration.value) {
       currentTime.value = duration.value;
       progressPercentage.value = 100;
@@ -351,9 +373,9 @@ const updateProgressSimulated = () => {
       stop();
       return;
     }
-    
+
     progressPercentage.value = Math.max(0, Math.min(100, (currentTime.value / duration.value) * 100));
-    
+
     if (Math.floor(currentTime.value * 10) % 10 === 0) {
       console.log('Simulated progress:', {
         currentTime: currentTime.value.toFixed(1),
@@ -390,11 +412,9 @@ const play = async () => {
         duration.value = defaultSimulatedDuration;
       }
       
-      if (progressUpdateTimer.value) {
-        clearInterval(progressUpdateTimer.value);
-        progressUpdateTimer.value = null;
-      }
-      progressUpdateTimer.value = setInterval(updateProgressSimulated, 100);
+      // 设备端从 props.offset 开始播放，模拟时钟基准需与设备起点保持一致
+      const initialOffset = props.offset && props.offset > 0 ? props.offset : 0;
+      startSimulatedProgress(initialOffset);
       console.log('Started simulated progress update timer for backend playback');
     }
   } catch (error: any) {
@@ -407,10 +427,7 @@ const play = async () => {
     } else {
       playError.value = '音频播放失败，请重试';
     }
-    if (progressUpdateTimer.value) {
-      clearInterval(progressUpdateTimer.value);
-      progressUpdateTimer.value = null;
-    }
+    stopSimulatedProgress();
   }
 };
 
@@ -462,11 +479,7 @@ const playTestCasePreview = async () => {
         duration.value = defaultSimulatedDuration;
       }
       
-      if (progressUpdateTimer.value) {
-        clearInterval(progressUpdateTimer.value);
-        progressUpdateTimer.value = null;
-      }
-      progressUpdateTimer.value = setInterval(updateProgressSimulated, 100);
+      startSimulatedProgress(0);
       console.log('Started simulated progress update timer for backend playback');
     }
   } catch (error: any) {
@@ -513,11 +526,8 @@ const pause = async () => {
   try {
     console.log('pause() method called');
     
-    if (progressUpdateTimer.value) {
-      clearInterval(progressUpdateTimer.value);
-      progressUpdateTimer.value = null;
-      console.log('Stopped simulated progress update timer');
-    }
+    stopSimulatedProgress();
+    console.log('Stopped simulated progress update timer');
     
     if (audio.value) {
       audio.value.pause();
@@ -530,6 +540,9 @@ const pause = async () => {
     // 测试用例预览或后端播放模式都需要调用外部设备停止接口
     if (props.isTestCasePreview || props.playbackMode === 'backend') {
       await stopOnExternalDevices();
+      // 设备端 stop 后再次 play 会从 0 重播，时间戳与进度条需归零，避免显示旧进度
+      currentTime.value = 0;
+      progressPercentage.value = 0;
     }
   } catch (error: any) {
     console.error('音频暂停失败:', error);
@@ -543,10 +556,7 @@ const stop = async () => {
   try {
     console.log('stop() method called');
     
-    if (progressUpdateTimer.value) {
-      clearInterval(progressUpdateTimer.value);
-      progressUpdateTimer.value = null;
-    }
+    stopSimulatedProgress();
     
     if (audio.value) {
       audio.value.pause();
@@ -654,7 +664,7 @@ const playOnExternalDevices = async (offset = 0) => {
         playbackDeviceIds: playbackDeviceIds,
         playbackDeviceId: playbackDeviceIds[0] || '',
         spl: props.spl ?? 65.0,
-        offset: props.offset ?? 0
+        offset: offset > 0 ? offset : (props.offset ?? 0)
       };
       
       console.log(`[API Request] POST /audios/${props.audioId}/preview with payload:`, JSON.stringify(previewPayload));
@@ -738,12 +748,18 @@ const stopDrag = async () => {
       console.log('Set audio currentTime to:', currentTime.value);
     }
     
-    if (isPlaying.value && (props.selectedDevices.length > 0 || props.isTestCasePreview)) {
+    // 后端/设备播放模式下，拖动 seek 需要停止当前模拟计时，避免网络请求期间时间继续漂移
+    const isExternalPlayback = props.selectedDevices.length > 0 || props.isTestCasePreview || props.playbackMode === 'backend';
+    if (isPlaying.value && isExternalPlayback) {
       // 使用拖动的目标位置（progressPercentage）而不是当前位置（currentTime）
       const targetTime = (progressPercentage.value / 100) * (duration.value || 0);
       console.log('Seeking on external devices, target time:', targetTime, 'percentage:', progressPercentage.value);
+      stopSimulatedProgress();
       await stopOnExternalDevices();
       await playOnExternalDevices(targetTime);
+      // 重新以目标时间作为模拟时钟基准，与设备端实际 seek 位置对齐
+      currentTime.value = targetTime;
+      startSimulatedProgress(targetTime);
     }
   } catch (error: any) {
     console.error('Error in stopDrag:', error);
@@ -752,8 +768,8 @@ const stopDrag = async () => {
 
 const updateProgress = (event: MouseEvent) => {
   try {
-    // 使用ref获取DOM元素，而不是document.querySelector，避免访问不存在的元素
-    const progressBarContainer = event.currentTarget as HTMLElement;
+    // 使用 ref 获取进度条容器，避免 handleDrag 绑定在 document 时 currentTarget 指向 document
+    const progressBarContainer = progressBarRef.value;
     if (!progressBarContainer) {
       console.error('Progress bar container not found');
       return;
