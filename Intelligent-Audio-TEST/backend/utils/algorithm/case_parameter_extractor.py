@@ -10,6 +10,7 @@
 - 判断重叠播放场景
 """
 
+import copy
 import json as _json
 import os
 from typing import Dict, List, Any, Optional
@@ -54,6 +55,126 @@ def _get_round_algo_params(algorithm_params_col: list, round_number: int) -> lis
         if item.get('round_number') == round_number:
             return item.get('params', [])
     return []
+
+
+def _get_config_round(rounds, round_number: int) -> Optional[Dict]:
+    """从用例配置的 rounds 列表中按轮次取对应轮配置
+
+    Args:
+        rounds: 用例配置的 config.rounds 列表
+        round_number: 轮次序号（0-indexed，与 algo_result.rounds[].round 对齐）
+    Returns:
+        该轮配置 dict；config.rounds[].round_number 是 1-indexed，
+        优先按 round_number 字段对齐（不依赖数组下标），字段缺失时按下标兜底
+    """
+    if not rounds or not isinstance(rounds, list):
+        return None
+    expected_no = round_number + 1
+    for rc in rounds:
+        if isinstance(rc, dict) and rc.get('round_number') == expected_no:
+            return rc
+    if 0 <= round_number < len(rounds) and isinstance(rounds[round_number], dict):
+        return rounds[round_number]
+    return None
+
+
+def _fill_audios_audio_path(round_cfg: Dict) -> None:
+    """为 config.rounds[].audios 中的 audio_id 运行时补全 audio_path
+
+    评估服务以二进制（multipart）接收文件，主服务需先把 audio_id 解析为
+    服务器文件路径，后续由 api_request_handler 提取文件上传（幂等：已填则跳过）。
+    """
+    audios = round_cfg.get('audios') if isinstance(round_cfg, dict) else None
+    if not audios or not isinstance(audios, list):
+        return
+    from backend.models.database import db
+    from backend.models.models import Audio
+    for audio_item in audios:
+        if not isinstance(audio_item, dict):
+            continue
+        audio_id = audio_item.get('audio_id')
+        if not audio_id or audio_item.get('audio_path'):
+            continue
+        try:
+            audio = db.session.query(Audio).get(audio_id)
+            if audio and audio.file_path:
+                audio_item['audio_path'] = audio.file_path
+            else:
+                log_not_emit('WARNING', 'case_parameter_extractor',
+                             f'[_fill_audios_audio_path] 未找到音频记录或文件路径: audio_id={audio_id}',
+                             category='algorithm')
+        except Exception as e:
+            log_not_emit('ERROR', 'case_parameter_extractor',
+                         f'[_fill_audios_audio_path] 查询音频失败: audio_id={audio_id}, error={str(e)}',
+                         category='algorithm')
+
+
+def _fill_round_audio_paths(round_cfg: Dict) -> None:
+    """为轮次内结构化音频字段（audios/background_noise/interferers）中的
+    audio_id 补全 audio_path（幂等：已填则跳过）。
+
+    背景噪声为单个配置块（dict），干扰人与被播放音频为音频列表（list of dict）。
+    评估服务以二进制（multipart）接收文件，主服务需先把 audio_id 解析为
+    服务器文件路径，后续由 api_request_handler 提取上传。
+    """
+    targets = []
+    audios = round_cfg.get('audios')
+    if isinstance(audios, list):
+        targets.extend(audios)
+    bg_noise = round_cfg.get('background_noise')
+    if isinstance(bg_noise, dict):
+        targets.append(bg_noise)
+    interferers = round_cfg.get('interferers')
+    if isinstance(interferers, list):
+        targets.extend(interferers)
+    if not targets:
+        return
+    from backend.models.database import db
+    from backend.models.models import Audio
+    for item in targets:
+        if not isinstance(item, dict):
+            continue
+        audio_id = item.get('audio_id')
+        if not audio_id or item.get('audio_path'):
+            continue
+        try:
+            audio = db.session.query(Audio).get(audio_id)
+            if audio and audio.file_path:
+                item['audio_path'] = audio.file_path
+            else:
+                log_not_emit('WARNING', 'case_parameter_extractor',
+                             f'[_fill_round_audio_paths] 未找到音频记录或文件路径: audio_id={audio_id}',
+                             category='algorithm')
+        except Exception as e:
+            log_not_emit('ERROR', 'case_parameter_extractor',
+                         f'[_fill_round_audio_paths] 查询音频失败: audio_id={audio_id}, error={str(e)}',
+                         category='algorithm')
+
+
+def _normalize_round_eval_fields(round_cfg: Dict, case_config: Optional[Dict] = None) -> None:
+    """评估上下文轮次数归一化（原地修改，幂等）。
+
+    将与播放链对齐的结构化音频字段统一到轮级 snake_case，供评估参数映射
+    （source=case_config）经 cfg_round.get(source_param) 取值：
+
+    - 背景噪声：轮次无 background_noise 且用例级存在全局背景噪声时注入副本
+      （播放链中用例级全局噪声跨轮持续播放，需一并传递给评估服务）
+    - 干扰人：从 algorithm_params（dict 或 [{field_code, field_value}]）提升为轮级 interferers
+    - 为 audios/background_noise/interferers 中的 audio_id 补全 audio_path
+    """
+    if not isinstance(round_cfg, dict):
+        return
+    if round_cfg.get('background_noise') is None and isinstance(case_config, dict):
+        case_bg = case_config.get('background_noise')
+        if isinstance(case_bg, dict):
+            round_cfg['background_noise'] = copy.deepcopy(case_bg)
+    if round_cfg.get('interferers') is None:
+        algo_params = round_cfg.get('algorithm_params')
+        if algo_params is not None:
+            interferers = _normalize_algorithm_params(algo_params).get('interferers')
+            if interferers is not None:
+                round_cfg['interferers'] = interferers
+    _fill_round_audio_paths(round_cfg)
 
 
 def _normalize_algorithm_params(algorithm_params) -> Dict[str, Any]:
@@ -294,6 +415,9 @@ class CaseParameterExtractor:
             test_type: 测试类型 ('api' 或 'e2e')
         """
         eval_params = {}
+        # 快照入参 round_number：下方新格式分支会以 rounds[0] 的轮次覆盖该变量（历史行为），
+        # case_config 分支需用入参原始的 0-indexed 轮次对齐
+        input_round_number = round_number
         # 新格式：rounds 顶层存在时，从独立列按轮取参数
         rounds = case_config.get('rounds')
         algorithm_params_col = case_config.get('algorithm_params_col')
@@ -331,10 +455,27 @@ class CaseParameterExtractor:
                 continue
             source_param = m['source_param']
             target_param = m['target_param']
+            # 兼容历史映射：被播放音频统一使用 played_audios 作为评估参数名。
+            if target_param == 'stimulus_audios':
+                target_param = 'played_audios'
             value = None
 
             if source == 'case':
                 value = case_params.get(source_param)
+            elif source == 'case_config':
+                # 从用例配置(config.rounds)取结构性字段（如被播放音频 audios、干扰人等）
+                # 单轮评估按入参轮次对齐；整体评估无入参轮次时取最后一轮
+                if input_round_number is not None:
+                    cfg_round = _get_config_round(rounds, input_round_number)
+                elif rounds and isinstance(rounds, list) and rounds:
+                    cfg_round = rounds[-1] if isinstance(rounds[-1], dict) else None
+                else:
+                    cfg_round = None
+                if cfg_round:
+                    # 深拷贝避免污染共享的 case.config（写入 audio_path 等运行时字段）
+                    cfg_round = copy.deepcopy(cfg_round)
+                    _normalize_round_eval_fields(cfg_round, case_config)
+                    value = cfg_round.get(source_param)
             elif source == 'reference':
                 if reference_params:
                     ref_type = None

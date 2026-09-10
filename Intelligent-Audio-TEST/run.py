@@ -78,9 +78,9 @@ if sys.platform == 'win32':
 if __name__ == '__main__':
     try:
         socketio.run(
-            app, 
-            host='0.0.0.0', 
-            port=5000,
+            app,
+            host='0.0.0.0',
+            port=int(os.environ.get('FLASK_PORT', '5000')),
             debug=app.config.get('DEBUG', False),
             allow_unsafe_werkzeug=True,
             use_reloader=False

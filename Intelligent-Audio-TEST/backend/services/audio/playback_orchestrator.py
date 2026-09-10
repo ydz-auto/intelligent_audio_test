@@ -16,6 +16,8 @@ import threading
 from backend.services.audio.audio_engine import (
     audio_service as _default_audio_service,
     build_audio_timelines,
+    build_noise_timelines,
+    build_interferer_timelines,
     build_speakers_map_from_dry_audios,
     get_audio_configs_for_offset,
     calculate_speaker_aware_audio_delays,
@@ -55,6 +57,8 @@ class PlaybackOrchestrator:
         self.audio_service = audio_service or _default_audio_service
         # 全局背景噪声 player 标识，用于独立启停
         self._bg_noise_player_type = 'global_noise'
+        # 全局背景噪声起止时间戳（task_id -> {audio_id, start_ms, end_ms}），供设备驱动时延统计
+        self._bg_noise_timestamps = {}
 
     # ------------------------------------------------------------------ #
     #                           高层 API                                  #
@@ -147,6 +151,10 @@ class PlaybackOrchestrator:
                 dry_audios_info, overlap_rate, overlap_time, speakers_map
             )
 
+            # 6.1 构建噪声/干扰人时间轴（用于记录起止时间戳）
+            noise_timelines = build_noise_timelines(noise_configs)
+            interferer_timelines = build_interferer_timelines(interferer_configs)
+
             # 7. 合并三类音频为统一 audio_to_play 列表
             audio_to_play = []
             audio_to_play.extend(noise_configs)
@@ -206,17 +214,55 @@ class PlaybackOrchestrator:
                 audio_to_play, overlap_rate, overlap_time > 0, 0, overlap_time,
                 speakers_map=speakers_map,
             )
-            delay_map = {cfg.get('play_order', 0): d for cfg, d in audio_delays}
+            # delay 按类型拆分：dry 按 play_order 索引；noise 固定 0（立即播放）；
+            # interferer 用自身 startDelay。不能按统一 play_order 索引——
+            # noise/interferer 的 play_order 缺省为 0，会覆盖主讲人首条的 delay。
+            dry_delay_map = {}
+            noise_delays = []
+            interferer_delays = []
+            for cfg, d in audio_delays:
+                cfg_type = cfg.get('type')
+                if cfg_type == 'interferer':
+                    interferer_delays.append(d)
+                elif cfg_type == 'noise':
+                    noise_delays.append(d)
+                else:
+                    dry_delay_map[cfg.get('play_order', 0)] = d
 
+            def _stamp(timeline, audio_type, start_time, end_time):
+                timeline['audio_type'] = audio_type
+                timeline['actual_play_time'] = start_time
+                timeline['actual_end_time'] = end_time
+                # 毫秒级时间戳，供设备驱动用于时延统计
+                timeline['playback_start_time_ms'] = int(round(start_time * 1000))
+                timeline['playback_end_time_ms'] = int(round(end_time * 1000))
+                return timeline
+
+            # 主讲人：start = 播放开始 + 时间轴 delay；end = 本轮停止时间（保持原语义）
             for timeline in audio_timelines:
                 play_order = timeline.get('config', {}).get('play_order', 0)
-                timeline['actual_play_time'] = actual_play_time + delay_map.get(play_order, 0)
-                timeline['actual_end_time'] = actual_end_time
-                # 毫秒级时间戳，供设备驱动用于时延统计
-                timeline['playback_start_time_ms'] = int(round(
-                    (actual_play_time + delay_map.get(play_order, 0)) * 1000
-                ))
-                timeline['playback_end_time_ms'] = int(round(actual_end_time * 1000))
+                _stamp(timeline, 'dry',
+                       actual_play_time + dry_delay_map.get(play_order, 0),
+                       actual_end_time)
+
+            # 噪声：立即播放、循环直到本轮停止
+            for timeline, delay in zip(noise_timelines, noise_delays):
+                _stamp(timeline, 'noise', actual_play_time + delay, actual_end_time)
+
+            # 干扰人：start = 播放开始 + startDelay；
+            # 非循环时按音频时长推算自然结束，循环或时长未知则以停止时间为准
+            for timeline, delay in zip(interferer_timelines, interferer_delays):
+                start_time = actual_play_time + delay
+                duration = timeline.get('timeline_duration', 0) or 0
+                if timeline.get('config', {}).get('loop') or duration <= 0:
+                    end_time = actual_end_time
+                else:
+                    end_time = min(start_time + duration, actual_end_time)
+                _stamp(timeline, 'interferer', start_time, end_time)
+
+            # 合并三类时间轴（total_duration 等待逻辑只基于主讲人，已在上方计算）
+            audio_timelines.extend(noise_timelines)
+            audio_timelines.extend(interferer_timelines)
 
             return {
                 'audio_timelines': audio_timelines,
@@ -313,6 +359,14 @@ class PlaybackOrchestrator:
                 if evt:
                     evt.wait(timeout=60)
 
+            # 记录全局背景噪声启动时间戳（毫秒），供设备驱动定位噪声段
+            bg_start_ms = int(round(time.time() * 1000))
+            self._bg_noise_timestamps[task_id_key] = {
+                'audio_id': noise_configs[0].get('audio_id') if noise_configs else None,
+                'start_ms': bg_start_ms,
+                'end_ms': None,
+            }
+
             self._log('INFO', '全局背景噪声已启动', task_id=task_id)
             return True
         except Exception as e:
@@ -346,12 +400,24 @@ class PlaybackOrchestrator:
         keys_to_stop = [k for k in players if k.startswith(self._bg_noise_player_type)]
         if not keys_to_stop:
             return
+        # 记录全局背景噪声停止时间戳（毫秒），与 start_background_noise 的 start_ms 配对
+        bg_ts = self._bg_noise_timestamps.get(task_id_key)
+        if bg_ts and not bg_ts.get('end_ms'):
+            bg_ts['end_ms'] = int(round(time.time() * 1000))
         for k in keys_to_stop:
             stop_event = players[k].get('stop_event')
             if stop_event:
                 stop_event.set()
             players.pop(k, None)
         self._log('INFO', '全局背景噪声已停止', task_id=task_id)
+
+    def get_background_noise_timestamps(self, task_id):
+        """获取全局背景噪声起止时间戳。
+
+        Returns:
+            dict | None: {'audio_id', 'start_ms', 'end_ms'}；end_ms 停止前为 None，未启动返回 None
+        """
+        return self._bg_noise_timestamps.get(str(task_id))
 
     def has_background_noise(self, case_config):
         """判断 case_config 是否配置了有效的全局背景噪声。

@@ -307,6 +307,7 @@ def build_noise_play_configs(noise_audio_info, noise_devices, audio_service):
             'loop': True,
             'is_noise': True,
             'type': 'noise',
+            'audio_id': n_config.get('audio_id') if n_config else None,
         })
 
     return configs
@@ -448,6 +449,7 @@ def build_interferer_configs(task_id, interferer_config, audio_service):
             'loop': bool(loop),
             'is_noise': False,
             'type': 'interferer',
+            'audio_id': audio_info.get('id'),
         })
 
     if audio_to_play:

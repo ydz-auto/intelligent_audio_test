@@ -130,18 +130,20 @@
   <text x="975" y="515" class="chip-t" fill="#4c1d95">_get_round_safe</text>
   <rect x="1038" y="500" width="140" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
   <text x="1108" y="515" class="chip-t" fill="#4c1d95">_get_audio_from_round</text>
-  <rect x="644" y="528" width="90" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
-  <text x="689" y="543" class="chip-t" fill="#4c1d95">_iter_rounds</text>
-  <rect x="742" y="528" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
-  <text x="807" y="543" class="chip-t" fill="#4c1d95">_aggregate_results</text>
-  <rect x="880" y="528" width="100" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
-  <text x="930" y="543" class="chip-t" fill="#4c1d95">_unwrap_value</text>
-  <rect x="988" y="528" width="160" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
-  <text x="1068" y="543" class="chip-t" fill="#4c1d95">_collect_flat_from_rounds</text>
+  <rect x="644" y="528" width="86" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="687" y="543" class="chip-t" fill="#4c1d95">_iter_rounds</text>
+  <rect x="738" y="528" width="124" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="800" y="543" class="chip-t" fill="#4c1d95">_aggregate_results</text>
+  <rect x="870" y="528" width="96" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="918" y="543" class="chip-t" fill="#4c1d95">_unwrap_value</text>
+  <rect x="974" y="528" width="52" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1000" y="543" class="chip-t" fill="#4c1d95">_avg</text>
+  <rect x="1034" y="528" width="128" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1098" y="543" class="chip-t" fill="#4c1d95">_collect_flat_from_rounds</text>
   <text x="644" y="560" class="note">单轮：round_number 有值 → 取该轮 · 多轮：缺省 → 逐轮计算，数值取平均 / 末轮兜底</text>
 
   <rect x="44" y="584" width="1172" height="26" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
-  <text x="630" y="601" class="body" fill="#4c1d95" text-anchor="middle">继承树：BaseCalculator → TurnTakingBase（5 维度类）· _RejectionBase（2 类）· _BaseEnvJudgeCalculator（2 类）· InterruptionMetricsCalculator · LlmJudgeCalculator — 12 实例类 + 1 全域编排器</text>
+  <text x="630" y="601" class="body" fill="#4c1d95" text-anchor="middle">继承树：BaseCalculator → TurnTakingBase（6 计算类）· _RejectionBase（2 类）· _BaseEnvJudgeCalculator（2 类）· InterruptionMetricsCalculator · LlmJudgeCalculator — 12 实例类 + 1 全域编排器</text>
 
   <line x1="630" y1="622" x2="630" y2="634" class="flow"/>
 
@@ -200,28 +202,28 @@
   <rect x="44" y="922" width="760" height="12" fill="#6366f1"/>
   <text x="64" y="925" font-size="12.5" font-weight="700" fill="#ffffff">TurnTakingCalculator — 域内编排（对话轮次 · 5 子维度）</text>
   <text x="796" y="925" font-size="9.5" fill="#e0e7ff" text-anchor="end">域键 turn_taking + 5 子维度键</text>
-  <text x="64" y="956" font-size="10.5" font-weight="700" fill="#3730a3">__init__.py（48 行）— _get_asr_chunks() ASR 词级时间戳唯一出口（shared/llm_client、env_judge 等复用）</text>
+  <text x="64" y="956" font-size="10.5" font-weight="700" fill="#3730a3">__init__.py（57 行）— _get_asr_chunks() ASR 词级时间戳唯一出口（shared/llm_client、env_judge 等复用）</text>
   <rect x="64" y="966" width="720" height="26" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
-  <text x="80" y="983" font-size="10" font-weight="600" fill="#3730a3">TurnTakingBase(BaseCalculator) — _get_asr_chunks 转发（非副本）+ _compute_pause_intervals · 编排 strategy.py（375 行）</text>
+  <text x="80" y="983" font-size="10" font-weight="600" fill="#3730a3">TurnTakingBase(BaseCalculator) — _get_asr_chunks 转发（非副本）+ _compute_pause_intervals · 编排 strategy.py（460 行）</text>
   <rect x="64" y="1002" width="132" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
   <text x="130" y="1019" class="pill-t" fill="#3730a3">tor</text>
-  <text x="130" y="1038" class="chip-t" fill="#64748b">tor.py · 148 行</text>
+  <text x="130" y="1038" class="chip-t" fill="#64748b">tor.py · 176 行</text>
   <rect x="204" y="1002" width="140" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
   <text x="274" y="1019" class="pill-t" fill="#3730a3">false_takeover</text>
-  <text x="274" y="1038" class="chip-t" fill="#64748b">false_takeover.py · 323</text>
+  <text x="274" y="1038" class="chip-t" fill="#64748b">false_takeover.py · 385</text>
   <rect x="352" y="1002" width="140" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
   <text x="422" y="1019" class="pill-t" fill="#3730a3">takeover_latency</text>
-  <text x="422" y="1038" class="chip-t" fill="#64748b">takeover_latency.py · 199</text>
+  <text x="422" y="1038" class="chip-t" fill="#64748b">takeover_latency.py · 241</text>
   <rect x="500" y="1002" width="140" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
   <text x="570" y="1019" class="pill-t" fill="#3730a3">high_freq_turn_taking</text>
-  <text x="570" y="1038" class="chip-t" fill="#64748b">high_freq_turn_taking.py · 212</text>
+  <text x="570" y="1038" class="chip-t" fill="#64748b">high_freq_turn_taking.py · 250</text>
   <rect x="648" y="1002" width="136" height="46" rx="6" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
   <text x="716" y="1019" class="pill-t" fill="#3730a3">high_freq_llm_judge</text>
-  <text x="716" y="1038" class="chip-t" fill="#64748b">high_freq_llm_judge.py · 321</text>
+  <text x="716" y="1038" class="chip-t" fill="#64748b">high_freq_llm_judge.py · 378</text>
   <text x="64" y="1072" class="body">策略模式：5 个子维度独立 Calculator · 各自 task_type 注册 · 经 CALCULATORS 分发</text>
   <text x="64" y="1090" class="body">跨维度规则（false_takeover.tor=1 → tor/takeover_latency 置 null）已上提全域编排器</text>
   <text x="64" y="1108" class="note">常量化：TAKEOVER_OFFSET_MS=40 · TAKEOVER_FIRST_FRAME_OFFSET_MS=100 · TIMELINE_MAX_ITEMS_CHUNKS=30 / PAUSES=20</text>
-  <text x="64" y="1126" class="note">残留：strategy.py:432-433 兜底字面量（or 4096 / or 0.1）— 唯一未常量化点</text>
+  <text x="64" y="1126" class="note">✓ 兜底字面量已常量化（原 strategy.py:432-433 or 4096 / or 0.1 → LLM_DEFAULT_*）</text>
   <text x="64" y="1144" class="note">CLI 入口 print × 80 → 建议改 logging（见 ④）</text>
 
   <!-- interruptibility 域 -->
@@ -230,15 +232,15 @@
   <rect x="824" y="922" width="392" height="12" fill="#0284c7"/>
   <text x="844" y="925" font-size="12.5" font-weight="700" fill="#ffffff">InterruptionMetrics — 独立主维度</text>
   <text x="1206" y="925" font-size="9.5" fill="#e0f2fe" text-anchor="end">interruption_metrics</text>
-  <text x="844" y="956" font-size="10.5" font-weight="700" fill="#075985">strategy.py（55 行）· 域内编排</text>
+  <text x="844" y="956" font-size="10.5" font-weight="700" fill="#075985">strategy.py（80 行）· 域内编排</text>
   <rect x="844" y="966" width="352" height="26" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>
   <text x="860" y="983" font-size="10" font-weight="600" fill="#075985">InterruptionMetricsCalculator(BaseCalculator)</text>
   <rect x="844" y="1002" width="170" height="46" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>
   <text x="929" y="1019" class="pill-t" fill="#075985">interruption.py</text>
-  <text x="929" y="1038" class="chip-t" fill="#64748b">342 行 · 指标计算</text>
+  <text x="929" y="1038" class="chip-t" fill="#64748b">397 行 · 指标计算</text>
   <rect x="1022" y="1002" width="174" height="46" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>
   <text x="1109" y="1019" class="pill-t" fill="#075985">interruption_llm.py</text>
-  <text x="1109" y="1038" class="chip-t" fill="#64748b">305 行 · LLM 评审</text>
+  <text x="1109" y="1038" class="chip-t" fill="#64748b">347 行 · LLM 评审</text>
   <text x="844" y="1072" class="body">复用全域 _shared_asr：词级时间戳 + pause_intervals</text>
   <text x="844" y="1090" class="body">打断时机窗口 / 打断行为判定</text>
   <text x="844" y="1114" font-size="10" fill="#166534">✓ 目录拼写修复（interruptibility）· 由工具库升级为独立注册维度</text>
@@ -250,15 +252,15 @@
   <rect x="44" y="1180" width="384" height="26" rx="10" fill="#22c55e"/>
   <rect x="44" y="1194" width="384" height="12" fill="#22c55e"/>
   <text x="60" y="1197" font-size="12" font-weight="700" fill="#ffffff">RejectionSceneAwareness — 拒识场景（2 子维度）</text>
-  <text x="64" y="1226" font-size="10.5" font-weight="700" fill="#166534">strategy.py（170 行）· 域内编排</text>
+  <text x="64" y="1226" font-size="10.5" font-weight="700" fill="#166534">strategy.py（218 行）· 域内编排</text>
   <rect x="64" y="1236" width="344" height="24" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
   <text x="80" y="1252" font-size="10" font-weight="600" fill="#166534">_RejectionBase(BaseCalculator) — 域内公共逻辑</text>
   <rect x="64" y="1270" width="164" height="40" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
   <text x="146" y="1286" class="pill-t" fill="#166534">non_interactive_latency</text>
-  <text x="146" y="1302" class="chip-t" fill="#64748b">195 行</text>
+  <text x="146" y="1302" class="chip-t" fill="#64748b">240 行</text>
   <rect x="236" y="1270" width="172" height="40" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
   <text x="322" y="1286" class="pill-t" fill="#166534">noise_latency</text>
-  <text x="322" y="1302" class="chip-t" fill="#64748b">176 行</text>
+  <text x="322" y="1302" class="chip-t" fill="#64748b">209 行</text>
   <text x="64" y="1328" class="note">复用 _shared_asr · 两子维度各自注册、独立分发</text>
 
   <!-- env_judge 域 -->
@@ -266,15 +268,15 @@
   <rect x="448" y="1180" width="384" height="26" rx="10" fill="#06b6d4"/>
   <rect x="448" y="1194" width="384" height="12" fill="#06b6d4"/>
   <text x="468" y="1197" font-size="12" font-weight="700" fill="#ffffff">EnvJudge — 环境语义评审（2 子维度）</text>
-  <text x="468" y="1226" font-size="10.5" font-weight="700" fill="#155e75">strategy.py（101 行）· 域内编排</text>
+  <text x="468" y="1226" font-size="10.5" font-weight="700" fill="#155e75">strategy.py（124 行）· 域内编排</text>
   <rect x="468" y="1236" width="348" height="24" rx="6" fill="#cffafe" stroke="#67e8f9" stroke-width="1"/>
   <text x="484" y="1252" font-size="10" font-weight="600" fill="#155e75">_BaseEnvJudgeCalculator(BaseCalculator) — LLM 评审基类</text>
   <rect x="468" y="1270" width="168" height="40" rx="6" fill="#cffafe" stroke="#67e8f9" stroke-width="1"/>
   <text x="552" y="1286" class="pill-t" fill="#155e75">rejection_judge</text>
-  <text x="552" y="1302" class="chip-t" fill="#64748b">235 行</text>
+  <text x="552" y="1302" class="chip-t" fill="#64748b">283 行</text>
   <rect x="644" y="1270" width="172" height="40" rx="6" fill="#cffafe" stroke="#67e8f9" stroke-width="1"/>
   <text x="730" y="1286" class="pill-t" fill="#155e75">interruption_judge</text>
-  <text x="730" y="1302" class="chip-t" fill="#64748b">225 行</text>
+  <text x="730" y="1302" class="chip-t" fill="#64748b">271 行</text>
   <text x="468" y="1328" class="note">LLM 默认值统一 LLM_DEFAULT_MAX_TOKENS / LLM_DEFAULT_TEMPERATURE</text>
 
   <!-- llm_judge 域 -->
@@ -282,15 +284,15 @@
   <rect x="852" y="1180" width="364" height="26" rx="10" fill="#f59e0b"/>
   <rect x="852" y="1194" width="364" height="12" fill="#f59e0b"/>
   <text x="872" y="1197" font-size="12" font-weight="700" fill="#ffffff">LlmJudge — LLM 评审（1 子维度）</text>
-  <text x="872" y="1226" font-size="10.5" font-weight="700" fill="#92400e">strategy.py（175 行）· 域内编排</text>
+  <text x="872" y="1226" font-size="10.5" font-weight="700" fill="#92400e">strategy.py（197 行）· 域内编排</text>
   <rect x="872" y="1236" width="328" height="24" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
   <text x="888" y="1252" font-size="10" font-weight="600" fill="#92400e">LlmJudgeCalculator — 高频问答 LLM 评审</text>
   <rect x="872" y="1270" width="200" height="40" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
   <text x="972" y="1286" class="pill-t" fill="#92400e">llm_judge_calculator.py</text>
-  <text x="972" y="1302" class="chip-t" fill="#64748b">189 行</text>
+  <text x="972" y="1302" class="chip-t" fill="#64748b">228 行</text>
   <rect x="1080" y="1270" width="120" height="40" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
   <text x="1140" y="1286" class="pill-t" fill="#92400e">strategy.py</text>
-  <text x="1140" y="1302" class="chip-t" fill="#64748b">175 行</text>
+  <text x="1140" y="1302" class="chip-t" fill="#64748b">197 行</text>
   <text x="872" y="1328" class="note">BEHAVIOR_LABELS / BEHAVIOR_FIELD_MAP 常量化</text>
 
   <text x="630" y="1372" font-size="11" font-weight="600" fill="#3730a3" text-anchor="middle">5 个域相互零 import · 仅经注册表（①）+ shared/（④）协作 · 域内：编排 strategy → 子维度 Calculator（策略模式）</text>
@@ -306,34 +308,37 @@
 
   <rect x="44" y="1508" width="572" height="292" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
   <text x="64" y="1530" font-size="12" font-weight="700" fill="#166534">shared/ — 模块内公共基础设施（snake_case · 零业务逻辑）</text>
-  <text x="64" y="1554" font-size="10.5" font-weight="600" fill="#166534">constants.py · 51 行 — 全部魔法数字收口</text>
-  <text x="76" y="1572" class="note">TAKEOVER_OFFSET_MS = 40 · TAKEOVER_FIRST_FRAME_OFFSET_MS = 100</text>
-  <text x="76" y="1588" class="note">LLM_DEFAULT_MAX_TOKENS = 4096 · LLM_DEFAULT_TEMPERATURE = 0.1</text>
-  <text x="76" y="1604" class="note">LLM_HTTP_CONNECT_TIMEOUT = 10.0 · TIMELINE_MAX_ITEMS_CHUNKS = 30 / PAUSES = 20</text>
-  <text x="76" y="1620" class="note">INPUT_ASR_SIMILARITY_THRESHOLD = 0.8 · AUDIO_EXTS / VIDEO_EXTS · BEHAVIOR_LABELS / FIELD_MAP</text>
-  <text x="64" y="1648" font-size="10.5" font-weight="600" fill="#166534">enums.py · 41 行 — 枚举化（enum 化要求落地）</text>
-  <text x="64" y="1676" font-size="10.5" font-weight="600" fill="#166534">llm_client.py — call_llm / parse_json / get_llm_config / resolve_model</text>
-  <text x="76" y="1694" class="note">消除 3 处重复 LLM 客户端实现（原各子维度各自实现）</text>
-  <text x="64" y="1722" font-size="10.5" font-weight="600" fill="#166534">asr_utils.py · 122 行 — load_json 等通用工具</text>
-  <text x="76" y="1740" class="note">消除 _unwrap_value / _avg / _load 等跨文件重复小函数</text>
-  <text x="76" y="1776" class="note">shared/ 不 import 任何域包 → 保证域间零依赖、可被全部 5 域复用</text>
+  <text x="64" y="1554" font-size="10.5" font-weight="600" fill="#166534">constants.py · 63 行 — 全部魔法数字收口</text>
+  <text x="76" y="1572" class="note">TAKEOVER_OFFSET_MS = 40 · TAKEOVER_FIRST_FRAME_OFFSET_MS = 100（legacy 链路）</text>
+  <text x="76" y="1588" class="note">LLM_DEFAULT_MAX_TOKENS = 4096 · LLM_DEFAULT_TEMPERATURE = 0.1 · TIMEOUT = 300 · MAX_RETRIES = 3</text>
+  <text x="76" y="1604" class="note">LLM_DEFAULT_MODEL = 'gpt-4o' · LLM_JUDGE_MAX_TOKENS = 1024 · LLM_HTTP_CONNECT_TIMEOUT = 10.0 · RETRY_BASE_DELAY = 2</text>
+  <text x="76" y="1620" class="note">ASR_*_SEG_MERGE_GAP_S × 4 · TURN_DURATION_THRESHOLD = 1.0 · TURN_NUM_WORDS_THRESHOLD = 3 · PAUSE_MIN / MAX_GAP = 0.2 / 3.0</text>
+  <text x="76" y="1636" class="note">YIELD_GRACE_S = 0.5 · EPS_S = 1e-6 · MS_PER_S = 1000 · ROUND_DIGITS = 3 · TIMELINE_MAX_ITEMS_CHUNKS / PAUSES = 30 / 20</text>
+  <text x="76" y="1652" class="note">INPUT_ASR_SIMILARITY_THRESHOLD = 0.8 · AUDIO_EXTS / VIDEO_EXTS · BEHAVIOR_LABELS / BEHAVIOR_FIELD_MAP</text>
+  <text x="64" y="1680" font-size="10.5" font-weight="600" fill="#166534">enums.py · 52 行 — 枚举化（enum 化要求落地）</text>
+  <text x="76" y="1696" class="note">SceneType · EventType · BehaviorLabel（含 field_name property）· SceneLabel — 4 枚举类</text>
+  <text x="64" y="1712" font-size="10.5" font-weight="600" fill="#166534">llm_client.py · 444 行 — call_llm / parse_json / get_llm_config / resolve_model 等 15 函数</text>
+  <text x="76" y="1728" class="note">消除 3 处重复 LLM 客户端实现（原各子维度各自实现）</text>
+  <text x="64" y="1744" font-size="10.5" font-weight="600" fill="#166534">asr_utils.py · 148 行 — load_json 等通用工具</text>
+  <text x="76" y="1760" class="note">消除 _unwrap_value / _avg / _load 等跨文件重复小函数</text>
+  <text x="76" y="1784" class="note">shared/ 不 import 任何域包 → 保证域间零依赖、可被全部 5 域复用</text>
 
   <rect x="636" y="1508" width="580" height="292" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
-  <text x="656" y="1530" font-size="12" font-weight="700" fill="#14532d">重构验收对照（四轮复查 · 完成度 ≈98%）</text>
+  <text x="656" y="1530" font-size="12" font-weight="700" fill="#14532d">重构验收对照（四轮复查 · 完成度 ≈99%）</text>
   <text x="656" y="1554" font-size="10.5" font-weight="700" fill="#166534">✓ 主要坏味道已清零</text>
   <text x="668" y="1572" class="note">✓ 目录拼写 interruptibility 修复 · 残留旧文件（env_judge.py / _common.py）已删除</text>
-  <text x="668" y="1588" class="note">✓ turn_taking/__init__.py 706 → 48 行 · _get_asr_word_chunks 并入 _get_asr_chunks</text>
-  <text x="668" y="1604" class="note">✓ Phase3：8 个单/多轮公共方法统一入 base.py（L64-L204）</text>
+  <text x="668" y="1588" class="note">✓ turn_taking/__init__.py 706 → 57 行 · _get_asr_word_chunks 并入 _get_asr_chunks</text>
+  <text x="668" y="1604" class="note">✓ Phase3：9 个单/多轮公共方法统一入 base.py（L64-L212，含 _avg）</text>
   <text x="668" y="1620" class="note">✓ LLM 客户端去重 → shared/llm_client · 默认值统一 LLM_DEFAULT_*</text>
   <text x="668" y="1636" class="note">✓ offset_ms / connect / max_items → TAKEOVER_OFFSET_MS 等常量</text>
   <text x="668" y="1652" class="note">✓ 全域编排器 XiaoyiMetricsCalculator 注册 xiaoyi_metrics（第 13 键）</text>
-  <text x="656" y="1680" font-size="10.5" font-weight="700" fill="#92400e">△ 残留 3 项（低风险 · 建议后续收尾）</text>
-  <text x="668" y="1698" class="note">① turn_taking/strategy.py:432-433 兜底字面量（or 4096 / or 0.1）— 唯一真魔法数字</text>
-  <text x="668" y="1714" class="note">② CLI argparse 默认值（high_freq_llm_judge.py:345-346）</text>
-  <text x="668" y="1730" class="note">③ CLI 入口 print × 80 → 建议改造为 logging</text>
-  <text x="668" y="1768" font-size="10" fill="#166534">结构性结论：域拆分（DDD）✓ · 注册表分发 + 策略模式 + 模板方法 ✓ · 常量化 / 枚举化 ✓ · 域间零依赖 ✓</text>
+  <text x="668" y="1668" class="note">✓ 兜底字面量 or 4096 / or 0.1 → LLM_DEFAULT_MAX_TOKENS / TEMPERATURE · CLI argparse 默认值 → 常量</text>
+  <text x="656" y="1696" font-size="10.5" font-weight="700" fill="#92400e">△ 残留 1 项（低风险 · 不影响指标精度 · 建议后续收尾）</text>
+  <text x="668" y="1714" class="note">① CLI 入口 print × 80（分布于 8 个文件，仅影响日志可读性）→ 建议改造为 logging</text>
+  <text x="668" y="1748" font-size="10" fill="#166534">结构性结论：域拆分（DDD）✓ · 注册表分发 + 策略模式 + 模板方法 ✓ · 常量化 / 枚举化 ✓ · 域间零依赖 ✓</text>
 
   <line x1="0" y1="1856" x2="1240" y2="1856" stroke="#cbd5e1" stroke-width="1"/>
   <text x="24" y="1880" font-size="10.5" fill="#64748b">依据重构后源码逐文件实测绘制（base.py · 各域 __init__/strategy · shared/*）— 三层编排：全域编排器 → 域内编排 → 子维度 Calculator（策略模式）</text>
   <text x="24" y="1900" font-size="10.5" fill="#64748b">修订：interruptibility / env_judge / rejection_scene_awareness / llm_judge 由“从属工具”更正为 5 个完全独立的主维度域 · 2026-09</text>
+  <text x="24" y="1920" font-size="10.5" fill="#64748b">最新修订：全量行数实测刷新 · Phase3 统一 9 方法（含 _avg）· 继承树 6 计算类 · 残留 3→1（①②已收口）</text>
 </svg>

@@ -37,6 +37,7 @@
               <td>
                 <select v-model="record.source" class="form-input form-input-sm" @blur="handleSourceTypeChange(index)">
                   <option value="case">用例参数</option>
+                  <option value="case_config">用例配置</option>
                   <option value="reference">参考参数</option>
                   <option value="device">设备输出</option>
                   <option value="api">API输出</option>
@@ -119,7 +120,7 @@ const { warning, error } = useNotification()
 
 interface Mapping {
   id?: number
-  source?: 'case' | 'reference' | 'device' | 'api'
+  source?: 'case' | 'case_config' | 'reference' | 'device' | 'api'
   source_param: string
   param_name?: string
   dimension_id?: number | null
@@ -157,6 +158,11 @@ const emit = defineEmits<{
 const availableDimensions = ref<any[]>([])
 const dimensionParamsMap = ref<Record<number, any[]>>({})
 const loadingDimensionParams = ref<Record<number, boolean>>({})
+
+// 用例配置(config.rounds)可映射的结构性字段：评估时从 test_case.config.rounds 按轮读取
+const CASE_CONFIG_FIELD_PRESETS = [
+  { code: 'audios', name: '被播放音频' }
+]
 
 async function loadDimensions() {
   availableDimensions.value = []
@@ -231,6 +237,7 @@ function getSourceParams(source: string, currentParam?: string): any[] {
   let params: any[]
   switch (source) {
     case 'case': params = props.caseParams || []; break
+    case 'case_config': params = [...CASE_CONFIG_FIELD_PRESETS]; break
     case 'reference': params = props.referenceParams || []; break
     case 'device': params = props.deviceParams || []; break
     case 'api': params = props.apiParams || []; break
@@ -245,6 +252,7 @@ function getSourceParams(source: string, currentParam?: string): any[] {
 function getAllSourceParams(): any[] {
   const allParams = [
     ...(props.caseParams || []),
+    ...CASE_CONFIG_FIELD_PRESETS,
     ...(props.referenceParams || []),
     ...(props.deviceParams || []),
     ...(props.apiParams || [])
@@ -311,7 +319,7 @@ function handleSourceTypeChange(index: number) {
   if (record) {
     record.source_param = ''
     record.param_name = ''
-    if (record.source === 'case') {
+    if (record.source === 'case' || record.source === 'case_config') {
       record.dimension_id = null
       record.dimension_name = ''
     }
@@ -397,7 +405,7 @@ async function autoSaveMapping(record: any, index: number) {
     transform_type: record.transform_type || 'none'
   }
 
-  // source 必须是合法值（case/reference/device/api），为空时不保存
+  // source 必须是合法值（case/case_config/reference/device/api），为空时不保存
   if (!mappingData.source || !mappingData.source_param || !mappingData.target_param) {
     return
   }

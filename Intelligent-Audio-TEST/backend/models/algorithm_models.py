@@ -315,7 +315,7 @@ class ParamMapping(db.Model):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
-    source = Column(String(20), nullable=False, default='api', comment='参数来源：case=用例参数, reference=参考参数, device=设备输出, api=API输出')
+    source = Column(String(20), nullable=False, default='api', comment='参数来源：case=用例参数, reference=参考参数, device=设备输出, api=API输出, case_config=用例配置(config.rounds)字段')
     source_param = Column(String(50), nullable=False, comment='源参数代码')
     source_direction = Column(String(10), default='output', comment='源参数方向：input, output')
     dimension_id = Column(Integer, ForeignKey('dimensions.id', ondelete='CASCADE'), nullable=True, comment='目标评估维度ID(可为空)')

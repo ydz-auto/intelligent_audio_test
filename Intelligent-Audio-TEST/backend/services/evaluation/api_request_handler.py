@@ -81,9 +81,13 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         遍历顶层字段和 rounds 列表里的字段。对于 ``audio_field_names`` 集合中的
         字段（field_mapper 中 type='audio' 的字段），会尝试提取为文件上传。
-        单轮时，rounds[0] 里的音频字段会被提到顶层上传，rounds 里删掉该字段。
-        多轮时，每轮的音频字段提取为 ``rounds_{index}_{field_name}`` 上传，
+        单轮时，rounds[0] 里的字符串音频字段会被提到顶层上传，rounds 里删掉该字段。
+        多轮时，每轮的字符串音频字段提取为 ``rounds_{index}_{field_name}`` 上传，
         rounds JSON 里对应值替换为 ``__MULTIPART__:rounds_{index}_{field_name}`` 占位符。
+
+        结构化音频字段（如被播放音频 audios 列表 ``[{audio_path, spl, ...}, ...]``）：
+        递归遍历 dict/list 内部，凡是可解析为文件的字符串值都提取上传，
+        原值替换为 ``__MULTIPART__:<upload_key>`` 占位符（eval_server 侧递归还原为落盘路径）。
 
         支持的文件值形式：
         - data URI（``data:audio/wav;base64,...``）
@@ -111,30 +115,49 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             if key == 'rounds' and isinstance(value, list):
                 # 深拷贝，避免修改原始 payload
                 rounds_copy = json.loads(json.dumps(value))
-                if len(rounds_copy) == 1 and isinstance(rounds_copy[0], dict):
-                    # 单轮：把音频字段提到顶层上传，rounds 里删掉该字段
-                    rd = rounds_copy[0]
-                    for field_name in list(audio_field_names):
-                        field_value = rd.pop(field_name, None)
-                        if isinstance(field_value, str) and field_value:
-                            self._extract_single_file(field_name, field_value, files,
-                                                      form_fields_fallback=form_fields,
-                                                      fallback_key=field_name, fallback_value=field_value)
-                else:
-                    # 多轮：每轮的音频字段提取为 rounds_{idx}_{field_name}
-                    for idx, rd in enumerate(rounds_copy):
-                        if not isinstance(rd, dict):
+                for idx, rd in enumerate(rounds_copy):
+                    if not isinstance(rd, dict):
+                        continue
+                    for field_name in audio_field_names:
+                        if field_name not in rd:
                             continue
-                        for field_name in audio_field_names:
-                            field_value = rd.get(field_name)
-                            if isinstance(field_value, str) and field_value:
+                        field_value = rd.get(field_name)
+                        if isinstance(field_value, str) and field_value:
+                            if len(rounds_copy) == 1:
+                                # 单轮：把字符串音频字段提到顶层上传，rounds 里删掉该字段
+                                rd.pop(field_name, None)
+                                self._extract_single_file(field_name, field_value, files,
+                                                          form_fields_fallback=form_fields,
+                                                          fallback_key=field_name, fallback_value=field_value)
+                            else:
                                 upload_field_name = f'rounds_{idx}_{field_name}'
                                 extracted = self._extract_single_file(upload_field_name, field_value, files)
                                 if extracted:
                                     rd[field_name] = f'__MULTIPART__:{upload_field_name}'
+                        elif isinstance(field_value, (dict, list)):
+                            # 结构化音频字段（如被播放音频 audios 列表）：递归提取内部文件值
+                            rd[field_name] = self._extract_nested_files(
+                                field_value, f'rounds_{idx}_{field_name}', files
+                            )
+                # 结构化字段（dict/list，如 played_audios、background_noise、interferers）：
+                # 递归提取内部文件值，替换为 __MULTIPART__ 占位符
+                # （不限 audio_field_names，覆盖 field_type=json 的结构化音频参数，
+                #   包括噪声和干扰人音频）
+                for idx, rd in enumerate(rounds_copy):
+                    if not isinstance(rd, dict):
+                        continue
+                    for field_name in list(rd.keys()):
+                        field_value = rd.get(field_name)
+                        if isinstance(field_value, (dict, list)):
+                            rd[field_name] = self._extract_nested_files(
+                                field_value, f'rounds_{idx}_{field_name}', files
+                            )
                 form_fields[key] = json.dumps(rounds_copy)
             elif isinstance(value, str) and self._is_file_value(value):
                 self._extract_single_file(key, value, files, form_fields_fallback=form_fields, fallback_key=key, fallback_value=value)
+            elif key in audio_field_names and isinstance(value, (dict, list)):
+                # 顶层结构化音频字段：递归提取内部文件值，替换为 __MULTIPART__ 占位符
+                form_fields[key] = json.dumps(self._extract_nested_files(value, key, files))
             elif isinstance(value, (dict, list)):
                 form_fields[key] = json.dumps(value)
             elif isinstance(value, bool):
@@ -148,13 +171,20 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
     @staticmethod
     def _is_file_value(value):
-        """判断字符串值是否可能是文件（data URI 或本地可解析路径）。"""
+        """判断字符串值是否可能是文件（data URI / OSS URI / 本地可解析路径）。"""
         if not isinstance(value, str) or not value:
             return False
         if value.startswith('data:') and ',' in value:
             return True
         if len(value) >= 4096:
             return False
+        # OSS URI（oss://category/key），走对象存储存在性检查
+        if value.startswith('oss://'):
+            from backend.utils.clients.oss_client import oss
+            try:
+                return oss.exists(value)
+            except Exception:
+                return False
         # 绝对路径
         if os.path.isabs(value):
             return os.path.exists(value)
@@ -181,6 +211,17 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 filename = f"{field_name}{ext}"
                 files[field_name] = (filename, file_bytes, mime)
                 return True
+            elif isinstance(value, str) and value.startswith('oss://') and len(value) < 4096:
+                # OSS URI：从对象存储下载
+                from backend.utils.clients.oss_client import oss
+                local_path = oss.load_file(value)
+                if local_path and os.path.exists(local_path):
+                    with open(local_path, 'rb') as f:
+                        file_bytes = f.read()
+                    os.remove(local_path)
+                    filename = os.path.basename(value)
+                    files[field_name] = (filename, file_bytes, 'application/octet-stream')
+                    return True
             elif isinstance(value, str) and len(value) < 4096:
                 # 绝对路径直接用；相对路径解析
                 resolved = value if os.path.isabs(value) else cls._resolve_relative_path(value)
@@ -196,6 +237,40 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         if form_fields_fallback is not None and fallback_key is not None:
             form_fields_fallback[fallback_key] = fallback_value
         return False
+
+    def _extract_nested_files(self, value, prefix, files):
+        """递归提取嵌套结构（dict/list）中的文件值，替换为 __MULTIPART__ 占位符
+
+        用于结构化音频字段（如被播放音频 audios 列表 [{audio_path, spl, ...}]）：
+        遍历内部所有字符串值，凡是可解析为文件的（data URI / 本地路径）都提取为
+        multipart 文件字段上传，原值替换为 ``__MULTIPART__:<upload_key>``。
+
+        Args:
+            value: dict/list/标量 嵌套结构
+            prefix: 上传字段名前缀（如 rounds_0_played_audios）
+            files: 已有的上传文件字典（避免重复 key）
+        Returns:
+            替换文件值后的同构结构
+        """
+        if isinstance(value, dict):
+            return {
+                k: self._extract_nested_files(v, f'{prefix}_{k}', files)
+                for k, v in value.items()
+            }
+        if isinstance(value, list):
+            return [
+                self._extract_nested_files(item, f'{prefix}_{i}', files)
+                for i, item in enumerate(value)
+            ]
+        if isinstance(value, str) and value and self._is_file_value(value):
+            upload_key = prefix
+            seq = 0
+            while upload_key in files:
+                seq += 1
+                upload_key = f'{prefix}_{seq}'
+            if self._extract_single_file(upload_key, value, files):
+                return f'__MULTIPART__:{upload_key}'
+        return value
 
     @staticmethod
     def _resolve_relative_path(value):

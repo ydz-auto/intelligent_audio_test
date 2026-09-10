@@ -89,6 +89,18 @@ class E2EExecutor(BaseExecutor):
             if not bg_started:
                 self._log(level='WARNING', content='全局背景噪声启动失败，继续执行轮次（轮次级背景噪声仍可生效）',
                           task_id=task_id, test_case_id=test_case_id)
+            else:
+                # 把全局背景噪声启动时间戳写入播放时间戳账本，供逐轮采集透传给设备驱动
+                bg_ts = playback_orchestrator.get_background_noise_timestamps(task_id)
+                if bg_ts and bg_ts.get('start_ms'):
+                    ts_entry = self._playback_timestamps.setdefault(str(task_id), {
+                        'record_start_time': time.time(),
+                        'audio_play_times': [],
+                        'theory_offsets': {},
+                    })
+                    ts_entry['global_noise_start_ms'] = bg_ts['start_ms']
+                    if bg_ts.get('audio_id'):
+                        ts_entry['global_noise_audio_id'] = bg_ts['audio_id']
 
             # ── 阶段二：多轮循环 ──
             all_round_results, rounds_data, execution_success, last_adjusted_ref_params = \
@@ -136,6 +148,12 @@ class E2EExecutor(BaseExecutor):
                     content=f"停止全局背景噪声异常（忽略）: {bg_stop_err}",
                     task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None)
                 )
+            # 回写全局背景噪声结束时间戳，供最终采集透传给设备驱动
+            bg_ts = playback_orchestrator.get_background_noise_timestamps(task_id)
+            if bg_ts and bg_ts.get('end_ms'):
+                ts_entry = self._playback_timestamps.get(str(task_id))
+                if ts_entry is not None:
+                    ts_entry['global_noise_end_ms'] = bg_ts['end_ms']
 
             # ── 阶段四：设备驱动 teardown（与 initialize 对称）──
             if device_info_list:
@@ -349,6 +367,7 @@ class E2EExecutor(BaseExecutor):
                 post_extra_params['playback_timestamps_detail'] = [
                     {
                         'audio_id': p.get('audio_id'),
+                        'audio_type': p.get('audio_type'),
                         'play_order': p.get('play_order'),
                         'start_ms': p.get('playback_start_time_ms'),
                         'end_ms': p.get('playback_end_time_ms'),
@@ -562,13 +581,15 @@ class E2EExecutor(BaseExecutor):
         round_start_ms = None
         round_end_ms = None
         for timeline in audio_timelines:
-            if timeline.get('is_noise', False):
-                continue
             audio_config = timeline.get('config', {})
-            audio_obj = timeline.get('audio', {})
-            audio_id = getattr(audio_obj, 'id', None)
+            audio_obj = timeline.get('audio')
+            audio_id = getattr(audio_obj, 'id', None) if audio_obj is not None else None
+            # 噪声/干扰人 timeline 无 audio ORM 对象，audio_id 从 config 取
+            if not audio_id:
+                audio_id = audio_config.get('audio_id')
             if not audio_id:
                 continue
+            audio_type = timeline.get('audio_type') or ('noise' if timeline.get('is_noise') else 'dry')
 
             if task_id not in self._playback_timestamps:
                 self._playback_timestamps[task_id] = {
@@ -584,6 +605,7 @@ class E2EExecutor(BaseExecutor):
                 round_end_ms = end_ms
             self._playback_timestamps[task_id]['audio_play_times'].append({
                 'audio_id': audio_id,
+                'audio_type': audio_type,
                 'play_order': audio_config.get('play_order', 0),
                 'actual_time': timeline.get('actual_play_time', time.time()),
                 'actual_end_time': timeline.get('actual_end_time'),

@@ -137,6 +137,14 @@ class Config:
     LOG_LEVEL = _get_log_level()
     CONSOLE_LOG_ENABLED = _get_console_log_enabled()
     SOCKETIO_DEBUG = False
+
+    # ---- OSS / S3 兼容对象存储（单桶模式，开发环境为本地 MinIO）----
+    OSS_ENDPOINT = os.environ.get('OSS_ENDPOINT', 'http://localhost:9000')
+    OSS_REGION = os.environ.get('OSS_REGION', 'us-east-1')
+    OSS_ACCESS_KEY = os.environ.get('OSS_ACCESS_KEY', '')
+    OSS_SECRET_KEY = os.environ.get('OSS_SECRET_KEY', '')
+    OSS_BUCKET_NAME = os.environ.get('OSS_BUCKET_NAME', '')
+    OSS_KEY_PREFIX = os.environ.get('OSS_KEY_PREFIX', '')
     
 class DevelopmentConfig(Config):
     DEBUG = True

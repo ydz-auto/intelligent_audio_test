@@ -244,6 +244,14 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 }
             )
 
+        # 本地处理：解析 oss:// 路径为本地文件（双模式支持，与 multipart 上传并存）。
+        # 未配置 OSS 时原样返回，不影响既有传参方式。
+        from ..utils.oss_client import resolve_oss_paths
+        task_params = resolve_oss_paths(
+            task_params,
+            local_dir=os.path.join(config.UPLOAD_DIR, caller_task_id or eval_task_id),
+        )
+
         LocalConcurrencyManager.increment()
         try:
             TaskModel.create_task(
@@ -413,25 +421,42 @@ def create_task_upload():
             task_params[field_name] = file_path
             uploaded_file_paths[field_name] = file_path
 
-    # 解析 rounds JSON 字符串，并把 __MULTIPART__ 占位符替换为上传后的实际路径
-    # 遍历每个轮次里所有字段，凡是 '__MULTIPART__:<field_name>' 形式的值都替换成
-    # uploaded_file_paths 中对应的上传落盘路径（record_file / user_wav / ai_wav 等）
+    # 解析 rounds 及顶层结构化字段 JSON 字符串，并把 __MULTIPART__ 占位符替换为上传后的实际路径
+    # 占位符可能出现在任意嵌套层级（如被播放音频 rounds[i].audios[j].audio_path，
+    # 对应深路径 key 'rounds_0_played_audios_0_audio_path'），需递归遍历 dict/list 还原
+    def _restore_multipart_placeholders(value):
+        """递归还原嵌套结构中的 __MULTIPART__ 占位符为上传落盘路径"""
+        if isinstance(value, dict):
+            return {k: _restore_multipart_placeholders(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [_restore_multipart_placeholders(item) for item in value]
+        if isinstance(value, str) and value.startswith('__MULTIPART__:'):
+            placeholder_key = value.split(':', 1)[1]
+            # 未命中时保持占位符原值（与旧逻辑一致，便于排查缺失文件）
+            return uploaded_file_paths.get(placeholder_key, value)
+        return value
+
     rounds_str = task_params.get('rounds')
     if rounds_str and isinstance(rounds_str, str):
         try:
             rounds_list = json.loads(rounds_str)
             if isinstance(rounds_list, list):
-                for rd in rounds_list:
-                    if not isinstance(rd, dict):
-                        continue
-                    for fld, val in list(rd.items()):
-                        if isinstance(val, str) and val.startswith('__MULTIPART__:'):
-                            placeholder_key = val.split(':', 1)[1]
-                            if placeholder_key in uploaded_file_paths:
-                                rd[fld] = uploaded_file_paths[placeholder_key]
-                task_params['rounds'] = rounds_list
+                task_params['rounds'] = _restore_multipart_placeholders(rounds_list)
         except (json.JSONDecodeError, TypeError):
             pass  # rounds 不是合法 JSON，保持原样
+
+    # 顶层结构化字段（如 played_audios）：JSON 字符串内部也可能携带 __MULTIPART__ 占位符
+    for fld, val in list(task_params.items()):
+        if fld == 'rounds' or not isinstance(val, str) or '__MULTIPART__:' not in val:
+            continue
+        try:
+            parsed = json.loads(val)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(parsed, (dict, list)):
+            task_params[fld] = json.dumps(
+                _restore_multipart_placeholders(parsed), ensure_ascii=False
+            )
 
     # xiaoyi_metrics / takeover / interruption_metrics：把 rounds 里的字段提到顶层，供校验和计算使用
     # （record_file / user_wav / ai_wav 已作为文件上传保存，这里补充其他标量字段；
