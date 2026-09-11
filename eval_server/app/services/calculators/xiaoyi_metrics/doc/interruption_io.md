@@ -74,13 +74,16 @@ XiaoyiMetricsCalculator.calculate          # 同上编排器（sub_tasks 含 'in
 | `avg_recovery_latency_s` | float\|None | 平均打断恢复时延（毫秒），跨有效实际轮平均 |
 | `avg_overlap_s` | float\|None | 平均双方同时说话时长（毫秒，越短越好） |
 | `avg_silence_gap_s` | float\|None | 平均静默时长（毫秒） |
-| `round_latencies` | list\[dict] | **逐轮时延明细**：每项 `{round, stop_latency_s, recovery_latency_s, first_recovery_latency_s}`（毫秒），每个有效实际打断轮一项 |
-| `first_recovery_latency_s` | float\|None | **最后一个有效实际打断轮**的首个恢复回复时延（毫秒）；非最后一轮为 null（前面轮次回复被后续打断截断） |
+| `target_stop_latency_s` | float\|None | **本轮代表事件**（与模型语音重叠时长最大的打断事件）的检查时延（毫秒）；多轮整体评估取最后一个有效实际轮 |
+| `target_recovery_latency_s` | float\|None | 同代表事件的恢复时延（毫秒）；多轮整体评估取最后一个有效实际轮 |
+| `round_latencies` | list\[dict] | **逐轮时延明细**：每项 `{round, stop_latency_s, recovery_latency_s, target_stop_latency_s, target_recovery_latency_s, first_recovery_latency_s}`（毫秒），每个有效实际打断轮一项 |
+| `first_recovery_latency_s` | float\|None | **最后一个有效实际打断轮**的首个恢复回复时延（毫秒）= 该轮 `target_recovery_latency_s`；非最后一轮为 null（前面轮次回复被后续打断截断） |
 | `n_events` | int | 有效打断事件数（`event_type='interruption'`） |
 | `n_user_segments` | int | 用户语音段总数 |
 | `n_recovery_only` | int | 退化事件数（只算到恢复时延） |
 | `n_no_model_speech` | int | 模型全程未说话的用户段数 |
 | `per_event` | list\[dict] | 每个用户段的结果（见 §1.3），仅诊断用，不作为维度输出 |
+| `round_results` | list\[dict] | **仅多轮整体评估**：每个有效实际打断轮的完整子结果（带 `round_number`），诊断用；单轮/逐轮评估无此字段 |
 | `user_segments` | list\[dict] | 用户侧完整语音段时间线（过滤开场白后，含 `words`） |
 | `model_segments` | list\[dict] | 模型侧完整语音段时间线（同上） |
 | `is_actual_interruption` | bool | 本次计算采用的实际打断模式 |

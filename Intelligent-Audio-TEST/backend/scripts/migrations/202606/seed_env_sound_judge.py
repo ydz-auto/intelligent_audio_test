@@ -130,7 +130,7 @@ _COMMON_PARAMS = [
      False, None, '裁判错误/成功说明', 99),
 ]
 
-# ── 打断裁判独有输出参数（rejection_judge 不返回 interaction_text，故不进 _COMMON_PARAMS） ──
+# ── 交互文字输出参数（两个裁判都返回 interaction_text）──
 _INTERACTION_PARAM = (
     'ej_interaction', '交互内容', '完整交互文字(带时间戳)', 'text', 'output',
     'interaction_text', None, 'aux', True,
@@ -212,7 +212,7 @@ DIMENSIONS = [
         'estimated_exec_time': 120,  # LLM 调用
         'score_unit': '',
         'statistic_method': 'average',
-        'params': _COMMON_PARAMS,
+        'params': _COMMON_PARAMS + [_INTERACTION_PARAM],
         'param_mappings': _COMMON_PARAM_MAPPINGS,
     },
     {

@@ -135,6 +135,9 @@ SUB_DIMENSIONS = [
             ('tor_message', 'TOR说明', 'TOR说明', 'text', 'output',
              'tor.message', None, 'aux', True,
              False, None, 'tor: 错误/成功说明', 65),
+            ('ej_interaction', '交互内容', '完整交互文字(带时间戳)', 'text', 'output',
+             'interaction_text', None, 'aux', True,
+             False, None, '用例完整交互文字，query/answer 按时间排序，含 [m:ss; m:ss] 时间戳', 66),
         ],
     },
     {
@@ -180,6 +183,9 @@ SUB_DIMENSIONS = [
             ('ft_llm_evidence', '误接管LLM判定证据', 'LLM判定证据', 'json', 'output',
              'false_takeover.llm_eval.evidence', None, 'aux', True,
              False, None, 'LLM判定证据 {user_utterance_used_by_model, user_full_utterance}', 78),
+            ('ej_interaction', '交互内容', '完整交互文字(带时间戳)', 'text', 'output',
+             'interaction_text', None, 'aux', True,
+             False, None, '用例完整交互文字，query/answer 按时间排序，含 [m:ss; m:ss] 时间戳', 79),
         ],
     },
     {
@@ -216,6 +222,9 @@ SUB_DIMENSIONS = [
             ('latency_message', '时延说明', '时延说明', 'text', 'output',
              'takeover_latency.message', None, 'aux', True,
              False, None, 'takeover_latency: 错误/成功说明', 85),
+            ('ej_interaction', '交互内容', '完整交互文字(带时间戳)', 'text', 'output',
+             'interaction_text', None, 'aux', True,
+             False, None, '用例完整交互文字，query/answer 按时间排序，含 [m:ss; m:ss] 时间戳', 86),
         ],
     },
     # ────────────────────────────────────────────────────────────

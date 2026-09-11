@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from app.services.calculators.xiaoyi_metrics.shared.llm_client import (
     call_llm as call_llm_api,
     build_timeline_text,
+    build_interaction_text,
     parse_json,
     parse_evaluations,
     get_asr_chunks,
@@ -211,6 +212,10 @@ def evaluate_rejection_judge(
 
     timeline_text = build_timeline_text(user_chunks)
 
+    # ── 完整交互文字（query/answer + 时间戳）：模型侧走词级 ASR，仅用于返回展示，不进 prompt ──
+    model_chunks: Optional[List[Dict[str, Any]]] = get_asr_chunks(ai_wav)
+    interaction_text = build_interaction_text(user_chunks, model_chunks)
+
     # ── 提取 query / answer 文本（从 ASR 结果 JSON 读取） ──
     query_text = get_asr_text(user_wav)
     answer_text = get_asr_text(ai_wav)
@@ -222,6 +227,7 @@ def evaluate_rejection_judge(
         'model': model,
         'ai_wav': ai_wav,
         'evaluations': [],
+        'interaction_text': interaction_text,
         'query': query_text,
         'answer': answer_text,
         'timing': '',

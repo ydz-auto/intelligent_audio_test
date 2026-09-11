@@ -177,6 +177,13 @@ class TurnTakingCalculator(TurnTakingBase):
             }
             logger.info("[turn_taking] false_takeover.tor=1，tor 和 takeover_latency 置 null")
 
+        # 完整交互文字（query/answer + [m:ss; m:ss] 时间戳）：复用上面的共享 ASR，不额外调用
+        from app.services.calculators.xiaoyi_metrics.shared.llm_client import build_interaction_text
+        results['interaction_text'] = build_interaction_text(
+            shared_asr.get('user_chunks'),
+            shared_asr.get('ai_word_chunks') or shared_asr.get('ai_chunks'),
+        )
+
         return results
 
 
