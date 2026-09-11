@@ -4,6 +4,8 @@ import os
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 try:
     from hypium.model import UiParam
 except Exception:
@@ -64,7 +66,12 @@ class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
         return False
 
 
+@register_driver
 class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
+
+    app_type = AppType.XIAOYI_FACE2FACE
+    version = AppVersion.V1
+    platform = DevicePlatform.HARMONYOS
     @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         initialize_success = super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
@@ -127,7 +134,12 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
         return {'success': True, 'message': 'Success', 'asr': ori_text, 'translation': trans_text}
 
 
+@register_driver
 class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
+
+    app_type = AppType.XIAOYI_SIMULTANEOUS
+    version = AppVersion.V1
+    platform = DevicePlatform.HARMONYOS
     @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         initialize_success = super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)

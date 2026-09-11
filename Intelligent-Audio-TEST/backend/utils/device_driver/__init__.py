@@ -35,6 +35,9 @@ except ImportError:
 
 from .driver_factory import DeviceDriverFactory
 from .device_driver import device_driver_factory
+from .driver_types import AppType, AppVersion, DevicePlatform, DriverStatus
+from .registry import DriverRegistry, DriverNotFoundError, driver_registry, register_driver
+from .contracts import AppDriver, DriverContext
 
 __all__ = [
     'register_task_events',
@@ -54,4 +57,7 @@ __all__ = [
     'HarmonyHardenXiaoyi_Input_MethodDriver',
     'DeviceDriverFactory',
     'device_driver_factory'
+    , 'AppType', 'AppVersion', 'DevicePlatform', 'DriverStatus'
+    , 'DriverRegistry', 'DriverNotFoundError', 'driver_registry', 'register_driver'
+    , 'AppDriver', 'DriverContext'
 ]

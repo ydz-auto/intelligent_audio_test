@@ -15,8 +15,14 @@ from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 
+@register_driver
 class Xiaoyilivechat(HarmonyDriver):
+    app_type = AppType.XIAOYI_LIVECHAT
+    version = AppVersion.V1
+    platform = DevicePlatform.HARMONYOS
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
     # 华为音乐 bundle:测试中小艺有时会把播放的音频误识别为"播放音乐"指令而拉起音乐,

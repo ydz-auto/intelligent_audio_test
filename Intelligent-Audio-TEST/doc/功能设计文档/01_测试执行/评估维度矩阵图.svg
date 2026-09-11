@@ -1,0 +1,525 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowViolet); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .decision-t { font-size: 12px; font-weight: 600; fill: #854d0e; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">评估维度矩阵图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">三种执行模式对比 · 12个评估维度(Calculator) · 评估输入字段 · 测试模式×评估维度矩阵 · 打断维度入参/出参</text>
+
+  <!-- ① 三种执行模式对比表 -->
+  <rect x="24" y="88" width="1192" height="392" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="88" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="114" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="107" r="11" fill="#3b82f6"/>
+  <text x="46" y="111" class="num-badge">1</text>
+  <text x="66" y="112" class="sec-title" fill="#1e3a8a">三种执行模式对比表 — E2E设备测试 / API非实时 / API流式 / Realtime流式</text>
+
+  <!-- Table area background -->
+  <rect x="48" y="132" width="1144" height="336" fill="#ffffff" rx="4"/>
+
+  <!-- Column header row -->
+  <rect x="48" y="132" width="1144" height="28" fill="#dbeafe" rx="4"/>
+  <text x="103" y="150" class="lbl" fill="#1e3a8a" text-anchor="middle">维度</text>
+  <text x="287" y="150" class="lbl" fill="#1e3a8a" text-anchor="middle">E2E 设备测试</text>
+  <text x="545" y="150" class="lbl" fill="#1e3a8a" text-anchor="middle">API 非实时</text>
+  <text x="803" y="150" class="lbl" fill="#1e3a8a" text-anchor="middle">API 流式</text>
+  <text x="1062" y="150" class="lbl" fill="#1e3a8a" text-anchor="middle">Realtime 流式</text>
+
+  <!-- Vertical separator lines -->
+  <line x1="158" y1="132" x2="158" y2="468" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="416" y1="132" x2="416" y2="468" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="674" y1="132" x2="674" y2="468" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="932" y1="132" x2="932" y2="468" stroke="#bfdbfe" stroke-width="0.5"/>
+
+  <!-- Row 1: 传输 -->
+  <text x="56" y="179" class="body" font-weight="600">传输</text>
+  <text x="166" y="179" class="body" font-size="9.5">物理播放 + PCM 抓取</text>
+  <text x="424" y="179" class="body" font-size="9.5">HTTP POST</text>
+  <text x="682" y="179" class="body" font-size="9.5">SSE 流式</text>
+  <text x="940" y="179" class="body" font-size="9.5">WebSocket 全双工流</text>
+  <line x1="48" y1="188" x2="1192" y2="188" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 2: 音频 -->
+  <rect x="48" y="188" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="207" class="body" font-weight="600">音频</text>
+  <text x="166" y="207" class="body" font-size="9.5">文件级</text>
+  <text x="424" y="207" class="body" font-size="9.5">文件级</text>
+  <text x="682" y="207" class="body" font-size="9.5">100ms chunk 流式</text>
+  <text x="940" y="207" class="body" font-size="9.5">100ms chunk 流式</text>
+  <line x1="48" y1="216" x2="1192" y2="216" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 3: 混音 -->
+  <text x="56" y="235" class="body" font-weight="600">混音</text>
+  <text x="166" y="235" class="body" font-size="9.5">PyAudio callback</text>
+  <text x="424" y="235" class="body" font-size="9.5" fill="#94a3b8">不需要</text>
+  <text x="682" y="235" class="body" font-size="9.5">AudioStreamOrchestrator</text>
+  <text x="940" y="235" class="body" font-size="9.5">AudioStreamOrchestrator</text>
+  <line x1="48" y1="244" x2="1192" y2="244" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 4: SPL映射 -->
+  <rect x="48" y="244" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="263" class="body" font-weight="600">SPL 映射</text>
+  <text x="166" y="263" class="body" font-size="9.5">SPLMappingService (device)</text>
+  <text x="424" y="263" class="body" font-size="9.5" fill="#94a3b8">不涉及</text>
+  <text x="682" y="263" class="body" font-size="9.5">ApiRmsSplService (api_id)</text>
+  <text x="940" y="263" class="body" font-size="9.5">ApiRmsSplService (api_id)</text>
+  <line x1="48" y1="272" x2="1192" y2="272" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 5: AI说话检测 -->
+  <text x="56" y="291" class="body" font-weight="600">AI 说话检测</text>
+  <text x="166" y="291" class="body" font-size="9.5">PCM RMS 轮询</text>
+  <text x="424" y="291" class="body" font-size="9.5" fill="#94a3b8">不需要</text>
+  <text x="682" y="291" class="body" font-size="9.5">SSE 事件驱动</text>
+  <text x="940" y="291" class="body" font-size="9.5">WS 事件驱动</text>
+  <line x1="48" y1="300" x2="1192" y2="300" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 6: 打断检测 -->
+  <rect x="48" y="300" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="319" class="body" font-weight="600">打断检测</text>
+  <text x="166" y="319" class="body" font-size="9.5">RMS + sleep 延迟</text>
+  <text x="424" y="319" class="body" font-size="9.5" fill="#94a3b8">不支持</text>
+  <text x="682" y="319" class="body" font-size="9.5">SSE 事件</text>
+  <text x="940" y="319" class="body" font-size="9.5">speech_started/cancelled</text>
+  <line x1="48" y1="328" x2="1192" y2="328" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 7: 多轮 -->
+  <text x="56" y="347" class="body" font-weight="600">多轮</text>
+  <text x="166" y="347" class="body" font-size="9.5">case 模式连续通话</text>
+  <text x="424" y="347" class="body" font-size="9.5">HTTP session_id</text>
+  <text x="682" y="347" class="body" font-size="9.5">HTTP session_id</text>
+  <text x="940" y="347" class="body" font-size="9.5">同一 WebSocket 连接</text>
+  <line x1="48" y1="356" x2="1192" y2="356" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 8: 噪声/干扰 -->
+  <rect x="48" y="356" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="375" class="body" font-weight="600">噪声/干扰</text>
+  <text x="166" y="375" class="body" font-size="9.5">物理音箱播放</text>
+  <text x="424" y="375" class="body" font-size="9.5" fill="#94a3b8">不支持</text>
+  <text x="682" y="375" class="body" font-size="9.5">混音后 SSE 流式推送</text>
+  <text x="940" y="375" class="body" font-size="9.5">混音后 WS 流式推送</text>
+  <line x1="48" y1="384" x2="1192" y2="384" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 9: 延迟测量 -->
+  <text x="56" y="403" class="body" font-weight="600">延迟测量</text>
+  <text x="166" y="403" class="body" font-size="9.5">录屏首帧 + 时间戳</text>
+  <text x="424" y="403" class="body" font-size="9.5">HTTP 响应时间</text>
+  <text x="682" y="403" class="body" font-size="9.5">SSE 首事件时间戳</text>
+  <text x="940" y="403" class="body" font-size="9.5">事件时间戳精确到 ms</text>
+  <line x1="48" y1="412" x2="1192" y2="412" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 10: 适配层 -->
+  <rect x="48" y="412" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="431" class="body" font-weight="600">适配层</text>
+  <text x="166" y="431" class="body" font-size="9.5">device_driver</text>
+  <text x="424" y="431" class="body" font-size="9.5">HttpAPIAdapter</text>
+  <text x="682" y="431" class="body" font-size="9.5">HttpStreamAdapter</text>
+  <text x="940" y="431" class="body" font-size="9.5">RealtimeAPIAdapter</text>
+  <line x1="48" y1="440" x2="1192" y2="440" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 11: 执行器 -->
+  <text x="56" y="459" class="body" font-weight="600">执行器</text>
+  <text x="166" y="459" class="body" font-size="9.5">E2EExecutor</text>
+  <text x="424" y="459" class="body" font-size="9.5">APISessionExecutor</text>
+  <text x="682" y="459" class="body" font-size="9.5">APISessionExecutor</text>
+  <text x="940" y="459" class="body" font-size="9.5">RealtimeSessionExecutor</text>
+
+  <!-- ② 12个评估维度 (Calculator) -->
+  <rect x="24" y="500" width="1192" height="420" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="500" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="526" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="519" r="11" fill="#16a34a"/>
+  <text x="46" y="523" class="num-badge">2</text>
+  <text x="66" y="524" class="sec-title" fill="#166534">12个评估维度 (Calculator) — task_type → Calculator 类 → 说明 → Realtime 适配轮次</text>
+
+  <!-- Table area background -->
+  <rect x="48" y="544" width="1144" height="364" fill="#ffffff" rx="4"/>
+
+  <!-- Column header row -->
+  <rect x="48" y="544" width="1144" height="28" fill="#dcfce7" rx="4"/>
+  <text x="66" y="562" class="lbl" fill="#166534" text-anchor="middle">#</text>
+  <text x="159" y="562" class="lbl" fill="#166534" text-anchor="middle">task_type</text>
+  <text x="364" y="562" class="lbl" fill="#166534" text-anchor="middle">Calculator 类</text>
+  <text x="754" y="562" class="lbl" fill="#166534" text-anchor="middle">说明</text>
+  <text x="1103" y="562" class="lbl" fill="#166534" text-anchor="middle">Realtime 适配</text>
+
+  <!-- Vertical separator lines -->
+  <line x1="84" y1="544" x2="84" y2="908" stroke="#bbf7d0" stroke-width="0.5"/>
+  <line x1="234" y1="544" x2="234" y2="908" stroke="#bbf7d0" stroke-width="0.5"/>
+  <line x1="494" y1="544" x2="494" y2="908" stroke="#bbf7d0" stroke-width="0.5"/>
+  <line x1="1014" y1="544" x2="1014" y2="908" stroke="#bbf7d0" stroke-width="0.5"/>
+
+  <!-- Row 1 -->
+  <text x="66" y="591" class="body" text-anchor="middle" font-weight="600">1</text>
+  <text x="90" y="591" class="body" font-size="9.5" font-family="monospace">turn_taking</text>
+  <text x="240" y="591" class="body" font-size="9.5">TurnTakingCalculator</text>
+  <text x="500" y="591" class="body" font-size="9.5">话轮接管主维度，遍历子维度共享 ASR</text>
+  <text x="1020" y="591" class="body" font-size="9.5" fill="#1e40af" font-weight="600">正常轮</text>
+  <line x1="48" y1="600" x2="1192" y2="600" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 2 -->
+  <rect x="48" y="600" width="1144" height="28" fill="#f8fafc"/>
+  <text x="66" y="619" class="body" text-anchor="middle" font-weight="600">2</text>
+  <text x="90" y="619" class="body" font-size="9.5" font-family="monospace">tor</text>
+  <text x="240" y="619" class="body" font-size="9.5">TorCalculator</text>
+  <text x="500" y="619" class="body" font-size="9.5">接话率：用户说完后 AI 是否正确回复</text>
+  <text x="1020" y="619" class="body" font-size="9.5" fill="#1e40af" font-weight="600">正常轮</text>
+  <line x1="48" y1="628" x2="1192" y2="628" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 3 -->
+  <text x="66" y="647" class="body" text-anchor="middle" font-weight="600">3</text>
+  <text x="90" y="647" class="body" font-size="9.5" font-family="monospace">false_takeover</text>
+  <text x="240" y="647" class="body" font-size="9.5">FalseTakeoverCalculator</text>
+  <text x="500" y="647" class="body" font-size="9.5">误接管率：用户停顿期间 AI 是否抢话</text>
+  <text x="1020" y="647" class="body" font-size="9.5" fill="#1e40af" font-weight="600">正常轮</text>
+  <line x1="48" y1="656" x2="1192" y2="656" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 4 -->
+  <rect x="48" y="656" width="1144" height="28" fill="#f8fafc"/>
+  <text x="66" y="675" class="body" text-anchor="middle" font-weight="600">4</text>
+  <text x="90" y="675" class="body" font-size="9.5" font-family="monospace">takeover_latency</text>
+  <text x="240" y="675" class="body" font-size="9.5">TakeoverLatencyCalculator</text>
+  <text x="500" y="675" class="body" font-size="9.5">接管时延 = AI 首字 - 用户末字</text>
+  <text x="1020" y="675" class="body" font-size="9.5" fill="#1e40af" font-weight="600">正常轮</text>
+  <line x1="48" y1="684" x2="1192" y2="684" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 5 -->
+  <text x="66" y="703" class="body" text-anchor="middle" font-weight="600">5</text>
+  <text x="90" y="703" class="body" font-size="9.5" font-family="monospace">high_freq_turn_taking</text>
+  <text x="240" y="703" class="body" font-size="9.5">HighFreqTurnTakingCalculator</text>
+  <text x="500" y="703" class="body" font-size="9.5">高频轮换每轮回复时延（飞花令/成语接龙）</text>
+  <text x="1020" y="703" class="body" font-size="9.5" fill="#1e40af" font-weight="600">正常轮(多轮)</text>
+  <line x1="48" y1="712" x2="1192" y2="712" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 6 -->
+  <rect x="48" y="712" width="1144" height="28" fill="#f8fafc"/>
+  <text x="66" y="731" class="body" text-anchor="middle" font-weight="600">6</text>
+  <text x="90" y="731" class="body" font-size="9.5" font-family="monospace">high_freq_llm_judge</text>
+  <text x="240" y="731" class="body" font-size="9.5">HighFreqLlmJudgeCalculator</text>
+  <text x="500" y="731" class="body" font-size="9.5">高频轮换 LLM 裁判：逐轮 pass/fail</text>
+  <text x="1020" y="731" class="body" font-size="9.5" fill="#1e40af" font-weight="600">正常轮(多轮)</text>
+  <line x1="48" y1="740" x2="1192" y2="740" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 7 -->
+  <text x="66" y="759" class="body" text-anchor="middle" font-weight="600">7</text>
+  <text x="90" y="759" class="body" font-size="9.5" font-family="monospace">interruption_metrics</text>
+  <text x="240" y="759" class="body" font-size="9.5">InterruptionMetricsCalculator</text>
+  <text x="500" y="759" class="body" font-size="9.5">打断时序指标：停得下/恢复得来 + LLM 语义复核</text>
+  <text x="1020" y="759" class="body" font-size="9.5" fill="#dc2626" font-weight="600">打断轮</text>
+  <line x1="48" y1="768" x2="1192" y2="768" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 8 -->
+  <rect x="48" y="768" width="1144" height="28" fill="#f8fafc"/>
+  <text x="66" y="787" class="body" text-anchor="middle" font-weight="600">8</text>
+  <text x="90" y="787" class="body" font-size="9.5" font-family="monospace">non_interactive_latency</text>
+  <text x="240" y="787" class="body" font-size="9.5">NonInteractiveLatencyCalculator</text>
+  <text x="500" y="787" class="body" font-size="9.5">非交互意图时延：回复期间用户说话</text>
+  <text x="1020" y="787" class="body" font-size="9.5" fill="#1e40af" font-weight="600">正常轮</text>
+  <line x1="48" y1="796" x2="1192" y2="796" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 9 -->
+  <text x="66" y="815" class="body" text-anchor="middle" font-weight="600">9</text>
+  <text x="90" y="815" class="body" font-size="9.5" font-family="monospace">noise_latency</text>
+  <text x="240" y="815" class="body" font-size="9.5">NoiseLatencyCalculator</text>
+  <text x="500" y="815" class="body" font-size="9.5">噪声打断时延：噪声播放期间模型响应</text>
+  <text x="1020" y="815" class="body" font-size="9.5" fill="#92400e" font-weight="600">背景噪声轮</text>
+  <line x1="48" y1="824" x2="1192" y2="824" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 10 -->
+  <rect x="48" y="824" width="1144" height="28" fill="#f8fafc"/>
+  <text x="66" y="843" class="body" text-anchor="middle" font-weight="600">10</text>
+  <text x="90" y="843" class="body" font-size="9.5" font-family="monospace">rejection_judge</text>
+  <text x="240" y="843" class="body" font-size="9.5">RejectionJudgeCalculator</text>
+  <text x="500" y="843" class="body" font-size="9.5">拒识场景 LLM 裁判（四分类：回应/恢复/不确定/未知）</text>
+  <text x="1020" y="843" class="body" font-size="9.5" fill="#5b21b6" font-weight="600">干扰人轮</text>
+  <line x1="48" y1="852" x2="1192" y2="852" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 11 -->
+  <text x="66" y="871" class="body" text-anchor="middle" font-weight="600">11</text>
+  <text x="90" y="871" class="body" font-size="9.5" font-family="monospace">interruption_judge</text>
+  <text x="240" y="871" class="body" font-size="9.5">InterruptionJudgeCalculator</text>
+  <text x="500" y="871" class="body" font-size="9.5">打断场景 LLM 裁判（四分类）</text>
+  <text x="1020" y="871" class="body" font-size="9.5" fill="#dc2626" font-weight="600">打断轮</text>
+  <line x1="48" y1="880" x2="1192" y2="880" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 12 -->
+  <rect x="48" y="880" width="1144" height="28" fill="#f8fafc"/>
+  <text x="66" y="899" class="body" text-anchor="middle" font-weight="600">12</text>
+  <text x="90" y="899" class="body" font-size="9.5" font-family="monospace">llm_judge</text>
+  <text x="240" y="899" class="body" font-size="9.5">LlmJudgeCalculator</text>
+  <text x="500" y="899" class="body" font-size="9.5">通用 LLM 语义打分</text>
+  <text x="1020" y="899" class="body" font-size="9.5" fill="#166534" font-weight="600">所有轮</text>
+
+  <!-- Color legend -->
+  <rect x="48" y="916" width="16" height="14" rx="3" fill="#dbeafe"/>
+  <text x="70" y="927" class="note">正常轮</text>
+  <rect x="128" y="916" width="16" height="14" rx="3" fill="#fee2e2"/>
+  <text x="150" y="927" class="note">打断轮</text>
+  <rect x="208" y="916" width="16" height="14" rx="3" fill="#fef3c7"/>
+  <text x="230" y="927" class="note">背景噪声轮</text>
+  <rect x="310" y="916" width="16" height="14" rx="3" fill="#ede9fe"/>
+  <text x="332" y="927" class="note">干扰人轮</text>
+  <rect x="398" y="916" width="16" height="14" rx="3" fill="#dcfce7"/>
+  <text x="420" y="927" class="note">所有轮</text>
+
+  <!-- ③ 评估输入字段 -->
+  <rect x="24" y="940" width="1192" height="296" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="940" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="966" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="959" r="11" fill="#f59e0b"/>
+  <text x="46" y="963" class="num-badge">3</text>
+  <text x="66" y="964" class="sec-title" fill="#92400e">评估输入字段 — adapter/executor 采集 → 评估消费</text>
+
+  <!-- Table area background -->
+  <rect x="48" y="984" width="1144" height="240" fill="#ffffff" rx="4"/>
+
+  <!-- Column header row -->
+  <rect x="48" y="984" width="1144" height="24" fill="#fef3c7" rx="4"/>
+  <text x="123" y="1000" class="lbl" fill="#92400e" text-anchor="middle">字段</text>
+  <text x="238" y="1000" class="lbl" fill="#92400e" text-anchor="middle">类型</text>
+  <text x="478" y="1000" class="lbl" fill="#92400e" text-anchor="middle">来源</text>
+  <text x="935" y="1000" class="lbl" fill="#92400e" text-anchor="middle">消费维度</text>
+
+  <!-- Vertical separator lines -->
+  <line x1="198" y1="984" x2="198" y2="1224" stroke="#fde68a" stroke-width="0.5"/>
+  <line x1="278" y1="984" x2="278" y2="1224" stroke="#fde68a" stroke-width="0.5"/>
+  <line x1="678" y1="984" x2="678" y2="1224" stroke="#fde68a" stroke-width="0.5"/>
+
+  <!-- Row 1: user_wav -->
+  <text x="56" y="1024" class="body" font-size="9.5" font-family="monospace" font-weight="600">user_wav</text>
+  <text x="206" y="1024" class="body" font-size="9.5">str</text>
+  <text x="286" y="1024" class="body" font-size="9.5">正常轮: 主讲人音频转 wav; 打断轮: 打断人音频转 wav</text>
+  <text x="686" y="1024" class="body" font-size="9.5">turn_taking / interruption_metrics / non_interactive_latency</text>
+  <line x1="48" y1="1032" x2="1192" y2="1032" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 2: ai_wav -->
+  <rect x="48" y="1032" width="1144" height="24" fill="#f8fafc"/>
+  <text x="56" y="1048" class="body" font-size="9.5" font-family="monospace" font-weight="600">ai_wav</text>
+  <text x="206" y="1048" class="body" font-size="9.5">str</text>
+  <text x="286" y="1048" class="body" font-size="9.5">adapter.ai_audio 收集的 PCM → 转 wav</text>
+  <text x="686" y="1048" class="body" font-size="9.5">turn_taking / interruption_metrics / interruption_judge / rejection_judge</text>
+  <line x1="48" y1="1056" x2="1192" y2="1056" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 3: start_ms -->
+  <text x="56" y="1072" class="body" font-size="9.5" font-family="monospace" font-weight="600">start_ms</text>
+  <text x="206" y="1072" class="body" font-size="9.5">int</text>
+  <text x="286" y="1072" class="body" font-size="9.5">本轮音频推送起始毫秒</text>
+  <text x="686" y="1072" class="body" font-size="9.5">takeover_latency / noise_latency</text>
+  <line x1="48" y1="1080" x2="1192" y2="1080" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 4: end_ms -->
+  <rect x="48" y="1080" width="1144" height="24" fill="#f8fafc"/>
+  <text x="56" y="1096" class="body" font-size="9.5" font-family="monospace" font-weight="600">end_ms</text>
+  <text x="206" y="1096" class="body" font-size="9.5">int</text>
+  <text x="286" y="1096" class="body" font-size="9.5">本轮音频推送结束毫秒</text>
+  <text x="686" y="1096" class="body" font-size="9.5">noise_latency</text>
+  <line x1="48" y1="1104" x2="1192" y2="1104" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 5: first_frame_ms -->
+  <text x="56" y="1120" class="body" font-size="9.5" font-family="monospace" font-weight="600">first_frame_ms</text>
+  <text x="206" y="1120" class="body" font-size="9.5">int</text>
+  <text x="286" y="1120" class="body" font-size="9.5">commit → 首个 ai_audio_delta 事件时间戳</text>
+  <text x="686" y="1120" class="body" font-size="9.5">takeover_latency</text>
+  <line x1="48" y1="1128" x2="1192" y2="1128" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 6: rounds -->
+  <rect x="48" y="1128" width="1144" height="24" fill="#f8fafc"/>
+  <text x="56" y="1144" class="body" font-size="9.5" font-family="monospace" font-weight="600">rounds</text>
+  <text x="206" y="1144" class="body" font-size="9.5">list[dict]</text>
+  <text x="286" y="1144" class="body" font-size="9.5">多轮文本数据，每轮 {query, answer, question, ...}</text>
+  <text x="686" y="1144" class="body" font-size="9.5">turn_taking / high_freq_llm_judge / llm_judge</text>
+  <line x1="48" y1="1152" x2="1192" y2="1152" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 7: round_number -->
+  <text x="56" y="1168" class="body" font-size="9.5" font-family="monospace" font-weight="600">round_number</text>
+  <text x="206" y="1168" class="body" font-size="9.5">int</text>
+  <text x="286" y="1168" class="body" font-size="9.5">当前轮次索引 (0-based)，有值=单轮评估</text>
+  <text x="686" y="1168" class="body" font-size="9.5">所有维度</text>
+  <line x1="48" y1="1176" x2="1192" y2="1176" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 8: original_topic -->
+  <rect x="48" y="1176" width="1144" height="24" fill="#f8fafc"/>
+  <text x="56" y="1192" class="body" font-size="9.5" font-family="monospace" font-weight="600">original_topic</text>
+  <text x="206" y="1192" class="body" font-size="9.5">str</text>
+  <text x="286" y="1192" class="body" font-size="9.5">原始话题文本 (打断前的话题)</text>
+  <text x="686" y="1192" class="body" font-size="9.5">interruption_llm</text>
+  <line x1="48" y1="1200" x2="1192" y2="1200" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 9: event_log -->
+  <text x="56" y="1216" class="body" font-size="9.5" font-family="monospace" font-weight="600">event_log</text>
+  <text x="206" y="1216" class="body" font-size="9.5">list[dict]</text>
+  <text x="286" y="1216" class="body" font-size="9.5">adapter 收到的全部事件日志 (归一化后)</text>
+  <text x="686" y="1216" class="body" font-size="9.5">barge-in 分析 (补充)</text>
+
+  <!-- ④ 测试模式 × 评估维度矩阵 -->
+  <rect x="24" y="1256" width="1192" height="308" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1256" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="1282" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="1275" r="11" fill="#7c3aed"/>
+  <text x="46" y="1279" class="num-badge">4</text>
+  <text x="66" y="1280" class="sec-title" fill="#5b21b6">测试模式 × 评估维度矩阵 — 哪些维度适用于 E2E / API / Realtime</text>
+
+  <!-- Table area background -->
+  <rect x="48" y="1300" width="1144" height="252" fill="#ffffff" rx="4"/>
+
+  <!-- Column header row -->
+  <rect x="48" y="1300" width="1144" height="28" fill="#ede9fe" rx="4"/>
+  <text x="138" y="1319" class="lbl" fill="#5b21b6" text-anchor="middle">评估维度</text>
+  <text x="388" y="1319" class="lbl" fill="#5b21b6" text-anchor="middle">E2E 设备测试</text>
+  <text x="708" y="1319" class="lbl" fill="#5b21b6" text-anchor="middle">HTTP API 测试</text>
+  <text x="1030" y="1319" class="lbl" fill="#5b21b6" text-anchor="middle">Realtime API 测试</text>
+
+  <!-- Vertical separator lines -->
+  <line x1="228" y1="1300" x2="228" y2="1552" stroke="#ddd6fe" stroke-width="0.5"/>
+  <line x1="548" y1="1300" x2="548" y2="1552" stroke="#ddd6fe" stroke-width="0.5"/>
+  <line x1="868" y1="1300" x2="868" y2="1552" stroke="#ddd6fe" stroke-width="0.5"/>
+
+  <!-- Row 1: tor -->
+  <text x="56" y="1347" class="body" font-size="9.5" font-weight="600">tor (接话率)</text>
+  <text x="236" y="1347" class="body" font-size="9.5">user_wav + ai_wav 双路 ASR</text>
+  <text x="556" y="1347" class="body" font-size="9.5" fill="#94a3b8">无 (HTTP 无音频)</text>
+  <text x="876" y="1347" class="body" font-size="9.5">adapter.ai_audio → wav + 用户音频 → wav</text>
+  <line x1="48" y1="1356" x2="1192" y2="1356" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 2: false_takeover -->
+  <rect x="48" y="1356" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="1375" class="body" font-size="9.5" font-weight="600">false_takeover (误接管)</text>
+  <text x="236" y="1375" class="body" font-size="9.5">双路 ASR 停顿区间</text>
+  <text x="556" y="1375" class="body" font-size="9.5" fill="#94a3b8">无</text>
+  <text x="876" y="1375" class="body" font-size="9.5">双路 ASR</text>
+  <line x1="48" y1="1384" x2="1192" y2="1384" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 3: takeover_latency -->
+  <text x="56" y="1403" class="body" font-size="9.5" font-weight="600">takeover_latency (接管时延)</text>
+  <text x="236" y="1403" class="body" font-size="9.5">first_frame_ms + 双路 ASR</text>
+  <text x="556" y="1403" class="body" font-size="9.5">HTTP 响应时间</text>
+  <text x="876" y="1403" class="body" font-size="9.5">commit → ai_audio_delta 事件时间戳</text>
+  <line x1="48" y1="1412" x2="1192" y2="1412" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 4: interruption_metrics -->
+  <rect x="48" y="1412" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="1431" class="body" font-size="9.5" font-weight="600">interruption_metrics (打断)</text>
+  <text x="236" y="1431" class="body" font-size="9.5">双路 ASR + LLM 语义复核</text>
+  <text x="556" y="1431" class="body" font-size="9.5" fill="#94a3b8">不支持</text>
+  <text x="876" y="1431" class="body" font-size="9.5" fill="#dc2626" font-weight="600">事件日志 + 双路 ASR + LLM</text>
+  <line x1="48" y1="1440" x2="1192" y2="1440" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 5: interruption_judge -->
+  <text x="56" y="1459" class="body" font-size="9.5" font-weight="600">interruption_judge (打断裁判)</text>
+  <text x="236" y="1459" class="body" font-size="9.5">ai_wav 多模态 LLM</text>
+  <text x="556" y="1459" class="body" font-size="9.5" fill="#94a3b8">不支持</text>
+  <text x="876" y="1459" class="body" font-size="9.5">ai_wav 多模态 LLM</text>
+  <line x1="48" y1="1468" x2="1192" y2="1468" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 6: noise_latency -->
+  <rect x="48" y="1468" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="1487" class="body" font-size="9.5" font-weight="600">noise_latency (噪声时延)</text>
+  <text x="236" y="1487" class="body" font-size="9.5">start_ms + end_ms + ai_wav</text>
+  <text x="556" y="1487" class="body" font-size="9.5" fill="#94a3b8">不支持</text>
+  <text x="876" y="1487" class="body" font-size="9.5">背景噪声线程 start_ms + ai_wav</text>
+  <line x1="48" y1="1496" x2="1192" y2="1496" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 7: high_freq_turn_taking -->
+  <text x="56" y="1515" class="body" font-size="9.5" font-weight="600">high_freq_turn_taking</text>
+  <text x="236" y="1515" class="body" font-size="9.5">多轮双路 ASR</text>
+  <text x="556" y="1515" class="body" font-size="9.5" fill="#94a3b8">无</text>
+  <text x="876" y="1515" class="body" font-size="9.5">多轮 adapter 事件</text>
+  <line x1="48" y1="1524" x2="1192" y2="1524" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 8: llm_judge -->
+  <rect x="48" y="1524" width="1144" height="28" fill="#f8fafc"/>
+  <text x="56" y="1543" class="body" font-size="9.5" font-weight="600">llm_judge</text>
+  <text x="236" y="1543" class="body" font-size="9.5">answer + correct_answer</text>
+  <text x="556" y="1543" class="body" font-size="9.5">answer + correct_answer</text>
+  <text x="876" y="1543" class="body" font-size="9.5">answer + correct_answer</text>
+
+  <!-- ⑤ 打断维度入参/出参 -->
+  <rect x="24" y="1584" width="1192" height="316" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1584" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1610" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1603" r="11" fill="#dc2626"/>
+  <text x="46" y="1607" class="num-badge">5</text>
+  <text x="66" y="1608" class="sec-title" fill="#991b1b">打断维度入参/出参 — interruption_metrics + interruption_judge (Realtime 重点适配)</text>
+
+  <!-- Left box: interruption_metrics -->
+  <rect x="40" y="1630" width="572" height="234" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="56" y="1648" class="box-name" fill="#991b1b">interruption_metrics</text>
+  <text x="56" y="1664" class="lbl" fill="#475569">入参 (6 字段):</text>
+  <text x="56" y="1678" class="body" font-size="9">user_wav (str) — 打断人音频 → 转 wav</text>
+  <text x="56" y="1691" class="body" font-size="9">ai_wav (str) — adapter.ai_audio PCM → 转 wav</text>
+  <text x="56" y="1704" class="body" font-size="9">user_asr (list/dict) — 可选: 事件日志 ASR 结果</text>
+  <text x="56" y="1717" class="body" font-size="9">model_asr (list/dict) — 可选: 同上</text>
+  <text x="56" y="1730" class="body" font-size="9">enable_llm_eval (bool) — 默认 True</text>
+  <text x="56" y="1743" class="body" font-size="9">original_topic (str) — case_config 中配置</text>
+  <text x="56" y="1760" class="lbl" fill="#475569">出参 (8 字段):</text>
+  <text x="56" y="1774" class="body" font-size="9">interruption_success_rate — 打断成功率 (barge_in_detected 聚合)</text>
+  <text x="56" y="1787" class="body" font-size="9">stop_rate — 让出率 (response_cancelled 事件)</text>
+  <text x="56" y="1800" class="body" font-size="9">resume_rate — 恢复率 (ai_audio_delta 重现)</text>
+  <text x="56" y="1813" class="body" font-size="9">avg_stop_latency_s — 打断检查时延 (ms)</text>
+  <text x="56" y="1826" class="body" font-size="9">avg_recovery_latency_s — 恢复时延 (ms)</text>
+  <text x="56" y="1839" class="body" font-size="9">avg_overlap_s — 同时说话时长 (ms)</text>
+  <text x="56" y="1852" class="body" font-size="9">n_events — 有效打断事件数 · per_event — 每段结果</text>
+
+  <!-- Right box: interruption_judge -->
+  <rect x="628" y="1630" width="568" height="234" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="644" y="1648" class="box-name" fill="#991b1b">interruption_judge</text>
+  <text x="644" y="1664" class="lbl" fill="#475569">入参 (2 字段):</text>
+  <text x="644" y="1678" class="body" font-size="9">ai_wav (str) — 模型恢复回复音频 (主输入)</text>
+  <text x="644" y="1691" class="body" font-size="9">user_wav (str) — 用户打断音频 (ASR 时间线上下文)</text>
+  <text x="644" y="1710" class="lbl" fill="#475569">出参 (3 字段):</text>
+  <text x="644" y="1724" class="body" font-size="9">behavior — 回应 / 恢复 / 不确定询问 / 未知</text>
+  <text x="644" y="1737" class="body" font-size="9">behavior_respond (0/1) — 行为=「回应」→ 1</text>
+  <text x="644" y="1750" class="body" font-size="9">behavior_recover (0/1) — 行为=「恢复」→ 1</text>
+  <line x1="644" y1="1762" x2="1180" y2="1762" stroke="#fca5a5" stroke-width="0.5" stroke-dasharray="4 2"/>
+  <text x="644" y="1778" class="box-name" fill="#991b1b" font-size="11">四分类 LLM 裁判</text>
+  <rect x="644" y="1788" width="120" height="24" rx="6" fill="#fee2e2" stroke="#fca5a5" stroke-width="0.8"/>
+  <text x="704" y="1804" class="chip-t" fill="#991b1b">回应</text>
+  <rect x="774" y="1788" width="120" height="24" rx="6" fill="#fee2e2" stroke="#fca5a5" stroke-width="0.8"/>
+  <text x="834" y="1804" class="chip-t" fill="#991b1b">恢复</text>
+  <rect x="644" y="1818" width="120" height="24" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.8"/>
+  <text x="704" y="1834" class="chip-t" fill="#92400e">不确定询问</text>
+  <rect x="774" y="1818" width="120" height="24" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="834" y="1834" class="chip-t" fill="#475569">未知</text>
+
+  <!-- Bottom conclusion note -->
+  <rect x="40" y="1874" width="1156" height="20" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="0.8"/>
+  <text x="618" y="1888" text-anchor="middle" class="note" fill="#dc2626">结论: Realtime 模式采集的 ai_wav / user_wav / first_frame_ms / start_ms / end_ms / rounds 完全覆盖 xiaoyi_metrics 所有维度的入参需求，无需额外采集</text>
+</svg>

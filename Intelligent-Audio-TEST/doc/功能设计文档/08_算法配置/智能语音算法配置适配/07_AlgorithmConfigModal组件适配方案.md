@@ -1,108 +1,142 @@
 # AlgorithmConfigModal - 共用模态窗适配方案
 
+> **落地状态说明**：本方案描述的 AlgorithmConfigModal 组件已完整落地于
+> `frontend/src/components/algorithm/AlgorithmConfigModal.vue`。
+> 与最初设计稿相比，落地版本在 UI 框架、参数配置结构、分组管理等方面有多处演进，
+> 本文已按代码现状修订，差异处以"落地记录"标注。
+
 ## 1. 组件概述
 
 ### 1.1 组件定位
-AlgorithmConfigModal 是一个共用的算法配置模态窗组件，用于在多个页面中提供统一的算法管理功能。
 
-### 1.2 使用场景
-- AlgorithmConfigPage：算法配置管理页面（完整功能）
-- E2ETest：E2E测试步骤0（新建/编辑算法）
-- APITest：API测试步骤0（新建/编辑算法）
-- TestCaseModal：新建用例时选择算法
+AlgorithmConfigModal 是一个共用的算法配置模态窗组件（已落地），提供算法定义的
+完整生命周期管理能力：列表查看、新建、编辑、启停用、删除、选择。它是
+**算法配置化管理能力的唯一入口组件**，供算法配置页与测试页共用。
 
-### 1.3 核心功能
-- 查看算法列表
-- 新建算法（完整配置）
-- 编辑算法参数
-- 删除算法
-- 支持多种模式切换
+### 1.2 使用场景（实际挂载点）
+
+| 调用方 | 挂载方式 | 说明 |
+|--------|---------|------|
+| `views/AlgorithmConfigPage.vue` | `v-model:visible` + `:mode` + `:edit-data` + `@select` + `@success` | 算法配置管理页，完整功能 |
+| `views/E2ETest.vue` | `v-model:visible` + `:mode` + `:edit-data` | E2E 测试页步骤 0，经 AlgorithmSelectionPanel 的 `@open-config` 触发 |
+| `views/APITest.vue` | `v-model:visible` + `:mode` + `:edit-data` | API 测试页步骤 0，触发链路同上 |
+
+E2E/API 测试页的打开入口为 Application 层 composable
+`useAlgorithmSelection.openAlgorithmConfigModal(algo?)`：
+- 传入 `algo` 时先经 `GET /api/v1/algorithm/definitions/:type` 加载算法详情，
+  以 `mode='edit'` 打开编辑模式；
+- 不传时以 `mode='list'` 打开列表模式，供浏览/新建。
+
+> **落地记录**：设计稿中的第 4 个使用场景"TestCaseModal 新建用例时选择算法"未采用本组件。
+> 用例弹窗内选择算法由 `AlgorithmSelector`（`components/common/`，见 05 号文档）承担，
+> AlgorithmConfigModal 聚焦于算法定义的管理侧，两者职责分离。
+
+### 1.3 核心功能（已实现）
+
+- 查看算法列表（类型/名称/分组/状态/操作 五列，关键字搜索前端过滤）
+- 新建算法（基本信息 + 参数配置 + 参考参数 + 参数映射 + 关联维度 五标签页）
+- 编辑算法（进入编辑前经 `algorithmApi.getDefinition(type)` 拉取详情回填）
+- 禁用/启用（切换 `status: 'online' | 'offline'`）
+- 选择算法（`select` 模式，列表行"选择"按钮 emit `select`）
+- 删除算法（`useModalControl` 弹出 `BASIC_CONFIRM` 二次确认）
+- 所属分组选择与**新建分组**（下拉内置 `+ 新建分组` 选项）
+- 参数自动保存（设备/API/用例/参考参数失焦防抖自动入库）
+- 功能特性快捷开关（用例参数标签页，按 bundle 批量增删参数）
 
 ---
 
 ## 2. 现有实现分析
 
-### 2.1 当前组件结构
+### 2.1 当前组件结构（实际）
 
 ```
 AlgorithmConfigModal.vue
-├── a-modal                    # Ant Design 模态窗
-│   ├── mode-list              # 列表模式
-│   │   ├── modal-header       # 新建按钮 + 搜索框
-│   │   └── a-table            # 算法表格
-│   └── mode-form              # 新建/编辑模式
-│       ├── a-form             # 表单
-│       └── a-tabs             # 标签页
-│           ├── basic          # 基本信息
-│           ├── params         # 参数配置
-│           └── mappings       # 参数映射
-└── MappingEditor.vue          # 映射编辑子组件
+├── BasicModal                      # 共用模态窗（components/common/modal/）
+│   ├── mode-list                   # 列表模式（effectiveMode === 'list'）
+│   │   ├── modal-toolbar           # 新建按钮 + 搜索框
+│   │   └── table.data-table        # 原生表格：类型/名称/分组/状态/操作
+│   └── mode-form                   # 新建/编辑模式（tabs-nav 自绘标签页）
+│       ├── basic                   # 基本信息（算法代码/显示名称/所属分组/排序/描述/状态开关）
+│       ├── params                  # 参数配置（设备参数 | API参数 | 用例参数 三分栏）
+│       ├── reference               # 参考参数（参考字段配置，供评估映射取用）
+│       ├── mappings                # 参数映射（设备/API/评估 三段折叠）
+│       └── dimensions              # 关联维度（dimension_id / weight / is_default）
+└── MappingEditor.vue               # 映射编辑子组件（components/algorithm/）
 ```
+
+配套的 Application/Infrastructure 依赖：
+- `useModalControl`（`composables/useModal`）：删除确认弹窗；
+- `useDimensions().fetchAllDimensions()`：评估维度列表（带缓存）；
+- `useAlgorithmConfig().clearFormSchemaCache()`：算法定义变更后清空表单 Schema 缓存，
+  确保测试页能拉到最新参数定义；
+- `algorithmApi`（`utils/api.ts`）：全部数据操作的统一出口（Infrastructure 层）。
 
 ### 2.2 当前布局
 
-**列表模式 (mode='list')**
+**列表模式 (effectiveMode='list')**
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  算法配置管理                                          [×]    │
 ├──────────────────────────────────────────────────────────────┤
-│  [新建算法]                              [搜索算法...]        │
+│  [新建算法]                              [🔍 搜索算法...]     │
 │  ┌────────────────────────────────────────────────────────┐ │
-│  │  类型    │  名称  │  分类  │  状态  │      操作        │ │
+│  │  类型    │ 名称  │  分组   │ 状态  │      操作         │ │
 │  ├────────────────────────────────────────────────────────┤ │
-│  │translation│ 翻译  │ 翻译   │ 在线   │ 编辑 | 选择 | 删除│ │
-│  │   asr    │ ASR   │语音识别│ 在线   │ 编辑 | 选择 | 删除│ │
+│  │translation│ 翻译 │  翻译   │ 上线  │ 编辑|禁用|选择|删除│ │
+│  │   asr    │ ASR  │语音识别 │ 上线  │ 编辑|禁用|选择|删除│ │
 │  └────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-**新建/编辑模式 (mode='create'/'edit')**
+**新建/编辑模式 (effectiveMode='create'/'edit')** — 宽 1200px，五个标签页：
+
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │  新建算法 / 编辑算法                                    [×]  │
 ├──────────────────────────────────────────────────────────────┤
-│  [基本信息] [参数配置] [参数映射]                             │
+│  [基本信息] [参数配置] [参考参数] [参数映射] [关联维度]        │
 │  ──────────────────────────────────────────────────────────  │
 │  【基本信息】                                                │
-│  算法类型: [________________] ← 编辑时禁用                   │
-│  显示名称: [________________]                                │
-│  分类:     [翻译 ▼]                                          │
-│  状态:     ○ 上线  ○ 下线                                    │
-│  描述:     [________________________________]                │
-│  排序:     [0]                                               │
+│  算法代码*: [________] ← 编辑时禁用（主键，不可变更）         │
+│  显示名称*: [________]                                       │
+│  所属分组*: [翻译 ▼]  ← 内置「+ 新建分组」选项               │
+│  排序:     [0]        描述: [________________________]       │
+│  状态:     (开关) 上线/下线                                  │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. 差距分析与适配方案
+## 3. 差距分析与适配结果
 
-### 3.1 功能差距
+### 3.1 功能差距与落地状态
 
-| 功能点 | 现有实现 | 方案要求 | 适配方案 |
-|--------|---------|---------|---------|
-| UI框架 | Ant Design Vue | Element Plus | **保持 Ant Design Vue** |
-| 模式控制 | props.mode | 标签页切换 | **保持现有 mode 机制** |
-| 分组选择 | ❌ 无 category 字段 | ✅ 需要 group_id | **新增分组下拉选择** |
-| 列表操作 | 编辑/选择/删除 | 编辑/禁用/删除 | **添加禁用/启用按钮** |
-| 参数映射 | MappingEditor | MappingConfigPanel | **保持现有组件** |
-| 关联维度 | ❌ 无 | ✅ 需要 | **新增维度关联标签页** |
+| 功能点 | 设计稿要求 | 落地状态 |
+|--------|-----------|---------|
+| UI 框架 | Ant Design Vue | **BasicModal + 原生 HTML 表格/表单/按钮**，样式走 CSS 变量 |
+| 模式控制 | props.mode | **props.mode + internalMode 内部切换**（列表页内直达新建/编辑，不关闭弹窗） |
+| 分组选择 | 需要 group_id | ✅ **已落地**（下拉选择 + 新建分组，组件内部经 `algorithmApi.getGroups()` 加载） |
+| 列表操作 | 编辑/禁用/删除 | ✅ **已落地**（编辑/禁用启用/**选择**/删除 四操作，保留选择模式） |
+| 参数映射 | 保持 MappingEditor | ✅ **已落地**（映射编辑器注入用例参数/参考参数/设备/API 参数及主维度上下文） |
+| 关联维度 | 新增维度标签页 | ✅ **已落地**（dimensions 标签页，weight + is_default，失焦自动保存） |
+| 参数配置 | 单一参数表 | ✅ **演进为三分栏**：设备参数 / API 参数 / 用例参数（含 scope 作用域） |
+| 参考参数 | 未覆盖 | ✅ **新增 reference 标签页**（参考字段，供评估参数映射取用） |
+| 自动保存 | 未覆盖 | ✅ **新增**（失焦防抖自动入库，见 §5.5） |
 
-### 3.2 适配方案
+### 3.2 适配结论（已实施）
 
-**保持不变的部分：**
-1. 使用 Ant Design Vue 组件 (`a-modal`, `a-table`, `a-tabs`, `a-form`)
-2. 通过 `props.mode` 控制显示内容
-3. 现有的 `MappingEditor` 子组件
-
-**需要新增的部分：**
-1. 基本信息标签页添加"所属分组"下拉选择
-2. 列表模式添加"禁用/启用"操作按钮
-3. 新建/编辑模式添加"关联评估维度"标签页
+1. ~~UI 框架沿用 Ant Design Vue~~ → 实际沿用项目统一的 **BasicModal + 原生 HTML + CSS 变量** 风格，未引入 Ant Design Vue；
+2. ~~Props 传入 groups~~ → 实际**组件内部加载分组**（见 §4.1 落地记录），调用方无需感知分组数据；
+3. 分组选择、禁用/启用、关联维度标签页均已落地；
+4. 参数配置演进为"设备参数 / API 参数 / 用例参数"三类独立配置，
+   用例参数支持 `scope: 'common' | 'api' | 'e2e'` 执行器作用域（对齐三执行器路由口径：
+   执行方式由被测设备 `device_type` 路由 E2EExecutor / APISessionExecutor / RealtimeSessionExecutor，
+   用例参数的 scope 仅决定该参数在哪个执行器作用域的表单中出现）。
 
 ---
 
-## 4. 组件接口（保持现有）
+## 4. 组件接口
 
 ### 4.1 Props
 
@@ -111,18 +145,44 @@ interface ModalProps {
   visible: boolean
   mode?: 'list' | 'create' | 'edit' | 'select'
   editData?: AlgorithmRecord | null
-  groups?: AlgorithmGroup[]        // 算法分组列表
-}
-
-interface AlgorithmGroup {
-  id: number
-  name: string
-  description?: string
-  icon?: string
-  display_order: number
-  algorithm_count?: number  // 分组下算法数量
 }
 ```
+
+> **落地记录**：设计稿中的 `groups?: AlgorithmGroup[]` prop **未落地**。
+> 分组列表由组件内部 `loadGroups()` 经 `algorithmApi.getGroups()`（`GET /api/v1/algorithm/groups`）
+> 加载，弹窗打开时与算法/维度一并加载，调用方无需传入。
+
+**AlgorithmRecord**（组件内部接口，snake_case / camelCase 双命名兼容，
+对齐后端 convert_keys_to_camel 响应与 Pydantic AliasChoices 双向解析）：
+
+```typescript
+interface AlgorithmRecord {
+  type: string
+  name: string
+  group_id?: number
+  groupId?: number
+  group_name?: string
+  description?: string
+  status: string                        // 'online' | 'offline'
+  icon?: string
+  display_order: number
+  displayOrder?: number
+  device_params?: any[]                 // 设备参数
+  deviceParams?: any[]
+  api_params?: any[]                    // API 参数
+  apiParams?: any[]
+  case_params?: any[]                   // 用例参数
+  caseParams?: any[]
+  mappings?: any                        // { device: [], api: [], evaluation: [] }
+  associated_dimensions?: AssociatedDimension[]
+  associatedDimensions?: AssociatedDimension[]
+  reference_params?: any[]              // 参考参数
+  referenceParams?: any[]
+}
+```
+
+组件内通过 `normalizeParamFields` / `normalizeCaseParamFields` / `normalizeMappings`
+做字段归一（`paramCode ?? param_code` 式取值），兼容历史数据与新响应。
 
 ### 4.2 Emits
 
@@ -134,868 +194,134 @@ interface ModalEmits {
 }
 ```
 
----
-
-## 5. 适配修改清单
-
-### 5.1 基本信息标签页 - 添加分组选择
-
-**修改位置：** `a-tab-pane key="basic"` 内
-
-**新增表单项：**
-```vue
-<a-form-item label="所属分组" name="group_id">
-  <a-select 
-    v-model:value="formState.group_id" 
-    placeholder="选择分组"
-    :disabled="mode === 'edit'"
-  >
-    <a-select-option 
-      v-for="group in groups" 
-      :key="group.id" 
-      :value="group.id"
-    >
-      {{ group.name }}
-    </a-select-option>
-  </a-select>
-</a-form-item>
-```
-
-**更新 formState：**
-```typescript
-const formState = reactive({
-  type: '',
-  name: '',
-  group_id: null as number | null,  // 新增：关联 AlgorithmGroup
-  status: '',
-  description: '',
-  display_order: 0,
-})
-```
-
-**更新 formRules：**
-```typescript
-const formRules: FormRules = {
-  type: [{ required: true, message: '请输入算法类型' }],
-  name: [{ required: true, message: '请输入显示名称' }],
-  group_id: [{ required: true, message: '请选择所属分组' }]  // 新增
-}
-```
-
-### 5.2 参数配置 - 使用独立的设备参数和API参数表
-
-**修改说明：** 根据 algorithm_models.py，参数分为两类：
-- `AlgorithmDeviceParam`: 设备参数（单算法专用）
-- `AlgorithmApiParam`: API参数（单算法专用）
-
-需要分别配置设备参数和API参数：
-
-### 5.3 列表模式 - 添加禁用/启用按钮
-
-**修改位置：** `listColumns` 的操作列
-
-**修改前：**
-```vue
-<template v-if="column.key === 'action'">
-  <a-space>
-    <a @click="handleEdit(record)">编辑</a>
-    <a-divider type="vertical" />
-    <a @click="handleSelect(record)">选择</a>
-    <a-divider type="vertical" />
-    <a-popconfirm ...>
-      <a class="danger">删除</a>
-    </a-popconfirm>
-  </a-space>
-</template>
-```
-
-**修改后：**
-```vue
-<template v-if="column.key === 'action'">
-  <a-space>
-    <a @click="handleEdit(record)">编辑</a>
-    <a-divider type="vertical" />
-    <a @click="handleToggleStatus(record)">
-      {{ record.status === 'online' ? '禁用' : '启用' }}
-    </a>
-    <a-divider type="vertical" />
-    <a-popconfirm ...>
-      <a class="danger">删除</a>
-    </a-popconfirm>
-  </a-space>
-</template>
-```
-
-**新增方法：**
-```typescript
-async function handleToggleStatus(record: AlgorithmRecord) {
-  const newStatus = record.status === 'online' ? 'offline' : 'online'
-  const action = newStatus === 'offline' ? '禁用' : '启用'
-  
-  try {
-    const response = await fetch(`/api/v1/algorithm/definitions/${record.type}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus })
-    })
-    const result = await response.json()
-    if (result.success) {
-      message.success(`${action}成功`)
-      loadAlgorithms()
-    } else {
-      message.error(result.message || `${action}失败`)
-    }
-  } catch (error) {
-    message.error(`${action}失败`)
-  }
-}
-```
-
-### 5.4 新建/编辑模式 - 添加关联评估维度标签页
-
-**修改位置：** `a-tabs` 组件内
-
-**新增标签页：**
-```vue
-<a-tab-pane key="dimensions" tab="关联评估维度">
-  <div class="dimensions-config">
-    <div class="dimensions-header">
-      <a-button type="primary" size="small" @click="handleAddDimension">
-        <template #icon><PlusOutlined /></template>
-        添加关联维度
-      </a-button>
-    </div>
-    
-    <a-table
-      :columns="dimensionColumns"
-      :dataSource="formState.dimension_relations"
-      :rowKey="(record, index) => index"
-      :pagination="false"
-      size="small"
-    >
-      <template #bodyCell="{ column, record, index }">
-        <template v-if="column.key === 'dimension_id'">
-          <a-select
-            v-model:value="record.dimension_id"
-            size="small"
-            placeholder="选择评估维度"
-            style="width: 100%"
-            :options="availableDimensions.map(d => ({ value: d.id, label: d.name }))"
-          />
-        </template>
-        <template v-else-if="column.key === 'is_default'">
-          <a-switch v-model:checked="record.is_default" size="small" />
-        </template>
-        <template v-else-if="column.key === 'weight'">
-          <a-input-number
-            v-model:value="record.weight"
-            size="small"
-            :min="0"
-            :max="1"
-            :step="0.1"
-          />
-        </template>
-        <template v-else-if="column.key === 'action'">
-          <a-button type="link" danger size="small" @click="handleRemoveDimension(index)">
-            删除
-          </a-button>
-        </template>
-      </template>
-    </a-table>
-  </div>
-</a-tab-pane>
-```
-
-**新增数据和方法：**
-```typescript
-const dimensionColumns = [
-  { title: '评估维度', dataIndex: 'dimension_id', key: 'dimension_id' },
-  { title: '默认', dataIndex: 'is_default', key: 'is_default', width: 60 },
-  { title: '权重', dataIndex: 'weight', key: 'weight', width: 100 },
-  { title: '操作', key: 'action', width: 60 }
-]
-
-const availableDimensions = ref<Dimension[]>([])
-
-async function loadDimensions() {
-  try {
-    const response = await fetch('/api/v1/evaluation/dimensions')
-    const result = await response.json()
-    if (result.success) {
-      availableDimensions.value = result.data || []
-    }
-  } catch (error) {
-    console.error('加载评估维度失败', error)
-  }
-}
-
-function handleAddDimension() {
-  formState.dimension_relations.push({
-    dimension_id: null,
-    is_default: false,
-    weight: 1.0
-  })
-}
-
-function handleRemoveDimension(index: number) {
-  formState.dimension_relations.splice(index, 1)
-}
-```
-
-**更新 formState：**
-```typescript
-const formState = reactive({
-  // ... 现有字段
-  dimension_relations: [] as { dimension_id: string | number; is_default: boolean; weight: number }[]
-})
-```
-
-**API 说明：** 保存关联维度时，会操作 `AlgorithmDimensionRelation` 表：
-- POST `/api/v1/algorithm/definitions/:type/dimensions` - 添加关联
-- DELETE `/api/v1/algorithm/definitions/:type/dimensions/:id` - 删除关联
+与设计稿一致。
 
 ---
 
-## 6. 完整修改后的组件代码
+## 5. 核心实现要点
 
-### 6.1 主组件 AlgorithmConfigModal.vue
+### 5.1 分组选择与新建分组
 
-```vue
-<template>
-  <a-modal
-    :title="title"
-    :open="visible"
-    :width="modalWidth"
-    :destroyOnClose="true"
-    @cancel="handleCancel"
-    @ok="handleOk"
-    :okText="okText"
-    :cancelText="cancelText"
-  >
-    <div class="algorithm-config-modal">
-      <!-- 列表模式 -->
-      <div v-if="mode === 'list'" class="mode-list">
-        <div class="modal-header">
-          <a-button type="primary" @click="handleCreate">
-            <template #icon><PlusOutlined /></template>
-            新建算法
-          </a-button>
-          <a-input-search
-            v-model:value="searchKeyword"
-            placeholder="搜索算法"
-            style="width: 200px"
-            @search="handleSearch"
-          />
-        </div>
+基本信息标签页的"所属分组"下拉内置哨兵选项实现新建分组流：
 
-        <a-table
-          :columns="listColumns"
-          :dataSource="filteredAlgorithms"
-          :rowKey="record => record.type"
-          :pagination="false"
-          :scroll="{ y: 400 }"
-          size="small"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'status'">
-              <a-badge 
-                :status="record.status === 'online' ? 'success' : 'default'" 
-                :text="record.status === 'online' ? '在线' : '离线'" 
-              />
-            </template>
-            <template v-else-if="column.key === 'action'">
-              <a-space>
-                <a @click="handleEdit(record)">编辑</a>
-                <a-divider type="vertical" />
-                <a @click="handleToggleStatus(record)">
-                  {{ record.status === 'online' ? '禁用' : '启用' }}
-                </a>
-                <a-divider type="vertical" />
-                <a-popconfirm
-                  title="确定删除此算法？"
-                  ok-text="确定"
-                  cancel-text="取消"
-                  @confirm="handleDelete(record)"
-                >
-                  <a class="danger">删除</a>
-                </a-popconfirm>
-              </a-space>
-            </template>
-          </template>
-        </a-table>
-      </div>
+```typescript
+const NEW_GROUP_SENTINEL = '__new_group__'
+const creatingNewGroup = ref(false)
+const newGroupName = ref('')
 
-      <!-- 新建/编辑模式 -->
-      <div v-else class="mode-form">
-        <a-form
-          ref="formRef"
-          :model="formState"
-          :rules="formRules"
-          :label-col="{ span: 6 }"
-          :wrapper-col="{ span: 16 }"
-        >
-          <a-tabs v-model:activeKey="activeTab">
-            <a-tab-pane key="basic" tab="基本信息">
-              <a-form-item label="算法类型" name="type">
-                <a-input
-                  v-model:value="formState.type"
-                  :disabled="mode === 'edit'"
-                  placeholder="如: translation, asr"
-                />
-              </a-form-item>
-              <a-form-item label="显示名称" name="name">
-                <a-input v-model:value="formState.name" placeholder="如: 翻译" />
-              </a-form-item>
-              <a-form-item label="所属分组" name="group_id">
-                <a-select 
-                  v-model:value="formState.group_id" 
-                  placeholder="选择分组"
-                  :disabled="mode === 'edit'"
-                >
-                  <a-select-option 
-                    v-for="group in groups" 
-                    :key="group.id" 
-                    :value="group.id"
-                  >
-                    {{ group.name }}
-                  </a-select-option>
-                </a-select>
-              </a-form-item>
-              <a-form-item label="分类" name="category">
-                <a-select v-model:value="formState.category" placeholder="选择分类">
-                  <a-select-option value="translation">翻译</a-select-option>
-                  <a-select-option value="speech_recognition">语音识别</a-select-option>
-                  <a-select-option value="voiceprint">声纹识别</a-select-option>
-                  <a-select-option value="speech_synthesis">语音合成</a-select-option>
-                </a-select>
-              </a-form-item>
-              <a-form-item label="状态" name="status">
-                <a-radio-group v-model:value="formState.status">
-                  <a-radio value="online">上线</a-radio>
-                  <a-radio value="offline">下线</a-radio>
-                </a-radio-group>
-              </a-form-item>
-              <a-form-item label="描述" name="description">
-                <a-textarea v-model:value="formState.description" :rows="3" />
-              </a-form-item>
-              <a-form-item label="排序" name="display_order">
-                <a-input-number v-model:value="formState.display_order" :min="0" />
-              </a-form-item>
-            </a-tab-pane>
-
-            <a-tab-pane key="params" tab="参数配置">
-              <div class="params-header">
-                <a-button type="primary" size="small" @click="handleAddParam">
-                  <template #icon><PlusOutlined /></template>
-                  添加参数
-                </a-button>
-              </div>
-
-              <a-table
-                :columns="paramColumns"
-                :dataSource="formState.params"
-                :rowKey="record => record.param_code + '_' + Math.random()"
-                :pagination="false"
-                size="small"
-              >
-                <template #bodyCell="{ column, record, index }">
-                  <template v-if="['param_code', 'param_name'].includes(column.key)">
-                    <a-input v-model:value="record[column.key]" size="small" />
-                  </template>
-                  <template v-else-if="column.key === 'param_type'">
-                    <a-select v-model:value="record.param_type" size="small" style="width: 100px">
-                      <a-select-option value="select">下拉框</a-select-option>
-                      <a-select-option value="text">文本</a-select-option>
-                      <a-select-option value="number">数字</a-select-option>
-                      <a-select-option value="boolean">开关</a-select-option>
-                      <a-select-option value="textarea">多行文本</a-select-option>
-                      <a-select-option value="slider">滑块</a-select-option>
-                    </a-select>
-                  </template>
-                  <template v-else-if="column.key === 'required'">
-                    <a-switch v-model:checked="record.required" size="small" />
-                  </template>
-                  <template v-else-if="column.key === 'component'">
-                    <a-select v-model:value="record.component" size="small" style="width: 100px">
-                      <a-select-option value="select">Select</a-select-option>
-                      <a-select-option value="input">Input</a-select-option>
-                      <a-select-option value="input-number">InputNumber</a-select-option>
-                      <a-select-option value="switch">Switch</a-select-option>
-                      <a-select-option value="slider">Slider</a-select-option>
-                      <a-select-option value="textarea">Textarea</a-select-option>
-                    </a-select>
-                  </template>
-                  <template v-else-if="column.key === 'ui_group'">
-                    <a-select v-model:value="record.ui_group" size="small" style="width: 80px">
-                      <a-select-option value="basic">基本</a-select-option>
-                      <a-select-option value="model">模型</a-select-option>
-                      <a-select-option value="advanced">高级</a-select-option>
-                    </a-select>
-                  </template>
-                  <template v-else-if="column.key === 'action'">
-                    <a-button type="link" danger size="small" @click="handleRemoveParam(index)">
-                      删除
-                    </a-button>
-                  </template>
-                </template>
-              </a-table>
-            </a-tab-pane>
-
-            <a-tab-pane key="mappings" tab="参数映射">
-              <a-collapse v-model:activeKey="mappingActiveKeys">
-                <a-collapse-panel key="device" header="设备参数映射">
-                  <MappingEditor
-                    :mappings="formState.mappings.device"
-                    component-type="device"
-                    @update="updateMappings('device', $event)"
-                  />
-                </a-collapse-panel>
-                <a-collapse-panel key="api" header="API参数映射">
-                  <MappingEditor
-                    :mappings="formState.mappings.api"
-                    component-type="api"
-                    @update="updateMappings('api', $event)"
-                  />
-                </a-collapse-panel>
-                <a-collapse-panel key="evaluation" header="评估参数映射">
-                  <MappingEditor
-                    :mappings="formState.mappings.evaluation"
-                    component-type="evaluation"
-                    @update="updateMappings('evaluation', $event)"
-                  />
-                </a-collapse-panel>
-              </a-collapse>
-            </a-tab-pane>
-
-            <!-- 新增：关联评估维度 -->
-            <a-tab-pane key="dimensions" tab="关联评估维度">
-              <div class="dimensions-header">
-                <a-button type="primary" size="small" @click="handleAddDimension">
-                  <template #icon><PlusOutlined /></template>
-                  添加关联维度
-                </a-button>
-              </div>
-              
-              <a-table
-                :columns="dimensionColumns"
-                :dataSource="formState.associated_dimensions"
-                :rowKey="(record, index) => index"
-                :pagination="false"
-                size="small"
-              >
-                <template #bodyCell="{ column, record, index }">
-                  <template v-if="column.key === 'dimension_id'">
-                    <a-select
-                      v-model:value="record.dimension_id"
-                      size="small"
-                      placeholder="选择评估维度"
-                      style="width: 100%"
-                      :options="availableDimensions.map(d => ({ value: d.id, label: d.name }))"
-                    />
-                  </template>
-                  <template v-else-if="column.key === 'weight'">
-                    <a-input-number
-                      v-model:value="record.weight"
-                      size="small"
-                      :min="0"
-                      :max="1"
-                      :step="0.1"
-                    />
-                  </template>
-                  <template v-else-if="column.key === 'action'">
-                    <a-button type="link" danger size="small" @click="handleRemoveDimension(index)">
-                      删除
-                    </a-button>
-                  </template>
-                </template>
-              </a-table>
-            </a-tab-pane>
-          </a-tabs>
-        </a-form>
-      </div>
-    </div>
-  </a-modal>
-</template>
-
-<script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { PlusOutlined } from '@ant-design/icons-vue'
-import { message } from 'ant-design-vue'
-import type { FormInstance, FormRules } from 'ant-design-vue'
-import MappingEditor from './MappingEditor.vue'
-
-interface AlgorithmRecord {
-  type: string
-  name: string
-  group_id?: number           // 新增
-  category?: string
-  description?: string
-  status: string
-  icon?: string
-  display_order: number
-  params?: any[]
-  mappings?: any
-  associated_dimensions?: { dimension_id: string | number; weight: number }[]
-}
-
-interface AlgorithmGroup {    // 新增
-  id: number
-  name: string
-  description?: string
-  icon?: string
-  display_order: number
-}
-
-interface Dimension {
-  id: string | number
-  name: string
-  code: string
-}
-
-interface ModalProps {
-  visible: boolean
-  mode?: 'list' | 'create' | 'edit' | 'select'
-  editData?: AlgorithmRecord | null
-  groups?: AlgorithmGroup[]    // 新增
-}
-
-const props = withDefaults(defineProps<ModalProps>(), {
-  visible: false,
-  mode: 'list',
-  editData: null,
-  groups: () => []             // 新增默认值
-})
-
-const emit = defineEmits<{
-  (e: 'update:visible', visible: boolean): void
-  (e: 'select', data: AlgorithmRecord): void
-  (e: 'success'): void
-}>()
-
-const modalWidth = computed(() => {
-  if (props.mode === 'list') return 700
-  return 900
-})
-
-const title = computed(() => {
-  const titles = {
-    list: '算法配置管理',
-    create: '新建算法',
-    edit: '编辑算法',
-    select: '选择算法'
-  }
-  return titles[props.mode]
-})
-
-const okText = computed(() => {
-  if (props.mode === 'select') return '选择'
-  if (props.mode === 'list') return undefined
-  return '确定'
-})
-
-const cancelText = computed(() => {
-  if (props.mode === 'list') return undefined
-  return '取消'
-})
-
-const searchKeyword = ref('')
-const activeTab = ref('basic')
-const mappingActiveKeys = ref(['device', 'api', 'evaluation'])
-const formRef = ref<FormInstance>()
-
-const algorithms = ref<AlgorithmRecord[]>([])
-const availableDimensions = ref<Dimension[]>([])
-
-const formState = reactive({
-  type: '',
-  name: '',
-  group_id: null as number | null,  // 新增
-  category: '',
-  description: '',
-  status: 'online' as 'online' | 'offline',
-  icon: '',
-  display_order: 0,
-  params: [] as any[],
-  mappings: {
-    device: [] as any[],
-    api: [] as any[],
-    evaluation: [] as any[]
-  },
-  associated_dimensions: [] as { dimension_id: string | number; weight: number }[]
-})
-
-const formRules: FormRules = {
-  type: [{ required: true, message: '请输入算法类型' }],
-  name: [{ required: true, message: '请输入显示名称' }],
-  group_id: [{ required: true, message: '请选择所属分组' }]  // 新增
-}
-
-const listColumns = [
-  { title: '类型', dataIndex: 'type', key: 'type', width: 120 },
-  { title: '名称', dataIndex: 'name', key: 'name' },
-  { title: '分类', dataIndex: 'category', key: 'category', width: 120 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 80 },
-  { title: '操作', key: 'action', width: 200 }
-]
-
-const paramColumns = [
-  { title: '参数代码', dataIndex: 'param_code', key: 'param_code', width: 120 },
-  { title: '参数名称', dataIndex: 'param_name', key: 'param_name', width: 100 },
-  { title: '类型', dataIndex: 'param_type', key: 'param_type', width: 100 },
-  { title: '必填', dataIndex: 'required', key: 'required', width: 60 },
-  { title: '组件', dataIndex: 'component', key: 'component', width: 100 },
-  { title: '分组', dataIndex: 'ui_group', key: 'ui_group', width: 80 },
-  { title: '操作', key: 'action', width: 60 }
-]
-
-const dimensionColumns = [
-  { title: '评估维度', dataIndex: 'dimension_id', key: 'dimension_id' },
-  { title: '权重', dataIndex: 'weight', key: 'weight', width: 100 },
-  { title: '操作', key: 'action', width: 60 }
-]
-
-const filteredAlgorithms = computed(() => {
-  if (!searchKeyword.value) return algorithms.value
-  return algorithms.value.filter(a =>
-    a.type.includes(searchKeyword.value) ||
-    a.name.includes(searchKeyword.value)
-  )
-})
-
-watch(() => props.visible, (visible) => {
-  if (visible) {
-    if (props.mode === 'list') {
-      loadAlgorithms()
-    }
-    loadDimensions()
-  }
-})
-
-watch(() => props.mode, (mode) => {
-  if (mode === 'edit' && props.editData) {
-    Object.assign(formState, {
-      type: props.editData.type,
-      name: props.editData.name,
-      group_id: props.editData.group_id || null,  // 新增
-      category: props.editData.category || '',
-      description: props.editData.description || '',
-      status: props.editData.status as 'online' | 'offline',
-      icon: props.editData.icon || '',
-      display_order: props.editData.display_order || 0,
-      params: props.editData.params || [],
-      mappings: props.editData.mappings || { device: [], api: [], evaluation: [] },
-      associated_dimensions: props.editData.associated_dimensions || []
-    })
-  } else if (mode === 'create') {
-    resetForm()
-  }
-}, { immediate: true })
-
-async function loadAlgorithms() {
-  try {
-    const response = await fetch('/api/v1/algorithm/definitions')
-    const result = await response.json()
-    if (result.success) {
-      algorithms.value = result.data.data || []
-    }
-  } catch (error) {
-    message.error('加载算法列表失败')
-  }
-}
-
-async function loadDimensions() {
-  try {
-    const response = await fetch('/api/v1/evaluation/dimensions')
-    const result = await response.json()
-    if (result.success) {
-      availableDimensions.value = result.data || []
-    }
-  } catch (error) {
-    console.error('加载评估维度失败', error)
-  }
-}
-
-function resetForm() {
-  formState.type = ''
-  formState.name = ''
-  formState.group_id = null  // 新增
-  formState.category = ''
-  formState.description = ''
-  formState.status = 'online'
-  formState.icon = ''
-  formState.display_order = 0
-  formState.params = []
-  formState.mappings = { device: [], api: [], evaluation: [] }
-  formState.associated_dimensions = []
-  activeTab.value = 'basic'
-}
-
-function handleCancel() {
-  emit('update:visible', false)
-}
-
-async function handleOk() {
-  if (props.mode === 'select') {
-    if (props.editData) {
-      emit('select', props.editData)
-      emit('update:visible', false)
-    }
-    return
-  }
-
-  try {
-    await formRef.value?.validate()
-    await saveAlgorithm()
-  } catch (error) {
-    // 验证失败
-  }
-}
-
-async function saveAlgorithm() {
-  try {
-    const url = props.mode === 'edit'
-      ? `/api/v1/algorithm/definitions/${formState.type}`
-      : '/api/v1/algorithm/definitions'
-
-    const method = props.mode === 'edit' ? 'PUT' : 'POST'
-
-    const response = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formState)
-    })
-
-    const result = await response.json()
-    if (result.success) {
-      message.success(props.mode === 'edit' ? '保存成功' : '创建成功')
-      emit('success')
-      emit('update:visible', false)
-      loadAlgorithms()
+// 计算属性双向代理：选中哨兵项时切换到"输入新分组名"态
+const groupSelectValue = computed<number | string | null>({
+  get: () => (creatingNewGroup.value ? NEW_GROUP_SENTINEL : formState.group_id),
+  set: (val) => {
+    if (val === NEW_GROUP_SENTINEL) {
+      creatingNewGroup.value = true
+      newGroupName.value = ''
     } else {
-      message.error(result.message || '操作失败')
+      creatingNewGroup.value = false
+      formState.group_id = val === null ? null : Number(val)
     }
-  } catch (error) {
-    message.error('操作失败')
   }
-}
+})
+```
 
-function handleCreate() {
-  resetForm()
-  emit('update:visible', true)
-}
+保存算法时若处于新建分组态，先创建分组再回填 `group_id`：
 
-function handleEdit(record: AlgorithmRecord) {
-  Object.assign(formState, {
-    type: record.type,
-    name: record.name,
-    group_id: record.group_id || null,  // 新增
-    category: record.category || '',
-    description: record.description || '',
-    status: record.status as 'online' | 'offline',
-    icon: record.icon || '',
-    display_order: record.display_order || 0,
-    params: record.params || [],
-    mappings: record.mappings || { device: [], api: [], evaluation: [] },
-    associated_dimensions: record.associated_dimensions || []
-  })
-  emit('update:visible', true)
+```typescript
+if (creatingNewGroup.value) {
+  const newGroup = await algorithmApi.createGroup({ name: newGroupName.value.trim() })
+  await loadGroups()
+  formState.group_id = newGroup.id ?? null
 }
+```
 
+### 5.2 参数配置三分栏（设备 / API / 用例）
+
+`paramConfigType: 'device' | 'api' | 'case'` 控制三张参数表切换：
+
+- **设备参数 / API 参数**：`param_code`、`param_name`、`direction(input|output)`、
+  `param_type(text|audio_stream|audio_file|text_file|rttm|stm|json)`、`required`；
+- **用例参数**：额外包含 `scope(common|api|e2e)`、`default_value`、
+  范围约束（`min_value` / `max_value` / `step` / `unit`，slider|number 类型时展示）、
+  `annotation_code`（标注匹配代码，默认同算法类型）、`field_path`（评估取值路径，默认同参数代码）、
+  `help_text`；`param_type` 支持 `text|number|textarea|switch|slider|audio_select|device_select|json`，
+  类型变更时经 `getDefaultComponent()` 同步前端渲染组件值；
+- 参数代码输入框挂 `datalist`（`PARAM_CODE_PRESETS` 预设字典），选中预设自动回填
+  名称/类型/默认值/范围/帮助文本。
+
+### 5.3 状态切换（禁用/启用）
+
+列表操作列保留"选择"按钮（对齐设计稿的 select 模式），启停用切换实现：
+
+```typescript
 async function handleToggleStatus(record: AlgorithmRecord) {
   const newStatus = record.status === 'online' ? 'offline' : 'online'
-  const action = newStatus === 'offline' ? '禁用' : '启用'
-  
-  try {
-    const response = await fetch(`/api/v1/algorithm/definitions/${record.type}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus })
-    })
-    const result = await response.json()
-    if (result.success) {
-      message.success(`${action}成功`)
-      loadAlgorithms()
-    } else {
-      message.error(result.message || `${action}失败`)
-    }
-  } catch (error) {
-    message.error(`${action}失败`)
-  }
+  await algorithmApi.updateDefinition(record.type, { status: newStatus })
+  loadAlgorithms()
 }
-
-async function handleDelete(record: AlgorithmRecord) {
-  try {
-    const response = await fetch(`/api/v1/algorithm/definitions/${record.type}`, {
-      method: 'DELETE'
-    })
-    const result = await response.json()
-    if (result.success) {
-      message.success('删除成功')
-      loadAlgorithms()
-    } else {
-      message.error(result.message || '删除失败')
-    }
-  } catch (error) {
-    message.error('删除失败')
-  }
-}
-
-function handleSearch() {
-  // 搜索由 computed 属性自动处理
-}
-
-function handleAddParam() {
-  formState.params.push({
-    param_code: '',
-    param_name: '',
-    param_type: 'text',
-    required: false,
-    component: 'input',
-    ui_group: 'basic',
-    ui_order: formState.params.length
-  })
-}
-
-function handleRemoveParam(index: number) {
-  formState.params.splice(index, 1)
-}
-
-function updateMappings(componentType: string, mappings: any[]) {
-  formState.mappings[componentType] = mappings
-}
-
-function handleAddDimension() {
-  formState.associated_dimensions.push({
-    dimension_id: null,
-    weight: 1.0
-  })
-}
-
-function handleRemoveDimension(index: number) {
-  formState.associated_dimensions.splice(index, 1)
-}
-</script>
-
-<style lang="less" scoped>
-.algorithm-config-modal {
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 16px;
-  }
-
-  .params-header,
-  .dimensions-header {
-    margin-bottom: 12px;
-  }
-
-  .danger {
-    color: #ff4d4f;
-  }
-}
-</style>
 ```
+
+状态枚举为 `'online' | 'offline'`（对应"上线 / 下线"），表单侧用
+`statusSwitch` 布尔开关代理，保存时回写为枚举值，无魔法字符串散落。
+
+### 5.4 关联评估维度
+
+dimensions 标签页维护 `AlgorithmDimensionRelation` 关联（`dimension_id` + `weight` + `is_default`）：
+
+- 勾选某行为默认维度时，其余行经 `updateDimensionRelation(id, { is_default: false })` 互斥取消；
+- 失焦/变更时自动保存：
+  - 新增：`POST /api/v1/algorithm/dimension-relations`
+  - 更新：`PUT /api/v1/algorithm/dimension-relations/:relationId`
+  - 删除：`DELETE /api/v1/algorithm/dimension-relations/:relationId`
+- 评估维度下拉数据来自 `useDimensions().fetchAllDimensions()`（Application 层缓存）；
+- 评估参数映射可指向任意维度（含子维度），不再按 `dimensionType` 过滤。
+
+> **落地记录**：设计稿草拟的 `POST /api/v1/algorithm/definitions/:type/dimensions`、
+> `DELETE /api/v1/algorithm/definitions/:type/dimensions/:id` 两个路径未采用，
+> 实际以独立的 `dimension-relations` 资源接口实现（另有 `associateDimensions` 批量关联接口保留可用）。
+
+### 5.5 参数自动保存（防抖）
+
+编辑模式下各参数表失焦即自动入库，避免整表提交丢失中间态：
+
+| 参数类别 | 防抖 | 出口 |
+|---------|------|------|
+| 设备 / API 参数 | 1500ms | `createParam` / `updateParam`（`POST/PUT /api/v1/algorithm/params`） |
+| 用例参数 | 1000ms | `createCaseParam` / `updateCaseParam`（`POST/PUT /api/v1/algorithm/case-params`），保存前校验 `param_code` 重复 |
+| 参考参数 | 1000ms | `createReferenceParam` / `updateReferenceParam`（`POST/PUT /api/v1/algorithm/reference-params`），`annotation_code` 为空时自动回填为 `code` |
+
+- 新建模式下算法定义尚未创建，参考参数受外键约束跳过自动保存，
+  待 `createDefinition` 成功后由 `savePendingReferenceParams()` 统一补存；
+- 行删除失败时回滚行数据并提示（乐观删除 + 失败恢复）；
+- 所有定义变更成功后调用 `useAlgorithmConfig().clearFormSchemaCache()` 清空
+  表单 Schema 缓存，保证测试页（AlgorithmSelector / DynamicForm）拉取最新参数定义。
+
+### 5.6 功能特性快捷开关（用例参数）
+
+用例参数标签页内置 `FEATURE_BUNDLES` 快捷开关（翻译方向 / 声纹注册 / 干扰人 /
+环境设备 / 交叠播放 / Prompt 音频 / 用例配置），每个 bundle 声明
+`{ label, scope, params: string[] }`：
+
+- 勾选：按预设批量追加缺失参数（scope 取 bundle 配置）并立即保存；
+- 取消：从 `formState` 移除，且已入库参数逐个调用 `deleteCaseParam(id)`；
+- 激活态由"bundle 内参数是否全部存在"推导，无冗余状态。
+
+---
+
+## 6. 组件代码说明
+
+> **废弃说明**：设计稿第 6 章"完整修改后的组件代码"为 Ant Design Vue 风格的
+> 实施伪代码（a-modal / a-table / a-tabs / a-form），与落地实现差异过大，
+> 已从本文移除。组件真实实现以
+> `frontend/src/components/algorithm/AlgorithmConfigModal.vue` 为准，
+> 结构与实现要点见 §2.1 与 §5，此处不再重复维护代码快照。
+
+落地实现的补充说明：
+
+- 模态窗壳为共用 `BasicModal`（`components/common/modal/BasicModal.vue`），
+  列表模式隐藏底部操作区（`show-footer=false`）；
+- 标签页为自绘 `tabs-nav`（非 UI 库 Tabs），五页对应 §2.1 结构；
+- 列表/表单模式共用一个弹窗实例，`internalMode` 在 list → create/edit 间内部切换，
+  取消时若无外部 mode 变更则回落列表模式而非直接关闭弹窗。
 
 ---
 
@@ -1003,28 +329,37 @@ function handleRemoveDimension(index: number) {
 
 ### 7.1 需要修改的文件
 
-- [ ] `frontend/src/components/algorithm/AlgorithmConfigModal.vue`
-  - 添加分组下拉选择（基本信息标签页）
-  - 添加禁用/启用按钮
-  - 添加关联评估维度标签页
-  - 更新 formState 数据结构
-  - 更新 formRules 验证规则
+- [x] `frontend/src/components/algorithm/AlgorithmConfigModal.vue`
+  - ~~添加分组下拉选择（基本信息标签页）~~ 已落地（含新建分组）
+  - ~~添加禁用/启用按钮~~ 已落地
+  - ~~添加关联评估维度标签页~~ 已落地（含 is_default 互斥与自动保存）
+  - ~~更新 formState 数据结构~~ 已落地（三分栏参数 + 参考参数 + 关联维度）
+  - ~~更新表单校验~~ 以 `handleOk` 内必填校验实现（未引入声明式 FormRules）
 
 ### 7.2 功能实现
 
 - [x] 列表模式（现有）
 - [x] 新建模式（现有）
-- [x] 编辑模式（现有）
+- [x] 编辑模式（现有，进入前加载详情回填）
 - [x] 选择模式（现有）
-- [ ] 分组选择功能（新增）
-- [ ] 禁用/启用功能（新增）
-- [ ] 关联评估维度（新增）
+- [x] 分组选择功能（已落地，含新建分组）
+- [x] 禁用/启用功能（已落地）
+- [x] 关联评估维度（已落地）
+- [x] 参考参数配置（已落地，设计稿外新增）
+- [x] 参数自动保存（已落地，设计稿外新增）
+- [x] 功能特性快捷开关（已落地，设计稿外新增）
 
-### 7.3 API 依赖
+### 7.3 API 依赖（均经 `algorithmApi` / `useDimensions` 出口访问，前缀 `/api/v1`）
 
-- [x] GET `/api/v1/algorithm/definitions` - 获取算法列表
-- [x] POST `/api/v1/algorithm/definitions` - 创建算法
-- [x] PUT `/api/v1/algorithm/definitions/:type` - 更新算法
-- [x] DELETE `/api/v1/algorithm/definitions/:type` - 删除算法
-- [ ] GET `/api/v1/algorithm-groups` - 获取算法分组列表（新增）
-- [ ] GET `/api/v1/evaluation/dimensions` - 获取评估维度列表（需确认）
+- [x] `GET /algorithm/definitions` - 获取算法列表
+- [x] `GET /algorithm/definitions/:type` - 获取算法详情（编辑回填）
+- [x] `POST /algorithm/definitions` - 创建算法
+- [x] `PUT /algorithm/definitions/:type` - 更新算法（含状态启停用）
+- [x] `DELETE /algorithm/definitions/:type` - 删除算法
+- [x] `GET /algorithm/groups` - 获取算法分组列表
+- [x] `POST /algorithm/groups` - 创建分组（新建分组流）
+- [x] `POST /algorithm/params`、`PUT /algorithm/params/:id` - 设备/API 参数自动保存
+- [x] `POST /algorithm/case-params`、`PUT /algorithm/case-params/:id`、`DELETE /algorithm/case-params/:id` - 用例参数管理
+- [x] `POST /algorithm/reference-params`、`PUT /algorithm/reference-params/:id`、`DELETE /algorithm/reference-params/:id` - 参考参数管理
+- [x] `POST /algorithm/dimension-relations`、`PUT /algorithm/dimension-relations/:id`、`DELETE /algorithm/dimension-relations/:id` - 维度关联管理
+- [x] 评估维度列表 - 经 `useDimensions().fetchAllDimensions()`（Application 层缓存），不再直接调用 `/evaluation/dimensions`

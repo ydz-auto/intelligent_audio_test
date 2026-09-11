@@ -1,14 +1,16 @@
 # AlgorithmConfigPage - 算法配置管理页面适配方案
 
 > **架构变更说明（2026-07）**：`options_source` 字段已废弃，`TranslationDirection` 表已删除。所有算法参数（包括翻译方向、语种）都是静态文本输入（`param_type=text`），不再从数据库表动态获取选项。本文档中涉及 `options_source=translation_directions` 的内容已过时。
+>
+> **分层与命名口径（当前实现）**：后端模型/请求校验内部为 snake_case，但所有 API 响应经 `success_response` 统一转换为 **camelCase**（`convert_keys_to_camel`）；请求体通过 Pydantic `validation_alias` 同时接受 camelCase 与 snake_case。前端遵循 DDD 分层——Infrastructure（`api/`/`adapters/`/`dto/`）唯一负责 snake_case↔camelCase 映射，Presentation/Application 只见 camelCase Domain 模型与 composables（Ports）。
 
 ## 1. 页面概述
 
 ### 1.1 页面定位
-AlgorithmConfigPage 是算法配置管理的核心页面，用于管理所有算法类型的定义、参数配置、参数映射等信息。
+AlgorithmConfigPage 是算法配置管理的核心页面，用于管理所有算法类型的定义、参数配置、参数映射等信息。（已实施：`frontend/src/views/AlgorithmConfigPage.vue`，算法新建/编辑由共用组件 `AlgorithmConfigModal.vue` 承载，弹窗经 `useModal` composable 全局注册管理。）
 
 ### 1.2 页面路由
-- 路由路径：`/algorithm-config`
+- 路由路径：`/AlgorithmConfig`（`router/index.ts` 中 name 为 `algorithmConfig`）
 - 菜单位置：系统设置 > 算法配置
 
 ### 1.3 核心功能
@@ -61,115 +63,140 @@ AlgorithmConfigPage 是算法配置管理的核心页面，用于管理所有算
 
 ### 3.1 算法列表数据
 
+> 命名口径：以下为**前端 Domain 模型（camelCase）**。后端 `algorithm_models.py` 内部为 snake_case，响应经统一转换后即为下述 camelCase 结构。
+
 ```typescript
 // 算法分组 - 对应 algorithm_models.py 中的 AlgorithmGroup 模型
 interface AlgorithmGroup {
   id: number;
-  name: string;           // 分组名称：翻译、语音识别、声纹识别、语音合成
-  description: string;    // 分组描述
-  icon: string;           // 图标URL
-  display_order: number;  // 排序权重
-  algorithm_count: number; // 分组下算法数量
-  created_at: string;
-  updated_at: string;
+  name: string;            // 分组名称：翻译、语音识别、声纹识别、语音合成
+  description: string;     // 分组描述
+  icon: string;            // 图标URL
+  displayOrder: number;    // 排序权重（后端 display_order）
+  algorithmCount: number;  // 分组下算法数量（后端 algorithm_count）
+  createdAt: string;
+  updatedAt: string;
 }
 
 // 算法定义 - 对应 algorithm_models.py 中的 AlgorithmDefinition 模型
 interface Algorithm {
   id: number;
-  type: string;           // 算法类型代码：translation, asr, speaker_recognition, tts
-  name: string;           // 显示名称：翻译、ASR、声纹识别、TTS
-  group_id: number;       // 关联分组ID (外键 -> AlgorithmGroup)
-  group_name: string;     // 分组名称（关联查询）
-  description: string;    // 描述
-  status: 'online' | 'offline';  // 状态
-  icon: string;           // 图标URL
-  display_order: number;  // 排序权重
-  created_at: string;
-  updated_at: string;
+  type: string;            // 算法类型代码：translation, asr, speaker_recognition, tts
+  name: string;            // 显示名称：翻译、ASR、声纹识别、TTS
+  groupId: number;         // 关联分组ID（后端 group_id，外键 -> AlgorithmGroup）
+  groupName: string;       // 分组名称（关联查询，后端 group_name）
+  description: string;     // 描述
+  status: 'online' | 'offline';  // 状态（枚举化，禁止魔法字符串）
+  icon: string;            // 图标URL
+  displayOrder: number;    // 排序权重（后端 display_order）
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
 ### 3.2 算法详情数据
 
 ```typescript
-// 算法详情 - 包含参数和映射配置
+// 算法详情 - 包含参数和映射配置（GET /api/v1/algorithm/definitions/:type 响应，camelCase）
 interface AlgorithmDetail {
   type: string;
   name: string;
-  group_id: number;
-  group_name: string;
+  groupId: number;
+  groupName: string;
   description: string;
   status: 'online' | 'offline';
   icon: string;
-  display_order: number;
-  
+  displayOrder: number;
+
   // 设备参数 - 对应 AlgorithmDeviceParam 模型
-  device_params: AlgorithmDeviceParam[];
-  
-  // API参数 - 对应 AlgorithmApiParam 模型  
-  api_params: AlgorithmApiParam[];
-  
-  // 参数映射 - 对应 ParamMapping 模型
-  mappings: ParamMapping[];
-  
+  deviceParams: AlgorithmDeviceParam[];
+
+  // API参数 - 对应 AlgorithmApiParam 模型（字段同设备参数，direction 默认 output）
+  apiParams: AlgorithmApiParam[];
+
+  // 用例专属参数 - 对应 CaseAlgorithmParam 模型（驱动动态表单）
+  caseParams: CaseAlgorithmParam[];
+
+  // 参数映射 - 对应 ParamMapping 模型（按 source 分组：device/api/evaluation）
+  mappings: ParamMappingGroups;
+
   // 评估维度关联 - 对应 AlgorithmDimensionRelation 模型
-  dimension_relations: AlgorithmDimensionRelation[];
+  dimensionRelations: AlgorithmDimensionRelation[];
+
+  // 参考参数 - 对应 AlgorithmReferenceParam 模型
+  referenceParams: AlgorithmReferenceParam[];
 }
 
 // 设备参数 - algorithm_models.py AlgorithmDeviceParam
 interface AlgorithmDeviceParam {
   id: number;
-  algorithm_type: string;
-  param_code: string;       // 参数代码
-  param_name: string;       // 参数显示名称
-  label: string;            // 字段显示名称
-  param_type: string;       // 参数类型：select, text, number, textarea, slider, switch, json
-  direction: string;        // 方向：input, output
-  required: boolean;        // 是否必填
-  default_value: any;        // 默认值
-  options_source: string;    // 选项来源
-  options_field: string;    // 选项值字段
-  options_label_field: string; // 选项显示字段
-  validation: object;        // 验证规则
-  help_text: string;        // 帮助提示
-  component: string;         // 前端组件
-  ui_order: number;         // 界面排序
-  ui_group: string;         // 分组：basic, model, inference, advanced
-  hidden: boolean;          // 是否隐藏
+  algorithmType: string;   // 后端 algorithm_type
+  paramCode: string;       // 参数代码（后端 param_code）
+  paramName: string;       // 参数显示名称（后端 param_name）
+  label: string;           // 字段显示名称（映射配置中展示）
+  paramType: string;       // 参数类型：text, audio_stream, audio_file, text_file, rttm, stm, json
+  direction: string;       // 方向：input, output（枚举化）
+  required: boolean;       // 是否必填
+  defaultValue: any;       // 默认值（后端 default_value，JSON）
+  validation: object;      // 验证规则（后端 validation_rules 解析后）
+  helpText: string;        // 帮助提示（后端 help_text）
+  uiOrder: number;         // 界面排序（后端 ui_order）
+  hidden: boolean;         // 是否隐藏
 }
 
 // API参数 - algorithm_models.py AlgorithmApiParam（字段同 AlgorithmDeviceParam）
 interface AlgorithmApiParam extends Omit<AlgorithmDeviceParam, 'direction'> {
-  // API参数direction默认为output
+  // API参数 direction 默认为 output
+}
+
+// 用例专属参数 - algorithm_models.py CaseAlgorithmParam（动态表单字段来源）
+interface CaseAlgorithmParam {
+  id: number;
+  algorithmType: string;
+  paramCode: string;
+  paramName: string;
+  label: string;
+  paramType: string;       // text, number, textarea, slider, switch, audio_select, device_select, json
+  required: boolean;
+  defaultValue: any;
+  helpText: string;
+  uiOrder: number;
+  hidden: boolean;
+  scope: 'common' | 'api' | 'e2e';  // 参数适用范围（枚举化）
+  minValue?: number;       // number/slider 约束
+  maxValue?: number;
+  step?: number;
+  unit?: string;           // 单位显示（如 cm, dB, s）
+  annotationCode?: string; // 关联音频标注代码
+  fieldPath?: string;      // 标注数据字段路径
 }
 
 // 参数映射 - algorithm_models.py ParamMapping
 interface ParamMapping {
   id: number;
-  algorithm_type: string;
-  source_type: 'device' | 'api';  // 源类型
-  source_param: string;           // 源参数代码
-  source_direction: string;       // 源参数方向：input, output
-  dimension_id: number;           // 目标评估维度ID
-  dimension_name: string;         // 评估维度名称
-  target_param: string;           // 目标评估维度参数代码
-  transform_type: string;         // 转换类型：none, uppercase, lowercase, json_parse, base64
+  algorithmType: string;
+  source: string;                 // 参数来源（枚举化）：case=用例参数, reference=参考参数, device=设备输出, api=API输出, case_config=用例配置(config.rounds)字段
+  sourceParam: string;            // 源参数代码（后端 source_param）
+  paramName?: string;             // 源参数显示名称（后端按 source 回填）
+  sourceDirection: string;        // 源参数方向：input, output（后端 source_direction）
+  dimensionId: number | null;     // 目标评估维度ID（后端 dimension_id，评估类映射必填）
+  dimensionName: string;          // 评估维度名称（后端 dimension_name）
+  targetParam: string;            // 目标评估维度参数代码（后端 target_param）
+  transformType: string;          // 转换类型（枚举化）：none, uppercase, lowercase, json_parse, base64
 }
 
 // 评估维度关联 - algorithm_models.py AlgorithmDimensionRelation
 interface AlgorithmDimensionRelation {
   id: number;
-  algorithm_type: string;
-  dimension_id: number;
-  dimension_name: string;
-  is_default: boolean;     // 是否默认评估维度
+  algorithmType: string;
+  dimensionId: number;     // 后端 dimension_id
+  dimensionName: string;   // 后端 dimension_name
+  isDefault: boolean;      // 是否默认评估维度（后端 is_default）
   weight: number;          // 权重
 }
 ```
 
-> **注**：完整字段映射方案见 [15_完整字段映射方案.md](file:///c:/S2TT/auto_test/ver8/202601292330/doc/功能设计文档/智能语音算法配置适配/15_完整字段映射方案.md)
-```
+> **注**：完整字段映射方案见本目录及《15_完整字段映射方案.md》（历史引用路径已失效，以本目录文档为准）。
 
 ---
 
@@ -214,18 +241,16 @@ interface UpdateAlgorithmGroupRequest extends Partial<CreateAlgorithmGroupReques
 ### 4.5 获取算法列表
 
 ```typescript
-// GET /api/v1/algorithm/definitions
+// GET /api/v1/algorithm/definitions（全量返回，按 displayOrder 排序）
 interface AlgorithmListResponse {
   data: Algorithm[];
   total: number;
 }
 
-// 请求参数
+// 请求参数（AlgorithmListQuery）
 interface AlgorithmListParams {
-  page?: number;
-  page_size?: number;
-  status?: 'online' | 'offline';
-  group_id?: number;      // 按分组筛选
+  status?: 'online' | 'offline';  // 按状态筛选
+  groupId?: number;               // 按分组筛选（后端 group_id）
 }
 ```
 
@@ -233,7 +258,7 @@ interface AlgorithmListParams {
 
 ```typescript
 // GET /api/v1/algorithm/definitions/:type
-// 返回 AlgorithmDetail，包含 device_params, api_params, mappings, dimension_relations
+// 返回 AlgorithmDetail，包含 deviceParams, apiParams, caseParams, mappings, dimensionRelations, referenceParams
 ```
 
 ### 4.7 创建算法
@@ -265,63 +290,62 @@ interface UpdateAlgorithmRequest extends Partial<CreateAlgorithmRequest> {}
 // 返回 { success: boolean, message: string }
 ```
 
-### 4.10 获取设备参数列表
+### 4.10 获取参数列表（设备参数 / API 参数统一入口）
 
 ```typescript
-// GET /api/v1/algorithm/definitions/:type/device-params
-// 返回 AlgorithmDeviceParam[]
+// GET /api/v1/algorithm/params?algorithmType=:type&paramType=device|api
+// paramType=device 返回 AlgorithmDeviceParam[]，paramType=api 返回 AlgorithmApiParam[]
+// 响应：{ parameters: [...], total: number }
 ```
 
-### 4.11 获取API参数列表
+### 4.11 获取用例专属参数列表
 
 ```typescript
-// GET /api/v1/algorithm/definitions/:type/api-params
-// 返回 AlgorithmApiParam[]
+// GET /api/v1/algorithm/case-params?algorithmType=:type
+// 返回 CaseAlgorithmParam[]；支持 POST/PUT/DELETE /api/v1/algorithm/case-params[/:id] 维护
 ```
 
 ### 4.12 获取参数映射列表
 
 ```typescript
-// GET /api/v1/algorithm/definitions/:type/mappings
-// 返回 ParamMapping[]
+// GET /api/v1/algorithm/mappings?algorithmType=:type
+// 返回按 source 分组的映射：{ device: [...], api: [...], evaluation: [...] }
+// 支持 POST /api/v1/algorithm/mappings、PUT/DELETE /api/v1/algorithm/mappings/:id
 ```
 
 ### 4.13 获取评估维度关联
 
 ```typescript
-// GET /api/v1/algorithm/definitions/:type/dimensions
-// 返回 AlgorithmDimensionRelation[]
+// GET /api/v1/algorithm/dimensions/:type
+// 返回 { dimensions: [...], dimensionIds: [...], defaultDimensionId, weights }
+// 其中 dimensions 元素含 id/name/description/type/weight/isDefault
 ```
 
-### 4.14 添加评估维度关联
+### 4.14 关联评估维度（整体替换）
 
 ```typescript
-// POST /api/v1/algorithm/definitions/:type/dimensions
-interface AddDimensionRelationRequest {
-  dimension_id: number;
-  is_default?: boolean;
-  weight?: number;
+// POST /api/v1/algorithm/dimensions/:type
+interface AssociateDimensionsRequest {
+  dimensions: Array<{ dimensionId: number; weight?: number }>;
 }
 ```
 
-### 4.15 删除评估维度关联
+### 4.15 维度关联单条维护
 
 ```typescript
-// DELETE /api/v1/algorithm/definitions/:type/dimensions/:id
-// 返回 { success: boolean, message: string }
+// POST /api/v1/algorithm/dimension-relations          （新建单条关联）
+// PUT  /api/v1/algorithm/dimension-relations/:id      （更新 isDefault/weight）
+// DELETE /api/v1/algorithm/dimension-relations/:id    （删除单条关联，逻辑删除）
 ```
 
 ### 4.16 获取表单 Schema
 
 ```typescript
-// GET /api/v1/algorithm/definitions/:type/form-schema
+// GET /api/v1/algorithm/form-schema/:type
 interface FormSchemaResponse {
   algorithmType: string;
   algorithmName: string;
-  groupId: number;
-  groupName: string;
   description: string;
-  status: string;
   groups: FormGroup[];
   fields: FormField[];
 }
@@ -339,11 +363,15 @@ interface FormField {
   required: boolean;
   defaultValue: any;
   component: string;
-  options?: Array<{ label: string; value: any }>;
-  validation?: Record<string, any>;
   helpText?: string;
   hidden: boolean;
+  uiOrder: number;   // 界面排序（后端 ui_order）
+  scope: string;     // 参数适用范围：common/api/e2e
 }
+
+// fieldType -> component 默认映射（后端 _get_default_component）
+// select->select  text->input  textarea->textarea  number->input-number
+// boolean->switch  json->code-editor  slider->slider
 ```
 
 ### 4.17 重新加载配置
@@ -353,23 +381,32 @@ interface FormField {
 // 返回 { success: boolean, message: string }
 ```
 
+### 4.18 其他配套接口（已实现）
+
+```typescript
+// 参考参数：GET/POST /api/v1/algorithm/reference-params；PUT/DELETE /api/v1/algorithm/reference-params/:id
+// 维度参数：GET /api/v1/algorithm/dimension-params/:dimensionId
+// 算法导入：POST /api/v1/algorithm/import
+// 批量删除：POST /api/v1/algorithm/bulk-delete
+// 参数提取：POST /api/v1/algorithm/extract-params
+```
+
 ---
 
 ## 5. 组件设计
 
-### 5.1 页面组件结构
+### 5.1 页面组件结构（当前实现）
 
 ```
-AlgorithmConfigPage.vue
-├── AlgorithmGroupSelect.vue     # 分组筛选下拉框（关联 AlgorithmGroup）
-├── AlgorithmGroupModal.vue      # 分组管理弹窗
-├── AlgorithmTable.vue          # 算法列表表格
-├── AlgorithmCard.vue           # 算法卡片（可选视图）
-├── AlgorithmConfigModal.vue    # 算法配置弹窗（共用）
-├── DeviceParamPanel.vue        # 设备参数配置面板（对应 AlgorithmDeviceParam）
-├── ApiParamPanel.vue           # API参数配置面板（对应 AlgorithmApiParam）
-├── MappingConfigPanel.vue      # 映射配置面板（对应 ParamMapping）
-└── DimensionRelationPanel.vue # 评估维度关联面板（对应 AlgorithmDimensionRelation）
+AlgorithmConfigPage.vue                      # views/AlgorithmConfigPage.vue（已实施）
+├── PaginationComponent.vue                  # 分页组件（components/common/）
+├── useModal / MODAL_TYPES                   # 弹窗控制 composable（全局弹窗注册）
+├── AlgorithmConfigModal.vue                 # 算法配置弹窗（components/algorithm/，5 个标签页）
+│   ├── 基本信息basic / 参数配置params / 参考参数reference / 参数映射mappings / 关联维度dimensions
+│   ├── AlgorithmParamsConfig.vue            # 参数配置面板（含 supportedAlgorithms 选择）
+│   └── DynamicForm.vue                      # 动态表单（依据 FormSchema 渲染）
+├── AlgorithmSelect.vue                      # 算法选择器（components/algorithm/）
+└── 数据访问：utils/api.ts 中 algorithmApi（Infrastructure 层，唯一感知接口报文）
 ```
 
 ### 5.2 AlgorithmGroupModal（分组管理弹窗）
@@ -411,8 +448,8 @@ interface AlgorithmConfigModalProps {
   groups: AlgorithmGroup[];           // 分组列表（新增）
 }
 
-// 模态窗标签页
-type TabKey = 'basic' | 'parameters' | 'mappings' | 'dimensions';
+// 模态窗标签页（当前实现为 5 个，见 AlgorithmConfigModal.vue 的 formTabs）
+type TabKey = 'basic' | 'params' | 'reference' | 'mappings' | 'dimensions';
 ```
 
 ### 5.4 ParameterConfigPanel
@@ -474,7 +511,7 @@ const handleCreateAlgorithm = () => {
 
 const handleSaveAlgorithm = async (data: CreateAlgorithmRequest) => {
   try {
-    await algorithmService.createAlgorithm(data);
+    await algorithmApi.createDefinition(data);
     ElMessage.success('算法创建成功');
     await loadAlgorithmList();
     modalVisible.value = false;
@@ -489,7 +526,7 @@ const handleSaveAlgorithm = async (data: CreateAlgorithmRequest) => {
 ```typescript
 const handleEditAlgorithm = async (type: string) => {
   try {
-    const detail = await algorithmService.getAlgorithmDetail(type);
+    const detail = await algorithmApi.getDefinition(type);
     modalMode.value = 'edit';
     modalData.value = detail;
     modalVisible.value = true;
@@ -510,7 +547,7 @@ const handleDeleteAlgorithm = async (type: string, name: string) => {
       { type: 'warning' }
     );
     
-    await algorithmService.deleteAlgorithm(type);
+    await algorithmApi.deleteDefinition(type);
     ElMessage.success('算法删除成功');
     await loadAlgorithmList();
   } catch (error) {
@@ -526,7 +563,7 @@ const handleDeleteAlgorithm = async (type: string, name: string) => {
 ```typescript
 // 导出算法配置
 const handleExport = async () => {
-  const algorithms = await algorithmService.getAlgorithmList({ page_size: 1000 });
+  const algorithms = await algorithmApi.getDefinitions();
   const blob = new Blob([JSON.stringify(algorithms.data, null, 2)], {
     type: 'application/json'
   });
@@ -550,7 +587,7 @@ const handleImport = async (file: File) => {
     );
     
     for (const algo of algorithms) {
-      await algorithmService.createAlgorithm(algo);
+      await algorithmApi.createDefinition(algo);
     }
     
     ElMessage.success(`成功导入 ${algorithms.length} 个算法`);
@@ -578,14 +615,11 @@ const handleImport = async (file: File) => {
 │  是否必填: [✓]                                                          │
 │                                                                          │
 │  ─────────────────────────────────────────────────────────────────────  │
-│  选项配置 (仅 select 类型):                                              │
-│  选项来源: [translation_directions ▼] ← 数据库表名                       │
-│  值字段:   [code                    ]                                    │
-│  显示字段: [description              ]                                   │
+│  （原"选项来源/值字段/显示字段"配置已随 options_source 废弃而移除，        │
+│   选项内容直接内置于默认值或前端枚举配置）                                  │
 │                                                                          │
 │  ─────────────────────────────────────────────────────────────────────  │
 │  前端组件: [select ▼]                ← select/input/input-number/...    │
-│  界面分组: [basic ▼]                 ← basic/model/inference/advanced   │
 │  排序权重: [1                        ]                                   │
 │  是否隐藏: [ ]                                                          │
 │                                                                          │
@@ -609,13 +643,9 @@ const handleImport = async (file: File) => {
 | switch | switch | 开关 |
 | json | code-editor | JSON编辑器 |
 
-### 7.3 选项来源配置
+### 7.3 选项来源配置（已废弃）
 
-| 选项来源 | 数据表 | 值字段 | 显示字段 |
-|---------|-------|-------|---------|
-| translation_directions | TranslationDirection | code | description |
-| languages | - | code | name |
-| sample_rates | - | value | label |
+> 原 `translation_directions / languages / sample_rates` 数据库动态选项来源方案已废弃：`options_source` 字段与 `TranslationDirection` 表均已删除，选项不再从数据库表获取。当前所有参数选项均为静态文本输入或内置于前端枚举/配置中。
 
 ---
 
@@ -701,92 +731,47 @@ const handleImport = async (file: File) => {
 
 ## 10. 状态管理
 
-### 10.1 Pinia Store
+### 10.1 当前实现：composables（Application 层）+ 页面本地状态
+
+> 原方案中的 Pinia `useAlgorithmStore` 与 `algorithmService` **未实施且已废弃**。当前遵循 DDD 分层约定：页面状态由 `AlgorithmConfigPage.vue` 内部 `ref/computed` 管理，跨页面复用的算法能力沉淀为 composables（Ports），接口访问统一收敛到 `utils/api.ts` 的 `algorithmApi`（Infrastructure 层）。
 
 ```typescript
-// stores/algorithm.ts
-import { defineStore } from 'pinia';
-import { algorithmService } from '@/services/algorithmService';
+// composables/useAlgorithmConfig.ts（已实施，核心应用层封装）
+// - getFormSchema(algorithmType)：拉取 /api/v1/algorithm/form-schema/:type，
+//   并以 Map 缓存（formSchemas）避免重复请求（ReadModel 缓存）
+// - getCaseAlgorithmParams(algorithmType)：拉取 /api/v1/algorithm/case-params，
+//   同样带缓存（caseParamCache）；内部完成 snake_case -> camelCase 字段映射
+//   （paramCode/paramName/paramType/defaultValue/helpText/uiOrder/hidden 等）
+// - 仅依赖 algorithmApi 与 Domain 类型，不感知 HTTP 细节
 
-export const useAlgorithmStore = defineStore('algorithm', {
-  state: () => ({
-    algorithms: [] as Algorithm[],
-    currentAlgorithm: null as AlgorithmDetail | null,
-    loading: false,
-    total: 0,
-    page: 1,
-    pageSize: 10,
-    filters: {
-      status: '',
-      category: ''
-    }
-  }),
-  
-  actions: {
-    async loadAlgorithms() {
-      this.loading = true;
-      try {
-        const response = await algorithmService.getAlgorithmList({
-          page: this.page,
-          page_size: this.pageSize,
-          ...this.filters
-        });
-        this.algorithms = response.data;
-        this.total = response.total;
-      } finally {
-        this.loading = false;
-      }
-    },
-    
-    async loadAlgorithmDetail(type: string) {
-      this.loading = true;
-      try {
-        this.currentAlgorithm = await algorithmService.getAlgorithmDetail(type);
-      } finally {
-        this.loading = false;
-      }
-    },
-    
-    async createAlgorithm(data: CreateAlgorithmRequest) {
-      await algorithmService.createAlgorithm(data);
-      await this.loadAlgorithms();
-    },
-    
-    async updateAlgorithm(type: string, data: UpdateAlgorithmRequest) {
-      await algorithmService.updateAlgorithm(type, data);
-      await this.loadAlgorithms();
-    },
-    
-    async deleteAlgorithm(type: string) {
-      await algorithmService.deleteAlgorithm(type);
-      await this.loadAlgorithms();
-    }
-  }
-});
+// composables/useAlgorithmSelection.ts / useAlgorithmLabels.ts
+// - 算法选择状态与算法标签文案（枚举化映射，避免魔法字符串）
+
+// 弹窗控制：composables/useModal.ts（MODAL_TYPES 注册 ALGORITHM_CONFIG 等全局弹窗）
 ```
+
+如后续算法列表数据需要跨页面共享，再考虑引入轻量 store；当前规模下页面本地状态 + composable 缓存已满足 CQRS 读模型要求。
 
 ---
 
 ## 11. 实施清单
 
-### 11.1 后端实施
+### 11.1 后端实施（已完成）
 
-- [ ] 创建 `algorithm_models.py` 数据模型
-- [ ] 创建 `algorithm_controller.py` API 控制器
-- [ ] 创建 `algorithm_service.py` 业务逻辑
-- [ ] 创建数据库迁移脚本
-- [ ] 初始化算法数据
+- [x] 创建 `backend/models/algorithm_models.py` 数据模型（AlgorithmGroup/AlgorithmDefinition/AlgorithmDeviceParam/AlgorithmApiParam/CaseAlgorithmParam/AlgorithmReferenceParam/ParamMapping/AlgorithmDimensionRelation）
+- [x] 创建 `backend/controllers/algorithm_controller.py` API 控制器 + `backend/blueprints/algorithm_bp.py` 路由（前缀 `/api/v1/algorithm`）
+- [x] 创建 `backend/schemas/algorithm.py` 请求/响应 Schema（Pydantic validation_alias 兼容 camelCase/snake_case）
+- [x] 数据库迁移与算法数据初始化
 
-### 11.2 前端实施
+### 11.2 前端实施（已完成）
 
-- [ ] 创建 `AlgorithmConfigPage.vue` 页面
-- [ ] 创建 `AlgorithmConfigModal.vue` 模态窗
-- [ ] 创建 `ParameterConfigPanel.vue` 参数配置面板
-- [ ] 创建 `MappingConfigPanel.vue` 映射配置面板
-- [ ] 创建 `DimensionSelect.vue` 维度选择器
-- [ ] 创建 `algorithmService.ts` API 服务
-- [ ] 创建 `useAlgorithmStore` 状态管理
-- [ ] 配置路由
+- [x] 创建 `views/AlgorithmConfigPage.vue` 页面（路由 `/AlgorithmConfig`）
+- [x] 创建 `components/algorithm/AlgorithmConfigModal.vue` 模态窗（basic/params/reference/mappings/dimensions 5 个标签页）
+- [x] 创建 `components/algorithm/AlgorithmParamsConfig.vue` 参数配置面板
+- [x] 创建 `components/algorithm/DynamicForm.vue` 动态表单（06 文档）
+- [x] 维度选择能力并入 `AlgorithmConfigModal.vue` 关联维度标签页（原计划独立 `DimensionSelect.vue` 未单独实施，相关面板见 `components/common/DimensionConfigPanel.vue`）
+- [x] 创建 `utils/api.ts` 中 `algorithmApi`（原计划的 `algorithmService.ts` 未实施，改为 Infrastructure 层 API 对象）
+- [x] 创建 `composables/useAlgorithmConfig.ts` 等应用层封装（原计划的 `useAlgorithmStore` 未实施，改为 composables）
 
 ### 11.3 测试验证
 

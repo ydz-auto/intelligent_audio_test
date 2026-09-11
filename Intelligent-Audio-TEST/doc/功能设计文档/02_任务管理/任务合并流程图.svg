@@ -1,0 +1,371 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowRose" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f43f5e"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowViolet); }
+      .flow-rose { stroke: #f43f5e; stroke-width: 1.6; fill: none; marker-end: url(#arrowRose); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .decision-t { font-size: 12px; font-weight: 600; fill: #854d0e; text-anchor: middle; }
+      .mono { font-family: Consolas, 'Courier New', monospace; font-size: 10px; font-weight: 600; }
+      .mono-s { font-family: Consolas, 'Courier New', monospace; font-size: 9px; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">任务合并流程图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">多个 completed 任务合并为新任务 · 7 张表处理 · 事务保障 · 原任务标记 merged</text>
+
+  <!-- ① 功能概述与合并条件 -->
+  <rect x="24" y="88" width="1192" height="300" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="88" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="114" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="107" r="11" fill="#3b82f6"/>
+  <text x="46" y="111" class="num-badge">1</text>
+  <text x="66" y="112" class="sec-title" fill="#1e3a8a">功能概述 — 合并条件 · 冲突处理 · 适用场景</text>
+
+  <!-- 功能概述 + 适用场景 -->
+  <rect x="40" y="136" width="540" height="244" rx="8" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.2"/>
+  <text x="60" y="158" font-size="11" font-weight="700" fill="#1d4ed8">功能概述</text>
+  <text x="60" y="178" class="body">将多个 completed 状态的任务合并成一个新的汇总任务</text>
+  <text x="60" y="196" class="body">便于集中管理和分析测试结果</text>
+
+  <text x="60" y="222" class="lbl" fill="#475569">适用场景</text>
+  <text x="60" y="240" class="body">· 多个相同配置的任务执行完成后，统一查看结果</text>
+  <text x="60" y="256" class="body">· 对比不同时间段相同用例在不同设备上的执行情况</text>
+  <text x="60" y="272" class="body">· 合并多个小任务为一个大任务进行归档管理</text>
+
+  <text x="60" y="298" class="lbl" fill="#475569">API 入口</text>
+  <text x="60" y="316" class="mono-s" fill="#1d4ed8">POST /api/v1/tasks/merge</text>
+  <text x="60" y="332" class="box-desc">请求体: { "task_ids": [1, 2, 3] }</text>
+  <text x="60" y="348" class="box-desc">响应: { merged_task_id, merged_task_name }</text>
+  <text x="60" y="364" class="note">后端入口: task_bp.py → TaskController.merge()</text>
+
+  <!-- 合并条件 + 冲突处理 -->
+  <rect x="640" y="136" width="540" height="244" rx="8" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.2"/>
+  <text x="660" y="158" font-size="11" font-weight="700" fill="#1d4ed8">合并条件 + 冲突处理</text>
+
+  <text x="660" y="178" class="lbl" fill="#166534">合并条件</text>
+  <text x="660" y="196" class="body">1. 必须选择至少 2 个任务</text>
+  <text x="660" y="214" class="body">2. 所有选中任务状态必须都是 completed</text>
+  <text x="660" y="232" class="body">3. 任务类型无限制（api / e2e / merged 等）</text>
+
+  <text x="660" y="258" class="lbl" fill="#7c3aed">冲突处理（方案 A）</text>
+  <text x="660" y="276" class="body">· 同设备同用例: 保留所有执行记录</text>
+  <text x="660" y="292" class="body">  通过 merged_at 时间戳区分不同来源</text>
+  <text x="660" y="308" class="body">· 不删除原任务，仅标记状态为 merged</text>
+  <text x="660" y="324" class="body">· 原任务 merged_into 指向新任务 ID</text>
+
+  <text x="660" y="348" class="lbl" fill="#b91c1c">test_results 新增字段</text>
+  <text x="660" y="364" class="mono-s" fill="#334155">merged_from (Integer) · merged_at (DateTime)</text>
+  <text x="660" y="376" class="note">通过 merged_from + merged_at 追溯每条结果的原始任务</text>
+
+  <!-- ② API接口与错误码 -->
+  <rect x="24" y="396" width="1192" height="260" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="396" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="422" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="415" r="11" fill="#d97706"/>
+  <text x="46" y="419" class="num-badge">2</text>
+  <text x="66" y="420" class="sec-title" fill="#78350f">API 接口 — 请求 / 响应 · 错误码</text>
+
+  <!-- 请求与响应 -->
+  <rect x="40" y="444" width="560" height="200" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="60" y="466" font-size="10.5" font-weight="700" fill="#78350f">请求信息 + 响应</text>
+
+  <text x="60" y="486" class="lbl" fill="#78350f">POST /api/v1/tasks/merge</text>
+  <text x="60" y="504" class="mono-s" fill="#334155">Content-Type: application/json</text>
+
+  <text x="60" y="528" class="lbl" fill="#475569">请求参数</text>
+  <text x="60" y="546" class="mono-s" fill="#334155">{</text>
+  <text x="76" y="560" class="mono-s" fill="#334155">"task_ids": [1, 2, 3]</text>
+  <text x="60" y="574" class="mono-s" fill="#334155">}</text>
+  <text x="260" y="546" class="box-desc">task_ids: Array[Integer]</text>
+  <text x="260" y="560" class="box-desc">必填 · 要合并的任务 ID 列表</text>
+
+  <text x="60" y="598" class="lbl" fill="#166534">响应成功 (code: 0)</text>
+  <text x="60" y="614" class="mono-s" fill="#334155">{ "merged_task_id": 100,</text>
+  <text x="60" y="628" class="mono-s" fill="#334155">  "merged_task_name": "合并任务_..." }</text>
+  <text x="320" y="614" class="box-desc">message: "成功合并 N 个任务"</text>
+
+  <!-- 错误码 -->
+  <rect x="620" y="444" width="560" height="200" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="640" y="466" font-size="10.5" font-weight="700" fill="#78350f">错误码</text>
+
+  <text x="640" y="488" class="lbl" fill="#0f766e">错误码</text>
+  <text x="720" y="488" class="lbl" fill="#0f766e">错误信息</text>
+  <text x="900" y="488" class="lbl" fill="#0f766e">说明</text>
+  <line x1="640" y1="492" x2="1160" y2="492" stroke="#fcd34d" stroke-width="1"/>
+
+  <rect x="640" y="500" width="60" height="22" rx="4" fill="#fee2e2" stroke="#dc2626" stroke-width="1"/>
+  <text x="670" y="515" class="chip-t" fill="#991b1b">1001</text>
+  <text x="720" y="515" class="body">合并需要至少两个任务</text>
+  <text x="900" y="515" class="box-desc">task_ids 数量不足</text>
+
+  <rect x="640" y="530" width="60" height="22" rx="4" fill="#fee2e2" stroke="#dc2626" stroke-width="1"/>
+  <text x="670" y="545" class="chip-t" fill="#991b1b">1004</text>
+  <text x="720" y="545" class="body">部分任务未找到</text>
+  <text x="900" y="545" class="box-desc">存在无效的任务 ID</text>
+
+  <rect x="640" y="560" width="60" height="22" rx="4" fill="#fee2e2" stroke="#dc2626" stroke-width="1"/>
+  <text x="670" y="575" class="chip-t" fill="#991b1b">2005</text>
+  <text x="720" y="575" class="body">任务未完成，无法合并</text>
+  <text x="900" y="575" class="box-desc">存在非 completed 任务</text>
+
+  <text x="640" y="608" class="note">· 错误响应包含 code + message</text>
+  <text x="640" y="624" class="note">· 1001 提示"请至少选择两个任务进行合并"</text>
+  <text x="640" y="638" class="note">· 2005 提示"以下任务未完成，无法合并: 任务名"</text>
+
+  <!-- ③ 数据表处理 -->
+  <rect x="24" y="664" width="1192" height="440" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="664" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="690" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="683" r="11" fill="#7c3aed"/>
+  <text x="46" y="687" class="num-badge">3</text>
+  <text x="66" y="688" class="sec-title" fill="#5b21b6">数据表处理 — 7 张表 · INSERT / UPDATE / 级联</text>
+
+  <!-- Card 1: test_tasks -->
+  <rect x="40" y="716" width="572" height="84" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <circle cx="60" cy="740" r="11" fill="#7c3aed"/>
+  <text x="60" y="744" class="num-badge">1</text>
+  <text x="80" y="744" class="mono-s" fill="#5b21b6" font-size="11">test_tasks</text>
+  <rect x="200" y="730" width="56" height="18" rx="9" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="228" y="743" class="chip-t" fill="#15803d">INSERT</text>
+  <rect x="264" y="730" width="56" height="18" rx="9" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <text x="292" y="743" class="chip-t" fill="#92400e">UPDATE</text>
+  <text x="80" y="764" class="box-desc">INSERT 新任务: name=合并任务_{名1}_{名2}, type=merged, status=completed</text>
+  <text x="80" y="780" class="box-desc">UPDATE 原任务: status=merged, merged_into=新任务ID · flush() 先取新 ID</text>
+
+  <!-- Card 2: test_results -->
+  <rect x="40" y="808" width="572" height="84" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <circle cx="60" cy="832" r="11" fill="#7c3aed"/>
+  <text x="60" y="836" class="num-badge">2</text>
+  <text x="80" y="836" class="mono-s" fill="#5b21b6" font-size="11">test_results</text>
+  <rect x="200" y="822" width="56" height="18" rx="9" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <text x="228" y="835" class="chip-t" fill="#92400e">UPDATE</text>
+  <text x="80" y="856" class="box-desc">UPDATE task_id → 新任务ID · 添加 merged_from=原任务ID</text>
+  <text x="80" y="872" class="box-desc">添加 merged_at=合并时间 · 通过时间戳区分不同来源记录</text>
+
+  <!-- Card 3: test_result_dimensions -->
+  <rect x="40" y="900" width="572" height="84" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <circle cx="60" cy="924" r="11" fill="#7c3aed"/>
+  <text x="60" y="928" class="num-badge">3</text>
+  <text x="80" y="928" class="mono-s" fill="#5b21b6" font-size="11">test_result_dimensions</text>
+  <rect x="260" y="914" width="70" height="18" rx="9" fill="#ede9fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="295" y="927" class="chip-t" fill="#5b21b6">级联更新</text>
+  <text x="80" y="948" class="box-desc">通过 test_result_id 关联自动更新 · 无需手动处理</text>
+  <text x="80" y="964" class="box-desc">test_results 更新 task_id 后，维度评分跟随迁移</text>
+
+  <!-- Card 4: task_device_relations -->
+  <rect x="40" y="992" width="572" height="84" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <circle cx="60" cy="1016" r="11" fill="#7c3aed"/>
+  <text x="60" y="1020" class="num-badge">4</text>
+  <text x="80" y="1020" class="mono-s" fill="#5b21b6" font-size="11">task_device_relations</text>
+  <rect x="240" y="1006" width="56" height="18" rx="9" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="268" y="1019" class="chip-t" fill="#15803d">INSERT</text>
+  <text x="80" y="1040" class="box-desc">从 test_results.device_id 提取唯一值</text>
+  <text x="80" y="1056" class="box-desc">INSERT (task_id=新ID, device_id=唯一设备ID) · 去重</text>
+
+  <!-- Card 5: task_api_relations -->
+  <rect x="628" y="716" width="572" height="84" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <circle cx="648" cy="740" r="11" fill="#7c3aed"/>
+  <text x="648" y="744" class="num-badge">5</text>
+  <text x="668" y="744" class="mono-s" fill="#5b21b6" font-size="11">task_api_relations</text>
+  <rect x="828" y="730" width="56" height="18" rx="9" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="856" y="743" class="chip-t" fill="#15803d">INSERT</text>
+  <text x="668" y="764" class="box-desc">从 test_results.api_id 提取唯一值</text>
+  <text x="668" y="780" class="box-desc">INSERT (task_id=新ID, api_id=唯一API ID) · 去重</text>
+
+  <!-- Card 6: task_case_relations -->
+  <rect x="628" y="808" width="572" height="84" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <circle cx="648" cy="832" r="11" fill="#7c3aed"/>
+  <text x="648" y="836" class="num-badge">6</text>
+  <text x="668" y="836" class="mono-s" fill="#5b21b6" font-size="11">task_case_relations</text>
+  <rect x="838" y="822" width="56" height="18" rx="9" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="866" y="835" class="chip-t" fill="#15803d">INSERT</text>
+  <text x="668" y="856" class="box-desc">从 test_results.test_case_id 提取唯一值</text>
+  <text x="668" y="872" class="box-desc">INSERT (task_id=新ID, test_case_id=唯一用例ID) · 去重</text>
+
+  <!-- Card 7: task_tags -->
+  <rect x="628" y="900" width="572" height="84" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <circle cx="648" cy="924" r="11" fill="#7c3aed"/>
+  <text x="648" y="928" class="num-badge">7</text>
+  <text x="668" y="928" class="mono-s" fill="#5b21b6" font-size="11">task_tags</text>
+  <rect x="748" y="914" width="56" height="18" rx="9" fill="#dcfce7" stroke="#16a34a" stroke-width="1"/>
+  <text x="776" y="927" class="chip-t" fill="#15803d">INSERT</text>
+  <text x="668" y="948" class="box-desc">从原任务的 tags 提取唯一值</text>
+  <text x="668" y="964" class="box-desc">INSERT (task_id=新ID, tag_id=唯一标签ID) · 去重合并</text>
+
+  <!-- 处理顺序与关键点 -->
+  <rect x="628" y="992" width="572" height="84" rx="8" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="648" y="1016" font-size="10.5" font-weight="700" fill="#5b21b6">处理顺序与关键点</text>
+  <text x="648" y="1036" class="note">① INSERT 新任务 → flush() 取 new_id</text>
+  <text x="648" y="1052" class="note">② UPDATE test_results (task_id + merged_from + merged_at)</text>
+  <text x="648" y="1068" class="note">③ INSERT 关联表（device/api/case/tags 去重）→ UPDATE 原任务 → commit</text>
+
+  <!-- ④ 新任务字段计算 -->
+  <rect x="24" y="1112" width="1192" height="240" rx="10" fill="#f0fdfa" stroke="#14b8a6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1112" width="1192" height="38" rx="10" fill="#ccfbf1"/>
+  <rect x="24" y="1138" width="1192" height="12" fill="#ccfbf1"/>
+  <circle cx="46" cy="1131" r="11" fill="#0d9488"/>
+  <text x="46" y="1135" class="num-badge">4</text>
+  <text x="66" y="1136" class="sec-title" fill="#134e4a">新任务字段计算 — 合并任务的字段取值规则</text>
+
+  <rect x="40" y="1160" width="1160" height="184" rx="8" fill="#ffffff" stroke="#99f6e4" stroke-width="1.2"/>
+  <text x="60" y="1180" font-size="10.5" font-weight="700" fill="#134e4a">新任务字段计算规则</text>
+
+  <text x="60" y="1200" class="lbl" fill="#0f766e">字段</text>
+  <text x="220" y="1200" class="lbl" fill="#0f766e">计算方式</text>
+  <text x="600" y="1200" class="lbl" fill="#0f766e">字段</text>
+  <text x="760" y="1200" class="lbl" fill="#0f766e">计算方式</text>
+  <line x1="60" y1="1204" x2="1180" y2="1204" stroke="#99f6e4" stroke-width="1"/>
+
+  <text x="60" y="1220" class="mono-s" fill="#0f766e">name</text>
+  <text x="220" y="1220" class="mono-s" fill="#334155">合并任务_{名1}_{名2}[_等N]</text>
+  <text x="600" y="1220" class="mono-s" fill="#0f766e">failed_cases</text>
+  <text x="760" y="1220" class="mono-s" fill="#334155">SUM(原任务.failed_cases)</text>
+
+  <text x="60" y="1238" class="mono-s" fill="#0f766e">type</text>
+  <text x="220" y="1238" class="mono-s" fill="#334155">merged (固定值)</text>
+  <text x="600" y="1238" class="mono-s" fill="#0f766e">started_at</text>
+  <text x="760" y="1238" class="mono-s" fill="#334155">MIN(原任务.started_at)</text>
+
+  <text x="60" y="1256" class="mono-s" fill="#0f766e">status</text>
+  <text x="220" y="1256" class="mono-s" fill="#334155">completed (固定值)</text>
+  <text x="600" y="1256" class="mono-s" fill="#0f766e">completed_at</text>
+  <text x="760" y="1256" class="mono-s" fill="#334155">MAX(原任务.completed_at)</text>
+
+  <text x="60" y="1274" class="mono-s" fill="#0f766e">total_cases</text>
+  <text x="220" y="1274" class="mono-s" fill="#334155">SUM(原任务.total_cases)</text>
+  <text x="600" y="1274" class="mono-s" fill="#0f766e">actual_duration</text>
+  <text x="760" y="1274" class="mono-s" fill="#334155">MAX(原任务.actual_duration)</text>
+
+  <text x="60" y="1292" class="mono-s" fill="#0f766e">completed_cases</text>
+  <text x="220" y="1292" class="mono-s" fill="#334155">SUM(原任务.completed_cases)</text>
+  <text x="600" y="1292" class="mono-s" fill="#0f766e">description</text>
+  <text x="760" y="1292" class="mono-s" fill="#334155">合并自任务: 任务名1, 任务名2, ...</text>
+
+  <text x="60" y="1320" class="note">· 新任务 type=merged · status=completed · 可继续合并（类型无限制）</text>
+  <text x="60" y="1336" class="note">· started_at/completed_at 确定合并任务的时间范围 · actual_duration 取最大值</text>
+
+  <!-- ⑤ 前端交互 + 事务 + 注意事项 -->
+  <rect x="24" y="1360" width="1192" height="512" rx="10" fill="#fff1f2" stroke="#f43f5e" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1360" width="1192" height="38" rx="10" fill="#ffe4e6"/>
+  <rect x="24" y="1386" width="1192" height="12" fill="#ffe4e6"/>
+  <circle cx="46" cy="1379" r="11" fill="#f43f5e"/>
+  <text x="46" y="1383" class="num-badge">5</text>
+  <text x="66" y="1384" class="sec-title" fill="#881337">前端交互 — 按钮启用 · 操作流程 · 事务处理 · 注意事项</text>
+
+  <!-- 按钮启用条件 -->
+  <rect x="40" y="1410" width="560" height="220" rx="8" fill="#ffffff" stroke="#fda4af" stroke-width="1.2"/>
+  <text x="60" y="1432" font-size="10.5" font-weight="700" fill="#881337">按钮启用条件 (canMerge)</text>
+
+  <text x="60" y="1450" class="mono-s" fill="#334155">const canMerge = computed(() =&gt; {</text>
+  <text x="60" y="1466" class="mono-s" fill="#334155">  if (selectedTasks.value.size &lt; 2) return false;</text>
+  <text x="60" y="1482" class="mono-s" fill="#334155">  const arr = tasks.value.filter(</text>
+  <text x="60" y="1498" class="mono-s" fill="#334155">    t =&gt; selectedTasks.value.has(t.id));</text>
+  <text x="60" y="1514" class="mono-s" fill="#334155">  return arr.every(t =&gt; t.status === 'completed');</text>
+  <text x="60" y="1530" class="mono-s" fill="#334155">});</text>
+
+  <text x="60" y="1552" class="lbl" fill="#166534">启用状态</text>
+  <text x="60" y="1568" class="body">· 选中 ≥ 2 个任务 且全部为 completed</text>
+  <text x="60" y="1584" class="body">  提示: "点击将选中的已完成任务合并为一个新任务"</text>
+
+  <text x="60" y="1604" class="lbl" fill="#b91c1c">禁用状态</text>
+  <text x="60" y="1620" class="body">· &lt;2 个任务: "请至少选择两个任务进行合并"</text>
+
+  <!-- 操作流程 -->
+  <rect x="620" y="1410" width="572" height="220" rx="8" fill="#ffffff" stroke="#fda4af" stroke-width="1.2"/>
+  <text x="640" y="1432" font-size="10.5" font-weight="700" fill="#881337">操作流程 (batchMerge)</text>
+
+  <rect x="640" y="1446" width="240" height="24" rx="6" fill="#fff1f2" stroke="#fda4af" stroke-width="1.1"/>
+  <text x="760" y="1462" class="pill-t" fill="#881337">① 选择多个任务 (checkbox)</text>
+  <rect x="640" y="1476" width="240" height="24" rx="6" fill="#fff1f2" stroke="#fda4af" stroke-width="1.1"/>
+  <text x="760" y="1492" class="pill-t" fill="#881337">② 批量操作栏显示"合并任务"按钮</text>
+  <rect x="640" y="1506" width="240" height="24" rx="6" fill="#fff1f2" stroke="#fda4af" stroke-width="1.1"/>
+  <text x="760" y="1522" class="pill-t" fill="#881337">③ 点击按钮 → 弹出确认弹窗</text>
+  <rect x="640" y="1536" width="240" height="24" rx="6" fill="#fff1f2" stroke="#fda4af" stroke-width="1.1"/>
+  <text x="760" y="1552" class="pill-t" fill="#881337">④ 确认 → 调用 API 执行合并</text>
+  <rect x="640" y="1566" width="240" height="24" rx="6" fill="#fff1f2" stroke="#fda4af" stroke-width="1.1"/>
+  <text x="760" y="1582" class="pill-t" fill="#881337">⑤ 合并成功 → 刷新任务列表</text>
+  <rect x="640" y="1596" width="240" height="24" rx="6" fill="#ffe4e6" stroke="#f43f5e" stroke-width="1.2"/>
+  <text x="760" y="1612" class="pill-t" fill="#881337">⑥ 原任务 → merged · 新任务出现</text>
+
+  <text x="900" y="1462" class="note">前端 API: tasksApi.mergeTasks(ids)</text>
+  <text x="900" y="1478" class="mono-s" fill="#334155">request('POST', '/tasks/merge',</text>
+  <text x="900" y="1492" class="mono-s" fill="#334155">  { taskIds: ids })</text>
+  <text x="900" y="1516" class="note">确认弹窗:</text>
+  <text x="900" y="1532" class="body">"确定要合并选中的 N 个</text>
+  <text x="900" y="1546" class="body"> 任务吗？"</text>
+  <text x="900" y="1570" class="note">成功后:</text>
+  <text x="900" y="1586" class="body">alert("合并成功！</text>
+  <text x="900" y="1600" class="body"> 新任务: ...")</text>
+  <text x="900" y="1620" class="note">未完成任务拦截: 提示任务名</text>
+
+  <!-- 事务处理 -->
+  <rect x="40" y="1646" width="560" height="216" rx="8" fill="#ffffff" stroke="#fda4af" stroke-width="1.2"/>
+  <text x="60" y="1668" font-size="10.5" font-weight="700" fill="#881337">事务处理</text>
+
+  <text x="60" y="1690" class="mono-s" fill="#be123c">BEGIN TRANSACTION</text>
+  <text x="60" y="1706" class="mono-s" fill="#334155">  ├── INSERT 新任务 → flush() 取 new_id</text>
+  <text x="60" y="1722" class="mono-s" fill="#334155">  ├── UPDATE test_results (task_id + merged_from + merged_at)</text>
+  <text x="60" y="1738" class="mono-s" fill="#334155">  ├── INSERT 关联表 (device/api/case/tags 去重)</text>
+  <text x="60" y="1754" class="mono-s" fill="#334155">  └── UPDATE 原任务 status=merged, merged_into=new_id</text>
+  <text x="60" y="1770" class="mono-s" fill="#16a34a">COMMIT ✓</text>
+  <text x="60" y="1786" class="box-desc" fill="#dc2626">任意步骤失败 → ROLLBACK · 不产生残缺数据</text>
+
+  <text x="60" y="1810" class="lbl" fill="#881337">性能考虑</text>
+  <text x="60" y="1826" class="body">· 大批量数据合并时，可能需要异步处理</text>
+  <text x="60" y="1842" class="body">· 后续优化: 批量异步合并 · 合并历史记录</text>
+
+  <!-- 注意事项 -->
+  <rect x="620" y="1646" width="572" height="216" rx="8" fill="#ffffff" stroke="#fda4af" stroke-width="1.2"/>
+  <text x="640" y="1668" font-size="10.5" font-weight="700" fill="#881337">注意事项 + 后续优化</text>
+
+  <text x="640" y="1690" class="lbl" fill="#881337">注意事项</text>
+  <text x="640" y="1708" class="body">1. 事务处理: 整个合并过程在一个数据库事务中</text>
+  <text x="640" y="1724" class="body">2. 性能考虑: 大批量数据合并可能需要异步处理</text>
+  <text x="640" y="1740" class="body">3. 数据追溯: merged_from + merged_at 追溯原始任务</text>
+  <text x="640" y="1756" class="body">4. 权限控制: 建议仅管理员或任务创建者可以合并</text>
+
+  <text x="640" y="1782" class="lbl" fill="#881337">后续优化建议</text>
+  <text x="640" y="1800" class="body">1. 批量异步合并: 大数量任务使用异步队列处理</text>
+  <text x="640" y="1816" class="body">2. 合并历史记录: 记录操作人员、时间等信息</text>
+  <text x="640" y="1832" class="body">3. 合并回退: 支持将合并的任务拆分回原任务</text>
+  <text x="640" y="1848" class="body">4. 合并策略选择: 保留所有记录 vs 去重</text>
+</svg>

@@ -1,0 +1,245 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0891b2"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowViolet); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-cyan { stroke: #0891b2; stroke-width: 1.6; fill: none; marker-end: url(#arrowCyan); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">Realtime API Adapter 方案 · 架构图（v2.0 最终方案）</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">APIExecutor 编排层 → APIAdapterFactory 工厂 → BaseAPIAdapter 类体系（Http / Realtime 双协议）· 事件驱动轮次状态机 · 依据设计文档绘制</text>
+
+  <!-- ① 总体架构：三层 + 类体系继承树 + 生命周期 -->
+  <rect x="24" y="92" width="1192" height="368" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="111" r="11" fill="#3b82f6"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#1e3a8a">总体架构 — 三层：编排层 → 工厂 → 适配器类体系（与 device_driver 对称）</text>
+
+  <rect x="44" y="142" width="300" height="56" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="194" y="164" class="box-name" text-anchor="middle">APIExecutor · 编排层</text>
+  <text x="194" y="184" class="box-desc" text-anchor="middle">_execute_single_or_multi() 双协议路由</text>
+  <line x1="194" y1="198" x2="194" y2="216" class="flow"/>
+
+  <rect x="44" y="216" width="300" height="56" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="194" y="238" class="box-name" text-anchor="middle">APIAdapterFactory · 工厂</text>
+  <text x="194" y="258" class="box-desc" text-anchor="middle">get_adapter(protocol, vendor) · 注册表</text>
+  <line x1="194" y1="272" x2="194" y2="290" class="flow"/>
+
+  <rect x="44" y="290" width="300" height="56" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="194" y="312" class="box-name" text-anchor="middle">BaseAPIAdapter · 基类</text>
+  <text x="194" y="332" class="box-desc" text-anchor="middle">initialize → send/recv → teardown 模板</text>
+
+  <rect x="364" y="142" width="852" height="206" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.2"/>
+  <text x="384" y="160" font-size="11.5" font-weight="700" fill="#4c1d95">类体系（继承树）— 新增 vendor 只需覆盖 3~4 个抽象方法</text>
+
+  <rect x="384" y="170" width="190" height="44" rx="8" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.4"/>
+  <text x="479" y="197" class="pill-t" fill="#5b21b6">BaseAPIAdapter</text>
+
+  <rect x="640" y="170" width="200" height="44" rx="8" fill="#dcfce7" stroke="#22c55e" stroke-width="1.4"/>
+  <text x="740" y="188" class="pill-t" fill="#166534">HttpAPIAdapter</text>
+  <text x="740" y="204" class="chip-t" fill="#166534">protocol = http</text>
+
+  <rect x="930" y="170" width="200" height="44" rx="8" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.4"/>
+  <text x="1030" y="188" class="pill-t" fill="#5b21b6">RealtimeAPIAdapter</text>
+  <text x="1030" y="204" class="chip-t" fill="#5b21b6">protocol = websocket</text>
+
+  <line x1="479" y1="214" x2="740" y2="214" class="flow"/>
+  <line x1="479" y1="214" x2="1030" y2="214" class="flow"/>
+
+  <rect x="640" y="240" width="200" height="26" rx="13" fill="#bbf7d0" stroke="#16a34a" stroke-width="1"/>
+  <text x="740" y="257" class="chip-t" fill="#166534">VolcASTAdapter · volc_ast</text>
+  <rect x="640" y="274" width="200" height="26" rx="13" fill="#bbf7d0" stroke="#16a34a" stroke-width="1"/>
+  <text x="740" y="291" class="chip-t" fill="#166534">QwenLLMAdapter · qwen_llm</text>
+  <line x1="740" y1="214" x2="740" y2="240" class="flow"/>
+
+  <rect x="930" y="240" width="200" height="26" rx="13" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="1030" y="257" class="chip-t" fill="#5b21b6">OpenAIRealtimeAdapter · openai</text>
+  <rect x="930" y="274" width="200" height="26" rx="13" fill="#ddd6fe" stroke="#7c3aed" stroke-width="1"/>
+  <text x="1030" y="291" class="chip-t" fill="#5b21b6">DoubaoRealtimeAdapter · doubao</text>
+  <line x1="1030" y1="214" x2="1030" y2="240" class="flow"/>
+
+  <text x="384" y="320" class="body">子类覆盖点：_build_connect_url · _build_connect_headers · _build_session_config · _parse_event</text>
+  <text x="384" y="336" class="note">DOMAIN：HttpAPIAdapter 同步请求-响应（send 返回与 APIDriver.execute() 完全一致）· RealtimeAPIAdapter 全双工 WS 真流式</text>
+
+  <rect x="44" y="368" width="1172" height="74" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1" stroke-dasharray="6 4"/>
+  <text x="64" y="390" font-size="11" font-weight="700" fill="#1e3a8a">统一生命周期（与 device_driver 体系完全对称）</text>
+  <rect x="64" y="400" width="120" height="30" rx="15" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="124" y="419" class="pill-t" fill="#1e3a8a">initialize</text>
+  <rect x="196" y="400" width="120" height="30" rx="15" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="256" y="419" class="pill-t" fill="#1e3a8a">pre_process</text>
+  <rect x="328" y="400" width="200" height="30" rx="15" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <text x="428" y="419" class="pill-t" fill="#92400e">send ⇄ recv（流式）</text>
+  <rect x="540" y="400" width="120" height="30" rx="15" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="600" y="419" class="pill-t" fill="#1e3a8a">post_process</text>
+  <rect x="672" y="400" width="120" height="30" rx="15" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="732" y="419" class="pill-t" fill="#1e3a8a">teardown</text>
+  <line x1="184" y1="415" x2="196" y2="415" class="flow"/>
+  <line x1="316" y1="415" x2="328" y2="415" class="flow"/>
+  <line x1="528" y1="415" x2="540" y2="415" class="flow"/>
+  <line x1="660" y1="415" x2="672" y2="415" class="flow"/>
+  <text x="816" y="410" class="body">连接跨多轮保持 · 非用完即弃</text>
+  <text x="816" y="428" class="note">_check_stop() / _log() 复用 device_driver 同一逻辑</text>
+  <text x="1196" y="430" class="note" text-anchor="end">驱动对接：device_driver(system+keywords) ↔ api_adapter(vendor+protocol)</text>
+
+  <!-- ② 路由分发 + 端到端执行流 -->
+  <rect x="24" y="474" width="1192" height="286" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="474" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="500" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="493" r="11" fill="#f59e0b"/>
+  <text x="46" y="497" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="498" class="sec-title" fill="#92400e">双协议路由分发 — websocket → RealtimeSessionExecutor · http / 无 session → APISessionExecutor（单轮 = rounds=[1] 特例）</text>
+
+  <rect x="44" y="528" width="260" height="50" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="174" y="549" class="box-name" text-anchor="middle">APIExecutor</text>
+  <text x="174" y="568" class="box-desc" text-anchor="middle">_execute_single_or_multi()</text>
+  <line x1="174" y1="578" x2="174" y2="596" class="flow"/>
+
+  <polygon points="174,596 268,626 174,656 80,626" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.4"/>
+  <text x="174" y="622" font-size="10" font-weight="600" fill="#854d0e" text-anchor="middle">session.protocol</text>
+  <text x="174" y="636" font-size="10" font-weight="600" fill="#854d0e" text-anchor="middle">判断</text>
+
+  <line x1="80" y1="626" x2="60" y2="626" class="flow"/>
+  <text x="34" y="620" font-size="9" font-weight="600" fill="#7c3aed">websocket</text>
+  <line x1="60" y1="626" x2="60" y2="700" class="flow-violet"/>
+  <line x1="60" y1="700" x2="129" y2="700" class="flow-violet"/>
+
+  <line x1="268" y1="626" x2="361" y2="626" class="flow"/>
+  <text x="300" y="620" font-size="9" font-weight="600" fill="#16a34a">http</text>
+  <line x1="361" y1="626" x2="361" y2="682" class="flow-green"/>
+
+  <line x1="446" y1="700" x2="476" y2="700" class="flow" stroke-dasharray="4 3"/>
+  <text x="372" y="694" font-size="9" font-weight="600" fill="#64748b">无 session</text>
+
+  <rect x="44" y="682" width="170" height="58" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="129" y="703" class="pill-t" fill="#5b21b6">RealtimeSession</text>
+  <text x="129" y="721" class="chip-t" fill="#5b21b6">Executor · 多轮流式</text>
+
+  <rect x="276" y="682" width="170" height="58" rx="8" fill="#dcfce7" stroke="#22c55e" stroke-width="1.4"/>
+  <text x="361" y="703" class="pill-t" fill="#166534">APISession</text>
+  <text x="361" y="721" class="chip-t" fill="#166534">Executor · 多轮 HTTP</text>
+
+  <rect x="476" y="682" width="170" height="58" rx="8" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="561" y="703" class="pill-t" fill="#475569">APISession</text>
+  <text x="561" y="721" class="chip-t" fill="#475569">Executor · rounds=[1]</text>
+
+  <text x="44" y="760" class="note">关键变更：废弃 _execute_linear / APITaskRunner 6 步轮询 · 所有 HTTP API 测试统一走 APISessionExecutor，单轮只是 rounds=[1] 的特例</text>
+
+  <rect x="680" y="528" width="516" height="212" rx="8" fill="#ffffff" stroke="#fde68a" stroke-width="1.2"/>
+  <text x="700" y="550" font-size="11.5" font-weight="700" fill="#92400e">端到端执行链路对比</text>
+
+  <text x="700" y="574" class="lbl" fill="#16a34a">HTTP 链路（改造后）</text>
+  <text x="700" y="592" class="body">ExecutionEngine → APIExecutor.execute_api_case() → 路由(http)</text>
+  <text x="700" y="608" class="body">→ APISessionExecutor.execute()：for api_config in configs</text>
+  <text x="716" y="624" class="body">→ get_adapter() → initialize() → for round: pre_process → send → post_process → round_context</text>
+  <text x="716" y="640" class="body">→ teardown() → _aggregate_round_results() → create_multi_round_test_result() → 评估</text>
+
+  <text x="700" y="668" class="lbl" fill="#7c3aed">Realtime 链路（新增）</text>
+  <text x="700" y="686" class="body">ExecutionEngine → APIExecutor.execute_api_case() → 路由(websocket)</text>
+  <text x="700" y="702" class="body">→ RealtimeSessionExecutor.execute()：</text>
+  <text x="716" y="718" class="body">→ get_adapter() → initialize(wss 连接 + recv 线程) → pre_process(session.update)</text>
+  <text x="716" y="734" class="body">→ 启动背景噪声 → for round: _execute_round() → _aggregate → 存库 + 评估 → teardown</text>
+
+  <!-- ③ 轮次状态机 -->
+  <rect x="24" y="774" width="1192" height="406" rx="10" fill="#ecfeff" stroke="#06b6d4" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="774" width="1192" height="38" rx="10" fill="#cffafe"/>
+  <rect x="24" y="800" width="1192" height="12" fill="#cffafe"/>
+  <circle cx="46" cy="793" r="11" fill="#0891b2"/>
+  <text x="46" y="797" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="798" class="sec-title" fill="#155e75">Realtime 轮次状态机 — 事件驱动（毫秒级）· 含 barge-in 打断分支与异常路径</text>
+
+  <rect x="540" y="828" width="160" height="44" rx="22" fill="#ffffff" stroke="#0891b2" stroke-width="1.8"/>
+  <text x="620" y="855" class="pill-t" fill="#155e75">IDLE 轮开始</text>
+
+  <line x1="700" y1="850" x2="800" y2="850" class="flow-cyan"/>
+  <path d="M540,850 L350,850 L350,858 L44,858" class="flow-cyan"/>
+  <text x="44" y="822" font-size="9.5" font-weight="600" fill="#155e75">正常轮 is_interruption=false</text>
+  <text x="806" y="822" font-size="9.5" font-weight="600" fill="#155e75">打断轮 is_interruption=true</text>
+
+  <rect x="44" y="830" width="280" height="50" rx="8" fill="#ffffff" stroke="#67e8f9" stroke-width="1.2"/>
+  <text x="184" y="850" class="box-name" text-anchor="middle">推送主讲人音频</text>
+  <text x="184" y="868" class="box-desc" text-anchor="middle">send(chunk)×N → commit_input()</text>
+  <line x1="184" y1="880" x2="184" y2="896" class="flow"/>
+
+  <rect x="44" y="896" width="280" height="44" rx="8" fill="#cffafe" stroke="#06b6d4" stroke-width="1.2"/>
+  <text x="184" y="922" class="pill-t" fill="#155e75">AI_THINKING</text>
+  <line x1="184" y1="940" x2="184" y2="956" class="flow"/>
+
+  <rect x="44" y="956" width="280" height="50" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.4"/>
+  <text x="184" y="976" class="box-name" text-anchor="middle">AI_SPEAKING</text>
+  <text x="184" y="994" class="box-desc" text-anchor="middle">← response.audio.delta × N（首帧记 first_frame_ms）</text>
+  <line x1="184" y1="1006" x2="184" y2="1022" class="flow"/>
+
+  <rect x="44" y="1022" width="280" height="44" rx="8" fill="#dcfce7" stroke="#22c55e" stroke-width="1.2"/>
+  <text x="184" y="1048" class="pill-t" fill="#166534">AI_DONE ← response.audio.done</text>
+  <line x1="184" y1="1066" x2="184" y2="1082" class="flow"/>
+
+  <rect x="44" y="1082" width="280" height="52" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <text x="184" y="1103" class="box-name" text-anchor="middle">round_result</text>
+  <text x="184" y="1121" class="box-desc" text-anchor="middle">latency / ai_audio / event_log → 下一轮 IDLE</text>
+  <path d="M184,1134 L184,1152 L620,1152 L620,876" class="flow-cyan" stroke-dasharray="6 4" marker-end="url(#arrowCyan)"/>
+
+  <rect x="800" y="830" width="280" height="46" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.4"/>
+  <text x="940" y="850" class="box-name" text-anchor="middle">等 AI 开始说话</text>
+  <text x="940" y="866" class="box-desc" text-anchor="middle">post_process(is_interruption=True) · _wait_ai_speaking</text>
+  <line x1="940" y1="876" x2="940" y2="892" class="flow"/>
+
+  <rect x="800" y="892" width="280" height="44" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="940" y="918" class="pill-t" fill="#475569">延迟 interruption_delay_ms（默认 1500ms）</text>
+  <line x1="940" y1="936" x2="940" y2="952" class="flow"/>
+
+  <rect x="800" y="952" width="280" height="46" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.4"/>
+  <text x="940" y="972" class="box-name" text-anchor="middle">推送打断音频</text>
+  <text x="940" y="988" class="box-desc" text-anchor="middle">send(chunk)×N → commit_input()</text>
+  <line x1="940" y1="998" x2="940" y2="1014" class="flow"/>
+
+  <polygon points="940,1014 1034,1044 940,1074 846,1044" fill="#fef9c3" stroke="#ca8a04" stroke-width="1.4"/>
+  <text x="940" y="1040" font-size="9.5" font-weight="600" fill="#854d0e" text-anchor="middle">5s 窗口检测</text>
+  <text x="940" y="1054" font-size="9.5" font-weight="600" fill="#854d0e" text-anchor="middle">barge-in</text>
+
+  <path d="M846,1044 L816,1044 L816,1082 L776,1082" class="flow"/>
+  <text x="676" y="1038" font-size="9" font-weight="600" fill="#7c3aed" text-anchor="end">speech_started / response.cancelled</text>
+
+  <path d="M1034,1044 L1096,1044 L1096,1106" class="flow-red"/>
+  <text x="1100" y="1038" font-size="9" font-weight="600" fill="#b91c1c">ai_audio_done / 超时</text>
+  <rect x="1004" y="1106" width="184" height="36" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="1096" y="1124" class="pill-t" fill="#b91c1c" font-size="9">barge-in 失败</text>
+  <text x="1096" y="1136" class="chip-t" fill="#b91c1c">AI 已说完 / 5s 超时</text>
+  <line x1="1096" y1="1142" x2="1096" y2="1156" class="flow-red"/>
+
+  <text x="700" y="1152" font-size="9.5" font-weight="600" fill="#7c3aed">BARGE_IN 成功 → 等 AI 重新回复（回到 AI_SPEAKING）· round_result 记录 barge_in_detected / barge_in_latency_ms</text>
+  <text x="700" y="1166" font-size="9.5" font-weight="600" fill="#dc2626">异常路径：connection_closed / timeout / error → round_result(success=False) → 回 IDLE</text>
+
+</svg>

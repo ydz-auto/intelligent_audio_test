@@ -1,8 +1,28 @@
 # API Driver 文档
 
+> **⚠️ 废弃声明（2026-09 更新）**
+>
+> `APIDriver`（`backend/utils/clients/api_driver.py`）已列入《01_测试执行/05_路由与废弃.md》废弃清单，
+> 由 **API Adapter 体系** 替代，本文档仅作为过渡期消费方迁移的参考：
+>
+> - **替代方案**：`BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`（按协议维度拆分），
+>   厂商差异由子类实现（如 `OpenAIRealtimeAdapter`、`VolcASTAdapter`、`QwenLLMAdapter`），
+>   由 `APIAdapterFactory` 按 `(protocol, vendor)` 或 API 表新增的 `adapter_class` 字段创建。
+> - **编排方式**：`ExecutionEngine` 按被测设备类型 `device_type`（`physical` / `http_api` / `websocket_api`）路由到
+>   `APISessionExecutor` / `RealtimeSessionExecutor`，不再存在 `APIExecutor` / `APITaskRunner` 等中间编排层（均已废弃）。
+> - **生命周期对齐**：适配器生命周期 `initialize → pre_process → send/recv → post_process → teardown`
+>   与设备驱动 `BaseDeviceDriver` 对称，报文结构、响应解析、字段映射等能力在适配器内实现。
+> - **过渡期状态**：当前代码中 `api_session_executor.py` 仍引用 `APIDriver`，待消费方迁移完成（阶段 2，P0）后
+>   删除 `api_driver.py`，本文档随之归档。
+>
+> 另请注意：本文档描述的 `APIDriver` 是 **API 被测服务的调用驱动**，与设备侧 App 驱动
+> （`backend/utils/device_driver/registry.py` 的 `DriverRegistry`：`@register_driver` 装饰器注册、
+> 三元 key `(AppType, AppVersion, DevicePlatform)`、依赖检测、版本降级 resolve、热更新）属于**两套不同机制**，
+> 后者请参见《设备管理功能设计文档》。
+
 ## 概述
 
-`api_driver.py` 是一个 API 驱动程序，用于封装 API 调用逻辑、参数渲染及响应解析。它支持 HTTP 和 WebSocket 协议，能够处理单次响应和流式响应，并提供了灵活的配置和参数渲染机制。
+`api_driver.py` 是一个（**已废弃、处于过渡期**的）API 驱动程序，用于封装 API 调用逻辑、参数渲染及响应解析。它支持 HTTP 和 WebSocket 协议，能够处理单次响应和流式响应，并提供了灵活的配置和参数渲染机制。**下文描述的能力（配置合并、占位符渲染、字段映射、流式收发）已由 API Adapter 体系按协议拆分承接；过渡期内消费方应逐步迁移至 `APISessionExecutor` + `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`，不再向本模块新增能力。**
 
 ## 核心功能
 
@@ -376,14 +396,14 @@ print(result)
 4. **结束标志**：对于 WebSocket 调用，建议配置明确的会话结束标志
 5. **资源管理**：APIDriver 会自动关闭 WebSocket 连接，无需手动管理
 
-## 扩展建议
+## 扩展建议（已停止）
 
-1. 支持更多的占位符格式（如 `${key}`）
-2. 支持更复杂的模板渲染引擎（如 Jinja2）
-3. 增加请求重试机制
-4. 支持更多的认证方式
-5. 增加响应验证功能
+APIDriver 已停止演进，原扩展需求在 API Adapter 体系中以配置化/策略化方式承接，不再在本模块实现：
+
+1. 占位符与模板渲染 → `HttpAPIAdapter` 的 `pre_process` 阶段实现，模板与参数由 API 表 `audio_config`、`adapter_class` 等配置驱动
+2. 认证方式 → 各厂商 Adapter 子类实现，凭据由基础设施层注入（前端仅见 camelCase Domain，snake_case 仅存在于 Infrastructure）
+3. 请求重试与响应验证 → `post_process` 阶段统一策略，拒绝在各执行器内硬编码
 
 ## 结论
 
-APIDriver 提供了一个灵活、强大的 API 调用框架，支持 HTTP 和 WebSocket 协议，能够处理各种复杂的 API 调用场景。通过合理配置，可以轻松适应不同的 API 服务，提高测试脚本的可维护性和扩展性。
+APIDriver 在过渡期内仍被 `APISessionExecutor` 引用，但其定位已由 API Adapter 体系（`BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`）正式替代。消费方迁移完成后（阶段 2，P0）将删除 `api_driver.py`，本文档随之归档；新增厂商接入一律通过 `APIAdapterFactory` 注册 Adapter 子类实现。

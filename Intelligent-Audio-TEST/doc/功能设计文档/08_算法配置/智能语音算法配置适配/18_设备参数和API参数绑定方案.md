@@ -1,5 +1,7 @@
 # 设备参数和API参数绑定方案
 
+> **实施状态**：本文档描述的 keywords/api_id 绑定方案为**设计提案，尚未实施**。经代码核对：`AlgorithmDeviceParam`、`AlgorithmApiParam`、`ParamMapping` 三个模型中均**不存在** keywords/api_id 字段。当前设备驱动的解析由 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组完成（AppType/DevicePlatform 枚举驱动），keywords 字符串匹配机制仍保留于 `driver_factory.py` 的专用驱动注册表（`_specialized_drivers`）。文中标注"现状核对"处为与代码库对齐的说明，其余保留原提案内容供后续实施参考。
+
 ## 一、需求背景
 
 设备参数需要和设备驱动绑定，API参数需要和API绑定。
@@ -13,9 +15,11 @@
 
 | 字段 | 说明 | 变更 |
 |------|------|------|
-| keywords | 驱动关键字 | 无需改动（已存在，用于匹配驱动） |
+| keywords | 驱动关键字 | 新增字段 |
 
 > 说明：复用 Device 表中的 keywords 字段格式，用于匹配设备驱动
+>
+> 现状核对：AlgorithmDeviceParam 实际字段为 algorithm_type/param_code/param_name/label/param_type/direction/required/default_value/validation_rules/help_text/ui_order/hidden/deleted，暂无 keywords 字段（按 `(algorithm_type, param_code, direction)` 唯一索引）。
 
 ### 2. AlgorithmApiParam（API参数表）
 
@@ -30,6 +34,8 @@ class AlgorithmApiParam(db.Model):
     # 新增字段
     api_id = Column(Integer, ForeignKey('apis.id'), comment='关联的API配置ID')
 ```
+
+> 现状核对：AlgorithmApiParam 实际字段为 algorithm_type/param_code/param_name/label/param_type/direction/required/default_value/validation_rules/help_text/ui_order/hidden/deleted，暂无 api_id 字段。API 参数在现有设计中直接归属算法配置（按 algorithm_type 关联），不绑定到具体 API 记录。
 
 ### 3. ParamMapping（参数映射表）
 
@@ -46,6 +52,8 @@ class ParamMapping(db.Model):
     keywords = Column(String(200), comment='设备驱动关键字（用于映射时识别来源驱动）')
     api_id = Column(Integer, ForeignKey('apis.id'), comment='API配置ID（用于映射时识别来源API）')
 ```
+
+> 现状核对：ParamMapping 实际字段为 algorithm_type/source/source_param/source_direction/dimension_id/target_param/transform_type/deleted，暂无 keywords/api_id 字段。其中 source 支持 case/reference/device/api/case_config 五类来源，source_direction 区分输入/输出方向，映射按 algorithm_type 关联参数定义，无需 keywords/api_id 即可定位来源参数。
 
 ## 三、字段作用说明
 
@@ -77,8 +85,10 @@ API参数 (api) - api_id=1
 ### 1. 算法配置弹窗 - 设备参数配置
 
 增加**驱动选择**下拉框：
-- 数据来源：`GET /test-devices/driver-keywords`
+- 数据来源：`GET /api/v1/test-devices/driver-keywords`（返回 `[{name, keywords, system}]`）
 - 存储到：AlgorithmDeviceParam.keywords
+
+> 现状核对：该接口已实现（`backend/blueprints/device_bp.py` 注册于 url_prefix `/api/v1/test-devices`，由 `device_controller.get_driver_keywords()` 调用 `device_driver_factory.get_registered_keywords()`）。当前用例执行时的驱动解析实际机制是 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组装饰器注册与 resolve（AppType 枚举：ANDROID_BASE/HARMONY_BASE/PLAUD/DOUBAO_ASR/DOUBAO/CHATGPT/XIAOYI_SIMULTANEOUS/XIAOYI_HUIJI/XIAOYI_LIVECHAT/XIAOYI_INPUT_METHOD；DevicePlatform：ANDROID/HARMONYOS/IOS，AppVersion 支持 V1→LATEST 降级）；keywords 字符串匹配作为并存机制保留于 `driver_factory.py` 的 `_specialized_drivers`（`get_driver_name_by_keywords` 要求所有 keywords 均命中）。若实施本方案，驱动选择下拉框的数据应与 registry.py 的 AppType 枚举对齐。
 
 ### 2. 算法配置弹窗 - API参数配置
 
@@ -100,7 +110,7 @@ API参数 (api) - api_id=1
 
 ### 2. algorithm_config_loader.py
 
-序列化时返回 keywords 和 api_id：
+（提案）序列化时返回 keywords 和 api_id：
 
 ```python
 def _serialize_params(self, params: List) -> List[Dict[str, Any]]:
@@ -113,6 +123,8 @@ def _serialize_params(self, params: List) -> List[Dict[str, Any]]:
         for p in params
     ]
 ```
+
+> 现状核对：由于模型中尚无 keywords/api_id 字段，当前 `_serialize_params` 并不返回这两个键，上述代码仅在方案实施后生效。
 
 ### 3. field_mapper.py（可选增强）
 
@@ -128,6 +140,8 @@ api_params = [p for p in api_params if p.get('api_id') == target_api_id]
 
 ## 七、改动清单
 
+以下为方案实施时所需的改动清单（均未实施）：
+
 | 序号 | 模块 | 文件 | 改动内容 |
 |------|------|------|---------|
 | 1 | 后端 | algorithm_models.py | AlgorithmApiParam 新增 api_id 字段 |
@@ -139,6 +153,8 @@ api_params = [p for p in api_params if p.get('api_id') == target_api_id]
 | 7 | 前端 | AlgorithmConfigModal.vue | 映射配置增加驱动/API筛选功能 |
 
 ## 八、数据示例
+
+> 以下示例为方案实施后的目标状态（含 keywords/api_id 列），与当前数据库实际表结构不符，仅供实施参考。
 
 ### AlgorithmDeviceParam 示例
 

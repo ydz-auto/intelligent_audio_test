@@ -6,8 +6,28 @@
 |------|------|
 | 版本 | v2.0 |
 | 创建日期 | 2026-05-25 |
-| 更新日期 | 2026-05-25 |
-| 状态 | 设计阶段 |
+| 更新日期 | 2026-09-11 |
+| 状态 | 部分废弃：核心落地机制以《01_测试执行》最新设计为准（见下方状态更新） |
+
+> **📌 状态更新（2026-09 一致性修订）**
+>
+> 本方案（v2.0）撰写于"独立适配器微服务（`api_adaper_service`）"的设想之上。最新设计以
+> 《01_测试执行/Realtime_API_Adapter方案与UseCase文档.md》《01_测试执行/04_类设计.md》
+> 《01_测试执行/05_路由与废弃.md》为准，差异与处理如下：
+>
+> 1. **独立微服务已废弃**：`api_adapter_service/` 整个微服务列入废弃清单（实施阶段 4 下线），
+>    其能力由主服务内的适配器体系承接：`BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`；
+>    执行入口为 `ExecutionEngine` 按被测设备类型 `device_type`（`http_api` / `websocket_api`）路由到
+>    `APISessionExecutor` / `RealtimeSessionExecutor`，不再存在 `APIExecutor` 等中间编排层。
+> 2. **APIDriver 扩展方案作废**：本文第 4.2 节对 `APIDriver` 的"适配器模式"扩展不再实施；
+>    `APIDriver` 本身已列入废弃清单（见同目录《api_driver_documentation.md》废弃声明）。
+> 3. **工厂/注册机制以最新设计为准**：适配器创建由 `APIAdapterFactory` 按 `(protocol, vendor)` 或 `apis` 表新增的
+>    `adapter_class` 列完成（第 5.4 节 `f"{vendor}_{api_type}"` 字符串 key 方案不再采用）；
+>    设备侧 App 驱动注册则由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry` 实现
+>    （`@register_driver` 装饰器注册、三元 key `(AppType, AppVersion, DevicePlatform)`、依赖检测、
+>    版本降级 resolve、热更新），两套注册表相互独立、互不混用。
+> 4. **仍然有效的信息资产**：厂商协议调研结论、API `meta` 配置结构理念（`response_mappings` / `streaming` / `adapter_specific`）、
+>    `ExecutionConfig` 的字段拆分思想、LLM 中转站复用 OpenAI 适配器的策略，可在实施 API Adapter 体系时参考。
 
 ---
 
@@ -21,6 +41,9 @@
 - **底层协议支持**: `api_client.py` 支持HTTP/WebSocket
 
 需要扩展支持国内外主流语音识别、语音翻译、大语言模型等API，实现统一的适配层。
+
+> 最新设计中，统一的适配层落在主服务内的 **API Adapter 体系**（`BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`），
+> 执行入口为 `ExecutionEngine` 按 `device_type` 路由到 `APISessionExecutor` / `RealtimeSessionExecutor`；不再引入独立适配器微服务。
 
 ### 1.2 核心设计原则
 
@@ -399,6 +422,17 @@ class API(db.Model):
     api_endpoints = Column(JSON, default=list)           # ★ 端点列表 (核心) ★
     # ... 其他字段
 ```
+
+> **最新设计新增列**（《01_测试执行/05_路由与废弃.md》七a、数据库改动；当前 `models.py` 尚未落地，实施阶段 2 同步）：
+>
+> | 新增列 | 用途 |
+> |--------|------|
+> | `adapter_class` | 指定 adapter 类名，`APIAdapterFactory` 优先按此创建 |
+> | `audio_config` | JSON，含 `sample_rate` / `bit_depth` / `channels` / `format` / `chunk_duration_ms`，`AudioFormatAdapter` 依据此配置转换目标格式（缺省回退 24kHz / s16 / mono） |
+> | `output_types` | JSON，声明该 API 支持的输出类型 `["audio","text","video","image"]` |
+> | `rms_spl_mapping_id` | 外键 → `api_rms_spl_mappings.id`，供 `AudioStreamOrchestrator` 做 RMS 补偿 + SPL 增益 |
+>
+> 同时 `task_case_relations` 表新增 `device_type`、`device_id` 列，用于 `ExecutionEngine` 路由。
 
 ### 3.2 API.meta 字段结构
 
@@ -803,7 +837,9 @@ class ExecutionConfigBuilder:
         return None
 ```
 
-### 4.2 API Driver 扩展
+### 4.2 API Driver 扩展（已废弃，不再实施）
+
+> ⚠️ **一致性修订（2026-09）**：本节"扩展 APIDriver"的方案已停止实施。`APIDriver` 已列入《01_测试执行/05_路由与废弃.md》废弃清单，厂商扩展能力由 API Adapter 体系承接：新增厂商通过 `APIAdapterFactory` 注册 `BaseAPIAdapter` 子类实现（协议生命周期 `initialize → pre_process → send/recv → post_process → teardown`）。以下内容仅作历史方案存档。
 
 **文件**: `backend/utils/api_driver.py` (修改)
 
@@ -981,6 +1017,11 @@ class ExecutionController:
 ---
 
 ## 5. 适配器服务实现
+
+> ⚠️ 本章基于独立微服务 `api_adaper_service` 编写，该微服务已列入《01_测试执行/05_路由与废弃.md》废弃清单（实施阶段 4 下线，
+> 由 `HttpAPIAdapter` + `HttpStreamAdapter` 替代其全部能力）。"适配器无状态 + 配置传入"与基类抽象的思想仍然有效，
+> 落地位置改为主服务适配器体系：`BaseAPIAdapter` 及其子类，生命周期为
+> `initialize → pre_process → send/recv → post_process → teardown`（与设备驱动 `BaseDeviceDriver` 对称），由 `APIAdapterFactory` 创建。
 
 ### 5.1 适配器基类
 
@@ -1426,6 +1467,8 @@ class VolcASRAdapter(ASRAdapter):
 ```
 
 ### 5.4 适配器工厂
+
+> ⚠️ **一致性修订（2026-09）**：注册/解析机制以最新设计为准，本节的字符串 key（`f"{vendor}_{api_type}"`）方案不再采用。最新设计中，API 适配器统一由主服务内的 `APIAdapterFactory` 承接（按 `(protocol, vendor)` 组合键或显式 `adapter_class` 创建）；设备驱动侧由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry`（三元 key：`(AppType, AppVersion, DevicePlatform)`，装饰器注册 + 依赖检测 + 版本降级 resolve + 热更新）承接，两套注册表相互独立。以下代码仅作历史方案存档。
 
 **文件**: `api_adaper_service/services/adapter_factory.py`
 
@@ -2111,6 +2154,10 @@ AdapterFactory.register("openai", "llm", OpenAIAdapter)
 ---
 
 ## 10. 总结
+
+> ⚠️ 落地结论（2026-09）：本方案的"独立适配器微服务 + `AdapterFactory` 字符串 key 注册"未被执行，也未再执行；
+> 最终落地为《01_测试执行》定义的 API Adapter 体系（`BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`，
+> `APIAdapterFactory` 按 `(protocol, vendor)` 或 `adapter_class` 创建）。本方案保留为厂商协议调研与 API 配置结构设计的参考资料。
 
 本方案的核心设计:
 

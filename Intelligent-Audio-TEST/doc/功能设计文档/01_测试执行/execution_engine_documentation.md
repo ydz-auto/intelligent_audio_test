@@ -1,5 +1,7 @@
 # 执行引擎 (Execution Engine) 工作原理文档
 
+> 版本：v3.0 | 更新日期：2026-09-10 | 变更说明：按被测设备类型(device_type)路由，废弃 task.type；新增 RealtimeSessionExecutor 和 API adapter 体系
+
 ## 1. 概述
 
 执行引擎是测试自动化系统的核心组件，负责协调和执行各种类型的测试任务，包括API测试和端到端测试。它采用单例模式设计，确保整个系统中只有一个执行引擎实例，便于集中管理和控制所有测试任务。
@@ -25,14 +27,16 @@ class ExecutionEngine:
                 cls._instance.workers = {}
                 cls._instance.stop_flags = {}
                 cls._instance.pause_flags = {}
-                cls._instance.api_executors = {}
+                cls._instance.thread_pools = {}
                 # 东八区时区定义，用于统一时间格式
                 cls._instance.utc_plus_8 = timezone(timedelta(hours=8))
                 # 初始化执行器和管理器
                 cls._instance.load_balancer = LoadBalancer()  # 负载均衡器，用于选择最佳API端点
                 cls._instance.event_manager = EventManager(cls._instance)  # 事件管理器，用于处理事件通知
-                cls._instance.api_executor = APIExecutor(cls._instance)  # API执行器，用于执行API测试用例
-                cls._instance.e2e_executor = E2EExecutor(cls._instance)  # E2E执行器，用于执行端到端测试用例
+                # v3.0: ExecutionEngine 自身按 device_type 路由分发，不再需要 APIExecutor 作为编排层
+                cls._instance.e2e_executor = E2EExecutor(cls._instance)  # E2E测试执行器，用于执行物理设备(device_type='physical')测试
+                cls._instance.api_session_executor = APISessionExecutor(cls._instance)  # HTTP API测试执行器，用于执行 device_type='http_api' 测试
+                cls._instance.realtime_executor = RealtimeSessionExecutor(cls._instance)  # Realtime测试执行器，用于执行 device_type='websocket_api' 测试
                 
                 # API入口状态管理
                 cls._instance.api_entry_status = {}  # 存储 API 入口 (Master) 的状态: {url: {'available': True, 'fail_count': 0}}
@@ -47,9 +51,7 @@ class ExecutionEngine:
                 # 任务队列管理
                 cls._instance.task_queue = []  # 任务队列，存储待执行的任务
                 cls._instance.queue_lock = threading.Lock()  # 队列锁，确保线程安全
-                cls._instance.running_tasks = {}  # 运行中任务，{task_id: task_type}
-                cls._instance.running_apis = set()  # 运行中API集合，存储正在使用的API ID
-                cls._instance.running_e2e = False  # E2E任务运行状态
+                cls._instance.running_tasks = {}  # 运行中任务，{task_id: device_type}
                 
                 # 进度更新优化
                 cls._instance.task_progress_cache = {}  # 任务进度缓存
@@ -64,12 +66,10 @@ class ExecutionEngine:
 | workers | 存储正在运行的任务线程 |
 | stop_flags | 存储任务停止事件 |
 | pause_flags | 存储任务暂停事件 |
-| api_executors | 存储API测试的线程池执行器 |
+| thread_pools | 存储 API/Realtime 测试的线程池执行器 |
 | task_queue | 存储待执行的任务队列 |
 | queue_lock | 确保任务队列线程安全的锁 |
-| running_tasks | 存储当前运行中的任务，{task_id: task_type} |
-| running_apis | 存储当前正在使用的API ID集合 |
-| running_e2e | 标记是否有E2E任务正在运行 |
+| running_tasks | 存储当前运行中的任务，{task_id: device_type} |
 | api_entry_status | 存储API入口(Master)的状态，用于健康检查和故障转移 |
 | api_entry_lock | API入口状态更新的线程锁 |
 | scheduler_thread | 后台调度器线程，用于自动检查和启动pending任务 |
@@ -79,8 +79,9 @@ class ExecutionEngine:
 | last_progress_update | 上次进度更新时间，用于节流控制 |
 | load_balancer | 负载均衡器，用于选择最佳API端点 |
 | event_manager | 事件管理器，用于处理事件通知和进度推送 |
-| api_executor | API执行器，用于执行API测试用例 |
-| e2e_executor | E2E执行器，用于执行端到端测试用例 |
+| e2e_executor | E2EExecutor，用于执行物理设备(device_type='physical')测试 |
+| realtime_executor | RealtimeSessionExecutor，用于执行WebSocket API(device_type='websocket_api')测试 |
+| api_session_executor | APISessionExecutor，用于执行HTTP API(device_type='http_api')测试 |
 
 ## 3. 任务生命周期管理
 
@@ -93,9 +94,9 @@ class ExecutionEngine:
 3. **获取任务信息**：
    - 查询任务类型和关联的API
    - 获取任务关联的设备信息
-4. **检查执行条件**：
-   - E2E任务：同时只允许一个E2E任务运行
-   - API任务：支持并行执行，但每个API端点有独立的并发限制
+4. **检查执行条件**（按 device_type 路由）：
+   - physical（物理设备）任务：同时只允许一个物理设备任务运行
+   - http_api / websocket_api 任务：支持并行执行，但相同API端点的任务不能并发执行
 5. **执行或排队**：
    - 如果可以立即执行：
      - 创建停止和暂停事件
@@ -104,11 +105,12 @@ class ExecutionEngine:
    - 如果需要排队：
      - 将任务加入引擎级队列
      - 更新任务状态为"queued"
-6. **用例状态流转（关键）**：
+6. **用例状态流转（关键，按 device_type 路由）**：
    - **pending**：用例创建后的初始状态
    - **queued**：用例已提交到线程池，但在等待 API 执行权（通过原子占用机制设置）
    - **running**：用例已获得 API 执行权，正在进行请求
    - **completed/failed**：执行结束
+   - 物理设备任务由 E2EExecutor 执行，http_api 任务由 APISessionExecutor 执行，websocket_api 任务由 RealtimeSessionExecutor 执行
 7. **推送进度更新**：通过 WebSocket 实时同步 UI
 
 ### 3.2 后台调度器
@@ -126,10 +128,11 @@ scheduler_app = None  # 调度器使用的Flask应用实例
 
 #### 3.2.2 调度规则
 
-| 任务类型 | 调度规则 |
+| device_type | 调度规则 |
 |----------|----------|
-| E2E任务 | 同时只允许一个E2E任务运行 |
-| API任务 | 可以并发运行，但不能使用相同的API（资源共享检查） |
+| physical（物理设备） | 同时只允许一个物理设备任务运行 |
+| http_api（HTTP API） | 可以并发运行，但不能使用相同的API（资源共享检查） |
+| websocket_api（WebSocket API） | 可以并发运行，但不能使用相同的API（资源共享检查） |
 
 #### 3.2.3 调度流程
 
@@ -159,11 +162,13 @@ def _schedule_pending_tasks(self):
         if any(t['id'] == task_id for t in self.task_queue):
             continue
         
-        # 4. 检查资源冲突
-        if task.type == 'e2e':
-            if not self.running_e2e:
+        # 4. 检查资源冲突（按 device_type 路由）
+        if device_type == 'physical':
+            # 物理设备任务：同时只允许一个运行
+            if not any(dt == 'physical' for dt in self.running_tasks.values()):
                 can_run = True
-        else:
+        elif device_type in ('http_api', 'websocket_api'):
+            # HTTP/WebSocket API任务：相同API不能并发运行
             overlapping_apis = set(api_ids) & self.running_apis
             if not overlapping_apis:
                 can_run = True
@@ -190,8 +195,8 @@ def _schedule_pending_tasks(self):
    - API 任务根据 API 冲突检查决定是否可立即启动。
    - 调度器定期检查队列，自动启动可以执行的任务。
 
-2. **API 级执行队列 (New)**：
-   - 在 `APIExecutor` 中为每个 API 实例维护一个 `queue.Queue`。
+2. **API 级执行队列**：
+   - 在 `APISessionExecutor` 和 `RealtimeSessionExecutor` 中各自为每个 API 实例维护一个 `queue.Queue`。
    - 解决 `Condition` 变量在并发环境下可能导致的任务串行化问题。
    - 任务通过 `q.put()` 申请执行权，释放时通过 `q.get()` 唤醒后续任务。
    - 使用 `api_waiting_counts` 统计等待中的任务数，用于进度监控。
@@ -199,7 +204,8 @@ def _schedule_pending_tasks(self):
 #### 3.2.1 API级并发控制机制
 
 ```python
-class APIExecutor:
+# APISessionExecutor / RealtimeSessionExecutor 各自维护 API 级并发控制
+class APISessionExecutor:  # RealtimeSessionExecutor 同理
     def __init__(self):
         self.api_queues = {}      # API ID到排队队列的映射 {api_id: queue.Queue}
         self.api_waiting_counts = {}  # API ID到等待计数的映射 {api_id: int}
@@ -264,7 +270,7 @@ local_db_session.commit()
 
 ```python
 # 统计各类用例数量
-queued_cases = sum(self.api_executor.api_waiting_counts.values())
+queued_cases = sum(self.api_session_executor.api_waiting_counts.values()) + sum(self.realtime_executor.api_waiting_counts.values())
 execution_running_cases = db.query(TaskCase).filter_by(
     task_id=task_id, execution_status='running'
 ).count()
@@ -313,10 +319,10 @@ elif action == 'pause':
     self.pause_flags[task_id].clear()
     task.status = 'paused'
     
-    # 对于API任务，不重置执行中的用例状态为pending
+    # 对于HTTP/WebSocket API任务，不重置执行中的用例状态为pending
     # 因为API线程是在pause_event上阻塞，恢复时会自动继续执行
     # 如果重置为pending，会导致调度器重新启动新线程，造成重复执行
-    if task.type == 'e2e':
+    if device_type == 'physical':
         running_cases = local_db_session.query(TaskCase).filter_by(
             task_id=task_id, execution_status='running'
         ).all()
@@ -380,13 +386,13 @@ elif action == 'stop':
 
 ```python
 if action == 'resume' and task_id not in self.workers:
-    if task.type == 'api':
+    if device_type in ('http_api', 'websocket_api'):
         # 将暂停的队列任务重新加入队列
         with self.queue_lock:
             self.task_queue.append({
-                "id": task.id, 
-                "type": "api", 
-                "api_ids": api_ids, 
+                "id": task.id,
+                "device_type": device_type,
+                "api_ids": api_ids,
                 "app": app
             })
         task.status = 'queued'
@@ -423,10 +429,10 @@ while not stop_event.is_set():
     device_check_passed = True
     error_message = ""
     
-    # 检查被测设备状态（仅E2E任务）
+    # 检查被测设备状态（仅物理设备任务，device_type == 'physical'）
     # ...
     
-    # 检查播放设备状态（仅E2E测试）
+    # 检查播放设备状态（仅物理设备测试，device_type == 'physical'）
     # ...
     
     # 设备检查失败处理
@@ -455,25 +461,30 @@ while not stop_event.is_set():
         continue
     local_db_session.commit()
 
-    # 根据任务类型执行测试用例
-    if task.type == 'api':
-        # API任务：提交到线程池执行
-        self.api_executors[task_id].submit(
-            self._execute_api_case, app, task_id, tc_rel_id
+    # 根据 device_type 路由分发执行（ExecutionEngine 直接路由，无中间编排层）
+    if device_type == 'physical':
+        # 物理设备任务：由 E2EExecutor 直接同步执行
+        success = self.e2e_executor.execute_case(task_id, tc_rel.id)
+    elif device_type == 'websocket_api':
+        # WebSocket API任务：提交到线程池，由 RealtimeSessionExecutor 执行
+        self.thread_pools[task_id].submit(
+            self.realtime_executor.execute_case, app, task_id, tc_rel_id
         )
-        # 状态更新：主线程已将 pending 原子占用为 queued，
-        # 工作线程再将 queued → running → completed/failed
-    else:
-        # E2E任务：直接同步执行
-        success = self._execute_e2e_case(task_id, tc_rel.id)
+    elif device_type == 'http_api':
+        # HTTP API任务：提交到线程池，由 APISessionExecutor 执行
+        self.thread_pools[task_id].submit(
+            self.api_session_executor.execute_case, app, task_id, tc_rel_id
+        )
+    # 状态更新：主线程已将 pending 原子占用为 queued，
+    # 工作线程再将 queued → running → completed/failed
         
     # 更新任务统计信息
     # ...
 
-# API任务：等待所有测试用例执行完成
-if task.type == 'api' and task_id in self.api_executors:
-    self.api_executors[task_id].shutdown(wait=True)  # 关闭线程池，等待所有任务完成
-    del self.api_executors[task_id]  # 从字典中移除
+# HTTP/WebSocket API任务：等待所有测试用例执行完成
+if device_type in ('http_api', 'websocket_api') and task_id in self.thread_pools:
+    self.thread_pools[task_id].shutdown(wait=True)  # 关闭线程池，等待所有任务完成
+    del self.thread_pools[task_id]  # 从字典中移除
     
     # 等待所有测试用例的状态都不是running或queued
     # 包括执行中、排队中、评估中/待评估的用例
@@ -501,9 +512,9 @@ else:
 
 | 任务类型 | 并发策略 | 详细说明 |
 |----------|----------|----------|
-| E2E任务 | 串行执行 | 同时只允许一个E2E任务运行，确保系统资源集中 |
-| API任务 | 并行执行 | 支持多个API任务并行执行，但相同API的任务串行执行，避免API过载 |
-| 测试用例 | 并行执行 | API测试用例通过线程池并行执行，E2E测试用例串行执行 |
+| 物理设备任务 | 串行执行 | 同时只允许一个物理设备任务运行，确保系统资源集中 |
+| HTTP/WebSocket API任务 | 并行执行 | 支持多个API任务并行执行，但相同API的任务串行执行，避免API过载 |
+| 测试用例 | 并行执行 | API测试用例通过线程池并行执行，物理设备测试用例串行执行 |
 
 ### 4.2 线程安全机制
 
@@ -519,9 +530,9 @@ else:
    - 每个API任务使用独立的线程池
    - 任务间通过事件和锁进行通信，避免直接共享状态
 
-### 4.3 API测试并发执行
+### 4.3 API/Realtime测试并发执行
 
-API测试采用线程池实现高效并发：
+API/Realtime测试采用线程池实现高效并发，通过 adapter 体系适配不同协议（HTTP、WebSocket、流式HTTP）：
 
 1. **线程池配置**：
    - 根据可用API端点计算最大工作线程数
@@ -533,7 +544,13 @@ API测试采用线程池实现高效并发：
    - 任务完成时关闭线程池并等待所有任务完成
    - 支持动态调整线程池大小
 
-3. **等待机制**：
+3. **Adapter 体系**：
+   - `HttpAPIAdapter`：标准 HTTP API 测试适配器
+   - `HttpStreamAdapter`：流式 HTTP API 测试适配器
+   - `RealtimeAPIAdapter`：WebSocket API 测试适配器
+   - 执行器不再直接管理 HTTP 调用，而是委托给 adapter
+
+4. **等待机制**：
    - 任务完成后等待所有测试用例执行完成
    - 支持超时机制（默认5分钟）
    - 定期检查测试用例状态
@@ -608,6 +625,15 @@ API测试采用线程池实现高效并发：
 
 API测试用于验证语音识别和翻译API的性能和准确性。执行引擎会根据API配置和测试用例，自动选择最优的API端点，并执行测试请求。
 
+v3.0 起，执行器不再直接管理 HTTP 调用，而是通过 **adapter 体系** 委托给适配器：
+
+| 适配器 | 适用场景 | 协议 |
+|--------|----------|------|
+| `BaseAPIAdapter` | 抽象基类，定义统一接口 | - |
+| `HttpAPIAdapter` | 标准 HTTP API 测试 | HTTP |
+| `HttpStreamAdapter` | 流式 HTTP API 测试 | HTTP (chunked) |
+| `RealtimeAPIAdapter` | WebSocket API 测试 | WebSocket |
+
 ### 7.2 执行步骤
 
 #### 7.2.1 任务初始化
@@ -626,6 +652,12 @@ API测试用于验证语音识别和翻译API的性能和准确性。执行引�
    - 计算所有可用端点的最大进程数之和
    - 创建ThreadPoolExecutor实例
    - 记录初始化日志
+
+4. **Adapter 选择**：
+   - 根据 device_type 选择对应的 adapter
+   - `http_api` → `HttpAPIAdapter` 或 `HttpStreamAdapter`
+   - `websocket_api` → `RealtimeAPIAdapter`
+   - 通过 `api_adapter_factory` 工厂创建适配器实例
 
 #### 7.2.2 用例执行循环
 
@@ -646,6 +678,7 @@ API测试用于验证语音识别和翻译API的性能和准确性。执行引�
 4. **提交用例到线程池**：
    - 将用例提交到线程池执行
    - 状态由工作线程管理：`queued → running → completed/failed`
+   - 工作线程调用 adapter 的方法完成实际请求
 
 #### 7.2.3 API级并发控制
 
@@ -659,20 +692,22 @@ def execute_api_case(self, app, task_id, tc_rel_id):
         TaskCase.execution_status: 'running'
     })
     
-    # 2. 获取API执行权（API级并发控制）
+    # 2. 获取API执行权（APISessionExecutor 内部的 API 级并发控制）
     if not self.acquire_api_execution_right(api_id, task_id, tc_rel_id, max_process):
         return False
     
     try:
-        # 3. 执行API测试
-        # - 健康检查
-        # - 创建任务
-        # - 等待完成
-        # - 查询结果
-        pass
+        # 3. 通过 adapter 执行 API 测试（执行器不再直接管理 HTTP 调用）
+        adapter = self.api_adapter_factory.create(device_type, api_config)
+        adapter.initialize()
+        adapter.send(payload)
+        result = adapter.recv()
+        adapter.post_process()
+        output = adapter.output  # 获取统一输出
     finally:
         # 4. 释放API执行权
         self.release_api_execution_right(api_id, task_id)
+        adapter.teardown()
 ```
 
 #### 7.2.4 状态流转（关键）
@@ -693,11 +728,52 @@ tc_rel.status:                  pending                    → passed/failed
 | API调用失败 | failed | failed | failed |
 | 任务停止 | stopped | stopped | skipped |
 
+## 7.5 Realtime API测试执行流程
+
+### 7.5.1 概述
+
+Realtime API 测试用于验证基于 WebSocket 协议的实时语音识别和翻译 API。由 `RealtimeSessionExecutor` 驱动，通过 `RealtimeAPIAdapter` 适配器完成 WebSocket 连接、音频分片流式发送和事件驱动的结果接收。
+
+### 7.5.2 执行步骤
+
+1. **初始化 Adapter**：
+   - `adapter.initialize()` 建立 WebSocket 连接
+   - 启动独立的接收线程，监听服务端推送的事件
+
+2. **音频分片流式发送**（每个测试轮次）：
+   - 通过 `AudioStreamOrchestrator.chunk_audio()` 将音频切分为固定大小的分片
+   - 逐个调用 `adapter.send(chunk)` 发送音频分片
+   - 所有分片发送完毕后调用 `adapter.commit_input()` 通知服务端输入结束
+   - 调用 `adapter.post_process()` 执行后处理（如等待最终结果）
+   - 从 `adapter.output` 获取最终识别/翻译结果
+
+3. **事件驱动接收**：
+   - 接收线程持续监听 WebSocket 消息
+   - 收到结果事件后写入 adapter 的输出缓冲区
+   - 主线程从输出缓冲区获取最终结果
+
+```python
+# Realtime API 执行流程示例
+adapter = self.api_adapter_factory.create('websocket_api', api_config)
+adapter.initialize()  # 建立 WebSocket 连接 + 启动接收线程
+
+for round in test_rounds:
+    chunks = AudioStreamOrchestrator.chunk_audio(audio_data)
+    for chunk in chunks:
+        adapter.send(chunk)          # 逐片发送音频
+    adapter.commit_input()           # 通知输入结束
+    adapter.post_process()           # 后处理
+    result = adapter.output          # 获取最终结果
+    # 评估结果...
+```
+
 ## 8. 端到端测试执行流程
 
 ### 8.1 概述
 
 端到端测试用于验证完整的语音识别和翻译流程，包括音频播放、设备唤醒、语音采集和结果返回。
+
+> **注意**：v3.0 起，端到端测试由 `device_type='physical'` 决定，不再使用 `task.type`。
 
 ### 8.2 执行步骤
 
@@ -849,8 +925,13 @@ def _update_endpoint_health(self, endpoint_url, available):
 
 ```python
 try:
-    # 执行测试用例
-    result = self.execute_api_case(app, task_id, tc_rel_id)
+    # 执行测试用例（按 device_type 路由到对应 executor）
+    if device_type == 'physical':
+        result = self.e2e_executor.execute_case(app, task_id, tc_rel_id)
+    elif device_type == 'websocket_api':
+        result = self.realtime_executor.execute_case(app, task_id, tc_rel_id)
+    else:
+        result = self.api_session_executor.execute_case(app, task_id, tc_rel_id)
 except Exception as e:
     # 捕获所有异常
     error_msg = f"API 执行异常: {str(e)}"
@@ -893,8 +974,11 @@ except Exception as e:
 | evaluation_service | 测试结果评估 |
 | load_balancer | 最佳API端点选择 |
 | event_manager | 事件通知和进度推送 |
-| APIExecutor | API测试执行 |
-| E2EExecutor | E2E测试执行 |
+| e2e_executor | E2E测试执行（物理设备测试，device_type='physical'） |
+| api_session_executor | HTTP API测试执行（APISessionExecutor，device_type='http_api'） |
+| realtime_executor | WebSocket API测试执行（RealtimeSessionExecutor，device_type='websocket_api'） |
+| api_adapter_factory | API适配器工厂，创建 HttpAPIAdapter/HttpStreamAdapter/RealtimeAPIAdapter |
+| audio_stream_orchestrator | 混音切片，将音频切分为固定大小分片供 Realtime API 流式发送 |
 
 ## 12. 性能优化
 
@@ -935,7 +1019,7 @@ success, message = engine.control_task(app, task_id, 'stop')
 
 ## 15. 总结
 
-执行引擎是测试自动化系统的核心，负责协调和执行各种类型的测试任务。它通过完善的任务生命周期管理、并发控制机制和实时进度推送，确保测试任务高效、可靠地执行。
+执行引擎是测试自动化系统的核心，负责协调和执行各种类型的测试任务。v3.0 起，执行引擎按被测设备类型（device_type）路由，支持三种执行模式：E2E（物理设备）、HTTP API、WebSocket Realtime API。通过完善的任务生命周期管理、并发控制机制和实时进度推送，确保测试任务高效、可靠地执行。
 
 执行引擎的主要特点包括：
 
@@ -945,11 +1029,12 @@ success, message = engine.control_task(app, task_id, 'stop')
 4. **可靠的设备状态管理**：自动检查设备状态，确保测试可靠性
 5. **完善的错误处理**：异常捕获、错误日志和告警推送
 6. **实时进度推送**：通过WebSocket实时推送任务执行进度
-7. **灵活的扩展性**：支持API测试和E2E测试，便于扩展新的测试类型
+7. **三种执行模式**：E2E（physical）/ HTTP API（http_api）/ Realtime API（websocket_api），由 device_type 路由决定
 8. **后台自动调度**：内置调度器自动检测和启动pending任务
 9. **API入口健康状态管理**：自动跟踪API Master节点可用性
 10. **细粒度状态监控**：精确统计排队中、执行中、评估中等各状态用例数
 11. **原子状态更新**：避免多线程重复提交同一用例
+12. **Adapter 体系**：执行器通过 BaseAPIAdapter/HttpAPIAdapter/HttpStreamAdapter/RealtimeAPIAdapter 适配不同协议，不再直接管理 HTTP 调用
 
 执行引擎与其他核心服务紧密协作，形成完整的测试生态系统，为语音识别和翻译系统的质量保障提供了有力支持。
 
@@ -962,27 +1047,39 @@ success, message = engine.control_task(app, task_id, 'stop')
                              │
                     ┌────────▼────────┐
                     │ ExecutionEngine │◄── 单例模式
-                    │   (核心调度器)   │
+                    │ (核心调度+路由)  │
                     └────────┬────────┘
-              ┌──────────────┼──────────────┐
-              │              │              │
-       ┌──────▼──────┐ ┌─────▼─────┐ ┌──────▼──────┐
-       │ APIExecutor │ │E2EExecutor│ │EventManager │
-       │ (API测试)   │ │(E2E测试)  │ │(事件推送)   │
-       └──────┬──────┘ └─────┬─────┘ └─────────────┘
-              │              │
-       ┌──────▼──────┐      │
-       │ API级并发控制│      │
-       │ (有界队列)  │      │
-       └──────┬──────┘      │
-              │              │
-       ┌──────▼──────┐      │
-       │API入口状态  │      │
-       │健康管理     │      │
-       └─────────────┘      │
+              ┌──────────────┼──────────────┐──────────────┐
+              │              │              │              │
+       ┌──────▼──────┐ ┌─────▼─────┐ ┌──────▼──────┐ ┌─────▼──────┐
+       │E2EExecutor  │ │APISession │ │Realtime    │ │EventManager│
+       │(physical)   │ │Executor   │ │Session     │ │(事件推送)   │
+       │             │ │(http_api) │ │Executor    │ └────────────┘
+       └──────┬──────┘ └─────┬─────┘ │(websocket_ │
+              │              │         │ api)       │
+              │              │         └──────┬─────┘
+              │              │                │
+       ┌──────▼──────┐      │        ┌───────▼───────┐
+       │device_driver│      │        │api_adapter_   │
+       │(ADB/HDC)    │      │        │factory        │
+       │SPLMapping   │      │        └───────┬───────┘
+       └─────────────┘      │                │
+                             │        ┌───────▼───────┐
+                     ┌───────▼──────┐ │AudioStream   │
+                     │api_adapter_  │ │Orchestrator  │
+                     │factory       │ │(混音切片)    │
+                     └───────┬──────┘ └───────────────┘
                              │
                      ┌───────▼───────┐
-                     │   调度器      │
-                     │ (后台自动调度) │
+                     │HttpAPIAdapter│
+                     │HttpStreamAdp │
+                     │(非实时/流式)   │
                      └───────────────┘
+
+              ┌───────▼───────┐
+              │   调度器      │
+              │ (后台自动调度) │
+              └───────────────┘
 ```
+
+> **关键变更**：v3.0 起，`ExecutionEngine` 自身按 `device_type` 路由分发到三个对等执行器（E2EExecutor / APISessionExecutor / RealtimeSessionExecutor），**不再有 APIExecutor 作为中间编排层**。

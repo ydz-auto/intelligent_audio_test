@@ -82,18 +82,30 @@
 
 统一入口：
 
-- `backend/utils/spl_service.py`：`SPLMappingService.spl_to_gain(mapping_id, target_spl)`
+- `backend/services/audio/spl_service.py`：`SPLMappingService.spl_to_gain(mapping_id, target_spl, app=None)`
+
+主要调用方（均通过 `backend/services/audio/playback_config_builder.py` 的 `resolve_spl_gain(spl_mapping_id, target_spl, app=None)` 封装或直接调用）：
+
+- E2E 播放链路：`backend/services/audio/audio_timeline.py` 的 `get_audio_configs_for_offset`
+- 预览链路：`backend/controllers/audio_controller.py`、`playback_orchestrator.preview`
+- 设备测试：`backend/controllers/playback_controller.py`
+
+`spl_to_gain` 支持传入 Flask `app` 实例（子线程播放场景注入应用上下文）；内部使用独立 `db.session()` 并在 `finally` 中关闭；无任何应用上下文可用时返回 `1.0`。
 
 ### 4.1 增益限制常量
 
 ```python
-DB_MIN = -60.0      # 最小增益限制（dB）
-DB_MAX = 0.0        # 最大增益限制（dB）
+DB_MIN = -60.0      # 保留常量（不参与增益限制）
+DB_MAX = 0.0        # 保留常量（不参与增益限制）
 BASE_LEVEL_DB = -30.0  # 基准电平（dBFS）
 MAX_OUTPUT_DB = -5.0   # 最大输出电平（dBFS）
-MIN_GAIN_DB = MAX_OUTPUT_DB - BASE_LEVEL_DB  # -20 dB
-MAX_GAIN_DB = MAX_OUTPUT_DB - BASE_LEVEL_DB   # +25 dB
+MIN_GAIN_DB = -70.0    # 最小增益（dB）
+MAX_GAIN_DB = MAX_OUTPUT_DB - BASE_LEVEL_DB   # +25 dB（gainOffset 上限）
+MIN_GAIN_LINEAR = 10 ** (MIN_GAIN_DB / 20.0)  # ≈ 3.16e-4
+MAX_GAIN_LINEAR = 10 ** (MAX_GAIN_DB / 20.0)  # ≈ 17.78
 ```
+
+注意：增益限制最终作用在**线性增益**上（见 4.3），dB 常量仅用于推导线性上下限。
 
 ### 4.2 计算优先级（按代码顺序）
 
@@ -102,20 +114,23 @@ MAX_GAIN_DB = MAX_OUTPUT_DB - BASE_LEVEL_DB   # +25 dB
 
 2) **目标 SPL 命中映射的 target_spl（±0.1dB）**
    - 若 `abs(mapping.target_spl - target_spl) < 0.1` 且 `digital_gain` 非空：
-     - `gain_db = digital_gain / 100.0`（当 `digital_gain > 1`）
-     - 否则 `gain_db = digital_gain`
-     - 返回 `SPLMappingService._apply_gain_limit(gain_db)`
+     - `gain_linear = digital_gain / 100.0`（当 `digital_gain > 1`，百分比语义）
+     - 否则 `gain_linear = digital_gain`（≤1 视为线性增益直接使用）
+     - 返回 `SPLMappingService._apply_gain_limit(gain_linear)`
 
 3) **存在校准点（calibration_data.points）**
-   - 取 `points` 的 `spl` 和增益信息，按 spl 排序后做线性插值：
-     - 优先使用 `gainOffset`（dB 偏移）计算线性增益
-     - 兼容旧格式：若 `gainOffset` 为空，则使用 `digital_gain` 或 `gain`（百分比）
-     - 低于最小 spl：返回 `min(gains)` 并应用增益限制
-     - 高于最大 spl：返回 `max(gains)` 并应用增益限制
-     - 中间：`np.interp(target_spl, spls, gains)`
-     - 应用增益限制：`MIN_GAIN_DB` 到 `MAX_GAIN_DB` 范围
+   - 逐点解析增益（兼容多种字段名）：
+     - 优先使用 `gainOffset`（兼容 `gain_offset`，dB 偏移）→ 线性增益 `10 ^ (gainOffset / 20.0)`
+     - 兼容旧格式：若 `gainOffset` 为空，则使用 `digital_gain` 或 `gain`（百分比）→ 线性增益 `值 / 100.0`
+   - 取 `points` 的 `spl` 和线性增益，按 spl 升序排序：
+     - 高于最大 spl（`target_spl >= max(spls)`）：返回 `max(gains)` 并应用增益限制
+     - 低于最小 spl（`target_spl <= min(spls)`）：
+       - 校准点 ≥ 2 个：使用 `np.polyfit(spls, gains, 1)` 做**一次线性拟合外推**（`np.polyval` 求目标点增益）；外推结果 ≤ 0 时回退 `min(gains)`
+       - 仅 1 个校准点：返回 `min(gains)` 并应用增益限制
+     - 中间：`np.interp(target_spl, spls, gains)` 线性插值
+   - 全部结果统一应用增益限制（线性增益上下限，见 4.3）
 
-4) **无校准点但存在单点（target_spl + digital_gain）**
+4) **无校准点但存在单点（mapping.target_spl + digital_gain）**
    - 计算 `diff_db = target_spl - mapping.target_spl`
    - `factor = 10 ** (diff_db / 20.0)`
    - 返回 `SPLMappingService._apply_gain_limit(factor)`
@@ -127,61 +142,116 @@ MAX_GAIN_DB = MAX_OUTPUT_DB - BASE_LEVEL_DB   # +25 dB
 
 ```python
 @staticmethod
-def _apply_gain_limit(gain_db):
-    return max(MIN_GAIN_DB, min(MAX_GAIN_DB, gain_db))
+def _apply_gain_limit(gain_linear):
+    return max(SPLMappingService.MIN_GAIN_LINEAR, min(SPLMappingService.MAX_GAIN_LINEAR, gain_linear))
 ```
 
-- 最小增益：`MIN_GAIN_DB = -20.0` dB（对应线性增益约 0.1）
-- 最大增益：`MAX_GAIN_DB = +25.0` dB（对应线性增益约 17.78）
+- 限制对象是**线性增益**（非 dB 值）
+- 最小线性增益：`MIN_GAIN_LINEAR = 10 ^ (-70/20) ≈ 3.16e-4`（对应 -70 dB）
+- 最大线性增益：`MAX_GAIN_LINEAR = 10 ^ (+25/20) ≈ 17.78`（对应 +25 dB，最终输出不超过 -5 dBFS）
 
 ### 4.4 单位约定（重要）
 
 当前实现中的单位转换：
 
 - `gainOffset`（dB 偏移）转线性增益：`10 ^ (gainOffset / 20.0)`
-- `digital_gain`（dB 值）：
-  - `digital_gain > 1`：按 dB 值处理（除以 100 后使用）
-  - `digital_gain <= 1`：按线性增益处理（直接使用）
+- `digital_gain`（历史百分比语义）：
+  - 命中 target_spl 分支：`digital_gain > 1` 时按百分比处理（除以 100 得线性增益）；`≤ 1` 时直接作为线性增益使用
+  - 校准点分支：`digital_gain`/`gain` 一律除以 100 转为线性增益（不做 >1 判断）
+- 百分比 → gainOffset 换算（SPL 管理/校准数据规范化时使用，见 `backend/controllers/spl_controller.py`）：`gainOffset = (digital_gain - 50) × 0.24`
 
 **注意**：系统使用 -30 dBFS 作为标准测试音基准电平，所有增益计算都相对于此基准。
 
+### 4.5 与被测 API 的对称映射体系（设计态，代码未实现）
+
+依据《01_测试执行/04_类设计.md》5.7a/5.7b 的对称设计，E2E 物理设备体系之外还规划了面向被测 API 的对称体系：
+
+| 维度 | E2E（SPLMapping，已实现） | Realtime/API（ApiRmsSplMapping，设计态） |
+|------|---------------------------|------------------------------------------|
+| 关联实体 | `PlaybackDevice`（物理音箱） | `API`（被测 API） |
+| 关系 | device 1:N spl_mappings | api 1:N rms_spl_mappings |
+| 映射含义 | 物理设备 dB SPL → gain（校准物理音箱） | 被测 API 数字域 dB → gain（校准 API 输入灵敏度） |
+| 选中方式 | `device.current_spl_mapping_id` | `api.rms_spl_mapping_id` 或 case_config 指定 |
+| 计算服务 | `SPLMappingService.spl_to_gain` | `ApiRmsSplService.spl_to_gain / spl_to_gain_by_mapping`（规划于 `backend/services/audio/api_rms_spl_service.py`） |
+| 使用场景 | `audio_timeline.get_audio_configs_for_offset` 查 device | `AudioStreamOrchestrator` 混音时查 api_id |
+
+> **当前状态**：`ApiRmsSplMapping` / `ApiRmsSplService` / `AudioStreamOrchestrator` 仅存在于设计文档，backend 代码尚未实现。API/Realtime 类任务当前不经过 SPL→gain 映射。
+
 ## 5. 用例执行时如何使用 SPL 映射
+
+### 5.0 E2E 播放链路总览
+
+E2E 执行由 `device_type='physical'` 决定（`test_type`/`task.type` 已废弃），链路如下：
+
+```
+E2EExecutor（backend/services/execution/e2e_executor.py，ExecutionEngine 按 device_type 路由）
+  → PlaybackOrchestrator（backend/services/audio/playback_orchestrator.py）
+      ├─ playback_config_builder.build_dry_configs / build_noise_play_configs / build_interferer_configs
+      │    （构建 audio_to_play 配置，每个音频经 resolve_spl_gain 完成 SPL→gain）
+      └─ audio_timeline.get_audio_configs_for_offset（按全局 offset 生成待播配置，SPL gain 调试日志在此输出）
+  → audio_engine / audio_driver（播放回调中以幅值乘法应用增益）
+```
 
 ### 5.1 干声（dry）音频播放
 
-入口：`backend/utils/e2e_executor.py` 的 `_play_dry_audios`
+入口：`backend/services/audio/playback_config_builder.py` 的 `build_dry_configs`
 
 逻辑要点：
 
-- 默认增益：`gain = 1.0`
+- 音频来源：用例配置 `rounds[].audios`，每项包含 `audio_id`（Audio 表主键）、`playback_device_id`（PlaybackDevice 表主键）、`spl`、`play_order`
+- 默认增益：`gain = 1.0`（设备未绑定映射时）
 - 只有当播放设备绑定了 `current_spl_mapping_id` 才启用映射：
-  - `spl_value = ca.get('spl', 65.0)`（用例未配置 spl 时默认 65.0）
-  - `gain = spl_service.spl_to_gain(dev_current_spl_mapping_id, spl_value)`
+  - `spl_value = audio_config.get('spl', 65.0)`（用例未配置 spl 时默认 65.0）
+  - `gain = resolve_spl_gain(spl_mapping_id, spl_value)` → `spl_service.spl_to_gain(...)`
 
-### 5.2 背景噪声（noise）播放
+### 5.2 背景噪声（noise）与干扰人（interferer）播放
 
-入口：`backend/utils/e2e_executor.py` 的 `_play_background_noise`
+背景噪声入口：`playback_config_builder.py` 的 `build_noise_play_configs`（噪声信息解析在 `build_noise_info`）
 
 逻辑要点：
 
-- 默认增益：`gain = 1.0`
+- 噪声 SPL 优先级：**case 级** `config.background_noise.spl`（整个用例，跨轮持续播放）> **round 级** `rounds[].background_noise.spl`；case 级存在且有效时 round 级不播放
+- 未配置 spl 时默认 `0`
 - 若噪声播放设备绑定了 `current_spl_mapping_id`，则：
-  - `n_gain = spl_service.spl_to_gain(n_dev['current_spl_mapping_id'], noise_audio_data['spl'])`
+  - `n_gain = resolve_spl_gain(n_dev.current_spl_mapping_id, noise_spl)`
+
+干扰人入口：`playback_config_builder.py` 的 `build_interferer_configs`
+
+- 干扰人来自 `rounds[].algorithm_params.interferers`（评估前提升为轮级字段），每项含 `spl`、`start_delay`、`loop`
+- SPL 计算：`gain = resolve_spl_gain(spl_mapping_id, spl)`（设备绑定映射且配置了 spl 时才计算，否则 1.0）
 
 ### 5.3 预览（preview）与设备测试（test）
 
 预览与设备测试同样使用 `spl_to_gain`：
 
-- 预览：`backend/controllers/audio_controller.py`（干声默认 `spl=65.0`，噪声默认 `spl=0`）
+- 预览：`backend/controllers/audio_controller.py`（干声默认 `spl=65.0`，噪声默认 `spl=0`）与 `playback_orchestrator.preview`
 - 设备测试：`backend/controllers/playback_controller.py`（请求里提供 `spl` 且设备已绑定映射时才计算）
+
+### 5.4 评估链路中的 SPL 传递（case_config → played_audios）
+
+依据《04_评估/case-config-stimulus-audios方案.md》，SPL 相关标量随音频配置一起进入评估链路：
+
+```
+test_case.config.rounds[].audios / background_noise / interferers（含 spl 标量）
+  ↓ 评估参数映射（seed_stimulus_audios.py 注册的三组映射）
+rounds[].played_audios / background_noise / interferers
+  ↓ 轮次数归一化 _normalize_round_eval_fields（噪声注入 / 干扰人提升 / audio_path 补全）
+multipart 文件上传（rounds[].played_audios[].audio_path），非文件标量（如 spl）原样保留
+  ↓
+评估服务端还原后按 spl 计算声学类指标
+```
+
+- `played_audios` 是"被播放音频"的评估参数名，与 `background_noise`、`interferers` 复用同一递归上传/还原机制
+- `spl` 作为非文件标量在 multipart 占位符替换中原样保留，业务结构不被破坏
+- 评估端（eval_server）当前没有以 SPL 命名的独立指标，SPL 信息主要用于声学类维度的参数上下文
 
 ## 6. gain 在播放链路中的实际应用
 
 最终的增益在播放回调里以"幅值乘法"方式生效：
 
-- 代码：`backend/utils/audio_engine.py`（PyAudioDriver）
+- 代码：`backend/services/audio/audio_driver.py`（`PyAudioDriver`；`audio_engine.py` 保留兼容导入）
 - 关键行为：
-  - `effective_gain = audio_gain * GLOBAL_SAFE_GAIN * gain_compensation`
+  - `effective_gain = audio_gains[i] * GLOBAL_SAFE_GAIN * gain_compensations[i]`
   - `audio_data = audio_data * effective_gain`
 
 其中：
@@ -237,7 +307,7 @@ def _apply_gain_limit(gain_db):
 | **SPL 映射未生效** | `audio_gains[i]=1.0`，SPL gain 日志缺失 | 检查 `current_spl_mapping_id` 是否为 `None`，日志搜索 `[get_audio_configs_for_offset]` |
 | 增益值异常 | 检查 `gainOffset` 是否在有效范围内（+25 dB 内） | 验证 calibration_data.points 中的 gainOffset |
 | 校准点格式错误 | 优先使用 `gainOffset`，兼容 `digital_gain`/`gain` | 确保 points 数据结构正确 |
-| 输出偏小 | 检查 MIN_GAIN_DB 限制（-20 dB） | 确认 target_spl 不低于校准点最小值 |
+| 输出偏小 | 低于最小校准点时走 `np.polyfit` 一次线性外推，线性增益下限为 `10^(-70/20)` | 确认 target_spl 不低于校准点最小值，查看日志 `[SPL外推]` |
 | 输出失真 | 检查是否超过 MAX_OUTPUT_DB（-5 dBFS） | 确认 gainOffset 不超过 +25 dB |
 
 ### 7.1 排查步骤：SPL 映射未生效
@@ -266,7 +336,7 @@ def _apply_gain_limit(gain_db):
 
 2. **检查 SPL 映射的校准数据**
    - 确认 calibration_data.points 包含目标 SPL 对应的校准点
-   - 确认 gainOffset 值合理（-20 dB 到 +25 dB 范围内）
+   - 确认 gainOffset 值合理（不超过 +25 dB；线性增益被限制在 `[10^(-70/20), 10^(+25/20)]` 区间）
 
 ## 8. 示例
 
@@ -314,24 +384,46 @@ def _apply_gain_limit(gain_db):
 {
   "audios": [
     {
-      "audio_id": "xxx",
-      "playback_device_id": "dry_device_id",
+      "audio_id": 123,
+      "playback_device_id": 3,
       "spl": 65.0,
-      "play_order": 1,
-      "test_type": "e2e"
+      "play_order": 1
     }
   ]
 }
 ```
 
+> E2E 执行由播放设备所属 `device_type='physical'` 决定，不再依赖 `test_type`/`task.type` 字段。
+
 ### 8.3 设备关联映射 API 请求
 
 ```json
-POST /api/v1/playback/devices/{device_id}/associate-spl
+POST /api/v1/playback-devices/{device_id}/associate-spl
 {
   "splMappingId": 1
 }
 ```
+
+校验规则：映射存在性、`device_id` 一致性、`device_type` 一致性；通过后写入 `device.current_spl_mapping_id`（见第 3 节）。
+
+### 8.4 SPL 管理接口清单（`/api/v1/spl`）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/v1/spl` | 分页查询映射列表（keyword/search/calibrationStatus/page/perPage/deviceId） |
+| POST | `/api/v1/spl` | 创建映射（校准数据 points 规范化：gainOffset 上限 +25，超限报错；`digital_gain` 换算 `(值-50)×0.24`） |
+| GET | `/api/v1/spl/{id}` | 映射详情（含 `isCurrent` 标识） |
+| PUT | `/api/v1/spl/{id}` | 更新映射；`distance`/`testFrequency` 变化会将校准状态重置为 `uncalibrated` |
+| DELETE | `/api/v1/spl/{id}` | 删除映射并清理设备上的 `current_spl_mapping_id` 引用 |
+| POST | `/api/v1/spl/{id}/calibrate` | 执行校准流程（写入 points 并记录 CalibrationHistory） |
+| GET | `/api/v1/spl/{id}/history` | 校准历史 |
+| GET | `/api/v1/spl/{id}/calibration-data` | 最新校准数据 |
+| GET | `/api/v1/spl/stats` | 统计（total/calibrated/uncalibrated/associatedDevices） |
+| GET | `/api/v1/spl/by-device/{device_id}` | 按设备查询映射列表 |
+| POST | `/api/v1/spl/test-tone` | 播放测试音（`gainValue`/`gainOffset`/`targetSpl`/`uniqueId`；存在运行中的 E2E 任务时拒绝） |
+| POST | `/api/v1/spl/test-tone/stop` | 停止测试音 |
+
+所有响应统一 camelCase 输出（Pydantic `serialize_by_alias`），请求体字段同样使用 camelCase 别名（详见《10_系统架构/前后端字段命名适配机制.md》）。
 
 ## 9. 版本历史
 
@@ -341,3 +433,4 @@ POST /api/v1/playback/devices/{device_id}/associate-spl
 | 1.1 | 2025-12-01 | 升级为 dB 偏移计算方式，支持 gainOffset |
 | 1.2 | 2026-01-01 | 添加增益限制，优化 RMS 补偿计算 |
 | 1.3 | 2026-03-20 | 完善调试日志说明，添加排查步骤文档 |
+| 1.4 | 2026-09-11 | 对齐代码实际实现：修正增益限制常量（MIN_GAIN_DB=-70、限制线性增益）与 `_apply_gain_limit` 签名；补充 polyfit 一次线性外推、app 上下文注入；更新代码路径（services/audio）；补充 E2E 播放链路、case_config→played_audios 评估传递、API 类对称体系（设计态）与 SPL 管理接口清单 |

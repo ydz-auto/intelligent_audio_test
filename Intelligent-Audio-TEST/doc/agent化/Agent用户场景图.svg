@@ -1,0 +1,536 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-purple { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowPurple); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .body-s { font-size: 9.5px; fill: #334155; }
+      .body-xs { font-size: 9px; fill: #475569; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .mono { font-family: Consolas, 'Courier New', monospace; font-size: 10px; font-weight: 600; }
+      .mono-s { font-family: Consolas, 'Courier New', monospace; font-size: 9px; }
+      .mono-xs { font-family: Consolas, 'Courier New', monospace; font-size: 8px; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .scn-title { font-size: 10.5px; font-weight: 700; fill: #1e293b; }
+      .scn-flow { font-family: Consolas, 'Courier New', monospace; font-size: 8.5px; fill: #475569; }
+      .scn-desc { font-size: 9px; fill: #64748b; }
+      .scn-result { font-size: 8.5px; fill: #64748b; }
+      .tag { font-size: 8px; font-weight: 600; text-anchor: middle; }
+      .ui-text { font-size: 8.5px; fill: #475569; }
+      .ui-title { font-size: 9px; font-weight: 600; fill: #334155; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">Agent 用户场景图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">5 用户角色 · 8 大场景分类 · 26 个场景 · 2 种运行模式(交互/Solo) · 对话面板 UI 线框</text>
+
+  <!-- ① 用户角色与场景分类 -->
+  <rect x="24" y="88" width="1192" height="200" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="88" width="1192" height="32" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="114" width="1192" height="6" fill="#dbeafe"/>
+  <circle cx="46" cy="104" r="11" fill="#3b82f6"/>
+  <text x="46" y="108" class="num-badge">1</text>
+  <text x="66" y="109" class="sec-title" fill="#1e3a8a">用户角色与场景分类 — 5 角色 · 8 大类 22 场景</text>
+
+  <!-- Left table: roles -->
+  <rect x="48" y="130" width="560" height="148" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="130" width="560" height="24" rx="6" fill="#dbeafe"/>
+  <rect x="48" y="148" width="560" height="6" fill="#dbeafe"/>
+  <text x="88" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">角色</text>
+  <text x="278" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">典型需求</text>
+  <text x="510" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">常用模式</text>
+  <line x1="128" y1="130" x2="128" y2="278" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="448" y1="130" x2="448" y2="278" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="48" y1="154" x2="608" y2="154" stroke="#bfdbfe" stroke-width="0.5"/>
+  <!-- Row 1 -->
+  <text x="56" y="170" class="body">测试工程师</text>
+  <text x="136" y="170" class="body-s">快速建用例、跑测试、出报告</text>
+  <text x="462" y="170" class="body-s" fill="#2563eb" font-weight="600">交互模式</text>
+  <line x1="48" y1="178" x2="608" y2="178" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 2 -->
+  <rect x="48" y="178" width="560" height="20" fill="#f8fafc"/>
+  <text x="56" y="192" class="body">测试主管</text>
+  <text x="136" y="192" class="body-s">批量任务、无人值守、结果对比</text>
+  <text x="462" y="192" class="body-s" fill="#16a34a" font-weight="600">Solo 模式</text>
+  <line x1="48" y1="198" x2="608" y2="198" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 3 -->
+  <text x="56" y="214" class="body">算法工程师</text>
+  <text x="136" y="214" class="body-s">查看报告、结果对比、找优化方向</text>
+  <text x="462" y="214" class="body-s" fill="#2563eb" font-weight="600">交互模式</text>
+  <line x1="48" y1="222" x2="608" y2="222" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 4 -->
+  <rect x="48" y="222" width="560" height="20" fill="#f8fafc"/>
+  <text x="56" y="238" class="body">设备管理员</text>
+  <text x="136" y="238" class="body-s">新设备接入、驱动生成、设备健康</text>
+  <text x="462" y="238" class="body-s" fill="#2563eb" font-weight="600">交互模式</text>
+  <line x1="48" y1="242" x2="608" y2="242" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 5 -->
+  <text x="56" y="260" class="body">质量负责人</text>
+  <text x="136" y="260" class="body-s">报告审阅、趋势分析、跨任务对比</text>
+  <text x="462" y="260" class="body-s" fill="#2563eb" font-weight="600">交互模式</text>
+
+  <!-- Right table: categories -->
+  <rect x="624" y="130" width="568" height="148" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="624" y="130" width="568" height="22" rx="6" fill="#dbeafe"/>
+  <rect x="624" y="146" width="568" height="6" fill="#dbeafe"/>
+  <text x="688" y="145" class="lbl" fill="#1e3a8a" text-anchor="middle">类别</text>
+  <text x="858" y="145" class="lbl" fill="#1e3a8a" text-anchor="middle">场景数</text>
+  <text x="1050" y="145" class="lbl" fill="#1e3a8a" text-anchor="middle">涉及 Agent</text>
+  <line x1="752" y1="130" x2="752" y2="278" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="964" y1="130" x2="964" y2="278" stroke="#bfdbfe" stroke-width="0.5"/>
+  <!-- Rows -->
+  <text x="632" y="164" class="body-s">音频导入与标注</text>
+  <text x="858" y="164" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">3</text>
+  <text x="972" y="164" class="body-xs">音频导入+标注管理</text>
+  <line x1="624" y1="168" x2="1192" y2="168" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <rect x="624" y="168" width="568" height="14" fill="#f8fafc"/>
+  <text x="632" y="179" class="body-s">用例管理</text>
+  <text x="858" y="179" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">5</text>
+  <text x="972" y="179" class="body-xs">用例生成+编辑、标签管理</text>
+  <line x1="624" y1="182" x2="1192" y2="182" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <text x="632" y="193" class="body-s">测试执行</text>
+  <text x="858" y="193" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">4</text>
+  <text x="972" y="193" class="body-xs">任务执行+控制、日志诊断</text>
+  <line x1="624" y1="196" x2="1192" y2="196" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <rect x="624" y="196" width="568" height="14" fill="#f8fafc"/>
+  <text x="632" y="207" class="body-s">结果分析</text>
+  <text x="858" y="207" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">3</text>
+  <text x="972" y="207" class="body-xs">结果分析+报告、报告对比</text>
+  <line x1="624" y1="210" x2="1192" y2="210" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <text x="632" y="221" class="body-s">设备驱动生成</text>
+  <text x="858" y="221" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">2</text>
+  <text x="972" y="221" class="body-xs">设备驱动生成(UiAutoDev)</text>
+  <line x1="624" y1="224" x2="1192" y2="224" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <rect x="624" y="224" width="568" height="14" fill="#f8fafc"/>
+  <text x="632" y="235" class="body-s">全流程自动化</text>
+  <text x="858" y="235" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">2</text>
+  <text x="972" y="235" class="body-xs">全部 Agent(Solo 模式)</text>
+  <line x1="624" y1="238" x2="1192" y2="238" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <text x="632" y="249" class="body-s">算法配置</text>
+  <text x="858" y="249" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">2</text>
+  <text x="972" y="249" class="body-xs">算法配置管理</text>
+  <line x1="624" y1="252" x2="1192" y2="252" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <rect x="624" y="252" width="568" height="14" fill="#f8fafc"/>
+  <text x="632" y="263" class="body-s">SPL 校准</text>
+  <text x="858" y="263" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">1</text>
+  <text x="972" y="263" class="body-xs">SPL 校准</text>
+  <line x1="624" y1="266" x2="1192" y2="266" stroke="#bfdbfe" stroke-width="1"/>
+
+  <rect x="624" y="266" width="568" height="12" fill="#dbeafe"/>
+  <text x="632" y="275" class="body-s" font-weight="700" fill="#1e3a8a">合计</text>
+  <text x="858" y="275" class="body-s" text-anchor="middle" font-weight="700" fill="#1e3a8a">22</text>
+  <text x="972" y="275" class="body-xs" font-weight="600" fill="#1e3a8a">8 大类场景</text>
+
+  <!-- ② 音频导入与标注场景 -->
+  <rect x="24" y="296" width="1192" height="215" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="296" width="1192" height="32" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="322" width="1192" height="6" fill="#dcfce7"/>
+  <circle cx="46" cy="312" r="11" fill="#16a34a"/>
+  <text x="46" y="316" class="num-badge">2</text>
+  <text x="66" y="317" class="sec-title" fill="#166534">音频导入与标注场景 — 4 个场景 · 测试工程师</text>
+
+  <!-- S1 -->
+  <rect x="48" y="340" width="560" height="75" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="48" y="340" width="4" height="75" rx="2" fill="#16a34a"/>
+  <text x="62" y="356" class="scn-title">S1 批量导入 + 自动标注</text>
+  <text x="62" y="372" class="scn-flow">URL列表 → import_audio_from_url → 提取目录标签</text>
+  <text x="62" y="386" class="scn-flow">→ batch_annotate_audios → 5类: 对话(15)/命令(12)/噪声(8)/翻译(10)/ASR(5)</text>
+  <text x="62" y="402" class="scn-desc">50条音频已导入, 按目录结构自动打标签</text>
+
+  <!-- S2 -->
+  <rect x="632" y="340" width="560" height="75" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="632" y="340" width="4" height="75" rx="2" fill="#16a34a"/>
+  <text x="646" y="356" class="scn-title">S2 上传 + 自动提取标注</text>
+  <text x="646" y="372" class="scn-flow">upload_audio_with_annotations → 持久化到 audio_annotations</text>
+  <text x="646" y="386" class="scn-flow">→ 自动剔除用例参数字段, 只保留参考参数+元数据</text>
+  <text x="646" y="402" class="scn-desc">ASR文本/参考翻译/分段数/时长 自动提取入库</text>
+
+  <!-- S3 -->
+  <rect x="48" y="425" width="560" height="75" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="48" y="425" width="4" height="75" rx="2" fill="#16a34a"/>
+  <text x="62" y="441" class="scn-title">S3 本地文件批量上传 + LLM 整理</text>
+  <text x="62" y="457" class="scn-flow">拖拽50文件 → FileAPI读取 → 采样2条标注 → LLM分析字段</text>
+  <text x="62" y="471" class="scn-flow">→ 生成上传计划(同名匹配+目录→标签) → 逐个FormData上传</text>
+  <text x="62" y="487" class="scn-desc">25条入库, 匹配率96%. Agent不碰文件内容, 只做分析大脑</text>
+
+  <!-- S4 文件夹 -->
+  <rect x="632" y="425" width="560" height="75" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="632" y="425" width="4" height="75" rx="2" fill="#16a34a"/>
+  <text x="646" y="441" class="scn-title">S4 文件夹浏览与筛选</text>
+  <text x="646" y="457" class="scn-flow">get_folder_tree(path="/", filters={algorithm_type:"asr",</text>
+  <text x="646" y="471" class="scn-flow">  sample_rate:16000}) → 多维筛选 → 返回文件夹树结构</text>
+  <text x="646" y="487" class="scn-desc">找到23条ASR音频, 16kHz, 分布在3个文件夹下</text>
+
+  <!-- ③ 用例管理场景 -->
+  <rect x="24" y="519" width="1192" height="170" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="519" width="1192" height="32" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="545" width="1192" height="6" fill="#dbeafe"/>
+  <circle cx="46" cy="535" r="11" fill="#3b82f6"/>
+  <text x="46" y="539" class="num-badge">3</text>
+  <text x="66" y="540" class="sec-title" fill="#1e3a8a">用例管理场景 — 5 个场景 · 测试工程师 · 交互模式</text>
+
+  <!-- S4 用例生成 -->
+  <rect x="48" y="563" width="376" height="55" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="563" width="4" height="55" rx="2" fill="#2563eb"/>
+  <text x="62" y="579" class="scn-title">S4 标注自动生成分类用例</text>
+  <text x="62" y="594" class="scn-flow">batch_get_annotations(50条) → LLM分析3类</text>
+  <text x="62" y="607" class="scn-desc">确认面板 → 创建 TC001-TC003 (对话/命令/噪声)</text>
+
+  <!-- S5 微调 -->
+  <rect x="440" y="563" width="376" height="55" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="440" y="563" width="4" height="55" rx="2" fill="#2563eb"/>
+  <text x="454" y="579" class="scn-title">S5 对话式微调</text>
+  <text x="454" y="594" class="scn-flow">update_round_config → add_round → duplicate_test_case</text>
+  <text x="454" y="607" class="scn-desc">改干扰人数 2→3 / 加轮次 / 复制噪声干扰变体</text>
+
+  <!-- S6 批量标签 -->
+  <rect x="832" y="563" width="376" height="55" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="832" y="563" width="4" height="55" rx="2" fill="#2563eb"/>
+  <text x="846" y="579" class="scn-title">S6 批量打标签</text>
+  <text x="846" y="594" class="scn-flow">create_tag → list_test_cases → batch_assign_tags</text>
+  <text x="846" y="607" class="scn-desc">8个全双工用例批量打上"全双工"标签</text>
+
+  <!-- S7 修改名称 -->
+  <rect x="48" y="628" width="560" height="50" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="628" width="4" height="50" rx="2" fill="#2563eb"/>
+  <text x="62" y="644" class="scn-title">S7 修改用例名称</text>
+  <text x="62" y="658" class="scn-flow">update_test_case_name(TC001 → "全双工打断_3轮_2干扰人")</text>
+  <text x="62" y="672" class="scn-desc">对话式直接改名, 即时生效</text>
+
+  <!-- S8 刷新参数 -->
+  <rect x="632" y="628" width="560" height="50" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="632" y="628" width="4" height="50" rx="2" fill="#2563eb"/>
+  <text x="646" y="644" class="scn-title">S8 刷新参考参数</text>
+  <text x="646" y="658" class="scn-flow">refresh_reference_params(TC001) → 根据最新标注重新生成</text>
+  <text x="646" y="672" class="scn-desc">ASR参考文本: '播放一首歌' → '帮我放一首周杰伦的歌'</text>
+
+  <!-- ④ 测试执行场景 -->
+  <rect x="24" y="697" width="1192" height="165" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="697" width="1192" height="32" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="723" width="1192" height="6" fill="#fef3c7"/>
+  <circle cx="46" cy="713" r="11" fill="#f59e0b"/>
+  <text x="46" y="717" class="num-badge">4</text>
+  <text x="66" y="718" class="sec-title" fill="#854d0e">测试执行场景 — 4 个场景 · 测试工程师</text>
+
+  <!-- S9 -->
+  <rect x="48" y="741" width="276" height="110" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="48" y="741" width="4" height="110" rx="2" fill="#f59e0b"/>
+  <text x="62" y="757" class="scn-title">S9 创建并启动任务</text>
+  <text x="62" y="773" class="scn-flow">list_test_cases(tag="全双工")</text>
+  <text x="62" y="787" class="scn-flow">→ 确认面板(8用例/E2E/设备)</text>
+  <text x="62" y="801" class="scn-flow">→ create_task → start_task</text>
+  <text x="62" y="816" class="scn-desc">任务 #123 已启动, 执行中</text>
+  <text x="62" y="830" class="scn-desc">设备: 小艺面对面 (HarmonyOS)</text>
+
+  <!-- S10 -->
+  <rect x="340" y="741" width="276" height="110" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="340" y="741" width="4" height="110" rx="2" fill="#f59e0b"/>
+  <text x="354" y="757" class="scn-title">S10 监控进度</text>
+  <text x="354" y="773" class="scn-flow">get_task_status(task_id=123)</text>
+  <text x="354" y="787" class="scn-flow">→ 轮询任务状态</text>
+  <text x="354" y="801" class="scn-desc">进行中: 5/8, 当前 TC005</text>
+  <text x="354" y="816" class="scn-desc">完成: 8/8, 成功7, 失败1(TC006)</text>
+  <text x="354" y="830" class="scn-desc">预计还需3分钟</text>
+
+  <!-- S11 -->
+  <rect x="632" y="741" width="276" height="110" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="632" y="741" width="4" height="110" rx="2" fill="#f59e0b"/>
+  <text x="646" y="757" class="scn-title">S11 失败重试</text>
+  <text x="646" y="773" class="scn-flow">search_logs(level=ERROR)</text>
+  <text x="646" y="787" class="scn-flow">→ analyze_failure_logs</text>
+  <text x="646" y="801" class="scn-flow">→ LLM诊断 → retry_task</text>
+  <text x="646" y="816" class="scn-desc">原因: hdc连接中断, 设备锁屏</text>
+  <text x="646" y="830" class="scn-desc">建议: 检查USB, 屏幕常亮 → 重跑成功</text>
+
+  <!-- S12 -->
+  <rect x="924" y="741" width="276" height="110" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="924" y="741" width="4" height="110" rx="2" fill="#f59e0b"/>
+  <text x="938" y="757" class="scn-title">S12 重新评估(不重跑设备)</text>
+  <text x="938" y="773" class="scn-flow">update_dimension(prompt=新词)</text>
+  <text x="938" y="787" class="scn-flow">→ reevaluate_task(dim_ids=[5])</text>
+  <text x="938" y="801" class="scn-desc">不重新跑设备, 只重新评估维度</text>
+  <text x="938" y="816" class="scn-desc">复用已有执行结果, 节省时间</text>
+  <text x="938" y="830" class="scn-desc">维度5得分已更新</text>
+
+  <!-- ⑤ 结果分析场景 -->
+  <rect x="24" y="870" width="1192" height="155" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="870" width="1192" height="32" rx="10" fill="#f3e8ff"/>
+  <rect x="24" y="896" width="1192" height="6" fill="#f3e8ff"/>
+  <circle cx="46" cy="886" r="11" fill="#7c3aed"/>
+  <text x="46" y="890" class="num-badge">5</text>
+  <text x="66" y="891" class="sec-title" fill="#5b21b6">结果分析场景 — 3 个场景 · 质量负责人</text>
+
+  <!-- S13 -->
+  <rect x="48" y="914" width="376" height="100" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="48" y="914" width="4" height="100" rx="2" fill="#7c3aed"/>
+  <text x="62" y="930" class="scn-title">S13 LLM 自动分析结果</text>
+  <text x="62" y="946" class="scn-flow">get_task_results → LLM 多维度分析</text>
+  <text x="62" y="962" class="scn-desc">总分: 82.5/100</text>
+  <text x="62" y="976" class="scn-desc">ASR 89.2% / 翻译 78.5% / 延迟 1.2s / 打断 65.3%</text>
+  <text x="62" y="990" class="scn-desc">异常用例 + 优化建议(多义词/VAD鲁棒性)</text>
+  <text x="62" y="1004" class="scn-desc">自然语言报告含各维度表现</text>
+
+  <!-- S14 -->
+  <rect x="440" y="914" width="376" height="100" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="440" y="914" width="4" height="100" rx="2" fill="#7c3aed"/>
+  <text x="454" y="930" class="scn-title">S14 多任务结果对比</text>
+  <text x="454" y="946" class="scn-flow">get_multi_task_results → LLM 对比</text>
+  <text x="454" y="962" class="scn-desc">#123 vs #125: 82.5 → 88.1 (+5.6)</text>
+  <text x="454" y="976" class="scn-desc">翻译 +6.5% / 打断 +12.7% / 延迟 -25%</text>
+  <text x="454" y="990" class="scn-desc">结论: 优化效果显著</text>
+  <text x="454" y="1004" class="scn-desc">建议: 继续优化打断检测, 目标85%+</text>
+
+  <!-- S15 -->
+  <rect x="832" y="914" width="376" height="100" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="832" y="914" width="4" height="100" rx="2" fill="#7c3aed"/>
+  <text x="846" y="930" class="scn-title">S15 报告生成与发布</text>
+  <text x="846" y="946" class="scn-flow">get_report_data → LLM 生成报告</text>
+  <text x="846" y="962" class="scn-flow">→ 确认面板(预览) → publish_report</text>
+  <text x="846" y="978" class="scn-desc">自然语言报告: 总分/维度/异常/建议</text>
+  <text x="846" y="992" class="scn-desc">用户确认后一键发布</text>
+  <text x="846" y="1006" class="scn-desc">报告ID: 45 已发布</text>
+
+  <!-- ⑥ 设备驱动生成场景 -->
+  <rect x="24" y="1033" width="1192" height="215" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1033" width="1192" height="32" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1059" width="1192" height="6" fill="#fee2e2"/>
+  <circle cx="46" cy="1049" r="11" fill="#dc2626"/>
+  <text x="46" y="1053" class="num-badge">6</text>
+  <text x="66" y="1054" class="sec-title" fill="#991b1b">设备驱动生成场景 — 3 个场景 · 设备管理员 · 交互模式</text>
+
+  <!-- S16 -->
+  <rect x="48" y="1077" width="376" height="160" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="48" y="1077" width="4" height="160" rx="2" fill="#dc2626"/>
+  <text x="62" y="1093" class="scn-title">S16 UiAutoDev 选元素生成驱动</text>
+  <text x="62" y="1109" class="scn-desc">用户在 UiAutoDev 中选择5个关键元素:</text>
+  <rect x="56" y="1114" width="360" height="14" rx="3" fill="#fef2f2"/>
+  <text x="62" y="1124" class="body-xs">[1] 语音助手 | id:voice_entry | 点击</text>
+  <rect x="56" y="1130" width="360" height="14" rx="3" fill="#ffffff"/>
+  <text x="62" y="1140" class="body-xs">[2] 开始录音 | id:record_btn | 点击</text>
+  <rect x="56" y="1146" width="360" height="14" rx="3" fill="#fef2f2"/>
+  <text x="62" y="1156" class="body-xs">[3] 等待 5秒</text>
+  <rect x="56" y="1162" width="360" height="14" rx="3" fill="#ffffff"/>
+  <text x="62" y="1172" class="body-xs">[4] 停止 | id:stop_btn | 点击</text>
+  <rect x="56" y="1178" width="360" height="14" rx="3" fill="#fef2f2"/>
+  <text x="62" y="1188" class="body-xs">[5] 识别结果 | id:result_text | 提取文本</text>
+  <text x="62" y="1206" class="scn-flow">generate_driver_from_elements</text>
+  <text x="62" y="1219" class="scn-flow">→ LLM生成 DoubaoAsrDriver 代码</text>
+  <text x="62" y="1232" class="scn-desc">→ 确认注册 → register_driver_to_factory</text>
+
+  <!-- S17 -->
+  <rect x="440" y="1077" width="376" height="160" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="440" y="1077" width="4" height="160" rx="2" fill="#dc2626"/>
+  <text x="454" y="1093" class="scn-title">S17 设备驱动逐步调试</text>
+  <text x="454" y="1109" class="scn-desc">事件驱动模式: 每步截图(~200KB), 不走视频流</text>
+  <text x="454" y="1125" class="scn-flow">Step 1: debug_execute_step(click, voice_entry)</text>
+  <text x="454" y="1137" class="scn-desc">→ 截图: 进入语音页 → 用户确认"继续"</text>
+  <text x="454" y="1151" class="scn-flow">Step 2: debug_execute_step(click, record_btn)</text>
+  <text x="454" y="1163" class="scn-desc">→ 截图: 开始录音 → 用户确认</text>
+  <text x="454" y="1177" class="scn-flow">Step 4: debug_execute_step(click, stop_btn)</text>
+  <text x="454" y="1189" class="scn-desc">→ 截图错误! 点到广告 → 退回重选元素</text>
+  <text x="454" y="1203" class="scn-desc">→ Agent更新代码 → 重新执行Step 4 → 正确</text>
+  <text x="454" y="1219" class="scn-flow">→ register_debugged_driver</text>
+  <text x="454" y="1232" class="scn-desc">写入文件 + 注册到 DriverFactory</text>
+
+  <!-- S18 -->
+  <rect x="832" y="1077" width="376" height="160" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="832" y="1077" width="4" height="160" rx="2" fill="#dc2626"/>
+  <text x="846" y="1093" class="scn-title">S18 鸿蒙设备驱动生成</text>
+  <text x="846" y="1109" class="scn-desc">用户: "帮我写小艺通话的鸿蒙驱动"</text>
+  <text x="846" y="1125" class="scn-desc">用户在 UiAutoDev 中选择元素:</text>
+  <text x="846" y="1141" class="body-xs">• "小艺通话"入口 → hypium: By.text</text>
+  <text x="846" y="1155" class="body-xs">• "开始通话"按钮</text>
+  <text x="846" y="1169" class="body-xs">• "结束通话"按钮</text>
+  <text x="846" y="1183" class="body-xs">• 从日志提取通话文本</text>
+  <text x="846" y="1203" class="scn-flow">generate_driver_from_elements</text>
+  <text x="846" y="1216" class="scn-flow">→ 继承 HarmonyDriver + hdc 命令</text>
+  <text x="846" y="1229" class="scn-desc">关键字: xiaoyilivechat, 小艺通话</text>
+
+  <!-- ⑦ 全流程自动化场景 -->
+  <rect x="24" y="1256" width="1192" height="215" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1256" width="1192" height="32" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="1282" width="1192" height="6" fill="#dcfce7"/>
+  <circle cx="46" cy="1272" r="11" fill="#16a34a"/>
+  <text x="46" y="1276" class="num-badge">7</text>
+  <text x="66" y="1277" class="sec-title" fill="#166534">全流程自动化场景 — 2 个场景 · 测试主管 · Solo 模式</text>
+
+  <!-- S19 -->
+  <rect x="48" y="1300" width="572" height="80" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="48" y="1300" width="4" height="80" rx="2" fill="#16a34a"/>
+  <text x="62" y="1316" class="scn-title">S19 Solo 模式 — 全流程无人值守 (15轮)</text>
+  <text x="62" y="1332" class="scn-flow">导入音频 → 标注 → 分类 → 生成用例 → 打标签</text>
+  <text x="62" y="1346" class="scn-flow">→ check_in → 创建任务 → 轮询 → 收集结果 → LLM分析</text>
+  <text x="62" y="1360" class="scn-desc">每5轮check-in, 最大50轮. 3用例(TC001-003), 任务#123</text>
+  <text x="62" y="1374" class="scn-desc">结果: 总分82.5/100, 报告已生成</text>
+
+  <!-- S20 -->
+  <rect x="640" y="1300" width="552" height="80" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="640" y="1300" width="4" height="80" rx="2" fill="#16a34a"/>
+  <text x="654" y="1316" class="scn-title">S20 Solo 模式 — 批量回归测试</text>
+  <text x="654" y="1332" class="scn-flow">list_test_cases(tag="回归测试") → 20用例</text>
+  <text x="654" y="1346" class="scn-flow">→ create_task → Solo轮询 → get_multi_task_results</text>
+  <text x="654" y="1360" class="scn-desc">对比上次: 通过率 85%→95%(+10%), 退步TC008</text>
+  <text x="654" y="1374" class="scn-desc">进步TC003/TC015, 新增失败: 无</text>
+
+  <!-- Solo progress panel mockup -->
+  <rect x="48" y="1390" width="1144" height="72" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="48" y="1390" width="1144" height="20" rx="6" fill="#dcfce7"/>
+  <rect x="48" y="1404" width="1144" height="6" fill="#dcfce7"/>
+  <text x="60" y="1404" class="ui-title" fill="#166534">Solo 模式进度面板</text>
+  <text x="1100" y="1404" class="ui-text" text-anchor="end" fill="#16a34a" font-weight="600">10/15</text>
+  <!-- Progress bar -->
+  <rect x="60" y="1418" width="900" height="10" rx="5" fill="#e2e8f0"/>
+  <rect x="60" y="1418" width="600" height="10" rx="5" fill="#16a34a"/>
+  <text x="970" y="1427" class="ui-text">已完成:</text>
+  <text x="60" y="1442" class="ui-text">✓ 读取50条标注  ✓ 识别15条全双工  ✓ 生成3用例  ✓ 打标签  ✓ 创建任务#123  ✓ 执行8/8  ✓ 收集结果  ⏳ LLM分析中...</text>
+  <text x="60" y="1456" class="ui-text" fill="#64748b">[继续]  [跳过后续确认]  [停止]</text>
+
+  <!-- ⑧ 算法配置与SPL校准场景 -->
+  <rect x="24" y="1479" width="1192" height="165" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1479" width="1192" height="32" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="1505" width="1192" height="6" fill="#fef3c7"/>
+  <circle cx="46" cy="1495" r="11" fill="#f59e0b"/>
+  <text x="46" y="1499" class="num-badge">8</text>
+  <text x="66" y="1500" class="sec-title" fill="#854d0e">算法配置与 SPL 校准场景 — 4 个场景</text>
+
+  <!-- S21 -->
+  <rect x="48" y="1523" width="276" height="110" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="48" y="1523" width="4" height="110" rx="2" fill="#f59e0b"/>
+  <text x="62" y="1539" class="scn-title">S21 查看修改算法配置</text>
+  <text x="62" y="1555" class="scn-flow">list_algorithm_definitions</text>
+  <text x="62" y="1569" class="scn-flow">→ get_algorithm_form_schema</text>
+  <text x="62" y="1583" class="scn-flow">→ create_algorithm_definition</text>
+  <text x="62" y="1597" class="scn-flow">→ reload_algorithm_config (热重载)</text>
+  <text x="62" y="1612" class="scn-desc">voice_llm/translation/asr/voice_print</text>
+  <text x="62" y="1626" class="scn-desc">加参数 temperature, 配置已热重载</text>
+
+  <!-- S22 -->
+  <rect x="340" y="1523" width="276" height="110" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="340" y="1523" width="4" height="110" rx="2" fill="#f59e0b"/>
+  <text x="354" y="1539" class="scn-title">S22 从标注提取参数</text>
+  <text x="354" y="1555" class="scn-flow">extract_params_from_audio</text>
+  <text x="354" y="1569" class="scn-flow">(audio_id=1, algo_type="voice_llm")</text>
+  <text x="354" y="1585" class="scn-desc">提取: input_text '播放一首歌'</text>
+  <text x="354" y="1599" class="scn-desc">reference_translation 'play a song'</text>
+  <text x="354" y="1613" class="scn-desc">language: zh-CN, speaker_count: 2</text>
+  <text x="354" y="1627" class="scn-desc">建议: 确认后创建用例</text>
+
+  <!-- S23 -->
+  <rect x="632" y="1523" width="276" height="110" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="632" y="1523" width="4" height="110" rx="2" fill="#f59e0b"/>
+  <text x="646" y="1539" class="scn-title">S23 查看报告找优化方向</text>
+  <text x="646" y="1555" class="scn-flow">get_task_results + get_case_averages</text>
+  <text x="646" y="1569" class="scn-flow">→ LLM 分析排名 → 对比 → 趋势</text>
+  <text x="646" y="1585" class="scn-desc">打断检测 65.3% → 72.1%(+6.8%)</text>
+  <text x="646" y="1599" class="scn-desc">翻译 78.5%→80.1% / 延迟 1.2s→1.0s</text>
+  <text x="646" y="1613" class="scn-desc">全面进步, 打断检测仍是短板</text>
+  <text x="646" y="1627" class="scn-desc">建议: 重点优化多干扰人场景VAD</text>
+
+  <!-- S24 -->
+  <rect x="924" y="1523" width="276" height="110" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="924" y="1523" width="4" height="110" rx="2" fill="#f59e0b"/>
+  <text x="938" y="1539" class="scn-title">S24 SPL 校准流程</text>
+  <text x="938" y="1555" class="scn-flow">play_test_tone(1000Hz, 5秒)</text>
+  <text x="938" y="1569" class="scn-flow">→ calibrate_spl(mapping_id=1)</text>
+  <text x="938" y="1583" class="scn-flow">→ get_calibration_history</text>
+  <text x="938" y="1599" class="scn-desc">当前声压: 74.2 dB SPL</text>
+  <text x="938" y="1613" class="scn-desc">校准值: -0.8 dB</text>
+  <text x="938" y="1627" class="scn-desc">历史: 07-24/07-20/07-15(基准)</text>
+
+  <!-- ⑨ 跨场景组合 -->
+  <rect x="24" y="1652" width="1192" height="145" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1652" width="1192" height="32" rx="10" fill="#f3e8ff"/>
+  <rect x="24" y="1678" width="1192" height="6" fill="#f3e8ff"/>
+  <circle cx="46" cy="1668" r="11" fill="#7c3aed"/>
+  <text x="46" y="1672" class="num-badge">9</text>
+  <text x="66" y="1673" class="sec-title" fill="#5b21b6">跨场景组合 — 2 个组合场景 · 交互模式</text>
+
+  <!-- S25 -->
+  <rect x="48" y="1696" width="572" height="90" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="48" y="1696" width="4" height="90" rx="2" fill="#7c3aed"/>
+  <text x="62" y="1712" class="scn-title">S25 从音频到报告全链路 (交互7步)</text>
+  <text x="62" y="1728" class="scn-flow">①导入+标注 → ②LLM分类 → ③创建用例+打标签</text>
+  <text x="62" y="1742" class="scn-flow">→ ④create_task(确认) → ⑤start_task+轮询</text>
+  <text x="62" y="1756" class="scn-flow">→ ⑥get_task_results+LLM分析(确认) → ⑦publish_report</text>
+  <text x="62" y="1772" class="scn-desc">每步 interrupt 确认, 用户全程掌控</text>
+  <text x="62" y="1784" class="scn-desc">30条音频 → 3类用例 → 任务 → 报告已发布</text>
+
+  <!-- S26 -->
+  <rect x="640" y="1696" width="552" height="90" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="640" y="1696" width="4" height="90" rx="2" fill="#7c3aed"/>
+  <text x="654" y="1712" class="scn-title">S26 设备驱动生成 + 测试执行</text>
+  <text x="654" y="1728" class="scn-flow">①UiAutoDev选元素 → ②generate_driver</text>
+  <text x="654" y="1742" class="scn-flow">→ ③register_driver_to_factory</text>
+  <text x="654" y="1756" class="scn-flow">→ ④list_test_cases → ⑤create_task → start_task</text>
+  <text x="654" y="1772" class="scn-desc">新接iOS设备 → 写驱动 → 跑测试 一站完成</text>
+  <text x="654" y="1784" class="scn-desc">驱动注册后自动匹配后续任务</text>
+
+  <!-- ⑩ 对话面板UI线框 -->
+  <rect x="24" y="1805" width="1192" height="110" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1805" width="1192" height="32" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1831" width="1192" height="6" fill="#e2e8f0"/>
+  <circle cx="46" cy="1821" r="11" fill="#64748b"/>
+  <text x="46" y="1825" class="num-badge">10</text>
+  <text x="66" y="1826" class="sec-title" fill="#334155">对话面板 UI 线框 — 主界面 + Solo 模式进度面板</text>
+
+  <!-- Main UI mockup -->
+  <rect x="48" y="1849" width="572" height="56" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="48" y="1849" width="572" height="16" rx="6" fill="#f1f5f9"/>
+  <rect x="48" y="1861" width="572" height="4" fill="#f1f5f9"/>
+  <text x="58" y="1861" class="ui-title">主界面</text>
+  <text x="566" y="1861" class="ui-text" text-anchor="end" fill="#2563eb">[交互模式 ▼] [设置]</text>
+  <text x="58" y="1876" class="ui-text">📎 上下文: ✓50条标注 ✓3用例 ✓任务#123 📄报告</text>
+  <text x="58" y="1888" class="ui-text">💬 对话历史(最近5轮): 用户→AI→用户→AI→用户</text>
+  <text x="58" y="1900" class="ui-text">📱 元素卡片[1-5] + 输入框 [发送]</text>
+
+  <!-- Solo panel mockup -->
+  <rect x="640" y="1849" width="552" height="56" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="640" y="1849" width="552" height="16" rx="6" fill="#f1f5f9"/>
+  <rect x="640" y="1861" width="552" height="4" fill="#f1f5f9"/>
+  <text x="650" y="1861" class="ui-title">Solo 模式进度面板</text>
+  <rect x="650" y="1870" width="400" height="8" rx="4" fill="#e2e8f0"/>
+  <rect x="650" y="1870" width="267" height="8" rx="4" fill="#16a34a"/>
+  <text x="1060" y="1877" class="ui-text" fill="#16a34a" font-weight="600">10/15</text>
+  <text x="650" y="1892" class="ui-text">✓标注 ✓分类 ✓用例 ✓标签 ✓任务 ✓执行 ✓结果 ⏳分析</text>
+  <text x="650" y="1902" class="ui-text" fill="#64748b">[继续] [跳过确认] [停止]</text>
+
+</svg>

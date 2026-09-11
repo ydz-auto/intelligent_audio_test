@@ -1,0 +1,501 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowViolet); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .cell { font-size: 8.5px; fill: #334155; }
+      .cell-s { font-size: 8px; fill: #64748b; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .step-t { font-size: 11px; font-weight: 600; fill: #1e3a8a; }
+      .step-d { font-size: 9.5px; fill: #64748b; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">混音与 SPL 映射图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">三种 API 模式混音对比 · 格式适配层 · 6 步流程 · SPL 映射对称设计 · executor 调用对比 · 数据流总结 · v1.1</text>
+
+  <!-- ============================================== -->
+  <!-- ① 概述与对比表 (blue) y=80 h=315 -->
+  <!-- ============================================== -->
+  <rect x="24" y="80" width="1192" height="315" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="80" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="106" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="99" r="11" fill="#3b82f6"/>
+  <text x="46" y="103" class="num-badge">1</text>
+  <text x="66" y="104" class="sec-title" fill="#1e3a8a">概述与对比表 — 三种 API 模式混音对比 + E2E 对照</text>
+
+  <rect x="48" y="128" width="1144" height="200" fill="#ffffff" rx="4"/>
+  <rect x="48" y="128" width="1144" height="28" fill="#dbeafe" rx="4"/>
+  <text x="108" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">模式</text>
+  <text x="228" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">混音</text>
+  <text x="358" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">混音产物</text>
+  <text x="498" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">推送方式</text>
+  <text x="643" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">格式适配</text>
+  <text x="788" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">RMS 补偿</text>
+  <text x="925" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">SPL 映射</text>
+  <text x="1092" y="146" class="lbl" fill="#1e3a8a" text-anchor="middle">增益链路</text>
+
+  <line x1="168" y1="128" x2="168" y2="328" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="288" y1="128" x2="288" y2="328" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="428" y1="128" x2="428" y2="328" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="568" y1="128" x2="568" y2="328" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="718" y1="128" x2="718" y2="328" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="858" y1="128" x2="858" y2="328" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="993" y1="128" x2="993" y2="328" stroke="#bfdbfe" stroke-width="0.5"/>
+
+  <!-- Row 1: HTTP 非实时 -->
+  <rect x="48" y="156" width="1144" height="38" fill="#f8fafc"/>
+  <text x="108" y="172" class="cell" font-weight="600" text-anchor="middle">HTTP 非实时</text>
+  <text x="108" y="184" class="cell-s" text-anchor="middle">(stream=False)</text>
+  <text x="228" y="172" class="cell" text-anchor="middle">AudioStream</text>
+  <text x="228" y="184" class="cell" text-anchor="middle">Orchestrator 离线</text>
+  <text x="358" y="178" class="cell" text-anchor="middle">完整 PCM</text>
+  <text x="358" y="190" class="cell-s" text-anchor="middle">(包装为请求格式)</text>
+  <text x="498" y="178" class="cell" text-anchor="middle">一次性</text>
+  <text x="498" y="190" class="cell" text-anchor="middle">HTTP POST</text>
+  <text x="643" y="172" class="cell" text-anchor="middle">AudioFormatAdapter</text>
+  <text x="643" y="184" class="cell-s" text-anchor="middle">→ api.audio_config</text>
+  <text x="788" y="172" class="cell" text-anchor="middle">_rms_compensate</text>
+  <text x="788" y="184" class="cell-s" text-anchor="middle">(bytes→dBFS→gain)</text>
+  <text x="925" y="172" class="cell" text-anchor="middle">ApiRmsSplService</text>
+  <text x="925" y="184" class="cell-s" text-anchor="middle">(api_id→DB)</text>
+  <text x="1092" y="172" class="cell-s" text-anchor="middle">effective =</text>
+  <text x="1092" y="184" class="cell-s" text-anchor="middle">spl_gain × rms_comp</text>
+  <line x1="48" y1="194" x2="1192" y2="194" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 2: HTTP 流式 -->
+  <text x="108" y="210" class="cell" font-weight="600" text-anchor="middle">HTTP 流式</text>
+  <text x="108" y="222" class="cell-s" text-anchor="middle">(stream=True SSE)</text>
+  <text x="228" y="216" class="cell" text-anchor="middle">AudioStream</text>
+  <text x="228" y="228" class="cell" text-anchor="middle">Orchestrator 离线</text>
+  <text x="358" y="216" class="cell" text-anchor="middle">base64</text>
+  <text x="358" y="228" class="cell" text-anchor="middle">PCM chunk</text>
+  <text x="498" y="216" class="cell" text-anchor="middle">SSE</text>
+  <text x="498" y="228" class="cell" text-anchor="middle">逐 chunk 推送</text>
+  <text x="643" y="210" class="cell" text-anchor="middle">AudioFormatAdapter</text>
+  <text x="643" y="222" class="cell-s" text-anchor="middle">→ api.audio_config</text>
+  <text x="788" y="210" class="cell" text-anchor="middle">_rms_compensate</text>
+  <text x="788" y="222" class="cell-s" text-anchor="middle">(bytes→dBFS→gain)</text>
+  <text x="925" y="210" class="cell" text-anchor="middle">ApiRmsSplService</text>
+  <text x="925" y="222" class="cell-s" text-anchor="middle">(api_id→DB)</text>
+  <text x="1092" y="210" class="cell-s" text-anchor="middle">effective =</text>
+  <text x="1092" y="222" class="cell-s" text-anchor="middle">spl_gain × rms_comp</text>
+  <line x1="48" y1="232" x2="1192" y2="232" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 3: Realtime WS -->
+  <rect x="48" y="232" width="1144" height="38" fill="#f8fafc"/>
+  <text x="108" y="248" class="cell" font-weight="600" text-anchor="middle">Realtime WS</text>
+  <text x="108" y="260" class="cell-s" text-anchor="middle">(WebSocket)</text>
+  <text x="228" y="254" class="cell" text-anchor="middle">AudioStream</text>
+  <text x="228" y="266" class="cell" text-anchor="middle">Orchestrator 离线</text>
+  <text x="358" y="254" class="cell" text-anchor="middle">base64</text>
+  <text x="358" y="266" class="cell" text-anchor="middle">PCM chunk</text>
+  <text x="498" y="254" class="cell" text-anchor="middle">WS</text>
+  <text x="498" y="266" class="cell" text-anchor="middle">逐 chunk 推送</text>
+  <text x="643" y="248" class="cell" text-anchor="middle">AudioFormatAdapter</text>
+  <text x="643" y="260" class="cell-s" text-anchor="middle">→ api.audio_config</text>
+  <text x="788" y="248" class="cell" text-anchor="middle">_rms_compensate</text>
+  <text x="788" y="260" class="cell-s" text-anchor="middle">(bytes→dBFS→gain)</text>
+  <text x="925" y="248" class="cell" text-anchor="middle">ApiRmsSplService</text>
+  <text x="925" y="260" class="cell-s" text-anchor="middle">(api_id→DB)</text>
+  <text x="1092" y="248" class="cell-s" text-anchor="middle">effective =</text>
+  <text x="1092" y="260" class="cell-s" text-anchor="middle">spl_gain × rms_comp</text>
+  <line x1="48" y1="270" x2="1192" y2="270" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 4: E2E 对照 -->
+  <text x="108" y="286" class="cell" font-weight="600" text-anchor="middle">E2E 物理设备</text>
+  <text x="108" y="298" class="cell-s" text-anchor="middle">(对照)</text>
+  <text x="228" y="286" class="cell" text-anchor="middle">audio_driver</text>
+  <text x="228" y="298" class="cell" text-anchor="middle">callback 实时</text>
+  <text x="358" y="286" class="cell" text-anchor="middle">int16 帧</text>
+  <text x="358" y="298" class="cell" text-anchor="middle">→ 声卡</text>
+  <text x="498" y="286" class="cell" text-anchor="middle">PyAudio</text>
+  <text x="498" y="298" class="cell" text-anchor="middle">物理播放</text>
+  <text x="643" y="286" class="cell" text-anchor="middle">声卡格式</text>
+  <text x="643" y="298" class="cell-s" text-anchor="middle">(PyAudio 自动)</text>
+  <text x="788" y="286" class="cell" text-anchor="middle">calculate_gain_</text>
+  <text x="788" y="298" class="cell" text-anchor="middle">compensation</text>
+  <text x="925" y="286" class="cell" text-anchor="middle">SPLMappingService</text>
+  <text x="925" y="298" class="cell-s" text-anchor="middle">(device→DB)</text>
+  <text x="1092" y="286" class="cell-s" text-anchor="middle">audio_gain ×</text>
+  <text x="1092" y="298" class="cell-s" text-anchor="middle">GLOBAL_SAFE × comp</text>
+
+  <rect x="48" y="312" width="1144" height="28" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="620" y="330" text-anchor="middle" font-size="9.5" fill="#1e40af">结论: 三种 API 模式混音编排完全一致(同一 orchestrator + 同一 6 步流程), 差别只在消费方式 — 非实时拼接整文件, 流式/Realtime 逐 chunk 推送; 混音前均需格式适配统一到被测 API 要求的采样率/位深/通道数</text>
+
+  <!-- ============================================== -->
+  <!-- ② 格式适配层 AudioFormatAdapter (green) y=405 h=215 -->
+  <!-- ============================================== -->
+  <rect x="24" y="405" width="1192" height="215" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="405" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="431" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="424" r="11" fill="#16a34a"/>
+  <text x="46" y="428" class="num-badge">2</text>
+  <text x="66" y="429" class="sec-title" fill="#166534">格式适配层 AudioFormatAdapter (v1.1 新增) — 不同 API 采样率/位深/通道不同, 统一适配后才能混音</text>
+
+  <!-- Left column: why + API format table + target format -->
+  <text x="48" y="464" class="lbl" fill="#166534">为什么需要: 不同被测 API 格式要求不同, 不同采样率样本无法直接叠加, 必须先统一适配</text>
+
+  <rect x="48" y="472" width="540" height="98" fill="#ffffff" rx="4" stroke="#86efac" stroke-width="0.5"/>
+  <rect x="48" y="472" width="540" height="20" fill="#dcfce7" rx="4"/>
+  <text x="100" y="486" class="lbl" fill="#166534" text-anchor="middle">被测 API</text>
+  <text x="260" y="486" class="lbl" fill="#166534" text-anchor="middle">采样率</text>
+  <text x="390" y="486" class="lbl" fill="#166534" text-anchor="middle">位深</text>
+  <text x="520" y="486" class="lbl" fill="#166534" text-anchor="middle">通道</text>
+  <line x1="160" y1="472" x2="160" y2="570" stroke="#bbf7d0" stroke-width="0.5"/>
+  <line x1="320" y1="472" x2="320" y2="570" stroke="#bbf7d0" stroke-width="0.5"/>
+  <line x1="460" y1="472" x2="460" y2="570" stroke="#bbf7d0" stroke-width="0.5"/>
+  <text x="100" y="504" class="cell" text-anchor="middle">OpenAI Realtime</text>
+  <text x="260" y="504" class="cell" text-anchor="middle">24000 Hz</text>
+  <text x="390" y="504" class="cell" text-anchor="middle">16bit (pcm16)</text>
+  <text x="520" y="504" class="cell" text-anchor="middle">mono</text>
+  <rect x="48" y="512" width="540" height="19" fill="#f8fafc"/>
+  <text x="100" y="525" class="cell" text-anchor="middle">某厂商 A</text>
+  <text x="260" y="525" class="cell" text-anchor="middle">16000 Hz</text>
+  <text x="390" y="525" class="cell" text-anchor="middle">16bit</text>
+  <text x="520" y="525" class="cell" text-anchor="middle">mono</text>
+  <text x="100" y="546" class="cell" text-anchor="middle">某厂商 B (电话)</text>
+  <text x="260" y="546" class="cell" text-anchor="middle">8000 Hz</text>
+  <text x="390" y="546" class="cell" text-anchor="middle">16bit</text>
+  <text x="520" y="546" class="cell" text-anchor="middle">mono</text>
+  <rect x="48" y="554" width="540" height="16" fill="#f8fafc"/>
+  <text x="100" y="566" class="cell" text-anchor="middle">某厂商 C</text>
+  <text x="260" y="566" class="cell" text-anchor="middle">44100 Hz</text>
+  <text x="390" y="566" class="cell" text-anchor="middle">24bit</text>
+  <text x="520" y="566" class="cell" text-anchor="middle">stereo</text>
+
+  <text x="48" y="584" class="lbl" fill="#166534">目标格式声明: api.audio_config (JSON, 配置化无硬编码)</text>
+  <text x="48" y="600" class="body" font-size="9" fill="#16a34a">{"sample_rate": 24000, "bit_depth": "s16", "channels": 1, "container": "pcm"}  未配置回退: 24000/s16/mono</text>
+
+  <!-- Right column: AudioFormatAdapter class -->
+  <rect x="608" y="460" width="584" height="150" fill="#ffffff" rx="6" stroke="#86efac" stroke-width="1"/>
+  <rect x="608" y="460" width="584" height="22" rx="6" fill="#dcfce7"/>
+  <text x="620" y="475" class="box-name" fill="#166534">class AudioFormatAdapter  (audio_format_adapter.py)</text>
+
+  <text x="620" y="496" class="body" font-size="9.5" font-weight="600" fill="#16a34a">resolve_target_format(api)</text>
+  <text x="640" y="510" class="box-desc" font-size="9">读取 api.audio_config, 未配置回退 DEFAULT_FORMAT</text>
+
+  <text x="620" y="526" class="body" font-size="9.5" font-weight="600" fill="#16a34a">detect_source_format(pcm, audio_file)</text>
+  <text x="640" y="540" class="box-desc" font-size="9">优先级: audio_file 元数据 → WAV 头解析 → 库内默认</text>
+
+  <text x="620" y="556" class="body" font-size="9.5" font-weight="600" fill="#16a34a">adapt(pcm, src, dst)</text>
+  <text x="640" y="570" class="box-desc" font-size="9">src → dst 转换 (固定顺序: 位深→采样率→通道)</text>
+
+  <text x="620" y="586" class="body" font-size="9.5" font-weight="600" fill="#16a34a">resample / convert_bit_depth / convert_channels</text>
+  <text x="640" y="600" class="box-desc" font-size="9">resample_poly 抗混叠 · 归一化float32再量化 · 下混均值/上混复制</text>
+
+  <!-- Conversion order highlight -->
+  <rect x="648" y="606" width="528" height="12" rx="3" fill="#dcfce7" stroke="#86efac" stroke-width="0.5"/>
+  <text x="912" y="615" text-anchor="middle" font-size="8.5" font-weight="600" fill="#166534">转换顺序固定: 位深(→float32归一化) → 重采样(resample_poly) → 通道(下混均值/上混复制)</text>
+
+  <!-- ============================================== -->
+  <!-- ③ 核心组件 (amber) y=630 h=150 -->
+  <!-- ============================================== -->
+  <rect x="24" y="630" width="1192" height="150" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="630" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="656" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="649" r="11" fill="#f59e0b"/>
+  <text x="46" y="653" class="num-badge">3</text>
+  <text x="66" y="654" class="sec-title" fill="#92400e">核心组件 — AudioStreamOrchestrator + ApiRmsSplService</text>
+
+  <!-- Left: AudioStreamOrchestrator -->
+  <rect x="48" y="680" width="560" height="88" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <rect x="48" y="680" width="560" height="24" rx="8" fill="#fef3c7"/>
+  <text x="60" y="696" class="box-name" fill="#92400e">AudioStreamOrchestrator  (audio_stream_orchestrator.py)</text>
+  <text x="60" y="716" class="body" font-size="9.5" font-weight="600">chunk_audio(audios_config, audio_loader, chunk_duration_ms=100,</text>
+  <text x="60" y="730" class="body" font-size="9.5">  api_id, rms_spl_mapping, background_noise, target_format) → list[str]</text>
+  <text x="60" y="746" class="box-desc" font-size="9">输出统一为 base64 PCM chunk 列表; 三种 executor 共用; DEFAULT_SAMPLE_RATE=24000, TARGET_RMS_DBFS=-30.0</text>
+
+  <!-- Right: ApiRmsSplService -->
+  <rect x="628" y="680" width="564" height="88" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <rect x="628" y="680" width="564" height="24" rx="8" fill="#fef3c7"/>
+  <text x="640" y="696" class="box-name" fill="#92400e">ApiRmsSplService  (api_rms_spl_service.py)</text>
+  <text x="640" y="716" class="body" font-size="9.5" font-weight="600">spl_to_gain(api_id, target_spl) → 查 api_id 关联映射 → 计算 gain</text>
+  <text x="640" y="732" class="body" font-size="9.5" font-weight="600">spl_to_gain_by_mapping(mapping, target_spl) → 预加载映射 (避免重复查 DB)</text>
+  <text x="640" y="748" class="body" font-size="9.5" font-weight="600">_linear_approx(target_spl) → 无映射时: gain = 10^((target_spl - 65) / 20)</text>
+
+  <!-- ============================================== -->
+  <!-- ④ 噪声合并优先级 (violet) y=790 h=140 -->
+  <!-- ============================================== -->
+  <rect x="24" y="790" width="1192" height="140" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="790" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="816" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="809" r="11" fill="#7c3aed"/>
+  <text x="46" y="813" class="num-badge">4</text>
+  <text x="66" y="814" class="sec-title" fill="#5b21b6">噪声合并优先级 — 轮次级 > 全局级 · _resolve_noise()</text>
+
+  <!-- Priority chips -->
+  <rect x="48" y="840" width="360" height="28" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="228" y="858" text-anchor="middle" class="chip-t" fill="#5b21b6">1. 轮次级有噪声 → 用轮次级 (round_config)</text>
+
+  <rect x="428" y="840" width="340" height="28" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="598" y="858" text-anchor="middle" class="chip-t" fill="#5b21b6">2. 轮次级无 → 用全局级 (case_config)</text>
+
+  <rect x="788" y="840" width="340" height="28" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="958" y="858" text-anchor="middle" class="chip-t" fill="#5b21b6">3. 两者都无 → 不混噪声</text>
+
+  <!-- _resolve_noise method -->
+  <rect x="48" y="878" width="560" height="42" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="60" y="894" class="body" font-size="9.5" font-weight="600" fill="#5b21b6">def _resolve_noise(self, round_config, global_bg):</text>
+  <text x="72" y="908" class="box-desc" font-size="9">round_bg = round_config.get('background_noise')</text>
+  <text x="72" y="918" class="box-desc" font-size="9">return round_bg if round_bg else global_bg  # 轮次级优先</text>
+
+  <!-- Noise config structure -->
+  <rect x="628" y="878" width="564" height="42" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="640" y="894" class="body" font-size="9" fill="#5b21b6">噪声配置结构: {audio_id, audio_name, spl, loop, delay}</text>
+  <text x="640" y="908" class="box-desc" font-size="9">audio_id=噪声音频文件ID · spl=目标声压级(dB) · loop=是否循环铺满轮次</text>
+  <text x="640" y="918" class="box-desc" font-size="9">delay=开始时间偏移(ms), 默认0=从轮次开始混入</text>
+
+  <!-- ============================================== -->
+  <!-- ⑤ 混音6步流程 (blue) y=940 h=435 -->
+  <!-- ============================================== -->
+  <rect x="24" y="940" width="1192" height="435" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="940" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="966" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="959" r="11" fill="#3b82f6"/>
+  <text x="46" y="963" class="num-badge">5</text>
+  <text x="66" y="964" class="sec-title" fill="#1e3a8a">混音 6 步流程 — AudioStreamOrchestrator.chunk_audio() → 三种消费方式</text>
+
+  <!-- Step 1 -->
+  <rect x="48" y="988" width="1144" height="42" rx="6" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <rect x="48" y="988" width="6" height="42" rx="3" fill="#3b82f6"/>
+  <circle cx="76" cy="1009" r="11" fill="#3b82f6"/>
+  <text x="76" y="1013" class="num-badge">1</text>
+  <text x="96" y="1005" class="step-t">Step 1: 加载各源 PCM (主讲人 + 干扰人 + 噪声)</text>
+  <text x="96" y="1021" class="step-d">audio_loader(id) → speaker_pcm(44.1k/24bit), interferer_pcm(48k/16bit), noise_pcm(44.1k/16bit); sources = [{config, pcm, type, target_spl, loop}]</text>
+
+  <path d="M 620 1030 L 620 1038" class="flow-blue"/>
+
+  <!-- Step 2 -->
+  <rect x="48" y="1038" width="1144" height="42" rx="6" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <rect x="48" y="1038" width="6" height="42" rx="3" fill="#3b82f6"/>
+  <circle cx="76" cy="1059" r="11" fill="#3b82f6"/>
+  <text x="76" y="1063" class="num-badge">2</text>
+  <text x="96" y="1055" class="step-t">Step 2: 格式适配 — AudioFormatAdapter 统一到 api.audio_config</text>
+  <text x="96" y="1071" class="step-d">detect_source_format → resolve_target_format → adapt; 转换顺序(固定): 位深(→float32)→重采样→通道; ★ 不同采样率样本无法直接叠加</text>
+
+  <path d="M 620 1080 L 620 1088" class="flow-blue"/>
+
+  <!-- Step 3 -->
+  <rect x="48" y="1088" width="1144" height="42" rx="6" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <rect x="48" y="1088" width="6" height="42" rx="3" fill="#3b82f6"/>
+  <circle cx="76" cy="1109" r="11" fill="#3b82f6"/>
+  <text x="76" y="1113" class="num-badge">3</text>
+  <text x="96" y="1105" class="step-t">Step 3: RMS 补偿 + SPL 增益</text>
+  <text x="96" y="1121" class="step-d">3a. RMS 归一化到 -30dBFS: rms→dBFS→gain_comp, samples *= gain_comp;  3b. SPL 增益: spl_to_gain_by_mapping / spl_to_gain / _linear_approx</text>
+
+  <path d="M 620 1130 L 620 1138" class="flow-blue"/>
+
+  <!-- Step 4 -->
+  <rect x="48" y="1138" width="1144" height="42" rx="6" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <rect x="48" y="1138" width="6" height="42" rx="3" fill="#3b82f6"/>
+  <circle cx="76" cy="1159" r="11" fill="#3b82f6"/>
+  <text x="76" y="1163" class="num-badge">4</text>
+  <text x="96" y="1155" class="step-t">Step 4: 时间轴编排 — speaker 感知交叠</text>
+  <text x="96" y="1171" class="step-d">calculate_speaker_aware_audio_delays() → timeline; 噪声不参与时间轴(按 loop/delay 混入); total_samples = rate × max_end_ms / 1000; np.zeros float32 缓冲</text>
+
+  <path d="M 620 1180 L 620 1188" class="flow-blue"/>
+
+  <!-- Step 5 -->
+  <rect x="48" y="1188" width="1144" height="42" rx="6" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <rect x="48" y="1188" width="6" height="42" rx="3" fill="#3b82f6"/>
+  <circle cx="76" cy="1209" r="11" fill="#3b82f6"/>
+  <text x="76" y="1213" class="num-badge">5</text>
+  <text x="96" y="1205" class="step-t">Step 5: 混音叠加 — float32 缓冲</text>
+  <text x="96" y="1221" class="step-d">samples *= gain_linear; 噪声 loop → 铺满整个缓冲, 其余 → 按 start_time 混入; mix_buffer = Σ(各源 × gain); 立体声按 interleaved 帧对齐</text>
+
+  <path d="M 620 1230 L 620 1238" class="flow-blue"/>
+
+  <!-- Step 6 -->
+  <rect x="48" y="1238" width="1144" height="42" rx="6" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <rect x="48" y="1238" width="6" height="42" rx="3" fill="#3b82f6"/>
+  <circle cx="76" cy="1259" r="11" fill="#3b82f6"/>
+  <text x="76" y="1263" class="num-badge">6</text>
+  <text x="96" y="1255" class="step-t">Step 6: 切片输出 — base64 PCM chunk</text>
+  <text x="96" y="1271" class="step-d">mix_buffer → np.clip(±满量程) → int16 量化; chunk_samples = 1600 (100ms@16k); 不足补零; → [chunk_0, chunk_1, ..., chunk_N] base64 PCM</text>
+
+  <!-- Arrow to consumption -->
+  <path d="M 620 1280 L 620 1288" class="flow-blue"/>
+
+  <!-- Junction horizontal line -->
+  <line x1="233" y1="1288" x2="1006" y2="1288" stroke="#94a3b8" stroke-width="1.2"/>
+  <path d="M 233 1288 L 233 1296" class="flow-blue"/>
+  <path d="M 620 1288 L 620 1296" class="flow-blue"/>
+  <path d="M 1006 1288 L 1006 1296" class="flow-blue"/>
+
+  <!-- 3 consumption methods -->
+  <rect x="48" y="1296" width="370" height="50" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <rect x="48" y="1296" width="6" height="50" rx="3" fill="#2563eb"/>
+  <text x="66" y="1314" class="box-name" fill="#1e3a8a">Realtime WS</text>
+  <text x="66" y="1330" class="box-desc">for chunk: adapter.send(chunk_b64, is_audio=True)</text>
+  <text x="66" y="1342" class="box-desc">+ sleep(100ms) 模拟实时速率 → WS 推送</text>
+
+  <rect x="434" y="1296" width="370" height="50" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <rect x="434" y="1296" width="6" height="50" rx="3" fill="#2563eb"/>
+  <text x="452" y="1314" class="box-name" fill="#1e3a8a">HTTP 流式 SSE</text>
+  <text x="452" y="1330" class="box-desc">for chunk: adapter.send(chunk_b64)</text>
+  <text x="452" y="1342" class="box-desc">+ sleep(100ms) → SSE 逐 chunk 推送</text>
+
+  <rect x="820" y="1296" width="372" height="50" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <rect x="820" y="1296" width="6" height="50" rx="3" fill="#2563eb"/>
+  <text x="838" y="1314" class="box-name" fill="#1e3a8a">HTTP 非实时</text>
+  <text x="838" y="1330" class="box-desc">b''.join(decode(chunks)) → wav 包装</text>
+  <text x="838" y="1342" class="box-desc">→ 一次性 HTTP POST (整文件)</text>
+
+  <!-- ============================================== -->
+  <!-- ⑥ SPL映射对称设计 (red) y=1385 h=200 -->
+  <!-- ============================================== -->
+  <rect x="24" y="1385" width="1192" height="200" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1385" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1411" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1404" r="11" fill="#dc2626"/>
+  <text x="46" y="1408" class="num-badge">6</text>
+  <text x="66" y="1409" class="sec-title" fill="#991b1b">SPL 映射对称设计 — E2E (device→DB) vs API 类 (api_id→DB)</text>
+
+  <!-- Left panel: E2E -->
+  <rect x="48" y="1435" width="560" height="90" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="48" y="1435" width="560" height="22" rx="8" fill="#fee2e2"/>
+  <text x="60" y="1450" class="box-name" fill="#991b1b">E2E 物理设备</text>
+
+  <text x="60" y="1470" class="body" font-size="9.5">用户配 SPL=65dB → SPLMappingService.spl_to_gain(device, 65) → gain_db</text>
+  <text x="60" y="1486" class="body" font-size="9.5">effective = audio_gain × GLOBAL_SAFE × gain_comp (RMS 补偿)</text>
+  <text x="60" y="1502" class="body" font-size="9.5">映射关联: PlaybackDevice 1:N SPLMapping (物理校准)</text>
+  <text x="60" y="1518" class="box-desc" font-size="9">输出: int16 → PyAudio stream; 防削波: np.clip(-32768, 32767)</text>
+
+  <!-- Right panel: API -->
+  <rect x="628" y="1435" width="564" height="90" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="628" y="1435" width="564" height="22" rx="8" fill="#fee2e2"/>
+  <text x="640" y="1450" class="box-name" fill="#991b1b">API 类 (非实时/流式/Realtime 通用)</text>
+
+  <text x="640" y="1470" class="body" font-size="9.5">用户配 SPL=65dB → ApiRmsSplService.spl_to_gain(api_id, 65) → gain_linear</text>
+  <text x="640" y="1486" class="body" font-size="9.5">effective = spl_gain × rms_compensate (RMS 补偿)</text>
+  <text x="640" y="1502" class="body" font-size="9.5">映射关联: API 1:N ApiRmsSplMapping (数字校准)</text>
+  <text x="640" y="1518" class="box-desc" font-size="9">输出: 目标格式 PCM → 整文件 / base64 chunk; 防削波: np.clip 按位深满量程</text>
+
+  <!-- SPL unconfigured behavior -->
+  <rect x="48" y="1535" width="1144" height="42" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="60" y="1551" class="lbl" fill="#991b1b">SPL 未配置时的行为:</text>
+  <text x="60" y="1567" class="body" font-size="9.5">target_spl is None → gain=1.0 原始不动 (格式适配仍执行);  有 SPL 无映射 → _linear_approx(65)=10^((65-65)/20)=1.0;  有 SPL 有映射 → 查映射表 gain_linear</text>
+
+  <!-- ============================================== -->
+  <!-- ⑦ executor混音调用对比 (green) y=1595 h=165 -->
+  <!-- ============================================== -->
+  <rect x="24" y="1595" width="1192" height="165" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1595" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="1621" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="1614" r="11" fill="#16a34a"/>
+  <text x="46" y="1618" class="num-badge">7</text>
+  <text x="66" y="1619" class="sec-title" fill="#166534">executor 混音调用对比 — 三种差异只在消费方式</text>
+
+  <!-- Executor 1: Realtime -->
+  <rect x="48" y="1645" width="370" height="82" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <rect x="48" y="1645" width="370" height="24" rx="8" fill="#dcfce7"/>
+  <text x="60" y="1661" class="box-name" fill="#166534">RealtimeSessionExecutor</text>
+  <text x="60" y="1679" class="body" font-size="9" font-weight="600">_execute_normal_round + _execute_interruption_round</text>
+  <text x="60" y="1693" class="box-desc" font-size="9">chunks = chunk_audio(...) → for chunk:</text>
+  <text x="60" y="1705" class="box-desc" font-size="9">  adapter.send(chunk) + sleep(100ms)</text>
+  <text x="60" y="1717" class="box-desc" font-size="9">→ WS 逐 chunk 推送 + barge-in 检测</text>
+
+  <!-- Executor 2: HTTP non-stream -->
+  <rect x="434" y="1645" width="370" height="82" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <rect x="434" y="1645" width="370" height="24" rx="8" fill="#dcfce7"/>
+  <text x="446" y="1661" class="box-name" fill="#166534">APISessionExecutor 非实时</text>
+  <text x="446" y="1679" class="body" font-size="9" font-weight="600">_execute_non_stream_round</text>
+  <text x="446" y="1693" class="box-desc" font-size="9">chunks = chunk_audio(...) (同一编排)</text>
+  <text x="446" y="1705" class="box-desc" font-size="9">→ b''.join(decode(chunks))</text>
+  <text x="446" y="1717" class="box-desc" font-size="9">→ wav 包装 → 一次性 POST</text>
+
+  <!-- Executor 3: HTTP stream -->
+  <rect x="820" y="1645" width="372" height="82" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <rect x="820" y="1645" width="372" height="24" rx="8" fill="#dcfce7"/>
+  <text x="832" y="1661" class="box-name" fill="#166534">APISessionExecutor 流式</text>
+  <text x="832" y="1679" class="body" font-size="9" font-weight="600">_execute_stream_round</text>
+  <text x="832" y="1693" class="box-desc" font-size="9">chunks = chunk_audio(...) (同一编排)</text>
+  <text x="832" y="1705" class="box-desc" font-size="9">→ for chunk: SSE 推送 + sleep</text>
+  <text x="832" y="1717" class="box-desc" font-size="9">→ 边推边收 SSE 事件</text>
+
+  <!-- ============================================== -->
+  <!-- ⑧ 数据流总结 (gray) y=1770 h=150 -->
+  <!-- ============================================== -->
+  <rect x="24" y="1770" width="1192" height="150" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1770" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1796" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="1789" r="11" fill="#64748b"/>
+  <text x="46" y="1793" class="num-badge">8</text>
+  <text x="66" y="1794" class="sec-title" fill="#334155">数据流总结 — 从用例配置到 chunk 输出的完整数据流</text>
+
+  <!-- Flow row 1: config → resolve_noise → chunk_audio → chunks -->
+  <rect x="48" y="1820" width="300" height="32" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="198" y="1832" text-anchor="middle" class="chip-t" fill="#475569">用例配置</text>
+  <text x="198" y="1846" text-anchor="middle" class="box-desc" font-size="8">audios + background_noise + api.audio_config</text>
+
+  <path d="M 348 1836 L 388 1836" class="flow"/>
+
+  <rect x="388" y="1820" width="150" height="32" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="463" y="1832" text-anchor="middle" class="chip-t" fill="#475569">_resolve_noise()</text>
+  <text x="463" y="1846" text-anchor="middle" class="box-desc" font-size="8">轮次级 > 全局级</text>
+
+  <path d="M 538 1836 L 578 1836" class="flow"/>
+
+  <rect x="578" y="1820" width="280" height="32" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="718" y="1832" text-anchor="middle" class="chip-t" fill="#475569">chunk_audio() Step1-6</text>
+  <text x="718" y="1846" text-anchor="middle" class="box-desc" font-size="8">格式适配→RMS·SPL→时间轴→混音→切片</text>
+
+  <path d="M 858 1836 L 898 1836" class="flow"/>
+
+  <rect x="898" y="1820" width="294" height="32" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="1045" y="1832" text-anchor="middle" class="chip-t" fill="#475569">[chunk_0..chunk_N]</text>
+  <text x="1045" y="1846" text-anchor="middle" class="box-desc" font-size="8">base64 PCM (统一输出)</text>
+
+  <!-- Split arrows to 3 consumption methods -->
+  <path d="M 1045 1852 L 1045 1860" class="flow"/>
+  <line x1="233" y1="1860" x2="1006" y2="1860" stroke="#94a3b8" stroke-width="1.2"/>
+  <path d="M 233 1860 L 233 1868" class="flow"/>
+  <path d="M 619 1860 L 619 1868" class="flow"/>
+  <path d="M 1006 1860 L 1006 1868" class="flow"/>
+
+  <!-- 3 consumption methods -->
+  <rect x="48" y="1868" width="370" height="28" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="233" y="1886" text-anchor="middle" class="chip-t" fill="#475569">Realtime WS: adapter.send + sleep → WS 推送</text>
+
+  <rect x="434" y="1868" width="370" height="28" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="619" y="1886" text-anchor="middle" class="chip-t" fill="#475569">HTTP SSE: 逐 chunk SSE 推送</text>
+
+  <rect x="820" y="1868" width="372" height="28" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="1006" y="1886" text-anchor="middle" class="chip-t" fill="#475569">HTTP POST: 拼接 wav → 一次性上传</text>
+
+</svg>

@@ -2,6 +2,20 @@ from .android_driver import AndroidDriver
 from .android_plaud import PlaudDriver
 from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .utils import log_and_emit
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import driver_registry
+
+_LEGACY_KEYWORDS = {
+    AppType.PLAUD: ['plaud', 'ai录音', 'ai record'],
+    AppType.XIAOYI_FACE2FACE: ['face2face', '面对面', 'face'],
+    AppType.XIAOYI_SIMULTANEOUS: ['simultaneous', '同传', 'interpretation'],
+    AppType.XIAOYI_HUIJI: ['harden', 'huiji', '慧记'],
+    AppType.XIAOYI_LIVECHAT: ['xiaoyilivechat', '小艺通话', 'livechat'],
+    AppType.CHATGPT: ['chatgpt', 'chatgptvoice', 'chatgpt语音'],
+    AppType.DOUBAO: ['doubao', '豆包', 'doubaochat', '豆包通话'],
+    AppType.XIAOYI_INPUT_METHOD: ['input_method', '输入法', 'asr'],
+    AppType.DOUBAO_ASR: ['doubao', '豆包', 'asr'],
+}
 
 # 鸿蒙驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
 # hypium 不可时跳过这些驱动，不影响其他功能
@@ -85,72 +99,21 @@ class DeviceDriverFactory:
         return self._mock_mode
 
     def _register_defaults(self):
-        """注册默认的专用驱动"""
-
-        self.register_specialized_driver(
-            PlaudDriver(),
-            ['plaud', 'ai录音', 'ai record'],
-            'Android',
-            'Plaud AI 录音专用驱动'
-        )
-
-        # 鸿蒙专用驱动仅在 hypium 可用时注册
-        if _HYPium_AVAILABLE:
-            self.register_specialized_driver(
-                XiaoyiFace2FaceDriver(),
-                ['face2face', '面对面', 'face'],
-                'HarmonyOS',
-                '小艺面对面翻译专用驱动'
-            )
-
-            self.register_specialized_driver(
-                XiaoyiSimultaneousInterpretationDriver(),
-                ['simultaneous', '同传', 'interpretation'],
-                'HarmonyOS',
-                '小艺同传专用驱动'
-            )
-
-            self.register_specialized_driver(
-                HarmonyHardenXiaoyiHuiJiDriver(),
-                ['harden', 'huiji', '慧记'],
-                'HarmonyOS',
-                '鸿蒙harden小艺慧记专用驱动'
-            )
-
-            self.register_specialized_driver(
-                Xiaoyilivechat(),
-                ['xiaoyilivechat', '小艺通话', 'livechat'],
-                'HarmonyOS',
-                '小艺通话聊天专用驱动'
-            )
-
-            self.register_specialized_driver(
-                ChatGptVoiceChat(),
-                ['chatgpt', 'chatgptvoice', 'ChatGPT语音'],
-                'HarmonyOS',
-                'ChatGPT语音通话专用驱动'
-            )
-
-            self.register_specialized_driver(
-                DoubaoChat(),
-                ['doubao', '豆包', 'doubaochat', '豆包通话'],
-                'HarmonyOS',
-                '豆包HarmonyOS语音通话专用驱动'
-            )
-
-            self.register_specialized_driver(
-                HarmonyHardenXiaoyi_Input_MethodDriver(),
-                ['input_method', '输入法', 'asr'],
-                'HarmonyOS',
-                '鸿蒙小艺输入法ASR专用驱动'
-            )
-
-        self.register_specialized_driver(
-            DouBaoAndroidAsrDriver(),
-            ['doubao', '豆包', 'asr'],
-            'Android',
-            '豆包Android语音识别专用驱动'
-        )
+        """从类型化注册表统一实例化驱动，旧关键字仅用于兼容查询。"""
+        base_types = {AppType.ANDROID_BASE, AppType.HARMONY_BASE}
+        for driver_cls in driver_registry.get_driver_classes():
+            app_type = driver_cls.app_type
+            platform = driver_cls.platform
+            if platform == DevicePlatform.HARMONYOS and not _HYPium_AVAILABLE:
+                continue
+            instance = driver_cls()
+            if app_type in base_types:
+                self._base_drivers["Android" if platform == DevicePlatform.ANDROID else "HarmonyOS"] = instance
+                if hasattr(instance, 'set_mock_mode'):
+                    instance.set_mock_mode(self._mock_mode)
+                continue
+            keywords = _LEGACY_KEYWORDS.get(app_type, [app_type.value])
+            self.register_specialized_driver(instance, keywords, platform.value, getattr(driver_cls, 'display_name', driver_cls.__name__))
 
     def register_specialized_driver(self, driver, keywords, system=None, name=None):
         """注册专用驱动"""
@@ -239,6 +202,61 @@ class DeviceDriverFactory:
         
         # 如果没有找到专用驱动，返回基础驱动
         return self.get_driver_by_system(system)
+
+    def get_driver_typed(
+        self,
+        app_type: AppType,
+        platform: DevicePlatform,
+        version: AppVersion = AppVersion.V1,
+    ):
+        """按新版三元元数据获取已实例化的驱动。"""
+        if platform is None:
+            platform = {
+                AppType.ANDROID_BASE: DevicePlatform.ANDROID,
+                AppType.PLAUD: DevicePlatform.ANDROID,
+                AppType.DOUBAO_ASR: DevicePlatform.ANDROID,
+            }.get(app_type, DevicePlatform.HARMONYOS)
+        driver_cls = driver_registry.resolve(app_type, version, platform)
+        for driver in self.get_all_drivers():
+            if isinstance(driver, driver_cls):
+                return driver
+        return None
+
+    def get_driver_for_device(self, system, keywords=None, device_sn=None):
+        """按设备字段解析新版驱动元数据并返回驱动实例。"""
+        system_key = (system or '').lower()
+        platform = {
+            'android': DevicePlatform.ANDROID,
+            'harmonyos': DevicePlatform.HARMONYOS,
+            'ios': DevicePlatform.IOS,
+        }.get(system_key)
+        if platform is None:
+            return None
+        values = [keywords] if isinstance(keywords, str) else (keywords or [])
+        tokens = {str(value).strip().lower() for value in values if str(value).strip()}
+        app_type = AppType.ANDROID_BASE if platform == DevicePlatform.ANDROID else AppType.HARMONY_BASE
+        for candidate, aliases in _LEGACY_KEYWORDS.items():
+            if candidate in (AppType.ANDROID_BASE, AppType.HARMONY_BASE):
+                continue
+            if tokens.intersection({alias.lower() for alias in aliases}):
+                app_type = candidate
+                break
+        return self.get_driver_typed(app_type, platform)
+
+    def list_registered_drivers(self):
+        """返回新版注册表中的驱动元数据。"""
+        return driver_registry.list_drivers()
+
+    def register_driver_class(self, driver_cls, keywords=None, system=None, name=None):
+        """注册一个带新版元数据的驱动类，并桥接到旧实例工厂。"""
+        driver_registry.register(driver_cls)
+        instance = driver_cls()
+        if keywords is None:
+            keywords = [driver_cls.app_type.value]
+        if system is None:
+            system = driver_cls.platform.value
+        self.register_specialized_driver(instance, keywords, system, name)
+        return instance
 
     def get_all_drivers(self):
         """获取所有驱动"""

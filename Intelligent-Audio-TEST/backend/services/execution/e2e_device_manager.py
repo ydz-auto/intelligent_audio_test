@@ -30,7 +30,7 @@ class E2EDeviceManager:
 
             device_info_list = []
             for dev in devices:
-                driver = device_driver_factory.get_driver(dev.system, keywords=dev.keywords)
+                driver = device_driver_factory.get_driver_for_device(dev.system, keywords=dev.keywords)
                 prompt_path, prompt_name = self._get_prompt_audio_info(
                     dev.needs_prompt_audio, dev.prompt_config
                 )

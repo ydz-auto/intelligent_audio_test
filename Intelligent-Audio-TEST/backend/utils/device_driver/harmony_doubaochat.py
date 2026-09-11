@@ -10,9 +10,14 @@ from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 
-
+@register_driver
 class DoubaoChat(Xiaoyilivechat):
+    app_type = AppType.DOUBAO
+    version = AppVersion.V1
+    platform = DevicePlatform.HARMONYOS
     """豆包(HarmonyOS)设备驱动 — 复用 Xiaoyilivechat 全部基础设施
     (_hdc_shell / _clear_pcm / PCM_APP_CONFIG / _mp4_to_wav / _pcm_to_wav /
     _start_recorder / _stop_recorder / _pull_record_file / get_results 等)，

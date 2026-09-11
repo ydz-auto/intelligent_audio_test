@@ -14,14 +14,21 @@ import subprocess
 import time
 from .android_driver import AndroidDriver
 from .utils import check_stop
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 
 
+@register_driver
 class DouBaoAndroidAsrDriver(AndroidDriver):
     """豆包Android语音识别驱动类
 
     继承自AndroidDriver，专门用于控制豆包App进行语音识别操作。
     通过UI自动化操作模拟用户交互，完成语音录制和结果获取。
     """
+
+    app_type = AppType.DOUBAO_ASR
+    version = AppVersion.V1
+    platform = DevicePlatform.ANDROID
 
     # 应用配置常量
     APP_NAME = "com.larus.nova"           # 豆包App的包名

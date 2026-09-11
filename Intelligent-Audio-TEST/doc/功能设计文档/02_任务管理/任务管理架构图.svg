@@ -1,0 +1,423 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-purple { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowPurple); }
+      .flow-blue-d { stroke: #2563eb; stroke-width: 1.4; fill: none; stroke-dasharray: 5 3; marker-end: url(#arrowBlue); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .mono { font-family: Consolas, 'Courier New', monospace; font-size: 10px; font-weight: 600; }
+      .mono-s { font-family: Consolas, 'Courier New', monospace; font-size: 9px; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .decision-t { font-size: 12px; font-weight: 600; fill: #854d0e; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">任务管理 · 架构图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">三层架构（前端展示层 → 后端服务层 → 数据存储层）· 7 个核心组件 · 4 条数据流 · 6 个依赖模块</text>
+
+  <!-- ① 三层架构总览 -->
+  <rect x="24" y="92" width="1192" height="560" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="111" r="11" fill="#3b82f6"/>
+  <text x="46" y="115" class="num-badge">1</text>
+  <text x="66" y="116" class="sec-title" fill="#1e3a8a">三层架构总览 — 前端展示层 → 后端服务层 → 数据存储层</text>
+
+  <!-- 前端展示层 -->
+  <rect x="48" y="146" width="1144" height="130" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <rect x="48" y="146" width="6" height="130" rx="3" fill="#2563eb"/>
+  <text x="68" y="168" class="lbl" fill="#1e40af">前端展示层 · Vue 3 + WebSocket</text>
+  <rect x="68" y="178" width="210" height="80" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.1"/>
+  <text x="173" y="198" class="pill-t" fill="#1e40af">任务管理页面</text>
+  <text x="173" y="215" class="chip-t" fill="#64748b">Tasks.vue</text>
+  <text x="173" y="232" class="box-desc">任务列表 · 状态监控</text>
+  <text x="173" y="248" class="box-desc">历史查询 · 搜索筛选</text>
+  <rect x="294" y="178" width="210" height="80" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.1"/>
+  <text x="399" y="198" class="pill-t" fill="#1e40af">任务创建向导</text>
+  <text x="399" y="215" class="chip-t" fill="#64748b">TaskCreate.vue</text>
+  <text x="399" y="232" class="box-desc">设备选择 · 参数配置</text>
+  <text x="399" y="248" class="box-desc">用例选择 · 任务发布</text>
+  <rect x="520" y="178" width="210" height="80" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.1"/>
+  <text x="625" y="198" class="pill-t" fill="#1e40af">任务详情页面</text>
+  <text x="625" y="215" class="chip-t" fill="#64748b">TaskDetail.vue</text>
+  <text x="625" y="232" class="box-desc">执行进度 · 实时日志</text>
+  <text x="625" y="248" class="box-desc">结果回溯 · 报告查看</text>
+  <rect x="746" y="178" width="210" height="80" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.1"/>
+  <text x="851" y="198" class="pill-t" fill="#1e40af">任务合并页面</text>
+  <text x="851" y="215" class="chip-t" fill="#64748b">TaskMerge.vue</text>
+  <text x="851" y="232" class="box-desc">多任务选择 · 结果合并</text>
+  <text x="851" y="248" class="box-desc">对比分析 · 报告生成</text>
+  <rect x="972" y="178" width="200" height="80" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.1"/>
+  <text x="1072" y="198" class="pill-t" fill="#1e40af">统计分析页面</text>
+  <text x="1072" y="215" class="chip-t" fill="#64748b">Statistics.vue</text>
+  <text x="1072" y="232" class="box-desc">统计图表 · 趋势分析</text>
+  <text x="1072" y="248" class="box-desc">指标对比 · 导出报告</text>
+
+  <!-- 通信层标注 -->
+  <rect x="48" y="284" width="1144" height="26" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="620" y="301" text-anchor="middle" class="body" fill="#475569">HTTP REST API（请求/响应）+ WebSocket（实时推送：执行进度 · 状态变更 · 日志流）</text>
+
+  <!-- 后端服务层 -->
+  <rect x="48" y="320" width="1144" height="190" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <rect x="48" y="320" width="6" height="190" rx="3" fill="#16a34a"/>
+  <text x="68" y="342" class="lbl" fill="#166534">后端服务层 · Flask + SQLAlchemy + asyncio</text>
+
+  <rect x="68" y="354" width="260" height="68" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1.1"/>
+  <text x="198" y="374" class="pill-t" fill="#166534">任务管理服务</text>
+  <text x="198" y="391" class="chip-t" fill="#64748b">TaskService</text>
+  <text x="198" y="408" class="box-desc">CRUD · 状态更新 · 搜索筛选</text>
+
+  <rect x="344" y="354" width="260" height="68" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1.1"/>
+  <text x="474" y="374" class="pill-t" fill="#166534">任务执行管理</text>
+  <text x="474" y="391" class="chip-t" fill="#64748b">ExecutionEngine</text>
+  <text x="474" y="408" class="box-desc">异步执行 · 线程池调度 · 停止/重试</text>
+
+  <rect x="620" y="354" width="260" height="68" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1.1"/>
+  <text x="750" y="374" class="pill-t" fill="#166534">任务合并处理</text>
+  <text x="750" y="391" class="chip-t" fill="#64748b">MergeService</text>
+  <text x="750" y="408" class="box-desc">多任务结果合并 · 对比分析</text>
+
+  <rect x="896" y="354" width="276" height="68" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1.1"/>
+  <text x="1034" y="374" class="pill-t" fill="#166534">结果处理 + 报告生成</text>
+  <text x="1034" y="391" class="chip-t" fill="#64748b">ResultService + ReportService</text>
+  <text x="1034" y="408" class="box-desc">结果存储 · 报告渲染</text>
+
+  <rect x="68" y="434" width="536" height="66" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="1.1"/>
+  <text x="80" y="454" class="lbl" fill="#854d0e">依赖模块编排</text>
+  <rect x="80" y="462" width="160" height="28" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="160" y="480" class="chip-t" fill="#92400e">测试执行模块</text>
+  <rect x="250" y="462" width="160" height="28" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="330" y="480" class="chip-t" fill="#92400e">结果处理模块</text>
+  <rect x="420" y="462" width="170" height="28" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="505" y="480" class="chip-t" fill="#92400e">评估系统模块</text>
+
+  <rect x="616" y="434" width="556" height="66" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="1.1"/>
+  <text x="628" y="454" class="lbl" fill="#854d0e">依赖模块编排（续）</text>
+  <rect x="628" y="462" width="160" height="28" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="708" y="480" class="chip-t" fill="#92400e">报告管理模块</text>
+  <rect x="798" y="462" width="160" height="28" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="878" y="480" class="chip-t" fill="#92400e">用例管理模块</text>
+  <rect x="968" y="462" width="190" height="28" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="1063" y="480" class="chip-t" fill="#92400e">设备管理模块</text>
+
+  <!-- 数据存储层 -->
+  <rect x="48" y="518" width="1144" height="118" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="48" y="518" width="6" height="118" rx="3" fill="#7c3aed"/>
+  <text x="68" y="540" class="lbl" fill="#5b21b6">数据存储层 · PostgreSQL + SQLAlchemy ORM</text>
+
+  <rect x="68" y="550" width="260" height="74" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.1"/>
+  <text x="198" y="570" class="pill-t" fill="#5b21b6">任务存储管理</text>
+  <text x="198" y="587" class="chip-t" fill="#64748b">tasks · task_cases · task_relations</text>
+  <text x="198" y="602" class="box-desc">任务基本信息 · 用例关联</text>
+  <text x="198" y="616" class="box-desc">设备/API关联 · 标签 · 合并关系</text>
+
+  <rect x="344" y="550" width="260" height="74" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.1"/>
+  <text x="474" y="570" class="pill-t" fill="#5b21b6">结果存储</text>
+  <text x="474" y="587" class="chip-t" fill="#64748b">test_results · test_result_dimensions</text>
+  <text x="474" y="602" class="box-desc">执行结果 · 维度评分</text>
+  <text x="474" y="616" class="box-desc">结果数据文件路径 · 状态字段</text>
+
+  <rect x="620" y="550" width="260" height="74" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.1"/>
+  <text x="750" y="570" class="pill-t" fill="#5b21b6">报告存储</text>
+  <text x="750" y="587" class="chip-t" fill="#64748b">test_reports · report_summaries</text>
+  <text x="750" y="602" class="box-desc">报告主表 · 汇总数据</text>
+  <text x="750" y="616" class="box-desc">指标统计 · 对比矩阵 · 原始数据</text>
+
+  <rect x="896" y="550" width="276" height="74" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.1"/>
+  <text x="1034" y="570" class="pill-t" fill="#5b21b6">磁盘文件存储</text>
+  <text x="1034" y="587" class="chip-t" fill="#64748b">result_data/ · ref_params/ · audios/</text>
+  <text x="1034" y="602" class="box-desc">结果数据 JSON · 参考参数文件</text>
+  <text x="1034" y="616" class="box-desc">音频文件 · 相对路径存储</text>
+
+  <!-- 层间箭头 -->
+  <path d="M 620 310 L 620 320" class="flow-blue"/>
+  <path d="M 620 510 L 620 518" class="flow-green"/>
+
+  <!-- ② 核心组件详解 -->
+  <rect x="24" y="668" width="1192" height="340" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="668" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="694" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="687" r="11" fill="#16a34a"/>
+  <text x="46" y="691" class="num-badge">2</text>
+  <text x="66" y="692" class="sec-title" fill="#166534">核心组件详解 — 7 个核心组件 · 职责 · 技术实现 · 通信方式</text>
+
+  <!-- 表头 -->
+  <line x1="48" y1="724" x2="1192" y2="724" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="60" y="742" class="lbl" fill="#475569">组件</text>
+  <text x="260" y="742" class="lbl" fill="#475569">职责</text>
+  <text x="640" y="742" class="lbl" fill="#475569">技术实现</text>
+  <text x="900" y="742" class="lbl" fill="#475569">通信方式</text>
+  <line x1="48" y1="750" x2="1192" y2="750" stroke="#e2e8f0" stroke-width="1"/>
+
+  <rect x="60" y="754" width="180" height="28" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="150" y="772" class="chip-t" fill="#1e40af">前端任务管理页面</text>
+  <text x="260" y="772" class="body">用户界面 · 任务管理 · 历史查询 · 任务合并</text>
+  <text x="640" y="772" class="body">Vue 3 + WebSocket</text>
+  <text x="900" y="772" class="body">WebSocket 推送</text>
+
+  <rect x="60" y="788" width="180" height="28" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="150" y="806" class="chip-t" fill="#1e40af">后端任务管理服务</text>
+  <text x="260" y="806" class="body">任务管理 · 状态更新 · 结果处理 · 合并</text>
+  <text x="640" y="806" class="body">Flask + SQLAlchemy</text>
+  <text x="900" y="806" class="body">HTTP REST + WebSocket</text>
+
+  <rect x="60" y="822" width="180" height="28" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="150" y="840" class="chip-t" fill="#1e40af">任务存储管理</text>
+  <text x="260" y="840" class="body">任务数据存储和管理</text>
+  <text x="640" y="840" class="body">PostgreSQL + SQLAlchemy</text>
+  <text x="900" y="840" class="body">数据库操作</text>
+
+  <rect x="60" y="856" width="180" height="28" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="150" y="874" class="chip-t" fill="#1e40af">任务执行管理</text>
+  <text x="260" y="874" class="body">任务执行 · 监控 · 控制</text>
+  <text x="640" y="874" class="body">Flask + asyncio</text>
+  <text x="900" y="874" class="body">异步通信</text>
+
+  <rect x="60" y="890" width="180" height="28" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="150" y="908" class="chip-t" fill="#1e40af">任务合并处理</text>
+  <text x="260" y="908" class="body">多任务结果合并和分析</text>
+  <text x="640" y="908" class="body">Flask + Pandas</text>
+  <text x="900" y="908" class="body">内存计算</text>
+
+  <rect x="60" y="924" width="180" height="28" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="150" y="942" class="chip-t" fill="#1e40af">结果处理</text>
+  <text x="260" y="942" class="body">任务结果处理和存储</text>
+  <text x="640" y="942" class="body">Flask + SQLAlchemy</text>
+  <text x="900" y="942" class="body">数据库操作</text>
+
+  <rect x="60" y="958" width="180" height="28" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="150" y="976" class="chip-t" fill="#1e40af">报告生成</text>
+  <text x="260" y="976" class="body">任务执行报告生成</text>
+  <text x="640" y="976" class="body">Flask + Jinja2</text>
+  <text x="900" y="976" class="body">模板渲染</text>
+
+  <text x="48" y="996" class="note">核心组件间通过服务层编排调用：TaskService → ExecutionEngine → ResultService → ReportService · 数据通过 SQLAlchemy ORM 持久化到 PostgreSQL</text>
+
+  <!-- ③ 数据流设计 -->
+  <rect x="24" y="1024" width="1192" height="420" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1024" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="1050" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="1043" r="11" fill="#f59e0b"/>
+  <text x="46" y="1047" class="num-badge">3</text>
+  <text x="66" y="1048" class="sec-title" fill="#92400e">数据流设计 — 4 条单向数据流 · 清晰可追溯</text>
+
+  <!-- 数据流1: 任务执行 -->
+  <rect x="48" y="1078" width="570" height="170" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="60" y="1100" class="lbl" fill="#92400e">① 任务执行数据流</text>
+  <rect x="60" y="1108" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="120" y="1126" class="chip-t" fill="#92400e">前端启动任务</text>
+  <text x="120" y="1142" class="chip-t" fill="#64748b">点击「执行」</text>
+  <line x1="180" y1="1130" x2="194" y2="1130" class="flow-amber"/>
+  <rect x="196" y="1108" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="256" y="1126" class="chip-t" fill="#92400e">创建任务记录</text>
+  <text x="256" y="1142" class="chip-t" fill="#64748b">写入 DB</text>
+  <line x1="316" y1="1130" x2="330" y2="1130" class="flow-amber"/>
+  <rect x="332" y="1108" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="392" y="1126" class="chip-t" fill="#92400e">后端执行任务</text>
+  <text x="392" y="1142" class="chip-t" fill="#64748b">异步线程池</text>
+  <line x1="452" y1="1130" x2="466" y2="1130" class="flow-amber"/>
+  <rect x="468" y="1108" width="136" height="44" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.3"/>
+  <text x="536" y="1126" class="chip-t" fill="#92400e">WS 推送进度</text>
+  <text x="536" y="1142" class="chip-t" fill="#64748b">状态 · 日志</text>
+  <rect x="60" y="1164" width="544" height="26" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="1"/>
+  <text x="332" y="1181" text-anchor="middle" class="body" fill="#854d0e">任务执行完成 → 后端更新任务状态和结果 → 前端显示任务结果</text>
+  <text x="60" y="1208" class="note">关键: WebSocket 实时推送 execution_status / evaluation_status 变更 · 前端 transformTestCaseStatus 映射展示状态</text>
+  <text x="60" y="1226" class="note">执行引擎异步调度 · 并行执行模式(v1.8+): 执行完成 → 立即提交评估 → 继续下一用例</text>
+
+  <!-- 数据流2: 历史查询 -->
+  <rect x="634" y="1078" width="570" height="170" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="646" y="1100" class="lbl" fill="#92400e">② 历史查询数据流</text>
+  <rect x="646" y="1108" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="706" y="1126" class="chip-t" fill="#92400e">前端发起查询</text>
+  <text x="706" y="1142" class="chip-t" fill="#64748b">筛选条件</text>
+  <line x1="766" y1="1130" x2="780" y2="1130" class="flow-amber"/>
+  <rect x="782" y="1108" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="842" y="1126" class="chip-t" fill="#92400e">查询数据库</text>
+  <text x="842" y="1142" class="chip-t" fill="#64748b">分页 · 排序</text>
+  <line x1="902" y1="1130" x2="916" y2="1130" class="flow-amber"/>
+  <rect x="918" y="1108" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="978" y="1126" class="chip-t" fill="#92400e">返回任务列表</text>
+  <text x="978" y="1142" class="chip-t" fill="#64748b">JSON 响应</text>
+  <line x1="1038" y1="1130" x2="1052" y2="1130" class="flow-amber"/>
+  <rect x="1054" y="1108" width="136" height="44" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.3"/>
+  <text x="1122" y="1126" class="chip-t" fill="#92400e">显示任务列表</text>
+  <text x="1122" y="1142" class="chip-t" fill="#64748b">列表 + 详情</text>
+  <rect x="646" y="1164" width="544" height="26" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="1"/>
+  <text x="918" y="1181" text-anchor="middle" class="body" fill="#854d0e">前端点击查看任务详情 → 后端返回详情 → 前端显示详情</text>
+  <text x="646" y="1208" class="note">支持按时间 · 状态 · 类型 · 设备 · 标签等多维度筛选 · 分页查询避免大数据量性能问题</text>
+  <text x="646" y="1226" class="note">结果回溯: 查看历史任务详细执行结果和报告 · 支持重新评估 / 重新执行</text>
+
+  <!-- 数据流3: 任务合并 -->
+  <rect x="48" y="1260" width="570" height="166" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="60" y="1282" class="lbl" fill="#92400e">③ 任务合并数据流</text>
+  <rect x="60" y="1290" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="120" y="1308" class="chip-t" fill="#92400e">选择多任务</text>
+  <text x="120" y="1324" class="chip-t" fill="#64748b">勾选 ≥ 2</text>
+  <line x1="180" y1="1312" x2="194" y2="1312" class="flow-amber"/>
+  <rect x="196" y="1290" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="256" y="1308" class="chip-t" fill="#92400e">获取任务结果</text>
+  <text x="256" y="1324" class="chip-t" fill="#64748b">加载 TestResult</text>
+  <line x1="316" y1="1312" x2="330" y2="1312" class="flow-amber"/>
+  <rect x="332" y="1290" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="392" y="1308" class="chip-t" fill="#92400e">合并结果数据</text>
+  <text x="392" y="1324" class="chip-t" fill="#64748b">Pandas 融合</text>
+  <line x1="452" y1="1312" x2="466" y2="1312" class="flow-amber"/>
+  <rect x="468" y="1290" width="136" height="44" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.3"/>
+  <text x="536" y="1308" class="chip-t" fill="#92400e">生成合并报告</text>
+  <text x="536" y="1324" class="chip-t" fill="#64748b">对比分析</text>
+  <rect x="60" y="1346" width="544" height="26" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="1"/>
+  <text x="332" y="1363" text-anchor="middle" class="body" fill="#854d0e">前端显示合并结果和报告 · 支持多任务跨设备/API 对比</text>
+  <text x="60" y="1390" class="note">合并粒度: 按用例 · 按设备 · 按维度 · 合并后可生成新的对比报告</text>
+  <text x="60" y="1408" class="note">task_merge_relations 表记录合并关系 · 合并报告独立存储</text>
+
+  <!-- 数据流4: 统计分析 -->
+  <rect x="634" y="1260" width="570" height="166" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="646" y="1282" class="lbl" fill="#92400e">④ 统计分析数据流</text>
+  <rect x="646" y="1290" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="706" y="1308" class="chip-t" fill="#92400e">发起统计请求</text>
+  <text x="706" y="1324" class="chip-t" fill="#64748b">时间范围</text>
+  <line x1="766" y1="1312" x2="780" y2="1312" class="flow-amber"/>
+  <rect x="782" y="1290" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="842" y="1308" class="chip-t" fill="#92400e">查询任务数据</text>
+  <text x="842" y="1324" class="chip-t" fill="#64748b">聚合查询</text>
+  <line x1="902" y1="1312" x2="916" y2="1312" class="flow-amber"/>
+  <rect x="918" y="1290" width="120" height="44" rx="6" fill="#fffbeb" stroke="#fde68a" stroke-width="1.1"/>
+  <text x="978" y="1308" class="chip-t" fill="#92400e">计算统计指标</text>
+  <text x="978" y="1324" class="chip-t" fill="#64748b">完成率 · 耗时</text>
+  <line x1="1038" y1="1312" x2="1052" y2="1312" class="flow-amber"/>
+  <rect x="1054" y="1290" width="136" height="44" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.3"/>
+  <text x="1122" y="1308" class="chip-t" fill="#92400e">显示统计图表</text>
+  <text x="1122" y="1324" class="chip-t" fill="#64748b">趋势 · 对比</text>
+  <rect x="646" y="1346" width="544" height="26" rx="6" fill="#fefce8" stroke="#fde047" stroke-width="1"/>
+  <text x="918" y="1363" text-anchor="middle" class="body" fill="#854d0e">统计指标: 任务总数 · 完成率 · 失败率 · 平均耗时 · 维度得分分布</text>
+  <text x="646" y="1390" class="note">支持按时间维度(日/周/月) · 按设备类型 · 按测试类型统计</text>
+  <text x="646" y="1408" class="note">趋势分析: 通过率变化 · 性能趋势 · 异常检测</text>
+
+  <!-- ④ 依赖关系 -->
+  <rect x="24" y="1460" width="1192" height="200" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1460" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="1486" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="1479" r="11" fill="#7c3aed"/>
+  <text x="46" y="1483" class="num-badge">4</text>
+  <text x="66" y="1484" class="sec-title" fill="#5b21b6">依赖关系 — 6 个系统模块协同 · 单向依赖 · 无循环引用</text>
+
+  <rect x="48" y="1514" width="370" height="62" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="48" y="1514" width="6" height="62" rx="3" fill="#7c3aed"/>
+  <text x="68" y="1534" class="box-name" fill="#5b21b6">测试执行模块</text>
+  <text x="68" y="1551" class="box-desc">ExecutionEngine · 异步执行 · 线程池调度</text>
+  <text x="68" y="1567" class="note">启动和控制测试执行 · E2E/API/Realtime 三类执行器</text>
+
+  <rect x="432" y="1514" width="370" height="62" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="432" y="1514" width="6" height="62" rx="3" fill="#7c3aed"/>
+  <text x="452" y="1534" class="box-name" fill="#5b21b6">结果处理模块</text>
+  <text x="452" y="1551" class="box-desc">ResultService · 结果存储 · 维度评分</text>
+  <text x="452" y="1567" class="note">处理测试执行结果 · TestResult + TestResultDimension</text>
+
+  <rect x="816" y="1514" width="376" height="62" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="816" y="1514" width="6" height="62" rx="3" fill="#7c3aed"/>
+  <text x="836" y="1534" class="box-name" fill="#5b21b6">报告管理模块</text>
+  <text x="836" y="1551" class="box-desc">ReportService · 报告渲染 · 模板生成</text>
+  <text x="836" y="1567" class="note">生成测试报告 · 6 张报告子表 · 对比矩阵</text>
+
+  <rect x="48" y="1588" width="370" height="62" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="48" y="1588" width="6" height="62" rx="3" fill="#7c3aed"/>
+  <text x="68" y="1608" class="box-name" fill="#5b21b6">评估系统模块</text>
+  <text x="68" y="1625" class="box-desc">EvaluationService · 维度评估 · 指标计算</text>
+  <text x="68" y="1641" class="note">计算测试评估指标 · calculating 状态 · 并行评估</text>
+
+  <rect x="432" y="1588" width="370" height="62" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="432" y="1588" width="6" height="62" rx="3" fill="#7c3aed"/>
+  <text x="452" y="1608" class="box-name" fill="#5b21b6">用例管理模块</text>
+  <text x="452" y="1625" class="box-desc">TestCaseService · 用例 CRUD · 配置管理</text>
+  <text x="452" y="1641" class="note">获取测试用例信息 · 参考参数 · 维度配置</text>
+
+  <rect x="816" y="1588" width="376" height="62" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="816" y="1588" width="6" height="62" rx="3" fill="#7c3aed"/>
+  <text x="836" y="1608" class="box-name" fill="#5b21b6">设备管理模块</text>
+  <text x="836" y="1625" class="box-desc">DeviceService · 物理设备 + API 设备</text>
+  <text x="836" y="1641" class="note">获取设备信息 · 设备类型路由 · 并发控制</text>
+
+  <!-- ⑤ 核心功能模块 -->
+  <rect x="24" y="1678" width="1192" height="220" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1678" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1704" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1697" r="11" fill="#dc2626"/>
+  <text x="46" y="1701" class="num-badge">5</text>
+  <text x="66" y="1702" class="sec-title" fill="#991b1b">核心功能模块 — 6 大功能 · 任务全生命周期覆盖</text>
+
+  <rect x="48" y="1732" width="370" height="72" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="48" y="1732" width="6" height="72" rx="3" fill="#dc2626"/>
+  <text x="68" y="1752" class="box-name" fill="#991b1b">任务创建与执行</text>
+  <text x="68" y="1769" class="box-desc">基于用例/测试集创建 · 批量创建 · 参数配置</text>
+  <text x="68" y="1784" class="box-desc">启动 · 暂停 · 终止 · 重试 · 实时监控</text>
+  <text x="68" y="1798" class="note">支持 E2E + API + Realtime 混跑 · 并行执行(v1.8+)</text>
+
+  <rect x="432" y="1732" width="370" height="72" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="432" y="1732" width="6" height="72" rx="3" fill="#dc2626"/>
+  <text x="452" y="1752" class="box-name" fill="#991b1b">任务状态管理</text>
+  <text x="452" y="1769" class="box-desc">status · execution_status · evaluation_status</text>
+  <text x="452" y="1784" class="box-desc">三字段独立 · 过程与结果分离 · 原子性更新</text>
+  <text x="452" y="1798" class="note">状态修复阶段: execution+evaluation 均 completed → status=completed</text>
+
+  <rect x="816" y="1732" width="376" height="72" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="816" y="1732" width="6" height="72" rx="3" fill="#dc2626"/>
+  <text x="836" y="1752" class="box-name" fill="#991b1b">历史记录查询</text>
+  <text x="836" y="1769" class="box-desc">按时间 · 状态 · 类型 · 设备 · 标签筛选</text>
+  <text x="836" y="1784" class="box-desc">分页查询 · 结果回溯 · 报告查看</text>
+  <text x="836" y="1798" class="note">支持重新评估 / 重新执行 · 数据导入导出</text>
+
+  <rect x="48" y="1816" width="370" height="72" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="48" y="1816" width="6" height="72" rx="3" fill="#dc2626"/>
+  <text x="68" y="1836" class="box-name" fill="#991b1b">任务合并</text>
+  <text x="68" y="1853" class="box-desc">多任务结果合并 · 对比分析</text>
+  <text x="68" y="1868" class="box-desc">按用例/设备/维度合并 · 生成合并报告</text>
+  <text x="68" y="1882" class="note">task_merge_relations 记录合并关系</text>
+
+  <rect x="432" y="1816" width="370" height="72" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="432" y="1816" width="6" height="72" rx="3" fill="#dc2626"/>
+  <text x="452" y="1836" class="box-name" fill="#991b1b">统计分析</text>
+  <text x="452" y="1853" class="box-desc">任务总数 · 完成率 · 失败率 · 平均耗时</text>
+  <text x="452" y="1868" class="box-desc">维度得分分布 · 趋势分析 · 异常检测</text>
+  <text x="452" y="1882" class="note">按时间/设备/类型统计 · 可导出报告</text>
+
+  <rect x="816" y="1816" width="376" height="72" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="816" y="1816" width="6" height="72" rx="3" fill="#dc2626"/>
+  <text x="836" y="1836" class="box-name" fill="#991b1b">搜索筛选</text>
+  <text x="836" y="1853" class="box-desc">全文搜索 · 多维度组合筛选</text>
+  <text x="836" y="1868" class="box-desc">任务名称 · 标签 · 设备 · 状态 · 时间范围</text>
+  <text x="836" y="1882" class="note">支持排序 · 分页 · 快速预览</text>
+</svg>

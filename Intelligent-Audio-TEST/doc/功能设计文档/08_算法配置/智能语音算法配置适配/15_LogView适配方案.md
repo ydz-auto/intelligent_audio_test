@@ -91,13 +91,13 @@ class Log(db.Model):
 
 #### 3.1.2 日志记录接口扩展
 
-修改 `log_handler.py` 中的 `log_and_emit` 函数，支持传入 `algorithm_type`：
+`backend/utils/web/log_handler.py` 中的 `log_and_emit` 函数已支持传入 `algorithm_type`（**已实施**）：
 
 ```python
-# backend/utils/log_handler.py
+# backend/utils/web/log_handler.py
 def log_and_emit(level, module, content, category='system', source='backend', 
                  task_id=None, device_id=None, api_id=None, test_case_id=None,
-                 algorithm_type=None,  # 新增参数
+                 algorithm_type=None,  # 关联算法类型
                  push_to_websocket=True, enable_console_log=None, **kwargs):
     # ...
     record.algorithm_type = algorithm_type
@@ -106,14 +106,14 @@ def log_and_emit(level, module, content, category='system', source='backend',
 
 #### 3.1.3 日志查询接口扩展
 
-修改 `log_controller.py` 中的 `get_logs` 和 `get_stats` 方法，支持按算法类型筛选：
+`log_controller.py` 中的 `get_logs` 和 `get_stats` 方法已支持按算法类型筛选（**已实施**）：
 
 ```python
 # backend/controllers/log_controller.py
 @staticmethod
 def get_logs():
     # ... 现有参数 ...
-    algorithm_type = request.args.get('algorithm_type')  # 新增
+    algorithm_type = request.args.get('algorithm_type')
     
     query = Log.query
     # ... 现有筛选逻辑 ...
@@ -188,13 +188,15 @@ const LOGAlgorithmOptions = [
 在日志详情展开区域增加算法类型显示：
 
 ```html
-<p><strong>算法类型:</strong> {{ log.algorithmType || '-' }}</p>
+<p><strong>算法类型:</strong> {{ log.algorithmType ? getAlgorithmLabel(log.algorithmType) : '-' }}</p>
 ```
+
+> `getAlgorithmLabel` 将算法类型值映射为选项对应的中文标签，未匹配时回退显示原始值。
 
 #### 3.2.4 类型定义扩展
 
 ```typescript
-// frontend/src/shared/types/businessTypes.ts
+// frontend/src/shared/types/businessTypes.ts（已实施）
 export interface Log {
   id: number;
   level: string;
@@ -210,7 +212,7 @@ export interface Log {
   threadId?: string | number;
   mark?: string;
   testCaseId?: string | number;
-  algorithmType?: string;  // 新增
+  algorithmType?: string;  // 关联算法类型
 }
 
 export interface LogFilters {
@@ -218,9 +220,9 @@ export interface LogFilters {
   endDateTime: string;
   logCategory: string;
   logModule: string;
-  logSource: string;     // 新增：来源筛选
   markFilter: string;
-  algorithmType: string;  // 新增
+  algorithmType: string;  // 关联算法类型筛选
+  // logSource: string;   // 来源筛选待实施，届时补充
 }
 ```
 

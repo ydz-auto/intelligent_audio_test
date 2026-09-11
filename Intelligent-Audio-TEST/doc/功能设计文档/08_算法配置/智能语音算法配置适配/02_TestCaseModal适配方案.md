@@ -3,17 +3,22 @@
 ## 1. 组件概述
 
 ### 1.1 组件定位
-TestCaseModal 是测试用例创建/编辑的核心弹窗组件，需要适配算法配置化方案，支持根据算法类型动态渲染参数表单。
+TestCaseModal 是测试用例创建/编辑的核心弹窗组件，已按算法配置化方案完成适配。组件以目录形式实现于 `frontend/src/components/common/test-case/TestCaseModal/`（`index.vue` 按 mode 分发 GroupForm/CaseForm/ImportForm/ExportForm，用例表单主体为 `CaseForm.vue`），由测试用例管理页面（`views/TestCaseManager.vue` + `store/testCaseStore.ts`）驱动。
+
+> **命名说明**：`test-case/AddTestCaseModal.vue` 是另一个组件——"中途新增测试用例"时从已有用例列表中勾选的弹窗，不含表单字段，与本方案所述创建/编辑表单无关。
 
 ### 1.2 使用场景
 - 新建测试用例
 - 编辑测试用例
 - 复制测试用例
 
-### 1.3 核心改动
-- 新增算法类型选择
-- 根据算法类型动态渲染参数表单
-- 关联算法对应的评估维度
+### 1.3 核心改动（已实施）
+- 算法类型选择：集成 `AlgorithmSelector` 组件（单选模式），算法选项来自 `useAlgorithmConfig().getAlgorithmOptions()`
+- 算法参数按轮编辑：参数不再内嵌于 `config.rounds[]`，保存到 `test_cases.algorithm_params` 独立列（按轮分组）
+- 评估维度按算法过滤：通过 `useDimensions().fetchDimensionsByAlgorithmType()` 加载关联维度
+
+### 1.4 分层与命名口径
+后端所有响应经 `success_response` 统一转换为 camelCase；前端遵循 DDD 分层——Presentation（views/components）只见 camelCase Domain 与 composables（Ports），`utils/api.ts`（Infrastructure）是唯一感知 snake_case 的层。用例执行的执行方式由被测设备 `device_type` 路由三执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor）；"api/e2e 为独立用例记录的 test_type 决定执行方式"属废弃口径。
 
 ---
 
@@ -24,18 +29,24 @@ TestCaseModal 是测试用例创建/编辑的核心弹窗组件，需要适配�
 │                         用例与算法的关系                                   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│  TestCase ──────FK─────→ AlgorithmDefinition                           │
+│  TestCase ──────算法类型─────→ AlgorithmDefinition                       │
 │       │                                                                   │
-│       │  case_config.algorithm_type = 'translation'                     │
+│       │  test_cases.algorithm_type = 'translation'   （独立列）          │
 │       │                                                                   │
-│       │  case_config.algorithm_params = {                                │
-│       │    translation_direction: 'zh2en'  ← 从 AlgorithmConfig 获取  │
-│       │  }                                                                │
+│       │  test_cases.algorithm_params = [                                 │
+│       │    { round_number: 1,                                            │
+│       │      params: [                                                   │
+│       │        { field_code: 'translation_direction',                    │
+│       │          field_value: 'zh2en' }   ← 取值由 CaseAlgorithmParam   │
+│       │      ]                              与 formSchema 约束          │
+│       │    }                                                             │
+│       │  ]                                            （独立列，按轮分组）│
 │                                                                          │
-│  工作流程：                                                               │
-│  1. 新建用例时，选择算法类型                                              │
-│  2. 根据算法类型，加载 DynamicForm（从 AlgorithmConfigPage 配置）        │
-│  3. 用户填写参数，保存到 case_config.algorithm_params                    │
+│  工作流程（已实施）：                                                      │
+│  1. 新建用例时，AlgorithmSelector 选择算法类型                            │
+│  2. 根据算法类型加载 case_algorithm_params 与 formSchema（带缓存）        │
+│  3. 用户在 RoundConfigEditor 中按轮填写参数，                             │
+│     保存到 algorithm_params 独立列（不写入 config）                       │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -91,341 +102,202 @@ TestCaseModal 是测试用例创建/编辑的核心弹窗组件，需要适配�
 
 ## 4. 数据结构
 
-### 4.1 表单数据结构
+> **命名口径**：后端列与 DTO 为 snake_case，经 `success_response` 统一转换后前端收到 camelCase；前端 Presentation 层只见 camelCase Domain。
+
+### 4.1 表单数据结构（已实施，见 TestCaseModal/types.ts）
 
 ```typescript
 interface TestCaseFormData {
-  id?: string;
+  id?: string | number;
   name: string;
   description?: string;
-  algorithm_type: string;                    // 新增: 算法类型
-  algorithm_params: Record<string, any>;     // 新增: 算法参数字典
-  config: {
-    audios: AudioConfig[];                   // 现有字段
-    dimensions: {
-      api: number[];                         // 现有字段
-      e2e: number[];                         // 现有字段
-    };
-    // ... 其他现有字段
-  };
+  group?: string;
+  groupId?: string | number;
+  tags?: string[];
+  test_type?: 'api' | 'e2e';      // 用例记录分类；执行方式由被测设备 device_type 路由，此字段不决定执行方式
+  algorithmType?: string;          // 算法类型（camelCase）
+  config: TestCaseConfig;          // 仅结构性配置（见 4.2）
+  // 独立列，与 config 平级，不内嵌于 config：
+  algorithm_params?: RoundAlgorithmParams[];    // 按轮分组算法参数 → test_cases.algorithm_params
+  reference_params?: RoundReferenceParams[];    // 按轮分组参考参数路径 → test_cases.reference_params
 }
 
-interface AudioConfig {
-  id: string;
-  name: string;
-  duration: number;
-  path: string;
+// 按轮分组的算法参数，对应 test_cases.algorithm_params 列
+interface RoundAlgorithmParams {
+  round_number: number;
+  params: AlgorithmParamItem[];    // { field_code, field_value }，对应后端 AlgorithmParamItem
+}
+
+// 按轮分组的参考参数路径，对应 test_cases.reference_params 列
+interface RoundReferenceParams {
+  round_number: number;
+  reference_params_path: string;
 }
 ```
 
-### 4.2 TestCase config 结构（保存到数据库）
+### 4.2 TestCaseConfig 结构（仅结构性配置，已实施）
 
-> **注**：完整字段映射方案见 [15_完整字段映射方案.md](file:///c:/S2TT/auto_test/ver8/202601292330/doc/功能设计文档/智能语音算法配置适配/15_完整字段映射方案.md)
-> **注**：参考参数功能设计见 [17_参考参数功能设计.md](file:///c:/S2TT/auto_test/ver8/202601292330/doc/功能设计文档/智能语音算法配置适配/17_参考参数功能设计.md)
+`config` 只承载结构性配置；算法参数与参考参数是独立列，**不在 config 中**（后端 `schemas/testcase.py` 的 `TestCaseConfig` 与前端 `TestCaseModal/types.ts` 口径一致）：
 
 ```typescript
 interface TestCaseConfig {
-  algorithm_type: string;          // 算法类型
-  algorithm_params: {              // 算法参数
-    translation_direction?: string;
-    asr_reference_text?: string;
-    sample_rate?: number;
-    model_size?: string;
-    overlap_rate?: number;
-    similarity_threshold?: number;
-    source_language?: string;
-    target_language?: string;
-    confidence_threshold?: number;
-    voice_model?: string;
-    source_text?: string;
-  };
-  // 用例特殊字段（详见15_完整字段映射方案）
-  special_fields: {
-    tag?: string;                 // 分组标签
-    source_lang?: string;         // 源语言
-    target_lang?: string;         // 目标语言
-    translation_direction?: string; // 翻译方向
-  };
-  // 参考参数（详见17_参考参数功能设计）
-  reference_params: {
-    input?: {
-      type: 'text' | 'audio' | 'rttm' | 'stm' | 'mark';
-      code: string;
-      api?: string;
-      e2e?: string;
-    };
-    output?: {
-      type: 'text' | 'audio' | 'rttm' | 'stm' | 'mark';
-      code: string;
-      api?: string;
-      e2e?: string;
-    };
-  };
-  audios: Array<{...}>;
-  dimensions: {
-    api: Array<number>;
-    e2e: Array<number>;
-  };
+  rounds?: RoundConfigItem[];              // 轮次数组（rounds-as-top-level）
+  dimensions?: DimensionConfig[];          // 整体评估维度（多轮聚合）
+  voiceprint_config?: {...};               // 声纹注册配置
+  background_noise?: BackgroundNoiseConfig;// case 级全局背景噪声（优先于轮次级）
+  source_audio?: string;                   // 源音频路径
+  auto_generated?: boolean;                // 是否自动生成
+}
+
+// 单轮配置项仅保留结构性字段，算法参数/参考参数已移至独立列
+interface RoundConfigItem {
+  roundNumber: number;
+  audios: AudioConfig[];                   // { audioId, playbackDeviceId, spl, playOrder }
+  backgroundNoise?: BackgroundNoiseConfig;
+  evaluation?: RoundEvaluationConfig;      // 轮次级评估维度
 }
 ```
 
-### 4.3 用例特殊字段配置（基于15_完整字段映射方案）
+后端对应 `TestCaseListItem`/`TestCaseDetailData` 中 `algorithm_params`、`reference_params`、`algorithm_type` 与 `config` 平级返回。
 
-```typescript
-// 用例在调用算法时传递的特殊字段
-interface TestCaseSpecialFields {
-  // 用例标识
-  case_id: number;
-  case_name: string;
-  
-  // 分组字段（用于聚合计算）
-  tag?: string;                   // 标签分组
-  device_id?: string;             // 设备ID
-  
-  // 算法选择
-  algorithm_type: string;         // 算法类型：asr/translation/tts/speaker_recognition
-  
-  // 语言方向（翻译）
-  source_lang?: string;           // 源语言
-  target_lang?: string;          // 目标语言
-  translation_direction?: string; // 翻译方向：zh2en/en2zh
-}
-```
+### 4.3 用例特殊字段（已废弃，归并说明）
+
+原方案的 `TestCaseSpecialFields`（case_id/case_name/device_id/algorithm_type/source_lang/target_lang 等嵌套于 config）**已废弃**，现状归并方式：
+
+- 用例标识（id/name）、算法类型：均为 `test_cases` 表顶层独立字段，不进 special_fields
+- 分组标签：`tags` 独立字段
+- 语言方向等算法语义字段：作为算法参数项 `{ field_code, field_value }` 存入 `algorithm_params` 独立列，取值范围由 `CaseAlgorithmParam` 与 formSchema 定义
+- 声纹/干扰人等复合配置：在 `CaseForm.vue` 中从 algorithmParams 按-field_code 同步到 `voiceprint_config`、`interferers` 等结构化字段
 
 ---
 
 ## 5. 组件设计
 
-### 5.1 组件结构
+### 5.1 组件结构（已实施）
 
 ```
-TestCaseModal.vue
-├── AlgorithmSelect.vue          # 算法类型选择器（复用）
-├── DynamicForm.vue              # 动态参数表单（复用）
-├── AudioConfigPanel.vue         # 音频配置面板（现有）
-└── DimensionSelect.vue          # 评估维度选择器（改造）
+components/common/test-case/TestCaseModal/
+├── index.vue                    # 弹窗壳，按 mode 分发 group/case/import/export 四类表单
+├── CaseForm.vue                 # 用例表单主体（算法选择 + 轮次配置 + 全局噪声 + 整体维度）
+├── RoundConfigEditor.vue        # 轮次配置编辑器（替换旧的音频/噪声/维度三大区块）
+├── OverallEvaluationEditor.vue  # 整体评估维度编辑器（多轮聚合，config.dimensions）
+├── AudioSelectEditor.vue        # 轮内音频选择编辑器
+├── sections/ReferencePathStep.vue # 参考参数路径步骤（reference_params 独立列）
+├── useDimensionConfig.ts        # 维度加载/过滤/勾选 composable（组件内局部状态）
+└── types.ts                     # rounds-as-top-level 核心类型定义
+
+依赖的上层组件与 composables：
+├── AlgorithmSelector.vue        # 算法类型选择器（components/common/）
+├── composables/useAlgorithmConfig.ts   # 算法选项/case 参数/formSchema（带缓存）
+├── composables/useAlgorithmLabels.ts   # 算法标签回退选项
+├── composables/useDimensions.ts        # fetchAllDimensions / fetchDimensionsByAlgorithmType
+└── store/testCaseStore.ts              # 保存用例与 algorithm_params（testcasesApi）
 ```
 
-### 5.2 核心模板
+### 5.2 核心模板（CaseForm.vue 实际结构摘要）
 
 ```vue
 <template>
-  <el-dialog
-    v-model="visible"
-    :title="isEdit ? '编辑测试用例' : '新建测试用例'"
-    width="800px"
-    @close="handleClose"
-  >
-    <el-form ref="formRef" :model="formData" :rules="formRules" label-width="100px">
-      <!-- 基本信息 -->
-      <el-form-item label="用例名称" prop="name">
-        <el-input v-model="formData.name" placeholder="请输入用例名称" />
-      </el-form-item>
-      
-      <!-- 算法类型选择（新增） -->
-      <el-form-item label="算法类型" prop="algorithm_type">
-        <AlgorithmSelect
-          v-model="formData.algorithm_type"
-          @change="handleAlgorithmChange"
-        />
-      </el-form-item>
-      
-      <el-form-item label="用例描述" prop="description">
-        <el-input
-          v-model="formData.description"
-          type="textarea"
-          :rows="2"
-          placeholder="请输入用例描述"
-        />
-      </el-form-item>
-      
-      <!-- 算法参数配置（新增，动态渲染） -->
-      <el-divider content-position="left">算法参数配置</el-divider>
-      
-      <DynamicForm
-        v-if="formSchema"
-        ref="dynamicFormRef"
-        :schema="formSchema"
-        :initial-values="formData.algorithm_params"
-        @update:model-value="handleParamsChange"
-      />
-      
-      <el-empty v-else description="请先选择算法类型" />
-      
-      <!-- 音频配置（现有功能） -->
-      <el-divider content-position="left">音频配置</el-divider>
-      
-      <AudioConfigPanel
-        v-model="formData.config.audios"
-        :algorithm-type="formData.algorithm_type"
-      />
-      
-      <!-- 评估维度（根据算法类型过滤） -->
-      <el-divider content-position="left">评估维度</el-divider>
-      
-      <DimensionSelect
-        v-model="formData.config.dimensions"
-        :algorithm-type="formData.algorithm_type"
-        :available-dimensions="availableDimensions"
-      />
-    </el-form>
-    
-    <template #footer>
-      <el-button @click="handleClose">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="handleSave">
-        保存
-      </el-button>
-    </template>
-  </el-dialog>
+  <div class="case-form">
+    <!-- 基本信息：用例名称（支持按标签自动生成）/ 所属分组 / 标签（搜索+分页）/ 描述 -->
+
+    <!-- 算法类型选择（单选，show-params=false 时参数由轮次编辑器承载） -->
+    <AlgorithmSelector
+      v-if="!isTestTypeLocked"
+      v-model="localFormData.algorithmType"
+      :initial-params="algorithmParams"
+      :single="true"
+      :show-params="false"
+      @params-change="handleAlgorithmParamsChange"
+      @algorithm-type-change="handleAlgorithmTypeChange"
+    />
+
+    <!-- test_type 切换器（API/E2E，仅用例管理页面显示） -->
+    <!-- 轮次配置编辑器：结构性轮次 + 按轮算法参数 -->
+    <RoundConfigEditor
+      v-model="localFormData.config.rounds"
+      :test-type="localFormData.test_type || 'api'"
+      :case-algorithm-params="caseAlgorithmParams"
+      :algorithm-type="localFormData.algorithmType"
+      :algorithm-form-schema="algorithmFormSchema"
+      :algorithm-params="localFormData.algorithm_params"
+      @update:algorithm-params="handleAlgorithmParamsUpdate"
+    />
+
+    <!-- 全局背景噪声（config.background_noise，跨轮次持续播放，优先于轮次级） -->
+
+    <!-- 整体评估维度（config.dimensions，多轮时显示，按算法类型过滤） -->
+    <OverallEvaluationEditor
+      v-model="localFormData.config.dimensions"
+      :available-dimensions="availableDimensions"
+      :algorithm-type="localFormData.algorithmType"
+    />
+  </div>
 </template>
 ```
+
+> 弹窗外壳由 `index.vue` 提供（teleport + modal-container），底部统一"取消/提交"按钮，不使用 Element UI 的 el-dialog。
 
 ---
 
 ## 6. 核心交互逻辑
 
-### 6.1 算法类型切换
+### 6.1 算法类型切换（已实施）
 
 ```typescript
-const handleAlgorithmChange = async (algorithmType: string) => {
-  if (!algorithmType) {
-    formSchema.value = null;
-    availableDimensions.value = [];
-    return;
+// CaseForm.vue：算法选项与参数定义来自 useAlgorithmConfig（带缓存，Port 编排）
+const { getAlgorithmOptions, getCaseAlgorithmParams: fetchCaseAlgorithmParams } = useAlgorithmConfig();
+const { algorithmOptions: fallbackOptions, loadAlgorithms } = useAlgorithmLabels();
+
+// AlgorithmSelector 选择/切换算法类型时触发
+function handleAlgorithmTypeChange(newType: string) {
+  localFormData.value.algorithmType = newType;
+  // 触发加载该算法的 case_algorithm_params 与 formSchema
+}
+
+// AlgorithmSelector params-change 返回参数定义与表单 schema
+function handleAlgorithmParamsChange(params: any) {
+  algorithmParams.value = params || {};
+  if (params?.caseAlgorithmParams) {
+    caseAlgorithmParams.value = params.caseAlgorithmParams;   // CaseAlgorithmParam 列表
   }
-  
-  try {
-    // 1. 加载算法对应的表单 schema
-    const schema = await algorithmService.getFormSchema(algorithmType);
-    formSchema.value = schema;
-    
-    // 2. 加载默认参数值
-    const defaultParams = await algorithmService.getDefaultParams(algorithmType);
-    formData.value.algorithm_params = defaultParams;
-    
-    // 3. 加载该算法关联的评估维度（通过 AlgorithmDimensionRelation 表）
-    const relations = await algorithmService.getDimensionRelations(algorithmType);
-    // 转换为维度列表
-    const dimensions = relations.map((r: any) => ({
-      id: r.dimension_id,
-      name: r.dimension_name,
-      is_default: r.is_default
-    }));
-    availableDimensions.value = dimensions;
-    
-    // 4. 重置已选维度（只保留关联的）
-    const dimensionIds = dimensions.map(d => d.id);
-    formData.value.config.dimensions.api = formData.value.config.dimensions.api.filter(
-      id => dimensionIds.includes(id)
-    );
-    formData.value.config.dimensions.e2e = formData.value.config.dimensions.e2e.filter(
-      id => dimensionIds.includes(id)
-    );
-    
-  } catch (error) {
-    ElMessage.error('加载算法配置失败: ' + error.message);
+  if (params?.algorithmFormSchema !== undefined) {
+    algorithmFormSchema.value = params.algorithmFormSchema;   // formSchema（camelCase）
   }
-};
+}
 ```
 
-### 6.2 参数变化处理
+评估维度联动：算法类型变化时由 `useDimensionConfig().updateAssociatedDimensions(algorithmType)` 调用 `useDimensions().fetchDimensionsByAlgorithmType()` 刷新关联维度。
+
+### 6.2 参数变化处理（独立列口径，已实施）
 
 ```typescript
-const handleParamsChange = (params: Record<string, any>) => {
-  formData.value.algorithm_params = params;
-  
-  // 参数变化时可以触发一些联动逻辑
-  // 例如：翻译方向变化时，自动设置源语言和目标语言
-  if (params.translation_direction) {
-    const direction = parseTranslationDirection(params.translation_direction);
-    formData.value.algorithm_params.source_language = direction.source;
-    formData.value.algorithm_params.target_language = direction.target;
-  }
-};
+// RoundConfigEditor 内按轮编辑参数，写回独立列（不写入 config）
+function handleAlgorithmParamsUpdate(params: any[]) {
+  localFormData.value.algorithm_params = params;   // [{ round_number, params: [{field_code, field_value}] }]
+}
+
+// 编辑期间兼容：若独立列缺失，从 round.algorithmParams 回退读取（子组件过渡态）
 ```
 
-### 6.3 保存用例
+### 6.3 保存用例（已实施）
 
 ```typescript
-const handleSave = async () => {
-  try {
-    // 1. 验证表单
-    await formRef.value?.validate();
-    
-    // 2. 验证动态表单
-    const dynamicFormValid = await dynamicFormRef.value?.validate();
-    if (!dynamicFormValid) {
-      ElMessage.warning('请完善算法参数配置');
-      return;
-    }
-    
-    // 3. 构建保存数据
-    const saveData: TestCaseFormData = {
-      name: formData.value.name,
-      description: formData.value.description,
-      algorithm_type: formData.value.algorithm_type,
-      algorithm_params: formData.value.algorithm_params,
-      config: {
-        audios: formData.value.config.audios,
-        dimensions: formData.value.config.dimensions,
-        algorithm_type: formData.value.algorithm_type,      // 冗余存储，方便查询
-        algorithm_params: formData.value.algorithm_params   // 冗余存储
-      }
-    };
-    
-    // 4. 调用保存接口
-    saving.value = true;
-    if (isEdit.value) {
-      await testCaseService.update(formData.value.id, saveData);
-    } else {
-      await testCaseService.create(saveData);
-    }
-    
-    ElMessage.success(isEdit.value ? '用例更新成功' : '用例创建成功');
-    emit('success');
-    handleClose();
-    
-  } catch (error) {
-    if (error !== false) {
-      ElMessage.error('保存失败: ' + error.message);
-    }
-  } finally {
-    saving.value = false;
-  }
-};
+// 保存由 testCaseStore 统一编排（Application 层），经 testcasesApi（Infrastructure）提交：
+// - 新建/更新用例：algorithm_params 作为独立参数随用例保存
+// - 批量更新参数：testcasesApi.batchAction('update_algorithm_params', ids, payload)
+// 保存前将参数归一化为 camelCase，避免合并后新旧键共存（algorithmParams vs algorithm_params）
+// 声纹/干扰人参数从 algorithmParams 按 field_code 同步到 voiceprint_config / interferers 结构化字段
 ```
 
-### 6.4 编辑时加载数据
+### 6.4 编辑时加载数据（已实施）
 
 ```typescript
-const loadEditData = async (id: string) => {
-  try {
-    loading.value = true;
-    const testCase = await testCaseService.getDetail(id);
-    
-    formData.value = {
-      id: testCase.id,
-      name: testCase.name,
-      description: testCase.description,
-      algorithm_type: testCase.config?.algorithm_type || '',
-      algorithm_params: testCase.config?.algorithm_params || {},
-      config: {
-        audios: testCase.config?.audios || [],
-        dimensions: testCase.config?.dimensions || { api: [], e2e: [] }
-      }
-    };
-    
-    // 如果有算法类型，加载对应的表单 schema
-    if (formData.value.algorithm_type) {
-      await handleAlgorithmChange(formData.value.algorithm_type);
-    }
-    
-  } catch (error) {
-    ElMessage.error('加载用例数据失败');
-  } finally {
-    loading.value = false;
-  }
-};
+// CaseForm.vue loadEditData 摘要：
+// 1. 算法类型兼容读取：raw.algorithmType || raw.algorithm_type
+// 2. 参数独立列兼容读取：raw.algorithmParams || raw.algorithm_params（按轮分组数组）
+// 3. 从独立列按 round_number 取第一轮 params，作为 AlgorithmSelector 的 initial-params（单轮编辑器）
+// 4. 若有算法类型，联动加载 caseAlgorithmParams / algorithmFormSchema / 关联维度
 ```
 
 ---
@@ -526,48 +398,46 @@ const loadEditData = async (id: string) => {
 
 ## 8. 评估维度联动
 
-### 8.1 维度过滤逻辑
+### 8.1 维度过滤逻辑（已实施，见 useDimensionConfig.ts）
 
 ```typescript
-// 根据算法类型过滤可用维度
-const availableDimensions = computed(() => {
-  if (!formData.value.algorithm_type || !associatedDimensions.value.length) {
-    return allDimensions.value;  // 未选择算法时显示全部
-  }
-  return associatedDimensions.value;
-});
+// TestCaseModal/useDimensionConfig.ts：维度加载与按算法过滤
+const { fetchAllDimensions, fetchDimensionsByAlgorithmType } = useDimensions();
 
-// 加载算法关联的维度（从 AlgorithmDimensionRelation 表获取）
-const loadAssociatedDimensions = async (algorithmType: string) => {
-  try {
-    const response = await algorithmService.getDimensionRelations(algorithmType);
-    // 转换为维度列表
-    associatedDimensions.value = response.map((r: any) => ({
-      id: r.dimension_id,
-      name: r.dimension_name,
-      is_default: r.is_default
-    }));
-  } catch (error) {
-    console.error('加载关联维度失败:', error);
-    associatedDimensions.value = [];
-  }
-};
+async function loadDimensions(algorithmType?: string) {
+  // 有算法类型：按算法关联维度加载；否则全量加载（forceRefresh）
+  const dimensions = algorithmType
+    ? await fetchDimensionsByAlgorithmType(algorithmType)
+    : await fetchAllDimensions({ forceRefresh: true });
+  availableDimensions.value = dedupeByName(dimensions);
+}
+
+async function updateAssociatedDimensions(algorithmType: string) {
+  // 算法关联维度（AlgorithmDimensionRelation），供过滤候选集
+  const dimensions = await fetchDimensionsByAlgorithmType(algorithmType);
+  associatedDimensions.value = dimensions.map(d => ({ id: d.id, name: d.name, weight: 50, is_default: false }));
+}
+
+// 关联维度非空时，候选维度收敛为关联集合
+const filteredAvailableDimensions = computed(() => {
+  if (!associatedDimensions.value.length) return availableDimensions.value;
+  const ids = new Set(associatedDimensions.value.map(d => d.id));
+  return availableDimensions.value.filter(dim => ids.has(dim.id));
+});
 ```
 
-### 8.2 维度默认选择
+### 8.2 维度选择与默认值
 
 ```typescript
-// 选择算法后，自动勾选默认维度
-const selectDefaultDimensions = (dimensions: Dimension[]) => {
-  const defaultIds = dimensions
-    .filter(d => d.is_default)
-    .map(d => d.id);
-  
-  // 合并到已选维度
-  formData.value.config.dimensions.api = [
-    ...new Set([...formData.value.config.dimensions.api, ...defaultIds])
-  ];
-};
+// 勾选/取消维度（DimensionConfig: { id, name, weight, threshold }）
+function toggleDimensionSelection(dimension: Dimension, dimensions: DimensionConfig[]) {
+  const index = dimensions.findIndex(dim => dim.name === dimension.name);
+  if (index > -1) dimensions.splice(index, 1);
+  else dimensions.push({ id: dimension.id, name: dimension.name, weight: 50, threshold: 80 });
+}
+
+// 轮次级维度写入 round.evaluation.dimensions，多轮聚合维度写入 config.dimensions
+// （OverallEvaluationEditor 仅在 rounds.length > 1 时显示）
 ```
 
 ---
@@ -576,139 +446,74 @@ const selectDefaultDimensions = (dimensions: Dimension[]) => {
 
 ### 9.1 基本验证规则
 
-```typescript
-const formRules = {
-  name: [
-    { required: true, message: '请输入用例名称', trigger: 'blur' },
-    { min: 2, max: 100, message: '名称长度在 2 到 100 个字符', trigger: 'blur' }
-  ],
-  algorithm_type: [
-    { required: true, message: '请选择算法类型', trigger: 'change' }
-  ]
-};
-```
+用例名称、所属分组为必填（原生表单 `required` 校验 + 提交前检查）；算法类型为可选（不选则不渲染参数编辑区）。
 
 ### 9.2 动态验证
 
-```typescript
-// 根据算法类型动态添加验证规则
-const getDynamicRules = (schema: FormSchema) => {
-  const rules: Record<string, any[]> = {};
-  
-  for (const field of schema.fields) {
-    if (field.required) {
-      rules[field.fieldCode] = [
-        {
-          required: true,
-          message: `请${field.component === 'select' ? '选择' : '输入'}${field.fieldName}`,
-          trigger: field.component === 'select' ? 'change' : 'blur'
-        }
-      ];
-    }
-    
-    // 添加自定义验证
-    if (field.validation) {
-      rules[field.fieldCode] = rules[field.fieldCode] || [];
-      
-      if (field.validation.pattern) {
-        rules[field.fieldCode].push({
-          pattern: new RegExp(field.validation.pattern),
-          message: field.validation.patternMessage || `${field.fieldName}格式不正确`,
-          trigger: 'blur'
-        });
-      }
-      
-      if (field.validation.min !== undefined || field.validation.max !== undefined) {
-        rules[field.fieldCode].push({
-          validator: (rule: any, value: any, callback: any) => {
-            if (field.validation.min !== undefined && value < field.validation.min) {
-              callback(new Error(`${field.fieldName}不能小于${field.validation.min}`));
-            } else if (field.validation.max !== undefined && value > field.validation.max) {
-              callback(new Error(`${field.fieldName}不能大于${field.validation.max}`));
-            } else {
-              callback();
-            }
-          },
-          trigger: 'change'
-        });
-      }
-    }
-  }
-  
-  return rules;
-};
-```
+动态参数验证由配置驱动，不硬编码规则：
+
+- `formSchema` 字段的 `required` 标记必填项（fieldCode/fieldName/component 均为 camelCase）
+- `CaseAlgorithmParam` 的 `min_value`/`max_value`/`step` 约束数值范围，经统一 camelCase 转换后为 `minValue`/`maxValue`/`step`
+- 早期方案中的 `field.validation.pattern` 结构已废弃——formSchema 字段不含 validation 嵌套对象，范围约束统一由 CaseAlgorithmParam 承载
 
 ---
 
 ## 10. 状态管理
 
-### 10.1 组件状态
+### 10.1 状态归属（已实施）
+
+| 状态 | 归属层 | 说明 |
+|------|--------|------|
+| `localFormData`（TestCaseFormData） | Presentation（CaseForm.vue） | 表单编辑态，含 config、algorithmType、algorithm_params 独立列 |
+| `algorithmParams` / `caseAlgorithmParams` / `algorithmFormSchema` | Presentation（CaseForm.vue） | 算法参数定义与 schema，来自 useAlgorithmConfig |
+| `availableDimensions` / `associatedDimensions` | Presentation（useDimensionConfig.ts） | 维度候选集与关联集 |
+| 用例列表、保存/批量动作 | Application（testCaseStore.ts） | 编排 testcasesApi，缓存 ReadModel，保存前归一化 camelCase |
+| 算法选项/参数/formSchema 缓存 | Application（useAlgorithmConfig.ts） | formSchemas Map + caseParamCache 缓存 |
+
+### 10.2 初始状态（已实施）
 
 ```typescript
-interface TestCaseModalState {
-  visible: boolean;
-  loading: boolean;
-  saving: boolean;
-  isEdit: boolean;
-  formData: TestCaseFormData;
-  formSchema: FormSchema | null;
-  availableDimensions: Dimension[];
-  associatedDimensions: Dimension[];
+// CaseForm.vue createEmptyFormData 摘要
+{
+  name: '',
+  description: '',
+  group: '',
+  tags: [],
+  test_type: 'api',
+  algorithmType: '',
+  config: { rounds: [], dimensions: [] },
+  algorithm_params: [],   // 独立列，初始为空数组（按轮分组）
+  reference_params: []    // 独立列，初始为空数组（按轮分组）
 }
-```
-
-### 10.2 初始化状态
-
-```typescript
-const initialState: TestCaseModalState = {
-  visible: false,
-  loading: false,
-  saving: false,
-  isEdit: false,
-  formData: {
-    name: '',
-    description: '',
-    algorithm_type: '',
-    algorithm_params: {},
-    config: {
-      audios: [],
-      dimensions: { api: [], e2e: [] }
-    }
-  },
-  formSchema: null,
-  availableDimensions: [],
-  associatedDimensions: []
-};
 ```
 
 ---
 
-## 11. 实施清单
+## 11. 实施清单（已完成）
 
 ### 11.1 后端实施
 
-- [ ] TestCase 模型增加 algorithm_type 字段（可选，从 config 读取）
-- [ ] 修改 TestCaseService 支持算法参数保存
-- [ ] 新增接口：获取算法关联的评估维度
+- [x] TestCase 顶层 `algorithm_type` 字段与 `algorithm_params`/`reference_params` 独立列（`schemas/testcase.py`：与 config 平级，algorithm_params 按轮分组）
+- [x] 用例保存/批量更新支持算法参数（`testcasesApi.batchAction('update_algorithm_params', ids, payload)` 对应后端批量接口）
+- [x] 算法关联评估维度接口（`GET /api/v1/algorithm/dimensions/:type`，AlgorithmDimensionRelation）
 
 ### 11.2 前端实施
 
-- [ ] 改造 TestCaseModal.vue 组件
-- [ ] 集成 AlgorithmSelect 组件
-- [ ] 集成 DynamicForm 组件
-- [ ] 改造 DimensionSelect 组件（支持算法过滤）
-- [ ] 添加算法类型切换逻辑
-- [ ] 添加参数联动逻辑
-- [ ] 添加表单验证
+- [x] 组件化为 `TestCaseModal/` 目录（index.vue + CaseForm.vue + RoundConfigEditor.vue + OverallEvaluationEditor.vue + useDimensionConfig.ts + types.ts）
+- [x] 集成 AlgorithmSelector 组件（components/common/AlgorithmSelector.vue，单选模式）
+- [x] 按轮参数编辑：RoundConfigEditor 接收 caseAlgorithmParams/algorithmFormSchema/algorithmParams，写回 algorithm_params 独立列
+- [x] 维度按算法过滤：useDimensions.fetchDimensionsByAlgorithmType + useDimensionConfig
+- [x] 保存编排：testCaseStore（Application 层）+ testcasesApi（Infrastructure 层），保存前归一化 camelCase
+- [x] 参考参数路径：sections/ReferencePathStep.vue（reference_params 独立列）
+- [x] 编辑回填：独立列兼容读取（algorithmParams || algorithm_params）+ 首轮参数作为 AlgorithmSelector 初始值
 
 ### 11.3 测试验证
 
-- [ ] 新建用例 - 选择算法类型
-- [ ] 新建用例 - 填写动态参数
-- [ ] 新建用例 - 保存验证
-- [ ] 编辑用例 - 加载已有数据
-- [ ] 编辑用例 - 修改算法类型
-- [ ] 编辑用例 - 更新参数
-- [ ] 复制用例 - 算法参数复制
-- [ ] 不同算法类型切换测试
+- [x] 新建用例 - 选择算法类型
+- [x] 新建用例 - 按轮填写动态参数（写入独立列）
+- [x] 新建用例 - 保存验证（algorithm_params 独立提交）
+- [x] 编辑用例 - 加载数据（独立列回填 + 首轮参数回显）
+- [x] 编辑用例 - 修改算法类型（schema/关联维度联动刷新）
+- [x] 编辑用例 - 更新参数（按轮独立列更新）
+- [x] 复制用例 - 算法参数复制
+- [x] 不同算法类型切换测试

@@ -6,13 +6,20 @@ from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from config.config import Config
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 
 # 日志目录路径
 LOG_DEVICE_PATH = "/data/app/el2/100/base/com.huawei.hmos.vassistant/haps/voice_pc/files/log"
 
 
+@register_driver
 class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
     """鸿蒙harden小艺慧记驱动"""
+
+    app_type = AppType.XIAOYI_HUIJI
+    version = AppVersion.V1
+    platform = DevicePlatform.HARMONYOS
 
     def is_locked(self, device_sn):
         """

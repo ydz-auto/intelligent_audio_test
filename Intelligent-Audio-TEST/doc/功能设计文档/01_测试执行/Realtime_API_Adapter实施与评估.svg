@@ -1,0 +1,316 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowViolet); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-green-s { stroke: #16a34a; stroke-width: 1.4; fill: none; marker-end: url(#arrowGreen); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .mono { font-family: Consolas, 'Courier New', monospace; font-size: 10px; font-weight: 600; }
+      .mono-s { font-family: Consolas, 'Courier New', monospace; font-size: 9px; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">Realtime API Adapter 实施与评估 · 图谱</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">事件归一化映射 · 三种测试模式对比 · 评估维度（xiaoyi_metrics）· 废弃清单与实施阶段 · 依据设计文档绘制</text>
+
+  <!-- ① 事件归一化映射 -->
+  <rect x="24" y="92" width="1192" height="380" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="111" r="11" fill="#7c3aed"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#4c1d95">事件归一化映射 — OpenAI 原始事件 → _parse_event（mapping 字典）→ 归一化事件 → 消费逻辑</text>
+
+  <rect x="44" y="150" width="340" height="292" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="64" y="170" font-size="10.5" font-weight="700" fill="#4c1d95">OpenAI 原始事件</text>
+  <text x="64" y="197" class="mono" fill="#7c3aed">response.audio.delta</text>
+  <text x="64" y="233" class="mono" fill="#7c3aed">response.audio.done /</text>
+  <text x="76" y="249" class="mono" fill="#7c3aed">response.done</text>
+  <text x="64" y="285" class="mono" fill="#7c3aed">input_audio_buffer.</text>
+  <text x="76" y="301" class="mono" fill="#7c3aed">speech_started</text>
+  <text x="64" y="337" class="mono" fill="#7c3aed">input_audio_buffer.</text>
+  <text x="76" y="353" class="mono" fill="#7c3aed">speech_stopped</text>
+  <text x="64" y="389" class="mono" fill="#7c3aed">response.cancelled</text>
+  <text x="64" y="425" class="mono" fill="#dc2626">error</text>
+
+  <line x1="384" y1="312" x2="404" y2="312" class="flow"/>
+  <rect x="404" y="290" width="150" height="44" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.4"/>
+  <text x="479" y="307" class="pill-t" fill="#5b21b6">_parse_event()</text>
+  <text x="479" y="323" class="chip-t" fill="#5b21b6">mapping 字典</text>
+  <line x1="554" y1="312" x2="574" y2="312" class="flow-violet"/>
+
+  <rect x="574" y="150" width="622" height="292" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="594" y="170" font-size="10.5" font-weight="700" fill="#4c1d95">归一化事件 → 消费逻辑</text>
+  <text x="594" y="197" class="mono" fill="#0891b2">ai_audio_delta</text>
+  <text x="764" y="197" class="box-desc">ai_audio 累积 PCM · 首帧记 first_frame_ms</text>
+  <text x="594" y="233" class="mono" fill="#0891b2">ai_audio_done</text>
+  <text x="764" y="233" class="box-desc">AI_DONE 信号 → round_result 采集</text>
+  <text x="594" y="269" class="mono" fill="#0891b2">user_speech_started</text>
+  <text x="764" y="269" class="box-desc">触发 5s 打断检测窗口</text>
+  <text x="594" y="305" class="mono" fill="#0891b2">user_speech_stopped</text>
+  <text x="764" y="305" class="box-desc">用户说完 · ASR 上下文</text>
+  <text x="594" y="341" class="mono" fill="#0891b2">response_cancelled</text>
+  <text x="764" y="341" class="box-desc">打断确认 → stop_rate 统计</text>
+  <text x="594" y="377" class="mono" fill="#dc2626">error</text>
+  <text x="764" y="377" class="box-desc">异常路径 → round_result(success=False)</text>
+  <text x="594" y="413" class="mono" fill="#94a3b8">session.created / updated</text>
+  <text x="764" y="413" class="box-desc">透传 · 会话配置确认 · 未知事件 → raw</text>
+  <text x="1196" y="434" class="note" text-anchor="end">消费方：RealtimeSessionExecutor / 评估采集</text>
+
+  <!-- ② 三种测试模式对比 -->
+  <rect x="24" y="488" width="1192" height="380" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="488" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="514" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="507" r="11" fill="#f59e0b"/>
+  <text x="46" y="511" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="512" class="sec-title" fill="#92400e">三种测试模式对比 — E2E 设备测试 / HTTP API 测试 / Realtime API 测试（9 维度）</text>
+
+  <text x="64" y="540" class="lbl" fill="#1e293b">维度</text>
+  <text x="230" y="540" class="lbl" fill="#b45309">E2E 设备测试</text>
+  <text x="556" y="540" class="lbl" fill="#166534">HTTP API 测试</text>
+  <text x="882" y="540" class="lbl" fill="#5b21b6">Realtime API 测试</text>
+  <line x1="44" y1="552" x2="1196" y2="552" stroke="#d6d3d1" stroke-width="1.2"/>
+  <line x1="214" y1="534" x2="214" y2="800" stroke="#e7e5e4" stroke-width="1"/>
+  <line x1="540" y1="534" x2="540" y2="800" stroke="#e7e5e4" stroke-width="1"/>
+  <line x1="866" y1="534" x2="866" y2="800" stroke="#e7e5e4" stroke-width="1"/>
+
+  <text x="64" y="570" class="body" font-weight="600">传输</text>
+  <text x="230" y="570" class="body">物理播放 + PCM 抓取</text>
+  <text x="556" y="570" class="body">HTTP 请求 / 响应</text>
+  <text x="882" y="570" class="body">WebSocket 全双工流</text>
+
+  <text x="64" y="597" class="body" font-weight="600">音频</text>
+  <text x="230" y="597" class="body">文件级</text>
+  <text x="556" y="597" class="body">文件级</text>
+  <text x="882" y="597" class="body">100ms chunk 流式</text>
+
+  <text x="64" y="624" class="body" font-weight="600">AI 说话检测</text>
+  <text x="230" y="624" class="body">PCM RMS 轮询</text>
+  <text x="556" y="624" class="body" fill="#94a3b8">无需检测</text>
+  <text x="882" y="624" class="body">API 事件驱动</text>
+
+  <text x="64" y="651" class="body" font-weight="600">打断检测</text>
+  <text x="230" y="651" class="body">RMS + sleep 延迟</text>
+  <text x="556" y="651" class="body" fill="#dc2626">不支持</text>
+  <text x="882" y="651" class="body">speech_started / cancelled</text>
+
+  <text x="64" y="678" class="body" font-weight="600">多轮</text>
+  <text x="230" y="678" class="body">case 模式连续通话</text>
+  <text x="556" y="678" class="body">HTTP 会话 ID</text>
+  <text x="882" y="678" class="body">同一 WebSocket 连接</text>
+
+  <text x="64" y="705" class="body" font-weight="600">噪声 / 干扰</text>
+  <text x="230" y="705" class="body">物理音箱播放</text>
+  <text x="556" y="705" class="body" fill="#dc2626">不支持</text>
+  <text x="882" y="705" class="body">混音后流式推送</text>
+
+  <text x="64" y="732" class="body" font-weight="600">延迟测量</text>
+  <text x="230" y="732" class="body">录屏首帧 + 时间戳</text>
+  <text x="556" y="732" class="body">HTTP 响应时间</text>
+  <text x="882" y="732" class="body">事件时间戳精确到 ms</text>
+
+  <text x="64" y="759" class="body" font-weight="600">适配层</text>
+  <text x="230" y="759" class="body">device_driver</text>
+  <text x="556" y="759" class="body">HttpAPIAdapter</text>
+  <text x="882" y="759" class="body">RealtimeAPIAdapter</text>
+
+  <text x="64" y="786" class="body" font-weight="600">执行器</text>
+  <text x="230" y="786" class="body">E2EExecutor</text>
+  <text x="556" y="786" class="body">APISessionExecutor</text>
+  <text x="882" y="786" class="body">RealtimeSessionExecutor</text>
+
+  <!-- ③ 评估维度 -->
+  <rect x="24" y="884" width="1192" height="532" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="884" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="910" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="903" r="11" fill="#3b82f6"/>
+  <text x="46" y="907" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="908" class="sec-title" fill="#1e3a8a">评估维度 — adapter/executor 只采集数据，xiaoyi_metrics 独立计算（12 task_type → Calculator）</text>
+
+  <rect x="40" y="928" width="1160" height="88" rx="8" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.2"/>
+  <text x="60" y="946" font-size="10.5" font-weight="700" fill="#1e3a8a">采集字段（9 个 · 来源与消费维度见设计文档 10.1）</text>
+  <rect x="60" y="958" width="92" height="34" rx="17" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="106" y="979" class="mono-s" fill="#1e3a8a" text-anchor="middle">user_wav</text>
+  <rect x="160" y="958" width="80" height="34" rx="17" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="200" y="979" class="mono-s" fill="#1e3a8a" text-anchor="middle">ai_wav</text>
+  <rect x="248" y="958" width="90" height="34" rx="17" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="293" y="979" class="mono-s" fill="#1e3a8a" text-anchor="middle">start_ms</text>
+  <rect x="346" y="958" width="82" height="34" rx="17" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="387" y="979" class="mono-s" fill="#1e3a8a" text-anchor="middle">end_ms</text>
+  <rect x="436" y="958" width="150" height="34" rx="17" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <text x="511" y="979" class="mono-s" fill="#92400e" text-anchor="middle">first_frame_ms</text>
+  <rect x="600" y="958" width="80" height="34" rx="17" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="640" y="979" class="mono-s" fill="#1e3a8a" text-anchor="middle">rounds</text>
+  <rect x="688" y="958" width="130" height="34" rx="17" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="753" y="979" class="mono-s" fill="#1e3a8a" text-anchor="middle">round_number</text>
+  <rect x="826" y="958" width="140" height="34" rx="17" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="896" y="979" class="mono-s" fill="#1e3a8a" text-anchor="middle">original_topic</text>
+  <rect x="974" y="958" width="100" height="34" rx="17" fill="#dbeafe" stroke="#3b82f6" stroke-width="1"/>
+  <text x="1024" y="979" class="mono-s" fill="#1e3a8a" text-anchor="middle">event_log</text>
+  <text x="60" y="1008" class="note">user_wav：正常轮=主讲人 / 打断轮=打断人 · ai_wav：adapter.ai_audio PCM→wav · first_frame_ms：commit→首个 ai_audio_delta · round_number 有值=单轮评估，无值=多轮整体 · event_log 供 barge-in 分析</text>
+
+  <rect x="40" y="1024" width="1160" height="204" rx="8" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.2"/>
+  <text x="60" y="1042" font-size="10.5" font-weight="700" fill="#1e3a8a">评估维度全览（task_type → Calculator）</text>
+
+  <rect x="56" y="1058" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="70" y="1076" class="mono" fill="#0f172a">turn_taking</text>
+  <text x="70" y="1092" class="box-desc">TurnTakingCalculator · 正常轮</text>
+  <rect x="342" y="1058" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="356" y="1076" class="mono" fill="#0f172a">tor</text>
+  <text x="356" y="1092" class="box-desc">TorCalculator · 接话率</text>
+  <rect x="628" y="1058" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="642" y="1076" class="mono" fill="#0f172a">false_takeover</text>
+  <text x="642" y="1092" class="box-desc">FalseTakeoverCalculator · 误接管</text>
+  <rect x="914" y="1058" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="928" y="1076" class="mono" fill="#0f172a">takeover_latency</text>
+  <text x="928" y="1092" class="box-desc">接管时延 · AI 首字-用户末字</text>
+
+  <rect x="56" y="1110" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="70" y="1128" class="mono" fill="#0f172a">high_freq_turn_taking</text>
+  <text x="70" y="1144" class="box-desc">多轮回复时延 · 飞花令/成语接龙</text>
+  <rect x="342" y="1110" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="356" y="1128" class="mono" fill="#0f172a">high_freq_llm_judge</text>
+  <text x="356" y="1144" class="box-desc">LLM 裁判 · 逐轮 pass/fail</text>
+  <rect x="628" y="1110" width="278" height="46" rx="8" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.4"/>
+  <text x="642" y="1128" class="mono" fill="#5b21b6">interruption_metrics ★</text>
+  <text x="642" y="1144" class="box-desc" fill="#5b21b6">打断时序指标 · 打断轮</text>
+  <rect x="914" y="1110" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="928" y="1128" class="mono" fill="#0f172a">non_interactive_latency</text>
+  <text x="928" y="1144" class="box-desc">非交互意图时延 · 正常轮</text>
+
+  <rect x="56" y="1162" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="70" y="1180" class="mono" fill="#0f172a">noise_latency</text>
+  <text x="70" y="1196" class="box-desc">噪声打断时延 · 背景噪声轮</text>
+  <rect x="342" y="1162" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="356" y="1180" class="mono" fill="#0f172a">rejection_judge</text>
+  <text x="356" y="1196" class="box-desc">拒识四分类 · 干扰人轮</text>
+  <rect x="628" y="1162" width="278" height="46" rx="8" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.4"/>
+  <text x="642" y="1180" class="mono" fill="#5b21b6">interruption_judge ★</text>
+  <text x="642" y="1196" class="box-desc" fill="#5b21b6">打断四分类 · 打断轮</text>
+  <rect x="914" y="1162" width="278" height="46" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.1"/>
+  <text x="928" y="1180" class="mono" fill="#0f172a">llm_judge</text>
+  <text x="928" y="1196" class="box-desc">通用 LLM 语义打分 · 所有轮</text>
+
+  <rect x="40" y="1236" width="1160" height="168" rx="8" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.2"/>
+  <text x="60" y="1254" font-size="10.5" font-weight="700" fill="#1e3a8a">打断维度入参 / 出参（Realtime 重点适配）</text>
+  <rect x="56" y="1266" width="520" height="126" rx="8" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="70" y="1282" class="lbl" fill="#1e3a8a">interruption_metrics 入参</text>
+  <text x="70" y="1302" class="mono-s" fill="#334155">user_wav</text>
+  <text x="160" y="1302" class="note">打断人音频 → 转 wav（与 ai_wav 二选一）</text>
+  <text x="70" y="1322" class="mono-s" fill="#334155">ai_wav</text>
+  <text x="160" y="1322" class="note">adapter.ai_audio PCM → 转 wav</text>
+  <text x="70" y="1342" class="mono-s" fill="#334155">user_asr / model_asr</text>
+  <text x="160" y="1342" class="note">可选 · 事件日志中的 ASR 结果</text>
+  <text x="70" y="1362" class="mono-s" fill="#334155">enable_llm_eval</text>
+  <text x="160" y="1362" class="note">默认 True</text>
+  <text x="70" y="1382" class="mono-s" fill="#334155">original_topic</text>
+  <text x="160" y="1382" class="note">case_config 中配置（打断前话题）</text>
+  <rect x="596" y="1266" width="580" height="126" rx="8" fill="#faf5ff" stroke="#e9d5ff" stroke-width="1"/>
+  <text x="610" y="1282" class="lbl" fill="#4c1d95">出参（事件聚合）+ interruption_judge</text>
+  <text x="610" y="1302" class="mono-s" fill="#5b21b6">interruption_success_rate</text>
+  <text x="830" y="1302" class="note">barge_in_detected 聚合 · stop_rate ← response_cancelled · resume_rate ← delta 重现</text>
+  <text x="610" y="1322" class="mono-s" fill="#5b21b6">avg_stop_latency_s</text>
+  <text x="830" y="1322" class="note">speech_started → response_cancelled</text>
+  <text x="610" y="1342" class="mono-s" fill="#5b21b6">avg_recovery_latency_s</text>
+  <text x="830" y="1342" class="note">response_cancelled → 新 ai_audio_delta</text>
+  <text x="610" y="1362" class="mono-s" fill="#5b21b6">avg_overlap_s · n_events · per_event</text>
+  <text x="830" y="1362" class="note">双方同时说话 / 有效事件数 / 每轮 round_result</text>
+  <text x="610" y="1382" class="mono-s" fill="#5b21b6">behavior 四分类</text>
+  <text x="830" y="1382" class="note">回应 / 恢复 / 不确定询问 / 未知 · behavior_respond / behavior_recover</text>
+
+  <!-- ④ 废弃清单 + 实施阶段 -->
+  <rect x="24" y="1432" width="1192" height="488" rx="10" fill="#fef2f2" stroke="#f87171" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1432" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1458" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1451" r="11" fill="#dc2626"/>
+  <text x="46" y="1455" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="1456" class="sec-title" fill="#7f1d1d">废弃清单（8 项）与实施阶段（3 阶段）— 先新建 adapter 体系，再迁移消费方，最后下线微服务</text>
+
+  <rect x="40" y="1480" width="580" height="352" rx="8" fill="#ffffff" stroke="#fecaca" stroke-width="1.2"/>
+  <text x="60" y="1500" font-size="10.5" font-weight="700" fill="#b91c1c">废弃清单 · 随阶段 2 执行删除</text>
+  <rect x="60" y="1510" width="540" height="30" rx="6" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <text x="72" y="1529" class="mono-s" fill="#b91c1c">api_driver.py · APIDriver</text>
+  <text x="300" y="1529" class="note" fill="#7f1d1d">被 adapter 体系替代</text>
+  <rect x="60" y="1546" width="540" height="30" rx="6" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <text x="72" y="1565" class="mono-s" fill="#b91c1c">api_task_runner.py · APITaskRunner</text>
+  <text x="300" y="1565" class="note" fill="#7f1d1d">6 步轮询被 SessionExecutor 统一</text>
+  <rect x="60" y="1582" width="540" height="30" rx="6" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <text x="72" y="1601" class="mono-s" fill="#b91c1c">_execute_linear()</text>
+  <text x="300" y="1601" class="note" fill="#7f1d1d">单轮 = rounds[1] 特例</text>
+  <rect x="60" y="1618" width="540" height="30" rx="6" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <text x="72" y="1637" class="mono-s" fill="#b91c1c">_run_single_api()</text>
+  <text x="300" y="1637" class="note" fill="#7f1d1d">同上</text>
+  <rect x="60" y="1654" width="540" height="30" rx="6" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <text x="72" y="1673" class="mono-s" fill="#b91c1c">_send_via_adapter()</text>
+  <text x="300" y="1673" class="note" fill="#7f1d1d">adapter 微服务废弃</text>
+  <rect x="60" y="1690" width="540" height="30" rx="6" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <text x="72" y="1709" class="mono-s" fill="#b91c1c">_send_direct()</text>
+  <text x="300" y="1709" class="note" fill="#7f1d1d">改用 adapter.send()</text>
+  <rect x="60" y="1726" width="540" height="30" rx="6" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <text x="72" y="1745" class="mono-s" fill="#b91c1c">adapter_base_url</text>
+  <text x="300" y="1745" class="note" fill="#7f1d1d">同上</text>
+  <rect x="60" y="1762" width="540" height="30" rx="6" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <text x="72" y="1781" class="mono-s" fill="#b91c1c">config api_adapter.base_url</text>
+  <text x="300" y="1781" class="note" fill="#7f1d1d">同上</text>
+
+  <rect x="644" y="1480" width="556" height="352" rx="8" fill="#ffffff" stroke="#bbf7d0" stroke-width="1.2"/>
+  <text x="664" y="1500" font-size="10.5" font-weight="700" fill="#166534">实施阶段</text>
+  <rect x="664" y="1510" width="516" height="108" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.2"/>
+  <rect x="672" y="1518" width="46" height="18" rx="9" fill="#22c55e"/>
+  <text x="695" y="1531" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">P0</text>
+  <text x="728" y="1531" font-size="10.5" font-weight="700" fill="#166534">阶段 1 · 新建 adapter 体系 + Realtime 执行器</text>
+  <text x="676" y="1552" class="mono-s" fill="#166534">base_api_adapter.py</text>
+  <text x="676" y="1568" class="mono-s" fill="#166534">http_api_adapter.py</text>
+  <text x="676" y="1584" class="mono-s" fill="#166534">realtime_api_adapter.py</text>
+  <text x="676" y="1600" class="mono-s" fill="#166534">openai_realtime_adapter.py</text>
+  <text x="940" y="1552" class="mono-s" fill="#166534">api_adapter_factory.py</text>
+  <text x="940" y="1568" class="mono-s" fill="#166534">audio_stream_orchestrator.py</text>
+  <text x="940" y="1584" class="mono-s" fill="#166534">realtime_session_executor.py</text>
+  <text x="940" y="1600" class="mono-s" fill="#166534">api_executor.py（路由分发）</text>
+  <line x1="922" y1="1618" x2="922" y2="1634" class="flow-green-s"/>
+
+  <rect x="664" y="1634" width="516" height="96" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.2"/>
+  <rect x="672" y="1642" width="46" height="18" rx="9" fill="#22c55e"/>
+  <text x="695" y="1655" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">P0</text>
+  <text x="728" y="1655" font-size="10.5" font-weight="700" fill="#166534">阶段 2 · 消费方迁移 + 废弃删除</text>
+  <text x="676" y="1678" class="body">· api_session_executor.py 改用 HttpAPIAdapter</text>
+  <text x="676" y="1694" class="body">· api_executor.py 删除 _execute_linear / _run_single_api</text>
+  <text x="676" y="1710" class="body">· 删除 api_task_runner.py · 删除 api_driver.py</text>
+  <line x1="922" y1="1730" x2="922" y2="1746" class="flow-green-s"/>
+
+  <rect x="664" y="1746" width="516" height="64" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1.2"/>
+  <rect x="672" y="1754" width="46" height="18" rx="9" fill="#94a3b8"/>
+  <text x="695" y="1767" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">P3</text>
+  <text x="728" y="1767" font-size="10.5" font-weight="700" fill="#166534">阶段 3 · adapter 微服务下线</text>
+  <text x="676" y="1792" class="body">删除 adapter_base_url 配置 + 微服务部署下线</text>
+  <text x="920" y="1824" class="note" text-anchor="end">P0 = 当前版本必须完成 · P3 = 排期下放</text>
+</svg>

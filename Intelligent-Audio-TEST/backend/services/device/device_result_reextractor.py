@@ -123,7 +123,7 @@ def _extract_device_output_from_archive(device, task_id, test_case_id, device_sn
         logger.info(
             f"开始从存档提取设备输出: device_system={device_system}, device_keywords={device_keywords}, device_sn={device_sn}")
 
-        driver = device_driver_factory.get_driver(device_system, keywords=device_keywords)
+        driver = device_driver_factory.get_driver_for_device(device_system, keywords=device_keywords)
         if not driver:
             logger.error(f"无法获取设备驱动: system={device_system}, keywords={device_keywords}")
             return [{
@@ -224,7 +224,7 @@ class DeviceResultReextractor:
         device_map = {d.id: d for d in task_devices}
         reextractable = {}
         for d_id, d in device_map.items():
-            driver = device_driver_factory.get_driver(d.system or '', keywords=d.keywords)
+            driver = device_driver_factory.get_driver_for_device(d.system or '', keywords=d.keywords)
             if driver and hasattr(driver, 'extract_results_from_archive'):
                 reextractable[d_id] = d
             else:

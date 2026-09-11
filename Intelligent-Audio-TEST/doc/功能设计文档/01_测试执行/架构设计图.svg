@@ -1,0 +1,312 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1900" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1900" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">API 测试执行 · 架构设计图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">ExecutionEngine 核心调度 → APIAdapterFactory 工厂 → BaseAPIAdapter 适配器类体系 · 与 device_driver 对称 · v3.1</text>
+
+  <!-- ① 编排层 ExecutionEngine -->
+  <rect x="24" y="92" width="1192" height="200" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="111" r="11" fill="#3b82f6"/>
+  <text x="46" y="115" class="num-badge">1</text>
+  <text x="66" y="116" class="sec-title" fill="#1e3a8a">编排层 — ExecutionEngine._run_task() 直接路由到各执行器</text>
+
+  <text x="48" y="150" class="body">遍历 TaskCase → 查关联的被测设备 → 按 device_type 直接路由到对应 executor，同一 Task 内可混跑 E2E + API + Realtime</text>
+
+  <!-- Three executor targets -->
+  <rect x="48" y="166" width="340" height="60" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <rect x="48" y="166" width="6" height="60" rx="3" fill="#7c3aed"/>
+  <text x="66" y="186" class="box-name">E2EExecutor</text>
+  <text x="66" y="202" class="box-desc">物理设备采集 + PCM 录音 + PyAudio 实时混音</text>
+  <text x="66" y="216" class="note">device_type = 'physical'</text>
+
+  <rect x="408" y="166" width="420" height="60" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <rect x="408" y="166" width="6" height="60" rx="3" fill="#2563eb"/>
+  <text x="426" y="186" class="box-name">APISessionExecutor</text>
+  <text x="426" y="202" class="box-desc">stream=False → HttpAPIAdapter (非实时同步)</text>
+  <text x="426" y="216" class="box-desc">stream=True → HttpStreamAdapter (SSE 流式) · device_type = 'http_api'</text>
+
+  <rect x="848" y="166" width="340" height="60" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <rect x="848" y="166" width="6" height="60" rx="3" fill="#dc2626"/>
+  <text x="866" y="186" class="box-name">RealtimeSessionExecutor</text>
+  <text x="866" y="202" class="box-desc">WebSocket 全双工 chunk 双向流 + 事件驱动状态机</text>
+  <text x="866" y="216" class="note">device_type = 'websocket_api'</text>
+
+  <!-- ExecutionEngine direct routing arrows -->
+  <path d="M 618 140 L 218 140 L 218 166" class="flow-blue"/>
+  <path d="M 618 140 L 618 166" class="flow-blue"/>
+  <path d="M 618 140 L 1018 140 L 1018 166" class="flow-blue"/>
+
+  <!-- Deprecated note -->
+  <rect x="48" y="255" width="1144" height="26" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="620" y="272" text-anchor="middle" font-size="10px" fill="#dc2626">废弃: APIExecutor 路由层 · _execute_linear() · APITaskRunner (6步轮询) · task.type 字段 · adapter 微服务 (localhost:8000)</text>
+
+  <!-- ② 工厂层 APIAdapterFactory -->
+  <rect x="24" y="308" width="1192" height="120" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="308" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="334" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="327" r="11" fill="#f59e0b"/>
+  <text x="46" y="331" class="num-badge">2</text>
+  <text x="66" y="332" class="sec-title" fill="#92400e">工厂层 — APIAdapterFactory.get_adapter(api_config, case_config)</text>
+
+  <rect x="48" y="360" width="360" height="40" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="228" y="375" text-anchor="middle" class="box-name" fill="#92400e">protocol='http' + !stream</text>
+  <text x="228" y="390" text-anchor="middle" class="box-desc">→ HttpAPIAdapter 子类</text>
+
+  <rect x="428" y="360" width="360" height="40" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="608" y="375" text-anchor="middle" class="box-name" fill="#92400e">protocol='http' + stream</text>
+  <text x="608" y="390" text-anchor="middle" class="box-desc">→ HttpStreamAdapter 子类</text>
+
+  <rect x="808" y="360" width="380" height="40" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="998" y="375" text-anchor="middle" class="box-name" fill="#92400e">protocol='websocket'</text>
+  <text x="998" y="390" text-anchor="middle" class="box-desc">→ RealtimeAPIAdapter 子类</text>
+
+  <!-- Arrows to adapter hierarchy -->
+  <path d="M 228 400 L 228 430" class="flow-amber"/>
+  <path d="M 608 400 L 608 430" class="flow-amber"/>
+  <path d="M 998 400 L 998 430" class="flow-amber"/>
+
+  <!-- ③ 适配器类体系 -->
+  <rect x="24" y="438" width="1192" height="560" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="438" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="464" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="457" r="11" fill="#16a34a"/>
+  <text x="46" y="461" class="num-badge">3</text>
+  <text x="66" y="462" class="sec-title" fill="#166534">适配器类体系 — BaseAPIAdapter 基类 + 三分支继承树</text>
+
+  <!-- BaseAPIAdapter -->
+  <rect x="424" y="490" width="392" height="52" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="2"/>
+  <rect x="424" y="490" width="6" height="52" rx="3" fill="#16a34a"/>
+  <text x="620" y="510" text-anchor="middle" class="box-name" fill="#166534">BaseAPIAdapter (基类)</text>
+  <text x="620" y="528" text-anchor="middle" class="box-desc">initialize → pre_process → send/recv → post_process → teardown</text>
+
+  <!-- Branch lines -->
+  <path d="M 620 542 L 620 556 L 210 556 L 210 570" class="flow-green"/>
+  <path d="M 620 556 L 620 570" class="flow-green"/>
+  <path d="M 620 556 L 1030 556 L 1030 570" class="flow-green"/>
+
+  <!-- HttpAPIAdapter branch -->
+  <rect x="48" y="574" width="324" height="100" rx="8" fill="#ffffff" stroke="#a78bfa" stroke-width="1.4"/>
+  <rect x="48" y="574" width="324" height="26" rx="8" fill="#ede9fe"/>
+  <text x="210" y="591" text-anchor="middle" class="box-name" fill="#5b21b6">HttpAPIAdapter</text>
+  <text x="60" y="614" class="box-desc">非实时: 请求 → 完整响应 (同步)</text>
+  <text x="60" y="628" class="box-desc">send() 同步返回, recv() 不调用</text>
+  <rect x="60" y="640" width="130" height="24" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="125" y="656" text-anchor="middle" class="chip-t" fill="#5b21b6">VolcASTAdapter</text>
+  <rect x="200" y="640" width="130" height="24" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="265" y="656" text-anchor="middle" class="chip-t" fill="#5b21b6">QwenLLMAdapter</text>
+
+  <!-- HttpStreamAdapter branch -->
+  <rect x="388" y="574" width="324" height="100" rx="8" fill="#ffffff" stroke="#60a5fa" stroke-width="1.4"/>
+  <rect x="388" y="574" width="324" height="26" rx="8" fill="#dbeafe"/>
+  <text x="550" y="591" text-anchor="middle" class="box-name" fill="#1e40af">HttpStreamAdapter</text>
+  <text x="400" y="614" class="box-desc">流式: chunk 请求 → SSE 事件流</text>
+  <text x="400" y="628" class="box-desc">send(chunk) 多次, recv() 收集 SSE</text>
+  <rect x="400" y="640" width="140" height="24" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="470" y="656" text-anchor="middle" class="chip-t" fill="#1e40af">VolcStreamAdapter</text>
+  <rect x="550" y="640" width="140" height="24" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="620" y="656" text-anchor="middle" class="chip-t" fill="#1e40af">QwenStreamAdapter</text>
+
+  <!-- RealtimeAPIAdapter branch -->
+  <rect x="728" y="574" width="324" height="100" rx="8" fill="#ffffff" stroke="#f87171" stroke-width="1.4"/>
+  <rect x="728" y="574" width="324" height="26" rx="8" fill="#fee2e2"/>
+  <text x="890" y="591" text-anchor="middle" class="box-name" fill="#991b1b">RealtimeAPIAdapter</text>
+  <text x="740" y="614" class="box-desc">全双工: WS chunk 双向流 + 后台 recv 线程</text>
+  <text x="740" y="628" class="box-desc">send(chunk)/recv(event) 并发</text>
+  <rect x="740" y="640" width="140" height="24" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="810" y="656" text-anchor="middle" class="chip-t" fill="#991b1b">OpenAIRealtimeAdapter</text>
+  <rect x="890" y="640" width="140" height="24" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="960" y="656" text-anchor="middle" class="chip-t" fill="#991b1b">DoubaoRealtimeAdapter</text>
+
+  <!-- Lifecycle bar -->
+  <rect x="48" y="690" width="1144" height="32" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="620" y="710" text-anchor="middle" class="body" fill="#166534">生命周期对称设计: initialize → pre_process → send / recv → post_process → teardown · 新增 vendor 只需覆盖 3~4 个抽象方法</text>
+
+  <!-- SPL Services -->
+  <rect x="48" y="734" width="1144" height="70" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" filter="url(#softShadow)"/>
+  <text x="60" y="754" class="box-name">SPL 映射服务</text>
+  <rect x="60" y="762" width="260" height="30" rx="6" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="190" y="781" text-anchor="middle" class="chip-t" fill="#5b21b6">SPLMappingService (device)</text>
+  <rect x="340" y="762" width="260" height="30" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="470" y="781" text-anchor="middle" class="chip-t" fill="#1e40af">ApiRmsSplService (api_id)</text>
+  <rect x="620" y="762" width="260" height="30" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="750" y="781" text-anchor="middle" class="chip-t" fill="#92400e">AudioStreamOrchestrator (混音切片)</text>
+  <rect x="900" y="762" width="260" height="30" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="1030" y="781" text-anchor="middle" class="chip-t" fill="#475569">APIClient (底层 HTTP/WS 传输)</text>
+
+  <!-- Symmetric mapping table -->
+  <rect x="48" y="818" width="1144" height="168" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="60" y="838" class="box-name">device_driver 与 api_adapter 对称关系</text>
+  <line x1="60" y1="846" x2="1180" y2="846" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="80" y="864" class="lbl" fill="#64748b">概念</text>
+  <text x="400" y="864" class="lbl" fill="#64748b">device_driver 体系</text>
+  <text x="800" y="864" class="lbl" fill="#64748b">api_adapter 体系</text>
+  <line x1="60" y1="872" x2="1180" y2="872" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="80" y="890" class="body">基类</text>
+  <text x="400" y="890" class="body">BaseDeviceDriver</text>
+  <text x="800" y="890" class="body">BaseAPIAdapter</text>
+  <text x="80" y="910" class="body">工厂</text>
+  <text x="400" y="910" class="body">DeviceDriverFactory</text>
+  <text x="800" y="910" class="body">APIAdapterFactory</text>
+  <text x="80" y="930" class="body">生命周期</text>
+  <text x="400" y="930" class="body">initialize/pre_process/post_process/teardown</text>
+  <text x="800" y="930" class="body">initialize/pre_process/send/recv/post_process/teardown</text>
+  <text x="80" y="950" class="body">驱动选择</text>
+  <text x="400" y="950" class="body">system + keywords</text>
+  <text x="800" y="950" class="body">vendor + protocol</text>
+  <text x="80" y="970" class="body">停止/日志</text>
+  <text x="400" y="970" class="body">_check_stop() / _log()</text>
+  <text x="800" y="970" class="body">_check_stop() / _log() (复用同一逻辑)</text>
+
+  <!-- ④ 废弃清单 -->
+  <rect x="24" y="1020" width="1192" height="120" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1020" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1046" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1039" r="11" fill="#dc2626"/>
+  <text x="46" y="1043" class="num-badge">4</text>
+  <text x="66" y="1044" class="sec-title" fill="#991b1b">废弃清单 (Deprecated)</text>
+
+  <rect x="48" y="1072" width="270" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="183" y="1091" text-anchor="middle" class="chip-t" fill="#dc2626">_execute_linear() — 单轮特例</text>
+  <rect x="338" y="1072" width="270" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="473" y="1091" text-anchor="middle" class="chip-t" fill="#dc2626">APIDriver / APITaskRunner</text>
+  <rect x="628" y="1072" width="270" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="763" y="1091" text-anchor="middle" class="chip-t" fill="#dc2626">task.type 字段 (不再区分类型)</text>
+  <rect x="918" y="1072" width="270" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1053" y="1091" text-anchor="middle" class="chip-t" fill="#dc2626">adapter 微服务 (localhost:8000)</text>
+  <text x="48" y="1118" class="note">关键变更: 不再按 task.type 路由 → 按 TaskCase 关联的被测设备类型路由 · 废弃 _execute_linear / APITaskRunner 6 步轮询模式</text>
+
+  <!-- ⑤ 文件结构 -->
+  <rect x="24" y="1160" width="1192" height="420" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1160" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1186" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="1179" r="11" fill="#64748b"/>
+  <text x="46" y="1183" class="num-badge">5</text>
+  <text x="66" y="1184" class="sec-title" fill="#334155">文件结构规划</text>
+
+  <text x="48" y="1220" class="lbl" fill="#475569">backend/utils/clients/</text>
+  <rect x="48" y="1228" width="180" height="24" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="138" y="1244" text-anchor="middle" class="chip-t">api_client.py (不动)</text>
+  <rect x="238" y="1228" width="180" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="328" y="1244" text-anchor="middle" class="chip-t" fill="#166534">base_api_adapter.py (新增)</text>
+  <rect x="428" y="1228" width="180" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="518" y="1244" text-anchor="middle" class="chip-t" fill="#166534">http_api_adapter.py (新增)</text>
+  <rect x="618" y="1228" width="180" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="708" y="1244" text-anchor="middle" class="chip-t" fill="#166534">http_stream_adapter.py</text>
+  <rect x="808" y="1228" width="180" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="898" y="1244" text-anchor="middle" class="chip-t" fill="#166534">realtime_api_adapter.py</text>
+  <rect x="998" y="1228" width="180" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="1088" y="1244" text-anchor="middle" class="chip-t" fill="#166534">openai_realtime_adapter.py</text>
+  <rect x="238" y="1258" width="180" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="328" y="1274" text-anchor="middle" class="chip-t" fill="#166534">api_adapter_factory.py</text>
+  <rect x="428" y="1258" width="180" height="24" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="518" y="1274" text-anchor="middle" class="chip-t" fill="#dc2626">api_driver.py (删除)</text>
+
+  <text x="48" y="1304" class="lbl" fill="#475569">backend/services/execution/</text>
+  <rect x="48" y="1312" width="220" height="24" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="158" y="1328" text-anchor="middle" class="chip-t" fill="#dc2626">api_executor.py (废弃删除)</text>
+  <rect x="278" y="1312" width="220" height="24" rx="4" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="388" y="1328" text-anchor="middle" class="chip-t" fill="#92400e">api_session_executor.py (改造)</text>
+  <rect x="508" y="1312" width="220" height="24" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="618" y="1328" text-anchor="middle" class="chip-t" fill="#dc2626">api_task_runner.py (废弃删除)</text>
+  <rect x="738" y="1312" width="220" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="848" y="1328" text-anchor="middle" class="chip-t" fill="#166534">realtime_session_executor.py (新增)</text>
+
+  <text x="48" y="1364" class="lbl" fill="#475569">backend/services/audio/</text>
+  <rect x="48" y="1372" width="260" height="24" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="178" y="1388" text-anchor="middle" class="chip-t">spl_service.py (不动)</text>
+  <rect x="318" y="1372" width="260" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="448" y="1388" text-anchor="middle" class="chip-t" fill="#166534">api_rms_spl_service.py (新增)</text>
+  <rect x="588" y="1372" width="260" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="718" y="1388" text-anchor="middle" class="chip-t" fill="#166534">audio_stream_orchestrator.py (新增)</text>
+  <rect x="858" y="1372" width="260" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="988" y="1388" text-anchor="middle" class="chip-t" fill="#166534">audio_format_adapter.py (新增 v1.1)</text>
+
+  <text x="48" y="1424" class="lbl" fill="#475569">frontend/src/</text>
+  <rect x="48" y="1432" width="200" height="24" rx="4" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="148" y="1448" text-anchor="middle" class="chip-t" fill="#92400e">router/index.ts (改造)</text>
+  <rect x="258" y="1432" width="220" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="368" y="1448" text-anchor="middle" class="chip-t" fill="#166534">views/RealtimeAPITest.vue (新增)</text>
+  <rect x="488" y="1432" width="220" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="598" y="1448" text-anchor="middle" class="chip-t" fill="#166534">composables/useRealtimeApiTest.ts</text>
+  <rect x="718" y="1432" width="280" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="858" y="1448" text-anchor="middle" class="chip-t" fill="#166534">components/realtime-api/ (3个新组件)</text>
+
+  <text x="48" y="1488" class="lbl" fill="#475569">backend/controllers/ + schemas/</text>
+  <rect x="48" y="1496" width="260" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="178" y="1512" text-anchor="middle" class="chip-t" fill="#166534">realtime_api_controller.py (新增)</text>
+  <rect x="318" y="1496" width="260" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="448" y="1512" text-anchor="middle" class="chip-t" fill="#166534">schemas/realtime_api.py (新增)</text>
+
+  <text x="48" y="1548" class="note">图例: 绿色=新增 · 黄色=改造 · 红色=废弃删除 · 灰色=不动</text>
+
+  <!-- ⑥ 前后端统一设计 -->
+  <rect x="24" y="1600" width="1192" height="180" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1600" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="1626" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="1619" r="11" fill="#3b82f6"/>
+  <text x="46" y="1623" class="num-badge">6</text>
+  <text x="66" y="1624" class="sec-title" fill="#1e3a8a">前后端统一设计 — 不再区分三条独立链路</text>
+
+  <text x="48" y="1658" class="lbl" fill="#475569">后端路由统一</text>
+  <rect x="48" y="1666" width="270" height="28" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="183" y="1685" text-anchor="middle" class="chip-t" fill="#1e40af">/api/tasks (任务 CRUD, 不区分类型)</text>
+  <rect x="338" y="1666" width="270" height="28" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="473" y="1685" text-anchor="middle" class="chip-t" fill="#1e40af">/api/test-cases (用例 CRUD, 纯数据)</text>
+  <rect x="628" y="1666" width="270" height="28" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="763" y="1685" text-anchor="middle" class="chip-t" fill="#1e40af">/api/devices (物理+API 设备统一管理)</text>
+  <rect x="918" y="1666" width="270" height="28" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="1053" y="1685" text-anchor="middle" class="chip-t" fill="#1e40af">/api/digital-spl (数字域 SPL 校准)</text>
+
+  <text x="48" y="1716" class="lbl" fill="#475569">前端统一入口</text>
+  <text x="48" y="1736" class="body">/TaskCreate → 任务创建, 步骤2 选被测设备 (设备列表含物理设备 + API)</text>
+  <rect x="48" y="1744" width="260" height="24" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="178" y="1760" text-anchor="middle" class="chip-t" fill="#1e40af">/E2ETest (E2E 设备测试, 现有)</text>
+  <rect x="318" y="1744" width="260" height="24" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="448" y="1760" text-anchor="middle" class="chip-t" fill="#1e40af">/APITest (API 测试, 现有)</text>
+  <rect x="588" y="1744" width="300" height="24" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="738" y="1760" text-anchor="middle" class="chip-t" fill="#166534">/RealtimeAPITest (新增, 与 E2ETest/APITest 对称)</text>
+
+  <text x="48" y="1760" class="lbl" fill="#475569">设备类型与执行器映射</text>
+  <text x="48" y="1778" class="body">物理设备 → E2EExecutor + DeviceDriver → 全维度评估</text>
+  <text x="400" y="1778" class="body">HTTP API → APISessionExecutor + HttpAPIAdapter/HttpStreamAdapter → tor/false_takeover/takeover_latency/llm_judge</text>
+  <text x="48" y="1796" class="body">WebSocket API → RealtimeSessionExecutor + RealtimeAPIAdapter → interruption_metrics/interruption_judge/noise_latency/rejection_judge</text>
+</svg>

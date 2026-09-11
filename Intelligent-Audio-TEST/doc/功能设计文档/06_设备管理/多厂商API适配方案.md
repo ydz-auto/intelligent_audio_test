@@ -7,7 +7,22 @@
 | 版本 | v1.0 |
 | 创建日期 | 2026-05-25 |
 | 作者 | AI Assistant |
-| 状态 | 设计阶段 |
+| 状态 | 已被取代：由《多厂商API适配完整方案.md》(v2.0) 及《01_测试执行》API Adapter 设计接续（见下方状态更新） |
+
+> **📌 状态更新（2026-09 一致性修订）**
+>
+> 本方案（v1.0）为早期调研稿，落地结论以最新设计为准：
+>
+> 1. **方案已被接续**：本文的工程化细化版本见《多厂商API适配完整方案.md》(v2.0)；两者的"独立适配器微服务（`api_adaper_service`）"
+>    设想均已废弃，最终落地为主服务内的 **API Adapter 体系**（《01_测试执行/04_类设计.md》《01_测试执行/05_路由与废弃.md》）：
+>    `BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter`，由 `APIAdapterFactory` 按
+>    `(protocol, vendor)` 或 `apis` 表新增列 `adapter_class` 创建，`ExecutionEngine` 按 `device_type` 路由到
+>    `APISessionExecutor` / `RealtimeSessionExecutor`。
+> 2. **已废弃组件**：`api_driver.py`（APIDriver，见《api_driver_documentation.md》废弃声明）、`api_executor.py`
+>    （APIExecutor，整个文件废弃）、`api_adaper_service` 微服务（实施阶段 4 下线）。涉及引用的章节仅作历史存档。
+> 3. **仍然有效的信息资产**：第 2 章《厂商API调研》（各家接口地址、协议、认证方式、二进制协议格式）与
+>    第 6 章《配置管理》（vendors.yml / credentials.yml 结构）是本方案最有价值的部分，实施 API Adapter 体系时可直接参考；
+>    第 4.1 节的枚举定义（APIType / ProtocolType / AuthType 等）体现了枚举化、配置化原则，同样可沿用。
 
 ---
 
@@ -16,6 +31,9 @@
 ### 1.1 背景
 
 当前API测试系统 (`api_adaper_service`) 已实现基础的WebSocket适配器和Mock适配器，需要扩展支持国内外主流语音识别、语音翻译、大语言模型等API，实现统一的适配层，支持API性能测试、对比测试和健康监控。
+
+> 注：`api_adaper_service` 微服务现已列入废弃清单（由 `HttpAPIAdapter` + `HttpStreamAdapter` 替代其全部能力），
+> 统一适配层最终落在主服务内的 API Adapter 体系；本节保留历史背景，下文机制描述以顶部状态更新为准。
 
 ### 1.2 目标
 
@@ -173,6 +191,11 @@ transcript = openai.Audio.transcribe(
 
 ### 3.1 整体架构
 
+> ⚠️ 下图中的 `api_driver.py`（驱动封装）与 `api_executor.py`（执行引擎）均已列入《01_测试执行/05_路由与废弃.md》废弃清单：
+> `api_executor.py` 整个文件废弃（路由职责回归 `ExecutionEngine`），`APIDriver` 由 API Adapter 体系替代。
+> 最新架构中，执行入口为 `ExecutionEngine` 按 `device_type`（`http_api` / `websocket_api`）路由到
+> `APISessionExecutor` / `RealtimeSessionExecutor`，由其通过 `APIAdapterFactory` 创建适配器调用被测 API。
+
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                          主服务系统 (Intelligent-Audio-TEST)                 │
@@ -323,6 +346,10 @@ transcript = openai.Audio.transcribe(
 | **API Client** | 底层协议调用(HTTP/WS) | `backend/utils/api_client.py` | 从Driver接收 |
 | **Adapter Factory** | 根据配置创建适配器实例 | `api_adaper_service/services/adapter_factory.py` | 从主服务接收 |
 | **Vendor Adapter** | 厂商特定协议处理 | `api_adaper_service/adapters/` | **不持有配置，每次调用传入** |
+
+> ⚠️ 上表中 **API Driver** 行已废弃（APIDriver 列入废弃清单）；**Adapter Factory / Vendor Adapter** 两行的
+> 落地位置由 `api_adaper_service` 微服务改为主服务适配器体系（`BaseAPIAdapter` 及其子类，`APIAdapterFactory` 创建，
+> 生命周期 `initialize → pre_process → send/recv → post_process → teardown`）。职责划分思想保留，位置以最新设计为准。
 
 ### 3.4 数据流设计
 
@@ -959,6 +986,8 @@ class LLMAdapter(BaseAdapter):
 
 ### 4.8 适配器工厂
 
+> ⚠️ **一致性修订（2026-09）**：本节的字符串 key（`f"{vendor}_{api_type}"`）注册方案不再采用。最新设计中，API 适配器的注册与创建由主服务内的 `APIAdapterFactory` 承接（按 `(protocol, vendor)` 组合键或显式 `adapter_class` 创建，见《01_测试执行/Realtime_API_Adapter方案与UseCase文档.md》）；设备驱动侧则由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry`（三元 key：`(AppType, AppVersion, DevicePlatform)`）承接，两套注册表相互独立。以下代码仅作历史方案存档。
+
 ```python
 from typing import Dict, Type, Optional
 
@@ -1092,6 +1121,8 @@ def auto_register_adapters():
 ```
 
 ### 4.9 主服务调用示例
+
+> ⚠️ **一致性修订（2026-09）**：示例中 `from backend.utils.api_driver import APIDriver` 已列入《01_测试执行/05_路由与废弃.md》废弃清单，`APIDriver` 与本方案的独立微服务调用链（`AdapterFactory` + `ExecutionConfig`）均已被替代：HTTP API 由 `HttpAPIAdapter`/`HttpStreamAdapter` 承接，WebSocket API 由 `RealtimeAPIAdapter` 承接，由 `ExecutionEngine` 按 `device_type` 路由到对应执行器。以下示例仅作历史方案存档。
 
 ```python
 # backend/controllers/api_controller.py
@@ -2004,6 +2035,10 @@ credentials:
 ---
 
 ## 7. 文件结构
+
+> ⚠️ 下述 `api_adaper_service/` 独立微服务目录结构已废弃（实施阶段 4 下线），适配器最终落在主服务
+> 适配器体系（`BaseAPIAdapter` → `HttpAPIAdapter` / `HttpStreamAdapter` / `RealtimeAPIAdapter` 及厂商子类）。
+> 目录划分思路（base 基类 + 按厂商分包）可沿用。第 6 章 vendors.yml / credentials.yml 配置管理结构不受影响，仍可参考。
 
 ```
 api_adaper_service/

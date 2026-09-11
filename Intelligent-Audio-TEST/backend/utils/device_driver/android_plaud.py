@@ -13,13 +13,20 @@ from config.config import Config
 from .android_driver import AndroidDriver
 from .device_config import get_device_config
 from .utils import check_stop, u2, log_and_emit, By
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 
 LOG_DEVICE_PATH = '/storage/media/100/local/files/Docs/Huawei Share'
 LOG_DEVICE_ID = '3QC0124C11000914'
 
 
+@register_driver
 class PlaudDriver(AndroidDriver):
     """Plaud AI 录音应用安卓设备驱动实现"""
+
+    app_type = AppType.PLAUD
+    version = AppVersion.V1
+    platform = DevicePlatform.ANDROID
 
     def __init__(self):
         super().__init__()
@@ -214,7 +221,7 @@ class PlaudDriver(AndroidDriver):
         #  解锁设备啥的
         from .driver_factory import DeviceDriverFactory
         driver_factory = DeviceDriverFactory()
-        share_device = driver_factory.get_driver("harmonyos", ["harden"], device_sn=LOG_DEVICE_ID)
+        share_device = driver_factory.get_driver_for_device("harmonyos", ["harden"], device_sn=LOG_DEVICE_ID)
         if not share_device:
             self._log(level='INFO', content=f"分享日志设备未准备: {LOG_DEVICE_ID}", task_id=task_id, test_case_id=test_case_id)
             return False

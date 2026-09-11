@@ -1,0 +1,396 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowViolet); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .decision-t { font-size: 12px; font-weight: 600; fill: #854d0e; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">重新评估流程图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">重新评估需求 · Task/TaskCase 状态流转 · ReevaluationExecutor 组件 · 重新评估vs重新提取 · 数据流程</text>
+
+  <!-- ① 重新评估需求概述 -->
+  <rect x="24" y="88" width="1192" height="170" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="88" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="114" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="107" r="11" fill="#3b82f6"/>
+  <text x="46" y="111" class="num-badge">1</text>
+  <text x="66" y="112" class="sec-title" fill="#1e3a8a">重新评估需求概述 — 对已完成的任务重新进行评估计算，不重新执行测试</text>
+
+  <text x="48" y="146" class="lbl" fill="#475569">核心目标</text>
+  <text x="68" y="162" class="body">├─ 支持任务重新评估，包括重新提取设备输出和重新执行评估计算</text>
+  <text x="68" y="178" class="body">├─ 实现重新评估任务的独立队列管理机制 (reevaluation_queue)</text>
+  <text x="68" y="194" class="body">├─ 支持与普通测试执行并行运行，但同一时间最多一个重新评估任务在运行</text>
+  <text x="68" y="210" class="body">├─ 重新评估与普通测试使用不同的 Task.status 状态值</text>
+  <text x="68" y="226" class="body">└─ 重新评估队列独立管理，但与普通测试共享 evaluation_service 评估队列</text>
+
+  <rect x="48" y="236" width="1144" height="16" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="0.8"/>
+  <text x="620" y="248" text-anchor="middle" class="note" fill="#1e40af">线程安全: reevaluation_lock 保护 is_reevaluating / running_task_id / reevaluation_queue · submit() 在锁外启动线程 · _on_complete() 在 finally 中调用</text>
+
+  <!-- ② Task.status 状态流转 -->
+  <rect x="24" y="276" width="1192" height="240" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="276" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="302" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="295" r="11" fill="#f59e0b"/>
+  <text x="46" y="299" class="num-badge">2</text>
+  <text x="66" y="300" class="sec-title" fill="#92400e">Task.status 状态流转 — 普通测试 vs 重新评估</text>
+
+  <!-- Normal test flow -->
+  <text x="80" y="340" class="lbl" fill="#475569">普通测试:</text>
+  <!-- pending -->
+  <rect x="275" y="350" width="100" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="325" y="370" class="chip-t" fill="#475569">pending</text>
+  <path d="M 375 366 L 410 366" class="flow"/>
+  <!-- queued -->
+  <rect x="420" y="350" width="100" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="470" y="370" class="chip-t" fill="#475569">queued</text>
+  <path d="M 520 366 L 555 366" class="flow"/>
+  <!-- running -->
+  <rect x="565" y="350" width="100" height="32" rx="16" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="615" y="370" class="chip-t" fill="#1e40af">running</text>
+  <path d="M 665 366 L 700 366" class="flow"/>
+  <!-- evaluating -->
+  <rect x="710" y="350" width="100" height="32" rx="16" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="760" y="370" class="chip-t" fill="#92400e">evaluating</text>
+  <path d="M 810 366 L 845 366" class="flow"/>
+  <!-- completed/failed -->
+  <rect x="855" y="350" width="120" height="32" rx="16" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <text x="915" y="370" class="chip-t" fill="#166534">completed / failed</text>
+
+  <!-- Reevaluation flow -->
+  <text x="80" y="420" class="lbl" fill="#475569">重新评估:</text>
+  <!-- completed/failed (start) -->
+  <rect x="320" y="430" width="120" height="32" rx="16" fill="#f1f5f9" stroke="#64748b" stroke-width="1.4"/>
+  <text x="380" y="450" class="chip-t" fill="#475569">completed / failed</text>
+  <path d="M 440 446 L 480 446" class="flow-amber"/>
+  <text x="460" y="440" text-anchor="middle" class="note" fill="#f59e0b">提交</text>
+  <!-- reevaluate_queued -->
+  <rect x="480" y="430" width="120" height="32" rx="16" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="540" y="450" class="chip-t" fill="#92400e">reevaluate_queued</text>
+  <path d="M 600 446 L 640 446" class="flow-amber"/>
+  <text x="620" y="440" text-anchor="middle" class="note" fill="#f59e0b">_check_queue</text>
+  <!-- reevaluating -->
+  <rect x="640" y="430" width="120" height="32" rx="16" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="700" y="450" class="chip-t" fill="#92400e">reevaluating</text>
+  <path d="M 760 446 L 800 446" class="flow-amber"/>
+  <text x="780" y="440" text-anchor="middle" class="note" fill="#f59e0b">_on_complete</text>
+  <!-- completed/failed (end) -->
+  <rect x="800" y="430" width="120" height="32" rx="16" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <text x="860" y="450" class="chip-t" fill="#166534">completed / failed</text>
+
+  <!-- Notes -->
+  <text x="48" y="488" class="note">关键: 重新评估使用独立状态值 (reevaluate_queued / reevaluating) · 与普通测试状态 (queued / running / evaluating) 完全区分 · 同一时间最多一个 reevaluating</text>
+  <text x="48" y="504" class="note">触发: 用户在任务列表页选择已完成任务 → POST /api/v1/evaluation/task/reevaluate → ReevaluationExecutor.submit() → task.status = 'reevaluate_queued'</text>
+
+  <!-- ③ TaskCase.evaluation_status 状态流转 -->
+  <rect x="24" y="534" width="1192" height="270" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="534" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="560" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="553" r="11" fill="#16a34a"/>
+  <text x="46" y="557" class="num-badge">3</text>
+  <text x="66" y="558" class="sec-title" fill="#166534">TaskCase.evaluation_status 状态流转 — 普通测试 vs 重新评估</text>
+
+  <!-- Normal test flow -->
+  <text x="80" y="600" class="lbl" fill="#475569">普通测试:</text>
+  <!-- queued -->
+  <rect x="275" y="610" width="100" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="325" y="630" class="chip-t" fill="#475569">queued</text>
+  <path d="M 375 626 L 410 626" class="flow"/>
+  <!-- pending -->
+  <rect x="420" y="610" width="100" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.4"/>
+  <text x="470" y="630" class="chip-t" fill="#475569">pending</text>
+  <path d="M 520 626 L 555 626" class="flow"/>
+  <!-- running -->
+  <rect x="565" y="610" width="100" height="32" rx="16" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="615" y="630" class="chip-t" fill="#1e40af">running</text>
+  <path d="M 665 626 L 700 626" class="flow"/>
+  <!-- calculating -->
+  <rect x="710" y="610" width="100" height="32" rx="16" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="760" y="630" class="chip-t" fill="#92400e">calculating</text>
+  <path d="M 810 626 L 845 626" class="flow"/>
+  <!-- completed/failed -->
+  <rect x="855" y="610" width="120" height="32" rx="16" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <text x="915" y="630" class="chip-t" fill="#166534">completed / failed</text>
+
+  <!-- Reevaluation flow -->
+  <text x="80" y="688" class="lbl" fill="#475569">重新评估:</text>
+  <!-- completed/failed (start) -->
+  <rect x="280" y="698" width="95" height="32" rx="16" fill="#f1f5f9" stroke="#64748b" stroke-width="1.4"/>
+  <text x="327" y="718" class="chip-t" fill="#475569" font-size="9">completed/failed</text>
+  <path d="M 375 714 L 397 714" class="flow-amber"/>
+  <!-- queued -->
+  <rect x="397" y="698" width="95" height="32" rx="16" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="444" y="718" class="chip-t" fill="#92400e">queued</text>
+  <path d="M 492 714 L 514 714" class="flow-amber"/>
+  <!-- pending -->
+  <rect x="514" y="698" width="95" height="32" rx="16" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="561" y="718" class="chip-t" fill="#92400e">pending</text>
+  <path d="M 609 714 L 631 714" class="flow-amber"/>
+  <!-- running -->
+  <rect x="631" y="698" width="95" height="32" rx="16" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="678" y="718" class="chip-t" fill="#1e40af">running</text>
+  <path d="M 726 714 L 748 714" class="flow-amber"/>
+  <!-- calculating -->
+  <rect x="748" y="698" width="95" height="32" rx="16" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="795" y="718" class="chip-t" fill="#92400e">calculating</text>
+  <path d="M 843 714 L 865 714" class="flow-amber"/>
+  <!-- completed/failed (end) -->
+  <rect x="865" y="698" width="95" height="32" rx="16" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <text x="912" y="718" class="chip-t" fill="#166534" font-size="9">completed/failed</text>
+
+  <!-- Notes -->
+  <text x="48" y="756" class="note">重新评估前: evaluation_status = completed / failed → 提交重新评估 → evaluation_status 重置为 queued → pending → running → calculating → completed / failed</text>
+  <text x="48" y="772" class="note">若 reextract_device_output=true: TaskCase.evaluation_status 重置为 pending · 删除旧 TestResult + TestResultDimension → 创建新 TestResult → 重新评估所有维度</text>
+  <text x="48" y="788" class="note">reevaluate_type='all': 评估所有 execution_status='completed' 的用例 · reevaluate_type='failed': 只评估 TestResultDimension.status='failed' 的维度</text>
+
+  <!-- ④ ReevaluationExecutor 组件关系 -->
+  <rect x="24" y="822" width="1192" height="280" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="822" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="848" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="841" r="11" fill="#7c3aed"/>
+  <text x="46" y="845" class="num-badge">4</text>
+  <text x="66" y="846" class="sec-title" fill="#5b21b6">ReevaluationExecutor 组件关系 — 评估服务 Worker → 维度评估 → 指标计算 → 结果更新</text>
+
+  <!-- evaluation_controller -->
+  <rect x="420" y="876" width="400" height="34" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="620" y="897" text-anchor="middle" class="box-name" fill="#1e40af">evaluation_controller — 接收请求，提交任务</text>
+  <path d="M 620 910 L 620 928" class="flow-violet"/>
+
+  <!-- ReevaluationExecutor -->
+  <rect x="160" y="932" width="920" height="86" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="620" y="950" text-anchor="middle" class="box-name" fill="#92400e">ReevaluationExecutor (单例 · reevaluation_lock)</text>
+
+  <!-- Method chips row 1 -->
+  <rect x="200" y="958" width="250" height="24" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="0.8"/>
+  <text x="325" y="974" text-anchor="middle" class="chip-t" fill="#92400e">submit(task_id, reextract, type)</text>
+  <rect x="470" y="958" width="270" height="24" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="0.8"/>
+  <text x="605" y="974" text-anchor="middle" class="chip-t" fill="#92400e">_run_reevaluation() — 重新提取+收集+提交</text>
+  <rect x="760" y="958" width="220" height="24" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="0.8"/>
+  <text x="870" y="974" text-anchor="middle" class="chip-t" fill="#92400e">_on_complete() — 更新状态+检查队列</text>
+
+  <!-- State chips row 2 -->
+  <text x="620" y="1002" text-anchor="middle" class="note" fill="#92400e">reevaluation_queue [task1, task2] · is_reevaluating = False · running_task_id = None · _check_queue()</text>
+
+  <path d="M 620 1018 L 620 1036" class="flow-violet"/>
+
+  <!-- evaluation_service -->
+  <rect x="340" y="1040" width="560" height="34" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="620" y="1061" text-anchor="middle" class="box-name" fill="#166534">evaluation_service — 共享评估队列 · EndpointWorker × N · 统一处理评估</text>
+
+  <!-- Parallel relationship note -->
+  <rect x="48" y="1086" width="1144" height="14" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="0.6"/>
+  <text x="620" y="1096" text-anchor="middle" class="note" fill="#5b21b6">并行关系: 普通测试 running (可多个) + 重新评估 reevaluating (最多1个) → 共享 evaluation_service 评估队列 · 线程安全: reevaluation_lock 保护所有共享状态</text>
+
+  <!-- ⑤ 重新评估与重新提取的区别 -->
+  <rect x="24" y="1120" width="1192" height="180" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1120" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1146" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1139" r="11" fill="#dc2626"/>
+  <text x="46" y="1143" class="num-badge">5</text>
+  <text x="66" y="1144" class="sec-title" fill="#991b1b">重新评估与重新提取的区别 — 重新提取仅限物理设备(E2E)，API/Realtime 仅支持重新评估</text>
+
+  <!-- Table area -->
+  <rect x="48" y="1166" width="1144" height="126" fill="#ffffff" rx="4"/>
+
+  <!-- Column header -->
+  <rect x="48" y="1166" width="1144" height="22" fill="#fee2e2" rx="4"/>
+  <text x="148" y="1181" class="lbl" fill="#991b1b" text-anchor="middle">对比项</text>
+  <text x="483" y="1181" class="lbl" fill="#991b1b" text-anchor="middle">重新评估</text>
+  <text x="955" y="1181" class="lbl" fill="#991b1b" text-anchor="middle">重新提取</text>
+  <line x1="248" y1="1166" x2="248" y2="1292" stroke="#fca5a5" stroke-width="0.5"/>
+  <line x1="718" y1="1166" x2="718" y2="1292" stroke="#fca5a5" stroke-width="0.5"/>
+
+  <!-- Row 1 -->
+  <text x="56" y="1204" class="body" font-size="9.5" font-weight="600">适用范围</text>
+  <text x="256" y="1204" class="body" font-size="9.5">E2E / API / Realtime (全部设备类型)</text>
+  <text x="726" y="1204" class="body" font-size="9.5">仅限物理设备 (device_type='physical')</text>
+  <line x1="48" y1="1212" x2="1192" y2="1212" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 2 -->
+  <rect x="48" y="1212" width="1144" height="20" fill="#f8fafc"/>
+  <text x="56" y="1226" class="body" font-size="9.5" font-weight="600">是否重新执行测试</text>
+  <text x="256" y="1226" class="body" font-size="9.5">否 (仅重新计算评估)</text>
+  <text x="726" y="1226" class="body" font-size="9.5">否 (仅重新提取设备输出)</text>
+  <line x1="48" y1="1232" x2="1192" y2="1232" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 3 -->
+  <text x="56" y="1246" class="body" font-size="9.5" font-weight="600">数据来源</text>
+  <text x="256" y="1246" class="body" font-size="9.5">algorithm_result / adapter.output (已有结果)</text>
+  <text x="726" y="1246" class="body" font-size="9.5">device_driver 存档 → PCM → wav (重新提取)</text>
+  <line x1="48" y1="1252" x2="1192" y2="1252" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 4 -->
+  <rect x="48" y="1252" width="1144" height="20" fill="#f8fafc"/>
+  <text x="56" y="1266" class="body" font-size="9.5" font-weight="600">API/Realtime</text>
+  <text x="256" y="1266" class="body" font-size="9.5" fill="#16a34a" font-weight="600">支持</text>
+  <text x="726" y="1266" class="body" font-size="9.5" fill="#dc2626" font-weight="600">不支持 (无设备存档)</text>
+  <line x1="48" y1="1272" x2="1192" y2="1272" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row 5 -->
+  <text x="56" y="1286" class="body" font-size="9.5" font-weight="600">触发方式</text>
+  <text x="256" y="1286" class="body" font-size="9.5">reevaluate_type='all' / 'failed'</text>
+  <text x="726" y="1286" class="body" font-size="9.5">reextract_device_output=true (仅 E2E)</text>
+
+  <!-- ⑥ 重新提取流程 -->
+  <rect x="24" y="1318" width="1192" height="180" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1318" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="1344" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="1337" r="11" fill="#3b82f6"/>
+  <text x="46" y="1341" class="num-badge">6</text>
+  <text x="66" y="1342" class="sec-title" fill="#1e3a8a">重新提取流程 — 重新拉取 PCM → 转 wav → 重新提交评估 (仅限 E2E)</text>
+
+  <!-- Step 1 -->
+  <rect x="80" y="1378" width="280" height="72" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="220" y="1400" text-anchor="middle" class="box-name" fill="#1e40af">1. 重新拉取 PCM</text>
+  <text x="220" y="1416" text-anchor="middle" class="box-desc">extract_results_from_archive()</text>
+  <text x="220" y="1432" text-anchor="middle" class="note">从设备存档提取 → device_driver</text>
+  <text x="220" y="1444" text-anchor="middle" class="note">前置过滤: hasattr(driver, method)</text>
+
+  <!-- Arrow 1→2 -->
+  <path d="M 360 1414 L 430 1414" class="flow-blue"/>
+
+  <!-- Step 2 -->
+  <rect x="440" y="1378" width="280" height="72" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="580" y="1400" text-anchor="middle" class="box-name" fill="#1e40af">2. 转换 + 创建新记录</text>
+  <text x="580" y="1416" text-anchor="middle" class="box-desc">convert_device_output_to_algorithm_result()</text>
+  <text x="580" y="1432" text-anchor="middle" class="note">PCM → wav → algorithm_result</text>
+  <text x="580" y="1444" text-anchor="middle" class="note">删除旧 TestResult + TestResultDimension</text>
+
+  <!-- Arrow 2→3 -->
+  <path d="M 720 1414 L 790 1414" class="flow-blue"/>
+
+  <!-- Step 3 -->
+  <rect x="800" y="1378" width="280" height="72" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="940" y="1400" text-anchor="middle" class="box-name" fill="#1e40af">3. 重新提交评估</text>
+  <text x="940" y="1416" text-anchor="middle" class="box-desc">evaluation_service.evaluate_case()</text>
+  <text x="940" y="1432" text-anchor="middle" class="note">TaskCase.evaluation_status = queued</text>
+  <text x="940" y="1444" text-anchor="middle" class="note">→ pending → running → calculating</text>
+
+  <!-- Note -->
+  <rect x="48" y="1466" width="1144" height="20" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="0.8"/>
+  <text x="620" y="1480" text-anchor="middle" class="note" fill="#dc2626">注意: 重新提取仅适用于 device_type='physical' (E2E) · API/Realtime 测试结果由 adapter.output 直接保存，无设备存档可重新提取</text>
+
+  <!-- ⑦ 用户交互流程 -->
+  <rect x="24" y="1516" width="1192" height="180" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1516" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="1542" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="1535" r="11" fill="#f59e0b"/>
+  <text x="46" y="1539" class="num-badge">7</text>
+  <text x="66" y="1540" class="sec-title" fill="#92400e">用户交互流程 — 选择已完成任务 → 点击重新评估 → 确认 → 等待完成 → 查看结果</text>
+
+  <!-- Step 1 -->
+  <rect x="100" y="1582" width="180" height="56" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="190" y="1606" text-anchor="middle" class="box-name" fill="#92400e">1. 选择已完成任务</text>
+  <text x="190" y="1622" text-anchor="middle" class="note">任务列表页 · status=completed</text>
+  <path d="M 280 1610 L 315 1610" class="flow-amber"/>
+
+  <!-- Step 2 -->
+  <rect x="315" y="1582" width="180" height="56" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="405" y="1606" text-anchor="middle" class="box-name" fill="#92400e">2. 点击重新评估</text>
+  <text x="405" y="1622" text-anchor="middle" class="note">reevaluate_type: all/failed</text>
+  <path d="M 495 1610 L 530 1610" class="flow-amber"/>
+
+  <!-- Step 3 -->
+  <rect x="530" y="1582" width="180" height="56" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="620" y="1606" text-anchor="middle" class="box-name" fill="#92400e">3. 确认</text>
+  <text x="620" y="1622" text-anchor="middle" class="note">确认对话框 · 选择参数</text>
+  <path d="M 710 1610 L 745 1610" class="flow-amber"/>
+
+  <!-- Step 4 -->
+  <rect x="745" y="1582" width="180" height="56" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="835" y="1606" text-anchor="middle" class="box-name" fill="#92400e">4. 等待完成</text>
+  <text x="835" y="1622" text-anchor="middle" class="note">status=reevaluating · 进度条</text>
+  <path d="M 925 1610 L 960 1610" class="flow-amber"/>
+
+  <!-- Step 5 -->
+  <rect x="960" y="1582" width="180" height="56" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="1050" y="1606" text-anchor="middle" class="box-name" fill="#166534">5. 查看结果</text>
+  <text x="1050" y="1622" text-anchor="middle" class="note">评估报告 · 维度详情</text>
+
+  <!-- Note -->
+  <rect x="48" y="1650" width="1144" height="20" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="0.8"/>
+  <text x="620" y="1664" text-anchor="middle" class="note" fill="#92400e">参数: reevaluate_type ('all' 评估全部 / 'failed' 仅评估失败维度) · reextract_device_output (是否同时重新提取设备输出，仅 E2E 有效)</text>
+
+  <!-- ⑧ 数据流程 -->
+  <rect x="24" y="1714" width="1192" height="186" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1714" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="1740" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="1733" r="11" fill="#16a34a"/>
+  <text x="46" y="1737" class="num-badge">8</text>
+  <text x="66" y="1738" class="sec-title" fill="#166534">数据流程 — 前端发起 → 后端创建重新评估任务 → 评估服务处理 → 更新结果 → WebSocket 推送进度</text>
+
+  <!-- Step 1 -->
+  <rect x="50" y="1770" width="200" height="80" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="150" y="1792" text-anchor="middle" class="box-name" fill="#166534">1. 前端发起</text>
+  <text x="150" y="1808" text-anchor="middle" class="box-desc">POST /evaluation/task/reevaluate</text>
+  <text x="150" y="1822" text-anchor="middle" class="note">task_id, type, reextract</text>
+  <text x="150" y="1836" text-anchor="middle" class="note">→ evaluation_controller</text>
+  <path d="M 250 1810 L 285 1810" class="flow-green"/>
+
+  <!-- Step 2 -->
+  <rect x="285" y="1770" width="200" height="80" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="385" y="1792" text-anchor="middle" class="box-name" fill="#166534">2. 创建重新评估任务</text>
+  <text x="385" y="1808" text-anchor="middle" class="box-desc">ReevaluationExecutor.submit()</text>
+  <text x="385" y="1822" text-anchor="middle" class="note">task.status = reevaluate_queued</text>
+  <text x="385" y="1836" text-anchor="middle" class="note">→ _check_queue() 启动线程</text>
+  <path d="M 485 1810 L 520 1810" class="flow-green"/>
+
+  <!-- Step 3 -->
+  <rect x="520" y="1770" width="200" height="80" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="620" y="1792" text-anchor="middle" class="box-name" fill="#166534">3. 评估服务处理</text>
+  <text x="620" y="1808" text-anchor="middle" class="box-desc">_run_reevaluation()</text>
+  <text x="620" y="1822" text-anchor="middle" class="note">重新提取(E2E) + 收集用例</text>
+  <text x="620" y="1836" text-anchor="middle" class="note">→ evaluation_service 队列</text>
+  <path d="M 720 1810 L 755 1810" class="flow-green"/>
+
+  <!-- Step 4 -->
+  <rect x="755" y="1770" width="200" height="80" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="855" y="1792" text-anchor="middle" class="box-name" fill="#166534">4. 更新结果</text>
+  <text x="855" y="1808" text-anchor="middle" class="box-desc">TestResultDimension + TaskCase</text>
+  <text x="855" y="1822" text-anchor="middle" class="note">evaluation_status → calculating</text>
+  <text x="855" y="1836" text-anchor="middle" class="note">→ completed / failed</text>
+  <path d="M 955 1810 L 990 1810" class="flow-green"/>
+
+  <!-- Step 5 -->
+  <rect x="990" y="1770" width="200" height="80" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="1090" y="1792" text-anchor="middle" class="box-name" fill="#166534">5. WebSocket 推送</text>
+  <text x="1090" y="1808" text-anchor="middle" class="box-desc">log_and_emit()</text>
+  <text x="1090" y="1822" text-anchor="middle" class="note">实时进度 · 状态变更</text>
+  <text x="1090" y="1836" text-anchor="middle" class="note">→ 前端 WebSocket 接收</text>
+</svg>

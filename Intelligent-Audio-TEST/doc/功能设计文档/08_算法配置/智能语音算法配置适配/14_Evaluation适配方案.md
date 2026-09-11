@@ -102,7 +102,7 @@ Evaluation 页面用于管理评估维度，需要适配算法配置化方案，
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │ 关联算法（新增）                                            ││
 │  │ ┌───────┐ ┌───────┐ ┌───────────┐                         ││
-│  │ │ 翻译  │ │  ASR  │ │ 声纹识别   │  [+ 添加算法]           ││
+│  │ │ 翻译  │ │  ASR  │ │ 说话人识别 │  [+ 添加算法]           ││
 │  │ └───────┘ └───────┘ └───────────┘                         ││
 │  │ (多选标签，点击可移除)                                      ││
 │  └─────────────────────────────────────────────────────────────┘│
@@ -124,14 +124,17 @@ Evaluation 页面用于管理评估维度，需要适配算法配置化方案，
 
 ### 4.1 现有 Dimension 模型字段
 
+> **注**：以下为 `backend/models/models.py` 中 Dimension 模型的实际字段定义（已实施）。
+
 ```python
 class Dimension(db.Model):
-    id = Column(Integer, primary_key=True)
+    __tablename__ = 'dimensions'
+    id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     keywords = Column(String(255))
     dimension_type = Column(String(20), default='main')  # 'main' | 'sub'
     parent_dimension_id = Column(Integer, ForeignKey('dimensions.id'))  # 主维度ID
-    task_type_code = Column(String(50))  # API调用的task_type值
+    task_type_code = Column(String(50))  # API调用的task_type值（如 wer）
     description = Column(Text)
     category_id = Column(Integer, ForeignKey('categories.id'))
     type = Column(String(50), nullable=False)  # 'auto' | 'manual'
@@ -146,20 +149,27 @@ class Dimension(db.Model):
     api_endpoints = Column(JSON, nullable=True, default=list)
     api_url = Column(String(512))
     api_status = Column(String(20), nullable=False, default='online')
-    required_inputs = Column(JSON, nullable=False, default=list)
     score_unit = Column(String(50), nullable=True, default='')
-    associated_algorithms = Column(JSON, nullable=True, default=list)  # 关联算法列表
+    statistic_method = Column(String(30), nullable=False, default='average')
+    # 统计方式: average(简单平均), weighted_wer(加权WER: Σ分子/Σ分母), pass_rate(达标率)
     status = Column(Boolean, nullable=False, default=True)
     deleted = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime)
     updated_at = Column(DateTime)
 ```
 
-### 4.2 新增字段（扩展）
+> **重要**：Dimension 表**不包含** `required_inputs`、`associated_algorithms` JSON 列，也不包含 `aggregation_mode`/`group_by` 字段。所需输入/输出字段由 `EvaluationDimensionParam` 表定义（见第 6 节），关联算法由 `AlgorithmDimensionRelation` 关联表管理（见 §4.3），统计方式由 `statistic_method` 字段驱动（见第 8 节）。
+
+### 4.2 参数定义与关联算法的存储方式
 
 ```python
-# 评估维度与算法的关联现在通过 AlgorithmDimensionRelation 表管理，不再使用 JSON 字段
-# 详见 algorithm_models.py 中的 AlgorithmDimensionRelation 模型
+# 所需输入(required_inputs)与输出字段(output_fields)不再作为 Dimension 的 JSON 字段，
+# 统一由 EvaluationDimensionParam 表定义，按 param_direction='input'/'output' 区分，
+# 后端在查询维度详情时动态派生为 required_inputs / output_fields 视图
+# 详见 algorithm_models.py 中的 EvaluationDimensionParam 模型（第 6 节）
+
+# 评估维度与算法的关联通过 AlgorithmDimensionRelation 表管理，不再使用 JSON 字段
+# 详见 algorithm_models.py 中的 AlgorithmDimensionRelation 模型（§4.3）
 ```
 
 ### 4.3 数据模型关系
@@ -171,7 +181,7 @@ class AlgorithmDimensionRelation(db.Model):
     """评估维度与算法关联表"""
     __tablename__ = 'algorithm_dimension_relations'
     
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False)
     dimension_id = Column(Integer, ForeignKey('dimensions.id', ondelete='CASCADE'), nullable=False)
     is_default = Column(Boolean, default=False)  # 是否默认评估维度
@@ -180,9 +190,18 @@ class AlgorithmDimensionRelation(db.Model):
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
     
+    # 唯一索引：同一算法+维度（未删除记录）不允许重复关联
+    __table_args__ = (
+        Index('uq_algorithm_dimension', 'algorithm_type', 'dimension_id',
+              unique=True, postgresql_where=text('deleted = false')),
+    )
+    
     # 关系
     algorithm = relationship('AlgorithmDefinition', back_populates='dimension_relations')
+    dimension = relationship('Dimension')
 ```
+
+> **已实施**：后端在维度创建/更新时（`evaluation_controller.py`）解析请求中的 `associatedAlgorithms`（camelCase），逐条写入/重建该关联表；查询维度详情时从关联表反向派生出 `associated_algorithms` 数组返回前端（`to_dict` 含 `dimension_name` 关联查询字段）。
 
 ### 4.4 数据结构示例
 
@@ -226,14 +245,14 @@ const relations = [
 ];
 ```
 
-### 4.4 算法类型枚举
+### 4.5 算法类型枚举
 
 ```typescript
 const ALGORITHM_TYPES = [
   { value: 'asr', label: 'ASR语音识别' },
   { value: 'translation', label: '翻译' },
   { value: 'tts', label: 'TTS语音合成' },
-  { value: 'speaker_recognition', label: '声纹识别' },
+  { value: 'speaker_recognition', label: '说话人识别' },
   { value: 'noise_reduction', label: '降噪' },
   { value: 'vad', label: '语音活动检测' }
 ];
@@ -246,7 +265,7 @@ const ALGORITHM_TYPES = [
 ### 5.1 算法关联选择器组件
 
 ```typescript
-// 新增字段定义
+// 新增字段定义（已实施，见 frontend/src/views/EvaluationLogic/evaluation.ts）
 const algorithmField = {
   key: 'associatedAlgorithms',
   label: '关联算法',
@@ -259,39 +278,35 @@ const algorithmField = {
 
 ### 5.2 算法关联选择
 
+前端表单内 `associatedAlgorithms` 以**算法类型字符串数组**维护；编辑回填时若接口返回对象数组，则提取 `algorithmType` 转为字符串数组：
+
 ```typescript
-const handleAlgorithmSelect = (algorithms: string[]) => {
-  const existingAlgoTypes = formData.value.associatedAlgorithms
-    .map((a: AlgorithmAssociation) => a.algorithm_type);
-  
-  // 添加新选择的算法
-  algorithms.forEach(algoType => {
-    if (!existingAlgoTypes.includes(algoType)) {
-      formData.value.associatedAlgorithms.push({
-        algorithm_type: algoType,
-        is_default: false,
-        weight: 1.0
-      });
-    }
-  });
-  
-  // 移除取消选择的算法
-  formData.value.associatedAlgorithms = formData.value.associatedAlgorithms
-    .filter((a: AlgorithmAssociation) => algorithms.includes(a.algorithm_type));
-};
+// 编辑回填：对象数组 → 字符串数组（已实施）
+const rawAssociatedAlgorithms = dimension.associatedAlgorithms || [];
+let associatedAlgorithmsArray: string[] = [];
+if (Array.isArray(rawAssociatedAlgorithms)) {
+  if (rawAssociatedAlgorithms.length > 0 && typeof rawAssociatedAlgorithms[0] === 'object') {
+    associatedAlgorithmsArray = rawAssociatedAlgorithms.map((item: any) => item.algorithmType);
+  } else {
+    associatedAlgorithmsArray = rawAssociatedAlgorithms;
+  }
+}
 ```
+
+提交时后端（`evaluation_controller.py`）解析 `associatedAlgorithms`，逐条写入/重建 `AlgorithmDimensionRelation` 关联表（未选中项删除关联记录），而不是写入 JSON 字段。
 
 ### 5.3 列表显示关联算法
 
+列表/详情接口从 `AlgorithmDimensionRelation` 表反向派生 `associatedAlgorithms`（对象数组，含 `algorithmType`/`isDefault`/`weight`，camelCase 由 schema 转换），前端据此渲染算法标签：
+
 ```typescript
-// 在表格中显示关联算法标签
 const renderAlgorithmTags = (associatedAlgorithms: AlgorithmAssociation[]) => {
   if (!associatedAlgorithms || associatedAlgorithms.length === 0) {
     return '-';
   }
   return associatedAlgorithms.map(a => {
-    const algoType = ALGORITHM_TYPES.find(t => t.value === a.algorithm_type);
-    return `<span class="algo-tag ${a.is_default ? 'default' : ''}">${algoType?.label || a.algorithm_type}</span>`;
+    const algoType = ALGORITHM_TYPES.find(t => t.value === a.algorithmType);
+    return `<span class="algo-tag ${a.isDefault ? 'default' : ''}">${algoType?.label || a.algorithmType}</span>`;
   }).join('');
 };
 ```
@@ -302,99 +317,142 @@ const renderAlgorithmTags = (associatedAlgorithms: AlgorithmAssociation[]) => {
 
 ### 6.1 required_inputs 字段定义
 
-> **注**：完整字段映射方案见 [15_完整字段映射方案.md](file:///c:/S2TT/auto_test/ver8/202601292330/doc/功能设计文档/智能语音算法配置适配/15_完整字段映射方案.md)
+> **注**：完整字段映射方案见 [15_完整字段映射方案.md](./15_完整字段映射方案.md)
 
 `required_inputs` 用于定义评估维度计算所需的输入字段，解决"输入字段如何和设备/API输出匹配"的问题。
 
-```typescript
-interface RequiredInput {
-  key: string;               // 字段键名 (如: asr_result, translation_result)
-  label: string;            // 字段显示名称
-  type: 'text' | 'audio' | 'number';  // 字段类型
-  source: 'device' | 'api' | 'context' | 'reference';  // 数据来源
-  required: boolean;         // 是否必需
-  mapped_from?: string;     // 映射源字段（如 api_output.result, reference.input.text）
-  description?: string;     // 字段说明
-}
+**已实施存储结构**：所需输入/输出字段统一由 `EvaluationDimensionParam` 表（`algorithm_models.py`）定义，按 `param_direction` 区分输入（`input`）与输出提取字段（`output`）；后端在查询维度详情时动态派生为 `required_inputs` / `output_fields` 数组返回前端。
+
+```python
+class EvaluationDimensionParam(db.Model):
+    """评估维度参数定义表 - 多个算法共用"""
+    __tablename__ = 'evaluation_dimension_params'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dimension_id = Column(Integer, ForeignKey('dimensions.id', ondelete='CASCADE'), nullable=False)
+    param_code = Column(String(50), nullable=False)      # 参数代码（评估API需要的字段名，如 asr_result）
+    param_name = Column(String(100))                     # 参数显示名称
+    label = Column(String(100))                          # 字段显示名称
+    field_type = Column(String(20), default='text')      # text, audio, number, boolean, json, timestamp
+    param_direction = Column(String(10), nullable=False, default='input')  # input(输入参数) / output(结果提取字段)
+    field_path = Column(String(200), nullable=True)      # 结果提取路径（output 专用，如 wer 或 data.result.wer）
+    agg_role = Column(String(20), nullable=True)         # 聚合角色（output 专用）: numerator/denominator/value/pass_le/pass_ge/pass_eq
+    output_role = Column(String(10), nullable=True)      # 输出字段角色（output 专用）: main(主结果) / aux(辅助字段)
+    visible_in_report = Column(Boolean, default=True)    # 是否在报告中显示
+    required = Column(Boolean, default=True)             # 是否必填
+    default_value = Column(Text)                         # 默认值（JSON格式）
+    pass_threshold = Column(Float, nullable=True)        # 达标阈值/目标值（pass_rate 策略专用）
+    help_text = Column(Text)                             # 帮助提示文字
+    ui_order = Column(Integer, default=0)                # 界面排序
+    deleted = Column(Boolean, default=False)
+
+    __table_args__ = (
+        Index('uq_dimension_param_code_direction', 'dimension_id', 'param_code', 'param_direction',
+              unique=True, postgresql_where=text('deleted = false')),
+    )
 ```
+
+> **映射说明**：原设计中的 `mapped_from`（映射源字段）概念已被 `ParamMapping` 参数映射表替代（见 §6.4）。保存维度时，后端会把 `required_inputs` 写入 `EvaluationDimensionParam` 表，并同步维护 `ParamMapping` 与 `api_settings.body_template` 占位符顺序（`evaluation_controller.py`）。
 
 ### 6.2 数据来源类型
 
+数据来源由 `ParamMapping` 表的 `source` 字段定义（`algorithm_models.py`），实际共 **5 类**：
+
 | 来源类型 | 说明 | 示例 |
 |----------|------|------|
+| `case` | 用例参数字段 | 用例中配置的算法参数（`algorithm_params` 列，按轮分组） |
+| `case_config` | 用例配置字段 | 用例配置 `config.rounds` 中的结构性字段（如每轮播放的音频 audios） |
 | `device` | 设备输出字段 | 设备采集的音频、文本等原始输出 |
-| `api` | API返回字段 | ASR/翻译等算法的返回结果 |
-| `context` | 上下文计算字段 | 从测试上下文计算得出的衍生数据 |
-| `reference` | 参考参数字段 | 用例中存储的标准参考数据（文本/音频/RTTM/STM等），详见 [17_参考参数功能设计.md](file:///c:/S2TT/auto_test/ver8/202601292330/doc/功能设计文档/智能语音算法配置适配/17_参考参数功能设计.md) |
+| `api` | API输出字段 | ASR/翻译等算法的返回结果（`algorithm_result`） |
+| `reference` | 参考参数字段 | 用例中存储的标准参考数据（文本/音频/RTTM/STM等），详见 [17_参考参数功能设计.md](./17_参考参数功能设计.md) |
 
-> **重要**：`reference` 来源类型用于将用例中配置的参考参数映射到评估维度。参考参数按 `input`/`output` 分类（对应算法的输入/输出参考），每类包含 `api` 和 `e2e` 两种测试值。具体结构请参考 [15_完整字段映射方案.md](file:///c:/S2TT/auto_test/ver8/202601292330/doc/功能设计文档/智能语音算法配置适配/15_完整字段映射方案.md) 第3.2节 `source` 字段含义。
+> **重要**：`reference` 来源类型用于将用例中配置的参考参数映射到评估维度。参考参数按 `input`/`output` 分类（对应算法的输入/输出参考），每类包含 `api` 和 `e2e` 两种测试值。具体结构请参考 [15_完整字段映射方案.md](./15_完整字段映射方案.md) 第3.2节 `source` 字段含义。
+>
+> **注**：原设计中的 `context`（上下文计算字段）来源类型未实施，已拆分为 `case`（用例参数）与 `case_config`（用例配置字段）两类。
 
 ### 6.3 配置示例
+
+以 WER 错误率为例，维度保存后的实际配置结构（`required_inputs` 对应 `EvaluationDimensionParam` 中 `param_direction='input'` 的记录）：
 
 ```json
 {
   "name": "WER错误率",
+  "statistic_method": "average",
   "required_inputs": [
     {
-      "key": "asr_result",
+      "param_code": "asr_result",
       "label": "ASR识别结果",
-      "source": "api",
+      "field_type": "text",
       "required": true,
-      "mapped_from": "api_output.result",
-      "description": "ASR算法识别出的文本"
+      "ui_order": 1
     },
     {
-      "key": "asr_ref",
+      "param_code": "asr_ref",
       "label": "参考文本",
-      "source": "reference",
+      "field_type": "text",
       "required": true,
-      "mapped_from": "reference.output.text",
-      "description": "标准参考文本"
-    },
-    {
-      "key": "task_type",
-      "label": "任务类型",
-      "source": "context",
-      "required": true,
-      "description": "用于指定计算引擎"
+      "ui_order": 2
     }
   ],
   "api_settings": {
+    "method": "POST",
+    "timeout": 30000,
     "body_template": {
       "task_type": "wer",
-      "dimensions": ["wer", "wer_zh", "wer_en"],
-      "asr_result": "{{asr_result}}",
-      "asr_ref": "{{asr_ref}}"
+      "rounds": [
+        {
+          "asr_result": "{{asr_result}}",
+          "asr_ref": "{{asr_ref}}"
+        }
+      ]
     }
   }
 }
 ```
 
+> **要点**：
+> - `body_template.rounds` 是**每轮字段模板数组**，占位符与 `required_inputs` 的 `param_code` 一一对应；前端保存时会按 `param_code` 顺序自动同步模板字段（`evaluation.ts`）
+> - 多轮评估时后端按轮渲染 `rounds` 数组（`payload_builder.py` 的 `build_payload`），单轮无 rounds 数据时用顶层上下文字段构造单轮
+> - 旧设计中手写在 `body_template` 里的 `dimensions` 数组已废弃，多子维度由后端自动注入 `sub_tasks`（见第 7 节）
+
 ### 6.4 字段映射机制
 
 ```
-设备输出/API返回 ─────────────────┐
-                                    ├──▶ required_inputs 校验 ──▶ body_template 渲染 ──▶ API请求
-测试上下文 ────────────────────────┘
-参考参数 ──────────────────────────┘
+用例参数(case) / 用例配置(case_config) ──┐
+设备输出(device) / 算法输出(api) ─────────┼──▶ ParamMapping 提取 ──▶ context/rounds ──▶ body_template 渲染 ──▶ sub_tasks 注入 ──▶ API请求
+参考参数(reference) ──────────────────────┘
 ```
 
-**执行流程：**
-1. 从设备输出和API返回中提取 `required_inputs` 定义的字段
-2. 从参考参数（`reference.input` 或 `reference.output`）中提取对应字段
-3. 校验必填字段是否存在
-4. 将字段值渲染到 `body_template` 占位符
-5. 发送API请求
+**实际执行流程（已实施，`evaluation_service.py`）：**
+1. `EvaluationService.evaluate_case` 读取用例的 `algorithm_params` 独立列，调用 `_build_rounds_list` 按 `ParamMapping`（`get_param_mapping(algorithm_type, 'evaluation')`）从各来源提取每轮字段，构建 `rounds_list`
+2. 多轮结构：`algorithm_result.rounds[]`（0-indexed）逐轮提取输出字段；`reference_params_col` 按 1-indexed 轮次取参考参数；`case_config.rounds` 按轮取结构性字段
+3. `EndpointWorker._execute_evaluation` 组装 context：`algorithm_result` 输出字段（维度专属 key `{key}__dim_{dimension_id}` 优先）、参考参数、各轮字段；空值时用维度级 `default_value` 覆盖
+4. `build_payload` 按 `body_template` 渲染占位符，`rounds` 模板按轮展开为 `rounds` 数组
+5. 从同组子维度（group_items）提取各 `task_type_code` 注入 `payload.sub_tasks`，发送API请求到 eval_server
 
-**mapped_from 映射规则：**
+**ParamMapping 映射规则（已替代原 mapped_from 设计）：**
 
-| source 类型 | mapped_from 示例 | 说明 |
-|-------------|------------------|------|
-| `api` | `api_output.result` | 从API返回中提取字段 |
-| `device` | `device_output.audio_file` | 从设备输出中提取字段 |
-| `context` | `context.task_id` | 从测试上下文中提取字段 |
-| `reference` | `reference.output.text` | 从参考参数中提取（output表示输出参考，text表示文本类型） |
-| `reference` | `reference.input.audio` | 从参考参数中提取（input表示输入参考） |
+```python
+class ParamMapping(db.Model):
+    """参数映射表 - 设备/API/用例参数 → 评估维度参数"""
+    algorithm_type = Column(String(50), nullable=False)   # 关联算法类型
+    source = Column(String(20), nullable=False, default='api')
+    # source: case=用例参数, reference=参考参数, device=设备输出, api=API输出, case_config=用例配置(config.rounds)字段
+    source_param = Column(String(50), nullable=False)     # 源参数代码
+    source_direction = Column(String(10), default='output')  # 源参数方向: input, output
+    dimension_id = Column(Integer, nullable=True)         # 目标评估维度ID(可为空)
+    target_param = Column(String(50), nullable=False)     # 目标评估维度参数代码（即 required_inputs 的 param_code）
+    transform_type = Column(String(20), default='none')   # 转换类型: none, uppercase, lowercase, json_parse, base64
+```
+
+| source 类型 | source_param 示例 | 说明 |
+|-------------|-------------------|------|
+| `api` | `result` | 从算法输出（`algorithm_result`）中提取字段 |
+| `device` | `audio_file` | 从设备输出中提取字段 |
+| `case` | `source_lang` | 从用例 `algorithm_params`（按轮分组）中提取字段 |
+| `case_config` | `audios` | 从用例配置 `config.rounds` 中提取结构性字段 |
+| `reference` | `text`（direction=output） | 从参考参数的输出参考（标准文本）中提取 |
+| `reference` | `audio`（direction=input） | 从参考参数的输入参考（待测音频）中提取 |
 
 ---
 
@@ -402,21 +460,21 @@ interface RequiredInput {
 
 ### 7.1 核心问题
 
-一次评估请求可返回多个同组维度的结果，但 `task_type` 只传主维度关键字：
+一次评估请求可返回多个同组维度的结果。请求中 `task_type` 传主维度关键字，同时需要告知微服务计算哪些子维度：
 
 ```json
 {
-  "task_type": "wer",           // 主维度关键字 (必需)
-  "dimensions": ["wer", "wer_zh", "wer_en"],  // 返回的多个维度
-  "asr_result": "...",
-  "asr_ref": "..."
+  "task_type": "wer",     // 主维度关键字 (必需)
+  "sub_tasks": ["wer", "wer_zh", "wer_en"],  // 由后端自动注入的子维度列表
+  "rounds": [
+    { "asr_result": "...", "asr_ref": "..." }
+  ]
 }
 ```
 
-返回结果示例：
+返回结果示例（eval_server 按 `sub_tasks` 计算各子维度）：
 ```json
 {
-  "dimensions": ["wer", "wer_zh", "wer_en"],
   "result": {
     "wer": 85.5,
     "wer_zh": 88.2,
@@ -425,9 +483,14 @@ interface RequiredInput {
 }
 ```
 
-### 7.2 配置方案
+### 7.2 配置方案（已实施：sub_tasks 自动注入）
 
-在维度配置中使用 `task_type` 作为主维度标识，`dimensions` 数组声明返回的所有子维度：
+**不再**在 `body_template` 中手写 `dimensions` 数组。实际机制：
+
+1. 每个子维度是一条独立的 `Dimension` 记录（`dimension_type='sub'`，`parent_dimension_id` 指向主维度），各自配置 `task_type_code`（如 `wer_zh`、`wer_en`）
+2. 评估服务 `_dispatch_evaluation_tasks` 按 `api_endpoints` 将同组主/子维度分为一组（group_items）
+3. `EndpointWorker._execute_evaluation` 从 group_items 提取各维度的 `task_type_code`（去重），注入 `payload.sub_tasks`（`endpoint_worker.py`）
+4. eval_server 侧按 `sub_tasks` 只计算选中的子维度（如 `TurnTakingCalculator`）
 
 ```json
 {
@@ -436,13 +499,15 @@ interface RequiredInput {
   "api_settings": {
     "body_template": {
       "task_type": "wer",
-      "dimensions": ["wer", "wer_zh", "wer_en"],
-      "asr_result": "{{asr_result}}",
-      "asr_ref": "{{asr_ref}}"
+      "rounds": [
+        { "asr_result": "{{asr_result}}", "asr_ref": "{{asr_ref}}" }
+      ]
     }
   }
 }
 ```
+
+> `sub_tasks` 无需配置，由后端运行时自动注入。
 
 ### 7.3 子维度继承配置
 
@@ -463,104 +528,136 @@ interface RequiredInput {
 }
 ```
 
-子维度继承父维度的以下配置：
+子维度继承父维度的以下配置（保存主维度时自动同步，见 `evaluation_controller.py`）：
 | 字段 | 说明 |
 |------|------|
 | `api_url` | Master入口URL |
 | `api_endpoints` | API端点配置 |
 | `api_settings` | API调用设置 |
 | `task_type_code` | 评估任务关键字 |
-| `associated_algorithms` | 关联算法列表 |
-| `required_inputs` | 所需输入配置 |
+
+> **注**：`required_inputs`/`output_fields` 仅在主维度上配置（前端表单字段 `conditional: dimensionType === 'main'`），评估时子维度与主维度共用同一组参数定义与 API 配置（同组分派到同一 EndpointWorker）；关联算法由 `AlgorithmDimensionRelation` 表独立维护，不随继承同步。
 
 **继承规则：**
 - 仅当子维度未配置对应字段时，才会继承父维度的配置
 - 子维度可以覆盖父维度的任何配置
-- **更新同步**：当主维度的 `api_url`、`api_endpoints`、`api_settings`、`task_type_code` 等配置变更时，系统会自动将新配置同步到所有未配置对应字段的子维度
+- **更新同步（已实施）**：保存主维度时，系统自动将 `api_url`、`api_endpoints`、`api_settings`、`task_type_code` 同步到所有未配置对应字段的子维度
 
 ### 7.4 多维度关联配置
 
-使用 `AlgorithmDimensionRelation` 表关联同组维度：
+同组主/子维度的层级关系由 `Dimension` 表的 `parent_dimension_id` 维护；与算法的关联由 `AlgorithmDimensionRelation` 表存储，**不包含**子维度列表字段：
 
 ```json
 {
   "id": 1,
   "name": "WER错误率",
-  "associated_algorithms": [
-    {
-      "algorithm_type": "asr",
-      "is_default": true,
-      "weight": 1.0,
-      "sub_dimensions": ["wer", "wer_zh", "wer_en"]
-    }
+  "associatedAlgorithms": [
+    { "algorithmType": "asr", "isDefault": true, "weight": 1.0 }
+  ],
+  "subDimensions": [
+    { "id": 11, "name": "WER错误率(中文)", "taskTypeCode": "wer_zh" },
+    { "id": 12, "name": "WER错误率(英文)", "taskTypeCode": "wer_en" }
   ]
 }
 ```
+
+> **注**：`subDimensions` 为前端展示用的关联查询视图（按 `parent_dimension_id` 查询派生），`AlgorithmDimensionRelation` 表中并无 `main_dimension`/`sub_dimensions` 字段。
 
 ### 7.5 实际配置示例
 
 **场景：ASR 评估需要计算 WER、WER_ZH、WER_EN 三个维度**
 
-评估维度本身配置（AlgorithmDimensionRelation 表独立存储关联）：
+主维度配置（关联算法由 AlgorithmDimensionRelation 表独立存储）：
 
 ```json
 {
   "id": 1,
   "name": "WER错误率",
   "keywords": "wer,word_error_rate,词错误率",
+  "dimension_type": "main",
   "type": "auto",
+  "statistic_method": "average",
   "required_inputs": [
-    {"key": "asr_result", "label": "ASR识别结果", "source": "api", "required": true, "mapped_from": "api_output.result"},
-    {"key": "asr_ref", "label": "参考文本", "source": "reference", "required": true, "mapped_from": "reference.output.text"},
-    {"key": "task_type", "label": "任务类型", "source": "context", "required": true},
-    {"key": "source_lang", "label": "源语言", "source": "context", "required": false}
+    {"param_code": "asr_result", "label": "ASR识别结果", "field_type": "text", "required": true},
+    {"param_code": "asr_ref", "label": "参考文本", "field_type": "text", "required": true}
+  ],
+  "output_fields": [
+    {"param_code": "wer", "field_path": "result.wer", "output_role": "main", "agg_role": "value"}
   ],
   "api_settings": {
     "method": "POST",
-    "timeout": 60,
+    "timeout": 30000,
     "body_template": {
       "task_type": "wer",
-      "dimensions": ["wer", "wer_zh", "wer_en"],
-      "asr_result": "{{asr_result}}",
-      "asr_ref": "{{asr_ref}}",
-      "source_lang": "{{source_lang}}"
+      "rounds": [
+        { "asr_result": "{{asr_result}}", "asr_ref": "{{asr_ref}}" }
+      ]
     }
   }
 }
 ```
 
-**AlgorithmDimensionRelation 关联记录：**
+子维度配置（各自声明 `task_type_code`，API 配置未配置时自动继承主维度）：
+
+```json
+[
+  {
+    "id": 11, "name": "WER错误率(中文)", "dimension_type": "sub",
+    "parent_dimension_id": 1, "task_type_code": "wer_zh"
+  },
+  {
+    "id": 12, "name": "WER错误率(英文)", "dimension_type": "sub",
+    "parent_dimension_id": 1, "task_type_code": "wer_en"
+  }
+]
+```
+
+**运行时注入的 payload（无需配置）：**
+
+```json
+{
+  "task_type": "wer",
+  "sub_tasks": ["wer", "wer_zh", "wer_en"],
+  "rounds": [ { "asr_result": "...", "asr_ref": "..." } ]
+}
+```
+
+**AlgorithmDimensionRelation 关联记录（实际字段）：**
 
 ```json
 {
   "algorithm_type": "asr",
   "dimension_id": 1,
   "is_default": true,
-  "weight": 1.0,
-  "main_dimension": "wer",
-  "sub_dimensions": ["wer", "wer_zh", "wer_en"]
+  "weight": 1.0
 }
 ```
 
 ### 7.6 结果分发机制
 
 ```
-API返回 {wer: 85.5, wer_zh: 88.2, wer_en: 82.1}
+API返回 {result: {wer: 85.5, wer_zh: 88.2, wer_en: 82.1}}
             │
             ▼
-┌─────────────────────────────────────────────┐
-│  评估引擎解析 dimensions 数组                │
-│  [wer, wer_zh, wer_en]                      │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  按各维度的 output 参数（param_direction='output'）        │
+│  的 field_path 从 API 响应提取值                          │
+│  wer    ──field_path: result.wer───▶ 85.5                │
+│  wer_zh ──field_path: result.wer_zh─▶ 88.2               │
+│  wer_en ──field_path: result.wer_en─▶ 82.1               │
+└──────────────────────────────────────────────────────────┘
             │
             ▼
-┌─────────────────────────────────────────────┐
-│  分发到对应的评估维度记录                    │
-│  wer ────────▶ 85.5                         │
-│  wer_zh ─────▶ 88.2                         │
-│  wer_en ─────▶ 82.1                         │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  写入 TestResultDimension（按 dimension_id 分发）          │
+│  - dimension_id / algorithm_type                         │
+│  - round_number（多轮为 0-indexed，整体评估为 NULL）       │
+│  - dimension_value / score / status(passed/failed)       │
+│  - evaluation_status / api_raw_response / api_request_body│
+└──────────────────────────────────────────────────────────┘
 ```
+
+> **注**：结果模型为 `TestResult`（含 `algorithm_result` JSON）+ `TestResultDimension`（每维度×每轮一条记录），原始 API 响应保存在 `api_raw_response` 供追溯。多轮场景下输出字段在 `algorithm_result.rounds[].output` 中，维度专属 key 为 `{key}__dim_{dimension_id}`，缺失时回退通用 key。
 
 ---
 
@@ -602,19 +699,30 @@ API返回 {wer: 85.5, wer_zh: 88.2, wer_en: 82.1}
 }
 ```
 
-### 8.3 维度配置中的模式指定
+### 8.3 维度统计方式（已实施）
 
-在维度配置中增加 `aggregation_mode` 字段来指定评估模式：
+**已实施**：维度通过 `statistic_method` 字段指定任务完成后的结果聚合方式（`Dimension.statistic_method`，前端表单字段 `statisticMethod`）：
 
 ```typescript
-interface DimensionConfig {
-  // 评估模式
-  aggregation_mode: 'per_case' | 'batch_aggregate' | 'grouped';
-  
-  // 分组字段（用于 grouped 模式）
-  group_by?: string[];  // 如 ["tag", "device_id"]
-}
+const statisticMethodOptions = [
+  { value: 'average',      label: '简单平均' },
+  { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' },
+  { value: 'pass_rate',    label: '达标率 (达标用例数/总用例数)' }
+];
 ```
+
+后端由策略注册表实现（`backend/utils/report/aggregation_strategies.py`）：
+
+| 策略类 | statistic_method | 聚合逻辑 | 依赖的 output 参数 |
+|--------|------------------|----------|--------------------|
+| `SimpleAverageStrategy` | `average` | 各用例分数简单平均 | `agg_role='value'` |
+| `WeightedSumRatioStrategy` | `weighted_wer` | Σ分子 / Σ分母（如 Σ错误字符/Σ总字符） | `agg_role='numerator'` + `agg_role='denominator'` |
+| `PassRateStrategy` | `pass_rate` | 达标用例数 / 总用例数 | `agg_role='pass_le'/'pass_ge'/'pass_eq'` + `pass_threshold` |
+
+- 策略通过 `register_strategy(name, strategy)` 注册、`get_strategy(statistic_method)` 获取（注册表模式，可扩展自定义策略）
+- 达标条件由 `_find_pass_condition` 按 output 参数的 `agg_role`（`pass_le`/`pass_ge`/`pass_eq`）与 `pass_threshold` 提取
+
+> **未实施**：原设计的 `aggregation_mode`（per_case/batch_aggregate/grouped）与 `group_by`（分组字段）字段未落地到 Dimension 模型；当前所有维度均按"逐用例计算 + 任务完成后按 `statistic_method` 聚合"处理（见 §8.4）。
 
 ### 8.4 两种聚合模式对比
 
@@ -644,9 +752,11 @@ interface DimensionConfig {
 - 整体WER = (10+20+15+10)/(100+200+150+100) = 10%
 ```
 
-### 8.5 微服务接口扩展
+### 8.5 微服务接口扩展（未实施，保留为规划）
 
-#### 8.5.1 调用时传入分组字段
+> **现状说明**：当前 eval_server 提供的评估接口为 `POST /api/create_task`（JSON）与 `POST /api/create_task_upload`（multipart，`__MULTIPART__:field_name` 占位符传音频），均为**逐用例同步计算**，响应统一返回 `{code, msg, data: {eval_task_id, status_url, final_result_url}}`；不支持批量 cases、`group_by` 分组与聚合结果查询接口。以下为原规划设计，尚未实施。
+
+#### 8.5.1 调用时传入分组字段（规划）
 
 ```json
 // 后端调用微服务时传入分组字段
@@ -695,11 +805,17 @@ interface DimensionConfig {
 }
 ```
 
-### 8.6 分组聚合结果存储
+### 8.6 分组聚合结果存储（未实施，保留为规划）
 
-#### 8.6.1 数据模型扩展
+> **实际结果模型（已实施）**：系统中并不存在 `EvaluationResult` 模型，实际为：
+> - `TestResult`：用例级结果，含 `algorithm_result`（JSON，含 rounds[] 结构）与 `result_data_path`
+> - `TestResultDimension`：维度级结果（每维度×每轮一条），含 `dimension_id`、`algorithm_type`、`round_number`（NULL=整体评估，0-indexed）、`dimension_value`、`score`、`status`（passed/failed）、`evaluation_status`、`api_raw_response`、`api_request_body`
+>
+> 任务级统计聚合由 `statistic_method` 策略（§8.3）在任务完成后计算，不落独立分组记录。
 
-在 `EvaluationResult` 模型中增加分组字段：
+#### 8.6.1 数据模型扩展（规划）
+
+在结果模型中增加分组字段的原始设计（未实施）：
 
 ```python
 class EvaluationResult(db.Model):
@@ -764,7 +880,7 @@ class EvaluationResult(db.Model):
 ]
 ```
 
-### 8.6 完整配置示例
+### 8.7 完整配置示例（已实施口径：加权WER）
 
 评估维度配置（维度本身）：
 ```json
@@ -773,24 +889,24 @@ class EvaluationResult(db.Model):
   "name": "WER错误率",
   "keywords": "wer,word_error_rate",
   "type": "auto",
-  
-  "aggregation_mode": "grouped",
-  "group_by": ["tag"],
-  
+  "statistic_method": "weighted_wer",
+
   "required_inputs": [
-    {"key": "asr_result", "label": "ASR识别结果", "source": "api", "required": true, "mapped_from": "api_output.result"},
-    {"key": "asr_ref", "label": "参考文本", "source": "reference", "required": true, "mapped_from": "reference.output.text"},
-    {"key": "task_type", "label": "任务类型", "source": "context", "required": true},
-    {"key": "tag", "label": "标签分组", "source": "context", "required": true}
+    {"param_code": "asr_result", "label": "ASR识别结果", "field_type": "text", "required": true},
+    {"param_code": "asr_ref", "label": "参考文本", "field_type": "text", "required": true}
+  ],
+  "output_fields": [
+    {"param_code": "total_errors", "field_path": "result.total_errors", "agg_role": "numerator", "output_role": "aux", "visible_in_report": true},
+    {"param_code": "total_chars", "field_path": "result.total_chars", "agg_role": "denominator", "output_role": "aux", "visible_in_report": true},
+    {"param_code": "wer", "field_path": "result.wer", "agg_role": "value", "output_role": "main", "visible_in_report": true}
   ],
   "api_settings": {
     "method": "POST",
     "body_template": {
       "task_type": "wer",
-      "dimensions": ["wer"],
-      "group_by": "tag",
-      "asr_result": "{{asr_result}}",
-      "asr_ref": "{{asr_ref}}"
+      "rounds": [
+        { "asr_result": "{{asr_result}}", "asr_ref": "{{asr_ref}}" }
+      ]
     }
   }
 }
@@ -807,7 +923,41 @@ class EvaluationResult(db.Model):
 }
 ```
 
-### 8.7 执行流程（单用例计算+聚合查询模式）
+> 任务完成后按 `WeightedSumRatioStrategy` 聚合：整体 WER = Σtotal_errors / Σtotal_chars。
+
+### 8.8 执行流程（已实施：逐用例计算 + statistic_method 聚合）
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Step 1: 逐用例评估（evaluation_service.py）                  │
+│ - 每个用例独立调用 eval_server（POST /api/create_task 或     │
+│   /api/create_task_upload multipart）                        │
+│ - 单次请求仅含该用例的 rounds 数据，不含批量 cases/group_by  │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Step 2: 结果落库（逐用例、逐维度、逐轮）                     │
+│ - TestResult.algorithm_result 保存原始返回（含 rounds[]）    │
+│ - TestResultDimension 按维度×轮次写入 dimension_value/score │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Step 3: 任务完成后聚合                                       │
+│ - 按 Dimension.statistic_method 选择策略（注册表模式）       │
+│   average      → SimpleAverageStrategy                      │
+│   weighted_wer → WeightedSumRatioStrategy（Σ分子/Σ分母）    │
+│   pass_rate    → PassRateStrategy（agg_role + threshold）   │
+│ - 聚合为任务级统计分数，不落独立分组记录                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+> **未实施（规划）**：批量用例聚合模式（Step 1 改为批量请求 + 分组字段、Step 3 前增加 `get_aggregate_result` 分组查询、分组聚合记录落库）仍为原设计规划，见 §8.5/§8.6。
+
+### 8.9 原规划流程：批量用例 + 分组聚合查询（未实施）
+
+> 以下为原设计的"单用例计算+聚合查询"批量流程图示，依赖 §8.5 的微服务扩展接口，尚未实施；已实施的执行流程见 §8.8。
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -867,25 +1017,49 @@ class EvaluationResult(db.Model):
 
 ## 9. 实施清单
 
-### 9.1 微服务改动 (WER微服务)
+### 9.1 已实施（✅，经代码核实）
 
+**数据模型与配置（后端）**
+- [x] `Dimension.statistic_method` 统计方式字段（average/weighted_wer/pass_rate）
+- [x] `EvaluationDimensionParam` 参数定义表（required_inputs/output_fields，param_direction 区分输入/输出，含 agg_role/pass_threshold/output_role/default_value 等）
+- [x] `AlgorithmDimensionRelation` 维度-算法关联表（唯一索引 `uq_algorithm_dimension`），替代 JSON 字段
+- [x] `ParamMapping` 参数映射表（source: case/reference/device/api/case_config），替代 mapped_from
+- [x] 保存维度时同步 `ParamMapping` 与 `body_template` 占位符（`evaluation_controller.py`）
+- [x] 保存主维度时同步 API 配置到未配置的子维度（api_url/api_endpoints/api_settings/task_type_code）
+
+**评估执行链路（后端）**
+- [x] `EvaluationService.evaluate_case` 逐用例评估，`_build_rounds_list` 多轮字段构建（case/case_config/reference/api 四来源按轮提取）
+- [x] `_dispatch_evaluation_tasks` 按 api_endpoints 分组，`EndpointWorker` 构建上下文并渲染 `body_template`（rounds 按轮展开）
+- [x] `sub_tasks` 运行时自动注入（从 group_items 提取各子维度 `task_type_code`，eval_server 按此只算选中子维度）
+- [x] 结果按维度×轮次写入 `TestResult`/`TestResultDimension`（含 api_raw_response/api_request_body 追溯）
+
+**聚合策略（后端）**
+- [x] `aggregation_strategies.py` 策略注册表：`SimpleAverageStrategy`/`WeightedSumRatioStrategy`/`PassRateStrategy`，`register_strategy`/`get_strategy(statistic_method)`
+- [x] 达标条件提取 `_find_pass_condition`（agg_role: pass_le/pass_ge/pass_eq + pass_threshold）
+
+**前端**
+- [x] 维度表单"统计方式"选择（简单平均/加权WER/达标率）
+- [x] 所需输入配置（requiredInputs）/输出字段配置（outputFields）编辑组件
+- [x] 关联算法多选（multi-select-tags，提交字符串数组，后端写关联表）
+
+### 9.2 未实施（保留为规划）
+
+**微服务改动 (eval_server)**
 - [ ] 创建批量用例计算接口 `/api/create_batch_task`
 - [ ] 批量模式下保存每个用例的中间数据（错误字符数、总字符数）
 - [ ] 创建聚合结果查询接口 `/api/get_aggregate_result/<task_id>`
 - [ ] 支持 `group_by` 参数（tag/device/task）
 - [ ] 返回分组聚合和整体聚合结果
 
-### 9.2 后端改动
-
+**后端改动**
 - [ ] Dimension 模型新增 `aggregation_mode` 字段
 - [ ] Dimension 模型新增 `group_by` 字段
 - [ ] 评估执行器支持批量用例模式
 - [ ] 评估执行器调用聚合结果查询接口
-- [ ] EvaluationResult 模型新增分组字段
+- [ ] 结果模型新增分组聚合字段
 - [ ] 分组聚合结果存储逻辑
 
-### 9.3 前端改动
-
+**前端改动**
 - [ ] 维度配置新增"聚合模式"选择（单用例/批量用例）
 - [ ] 维度配置新增"分组字段"选择（tag/device/task）
 - [ ] 评估结果展示支持分组聚合视图
@@ -906,6 +1080,6 @@ class EvaluationResult(db.Model):
 
 ### 10.2 兼容性
 
-- **向后兼容**：现有数据 `associated_algorithms` 为空数组，不影响现有功能
-- **无破坏性改动**：不修改现有字段含义和结构
+- **向后兼容**：维度未配置关联算法时 `AlgorithmDimensionRelation` 无记录，接口返回空数组，不影响现有功能
+- **无破坏性改动**：不修改现有字段含义和结构（关联算法与参数定义均独立建表）
 - **渐进式增强**：新功能可选，不影响现有评估维度使用

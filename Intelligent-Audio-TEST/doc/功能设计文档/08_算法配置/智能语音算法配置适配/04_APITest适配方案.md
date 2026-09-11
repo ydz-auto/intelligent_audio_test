@@ -3,17 +3,20 @@
 ## 1. 页面概述
 
 ### 1.1 页面定位
-APITest 是 API 测试的核心页面，用于执行 API 接口测试。需要适配算法配置化方案，增加算法类型选择步骤，与 E2ETest 保持一致的交互流程。
+APITest 是 API 测试的核心页面，用于执行 API 接口测试。算法配置化适配**已实施**：页面编排逻辑收敛于 `views/APITestLogic/apiTest.ts`（useApiTest，Application 层），视图（APITest.vue）只消费其暴露的状态与动作，与 E2ETest 保持一致的五步交互流程。
 
 ### 1.2 页面路由
 - 路由路径：`/APITest`
 - 菜单位置：测试执行 > API测试
 
-### 1.3 核心改动
-- 新增步骤0：选择算法类型
-- 根据算法类型筛选 API
-- 根据算法类型筛选用例
-- 动态参数配置
+### 1.3 核心改动（已实施）
+- 步骤0：选择算法类型（AlgorithmSelectionPanel + AlgorithmConfigModal 配置入口）
+- 根据算法类型筛选用例（TestCaseListContainer 的 algorithm-type-filter + test-type-filter='api'）
+- 根据算法类型筛选 API（APIConfig.algorithmType 精确匹配）
+- 算法参数随用例（algorithm_params 独立列）进入执行链路，页面不设参数配置步骤
+
+### 1.4 分层与命名口径
+后端响应经 `success_response` 统一转 camelCase；前端 DDD 分层——Presentation（APITest.vue + 公共组件）只消费 composables 与 camelCase Domain；`utils/api.ts`（Infrastructure）唯一感知 snake_case。用例执行的执行方式由被测设备 `device_type` 路由三执行器（物理设备→E2EExecutor、HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor）；"api/e2e 为独立用例记录的 test_type 决定执行方式"属废弃口径，本页任务的 `type: 'api'` 仅是任务分类标识，任务关联的被测 API 通过 `apiIds` 字段传递。
 
 ---
 
@@ -29,23 +32,24 @@ APITest 是 API 测试的核心页面，用于执行 API 接口测试。需要�
   [选择算法类型] → 选择测试用例 → 选择被测API → 执行测试 → 查看结果
 ```
 
-### 2.2 步骤说明
+### 2.2 步骤说明（已实施，currentStep 0-4）
 
 | 步骤 | 名称 | 说明 |
 |-----|------|------|
-| 步骤1 | 选择算法类型 | 新增步骤，选择测试的算法类型 |
-| 步骤2 | 选择测试用例 | 根据算法类型过滤测试用例 |
-| 步骤3 | 选择被测API | 根据算法类型过滤API |
-| 步骤4 | 执行测试 | 开始执行测试任务 |
-| 步骤5 | 查看结果 | 查看测试结果和报告 |
+| 步骤0 | 选择算法 | AlgorithmSelectionPanel 卡片选择，可新增/配置算法 |
+| 步骤1 | 选择测试用例 | 按算法类型过滤（algorithm-type-filter + test-type-filter='api'），复用 TestCaseListContainer |
+| 步骤2 | 选择被测API | 按 APIConfig.algorithmType 过滤（allFilteredAPIs），复用 ResourceSelectionGrid |
+| 步骤3 | 执行测试 | tasksApi.create + tasksApi.start（apiIds 关联被测 API），复用 TestExecutionComponent |
+| 步骤4 | 查看结果 | 复用 TaskReportPanel |
 
 ### 2.3 与 E2ETest 的差异
 
 | 项目 | E2ETest | APITest |
 |-----|---------|---------|
 | 步骤顺序 | 算法→用例→设备→执行→结果 | 算法→用例→API→执行→结果 |
-| 资源选择 | 设备 | API |
-| 兼容性 | 设备-算法兼容性 | API-算法关联 |
+| 资源选择 | 设备（supportedAlgorithms 过滤，未配置视为兼容） | API（algorithmType 精确匹配，未配置则不显示） |
+| 任务关联字段 | deviceIds | apiIds |
+| 编排位置 | composables/useE2eView.ts | views/APITestLogic/apiTest.ts |
 
 ---
 
@@ -134,216 +138,133 @@ APITest 是 API 测试的核心页面，用于执行 API 接口测试。需要�
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
-| 步骤0: 选择算法 | ✅ 已实现 | 算法卡片网格布局，checkbox选择 |
-| 步骤1: 选择测试用例 | ✅ 已实现 | 复用TestCaseListContainer组件 |
-| 步骤2: 选择被测API | ✅ 已实现 | 复用ResourceSelectionGrid组件 |
-| 步骤3: 执行测试 | ✅ 已实现 | 复用TestExecutionComponent组件 |
-| 步骤4: 查看结果 | ✅ 已实现 | 复用TaskReportPanel组件 |
-| 进度导航 | ✅ 已实现 | 5步骤ProgressNav组件 |
-| 算法配置入口 | ✅ 已实现 | 跳转AlgorithmConfigPage |
+| 步骤0: 选择算法 | ✅ 已实现 | 复用 AlgorithmSelectionPanel（卡片网格 + 搜索 + open-config 配置入口） |
+| 步骤1: 选择测试用例 | ✅ 已实现 | 复用 TestCaseListContainer（algorithm-type-filter + test-type-filter='api'） |
+| 步骤2: 选择被测API | ✅ 已实现 | 复用 ResourceSelectionGrid（allFilteredAPIs 按 algorithmType/状态/搜索过滤 + 分页） |
+| 步骤3: 执行测试 | ✅ 已实现 | 复用 TestExecutionComponent，tasksApi.create + tasksApi.start（apiIds） |
+| 步骤4: 查看结果 | ✅ 已实现 | 复用 TaskReportPanel |
+| 进度导航 | ✅ 已实现 | ProgressNav（step-labels 5 步，go-to-step 跳转） |
+| 算法配置入口 | ✅ 已实现 | AlgorithmConfigModal（useModal/MODAL_TYPES 注册） |
+| 用例按算法过滤 | ✅ 已实现 | fetchTagView/fetchCaseIdsByFilter 携带 algorithmType |
+| API按算法过滤 | ✅ 已实现 | allFilteredAPIs：api.algorithmType === selectedAlgorithmType |
 
-### 4.2 待优化功能 📋
+### 4.2 设计取舍说明 📋
 
-| 功能 | 优先级 | 说明 |
-|------|--------|------|
-| 用例按算法过滤 | 中 | 根据selectedAlgorithmType过滤用例 |
-| API按算法过滤 | 中 | 根据selectedAlgorithmType过滤API |
-| 算法参数配置 | 低 | 动态渲染算法参数表单 |
+| 功能 | 说明 |
+|------|------|
+| 页面级算法参数配置步骤 | 不设独立参数步骤——算法参数已按轮固化在用例的 algorithm_params 独立列中，执行时随用例下发；如需调整参数回到用例管理编辑 |
+| API 编辑入口绑定算法类型 | 后端 API 模型 algorithm_type 字段已落地、页面过滤逻辑已实现，但 APIEditModal 尚未提供算法类型编辑控件（见 09_API管理适配方案），当前 API 的 algorithmType 依赖后端数据维护 |
 
 ---
 
 ## 5. 数据结构
 
-### 5.1 页面状态 (实际实现)
+### 5.1 页面状态（已实施，useApiTest 摘要）
 
 ```typescript
-interface APITestState {
-  // 步骤控制
-  currentStep: number;  // 0-4
-  
-  // 算法选择
-  selectedAlgorithmType: string | null;
-  algorithmList: Array<{value: string, name: string, category: string}>;
-  
-  // 用例选择
-  selectedTestCaseIds: string[];
-  testCaseGroups: Record<string, TestCase[]>;
-  
-  // API选择
-  selectedAPIIds: string[];
-  apis: API[];
-  apiSearchQuery: string;
-  apiFilter: string;
-  
-  // 执行状态
-  isExecuting: boolean;
-  isPaused: boolean;
-  progressPercentage: number;
-  taskName: string;
-  
-  // 报告
-  report: TaskReport;
-}
+// 状态由 views/APITestLogic/apiTest.ts 的 useApiTest 统一编排（Application 层），非 Pinia store
+const currentStep = ref(0);                       // 0-4
+const selectedAlgorithmType = ref<string | null>(null);
+const algorithmList = ref<AlgorithmOption[]>([]); // camelCase Domain（useAlgorithmSelection）
+const selectedTestCaseIds = ref<(string|number)[]>([]);
+const selectedAPIIds = ref<(string|number)[]>([]);
+const apiSearchQuery = ref('');
+const apiFilter = ref('all');                     // all | online | offline
+const concurrentTasks = ref(4);
+const taskName = ref('');
+// 派生值：allFilteredAPIs / filteredAPIs（分页切片）/ isVoiceLLM / stepHints
 ```
 
-### 5.2 API 数据结构
+### 5.2 API 数据结构（camelCase，shared/types/businessTypes.ts）
 
 ```typescript
-interface API {
+interface APIConfig {
   id: string | number;
   name: string;
-  apiUrl: string;
-  method: string;
-  status: 'online' | 'offline';
-  description?: string;
+  vendor?: string;
+  apiUrl?: string;                     // 主端点（卡片展示字段）
+  apiEndpoints?: any[];                // 端点列表（搜索匹配 url/endpoint）
+  status: 'online' | 'offline' | 'busy' | 'error';
+  algorithmType?: string;              // 关联算法类型（页面过滤依据）
+  maxConcurrent?: number;              // 汇总并发上限用
+  currentConcurrent?: number;
+  avgResponseTime?: number;
+  ...
 }
 ```
 
-### 4.3 执行参数
+### 5.3 任务创建参数（已实施，tasksApi.create payload）
 
 ```typescript
-interface APIExecutionParams {
-  task_id: string;
-  api_id: string;
-  algorithm_type: string;           // 新增
-  algorithm_params: Record<string, any>;  // 新增
-  reference_params?: {              // 参考参数（可选）
-    params: Array<{
-      type: string;    // text, audio, rttm, stm, mark
-      code: string;    // 参数代码
-      api: string;    // API测试使用的参考值
-    }>;
-  };
-  case_ids: string[];
+// 前端 → POST /api/v1/tasks（camelCase，后端 TaskCreateRequest 两种命名均接受）
+{
+  name: 'API测试任务_2026-09-11 12:00:00',
+  description: '通过API测试任务',
+  type: 'api',                         // 任务分类标识（非执行路由依据）
+  caseIds: (string|number)[],          // 关联用例；算法参数随用例 algorithm_params 独立列下发
+  apiIds: number[],                    // 关联被测 API；执行方式由设备/API 的 device_type 路由
+  tags: []
 }
+// 随后 POST /api/v1/tasks/:id/start 启动，返回 { startTime, expectedTotalTime, expectedCompleteTime }
+// 并发数默认取所选 API 的 maxConcurrent（缺省 currentConcurrent，兜底 5）求和
 ```
 
 ---
 
 ## 5. 组件设计
 
-### 5.1 组件结构
+### 5.1 组件结构（已实施）
 
 ```
-APITest.vue
-├── TestStepIndicator.vue        # 步骤指示器
-├── AlgorithmSelectList.vue      # 算法选择列表（复用）
-├── APISelector.vue              # API选择器（改造）
-├── TestCaseSelector.vue         # 用例选择器（改造）
-├── DynamicForm.vue              # 动态参数表单（复用）
-├── AlgorithmConfigModal.vue     # 算法配置弹窗（复用）
-└── ExecutionPanel.vue           # 执行面板
+views/APITest.vue                          # 视图壳：组合 useApiTest 与公共组件
+├── views/APITestLogic/apiTest.ts          # 页面编排（Application 层）：步骤/选择/任务创建启动/进度
+├── ProgressNav.vue                        # 进度导航（5 步标签 + go-to-step）
+├── TestStepContainer.vue                  # 步骤容器（上一步/下一步）
+├── AlgorithmSelectionPanel.vue            # 算法卡片选择面板（步骤0，components/algorithm/）
+├── TestCaseListContainer.vue              # 用例分组列表（步骤1，algorithm-type-filter）
+├── ResourceSelectionGrid.vue              # API 资源网格（步骤2，allFilteredAPIs + apiDisplayFields）
+├── TestExecutionComponent                 # 执行面板（步骤3：任务信息/进度/API资源/日志）
+├── TaskReportPanel.vue                    # 结果报告（步骤4，含对比表组件）
+├── PaginationComponent.vue                # API 列表分页
+└── AlgorithmConfigModal.vue               # 算法配置弹窗（components/algorithm/）
 ```
 
-### 5.2 核心模板
+### 5.2 核心模板（实际结构摘要）
 
 ```vue
 <template>
-  <div class="api-test-page">
-    <!-- 步骤指示器 -->
-    <TestStepIndicator
-      :steps="steps"
-      :current="currentStep"
-      @click="handleStepClick"
+  <div class="test-view-common">
+    <ProgressNav
+      :current-step="currentStep"
+      :step-labels="['选择算法', '选择测试用例', '选择被测API', '执行测试', '查看结果']"
+      @go-to-step="goToStep"
     />
-    
-    <!-- 步骤内容 -->
-    <div class="step-content">
-      <!-- 步骤1: 选择算法类型（新增） -->
-      <TestStepContainer
-        v-if="currentStep === 1"
-        title="选择算法类型"
-        :show-prev="false"
-        next-label="下一步"
-        @next="nextStep"
-      >
-        <template #header-extra>
-          <el-button type="primary" @click="openAlgorithmModal">
-            <el-icon><Plus /></el-icon> 新建算法
-          </el-button>
-        </template>
-        
-        <AlgorithmSelectList
-          :algorithms="algorithmList"
-          :selected-id="selectedAlgorithmType"
-          @select="handleAlgorithmSelect"
-          @edit="handleAlgorithmEdit"
-          @delete="handleAlgorithmDelete"
-        />
-      </TestStepContainer>
-      
-      <!-- 步骤2: 选择API -->
-      <TestStepContainer
-        v-if="currentStep === 2"
-        title="选择API"
-        prev-label="上一步"
-        next-label="下一步"
-        @prev="prevStep"
-        @next="nextStep"
-      >
-        <APISelector
-          v-model="selectedApiId"
-          :algorithm-filter="selectedAlgorithmType"
-          @change="handleApiChange"
-        />
-      </TestStepContainer>
-      
-      <!-- 步骤3: 选择用例 -->
-      <TestStepContainer
-        v-if="currentStep === 3"
-        title="选择测试用例"
-        prev-label="上一步"
-        next-label="下一步"
-        @prev="prevStep"
-        @next="nextStep"
-      >
-        <TestCaseSelector
-          v-model="selectedCaseIds"
-          :algorithm-filter="selectedAlgorithmType"
-          @change="handleCaseChange"
-        />
-      </TestStepContainer>
-      
-      <!-- 步骤4: 参数配置（新增） -->
-      <TestStepContainer
-        v-if="currentStep === 4"
-        title="算法参数配置"
-        prev-label="上一步"
-        next-label="开始测试"
-        @prev="prevStep"
-        @next="handleExecute"
-      >
-        <DynamicForm
-          v-if="formSchema"
-          ref="dynamicFormRef"
-          :schema="formSchema"
-          :initial-values="algorithmParams"
-          @update:model-value="handleParamsChange"
-        />
-        <el-empty v-else description="请先选择算法类型" />
-      </TestStepContainer>
-      
-      <!-- 步骤5: 执行测试 -->
-      <TestStepContainer
-        v-if="currentStep === 5"
-        title="执行测试"
-        prev-label="上一步"
-        :show-next="false"
-        @prev="prevStep"
-      >
-        <ExecutionPanel
-          :task-id="taskId"
-          :is-executing="isExecuting"
-          @stop="handleStop"
-        />
-      </TestStepContainer>
-    </div>
-    
-    <!-- 算法配置弹窗 -->
-    <AlgorithmConfigModal
-      v-model:visible="algorithmModalVisible"
-      :edit-data="algorithmModalEditData"
-      @success="handleAlgorithmModalSuccess"
+
+    <!-- 步骤0：选择算法 -->
+    <TestStepContainer :is-active="currentStep === 0" title="选择算法" :show-prev="false" @next="nextStep">
+      <AlgorithmSelectionPanel
+        :algorithm-list="algorithmList"
+        :selected-algorithm-type="selectedAlgorithmType"
+        :search-query="algorithmSearchQuery"
+        @select="selectAlgorithm"
+        @open-config="openAlgorithmConfigModal"
+      />
+    </TestStepContainer>
+
+    <!-- 步骤1：选择测试用例（按算法/测试类型过滤） -->
+    <TestCaseListContainer
+      :algorithm-type-filter="selectedAlgorithmType || 'all'"
+      :test-type-filter="'api'"
+      ...
+    />
+
+    <!-- 步骤2：选择被测API（多选，下一步即"开始任务"→任务名弹窗） -->
+    <ResourceSelectionGrid
+      :items="filteredAPIs"
+      :selected-ids="selectedAPIIds"
+      :display-fields="[{ key: 'apiUrl', label: '端点' }, { key: 'description', label: '描述' }]"
+      @toggle-selection="toggleAPISelection"
+      @action-click="handleResourceAction"
     />
   </div>
 </template>
@@ -353,443 +274,207 @@ APITest.vue
 
 ## 6. 核心交互逻辑
 
-### 6.1 步骤定义
+### 6.1 步骤定义（已实施）
 
 ```typescript
-const steps = [
-  { key: 'algorithm', title: '选择算法', icon: 'Cpu' },
-  { key: 'api', title: '选择API', icon: 'Connection' },
-  { key: 'cases', title: '选用例', icon: 'Document' },
-  { key: 'params', title: '配置参数', icon: 'Setting' },
-  { key: 'execute', title: '执行测试', icon: 'VideoPlay' }
-];
+// ProgressNav step-labels（currentStep 0-4）
+['选择算法', '选择测试用例', '选择被测API', '执行测试', '查看结果']
 ```
 
-### 6.2 算法选择处理
+### 6.2 算法选择处理（已实施）
 
 ```typescript
-const handleAlgorithmSelect = async (algorithm: Algorithm) => {
-  selectedAlgorithmType.value = algorithm.type;
-  selectedAlgorithm.value = algorithm;
-  
-  // 1. 加载算法对应的表单 schema
-  try {
-    const schema = await algorithmService.getFormSchema(algorithm.type);
-    formSchema.value = schema;
-    
-    // 2. 加载默认参数
-    const defaultParams = await algorithmService.getDefaultParams(algorithm.type);
-    algorithmParams.value = defaultParams;
-    
-  } catch (error) {
-    ElMessage.error('加载算法配置失败');
-  }
-  
-  // 3. 根据算法类型过滤 API
-  await loadAPIs({ algorithm_type: algorithm.type });
-  
-  // 4. 根据算法类型过滤用例
-  await loadTestCases({ algorithm_type: algorithm.type });
-  
-  // 5. 重置已选 API 和用例
-  selectedApiId.value = null;
-  selectedCaseIds.value = [];
+// useAlgorithmSelection（Application 层）驱动：选择后按算法刷新用例数据
+const { algorithmList, selectedAlgorithmType, selectAlgorithm, openAlgorithmConfigModal, ... } =
+  useAlgorithmSelection({ onSelectCallback: (type) => initializeApiTests() });
+
+// 步骤1 用例列表按算法过滤（视图绑定）
+// :algorithm-type-filter="selectedAlgorithmType || 'all'"
+// :test-type-filter="'api'"
+
+// 特殊算法提示：isVoiceLLM（voice_llm）时 stepHints.caseSelection
+// 'voice_llm 用例支持多轮对话，每个用例可配置多个轮次的输入文本/音频'
+```
+
+> 与旧设计差异：不加载页面级 formSchema/默认参数（algorithmService.getFormSchema/getDefaultParams 属废弃口径），算法参数随用例 algorithm_params 独立列下发。
+
+### 6.3 API 选择处理（已实施）
+
+```typescript
+// apiTest.ts：API 过滤 = 算法精确匹配 ∩ 状态 ∩ 关键词（名称/端点）
+const allFilteredAPIs = computed(() => {
+  return apis.value.filter(api => {
+    let matchesAlgorithm = true;
+    if (selectedAlgorithmType.value) {
+      matchesAlgorithm = api.algorithmType === selectedAlgorithmType.value;  // 未配置算法类型的 API 不显示
+    }
+    let matchesStatus = true;
+    if (apiFilter.value !== 'all') {
+      matchesStatus = (api.status === 'online' ? 'online' : 'offline') === apiFilter.value;
+    }
+    let matchesSearch = /* 名称 或 apiEndpoints[].url|endpoint 包含关键词 */;
+    return matchesAlgorithm && matchesStatus && matchesSearch;
+  });
+});
+// filteredAPIs = allFilteredAPIs 的分页切片（apiCurrentPage/apiPageSize）
+```
+
+### 6.4 开始任务（已实施）
+
+```typescript
+// APITest.vue：步骤2 点击"开始任务" → 任务名弹窗确认 → nextStep()
+const handleStartTask = () => {
+  localTaskName.value = `API测试任务_${new Date().toLocaleString()}`;
+  showTaskNameModal.value = true;
 };
-```
+const confirmTaskName = () => { taskName.value = localTaskName.value; nextStep(); };
 
-### 6.3 API 选择处理
-
-```typescript
-const handleApiChange = (api: API | null) => {
-  selectedApi.value = api;
-  
-  // 可以从 API 配置中提取默认参数
-  if (api?.meta?.default_params) {
-    algorithmParams.value = {
-      ...algorithmParams.value,
-      ...api.meta.default_params
+// apiTest.ts：nextStep 在 currentStep === 2 时创建并启动任务
+const nextStep = async () => {
+  if (currentStep.value === 2) {
+    // 1. 校验：已选用例（未勾选则 fetchCaseIdsByFilter({ testType: 'api', algorithmType }) 拉全量）
+    // 2. 校验：已选 API 全部存在且在线
+    // 3. 创建任务（camelCase payload，apiIds 关联被测 API）
+    const taskData = {
+      name: taskName.value || 'API测试任务',
+      description: '通过API测试任务',
+      type: 'api',
+      caseIds: caseIds,
+      apiIds: selectedAPIIds.value,
+      tags: []
     };
+    const taskResponse = await tasksApi.create(taskData);
+    currentTaskId.value = taskResponse.id;
+    // 4. 并发数 = 所选 API 的 maxConcurrent（缺省 currentConcurrent，兜底 5）求和
+    // 5. 启动任务
+    const startResponse = await tasksApi.start(taskResponse.id);
+    // startResponse: { startTime, expectedTotalTime, expectedCompleteTime }
   }
 };
 ```
 
-### 6.4 执行测试
+---
+
+## 7. API 选择器组件（已实施，复用 ResourceSelectionGrid）
+
+### 7.1 组件定位
+
+未新建独立的 APISelector.vue；步骤2 复用公共 `ResourceSelectionGrid` 多选网格，APITest.vue 通过 `apiDisplayFields` 配置展示字段（端点 apiUrl / 描述 description），工具栏提供新增 API（openApiEditModal）/ 搜索（apiSearchQuery）/ 状态筛选（apiFilter）与分页（PaginationComponent）。数据过滤收敛于 useApiTest 的 `allFilteredAPIs`（见 §6.3），不再让展示组件自行拉取/过滤数据。
+
+### 7.2 交互行为
+
+- 多选：`@toggle-selection="toggleAPISelection"` 维护 selectedAPIIds，开始任务前校验全部在线
+- 行内操作：`@action-click="handleResourceAction"`（test 连接测试 / edit 编辑 / delete 删除）
+- 离线 API 可见但不可执行（开始任务时提示"以下API处于离线状态，无法执行测试"）
+
+---
+
+## 8. 算法类型快速筛选（未实施，已由现有过滤入口覆盖）
+
+### 8.1 设计稿方案（未实施）
+
+设计稿曾规划按算法类型统计数量的快速筛选栏（全部/翻译/ASR/声纹识别 + 计数徽标）。当前未落地，步骤0 的 AlgorithmSelectionPanel 选择 + 步骤2 的搜索/状态筛选已覆盖核心过滤诉求；如后续需要，可在 allFilteredAPIs 基础上按 algorithmType 分组计数实现，属增量优化项。
+
+---
+
+## 9. 执行参数传递（已实施）
+
+### 9.1 前端到后端（tasksApi.create + tasksApi.start）
 
 ```typescript
-const handleExecute = async () => {
-  // 1. 验证
-  if (!selectedAlgorithmType.value) {
-    ElMessage.warning('请选择算法类型');
-    return;
-  }
-  if (!selectedApiId.value) {
-    ElMessage.warning('请选择API');
-    return;
-  }
-  if (selectedCaseIds.value.length === 0) {
-    ElMessage.warning('请选择测试用例');
-    return;
-  }
-  
-  // 2. 验证动态表单
-  const valid = await dynamicFormRef.value?.validate();
-  if (!valid) {
-    ElMessage.warning('请完善算法参数配置');
-    return;
-  }
-  
-  // 3. 构建执行参数
-  const executionParams: APIExecutionParams = {
-    task_id: generateTaskId(),
-    api_id: selectedApiId.value,
-    algorithm_type: selectedAlgorithmType.value,
-    algorithm_params: algorithmParams.value,
-    case_ids: selectedCaseIds.value
-  };
-  
-  // 4. 开始执行
-  try {
-    isExecuting.value = true;
-    taskId.value = executionParams.task_id;
-    
-    await executionService.executeAPITest(executionParams);
-    
-    // 进入执行步骤
-    currentStep.value = 5;
-    
-  } catch (error) {
-    ElMessage.error('启动测试失败: ' + error.message);
-    isExecuting.value = false;
-  }
+// utils/api.ts（Infrastructure 层）：POST /api/v1/tasks + POST /api/v1/tasks/:id/start
+const taskData = {
+  name: 'API测试任务_2026-09-11 12:00:00',
+  description: '通过API测试任务',
+  type: 'api',                        // 任务分类标识，非执行路由依据
+  caseIds: ['case_001', 'case_002'],  // 算法参数随用例 algorithm_params 独立列下发，任务级不传
+  apiIds: [1, 2],                     // 关联被测 API
+  tags: []
 };
+const taskResponse = await tasksApi.create(taskData);   // → { id, ... }
+const startResponse = await tasksApi.start(taskResponse.id);
+// startResponse: { startTime, expectedTotalTime, expectedCompleteTime }（camelCase）
 ```
 
----
+> 与旧设计差异：不再走 `executionService.executeAPITest` 传任务级 `algorithm_params`；算法参数已按轮固化在用例 `test_cases.algorithm_params` 独立列，执行时由后端随用例读取。
 
-## 7. API 选择器组件
-
-### 7.1 组件设计
-
-```vue
-<!-- APISelector.vue -->
-<template>
-  <div class="api-selector">
-    <!-- 搜索和筛选 -->
-    <div class="filter-bar">
-      <el-input
-        v-model="searchKeyword"
-        placeholder="搜索API名称或地址"
-        clearable
-        @input="handleSearch"
-      >
-        <template #prefix>
-          <el-icon><Search /></el-icon>
-        </template>
-      </el-input>
-    </div>
-    
-    <!-- API 列表 -->
-    <div class="api-list">
-      <div
-        v-for="api in filteredAPIs"
-        :key="api.id"
-        class="api-card"
-        :class="{ selected: api.id === modelValue }"
-        @click="handleSelect(api)"
-      >
-        <div class="api-header">
-          <span class="api-name">{{ api.name }}</span>
-          <el-tag :type="api.status === 'enabled' ? 'success' : 'info'" size="small">
-            {{ api.status === 'enabled' ? '启用' : '禁用' }}
-          </el-tag>
-        </div>
-        <div class="api-info">
-          <el-tag size="small" :type="getMethodType(api.method)">
-            {{ api.method }}
-          </el-tag>
-          <span class="api-endpoint">{{ api.endpoint }}</span>
-        </div>
-        <div class="api-algorithm" v-if="api.algorithm_type">
-          <el-tag size="small" type="primary">
-            {{ getAlgorithmName(api.algorithm_type) }}
-          </el-tag>
-        </div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-
-interface Props {
-  modelValue: string | null;
-  algorithmFilter?: string;
-}
-
-const props = defineProps<Props>();
-
-const emit = defineEmits<{
-  (e: 'update:modelValue', value: string | null): void;
-  (e: 'change', api: API | null): void;
-}>();
-
-const searchKeyword = ref('');
-const allAPIs = ref<API[]>([]);
-
-// 根据算法类型过滤
-const filteredAPIs = computed(() => {
-  let result = allAPIs.value;
-  
-  // 算法类型过滤
-  if (props.algorithmFilter) {
-    result = result.filter(api => api.algorithm_type === props.algorithmFilter);
-  }
-  
-  // 关键词搜索
-  if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase();
-    result = result.filter(api =>
-      api.name.toLowerCase().includes(keyword) ||
-      api.endpoint.toLowerCase().includes(keyword)
-    );
-  }
-  
-  return result;
-});
-
-const handleSelect = (api: API) => {
-  emit('update:modelValue', api.id);
-  emit('change', api);
-};
-
-const getMethodType = (method: string) => {
-  const types: Record<string, string> = {
-    GET: 'success',
-    POST: 'primary',
-    PUT: 'warning',
-    DELETE: 'danger'
-  };
-  return types[method] || 'info';
-};
-</script>
-```
-
----
-
-## 8. 算法类型快速筛选
-
-### 8.1 快速筛选栏
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  算法类型快速筛选:                                                        │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │  全部    │  │  翻译    │  │  ASR     │  │  声纹识别  │              │
-│  │  (30)   │  │  (12)   │  │  (10)   │  │  (8)     │              │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘              │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 8.2 实现代码
-
-```vue
-<template>
-  <div class="algorithm-quick-filter">
-    <div
-      v-for="filter in filterOptions"
-      :key="filter.value"
-      class="filter-item"
-      :class="{ active: activeFilter === filter.value }"
-      @click="handleFilter(filter.value)"
-    >
-      <span class="filter-label">{{ filter.label }}</span>
-      <span class="filter-count">({{ filter.count }})</span>
-    </div>
-  </div>
-</template>
-
-<script setup lang="ts">
-const filterOptions = computed(() => {
-  const options = [
-    { label: '全部', value: '', count: allAPIs.value.length }
-  ];
-  
-  // 按算法类型统计
-  const algorithmCounts: Record<string, number> = {};
-  for (const api of allAPIs.value) {
-    const type = api.algorithm_type || 'other';
-    algorithmCounts[type] = (algorithmCounts[type] || 0) + 1;
-  }
-  
-  for (const [type, count] of Object.entries(algorithmCounts)) {
-    options.push({
-      label: getAlgorithmName(type),
-      value: type,
-      count
-    });
-  }
-  
-  return options;
-});
-</script>
-```
-
----
-
-## 9. 执行参数传递
-
-### 9.1 前端到后端
-
-```typescript
-// 前端发送的执行参数
-const executionParams = {
-  task_id: 'task_001',
-  api_id: 'api_translation_001',
-  algorithm_type: 'translation',
-  algorithm_params: {
-    translation_direction: 'zh2en',
-    sample_rate: 16000
-  },
-  case_ids: ['case_001', 'case_002', 'case_003']
-};
-
-// 调用后端接口
-await executionService.executeAPITest(executionParams);
-```
-
-### 9.2 后端处理
+### 9.2 后端处理（TaskCreateRequest → ExecutionEngine）
 
 ```python
-# backend/controllers/task_controller.py
-
-def start_api_task():
-    data = request.get_json()
-    
-    task_id = data.get('task_id')
-    api_id = data.get('api_id')
-    algorithm_type = data.get('algorithm_type')
-    algorithm_params = data.get('algorithm_params', {})
-    case_ids = data.get('case_ids', [])
-    
-    # 创建任务
-    task = execution_engine.start_api_task(
-        task_id=task_id,
-        api_id=api_id,
-        algorithm_type=algorithm_type,
-        algorithm_params=algorithm_params,
-        case_ids=case_ids
-    )
-    
-    return jsonify({
-        'success': True,
-        'task_id': task.id
-    })
+# backend/schemas/task.py（请求 schema，经 AliasChoices 兼容 snake_case/camelCase）
+class TaskCreateRequest(APIModel):
+    name: str
+    type: str
+    case_ids: Optional[List[str]] = Field(None, alias='caseIds', validation_alias='caseIds')
+    api_ids: Optional[List[int]] = Field(None, alias='apiIds', validation_alias='apiIds')
+    device_ids: Optional[List[int]] = Field(None, alias='deviceIds', validation_alias='deviceIds')
+    algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
+    algorithm_params: Optional[Dict[str, Any]] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
 ```
+
+链路：`POST /api/v1/tasks` 创建任务（blueprints/task_bp.py，写入用例/API 关联）→ `POST /api/v1/tasks/:id/start` 启动 → ExecutionEngine 按被测对象 `device_type` 路由执行器（HTTP API→APISessionExecutor、WebSocket API→RealtimeSessionExecutor；物理设备→E2EExecutor 属 E2E 页面场景），执行时从用例 `algorithm_params` 独立列取参数注入 API 请求，参考值取 `reference_params`（scope=api）。响应经 `success_response` 统一转 camelCase。
 
 ---
 
-## 10. 状态管理
+## 10. 状态管理（已实施，useApiTest composable）
 
-### 10.1 Pinia Store
+### 10.1 编排模式
+
+未采用设计稿中的 Pinia `useAPITestStore`；页面状态由 Application 层 composable `useApiTest()`（views/APITestLogic/apiTest.ts）统一编排，视图（APITest.vue）只消费其返回的状态与动作，符合 DDD 分层约定（Application 只见 Domain，Infrastructure 的 snake_case 不上浮）。
+
+### 10.2 组合结构（useApiTest 内部复用的领域 composables）
+
+| Composable / Store | 职责 |
+|-------------------|------|
+| `useTestCaseStore`（Pinia，共享状态层） | 用例/分组/标签数据与 CRUD（fetchTestCases/fetchTagView/fetchCaseIdsByFilter） |
+| `useTestCaseCard` + `useModalControl` | 用例/分组 CRUD 弹窗（MODAL_TYPES 注册） |
+| `useDeviceManagement`（复用于 API 列表管理） | API 列表/搜索/分页/CRUD/连接测试（'api' 模式） |
+| `useAlgorithmSelection` | 算法列表/选择/搜索/AlgorithmConfigModal 开关 |
+| `useTaskProgress` + `useTestControl` | 任务进度、暂停/恢复/停止 |
+| `useTestReport` | 报告查看/结论编辑/导出/发布 |
+
+### 10.3 关键状态与派生值（摘要）
 
 ```typescript
-// stores/apiTest.ts
-import { defineStore } from 'pinia';
+const currentStep = ref(0);                        // 0-4
+const selectedTestCaseIds / selectedAPIIds ...
+const apiSearchQuery / apiFilter ...
+const concurrentTasks = ref(4);                    // 启动时按所选 API maxConcurrent 求和覆盖
 
-export const useAPITestStore = defineStore('apiTest', {
-  state: (): APITestState => ({
-    currentStep: 1,
-    selectedAlgorithmType: null,
-    selectedAlgorithm: null,
-    selectedApiId: null,
-    selectedApi: null,
-    selectedCaseIds: [],
-    filteredCases: [],
-    algorithmParams: {},
-    formSchema: null,
-    isExecuting: false,
-    taskId: null
-  }),
-  
-  getters: {
-    canProceed: (state) => {
-      switch (state.currentStep) {
-        case 1:
-          return !!state.selectedAlgorithmType;
-        case 2:
-          return !!state.selectedApiId;
-        case 3:
-          return state.selectedCaseIds.length > 0;
-        case 4:
-          return true;
-        default:
-          return false;
-      }
-    }
-  },
-  
-  actions: {
-    nextStep() {
-      if (this.currentStep < 5) {
-        this.currentStep++;
-      }
-    },
-    
-    prevStep() {
-      if (this.currentStep > 1) {
-        this.currentStep--;
-      }
-    },
-    
-    reset() {
-      this.currentStep = 1;
-      this.selectedAlgorithmType = null;
-      this.selectedAlgorithm = null;
-      this.selectedApiId = null;
-      this.selectedApi = null;
-      this.selectedCaseIds = [];
-      this.filteredCases = [];
-      this.algorithmParams = {};
-      this.formSchema = null;
-      this.isExecuting = false;
-      this.taskId = null;
-    }
-  }
-});
+// 派生值
+const allFilteredAPIs = computed(...);             // §6.3 API 过滤
+const isVoiceLLM = computed(...);                  // voice_llm 特化提示开关
+const stepHints = computed(...);                   // 步骤提示文案
 ```
 
 ---
 
-## 11. 实施清单
+## 11. 实施清单（已实施）
+
+> 与设计稿差异落地记录：algorithmService→`algorithmApi`（Infrastructure api 层）；`useAPITestStore`（Pinia）→`useApiTest`（views/APITestLogic/apiTest.ts composable）；`AlgorithmSelectList.vue`→`AlgorithmSelectionPanel.vue`；API/用例选择复用 `ResourceSelectionGrid`/`TestCaseListContainer`（未新建 APISelector/TestCaseSelector）；任务级算法参数配置步骤取消（参数随用例 algorithm_params 独立列）。
 
 ### 11.1 后端实施
 
-- [ ] API 模型增加 algorithm_type 字段
-- [ ] 修改 ExecutionEngine 支持 API 测试的 algorithm_type 参数
-- [ ] 新增 API 按算法类型筛选接口
-- [ ] 新增用例按算法类型筛选接口
-- [ ] API执行时传递 reference_params（从算法配置中获取 api 字段值）
+- [x] API 模型增加 algorithm_type 字段（响应 camelCase algorithmType；编辑入口见 09 文档）
+- [x] 任务创建/启动接口（POST /api/v1/tasks + POST /api/v1/tasks/:id/start，TaskCreateRequest 支持 apiIds/caseIds 等，兼容两种命名）
+- [x] API 按算法类型筛选（前端 allFilteredAPIs 过滤已实现）
+- [x] 用例按算法类型筛选（testcases 查询参数 algorithmType）
+- [x] API执行时从用例 algorithm_params 独立列取参数、reference_params（scope=api）取参考值
 
 ### 11.2 前端实施
 
-- [ ] 改造 APITest.vue 页面
-- [ ] 改造 APISelector.vue 组件
-- [ ] 改造 TestCaseSelector.vue 组件
-- [ ] 集成 AlgorithmSelectList 组件
-- [ ] 集成 DynamicForm 组件
-- [ ] 添加步骤控制逻辑
-- [ ] 添加算法类型快速筛选
-- [ ] 创建 useAPITestStore
-- [ ] 用例选择后加载对应算法的参考参数配置（显示在参数配置步骤）
+- [x] 改造 APITest.vue：编排收敛于 useApiTest（currentStep 0-4）
+- [x] AlgorithmSelectionPanel 算法卡片选择（select/open-config/searchQuery）
+- [x] 用例按算法过滤（TestCaseListContainer algorithm-type-filter + test-type-filter='api'）
+- [x] API按算法过滤（allFilteredAPIs：algorithmType/状态/关键词）
+- [x] 步骤控制（ProgressNav step-labels + TestStepContainer + 任务名弹窗）
+- [x] 任务创建/启动（tasksApi.create + tasksApi.start，apiIds 关联）
 
 ### 11.3 测试验证
 
-- [ ] 算法选择流程测试
-- [ ] API 筛选测试
-- [ ] 用例筛选测试
-- [ ] 参数配置测试
-- [ ] 执行测试流程
-- [ ] 步骤回退测试
-- [ ] 重置流程测试
-- [ ] 与 E2ETest 流程一致性测试
+- [x] 算法选择流程测试
+- [x] API 筛选测试（算法/状态/关键词组合）
+- [x] 用例筛选测试
+- [x] 执行测试流程（创建+启动+进度+报告）
+- [x] 步骤回退/重置流程测试
+- [x] 与 E2ETest 流程一致性测试（五步结构对齐，差异见 §2.3）

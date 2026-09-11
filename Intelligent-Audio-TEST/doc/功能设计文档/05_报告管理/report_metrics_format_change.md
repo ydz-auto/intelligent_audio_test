@@ -48,7 +48,9 @@
 
 ## 代码修改清单
 
-### 1. 任务报告生成 (`report_controller_task.py`)
+> 注：以下行号为本次变更时的代码快照，且快照中的 `test_reports_cases` 大 JSON 列已拆分为独立的 `report_cases` 表（`ReportCase` 模型）。现行代码位置：`normalize_summary_metrics` 位于 `backend/utils/report/report_utils.py`（约 1350 行），`search_report_cases` 位于 `backend/controllers/report_controller_base.py`（约 994 行）；后者及对比/二次对比报告的用例读取均已改为直接查询 `report_cases` 表，快照中的 `summary.cases`、`comparison_data` 等兜底查询逻辑已随拆表移除。
+
+### 1. 任务报告生成 (`backend/controllers/report_controller_task.py`)
 
 #### 修改位置
 - **行 240**: `case_metrics` 初始化从 `{}` 改为 `[]`
@@ -207,8 +209,8 @@ def search_report_cases(report_id):
 #### 兼容性保证
 | 场景 | 数据来源 | metrics 格式 |
 |------|----------|--------------|
-| 新任务报告 | `test_reports_cases` | 数组格式 |
-| 旧任务报告 | `summary.cases` | 可能为对象或数组 |
+| 新任务报告 | `report_cases` 表（原 `test_reports_cases` 字段） | 数组格式 |
+| 旧任务报告 | `summary.cases`（`report_summaries`/`report_raw_data`） | 可能为对象或数组 |
 | 无用例数据 | 原始任务数据查询 | 按新格式构建 |
 
 ### 7. 前端组件适配
@@ -272,13 +274,13 @@ const toMetricsMap = (caseItem) => {
 ## 数据流程
 
 ```
-任务执行 → 生成任务报告 → cases 按新格式存储到 test_reports_cases
+任务执行 → 生成任务报告 → cases 按新格式存储到 report_cases（原 test_reports_cases 大 JSON 列，已拆表）
                                         ↓
-对比报告生成 → 从源任务报告的 test_reports_cases 获取
+对比报告生成 → 从源任务报告的 report_cases 表获取
                                         ↓
-二次对比报告 → 从所有源任务报告聚合 test_reports_cases
+二次对比报告 → 从所有源任务报告聚合 report_cases 表
                                         ↓
-/api/v1/reports/{id}/cases/search → 直接读取 test_reports_cases
+/api/v1/reports/{id}/cases/search → 直接查询 report_cases 表
                                         ↓
 前端展示 → TestCaseReportDetail 组件渲染
 ```

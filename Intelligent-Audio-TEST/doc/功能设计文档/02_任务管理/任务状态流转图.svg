@@ -1,0 +1,452 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-purple { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowPurple); }
+      .flow-blue-d { stroke: #2563eb; stroke-width: 1.4; fill: none; stroke-dasharray: 5 3; marker-end: url(#arrowBlue); }
+      .flow-red-d { stroke: #dc2626; stroke-width: 1.4; fill: none; stroke-dasharray: 5 3; marker-end: url(#arrowRed); }
+      .flow-amber-d { stroke: #f59e0b; stroke-width: 1.4; fill: none; stroke-dasharray: 5 3; marker-end: url(#arrowAmber); }
+      .flow-green-d { stroke: #16a34a; stroke-width: 1.4; fill: none; stroke-dasharray: 5 3; marker-end: url(#arrowGreen); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .mono { font-family: Consolas, 'Courier New', monospace; font-size: 10px; font-weight: 600; }
+      .mono-s { font-family: Consolas, 'Courier New', monospace; font-size: 9px; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .decision-t { font-size: 12px; font-weight: 600; fill: #854d0e; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">任务状态流转图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">4 核心状态字段 · 普通测试 + 重新评估流转 · 并行执行模式(v1.8+) · 前端状态映射 · 状态转换规则</text>
+
+  <!-- ① 4个核心状态字段定义 -->
+  <rect x="24" y="92" width="1192" height="210" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="111" r="11" fill="#3b82f6"/>
+  <text x="46" y="115" class="num-badge">1</text>
+  <text x="66" y="116" class="sec-title" fill="#1e3a8a">4 个核心状态字段 — 结果状态 vs 过程状态分离</text>
+
+  <rect x="48" y="146" width="280" height="138" rx="8" fill="#ffffff" stroke="#93c5fd" stroke-width="1.2"/>
+  <rect x="48" y="146" width="6" height="138" rx="3" fill="#2563eb"/>
+  <text x="68" y="168" class="box-name" fill="#1e40af">status</text>
+  <text x="68" y="184" class="box-desc">Task / TaskCase 最终结果</text>
+  <rect x="60" y="192" width="256" height="24" rx="4" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="188" y="208" class="chip-t" fill="#1e40af">pending / completed / failed / skipped / running</text>
+  <rect x="60" y="222" width="256" height="24" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="188" y="238" class="chip-t" fill="#92400e">Task 额外: queued / evaluating / reevaluate_queued / reevaluating / stopped / paused</text>
+  <text x="60" y="262" class="note">TaskCase.status: 执行或评估的最终结果</text>
+  <text x="60" y="276" class="note">更新条件: execution='completed' AND evaluation='completed'</text>
+
+  <rect x="344" y="146" width="280" height="138" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <rect x="344" y="146" width="6" height="138" rx="3" fill="#16a34a"/>
+  <text x="364" y="168" class="box-name" fill="#166534">execution_status</text>
+  <text x="364" y="184" class="box-desc">TaskCase / TestResult 执行过程</text>
+  <rect x="356" y="192" width="256" height="24" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="484" y="208" class="chip-t" fill="#166534">pending / queued / running / completed / stopped / failed</text>
+  <text x="356" y="234" class="body">实时反映执行过程中的状态</text>
+  <text x="356" y="250" class="note">pending → queued (线程池入队)</text>
+  <text x="356" y="264" class="note">queued → running (获取执行权)</text>
+  <text x="356" y="278" class="note">running → completed / failed / stopped</text>
+
+  <rect x="640" y="146" width="280" height="138" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <rect x="640" y="146" width="6" height="138" rx="3" fill="#dc2626"/>
+  <text x="660" y="168" class="box-name" fill="#991b1b">evaluation_status</text>
+  <text x="660" y="184" class="box-desc">TaskCase / TestResultDimension 评估过程</text>
+  <rect x="652" y="192" width="256" height="24" rx="4" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="780" y="208" class="chip-t" fill="#dc2626">pending / queued / running / calculating / completed / stopped / failed</text>
+  <text x="652" y="234" class="body">TaskCase中为融合字段</text>
+  <text x="652" y="250" class="note">同步反映 test_results.execution_status</text>
+  <text x="652" y="264" class="note">和 test_result_dimensions.evaluation_status</text>
+  <text x="652" y="278" class="note">calculating: 所有维度评估完成 · 开始计算融合指标</text>
+
+  <rect x="936" y="146" width="256" height="138" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="936" y="146" width="6" height="138" rx="3" fill="#7c3aed"/>
+  <text x="956" y="168" class="box-name" fill="#5b21b6">层级关系</text>
+  <text x="956" y="184" class="box-desc">三层数据模型</text>
+  <rect x="948" y="192" width="232" height="24" rx="4" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1064" y="208" class="chip-t" fill="#5b21b6">TaskCase → TestResult (1:N)</text>
+  <rect x="948" y="222" width="232" height="24" rx="4" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1064" y="238" class="chip-t" fill="#5b21b6">TestResult → TestResultDimension (1:N)</text>
+  <text x="948" y="262" class="note">每个设备/API执行结果对应一个 TestResult</text>
+  <text x="948" y="276" class="note">TaskCase.status 等所有 TestResult 完成后更新</text>
+
+  <!-- ② Task 层面状态机: 普通测试 + 重新评估 -->
+  <rect x="24" y="318" width="1192" height="320" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="318" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="344" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="337" r="11" fill="#64748b"/>
+  <text x="46" y="341" class="num-badge">2</text>
+  <text x="66" y="342" class="sec-title" fill="#334155">Task 层面状态机 — 普通测试流转 (上) + 重新评估流转 (下)</text>
+
+  <!-- 普通测试流转 -->
+  <text x="48" y="376" class="lbl" fill="#2563eb">普通测试流转</text>
+  <ellipse cx="130" cy="400" rx="58" ry="22" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.6"/>
+  <text x="130" y="404" text-anchor="middle" font-size="12" font-weight="700" fill="#1e40af">pending</text>
+  <path d="M 188 400 L 244 400" class="flow-blue"/>
+
+  <rect x="246" y="380" width="90" height="40" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.4"/>
+  <text x="291" y="396" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">queued</text>
+  <text x="291" y="410" text-anchor="middle" class="note">线程池入队</text>
+  <path d="M 336 400 L 392 400" class="flow-blue"/>
+
+  <rect x="394" y="380" width="90" height="40" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.4"/>
+  <text x="439" y="396" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">running</text>
+  <text x="439" y="410" text-anchor="middle" class="note">执行中</text>
+  <path d="M 484 400 L 540 400" class="flow-blue"/>
+
+  <rect x="542" y="380" width="100" height="40" rx="8" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.4"/>
+  <text x="592" y="396" text-anchor="middle" class="chip-t" fill="#92400e" font-weight="600">evaluating</text>
+  <text x="592" y="410" text-anchor="middle" class="note">评估中</text>
+
+  <!-- 终态分支 -->
+  <path d="M 642 400 L 690 400" class="flow"/>
+  <polygon points="700,400 710,390 720,400 710,410" fill="#fefce8" stroke="#ca8a04" stroke-width="1.4"/>
+  <path d="M 720 400 L 760 400" class="flow"/>
+
+  <rect x="762" y="372" width="80" height="28" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.4"/>
+  <text x="802" y="390" text-anchor="middle" class="chip-t" fill="#166534" font-weight="600">completed</text>
+  <rect x="762" y="406" width="80" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.4"/>
+  <text x="802" y="424" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">failed</text>
+  <rect x="862" y="372" width="70" height="28" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.4"/>
+  <text x="897" y="390" text-anchor="middle" class="chip-t" fill="#475569" font-weight="600">stopped</text>
+  <rect x="862" y="406" width="70" height="28" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.4"/>
+  <text x="897" y="424" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">paused</text>
+  <rect x="952" y="372" width="70" height="28" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.4"/>
+  <text x="987" y="390" text-anchor="middle" class="chip-t" fill="#475569" font-weight="600">skipped</text>
+
+  <path d="M 760 386 L 762 386" class="flow-green"/>
+  <path d="M 760 414 L 762 414" class="flow-red"/>
+
+  <text x="48" y="452" class="note">pending → queued/running → evaluating → completed/failed/stopped/paused/skipped · evaluating 阶段触发评估服务异步处理</text>
+
+  <!-- 重新评估流转 -->
+  <text x="48" y="486" class="lbl" fill="#7c3aed">重新评估流转</text>
+  <rect x="100" y="500" width="90" height="36" rx="8" fill="#dcfce7" stroke="#86efac" stroke-width="1.4"/>
+  <text x="145" y="516" text-anchor="middle" class="chip-t" fill="#166534" font-weight="600">completed</text>
+  <text x="145" y="530" text-anchor="middle" class="note">或 failed</text>
+  <path d="M 190 518 L 246 518" class="flow-purple"/>
+
+  <rect x="248" y="500" width="140" height="36" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.4"/>
+  <text x="318" y="516" text-anchor="middle" class="chip-t" fill="#5b21b6" font-weight="600">reevaluate_queued</text>
+  <text x="318" y="530" text-anchor="middle" class="note">提交重新评估</text>
+  <path d="M 388 518 L 444 518" class="flow-purple"/>
+
+  <rect x="446" y="500" width="120" height="36" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.4"/>
+  <text x="506" y="516" text-anchor="middle" class="chip-t" fill="#5b21b6" font-weight="600">reevaluating</text>
+  <text x="506" y="530" text-anchor="middle" class="note">评估服务处理中</text>
+  <path d="M 566 518 L 622 518" class="flow-purple"/>
+
+  <rect x="624" y="500" width="90" height="36" rx="8" fill="#dcfce7" stroke="#86efac" stroke-width="1.4"/>
+  <text x="669" y="516" text-anchor="middle" class="chip-t" fill="#166534" font-weight="600">completed</text>
+  <text x="669" y="530" text-anchor="middle" class="note">或 failed</text>
+
+  <!-- 重新评估 TaskCase.evaluation_status 细节 -->
+  <rect x="740" y="496" width="452" height="72" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="752" y="516" class="lbl" fill="#5b21b6">TaskCase.evaluation_status 重新评估细节</text>
+  <text x="752" y="534" class="mono-s" fill="#334155">completed/failed → queued → pending → running</text>
+  <text x="752" y="548" class="mono-s" fill="#334155">  → calculating → completed/failed</text>
+  <text x="752" y="562" class="note">重新评估前: evaluation_status 为 completed/failed · 提交后重置为 queued</text>
+
+  <text x="48" y="592" class="note">completed/failed → reevaluate_queued → reevaluating → completed/failed · 重新评估只更新 evaluation_status 和 status · 不重新执行用例</text>
+  <text x="48" y="610" class="note">重新评估触发条件: 用户主动操作 · 复用现有评估服务 · 评估完成后更新 TaskCase.status</text>
+
+  <!-- ③ 执行流程链: TaskCase 三字段串联 -->
+  <rect x="24" y="654" width="1192" height="330" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="654" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="680" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="673" r="11" fill="#16a34a"/>
+  <text x="46" y="677" class="num-badge">3</text>
+  <text x="66" y="678" class="sec-title" fill="#166534">执行流程链 — TaskCase 三字段串联: execution_status → evaluation_status → status</text>
+
+  <!-- execution_status 流 -->
+  <rect x="48" y="712" width="140" height="28" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="118" y="730" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">pending</text>
+  <line x1="188" y1="726" x2="202" y2="726" class="flow-blue"/>
+  <rect x="204" y="712" width="120" height="28" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="264" y="730" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">queued</text>
+  <line x1="324" y1="726" x2="338" y2="726" class="flow-blue"/>
+  <rect x="340" y="712" width="120" height="28" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="400" y="730" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">running</text>
+  <line x1="460" y1="726" x2="474" y2="726" class="flow-blue"/>
+  <rect x="476" y="712" width="130" height="28" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.4"/>
+  <text x="541" y="730" text-anchor="middle" class="chip-t" fill="#166534" font-weight="600">completed</text>
+  <rect x="616" y="712" width="110" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.4"/>
+  <text x="671" y="730" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">failed</text>
+  <rect x="736" y="712" width="110" height="28" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.4"/>
+  <text x="791" y="730" text-anchor="middle" class="chip-t" fill="#475569" font-weight="600">stopped</text>
+  <text x="860" y="730" class="lbl" fill="#1e40af">execution_status (TaskCase / TestResult)</text>
+
+  <!-- 向下箭头 -->
+  <path d="M 541 740 L 541 760" class="flow"/>
+  <text x="560" y="756" class="note">执行成功 → 评估入队</text>
+
+  <!-- evaluation_status 流 -->
+  <rect x="48" y="774" width="120" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.4"/>
+  <text x="108" y="792" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">pending</text>
+  <line x1="168" y1="788" x2="182" y2="788" class="flow-red"/>
+  <rect x="184" y="774" width="120" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.4"/>
+  <text x="244" y="792" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">queued</text>
+  <line x1="304" y1="788" x2="318" y2="788" class="flow-red"/>
+  <rect x="320" y="774" width="120" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.4"/>
+  <text x="380" y="792" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">running</text>
+  <line x1="440" y1="788" x2="454" y2="788" class="flow-red"/>
+  <rect x="456" y="774" width="130" height="28" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.4"/>
+  <text x="521" y="792" text-anchor="middle" class="chip-t" fill="#92400e" font-weight="600">calculating</text>
+  <line x1="586" y1="788" x2="600" y2="788" class="flow-red"/>
+  <rect x="602" y="774" width="130" height="28" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.4"/>
+  <text x="667" y="792" text-anchor="middle" class="chip-t" fill="#166534" font-weight="600">completed</text>
+  <rect x="742" y="774" width="110" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.4"/>
+  <text x="797" y="792" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">failed</text>
+  <text x="860" y="792" class="lbl" fill="#dc2626">evaluation_status (TaskCase / TestResultDimension)</text>
+
+  <!-- 向下箭头 -->
+  <path d="M 667 802 L 667 822" class="flow"/>
+  <text x="686" y="818" class="note">评估完成 → 更新最终状态</text>
+
+  <!-- status 最终结果 -->
+  <rect x="48" y="836" width="100" height="28" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="98" y="854" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">pending</text>
+  <rect x="160" y="836" width="100" height="28" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4"/>
+  <text x="210" y="854" text-anchor="middle" class="chip-t" fill="#1e40af" font-weight="600">running</text>
+  <rect x="272" y="836" width="110" height="28" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1.4"/>
+  <text x="327" y="854" text-anchor="middle" class="chip-t" fill="#166534" font-weight="600">completed</text>
+  <rect x="394" y="836" width="100" height="28" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.4"/>
+  <text x="444" y="854" text-anchor="middle" class="chip-t" fill="#991b1b" font-weight="600">failed</text>
+  <rect x="506" y="836" width="100" height="28" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.4"/>
+  <text x="556" y="854" text-anchor="middle" class="chip-t" fill="#475569" font-weight="600">skipped</text>
+  <text x="620" y="854" class="lbl" fill="#0f172a">status (TaskCase 最终结果)</text>
+
+  <!-- 条件说明 -->
+  <rect x="48" y="876" width="1144" height="52" rx="8" fill="#fefce8" stroke="#fde047" stroke-width="1.2"/>
+  <text x="60" y="896" class="lbl" fill="#854d0e">TaskCase.status 最终更新条件 (状态修复阶段)</text>
+  <text x="60" y="912" class="mono-s" fill="#334155">if execution_status == 'completed' AND evaluation_status == 'completed':  status = 'completed'</text>
+  <text x="60" y="924" class="mono-s" fill="#334155">elif evaluation_status in ['running','queued','pending','calculating']:  status = 'running'   # 仍在评估中</text>
+
+  <!-- 三层链向下传递 -->
+  <rect x="48" y="938" width="1144" height="38" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+  <text x="620" y="962" text-anchor="middle" class="body" fill="#475569">三层链: task_case.execution_status → task_case.evaluation_status → task_case.status → test_result.execution_status → test_result_dimension.evaluation_status → test_result_dimension.status</text>
+
+  <!-- ④ 并行执行模式 (v1.8+) -->
+  <rect x="24" y="1002" width="1192" height="260" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1002" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="1028" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="1021" r="11" fill="#f59e0b"/>
+  <text x="46" y="1025" class="num-badge">4</text>
+  <text x="66" y="1026" class="sec-title" fill="#92400e">并行执行模式 (v1.8+) — 执行与评估分离 · 独立队列 · 统一统计</text>
+
+  <!-- 时序图 -->
+  <rect x="48" y="1054" width="680" height="192" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="60" y="1076" class="lbl" fill="#92400e">执行时序 (时间轴 →)</text>
+  <text x="60" y="1094" class="mono-s" fill="#0f766e">用例1提交 ───────────┐</text>
+  <text x="280" y="1108" class="mono-s" fill="#334155">├─ 用例2提交 ────────┐</text>
+  <text x="470" y="1122" class="mono-s" fill="#334155">├─ 用例3提交 ────┐</text>
+  <text x="60" y="1136" class="mono-s" fill="#0f766e">│                      ││                   ││                │</text>
+  <text x="60" y="1150" class="mono-s" fill="#0f766e">└──────────────────────┴─────────────────────┴────────────────┘</text>
+  <text x="60" y="1168" class="body" fill="#166534">↓ 执行完成               ↓ 执行完成             ↓ 执行完成</text>
+  <text x="60" y="1184" class="body" fill="#7c3aed">↓ 评估提交               ↓ 评估提交             ↓ 评估提交</text>
+  <text x="60" y="1200" class="body" fill="#16a34a">✓ 继续执行用例2        ✓ 继续执行用例3       ✓ 继续执行...</text>
+  <text x="60" y="1218" class="body" fill="#16a34a">↓ 评估完成(异步)        ↓ 评估完成(异步)      ↓ 所有评估完成 → 更新统计</text>
+  <text x="60" y="1236" class="note">关键: 执行完成 → 立即提交评估 → 返回继续执行下一用例 · 不等待评估完成</text>
+
+  <!-- 设计原则 -->
+  <rect x="744" y="1054" width="448" height="192" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="756" y="1076" class="lbl" fill="#92400e">关键设计原则</text>
+  <text x="756" y="1096" class="body" font-weight="600" fill="#92400e">1. 执行与评估分离</text>
+  <text x="768" y="1112" class="box-desc">执行完成 → 立即提交评估 → 返回 → 继续下一用例</text>
+  <text x="756" y="1130" class="body" font-weight="600" fill="#92400e">2. 独立队列机制</text>
+  <text x="768" y="1146" class="box-desc">api_queues[api_id] · api_waiting_counts[api_id]</text>
+  <text x="756" y="1164" class="body" font-weight="600" fill="#92400e">3. 统计更新统一管理</text>
+  <text x="768" y="1180" class="box-desc">_post_evaluate_updates 统一处理 · 避免重复更新</text>
+  <text x="756" y="1198" class="body" font-weight="600" fill="#92400e">4. 无评估维度用例</text>
+  <text x="768" y="1214" class="box-desc">直接标记 execution_status='completed' → _post_evaluate_updates</text>
+  <text x="756" y="1232" class="body" font-weight="600" fill="#92400e">5. 多设备/多API结果</text>
+  <text x="768" y="1244" class="box-desc">TaskCase → TestResult(1:N) · 等所有 TestResult 完成才更新 status</text>
+
+  <!-- ⑤ 层级关系 + 前端状态映射 -->
+  <rect x="24" y="1280" width="1192" height="300" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1280" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1306" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1299" r="11" fill="#dc2626"/>
+  <text x="46" y="1303" class="num-badge">5</text>
+  <text x="66" y="1304" class="sec-title" fill="#991b1b">层级关系 (TaskCase → TestResult → TestResultDimension) + 前端状态映射</text>
+
+  <!-- 层级关系 -->
+  <rect x="48" y="1334" width="520" height="232" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <text x="60" y="1356" class="lbl" fill="#991b1b">数据层级关系</text>
+
+  <rect x="60" y="1368" width="480" height="56" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.4"/>
+  <rect x="60" y="1368" width="6" height="56" rx="3" fill="#dc2626"/>
+  <text x="80" y="1388" class="box-name" fill="#991b1b">TaskCase</text>
+  <text x="80" y="1404" class="box-desc">execution_status · evaluation_status · status</text>
+  <text x="80" y="1418" class="note">执行流程起点 · 最终结果汇总</text>
+
+  <path d="M 300 1424 L 300 1438" class="flow-red"/>
+  <text x="320" y="1435" class="note" fill="#dc2626">1:N (多设备/多API)</text>
+
+  <rect x="60" y="1442" width="480" height="56" rx="8" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.4"/>
+  <rect x="60" y="1442" width="6" height="56" rx="3" fill="#f59e0b"/>
+  <text x="80" y="1462" class="box-name" fill="#92400e">TestResult</text>
+  <text x="80" y="1478" class="box-desc">execution_status · result_data_path</text>
+  <text x="80" y="1492" class="note">每个设备/API执行结果 · 触发维度评估</text>
+
+  <path d="M 300 1498 L 300 1512" class="flow-amber"/>
+  <text x="320" y="1509" class="note" fill="#f59e0b">1:N (多维度)</text>
+
+  <rect x="60" y="1516" width="480" height="44" rx="8" fill="#faf5ff" stroke="#c4b5fd" stroke-width="1.4"/>
+  <rect x="60" y="1516" width="6" height="44" rx="3" fill="#7c3aed"/>
+  <text x="80" y="1536" class="box-name" fill="#5b21b6">TestResultDimension</text>
+  <text x="80" y="1552" class="box-desc">evaluation_status · status (completed/failed)</text>
+
+  <!-- 前端状态映射 -->
+  <rect x="584" y="1334" width="608" height="232" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+  <text x="596" y="1356" class="lbl" fill="#991b1b">前端状态映射 — transformTestCaseStatus (statusUtils.ts)</text>
+
+  <line x1="596" y1="1366" x2="1180" y2="1366" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="600" y="1384" class="lbl" fill="#475569">execution_status</text>
+  <text x="800" y="1384" class="lbl" fill="#475569">evaluation_status</text>
+  <text x="1000" y="1384" class="lbl" fill="#475569">最终展示状态</text>
+  <line x1="596" y1="1392" x2="1180" y2="1392" stroke="#e2e8f0" stroke-width="1"/>
+
+  <text x="600" y="1410" class="body">failed</text>
+  <text x="800" y="1410" class="body">任意</text>
+  <text x="1000" y="1410" class="body" fill="#dc2626" font-weight="600">failed</text>
+  <text x="600" y="1428" class="body">in_progress</text>
+  <text x="800" y="1428" class="body">任意</text>
+  <text x="1000" y="1428" class="body" fill="#f59e0b" font-weight="600">in_progress</text>
+  <text x="600" y="1446" class="body">queued</text>
+  <text x="800" y="1446" class="body">任意</text>
+  <text x="1000" y="1446" class="body" fill="#64748b" font-weight="600">queued</text>
+  <text x="600" y="1464" class="body">completed</text>
+  <text x="800" y="1464" class="body">calculating / running</text>
+  <text x="1000" y="1464" class="body" fill="#7c3aed" font-weight="600">calculating</text>
+  <text x="600" y="1482" class="body">completed</text>
+  <text x="800" y="1482" class="body">failed</text>
+  <text x="1000" y="1482" class="body" fill="#dc2626" font-weight="600">failed</text>
+  <text x="600" y="1500" class="body">completed</text>
+  <text x="800" y="1500" class="body">completed</text>
+  <text x="1000" y="1500" class="body" fill="#16a34a" font-weight="600">resultStatus (完成)</text>
+  <text x="600" y="1518" class="body">completed</text>
+  <text x="800" y="1518" class="body">pending</text>
+  <text x="1000" y="1518" class="body" fill="#f59e0b" font-weight="600">in_progress (待评估)</text>
+  <text x="600" y="1536" class="body">completed</text>
+  <text x="800" y="1536" class="body">其他</text>
+  <text x="1000" y="1536" class="body" fill="#7c3aed" font-weight="600">calculating</text>
+
+  <text x="596" y="1558" class="note">关键: 执行失败优先 · 执行完成需评估完成才算真正完成 · executionStatus + evaluationStatus → 最终展示状态</text>
+
+  <!-- ⑥ 状态转换规则表 -->
+  <rect x="24" y="1598" width="1192" height="298" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1598" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="1624" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="1617" r="11" fill="#7c3aed"/>
+  <text x="46" y="1621" class="num-badge">6</text>
+  <text x="66" y="1622" class="sec-title" fill="#5b21b6">状态转换规则表 — 10 条转换规则 · 触发条件 + 状态变更</text>
+
+  <line x1="48" y1="1652" x2="1192" y2="1652" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="60" y="1670" class="lbl" fill="#475569">过程</text>
+  <text x="220" y="1670" class="lbl" fill="#475569">触发条件</text>
+  <text x="560" y="1670" class="lbl" fill="#475569">状态转换</text>
+  <text x="980" y="1670" class="lbl" fill="#475569">说明</text>
+  <line x1="48" y1="1678" x2="1192" y2="1678" stroke="#e2e8f0" stroke-width="1"/>
+
+  <text x="60" y="1696" class="body" font-weight="600" fill="#2563eb">执行入队</text>
+  <text x="220" y="1696" class="box-desc">调度器提交用例到线程池</text>
+  <text x="560" y="1696" class="mono-s" fill="#334155">execution: pending → queued · status: running</text>
+  <text x="980" y="1696" class="note">用例进入执行队列</text>
+
+  <text x="60" y="1714" class="body" font-weight="600" fill="#2563eb">执行开始</text>
+  <text x="220" y="1714" class="box-desc">获取 API 执行权 / E2E 启动</text>
+  <text x="560" y="1714" class="mono-s" fill="#334155">execution: queued → running · eval: pending</text>
+  <text x="980" y="1714" class="note">真正开始执行</text>
+
+  <text x="60" y="1732" class="body" font-weight="600" fill="#16a34a">执行成功</text>
+  <text x="220" y="1732" class="box-desc">用例执行完成且无错误</text>
+  <text x="560" y="1732" class="mono-s" fill="#334155">execution: running → completed · eval: queued</text>
+  <text x="980" y="1732" class="note">异步评估已开始</text>
+
+  <text x="60" y="1750" class="body" font-weight="600" fill="#7c3aed">评估入队</text>
+  <text x="220" y="1750" class="box-desc">执行成功后评估任务加入队列</text>
+  <text x="560" y="1750" class="mono-s" fill="#334155">evaluation: queued</text>
+  <text x="980" y="1750" class="note">等待评估服务处理</text>
+
+  <text x="60" y="1768" class="body" font-weight="600" fill="#dc2626">评估开始</text>
+  <text x="220" y="1768" class="box-desc">评估服务 Worker 开始处理</text>
+  <text x="560" y="1768" class="mono-s" fill="#334155">evaluation: queued → running</text>
+  <text x="980" y="1768" class="note">开始维度评估</text>
+
+  <text x="60" y="1786" class="body" font-weight="600" fill="#f59e0b">评估计算</text>
+  <text x="220" y="1786" class="box-desc">维度评估完成, 开始计算指标</text>
+  <text x="560" y="1786" class="mono-s" fill="#334155">evaluation: running → calculating</text>
+  <text x="980" y="1786" class="note">计算融合指标</text>
+
+  <text x="60" y="1804" class="body" font-weight="600" fill="#16a34a">评估成功</text>
+  <text x="220" y="1804" class="box-desc">所有维度评估完成且有有效结果</text>
+  <text x="560" y="1804" class="mono-s" fill="#334155">evaluation: calculating → completed</text>
+  <text x="980" y="1804" class="note">状态修复阶段自动更新 status=completed</text>
+
+  <text x="60" y="1822" class="body" font-weight="600" fill="#dc2626">评估失败</text>
+  <text x="220" y="1822" class="box-desc">维度评估无有效结果或错误</text>
+  <text x="560" y="1822" class="mono-s" fill="#334155">evaluation: running → failed · status: failed</text>
+  <text x="980" y="1822" class="note">评估终止 · 标记最终失败</text>
+
+  <text x="60" y="1840" class="body" font-weight="600" fill="#dc2626">执行失败</text>
+  <text x="220" y="1840" class="box-desc">用例执行过程中发生错误</text>
+  <text x="560" y="1840" class="mono-s" fill="#334155">execution: running → failed · eval: failed · status: failed</text>
+  <text x="980" y="1840" class="note">三字段同步标记失败</text>
+
+  <text x="60" y="1858" class="body" font-weight="600" fill="#64748b">执行停止</text>
+  <text x="220" y="1858" class="box-desc">手动停止任务</text>
+  <text x="560" y="1858" class="mono-s" fill="#334155">execution: running → stopped · eval: stopped · status: skipped</text>
+  <text x="980" y="1858" class="note">手动中断 · 标记为跳过</text>
+
+  <!-- 底部图例 -->
+  <rect x="48" y="1876" width="1144" height="28" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="68" y="1882" width="14" height="16" rx="3" fill="#dbeafe" stroke="#3b82f6"/>
+  <text x="90" y="1894" class="note">execution_status</text>
+  <rect x="200" y="1882" width="14" height="16" rx="3" fill="#fef2f2" stroke="#dc2626"/>
+  <text x="222" y="1894" class="note">evaluation_status</text>
+  <rect x="340" y="1882" width="14" height="16" rx="3" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="362" y="1894" class="note">completed (终态)</text>
+  <rect x="490" y="1882" width="14" height="16" rx="3" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="512" y="1894" class="note">failed (终态)</text>
+  <rect x="620" y="1882" width="14" height="16" rx="3" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="642" y="1894" class="note">stopped/skipped</text>
+  <rect x="760" y="1882" width="14" height="16" rx="3" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="782" y="1894" class="note">calculating (中间态)</text>
+  <rect x="920" y="1882" width="14" height="16" rx="3" fill="#faf5ff" stroke="#c4b5fd"/>
+  <text x="942" y="1894" class="note">reevaluate (重新评估)</text>
+</svg>
