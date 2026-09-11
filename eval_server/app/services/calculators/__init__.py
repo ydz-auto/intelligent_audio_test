@@ -22,7 +22,7 @@ from app.services.calculators.der.strategy import DerCalculator
 from app.services.calculators.xiaoyi_metrics import XiaoyiMetricsCalculator
 from app.services.calculators.xiaoyi_metrics.turn_taking.strategy import (
     TurnTakingCalculator, TorCalculator, FalseTakeoverCalculator,
-    TakeoverLatencyCalculator, ClientOutLatencyCalculator, HighFreqTurnTakingCalculator,
+    TakeoverLatencyCalculator, HighFreqTurnTakingCalculator,
     HighFreqLlmJudgeCalculator,
 )
 from app.services.calculators.xiaoyi_metrics.rejection_scene_awareness.strategy import (
