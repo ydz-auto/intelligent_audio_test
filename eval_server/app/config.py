@@ -87,21 +87,23 @@ class Config:
     # 所有字段均可在 eval_server/.env 覆盖
     # 各维度可独立配置裁判模型：LLM_JUDGE_MODEL_<维度大写>（如 LLM_JUDGE_MODEL_REJECTION_JUDGE），
     # 未配置时回退 LLM_JUDGE_DEFAULT_MODEL
-    _LLM_JUDGE_DIMENSIONS = (
-        'llm_judge',            # 文本逻辑评分
-        'rejection_judge',      # 拒识场景裁判（音频）
-        'interruption_judge',   # 打断场景裁判（音频）
-        'high_freq_llm_judge',  # 高频轮换裁判（录屏）
-        'false_takeover',       # 误接管语义判断（文本）
-        'reply_quality',        # 回复质量评分（文本）
-    )
     LLM_JUDGE = {
         'api_base_url': os.environ.get('LLM_JUDGE_API_BASE', 'https://az.gptplus5.com/v1'),
         'api_key': os.environ.get('LLM_JUDGE_API_KEY', ''),
         'default_model': os.environ.get('LLM_JUDGE_DEFAULT_MODEL', 'gpt-4o-mini'),
         'dimension_models': {
-            dim: os.environ.get(f'LLM_JUDGE_MODEL_{dim.upper()}', '')
-            for dim in _LLM_JUDGE_DIMENSIONS
+            # 文本逻辑评分
+            'llm_judge': os.environ.get('LLM_JUDGE_MODEL_LLM_JUDGE', ''),
+            # 拒识场景裁判（音频）
+            'rejection_judge': os.environ.get('LLM_JUDGE_MODEL_REJECTION_JUDGE', ''),
+            # 打断场景裁判（音频）
+            'interruption_judge': os.environ.get('LLM_JUDGE_MODEL_INTERRUPTION_JUDGE', ''),
+            # 高频轮换裁判（录屏）
+            'high_freq_llm_judge': os.environ.get('LLM_JUDGE_MODEL_HIGH_FREQ_LLM_JUDGE', ''),
+            # 误接管语义判断（文本）
+            'false_takeover': os.environ.get('LLM_JUDGE_MODEL_FALSE_TAKEOVER', ''),
+            # 回复质量评分（文本）
+            'reply_quality': os.environ.get('LLM_JUDGE_MODEL_REPLY_QUALITY', ''),
         },
         'max_tokens': int(os.environ.get('LLM_JUDGE_MAX_TOKENS', '4096')),
         'temperature': float(os.environ.get('LLM_JUDGE_TEMPERATURE', '0.1')),

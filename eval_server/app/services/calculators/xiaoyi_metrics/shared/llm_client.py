@@ -489,17 +489,21 @@ def get_asr_text(wav_path: str) -> str:
 
     wav_path 对应的 ASR JSON 由 asr_adapter._save_asr_json 落盘，
     路径由 _build_json_save_path(wav_path) 决定。
+    若 JSON 不存在则先触发 ASR 调用生成 JSON。
     """
     if not wav_path or not os.path.isfile(wav_path):
         return ''
     try:
         from app.utils.asr_adapter import _build_json_save_path
         json_path = _build_json_save_path(wav_path)
+        if not os.path.isfile(json_path):
+            logger.info(f'[llm_client] ASR JSON 不存在，触发 ASR 生成: {wav_path}')
+            get_asr_chunks(wav_path)
         if os.path.isfile(json_path):
             with open(json_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             return data.get('text', '')
-        logger.warning(f'[llm_client] ASR JSON 不存在: {json_path}')
+        logger.warning(f'[llm_client] ASR JSON 仍不存在: {json_path}')
     except Exception as e:
         logger.warning(f'[llm_client] 读取 ASR JSON 失败: {wav_path}: {e}')
     return ''
