@@ -133,17 +133,17 @@ def build_rejection_prompt(timeline_text: str = '') -> str:
 {{
   "timing": "",
   "behavior": "",
-  "rate": 0,
+  "rate": "",
   "reason": ""
 }}
 
 其中：
 - timing 必须是【回复过程中】【静默时】两个类别之一，表示拒识干扰内容发生的时机
 - behavior 必须是【回应】【恢复】【不确定询问】【无关回复】【静默】五个类别之一，须与 timing 对应的行为定义匹配
-- rate 为拒识结果评级，仅可为 0、1、2，含义如下：
-  - 0 = 拒识成功
-  - 1 = 拒识询问
-  - 2 = 拒识失败
+- rate 为拒识结果评级，仅可为以下三个字符串之一：
+  - "拒识成功"
+  - "拒识询问"
+  - "拒识失败"
 - reason 为简短判定理由，需说明你判断的时机依据（从回复音频中听到了什么、结合时间线观察到什么），以及为何归类为此行为"""
 
 
@@ -176,7 +176,7 @@ def evaluate_rejection_judge(
             'answer': str,
             'timing': str,               # 拒识发生时机
             'behavior': str,             # 行为类别
-            'rate': int,                 # 0=拒识成功, 1=拒识询问, 2=拒识失败
+            'rate': str,                 # "拒识成功" / "拒识询问" / "拒识失败"
             'behavior_respond': int,     # 回应 → 1, 否则 0
             'behavior_recover': int,     # 恢复 → 1, 否则 0
             'behavior_uncertain': int,   # 不确定询问 → 1, 否则 0
@@ -226,7 +226,7 @@ def evaluate_rejection_judge(
         'answer': answer_text,
         'timing': '',
         'behavior': '',
-        'rate': -1,
+        'rate': '',
         'behavior_respond': 0,
         'behavior_recover': 0,
         'behavior_uncertain': 0,
@@ -276,7 +276,7 @@ def evaluate_rejection_judge(
         behavior = ev.get('behavior', '')
         result['timing'] = ev.get('timing', '')
         result['behavior'] = behavior
-        result['rate'] = ev.get('rate', -1)
+        result['rate'] = ev.get('rate', '')
         if behavior == '回应':
             result['behavior_respond'] = 1
         elif behavior == '恢复':
@@ -332,7 +332,7 @@ if __name__ == '__main__':
     for ev in r.get('evaluations', []):
         print(f'\n  时机: {ev.get("timing", "")}')
         print(f'  行为: {ev.get("behavior", "")}')
-        print(f'  评级: {ev.get("rate", -1)}')
+        print(f'  评级: {ev.get("rate", "")}')
         print(f'  理由: {ev.get("reason", "")}')
     print('=' * 60)
     print(json.dumps(r, ensure_ascii=False, indent=2))
