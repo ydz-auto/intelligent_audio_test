@@ -276,8 +276,12 @@ class FalseTakeoverCalculator(TurnTakingBase):
         _ft_tor = result.get('tor', 0)
         if _ft_tor == 0 and user_chunks and ai_word_chunks:
             try:
+                _task_params = params.get('task_params') or {}
+                case_wav = _task_params.get('case_wav')
+                _user_wav = params.get('user_wav')
                 llm_result = compute_false_takeover_llm(
-                    user_chunks, ai_word_chunks, pause, params.get('task_params'),
+                    user_chunks, ai_word_chunks, pause, _task_params,
+                    case_wav=case_wav, user_wav=_user_wav,
                 )
                 if llm_result is not None:
                     result['llm_eval'] = llm_result
@@ -410,10 +414,13 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
         rd = self._get_round_safe(task_params, idx)
         if not (task_params.get('ai_wav') or rd.get('ai_wav')):
             return False, f"Missing required field for {self.task_type}: ai_wav"
-        if not rd.get('rounds'):
-            rounds = task_params.get('rounds')
-            if not (rounds and isinstance(rounds, list)):
-                return False, f"Missing required field for {self.task_type}: rounds"
+        # user_case 或 rounds 至少需要一个
+        user_case = task_params.get('user_case') or rd.get('user_case')
+        if not user_case:
+            if not rd.get('rounds'):
+                rounds = task_params.get('rounds')
+                if not (rounds and isinstance(rounds, list)):
+                    return False, f"Missing required field for {self.task_type}: rounds 或 user_case"
         return True, None
 
     def prepare_params(self, task_params):
@@ -431,6 +438,7 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
         return {
             'ai_wav': ai_wav,
             'rounds': rounds,
+            'user_case': task_params.get('user_case') or rd.get('user_case') or '',
             'scenario_type': task_params.get('scenario_type') or rd.get('scenario_type') or '',
             'scenario_rules': task_params.get('scenario_rules') or rd.get('scenario_rules') or '',
             'model': task_params.get('llm_model') or rd.get('llm_model') or task_params.get('model') or '',
@@ -446,6 +454,8 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.high_freq_llm_judge import evaluate_high_freq_llm
+        shared = params.get('_shared_asr') or {}
+        ai_chunks = shared.get('ai_word_chunks') or shared.get('ai_chunks')
         return evaluate_high_freq_llm(
             rounds=params['rounds'],
             scenario_type=params['scenario_type'],
@@ -454,6 +464,8 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
             max_tokens=params['max_tokens'],
             temperature=params['temperature'],
             ai_wav=params['ai_wav'],
+            user_case=params.get('user_case'),
+            ai_chunks=ai_chunks,
         )
 
 

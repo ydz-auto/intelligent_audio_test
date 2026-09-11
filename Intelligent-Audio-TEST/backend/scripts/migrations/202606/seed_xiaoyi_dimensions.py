@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-话轮接管维度种子数据（turn_taking 主维度 + 三个子维度）
+话轮接管维度种子数据（turn_taking 主维度 + 六个子维度）
 
 功能：
 1. 软删除 id=2 的 xiaoyi_metrics（历史单维度多指标方案，已被子维度方案替代）
@@ -16,17 +16,17 @@
    - reply_quality    → task_type_code='reply_quality', output field_path = reply_quality.score
    - 子维度 task_type_code 各自独立，平台按 parent_dimension_id 分组，
      提取各子维度 task_type_code 组成 sub_tasks 注入 payload，eval_server 按 sub_tasks 只算选中子维度
-4. 注册 voice_llm 算法与主维度 + 三个子维度的关联（algorithm_dimension_relations）
+4. 注册 voice_llm 算法与主维度 + 六个子维度的关联（algorithm_dimension_relations）
 5. 注册 voice_llm → 主维度的参数映射（param_mappings.dimension_id = 主维度id）
 
 执行链路：
-   用例选三个子维度 → 平台按 (api_url, parent_dimension_id) 分到同一组
+   用例选六个子维度 → 平台按 (api_url, parent_dimension_id) 分到同一组
    → task_type 用主维度的 turn_taking，payload 注入 sub_tasks（从各子维度 task_type_code 提取）
    → 调一次 eval_server，TurnTakingCalculator 按 sub_tasks 只算选中的子维度
    → process_group_dimension_results 把同一份响应按各自 output field_path 分发提取
 
 对应 eval_server 服务：
-   - xiaoyi_turn_taking.py 一次返回包含 tor/false_takeover/takeover_latency 三块的 JSON
+   - turn_taking/strategy.py 一次返回包含 tor/false_takeover/takeover_latency/high_freq_turn_taking/high_freq_llm_judge/reply_quality 六块的 JSON
 
 使用方法：
     cd Intelligent-Audio-TEST
@@ -86,17 +86,22 @@ MAIN_DIMENSION = {
          False, None, 'AI 回复通道 wav 路径（cap_client_ec_out.wav）', 2),
         ('case_wav', '用例干净音源', '用例干净音源', 'audio', 'input',
          None, None, None, False,
-         False, None, '用例干净音源 wav 路径（reply_quality 子维度用，取用户 ASR 文本）', 3),
+         False, None, '用例干净音源 wav 路径（false_takeover client_out时延对齐 + reply_quality 子维度用）', 3),
+        ('user_case', '用户用例', '用户用例(高频轮换)', 'text', 'input',
+         None, None, None, False,
+         False, None, '高频轮换场景用户用例（JSON文件路径或多行文本，high_freq_llm_judge 新模式用）', 4),
         # 主维度不配 output 参数
     ],
     'param_mappings': [
         ('device', 'output', 'user_wav', 'user_wav', 'none'),
         ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
+        ('device', 'output', 'case_wav', 'case_wav', 'none'),
+        ('device', 'output', 'user_case', 'user_case', 'none'),
     ],
 }
 
 # ============================================================
-# 三个子维度定义：各自只配自己的 output 参数
+# 六个子维度定义：各自只配自己的 output 参数
 # ============================================================
 # params 元组顺序：
 # (param_code, param_name, label, field_type, param_direction,
@@ -184,6 +189,28 @@ SUB_DIMENSIONS = [
             ('ft_llm_evidence', '误接管LLM判定证据', 'LLM判定证据', 'json', 'output',
              'false_takeover.llm_eval.evidence', None, 'aux', True,
              False, None, 'LLM判定证据 {user_utterance_used_by_model, user_full_utterance}', 78),
+            # ─── client_out 时延（LLM判定未误接管时返回，嵌套在 llm_eval 下）───
+            ('ft_llm_client_out_start_ms', 'ClientOut起始时刻', 'ClientOut起始时刻', 'timestamp', 'output',
+             'false_takeover.llm_eval.client_out_start_ms', None, 'aux', True,
+             False, None, 'client_out 对齐起始时间(毫秒)', 79),
+            ('ft_llm_client_out_end_ms', 'ClientOut结束时刻', 'ClientOut结束时刻', 'timestamp', 'output',
+             'false_takeover.llm_eval.client_out_end_ms', None, 'aux', True,
+             False, None, 'client_out 对齐结束时间(毫秒)', 80),
+            ('ft_llm_model_first_word_start_ms', '模型首词开始时刻', '模型首词开始时刻', 'timestamp', 'output',
+             'false_takeover.llm_eval.model_first_word_start_ms', None, 'aux', True,
+             False, None, '模型回复首词开始时间(毫秒)', 81),
+            ('ft_llm_client_out_latency_ms', 'ClientOut时延', 'ClientOut时延', 'number', 'output',
+             'false_takeover.llm_eval.client_out_latency_ms', 'value', 'aux', True,
+             False, None, 'client_out结束到模型首词的时延(毫秒)', 82),
+            ('ft_llm_ncc', '互相关置信度', '互相关置信度(NCC)', 'number', 'output',
+             'false_takeover.llm_eval.ncc', None, 'aux', True,
+             False, None, '音频对齐互相关置信度(0-1，越高越可信)', 83),
+            ('ft_llm_tor', 'LLM接话率', 'LLM接话率', 'number', 'output',
+             'false_takeover.llm_eval.tor', None, 'aux', True,
+             False, None, 'LLM判定的接话率(0/1)', 84),
+            ('ft_llm_message', 'LLM时延说明', 'LLM时延说明', 'text', 'output',
+             'false_takeover.llm_eval.message', None, 'aux', True,
+             False, None, 'client_out时延计算说明', 85),
         ],
     },
     {
@@ -761,10 +788,10 @@ def seed_turn_taking():
         _upsert_param_mappings(conn, main_id, MAIN_DIMENSION)
 
         # ============================================================
-        # Step 2: 注册三个子维度
+        # Step 2: 注册六个子维度
         # ============================================================
         print(f"\n{'=' * 60}")
-        print(f"  Step 2: 注册三个子维度（parent_dimension_id={main_id}）")
+        print(f"  Step 2: 注册六个子维度（parent_dimension_id={main_id}）")
         print(f"{'=' * 60}")
         for sub_def in SUB_DIMENSIONS:
             print(f"\n  -- 子维度: {sub_def['name']} --")
@@ -798,16 +825,19 @@ if __name__ == '__main__':
     print("1. 软删除历史 xiaoyi_metrics 维度（id=2，被替代）")
     print("2. 注册/更新 turn_taking 主维度（dimension_type=main，无 output）")
     print("   配置 input params + api_settings + param_mappings")
-    print("3. 注册/更新三个子维度（dimension_type=sub，parent_dimension_id=主维度id）：")
+    print("3. 注册/更新六个子维度（dimension_type=sub，parent_dimension_id=主维度id）：")
     print("   - 接话率(TOR)        → output field_path = tor.tor")
     print("   - 误接管率           → output field_path = false_takeover.tor")
     print("   - 接管时延           → output field_path = takeover_latency.takeover_latency_ms")
+    print("   - 高频轮换时延       → output field_path = high_freq_turn_taking.*")
+    print("   - 高频LLM裁判        → output field_path = high_freq_llm_judge.*")
+    print("   - 回复质量评分       → output field_path = reply_quality.score")
     print("4. 子维度不重复 input params / param_mappings：")
     print("   - input_params 通过 evaluation_service._load_dimension_data 继承父维度")
     print("   - param_mappings 挂主维度 id 下，子维度共用（dimension_ids=None 不过滤）")
-    print("5. 注册 voice_llm → 主维度 + 三个子维度的关联")
+    print("5. 注册 voice_llm → 主维度 + 六个子维度的关联")
     print()
-    print("执行链路：用例选三个子维度 → 继承父维度 task_type_code/api 配置")
+    print("执行链路：用例选六个子维度 → 继承父维度 task_type_code/api 配置")
     print("→ 按 (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server")
     print("→ process_group_dimension_results 按各自 output field_path 分发提取")
     print()

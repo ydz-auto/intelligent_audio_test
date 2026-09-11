@@ -93,6 +93,7 @@ class Config:
         'interruption_judge',   # 打断场景裁判（音频）
         'high_freq_llm_judge',  # 高频轮换裁判（录屏）
         'false_takeover',       # 误接管语义判断（文本）
+        'reply_quality',        # 回复质量评分（文本）
     )
     LLM_JUDGE = {
         'api_base_url': os.environ.get('LLM_JUDGE_API_BASE', 'https://az.gptplus5.com/v1'),
