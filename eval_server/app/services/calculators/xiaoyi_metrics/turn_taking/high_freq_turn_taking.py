@@ -37,6 +37,8 @@ def compute_high_freq_turn_taking(
     user_chunks: Any,
     ai_chunks: Any,
     seg_merge_gap_s: float = SEG_MERGE_GAP_S,
+    case_wav: str = None,
+    user_wav: str = None,
 ) -> Dict[str, Any]:
     """计算高频轮换场景下每轮回复时延
 
@@ -44,10 +46,16 @@ def compute_high_freq_turn_taking(
     A_j（A_j.start >= U_i.end），即该轮回复。
     回复时延 = A_j.start - U_i.end
 
+    当提供 case_wav + user_wav 时，额外通过 FFT 互相关对齐计算整体
+    client_out 时延（与 false_takeover.py 一致）：
+        client_out_latency_ms = model_first_word_start_ms - client_out_end_ms
+
     Args:
         user_chunks: 用户通道 ASR chunks（list 或 {text, chunks}）
         ai_chunks:   AI 回复通道 ASR chunks（同上）。两路需在同一时间轴
         seg_merge_gap_s: 词合并为段的间隙阈值（秒），默认 0.7
+        case_wav: 干净音源路径（互相关对齐用）
+        user_wav: 用户通道音频路径（=client_out，对齐目标）
 
     Returns:
         dict: {
@@ -60,8 +68,13 @@ def compute_high_freq_turn_taking(
             'n_user_segments': int,              用户段总数
             'n_ai_segments': int,                AI段总数
             'n_matched_rounds': int,             成功匹配到AI回复的轮数
-            'n_missed_rounds': int,              未匹配到AI回复的轮数
+            'n_missed_rounds': int,               未匹配到AI回复的轮数
             'n_unmatched_ai_segments': int,      未被消费的AI段数（开场白/结束语等）
+            'client_out_start_ms': float|None,    client_out 起始时刻（毫秒）
+            'client_out_end_ms': float|None,      client_out 结束时刻（毫秒）
+            'model_first_word_start_ms': float|None, 模型首词开始时刻（毫秒）
+            'client_out_latency_ms': float|None,  client_out 时延（毫秒）
+            'ncc': float|None,                    互相关置信度
             'message': str,
         }
 
@@ -88,6 +101,11 @@ def compute_high_freq_turn_taking(
         'n_matched_rounds': 0,
         'n_missed_rounds': 0,
         'n_unmatched_ai_segments': 0,
+        'client_out_start_ms': None,
+        'client_out_end_ms': None,
+        'model_first_word_start_ms': None,
+        'client_out_latency_ms': None,
+        'ncc': None,
         'message': '',
     }
 
@@ -176,6 +194,23 @@ def compute_high_freq_turn_taking(
         )
     else:
         result['message'] = 'OK'
+
+    # ── client_out 时延（case_wav + user_wav 互相关对齐）──
+    if case_wav and user_wav:
+        try:
+            from .false_takeover import compute_client_out_latency
+            lat_res = compute_client_out_latency(case_wav, user_wav, ai_chunks)
+            result['client_out_start_ms'] = lat_res.get('client_out_start_ms')
+            result['client_out_end_ms'] = lat_res.get('client_out_end_ms')
+            result['model_first_word_start_ms'] = lat_res.get('model_first_word_start_ms')
+            result['client_out_latency_ms'] = lat_res.get('client_out_latency_ms')
+            result['ncc'] = lat_res.get('ncc')
+            logger.info(
+                f"[高频轮换-client_out] latency={result['client_out_latency_ms']}ms "
+                f"ncc={result['ncc']}"
+            )
+        except Exception as exc:
+            logger.warning(f"[高频轮换-client_out] 对齐失败: {exc}")
 
     logger.info(
         f"[高频轮换] n_rounds={result['n_rounds']} "

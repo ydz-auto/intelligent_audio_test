@@ -174,6 +174,11 @@ class TurnTakingCalculator(TurnTakingBase):
                 'takeover_latency_ms': None,
                 'user_last_word_end_ms': None,
                 'ai_first_word_start_ms': None,
+                'client_out_start_ms': None,
+                'client_out_end_ms': None,
+                'model_first_word_start_ms': None,
+                'client_out_latency_ms': None,
+                'ncc': None,
                 'message': _msg2,
             }
             logger.info("[turn_taking] false_takeover.tor=1，tor 和 takeover_latency 置 null")
@@ -319,7 +324,8 @@ class TakeoverLatencyCalculator(TurnTakingBase):
     def prepare_params(self, task_params):
         idx = self._get_target_round_index(task_params)
         user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
-        return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav}
+        return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav,
+                'task_params': task_params}
 
     def run(self, task_params):
         """独立调用入口：结果包装为 {'takeover_latency': result}"""
@@ -337,10 +343,17 @@ class TakeoverLatencyCalculator(TurnTakingBase):
         ai_chunks = shared.get('ai_chunks')
         if ai_chunks is None:
             ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
+
+        # 从 task_params 提取 case_wav（互相关对齐用）
+        _task_params = params.get('task_params') or {}
+        case_wav = _task_params.get('case_wav')
+        user_wav = params.get('user_wav')
+
         return compute_takeover_latency_from_raw(
             first_frame_ms=None, asr_hyp=None, start_ms=None,
             input_words=[], offset_ms=TAKEOVER_OFFSET_MS,
             user_chunks=user_chunks, ai_chunks=ai_chunks,
+            case_wav=case_wav, user_wav=user_wav,
         )
 
 
@@ -370,7 +383,7 @@ class HighFreqTurnTakingCalculator(TurnTakingBase):
         rd = self._get_round_safe(task_params, idx)
         merge_gap = task_params.get('seg_merge_gap_s') or rd.get('seg_merge_gap_s')
 
-        result = {'user_wav': user_wav, 'ai_wav': ai_wav}
+        result = {'user_wav': user_wav, 'ai_wav': ai_wav, 'task_params': task_params}
         if merge_gap is not None:
             result['seg_merge_gap_s'] = float(merge_gap)
         return result
@@ -395,6 +408,11 @@ class HighFreqTurnTakingCalculator(TurnTakingBase):
         kwargs = {}
         if 'seg_merge_gap_s' in params:
             kwargs['seg_merge_gap_s'] = params['seg_merge_gap_s']
+
+        # 从 task_params 提取 case_wav（互相关对齐用）
+        _task_params = params.get('task_params') or {}
+        kwargs['case_wav'] = _task_params.get('case_wav')
+        kwargs['user_wav'] = params.get('user_wav')
 
         return compute_high_freq_turn_taking(user_chunks=user_chunks, ai_chunks=ai_chunks, **kwargs)
 

@@ -1,19 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 xiaoyi_takeover_latency.py
-计算"小艺接管时延" = ai_wav 首字开始时间 - user_wav 最后一字结束时间
+计算"小艺接管时延" = model_first_word_start_ms - client_out_end_ms
 
-方案：
-    分别对 user_wav 和 ai_wav 调用 ASR 服务，获取字词级时间戳，
-    takeover_latency_ms = ai_wav 首字开始时间 - user_wav 最后一字结束时间
+方案（与 false_takeover.py 一致）：
+    通过 case_wav（干净音源）与 user_wav（client_out）做 FFT 互相关对齐，
+    获取 client_out 的起止时间戳，再用模型回复首字时间戳减去 client_out 结束时间戳。
 
-    两路 wav 来自设备端 cap_client 采集的 PCM 转换：
-      - user_wav: cap_client_process_out.wav（用户说话通道）
-      - ai_wav:   cap_client_ec_out.wav（AI 回复通道）
-    两路音频同时开始录制，共享同一时间轴（0 点为录音起点），
-    因此直接用各路 ASR 时间戳相减即可得到接管时延。
+    时延 = model_first_word_start_ms - client_out_end_ms
 
-    ASR 调用由 xiaoyi_metrics/__init__.py 统一完成，本模块只接收 chunks。
+    当 case_wav / user_wav 缺失时，回退到旧逻辑（ASR 时间戳直接相减）。
 """
 import logging
 
@@ -26,12 +22,22 @@ def compute_takeover_latency_from_raw(first_frame_ms, asr_hyp, start_ms, input_w
                                       offset_ms=TAKEOVER_OFFSET_MS, **kwargs):
     """兼容旧调用入口，委托到 compute_takeover_latency_from_chunks
 
-    当调用方提供 user_chunks/ai_chunks 时走新逻辑；
-    否则回退到旧逻辑（基于 first_frame_ms + asr_hyp）。
+    当调用方提供 case_wav + user_wav 时走 client_out 时延新逻辑；
+    当调用方提供 user_chunks/ai_chunks 时走 ASR 旧逻辑；
+    否则回退到 legacy 逻辑（基于 first_frame_ms + asr_hyp）。
     """
+    case_wav = kwargs.get('case_wav')
+    user_wav = kwargs.get('user_wav')
     user_chunks = kwargs.get('user_chunks')
     ai_chunks = kwargs.get('ai_chunks')
 
+    # 优先：case_wav + user_wav → client_out 互相关对齐
+    if case_wav and user_wav:
+        return compute_takeover_latency_from_chunks(
+            user_chunks, ai_chunks, case_wav=case_wav, user_wav=user_wav,
+        )
+
+    # 回退：ASR 时间戳直接相减
     if user_chunks and ai_chunks:
         return compute_takeover_latency_from_chunks(user_chunks, ai_chunks)
 
@@ -41,23 +47,50 @@ def compute_takeover_latency_from_raw(first_frame_ms, asr_hyp, start_ms, input_w
     )
 
 
-def compute_takeover_latency_from_chunks(user_chunks, ai_chunks):
-    """计算小艺接管时延（双路 ASR 时间戳直接相减）
+def compute_takeover_latency_from_chunks(user_chunks, ai_chunks,
+                                          case_wav=None, user_wav=None):
+    """计算小艺接管时延
 
-    公式: takeover_latency_ms = ai_first_word_start_ms - user_last_word_end_ms
+    优先模式（case_wav + user_wav）：
+        通过 FFT 互相关对齐获取 client_out 起止时间戳，
+        时延 = model_first_word_start_ms - client_out_end_ms
+
+    回退模式（无 case_wav/user_wav）：
+        ASR 时间戳直接相减，
+        时延 = ai_first_word_start_ms - user_last_word_end_ms
 
     Args:
-        user_chunks (list): user_wav ASR chunks，每项含 {"text", "timestamp": [start, end]}
+        user_chunks (list): user_wav ASR chunks
         ai_chunks (list): ai_wav ASR chunks
+        case_wav (str|None): 干净音源路径（互相关对齐用）
+        user_wav (str|None): 用户通道音频路径（=client_out，对齐目标）
 
     Returns:
-        dict: {
-            'takeover_latency_ms': float|None,   接管时延（毫秒，正值=AI在用户说完后才开始，负值=AI抢话）
-            'user_last_word_end_ms': float,       user_wav 最后一字结束时间（毫秒）
-            'ai_first_word_start_ms': float,      ai_wav 首字开始时间（毫秒）
-            'message': str,
-        }
+        dict: client_out 时延字段（新模式）或旧模式字段
     """
+    # ── 优先：case_wav + user_wav → client_out 互相关对齐 ──
+    if case_wav and user_wav:
+        from .false_takeover import compute_client_out_latency
+        lat_res = compute_client_out_latency(case_wav, user_wav, ai_chunks)
+        result = {
+            'client_out_start_ms': lat_res.get('client_out_start_ms'),
+            'client_out_end_ms': lat_res.get('client_out_end_ms'),
+            'model_first_word_start_ms': lat_res.get('model_first_word_start_ms'),
+            'client_out_latency_ms': lat_res.get('client_out_latency_ms'),
+            'ncc': lat_res.get('ncc'),
+            'message': lat_res.get('message'),
+        }
+        # 兼容旧字段名
+        result['takeover_latency_ms'] = lat_res.get('client_out_latency_ms')
+        result['user_last_word_end_ms'] = lat_res.get('client_out_end_ms')
+        result['ai_first_word_start_ms'] = lat_res.get('model_first_word_start_ms')
+        logger.info(
+            f"[接管时延-client_out] latency={result['client_out_latency_ms']}ms "
+            f"ncc={result['ncc']}"
+        )
+        return result
+
+    # ── 回退：ASR 时间戳直接相减 ──
     result = {
         'takeover_latency_ms': None,
         'user_last_word_end_ms': None,

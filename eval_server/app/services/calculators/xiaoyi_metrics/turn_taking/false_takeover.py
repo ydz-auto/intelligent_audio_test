@@ -239,14 +239,14 @@ def _coarse_to_fine_align(clean, noisy, factors=None):
             noisy_ds = noisy
         ref_len = len(clean_ds)
         if level == 0:
-            offset_ds, ncc = fft_xcorr(clean_ds, noisy_ds)
+            offset_ds, ncc = _fft_xcorr(clean_ds, noisy_ds)
             approx_offset = offset_ds * factor
         else:
             estimate = int(approx_offset / factor)
             margin = ref_len
             search_start = max(0, estimate - margin)
             search_end = min(len(noisy_ds), estimate + margin + ref_len)
-            offset_ds, ncc = fft_xcorr(clean_ds, noisy_ds[search_start:search_end])
+            offset_ds, ncc = _fft_xcorr(clean_ds, noisy_ds[search_start:search_end])
             approx_offset = (offset_ds + search_start) * factor
     return max(0, approx_offset), ncc
 
