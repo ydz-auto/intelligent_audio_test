@@ -35,7 +35,7 @@ def test_rejection_judge_returns_interaction_text(monkeypatch):
     monkeypatch.setattr(rj_mod, 'get_asr_text', lambda wav: '文本')
     monkeypatch.setattr(
         rj_mod, 'call_llm_api',
-        lambda **kwargs: {'content': json.dumps({'behavior': '静默', 'reason': '未回应'},
+        lambda **kwargs: {'content': json.dumps({'behavior': '未知', 'reason': '未回应'},
                                                 ensure_ascii=False),
                           'tokens_used': 1, 'input_token': 1, 'output_token': 0},
     )
@@ -43,7 +43,7 @@ def test_rejection_judge_returns_interaction_text(monkeypatch):
     result = rj_mod.evaluate_rejection_judge(ai_wav='ai.wav', user_wav='user.wav',
                                              model='test-model')
     assert result['message'] == 'OK'
-    assert result['behavior_silent'] == 1
+    assert result['behavior_unknown'] == 1
     assert result['interaction_text'] == (
         'query [0:01; 0:02]今天天气\nanswer [0:03; 0:04]明天小雨\n'
     )

@@ -5,6 +5,7 @@
 负责底层的 PyAudio 流操作、重采样和回调管理。
 """
 
+import pyaudio
 import wave
 import threading
 import time
@@ -13,11 +14,6 @@ import os
 import traceback
 import ctypes
 from abc import ABC, abstractmethod
-
-try:
-    import pyaudio
-except ImportError:
-    pyaudio = None
 from pydub import AudioSegment
 from backend.utils.web.log_handler import log_and_emit
 

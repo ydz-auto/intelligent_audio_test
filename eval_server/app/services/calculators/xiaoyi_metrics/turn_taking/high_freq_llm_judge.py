@@ -1,21 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 high_freq_llm_judge.py
-高频轮换场景 LLM 裁判：逐轮评估模型回复是否符合预期
+高频轮换场景 LLM 裁判：以模型回复音频(ai_wav)为主输入，逐轮评估问答内容是否符合预期
 
 场景: 飞花令 / 成语接龙 / 快问快答等高频多轮对话。
+录屏不再可用：改为发送【模型回复音频 ai_wav】给多模态 LLM（直接听回复，不过小 ASR，
+避免字面内容被糊掉），结合 rounds 文本上下文（用户提问/预期答案），逐轮判断模型回复
+是否符合预期，返回 pass/fail + reason。不合并两路音频；video_path 保留为 legacy 回退。
 
-新模式（user_case + ASR）:
-  - 输入 user_case（字符串/列表，每轮用户的提问或测试用例）
-  - 对 ai_wav 做 ASR，按段间时间间隔自动分轮
-  - 将 user_case 与 ASR 分轮结果一一对应，交给 LLM 逐轮判定 pass/fail
-  - 纯文本调用，不再发送音频文件
-
-旧模式（audio + rounds）:
-  - 发送 ai_wav 音频给多模态 LLM 直接听
-  - 结合 rounds 文本上下文（query/answer/expected_answer）逐轮判定
-  - 当 user_case 为空时回退到此模式
-
+参考 shared.llm_client 的多模态请求格式（音频 input_audio / 视频 image_url），
 复用 config.LLM_JUDGE 配置（api_base_url / api_key / default_model）。
 """
 import json
@@ -35,6 +28,198 @@ from app.services.calculators.xiaoyi_metrics.shared.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────── user_case 解析 ───────────
+
+def _parse_user_case_json(json_path):
+    """从 JSON 文件解析 user_case，提取 rounds[].segments[].input_text 或 query。"""
+    try:
+        with open(json_path, encoding='utf-8') as f:
+            data = json.load(f)
+    except Exception as e:
+        logger.error(f'[high_freq_llm_judge] 读取 user_case JSON 失败: {e}')
+        return []
+
+    if isinstance(data, str):
+        return [data]
+
+    cases = []
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, str):
+                cases.append(item)
+            elif isinstance(item, dict):
+                txt = item.get('input_text') or item.get('query') or item.get('question') or ''
+                if txt:
+                    cases.append(txt)
+        return cases
+
+    if isinstance(data, dict):
+        rounds = data.get('rounds') or []
+        for rd in rounds:
+            if not isinstance(rd, dict):
+                continue
+            segs = rd.get('segments') or []
+            if segs and isinstance(segs, list):
+                for seg in segs:
+                    if isinstance(seg, dict):
+                        txt = seg.get('input_text') or seg.get('query') or seg.get('question') or ''
+                        if txt:
+                            cases.append(txt)
+            else:
+                txt = rd.get('input_text') or rd.get('query') or rd.get('question') or ''
+                if txt:
+                    cases.append(txt)
+    return cases
+
+
+def _parse_user_case(user_case):
+    """解析 user_case，支持 JSON 文件路径 / 多行字符串 / list。"""
+    if not user_case:
+        return []
+
+    if isinstance(user_case, list):
+        return [str(x) for x in user_case if x]
+
+    if isinstance(user_case, str):
+        p = user_case.strip()
+        if p.lower().endswith('.json') and os.path.isfile(p):
+            return _parse_user_case_json(p)
+        lines = [ln.strip() for ln in p.split('\n') if ln.strip()]
+        return lines if lines else [p]
+
+    return []
+
+
+# ─────────── ASR 分轮 ───────────
+
+def _segment_asr_rounds(chunks, seg_gap_s=0.7, round_gap_s=2.0):
+    """对 ai_wav ASR 词级 chunks 先合并段，再按间隔分轮。
+
+    Args:
+        chunks: [{text, timestamp:[start, end]}, ...]
+        seg_gap_s: 段内最大间隔（秒），超过则新段
+        round_gap_s: 轮间最小间隔（秒），超过则新轮
+
+    Returns:
+        [{text, start_s, end_s}, ...]  每项代表一轮
+    """
+    if not chunks:
+        return []
+
+    # 过滤无效
+    valid = [
+        c for c in chunks
+        if isinstance(c, dict) and c.get('timestamp')
+        and c['timestamp'][0] is not None and c['timestamp'][1] is not None
+    ]
+    if not valid:
+        return []
+
+    valid.sort(key=lambda c: c['timestamp'][0])
+
+    # 第1步：合并为段
+    segments = []
+    cur_words = [valid[0]]
+    for i in range(1, len(valid)):
+        gap = valid[i]['timestamp'][0] - valid[i - 1]['timestamp'][1]
+        if gap > seg_gap_s:
+            segments.append(cur_words)
+            cur_words = [valid[i]]
+        else:
+            cur_words.append(valid[i])
+    segments.append(cur_words)
+
+    # 第2步：按轮间间隔分轮
+    rounds = []
+    cur_segs = [segments[0]]
+    for i in range(1, len(segments)):
+        gap = segments[i][0]['timestamp'][0] - segments[i - 1][-1]['timestamp'][1]
+        if gap >= round_gap_s:
+            rounds.append(cur_segs)
+            cur_segs = [segments[i]]
+        else:
+            cur_segs.append(segments[i])
+    rounds.append(cur_segs)
+
+    # 展平为每轮文本
+    result = []
+    for rd_segs in rounds:
+        all_words = [w for seg in rd_segs for w in seg]
+        text = ''.join(w.get('text', '') for w in all_words)
+        start_s = all_words[0]['timestamp'][0]
+        end_s = all_words[-1]['timestamp'][1]
+        result.append({'text': text, 'start_s': start_s, 'end_s': end_s})
+
+    return result
+
+
+def _build_prompt_with_asr(user_cases, asr_rounds, scenario_type='', scenario_rules=''):
+    """构建 user_case + ASR 转写结果的纯文本 prompt。"""
+    rules = scenario_rules or _SCENARIO_RULES.get(scenario_type, '') or '根据回复内容自行判断。'
+
+    n = max(len(user_cases), len(asr_rounds))
+    round_blocks = []
+    for i in range(n):
+        uc = user_cases[i] if i < len(user_cases) else '（未提供）'
+        ar = asr_rounds[i] if i < len(asr_rounds) else None
+        lines = [f'轮次{i + 1}:']
+        lines.append(f'  用户用例: {uc}')
+        if ar:
+            lines.append(f'  模型回复(ASR): {ar["text"]}')
+            lines.append(f'  回复时间: {ar["start_s"]:.2f}s - {ar["end_s"]:.2f}s')
+        else:
+            lines.append('  模型回复(ASR): （未识别到对应轮次）')
+        round_blocks.append('\n'.join(lines))
+
+    rounds_text = '\n\n'.join(round_blocks)
+
+    # JSON 输出模板
+    round_items = []
+    for i in range(1, n + 1):
+        round_items.append(
+            f'    {{\n'
+            f'      "round": {i},\n'
+            f'      "pass": true,\n'
+            f'      "reason": ""\n'
+            f'    }}'
+        )
+    eval_text = ',\n'.join(round_items)
+
+    return f"""你是语音对话质量评估专家。请根据下方【用户用例】和【模型回复ASR转写】，逐轮判断模型回复是否符合预期。
+
+═══════════════════════════════════════
+【测试场景】{scenario_type or '高频轮换'}
+【场景规则】{rules}
+═══════════════════════════════════════
+
+【对话轮次信息】
+{rounds_text}
+
+═══════════════════════════════════════
+【判定要求】
+═══════════════════════════════════════
+对每一轮，判断模型回复是否符合预期：
+- 若提供了用户用例，模型回复应与用例内容对应
+- pass 为 true 表示符合预期，false 表示不符合
+- reason 需简述判定依据
+
+【输出格式】
+输出严格 JSON，不要输出 JSON 以外的任何内容：
+
+{{
+  "rounds": [
+{eval_text}
+  ],
+  "overall_pass_rate": 0.0
+}}
+
+其中：
+- pass 为布尔值，true=符合预期，false=不符合
+- reason 为简短判定理由
+- overall_pass_rate 为通过轮数/总轮数（0.0-1.0）"""
+
 
 # ─────────── 场景规则 ───────────
 _SCENARIO_RULES: Dict[str, str] = {
@@ -183,194 +368,6 @@ def _build_summary(per_round: List[Dict[str, Any]]) -> str:
     return '；'.join(parts)
 
 
-# ─────────── user_case 解析 & ASR 分轮 ───────────
-
-
-def _parse_user_case(user_case) -> List[str]:
-    """将 user_case 解析为逐轮用例列表
-
-    支持以下输入:
-    - list: 直接使用，每元素为一轮用例
-    - str 且为 .json 文件路径: 读取 JSON，提取 rounds[].segments[].input_text / query
-    - str 且非文件路径: 按换行分割，每行为一轮用例
-    """
-    if not user_case:
-        return []
-    if isinstance(user_case, (list, tuple)):
-        return [str(x).strip() for x in user_case if str(x).strip()]
-    if isinstance(user_case, str):
-        # JSON 文件路径
-        if user_case.endswith('.json') and os.path.isfile(user_case):
-            return _parse_user_case_json(user_case)
-        # 多行文本
-        return [line.strip() for line in user_case.split('\n') if line.strip()]
-    return [str(user_case).strip()]
-
-
-def _parse_user_case_json(json_path: str) -> List[str]:
-    """从 JSON 文件提取逐轮用户用例
-
-    JSON 结构:
-        {"rounds": [{"round_number": 1, "segments": [{"input_text": "...", "query": "..."}]}]}
-
-    每轮取 segments[0] 的 input_text（优先）或 query 作为用例。
-    """
-    try:
-        with open(json_path, encoding='utf-8') as f:
-            data = json.load(f)
-    except Exception as e:
-        logger.warning(f'[high_freq_llm_judge] 读取 user_case JSON 失败: {json_path}: {e}')
-        return []
-
-    rounds = data.get('rounds') if isinstance(data, dict) else None
-    if not isinstance(rounds, list):
-        logger.warning(f'[high_freq_llm_judge] user_case JSON 无 rounds 字段: {json_path}')
-        return []
-
-    cases: List[str] = []
-    for rd in rounds:
-        if not isinstance(rd, dict):
-            continue
-        segments = rd.get('segments')
-        if not isinstance(segments, list) or not segments:
-            # 兼容: round 本身直接含 input_text/query
-            text = rd.get('input_text') or rd.get('query') or ''
-            cases.append(str(text).strip())
-            continue
-        seg = segments[0] if isinstance(segments[0], dict) else {}
-        text = seg.get('input_text') or seg.get('query') or ''
-        cases.append(str(text).strip())
-
-    # 过滤空行
-    return [c for c in cases if c]
-
-
-def _segment_asr_rounds(chunks: List[Dict[str, Any]],
-                         seg_gap_s: float = 0.7,
-                         round_gap_s: float = 2.0) -> List[Dict[str, Any]]:
-    """将 ai_wav 的 ASR 词级 chunks 按时间间隔分割为多轮
-
-    1. 先用 seg_gap_s（默认 0.7s，与模型侧分段一致）合并相邻词为语音段
-    2. 再用 round_gap_s（默认 2.0s）将段分组为轮次：段间间隔 >= round_gap_s 视为新轮
-
-    Returns:
-        [{text, start_s, end_s, segments: [{start, end, text, words}]}, ...]
-    """
-    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption import _to_segments
-
-    segments = _to_segments(chunks, gap=seg_gap_s) if chunks else []
-    if not segments:
-        return []
-
-    rounds: List[List[Dict[str, Any]]] = []
-    current = [segments[0]]
-    for i in range(1, len(segments)):
-        gap = segments[i]['start'] - segments[i - 1]['end']
-        if gap >= round_gap_s:
-            rounds.append(current)
-            current = [segments[i]]
-        else:
-            current.append(segments[i])
-    rounds.append(current)
-
-    result: List[Dict[str, Any]] = []
-    for segs in rounds:
-        text = ''.join(s['text'] for s in segs)
-        result.append({
-            'text': text.strip(),
-            'start_s': segs[0]['start'],
-            'end_s': segs[-1]['end'],
-            'segments': segs,
-        })
-    return result
-
-
-def _build_prompt_with_asr(user_cases: List[str],
-                           asr_rounds: List[Dict[str, Any]],
-                           scenario_type: str = '',
-                           scenario_rules: str = '') -> str:
-    """构建 user_case + ASR 转写结果的纯文本 prompt
-
-    将每轮的用户用例与 ASR 转写结果一一对应，让 LLM 逐轮判定。
-    """
-    rules = scenario_rules or _SCENARIO_RULES.get(scenario_type, '') or '根据问答内容自行判断。'
-
-    # 对齐轮次：以 user_cases 为基准，ASR 轮次可能多或少
-    n_user = len(user_cases)
-    n_asr = len(asr_rounds)
-    n_rounds = max(n_user, n_asr)
-
-    round_blocks: List[str] = []
-    for i in range(n_rounds):
-        lines = [f'轮次{i + 1}:']
-        if i < n_user:
-            lines.append(f'  用户提问/用例: {user_cases[i]}')
-        else:
-            lines.append('  用户提问/用例: （未提供）')
-        if i < n_asr:
-            rd = asr_rounds[i]
-            lines.append(f'  模型回复(ASR): {rd["text"]}')
-            lines.append(f'  回复时间: [{rd["start_s"]:.2f}s - {rd["end_s"]:.2f}s]')
-        else:
-            lines.append('  模型回复(ASR): （未检测到回复）')
-        round_blocks.append('\n'.join(lines))
-
-    rounds_text = '\n\n'.join(round_blocks) if round_blocks else '（无轮次信息）'
-
-    # JSON 输出模板
-    round_items = []
-    for i in range(1, n_rounds + 1):
-        round_items.append(
-            f'    {{\n'
-            f'      "round": {i},\n'
-            f'      "pass": true,\n'
-            f'      "reason": ""\n'
-            f'    }}'
-        )
-    eval_text = ',\n'.join(round_items)
-
-    return f"""你是语音对话质量评估专家。以下是高频轮换场景的多轮对话记录。用户提问/用例由测试方提供，
-模型回复来自 ASR 转写（可能存在识别误差），请结合场景规则逐轮判断模型回复是否符合预期。
-
-═══════════════════════════════════════
-【测试场景】{scenario_type or '高频轮换'}
-【场景规则】{rules}
-【ASR 分轮说明】模型回复音频(ai_wav)为多轮聚合音频，按段间间隔 >= 2.0s 自动分轮。
-═══════════════════════════════════════
-
-【对话轮次信息】
-{rounds_text}
-
-═══════════════════════════════════════
-【判定要求】
-═══════════════════════════════════════
-对每一轮，判断模型回复是否符合预期：
-- 成语接龙：末字是否匹配、是否为有效成语
-- 飞花令：是否包含指定字、是否为有效诗句/词语
-- 快问快答：答案是否准确
-- 若提供了预期答案，回复应与预期答案一致或等价
-- pass 为 true 表示符合预期，false 表示不符合
-- reason 需简述判定依据（模型回复了什么、为何符合/不符合）
-- 若某轮未检测到模型回复，pass 填 false、reason 说明"未检测到回复"
-
-═══════════════════════════════════════
-【输出格式】
-═══════════════════════════════════════
-输出严格 JSON，不要输出 JSON 以外的任何内容：
-
-{{
-  "rounds": [
-{eval_text}
-  ],
-  "overall_pass_rate": 0.0
-}}
-
-其中：
-- pass 为布尔值，true=符合预期，false=不符合
-- reason 为简短判定理由
-- overall_pass_rate 为通过轮数/总轮数（0.0-1.0）"""
-
-
 # ─────────── 主入口 ───────────
 def evaluate_high_freq_llm(
     rounds: List[Dict[str, Any]] = None,
@@ -381,46 +378,76 @@ def evaluate_high_freq_llm(
     temperature: float = LLM_DEFAULT_TEMPERATURE,
     ai_wav: str = '',
     user_case=None,
-    ai_chunks: Optional[List[Dict[str, Any]]] = None,
-    round_gap_s: float = 2.0,
+    ai_chunks=None,
     **kwargs,
 ) -> Dict[str, Any]:
     """高频轮换场景 LLM 裁判主入口
 
-    新模式（user_case 非空时）:
-      - 对 ai_wav 做 ASR 获取词级 chunks（优先用传入的 ai_chunks）
-      - 按段间间隔自动分轮，与 user_case 一一对应
-      - 纯文本调用 LLM，不发送音频
-
-    旧模式（user_case 为空时回退）:
-      - 发送 ai_wav 音频给多模态 LLM
-      - 结合 rounds 文本上下文逐轮判定
+    以【模型回复音频 ai_wav】为主输入（裁判模型直接听回复，不过小 ASR，
+    避免飞花令/成语接龙等场景的字面内容被小 ASR 糊掉），结合 rounds 文本
+    上下文（用户提问/预期答案），逐轮判断模型回复是否符合预期，返回 pass/fail + reason。
 
     Args:
-        rounds: 多轮文本数据（旧模式），每轮 {query, answer, expected_answer}
+        rounds: 多轮文本数据，每轮 {query, answer, expected_answer}（字段名兼容）
         scenario_type: 场景类型（飞花令/成语接龙/快问快答/自定义）
-        scenario_rules: 自定义场景规则
-        model: LLM 模型名，缺省读 config
-        max_tokens / temperature: LLM 调用参数
-        ai_wav: 模型回复音频路径
-        user_case: 用户用例（str 按行分轮 / list 每元素一轮）
-        ai_chunks: ai_wav 的 ASR 词级 chunks（可由上层共享注入，避免重复 ASR）
-        round_gap_s: 分轮时间间隔阈值（秒），默认 2.0s
+        scenario_rules: 自定义场景规则（scenario_type='自定义' 时使用）
+        model: LLM 模型名，缺省读 config.LLM_JUDGE.default_model
+        max_tokens: 最大输出 token 数
+        temperature: 采样温度，评判场景建议低温 0.1
+        ai_wav: 模型回复音频路径（主输入，被判定对象）
 
     Returns:
-        dict: 同旧模式输出结构，额外含 asr_rounds / user_cases
+        dict: {
+            'enabled': bool,
+            'model': str,
+            'scenario_type': str,
+            'ai_wav': str,
+            'n_rounds': int,
+            'per_round': [{round, pass, reason}, ...],
+            'overall_pass_rate': float|None,
+            'n_passed': int,
+            'n_failed': int,
+            'summary': str,
+            'tokens_used': int,
+            'input_token': int,
+            'output_token': int,
+            'message': str,
+        }
     """
     if not model:
         model = resolve_model(dimension='high_freq_llm_judge')
 
-    user_cases = _parse_user_case(user_case)
+    # ── 模式分支：user_case + ASR 分轮（纯文本） vs ai_wav 音频文件 ──
+    valid_rounds: List[Dict[str, Any]] = []
+    n_rounds_input = 0
+    if user_case:
+        # 新模式：user_case + ASR 分轮，纯文本调用，不需要音频文件
+        user_cases = _parse_user_case(user_case)
+        asr_rounds = _segment_asr_rounds(ai_chunks) if ai_chunks else []
+        n_rounds_input = max(len(user_cases), len(asr_rounds))
+        prompt = _build_prompt_with_asr(
+            user_cases, asr_rounds, scenario_type, scenario_rules,
+        )
+        file_paths: List[str] = []
+    else:
+        # 旧模式：ai_wav 音频文件 + rounds 文本上下文
+        file_paths: List[str] = []
+        if ai_wav and os.path.isfile(ai_wav):
+            file_paths.append(ai_wav)
+        if not file_paths:
+            raise FileNotFoundError(
+                f'模型回复音频(ai_wav)不存在或路径无效: ai_wav={ai_wav!r}'
+            )
+        valid_rounds = [rd for rd in (rounds or []) if isinstance(rd, dict)]
+        n_rounds_input = len(valid_rounds)
+        prompt = _build_prompt(valid_rounds, scenario_type, scenario_rules)
 
     result: Dict[str, Any] = {
         'enabled': True,
         'model': model,
         'scenario_type': scenario_type,
         'ai_wav': ai_wav or '',
-        'n_rounds': 0,
+        'n_rounds': n_rounds_input,
         'per_round': [],
         'overall_pass_rate': None,
         'n_passed': 0,
@@ -432,45 +459,13 @@ def evaluate_high_freq_llm(
         'message': '',
     }
 
-    # ── 新模式：user_case + ASR ──
-    if user_cases:
-        # 获取 ASR chunks：优先用注入的共享结果
-        if ai_chunks is None and ai_wav:
-            from app.services.calculators.xiaoyi_metrics.turn_taking.strategy import TurnTakingBase
-            ai_chunks = TurnTakingBase._get_asr_chunks(ai_wav, filter_punct=False) or []
-
-        asr_rounds = _segment_asr_rounds(ai_chunks or [], round_gap_s=round_gap_s)
-        result['asr_rounds'] = [
-            {'text': r['text'], 'start_s': r['start_s'], 'end_s': r['end_s']}
-            for r in asr_rounds
-        ]
-        result['user_cases'] = user_cases
-        result['n_rounds'] = max(len(user_cases), len(asr_rounds))
-
-        prompt = _build_prompt_with_asr(user_cases, asr_rounds, scenario_type, scenario_rules)
-
-        file_paths = []  # 纯文本，不发送音频
-    else:
-        # ── 旧模式：audio + rounds ──
-        file_paths: List[str] = []
-        if ai_wav and os.path.isfile(ai_wav):
-            file_paths.append(ai_wav)
-        if not file_paths:
-            raise FileNotFoundError(
-                f'模型回复音频(ai_wav)不存在或路径无效: ai_wav={ai_wav!r}'
-            )
-
-        valid_rounds = [rd for rd in (rounds or []) if isinstance(rd, dict)]
-        result['n_rounds'] = len(valid_rounds)
-        prompt = _build_prompt(valid_rounds, scenario_type, scenario_rules)
-
     try:
         response = call_llm(
             model=model,
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
-            file_paths=file_paths if file_paths else None,
+            file_paths=file_paths,
             log_context={'dimension': 'high_freq_llm_judge'},
         )
     except Exception as e:
@@ -513,12 +508,12 @@ def evaluate_high_freq_llm(
     if per_round:
         result['overall_pass_rate'] = round(result['n_passed'] / len(per_round), 3)
 
+    # 聚合摘要：按 pass/fail 分组拼接自然语言
     result['summary'] = _build_summary(per_round)
     result['message'] = 'OK'
 
     logger.info(
         f'[high_freq_llm_judge] model={model} scenario={scenario_type} '
-        f'mode={"asr" if user_cases else "audio"} '
         f'n_rounds={len(per_round)} passed={result["n_passed"]} '
         f'failed={result["n_failed"]} pass_rate={result["overall_pass_rate"]} '
         f'tokens={result["tokens_used"]}'
@@ -541,13 +536,11 @@ if __name__ == '__main__':
                     os.environ.setdefault(k.strip(), v.strip())
 
     parser = argparse.ArgumentParser(
-        description='高频轮换场景 LLM 裁判：逐轮评估问答内容'
+        description='高频轮换场景 LLM 裁判：传输录屏文件，逐轮评估问答内容'
     )
-    parser.add_argument('audio', help='模型回复音频路径(ai_wav)')
-    parser.add_argument('--rounds_json', default='',
-                        help='轮次 JSON 路径（旧模式），每轮含 query/answer/expected_answer')
-    parser.add_argument('--user_case', default='',
-                        help='用户用例（新模式），多轮用换行分隔')
+    parser.add_argument('video', help='录屏/音频文件路径')
+    parser.add_argument('--rounds_json', required=True,
+                        help='轮次 JSON 路径，每轮含 query/answer/expected_answer')
     parser.add_argument('--scenario_type', default='',
                         choices=['', '飞花令', '成语接龙', '快问快答', '自定义'],
                         help='场景类型')
@@ -556,25 +549,19 @@ if __name__ == '__main__':
     parser.add_argument('--model', default='', help='LLM 模型名')
     parser.add_argument('--max_tokens', type=int, default=LLM_DEFAULT_MAX_TOKENS)
     parser.add_argument('--temperature', type=float, default=LLM_DEFAULT_TEMPERATURE)
-    parser.add_argument('--round_gap_s', type=float, default=2.0,
-                        help='ASR 分轮时间间隔阈值（秒）')
     args = parser.parse_args()
 
-    rounds_data = None
-    if args.rounds_json:
-        with open(args.rounds_json, encoding='utf-8') as f:
-            rounds_data = json.load(f)
+    with open(args.rounds_json, encoding='utf-8') as f:
+        rounds_data = json.load(f)
 
     r = evaluate_high_freq_llm(
-        ai_wav=args.audio,
+        ai_wav=args.video,
         rounds=rounds_data,
-        user_case=args.user_case or None,
         scenario_type=args.scenario_type,
         scenario_rules=args.scenario_rules,
         model=args.model,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
-        round_gap_s=args.round_gap_s,
     )
 
     print('=' * 60)

@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-环境音裁判维度种子数据（拆分为 rejection_judge + interruption_judge 两个主维度 + 8 个行为子维度）
+环境音裁判维度种子数据（rejection_judge + interruption_judge + judge_answer + broadcast_score 四个主维度 + 行为子维度）
 
 功能：
-1. 注册两个主维度（dimension_type='main'）：
+1. 注册四个主维度（dimension_type='main'）：
    - rejection_judge   拒识场景裁判（旁人交谈/环境噪声/反馈词/生理声/环境回溯）
    - interruption_judge 打断场景裁判（插话打断/停止指令/恢复原话题）
+   - judge_answer       环境声感知理解裁判（判断助手对环境声的描述是否正确）
+   - broadcast_score    播报复述评分裁判（判断模型对播报内容的复述质量，1~5 分）
 2. 注册每个主维度的输入/输出参数（evaluation_dimension_params）
-3. 为每个主维度注册 4 个行为子维度（dimension_type='sub'）：
-   - 拒识回应占比 / 拒识恢复占比 / 拒识不确定询问占比 / 拒识未知占比
+3. 为拒识主维度注册 5 个行为子维度（dimension_type='sub'）：
+   - 拒识回应占比 / 拒识恢复占比 / 拒识不确定询问占比 / 拒识无关回复占比 / 拒识静默占比
+   为打断主维度注册 4 个行为子维度 + 7 个 LLM 评分子维度：
    - 打断回应占比 / 打断恢复占比 / 打断不确定询问占比 / 打断未知占比
    子维度 statistic_method='pass_rate'，agg_role='pass_eq'，pass_threshold=1
-   eval_server 返回 behavior_respond/recover/uncertain/unknown 四个 0/1 字段，
+   eval_server 返回 behavior_respond/recover/uncertain/irrelevant/silent（拒识）
+   或 behavior_respond/recover/uncertain/unknown（打断）若干 0/1 字段，
    子维度从同一响应按各自 field_path 提取，pass_rate 聚合后即为占比
 4. 注册 voice_llm 算法与主维度的关联（algorithm_dimension_relations）
 5. 注册 voice_llm → 主维度的参数映射（param_mappings）
@@ -19,8 +23,10 @@
 对应 eval_server 服务：
    - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py
    - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/interruption_judge.py
-   - 入口：evaluate_rejection_judge / evaluate_interruption_judge
-   - task_type：rejection_judge / interruption_judge
+   - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/judge_answer.py
+   - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/broadcast_score.py
+   - 入口：evaluate_rejection_judge / evaluate_interruption_judge / evaluate_judge_answer / evaluate_broadcast_score
+   - task_type：rejection_judge / interruption_judge / judge_answer / broadcast_score
 
 录屏不再可用后的方案：以模型回复音频 ai_wav 为主输入（裁判直接听回复，不过小 ASR），
 用户侧 ASR 转写 + 环境声事件(start_ms/end_ms/pcm_first_ms 换算到模型音频相对秒)作
@@ -35,10 +41,12 @@
                     注意默认 gpt-4o-mini 不支持音频，音频裁判需指定 gpt-audio/omni 等）
 
 输出：
-   - evaluations : LLM 裁判结果列表 [{scene, behavior, reason}, ...]（main，json 非数值，得分恒 0）
+   - evaluations : LLM 裁判结果列表 [{timing, behavior, rate, reason}, ...]（main，json 非数值，得分恒 0）
    - ej_behavior : 裁判行为类别（aux，取 evaluations.0.behavior，文本可显示）
+   - ej_timing  : 拒识时机（aux，取 evaluations.0.timing）
+   - ej_rate    : 拒识评级（aux，取 evaluations.0.rate，拒识成功/拒识询问/拒识失败）
    - ej_reason   : 裁判判定理由（aux，取 evaluations.0.reason，文本可显示）
-   - behavior_respond/recover/uncertain/unknown : 四个 0/1 字段（供子维度 pass_rate 聚合）
+   - behavior_respond/recover/uncertain/irrelevant/silent : 五个 0/1 字段（供子维度 pass_rate 聚合）
 
 使用方法：
     cd Intelligent-Audio-TEST
@@ -106,7 +114,13 @@ _COMMON_PARAMS = [
      False, None, '本次裁判使用的 LLM 模型名', 61),
     ('ej_behavior', '裁判行为', 'LLM裁判行为类别', 'text', 'output',
      'evaluations.0.behavior', None, 'aux', True,
-     False, None, 'LLM裁判行为类别(回应/恢复/不确定询问/未知 等；取evaluations首条，多场景仅显首条，完整数据在api_raw_response)', 62),
+     False, None, 'LLM裁判行为类别(拒识: 回应/恢复/不确定询问/无关回复/静默; 打断: 回应/恢复/不确定询问/未知; 取evaluations首条)', 62),
+    ('ej_timing', '拒识时机', '拒识发生时机', 'text', 'output',
+     'evaluations.0.timing', None, 'aux', True,
+     False, None, '拒识干扰内容发生时机(回复过程中/静默时)，取evaluations首条', 62),
+    ('ej_rate', '拒识评级', '拒识结果评级', 'text', 'output',
+     'evaluations.0.rate', None, 'aux', True,
+     False, None, '拒识结果评级(拒识成功/拒识询问/拒识失败)，取evaluations首条', 62),
     ('ej_reason', '裁判理由', 'LLM裁判判定理由', 'text', 'output',
      'evaluations.0.reason', None, 'aux', True,
      False, None, 'LLM裁判判定理由(取evaluations首条)', 62),
@@ -136,6 +150,162 @@ _INTERACTION_PARAM = (
     'interaction_text', None, 'aux', True,
     False, None, '用例完整交互文字，query/answer 按时间排序，含 [m:ss; m:ss] 时间戳，如 query [1:20; 1:30]今天天气怎么样', 63,
 )
+
+# ── judge_answer 维度参数 ──
+_JUDGE_ANSWER_PARAMS = [
+    # ─── 输入参数 ───
+    ('ai_wav', '模型回复音频', '模型回复音频路径', 'audio', 'input',
+     None, None, None, True,
+     False, None, '模型回复音频路径，从中提取 ASR 文本作为 answer', 5),
+    ('question', '用户问题', '用户问题(user_case)', 'text', 'input',
+     None, None, None, True,
+     False, None, '用户问题文本（user_case），如"刚才电视里是什么声音？"', 10),
+    ('ground_truth', '真实环境', '真实环境描述', 'text', 'input',
+     None, None, None, True,
+     False, None, '真实环境描述文本，如"鸣笛声"', 11),
+    ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
+     None, None, None, False,
+     False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认', 15),
+    ('max_tokens', '最大token', '最大输出 token 数', 'number', 'input',
+     None, None, None, False,
+     False, '4096', 'LLM 最大输出 token 数', 20),
+    ('temperature', '采样温度', '采样温度', 'number', 'input',
+     None, None, None, False,
+     False, '0', '采样温度，评判场景建议低温 0', 25),
+    # ─── 输出参数 ───
+    ('ja_verdict', '判定结果', '环境声描述判定结果', 'text', 'output',
+     'verdict', None, 'aux', True,
+     False, None, '判定结果: correct/partial/incorrect/no_answer', 60),
+    ('ja_hit', '命中声音', '命中的声音', 'text', 'output',
+     'hit', None, 'aux', True,
+     False, None, '命中的声音描述，无则 null', 61),
+    ('ja_reason', '判定理由', '判定一句话理由', 'text', 'output',
+     'reason', None, 'aux', True,
+     False, None, '一句话判定理由', 62),
+    ('ja_answer', '助手回答', '模型回复ASR文本', 'text', 'output',
+     'answer', None, 'aux', True,
+     False, None, '模型回复的 ASR 文本结果', 63),
+    ('ja_question', '问题', '用户问题', 'text', 'output',
+     'question', None, 'aux', True,
+     False, None, '用户问题(user_case)', 64),
+    ('ja_ground_truth', '真实环境', '真实环境描述', 'text', 'output',
+     'ground_truth', None, 'aux', True,
+     False, None, '真实环境描述', 65),
+    ('ja_model', '裁判模型', '使用的 LLM 模型', 'text', 'output',
+     'model', None, 'aux', True,
+     False, None, '本次裁判使用的 LLM 模型名', 66),
+    ('ja_enabled', '是否启用', '裁判是否正常执行', 'text', 'output',
+     'enabled', None, 'aux', True,
+     False, None, '裁判是否正常执行(True/False)', 67),
+    ('tokens_used', 'token用量', '总 token 用量', 'number', 'output',
+     'tokens_used', None, 'aux', True,
+     False, None, 'LLM 调用总 token 用量', 70),
+    ('input_token', '输入token', '输入 token 数', 'number', 'output',
+     'input_token', None, 'aux', True,
+     False, None, 'LLM 输入 token 数', 71),
+    ('output_token', '输出token', '输出 token 数', 'number', 'output',
+     'output_token', None, 'aux', True,
+     False, None, 'LLM 输出 token 数', 72),
+    ('ja_message', '裁判说明', '裁判结果说明', 'text', 'output',
+     'message', None, 'aux', True,
+     False, None, '裁判错误/成功说明', 99),
+]
+
+_JUDGE_ANSWER_PARAM_MAPPINGS = [
+    ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
+    ('reference', 'output', 'question', 'question', 'none'),
+    ('reference', 'output', 'ground_truth', 'ground_truth', 'none'),
+]
+
+_JUDGE_ANSWER_BODY_TEMPLATE = {
+    'model': '{{model}}',
+    'max_tokens': '{{max_tokens}}',
+    'temperature': '{{temperature}}',
+    'rounds': [
+        {
+            'ai_wav': '{{ai_wav}}',
+            'question': '{{question}}',
+            'ground_truth': '{{ground_truth}}',
+        }
+    ],
+}
+
+# ── broadcast_score 维度参数 ──
+_BROADCAST_SCORE_PARAMS = [
+    # ─── 输入参数 ───
+    ('ai_wav', '模型回复音频', '模型回复音频路径', 'audio', 'input',
+     None, None, None, True,
+     False, None, '模型回复音频路径，从中提取 ASR 文本作为 answer', 5),
+    ('broadcast_text', '播报内容', '真实播报内容', 'text', 'input',
+     None, None, None, True,
+     False, None, '真实播报文本内容', 10),
+    ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
+     None, None, None, False,
+     False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认', 15),
+    ('max_tokens', '最大token', '最大输出 token 数', 'number', 'input',
+     None, None, None, False,
+     False, '4096', 'LLM 最大输出 token 数', 20),
+    ('temperature', '采样温度', '采样温度', 'number', 'input',
+     None, None, None, False,
+     False, '0', '采样温度，评判场景建议低温 0', 25),
+    # ─── 输出参数 ───
+    ('bs_score', '复述评分', '复述质量评分(1~5)', 'number', 'output',
+     'score', None, 'main', True,
+     False, None, '复述质量评分 1~5 整数，5=完整复述 1=完全不符', 60),
+    ('bs_reason', '评分理由', '评分一句话理由', 'text', 'output',
+     'reason', None, 'aux', True,
+     False, None, '一句话评分理由', 61),
+    ('bs_issues_missing', '遗漏信息', '遗漏的信息点', 'json', 'output',
+     'issues.missing', None, 'aux', True,
+     False, None, '遗漏的关键信息点列表', 62),
+    ('bs_issues_wrong', '复述错误', '复述错误的信息点', 'json', 'output',
+     'issues.wrong', None, 'aux', True,
+     False, None, '复述错误的信息点列表', 63),
+    ('bs_issues_fabricated', '捏造信息', '捏造的信息点', 'json', 'output',
+     'issues.fabricated', None, 'aux', True,
+     False, None, '捏造的不存在信息点列表', 64),
+    ('bs_answer', '复述内容', '模型回复ASR文本', 'text', 'output',
+     'answer', None, 'aux', True,
+     False, None, '模型回复的 ASR 文本结果', 65),
+    ('bs_broadcast_text', '播报内容', '真实播报内容', 'text', 'output',
+     'broadcast_text', None, 'aux', True,
+     False, None, '真实播报文本内容', 66),
+    ('bs_model', '裁判模型', '使用的 LLM 模型', 'text', 'output',
+     'model', None, 'aux', True,
+     False, None, '本次裁判使用的 LLM 模型名', 67),
+    ('bs_enabled', '是否启用', '裁判是否正常执行', 'text', 'output',
+     'enabled', None, 'aux', True,
+     False, None, '裁判是否正常执行(True/False)', 68),
+    ('tokens_used', 'token用量', '总 token 用量', 'number', 'output',
+     'tokens_used', None, 'aux', True,
+     False, None, 'LLM 调用总 token 用量', 70),
+    ('input_token', '输入token', '输入 token 数', 'number', 'output',
+     'input_token', None, 'aux', True,
+     False, None, 'LLM 输入 token 数', 71),
+    ('output_token', '输出token', '输出 token 数', 'number', 'output',
+     'output_token', None, 'aux', True,
+     False, None, 'LLM 输出 token 数', 72),
+    ('bs_message', '裁判说明', '裁判结果说明', 'text', 'output',
+     'message', None, 'aux', True,
+     False, None, '裁判错误/成功说明', 99),
+]
+
+_BROADCAST_SCORE_PARAM_MAPPINGS = [
+    ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
+    ('reference', 'output', 'broadcast_text', 'broadcast_text', 'none'),
+]
+
+_BROADCAST_SCORE_BODY_TEMPLATE = {
+    'model': '{{model}}',
+    'max_tokens': '{{max_tokens}}',
+    'temperature': '{{temperature}}',
+    'rounds': [
+        {
+            'ai_wav': '{{ai_wav}}',
+            'broadcast_text': '{{broadcast_text}}',
+        }
+    ],
+}
 
 # ── 公共参数映射 ──
 _COMMON_PARAM_MAPPINGS = [
@@ -201,7 +371,8 @@ DIMENSIONS = [
             '以模型回复音频(ai_wav)为主输入，裁判模型直接听回复，'
             '用户侧 ASR + 环境声事件作为文本时间线上下文。'
             '场景包括旁人交谈静默/环境噪声不触发/反馈词不误触发/生理声不触发/环境事件被动记录与回溯，'
-            '由裁判模型对语音大模型的行为进行评判（回应/恢复/不确定询问/未知）。'
+            '由裁判模型对语音大模型的行为进行评判（回应/恢复/不确定询问/无关回复/静默），'
+            '并给出拒识时机（回复过程中/静默时）和拒识评级（拒识成功/拒识询问/拒识失败）。'
         ),
         'type': 'auto',
         'result_type': 1,  # 文本型，LLM 裁判输出为 JSON，evaluations 为 main
@@ -240,6 +411,54 @@ DIMENSIONS = [
         'param_mappings': _COMMON_PARAM_MAPPINGS,
         'body_template': _INTERRUPTION_JUDGE_BODY_TEMPLATE,
     },
+    {
+        'task_type_code': 'judge_answer',
+        'legacy_task_type_codes': [],
+        'name': '环境声感知理解裁判',
+        'keywords': 'judge_answer,环境声,感知,理解,裁判,描述,判定,correct,partial,incorrect',
+        'description': (
+            '环境声感知理解裁判：判断助手对环境声的描述是否正确。'
+            '从模型回复音频(ai_wav)提取 ASR 文本作为回答，'
+            '与用户问题(question)和真实环境(ground_truth)比对，'
+            '判定为 correct/partial/incorrect/no_answer。'
+        ),
+        'type': 'auto',
+        'result_type': 1,  # 文本型，LLM 裁判输出 verdict
+        'result_min': 0.0,
+        'result_max': 0.0,
+        'decimal_places': 2,
+        'weight': 1,
+        'estimated_exec_time': 60,
+        'score_unit': '',
+        'statistic_method': 'average',
+        'params': _JUDGE_ANSWER_PARAMS,
+        'param_mappings': _JUDGE_ANSWER_PARAM_MAPPINGS,
+        'body_template': _JUDGE_ANSWER_BODY_TEMPLATE,
+    },
+    {
+        'task_type_code': 'broadcast_score',
+        'legacy_task_type_codes': [],
+        'name': '播报复述评分裁判',
+        'keywords': 'broadcast_score,播报,复述,评分,裁判,1-5分,关键信息点',
+        'description': (
+            '播报复述评分裁判：判断模型对播报内容的复述质量。'
+            '从模型回复音频(ai_wav)提取 ASR 文本作为复述内容，'
+            '与真实播报内容(broadcast_text)比对，给出 1~5 分评分。'
+            '评分基于关键信息点（主体/事件/数字/时间/地点等）的覆盖度与准确性。'
+        ),
+        'type': 'auto',
+        'result_type': 0,  # 数值型，score 1~5
+        'result_min': 1.0,
+        'result_max': 5.0,
+        'decimal_places': 0,
+        'weight': 1,
+        'estimated_exec_time': 60,
+        'score_unit': '分',
+        'statistic_method': 'average',
+        'params': _BROADCAST_SCORE_PARAMS,
+        'param_mappings': _BROADCAST_SCORE_PARAM_MAPPINGS,
+        'body_template': _BROADCAST_SCORE_BODY_TEMPLATE,
+    },
 ]
 
 # ============================================================
@@ -248,22 +467,30 @@ DIMENSIONS = [
 # eval_server 返回 0/1，pass_rate 统计 1 的占比即行为占比
 # ============================================================
 # 子维度用 (param_code, field_path, name, label, help_text, ui_order) 描述
-_BEHAVIOR_FIELDS = [
+_BEHAVIOR_FIELDS_REJECTION = [
+    ('behavior_respond',    '回应',     '模型中断或偏离正在进行的回复，转而对拒识干扰内容进行了有意义的回应'),
+    ('behavior_recover',    '恢复',     '模型忽略拒识干扰内容，继续或完成之前正在进行中的回复或任务'),
+    ('behavior_uncertain',  '不确定询问', '模型因干扰内容暂停回复，表示不确定或难以听清、缺少信息'),
+    ('behavior_irrelevant', '无关回复',   '模型输出语义偏离目标或答非所问，未明确恢复、回应或表达不确定'),
+    ('behavior_silent',     '静默',     '模型在干扰发生后完全中断语音输出且未恢复，未产生任何有意义的语音内容'),
+]
+
+_BEHAVIOR_FIELDS_INTERRUPTION = [
     ('behavior_respond',   '回应',   '模型对重叠内容进行了有意义的回应'),
     ('behavior_recover',   '恢复',   '模型忽略重叠，继续或完成重叠前正在进行的任务'),
     ('behavior_uncertain', '不确定询问', '模型表示不确定或难以听清、缺少信息'),
     ('behavior_unknown',   '未知',   '模型输出语义偏离目标或信息量低'),
 ]
 
-def _build_sub_dimensions(task_type_code, prefix):
-    """为主维度生成 4 个行为占比子维度定义。
+def _build_sub_dimensions(task_type_code, prefix, behavior_fields):
+    """为主维度生成行为占比子维度定义。
 
     子维度 task_type_code 与父维度一致（如 rejection_judge）：
     评估服务按 parent_dimension_id 分组，task_type 用代表维度的 task_type_code，
     子维度仅按各自 field_path 从同一响应里提取不同输出字段。
     """
     subs = []
-    for i, (field, label, help) in enumerate(_BEHAVIOR_FIELDS):
+    for i, (field, label, help) in enumerate(behavior_fields):
         subs.append({
             'task_type_code': task_type_code,  # 与父维度一致
             'name': f'{prefix}{label}占比',
@@ -402,13 +629,13 @@ _INTERRUPTION_LLM_SUBS = [
 ]
 
 SUB_DIMENSIONS = {
-    'rejection_judge': _build_sub_dimensions('rejection_judge', '拒识'),
+    'rejection_judge': _build_sub_dimensions('rejection_judge', '拒识', _BEHAVIOR_FIELDS_REJECTION),
     # 子维度必须与父维度使用同一份 body_template：平台按 (endpoint_url, parent_dimension_id)
     # 分组后取 group_items[0] 作代表维度，其 api_settings 决定实际请求体；
     # 若子维度存的是旧模板，轮次元数据（round_number/interruption_rounds/stop_intent）会丢失。
     'interruption_judge': [
         dict(sub, body_template=_INTERRUPTION_JUDGE_BODY_TEMPLATE)
-        for sub in _build_sub_dimensions('interruption_judge', '打断') + _INTERRUPTION_LLM_SUBS
+        for sub in _build_sub_dimensions('interruption_judge', '打断', _BEHAVIOR_FIELDS_INTERRUPTION) + _INTERRUPTION_LLM_SUBS
     ],
 }
 
@@ -768,7 +995,7 @@ def seed_env_sound_judge():
                 _upsert_relation(conn, sub_id)
 
         print(f"\n{'=' * 60}")
-        print("  拒识场景裁判 + 打断场景裁判维度种子数据注册完成")
+        print("  拒识裁判 + 打断裁判 + 环境声感知理解裁判 + 播报复述评分裁判 维度种子数据注册完成")
         print(f"{'=' * 60}")
 
 
@@ -784,14 +1011,19 @@ if __name__ == '__main__':
     print("   场景: 旁人交谈静默/环境噪声/反馈词/生理声/环境事件回溯")
     print("2. interruption_judge 主维度 — 打断场景裁判")
     print("   场景: 插话打断与重新响应/停止指令响应/恢复原话题")
-    print("3. 每个主维度 4 个行为子维度（pass_rate 聚合）:")
-    print("   - 拒识回应占比 / 拒识恢复占比 / 拒识不确定询问占比 / 拒识未知占比")
-    print("   - 打断回应占比 / 打断恢复占比 / 打断不确定询问占比 / 打断未知占比")
+    print("3. judge_answer 主维度 — 环境声感知理解裁判")
+    print("   判定: correct/partial/incorrect/no_answer")
+    print("4. broadcast_score 主维度 — 播报复述评分裁判")
+    print("   评分: 1~5 分")
+    print("5. 拒识主维度 5 个行为子维度（拒识回应/恢复/不确定询问/无关回复/静默 占比）")
+    print("6. 打断主维度 4 个行为子维度 + 7 个 LLM 评分子维度")
     print()
     print("   入参: ai_wav(模型回复音频), scene(场景), user_wav, start_ms/end_ms/pcm_first_ms, model, max_tokens, temperature")
     print()
     print("   主分: 裁判结果 (evaluations)")
-    print("   行为 0/1: behavior_respond/recover/uncertain/unknown")
+    print("   拒识行为 0/1: behavior_respond/recover/uncertain/irrelevant/silent")
+    print("   拒识时机/评级: ej_timing / ej_rate")
+    print("   打断行为 0/1: behavior_respond/recover/uncertain/unknown")
     print()
     print("脚本可重复执行（幂等）")
     print()

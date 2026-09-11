@@ -71,6 +71,7 @@ _SUB_DIMENSIONS = {
     'tor': 'tor',
     'false_takeover': 'false_takeover',
     'takeover_latency': 'takeover_latency',
+    'client_out_latency': 'client_out_latency',
     'high_freq_turn_taking': 'high_freq_turn_taking',
     'high_freq_llm_judge': 'high_freq_llm_judge',
 }
@@ -173,6 +174,11 @@ class TurnTakingCalculator(TurnTakingBase):
                 'takeover_latency_ms': None,
                 'user_last_word_end_ms': None,
                 'ai_first_word_start_ms': None,
+                'client_out_start_ms': None,
+                'client_out_end_ms': None,
+                'model_first_word_start_ms': None,
+                'client_out_latency_ms': None,
+                'ncc': None,
                 'message': _msg2,
             }
             logger.info("[turn_taking] false_takeover.tor=1，tor 和 takeover_latency 置 null")
@@ -281,15 +287,13 @@ class FalseTakeoverCalculator(TurnTakingBase):
         # LLM 补充判断：时间戳 tor=0 时用 LLM 做语义判断
         _ft_tor = result.get('tor', 0)
         if _ft_tor == 0 and user_chunks and ai_word_chunks:
-            # 提取 case_wav 供 client_out 对齐；user_wav 即 client_out，直接从 params 取
-            task_params = params.get('task_params') or {}
-            idx = self._get_target_round_index(task_params)
-            rd = self._get_round_safe(task_params, idx)
-            case_wav = task_params.get('case_wav') or rd.get('case_wav')
             try:
+                _task_params = params.get('task_params') or {}
+                case_wav = _task_params.get('case_wav')
+                _user_wav = params.get('user_wav')
                 llm_result = compute_false_takeover_llm(
-                    user_chunks, ai_word_chunks, pause, params.get('task_params'),
-                    case_wav=case_wav, user_wav=params.get('user_wav'),
+                    user_chunks, ai_word_chunks, pause, _task_params,
+                    case_wav=case_wav, user_wav=_user_wav,
                 )
                 if llm_result is not None:
                     result['llm_eval'] = llm_result
@@ -327,7 +331,8 @@ class TakeoverLatencyCalculator(TurnTakingBase):
     def prepare_params(self, task_params):
         idx = self._get_target_round_index(task_params)
         user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
-        return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav}
+        return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav,
+                'task_params': task_params}
 
     def run(self, task_params):
         """独立调用入口：结果包装为 {'takeover_latency': result}"""
@@ -345,10 +350,17 @@ class TakeoverLatencyCalculator(TurnTakingBase):
         ai_chunks = shared.get('ai_chunks')
         if ai_chunks is None:
             ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
+
+        # 从 task_params 提取 case_wav（互相关对齐用）
+        _task_params = params.get('task_params') or {}
+        case_wav = _task_params.get('case_wav')
+        user_wav = params.get('user_wav')
+
         return compute_takeover_latency_from_raw(
             first_frame_ms=None, asr_hyp=None, start_ms=None,
             input_words=[], offset_ms=TAKEOVER_OFFSET_MS,
             user_chunks=user_chunks, ai_chunks=ai_chunks,
+            case_wav=case_wav, user_wav=user_wav,
         )
 
 
@@ -378,7 +390,7 @@ class HighFreqTurnTakingCalculator(TurnTakingBase):
         rd = self._get_round_safe(task_params, idx)
         merge_gap = task_params.get('seg_merge_gap_s') or rd.get('seg_merge_gap_s')
 
-        result = {'user_wav': user_wav, 'ai_wav': ai_wav}
+        result = {'user_wav': user_wav, 'ai_wav': ai_wav, 'task_params': task_params}
         if merge_gap is not None:
             result['seg_merge_gap_s'] = float(merge_gap)
         return result
@@ -404,19 +416,21 @@ class HighFreqTurnTakingCalculator(TurnTakingBase):
         if 'seg_merge_gap_s' in params:
             kwargs['seg_merge_gap_s'] = params['seg_merge_gap_s']
 
+        # 从 task_params 提取 case_wav（互相关对齐用）
+        _task_params = params.get('task_params') or {}
+        kwargs['case_wav'] = _task_params.get('case_wav')
+        kwargs['user_wav'] = params.get('user_wav')
+
         return compute_high_freq_turn_taking(user_chunks=user_chunks, ai_chunks=ai_chunks, **kwargs)
 
 
 # ─────────── 子维度：High Freq LLM Judge（高频轮换 LLM 裁判）───────────
 
 class HighFreqLlmJudgeCalculator(TurnTakingBase):
-    """高频轮换 LLM 裁判：逐轮判断模型回复是否符合预期
+    """高频轮换 LLM 裁判：发送模型回复音频(ai_wav)给多模态 LLM，逐轮判断
 
-    新模式（user_case 非空）: 用 ai_wav ASR 结果按时间间隔分轮，与 user_case 对应
-    旧模式（user_case 为空）: 发送 ai_wav 音频给多模态 LLM，结合 rounds 上下文
-
-    单轮：取当前轮的 ai_wav
-    多轮整体：所有字段取最后一轮 rounds[-1]（ai_wav 含完整多段对话）
+    单轮：取当前轮的 ai_wav 和 rounds[round_number]
+    多轮整体：所有字段取最后一轮 rounds[-1]（ai_wav、scenario_type 等）
     """
     task_type = 'high_freq_llm_judge'
 
@@ -425,13 +439,13 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
         rd = self._get_round_safe(task_params, idx)
         if not (task_params.get('ai_wav') or rd.get('ai_wav')):
             return False, f"Missing required field for {self.task_type}: ai_wav"
-        # user_case 或 rounds 至少有一个
+        # user_case 或 rounds 至少需要一个
         user_case = task_params.get('user_case') or rd.get('user_case')
         if not user_case:
             if not rd.get('rounds'):
                 rounds = task_params.get('rounds')
                 if not (rounds and isinstance(rounds, list)):
-                    return False, f"Missing required field for {self.task_type}: user_case or rounds"
+                    return False, f"Missing required field for {self.task_type}: rounds 或 user_case"
         return True, None
 
     def prepare_params(self, task_params):
@@ -441,7 +455,6 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
 
         # 所有字段：顶层优先，目标轮回退
         ai_wav = task_params.get('ai_wav') or rd.get('ai_wav') or ''
-        user_case = task_params.get('user_case') or rd.get('user_case') or ''
         rounds = rd.get('rounds') or task_params.get('rounds') or []
         # 多轮时只取最后一轮的 rounds（LLM 裁判处理最后一轮的对话上下文）
         if self._is_multi_round(task_params) and isinstance(rounds, list) and rounds:
@@ -449,8 +462,8 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
 
         return {
             'ai_wav': ai_wav,
-            'user_case': user_case,
             'rounds': rounds,
+            'user_case': task_params.get('user_case') or rd.get('user_case') or '',
             'scenario_type': task_params.get('scenario_type') or rd.get('scenario_type') or '',
             'scenario_rules': task_params.get('scenario_rules') or rd.get('scenario_rules') or '',
             'model': task_params.get('llm_model') or rd.get('llm_model') or task_params.get('model') or '',
@@ -466,11 +479,8 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.high_freq_llm_judge import evaluate_high_freq_llm
-
-        # 共享 ASR：优先用上层注入的 ai_word_chunks
         shared = params.get('_shared_asr') or {}
-        ai_chunks = shared.get('ai_word_chunks')
-
+        ai_chunks = shared.get('ai_word_chunks') or shared.get('ai_chunks')
         return evaluate_high_freq_llm(
             rounds=params['rounds'],
             scenario_type=params['scenario_type'],
@@ -479,7 +489,7 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
             max_tokens=params['max_tokens'],
             temperature=params['temperature'],
             ai_wav=params['ai_wav'],
-            user_case=params.get('user_case') or None,
+            user_case=params.get('user_case'),
             ai_chunks=ai_chunks,
         )
 
