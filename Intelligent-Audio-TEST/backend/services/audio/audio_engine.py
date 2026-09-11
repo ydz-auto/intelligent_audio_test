@@ -7,13 +7,17 @@
 并 re-export 所有公开接口以保持向后兼容。
 """
 
-import pyaudio
 import wave
 import threading
 import time
 import numpy as np
 import os
 from flask import current_app
+
+try:
+    import pyaudio
+except ImportError:
+    pyaudio = None
 from backend.utils.web.log_handler import log_and_emit, log_not_emit
 
 # 从拆分模块 re-export，保持向后兼容
@@ -448,7 +452,9 @@ class AudioService:
                     'delay': delay
                 })
 
-            log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Before play_multi: configs count={len(multi_configs)}, delays={[c.get('delay') for c in multi_configs]}, files={[c.get('file', '').split('\\\\')[-1] for c in multi_configs]}", category='audio')
+            _delays = [c.get('delay') for c in multi_configs]
+            _files = [c.get('file', '').split('\\')[-1] for c in multi_configs]
+            log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Before play_multi: configs count={len(multi_configs)}, delays={_delays}, files={_files}", category='audio')
             self._get_driver().play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event)
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Device {device_index} done")
@@ -530,7 +536,8 @@ class AudioService:
                 device_audio_map[dev_idx] = []
             device_audio_map[dev_idx].append((config, delay))
 
-        log_and_emit('DEBUG', 'audio_engine', f"[play_overlap] device_audio_map: {[(f'dev{k}', [(c.get('file', '').split('\\\\')[-1], c.get('is_noise'), d) for c, d in v]) for k, v in device_audio_map.items()]}", category='audio')
+        _device_map_info = {f'dev{k}': [(c.get('file', '').split('\\')[-1], c.get('is_noise'), d) for c, d in v] for k, v in device_audio_map.items()}
+        log_and_emit('DEBUG', 'audio_engine', f"[play_overlap] device_audio_map: {_device_map_info}", category='audio')
 
         # 提交到线程池
         futures = []
