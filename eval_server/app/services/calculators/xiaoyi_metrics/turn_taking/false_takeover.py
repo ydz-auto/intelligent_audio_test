@@ -254,7 +254,8 @@ judge_result 说明：true = 存在话轮误接管；false = 无话轮误接管"
 
 
 def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
-                                task_params=None):
+                                task_params=None,
+                                case_wav=None, user_wav=None):
     """LLM 语义判断误接管（时间戳算法的补充）
 
     时间戳算法只能检测模型词是否落在用户停顿区间内，无法识别"思考停顿"
@@ -263,13 +264,18 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
     触发条件：配置了 LLM_JUDGE_API_KEY 时自动调用，失败或未配置则跳过。
 
     LLM 判定 false_takeover=1（误接管）时：不计算 tor / takeover_latency，返回 None。
-    LLM 判定 false_takeover=0（未误接管）时：计算 tor（接话率）和 takeover_latency（接管时延）。
+    LLM 判定 false_takeover=0（未误接管）时：计算 tor（接话率）和 client_out 时延。
+
+    时延计算采用 client_out 对齐方案：通过干净音源与 client_out 互相关对齐获取
+    用户语音结束时间戳，再用模型回复首字时间戳减去该结束时间戳。
 
     Args:
         user_chunks (list): 用户段级 ASR chunks [{text, timestamp:[start,end]}]
         ai_chunks (list): 模型词级 ASR chunks [{text, timestamp:[start,end]}]
         pause_intervals (list): 用户停顿区间 [{text, timestamp:[start,end]}]
         task_params (dict|None): 读取 llm_model 配置
+        case_wav (str|None): 干净音源 wav 路径，用于 client_out 对齐
+        user_wav (str|None): 用户通道 wav 路径（即 client_out），用于对齐
 
     Returns:
         dict|None: {
@@ -277,7 +283,7 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
             'reason': str,              判定理由（explanation）
             'evidence': dict,           证据信息（可选）
             'tor': dict|None,           接话率结果（false_takeover=1 时为 None）
-            'takeover_latency': dict|None, 接管时延结果（false_takeover=1 时为 None）
+            'client_out_latency': dict|None, client_out 时延结果（false_takeover=1 时为 None）
         } 或 None（未配置/调用失败/无数据）
     """
     llm_config = get_llm_config()
@@ -322,35 +328,57 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
             'evidence': parsed.get('evidence') or {},
         }
 
-        # false_takeover=0（未误接管）时，计算 tor 和 takeover_latency（平铺）
+        # false_takeover=0（未误接管）时，计算 tor 和 client_out 时延（平铺）
         if ft_val == 0:
             from .tor import compute_tor
-            from .takeover_latency import compute_takeover_latency_from_chunks
+            from app.services.calculators.xiaoyi_metrics.offline_eval.client_out_latency import compute_client_out_latency
 
             tor_res = compute_tor(user_chunks, ai_chunks)
-            lat_res = compute_takeover_latency_from_chunks(user_chunks, ai_chunks)
             result['tor'] = tor_res.get('tor')
             result['n_words'] = tor_res.get('n_words')
             result['duration'] = tor_res.get('duration')
             result['hit_words'] = tor_res.get('hit_words')
             result['user_last_word_end_s'] = tor_res.get('user_last_word_end_s')
-            result['takeover_latency_ms'] = lat_res.get('takeover_latency_ms')
-            result['user_last_word_end_ms'] = lat_res.get('user_last_word_end_ms')
-            result['ai_first_word_start_ms'] = lat_res.get('ai_first_word_start_ms')
-            result['message'] = lat_res.get('message')
-            logger.info(
-                f"[false_takeover_llm] 未误接管，tor={result['tor']} "
-                f"takeover_latency={result['takeover_latency_ms']}ms"
-            )
+
+            # 时延计算：优先用 client_out 对齐方案，无 case_wav/client_out_wav 时跳过
+            if case_wav and user_wav:
+                lat_res = compute_client_out_latency(
+                    case_wav=case_wav,
+                    client_out_wav=user_wav,
+                    model_chunks=ai_chunks,
+                )
+                result['client_out_start_ms'] = lat_res.get('client_out_start_ms')
+                result['client_out_end_ms'] = lat_res.get('client_out_end_ms')
+                result['model_first_word_start_ms'] = lat_res.get('model_first_word_start_ms')
+                result['client_out_latency_ms'] = lat_res.get('client_out_latency_ms')
+                result['ncc'] = lat_res.get('ncc')
+                result['message'] = lat_res.get('message')
+                logger.info(
+                    f"[false_takeover_llm] 未误接管，tor={result['tor']} "
+                    f"client_out_latency={result['client_out_latency_ms']}ms"
+                )
+            else:
+                result['client_out_start_ms'] = None
+                result['client_out_end_ms'] = None
+                result['model_first_word_start_ms'] = None
+                result['client_out_latency_ms'] = None
+                result['ncc'] = None
+                result['message'] = '缺少 case_wav/user_wav，未计算 client_out 时延'
+                logger.info(
+                    f"[false_takeover_llm] 未误接管，tor={result['tor']} "
+                    f"但缺少 case_wav/user_wav，未计算时延"
+                )
         else:
             result['tor'] = None
             result['n_words'] = None
             result['duration'] = None
             result['hit_words'] = None
             result['user_last_word_end_s'] = None
-            result['takeover_latency_ms'] = None
-            result['user_last_word_end_ms'] = None
-            result['ai_first_word_start_ms'] = None
+            result['client_out_start_ms'] = None
+            result['client_out_end_ms'] = None
+            result['model_first_word_start_ms'] = None
+            result['client_out_latency_ms'] = None
+            result['ncc'] = None
             result['message'] = None
 
         logger.info(
