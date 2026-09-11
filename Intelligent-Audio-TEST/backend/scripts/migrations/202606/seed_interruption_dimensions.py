@@ -52,7 +52,7 @@ POSTGRES_URI = os.environ.get(
 )
 
 # eval_server 微服务地址（本机 5002，见 eval_server/app/config.py PORT=5002）
-API_URL = os.environ.get('EVAL_SERVER_URL', 'http://127.0.0.1:8888')
+API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
 
 # ============================================================
 # 主维度定义：打断成功率（配 input + output + api_settings + param_mappings）
