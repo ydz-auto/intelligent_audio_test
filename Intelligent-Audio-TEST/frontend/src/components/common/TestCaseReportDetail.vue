@@ -1877,6 +1877,7 @@ watch(dimResultGroups, (newGroups) => {
   line-height: 1.6;
   font-size: 13px;
   color: var(--text-primary);
+  white-space: pre-line;
   display: -webkit-box;
   -webkit-line-clamp: 3;
   line-clamp: 3;

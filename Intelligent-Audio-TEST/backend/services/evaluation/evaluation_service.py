@@ -170,6 +170,22 @@ class EvaluationService(EvaluationLoggerMixin):
 
         return flat
 
+    @staticmethod
+    def _derive_interruption_metadata(algorithm_result, case_config):
+        """兜底恢复旧结果缺失的打断轮元数据，复用执行阶段同一套语义。"""
+        stored_rounds = algorithm_result.get('rounds') if isinstance(algorithm_result, dict) else []
+        if not isinstance(stored_rounds, list) or not stored_rounds:
+            return None
+        if any('is_actual_interruption' in rd for rd in stored_rounds if isinstance(rd, dict)):
+            return None
+
+        case_rounds = (case_config or {}).get('rounds')
+        if not isinstance(case_rounds, list) or not case_rounds:
+            return None
+
+        from backend.services.execution.e2e_aggregator import E2EAggregator
+        return E2EAggregator.build_interruption_round_metadata(case_rounds)
+
     def _build_rounds_list(self, algorithm_result, reference_params_col,
                             field_mapper, algorithm_type, test_type, task_id, test_case_id,
                             algorithm_params_col=None, case_config=None):
@@ -188,6 +204,8 @@ class EvaluationService(EvaluationLoggerMixin):
         )
 
         rounds = algorithm_result.get('rounds', [])
+        interruption_metadata = EvaluationService._derive_interruption_metadata(algorithm_result, case_config)
+        actual_interruption_rounds = set(interruption_metadata.get('interruption_rounds', [])) if interruption_metadata else set()
         output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
         loader = CaseParameterExtractor._get_loader()
         mappings = loader.get_param_mapping(algorithm_type, 'evaluation')
@@ -263,6 +281,12 @@ class EvaluationService(EvaluationLoggerMixin):
                              'stop_intent', 'is_stop_instruction'):
                 if meta_key in rd:
                     item[meta_key] = rd[meta_key]
+                elif interruption_metadata:
+                    meta_values = interruption_metadata.get(meta_key if meta_key != 'is_stop_instruction' else 'stop_intent')
+                    if isinstance(meta_values, list) and round_number < len(meta_values):
+                        item[meta_key] = meta_values[round_number]
+            if interruption_metadata and 'is_actual_interruption' not in item:
+                item['is_actual_interruption'] = round_number in actual_interruption_rounds
 
             rounds_list.append(item)
 
@@ -317,12 +341,21 @@ class EvaluationService(EvaluationLoggerMixin):
                 eval_algo_type = tc.algorithm_type or kwargs.get('algorithm_type', 'translation')
                 from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
                 eval_mappings = CaseParameterExtractor._get_loader().get_param_mapping(eval_algo_type, 'evaluation')
-                if any(m.get('source') == 'case_config' for m in eval_mappings):
+                if (
+                    any(m.get('source') == 'case_config' for m in eval_mappings)
+                    or isinstance(algorithm_result, dict)
+                    and not any(
+                        'is_actual_interruption' in rd
+                        for rd in algorithm_result.get('rounds') or []
+                        if isinstance(rd, dict)
+                    )
+                ):
                     case_config = self._build_case_config(
                         tc.config or {}, task_id=task_id, test_case_id=test_case_id
                     )
 
         # 多轮场景：统一构建 rounds 列表（单轮也走此路径，列表只有一个元素）
+        interruption_meta = None
         if isinstance(algorithm_result, dict) and algorithm_result.get('rounds'):
             rounds_list = self._build_rounds_list(
                 algorithm_result, reference_params_col,
@@ -331,6 +364,19 @@ class EvaluationService(EvaluationLoggerMixin):
                 algorithm_params_col=algorithm_params_col,
                 case_config=case_config
             )
+            # 用例级打断轮元数据：逐轮评估时 eval_server 只看得到当前轮，
+            # 需要用例级列表才能判断"单轮/多轮"和"是否最后一个有效实际打断轮"
+            if any(it.get('is_interruption') or it.get('is_actual_interruption') for it in rounds_list):
+                interruption_meta = {
+                    'interruption_rounds': [
+                        i for i, it in enumerate(rounds_list)
+                        if it.get('is_actual_interruption')
+                    ],
+                    'dangling_interruption_rounds': [
+                        i for i, it in enumerate(rounds_list)
+                        if it.get('is_interruption') and i + 1 >= len(rounds_list)
+                    ],
+                }
             if round_number is not None:
                 # 指定轮次：只取对应轮
                 rounds_list = [rounds_list[round_number]] if round_number < len(rounds_list) else []
@@ -411,7 +457,7 @@ class EvaluationService(EvaluationLoggerMixin):
         self._dispatch_evaluation_tasks(
             dimension_data_list, dimension_result_map, result_id, task_id, test_case_id,
             algorithm_result, algorithm_type, test_type, round_number, field_mapper, ref_texts,
-            rounds_list, flat_eval_fields
+            rounds_list, flat_eval_fields, interruption_meta
         )
 
         self._log(
@@ -803,7 +849,7 @@ class EvaluationService(EvaluationLoggerMixin):
     def _dispatch_evaluation_tasks(self, dimension_data_list, dimension_result_map, result_id, task_id,
                                     test_case_id, algorithm_result, algorithm_type, test_type,
                                     round_number, field_mapper, ref_texts, rounds_list=None,
-                                    flat_eval_fields=None):
+                                    flat_eval_fields=None, interruption_meta=None):
         """将维度按端点分组并异步提交评估任务"""
         endpoint_groups = {}
         no_endpoint_groups = []  # 没有配置评估端点的维度，需标记失败避免任务卡死
@@ -895,7 +941,8 @@ class EvaluationService(EvaluationLoggerMixin):
             task_data = self._build_task_data(
                 task_id, result_id, test_case_id, algorithm_result,
                 representative_dim_data, group_items, algorithm_type, test_type,
-                round_number, field_mapper, ref_texts, rounds_list, flat_eval_fields
+                round_number, field_mapper, ref_texts, rounds_list, flat_eval_fields,
+                interruption_meta
             )
 
             with self.api_client.global_lock:
@@ -913,7 +960,7 @@ class EvaluationService(EvaluationLoggerMixin):
     def _build_task_data(self, task_id, result_id, test_case_id, algorithm_result,
                          representative_dim_data, group_items, algorithm_type, test_type,
                          round_number, field_mapper, ref_texts, rounds_list=None,
-                         flat_eval_fields=None):
+                         flat_eval_fields=None, interruption_meta=None):
         """构建提交给端点Worker的任务数据"""
         task_data = {
             'task_id': task_id,
@@ -933,6 +980,11 @@ class EvaluationService(EvaluationLoggerMixin):
         # 多轮评估：传 rounds 列表给端点Worker
         if rounds_list:
             task_data['rounds'] = rounds_list
+
+        # 用例级打断轮元数据：eval_server 据此判断单/多轮与最后一个有效实际打断轮
+        if interruption_meta:
+            for meta_key, meta_value in interruption_meta.items():
+                task_data.setdefault(meta_key, meta_value)
 
         # 单轮兼容：透传扁平字段（answer, correct_answer 等）
         if flat_eval_fields:

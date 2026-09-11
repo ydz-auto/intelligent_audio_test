@@ -61,7 +61,7 @@ POSTGRES_URI = os.environ.get(
 )
 
 # eval_server 微服务地址
-API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
+API_URL = os.environ.get('EVAL_SERVER_URL', 'http://127.0.0.1:8888')
 
 # ============================================================
 # 维度定义
@@ -149,6 +149,47 @@ _COMMON_PARAM_MAPPINGS = [
     ('reference', 'output', 'env_type', 'scene', 'none'),
 ]
 
+# ── 请求体模板 ──
+_DEFAULT_BODY_TEMPLATE = {
+    'model': '{{model}}',
+    'max_tokens': '{{max_tokens}}',
+    'temperature': '{{temperature}}',
+    'rounds': [
+        {
+            'ai_wav': '{{ai_wav}}',
+            'user_wav': '{{user_wav}}',
+            'scene': '{{scene}}',
+            'start_ms': '{{start_ms}}',
+            'end_ms': '{{end_ms}}',
+            'pcm_first_ms': '{{pcm_first_ms}}',
+        }
+    ],
+}
+
+# 打断裁判一次调用产出全部打断 LLM 维度（行为分类/询问率/回复内容评分/停止指令遵从率），
+# 因此需要轮次元数据来定位"最后一个有效实际打断轮"（只有该轮回复是完整的）。
+_INTERRUPTION_JUDGE_BODY_TEMPLATE = {
+    'model': '{{model}}',
+    'max_tokens': '{{max_tokens}}',
+    'temperature': '{{temperature}}',
+    'round_number': '{{round_number}}',
+    'interruption_rounds': '{{interruption_rounds}}',
+    'stop_intent': '{{stop_intent}}',
+    'rounds': [
+        {
+            'ai_wav': '{{ai_wav}}',
+            'user_wav': '{{user_wav}}',
+            'scene': '{{scene}}',
+            'start_ms': '{{start_ms}}',
+            'end_ms': '{{end_ms}}',
+            'pcm_first_ms': '{{pcm_first_ms}}',
+            'is_interruption': '{{is_interruption}}',
+            'is_actual_interruption': '{{is_actual_interruption}}',
+            'stop_intent': '{{stop_intent}}',
+        }
+    ],
+}
+
 DIMENSIONS = [
     {
         'task_type_code': 'rejection_judge',
@@ -197,6 +238,7 @@ DIMENSIONS = [
         'statistic_method': 'average',
         'params': _COMMON_PARAMS + [_INTERACTION_PARAM],
         'param_mappings': _COMMON_PARAM_MAPPINGS,
+        'body_template': _INTERRUPTION_JUDGE_BODY_TEMPLATE,
     },
 ]
 
@@ -245,9 +287,129 @@ def _build_sub_dimensions(task_type_code, prefix):
         })
     return subs
 
+# ============================================================
+# 打断裁判合并承载的 LLM 评分类子维度
+# ------------------------------------------------------------
+# 这些维度原先挂在「打断成功率」(interruption_metrics) 下，由 interruption_metrics
+# 逐个打断事件调用文本 LLM，另外还会重复调用一次行为裁判。现全部改由打断裁判的
+# **同一次带音频 LLM 调用**产出：prompt 按 sub_tasks 勾选拼接，未勾选不拼接。
+#
+# 维度名保持不变 → 本 seed 的子维度按 name 匹配，会原地改挂 parent_dimension_id
+# 与 task_type_code，不会产生重复维度行。
+#
+# 内容评分只针对**最后一个有效实际打断轮**的首个恢复回复（前面轮次的回复会被
+# 后续打断截断，不完整）：单实际轮用例写 interruption_reply_overall（打断回复内容
+# 评分），多实际轮用例写 first_recovery_overall（恢复首轮内容评分）。
+# ============================================================
+def _llm_sub(task_type_code, name, keywords, description, field_path,
+             help_text, ui_order, result_type, result_max, score_unit, decimal_places=2,
+             statistic_method='average', agg_role='value', pass_threshold=None):
+    """构造一个由裁判单次 LLM 调用产出的子维度定义（field_path 为裁判响应扁平键）。
+
+    比率类维度（0/1 或 0~1 的率）用 statistic_method='pass_rate' + agg_role='pass_eq'
+    + pass_threshold=1：报告层的 pass_rate 会 ×100 返回百分比，与 score_unit='%' 一致；
+    'average' 直接返回 0~1 原值，配上 '%' 会显示成 "0.40%"。
+    """
+    param = [field_path, name, name, 'number', 'output',
+             field_path, agg_role, 'main', True,
+             False, None, help_text, ui_order]
+    if pass_threshold is not None:
+        param.append(pass_threshold)
+    return {
+        'task_type_code': task_type_code,
+        'name': name,
+        'keywords': keywords,
+        'description': description,
+        'type': 'auto',
+        'result_type': result_type,
+        'result_min': 0.0,
+        'result_max': result_max,
+        'decimal_places': decimal_places,
+        'weight': 1,
+        'estimated_exec_time': 120,
+        'score_unit': score_unit,
+        'statistic_method': statistic_method,
+        'params': [tuple(param)],
+    }
+
+
+_INTERRUPTION_LLM_SUBS = [
+    _llm_sub(
+        'interruption_inquiry_rate', '打断询问率',
+        'interruption_judge,inquiry_rate,打断询问率,不确定询问',
+        '子维度：行为裁判判定为「不确定询问」的比例。由打断裁判同一次 LLM 调用的行为分类派生，'
+        '无有效解析结果时为空（不当作 0）。',
+        'interruption_inquiry_rate',
+        '行为裁判判为不确定询问时为 1，否则为 0；裁判未运行或解析失败时为空。',
+        131, 0, 1.0, '%',
+        statistic_method='pass_rate', agg_role='pass_eq', pass_threshold=1,
+    ),
+    _llm_sub(
+        'interruption_coherence', '平均连贯性',
+        'interruption_judge,coherence,连贯性,回复连贯性',
+        '子维度：最后一个有效实际打断轮的首个恢复回复连贯性(0-5)。由打断裁判同一次 LLM 调用产出。',
+        'recovery_coherence',
+        '恢复回复与被打断内容、用户打断意图的衔接连贯性(0-5，对标 Full-Duplex-Bench GPT-4o Score)。',
+        100, 1, 5.0, '分',
+    ),
+    _llm_sub(
+        'interruption_relevance', '平均相关性',
+        'interruption_judge,relevance,相关性,回复相关性',
+        '子维度：最后一个有效实际打断轮的首个恢复回复相关性(0-5)。由打断裁判同一次 LLM 调用产出。',
+        'recovery_relevance',
+        '恢复回复是否切合用户打断意图(0-5)。',
+        101, 1, 5.0, '分',
+    ),
+    _llm_sub(
+        'interruption_adaptability', '平均适应性',
+        'interruption_judge,adaptability,适应性,回复适应性',
+        '子维度：最后一个有效实际打断轮的首个恢复回复适应性(0-5)。由打断裁判同一次 LLM 调用产出。',
+        'recovery_adaptability',
+        '模型是否适应打断带来的话题切换(0-5)。',
+        102, 1, 5.0, '分',
+    ),
+    _llm_sub(
+        'interruption_reply_content', '打断回复内容评分',
+        'interruption_judge,reply_content,打断回复内容评分',
+        '子维度：打断后模型回复的内容综合评分(0-5)，评分对象是**最后一个有效实际打断轮**的首个恢复回复。'
+        '习惯上用于只有一轮打断的用例；多轮打断用例请看「恢复首轮内容评分」（两者取值相同）。'
+        '由打断裁判同一次 LLM 调用产出。',
+        'interruption_reply_overall',
+        '目标轮恢复回复的内容综合评分(三维平均，0-5)；非最后一个有效实际打断轮为空。',
+        132, 1, 5.0, '分',
+    ),
+    _llm_sub(
+        'interruption_first_recovery_content', '恢复首轮内容评分',
+        'interruption_judge,first_recovery,恢复首轮内容评分',
+        '子维度：打断后模型首个恢复回复的内容综合评分(0-5)，评分对象是**最后一个有效实际打断轮**'
+        '（前面轮次的回复会被后续打断截断，不完整）。习惯上用于多轮打断用例；'
+        '单轮打断用例请看「打断回复内容评分」（两者取值相同）。由打断裁判同一次 LLM 调用产出。',
+        'first_recovery_overall',
+        '目标轮恢复回复的内容综合评分(0-5)；非最后一个有效实际打断轮为空。',
+        133, 1, 5.0, '分',
+    ),
+    _llm_sub(
+        'interruption_stop_instruction_compliance', '停止指令遵从率',
+        'interruption_judge,stop_instruction,停止指令遵从率',
+        '子维度：显式停止指令轮中模型遵从停止的比例，由 LLM 裁判判定。'
+        '模型停止原内容输出即遵从；只回复"好的/我明白了"等确认语同样算遵从；'
+        '继续输出原内容才算不遵从。非停止指令轮为空。',
+        'stop_instruction_compliance_rate',
+        '遵从为 1，不遵从为 0；非停止指令轮或裁判无有效结果时为空。',
+        134, 0, 1.0, '%',
+        statistic_method='pass_rate', agg_role='pass_eq', pass_threshold=1,
+    ),
+]
+
 SUB_DIMENSIONS = {
     'rejection_judge': _build_sub_dimensions('rejection_judge', '拒识'),
-    'interruption_judge': _build_sub_dimensions('interruption_judge', '打断'),
+    # 子维度必须与父维度使用同一份 body_template：平台按 (endpoint_url, parent_dimension_id)
+    # 分组后取 group_items[0] 作代表维度，其 api_settings 决定实际请求体；
+    # 若子维度存的是旧模板，轮次元数据（round_number/interruption_rounds/stop_intent）会丢失。
+    'interruption_judge': [
+        dict(sub, body_template=_INTERRUPTION_JUDGE_BODY_TEMPLATE)
+        for sub in _build_sub_dimensions('interruption_judge', '打断') + _INTERRUPTION_LLM_SUBS
+    ],
 }
 
 
@@ -283,21 +445,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
     api_settings = json.dumps({
         'method': 'POST',
         'headers': {},
-        'body_template': {
-            'model': '{{model}}',
-            'max_tokens': '{{max_tokens}}',
-            'temperature': '{{temperature}}',
-            'rounds': [
-                {
-                    'ai_wav': '{{ai_wav}}',
-                    'user_wav': '{{user_wav}}',
-                    'scene': '{{scene}}',
-                    'start_ms': '{{start_ms}}',
-                    'end_ms': '{{end_ms}}',
-                    'pcm_first_ms': '{{pcm_first_ms}}',
-                }
-            ],
-        },
+        'body_template': dim_def.get('body_template', _DEFAULT_BODY_TEMPLATE),
         'timeout': 30000
     }, ensure_ascii=False)
     rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
@@ -422,12 +570,15 @@ def _cleanup_stale_params(conn, dim_id, dim_def):
         if stale:
             stale_codes = [r[0] for r in stale]
             print(f"  ! 清理已废弃 {direction} 参数: {stale_codes}")
+            # 用 stale_codes(要删的) 建 IN 列表，勿用 current_codes(要留的)——否则删错+被upsert复活
+            stale_placeholders = ','.join(f':s{i}' for i in range(len(stale_codes)))
+            stale_bind = {f's{i}': code for i, code in enumerate(stale_codes)}
             conn.execute(text(
                 "UPDATE evaluation_dimension_params SET "
                 "  deleted = TRUE, updated_at = NOW() "
                 "WHERE dimension_id = :did AND param_direction = :dir "
-                f"AND param_code IN ({placeholders})"
-            ), {'did': dim_id, 'dir': direction, **bind})
+                f"AND param_code IN ({stale_placeholders})"
+            ), {'did': dim_id, 'dir': direction, **stale_bind})
 
 
 def _upsert_params(conn, dim_id, dim_def):
@@ -605,10 +756,10 @@ def seed_env_sound_judge():
             _upsert_param_mappings(conn, main_id, dim_def)
 
             # ============================================================
-            # Step 2: 注册 4 个行为子维度
+            # Step 2: 注册子维度（4 个行为占比 + 打断裁判合并承载的 LLM 评分维度）
             # ============================================================
             sub_defs = SUB_DIMENSIONS.get(task_code, [])
-            print(f"\n--- Step 2: 注册 {len(sub_defs)} 个行为子维度（parent_dimension_id={main_id}） ---")
+            print(f"\n--- Step 2: 注册 {len(sub_defs)} 个子维度（parent_dimension_id={main_id}） ---")
             for sub_def in sub_defs:
                 print(f"\n  -- 子维度: {sub_def['name']} --")
                 sub_id = _upsert_dimension(conn, sub_def, dimension_type='sub', parent_id=main_id)

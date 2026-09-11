@@ -92,7 +92,6 @@ class Config:
         'rejection_judge',      # 拒识场景裁判（音频）
         'interruption_judge',   # 打断场景裁判（音频）
         'high_freq_llm_judge',  # 高频轮换裁判（录屏）
-        'interruption_llm',     # 打断语义复核（文本）
         'false_takeover',       # 误接管语义判断（文本）
     )
     LLM_JUDGE = {

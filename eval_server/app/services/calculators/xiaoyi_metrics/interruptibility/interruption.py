@@ -161,7 +161,6 @@ def _evaluate_one_event(u: Dict[str, Any],
         'resumed': None,
         'success': None,
         'stop_intent': False,
-        'stop_complied': None,
     }
     result['stop_intent'] = bool(stop_intent)
 
@@ -190,9 +189,6 @@ def _evaluate_one_event(u: Dict[str, Any],
         result['stopped'] = stopped
         result['resumed'] = resumed
         result['stop_latency_s'] = round(stop_latency * 1000, 1) if stopped else None
-        if stop_intent:
-            # 停止指令与普通打断语义相反：停下后不应再次恢复。
-            result['stop_complied'] = bool(m_active['end'] <= u_e and m_next_after_user is None)
         if m_next is not None:
             result['recovery_latency_s'] = round((m_next['start'] - u_e) * 1000, 1)
             result['silence_gap_s'] = round((m_next['start'] - m_active['end']) * 1000, 1)
@@ -228,7 +224,7 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
                                   model_seg_merge_gap_s: float = MODEL_SEG_MERGE_GAP_S,
                                   actual_interruption: Optional[bool] = None,
                                   stop_intent: bool = False) -> Dict[str, Any]:
-    """计算打断指标（时延类用数据算；成功率由调用方叠加 LLM 语义判定覆盖）
+    """计算打断指标（纯本地时序；LLM 语义/行为判定由 interruption_judge 维度承担）
 
     用户侧/模型侧用不同阈值合并字词为语音段（user 1.5s / model 0.7s），
     避免共用一个阈值导致模型"短停顿+恢复"被并成一段而漏判。
@@ -241,8 +237,8 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
 
     Returns:
         dict: {
-            'interruption_success_rate': float, 打断成功率（本地时序启发式：让出且恢复 / 有效打断事件；
-                                              若 LLM 启用，由 calculate_interruption_metrics 用 LLM 语义判定覆盖）
+            'interruption_success_rate': float, 打断成功率（本地时序：让出且恢复 / 有效打断事件；
+                                              显式实际打断轮模式下严格 0/1）
             'stop_rate': float,                 让出率（没说穿，时序启发式）
             'resume_rate': float,              恢复率（时序启发式）
             'avg_stop_latency_s': float|None,   平均打断检查时延（毫秒；字段名保留 _s 历史后缀，值为 ms）
@@ -263,14 +259,10 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
     result: Dict[str, Any] = {
         'interruption_success_rate': 0 if actual_interruption is not None else 0.0,
         'interruption_failure_rate': None,
-        'interruption_inquiry_rate': None,
-        'first_recovery_coherence': None,
-        'first_recovery_relevance': None,
-        'first_recovery_adaptability': None,
-        'first_recovery_overall': None,
         'first_recovery_latency_s': None,
-        'stop_instruction_compliance_rate': None,
-        'stop_intent': bool(stop_intent),
+        'target_stop_latency_s': None,
+        'target_recovery_latency_s': None,
+        'round_latencies': [],
         'stop_rate': 0.0,
         'resume_rate': 0.0,
         'avg_stop_latency_s': None,
@@ -283,27 +275,10 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         'n_no_model_speech': 0,
         'per_event': [],
         'message': '',
-        # ── 大模型评估（可选）：由 calculate_interruption_metrics 在
-        # enable_llm_eval=True 且配置 API key 时填充，未启用时保持这些默认值 ──
-        # 行为分类裁判（五类行为）已移除，改由 interruption_judge 维度承担
-        # 注：interruption_success_rate 是本地时序启发式(让出且恢复)；LLM 启用时由
-        #    calculate_interruption_metrics 用 LLM 语义判定覆盖，本地值存到 timing_success_rate
-        'timing_success_rate': None,   # 本地时序启发式成功率(备份)，LLM 启用前与 interruption_success_rate 同值
-        'llm_success_rate': None,     # LLM 语义判定的成功率(成功事件/已评估事件)
-        'llm_eval': {'enabled': False, 'message': '未启用 LLM 评估'},
-        'llm_recovery_avg_coherence': None,
-        'llm_recovery_avg_relevance': None,
-        'llm_recovery_avg_adaptability': None,
-        'llm_recovery_coherence_reason': None,
-        'llm_recovery_relevance_reason': None,
-        'llm_recovery_adaptability_reason': None,
-        'llm_return_avg_coherence': None,
-        'llm_return_avg_relevance': None,
-        'llm_return_avg_adaptability': None,
-        'llm_recovery_per_round': [],
-        'llm_return_scores_per_round': [],
-        # ── 两路完整语音段时间线（过滤开场白后，含字词级 words），
-        # 供 LLM 评估时看到模型/用户全局上下文，而非仅 per_event 里的两段切片 ──
+        # 本地时序成功率备份；LLM 语义/行为判定已全部移交 interruption_judge 维度
+        'timing_success_rate': None,
+        'stop_intent': bool(stop_intent),
+        # ── 两路完整语音段时间线（过滤开场白后，含字词级 words），供诊断与复用 ──
         'user_segments': [],
         'model_segments': [],
     }

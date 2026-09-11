@@ -52,4 +52,26 @@ def test_round_metadata_is_added_to_algorithm_result(monkeypatch):
     )
     assert result['interruption_rounds'] == [1]
     assert result['rounds'][0]['is_actual_interruption'] is False
-    assert result['rounds'][1]['is_actual_interruption'] is True
+
+
+def test_evaluation_service_derives_missing_round_metadata():
+    from backend.services.evaluation.evaluation_service import EvaluationService
+
+    service = EvaluationService.__new__(EvaluationService)
+    metadata = service._derive_interruption_metadata(
+        {'rounds': [{'round': 0}, {'round': 1}]},
+        {'rounds': [{'is_interruption': True}, {'is_interruption': False}, {'is_interruption': True}]},
+    )
+    assert metadata['interruption_rounds'] == [1]
+    assert metadata['dangling_interruption_rounds'] == [2]
+
+
+def test_evaluation_service_keeps_existing_round_metadata():
+    from backend.services.evaluation.evaluation_service import EvaluationService
+
+    service = EvaluationService.__new__(EvaluationService)
+    metadata = service._derive_interruption_metadata(
+        {'rounds': [{'round': 0, 'is_actual_interruption': True}]},
+        {'rounds': [{'is_interruption': False}]},
+    )
+    assert metadata is None

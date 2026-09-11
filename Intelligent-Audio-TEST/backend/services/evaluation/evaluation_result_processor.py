@@ -552,12 +552,110 @@ class EvaluationResultProcessor(RoundAggregator):
                     local_db_session, result_id, task_id, test_case_id, test_type
                 )
 
+                # 停止指令轮：裁判判定遵从时回填打断成功率（幂等，两组谁后完成谁生效）
+                self.reconcile_stop_instruction_success(
+                    result_id, task_id=task_id, test_case_id=test_case_id,
+                    session=local_db_session,
+                )
+
                 # 检查是否所有维度都已完成评估，如果是，更新TaskCase状态
                 if result_id and test_case_id:
                     if self.check_all_dimensions_completed(result_id, task_id):
                         self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
             finally:
                 local_db_session.close()
+
+    def reconcile_stop_instruction_success(self, result_id, task_id=None, test_case_id=None, session=None):
+        """停止指令轮由裁判回填打断成功率
+
+        停止指令场景下，模型回复"好的/我明白了"等确认语属于遵从停止指令，应算打断成功；
+        但本地时序只看到"停止后仍有模型语音"，会把成功率判为 0。这里在裁判判定遵从时，
+        把已完成的打断成功率维度值回填为 1，并按维度 rule 重算分数。
+
+        interruption_metrics 与 interruption_judge 两个分组并发评估，因此每组完成后都调用
+        一次；任一行缺失/未完成即 no-op，谁后完成谁生效，重复调用无副作用。
+        """
+        if not result_id:
+            return
+        local_session = session or db.session()
+        own_session = session is None
+        try:
+            judge_rows = (
+                local_session.query(TestResultDimension)
+                .join(Dimension, Dimension.id == TestResultDimension.dimension_id)
+                .filter(TestResultDimension.test_result_id == result_id,
+                        Dimension.task_type_code == 'interruption_judge',
+                        Dimension.deleted.is_(False))
+                .all()
+            )
+
+            complied = False
+            for row in judge_rows:
+                raw = row.api_raw_response
+                if isinstance(raw, str):
+                    try:
+                        raw = json.loads(raw)
+                    except (ValueError, TypeError):
+                        continue
+                if not isinstance(raw, dict):
+                    continue
+                payload = raw
+                data = raw.get('data')
+                if isinstance(data, dict) and isinstance(data.get('result'), dict):
+                    payload = data['result']
+                rate = payload.get('stop_instruction_compliance_rate')
+                if rate is None:
+                    continue
+                try:
+                    complied = float(rate) >= 1.0
+                except (TypeError, ValueError):
+                    continue
+                if complied:
+                    break
+
+            if not complied:
+                return
+
+            metric_rows = (
+                local_session.query(TestResultDimension)
+                .join(Dimension, Dimension.id == TestResultDimension.dimension_id)
+                .filter(TestResultDimension.test_result_id == result_id,
+                        Dimension.task_type_code == 'interruption_metrics',
+                        Dimension.deleted.is_(False))
+                .all()
+            )
+            for row in metric_rows:
+                if row.status != 'completed' or row.dimension_value is None:
+                    continue
+                try:
+                    if float(row.dimension_value) != 0:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                dim = local_session.query(Dimension).get(row.dimension_id)
+                rule = dim.rule if dim is not None and isinstance(dim.rule, dict) else None
+                row.dimension_value = 1
+                row.score = calculate_score(1, rule)
+                self._log(
+                    level='INFO',
+                    category='execution',
+                    content=f"停止指令轮由裁判回填打断成功率: result_id={result_id}, "
+                            f"dimension_id={row.dimension_id}, 0 → 1, score={row.score}",
+                    task_id=task_id, test_case_id=test_case_id,
+                )
+            local_session.commit()
+        except Exception as e:
+            self._log(
+                level='WARNING',
+                category='execution',
+                content=f"停止指令成功率回填失败: {e}",
+                task_id=task_id, test_case_id=test_case_id,
+            )
+            if own_session:
+                local_session.rollback()
+        finally:
+            if own_session:
+                local_session.close()
 
     def check_all_dimensions_completed(self, result_id, task_id=None):
         """

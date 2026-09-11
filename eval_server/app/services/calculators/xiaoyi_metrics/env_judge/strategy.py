@@ -109,8 +109,37 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
 
 
 class InterruptionJudgeCalculator(_BaseEnvJudgeCalculator):
-    """打断场景裁判：发送模型回复音频+环境时间线给多模态 LLM 判断"""
+    """打断场景裁判：一次带音频的 LLM 调用产出全部打断 LLM 维度
+
+    行为分类 / 打断询问率 / 回复内容评分 / 停止指令遵从率都在这一次调用里完成，
+    prompt 分块按平台勾选的 sub_tasks 拼接，避免重复请求 LLM。
+    """
     task_type = 'interruption_judge'
+
+    def prepare_params(self, task_params):
+        from app.services.calculators.xiaoyi_metrics.interruptibility import (
+            _as_index_list, _current_round,
+        )
+
+        params = super().prepare_params(task_params)
+        valid_rounds = _as_index_list(task_params.get('interruption_rounds')) or []
+        round_number = task_params.get('round_number')
+        if round_number is None:
+            round_number = _current_round(task_params, valid_rounds)
+
+        idx = self._get_target_round_index(task_params)
+        rd = self._get_round_safe(task_params, idx)
+        stop_intent = task_params.get('stop_intent')
+        if stop_intent is None:
+            stop_intent = rd.get('stop_intent', rd.get('is_stop_instruction'))
+
+        params.update({
+            'sub_tasks': task_params.get('sub_tasks'),
+            'round_number': round_number,
+            'interruption_rounds': task_params.get('interruption_rounds'),
+            'stop_intent': stop_intent,
+        })
+        return params
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import evaluate_interruption_judge
@@ -121,4 +150,9 @@ class InterruptionJudgeCalculator(_BaseEnvJudgeCalculator):
             model=params.get('model', ''),
             max_tokens=params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS),
             temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
+            sub_tasks=params.get('sub_tasks'),
+            rounds=params.get('rounds'),
+            round_number=params.get('round_number'),
+            interruption_rounds=params.get('interruption_rounds'),
+            stop_intent=params.get('stop_intent'),
         )

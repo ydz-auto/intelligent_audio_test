@@ -69,16 +69,39 @@ class BaseCalculator:
         return (task_params or {}).get('round_number') is None
 
     @staticmethod
-    def _get_target_round_index(task_params):
+    def _round_index(value):
+        """把 round_number 归一化为 int。
+
+        经 multipart 上传（create_task_upload）后所有表单标量都会变成字符串，
+        直接用 '1' 参与 `idx >= 0` 之类比较会抛 TypeError，这里统一转换。
+        """
+        if value is None or value == '':
+            return None
+        if isinstance(value, bool):
+            return int(value)
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    @classmethod
+    def _get_target_round_index(cls, task_params):
         """获取目标轮次索引
 
         单轮：round_number（0-indexed）
         多轮：-1（最后一轮）
+
+        平台逐轮评估时会把 rounds 切成一片（只含当前轮），而 round_number 仍是
+        **用例级**索引，此时按它取数会越界拿到 {} 并静默回退到顶层字段（可能是别的轮）。
+        越界一律退回 -1（唯一可用轮）。
         """
-        rn = (task_params or {}).get('round_number')
-        if rn is not None:
-            return rn
-        return -1
+        rn = cls._round_index((task_params or {}).get('round_number'))
+        if rn is None:
+            return -1
+        rounds = (task_params or {}).get('rounds')
+        if isinstance(rounds, list) and rounds and not 0 <= rn < len(rounds):
+            return -1
+        return rn
 
     @staticmethod
     def _get_round_safe(task_params, index):
@@ -106,8 +129,8 @@ class BaseCalculator:
         ai_wav = task_params.get('ai_wav') or rd.get('ai_wav') or ''
         return user_wav, ai_wav
 
-    @staticmethod
-    def _iter_rounds(task_params):
+    @classmethod
+    def _iter_rounds(cls, task_params):
         """遍历轮次，yield (round_index, round_dict)
 
         单轮：只 yield (round_number, rounds[round_number])
@@ -116,7 +139,7 @@ class BaseCalculator:
         rounds = (task_params or {}).get('rounds')
         if not (rounds and isinstance(rounds, list)):
             return
-        rn = (task_params or {}).get('round_number')
+        rn = cls._round_index((task_params or {}).get('round_number'))
         if rn is not None:
             if 0 <= rn < len(rounds) and isinstance(rounds[rn], dict):
                 yield rn, rounds[rn]

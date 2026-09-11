@@ -54,7 +54,7 @@ static/eval_server/llm_call_logs/<YYYY-MM-DD>.jsonl
     "status_code": 401,                      // 仅 HTTPStatusError 有
     "body_snippet": "{\"error\":{...}}"      // 仅 HTTPStatusError 有，响应体前 500 字
   },
-  "context": {"dimension": "interruption_llm", "event_index": 1}  // 调用方传入，可选
+  "context": {"dimension": "interruption_judge"}  // 调用方传入，可选
 }
 ```
 
@@ -110,9 +110,8 @@ call_llm(...)
 |-------------|-------------|
 | `llm_judge/strategy.py` `_score_one` | `{'dimension': 'llm_judge'}` |
 | `llm_judge/llm_judge_calculator.py` `evaluate_with_llm` | `{'dimension': 'llm_judge'}` |
-| `env_judge/interruption_judge.py` | `{'dimension': 'interruption_judge'}` |
+| `env_judge/interruption_judge.py`（每用例一次，含行为分类/内容评分/停止遵从） | `{'dimension': 'interruption_judge'}` |
 | `env_judge/rejection_judge.py` | `{'dimension': 'rejection_judge'}` |
-| `interruptibility/interruption_llm.py`（每事件） | `{'dimension': 'interruption_llm', 'event_index': idx}` |
 | `turn_taking/high_freq_llm_judge.py` | `{'dimension': 'high_freq_llm_judge'}` |
 
 > `log_context` 为可选参数（默认 None），不传也不影响日志写入（只是 `context` 字段为空）。
@@ -132,7 +131,7 @@ call_llm(...)
 1. **单元（sanitize）**：5000 字符 base64 → `<base64 omitted, 5000 chars>`，text 原样，断言无 base64 残留。
 2. **失败路径（真 401）**：`attempts=1`（401 不重试）、`error.status_code=401`、`body_snippet` 含真实 API 错误体、`raw_response=null`、评估仍按原逻辑失败。
 3. **失败路径（不可达端点）**：`ConnectError`、`attempts=4`（重试 3 次）、原样 raise。
-4. **成功路径**：换有效 key 后跑 `PYTHONPATH=. python tests/test_interruption_llm_scoring_v2.py`，看 JSONL 出现 `status=success` + 真实 token 数 + `raw_response`（choices+usage）。
+4. **成功路径**：换有效 key 后跑一次打断裁判评估（或 `PYTHONPATH=. python -m app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge <ai_wav> --user_wav <user_wav>`），看 JSONL 出现 `status=success` + 真实 token 数 + `raw_response`（choices+usage）。
 5. **开关**：`LLM_CALL_LOG_ENABLED=0` 重启后跑一次，确认不生成文件、评估正常。
 
 ---
@@ -140,7 +139,7 @@ call_llm(...)
 ## 7. 注意事项
 
 - **磁盘增长**：永不轮转，按日文件持续增长。如将来需保留期策略可再加，当前按用户硬要求不做。
-- **`false_takeover.py` 未接入**：该文件有独立死代码 bug（`from ..interruptbility.interruption_llm import _call_llm_json` 拼写错 + 引用已删函数），其 LLM 路径本就跑不起来，不在本机制覆盖内，需单独修复。
+- **`false_takeover.py` 未接入**：该文件有独立死代码 bug（`from ..interruptbility.interruption_llm import _call_llm_json` 拼写错 + 引用已删函数；`interruptibility/interruption_llm.py` 现已整体删除），其 LLM 路径本就跑不起来，不在本机制覆盖内，需单独修复。
 - **omni 流式模型 token**：若某模型不回 `usage` chunk，`tokens` 会静默记 0（不崩）。换新模型后建议先确认日志里 token 非零。
 - **token 已在 `call_llm` 返回值里**：本机制额外把 token 落到文件日志；calculator 结果结构里的 token 字段（部分 caller 有、部分丢）未改动——如需在主应用 UI 按维度看 token，可另加"token 汇总回流"链路。
 

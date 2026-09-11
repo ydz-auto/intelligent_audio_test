@@ -429,7 +429,10 @@ def build_interaction_text(user_chunks: Optional[List[Dict[str, Any]]],
         for s in _to_segments(chunks):
             lines.append((s['start'], f"{label} [{_fmt_mmss(s['start'])}; {_fmt_mmss(s['end'])}]{s['text']}"))
     lines.sort(key=lambda x: x[0])
-    return '\n'.join(t for _, t in lines)
+    if not lines:
+        return ''
+    # 每行结尾都带换行（含最后一行），报告/导出按行显示不会挤成一坨
+    return ''.join(f'{text}\n' for _, text in lines)
 
 
 # ─────────── evaluations 归一化 ───────────

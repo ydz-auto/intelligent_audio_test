@@ -38,9 +38,8 @@ eval_server/
 │   │   │       │   ├── false_takeover.py       #   误接管率
 │   │   │       │   ├── takeover_latency.py     #   接管时延
 │   │   │       │   └── input_asr.py            #   输入识别准确率
-│   │   │       ├── interruptibility/            # 打断指标实现
-│   │   │       │   ├── interruption.py         #   打断指标（停得下 / 恢复得来）
-│   │   │       │   └── interruption_llm.py     #   打断 LLM 评估
+│   │   │       ├── interruptibility/            # 打断指标实现（纯本地时序）
+│   │   │       │   └── interruption.py         #   打断指标（停得下 / 恢复得来；LLM 评估并入 env_judge/interruption_judge.py）
 │   │   │       ├── rejection_scene_awareness/  # 拒识与场景感知
 │   │   │       │   ├── strategy.py              #   NonInteractiveLatency + NoiseLatency 策略类
 │   │   │       │   ├── non_interactive_latency.py

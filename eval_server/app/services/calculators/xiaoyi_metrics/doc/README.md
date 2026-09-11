@@ -20,8 +20,7 @@ xiaoyi_metrics/
 ├── interruptibility/                  # 打断指标实现子包
 │   ├── __init__.py                  #   calculate_interruption_metrics 统一入口
 │   ├── strategy.py                  #   InterruptionMetricsCalculator 策略类
-│   ├── interruption.py              #   打断指标（停得下 / 恢复得来）
-│   └── interruption_llm.py         #   打断 LLM 评估（回复连贯性/相关性/适应性）
+│   └── interruption.py              #   打断本地时序指标（停得下 / 恢复得来；LLM 评估已并入 env_judge/interruption_judge.py）
 ├── rejection_scene_awareness/        # 拒识与场景感知子包
 │   ├── __init__.py
 │   ├── strategy.py                  #   NonInteractiveLatencyCalculator + NoiseLatencyCalculator 策略类
@@ -188,23 +187,15 @@ YIELD_GRACE_S   = 0.5   # 让出宽限
 事件类型：`interruption`（完整打断）/ `recovery_only`（只算到恢复）/ `no_model_speech`（模型全程未说话）。
 
 **success 全本地**：`interruption_success_rate` 始终由本地时序算出（让出且恢复 / 有效打断事件）。
-`n_events=0` 时 success_rate=0.0，不再走 LLM 兜底（旧 `evaluate_interruption_success_llm` 已移除）。
+`n_events=0` 时 success_rate=0.0，不走 LLM 兜底。
 
-##### 8. interruption_llm —— 打断 LLM 评估 [interruption_llm.py](interruptibility/interruption_llm.py)
+##### 8. 打断 LLM 评估 —— 已并入 interruption_judge
 
-打断指标的**可选**大模型语义评估。仅在 `enable_llm_eval=True` 且配置 `LLM_JUDGE_API_KEY` 时触发。
-LLM 直接吃 `compute_interruption_metrics` 富集后的 `per_event`（用户与模型的**字词级 ASR**），
-对每个 `event_type=='interruption'` 事件做：
-
-1. **是否真的打断（语义复核）**：基于两侧字词级 ASR（词+时间戳）判断是否为真实打断，
-   给出 `is_real_interruption` 布尔结论与简短原因 `interruption_reason`。
-   **不回写覆盖**本地 `interruption_success_rate`——本地数值始终是唯一权威。
-2. **AI 回复内容打分**：对模型恢复回复按 连贯性/相关性/适应性 打 0-5 分
-   （对标 Full-Duplex-Bench GPT-4o Score）。
-
-数值指标（时延/成功率/让出率/恢复率等）全部本地算，本模块不产出任何数值指标。
-复用 `config.LLM_JUDGE`（api_base_url / api_key / timeout）。单事件失败不阻断其他事件。
-旧 `rounds` 文本链路与"回到原话题"独立打分已移除（`llm_return_*` 字段保留为空以兼容既有维度）。
+`interruptibility/interruption_llm.py`（逐事件文本 LLM 语义复核 + 回复打分）已删除。
+打断的全部 LLM 维度改由 `env_judge/interruption_judge.py` 的**一次带音频调用**产出：
+行为分类、打断询问率、回复内容三维评分、打断回复内容评分/恢复首轮内容评分、停止指令遵从率，
+prompt 分块按平台勾选的 `sub_tasks` 拼接。`interruption_metrics` 不再调用任何 LLM。
+字段与门控详见 [interruption_io.md](interruption_io.md) §2。
 
 ### rejection_scene_awareness —— 拒识与场景感知
 
