@@ -115,7 +115,6 @@ const progressPercentage = ref(0);
 const audioLoaded = ref(false);
 const isDragging = ref(false);
 const progressUpdateTimer = ref<ReturnType<typeof setInterval> | null>(null);
-const defaultSimulatedDuration = 10;
 const playError = ref('');
 
 // 进度条容器 DOM 引用（用于拖动 seek 计算，避免 event.currentTarget 指向 document）
@@ -361,10 +360,63 @@ const startSimulatedProgress = (baseTime = 0) => {
   progressUpdateTimer.value = setInterval(updateProgressSimulated, 100);
 };
 
+// 播放接口未返回 duration 时，通过流地址的 metadata 探测真实时长，避免用假兜底值掐断进度
+const resolveDurationFromStream = (): Promise<number> => {
+  return new Promise((resolve) => {
+    let audioStreamUrl = '';
+    if (props.audioId) {
+      audioStreamUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
+    } else if (props.audioPath) {
+      audioStreamUrl = `${apiBaseUrl}/audios/stream-by-path?path=${encodeURIComponent(props.audioPath)}`;
+    }
+    if (!audioStreamUrl) {
+      resolve(0);
+      return;
+    }
+
+    const probe = new Audio();
+    probe.preload = 'metadata';
+    probe.crossOrigin = 'anonymous';
+
+    const cleanup = () => {
+      probe.onloadedmetadata = null;
+      probe.onerror = null;
+      probe.src = '';
+    };
+
+    probe.onloadedmetadata = () => {
+      const probedDuration = probe.duration;
+      cleanup();
+      resolve(!isNaN(probedDuration) && probedDuration > 0 && probedDuration !== Infinity ? probedDuration : 0);
+    };
+    probe.onerror = () => {
+      cleanup();
+      resolve(0);
+    };
+
+    probe.src = audioStreamUrl;
+  });
+};
+
+const ensureSimulatedDuration = async () => {
+  if (duration.value > 0) return;
+  const probedDuration = await resolveDurationFromStream();
+  if (probedDuration > 0) {
+    duration.value = probedDuration;
+    console.log('Resolved duration from stream metadata:', duration.value);
+  } else {
+    console.warn('Cannot resolve audio duration; progress percentage stays at 0 until known');
+  }
+};
+
 const updateProgressSimulated = () => {
-  if (isPlaying.value && duration.value > 0) {
+  if (!isPlaying.value) return;
+
+  const elapsed = getSimulatedElapsed();
+
+  if (duration.value > 0) {
     // 基于墙钟时间推算，setInterval 被节流时不再累计漂移
-    currentTime.value = Math.min(getSimulatedElapsed(), duration.value);
+    currentTime.value = Math.min(elapsed, duration.value);
 
     if (currentTime.value >= duration.value) {
       currentTime.value = duration.value;
@@ -375,14 +427,17 @@ const updateProgressSimulated = () => {
     }
 
     progressPercentage.value = Math.max(0, Math.min(100, (currentTime.value / duration.value) * 100));
+  } else {
+    // 时长未知：时间戳仍按真实流逝时间推进，但不推算百分比、不提前结束
+    currentTime.value = elapsed;
+  }
 
-    if (Math.floor(currentTime.value * 10) % 10 === 0) {
-      console.log('Simulated progress:', {
-        currentTime: currentTime.value.toFixed(1),
-        duration: duration.value.toFixed(1),
-        progress: progressPercentage.value.toFixed(1) + '%'
-      });
-    }
+  if (Math.floor(currentTime.value * 10) % 10 === 0) {
+    console.log('Simulated progress:', {
+      currentTime: currentTime.value.toFixed(1),
+      duration: duration.value.toFixed(1),
+      progress: progressPercentage.value.toFixed(1) + '%'
+    });
   }
 };
 
@@ -408,9 +463,7 @@ const play = async () => {
       console.log('Backend playback mode: Calling backend API to play on selected devices');
       await playOnExternalDevices();
       
-      if (duration.value === 0) {
-        duration.value = defaultSimulatedDuration;
-      }
+      await ensureSimulatedDuration();
       
       // 设备端从 props.offset 开始播放，模拟时钟基准需与设备起点保持一致
       const initialOffset = props.offset && props.offset > 0 ? props.offset : 0;
@@ -475,9 +528,7 @@ const playTestCasePreview = async () => {
       }
     } else {
       console.log('Backend mode: Audio playing on external devices');
-      if (duration.value === 0) {
-        duration.value = defaultSimulatedDuration;
-      }
+      await ensureSimulatedDuration();
       
       startSimulatedProgress(0);
       console.log('Started simulated progress update timer for backend playback');
