@@ -7,12 +7,13 @@
 2. 注册/更新 turn_taking 主维度（dimension_type='main'）：
    - 配置全部 input params、api_settings、body_template、param_mappings
    - 不配 output params（主维度不直接参与评估，只作容器）
-3. 注册/更新五个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
+3. 注册/更新六个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
    - tor              → task_type_code='tor', output field_path = tor.tor
    - false_takeover   → task_type_code='false_takeover', output field_path = false_takeover.tor
    - takeover_latency → task_type_code='takeover_latency', output field_path = takeover_latency.takeover_latency_ms
    - high_freq_turn_taking → task_type_code='high_freq_turn_taking'
    - high_freq_llm_judge    → task_type_code='high_freq_llm_judge'
+   - reply_quality    → task_type_code='reply_quality', output field_path = reply_quality.score
    - 子维度 task_type_code 各自独立，平台按 parent_dimension_id 分组，
      提取各子维度 task_type_code 组成 sub_tasks 注入 payload，eval_server 按 sub_tasks 只算选中子维度
 4. 注册 voice_llm 算法与主维度 + 三个子维度的关联（algorithm_dimension_relations）
@@ -83,6 +84,9 @@ MAIN_DIMENSION = {
         ('ai_wav', 'AI回复通道音频', 'AI回复通道音频', 'audio', 'input',
          None, None, None, True,
          False, None, 'AI 回复通道 wav 路径（cap_client_ec_out.wav）', 2),
+        ('case_wav', '用例干净音源', '用例干净音源', 'audio', 'input',
+         None, None, None, False,
+         False, None, '用例干净音源 wav 路径（reply_quality 子维度用，取用户 ASR 文本）', 3),
         # 主维度不配 output 参数
     ],
     'param_mappings': [
@@ -337,6 +341,54 @@ SUB_DIMENSIONS = [
             ('hflj_message', '说明', '说明', 'text', 'output',
              'high_freq_llm_judge.message', None, 'aux', True,
              False, None, '错误/成功说明', 122),
+        ],
+    },
+    # ────────────────────────────────────────────────────────────
+    # 回复质量评分子维度：task_type_code='reply_quality'
+    # 输入: case_wav 的 ASR 文本（用户预期内容）+ ai_wav 的 ASR 文本（模型实际回复）
+    # 调用 LLM 对模型回复质量进行 1~5 分打分
+    # output field_path 前缀为 reply_quality.<key>
+    # ────────────────────────────────────────────────────────────
+    {
+        'task_type_code': 'reply_quality',
+        'name': '回复质量评分',
+        'keywords': 'reply_quality,回复质量,评分,质量,打分',
+        'description': '子维度：对单轮模型回复质量进行 LLM 打分（1~5分）。输入 case_wav ASR 文本（用户预期）+ ai_wav ASR 文本（模型回复），评估准确性/完整性/流畅性。',
+        'type': 'auto',
+        'result_type': 0,
+        'result_min': 1.0,
+        'result_max': 5.0,
+        'decimal_places': 0,
+        'weight': 1,
+        'estimated_exec_time': 60,
+        'score_unit': '分',
+        'statistic_method': 'average',
+        'params': [
+            # ─── output 参数 ───
+            ('rq_score', '回复质量得分', '回复质量得分', 'number', 'output',
+             'reply_quality.score', 'value', 'main', True,
+             False, None, 'LLM 评分（1-5分，5=优秀）', 130),
+            ('rq_reason', '评分理由', '评分理由', 'text', 'output',
+             'reply_quality.reason', None, 'aux', True,
+             False, None, 'LLM 评分理由', 131),
+            ('rq_accuracy', '准确性分析', '准确性分析', 'text', 'output',
+             'reply_quality.analysis.accuracy', None, 'aux', True,
+             False, None, '回复内容准确性分析', 132),
+            ('rq_completeness', '完整性分析', '完整性分析', 'text', 'output',
+             'reply_quality.analysis.completeness', None, 'aux', True,
+             False, None, '回复内容完整性分析', 133),
+            ('rq_fluency', '流畅性分析', '流畅性分析', 'text', 'output',
+             'reply_quality.analysis.fluency', None, 'aux', True,
+             False, None, '回复流畅性分析', 134),
+            ('rq_user_text', '用户ASR文本', '用户ASR文本', 'text', 'output',
+             'reply_quality.user_text', None, 'aux', True,
+             False, None, 'case_wav ASR 识别文本', 135),
+            ('rq_ai_text', '模型ASR文本', '模型ASR文本', 'text', 'output',
+             'reply_quality.ai_text', None, 'aux', True,
+             False, None, 'ai_wav ASR 识别文本', 136),
+            ('rq_message', '说明', '说明', 'text', 'output',
+             'reply_quality.message', None, 'aux', True,
+             False, None, '错误/成功说明', 137),
         ],
     },
 ]
@@ -725,10 +777,13 @@ def seed_turn_taking():
         print(f"\n{'=' * 60}")
         print(f"  话轮接管维度种子数据注册完成")
         print(f"  主维度 turn_taking id={main_id}（无 output）")
-        print(f"  三个子维度（各自 output field_path）:")
+        print(f"  六个子维度（各自 output field_path）:")
         print(f"    - tor              → tor.tor")
         print(f"    - false_takeover   → false_takeover.tor")
         print(f"    - takeover_latency → takeover_latency.takeover_latency_ms")
+        print(f"    - high_freq_turn_taking → high_freq_turn_taking.*")
+        print(f"    - high_freq_llm_judge    → high_freq_llm_judge.*")
+        print(f"    - reply_quality    → reply_quality.score")
         print(f"{'=' * 60}")
 
 

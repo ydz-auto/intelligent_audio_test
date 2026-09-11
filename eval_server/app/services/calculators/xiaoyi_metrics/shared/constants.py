@@ -54,12 +54,10 @@ VIDEO_EXTS = {
 }
 
 # ─────────── 行为分类标签 ───────────
-BEHAVIOR_LABELS = ['回应', '恢复', '不确定询问', '无关回复', '静默', '未知']
+BEHAVIOR_LABELS = ['回应', '恢复', '不确定询问', '未知']
 BEHAVIOR_FIELD_MAP = {
     '回应': 'behavior_respond',
     '恢复': 'behavior_recover',
     '不确定询问': 'behavior_uncertain',
-    '无关回复': 'behavior_irrelevant',
-    '静默': 'behavior_silent',
     '未知': 'behavior_unknown',
 }

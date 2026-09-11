@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-环境音裁判维度种子数据（拆分为 rejection_judge + interruption_judge 两个主维度 + 8 个行为子维度）
+环境音裁判维度种子数据（拆分为 rejection_judge + interruption_judge 两个主维度 + 行为子维度）
 
 功能：
 1. 注册两个主维度（dimension_type='main'）：
    - rejection_judge   拒识场景裁判（旁人交谈/环境噪声/反馈词/生理声/环境回溯）
    - interruption_judge 打断场景裁判（插话打断/停止指令/恢复原话题）
 2. 注册每个主维度的输入/输出参数（evaluation_dimension_params）
-3. 为每个主维度注册 4 个行为子维度（dimension_type='sub'）：
-   - 拒识回应占比 / 拒识恢复占比 / 拒识不确定询问占比 / 拒识未知占比
+3. 为拒识主维度注册 5 个行为子维度（dimension_type='sub'）：
+   - 拒识回应占比 / 拒识恢复占比 / 拒识不确定询问占比 / 拒识无关回复占比 / 拒识静默占比
+   为打断主维度注册 4 个行为子维度 + 7 个 LLM 评分子维度：
    - 打断回应占比 / 打断恢复占比 / 打断不确定询问占比 / 打断未知占比
    子维度 statistic_method='pass_rate'，agg_role='pass_eq'，pass_threshold=1
-   eval_server 返回 behavior_respond/recover/uncertain/unknown 四个 0/1 字段，
+   eval_server 返回 behavior_respond/recover/uncertain/irrelevant/silent（拒识）
+   或 behavior_respond/recover/uncertain/unknown（打断）若干 0/1 字段，
    子维度从同一响应按各自 field_path 提取，pass_rate 聚合后即为占比
 4. 注册 voice_llm 算法与主维度的关联（algorithm_dimension_relations）
 5. 注册 voice_llm → 主维度的参数映射（param_mappings）
@@ -35,10 +37,12 @@
                     注意默认 gpt-4o-mini 不支持音频，音频裁判需指定 gpt-audio/omni 等）
 
 输出：
-   - evaluations : LLM 裁判结果列表 [{scene, behavior, reason}, ...]（main，json 非数值，得分恒 0）
+   - evaluations : LLM 裁判结果列表 [{timing, behavior, rate, reason}, ...]（main，json 非数值，得分恒 0）
    - ej_behavior : 裁判行为类别（aux，取 evaluations.0.behavior，文本可显示）
+   - ej_timing  : 拒识时机（aux，取 evaluations.0.timing）
+   - ej_rate    : 拒识评级（aux，取 evaluations.0.rate，拒识成功/拒识询问/拒识失败）
    - ej_reason   : 裁判判定理由（aux，取 evaluations.0.reason，文本可显示）
-   - behavior_respond/recover/uncertain/unknown : 四个 0/1 字段（供子维度 pass_rate 聚合）
+   - behavior_respond/recover/uncertain/irrelevant/silent : 五个 0/1 字段（供子维度 pass_rate 聚合）
 
 使用方法：
     cd Intelligent-Audio-TEST
@@ -106,7 +110,13 @@ _COMMON_PARAMS = [
      False, None, '本次裁判使用的 LLM 模型名', 61),
     ('ej_behavior', '裁判行为', 'LLM裁判行为类别', 'text', 'output',
      'evaluations.0.behavior', None, 'aux', True,
-     False, None, 'LLM裁判行为类别(回应/恢复/不确定询问/未知 等；取evaluations首条，多场景仅显首条，完整数据在api_raw_response)', 62),
+     False, None, 'LLM裁判行为类别(拒识: 回应/恢复/不确定询问/无关回复/静默; 打断: 回应/恢复/不确定询问/未知; 取evaluations首条)', 62),
+    ('ej_timing', '拒识时机', '拒识发生时机', 'text', 'output',
+     'evaluations.0.timing', None, 'aux', True,
+     False, None, '拒识干扰内容发生时机(回复过程中/静默时)，取evaluations首条', 62),
+    ('ej_rate', '拒识评级', '拒识结果评级', 'text', 'output',
+     'evaluations.0.rate', None, 'aux', True,
+     False, None, '拒识结果评级(拒识成功/拒识询问/拒识失败)，取evaluations首条', 62),
     ('ej_reason', '裁判理由', 'LLM裁判判定理由', 'text', 'output',
      'evaluations.0.reason', None, 'aux', True,
      False, None, 'LLM裁判判定理由(取evaluations首条)', 62),
@@ -201,7 +211,8 @@ DIMENSIONS = [
             '以模型回复音频(ai_wav)为主输入，裁判模型直接听回复，'
             '用户侧 ASR + 环境声事件作为文本时间线上下文。'
             '场景包括旁人交谈静默/环境噪声不触发/反馈词不误触发/生理声不触发/环境事件被动记录与回溯，'
-            '由裁判模型对语音大模型的行为进行评判（回应/恢复/不确定询问/未知）。'
+            '由裁判模型对语音大模型的行为进行评判（回应/恢复/不确定询问/无关回复/静默），'
+            '并给出拒识时机（回复过程中/静默时）和拒识评级（拒识成功/拒识询问/拒识失败）。'
         ),
         'type': 'auto',
         'result_type': 1,  # 文本型，LLM 裁判输出为 JSON，evaluations 为 main
@@ -248,22 +259,30 @@ DIMENSIONS = [
 # eval_server 返回 0/1，pass_rate 统计 1 的占比即行为占比
 # ============================================================
 # 子维度用 (param_code, field_path, name, label, help_text, ui_order) 描述
-_BEHAVIOR_FIELDS = [
+_BEHAVIOR_FIELDS_REJECTION = [
+    ('behavior_respond',    '回应',     '模型中断或偏离正在进行的回复，转而对拒识干扰内容进行了有意义的回应'),
+    ('behavior_recover',    '恢复',     '模型忽略拒识干扰内容，继续或完成之前正在进行中的回复或任务'),
+    ('behavior_uncertain',  '不确定询问', '模型因干扰内容暂停回复，表示不确定或难以听清、缺少信息'),
+    ('behavior_irrelevant', '无关回复',   '模型输出语义偏离目标或答非所问，未明确恢复、回应或表达不确定'),
+    ('behavior_silent',     '静默',     '模型在干扰发生后完全中断语音输出且未恢复，未产生任何有意义的语音内容'),
+]
+
+_BEHAVIOR_FIELDS_INTERRUPTION = [
     ('behavior_respond',   '回应',   '模型对重叠内容进行了有意义的回应'),
     ('behavior_recover',   '恢复',   '模型忽略重叠，继续或完成重叠前正在进行的任务'),
     ('behavior_uncertain', '不确定询问', '模型表示不确定或难以听清、缺少信息'),
     ('behavior_unknown',   '未知',   '模型输出语义偏离目标或信息量低'),
 ]
 
-def _build_sub_dimensions(task_type_code, prefix):
-    """为主维度生成 4 个行为占比子维度定义。
+def _build_sub_dimensions(task_type_code, prefix, behavior_fields):
+    """为主维度生成行为占比子维度定义。
 
     子维度 task_type_code 与父维度一致（如 rejection_judge）：
     评估服务按 parent_dimension_id 分组，task_type 用代表维度的 task_type_code，
     子维度仅按各自 field_path 从同一响应里提取不同输出字段。
     """
     subs = []
-    for i, (field, label, help) in enumerate(_BEHAVIOR_FIELDS):
+    for i, (field, label, help) in enumerate(behavior_fields):
         subs.append({
             'task_type_code': task_type_code,  # 与父维度一致
             'name': f'{prefix}{label}占比',
@@ -402,13 +421,13 @@ _INTERRUPTION_LLM_SUBS = [
 ]
 
 SUB_DIMENSIONS = {
-    'rejection_judge': _build_sub_dimensions('rejection_judge', '拒识'),
+    'rejection_judge': _build_sub_dimensions('rejection_judge', '拒识', _BEHAVIOR_FIELDS_REJECTION),
     # 子维度必须与父维度使用同一份 body_template：平台按 (endpoint_url, parent_dimension_id)
     # 分组后取 group_items[0] 作代表维度，其 api_settings 决定实际请求体；
     # 若子维度存的是旧模板，轮次元数据（round_number/interruption_rounds/stop_intent）会丢失。
     'interruption_judge': [
         dict(sub, body_template=_INTERRUPTION_JUDGE_BODY_TEMPLATE)
-        for sub in _build_sub_dimensions('interruption_judge', '打断') + _INTERRUPTION_LLM_SUBS
+        for sub in _build_sub_dimensions('interruption_judge', '打断', _BEHAVIOR_FIELDS_INTERRUPTION) + _INTERRUPTION_LLM_SUBS
     ],
 }
 
@@ -784,14 +803,15 @@ if __name__ == '__main__':
     print("   场景: 旁人交谈静默/环境噪声/反馈词/生理声/环境事件回溯")
     print("2. interruption_judge 主维度 — 打断场景裁判")
     print("   场景: 插话打断与重新响应/停止指令响应/恢复原话题")
-    print("3. 每个主维度 4 个行为子维度（pass_rate 聚合）:")
-    print("   - 拒识回应占比 / 拒识恢复占比 / 拒识不确定询问占比 / 拒识未知占比")
-    print("   - 打断回应占比 / 打断恢复占比 / 打断不确定询问占比 / 打断未知占比")
+    print("3. 拒识主维度 5 个行为子维度（拒识回应/恢复/不确定询问/无关回复/静默 占比）")
+    print("4. 打断主维度 4 个行为子维度 + 7 个 LLM 评分子维度")
     print()
     print("   入参: ai_wav(模型回复音频), scene(场景), user_wav, start_ms/end_ms/pcm_first_ms, model, max_tokens, temperature")
     print()
     print("   主分: 裁判结果 (evaluations)")
-    print("   行为 0/1: behavior_respond/recover/uncertain/unknown")
+    print("   拒识行为 0/1: behavior_respond/recover/uncertain/irrelevant/silent")
+    print("   拒识时机/评级: ej_timing / ej_rate")
+    print("   打断行为 0/1: behavior_respond/recover/uncertain/unknown")
     print()
     print("脚本可重复执行（幂等）")
     print()

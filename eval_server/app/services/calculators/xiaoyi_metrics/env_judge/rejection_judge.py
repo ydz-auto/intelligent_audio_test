@@ -43,23 +43,11 @@ REJECTION_SCENES = {
     '环境回溯': '在交互过程中，背景出现可识别的环境事件（如地铁广播、公交报站、闹钟等）。',
 }
 
-# 拒识发生时机定义（二选一）
-REJECTION_TIMING = """- 回复过程中：拒识干扰内容在模型正在语音回复的过程中出现，即非意图交互内容与模型的主动语音输出在时间上重叠。此时模型正在说话，干扰可能打断或穿插在模型回复中。
-- 静默时：拒识干扰内容在模型未在进行语音回复的静默期间出现，即模型当前没有主动语音输出，干扰发生在模型的停顿、等待或回复结束后的间隙中。"""
-
-# 行为类别定义 — 回复过程中
-REJECTION_BEHAVIORS_REPLY = """- 回应：模型中断或偏离正在进行的回复，转而对重叠的拒识干扰内容进行了有意义的回应，包括回答、澄清或对干扰内容做出反应。
-- 恢复：模型忽略重叠的拒识干扰内容，继续或完成重叠之前正在进行中的回复或任务。
-- 不确定询问：模型因干扰内容暂停正在进行中的回复，表示不确定或难以听清、缺少信息（如"我没听清…""能重复一下吗？"），未给出明确的、针对内容的回答。所有泛化的重复或澄清行为归入此类。
-- 无关回复：模型输出语义偏离目标或答非所问，未明确恢复、回应或表达不确定（如无关填充语、模板化噪音、与当前对话上下文无关的内容）。
-- 静默：模型在重叠发生后完全中断语音输出且未恢复，未产生任何有意义的语音内容。"""
-
-# 行为类别定义 — 静默时
-REJECTION_BEHAVIORS_SILENT = """- 回应：模型在静默期间对拒识干扰内容进行了有意义的回应，即模型本应保持静默但被干扰内容触发产生了针对内容的回复、回答或反应。
-- 恢复：模型忽略静默期间出现的拒识干扰内容，保持静默状态或恢复到重叠之前的任务上下文继续推进，未对干扰内容做出反应。
-- 不确定询问：模型因静默期间出现的干扰内容打破沉默，表示不确定或难以听清、缺少信息（如"我没听清…""能重复一下吗？"），未给出明确的、针对内容的回答。所有泛化的重复或澄清行为归入此类。
-- 无关回复：模型输出语义偏离目标或答非所问，未明确恢复、回应或表达不确定（如无关填充语、模板化噪音、与当前对话上下文无关的内容）。
-- 静默：模型在静默期间收到干扰后始终未产生任何语音输出，未给出任何有意义的语音内容。"""
+# 行为类别定义
+REJECTION_BEHAVIORS = """- 回应：模型对重叠内容进行了有意义的回应，包括回答、澄清或对重叠中提到或引入的内容做出反应。
+- 恢复：模型忽略重叠，继续或完成重叠之前正在进行中的任务或回答。
+- 不确定询问：模型表示不确定或难以听清、缺少信息（如"我没听清…""能重复一下吗？"），未给出明确的、针对内容的回答。所有泛化的重复或澄清行为归入此类。
+- 未知：模型输出语义偏离目标或信息量低，未明确恢复、回应或表达不确定（如无关填充语、模板化噪音）。包括重叠后模型完全没有语音输出的情况。"""
 
 
 # ─────────── prompt 构建 ───────────
@@ -90,33 +78,7 @@ def build_rejection_prompt(timeline_text: str = '') -> str:
 
 用户输入音频包含两部分内容：第一段为用户交互内容，第二段为非意图交互内容（拒识干扰）。上述场景定义涵盖了非意图交互内容的类型。非意图交互内容往往与模型对第一段用户交互语音内容的回复内容在时间上重叠，即"重叠内容"。
 
-请结合回复音频、时间线和场景定义，按以下两步进行评估：
-
-═══════════════════════════════════════
-【第一步：判断拒识发生时机】（二选一）
-═══════════════════════════════════════
-
-首先，根据模型回复音频和用户侧 ASR 时间线，判断拒识干扰内容出现的时机：
-
-{REJECTION_TIMING}
-
-═══════════════════════════════════════
-【第二步：行为类别判断】（五选一，仅可选其一）
-═══════════════════════════════════════
-
-根据第一步判断的时机，选择对应的行为类别定义进行判断：
-
-───────────────────────────────────────
-▶ 若时机为「回复过程中」：
-───────────────────────────────────────
-
-{REJECTION_BEHAVIORS_REPLY}
-
-───────────────────────────────────────
-▶ 若时机为「静默时」：
-───────────────────────────────────────
-
-{REJECTION_BEHAVIORS_SILENT}
+请结合回复音频、时间线和场景定义，判断在接收到重叠内容后，模型表现出的行为类别，并给出理由。
 
 {timeline_block}═══════════════════════════════════════
 【场景定义】（拒识干扰内容类型参考）
@@ -125,26 +87,25 @@ def build_rejection_prompt(timeline_text: str = '') -> str:
 {scenes_text}
 
 ═══════════════════════════════════════
+【行为类别定义】（四选一，仅可选其一）
+═══════════════════════════════════════
+
+{REJECTION_BEHAVIORS}
+
+═══════════════════════════════════════
 【输出格式】
 ═══════════════════════════════════════
 
 输出严格 JSON，不要输出 JSON 以外的任何内容：
 
 {{
-  "timing": "",
   "behavior": "",
-  "rate": "",
   "reason": ""
 }}
 
 其中：
-- timing 必须是【回复过程中】【静默时】两个类别之一，表示拒识干扰内容发生的时机
-- behavior 必须是【回应】【恢复】【不确定询问】【无关回复】【静默】五个类别之一，须与 timing 对应的行为定义匹配
-- rate 为拒识结果评级，仅可为以下三个字符串之一：
-  - "拒识成功"
-  - "拒识询问"
-  - "拒识失败"
-- reason 为简短判定理由，需说明你判断的时机依据（从回复音频中听到了什么、结合时间线观察到什么），以及为何归类为此行为"""
+- behavior 必须是【回应】【恢复】【不确定询问】【未知】四个类别之一
+- reason 为简短判定理由，需说明你从回复音频中听到了什么、结合时间线观察到什么、为何归类为此行为"""
 
 
 # ─────────── 主入口 ───────────
@@ -171,17 +132,13 @@ def evaluate_rejection_judge(
             'enabled': True,
             'model': str,
             'ai_wav': str,
-            'evaluations': [{timing, behavior, rate, reason}, ...],
+            'evaluations': [{behavior, reason}, ...],
             'query': str,
             'answer': str,
-            'timing': str,               # 拒识发生时机
-            'behavior': str,             # 行为类别
-            'rate': str,                 # "拒识成功" / "拒识询问" / "拒识失败"
-            'behavior_respond': int,     # 回应 → 1, 否则 0
-            'behavior_recover': int,     # 恢复 → 1, 否则 0
-            'behavior_uncertain': int,   # 不确定询问 → 1, 否则 0
-            'behavior_irrelevant': int,  # 无关回复 → 1, 否则 0
-            'behavior_silent': int,      # 静默 → 1, 否则 0
+            'behavior_respond': int,   # 回应 → 1, 否则 0
+            'behavior_recover': int,   # 恢复 → 1, 否则 0
+            'behavior_uncertain': int, # 不确定询问 → 1, 否则 0
+            'behavior_unknown': int,   # 未知 → 1, 否则 0
             'tokens_used': int,
             'input_token': int,
             'output_token': int,
@@ -224,14 +181,10 @@ def evaluate_rejection_judge(
         'evaluations': [],
         'query': query_text,
         'answer': answer_text,
-        'timing': '',
-        'behavior': '',
-        'rate': '',
         'behavior_respond': 0,
         'behavior_recover': 0,
         'behavior_uncertain': 0,
-        'behavior_irrelevant': 0,
-        'behavior_silent': 0,
+        'behavior_unknown': 0,
         'tokens_used': 0,
         'input_token': 0,
         'output_token': 0,
@@ -274,19 +227,14 @@ def evaluate_rejection_judge(
     if evaluations:
         ev = evaluations[0]
         behavior = ev.get('behavior', '')
-        result['timing'] = ev.get('timing', '')
-        result['behavior'] = behavior
-        result['rate'] = ev.get('rate', '')
         if behavior == '回应':
             result['behavior_respond'] = 1
         elif behavior == '恢复':
             result['behavior_recover'] = 1
         elif behavior == '不确定询问':
             result['behavior_uncertain'] = 1
-        elif behavior == '无关回复':
-            result['behavior_irrelevant'] = 1
-        elif behavior == '静默':
-            result['behavior_silent'] = 1
+        elif behavior == '未知':
+            result['behavior_unknown'] = 1
 
     logger.info(
         f'[rejection_judge] '
@@ -330,9 +278,7 @@ if __name__ == '__main__':
     print(f'message: {r["message"]}')
     print('-' * 60)
     for ev in r.get('evaluations', []):
-        print(f'\n  时机: {ev.get("timing", "")}')
-        print(f'  行为: {ev.get("behavior", "")}')
-        print(f'  评级: {ev.get("rate", "")}')
+        print(f'\n  行为: {ev.get("behavior", "")}')
         print(f'  理由: {ev.get("reason", "")}')
     print('=' * 60)
     print(json.dumps(r, ensure_ascii=False, indent=2))
