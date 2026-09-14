@@ -173,7 +173,7 @@ def _apply_gain_limit(gain_linear):
 | 映射含义 | 物理设备 dB SPL → gain（校准物理音箱） | 被测 API 数字域 dB → gain（校准 API 输入灵敏度） |
 | 选中方式 | `device.current_spl_mapping_id` | `api.rms_spl_mapping_id` 或 case_config 指定 |
 | 计算服务 | `SPLMappingService.spl_to_gain` | `ApiRmsSplService.spl_to_gain / spl_to_gain_by_mapping`（规划于 `backend/services/audio/api_rms_spl_service.py`） |
-| 使用场景 | `audio_timeline.get_audio_configs_for_offset` 查 device | `AudioStreamOrchestrator` 混音时查 api_id |
+| 使用场景 | `audio_timeline.get_audio_configs_for_offset` 查 device | `AudioStreamOrchestrator` 公共前置（`_apply_format_and_gain`）查 api_id |
 
 > **当前状态**：`ApiRmsSplMapping` / `ApiRmsSplService` / `AudioStreamOrchestrator` 仅存在于设计文档，backend 代码尚未实现。API/Realtime 类任务当前不经过 SPL→gain 映射。
 

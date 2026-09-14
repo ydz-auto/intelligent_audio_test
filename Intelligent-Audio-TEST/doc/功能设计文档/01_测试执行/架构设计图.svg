@@ -168,7 +168,7 @@
   <rect x="340" y="762" width="260" height="30" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
   <text x="470" y="781" text-anchor="middle" class="chip-t" fill="#1e40af">ApiRmsSplService (api_id)</text>
   <rect x="620" y="762" width="260" height="30" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
-  <text x="750" y="781" text-anchor="middle" class="chip-t" fill="#92400e">AudioStreamOrchestrator (混音切片)</text>
+  <text x="750" y="781" text-anchor="middle" class="chip-t" fill="#92400e">AudioStreamOrchestrator (编排路由)</text>
   <rect x="900" y="762" width="260" height="30" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
   <text x="1030" y="781" text-anchor="middle" class="chip-t" fill="#475569">APIClient (底层 HTTP/WS 传输)</text>
 

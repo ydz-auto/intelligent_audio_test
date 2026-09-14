@@ -741,7 +741,7 @@ Realtime API 测试用于验证基于 WebSocket 协议的实时语音识别和�
    - 启动独立的接收线程，监听服务端推送的事件
 
 2. **音频分片流式发送**（每个测试轮次）：
-   - 通过 `AudioStreamOrchestrator.chunk_audio()` 将音频切分为固定大小的分片
+   - 通过 `RenderAudioStream.render()` 逐帧流式混音后按 100ms 切片
    - 逐个调用 `adapter.send(chunk)` 发送音频分片
    - 所有分片发送完毕后调用 `adapter.commit_input()` 通知服务端输入结束
    - 调用 `adapter.post_process()` 执行后处理（如等待最终结果）
@@ -758,7 +758,7 @@ adapter = self.api_adapter_factory.create('websocket_api', api_config)
 adapter.initialize()  # 建立 WebSocket 连接 + 启动接收线程
 
 for round in test_rounds:
-    chunks = AudioStreamOrchestrator.chunk_audio(audio_data)
+    chunks = RenderAudioStream.render(audio_data)
     for chunk in chunks:
         adapter.send(chunk)          # 逐片发送音频
     adapter.commit_input()           # 通知输入结束

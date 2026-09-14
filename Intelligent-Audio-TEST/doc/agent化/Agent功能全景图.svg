@@ -1,0 +1,660 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+<defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-purple { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowPurple); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .body-s { font-size: 9.5px; fill: #334155; }
+      .body-xs { font-size: 9px; fill: #475569; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .mono { font-family: Consolas, 'Courier New', monospace; font-size: 10px; font-weight: 600; }
+      .mono-s { font-family: Consolas, 'Courier New', monospace; font-size: 9px; }
+      .mono-xs { font-family: Consolas, 'Courier New', monospace; font-size: 8px; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .scn-title { font-size: 10.5px; font-weight: 700; fill: #1e293b; }
+      .scn-flow { font-family: Consolas, 'Courier New', monospace; font-size: 8.5px; fill: #475569; }
+      .scn-desc { font-size: 9px; fill: #64748b; }
+      .tag { font-size: 8px; font-weight: 600; text-anchor: middle; }
+      .ui-text { font-size: 8.5px; fill: #475569; }
+      .ui-title { font-size: 9px; font-weight: 600; fill: #334155; }
+      .tool-name { font-family: Consolas, 'Courier New', monospace; font-size: 8.5px; font-weight: 600; fill: #334155; }
+      .tool-desc { font-size: 8.5px; fill: #64748b; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">Agent 功能全景图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">13 个 Agent 模块 · 61 个工具 · 2 种运行模式(交互/Solo) · 5 层上下文管理 · 3 大系统驱动生成</text>
+
+  <!-- Section 1 -->
+  <rect x="24" y="80" width="1192" height="178" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="80" width="1192" height="32" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="106" width="1192" height="6" fill="#dbeafe"/>
+  <circle cx="46" cy="96" r="11" fill="#3b82f6"/>
+  <text x="46" y="100" class="num-badge">1</text>
+  <text x="66" y="101" class="sec-title" fill="#1e3a8a">概述与核心价值 — 什么是 Agent 化</text>
+  <rect x="48" y="120" width="430" height="128" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="120" width="430" height="18" rx="6" fill="#dbeafe"/>
+  <rect x="48" y="132" width="430" height="6" fill="#dbeafe"/>
+  <text x="60" y="133" class="lbl" fill="#1e3a8a">什么是 Agent 化</text>
+  <text x="60" y="154" class="body-s">人操作界面 → 自然语言描述目标</text>
+  <text x="60" y="168" class="body-s">Agent 自主规划并执行全流程</text>
+  <text x="60" y="186" class="body-xs" fill="#dc2626">改造前: 逐页面手动操作全流程</text>
+  <text x="60" y="198" class="body-xs">  导入→标注→建用例→配维度→任务→执行→结果→报告</text>
+  <text x="60" y="216" class="body-xs" fill="#16a34a">改造后: 自然语言一句话触发</text>
+  <text x="60" y="228" class="body-xs">  "导入音频, 按标注分3类生成用例, 跑测试, 出报告"</text>
+  <text x="60" y="240" class="body-xs" fill="#64748b">  Agent 自主完成, 关键操作前向用户确认</text>
+  <rect x="490" y="120" width="722" height="128" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="490" y="120" width="722" height="20" rx="6" fill="#dbeafe"/>
+  <rect x="490" y="134" width="722" height="6" fill="#dbeafe"/>
+  <text x="535" y="134" class="lbl" fill="#1e3a8a" text-anchor="middle">维度</text>
+  <text x="675" y="134" class="lbl" fill="#1e3a8a" text-anchor="middle">改造前</text>
+  <text x="995" y="134" class="lbl" fill="#1e3a8a" text-anchor="middle">改造后</text>
+  <line x1="580" y1="120" x2="580" y2="248" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="770" y1="120" x2="770" y2="248" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="490" y1="140" x2="1212" y2="140" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="498" y="152" class="body-s" font-weight="600">操作方式</text>
+  <text x="588" y="152" class="body-xs">逐页面手动操作</text>
+  <text x="778" y="152" class="body-xs" fill="#16a34a">自然语言对话，一句话触发全流程</text>
+  <line x1="490" y1="158" x2="1212" y2="158" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="490" y="158" width="722" height="18" fill="#f8fafc"/>
+  <text x="498" y="170" class="body-s" font-weight="600">用例创建</text>
+  <text x="588" y="170" class="body-xs">手动填写每轮配置</text>
+  <text x="778" y="170" class="body-xs" fill="#16a34a">AI 读取标注自动生成</text>
+  <line x1="490" y1="176" x2="1212" y2="176" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="498" y="188" class="body-s" font-weight="600">设备驱动</text>
+  <text x="588" y="188" class="body-xs">每接新设备手写代码</text>
+  <text x="778" y="188" class="body-xs" fill="#16a34a">UiAutoDev 选元素，AI 自动生成</text>
+  <line x1="490" y1="194" x2="1212" y2="194" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="490" y="194" width="722" height="18" fill="#f8fafc"/>
+  <text x="498" y="206" class="body-s" font-weight="600">结果分析</text>
+  <text x="588" y="206" class="body-xs">看数字自己判断</text>
+  <text x="778" y="206" class="body-xs" fill="#16a34a">LLM 自动分析，自然语言报告</text>
+  <line x1="490" y1="212" x2="1212" y2="212" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="498" y="224" class="body-s" font-weight="600">失败排查</text>
+  <text x="588" y="224" class="body-xs">翻日志找原因</text>
+  <text x="778" y="224" class="body-xs" fill="#16a34a">AI 自动诊断，给出修复建议</text>
+  <line x1="490" y1="230" x2="1212" y2="230" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="490" y="230" width="722" height="18" fill="#f8fafc"/>
+  <text x="498" y="242" class="body-s" font-weight="600">批量任务</text>
+  <text x="588" y="242" class="body-xs">逐个手动执行</text>
+  <text x="778" y="242" class="body-xs" fill="#16a34a">Solo 模式无人值守，定期汇报</text>
+
+  <!-- Section 2 -->
+  <rect x="24" y="263" width="1192" height="173" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="263" width="1192" height="32" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="289" width="1192" height="6" fill="#dcfce7"/>
+  <circle cx="46" cy="279" r="11" fill="#16a34a"/>
+  <text x="46" y="283" class="num-badge">2</text>
+  <text x="66" y="284" class="sec-title" fill="#166534">Agent 能力地图 — 13 个能力模块</text>
+  <rect x="48" y="303" width="220" height="36" rx="5" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="303" width="4" height="36" rx="2" fill="#3b82f6"/>
+  <text x="60" y="318" class="body-s" font-weight="600" fill="#1e293b">音频导入+标注</text>
+  <text x="60" y="332" class="body-xs" fill="#64748b">URL导入/上传+标注/批量标注/元数据/文件夹</text>
+  <rect x="279" y="303" width="220" height="36" rx="5" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="279" y="303" width="4" height="36" rx="2" fill="#3b82f6"/>
+  <text x="291" y="318" class="body-s" font-weight="600" fill="#1e293b">用例管理</text>
+  <text x="291" y="332" class="body-xs" fill="#64748b">生成/编辑/复制/轮次编辑/标签/分组</text>
+  <rect x="510" y="303" width="220" height="36" rx="5" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="510" y="303" width="4" height="36" rx="2" fill="#3b82f6"/>
+  <text x="522" y="318" class="body-s" font-weight="600" fill="#1e293b">标签管理</text>
+  <text x="522" y="332" class="body-xs" fill="#64748b">标签CRUD/分类管理/批量打标</text>
+  <rect x="741" y="303" width="220" height="36" rx="5" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="741" y="303" width="4" height="36" rx="2" fill="#16a34a"/>
+  <text x="753" y="318" class="body-s" font-weight="600" fill="#1e293b">评估维度配置</text>
+  <text x="753" y="332" class="body-xs" fill="#64748b">维度CRUD/分类/导入导出/健康检查</text>
+  <rect x="972" y="303" width="220" height="36" rx="5" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="972" y="303" width="4" height="36" rx="2" fill="#f59e0b"/>
+  <text x="984" y="318" class="body-s" font-weight="600" fill="#1e293b">算法配置管理</text>
+  <text x="984" y="332" class="body-xs" fill="#64748b">算法定义/参数/参考参数/映射/热重载</text>
+  <rect x="48" y="345" width="220" height="36" rx="5" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="48" y="345" width="4" height="36" rx="2" fill="#f59e0b"/>
+  <text x="60" y="360" class="body-s" font-weight="600" fill="#1e293b">任务执行+控制</text>
+  <text x="60" y="374" class="body-xs" fill="#64748b">创建/启动/停止/重试/合并/重提取/重评估</text>
+  <rect x="279" y="345" width="220" height="36" rx="5" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="279" y="345" width="4" height="36" rx="2" fill="#7c3aed"/>
+  <text x="291" y="360" class="body-s" font-weight="600" fill="#1e293b">SPL校准</text>
+  <text x="291" y="374" class="body-xs" fill="#64748b">映射/校准/测试音/历史</text>
+  <rect x="510" y="345" width="220" height="36" rx="5" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="510" y="345" width="4" height="36" rx="2" fill="#7c3aed"/>
+  <text x="522" y="360" class="body-s" font-weight="600" fill="#1e293b">播放设备管理</text>
+  <text x="522" y="374" class="body-xs" fill="#64748b">扫描/测试/状态检查</text>
+  <rect x="741" y="345" width="220" height="36" rx="5" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="741" y="345" width="4" height="36" rx="2" fill="#dc2626"/>
+  <text x="753" y="360" class="body-s" font-weight="600" fill="#1e293b">结果分析+报告</text>
+  <text x="753" y="374" class="body-xs" fill="#64748b">结果获取/LLM分析/报告/发布/导出/趋势</text>
+  <rect x="972" y="345" width="220" height="36" rx="5" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="972" y="345" width="4" height="36" rx="2" fill="#dc2626"/>
+  <text x="984" y="360" class="body-s" font-weight="600" fill="#1e293b">报告对比</text>
+  <text x="984" y="374" class="body-xs" fill="#64748b">多报告对比/二次对比</text>
+  <rect x="48" y="387" width="220" height="36" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="48" y="387" width="4" height="36" rx="2" fill="#64748b"/>
+  <text x="60" y="402" class="body-s" font-weight="600" fill="#1e293b">日志诊断</text>
+  <text x="60" y="416" class="body-xs" fill="#64748b">搜索/LLM诊断/导出/归档</text>
+  <rect x="279" y="387" width="220" height="36" rx="5" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="279" y="387" width="4" height="36" rx="2" fill="#16a34a"/>
+  <text x="291" y="402" class="body-s" font-weight="600" fill="#1e293b">设备驱动生成</text>
+  <text x="291" y="416" class="body-xs" fill="#64748b">UiAutoDev选元素/代码生成/注册工厂</text>
+  <rect x="510" y="387" width="220" height="36" rx="5" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="510" y="387" width="4" height="36" rx="2" fill="#64748b"/>
+  <text x="522" y="402" class="body-s" font-weight="600" fill="#1e293b">系统概览</text>
+  <text x="522" y="416" class="body-xs" fill="#64748b">首页统计/缓存刷新</text>
+
+  <!-- Section 3 -->
+  <rect x="24" y="441" width="1192" height="186" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="441" width="1192" height="32" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="467" width="1192" height="6" fill="#dbeafe"/>
+  <circle cx="46" cy="457" r="11" fill="#3b82f6"/>
+  <text x="46" y="461" class="num-badge">3</text>
+  <text x="66" y="462" class="sec-title" fill="#1e3a8a">工具统计表 — 13 个 Agent 模块 · 合计 61 个工具</text>
+  <rect x="48" y="481" width="560" height="20" rx="6" fill="#dbeafe"/>
+  <rect x="48" y="495" width="560" height="6" fill="#dbeafe"/>
+  <text x="123" y="495" class="lbl" fill="#1e3a8a" text-anchor="middle">Agent 模块</text>
+  <text x="218" y="495" class="lbl" fill="#1e3a8a" text-anchor="middle">工具数</text>
+  <text x="328" y="495" class="lbl" fill="#1e3a8a" text-anchor="middle">核心能力</text>
+  <line x1="198" y1="481" x2="198" y2="592" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="238" y1="481" x2="238" y2="592" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="48" y1="501" x2="608" y2="501" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="56" y="511" class="body-s">音频导入+标注管理</text>
+  <text x="218" y="511" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">5</text>
+  <text x="246" y="511" class="body-xs">URL导入、上传+标注、批量标注、元数据、文件夹树</text>
+  <line x1="48" y1="514" x2="608" y2="514" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="514" width="560" height="13" fill="#f8fafc"/>
+  <text x="56" y="524" class="body-s">用例生成+编辑</text>
+  <text x="218" y="524" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">10</text>
+  <text x="246" y="524" class="body-xs">CRUD、轮次编辑、复制变体、参考参数刷新</text>
+  <line x1="48" y1="527" x2="608" y2="527" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="56" y="537" class="body-s">标签管理</text>
+  <text x="218" y="537" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">4</text>
+  <text x="246" y="537" class="body-xs">标签CRUD、分类管理、批量打标</text>
+  <line x1="48" y1="540" x2="608" y2="540" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="540" width="560" height="13" fill="#f8fafc"/>
+  <text x="56" y="550" class="body-s">评估维度配置</text>
+  <text x="218" y="550" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">5</text>
+  <text x="246" y="550" class="body-xs">维度CRUD、分类、导入导出、健康检查</text>
+  <line x1="48" y1="553" x2="608" y2="553" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="56" y="563" class="body-s">算法配置管理</text>
+  <text x="218" y="563" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">5</text>
+  <text x="246" y="563" class="body-xs">算法定义、参数、参考参数、映射、热重载</text>
+  <line x1="48" y1="566" x2="608" y2="566" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="566" width="560" height="13" fill="#f8fafc"/>
+  <text x="56" y="576" class="body-s">任务执行+控制</text>
+  <text x="218" y="576" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">7</text>
+  <text x="246" y="576" class="body-xs">创建、启动、停止、重试、合并、重提取、重评估</text>
+  <line x1="48" y1="579" x2="608" y2="579" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="56" y="589" class="body-s">SPL校准</text>
+  <text x="218" y="589" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">4</text>
+  <text x="246" y="589" class="body-xs">映射、校准、测试音、历史</text>
+  <rect x="624" y="481" width="560" height="20" rx="6" fill="#dbeafe"/>
+  <rect x="624" y="495" width="560" height="6" fill="#dbeafe"/>
+  <text x="699" y="495" class="lbl" fill="#1e3a8a" text-anchor="middle">Agent 模块</text>
+  <text x="794" y="495" class="lbl" fill="#1e3a8a" text-anchor="middle">工具数</text>
+  <text x="904" y="495" class="lbl" fill="#1e3a8a" text-anchor="middle">核心能力</text>
+  <line x1="774" y1="481" x2="774" y2="579" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="814" y1="481" x2="814" y2="579" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="624" y1="501" x2="1184" y2="501" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="632" y="511" class="body-s">播放设备管理</text>
+  <text x="794" y="511" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">3</text>
+  <text x="822" y="511" class="body-xs">扫描、测试、状态检查</text>
+  <line x1="624" y1="514" x2="1184" y2="514" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="624" y="514" width="560" height="13" fill="#f8fafc"/>
+  <text x="632" y="524" class="body-s">结果分析+报告</text>
+  <text x="794" y="524" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">7</text>
+  <text x="822" y="524" class="body-xs">结果获取、LLM分析、报告生成、发布、导出、趋势、用例均分</text>
+  <line x1="624" y1="527" x2="1184" y2="527" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="632" y="537" class="body-s">报告对比</text>
+  <text x="794" y="537" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">2</text>
+  <text x="822" y="537" class="body-xs">多报告对比、二次对比</text>
+  <line x1="624" y1="540" x2="1184" y2="540" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="624" y="540" width="560" height="13" fill="#f8fafc"/>
+  <text x="632" y="550" class="body-s">日志诊断</text>
+  <text x="794" y="550" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">4</text>
+  <text x="822" y="550" class="body-xs">搜索、LLM诊断、导出、归档</text>
+  <line x1="624" y1="553" x2="1184" y2="553" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="632" y="563" class="body-s">设备驱动生成</text>
+  <text x="794" y="563" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">3</text>
+  <text x="822" y="563" class="body-xs">UiAutoDev元素选择、代码生成、注册工厂</text>
+  <line x1="624" y1="566" x2="1184" y2="566" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="624" y="566" width="560" height="13" fill="#f8fafc"/>
+  <text x="632" y="576" class="body-s">系统概览</text>
+  <text x="794" y="576" class="body-s" text-anchor="middle" fill="#16a34a" font-weight="600">2</text>
+  <text x="822" y="576" class="body-xs">首页统计、缓存刷新</text>
+  <rect x="48" y="597" width="1136" height="16" rx="4" fill="#dbeafe"/>
+  <text x="58" y="609" class="body-s" font-weight="700" fill="#1e3a8a">合计</text>
+  <text x="620" y="609" class="body-s" text-anchor="middle" font-weight="700" fill="#1e3a8a">61 个工具</text>
+  <text x="1170" y="609" class="body-s" text-anchor="end" font-weight="700" fill="#1e3a8a">13 个 Agent 模块</text>
+
+  <!-- Section 4 -->
+  <rect x="24" y="632" width="1192" height="180" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="632" width="1192" height="32" rx="10" fill="#f3e8ff"/>
+  <rect x="24" y="658" width="1192" height="6" fill="#f3e8ff"/>
+  <circle cx="46" cy="648" r="11" fill="#7c3aed"/>
+  <text x="46" y="652" class="num-badge">4</text>
+  <text x="66" y="653" class="sec-title" fill="#5b21b6">功能模块详解 (1) — 音频导入与标注(5) · 用例生成与编辑(10)</text>
+  <rect x="48" y="672" width="556" height="136" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="48" y="672" width="556" height="18" rx="6" fill="#f3e8ff"/>
+  <rect x="48" y="684" width="556" height="6" fill="#f3e8ff"/>
+  <text x="60" y="685" class="lbl" fill="#5b21b6">音频导入与标注 (5 工具)</text>
+  <rect x="48" y="690" width="556" height="12" fill="#ffffff"/>
+  <text x="56" y="699" class="tool-name">import_audio_from_url</text>
+  <text x="280" y="699" class="tool-desc">— URL导入，提取目录标签</text>
+  <rect x="48" y="702" width="556" height="12" fill="#f8fafc"/>
+  <text x="56" y="711" class="tool-name">upload_audio_with_annotations</text>
+  <text x="280" y="711" class="tool-desc">— 上传+标注，持久化</text>
+  <rect x="48" y="714" width="556" height="12" fill="#ffffff"/>
+  <text x="56" y="723" class="tool-name">batch_annotate_audios</text>
+  <text x="280" y="723" class="tool-desc">— 批量添加标注</text>
+  <rect x="48" y="726" width="556" height="12" fill="#f8fafc"/>
+  <text x="56" y="735" class="tool-name">update_audio_metadata</text>
+  <text x="280" y="735" class="tool-desc">— 更新元数据(名称/标签)</text>
+  <rect x="48" y="738" width="556" height="12" fill="#ffffff"/>
+  <text x="56" y="747" class="tool-name">get_folder_tree</text>
+  <text x="280" y="747" class="tool-desc">— 文件夹树，多维筛选</text>
+  <rect x="616" y="672" width="556" height="136" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="616" y="672" width="556" height="18" rx="6" fill="#f3e8ff"/>
+  <rect x="616" y="684" width="556" height="6" fill="#f3e8ff"/>
+  <text x="628" y="685" class="lbl" fill="#5b21b6">用例生成与编辑 (10 工具)</text>
+  <rect x="616" y="690.0" width="556" height="11.8" fill="#ffffff"/>
+  <text x="624" y="698.5" class="tool-name">list_test_cases</text>
+  <text x="840" y="698.5" class="tool-desc">— 列出用例，多条件筛选</text>
+  <rect x="616" y="701.8" width="556" height="11.8" fill="#f8fafc"/>
+  <text x="624" y="710.3" class="tool-name">get_test_case_detail</text>
+  <text x="840" y="710.3" class="tool-desc">— 获取用例完整配置</text>
+  <rect x="616" y="713.6" width="556" height="11.8" fill="#ffffff"/>
+  <text x="624" y="722.1" class="tool-name">create_test_case</text>
+  <text x="840" y="722.1" class="tool-desc">— 创建(多轮+评估维度)</text>
+  <rect x="616" y="725.4" width="556" height="11.8" fill="#f8fafc"/>
+  <text x="624" y="733.9" class="tool-name">update_test_case</text>
+  <text x="840" y="733.9" class="tool-desc">— 编辑(name/rounds/dims)</text>
+  <rect x="616" y="737.2" width="556" height="11.8" fill="#ffffff"/>
+  <text x="624" y="745.7" class="tool-name">update_test_case_name</text>
+  <text x="840" y="745.7" class="tool-desc">— 只改名称</text>
+  <rect x="616" y="749.0" width="556" height="11.8" fill="#f8fafc"/>
+  <text x="624" y="757.5" class="tool-name">duplicate_test_case</text>
+  <text x="840" y="757.5" class="tool-desc">— 复制做变体</text>
+  <rect x="616" y="760.8" width="556" height="11.8" fill="#ffffff"/>
+  <text x="624" y="769.3" class="tool-name">delete_test_case</text>
+  <text x="840" y="769.3" class="tool-desc">— 删除(软删除)</text>
+  <rect x="616" y="772.6" width="556" height="11.8" fill="#f8fafc"/>
+  <text x="624" y="781.1" class="tool-name">update_round_config</text>
+  <text x="840" y="781.1" class="tool-desc">— 编辑轮次配置</text>
+  <rect x="616" y="784.4" width="556" height="11.8" fill="#ffffff"/>
+  <text x="624" y="792.9" class="tool-name">add_round / remove_round</text>
+  <text x="840" y="792.9" class="tool-desc">— 增删轮次</text>
+  <rect x="616" y="796.2" width="556" height="11.8" fill="#f8fafc"/>
+  <text x="624" y="804.7" class="tool-name">refresh_reference_params</text>
+  <text x="840" y="804.7" class="tool-desc">— 重新生成参考参数</text>
+
+  <!-- Section 5 -->
+  <rect x="24" y="817" width="1192" height="185" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="817" width="1192" height="32" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="843" width="1192" height="6" fill="#fef3c7"/>
+  <circle cx="46" cy="833" r="11" fill="#f59e0b"/>
+  <text x="46" y="837" class="num-badge">5</text>
+  <text x="66" y="838" class="sec-title" fill="#854d0e">功能模块详解 (2) — 标签管理(4) · 评估维度(5) · 算法配置(5) · 任务执行(7)</text>
+  <rect x="48" y="857" width="280" height="109" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="48" y="857" width="280" height="18" rx="6" fill="#fef3c7"/>
+  <rect x="48" y="869" width="280" height="6" fill="#fef3c7"/>
+  <text x="58" y="870" class="lbl" fill="#854d0e">标签管理 (4)</text>
+  <rect x="48" y="875" width="280" height="13" fill="#ffffff"/>
+  <text x="56" y="884.5" class="tool-name" style="font-size:8px">list_tags</text>
+  <text x="56" y="887.5" class="tool-desc" style="font-size:7.5px">— 列出标签，按分类筛选</text>
+  <rect x="48" y="888" width="280" height="13" fill="#fffbeb"/>
+  <text x="56" y="897.5" class="tool-name" style="font-size:8px">create_tag</text>
+  <text x="56" y="900.5" class="tool-desc" style="font-size:7.5px">— 创建(名称/分类/颜色)</text>
+  <rect x="48" y="901" width="280" height="13" fill="#ffffff"/>
+  <text x="56" y="910.5" class="tool-name" style="font-size:8px">assign_tags_to_test_case</text>
+  <text x="56" y="913.5" class="tool-desc" style="font-size:7.5px">— 给用例打标签</text>
+  <rect x="48" y="914" width="280" height="13" fill="#fffbeb"/>
+  <text x="56" y="923.5" class="tool-name" style="font-size:8px">batch_assign_tags</text>
+  <text x="56" y="926.5" class="tool-desc" style="font-size:7.5px">— 批量打标</text>
+  <rect x="336" y="857" width="280" height="109" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="336" y="857" width="280" height="18" rx="6" fill="#fef3c7"/>
+  <rect x="336" y="869" width="280" height="6" fill="#fef3c7"/>
+  <text x="346" y="870" class="lbl" fill="#854d0e">评估维度配置 (5)</text>
+  <rect x="336" y="875" width="280" height="13" fill="#ffffff"/>
+  <text x="344" y="884.5" class="tool-name" style="font-size:8px">list_dimensions</text>
+  <text x="344" y="887.5" class="tool-desc" style="font-size:7.5px">— 列出评估维度</text>
+  <rect x="336" y="888" width="280" height="13" fill="#fffbeb"/>
+  <text x="344" y="897.5" class="tool-name" style="font-size:8px">get_dimension_detail</text>
+  <text x="344" y="900.5" class="tool-desc" style="font-size:7.5px">— 获取维度详情</text>
+  <rect x="336" y="901" width="280" height="13" fill="#ffffff"/>
+  <text x="344" y="910.5" class="tool-name" style="font-size:8px">create_dimension</text>
+  <text x="344" y="913.5" class="tool-desc" style="font-size:7.5px">— 创建评估维度</text>
+  <rect x="336" y="914" width="280" height="13" fill="#fffbeb"/>
+  <text x="344" y="923.5" class="tool-name" style="font-size:8px">update_dimension</text>
+  <text x="344" y="926.5" class="tool-desc" style="font-size:7.5px">— 编辑prompt/settings</text>
+  <rect x="336" y="927" width="280" height="13" fill="#ffffff"/>
+  <text x="344" y="936.5" class="tool-name" style="font-size:8px">list_evaluation_categories</text>
+  <text x="344" y="939.5" class="tool-desc" style="font-size:7.5px">— 评估分类CRUD</text>
+  <rect x="624" y="857" width="280" height="109" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="624" y="857" width="280" height="18" rx="6" fill="#fef3c7"/>
+  <rect x="624" y="869" width="280" height="6" fill="#fef3c7"/>
+  <text x="634" y="870" class="lbl" fill="#854d0e">算法配置管理 (5)</text>
+  <rect x="624" y="875" width="280" height="13" fill="#ffffff"/>
+  <text x="632" y="884.5" class="tool-name" style="font-size:8px">list_algorithm_definitions</text>
+  <text x="632" y="887.5" class="tool-desc" style="font-size:7.5px">— 列出算法定义</text>
+  <rect x="624" y="888" width="280" height="13" fill="#fffbeb"/>
+  <text x="632" y="897.5" class="tool-name" style="font-size:8px">get_algorithm_form_schema</text>
+  <text x="632" y="900.5" class="tool-desc" style="font-size:7.5px">— 获取表单Schema</text>
+  <rect x="624" y="901" width="280" height="13" fill="#ffffff"/>
+  <text x="632" y="910.5" class="tool-name" style="font-size:8px">create_algorithm_definition</text>
+  <text x="632" y="913.5" class="tool-desc" style="font-size:7.5px">— 创建(参数+参考)</text>
+  <rect x="624" y="914" width="280" height="13" fill="#fffbeb"/>
+  <text x="632" y="923.5" class="tool-name" style="font-size:8px">reload_algorithm_config</text>
+  <text x="632" y="926.5" class="tool-desc" style="font-size:7.5px">— 热重载到运行时</text>
+  <rect x="624" y="927" width="280" height="13" fill="#ffffff"/>
+  <text x="632" y="936.5" class="tool-name" style="font-size:8px">extract_params_from_audio</text>
+  <text x="632" y="939.5" class="tool-desc" style="font-size:7.5px">— 从标注提取参数</text>
+  <rect x="912" y="857" width="280" height="109" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="912" y="857" width="280" height="18" rx="6" fill="#fef3c7"/>
+  <rect x="912" y="869" width="280" height="6" fill="#fef3c7"/>
+  <text x="922" y="870" class="lbl" fill="#854d0e">任务执行与控制 (7)</text>
+  <rect x="912" y="875" width="280" height="13" fill="#ffffff"/>
+  <text x="920" y="884.5" class="tool-name" style="font-size:8px">create_task</text>
+  <text x="920" y="887.5" class="tool-desc" style="font-size:7.5px">— 创建测试任务</text>
+  <rect x="912" y="888" width="280" height="13" fill="#fffbeb"/>
+  <text x="920" y="897.5" class="tool-name" style="font-size:8px">get_task_status</text>
+  <text x="920" y="900.5" class="tool-desc" style="font-size:7.5px">— 获取任务进度</text>
+  <rect x="912" y="901" width="280" height="13" fill="#ffffff"/>
+  <text x="920" y="910.5" class="tool-name" style="font-size:8px">stop_task</text>
+  <text x="920" y="913.5" class="tool-desc" style="font-size:7.5px">— 停止任务</text>
+  <rect x="912" y="914" width="280" height="13" fill="#fffbeb"/>
+  <text x="920" y="923.5" class="tool-name" style="font-size:8px">retry_task</text>
+  <text x="920" y="926.5" class="tool-desc" style="font-size:7.5px">— 重试失败用例</text>
+  <rect x="912" y="927" width="280" height="13" fill="#ffffff"/>
+  <text x="920" y="936.5" class="tool-name" style="font-size:8px">merge_tasks</text>
+  <text x="920" y="939.5" class="tool-desc" style="font-size:7.5px">— 合并任务结果</text>
+  <rect x="912" y="940" width="280" height="13" fill="#fffbeb"/>
+  <text x="920" y="949.5" class="tool-name" style="font-size:8px">reextract_results</text>
+  <text x="920" y="952.5" class="tool-desc" style="font-size:7.5px">— 重新提取结果</text>
+  <rect x="912" y="953" width="280" height="13" fill="#ffffff"/>
+  <text x="920" y="962.5" class="tool-name" style="font-size:8px">reevaluate_task</text>
+  <text x="920" y="965.5" class="tool-desc" style="font-size:7.5px">— 重新评估</text>
+
+  <!-- Section 6 -->
+  <rect x="24" y="1007" width="1192" height="215" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1007" width="1192" height="32" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1033" width="1192" height="6" fill="#fee2e2"/>
+  <circle cx="46" cy="1023" r="11" fill="#dc2626"/>
+  <text x="46" y="1027" class="num-badge">6</text>
+  <text x="66" y="1028" class="sec-title" fill="#991b1b">功能模块详解 (3) — SPL校准(4) · 播放设备(3) · 结果分析(7) · 报告对比(2) · 日志诊断(4) · 系统概览(2)</text>
+  <rect x="48" y="1047" width="376" height="102" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="48" y="1047" width="376" height="18" rx="6" fill="#fee2e2"/>
+  <rect x="48" y="1059" width="376" height="6" fill="#fee2e2"/>
+  <text x="58" y="1060" class="lbl" fill="#991b1b">SPL校准 (4)</text>
+  <rect x="48" y="1065" width="376" height="12" fill="#ffffff"/>
+  <text x="56" y="1073.5" class="tool-name">list_spl_mappings</text>
+  <text x="248" y="1073.5" class="tool-desc">— 列出映射配置</text>
+  <rect x="48" y="1077" width="376" height="12" fill="#fef2f2"/>
+  <text x="56" y="1085.5" class="tool-name">calibrate_spl</text>
+  <text x="248" y="1085.5" class="tool-desc">— 执行SPL校准</text>
+  <rect x="48" y="1089" width="376" height="12" fill="#ffffff"/>
+  <text x="56" y="1097.5" class="tool-name">play_test_tone</text>
+  <text x="248" y="1097.5" class="tool-desc">— 播放测试音</text>
+  <rect x="48" y="1101" width="376" height="12" fill="#fef2f2"/>
+  <text x="56" y="1109.5" class="tool-name">get_calibration_history</text>
+  <text x="248" y="1109.5" class="tool-desc">— 校准历史</text>
+  <rect x="432" y="1047" width="376" height="102" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="432" y="1047" width="376" height="18" rx="6" fill="#fee2e2"/>
+  <rect x="432" y="1059" width="376" height="6" fill="#fee2e2"/>
+  <text x="442" y="1060" class="lbl" fill="#991b1b">播放设备管理 (3)</text>
+  <rect x="432" y="1065" width="376" height="12" fill="#ffffff"/>
+  <text x="440" y="1073.5" class="tool-name">scan_playback_devices</text>
+  <text x="632" y="1073.5" class="tool-desc">— 扫描设备</text>
+  <rect x="432" y="1077" width="376" height="12" fill="#fef2f2"/>
+  <text x="440" y="1085.5" class="tool-name">test_playback_device</text>
+  <text x="632" y="1085.5" class="tool-desc">— 测试设备</text>
+  <rect x="432" y="1089" width="376" height="12" fill="#ffffff"/>
+  <text x="440" y="1097.5" class="tool-name">check_playback_status</text>
+  <text x="632" y="1097.5" class="tool-desc">— 检查状态</text>
+  <rect x="816" y="1047" width="376" height="102" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="816" y="1047" width="376" height="18" rx="6" fill="#fee2e2"/>
+  <rect x="816" y="1059" width="376" height="6" fill="#fee2e2"/>
+  <text x="826" y="1060" class="lbl" fill="#991b1b">结果分析与报告 (7)</text>
+  <rect x="816" y="1065" width="376" height="12" fill="#ffffff"/>
+  <text x="824" y="1073.5" class="tool-name">get_task_results</text>
+  <text x="1016" y="1073.5" class="tool-desc">— 获取评估结果</text>
+  <rect x="816" y="1077" width="376" height="12" fill="#fef2f2"/>
+  <text x="824" y="1085.5" class="tool-name">get_test_case_result</text>
+  <text x="1016" y="1085.5" class="tool-desc">— 单用例详细结果</text>
+  <rect x="816" y="1089" width="376" height="12" fill="#ffffff"/>
+  <text x="824" y="1097.5" class="tool-name">get_report_data</text>
+  <text x="1016" y="1097.5" class="tool-desc">— 获取报告数据</text>
+  <rect x="816" y="1101" width="376" height="12" fill="#fef2f2"/>
+  <text x="824" y="1109.5" class="tool-name">publish_report</text>
+  <text x="1016" y="1109.5" class="tool-desc">— 发布报告(定稿)</text>
+  <rect x="816" y="1113" width="376" height="12" fill="#ffffff"/>
+  <text x="824" y="1121.5" class="tool-name">export_report</text>
+  <text x="1016" y="1121.5" class="tool-desc">— 导出报告</text>
+  <rect x="816" y="1125" width="376" height="12" fill="#fef2f2"/>
+  <text x="824" y="1133.5" class="tool-name">get_report_trend</text>
+  <text x="1016" y="1133.5" class="tool-desc">— 趋势数据</text>
+  <rect x="816" y="1137" width="376" height="12" fill="#ffffff"/>
+  <text x="824" y="1145.5" class="tool-name">get_case_averages</text>
+  <text x="1016" y="1145.5" class="tool-desc">— 用例平均分</text>
+  <rect x="48" y="1154" width="376" height="66" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="48" y="1154" width="376" height="18" rx="6" fill="#fee2e2"/>
+  <rect x="48" y="1166" width="376" height="6" fill="#fee2e2"/>
+  <text x="58" y="1167" class="lbl" fill="#991b1b">报告对比 (2)</text>
+  <rect x="48" y="1172" width="376" height="12" fill="#ffffff"/>
+  <text x="56" y="1180.5" class="tool-name">compare_reports</text>
+  <text x="248" y="1180.5" class="tool-desc">— 多报告对比</text>
+  <rect x="48" y="1184" width="376" height="12" fill="#fef2f2"/>
+  <text x="56" y="1192.5" class="tool-name">secondary_compare_reports</text>
+  <text x="248" y="1192.5" class="tool-desc">— 二次对比</text>
+  <rect x="432" y="1154" width="376" height="66" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="432" y="1154" width="376" height="18" rx="6" fill="#fee2e2"/>
+  <rect x="432" y="1166" width="376" height="6" fill="#fee2e2"/>
+  <text x="442" y="1167" class="lbl" fill="#991b1b">日志诊断 (4)</text>
+  <rect x="432" y="1172" width="376" height="12" fill="#ffffff"/>
+  <text x="440" y="1180.5" class="tool-name">search_logs</text>
+  <text x="632" y="1180.5" class="tool-desc">— 搜索日志</text>
+  <rect x="432" y="1184" width="376" height="12" fill="#fef2f2"/>
+  <text x="440" y="1192.5" class="tool-name">analyze_failure_logs</text>
+  <text x="632" y="1192.5" class="tool-desc">— LLM诊断</text>
+  <rect x="432" y="1196" width="376" height="12" fill="#ffffff"/>
+  <text x="440" y="1204.5" class="tool-name">export_logs</text>
+  <text x="632" y="1204.5" class="tool-desc">— 导出日志</text>
+  <rect x="432" y="1208" width="376" height="12" fill="#fef2f2"/>
+  <text x="440" y="1216.5" class="tool-name">archive_logs</text>
+  <text x="632" y="1216.5" class="tool-desc">— 归档旧日志</text>
+  <rect x="816" y="1154" width="376" height="66" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="816" y="1154" width="376" height="18" rx="6" fill="#fee2e2"/>
+  <rect x="816" y="1166" width="376" height="6" fill="#fee2e2"/>
+  <text x="826" y="1167" class="lbl" fill="#991b1b">系统概览 (2)</text>
+  <rect x="816" y="1172" width="376" height="12" fill="#ffffff"/>
+  <text x="824" y="1180.5" class="tool-name">get_home_stats</text>
+  <text x="1016" y="1180.5" class="tool-desc">— 首页统计</text>
+  <rect x="816" y="1184" width="376" height="12" fill="#fef2f2"/>
+  <text x="824" y="1192.5" class="tool-name">refresh_stats_cache</text>
+  <text x="1016" y="1192.5" class="tool-desc">— 刷新缓存</text>
+
+  <!-- Section 7 -->
+  <rect x="24" y="1227" width="1192" height="215" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1227" width="1192" height="32" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1253" width="1192" height="6" fill="#fee2e2"/>
+  <circle cx="46" cy="1243" r="11" fill="#dc2626"/>
+  <text x="46" y="1247" class="num-badge">7</text>
+  <text x="66" y="1248" class="sec-title" fill="#991b1b">设备驱动生成 — 核心机制 · 3 个工具 · 5 步工作流程 · 3 大系统</text>
+  <rect x="48" y="1267" width="660" height="171" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="60" y="1283" class="scn-title" fill="#991b1b">核心机制</text>
+  <text x="60" y="1297" class="body-xs">用户在 UiAutoDev 中选择关键 UI 元素 → 元素信息自动推送到对话面板</text>
+  <text x="60" y="1309" class="body-xs">→ LLM 基于元素信息(resource_id/xpath/text/class) 生成继承 BaseDeviceDriver 的驱动类</text>
+  <text x="60" y="1327" class="scn-title" fill="#991b1b">工具清单 (3 个)</text>
+  <text x="60" y="1341" class="tool-name">receive_picked_elements</text>
+  <text x="290" y="1341" class="tool-desc">— 接收 UiAutoDev 推送的选中元素，存入会话 State</text>
+  <text x="60" y="1354" class="tool-name">generate_driver_from_elements</text>
+  <text x="290" y="1354" class="tool-desc">— 基于元素信息 + 描述，LLM 生成驱动代码</text>
+  <text x="60" y="1367" class="tool-name">register_driver_to_factory</text>
+  <text x="290" y="1367" class="tool-desc">— 将生成的驱动注册到 DriverFactory</text>
+  <text x="60" y="1375" class="scn-title" fill="#991b1b">工作流程 (5 步)</text>
+  <text x="60" y="1397" class="body-xs"><tspan font-weight="700" fill="#dc2626">1.</tspan> 用户在 UiAutoDev 中连接设备，浏览 APP 界面</text>
+  <text x="60" y="1409" class="body-xs"><tspan font-weight="700" fill="#dc2626">2.</tspan> 用户在元素树中点选关键元素(录音按钮/结果文本等) → 元素卡片出现</text>
+  <text x="60" y="1421" class="body-xs"><tspan font-weight="700" fill="#dc2626">3.</tspan> 用户为每个卡片选择操作类型(点击/输入/提取/等待)</text>
+  <text x="60" y="1433" class="body-xs"><tspan font-weight="700" fill="#dc2626">4.</tspan> 用户点"发送" → LLM 收到所有元素卡片 → 生成驱动代码</text>
+  <text x="60" y="1445" class="body-xs"><tspan font-weight="700" fill="#dc2626">5.</tspan> 用户确认 → 代码写入文件 → 注册到 DriverFactory</text>
+  <rect x="720" y="1267" width="472" height="171" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="732" y="1283" class="scn-title" fill="#991b1b">支持的系统</text>
+  <rect x="728" y="1289" width="456" height="18" rx="4" fill="#fee2e2"/>
+  <text x="758" y="1301" class="lbl" fill="#991b1b" text-anchor="middle">系统</text>
+  <text x="818" y="1301" class="lbl" fill="#991b1b" text-anchor="middle">命令</text>
+  <text x="905" y="1301" class="lbl" fill="#991b1b" text-anchor="middle">UI 框架</text>
+  <text x="1070" y="1301" class="lbl" fill="#991b1b" text-anchor="middle">元素定位方式</text>
+  <rect x="728" y="1307" width="456" height="18" fill="#ffffff"/>
+  <text x="758" y="1319" class="body-s" text-anchor="middle">Android</text>
+  <text x="818" y="1319" class="mono-s" text-anchor="middle">adb</text>
+  <text x="905" y="1319" class="body-xs" text-anchor="middle">uiautomator2</text>
+  <text x="1070" y="1319" class="body-xs" text-anchor="middle">resource_id / xpath / text</text>
+  <rect x="728" y="1325" width="456" height="18" fill="#fef2f2"/>
+  <text x="758" y="1337" class="body-s" text-anchor="middle">HarmonyOS</text>
+  <text x="818" y="1337" class="mono-s" text-anchor="middle">hdc</text>
+  <text x="905" y="1337" class="body-xs" text-anchor="middle">hypium (UiDriver/By)</text>
+  <text x="1070" y="1337" class="body-xs" text-anchor="middle">By.text / By.id</text>
+  <rect x="728" y="1343" width="456" height="18" fill="#ffffff"/>
+  <text x="758" y="1355" class="body-s" text-anchor="middle">iOS</text>
+  <text x="818" y="1355" class="mono-s" text-anchor="middle">wda</text>
+  <text x="905" y="1355" class="body-xs" text-anchor="middle">facebook-wda</text>
+  <text x="1070" y="1355" class="body-xs" text-anchor="middle">name / label / value</text>
+  <text x="732" y="1369" class="scn-title" fill="#991b1b">典型场景</text>
+  <text x="732" y="1383" class="body-xs">用户: "帮我写豆包APP的Android驱动"</text>
+  <text x="732" y="1395" class="body-xs">UiAutoDev 选: 语音入口 → 录音 → 停止 → 结果文本</text>
+  <text x="732" y="1407" class="body-xs" fill="#16a34a">→ generate_driver_from_elements → 生成代码 → 注册</text>
+
+  <!-- Section 8 -->
+  <rect x="24" y="1447" width="1192" height="170" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1447" width="1192" height="32" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="1473" width="1192" height="6" fill="#dcfce7"/>
+  <circle cx="46" cy="1463" r="11" fill="#16a34a"/>
+  <text x="46" y="1467" class="num-badge">8</text>
+  <text x="66" y="1468" class="sec-title" fill="#166534">运行模式 — 交互模式 · Solo 模式 · 对比</text>
+  <rect x="48" y="1487" width="556" height="48" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="48" y="1487" width="4" height="48" rx="2" fill="#16a34a"/>
+  <text x="60" y="1501" class="scn-title">交互模式 — 每步确认</text>
+  <text x="60" y="1515" class="body-xs">用户: "根据标注自动生成用例" → Agent: "已读50条标注, 生成3用例, 确认?"</text>
+  <text x="60" y="1527" class="body-xs">→ 用户确认 → 执行 → "已创建, 继续测试吗?" → 每步关键操作前确认</text>
+  <rect x="616" y="1487" width="556" height="48" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="616" y="1487" width="4" height="48" rx="2" fill="#16a34a"/>
+  <text x="628" y="1501" class="scn-title">Solo 模式 — 自主跑完</text>
+  <text x="628" y="1515" class="body-xs">用户: "导入→生成→跑测试→出报告, 全程自动" → [Solo 启动]</text>
+  <text x="628" y="1527" class="body-xs">15轮: 标注→分类→用例→标签→check-in→任务→轮询→结果→分析→报告</text>
+  <rect x="48" y="1541" width="1124" height="68" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="48" y="1541" width="1124" height="16" rx="6" fill="#dcfce7"/>
+  <rect x="48" y="1551" width="1124" height="6" fill="#dcfce7"/>
+  <text x="128" y="1553" class="lbl" fill="#166534" text-anchor="middle">维度</text>
+  <text x="448" y="1553" class="lbl" fill="#166534" text-anchor="middle">交互模式</text>
+  <text x="848" y="1553" class="lbl" fill="#166534" text-anchor="middle">Solo 模式</text>
+  <line x1="208" y1="1541" x2="208" y2="1609" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="688" y1="1541" x2="688" y2="1609" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="48" y1="1557" x2="1172" y2="1557" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="56" y="1567" class="body-s" font-weight="600">确认频率</text>
+  <text x="216" y="1567" class="body-xs">每个关键操作前</text>
+  <text x="696" y="1567" class="body-xs">每 N 轮 check-in 一次</text>
+  <line x1="48" y1="1570" x2="1172" y2="1570" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1570" width="1124" height="13" fill="#f8fafc"/>
+  <text x="56" y="1580" class="body-s" font-weight="600">适用场景</text>
+  <text x="216" y="1580" class="body-xs">需要人把控的精细操作</text>
+  <text x="696" y="1580" class="body-xs">批量任务、重复流程</text>
+  <line x1="48" y1="1583" x2="1172" y2="1583" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="56" y="1593" class="body-s" font-weight="600">异常处理</text>
+  <text x="216" y="1593" class="body-xs">暂停等用户决策</text>
+  <text x="696" y="1593" class="body-xs">自动重试3次，超限暂停</text>
+  <line x1="48" y1="1596" x2="1172" y2="1596" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1596" width="1124" height="13" fill="#f8fafc"/>
+  <text x="56" y="1606" class="body-s" font-weight="600">最大循环</text>
+  <text x="216" y="1606" class="body-xs">不限</text>
+  <text x="696" y="1606" class="body-xs">50 轮(可配置)</text>
+
+  <!-- Section 9 -->
+  <rect x="24" y="1622" width="1192" height="115" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1622" width="1192" height="32" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1648" width="1192" height="6" fill="#e2e8f0"/>
+  <circle cx="46" cy="1638" r="11" fill="#64748b"/>
+  <text x="46" y="1642" class="num-badge">9</text>
+  <text x="66" y="1643" class="sec-title" fill="#334155">前端交互 — 对话面板 · 元素卡片交互</text>
+  <rect x="48" y="1662" width="680" height="71" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="48" y="1662" width="680" height="16" rx="6" fill="#f1f5f9"/>
+  <rect x="48" y="1672" width="680" height="6" fill="#f1f5f9"/>
+  <text x="58" y="1674" class="ui-title">对话面板 (6 大功能)</text>
+  <text x="58" y="1690" class="body-xs">• 自然语言对话 · SSE 流式输出(打字机效果)</text>
+  <text x="58" y="1704" class="body-xs">• 元素卡片(UiAutoDev选元素自动出现) · 确认面板(查看diff/确认/修改/取消)</text>
+  <text x="58" y="1718" class="body-xs">• 进度展示(Solo模式轮次进度) · 上下文状态(已读取标注/已创建用例等)</text>
+  <rect x="740" y="1662" width="452" height="71" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <rect x="740" y="1662" width="452" height="16" rx="6" fill="#f1f5f9"/>
+  <rect x="740" y="1672" width="452" height="6" fill="#f1f5f9"/>
+  <text x="750" y="1674" class="ui-title">元素卡片交互</text>
+  <text x="750" y="1690" class="mono-xs" fill="#334155">选中: 语音助手 | resource_id: com.xxx:id/voice_entry</text>
+  <text x="750" y="1702" class="mono-xs" fill="#334155">xpath: //Button[@text=&#39;语音助手&#39;] | bounds: [400,780,680,820]</text>
+  <text x="750" y="1716" class="body-xs" fill="#64748b">操作: [点击] [输入] [提取文本] [等待] → 发送</text>
+
+  <!-- Section 10 -->
+  <rect x="24" y="1742" width="1192" height="175" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1742" width="1192" height="32" rx="10" fill="#f3e8ff"/>
+  <rect x="24" y="1768" width="1192" height="6" fill="#f3e8ff"/>
+  <circle cx="46" cy="1758" r="11" fill="#7c3aed"/>
+  <text x="46" y="1762" class="num-badge">10</text>
+  <text x="66" y="1763" class="sec-title" fill="#5b21b6">上下文管理 — 5 层上下文管理策略</text>
+  <rect x="48" y="1782" width="1136" height="128" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="48" y="1782" width="1136" height="20" rx="6" fill="#f3e8ff"/>
+  <rect x="48" y="1796" width="1136" height="6" fill="#f3e8ff"/>
+  <text x="88" y="1796" class="lbl" fill="#5b21b6" text-anchor="middle">层</text>
+  <text x="250" y="1796" class="lbl" fill="#5b21b6" text-anchor="middle">机制</text>
+  <text x="700" y="1796" class="lbl" fill="#5b21b6" text-anchor="middle">作用</text>
+  <line x1="148" y1="1782" x2="148" y2="1910" stroke="#ddd6fe" stroke-width="0.5"/>
+  <line x1="408" y1="1782" x2="408" y2="1910" stroke="#ddd6fe" stroke-width="0.5"/>
+  <line x1="48" y1="1802" x2="1184" y2="1802" stroke="#ddd6fe" stroke-width="0.5"/>
+  <text x="88" y="1816" class="body-s" font-weight="700" fill="#7c3aed" text-anchor="middle">第1层</text>
+  <text x="156" y="1816" class="body-s" font-weight="600">工具结果压缩</text>
+  <text x="416" y="1816" class="body-xs">工具返回只保留摘要，完整数据存 State</text>
+  <line x1="48" y1="1823" x2="1184" y2="1823" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1823" width="1136" height="21" fill="#faf5ff"/>
+  <text x="88" y="1837" class="body-s" font-weight="700" fill="#7c3aed" text-anchor="middle">第2层</text>
+  <text x="156" y="1837" class="body-s" font-weight="600">State 分区存储</text>
+  <text x="416" y="1837" class="body-xs">结构化数据不进 messages，用独立字段承载</text>
+  <line x1="48" y1="1844" x2="1184" y2="1844" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="88" y="1858" class="body-s" font-weight="700" fill="#7c3aed" text-anchor="middle">第3层</text>
+  <text x="156" y="1858" class="body-s" font-weight="600">消息窗口策略</text>
+  <text x="416" y="1858" class="body-xs">对话历史只保留最近 5 轮 + 任务摘要</text>
+  <line x1="48" y1="1865" x2="1184" y2="1865" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1865" width="1136" height="21" fill="#faf5ff"/>
+  <text x="88" y="1879" class="body-s" font-weight="700" fill="#7c3aed" text-anchor="middle">第4层</text>
+  <text x="156" y="1879" class="body-s" font-weight="600">Checkpointer 持久化</text>
+  <text x="416" y="1879" class="body-xs">PostgreSQL 保存完整状态，进程重启可恢复</text>
+  <line x1="48" y1="1886" x2="1184" y2="1886" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="88" y="1900" class="body-s" font-weight="700" fill="#7c3aed" text-anchor="middle">第5层</text>
+  <text x="156" y="1900" class="body-s" font-weight="600">子图上下文隔离</text>
+  <text x="416" y="1900" class="body-xs">每个子 Agent 有独立 messages，压缩后返回主图</text>
+
+</svg>

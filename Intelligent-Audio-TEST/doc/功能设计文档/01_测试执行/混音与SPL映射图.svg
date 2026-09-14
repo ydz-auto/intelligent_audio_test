@@ -230,15 +230,15 @@
   <rect x="24" y="656" width="1192" height="12" fill="#fef3c7"/>
   <circle cx="46" cy="649" r="11" fill="#f59e0b"/>
   <text x="46" y="653" class="num-badge">3</text>
-  <text x="66" y="654" class="sec-title" fill="#92400e">核心组件 — AudioStreamOrchestrator + ApiRmsSplService</text>
+  <text x="66" y="654" class="sec-title" fill="#92400e">核心组件 — AudioStreamOrchestrator 路由 → RenderAudioFile / RenderAudioStream + ApiRmsSplService</text>
 
   <!-- Left: AudioStreamOrchestrator -->
   <rect x="48" y="680" width="560" height="88" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
   <rect x="48" y="680" width="560" height="24" rx="8" fill="#fef3c7"/>
-  <text x="60" y="696" class="box-name" fill="#92400e">AudioStreamOrchestrator  (audio_stream_orchestrator.py)</text>
-  <text x="60" y="716" class="body" font-size="9.5" font-weight="600">chunk_audio(audios_config, audio_loader, chunk_duration_ms=100,</text>
-  <text x="60" y="730" class="body" font-size="9.5">  api_id, rms_spl_mapping, background_noise, target_format) → list[str]</text>
-  <text x="60" y="746" class="box-desc" font-size="9">输出统一为 base64 PCM chunk 列表; 三种 executor 共用; DEFAULT_SAMPLE_RATE=24000, TARGET_RMS_DBFS=-30.0</text>
+  <text x="60" y="696" class="box-name" fill="#92400e">AudioStreamOrchestrator  (编排路由层)</text>
+  <text x="60" y="716" class="body" font-size="9.5" font-weight="600">route(device_type) → RenderAudioFile (unary) / RenderAudioStream (server-streaming)</text>
+  <text x="60" y="730" class="body" font-size="9.5">公共前置: _resolve_noise() + _apply_format_and_gain() (噪声合并 + 格式适配 + RMS/SPL)</text>
+  <text x="60" y="746" class="box-desc" font-size="9">非实时 → RenderAudioFile 整段混音 → 完整 PCM → POST; 流式/Realtime → RenderAudioStream 逐帧混音 → base64 chunk</text>
 
   <!-- Right: ApiRmsSplService -->
   <rect x="628" y="680" width="564" height="88" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>

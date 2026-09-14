@@ -430,7 +430,7 @@ class API(db.Model):
 > | `adapter_class` | 指定 adapter 类名，`APIAdapterFactory` 优先按此创建 |
 > | `audio_config` | JSON，含 `sample_rate` / `bit_depth` / `channels` / `format` / `chunk_duration_ms`，`AudioFormatAdapter` 依据此配置转换目标格式（缺省回退 24kHz / s16 / mono） |
 > | `output_types` | JSON，声明该 API 支持的输出类型 `["audio","text","video","image"]` |
-> | `rms_spl_mapping_id` | 外键 → `api_rms_spl_mappings.id`，供 `AudioStreamOrchestrator` 做 RMS 补偿 + SPL 增益 |
+> | `rms_spl_mapping_id` | 外键 → `api_rms_spl_mappings.id`，供 `AudioStreamOrchestrator._apply_format_and_gain()` 做 RMS 补偿 + SPL 增益 |
 >
 > 同时 `task_case_relations` 表新增 `device_type`、`device_id` 列，用于 `ExecutionEngine` 路由。
 

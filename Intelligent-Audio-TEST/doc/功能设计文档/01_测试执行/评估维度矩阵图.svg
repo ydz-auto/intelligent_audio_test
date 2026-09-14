@@ -89,17 +89,17 @@
 
   <!-- Row 3: 混音 -->
   <text x="56" y="235" class="body" font-weight="600">混音</text>
-  <text x="166" y="235" class="body" font-size="9.5">PyAudio callback</text>
-  <text x="424" y="235" class="body" font-size="9.5" fill="#94a3b8">不需要</text>
-  <text x="682" y="235" class="body" font-size="9.5">AudioStreamOrchestrator</text>
-  <text x="940" y="235" class="body" font-size="9.5">AudioStreamOrchestrator</text>
+  <text x="166" y="235" class="body" font-size="9.5">PyAudio callback 实时混音</text>
+  <text x="424" y="235" class="body" font-size="9.5">RenderAudioFile 整段混音</text>
+  <text x="682" y="235" class="body" font-size="9.5">RenderAudioStream 逐帧混音</text>
+  <text x="940" y="235" class="body" font-size="9.5">RenderAudioStream 逐帧混音</text>
   <line x1="48" y1="244" x2="1192" y2="244" stroke="#e2e8f0" stroke-width="0.5"/>
 
   <!-- Row 4: SPL映射 -->
   <rect x="48" y="244" width="1144" height="28" fill="#f8fafc"/>
   <text x="56" y="263" class="body" font-weight="600">SPL 映射</text>
   <text x="166" y="263" class="body" font-size="9.5">SPLMappingService (device)</text>
-  <text x="424" y="263" class="body" font-size="9.5" fill="#94a3b8">不涉及</text>
+  <text x="424" y="263" class="body" font-size="9.5">ApiRmsSplService (api_id)</text>
   <text x="682" y="263" class="body" font-size="9.5">ApiRmsSplService (api_id)</text>
   <text x="940" y="263" class="body" font-size="9.5">ApiRmsSplService (api_id)</text>
   <line x1="48" y1="272" x2="1192" y2="272" stroke="#e2e8f0" stroke-width="0.5"/>
@@ -133,9 +133,9 @@
   <rect x="48" y="356" width="1144" height="28" fill="#f8fafc"/>
   <text x="56" y="375" class="body" font-weight="600">噪声/干扰</text>
   <text x="166" y="375" class="body" font-size="9.5">物理音箱播放</text>
-  <text x="424" y="375" class="body" font-size="9.5" fill="#94a3b8">不支持</text>
-  <text x="682" y="375" class="body" font-size="9.5">混音后 SSE 流式推送</text>
-  <text x="940" y="375" class="body" font-size="9.5">混音后 WS 流式推送</text>
+  <text x="424" y="375" class="body" font-size="9.5">混入整段混音缓冲（整文件）</text>
+  <text x="682" y="375" class="body" font-size="9.5">混入逐帧混音缓冲（随 chunk 推送）</text>
+  <text x="940" y="375" class="body" font-size="9.5">混入逐帧混音缓冲（随 chunk 推送）</text>
   <line x1="48" y1="384" x2="1192" y2="384" stroke="#e2e8f0" stroke-width="0.5"/>
 
   <!-- Row 9: 延迟测量 -->

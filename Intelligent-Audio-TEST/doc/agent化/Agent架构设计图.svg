@@ -1,0 +1,662 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1920" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+<defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-purple { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowPurple); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowPurple); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .body-s { font-size: 9.5px; fill: #334155; }
+      .body-xs { font-size: 9px; fill: #475569; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .mono { font-family: Consolas, 'Courier New', monospace; font-size: 10px; font-weight: 600; }
+      .mono-s { font-family: Consolas, 'Courier New', monospace; font-size: 9px; }
+      .mono-xs { font-family: Consolas, 'Courier New', monospace; font-size: 8px; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .decision-t { font-size: 10px; font-weight: 600; fill: #1e293b; }
+      .tool-name { font-family: Consolas, 'Courier New', monospace; font-size: 8.5px; font-weight: 600; fill: #334155; }
+      .tool-desc { font-size: 8.5px; fill: #64748b; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">Agent 架构设计图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">技术选型 · 整体架构 · 数据流 · 系统集成 · 目录结构 · 核心代码 · 上下文管理 · Solo模式 · 沙盒安全 · 实施计划</text>
+
+  <!-- Section 1 -->
+  <rect x="24" y="80" width="1192" height="170" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="80" width="1192" height="32" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="106" width="1192" height="6" fill="#dbeafe"/>
+  <circle cx="46" cy="96" r="11" fill="#3b82f6"/>
+  <text x="46" y="100" class="num-badge">1</text>
+  <text x="66" y="101" class="sec-title" fill="#1e3a8a">技术选型 — 核心组件表 / 替代方案对比 / 依赖清单</text>
+  <rect x="48" y="118" width="560" height="124" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="118" width="560" height="20" rx="6" fill="#dbeafe"/>
+  <rect x="48" y="132" width="560" height="6" fill="#dbeafe"/>
+  <text x="130" y="132" class="lbl" fill="#1e3a8a" text-anchor="middle">组件</text>
+  <text x="300" y="132" class="lbl" fill="#1e3a8a" text-anchor="middle">选型</text>
+  <text x="480" y="132" class="lbl" fill="#1e3a8a" text-anchor="middle">理由</text>
+  <line x1="200" y1="118" x2="200" y2="242" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="400" y1="118" x2="400" y2="242" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="48" y1="138" x2="608" y2="138" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="138" width="560" height="14" fill="#ffffff"/>
+  <text x="56" y="148" class="body-s" fill="#1e293b" font-weight="600">Agent框架</text>
+  <text x="208" y="148" class="mono-xs" fill="#334155">LangGraph+langchain-openai</text>
+  <text x="408" y="148" class="body-xs" fill="#475569">2026事实标准,Supervisor成熟</text>
+  <line x1="48" y1="152" x2="608" y2="152" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="152" width="560" height="14" fill="#f8fafc"/>
+  <text x="56" y="162" class="body-s" fill="#1e293b" font-weight="600">LLM调用</text>
+  <text x="208" y="162" class="mono-xs" fill="#334155">langchain-openai(兼容)</text>
+  <text x="408" y="162" class="body-xs" fill="#475569">支持GPT-4o/Claude/GLM</text>
+  <line x1="48" y1="166" x2="608" y2="166" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="166" width="560" height="14" fill="#ffffff"/>
+  <text x="56" y="176" class="body-s" fill="#1e293b" font-weight="600">流式传输</text>
+  <text x="208" y="176" class="mono-xs" fill="#334155">SSE(Server-Sent Events)</text>
+  <text x="408" y="176" class="body-xs" fill="#475569">单向事件流,自动重连</text>
+  <line x1="48" y1="180" x2="608" y2="180" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="180" width="560" height="14" fill="#f8fafc"/>
+  <text x="56" y="190" class="body-s" fill="#1e293b" font-weight="600">状态持久化</text>
+  <text x="208" y="190" class="mono-xs" fill="#334155">PostgreSQL Checkpointer</text>
+  <text x="408" y="190" class="body-xs" fill="#475569">复用现有DB,重启不丢</text>
+  <line x1="48" y1="194" x2="608" y2="194" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="194" width="560" height="14" fill="#ffffff"/>
+  <text x="56" y="204" class="body-s" fill="#1e293b" font-weight="600">Human-in-loop</text>
+  <text x="208" y="204" class="mono-xs" fill="#334155">interrupt()+Command(resume)</text>
+  <text x="408" y="204" class="body-xs" fill="#475569">关键操作需用户确认</text>
+  <line x1="48" y1="208" x2="608" y2="208" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="208" width="560" height="14" fill="#f8fafc"/>
+  <text x="56" y="218" class="body-s" fill="#1e293b" font-weight="600">工具复用</text>
+  <text x="208" y="218" class="mono-xs" fill="#334155">调用Controller/Service层</text>
+  <text x="408" y="218" class="body-xs" fill="#475569">不直接操作DB,复用逻辑</text>
+  <line x1="48" y1="222" x2="608" y2="222" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="222" width="560" height="14" fill="#ffffff"/>
+  <text x="56" y="232" class="body-s" fill="#1e293b" font-weight="600">设备驱动生成</text>
+  <text x="208" y="232" class="mono-xs" fill="#334155">UiAutoDev+LLM代码生成</text>
+  <text x="408" y="232" class="body-xs" fill="#475569">用户选元素,AI写代码</text>
+  <line x1="48" y1="236" x2="608" y2="236" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="624" y="118" width="560" height="60" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="624" y="118" width="560" height="20" rx="6" fill="#dbeafe"/>
+  <rect x="624" y="132" width="560" height="6" fill="#dbeafe"/>
+  <text x="740" y="132" class="lbl" fill="#1e3a8a" text-anchor="middle">替代方案</text>
+  <text x="980" y="132" class="lbl" fill="#1e3a8a" text-anchor="middle">不选理由</text>
+  <line x1="860" y1="118" x2="860" y2="178" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="624" y1="138" x2="1184" y2="138" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="624" y="138" width="560" height="13" fill="#ffffff"/>
+  <text x="632" y="147" class="body-xs" fill="#334155" font-weight="600">自研轻量编排(Function Calling)</text>
+  <text x="868" y="147" class="body-xs" fill="#dc2626">工具61个,编排复杂,维护成本高</text>
+  <line x1="624" y1="151" x2="1184" y2="151" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="624" y="151" width="560" height="13" fill="#f8fafc"/>
+  <text x="632" y="160" class="body-xs" fill="#334155" font-weight="600">OpenAI Assistants API</text>
+  <text x="868" y="160" class="body-xs" fill="#dc2626">强绑定OpenAI,内网部署不兼容</text>
+  <line x1="624" y1="164" x2="1184" y2="164" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="624" y="164" width="560" height="13" fill="#ffffff"/>
+  <text x="632" y="173" class="body-xs" fill="#334155" font-weight="600">LangChain AgentExecutor</text>
+  <text x="868" y="173" class="body-xs" fill="#dc2626">无状态机,不支持Solo模式复杂流程</text>
+  <line x1="624" y1="177" x2="1184" y2="177" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="624" y="186" width="560" height="56" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="624" y="186" width="560" height="18" rx="6" fill="#dbeafe"/>
+  <rect x="624" y="198" width="560" height="6" fill="#dbeafe"/>
+  <text x="636" y="199" class="lbl" fill="#1e3a8a">依赖清单 (requirements 新增)</text>
+  <text x="636" y="216" class="mono-s" fill="#16a34a">langgraph>=0.2.0</text>
+  <text x="636" y="228" class="mono-s" fill="#16a34a">langchain-openai>=0.1.0</text>
+  <text x="636" y="240" class="mono-s" fill="#16a34a">langchain-core>=0.1.0</text>
+  <text x="636" y="252" class="mono-s" fill="#16a34a">langgraph-checkpoint-postgres>=0.1.0</text>
+
+  <!-- Section 2 -->
+  <rect x="24" y="260" width="1192" height="250" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="260" width="1192" height="32" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="286" width="1192" height="6" fill="#dcfce7"/>
+  <circle cx="46" cy="276" r="11" fill="#16a34a"/>
+  <text x="46" y="280" class="num-badge">2</text>
+  <text x="66" y="281" class="sec-title" fill="#166534">整体架构图 — 用户对话 → Flask SSE → StateGraph → Supervisor → 9子图 → SSE → 前端面板</text>
+  <rect x="48" y="296" width="280" height="20" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="188" y="310" class="box-name" fill="#1e293b" text-anchor="middle">用户对话</text>
+  <path d="M332,306 L396,306" class="flow"/>
+  <rect x="396" y="296" width="450" height="20" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="621" y="310" class="body-s" fill="#1e293b" text-anchor="middle">Flask SSE 端点 (POST /api/v1/agent/chat/stream)</text>
+  <path d="M621,316 L621,324" class="flow-green"/>
+  <rect x="300" y="326" width="592" height="18" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="596" y="339" class="box-name" fill="#1e293b" text-anchor="middle">LangGraph StateGraph (主图)</text>
+  <path d="M596,344 L596,352" class="flow-green"/>
+  <rect x="300" y="354" width="592" height="18" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="300" y="354" width="4" height="18" rx="2" fill="#16a34a"/>
+  <text x="596" y="367" class="body-s" fill="#166534" text-anchor="middle" font-weight="600">Supervisor 节点 (LLM 路由决策, Command goto=...)</text>
+  <path d="M596,372 L596,380" class="flow-green"/>
+  <rect x="48" y="382" width="360" height="18" rx="5" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="382" width="3" height="18" rx="1.5" fill="#3b82f6"/>
+  <text x="60" y="394" class="body-s" fill="#1e293b" font-weight="600">音频导入</text>
+  <text x="168" y="394" class="mono-xs" fill="#64748b">import_audio_from_url, upload_audio_with_annotations</text>
+  <rect x="430" y="382" width="360" height="18" rx="5" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="430" y="382" width="3" height="18" rx="1.5" fill="#3b82f6"/>
+  <text x="442" y="394" class="body-s" fill="#1e293b" font-weight="600">用例管理</text>
+  <text x="550" y="394" class="mono-xs" fill="#64748b">create_test_case, update_round_config</text>
+  <rect x="812" y="382" width="360" height="18" rx="5" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="812" y="382" width="3" height="18" rx="1.5" fill="#3b82f6"/>
+  <text x="824" y="394" class="body-s" fill="#1e293b" font-weight="600">任务执行</text>
+  <text x="932" y="394" class="mono-xs" fill="#64748b">create_task, retry_task, interrupt()</text>
+  <rect x="48" y="402" width="360" height="18" rx="5" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="48" y="402" width="3" height="18" rx="1.5" fill="#dc2626"/>
+  <text x="60" y="414" class="body-s" fill="#1e293b" font-weight="600">结果分析</text>
+  <text x="168" y="414" class="mono-xs" fill="#64748b">get_task_results, get_report_data</text>
+  <rect x="430" y="402" width="360" height="18" rx="5" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="430" y="402" width="3" height="18" rx="1.5" fill="#dc2626"/>
+  <text x="442" y="414" class="body-s" fill="#1e293b" font-weight="600">对比分析</text>
+  <text x="550" y="414" class="mono-xs" fill="#64748b">get_multi_task_results, compare_reports</text>
+  <rect x="812" y="402" width="360" height="18" rx="5" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="812" y="402" width="3" height="18" rx="1.5" fill="#16a34a"/>
+  <text x="824" y="414" class="body-s" fill="#1e293b" font-weight="600">设备驱动生成</text>
+  <text x="932" y="414" class="mono-xs" fill="#64748b">generate_driver_from_elements, register_driver</text>
+  <rect x="48" y="422" width="360" height="18" rx="5" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="422" width="3" height="18" rx="1.5" fill="#3b82f6"/>
+  <text x="60" y="434" class="body-s" fill="#1e293b" font-weight="600">日志诊断</text>
+  <text x="168" y="434" class="mono-xs" fill="#64748b">search_logs, analyze_failure_logs</text>
+  <rect x="430" y="422" width="360" height="18" rx="5" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="430" y="422" width="3" height="18" rx="1.5" fill="#f59e0b"/>
+  <text x="442" y="434" class="body-s" fill="#1e293b" font-weight="600">算法配置</text>
+  <text x="550" y="434" class="mono-xs" fill="#64748b">list_algorithm_definitions, reload_config</text>
+  <rect x="812" y="422" width="360" height="18" rx="5" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="812" y="422" width="3" height="18" rx="1.5" fill="#7c3aed"/>
+  <text x="824" y="434" class="body-s" fill="#1e293b" font-weight="600">check_in</text>
+  <text x="932" y="434" class="mono-xs" fill="#64748b">interrupt() → 继续/跳过/停止</text>
+  <path d="M596,442 L596,450" class="flow-green"/>
+  <rect x="300" y="452" width="592" height="18" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="596" y="465" class="body-s" fill="#166534" text-anchor="middle" font-weight="600">SSE 流式输出 (stream_mode=['messages', 'updates'])</text>
+  <path d="M596,470 L596,478" class="flow-green"/>
+  <rect x="300" y="480" width="592" height="20" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="300" y="480" width="4" height="20" rx="2" fill="#16a34a"/>
+  <text x="596" y="494" class="body-s" fill="#1e293b" text-anchor="middle">前端对话面板 (token打字机 / 节点状态 / 元素卡片 / interrupt弹窗)</text>
+
+  <!-- Section 3 -->
+  <rect x="24" y="520" width="1192" height="130" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="520" width="1192" height="32" rx="10" fill="#f3e8ff"/>
+  <rect x="24" y="546" width="1192" height="6" fill="#f3e8ff"/>
+  <circle cx="46" cy="536" r="11" fill="#7c3aed"/>
+  <text x="46" y="540" class="num-badge">3</text>
+  <text x="66" y="541" class="sec-title" fill="#5b21b6">数据流 — PostgreSQL ↔ Agent/Tools/LLM → Flask SSE → 前端; UiAutoDev → element-picked</text>
+  <rect x="440" y="556" width="360" height="24" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="620" y="572" class="body-s" fill="#5b21b6" text-anchor="middle" font-weight="600">PostgreSQL (Checkpointer)</text>
+  <path d="M520,580 L320,594" class="flow-purple"/>
+  <path d="M620,580 L620,594" class="flow-purple"/>
+  <path d="M720,580 L920,594" class="flow-purple"/>
+  <rect x="120" y="594" width="320" height="24" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="280" y="610" class="body-s" fill="#1e293b" text-anchor="middle" font-weight="600">Agent StateGraph</text>
+  <rect x="460" y="594" width="320" height="24" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="620" y="610" class="body-s" fill="#1e293b" text-anchor="middle" font-weight="600">Tools (61个)</text>
+  <rect x="800" y="594" width="320" height="24" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="960" y="610" class="body-s" fill="#1e293b" text-anchor="middle" font-weight="600">LLM Client</text>
+  <path d="M620,618 L620,630" class="flow-purple"/>
+  <rect x="340" y="630" width="560" height="18" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="620" y="643" class="body-s" fill="#5b21b6" text-anchor="middle" font-weight="600">Flask SSE Endpoint  /api/v1/agent/chat/stream</text>
+  <rect x="1000" y="556" width="210" height="24" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <text x="1105" y="572" class="body-s" fill="#854d0e" text-anchor="middle" font-weight="600">UiAutoDev</text>
+  <path d="M1000,580 L900,630" class="flow-amber"/>
+  <text x="420" y="590" class="note" fill="#64748b" text-anchor="middle">读写State</text>
+  <text x="620" y="590" class="note" fill="#64748b" text-anchor="middle">调用</text>
+  <text x="820" y="590" class="note" fill="#64748b" text-anchor="middle">调用</text>
+  <text x="965" y="590" class="note" fill="#f59e0b" text-anchor="middle">POST element-picked</text>
+
+  <!-- Section 4 -->
+  <rect x="24" y="660" width="1192" height="165" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="660" width="1192" height="32" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="686" width="1192" height="6" fill="#fef3c7"/>
+  <circle cx="46" cy="676" r="11" fill="#f59e0b"/>
+  <text x="46" y="680" class="num-badge">4</text>
+  <text x="66" y="681" class="sec-title" fill="#854d0e">和现有系统的集成 — 7 个现有组件的复用方式</text>
+  <rect x="48" y="698" width="1136" height="120" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="48" y="698" width="1136" height="20" rx="6" fill="#fef3c7"/>
+  <rect x="48" y="712" width="1136" height="6" fill="#fef3c7"/>
+  <text x="250" y="712" class="lbl" fill="#854d0e" text-anchor="middle">现有组件</text>
+  <text x="720" y="712" class="lbl" fill="#854d0e" text-anchor="middle">Agent 如何复用</text>
+  <line x1="452" y1="698" x2="452" y2="818" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="48" y1="718" x2="1184" y2="718" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="718" width="1136" height="14" fill="#ffffff"/>
+  <text x="56" y="728" class="body-s" fill="#1e293b" font-weight="600">15 个 Blueprint</text>
+  <text x="460" y="728" class="body-xs" fill="#16a34a">工具层调用对应的 Controller 方法（已有权限验证）</text>
+  <line x1="48" y1="732" x2="1184" y2="732" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="732" width="1136" height="14" fill="#fffbeb"/>
+  <text x="56" y="742" class="body-s" fill="#1e293b" font-weight="600">Service 层 (audio/device/evaluation/execution)</text>
+  <text x="460" y="742" class="body-xs" fill="#16a34a">工具直接调用 Service 方法，复用已有逻辑</text>
+  <line x1="48" y1="746" x2="1184" y2="746" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="746" width="1136" height="14" fill="#ffffff"/>
+  <text x="56" y="756" class="body-s" fill="#1e293b" font-weight="600">PostgreSQL</text>
+  <text x="460" y="756" class="body-xs" fill="#16a34a">Checkpointer 复用同一数据库，进程重启不丢状态</text>
+  <line x1="48" y1="760" x2="1184" y2="760" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="760" width="1136" height="14" fill="#fffbeb"/>
+  <text x="56" y="770" class="body-s" fill="#1e293b" font-weight="600">WebSocket (SocketIO)</text>
+  <text x="460" y="770" class="body-xs" fill="#16a34a">任务进度推送走 WebSocket，Agent 流式输出走 SSE</text>
+  <line x1="48" y1="774" x2="1184" y2="774" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="774" width="1136" height="14" fill="#ffffff"/>
+  <text x="56" y="784" class="body-s" fill="#1e293b" font-weight="600">sse_bp.py (未注册)</text>
+  <text x="460" y="784" class="body-xs" fill="#16a34a">激活用于 Agent SSE 输出端点</text>
+  <line x1="48" y1="788" x2="1184" y2="788" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="788" width="1136" height="14" fill="#fffbeb"/>
+  <text x="56" y="798" class="body-s" fill="#1e293b" font-weight="600">DriverFactory</text>
+  <text x="460" y="798" class="body-xs" fill="#16a34a">工具 register_driver_to_factory 直接调用注册</text>
+  <line x1="48" y1="802" x2="1184" y2="802" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="802" width="1136" height="14" fill="#ffffff"/>
+  <text x="56" y="812" class="body-s" fill="#1e293b" font-weight="600">EventManager</text>
+  <text x="460" y="812" class="body-xs" fill="#16a34a">Agent 通过 WebSocket 推送执行状态给前端</text>
+  <line x1="48" y1="816" x2="1184" y2="816" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Section 5 -->
+  <rect x="24" y="835" width="1192" height="195" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="835" width="1192" height="32" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="861" width="1192" height="6" fill="#fee2e2"/>
+  <circle cx="46" cy="851" r="11" fill="#dc2626"/>
+  <text x="46" y="855" class="num-badge">5</text>
+  <text x="66" y="856" class="sec-title" fill="#991b1b">目录结构 — backend/services/agent/ + llm/ + blueprints/ + frontend/</text>
+  <rect x="48" y="873" width="580" height="148" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="48" y="873" width="580" height="18" rx="6" fill="#fee2e2"/>
+  <rect x="48" y="885" width="580" height="6" fill="#fee2e2"/>
+  <text x="60" y="886" class="lbl" fill="#991b1b">backend/ — 后端目录结构</text>
+  <text x="56" y="895" class="mono-s" fill="#7c3aed" font-weight="600">services/agent/</text>
+  <text x="56" y="907.5" class="mono-xs" fill="#334155">  agent_orchestrator.py</text>
+  <text x="300" y="907.5" class="body-xs" fill="#64748b">主入口:LangGraph编排</text>
+  <text x="56" y="920.0" class="mono-xs" fill="#334155">  graph_builder.py</text>
+  <text x="300" y="920.0" class="body-xs" fill="#64748b">StateGraph构建</text>
+  <text x="56" y="932.5" class="mono-xs" fill="#334155">  state.py</text>
+  <text x="300" y="932.5" class="body-xs" fill="#64748b">AgentState定义</text>
+  <text x="56" y="945.0" class="mono-xs" fill="#334155">  tools/ (12个工具文件)</text>
+  <text x="300" y="945.0" class="body-xs" fill="#64748b">audio/testcase/tag/evaluation/task</text>
+  <text x="56" y="957.5" class="mono-xs" fill="#334155">  agents/ (9个Agent文件)</text>
+  <text x="300" y="957.5" class="body-xs" fill="#64748b">supervisor+8子图</text>
+  <text x="56" y="970.0" class="mono-xs" fill="#334155">  prompts/ (4个提示文件)</text>
+  <text x="300" y="970.0" class="body-xs" fill="#64748b">supervisor/testcase/analysis/codegen</text>
+  <text x="56" y="982.5" class="mono-s" fill="#7c3aed" font-weight="600">services/llm/</text>
+  <text x="56" y="995.0" class="mono-xs" fill="#334155">  llm_client.py + config.py</text>
+  <text x="300" y="995.0" class="body-xs" fill="#64748b">OpenAI兼容客户端封装</text>
+  <text x="56" y="1007.5" class="mono-xs" fill="#334155">blueprints/agent_bp.py</text>
+  <text x="300" y="1007.5" class="body-xs" fill="#64748b">Blueprint: /api/v1/agent</text>
+  <rect x="640" y="873" width="544" height="148" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="640" y="873" width="544" height="18" rx="6" fill="#fee2e2"/>
+  <rect x="640" y="885" width="544" height="6" fill="#fee2e2"/>
+  <text x="652" y="886" class="lbl" fill="#991b1b">frontend/ — 前端目录结构</text>
+  <text x="648" y="895" class="mono-s" fill="#7c3aed" font-weight="600">views/</text>
+  <text x="648" y="907.5" class="mono-xs" fill="#334155">  Agent.vue</text>
+  <text x="880" y="907.5" class="body-xs" fill="#64748b">对话面板主页面</text>
+  <text x="648" y="920.0" class="mono-s" fill="#7c3aed" font-weight="600">components/agent/</text>
+  <text x="648" y="932.5" class="mono-xs" fill="#334155">  ChatPanel.vue</text>
+  <text x="880" y="932.5" class="body-xs" fill="#64748b">对话区组件</text>
+  <text x="648" y="945.0" class="mono-xs" fill="#334155">  ElementCard.vue</text>
+  <text x="880" y="945.0" class="body-xs" fill="#64748b">UiAutoDev元素卡片</text>
+  <text x="648" y="957.5" class="mono-xs" fill="#334155">  ConfirmPanel.vue</text>
+  <text x="880" y="957.5" class="body-xs" fill="#64748b">interrupt确认弹窗</text>
+  <text x="648" y="970.0" class="mono-xs" fill="#334155">  SoloProgress.vue</text>
+  <text x="880" y="970.0" class="body-xs" fill="#64748b">Solo模式进度条</text>
+  <text x="648" y="982.5" class="mono-xs" fill="#334155">  ContextBar.vue</text>
+  <text x="880" y="982.5" class="body-xs" fill="#64748b">上下文状态栏</text>
+  <text x="648" y="995.0" class="mono-s" fill="#7c3aed" font-weight="600">composables/</text>
+  <text x="648" y="1007.5" class="mono-xs" fill="#334155">  useAgent.ts</text>
+  <text x="880" y="1007.5" class="body-xs" fill="#64748b">Agent对话逻辑(SSE接收)</text>
+  <text x="648" y="1020.0" class="mono-xs" fill="#334155">  useElementPicker.ts</text>
+  <text x="880" y="1020.0" class="body-xs" fill="#64748b">UiAutoDev元素接收(WebSocket)</text>
+  <text x="620" y="1028" class="note" fill="#64748b" text-anchor="middle">18 个新增文件 · backend 14 个 + frontend 4 个</text>
+
+  <!-- Section 6 -->
+  <rect x="24" y="1040" width="1192" height="240" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1040" width="1192" height="32" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="1066" width="1192" height="6" fill="#dbeafe"/>
+  <circle cx="46" cy="1056" r="11" fill="#3b82f6"/>
+  <text x="46" y="1060" class="num-badge">6</text>
+  <text x="66" y="1061" class="sec-title" fill="#1e3a8a">核心代码设计 — AgentState / Supervisor / 主图构建 / 工具 / 设备调试 / SSE端点</text>
+  <rect x="48" y="1078" width="560" height="60" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="1078" width="560" height="18" rx="6" fill="#dbeafe"/>
+  <rect x="48" y="1090" width="560" height="6" fill="#dbeafe"/>
+  <text x="60" y="1091" class="lbl" fill="#1e3a8a">AgentState 定义 (state.py)</text>
+  <text x="56" y="1106" class="mono-xs" fill="#2563eb">messages: Annotated[list, add_messages]</text>
+  <text x="56" y="1113" class="mono-xs" fill="#64748b">  # 对话历史(只放文本,不放工具返回大JSON)</text>
+  <text x="56" y="1120" class="mono-xs" fill="#16a34a">audio_annotations: dict    # 结构化数据区</text>
+  <text x="56" y="1127" class="mono-xs" fill="#16a34a">test_cases_created: list  # 不进LLM context</text>
+  <text x="56" y="1134" class="mono-xs" fill="#16a34a">task_id: int  |  task_results: dict</text>
+  <text x="56" y="1141" class="mono-xs" fill="#dc2626">iteration_count: int  |  solo_mode: bool  # 内部状态</text>
+  <rect x="624" y="1078" width="560" height="60" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="624" y="1078" width="560" height="18" rx="6" fill="#dbeafe"/>
+  <rect x="624" y="1090" width="560" height="6" fill="#dbeafe"/>
+  <text x="636" y="1091" class="lbl" fill="#1e3a8a">Supervisor 节点 (supervisor.py)</text>
+  <text x="632" y="1106" class="mono-xs" fill="#2563eb">def supervisor_node(state) -> Command:</text>
+  <text x="632" y="1113" class="mono-xs" fill="#64748b">  # 构建精简messages: 系统提示+任务摘要+最近5轮</text>
+  <text x="632" y="1120" class="mono-xs" fill="#334155">  system_prompt = SYSTEM_PROMPT</text>
+  <text x="632" y="1127" class="mono-xs" fill="#334155">  task_summary = _build_task_summary(state)</text>
+  <text x="632" y="1134" class="mono-xs" fill="#dc2626">  recent = state["messages"][-10:]  # 最近5轮</text>
+  <text x="632" y="1141" class="mono-xs" fill="#334155">  response = model.with_structured_output(Router)</text>
+  <text x="632" y="1148" class="mono-xs" fill="#16a34a">  return Command(goto=response["next"])  # or END</text>
+  <rect x="48" y="1146" width="560" height="60" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="1146" width="560" height="18" rx="6" fill="#dbeafe"/>
+  <rect x="48" y="1158" width="560" height="6" fill="#dbeafe"/>
+  <text x="60" y="1159" class="lbl" fill="#1e3a8a">主图构建 (graph_builder.py)</text>
+  <text x="56" y="1174" class="mono-xs" fill="#2563eb">def build_agent_graph(checkpointer):</text>
+  <text x="56" y="1181" class="mono-xs" fill="#334155">  builder = StateGraph(AgentState)</text>
+  <text x="56" y="1188" class="mono-xs" fill="#334155">  builder.add_node("supervisor", supervisor_node)</text>
+  <text x="56" y="1195" class="mono-xs" fill="#64748b">  # + 9个子图: audio/testcase/task/analysis/...</text>
+  <text x="56" y="1202" class="mono-xs" fill="#334155">  builder.add_node("check_in", check_in_node)</text>
+  <text x="56" y="1209" class="mono-xs" fill="#334155">  for node in [...9 nodes...]:</text>
+  <text x="56" y="1216" class="mono-xs" fill="#16a34a">    builder.add_edge(node, "supervisor")  # 回到Supervisor</text>
+  <text x="56" y="1223" class="mono-xs" fill="#dc2626">  return builder.compile(checkpointer=cp, recursion_limit=50)</text>
+  <rect x="624" y="1146" width="560" height="60" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="624" y="1146" width="560" height="18" rx="6" fill="#dbeafe"/>
+  <rect x="624" y="1158" width="560" height="6" fill="#dbeafe"/>
+  <text x="636" y="1159" class="lbl" fill="#1e3a8a">工具示例 (testcase_tools.py / codegen_tools.py)</text>
+  <text x="632" y="1174" class="mono-xs" fill="#7c3aed">@tool</text>
+  <text x="632" y="1181" class="mono-xs" fill="#2563eb">def create_test_case(name, algorithm_type, ...):</text>
+  <text x="632" y="1188" class="mono-xs" fill="#16a34a">  return TestCaseController.create(...)  # 复用Controller</text>
+  <text x="632" y="1195" class="mono-xs" fill="#7c3aed">@tool</text>
+  <text x="632" y="1202" class="mono-xs" fill="#2563eb">def generate_driver_from_elements(system, elements, ...):</text>
+  <text x="632" y="1209" class="mono-xs" fill="#16a34a">  code = llm_client.generate(...)  # LLM生成驱动代码</text>
+  <text x="632" y="1216" class="mono-xs" fill="#2563eb">@tool  def register_driver_to_factory(code, keywords, ...):</text>
+  <rect x="48" y="1214" width="560" height="55" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="48" y="1214" width="560" height="18" rx="6" fill="#dbeafe"/>
+  <rect x="48" y="1226" width="560" height="6" fill="#dbeafe"/>
+  <text x="60" y="1227" class="lbl" fill="#1e3a8a">设备驱动调试 (device_debug_tools.py) — 事件驱动模式</text>
+  <text x="56" y="1242" class="mono-xs" fill="#2563eb">@tool  def debug_execute_step(device_sn, action, ...):</text>
+  <text x="56" y="1249" class="mono-xs" fill="#334155">  result = httpx.post(lab_url+"/api/v1/device/execute", ...)</text>
+  <text x="56" y="1256" class="mono-xs" fill="#dc2626">  return {"screenshot": data["screenshot"]}  # base64 ~200KB</text>
+  <text x="56" y="1263" class="mono-xs" fill="#2563eb">@tool  def get_ui_element_at_point(device_sn, x, y):</text>
+  <text x="56" y="1270" class="mono-xs" fill="#16a34a">  return {"resource_id":..., "xpath":..., "text":...}</text>
+  <rect x="624" y="1214" width="560" height="55" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="624" y="1214" width="560" height="18" rx="6" fill="#dbeafe"/>
+  <rect x="624" y="1226" width="560" height="6" fill="#dbeafe"/>
+  <text x="636" y="1227" class="lbl" fill="#1e3a8a">Flask SSE 端点 (agent_bp.py)</text>
+  <text x="632" y="1242" class="mono-xs" fill="#2563eb">@agent_bp.route("/chat/stream")  # SSE流式对话</text>
+  <text x="632" y="1249" class="mono-xs" fill="#16a34a">  graph.stream(state, stream_mode=["messages","updates"])</text>
+  <text x="632" y="1256" class="mono-xs" fill="#2563eb">@agent_bp.route("/chat/resume")  # interrupt恢复</text>
+  <text x="632" y="1263" class="mono-xs" fill="#16a34a">  graph.stream(Command(resume=approval), ...)</text>
+  <text x="632" y="1270" class="mono-xs" fill="#2563eb">@agent_bp.route("/device/element-picked")  # UiAutoDev接收</text>
+
+  <!-- Section 7 -->
+  <rect x="24" y="1290" width="1192" height="175" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1290" width="1192" height="32" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="1316" width="1192" height="6" fill="#dcfce7"/>
+  <circle cx="46" cy="1306" r="11" fill="#16a34a"/>
+  <text x="46" y="1310" class="num-badge">7</text>
+  <text x="66" y="1311" class="sec-title" fill="#166534">上下文管理5层 — 工具压缩 / State分区 / 消息窗口 / Checkpointer / 子图隔离</text>
+  <rect x="48" y="1328" width="220" height="54" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="48" y="1328" width="3" height="54" rx="1.5" fill="#16a34a"/>
+  <text x="60" y="1342" class="body-xs" fill="#16a34a" font-weight="700">第1层</text>
+  <text x="60" y="1354" class="body-s" fill="#1e293b" font-weight="600">工具结果压缩</text>
+  <text x="60" y="1368" class="body-xs" fill="#64748b">完整数据存State</text>
+  <text x="60" y="1378" class="body-xs" fill="#64748b">messages只放摘要</text>
+  <path d="M268,1355 L274,1355" class="flow"/>
+  <rect x="276" y="1328" width="220" height="54" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="276" y="1328" width="3" height="54" rx="1.5" fill="#16a34a"/>
+  <text x="288" y="1342" class="body-xs" fill="#16a34a" font-weight="700">第2层</text>
+  <text x="288" y="1354" class="body-s" fill="#1e293b" font-weight="600">State分区存储</text>
+  <text x="288" y="1368" class="body-xs" fill="#64748b">结构化数据不进</text>
+  <text x="288" y="1378" class="body-xs" fill="#64748b">LLM context</text>
+  <path d="M496,1355 L502,1355" class="flow"/>
+  <rect x="504" y="1328" width="220" height="54" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="504" y="1328" width="3" height="54" rx="1.5" fill="#16a34a"/>
+  <text x="516" y="1342" class="body-xs" fill="#16a34a" font-weight="700">第3层</text>
+  <text x="516" y="1354" class="body-s" fill="#1e293b" font-weight="600">消息窗口策略</text>
+  <text x="516" y="1368" class="body-xs" fill="#64748b">最近5轮+系统提示</text>
+  <text x="516" y="1378" class="body-xs" fill="#64748b">+任务摘要</text>
+  <path d="M724,1355 L730,1355" class="flow"/>
+  <rect x="732" y="1328" width="220" height="54" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="732" y="1328" width="3" height="54" rx="1.5" fill="#16a34a"/>
+  <text x="744" y="1342" class="body-xs" fill="#16a34a" font-weight="700">第4层</text>
+  <text x="744" y="1354" class="body-s" fill="#1e293b" font-weight="600">Checkpointer持久化</text>
+  <text x="744" y="1368" class="body-xs" fill="#64748b">PostgreSQL保存</text>
+  <text x="744" y="1378" class="body-xs" fill="#64748b">进程重启可恢复</text>
+  <path d="M952,1355 L958,1355" class="flow"/>
+  <rect x="960" y="1328" width="220" height="54" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="960" y="1328" width="3" height="54" rx="1.5" fill="#16a34a"/>
+  <text x="972" y="1342" class="body-xs" fill="#16a34a" font-weight="700">第5层</text>
+  <text x="972" y="1354" class="body-s" fill="#1e293b" font-weight="600">子图上下文隔离</text>
+  <text x="972" y="1368" class="body-xs" fill="#64748b">独立messages</text>
+  <text x="972" y="1378" class="body-xs" fill="#64748b">压缩后返回主图</text>
+  <rect x="48" y="1390" width="1136" height="68" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="48" y="1390" width="1136" height="18" rx="6" fill="#dcfce7"/>
+  <rect x="48" y="1402" width="1136" height="6" fill="#dcfce7"/>
+  <text x="180" y="1403" class="lbl" fill="#166534" text-anchor="middle">场景</text>
+  <text x="460" y="1403" class="lbl" fill="#166534" text-anchor="middle">无管理</text>
+  <text x="740" y="1403" class="lbl" fill="#166534" text-anchor="middle">有管理</text>
+  <text x="1020" y="1403" class="lbl" fill="#166534" text-anchor="middle">效果</text>
+  <line x1="320" y1="1390" x2="320" y2="1458" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="600" y1="1390" x2="600" y2="1458" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="880" y1="1390" x2="880" y2="1458" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="48" y1="1408" x2="1184" y2="1408" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1408" width="1136" height="12" fill="#ffffff"/>
+  <text x="56" y="1417" class="body-xs" fill="#334155" font-weight="600">50条标注全量</text>
+  <text x="328" y="1417" class="body-xs" fill="#dc2626">~10万 token</text>
+  <text x="608" y="1417" class="body-xs" fill="#16a34a">~2千 token(摘要)</text>
+  <text x="888" y="1417" class="body-xs" fill="#2563eb">降50倍</text>
+  <line x1="48" y1="1420" x2="1184" y2="1420" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1420" width="1136" height="12" fill="#f8fafc"/>
+  <text x="56" y="1429" class="body-xs" fill="#334155" font-weight="600">5轮工具调用</text>
+  <text x="328" y="1429" class="body-xs" fill="#dc2626">~5万 token</text>
+  <text x="608" y="1429" class="body-xs" fill="#16a34a">~1万 token(只留最近5轮)</text>
+  <text x="888" y="1429" class="body-xs" fill="#2563eb">降5倍</text>
+  <line x1="48" y1="1432" x2="1184" y2="1432" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1432" width="1136" height="12" fill="#ffffff"/>
+  <text x="56" y="1441" class="body-xs" fill="#334155" font-weight="600">子图完整历史</text>
+  <text x="328" y="1441" class="body-xs" fill="#dc2626">累积传递</text>
+  <text x="608" y="1441" class="body-xs" fill="#16a34a">压缩后只返回1条</text>
+  <text x="888" y="1441" class="body-xs" fill="#2563eb">不爆context</text>
+  <line x1="48" y1="1444" x2="1184" y2="1444" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1444" width="1136" height="12" fill="#f8fafc"/>
+  <text x="56" y="1453" class="body-xs" fill="#334155" font-weight="600">长任务跨天续跑</text>
+  <text x="328" y="1453" class="body-xs" fill="#dc2626">丢失</text>
+  <text x="608" y="1453" class="body-xs" fill="#16a34a">Checkpointer完整恢复</text>
+  <text x="888" y="1453" class="body-xs" fill="#2563eb">零丢失</text>
+  <line x1="48" y1="1456" x2="1184" y2="1456" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Section 8 -->
+  <rect x="24" y="1475" width="1192" height="165" rx="10" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1475" width="1192" height="32" rx="10" fill="#f3e8ff"/>
+  <rect x="24" y="1501" width="1192" height="6" fill="#f3e8ff"/>
+  <circle cx="46" cy="1491" r="11" fill="#7c3aed"/>
+  <text x="46" y="1495" class="num-badge">8</text>
+  <text x="66" y="1496" class="sec-title" fill="#5b21b6">Solo模式 Loop 控制 — 三层保护 / 异常处理 / check_in节点 / 两种模式对比</text>
+  <rect x="48" y="1513" width="560" height="46" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="48" y="1513" width="560" height="18" rx="6" fill="#f3e8ff"/>
+  <rect x="48" y="1525" width="560" height="6" fill="#f3e8ff"/>
+  <text x="60" y="1526" class="lbl" fill="#5b21b6">三层保护机制</text>
+  <text x="60" y="1545" class="body-xs" fill="#7c3aed" font-weight="700">1. 递归上限</text>
+  <text x="180" y="1545" class="body-xs" fill="#475569">recursion_limit=50 (LangGraph内置)</text>
+  <text x="60" y="1556" class="body-xs" fill="#16a34a" font-weight="700">2. Supervisor判断退出</text>
+  <text x="180" y="1556" class="body-xs" fill="#475569">next=="FINISH" 或 iteration>=50 → END</text>
+  <text x="60" y="1567" class="body-xs" fill="#f59e0b" font-weight="700">3. 定期check-in</text>
+  <text x="180" y="1567" class="body-xs" fill="#475569">Solo模式每5轮 interrupt() 暂停汇报</text>
+  <rect x="624" y="1513" width="560" height="22" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="624" y="1513" width="560" height="18" rx="6" fill="#f3e8ff"/>
+  <rect x="624" y="1525" width="560" height="6" fill="#f3e8ff"/>
+  <text x="636" y="1526" class="lbl" fill="#5b21b6">异常处理</text>
+  <text x="636" y="1545" class="body-xs" fill="#dc2626">Solo: 自动重试3次→失败interrupt暂停</text>
+  <text x="636" y="1556" class="body-xs" fill="#2563eb">交互: interrupt暂停等用户决策(重试/取消)</text>
+  <rect x="624" y="1541" width="560" height="18" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="636" y="1554" class="body-xs" fill="#7c3aed" font-weight="600">check_in: interrupt({options:["继续","跳过后续确认","停止"]})</text>
+  <rect x="48" y="1565" width="1136" height="68" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <rect x="48" y="1565" width="1136" height="16" rx="6" fill="#f3e8ff"/>
+  <rect x="48" y="1575" width="1136" height="6" fill="#f3e8ff"/>
+  <text x="180" y="1577" class="lbl" fill="#5b21b6" text-anchor="middle">对比项</text>
+  <text x="440" y="1577" class="lbl" fill="#5b21b6" text-anchor="middle">交互模式</text>
+  <text x="740" y="1577" class="lbl" fill="#5b21b6" text-anchor="middle">Solo模式</text>
+  <text x="1020" y="1577" class="lbl" fill="#5b21b6" text-anchor="middle">说明</text>
+  <line x1="300" y1="1565" x2="300" y2="1633" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="600" y1="1565" x2="600" y2="1633" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="900" y1="1565" x2="900" y2="1633" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="48" y1="1581" x2="1184" y2="1581" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1581" width="1136" height="13" fill="#ffffff"/>
+  <text x="56" y="1590" class="body-xs" fill="#1e293b" font-weight="600">确认频率</text>
+  <text x="308" y="1590" class="body-xs" fill="#2563eb">每次操作前确认</text>
+  <text x="608" y="1590" class="body-xs" fill="#16a34a">每5轮check-in一次</text>
+  <text x="908" y="1590" class="body-xs" fill="#64748b">Solo减少打扰</text>
+  <line x1="48" y1="1594" x2="1184" y2="1594" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1594" width="1136" height="13" fill="#f8fafc"/>
+  <text x="56" y="1603" class="body-xs" fill="#1e293b" font-weight="600">适用场景</text>
+  <text x="308" y="1603" class="body-xs" fill="#2563eb">调试/首次配置</text>
+  <text x="608" y="1603" class="body-xs" fill="#16a34a">批量任务/无人值守</text>
+  <text x="908" y="1603" class="body-xs" fill="#64748b">场景互补</text>
+  <line x1="48" y1="1607" x2="1184" y2="1607" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1607" width="1136" height="13" fill="#ffffff"/>
+  <text x="56" y="1616" class="body-xs" fill="#1e293b" font-weight="600">异常处理</text>
+  <text x="308" y="1616" class="body-xs" fill="#2563eb">interrupt暂停等用户</text>
+  <text x="608" y="1616" class="body-xs" fill="#16a34a">自动重试3次后暂停</text>
+  <text x="908" y="1616" class="body-xs" fill="#64748b">Solo自愈</text>
+  <line x1="48" y1="1620" x2="1184" y2="1620" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1620" width="1136" height="13" fill="#f8fafc"/>
+  <text x="56" y="1629" class="body-xs" fill="#1e293b" font-weight="600">最大循环</text>
+  <text x="308" y="1629" class="body-xs" fill="#2563eb">无限制(每次确认)</text>
+  <text x="608" y="1629" class="body-xs" fill="#16a34a">50轮(recursion_limit)</text>
+  <text x="908" y="1629" class="body-xs" fill="#64748b">Solo有上限</text>
+  <line x1="48" y1="1633" x2="1184" y2="1633" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Section 9 -->
+  <rect x="24" y="1650" width="1192" height="175" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1650" width="1192" height="32" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="1676" width="1192" height="6" fill="#fef3c7"/>
+  <circle cx="46" cy="1666" r="11" fill="#f59e0b"/>
+  <text x="46" y="1670" class="num-badge">9</text>
+  <text x="66" y="1671" class="sec-title" fill="#854d0e">沙盒与安全(未来扩展) — 当前不需要 / 未来沙盒架构 / 安全策略矩阵</text>
+  <rect x="48" y="1688" width="360" height="46" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="48" y="1688" width="360" height="18" rx="6" fill="#fef3c7"/>
+  <rect x="48" y="1700" width="360" height="6" fill="#fef3c7"/>
+  <text x="60" y="1701" class="lbl" fill="#854d0e">当前阶段: 不需要沙盒</text>
+  <text x="60" y="1718" class="body-xs" fill="#16a34a">• 工具调Controller(已有权限验证)</text>
+  <text x="60" y="1728" class="body-xs" fill="#16a34a">• LLM只做文本生成,不执行代码</text>
+  <text x="60" y="1738" class="body-xs" fill="#16a34a">• 驱动代码由用户审批后写入</text>
+  <rect x="416" y="1688" width="380" height="46" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="416" y="1688" width="380" height="18" rx="6" fill="#fef3c7"/>
+  <rect x="416" y="1700" width="380" height="6" fill="#fef3c7"/>
+  <text x="428" y="1701" class="lbl" fill="#854d0e">未来沙盒架构</text>
+  <text x="428" y="1718" class="body-xs" fill="#854d0e">• AST静态检查: 禁止os/subprocess/eval/exec</text>
+  <text x="428" y="1728" class="body-xs" fill="#854d0e">• Docker容器隔离+资源限制(512MB/1CPU/60s)</text>
+  <text x="428" y="1738" class="body-xs" fill="#854d0e">• 设备白名单(ADB/HDC)+降级方案(subprocess)</text>
+  <rect x="804" y="1688" width="380" height="46" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="804" y="1688" width="380" height="18" rx="6" fill="#fef3c7"/>
+  <rect x="804" y="1700" width="380" height="6" fill="#fef3c7"/>
+  <text x="816" y="1701" class="lbl" fill="#854d0e">降级方案(无Docker环境)</text>
+  <text x="816" y="1718" class="body-xs" fill="#854d0e">ProcessRunner: 子进程+超时+限制</text>
+  <text x="816" y="1728" class="body-xs" fill="#64748b">env限制 + 静态检查前置</text>
+  <text x="816" y="1738" class="body-xs" fill="#dc2626">只允许adb/hdc系统命令</text>
+  <rect x="48" y="1742" width="1136" height="76" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="48" y="1742" width="1136" height="16" rx="6" fill="#fef3c7"/>
+  <rect x="48" y="1752" width="1136" height="6" fill="#fef3c7"/>
+  <text x="180" y="1754" class="lbl" fill="#854d0e" text-anchor="middle">操作</text>
+  <text x="440" y="1754" class="lbl" fill="#854d0e" text-anchor="middle">主进程</text>
+  <text x="740" y="1754" class="lbl" fill="#854d0e" text-anchor="middle">沙盒</text>
+  <text x="1020" y="1754" class="lbl" fill="#854d0e" text-anchor="middle">说明</text>
+  <line x1="300" y1="1742" x2="300" y2="1818" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="600" y1="1742" x2="600" y2="1818" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="900" y1="1742" x2="900" y2="1818" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="48" y1="1758" x2="1184" y2="1758" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1758" width="1136" height="10" fill="#ffffff"/>
+  <text x="56" y="1765" class="body-xs" fill="#1e293b" font-weight="600">调用现有API</text>
+  <text x="308" y="1765" class="body-xs" fill="#16a34a">直接调</text>
+  <text x="608" y="1765" class="body-xs" fill="#854d0e">不需要</text>
+  <text x="908" y="1765" class="body-xs" fill="#64748b">通过Controller层调用</text>
+  <line x1="48" y1="1768" x2="1184" y2="1768" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1768" width="1136" height="10" fill="#fffbeb"/>
+  <text x="56" y="1775" class="body-xs" fill="#1e293b" font-weight="600">执行生成代码</text>
+  <text x="308" y="1775" class="body-xs" fill="#dc2626">禁止</text>
+  <text x="608" y="1775" class="body-xs" fill="#854d0e">Docker沙盒</text>
+  <text x="908" y="1775" class="body-xs" fill="#64748b">驱动代码/测试脚本</text>
+  <line x1="48" y1="1778" x2="1184" y2="1778" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1778" width="1136" height="10" fill="#ffffff"/>
+  <text x="56" y="1785" class="body-xs" fill="#1e293b" font-weight="600">文件读写</text>
+  <text x="308" y="1785" class="body-xs" fill="#dc2626">受限</text>
+  <text x="608" y="1785" class="body-xs" fill="#854d0e">容器内(只写/tmp)</text>
+  <text x="908" y="1785" class="body-xs" fill="#64748b">隔离文件系统</text>
+  <line x1="48" y1="1788" x2="1184" y2="1788" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1788" width="1136" height="10" fill="#fffbeb"/>
+  <text x="56" y="1795" class="body-xs" fill="#1e293b" font-weight="600">网络访问</text>
+  <text x="308" y="1795" class="body-xs" fill="#16a34a">不限制</text>
+  <text x="608" y="1795" class="body-xs" fill="#854d0e">bridge隔离</text>
+  <text x="908" y="1795" class="body-xs" fill="#64748b">只访问ADB/HDC端口</text>
+  <line x1="48" y1="1798" x2="1184" y2="1798" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1798" width="1136" height="10" fill="#ffffff"/>
+  <text x="56" y="1805" class="body-xs" fill="#1e293b" font-weight="600">USB设备</text>
+  <text x="308" y="1805" class="body-xs" fill="#16a34a">不直接访问</text>
+  <text x="608" y="1805" class="body-xs" fill="#854d0e">设备白名单</text>
+  <text x="908" y="1805" class="body-xs" fill="#64748b">映射ADB/HDC端口</text>
+  <line x1="48" y1="1808" x2="1184" y2="1808" stroke="#e2e8f0" stroke-width="0.5"/>
+  <rect x="48" y="1808" width="1136" height="10" fill="#fffbeb"/>
+  <text x="56" y="1815" class="body-xs" fill="#1e293b" font-weight="600">系统命令</text>
+  <text x="308" y="1815" class="body-xs" fill="#dc2626">禁止</text>
+  <text x="608" y="1815" class="body-xs" fill="#854d0e">受限</text>
+  <text x="908" y="1815" class="body-xs" fill="#64748b">只允许adb/hdc</text>
+  <line x1="48" y1="1818" x2="1184" y2="1818" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Section 10 -->
+  <rect x="24" y="1835" width="1192" height="85" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1835" width="1192" height="32" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1861" width="1192" height="6" fill="#fee2e2"/>
+  <circle cx="46" cy="1851" r="11" fill="#dc2626"/>
+  <text x="46" y="1855" class="num-badge">10</text>
+  <text x="66" y="1856" class="sec-title" fill="#991b1b">实施计划 — P0→P1→P2→P3→P4→P5→P6 · 18个文件分阶段标注</text>
+  <rect x="48" y="1871" width="160" height="40" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="48" y="1871" width="160" height="14" rx="6" fill="#dc2626"/>
+  <text x="128.0" y="1882" class="num-badge" fill="#ffffff" text-anchor="middle">P0</text>
+  <text x="128.0" y="1895" class="body-xs" fill="#334155" text-anchor="middle">LLM客户端</text>
+  <text x="128.0" y="1903" class="body-xs" fill="#334155" text-anchor="middle">基础设施</text>
+  <text x="128.0" y="1911" class="body-xs" fill="#334155" text-anchor="middle">Supervisor</text>
+  <path d="M208,1891 L212,1891" class="flow"/>
+  <rect x="212" y="1871" width="160" height="40" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="212" y="1871" width="160" height="14" rx="6" fill="#2563eb"/>
+  <text x="292.0" y="1882" class="num-badge" fill="#ffffff" text-anchor="middle">P1</text>
+  <text x="292.0" y="1895" class="body-xs" fill="#334155" text-anchor="middle">用例管理</text>
+  <text x="292.0" y="1903" class="body-xs" fill="#334155" text-anchor="middle">Agent</text>
+  <path d="M372,1891 L376,1891" class="flow"/>
+  <rect x="376" y="1871" width="160" height="40" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="376" y="1871" width="160" height="14" rx="6" fill="#2563eb"/>
+  <text x="456.0" y="1882" class="num-badge" fill="#ffffff" text-anchor="middle">P2</text>
+  <text x="456.0" y="1895" class="body-xs" fill="#334155" text-anchor="middle">任务执行</text>
+  <text x="456.0" y="1903" class="body-xs" fill="#334155" text-anchor="middle">结果分析</text>
+  <path d="M536,1891 L540,1891" class="flow"/>
+  <rect x="540" y="1871" width="160" height="40" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="540" y="1871" width="160" height="14" rx="6" fill="#7c3aed"/>
+  <text x="620.0" y="1882" class="num-badge" fill="#ffffff" text-anchor="middle">P3</text>
+  <text x="620.0" y="1895" class="body-xs" fill="#334155" text-anchor="middle">设备驱动</text>
+  <text x="620.0" y="1903" class="body-xs" fill="#334155" text-anchor="middle">生成Agent</text>
+  <path d="M700,1891 L704,1891" class="flow"/>
+  <rect x="704" y="1871" width="160" height="40" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="704" y="1871" width="160" height="14" rx="6" fill="#16a34a"/>
+  <text x="784.0" y="1882" class="num-badge" fill="#ffffff" text-anchor="middle">P4</text>
+  <text x="784.0" y="1895" class="body-xs" fill="#334155" text-anchor="middle">Solo模式</text>
+  <text x="784.0" y="1903" class="body-xs" fill="#334155" text-anchor="middle">上下文优化</text>
+  <path d="M864,1891 L868,1891" class="flow"/>
+  <rect x="868" y="1871" width="160" height="40" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="868" y="1871" width="160" height="14" rx="6" fill="#f59e0b"/>
+  <text x="948.0" y="1882" class="num-badge" fill="#ffffff" text-anchor="middle">P5</text>
+  <text x="948.0" y="1895" class="body-xs" fill="#334155" text-anchor="middle">前端</text>
+  <text x="948.0" y="1903" class="body-xs" fill="#334155" text-anchor="middle">对话面板</text>
+  <path d="M1028,1891 L1032,1891" class="flow"/>
+  <rect x="1032" y="1871" width="160" height="40" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <rect x="1032" y="1871" width="160" height="14" rx="6" fill="#64748b"/>
+  <text x="1112.0" y="1882" class="num-badge" fill="#ffffff" text-anchor="middle">P6</text>
+  <text x="1112.0" y="1895" class="body-xs" fill="#334155" text-anchor="middle">日志诊断</text>
+  <text x="1112.0" y="1903" class="body-xs" fill="#334155" text-anchor="middle">算法配置</text>
+  <text x="1112.0" y="1911" class="body-xs" fill="#334155" text-anchor="middle">SPL Agent</text>
+  <text x="620" y="1916" class="note" fill="#64748b" text-anchor="middle">18个文件分阶段标注 · P0(5文件) → P1(2) → P2(2) → P3(3) → P4(0) → P5(3) → P6(3)</text>
+
+</svg>

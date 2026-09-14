@@ -51,9 +51,9 @@ Task "全量回归"
 | 被测设备类型 | Executor | 音频处理 | SPL 映射 | 调用模式 |
 |:---:|---|---|---|---|
 | 物理设备 | E2EExecutor | 物理播放 + PCM 抓取 | `device.spl_mapping_id` | — |
-| HTTP API（非实时） | APISessionExecutor | 混音 → 整文件 → POST | `api.rms_spl_mapping_id` | 非实时 |
-| HTTP API（流式） | APISessionExecutor | 混音 → chunk → SSE | `api.rms_spl_mapping_id` | 流式 |
-| WebSocket API | RealtimeSessionExecutor | 混音 → chunk → WS 全双工 | `api.rms_spl_mapping_id` | 流式 |
+| HTTP API（非实时） | APISessionExecutor | RenderAudioFile 整段混音 → 整文件 → POST | `api.rms_spl_mapping_id` | 非实时 |
+| HTTP API（流式） | APISessionExecutor | RenderAudioStream 逐帧混音 → chunk → SSE | `api.rms_spl_mapping_id` | 流式 |
+| WebSocket API | RealtimeSessionExecutor | RenderAudioStream 逐帧混音 → chunk → WS 全双工 | `api.rms_spl_mapping_id` | 流式 |
 
 ## 0.4 用例结构
 
@@ -226,7 +226,9 @@ class AdapterOutput:
                 → ApiRmsSplService.spl_to_gain(api_id, spl)
                 → 被测 API 灵敏度校准（DB 查 ApiRmsSplMapping）
                 → gain × 原始 RMS = 目标声压
-                → 混音 → chunk
+                → AudioStreamOrchestrator.route() 分发
+                → 非实时: RenderAudioFile 整段混音 → 整文件
+                → 流式/Realtime: RenderAudioStream 逐帧混音 → chunk
 ```
 
 ## 0.7 执行路由总流程图
@@ -251,16 +253,16 @@ class AdapterOutput:
   │ 物理播放+PCM   │   │ 调用模式?    │            │
   │ SPLMappingService│  ├── 非实时   │            │
   │ 查 device      │  │  → HttpAPIAdapter         │
-  │                │  │  → AudioStreamOrchestrator│
-  │ audio_driver   │  │    .chunk_audio()         │
+  │                │  │  → RenderAudioFile        │
+  │ audio_driver   │  │    整段混音 → 整文件      │
   │ callback 混音  │  │  → 整文件 HTTP POST       │
   │                │  │  → 等完整 JSON            │
   │ device_driver  │  │  → 输出: text/image       │
   │ AI说话检测(PCM │  │                           │
   │ RMS 轮询)      │  └── 流式                    │
   │                │      → HttpStreamAdapter     │
-  │ 录屏+UI检测    │      → AudioStreamOrchestrator│
-  └───────────────┘      │    .chunk_audio()      │
+  │ 录屏+UI检测    │      → RenderAudioStream     │
+  └───────────────┘      │   逐帧混音 → chunk     │
                          │      → chunk → SSE     │
                          │      → 实时输入/输出    │
                          │      → 输出: audio/text/│
@@ -279,12 +281,12 @@ class AdapterOutput:
                                           │ for each round:        │
                                           │   ├── 合并噪声配置      │
                                           │   │  (轮次级>全局)      │
-                                          │   ├── AudioStreamOrchestrator
-                                          │   │   .chunk_audio()   │
+                                          │   ├── RenderAudioStream │
+                                          │   │   逐帧流式混音       │
                                           │   │   → 有spl? → RMS补偿
                                           │   │     +SPL增益        │
-                                          │   │   → 混音(主讲+干扰+噪声)
-                                          │   │   → 切chunk         │
+                                          │   │   → 逐帧混音(主讲+干扰+噪声)
+                                          │   │   → 100ms chunk     │
                                           │   ├── adapter.send()×N │
                                           │   ├── adapter.commit() │
                                           │   ├── is_interruption? │
@@ -305,14 +307,14 @@ class AdapterOutput:
 | 维度 | HTTP API（非实时） | HTTP API（流式） | E2E | WebSocket API |
 |------|:---:|:---:|:---:|:---:|
 | 传输 | HTTP POST 请求/响应 | SSE 流式 | 物理播放 + PCM 抓取 | WebSocket 全双工流式 |
-| 混音 | AudioStreamOrchestrator 离线混音 | AudioStreamOrchestrator 离线混音 | PyAudio callback 实时混音 | AudioStreamOrchestrator 离线混音 |
+| 混音 | RenderAudioFile 整段混音（等所有音频齐了一次性混整段） | RenderAudioStream 逐帧流式混音（一边收 chunk 一边混） | PyAudio callback 实时混音 | RenderAudioStream 逐帧流式混音（一边收 chunk 一边混） |
 | 格式适配 | AudioFormatAdapter | AudioFormatAdapter | 声卡/驱动负责 | AudioFormatAdapter |
 | SPL 映射 | ApiRmsSplService (api_id→DB) | ApiRmsSplService (api_id→DB) | SPLMappingService (device→DB) | ApiRmsSplService (api_id→DB) |
 | SPL 未配置 | gain=1.0 原始 RMS 不变 | gain=1.0 原始 RMS 不变 | gain=1.0 | gain=1.0 原始 RMS 不变 |
 | AI 说话检测 | HTTP 响应判断 | SSE 事件驱动 | PCM RMS 轮询 + UI 控件 | WS 事件驱动 |
 | 打断检测 | 不支持 | 支持（SSE 事件） | RMS + sleep 延迟 | 支持（speech_started/cancelled） |
 | 多轮 | HTTP session_id | HTTP session_id | case 模式连续通话 | 同一 WebSocket 连接 |
-| 噪声/干扰 | 混入轮次混音缓冲（整文件） | 混入轮次混音缓冲 | 物理音箱播放 | 混入轮次混音缓冲 |
+| 噪声/干扰 | 混入整段混音缓冲（整文件） | 混入逐帧混音缓冲（随 chunk 推送） | 物理音箱播放 | 混入逐帧混音缓冲（随 chunk 推送） |
 | 延迟测量 | HTTP 响应时间 | SSE 首事件时间戳 | 录屏首帧 + 时间戳 | 事件时间戳精确到 ms |
 | 适配层 | HttpAPIAdapter | HttpStreamAdapter | device_driver | RealtimeAPIAdapter |
 | 执行器 | APISessionExecutor | APISessionExecutor | E2EExecutor | RealtimeSessionExecutor |

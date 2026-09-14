@@ -3,29 +3,32 @@
 > 版本：v1.1 | 日期：2026-09-10 | 状态：最终方案
 >
 > **v1.1 变更**：
-> 1. 修正：HTTP API（非实时 + 流式）**均支持混音**——非实时混音后整文件上传，流式混音后切片 SSE 推送，Realtime 混音后切片 WS 推送。三者共用同一套 `AudioStreamOrchestrator` 编排，仅消费方式不同。
+> 1. **重构：`AudioStreamOrchestrator` 作为编排路由层**——接收执行设备类型（device_type），路由到具体混音路径：
+>    - HTTP 非实时 → `RenderAudioFile`（unary）：整段混音 → 整文件 POST
+>    - HTTP 流式 / WebSocket Realtime → `RenderAudioStream`（server-streaming）：逐帧流式混音 → chunk SSE/WS 推送
+>    - E2E 物理设备 → `device_driver`：PyAudio callback 实时混音 → 物理播放
 > 2. 新增：**格式适配层**（`AudioFormatAdapter`）——不同被测 API 的采样率/位深/通道数不同，混音前统一适配到 `api.audio_config` 声明的目标格式（重采样 / 位深转换 / 上混下混）。
 
 ---
 
 ## 一、概述
 
-API 类测试（HTTP 非实时、HTTP 流式 SSE、Realtime WebSocket）需要将主讲人音频、干扰人音频、背景噪声**离线混音**后，按被测 API 要求的格式输出：
+API 类测试需要将主讲人音频、干扰人音频、背景噪声混音后，按被测 API 要求的格式输出。**由 `AudioStreamOrchestrator` 根据执行模式路由到三条混音路径**：
 
-| 被测设备 | 混音 | 混音产物 | 推送方式 |
-|---------|------|---------|---------|
-| HTTP API（非实时） | `AudioStreamOrchestrator` 离线混音 | 完整 PCM（包装为请求要求的格式） | 一次性 HTTP POST |
-| HTTP API（流式） | `AudioStreamOrchestrator` 离线混音 | base64 PCM chunk | SSE 逐 chunk 推送 |
-| WebSocket API（Realtime） | `AudioStreamOrchestrator` 离线混音 | base64 PCM chunk | WS 逐 chunk 推送 |
-| E2E 物理设备（对照） | `audio_driver` callback 实时混音 | int16 帧 → 声卡 | PyAudio 物理播放 |
+| 被测设备 | 混音路径 | 混音方式 | 混音产物 | 推送方式 |
+|---------|---------|---------|---------|---------|
+| HTTP API（非实时） | `RenderAudioFile`（unary RPC） | 整段混音 | 完整 PCM（包装为请求要求的格式） | 一次性 HTTP POST |
+| HTTP API（流式） | `RenderAudioStream`（server-streaming RPC） | 逐帧流式混音 | base64 PCM chunk | SSE 逐 chunk 推送 |
+| WebSocket API（Realtime） | `RenderAudioStream`（server-streaming RPC） | 逐帧流式混音 | base64 PCM chunk | WS 逐 chunk 推送 |
+| E2E 物理设备（对照） | `device_driver` | callback 实时混音 | int16 帧 → 声卡 | PyAudio 物理播放 |
 
-> **结论**：三种 API 模式的混音编排完全一致（同一 orchestrator、同一 6 步流程），差别只在**消费方式**——非实时拼接整文件，流式/Realtime 逐 chunk 推送。且混音前都要经过**格式适配**，统一到被测 API 要求的采样率/位深/通道数。
+> **结论**：三种 API 模式的混音**不是同一套流程**——非实时走 `RenderAudioFile`（等所有音频齐了一次性混整段），流式/Realtime 走 `RenderAudioStream`（一边收 chunk 一边逐帧混）。`AudioStreamOrchestrator` 只负责**路由编排**，把请求分发到正确的路径；混音前都要经过**格式适配**，统一到被测 API 要求的采样率/位深/通道数。
 
 ### 与 E2E 混音的区别
 
-| 维度 | E2E (audio_driver + spl_service) | API 类 (AudioStreamOrchestrator + ApiRmsSplService) |
+| 维度 | E2E (audio_driver + spl_service) | API 类 (Orchestrator + ApiRmsSplService) |
 |------|----------------------------------|-----------------------------------------------------|
-| 混音时机 | 实时（PyAudio callback 内逐帧混音） | 离线整段混音（执行中一次性混好整段） |
+| 混音时机 | 实时（PyAudio callback 内逐帧混音） | 非实时：整段混音（等所有音频齐了一次性混整段）；流式/Realtime：逐帧流式混音（一边收 chunk 一边混） |
 | 混音实现 | `_create_multi_callback` 内 `+=` 叠加 | `np.zeros` + `+=` 叠加（float32 缓冲） |
 | 格式适配 | 声卡格式（PyAudio 自动处理） | `AudioFormatAdapter` → `api.audio_config`（重采样/位深/通道） |
 | RMS 补偿 | `calculate_gain_compensation` (file→dBFS→gain) | `_rms_compensate` (bytes→numpy→dBFS→gain) |
@@ -141,37 +144,92 @@ class AudioFormatAdapter:
 
 ## 三、核心组件
 
-### 3.1 AudioStreamOrchestrator
+### 3.1 AudioStreamOrchestrator（编排路由层）
 
 > 文件：`backend/services/audio/audio_stream_orchestrator.py`
 
-负责多源音频的混音编排和切片输出，复用 `audio_timeline.calculate_speaker_aware_audio_delays()` 的时间轴算法。**HTTP 非实时 / HTTP 流式 / Realtime 三种 executor 共用**。
+负责**混音路径的编排路由**：接收执行设备类型（device_type），分发到具体混音路径。自身不直接实现混音，而是持有公共前置逻辑（噪声合并、格式适配、RMS/SPL 增益）并路由：
 
 ```python
 class AudioStreamOrchestrator:
     DEFAULT_SAMPLE_RATE = 24000   # api.audio_config 未配置时的回退值（OpenAI 兼容）
     DEFAULT_SAMPLE_WIDTH = 2      # 16bit
     TARGET_RMS_DBFS = -30.0       # 与 audio_driver.calculate_gain_compensation 一致
-    chunk_duration_ms = 100       # 默认切片时长
+    chunk_duration_ms = 100       # 流式切片时长（RenderAudioStream 用）
 
     @staticmethod
-    def chunk_audio(
-        audios_config: list,          # [{audio_id, type, delay, play_order, spl, ...}]
-        audio_loader,                 # 回调 (audio_id) -> bytes PCM
-        chunk_duration_ms=100,        # 切片时长
-        api_id=None,                 # 被测 API ID（查 RMS→SPL 映射）
-        rms_spl_mapping=None,        # 预加载的映射对象（可选）
-        background_noise=None,       # 噪声配置（已按优先级合并）
-        target_format=None,          # api.audio_config（目标格式，None → 默认 24k/s16/mono）
-    ) -> list[str]:                  # base64 PCM chunk 列表（统一输出，消费方式由 executor 决定）
+    def route(device_type: str, request) -> Response:
+        """编排路由：根据执行模式分发到具体混音路径
+        - device_type == 'http_api' 且 stream=False  → RenderAudioFile (unary)
+        - device_type == 'http_api' 且 stream=True   → RenderAudioStream (server-streaming)
+        - device_type == 'websocket_api'             → RenderAudioStream (server-streaming)
+        - device_type == 'physical'                  → device_driver（E2E，不经此处）
+        """
+
+    @staticmethod
+    def _resolve_noise(round_config, global_bg):
+        """公共前置：合并噪声配置（轮次级 > 全局级）"""
+
+    @staticmethod
+    def _apply_format_and_gain(sources, api, target_format):
+        """公共前置：格式适配 + RMS 补偿 + SPL 增益（两条 API 路径共用）"""
 ```
 
-> **输出统一为 base64 PCM chunk 列表**：
-> - Realtime executor：逐 chunk `adapter.send()` + sleep 模拟实时速率
-> - HTTP 流式 executor：逐 chunk SSE 推送
-> - HTTP 非实时 executor：拼接全部 chunk → 按 `container` 包装（wav/pcm）→ 一次性 POST
+### 3.2 RenderAudioFile（unary RPC — HTTP 非实时）
 
-### 3.2 ApiRmsSplService
+> 文件：`backend/services/audio/render_audio_file.py`
+
+**整段混音**：等所有音频齐了 → 一次性混整段 → 输出完整文件 → HTTP POST。
+
+```python
+class RenderAudioFile:
+    """HTTP 非实时混音 RPC（unary：请求 → 完整音频文件响应）
+
+    混音时机：执行中，等所有音频齐了 → 一次性混整段
+    混音产物：完整 PCM（包装为 api.audio_config.container 要求格式）
+    结果交付：一次性 HTTP POST，等完整 JSON 响应
+    """
+
+    def render(self, audios_config, audio_loader, background_noise,
+               api, target_format) -> bytes:
+        """整段混音流程：
+        Step 1  加载各源 PCM（主讲人 + 干扰人 + 噪声）
+        Step 2  格式适配（AudioFormatAdapter → api.audio_config）
+        Step 3  RMS 补偿 + SPL 增益（ApiRmsSplService）
+        Step 4  时间轴编排（speaker 感知交叠）
+        Step 5  整段混音叠加（float32 缓冲，一次性混完）
+        Step 6  整段量化输出（wav/pcm 包装，无切片）
+        """
+```
+
+### 3.3 RenderAudioStream（server-streaming RPC — HTTP 流式 / Realtime）
+
+> 文件：`backend/services/audio/render_audio_stream.py`
+
+**逐帧流式混音**：一边收 chunk 一边混 → 100ms chunk → SSE/WS 推送。
+
+```python
+class RenderAudioStream:
+    """流式混音 RPC（server-streaming：请求 → chunk 流式响应）
+
+    混音时机：执行中，一边收 chunk 一边逐帧混
+    混音产物：100ms base64 PCM chunk
+    结果交付：HTTP 流式 → SSE 逐 chunk 推送；Realtime → WS 逐 chunk 推送 + sleep 模拟实时速率
+    """
+
+    def render(self, audios_config, audio_loader, background_noise,
+               api, target_format) -> Iterator[str]:
+        """逐帧流式混音流程：
+        Step 1  加载各源 PCM
+        Step 2  格式适配（AudioFormatAdapter → api.audio_config）
+        Step 3  RMS 补偿 + SPL 增益（ApiRmsSplService）
+        Step 4  时间轴编排（计算 100ms 窗口边界）
+        Step 5  按 100ms 窗口逐帧混音（滑动窗口内叠加）
+        Step 6  逐窗口量化 → base64 PCM chunk → yield
+        """
+```
+
+### 3.4 ApiRmsSplService
 
 > 文件：`backend/services/audio/api_rms_spl_service.py`
 
@@ -210,7 +268,7 @@ class ApiRmsSplService:
 │    3. 两者都无 → 不混噪声                                    │
 │                                                              │
 │  合并后: background_noise = {audio_id, spl, loop, ...}       │
-│  → 传入 AudioStreamOrchestrator.chunk_audio()                │
+│  → AudioStreamOrchestrator 公共前置（噪声合并 + 格式适配 + 增益） │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -245,11 +303,15 @@ def _resolve_noise(self, round_config, global_bg):
 
 ---
 
-## 五、混音 6 步流程
+## 五、混音流程
+
+> **Step 1-4（加载 / 格式适配 / RMS+SPL / 时间轴）为 `RenderAudioFile` 与 `RenderAudioStream` 共用**；Step 5/6 按路径分叉：
+> - `RenderAudioFile`（HTTP 非实时）：整段混音 → 整段量化输出（wav/pcm 包装，无切片）
+> - `RenderAudioStream`（HTTP 流式 / Realtime）：100ms 窗口逐帧混音 → 逐窗口量化输出（base64 chunk）
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                 AudioStreamOrchestrator.chunk_audio()         │
+│          RenderAudioFile / RenderAudioStream 混音流程         │
 │                                                                │
 │  输入: audios_config = [                                       │
 │    {audio_id:1, type:'speaker',   spl:65, delay:0},           │
@@ -337,43 +399,49 @@ def _resolve_noise(self, round_config, global_bg):
 │  └─────────────────────────────────────────────────────────┘    │
 │                          │                                     │
 │                          ▼                                     │
-│  ┌─ Step 5: 混音叠加 — 按时间轴混入 float32 缓冲 ───────┐    │
-│  │  对每个 source:                                          │    │
-│  │    samples = int16 → float32（已在 Step 2 统一格式）    │    │
-│  │    samples *= gain_linear                               │    │
-│  │                                                          │    │
-│  │    if type == 'noise' and loop:                         │    │
-│  │      # 铺满整个混音缓冲                                  │    │
-│  │      for i in range(0, buf_len, len(noise_samples)):    │    │
-│  │        mix_buffer[i:end] += noise_samples[:chunk_len]   │    │
-│  │    else:                                                 │    │
-│  │      # 主讲人/干扰人/非循环噪声 → 按 start_time 混入    │    │
-│  │      start_sample = 16000 * start_ms / 1000              │    │
-│  │      mix_buffer[start:end] += samples                   │    │
-│  │                                                          │    │
-│  │  最终: mix_buffer = Σ (各源 × gain)                    │    │
-│  │  (立体声目标时按 interleaved 帧对齐混入)                │    │
-│  └─────────────────────────────────────────────────────────┘    │
+│  ┌─ Step 5A: 整段混音（RenderAudioFile 路径）────────────────┐  │
+│  │  mix_buffer = np.zeros(total_samples, dtype=float32)      │  │
+│  │  对每个 source:                                           │  │
+│  │    samples *= gain_linear                                │  │
+│  │    if type == 'noise' and loop:   # 铺满整个混音缓冲      │  │
+│  │      for i in range(0, buf_len, len(noise)):             │  │
+│  │        mix_buffer[i:end] += noise[:chunk_len]            │  │
+│  │    else:                   # 按 start_time 混入          │  │
+│  │      mix_buffer[start:end] += samples                    │  │
+│  │  mix_buffer = Σ (各源 × gain)  ← 一次性混完整段          │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │                          │                                     │
 │                          ▼                                     │
-│  ┌─ Step 6: 切片输出 — 按目标位深度化 → base64 chunk ───┐     │
-│  │  mix_buffer → np.clip(±满量程) → int16 量化             │     │
-│  │  chunk_samples = 16000 * 100ms / 1000 = 1600 samples   │     │
-│  │  chunk_bytes = 1600 * 2 = 3200 bytes                   │     │
-│  │                                                          │     │
-│  │  mix_buffer[0:1600]     → base64 → chunk_0              │     │
-│  │  mix_buffer[1600:3200]  → base64 → chunk_1             │     │
-│  │  ...                                                    │     │
-│  │  mix_buffer[-1600:]     → base64 → chunk_N             │     │
-│  │  (不足补零到 1600 samples)                              │     │
-│  └─────────────────────────────────────────────────────────┘    │
+│  ┌─ Step 5B: 逐帧流式混音（RenderAudioStream 路径）───────────┐ │
+│  │  按 100ms 滑动窗口推进:                                    │  │
+│  │  for w in range(0, total_samples, window_samples):        │  │
+│  │    window_buffer = np.zeros(window_samples, float32)      │  │
+│  │    for source:  # 窗口内取与 [w, w+window) 相交的片段叠加  │  │
+│  │      seg = source_samples[w : w+window] × gain            │  │
+│  │      window_buffer += seg                                 │  │
+│  │    yield Step 6 产物                                       │  │
+│  │  (一边收 chunk 一边混 — 窗口边界由 Step 4 时间轴决定)      │  │
+│  └───────────────────────────────────────────────────────────┘  │
 │                          │                                     │
 │                          ▼                                     │
-│  输出: [chunk_0, chunk_1, ..., chunk_N] (base64 PCM)          │
-│  → 消费方式由 executor 决定:                                   │
-│    - Realtime:  for chunk: adapter.send(chunk) + sleep         │
-│    - HTTP 流式: for chunk: SSE 推送                            │
-│    - HTTP 非实时: b''.join(decode(chunks)) → wav → POST        │
+│  ┌─ Step 6A: 整段量化输出（RenderAudioFile）──────────────────┐ │
+│  │  mix_buffer → np.clip(±满量程) → int16 量化                │  │
+│  │  → AudioFormatAdapter.wrap_container(wav/pcm)             │  │
+│  │  → 一次性 HTTP POST（无切片）                              │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                          │                                     │
+│                          ▼                                     │
+│  ┌─ Step 6B: 逐窗口量化输出（RenderAudioStream）──────────────┐ │
+│  │  各 100ms 窗口: np.clip → 量化 → base64 PCM chunk          │  │
+│  │  chunk_samples = 16000 * 100ms / 1000 = 1600 samples      │  │
+│  │  chunk_bytes    = 1600 * 2 = 3200 bytes                   │  │
+│  │  → yield [chunk_0, chunk_1, ..., chunk_N]                │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                          │                                     │
+│                          ▼                                     │
+│  输出交付（由 executor 决定）:                                  │
+│    - Realtime(HTTP 流式):  for chunk: SSE/WS 推送 + sleep      │
+│    - HTTP 非实时:          b''.join(decode(chunks)) → wav POST │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -463,8 +531,8 @@ def _execute_normal_round(self, adapter, round_config, ...):
     # 1. 合并噪声配置（轮次级 > 全局级）
     background_noise = self._resolve_noise(round_config, global_bg)
 
-    # 2. 混音 + 切片（含格式适配）
-    chunks = AudioStreamOrchestrator.chunk_audio(
+    # 2. 逐帧流式混音（RenderAudioStream：一边收 chunk 一边混）
+    chunks = RenderAudioStream.render(
         audios_config=round_config.get('audios', []),
         audio_loader=self._load_audio_fn(case_config),
         background_noise=background_noise,
@@ -492,9 +560,9 @@ def _execute_interruption_round(self, adapter, round_config, ...):
     # 2. 延迟（等 AI 说一会儿）
     time.sleep(round_config.get('interruption_delay_ms', 1000) / 1000)
 
-    # 3. 混音 + 切片（打断音频 + 噪声，含格式适配）
+    # 3. 逐帧流式混音（RenderAudioStream：一边收 chunk 一边混，打断音频 + 噪声）
     background_noise = self._resolve_noise(round_config, global_bg)
-    chunks = AudioStreamOrchestrator.chunk_audio(
+    chunks = RenderAudioStream.render(
         audios_config=round_config.get('audios', []),
         audio_loader=self._load_audio_fn(case_config),
         background_noise=background_noise,
@@ -528,8 +596,8 @@ def _execute_non_stream_round(self, adapter, round_config, ...):
     # 1. 合并噪声配置
     background_noise = self._resolve_noise(round_config, global_bg)
 
-    # 2. 混音 + 切片（与 Realtime 完全同一套编排）
-    chunks = AudioStreamOrchestrator.chunk_audio(
+    # 2. 整段混音（RenderAudioFile：等所有音频齐了一次性混整段）
+    pcm_bytes = RenderAudioFile.render(
         audios_config=round_config.get('audios', []),
         audio_loader=self._load_audio_fn(case_config),
         background_noise=background_noise,
@@ -537,8 +605,7 @@ def _execute_non_stream_round(self, adapter, round_config, ...):
         target_format=adapter.target_format,   # api.audio_config
     )
 
-    # 3. 整文件打包：chunks 拼接 → 按容器格式包装（wav/pcm）
-    pcm_bytes = b''.join(base64.b64decode(c) for c in chunks)
+    # 3. 整文件打包：完整 PCM → 按容器格式包装（wav/pcm）
     audio_payload = AudioFormatAdapter.wrap_container(
         pcm_bytes, adapter.target_format, container='wav')
 
@@ -554,8 +621,8 @@ def _execute_stream_round(self, adapter, round_config, ...):
     # 1. 合并噪声配置
     background_noise = self._resolve_noise(round_config, global_bg)
 
-    # 2. 混音 + 切片（同一套编排）
-    chunks = AudioStreamOrchestrator.chunk_audio(
+    # 2. 逐帧流式混音（RenderAudioStream：一边收 chunk 一边混）
+    chunks = RenderAudioStream.render(
         audios_config=round_config.get('audios', []),
         audio_loader=self._load_audio_fn(case_config),
         background_noise=background_noise,
@@ -574,7 +641,7 @@ def _execute_stream_round(self, adapter, round_config, ...):
     adapter.post_process(is_interruption=False)
 ```
 
-> **三种 executor 的差异只在消费方式**：`chunk_audio()` 之前的编排（噪声合并、格式适配、RMS/SPL、时间轴、混音）完全一致，无重复代码。
+> **两条 API 路径的差异在混音方式与交付**：非实时走 `RenderAudioFile`（unary RPC——等所有音频齐了一次性混整段 → 完整 PCM → 整文件 POST）；流式/Realtime 走 `RenderAudioStream`（server-streaming RPC——一边收 chunk 一边逐帧混 → 100ms chunk → SSE/WS 推送）。公共前置（噪声合并、格式适配、RMS/SPL、时间轴）由 `AudioStreamOrchestrator` 统一持有，无重复代码。
 
 ---
 
@@ -595,32 +662,45 @@ def _execute_stream_round(self, adapter, round_config, ...):
     _resolve_noise()  →  background_noise = 轮次级（优先）
           │
           ▼
-    AudioStreamOrchestrator.chunk_audio(target_format=api.audio_config)
+    AudioStreamOrchestrator.route(device_type)
+    （编排路由：接收执行设备类型 → 分发到具体混音路径）
           │
-          ├── Step 1: 加载 PCM（speaker + interferer + noise，源格式各异）
-          ├── Step 2: 格式适配（AudioFormatAdapter: 位深→重采样→上下混
-          │            统一到 16k/s16/mono）
-          ├── Step 3: RMS 补偿 + SPL 增益（查 api_id 的映射）
-          ├── Step 4: 时间轴编排（speaker 感知交叠）
-          ├── Step 5: 混音叠加（float32 buffer，目标采样率）
-          └── Step 6: 切片输出（按目标位深度化 → base64 PCM chunk）
-                    │
-                    ▼
-              [chunk_0, chunk_1, ..., chunk_N]
-                    │
-        ┌───────────┼───────────────┐
-        ▼           ▼               ▼
-  Realtime WS   HTTP SSE 流式   HTTP 非实时
-        │           │               │
-  for chunk:    for chunk:      b''.join(chunks)
-    adapter.send  SSE 推送        → wav 包装
-    sleep(100ms)                  → 一次性 POST
-        │           │               │
-        ▼           ▼               ▼
-  ws.send({type:      event:       multipart/form-data
-  "input_audio_       audio_chunk    (audio 文件字段)
-   buffer.append",    (base64)
-   audio: chunk})
+  ┌───────┼───────────────────────────────┐
+  ▼       ▼                               ▼
+http_api http_api stream=True          physical
+stream=False / websocket_api       (device_driver，E2E)
+  │       │                               │
+  ▼       ▼                               ▼
+RenderAudioFile.render           E2EExecutor（不经 Orchestrator）
+（unary RPC，整段混音）   RenderAudioStream.render   PyAudio callback
+  │       （server-streaming，逐帧流式混音）    实时混音 → 物理播放
+  │       │
+  │ 共用 Step 1-4: 加载 PCM / 格式适配 / RMS+SPL 增益 / 时间轴编排
+  │       │
+  ▼       ▼
+Step 5A: 整段混音      Step 5B: 逐帧流式混音
+（一次性混完整段）      （100ms 滑动窗口，一边收 chunk 一边混）
+  │       │
+  ▼       ▼
+Step 6A: 整段量化输出   Step 6B: 逐窗口量化输出
+（wav/pcm 包装）        （base64 PCM chunk）
+  │       │
+  ▼       ▼
+完整 PCM            [chunk_0, chunk_1, ..., chunk_N]
+  │                    │
+  ▼        ┌───────────┼───────────────┐
+wav 包装    ▼           ▼               ▼
+  │    Realtime WS   HTTP SSE 流式   HTTP 非实时
+  ▼        │           │               │
+一次性    for chunk:  for chunk:	  完整 PCM
+HTTP POST  adapter.send  SSE 推送      → wav 包装
+           sleep(100ms)  sleep(100ms)  → 一次性 POST
+                    │           │
+                    ▼           ▼
+              ws.send({type:   event:
+              "input_audio_    audio_chunk
+               buffer.append", (base64)
+               audio: chunk})
 ```
 
 ---
