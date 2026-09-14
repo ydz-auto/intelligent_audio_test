@@ -1,0 +1,117 @@
+Intelligent-Audio-TEST/frontend/src/components/algorithm/MappingEditor.vue
+  s_d41c8fecd14972::t_803a8f0ca8399a 358,364-373,377
+Intelligent-Audio-TEST/backend/controllers/audio_controller.py
+  s_4d9b8ad2d2a395::t_b22fd8b897b9a1 2313-2319,2326-2328
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  h_f411275616c284 85
+Intelligent-Audio-TEST/backend/services/execution/reevaluation_executor.py
+  s_cea0e762436d42::t_ad065145d3c6ac 514
+  s_cea0e762436d42::t_259941a7177d1c 662
+  s_cea0e762436d42::t_5d150645b68ae4 574
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_voice_llm.py
+  s_d104749a1ffae1::t_2bc82b8a4787b6 88-91,93-94,96-102,107-165
+  s_d104749a1ffae1::t_3ef63206d1c8a1 568
+  s_d104749a1ffae1::t_bbedbbd0f3e744 378-450,472-473,487,509-510,514,519,524,526,531-542,554
+  s_d104749a1ffae1::t_2c7ba81387a4c1 451-466,468-471,474-486,488-508
+  s_d104749a1ffae1::t_c265dbc0f4794b 95,103-106
+  s_d104749a1ffae1::t_3d1913f8ad7f1f 166-186,188
+  s_d104749a1ffae1::t_7db4b3f518a87f 571
+  s_d104749a1ffae1::t_0f03ced7441ffb 572-573
+  s_d104749a1ffae1::t_a64f62fc1bbe90 368-375,377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "9d52420acd86ea780f10e4095ed39bfdcea168fb",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_4d9b8ad2d2a395": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6aa7928814e3785356f7bdaa",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "operation_id": "6aa7932914e3785356f7bdf1",
+        "client_type": "ide",
+        "dedupe_key": "6aa7928814e3785356f7bdaa:6aa7932914e3785356f7bdf1:afterEdit:ccd205e6",
+        "edit_kind": "file_edit",
+        "tool_type": "agent",
+        "tool_id": "Edit",
+        "external_session_id": "6aa7928814e3785356f7bdaa",
+        "source_scene": "unknown",
+        "tool_use_id": "6aa7932914e3785356f7bdf1",
+        "runtime_client": "trae-tob-git-ai",
+        "session_id": "6aa7928814e3785356f7bdaa"
+      }
+    },
+    "s_cea0e762436d42": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6aa76ebe14e3785356f7bbc2",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "tool_id": "Edit",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "tool_type": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6aa76ebe14e3785356f7bbc2:6aa76fe314e3785356f7bc82:afterEdit:19ccfbf3",
+        "operation_id": "6aa76fe314e3785356f7bc82",
+        "external_session_id": "6aa76ebe14e3785356f7bbc2",
+        "source_scene": "unknown",
+        "tool_use_id": "6aa76fe314e3785356f7bc82",
+        "session_id": "6aa76ebe14e3785356f7bbc2"
+      }
+    },
+    "s_d104749a1ffae1": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6aa75f8614e3785356f7b919",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "tool_use_id": "6aa76dae14e3785356f7bbb8",
+        "runtime_client": "trae-tob-git-ai",
+        "session_id": "6aa75f8614e3785356f7b919",
+        "source_scene": "agent",
+        "tool_name": "Edit",
+        "operation_id": "6aa76dae14e3785356f7bbb8",
+        "external_session_id": "6aa75f8614e3785356f7b919",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "display_model_name": "deepseek-v4-flash1"
+      }
+    },
+    "s_d41c8fecd14972": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6aa7914a14e3785356f7bd14",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "session_id": "6aa7914a14e3785356f7bd14",
+        "source_scene": "unknown",
+        "dedupe_key": "6aa7914a14e3785356f7bd14:6aa7926914e3785356f7bda3:afterEdit:fb329acd",
+        "operation_id": "6aa7926914e3785356f7bda3",
+        "client_type": "ide",
+        "tool_use_id": "6aa7926914e3785356f7bda3",
+        "runtime_client": "trae-tob-git-ai",
+        "external_session_id": "6aa7914a14e3785356f7bd14",
+        "edit_kind": "file_edit",
+        "tool_id": "Edit",
+        "tool_type": "agent"
+      }
+    }
+  }
+}
