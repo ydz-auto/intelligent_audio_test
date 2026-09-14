@@ -1,0 +1,509 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 2350" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f97316"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowViolet); }
+      .flow-orange { stroke: #f97316; stroke-width: 1.6; fill: none; marker-end: url(#arrowOrange); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .cell { font-size: 8.5px; fill: #334155; }
+      .cell-s { font-size: 8px; fill: #64748b; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .step-t { font-size: 11px; font-weight: 600; fill: #1e3a8a; }
+      .step-d { font-size: 9.5px; fill: #64748b; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="2350" fill="#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">智能语音测试平台 · 新功能总览架构图</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">核心更新：用例统一 · 任务发布 · Agent 智能报告 · Benchmark 双轨排行 · 微服务化 · 网络跨区 · v1.1（方案评审）</text>
+
+  <!-- ============================================== -->
+  <!-- ① 六大功能域总览 (blue) y=80 h=340 -->
+  <!-- ============================================== -->
+  <rect x="24" y="80" width="1192" height="340" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="80" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="106" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="99" r="11" fill="#3b82f6"/>
+  <text x="46" y="103" class="num-badge">1</text>
+  <text x="66" y="104" class="sec-title" fill="#1e3a8a">六大功能域总览 — 从测试数据（用例）到执行、评估、报告、Benchmark、Agent 与跨区协同的完整能力地图</text>
+
+  <rect x="48" y="128" width="1144" height="26" fill="#dbeafe" rx="4"/>
+  <line x1="228" y1="128" x2="228" y2="382" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="568" y1="128" x2="568" y2="382" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="1008" y1="128" x2="1008" y2="382" stroke="#bfdbfe" stroke-width="0.5"/>
+  <text x="138" y="145" class="lbl" fill="#1e3a8a" text-anchor="middle">功能域</text>
+  <text x="398" y="145" class="lbl" fill="#1e3a8a" text-anchor="middle">核心价值</text>
+  <text x="788" y="145" class="lbl" fill="#1e3a8a" text-anchor="middle">关键输入（已有基础）</text>
+  <text x="1100" y="145" class="lbl" fill="#1e3a8a" text-anchor="middle">关键输出（本轮新增）</text>
+
+  <!-- Row A -->
+  <rect x="48" y="154" width="1144" height="38" fill="#f8fafc"/>
+  <text x="138" y="167" class="cell" font-weight="600" fill="#1e3a8a" text-anchor="middle">A. 测试执行</text>
+  <text x="138" y="180" class="cell-s" fill="#64748b" text-anchor="middle">+ 混音引擎 / SPL 映射</text>
+  <text x="398" y="167" class="cell" text-anchor="middle">多设备类型统一执行、流式推送</text>
+  <text x="398" y="180" class="cell-s" text-anchor="middle">混音编排 + SPL 对称映射 + 可重评估</text>
+  <text x="788" y="167" class="cell" text-anchor="middle">V9.7.31 微服务架构 / E2E·API·Realtime</text>
+  <text x="788" y="180" class="cell-s" text-anchor="middle">AudioStreamOrchestrator / 格式适配层</text>
+  <text x="1100" y="167" class="cell" font-weight="600" text-anchor="middle">设计完成</text>
+  <text x="1100" y="180" class="cell-s" text-anchor="middle">待实施</text>
+  <line x1="48" y1="192" x2="1192" y2="192" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row B -->
+  <text x="138" y="205" class="cell" font-weight="600" fill="#1e3a8a" text-anchor="middle">B. 任务管理</text>
+  <text x="138" y="218" class="cell-s" fill="#64748b" text-anchor="middle">发布 / 合并 / 导入导出</text>
+  <text x="398" y="205" class="cell" text-anchor="middle">任务全生命周期：可追溯、可回滚</text>
+  <text x="398" y="218" class="cell-s" text-anchor="middle">版本快照不可变</text>
+  <text x="788" y="205" class="cell" text-anchor="middle">V9.7.10 任务管理 / 合并设计</text>
+  <text x="788" y="218" class="cell-s" text-anchor="middle">/ 数据导入导出</text>
+  <text x="1100" y="205" class="cell" font-weight="600" text-anchor="middle">设计完成</text>
+  <text x="1100" y="218" class="cell-s" text-anchor="middle">待实施</text>
+  <line x1="48" y1="230" x2="1192" y2="230" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row C -->
+  <rect x="48" y="230" width="1144" height="38" fill="#f8fafc"/>
+  <text x="138" y="243" class="cell" font-weight="600" fill="#1e3a8a" text-anchor="middle">C. 用例管理</text>
+  <text x="138" y="256" class="cell-s" fill="#64748b" text-anchor="middle">纯数据用例</text>
+  <text x="398" y="243" class="cell" text-anchor="middle">用例不绑定执行方式，统一数据基础</text>
+  <text x="398" y="256" class="cell-s" text-anchor="middle">分组 / 标签 / 批量 / 导入导出 / 参考参数</text>
+  <text x="788" y="243" class="cell" text-anchor="middle">V9.7.10 用例管理 + 批量维度</text>
+  <text x="788" y="256" class="cell-s" text-anchor="middle">陆续已实现</text>
+  <text x="1100" y="243" class="cell" font-weight="600" text-anchor="middle">已有基线</text>
+  <text x="1100" y="256" class="cell-s" text-anchor="middle">待整合到统一基线</text>
+  <line x1="48" y1="268" x2="1192" y2="268" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row D -->
+  <text x="138" y="281" class="cell" font-weight="600" fill="#1e3a8a" text-anchor="middle">D. 报告管理</text>
+  <text x="138" y="294" class="cell-s" fill="#64748b" text-anchor="middle">+ Benchmark 排行</text>
+  <text x="398" y="281" class="cell" text-anchor="middle">报告对比 / 统计 / 导出 + 横向 Benchmark</text>
+  <text x="398" y="294" class="cell-s" text-anchor="middle">双轨制排行（实测 + 外部基线导入）</text>
+  <text x="788" y="281" class="cell" text-anchor="middle">V9.7.10 报告管理 / Benchmark 设计</text>
+  <text x="788" y="294" class="cell-s" text-anchor="middle">报告 7 表 / 异步生成</text>
+  <text x="1100" y="281" class="cell" font-weight="600" text-anchor="middle">设计完成</text>
+  <text x="1100" y="294" class="cell-s" text-anchor="middle">待实施</text>
+  <line x1="48" y1="306" x2="1192" y2="306" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row E -->
+  <rect x="48" y="306" width="1144" height="38" fill="#f8fafc"/>
+  <text x="138" y="319" class="cell" font-weight="600" fill="#1e3a8a" text-anchor="middle">E. Agent 化</text>
+  <text x="138" y="332" class="cell-s" fill="#64748b" text-anchor="middle">LLM + LangGraph</text>
+  <text x="398" y="319" class="cell" text-anchor="middle">自然语言驱动全流程，交互 + Solo 模式</text>
+  <text x="398" y="332" class="cell-s" text-anchor="middle">human-in-the-loop / UiAutoDev 驱动生成</text>
+  <text x="788" y="319" class="cell" text-anchor="middle">V9.7.10 agent化/ 三件套（功能/场景/技术）</text>
+  <text x="788" y="332" class="cell-s" text-anchor="middle">61 工具已有台账</text>
+  <text x="1100" y="319" class="cell" font-weight="600" text-anchor="middle">设计完成</text>
+  <text x="1100" y="332" class="cell-s" text-anchor="middle">待实施</text>
+  <line x1="48" y1="344" x2="1192" y2="344" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <!-- Row F -->
+  <text x="138" y="357" class="cell" font-weight="600" fill="#1e3a8a" text-anchor="middle">F. 微服务化</text>
+  <text x="138" y="370" class="cell-s" fill="#64748b" text-anchor="middle">+ 跨区网络传输</text>
+  <text x="398" y="357" class="cell" text-anchor="middle">三区（A/B/C）隔离部署、能力共享</text>
+  <text x="398" y="370" class="cell-s" text-anchor="middle">百 MB 级跨区传输、评估能力共享</text>
+  <text x="788" y="357" class="cell" text-anchor="middle">V9.7.31 服务拓扑 + 跨区方案</text>
+  <text x="788" y="370" class="cell-s" text-anchor="middle">11 服务 / transfer_agent</text>
+  <text x="1100" y="357" class="cell" font-weight="600" text-anchor="middle">方案定稿</text>
+  <text x="1100" y="370" class="cell-s" text-anchor="middle">待实施</text>
+
+  <rect x="48" y="390" width="1144" height="24" rx="6" fill="#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="620" y="406" text-anchor="middle" font-size="9.5" fill="#1e40af">评审焦点：六大功能域共享统一架构基线（DDD + CQRS + 事件驱动 + 微服务 + 配置化/enum 化）；实施遵循「先骨架后血肉、先单区后跨区、先手动后智能」</text>
+
+  <!-- ============================================== -->
+  <!-- ② 统一架构基线 (green) y=430 h=250 -->
+  <!-- ============================================== -->
+  <rect x="24" y="430" width="1192" height="250" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="430" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="456" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="449" r="11" fill="#16a34a"/>
+  <text x="46" y="453" class="num-badge">2</text>
+  <text x="66" y="454" class="sec-title" fill="#166534">统一架构基线 — 六大功能域必须遵守的地基（评审红线：enum 化 / 配置化 / 拒绝魔法数字与硬编码）</text>
+
+  <!-- Left: DDD 四层 -->
+  <text x="48" y="486" class="lbl" fill="#166534">DDD 四层纪律（前端）</text>
+  <rect x="48" y="494" width="560" height="34" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="60" y="509" class="body" font-size="9.5" font-weight="600" fill="#166534">Presentation</text>
+  <text x="148" y="509" class="box-desc" font-size="9">views/ + components/ — 只见 camelCase Domain + composables（Ports）</text>
+  <text x="60" y="522" class="box-desc" font-size="8.5" fill="#86efac">上层不得越过 Application 直接触达 Infrastructure · 铁律：先重构，再管消费方</text>
+  <rect x="48" y="530" width="560" height="30" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="60" y="549" class="body" font-size="9.5" font-weight="600" fill="#166534">Application</text>
+  <text x="148" y="549" class="box-desc" font-size="9">composables/ + store/ — 编排用例、缓存 ReadModel，只见 Domain</text>
+  <rect x="48" y="562" width="560" height="30" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="60" y="581" class="body" font-size="9.5" font-weight="600" fill="#166534">Domain</text>
+  <text x="148" y="581" class="box-desc" font-size="9">domain/model/ + enums.ts — camelCase、零依赖、无索引签名兜底</text>
+  <rect x="48" y="594" width="560" height="30" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="60" y="613" class="body" font-size="9.5" font-weight="600" fill="#166534">Infrastructure</text>
+  <text x="148" y="613" class="box-desc" font-size="9">api/ + adapters/ + dto/ + http/ — 唯一知道 snake_case 的层</text>
+  <rect x="48" y="628" width="560" height="42" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="60" y="644" class="body" font-size="9" font-weight="600" fill="#166534">后端分层对照</text>
+  <text x="130" y="644" class="box-desc" font-size="8.5">Flask Blueprint → Controller → Schema(Pydantic, AliasChoices 双命名兼容) → Model</text>
+  <text x="60" y="658" class="box-desc" font-size="9" fill="#166534">微服务间消费：gRPC + ACL 防腐层（仓储模式），不直连内部实现</text>
+
+  <!-- Right: CQRS / Event / Enum -->
+  <text x="628" y="486" class="lbl" fill="#166534">CQRS 读写分离</text>
+  <text x="628" y="500" class="box-desc" font-size="9">Command 侧：仅写，走事件发布（TASK_EVENTS 等），幂等、事务</text>
+  <text x="628" y="513" class="box-desc" font-size="9">Query 侧：仅读，缓存 ReadModel，不产生副作用；聚合可读写模型分离建模</text>
+
+  <line x1="628" y1="522" x2="1192" y2="522" stroke="#bbf7d0" stroke-width="0.5"/>
+
+  <text x="628" y="538" class="lbl" fill="#166534">事件驱动 — Redis EventBus 5 大频道</text>
+  <rect x="628" y="546" width="180" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="718" y="560" class="chip-t" fill="#166534">TASK_EVENTS</text>
+  <rect x="814" y="546" width="180" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="904" y="560" class="chip-t" fill="#166534">CASE_EVENTS</text>
+  <rect x="1000" y="546" width="180" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="1090" y="560" class="chip-t" fill="#166534">DEVICE_EVENTS</text>
+  <rect x="628" y="570" width="180" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="718" y="584" class="chip-t" fill="#166534">REPORT_EVENTS</text>
+  <rect x="814" y="570" width="180" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="904" y="584" class="chip-t" fill="#166534">CONFIG_EVENTS</text>
+  <text x="1000" y="584" class="chip-t" fill="#64748b" font-size="8.5">任务队列 task:queue</text>
+  <text x="628" y="602" class="box-desc" font-size="9">消息可靠性：跨区使用传输包协议（transfer_id / signature / ttl）幂等去重</text>
+  <text x="628" y="614" class="box-desc" font-size="9">当前规模不额外引入 MQ；未来超标再评估 Kafka / RabbitMQ</text>
+
+  <line x1="628" y1="621" x2="1192" y2="621" stroke="#bbf7d0" stroke-width="0.5"/>
+
+  <text x="628" y="637" class="lbl" fill="#166534">enum 化 / 配置化（评审红线）</text>
+  <rect x="628" y="645" width="270" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="763" y="659" class="chip-t" fill="#166534">DeviceType / TaskStatus</text>
+  <rect x="904" y="645" width="276" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="1042" y="659" class="chip-t" fill="#166534">TransferPackageType</text>
+  <rect x="628" y="669" width="270" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="763" y="683" class="chip-t" fill="#166534">PublishedTaskStatus</text>
+  <rect x="904" y="669" width="276" height="20" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="1042" y="683" class="chip-t" fill="#166534">APIProtocol / OutputType</text>
+
+  <!-- ============================================== -->
+  <!-- ③ 微服务部署 + 跨区网络拓扑 (amber) y=690 h=310 -->
+  <!-- ============================================== -->
+  <rect x="24" y="690" width="1192" height="310" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="690" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="716" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="709" r="11" fill="#f59e0b"/>
+  <text x="46" y="713" class="num-badge">3</text>
+  <text x="66" y="714" class="sec-title" fill="#92400e">微服务化（11 服务 · 端口集中管理 service_ports.py）+ 三区跨区网络传输（A↔B 双向 · B→C 单向 · A 与 C 不直连）</text>
+
+  <!-- Left: 11 services -->
+  <rect x="48" y="742" width="560" height="246" fill="#ffffff" rx="6" stroke="#fcd34d" stroke-width="1"/>
+  <rect x="48" y="742" width="560" height="22" rx="6" fill="#fef3c7"/>
+  <text x="60" y="757" class="box-name" fill="#92400e">11 个后端服务（端口集中管理 shared/config/service_ports.py）</text>
+
+  <text x="60" y="778" class="body" font-size="9" font-weight="600" fill="#92400e">01 gateway</text>
+  <text x="140" y="778" class="box-desc" font-size="8.5">统一入口 · 路由与鉴权</text>
+  <text x="60" y="793" class="body" font-size="9" font-weight="600" fill="#92400e">02 task_service</text>
+  <text x="140" y="793" class="box-desc" font-size="8.5">任务发布 / 合并 / 导入导出</text>
+  <text x="60" y="808" class="body" font-size="9" font-weight="600" fill="#92400e">03 e2e_test_service</text>
+  <text x="140" y="808" class="box-desc" font-size="8.5">端口 5002 · 物理设备执行</text>
+  <text x="60" y="823" class="body" font-size="9" font-weight="600" fill="#92400e">04 api_test_service</text>
+  <text x="140" y="823" class="box-desc" font-size="8.5">端口 5003 · 双副本 · Realtime 会话亲和</text>
+  <text x="60" y="838" class="body" font-size="9" font-weight="600" fill="#92400e">05 evaluation_service</text>
+  <text x="140" y="838" class="box-desc" font-size="8.5">评估维度计算 · xiaoyi_metrics</text>
+  <text x="60" y="853" class="body" font-size="9" font-weight="600" fill="#92400e">06 report_service</text>
+  <text x="140" y="853" class="box-desc" font-size="8.5">报告生成 / 对比 / Benchmark 排行</text>
+  <text x="60" y="868" class="body" font-size="9" font-weight="600" fill="#92400e">07 audio_service</text>
+  <text x="140" y="868" class="box-desc" font-size="8.5">音频与混音流 RenderAudioStream</text>
+  <text x="60" y="883" class="body" font-size="9" font-weight="600" fill="#92400e">08 device_service</text>
+  <text x="140" y="883" class="box-desc" font-size="8.5">设备认证 · SPL 映射</text>
+  <text x="60" y="898" class="body" font-size="9" font-weight="600" fill="#92400e">09 agent_service</text>
+  <text x="140" y="898" class="box-desc" font-size="8.5">LangGraph 编排 · SSE · Checkpointer</text>
+  <text x="60" y="913" class="body" font-size="9" font-weight="600" fill="#92400e">10 api_key_service</text>
+  <text x="140" y="913" class="box-desc" font-size="8.5">多厂商 API 适配 · 密钥</text>
+  <text x="60" y="928" class="body" font-size="9" font-weight="600" fill="#92400e">11 transfer_agent</text>
+  <text x="140" y="928" class="box-desc" font-size="8.5">T-A / T-B 双实例 · 跨区传输</text>
+  <text x="60" y="948" class="box-desc" font-size="8" fill="#92400e">跨服务通信统一 gRPC + ACL 仓储模式（api_test_service.proto / evaluation_service.proto / audio_service.proto 等）</text>
+  <text x="60" y="963" class="box-desc" font-size="8" fill="#92400e">多副本与实例亲和：api_test_service 双副本，Realtime WS 长连接实例内闭环 + 会话亲和路由</text>
+
+  <!-- Right: 三区拓扑 -->
+  <text x="628" y="742" class="lbl" fill="#92400e">三区拓扑</text>
+  <rect x="628" y="752" width="176" height="72" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="716" y="774" text-anchor="middle" class="box-name" fill="#92400e">A 区</text>
+  <text x="716" y="790" text-anchor="middle" class="box-desc" font-size="8.5">测试执行 + 任务</text>
+  <text x="716" y="802" text-anchor="middle" class="box-desc" font-size="8">transfer_agent T-A 锚点</text>
+
+  <rect x="846" y="752" width="176" height="72" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="934" y="774" text-anchor="middle" class="box-name" fill="#92400e">B 区</text>
+  <text x="934" y="790" text-anchor="middle" class="box-desc" font-size="8.5">评估中枢 + 报告</text>
+  <text x="934" y="802" text-anchor="middle" class="box-desc" font-size="8">transfer_agent T-B 锚点</text>
+
+  <rect x="1060" y="752" width="132" height="72" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="1126" y="774" text-anchor="middle" class="box-name" fill="#92400e">C 区</text>
+  <text x="1126" y="790" text-anchor="middle" class="box-desc" font-size="8.5">算法评估</text>
+  <text x="1126" y="802" text-anchor="middle" class="box-desc" font-size="8">能力共享</text>
+
+  <line x1="804" y1="788" x2="842" y2="788" class="flow-amber"/>
+  <line x1="842" y1="788" x2="804" y2="788" class="flow-amber"/>
+  <line x1="1022" y1="788" x2="1056" y2="788" class="flow-amber"/>
+
+  <rect x="628" y="834" width="564" height="24" rx="6" fill="#fffbeb" stroke="#fcd34d" stroke-width="1"/>
+  <text x="910" y="850" text-anchor="middle" class="chip-t" fill="#92400e">A 与 C 不直连 · B 作为评估中枢中转 · 百 MB 级数据跨区传输</text>
+
+  <text x="628" y="876" class="lbl" fill="#92400e">传输包协议（TransferPackageType）</text>  <text x="830" y="876" class="box-desc" font-size="8.5" fill="#a16207">6 类包类型 · transfer_id / signature / ttl 保证幂等</text>
+
+  <rect x="628" y="886" width="170" height="20" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <text x="713" y="900" class="chip-t" fill="#92400e">EVAL_REQUEST</text>
+  <rect x="806" y="886" width="170" height="20" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <text x="891" y="900" class="chip-t" fill="#92400e">EVAL_RESULT</text>
+  <rect x="984" y="886" width="170" height="20" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <text x="1069" y="900" class="chip-t" fill="#92400e">REPORT_SYNC</text>
+
+  <rect x="628" y="910" width="170" height="20" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <text x="713" y="924" class="chip-t" fill="#92400e">DATA_SYNC</text>
+  <rect x="806" y="910" width="170" height="20" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <text x="891" y="924" class="chip-t" fill="#92400e">C_REPORT</text>
+  <rect x="984" y="910" width="170" height="20" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <text x="1069" y="924" class="chip-t" fill="#92400e">C_RESULT</text>
+
+  <text x="628" y="948" class="box-desc" font-size="8.5" fill="#a16207">可靠性：4MB 分片 · 断点续传 · 指数退避重试 · 幂等去重（transfer_id）</text>
+  <text x="628" y="964" class="box-desc" font-size="8.5" fill="#a16207">5 层安全：网络隔离（专线/VPN/白名单）· 访问控制（密钥轮换）· 签名 HMAC · 内容校验 · 审计日志</text>
+  <text x="628" y="980" class="box-desc" font-size="8.5" fill="#a16207">B→C 三种适配：multipart 直传 · 特征提取降量 · 预签名 URL 中转</text>
+
+  <!-- ============================================== -->
+  <!-- ④ Agent 化 (violet) y=1010 h=330 -->
+  <!-- ============================================== -->
+  <rect x="24" y="1010" width="1192" height="330" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1010" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="1036" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="1029" r="11" fill="#7c3aed"/>
+  <text x="46" y="1033" class="num-badge">4</text>
+  <text x="66" y="1034" class="sec-title" fill="#5b21b6">Agent 化 — LLM + LangGraph：Supervisor + 8 子图 + 61 工具 · 交互（human-in-the-loop）与 Solo 双模式 · UiAutoDev 驱动生成</text>
+
+  <!-- Left: 编排架构 -->
+  <text x="48" y="1056" class="lbl" fill="#5b21b6">编排架构（agent_service）</text>
+  <rect x="48" y="1064" width="560" height="46" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="60" y="1082" class="box-name" fill="#5b21b6">Supervisor 总控</text>
+  <text x="150" y="1082" class="box-desc" font-size="8.5">意图路由 / 工具调用 / 决策状态机 REWIND · RETRY · FINALIZE</text>
+  <text x="60" y="1096" class="box-desc" font-size="8.5" fill="#8b5cf6">不直接跑业务动作，交由子图委派执行（与 all-tools-route 分离）</text>
+
+  <text x="48" y="1126" class="lbl" fill="#5b21b6">8 个子图（可复用路由）</text>
+  <rect x="48" y="1134" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="113" y="1149" class="chip-t" fill="#5b21b6">需求分析</text>
+  <rect x="182" y="1134" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="247" y="1149" class="chip-t" fill="#5b21b6">用例生成</text>
+  <rect x="316" y="1134" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="381" y="1149" class="chip-t" fill="#5b21b6">任务执行</text>
+  <rect x="450" y="1134" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="515" y="1149" class="chip-t" fill="#5b21b6">结果分析</text>
+
+  <rect x="48" y="1160" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="113" y="1175" class="chip-t" fill="#5b21b6">报告生成</text>
+  <rect x="182" y="1160" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="247" y="1175" class="chip-t" fill="#5b21b6">竞品分析</text>
+  <rect x="316" y="1160" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="381" y="1175" class="chip-t" fill="#5b21b6">调试修复</text>
+  <rect x="450" y="1160" width="130" height="22" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="515" y="1175" class="chip-t" fill="#5b21b6">回归验证</text>
+
+  <text x="48" y="1202" class="lbl" fill="#5b21b6">61 工具统一台账（分批灰度）</text>
+  <rect x="48" y="1210" width="130" height="20" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="113" y="1224" class="chip-t" fill="#5b21b6">用例/任务</text>
+  <rect x="182" y="1210" width="130" height="20" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="247" y="1224" class="chip-t" fill="#5b21b6">报告/Benchmark</text>
+  <rect x="316" y="1210" width="130" height="20" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="381" y="1224" class="chip-t" fill="#5b21b6">混音/音频</text>
+  <rect x="450" y="1210" width="130" height="20" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="515" y="1224" class="chip-t" fill="#5b21b6">设备/密钥</text>
+
+  <rect x="48" y="1234" width="130" height="20" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="113" y="1248" class="chip-t" fill="#5b21b6">调试/代码生成</text>
+  <rect x="182" y="1234" width="130" height="20" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="247" y="1248" class="chip-t" fill="#5b21b6">数据导入导出</text>
+  <rect x="316" y="1234" width="130" height="20" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="381" y="1248" class="chip-t" fill="#5b21b6">进度/交互控制</text>
+  <rect x="450" y="1234" width="130" height="20" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="515" y="1248" class="chip-t" fill="#5b21b6">区域传输</text>
+
+  <text x="48" y="1270" class="box-desc" font-size="8.5" fill="#6d28d9">SSE 流式输出 · Checkpointer 会话持久 · 工具参数注入（防注入）</text>
+  <text x="48" y="1286" class="box-desc" font-size="8.5" fill="#6d28d9">human-in-the-loop：敏感动作暂停人工确认 · 工具级权限（agent.tool.*）</text>
+
+  <!-- Right: 双模式 / 上下文 / UiAutoDev -->
+  <text x="628" y="1056" class="lbl" fill="#5b21b6">双运行模式</text>
+  <rect x="628" y="1064" width="270" height="56" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="763" y="1081" text-anchor="middle" class="box-name" fill="#5b21b6">交互模式</text>
+  <text x="763" y="1095" text-anchor="middle" class="box-desc" font-size="8.5">人机协作 · 每步确认 · STEP 状态控制</text>
+  <rect x="904" y="1064" width="276" height="56" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1042" y="1081" text-anchor="middle" class="box-name" fill="#5b21b6">Solo 模式</text>
+  <text x="1042" y="1095" text-anchor="middle" class="box-desc" font-size="8.5">既定目标自动完成 · 50 轮上限</text>
+
+  <text x="628" y="1138" class="lbl" fill="#5b21b6">5 层上下文注入</text>
+  <rect x="628" y="1146" width="180" height="20" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="718" y="1160" class="chip-t" fill="#5b21b6">对话上下文</text>
+  <rect x="814" y="1146" width="180" height="20" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="904" y="1160" class="chip-t" fill="#5b21b6">任务上下文</text>
+  <rect x="1000" y="1146" width="180" height="20" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1090" y="1160" class="chip-t" fill="#5b21b6">报告上下文</text>
+  <rect x="628" y="1170" width="180" height="20" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="718" y="1184" class="chip-t" fill="#5b21b6">平台上下文</text>
+  <rect x="814" y="1170" width="180" height="20" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="904" y="1184" class="chip-t" fill="#5b21b6">资源上下文</text>
+  <rect x="1000" y="1170" width="180" height="20" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="1090" y="1184" class="chip-t" fill="#5b21b6">系统提示词</text>
+
+  <text x="628" y="1210" class="lbl" fill="#5b21b6">生成式开发（UiAutoDev）</text>
+  <rect x="628" y="1218" width="564" height="36" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="640" y="1240" class="box-desc" font-size="8.5">自然语言 → 代码工程生成 · 自动创建所需子图与工具 · agent 实例可一键部署</text>
+
+  <text x="628" y="1270" class="box-desc" font-size="8.5" fill="#6d28d9">SSE 长连接：步骤事件 → 前端流式渲染 · 状态 idle / running / waiting_human / done / error</text>
+
+  <!-- ============================================== -->
+  <!-- ⑤ 数据资产闭环：Benchmark + 报告 · 用例 · 混音/SPL (red) y=1350 h=420 -->
+  <!-- ============================================== -->
+  <rect x="24" y="1350" width="1192" height="420" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1350" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1376" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1369" r="11" fill="#dc2626"/>
+  <text x="46" y="1373" class="num-badge">5</text>
+  <text x="66" y="1374" class="sec-title" fill="#991b1b">数据资产闭环 — D. 报告管理 + Benchmark 双轨排行 · C. 用例管理（纯数据用例）· A. 混音引擎 / SPL 映射（核心执行链路）</text>
+
+  <!-- Left: Benchmark 双轨制 -->
+  <text x="48" y="1408" class="lbl" fill="#991b1b">D. 报告 + Benchmark 双轨制（横向对比不再是孤岛）</text>
+  <rect x="48" y="1416" width="560" height="58" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="60" y="1434" class="box-name" fill="#991b1b">轨道一 · 平台实测</text>
+  <text x="155" y="1434" class="box-desc" font-size="8.5">正式任务发布时 snapshot_config 标记 benchmark: true</text>
+  <text x="60" y="1448" class="box-desc" font-size="8.5" fill="#ef4444">任务完成 → 实测数据自动上车排行（published_tasks 打标）</text>
+  <text x="60" y="1462" class="box-desc" font-size="8.5">新报告落库 → REPORT_EVENTS → 排行重算（增量）</text>
+  <rect x="48" y="1478" width="560" height="58" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="60" y="1496" class="box-name" fill="#991b1b">轨道二 · 外部基线导入</text>
+  <text x="155" y="1496" class="box-desc" font-size="8.5">benchmark_sources → benchmark_baselines 不可变版本快照</text>
+  <text x="60" y="1510" class="box-desc" font-size="8.5" fill="#ef4444">与实测同模型并存展示 · deltaExternal 对比计算</text>
+  <text x="60" y="1524" class="box-desc" font-size="8.5">导入解析：Excel/CSV/JSON → 校验 → 版本化存储</text>
+
+  <text x="48" y="1558" class="lbl" fill="#991b1b">排行算法（配置化）</text>
+  <rect x="48" y="1566" width="118" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="107" y="1580" class="chip-t" fill="#991b1b">rank</text>
+  <rect x="170" y="1566" width="118" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="229" y="1580" class="chip-t" fill="#991b1b">percentile</text>
+  <rect x="292" y="1566" width="118" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="351" y="1580" class="chip-t" fill="#991b1b">score100</text>
+  <rect x="414" y="1566" width="118" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="473" y="1580" class="chip-t" fill="#991b1b">gapBest</text>
+  <rect x="48" y="1590" width="118" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="107" y="1604" class="chip-t" fill="#991b1b">gapMedian</text>
+  <rect x="170" y="1590" width="118" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="229" y="1604" class="chip-t" fill="#991b1b">deltaExternal</text>
+  <text x="292" y="1604" class="box-desc" font-size="8.5" fill="#991b1b">+ 同模型实测 &amp; 导入并存展示</text>
+
+  <text x="48" y="1628" class="box-desc" font-size="8.5" fill="#991b1b">benchmark_metric_mappings 指标映射配置化 · 排行重算异步 + 进度轮询</text>
+  <rect x="48" y="1640" width="560" height="52" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="328" y="1660" text-anchor="middle" class="box-desc" font-size="8.5" font-weight="600" fill="#991b1b">触发链：任务发布（benchmark: true）→ Redis REPORT_EVENTS → 异步重算排行 → Benchmark 报告发布</text>
+  <text x="328" y="1676" text-anchor="middle" class="box-desc" font-size="8" fill="#ef4444">报告 7 表存储 · 异步生成 + 进度轮询 · 报告对比（taskIds）/ 二次对比（reportIds）· CSV 批量 / HTML 导出</text>
+
+  <!-- Right Top: 用例管理 -->
+  <text x="628" y="1408" class="lbl" fill="#991b1b">C. 用例管理 — 纯数据用例（config + algorithm_params）</text>
+  <rect x="628" y="1416" width="564" height="66" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="640" y="1434" class="box-desc" font-size="8.5" font-weight="600" fill="#991b1b">用例不绑定执行方式 · device_type 决定执行器</text>
+  <text x="640" y="1448" class="box-desc" font-size="8.5">physical → E2EExecutor · http_api → APISessionExecutor · websocket_api → RealtimeSessionExecutor</text>
+  <text x="640" y="1462" class="box-desc" font-size="8.5" fill="#ef4444">rounds[N].evaluation.dimensions 单轮 vs 顶层 config.dimensions 整体，二者不合并 · 软删除 · 参考参数 refresh_reference</text>
+  <text x="628" y="1498" class="lbl" fill="#991b1b">批量操作 POST /api/v1/testcases/batch · action 分发（14 种）</text>
+  <rect x="628" y="1506" width="132" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="694" y="1520" class="chip-t" fill="#991b1b">copy_by_group</text>
+  <rect x="764" y="1506" width="132" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="830" y="1520" class="chip-t" fill="#991b1b">move_to_group</text>
+  <rect x="900" y="1506" width="132" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="966" y="1520" class="chip-t" fill="#991b1b">update_spl</text>
+  <rect x="1036" y="1506" width="132" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1102" y="1520" class="chip-t" fill="#991b1b">update_noise</text>
+  <rect x="628" y="1530" width="132" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="694" y="1544" class="chip-t" fill="#991b1b">add_tags</text>
+  <rect x="764" y="1530" width="132" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="830" y="1544" class="chip-t" fill="#991b1b">remove_tags</text>
+  <rect x="900" y="1530" width="132" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="966" y="1544" class="chip-t" fill="#991b1b">rename_tag</text>
+  <rect x="1036" y="1530" width="132" height="20" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="1102" y="1544" class="chip-t" fill="#991b1b">refresh_reference</text>
+
+  <!-- Right Bottom: 混音/SPL -->
+  <text x="628" y="1582" class="lbl" fill="#991b1b">A. 混音引擎 + SPL 映射（音频执行核心链路）</text>
+  <rect x="628" y="1590" width="564" height="56" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="640" y="1608" class="box-desc" font-size="8.5" font-weight="600" fill="#991b1b">AudioStreamOrchestrator.route(device_type)</text>
+  <text x="640" y="1622" class="box-desc" font-size="8.5">RenderAudioFile 整段（非实时 base64）· RenderAudioStream 逐帧（流式 / Realtime 100ms 窗口）</text>
+  <text x="640" y="1636" class="box-desc" font-size="8.5" fill="#ef4444">AudioFormatAdapter 固定顺序：位深 → float32 归一化 → resample_poly 重采样 → 通道</text>
+  <rect x="628" y="1652" width="564" height="44" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="640" y="1670" class="box-desc" font-size="8.5" font-weight="600" fill="#991b1b">Speaker 感知交叠 · 噪声合并</text>
+  <text x="640" y="1684" class="box-desc" font-size="8.5">speakers_map 交集判断 · 噪声合并轮次级 &gt; 全局级 · 多轨 play_multi 同流混合（+=）· 压缩增益 RMS 补偿</text>
+  <rect x="628" y="1702" width="564" height="52" rx="6" fill="#ffffff" stroke="#fca5a5" stroke-width="1"/>
+  <text x="640" y="1720" class="box-desc" font-size="8.5" font-weight="600" fill="#991b1b">SPL 对称映射</text>
+  <text x="640" y="1734" class="box-desc" font-size="8.5">SPLMappingService（device → DB）· ApiRmsSplService（api_id → DB）· 双路径映射求解</text>
+  <text x="640" y="1748" class="box-desc" font-size="8.5" fill="#ef4444">无映射回退 _linear_approx gain=10^((target-65)/20) · 输出音量校准 · E2E / API / Realtime 对称统一</text>
+
+  <!-- ============================================== -->
+  <!-- ⑥ 实施路线 + 横切纪律 (slate) y=1780 h=380 -->
+  <!-- ============================================== -->
+  <rect x="24" y="1780" width="1192" height="380" rx="10" fill="#f8fafc" stroke="#334155" stroke-width="1.4" filter="url(#softShadow)"/>
+  <circle cx="60" cy="1820" r="14" fill="#334155"/>
+  <text x="60" y="1826" text-anchor="middle" class="num-badge" font-size="13" fill="#ffffff">⑥</text>
+  <text x="84" y="1826" class="sec-title" font-size="15" font-weight="700" fill="#334155">实施路线 + 横切纪律</text>
+
+  <!-- 四阶段路线 -->
+  <rect x="48" y="1868" width="600" height="64" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+  <text x="60" y="1890" class="lbl" font-size="10.5" font-weight="600" fill="#0f172a">P0 · 架构基线先行（单区）</text>
+  <text x="60" y="1908" class="box-desc" font-size="8.5" fill="#475569">DDD 四层落地 · CQRS 读写分离 · Redis 五频道 EventBus · gRPC + ACL 仓储</text>
+  <text x="60" y="1922" class="box-desc" font-size="8.5" fill="#475569">enum/配置化改造 · 指标接入 · CI 评审门禁（新功能必附设计文档）</text>
+
+  <rect x="48" y="1938" width="600" height="64" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+  <text x="60" y="1960" class="lbl" font-size="10.5" font-weight="600" fill="#0f172a">P1 · 核心域上量（含混音 / Benchmark）</text>
+  <text x="60" y="1978" class="box-desc" font-size="8.5" fill="#475569">用例管理（纯数据 + 14 种批量 action · device_type 决定执行器）</text>
+  <text x="60" y="1992" class="box-desc" font-size="8.5" fill="#475569">混音/SPL 对称映射接入 · Benchmark 双轨（实测 + 外部基线）· 报告 7 表对比导出</text>
+
+  <rect x="48" y="2008" width="600" height="64" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+  <text x="60" y="2030" class="lbl" font-size="10.5" font-weight="600" fill="#0f172a">P2 · Agent 化（任务 / 用例 / 报告 / 排障）</text>
+  <text x="60" y="2048" class="box-desc" font-size="8.5" fill="#475569">LangGraph Supervisor + 8 子图 + 61 工具 · NL → 任务/用例生成</text>
+  <text x="60" y="2062" class="box-desc" font-size="8.5" fill="#475569">执行器编排（E2E / API Session / Realtime Session）· 排障自动归因</text>
+
+  <rect x="48" y="2078" width="600" height="64" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+  <text x="60" y="2100" class="lbl" font-size="10.5" font-weight="600" fill="#0f172a">P3 · 微服务化 + 跨区传输</text>
+  <text x="60" y="2118" class="box-desc" font-size="8.5" fill="#475569">11 服务单体演进拆分 · 三区部署（T-B 主备切换）· 灰度切流</text>
+  <text x="60" y="2132" class="box-desc" font-size="8.5" fill="#475569">transfer_agent T-A &lt;-&gt; T-B 断点续传 · 数据最终一致（ETag / 分块 / 校验）</text>
+
+  <!-- 横切纪律 -->
+  <text x="668" y="1892" class="lbl" font-size="10.5" font-weight="600" fill="#0f172a">横切纪律（贯穿六域）</text>
+  <rect x="668" y="1906" width="536" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="680" y="1926" class="lbl" font-size="9" fill="#334155">Domain 零依赖 · Presentation 只见 Application · 单一读写入口</text>
+  <rect x="668" y="1942" width="536" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="680" y="1962" class="lbl" font-size="9" fill="#334155">CQRS：命令侧一致性 · 查询侧 ReadModel 缓存 · 事件仅经总线发布</text>
+  <rect x="668" y="1978" width="536" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="680" y="1998" class="lbl" font-size="9" fill="#334155">enum/配置中心化：魔法数字、魔法字符串、硬编码清零</text>
+  <rect x="668" y="2014" width="536" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="680" y="2034" class="lbl" font-size="9" fill="#334155">事件契约版本化 · 消费幂等 · 失败重试 + 死信（DLQ）</text>
+  <rect x="668" y="2050" width="536" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="680" y="2070" class="lbl" font-size="9" fill="#334155">指标统一采集（prometheus）· 结构化日志 · 操作审计留痕</text>
+  <rect x="668" y="2086" width="536" height="30" rx="6" fill="#ffffff" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="680" y="2106" class="lbl" font-size="9" fill="#334155">评审门禁：所有新功能必须由图谱定位 → 设计文档 → 主图登记</text>
+
+  <!-- 图例 -->
+  <text x="620" y="2190" text-anchor="middle" font-size="9" fill="#475569">A 测试执行 + 混音/SPL ｜ B 任务管理 ｜ C 用例管理 ｜ D 报告 + Benchmark ｜ E Agent 化 ｜ F 微服务化 + 跨区传输</text>
+  <text x="620" y="2206" text-anchor="middle" font-size="9" fill="#94a3b8">统一架构基线：DDD 四层 · CQRS 读写分离 · Redis 事件总线 · gRPC 服务间通信 · 配置化 / enum 化</text>
+
+</svg>
