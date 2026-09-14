@@ -22,17 +22,11 @@ except Exception as e:
 def restart_uitest_daemon(device_sn):
     """重启设备端 uitest RPC 服务（RpcNotRunningError 恢复用）
 
-    通过 hdc 执行: 先 kill 旧进程, 再 start-daemon singleness 启动新进程。
+    通过 hdc 执行: ui restart 重启 RPC 服务。
     """
     try:
-        # 先清理旧进程
         subprocess.run(['hdc', '-t', device_sn, 'shell',
-                        'pkill', '-f', 'uitest'],
-                       check=False, timeout=10)
-        time.sleep(1)
-        # 启动新 daemon
-        subprocess.run(['hdc', '-t', device_sn, 'shell',
-                        'uitest', 'start-daemon', 'singleness'],
+                        'ui', 'restart'],
                        check=False, timeout=30)
         time.sleep(2)
         log_and_emit(level='INFO', module='DeviceDriver',
