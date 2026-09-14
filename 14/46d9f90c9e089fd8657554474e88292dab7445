@@ -1,0 +1,24 @@
+Intelligent-Audio-TEST/backend/controllers/device_controller.py
+  s_552ced14920211::t_af32f453f5dbd7 228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "1446d9f90c9e089fd8657554474e88292dab7445",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_552ced14920211": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6aa3bac0be6163c257d104fd",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  }
+}

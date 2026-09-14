@@ -1,0 +1,332 @@
+eval_server/tests/test_interruption_llm_scoring_v2.py
+  s_00fc19a279ffb0::t_7137ee269bcbf5 21
+eval_server/app/services/calculators/xiaoyi_metrics/xiaoyi_metrics_architecture.svg
+  s_fe13d80cf4e06f::t_f87f7eb1263866 2-8,11-18,20-28,30,33-34,36-39,41-48,50-66,68,71,102,110,122,163
+  s_fe13d80cf4e06f::t_ca7755ec4248a0 1
+  s_fe13d80cf4e06f::t_7c7d5c032c31fc 9-10
+  s_fe13d80cf4e06f::t_2fd9357206fa6f 19
+  s_fe13d80cf4e06f::t_f89f7c9a739af2 29
+  s_fe13d80cf4e06f::t_35e7196db8ba92 31-32
+  s_fe13d80cf4e06f::t_fb10a3d2335178 35
+  s_fe13d80cf4e06f::t_693d6dbe3e05cb 40
+  s_fe13d80cf4e06f::t_c4c41cc20148f6 49
+  s_fe13d80cf4e06f::t_396f96acff9d38 67
+  s_fe13d80cf4e06f::t_231bfce09ada8c 69-70
+  s_fe13d80cf4e06f::t_54469701740d4f 72-74,99-101
+  s_fe13d80cf4e06f::t_5395dfe07d0a31 103-105,107-109
+  s_fe13d80cf4e06f::t_fda92548a061f0 111-113,119-121
+  s_fe13d80cf4e06f::t_44ef7b049069a3 123-125,160-162
+  s_fe13d80cf4e06f::t_b91be4bcd40699 164-166
+eval_server/app/services/calculators/xiaoyi_metrics/interruptibility/interruption_llm.py
+  s_bb01bd51cc2c63::t_0d281aea205fe5 31-35
+  s_bb01bd51cc2c63::t_fde8e4202798f4 323-325
+  s_bb01bd51cc2c63::t_b3009bae6f79e9 292
+  s_bb01bd51cc2c63::t_ec2a42f37a2df8 233
+  s_bb01bd51cc2c63::t_7a878dd458c539 36-40
+  s_bb01bd51cc2c63::t_df73cabede6a64 273-280
+  s_bb01bd51cc2c63::t_ca28e98c002b8e 237
+  s_bb01bd51cc2c63::t_f8b47abe15061f 182
+  s_bb01bd51cc2c63::t_4869f44c526073 234
+  s_bb01bd51cc2c63::t_63a0af3eba3729 30
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/interruption_judge.py
+  s_bb01bd51cc2c63::t_0e946627231f0a 19-20
+  s_bb01bd51cc2c63::t_3f4d1f318d4905 143
+  s_bb01bd51cc2c63::t_4aaec0234da32f 113-114
+  s_bb01bd51cc2c63::t_efaa4df30f6bfa 145
+  s_bb01bd51cc2c63::t_937b06bcb3b6a8 147,149
+  s_bb01bd51cc2c63::t_bee111d721fdd0 25-30
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/strategy.py
+  s_bb01bd51cc2c63::t_0e30e0c02d680d 23,25-28,31-46
+eval_server/doc/ARCHITECTURE.md
+  s_00fc19a279ffb0::t_ec001f65993283 57
+  s_00fc19a279ffb0::t_eb80d5d04438d1 255
+  s_bb01bd51cc2c63::t_71c90a00da0a0a 41,85,276
+eval_server/app/services/calculators/xiaoyi_metrics/shared/constants.py
+  s_bb01bd51cc2c63::t_95b37ef72c426a 46-48
+  s_bb01bd51cc2c63::t_8fb28f44588eab 17,37-44
+  s_bb01bd51cc2c63::t_edb9a481277430 1-14,18-36,45,49-63
+  s_bb01bd51cc2c63::t_76f04bdc6b8606 15-16
+eval_server/app/services/calculators/base.py
+  s_bb01bd51cc2c63::t_7f40760598db1e 8-19,64,68-69,72-81,84-88,90-94,97-108,110-111,113-114,117-152,169-170
+  s_bb01bd51cc2c63::t_b2119699ebbf4b 161-168
+eval_server/tests/test_high_freq_integration.py
+  s_00fc19a279ffb0::t_e00c0b1a7c4f6c 20-21
+  s_00fc19a279ffb0::t_df2de729ef6f5d 75-76,91,101,113,124
+  s_00fc19a279ffb0::t_6584786f060cec 2,18-19,102-107,109,149
+  s_00fc19a279ffb0::t_44300cbdeb79bf 156
+eval_server/tests/test_interruption_llm_scoring.py
+  s_00fc19a279ffb0::t_7c275c19a9b6c0 20
+eval_server/app/config.py
+  s_bb01bd51cc2c63::t_ac852be80c90a3 72-81,86-89
+eval_server/doc/README.md
+  s_bb01bd51cc2c63::t_113ba5cf1f321b 44
+  s_00fc19a279ffb0::t_820e04b7ad6c5b 48
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/strategy.py
+  s_bb01bd51cc2c63::t_51b159660a46f4 436-437
+  s_bb01bd51cc2c63::t_85301a3c6a921d 270
+  s_00fc19a279ffb0::t_099a9448188de1 113-128
+  s_00fc19a279ffb0::t_7ae5323c9cc14a 69
+  s_00fc19a279ffb0::t_db29932e7cb662 36,63-64
+  s_bb01bd51cc2c63::t_7e89d1d0722c8a 57,59
+  s_bb01bd51cc2c63::t_7ea8d3ce182d5d 459-460
+  s_bb01bd51cc2c63::t_d1bec39e193edd 30
+  s_bb01bd51cc2c63::t_6bb9e24b45afb0 337
+  s_bb01bd51cc2c63::t_6d6253d2c84a3b 8-11
+  s_bb01bd51cc2c63::t_2c62c62dddb521 37-41
+  s_bb01bd51cc2c63::t_b090dfe4194320 47,49-52
+eval_server/app/services/calculators/xiaoyi_metrics/llm_judge/strategy.py
+  s_bb01bd51cc2c63::t_e700025fa1811c 124-126,131-145,147-153,158-159,169-170,173-174,187-195
+  s_bb01bd51cc2c63::t_e5d17e7a273f27 156-157
+  s_bb01bd51cc2c63::t_366f894bb278c9 69
+  s_bb01bd51cc2c63::t_8f0d1fd32c1647 155
+  s_bb01bd51cc2c63::t_24c66fe41605a6 70
+  s_bb01bd51cc2c63::t_3e49ff21e12c12 27
+  h_eadf3f9b9a3d7b 16,39-42,127,129-130
+  s_00fc19a279ffb0::t_2e51f60c9ea2b1 15
+  s_bb01bd51cc2c63::t_9382d5d477224f 18-22
+  s_bb01bd51cc2c63::t_fdf5b3207cc583 23-26,28-29
+  s_bb01bd51cc2c63::t_1eddc2ded749e3 72,118-119
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/__init__.py
+  s_00fc19a279ffb0::t_7f4f950f96731e 3,5-7,18,23,28-30,40,46-50
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/noise_latency.py
+  s_bb01bd51cc2c63::t_982ea7a605143c 85-86
+  s_bb01bd51cc2c63::t_7d13d239dc6865 173-174
+  s_bb01bd51cc2c63::t_f627b6317d7b89 37-38
+  s_bb01bd51cc2c63::t_ec2943657db07e 115,121-122,127,129,132
+eval_server/app/services/calculators/xiaoyi_metrics/interruptibility/__init__.py
+  s_00fc19a279ffb0::t_472831a84fb2fd 2,4-5,10-11,16-17,19-47,51-52,54-56,59-64,67,69-70,72,74-75,77-80,82-84,86-91,93,95-98,100-103,105-107,109-111,113-130,132-135,138-173,175
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py
+  s_bb01bd51cc2c63::t_4e5956678b5a9d 150
+  s_bb01bd51cc2c63::t_302c2c0c37cf96 26-31
+  s_bb01bd51cc2c63::t_c9eeffc5866d85 116-117
+  s_bb01bd51cc2c63::t_84ee120bd74a18 152,154
+  s_bb01bd51cc2c63::t_bb34cc73316f9e 19-20
+  s_bb01bd51cc2c63::t_244ffb3dce0030 148
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/high_freq_turn_taking.py
+  s_bb01bd51cc2c63::t_c71d21f60c01a5 24,32
+  s_bb01bd51cc2c63::t_f9e3f1382992d7 22
+  s_bb01bd51cc2c63::t_b7a1896c33071d 23,25,30
+  s_bb01bd51cc2c63::t_5df5206557bdb8 97-98
+  s_bb01bd51cc2c63::t_a47c18d8b38891 193,206-207
+  s_bb01bd51cc2c63::t_6c95ccbfd2c344 210-211
+  s_bb01bd51cc2c63::t_b4b363af3df894 94-95
+eval_server/app/services/calculators/xiaoyi_metrics/shared/__init__.py
+  s_bb01bd51cc2c63::t_a0c600dcb2987f 2-6,9
+  s_bb01bd51cc2c63::t_5669312edcda5c 7-8
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/high_freq_llm_judge.py
+  s_bb01bd51cc2c63::t_33571c6352b81e 52
+  s_bb01bd51cc2c63::t_1bf8da133c9a1f 60-61,63-64,68
+  s_bb01bd51cc2c63::t_d21c586304b06f 276
+  s_bb01bd51cc2c63::t_820f8dad1ad91e 19-23
+  s_bb01bd51cc2c63::t_4ebeb758d46ce7 11
+  s_bb01bd51cc2c63::t_d4bd9c9f1ecf83 353,365
+  s_bb01bd51cc2c63::t_af4d379a1ef21f 345-346
+  s_bb01bd51cc2c63::t_6e107adbf7f663 51
+  s_bb01bd51cc2c63::t_49148b240bf7cf 28
+  s_bb01bd51cc2c63::t_3d8f61bc070df3 185-186
+  s_bb01bd51cc2c63::t_2f859d14b381fe 224
+  s_bb01bd51cc2c63::t_e8d85298f4201a 259
+  s_00fc19a279ffb0::t_e611cc0f4bb151 24-27
+  s_bb01bd51cc2c63::t_29fa4441624e1d 50
+eval_server/app/utils/asr_adapter.py
+  s_00fc19a279ffb0::t_efd7158cd28b95 3
+eval_server/app/services/calculators/xiaoyi_metrics/shared/enums.py
+  s_bb01bd51cc2c63::t_ec6d09cdf635df 1-52
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/non_interactive_latency.py
+  s_bb01bd51cc2c63::t_e04fb066ae1222 23-24,37
+  s_bb01bd51cc2c63::t_e7e44226f668ac 81-82,84-85
+  s_bb01bd51cc2c63::t_714e51bf629a9c 39
+  s_bb01bd51cc2c63::t_5dede7e5764fe3 104
+  s_bb01bd51cc2c63::t_7ee77fceae2cf1 148-150
+  s_bb01bd51cc2c63::t_66e9a52cdedeb7 130,134,138
+  s_00fc19a279ffb0::t_a9b5f9068662c8 32
+  s_bb01bd51cc2c63::t_85b4e4017fdb31 22
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/false_takeover.py
+  s_bb01bd51cc2c63::t_325da120e668b8 34-35
+  s_bb01bd51cc2c63::t_51bea12c99fa42 283
+  s_bb01bd51cc2c63::t_1180916562fb61 188
+  s_bb01bd51cc2c63::t_c76b011f5e317e 294
+  s_bb01bd51cc2c63::t_7f51f0af2f6334 296-297,303-304,306-307
+  s_bb01bd51cc2c63::t_a5ed782e556f7d 162
+  s_bb01bd51cc2c63::t_fad34314fedaa4 28-33,36,38
+  s_bb01bd51cc2c63::t_998c8abe71e616 302,305,308
+  s_bb01bd51cc2c63::t_d917b84b15b44d 25-27
+eval_server/app/utils/pause_json.py
+  s_bb01bd51cc2c63::t_efdbe3b46b8718 1-113
+eval_server/app/services/calculators/xiaoyi_metrics/llm_judge/llm_judge_calculator.py
+  s_bb01bd51cc2c63::t_31b4196a8a2242 180-181
+  s_bb01bd51cc2c63::t_9d54f3c9f09381 21-25,39-40,56,59,86,91,94-108
+  s_bb01bd51cc2c63::t_0465214ead6ecb 57
+  s_bb01bd51cc2c63::t_39e3ef02b9f01f 16-20
+  s_bb01bd51cc2c63::t_f2ea73c21b1ce8 78,83
+  s_bb01bd51cc2c63::t_f1593a2406b228 92-93
+  s_c70b21da2d25eb::t_708c364957928c 109-110,166
+eval_server/app/services/calculators/xiaoyi_metrics/interruptibility/interruption.py
+  s_bb01bd51cc2c63::t_12c736eadbb6bf 251-252
+  s_bb01bd51cc2c63::t_d9d0a99260e764 68,70-71
+  s_bb01bd51cc2c63::t_17872a6d2be7d0 47
+  s_bb01bd51cc2c63::t_8c2b6e382a4004 379,393
+  s_bb01bd51cc2c63::t_2f5b8487135f6c 33-36
+  s_bb01bd51cc2c63::t_7a878dd458c539 27-32,38,44-45
+  s_bb01bd51cc2c63::t_8a6aae830e769e 37
+  s_bb01bd51cc2c63::t_2fa126af37ac08 26
+  s_bb01bd51cc2c63::t_71b3fd0a929611 352-355
+eval_server/app/services/calculators/__init__.py
+  s_00fc19a279ffb0::t_406349761b37c8 9-11,22
+  s_bb01bd51cc2c63::t_1f4ef6c03f1985 12
+  s_bb01bd51cc2c63::t_bd762c82956c37 35
+  s_bb01bd51cc2c63::t_9b31dc47f5e282 36-37
+  s_00fc19a279ffb0::t_ce5b6a81583c27 48-50
+  s_00fc19a279ffb0::t_f16d3285dd8116 57,65-66
+eval_server/app/services/calculators/xiaoyi_metrics/shared/asr_utils.py
+  s_bb01bd51cc2c63::t_646442efbf4b40 57,60
+  s_bb01bd51cc2c63::t_4ffc271c872b7e 78-80,83,89,91-92,101-103,106,109,112,124,131-134,137,139,142-147
+  s_bb01bd51cc2c63::t_e08ac135dd2bcd 8,24-29
+  s_bb01bd51cc2c63::t_efdbe3b46b8718 1-7,9-23,30-31,33-36,38-56,58-59,61-77,81-82,84-88,90,93-100,104-105,107-108,110-111,113-123,125-130,135-136,138,140-141,148
+  s_bb01bd51cc2c63::t_2236bd29d9cd80 32
+  s_bb01bd51cc2c63::t_440ba42d053d74 37
+eval_server/app/services/calculators/xiaoyi_metrics/shared/llm_client.py
+  s_bb01bd51cc2c63::t_e881a808fb1d84 11
+  s_bb01bd51cc2c63::t_1bc69e2da32341 156-157
+  s_00fc19a279ffb0::t_0126be811a57b9 417,423
+  s_bb01bd51cc2c63::t_629cf4a8b93985 115-122,125-131
+  s_bb01bd51cc2c63::t_efdbe3b46b8718 2-10,23-24,26-29,31-33,35,47,108,110-114,123-124,132-133,144-146,148-150,158,176,180-181,188,196,287,289-304,355,360,371,380-381,403,410,433-434,436-444
+  s_bb01bd51cc2c63::t_c2b37dadd1c7ed 25
+  s_bb01bd51cc2c63::t_561f4411c07af5 40,43,92,109,135-141,151,155,177-179,182-184,197,246,250,268,288,404,408,429,431,435
+  s_bb01bd51cc2c63::t_990f1b5d9d4d6c 30
+eval_server/app/services/calculators/xiaoyi_metrics/__init__.py
+  s_00fc19a279ffb0::t_43fa75542d8ea5 2-142
+eval_server/app/services/calculators/xiaoyi_metrics/doc/README.md
+  s_de5443f6638778::t_0b03b9122bc30f 11-12,20-22,65,67,69,71,73-77,164,166,193,325
+.gitignore
+  s_de5443f6638778::t_08b8a472dd424e 90
+  s_de5443f6638778::t_d1283fbf9c477f 153-157
+eval_server/doc/API_DOC.md
+  s_bb01bd51cc2c63::t_61bd8dde3bbe89 345
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/input_asr.py
+  s_bb01bd51cc2c63::t_0281e510ce513a 22-25,28-29
+  s_bb01bd51cc2c63::t_69f7d29e4e574a 21
+  s_bb01bd51cc2c63::t_1962c19b17ce8c 52-53,65-66
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/takeover_latency.py
+  s_bb01bd51cc2c63::t_467615e3289ba6 210
+  s_bb01bd51cc2c63::t_23ebdc1235c598 175
+  s_bb01bd51cc2c63::t_a85a7c4a07f937 20-21,26
+eval_server/app/services/calculators/xiaoyi_metrics/interruptibility/strategy.py
+  s_00fc19a279ffb0::t_df5c2586d829d1 14
+  s_bb01bd51cc2c63::t_5d27b1949fa1a9 2
+  s_bb01bd51cc2c63::t_fca7fbfe061c85 29-31
+  s_00fc19a279ffb0::t_3cd1a7dc4860c9 68
+  s_bb01bd51cc2c63::t_7a878dd458c539 1,3-13,15-28,32-67,69
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/strategy.py
+  s_bb01bd51cc2c63::t_425e811a329ede 33,35-38
+  s_bb01bd51cc2c63::t_2bd372bab01245 23
+  s_bb01bd51cc2c63::t_8305b58115b67c 82
+  s_bb01bd51cc2c63::t_72d694bb7aab61 24-27
+  s_bb01bd51cc2c63::t_f6eef352d53ba6 122-123
+  s_bb01bd51cc2c63::t_8a758ff42092f0 106-107
+  s_bb01bd51cc2c63::t_3252f223b9ae8b 50,52-61
+  s_bb01bd51cc2c63::t_487043f5d8ff2e 90-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "ee6e6390721b2715623387d568aec919e4228bd8",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_00fc19a279ffb0": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a9960a9f5e2a8e941930ab3",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a9a6bb9f5e2a8e94193312c",
+        "session_id": "6a9960a9f5e2a8e941930ab3",
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "client_type": "ide",
+        "display_model_name": "deepseek-v4-flash",
+        "operation_id": "6a9a6bb9f5e2a8e94193312c",
+        "tool_name": "RunCommand",
+        "external_session_id": "6a9960a9f5e2a8e941930ab3",
+        "edit_kind": "bash"
+      }
+    },
+    "s_bb01bd51cc2c63": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a993a1ef5e2a8e9419307a4",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a993a1ef5e2a8e9419307a4",
+        "tool_type": "agent",
+        "tool_use_id": "6a9a6c3af5e2a8e94193316a",
+        "external_session_id": "6a993a1ef5e2a8e9419307a4",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "unknown",
+        "operation_id": "6a9a6c3af5e2a8e94193316a",
+        "tool_id": "Write",
+        "edit_kind": "file_edit",
+        "dedupe_key": "6a993a1ef5e2a8e9419307a4:6a9a6c3af5e2a8e94193316a:afterEdit:96f20ba7",
+        "client_type": "ide"
+      }
+    },
+    "s_c70b21da2d25eb": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87ba5773ad3a08262b1d96",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    },
+    "s_de5443f6638778": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a9a6359f5e2a8e941932b68",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "client_type": "ide",
+        "external_session_id": "6a9a6359f5e2a8e941932b68",
+        "edit_kind": "file_edit",
+        "session_id": "6a9a6359f5e2a8e941932b68",
+        "tool_type": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "unknown",
+        "tool_id": "SearchReplace",
+        "operation_id": "6a9a738df5e2a8e941933526",
+        "dedupe_key": "6a9a6359f5e2a8e941932b68:6a9a738df5e2a8e941933526:afterEdit:8d5c4d7e",
+        "tool_use_id": "6a9a738df5e2a8e941933526"
+      }
+    },
+    "s_fe13d80cf4e06f": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a9933b2f5e2a8e9419305ef",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "client_type": "ide",
+        "external_session_id": "6a9933b2f5e2a8e9419305ef",
+        "tool_name": "RunCommand",
+        "operation_id": "6a995cb2f5e2a8e941930995",
+        "display_model_name": "deepseek-v4-flash",
+        "session_id": "6a9933b2f5e2a8e9419305ef",
+        "edit_kind": "bash",
+        "tool_use_id": "6a995cb2f5e2a8e941930995"
+      }
+    }
+  }
+}

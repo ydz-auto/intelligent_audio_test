@@ -1,0 +1,68 @@
+eval_server/app/controllers/api.py
+  s_86a8bb9bc4a386::t_5794e72e734c8f 401-402,404-415,421,426-437
+  s_86a8bb9bc4a386::t_f0b69d9216a7aa 403,425
+Intelligent-Audio-TEST/backend/services/audio/audio_engine.py
+  s_dacd2793eae7bb::t_7546db7a791b11 30-31
+Intelligent-Audio-TEST/backend/services/execution/e2e_collector.py
+  s_f51d988f3daa37::t_066ce72e1ffac8 57,64-71,136,142-143,146
+Intelligent-Audio-TEST/backend/utils/algorithm/case_parameter_extractor.py
+  s_970931d84d0a6a::t_57d3e2c5e11cc1 13,60-179,418-420,458-460,465-478
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "088169beee241ec66e52c6e502b5b2a2b69d9960",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_86a8bb9bc4a386": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a9f664ef5e2a8e941939bd7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a9f664ef5e2a8e941939bd7",
+        "edit_kind": "file_edit",
+        "tool_type": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_id": "apply_patch",
+        "tool_use_id": "6aa0bf5dbe6163c257d0b2e6",
+        "dedupe_key": "6a9f664ef5e2a8e941939bd7:6aa0bf5dbe6163c257d0b2e6:afterEdit:d4814d8d",
+        "source_scene": "unknown",
+        "client_type": "ide",
+        "operation_id": "6aa0bf5dbe6163c257d0b2e6",
+        "session_id": "6a9f664ef5e2a8e941939bd7"
+      }
+    },
+    "s_970931d84d0a6a": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87cb4073ad3a08262b2350",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    },
+    "s_dacd2793eae7bb": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a84080a73ad3a08262ad2db",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    },
+    "s_f51d988f3daa37": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a7d2da77414668c4c23875a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  }
+}
