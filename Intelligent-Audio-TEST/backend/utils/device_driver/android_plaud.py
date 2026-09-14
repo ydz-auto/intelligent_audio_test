@@ -27,6 +27,7 @@ class PlaudDriver(AndroidDriver):
     app_type = AppType.PLAUD
     version = AppVersion.V1
     platform = DevicePlatform.ANDROID
+    keywords = "android.plaud.v1"
 
     def __init__(self):
         super().__init__()

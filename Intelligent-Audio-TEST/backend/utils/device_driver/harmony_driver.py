@@ -15,6 +15,7 @@ class HarmonyDriver(BaseDeviceDriver):
     app_type = AppType.HARMONY_BASE
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.base.v1"
 
     def __init__(self):
         """初始化HarmonyOS驱动"""

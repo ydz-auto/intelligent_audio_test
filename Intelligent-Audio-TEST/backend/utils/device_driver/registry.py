@@ -257,24 +257,21 @@ class DriverRegistry:
         if entry and entry.is_available:
             return entry.driver_cls
 
-        # 2. 类自身声明的 fallback
-        if entry and not entry.is_available:
-            raise DriverNotFoundError(app_type, version, platform,
-                                      reason=f"依赖缺失: {entry.missing_dep}")
-
-        # 3. 自动降级到 V1
+        # 2. 自动降级到 V1。驱动实现版本可以复用给其他设备版本。
         if fallback_v1 and version != AppVersion.V1:
             key_v1 = (app_type, AppVersion.V1, platform)
             entry_v1 = self._table.get(key_v1)
             if entry_v1 and entry_v1.is_available:
                 return entry_v1.driver_cls
 
-        # 4. 同 app_type + platform 下任意可用版本
+        # 3. 同 app_type + platform 下任意可用版本。
+        # 设备版本是请求条件，不要求每个设备版本都注册一个驱动实现。
         for (a, v, p), e in self._table.items():
             if a == app_type and p == platform and e.is_available:
                 return e.driver_cls
 
-        raise DriverNotFoundError(app_type, version, platform)
+        reason = f"依赖缺失: {entry.missing_dep}" if entry and not entry.is_available else "无可用驱动实现"
+        raise DriverNotFoundError(app_type, version, platform, reason=reason)
 
     def get_by_key(
         self, app_type: AppType, version: AppVersion, platform: DevicePlatform

@@ -13,6 +13,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
     app_type = AppType.CHATGPT
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.chatgpt.v1"
     """ChatGPT 语音通话专用驱动。
 
     仿照 harmony_xiaoyichat.Xiaoyilivechat 实现，功能要求与小艺通话一致：

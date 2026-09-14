@@ -29,6 +29,7 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     app_type = AppType.DOUBAO_ASR
     version = AppVersion.V1
     platform = DevicePlatform.ANDROID
+    keywords = "android.doubao_asr.v1"
 
     # 应用配置常量
     APP_NAME = "com.larus.nova"           # 豆包App的包名

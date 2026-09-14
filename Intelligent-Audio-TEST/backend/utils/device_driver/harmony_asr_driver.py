@@ -28,6 +28,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
     app_type = AppType.XIAOYI_INPUT_METHOD
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_input_method.v1"
 
     def is_locked(self, device_sn):
         """

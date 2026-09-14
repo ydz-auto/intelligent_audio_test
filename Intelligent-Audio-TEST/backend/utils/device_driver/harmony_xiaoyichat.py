@@ -23,6 +23,7 @@ class Xiaoyilivechat(HarmonyDriver):
     app_type = AppType.XIAOYI_LIVECHAT
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_livechat.v1"
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
     # 华为音乐 bundle:测试中小艺有时会把播放的音频误识别为"播放音乐"指令而拉起音乐,

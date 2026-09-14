@@ -225,7 +225,7 @@ class DeviceController:
         
         try:
             # 使用驱动工厂获取驱动并执行唤醒
-                driver = device_driver_factory.get_driver_for_device(device.system, keywords=device.keywords)
+            driver = device_driver_factory.get_driver_for_device(device.system, keywords=device.keywords)
             if driver:
                 driver.unlock(device.serial_number or device.ip)
             
