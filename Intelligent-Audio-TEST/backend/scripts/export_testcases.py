@@ -45,8 +45,9 @@ DEFAULT_DB_NAME = os.environ.get('DB_NAME', 'intelligent_audio_test')
 
 # 参考参数文件存储路径（与 config.py 中 Config.REF_PARAMS_STORAGE_PATH 一致）
 # 优先使用环境变量，否则使用 Config 中的默认路径
-_PROJECT_ROOT_CONFIG = r'C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST'
-DEFAULT_REF_PARAMS_PATH = os.path.join(_PROJECT_ROOT_CONFIG, 'static', 'ref_params')
+# 静态资源已迁至 D:\00_static\static，相对路径形如 static/ref_params/... 以此为基目录拼接
+_STATIC_BASE_PARENT = r'D:\00_static'
+DEFAULT_REF_PARAMS_PATH = os.path.join(_STATIC_BASE_PARENT, 'static', 'ref_params')
 REF_PARAMS_STORAGE_PATH = os.environ.get('REF_PARAMS_STORAGE_PATH', DEFAULT_REF_PARAMS_PATH)
 
 # 用例相关表及导出顺序（依赖关系）
@@ -166,7 +167,7 @@ def export_ref_params_files(test_cases, export_dir):
                     # ref_path 可能是相对路径或绝对路径
                     src_path = ref_path
                     if not os.path.isabs(src_path):
-                        src_path = os.path.join(_PROJECT_ROOT_CONFIG, src_path.lstrip('/\\'))
+                        src_path = os.path.join(_STATIC_BASE_PARENT, src_path.lstrip('/\\'))
                         src_path = os.path.normpath(src_path)
 
                     if os.path.isfile(src_path):

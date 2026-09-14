@@ -344,7 +344,7 @@ class DeviceController:
 
             # 创建设备后立即检查设备是否在线
             try:
-                driver = device_driver_factory.get_driver_for_device(new_device.system)
+                driver = device_driver_factory.get_driver_for_device(new_device.system, keywords=new_device.keywords)
                 if driver:
                     # 扫描当前系统的在线设备
                     online_devices = driver.scan()

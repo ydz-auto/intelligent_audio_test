@@ -29,6 +29,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_input_method.v1"
+    display_name = "鸿蒙小艺输入法ASR专用驱动"
 
     def is_locked(self, device_sn):
         """

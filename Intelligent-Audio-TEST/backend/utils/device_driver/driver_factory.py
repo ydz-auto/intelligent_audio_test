@@ -158,18 +158,27 @@ class DeviceDriverFactory:
         """根据系统和关键字获取驱动名称"""
         if not system or not keywords:
             return None
-        
+
         system_lower = system.lower()
-        keywords_lower = [k.lower() for k in keywords]
-        
+        # 支持字符串和列表两种入参
+        if isinstance(keywords, str):
+            keywords_lower = [keywords.strip().lower()]
+        else:
+            keywords_lower = [k.lower() for k in keywords]
+
         for entry in self._specialized_drivers:
-            if entry['system'] and entry['system'] != system_lower:
-                continue
-            
+            entry_system = (entry['system'] or '').lower()
+            if entry_system:
+                # 支持 'harmony' ↔ 'harmonyos' 别名匹配
+                if entry_system != system_lower and not (
+                    {'harmony', 'harmonyos'} & {entry_system, system_lower}
+                ):
+                    continue
+
             # 所有关键字都必须匹配
             if all(kw in entry['keywords'] for kw in keywords_lower):
                 return entry['name']
-        
+
         return None
 
     def get_driver_by_system(self, system):
@@ -242,6 +251,7 @@ class DeviceDriverFactory:
         system_key = (system or '').lower()
         platform = {
             'android': DevicePlatform.ANDROID,
+            'harmony': DevicePlatform.HARMONYOS,
             'harmonyos': DevicePlatform.HARMONYOS,
             'ios': DevicePlatform.IOS,
         }.get(system_key)

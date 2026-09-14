@@ -3595,7 +3595,7 @@ class AudioController:
             # Strategy 3: strip drive letter and common project directory prefixes
             if parts and len(parts[0]) == 2 and parts[0][1] == ':':
                 parts = parts[1:]
-            skip_segments = {'static', 'S2TT', 'auto_test', 'ver8', '202604231600', 'Intelligent-Audio-TEST'}
+            skip_segments = {'static', 'S2TT', 'auto_test', 'ver8', '202604231600', 'Intelligent-Audio-TEST', '00_static'}
             while parts and parts[0] in skip_segments:
                 parts = parts[1:]
             return parts[:-1] if len(parts) > 1 else []

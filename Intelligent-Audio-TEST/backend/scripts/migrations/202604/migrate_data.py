@@ -18,14 +18,27 @@ import os
 import shutil
 import subprocess
 import time
+from pathlib import Path
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
-PGSQL_BIN = r"C:\S2TT\environment\pgsql\bin"
-PGSQL_DATA = r"C:\S2TT\environment\pgsql\data"
-PGSQL_PORT = 5432
-SQLITE_DB_PATH = r'c:\S2TT\auto_test\ver8\202601292330\Intelligent-Audio-TEST\backend\data.db'
-POSTGRES_URI = 'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
+# 从 backend/.env 读取数据库连接与 PG 集群路径
+_ENV_FILE = Path(__file__).resolve().parents[3] / '.env'
+if _ENV_FILE.exists():
+    load_dotenv(_ENV_FILE)
+
+PGSQL_BIN = os.environ.get('PGSQL_BIN', '').strip()
+PGSQL_DATA = os.environ.get('PGSQL_DATA', '').strip()
+PGSQL_PORT = int(os.environ.get('DB_PORT', '5432'))
+# 旧版 SQLite 库（一次性迁移用，源库已不存在，保留路径仅供历史参考）
+SQLITE_DB_PATH = os.environ.get('SQLITE_DB_PATH', r'c:\S2TT\auto_test\ver8\202601292330\Intelligent-Audio-TEST\backend\data.db')
+POSTGRES_URI = os.environ.get('DATABASE_URI', '').strip() or (
+    f"postgresql://{os.environ.get('DB_USER','intelligent_audio_test')}:"
+    f"{os.environ.get('DB_PASSWORD','intelligent_audio_test666')}@"
+    f"{os.environ.get('DB_HOST','localhost')}:{PGSQL_PORT}/"
+    f"{os.environ.get('DB_NAME','intelligent_audio_test')}"
+)
 
 BOOLEAN_COLUMNS = {
     'deleted', 'is_default', 'required', 'is_active', 'is_visible',

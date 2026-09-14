@@ -228,7 +228,7 @@ const loadDriverKeywords = async () => {
 
     if (keywords.length > 0) {
       dynamicFieldOptions.value.keywords = keywords.map(item => ({
-        value: item.keywords ? item.keywords.join(', ') : '',
+        value: item.keywords || '',
         label: `${item.name || ''} (${item.system || ''})`
       }))
     }

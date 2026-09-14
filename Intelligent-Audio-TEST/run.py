@@ -4,10 +4,67 @@ import os
 import sys
 import signal
 import time
+import subprocess
 from flask import request
 
 config_name = os.getenv('FLASK_CONFIG') or 'default'
 app = create_app(config_name)
+
+# 前端服务进程
+frontend_process = None
+
+def start_frontend():
+    """启动前端 Vite 开发服务器"""
+    global frontend_process
+    frontend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'frontend')
+    if not os.path.isdir(frontend_dir):
+        print("[WARN] 未找到 frontend 目录，跳过前端服务启动")
+        return
+
+    print("[INFO] 正在启动前端 Vite 开发服务器...")
+    try:
+        # Windows 上 npm 实际是 npm.cmd，需要 shell=True 才能找到
+        kwargs = {}
+        if sys.platform == 'win32':
+            kwargs['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
+            npm_cmd = 'npm.cmd'
+        else:
+            kwargs['start_new_session'] = True
+            npm_cmd = 'npm'
+
+        frontend_process = subprocess.Popen(
+            [npm_cmd, 'run', 'dev'],
+            cwd=frontend_dir,
+            **kwargs
+        )
+        print(f"[OK] 前端服务已启动 (PID: {frontend_process.pid})")
+        print("     前端访问地址: http://localhost:5173")
+    except Exception as e:
+        print(f"[ERROR] 启动前端服务失败: {e}")
+
+def stop_frontend():
+    """停止前端 Vite 开发服务器"""
+    global frontend_process
+    if frontend_process is None:
+        return
+
+    print("   正在停止前端 Vite 开发服务器...")
+    try:
+        if sys.platform == 'win32':
+            # Windows 下 taskkill 终止整个进程树
+            subprocess.run(
+                ['taskkill', '/PID', str(frontend_process.pid), '/T', '/F'],
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+        else:
+            import signal as sig
+            os.killpg(os.getpgid(frontend_process.pid), sig.SIGTERM)
+        print("   前端服务已停止")
+    except Exception as e:
+        print(f"   停止前端服务时出错: {e}")
+    finally:
+        frontend_process = None
 
 shutdown_requested = False
 
@@ -67,6 +124,9 @@ def signal_handler(signum, frame):
     except Exception:
         pass
     
+    # 停止前端服务
+    stop_frontend()
+
     print("[OK] 所有任务已停止，程序即将退出")
 
 signal.signal(signal.SIGINT, signal_handler)
@@ -76,6 +136,9 @@ if sys.platform == 'win32':
     signal.signal(signal.SIGBREAK, signal_handler)
 
 if __name__ == '__main__':
+    # 启动前端 Vite 开发服务器
+    start_frontend()
+
     try:
         socketio.run(
             app,
@@ -87,3 +150,4 @@ if __name__ == '__main__':
         )
     except KeyboardInterrupt:
         print("\n🛑 用户中断，程序退出")
+        stop_frontend()

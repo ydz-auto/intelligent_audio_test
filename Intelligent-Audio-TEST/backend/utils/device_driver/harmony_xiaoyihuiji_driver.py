@@ -21,6 +21,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_huiji.v1"
+    display_name = "鸿蒙harden小艺慧记专用驱动"
 
     def is_locked(self, device_sn):
         """

@@ -332,6 +332,9 @@ _DEFAULT_BODY_TEMPLATE = {
             'start_ms': '{{start_ms}}',
             'end_ms': '{{end_ms}}',
             'pcm_first_ms': '{{pcm_first_ms}}',
+            'played_audios': '{{played_audios}}',
+            'background_noise': '{{background_noise}}',
+            'interferers': '{{interferers}}',
         }
     ],
 }
@@ -356,6 +359,9 @@ _INTERRUPTION_JUDGE_BODY_TEMPLATE = {
             'is_interruption': '{{is_interruption}}',
             'is_actual_interruption': '{{is_actual_interruption}}',
             'stop_intent': '{{stop_intent}}',
+            'played_audios': '{{played_audios}}',
+            'background_noise': '{{background_noise}}',
+            'interferers': '{{interferers}}',
         }
     ],
 }

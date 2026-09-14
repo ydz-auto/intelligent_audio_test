@@ -73,6 +73,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_face2face.v1"
+    display_name = "小艺面对面翻译专用驱动"
     @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         initialize_success = super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
@@ -142,6 +143,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_simultaneous.v1"
+    display_name = "小艺同传专用驱动"
     @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         initialize_success = super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)

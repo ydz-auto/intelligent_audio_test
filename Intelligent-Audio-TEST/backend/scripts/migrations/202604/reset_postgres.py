@@ -16,9 +16,18 @@ import subprocess
 import os
 import shutil
 import time
+from pathlib import Path
+from dotenv import load_dotenv
 
-PGSQL_BIN = r"C:\S2TT\environment\pgsql\bin"
-PGSQL_DATA = r"C:\S2TT\environment\pgsql\data"
+# 从 backend/.env 读取 PostgreSQL 集群路径
+_ENV_FILE = Path(__file__).resolve().parents[3] / '.env'
+if _ENV_FILE.exists():
+    load_dotenv(_ENV_FILE)
+
+PGSQL_BIN = os.environ.get('PGSQL_BIN', '').strip()
+PGSQL_DATA = os.environ.get('PGSQL_DATA', '').strip()
+if not PGSQL_BIN or not PGSQL_DATA:
+    raise RuntimeError("请在 backend/.env 中配置 PGSQL_BIN 和 PGSQL_DATA")
 
 
 def is_postgres_running():

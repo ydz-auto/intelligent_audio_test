@@ -33,7 +33,7 @@ pg_dump -U intelligent_audio_test -d intelligent_audio_test -F c -f backup_$(Get
 所有命令在项目根目录下执行：
 
 ```powershell
-cd "c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST"
+cd "d:\00_code\v9.7.10\Intelligent-Audio-TEST"
 ```
 
 ---

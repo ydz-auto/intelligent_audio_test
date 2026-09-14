@@ -28,6 +28,7 @@ class PlaudDriver(AndroidDriver):
     version = AppVersion.V1
     platform = DevicePlatform.ANDROID
     keywords = "android.plaud.v1"
+    display_name = "Plaud AI 录音专用驱动"
 
     def __init__(self):
         super().__init__()

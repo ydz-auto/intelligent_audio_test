@@ -73,6 +73,9 @@ MAIN_DIMENSION = {
             {
                 'user_wav': '{{user_wav}}',
                 'ai_wav': '{{ai_wav}}',
+                'played_audios': '{{played_audios}}',
+                'background_noise': '{{background_noise}}',
+                'interferers': '{{interferers}}',
             }
         ]
     },
@@ -508,6 +511,9 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
             {
                 'user_wav': '{{user_wav}}',
                 'ai_wav': '{{ai_wav}}',
+                'played_audios': '{{played_audios}}',
+                'background_noise': '{{background_noise}}',
+                'interferers': '{{interferers}}',
             }
         ]
     })

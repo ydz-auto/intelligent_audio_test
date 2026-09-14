@@ -4,6 +4,8 @@
 
 功能：
 1. 软删除历史单维度 interruption_metrics（name='打断指标'，已被主+子维度方案替代）
+1.5 软删除主维度下残留的旧版 interruption_behavior_* 行为占比子维度
+    （已由「打断场景裁判」interruption_judge 下的子维度承接，幂等清理）
 2. 注册/更新打断成功率主维度（dimension_type='main'）：
    - 配置两路 wav / 轮次控制元数据等 input params、api_settings、body_template、param_mappings
    - 配置 interruption_metrics 返回结构中的本地时序、轮次与逐轮时延 output params
@@ -103,6 +105,9 @@ MAIN_DIMENSION = {
                 'is_interruption': '{{is_interruption}}',
                 'is_actual_interruption': '{{is_actual_interruption}}',
                 'stop_intent': '{{stop_intent}}',
+                'played_audios': '{{played_audios}}',
+                'background_noise': '{{background_noise}}',
+                'interferers': '{{interferers}}',
             }
         ],
     },
@@ -375,6 +380,9 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 'is_interruption': '{{is_interruption}}',
                 'is_actual_interruption': '{{is_actual_interruption}}',
                 'stop_intent': '{{stop_intent}}',
+                'played_audios': '{{played_audios}}',
+                'background_noise': '{{background_noise}}',
+                'interferers': '{{interferers}}',
             }
         ],
     })
@@ -689,6 +697,38 @@ def seed_interruption_dimensions():
             print("  无历史单维度需清理")
 
         # ============================================================
+        # Step 0.5: 清理主维度下残留的旧版行为占比子维度
+        #   旧版脚本曾在打断成功率主维度下注册 4 个
+        #   interruption_behavior_* 行为占比子维度；
+        #   新方案中行为占比已由「打断场景裁判」(interruption_judge)
+        #   下的子维度承接，此处软删除残留旧记录（幂等）
+        # ============================================================
+        print(f"\n{'=' * 60}")
+        print(f"  Step 0.5: 清理主维度下残留的 interruption_behavior_* 子维度")
+        print(f"{'=' * 60}")
+        main_rows = conn.execute(text(
+            "SELECT id FROM dimensions "
+            "WHERE task_type_code = 'interruption_metrics' "
+            "AND dimension_type = 'main' AND parent_dimension_id IS NULL "
+            "AND deleted = FALSE"
+        )).fetchall()
+        stale_behaviors = []
+        for (main_id_row,) in main_rows:
+            rows = conn.execute(text(
+                "SELECT id, name, task_type_code FROM dimensions "
+                "WHERE parent_dimension_id = :pid "
+                "AND task_type_code LIKE 'interruption\\_behavior\\_%' ESCAPE '\\' "
+                "AND deleted = FALSE"
+            ), {'pid': main_id_row}).fetchall()
+            stale_behaviors.extend(rows)
+        if stale_behaviors:
+            for dim_id, name, tc in stale_behaviors:
+                print(f"  软删旧版行为子维度: id={dim_id}, name={name}, task_type_code={tc}")
+                _soft_delete_dimension_tree(conn, dim_id, "行为占比已由打断场景裁判承接")
+        else:
+            print("  无残留的 interruption_behavior_* 子维度")
+
+        # ============================================================
         # Step 1: 注册/更新打断成功率主维度
         # ============================================================
         print(f"\n{'=' * 60}")
@@ -734,6 +774,7 @@ if __name__ == '__main__':
     print()
     print("此脚本将：")
     print("1. 软删除历史单维度 interruption_metrics（name='打断指标'，被替代）")
+    print("1.5 软删除主维度下残留的 interruption_behavior_* 行为占比子维度（已由打断场景裁判承接）")
     print("2. 注册/更新打断成功率主维度（dimension_type=main）")
     print("   配置 input params + interruption_metrics 主输出/辅助输出")
     print("   + api_settings + param_mappings")

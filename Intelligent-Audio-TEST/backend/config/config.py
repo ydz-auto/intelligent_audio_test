@@ -38,17 +38,14 @@ def _get_database_uri():
     return f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}'
 
 def _get_ffmpeg_path():
+    # 路径由 backend/.env 的 FFMPEG_PATH 指定；未配置或失效时回退到 PATH 中的 ffmpeg
     ffmpeg_path = os.environ.get('FFMPEG_PATH', '').strip()
     if ffmpeg_path and os.path.isfile(ffmpeg_path):
         return ffmpeg_path
-    elif ffmpeg_path:
-        pass
-    hardcoded_path = r'E:\02_code_build_envirenment\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe'
-    if os.path.isfile(hardcoded_path):
-        return hardcoded_path
     return 'ffmpeg'
 
 def _get_ffprobe_path(ffmpeg_path):
+    # 路径由 backend/.env 的 FFPROBE_PATH 指定；未配置时按 ffmpeg 同目录推导，再回退到 PATH
     ffprobe_path = os.environ.get('FFPROBE_PATH', '').strip()
     if ffprobe_path and os.path.isfile(ffprobe_path):
         return ffprobe_path
@@ -56,9 +53,6 @@ def _get_ffprobe_path(ffmpeg_path):
         ffprobe_in_ffmpeg_dir = os.path.join(os.path.dirname(ffmpeg_path), 'ffprobe.exe')
         if os.path.isfile(ffprobe_in_ffmpeg_dir):
             return ffprobe_in_ffmpeg_dir
-    hardcoded_ffprobe = r'E:\02_code_build_envirenment\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe'
-    if os.path.isfile(hardcoded_ffprobe):
-        return hardcoded_ffprobe
     return 'ffprobe'
 
 def _get_log_level():
@@ -84,7 +78,7 @@ def _get_int_env(key, default):
 class Config:
     SECRET_KEY = _get_secret_key()
     BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    PROJECT_ROOT = r'C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST'
+    PROJECT_ROOT = r'D:\00_code\v9.7.10\Intelligent-Audio-TEST'
     SQLALCHEMY_DATABASE_URI = _get_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_COMMIT_ON_TEARDOWN = False
@@ -102,7 +96,8 @@ class Config:
     FFMPEG_PATH = _get_ffmpeg_path()
     FFPROBE_PATH = _get_ffprobe_path(FFMPEG_PATH)
     
-    STATIC_BASE_PATH = _get_path_env('STATIC_BASE_PATH', os.path.join(PROJECT_ROOT, 'static'))
+    # 静态资源已与代码分离：代码在 D:\00_code\v9.7.10，静态资源在 D:\00_static\static
+    STATIC_BASE_PATH = _get_path_env('STATIC_BASE_PATH', r'D:\00_static\static')
     ARCHIVE_PATH = _get_path_env('ARCHIVE_PATH', os.path.join(STATIC_BASE_PATH, 'archives'))
     AUDIO_STORAGE_PATH = _get_path_env('AUDIO_STORAGE_PATH', os.path.join(STATIC_BASE_PATH, 'audios'))
     REF_PARAMS_STORAGE_PATH = _get_path_env('REF_PARAMS_STORAGE_PATH', os.path.join(STATIC_BASE_PATH, 'ref_params'))

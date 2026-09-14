@@ -17,8 +17,8 @@ class Config:
     # 项目根目录（与 Intelligent-Audio-TEST 保持一致）
     PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
 
-    # 静态资源根目录（与主项目共享）
-    STATIC_BASE_PATH = os.environ.get('STATIC_BASE_PATH', os.path.join(PROJECT_ROOT, 'static'))
+    # 静态资源根目录（与主项目共享，静态资源已迁至 D:\00_static\static）
+    STATIC_BASE_PATH = os.environ.get('STATIC_BASE_PATH', r'D:\00_static\static')
 
     # 文件存储路径（存放到 static 目录下，便于统一访问与归档）
     DATA_DIR = os.path.join(STATIC_BASE_PATH, 'eval_server')
