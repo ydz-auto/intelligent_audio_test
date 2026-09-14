@@ -1,0 +1,36 @@
+Intelligent-Audio-TEST/backend/utils/device_driver/utils.py
+  s_df67b7789ea0f7::t_f2ebb63f7f266b 25,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "62cc1f6d76cc93242c7655d5468d09728a3ee55e",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_df67b7789ea0f7": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6aa7574e14e3785356f7b8c1",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "display_model_name": "deepseek-v4-flash1",
+        "edit_kind": "file_edit",
+        "operation_id": "6aa7579214e3785356f7b8dd",
+        "session_id": "6aa7574e14e3785356f7b8c1",
+        "tool_use_id": "6aa7579214e3785356f7b8dd",
+        "tool_name": "Edit",
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "external_session_id": "6aa7574e14e3785356f7b8c1",
+        "client_type": "ide"
+      }
+    }
+  }
+}
