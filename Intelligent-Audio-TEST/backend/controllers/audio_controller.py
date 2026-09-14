@@ -2310,13 +2310,22 @@ class AudioController:
                     # - 有 round_number 的维度：只写入 round_number 匹配的 round
                     # - 无 round_number 的维度（all 模式）：写入所有 rounds
                     global_round_dims = [d for d in single_round_dims if not d.get('round_number')]
-                    scoped_round_dims = [d for d in single_round_dims if d.get('round_number')]
+                    scoped_round_dims = [d for d in single_round_dims if d.get('round_number') and d.get('round_number') != -1]
+                    last_round_dims = [d for d in single_round_dims if d.get('round_number') == -1]
+                    # 计算实际最后一轮的 round_number
+                    last_round_number = max(
+                        (r.get('round_number') for r in rounds_resolved if isinstance(r, dict) and r.get('round_number') is not None),
+                        default=None
+                    )
                     for round_item in rounds_resolved:
                         if isinstance(round_item, dict):
                             if 'evaluation' not in round_item:
                                 round_item['evaluation'] = {}
                             rn = round_item.get('round_number')
                             matched = [d for d in scoped_round_dims if d.get('round_number') == rn]
+                            # round_number == -1 的维度解析为实际最后一轮
+                            if rn is not None and rn == last_round_number:
+                                matched = matched + last_round_dims
                             round_item['evaluation']['dimensions'] = global_round_dims + matched
                     # 多轮维度写入 config.dimensions（顶层聚合维度）
                     if multi_round_dims:

@@ -354,17 +354,27 @@ function checkDuplicateTargetParam(index: number): boolean {
   const record = props.mappings[index]
   if (!record || !record.target_param) return true
 
-  // 全局按 target_param 判重，不同维度也不允许同一目标参数代码被多源映射
   const targetKey = record.target_param
+  const hasDimension = record.dimension_id != null
 
   for (let i = 0; i < props.mappings.length; i++) {
     if (i === index) continue
     const other = props.mappings[i]
     if (!other || !other.target_param) continue
-    if (other.target_param === targetKey) {
+    if (other.target_param !== targetKey) continue
+
+    if (hasDimension && other.dimension_id != null) {
+      // 评估映射：不同维度允许复用同一目标参数，仅在同一 dimension_id 内判重
+      if (other.dimension_id === record.dimension_id) {
+        warning(`目标参数"${record.target_param}"已被同一维度的其他映射占用`)
+        return false
+      }
+    } else if (!hasDimension && other.dimension_id == null) {
+      // 设备/API 映射：无维度区分，全局按 target_param 判重
       warning(`目标参数"${record.target_param}"已被其他映射占用，同一目标参数代码禁止被多源参数代码映射`)
       return false
     }
+    // 一方有维度另一方无维度：理论上不会在同一 MappingEditor 中出现，跳过判重
   }
   return true
 }

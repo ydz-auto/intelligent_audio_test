@@ -461,6 +461,7 @@ class ReevaluationExecutor:
                     'algorithm_params': algo_params,
                     'reference_params': rounds[round_idx].get('reference_params', []) if round_idx < len(rounds) else [],
                     'reference_params_col': reference_params_col,
+                    'rounds': (test_case.config or {}).get('rounds') if test_case else None,
                 }
 
                 try:
@@ -510,6 +511,7 @@ class ReevaluationExecutor:
                     'algorithm_params': algo_params,
                     'reference_params': rounds[0].get('reference_params', []) if rounds else [],
                     'reference_params_col': reference_params_col,
+                    'rounds': (test_case.config or {}).get('rounds') if test_case else None,
                 }
 
                 try:
@@ -569,6 +571,7 @@ class ReevaluationExecutor:
                     'algorithm_params': algo_params,
                     'reference_params': round_data.get('reference_params', []),
                     'reference_params_col': reference_params_col,
+                    'rounds': (test_case.config or {}).get('rounds') if test_case else None,
                 }
 
                 try:
@@ -656,6 +659,7 @@ class ReevaluationExecutor:
             'algorithm_params': algo_params,
             'reference_params': reference_params,
             'reference_params_col': reference_params_col,
+            'rounds': (test_case.config or {}).get('rounds') if test_case else None,
         }
 
         eval_params = CaseParameterExtractor.get_evaluation_params(

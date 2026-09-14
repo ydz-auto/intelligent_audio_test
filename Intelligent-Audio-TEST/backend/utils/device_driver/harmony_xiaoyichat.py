@@ -82,7 +82,7 @@ class Xiaoyilivechat(HarmonyDriver):
     DSP_USER_PREFIX = 'in_after_imedia_asr_module'   # 用户麦克风采集流前缀
     DSP_AI_PREFIX = 'in_raw1'                        # 模型回复流前缀
     DSP_USER_FMT = (16000, 4, 2)                     # (sample_rate, channels, sample_width)
-    DSP_AI_FMT = (16000, 2, 2)
+    DSP_AI_FMT = (24000, 2, 4)
     DSP_USER_EXTRACT_CHANNEL = 0                     # 4ch 取第 1 声道(ch0)→ mono
     # audiodebug 二进制版本(对应 libaudio_proxy_<V>.z.so),本地随驱动打包
     DSP_BIN_DIR = os.path.join(os.path.dirname(__file__), 'bin', 'dsp')
