@@ -137,6 +137,7 @@ class InterruptionMetricsCalculator(BaseCalculator):
         task_params['round_number'] = round_index
         task_params['user_wav'] = rd.get('user_wav') or source.get('user_wav') or ''
         task_params['ai_wav'] = rd.get('ai_wav') or rd.get('model_wav') or source.get('ai_wav') or source.get('model_wav') or ''
+        task_params['case_wav'] = rd.get('case_wav') or source.get('case_wav') or ''
         task_params['user_asr'] = (
             rd.get('user_asr')
             or rd.get('user_chunks')

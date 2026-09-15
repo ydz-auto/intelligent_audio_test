@@ -161,6 +161,7 @@ def calculate_interruption_metrics(task_params):
 
     user_wav = task_params.get('user_wav') or _r0.get('user_wav')
     ai_wav = task_params.get('ai_wav') or task_params.get('model_wav') or _r0.get('ai_wav') or _r0.get('model_wav')
+    case_wav = task_params.get('case_wav') or _r0.get('case_wav')
     user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or task_params.get('input_asr') or _r0.get('user_asr') or _r0.get('user_chunks')
     model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or task_params.get('recovery_asr') or _r0.get('model_asr') or _r0.get('model_chunks')
 
@@ -187,6 +188,26 @@ def calculate_interruption_metrics(task_params):
     if model_asr is None:
         raise ValueError("interruption_metrics: 缺少 ai_wav 或 model_asr（模型恢复 wav 或 ASR）")
 
+    # ── FFT 互相关精修打断时延：case_wav(干净打断音源) + user_wav(录言)对齐，
+    #    拿到用户打断的准确起止(秒)，传入 compute_interruption_metrics 覆盖
+    #    ASR 段边界，使 stop/recovery 时延基于准确时刻 ──
+    client_out_start_s = client_out_end_s = client_out_ncc = None
+    if case_wav and user_wav:
+        try:
+            from app.services.calculators.xiaoyi_metrics.shared.asr_utils import to_chunks
+            from ..turn_taking.false_takeover import compute_client_out_latency
+            lat = compute_client_out_latency(case_wav, user_wav, to_chunks(model_asr))
+            if lat.get('client_out_start_ms') is not None:
+                client_out_start_s = lat['client_out_start_ms'] / 1000.0
+                client_out_end_s = lat['client_out_end_ms'] / 1000.0
+                client_out_ncc = lat.get('ncc')
+                logger.info(f"[interruption_metrics] FFT 对齐 start={client_out_start_s:.3f}s "
+                            f"end={client_out_end_s:.3f}s ncc={client_out_ncc}")
+            else:
+                logger.warning(f"[interruption_metrics] FFT 对齐未取到起止: {lat.get('message')}")
+        except Exception as exc:
+            logger.warning(f"[interruption_metrics] FFT 对齐失败，回退 ASR 时戳: {exc}")
+
     if task_params.get('stop_tolerance_s') is not None:
         logger.info("[interruption_metrics] stop_tolerance_s 已废弃，忽略")
 
@@ -212,6 +233,8 @@ def calculate_interruption_metrics(task_params):
         'user_seg_merge_gap_s': _parse_gap(user_gap_raw, USER_SEG_MERGE_GAP_S, 'user_seg_merge_gap_s'),
         'model_seg_merge_gap_s': _parse_gap(model_gap_raw, MODEL_SEG_MERGE_GAP_S, 'model_seg_merge_gap_s'),
         'stop_intent': _get_stop_intent(task_params, _r0),
+        'client_out_start_s': client_out_start_s,
+        'client_out_end_s': client_out_end_s,
     }
     if task_params.get('is_actual_interruption') is not None:
         kwargs['actual_interruption'] = _as_bool(task_params.get('is_actual_interruption'))
@@ -219,6 +242,12 @@ def calculate_interruption_metrics(task_params):
         kwargs['actual_interruption'] = True
 
     result = compute_interruption_metrics(user_asr, model_asr, **kwargs)
+
+    # FFT 对齐结果(秒转毫秒)挂到结果，供报告展示与对齐可信度(ncc)诊断
+    if client_out_start_s is not None:
+        result['client_out_start_ms'] = round(client_out_start_s * 1000, 1)
+        result['client_out_end_ms'] = round(client_out_end_s * 1000, 1)
+        result['client_out_ncc'] = client_out_ncc
 
     is_actual = task_params.get('is_actual_interruption')
     result['is_actual_interruption'] = _as_bool(is_actual) if is_actual is not None else bool(interruption_rounds)

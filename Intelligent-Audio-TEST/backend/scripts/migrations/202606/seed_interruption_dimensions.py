@@ -84,6 +84,7 @@ MAIN_DIMENSION = {
     'body_template': {
         'user_wav': '{{user_wav}}',
         'ai_wav': '{{ai_wav}}',
+        'case_wav': '{{case_wav}}',
         'user_asr': '{{user_asr}}',
         'model_asr': '{{model_asr}}',
         'user_seg_merge_gap_s': '{{user_seg_merge_gap_s}}',
@@ -97,6 +98,7 @@ MAIN_DIMENSION = {
             {
                 'user_wav': '{{user_wav}}',
                 'ai_wav': '{{ai_wav}}',
+                'case_wav': '{{case_wav}}',
                 'user_asr': '{{user_asr}}',
                 'model_asr': '{{model_asr}}',
                 'query': '{{query}}',
@@ -119,6 +121,9 @@ MAIN_DIMENSION = {
         ('ai_wav', '模型恢复音频', '模型恢复语音 wav', 'audio', 'input',
          None, None, None, True,
          False, None, '模型恢复语音 wav 路径；与 user_wav 各调一次 ASR 后对齐算打断', 6),
+        ('case_wav', '用例干净音源', '用例干净音源', 'audio', 'input',
+         None, None, None, False,
+         False, None, '用例干净音源 wav 路径（cap_client 干净打断音源，client_out 时延 FFT 互相关对齐用，无则回退 ASR 时戳）', 9),
         ('user_asr', '用户词级ASR', '用户词级ASR时间戳列表', 'json', 'input',
          None, None, None, False,
          False, None, '已有用户词级 ASR 时可直接传入，格式由 eval_server interruption_metrics 兼容解析。', 7),
@@ -223,6 +228,7 @@ MAIN_DIMENSION = {
     'param_mappings': [
         ('device', 'output', 'user_wav', 'user_wav', 'none'),
         ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
+        ('device', 'output', 'case_wav', 'case_wav', 'none'),
         ('reference', 'output', 'query', 'query', 'none'),
         ('device', 'output', 'answer', 'answer', 'none'),
         ('reference', 'output', 'is_return_to_topic', 'is_return_to_topic', 'none'),
@@ -359,6 +365,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
     body_template = dim_def.get('body_template', {
         'user_wav': '{{user_wav}}',
         'ai_wav': '{{ai_wav}}',
+        'case_wav': '{{case_wav}}',
         'user_asr': '{{user_asr}}',
         'model_asr': '{{model_asr}}',
         'user_seg_merge_gap_s': '{{user_seg_merge_gap_s}}',
@@ -372,6 +379,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
             {
                 'user_wav': '{{user_wav}}',
                 'ai_wav': '{{ai_wav}}',
+                'case_wav': '{{case_wav}}',
                 'user_asr': '{{user_asr}}',
                 'model_asr': '{{model_asr}}',
                 'query': '{{query}}',

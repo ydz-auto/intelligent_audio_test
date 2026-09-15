@@ -118,6 +118,26 @@ def _overlap(a, b) -> Optional[Tuple[float, float]]:
     return s, e
 
 
+def _apply_client_out_refinement(u_segs: List[Dict[str, Any]],
+                                 co_start: float, co_end: float) -> Optional[int]:
+    """用 FFT 对齐得到的准确打断起止覆盖与之最重叠的用户段，返回该段索引。
+
+    case_wav(干净打断音源) 经互相关对齐到 user_wav 后，得到用户打断的准确
+    [start, end]；ASR 词时戳受噪声/反馈词干扰，以此覆盖最匹配的那一段，使
+    stop/recovery 时延基于准确时刻。其余段(如 0.4s 反馈词)不动。
+    """
+    co_iv = (float(co_start), float(co_end))
+    best_idx, best_overlap = 0, -1.0
+    for i, s in enumerate(u_segs):
+        ov = _overlap((s['start'], s['end']), co_iv)
+        dur = (ov[1] - ov[0]) if ov else 0.0
+        if dur > best_overlap:
+            best_overlap, best_idx = dur, i
+    u_segs[best_idx]['start'] = round(co_iv[0], 3)
+    u_segs[best_idx]['end'] = round(co_iv[1], 3)
+    return best_idx
+
+
 # ─────────── 单事件指标 ───────────
 def _evaluate_one_event(u: Dict[str, Any],
                         m_segs: List[Dict[str, Any]],
@@ -229,7 +249,9 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
                                   user_seg_merge_gap_s: float = USER_SEG_MERGE_GAP_S,
                                   model_seg_merge_gap_s: float = MODEL_SEG_MERGE_GAP_S,
                                   actual_interruption: Optional[bool] = None,
-                                  stop_intent: bool = False) -> Dict[str, Any]:
+                                  stop_intent: bool = False,
+                                  client_out_start_s: Optional[float] = None,
+                                  client_out_end_s: Optional[float] = None) -> Dict[str, Any]:
     """计算打断指标（纯本地时序；LLM 语义/行为判定由 interruption_judge 维度承担）
 
     用户侧/模型侧用不同阈值合并字词为语音段（user 1.5s / model 0.7s），
@@ -240,6 +262,9 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         model_asr: 模型恢复语音的 ASR 结果（同上）。两路需在同一时间轴、等长
         user_seg_merge_gap_s: 用户侧词合并为段的间隙阈值(秒)，默认 1.5
         model_seg_merge_gap_s: 模型侧词合并为段的间隙阈值(秒)，默认 0.7
+        client_out_start_s: FFT 互相关对齐得到的用户打断准确起点(秒)；
+            提供时覆盖最匹配用户段的 start，使 stop 时延基于准确时刻
+        client_out_end_s: 同上终点(秒)；覆盖段 end，使 recovery 时延基于准确时刻
 
     Returns:
         dict: {
@@ -303,9 +328,20 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         logger.warning(result['message'])
         return result
 
+    # ── FFT 互相关精修：case_wav(干净打断音源) 对齐 user_wav 得到的准确打断
+    #    起止，覆盖与之最重叠的用户段 start/end，使 stop/recovery 时延基于
+    #    准确时刻而非 ASR 词时戳(受噪声/反馈词干扰)。其余段不动。
+    refined_seg_idx = None
+    if client_out_start_s is not None and client_out_end_s is not None:
+        refined_seg_idx = _apply_client_out_refinement(
+            u_segs, client_out_start_s, client_out_end_s)
+        result['client_out_refined_seg'] = refined_seg_idx
+        logger.info(f"[打断指标] FFT 精修覆盖用户段 #{refined_seg_idx} -> "
+                    f"[{client_out_start_s:.3f}, {client_out_end_s:.3f}]s")
+
     # 过滤模型开场白：用户第一句之前的模型语音段是问候语，不作为打断判定依据
     if u_segs and m_segs:
-        first_u_start = u_segs[0]['start']
+        first_u_start = min(s['start'] for s in u_segs)
         m_segs = [m for m in m_segs if m['start'] >= first_u_start]
 
     if not m_segs:
