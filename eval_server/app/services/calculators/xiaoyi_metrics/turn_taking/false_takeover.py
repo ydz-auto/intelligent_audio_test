@@ -505,6 +505,7 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
+            log_context={'dimension': 'false_takeover'},
         )
         parsed = parse_json(resp['content']) or {}
 

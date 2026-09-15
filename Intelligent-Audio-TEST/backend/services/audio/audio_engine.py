@@ -448,7 +448,9 @@ class AudioService:
                     'delay': delay
                 })
 
-            log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Before play_multi: configs count={len(multi_configs)}, delays={[c.get('delay') for c in multi_configs]}, files={[c.get('file', '').split('\\\\')[-1] for c in multi_configs]}", category='audio')
+            _delays = [c.get('delay') for c in multi_configs]
+            _files = [c.get('file', '').split('\\')[-1] for c in multi_configs]
+            log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Before play_multi: configs count={len(multi_configs)}, delays={_delays}, files={_files}", category='audio')
             self._get_driver().play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event)
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Device {device_index} done")
@@ -530,7 +532,8 @@ class AudioService:
                 device_audio_map[dev_idx] = []
             device_audio_map[dev_idx].append((config, delay))
 
-        log_and_emit('DEBUG', 'audio_engine', f"[play_overlap] device_audio_map: {[(f'dev{k}', [(c.get('file', '').split('\\\\')[-1], c.get('is_noise'), d) for c, d in v]) for k, v in device_audio_map.items()]}", category='audio')
+        _device_map_info = {f'dev{k}': [(c.get('file', '').split('\\')[-1], c.get('is_noise'), d) for c, d in v] for k, v in device_audio_map.items()}
+        log_and_emit('DEBUG', 'audio_engine', f"[play_overlap] device_audio_map: {_device_map_info}", category='audio')
 
         # 提交到线程池
         futures = []
@@ -612,7 +615,8 @@ class AudioService:
         if '*' not in task_id_pattern and task_id_pattern.endswith('_'):
             pattern = f"^{re.escape(task_id_pattern)}.*$"
         else:
-            pattern = f"^{re.escape(task_id_pattern).replace(r'\*', '.*')}$"
+            _escaped = re.escape(task_id_pattern).replace(r'\*', '.*')
+            pattern = f"^{_escaped}$"
         
         matched_task_ids = []
         for task_id_key in self.active_players.keys():

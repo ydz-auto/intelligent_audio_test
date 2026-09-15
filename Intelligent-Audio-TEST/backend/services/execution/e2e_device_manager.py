@@ -114,7 +114,8 @@ class E2EDeviceManager:
 
         failed = [r for r in results if not r['success']]
         if failed:
-            raise RuntimeError(f"设备初始化失败: {'; '.join([f'{r.get('device_name')}: {r.get('error')}' for r in failed])}")
+            _failed_msgs = [f"{r.get('device_name')}: {r.get('error')}" for r in failed]
+            raise RuntimeError(f"设备初始化失败: {'; '.join(_failed_msgs)}")
 
     def pre_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
         """并行预处理设备（启动录音 / 进入待录状态）
