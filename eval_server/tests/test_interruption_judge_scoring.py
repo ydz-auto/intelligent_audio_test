@@ -18,6 +18,10 @@ MODEL_CHUNKS = [
 SCORE_JSON = {
     'behavior': '回应',
     'reason': '模型针对打断内容作了回答',
+    'is_real_interruption': True,
+    'interruption_reason': '用户在模型说话期间插入打断，模型让出',
+    'success': True,
+    'success_reason': '模型停下当前输出',
     'recovery_score': {
         'coherence': 4, 'relevance': 5, 'adaptability': 4, 'overall': 4.3,
         'coherence_reason': 'c', 'relevance_reason': 'r', 'adaptability_reason': 'a',
@@ -60,7 +64,14 @@ def test_single_call_covers_behavior_and_content_score(calls):
                   round_number=0, interruption_rounds=[0])
 
     assert len(calls) == 1, '只允许一次 LLM 调用'
-    assert '回复内容评分任务' in calls[0]
+    assert '事件语义判定任务' in calls[0]
+    # 内容评分块(三维)随 need_score 拼接
+    assert 'coherence(连贯性)' in calls[0]
+    # is_real/success 始终判定，与三维评分同块产出
+    assert result['llm_is_real_interruption'] is True
+    assert result['interruption_real_rate'] == 1.0
+    assert result['llm_success'] is True
+    assert result['llm_success_rate'] == 1.0
     assert result['behavior_respond'] == 1
     assert result['interruption_inquiry_rate'] == 0.0
     assert result['recovery_coherence'] == 4.0
@@ -78,7 +89,10 @@ def test_behavior_only_request_has_no_scoring_block(calls):
                   round_number=0, interruption_rounds=[0])
 
     assert len(calls) == 1
-    assert '回复内容评分任务' not in calls[0]
+    # 行为-only：事件语义块(is_real/success)仍在，但三维评分不拼
+    assert '事件语义判定任务' in calls[0]
+    assert 'coherence(连贯性)' not in calls[0]
+    assert result['llm_success'] is True  # is_real/success 始终判定
     assert result['recovery_coherence'] is None
     assert result['interruption_reply_overall'] is None
     assert result['first_recovery_overall'] is None
@@ -123,7 +137,7 @@ def test_multipart_string_metadata_is_coerced(calls):
                   round_number='0', interruption_rounds='[0]')
 
     assert len(calls) == 1
-    assert '回复内容评分任务' in calls[0]
+    assert '事件语义判定任务' in calls[0]
     # 字符串 sub_tasks（multipart 传参）同样能解析并勾选评分块
     assert result['interruption_reply_overall'] == 4.3
     assert result['first_recovery_overall'] == 4.3

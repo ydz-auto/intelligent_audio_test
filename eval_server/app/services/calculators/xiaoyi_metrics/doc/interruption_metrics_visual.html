@@ -594,11 +594,11 @@ target_recovery_latency_s
     </div>
 
     <div class="ex-box">
-      <p class="ex-title">▼ 打断成功率(#1)到底怎么来——三层来源</p>
-      <div class="ex-line"><b>① 默认:本地时序</b>　success = stopped AND resumed,由 compute_interruption_metrics 从两路 ASR 算,不调 LLM</div>
-      <div class="ex-line"><b>② 停止指令轮:LLM 回填</b>　LLM 判 stop_instruction_compliance_rate≥1.0(遵从) → backend reconcile_stop_instruction_success 把值为 0 的成功率回填为 1</div>
-      <div class="ex-line" style="color:var(--muted)">回填只作用于<b>停止指令轮</b>且仅当本地时序判 0;插话/恢复原话题轮成功率始终是纯时序。回填在主 app backend,不在 eval_server LLM 返回里——故"LLM 返回格式"表无 success 字段是正确的。</div>
-      <div class="ex-line" style="color:var(--bad)"><b>⚠ API.md 里的 <code>llm_success_rate</code>(LLM 语义判定覆盖成功率)是过时设计,当前代码无此字段</b>——以 interruption.py / interruption_judge.py 实现为准。</div>
+      <p class="ex-title">▼ 打断成功率(#1)到底怎么来——三条路径</p>
+      <div class="ex-line"><b>① 本地时序(权威)</b>　<code>interruption_success_rate</code> = stopped AND resumed,由 compute_interruption_metrics 从两路 ASR 算,不调 LLM;始终是唯一权威值</div>
+      <div class="ex-line"><b>② LLM 语义判定(同次调用产出,不覆盖本地)</b>　<code>llm_success</code>/<code>llm_success_rate</code> = 模型在被打断后是否停下(停下即成功,与恢复质量无关);<code>llm_is_real_interruption</code>/<code>interruption_real_rate</code> = 是否真正打断。与本地互补,供报告/复核</div>
+      <div class="ex-line"><b>③ 停止指令轮回填</b>　LLM 判 stop_instruction_compliance_rate≥1.0(遵从) → backend reconcile_stop_instruction_success 把本地值为 0 的成功率回填为 1(幂等)</div>
+      <div class="ex-line" style="color:var(--muted)">②在 eval_server 的 interruption_judge 单次调用里产出(定位到目标事件时始终判定);③在主 app backend。②不回写覆盖①——本地 <code>interruption_success_rate</code> 仍是维度取值来源。</div>
     </div>
 
     <div class="grp">
@@ -750,24 +750,22 @@ adaptability)
 <span class="cmt">// ── 以下为条件块：仅在勾选对应 sub_tasks 时拼接 ──</span>
 
 <span class="sec">═══════════════════════════════════════
-【回复内容评分任务】</span>  <span class="cmt">// 回复内容类 sub_tasks 且本轮为最后一个实际打断轮</span>  <span class="mtr">// 产出 #6 / #9</span>
+【事件语义判定任务】</span>  <span class="cmt">// 定位到目标事件时始终拼接</span>  <span class="mtr">// 产出 is_real / success（语义成功率）</span>
 <span class="sec">═══════════════════════════════════════</span>
 
-下面是本地时序从两路 ASR 中定位出的<b>最后一个有效实际打断轮</b>内容，
-请只对【模型恢复回复】打分（0-5 整数，0 最差、5 最好）：
+下面是本地时序从两路 ASR 中定位出的<b>最后一个有效实际打断轮</b>事件内容：
 
 <span class="var">【用户打断意图】：等等，换个话题
 【被打断时模型正在说】：回答中的内容
-【模型恢复回复】：好的，您想聊什么话题</span>
+【模型恢复回复】：好的，您想聊什么话题
+【本地时序结论（仅供参考，勿照搬）】：success=True stop_latency_ms=1900 recovery_latency_ms=1200</span>
 
-1. coherence(连贯性)：恢复回复与被打断内容、与用户打断意图的衔接是否连贯自然。
-   0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
-2. relevance(相关性)：恢复回复是否切合用户的打断意图。
-   0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题
-3. adaptability(适应性)：模型是否适应了打断带来的话题切换/调整，自然承接而非生硬。
-   0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美适应
-
-注意：若模型未给出恢复回复，三维均给 0，并在理由中说明。
+(A) is_real_interruption：是否真的打断（用户确有打断意图且在模型说话期间插入、模型确有让出/停下）。给布尔 + 简短 interruption_reason。
+    若用户只是应答词（"嗯/好"）、或未在模型说话期间插入、或模型全程未被影响，则不算。
+(B) success：模型是否【成功处理了打断】= 只要模型在被打断后停止了当前输出（让出/停下）即算成功，
+    不要求是否恢复、也不看恢复回复质量。成功=停下；失败=说穿。给布尔 + 简短 success_reason。
+    注意：success 与 (C) 三维评分相互独立——即使模型未给恢复回复（三维为 0），只要停下了，success 仍为 true。
+<span class="cmt">// (C) 三维评分（coherence/relevance/adaptability，0-5）仅在勾选回复内容类且本轮为目标轮时拼接，口径同下表 #6/#9</span>
 
 <span class="sec">═══════════════════════════════════════
 【停止指令遵从判定任务】</span>  <span class="cmt">// stop_instruction_compliance 且本轮为停止指令轮</span>  <span class="mtr">// 产出 #7</span>
@@ -791,6 +789,10 @@ adaptability)
 {
   <span class="key">"behavior"</span>: "",                                          <span class="mtr"># → #3 打断询问率</span>
   <span class="key">"reason"</span>: "",
+  <span class="key">"is_real_interruption"</span>: true,                             <span class="mtr"># → 语义:是否真正打断</span>
+  <span class="key">"interruption_reason"</span>: "",
+  <span class="key">"success"</span>: true,                                          <span class="mtr"># → llm_success_rate(语义成功率)</span>
+  <span class="key">"success_reason"</span>: "",
   <span class="key">"recovery_score"</span>: {<span class="key">"coherence"</span>: 0, <span class="key">"relevance"</span>: 0, <span class="key">"adaptability"</span>: 0, <span class="key">"overall"</span>: 0,   <span class="mtr"># → #6 / #9</span>
     <span class="key">"coherence_reason"</span>: "", <span class="key">"relevance_reason"</span>: "", <span class="key">"adaptability_reason"</span>: ""},
   <span class="key">"stop_complied"</span>: true,                                    <span class="mtr"># → #7</span>
@@ -834,6 +836,10 @@ coherence / relevance / adaptability)
       <tbody>
         <tr><td><code>behavior</code></td><td>string</td><td class="calc">{"回应","恢复","不确定询问","未知"} 四选一</td><td class="calc">模型被打断后的行为分类；#3 询问率由它派生</td><td class="calc">始终</td></tr>
         <tr><td><code>reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">行为判定理由：从音频听到什么、结合时间线观察、为何归类</td><td class="calc">始终</td></tr>
+        <tr><td><code>is_real_interruption</code></td><td>bool</td><td class="calc">true / false</td><td class="calc">是否真正打断（用户确有打断意图且在模型说话期间插入、模型确有让出）</td><td class="calc">定位到目标事件时</td></tr>
+        <tr><td><code>interruption_reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">is_real 判定理由</td><td class="calc">同上</td></tr>
+        <tr><td><code>success</code></td><td>bool</td><td class="calc">true / false</td><td class="calc">模型是否成功处理打断（停下即成功，与恢复质量无关）→ <b>语义成功率</b></td><td class="calc">同上</td></tr>
+        <tr><td><code>success_reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">success 判定理由（只解释为何停下/说穿）</td><td class="calc">同上</td></tr>
         <tr><td><code>recovery_score</code></td><td>object</td><td class="calc">见下 7 子键</td><td class="calc">对【末轮首个完整恢复回复】的三维打分</td><td class="calc">勾选回复内容类 + 末轮</td></tr>
         <tr><td><code>recovery_score.coherence</code></td><td>int</td><td class="calc">0–5 整数</td><td class="calc">连贯性：恢复回复与被打断内容/打断意图的衔接</td><td class="calc">同上</td></tr>
         <tr><td><code>recovery_score.relevance</code></td><td>int</td><td class="calc">0–5 整数</td><td class="calc">相关性：恢复回复是否切合用户打断意图</td><td class="calc">同上</td></tr>
@@ -856,6 +862,10 @@ coherence / relevance / adaptability)
 <pre>{
   <span class="key">"behavior"</span>: <span class="var">"回应"</span>,
   <span class="key">"reason"</span>: <span class="var">"模型听到用户说'换个话题'后停止原回答，回复'您想聊什么话题'，对打断意图做了回应。"</span>,
+  <span class="key">"is_real_interruption"</span>: <span class="var">true</span>,
+  <span class="key">"interruption_reason"</span>: <span class="var">"用户在模型说话期间插入打断，模型确有让出"</span>,
+  <span class="key">"success"</span>: <span class="var">true</span>,
+  <span class="key">"success_reason"</span>: <span class="var">"模型停下当前输出"</span>,
   <span class="key">"recovery_score"</span>: {
     <span class="key">"coherence"</span>: <span class="var">4</span>, <span class="key">"relevance"</span>: <span class="var">4</span>, <span class="key">"adaptability"</span>: <span class="var">3</span>, <span class="key">"overall"</span>: <span class="var">3.7</span>,
     <span class="key">"coherence_reason"</span>: <span class="var">"恢复回复与打断意图衔接自然"</span>,
@@ -878,6 +888,12 @@ coherence / relevance / adaptability)
         <tr><td><code>model</code></td><td>string</td><td class="calc">模型 id</td><td class="calc">resolve_model('interruption_judge')</td><td class="calc">实际使用的裁判模型</td></tr>
         <tr><td><code>behavior_respond</code><br><code>behavior_recover</code><br><code>behavior_uncertain</code><br><code>behavior_unknown</code></td><td>int ×4</td><td class="calc">0 或 1</td><td class="calc">behavior one-hot 拆分</td><td class="calc">供子维度 pass_rate 聚合；四者互斥，恰一个为 1</td></tr>
         <tr><td><code>interruption_inquiry_rate</code></td><td>float|null</td><td class="calc">0.0 / 1.0 / null</td><td class="calc">behavior=="不确定询问"→1.0 否则→0.0；无有效解析→null</td><td class="calc">→ #3 打断询问率</td></tr>
+        <tr><td><code>llm_is_real_interruption</code></td><td>bool|null</td><td class="calc">true/false/null</td><td class="calc">原始 is_real_interruption，解析失败/未定位→null</td><td class="calc">是否真正打断（语义）</td></tr>
+        <tr><td><code>interruption_real_rate</code></td><td>float|null</td><td class="calc">0.0/1.0/null</td><td class="calc">float(is_real)；is_real=None→null</td><td class="calc">真正打断占比（单事件=0/1）</td></tr>
+        <tr><td><code>interruption_reason</code></td><td>string|null</td><td class="calc">自由文本</td><td class="calc">原始 interruption_reason</td><td class="calc">is_real 判定理由</td></tr>
+        <tr><td><code>llm_success</code></td><td>bool|null</td><td class="calc">true/false/null</td><td class="calc">原始 success（模型是否停下），解析失败/未定位→null</td><td class="calc">语义打断成功（与本地时序互补，不覆盖）</td></tr>
+        <tr><td><code>llm_success_rate</code></td><td>float|null</td><td class="calc">0.0/1.0/null</td><td class="calc">float(success)；success=None→null</td><td class="calc">→ 语义成功率（单事件=0/1）</td></tr>
+        <tr><td><code>llm_success_reason</code></td><td>string|null</td><td class="calc">自由文本</td><td class="calc">原始 success_reason</td><td class="calc">success 判定理由</td></tr>
         <tr><td><code>recovery_coherence</code><br><code>recovery_relevance</code><br><code>recovery_adaptability</code></td><td>int|null</td><td class="calc">0–5 / null</td><td class="calc">recovery_score 三维原值</td><td class="calc">恢复回复三维分；未勾选→null</td></tr>
         <tr><td><code>interruption_reply_overall</code></td><td>float|null</td><td class="calc">0.0–5.0 / null</td><td class="calc">overall 或 mean(三维)；单实际轮用例</td><td class="calc">→ #6 打断内容评分</td></tr>
         <tr><td><code>first_recovery_overall</code></td><td>float|null</td><td class="calc">0.0–5.0 / null</td><td class="calc">与 reply_overall 同值；多实际轮用例</td><td class="calc">→ #9 恢复首轮内容评分；两者同时填</td></tr>

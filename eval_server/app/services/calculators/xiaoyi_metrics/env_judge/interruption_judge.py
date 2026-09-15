@@ -7,10 +7,14 @@ sub_tasks 拼接 prompt 分块，因此**每个用例只调用一次 LLM**：
 
     1. 行为分类（始终执行）：回应 / 恢复 / 不确定询问 / 未知 → behavior_* one-hot
     2. 打断询问率：由行为分类派生（不确定询问 → 1，否则 0；无有效解析 → None）
-    3. 回复内容评分（勾选时）：对**最后一个有效实际打断轮**的首个恢复回复打
+    3. 事件语义判定（定位到目标事件时始终执行）：is_real_interruption（是否真正打断）
+       + success（模型在被打断后是否停下，停下即成功；与恢复回复质量相互独立）
+       → llm_is_real_interruption / interruption_real_rate / llm_success / llm_success_rate；
+       与本地时序 interruption_success_rate 互补，不回写覆盖本地数值（本地始终是唯一权威）。
+    4. 回复内容评分（勾选时）：对**最后一个有效实际打断轮**的首个恢复回复打
        连贯性/相关性/适应性(0-5)；单实际轮用例写 interruption_reply_overall，
        多实际轮用例写 first_recovery_overall
-    4. 停止指令遵从率（勾选且该轮为停止指令时）：模型停止原内容输出即遵从，
+    5. 停止指令遵从率（勾选且该轮为停止指令时）：模型停止原内容输出即遵从，
        只回复"好的/我明白了"等确认语同样算遵从，继续输出原内容才算不遵从
 
 回复内容评分需要知道哪一段是"恢复回复"，这里复用本地时序计算
@@ -113,20 +117,45 @@ def _tri_state(value: Any) -> Optional[bool]:
 
 
 # ─────────── prompt 构建 ───────────
-def _score_block(event: Dict[str, Any]) -> str:
-    """回复内容评分块：把本地时序定位到的三段文本喂给裁判，避免它自己猜恢复段。"""
-    return (
-        '═══════════════════════════════════════\n'
-        '【回复内容评分任务】\n'
-        '═══════════════════════════════════════\n\n'
-        '下面是本地时序从两路 ASR 中定位出的**最后一个有效实际打断轮**内容，'
-        '请只对【模型恢复回复】打分（0-5 整数，0 最差、5 最好）：\n\n'
+def _event_block(event: Dict[str, Any], need_score: bool = False) -> str:
+    """事件语义判定块：is_real_interruption + success（始终）+ 回复三维评分（need_score 时）。
+
+    把本地时序定位到的目标轮事件三段文本喂给裁判，避免它自己猜恢复段；success（模型是否
+    停下）与三维评分相互独立——即使未给恢复回复，只要停下 success 仍为 true。
+    """
+    ctx = (
         f'【用户打断意图】：{event.get("user_text") or "（未识别到用户语音）"}\n'
         f'【被打断时模型正在说】：{event.get("model_interrupted_text") or "（无）"}\n'
-        f'【模型恢复回复】：{event.get("model_recovery_text") or "（模型未给出恢复回复）"}\n\n'
-        f'{_SCORE_CRITERIA}\n\n'
-        '注意：若模型未给出恢复回复，三维均给 0，并在理由中说明。\n'
+        f'【模型恢复回复】：{event.get("model_recovery_text") or "（模型未给出恢复回复）"}\n'
+        f'【本地时序结论（仅供参考，勿照搬）】：success={event.get("success")} '
+        f'stop_latency_ms={event.get("stop_latency_s")} recovery_latency_ms={event.get("recovery_latency_s")}\n\n'
     )
+    parts = [
+        '═══════════════════════════════════════\n'
+        '【事件语义判定任务】\n'
+        '═══════════════════════════════════════\n\n'
+        '下面是本地时序从两路 ASR 中定位出的**最后一个有效实际打断轮**事件内容：\n\n'
+        + ctx
+    ]
+    parts.append(
+        '(A) is_real_interruption：是否真的打断（用户确有打断意图且在模型说话期间插入、模型确有让出/停下）。'
+        '给布尔 + 简短 interruption_reason。\n'
+        '    若用户只是应答词（"嗯/好"）、或未在模型说话期间插入、或模型全程未被影响，则不算。\n'
+    )
+    parts.append(
+        '(B) success：模型是否【成功处理了打断】= 只要模型在被打断后停止了当前输出（让出/停下）即算成功，'
+        '不要求是否恢复、也不看恢复回复质量。\n'
+        '    成功 = 模型在用户打断后停下了当前输出；失败 = 模型无视打断说穿（继续把原来的话说完，未停下）。\n'
+        '    给布尔 + 简短 success_reason（只解释为何停下/说穿）。\n'
+        '    注意：success 与 (C) 三维评分相互独立——即使模型未给恢复回复（三维为 0），只要停下了，success 仍为 true。\n'
+    )
+    if need_score:
+        parts.append(
+            '(C) 对【模型恢复回复】三维打分（0-5 整数，0 最差、5 最好）：\n'
+            f'{_SCORE_CRITERIA}\n\n'
+            '注意：若模型未给出恢复回复，三维均给 0，并在理由中说明。\n'
+        )
+    return ''.join(parts)
 
 
 def _stop_block(event: Optional[Dict[str, Any]]) -> str:
@@ -152,14 +181,17 @@ def _stop_block(event: Optional[Dict[str, Any]]) -> str:
 
 
 def build_interruption_prompt(timeline_text: str = '',
-                              score_event: Optional[Dict[str, Any]] = None,
+                              event: Optional[Dict[str, Any]] = None,
+                              need_score: bool = False,
                               need_stop_compliance: bool = False,
                               stop_event: Optional[Dict[str, Any]] = None) -> str:
     """构建打断场景评估 prompt
 
     Args:
         timeline_text: 用户侧 ASR 转写时间线
-        score_event: 非空时拼接回复内容评分块（本地时序定位到的目标轮事件）
+        event: 本地时序定位到的目标轮事件；非空时拼接事件语义判定块
+            （is_real_interruption + success 始终，三维评分在 need_score 时）
+        need_score: 是否在事件块里拼接回复三维评分（勾选内容评分且本轮为目标轮）
         need_stop_compliance: 是否拼接停止指令遵从判定块
         stop_event: 停止指令轮的本地时序事件（可为空）
     """
@@ -181,8 +213,8 @@ def build_interruption_prompt(timeline_text: str = '',
     scenes_text = '\n\n'.join(scene_blocks)
 
     extra_blocks = ''
-    if score_event is not None:
-        extra_blocks += '\n' + _score_block(score_event)
+    if event is not None:
+        extra_blocks += '\n' + _event_block(event, need_score)
     if need_stop_compliance:
         extra_blocks += '\n' + _stop_block(stop_event)
 
@@ -192,7 +224,18 @@ def build_interruption_prompt(timeline_text: str = '',
         '- behavior 必须是【回应】【恢复】【不确定询问】【未知】四个类别之一',
         '- reason 为简短判定理由，需说明你从回复音频中听到了什么、结合时间线观察到什么、为何归类为此行为',
     ]
-    if score_event is not None:
+    if event is not None:
+        output_keys.append('  "is_real_interruption": true')
+        output_keys.append('  "interruption_reason": ""')
+        output_keys.append('  "success": true')
+        output_keys.append('  "success_reason": ""')
+        output_notes.append(
+            '- is_real_interruption 为是否真正发生打断(布尔)，interruption_reason 为简短理由'
+        )
+        output_notes.append(
+            '- success 为模型是否成功处理打断(停下即算成功，布尔)，success_reason 为简短理由'
+        )
+    if need_score:
         output_keys.append(
             '  "recovery_score": {"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, '
             '"coherence_reason": "", "relevance_reason": "", "adaptability_reason": ""}'
@@ -336,29 +379,34 @@ def evaluate_interruption_judge(
     need_score = _selected(sub_tasks, CONTENT_SCORE_TASKS)
     need_stop = bool(_selected(sub_tasks, STOP_COMPLIANCE_TASKS) and is_stop_round)
 
-    score_event = None
+    # 始终定位目标轮事件：除内容评分/停止遵从外，is_real_interruption + success
+    # 语义判定也依赖该事件的三段文本，故不再只在 need_score/need_stop 时才定位。
+    target_event = None
     stop_event = None
+    score_event = None
     is_multi = False
-    if need_score or need_stop:
+    if user_chunks and model_chunks:
         event, is_multi, is_target, current_round, valid = _locate_target_event(
             rounds, round_number, interruption_rounds, user_chunks, model_chunks,
         )
-        # 只有最后一个有效实际打断轮的回复是完整的，其余轮不做内容评分
-        if need_score and is_target:
-            score_event = event or {}
+        target_event = event  # 始终用于 is_real/success 语义判定
         if need_stop:
             # 停止指令轮即使没定位到恢复段也要判定（停止后无语音即为遵从）
             stop_event = event
+        # 只有最后一个有效实际打断轮的回复是完整的，其余轮不做内容评分
+        if need_score and is_target:
+            score_event = event or {}
         logger.info(
             f'[interruption_judge] 轮次定位: current={current_round} valid={valid} '
             f'is_multi={is_multi} is_target={is_target} '
-            f'need_score={need_score} need_stop={need_stop}'
+            f'need_score={bool(score_event)} need_stop={need_stop}'
         )
 
     timeline_text = build_timeline_text(user_chunks)
     prompt = build_interruption_prompt(
         timeline_text,
-        score_event=score_event,
+        event=target_event,
+        need_score=bool(score_event),
         need_stop_compliance=need_stop,
         stop_event=stop_event,
     )
@@ -375,6 +423,13 @@ def evaluate_interruption_judge(
         'behavior_unknown': 0,
         # ── 合并进同一次调用的 LLM 维度（未勾选/不适用/解析失败均为 None，不得当 0）──
         'interruption_inquiry_rate': None,
+        # ── 事件语义判定（is_real_interruption + success），与本地时序 success 互补，不回写覆盖 ──
+        'llm_is_real_interruption': None,
+        'interruption_real_rate': None,
+        'interruption_reason': None,
+        'llm_success': None,
+        'llm_success_rate': None,
+        'llm_success_reason': None,
         'recovery_coherence': None,
         'recovery_relevance': None,
         'recovery_adaptability': None,
@@ -437,6 +492,17 @@ def evaluate_interruption_judge(
         # 打断询问率由行为分类派生：有效解析才有分母
         result['interruption_inquiry_rate'] = 1.0 if behavior == '不确定询问' else 0.0
 
+    # ── 事件语义判定：is_real_interruption + success（与本地时序 success 互补，不回写覆盖）──
+    if target_event is not None:
+        is_real = _tri_state(parsed.get('is_real_interruption'))
+        llm_success = _tri_state(parsed.get('success'))
+        result['llm_is_real_interruption'] = is_real
+        result['interruption_real_rate'] = None if is_real is None else float(is_real)
+        result['interruption_reason'] = str(parsed.get('interruption_reason', ''))
+        result['llm_success'] = llm_success
+        result['llm_success_rate'] = None if llm_success is None else float(llm_success)
+        result['llm_success_reason'] = str(parsed.get('success_reason', ''))
+
     # ── 回复内容评分（单实际轮 → 打断回复内容评分；多实际轮 → 恢复首轮内容评分）──
     if score_event is not None:
         score = parsed.get('recovery_score') or {}
@@ -476,6 +542,8 @@ def evaluate_interruption_judge(
         f'model={model} ai_wav={ai_wav} '
         f'n_evaluations={len(evaluations)} '
         f'inquiry_rate={result["interruption_inquiry_rate"]} '
+        f'is_real={result["llm_is_real_interruption"]} '
+        f'llm_success={result["llm_success"]} llm_success_rate={result["llm_success_rate"]} '
         f'reply_overall={result["interruption_reply_overall"]} '
         f'first_recovery_overall={result["first_recovery_overall"]} '
         f'stop_compliance={result["stop_instruction_compliance_rate"]} '
