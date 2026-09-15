@@ -771,6 +771,37 @@ class EvaluationResultProcessor(RoundAggregator):
                             f"dimension_id={row.dimension_id}, → {new_val}, score={row.score}",
                     task_id=task_id, test_case_id=test_case_id,
                 )
+
+            # 同步回填打断失败率：success 覆盖为 new_val 时 failure_rate 须为 1 - new_val
+            # （与 reconcile_stop_instruction_success 的失败率同步模式一致，避免 success 与 failure 矛盾）
+            new_failure = 1.0 - new_val
+            failure_rows = (
+                local_session.query(TestResultDimension)
+                .join(Dimension, Dimension.id == TestResultDimension.dimension_id)
+                .filter(TestResultDimension.test_result_id == result_id,
+                        Dimension.task_type_code == 'interruption_failure_rate',
+                        Dimension.deleted.is_(False))
+                .all()
+            )
+            for fr in failure_rows:
+                if fr.status != 'completed' or fr.dimension_value is None:
+                    continue
+                try:
+                    if float(fr.dimension_value) == new_failure:
+                        continue  # 已一致，幂等跳过
+                except (TypeError, ValueError):
+                    continue
+                fr_dim = local_session.query(Dimension).get(fr.dimension_id)
+                fr_rule = fr_dim.rule if fr_dim is not None and isinstance(fr_dim.rule, dict) else None
+                fr.dimension_value = new_failure
+                fr.score = calculate_score(new_failure, fr_rule)
+                self._log(
+                    level='INFO',
+                    category='execution',
+                    content=f"LLM 语义成功率同步回填打断失败率: result_id={result_id}, "
+                            f"dimension_id={fr.dimension_id}, → {new_failure}, score={fr.score}",
+                    task_id=task_id, test_case_id=test_case_id,
+                )
             local_session.commit()
         except Exception as e:
             self._log(
