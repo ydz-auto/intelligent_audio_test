@@ -37,7 +37,7 @@ def compute_high_freq_turn_taking(
     user_chunks: Any,
     ai_chunks: Any,
     seg_merge_gap_s: float = SEG_MERGE_GAP_S,
-    case_wav: str = None,
+    played_audios: str = None,
     user_wav: str = None,
 ) -> Dict[str, Any]:
     """计算高频轮换场景下每轮回复时延
@@ -46,7 +46,7 @@ def compute_high_freq_turn_taking(
     A_j（A_j.start >= U_i.end），即该轮回复。
     回复时延 = A_j.start - U_i.end
 
-    当提供 case_wav + user_wav 时，额外通过 FFT 互相关对齐计算整体
+    当提供 played_audios + user_wav 时，额外通过 FFT 互相关对齐计算整体
     client_out 时延（与 false_takeover.py 一致）：
         client_out_latency_ms = model_first_word_start_ms - client_out_end_ms
 
@@ -54,7 +54,7 @@ def compute_high_freq_turn_taking(
         user_chunks: 用户通道 ASR chunks（list 或 {text, chunks}）
         ai_chunks:   AI 回复通道 ASR chunks（同上）。两路需在同一时间轴
         seg_merge_gap_s: 词合并为段的间隙阈值（秒），默认 0.7
-        case_wav: 干净音源路径（互相关对齐用）
+        played_audios: 干净音源路径（互相关对齐用）
         user_wav: 用户通道音频路径（=client_out，对齐目标）
 
     Returns:
@@ -195,11 +195,11 @@ def compute_high_freq_turn_taking(
     else:
         result['message'] = 'OK'
 
-    # ── client_out 时延（case_wav + user_wav 互相关对齐）──
-    if case_wav and user_wav:
+    # ── client_out 时延（played_audios + user_wav 互相关对齐）──
+    if played_audios and user_wav:
         try:
             from .false_takeover import compute_client_out_latency
-            lat_res = compute_client_out_latency(case_wav, user_wav, ai_chunks)
+            lat_res = compute_client_out_latency(played_audios, user_wav, ai_chunks)
             result['client_out_start_ms'] = lat_res.get('client_out_start_ms')
             result['client_out_end_ms'] = lat_res.get('client_out_end_ms')
             result['model_first_word_start_ms'] = lat_res.get('model_first_word_start_ms')

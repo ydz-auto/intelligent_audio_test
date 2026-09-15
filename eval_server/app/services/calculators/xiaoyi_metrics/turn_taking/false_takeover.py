@@ -251,9 +251,53 @@ def _coarse_to_fine_align(clean, noisy, factors=None):
     return max(0, approx_offset), ncc
 
 
-def _locate_client_out(case_wav, client_out_wav):
-    """将 case_wav 的有效语料对齐到 client_out_wav，返回 client_out 时间戳。"""
-    sr_clean, clean = _load_audio(case_wav)
+def _resolve_played_audio_path(played_audios):
+    """从 played_audios 参数解析出实际音频文件路径。
+
+    兼容多种形态:
+    - str: wav 路径，或 JSON 字符串（list/dict，平台 played_audios 参数）
+    - list: 每项为 dict（取 audio_path）或路径字符串，取第一个非空
+    - dict: 直接取 audio_path
+
+    Returns:
+        str|None: 解析出的音频路径，无法解析时返回 None
+    """
+    if not played_audios:
+        return None
+
+    data = played_audios
+    if isinstance(data, str):
+        s = data.strip()
+        if s[:1] in ('[', '{'):
+            try:
+                data = json.loads(s)
+            except (ValueError, TypeError):
+                return s or None
+        else:
+            return s or None
+
+    def _pick(obj):
+        if isinstance(obj, dict):
+            return obj.get('audio_path') or obj.get('path')
+        if isinstance(obj, str):
+            return obj or None
+        return None
+
+    if isinstance(data, dict):
+        return _pick(data)
+
+    if isinstance(data, list):
+        for item in data:
+            p = _pick(item)
+            if p:
+                return p
+
+    return None
+
+
+def _locate_client_out(played_audios, client_out_wav):
+    """将 played_audios 的有效语料对齐到 client_out_wav，返回 client_out 时间戳。"""
+    sr_clean, clean = _load_audio(played_audios)
     sr_out, client_out = _load_audio(client_out_wav)
     if sr_clean != sr_out:
         clean = resample_poly(clean, sr_out, sr_clean)
@@ -265,7 +309,7 @@ def _locate_client_out(case_wav, client_out_wav):
     return offset / sr_out, (offset + len(clean_speech)) / sr_out, ncc
 
 
-def compute_client_out_latency(case_wav, client_out_wav, model_chunks):
+def compute_client_out_latency(played_audios, client_out_wav, model_chunks):
     """计算 client_out 结束到模型回复首字之间的时延。
 
     时延 = model_first_word_start_ms - client_out_end_ms
@@ -278,11 +322,13 @@ def compute_client_out_latency(case_wav, client_out_wav, model_chunks):
         'ncc': None,
         'message': '',
     }
-    if not case_wav or not client_out_wav:
-        result['message'] = 'case_wav 或 client_out_wav 为空，无法对齐'
+    # played_audios 可能是单路径字符串，也可能是平台 played_audios JSON（list[dict].audio_path）
+    played_audios = _resolve_played_audio_path(played_audios)
+    if not played_audios or not client_out_wav:
+        result['message'] = 'played_audios 或 client_out_wav 为空，无法对齐'
         return result
     try:
-        start_s, end_s, ncc = _locate_client_out(case_wav, client_out_wav)
+        start_s, end_s, ncc = _locate_client_out(played_audios, client_out_wav)
     except Exception as exc:
         logger.exception('[client_out时延] 音频对齐失败')
         result['message'] = f'音频对齐失败: {exc}'
@@ -407,7 +453,7 @@ judge_result 说明：true = 存在话轮误接管；false = 无话轮误接管"
 
 
 def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
-                                task_params=None, case_wav=None, user_wav=None):
+                                task_params=None, played_audios=None, user_wav=None):
     """LLM 语义判断误接管（时间戳算法的补充）
 
     时间戳算法只能检测模型词是否落在用户停顿区间内，无法识别"思考停顿"
@@ -423,7 +469,7 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
         ai_chunks (list): 模型词级 ASR chunks [{text, timestamp:[start,end]}]
         pause_intervals (list): 用户停顿区间 [{text, timestamp:[start,end]}]
         task_params (dict|None): 读取 llm_model 配置
-        case_wav (str|None): 干净音源路径（用于互相关对齐）
+        played_audios (str|None): 干净音源路径（用于互相关对齐）
         user_wav (str|None): 用户通道音频路径（=client_out，对齐目标）
 
     Returns:
@@ -488,8 +534,8 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
             result['hit_words'] = tor_res.get('hit_words')
             result['user_last_word_end_s'] = tor_res.get('user_last_word_end_s')
 
-            # client_out 时延计算（case_wav + user_wav 互相关对齐）
-            lat_res = compute_client_out_latency(case_wav, user_wav, ai_chunks)
+            # client_out 时延计算（played_audios + user_wav 互相关对齐）
+            lat_res = compute_client_out_latency(played_audios, user_wav, ai_chunks)
             result['client_out_start_ms'] = lat_res.get('client_out_start_ms')
             result['client_out_end_ms'] = lat_res.get('client_out_end_ms')
             result['model_first_word_start_ms'] = lat_res.get('model_first_word_start_ms')

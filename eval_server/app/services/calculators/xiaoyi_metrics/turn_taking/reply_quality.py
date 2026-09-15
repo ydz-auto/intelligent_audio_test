@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """单轮模型回复质量评分。
 
-输入: case_wav 的 ASR 文本（用户预期内容）+ ai_wav 的 ASR 文本（模型实际回复），
+输入: played_audios 的 ASR 文本（用户预期内容）+ ai_wav 的 ASR 文本（模型实际回复），
 调用 LLM 对模型回复质量进行打分。
 
 LLM 参数体系与 false_takeover 共用同一套 config.LLM_JUDGE，
@@ -58,7 +58,7 @@ def _build_reply_quality_prompt(user_text: str, ai_text: str) -> str:
 
 ## 输入数据
 
-【用户提问】（来自 case_wav ASR 转写）：
+【用户提问】（来自 played_audios ASR 转写）：
 {user_text or '（无 ASR 文本）'}
 
 【模型回复】（来自 ai_wav ASR 转写）：
@@ -71,7 +71,7 @@ score 说明：1-5 整数分数，5 为满分。"""
 
 
 def evaluate_reply_quality(
-    case_wav: str = '',
+    played_audios: str = '',
     ai_wav: str = '',
     user_text: str = '',
     ai_text: str = '',
@@ -85,10 +85,10 @@ def evaluate_reply_quality(
 
     优先使用外部传入的 user_text / ai_text；
     若未传入，则从 user_chunks / ai_chunks 中拼接文本；
-    若仍无，则从 case_wav / ai_wav 的 ASR JSON 读取。
+    若仍无，则从 played_audios / ai_wav 的 ASR JSON 读取。
 
     Args:
-        case_wav: 用户侧音频路径（用于回退读取 ASR JSON）
+        played_audios: 用户侧音频路径（用于回退读取 ASR JSON）
         ai_wav: 模型回复音频路径（用于回退读取 ASR JSON）
         user_text: 用户侧 ASR 文本（优先使用）
         ai_text: 模型侧 ASR 文本（优先使用）
@@ -115,9 +115,12 @@ def evaluate_reply_quality(
         result['user_text'] = user_text
     elif user_chunks:
         result['user_text'] = ''.join(c.get('text', '') for c in user_chunks if isinstance(c, dict))
-    elif case_wav:
+    elif played_audios:
         from app.services.calculators.xiaoyi_metrics.shared.llm_client import get_asr_text
-        result['user_text'] = get_asr_text(case_wav)
+        from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import _resolve_played_audio_path
+        _user_audio = _resolve_played_audio_path(played_audios)
+        if _user_audio:
+            result['user_text'] = get_asr_text(_user_audio)
 
     # ── 获取模型文本 ──
     if ai_text:
@@ -178,7 +181,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser(description='单轮模型回复质量评分')
-    parser.add_argument('--case-wav', default='', help='用户侧音频路径')
+    parser.add_argument('--played-audios', default='', help='用户侧音频路径')
     parser.add_argument('--ai-wav', default='', help='模型回复音频路径')
     parser.add_argument('--user-text', default='', help='用户侧 ASR 文本（可选，优先使用）')
     parser.add_argument('--ai-text', default='', help='模型侧 ASR 文本（可选，优先使用）')
@@ -186,7 +189,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     res = evaluate_reply_quality(
-        case_wav=args.case_wav,
+        played_audios=args.played_audios,
         ai_wav=args.ai_wav,
         user_text=args.user_text,
         ai_text=args.ai_text,

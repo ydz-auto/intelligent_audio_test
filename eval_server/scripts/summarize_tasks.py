@@ -29,7 +29,7 @@ TASKS_ROOT = os.path.join(
 )
 
 # 视为同一指标体系 task_type
-METRICS_TASK_TYPES = ('xiaoyi_metrics', 'turn_taking', 'takeover')
+METRICS_TASK_TYPES = ('xiaoyi_metrics', 'turn_taking', 'takeover_latency')
 
 
 def load_tasks(date_dir):

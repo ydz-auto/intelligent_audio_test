@@ -23,7 +23,7 @@ from app.services.calculators.xiaoyi_metrics import XiaoyiMetricsCalculator
 from app.services.calculators.xiaoyi_metrics.turn_taking.strategy import (
     TurnTakingCalculator, TorCalculator, FalseTakeoverCalculator,
     TakeoverLatencyCalculator, HighFreqTurnTakingCalculator,
-    HighFreqLlmJudgeCalculator,
+    HighFreqLlmJudgeCalculator, ReplyQualityCalculator,
 )
 from app.services.calculators.xiaoyi_metrics.rejection_scene_awareness.strategy import (
     NonInteractiveLatencyCalculator, NoiseLatencyCalculator,
@@ -54,6 +54,7 @@ TaskService.register_calculator('false_takeover', FalseTakeoverCalculator())
 TaskService.register_calculator('takeover_latency', TakeoverLatencyCalculator())
 TaskService.register_calculator('high_freq_turn_taking', HighFreqTurnTakingCalculator())
 TaskService.register_calculator('high_freq_llm_judge', HighFreqLlmJudgeCalculator())
+TaskService.register_calculator('reply_quality', ReplyQualityCalculator())
 # interruptibility 域
 TaskService.register_calculator('interruption_metrics', InterruptionMetricsCalculator())
 # rejection_scene_awareness 域

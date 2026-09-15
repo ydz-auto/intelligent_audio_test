@@ -155,7 +155,11 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
     caller_task_id 为调用方的任务 ID（可选）。
     eval_task_id 可由调用方预先生成（如 create_task_upload 需要先存文件）。
     """
-    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'turn_taking', 'interruption_metrics', 'non_interactive_latency', 'noise_latency', 'rejection_judge', 'interruption_judge', 'high_freq_turn_taking', 'high_freq_llm_judge']
+    # 支持的任务类型与 calculators 注册表保持一致（app/services/calculators/__init__.py），
+    # 动态读取注册表，避免硬编码列表遗漏新注册的 Calculator（如 takeover_latency 等）
+    from ..services import calculators  # noqa: F401  导入即完成全部注册
+    from ..services.task_service import TaskService
+    SUPPORTED_TASK_TYPES = sorted(TaskService.CALCULATORS.keys())
     if task_type not in SUPPORTED_TASK_TYPES:
         return error_response(f"Unsupported task type: {task_type}. Supported types: {SUPPORTED_TASK_TYPES}", code=CODE_BUSINESS_ERROR)
 
@@ -302,7 +306,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 pool = _get_calc_pool()
                 future = pool.submit(calculate_in_process, task_type, task_params)
                 result = future.result()  # 阻塞等待线程完成，但释放 GIL，不阻塞 HTTP 处理线程
-                if task_type in ('xiaoyi_metrics', 'takeover') and isinstance(result, dict):
+                if task_type in ('xiaoyi_metrics', 'takeover_latency') and isinstance(result, dict):
                     tl = result.get('takeover_latency')
                     if tl:
                         logger.info(
@@ -488,15 +492,15 @@ def create_task_upload():
                 _restore_multipart_placeholders(parsed), ensure_ascii=False
             )
 
-    # xiaoyi_metrics / takeover / interruption_metrics：把 rounds 里的字段提到顶层，供校验和计算使用
+    # xiaoyi_metrics / turn_taking / takeover_latency / interruption_metrics：把 rounds 里的字段提到顶层，供校验和计算使用
     # （record_file / user_wav / ai_wav 已作为文件上传保存，这里补充其他标量字段；
     #   interruption_metrics 走 wav 路径，user_wav/ai_wav 同样需提顶层供 calculate_interruption_metrics 取值）
     # 单轮取 rounds[0]；多轮取最后一轮 rounds[-1]
-    if task_type in ('xiaoyi_metrics', 'takeover', 'interruption_metrics', 'rejection_judge', 'interruption_judge'):
+    if task_type in ('xiaoyi_metrics', 'turn_taking', 'takeover_latency', 'interruption_metrics', 'rejection_judge', 'interruption_judge'):
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) >= 1 and isinstance(rounds_list[-1], dict):
             rd = rounds_list[-1]
-            for fld in ('record_file', 'user_wav', 'ai_wav', 'pause', 'first_frame_ms', 'start_ms', 'input', 'input_lastword', 'offset_ms'):
+            for fld in ('record_file', 'user_wav', 'ai_wav', 'played_audios', 'pause', 'first_frame_ms', 'start_ms', 'input', 'input_lastword', 'offset_ms'):
                 val = rd.get(fld)
                 if val is not None and val != '' and not task_params.get(fld):
                     task_params[fld] = val
@@ -753,7 +757,10 @@ def update_endpoint_concurrency(url, task_type):
     Returns:
         json: 包含更新后的端点配置和更新信息的响应
     """
-    if task_type not in ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge']:
+    # 与 calculators 注册表保持一致（app/services/calculators/__init__.py），动态读取避免硬编码脱节
+    from ..services import calculators  # noqa: F401  导入即完成全部注册
+    from ..services.task_service import TaskService
+    if task_type not in TaskService.CALCULATORS:
         return error_response(f"Unsupported task type: {task_type}", code=CODE_BUSINESS_ERROR)
     
     if not request.is_json:

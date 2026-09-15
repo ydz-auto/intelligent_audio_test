@@ -43,6 +43,7 @@ class XiaoyiMetricsCalculator(BaseCalculator):
         'false_takeover': 'false_takeover',
         'takeover_latency': 'takeover_latency',
         'client_out_latency': 'client_out_latency',
+        'reply_quality': 'reply_quality',
         # interruptibility 域
         'interruption': 'interruption_metrics',
         # rejection_scene_awareness 域

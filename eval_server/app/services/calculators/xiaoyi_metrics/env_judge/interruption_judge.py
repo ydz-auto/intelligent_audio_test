@@ -21,6 +21,8 @@ sub_tasks 拼接 prompt 分块，因此**每个用例只调用一次 LLM**：
 回复内容评分需要知道哪一段是"恢复回复"，这里复用本地时序计算
 （compute_interruption_metrics，纯本地、不调 LLM），并复用裁判已有的两路 ASR
 结果，因此不会新增 ASR 或 LLM 调用。
+
+注意：不向 LLM 传输音频文件，仅使用 ASR 转写文本。
 """
 import json
 import os
@@ -118,6 +120,26 @@ def _tri_state(value: Any) -> Optional[bool]:
 
 
 # ─────────── prompt 构建 ───────────
+def _build_model_timeline_text(model_chunks: Optional[List[Dict[str, Any]]]) -> str:
+    """构建模型回复 ASR 时间线文本（与用户侧时间线格式一致）。"""
+    if not model_chunks:
+        return ''
+    lines = []
+    for c in model_chunks:
+        if not isinstance(c, dict):
+            continue
+        t = c.get('timestamp') or [None, None]
+        text = c.get('text', '')
+        if t and t[0] is not None and t[1] is not None:
+            try:
+                lines.append(f'  [{float(t[0]):.2f}-{float(t[1]):.2f}] 模型: {text}')
+            except (TypeError, ValueError):
+                continue
+    if not lines:
+        return ''
+    return '（词级 ASR 转写，可能存在误差）\n' + '\n'.join(lines)
+
+
 def _event_block(event: Dict[str, Any], need_score: bool = False) -> str:
     """事件语义判定块：is_real_interruption + success（始终）+ 回复三维评分（need_score 时）。
 
@@ -182,6 +204,7 @@ def _stop_block(event: Optional[Dict[str, Any]]) -> str:
 
 
 def build_interruption_prompt(timeline_text: str = '',
+                              model_timeline_text: str = '',
                               event: Optional[Dict[str, Any]] = None,
                               need_score: bool = False,
                               need_stop_compliance: bool = False,
@@ -190,6 +213,7 @@ def build_interruption_prompt(timeline_text: str = '',
 
     Args:
         timeline_text: 用户侧 ASR 转写时间线
+        model_timeline_text: 模型回复 ASR 转写时间线
         event: 本地时序定位到的目标轮事件；非空时拼接事件语义判定块
             （is_real_interruption + success 始终，三维评分在 need_score 时）
         need_score: 是否在事件块里拼接回复三维评分（勾选内容评分且本轮为目标轮）
@@ -198,11 +222,18 @@ def build_interruption_prompt(timeline_text: str = '',
     """
     timeline_block = ''
     if timeline_text:
-        timeline_block = (
+        timeline_block += (
             '═══════════════════════════════════════\n'
             '【用户侧 ASR 时间线】\n'
             '═══════════════════════════════════════\n\n'
             f'{timeline_text}\n\n'
+        )
+    if model_timeline_text:
+        timeline_block += (
+            '═══════════════════════════════════════\n'
+            '【模型回复 ASR 时间线】\n'
+            '═══════════════════════════════════════\n\n'
+            f'{model_timeline_text}\n\n'
         )
 
     scene_blocks = []
@@ -223,7 +254,7 @@ def build_interruption_prompt(timeline_text: str = '',
     output_keys = ['  "behavior": ""', '  "reason": ""']
     output_notes = [
         '- behavior 必须是【回应】【恢复】【不确定询问】【未知】四个类别之一',
-        '- reason 为简短判定理由，需说明你从回复音频中听到了什么、结合时间线观察到什么、为何归类为此行为',
+        '- reason 为简短判定理由，需说明你从模型回复 ASR 中观察到了什么、结合时间线观察到什么、为何归类为此行为',
     ]
     if event is not None:
         output_keys.append('  "is_real_interruption": true')
@@ -254,11 +285,11 @@ def build_interruption_prompt(timeline_text: str = '',
 
     output_json = '{\n' + ',\n'.join(output_keys) + '\n}'
 
-    return f"""你是语音对话能力的裁判专家。你将收到【模型回复音频】以及下方【用户侧 ASR 时间线】。
+    return f"""你是语音对话能力的裁判专家。你将根据下方【模型回复 ASR 时间线】和【用户侧 ASR 时间线】进行判断。
 
 用户输入音频包含两部分内容：第一段为用户交互内容，第二段为打断干扰内容。上述场景定义涵盖了打断干扰内容的类型。打断干扰内容往往与模型对第一段用户交互语音内容的回复内容在时间上重叠，即"重叠内容"。
 
-请结合回复音频、时间线和场景定义，判断在接收到重叠内容后，模型表现出的行为类别，并给出理由。
+请结合模型回复 ASR 时间线、用户侧时间线和场景定义，判断在接收到重叠内容后，模型表现出的行为类别，并给出理由。
 
 {timeline_block}═══════════════════════════════════════
 【场景定义】（打断干扰内容类型参考）
@@ -335,7 +366,7 @@ def evaluate_interruption_judge(
     """打断场景 LLM 裁判主入口（一次调用产出全部打断 LLM 维度）
 
     Args:
-        ai_wav: 模型回复音频路径（主输入，被判定对象）
+        ai_wav: 模型回复音频路径（仅用于 ASR 转写，不传给 LLM）
         user_wav: 用户通道音频路径（用于生成用户侧 ASR 时间线上下文）
         sub_tasks: 平台勾选的子维度 task_type_code 列表，用于按需拼接 prompt
         rounds / round_number / interruption_rounds: 轮次元数据，用于定位
@@ -365,9 +396,10 @@ def evaluate_interruption_judge(
     if user_wav and os.path.isfile(user_wav):
         user_chunks = get_asr_chunks(user_wav)
 
-    # ── 完整交互文字（query/answer + 时间戳）：模型侧走词级 ASR，仅用于返回展示，不进 prompt ──
+    # ── 模型回复 ASR：词级转写，用于 prompt 和交互文字展示 ──
     model_chunks: Optional[List[Dict[str, Any]]] = get_asr_chunks(ai_wav)
     interaction_text = build_interaction_text(user_chunks, model_chunks)
+    model_timeline_text = _build_model_timeline_text(model_chunks)
 
     # ── 按勾选决定是否拼接附加 prompt 块（不新增 LLM/ASR 调用） ──
     from app.services.calculators.xiaoyi_metrics.interruptibility import _as_bool, _get_stop_intent
@@ -405,6 +437,7 @@ def evaluate_interruption_judge(
     timeline_text = build_timeline_text(user_chunks)
     prompt = build_interruption_prompt(
         timeline_text,
+        model_timeline_text=model_timeline_text,
         event=target_event,
         need_score=bool(score_event),
         need_stop_compliance=need_stop,

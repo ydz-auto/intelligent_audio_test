@@ -648,6 +648,35 @@ class EvaluationResultProcessor(RoundAggregator):
                             f"dimension_id={row.dimension_id}, 0 → 1, score={row.score}",
                     task_id=task_id, test_case_id=test_case_id,
                 )
+
+            # 同步回填打断失败率子维度：success 回填为 1 时 failure_rate 须为 0.0
+            failure_rows = (
+                local_session.query(TestResultDimension)
+                .join(Dimension, Dimension.id == TestResultDimension.dimension_id)
+                .filter(TestResultDimension.test_result_id == result_id,
+                        Dimension.task_type_code == 'interruption_failure_rate',
+                        Dimension.deleted.is_(False))
+                .all()
+            )
+            for fr in failure_rows:
+                if fr.status != 'completed' or fr.dimension_value is None:
+                    continue
+                try:
+                    if float(fr.dimension_value) != 1.0:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                fr_dim = local_session.query(Dimension).get(fr.dimension_id)
+                fr_rule = fr_dim.rule if fr_dim is not None and isinstance(fr_dim.rule, dict) else None
+                fr.dimension_value = 0.0
+                fr.score = calculate_score(0.0, fr_rule)
+                self._log(
+                    level='INFO',
+                    category='execution',
+                    content=f"停止指令轮同步回填打断失败率: result_id={result_id}, "
+                            f"dimension_id={fr.dimension_id}, 1.0 → 0.0, score={fr.score}",
+                    task_id=task_id, test_case_id=test_case_id,
+                )
             local_session.commit()
         except Exception as e:
             self._log(

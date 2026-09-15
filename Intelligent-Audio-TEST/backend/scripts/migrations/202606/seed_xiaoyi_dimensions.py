@@ -87,19 +87,19 @@ MAIN_DIMENSION = {
         ('ai_wav', 'AI回复通道音频', 'AI回复通道音频', 'audio', 'input',
          None, None, None, True,
          False, None, 'AI 回复通道 wav 路径（cap_client_ec_out.wav）', 2),
-        ('case_wav', '用例干净音源', '用例干净音源', 'audio', 'input',
+        ('played_audios', '用例干净音源', '用例干净音源', 'audio', 'input',
          None, None, None, False,
          False, None, '用例干净音源 wav 路径（false_takeover client_out时延对齐 + reply_quality 子维度用）', 3),
-        ('user_case', '用户用例', '用户用例(高频轮换)', 'text', 'input',
+        ('query', '用户提问', '用户提问(高频轮换)', 'text', 'input',
          None, None, None, False,
-         False, None, '高频轮换场景用户用例（JSON文件路径或多行文本，high_freq_llm_judge 新模式用）', 4),
+         False, None, '高频轮换场景用户提问（JSON文件路径或多行文本，high_freq_llm_judge 新模式用）', 4),
         # 主维度不配 output 参数
     ],
     'param_mappings': [
         ('device', 'output', 'user_wav', 'user_wav', 'none'),
         ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
-        ('device', 'output', 'case_wav', 'case_wav', 'none'),
-        ('device', 'output', 'user_case', 'user_case', 'none'),
+        ('device', 'output', 'played_audios', 'played_audios', 'none'),
+        ('device', 'output', 'query', 'query', 'none'),
     ],
 }
 
@@ -256,7 +256,7 @@ SUB_DIMENSIONS = [
             ('latency_message', '时延说明', '时延说明', 'text', 'output',
              'takeover_latency.message', None, 'aux', True,
              False, None, 'takeover_latency: 错误/成功说明', 85),
-            # ─── client_out 时延（case_wav + user_wav 互相关对齐，新逻辑）───
+            # ─── client_out 时延（played_audios + user_wav 互相关对齐，新逻辑）───
             ('tl_client_out_start_ms', 'ClientOut起始时刻', 'ClientOut起始时刻', 'timestamp', 'output',
              'takeover_latency.client_out_start_ms', None, 'aux', True,
              False, None, 'client_out 对齐起始时间(毫秒)', 86),
@@ -334,7 +334,7 @@ SUB_DIMENSIONS = [
             ('hftt_message', '说明', '说明', 'text', 'output',
              'high_freq_turn_taking.message', None, 'aux', True,
              False, None, '错误/成功说明', 101),
-            # ─── client_out 时延（case_wav + user_wav 互相关对齐）───
+            # ─── client_out 时延（played_audios + user_wav 互相关对齐）───
             ('hftt_client_out_start_ms', 'ClientOut起始时刻', 'ClientOut起始时刻', 'timestamp', 'output',
              'high_freq_turn_taking.client_out_start_ms', None, 'aux', True,
              False, None, 'client_out 对齐起始时间(毫秒)', 102),
@@ -416,7 +416,7 @@ SUB_DIMENSIONS = [
     },
     # ────────────────────────────────────────────────────────────
     # 回复质量评分子维度：task_type_code='reply_quality'
-    # 输入: case_wav 的 ASR 文本（用户预期内容）+ ai_wav 的 ASR 文本（模型实际回复）
+    # 输入: played_audios 的 ASR 文本（用户预期内容）+ ai_wav 的 ASR 文本（模型实际回复）
     # 调用 LLM 对模型回复质量进行 1~5 分打分
     # output field_path 前缀为 reply_quality.<key>
     # ────────────────────────────────────────────────────────────
@@ -424,7 +424,7 @@ SUB_DIMENSIONS = [
         'task_type_code': 'reply_quality',
         'name': '回复质量评分',
         'keywords': 'reply_quality,回复质量,评分,质量,打分',
-        'description': '子维度：对单轮模型回复质量进行 LLM 打分（1~5分）。输入 case_wav ASR 文本（用户预期）+ ai_wav ASR 文本（模型回复），评估准确性/完整性/流畅性。',
+        'description': '子维度：对单轮模型回复质量进行 LLM 打分（1~5分）。输入 played_audios ASR 文本（用户预期）+ ai_wav ASR 文本（模型回复），评估准确性/完整性/流畅性。',
         'type': 'auto',
         'result_type': 0,
         'result_min': 1.0,
@@ -453,7 +453,7 @@ SUB_DIMENSIONS = [
              False, None, '回复流畅性分析', 134),
             ('rq_user_text', '用户ASR文本', '用户ASR文本', 'text', 'output',
              'reply_quality.user_text', None, 'aux', True,
-             False, None, 'case_wav ASR 识别文本', 135),
+             False, None, 'played_audios ASR 识别文本', 135),
             ('rq_ai_text', '模型ASR文本', '模型ASR文本', 'text', 'output',
              'reply_quality.ai_text', None, 'aux', True,
              False, None, 'ai_wav ASR 识别文本', 136),

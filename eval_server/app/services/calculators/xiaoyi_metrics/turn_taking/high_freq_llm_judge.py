@@ -30,15 +30,15 @@ from app.services.calculators.xiaoyi_metrics.shared.constants import (
 logger = logging.getLogger(__name__)
 
 
-# ─────────── user_case 解析 ───────────
+# ─────────── query 解析 ───────────
 
-def _parse_user_case_json(json_path):
-    """从 JSON 文件解析 user_case，提取 rounds[].segments[].input_text 或 query。"""
+def _parse_query_json(json_path):
+    """从 JSON 文件解析 query，提取 rounds[].segments[].input_text 或 query。"""
     try:
         with open(json_path, encoding='utf-8') as f:
             data = json.load(f)
     except Exception as e:
-        logger.error(f'[high_freq_llm_judge] 读取 user_case JSON 失败: {e}')
+        logger.error(f'[high_freq_llm_judge] 读取 query JSON 失败: {e}')
         return []
 
     if isinstance(data, str):
@@ -74,18 +74,18 @@ def _parse_user_case_json(json_path):
     return cases
 
 
-def _parse_user_case(user_case):
-    """解析 user_case，支持 JSON 文件路径 / 多行字符串 / list。"""
-    if not user_case:
+def _parse_query(query):
+    """解析 query，支持 JSON 文件路径 / 多行字符串 / list。"""
+    if not query:
         return []
 
-    if isinstance(user_case, list):
-        return [str(x) for x in user_case if x]
+    if isinstance(query, list):
+        return [str(x) for x in query if x]
 
-    if isinstance(user_case, str):
-        p = user_case.strip()
+    if isinstance(query, str):
+        p = query.strip()
         if p.lower().endswith('.json') and os.path.isfile(p):
-            return _parse_user_case_json(p)
+            return _parse_query_json(p)
         lines = [ln.strip() for ln in p.split('\n') if ln.strip()]
         return lines if lines else [p]
 
@@ -155,17 +155,17 @@ def _segment_asr_rounds(chunks, seg_gap_s=0.7, round_gap_s=2.0):
     return result
 
 
-def _build_prompt_with_asr(user_cases, asr_rounds, scenario_type='', scenario_rules=''):
-    """构建 user_case + ASR 转写结果的纯文本 prompt。"""
+def _build_prompt_with_asr(queries, asr_rounds, scenario_type='', scenario_rules=''):
+    """构建 query + ASR 转写结果的纯文本 prompt。"""
     rules = scenario_rules or _SCENARIO_RULES.get(scenario_type, '') or '根据回复内容自行判断。'
 
-    n = max(len(user_cases), len(asr_rounds))
+    n = max(len(queries), len(asr_rounds))
     round_blocks = []
     for i in range(n):
-        uc = user_cases[i] if i < len(user_cases) else '（未提供）'
+        uc = queries[i] if i < len(queries) else '（未提供）'
         ar = asr_rounds[i] if i < len(asr_rounds) else None
         lines = [f'轮次{i + 1}:']
-        lines.append(f'  用户用例: {uc}')
+        lines.append(f'  用户提问: {uc}')
         if ar:
             lines.append(f'  模型回复(ASR): {ar["text"]}')
             lines.append(f'  回复时间: {ar["start_s"]:.2f}s - {ar["end_s"]:.2f}s')
@@ -201,7 +201,7 @@ def _build_prompt_with_asr(user_cases, asr_rounds, scenario_type='', scenario_ru
 【判定要求】
 ═══════════════════════════════════════
 对每一轮，判断模型回复是否符合预期：
-- 若提供了用户用例，模型回复应与用例内容对应
+- 若提供了用户提问，模型回复应与提问内容对应
 - pass 为 true 表示符合预期，false 表示不符合
 - reason 需简述判定依据
 
@@ -377,7 +377,7 @@ def evaluate_high_freq_llm(
     max_tokens: int = LLM_DEFAULT_MAX_TOKENS,
     temperature: float = LLM_DEFAULT_TEMPERATURE,
     ai_wav: str = '',
-    user_case=None,
+    query=None,
     ai_chunks=None,
     **kwargs,
 ) -> Dict[str, Any]:
@@ -417,16 +417,16 @@ def evaluate_high_freq_llm(
     if not model:
         model = resolve_model(dimension='high_freq_llm_judge')
 
-    # ── 模式分支：user_case + ASR 分轮（纯文本） vs ai_wav 音频文件 ──
+    # ── 模式分支：query + ASR 分轮（纯文本） vs ai_wav 音频文件 ──
     valid_rounds: List[Dict[str, Any]] = []
     n_rounds_input = 0
-    if user_case:
-        # 新模式：user_case + ASR 分轮，纯文本调用，不需要音频文件
-        user_cases = _parse_user_case(user_case)
+    if query:
+        # 新模式：query + ASR 分轮，纯文本调用，不需要音频文件
+        queries = _parse_query(query)
         asr_rounds = _segment_asr_rounds(ai_chunks) if ai_chunks else []
-        n_rounds_input = max(len(user_cases), len(asr_rounds))
+        n_rounds_input = max(len(queries), len(asr_rounds))
         prompt = _build_prompt_with_asr(
-            user_cases, asr_rounds, scenario_type, scenario_rules,
+            queries, asr_rounds, scenario_type, scenario_rules,
         )
         file_paths: List[str] = []
     else:

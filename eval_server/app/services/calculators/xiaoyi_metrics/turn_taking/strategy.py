@@ -72,6 +72,7 @@ _SUB_DIMENSIONS = {
     'false_takeover': 'false_takeover',
     'takeover_latency': 'takeover_latency',
     'client_out_latency': 'client_out_latency',
+    'reply_quality': 'reply_quality',
     'high_freq_turn_taking': 'high_freq_turn_taking',
     'high_freq_llm_judge': 'high_freq_llm_judge',
 }
@@ -288,12 +289,13 @@ class FalseTakeoverCalculator(TurnTakingBase):
         _ft_tor = result.get('tor', 0)
         if _ft_tor == 0 and user_chunks and ai_word_chunks:
             try:
+                from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import _resolve_played_audio_path
                 _task_params = params.get('task_params') or {}
-                case_wav = _task_params.get('case_wav')
+                played_audios = _resolve_played_audio_path(_task_params.get('played_audios'))
                 _user_wav = params.get('user_wav')
                 llm_result = compute_false_takeover_llm(
                     user_chunks, ai_word_chunks, pause, _task_params,
-                    case_wav=case_wav, user_wav=_user_wav,
+                    played_audios=played_audios, user_wav=_user_wav,
                 )
                 if llm_result is not None:
                     result['llm_eval'] = llm_result
@@ -351,16 +353,17 @@ class TakeoverLatencyCalculator(TurnTakingBase):
         if ai_chunks is None:
             ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
 
-        # 从 task_params 提取 case_wav（互相关对齐用）
+        # 从 task_params 提取 played_audios（互相关对齐用），解析平台 JSON 结构取 audio_path
+        from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import _resolve_played_audio_path
         _task_params = params.get('task_params') or {}
-        case_wav = _task_params.get('case_wav')
+        played_audios = _resolve_played_audio_path(_task_params.get('played_audios'))
         user_wav = params.get('user_wav')
 
         return compute_takeover_latency_from_raw(
             first_frame_ms=None, asr_hyp=None, start_ms=None,
             input_words=[], offset_ms=TAKEOVER_OFFSET_MS,
             user_chunks=user_chunks, ai_chunks=ai_chunks,
-            case_wav=case_wav, user_wav=user_wav,
+            played_audios=played_audios, user_wav=user_wav,
         )
 
 
@@ -416,9 +419,10 @@ class HighFreqTurnTakingCalculator(TurnTakingBase):
         if 'seg_merge_gap_s' in params:
             kwargs['seg_merge_gap_s'] = params['seg_merge_gap_s']
 
-        # 从 task_params 提取 case_wav（互相关对齐用）
+        # 从 task_params 提取 played_audios（互相关对齐用），解析平台 JSON 结构取 audio_path
+        from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import _resolve_played_audio_path
         _task_params = params.get('task_params') or {}
-        kwargs['case_wav'] = _task_params.get('case_wav')
+        kwargs['played_audios'] = _resolve_played_audio_path(_task_params.get('played_audios'))
         kwargs['user_wav'] = params.get('user_wav')
 
         return compute_high_freq_turn_taking(user_chunks=user_chunks, ai_chunks=ai_chunks, **kwargs)
@@ -439,13 +443,13 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
         rd = self._get_round_safe(task_params, idx)
         if not (task_params.get('ai_wav') or rd.get('ai_wav')):
             return False, f"Missing required field for {self.task_type}: ai_wav"
-        # user_case 或 rounds 至少需要一个
-        user_case = task_params.get('user_case') or rd.get('user_case')
-        if not user_case:
+        # query 或 rounds 至少需要一个
+        query = task_params.get('query') or rd.get('query')
+        if not query:
             if not rd.get('rounds'):
                 rounds = task_params.get('rounds')
                 if not (rounds and isinstance(rounds, list)):
-                    return False, f"Missing required field for {self.task_type}: rounds 或 user_case"
+                    return False, f"Missing required field for {self.task_type}: rounds 或 query"
         return True, None
 
     def prepare_params(self, task_params):
@@ -463,7 +467,7 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
         return {
             'ai_wav': ai_wav,
             'rounds': rounds,
-            'user_case': task_params.get('user_case') or rd.get('user_case') or '',
+            'query': task_params.get('query') or rd.get('query') or '',
             'scenario_type': task_params.get('scenario_type') or rd.get('scenario_type') or '',
             'scenario_rules': task_params.get('scenario_rules') or rd.get('scenario_rules') or '',
             'model': task_params.get('llm_model') or rd.get('llm_model') or task_params.get('model') or '',
@@ -489,8 +493,68 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
             max_tokens=params['max_tokens'],
             temperature=params['temperature'],
             ai_wav=params['ai_wav'],
-            user_case=params.get('user_case'),
+            query=params.get('query'),
             ai_chunks=ai_chunks,
+        )
+
+
+# ─────────── 子维度：Reply Quality（回复质量 LLM 评分）───────────
+
+class ReplyQualityCalculator(TurnTakingBase):
+    """单轮模型回复质量：LLM 对模型回复质量进行评分
+
+    单轮：取当前轮双路音频
+    多轮：取最后一轮双路音频
+    """
+    task_type = 'reply_quality'
+
+    def validate(self, task_params):
+        idx = self._get_target_round_index(task_params)
+        _, ai_wav = self._get_audio_from_round(task_params, idx)
+        if not ai_wav:
+            return False, f"Missing required field for {self.task_type}: ai_wav"
+        return True, None
+
+    def prepare_params(self, task_params):
+        idx = self._get_target_round_index(task_params)
+        user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
+        rd = self._get_round_safe(task_params, idx)
+        return {
+            'mode': 'single',
+            'user_wav': user_wav,
+            'ai_wav': ai_wav,
+            'task_params': task_params,
+            'model': task_params.get('llm_model') or rd.get('llm_model') or task_params.get('model') or '',
+            'max_tokens': int(task_params.get('max_tokens') or rd.get('max_tokens') or LLM_DEFAULT_MAX_TOKENS),
+            'temperature': float(task_params.get('temperature') or rd.get('temperature') or LLM_DEFAULT_TEMPERATURE),
+        }
+
+    def run(self, task_params):
+        """独立调用入口：结果包装为 {'reply_quality': result}"""
+        params = self.prepare_params(task_params)
+        result = self.calculate(params)
+        return {'reply_quality': result}
+
+    def calculate(self, params):
+        from app.services.calculators.xiaoyi_metrics.turn_taking.reply_quality import evaluate_reply_quality
+
+        shared = params.get('_shared_asr') or {}
+        user_chunks = shared.get('user_chunks')
+        ai_chunks = shared.get('ai_chunks')
+
+        _task_params = params.get('task_params') or {}
+        played_audios = _task_params.get('played_audios', '')
+
+        return evaluate_reply_quality(
+            played_audios=played_audios,
+            ai_wav=params.get('ai_wav', ''),
+            user_text='',
+            ai_text='',
+            user_chunks=user_chunks,
+            ai_chunks=ai_chunks,
+            model=params.get('model', ''),
+            max_tokens=params.get('max_tokens', 0),
+            temperature=params.get('temperature', -1.0),
         )
 
 
