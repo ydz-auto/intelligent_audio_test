@@ -1,0 +1,925 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>打断指标体系 · 测量规格表</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --ground:#F1F3F6; --surface:#FFFFFF; --surface-2:#F6F8FA;
+  --ink:#10151C; --ink-2:#39414C; --muted:#5B6573; --line:#D9DEE5; --line-2:#E7EBEF;
+  --accent:#0E7C72; --accent-soft:#DCEFEC; --accent-ink:#084C46;
+  --user:#B4690E; --user-soft:#F7E9CE;
+  --model:#4338CA; --model-soft:#E3E2FA;
+  --ok:#15803D; --warn:#B45309; --bad:#B91C1C;
+  --b-respond:#0E7C72; --b-recover:#4338CA; --b-uncertain:#B4690E; --b-unknown:#7C5C99;
+  --ruler:#B9C2CC;
+  --shadow:0 1px 2px rgba(16,20,28,.04);
+  --sans:'IBM Plex Sans','PingFang SC','Microsoft YaHei','Hiragino Sans GB',system-ui,sans-serif;
+  --mono:'IBM Plex Mono','PingFang SC','Microsoft YaHei',ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0D1117; --surface:#151A21; --surface-2:#1B2129;
+    --ink:#E7EAF0; --ink-2:#C2C9D3; --muted:#8A93A2; --line:#262C36; --line-2:#20262F;
+    --accent:#2DD4BF; --accent-soft:#10312E; --accent-ink:#9CF0E4;
+    --user:#F0A93B; --user-soft:#33260F;
+    --model:#918CFB; --model-soft:#211E46;
+    --ok:#4ADE80; --warn:#F0A93B; --bad:#F87171;
+    --b-respond:#2DD4BF; --b-recover:#918CFB; --b-uncertain:#F0A93B; --b-unknown:#C4A8D8;
+    --ruler:#333B47;
+    --shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0D1117; --surface:#151A21; --surface-2:#1B2129;
+  --ink:#E7EAF0; --ink-2:#C2C9D3; --muted:#8A93A2; --line:#262C36; --line-2:#20262F;
+  --accent:#2DD4BF; --accent-soft:#10312E; --accent-ink:#9CF0E4;
+  --user:#F0A93B; --user-soft:#33260F;
+  --model:#918CFB; --model-soft:#211E46;
+  --ok:#4ADE80; --warn:#F0A93B; --bad:#F87171;
+  --b-respond:#2DD4BF; --b-recover:#918CFB; --b-uncertain:#F0A93B; --b-unknown:#C4A8D8;
+  --ruler:#333B47;
+  --shadow:0 1px 2px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.62;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.wrap{max-width:980px;margin:0 auto;padding:0 24px}
+
+/* masthead */
+header.top{background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;backdrop-filter:saturate(140%) blur(8px)}
+.top-in{max-width:980px;margin:0 auto;padding:14px 24px 12px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+.brand{font-family:var(--mono);font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ink);white-space:nowrap}
+.brand .dot{color:var(--accent)}
+.top .tag{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.04em}
+nav.toc{margin-left:auto;display:flex;gap:2px;flex-wrap:wrap}
+nav.toc a{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);text-decoration:none;padding:5px 9px;border-radius:6px;letter-spacing:.01em}
+nav.toc a:hover{background:var(--surface-2);color:var(--accent)}
+nav.toc a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.ruler{height:11px;background-image:linear-gradient(to bottom,var(--ruler) 0 5px,transparent 5px),linear-gradient(to bottom,transparent 0 2px,var(--ruler) 2px 3px,transparent 3px);background-size:40px 11px,40px 11px;background-repeat:repeat-x;background-position:0 0,20px 0;opacity:.6;border-bottom:1px solid var(--line)}
+.ruler.tight{height:9px;background-size:28px 9px,28px 9px;background-image:linear-gradient(to bottom,var(--ruler) 0 4px,transparent 4px),linear-gradient(to bottom,transparent 0 2px,var(--ruler) 2px 3px,transparent 3px);background-position:0 0,14px 0;opacity:.35;border-bottom:none}
+
+main{padding:30px 0 72px}
+section{margin-bottom:52px;scroll-margin-top:84px}
+.eyebrow{display:flex;align-items:center;gap:10px;margin:0 0 8px}
+.eyebrow .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:500}
+.eyebrow .seg{flex:0 0 64px}
+h2{font-family:var(--sans);font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 12px;text-wrap:balance;line-height:1.25}
+h3{font-family:var(--sans);font-size:15.5px;font-weight:600;margin:26px 0 12px;letter-spacing:-.005em}
+p.sub{margin:-4px 0 18px;color:var(--muted);font-size:13.5px;max-width:76ch;line-height:1.65}
+code{font-family:var(--mono);font-size:.84em;background:var(--surface-2);border:1px solid var(--line-2);border-radius:4px;padding:1px 5px;color:var(--ink)}
+b{color:var(--ink)}
+
+/* console / svg */
+.console{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px 22px 16px;box-shadow:var(--shadow);margin-bottom:20px}
+.console-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.con-dot{width:8px;height:8px;border-radius:50%}
+.console-title{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--ink);letter-spacing:-.005em}
+.console-sub{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-left:auto}
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 6px;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.swatch{width:15px;height:8px;border-radius:2px;display:inline-block}
+.svg-scroll{overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+figcaption{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.6;border-top:1px solid var(--line-2);padding-top:10px}
+
+/* behavior cards */
+.behaviors{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+@media(max-width:720px){.behaviors{grid-template-columns:1fr}}
+.bcard{background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--accent);border-radius:10px;padding:15px 17px}
+.bcard.r{border-top-color:var(--b-respond)} .bcard.c{border-top-color:var(--b-recover)}
+.bcard.u{border-top-color:var(--b-uncertain)} .bcard.n{border-top-color:var(--b-unknown)}
+.bcard h4{font-family:var(--sans);font-size:15px;margin:0 0 6px;font-weight:600;display:flex;align-items:center;gap:9px}
+.bcard h4 .bn{font-family:var(--mono);font-size:10px;color:#fff;border-radius:4px;padding:2px 7px;letter-spacing:.02em;font-weight:500}
+.bcard.r h4 .bn{background:var(--b-respond)} .bcard.c h4 .bn{background:var(--b-recover)}
+.bcard.u h4 .bn{background:var(--b-uncertain)} .bcard.n h4 .bn{background:var(--b-unknown)}
+.bcard p{margin:0 0 9px;font-size:13px;color:var(--ink-2);line-height:1.6}
+.bcard .exq{font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line-2);border-radius:6px;padding:6px 9px;display:block;line-height:1.5}
+.bcard .feed{font-family:var(--mono);font-size:11px;color:var(--accent);display:block;margin-top:9px;font-weight:500}
+
+/* callout */
+.ex-box{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 10px 10px 0;padding:13px 16px;margin:0 0 20px;font-size:13.5px;line-height:1.7}
+.ex-box .ex-title{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0 0 7px;font-weight:500}
+.ex-box .ex-line{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);white-space:nowrap;overflow-x:auto;line-height:1.7}
+.ex-box .ex-line b{color:var(--ink)}
+
+/* group chip + table */
+.grp{display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap}
+.grp .chip{font-family:var(--mono);font-size:10.5px;font-weight:500;border-radius:5px;padding:3px 9px;color:#fff;letter-spacing:.02em}
+.chip-local{background:var(--model)} .chip-llm{background:var(--accent)}
+.grp .src{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.tbl-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);box-shadow:var(--shadow);margin-bottom:20px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:880px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);font-weight:500;white-space:nowrap}
+tbody tr:hover{background:var(--surface-2)}
+td:first-child{font-weight:600;color:var(--ink);white-space:nowrap}
+td .num-cell{font-family:var(--mono);font-weight:600;color:var(--accent);min-width:1.6em;display:inline-block}
+td code{white-space:nowrap}
+tr:last-child td{border-bottom:none}
+.calc{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.calc .kw{color:var(--accent);font-weight:500}
+.ex{font-family:var(--mono);font-size:11.5px;color:var(--ink);line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.ex .num{color:var(--accent);font-weight:600}
+.ex .null{color:var(--muted)}
+.new{display:inline-block;font-family:var(--mono);font-size:9px;background:var(--accent);color:#fff;border-radius:3px;padding:0 5px;margin-left:6px;vertical-align:middle;font-weight:500}
+
+/* prompt block */
+.prompt-block{background:#0F1418;border:1px solid #1E2530;border-radius:12px;overflow:hidden;box-shadow:var(--shadow)}
+.prompt-head{display:flex;align-items:center;gap:8px;padding:11px 18px;border-bottom:1px solid #1E2530;flex-wrap:wrap;background:#131A21}
+.prompt-head .pt{font-family:var(--mono);color:#E8EBF0;font-size:12.5px;font-weight:600}
+.prompt-head .pm{font-family:var(--mono);color:#7C8694;font-size:10px;margin-left:auto}
+.prompt-body{padding:16px 18px;overflow-x:auto}
+.prompt-body pre{margin:0;font-family:var(--mono);font-size:11px;line-height:1.7;color:#C9D0DA;white-space:pre;tab-size:2}
+.prompt-body .sec{color:#5BC69A;font-weight:500}
+.prompt-body .var{color:#E0A65A}
+.prompt-body .cmt{color:#6E7783;font-style:italic}
+.prompt-body .key{color:#8B83F8}
+.prompt-body .mtr{color:#7FD8C6}
+
+/* worked examples (KPI tiles) */
+.case{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:20px;box-shadow:var(--shadow)}
+.case .ct{font-family:var(--sans);font-size:15px;font-weight:600;margin:0 0 3px}
+.case .cs{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin:0 0 16px;line-height:1.6}
+.case .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media(max-width:720px){.case .grid{grid-template-columns:repeat(2,1fr)}}
+.kv{background:var(--surface-2);border:1px solid var(--line-2);border-radius:9px;padding:10px 12px;position:relative}
+.kv .k{font-family:var(--mono);font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;line-height:1.3}
+.kv .v{font-family:var(--mono);font-size:18px;font-weight:600;color:var(--ink);margin-top:4px;line-height:1.1;letter-spacing:-.01em}
+.kv .v .n{color:var(--accent)}
+.kv .v .nu{color:var(--muted);font-size:11px;font-weight:400;margin-left:3px}
+
+/* notes */
+.notes{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+@media(max-width:720px){.notes{grid-template-columns:1fr}}
+.note{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:15px 16px}
+.note h4{font-family:var(--sans);font-size:13.5px;margin:0 0 6px;font-weight:600}
+.note p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.6}
+.note .f{font-family:var(--mono);font-size:11px;color:var(--accent);display:block;margin-top:8px;font-weight:500}
+footer{border-top:1px solid var(--line);padding:20px 0 0;color:var(--muted);font-size:12px;line-height:1.6}
+footer code{font-size:11px}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <span class="brand">打断指标体系<span class="dot"> ·</span> 测量规格表</span>
+    <span class="tag">四种行为 · 九项指标 · 单次/连续</span>
+    <nav class="toc">
+      <a href="#behaviors">行为</a>
+      <a href="#timeline">时序</a>
+      <a href="#metrics">指标</a>
+      <a href="#prompt">Prompt</a>
+      <a href="#examples">样例</a>
+      <a href="#notes">口径</a>
+    </nav>
+  </div>
+  <div class="ruler"></div>
+</header>
+
+<main class="wrap">
+
+  <!-- BEHAVIORS -->
+  <section id="behaviors">
+    <div class="eyebrow"><span class="lbl">BEHAVIOR</span><span class="ruler tight seg"></span></div>
+    <h2>四种行为：模型被用户打断后的反应</h2>
+    <p class="sub">裁判模型直接听【模型回复音频 <code>ai_wav</code>】，结合用户侧 ASR 时间线，把模型被打断后的反应归入下列四类之一（四选一，分类而非序列）。这一分类是后续多项指标的源头：<b>打断询问率</b>由它派生，<b>内容评分 / 停止指令遵从率</b>也在同一次 LLM 调用里完成。</p>
+
+    <div class="behaviors">
+      <div class="bcard r">
+        <h4>回应 <span class="bn">respond</span></h4>
+        <p>模型对重叠内容进行了有意义的回应——回答、澄清，或对重叠中提到 / 引入的内容做出反应。是"听懂了、接住了"。</p>
+        <span class="exq">用户"等等，换个话题" → 模型"好的，您想聊什么话题"</span>
+        <span class="feed">→ 打断询问率 = 0</span>
+      </div>
+      <div class="bcard c">
+        <h4>恢复 <span class="bn">recover</span></h4>
+        <p>模型忽略重叠，继续或完成重叠之前正在进行中的任务或回答。是"当作没听见、把原话说完"。</p>
+        <span class="exq">用户插话 → 模型不接茬，继续把原答案说完</span>
+        <span class="feed">→ 打断询问率 = 0</span>
+      </div>
+      <div class="bcard u">
+        <h4>不确定询问 <span class="bn">uncertain</span></h4>
+        <p>模型表示不确定或难以听清、缺少信息（"我没听清…""能重复一下吗？"），未给出明确的、针对内容的回答。所有泛化的重复 / 澄清行为都归入此类。</p>
+        <span class="exq">用户"换话题" → 模型"啊？您刚说什么？"</span>
+        <span class="feed">→ 打断询问率 = 1</span>
+      </div>
+      <div class="bcard n">
+        <h4>未知 <span class="bn">unknown</span></h4>
+        <p>模型输出语义偏离目标或信息量低，未明确恢复、回应或表达不确定（无关填充语、模板化噪音）；也包括重叠后模型完全没有语音输出的情况。</p>
+        <span class="exq">用户打断 → 模型"嗯…那个…" / 一片沉默</span>
+        <span class="feed">→ 打断询问率 = 0</span>
+      </div>
+    </div>
+
+    <div class="ex-box">
+      <p class="ex-title">▼ 行为 → 指标派生</p>
+      <div class="ex-line"><b>behavior</b> ∈ {回应, 恢复, 不确定询问, 未知} ── 一次 LLM 调用产出四个 one-hot 字段</div>
+      <div class="ex-line"><b>interruption_inquiry_rate</b> = (behavior == 不确定询问) ? 1.0 : 0.0</div>
+      <div class="ex-line" style="color:var(--muted)">未勾选 sub_tasks / 不适用 / 解析失败时询问率为 <b>null</b>（不当 0）</div>
+    </div>
+  </section>
+
+  <!-- TIMELINE -->
+  <section id="timeline">
+    <div class="eyebrow"><span class="lbl">TIMELINE</span><span class="ruler tight seg"></span></div>
+    <h2>单次打断 vs 连续打断</h2>
+    <p class="sub">所有时延指标都由双轨时间轴上的端点相减得到——内部按秒算，输出 ×1000 转毫秒（字段名保留历史 <code>_s</code> 后缀，但值是 ms）。<b>单次打断</b>只有一轮打断 + 一段完整恢复；<b>连续打断</b>有多轮打断，中间轮的恢复回复会被下一轮打断<b>截断</b>，只有最后一个有效实际打断轮的恢复回复是完整的——这是 #8 / #9 只评末轮的根因。</p>
+
+    <h3>① 单次打断（1 个实际打断轮）</h3>
+    <div class="console">
+      <div class="console-head">
+        <span class="con-dot" style="background:var(--model)"></span>
+        <span class="con-dot" style="background:var(--user)"></span>
+        <span class="console-title">single_interruption.wav</span>
+        <span class="console-sub">t = 0 … 9 s</span>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--model)"></i>模型语音段</span>
+        <span><i class="swatch" style="background:var(--user)"></i>用户打断段</span>
+        <span><i class="swatch" style="background:var(--accent)"></i>时延测量 (ms)</span>
+      </div>
+      <div class="svg-scroll">
+      <svg viewBox="0 0 900 290" role="img" aria-label="单次打断：模型 2.5–5.5s 说话，用户 3.6–5.1s 打断，模型 6.3–8.4s 恢复。响应时延 1900ms，回复时延 1200ms。">
+        <defs>
+          <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0.5 L7,3.5 L0,6.5 Z" fill="var(--accent)"></path></marker>
+          <marker id="ahs" markerWidth="9" markerHeight="9" refX="0" refY="3.5" orient="auto"><path d="M7,0.5 L0,3.5 L7,6.5 Z" fill="var(--accent)"></path></marker>
+        </defs>
+        <!-- track labels -->
+        <g font-family="var(--mono)" font-size="11" fill="var(--muted)">
+          <text x="20" y="88">MODEL</text>
+          <text x="20" y="188">USER</text>
+        </g>
+        <!-- baselines -->
+        <line x1="80" y1="83" x2="800" y2="83" stroke="var(--line)" stroke-width="1"></line>
+        <line x1="80" y1="183" x2="800" y2="183" stroke="var(--line)" stroke-width="1"></line>
+        <!-- model segments -->
+        <rect x="280" y="70" width="240" height="26" rx="5" fill="var(--model)"></rect>
+        <rect x="584" y="70" width="168" height="26" rx="5" fill="var(--model)" opacity="0.5"></rect>
+        <text x="400" y="87" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="#fff" font-weight="600">被打断段 m_active</text>
+        <text x="668" y="87" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--ink)" font-weight="600">恢复段 m_next ★</text>
+        <!-- user segment -->
+        <rect x="368" y="170" width="120" height="26" rx="5" fill="var(--user)"></rect>
+        <text x="428" y="187" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="#fff" font-weight="600">打断段 u</text>
+        <!-- guides -->
+        <g stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" opacity="0.55">
+          <line x1="368" y1="58" x2="368" y2="230"/><line x1="488" y1="58" x2="488" y2="230"/>
+          <line x1="520" y1="58" x2="520" y2="230"/><line x1="584" y1="58" x2="584" y2="230"/>
+        </g>
+        <g font-family="var(--mono)" font-size="9.5" fill="var(--muted)" text-anchor="middle">
+          <text x="368" y="54">u_s 3.6</text><text x="488" y="54">u_e 5.1</text>
+          <text x="520" y="234">5.5</text><text x="584" y="54">6.3</text>
+        </g>
+        <!-- ruler axis -->
+        <g>
+          <line x1="80" y1="210" x2="800" y2="210" stroke="var(--ruler)" stroke-width="1"></line>
+          <g stroke="var(--ruler)" stroke-width="1">
+            <line x1="80" y1="210" x2="80" y2="216"/><line x1="160" y1="210" x2="160" y2="216"/>
+            <line x1="240" y1="210" x2="240" y2="216"/><line x1="320" y1="210" x2="320" y2="216"/>
+            <line x1="400" y1="210" x2="400" y2="216"/><line x1="480" y1="210" x2="480" y2="216"/>
+            <line x1="560" y1="210" x2="560" y2="216"/><line x1="640" y1="210" x2="640" y2="216"/>
+            <line x1="720" y1="210" x2="720" y2="216"/><line x1="800" y1="210" x2="800" y2="216"/>
+          </g>
+          <g font-family="var(--mono)" font-size="9.5" fill="var(--muted)" text-anchor="middle">
+            <text x="80" y="226">0</text><text x="160" y="226">1</text><text x="240" y="226">2</text>
+            <text x="320" y="226">3</text><text x="400" y="226">4</text><text x="480" y="226">5</text>
+            <text x="560" y="226">6</text><text x="640" y="226">7</text><text x="720" y="226">8</text><text x="800" y="226">9s</text>
+          </g>
+        </g>
+        <!-- latency arrows -->
+        <g stroke="var(--accent)" stroke-width="1.5" fill="none">
+          <line x1="368" y1="252" x2="520" y2="252" marker-start="url(#ahs)" marker-end="url(#ah)"/>
+          <line x1="368" y1="247" x2="368" y2="257"/><line x1="520" y1="247" x2="520" y2="257"/>
+          <line x1="488" y1="276" x2="584" y2="276" marker-start="url(#ahs)" marker-end="url(#ah)"/>
+          <line x1="488" y1="271" x2="488" y2="281"/><line x1="584" y1="271" x2="584" y2="281"/>
+        </g>
+        <g font-family="var(--mono)" font-size="10.5" fill="var(--accent)" text-anchor="middle" font-weight="500">
+          <text x="444" y="247">打断响应时延 1900ms</text>
+          <text x="536" y="271">打断回复时延 1200ms</text>
+        </g>
+      </svg>
+      </div>
+      <figcaption>打断响应时延 = m_active.end − u_s（用户开口打断 → 模型停下）；打断回复时延 = m_next.start − u_e（用户说完 → 模型重新开口）。单次时这两段恢复是完整的，#8 / #9 直接取这一轮。</figcaption>
+    </div>
+
+    <h3>② 连续打断（2 个实际打断轮，末轮恢复才完整）</h3>
+    <div class="console">
+      <div class="console-head">
+        <span class="con-dot" style="background:var(--model)"></span>
+        <span class="con-dot" style="background:var(--user)"></span>
+        <span class="console-title">consecutive_interruption.wav</span>
+        <span class="console-sub">t = 0 … 11 s</span>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--model)"></i>模型语音段</span>
+        <span><i class="swatch" style="background:var(--model);opacity:.35"></i>被截断恢复段</span>
+        <span><i class="swatch" style="background:var(--user)"></i>用户打断段</span>
+        <span><i class="swatch" style="background:var(--accent)"></i>时延测量 (ms)</span>
+      </div>
+      <div class="svg-scroll">
+      <svg viewBox="0 0 940 340" role="img" aria-label="连续打断：R1 模型 2.5-5.5 被 3.6-5.1 打断，R1 恢复 6.3-7.4 被 R2 用户 7.0-7.6 再次打断，R2 恢复 8.8-10.5 完整。恢复首轮内容时延取 R2 的 1200ms。">
+        <defs>
+          <marker id="ah2" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0.5 L7,3.5 L0,6.5 Z" fill="var(--accent)"></path></marker>
+          <marker id="ahs2" markerWidth="9" markerHeight="9" refX="0" refY="3.5" orient="auto"><path d="M7,0.5 L0,3.5 L7,6.5 Z" fill="var(--accent)"></path></marker>
+          <pattern id="hatch" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+            <rect width="6" height="6" fill="var(--model)" opacity="0.18"></rect>
+            <line x1="0" y1="0" x2="0" y2="6" stroke="var(--model)" stroke-width="2" opacity="0.55"></line>
+          </pattern>
+        </defs>
+        <g font-family="var(--mono)" font-size="11" fill="var(--muted)">
+          <text x="16" y="88">MODEL</text>
+          <text x="16" y="188">USER</text>
+        </g>
+        <line x1="80" y1="83" x2="878" y2="83" stroke="var(--line)" stroke-width="1"></line>
+        <line x1="80" y1="183" x2="878" y2="183" stroke="var(--line)" stroke-width="1"></line>
+        <!-- m_active1: 2.5-5.5 -> 270-498 -->
+        <rect x="270" y="70" width="228" height="26" rx="5" fill="var(--model)"></rect>
+        <text x="384" y="87" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="#fff" font-weight="600">R1 被打断段 m_active1</text>
+        <!-- m_rec1 truncated: 6.3-7.4 -> 559-642 -->
+        <rect x="559" y="70" width="83" height="26" rx="5" fill="url(#hatch)" stroke="var(--model)" stroke-width="1" stroke-dasharray="4 3"></rect>
+        <text x="600" y="62" text-anchor="middle" font-family="var(--sans)" font-size="9.5" fill="var(--user)" font-weight="600">R1 恢复·被截断</text>
+        <!-- m_rec2 complete: 8.8-10.5 -> 749-878 -->
+        <rect x="749" y="70" width="129" height="26" rx="5" fill="var(--model)" opacity="0.72"></rect>
+        <text x="813" y="87" text-anchor="middle" font-family="var(--sans)" font-size="10" fill="#fff" font-weight="600">R2 恢复(完整) ★</text>
+        <!-- u1: 3.6-5.1 -> 354-468 -->
+        <rect x="354" y="170" width="114" height="26" rx="5" fill="var(--user)"></rect>
+        <text x="411" y="187" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="#fff" font-weight="600">打断 u1</text>
+        <!-- u2: 7.0-7.6 -> 612-658 -->
+        <rect x="612" y="170" width="46" height="26" rx="5" fill="var(--user)"></rect>
+        <text x="635" y="187" text-anchor="middle" font-family="var(--sans)" font-size="9.5" fill="#fff" font-weight="600">u2</text>
+        <!-- guides -->
+        <g stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5">
+          <line x1="354" y1="58" x2="354" y2="230"/><line x1="642" y1="58" x2="642" y2="230"/>
+          <line x1="612" y1="58" x2="612" y2="230"/><line x1="658" y1="58" x2="658" y2="230"/>
+          <line x1="749" y1="58" x2="749" y2="230"/>
+        </g>
+        <!-- ruler axis -->
+        <g>
+          <line x1="80" y1="210" x2="878" y2="210" stroke="var(--ruler)" stroke-width="1"></line>
+          <g stroke="var(--ruler)" stroke-width="1">
+            <line x1="80" y1="210" x2="80" y2="216"/><line x1="156" y1="210" x2="156" y2="216"/>
+            <line x1="232" y1="210" x2="232" y2="216"/><line x1="308" y1="210" x2="308" y2="216"/>
+            <line x1="384" y1="210" x2="384" y2="216"/><line x1="460" y1="210" x2="460" y2="216"/>
+            <line x1="536" y1="210" x2="536" y2="216"/><line x1="612" y1="210" x2="612" y2="216"/>
+            <line x1="688" y1="210" x2="688" y2="216"/><line x1="764" y1="210" x2="764" y2="216"/>
+            <line x1="840" y1="210" x2="840" y2="216"/>
+          </g>
+          <g font-family="var(--mono)" font-size="9.5" fill="var(--muted)" text-anchor="middle">
+            <text x="80" y="226">0</text><text x="156" y="226">1</text><text x="232" y="226">2</text>
+            <text x="308" y="226">3</text><text x="384" y="226">4</text><text x="460" y="226">5</text>
+            <text x="536" y="226">6</text><text x="612" y="226">7</text><text x="688" y="226">8</text>
+            <text x="764" y="226">9</text><text x="840" y="226">10s</text>
+          </g>
+        </g>
+        <!-- latency arrows -->
+        <g stroke="var(--accent)" stroke-width="1.5" fill="none">
+          <line x1="354" y1="258" x2="498" y2="258" marker-start="url(#ahs2)" marker-end="url(#ah2)"/>
+          <line x1="354" y1="253" x2="354" y2="263"/><line x1="498" y1="253" x2="498" y2="263"/>
+          <line x1="612" y1="284" x2="642" y2="284" marker-start="url(#ahs2)" marker-end="url(#ah2)"/>
+          <line x1="612" y1="279" x2="612" y2="289"/><line x1="642" y1="279" x2="642" y2="289"/>
+          <line x1="658" y1="312" x2="749" y2="312" marker-start="url(#ahs2)" marker-end="url(#ah2)"/>
+          <line x1="658" y1="307" x2="658" y2="317"/><line x1="749" y1="307" x2="749" y2="317"/>
+        </g>
+        <g font-family="var(--mono)" font-size="10.5" fill="var(--accent)" text-anchor="middle" font-weight="500">
+          <text x="426" y="253">R1 响应时延 1900ms</text>
+          <text x="627" y="279">R2 响应 400ms</text>
+          <text x="703" y="307">★ 恢复首轮内容时延 1200ms</text>
+        </g>
+      </svg>
+      </div>
+      <figcaption>R1 的恢复段（6.3–7.4s）刚开始就被 R2 打断（7.0s），回复不完整 → 不做内容评分；只有 R2 的恢复段（8.8–10.5s）完整 → <b>#8 恢复首轮内容时延</b>取 R2 的回复时延，<b>#9 恢复首轮内容评分</b>评 R2 的恢复回复。成功率 = R1 ∧ R2 两轮都"停得下且恢复得来"。</figcaption>
+    </div>
+
+    <h3>③ FFT 互相关精修打断边界（case_wav → user_wav 对齐）</h3>
+    <p class="sub">上图里 <code>u_s / u_e</code> 看似来自 ASR 词时戳，但 ASR 词时戳会被<b>反馈词</b>（如 0.4s 的"你们"）和背景噪声扰动，直接相减会让 stop/recovery 时延偏几百毫秒。当用例提供 <code>case_wav</code>（干净打断音源，即设计好的打断音频）时，引擎用 <b>FFT 互相关</b>把它对齐到 <code>user_wav</code>（录音），拿到用户打断的<b>准确起止</b>，覆盖与之最重叠的 ASR 用户段——时延改基于准确时刻。对齐质量由 <b>NCC</b>（归一化互相关）给出置信度。</p>
+
+    <div class="console">
+      <div class="console-head">
+        <span class="con-dot" style="background:var(--accent)"></span>
+        <span class="con-dot" style="background:var(--user)"></span>
+        <span class="console-title">fft_align · compute_client_out_latency</span>
+        <span class="console-sub">case_wav ⊕ user_wav → accurate [start, end] + NCC</span>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--accent)"></i>case_wav 干净音源（对齐后）</span>
+        <span><i class="swatch" style="background:var(--user);opacity:.5"></i>user_wav 录音通道</span>
+        <span><i class="swatch" style="background:var(--ruler)"></i>互相关曲线</span>
+      </div>
+      <div class="svg-scroll">
+      <svg viewBox="0 0 940 320" role="img" aria-label="FFT 互相关：case_wav 干净音源经 coarse-to-fine 对齐到 user_wav 录音，得到准确打断起止与 NCC 置信度，覆盖 ASR 词时戳。">
+        <!-- pipeline boxes -->
+        <rect x="56" y="26" width="214" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"></rect>
+        <text x="163" y="48" text-anchor="middle" font-family="var(--mono)" font-size="12" fill="var(--accent-ink)" font-weight="600">case_wav</text>
+        <text x="163" y="66" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--muted)">干净打断音源</text>
+
+        <rect x="363" y="26" width="214" height="52" rx="8" fill="var(--surface-2)" stroke="var(--line)" stroke-width="1"></rect>
+        <text x="470" y="48" text-anchor="middle" font-family="var(--mono)" font-size="12" fill="var(--ink)" font-weight="600">FFT 互相关</text>
+        <text x="470" y="66" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--muted)">coarse 16× → fine 4× → 1×</text>
+
+        <rect x="670" y="26" width="214" height="52" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"></rect>
+        <text x="777" y="46" text-anchor="middle" font-family="var(--mono)" font-size="11.5" fill="var(--accent-ink)" font-weight="600">client_out [start, end]</text>
+        <text x="777" y="66" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--muted)">+ NCC 置信度</text>
+
+        <!-- arrows -->
+        <g stroke="var(--muted)" stroke-width="1.4" fill="none">
+          <line x1="270" y1="52" x2="357" y2="52" marker-end="url(#fa)"></line>
+          <line x1="577" y1="52" x2="664" y2="52" marker-end="url(#fa)"></line>
+        </g>
+        <defs>
+          <marker id="fa" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="var(--muted)"></path></marker>
+        </defs>
+
+        <!-- alignment track label -->
+        <text x="56" y="116" font-family="var(--mono)" font-size="11" fill="var(--muted)">USER_WAV · 录音通道</text>
+        <!-- track baseline -->
+        <line x1="56" y1="172" x2="884" y2="172" stroke="var(--line)" stroke-width="1"></line>
+        <!-- faint recording waveform (envelope + bars) -->
+        <rect x="56" y="156" width="828" height="32" rx="4" fill="var(--user)" opacity="0.10"></rect>
+        <g fill="var(--user)" opacity="0.35">
+          <rect x="70" y="166" width="3" height="12" rx="1.5"></rect><rect x="82" y="160" width="3" height="20" rx="1.5"></rect>
+          <rect x="94" y="164" width="3" height="16" rx="1.5"></rect><rect x="106" y="158" width="3" height="22" rx="1.5"></rect>
+          <rect x="118" y="166" width="3" height="12" rx="1.5"></rect><rect x="130" y="162" width="3" height="18" rx="1.5"></rect>
+          <rect x="700" y="164" width="3" height="16" rx="1.5"></rect><rect x="712" y="160" width="3" height="20" rx="1.5"></rect>
+          <rect x="724" y="166" width="3" height="12" rx="1.5"></rect><rect x="736" y="162" width="3" height="18" rx="1.5"></rect>
+          <rect x="748" y="166" width="3" height="12" rx="1.5"></rect><rect x="820" y="164" width="3" height="16" rx="1.5"></rect>
+        </g>
+        <!-- ASR raw boundary (dashed, fuzzy, with feedback word) -->
+        <g stroke="var(--user)" stroke-width="1" stroke-dasharray="4 3" opacity="0.7">
+          <line x1="332" y1="138" x2="332" y2="206"/><line x1="533" y1="138" x2="533" y2="206"/>
+        </g>
+        <text x="332" y="134" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--user)">ASR raw 3.4</text>
+        <text x="533" y="134" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--user)">5.3</text>
+        <text x="432" y="200" text-anchor="middle" font-family="var(--sans)" font-size="9.5" fill="var(--user)" font-style="italic">含 0.4s 反馈词 + 尾噪声 → 边界偏移</text>
+
+        <!-- aligned case_wav (solid accent) at refined [3.6, 5.1] -> x 362..470 (scale 90, x0=36? use 380..486) -->
+        <rect x="380" y="158" width="106" height="28" rx="4" fill="var(--accent)" opacity="0.92"></rect>
+        <g fill="#fff" opacity="0.85">
+          <rect x="388" y="166" width="2.5" height="12" rx="1"></rect><rect x="396" y="162" width="2.5" height="20" rx="1"></rect>
+          <rect x="404" y="164" width="2.5" height="16" rx="1"></rect><rect x="412" y="160" width="2.5" height="24" rx="1"></rect>
+          <rect x="420" y="166" width="2.5" height="12" rx="1"></rect><rect x="428" y="163" width="2.5" height="18" rx="1"></rect>
+          <rect x="436" y="166" width="2.5" height="12" rx="1"></rect><rect x="444" y="162" width="2.5" height="20" rx="1"></rect>
+          <rect x="452" y="166" width="2.5" height="12" rx="1"></rect><rect x="460" y="164" width="2.5" height="16" rx="1"></rect>
+        </g>
+        <!-- refined boundary (solid accent) -->
+        <g stroke="var(--accent)" stroke-width="1.4">
+          <line x1="380" y1="148" x2="380" y2="210"/><line x1="486" y1="148" x2="486" y2="210"/>
+        </g>
+        <text x="380" y="144" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--accent)" font-weight="600">3.6</text>
+        <text x="486" y="144" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--accent)" font-weight="600">5.1</text>
+        <text x="433" y="220" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--accent)" font-weight="600">case_wav 对齐 · 精修边界</text>
+
+        <!-- correlation curve -->
+        <text x="56" y="252" font-family="var(--mono)" font-size="10" fill="var(--muted)">NCC = corr(case_wav, user_wav[offset:]) / √(E_ref · E_seg)</text>
+        <line x1="56" y1="288" x2="884" y2="288" stroke="var(--line-2)" stroke-width="1"></line>
+        <path d="M70,288 Q200,288 300,280 Q380,262 433,258 Q486,262 560,280 Q660,288 884,288" fill="none" stroke="var(--ruler)" stroke-width="1.4"></path>
+        <circle cx="433" cy="258" r="3.5" fill="var(--accent)"></circle>
+        <line x1="433" y1="258" x2="433" y2="288" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 2"></line>
+        <text x="433" y="276" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--accent)" font-weight="600">peak · NCC=0.82</text>
+      </svg>
+      </div>
+      <figcaption>没有 <code>case_wav</code> 时退回用 ASR 词时戳算时延（粗略）；有 <code>case_wav</code> 时引擎走 FFT 互相关，把干净音源对齐到录音，拿准确 <code>[client_out_start, client_out_end]</code> 覆盖最重叠的用户段。<b>NCC</b> 越接近 1 对齐越可信；NCC 过低应在报告里标低置信（不自动剔除）。</figcaption>
+    </div>
+
+    <div class="ex-box">
+      <p class="ex-title">▼ FFT 精修前后对照（同一次打断）</p>
+      <div class="ex-line">ASR raw: u_s=3.4, u_e=5.3（开头含 0.4s 反馈词"你们"）　→ stop_latency = (5.5 − 3.4)×1000 = <b>2100ms</b>（偏大 200ms）</div>
+      <div class="ex-line">FFT 精修: u_s=3.6, u_e=5.1（case_wav 对齐）　→ stop_latency = (5.5 − 3.6)×1000 = <b>1900ms</b>（准确）</div>
+      <div class="ex-line" style="color:var(--muted)">恢复时延同理改基于精修后的 u_e=5.1。本页其余图表/样例数值均采用 FFT 精修后的 [3.6, 5.1]。</div>
+    </div>
+
+    <h3>FFT 精修输出字段（结果挂到打断指标结果上）</h3>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>字段</th><th>取值逻辑</th><th>示例</th></tr></thead>
+      <tbody>
+        <tr><td><code>client_out_start_ms</code></td><td class="calc">FFT 对齐到的用户打断<b>准确起点</b>（ms）；覆盖最重叠 ASR 用户段的 start</td><td class="ex">3600.0</td></tr>
+        <tr><td><code>client_out_end_ms</code></td><td class="calc">FFT 对齐到的用户打断<b>准确终点</b>（ms）；覆盖该段 end</td><td class="ex">5100.0</td></tr>
+        <tr><td><code>client_out_ncc</code></td><td class="calc">归一化互相关，对齐置信度；越接近 1 越可信，过低标低置信（不剔除）</td><td class="ex">0.82</td></tr>
+        <tr><td><code>client_out_refined_seg</code></td><td class="calc">被覆盖的 ASR 用户段索引（其余段如反馈词不动）</td><td class="ex">1</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <!-- METRICS -->
+  <section id="metrics">
+    <div class="eyebrow"><span class="lbl">METRIC</span><span class="ruler tight seg"></span></div>
+    <h2>九项指标：计算方式与 Prompt 对应</h2>
+    <p class="sub">五项<b>本地时序</b>（不调 LLM，由两路 ASR 词级时间戳算）+ 四项<b>LLM 裁判</b>（一次带音频的 LLM 调用产出）。下表"单次"列给单次打断样例取值，"连续"列给连续打断样例取值，均沿用上方时间轴数值。指标按依赖顺序编号 1–9。</p>
+
+    <div class="grp">
+      <span class="chip chip-local">本地时序</span>
+      <span class="src">interruptibility · compute_interruption_metrics · 不调 LLM</span>
+    </div>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>#</th><th>指标</th><th>字段</th><th>计算公式 / 取值逻辑</th><th>单次</th><th>连续</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="num-cell">1</span></td>
+          <td>打断成功率</td>
+          <td><code>interruption_success_rate</code></td>
+          <td class="calc"><span class="kw">单次</span>: stopped AND resumed → 1, 否则 0
+<span class="kw">连续</span>: all(轮 success) → 1, 任一轮失败 → 0
+success = 模型停下后又恢复；
+仅 event_type=<b>interruption</b> 计入分母</td>
+          <td class="ex">success=[True]
+→ <span class="num">1</span></td>
+          <td class="ex">R1∧R2 = 1∧1
+→ <span class="num">1</span></td>
+        </tr>
+        <tr>
+          <td><span class="num-cell">2</span></td>
+          <td>打断失败率</td>
+          <td><code>interruption_failure_rate</code></td>
+          <td class="calc">= 1 − 成功率
+（成功率二值互补；
+无可判定轮 → null）</td>
+          <td class="ex">1 − 1
+→ <span class="num">0.0</span></td>
+          <td class="ex">1 − 1
+→ <span class="num">0.0</span></td>
+        </tr>
+        <tr>
+          <td><span class="num-cell">3</span></td>
+          <td>打断响应时延</td>
+          <td><code>avg_stop_latency_s</code>
+<code>target_stop_latency_s</code></td>
+          <td class="calc">= (m_active.end − u_s) × 1000
+用户开口打断 → 模型当前段停下
+target = 代表事件(重叠最大)的值
+avg = 各轮 interruption 事件均值
+仅 stopped=True 的事件有值</td>
+          <td class="ex">(5.5−3.6)×1000
+target=<span class="num">1900ms</span></td>
+          <td class="ex">mean([1900,400])
+=<span class="num">1150ms</span>
+target=R1=1900</td>
+        </tr>
+        <tr>
+          <td><span class="num-cell">4</span></td>
+          <td>打断回复时延</td>
+          <td><code>avg_recovery_latency_s</code>
+<code>target_recovery_latency_s</code></td>
+          <td class="calc">= (m_next.start − u_e) × 1000
+用户说完 → 模型重新开口
+target = 代表事件值
+avg = 各轮均值（跨轮平均）
+⚠ recovery_only 事件不纳入均值</td>
+          <td class="ex">(6.3−5.1)×1000
+target=<span class="num">1200ms</span></td>
+          <td class="ex">mean([1200,1200])
+=<span class="num">1200ms</span></td>
+        </tr>
+        <tr>
+          <td><span class="num-cell">5</span></td>
+          <td>恢复首轮内容时延</td>
+          <td><code>first_recovery_latency_s</code></td>
+          <td class="calc">= <b>最后一个有效实际打断轮</b>的
+target_recovery_latency_s
+（末轮的恢复回复才完整）
+单次 = 自身那一轮；非末轮 → null</td>
+          <td class="ex">即本轮回复时延
+→ <span class="num">1200ms</span></td>
+          <td class="ex">取 R2 末轮
+→ <span class="num">1200ms</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="grp">
+      <span class="chip chip-llm">LLM 裁判</span>
+      <span class="src">env_judge/interruption_judge · evaluate_interruption_judge · 一次调用产全部</span>
+    </div>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>#</th><th>指标</th><th>字段</th><th>计算 / 取值逻辑</th><th>单次</th><th>连续</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><span class="num-cell">3</span></td>
+          <td>打断询问率</td>
+          <td><code>interruption_inquiry_rate</code></td>
+          <td class="calc">由行为分类派生:
+behavior == "不确定询问" → 1.0
+否则 → 0.0；无有效解析 → null
+（裁判对象 = 末轮恢复回复）</td>
+          <td class="ex">behavior="回应"
+→ <span class="num">0.0</span></td>
+          <td class="ex">末轮 behavior
+→ <span class="num">0.0</span></td>
+        </tr>
+        <tr>
+          <td><span class="num-cell">6</span></td>
+          <td>打断内容评分</td>
+          <td><code>interruption_reply_overall</code></td>
+          <td class="calc">= mean(coherence, relevance,
+adaptability)，保留 1 位小数
+对【模型恢复回复】三维打分
+(0-5 整数，0 最差 5 最好)
+单实际轮用例写此字段</td>
+          <td class="ex">(4+4+3)/3
+→ <span class="num">3.7</span></td>
+          <td class="ex">单轮字段不填
+→ <span class="null">null</span>
+(看 #9)</td>
+        </tr>
+        <tr>
+          <td><span class="num-cell">7</span></td>
+          <td>停止指令遵从率</td>
+          <td><code>stop_instruction_compliance_rate</code></td>
+          <td class="calc"><span class="kw">停止指令轮</span>才适用:
+模型停止原内容 → 1.0
+(只回"好的"也算遵从)
+续说原内容 → 0.0
+无法判定(complied=None) → null
+非停止指令轮不适用 → null</td>
+          <td class="ex">插话轮不适用
+→ <span class="null">null</span>
+(停止轮另算)</td>
+          <td class="ex">末轮若为停止
+指令 → <span class="num">1.0</span></td>
+        </tr>
+        <tr>
+          <td><span class="num-cell">9</span></td>
+          <td>恢复首轮内容评分</td>
+          <td><code>first_recovery_overall</code></td>
+          <td class="calc">= <b>末轮</b>恢复回复的三维评分
+(mean of coherence/relevance/
+adaptability)
+多实际轮用例写此字段
+与 #6 同值同时填（打分对象
+都是末轮首个完整恢复回复）</td>
+          <td class="ex">同 #6 同值
+→ <span class="num">3.7</span></td>
+          <td class="ex">评 R2 恢复回复
+→ <span class="num">3.7</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="sub" style="margin-top:-2px">说明：#6 与 #9 字段同时填充、同值——区别只在面向"单实际轮用例"还是"多实际轮用例"的维度命名，打分对象都是"最后一个有效实际打断轮的首个完整恢复回复"。#3 在本地表与 LLM 表均出现：本地 #3 是时序响应时延，LLM #3 是询问率，两者同列用户原列表第三项。</p>
+
+    <h3>per_event 逐事件诊断字段（本地时序）</h3>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>字段</th><th>计算公式</th><th>示例 (interruption 事件)</th><th>示例 (recovery_only 事件)</th></tr></thead>
+      <tbody>
+        <tr><td><code>stop_latency_s</code></td><td class="calc">(m_active.end − u_s) × 1000，仅 stopped=True 时有值</td><td class="ex">(5.5−3.6)×1000 = <span class="num">1900.0</span></td><td class="ex"><span class="null">null</span> (无 m_active)</td></tr>
+        <tr><td><code>recovery_latency_s</code></td><td class="calc">(m_next.start − u_e) × 1000</td><td class="ex">(6.3−5.1)×1000 = <span class="num">1200.0</span></td><td class="ex">(2.5−1.8)×1000 = <span class="num">700.0</span></td></tr>
+        <tr><td><code>overlap_s</code></td><td class="calc">交集(m_active, u)时长 × 1000</td><td class="ex">(5.1−3.6)×1000 = <span class="num">1500.0</span></td><td class="ex"><span class="null">null</span></td></tr>
+        <tr><td><code>silence_gap_s</code></td><td class="calc">(m_next.start − m_active.end) × 1000</td><td class="ex">(6.3−5.5)×1000 = <span class="num">800.0</span></td><td class="ex"><span class="null">null</span></td></tr>
+        <tr><td><code>stopped</code> / <code>resumed</code></td><td class="calc">m_next 存在 → True（停下后又恢复）</td><td class="ex"><span class="num">true</span> / <span class="num">true</span></td><td class="ex"><span class="null">null</span> / <span class="num">true</span></td></tr>
+        <tr><td><code>success</code></td><td class="calc">stopped AND resumed</td><td class="ex"><span class="num">true</span></td><td class="ex"><span class="null">null</span> (不计分母)</td></tr>
+        <tr><td><code>event_type</code></td><td class="calc">有 m_active → interruption；无 m_active 有 m_next → recovery_only；全无 → no_model_speech</td><td class="ex">interruption</td><td class="ex">recovery_only</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <!-- PROMPT -->
+  <section id="prompt">
+    <div class="eyebrow"><span class="lbl">PROMPT</span><span class="ruler tight seg"></span></div>
+    <div class="grp">
+      <span class="chip chip-llm">LLM Prompt</span>
+      <span class="src">build_interruption_prompt · 按勾选动态拼接 · 一次调用</span>
+    </div>
+    <h2>LLM 裁判 Prompt 全文</h2>
+    <p class="sub">一次完整调用的 prompt（勾选了回复内容评分 + 停止指令遵从时）。<span style="color:var(--user)">橙色</span> = 平台传入的动态变量；<span style="color:#5BC69A">绿色</span> = 固定结构标题；灰色斜体 = 条件块说明；右侧标注产出指标。未勾选的块不出现在 prompt 和输出 JSON 中。</p>
+
+    <div class="prompt-block">
+      <div class="prompt-head">
+        <span class="con-dot" style="background:#5BC69A"></span>
+        <span class="pt">build_interruption_prompt()</span>
+        <span class="pm">audio: ai_wav (input_audio) · text: prompt below</span>
+      </div>
+      <div class="prompt-body">
+<pre><span class="cmt">// ── 系统角色 + 任务说明（始终存在）──</span>
+你是语音对话能力的裁判专家。你将收到【模型回复音频】以及下方【用户侧 ASR 时间线】。
+
+用户输入音频包含两部分内容：第一段为用户交互内容，第二段为打断干扰内容。上述场景定义涵盖了打断干扰内容的类型。打断干扰内容往往与模型对第一段用户交互语音内容的回复内容在时间上重叠，即"重叠内容"。
+
+请结合回复音频、时间线和场景定义，判断在接收到重叠内容后，模型表现出的行为类别，并给出理由。
+
+<span class="sec">═══════════════════════════════════════
+【用户侧 ASR 时间线】</span>  <span class="mtr">// 始终拼接（user_wav 存在时）</span>
+<span class="sec">═══════════════════════════════════════</span>
+
+<span class="var">【用户语音时间线】（小 ASR 转写，可能存在误差）
+  [1.00-1.80] 用户: 初始问题
+  [3.60-5.10] 用户: 等等，换个话题</span>
+
+<span class="sec">═══════════════════════════════════════
+【场景定义】（打断干扰内容类型参考）
+═══════════════════════════════════════</span>
+
+场景1 — 插话打断
+  模型正在输出回复时，用户插话打断了模型，用户发起新的提问或请求。
+
+场景2 — 停止指令
+  用户对模型发出明确的停止指令，如"停""闭嘴""不用了""停下来""好了好了"等。
+
+场景3 — 恢复原话题
+  在多轮对话中，用户打断并切换了话题（如询问天气、时间等），模型完成打断话题的回复后，
+  用户要求回到原始话题（如"我们继续聊刚才说的""回到之前的话题"）。
+
+<span class="sec">═══════════════════════════════════════
+【行为类别定义】（四选一，仅可选其一）</span>  <span class="mtr">// 产出 #3 打断询问率</span>
+<span class="sec">═══════════════════════════════════════</span>
+
+- 回应：模型对重叠内容进行了有意义的回应，包括回答、澄清或对重叠中提到或引入的内容做出反应。
+- 恢复：模型忽略重叠，继续或完成重叠之前正在进行中的任务或回答。
+- 不确定询问：模型表示不确定或难以听清、缺少信息（如"我没听清…""能重复一下吗？"），
+  未给出明确的、针对内容的回答。所有泛化的重复或澄清行为归入此类。
+- 未知：模型输出语义偏离目标或信息量低，未明确恢复、回应或表达不确定（如无关填充语、
+  模板化噪音）。包括重叠后模型完全没有语音输出的情况。
+
+<span class="cmt">// ── 以下为条件块：仅在勾选对应 sub_tasks 时拼接 ──</span>
+
+<span class="sec">═══════════════════════════════════════
+【回复内容评分任务】</span>  <span class="cmt">// 回复内容类 sub_tasks 且本轮为最后一个实际打断轮</span>  <span class="mtr">// 产出 #6 / #9</span>
+<span class="sec">═══════════════════════════════════════</span>
+
+下面是本地时序从两路 ASR 中定位出的<b>最后一个有效实际打断轮</b>内容，
+请只对【模型恢复回复】打分（0-5 整数，0 最差、5 最好）：
+
+<span class="var">【用户打断意图】：等等，换个话题
+【被打断时模型正在说】：回答中的内容
+【模型恢复回复】：好的，您想聊什么话题</span>
+
+1. coherence(连贯性)：恢复回复与被打断内容、与用户打断意图的衔接是否连贯自然。
+   0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
+2. relevance(相关性)：恢复回复是否切合用户的打断意图。
+   0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题
+3. adaptability(适应性)：模型是否适应了打断带来的话题切换/调整，自然承接而非生硬。
+   0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美适应
+
+注意：若模型未给出恢复回复，三维均给 0，并在理由中说明。
+
+<span class="sec">═══════════════════════════════════════
+【停止指令遵从判定任务】</span>  <span class="cmt">// stop_instruction_compliance 且本轮为停止指令轮</span>  <span class="mtr">// 产出 #7</span>
+<span class="sec">═══════════════════════════════════════</span>
+
+本轮用户发出的是<b>停止指令</b>。请判定模型是否遵从了停止指令：
+- 遵从(true)：模型停止了原来正在输出的内容；只回复"好的""我明白了""已为你停止"这类
+  简短确认语<b>同样算遵从</b>；停止后完全没有新的语音输出也算遵从。
+- 不遵从(false)：模型无视停止指令，继续输出原来的内容。
+
+<span class="var">【用户停止指令】：停
+【指令前模型正在说】：回答中的内容
+【指令后模型语音】：好的</span>
+
+<span class="sec">═══════════════════════════════════════
+【输出格式】
+═══════════════════════════════════════</span>
+
+输出严格 JSON，不要输出 JSON 以外的任何内容：
+
+{
+  <span class="key">"behavior"</span>: "",                                          <span class="mtr"># → #3 打断询问率</span>
+  <span class="key">"reason"</span>: "",
+  <span class="key">"recovery_score"</span>: {<span class="key">"coherence"</span>: 0, <span class="key">"relevance"</span>: 0, <span class="key">"adaptability"</span>: 0, <span class="key">"overall"</span>: 0,   <span class="mtr"># → #6 / #9</span>
+    <span class="key">"coherence_reason"</span>: "", <span class="key">"relevance_reason"</span>: "", <span class="key">"adaptability_reason"</span>: ""},
+  <span class="key">"stop_complied"</span>: true,                                    <span class="mtr"># → #7</span>
+  <span class="key">"stop_compliance_reason"</span>: ""
+}
+
+其中：
+- behavior 必须是【回应】【恢复】【不确定询问】【未知】四个类别之一
+- reason 为简短判定理由，需说明你从回复音频中听到了什么、结合时间线观察到什么、为何归类为此行为
+- recovery_score 为【模型恢复回复】的三维打分(0-5 整数)与 overall(三维平均，保留一位小数)，各 *_reason 为该维简短理由
+- stop_complied 为模型是否遵从停止指令(布尔)，stop_compliance_reason 为简短理由</pre>
+      </div>
+    </div>
+
+    <h3>Prompt 拼接逻辑</h3>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>块</th><th>触发条件 (sub_tasks)</th><th>产出指标</th></tr></thead>
+      <tbody>
+        <tr><td>行为分类</td><td class="calc">始终执行</td><td class="calc">#3 打断询问率 (behavior_*)</td></tr>
+        <tr><td>回复内容评分</td><td class="calc">CONTENT_SCORE_TASKS 任一勾选
+(interruption_reply_content /
+interruption_first_recovery_content /
+coherence / relevance / adaptability)
+且本轮为最后一个实际打断轮</td><td class="calc">#6 打断内容评分 /
+#9 恢复首轮内容评分</td></tr>
+        <tr><td>停止指令遵从</td><td class="calc">STOP_COMPLIANCE_TASKS 勾选
+(interruption_stop_instruction_compliance)
+且 is_stop_round=True</td><td class="calc">#7 停止指令遵从率</td></tr>
+        <tr><td>用户 ASR 时间线</td><td class="calc">user_wav 存在时 (build_timeline_text)</td><td class="calc">(进 prompt，不产字段)</td></tr>
+        <tr><td>交互文字</td><td class="calc">始终生成 (build_interaction_text)</td><td class="calc">interaction_text (不进 prompt，仅返回展示)</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </section>
+
+  <!-- EXAMPLES -->
+  <section id="examples">
+    <div class="eyebrow"><span class="lbl">EXAMPLE</span><span class="ruler tight seg"></span></div>
+    <h2>两个完整样例：九项指标怎么落值</h2>
+
+    <h3>样例 A · 单次打断（插话场景）</h3>
+    <div class="case">
+      <p class="ct">场景 1 — 插话打断</p>
+      <p class="cs">u=[3.6s, 5.1s]　m_active=[2.5s, 5.5s]　m_next=[6.3s, 8.4s]　behavior="回应"　三维 [coherence=4, relevance=4, adaptability=3]</p>
+      <div class="grid">
+        <div class="kv"><div class="k">#1 打断成功率</div><div class="v"><span class="n">1</span></div></div>
+        <div class="kv"><div class="k">#2 打断失败率</div><div class="v"><span class="n">0.0</span></div></div>
+        <div class="kv"><div class="k">#3 打断询问率</div><div class="v"><span class="n">0.0</span><span class="nu">behavior=回应</span></div></div>
+        <div class="kv"><div class="k">#4 打断响应时延</div><div class="v"><span class="n">1900</span><span class="nu">ms</span></div></div>
+        <div class="kv"><div class="k">#5 打断回复时延</div><div class="v"><span class="n">1200</span><span class="nu">ms</span></div></div>
+        <div class="kv"><div class="k">#6 打断内容评分</div><div class="v"><span class="n">3.7</span></div></div>
+        <div class="kv"><div class="k">#7 停止指令遵从率</div><div class="v"><span class="nu">null</span><span class="nu">非停止轮</span></div></div>
+        <div class="kv"><div class="k">#8 恢复首轮内容时延</div><div class="v"><span class="n">1200</span><span class="nu">ms</span></div></div>
+        <div class="kv"><div class="k">#9 恢复首轮内容评分</div><div class="v"><span class="n">3.7</span></div></div>
+      </div>
+      <p class="cs" style="margin-top:14px">#8 = 本轮（唯一轮）恢复时延；#6 / #9 同值，单轮用例两字段都填。#7 不适用（用户发的是插话而非停止指令）。</p>
+    </div>
+
+    <h3>样例 B · 连续打断（R1 截断 → R2 完整）</h3>
+    <div class="case">
+      <p class="ct">连续打断 · 2 个实际打断轮</p>
+      <p class="cs">R1: m_active1=[2.5,5.5] u1=[3.6,5.1] m_rec1=[6.3,7.4]（被 R2 截断）　R2: m_active2=m_rec1 u2=[7.0,7.6] m_rec2=[8.8,10.5]（完整）　末轮 behavior="回应"　R2 三维 [4,4,3]</p>
+      <div class="grid">
+        <div class="kv"><div class="k">#1 打断成功率</div><div class="v"><span class="n">1</span><span class="nu">R1∧R2</span></div></div>
+        <div class="kv"><div class="k">#2 打断失败率</div><div class="v"><span class="n">0.0</span></div></div>
+        <div class="kv"><div class="k">#3 打断询问率</div><div class="v"><span class="n">0.0</span><span class="nu">末轮</span></div></div>
+        <div class="kv"><div class="k">#4 打断响应时延</div><div class="v"><span class="n">1150</span><span class="nu">ms 均值</span></div></div>
+        <div class="kv"><div class="k">#5 打断回复时延</div><div class="v"><span class="n">1200</span><span class="nu">ms 均值</span></div></div>
+        <div class="kv"><div class="k">#6 打断内容评分</div><div class="v"><span class="nu">null</span><span class="nu">多轮看#9</span></div></div>
+        <div class="kv"><div class="k">#7 停止指令遵从率</div><div class="v"><span class="nu">null</span><span class="nu">非停止轮</span></div></div>
+        <div class="kv"><div class="k">#8 恢复首轮内容时延</div><div class="v"><span class="n">1200</span><span class="nu">ms · R2</span></div></div>
+        <div class="kv"><div class="k">#9 恢复首轮内容评分</div><div class="v"><span class="n">3.7</span><span class="nu">R2</span></div></div>
+      </div>
+      <p class="cs" style="margin-top:14px">关键：R1 恢复回复被 R2 截断 → 不计内容分；#8 / #9 只取末轮 R2 的完整恢复。#4 = mean([1900, 400]) = 1150ms（跨轮平均）。#3 / #7 / #9 的 LLM 裁判对象都是末轮 R2 的 ai_wav。</p>
+    </div>
+
+    <div class="ex-box">
+      <p class="ex-title">▼ 停止指令轮样例（补充 #7）</p>
+      <div class="ex-line">用户停止指令 u="停" [3.6, 3.9]　指令前模型正在说　指令后模型语音="好的"</div>
+      <div class="ex-line">模型停了原内容 + 只回"好的" → stop_complied=True → <b>#7 stop_instruction_compliance_rate = 1.0</b></div>
+      <div class="ex-line" style="color:var(--muted)">若模型无视"停"继续说原内容 → stop_complied=False → #7 = 0.0</div>
+    </div>
+  </section>
+
+  <!-- NOTES -->
+  <section id="notes">
+    <div class="eyebrow"><span class="lbl">CAVEAT</span><span class="ruler tight seg"></span></div>
+    <h2>读数前必知的口径</h2>
+    <div class="notes">
+      <div class="note">
+        <h4>成功率严格 0/1</h4>
+        <p>逐轮评估走"实际打断轮"模式：一轮只输出一个二值结果，多轮里任一轮失败即整例失败。ASR 分段只作诊断明细，不直接进成功率。</p>
+        <span class="f">all(success) ? 1 : 0</span>
+      </div>
+      <div class="note">
+        <h4>连续打断只评末轮</h4>
+        <p>中间轮的恢复回复会被下一轮打断截断、不完整。#8 恢复首轮内容时延、#9 恢复首轮内容评分只取最后一个有效实际打断轮；#3 / #7 的 LLM 裁判对象也是末轮 ai_wav。</p>
+        <span class="f">last valid actual round only</span>
+      </div>
+      <div class="note">
+        <h4>success=None 不计分母</h4>
+        <p>打断时模型没在说话（recovery_only）或全程没说话（no_model_speech）的事件 success=None，不进成功率分母，只 event_type=interruption 事件计入。</p>
+        <span class="f">仅 event_type=interruption</span>
+      </div>
+      <div class="note">
+        <h4>代表事件 = 重叠最大</h4>
+        <p>一轮里可能有多个用户重叠（如 0.4s 反馈词 + 真正设计的打断）。target_* 取与模型语音重叠最久的那个事件，并列取更晚开始的。avg_* 才是跨轮/跨事件平均。</p>
+        <span class="f">max(overlap_s)</span>
+      </div>
+      <div class="note">
+        <h4>时延均值口径</h4>
+        <p>avg_recovery_latency_s 只统计 interruption 事件的恢复时延；recovery_only 事件的恢复时延虽在 per_event 里输出，但不纳入均值。avg_silence_gap_s 统计所有事件。</p>
+        <span class="f">interruption only / all events</span>
+      </div>
+      <div class="note">
+        <h4>LLM 指标 null ≠ 0</h4>
+        <p>#3 / #6 / #7 / #9 在未勾选 sub_tasks、不适用（如非停止轮的 #7）或解析失败时均为 null，不得视为 0。#6 / #9 同值同时填，区别仅在面向单/多轮用例的维度命名。</p>
+        <span class="f">null ≠ 0</span>
+      </div>
+      <div class="note">
+        <h4>FFT 精修打断边界</h4>
+        <p>有 <code>case_wav</code> 时，FFT 互相关把干净音源对齐到录音，拿到准确 <code>[client_out_start, client_out_end]</code> 覆盖最重叠的 ASR 用户段——stop/recovery 时延改基于准确时刻，不被反馈词/噪声带偏。无 case_wav 时退回 ASR 词时戳（粗略）。</p>
+        <span class="f">case_wav ⊕ user_wav → accurate [start,end]</span>
+      </div>
+      <div class="note">
+        <h4>NCC 对齐置信度</h4>
+        <p>归一化互相关 <code>client_out_ncc</code> 表征对齐可信度，越接近 1 越可信。NCC 过低在报告里标低置信，但不自动剔除该事件——交由人复核。</p>
+        <span class="f">ncc → confidence, not filter</span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p style="margin:0"><b>源码</b>（<code>eval_server/app/services/calculators/xiaoyi_metrics/</code>）：本地时序 <code>interruptibility/interruption.py</code> + <code>interruptibility/__init__.py</code> + <code>interruptibility/strategy.py</code>；LLM 裁判 <code>env_judge/interruption_judge.py</code>；FFT 互相关 <code>turn_taking/false_takeover.py</code>（<code>compute_client_out_latency</code>）；时间线构建 <code>shared/llm_client.py</code>。时间轴数值为示意，样例取值与上图一致。</p>
+  </footer>
+
+</main>
+</body>
+</html>
