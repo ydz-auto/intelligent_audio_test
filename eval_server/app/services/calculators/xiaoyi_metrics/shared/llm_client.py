@@ -420,13 +420,19 @@ def build_interaction_text(user_chunks: Optional[List[Dict[str, Any]]],
     词合并为段复用打断指标的 _to_segments（用户 1.5s / 模型 0.7s 间隙阈值），
     保证与打断判定的分段口径一致。
     """
-    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption import _to_segments
+    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption import (
+        _to_segments,
+        USER_SEG_MERGE_GAP_S,
+        MODEL_SEG_MERGE_GAP_S,
+    )
 
     lines: List[tuple] = []
     for chunks, label in ((user_chunks, 'query'), (model_chunks, 'answer')):
         if not chunks:
             continue
-        for s in _to_segments(chunks):
+        # 用户/模型侧用各自阈值合并段：模型 0.7s（打断处短停顿+恢复要切开，与打断判定口径一致）
+        gap = MODEL_SEG_MERGE_GAP_S if label == 'answer' else USER_SEG_MERGE_GAP_S
+        for s in _to_segments(chunks, gap=gap):
             lines.append((s['start'], f"{label} [{_fmt_mmss(s['start'])}; {_fmt_mmss(s['end'])}]{s['text']}"))
     lines.sort(key=lambda x: x[0])
     if not lines:

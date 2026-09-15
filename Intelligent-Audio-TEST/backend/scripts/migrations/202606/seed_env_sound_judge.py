@@ -151,6 +151,17 @@ _INTERACTION_PARAM = (
     False, None, '用例完整交互文字，query/answer 按时间排序，含 [m:ss; m:ss] 时间戳，如 query [1:20; 1:30]今天天气怎么样', 63,
 )
 
+# ── 打断裁判独有输入参数 ──
+# stop_intent 为轮次控制元数据：标为 true 时打断裁判才会拼接「停止指令遵从判定」块，
+# 产出 stop_instruction_compliance_rate；不从 is_interruption 推断。
+_INTERRUPTION_JUDGE_EXTRA_PARAMS = [
+    ('stop_intent', '停止指令意图', '是否为停止指令轮', 'boolean', 'input',
+     None, None, None, False,
+     False, None,
+     '显式停止指令标记。模型停止原内容输出即遵从；只回复"好的/我明白了"等确认语同样算遵从；'
+     '继续输出原内容才算不遵从。', 30),
+]
+
 # ── judge_answer 维度参数 ──
 _JUDGE_ANSWER_PARAMS = [
     # ─── 输入参数 ───
@@ -413,7 +424,7 @@ DIMENSIONS = [
         'estimated_exec_time': 120,  # LLM 调用
         'score_unit': '',
         'statistic_method': 'average',
-        'params': _COMMON_PARAMS + [_INTERACTION_PARAM],
+        'params': _COMMON_PARAMS + _INTERRUPTION_JUDGE_EXTRA_PARAMS + [_INTERACTION_PARAM],
         'param_mappings': _COMMON_PARAM_MAPPINGS,
         'body_template': _INTERRUPTION_JUDGE_BODY_TEMPLATE,
     },

@@ -61,6 +61,7 @@ def _to_segments(chunks: List[Dict[str, Any]], gap: float = USER_SEG_MERGE_GAP_S
     返回纯语音段（不含段间静默），单位秒。
     """
     words: List[Dict[str, Any]] = []
+    last_valid_end = 0.0  # 上一个有效词的结束时间，供无效时间戳兜底
     for c in chunks:
         if not isinstance(c, dict):
             continue
@@ -68,9 +69,14 @@ def _to_segments(chunks: List[Dict[str, Any]], gap: float = USER_SEG_MERGE_GAP_S
         if is_punct_or_empty(c.get('text')):
             continue
         iv = valid_ts(c.get('timestamp'))
-        if iv == (0.0, 0.0):  # 无效时间戳（valid_ts 的哨兵返回值）
-            continue
-        words.append({'text': str(c.get('text', '')), 'timestamp': [iv[0], iv[1]]})
+        if iv == (0.0, 0.0):
+            # 无效时间戳（valid_ts 的哨兵返回值）：用上一个有效词的结束时间兜底，
+            # 避免静默丢弃语音内容（这类词通常是打断混叠时刻 ASR 丢失的时间戳）
+            start, end = last_valid_end, last_valid_end + EPS_S
+        else:
+            start, end = iv
+            last_valid_end = max(last_valid_end, end)
+        words.append({'text': str(c.get('text', '')), 'timestamp': [start, end]})
 
     if not words:
         return []

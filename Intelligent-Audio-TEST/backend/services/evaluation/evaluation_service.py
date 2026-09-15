@@ -673,8 +673,9 @@ class EvaluationService(EvaluationLoggerMixin):
                                 for k in ['api_endpoints', 'api_url', 'api_settings']:
                                     if not dim_dict.get(k):
                                         dim_dict[k] = getattr(parent_dim, k, None)
-                                # 子维度继承主维度的 task_type_code，用于发请求时 task_type=turn_taking
-                                dim_dict['parent_task_type_code'] = getattr(parent_dim, 'task_type_code', None)
+                            # 子维度只要有父维度，就记录父维度的 task_type_code，
+                            # 用于发请求时 task_type=turn_taking（即使子维度配了自己的端点，也不影响）
+                            dim_dict['parent_task_type_code'] = getattr(parent_dim, 'task_type_code', None)
                             # input_params 继承：子维度自己没有 input 时，用父维度的 input_params
                             if not dim_dict.get('input_params') and input_param_map.get(parent_dim.id):
                                 dim_dict['input_params'] = input_param_map.get(parent_dim.id)

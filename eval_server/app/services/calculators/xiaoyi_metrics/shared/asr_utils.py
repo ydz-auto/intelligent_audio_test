@@ -19,8 +19,10 @@ from .constants import (
 
 logger = logging.getLogger(__name__)
 
-# 含实际词字符（CJK / 字母 / 数字）才算是"说话"，纯标点/空白 chunk 的时间戳是 ASR 标点模型伪造的，需剔除
-WORD_RE = re.compile(r'[\w一-鿿]')
+# 含实际词字符（CJK / 字母 / 数字 / 东亚文字）才算是"说话"，纯标点/空白 chunk 的时间戳是 ASR 标点模型伪造的，需剔除
+# \w 在 Python3 默认 UNICODE 模式已覆盖全部 Unicode 字母/数字；这里再显式列出
+# CJK 扩展区 / 假名 / 谚文范围，防止任何环境把 \w 降级为 ASCII 后误剔真实内容
+WORD_RE = re.compile(r'[\w\u4E00-\u9FFF\u3400-\u4DBF\u3040-\u309F\u30A0-\u30FF\uAC00-\uD7AF]')
 
 
 def load_json(path: str) -> Any:

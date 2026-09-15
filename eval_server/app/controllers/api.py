@@ -29,6 +29,24 @@ from ..utils.responses import (
     CODE_SERVER_ERROR,       # 服务器内部错误码
     CODE_CONCURRENCY_EXCEEDED  # 并发超过限制错误码
 )
+
+
+def _safe_filename(filename):
+    """清理文件名，防止路径穿越，同时保留中文等非ASCII字符。
+
+    与 werkzeug.secure_filename 不同，不会将中文替换为下划线。
+    仅移除/替换路径穿越危险字符（.., /, \\, 空字符等）。
+    """
+    import re
+    if not filename:
+        return ''
+    cleaned = filename.replace('\\', '/').replace('\x00', '')
+    cleaned = cleaned.split('/')[-1]
+    cleaned = re.sub(r'[<>:"|?*]', '_', cleaned)
+    cleaned = cleaned.strip('. ')
+    return cleaned
+
+
 from datetime import datetime
 from ..config import config  # 配置信息
 from ..services.task_service import calculate_in_process  # 线程池计算包装函数
@@ -416,7 +434,7 @@ def create_task_upload():
         if not file_storage or not file_storage.filename:
             continue
 
-        filename = secure_filename(file_storage.filename)
+        filename = _safe_filename(file_storage.filename)
         if not filename:
             filename = f"upload_{uuid.uuid4().hex}"
 

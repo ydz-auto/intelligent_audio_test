@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """interruption_judge.py
-打断场景 LLM 裁判：一次带音频的 LLM 调用产出全部打断 LLM 维度
+打断场景 LLM 裁判：一次纯文本 LLM 调用产出全部打断 LLM 维度
 
-以模型回复音频(ai_wav)为主输入，用户侧 ASR 时间线为文本上下文。按平台勾选的
+以模型回复音频(ai_wav)为主输入（仅做 ASR 生成文本时间线，不把音频传给 LLM），
+用户侧 ASR 时间线为文本上下文。按平台勾选的
 sub_tasks 拼接 prompt 分块，因此**每个用例只调用一次 LLM**：
 
     1. 行为分类（始终执行）：回应 / 恢复 / 不确定询问 / 未知 → behavior_* one-hot
@@ -352,13 +353,12 @@ def evaluate_interruption_judge(
     if temperature is None:
         temperature = llm_config.get('temperature', LLM_DEFAULT_TEMPERATURE)
 
-    # 主音频：ai_wav（模型回复，被判定对象）
+    # 主音频：ai_wav（模型回复，被判定对象）——仍用于生成模型侧 ASR 时间线，
+    # 但不再作为文件附件传给 LLM（纯文本评估，避免音频传输/多模态 token 开销）
     if not ai_wav or not os.path.isfile(ai_wav):
         raise FileNotFoundError(
             f'模型回复音频(ai_wav)不存在或路径无效: ai_wav={ai_wav!r}'
         )
-
-    file_paths: List[str] = [ai_wav]
 
     # ── 构建文本时间线（用户侧 ASR） ──
     user_chunks: Optional[List[Dict[str, Any]]] = None
@@ -451,7 +451,6 @@ def evaluate_interruption_judge(
             prompt=prompt,
             max_tokens=max_tokens,
             temperature=temperature,
-            file_paths=file_paths,
             log_context={'dimension': 'interruption_judge'},
         )
     except Exception as e:

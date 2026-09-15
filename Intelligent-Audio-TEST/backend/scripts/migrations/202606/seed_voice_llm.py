@@ -102,6 +102,8 @@ def seed_voice_llm():
              'voice_llm', 'interferers'),
             ('is_interruption', '是否打断', '', 'text', 'common', False, None,
              '', 2, False, None, None, None, None, None, None),
+            ('stop_intent', '停止指令意图', '是否为停止指令轮', 'switch', 'common', False, None,
+             '显式停止指令标记；模型停止原内容输出即遵从，只回复"好的/我明白了"等确认语同样算遵从', 3, False, None, None, None, None, None, None),
             ('record_mode', '录屏模式', '', 'text', 'common', False, '0',
              '', 0, False, None, None, None, None, None, None),
         ]
