@@ -1,0 +1,24 @@
+Intelligent-Audio-TEST/doc/功能设计文档/00_新功能总览/主架构图.svg
+  s_0b89aab650aa72::t_d3fe906ac1f4a1 1-509
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "dd81e13887de39a197a5446d00ffef2f99244f9f",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_0b89aab650aa72": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6aa75f67be6163c257d10ed7",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  }
+}
