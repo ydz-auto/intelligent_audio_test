@@ -593,6 +593,14 @@ target_recovery_latency_s
     </table>
     </div>
 
+    <div class="ex-box">
+      <p class="ex-title">▼ 打断成功率(#1)到底怎么来——三层来源</p>
+      <div class="ex-line"><b>① 默认:本地时序</b>　success = stopped AND resumed,由 compute_interruption_metrics 从两路 ASR 算,不调 LLM</div>
+      <div class="ex-line"><b>② 停止指令轮:LLM 回填</b>　LLM 判 stop_instruction_compliance_rate≥1.0(遵从) → backend reconcile_stop_instruction_success 把值为 0 的成功率回填为 1</div>
+      <div class="ex-line" style="color:var(--muted)">回填只作用于<b>停止指令轮</b>且仅当本地时序判 0;插话/恢复原话题轮成功率始终是纯时序。回填在主 app backend,不在 eval_server LLM 返回里——故"LLM 返回格式"表无 success 字段是正确的。</div>
+      <div class="ex-line" style="color:var(--bad)"><b>⚠ API.md 里的 <code>llm_success_rate</code>(LLM 语义判定覆盖成功率)是过时设计,当前代码无此字段</b>——以 interruption.py / interruption_judge.py 实现为准。</div>
+    </div>
+
     <div class="grp">
       <span class="chip chip-llm">LLM 裁判</span>
       <span class="src">env_judge/interruption_judge · evaluate_interruption_judge · 一次调用产全部</span>
