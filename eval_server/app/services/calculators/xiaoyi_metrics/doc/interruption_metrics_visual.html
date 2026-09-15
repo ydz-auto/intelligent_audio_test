@@ -596,77 +596,55 @@ target_recovery_latency_s
     <div class="console">
       <div class="console-head">
         <span class="con-dot" style="background:var(--accent)"></span>
-        <span class="console-title">打断成功率 · 三条路径</span>
-        <span class="console-sub">①本地时序(权威) ← ③停止轮回填 ｜ ②LLM语义(互补不覆盖)</span>
-      </div>
-      <div class="legend">
-        <span><i class="swatch" style="background:var(--accent)"></i>① 本地时序(权威)</span>
-        <span><i class="swatch" style="background:var(--accent);opacity:.4;border:1px dashed var(--accent)"></i>② LLM 语义(互补)</span>
-        <span><i class="swatch" style="background:var(--warn)"></i>③ 停止遵从回填</span>
+        <span class="console-title">打断成功率 · 覆盖流水线</span>
+        <span class="console-sub">本地时序 → ② LLM 覆盖 → ③ 停止轮回填 → 最终</span>
       </div>
       <div class="svg-scroll">
-      <svg viewBox="0 0 940 332" role="img" aria-label="打断成功率三条路径:本地时序为权威,LLM语义互补不覆盖,停止遵从经backend回填本地0到1。">
+      <svg viewBox="0 0 940 250" role="img" aria-label="打断成功率覆盖流水线:本地时序算初值,LLM语义llm_success_rate覆盖,停止指令轮backend回填0到1,优先级③>②>①。">
         <defs>
-          <marker id="su" markerWidth="9" markerHeight="9" refX="4.5" refY="7" orient="auto"><path d="M1,1 L4.5,8 L8,1" fill="none" stroke="var(--warn)" stroke-width="1.4"></path></marker>
-          <marker id="sd" markerWidth="8" markerHeight="8" refX="4" refY="7" orient="auto"><path d="M1,1 L4,7 L7,1" fill="none" stroke="var(--muted)" stroke-width="1.2"></path></marker>
+          <marker id="ae" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="var(--accent)"></path></marker>
+          <marker id="we" markerWidth="9" markerHeight="9" refX="7" refY="3.5" orient="auto"><path d="M0,0 L7,3.5 L0,7 Z" fill="var(--warn)"></path></marker>
         </defs>
-        <!-- input bar -->
-        <rect x="40" y="22" width="890" height="40" rx="8" fill="var(--user)" opacity="0.10" stroke="var(--user)" stroke-width="1"></rect>
-        <text x="485" y="47" text-anchor="middle" font-family="var(--mono)" font-size="11.5" fill="var(--ink)">输入：两路 ASR 词级时间戳（user_wav + ai_wav）+ case_wav（可选）</text>
-        <!-- fan arrows -->
-        <g stroke="var(--muted)" stroke-width="1.2" fill="none">
-          <line x1="165" y1="62" x2="165" y2="82" marker-end="url(#sd)"></line>
-          <line x1="480" y1="62" x2="480" y2="82" marker-end="url(#sd)"></line>
-          <line x1="800" y1="62" x2="800" y2="82" marker-end="url(#sd)"></line>
-        </g>
+        <!-- ① 本地时序 (初值) -->
+        <rect x="20" y="130" width="200" height="86" rx="10" fill="var(--model-soft)" stroke="var(--model)" stroke-width="1"></rect>
+        <text x="120" y="152" text-anchor="middle" font-family="var(--sans)" font-size="12" fill="var(--model)" font-weight="700">① 本地时序（初值）</text>
+        <text x="120" y="172" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--ink)">compute_interruption_metrics</text>
+        <text x="120" y="190" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--accent-ink)">success = stopped AND resumed</text>
+        <text x="120" y="207" text-anchor="middle" font-family="var(--sans)" font-size="9" fill="var(--muted)">纯本地 · 不调 LLM</text>
 
-        <!-- Lane 1 本地时序 -->
-        <rect x="40" y="86" width="120" height="20" rx="4" fill="var(--model)"></rect>
-        <text x="100" y="100" text-anchor="middle" font-family="var(--mono)" font-size="10.5" fill="#fff" font-weight="600">① 本地时序</text>
-        <rect x="40" y="114" width="250" height="44" rx="8" fill="var(--surface-2)" stroke="var(--line)" stroke-width="1"></rect>
-        <text x="165" y="133" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink)" font-weight="600">compute_interruption_metrics</text>
-        <text x="165" y="149" text-anchor="middle" font-family="var(--sans)" font-size="9.5" fill="var(--muted)">纯本地 · 不调 LLM</text>
-        <rect x="40" y="166" width="250" height="32" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"></rect>
-        <text x="165" y="187" text-anchor="middle" font-family="var(--mono)" font-size="10.5" fill="var(--accent-ink)">success = stopped AND resumed</text>
-        <rect x="40" y="210" width="250" height="40" rx="20" fill="var(--accent)"></rect>
-        <text x="165" y="235" text-anchor="middle" font-family="var(--mono)" font-size="11.5" fill="#fff" font-weight="700">interruption_success_rate ★</text>
-        <text x="165" y="266" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">维度取值来源 · 唯一权威</text>
+        <!-- ② LLM 语义 (覆盖阀) -->
+        <rect x="300" y="14" width="220" height="96" rx="10" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"></rect>
+        <text x="410" y="38" text-anchor="middle" font-family="var(--sans)" font-size="12" fill="var(--accent)" font-weight="700">② LLM 语义（覆盖）</text>
+        <text x="410" y="56" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--ink)">interruption_judge</text>
+        <text x="410" y="72" text-anchor="middle" font-family="var(--sans)" font-size="9" fill="var(--muted)">同次调用 · 带 ai_wav</text>
+        <text x="410" y="92" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--accent-ink)">llm_success_rate（停下即成功）</text>
+        <line x1="410" y1="110" x2="410" y2="168" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#ae)"></line>
+        <text x="420" y="148" text-anchor="start" font-family="var(--mono)" font-size="9.5" fill="var(--accent)" font-weight="600">覆盖（有值时）</text>
 
-        <!-- Lane 2 LLM 语义 -->
-        <rect x="350" y="86" width="120" height="20" rx="4" fill="var(--accent)"></rect>
-        <text x="410" y="100" text-anchor="middle" font-family="var(--mono)" font-size="10.5" fill="#fff" font-weight="600">② LLM 语义</text>
-        <rect x="350" y="114" width="260" height="44" rx="8" fill="var(--surface-2)" stroke="var(--line)" stroke-width="1"></rect>
-        <text x="480" y="133" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink)" font-weight="600">interruption_judge</text>
-        <text x="480" y="149" text-anchor="middle" font-family="var(--sans)" font-size="9.5" fill="var(--muted)">同一次 LLM 调用 · 带 ai_wav</text>
-        <rect x="350" y="166" width="260" height="32" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"></rect>
-        <text x="480" y="187" text-anchor="middle" font-family="var(--mono)" font-size="10.5" fill="var(--accent-ink)">is_real + success（停下即成功）</text>
-        <rect x="350" y="210" width="260" height="40" rx="20" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="5 3"></rect>
-        <text x="480" y="235" text-anchor="middle" font-family="var(--mono)" font-size="11.5" fill="var(--accent)" font-weight="700">llm_success_rate</text>
-        <text x="480" y="266" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">→ 报告 / 复核（不覆盖 ①）</text>
+        <!-- ③ 停止遵从回填 (覆盖阀) -->
+        <rect x="560" y="14" width="220" height="96" rx="10" fill="var(--surface)" stroke="var(--warn)" stroke-width="1"></rect>
+        <text x="670" y="38" text-anchor="middle" font-family="var(--sans)" font-size="12" fill="var(--warn)" font-weight="700">③ 停止遵从回填</text>
+        <text x="670" y="56" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--ink)">backend reconcile</text>
+        <text x="670" y="74" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--ink)">stop_compliance ≥ 1.0</text>
+        <text x="670" y="92" text-anchor="middle" font-family="var(--sans)" font-size="9" fill="var(--muted)">仅停止指令轮 · 幂等</text>
+        <line x1="670" y1="110" x2="670" y2="168" stroke="var(--warn)" stroke-width="1.6" marker-end="url(#we)"></line>
+        <text x="660" y="148" text-anchor="end" font-family="var(--mono)" font-size="9.5" fill="var(--warn)" font-weight="600">0→1（仅停止轮）</text>
 
-        <!-- Lane 3 停止遵从回填 -->
-        <rect x="670" y="86" width="150" height="20" rx="4" fill="var(--warn)"></rect>
-        <text x="745" y="100" text-anchor="middle" font-family="var(--mono)" font-size="10.5" fill="#fff" font-weight="600">③ 停止遵从回填</text>
-        <rect x="670" y="114" width="260" height="44" rx="8" fill="var(--surface-2)" stroke="var(--line)" stroke-width="1"></rect>
-        <text x="800" y="133" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink)" font-weight="600">stop_compliance ≥ 1.0</text>
-        <text x="800" y="149" text-anchor="middle" font-family="var(--sans)" font-size="9.5" fill="var(--muted)">backend · reconcile_stop_instruction_success</text>
-        <rect x="670" y="166" width="260" height="32" rx="8" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1"></rect>
-        <text x="800" y="187" text-anchor="middle" font-family="var(--mono)" font-size="10.5" fill="var(--accent-ink)">本地 success 0 → 1 · 重算分</text>
-        <rect x="670" y="210" width="260" height="40" rx="20" fill="var(--accent)" opacity="0.85"></rect>
-        <text x="800" y="235" text-anchor="middle" font-family="var(--mono)" font-size="11.5" fill="#fff" font-weight="700">回填 ①（0→1）</text>
-        <text x="800" y="266" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">仅停止指令轮 · 幂等</text>
+        <!-- pipe (value flows left→right) -->
+        <line x1="220" y1="173" x2="715" y2="173" stroke="var(--accent)" stroke-width="2.6" marker-end="url(#ae)"></line>
+        <text x="300" y="167" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--muted)">success</text>
 
-        <!-- ② 不覆盖 ① -->
-        <line x1="290" y1="230" x2="350" y2="230" stroke="var(--muted)" stroke-width="1.2" stroke-dasharray="4 3"></line>
-        <text x="320" y="220" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--muted)">不回写</text>
-        <text x="320" y="246" text-anchor="middle" font-family="var(--sans)" font-size="13" fill="var(--bad)" font-weight="700">✗</text>
+        <!-- final -->
+        <rect x="720" y="130" width="200" height="86" rx="10" fill="var(--accent)"></rect>
+        <text x="820" y="152" text-anchor="middle" font-family="var(--sans)" font-size="12" fill="#fff" font-weight="700">最终</text>
+        <text x="820" y="172" text-anchor="middle" font-family="var(--mono)" font-size="10.5" fill="#fff" font-weight="600">interruption_success_rate</text>
+        <text x="820" y="190" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="#fff" font-weight="700">★ 维度取值（0 / 1）</text>
+        <text x="820" y="207" text-anchor="middle" font-family="var(--sans)" font-size="9" fill="#fff" opacity="0.8">TestResultDimension</text>
 
-        <!-- ③ 回填 ① (U-arrow) -->
-        <path d="M800,250 L800,300 L165,300 L165,250" fill="none" stroke="var(--warn)" stroke-width="1.4" marker-end="url(#su)"></path>
-        <text x="482" y="295" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--warn)" font-weight="600">停止指令轮 · success 0→1 · 幂等回填</text>
+        <text x="470" y="240" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">覆盖优先级 ③ 停止轮 &gt; ② LLM &gt; ① 本地时序（后写者生效 · 幂等）</text>
       </svg>
       </div>
-      <figcaption><b>①</b> 本地时序 <code>interruption_success_rate</code> 是维度取值的唯一权威；<b>②</b> LLM 语义 <code>llm_success_rate</code> 在同一次裁判调用里产出、与①互补<b>不回写覆盖</b>（虚线 + ✗），走报告/复核；<b>③</b> 停止指令轮由 backend <code>reconcile_stop_instruction_success</code> 读 LLM 的 <code>stop_instruction_compliance_rate</code>，把本地值为 0 的成功率回填为 1（U 形箭头，幂等，两组谁后完成谁生效）。</figcaption>
+      <figcaption>成功率是一条<b>覆盖流水线</b>：① 本地时序算初值（stopped AND resumed）→ ② <code>interruption_judge</code> 同次调用产出 <code>llm_success_rate</code>（模型是否停下），<b>有值即覆盖</b>①（由 backend <code>reconcile_llm_success_rate</code> 写回 <code>interruption_metrics</code> 主维度行）→ ③ 停止指令轮由 <code>reconcile_stop_instruction_success</code> 读 <code>stop_compliance_rate</code> 把 0 回填为 1。两步幂等，优先级 ③ &gt; ② &gt; ①（停止遵从最后写、停止轮上最终生效）。</figcaption>
     </div>
 
     <div class="grp">

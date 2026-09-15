@@ -552,6 +552,11 @@ class EvaluationResultProcessor(RoundAggregator):
                     local_db_session, result_id, task_id, test_case_id, test_type
                 )
 
+                # LLM 语义成功率覆盖本地时序成功率（幂等，两组谁后完成谁生效；先于停止遵从回填）
+                self.reconcile_llm_success_rate(
+                    result_id, task_id=task_id, test_case_id=test_case_id,
+                    session=local_db_session,
+                )
                 # 停止指令轮：裁判判定遵从时回填打断成功率（幂等，两组谁后完成谁生效）
                 self.reconcile_stop_instruction_success(
                     result_id, task_id=task_id, test_case_id=test_case_id,
@@ -649,6 +654,100 @@ class EvaluationResultProcessor(RoundAggregator):
                 level='WARNING',
                 category='execution',
                 content=f"停止指令成功率回填失败: {e}",
+                task_id=task_id, test_case_id=test_case_id,
+            )
+            if own_session:
+                local_session.rollback()
+        finally:
+            if own_session:
+                local_session.close()
+
+    def reconcile_llm_success_rate(self, result_id, task_id=None, test_case_id=None, session=None):
+        """LLM 语义成功率覆盖本地时序成功率
+
+        interruption_judge 在同一次调用里产出 llm_success_rate（模型在被打断后是否
+        停下，停下即成功）；有值时覆盖 interruption_metrics 组的主成功率
+        dimension_value（0/1）并按维度 rule 重算 score。与 reconcile_stop_instruction_success
+        同样幂等：两组并发评估，每组完成后各调一次，任一行缺失/未完成/llm_success_rate
+        为 None 即 no-op，谁后完成谁生效。
+
+        优先级：本方法先于 reconcile_stop_instruction_success 调用，故停止指令轮上
+        停止遵从的回填（0→1）后写、最终生效；非停止轮由 LLM 语义成功率定。
+        """
+        if not result_id:
+            return
+        local_session = session or db.session()
+        own_session = session is None
+        try:
+            judge_rows = (
+                local_session.query(TestResultDimension)
+                .join(Dimension, Dimension.id == TestResultDimension.dimension_id)
+                .filter(TestResultDimension.test_result_id == result_id,
+                        Dimension.task_type_code == 'interruption_judge',
+                        Dimension.deleted.is_(False))
+                .all()
+            )
+            llm_success_rate = None
+            for row in judge_rows:
+                raw = row.api_raw_response
+                if isinstance(raw, str):
+                    try:
+                        raw = json.loads(raw)
+                    except (ValueError, TypeError):
+                        continue
+                if not isinstance(raw, dict):
+                    continue
+                payload = raw
+                data = raw.get('data')
+                if isinstance(data, dict) and isinstance(data.get('result'), dict):
+                    payload = data['result']
+                rate = payload.get('llm_success_rate')
+                if rate is None:
+                    continue
+                try:
+                    llm_success_rate = float(rate)
+                except (TypeError, ValueError):
+                    continue
+                if llm_success_rate is not None:
+                    break
+
+            if llm_success_rate is None:
+                return
+
+            new_val = 1.0 if llm_success_rate >= 1.0 else 0.0
+            metric_rows = (
+                local_session.query(TestResultDimension)
+                .join(Dimension, Dimension.id == TestResultDimension.dimension_id)
+                .filter(TestResultDimension.test_result_id == result_id,
+                        Dimension.task_type_code == 'interruption_metrics',
+                        Dimension.deleted.is_(False))
+                .all()
+            )
+            for row in metric_rows:
+                if row.status != 'completed' or row.dimension_value is None:
+                    continue
+                try:
+                    if float(row.dimension_value) == new_val:
+                        continue  # 已一致，幂等跳过
+                except (TypeError, ValueError):
+                    continue
+                dim = local_session.query(Dimension).get(row.dimension_id)
+                rule = dim.rule if dim is not None and isinstance(dim.rule, dict) else None
+                row.dimension_value = new_val
+                row.score = calculate_score(new_val, rule)
+                self._log(
+                    level='INFO',
+                    category='execution',
+                    content=f"LLM 语义成功率覆盖本地时序: result_id={result_id}, "
+                            f"dimension_id={row.dimension_id}, → {new_val}, score={row.score}",
+                    task_id=task_id, test_case_id=test_case_id,
+                )
+            local_session.commit()
+        except Exception as e:
+            self._log(
+                level='WARNING',
+                category='execution',
+                content=f"LLM 语义成功率覆盖失败: {e}",
                 task_id=task_id, test_case_id=test_case_id,
             )
             if own_session:
