@@ -188,7 +188,7 @@ footer code{font-size:11px}
   <section id="behaviors">
     <div class="eyebrow"><span class="lbl">BEHAVIOR</span><span class="ruler tight seg"></span></div>
     <h2>四种行为：模型被用户打断后的反应</h2>
-    <p class="sub">裁判模型直接听【模型回复音频 <code>ai_wav</code>】，结合用户侧 ASR 时间线，把模型被打断后的反应归入下列四类之一（四选一，分类而非序列）。这一分类是后续多项指标的源头：<b>打断询问率</b>由它派生，<b>内容评分 / 停止指令遵从率</b>也在同一次 LLM 调用里完成。</p>
+    <p class="sub">裁判读【模型回复 ASR 时间线 + 用户侧 ASR 时间线】（纯文本，<code>ai_wav</code> 仅用于 ASR 转写、不传给 LLM），把模型被打断后的反应归入下列四类之一（四选一，分类而非序列）。这一分类是后续多项指标的源头：<b>打断询问率</b>由它派生，<b>内容评分 / 停止指令遵从率</b>也在同一次 LLM 调用里完成。</p>
 
     <div class="behaviors">
       <div class="bcard r">
@@ -510,7 +510,7 @@ footer code{font-size:11px}
   <section id="metrics">
     <div class="eyebrow"><span class="lbl">METRIC</span><span class="ruler tight seg"></span></div>
     <h2>九项指标：计算方式与 Prompt 对应</h2>
-    <p class="sub">五项<b>本地时序</b>（不调 LLM，由两路 ASR 词级时间戳算）+ 四项<b>LLM 裁判</b>（一次带音频的 LLM 调用产出）。下表"单次"列给单次打断样例取值，"连续"列给连续打断样例取值，均沿用上方时间轴数值。指标按依赖顺序编号 1–9。</p>
+    <p class="sub">五项<b>本地时序</b>（不调 LLM，由两路 ASR 词级时间戳算）+ 四项<b>LLM 裁判</b>（一次纯文本 LLM 调用产出，<code>ai_wav</code> 仅做 ASR 转写不传 LLM）。下表"单次"列给单次打断样例取值，"连续"列给连续打断样例取值，均沿用上方时间轴数值。指标按依赖顺序编号 1–9。</p>
 
     <div class="grp">
       <span class="chip chip-local">本地时序</span>
@@ -620,6 +620,7 @@ target_recovery_latency_s
         <text x="410" y="92" text-anchor="middle" font-family="var(--mono)" font-size="9.5" fill="var(--accent-ink)">llm_success_rate（停下即成功）</text>
         <line x1="410" y1="110" x2="410" y2="168" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#ae)"></line>
         <text x="420" y="148" text-anchor="start" font-family="var(--mono)" font-size="9.5" fill="var(--accent)" font-weight="600">覆盖（有值时）</text>
+        <text x="420" y="160" text-anchor="start" font-family="var(--mono)" font-size="8.5" fill="var(--muted)">同步 failure=1-success</text>
 
         <!-- ③ 停止遵从回填 (覆盖阀) -->
         <rect x="560" y="14" width="220" height="96" rx="10" fill="var(--surface)" stroke="var(--warn)" stroke-width="1"></rect>
@@ -644,7 +645,7 @@ target_recovery_latency_s
         <text x="470" y="240" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">覆盖优先级 ③ 停止轮 &gt; ② LLM &gt; ① 本地时序（后写者生效 · 幂等）</text>
       </svg>
       </div>
-      <figcaption>成功率是一条<b>覆盖流水线</b>：① 本地时序算初值（stopped AND resumed）→ ② <code>interruption_judge</code> 同次调用产出 <code>llm_success_rate</code>（模型是否停下），<b>有值即覆盖</b>①（由 backend <code>reconcile_llm_success_rate</code> 写回 <code>interruption_metrics</code> 主维度行）→ ③ 停止指令轮由 <code>reconcile_stop_instruction_success</code> 读 <code>stop_compliance_rate</code> 把 0 回填为 1。两步幂等，优先级 ③ &gt; ② &gt; ①（停止遵从最后写、停止轮上最终生效）。</figcaption>
+      <figcaption>成功率是一条<b>覆盖流水线</b>：① 本地时序算初值（stopped AND resumed）→ ② <code>interruption_judge</code> 同次调用产出 <code>llm_success_rate</code>（模型是否停下），<b>有值即覆盖</b>①（由 backend <code>reconcile_llm_success_rate</code> 写回 <code>interruption_metrics</code> 主维度行，<b>并同步</b> <code>interruption_failure_rate</code> = 1−success）→ ③ 停止指令轮由 <code>reconcile_stop_instruction_success</code> 读 <code>stop_compliance_rate</code> 把 0 回填为 1（同样同步 failure）。两步幂等，优先级 ③ &gt; ② &gt; ①（停止遵从最后写、停止轮上最终生效）。</figcaption>
     </div>
 
     <div class="grp">
@@ -750,15 +751,15 @@ adaptability)
       <div class="prompt-head">
         <span class="con-dot" style="background:#5BC69A"></span>
         <span class="pt">build_interruption_prompt()</span>
-        <span class="pm">audio: ai_wav (input_audio) · text: prompt below</span>
+        <span class="pm">text-only · ai_wav 仅做 ASR 转写，不传 LLM</span>
       </div>
       <div class="prompt-body">
-<pre><span class="cmt">// ── 系统角色 + 任务说明（始终存在）──</span>
-你是语音对话能力的裁判专家。你将收到【模型回复音频】以及下方【用户侧 ASR 时间线】。
+<pre><span class="cmt">// ── 系统角色 + 任务说明（始终存在，纯文本评估）──</span>
+你是语音对话能力的裁判专家。你将根据下方【模型回复 ASR 时间线】和【用户侧 ASR 时间线】进行判断。
 
 用户输入音频包含两部分内容：第一段为用户交互内容，第二段为打断干扰内容。上述场景定义涵盖了打断干扰内容的类型。打断干扰内容往往与模型对第一段用户交互语音内容的回复内容在时间上重叠，即"重叠内容"。
 
-请结合回复音频、时间线和场景定义，判断在接收到重叠内容后，模型表现出的行为类别，并给出理由。
+请结合模型回复 ASR 时间线、用户侧时间线和场景定义，判断在接收到重叠内容后，模型表现出的行为类别，并给出理由。
 
 <span class="sec">═══════════════════════════════════════
 【用户侧 ASR 时间线】</span>  <span class="mtr">// 始终拼接（user_wav 存在时）</span>
@@ -847,7 +848,7 @@ adaptability)
 
 其中：
 - behavior 必须是【回应】【恢复】【不确定询问】【未知】四个类别之一
-- reason 为简短判定理由，需说明你从回复音频中听到了什么、结合时间线观察到什么、为何归类为此行为
+- reason 为简短判定理由，需说明你从模型回复 ASR 中观察到了什么、结合时间线观察到什么、为何归类为此行为
 - recovery_score 为【模型恢复回复】的三维打分(0-5 整数)与 overall(三维平均，保留一位小数)，各 *_reason 为该维简短理由
 - stop_complied 为模型是否遵从停止指令(布尔)，stop_compliance_reason 为简短理由</pre>
       </div>
@@ -881,7 +882,7 @@ coherence / relevance / adaptability)
       <thead><tr><th>键</th><th>类型</th><th>取值 / 范围</th><th>含义</th><th>何时出现</th></tr></thead>
       <tbody>
         <tr><td><code>behavior</code></td><td>string</td><td class="calc">{"回应","恢复","不确定询问","未知"} 四选一</td><td class="calc">模型被打断后的行为分类；#3 询问率由它派生</td><td class="calc">始终</td></tr>
-        <tr><td><code>reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">行为判定理由：从音频听到什么、结合时间线观察、为何归类</td><td class="calc">始终</td></tr>
+        <tr><td><code>reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">行为判定理由：从模型回复 ASR 观察到什么、结合时间线、为何归类</td><td class="calc">始终</td></tr>
         <tr><td><code>is_real_interruption</code></td><td>bool</td><td class="calc">true / false</td><td class="calc">是否真正打断（用户确有打断意图且在模型说话期间插入、模型确有让出）</td><td class="calc">定位到目标事件时</td></tr>
         <tr><td><code>interruption_reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">is_real 判定理由</td><td class="calc">同上</td></tr>
         <tr><td><code>success</code></td><td>bool</td><td class="calc">true / false</td><td class="calc">模型是否成功处理打断（停下即成功，与恢复质量无关）→ <b>语义成功率</b></td><td class="calc">同上</td></tr>
