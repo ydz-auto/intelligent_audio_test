@@ -817,6 +817,73 @@ coherence / relevance / adaptability)
       </tbody>
     </table>
     </div>
+
+    <h3>LLM 返回格式（模型原始 JSON）</h3>
+    <p class="sub">裁判模型听完 <code>ai_wav</code> + 读 prompt 后，输出严格 JSON（不带任何 JSON 以外内容）。键按勾选的 sub_tasks 动态出现——未勾选的块既不在 prompt 也不在输出 JSON 里。<code>behavior</code> / <code>reason</code> 始终有；<code>recovery_score</code> 仅勾选回复内容类且本轮为末轮时；<code>stop_complied</code> 仅勾选停止遵从且本轮为停止指令轮时。</p>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>键</th><th>类型</th><th>取值 / 范围</th><th>含义</th><th>何时出现</th></tr></thead>
+      <tbody>
+        <tr><td><code>behavior</code></td><td>string</td><td class="calc">{"回应","恢复","不确定询问","未知"} 四选一</td><td class="calc">模型被打断后的行为分类；#3 询问率由它派生</td><td class="calc">始终</td></tr>
+        <tr><td><code>reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">行为判定理由：从音频听到什么、结合时间线观察、为何归类</td><td class="calc">始终</td></tr>
+        <tr><td><code>recovery_score</code></td><td>object</td><td class="calc">见下 7 子键</td><td class="calc">对【末轮首个完整恢复回复】的三维打分</td><td class="calc">勾选回复内容类 + 末轮</td></tr>
+        <tr><td><code>recovery_score.coherence</code></td><td>int</td><td class="calc">0–5 整数</td><td class="calc">连贯性：恢复回复与被打断内容/打断意图的衔接</td><td class="calc">同上</td></tr>
+        <tr><td><code>recovery_score.relevance</code></td><td>int</td><td class="calc">0–5 整数</td><td class="calc">相关性：恢复回复是否切合用户打断意图</td><td class="calc">同上</td></tr>
+        <tr><td><code>recovery_score.adaptability</code></td><td>int</td><td class="calc">0–5 整数</td><td class="calc">适应性：是否自然承接话题切换而非生硬</td><td class="calc">同上</td></tr>
+        <tr><td><code>recovery_score.overall</code></td><td>float</td><td class="calc">0.0–5.0，1 位小数</td><td class="calc">三维平均；缺失时由裁判侧补算 mean</td><td class="calc">同上</td></tr>
+        <tr><td><code>recovery_score.*_reason</code></td><td>string ×3</td><td class="calc">自由文本</td><td class="calc">coherence/relevance/adaptability 各维简短理由</td><td class="calc">同上</td></tr>
+        <tr><td><code>stop_complied</code></td><td>bool</td><td class="calc">true / false</td><td class="calc">模型是否遵从停止指令；只回"好的"也算 true</td><td class="calc">勾选停止遵从 + 停止轮</td></tr>
+        <tr><td><code>stop_compliance_reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">遵从判定理由</td><td class="calc">同上</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="prompt-block">
+      <div class="prompt-head">
+        <span class="con-dot" style="background:#5BC69A"></span>
+        <span class="pt">LLM 返回示例（勾选了回复内容评分 + 停止指令遵从）</span>
+        <span class="pm">strict JSON · no prose outside</span>
+      </div>
+      <div class="prompt-body">
+<pre>{
+  <span class="key">"behavior"</span>: <span class="var">"回应"</span>,
+  <span class="key">"reason"</span>: <span class="var">"模型听到用户说'换个话题'后停止原回答，回复'您想聊什么话题'，对打断意图做了回应。"</span>,
+  <span class="key">"recovery_score"</span>: {
+    <span class="key">"coherence"</span>: <span class="var">4</span>, <span class="key">"relevance"</span>: <span class="var">4</span>, <span class="key">"adaptability"</span>: <span class="var">3</span>, <span class="key">"overall"</span>: <span class="var">3.7</span>,
+    <span class="key">"coherence_reason"</span>: <span class="var">"恢复回复与打断意图衔接自然"</span>,
+    <span class="key">"relevance_reason"</span>: <span class="var">"切合用户切换话题的意图"</span>,
+    <span class="key">"adaptability_reason"</span>: <span class="var">"话题切换承接略生硬"</span>
+  },
+  <span class="key">"stop_complied"</span>: <span class="var">true</span>,
+  <span class="key">"stop_compliance_reason"</span>: <span class="var">"模型停止原内容并简短确认"</span>
+}</pre>
+      </div>
+    </div>
+
+    <h3>结果参数定义（evaluate_interruption_judge 返回字段）</h3>
+    <p class="sub">裁判侧把上面原始 JSON 解析、派生、补默认后，返回下列字段给维度取值。<b>未勾选 / 不适用 / 解析失败的维度一律 <code>null</code>，不当 0</b>。原始 JSON 见 <code>evaluations</code>，三维理由见 <code>recovery_score_reasons</code>。</p>
+    <div class="tbl-scroll">
+    <table>
+      <thead><tr><th>字段</th><th>类型</th><th>取值范围</th><th>来源 / 派生</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>enabled</code></td><td>bool</td><td class="calc">true/false</td><td class="calc">调用是否成功</td><td class="calc">false 表示 LLM 调用失败，下游应跳过</td></tr>
+        <tr><td><code>model</code></td><td>string</td><td class="calc">模型 id</td><td class="calc">resolve_model('interruption_judge')</td><td class="calc">实际使用的裁判模型</td></tr>
+        <tr><td><code>behavior_respond</code><br><code>behavior_recover</code><br><code>behavior_uncertain</code><br><code>behavior_unknown</code></td><td>int ×4</td><td class="calc">0 或 1</td><td class="calc">behavior one-hot 拆分</td><td class="calc">供子维度 pass_rate 聚合；四者互斥，恰一个为 1</td></tr>
+        <tr><td><code>interruption_inquiry_rate</code></td><td>float|null</td><td class="calc">0.0 / 1.0 / null</td><td class="calc">behavior=="不确定询问"→1.0 否则→0.0；无有效解析→null</td><td class="calc">→ #3 打断询问率</td></tr>
+        <tr><td><code>recovery_coherence</code><br><code>recovery_relevance</code><br><code>recovery_adaptability</code></td><td>int|null</td><td class="calc">0–5 / null</td><td class="calc">recovery_score 三维原值</td><td class="calc">恢复回复三维分；未勾选→null</td></tr>
+        <tr><td><code>interruption_reply_overall</code></td><td>float|null</td><td class="calc">0.0–5.0 / null</td><td class="calc">overall 或 mean(三维)；单实际轮用例</td><td class="calc">→ #6 打断内容评分</td></tr>
+        <tr><td><code>first_recovery_overall</code></td><td>float|null</td><td class="calc">0.0–5.0 / null</td><td class="calc">与 reply_overall 同值；多实际轮用例</td><td class="calc">→ #9 恢复首轮内容评分；两者同时填</td></tr>
+        <tr><td><code>recovery_score_reasons</code></td><td>object|null</td><td class="calc">{coherence,relevance,adaptability: str}</td><td class="calc">recovery_score.*_reason</td><td class="calc">三维逐维理由文本</td></tr>
+        <tr><td><code>stop_complied</code></td><td>bool|null</td><td class="calc">true/false/null</td><td class="calc">原始 stop_complied，解析失败→null</td><td class="calc">停止遵从布尔原值</td></tr>
+        <tr><td><code>stop_compliance_reason</code></td><td>string</td><td class="calc">自由文本</td><td class="calc">原始 reason</td><td class="calc">停止遵从判定理由</td></tr>
+        <tr><td><code>stop_instruction_compliance_rate</code></td><td>float|null</td><td class="calc">0.0/1.0/null</td><td class="calc">float(stop_complied)；complied=None→null</td><td class="calc">→ #7 停止指令遵从率；非停止轮→null</td></tr>
+        <tr><td><code>interaction_text</code></td><td>string</td><td class="calc">多行文本</td><td class="calc">build_interaction_text(两路词级 ASR)</td><td class="calc">query/answer + [m:ss] 时间戳，按开始时间排序；不进 prompt，仅展示</td></tr>
+        <tr><td><code>evaluations</code></td><td>list</td><td class="calc">[{behavior,reason,...}]</td><td class="calc">parse_evaluations(parsed)</td><td class="calc">原始解析结果，供诊断/回溯</td></tr>
+        <tr><td><code>tokens_used</code><br><code>input_token</code><br><code>output_token</code></td><td>int ×3</td><td class="calc">≥0</td><td class="calc">LLM usage</td><td class="calc">本次裁判 token 用量，也落审计日志</td></tr>
+        <tr><td><code>message</code></td><td>string</td><td class="calc">"OK" / 错误描述</td><td class="calc">—</td><td class="calc">调用状态；"LLM 输出解析失败"等</td></tr>
+      </tbody>
+    </table>
+    </div>
   </section>
 
   <!-- EXAMPLES -->
