@@ -40,20 +40,22 @@ Task "全量回归"
 ## 0.2 调用模式（流式 vs 非实时）
 
 > API 类被测设备支持流式和非实时两种调用模式，由 `case_config.stream` 或 API 配置决定。
+> **流式 ≠ 只有 WebSocket**：HTTP 流式（SSE）也是流式协议之一，由 `case_config.protocol` 区分。
 
-| 调用模式 | 说明 | 传输协议 | 输入 | 输出 | AI 说话检测 | 打断检测 |
+| 调用模式 | 协议 | 说明 | 输入 | 输出 | AI 说话检测 | 打断检测 |
 |---|---|---|---|---|---|---|
-| **非实时调用** | 一次性发送完整音频，等完整响应 | HTTP POST | 文件级 | 完整 JSON | HTTP 响应判断 | 不支持 |
-| **流式调用** | 实时输入 chunk，实时输出 chunk | SSE / WebSocket | chunk 流式 | chunk 流式 | 事件驱动 | 支持 |
+| **非实时调用** | HTTP POST | 一次性发送完整音频，等完整响应 | 文件级 | 完整 JSON | HTTP 响应判断 | 不支持 |
+| **流式调用** | SSE | HTTP 长连接，服务端逐条推送结果 | chunk 流式 | chunk 流式 | 事件驱动 | 支持 |
+| **流式调用** | WebSocket | 全双工实时语音交互 | chunk 流式 | chunk 流式 | 事件驱动 | 支持 |
 
 ## 0.3 被测设备类型 × 执行方式
 
-| 被测设备类型 | Executor | 音频处理 | SPL 映射 | 调用模式 |
-|:---:|---|---|---|---|
-| 物理设备 | E2EExecutor | 物理播放 + PCM 抓取 | `device.spl_mapping_id` | — |
-| HTTP API（非实时） | APISessionExecutor | RenderAudioFile 整段混音 → 整文件 → POST | `api.rms_spl_mapping_id` | 非实时 |
-| HTTP API（流式） | APISessionExecutor | RenderAudioStream 逐帧混音 → chunk → SSE | `api.rms_spl_mapping_id` | 流式 |
-| WebSocket API | RealtimeSessionExecutor | RenderAudioStream 逐帧混音 → chunk → WS 全双工 | `api.rms_spl_mapping_id` | 流式 |
+| 被测设备类型 | 协议 | Executor | 音频处理 | SPL 映射 | 调用模式 |
+|:---:|:---:|---|---|---|---|
+| 物理设备 | — | E2EExecutor | 物理播放 + PCM 抓取 | `device.spl_mapping_id` | — |
+| HTTP API（非实时） | HTTP | APISessionExecutor | RenderAudioFile 整段混音 → 整文件 → POST | `api.rms_spl_mapping_id` | 非实时 |
+| HTTP API（流式） | SSE | APISessionExecutor | RenderAudioStream 逐帧混音 → chunk → SSE 推送 | `api.rms_spl_mapping_id` | 流式 |
+| WebSocket API | WebSocket | RealtimeSessionExecutor | RenderAudioStream 逐帧混音 → chunk → WS 全双工 | `api.rms_spl_mapping_id` | 流式 |
 
 ## 0.4 用例结构
 

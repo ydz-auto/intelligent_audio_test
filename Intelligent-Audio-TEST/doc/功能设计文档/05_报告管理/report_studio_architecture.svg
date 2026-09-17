@@ -1,0 +1,257 @@
+<svg viewBox="0 0 1400 1040" xmlns="http://www.w3.org/2000/svg" font-family="Microsoft YaHei, sans-serif">
+  <defs>
+    <marker id="arr-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arr-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#059669"/>
+    </marker>
+    <marker id="arr-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d97706"/>
+    </marker>
+    <marker id="arr-r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="50%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1400" height="1040" fill="#f8fafc" rx="12"/>
+
+  <!-- ===== TITLE ===== -->
+  <text x="700" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#1e293b">对话式报告工作台架构总览</text>
+  <text x="700" y="54" text-anchor="middle" font-size="13" fill="#64748b">用户是导演，AI 是执行者 · 对话驱动 · Markdown 单一中间格式 · 多格式导出</text>
+
+  <!-- ============================================================ -->
+  <!-- TOP: Flow summary -->
+  <!-- ============================================================ -->
+  <rect x="40" y="70" width="1320" height="36" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2"/>
+  <rect x="140" y="76" width="230" height="24" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="255" y="92" text-anchor="middle" font-size="11" fill="#92400e">用户对话（自然语言指令）</text>
+  <text x="375" y="92" font-size="13" fill="#94a3b8">→</text>
+  <rect x="390" y="76" width="230" height="24" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="505" y="92" text-anchor="middle" font-size="11" fill="#5b21b6">AI Agent（意图理解 + 工具执行）</text>
+  <text x="625" y="92" font-size="13" fill="#94a3b8">→</text>
+  <rect x="640" y="76" width="230" height="24" rx="4" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1"/>
+  <text x="755" y="92" text-anchor="middle" font-size="11" fill="#065f46">Markdown 文档（实时预览）</text>
+  <text x="875" y="92" font-size="13" fill="#94a3b8">→</text>
+  <rect x="890" y="76" width="230" height="24" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="1005" y="92" text-anchor="middle" font-size="11" fill="#1e40af">导出 HTML / PPT / PDF / MD</text>
+
+  <!-- ============================================================ -->
+  <!-- LEFT COLUMN: 用户对话（交互层） -->
+  <!-- ============================================================ -->
+  <rect x="40" y="125" width="360" height="40" rx="8" fill="#d97706"/>
+  <text x="220" y="150" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">用户对话（前端交互层）</text>
+
+  <!-- 对话面板 -->
+  <rect x="50" y="175" width="340" height="170" rx="8" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="220" y="195" text-anchor="middle" font-size="12" font-weight="bold" fill="#92400e">💬 对话面板（ChatPanel）</text>
+  <rect x="62" y="205" width="180" height="26" rx="12" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="152" y="222" text-anchor="middle" font-size="10" fill="#1e40af">用户：生成一份报告</text>
+  <rect x="196" y="237" width="180" height="46" rx="12" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="286" y="254" text-anchor="middle" font-size="10" fill="#5b21b6">AI：已生成初稿，含5章节</text>
+  <text x="286" y="271" text-anchor="middle" font-size="10" fill="#5b21b6">还有哪里要调整？</text>
+  <rect x="62" y="289" width="180" height="26" rx="12" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="152" y="306" text-anchor="middle" font-size="10" fill="#1e40af">用户：面向管理层精简</text>
+  <rect x="196" y="321" width="180" height="26" rx="12" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="286" y="338" text-anchor="middle" font-size="10" fill="#5b21b6">AI：已精简为 2 页 ⭐</text>
+
+  <!-- AI 快捷建议 -->
+  <rect x="50" y="355" width="340" height="66" rx="8" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="65" y="373" font-size="11" font-weight="bold" fill="#92400e">AI 快捷建议（底部智能推荐）</text>
+  <rect x="62" y="381" width="98" height="24" rx="4" fill="#fff" stroke="#f59e0b"/>
+  <text x="111" y="397" text-anchor="middle" font-size="9.5" fill="#92400e">切换到面向研发</text>
+  <rect x="168" y="381" width="98" height="24" rx="4" fill="#fff" stroke="#f59e0b"/>
+  <text x="217" y="397" text-anchor="middle" font-size="9.5" fill="#92400e">插入雷达对比图</text>
+  <rect x="274" y="381" width="98" height="24" rx="4" fill="#fff" stroke="#f59e0b"/>
+  <text x="323" y="397" text-anchor="middle" font-size="9.5" fill="#92400e">导出为PPT</text>
+
+  <!-- 版本快照 -->
+  <rect x="50" y="431" width="340" height="52" rx="8" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="65" y="449" font-size="11" font-weight="bold" fill="#92400e">版本快照（可回滚）</text>
+  <text x="65" y="467" font-size="10" fill="#64748b">每次 AI 修改前自动保存快照 · 一键 undo 回滚 · 误操作可恢复</text>
+
+  <!-- Arrow 对话 → Agent -->
+  <path d="M 380 260 L 430 260" fill="none" stroke="#d97706" stroke-width="2.5" marker-end="url(#arr-o)"/>
+
+  <!-- ============================================================ -->
+  <!-- CENTER: AI Agent 编排层 -->
+  <!-- ============================================================ -->
+  <rect x="430" y="125" width="540" height="40" rx="8" fill="#7c3aed"/>
+  <text x="700" y="150" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">AI 报告助手 Agent（后端编排层）</text>
+
+  <!-- Agent 处理流程 -->
+  <rect x="440" y="175" width="520" height="66" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="455" y="193" font-size="12" font-weight="bold" fill="#5b21b6">Agent 处理流水线</text>
+  <rect x="455" y="201" width="150" height="28" rx="4" fill="#ede9fe"/>
+  <text x="530" y="219" text-anchor="middle" font-size="10.5" fill="#5b21b6">1. 意图理解</text>
+  <text x="612" y="219" font-size="12" fill="#94a3b8">→</text>
+  <rect x="622" y="201" width="150" height="28" rx="4" fill="#ede9fe"/>
+  <text x="697" y="219" text-anchor="middle" font-size="10.5" fill="#5b21b6">2. 工具选择</text>
+  <text x="779" y="219" font-size="12" fill="#94a3b8">→</text>
+  <rect x="789" y="201" width="156" height="28" rx="4" fill="#ddd6fe"/>
+  <text x="867" y="219" text-anchor="middle" font-size="10.5" fill="#5b21b6">3. 工具执行</text>
+
+  <!-- 会话状态 -->
+  <rect x="440" y="251" width="520" height="80" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="455" y="269" font-size="11" font-weight="bold" fill="#5b21b6">会话状态（Report Studio Session）</text>
+  <text x="455" y="287" font-size="10" fill="#475569">• context：audience / language / highlight / tone（对话中动态提炼）</text>
+  <text x="455" y="303" font-size="10" fill="#475569">• history：多轮对话历史（支持连续指令）</text>
+  <text x="455" y="319" font-size="10" fill="#475569">• current_version：当前文档版本号（配合快照回滚）</text>
+
+  <!-- 工具层 -->
+  <text x="700" y="352" text-anchor="middle" font-size="13" font-weight="bold" fill="#5b21b6">工具层（Function Calling）</text>
+
+  <!-- Row 1 of tools -->
+  <rect x="440" y="360" width="165" height="54" rx="6" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="522" y="379" text-anchor="middle" font-size="11" font-weight="bold" fill="#5b21b6">read_report_data</text>
+  <text x="522" y="396" text-anchor="middle" font-size="9.5" fill="#64748b">读报告7表 · 提炼指标</text>
+
+  <rect x="612" y="360" width="165" height="54" rx="6" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="694" y="379" text-anchor="middle" font-size="11" font-weight="bold" fill="#5b21b6">generate_draft</text>
+  <text x="694" y="396" text-anchor="middle" font-size="9.5" fill="#64748b">生成/重生成草稿</text>
+
+  <rect x="784" y="360" width="165" height="54" rx="6" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="866" y="379" text-anchor="middle" font-size="11" font-weight="bold" fill="#5b21b6">edit_document</text>
+  <text x="866" y="396" text-anchor="middle" font-size="9.5" fill="#64748b">局部修改（加/删/改）</text>
+
+  <!-- Row 2 of tools -->
+  <rect x="440" y="422" width="165" height="54" rx="6" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="522" y="441" text-anchor="middle" font-size="11" font-weight="bold" fill="#5b21b6">insert_chart</text>
+  <text x="522" y="458" text-anchor="middle" font-size="9.5" fill="#64748b">插入图表占位符</text>
+
+  <rect x="612" y="422" width="165" height="54" rx="6" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="694" y="441" text-anchor="middle" font-size="11" font-weight="bold" fill="#5b21b6">export_document</text>
+  <text x="694" y="458" text-anchor="middle" font-size="9.5" fill="#64748b">导出 HTML/PPT/PDF/MD</text>
+
+  <rect x="784" y="422" width="165" height="54" rx="6" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="866" y="441" text-anchor="middle" font-size="11" font-weight="bold" fill="#5b21b6">query_report</text>
+  <text x="866" y="458" text-anchor="middle" font-size="9.5" fill="#64748b">报告数据问答（RAG）</text>
+
+  <!-- snapshot tool -->
+  <rect x="440" y="484" width="520" height="30" rx="6" fill="#ddd6fe" stroke="#8b5cf6" stroke-width="1"/>
+  <text x="700" y="504" text-anchor="middle" font-size="10.5" fill="#5b21b6">snapshot（每次编辑前自动打版本快照 · 可 undo 回滚）</text>
+
+  <!-- ============================================================ -->
+  <!-- RIGHT COLUMN: LLM + 数据源 -->
+  <!-- ============================================================ -->
+  <rect x="1000" y="125" width="360" height="40" rx="8" fill="#059669"/>
+  <text x="1180" y="150" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">LLM 服务层</text>
+
+  <rect x="1010" y="175" width="340" height="120" rx="8" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="1180" y="195" text-anchor="middle" font-size="12" font-weight="bold" fill="#065f46">模型与调用</text>
+  <text x="1025" y="215" font-size="10.5" fill="#475569">• 模型：DeepSeek / GPT-4o-mini</text>
+  <text x="1025" y="233" font-size="10.5" fill="#475569">• Prompt：agent_system.j2 / edit_plan.j2</text>
+  <text x="1025" y="251" font-size="10.5" fill="#475569">• 工具定义：Function Calling Schema</text>
+  <text x="1025" y="269" font-size="10.5" fill="#475569">• 会话记忆：context + history 注入</text>
+  <text x="1025" y="287" font-size="10.5" fill="#475569">• 每次调用：{model, latency, tokens, success} 审计</text>
+
+  <rect x="1010" y="305" width="340" height="100" rx="8" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="1180" y="325" text-anchor="middle" font-size="12" font-weight="bold" fill="#065f46">数据源（报告 7 表）</text>
+  <text x="1025" y="345" font-size="10.5" fill="#475569">• test_reports — 报告主表</text>
+  <text x="1025" y="363" font-size="10.5" fill="#475569">• report_summaries / report_summary_meta</text>
+  <text x="1025" y="381" font-size="10.5" fill="#475569">• report_cases / report_metric_stats</text>
+  <text x="1025" y="399" font-size="10.5" fill="#475569">• report_raw_data / report_comparison_matrix</text>
+
+  <rect x="1010" y="415" width="340" height="99" rx="8" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="1180" y="435" text-anchor="middle" font-size="12" font-weight="bold" fill="#065f46">设计原则（工具权限）</text>
+  <text x="1025" y="455" font-size="10.5" fill="#475569">• AI 只起草不计算：数值来自 7 表，图表占位符后端计算</text>
+  <text x="1025" y="473" font-size="10.5" fill="#475569">• 只读数据源：对话不修改 7 表原始数据</text>
+  <text x="1025" y="491" font-size="10.5" fill="#475569">• 降级可用：LLM 不可用时标准模式不受影响</text>
+
+  <!-- Arrows: Agent → LLM -->
+  <path d="M 960 210 L 1008 210" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#arr-g)"/>
+  <text x="984" y="203" text-anchor="middle" font-size="9" fill="#059669">调用</text>
+
+  <!-- Arrows: Agent → 数据源 -->
+  <path d="M 960 355 L 1008 355" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#arr-g)"/>
+  <text x="984" y="348" text-anchor="middle" font-size="9" fill="#059669">读取</text>
+
+  <!-- ============================================================ -->
+  <!-- BOTTOM: Markdown 文档 + 导出 -->
+  <!-- ============================================================ -->
+
+  <!-- Arrow Agent → Document -->
+  <path d="M 700 514 L 700 545" fill="none" stroke="#7c3aed" stroke-width="2.5" marker-end="url(#arr-p)"/>
+
+  <rect x="40" y="550" width="1320" height="40" rx="8" fill="#2563eb"/>
+  <text x="700" y="575" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">Markdown 文档（单一中间格式 · 用户完全掌控）</text>
+
+  <!-- Document content example -->
+  <rect x="50" y="600" width="620" height="150" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="70" y="620" font-size="11" font-weight="bold" fill="#1e40af">📄 Markdown 文档内容（可自由编辑）</text>
+  <text x="70" y="640" font-size="10.5" fill="#475569"># 全双工对话测试报告 V3.2</text>
+  <text x="70" y="658" font-size="10.5" fill="#475569">## 一句话总结</text>
+  <text x="70" y="676" font-size="10.5" fill="#475569">   通过率 92.3%，较上版提升 5.2%</text>
+  <text x="70" y="694" font-size="10.5" fill="#475569">## 核心指标总览</text>
+  <text x="70" y="712" font-size="10.5" fill="#475569">   | 指标 | 设备A | 设备B |</text>
+  <text x="70" y="730" font-size="10.5" fill="#475569">   [chart:overall_metrics]   ← 图表占位符</text>
+
+  <!-- Document features -->
+  <rect x="680" y="600" width="680" height="150" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="700" y="620" font-size="11" font-weight="bold" fill="#1e40af">✅ 用户全权掌控</text>
+  <text x="700" y="640" font-size="10.5" fill="#475569">• 增删任何章节、调整顺序、改写任意文字</text>
+  <text x="700" y="658" font-size="10.5" fill="#475569">• 插入/删除/移动图表、表格、图片</text>
+  <text x="700" y="676" font-size="10.5" fill="#475569">• WYSIWYG 直接编辑 + Markdown 源码模式</text>
+  <text x="700" y="694" font-size="10.5" fill="#475569">• AI 辅助：续写 / 改写 / 换图（按需触发）</text>
+  <text x="700" y="712" font-size="10.5" fill="#475569">• 每次保存生成版本快照，可回溯</text>
+  <text x="700" y="730" font-size="10.5" fill="#475569">• 导出时可选择主题 / 包含内容</text>
+
+  <!-- Arrow Document → Export -->
+  <path d="M 700 750 L 700 780" fill="none" stroke="#d97706" stroke-width="2.5" marker-end="url(#arr-o)"/>
+
+  <rect x="40" y="785" width="1320" height="40" rx="8" fill="#dc2626"/>
+  <text x="700" y="810" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">一键导出多格式</text>
+
+  <!-- Export cards -->
+  <rect x="50" y="835" width="300" height="96" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="200" y="858" text-anchor="middle" font-size="13" font-weight="bold" fill="#991b1b">HTML</text>
+  <text x="200" y="878" text-anchor="middle" font-size="10.5" fill="#475569">markdown-it + ECharts</text>
+  <text x="200" y="896" text-anchor="middle" font-size="10.5" fill="#475569">交互式图表 · 目录导航 · 单文件</text>
+  <text x="200" y="914" text-anchor="middle" font-size="10.5" fill="#475569">在线分享 / 内网部署</text>
+
+  <rect x="365" y="835" width="300" height="96" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="515" y="858" text-anchor="middle" font-size="13" font-weight="bold" fill="#991b1b">PPT（汇报）</text>
+  <text x="515" y="878" text-anchor="middle" font-size="10.5" fill="#475569">Marp / python-pptx 自动分页</text>
+  <text x="515" y="896" text-anchor="middle" font-size="10.5" fill="#475569">标题层级切页 · 图表内嵌图片</text>
+  <text x="515" y="914" text-anchor="middle" font-size="10.5" fill="#475569">面向管理层汇报</text>
+
+  <rect x="680" y="835" width="300" height="96" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="830" y="858" text-anchor="middle" font-size="13" font-weight="bold" fill="#991b1b">PDF（正式交付）</text>
+  <text x="830" y="878" text-anchor="middle" font-size="10.5" fill="#475569">WeasyPrint A4 排版</text>
+  <text x="830" y="896" text-anchor="middle" font-size="10.5" fill="#475569">页眉页脚 · 打印样式 · 图表图片</text>
+  <text x="830" y="914" text-anchor="middle" font-size="10.5" fill="#475569">正式交付 / 归档</text>
+
+  <rect x="995" y="835" width="300" height="96" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="1145" y="858" text-anchor="middle" font-size="13" font-weight="bold" fill="#991b1b">Markdown（复用归档）</text>
+  <text x="1145" y="878" text-anchor="middle" font-size="10.5" fill="#475569">原始 Markdown 下载</text>
+  <text x="1145" y="896" text-anchor="middle" font-size="10.5" fill="#475569">进入 Git 仓库 / 文档系统</text>
+  <text x="1145" y="914" text-anchor="middle" font-size="10.5" fill="#475569">后续复用再生成</text>
+
+  <!-- ============================================================ -->
+  <!-- LEGEND -->
+  <!-- ============================================================ -->
+  <rect x="40" y="948" width="1320" height="34" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="60" y="958" width="14" height="14" rx="3" fill="#fffbeb" stroke="#fcd34d"/>
+  <text x="80" y="970" font-size="10" fill="#64748b">用户对话</text>
+  <rect x="155" y="958" width="14" height="14" rx="3" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="175" y="970" font-size="10" fill="#64748b">AI Agent + 工具层</text>
+  <rect x="300" y="958" width="14" height="14" rx="3" fill="#d1fae5" stroke="#6ee7b7"/>
+  <text x="320" y="970" font-size="10" fill="#64748b">LLM 服务 / 数据源</text>
+  <rect x="450" y="958" width="14" height="14" rx="3" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="470" y="970" font-size="10" fill="#64748b">Markdown 文档</text>
+  <rect x="570" y="958" width="14" height="14" rx="3" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="590" y="970" font-size="10" fill="#64748b">导出格式</text>
+  <text x="690" y="970" font-size="10" fill="#94a3b8">|</text>
+  <text x="705" y="970" font-size="10" fill="#64748b">AI 只起草不计算 · 用户全权掌控 · 降级可用</text>
+
+</svg>
