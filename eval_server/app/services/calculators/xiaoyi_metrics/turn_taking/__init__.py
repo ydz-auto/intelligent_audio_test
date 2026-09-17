@@ -10,7 +10,10 @@ import os
 import logging
 
 from .tor import compute_tor
-from .false_takeover import compute_false_takeover, compute_false_takeover_llm
+from .false_takeover import (
+    compute_false_takeover,
+    compute_false_takeover_llm,
+)
 from .takeover_latency import compute_takeover_latency_from_raw
 from .input_asr import compute_input_asr_match
 from .high_freq_turn_taking import compute_high_freq_turn_taking

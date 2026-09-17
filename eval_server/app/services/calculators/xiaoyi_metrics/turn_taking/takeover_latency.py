@@ -69,24 +69,49 @@ def compute_takeover_latency_from_chunks(user_chunks, ai_chunks,
         dict: client_out 时延字段（新模式）或旧模式字段
     """
     # ── 优先：played_audios + user_wav → client_out 互相关对齐 ──
+    # FFT 互相关用于验证对齐质量(NCC)，时延计算改用 ASR 最后一字结束时间
     if played_audios and user_wav:
         from .false_takeover import compute_client_out_latency
         lat_res = compute_client_out_latency(played_audios, user_wav, ai_chunks)
+
+        # FFT 互相关结果（RMS 区间，仅作参考）
+        fft_client_out_end_ms = lat_res.get('client_out_end_ms')
+        ncc = lat_res.get('ncc')
+
+        # 用 ASR 最后一字结束时间作为用户说话结束点（更精确）
+        user_last_end_ms = None
+        if user_chunks:
+            valid_user_ends = [
+                c['timestamp'][1] for c in user_chunks
+                if c.get('timestamp') and c['timestamp'][1] is not None
+            ]
+            if valid_user_ends:
+                user_last_end_ms = max(valid_user_ends) * 1000.0
+
+        ai_first_start_ms = lat_res.get('model_first_word_start_ms')
+
+        if user_last_end_ms is not None and ai_first_start_ms is not None:
+            takeover_latency_ms = ai_first_start_ms - user_last_end_ms
+            msg = 'OK'
+        else:
+            takeover_latency_ms = None
+            msg = lat_res.get('message', '时延计算失败')
+
         result = {
             'client_out_start_ms': lat_res.get('client_out_start_ms'),
-            'client_out_end_ms': lat_res.get('client_out_end_ms'),
-            'model_first_word_start_ms': lat_res.get('model_first_word_start_ms'),
-            'client_out_latency_ms': lat_res.get('client_out_latency_ms'),
-            'ncc': lat_res.get('ncc'),
-            'message': lat_res.get('message'),
+            'client_out_end_ms': fft_client_out_end_ms,
+            'model_first_word_start_ms': ai_first_start_ms,
+            'ncc': ncc,
+            'message': msg,
         }
         # 兼容旧字段名
-        result['takeover_latency_ms'] = lat_res.get('client_out_latency_ms')
-        result['user_last_word_end_ms'] = lat_res.get('client_out_end_ms')
-        result['ai_first_word_start_ms'] = lat_res.get('model_first_word_start_ms')
+        result['takeover_latency_ms'] = takeover_latency_ms
+        result['user_last_word_end_ms'] = user_last_end_ms
+        result['ai_first_word_start_ms'] = ai_first_start_ms
         logger.info(
-            f"[接管时延-client_out] latency={result['client_out_latency_ms']}ms "
-            f"ncc={result['ncc']}"
+            f"[接管时延] latency={takeover_latency_ms}ms "
+            f"(user_last_end={user_last_end_ms}ms, ai_first_start={ai_first_start_ms}ms) "
+            f"ncc={ncc} fft_ref_end={fft_client_out_end_ms}ms"
         )
         return result
 

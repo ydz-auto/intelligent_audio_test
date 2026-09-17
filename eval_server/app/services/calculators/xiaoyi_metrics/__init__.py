@@ -10,6 +10,7 @@ XiaoyiMetricsCalculator 是小艺评估所有域的唯一编排入口：
     xiaoyi_metrics（本编排器）
     ├── turn_taking/      TurnTakingCalculator（tor / false_takeover / takeover_latency）
     │                     HighFreqTurnTakingCalculator / HighFreqLlmJudgeCalculator
+    ├── turn_eval/        TurnEvalCalculator（逐轮三分类：误解管 / 接管 / 未接管 + 接管时延 + 回复质量）
     ├── interruptibility/ InterruptionMetricsCalculator
     └── rejection_scene_awareness/ NonInteractiveLatencyCalculator
 """
@@ -51,6 +52,8 @@ class XiaoyiMetricsCalculator(BaseCalculator):
         # turn_taking 域（高频轮换）
         'high_freq_turn_taking': 'high_freq_turn_taking',
         'high_freq_llm_judge': 'high_freq_llm_judge',
+        # turn_eval 域（逐轮三分类）
+        'turn_eval': 'turn_eval',
     }
 
     def validate(self, task_params):
@@ -85,15 +88,40 @@ class XiaoyiMetricsCalculator(BaseCalculator):
         # ── 统一调一次 ASR，共享给所有子维度 ──
         idx = self._get_target_round_index(params)
         user_wav, ai_wav = self._get_audio_from_round(params, idx)
+        rd = self._get_round_safe(params, idx)
+        played_audios = params.get('played_audios') or rd.get('played_audios')
+
+        # 音频对齐：played_audios（干净音源）→ user_wav（劣化）生成干净版音频
+        effective_user_wav = user_wav
+        if played_audios and user_wav:
+            from app.services.calculators.xiaoyi_metrics.shared.audio_alignment import (
+                generate_aligned_clean_audio,
+            )
+            try:
+                align_result = generate_aligned_clean_audio(user_wav, played_audios)
+                if align_result.get('aligned_wav'):
+                    effective_user_wav = align_result['aligned_wav']
+                    logger.info(
+                        f"[xiaoyi_metrics] 音频对齐成功: "
+                        f"平均NCC={align_result.get('ncc', 0):.4f}, "
+                        f"段数={len(align_result.get('segments', []))}"
+                    )
+                else:
+                    logger.warning(f"[xiaoyi_metrics] 音频对齐失败: {align_result.get('message')}")
+            except Exception as e:
+                logger.warning(f"[xiaoyi_metrics] 音频对齐异常: {e}，回退原始 user_wav")
+
         shared_asr = {}
-        if user_wav:
-            # 记录来源 wav：子维度按来源匹配复用，防止多轮场景错用其他轮的识别结果
-            shared_asr['user_wav'] = user_wav
-            shared_asr['user_chunks'] = TurnTakingBase._get_asr_chunks(user_wav)
+        if effective_user_wav:
+            shared_asr['user_wav'] = effective_user_wav
+            shared_asr['user_chunks'] = TurnTakingBase._get_asr_chunks(effective_user_wav)
         if ai_wav:
             shared_asr['ai_wav'] = ai_wav
             shared_asr['ai_chunks'] = TurnTakingBase._get_asr_chunks(ai_wav)
             shared_asr['ai_word_chunks'] = TurnTakingBase._get_asr_chunks(ai_wav, filter_punct=False)
+        # 保存 played_audios 供接管时延子维度使用
+        if played_audios:
+            shared_asr['played_audios'] = played_audios
         # pause 区间也从 user_chunks 统一算一次
         if shared_asr.get('user_chunks'):
             shared_asr['pause_intervals'] = TurnTakingBase._compute_pause_intervals(shared_asr['user_chunks'])

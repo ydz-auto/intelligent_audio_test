@@ -10,9 +10,12 @@ export const STATIC_CONFIG = {
   logPath: '/logs/'
 } as const;
 
+const _apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1'
+const _wsBase = import.meta.env.VITE_WS_BASE_URL || ''
+
 export const API_CONFIG = {
-  baseUrl: 'http://100.70.20.136:5000/api/v1',
-  wsBaseUrl: 'http://100.70.20.136:5000'
+  baseUrl: _apiBase,
+  wsBaseUrl: _wsBase
 } as const;
 
 export const APP_CONFIG = {

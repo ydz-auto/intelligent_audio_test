@@ -187,7 +187,7 @@ def _load_audio(filepath):
     return sr, data
 
 
-def _detect_speech_region(audio, sr, frame_ms=20, hop_ms=10, threshold_factor=0.1):
+def _detect_speech_region(audio, sr, frame_ms=20, hop_ms=10, threshold_factor=0.2):
     """使用 RMS 能量获取干净音源有效语料区间。"""
     frame_len = int(sr * frame_ms / 1000)
     hop_len = int(sr * hop_ms / 1000)
@@ -219,7 +219,7 @@ def _fft_xcorr(reference, signal):
     segment = signal[peak_idx:peak_idx + len(reference)]
     segment_energy = float(np.sum(segment ** 2))
     if ref_energy > 0 and segment_energy > 0:
-        ncc = float(valid_corr[peak_idx]) / np.sqrt(ref_energy * segment_energy)
+        ncc = abs(float(valid_corr[peak_idx])) / np.sqrt(ref_energy * segment_energy)
     else:
         ncc = 0.0
     return peak_idx, ncc
