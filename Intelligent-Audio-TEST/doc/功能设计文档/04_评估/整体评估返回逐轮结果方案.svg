@@ -1,0 +1,226 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1520" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #3b82f6; stroke-width: 1.8; fill: none; marker-end: url(#arrowBlue); }
+      .flow-dashed { stroke: #94a3b8; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .mono { font-size: 9.6px; fill: #334155; font-family: Consolas, 'Courier New', monospace; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1520" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">整体评估返回逐轮结果方案 — API 契约与改造总览</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">整体评估选择性返回 per_round[]，主服务按 (result_id, dim_id, round_number) 覆盖逐轮结果 · 依据《整体评估返回逐轮结果方案》绘制</text>
+
+  <!-- ① 数据流总览 -->
+  <rect x="24" y="88" width="1192" height="312" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="88" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="114" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="107" r="11" fill="#3b82f6"/>
+  <text x="46" y="111" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="112" class="sec-title" fill="#1e3a8a">数据流总览 — 整体评估 1 次调用带回 N 轮结果，覆盖逐轮 TRD</text>
+
+  <rect x="44" y="146" width="190" height="58" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="139" y="169" class="box-name" text-anchor="middle">主服务 endpoint_worker</text>
+  <text x="139" y="189" class="box-desc" text-anchor="middle">构造 payload · 全量 rounds</text>
+  <line x1="234" y1="175" x2="246" y2="175" class="flow-blue"/>
+
+  <rect x="246" y="146" width="170" height="58" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="331" y="169" class="box-name" text-anchor="middle">POST create_task</text>
+  <text x="331" y="189" class="box-desc" text-anchor="middle">round_number 缺省</text>
+  <line x1="416" y1="175" x2="428" y2="175" class="flow-blue"/>
+
+  <rect x="428" y="146" width="200" height="58" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="528" y="169" class="box-name" text-anchor="middle">eval_server TaskService</text>
+  <text x="528" y="189" class="box-desc" text-anchor="middle">calculate() 单入口</text>
+  <line x1="628" y1="175" x2="640" y2="175" class="flow-blue"/>
+
+  <rect x="640" y="146" width="200" height="58" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="740" y="169" class="box-name" text-anchor="middle">Calculator.run() 整体</text>
+  <text x="740" y="189" class="box-desc" text-anchor="middle">返回 result + per_round[]</text>
+  <line x1="840" y1="175" x2="852" y2="175" class="flow-blue"/>
+
+  <rect x="852" y="146" width="200" height="58" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <text x="952" y="169" class="box-name" text-anchor="middle">主服务 result_processor</text>
+  <text x="952" y="189" class="box-desc" text-anchor="middle">process_group_dimension_results</text>
+  <line x1="1052" y1="175" x2="1064" y2="175" class="flow-blue"/>
+
+  <rect x="1064" y="146" width="136" height="58" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <text x="1132" y="169" class="box-name" fill="#166534" text-anchor="middle">TRD 覆盖/创建</text>
+  <text x="1132" y="189" class="box-desc" text-anchor="middle">round_number=round_idx</text>
+
+  <rect x="44" y="222" width="1156" height="74" rx="8" fill="#f8fafc" stroke="#93c5fd" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="60" y="246" font-size="10.5" font-weight="700" fill="#1d4ed8">逐轮评估链路保留不变（虚线 = 既有路径）</text>
+  <rect x="60" y="256" width="210" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="165" y="274" class="chip-t" fill="#1d4ed8">evaluate_case(round_number=0..N-1)</text>
+  <line x1="270" y1="270" x2="298" y2="270" class="flow-dashed"/>
+  <rect x="300" y="256" width="170" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="385" y="274" class="chip-t" fill="#1d4ed8">逐轮 TRD(round=i)</text>
+  <line x1="470" y1="270" x2="498" y2="270" class="flow-dashed"/>
+  <rect x="500" y="256" width="230" height="28" rx="6" fill="#ffffff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="615" y="274" class="chip-t" fill="#1d4ed8">整体评估 per_round 后写覆盖</text>
+  <line x1="730" y1="270" x2="758" y2="270" class="flow-dashed"/>
+  <rect x="760" y="256" width="424" height="28" rx="6" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="972" y="274" class="chip-t" fill="#166534">仅「相同维度 且 整体评估返回 per_round」时覆盖 · 谁后完成谁生效</text>
+
+  <rect x="44" y="316" width="1156" height="70" rx="8" fill="#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="60" y="338" font-size="10.5" font-weight="700" fill="#1d4ed8">判断规则（主服务无显式配置）</text>
+  <text x="60" y="358" class="body" fill="#334155">响应含 per_round[] → 逐轮解析并覆盖 · 响应无 per_round[] → 什么都不做（兼容旧评估服务）</text>
+  <text x="60" y="376" class="note" fill="#64748b">是否返回 per_round 由 eval_server 侧每个 Calculator 自行决定（supports_per_round），每轮评的就是配置的整体评估维度</text>
+
+  <!-- ② API 契约 -->
+  <rect x="24" y="410" width="1192" height="350" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="410" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="436" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="429" r="11" fill="#8b5cf6"/>
+  <text x="46" y="433" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="434" class="sec-title" fill="#4c1d95">API 契约 — 请求无变更 · 响应增量扩展 per_round[]（可选）</text>
+
+  <rect x="44" y="462" width="570" height="282" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="44" y="462" width="570" height="28" rx="8" fill="#8b5cf6"/>
+  <rect x="44" y="478" width="570" height="12" fill="#8b5cf6"/>
+  <text x="60" y="481" font-size="11.5" font-weight="700" fill="#ffffff">请求（Input）— 无任何新增字段</text>
+  <text x="60" y="510" class="mono" fill="#5b21b6">{</text>
+  <text x="76" y="530" class="mono">"task_type": "turn_taking | llm_judge | ...",</text>
+  <text x="76" y="550" class="mono">"task_params": {</text>
+  <text x="92" y="570" class="mono">"rounds": [</text>
+  <text x="108" y="590" class="mono">{"round": 0, "query": "...",</text>
+  <text x="108" y="606" class="mono"> "user_wav": "__MULTIPART__:rounds_0_user_wav"},</text>
+  <text x="108" y="622" class="mono">{"round": 1, "query": "...",</text>
+  <text x="108" y="638" class="mono"> "user_wav": "__MULTIPART__:rounds_1_user_wav"}</text>
+  <text x="92" y="654" class="mono">],</text>
+  <text x="92" y="670" class="mono">"sub_tasks": [...],   // 可选</text>
+  <text x="76" y="690" class="mono">}</text>
+  <text x="60" y="706" class="mono">}</text>
+  <rect x="60" y="716" width="540" height="26" rx="6" fill="#f5f3ff" stroke="#ddd6fe" stroke-width="1"/>
+  <text x="330" y="733" class="chip-t" fill="#5b21b6">round 字段 = 0-based 轮次号 · round_number 缺省 = 整体评估</text>
+
+  <rect x="630" y="462" width="586" height="282" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <rect x="630" y="462" width="586" height="28" rx="8" fill="#8b5cf6"/>
+  <rect x="630" y="478" width="586" height="12" fill="#8b5cf6"/>
+  <text x="646" y="481" font-size="11.5" font-weight="700" fill="#ffffff">响应（Output）— 增量扩展 · 整体结果兼容</text>
+  <text x="646" y="510" class="mono" fill="#5b21b6">{</text>
+  <text x="662" y="530" class="mono">"tor": {"tor": 1, ...},        // 整体结果（原有解析兼容）</text>
+  <text x="662" y="548" class="mono">"takeover_latency": {"takeover_latency_ms": 450, ...},</text>
+  <text x="662" y="566" class="mono">"per_round": [                  // 新增：可选，仅支持时出现</text>
+  <text x="678" y="584" class="mono">{"tor": {"tor": 1, ...}, "takeover_latency": {...}}, // round 0</text>
+  <text x="678" y="602" class="mono">{"tor": {"tor": 0, ...}, "takeover_latency": {...}}  // round 1</text>
+  <text x="662" y="620" class="mono">]</text>
+  <text x="646" y="638" class="mono">}</text>
+  <text x="646" y="660" font-size="10" font-weight="700" fill="#5b21b6">per_round[] 约定</text>
+  <text x="662" y="678" class="note" fill="#4c1d95">长度 = rounds 轮数 · 元素结构与整体结果同构（同 dimension keys）</text>
+  <text x="662" y="694" class="note" fill="#4c1d95">某轮数据不足 → 该轮项含 {"message": "跳过"}，不含有效分值 → 主服务不覆盖</text>
+  <text x="662" y="710" class="note" fill="#4c1d95">缺失轮不覆盖 · 主服务按 per_round[round_idx][dim_key] 定位</text>
+  <text x="662" y="730" class="note" fill="#4c1d95">定位方式 = 覆盖规则见 ④</text>
+
+  <!-- ③ eval_server 内部改造 -->
+  <rect x="24" y="770" width="1192" height="430" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="770" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="796" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="789" r="11" fill="#6366f1"/>
+  <text x="46" y="793" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="794" class="sec-title" fill="#3730a3">eval_server 内部改造 — 单入口附加 per_round + BaseCalculator 能力 + Calculator 三类</text>
+
+  <rect x="44" y="822" width="570" height="150" rx="8" fill="#ffffff" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="64" y="846" font-size="12" font-weight="700" fill="#3730a3">TaskService.calculate — 单入口 chokepoint</text>
+  <text x="64" y="870" class="mono" fill="#3730a3">result = calculator.run(task_params)      # 现有</text>
+  <text x="64" y="890" class="mono" fill="#3730a3">is_overall = round_number in (None, '')</text>
+  <text x="64" y="910" class="mono" fill="#3730a3">if is_overall and rounds</text>
+  <text x="64" y="930" class="mono" fill="#3730a3">        and calculator.supports_per_round:</text>
+  <text x="64" y="950" class="mono" fill="#3730a3">    result['per_round'] = calculator.</text>
+  <text x="64" y="962" class="mono" fill="#3730a3">        _calculate_per_round(task_params)</text>
+  <text x="64" y="962" class="note" fill="#64748b">（续上一行）</text>
+  <text x="64" y="960" class="note" fill="#64748b"> </text>
+
+  <rect x="630" y="822" width="586" height="150" rx="8" fill="#ffffff" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="650" y="846" font-size="12" font-weight="700" fill="#3730a3">BaseCalculator — 逐轮能力声明 + 默认切片</text>
+  <text x="650" y="870" class="mono" fill="#3730a3">supports_per_round = False   # 覆写 True 启用</text>
+  <text x="650" y="890" class="mono" fill="#3730a3">def _calculate_per_round(self, task_params):</text>
+  <text x="666" y="910" class="mono" fill="#3730a3">for i in range(len(rounds)):</text>
+  <text x="666" y="930" class="mono" fill="#3730a3">    single['round_number'] = i   # 单轮模式</text>
+  <text x="666" y="950" class="mono" fill="#3730a3">    # 清空顶层轮次字段, 防末轮数据复用</text>
+  <text x="650" y="970" class="note" fill="#64748b">清空 user_wav/ai_wav/user_asr/query/answer/record_file 等顶层字段 → 强制从 rounds[i] 取数</text>
+
+  <rect x="44" y="986" width="1172" height="200" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.2"/>
+  <text x="64" y="1008" font-size="11.5" font-weight="700" fill="#3730a3">Calculator 改造分类（supports_per_round）</text>
+  <rect x="64" y="1020" width="360" height="150" rx="8" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="80" y="1042" font-size="10.5" font-weight="700" fill="#4338ca">覆写型 — 已有逐轮路径，提取为方法</text>
+  <text x="80" y="1064" class="body" fill="#334155">LlmJudgeCalculator</text>
+  <text x="80" y="1082" class="note" fill="#64748b">多轮已逐轮评分，per_round 复用</text>
+  <text x="80" y="1104" class="body" fill="#334155">InterruptionMetricsCalculator</text>
+  <text x="80" y="1122" class="note" fill="#64748b">复用 _calculate_round 对全部轮次</text>
+  <text x="80" y="1148" class="note" fill="#64748b">→ 改造量最小，结果已存在</text>
+
+  <rect x="440" y="1020" width="380" height="150" rx="8" fill="#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="456" y="1042" font-size="10.5" font-weight="700" fill="#4338ca">默认切片型 — 声明 True 用默认实现</text>
+  <text x="456" y="1064" class="body" fill="#334155">TurnTaking / XiaoyiMetrics 编排器</text>
+  <text x="456" y="1082" class="note" fill="#64748b">切片后子维度自然从 rounds[i] 取数</text>
+  <text x="456" y="1104" class="body" fill="#334155">Tor / FalseTakeover / TakeoverLatency</text>
+  <text x="456" y="1122" class="body" fill="#334155">HighFreq* / NonInteractiveLatency</text>
+  <text x="456" y="1140" class="body" fill="#334155">NoiseLatency / RejectionJudge</text>
+  <text x="456" y="1158" class="body" fill="#334155">InterruptionJudge / ReplyQuality</text>
+  <text x="456" y="1178" class="note" fill="#64748b">依赖轮次音频，数据不足时 skip</text>
+
+  <rect x="836" y="1020" width="364" height="150" rx="8" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="852" y="1042" font-size="10.5" font-weight="700" fill="#b91c1c">不支持 — 保持 False</text>
+  <text x="852" y="1064" class="body" fill="#334155">WerCalculator</text>
+  <text x="852" y="1082" class="body" fill="#334155">DerCalculator</text>
+  <text x="852" y="1104" class="note" fill="#64748b">文本拼接型（多轮折叠为单文本）</text>
+  <text x="852" y="1122" class="note" fill="#64748b">不适配逐轮概念</text>
+  <text x="852" y="1144" class="note" fill="#64748b">不产生 per_round，整体结果不变</text>
+
+  <rect x="44" y="1200" width="1172" height="26" rx="6" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="630" y="1217" class="body" fill="#3730a3" text-anchor="middle">改造原则：单点扩展（TaskService.calculate）· 向后兼容（旧 Calculator 不声明就不产生 per_round）· 逐轮切片清顶层字段防误复用</text>
+
+  <!-- ④ 主服务对接 -->
+  <rect x="24" y="1210" width="1192" height="270" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1210" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="1236" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="1229" r="11" fill="#16a34a"/>
+  <text x="46" y="1233" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="1234" class="sec-title" fill="#14532d">主服务对接 — process_group_dimension_results 新增覆盖逻辑</text>
+
+  <rect x="44" y="1264" width="570" height="162" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="64" y="1288" font-size="11.5" font-weight="700" fill="#166534">_overwrite_round_results — upsert 逐轮 TRD</text>
+  <text x="64" y="1310" class="mono" fill="#166534">per_round = resp_data.get('per_round', [])</text>
+  <text x="64" y="1330" class="mono" fill="#166534">for round_idx, round_data in per_round:</text>
+  <text x="80" y="1350" class="mono" fill="#166534">for dim_data in group_items:</text>
+  <text x="80" y="1370" class="mono" fill="#166534">raw, score = parse(round_data, dim_data)</text>
+  <text x="80" y="1390" class="mono" fill="#166534">if raw is None: continue   # 不覆盖</text>
+  <text x="80" y="1410" class="mono" fill="#166534">upsert (result_id, dim_id, round_number=round_idx)</text>
+
+  <rect x="630" y="1264" width="586" height="162" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="650" y="1288" font-size="11.5" font-weight="700" fill="#166534">覆盖语义与兼容性</text>
+  <text x="650" y="1312" class="body" fill="#334155">· 逐轮评估已存在的 TRD(round=i) → 被整体评估 per_round 覆盖</text>
+  <text x="650" y="1332" class="body" fill="#334155">· 仅整体配置、逐轮未配置的维度 → 创建新 TRD(round=i)</text>
+  <text x="650" y="1352" class="body" fill="#334155">· 旧评估服务无 per_round → 空列表 → 不触发覆盖</text>
+  <text x="650" y="1372" class="body" fill="#334155">· RoundAggregator 无需改动（已有整体记录不覆盖逻辑）</text>
+  <text x="650" y="1392" class="body" fill="#334155">· 逐轮评估保留：独立提交、独立存库，逻辑不变</text>
+  <text x="650" y="1412" class="note" fill="#64748b">幂等：重复写入同 (result_id, dim_id, round_number) 无副作用 · 并发：谁后完成谁生效</text>
+
+  <line x1="0" y1="1496" x2="1240" y2="1496" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1512" font-size="10.5" fill="#64748b">设计价值：整体评估 1 次调用带回 N+1 组结果（整体 + 各轮同维度）· 口径一致（每轮评的就是整体维度）· 主服务零配置（响应有 per_round 就覆盖）</text>
+</svg>
