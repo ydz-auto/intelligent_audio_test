@@ -303,6 +303,9 @@ class EvaluationService(EvaluationLoggerMixin):
             if interruption_metadata and 'is_actual_interruption' not in item:
                 item['is_actual_interruption'] = round_number in actual_interruption_rounds
 
+            # 携带轮次号，供评估服务端 per_round 结果回填时按 round_number 字段定位
+            item['round'] = round_number
+
             rounds_list.append(item)
 
         return rounds_list
