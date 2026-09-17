@@ -98,6 +98,14 @@ class Xiaoyilivechat(HarmonyDriver):
     RMS_END_TIMEOUT = 60         # 等 AI 说完的超时(单轮回复+8s静默够,超时视为已回复可能截断)
     RMS_SCAN_SECONDS = 15        # 阶段A超时后扫最后 N 秒历史
 
+    # AI 回复完成检测(hw_params 法,小艺 post_process 主信号):
+    # 小艺 TTS 走板级播放流,`hdc shell cat /proc/asound/card0/pcm0p/sub0/hw_params`
+    # 回复中显示 access:/format:/channels:/rate:... 参数,回复完成变为 closed。
+    # 比 UI 法(控件文本语音态透传不稳)更快更稳,也不用像 RMS 法多等 8s 静默。
+    HW_PARAMS_PATH = '/proc/asound/card0/pcm0p/sub0/hw_params'  # 设备路径若漂移改这里
+    HW_PARAMS_END_TIMEOUT = 300    # 等回复结束超时(对齐原 UI 法"正在听"超时)
+    HW_PARAMS_CLOSED_CONFIRM = 3   # 连续 N 次 closed 才判定结束(约3s,防句间瞬时关流误判)
+
     def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
         """将 mp4 无损转换为 wav（pcm_s16le，44.1kHz，双声道）。
         成功返回 wav 绝对路径，失败返回 None。"""
@@ -753,6 +761,64 @@ class Xiaoyilivechat(HarmonyDriver):
                   task_id=task_id, test_case_id=test_case_id)
         return True
 
+    # ------------------------------------------------------------------
+    # AI 回复完成检测（hw_params 法,小艺专用）：播放流关流即回复完成
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _classify_hw_params(out):
+        """hw_params 输出分类: True=有参数内容(正在回复); False=closed(回复完成);
+        None=空输出/读取失败(未知)。"""
+        if not out or not out.strip():
+            return None
+        return 'closed' not in out.splitlines()[0].strip().lower()
+
+    def _hw_params_replying(self, device_sn):
+        """读播放流 hw_params 判断小艺是否正在回复(分类语义见 _classify_hw_params)。"""
+        try:
+            r = subprocess.run(
+                ['hdc', '-t', device_sn, 'shell', f'cat {self.HW_PARAMS_PATH}'],
+                capture_output=True, text=True, timeout=10,
+            )
+            return self._classify_hw_params(r.stdout)
+        except Exception:
+            return None
+
+    def _wait_ai_reply_end_via_hw_params(self, device_sn, task_id=None, test_case_id=None,
+                                         interval=1.0):
+        """等 AI 回复完成: 轮询 hw_params,连续 HW_PARAMS_CLOSED_CONFIRM 次 closed 判定结束。
+
+        返回: True=回复结束(或超时,已确认开说过→视为已回复可能截断);
+              False=hw_params 连续读不到(路径不符/无权限),调用方回退 UI 法。
+        """
+        deadline = time.time() + self.HW_PARAMS_END_TIMEOUT
+        closed_hits = read_fails = 0
+        while time.time() < deadline:
+            if self._check_stop("post_process_等AI回复结束_hw_params"):
+                return True
+            state = self._hw_params_replying(device_sn)
+            if state is None:
+                read_fails += 1
+                if read_fails >= 3:
+                    self._log(level='WARNING',
+                              content=f'hw_params 连续读取失败({self.HW_PARAMS_PATH}),回退UI法检测回复结束',
+                              task_id=task_id, test_case_id=test_case_id)
+                    return False
+            elif state:
+                closed_hits = read_fails = 0  # 播放流打开且有参数=正在回复
+            else:
+                read_fails = 0
+                closed_hits += 1
+                if closed_hits >= self.HW_PARAMS_CLOSED_CONFIRM:
+                    self._log(level='INFO',
+                              content=f'AI回复结束(hw_params=closed,连续{closed_hits}次确认)',
+                              task_id=task_id, test_case_id=test_case_id)
+                    return True
+            time.sleep(interval)
+        self._log(level='WARNING',
+                  content=f'hw_params 等待回复结束超时 {self.HW_PARAMS_END_TIMEOUT}s(视为已回复可能截断)',
+                  task_id=task_id, test_case_id=test_case_id)
+        return True
+
     def _pick_pcm(self, device_sn, files, suffix, exclude=None,
                   task_id=None, test_case_id=None):
         """从文件列表中按后缀匹配一个 pcm 路径，多个匹配时【取文件最大者】。
@@ -1255,15 +1321,18 @@ class Xiaoyilivechat(HarmonyDriver):
                 self.answer_text = '小艺回复为空'
             else:
                 self._log(level='INFO', content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
-                # ===== 结束回复检测（UI 法）：等"说话可打断"重现 + "正在听…"出现 =====
-                self._wait_for_condition(
-                    lambda: driver.find_component(By.text('说话可打断')),
-                    timeout=10, interval=1, operation_name="post_process_说话可打断"
-                )
-                self._wait_for_condition(
-                    lambda: driver.find_component(By.text('正在听…')),
-                    timeout=300, interval=1, operation_name="post_process_正在听"
-                )
+                # ===== 结束回复检测（hw_params 法,主信号）：播放流 closed=AI 说完 =====
+                if not self._wait_ai_reply_end_via_hw_params(device_sn, task_id=task_id,
+                                                             test_case_id=test_case_id):
+                    # hw_params 读不到 → 回退旧 UI 法："说话可打断"重现 + "正在听…"出现
+                    self._wait_for_condition(
+                        lambda: driver.find_component(By.text('说话可打断')),
+                        timeout=10, interval=1, operation_name="post_process_说话可打断"
+                    )
+                    self._wait_for_condition(
+                        lambda: driver.find_component(By.text('正在听…')),
+                        timeout=300, interval=1, operation_name="post_process_正在听"
+                    )
         record_mode = getattr(self, '_record_mode', 'round')
         round_number = getattr(self, '_round_number', 0)
         total_rounds = getattr(self, '_total_rounds', 1)

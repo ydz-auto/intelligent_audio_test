@@ -27,7 +27,6 @@ from app.services.calculators.base import BaseCalculator
 from app.services.calculators.xiaoyi_metrics.shared.constants import (
     ASR_USER_SEG_MERGE_GAP_S,
     ASR_MODEL_SEG_MERGE_GAP_S,
-    YIELD_GRACE_S,
     EPS_S,
 )
 from app.services.calculators.xiaoyi_metrics.shared.asr_utils import (

@@ -1586,6 +1586,7 @@ watch(dimResultGroups, (newGroups) => {
 .dim-value {
   font-size: 13px;
   color: #333;
+  white-space: pre-line;
 }
 
 .dim-detail {

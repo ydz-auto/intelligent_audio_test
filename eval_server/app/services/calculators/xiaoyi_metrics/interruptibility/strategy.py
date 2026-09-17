@@ -138,6 +138,10 @@ class InterruptionMetricsCalculator(BaseCalculator):
         task_params['user_wav'] = rd.get('user_wav') or source.get('user_wav') or ''
         task_params['ai_wav'] = rd.get('ai_wav') or rd.get('model_wav') or source.get('ai_wav') or source.get('model_wav') or ''
         task_params['case_wav'] = rd.get('case_wav') or source.get('case_wav') or ''
+        # 本轮干净音源(FFT 精修)：rd 级 played_audios 优先；多轮时不回退用例级，
+        # 避免 rounds[-1] 提升出来的顶层值错配到别的轮
+        task_params['played_audios'] = rd.get('played_audios') or (
+            source.get('played_audios') if len(rounds) <= 1 else None)
         task_params['user_asr'] = (
             rd.get('user_asr')
             or rd.get('user_chunks')
@@ -172,6 +176,8 @@ class InterruptionMetricsCalculator(BaseCalculator):
         single = self.prepare_params(task_params)
         single.update(child_params)
         single['is_actual_interruption'] = True
+        # v2：用例级聚合统一调一次 LLM 出全轮行为，逐轮子计算不再单独判
+        single['_skip_llm_judge'] = True
         return self.calculate_single(single)
 
     def calculate_single(self, params):
@@ -187,7 +193,87 @@ class InterruptionMetricsCalculator(BaseCalculator):
             task_params['model_asr'] = shared['ai_chunks']
         if params.get('is_actual_interruption') is not None:
             task_params['is_actual_interruption'] = params['is_actual_interruption']
-        return calculate_interruption_metrics(task_params)
+        result = calculate_interruption_metrics(task_params)
+
+        # v2：单轮请求（平台逐轮评估/直调路径）也进程内直调 LLM 判本轮行为；
+        # LLM 缺失/失败时保持 __init__ 已挂的降级字段
+        timing = result.get('round_timing') or []
+        if timing and not params.get('_skip_llm_judge'):
+            from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+                build_round_block, chunks_from_segments, derive_case_type,
+            )
+            from app.services.calculators.xiaoyi_metrics.shared.llm_client import build_interaction_text
+
+            rounds = task_params.get('rounds') or []
+            ridx = timing[0].get('round')
+            rd = self._rd(rounds, ridx) if isinstance(ridx, int) else {}
+            if not rd and len(rounds) == 1:
+                rd = self._rd(rounds, 0)  # 平台逐轮评估时 rounds 已切片
+            case_info = derive_case_type(
+                rounds, result.get('interruption_rounds') or [],
+                result.get('dangling_interruption_rounds') or [],
+                stop_intent=result.get('stop_intent'))
+            interaction = build_interaction_text(
+                chunks_from_segments(result.get('user_segments')),
+                chunks_from_segments(result.get('model_segments')))
+            self._judge_and_attach(result, [build_round_block(timing[0], result, rd)],
+                                   interaction, task_params, timing, None, case_info,
+                                   preserve_resume=True)
+        return result
+
+    @staticmethod
+    def _rd(rounds, idx):
+        if isinstance(rounds, list) and isinstance(idx, int) and 0 <= idx < len(rounds) \
+                and isinstance(rounds[idx], dict):
+            return rounds[idx]
+        return {}
+
+    def _judge_and_attach(self, result, blocks, interaction_text, task_params,
+                          timing, resume_timing, case_info, preserve_resume=False):
+        """进程内直调逐轮 LLM 五分类裁判，成功则重派生覆盖降级 spec 字段。"""
+        from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import (
+            behaviors_from_judge, judge_interruption_rounds,
+        )
+        from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+            derive_round_metrics,
+        )
+
+        def _num(v):
+            try:
+                return float(v) if v not in (None, '') else None
+            except (TypeError, ValueError):
+                return None
+
+        max_tokens = _num(task_params.get('max_tokens'))
+        judge_result = judge_interruption_rounds(
+            blocks, interaction_text,
+            model=str(task_params.get('model') or ''),
+            max_tokens=int(max_tokens) if max_tokens else None,
+            temperature=_num(task_params.get('temperature')),
+        )
+        result['interaction_text'] = interaction_text or result.get('interaction_text')
+        if not judge_result or not judge_result.get('enabled'):
+            msg = (judge_result or {}).get('message') or ''
+            if msg and msg != '无可判定轮次':
+                base = result.get('message') or ''
+                result['message'] = f'{base}；LLM 行为判定降级: {msg}' if base else f'LLM 行为判定降级: {msg}'
+            return result
+
+        behaviors = behaviors_from_judge(judge_result)
+        if resume_timing is not None and behaviors:
+            rb = next((b for b in behaviors if b.get('round') == resume_timing.get('round')), None)
+            if rb is not None:
+                resume_timing['score_overall'] = rb.get('score_overall')
+        if behaviors is not None:
+            spec = derive_round_metrics(timing, behaviors, case_info, resume_timing)
+            if preserve_resume:
+                # 单轮路径的恢复时延门控(is_last_actual)在 __init__ 已定，不覆盖
+                spec['resume_first_reply_latency_ms'] = result.get('resume_first_reply_latency_ms')
+            result.update(spec)
+        result['llm_round_evaluations'] = judge_result.get('rounds') or []
+        result['llm_judge_model'] = judge_result.get('model')
+        result['tokens_used'] = judge_result.get('tokens_used', 0)
+        return result
 
     def calculate(self, params):
         actual_rounds = params.get('interruption_rounds')
@@ -229,7 +315,106 @@ class InterruptionMetricsCalculator(BaseCalculator):
             result['timing_success_rate'] = result['interruption_success_rate']
             result['stop_rate'] = int(all(r.get('stop_rate') == 1 for r in round_results))
             result['resume_rate'] = int(all(r.get('resume_rate') == 1 for r in round_results))
+
+            # ── v2 spec：用例类型推导 + 逐轮时序聚合 + 恢复轮锚定 → 派生层出全部 spec 字段 ──
+            from app.services.calculators.xiaoyi_metrics.interruptibility import _derive_interruption_rounds
+            from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+                build_round_block, derive_case_type, derive_round_metrics,
+            )
+
+            _, dangling_rounds = _derive_interruption_rounds(source)
+            case_info = derive_case_type(rounds, actual_rounds, dangling_rounds,
+                                         stop_intent=source.get('stop_intent'))
+            # 恢复轮即使被标为实际打断轮也不入时序聚合（避免与 resume 条目重复计数）
+            _resume_set = set(case_info['resume_rounds'])
+            timed_pairs = [(t, r) for r in round_results for t in r.get('round_timing', [])
+                           if t.get('round') not in _resume_set]
+            round_timing = [t for t, _ in timed_pairs]
+            resume_timing = resume_result = None
+            if case_info['resume_rounds']:
+                resume_timing, resume_result = self._resume_round_timing(
+                    params, case_info['resume_rounds'][0], round_results, shared)
+            # 先出无行为的降级 spec（数量/评分 None、list 记 -1），LLM 成功后重派生覆盖
+            spec = derive_round_metrics(round_timing, None, case_info, resume_timing)
+            result.update(spec)
+            result['round_timing'] = round_timing + ([resume_timing] if resume_timing else [])
+
             result['message'] = 'OK' if result['interruption_success_rate'] else '至少一个实际打断轮失败'
+            if any(t.get('anchor_method') in ('none', 'overlap_heuristic') for t in round_timing):
+                result['message'] += '；部分轮时序锚定降级(无FFT/驱动窗口)'
+
+            # 逐轮 LLM 五分类裁判：整例一次调用（成本约束不变），失败自动保持降级字段
+            blocks = [build_round_block(t, r, self._rd(rounds, t.get('round')))
+                      for t, r in timed_pairs]
+            if resume_timing is not None:
+                blocks.append(build_round_block(
+                    resume_timing, resume_result or {},
+                    self._rd(rounds, resume_timing.get('round'))))
+            self._judge_and_attach(
+                result, blocks,
+                self._interaction_text(rounds, actual_rounds, round_results),
+                source, round_timing, resume_timing, case_info)
             return result
 
         return self.calculate_single(params)
+
+    def _interaction_text(self, rounds, actual_rounds, round_results):
+        """用例级交互文字时间线：case 共用录音=全局时间线；轮录音=逐轮分节拼轮号。"""
+        from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+            chunks_from_segments,
+        )
+        from app.services.calculators.xiaoyi_metrics.shared.llm_client import build_interaction_text
+
+        own_audio = any(
+            self._rd(rounds, i).get('user_wav') or self._rd(rounds, i).get('ai_wav')
+            or self._rd(rounds, i).get('user_asr') or self._rd(rounds, i).get('model_asr')
+            for i in actual_rounds)
+        if not own_audio and round_results:
+            base = round_results[-1]
+            return build_interaction_text(
+                chunks_from_segments(base.get('user_segments')),
+                chunks_from_segments(base.get('model_segments')))
+        parts = []
+        for idx, r in zip(actual_rounds, round_results):
+            text = build_interaction_text(
+                chunks_from_segments(r.get('user_segments')),
+                chunks_from_segments(r.get('model_segments')))
+            if text:
+                parts.append(f'【第 {idx} 轮】\n{text}')
+        return '\n'.join(parts)
+
+    def _resume_round_timing(self, params, resume_idx, round_results, shared):
+        """恢复轮时序锚定（恢复首轮内容时延）。
+
+        轮录音模式：恢复轮有独立音频/ASR → 复用单轮计算（含 FFT 精修）；
+        case 共用录音模式：在全局段上 FFT(played_audios)/驱动窗口定位恢复轮窗口。
+
+        Returns:
+            (timing_entry|None, round_result|None)：round_result 供 LLM 标注块取三段文本
+        """
+        from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+            _driver_window_overlap, extract_round_timing, locate_fft_window,
+            round_latency_from_window,
+        )
+
+        source = params.get('task_params') or {}
+        rounds = source.get('rounds') or []
+        rd = self._rd(rounds, resume_idx)
+        if rd.get('user_wav') or rd.get('ai_wav') or rd.get('user_asr') or rd.get('model_asr'):
+            r = self._calculate_round(params, resume_idx, shared)
+            return extract_round_timing(r, rd, resume_idx, role='resume'), r
+
+        base = round_results[-1] if round_results else {}
+        win = locate_fft_window(rd.get('played_audios') or rd.get('case_wav'), source.get('user_wav'))
+        method = 'fft'
+        if win is None:
+            seg = _driver_window_overlap(rd, base.get('user_segments') or [])
+            win = (seg[0], seg[1], None) if seg else None
+            method = 'driver_window'
+        if win is None:
+            return None, None
+        resp, reply = round_latency_from_window(win[0], win[1], base.get('model_segments') or [])
+        return {'round': resume_idx, 'role': 'resume',
+                'u_s': round(win[0], 3), 'u_e': round(win[1], 3),
+                'anchor_method': method, 'response_latency_ms': resp,
+                'reply_latency_ms': reply, 'stop_intent': False}, base

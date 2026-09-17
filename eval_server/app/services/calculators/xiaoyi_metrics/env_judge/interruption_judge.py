@@ -584,6 +584,187 @@ def evaluate_interruption_judge(
     return result
 
 
+# ─────────── v2：逐轮五分类裁判（统一计算器进程内直调，一次 LLM 出全轮） ───────────
+# 五分类定义写死 prompt（spec：回复/恢复/无关/静默/询问；成败映射由派生层本地确定性完成）
+_BEHAVIOR_DEFS_V2 = """- 回复：模型正常响应了打断内容，针对用户打断时说的话作了回答/回应。
+- 恢复：模型说穿不停，或停顿后仍继续/说完被打断前的原内容（无视打断）。
+- 无关：模型的回应与打断内容及打断前上下文均无关（答非所问、模板噪音等）。
+- 静默：用户打断后模型不再有任何语音回应。
+- 询问：模型对打断内容或用户意图进行反问/确认/澄清（如"你是说…吗""能再说一遍吗"）。"""
+
+
+def build_rounds_judge_prompt(interaction_text: str,
+                              round_blocks: List[Dict[str, Any]]) -> str:
+    """v2 逐轮裁判 prompt：全局交互时间线 + 每轮独立标注块（轮号/角色/窗口/台词/三段文本）。"""
+    blocks = []
+    for b in round_blocks:
+        w = b.get('window') or [None, None]
+        if isinstance(w[0], (int, float)) and isinstance(w[1], (int, float)):
+            win = f'[{w[0]:.2f}s; {w[1]:.2f}s]'
+        else:
+            win = '(未定位，按轮内唯一交互判断)'
+        lines = [f'── 第 {b.get("round")} 轮 · 角色: {b.get("role")} · 定位窗口: {win} ──']
+        if b.get('query'):
+            lines.append(f'脚本台词(用户本轮应说): {b["query"]}')
+        lines.append(f'【用户实际语音】{b.get("user_text") or "(未识别到)"}')
+        if b.get('role') != '恢复':
+            lines.append(f'【被打断时模型正在说】{b.get("model_interrupted_text") or "(无)"}')
+        lines.append(f'【模型随后的回应】{b.get("model_recovery_text") or "(无语音输出)"}')
+        if b.get('role') == '停止':
+            lines.append('本轮为停止指令轮：请同时判定 stop_complied。')
+        blocks.append('\n'.join(lines))
+    rounds_text = '\n\n'.join(blocks)
+
+    return f"""你是语音对话能力的裁判专家。下面给出一段语音对话用例的【完整交互时间线】与若干【待判定轮次】。
+请对每个待判定轮次，结合时间线与轮内标注文本，判定模型行为类别（五选一）、对模型回应内容三维评分；停止指令轮还需判定是否遵从。
+
+═══════════════════════════════════════
+【完整交互时间线】（词级 ASR 合并，query=用户 / answer=模型，可能有识别误差）
+═══════════════════════════════════════
+{interaction_text or '(缺)'}
+
+═══════════════════════════════════════
+【行为类别定义】（打断/停止轮五选一，仅可选其一）
+═══════════════════════════════════════
+{_BEHAVIOR_DEFS_V2}
+
+═══════════════════════════════════════
+【评分标准】（对该轮模型回应内容打 0-5 整数分，overall=三维平均保留一位小数）
+═══════════════════════════════════════
+{_SCORE_CRITERIA}
+
+【停止指令遵从口径】遵从(true)=模型停止了原内容输出；只回复"好的""我明白了"等简短确认语同样算遵从；停止后完全没有新的语音输出也算遵从。不遵从(false)=模型无视停止指令继续输出原内容。
+
+═══════════════════════════════════════
+【待判定轮次】
+═══════════════════════════════════════
+{rounds_text}
+
+═══════════════════════════════════════
+【输出格式】输出严格 JSON，不要输出 JSON 以外的任何内容：
+═══════════════════════════════════════
+{{"rounds": [{{"round": 轮号整数, "behavior": "五类之一(恢复轮留空)", "behavior_reason": "简短理由", "score": {{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0.0}}, "stop_complied": true, "stop_compliance_reason": "仅停止指令轮填写"}}]}}
+
+其中：
+- rounds 必须与【待判定轮次】一一对应（round 相同），不得缺轮或加轮
+- 恢复轮不判行为（behavior 留空），只对模型回到原话题后的回应评分
+- 模型无任何语音输出时：behavior=静默，score 三维均给 0
+- stop_complied 仅停止指令轮有意义，其他轮省略
+- behavior_reason 需说明你从该轮回应与时间线中观察到了什么、为何归为此类"""
+
+
+def judge_interruption_rounds(round_blocks: List[Dict[str, Any]],
+                              interaction_text: str = '',
+                              model: str = '',
+                              max_tokens: Optional[int] = None,
+                              temperature: Optional[float] = None) -> Dict[str, Any]:
+    """v2 逐轮裁判主入口：一次 LLM 调用出全部轮次的五分类行为+评分+停止遵从。
+
+    由统一计算器(InterruptionMetricsCalculator)进程内直调（不再走独立 HTTP 维度），
+    复用其已算好的 ASR chunks 与锚定窗口，不新增 ASR 调用。
+    LLM 未配置/调用失败/解析失败 → enabled=False + message，
+    behaviors_from_judge 据此返回 None → 派生层走降级路径（数量/评分 None、list 记 -1）。
+    """
+    result: Dict[str, Any] = {
+        'enabled': False, 'model': model, 'rounds': [],
+        'interaction_text': interaction_text,
+        'tokens_used': 0, 'input_token': 0, 'output_token': 0, 'message': '',
+    }
+    blocks = [b for b in (round_blocks or []) if isinstance(b, dict)]
+    if not blocks:
+        result['message'] = '无可判定轮次'
+        return result
+
+    llm_config = get_llm_config()
+    if not model:
+        model = resolve_model(dimension='interruption_judge')
+    result['model'] = model
+    if not max_tokens:
+        max_tokens = llm_config.get('max_tokens', LLM_DEFAULT_MAX_TOKENS)
+    if temperature is None:
+        temperature = llm_config.get('temperature', LLM_DEFAULT_TEMPERATURE)
+    if not llm_config.get('api_key'):
+        # 离线/未配置环境天然降级，不发起注定失败的请求
+        result['message'] = 'LLM 未配置(api_key 缺失)'
+        return result
+
+    prompt = build_rounds_judge_prompt(interaction_text, blocks)
+    try:
+        response = call_llm_api(
+            model=model, prompt=prompt, max_tokens=max_tokens, temperature=temperature,
+            log_context={'dimension': 'interruption_metrics_rounds'},
+        )
+    except Exception as e:
+        result['message'] = f'LLM 调用失败: {e}'
+        logger.error(f'[interruption_judge_v2] LLM 调用失败: {e}')
+        return result
+
+    result['enabled'] = True
+    result['tokens_used'] = response.get('tokens_used', 0)
+    result['input_token'] = response.get('input_token', 0)
+    result['output_token'] = response.get('output_token', 0)
+
+    parsed = parse_json(response.get('content', ''))
+    if not parsed:
+        result['enabled'] = False
+        result['message'] = 'LLM 输出解析失败'
+        logger.error(f'[interruption_judge_v2] 解析失败: {str(response.get("content"))[:200]}')
+        return result
+
+    raw_rounds = parsed.get('rounds')
+    if not isinstance(raw_rounds, list):
+        raw_rounds = [parsed]  # 单轮平铺输出兼容
+    result['rounds'] = [r for r in raw_rounds if isinstance(r, dict)]
+    result['message'] = 'OK'
+    logger.info(f'[interruption_judge_v2] model={model} 判定轮数={len(result["rounds"])} '
+                f'tokens={result["tokens_used"]}')
+    return result
+
+
+def behaviors_from_judge(judge_result: Optional[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    """裁判输出 → 派生层 round_behaviors；裁判不可用返回 None（降级）。
+
+    behavior 不在五类内（含空/解析失败）→ None＝unknown：不入数量、时延 list 记 -1。
+    """
+    from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+        BEHAVIOR_LABELS_V2,
+    )
+
+    if not judge_result or not judge_result.get('enabled'):
+        return None
+    out = []
+    for item in judge_result.get('rounds') or []:
+        try:
+            ridx = int(str(item.get('round')).strip())
+        except (TypeError, ValueError):
+            ridx = None
+        behavior = str(item.get('behavior') or '').strip()
+        if behavior not in BEHAVIOR_LABELS_V2:
+            behavior = None
+        score = item.get('score') if isinstance(item.get('score'), dict) else {}
+        overall = _num(score.get('overall'))
+        if overall is None:
+            vals = [v for v in (_num(score.get(k))
+                                for k in ('coherence', 'relevance', 'adaptability'))
+                    if v is not None]
+            overall = round(sum(vals) / len(vals), 1) if vals else None
+        score_out = None
+        if score:
+            score_out = {'coherence': _num(score.get('coherence')),
+                         'relevance': _num(score.get('relevance')),
+                         'adaptability': _num(score.get('adaptability')),
+                         'overall': overall}
+        out.append({
+            'round': ridx,
+            'behavior': behavior,
+            'behavior_reason': str(item.get('behavior_reason') or item.get('reason') or ''),
+            'score': score_out,
+            'score_overall': overall,
+            'stop_complied': _tri_state(item.get('stop_complied')),
+        })
+    return out or None
+
+
 if __name__ == '__main__':
     import argparse
     from pathlib import Path

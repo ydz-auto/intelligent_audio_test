@@ -162,6 +162,9 @@ def calculate_interruption_metrics(task_params):
     user_wav = task_params.get('user_wav') or _r0.get('user_wav')
     ai_wav = task_params.get('ai_wav') or task_params.get('model_wav') or _r0.get('ai_wav') or _r0.get('model_wav')
     case_wav = task_params.get('case_wav') or _r0.get('case_wav')
+    # 干净打断音源：真实数据在 played_audios（case_config 映射 audios→played_audios），
+    # case_wav 是历史死链（无驱动产出），仅保留兼容
+    played_audios = task_params.get('played_audios') or _r0.get('played_audios') or case_wav
     user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or task_params.get('input_asr') or _r0.get('user_asr') or _r0.get('user_chunks')
     model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or task_params.get('recovery_asr') or _r0.get('model_asr') or _r0.get('model_chunks')
 
@@ -192,11 +195,11 @@ def calculate_interruption_metrics(task_params):
     #    拿到用户打断的准确起止(秒)，传入 compute_interruption_metrics 覆盖
     #    ASR 段边界，使 stop/recovery 时延基于准确时刻 ──
     client_out_start_s = client_out_end_s = client_out_ncc = None
-    if case_wav and user_wav:
+    if played_audios and user_wav:
         try:
             from app.services.calculators.xiaoyi_metrics.shared.asr_utils import to_chunks
             from ..turn_taking.false_takeover import compute_client_out_latency
-            lat = compute_client_out_latency(case_wav, user_wav, to_chunks(model_asr))
+            lat = compute_client_out_latency(played_audios, user_wav, to_chunks(model_asr))
             if lat.get('client_out_start_ms') is not None:
                 client_out_start_s = lat['client_out_start_ms'] / 1000.0
                 client_out_end_s = lat['client_out_end_ms'] / 1000.0
@@ -282,6 +285,29 @@ def calculate_interruption_metrics(task_params):
         'target_recovery_latency_s': result['target_recovery_latency_s'],
         'first_recovery_latency_s': result['first_recovery_latency_s'],
     }]
+
+    # ── v2 spec 字段：本轮时序锚定 + 用例类型推导 + 派生层（round_metrics）──
+    #    行为判定来自 LLM（round_behaviors，由统一计算器进程内合流）；
+    #    缺省时派生层走降级路径：数量/评分 None、时延 list 记 -1
+    from .round_metrics import derive_case_type, derive_round_metrics, extract_round_timing
+
+    if (isinstance(_rounds, list) and current_round is not None
+            and 0 <= current_round < len(_rounds) and isinstance(_rounds[current_round], dict)):
+        _cur_rd = _rounds[current_round]
+    else:
+        _cur_rd = _r0  # 平台逐轮评估时 rounds 已切片，rounds[0] 即本轮
+    timing = extract_round_timing(result, _cur_rd, current_round)
+    _si = task_params.get('stop_intent')
+    case_info = derive_case_type(
+        _rounds if isinstance(_rounds, list) else [],
+        interruption_rounds, dangling_rounds,
+        stop_intent=_si if isinstance(_si, list) else result['stop_intent'],
+    )
+    spec = derive_round_metrics([timing], result.get('round_behaviors'), case_info)
+    if not is_last_actual:
+        spec['resume_first_reply_latency_ms'] = None
+    result.update(spec)
+    result['round_timing'] = [timing]
 
     logger.info(
         f"[interruption_metrics] success_rate={result['interruption_success_rate']} "

@@ -38,8 +38,10 @@ eval_server/
 │   │   │       │   ├── false_takeover.py       #   误接管率
 │   │   │       │   ├── takeover_latency.py     #   接管时延
 │   │   │       │   └── input_asr.py            #   输入识别准确率
-│   │   │       ├── interruptibility/            # 打断指标实现（纯本地时序）
-│   │   │       │   └── interruption.py         #   打断指标（停得下 / 恢复得来；LLM 评估并入 env_judge/interruption_judge.py）
+│   │   │       ├── interruptibility/            # 打断指标 v2（本地时序 + 逐轮 LLM 五分类）
+│   │   │       │   ├── strategy.py              #   统一计算器 InterruptionMetricsCalculator（进程内直调裁判）
+│   │   │       │   ├── interruption.py          #   本地时序（停得下 / 恢复得来；played_audios FFT 精修用户段）
+│   │   │       │   └── round_metrics.py         #   轮次锚定 + 用例类型推导 + spec 字段派生（纯函数）
 │   │   │       ├── rejection_scene_awareness/  # 拒识与场景感知
 │   │   │       │   ├── strategy.py              #   NonInteractiveLatency + NoiseLatency 策略类
 │   │   │       │   ├── non_interactive_latency.py
@@ -81,7 +83,7 @@ eval_server/
 | der | 说话人分离错误率 | DerCalculator | der_calculator.py |
 | llm_judge | LLM 语义评分 | LlmJudgeCalculator | llm_judge_calculator.py |
 | turn_taking | 话轮接管（tor + false_takeover + takeover_latency + input_asr） | TurnTakingCalculator | turn_taking/ |
-| interruption_metrics | 打断指标（停得下 + 恢复得来） | InterruptionMetricsCalculator | interruptibility/ |
+| interruption_metrics | 打断指标 v2（用例类型 + 行为数量 + 时延 + LLM 评分/停止遵从） | InterruptionMetricsCalculator | interruptibility/ |
 | non_interactive_latency | 非交互意图时延 | NonInteractiveLatencyCalculator | rejection_scene_awareness/ |
 | noise_latency | 噪声打断时延 | NoiseLatencyCalculator | rejection_scene_awareness/ |
 | env_judge | 环境音/打断能力录屏裁判 | EnvJudgeCalculator | env_judge/ |
@@ -195,19 +197,22 @@ tor / false_takeover / takeover_latency 共用**双路 ASR**方案：
 | takeover_latency | 接管时延：AI 首字时刻 - 用户末字时刻 | `compute_takeover_latency_from_raw(first_frame_ms, asr_result, end_ms)` |
 | input_asr | 输入识别准确率：query vs question 文本匹配 | `compare_query_question(query, question)` |
 
-### 6.2 interruption_metrics —— 打断指标
+### 6.2 interruption_metrics —— 打断指标（v2）
 
-用户打断正在说话的小艺时，衡量"停得下、恢复得来"。与 `turn_taking` 不同：**不内部调 ASR**，由调用方直接传两路已对齐的 ASR 词级时间戳。
+用户打断正在说话的小艺时，衡量"停得下、恢复得来、答得对题"。统一计算器一次出全部字段：本地时序 + **进程内直调逐轮 LLM 裁判**（`env_judge/interruption_judge.py` 的 `judge_interruption_rounds`，整例一次调用），不依赖平台跨维度回填。
 
-- 输入：`user_asr`（用户提问/打断 ASR）、`model_asr`（模型恢复 ASR，与 user_asr 等长、同一时间轴）
-  - 两路均可为 chunks 列表或 `{text, chunks}`
-  - 可选：`seg_merge_gap_s`（默认 0.3）
-- 三个子指标（对每个用户打断段 u=[u_s, u_e]）：
-  - **打断检查时延** `avg_stop_latency_s`：用户开始打断 → 模型当前语音段结束（停下）
-  - **打断恢复时延** `avg_recovery_latency_s`：用户说完 → 模型重新开口
-  - **打断成功率** `interruption_success_rate`：模型让出（没说穿整个打断区间）且之后恢复
-  - 辅助：`stop_rate`（让出率）、`resume_rate`（恢复率）、`avg_overlap_s`（双方同时说话时长）、`avg_silence_gap_s`（静默时长）
-- 退化情形：若 `model_asr` 只含恢复段，停止时延/成功率记为 None，仅给出恢复时延，事件标为 `recovery_only`
+- 输入：`rounds[]`（逐轮 `user_asr`/`model_asr`/`query`/`is_interruption`/`stop_intent`/`is_return_to_topic`/`played_audios`）+ 用例级 `interruption_rounds`/`dangling_interruption_rounds`；兼容单轮平铺 `user_asr`/`model_asr`（平台逐轮切片路径）
+- 用例类型 `case_type`（轮次标记本地推导，7 类）：`single` / `single_stop` / `multi` / `stop_resume_single` / `stop_resume_multi` / `topic_resume_single` / `topic_resume_multi`
+- 行为五分类（LLM 逐轮判 → 本地确定性映射成败）：回复→成功；恢复/无关/静默→失败；询问→询问；解析失败→unknown（不入数量、时延记 -1）
+- 数量字段：`success_count` / `failure_count` / `inquiry_count` + 各行为计数（`reply/recover/irrelevant/silence/ask_behavior_count`）；分母＝非 dangling 实际打断轮（恢复轮不入）
+- 时延字段（毫秒；行为失败/unknown 轮 list 记 -1，avg/min/max 排除 -1、全 -1 → None）：
+  - **响应时延** `response_latency_avg/min/max_ms` + `round_response_latencies`：用户开始打断 → 模型当前段停口
+  - **回复时延** `reply_latency_avg/min/max_ms` + `round_reply_latencies`：用户说完 → 模型重新开口
+  - **恢复首轮内容时延** `resume_first_reply_latency_ms`：最后一个恢复轮的回复时延
+  - 用户段锚定：优先 `played_audios` FFT 对齐精修 → 回退驱动轮窗口（start_ms/end_ms）→ 再回退重叠启发式（message 标降级）
+- 评分/遵从：`reply_content_score`、`resume_content_score`（0-5，LLM）；`stop_compliance_rate`（仅停止指令类用例计算，其余 None）
+- LLM 降级：api_key 缺失/调用失败 → 数量与评分 None、message 标"行为判定降级"，时延走本地代理
+- 旧字段（`interruption_success_rate` / `avg_stop_latency_s` 等，`_s` 后缀实存毫秒）保留为诊断输出
 
 ### 6.3 non_interactive_latency —— 非交互意图时延
 
@@ -236,7 +241,7 @@ SEG_MERGE_GAP_S = 0.7   # 句内最大停顿适配
 - **env_judge**（拒识与环境理解）：旁人交谈静默 / 环境噪声 / 反馈词 / 生理声 / 环境事件回溯
 - **interruption_judge**（打断能力）：插话打断与重新响应 / 停止指令响应 / 多轮打断后恢复原话题
 
-行为五分类：回应 / 恢复 / 询问 / 无关回复 / 沉默。
+行为五分类（v2 逐轮裁判 `judge_interruption_rounds`，interruption_metrics 进程内复用）：回复 / 恢复 / 无关 / 静默 / 询问。
 
 ### 6.6 llm_judge —— 通用 LLM 语义打分
 

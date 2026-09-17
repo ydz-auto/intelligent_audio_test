@@ -171,7 +171,7 @@ class EvaluationService(EvaluationLoggerMixin):
         return flat
 
     @staticmethod
-    def _derive_interruption_metadata(algorithm_result, case_config):
+    def _derive_interruption_metadata(algorithm_result, case_config, algorithm_params_col=None):
         """兜底恢复旧结果缺失的打断轮元数据，复用执行阶段同一套语义。"""
         stored_rounds = algorithm_result.get('rounds') if isinstance(algorithm_result, dict) else []
         if not isinstance(stored_rounds, list) or not stored_rounds:
@@ -184,6 +184,20 @@ class EvaluationService(EvaluationLoggerMixin):
             return None
 
         from backend.services.execution.e2e_aggregator import E2EAggregator
+        # is_interruption/stop_intent 可能配置在 TestCase.algorithm_params 独立列（按轮）
+        # 而非 tc.config 轮内字段 → 推导前按轮合并进轮配置副本，避免 stop_intent 丢失
+        if algorithm_params_col:
+            from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
+            merged = []
+            for idx, rd in enumerate(case_rounds):
+                rd = dict(rd) if isinstance(rd, dict) else {}
+                if not rd.get('algorithm_params'):
+                    params = CaseParameterExtractor.get_round_algorithm_params(
+                        algorithm_params_col, idx + 1)
+                    if params:
+                        rd['algorithm_params'] = params
+                merged.append(rd)
+            case_rounds = merged
         return E2EAggregator.build_interruption_round_metadata(case_rounds)
 
     def _build_rounds_list(self, algorithm_result, reference_params_col,
@@ -204,7 +218,8 @@ class EvaluationService(EvaluationLoggerMixin):
         )
 
         rounds = algorithm_result.get('rounds', [])
-        interruption_metadata = EvaluationService._derive_interruption_metadata(algorithm_result, case_config)
+        interruption_metadata = EvaluationService._derive_interruption_metadata(
+            algorithm_result, case_config, algorithm_params_col)
         actual_interruption_rounds = set(interruption_metadata.get('interruption_rounds', [])) if interruption_metadata else set()
         output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
         loader = CaseParameterExtractor._get_loader()
@@ -881,13 +896,16 @@ class EvaluationService(EvaluationLoggerMixin):
                     no_endpoint_groups.append((dim_data, dimension_result_id))
                 continue
 
-            # 分组键：(endpoint_url, parent_dimension_id)
+            # 分组键：(endpoint_url, api_settings.group_key 或 parent_dimension_id)
             # 同一父维度下的子维度分到同一组，发一个请求给 eval_server
             # 父维度自身（dimension_type=main）用自身 id 作为 parent（即 None → 用 task_type_code 代替）
+            # api_settings.group_key 显式配置时（如打断族 'interruption_v2'）跨主维度合并为
+            # 同组只发一次请求（opt-in，要求全族 body_template/endpoint 一致；无该键行为不变）
             parent_id = dim_data.get('parent_dimension_id')
             if dim_type == 'main':
                 parent_id = dim_id  # 主维度自己一组（通常不直接参与评估）
-            group_key = (endpoint_url, parent_id)
+            custom_group = (dim_data.get('api_settings') or {}).get('group_key')
+            group_key = (endpoint_url, custom_group or parent_id)
             if group_key not in endpoint_groups:
                 endpoint_groups[group_key] = []
 

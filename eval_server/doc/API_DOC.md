@@ -24,7 +24,7 @@
 | der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_res, stm_res | JSON |
 | llm_judge | LLM 语义评分 | answer, correct_answer | JSON |
 | turn_taking | 话轮接管（tor + false_takeover + takeover_latency + input_asr） | 无必填（record_file 可为空） | JSON / multipart |
-| interruption_metrics | 打断指标（打断成功率 + 检查时延 + 恢复时延） | user_asr, model_asr | JSON |
+| interruption_metrics | 打断指标 v2（用例类型 + 行为数量 + 响应/回复时延 + LLM 评分/停止遵从） | rounds[]（逐轮 user_asr/model_asr） | JSON |
 | non_interactive_latency | 非交互意图时延 | user_asr, model_asr | JSON |
 | noise_latency | 噪声打断时延 | model_asr, start_ms, end_ms, pcm_first_ms | JSON |
 | env_judge | 环境音/打断能力录屏裁判 | video_path / record_file | JSON |
@@ -112,12 +112,26 @@
 }
 ```
 
-**interruption_metrics 请求示例：**
+**interruption_metrics 请求示例（v2：rounds 逐轮标记，兼容单轮平铺 user_asr/model_asr）：**
 ```json
 {
   "task_type": "interruption_metrics",
-  "user_asr": [{"text": "打断一下", "start": 1.0, "end": 2.0}],
-  "model_asr": [{"text": "好的", "start": 2.5, "end": 3.0}]
+  "interruption_rounds": [1],
+  "rounds": [
+    {
+      "is_interruption": true,
+      "query": "打断一下",
+      "user_asr": [{"text": "打断一下", "timestamp": [3.6, 4.0]}],
+      "model_asr": [{"text": "回答中", "timestamp": [2.5, 3.8]}, {"text": "怎么了", "timestamp": [4.8, 5.4]}],
+      "played_audios": ["case1_round1_user.wav"]
+    },
+    {
+      "is_return_to_topic": true,
+      "query": "回到刚才的话题",
+      "user_asr": [{"text": "回到刚才的话题", "timestamp": [6.0, 6.8]}],
+      "model_asr": [{"text": "好的继续", "timestamp": [7.2, 8.0]}]
+    }
+  ]
 }
 ```
 

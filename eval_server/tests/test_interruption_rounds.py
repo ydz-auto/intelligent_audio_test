@@ -273,3 +273,58 @@ def test_multipart_string_metadata_is_coerced():
     assert result['interruption_success_rate'] == 1
     assert result['round_latencies'][0]['round'] == 1
     assert result['first_recovery_latency_s'] is not None
+
+
+def test_multi_round_payload_carries_v2_spec_fields():
+    """v2 spec 字段：用例类型推导 + 逐轮时序锚定 + 行为未合流时的降级路径。"""
+    from app.services.calculators.xiaoyi_metrics.interruptibility.strategy import (
+        InterruptionMetricsCalculator,
+    )
+
+    user, model_ok = _full_round_pair(True)
+    task_params = {
+        'rounds': [
+            {'is_interruption': True, 'user_asr': user, 'model_asr': model_ok},
+            {'is_interruption': True, 'user_asr': user, 'model_asr': model_ok},
+            {'user_asr': user, 'model_asr': model_ok},
+        ],
+    }
+    result = InterruptionMetricsCalculator().run(task_params)['interruption']
+    assert result['case_type'] == 'multi'
+    assert result['case_type_label'] == '多次打断'
+    assert [t['round'] for t in result['round_timing']] == [1, 2]
+    assert all(t['response_latency_ms'] is not None for t in result['round_timing'])
+    # 行为未合流（LLM 逐轮判定 P2 接入）→ 降级：数量/评分 None、list 全 -1、avg None
+    assert result['success_count'] is None and result['failure_count'] is None
+    assert result['round_response_latencies'] == [-1, -1]
+    assert result['response_latency_avg_ms'] is None
+    # 恢复首轮内容时延回退 = 末个实际打断轮的回复时延
+    assert result['resume_first_reply_latency_ms'] == result['round_timing'][-1]['reply_latency_ms']
+    # 旧字段保持不变
+    assert result['interruption_success_rate'] == 1
+    assert result['first_recovery_latency_s'] is not None
+
+
+def test_case_type_stop_resume_single():
+    """停止指令 + 恢复前文轮 → stop_resume_single；恢复轮独立锚定回复时延。"""
+    from app.services.calculators.xiaoyi_metrics.interruptibility.strategy import (
+        InterruptionMetricsCalculator,
+    )
+
+    user, model_ok = _full_round_pair(True)
+    task_params = {
+        'rounds': [
+            {'is_interruption': True, 'user_asr': user, 'model_asr': model_ok},
+            {'stop_intent': True, 'user_asr': user, 'model_asr': model_ok},
+            {'is_return_to_topic': True, 'user_asr': user, 'model_asr': model_ok},
+        ],
+    }
+    result = InterruptionMetricsCalculator().run(task_params)['interruption']
+    assert result['case_type'] == 'stop_resume_single'
+    assert result['case_type_label'] == '停止指令后恢复前文-一次打断一次恢复'
+    # 行为未合流 → 停止遵从 None（P2 由 LLM 逐停止轮判定）
+    assert result['stop_compliance_rate'] is None
+    # 恢复轮（round 2）独立锚定出 reply 时延
+    resume = [t for t in result['round_timing'] if t.get('role') == 'resume']
+    assert len(resume) == 1 and resume[0]['round'] == 2
+    assert result['resume_first_reply_latency_ms'] == resume[0]['reply_latency_ms']

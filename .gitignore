@@ -99,6 +99,9 @@ log copy
 # Temp files
 Intelligent-Audio-TEST/tmp_hypium/
 Intelligent-Audio-TEST/backend/tmp_hypium/
+Intelligent-Audio-TEST/_scratch/
+Intelligent-Audio-TEST/pcm_probe_out/
+.playwright-cli/
 
 # Screenshots
 *.png

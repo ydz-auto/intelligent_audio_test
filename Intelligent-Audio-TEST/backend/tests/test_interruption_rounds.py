@@ -75,3 +75,78 @@ def test_evaluation_service_keeps_existing_round_metadata():
         {'rounds': [{'is_interruption': False}]},
     )
     assert metadata is None
+
+
+def test_derive_metadata_reads_algorithm_params_col():
+    """is_interruption/stop_intent 配置在 TestCase.algorithm_params 独立列时兜底也能读到。"""
+    from backend.services.evaluation.evaluation_service import EvaluationService
+
+    service = EvaluationService.__new__(EvaluationService)
+    algo_col = [
+        {'round_number': 1, 'params': [{'field_code': 'is_interruption', 'field_value': True}]},
+        {'round_number': 2, 'params': [{'field_code': 'stop_intent', 'field_value': True}]},
+    ]
+    metadata = service._derive_interruption_metadata(
+        {'rounds': [{'round': 0}, {'round': 1}]},
+        {'rounds': [{}, {}]},
+        algo_col,
+    )
+    assert metadata['interruption_rounds'] == [1]
+    assert metadata['stop_intent'] == [False, True]
+    assert metadata['stop_instruction_rounds'] == [1]
+
+
+def test_group_key_merges_interruption_family_into_one_request():
+    """P3 出口：api_settings.group_key 相同的打断族维度（跨主维度+子维度）合并为一组只发一次请求；
+    无 group_key 的维度不受影响，仍按 parent_dimension_id 各自分组。"""
+    from backend.services.evaluation.evaluation_service import EvaluationService
+
+    service = EvaluationService.__new__(EvaluationService)
+    service._log = lambda **kw: None
+
+    family_settings = {'group_key': 'interruption_v2', 'body_template': {}}
+    url = 'http://eval:8888'
+    dims = [
+        {'id': 57, 'name': '打断成功数量', 'dimension_type': 'main', 'parent_dimension_id': None,
+         'task_type_code': 'interruption_metrics', 'api_endpoints': [], 'api_url': url,
+         'api_settings': family_settings},
+        {'id': 66, 'name': '停止指令遵循', 'dimension_type': 'main', 'parent_dimension_id': None,
+         'task_type_code': 'interruption_metrics', 'api_endpoints': [], 'api_url': url,
+         'api_settings': family_settings},
+        {'id': 69, 'name': '响应时延', 'dimension_type': 'sub', 'parent_dimension_id': 68,
+         'task_type_code': 'interruption_metrics', 'parent_task_type_code': 'interruption_metrics',
+         'api_endpoints': [], 'api_url': url, 'api_settings': family_settings},
+        {'id': 100, 'name': '其他维度', 'dimension_type': 'main', 'parent_dimension_id': None,
+         'task_type_code': 'other', 'api_endpoints': [], 'api_url': url, 'api_settings': {}},
+    ]
+
+    built_groups = []
+    service._build_task_data = lambda *a, **kw: built_groups.append(
+        [item[0]['id'] for item in a[5]]) or {'groups': built_groups}
+    service._get_or_create_worker = lambda endpoint_url, rep: None
+    service._submit_to_endpoint_worker = lambda task_data, worker: None
+
+    import contextlib
+
+    class _FakeClient:
+        def __init__(self):
+            self.global_lock = contextlib.nullcontext()  # with 直接作用于实例
+
+            class _Pool:
+                _shutdown = False
+
+                @staticmethod
+                def submit(fn, *a):
+                    fn(*a)
+
+            self.thread_pool = _Pool()
+
+    service.api_client = _FakeClient()
+
+    service._dispatch_evaluation_tasks(
+        dims, {d['id']: d['id'] * 10 for d in dims},
+        result_id=1, task_id=1, test_case_id=1, algorithm_result={},
+        algorithm_type='voice_llm', test_type='e2e', round_number=None,
+        field_mapper=None, ref_texts={})
+
+    assert sorted(map(sorted, built_groups)) == [[57, 66, 69], [100]]

@@ -29,7 +29,6 @@ TURN_NUM_WORDS_THRESHOLD = 3   # tor 命中词去标点总字符数阈值
 PAUSE_MIN_GAP = 0.2  # pause 区间最小间隙(秒)
 PAUSE_MAX_GAP = 3.0  # pause 区间最大间隙(秒)
 
-YIELD_GRACE_S = 0.5  # 让出宽限(秒)
 EPS_S = 1e-6          # 浮点容差(秒)
 
 MS_PER_S = 1000.0    # 秒→毫秒转换因子
@@ -55,9 +54,3 @@ VIDEO_EXTS = {
 
 # ─────────── 行为分类标签 ───────────
 BEHAVIOR_LABELS = ['回应', '恢复', '不确定询问', '未知']
-BEHAVIOR_FIELD_MAP = {
-    '回应': 'behavior_respond',
-    '恢复': 'behavior_recover',
-    '不确定询问': 'behavior_uncertain',
-    '未知': 'behavior_unknown',
-}

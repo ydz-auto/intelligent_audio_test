@@ -14,7 +14,6 @@ ASR 推理部署在独立的 ASR 主机上（asr_server.py），本机只负责�
                          若设置，JSON 会保存到 {ASR_JSON_OUTPUT_DIR}/pcm_case/pcm_case/{case_id}/{session_id}/ 下
 """
 import os
-import sys
 import json
 import logging
 import time
@@ -29,26 +28,6 @@ if _env_path.exists():
             if line and not line.startswith('#') and '=' in line:
                 k, v = line.split('=', 1)
                 os.environ.setdefault(k.strip(), v.strip())
-
-# ─── 加载 asr_server/.env（含 QWEN_OMNI_* 配置） ───
-_asr_server_env = Path(__file__).resolve().parent.parent.parent.parent / 'asr_server' / '.env'
-if _asr_server_env.exists():
-    with open(_asr_server_env, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1)
-                os.environ.setdefault(k.strip(), v.strip())
-
-# ─── 导入第三方 qwen omni ASR 模块 ───
-_asr_server_dir = str(Path(__file__).resolve().parent.parent.parent.parent / 'asr_server')
-if _asr_server_dir not in sys.path:
-    sys.path.insert(0, _asr_server_dir)
-try:
-    from qwen_omni_asr import call_qwen_omni_asr
-except ImportError as e:
-    call_qwen_omni_asr = None
-    logging.getLogger(__name__).warning(f"无法导入 qwen_omni_asr 模块: {e}")
 
 import requests
 
