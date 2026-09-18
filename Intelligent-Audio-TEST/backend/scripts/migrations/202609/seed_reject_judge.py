@@ -9,7 +9,9 @@
    输入：ai_wav, user_wav, is_single_round, timing, model, max_tokens, temperature
    输出：evaluations, ej_model, ej_behavior, ej_timing, ej_rate, ej_reason,
          ej_enabled, ej_interaction, ej_query, ej_answer,
-         tokens_used, input_token, output_token, ej_message
+         tokens_used, input_token, output_token,
+         rate_success_count, rate_inquiry_count, rate_failure_count,
+         ej_message
 3. 注册 8 个子维度（dimension_type='sub'）：
    - 行为占比（5个）: 拒识回应/恢复/不确定询问/无关回复/静默 占比
    - 评级占比（3个）: 拒识成功/拒识询问/拒识失败 占比
@@ -121,6 +123,15 @@ _PARAMS = [
     ('output_token', '输出token', '输出 token 数', 'number', 'output',
      'output_token', None, 'aux', True,
      False, None, 'LLM 输出 token 数', 72),
+    ('rate_success_count', '拒识成功统计', '拒识成功数量统计(按timing+behavior分组)', 'json', 'output',
+     'rate_success_count', None, 'aux', True,
+     False, None, '拒识成功数量统计字典，含总数及各timing+behavior组合命中数', 73),
+    ('rate_inquiry_count', '拒识询问统计', '拒识询问数量统计(按timing+behavior分组)', 'json', 'output',
+     'rate_inquiry_count', None, 'aux', True,
+     False, None, '拒识询问数量统计字典，含总数及各timing+behavior组合命中数', 74),
+    ('rate_failure_count', '拒识失败统计', '拒识失败数量统计(按timing+behavior分组)', 'json', 'output',
+     'rate_failure_count', None, 'aux', True,
+     False, None, '拒识失败数量统计字典，含总数及各timing+behavior组合命中数', 75),
     ('ej_message', '裁判说明', '裁判结果说明', 'text', 'output',
      'message', None, 'aux', True,
      False, None, '裁判错误/成功说明', 99),
