@@ -508,10 +508,29 @@
   "behavior_uncertain": 0,          // 不确定询问 → 1, 否则 0
   "behavior_irrelevant": 0,         // 无关回复 → 1, 否则 0
   "behavior_silent": 0,             // 静默 → 1, 否则 0
-  "rate": 2,                        // 0=拒识成功, 1=拒识询问, 2=拒识失败, "拒识成功"=特殊
-  "rate_success": 0,                // rate=0 → 1, 否则 0
-  "rate_inquiry": 0,                // rate=1 → 1, 否则 0
-  "rate_failure": 1,                // rate=2 → 1, 否则 0
+  "rate": "拒识失败",                 // str: "拒识成功" / "拒识询问" / "拒识失败"
+  "rate_success": 0,                // rate="拒识成功" → 1, 否则 0
+  "rate_inquiry": 0,                // rate="拒识询问" → 1, 否则 0
+  "rate_failure": 1,                // rate="拒识失败" → 1, 否则 0
+  "rate_success_count": {           // 拒识成功数量：按 timing+behavior 分组统计
+    "拒识成功数量": 0,
+    "回复过程中_恢复": 0,
+    "静默_静默": 0,
+    "静默_恢复": 0
+  },
+  "rate_inquiry_count": {           // 拒识询问数量：按 timing+behavior 分组统计
+    "拒识询问数量": 0,
+    "回复过程中_不确定询问": 0,
+    "静默_不确定询问": 0
+  },
+  "rate_failure_count": {           // 拒识失败数量：按 timing+behavior 分组统计
+    "拒识失败数量": 0,
+    "回复过程中_回应": 1,
+    "回复过程中_无关回复": 0,
+    "回复过程中_静默": 0,
+    "静默_回应": 0,
+    "静默_无关回复": 0
+  },
   "tokens_used": 2000,
   "input_token": 1200,
   "output_token": 800,

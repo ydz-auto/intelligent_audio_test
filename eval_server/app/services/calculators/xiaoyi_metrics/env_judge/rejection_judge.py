@@ -79,37 +79,46 @@ BEHAVIOR_FIELD_MAP = {
     '静默': 'behavior_silent',
 }
 
+# rate → (timing, behavior) 组合映射，用于统计各 rate 下的 timing+behavior 数量
+RATE_COMBOS = {
+    '拒识成功': [('回复过程中', '恢复'), ('静默', '静默'), ('静默', '恢复')],
+    '拒识询问': [('回复过程中', '不确定询问'), ('静默', '不确定询问')],
+    '拒识失败': [('回复过程中', '回应'), ('回复过程中', '无关回复'), ('回复过程中', '静默'),
+               ('静默', '回应'), ('静默', '无关回复')],
+}
+RATE_KEY_MAP = {'拒识成功': 'success', '拒识询问': 'inquiry', '拒识失败': 'failure'}
+
 
 # ─────────── rate 计算 ───────────
-def compute_rate(timing: str, behavior: str) -> Any:
+def compute_rate(timing: str, behavior: str) -> str:
     """根据 timing + behavior 计算 rate
 
     规则:
-        timing=回复过程中 + behavior=恢复 → 0
-        timing=静默 + behavior=静默 → 0
-        behavior=不确定询问 → 1（不论 timing）
-        behavior=回应 / 无关回复 → 2（不论 timing）
-        timing=回复过程中 + behavior=静默 → 2
-        timing=静默 + behavior=恢复 → "拒识成功"（字符串）
+        timing=回复过程中 + behavior=恢复 → "拒识成功"
+        timing=静默 + behavior=静默 → "拒识成功"
+        behavior=不确定询问 → "拒识询问"（不论 timing）
+        behavior=回应 / 无关回复 → "拒识失败"（不论 timing）
+        timing=回复过程中 + behavior=静默 → "拒识失败"
+        timing=静默 + behavior=恢复 → "拒识成功"
 
     Returns:
-        int (0/1/2) 或 str ("拒识成功")
+        str: "拒识成功" / "拒识询问" / "拒识失败"
     """
     if behavior == '不确定询问':
-        return 1
+        return '拒识询问'
     if behavior in ('回应', '无关回复'):
-        return 2
+        return '拒识失败'
     if timing == '回复过程中':
         if behavior == '恢复':
-            return 0
+            return '拒识成功'
         if behavior == '静默':
-            return 2
+            return '拒识失败'
     if timing == '静默':
         if behavior == '静默':
-            return 0
+            return '拒识成功'
         if behavior == '恢复':
             return '拒识成功'
-    return 2
+    return '拒识失败'
 
 
 # ─────────── prompt 构建 ───────────
@@ -398,6 +407,9 @@ def evaluate_rejection_judge(
         'rate_success': 0,
         'rate_inquiry': 0,
         'rate_failure': 0,
+        'rate_success_count': {'拒识成功数量': 0, **{f'{t}_{b}': 0 for t, b in RATE_COMBOS['拒识成功']}},
+        'rate_inquiry_count': {'拒识询问数量': 0, **{f'{t}_{b}': 0 for t, b in RATE_COMBOS['拒识询问']}},
+        'rate_failure_count': {'拒识失败数量': 0, **{f'{t}_{b}': 0 for t, b in RATE_COMBOS['拒识失败']}},
         'tokens_used': 0,
         'input_token': 0,
         'output_token': 0,
@@ -436,25 +448,40 @@ def evaluate_rejection_judge(
     result['evaluations'] = evaluations
     result['message'] = 'OK'
 
-    # 按行为类别拆分为 0/1 字段 + 计算 rate
+    # 按行为类别拆分为 0/1 字段 + 计算 rate + 统计 timing+behavior 数量
     if evaluations:
         ev = evaluations[0]
         behavior = ev.get('behavior', '')
 
-        # 行为 0/1 字段
+        # 行为 0/1 字段（取首轮）
         field = BEHAVIOR_FIELD_MAP.get(behavior)
         if field:
             result[field] = 1
 
-        # 计算 rate
+        # 计算 rate（取首轮）
         rate = compute_rate(timing, behavior)
         result['rate'] = rate
-        if rate == 0 or rate == '拒识成功':
+        if rate == '拒识成功':
             result['rate_success'] = 1
-        elif rate == 1:
+        elif rate == '拒识询问':
             result['rate_inquiry'] = 1
-        elif rate == 2:
+        elif rate == '拒识失败':
             result['rate_failure'] = 1
+
+        # 遍历所有 evaluations，统计各 rate 下的 timing+behavior 数量
+        for ev_item in evaluations:
+            ev_behavior = ev_item.get('behavior', '')
+            ev_rate = compute_rate(timing, ev_behavior)
+            count_key = f'{timing}_{ev_behavior}'
+            rate_field = f'rate_{RATE_KEY_MAP.get(ev_rate, "")}_count'
+            if rate_field in result:
+                # 累加总数
+                total_key = f'{ev_rate}数量'
+                if total_key in result[rate_field]:
+                    result[rate_field][total_key] += 1
+                # 累加 timing+behavior 组合数
+                if count_key in result[rate_field]:
+                    result[rate_field][count_key] += 1
 
     logger.info(
         f'[rejection_judge] '

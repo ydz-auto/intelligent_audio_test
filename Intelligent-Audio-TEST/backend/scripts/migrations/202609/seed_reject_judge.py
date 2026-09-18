@@ -185,7 +185,7 @@ DIMENSIONS = [
 # ============================================================
 # 行为子维度定义（5个）
 # statistic_method='pass_rate' + agg_role='pass_eq' + pass_threshold=1
-# eval_server 返回 0/1，pass_rate 统计 1 的占比即行为占比
+# eval_server 返回 int 0/1，pass_rate 统计 1 的占比即行为/评级占比
 # ============================================================
 _BEHAVIOR_FIELDS = [
     ('behavior_respond',    '回应',     '模型中断或偏离正在进行的回复，转而对拒识干扰内容进行了有意义的回应'),
