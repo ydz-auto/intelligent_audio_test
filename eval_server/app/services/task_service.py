@@ -143,7 +143,23 @@ class TaskService:
         calculator = TaskService.CALCULATORS.get(task_type)
         if calculator is None:
             raise ValueError(f"Unknown task type: {task_type}")
-        return calculator.run(task_params)
+
+        result = calculator.run(task_params)
+
+        # 整体评估模式 + calculator 声明支持逐轮 → 附加 per_round[]（逐轮结果回填）
+        # 仅当响应可附加（dict）且当前为整体评估（round_number 不存在）且有多轮数据时生效
+        rounds = task_params.get('rounds')
+        is_overall = task_params.get('round_number') in (None, '')
+        if (isinstance(result, dict)
+                and is_overall and rounds and isinstance(rounds, list) and len(rounds) >= 1
+                and getattr(calculator, 'supports_per_round', False)):
+            try:
+                result['per_round'] = calculator._calculate_per_round(task_params)
+            except Exception as e:
+                # 不阻断，整体结果已返回
+                print(f"[TaskService] {task_type} per_round 计算失败: {e}")
+
+        return result
 
     @staticmethod
     def get_concurrency_info():

@@ -42,6 +42,7 @@ class LlmJudgeCalculator(BaseCalculator):
     BaseCalculator 统一提供。
     """
     task_type = 'llm_judge'
+    supports_per_round = True
 
     # ─── Calculator 实现 ───
 

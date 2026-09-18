@@ -81,6 +81,7 @@ _SUB_DIMENSIONS = {
 class TurnTakingCalculator(TurnTakingBase):
     """话轮接管主维度：遍历各子维度 Calculator，各自取参 + 计算，合并结果"""
     task_type = 'turn_taking'
+    supports_per_round = True
 
     def validate(self, task_params):
         user_wav, ai_wav = self._get_audio_from_round(
@@ -203,6 +204,7 @@ class TorCalculator(TurnTakingBase):
     多轮：取最后一轮双路音频算 1 次
     """
     task_type = 'tor'
+    supports_per_round = True
 
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
@@ -245,6 +247,7 @@ class FalseTakeoverCalculator(TurnTakingBase):
     多轮：取最后一轮 ai_wav + user_wav 算 1 次
     """
     task_type = 'false_takeover'
+    supports_per_round = True
 
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
@@ -322,6 +325,7 @@ class TakeoverLatencyCalculator(TurnTakingBase):
     多轮：取最后一轮双路音频算 1 次
     """
     task_type = 'takeover_latency'
+    supports_per_round = True
 
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
@@ -376,6 +380,7 @@ class HighFreqTurnTakingCalculator(TurnTakingBase):
     多轮整体：所有字段取最后一轮 rounds[-1]（音频含完整多段对话）
     """
     task_type = 'high_freq_turn_taking'
+    supports_per_round = True
 
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
@@ -437,6 +442,7 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
     多轮整体：所有字段取最后一轮 rounds[-1]（ai_wav、scenario_type 等）
     """
     task_type = 'high_freq_llm_judge'
+    supports_per_round = True
 
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
@@ -507,6 +513,7 @@ class ReplyQualityCalculator(TurnTakingBase):
     多轮：取最后一轮双路音频
     """
     task_type = 'reply_quality'
+    supports_per_round = True
 
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)

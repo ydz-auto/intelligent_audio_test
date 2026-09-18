@@ -19,6 +19,10 @@ prepare_params() 默认走通用 _prepare_params，子类可覆写。
   _collect_flat_from_rounds: 从多轮按 key 收集各轮值拼接（wer/der 用）
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class BaseCalculator:
     """策略基类：run() 为模板方法，子类实现 validate() + calculate()。
@@ -35,6 +39,27 @@ class BaseCalculator:
     """
 
     task_type: str = ''
+
+    # 整体评估模式下是否支持逐轮结果回填（per_round[]）
+    # 设为 True 后，TaskService.calculate 会在整体评估模式下自动调用
+    # _calculate_per_round 并附加到结果中
+    supports_per_round = False
+
+    # 顶层轮次相关字段（切片时清空，强制从 rounds[i] 取数，防止末轮数据复用）
+    _TOP_LEVEL_ROUND_FIELDS = (
+        'user_wav', 'ai_wav', 'model_wav', 'case_wav',
+        'user_asr', 'model_asr', 'user_chunks', 'model_chunks',
+        'query', 'answer', 'correct_answer', 'question',
+        'record_file', 'video_path', 'record_path', 'audio_path',
+        'seg_merge_gap_s', 'user_seg_merge_gap_s', 'model_seg_merge_gap_s',
+    )
+
+    # 音频字段白名单：eval_server 侧已知的音频路径/二进制还原后字段
+    _AUDIO_FIELD_NAMES = (
+        'record_file', 'user_wav', 'ai_wav', 'model_wav', 'case_wav',
+        'user_asr', 'model_asr', 'user_chunks', 'model_chunks',
+        'audio_path', 'video_path', 'record_path',
+    )
 
     def run(self, task_params):
         """模板方法：prepare_params -> calculate"""
@@ -60,6 +85,40 @@ class BaseCalculator:
     def calculate(self, params):
         """子类必须实现：接收 prepare_params 的返回值，执行计算。"""
         raise NotImplementedError(f"{self.__class__.__name__} 未实现 calculate()")
+
+    def _calculate_per_round(self, task_params):
+        """整体评估模式下逐轮切片计算，返回 [per_round_result, ...]
+
+        默认实现：对 rounds 逐轮构造单轮 task_params，调用 self.run()。
+        子类可覆写此方法实现原生逐轮路径（如复用已计算的 per_round 结果）。
+
+        音频特殊处理：
+        - rounds[i] 内的音频路径已由 eval_server multipart 占位符还原
+          （create_task_upload 中 __MULTIPART__ 替换为落盘路径）
+        - 切片后 audio 字段从 rounds[i] 重新注入单轮顶层，保证该轮计算取到自己音频
+        - 不回退到 task_params 顶层字段（顶层 = 末轮音频，会致各轮结果相同）
+        """
+        rounds = (task_params or {}).get('rounds') or []
+        per_round = []
+        for i in range(len(rounds)):
+            rd = rounds[i] if isinstance(rounds[i], dict) else {}
+            single = dict(task_params)
+            single['round_number'] = i
+            # 1. 清空顶层轮次相关字段（含所有音频/文本/ASR 字段）
+            for k in self._TOP_LEVEL_ROUND_FIELDS:
+                single.pop(k, None)
+            # 2. 注入该轮数据中的音频字段到单轮顶层
+            for k in self._AUDIO_FIELD_NAMES:
+                if rd.get(k):
+                    single[k] = rd[k]
+            try:
+                result = self.run(single)
+            except Exception as e:
+                logger.warning(f"[_calculate_per_round] round={i} 失败: {e}")
+                result = {}
+            result['round_number'] = rd.get('round', i)
+            per_round.append(result)
+        return per_round
 
     # ─────────── 单轮/多轮公共方法（round_number 语义）───────────
 

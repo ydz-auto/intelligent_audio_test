@@ -36,6 +36,7 @@ class XiaoyiMetricsCalculator(BaseCalculator):
         }
     """
     task_type = 'xiaoyi_metrics'
+    supports_per_round = True
 
     # 编排的子维度注册表（key = 输出结果 key，value = TaskService.CALCULATORS 查找 key）
     _SUB_DIMENSIONS = {

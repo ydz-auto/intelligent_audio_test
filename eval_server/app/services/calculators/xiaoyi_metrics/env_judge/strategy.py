@@ -95,6 +95,7 @@ class _BaseEnvJudgeCalculator(BaseCalculator):
 class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
     """拒识场景裁判：发送模型回复音频+环境时间线给多模态 LLM 判断"""
     task_type = 'rejection_judge'
+    supports_per_round = True
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.env_judge.rejection_judge import evaluate_rejection_judge
@@ -115,6 +116,7 @@ class InterruptionJudgeCalculator(_BaseEnvJudgeCalculator):
     prompt 分块按平台勾选的 sub_tasks 拼接，避免重复请求 LLM。
     """
     task_type = 'interruption_judge'
+    supports_per_round = True
 
     def prepare_params(self, task_params):
         from app.services.calculators.xiaoyi_metrics.interruptibility import (

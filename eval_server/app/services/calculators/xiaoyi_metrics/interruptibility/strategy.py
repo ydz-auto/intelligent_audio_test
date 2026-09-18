@@ -39,6 +39,7 @@ class InterruptionMetricsCalculator(BaseCalculator):
     _get_round_safe / _get_audio_from_round）由 BaseCalculator 统一提供。
     """
     task_type = 'interruption_metrics'
+    supports_per_round = True
 
     # ─── Calculator 实现 ───
 

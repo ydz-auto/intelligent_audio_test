@@ -63,6 +63,7 @@ class NonInteractiveLatencyCalculator(_RejectionBase):
     多轮：逐轮算时延，数值字段取平均
     """
     task_type = 'non_interactive_latency'
+    supports_per_round = True
 
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
@@ -132,6 +133,7 @@ class NoiseLatencyCalculator(_RejectionBase):
     多轮：start_ms/end_ms 取第二轮（index=1），其他字段取最后一轮，算 1 次
     """
     task_type = 'noise_latency'
+    supports_per_round = True
 
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
