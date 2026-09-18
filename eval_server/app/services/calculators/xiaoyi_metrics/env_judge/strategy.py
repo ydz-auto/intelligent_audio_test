@@ -97,6 +97,15 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
     task_type = 'rejection_judge'
     supports_per_round = True
 
+    def prepare_params(self, task_params):
+        params = super().prepare_params(task_params)
+        params['is_single_round'] = bool(task_params.get('is_single_round', False))
+        # timing 优先从顶层取，其次从当前轮取
+        idx = self._get_target_round_index(task_params)
+        rd = self._get_round_safe(task_params, idx)
+        params['timing'] = task_params.get('timing') or rd.get('timing') or ''
+        return params
+
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.env_judge.rejection_judge import evaluate_rejection_judge
 
@@ -106,6 +115,8 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             model=params.get('model', ''),
             max_tokens=params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS),
             temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
+            is_single_round=params.get('is_single_round', False),
+            timing=params.get('timing', ''),
         )
 
 

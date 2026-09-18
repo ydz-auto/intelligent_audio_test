@@ -68,6 +68,7 @@ TaskService.register_calculator('non_interactive_latency', NonInteractiveLatency
 TaskService.register_calculator('noise_latency', NoiseLatencyCalculator())
 # env_judge 域 → 拆分为两个独立子维度
 TaskService.register_calculator('rejection_judge', RejectionJudgeCalculator())
+TaskService.register_calculator('reject_judge', RejectionJudgeCalculator())
 TaskService.register_calculator('interruption_judge', InterruptionJudgeCalculator())
 # llm_judge 域
 TaskService.register_calculator('llm_judge', LlmJudgeCalculator())

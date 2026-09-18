@@ -77,6 +77,7 @@ class Config:
         'noise_latency': 10,
         'env_judge': 10,
         'rejection_judge': 10,
+        'reject_judge': 10,
         'interruption_judge': 10,
         'high_freq_turn_taking': 10,
         'high_freq_llm_judge': 10,
@@ -96,6 +97,7 @@ class Config:
             'llm_judge': os.environ.get('LLM_JUDGE_MODEL_LLM_JUDGE', ''),
             # 拒识场景裁判（音频）
             'rejection_judge': os.environ.get('LLM_JUDGE_MODEL_REJECTION_JUDGE', ''),
+            'reject_judge': os.environ.get('LLM_JUDGE_MODEL_REJECT_JUDGE', ''),
             # 打断场景裁判（音频）
             'interruption_judge': os.environ.get('LLM_JUDGE_MODEL_INTERRUPTION_JUDGE', ''),
             # 高频轮换裁判（录屏）

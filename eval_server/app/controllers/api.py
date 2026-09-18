@@ -214,7 +214,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         # model_asr / ai_wav / pcm_first_ms 可能为空（body_template 未包含或驱动未输出），
         # 不在此拦截，交给 calculate 层返回带说明的空结果
         pass
-    elif task_type in ('rejection_judge', 'interruption_judge'):
+    elif task_type in ('rejection_judge', 'reject_judge', 'interruption_judge'):
         # 模型回复音频(ai_wav)为主输入，录屏(video_path/record_file)为 legacy 回退
         _r0_ej = (task_params.get('rounds') or [{}])[0] if isinstance(task_params.get('rounds'), list) and task_params.get('rounds') else {}
         has_audio = (
