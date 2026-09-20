@@ -212,6 +212,7 @@ tor / false_takeover / takeover_latency 共用**双路 ASR**方案：
   - 用户段锚定：优先 `played_audios` FFT 对齐精修 → 回退驱动轮窗口（start_ms/end_ms）→ 再回退重叠启发式（message 标降级）
 - 评分/遵从：`reply_content_score`、`resume_content_score`（0-5，LLM）；`stop_compliance_rate`（仅停止指令类用例计算，其余 None）
 - LLM 降级：api_key 缺失/调用失败 → 数量与评分 None、message 标"行为判定降级"，时延走本地代理
+- `per_round[]` 逐轮投影（整体评估返回逐轮结果方案）：`build_per_round` 把 round_details 零成本投影为每轮 `{'round_number', 'interruption': {轮级字段}}`（成功/失败/询问 0/1、响应/回复时延、评分、停止遵从、恢复首轮回覆时延）；无时序/降级的轮为跳过项。run() 把投影提升到响应 result 顶层（与 `interruption` 包同级），TaskService 检测到原生 per_round 即跳过默认逐轮切片重跑（省 N 次 LLM）。平台据此覆盖逐轮 TestResultDimension，字段名与整体 spec 同名，按维度 field_path 直接提取
 - 旧字段（`interruption_success_rate` / `avg_stop_latency_s` 等，`_s` 后缀实存毫秒）保留为诊断输出
 
 ### 6.3 non_interactive_latency —— 非交互意图时延

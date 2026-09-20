@@ -499,13 +499,24 @@ class EvaluationResultProcessor(RoundAggregator):
                     self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, test_case_id=test_case_id, api_raw_response=resp_data, api_request_body=api_request_body, session=local_db_session)
 
                 # 整体评估的 per_round 结果覆盖逐轮 TRD 记录（按 round_number 字段定位，不依赖数组下标）
-                per_round = resp_data.get('per_round', []) if isinstance(resp_data, dict) else []
-                if per_round:
-                    self._overwrite_round_results(
-                        result_id=result_id, per_round=per_round,
-                        group_items=group_items, session=local_db_session,
-                        task_id=task_id, test_case_id=test_case_id,
-                        api_request_body=api_request_body,
+                # 响应多带 code/data/result 包装 → 用 _extract_per_round 提取；失败不阻断整体结果
+                try:
+                    per_round = self._extract_per_round(resp_data)
+                    if per_round and result_id:
+                        self._overwrite_round_results(
+                            result_id=result_id, per_round=per_round,
+                            group_items=group_items, session=local_db_session,
+                            task_id=task_id, test_case_id=test_case_id,
+                            api_request_body=api_request_body,
+                        )
+                except Exception as e:
+                    self._log(
+                        level='WARNING',
+                        category='execution',
+                        content=f"per_round 逐轮覆盖失败(不影响整体结果): {e}",
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
                     )
 
                 # 提取 aux 辅助参数值，写入 result_data.evaluation_data
@@ -569,6 +580,28 @@ class EvaluationResultProcessor(RoundAggregator):
             finally:
                 local_db_session.close()
 
+    def _extract_per_round(self, resp_data):
+        """从评估响应提取 per_round[]。
+
+        剥掉 code/data 与 result 包装后，先找顶层 per_round，再找一层维度包内部
+        （兼容旧形态 {'interruption': {..., 'per_round': [...]}}）。
+        """
+        if not isinstance(resp_data, dict):
+            return []
+        data = resp_data
+        if 'code' in data and 'data' in data:
+            data = data.get('data') or {}
+        if isinstance(data, dict) and 'result' in data:
+            data = data.get('result') or {}
+        if not isinstance(data, dict):
+            return []
+        if isinstance(data.get('per_round'), list):
+            return data['per_round']
+        for v in data.values():
+            if isinstance(v, dict) and isinstance(v.get('per_round'), list):
+                return v['per_round']
+        return []
+
     def _overwrite_round_results(self, result_id, per_round, group_items, session,
                                  task_id=None, test_case_id=None, api_request_body=None):
         """整体评估返回的 per_round 结果覆盖/创建逐轮 TRD 记录
@@ -581,9 +614,12 @@ class EvaluationResultProcessor(RoundAggregator):
             per_round: 整体评估响应中的 per_round[] 列表
             group_items: [(dim_data, dimension_result_id), ...] 整体评估的维度组
             session: 复用的数据库会话
+
+        Returns:
+            int: 实际写入/覆盖的轮级记录数
         """
         if not result_id or not per_round:
-            return
+            return 0
         upserted = 0
         for per_round_item in per_round:
             if not isinstance(per_round_item, dict):
@@ -591,10 +627,14 @@ class EvaluationResultProcessor(RoundAggregator):
             round_idx = per_round_item.get('round_number')  # 按字段定位，不依赖数组下标
             if round_idx is None:
                 continue
-            for dim_data, _ in group_items:
+            for dim_data, dimension_result_id in group_items:
                 raw_value, score = self.parse_dimension_result(per_round_item, dim_data)
                 if raw_value is None:
                     continue  # 该轮该维度无有效值（如缺少音频），不覆盖
+                try:
+                    dim_val = float(raw_value)
+                except (ValueError, TypeError):
+                    continue  # dimension_value 是 Float 列，非数值不落逐轮
 
                 dim_id = dim_data['id']
                 dim_name = dim_data['name']
@@ -604,13 +644,17 @@ class EvaluationResultProcessor(RoundAggregator):
                     TestResultDimension.round_number == round_idx,
                 ).first()
                 if not trd:
+                    # 新行 algorithm_type 复制整体 TRD 行（保持报告分组口径一致）
+                    overall = session.query(TestResultDimension).get(dimension_result_id) \
+                        if dimension_result_id else None
                     trd = TestResultDimension(
                         test_result_id=result_id,
                         dimension_id=dim_id,
+                        algorithm_type=overall.algorithm_type if overall else None,
                         round_number=round_idx,
                     )
                     session.add(trd)
-                trd.dimension_value = raw_value
+                trd.dimension_value = dim_val
                 trd.score = score
                 trd.status = 'completed'
                 trd.evaluation_status = 'completed'
@@ -630,6 +674,7 @@ class EvaluationResultProcessor(RoundAggregator):
                 )
         if upserted:
             session.flush()
+        return upserted
 
     def check_all_dimensions_completed(self, result_id, task_id=None):
         """

@@ -292,6 +292,32 @@ curl -X POST http://localhost:5001/api/create_task_upload \
 }
 ```
 
+**interruption_metrics 响应示例（v2，节选；结果包装在 `interruption` 键下）：**
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "task_type": "interruption_metrics",
+    "result": {
+      "interruption": {
+        "case_type": "topic_resume_single",
+        "success_count": 1, "failure_count": 0, "inquiry_count": 0,
+        "response_latency_avg_ms": 320.0, "reply_latency_avg_ms": 850.0,
+        "round_details": [{"round": 1, "behavior": "回复", "response_latency_ms": 320.0, "...": "..."}]
+      },
+      "per_round": [
+        {"round_number": 0, "message": "跳过: 非计时轮(无打断时序)"},
+        {"round_number": 1, "interruption": {"success_count": 1, "failure_count": 0, "inquiry_count": 0,
+         "response_latency_avg_ms": 320.0, "reply_latency_avg_ms": 850.0, "reply_content_score": 4.5}}
+      ]
+    }
+  }
+}
+```
+
+`per_round[]` 位于 result 顶层（与维度包 `interruption` 同级，整体评估返回逐轮结果方案 §4.2），为逐轮投影（`build_per_round`，零额外 LLM 调用；TaskService 检测到原生产出即跳过默认逐轮切片重跑）：每轮元素带 `round_number`，字段名与整体 spec 同名，平台按维度 field_path（`interruption.*`）提取后覆盖逐轮 TestResultDimension；无时序/LLM 降级的轮为 `{round_number, message}` 跳过项，平台不覆盖。用例级字段（case_type/行为计数/聚合值）不投影。
+
 ---
 
 ## 3. 分布式调度

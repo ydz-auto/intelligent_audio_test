@@ -120,7 +120,12 @@ class InterruptionMetricsCalculator(BaseCalculator):
         """独立调用入口：结果包装为 {'interruption': result}"""
         params = self.prepare_params(task_params)
         result = self.calculate(params)
-        return {'interruption': result}
+        wrapped = {'interruption': result}
+        # per_round 提升到响应顶层（整体评估返回逐轮结果方案 §4.2：与维度包同级）；
+        # TaskService 见顶层已有 per_round 即跳过默认逐轮切片重跑（省 N 次 LLM）
+        if isinstance(result, dict) and isinstance(result.get('per_round'), list):
+            wrapped['per_round'] = result.pop('per_round')
+        return wrapped
 
     @staticmethod
     def _average(results, key):
@@ -320,7 +325,7 @@ class InterruptionMetricsCalculator(BaseCalculator):
             # ── v2 spec：用例类型推导 + 逐轮时序聚合 + 恢复轮锚定 → 派生层出全部 spec 字段 ──
             from app.services.calculators.xiaoyi_metrics.interruptibility import _derive_interruption_rounds
             from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
-                build_round_block, derive_case_type, derive_round_metrics,
+                build_per_round, build_round_block, derive_case_type, derive_round_metrics,
             )
 
             _, dangling_rounds = _derive_interruption_rounds(source)
@@ -355,6 +360,9 @@ class InterruptionMetricsCalculator(BaseCalculator):
                 result, blocks,
                 self._interaction_text(rounds, actual_rounds, round_results),
                 source, round_timing, resume_timing, case_info)
+            # per_round[] 逐轮投影（整体评估返回逐轮结果方案 §4.2）：
+            # 复用已算好的 round_details，零额外 LLM/ASR；平台按 field_path 覆盖逐轮 TRD
+            result['per_round'] = build_per_round(len(rounds), result.get('round_details') or [])
             return result
 
         return self.calculate_single(params)

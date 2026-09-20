@@ -402,3 +402,47 @@ def derive_round_metrics(round_timing: Optional[List[Dict[str, Any]]],
         'stop_compliance_rate': stop_compliance_rate,
         'round_details': details,
     }
+
+
+# ─────────── per_round 逐轮投影（整体评估返回逐轮结果方案 §4.2） ───────────
+
+def build_per_round(n_rounds: int, round_details: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """round_details → per_round[]（纯函数，零额外 LLM/ASR 调用）。
+
+    每轮元素 {'round_number': i, 'interruption': {轮级字段}}，字段名与整体 spec 同名，
+    平台按维度 field_path（interruption.*）直接提取并覆盖逐轮 TRD。
+    只投影轮级有意义字段：成功/失败/询问 0/1、两个时延、评分、停止遵从、恢复首轮回覆时延；
+    用例级字段（case_type/行为计数/聚合值）不投影 → 平台解析为 None 自动跳过。
+    无时序数据的轮（发起交互轮/悬挂轮）返回 {'round_number', 'message'} 跳过项。
+    """
+    by_round = {d.get('round'): d for d in (round_details or []) if isinstance(d, dict)}
+    per_round = []
+    for i in range(n_rounds):
+        d = by_round.get(i)
+        if not d:
+            per_round.append({'round_number': i, 'message': '跳过: 非计时轮(无打断时序)'})
+            continue
+        item: Dict[str, Any] = {}
+        behavior = d.get('behavior')
+        if behavior in BEHAVIOR_LABELS_V2:
+            item['success_count'] = int(behavior == BEHAVIOR_REPLY)
+            item['failure_count'] = int(behavior in _FAIL_BEHAVIORS)
+            item['inquiry_count'] = int(behavior == BEHAVIOR_ASK)
+        if d.get('role') == 'resume':
+            # 恢复轮：回复时延即「恢复首轮内容时延」维度的轮级值
+            if d.get('reply_latency_ms') is not None:
+                item['resume_first_reply_latency_ms'] = d['reply_latency_ms']
+        else:
+            # 与 list 口径一致：失败(恢复/无关/静默)与 unknown 轮不投时延
+            timed_ok = behavior in BEHAVIOR_LABELS_V2 and behavior not in _FAIL_BEHAVIORS
+            if timed_ok and d.get('response_latency_ms') is not None:
+                item['response_latency_avg_ms'] = d['response_latency_ms']
+            if timed_ok and d.get('reply_latency_ms') is not None:
+                item['reply_latency_avg_ms'] = d['reply_latency_ms']
+        if d.get('score_overall') is not None:
+            item['reply_content_score'] = d['score_overall']
+        if d.get('stop_complied') is not None:
+            item['stop_compliance_rate'] = float(d['stop_complied'])
+        per_round.append({'round_number': i, 'interruption': item} if item
+                         else {'round_number': i, 'message': '跳过: 该轮无可投影指标'})
+    return per_round

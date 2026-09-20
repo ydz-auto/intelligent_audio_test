@@ -212,3 +212,49 @@ def test_resume_latency_fallback_and_explicit():
     # 恢复轮不入数量分母/list
     assert m2['round_response_latencies'] == [-1]
     assert len(m2['round_details']) == 2 and m2['round_details'][-1]['role'] == 'resume'
+
+
+# ─────────── per_round 逐轮投影（整体评估返回逐轮结果方案 §4.2） ───────────
+
+def test_build_per_round():
+    from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+        build_per_round,
+    )
+
+    details = [
+        # 成功轮：0/1 计数 + 时延 + 评分
+        {'round': 1, 'role': 'interruption', 'behavior': '回复',
+         'response_latency_ms': 300.0, 'reply_latency_ms': 800.0, 'score_overall': 4.5},
+        # 失败轮：计数投，时延不投（与 list -1 口径一致）
+        {'round': 2, 'role': 'interruption', 'behavior': '恢复',
+         'response_latency_ms': 100.0, 'reply_latency_ms': 200.0, 'score_overall': 2.0},
+        # 停止轮：遵从率投 0/1
+        {'round': 3, 'role': 'interruption', 'behavior': '回复', 'stop_intent': True,
+         'response_latency_ms': 150.0, 'reply_latency_ms': 500.0,
+         'score_overall': 4.0, 'stop_complied': True},
+        # 恢复轮：只投恢复首轮内容时延
+        {'round': 4, 'role': 'resume', 'behavior': None,
+         'response_latency_ms': None, 'reply_latency_ms': 1200.0, 'score_overall': None},
+        # unknown 轮（LLM 降级/解析失败）：无可投影 → 跳过项
+        {'round': 5, 'role': 'interruption', 'behavior': None,
+         'response_latency_ms': 90.0, 'reply_latency_ms': 90.0, 'score_overall': None},
+    ]
+    pr = build_per_round(7, details)
+    assert [p['round_number'] for p in pr] == list(range(7))
+    # 轮0 无时序 → 跳过项
+    assert 'interruption' not in pr[0] and 'message' in pr[0]
+    # 轮1 成功
+    assert pr[1]['interruption'] == {'success_count': 1, 'failure_count': 0, 'inquiry_count': 0,
+                                     'response_latency_avg_ms': 300.0, 'reply_latency_avg_ms': 800.0,
+                                     'reply_content_score': 4.5}
+    # 轮2 失败：无时延
+    assert pr[2]['interruption'] == {'success_count': 0, 'failure_count': 1, 'inquiry_count': 0,
+                                     'reply_content_score': 2.0}
+    # 轮3 停止遵从
+    assert pr[3]['interruption']['stop_compliance_rate'] == 1.0
+    # 轮4 恢复轮：只有 resume_first_reply_latency_ms
+    assert pr[4]['interruption'] == {'resume_first_reply_latency_ms': 1200.0}
+    # 轮5 unknown：跳过
+    assert 'interruption' not in pr[5]
+    # 轮6 超出 details：跳过
+    assert 'message' in pr[6]

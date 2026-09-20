@@ -152,7 +152,8 @@ class TaskService:
         is_overall = task_params.get('round_number') in (None, '')
         if (isinstance(result, dict)
                 and is_overall and rounds and isinstance(rounds, list) and len(rounds) >= 1
-                and getattr(calculator, 'supports_per_round', False)):
+                and getattr(calculator, 'supports_per_round', False)
+                and 'per_round' not in result):  # 计算器已原生产出 per_round（如打断 v2 零成本投影）则不再切片重跑
             try:
                 result['per_round'] = calculator._calculate_per_round(task_params)
             except Exception as e:
