@@ -16,6 +16,9 @@
 2. Step 1 注册 11 个主维度（task_type_code 全部 = interruption_metrics）：
    成功/失败/询问数量、回复/恢复/无关/静默/询问行为数量、
    回复内容评分、停止指令遵循、恢复首轮内容评分
+   数量类主维度（成功/失败/询问/5 个行为数量）statistic_method='ratio'、
+   score_unit='%'、agg_denominator='round'（按轮次）：报告按
+   Σ数量 / Σ该维度有值轮次数 × 100 聚合为占比比例。
 3. Step 2 注册「打断时延」容器主维度（仿 turn_taking：只配 input+映射，无自身 output）
    + 3 个子维度：响应时延 / 回复时延 / 恢复首轮内容时延
 4. 全族 api_settings 写入 group_key='interruption_v2' + 同一份 body_template：
@@ -182,18 +185,20 @@ def _out(code, name, path, help_text, ui_order, role='main', agg='value',
 
 
 def _count_dim(name, code, behavior_help, ui_order, extra_out=()):
-    """数量类主维度：average/次，main=对应 count 字段，extra_out 追加 aux。"""
+    """数量类主维度：ratio/%（Σ数量/Σ分母，分母口径=按轮次），main=对应 count 字段，
+    extra_out 追加 aux。分母来自该维度有值的轮次数（interruption.round_details 每轮判定）。"""
     return {
         'task_type_code': TASK_TYPE,
         'name': name,
         'keywords': f'interruption,{code},{name},barge-in',
         'description': f'打断指标 v2 主维度：{name}。{behavior_help}'
                        '由族内同一次 LLM 逐轮五分类判定派生（回复=成功；恢复/无关/静默=失败；询问=询问）；'
-                       'LLM 降级时为空（不当作 0）。',
+                       'LLM 降级时为空（不当作 0）。'
+                       f'报告按 ratio 聚合（按轮次）：Σ{name} / Σ有值轮次数 × 100，产出占比(%)。',
         'type': 'auto',
         'result_type': 0, 'result_min': 0.0, 'result_max': None,
         'decimal_places': 0, 'weight': 1, 'estimated_exec_time': 120,
-        'score_unit': '次', 'statistic_method': 'average',
+        'score_unit': '%', 'statistic_method': 'ratio', 'agg_denominator': 'round',
         'params': _COMMON_INPUT_PARAMS + [
             _out(code, name, f'interruption.{code}', behavior_help, ui_order),
             *extra_out,
@@ -279,7 +284,7 @@ MAIN_DIMENSIONS = [
         'type': 'auto',
         'result_type': 0, 'result_min': 0.0, 'result_max': 1.0,
         'decimal_places': 2, 'weight': 1, 'estimated_exec_time': 120,
-        'score_unit': '%', 'statistic_method': 'pass_rate',
+        'score_unit': '%', 'statistic_method': 'pass_rate', 'agg_denominator': 'case',
         'params': _COMMON_INPUT_PARAMS + [
             _out('stop_compliance_rate', '停止指令遵循', 'interruption.stop_compliance_rate',
                  '遵从停止的轮占比(0-1)；模型停止原内容输出即遵从，只回复确认语同样算遵从。'
@@ -432,6 +437,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
         'et': dim_def['estimated_exec_time'],
         'su': dim_def['score_unit'],
         'sm': dim_def['statistic_method'],
+        'ad': dim_def.get('agg_denominator', 'case'),
         'apis': API_SETTINGS,
         'rule': RULE,
         'dtype': dimension_type,
@@ -448,7 +454,8 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  type = :type, result_type = :rt, result_min = :rmin, "
                 "  result_max = :rmax, decimal_places = :dp, weight = :w, "
                 "  estimated_exec_time = :et, score_unit = :su, "
-                "  statistic_method = :sm, api_settings = :apis, "
+                "  statistic_method = :sm, agg_denominator = :ad, "
+                "  api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, api_url = :api_url, "
                 "  deleted = FALSE, updated_at = NOW() "
@@ -462,7 +469,8 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  type = :type, result_type = :rt, result_min = :rmin, "
                 "  result_max = :rmax, decimal_places = :dp, weight = :w, "
                 "  estimated_exec_time = :et, score_unit = :su, "
-                "  statistic_method = :sm, api_settings = :apis, "
+                "  statistic_method = :sm, agg_denominator = :ad, "
+                "  api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, "
                 "  deleted = FALSE, updated_at = NOW() "
@@ -475,13 +483,13 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
                 "   type, result_type, result_min, result_max, decimal_places, "
                 "   weight, estimated_exec_time, rule, api_settings, status, "
-                "   api_status, score_unit, statistic_method, api_url, "
+                "   api_status, score_unit, statistic_method, agg_denominator, api_url, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
                 "  (:name, :kw, :dtype, :pid, :tc, :desc, "
                 "   :type, :rt, :rmin, :rmax, :dp, "
                 "   :w, :et, :rule, :apis, TRUE, "
-                "   'online', :su, :sm, :api_url, "
+                "   'online', :su, :sm, :ad, :api_url, "
                 "   FALSE, NOW(), NOW()) "
                 "RETURNING id"
             ), {**common_fields, 'tc': task_code, 'api_url': API_URL})
@@ -491,13 +499,13 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
                 "   type, result_type, result_min, result_max, decimal_places, "
                 "   weight, estimated_exec_time, rule, api_settings, status, "
-                "   api_status, score_unit, statistic_method, "
+                "   api_status, score_unit, statistic_method, agg_denominator, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
                 "  (:name, :kw, :dtype, :pid, :tc, :desc, "
                 "   :type, :rt, :rmin, :rmax, :dp, "
                 "   :w, :et, :rule, :apis, TRUE, "
-                "   'online', :su, :sm, "
+                "   'online', :su, :sm, :ad, "
                 "   FALSE, NOW(), NOW()) "
                 "RETURNING id"
             ), {**common_fields, 'tc': task_code})

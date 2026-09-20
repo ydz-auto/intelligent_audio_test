@@ -105,6 +105,7 @@
                         <th class="dimension-weight-col sortable" style="width: 150px;">权重</th>
                         <th class="dimension-api-status-col sortable" style="width: 120px;">API状态</th>
                         <th class="dimension-status-col sortable" style="width: 100px;">状态</th>
+                        <th class="dimension-sort-col" style="width: 90px;">排序</th>
                         <th class="dimension-actions-col" style="width: auto;">操作</th>
                       </tr>
                     </thead>
@@ -146,6 +147,16 @@
                           </span>
                         </td>
                         <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
+                        <td class="dimension-sort-col">
+                          <div class="sort-control" @click.stop>
+                            <button class="sort-btn" :disabled="!canMoveUp(dimension)" @click="moveDimension(dimension.id, -1)" title="上移">
+                              <i class="fas fa-chevron-up"></i>
+                            </button>
+                            <button class="sort-btn" :disabled="!canMoveDown(dimension)" @click="moveDimension(dimension.id, 1)" title="下移">
+                              <i class="fas fa-chevron-down"></i>
+                            </button>
+                          </div>
+                        </td>
                         <td class="dimension-actions-col">
                           <div class="action-buttons">
                             <button class="btn btn-text btn-primary" @click.stop="openEditModal(dimension.id)">
@@ -229,6 +240,9 @@ const {
   toggleImportExportMenu,
   testAPIHealth,
   updateWeight,
+  moveDimension,
+  canMoveUp,
+  canMoveDown,
   searchDimensions,
   filterDimensions,
   resetFilters,
@@ -276,6 +290,39 @@ onBeforeUnmount(() => {
 .evaluation-view {
   width: 100%;
   height: 100%;
+}
+
+/* 排序按钮样式 */
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.sort-btn:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-color-light, rgba(22, 119, 255, 0.06));
+}
+
+.sort-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 /* 搜索框样式优化 */

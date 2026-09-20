@@ -30,6 +30,7 @@ try:
     from .harmony_chatgpt import ChatGptVoiceChat
     from .harmony_doubaochat import DoubaoChat
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
+
     _HYPium_AVAILABLE = True
 except ImportError:
     HarmonyDriver = None
@@ -121,7 +122,8 @@ class DeviceDriverFactory:
                 if hasattr(instance, 'set_mock_mode'):
                     instance.set_mock_mode(self._mock_mode)
                 continue
-            self.register_specialized_driver(instance, keyword, platform.value, getattr(driver_cls, 'display_name', driver_cls.__name__))
+            self.register_specialized_driver(instance, keyword, platform.value,
+                                             getattr(driver_cls, 'display_name', driver_cls.__name__))
 
     def register_specialized_driver(self, driver, keywords, system=None, name=None):
         """注册专用驱动"""
@@ -171,7 +173,7 @@ class DeviceDriverFactory:
             if entry_system:
                 # 支持 'harmony' ↔ 'harmonyos' 别名匹配
                 if entry_system != system_lower and not (
-                    {'harmony', 'harmonyos'} & {entry_system, system_lower}
+                        {'harmony', 'harmonyos'} & {entry_system, system_lower}
                 ):
                     continue
 
@@ -181,57 +183,11 @@ class DeviceDriverFactory:
 
         return None
 
-    def get_driver_by_system(self, system):
-        """根据系统获取基础驱动"""
-        if not system:
-            return None
-        system_lower = system.lower()
-        for key, driver in self._base_drivers.items():
-            key_lower = key.lower()
-            if key_lower == system_lower or system_lower in key_lower or key_lower in system_lower:
-                return driver
-        return None
-
-    def get_driver(self, system, keywords=None, device_sn=None):
-        """获取驱动实例
-        
-        Args:
-            system: 系统类型
-            keywords: 关键字列表
-            device_sn: 设备序列号
-            
-        Returns:
-            BaseDeviceDriver: 驱动实例
-        """
-        # 首先尝试获取专用驱动
-        if keywords:
-            system_lower = system.lower() if system else ''
-            if isinstance(keywords, str):
-                keywords_lower = [k.strip().lower() for k in keywords.split(',') if k.strip()]
-            else:
-                keywords_lower = [k.lower() for k in keywords]
-            
-            for entry in self._specialized_drivers:
-                if entry['system']:
-                    if entry['system'] != system_lower and system_lower not in entry['system']:
-                        continue
-                
-                # 所有关键字都必须匹配
-                if all(kw in entry['keywords'] for kw in keywords_lower):
-                    driver = entry['driver']
-                    if device_sn and hasattr(driver, 'set_task_id'):
-                        # 这里可以设置task_id，需要根据实际情况调整
-                        pass
-                    return driver
-        
-        # 如果没有找到专用驱动，返回基础驱动
-        return self.get_driver_by_system(system)
-
     def get_driver_typed(
-        self,
-        app_type: AppType,
-        platform: DevicePlatform = None,
-        version: AppVersion = AppVersion.V1,
+            self,
+            app_type: AppType,
+            platform: DevicePlatform = None,
+            version: AppVersion = AppVersion.V1,
     ):
         """按新版三元元数据获取已实例化的驱动。"""
         if platform is None:
@@ -256,30 +212,46 @@ class DeviceDriverFactory:
             'ios': DevicePlatform.IOS,
         }.get(system_key)
         if platform is None:
+            log_and_emit(level='WARNING', module='DeviceDriverFactory',
+                         content=f"get_driver_for_device: 未能识别平台 system={system}")
             return None
 
         values = [keywords] if isinstance(keywords, str) else (keywords or [])
+        log_and_emit(level='DEBUG', module='DeviceDriverFactory',
+                     content=f"get_driver_for_device: system={system}, keywords={keywords}, values={values}")
+
         for value in values:
             token = str(value).strip().lower()
             if not token:
                 continue
             driver = self._drivers_by_keyword.get(token)
             if driver is not None:
+                log_and_emit(level='DEBUG', module='DeviceDriverFactory',
+                             content=f"get_driver_for_device: 精确匹配 keywords='{token}' → driver={driver.__class__.__name__}")
                 if driver.platform != platform:
                     raise ValueError(f"设备平台与驱动不匹配: system={system}, keywords={keywords}")
                 return driver
 
         if isinstance(keywords, str) and keywords.strip():
+            log_and_emit(level='WARNING', module='DeviceDriverFactory',
+                         content=f"get_driver_for_device: 未注册驱动 keywords='{keywords}', 尝试兼容关键字匹配")
             raise ValueError(f"未注册驱动 keywords: {keywords}")
 
         tokens = {str(value).strip().lower() for value in values if str(value).strip()}
         app_type = AppType.ANDROID_BASE if platform == DevicePlatform.ANDROID else AppType.HARMONY_BASE
+        matched_legacy = None
         for candidate, aliases in _LEGACY_KEYWORDS.items():
             if candidate in (AppType.ANDROID_BASE, AppType.HARMONY_BASE):
                 continue
             if tokens.intersection({alias.lower() for alias in aliases}):
                 app_type = candidate
+                matched_legacy = candidate
                 break
+
+        log_and_emit(level='DEBUG', module='DeviceDriverFactory',
+                     content=f"get_driver_for_device: 回落 path → app_type={app_type.value}, "
+                             f"matched_legacy={matched_legacy.value if matched_legacy else None}, "
+                             f"platform={platform.value}")
         return self.get_driver_typed(app_type, platform)
 
     def list_registered_drivers(self):
@@ -303,6 +275,7 @@ class DeviceDriverFactory:
         for entry in self._specialized_drivers:
             drivers.append(entry['driver'])
         return drivers
+
     def register_task_devices(self, task_id, device_info_list):
         """记录任务使用的设备，用于停止时清理
         

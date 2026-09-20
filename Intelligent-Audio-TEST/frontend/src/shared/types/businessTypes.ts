@@ -236,6 +236,7 @@ export interface Dimension {
     resultMax?: number;
     decimalPlaces?: number;
     weight?: number;
+    sortOrder?: number;
     estimatedExecTime?: number;
     rule?: any;
     requiredInputs?: string;

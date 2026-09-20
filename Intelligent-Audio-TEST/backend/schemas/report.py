@@ -301,6 +301,7 @@ class ReportSearchCasesRequest(APIModel):
     metrics: Optional[List[str]] = Field(None, alias='metrics', validation_alias=AliasChoices('metrics'))
     sort_by: Optional[str] = Field('name', alias='sortBy', validation_alias=AliasChoices('sort_by', 'sortBy'))
     sort_metric: Optional[str] = Field(None, alias='sortMetric', validation_alias=AliasChoices('sort_metric', 'sortMetric'))
+    sort_resource: Optional[str] = Field(None, alias='sortResource', validation_alias=AliasChoices('sort_resource', 'sortResource'))
     sort_order: Optional[str] = Field('asc', alias='sortOrder', validation_alias=AliasChoices('sort_order', 'sortOrder'))
     page: int = Field(1, alias='page', validation_alias=AliasChoices('page'))
     per_page: int = Field(20, alias='perPage', validation_alias=AliasChoices('per_page', 'perPage'))

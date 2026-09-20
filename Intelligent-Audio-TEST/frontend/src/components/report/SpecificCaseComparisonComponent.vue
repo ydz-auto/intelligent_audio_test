@@ -176,6 +176,10 @@
                     <option value="createdAt">按创建时间</option>
                     <option value="评估维度">按评估维度</option>
                   </select>
+                  <select class="filter-select" v-model="selectedSortResource" v-if="sortDimension === '评估维度'">
+                    <option value="">全部资源(平均)</option>
+                    <option v-for="res in sortResourceOptions" :key="res.key" :value="res.key">{{ res.label }}</option>
+                  </select>
                   <select class="filter-select" v-model="selectedSortMetric" v-if="sortDimension === '评估维度'">
                     <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
                   </select>
@@ -524,6 +528,7 @@ const selectedTags = ref([])
 const selectedMetrics = ref([])
 const sortDimension = ref('name')
 const selectedSortMetric = ref('')
+const selectedSortResource = ref('')
 const sortOrder = ref('asc')
 const expandedCases = ref([])
 const pinnedCases = ref([])
@@ -898,6 +903,7 @@ const loadCasesPage = async (reportId) => {
     if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
       params.sort_by = 'metric'
       params.sort_metric = selectedSortMetric.value
+      params.sort_resource = selectedSortResource.value || undefined
       params.sort_order = sortOrder.value
     } else {
       params.sort_by = sortDimension.value
@@ -928,6 +934,7 @@ const loadAllCasesForExport = async (reportId) => {
     if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
       params.sort_by = 'metric'
       params.sort_metric = selectedSortMetric.value
+      params.sort_resource = selectedSortResource.value || undefined
       params.sort_order = sortOrder.value
     } else {
       params.sort_by = sortDimension.value
@@ -1128,6 +1135,20 @@ const allDevices = computed(() => {
   return devices.value || []
 })
 
+// 排序时可选资源对象列表：优先用 resourceHeaders（带展示名），否则回退到 allDevices 键
+const sortResourceOptions = computed(() => {
+  const headers = resourceHeaders.value || []
+  const opts = []
+  headers.forEach(h => {
+    if (!h) return
+    const key = h.key || h.resource
+    if (!key) return
+    opts.push({ key: String(key), label: String(h.label || h.name || key) })
+  })
+  if (opts.length > 0) return opts
+  return (allDevices.value || []).map(k => ({ key: String(k), label: getResourceLabel(k) || String(k) }))
+})
+
 // Helper function to extract device/API name from resource key
 const getResourceName = (resourceKey) => {
   // 如果资源键包含下划线，提取下划线后面的部分作为显示名称
@@ -1195,7 +1216,7 @@ const debouncedReload = debounce(() => {
   }
 }, 300)
 
-watch([searchKeyword, selectedCategories, selectedTags, selectedMetrics, sortDimension, selectedSortMetric, sortOrder], () => {
+watch([searchKeyword, selectedCategories, selectedTags, selectedMetrics, sortDimension, selectedSortMetric, selectedSortResource, sortOrder], () => {
   debouncedReload()
 }, { deep: true })
 
@@ -1606,6 +1627,7 @@ const resetFilters = () => {
   selectedMetrics.value = []
   sortDimension.value = 'name'
   selectedSortMetric.value = ''
+  selectedSortResource.value = ''
   sortOrder.value = 'asc'
   tagSearchQuery.value = ''
   tagPage.value = 1

@@ -41,7 +41,13 @@ def restart_uitest_daemon(device_sn):
 def is_rpc_not_running_error(exc):
     """判断异常是否为 RPC 服务未运行（RpcNotRunningError）"""
     msg = str(exc).lower()
-    return 'rpc' in msg and ('not running' in msg or 'not found' in msg or 'listening port' in msg)
+    return 'rpc' in msg and (
+        'not running' in msg
+        or 'not found' in msg
+        or 'listening port' in msg
+        or 'reconnect' in msg
+        or 'rpc service' in msg
+    )
 
 
 def with_rpc_retry(max_retries=1):

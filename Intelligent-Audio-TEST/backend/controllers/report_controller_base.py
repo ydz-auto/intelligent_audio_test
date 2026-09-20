@@ -217,6 +217,14 @@ class ReportControllerBase:
     # 公共函数：提取维度得分
     @staticmethod
     def extract_dimension_values(result_id, all_dimensions, dim_results_map=None, fill_missing=True):
+        """
+        提取测试结果的维度得分。
+
+        取值优先级（与 report_utils.extract_dimension_values 保持一致）：
+        1. 有 overall（round_number=None）记录 → 取 overall 的值
+        2. 无 overall → 取各轮（round_number != None）记录的算术平均
+        3. 只有一轮 → 取该轮的值
+        """
         from backend.models.models import TestResultDimension
         dim_values = {}
         
@@ -224,36 +232,57 @@ class ReportControllerBase:
             log_not_emit('ERROR', 'report_controller_base', f'all_dimensions is None in extract_dimension_values for result {result_id}', category='report')
             return dim_values
 
+        # 按维度分组：整体值 / 各轮值
+        dim_overall = {}   # dim_name -> value
+        dim_rounds = {}    # dim_name -> [value, ...]
+
         if dim_results_map is not None:
             # 使用预先查询好的映射表，避免循环内查询数据库
             result_dims = dim_results_map.get(result_id, [])
             
             # 支持字典格式或对象格式
             for d in result_dims:
+                dim_name = None
+                dim_val = None
+                dim_round = None
                 if isinstance(d, dict):
                     dim_name = d.get('name')
                     dim_val = d.get('value')
+                    dim_round = d.get('round_number')
                 elif hasattr(d, 'dimension_name'):
                     dim_name = d.dimension_name
                     dim_val = d.dimension_value
-                else:
-                    dim_name = None
-                    dim_val = None
-                
+                    dim_round = getattr(d, 'round_number', None)
+
                 if dim_name is not None:
-                    dim_values[dim_name] = dim_val
-            
-            if fill_missing:
-                for dim in all_dimensions:
-                    if dim.name not in dim_values:
-                        dim_values[dim.name] = None
+                    if dim_round is None:
+                        dim_overall[dim_name] = dim_val
+                    elif dim_val is not None:
+                        dim_rounds.setdefault(dim_name, []).append(dim_val)
         else:
-            # 兼容模式：如果没提供映射表，则回退到查询数据库
-            for dim in all_dimensions:
-                dim_result = TestResultDimension.query.filter_by(
-                    test_result_id=result_id, dimension_id=dim.id
-                ).first()
-                dim_values[dim.name] = dim_result.dimension_value if dim_result and dim_result.dimension_value is not None else None
+            # 兼容模式：全量查询后按优先级取值（不再 .first() 只取一条）
+            dim_id_to_name = {dim.id: dim.name for dim in all_dimensions}
+            dim_all = TestResultDimension.query.filter_by(
+                test_result_id=result_id
+            ).all()
+            for dr in dim_all:
+                dim_name = dim_id_to_name.get(dr.dimension_id)
+                if dim_name is None:
+                    continue
+                if dr.round_number is None:
+                    dim_overall[dim_name] = dr.dimension_value
+                elif dr.dimension_value is not None:
+                    dim_rounds.setdefault(dim_name, []).append(dr.dimension_value)
+
+        for dim in all_dimensions:
+            dim_name = dim.name
+            if dim_name in dim_overall and dim_overall[dim_name] is not None:
+                dim_values[dim_name] = dim_overall[dim_name]
+            elif dim_name in dim_rounds and dim_rounds[dim_name]:
+                scores = dim_rounds[dim_name]
+                dim_values[dim_name] = round(sum(scores) / len(scores), 4)
+            elif fill_missing:
+                dim_values[dim_name] = None
         return dim_values
     
     # 公共函数：构建结果信息
@@ -1080,6 +1109,7 @@ class ReportControllerBase:
         sort_by = (data.sort_by or 'name').lower()
         sort_order = (data.sort_order or 'asc').lower()
         sort_metric = data.sort_metric
+        sort_resource = data.sort_resource
 
         # 按评估维度排序：Python 提取指标值排序 + 手动分页
         if sort_by == 'metric' and sort_metric:
@@ -1089,16 +1119,53 @@ class ReportControllerBase:
 
             def _metric_key(case_item):
                 m = case_item.metrics or {}
-                if isinstance(m, dict):
+
+                def _collect_values(resource_values):
+                    """从单个资源的值（dict 或 list 格式）中提取该维度的数值列表"""
                     vals = []
-                    for v in m.values():
-                        if isinstance(v, dict) and mn in v:
+                    if isinstance(resource_values, dict):
+                        # dict 格式: {dim_name: value} 或 {metric: value}
+                        if mn in resource_values:
                             try:
-                                vals.append(float(v[mn]))
+                                vals.append(float(resource_values[mn]))
                             except (TypeError, ValueError):
                                 pass
+                    elif isinstance(resource_values, list):
+                        # list 格式: [{metric: ..., value: ...}]
+                        for item in resource_values:
+                            if isinstance(item, dict) and item.get('metric') == mn:
+                                try:
+                                    vals.append(float(item.get('value')))
+                                except (TypeError, ValueError):
+                                    pass
+                    return vals
+
+                if isinstance(m, dict):
+                    if sort_resource:
+                        # 指定资源对象：只取该资源下该维度的值
+                        vals = _collect_values(m.get(sort_resource))
+                        if vals:
+                            return (0, sum(vals) / len(vals))
+                        return (1, 0)
+                    # 未指定资源：聚合所有资源（平均）
+                    vals = []
+                    for resource_values in m.values():
+                        vals.extend(_collect_values(resource_values))
                     if vals:
                         avg = sum(vals) / len(vals)
+                        return (0, avg)
+                elif isinstance(m, list):
+                    # list 格式: [{resource: ..., metrics: [...]}]
+                    all_vals = []
+                    for group in m:
+                        if not isinstance(group, dict):
+                            continue
+                        group_resource = group.get('resource')
+                        if sort_resource and group_resource != sort_resource:
+                            continue
+                        all_vals.extend(_collect_values(group.get('metrics')))
+                    if all_vals:
+                        avg = sum(all_vals) / len(all_vals)
                         return (0, avg)
                 # 没有该维度的 case 排到最后
                 return (1, 0)

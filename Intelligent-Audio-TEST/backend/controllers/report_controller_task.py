@@ -815,8 +815,8 @@ class ReportControllerTask(ReportControllerBase):
         all_metrics = []
         for dim in all_dimensions:
             statistic_method = dim.statistic_method or "average"
-            # 聚合方式决定 unit：pass_rate 产出百分比，强制为 %；其余用维度配置的 score_unit
-            if statistic_method == 'pass_rate':
+            # 聚合方式决定 unit：pass_rate/ratio 产出百分比，强制为 %；其余用维度配置的 score_unit
+            if statistic_method in ('pass_rate', 'ratio'):
                 unit = "%"
             else:
                 unit = dim.score_unit if dim.score_unit and dim.score_unit.strip() else ""
@@ -827,6 +827,8 @@ class ReportControllerTask(ReportControllerBase):
                 "unit": unit,
                 "decimal_places": decimal_places,
                 "statistic_method": statistic_method,
+                "agg_denominator": getattr(dim, 'agg_denominator', 'round') or 'round',
+                "sort_order": getattr(dim, 'sort_order', 0) or 0,
                 "dimension_type": dim.dimension_type or 'main',
                 "parent_dimension_id": dim.parent_dimension_id,
                 "parent_dimension_name": dim_id_to_name.get(dim.parent_dimension_id) if dim.parent_dimension_id else None
@@ -1117,7 +1119,7 @@ class ReportControllerTask(ReportControllerBase):
                     })
                     return
 
-                all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).all()
+                all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).order_by(Dimension.sort_order, Dimension.id).all()
                 summary_dim_values = ReportControllerTask._calculate_summary_dimensions(dim_stats)
 
                 if dim_stats:

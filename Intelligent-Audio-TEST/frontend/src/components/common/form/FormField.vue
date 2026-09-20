@@ -83,6 +83,33 @@
         </option>
       </select>
     </template>
+
+    <div v-else-if="field.type === 'multiSelect'" ref="multiSelectRef" class="multi-select-field">
+      <div class="multi-select-trigger" @click="toggleMultiSelect">
+        <div class="multi-select-values">
+          <span v-if="!selectedLabels.length" class="multi-select-placeholder">请选择要排除的轮次（可多选）</span>
+          <span v-for="opt in selectedLabels" :key="opt.value" class="multi-select-value-tag">{{ opt.label }}</span>
+        </div>
+        <i class="fas fa-chevron-down multi-select-chevron" :class="{ 'rotated': multiSelectOpen }"></i>
+      </div>
+      <div v-if="multiSelectOpen" class="multi-select-panel">
+        <div
+          v-for="option in field.options"
+          :key="option.value"
+          class="multi-select-option"
+          :class="{ 'selected': isTagSelected(option.value) }"
+          @click="toggleTag(option.value)"
+        >
+          <span class="multi-select-checkbox" :class="{ 'checked': isTagSelected(option.value) }">
+            <i v-if="isTagSelected(option.value)" class="fas fa-check"></i>
+          </span>
+          <span class="multi-select-option-label">{{ option.label }}</span>
+        </div>
+        <div class="multi-select-footer">
+          <button type="button" class="multi-select-clear-btn" @click="clearMultiSelect">清空</button>
+        </div>
+      </div>
+    </div>
     
     <div v-else-if="field.type === 'radio'" class="radio-group">
       <div 
@@ -372,7 +399,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import AlgorithmParamsConfig from '../../algorithm/AlgorithmParamsConfig.vue'
 import RequiredInputsEditor from './RequiredInputsEditor.vue'
 import OutputFieldsEditor from './OutputFieldsEditor.vue'
@@ -444,6 +471,29 @@ const getInitialValue = () => {
 const localValue = ref(getInitialValue())
 const algorithmConfigsValue = ref({})
 const supportedAlgorithmsValue = ref([])
+const multiSelectOpen = ref(false)
+const multiSelectRef = ref(null)
+
+const selectedLabels = computed(() => {
+  if (!localValue.value || !Array.isArray(localValue.value)) return []
+  return (props.field.options || []).filter(opt => localValue.value.includes(opt.value))
+})
+
+const toggleMultiSelect = () => {
+  multiSelectOpen.value = !multiSelectOpen.value
+}
+
+const clearMultiSelect = () => {
+  localValue.value = []
+  handleInput()
+  multiSelectOpen.value = false
+}
+
+const handleDocClick = (e) => {
+  if (multiSelectRef.value && !multiSelectRef.value.contains(e.target)) {
+    multiSelectOpen.value = false
+  }
+}
 
 const { algorithms, loadAlgorithms } = useAlgorithmConfig()
 
@@ -455,9 +505,14 @@ const algorithmOptions = computed(() => {
 })
 
 onMounted(async () => {
+  document.addEventListener('click', handleDocClick)
   if (algorithmOptions.value.length === 0) {
     await loadAlgorithms()
   }
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocClick)
 })
 
 watch(() => props.modelValue, (newVal) => {
@@ -597,6 +652,140 @@ const handleSelectClick = () => {
 </script>
 
 <style scoped>
+.multi-select-field {
+  position: relative;
+}
+
+.multi-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 38px;
+  padding: 4px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background-color: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.multi-select-trigger:hover {
+  border-color: #3b82f6;
+}
+
+.multi-select-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  overflow: hidden;
+}
+
+.multi-select-placeholder {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+.multi-select-value-tag {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.multi-select-chevron {
+  color: #94a3b8;
+  font-size: 12px;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.multi-select-chevron.rotated {
+  transform: rotate(180deg);
+}
+
+.multi-select-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  padding: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.multi-select-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.multi-select-option:hover {
+  background-color: #f1f5f9;
+}
+
+.multi-select-option.selected {
+  background-color: #eff6ff;
+}
+
+.multi-select-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #fff;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.multi-select-checkbox.checked {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.multi-select-option-label {
+  font-size: 14px;
+  color: #334155;
+}
+
+.multi-select-footer {
+  border-top: 1px solid #f1f5f9;
+  margin-top: 6px;
+  padding-top: 6px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.multi-select-clear-btn {
+  border: none;
+  background: none;
+  color: #3b82f6;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.multi-select-clear-btn:hover {
+  color: #1d4ed8;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;

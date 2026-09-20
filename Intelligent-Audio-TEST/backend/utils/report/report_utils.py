@@ -180,6 +180,51 @@ class ReportUtils:
                 values[dim_name] = None
 
         return values
+
+    @staticmethod
+    def _resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, exclude_rounds=None):
+        """
+        解析排除轮次集合：将 -1（"最后一轮"选项）替换为该用例该维度的最大轮次。
+        无轮次记录时 -1 无效（无最后一轮可排除）；返回不含 -1 的集合。
+        """
+        exclude_set = set(exclude_rounds or [])
+        if -1 not in exclude_set:
+            return exclude_set
+        max_round = None
+        target_dim_id = dim_name_to_id.get(dim_name)
+        if dim_results_map and result.id in dim_results_map:
+            for dr in dim_results_map[result.id]:
+                dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
+                if dr_dim_id and dr_dim_id == target_dim_id:
+                    dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
+                    if dr_round is not None and (max_round is None or dr_round > max_round):
+                        max_round = dr_round
+        if max_round is not None:
+            exclude_set = (exclude_set - {-1}) | {max_round}
+        else:
+            exclude_set = exclude_set - {-1}
+        return exclude_set
+
+    @staticmethod
+    def _get_round_values(result, dim_name, fallback_score, dim_results_map, dim_name_to_id, exclude_rounds=None):
+        """
+        取某用例某维度"有值的每轮值"（按轮次口径的样本），用于按轮次平均。
+        排除 exclude_rounds 中指定的轮次（-1 解析为该用例最后一轮）；无轮次记录（如纯整体结果）时回退为 [fallback_score]（1 个样本）。
+        """
+        pairs = []  # [(round_number, value)]
+        if dim_results_map and result.id in dim_results_map:
+            target_dim_id = dim_name_to_id.get(dim_name)
+            for dr in dim_results_map[result.id]:
+                dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
+                if dr_dim_id and dr_dim_id == target_dim_id:
+                    dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
+                    dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
+                    if dr_val is None or dr_round is None:
+                        continue
+                    pairs.append((dr_round, dr_val))
+        exclude_set = ReportUtils._resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, exclude_rounds)
+        vals = [v for r, v in pairs if r not in exclude_set]
+        return vals if vals else [fallback_score]
     
     @staticmethod
     def calculate_core_metrics(results, all_dimensions, resources, dim_results_map=None, tasks_map=None, use_time_prefix=False):
@@ -198,8 +243,15 @@ class ReportUtils:
         dim_statistic_method = {dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions}
         # 需要特殊聚合的维度（非 average 的）
         custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
-        # dim_id -> name 反向映射，用于从 dim_results_map 查 api_raw_response
-        dim_id_to_name_inv = {dim.id: dim.name for dim in all_dimensions}
+        # 维度名 -> 比率统计分母口径 (round=按轮次 / case=按用例)，适用于所有统计方式
+        dim_agg_denominator = {dim.name: getattr(dim, 'agg_denominator', 'case') or 'case' for dim in all_dimensions}
+        # 维度名 -> 按轮次统计时排除的轮次集合（不参与分子/分母）
+        dim_exclude_rounds = {dim.name: set(dim.exclude_rounds or []) for dim in all_dimensions}
+        # average 维度且按轮次口径：累加时以"每轮 1 个样本"取分母（轮次数）
+        round_avg_dims = {name for name, m in dim_statistic_method.items()
+                          if m == 'average' and dim_agg_denominator.get(name) == 'round'}
+        # dim 名称 -> id 映射，用于从 dim_results_map 查 api_raw_response（name -> id，勿写反）
+        dim_name_to_id = {dim.name: dim.id for dim in all_dimensions}
 
         # 预加载维度的 output 参数（field_path 配置），用于聚合策略提取结果字段
         dim_output_params = {}
@@ -230,6 +282,8 @@ class ReportUtils:
         # resource 级别累加器（不按 category 分组，与 device_stats 口径一致）
         resource_accumulator = {}
         resource_agg_items = {}
+        # 标签到分类映射累加器
+        tag_category_map = {}
 
         # 预加载所有 TestCase，避免循环内 N+1 查询
         test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
@@ -259,7 +313,6 @@ class ReportUtils:
             tc_tags = getattr(test_case, 'tags', []) or []
             tags = [tag.name for tag in tc_tags if tag.name] or ["default_tag"]
             
-            tag_category_map = {}
             for tag in tc_tags:
                 if hasattr(tag, 'category_id') and tag.category_id:
                     tag_category_map[tag.name] = tag.category_id
@@ -314,39 +367,47 @@ class ReportUtils:
                 tag_accumulator[tag][resource]['success_rate']['sum'] += success_val
                 tag_accumulator[tag][resource]['success_rate']['count'] += 1
             
-            # 累加维度分
+            # 累加维度分（按用例口径：每用例 1 个样本；按轮次口径：每轮 1 个样本）
             for dim_name, score in dim_values.items():
                 if score is not None:
+                    if dim_name in round_avg_dims:
+                        # 按轮次平均：分子=各轮值累加，分母=轮次数（无轮次记录时回退整体值 1 个样本）
+                        acc_vals = ReportUtils._get_round_values(result, dim_name, score, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
+                    else:
+                        acc_vals = [score]
+
                     # Category
                     if dim_name in category_accumulator[category][resource]:
-                        category_accumulator[category][resource][dim_name]['sum'] += score
-                        category_accumulator[category][resource][dim_name]['count'] += 1
+                        category_accumulator[category][resource][dim_name]['sum'] += sum(acc_vals)
+                        category_accumulator[category][resource][dim_name]['count'] += len(acc_vals)
 
                     # Resource（全局，不按 category 分组）
                     if dim_name in resource_accumulator[resource]:
-                        resource_accumulator[resource][dim_name]['sum'] += score
-                        resource_accumulator[resource][dim_name]['count'] += 1
+                        resource_accumulator[resource][dim_name]['sum'] += sum(acc_vals)
+                        resource_accumulator[resource][dim_name]['count'] += len(acc_vals)
 
                     # Tag
                     for tag in tags:
                         if dim_name in tag_accumulator[tag][resource]:
-                            tag_accumulator[tag][resource][dim_name]['sum'] += score
-                            tag_accumulator[tag][resource][dim_name]['count'] += 1
+                            tag_accumulator[tag][resource][dim_name]['sum'] += sum(acc_vals)
+                            tag_accumulator[tag][resource][dim_name]['count'] += len(acc_vals)
 
                     # Raw Data
                     if dim_name in raw_data[resource]:
-                        raw_data[resource][dim_name].append(score)
+                        raw_data[resource][dim_name].extend(acc_vals)
 
                     # 对非 average 维度收集完整 item，用于后续策略聚合
                     if dim_name in custom_agg_dims:
                         # 从 dim_results_map 取该用例该维度的记录
-                        # 优先级：有 overall（round_number=None）→ 只取 overall 1 个 item
-                        #         无 overall → 取各轮独立 item
-                        target_dim_id = dim_id_to_name_inv.get(dim_name)
+                        # 优先级：无排除配置且整体存在 → 只取 overall 1 个 item
+                        #         有排除配置或无整体 → 取各轮独立 item（跳过被排除的轮次）
+                        target_dim_id = dim_name_to_id.get(dim_name)
+                        exclude_set = ReportUtils._resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
                         collected_items = []
                         if dim_results_map and result.id in dim_results_map:
                             overall_item = None
                             round_items = []
+                            excluded_round_vals = []  # 被排除轮次的逐轮值（供从整体值中扣减）
                             for dr in dim_results_map[result.id]:
                                 dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
                                 if dr_dim_id and dr_dim_id == target_dim_id:
@@ -359,9 +420,38 @@ class ReportUtils:
                                     if dr_round is None:
                                         overall_item = item
                                     else:
+                                        if exclude_set and dr_round in exclude_set:
+                                            excluded_round_vals.append(dr_val)  # 排除轮次不参与分子/分母
+                                            continue
                                         round_items.append(item)
-                            # 有 overall 只取 overall，无 overall 取各轮
-                            collected_items = [overall_item] if overall_item else round_items
+                            if overall_item and not exclude_set:
+                                collected_items = [overall_item]
+                            elif overall_item and dim_statistic_method.get(dim_name) == 'ratio':
+                                # 比率维度：有整体结果且配置了排除 → 分子 = 整体值 − Σ被排除轮次的逐轮值（下限 0），
+                                # 分母 = 未排除轮次数。整体值是该用例的判定总数（如打断失败数），
+                                # 逐轮值与整体值可能不一致（整体为上下文重判），故以整体为基准扣减被排除轮次。
+                                try:
+                                    base_val = float(overall_item.get('dimension_value'))
+                                except (TypeError, ValueError):
+                                    base_val = 0.0
+                                sub_val = 0.0
+                                for ev in excluded_round_vals:
+                                    try:
+                                        sub_val += float(ev)
+                                    except (TypeError, ValueError):
+                                        pass
+                                adj_item = dict(overall_item)
+                                adj_item['dimension_value'] = max(base_val - sub_val, 0)
+                                collected_items = [adj_item]
+                            elif round_items:
+                                collected_items = round_items
+                            elif overall_item:
+                                collected_items = [overall_item]
+                            # 记录该用例该维度有值（且未排除）的轮次数（ratio 策略按轮次口径的分母来源）
+                            if collected_items:
+                                round_count = len(round_items)
+                                for it in collected_items:
+                                    it['round_count'] = round_count
 
                         if collected_items:
                             for item in collected_items:
@@ -370,7 +460,7 @@ class ReportUtils:
                                 for tag in tags:
                                     tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(item)
                         elif score is not None:
-                            agg_item = {'dimension_value': score, 'api_raw_response': None, 'test_result_id': result.id}
+                            agg_item = {'dimension_value': score, 'api_raw_response': None, 'test_result_id': result.id, 'round_count': 0}
                             category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
                             resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(agg_item)
                             for tag in tags:
@@ -388,12 +478,13 @@ class ReportUtils:
             for dim in all_dimensions:
                 if dim.name in custom_agg_dims:
                     dim_name_to_output_params[dim.name] = dim_output_params.get(dim.id, [])
-            ReportUtils._apply_resource_aggregation_strategies(metric_data, resource_agg_items, dim_statistic_method, dim_name_to_output_params)
-            ReportUtils._apply_aggregation_strategies(tag_metric_data, tag_agg_items, dim_statistic_method, dim_name_to_output_params)
+            ReportUtils._apply_resource_aggregation_strategies(metric_data, resource_agg_items, dim_statistic_method, dim_name_to_output_params, dim_agg_denominator)
+            ReportUtils._apply_aggregation_strategies(tag_metric_data, tag_agg_items, dim_statistic_method, dim_name_to_output_params, dim_agg_denominator)
 
         # 9.5 计算按标签分类统计的数据
         tag_category_metric_data = ReportUtils._calculate_tag_category_averages(
-            tag_accumulator, tag_category_map, tag_agg_items, dim_statistic_method, dim_name_to_output_params if custom_agg_dims else None
+            tag_accumulator, tag_category_map, tag_agg_items, dim_statistic_method, dim_name_to_output_params if custom_agg_dims else None,
+            dim_agg_denominator
         )
 
         # 10. 计算 Case Type Stats (即按分组统计)
@@ -401,7 +492,8 @@ class ReportUtils:
         case_type_stats = ReportUtils.calculate_case_type_stats_optimized(
             results, all_dimensions, dim_results_map,
             dim_statistic_method=dim_statistic_method,
-            dim_output_params=dim_output_params
+            dim_output_params=dim_output_params,
+            dim_agg_denominator=dim_agg_denominator
         )
 
         return {
@@ -444,7 +536,8 @@ class ReportUtils:
         return result_data
 
     @staticmethod
-    def _apply_resource_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None):
+    def _apply_resource_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None,
+                                               dim_agg_denominator=None):
         """
         对非 average 维度，用策略类聚合替换简单平均值（resource 级别）。
 
@@ -460,16 +553,18 @@ class ReportUtils:
             method = dim_statistic_method.get(dim_name, 'average')
             strategy = get_strategy(method)
             output_params = (dim_output_params or {}).get(dim_name, [])
+            denominator_mode = (dim_agg_denominator or {}).get(dim_name, 'round') if dim_agg_denominator else 'round'
 
             for resource, items in resources.items():
                 if not items:
                     continue
-                agg_val = strategy.aggregate(items, output_params=output_params)
+                agg_val = strategy.aggregate(items, output_params=output_params, denominator_mode=denominator_mode)
                 if agg_val is not None and resource in metric_data:
                     metric_data[resource][dim_name] = agg_val
 
     @staticmethod
-    def _apply_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None):
+    def _apply_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None,
+                                      dim_agg_denominator=None):
         """
         对非 average 维度，用策略类聚合替换简单平均值。
 
@@ -487,17 +582,19 @@ class ReportUtils:
             method = dim_statistic_method.get(dim_name, 'average')
             strategy = get_strategy(method)
             output_params = (dim_output_params or {}).get(dim_name, [])
+            denominator_mode = (dim_agg_denominator or {}).get(dim_name, 'round') if dim_agg_denominator else 'round'
 
             for group_key, resources in groups.items():
                 for resource, items in resources.items():
                     if not items:
                         continue
-                    agg_val = strategy.aggregate(items, output_params=output_params)
+                    agg_val = strategy.aggregate(items, output_params=output_params, denominator_mode=denominator_mode)
                     if agg_val is not None and group_key in metric_data and resource in metric_data[group_key]:
                         metric_data[group_key][resource][dim_name] = agg_val
 
     @staticmethod
-    def _calculate_tag_category_averages(tag_accumulator, tag_category_map, tag_agg_items=None, dim_statistic_method=None, dim_name_to_output_params=None):
+    def _calculate_tag_category_averages(tag_accumulator, tag_category_map, tag_agg_items=None, dim_statistic_method=None,
+                                         dim_name_to_output_params=None, dim_agg_denominator=None):
         """
         辅助函数：按标签分类计算平均值
 
@@ -563,7 +660,9 @@ class ReportUtils:
                                 from backend.utils.report.aggregation_strategies import get_strategy
                                 strategy = get_strategy(method)
                                 output_params = (dim_name_to_output_params or {}).get(dim_name, [])
-                                agg_val = strategy.aggregate(tag_agg_items[dim_name][tag_name][resource], output_params=output_params)
+                                denominator_mode = (dim_agg_denominator or {}).get(dim_name, 'round') if dim_agg_denominator else 'round'
+                                agg_val = strategy.aggregate(tag_agg_items[dim_name][tag_name][resource], output_params=output_params,
+                                                             denominator_mode=denominator_mode)
                                 tag_metrics[dim_name] = agg_val
                                 continue
                         tag_metrics[dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
@@ -600,7 +699,8 @@ class ReportUtils:
     
     @staticmethod
     def calculate_case_type_stats_optimized(results, all_dimensions, dim_results_map=None,
-                                           dim_statistic_method=None, dim_output_params=None):
+                                           dim_statistic_method=None, dim_output_params=None,
+                                           dim_agg_denominator=None):
         """
         计算按用例分组(Case Type)的统计数据。
         非average维度使用聚合策略，average维度使用算术平均。
@@ -612,6 +712,14 @@ class ReportUtils:
         if dim_statistic_method is None:
             dim_statistic_method = {dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions}
         custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
+        # 维度名 -> 比率统计分母口径
+        if dim_agg_denominator is None:
+            dim_agg_denominator = {dim.name: getattr(dim, 'agg_denominator', 'case') or 'case' for dim in all_dimensions}
+        # 维度名 -> 按轮次统计时排除的轮次集合
+        dim_exclude_rounds = {dim.name: set(dim.exclude_rounds or []) for dim in all_dimensions}
+        # average 维度且按轮次口径：分组平均以"每轮 1 个样本"取分母
+        round_avg_dims = {name for name, m in dim_statistic_method.items()
+                          if m == 'average' and dim_agg_denominator.get(name) == 'round'}
 
         # dim_id -> name 反向映射
         dim_id_to_name = {dim.id: dim.name for dim in all_dimensions}
@@ -639,7 +747,13 @@ class ReportUtils:
 
             for dim_name, score in dim_values.items():
                 if score is not None and dim_name in group_scores[group_id]:
-                    group_scores[group_id][dim_name].append(score)
+                    if dim_name in round_avg_dims:
+                        # 按轮次平均：每轮 1 个样本（无轮次记录时回退整体值 1 个样本）
+                        group_scores[group_id][dim_name].extend(
+                            ReportUtils._get_round_values(result, dim_name, score, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
+                        )
+                    else:
+                        group_scores[group_id][dim_name].append(score)
 
             # 非average维度收集每轮独立item
             if dim_results_map and result.id in dim_results_map:
@@ -647,6 +761,7 @@ class ReportUtils:
                     target_dim_id = dim_name_to_id.get(dim_name)
                     if not target_dim_id:
                         continue
+                    exclude_set = ReportUtils._resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
                     overall_item = None
                     round_items = []
                     for dr in dim_results_map[result.id]:
@@ -661,8 +776,22 @@ class ReportUtils:
                             if dr_round is None:
                                 overall_item = item
                             else:
+                                if exclude_set and dr_round in exclude_set:
+                                    continue  # 排除轮次不参与分子/分母
                                 round_items.append(item)
-                    collected = [overall_item] if overall_item else round_items
+                    # 无排除配置且整体存在 → 取整体；有排除或无整体 → 取过滤后的各轮；否则整体兜底
+                    if overall_item and not exclude_set:
+                        collected = [overall_item]
+                    elif round_items:
+                        collected = round_items
+                    elif overall_item:
+                        collected = [overall_item]
+                    else:
+                        collected = []
+                    if collected:
+                        round_count = len(round_items)
+                        for it in collected:
+                            it['round_count'] = round_count
                     group_agg_items[group_id][dim_name].extend(collected)
 
         # 计算统计值
@@ -676,7 +805,9 @@ class ReportUtils:
                     method = dim_statistic_method.get(dim_name, 'average')
                     strategy = get_strategy(method)
                     output_params = (dim_output_params or {}).get(dim_name_to_id.get(dim_name), [])
-                    agg_val = strategy.aggregate(group_agg_items[group_id][dim_name], output_params=output_params)
+                    denominator_mode = dim_agg_denominator.get(dim_name, 'round')
+                    agg_val = strategy.aggregate(group_agg_items[group_id][dim_name], output_params=output_params,
+                                                 denominator_mode=denominator_mode)
                     stats[group_id]['metrics'][dim_name] = agg_val
                 else:
                     stats[group_id]['metrics'][dim_name] = (sum(scores) / len(scores)) if scores else None
@@ -684,11 +815,15 @@ class ReportUtils:
     
     @staticmethod
     def calculate_device_api_stats(results, all_dimensions, dim_results_map=None,
-                                  dim_statistic_method=None, dim_output_params=None):
+                                  dim_statistic_method=None, dim_output_params=None,
+                                  dim_agg_denominator=None):
         # 维度名 -> statistic_method
         if dim_statistic_method is None:
             dim_statistic_method = {dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions}
         custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
+        # 维度名 -> 比率统计分母口径
+        if dim_agg_denominator is None:
+            dim_agg_denominator = {dim.name: getattr(dim, 'agg_denominator', 'case') or 'case' for dim in all_dimensions}
 
         # 预加载非average维度的 output_params（如果未传入）
         if dim_output_params is None and custom_agg_dims:
@@ -735,7 +870,8 @@ class ReportUtils:
             
             metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map,
                                                       dim_statistic_method=dim_statistic_method,
-                                                      dim_output_params=dim_output_params)
+                                                      dim_output_params=dim_output_params,
+                                                      dim_agg_denominator=dim_agg_denominator)
             total = len(res_list)
             completed = len([r for r in res_list if r.execution_status == 'completed'])
 
@@ -753,7 +889,8 @@ class ReportUtils:
             
             metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map,
                                                       dim_statistic_method=dim_statistic_method,
-                                                      dim_output_params=dim_output_params)
+                                                      dim_output_params=dim_output_params,
+                                                      dim_agg_denominator=dim_agg_denominator)
             total = len(res_list)
             completed = len([r for r in res_list if r.execution_status == 'completed'])
             
@@ -1589,13 +1726,19 @@ class ReportUtils:
     
     @staticmethod
     def _calc_list_metrics(results, all_dimensions, dim_results_map,
-                           dim_statistic_method=None, dim_output_params=None):
+                           dim_statistic_method=None, dim_output_params=None,
+                           dim_agg_denominator=None):
         metrics = {}
 
         # 维度名 -> statistic_method
         if dim_statistic_method is None:
             dim_statistic_method = {dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions}
         custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
+        # 维度名 -> 比率统计分母口径
+        if dim_agg_denominator is None:
+            dim_agg_denominator = {dim.name: getattr(dim, 'agg_denominator', 'case') or 'case' for dim in all_dimensions}
+        # 维度名 -> 按轮次统计时排除的轮次集合
+        dim_exclude_rounds = {dim.name: set(dim.exclude_rounds or []) for dim in all_dimensions}
         dim_name_to_id = {dim.name: dim.id for dim in all_dimensions}
 
         # 预收集非average维度的items
@@ -1608,6 +1751,7 @@ class ReportUtils:
             for result in results:
                 if result.id not in dim_results_map:
                     continue
+                exclude_set = ReportUtils._resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
                 overall_item = None
                 round_items = []
                 for dr in dim_results_map[result.id]:
@@ -1622,8 +1766,22 @@ class ReportUtils:
                         if dr_round is None:
                             overall_item = item
                         else:
+                            if exclude_set and dr_round in exclude_set:
+                                continue  # 排除轮次不参与分子/分母
                             round_items.append(item)
-                collected = [overall_item] if overall_item else round_items
+                # 无排除配置且整体存在 → 取整体；有排除或无整体 → 取过滤后的各轮；否则整体兜底
+                if overall_item and not exclude_set:
+                    collected = [overall_item]
+                elif round_items:
+                    collected = round_items
+                elif overall_item:
+                    collected = [overall_item]
+                else:
+                    collected = []
+                if collected:
+                    round_count = len(round_items)
+                    for it in collected:
+                        it['round_count'] = round_count
                 dim_agg_items[dim_name].extend(collected)
 
         for dim in all_dimensions:
@@ -1632,12 +1790,19 @@ class ReportUtils:
                 method = dim_statistic_method.get(dim.name, 'average')
                 strategy = get_strategy(method)
                 output_params = (dim_output_params or {}).get(dim.id, [])
-                metrics[dim.name] = strategy.aggregate(dim_agg_items[dim.name], output_params=output_params)
+                denominator_mode = dim_agg_denominator.get(dim.name, 'round')
+                metrics[dim.name] = strategy.aggregate(dim_agg_items[dim.name], output_params=output_params,
+                                                       denominator_mode=denominator_mode)
             else:
                 scores = []
+                round_mode = dim_agg_denominator.get(dim.name) == 'round'
                 for result in results:
                     vals = ReportUtils.extract_dimension_values(result.id, all_dimensions, dim_results_map)
                     if vals.get(dim.name) is not None:
-                        scores.append(vals[dim.name])
+                        if round_mode:
+                            # 按轮次平均：每轮 1 个样本（无轮次记录时回退整体值 1 个样本）
+                            scores.extend(ReportUtils._get_round_values(result, dim.name, vals[dim.name], dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim.name)))
+                        else:
+                            scores.append(vals[dim.name])
                 metrics[dim.name] = (sum(scores) / len(scores)) if scores else None
         return metrics

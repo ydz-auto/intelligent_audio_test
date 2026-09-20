@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
-const apiTarget = process.env.VITE_API_TARGET || 'http://localhost:5000'
+const apiTarget = process.env.VITE_API_TARGET || 'http://100.70.20.136:5000'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -19,6 +19,11 @@ export default defineConfig({
       '/api': {
         target: apiTarget,
         changeOrigin: true
+      },
+      '/socket.io': {
+        target: apiTarget,
+        changeOrigin: true,
+        ws: true
       }
     }
   },

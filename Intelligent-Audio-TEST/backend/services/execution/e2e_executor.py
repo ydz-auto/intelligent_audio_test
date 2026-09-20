@@ -313,6 +313,15 @@ class E2EExecutor(BaseExecutor):
         """执行单轮：环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
         from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
         round_algo_params = _normalize_algorithm_params(round_config.get('algorithm_params', []))
+        # DEBUG: 排查 per_round 参数透传
+        self._log(
+            level='INFO',
+            content=f"[_execute_single_round] round_number={round_number}, "
+                    f"round_config keys={list(round_config.keys()) if isinstance(round_config, dict) else round_config}, "
+                    f"algorithm_params_in_config={round_config.get('algorithm_params')}, "
+                    f"round_algo_params={round_algo_params}",
+            task_id=task_id, test_case_id=test_case_id,
+        )
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
         self._register_voiceprint(task_id, tc_rel_id, round_algo_params, test_case_id)

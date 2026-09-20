@@ -282,11 +282,10 @@ const tableData = computed(() => {
       group.subs.push(metric)
     }
   })
-  // 子维度按名称排序，分组按名称排序
-  const groups = Array.from(groupMap.values()).sort((a, b) =>
-    a.label.localeCompare(b.label, 'zh')
-  )
-  groups.forEach(g => g.subs.sort((a, b) => a.name.localeCompare(b.name, 'zh')))
+  // 保持后端 all_metrics（维度 sort_order）顺序，不再按名称排序
+  // 分组与子维度顺序均取第一次出现的顺序，即后端排序结果
+  const groups = Array.from(groupMap.values())
+  groups.forEach(g => g.subs.sort((a, b) => (a.sort_order ?? a.id ?? 0) - (b.sort_order ?? b.id ?? 0)))
 
   // 构建表格行：分组标题行 + 主维度行 + 子维度行（缩进）
   const rows = []

@@ -414,6 +414,7 @@ const getDefaultValue = (field) => {
       return [{ digital_gain: null, spl: null }]
     case 'number': return 0
     case 'switch': return false
+    case 'multiSelect': return []
     case 'apiMeta': return { protocol: 'https', environment: 'development', version: 'v1', apiKey: '' }
     default: return ''
   }

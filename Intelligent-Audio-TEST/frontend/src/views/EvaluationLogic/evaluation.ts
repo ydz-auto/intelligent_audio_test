@@ -372,7 +372,18 @@ export function useEvaluation() {
       options: [
         { value: 'average', label: '简单平均' },
         { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' },
-        { value: 'pass_rate', label: '达标率 (达标用例数/总用例数)' }
+        { value: 'pass_rate', label: '达标率 (达标数/总数)' },
+        { value: 'ratio', label: '比率 (Σ数量/Σ分母, %)' }
+      ] },
+    { key: 'aggDenominator', label: '聚合分母口径', type: 'select', required: false, default: 'case', group: 'API配置',
+      options: [
+        { value: 'case', label: '按用例 (分母=配置该维度的用例数)' },
+        { value: 'round', label: '按轮次 (分母=该维度有值轮次数)' }
+      ] },
+    { key: 'excludeRounds', label: '排除轮次（按轮次统计时跳过）', type: 'multiSelect', required: false, group: 'API配置',
+      options: [
+        ...Array.from({length: 10}, (_, i) => ({ value: i, label: `第${i + 1}轮` })),
+        { value: -1, label: '最后一轮' }
       ] },
     { key: 'outputFields', label: '输出字段配置', type: 'outputFields', required: false, fullWidth: true, group: 'API配置' },
     { key: 'apiEndpoints', label: 'API端点配置', type: 'array', arrayItemType: 'apiEndpoint', required: false, fullWidth: true, arrayItemTemplate: {url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60}, group: 'API配置', 
@@ -508,6 +519,8 @@ export function useEvaluation() {
       const rawOutputFields = dimension.outputFields || (dimension as any).output_fields || [];
       const outputFieldsArray = Array.isArray(rawOutputFields) ? rawOutputFields : [];
       const statisticMethod = dimension.statisticMethod || (dimension as any).statistic_method || 'average';
+      const excludeRoundsRaw = dimension.excludeRounds ?? (dimension as any).exclude_rounds ?? [];
+      const excludeRounds = Array.isArray(excludeRoundsRaw) ? excludeRoundsRaw : [];
 
       const editingData = {...dimension, categoryId: dimension.categoryId || (dimension as any).category_id, apiEndpoints, apiUrl,
         apiSettings: apiSettingsObj,
@@ -515,6 +528,7 @@ export function useEvaluation() {
         requiredInputs: requiredInputsObj,
         outputFields: outputFieldsArray,
         statisticMethod: statisticMethod,
+        excludeRounds: excludeRounds,
         associatedAlgorithms: associatedAlgorithmsArray,
         status: String(dimension.status).toLowerCase() === 'true',
         dimensionType: dimensionType,
@@ -613,6 +627,18 @@ export function useEvaluation() {
         }
       } else if (typeof dimensionData.rule === 'string') {
         delete dimensionData.rule;
+      }
+
+      // 排除轮次：逗号分隔字符串 → 数字数组（按轮次统计时跳过这些轮次）
+      if (dimensionData.excludeRounds !== undefined) {
+        const raw = dimensionData.excludeRounds;
+        if (typeof raw === 'string' && raw.trim()) {
+          dimensionData.excludeRounds = raw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+        } else if (typeof raw !== 'string' && !Array.isArray(raw)) {
+          dimensionData.excludeRounds = [];
+        } else if (typeof raw === 'string') {
+          dimensionData.excludeRounds = [];
+        }
       }
 
       if (dimensionData.requiredInputs !== undefined) {
@@ -1100,6 +1126,76 @@ export function useEvaluation() {
     }
   }
 
+  // 是否可上移/下移：主维度整体移动，子维度仅在同组内移动（不越过父维度或其它组）
+  function canMoveUp(dim: any): boolean {
+    const list = hierarchicalDimensions.value;
+    const index = list.findIndex(d => d.id === dim.id);
+    if (index <= 0) return false;
+    // 子维度：上方必须是同一父维度的同级子维度，否则会跑到父维度上面
+    if (dim._level === 1) {
+      const prev = list[index - 1];
+      return prev._level === 1 && prev.parentDimensionId === dim.parentDimensionId;
+    }
+    return true;
+  }
+
+  function canMoveDown(dim: any): boolean {
+    const list = hierarchicalDimensions.value;
+    const index = list.findIndex(d => d.id === dim.id);
+    if (index < 0 || index >= list.length - 1) return false;
+    // 子维度：下方必须是同一父维度的同级子维度，否则会跑到其它主维度的组里
+    if (dim._level === 1) {
+      const next = list[index + 1];
+      return next._level === 1 && next.parentDimensionId === dim.parentDimensionId;
+    }
+    return true;
+  }
+
+  // 上移/下移调整维度在报告页的展示顺序（主维度连同其子维度整块移动）
+  async function moveDimension(id: number | string, direction: -1 | 1) {
+    const list = hierarchicalDimensions.value;
+    const index = list.findIndex(d => d.id === id);
+    if (index < 0) return;
+    if (direction === -1 ? !canMoveUp(list[index]) : !canMoveDown(list[index])) return;
+
+    // 计算本次移动的块：主维度 = 自身 + 紧随其后的子维度；子维度 = 同一父维度的相邻同级片段
+    const isMain = list[index]._level === 0;
+    let blockStart = index;
+    let blockEnd = index;
+    if (isMain) {
+      while (blockEnd < list.length - 1 && list[blockEnd + 1]._level === 1) blockEnd++;
+    } else {
+      const parentId = list[index].parentDimensionId;
+      while (blockStart > 0 && list[blockStart - 1].parentDimensionId === parentId) blockStart--;
+      while (blockEnd < list.length - 1 && list[blockEnd + 1].parentDimensionId === parentId) blockEnd++;
+    }
+
+    const ids = list.map(d => d.id);
+    const block = ids.splice(blockStart, blockEnd - blockStart + 1);
+    if (direction === -1) {
+      ids.splice(blockStart - 1, 0, ...block);
+    } else {
+      ids.splice(blockStart, 0, ...block);
+    }
+
+    loading.value = true;
+    error.value = null;
+    try {
+      await evaluationApi.reorder(ids);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Failed to reorder dimensions:', err);
+      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '错误',
+        content: `调整排序失败: ${err.message || '未知错误'}`,
+        onConfirm: () => {
+        }
+      });
+    } finally {
+      loading.value = false;
+    }
+  }
+
   function importDimensions() {
     const input = document.createElement('input');
     input.type = 'file';
@@ -1494,6 +1590,9 @@ export function useEvaluation() {
     toggleImportExportMenu, 
     testAPIHealth, 
     updateWeight, 
+    moveDimension, 
+    canMoveUp, 
+    canMoveDown, 
     importDimensions, 
     exportData, 
     exportDimensions, 

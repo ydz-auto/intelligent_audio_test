@@ -897,6 +897,10 @@ export const evaluationApi = {
     return request<any>('POST', '/evaluation/dimensions/batch', { action, itemIds: ids });
   },
 
+  async reorder(ids: (string | number)[]) {
+    return request<any>('POST', '/evaluation/dimensions/reorder', { ids });
+  },
+
   async calculateScore(id: string | number, value: any) {
     return request<{ score: number }>('POST', `/evaluation/dimensions/${id}/calculate`, { value });
   },

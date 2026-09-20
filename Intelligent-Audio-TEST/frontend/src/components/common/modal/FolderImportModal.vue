@@ -133,6 +133,33 @@ import { useAlgorithmConfig } from '../../../composables/useAlgorithmConfig'
 import UploadOptions from '../../common/UploadOptions.vue'
 import { buildTestCaseGroups } from '../../../utils/testCaseStrategy'
 
+// 简单的消息提示（DOM 方式，不依赖 UI 库）
+function showMessage(type: 'error' | 'success' | 'info' | 'warning', content: string) {
+  const message = document.createElement('div')
+  message.className = `custom-message custom-message-${type}`
+  message.textContent = content
+  message.style.position = 'fixed'
+  message.style.top = '20px'
+  message.style.right = '20px'
+  message.style.padding = '12px 20px'
+  message.style.borderRadius = '4px'
+  message.style.color = '#fff'
+  message.style.zIndex = '9999'
+  message.style.fontSize = '14px'
+  message.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.15)'
+  message.style.transition = 'all 0.3s ease'
+  message.style.opacity = '0'
+  message.style.transform = 'translateX(100%)'
+  const bgColors: Record<string, string> = { success: '#52c41a', error: '#ff4d4f', info: '#1890ff', warning: '#faad14' }
+  message.style.backgroundColor = bgColors[type] || '#ff4d4f'
+  document.body.appendChild(message)
+  setTimeout(() => { message.style.opacity = '1'; message.style.transform = 'translateX(0)' }, 10)
+  setTimeout(() => {
+    message.style.opacity = '0'; message.style.transform = 'translateX(100%)'
+    setTimeout(() => { if (message.parentNode) message.parentNode.removeChild(message) }, 300)
+  }, 4000)
+}
+
 const algorithmConfig = useAlgorithmConfig()
 const getAlgorithmOptions = () => algorithmConfig.getAlgorithmOptions()
 const getFormSchema = (type: string) => algorithmConfig.getFormSchema(type)
@@ -513,6 +540,10 @@ const handleImport = async () => {
     // 未被任何 JSON 引用的音频回退到 folderParser 按文件名分组
     const jsonTestCaseFiles = annotationFiles.filter(f => f.name.toLowerCase().endsWith('.json'))
     const testCaseGroups = await buildTestCaseGroups(jsonTestCaseFiles)
+    // JSON 用例文件存在但全部解析失败时提示用户，避免静默走旧版按文件夹分组
+    if (jsonTestCaseFiles.length > 0 && testCaseGroups.size === 0) {
+      showMessage('error', `检测到 ${jsonTestCaseFiles.length} 个 JSON 用例文件，但全部解析失败（请检查 JSON 格式，如属性末尾多余的逗号），本次不会按 JSON 生成用例分组。`)
+    }
     // 转为 unifiedRoundsByGroup 格式（兼容 audioImport.ts 的消费方式）
     const unifiedRoundsByGroup = new Map<string, any>()
     for (const [groupKey, group] of testCaseGroups) {

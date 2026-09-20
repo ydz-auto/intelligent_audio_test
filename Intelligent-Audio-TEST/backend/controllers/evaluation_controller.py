@@ -293,7 +293,7 @@ class EvaluationController:
                 query = query.filter(Dimension.id.in_(associated_dim_ids))
             else:
                 return success_response({'dimensions': []})
-        dimensions = query.order_by(Dimension.id).all()
+        dimensions = query.order_by(Dimension.sort_order, Dimension.id).all()
 
         # 查询哪些维度需要音频文件参数（field_type='audio' 的输入参数）
         dim_ids = [d.id for d in dimensions]
@@ -344,7 +344,7 @@ class EvaluationController:
                 (Dimension.keywords.ilike(f'%{search}%'))
             )
 
-        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        pagination = query.order_by(Dimension.sort_order, Dimension.id).paginate(page=page, per_page=per_page, error_out=False)
         dimensions = pagination.items
 
         data = []
@@ -390,11 +390,14 @@ class EvaluationController:
                     result_max=dim.result_max,
                     decimal_places=dim.decimal_places,
                     weight=dim.weight,
+                    sort_order=getattr(dim, 'sort_order', 0) or 0,
                     estimated_exec_time=dim.estimated_exec_time,
                     rule=dim.rule,
                     required_inputs=required_inputs,
                     output_fields=output_fields,
                     statistic_method=getattr(dim, 'statistic_method', 'average') or 'average',
+                    agg_denominator=getattr(dim, 'agg_denominator', 'case') or 'case',
+                    exclude_rounds=dim.exclude_rounds or [],
                     associated_algorithms=associated_algorithms,
                     status=dim.status,
                     created_at=dim.created_at.isoformat() if dim.created_at else None,
@@ -470,10 +473,10 @@ class EvaluationController:
         model_fields = [
             'name', 'keywords', 'description', 'category_id', 'api_url',
             'api_endpoints', 'type', 'result_type', 'result_min',
-            'result_max', 'decimal_places', 'weight', 'estimated_exec_time',
+            'result_max', 'decimal_places', 'weight', 'sort_order', 'estimated_exec_time',
             'rule', 'api_settings', 'status', 'api_status', 'score_unit',
             'dimension_type', 'parent_dimension_id', 'task_type_code',
-            'statistic_method'
+            'statistic_method', 'agg_denominator', 'exclude_rounds'
         ]
 
         create_data = {}
@@ -484,6 +487,11 @@ class EvaluationController:
                 if field == 'category_id' and (value == '' or value is None):
                     value = None
                 create_data[field] = value
+
+        # 未指定排序时，新维度默认追加到末尾（当前最大 sort_order + 1）
+        if 'sort_order' not in create_data or create_data.get('sort_order') is None:
+            max_sort = db.session.query(db.func.max(Dimension.sort_order)).scalar()
+            create_data['sort_order'] = (max_sort if max_sort is not None else 0) + 1
 
         try:
             new_dim = Dimension(**create_data)
@@ -664,9 +672,10 @@ class EvaluationController:
 
         try:
             model_fields = ['name', 'keywords', 'description', 'category_id', 'api_url', 'api_endpoints', 'type',
-                            'result_type', 'result_min', 'result_max', 'decimal_places', 'weight',
+                            'result_type', 'result_min', 'result_max', 'decimal_places', 'weight', 'sort_order',
                             'estimated_exec_time', 'rule', 'api_settings', 'status', 'api_status', 'score_unit',
-                            'dimension_type', 'parent_dimension_id', 'task_type_code', 'statistic_method']
+                            'dimension_type', 'parent_dimension_id', 'task_type_code', 'statistic_method',
+                            'agg_denominator', 'exclude_rounds']
 
             for field in model_fields:
                 if field in data:
@@ -851,8 +860,8 @@ class EvaluationController:
             return error_response("未找到评分维度", 404)
 
         try:
-            dim.deleted = True
-            dim.updated_at = now_cst()
+            # 级联软删：递归删除所有子维度及其从属数据
+            EvaluationDimensionController._soft_delete_tree(dim_id)
             db.session.commit()
 
             from backend.utils.report.stats_cache import refresh_stats_cache
@@ -862,6 +871,39 @@ class EvaluationController:
         except Exception as e:
             db.session.rollback()
             return error_response(str(e))
+
+    @staticmethod
+    def _soft_delete_tree(dim_id):
+        """递归软删一个维度及其子维度 / params / mappings / relations。"""
+        # 先递归软删子维度
+        subs = db.session.query(Dimension).filter(
+            Dimension.parent_dimension_id == dim_id,
+            Dimension.deleted == False
+        ).all()
+        for sub in subs:
+            EvaluationDimensionController._soft_delete_tree(sub.id)
+
+        # 软删当前维度
+        dim = db.session.get(Dimension, dim_id)
+        if dim:
+            dim.deleted = True
+            dim.updated_at = now_cst()
+
+        # 软删从属数据
+        db.session.query(EvaluationDimensionParam).filter(
+            EvaluationDimensionParam.dimension_id == dim_id,
+            EvaluationDimensionParam.deleted == False
+        ).update({'deleted': True, 'updated_at': now_cst()})
+
+        db.session.query(ParamMapping).filter(
+            ParamMapping.dimension_id == dim_id,
+            ParamMapping.deleted == False
+        ).update({'deleted': True, 'updated_at': now_cst()})
+
+        db.session.query(AlgorithmDimensionRelation).filter(
+            AlgorithmDimensionRelation.dimension_id == dim_id,
+            AlgorithmDimensionRelation.deleted == False
+        ).update({'deleted': True, 'updated_at': now_cst()})
 
     # 维度 API 健康探测
     @staticmethod
@@ -1039,6 +1081,37 @@ class EvaluationController:
             db.session.rollback()
             return error_response(str(e))
 
+    # 批量调整维度排序（ids 顺序即新展示顺序，sort_order 赋值为数组下标）
+    @staticmethod
+    def reorder():
+        try:
+            req = request.get_json() or {}
+            ids = req.get('ids') or req.get('itemIds') or req.get('item_ids')
+        except Exception:
+            ids = None
+        if not ids or not isinstance(ids, list):
+            return error_response("缺少必要参数: ids (维度ID数组，顺序即新排序)")
+
+        try:
+            id_list = [int(i) for i in ids]
+            dims = Dimension.query.filter(Dimension.id.in_(id_list)).all()
+            dim_map = {d.id: d for d in dims}
+            missing = [i for i in id_list if i not in dim_map]
+            if missing:
+                return error_response(f"存在不存在的维度ID: {missing}")
+
+            for idx, dim_id in enumerate(id_list):
+                dim_map[dim_id].sort_order = idx
+            db.session.commit()
+
+            from backend.utils.report.stats_cache import refresh_stats_cache
+            refresh_stats_cache()
+
+            return success_response(None, "维度排序已更新")
+        except Exception as e:
+            db.session.rollback()
+            return error_response(str(e))
+
     # 导出到文件
     @staticmethod
     def export_to_file():
@@ -1173,6 +1246,7 @@ class EvaluationController:
                         dim.updated_at = now_cst()
                         update_count += 1
                 else:
+                    max_sort = db.session.query(db.func.max(Dimension.sort_order)).scalar()
                     new_dim = Dimension(
                         name=name,
                         description=row.get('描述') or row.get('description'),
@@ -1184,6 +1258,7 @@ class EvaluationController:
                         score_unit=row.get('分数单位') or row.get('score_unit') or row.get('scoreUnit'),
                         rule=rule,
                         api_settings=api_settings,
+                        sort_order=(max_sort if max_sort is not None else 0) + 1,
                         status=True
                     )
                     db.session.add(new_dim)

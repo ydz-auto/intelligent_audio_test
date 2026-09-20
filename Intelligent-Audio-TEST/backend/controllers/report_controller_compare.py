@@ -285,6 +285,11 @@ class ReportControllerCompare(ReportControllerBase):
                         if mid not in seen_ids:
                             seen_ids.add(mid)
                             merged.append(m)
+        # 按维度 sort_order（缺省用 id）统一排序，保证对比报告维度顺序一致
+        merged.sort(key=lambda m: (
+            m.get('sort_order') if isinstance(m.get('sort_order'), int) else 0,
+            m.get('id') if isinstance(m.get('id'), (int, float)) else 0
+        ))
         return merged
 
     @staticmethod

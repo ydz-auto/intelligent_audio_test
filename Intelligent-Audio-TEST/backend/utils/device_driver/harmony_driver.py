@@ -3,7 +3,7 @@ import subprocess
 import os
 from .base_driver import BaseDeviceDriver
 from .device_config import get_device_config
-from .utils import check_stop, UiDriver, By, MatchPattern, with_rpc_retry
+from .utils import check_stop, UiDriver, By, MatchPattern, with_rpc_retry, is_rpc_not_running_error
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 
@@ -77,6 +77,9 @@ class HarmonyDriver(BaseDeviceDriver):
                 return True
             return False
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='INFO', content=f"设备{device_sn}锁屏检查失败：{e}")
             return False
 
@@ -256,6 +259,9 @@ class HarmonyDriver(BaseDeviceDriver):
                 return False
             return True
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由 @with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='ERROR', content=f"Failed to initialize via settings path: {e}")
             return False
 

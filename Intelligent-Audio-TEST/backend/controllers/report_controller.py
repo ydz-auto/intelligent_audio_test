@@ -556,7 +556,7 @@ class ReportController(ReportControllerBase):
                 category, categories, tags, include_untagged
             )
             
-            all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).all()
+            all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).order_by(Dimension.sort_order, Dimension.id).all()
             used_dim_ids = set()
             res_ids = [r.id for r in test_results]
             if res_ids:

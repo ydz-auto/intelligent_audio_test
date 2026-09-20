@@ -63,11 +63,33 @@ def _find_by_role(output_params: List[Dict], role: str) -> Optional[str]:
     return None
 
 
+def _count_items(items: List[Dict[str, Any]]) -> tuple:
+    """
+    统计 item 集的用例数与轮次数（按 test_result_id 去重，round_count 按用例求和）。
+    只统计 dimension_value 非 None 的 item（无值的轮次/用例不参与分母）。
+    所有按"用例数/轮次数"取分母的策略共用，保证口径一致。
+    """
+    seen_cases = set()
+    n_cases = 0
+    total_rounds = 0
+    for item in items:
+        if item.get('dimension_value') is None:
+            continue
+        case_id = item.get('test_result_id')
+        if case_id is not None and case_id not in seen_cases:
+            seen_cases.add(case_id)
+            n_cases += 1
+            rc = item.get('round_count')
+            total_rounds += int(rc) if rc else 0
+    return n_cases, total_rounds
+
+
 class AggregationStrategy(ABC):
     """聚合策略基类。"""
 
     @abstractmethod
-    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None) -> Optional[float]:
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
         """
         聚合计算。
 
@@ -77,11 +99,13 @@ class AggregationStrategy(ABC):
                 - score: 维度得分
                 - api_raw_response: eval_server 完整响应
                 - test_result_id: TestResult.id
+                - round_count: 该用例该维度有值的轮次数（ratio 策略按轮次口径用）
             output_params: 维度的 output 参数配置，每项含:
                 - param_code: 参数代码
                 - field_path: 提取路径
                 - field_type: 字段类型
                 - agg_role: 聚合角色 (numerator/denominator/value)
+            denominator_mode: 比率统计分母口径 (round=按轮次 / case=按用例)，仅 ratio 策略使用
 
         Returns:
             聚合后的值，None 表示无法计算
@@ -90,13 +114,28 @@ class AggregationStrategy(ABC):
 
 
 class SimpleAverageStrategy(AggregationStrategy):
-    """简单平均：sum(values) / count。默认策略。"""
+    """
+    简单平均：sum(values) / 分母。默认策略。
 
-    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None) -> Optional[float]:
+    分母按 denominator_mode（维度配置 agg_denominator）：
+      - 'case'（按用例，默认）：分母 = 用例数（有整体结果时每用例 1 个 item）
+      - 'round'（按轮次）：分母 = 各用例有值轮次数之和（item['round_count']）
+    """
+
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
         values = [item['dimension_value'] for item in items if item.get('dimension_value') is not None]
         if not values:
             return None
-        return sum(values) / len(values)
+        n_cases, total_rounds = _count_items(items)
+        mode = (denominator_mode or 'case').lower()
+        if mode == 'round':
+            denom = total_rounds if total_rounds > 0 else n_cases
+        else:
+            denom = n_cases
+        if denom <= 0:
+            return None
+        return sum(values) / denom
 
 
 class WeightedSumRatioStrategy(AggregationStrategy):
@@ -107,7 +146,8 @@ class WeightedSumRatioStrategy(AggregationStrategy):
     典型场景：WER = Σerrors / Σlength（按字数加权）。
     """
 
-    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None) -> Optional[float]:
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
         numerator_path = _find_by_role(output_params, 'numerator') or 'errors'
         denominator_path = _find_by_role(output_params, 'denominator') or 'length'
 
@@ -154,25 +194,35 @@ class PassRateStrategy(AggregationStrategy):
       - pass_eq: dimension_value == pass_threshold（精确匹配型，如 唤醒成功率 == 1.0）
 
     若未配置上述任一 agg_role 或 pass_threshold 为空，则回退到 value > 0 判定。
+
+    分母按 denominator_mode（维度配置 agg_denominator）：
+      - 'case'（按用例，默认）：分母 = 配置了该维度且有值的用例数
+      - 'round'（按轮次）：分母 = 各用例该维度有值轮次数之和
     """
 
-    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None) -> Optional[float]:
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
         threshold, compare_op = _find_pass_condition(output_params)
 
         # 只统计 dimension_value 非 None 的条目，null 值既不计入达标数也不计入总数
         valid_items = [item for item in items if _parse_numeric(item.get('dimension_value')) is not None]
-        total = len(valid_items)
-        if total == 0:
+        if not valid_items:
             return None
 
         pass_count = 0
         for item in valid_items:
-            val = item.get('dimension_value')
-            num_val = _parse_numeric(val)
-            if num_val is None:
-                continue
+            num_val = _parse_numeric(item['dimension_value'])
             if _is_pass(num_val, threshold, compare_op):
                 pass_count += 1
+
+        n_cases, total_rounds = _count_items(valid_items)
+        mode = (denominator_mode or 'case').lower()
+        if mode == 'round':
+            total = total_rounds if total_rounds > 0 else n_cases
+        else:
+            total = n_cases
+        if total == 0:
+            return None
 
         # 转为百分比制 (0~100)，配合 score_unit='%' 显示为 "75%"
         return round(pass_count / total * 100, 2)
@@ -208,6 +258,46 @@ def _is_pass(value: float, threshold: float, compare_op: str) -> bool:
     return value > 0
 
 
+class RatioStrategy(AggregationStrategy):
+    """
+    比率/占比统计：Σ(分子) / Σ(分母) * 100，产出百分比 (0~100)。
+
+    分子 = Σ(item['dimension_value'])（各结果/轮次的原始数量，如打断成功数量）。
+
+    分母口径由 denominator_mode 决定（维度配置 agg_denominator，值 round/case）：
+      - 'case'（按用例，默认）：分母 = 配置了该维度且有值的用例数（按 test_result_id 去重）
+      - 'round'（按轮次）：分母 = 各用例该维度有值轮次数之和（item['round_count']）
+    无论有/无整体结果，轮次数都来自每个用例自身的 round_count，天然避免每轮
+    api_raw_response 重复携带 interruption_rounds 造成的重复计数。
+
+    无轮次记录（如纯 overall 数据）时按轮次口径回退为用例数。
+
+    典型场景：打断成功数量（agg_denominator='round'）
+      → Σ(成功次数) / Σ(各用例实际打断轮数) × 100 = 打断成功率(%)。
+    """
+
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
+                  denominator_mode: str = None) -> Optional[float]:
+        mode = (denominator_mode or 'case').lower()
+
+        total_num = 0
+        for item in items:
+            num_val = _parse_numeric(item.get('dimension_value'))
+            if num_val is None:
+                continue
+            total_num += num_val
+
+        n_cases, total_rounds = _count_items(items)
+
+        if mode == 'round':
+            denominator = total_rounds if total_rounds > 0 else n_cases
+        else:
+            denominator = n_cases
+        if denominator == 0:
+            return None
+        return round(total_num / denominator * 100, 2)
+
+
 # ------------------------------------------------------------------
 #  注册表
 # ------------------------------------------------------------------
@@ -216,6 +306,7 @@ _REGISTRY: Dict[str, AggregationStrategy] = {
     'average': SimpleAverageStrategy(),
     'weighted_wer': WeightedSumRatioStrategy(),
     'pass_rate': PassRateStrategy(),
+    'ratio': RatioStrategy(),
 }
 
 

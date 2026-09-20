@@ -98,7 +98,7 @@ MAIN_DIMENSION = {
     'param_mappings': [
         ('device', 'output', 'user_wav', 'user_wav', 'none'),
         ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
-        ('device', 'output', 'played_audios', 'played_audios', 'none'),
+        ('case_config', 'output', 'audios', 'played_audios', 'none'),
         ('device', 'output', 'query', 'query', 'none'),
     ],
 }

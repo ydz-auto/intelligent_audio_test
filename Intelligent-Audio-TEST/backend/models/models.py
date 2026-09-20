@@ -722,6 +722,7 @@ class Dimension(db.Model):
     result_max = Column(Float, comment='结果最大值限制')
     decimal_places = Column(Integer, comment='数值保留小数位数')
     weight = Column(Integer, nullable=False, default=1, comment='维度权重')
+    sort_order = Column(Integer, nullable=False, default=0, comment='排序顺序 (数值越小越靠前，报告页按此展示)')
     estimated_exec_time = Column(Integer, nullable=False, default=10, comment='预计执行时间 (秒)')
     rule = Column(JSON, nullable=True, default=dict, comment='评分规则配置')
     api_settings = Column(JSON, comment='API 调用详细设置')
@@ -733,7 +734,9 @@ class Dimension(db.Model):
     api_endpoints = Column(JSON, nullable=True, default=list, comment='多个评估算法 API 地址及配置')
     api_url = Column(String(512), comment='评估微服务主入口URL')
     score_unit = Column(String(50), nullable=True, default='', comment='分数单位')
-    statistic_method = Column(String(30), nullable=False, default='average', comment='统计方式: average(简单平均), weighted_wer(加权WER: Σerrors/Σlength), pass_rate(达标率: 达标用例数/总用例数)')
+    statistic_method = Column(String(30), nullable=False, default='average', comment='统计方式: average(简单平均), weighted_wer(加权WER: Σerrors/Σlength), pass_rate(达标率: 达标用例数/总用例数), ratio(比率: Σ数量/Σ分母, 产出%)')
+    agg_denominator = Column(String(20), nullable=False, default='case', comment='聚合分母口径(适用于所有统计方式): case(按用例, 默认)/round(按轮次)，如 pass_rate=达标用例数/用例数 或 达标轮次数/轮次数')
+    exclude_rounds = Column(JSON, nullable=True, default=list, comment='按轮次统计时排除的轮次（不参与分子/分母），如 [0, 2]')
 
     parent_dimension = relationship('Dimension', remote_side=[id], backref='sub_dimensions')
 

@@ -39,6 +39,10 @@ def calculate_score(dim_id):
 def batch_action():
     return EvaluationController.batch_action()
 
+@evaluation_bp.route('/dimensions/reorder', methods=['POST'])
+def reorder_dimensions():
+    return EvaluationController.reorder()
+
 @evaluation_bp.route('/dimensions/export', methods=['GET'])
 def export_dimensions():
     return EvaluationController.export_to_file()
