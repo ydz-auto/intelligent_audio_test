@@ -87,6 +87,31 @@ def test_latency_window_no_stopped_gating():
     assert resp is None and reply == 200.0
 
 
+def test_barge_in_reply_negative_latency():
+    """barge-in：模型在用户话未说完（u_e 前）已开始回应，旧口径 start>u_e 会漏判为静默。
+
+    取自实测误判案例：窗口 (27.378, 28.968)，模型段 {28.57, 45.135} 在窗口内起播，
+    回复时延应为负（-398ms），且 build_round_block 能取到回应文本。
+    """
+    from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+        round_latency_from_window, build_round_block,
+    )
+
+    segs = [{'start': 28.57, 'end': 45.135, 'text': '好嘞同比就是拿今年同时间段的数据和去年比较'}]
+    resp, reply = round_latency_from_window(27.378, 28.968, segs)
+    assert resp is None
+    assert reply == round((28.57 - 28.968) * 1000, 1)  # -398.0
+
+    # 被打断的活跃段本身不算回应（说穿不停 → 回复时延 None）
+    resp, reply = round_latency_from_window(2.0, 2.5, [{'start': 1.0, 'end': 3.0}])
+    assert resp == 1000.0 and reply is None
+
+    t = {'round': 2, 'u_s': 27.378, 'u_e': 28.968, 'stop_intent': False}
+    block = build_round_block(t, {'model_segments': segs, 'user_segments': []}, {})
+    assert block['model_recovery_text'] == segs[0]['text']  # LLM 不再看到 "(无语音输出)"
+    assert block['model_interrupted_text'] == ''
+
+
 def test_extract_prefers_fft_window():
     from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
         extract_round_timing,
