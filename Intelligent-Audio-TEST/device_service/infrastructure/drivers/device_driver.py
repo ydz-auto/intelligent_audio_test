@@ -1,13 +1,16 @@
-# 设备驱动工厂单例
-# 历史上的 re-export 已移除，请直接从各子模块导入具体驱动/工具：
-#     from device_service.infrastructure.drivers.utils import register_task_events
-#     from device_service.infrastructure.drivers.base_driver import BaseDeviceDriver
+# 设备驱动工厂单例。
+# 具体驱动和工具仍可直接从对应子模块导入；这里保留统一运行时入口。
 from .driver_factory import DeviceDriverFactory
 
-# 新体系：类型化注册
-from .driver_types import AppType, AppVersion, DevicePlatform
-from .registry import driver_registry, register_driver
+device_driver_factory = DeviceDriverFactory()
+
+from .driver_types import AppType, AppVersion, DevicePlatform, DriverStatus
+from .registry import DriverRegistry, DriverNotFoundError, driver_registry, register_driver
 from .contracts import AppDriver, DriverContext
 
-# 预创建工厂实例，方便直接调用
-device_driver_factory = DeviceDriverFactory()
+__all__ = [
+    "DeviceDriverFactory", "device_driver_factory",
+    "AppType", "AppVersion", "DevicePlatform", "DriverStatus",
+    "DriverRegistry", "DriverNotFoundError", "driver_registry", "register_driver",
+    "AppDriver", "DriverContext",
+]

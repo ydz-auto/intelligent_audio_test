@@ -42,6 +42,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
     app_type = AppType.CHATGPT
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.chatgpt.v1"
     display_name = "ChatGPT语音通话 v1"
     dependencies = ["hypium"]
 

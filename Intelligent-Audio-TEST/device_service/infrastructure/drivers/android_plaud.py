@@ -31,6 +31,7 @@ class PlaudDriver(AndroidDriver):
     app_type = AppType.PLAUD
     version = AppVersion.V1
     platform = DevicePlatform.ANDROID
+    keywords = "android.plaud.v1"
     display_name = "Plaud AI 录音 v1"
 
     def __init__(self):
@@ -226,7 +227,7 @@ class PlaudDriver(AndroidDriver):
         #  解锁设备啥的
         from .driver_factory import DeviceDriverFactory
         driver_factory = DeviceDriverFactory()
-        share_device = driver_factory.get_driver("harmonyos", ["harden"], device_sn=LOG_DEVICE_ID)
+        share_device = driver_factory.get_driver_for_device("harmonyos", ["harden"], device_sn=LOG_DEVICE_ID)
         if not share_device:
             self._log(level='INFO', content=f"分享日志设备未准备: {LOG_DEVICE_ID}", task_id=task_id, test_case_id=test_case_id)
             return False

@@ -20,6 +20,7 @@ class HarmonyDriver(BaseDeviceDriver):
     app_type = AppType.HARMONY_BASE
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.base.v1"
     display_name = "HarmonyOS 基础驱动"
 
     def __init__(self):

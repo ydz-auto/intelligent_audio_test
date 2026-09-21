@@ -35,6 +35,7 @@ class Xiaoyilivechat(HarmonyDriver):
     app_type = AppType.XIAOYI_LIVECHAT
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_livechat.v1"
     display_name = "小艺通话聊天 v1"
     dependencies = ["hypium"]
 
@@ -92,14 +93,14 @@ class Xiaoyilivechat(HarmonyDriver):
 
     # ===== DSP 层 audio_hook PCM(仅小艺用,替换 fwk 层) =====
     # 来源:华为全双工调试脚本 AudioLogTools/1.start-dump-smartpa.bat 的 DSP 子集产物。
-    # audio_hook 目录下两类时间轴对齐的裸 PCM(s16le,固定格式,非文件名解析):
+    # audio_hook 目录下两类时间轴对齐的裸 PCM(固定格式,非文件名解析):
     #   in_after_imedia_asr_module*  16000Hz/4ch/16bit → 取第 1 声道(ch0)为用户输入(mono)
-    #   in_raw1*                    16000Hz/2ch/16bit → 模型回复(2ch)
+    #   in_raw1*                    24000Hz/2ch/32bit → 模型回复(2ch)
     DSP_AUDIO_HOOK_DIR = '/data/vendor/log/audio_logs/audio_hook'
     DSP_USER_PREFIX = 'in_after_imedia_asr_module'   # 用户麦克风采集流前缀
     DSP_AI_PREFIX = 'in_raw1'                        # 模型回复流前缀
     DSP_USER_FMT = (16000, 4, 2)                     # (sample_rate, channels, sample_width)
-    DSP_AI_FMT = (16000, 2, 2)
+    DSP_AI_FMT = (24000, 2, 4)                       # 真机实测: in_raw1* 为 24kHz/2ch/32bit
     DSP_USER_EXTRACT_CHANNEL = 0                     # 4ch 取第 1 声道(ch0)→ mono
     # audiodebug 二进制版本(对应 libaudio_proxy_<V>.z.so),本地随驱动打包
     DSP_BIN_DIR = os.path.join(os.path.dirname(__file__), 'bin', 'dsp')

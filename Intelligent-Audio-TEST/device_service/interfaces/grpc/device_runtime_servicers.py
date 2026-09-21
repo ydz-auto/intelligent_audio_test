@@ -81,7 +81,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                 if not device_sn and device_info_list_raw:
                     device_sn = device_info_list_raw[0].get('device_sn')
 
-                driver = self.factory.get_driver(system, keywords=keywords, device_sn=device_sn)
+                driver = self.factory.get_driver_for_device(system, keywords=keywords, device_sn=device_sn)
                 if driver and hasattr(driver, 'initialize'):
                     driver.initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
                 driver_info = {
@@ -120,7 +120,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                 system = device_config.get('system')
                 keywords = device_config.get('keywords')
                 if not driver:
-                    driver = self.factory.get_driver(system, keywords=keywords)
+                    driver = self.factory.get_driver_for_device(system, keywords=keywords)
                 if driver and hasattr(driver, 'extract_results_from_archive'):
                     archive_results = driver.extract_results_from_archive(
                         device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
@@ -238,7 +238,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             system = request.system
             keywords = request.keywords or None
             if system:
-                driver = self.factory.get_driver(system, keywords=keywords)
+                driver = self.factory.get_driver_for_device(system, keywords=keywords)
                 result = driver.scan() if driver else []
             else:
                 # system 为空时扫描所有已注册驱动
@@ -253,7 +253,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             system = request.system
             keywords = request.keywords or None
             serial_or_ip = request.serial_or_ip
-            driver = self.factory.get_driver(system, keywords=keywords) if system else None
+            driver = self.factory.get_driver_for_device(system, keywords=keywords) if system else None
             if driver:
                 driver.unlock(serial_or_ip)
             return e2e_pb.DriverUnlockResponse(success=True, message="ok", data=_dumps({"unlocked": True}))

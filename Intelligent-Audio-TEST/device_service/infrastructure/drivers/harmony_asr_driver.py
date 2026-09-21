@@ -32,6 +32,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
     app_type = AppType.XIAOYI_INPUT_METHOD
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_input_method.v1"
     display_name = "鸿蒙小艺输入法 ASR v1"
     dependencies = ["hypium"]
 

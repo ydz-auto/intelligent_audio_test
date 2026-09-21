@@ -76,6 +76,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
     app_type = AppType.XIAOYI_FACE2FACE
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_face2face.v1"
     display_name = "小艺面对面翻译 v1"
     dependencies = ["hypium"]
     @with_rpc_retry()
@@ -148,6 +149,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
     app_type = AppType.XIAOYI_SIMULTANEOUS
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_simultaneous.v1"
     display_name = "小艺同声传译 v1"
     dependencies = ["hypium"]
     @with_rpc_retry()

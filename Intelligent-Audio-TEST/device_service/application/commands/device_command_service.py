@@ -59,7 +59,7 @@ class DeviceCommandService:
             # 创建设备后立即检查设备是否在线
             try:
                 from device_service.infrastructure.drivers.device_driver import device_driver_factory
-                driver = device_driver_factory.get_driver(new_device.system)
+                driver = device_driver_factory.get_driver_for_device(new_device.system)
                 if driver:
                     online_devices = driver.scan()
                     serial_number = new_device.serial_number
@@ -137,7 +137,7 @@ class DeviceCommandService:
         all_devices = []
 
         # 1. 扫描 Android
-        android_driver = device_driver_factory.get_driver('Android')
+        android_driver = device_driver_factory.get_driver_for_device('Android')
         if android_driver:
             original_mock_mode = getattr(android_driver, '_mock_mode', False)
             if hasattr(android_driver, '_mock_mode'):
@@ -147,7 +147,7 @@ class DeviceCommandService:
                 android_driver._mock_mode = original_mock_mode
 
         # 2. 扫描 iOS
-        ios_driver = device_driver_factory.get_driver('iOS')
+        ios_driver = device_driver_factory.get_driver_for_device('iOS')
         if ios_driver:
             original_mock_mode = getattr(ios_driver, '_mock_mode', False)
             if hasattr(ios_driver, '_mock_mode'):
@@ -157,7 +157,7 @@ class DeviceCommandService:
                 ios_driver._mock_mode = original_mock_mode
 
         # 3. 扫描 HarmonyOS
-        harmony_driver = device_driver_factory.get_driver('HarmonyOS')
+        harmony_driver = device_driver_factory.get_driver_for_device('HarmonyOS')
         if harmony_driver:
             original_mock_mode = getattr(harmony_driver, '_mock_mode', False)
             if hasattr(harmony_driver, '_mock_mode'):
@@ -199,7 +199,7 @@ class DeviceCommandService:
 
         try:
             from device_service.infrastructure.drivers.device_driver import device_driver_factory
-            driver = device_driver_factory.get_driver(device.system, keywords=device.keywords)
+            driver = device_driver_factory.get_driver_for_device(device.system, keywords=device.keywords)
             if driver:
                 driver.unlock(device.serial_number or device.ip)
 
@@ -260,7 +260,7 @@ class DeviceCommandService:
 
             is_online = False
             try:
-                driver = device_driver_factory.get_driver(device_data['system'])
+                driver = device_driver_factory.get_driver_for_device(device_data['system'])
                 if driver:
                     original_mock_mode = getattr(driver, '_mock_mode', False)
                     if hasattr(driver, '_mock_mode'):

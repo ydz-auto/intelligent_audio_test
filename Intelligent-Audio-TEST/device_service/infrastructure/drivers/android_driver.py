@@ -21,6 +21,7 @@ class AndroidDriver(BaseDeviceDriver):
     app_type = AppType.ANDROID_BASE
     version = AppVersion.V1
     platform = DevicePlatform.ANDROID
+    keywords = "android.base.v1"
     display_name = "Android 基础驱动"
 
     def __init__(self):

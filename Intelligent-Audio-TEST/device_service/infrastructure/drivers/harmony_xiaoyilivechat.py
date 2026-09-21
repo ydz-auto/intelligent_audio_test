@@ -38,6 +38,7 @@ class XiaoyilivechatV2(HarmonyDriver):
     app_type = AppType.XIAOYI_LIVECHAT
     version = AppVersion.V2
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_livechat.v2"
     display_name = "小艺通话聊天 v2"
     dependencies = ["hypium"]
 

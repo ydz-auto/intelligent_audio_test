@@ -38,6 +38,7 @@ class DoubaoChat(Xiaoyilivechat):
     app_type = AppType.DOUBAO
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.doubao.v1"
     display_name = "豆包语音通话 v1"
     dependencies = ["hypium"]
 

@@ -2,6 +2,20 @@ from .android_driver import AndroidDriver
 from .android_plaud import PlaudDriver
 from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .utils import log_and_emit
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import driver_registry
+
+_LEGACY_KEYWORDS = {
+    AppType.PLAUD: ['plaud', 'ai录音', 'ai record'],
+    AppType.XIAOYI_FACE2FACE: ['face2face', '面对面', 'face'],
+    AppType.XIAOYI_SIMULTANEOUS: ['simultaneous', '同传', 'interpretation'],
+    AppType.XIAOYI_HUIJI: ['harden', 'huiji', '慧记'],
+    AppType.XIAOYI_LIVECHAT: ['xiaoyilivechat', '小艺通话', 'livechat'],
+    AppType.CHATGPT: ['chatgpt', 'chatgptvoice', 'chatgpt语音'],
+    AppType.DOUBAO: ['doubao', '豆包', 'doubaochat', '豆包通话'],
+    AppType.XIAOYI_INPUT_METHOD: ['input_method', '输入法', 'asr'],
+    AppType.DOUBAO_ASR: ['doubao', '豆包', 'asr'],
+}
 
 # HarmonyDriver 的 scan() 仅依赖 hdc 命令，不需要 hypium，始终可用
 from .harmony_driver import HarmonyDriver
@@ -93,14 +107,45 @@ class DeviceDriverFactory:
         return self._mock_mode
 
     def _register_defaults(self):
-        """注册默认的专用驱动"""
-
+        """从类型化注册表统一实例化驱动，旧关键字仅用于兼容查询。"""
+        base_types = {AppType.ANDROID_BASE, AppType.HARMONY_BASE}
+        self._specialized_drivers = []
+        self._drivers_by_keyword = {}
+        for driver_cls in driver_registry.get_driver_classes():
+            app_type = driver_cls.app_type
+            platform = driver_cls.platform
+            if platform == DevicePlatform.HARMONYOS and not _HYPium_AVAILABLE:
+                continue
+            instance = driver_cls()
+            keyword = getattr(driver_cls, 'keywords', None)
+            if not isinstance(keyword, str) or not keyword.strip():
+                raise ValueError(f"驱动 {driver_cls.__name__} 必须声明唯一 keywords 标识")
+            keyword = keyword.strip().lower()
+            existing = self._drivers_by_keyword.get(keyword)
+            if existing is not None and not isinstance(existing, driver_cls):
+                raise ValueError(f"驱动 keywords 重复: {keyword}")
+            self._drivers_by_keyword[keyword] = instance
+            if app_type in base_types:
+                key = "Android" if platform == DevicePlatform.ANDROID else "HarmonyOS"
+                self._base_drivers[key] = instance
+                if hasattr(instance, 'set_mock_mode'):
+                    instance.set_mock_mode(self._mock_mode)
+                continue
+            self.register_specialized_driver(
+                instance,
+                keyword,
+                platform.value,
+                getattr(driver_cls, 'display_name', driver_cls.__name__),
+            )
+        return
+        """
         self.register_specialized_driver(
             PlaudDriver(),
             ['plaud', 'ai录音', 'ai record'],
             'Android',
             'Plaud AI 录音专用驱动'
         )
+        """
 
         # 鸿蒙专用驱动仅在 hypium 可用时注册
         if _HYPium_AVAILABLE:
@@ -165,9 +210,16 @@ class DeviceDriverFactory:
         # 设置新注册驱动的模拟模式
         if hasattr(driver, 'set_mock_mode'):
             driver.set_mock_mode(self._mock_mode)
+        if not isinstance(keywords, str) or not keywords.strip():
+            raise ValueError("驱动 keywords 必须是非空字符串")
+        keyword = keywords.strip().lower()
+        existing = self._drivers_by_keyword.get(keyword)
+        if existing is not None and existing is not driver:
+            raise ValueError(f"驱动 keywords 重复: {keyword}")
+        self._drivers_by_keyword[keyword] = driver
         self._specialized_drivers.append({
             'driver': driver,
-            'keywords': [k.lower() for k in keywords],
+            'keywords': [keyword],
             'system': system.lower() if system else None,
             'original_keywords': keywords,
             'name': name or driver.__class__.__name__
@@ -266,7 +318,7 @@ class DeviceDriverFactory:
     def get_driver_typed(
         self,
         app_type: AppType,
-        platform: DevicePlatform,
+        platform: DevicePlatform = None,
         version: AppVersion = AppVersion.V1,
     ):
         """新体系入口：通过 Enum 精确定位驱动实例
@@ -295,6 +347,36 @@ class DeviceDriverFactory:
             if isinstance(driver, driver_cls):
                 return driver
         return None
+
+    def get_driver_for_device(self, system, keywords=None, device_sn=None):
+        """按设备字段解析新版驱动元数据并返回驱动实例。"""
+        system_key = (system or '').lower()
+        platform = {
+            'android': DevicePlatform.ANDROID,
+            'harmonyos': DevicePlatform.HARMONYOS,
+            'ios': DevicePlatform.IOS,
+        }.get(system_key)
+        if platform is None:
+            return None
+
+        if not isinstance(keywords, str) or not keywords.strip():
+            raise ValueError("设备必须提供明确的驱动 keywords 标识")
+        driver = self._drivers_by_keyword.get(keywords.strip().lower())
+        if driver is None:
+            raise ValueError(f"未注册驱动 keywords: {keywords}")
+        if driver.platform != platform:
+            raise ValueError(f"设备平台与驱动不匹配: system={system}, keywords={keywords}")
+        return driver
+        values = [keywords] if isinstance(keywords, str) else (keywords or [])
+        tokens = {str(value).strip().lower() for value in values if str(value).strip()}
+        app_type = AppType.ANDROID_BASE if platform == DevicePlatform.ANDROID else AppType.HARMONY_BASE
+        for candidate, aliases in _LEGACY_KEYWORDS.items():
+            if candidate in (AppType.ANDROID_BASE, AppType.HARMONY_BASE):
+                continue
+            if tokens.intersection({alias.lower() for alias in aliases}):
+                app_type = candidate
+                break
+        return self.get_driver_typed(app_type, platform)
 
     def list_registered_drivers(self) -> list[dict]:
         """列出注册表中所有驱动（代理给 DriverRegistry）"""

@@ -33,6 +33,7 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     app_type = AppType.DOUBAO_ASR
     version = AppVersion.V1
     platform = DevicePlatform.ANDROID
+    keywords = "android.doubao_asr.v1"
     display_name = "豆包 Android ASR v1"
 
     # 应用配置常量
