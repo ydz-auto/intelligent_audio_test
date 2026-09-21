@@ -7,14 +7,12 @@
    - reject_judge  拒识裁判 v2（非目标人拒识/目标人非交互意图/环境噪声/用户BC）
 2. 注册主维度的输入/输出参数（evaluation_dimension_params）
    输入：ai_wav, user_wav, is_single_round, timing, model, max_tokens, temperature
-   输出：evaluations, ej_model, ej_behavior, ej_timing, ej_rate, ej_reason,
-         ej_enabled, ej_interaction, ej_query, ej_answer,
-         tokens_used, input_token, output_token,
-         rate_success_count, rate_inquiry_count, rate_failure_count,
-         ej_message
-3. 注册 8 个子维度（dimension_type='sub'）：
-   - 行为占比（5个）: 拒识回应/恢复/不确定询问/无关回复/静默 占比
-   - 评级占比（3个）: 拒识成功/拒识询问/拒识失败 占比
+   输出：evaluations, ej_behavior, ej_timing, ej_rate, ej_reason,
+         ej_interaction, ej_query, ej_answer,
+         rate_success_count, rate_inquiry_count, rate_failure_count
+3. 注册子维度（dimension_type='sub'）：
+   - 3 个父级子维度：拒识成功率/拒识询问率/拒识失败率 占比
+   - 9 个子级子维度：按 timing+behavior 细分
    子维度 statistic_method='pass_rate'，agg_role='pass_eq'，pass_threshold=1
 4. 注册 voice_llm 算法与主维度的关联（algorithm_dimension_relations）
 5. 注册 voice_llm → 主维度的参数映射（param_mappings）
@@ -87,9 +85,6 @@ _PARAMS = [
     ('evaluations', '裁判结果', 'LLM 裁判结果', 'json', 'output',
      'evaluations', None, 'aux', True,
      False, None, 'LLM 裁判结果列表 [{behavior, reason}, ...]', 60),
-    ('ej_model', '裁判模型', '使用的 LLM 模型', 'text', 'output',
-     'model', None, 'aux', True,
-     False, None, '本次裁判使用的 LLM 模型名', 61),
     ('ej_behavior', '裁判行为', 'LLM裁判行为类别', 'text', 'output',
      'evaluations.0.behavior', None, 'aux', True,
      False, None, 'LLM裁判行为类别(回应/恢复/不确定询问/无关回复/静默; 取evaluations首条)', 62),
@@ -102,9 +97,6 @@ _PARAMS = [
     ('ej_reason', '裁判理由', 'LLM裁判判定理由', 'text', 'output',
      'evaluations.0.reason', None, 'aux', True,
      False, None, 'LLM裁判判定理由(取evaluations首条)', 65),
-    ('ej_enabled', '是否启用', '裁判是否正常执行', 'text', 'output',
-     'enabled', None, 'aux', True,
-     False, None, '裁判是否正常执行(True/False)', 66),
     ('ej_interaction', '交互内容', '完整交互文字(带时间戳)', 'text', 'output',
      'interaction_text', None, 'aux', True,
      False, None, '用例完整交互文字，query/answer 按时间排序，含时间戳', 67),
@@ -114,15 +106,6 @@ _PARAMS = [
     ('ej_answer', '模型ASR', '模型侧ASR文本', 'text', 'output',
      'answer', None, 'aux', True,
      False, None, '模型侧ASR转写文本', 69),
-    ('tokens_used', 'token用量', '总 token 用量', 'number', 'output',
-     'tokens_used', None, 'aux', True,
-     False, None, 'LLM 调用总 token 用量', 70),
-    ('input_token', '输入token', '输入 token 数', 'number', 'output',
-     'input_token', None, 'aux', True,
-     False, None, 'LLM 输入 token 数', 71),
-    ('output_token', '输出token', '输出 token 数', 'number', 'output',
-     'output_token', None, 'aux', True,
-     False, None, 'LLM 输出 token 数', 72),
     ('rate_success_count', '拒识成功统计', '拒识成功数量统计(按timing+behavior分组)', 'json', 'output',
      'rate_success_count', None, 'aux', True,
      False, None, '拒识成功数量统计字典，含总数及各timing+behavior组合命中数', 73),
@@ -132,9 +115,6 @@ _PARAMS = [
     ('rate_failure_count', '拒识失败统计', '拒识失败数量统计(按timing+behavior分组)', 'json', 'output',
      'rate_failure_count', None, 'aux', True,
      False, None, '拒识失败数量统计字典，含总数及各timing+behavior组合命中数', 75),
-    ('ej_message', '裁判说明', '裁判结果说明', 'text', 'output',
-     'message', None, 'aux', True,
-     False, None, '裁判错误/成功说明', 99),
 ]
 
 # ── 请求体模板 ──
@@ -194,59 +174,104 @@ DIMENSIONS = [
 ]
 
 # ============================================================
-# 行为子维度定义（5个）
-# statistic_method='pass_rate' + agg_role='pass_eq' + pass_threshold=1
-# eval_server 返回 int 0/1，pass_rate 统计 1 的占比即行为/评级占比
+# 子维度定义（3个父级 + 9个子级）
+# 父级：拒识成功率/拒识询问率/拒识失败率 占比
+# 子级：按 timing+behavior 细分
 # ============================================================
-_BEHAVIOR_FIELDS = [
-    ('behavior_respond',    '回应',     '模型中断或偏离正在进行的回复，转而对拒识干扰内容进行了有意义的回应'),
-    ('behavior_recover',    '恢复',     '模型忽略拒识干扰内容，继续或完成之前正在进行中的回复或任务'),
-    ('behavior_uncertain',  '不确定询问', '模型因干扰内容暂停回复，表示不确定或难以听清、缺少信息'),
-    ('behavior_irrelevant', '无关回复',   '模型输出语义偏离目标或答非所问，未明确恢复、回应或表达不确定'),
-    ('behavior_silent',     '静默',     '模型在干扰发生后完全中断语音输出且未恢复，未产生任何有意义的语音内容'),
+
+_SUB_DIMENSIONS_DEF = [
+    {
+        'name': '拒识成功率占比',
+        'field': 'rate_success',
+        'help': 'rate=拒识成功的占比',
+        'children': [
+            ('success_silent_recover',  '静默时拒识恢复行为占比', '静默期间behavior=恢复或静默，拒识成功'),
+            ('success_reply_recover',    '回复时拒识恢复行为占比', '回复过程中behavior=恢复，拒识成功'),
+        ],
+    },
+    {
+        'name': '拒识询问率占比',
+        'field': 'rate_inquiry',
+        'help': 'rate=拒识询问的占比',
+        'children': [
+            ('inquiry_silent',  '静默时拒识询问行为占比', '静默期间behavior=不确定询问'),
+            ('inquiry_reply',    '回复时拒识询问行为占比', '回复过程中behavior=不确定询问'),
+        ],
+    },
+    {
+        'name': '拒识失败率占比',
+        'field': 'rate_failure',
+        'help': 'rate=拒识失败的占比',
+        'children': [
+            ('failure_silent_respond',    '静默时拒识回应行为占比',   '静默期间behavior=回应'),
+            ('failure_reply_respond',      '回复时拒识回应行为占比',   '回复过程中behavior=回应'),
+            ('failure_silent_irrelevant',  '静默时拒识无关行为占比',   '静默期间behavior=无关回复'),
+            ('failure_reply_irrelevant',   '回复时拒识无关行为占比',   '回复过程中behavior=无关回复'),
+            ('failure_reply_silent',       '回复时拒识静默行为占比',   '回复过程中behavior=静默'),
+        ],
+    },
 ]
 
-# ── 评级子维度定义（3个） ──
-_RATE_FIELDS = [
-    ('rate_success',  '成功', 'rate=0（拒识成功）的占比。timing+behavior组合判定为拒识成功'),
-    ('rate_inquiry',  '询问', 'rate=1（拒识询问）的占比。behavior为不确定询问'),
-    ('rate_failure',   '失败', 'rate=2（拒识失败）的占比。behavior为回应/无关回复等'),
-]
+
+def _build_parent_dim(task_type_code, name, field, help):
+    return {
+        'task_type_code': task_type_code,
+        'name': name,
+        'keywords': f'{task_type_code},{field},{name}',
+        'description': f'父级子维度：{name}。output field_path = {field}',
+        'type': 'auto',
+        'result_type': 0,
+        'result_min': 0.0,
+        'result_max': 1.0,
+        'decimal_places': 2,
+        'weight': 1,
+        'estimated_exec_time': 120,
+        'score_unit': '%',
+        'statistic_method': 'pass_rate',
+        'params': [
+            (field, name, name,
+             'number', 'output',
+             field, 'pass_eq', 'main', True,
+             False, '0', help, 60, 1),
+        ],
+    }
 
 
-def _build_sub_dimensions(task_type_code, prefix, fields):
-    """为主维度生成行为/评级占比子维度定义。"""
-    subs = []
-    for i, (field, label, help) in enumerate(fields):
-        subs.append({
-            'task_type_code': task_type_code,
-            'name': f'{prefix}{label}占比',
-            'keywords': f'{task_type_code},{field},{label},占比',
-            'description': f'子维度：{prefix}「{label}」的占比。output field_path = {field}',
-            'type': 'auto',
-            'result_type': 0,  # 数值型
-            'result_min': 0.0,
-            'result_max': 1.0,
-            'decimal_places': 2,
-            'weight': 1,
-            'estimated_exec_time': 120,
-            'score_unit': '%',
-            'statistic_method': 'pass_rate',
-            'params': [
-                (field, f'{label}占比', f'{prefix}{label}占比',
-                 'number', 'output',
-                 field, 'pass_eq', 'main', True,
-                 False, '0', help, 60 + i, 1),
-            ],
-        })
-    return subs
+def _build_child_dim(task_type_code, name, field, help, ui_order):
+    return {
+        'task_type_code': task_type_code,
+        'name': name,
+        'keywords': f'{task_type_code},{field},{name}',
+        'description': f'子维度：{name}。output field_path = {field}',
+        'type': 'auto',
+        'result_type': 0,
+        'result_min': 0.0,
+        'result_max': 1.0,
+        'decimal_places': 2,
+        'weight': 1,
+        'estimated_exec_time': 120,
+        'score_unit': '%',
+        'statistic_method': 'pass_rate',
+        'params': [
+            (field, name, name,
+             'number', 'output',
+             field, 'pass_eq', 'main', True,
+             False, '0', help, ui_order, 1),
+        ],
+    }
 
 
 SUB_DIMENSIONS = {
-    'reject_judge': (
-        _build_sub_dimensions('reject_judge', '拒识', _BEHAVIOR_FIELDS) +
-        _build_sub_dimensions('reject_judge', '拒识', _RATE_FIELDS)
-    ),
+    'reject_judge': [
+        {
+            'parent': _build_parent_dim('reject_judge', p['name'], p['field'], p['help']),
+            'children': [
+                _build_child_dim('reject_judge', cname, cfield, chelp, 61 + j)
+                for j, (cfield, cname, chelp) in enumerate(p['children'])
+            ],
+        }
+        for p in _SUB_DIMENSIONS_DEF
+    ],
 }
 
 
@@ -589,15 +614,24 @@ def seed_reject_judge():
             _upsert_relation(conn, main_id)
             _upsert_param_mappings(conn, main_id, dim_def)
 
-            # Step 2: 注册子维度
-            sub_defs = SUB_DIMENSIONS.get(task_code, [])
-            print(f"\n--- Step 2: 注册 {len(sub_defs)} 个子维度（parent_dimension_id={main_id}） ---")
-            for sub_def in sub_defs:
-                print(f"\n  -- 子维度: {sub_def['name']} --")
-                sub_id = _upsert_dimension(conn, sub_def, dimension_type='sub', parent_id=main_id)
-                print(f"  子维度 id = {sub_id}")
-                _upsert_params(conn, sub_id, sub_def)
-                _upsert_relation(conn, sub_id)
+            # Step 2: 注册子维度（3个父级 + 9个子级）
+            sub_groups = SUB_DIMENSIONS.get(task_code, [])
+            total_subs = sum(len(g['children']) for g in sub_groups) + len(sub_groups)
+            print(f"\n--- Step 2: 注册 {len(sub_groups)} 个父级 + {sum(len(g['children']) for g in sub_groups)} 个子级子维度 ---")
+            for group in sub_groups:
+                parent_def = group['parent']
+                print(f"\n  -- 父级子维度: {parent_def['name']} --")
+                parent_sub_id = _upsert_dimension(conn, parent_def, dimension_type='sub', parent_id=main_id)
+                print(f"  父级子维度 id = {parent_sub_id}")
+                _upsert_params(conn, parent_sub_id, parent_def)
+                _upsert_relation(conn, parent_sub_id)
+
+                for child_def in group['children']:
+                    print(f"    -- 子级: {child_def['name']} --")
+                    child_id = _upsert_dimension(conn, child_def, dimension_type='sub', parent_id=parent_sub_id)
+                    print(f"    子级 id = {child_id}")
+                    _upsert_params(conn, child_id, child_def)
+                    _upsert_relation(conn, child_id)
 
         print(f"\n{'=' * 60}")
         print("  拒识裁判v2(reject_judge) 维度种子数据注册完成")
@@ -616,8 +650,8 @@ if __name__ == '__main__':
     print("   场景: 非目标人拒识/目标人非交互意图/环境噪声/用户BC")
     print("   模式: 单轮(is_single_round=true)/多轮(is_single_round=false)")
     print("   时机: timing(回复过程中/静默)")
-    print("2. 5 个行为子维度（拒识回应/恢复/不确定询问/无关回复/静默 占比）")
-    print("3. 3 个评级子维度（拒识成功/拒识询问/拒识失败 占比）")
+    print("2. 3 个父级子维度（拒识成功率/拒识询问率/拒识失败率 占比）")
+    print("3. 9 个子级子维度（按 timing+behavior 细分）")
     print()
     print("   入参: ai_wav, user_wav, is_single_round, timing, model, max_tokens, temperature")
     print()

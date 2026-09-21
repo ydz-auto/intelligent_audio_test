@@ -410,6 +410,16 @@ def evaluate_rejection_judge(
         'rate_success_count': {'拒识成功数量': 0, **{f'{t}_{b}': 0 for t, b in RATE_COMBOS['拒识成功']}},
         'rate_inquiry_count': {'拒识询问数量': 0, **{f'{t}_{b}': 0 for t, b in RATE_COMBOS['拒识询问']}},
         'rate_failure_count': {'拒识失败数量': 0, **{f'{t}_{b}': 0 for t, b in RATE_COMBOS['拒识失败']}},
+        # 扁平化 timing+behavior 字段（供子维度 pass_rate 统计）
+        'success_silent_recover': 0,     # 静默_恢复 + 静默_静默
+        'success_reply_recover': 0,      # 回复过程中_恢复
+        'inquiry_silent': 0,             # 静默_不确定询问
+        'inquiry_reply': 0,              # 回复过程中_不确定询问
+        'failure_silent_respond': 0,     # 静默_回应
+        'failure_reply_respond': 0,      # 回复过程中_回应
+        'failure_silent_irrelevant': 0,  # 静默_无关回复
+        'failure_reply_irrelevant': 0,   # 回复过程中_无关回复
+        'failure_reply_silent': 0,       # 回复过程中_静默
         'tokens_used': 0,
         'input_token': 0,
         'output_token': 0,
@@ -490,6 +500,34 @@ def evaluate_rejection_judge(
         f'n_evaluations={len(evaluations)} '
         f'tokens={result["tokens_used"]}'
     )
+
+    # 扁平化 timing+behavior 字段（取首轮，供子维度 pass_rate 统计）
+    if evaluations:
+        ev = evaluations[0]
+        ev_behavior = ev.get('behavior', '')
+        ev_rate = compute_rate(timing, ev_behavior)
+        if ev_rate == '拒识成功':
+            if timing == '静默' and ev_behavior in ('恢复', '静默'):
+                result['success_silent_recover'] = 1
+            elif timing == '回复过程中' and ev_behavior == '恢复':
+                result['success_reply_recover'] = 1
+        elif ev_rate == '拒识询问':
+            if timing == '静默':
+                result['inquiry_silent'] = 1
+            elif timing == '回复过程中':
+                result['inquiry_reply'] = 1
+        elif ev_rate == '拒识失败':
+            if timing == '静默' and ev_behavior == '回应':
+                result['failure_silent_respond'] = 1
+            elif timing == '回复过程中' and ev_behavior == '回应':
+                result['failure_reply_respond'] = 1
+            elif timing == '静默' and ev_behavior == '无关回复':
+                result['failure_silent_irrelevant'] = 1
+            elif timing == '回复过程中' and ev_behavior == '无关回复':
+                result['failure_reply_irrelevant'] = 1
+            elif timing == '回复过程中' and ev_behavior == '静默':
+                result['failure_reply_silent'] = 1
+
     return result
 
 
