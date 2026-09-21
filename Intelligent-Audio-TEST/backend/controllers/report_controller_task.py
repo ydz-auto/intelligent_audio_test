@@ -494,71 +494,71 @@ class ReportControllerTask(ReportControllerBase):
         is_multi_round = any(getattr(dr, 'round_number', None) is not None for dr in dim_result_rows)
 
         # ── 2. 提取 aux 辅助参数值 ──
-        # aux_values: {param_code: value}
-        # aux_round_map: {param_code: round_number}（None=overall, int=具体轮次）
+        # aux_values: {param_code: {round_number: value}}（round_number None=整体）
+        # 每个轮次（含整体）的 TRD 各自从 api_raw_response 提取，互不抢占
         aux_values = {}
-        aux_round_map = {}
 
-        # 2a. 从 evaluation_data 提取
-        if result_data:
-            eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
-            if isinstance(eval_data, dict):
-                for param_code in param_to_dim:
-                    if param_code in eval_data:
-                        aux_values[param_code] = eval_data[param_code]
-                        # 从 dimension_id → round_number 映射获取轮次
-                        did = param_to_dim_id.get(param_code)
-                        aux_round_map[param_code] = dim_id_to_round.get(did)
-
-        # 2b. 从 api_raw_response 补充（继承 dim_result_row 的 round_number）
-        for dr in dim_result_rows:
+        def _extract_aux_from_row(dr):
+            """从单个 TRD 的 api_raw_response（整体响应 或 per_round 元素）提取 aux 参数"""
             raw_resp = getattr(dr, 'api_raw_response', None)
             if not raw_resp:
-                continue
+                return
             if isinstance(raw_resp, str):
                 try:
                     raw_resp = json.loads(raw_resp)
                 except Exception:
-                    continue
+                    return
+            if not isinstance(raw_resp, dict):
+                return
             dr_round = getattr(dr, 'round_number', None)
-            for aux_info in aux_params_map.get(dr.dimension_id, []):
+            dim_id = getattr(dr, 'dimension_id', None)
+            for aux_info in aux_params_map.get(dim_id, []):
                 p = aux_info['param']
-                param_code = p.param_code
-                if param_code in aux_values:
-                    continue
                 value = extract_by_path(raw_resp, p.field_path)
                 if value is not None:
-                    aux_values[param_code] = value
-                    aux_round_map[param_code] = dr_round
+                    aux_values.setdefault(p.param_code, {})[dr_round] = value
 
-        # 输出 aux 参数
-        for param_code, param_value in aux_values.items():
-            if param_value is None:
-                continue
-            rn = aux_round_map.get(param_code)
-            # 多轮场景下，给 param_code 加上轮次后缀
-            if is_multi_round:
-                if rn is not None:
-                    out_code = f'{param_code}@round:{rn + 1}'
-                    out_label = f'{param_code} (第{rn + 1}轮)'
-                    out_round_number = rn + 1
+        # 2a. 主路径：从各 TRD 的 api_raw_response 提取（整体行 round=None、轮次行 round=i）
+        for dr in dim_result_rows:
+            _extract_aux_from_row(dr)
+
+        # 2b. 兜底：evaluation_data（旧数据无 api_raw_response 时保持原口径）
+        if result_data and not aux_values:
+            eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
+            if isinstance(eval_data, dict):
+                for param_code in param_to_dim:
+                    if param_code in eval_data and param_code not in aux_values:
+                        did = param_to_dim_id.get(param_code)
+                        aux_values.setdefault(param_code, {})[dim_id_to_round.get(did)] = eval_data[param_code]
+
+        # 输出 aux 参数（每个轮次单独一行）
+        for param_code, round_map in aux_values.items():
+            for rn, param_value in round_map.items():
+                if param_value is None:
+                    continue
+                # 多轮场景下，给 param_code 加上轮次后缀
+                if is_multi_round:
+                    if rn is not None:
+                        out_code = f'{param_code}@round:{rn + 1}'
+                        out_label = f'{param_code} (第{rn + 1}轮)'
+                        out_round_number = rn + 1
+                    else:
+                        out_code = f'{param_code}@overall'
+                        out_label = f'{param_code} (整体)'
+                        out_round_number = None
                 else:
-                    out_code = f'{param_code}@overall'
-                    out_label = f'{param_code} (整体)'
+                    out_code = param_code
+                    out_label = param_code
                     out_round_number = None
-            else:
-                out_code = param_code
-                out_label = param_code
-                out_round_number = None
-            algorithm_results.append({
-                'device': resource,
-                'param_code': out_code,
-                'param_type': param_to_type.get(param_code, 'text'),
-                'label': out_label,
-                'value': param_value,
-                'round_number': out_round_number,
-                'dimension_name': param_to_dim.get(param_code),
-            })
+                algorithm_results.append({
+                    'device': resource,
+                    'param_code': out_code,
+                    'param_type': param_to_type.get(param_code, 'text'),
+                    'label': out_label,
+                    'value': param_value,
+                    'round_number': out_round_number,
+                    'dimension_name': param_to_dim.get(param_code),
+                })
 
         # ── 3. 提取设备/API 原始执行结果 ──
         combined_data = {**(algo_res or {}), **(result_data or {})}
