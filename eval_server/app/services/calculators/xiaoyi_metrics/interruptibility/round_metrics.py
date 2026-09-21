@@ -133,18 +133,24 @@ def derive_case_type(rounds, actual_rounds, dangling_rounds,
 # ─────────── §3.2 逐轮时序锚定 ───────────
 
 def round_latency_from_window(u_s: float, u_e: float,
-                              model_segments: List[Dict[str, Any]]) -> Tuple[Optional[float], Optional[float]]:
+                              model_segments: List[Dict[str, Any]],
+                              u_next: Optional[float] = None) -> Tuple[Optional[float], Optional[float]]:
     """用户窗口 [u_s,u_e](秒) → (响应时延, 回复时延)，单位 ms。
 
     响应时延 = u_s 时刻活跃模型段尾 m_e − u_s（无活跃段 → None）
     回复时延 = u_e 后仍在输出（end > u_e）的首个模型段起点 mn_s − u_e（无 → None；
     barge-in 抢答时为负，与旧 per_event 的 recovery_latency_s 口径一致）
     与旧 _evaluate_one_event 不同：不做 stopped/resumed 门控（spec 口径，行为判定归 LLM）。
+
+    u_next: 下一轮用户窗口起点（全局时间线切片用）。本轮静默时 m_next 会取到
+    下一轮的模型回应段 → 误判成有回应；限定 start < u_next 挡住跨轮串扰。
     """
     m_active = next((m for m in model_segments if m['start'] <= u_s < m['end']), None)
     # barge-in：模型可能在用户话未说完（u_e 前）已开始回应，故按 end > u_e 取段（reply_ms 可为负），
     # 排除 m_active 本身（被打断段不算回应）
-    m_next = next((m for m in model_segments if m['end'] > u_e and m is not m_active), None)
+    m_next = next((m for m in model_segments
+                   if m['end'] > u_e and m is not m_active
+                   and (u_next is None or m['start'] < u_next)), None)
     response_ms = round((m_active['end'] - u_s) * 1000, 1) if m_active else None
     reply_ms = round((m_next['start'] - u_e) * 1000, 1) if m_next else None
     return response_ms, reply_ms
@@ -248,11 +254,12 @@ def chunks_from_segments(segments) -> List[Dict[str, Any]]:
 
 
 def build_round_block(t: Dict[str, Any], round_result: Optional[Dict[str, Any]] = None,
-                      rd: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                      rd: Optional[Dict[str, Any]] = None,
+                      u_next: Optional[float] = None) -> Dict[str, Any]:
     """逐轮 LLM 裁判标注块：轮号/角色(打断|停止|恢复)/定位窗口/脚本台词/三段文本。
 
     三段文本按锚定窗口从段取（与计时同源）：用户窗口内语音、u_s 时刻模型活跃段、
-    u_e 后首个模型段。
+    u_e 后首个模型段。u_next 同 round_latency_from_window（全局时间线跨轮边界）。
     """
     round_result = round_result or {}
     rd = rd if isinstance(rd, dict) else {}
@@ -267,7 +274,8 @@ def build_round_block(t: Dict[str, Any], round_result: Optional[Dict[str, Any]] 
                      if u_s is not None and m['start'] <= u_s < m['end']), None)
     # 与 round_latency_from_window 同口径：barge-in 段（end > u_e）也算回应，排除被打断段本身
     m_next = next((m for m in m_segs
-                   if u_e is not None and m['end'] > u_e and m is not m_active), None)
+                   if u_e is not None and m['end'] > u_e and m is not m_active
+                   and (u_next is None or m['start'] < u_next)), None)
     role = '恢复' if t.get('role') == 'resume' else ('停止' if t.get('stop_intent') else '打断')
     return {
         'round': t.get('round'),
