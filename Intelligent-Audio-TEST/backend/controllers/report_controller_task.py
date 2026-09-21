@@ -493,47 +493,46 @@ class ReportControllerTask(ReportControllerBase):
         # 判断是否多轮场景（任一 dim_result_row 有非 None 的 round_number）
         is_multi_round = any(getattr(dr, 'round_number', None) is not None for dr in dim_result_rows)
 
-        # ── 2. 提取 aux 辅助参数值 ──
-        # aux_values: {param_code: {round_number: value}}（round_number None=整体）
-        # 每个轮次（含整体）的 TRD 各自从 api_raw_response 提取，互不抢占
+        # ── 2. 提取 aux 辅助参数值（按轮次分组，多轮场景每轮独立取值）──
+        # aux_values: {param_code: {round_number: value}}（round_number=None 表示整体评估）
         aux_values = {}
 
-        def _extract_aux_from_row(dr):
-            """从单个 TRD 的 api_raw_response（整体响应 或 per_round 元素）提取 aux 参数"""
+        # 2b. 从 api_raw_response 提取：每条维度记录（含 round_number）对应一轮评估结果，
+        #     逐轮提取，保证多轮场景下每一轮都有独立的评估明细（修复前会合并成一条导致后续轮次丢失）
+        for dr in dim_result_rows:
             raw_resp = getattr(dr, 'api_raw_response', None)
             if not raw_resp:
-                return
+                continue
             if isinstance(raw_resp, str):
                 try:
                     raw_resp = json.loads(raw_resp)
                 except Exception:
-                    return
-            if not isinstance(raw_resp, dict):
-                return
+                    continue
             dr_round = getattr(dr, 'round_number', None)
-            dim_id = getattr(dr, 'dimension_id', None)
-            for aux_info in aux_params_map.get(dim_id, []):
+            for aux_info in aux_params_map.get(dr.dimension_id, []):
                 p = aux_info['param']
+                param_code = p.param_code
                 value = extract_by_path(raw_resp, p.field_path)
                 if value is not None:
-                    aux_values.setdefault(p.param_code, {})[dr_round] = value
+                    aux_values.setdefault(param_code, {})[dr_round] = value
 
-        # 2a. 主路径：从各 TRD 的 api_raw_response 提取（整体行 round=None、轮次行 round=i）
-        for dr in dim_result_rows:
-            _extract_aux_from_row(dr)
-
-        # 2b. 兜底：evaluation_data（旧数据无 api_raw_response 时保持原口径）
-        if result_data and not aux_values:
+        # 2a. evaluation_data 兜底：仅当某参数在 api_raw_response 中完全未取到时使用
+        #     （兼容 api_raw_response 为空的历史数据，此时沿用 dim_id_to_round 标注轮次）
+        if result_data:
             eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
             if isinstance(eval_data, dict):
                 for param_code in param_to_dim:
-                    if param_code in eval_data and param_code not in aux_values:
-                        did = param_to_dim_id.get(param_code)
-                        aux_values.setdefault(param_code, {})[dim_id_to_round.get(did)] = eval_data[param_code]
+                    if param_code not in eval_data:
+                        continue
+                    if param_code in aux_values and aux_values[param_code]:
+                        continue
+                    did = param_to_dim_id.get(param_code)
+                    rn = dim_id_to_round.get(did)
+                    aux_values.setdefault(param_code, {})[rn] = eval_data[param_code]
 
-        # 输出 aux 参数（每个轮次单独一行）
-        for param_code, round_map in aux_values.items():
-            for rn, param_value in round_map.items():
+        # 输出 aux 参数（按轮次分组输出，每轮一个条目）
+        for param_code, round_values in aux_values.items():
+            for rn, param_value in round_values.items():
                 if param_value is None:
                     continue
                 # 多轮场景下，给 param_code 加上轮次后缀

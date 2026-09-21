@@ -958,13 +958,15 @@ const parseMetricKey = (k) => {
 
 // 从结果/参考字段的 param_code 或 round_number 提取轮次标记
 // param_code 形如 "answer@round:1" → roundTag "round:1"
+// param_code 形如 "tc_summary@overall" → roundTag "overall"
 // round_number 为数字(1-indexed) → roundTag "round:N"
-// round_number 为 null/undefined → 无轮次标记(null)
+// round_number 为 null/undefined 且无 @overall 后缀 → 无轮次标记(null)
 const parseFieldRoundTag = (field) => {
   // 优先从 param_code 提取
   if (field.param_code) {
     const m = field.param_code.match(/@round:(\d+)$/);
     if (m) return `round:${m[1]}`;
+    if (/@overall$/.test(field.param_code)) return 'overall';
   }
   // 回退到 round_number 字段（1-indexed）
   const rn = field.round_number;
