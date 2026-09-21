@@ -19,7 +19,7 @@
 | [报告管理功能设计文档](报告管理功能设计文档.md) | 报告生成、存储、对比、导出等总设计 |
 | [报告Benchmark排行功能设计文档](报告Benchmark排行功能设计文档.md) | 本功能：实测排行计算、Benchmark 报告发布 |
 | [评估系统功能设计文档](../04_评估/评估系统功能设计文档.md) | 评估维度与指标定义（WER/CER/BLEU/接话率/打断等） |
-| [任务发布功能设计文档](../02_任务管理/任务发布功能设计文档.md) | 正式任务与版本快照机制——Benchmark 入口 |
+| [任务发布功能设计文档](../02_任务管理/任务发布功能设计文档.md) | 已发布任务与版本快照机制——Benchmark 入口 |
 | [任务管理功能设计文档](../02_任务管理/任务管理功能设计文档.md) | 任务创建、执行、测试集选择 |
 | [端到端测试功能设计文档](../01_测试执行/端到端测试功能设计文档.md) | E2E 执行模式 |
 | [Realtime API Adapter 方案](../01_测试执行/Realtime_API_Adapter方案与UseCase文档.md) | API / Realtime 执行模式 |
@@ -50,7 +50,7 @@
 | 公开测试集 | 业界公开的标准测试数据集 | LibriSpeech（ASR）、Common Voice、Full-Duplex-Bench（全双工）、WMT（翻译） |
 | 内部测试集 | 平台自建的测试用例组 | 普通话多轮对话集、噪声打断场景集、干扰人拒识集 |
 
-测试集对应现有 `test_case_groups`（用例分组）+ 标签系统，不新增实体表。测试集可更新（新增用例、调整维度），更新后通过发布新版本正式任务来触发重测。
+测试集对应现有 `test_case_groups`（用例分组）+ 标签系统，不新增实体表。测试集可更新（新增用例、调整维度），更新后通过发布新版本已发布任务来触发重测。
 
 ### 2.3 Benchmark 数据来源（双轨制）
 
@@ -61,10 +61,10 @@
 **只有正式发布的任务（`published_tasks`）才能进入 Benchmark 排行。**
 
 ```
-日常任务（Task）执行完成 → 评估完成 → 报告生成 → 发布为正式任务 → 标记参与 Benchmark → 进入排行
+日常任务（Task）执行完成 → 评估完成 → 报告生成 → 发布为已发布任务 → 标记参与 Benchmark → 进入排行
 ```
 
-正式任务发布时保存完整配置快照（`snapshot_config`），包含用例、设备/API、算法配置、评估维度。这保证了排行可比性：同一正式任务版本用同样的测试集、同样的评估维度测出的结果才有资格横向对比。
+已发布任务发布时保存完整配置快照（`snapshot_config`），包含用例、设备/API、算法配置、评估维度。这保证了排行可比性：同一已发布任务版本用同样的测试集、同样的评估维度测出的结果才有资格横向对比。
 
 #### 来源二：外部基线导入（辅）
 
@@ -96,15 +96,15 @@
 
 ### 3.1 第一阶段
 
-- 正式任务发布时标记是否参与 Benchmark（`published_tasks.snapshot_config` 增加 `benchmark: true`）。
+- 已发布任务发布时标记是否参与 Benchmark（`published_tasks.snapshot_config` 增加 `benchmark: true`）。
 - 外部基线数据导入：批量导入业界公开 Benchmark 榜单数据，版本快照管理（同任务发布不可变版本思路）。
 - Benchmark 排行计算：合并平台实测 + 外部基线数据，按指标横向排名（实测优先，外部基线填充空位）。
 - 指标映射配置：系统评估维度 → Benchmark 排行指标（含单位、方向、场景标签），配置化。
 - 报告详情页嵌入「Benchmark 排行」区块（支持按数据来源筛选）。
 - 独立 Benchmark 排行页（排行表 + 对比图 + 被测主体筛选 + 来源筛选）。
 - Benchmark 报告发布：将排行结果生成为独立的 Benchmark 报告（复用现有报告生成机制）。
-- 新模型 / 新测试集导入后，创建正式任务并发布，自动更新排行。
-- 评测维度和测试集可更新（通过发布新版本正式任务触发重测）。
+- 新模型 / 新测试集导入后，创建已发布任务并发布，自动更新排行。
+- 评测维度和测试集可更新（通过发布新版本已发布任务触发重测）。
 - 记录排行计算、基线导入、Benchmark 报告发布的审计操作。
 
 ### 3.2 暂不包含
@@ -124,7 +124,7 @@
   → 执行测试（E2E / API / Realtime，按 device_type 路由）
   → 评估完成（xiaoyi_metrics 计算维度指标）
   → 报告生成
-  → 发布为正式任务（snapshot_config 标记 benchmark: true）
+  → 发布为已发布任务（snapshot_config 标记 benchmark: true）
   → 触发 Benchmark 排行更新
 ```
 
@@ -142,7 +142,7 @@
 
 ```text
 数据源 A：查询所有 published_tasks（benchmark = true, status = published）
-  → 取每个正式任务的最新执行报告
+  → 取每个已发布任务的最新执行报告
   → 读取报告指标（report_cases.metrics / dimension_values）
   → 来源标记 source = platform_test
 
@@ -166,7 +166,7 @@
   或 更新测试集（新增/修改用例）
   → 创建新日常任务（用更新后的配置）
   → 执行测试 → 评估 → 报告
-  → 发布为新版本正式任务（v2, v3, ...）
+  → 发布为新版本已发布任务（v2, v3, ...）
   → 触发排行重算（引用新版本快照，旧版本排行保留不漂移）
 ```
 
@@ -174,7 +174,7 @@
 
 ```text
 触发 Benchmark 报告生成（手动或发布时自动）
-  → 收集当前所有参与排行的正式任务排行结果
+  → 收集当前所有参与排行的已发布任务排行结果
   → 生成 Benchmark 报告（复用报告生成器，report_type = 'benchmark'）
   → 存储报告（test_reports + 扩展表）
   → 前端可查看 / 导出
@@ -206,7 +206,7 @@
 ### 5.2 场景匹配
 
 - 排行按 **测试集 + 场景标签** 分组：同一测试集、同一场景下的被测主体才互相排名。
-- 测试集取自正式任务快照中的 `caseIds` 聚合所属 `test_case_groups`。
+- 测试集取自已发布任务快照中的 `caseIds` 聚合所属 `test_case_groups`。
 - 场景标签取自已执行用例的标签聚合；无匹配场景时使用 `通用` 场景。
 - 每个被测主体在每个指标上最多一条排行记录；无数据的指标不参与排行。
 
@@ -220,8 +220,8 @@
 
 ### 5.4 版本与不可变性
 
-- 正式任务版本不可变（同现有任务发布机制），排行固定引用计算时的正式任务版本号。
-- 测试集或评测维度更新后，需发布新版本正式任务，触发排行重算。
+- 已发布任务版本不可变（同现有任务发布机制），排行固定引用计算时的已发布任务版本号。
+- 测试集或评测维度更新后，需发布新版本已发布任务，触发排行重算。
 - 旧版本排行结果保留，不随新版本发布漂移（历史可追溯）。
 - 支持"仅用当前版本"或"指定版本"重算排行。
 
@@ -231,7 +231,7 @@
 
 | 现有表 | 复用方式 |
 | --- | --- |
-| `published_tasks` | 增加 `benchmark` 标记到 `snapshot_config`；正式任务即 Benchmark 入口（平台实测来源） |
+| `published_tasks` | 增加 `benchmark` 标记到 `snapshot_config`；已发布任务即 Benchmark 入口（平台实测来源） |
 | `test_reports` | 增加 `report_type = 'benchmark'` 枚举值，Benchmark 报告复用报告 7 表结构 |
 | `devices` / `apis` | 被测主体注册，`device_type` 决定执行方式 |
 | `test_case_groups` | 测试集（用例分组），不新增实体 |
@@ -270,7 +270,7 @@
 | `id` | bigint | 排行 ID |
 | `source` | varchar | 数据来源：`platform_test` / `external_import` |
 | `published_task_id` | bigint | 外键 → published_tasks.id（source=platform_test 时有值） |
-| `published_task_version` | int | 引用的正式任务版本号（source=platform_test 时有值） |
+| `published_task_version` | int | 引用的已发布任务版本号（source=platform_test 时有值） |
 | `report_id` | bigint | 外键 → test_reports.id（来源报告，source=platform_test 时有值） |
 | `baseline_id` | bigint | 外键 → benchmark_baselines.id（source=external_import 时有值） |
 | `subject_name` | varchar | 被测对象名（模型/APP/API 名称） |
@@ -348,7 +348,7 @@
 | `report_id` | bigint | 外键 → test_reports.id |
 | `suite` | varchar | 测试集标识 |
 | `category` | varchar | 被测类别 |
-| `published_task_count` | int | 参与排行的正式任务数 |
+| `published_task_count` | int | 参与排行的已发布任务数 |
 | `subject_count` | int | 参与排行的被测主体数 |
 | `version` | int | Benchmark 报告版本号 |
 | `published_by` | varchar | 发布人 |
@@ -398,7 +398,7 @@ GET /api/v1/benchmarks/metric-mappings
 PUT /api/v1/benchmarks/metric-mappings/{id}
 ```
 
-### 7.5 正式任务标记 Benchmark
+### 7.5 已发布任务标记 Benchmark
 
 在现有 `POST /published-tasks` 发布接口中，请求体增加可选字段：
 
@@ -432,7 +432,7 @@ GET /api/v1/benchmarks/ranking/subjects?suite=full-duplex-v1  # 查看参与排�
 
 - 排行表：名次、被测主体、主体类型（开源/闭源/APP）、数据来源标记（实测/导入）、指标值、与头部差距、百分位条、实测与导入差异列（`delta`，有值时高亮）。
 - 参考线图表：ECharts 横向柱状图，展示全部被测主体同指标对比，标注中位数与最佳参考线，实测与导入数据用不同颜色区分；同模型两者并存时展示双柱对比。
-- 版本标注：展示所引用正式任务版本与测试集（实测数据）或基线版本与数据源链接（导入数据）。
+- 版本标注：展示所引用已发布任务版本与测试集（实测数据）或基线版本与数据源链接（导入数据）。
 - 来源筛选：可切换"仅实测"/"仅导入"/"全部"/"仅看有差异的"。
 - 差异对比：同模型既有实测又有导入值时，在排行表中并列展示两个值，并计算 delta 差异，用颜色标注（正值/负值含义随指标方向不同）。
 
@@ -449,7 +449,7 @@ GET /api/v1/benchmarks/ranking/subjects?suite=full-duplex-v1  # 查看参与排�
 /benchmarks/reports/:reportId       # Benchmark 报告详情
 ```
 
-### 8.3 正式任务发布弹窗
+### 8.3 已发布任务发布弹窗
 
 在现有发布弹窗中增加 Benchmark 选项：
 
@@ -504,8 +504,8 @@ frontend/src/infrastructure/api/benchmarkApi.ts
 
 | 场景 | 处理方式 |
 | --- | --- |
-| 正式任务未标记 benchmark | 不参与排行，不报错 |
-| 正式任务无执行报告 | 跳过该主体，排行中标记 `no_report` |
+| 已发布任务未标记 benchmark | 不参与排行，不报错 |
+| 已发布任务无执行报告 | 跳过该主体，排行中标记 `no_report` |
 | 外部基线导入部分非法 | 返回逐行错误，合法行正常入库 |
 | 外部基线版本被引用后修改 | 禁止原地修改，只能发布新版本 |
 | 同一模型既有实测又有外部基线 | 两者并存展示，不互相覆盖；排名默认以实测值排序，无实测值时以导入值排序；计算 delta 差异 |
@@ -530,13 +530,13 @@ frontend/src/infrastructure/api/benchmarkApi.ts
 - 报告接口既有字段保持不变。
 - 新排行接口独立前缀 `/api/v1/benchmarks`，不侵入 `/api/v1/reports` 既有路由语义。
 - 无 Benchmark 数据时报告渲染与导出行为与现状完全一致。
-- 正式任务发布接口向后兼容：不传 `benchmark` 字段时行为不变。
+- 已发布任务发布接口向后兼容：不传 `benchmark` 字段时行为不变。
 
 ## 12. 测试与验收
 
 ### 12.1 后端测试
 
-- 正式任务标记 `benchmark = true` 后触发排行计算。
+- 已发布任务标记 `benchmark = true` 后触发排行计算。
 - 外部基线批量导入校验（字段缺失、单位/方向非法、重复）。
 - 外部基线版本发布与不可变约束。
 - 双轨对比：同模型既有实测又有外部基线时两者并存，排名以实测值排序，计算 delta 差异。
@@ -559,11 +559,11 @@ frontend/src/infrastructure/api/benchmarkApi.ts
 
 ### 12.3 验收标准
 
-1. 新模型注册后，创建任务、执行测试、发布为正式任务（标记 benchmark），排行自动更新。
+1. 新模型注册后，创建任务、执行测试、发布为已发布任务（标记 benchmark），排行自动更新。
 2. 用户可导入外部基线数据（业界公开榜单），与平台实测结果合并排行。
 3. 同一模型既有实测又有外部基线时，两者并列展示并计算差异（delta），用户可直观对比平台实测与业界公开数据的偏差。
 4. 用户可在独立排行页按测试集 + 被测类别 + 数据来源查看排行。
-5. 评测维度或测试集更新后，发布新版本正式任务，排行自动重算，旧版本排行保留。
+5. 评测维度或测试集更新后，发布新版本已发布任务，排行自动重算，旧版本排行保留。
 6. 可发布 Benchmark 报告，包含全部参与排行的被测主体横向对比。
 7. 只有正式发布的任务能上 Benchmark；日常任务不参与排行。
 8. 现有报告生成、对比、导出功能无回归。
@@ -619,7 +619,7 @@ frontend/src/infrastructure/api/benchmarkApi.ts
 | DeepL | 闭源 API | `http_api` | BLEU |
 | Azure Translator | 闭源 API | `http_api` | BLEU |
 
-> 说明：以上为一期目标覆盖范围，实际参与排行的主体取决于已注册并完成测试发布的正式任务（平台实测）以及已导入的外部基线数据。新模型/新 APP 上线后随时可加入——注册被测主体 → 创建任务 → 执行 → 发布正式任务 → 自动入榜。尚未在本平台实测的模型，可通过导入外部基线数据先行入榜，待后续实测后替换为实测数据。
+> 说明：以上为一期目标覆盖范围，实际参与排行的主体取决于已注册并完成测试发布的已发布任务（平台实测）以及已导入的外部基线数据。新模型/新 APP 上线后随时可加入——注册被测主体 → 创建任务 → 执行 → 发布已发布任务 → 自动入榜。尚未在本平台实测的模型，可通过导入外部基线数据先行入榜，待后续实测后替换为实测数据。
 
 ### 13.5 外部基线数据源参照（导入用）
 

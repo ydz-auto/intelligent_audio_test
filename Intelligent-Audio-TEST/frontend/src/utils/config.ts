@@ -14,8 +14,10 @@ const _apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 const _wsBase = import.meta.env.VITE_WS_BASE_URL || ''
 
 export const API_CONFIG = {
-  baseUrl: _apiBase,
-  wsBaseUrl: _wsBase
+
+  baseUrl: 'http://localhost:5000/api/v1',
+  wsBaseUrl: 'http://localhost:5000'
+
 } as const;
 
 export const APP_CONFIG = {

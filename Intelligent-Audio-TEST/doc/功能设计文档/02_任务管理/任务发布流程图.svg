@@ -50,7 +50,7 @@
   <rect x="0" y="0" width="1240" height="1920" fill="#f1f5f9"/>
 
   <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">任务发布流程图</text>
-  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">日常任务发布为正式任务 · 版本快照保证配置稳定 · 发布 / 执行 / 版本 / 归档全链路</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" fill="#64748b">日常任务发布为已发布任务 · 版本快照保证配置稳定 · 发布 / 执行 / 版本 / 归档全链路</text>
 
   <!-- ① 业务模型 -->
   <rect x="24" y="88" width="1192" height="300" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
@@ -58,7 +58,7 @@
   <rect x="24" y="114" width="1192" height="12" fill="#dbeafe"/>
   <circle cx="46" cy="107" r="11" fill="#3b82f6"/>
   <text x="46" y="111" class="num-badge">1</text>
-  <text x="66" y="112" class="sec-title" fill="#1e3a8a">业务模型 — 日常任务 Task vs 正式任务 PublishedTask · 状态分离</text>
+  <text x="66" y="112" class="sec-title" fill="#1e3a8a">业务模型 — 日常任务 Task vs 已发布任务 PublishedTask · 状态分离</text>
 
   <!-- 日常任务 -->
   <rect x="40" y="136" width="540" height="244" rx="8" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.2"/>
@@ -95,9 +95,9 @@
   <text x="60" y="352" class="note">· 发布状态与日常任务执行状态完全分离</text>
   <text x="60" y="368" class="note">· 旧任务接口字段保持不变</text>
 
-  <!-- 正式任务 -->
+  <!-- 已发布任务 -->
   <rect x="640" y="136" width="540" height="244" rx="8" fill="#ffffff" stroke="#bfdbfe" stroke-width="1.2"/>
-  <text x="660" y="158" font-size="11" font-weight="700" fill="#7c3aed">正式任务 PublishedTask</text>
+  <text x="660" y="158" font-size="11" font-weight="700" fill="#7c3aed">已发布任务 PublishedTask</text>
   <text x="660" y="176" class="body">经过确认的任务定义 · 不直接承担执行进度 · 从日常任务发布得到</text>
   <text x="660" y="198" class="lbl" fill="#475569">发布状态 (published_tasks.status)</text>
 
@@ -109,10 +109,10 @@
   <text x="660" y="246" class="note">· 发布时保存完整配置快照 (snapshot_config)</text>
   <text x="660" y="262" class="note">· 版本号从 1 开始递增 · 不可变版本</text>
   <text x="660" y="278" class="note">· 旧版本保留用于查看历史和结果追溯</text>
-  <text x="660" y="294" class="note">· 正式任务不做原地修改</text>
-  <text x="660" y="310" class="note">· 每次执行生成新的日常任务，记录来源正式任务 ID 和版本号</text>
+  <text x="660" y="294" class="note">· 已发布任务不做原地修改</text>
+  <text x="660" y="310" class="note">· 每次执行生成新的日常任务，记录来源已发布任务 ID 和版本号</text>
   <text x="660" y="326" class="note">· 修改源任务不会改变已发布快照</text>
-  <text x="660" y="342" class="note">· 快照与正式任务记录在同一事务中提交</text>
+  <text x="660" y="342" class="note">· 快照与已发布任务记录在同一事务中提交</text>
   <text x="660" y="358" class="note">· 快照结构: caseIds / deviceIds / apiIds / config / algorithmType / tags</text>
   <text x="660" y="374" class="note">· 前端和 Domain 使用 camelCase · snake_case 仅在后端 DB 和 DTO 转换层</text>
 
@@ -152,14 +152,14 @@
   <line x1="922" y1="487" x2="936" y2="487" class="flow-violet"/>
 
   <rect x="936" y="462" width="210" height="50" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.4"/>
-  <text x="1041" y="484" class="pill-t" fill="#5b21b6">⑤ 创建正式任务 v1</text>
+  <text x="1041" y="484" class="pill-t" fill="#5b21b6">⑤ 创建已发布任务 v1</text>
   <text x="1041" y="500" class="chip-t" fill="#5b21b6">version=1 · is_current=true</text>
 
   <!-- 执行流程 -->
   <text x="40" y="536" class="lbl" fill="#7c3aed">▸ 执行流程</text>
 
   <rect x="60" y="546" width="260" height="50" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
-  <text x="190" y="568" class="pill-t" fill="#5b21b6">正式任务 vN</text>
+  <text x="190" y="568" class="pill-t" fill="#5b21b6">已发布任务 vN</text>
   <text x="190" y="584" class="chip-t" fill="#5b21b6">is_current=true</text>
   <line x1="320" y1="571" x2="336" y2="571" class="flow-violet"/>
 
@@ -181,27 +181,27 @@
   <text x="40" y="620" class="lbl" fill="#7c3aed">▸ 版本管理（不可变版本）</text>
 
   <rect x="120" y="630" width="220" height="50" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
-  <text x="230" y="652" class="pill-t" fill="#5b21b6">正式任务 v1</text>
+  <text x="230" y="652" class="pill-t" fill="#5b21b6">已发布任务 v1</text>
   <text x="230" y="668" class="chip-t" fill="#5b21b6">is_current=true · version=1</text>
   <line x1="340" y1="655" x2="376" y2="655" class="flow-violet"/>
 
   <rect x="380" y="630" width="220" height="50" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
-  <text x="490" y="652" class="pill-t" fill="#5b21b6">正式任务 v2</text>
+  <text x="490" y="652" class="pill-t" fill="#5b21b6">已发布任务 v2</text>
   <text x="490" y="668" class="chip-t" fill="#5b21b6">is_current=true · v1→false</text>
   <line x1="600" y1="655" x2="636" y2="655" class="flow-violet"/>
 
   <rect x="640" y="630" width="220" height="50" rx="8" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.4"/>
-  <text x="750" y="652" class="pill-t" fill="#5b21b6">正式任务 v3</text>
+  <text x="750" y="652" class="pill-t" fill="#5b21b6">已发布任务 v3</text>
   <text x="750" y="668" class="chip-t" fill="#5b21b6">is_current=true · v2→false</text>
 
   <text x="900" y="652" class="note">旧版本保留用于追溯</text>
-  <text x="900" y="668" class="note">正式任务不做原地修改</text>
+  <text x="900" y="668" class="note">已发布任务不做原地修改</text>
 
   <!-- notes -->
-  <text x="40" y="704" class="note">· 每次执行都生成新的日常任务，并记录来源正式任务 ID 和版本号</text>
-  <text x="40" y="720" class="note">· 修改源任务不会改变已发布快照 · 快照与正式任务记录在同一事务中提交</text>
-  <text x="40" y="736" class="note">· 正式任务执行: 接口读取快照并创建新的日常任务，返回新日常任务 ID，不将正式任务置为 running</text>
-  <text x="40" y="752" class="note">· 新版本: 请求可以指定新的来源任务或新的正式任务名称 · 版本号按正式任务递增</text>
+  <text x="40" y="704" class="note">· 每次执行都生成新的日常任务，并记录来源已发布任务 ID 和版本号</text>
+  <text x="40" y="720" class="note">· 修改源任务不会改变已发布快照 · 快照与已发布任务记录在同一事务中提交</text>
+  <text x="40" y="736" class="note">· 已发布任务执行: 接口读取快照并创建新的日常任务，返回新日常任务 ID，不将已发布任务置为 running</text>
+  <text x="40" y="752" class="note">· 新版本: 请求可以指定新的来源任务或新的已发布任务名称 · 版本号按已发布任务递增</text>
   <text x="40" y="768" class="note">· 发布不会改变源日常任务的执行状态，也不会删除源任务</text>
 
   <!-- ③ 发布规则 -->
@@ -250,16 +250,16 @@
   <text x="436" y="854" font-size="10.5" font-weight="700" fill="#78350f">数据校验（7 项）</text>
 
   <text x="436" y="876" class="body">1. 源任务存在且未删除</text>
-  <text x="436" y="894" class="body">2. 正式任务名称不能为空</text>
+  <text x="436" y="894" class="body">2. 已发布任务名称不能为空</text>
   <text x="436" y="912" class="body">3. 至少包含一个测试用例</text>
   <text x="436" y="930" class="body">4. 用例、设备、API、算法配置可完整读取</text>
   <text x="436" y="948" class="body">5. 所有关联 ID 存在且不重复</text>
-  <text x="436" y="966" class="body">6. 版本号按正式任务递增</text>
-  <text x="436" y="984" class="body">7. 快照和正式任务记录在同一事务中提交</text>
+  <text x="436" y="966" class="body">6. 版本号按已发布任务递增</text>
+  <text x="436" y="984" class="body">7. 快照和已发布任务记录在同一事务中提交</text>
 
   <text x="436" y="1010" class="note">· 重复提交: 幂等键或唯一约束返回已存在版本</text>
   <text x="436" y="1026" class="note">· 快照写入失败: 事务回滚，不保留半成品</text>
-  <text x="436" y="1042" class="note">· 正式任务已归档: 禁止执行，提示选择可用版本</text>
+  <text x="436" y="1042" class="note">· 已发布任务已归档: 禁止执行，提示选择可用版本</text>
 
   <!-- 归档规则 + 异常处理 -->
   <rect x="812" y="832" width="376" height="218" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
@@ -267,7 +267,7 @@
 
   <text x="832" y="876" class="lbl" fill="#166534">归档</text>
   <text x="832" y="894" class="body">· 归档不物理删除数据</text>
-  <text x="832" y="910" class="body">· 归档正式任务不可直接执行</text>
+  <text x="832" y="910" class="body">· 归档已发布任务不可直接执行</text>
   <text x="832" y="926" class="body">· 已创建的日常执行任务不受归档影响</text>
   <text x="832" y="942" class="body">· 归档操作幂等</text>
 
@@ -275,7 +275,7 @@
   <text x="832" y="986" class="body">· 源任务不存在 → 返回 404</text>
   <text x="832" y="1002" class="body">· 源任务正在执行 → 返回业务错误</text>
   <text x="832" y="1018" class="body">· 关联资源不存在 → 列出缺失资源</text>
-  <text x="832" y="1034" class="body">· 创建日常任务失败 → 正式任务保持 published</text>
+  <text x="832" y="1034" class="body">· 创建日常任务失败 → 已发布任务保持 published</text>
 
   <!-- ④ 数据模型 -->
   <rect x="24" y="1072" width="1192" height="340" rx="10" fill="#f0fdfa" stroke="#14b8a6" stroke-width="1.4" filter="url(#softShadow)"/>
@@ -296,7 +296,7 @@
 
   <text x="60" y="1176" class="mono-s" fill="#0f766e">id</text>
   <text x="250" y="1176" class="mono-s" fill="#334155">bigint</text>
-  <text x="350" y="1176" class="box-desc">正式任务 ID</text>
+  <text x="350" y="1176" class="box-desc">已发布任务 ID</text>
 
   <text x="60" y="1191" class="mono-s" fill="#0f766e">source_task_id</text>
   <text x="250" y="1191" class="mono-s" fill="#334155">bigint</text>
@@ -304,7 +304,7 @@
 
   <text x="60" y="1206" class="mono-s" fill="#0f766e">name</text>
   <text x="250" y="1206" class="mono-s" fill="#334155">varchar</text>
-  <text x="350" y="1206" class="box-desc">正式任务名称</text>
+  <text x="350" y="1206" class="box-desc">已发布任务名称</text>
 
   <text x="60" y="1221" class="mono-s" fill="#0f766e">description</text>
   <text x="250" y="1221" class="mono-s" fill="#334155">text</text>
@@ -373,11 +373,11 @@
 
   <text x="780" y="1342" class="mono-s" fill="#0f766e">published_task_id</text>
   <text x="910" y="1342" class="mono-s" fill="#334155">bigint</text>
-  <text x="960" y="1342" class="box-desc">来源正式任务 ID</text>
+  <text x="960" y="1342" class="box-desc">来源已发布任务 ID</text>
 
   <text x="780" y="1358" class="mono-s" fill="#0f766e">published_task_version</text>
   <text x="910" y="1358" class="mono-s" fill="#334155">integer</text>
-  <text x="960" y="1358" class="box-desc">来源正式任务版本</text>
+  <text x="960" y="1358" class="box-desc">来源已发布任务版本</text>
 
   <text x="780" y="1374" class="mono-s" fill="#0f766e">execution_source</text>
   <text x="910" y="1374" class="mono-s" fill="#334155">varchar</text>
@@ -401,7 +401,7 @@
   <rect x="52" y="1490" width="40" height="15" rx="4" fill="#16a34a"/>
   <text x="72" y="1501" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">POST</text>
   <text x="100" y="1501" class="mono-s" fill="#166534">/published-tasks</text>
-  <text x="52" y="1521" class="box-desc">发布正式任务</text>
+  <text x="52" y="1521" class="box-desc">发布已发布任务</text>
   <text x="52" y="1537" class="box-desc">{ sourceTaskId, name, description, publishReason }</text>
 
   <rect x="430" y="1480" width="370" height="64" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
@@ -424,7 +424,7 @@
   <text x="72" y="1575" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">POST</text>
   <text x="100" y="1575" class="mono-s" fill="#166534">/published-tasks/{id}/execute</text>
   <text x="52" y="1595" class="box-desc">执行 · 读取快照创建新日常任务</text>
-  <text x="52" y="1611" class="box-desc">返回新日常任务 ID · 不将正式任务置为 running</text>
+  <text x="52" y="1611" class="box-desc">返回新日常任务 ID · 不将已发布任务置为 running</text>
 
   <rect x="430" y="1554" width="370" height="64" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
   <rect x="442" y="1564" width="40" height="15" rx="4" fill="#16a34a"/>
@@ -455,7 +455,7 @@
   <rect x="620" y="1632" width="572" height="124" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
   <text x="640" y="1654" font-size="10.5" font-weight="700" fill="#166534">前端设计 + 分层建议</text>
 
-  <text x="640" y="1672" class="body">TaskCard 菜单 → 发布为正式任务 · 查看已发布版本</text>
+  <text x="640" y="1672" class="body">TaskCard 菜单 → 发布为已发布任务 · 查看已发布版本</text>
   <text x="640" y="1688" class="body">路由: /published-tasks · /:id · /:id/versions</text>
   <text x="640" y="1704" class="mono-s" fill="#334155">domain/model/publishedTask.ts · domain/enums.ts</text>
   <text x="640" y="1718" class="mono-s" fill="#334155">composables/usePublishedTasks.ts · store/publishedTaskStore.ts</text>
@@ -466,7 +466,7 @@
   <rect x="40" y="1770" width="1152" height="96" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
   <text x="60" y="1792" font-size="10.5" font-weight="700" fill="#166534">迁移与兼容 · 测试验收</text>
 
-  <text x="60" y="1812" class="body">迁移: 新增 published_tasks 表及索引 · test_tasks 增加追溯字段（允许空）· 现有任务不回填正式任务记录</text>
+  <text x="60" y="1812" class="body">迁移: 新增 published_tasks 表及索引 · test_tasks 增加追溯字段（允许空）· 现有任务不回填已发布任务记录</text>
   <text x="60" y="1828" class="body">兼容: 旧任务接口字段不变 · 新字段为空按未发布处理 · 不使用 Task.status=published · 现有执行流程不受影响</text>
   <text x="60" y="1844" class="body">后端测试: 发布状态校验 · 缺用例或关联资源时拒绝 · 快照完整性 · 版本递增幂等 · 归档后禁止执行</text>
   <text x="60" y="1860" class="body">前端测试: 发布入口按状态启用/隐藏 · 弹窗校验错误提示 · 执行后跳转新日常任务详情 · 列表版本标识刷新</text>
