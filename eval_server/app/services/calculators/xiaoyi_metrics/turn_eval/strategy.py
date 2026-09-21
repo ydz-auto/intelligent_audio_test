@@ -380,6 +380,13 @@ class TurnEvalCalculator(BaseCalculator):
             'total_turns': len(all_turn_results),
             'turns': all_turn_results,
         }
+        # 三分类占比（0~1，供平台 ratio/average 维度聚合）
+        total_turns_n = len(all_turn_results)
+        results['turn_classification'].update({
+            'takeover_rate': round(total_normal / total_turns_n, 4) if total_turns_n else 0,
+            'no_takeover_rate': round(total_no_takeover / total_turns_n, 4) if total_turns_n else 0,
+            'false_takeover_rate': round(total_false_takeover / total_turns_n, 4) if total_turns_n else 0,
+        })
 
         # 兼容旧字段：tor / false_takeover / takeover_latency / reply_quality 取最后一轮的结果
         if all_turn_results:
@@ -394,22 +401,40 @@ class TurnEvalCalculator(BaseCalculator):
                 'tor': last['false_takeover']['false_takeover'],
                 'reason': last['false_takeover']['reason'],
             }
-            # takeover_latency 兼容
+            # takeover_latency 兼容（dict 拷贝，避免与 per_round 元素共享引用被覆盖 avg 字段）
             if last.get('takeover_latency'):
-                results['takeover_latency'] = last['takeover_latency']
+                results['takeover_latency'] = dict(last['takeover_latency'])
             else:
                 results['takeover_latency'] = {
                     'takeover_latency_ms': None,
                     'message': f"分类为{last['classification']}，不计算接管时延",
                 }
-            # reply_quality 兼容
+            # 追加所有接管轮的平均接管时延
+            _lat_vals = [
+                t['takeover_latency'].get('takeover_latency_ms')
+                for t in all_turn_results if t.get('takeover_latency')
+                and isinstance(t['takeover_latency'].get('takeover_latency_ms'), (int, float))
+            ]
+            results['takeover_latency']['takeover_latency_avg_ms'] = (
+                round(sum(_lat_vals) / len(_lat_vals), 1) if _lat_vals else None
+            )
+            # reply_quality 兼容（dict 拷贝，避免与 per_round 元素共享引用被覆盖 avg 字段）
             if last.get('reply_quality'):
-                results['reply_quality'] = last['reply_quality']
+                results['reply_quality'] = dict(last['reply_quality'])
             else:
                 results['reply_quality'] = {
                     'score': None,
                     'message': f"分类为{last['classification']}，不进行回复质量评分",
                 }
+            # 追加所有接管轮的平均回复质量分
+            _score_vals = [
+                t['reply_quality'].get('score')
+                for t in all_turn_results if t.get('reply_quality')
+                and t['reply_quality'].get('score') is not None
+            ]
+            results['reply_quality']['reply_quality_avg_score'] = (
+                round(sum(_score_vals) / len(_score_vals), 2) if _score_vals else None
+            )
 
         logger.info(
             f"[turn_eval] 三分类汇总: 正常接管{total_normal}，"
@@ -468,6 +493,9 @@ class TurnEvalCalculator(BaseCalculator):
                     'no_takeover_count': no_takeover,
                     'false_takeover_count': false_takeover,
                     'total_turns': len(rt),
+                    'takeover_rate': round(normal / len(rt), 4) if rt else 0,
+                    'no_takeover_rate': round(no_takeover / len(rt), 4) if rt else 0,
+                    'false_takeover_rate': round(false_takeover / len(rt), 4) if rt else 0,
                     'turns': rt,
                 },
                 'tor': last.get('tor') or {
@@ -485,6 +513,15 @@ class TurnEvalCalculator(BaseCalculator):
                     'takeover_latency_ms': None,
                     'message': f"分类为{last.get('classification')}，不计算接管时延",
                 }
+            # 本轮所有接管轮的平均接管时延
+            _lat_vals = [
+                t['takeover_latency'].get('takeover_latency_ms')
+                for t in rt if t.get('takeover_latency')
+                and isinstance(t['takeover_latency'].get('takeover_latency_ms'), (int, float))
+            ]
+            item['takeover_latency']['takeover_latency_avg_ms'] = (
+                round(sum(_lat_vals) / len(_lat_vals), 1) if _lat_vals else None
+            )
             if last.get('reply_quality'):
                 item['reply_quality'] = last['reply_quality']
             else:
@@ -492,5 +529,14 @@ class TurnEvalCalculator(BaseCalculator):
                     'score': None,
                     'message': f"分类为{last.get('classification')}，不进行回复质量评分",
                 }
+            # 本轮所有接管轮的平均回复质量分
+            _score_vals = [
+                t['reply_quality'].get('score')
+                for t in rt if t.get('reply_quality')
+                and t['reply_quality'].get('score') is not None
+            ]
+            item['reply_quality']['reply_quality_avg_score'] = (
+                round(sum(_score_vals) / len(_score_vals), 2) if _score_vals else None
+            )
             per_round.append(item)
         return per_round
