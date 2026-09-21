@@ -81,3 +81,12 @@ ACTIVE_EVALUATION_STATUSES = frozenset({
     EvaluationStatus.PENDING, EvaluationStatus.QUEUED,
     EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING,
 })
+
+# 服务重启可安全判定为中断的任务状态集合（不含 PENDING：保留待 DB 兜底调度自动拉起）
+INTERRUPTED_TASK_STATUSES = frozenset({
+    TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.EVALUATING,
+    TaskStatus.REEVALUATE_QUEUED, TaskStatus.REEVALUATING, TaskStatus.PAUSED,
+})
+
+# 服务重启可安全判定为中断的执行状态集合（queued/running；PENDING 保留待自动拉起）
+INTERRUPTED_EXECUTION_STATUSES = frozenset({ExecutionStatus.QUEUED, ExecutionStatus.RUNNING})

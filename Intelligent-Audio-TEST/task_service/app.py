@@ -51,18 +51,32 @@ async def lifespan(app: FastAPI):
     init_db(pool_size=20)
     logger.info("数据库连接池已初始化 (pool_size=20)")
 
-    # 初始化任务调度器
+    # 服务注册（提前）：生成本实例标识 instance_id，后续启动恢复 / 调度器
+    # 按实例归属过滤（多实例下实例 B 重启不误杀实例 A 正在运行的任务）
+    registry = RedisServiceRegistry()
+    instance_id = registry.register('task_service', Config.SERVICE_HOST, Config.PORT)
+
+    # 将本实例标识注入执行引擎，供调度器兜底拉取 / 队列消费做归属校验
     from task_service.core.execution_engine import execution_engine
+    execution_engine.instance_id = instance_id
+
+    # 启动恢复：将上次停机遗留的中间态任务/用例/结果标记为 failed，
+    # 必须在调度器启动之前执行；只处理归属本实例或未归属的任务
+    #（PENDING 任务保留，由 DB 兜底调度自动拉起；他实例名下任务不动）
+    from task_service.infrastructure.persistence.task_repository import task_repository
+    try:
+        recovered = task_repository.mark_interrupted_tasks_failed(instance_id=instance_id)
+        logger.info("服务重启状态恢复完成: %s", recovered)
+    except Exception as e:
+        logger.warning("服务重启状态恢复失败（不阻塞启动）: %s", e)
+
+    # 初始化任务调度器
     execution_engine._init_scheduler()
     execution_engine.start_event_subscribers()
     logger.info("任务调度器初始化完成")
 
     # 注：评估服务已迁移至 evaluation_service 微服务，通过 gRPC 调用
     logger.info("评估服务已迁移至 evaluation_service（gRPC 调用）")
-
-    # 服务注册
-    registry = RedisServiceRegistry()
-    registry.register('task_service', Config.SERVICE_HOST, Config.PORT)
 
     # 启动 gRPC server
     from task_service.interfaces.grpc.server import start_grpc_server

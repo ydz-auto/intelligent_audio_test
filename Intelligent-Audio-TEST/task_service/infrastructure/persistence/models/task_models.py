@@ -53,6 +53,7 @@ class Task(Base):
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     reevaluated_at = Column(DateTime, nullable=True, comment='最后一次重新评估完成时间')
     reevaluation_count = Column(Integer, nullable=False, default=0, comment='重新评估次数')
+    worker_instance_id = Column(String(100), nullable=True, index=True, comment='归属执行实例ID (task_service:{host}:{port}:{hex})，NULL 表示未绑定，任意实例可接管')
 
     # 跨上下文 relationship（Tag/TestCase 归属本服务，可保留）
     tags = relationship('Tag', secondary='task_tags',

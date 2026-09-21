@@ -4,6 +4,7 @@
  * 负责 HTMLAudioElement 的创建、播放事件绑定/解绑，以及元数据、时间更新、结束、错误等事件回调。
  */
 import type { Ref } from 'vue';
+import { clearSimulatedProgress } from './audioPlayerModal.state';
 
 /** 事件处理模块依赖（共享状态 refs + 外部设备停止回调） */
 export interface AudioEventsDeps {
@@ -18,6 +19,8 @@ export interface AudioEventsDeps {
   audioLoaded: Ref<boolean>;
   isDragging: Ref<boolean>;
   progressUpdateTimer: Ref<ReturnType<typeof setInterval> | null>;
+  progressClockStart: Ref<number>;
+  progressClockBase: Ref<number>;
   playError: Ref<string>;
   stopOnExternalDevices: () => Promise<void>;
 }
@@ -36,6 +39,8 @@ export function createAudioEvents(deps: AudioEventsDeps) {
     audioLoaded,
     isDragging,
     progressUpdateTimer,
+    progressClockStart,
+    progressClockBase,
     playError,
     stopOnExternalDevices,
   } = deps;
@@ -125,11 +130,8 @@ export function createAudioEvents(deps: AudioEventsDeps) {
     try {
       console.log('Audio playback ended');
 
-      if (progressUpdateTimer.value) {
-        clearInterval(progressUpdateTimer.value);
-        progressUpdateTimer.value = null;
-        console.log('Stopped simulated progress update timer on ended');
-      }
+      clearSimulatedProgress({ progressUpdateTimer, progressClockStart, progressClockBase });
+      console.log('Stopped simulated progress update timer on ended');
 
       isPlaying.value = false;
       currentTime.value = 0;
@@ -218,11 +220,8 @@ export function createAudioEvents(deps: AudioEventsDeps) {
       audio.value = null;
     }
 
-    if (progressUpdateTimer.value) {
-      clearInterval(progressUpdateTimer.value);
-      progressUpdateTimer.value = null;
-      console.log('Stopped simulated progress update timer on init');
-    }
+    clearSimulatedProgress({ progressUpdateTimer, progressClockStart, progressClockBase });
+    console.log('Stopped simulated progress update timer on init');
 
     isPlaying.value = false;
     currentTime.value = 0;

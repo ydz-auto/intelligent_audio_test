@@ -102,7 +102,8 @@ export function createDevicePlayback(deps: DevicePlaybackDeps) {
           playbackDeviceIds: playbackDeviceIds,
           playbackDeviceId: playbackDeviceIds[0] || '',
           spl: props.spl ?? 65.0,
-          offset: props.offset ?? 0
+          // seek 时必须使用函数参数 offset，否则设备不会跳转到拖动位置
+          offset: offset > 0 ? offset : (props.offset ?? 0)
         };
 
         console.log(`[API Request] POST /audios/${props.audioId}/preview with payload:`, JSON.stringify(previewPayload));

@@ -17,5 +17,6 @@ _DeviceResultCollectorProxy 已删除，各 service 通过自己的
 infrastructure/acl/ 下的 DeviceResultAclRepositoryImpl 实现 _get_result_mapper()。
 """
 from shared.infrastructure.base_executor._base import BaseExecutor
+from shared.infrastructure.base_executor._control_mixin import TaskStopSignal
 
-__all__ = ['BaseExecutor']
+__all__ = ['BaseExecutor', 'TaskStopSignal']

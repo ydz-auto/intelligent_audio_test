@@ -73,7 +73,11 @@ class RedisServiceRegistry:
                 self.redis_client.srem(f'service:set:{service_name}', self._instance_id)
 
     def discover(self, service_name):
-        """发现服务实例（按负载排序）"""
+        """发现服务实例（按负载排序）
+
+        返回的每个 info 额外携带 instance_id 键（Redis Hash 的 field 名），
+        供任务创建方选择归属实例（选 running_tasks 最少者）。
+        """
         if not self._available:
             return []
         instance_ids = self.redis_client.smembers(f'service:set:{service_name}')
@@ -83,6 +87,7 @@ class RedisServiceRegistry:
             if data:
                 info = json.loads(data)
                 if info.get('running_tasks') is not None:
+                    info['instance_id'] = iid.decode() if isinstance(iid, bytes) else iid
                     result.append(info)
         return sorted(result, key=lambda x: x.get('running_tasks', 0))
     
@@ -90,6 +95,37 @@ class RedisServiceRegistry:
         """获取一个最空闲的实例"""
         instances = self.discover(service_name)
         return instances[0] if instances else None
+
+    def get_alive_ids(self, service_name, ttl=None):
+        """返回心跳新鲜（未过期）的实例 ID 集合。
+
+        多实例归属判定用：已注册但心跳停滞超过 ttl 的实例视为下线，
+        其名下任务可被其他实例收养（见 SchedulerMixin._adopt_orphan_tasks）。
+        Redis 不可用时返回空集合（降级为单实例语义）。
+
+        Args:
+            service_name: 服务名，如 'task_service'
+            ttl: 心跳过期阈值（秒），默认取注册表 TTL（15s）
+        """
+        if not self._available:
+            return set()
+        ttl = ttl or self.ttl
+        instance_ids = self.redis_client.smembers(f'service:set:{service_name}')
+        alive = set()
+        for iid in instance_ids:
+            iid = iid.decode() if isinstance(iid, bytes) else iid
+            try:
+                data = self.redis_client.hget('service:instances', iid)
+                if not data:
+                    continue
+                info = json.loads(data)
+                hb = info.get('last_heartbeat', 0)
+                if time.time() - float(hb) <= ttl:
+                    alive.add(iid)
+            except Exception:
+                logger.debug("读取实例心跳失败，忽略: %s", iid, exc_info=True)
+                continue
+        return alive
     
     def update_load(self, running_tasks, cpu_load=0.0):
         """更新本实例负载"""

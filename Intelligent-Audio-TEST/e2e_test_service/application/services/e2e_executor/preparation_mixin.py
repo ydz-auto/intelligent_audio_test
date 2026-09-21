@@ -48,8 +48,14 @@ class PreparationMixin:
             algorithm_type=algorithm_type, round_algo_params=first_round_params
         )
 
+        # 初始化完成后检查停止/暂停信号（停止时设备由 task_service stop 分支统一清理）
+        self._handle_control(task_id)
+
         # 音频预下载：遍历所有 rounds，把 audio_id 对应的 OSS 文件提前下载到本地
         self._prepare_audio_files(task_id, rounds, test_case_id, case_config)
+
+        # 音频预下载完成后检查停止/暂停信号（预下载+重采样耗时较长）
+        self._handle_control(task_id)
 
         # 预创建 TestResult
         first_device_id = device_info_list[0].get('device_id') if device_info_list else None

@@ -9,6 +9,8 @@ from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Tuple
 
+import logging
+
 from shared.utils.log_handler import log_and_emit
 
 from task_service.application.commands.task_commands import (
@@ -48,6 +50,8 @@ from task_service.application.commands.task_commands import (
 from task_service.domain.entities import TaskStatus
 from task_service.domain.events import TaskCreated
 from task_service.infrastructure.persistence.task_repository import task_repository
+
+logger = logging.getLogger(__name__)
 
 # 东八区时区
 _UTC_PLUS_8 = timezone(timedelta(hours=8))
@@ -152,6 +156,16 @@ class TaskCommandHandler:
                 category='execution',
                 task_id=task_id,
             )
+
+            # 多实例归属：选择最空闲存活实例，将任务分配到该实例名下
+            #（归属写入失败不阻塞创建，任务保持未归属由任一存活实例接管）
+            from shared.utils.service_registry import RedisServiceRegistry
+            try:
+                instances = RedisServiceRegistry().discover('task_service')
+                if instances:
+                    self.task_repository.assign_worker_instance(task_id, instances[0]['instance_id'])
+            except Exception:
+                logger.warning("分配任务归属实例失败，任务保持未归属 (task_id=%s)", task_id, exc_info=True)
 
             # 推入 Redis 任务队列，供调度器 BRPOP 零延迟消费
             self.engine.enqueue_task(task_id)

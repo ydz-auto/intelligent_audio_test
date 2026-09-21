@@ -24,7 +24,8 @@
           </div>
           
           <div class="audio-player">
-          <div class="progress-bar-container" 
+          <div class="progress-bar-container"
+               ref="progressBarRef"
                @mousedown="startDrag"
                @click="updateProgressOnClick">
             <div class="progress-bar" :style="{ width: progressPercentage + '%' }"></div>
@@ -116,7 +117,8 @@ const {
   stop,
   handleClose,
   startDrag,
-  updateProgressOnClick
+  updateProgressOnClick,
+  progressBarRef
 } = useAudioPlayerModal(props, emit)
 </script>
 

@@ -1,9 +1,12 @@
 import threading
+import time
 import json
+from sqlalchemy import or_
 from task_service.infrastructure.persistence.models import Task
 from shared.models.database import get_db_session
 from shared.utils.config_manager import config_manager
-from shared.utils.status_constants import TaskStatus
+from shared.utils.service_registry import RedisServiceRegistry
+from shared.utils.status_constants import TaskStatus, FINISHED_TASK_STATUSES
 from shared.utils.redis_pubsub import RedisPubSub, create_blocking_redis_client
 
 import logging
@@ -119,6 +122,40 @@ class SchedulerMixin:
                 logger.warning(f"[Scheduler] Redis 队列收到无效 task_id: {task_id_str}")
                 return
 
+            # 归属校验：多实例下只执行归属本实例（或未归属）的任务
+            my_instance_id = getattr(self, 'instance_id', None)
+            owner = None
+            try:
+                db_session = get_db_session()
+                try:
+                    owned_row = db_session.query(Task.worker_instance_id).filter(Task.id == task_id).first()
+                    owner = owned_row[0] if owned_row else None
+                finally:
+                    db_session.close()
+            except Exception as e:
+                logger.warning(f"[Scheduler] 查询任务 {task_id} 归属失败: {e}")
+
+            if owner and owner != my_instance_id:
+                # 归属其他实例：对方存活则放回队列等其消费；对方已下线则收养（置 NULL）后放回
+                if owner not in self._get_alive_instance_ids():
+                    try:
+                        adopt_session = get_db_session()
+                        try:
+                            adopt_session.query(Task).filter(
+                                Task.id == task_id,
+                                Task.worker_instance_id == owner,
+                            ).update({Task.worker_instance_id: None}, synchronize_session=False)
+                            adopt_session.commit()
+                            logger.info(f"[Scheduler] 收养孤儿任务 {task_id}（归属实例 {owner} 已下线）")
+                        finally:
+                            adopt_session.close()
+                    except Exception as e:
+                        logger.warning(f"[Scheduler] 收养任务 {task_id} 失败: {e}")
+                # 放回队列，待归属方（或收养后的任一实例）消费；sleep 防空转
+                self.redis_blocking_client.lpush(TASK_QUEUE_KEY, task_id_str)
+                time.sleep(0.2)
+                return
+
             # 检查任务是否已在运行或队列中
             if task_id in self.workers and self.workers[task_id].is_alive():
                 return
@@ -148,9 +185,19 @@ class SchedulerMixin:
         """
         local_db_session = get_db_session()
         try:
-            pending_tasks = local_db_session.query(Task).filter_by(
-                status=TaskStatus.PENDING,
-                deleted=False
+            # 孤儿收养：归属实例已下线的任务解除归属（中间态回退 PENDING），
+            # 保证死实例名下的任务可被任一存活实例重新拉起
+            self._adopt_orphan_tasks(local_db_session)
+
+            # 归属过滤：只拉起归属本实例（或未归属）的 PENDING 任务
+            my_instance_id = getattr(self, 'instance_id', None)
+            pending_tasks = local_db_session.query(Task).filter(
+                Task.status == TaskStatus.PENDING,
+                Task.deleted == False,  # noqa: E712
+                or_(
+                    Task.worker_instance_id.is_(None),
+                    Task.worker_instance_id == my_instance_id,
+                ),
             ).order_by(Task.created_at.asc()).all()
 
             if not pending_tasks:
@@ -195,3 +242,50 @@ class SchedulerMixin:
             logger.error(f"[Scheduler] DB兜底调度处理失败: {e}")
         finally:
             local_db_session.close()
+
+    def _get_alive_instance_ids(self):
+        """存活实例 ID 集合（含本实例）。Redis 不可用时返回仅含本实例的集合。"""
+        try:
+            alive = RedisServiceRegistry().get_alive_ids('task_service')
+        except Exception as e:
+            logger.warning(f"[Scheduler] 获取存活实例列表失败: {e}")
+            alive = set()
+        my_instance_id = getattr(self, 'instance_id', None)
+        if my_instance_id:
+            alive.add(my_instance_id)
+        return alive
+
+    def _adopt_orphan_tasks(self, local_db_session):
+        """收养归属已下线实例的任务。
+
+        归属实例心跳过期（已下线，不再可被 get_alive_ids 发现）的任务，
+        对任何存活实例都不再可靠推进：
+        - worker_instance_id 置 NULL（解除归属）；
+        - 中间态（queued/running/...）回退 PENDING，交 DB 兜底调度重新拉起；
+        - 终态任务保持不动（仅解除归属，不需重跑）。
+        """
+        alive_ids = self._get_alive_instance_ids()
+        orphan_rows = local_db_session.query(Task.id).filter(
+            Task.deleted == False,  # noqa: E712
+            Task.worker_instance_id.isnot(None),
+            Task.worker_instance_id.notin_(alive_ids),
+        ).all()
+        if not orphan_rows:
+            return
+        ids = [row[0] for row in orphan_rows]
+        try:
+            local_db_session.query(Task).filter(Task.id.in_(ids)).update(
+                {Task.worker_instance_id: None}, synchronize_session=False)
+            local_db_session.query(Task).filter(
+                Task.id.in_(ids),
+                Task.status.notin_(FINISHED_TASK_STATUSES),
+            ).update({
+                Task.status: TaskStatus.PENDING,
+                Task.error_message: None,
+                Task.completed_at: None,
+            }, synchronize_session=False)
+            local_db_session.commit()
+            logger.info(f"[Scheduler] 孤儿收养完成，重置 {len(ids)} 个任务（归属实例已下线）")
+        except Exception as e:
+            local_db_session.rollback()
+            logger.error(f"[Scheduler] 孤儿收养失败: {e}")

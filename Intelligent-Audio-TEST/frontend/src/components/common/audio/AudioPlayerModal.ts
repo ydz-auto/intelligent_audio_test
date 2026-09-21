@@ -56,8 +56,11 @@ export function useAudioPlayerModal(props: any, emit: any) {
     currentTime: state.currentTime,
     duration: state.duration,
     progressPercentage: state.progressPercentage,
+    progressBarRef: state.progressBarRef,
     playOnExternalDevices,
     stopOnExternalDevices,
+    startSimulatedProgress: playback.startSimulatedProgress,
+    stopSimulatedProgress: playback.stopSimulatedProgress,
   });
 
   // ===== 生命周期与键盘交互 =====
@@ -85,6 +88,7 @@ export function useAudioPlayerModal(props: any, emit: any) {
     stop: playback.stop,
     handleClose,
     startDrag: progress.startDrag,
-    updateProgressOnClick: progress.updateProgressOnClick
+    updateProgressOnClick: progress.updateProgressOnClick,
+    progressBarRef: state.progressBarRef
   };
 }

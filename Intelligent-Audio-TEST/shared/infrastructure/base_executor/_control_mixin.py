@@ -3,6 +3,15 @@
 import time
 
 
+class TaskStopSignal(Exception):
+    """任务停止信号：_handle_control 检测到停止指令时抛出。
+
+    调用方可 except TaskStopSignal 精确区分「因停止中断」与「执行失败」，
+    例如 E2E 执行器据此将用例标记为 STOPPED 而非 FAILED。
+    """
+    pass
+
+
 class ControlMixin:
     """处理暂停和停止逻辑（从中央存储获取事件）
 
@@ -14,12 +23,12 @@ class ControlMixin:
         # 分布式控制标志位（多实例下，其它实例发出的 stop/pause 信号）
         from shared.utils import distributed_coordinator as dc
         if dc.is_flag_set(f'task:stop:{task_id}'):
-            raise Exception("任务已停止（分布式停止信号）")
+            raise TaskStopSignal("任务已停止（分布式停止信号）")
         if dc.is_flag_set(f'task:pause:{task_id}'):
             self._log(level='INFO', content="检测到暂停指令（分布式），等待恢复...", task_id=task_id)
             while dc.is_flag_set(f'task:pause:{task_id}'):
                 if dc.is_flag_set(f'task:stop:{task_id}'):
-                    raise Exception("任务已停止")
+                    raise TaskStopSignal("任务已停止")
                 time.sleep(0.5)
             self._log(level='INFO', content="任务已恢复执行", task_id=task_id)
 
@@ -27,16 +36,16 @@ class ControlMixin:
         stop_event, pause_event = self._get_control_events(task_id)
 
         if stop_event is not None and stop_event.is_set():
-            raise Exception("任务已停止")
+            raise TaskStopSignal("任务已停止")
 
         if pause_event is not None and not pause_event.is_set():
             self._log(level='INFO', content="检测到暂停指令，等待恢复...", task_id=task_id)
             while pause_event is not None and not pause_event.is_set():
                 if stop_event is not None and stop_event.is_set():
-                    raise Exception("任务已停止")
+                    raise TaskStopSignal("任务已停止")
                 # 多实例下也检查分布式停止信号
                 if dc.is_flag_set(f'task:stop:{task_id}'):
-                    raise Exception("任务已停止（分布式停止信号）")
+                    raise TaskStopSignal("任务已停止（分布式停止信号）")
                 pause_event.wait(timeout=0.5)
             self._log(level='INFO', content="任务已恢复执行", task_id=task_id)
 

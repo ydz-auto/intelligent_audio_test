@@ -1,4 +1,4 @@
-from shared.infrastructure.base_executor import BaseExecutor
+from shared.infrastructure.base_executor import BaseExecutor, TaskStopSignal
 from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus
 from e2e_test_service.application.services.e2e_device_manager import E2EDeviceManager
 from e2e_test_service.application.services.e2e_collector import E2ECollector
@@ -144,6 +144,14 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             )
 
             return success
+        except TaskStopSignal:
+            # 任务停止信号：用例标记为 STOPPED（与 task_service 停止分支的用例状态推导一致）
+            self._log(level='INFO', content=f"用例 {case_name} 因任务停止而中断",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._update_tc_rel_status(tc_rel_id, task_id=task_id,
+                                       execution_status=ExecutionStatus.STOPPED,
+                                       status=TaskCaseStatus.STOPPED)
+            return False
         except Exception as e:
             import traceback
             error_msg = f"用例执行异常: {str(e)}"

@@ -6,7 +6,7 @@
 import { HttpStatus } from '../../../domain/enums';
 import { audiosPort } from '@/composables/audio/audiosPort';
 import { testcasesPort } from '@/composables/testCase/testcasesPort';
-import { DEFAULT_SIMULATED_DURATION, SIMULATED_PROGRESS_INTERVAL_MS, type AudioPlayerState } from './audioPlayerModal.state';
+import { SIMULATED_PROGRESS_INTERVAL_MS, clearSimulatedProgress, type AudioPlayerState } from './audioPlayerModal.state';
 
 /** 播放控制模块依赖 */
 export interface PlaybackControlDeps {
@@ -21,13 +21,89 @@ export interface PlaybackControlDeps {
 /** 创建播放控制（togglePlay/play/pause/stop 与预览、流式播放编排） */
 export function createPlaybackControl(deps: PlaybackControlDeps) {
   const { props, emit, state, playAudioPlaylist, playOnExternalDevices, stopOnExternalDevices } = deps;
-  const { audio, isPlaying, currentTime, duration, progressPercentage, progressUpdateTimer, playError } = state;
+  const {
+    audio, isPlaying, currentTime, duration, progressPercentage,
+    progressUpdateTimer, progressClockStart, progressClockBase, playError,
+  } = state;
 
-  /** 后端播放无真实时长时按固定增量推进进度 */
+  const stopSimulatedProgress = () => {
+    clearSimulatedProgress(state);
+  };
+
+  /** 启动模拟进度：以 baseTime（秒）为基准，用 performance.now() 墙钟推算流逝时间 */
+  const startSimulatedProgress = (baseTime = 0) => {
+    stopSimulatedProgress();
+    progressClockBase.value = baseTime;
+    progressClockStart.value = performance.now();
+    progressUpdateTimer.value = setInterval(updateProgressSimulated, SIMULATED_PROGRESS_INTERVAL_MS);
+  };
+
+  /** 依据墙钟计算当前应处于的播放位置（秒） */
+  const getSimulatedElapsed = (): number => {
+    if (progressClockStart.value <= 0) return progressClockBase.value;
+    return progressClockBase.value + (performance.now() - progressClockStart.value) / 1000;
+  };
+
+  /** 播放接口未返回 duration 时，通过流地址 metadata 探测真实时长，避免用假兜底值掐断进度 */
+  const resolveDurationFromStream = async (): Promise<number> => {
+    try {
+      let result: any;
+      if (props.audioId) {
+        result = await audiosPort.stream(props.audioId);
+      } else if (props.audioPath) {
+        result = await audiosPort.streamByPath(props.audioPath);
+      } else {
+        return 0;
+      }
+
+      const presignedUrl = result?.url || result?.data?.url;
+      if (!presignedUrl) return 0;
+
+      return await new Promise<number>((resolve) => {
+        const probe = new Audio();
+        probe.preload = 'metadata';
+        probe.crossOrigin = 'anonymous';
+        probe.onloadedmetadata = () => {
+          const probedDuration = probe.duration;
+          probe.onloadedmetadata = null;
+          probe.onerror = null;
+          probe.src = '';
+          resolve(!isNaN(probedDuration) && probedDuration > 0 && probedDuration !== Infinity ? probedDuration : 0);
+        };
+        probe.onerror = () => {
+          probe.onloadedmetadata = null;
+          probe.onerror = null;
+          probe.src = '';
+          resolve(0);
+        };
+        probe.src = presignedUrl;
+      });
+    } catch (error) {
+      console.warn('Failed to resolve duration from stream metadata:', error);
+      return 0;
+    }
+  };
+
+  /** 后端播放模式下确保 duration 可用：优先 API 返回值，其次探测流 metadata；均失败则保持 0（不兜底、不掐断） */
+  const ensureSimulatedDuration = async () => {
+    if (duration.value > 0) return;
+    const probedDuration = await resolveDurationFromStream();
+    if (probedDuration > 0) {
+      duration.value = probedDuration;
+      console.log('Resolved duration from stream metadata:', duration.value);
+    } else {
+      console.warn('Cannot resolve audio duration; progress percentage stays at 0 until known');
+    }
+  };
+
+  /** 后端播放模拟进度：基于墙钟推算，setInterval 被节流时不产生累计漂移 */
   const updateProgressSimulated = () => {
-    if (isPlaying.value && duration.value > 0) {
-      const increment = 0.1;
-      currentTime.value += increment;
+    if (!isPlaying.value) return;
+
+    const elapsed = getSimulatedElapsed();
+
+    if (duration.value > 0) {
+      currentTime.value = Math.min(elapsed, duration.value);
 
       if (currentTime.value >= duration.value) {
         currentTime.value = duration.value;
@@ -38,14 +114,17 @@ export function createPlaybackControl(deps: PlaybackControlDeps) {
       }
 
       progressPercentage.value = Math.max(0, Math.min(100, (currentTime.value / duration.value) * 100));
+    } else {
+      // 时长未知：时间戳仍按真实流逝时间推进，但不推算百分比、不提前结束
+      currentTime.value = elapsed;
+    }
 
-      if (Math.floor(currentTime.value * 10) % 10 === 0) {
-        console.log('Simulated progress:', {
-          currentTime: currentTime.value.toFixed(1),
-          duration: duration.value.toFixed(1),
-          progress: progressPercentage.value.toFixed(1) + '%'
-        });
-      }
+    if (Math.floor(currentTime.value * 10) % 10 === 0) {
+      console.log('Simulated progress:', {
+        currentTime: currentTime.value.toFixed(1),
+        duration: duration.value.toFixed(1),
+        progress: progressPercentage.value.toFixed(1) + '%'
+      });
     }
   };
 
@@ -74,15 +153,11 @@ export function createPlaybackControl(deps: PlaybackControlDeps) {
         console.log('Backend playback mode: Calling backend API to play on selected devices');
         await playOnExternalDevices();
 
-        if (duration.value === 0) {
-          duration.value = DEFAULT_SIMULATED_DURATION;
-        }
+        await ensureSimulatedDuration();
 
-        if (progressUpdateTimer.value) {
-          clearInterval(progressUpdateTimer.value);
-          progressUpdateTimer.value = null;
-        }
-        progressUpdateTimer.value = setInterval(updateProgressSimulated, SIMULATED_PROGRESS_INTERVAL_MS);
+        // 设备端从 props.offset 开始播放，模拟时钟基准需与设备起点保持一致
+        const initialOffset = props.offset && props.offset > 0 ? props.offset : 0;
+        startSimulatedProgress(initialOffset);
         console.log('Started simulated progress update timer for backend playback');
       }
     } catch (error: any) {
@@ -95,10 +170,7 @@ export function createPlaybackControl(deps: PlaybackControlDeps) {
       } else {
         playError.value = '音频播放失败，请重试';
       }
-      if (progressUpdateTimer.value) {
-        clearInterval(progressUpdateTimer.value);
-        progressUpdateTimer.value = null;
-      }
+      stopSimulatedProgress();
     }
   };
 
@@ -136,15 +208,9 @@ export function createPlaybackControl(deps: PlaybackControlDeps) {
         await playAudioPlaylist(urls, singleUrl);
       } else {
         console.log('Backend mode: Audio playing on external devices');
-        if (duration.value === 0) {
-          duration.value = DEFAULT_SIMULATED_DURATION;
-        }
+        await ensureSimulatedDuration();
 
-        if (progressUpdateTimer.value) {
-          clearInterval(progressUpdateTimer.value);
-          progressUpdateTimer.value = null;
-        }
-        progressUpdateTimer.value = setInterval(updateProgressSimulated, SIMULATED_PROGRESS_INTERVAL_MS);
+        startSimulatedProgress(0);
         console.log('Started simulated progress update timer for backend playback');
       }
     } catch (error: any) {
@@ -198,11 +264,8 @@ export function createPlaybackControl(deps: PlaybackControlDeps) {
     try {
       console.log('pause() method called');
 
-      if (progressUpdateTimer.value) {
-        clearInterval(progressUpdateTimer.value);
-        progressUpdateTimer.value = null;
-        console.log('Stopped simulated progress update timer');
-      }
+      stopSimulatedProgress();
+      console.log('Stopped simulated progress update timer');
 
       if (audio.value) {
         audio.value.pause();
@@ -215,6 +278,9 @@ export function createPlaybackControl(deps: PlaybackControlDeps) {
       // 测试用例预览或后端播放模式都需要调用外部设备停止接口
       if (props.isTestCasePreview || props.playbackMode === 'backend') {
         await stopOnExternalDevices();
+        // 设备端 stop 后再次 play 会从 0 重播，时间戳与进度条需归零，避免显示旧进度
+        currentTime.value = 0;
+        progressPercentage.value = 0;
       }
     } catch (error: any) {
       console.error('音频暂停失败:', error);
@@ -228,10 +294,7 @@ export function createPlaybackControl(deps: PlaybackControlDeps) {
     try {
       console.log('stop() method called');
 
-      if (progressUpdateTimer.value) {
-        clearInterval(progressUpdateTimer.value);
-        progressUpdateTimer.value = null;
-      }
+      stopSimulatedProgress();
 
       if (audio.value) {
         audio.value.pause();
@@ -279,6 +342,8 @@ export function createPlaybackControl(deps: PlaybackControlDeps) {
 
   return {
     updateProgressSimulated,
+    startSimulatedProgress,
+    stopSimulatedProgress,
     play,
     playTestCasePreview,
     playAudioStream,

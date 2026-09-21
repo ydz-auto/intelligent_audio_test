@@ -7,16 +7,25 @@ task_lifecycle_service 兼容方法：启动前重置、环境预检、重试用
 import logging
 from typing import List, Optional
 
+from sqlalchemy import or_
+
 from shared.models.database import get_db_session
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import (
     ExecutionStatus,
     EvaluationStatus,
     TaskStatus as SharedTaskStatus,
+    TaskCaseStatus,
+    ACTIVE_EVALUATION_STATUSES,
+    INTERRUPTED_TASK_STATUSES,
+    INTERRUPTED_EXECUTION_STATUSES,
 )
 from task_service.infrastructure.persistence.models import Task, TaskCase, TaskDevice
 
 logger = logging.getLogger(__name__)
+
+# 服务重启导致任务中断的错误提示（对齐 V9.7.10 旧版文案）
+_INTERRUPTED_ERROR_MESSAGE = '服务重启导致任务中断'
 
 
 class TaskLifecycleMixin:
@@ -279,5 +288,128 @@ class TaskLifecycleMixin:
             return session.query(TestCase).filter(
                 TestCase.id == test_case_id,
             ).first()
+        finally:
+            session.close()
+
+    def assign_worker_instance(self, task_id: int, instance_id: str):
+        """为任务写入归属执行实例（多实例下任务按实例分管）。
+
+        任务创建时由调用方（application 层）选定的最空闲存活实例分配归属。
+        归属写入失败不阻塞任务创建：任务保持未归属（worker_instance_id=NULL），
+        由任一存活实例接管执行。
+        """
+        session = get_db_session()
+        try:
+            session.query(Task).filter(Task.id == task_id).update(
+                {Task.worker_instance_id: instance_id}, synchronize_session=False)
+            session.commit()
+        except Exception:
+            session.rollback()
+            logger.warning("分配任务归属实例失败 (task_id=%s, instance_id=%s)", task_id, instance_id)
+        finally:
+            session.close()
+
+    def mark_interrupted_tasks_failed(self, instance_id: str = None) -> dict:
+        """启动恢复：将上次停机遗留的中间态任务及用例/结果标记为失败。
+
+        冷重启后进程内 workers / 执行线程 / 事件订阅全部消失，DB 中处于
+        queued/running/evaluating/reevaluating/paused 等中间态的任务不会再有
+        执行方推进状态，统一标记为 failed（对齐 V9.7.10 单体版 app.py 的
+        启动恢复行为）。
+
+        多实例语义：
+        - 只处理**归属本实例（worker_instance_id == instance_id）或未归属
+          （worker_instance_id IS NULL）**的中间态任务；
+        - 归属其他存活实例的任务**不动**，避免实例 B 冷重启误杀实例 A
+          正在运行的任务；
+        - 归属已下线实例的任务由调度器「孤儿收养」逻辑重新接管，见
+          SchedulerMixin._adopt_orphan_pending_tasks。
+
+        注意：
+        - 必须在调度器启动**之前**调用，避免调度器拉起已判失败的残留任务。
+        - 任务状态为 PENDING 的记录**不处理**，保留给 DB 兜底调度自动拉起。
+
+        Args:
+            instance_id: 本实例标识（task_service:{host}:{port}:{hex}）。
+                None 表示未启用归属（单实例/降级），此时处理全部未归属任务。
+
+        Returns:
+            dict: {task, task_case_execution, task_case_evaluation, test_result}
+                  各表实际更新的行数
+        """
+        session = get_db_session()
+        try:
+            from shared.models.database import utc8now
+            now = utc8now()
+
+            # 归属过滤：本实例名下或未归属（NULL）的中间态任务
+            ownership_filter = or_(
+                Task.worker_instance_id.is_(None),
+                Task.worker_instance_id == instance_id,
+            )
+
+            # 1. 收集中间态任务 ID（必须在置 failed 之前查询，避免过滤条件失效）
+            interrupted_rows = session.query(Task.id).filter(
+                Task.deleted == False,  # noqa: E712
+                Task.status.in_(INTERRUPTED_TASK_STATUSES),
+                ownership_filter,
+            ).all()
+            task_ids = [row[0] for row in interrupted_rows]
+
+            if not task_ids:
+                return {'task': 0, 'task_case_execution': 0,
+                        'task_case_evaluation': 0, 'test_result': 0}
+
+            # 2. 任务状态 → failed
+            task_count = session.query(Task).filter(
+                Task.id.in_(task_ids),
+            ).update({
+                Task.status: SharedTaskStatus.FAILED,
+                Task.error_message: _INTERRUPTED_ERROR_MESSAGE,
+                Task.completed_at: now,
+            }, synchronize_session=False)
+
+            # 3. 用例执行中断 → execution_status failed（推导 status=failed）
+            case_exec_count = session.query(TaskCase).filter(
+                TaskCase.task_id.in_(task_ids),
+                TaskCase.execution_status.in_(INTERRUPTED_EXECUTION_STATUSES),
+            ).update({
+                TaskCase.execution_status: ExecutionStatus.FAILED,
+                TaskCase.status: TaskCaseStatus.FAILED,
+                TaskCase.error_message: _INTERRUPTED_ERROR_MESSAGE,
+                TaskCase.completed_at: now,
+            }, synchronize_session=False)
+
+            # 4. 用例评估中断 → evaluation_status failed（execution 保持 completed，status 推导为 failed）
+            case_eval_count = session.query(TaskCase).filter(
+                TaskCase.task_id.in_(task_ids),
+                TaskCase.evaluation_status.in_(ACTIVE_EVALUATION_STATUSES),
+            ).update({
+                TaskCase.evaluation_status: EvaluationStatus.FAILED,
+                TaskCase.status: TaskCaseStatus.FAILED,
+                TaskCase.error_message: _INTERRUPTED_ERROR_MESSAGE,
+                TaskCase.completed_at: now,
+            }, synchronize_session=False)
+
+            # 5. 测试结果执行中断 → execution_status failed
+            from task_service.infrastructure.persistence.models import TestResult
+            result_count = session.query(TestResult).filter(
+                TestResult.task_id.in_(task_ids),
+                TestResult.execution_status.in_(INTERRUPTED_EXECUTION_STATUSES),
+            ).update({
+                TestResult.execution_status: ExecutionStatus.FAILED,
+                TestResult.error_message: _INTERRUPTED_ERROR_MESSAGE,
+            }, synchronize_session=False)
+
+            session.commit()
+            return {
+                'task': task_count,
+                'task_case_execution': case_exec_count,
+                'task_case_evaluation': case_eval_count,
+                'test_result': result_count,
+            }
+        except Exception:
+            session.rollback()
+            raise
         finally:
             session.close()

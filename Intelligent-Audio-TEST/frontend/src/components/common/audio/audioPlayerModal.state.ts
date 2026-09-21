@@ -7,9 +7,6 @@
 import { ref, computed, type Ref } from 'vue';
 import { formatDuration } from '@/utils/audioUtils';
 
-/** 后端播放模式无真实时长时使用的模拟时长（秒） */
-export const DEFAULT_SIMULATED_DURATION = 10;
-
 /** 模拟进度刷新间隔（毫秒） */
 export const SIMULATED_PROGRESS_INTERVAL_MS = 100;
 
@@ -24,7 +21,25 @@ export interface AudioPlayerState {
   audioLoaded: Ref<boolean>;
   isDragging: Ref<boolean>;
   progressUpdateTimer: Ref<ReturnType<typeof setInterval> | null>;
+  /** 进度条容器 DOM 引用（拖动 seek 计算用，避免 event.currentTarget 指向 document） */
+  progressBarRef: Ref<HTMLElement | null>;
+  /** 模拟进度墙钟起点（performance.now() 毫秒），0 表示未启动 */
+  progressClockStart: Ref<number>;
+  /** 模拟进度墙钟基准时间（秒），即启动模拟时音频已处于的位置 */
+  progressClockBase: Ref<number>;
   playError: Ref<string>;
+}
+
+/** 停止模拟进度定时器并重置墙钟基准（各模块共用，避免散落 clearInterval） */
+export function clearSimulatedProgress(
+  state: Pick<AudioPlayerState, 'progressUpdateTimer' | 'progressClockStart' | 'progressClockBase'>
+) {
+  if (state.progressUpdateTimer.value) {
+    clearInterval(state.progressUpdateTimer.value);
+    state.progressUpdateTimer.value = null;
+  }
+  state.progressClockStart.value = 0;
+  state.progressClockBase.value = 0;
 }
 
 /** 创建播放器共享状态与展示格式化（audioTypeLabel / formatTime） */
@@ -40,6 +55,9 @@ export function createAudioPlayerState(props: any) {
   const audioLoaded = ref(false);
   const isDragging = ref(false);
   const progressUpdateTimer = ref<ReturnType<typeof setInterval> | null>(null);
+  const progressBarRef = ref<HTMLElement | null>(null);
+  const progressClockStart = ref(0);
+  const progressClockBase = ref(0);
   const playError = ref('');
 
   const audioTypeLabel = computed(() => {
@@ -62,6 +80,9 @@ export function createAudioPlayerState(props: any) {
     audioLoaded,
     isDragging,
     progressUpdateTimer,
+    progressBarRef,
+    progressClockStart,
+    progressClockBase,
     playError,
   };
 

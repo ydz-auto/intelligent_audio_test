@@ -1,5 +1,6 @@
 import time
 
+from shared.infrastructure.base_executor import TaskStopSignal
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import (
     AlgorithmAclRepositoryImpl,
@@ -13,6 +14,20 @@ from shared.utils.status_constants import ExecutionStatus
 class RoundsLoopMixin:
     """阶段二：多轮循环 —— 环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估"""
 
+    def _check_control_or_cleanup(self, task_id, env_states=None):
+        """轮次间停止/暂停检查；检测到停止时先清理本轮环境设备再上抛 TaskStopSignal
+
+        Args:
+            env_states: 本轮 setup_env_devices_for_round 已建立的环境设备状态，
+                停止上抛前需要对称 teardown；轮次开头（尚未 setup）传 None。
+        """
+        try:
+            self._handle_control(task_id)
+        except TaskStopSignal:
+            if env_states:
+                self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            raise
+
     def _run_rounds_loop(self, task_id, tc_rel_id, data, case_config, case_name,
                          algorithm_type, test_case_id, rounds,
                          device_info_list, result_id, case_reference_params):
@@ -25,6 +40,9 @@ class RoundsLoopMixin:
         for round_idx, round_config in enumerate(rounds):
             if not isinstance(round_config, dict):
                 continue
+
+            # 每轮开头检查停止/暂停信号，避免停止后仍继续启动下一轮
+            self._check_control_or_cleanup(task_id)
 
             round_number = round_config.get('round_number', round_idx + 1)
             self.execution_engine.update_case_round_progress(task_id, tc_rel_id, round_idx, len(rounds))
@@ -104,6 +122,9 @@ class RoundsLoopMixin:
                 'adjusted_ref_params': None,
             }
 
+        # 播放前检查停止/暂停信号（play_round 是整轮最长同步阻塞点）
+        self._check_control_or_cleanup(task_id, env_states)
+
         play_result = PlaybackAclRepositoryImpl().play_round(
             round_config=round_config, task_id=task_id,
             case_config=case_config, test_case_id=test_case_id,
@@ -124,6 +145,9 @@ class RoundsLoopMixin:
         # 收集播放时间戳（含毫秒级起止时间），供 post_process / collect_results 传递给设备驱动
         self._log(level='DEBUG', content=f"[play_round] has audio_timelines={play_result.audio_timelines is not None if play_result else False}", task_id=task_id, test_case_id=test_case_id)
         self._collect_playback_timestamps(task_id, play_result, case_config)
+
+        # 播放返回后立即检查停止/暂停信号：任务已停则不再执行后处理、采集与评估
+        self._check_control_or_cleanup(task_id, env_states)
 
         # 构建含播放时间戳的 extra_params，供设备驱动 post_process / get_results 使用
         playback_ts = self._playback_timestamps.get(task_id, {})
@@ -163,6 +187,9 @@ class RoundsLoopMixin:
                 'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
                 'adjusted_ref_params': None,
             }
+
+        # 后处理后、采集评估前检查停止/暂停信号
+        self._check_control_or_cleanup(task_id, env_states)
 
         # 采集结果
         collect_result = self._collector.collect_results(
