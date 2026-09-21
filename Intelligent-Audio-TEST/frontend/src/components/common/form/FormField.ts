@@ -1,4 +1,4 @@
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useAlgorithmConfig } from '../../../composables/algorithm/useAlgorithmConfig'
 import type { FormFieldConfig, FileUploadPayload } from './formFieldTypes'
 
@@ -62,6 +62,8 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
         return Array.isArray(val) ? val : [];
       case 'multi-select-tags':
         return Array.isArray(val) ? val : [];
+      case 'multiSelect':
+        return Array.isArray(val) ? val : [];
       case 'apiSettingsEditor':
         return val !== undefined && val !== null && typeof val === 'object' ? val : {method: 'POST', headers: {}, bodyTemplate: {}, timeout: 30000};
       case 'ruleEditor':
@@ -75,6 +77,31 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
   const algorithmConfigsValue = ref<Record<string, any>>({})
   const supportedAlgorithmsValue = ref<string[]>([])
 
+  // ===== multiSelect 字段状态（多选下拉，值存数字/字符串数组） =====
+  const multiSelectOpen = ref(false)
+  const multiSelectRef = ref<HTMLElement | null>(null)
+
+  const selectedLabels = computed(() => {
+    if (!localValue.value || !Array.isArray(localValue.value)) return []
+    return (props.field.options || []).filter(opt => localValue.value.includes(opt.value))
+  })
+
+  const toggleMultiSelect = () => {
+    multiSelectOpen.value = !multiSelectOpen.value
+  }
+
+  const clearMultiSelect = () => {
+    localValue.value = []
+    handleInput()
+    multiSelectOpen.value = false
+  }
+
+  const handleDocClick = (e: MouseEvent) => {
+    if (multiSelectRef.value && !multiSelectRef.value.contains(e.target as Node)) {
+      multiSelectOpen.value = false
+    }
+  }
+
   const { algorithms, loadAlgorithms } = useAlgorithmConfig()
 
   const algorithmOptions = computed(() => {
@@ -85,9 +112,14 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
   })
 
   onMounted(async () => {
+    document.addEventListener('click', handleDocClick)
     if (algorithmOptions.value.length === 0) {
       await loadAlgorithms()
     }
+  })
+
+  onBeforeUnmount(() => {
+    document.removeEventListener('click', handleDocClick)
   })
 
   watch(() => props.modelValue, (newVal) => {
@@ -238,6 +270,11 @@ export function useFormField(props: FormFieldProps, emit: FormFieldEmit) {
     algorithmConfigsValue,
     supportedAlgorithmsValue,
     algorithmOptions,
+    multiSelectOpen,
+    multiSelectRef,
+    selectedLabels,
+    toggleMultiSelect,
+    clearMultiSelect,
     handleInput,
     handleAlgorithmChange,
     handleAlgorithmConfigsChange,

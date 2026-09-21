@@ -358,6 +358,7 @@ export function useCRUDFormModal(props: CrudFormModalProps, emit: CrudFormModalE
         return [{ digital_gain: null, spl: null }]  // TODO: digital_gain/spl 为后端原值字段（CalibrationPoint 保留），待 adapter 统一后转 camelCase
       case 'number': return 0
       case 'switch': return false
+      case 'multiSelect': return []
       case 'apiMeta': return { protocol: 'https', environment: 'development', version: 'v1', apiKey: '' }
       case 'apiSettingsEditor': return { method: 'POST', headers: {}, bodyTemplate: {}, timeout: 30000 }
       default: return ''

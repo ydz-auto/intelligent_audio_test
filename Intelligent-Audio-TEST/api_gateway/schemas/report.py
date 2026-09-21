@@ -304,6 +304,8 @@ class ReportSearchCasesRequest(APIModel):
     sort_by: Optional[str] = Field('name')
     # 当 sort_by='metric' 时指定按哪个指标排序
     sort_metric: Optional[str] = Field(None)
+    # 当 sort_by='metric' 时限定排序用的资源（设备/API 名），缺省聚合所有资源
+    sort_resource: Optional[str] = Field(None)
     # 排序方向 asc/desc
     sort_order: Optional[str] = Field('asc')
     page: int = Field(1)

@@ -31,7 +31,7 @@ interface SaveModuleDeps {
 
 /** 创建维度保存/删除与健康检查、权重更新模块 */
 export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveModuleDeps) {
-  const { loading, error, dimensions } = state;
+  const { loading, error, dimensions, hierarchicalDimensions } = state;
   const {
     modalManager,
     fetchData,
@@ -43,6 +43,7 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
     normalizeRule,
     normalizeRequiredInputs,
     normalizeOutputFields,
+    normalizeExcludeRounds,
     normalizeApiSettings,
     resolveCategory,
     inheritFromParentDimension,
@@ -69,6 +70,7 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
       normalizeRule(dimensionData);
       normalizeRequiredInputs(dimensionData);
       normalizeOutputFields(dimensionData);
+      normalizeExcludeRounds(dimensionData);
       normalizeApiSettings(dimensionData);
       // apiUrl 现在是字符串类型，只需修剪空格
       if (dimensionData.apiUrl !== undefined && typeof dimensionData.apiUrl === 'string') {
@@ -179,11 +181,88 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
     }
   }
 
+  // ========== 维度排序（上移/下移，调整报告页展示顺序） ==========
+
+  // 是否可上移：主维度整体移动，子维度仅在同组内移动（不越过父维度或其它组）
+  function canMoveUp(dim: any): boolean {
+    const list = hierarchicalDimensions.value;
+    const index = list.findIndex(d => d.id === dim.id);
+    if (index <= 0) return false;
+    // 子维度：上方必须是同一父维度的同级子维度，否则会跑到父维度上面
+    if (dim._level === 1) {
+      const prev = list[index - 1];
+      return prev._level === 1 && prev.parentDimensionId === dim.parentDimensionId;
+    }
+    return true;
+  }
+
+  // 是否可下移：主维度整体移动，子维度仅在同组内移动（不越过父维度或其它组）
+  function canMoveDown(dim: any): boolean {
+    const list = hierarchicalDimensions.value;
+    const index = list.findIndex(d => d.id === dim.id);
+    if (index < 0 || index >= list.length - 1) return false;
+    // 子维度：下方必须是同一父维度的同级子维度，否则会跑到其它主维度的组里
+    if (dim._level === 1) {
+      const next = list[index + 1];
+      return next._level === 1 && next.parentDimensionId === dim.parentDimensionId;
+    }
+    return true;
+  }
+
+  // 上移/下移调整维度在报告页的展示顺序（主维度连同其子维度整块移动）
+  async function moveDimension(id: number | string, direction: -1 | 1) {
+    const list = hierarchicalDimensions.value;
+    const index = list.findIndex(d => d.id === id);
+    if (index < 0) return;
+    if (direction === -1 ? !canMoveUp(list[index]) : !canMoveDown(list[index])) return;
+
+    // 计算本次移动的块：主维度 = 自身 + 紧随其后的子维度；子维度 = 同一父维度的相邻同级片段
+    const isMain = list[index]._level === 0;
+    let blockStart = index;
+    let blockEnd = index;
+    if (isMain) {
+      while (blockEnd < list.length - 1 && list[blockEnd + 1]._level === 1) blockEnd++;
+    } else {
+      const parentId = list[index].parentDimensionId;
+      while (blockStart > 0 && list[blockStart - 1].parentDimensionId === parentId) blockStart--;
+      while (blockEnd < list.length - 1 && list[blockEnd + 1].parentDimensionId === parentId) blockEnd++;
+    }
+
+    const ids = list.map(d => d.id);
+    const block = ids.splice(blockStart, blockEnd - blockStart + 1);
+    if (direction === -1) {
+      ids.splice(blockStart - 1, 0, ...block);
+    } else {
+      // 注：V9.7.10 此处为 splice(blockStart, ...) 导致下移无效果，已修正为 blockStart + 1
+      ids.splice(blockStart + 1, 0, ...block);
+    }
+
+    loading.value = true;
+    error.value = null;
+    try {
+      await evaluationPort.reorder(ids);
+      await fetchData();
+    } catch (err: any) {
+      console.error('Failed to reorder dimensions:', err);
+      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '错误',
+        content: `调整排序失败: ${err.message || '未知错误'}`,
+        onConfirm: () => {
+        }
+      });
+    } finally {
+      loading.value = false;
+    }
+  }
+
   return {
     saveDimension,
     deleteDimension,
     testAPIHealth,
     updateWeight,
+    moveDimension,
+    canMoveUp,
+    canMoveDown,
   };
 }
 

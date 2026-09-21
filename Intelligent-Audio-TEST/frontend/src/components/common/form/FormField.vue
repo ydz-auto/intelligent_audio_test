@@ -83,7 +83,34 @@
         </option>
       </select>
     </template>
-    
+
+    <div v-else-if="field.type === 'multiSelect'" ref="multiSelectRef" class="multi-select-field">
+      <div class="multi-select-trigger" @click="toggleMultiSelect">
+        <div class="multi-select-values">
+          <span v-if="!selectedLabels.length" class="multi-select-placeholder">{{ field.placeholder || '请选择（可多选）' }}</span>
+          <span v-for="opt in selectedLabels" :key="opt.value" class="multi-select-value-tag">{{ opt.label }}</span>
+        </div>
+        <i class="fas fa-chevron-down multi-select-chevron" :class="{ 'rotated': multiSelectOpen }"></i>
+      </div>
+      <div v-if="multiSelectOpen" class="multi-select-panel">
+        <div
+          v-for="option in field.options"
+          :key="option.value"
+          class="multi-select-option"
+          :class="{ 'selected': isTagSelected(option.value) }"
+          @click="toggleTag(option.value)"
+        >
+          <span class="multi-select-checkbox" :class="{ 'checked': isTagSelected(option.value) }">
+            <i v-if="isTagSelected(option.value)" class="fas fa-check"></i>
+          </span>
+          <span class="multi-select-option-label">{{ option.label }}</span>
+        </div>
+        <div class="multi-select-footer">
+          <button type="button" class="multi-select-clear-btn" @click="clearMultiSelect">清空</button>
+        </div>
+      </div>
+    </div>
+
     <div v-else-if="field.type === 'radio'" class="radio-group">
       <div 
         v-for="option in field.options" 
@@ -397,6 +424,11 @@ const {
   algorithmConfigsValue,
   supportedAlgorithmsValue,
   algorithmOptions,
+  multiSelectOpen,
+  multiSelectRef,
+  selectedLabels,
+  toggleMultiSelect,
+  clearMultiSelect,
   handleInput,
   handleAlgorithmChange,
   handleAlgorithmConfigsChange,

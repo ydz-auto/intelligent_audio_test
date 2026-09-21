@@ -142,6 +142,14 @@
                     <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
                     <td class="dimension-actions-col">
                       <div class="action-buttons">
+                        <button class="btn btn-text btn-info" :disabled="!canMoveUp(dimension)" @click.stop="moveDimension(dimension.id, -1)" title="上移">
+                          <i class="fas fa-arrow-up btn-icon"></i>
+                          上移
+                        </button>
+                        <button class="btn btn-text btn-info" :disabled="!canMoveDown(dimension)" @click.stop="moveDimension(dimension.id, 1)" title="下移">
+                          <i class="fas fa-arrow-down btn-icon"></i>
+                          下移
+                        </button>
                         <button class="btn btn-text btn-primary" @click.stop="openEditModal(dimension.id)">
                           <i class="fas fa-edit btn-icon"></i>
                           编辑
@@ -221,6 +229,9 @@ const {
   isAllSelected,
   saveDimension,
   deleteDimension,
+  moveDimension,
+  canMoveUp,
+  canMoveDown,
   toggleSelectAll,
   toggleDimensionSelection,
   batchEnable,

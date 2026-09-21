@@ -17,10 +17,10 @@ DEFAULT_ALGORITHM_TYPE = 'voice_llm'
 DIMENSION_MODEL_FIELDS = [
     'name', 'keywords', 'description', 'category_id', 'api_url',
     'api_endpoints', 'type', 'result_type', 'result_min',
-    'result_max', 'decimal_places', 'weight', 'estimated_exec_time',
+    'result_max', 'decimal_places', 'weight', 'sort_order', 'estimated_exec_time',
     'rule', 'api_settings', 'status', 'api_status', 'score_unit',
     'dimension_type', 'parent_dimension_id', 'task_type_code',
-    'statistic_method',
+    'statistic_method', 'agg_denominator', 'exclude_rounds',
 ]
 
 # 评分规则合法条件（已移至 Domain Entity ScoringRule._VALID_RULE_CONDITIONS）

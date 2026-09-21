@@ -310,6 +310,27 @@ def _dim_statistic_method(dim):
     return getattr(dim, 'statistic_method', None)
 
 
+def _dim_agg_denominator(dim):
+    """从维度对象读取 agg_denominator（比率/达标率分母口径，默认 'case'）。"""
+    if isinstance(dim, dict):
+        return dim.get('agg_denominator') or 'case'
+    return getattr(dim, 'agg_denominator', None) or 'case'
+
+
+def _dim_exclude_rounds(dim):
+    """从维度对象读取 exclude_rounds（按轮次统计时排除的轮次，默认空集）。"""
+    if isinstance(dim, dict):
+        return set(dim.get('exclude_rounds') or [])
+    return set(getattr(dim, 'exclude_rounds', None) or [])
+
+
+def _dim_sort_order(dim):
+    """从维度对象读取 sort_order（报告页展示顺序，默认 0）。"""
+    if isinstance(dim, dict):
+        return dim.get('sort_order') or 0
+    return getattr(dim, 'sort_order', None) or 0
+
+
 def _dim_score_unit(dim):
     """从维度对象读取 score_unit。"""
     if isinstance(dim, dict):

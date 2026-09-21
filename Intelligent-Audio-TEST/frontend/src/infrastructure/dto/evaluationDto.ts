@@ -28,6 +28,12 @@ export interface DimensionItemDto {
   required_inputs?: unknown
   output_fields?: unknown[]
   statistic_method?: string
+  /** 聚合分母口径（case/round） */
+  agg_denominator?: string
+  /** 排除轮次（数字数组或逗号分隔字符串，-1 表示最后一轮） */
+  exclude_rounds?: number[] | string
+  /** 排序序号（报告页展示顺序） */
+  sort_order?: number
   associated_algorithms?: Record<string, unknown>[]
   status?: boolean
   created_at?: string

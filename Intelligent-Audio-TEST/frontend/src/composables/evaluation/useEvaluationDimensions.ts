@@ -101,6 +101,9 @@ export function useEvaluationDimensions() {
     deleteDimension,
     testAPIHealth,
     updateWeight,
+    moveDimension,
+    canMoveUp,
+    canMoveDown,
   } = createEvalDimensionSave(state, {
     modalManager,
     fetchData,
@@ -155,6 +158,10 @@ export function useEvaluationDimensions() {
     // 维度 CRUD
     saveDimension,
     deleteDimension,
+    // 维度排序（上移/下移）
+    moveDimension,
+    canMoveUp,
+    canMoveDown,
     // API 健康检查 / 权重
     testAPIHealth,
     updateWeight,

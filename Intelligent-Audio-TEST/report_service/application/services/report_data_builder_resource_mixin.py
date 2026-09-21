@@ -18,6 +18,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_list_testcases_by_ids,
     _dim_id, _dim_name, _dim_type_and_parent,
     _dim_statistic_method, _dim_score_unit, _dim_decimal_places,
+    _dim_agg_denominator, _dim_sort_order,
 )
 
 
@@ -122,8 +123,8 @@ class ReportDataResourceMixin:
         all_metrics = []
         for dim in all_dimensions:
             statistic_method = _dim_statistic_method(dim) or 'average'
-            # 聚合方式决定 unit：pass_rate 产出百分比，强制为 %；其余用维度配置的 score_unit
-            if statistic_method == 'pass_rate':
+            # 聚合方式决定 unit：pass_rate/ratio 产出百分比，强制为 %；其余用维度配置的 score_unit
+            if statistic_method in ('pass_rate', 'ratio'):
                 unit = "%"
             else:
                 score_unit = _dim_score_unit(dim)
@@ -139,8 +140,12 @@ class ReportDataResourceMixin:
                 "unit": unit,
                 "decimal_places": decimal_places,
                 "statistic_method": statistic_method,
+                "agg_denominator": _dim_agg_denominator(dim),
+                "sort_order": _dim_sort_order(dim),
                 "dimension_type": dim_type,
                 "parent_dimension_id": parent_dim_id,
                 "parent_dimension_name": dim_id_to_name.get(parent_dim_id) if parent_dim_id else None,
             })
+        # 报告页按 sort_order 稳定排序（sort_order 相同按下标）
+        all_metrics.sort(key=lambda m: (m.get('sort_order') or 0, m.get('id') or 0))
         return all_metrics

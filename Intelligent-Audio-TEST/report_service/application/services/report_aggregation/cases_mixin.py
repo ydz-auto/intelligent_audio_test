@@ -170,14 +170,14 @@ class _AggregationCasesMixin:
     @staticmethod
     def sort_and_paginate_cases(
         filtered: list, sort_by: str, sort_order: str,
-        sort_metric: str, page: int, per_page: int
+        sort_metric: str, page: int, per_page: int, sort_resource: str = None
     ) -> tuple:
         """排序并分页用例列表，返回 (paged_cases, total, pages)。"""
         asc = (sort_order != 'desc')
 
         if sort_by == 'metric' and sort_metric:
             return _AggregationCasesMixin._sort_by_metric_and_paginate(
-                filtered, str(sort_metric), asc, page, per_page
+                filtered, str(sort_metric), asc, page, per_page, sort_resource
             )
 
         # 常规排序
@@ -195,21 +195,61 @@ class _AggregationCasesMixin:
         return paged_cases, total, pages
 
     @staticmethod
-    def _sort_by_metric_and_paginate(filtered: list, metric_name: str, asc: bool, page: int, per_page: int) -> tuple:
-        """按评估维度排序并分页。"""
+    def _sort_by_metric_and_paginate(filtered: list, metric_name: str, asc: bool, page: int, per_page: int,
+                                     sort_resource: str = None) -> tuple:
+        """按评估维度排序并分页。
+
+        sort_resource 指定时只取该资源下的指标值（metrics 为 dict 或 list 格式均兼容），
+        缺省聚合所有资源取平均。
+        """
+        def _collect_values(resource_values):
+            """从单个资源的值（dict 或 list 格式）中提取该维度的数值列表"""
+            vals = []
+            if isinstance(resource_values, dict):
+                # dict 格式: {dim_name: value} 或 {metric: value}
+                if metric_name in resource_values:
+                    try:
+                        vals.append(float(resource_values[metric_name]))
+                    except (TypeError, ValueError):
+                        pass
+            elif isinstance(resource_values, list):
+                # list 格式: [{metric: ..., value: ...}]
+                for item in resource_values:
+                    if isinstance(item, dict) and item.get('metric') == metric_name:
+                        try:
+                            vals.append(float(item.get('value')))
+                        except (TypeError, ValueError):
+                            pass
+            return vals
+
         def _metric_key(case_item):
             m = case_item.get('metrics') or {}
             if isinstance(m, dict):
+                if sort_resource:
+                    # 指定资源对象：只取该资源下该维度的值
+                    vals = _collect_values(m.get(sort_resource))
+                    if vals:
+                        return (0, sum(vals) / len(vals))
+                    return (1, 0)
+                # 未指定资源：聚合所有资源（平均）
                 vals = []
-                for v in m.values():
-                    if isinstance(v, dict) and metric_name in v:
-                        try:
-                            vals.append(float(v[metric_name]))
-                        except (TypeError, ValueError):
-                            pass
+                for resource_values in m.values():
+                    vals.extend(_collect_values(resource_values))
                 if vals:
-                    avg = sum(vals) / len(vals)
-                    return (0, avg)
+                    return (0, sum(vals) / len(vals))
+            elif isinstance(m, list):
+                # list 格式: [{resource: ..., metrics: [...]}]
+                all_vals = []
+                for group in m:
+                    if not isinstance(group, dict):
+                        continue
+                    group_resource = group.get('resource')
+                    if sort_resource and group_resource != sort_resource:
+                        continue
+                    all_vals.extend(_collect_values(group.get('metrics')))
+                if all_vals:
+                    return (0, sum(all_vals) / len(all_vals))
+            # 没有该维度的 case 排到最后
             return (1, 0)
 
         with_metric = [c for c in filtered if _metric_key(c)[0] == 0]

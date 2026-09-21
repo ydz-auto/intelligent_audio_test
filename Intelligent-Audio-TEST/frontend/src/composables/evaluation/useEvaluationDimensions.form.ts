@@ -95,7 +95,20 @@ export function createEvalDimensionForm(state: EvalDimensionState) {
     { key: 'statisticMethod', label: '统计方式', type: 'select', required: false, default: 'average', group: 'API配置',
       options: [
         { value: 'average', label: '简单平均' },
-        { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' }
+        { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' },
+        { value: 'ratio', label: '比率 (Σ数量/Σ分母, %)' }
+      ],
+      conditional: CONDITION_MAIN },
+    { key: 'aggDenominator', label: '聚合分母口径', type: 'select', required: false, default: 'case', group: 'API配置',
+      options: [
+        { value: 'case', label: '按用例 (分母=配置该维度的用例数)' },
+        { value: 'round', label: '按轮次 (分母=该维度有值轮次数)' }
+      ],
+      conditional: CONDITION_MAIN },
+    { key: 'excludeRounds', label: '排除轮次（按轮次统计时跳过）', type: 'multiSelect', required: false, group: 'API配置',
+      options: [
+        ...Array.from({ length: 10 }, (_, i) => ({ value: i, label: `第${i + 1}轮` })),
+        { value: -1, label: '最后一轮' }
       ],
       conditional: CONDITION_MAIN },
     { key: 'apiEndpoints', label: 'API端点配置', type: 'array', arrayItemType: 'apiEndpoint', required: false, fullWidth: true, arrayItemTemplate: { url: '', name: '', priority: 1, maxProcess: DEFAULT_MAX_PROCESS, maxTimeout: DEFAULT_MAX_TIMEOUT, maxAudioDuration: DEFAULT_MAX_AUDIO_DURATION }, group: 'API配置',

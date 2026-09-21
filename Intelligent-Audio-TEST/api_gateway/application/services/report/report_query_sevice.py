@@ -136,6 +136,7 @@ class ReportQueryService:
                     'metrics': req.metrics or [],
                     'sort_by': req.sort_by or 'name',
                     'sort_metric': req.sort_metric or '',
+                    'sort_resource': req.sort_resource or '',
                     'sort_order': req.sort_order or 'asc',
                     'page': req.page,
                     'per_page': req.per_page,

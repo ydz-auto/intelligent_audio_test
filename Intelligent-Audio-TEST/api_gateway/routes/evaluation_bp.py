@@ -77,6 +77,13 @@ def batch_action(_: None = require_permission('evaluation:dim_manage')):
         return to_response(result)
     return result
 
+@router.post('/dimensions/reorder')
+def reorder_dimensions(_: None = require_permission('evaluation:dim_manage')):
+    result = EvaluationCommandService.reorder()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
+
 @router.get('/dimensions/export')
 def export_dimensions(_: None = require_permission('evaluation:import_export')):
     result = EvaluationCommandService.export_to_file()

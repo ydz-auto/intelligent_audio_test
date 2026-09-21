@@ -145,6 +145,9 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
       const rawOutputFields = dimension.outputFields || [];
       const outputFieldsArray = Array.isArray(rawOutputFields) ? rawOutputFields : [];
       const statisticMethod = dimension.statisticMethod || 'average';
+      const aggDenominator = dimension.aggDenominator || 'case';
+      // adapter 已把 exclude_rounds 归一为 number[]，此处仅做数组兜底
+      const excludeRounds = Array.isArray(dimension.excludeRounds) ? dimension.excludeRounds : [];
 
       const editingData = {
         ...dimension,
@@ -156,6 +159,8 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
         requiredInputs: requiredInputsObj,
         outputFields: outputFieldsArray,
         statisticMethod: statisticMethod,
+        aggDenominator: aggDenominator,
+        excludeRounds: excludeRounds,
         associatedAlgorithms: associatedAlgorithmsArray,
         status: String(dimension.status).toLowerCase() === 'true',
         dimensionType: dimensionType,
@@ -217,6 +222,8 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
       requiredInputs: [...dimensionTemplate.requiredInputs],
       outputFields: [],
       statisticMethod: 'average',
+      aggDenominator: 'case',
+      excludeRounds: [],
       apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60 }],
       associatedAlgorithms: [],
       llmJudgeConfig: {

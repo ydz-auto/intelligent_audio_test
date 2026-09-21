@@ -96,6 +96,19 @@ export function createEvalDimensionNormalizers(state: EvalDimensionState) {
     }
   }
 
+  // 处理 excludeRounds：逗号分隔字符串 → 数字数组；非字符串非数组 → []（-1 表示最后一轮）
+  function normalizeExcludeRounds(dimensionData: any) {
+    if (dimensionData.excludeRounds === undefined) return;
+    const raw = dimensionData.excludeRounds;
+    if (typeof raw === 'string' && raw.trim()) {
+      dimensionData.excludeRounds = raw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    } else if (typeof raw !== 'string' && !Array.isArray(raw)) {
+      dimensionData.excludeRounds = [];
+    } else if (typeof raw === 'string') {
+      dimensionData.excludeRounds = [];
+    }
+  }
+
   // 处理 apiSettings：字符串解析为对象、对象保留、其他删除
   function normalizeApiSettings(dimensionData: any) {
     if (dimensionData.apiSettings === undefined) return;
@@ -223,6 +236,7 @@ export function createEvalDimensionNormalizers(state: EvalDimensionState) {
     normalizeRule,
     normalizeRequiredInputs,
     normalizeOutputFields,
+    normalizeExcludeRounds,
     normalizeApiSettings,
     resolveCategory,
     inheritFromParentDimension,

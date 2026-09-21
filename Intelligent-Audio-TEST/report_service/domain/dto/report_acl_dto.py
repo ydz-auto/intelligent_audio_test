@@ -103,6 +103,9 @@ class DimensionDTO:
     score_unit: Optional[str] = None
     decimal_places: Optional[int] = None
     statistic_method: Optional[str] = None
+    agg_denominator: Optional[str] = None
+    exclude_rounds: Optional[Any] = None
+    sort_order: Optional[int] = None
     status: Optional[bool] = None
     deleted: Optional[bool] = None
     category_id: Optional[int] = None

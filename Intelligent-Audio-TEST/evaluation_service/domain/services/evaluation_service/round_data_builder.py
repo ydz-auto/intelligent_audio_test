@@ -200,6 +200,9 @@ class RoundDataBuilderMixin:
             if value is not None:
                 item[target_param] = value
 
+        # 携带轮次号，供评估服务端 per_round 结果回填时按 round_number 字段定位
+        item['round'] = round_number
+
         return item
 
     @staticmethod

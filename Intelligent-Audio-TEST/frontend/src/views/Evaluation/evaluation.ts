@@ -138,6 +138,11 @@ export function useEvaluation() {
     saveDimension: dimensionsModule.saveDimension,
     deleteDimension: dimensionsModule.deleteDimension,
 
+    // 维度排序（上移/下移，来自维度模块）
+    moveDimension: dimensionsModule.moveDimension,
+    canMoveUp: dimensionsModule.canMoveUp,
+    canMoveDown: dimensionsModule.canMoveDown,
+
     // 批量操作（来自批量操作模块）
     batchEnable: batchOpsModule.batchEnable,
     batchDisable: batchOpsModule.batchDisable,

@@ -12,6 +12,8 @@ ParamMapping 通过 gRPC 访问。
 """
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import func
+
 from shared.models.database import get_db_session
 from evaluation_service.infrastructure.persistence.orm_models import Category, Dimension
 from evaluation_service.infrastructure.acl.algorithm_acl_repository import (
@@ -138,7 +140,7 @@ class EvaluationRepository(EvaluationRepositoryABC):
                 | (Dimension.keywords.ilike(f'%{search}%'))
             )
 
-        return query.paginate(page=page, per_page=per_page, error_out=False)
+        return query.order_by(Dimension.sort_order, Dimension.id).paginate(page=page, per_page=per_page, error_out=False)
 
     def list_dimension_options(self, algorithm_type: str = '') -> List[Dimension]:
         """查询维度选项列表（可按 algorithm_type 过滤）。
@@ -154,7 +156,7 @@ class EvaluationRepository(EvaluationRepositoryABC):
                 query = query.filter(Dimension.id.in_(associated_dim_ids))
             else:
                 return []
-        return query.order_by(Dimension.id).all()
+        return query.order_by(Dimension.sort_order, Dimension.id).all()
 
     def update_dimension_attrs(self, dim: Dimension, data: Dict[str, Any]) -> None:
         """更新维度可赋值字段（含 flush，未 commit）。"""
@@ -162,6 +164,38 @@ class EvaluationRepository(EvaluationRepositoryABC):
         for field, value in data.items():
             setattr(dim, field, value)
         session.flush()
+
+    def reorder_dimensions(self, ordered_ids: List[int]) -> Optional[List[int]]:
+        """按数组顺序重排维度 sort_order（含 flush，未 commit）。
+
+        一次 DB 会话完成查询与写回；只处理未删除的维度。
+        Args:
+            ordered_ids: 维度 ID 数组，顺序即新展示顺序（下标即 sort_order）
+        Returns:
+            缺失的维度 ID 列表（存在不存在的 id 时），成功返回 None
+        """
+        session = get_db_session()
+        id_list = [int(i) for i in ordered_ids]
+        if not id_list:
+            return []
+        dims = session.query(Dimension).filter(
+            Dimension.id.in_(id_list),
+            Dimension.deleted == False,  # noqa: E712
+        ).all()
+        dim_map = {d.id: d for d in dims}
+        missing = [i for i in id_list if i not in dim_map]
+        if missing:
+            return missing
+        for idx, dim_id in enumerate(id_list):
+            dim_map[dim_id].sort_order = idx
+        session.flush()
+        return None
+
+    def max_sort_order(self) -> int:
+        """查询当前最大 sort_order（含已删除，无数据返回 0）。"""
+        session = get_db_session()
+        max_sort = session.query(func.max(Dimension.sort_order)).scalar()
+        return max_sort if max_sort is not None else 0
 
     # ========== AlgorithmDimensionRelation 管理（gRPC） ==========
 

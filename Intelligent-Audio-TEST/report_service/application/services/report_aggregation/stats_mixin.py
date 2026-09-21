@@ -18,6 +18,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_dimension_params,
     _grpc_get_dimension_results_by_result_ids as _grpc_get_dim_results,
     _dim_id, _dim_name,
+    _dim_statistic_method, _dim_agg_denominator, _dim_exclude_rounds,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,9 +47,16 @@ class _AggregationStatsMixin:
         # 1. 维度过滤与名称映射
         all_dimensions, metric_name_to_id = cls._filter_visible_dimensions(test_results)
 
+        # 1.5 维度聚合策略信息（statistic_method / agg_denominator / exclude_rounds / output_params）
+        dim_strategy_info = cls._build_dim_strategy_info(all_dimensions)
+
+        # 1.6 批量查询维度评估结果（含每轮记录，供按轮次口径/排除轮次聚合）
+        res_ids = [rid for rid in (_r_get(r, 'id') for r in test_results) if rid is not None]
+        dim_results_map = _grpc_get_dim_results(res_ids) if res_ids else {}
+
         # 2. 收集维度得分并计算全局加权平均
         averages_map, overall_averages = cls._compute_weighted_averages(
-            test_results, all_dimensions, metric_name_to_id
+            test_results, all_dimensions, metric_name_to_id, dim_strategy_info, dim_results_map
         )
 
         # 3. 聚合设备/API 资源列表
@@ -63,11 +71,11 @@ class _AggregationStatsMixin:
         accumulator = {}
         cls._accumulate_category_resource_scores(
             test_results, test_cases_map, all_dimensions,
-            dim_names, resources, raw_data, accumulator
+            dim_names, resources, raw_data, accumulator, dim_strategy_info, dim_results_map
         )
 
         # 6. 计算分类×资源的平均值矩阵
-        metric_data = cls._compute_category_resource_averages(accumulator)
+        metric_data = cls._compute_category_resource_averages(accumulator, dim_strategy_info)
 
         # 7. 计算正态分布
         normal_distribution_data = ReportHelpers.calculate_normal_distribution(raw_data)
@@ -77,6 +85,38 @@ class _AggregationStatsMixin:
             metric_data, raw_data, normal_distribution_data,
             resources, resource_headers, metric_name_to_id
         )
+
+    # ------------------------------------------------------------------
+    # 子方法：维度聚合策略信息
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_dim_strategy_info(all_dimensions: list) -> dict:
+        """构建 维度名 -> 聚合策略信息 映射。
+
+        非 average 维度加载 output_params（供 weighted_wer/pass_rate/ratio 策略按 agg_role 提取）。
+        """
+        info = {}
+        for dim in all_dimensions:
+            dim_id = _dim_id(dim)
+            dim_name = _dim_name(dim)
+            if dim_id is None or dim_name is None:
+                continue
+            sm = (_dim_statistic_method(dim) or 'average')
+            output_params = []
+            if sm != 'average':
+                output_params = [
+                    p for p in (_grpc_get_dimension_params(dim_id) or [])
+                    if isinstance(p, dict) and p.get('param_direction') == 'output'
+                ]
+            info[dim_name] = {
+                'method': sm,
+                'denominator_mode': _dim_agg_denominator(dim),
+                'exclude_rounds': _dim_exclude_rounds(dim),
+                'dim_id': dim_id,
+                'output_params': output_params,
+            }
+        return info
 
     # ------------------------------------------------------------------
     # 子方法：维度过滤
@@ -149,32 +189,166 @@ class _AggregationStatsMixin:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _compute_weighted_averages(test_results: list, all_dimensions: list, metric_name_to_id: dict) -> tuple:
-        """计算全局加权平均，返回 (averages_map, overall_averages)。"""
-        dimension_scores = {}
-        dimension_counts = {}
+    def _compute_weighted_averages(test_results: list, all_dimensions: list, metric_name_to_id: dict,
+                                   dim_strategy_info: dict, dim_results_map: dict = None) -> tuple:
+        """计算全局加权平均，返回 (averages_map, overall_averages)。
+
+        非 average 维度（pass_rate/ratio/weighted_wer）用策略聚合（按 agg_denominator
+        取分母口径 + exclude_rounds 排除轮次）；average 维度按口径取样本：
+          - case（默认）：每用例 1 个样本（整体值优先）
+          - round：每轮 1 个样本（无轮次记录回退整体值）
+        """
+        from report_service.domain.services.aggregation_strategies import get_strategy
+
+        custom_agg_items = {}   # dim_name -> [item, ...]（策略聚合用）
+        average_samples = {}    # dim_name -> [样本, ...]
 
         for result in test_results:
             result_id = _r_get(result, 'id')
-            dim_values = ReportHelpers.extract_dimension_values(result_id, all_dimensions)
+            dim_values = ReportHelpers.extract_dimension_values(result_id, all_dimensions, dim_results_map)
             for dim_name, score in dim_values.items():
-                if score is not None:
-                    if dim_name not in dimension_scores:
-                        dimension_scores[dim_name] = 0
-                        dimension_counts[dim_name] = 0
-                    dimension_scores[dim_name] += score
-                    dimension_counts[dim_name] += 1
+                if score is None:
+                    continue
+                info = dim_strategy_info.get(dim_name)
+                if not info:
+                    continue
+                if info['method'] != 'average':
+                    custom_agg_items.setdefault(dim_name, []).extend(
+                        _AggregationStatsMixin._collect_dim_items(
+                            result_id, info['dim_id'], dim_results_map, info['exclude_rounds']
+                        )
+                    )
+                elif info['denominator_mode'] == 'round':
+                    average_samples.setdefault(dim_name, []).extend(
+                        _AggregationStatsMixin._get_round_value_samples(
+                            result_id, info['dim_id'], dim_results_map, info['exclude_rounds'], score
+                        )
+                    )
+                else:
+                    average_samples.setdefault(dim_name, []).append(score)
 
-        averages_map = {
-            dim_name: (total / dimension_counts[dim_name])
-            for dim_name, total in dimension_scores.items()
-            if dimension_counts[dim_name] > 0
-        }
+        averages_map = {}
+        for dim_name, info in dim_strategy_info.items():
+            if info['method'] != 'average':
+                items = custom_agg_items.get(dim_name) or []
+                if not items:
+                    continue
+                val = get_strategy(info['method']).aggregate(
+                    items, output_params=info['output_params'], denominator_mode=info['denominator_mode']
+                )
+                if val is not None:
+                    averages_map[dim_name] = val
+            else:
+                samples = average_samples.get(dim_name) or []
+                if samples:
+                    averages_map[dim_name] = sum(samples) / len(samples)
+
         overall_averages = [
             {"id": metric_name_to_id.get(str(dim_name)), "metric": str(dim_name), "value": value}
             for dim_name, value in sorted(averages_map.items(), key=lambda kv: kv[0])
         ]
         return averages_map, overall_averages
+
+    @staticmethod
+    def _collect_dim_items(result_id, dim_id, dim_results_map: dict, exclude_set: set) -> list:
+        """收集某用例某维度用于策略聚合的 item 列表。
+
+        取值优先级（与 V9.7.10 对齐）：
+          无排除配置且整体存在 → 只取整体 1 个 item；
+          有排除配置或无整体 → 取各轮独立 item（跳过被排除轮次）；否则整体兜底。
+        每项含 dimension_value / api_raw_response / test_result_id / round_count
+        （round_count = 该用例该维度有值轮次数，ratio 策略按轮次口径用）。
+        """
+        exclude_set = _AggregationStatsMixin._resolve_exclude_rounds(
+            result_id, dim_id, dim_results_map, exclude_set
+        )
+        if not dim_results_map or result_id not in dim_results_map:
+            return []
+        overall_item = None
+        round_items = []
+        for dr in dim_results_map.get(result_id, []):
+            if not isinstance(dr, dict):
+                continue
+            if dr.get('dimension_id') != dim_id:
+                continue
+            dr_val = dr.get('dimension_value')
+            dr_round = dr.get('round_number')
+            if dr_val is None:
+                continue
+            item = {
+                'dimension_value': dr_val,
+                'api_raw_response': dr.get('api_raw_response'),
+                'test_result_id': result_id,
+            }
+            if dr_round is None:
+                overall_item = item
+            else:
+                if exclude_set and dr_round in exclude_set:
+                    continue  # 排除轮次不参与分子/分母
+                round_items.append(item)
+
+        if overall_item and not exclude_set:
+            collected = [overall_item]
+        elif round_items:
+            collected = round_items
+        elif overall_item:
+            collected = [overall_item]
+        else:
+            collected = []
+        if collected:
+            round_count = len(round_items)
+            for it in collected:
+                it['round_count'] = round_count
+        return collected
+
+    @staticmethod
+    def _get_round_value_samples(result_id, dim_id, dim_results_map: dict, exclude_set: set,
+                                 fallback_score) -> list:
+        """按轮次口径取样本：各轮 dimension_value（排除轮次过滤），无轮次记录回退 [fallback_score]。"""
+        exclude_set = _AggregationStatsMixin._resolve_exclude_rounds(
+            result_id, dim_id, dim_results_map, exclude_set
+        )
+        if not dim_results_map or result_id not in dim_results_map:
+            return [fallback_score]
+        vals = []
+        for dr in dim_results_map.get(result_id, []):
+            if not isinstance(dr, dict):
+                continue
+            if dr.get('dimension_id') != dim_id:
+                continue
+            dr_val = dr.get('dimension_value')
+            dr_round = dr.get('round_number')
+            if dr_val is None or dr_round is None:
+                continue
+            if exclude_set and dr_round in exclude_set:
+                continue
+            vals.append(dr_val)
+        return vals if vals else [fallback_score]
+
+    @staticmethod
+    def _resolve_exclude_rounds(result_id, dim_id, dim_results_map: dict, exclude_set: set) -> set:
+        """解析排除轮次集合：将 -1（"最后一轮"选项）替换为该用例该维度的最大轮次。
+
+        无轮次记录时 -1 无效（无最后一轮可排除）；返回不含 -1 的集合。
+        """
+        exclude_set = set(exclude_set or [])
+        if -1 not in exclude_set:
+            return exclude_set
+        max_round = None
+        if dim_results_map and result_id in dim_results_map:
+            for dr in dim_results_map.get(result_id, []):
+                if not isinstance(dr, dict):
+                    continue
+                if (dr.get('dimension_id') or dr.get('id')) != dim_id:
+                    continue
+                dr_round = dr.get('round_number')
+                if dr_round is not None and (max_round is None or dr_round > max_round):
+                    max_round = dr_round
+        if max_round is not None:
+            exclude_set = (exclude_set - {-1}) | {max_round}
+        else:
+            exclude_set = exclude_set - {-1}
+        return exclude_set
 
     # ------------------------------------------------------------------
     # 子方法：按分类×资源累积维度分数
@@ -183,12 +357,15 @@ class _AggregationStatsMixin:
     @staticmethod
     def _accumulate_category_resource_scores(
         test_results: list, test_cases_map: dict, all_dimensions: list,
-        dim_names: list, resources: list, raw_data: dict, accumulator: dict
+        dim_names: list, resources: list, raw_data: dict, accumulator: dict,
+        dim_strategy_info: dict = None, dim_results_map: dict = None
     ) -> None:
         """遍历测试结果，按分类×资源累积维度分数和原始数据。
 
         结果直接写入 accumulator 和 raw_data（原地修改）。
+        非 average 维度收集策略聚合 item（items），average 维度累积 sum/count。
         """
+        dim_strategy_info = dim_strategy_info or {}
         for result in test_results:
             resource = ReportHelpers.get_resource_name(result, task=None, use_time_prefix=False)
             if resource not in resources:
@@ -205,16 +382,26 @@ class _AggregationStatsMixin:
             if cat_name not in accumulator:
                 accumulator[cat_name] = {}
             if resource not in accumulator[cat_name]:
-                accumulator[cat_name][resource] = {dn: {'sum': 0, 'count': 0} for dn in dim_names}
+                accumulator[cat_name][resource] = {dn: {'sum': 0, 'count': 0, 'items': []} for dn in dim_names}
 
             result_id = _r_get(result, 'id')
-            dim_values = ReportHelpers.extract_dimension_values(result_id, all_dimensions)
+            dim_values = ReportHelpers.extract_dimension_values(result_id, all_dimensions, dim_results_map)
             for dim_name, score in dim_values.items():
-                if score is not None:
-                    accumulator[cat_name][resource][dim_name]['sum'] += score
-                    accumulator[cat_name][resource][dim_name]['count'] += 1
-                    if dim_name in raw_data[resource]:
-                        raw_data[resource][dim_name].append(score)
+                if score is None:
+                    continue
+                info = dim_strategy_info.get(dim_name)
+                bucket = accumulator[cat_name][resource][dim_name]
+                if info and info['method'] != 'average':
+                    bucket['items'].extend(
+                        _AggregationStatsMixin._collect_dim_items(
+                            result_id, info['dim_id'], dim_results_map, info['exclude_rounds']
+                        )
+                    )
+                else:
+                    bucket['sum'] += score
+                    bucket['count'] += 1
+                if dim_name in raw_data[resource]:
+                    raw_data[resource][dim_name].append(score)
 
     @staticmethod
     def _get_case_category_name(test_case) -> str:
@@ -236,15 +423,30 @@ class _AggregationStatsMixin:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _compute_category_resource_averages(accumulator: dict) -> dict:
-        """根据累积器计算分类×资源的平均值矩阵。"""
+    def _compute_category_resource_averages(accumulator: dict, dim_strategy_info: dict = None) -> dict:
+        """根据累积器计算分类×资源的平均值矩阵。
+
+        非 average 维度用策略聚合（按 agg_denominator 取分母口径），average 维度用算术平均。
+        """
+        from report_service.domain.services.aggregation_strategies import get_strategy
+        dim_strategy_info = dim_strategy_info or {}
         metric_data = {}
         for cat_name, res_data in accumulator.items():
             metric_data[cat_name] = {}
             for res, dims in res_data.items():
                 metric_data[cat_name][res] = {}
                 for dim_name, stats in dims.items():
-                    metric_data[cat_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
+                    info = dim_strategy_info.get(dim_name)
+                    if info and info['method'] != 'average':
+                        items = stats.get('items') or []
+                        if not items:
+                            metric_data[cat_name][res][dim_name] = None
+                            continue
+                        metric_data[cat_name][res][dim_name] = get_strategy(info['method']).aggregate(
+                            items, output_params=info['output_params'], denominator_mode=info['denominator_mode']
+                        )
+                    else:
+                        metric_data[cat_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
         return metric_data
 
     # ------------------------------------------------------------------

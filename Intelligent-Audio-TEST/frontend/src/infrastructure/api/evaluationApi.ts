@@ -97,6 +97,11 @@ export const evaluationApi = {
     return request<any>('POST', '/evaluation/dimensions/batch', { action, item_ids: ids })
   },
 
+  /** 维度排序：ids 顺序即新排序（调整报告页展示顺序） */
+  async reorder(ids: (string | number)[]): Promise<any> {
+    return request<any>('POST', '/evaluation/dimensions/reorder', { ids })
+  },
+
   /** 计算评分 */
   async calculateScore(id: string | number, value: any): Promise<number> {
     const raw = await request<any>('POST', `/evaluation/dimensions/${id}/calculate`, { value })

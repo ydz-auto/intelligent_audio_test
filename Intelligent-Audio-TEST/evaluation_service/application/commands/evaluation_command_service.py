@@ -89,7 +89,13 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
             return err
 
         try:
-            new_dim = self.repo.create_dimension(self._extract_model_fields(data))
+            create_data = self._extract_model_fields(data)
+
+            # 未指定排序时，新维度默认追加到末尾（当前最大 sort_order + 1）
+            if 'sort_order' not in create_data or create_data.get('sort_order') is None:
+                create_data['sort_order'] = self.repo.max_sort_order() + 1
+
+            new_dim = self.repo.create_dimension(create_data)
 
             # 关联算法（gRPC 同步：先清空再插入）
             raw_associated = data.get('associatedAlgorithms') or data.get('associated_algorithms') or []

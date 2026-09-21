@@ -103,6 +103,16 @@ class GroupResultMixin:
                 # 更新维度评估结果，传入session避免重复创建
                 self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, test_case_id=test_case_id, api_raw_response=resp_data, api_request_body=api_request_body, session=local_db_session)
 
+            # 整体评估的 per_round 结果覆盖逐轮 TRD 记录（按 round_number 字段定位，不依赖数组下标）
+            per_round = resp_data.get('per_round', []) if isinstance(resp_data, dict) else []
+            if per_round:
+                self._overwrite_round_results(
+                    result_id=result_id, per_round=per_round,
+                    group_items=group_items, session=local_db_session,
+                    task_id=task_id, test_case_id=test_case_id,
+                    api_request_body=api_request_body,
+                )
+
             # 循环结束后统一提交
             local_db_session.commit()
 

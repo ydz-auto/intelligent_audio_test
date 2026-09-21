@@ -103,6 +103,20 @@ class EvaluationRepositoryABC(ABC):
         """更新维度可赋值字段（含 flush，未 commit）。"""
         ...
 
+    @abstractmethod
+    def reorder_dimensions(self, ordered_ids: List[int]) -> Optional[List[int]]:
+        """按数组顺序重排维度 sort_order（含 flush，未 commit）。
+
+        Returns:
+            缺失的维度 ID 列表（存在不存在的 id 时），成功返回 None
+        """
+        ...
+
+    @abstractmethod
+    def max_sort_order(self) -> int:
+        """查询当前最大 sort_order（含已删除，无数据返回 0）。"""
+        ...
+
     # ========== AlgorithmDimensionRelation 管理（gRPC） ==========
 
     @abstractmethod

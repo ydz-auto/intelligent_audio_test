@@ -87,7 +87,7 @@ class DimensionResultMixin:
         self.update_dimension_result(
             dimension_result_id=dimension_result_id,
             raw_value=raw_value,
-            score=195,
+            score=score,
             status=TaskCaseStatus.COMPLETED,
             evaluation_status=EvaluationStatus.COMPLETED,
             error_message=None,
@@ -97,6 +97,69 @@ class DimensionResultMixin:
             test_case_id=test_case_id,
             session=session
         )
+
+    def _overwrite_round_results(self, result_id, per_round, group_items, session,
+                                 task_id=None, test_case_id=None, api_request_body=None):
+        """整体评估返回的 per_round 结果覆盖/创建逐轮 TRD 记录
+
+        逐轮评估与整体评估异步并发：若同维度在同轮次已有逐轮评估记录，
+        此处用整体评估 per_round 的值覆盖（口径一致）；逐轮未配置的维度则创建新记录。
+
+        Args:
+            result_id: TestResult 主键
+            per_round: 整体评估响应中的 per_round[] 列表
+            group_items: [(dim_data, dimension_result_id), ...] 整体评估的维度组
+            session: 复用的数据库会话
+        """
+        from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
+        if not result_id or not per_round:
+            return
+        upserted = 0
+        for per_round_item in per_round:
+            if not isinstance(per_round_item, dict):
+                continue
+            round_idx = per_round_item.get('round_number')  # 按字段定位，不依赖数组下标
+            if round_idx is None:
+                continue
+            for dim_data, _ in group_items:
+                raw_value, score = self.parse_dimension_result(per_round_item, dim_data)
+                if raw_value is None:
+                    continue  # 该轮该维度无有效值（如缺少音频），不覆盖
+
+                dim_id = dim_data['id']
+                dim_name = dim_data['name']
+                trd = session.query(TestResultDimension).filter(
+                    TestResultDimension.test_result_id == result_id,
+                    TestResultDimension.dimension_id == dim_id,
+                    TestResultDimension.round_number == round_idx,
+                ).first()
+                if not trd:
+                    trd = TestResultDimension(
+                        test_result_id=result_id,
+                        dimension_id=dim_id,
+                        round_number=round_idx,
+                    )
+                    session.add(trd)
+                trd.dimension_value = self._to_float_or_none(raw_value)
+                trd.score = score
+                trd.status = TaskCaseStatus.COMPLETED
+                trd.evaluation_status = EvaluationStatus.COMPLETED
+                trd.error_message = None
+                trd.api_raw_response = per_round_item
+                trd.api_request_body = api_request_body
+                upserted += 1
+
+                self._log(
+                    level='INFO',
+                    category='execution',
+                    content=f"per_round 覆盖逐轮维度: 用例ID: {test_case_id}, "
+                            f"维度: {dim_name}, round={round_idx}, "
+                            f"原始值: {raw_value}, 维度分值: {score}",
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                )
+        if upserted:
+            session.flush()
 
     def update_all_dimensions_in_group_failed(self, group_items, error_message, task_id, test_case_id=None, api_raw_response=None, api_request_body=None):
         """

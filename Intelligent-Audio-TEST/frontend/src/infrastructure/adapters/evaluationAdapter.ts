@@ -111,6 +111,17 @@ function parseNestedList(value: unknown): Record<string, any>[] | undefined {
   }
 }
 
+/** exclude_rounds 归一化：数字/字符串数组或逗号分隔字符串 → number[]；其他 → [] */
+function toExcludeRounds(value: unknown): number[] {
+  if (Array.isArray(value)) {
+    return value.map(v => Number(v)).filter(n => !isNaN(n))
+  }
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
+  }
+  return []
+}
+
 /** 维度关联算法（后端 associated_algorithms 列表项 → AlgorithmAssociation） */
 function toAssociation(raw: Record<string, unknown>): import('../../domain/model/dimension').AlgorithmAssociation {
   return {
@@ -146,6 +157,9 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     requiredInputs: parseNestedList(dto?.required_inputs)?.map(item => toRequiredInput(item)),
     outputFields: parseNestedList(dto?.output_fields)?.map(item => toOutputField(item)),
     statisticMethod: dto?.statistic_method,
+    aggDenominator: dto?.agg_denominator,
+    excludeRounds: toExcludeRounds(dto?.exclude_rounds),
+    sortOrder: dto?.sort_order,
     associatedAlgorithms: (dto?.associated_algorithms ?? []).map(toAssociation),
     status: dto?.status,
     createdAt: dto?.created_at,
@@ -281,6 +295,9 @@ export function toDimensionDto(data: Partial<Dimension>): Record<string, any> {
     result.output_fields = fields.map(item => toOutputFieldDto(item as Record<string, any>))
   }
   if (data.statisticMethod !== undefined) result.statistic_method = data.statisticMethod
+  if (data.aggDenominator !== undefined) result.agg_denominator = data.aggDenominator
+  if (data.excludeRounds !== undefined) result.exclude_rounds = toExcludeRounds(data.excludeRounds)
+  if (data.sortOrder !== undefined) result.sort_order = data.sortOrder
   if (data.associatedAlgorithms !== undefined) result.associated_algorithms = data.associatedAlgorithms
   if (data.status !== undefined) result.status = data.status
   if (data.scoreUnit !== undefined) result.score_unit = data.scoreUnit

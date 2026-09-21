@@ -233,6 +233,23 @@ class EvaluationCommandService:
             return success_response(result.get('data'), result.get('message', '批量操作执行成功'))
         return error_response(result.get('message', '操作失败'), result.get('code', 400))
 
+    # 批量调整维度排序（ids 顺序即新展示顺序，下标即 sort_order）
+    @staticmethod
+    def reorder():
+        try:
+            req = request.get_json() or {}
+            ids = req.get('ids') or req.get('itemIds') or req.get('item_ids')
+        except Exception:
+            ids = None
+        if not ids or not isinstance(ids, list):
+            return error_response("缺少必要参数: ids (维度ID数组，顺序即新排序)")
+
+        result = _evaluation_acl.batch_action({'action': 'reorder', 'ids': ids})
+
+        if result.get('success'):
+            return success_response(result.get('data'), result.get('message', '维度排序已更新'))
+        return error_response(result.get('message', '操作失败'), result.get('code', 400))
+
     # 导出到文件
     @staticmethod
     def export_to_file():

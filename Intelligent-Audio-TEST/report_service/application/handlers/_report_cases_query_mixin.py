@@ -85,8 +85,9 @@ class ReportCasesQueryMixin:
         sort_by = (params_dict.get('sort_by') or 'name').lower()
         sort_order = (params_dict.get('sort_order') or 'asc').lower()
         sort_metric = params_dict.get('sort_metric')
+        sort_resource = params_dict.get('sort_resource')
         paged_cases, total, pages = ReportAggregationService.sort_and_paginate_cases(
-            filtered, sort_by, sort_order, sort_metric, page, per_page
+            filtered, sort_by, sort_order, sort_metric, page, per_page, sort_resource
         )
 
         # 构建前端用例项

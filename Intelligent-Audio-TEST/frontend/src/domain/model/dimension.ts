@@ -95,6 +95,12 @@ export interface Dimension {
   outputFields?: DimensionOutputField[]
   /** 统计方式（后端 statistic_method 原值） */
   statisticMethod?: string
+  /** 聚合分母口径（后端 agg_denominator 原值：case/round） */
+  aggDenominator?: string
+  /** 排除轮次（后端 exclude_rounds 原值：数字数组，-1 表示最后一轮） */
+  excludeRounds?: number[]
+  /** 排序序号（后端 sort_order，报告页展示顺序） */
+  sortOrder?: number
   associatedAlgorithms?: AlgorithmAssociation[]
   /** 启用状态（后端原值为 bool） */
   status?: boolean

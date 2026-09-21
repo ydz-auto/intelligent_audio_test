@@ -155,13 +155,13 @@ class DimensionOpsMixin(DimensionParamsMixin):
     # ==================== 删除 / 批量 ====================
 
     def delete_dimension(self, dim_id: int) -> Dict[str, Any]:
-        """软删除评分维度。"""
+        """级联软删评分维度（递归子维度及从属数据）。"""
         try:
             dim = self.repo.get_dimension(dim_id)
             if not dim:
                 return command_error('未找到评分维度', code=404)
 
-            self.repo.soft_delete_dimension(dim)
+            self._soft_delete_tree(dim_id)
             self.repo.commit()
             self._refresh_stats_cache("删除评分维度")
 
@@ -173,6 +173,30 @@ class DimensionOpsMixin(DimensionParamsMixin):
             self.repo.rollback()
             logger.error(f"删除评分维度失败: {e}")
             return command_error(str(e))
+
+    def _soft_delete_tree(self, dim_id: int) -> None:
+        """递归软删一个维度及其子维度 / params / mappings / relations。
+
+        先递归软删子维度，再软删当前维度，最后软删从属数据
+        （gRPC 委托，失败仅记 warning 不中断主流程）。
+        """
+        # 先递归软删子维度（list_sub_dimensions 仅返回未删除的子维度，天然终止递归）
+        subs = self.repo.list_sub_dimensions(dim_id)
+        for sub in subs:
+            self._soft_delete_tree(sub.id)
+
+        # 软删当前维度
+        dim = self.repo.get_dimension(dim_id)
+        if dim:
+            self.repo.soft_delete_dimension(dim)
+
+        # 软删从属数据
+        if not self.repo.delete_input_params_by_dimension(dim_id):
+            logger.warning(f"级联软删维度 {dim_id} 的 input 参数失败或无可删数据")
+        if not self.repo.delete_output_params_by_dimension(dim_id):
+            logger.warning(f"级联软删维度 {dim_id} 的 output 参数失败或无可删数据")
+        if not self.repo.delete_relations_by_dimension(dim_id):
+            logger.warning(f"级联软删维度 {dim_id} 的算法关联失败或无可删数据")
 
     def batch_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """批量操作维度。"""
@@ -189,6 +213,18 @@ class DimensionOpsMixin(DimensionParamsMixin):
                 self.repo.batch_update_dimensions(ids, {'status': True})
             elif action == 'disable':
                 self.repo.batch_update_dimensions(ids, {'status': False})
+            elif action == 'reorder':
+                if not ids or not isinstance(ids, list):
+                    return command_error('缺少必要参数: ids (维度ID数组，顺序即新排序)', code=400)
+                missing = self.repo.reorder_dimensions(ids)
+                if missing:
+                    self.repo.rollback()
+                    return command_error(f'存在不存在的维度ID: {missing}', code=400)
+                self.repo.commit()
+                self._refresh_stats_cache("维度排序")
+                # 维度排序变更维度配置，发布事件触发 EndpointWorker 热加载
+                publish_dimension_config_changed('reorder')
+                return command_ok('维度排序已更新')
             elif action == 'export':
                 return self._export_dimensions(ids)
             else:
