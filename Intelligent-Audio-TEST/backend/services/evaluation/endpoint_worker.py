@@ -166,7 +166,14 @@ class EndpointWorker(EvaluationLoggerMixin):
         if isinstance(algorithm_result, dict):
             # 多轮结构：output 字段在 rounds[].output 里（key 是 target_param 名）
             rounds_data = algorithm_result.get('rounds', [])
-            first_output = rounds_data[0].get('output', {}) if rounds_data and isinstance(rounds_data[0], dict) else {}
+            # 顶层设备输出提升：单轮评估取 rounds[round_number]；整体评估取 rounds[-1]
+            # （末轮录音为累积抓取，含全部轮；此前误取 rounds[0] 导致 eval_server 全局
+            #   ASR/FFT 锚定跑在第 0 轮录音上，打断轮全部假锁定）
+            rn = kwargs.get('round_number')
+            idx = rn if isinstance(rn, int) else -1
+            first_output = rounds_data[idx].get('output', {}) \
+                if rounds_data and -len(rounds_data) <= idx < len(rounds_data) \
+                and isinstance(rounds_data[idx], dict) else {}
             for key in output_field_keys:
                 # 按维度优先取 dim 专属 key，回退到通用 key
                 dim_key = f'{key}__dim_{dim_id}' if dim_id else None

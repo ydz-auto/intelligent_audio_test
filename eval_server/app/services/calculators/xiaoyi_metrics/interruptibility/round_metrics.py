@@ -186,7 +186,15 @@ def locate_fft_window(played_audios, user_wav) -> Optional[Tuple[float, float, f
         if not path:
             return None
         s, e, ncc = _locate_client_out(path, user_wav)
-        return (s, e, ncc) if s is not None and e is not None else None
+        if s is None or e is None:
+            return None
+        # 假锁定防护：目标语音不在录音里时 FFT 仍会返回一个"最佳"窗口（如平台
+        # 误传第 0 轮录音时，打断轮模板锁到第 0 轮话语上），NCC 显著低于真锁定
+        # (≈0.999)。阈值与 shared/audio_alignment.MIN_NCC_THRESHOLD 保持一致。
+        if ncc is not None and ncc < 0.3:
+            logger.warning(f"[round_metrics] FFT NCC={ncc:.4f} 低于 0.3，判为假锁定: {path}")
+            return None
+        return (s, e, ncc)
     except Exception as exc:
         logger.warning(f"[round_metrics] FFT 窗口定位失败，回退: {exc}")
         return None

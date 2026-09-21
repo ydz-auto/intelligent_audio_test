@@ -503,7 +503,7 @@ class CaseParameterExtractor:
                     rounds_data = algorithm_result.get('rounds', [])
                     if rounds_data:
                         idx = round_number if round_number is not None else -1
-                        if 0 <= idx < len(rounds_data) and isinstance(rounds_data[idx], dict):
+                        if -len(rounds_data) <= idx < len(rounds_data) and isinstance(rounds_data[idx], dict):
                             output = rounds_data[idx].get('output', {})
                             value = output.get(target_param)
             elif source == 'adjusted_reference':
