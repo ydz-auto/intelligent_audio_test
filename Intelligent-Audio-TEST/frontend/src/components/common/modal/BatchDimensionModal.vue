@@ -9,7 +9,7 @@
       <DimensionConfigPanel
         v-model="dimensionConfig"
         v-model:searchQuery="searchQuery"
-        :available-dimensions="searchedDimensions"
+        :available-dimensions="filteredByAlgorithm"
         :loading="loading"
         :error="loadError"
         :max-round-numbers="maxRoundNumbers"
@@ -98,17 +98,6 @@ const filteredByAlgorithm = computed(() => {
   return filtered.length > 0 ? filtered : availableDimensions.value
 })
 
-// 按搜索关键字过滤
-const searchedDimensions = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-  if (!query) {
-    return filteredByAlgorithm.value
-  }
-  return filteredByAlgorithm.value.filter(dim =>
-    dim.name.toLowerCase().includes(query)
-  )
-})
-
 async function loadDimensions() {
   loading.value = true
   loadError.value = ''
@@ -120,9 +109,13 @@ async function loadDimensions() {
       dims = await fetchAllDimensions({ forceRefresh: true })
     }
     availableDimensions.value = dims.map((d: any) => ({
-      id: d.id?.toString() || d.dimension_id?.toString() || '',
+      id: String(d.id ?? d.dimension_id ?? ''),
       name: d.name || d.dimension_name || '',
-      description: d.description
+      description: d.description,
+      // 保留主/子层级信息，供 DimensionConfigPanel 分组联动展示
+      parentDimensionId: d.parentDimensionId ?? d.parent_dimension_id ?? null,
+      parentName: d.parentName ?? d.parent_dimension_name ?? '',
+      dimensionType: d.dimensionType ?? d.dimension_type ?? null
     }))
   } catch (error) {
     console.error('加载评价维度失败:', error)

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import DimensionCloud, { type DimensionCloudGroup } from './DimensionCloud.vue'
 
 /** 维度配置项 */
 interface DimensionItem {
@@ -54,6 +55,123 @@ const emit = defineEmits<{
   (e: 'update:searchQuery', value: string): void
 }>()
 
+// === 主/子维度层级工具 ===
+// 兼容后端两套字段命名（camel / snake）与 id 类型差异
+const getParentId = (dim: any): string | number | null =>
+  dim?.parentDimensionId ?? dim?.parent_dimension_id ?? null
+const getParentName = (dim: any): string =>
+  dim?.parentName ?? dim?.parent_dimension_name ?? ''
+const getChildDims = (dim: any) =>
+  props.availableDimensions.filter(d => String(getParentId(d)) === String(dim.id))
+
+/**
+ * 构建主/子分组的维度云数据。
+ * - 搜索命中子维度时带上父维度作为上下文；搜索命中主维度时整组展示；
+ * - 父维度不在候选集（如被算法关联过滤）的子维度作为「孤儿子维度」展示。
+ */
+function buildCloudGroups(keyword: string): DimensionCloudGroup[] {
+  const dims = props.availableDimensions
+  const kw = keyword.trim().toLowerCase()
+  const byId = new Map<string, any>()
+  dims.forEach(d => byId.set(String(d.id), d))
+
+  const matches = (d: any): boolean => {
+    if (!kw) return true
+    return String(d?.name || '').toLowerCase().includes(kw) ||
+      String(d?.description || '').toLowerCase().includes(kw) ||
+      String(d?.keywords || '').toLowerCase().includes(kw)
+  }
+
+  const matchedIds = new Set<string>()
+  dims.forEach(d => { if (matches(d)) matchedIds.add(String(d.id)) })
+
+  // 父子聚合：子维度命中带父；主维度命中整组展示（非搜索时仅展示命中的子维度）
+  const visibleIds = new Set<string>()
+  dims.forEach(d => {
+    const pid = getParentId(d)
+    if (!pid) {
+      if (matchedIds.has(String(d.id))) {
+        visibleIds.add(String(d.id))
+        dims.forEach(c => {
+          if (String(getParentId(c)) === String(d.id) && (kw || matchedIds.has(String(c.id)))) {
+            visibleIds.add(String(c.id))
+          }
+        })
+      }
+    } else if (matchedIds.has(String(d.id))) {
+      visibleIds.add(String(d.id))
+      visibleIds.add(String(pid))
+    }
+  })
+
+  const visible = dims.filter(d => visibleIds.has(String(d.id)))
+  const mainDims = visible.filter(d => !getParentId(d))
+  const childrenMap = new Map<string, any[]>()
+  visible.forEach(d => {
+    const pid = getParentId(d)
+    if (!pid) return
+    const key = String(pid)
+    if (!childrenMap.has(key)) childrenMap.set(key, [])
+    childrenMap.get(key)!.push(d)
+  })
+
+  const groups: DimensionCloudGroup[] = []
+  const groupedChildIds = new Set<string>()
+  mainDims.forEach(m => {
+    const children = childrenMap.get(String(m.id)) || []
+    groups.push({ main: m, children })
+    children.forEach(c => groupedChildIds.add(String(c.id)))
+  })
+  // 孤儿子维度：父维度不在候选集
+  visible.forEach(d => {
+    const pid = getParentId(d)
+    if (pid && !groupedChildIds.has(String(d.id))) {
+      const parent = byId.get(String(pid))
+      groups.push({
+        main: null,
+        children: [d],
+        orphanParentName: parent?.name || getParentName(d) || ''
+      })
+    }
+  })
+  return groups
+}
+
+// 统一模式 / 逐轮模式共用的维度云（带搜索）
+const cloudGroups = computed(() => buildCloudGroups(props.searchQuery || ''))
+// 多轮整体评估维度的维度云（不随单轮搜索过滤）
+const multiCloudGroups = computed(() => buildCloudGroups(''))
+
+/**
+ * 主/子联动选择：选中/取消主维度时，其全部子维度一并选中/取消；
+ * 仅操作子维度时只影响该子维度。
+ */
+function applyLinkageToggle(
+  dim: any,
+  selected: DimensionItem[],
+  configs: Record<string, { weight: number; threshold: number }>
+): { selected: DimensionItem[]; configs: Record<string, { weight: number; threshold: number }> } {
+  const children = getChildDims(dim)
+  const ids = [String(dim.id), ...children.map(c => String(c.id))]
+
+  if (selected.some(d => String(d.id) === String(dim.id))) {
+    return {
+      selected: selected.filter(d => !ids.includes(String(d.id))),
+      configs: Object.fromEntries(Object.entries(configs).filter(([k]) => !ids.includes(String(k))))
+    }
+  }
+  const list = [...selected]
+  const cfg = { ...configs }
+  for (const d of [dim, ...children]) {
+    const key = String(d.id)
+    if (!list.some(x => String(x.id) === key)) {
+      list.push(d)
+      cfg[key] = { weight: 50, threshold: 60 }
+    }
+  }
+  return { selected: list, configs: cfg }
+}
+
 // === 从 modelValue 同步状态 ===
 const roundMode = ref<'all' | 'specific' | 'per_round'>(
   props.modelValue.roundMode || 'all'
@@ -96,18 +214,10 @@ function toggleRoundNumber(rn: number) {
   emitUpdate()
 }
 
-const isDimensionSelected = (dim: any) => {
-  return selectedDimensions.value.some(d => d.id === dim.id)
-}
-
 function toggleDimension(dim: any) {
-  if (isDimensionSelected(dim)) {
-    selectedDimensions.value = selectedDimensions.value.filter(d => d.id !== dim.id)
-    delete dimConfigs.value[dim.id]
-  } else {
-    selectedDimensions.value.push(dim)
-    dimConfigs.value[dim.id] = { weight: 50, threshold: 60 }
-  }
+  const r = applyLinkageToggle(dim, selectedDimensions.value, dimConfigs.value)
+  selectedDimensions.value = r.selected
+  dimConfigs.value = r.configs
   emitUpdate()
 }
 
@@ -128,20 +238,11 @@ function ensureRoundState(rn: number) {
   }
 }
 
-function isRoundDimensionSelected(rn: number, dim: any) {
-  ensureRoundState(rn)
-  return roundSelectedDimensions.value[rn].some(d => d.id === dim.id)
-}
-
 function toggleRoundDimension(rn: number, dim: any) {
   ensureRoundState(rn)
-  if (isRoundDimensionSelected(rn, dim)) {
-    roundSelectedDimensions.value[rn] = roundSelectedDimensions.value[rn].filter(d => d.id !== dim.id)
-    delete roundDimConfigs.value[rn][dim.id]
-  } else {
-    roundSelectedDimensions.value[rn].push(dim)
-    roundDimConfigs.value[rn][dim.id] = { weight: 50, threshold: 60 }
-  }
+  const r = applyLinkageToggle(dim, roundSelectedDimensions.value[rn], roundDimConfigs.value[rn])
+  roundSelectedDimensions.value[rn] = r.selected
+  roundDimConfigs.value[rn] = r.configs
   emitUpdate()
 }
 
@@ -247,18 +348,10 @@ watch(roundMode, (newMode) => {
 })
 
 // === 多轮整体评估维度方法 ===
-const isMultiDimensionSelected = (dim: any) => {
-  return multiSelectedDimensions.value.some(d => d.id === dim.id)
-}
-
 function toggleMultiDimension(dim: any) {
-  if (isMultiDimensionSelected(dim)) {
-    multiSelectedDimensions.value = multiSelectedDimensions.value.filter(d => d.id !== dim.id)
-    delete multiDimConfigs.value[dim.id]
-  } else {
-    multiSelectedDimensions.value.push(dim)
-    multiDimConfigs.value[dim.id] = { weight: 50, threshold: 60 }
-  }
+  const r = applyLinkageToggle(dim, multiSelectedDimensions.value, multiDimConfigs.value)
+  multiSelectedDimensions.value = r.selected
+  multiDimConfigs.value = r.configs
   emitUpdate()
 }
 
@@ -389,18 +482,12 @@ const dimensionCount = computed(() => {
 
       <div class="form-group">
         <label>单轮评价维度</label>
-        <div class="dimension-cloud-container" v-if="!loading">
-          <div
-            v-for="dim in availableDimensions"
-            :key="dim.id"
-            class="dimension-tag"
-            :class="{ 'selected': isDimensionSelected(dim) }"
-            @click.stop.prevent="toggleDimension(dim)"
-          >
-            {{ dim.name }}
-          </div>
-          <p v-if="availableDimensions.length === 0" class="empty-hint">暂无可用的评价维度</p>
-        </div>
+        <DimensionCloud
+          v-if="!loading"
+          :groups="cloudGroups"
+          :selected-ids="selectedDimensions.map(d => d.id)"
+          @toggle="toggleDimension"
+        />
         <div class="dimension-loading" v-else>加载中...</div>
         <p class="option-hint" v-if="error">{{ error }}</p>
         <p class="option-hint error" v-if="required && !hasDimensions">请至少选择一个评估维度</p>
@@ -481,18 +568,12 @@ const dimensionCount = computed(() => {
 
           <div class="form-group">
             <label>{{ activeRoundTab === -1 ? '最后一轮 - 评价维度' : `第${activeRoundTab}轮 - 评价维度` }}</label>
-            <div class="dimension-cloud-container" v-if="!loading">
-              <div
-                v-for="dim in availableDimensions"
-                :key="dim.id"
-                class="dimension-tag"
-                :class="{ 'selected': isRoundDimensionSelected(activeRoundTab, dim) }"
-                @click.stop.prevent="toggleRoundDimension(activeRoundTab, dim)"
-              >
-                {{ dim.name }}
-              </div>
-              <p v-if="availableDimensions.length === 0" class="empty-hint">暂无可用的评价维度</p>
-            </div>
+            <DimensionCloud
+              v-if="!loading"
+              :groups="cloudGroups"
+              :selected-ids="getRoundSelectedDimensions(activeRoundTab).map(d => d.id)"
+              @toggle="(dim: any) => toggleRoundDimension(activeRoundTab, dim)"
+            />
             <div class="dimension-loading" v-else>加载中...</div>
             <p class="option-hint" v-if="error">{{ error }}</p>
             <p class="option-hint error" v-if="required && !hasDimensions">请至少选择一个评估维度</p>
@@ -560,18 +641,12 @@ const dimensionCount = computed(() => {
     <div class="scope-section multi-section">
       <label>多轮整体评估维度（跨轮次聚合） <span class="optional-tag">可选</span></label>
       <p class="section-desc">这些维度基于所有轮次的整体表现进行评估，与单轮维度独立配置。不选任何维度将清空已有的整体评估维度</p>
-      <div class="dimension-cloud-container" v-if="!loading">
-        <div
-          v-for="dim in availableDimensions"
-          :key="'multi-' + dim.id"
-          class="dimension-tag"
-          :class="{ 'selected': isMultiDimensionSelected(dim) }"
-          @click.stop.prevent="toggleMultiDimension(dim)"
-        >
-          {{ dim.name }}
-        </div>
-        <p v-if="availableDimensions.length === 0" class="empty-hint">暂无可用的评价维度</p>
-      </div>
+      <DimensionCloud
+        v-if="!loading"
+        :groups="multiCloudGroups"
+        :selected-ids="multiSelectedDimensions.map(d => d.id)"
+        @toggle="toggleMultiDimension"
+      />
       <div class="dimension-loading" v-else>加载中...</div>
 
       <div v-if="multiSelectedDimensions.length > 0" class="form-group" style="margin-top: 12px;">
@@ -635,52 +710,6 @@ const dimensionCount = computed(() => {
   background-color: #fee2e2;
   color: #dc2626;
   border-color: #dc2626;
-}
-
-/* 维度标签云 */
-.dimension-cloud-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 16px;
-  background-color: #f8f9fa;
-  border: 1px solid #e9ecef;
-  border-radius: 6px;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-.dimension-tag {
-  display: inline-block;
-  padding: 8px 16px;
-  background-color: #e3f2fd;
-  color: #1976d2;
-  border: 1px solid #bbdefb;
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  user-select: none;
-}
-
-.dimension-tag:hover {
-  background-color: #bbdefb;
-  border-color: #1976d2;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
-}
-
-.dimension-tag.selected {
-  background-color: #1976d2;
-  color: white;
-  border-color: #1976d2;
-}
-
-.dimension-tag.selected:hover {
-  background-color: #1565c0;
-  border-color: #1565c0;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
 }
 
 .empty-hint {

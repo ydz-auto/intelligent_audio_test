@@ -41,6 +41,39 @@ import re
 SORT_STEP = 1000
 
 
+def _row_str(row, keys, default=''):
+    """安全读取 pandas 行中的字符串列：兼容中英文列名，None/NaN 视为缺失。"""
+    for key in keys:
+        if key not in row:
+            continue
+        value = row[key]
+        if value is None:
+            continue
+        try:
+            if pd.isna(value):
+                continue
+        except (TypeError, ValueError):
+            pass
+        return str(value).strip()
+    return default
+
+
+def _resolve_import_parent(row):
+    """根据导入行的「父维度ID/所属主维度」列解析父维度；解析不到返回 None。"""
+    parent_id_raw = _row_str(row, ['父维度ID', 'parent_dimension_id', 'parentDimensionId'])
+    if parent_id_raw:
+        try:
+            parent = db.session.get(Dimension, int(parent_id_raw))
+            if parent and not parent.deleted:
+                return parent
+        except (TypeError, ValueError):
+            pass
+    parent_name = _row_str(row, ['所属主维度', 'parent_name', 'parentName'])
+    if parent_name:
+        return Dimension.query.filter_by(name=parent_name, deleted=False).first()
+    return None
+
+
 def _sync_body_template(api_settings, param_codes):
     """
     根据 param_codes 同步 api_settings 中的 body_template。
@@ -313,6 +346,9 @@ class EvaluationController:
             ).all()
             audio_dim_ids = {p.dimension_id for p in audio_params}
 
+        # 主/子层级：子维度附带父维度名称，供前端「维度云」分组展示
+        parent_name_map = {d.id: d.name for d in dimensions if d.id}
+
         return success_response({
             'dimensions': [
                 {
@@ -323,6 +359,8 @@ class EvaluationController:
                     'dimension_type': d.dimension_type,
                     'category_id': d.category_id,
                     'task_type_code': d.task_type_code,
+                    'parent_dimension_id': d.parent_dimension_id,
+                    'parent_dimension_name': parent_name_map.get(d.parent_dimension_id, '') if d.parent_dimension_id else '',
                     'requires_audio': d.id in audio_dim_ids
                 }
                 for d in dimensions
@@ -878,7 +916,7 @@ class EvaluationController:
 
         try:
             # 级联软删：递归删除所有子维度及其从属数据
-            EvaluationDimensionController._soft_delete_tree(dim_id)
+            EvaluationController._soft_delete_tree(dim_id)
             db.session.commit()
 
             from backend.utils.report.stats_cache import refresh_stats_cache
@@ -898,7 +936,7 @@ class EvaluationController:
             Dimension.deleted == False
         ).all()
         for sub in subs:
-            EvaluationDimensionController._soft_delete_tree(sub.id)
+            EvaluationController._soft_delete_tree(sub.id)
 
         # 软删当前维度
         dim = db.session.get(Dimension, dim_id)
@@ -1051,6 +1089,23 @@ class EvaluationController:
 
     # 批量操作
     @staticmethod
+    def _collect_descendant_ids(dim_ids):
+        """收集选中维度及其全部子维度 ID（主/子联动：操作主维度时子维度一并生效）。"""
+        result = set(dim_ids)
+        stack = list(dim_ids)
+        while stack:
+            parent_id = stack.pop()
+            subs = db.session.query(Dimension.id).filter(
+                Dimension.parent_dimension_id == parent_id,
+                Dimension.deleted == False,
+            ).all()
+            for (sub_id,) in subs:
+                if sub_id not in result:
+                    result.add(sub_id)
+                    stack.append(sub_id)
+        return list(result)
+
+    @staticmethod
     def batch_action():
         try:
             req = BatchActionInput.model_validate(request.get_json())
@@ -1065,11 +1120,15 @@ class EvaluationController:
 
         try:
             if action == 'delete':
-                Dimension.query.filter(Dimension.id.in_(ids)).update({"deleted": True}, synchronize_session=False)
-            elif action == 'enable':
-                Dimension.query.filter(Dimension.id.in_(ids)).update({"status": True}, synchronize_session=False)
-            elif action == 'disable':
-                Dimension.query.filter(Dimension.id.in_(ids)).update({"status": False}, synchronize_session=False)
+                # 级联删除：主维度连同其子维度（及参数/关联数据）一起软删
+                for dim_id in ids:
+                    EvaluationController._soft_delete_tree(dim_id)
+            elif action in ('enable', 'disable'):
+                # 主/子联动：选中主维度时，其全部子维度一并启用/禁用
+                target_ids = EvaluationController._collect_descendant_ids(ids)
+                Dimension.query.filter(Dimension.id.in_(target_ids)).update(
+                    {"status": action == 'enable'}, synchronize_session=False
+                )
             elif action == 'export':
                 dims = Dimension.query.filter(Dimension.id.in_(ids)).all()
                 export_data = []
@@ -1155,12 +1214,16 @@ class EvaluationController:
             query = query.filter(Dimension.id.in_(id_list))
 
         dimensions = query.all()
+        parent_name_map = {d.id: d.name for d in dimensions if d.id}
         data = []
         for d in dimensions:
+            parent_name = parent_name_map.get(d.parent_dimension_id, '') if d.parent_dimension_id else ''
             if format_type == 'excel':
                 data.append({
                     "名称": d.name,
                     "描述": d.description,
+                    "维度类型": "子" if d.parent_dimension_id else "主",
+                    "所属主维度": parent_name,
                     "分类ID": d.category_id,
                     "类型": d.type,
                     "Master入口URL": d.api_url,
@@ -1175,6 +1238,8 @@ class EvaluationController:
                 data.append({
                     "name": d.name,
                     "description": d.description,
+                    "dimension_type": d.dimension_type or ("sub" if d.parent_dimension_id else "main"),
+                    "parent_name": parent_name,
                     "category_id": d.category_id,
                     "type": d.type,
                     "api_url": d.api_url,
@@ -1236,6 +1301,11 @@ class EvaluationController:
                 name = row.get('名称') or row.get('name')
                 if not name: continue
 
+                # 主/子层级信息（导出的 Excel/JSON 文件均带这两列；旧文件无此列时按主维度处理）
+                dim_type_raw = _row_str(row, ['维度类型', 'dimension_type', 'dimensionType']).lower()
+                is_sub_type = dim_type_raw in ('sub', '子', '子维度')
+                parent = _resolve_import_parent(row)
+
                 # 尝试查找现有维度
                 dim = Dimension.query.filter_by(name=name, deleted=False).first()
 
@@ -1274,27 +1344,58 @@ class EvaluationController:
                                                                                                  dim.score_unit)
                         dim.rule = rule
                         dim.api_settings = api_settings
+                        # 层级联动：文件带层级列时同步更新维度类型与父维度
+                        if dim_type_raw:
+                            dim.dimension_type = 'sub' if is_sub_type else 'main'
+                        if parent is not None:
+                            dim.parent_dimension_id = parent.id
                         dim.updated_at = now_cst()
                         update_count += 1
                 else:
-                    # 导入的新维度视为主维度：追加到主维度段末尾（SORT_STEP 递增）
-                    max_main = db.session.query(db.func.max(Dimension.sort_order)).filter(
-                        or_(Dimension.parent_dimension_id.is_(None), Dimension.parent_dimension_id == 0)
-                    ).scalar()
-                    new_dim = Dimension(
-                        name=name,
-                        description=row.get('描述') or row.get('description'),
-                        category_id=int(row.get('分类ID') or row.get('category_id') or row.get('category_id', 1)),
-                        type=row.get('类型') or row.get('type', '性能指标'),
-                        api_endpoints=[{'url': row.get('API链接') or row.get('api_url') or row.get('api_url', '')}] if (
-                                row.get('API链接') or row.get('api_url') or row.get('api_url')) else [],
-                        result_type=int(row.get('结果类型') or row.get('result_type') or row.get('result_type', 1)),
-                        score_unit=row.get('分数单位') or row.get('score_unit') or row.get('scoreUnit'),
-                        rule=rule,
-                        api_settings=api_settings,
-                        sort_order=(max_main if max_main is not None else 0) + SORT_STEP,
-                        status=True
-                    )
+                    if parent is not None:
+                        # 子维度：挂到父维度段内末尾（父段值 + 组内序号），并继承父维度的任务关键字
+                        base = parent.sort_order if parent.sort_order is not None else 0
+                        max_sub = db.session.query(db.func.max(Dimension.sort_order)).filter(
+                            Dimension.parent_dimension_id == parent.id
+                        ).scalar()
+                        new_dim = Dimension(
+                            name=name,
+                            description=row.get('描述') or row.get('description'),
+                            category_id=int(row.get('分类ID') or row.get('category_id') or row.get('category_id',
+                                                                                                     parent.category_id or 1)),
+                            type=row.get('类型') or row.get('type', '性能指标'),
+                            dimension_type='sub',
+                            parent_dimension_id=parent.id,
+                            task_type_code=row.get('任务关键字') or row.get('task_type_code') or row.get(
+                                'taskTypeCode') or (parent.task_type_code or ''),
+                            api_endpoints=[],
+                            result_type=int(row.get('结果类型') or row.get('result_type') or row.get('result_type', 1)),
+                            score_unit=row.get('分数单位') or row.get('score_unit') or row.get('scoreUnit'),
+                            rule=rule,
+                            api_settings={},
+                            sort_order=(max(max_sub, base) if max_sub is not None else base) + 1,
+                            status=True
+                        )
+                    else:
+                        # 主维度：追加到主维度段末尾（SORT_STEP 递增）
+                        max_main = db.session.query(db.func.max(Dimension.sort_order)).filter(
+                            or_(Dimension.parent_dimension_id.is_(None), Dimension.parent_dimension_id == 0)
+                        ).scalar()
+                        new_dim = Dimension(
+                            name=name,
+                            description=row.get('描述') or row.get('description'),
+                            category_id=int(row.get('分类ID') or row.get('category_id') or row.get('category_id', 1)),
+                            type=row.get('类型') or row.get('type', '性能指标'),
+                            dimension_type='main',
+                            api_endpoints=[{'url': row.get('API链接') or row.get('api_url') or row.get('api_url', '')}] if (
+                                    row.get('API链接') or row.get('api_url') or row.get('api_url')) else [],
+                            result_type=int(row.get('结果类型') or row.get('result_type') or row.get('result_type', 1)),
+                            score_unit=row.get('分数单位') or row.get('score_unit') or row.get('scoreUnit'),
+                            rule=rule,
+                            api_settings=api_settings,
+                            sort_order=(max_main if max_main is not None else 0) + SORT_STEP,
+                            status=True
+                        )
                     db.session.add(new_dim)
                     import_count += 1
 

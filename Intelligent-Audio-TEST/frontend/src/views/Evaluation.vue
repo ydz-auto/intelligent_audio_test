@@ -70,10 +70,7 @@
                     <div class="filter-select">
                       <select class="form-input" v-model="filterCategory" @change="filterDimensions">
                         <option value="all">全部分类</option>
-                        <option value="性能指标">性能指标</option>
-                        <option value="功能指标">功能指标</option>
-                        <option value="质量指标">质量指标</option>
-                        <option value="环境适应性">环境适应性</option>
+                        <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
                       </select>
                     </div>
                   </div>

@@ -69,19 +69,13 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     dimensionFilterIdSet.value = new Set(ids)
   }
 
+  // 仅按算法关联过滤；搜索由 DimensionConfigPanel 内部处理（保证主/子维度分组联动）
   const filteredDimensions = computed(() => {
     let dims = availableDimensions.value
     if (dimensionFilterIdSet.value.size > 0) {
       dims = dims.filter(dim => dimensionFilterIdSet.value.has(Number(dim.id)))
     }
-    if (!dimensionSearchQuery.value) return dims
-    const query = dimensionSearchQuery.value.toLowerCase()
-    return dims.filter(dim =>
-      String(dim?.name || '').toLowerCase().includes(query) ||
-      String(dim?.description || '').toLowerCase().includes(query) ||
-      String(dim?.keywords || '').toLowerCase().includes(query) ||
-      String(dim?.id || '').toLowerCase().includes(query)
-    )
+    return dims
   })
 
   const e2eFilteredDimensions = computed(() => {
@@ -89,14 +83,7 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     if (dimensionFilterIdSet.value.size > 0) {
       dims = dims.filter(dim => dimensionFilterIdSet.value.has(Number(dim.id)))
     }
-    if (!e2eDimensionSearchQuery.value) return dims
-    const query = e2eDimensionSearchQuery.value.toLowerCase()
-    return dims.filter(dim =>
-      String(dim?.name || '').toLowerCase().includes(query) ||
-      String(dim?.description || '').toLowerCase().includes(query) ||
-      String(dim?.keywords || '').toLowerCase().includes(query) ||
-      String(dim?.id || '').toLowerCase().includes(query)
-    )
+    return dims
   })
 
   const dimensionCount = (dimensions: SelectedDimension[] | undefined) => {

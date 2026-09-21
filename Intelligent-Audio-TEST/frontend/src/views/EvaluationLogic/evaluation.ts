@@ -97,15 +97,8 @@ export function useEvaluation() {
     loading.value = true;
     error.value = null;
     try {
-      const params : Record<string, any> = {page: 1, perPage: 1000, search: searchKeyword.value};
-
-      if (filterStatus.value !== 'all') {
-        params.status = filterStatus.value === 'active';
-      }
-
-      if (filterCategory.value !== 'all') {
-        params.categoryId = filterCategory.value;
-      }
+      // 一次拉全量，搜索/筛选改为前端过滤，保证主/子维度始终同屏聚合展示
+      const params : Record<string, any> = {page: 1, perPage: 1000};
 
       const [dimsData, catsData, algosData] = await Promise.all([
         evaluationApi.getAll(params),
@@ -255,21 +248,52 @@ export function useEvaluation() {
   });
 
   const filteredDimensions = computed(() => {
-    return dimensions.value.filter(dim => {
-      const matchesSearch = !searchKeyword.value || 
-        dim.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
-        (dim.description && dim.description.toLowerCase().includes(searchKeyword.value.toLowerCase()));
-      
-      const matchesStatus = filterStatus.value === 'all' || 
-        (filterStatus.value === 'active' && dim.status) ||
-        (filterStatus.value === 'inactive' && !dim.status);
-      
-      const matchesCategory = filterCategory.value === 'all' || 
+    const all = dimensions.value;
+    const keyword = (searchKeyword.value || '').trim().toLowerCase();
+    const byParentId = new Map<number | string, any[]>();
+    for (const dim of all) {
+      const pid = dim.parentDimensionId ?? '';
+      if (!byParentId.has(pid)) byParentId.set(pid, []);
+      byParentId.get(pid)!.push(dim);
+    }
+
+    // 单个维度的筛选匹配（搜索 / 状态 / 分类）
+    const matches = (dim: any): boolean => {
+      const matchesSearch = !keyword ||
+        dim.name.toLowerCase().includes(keyword) ||
+        (dim.description || '').toLowerCase().includes(keyword) ||
+        ((dim as any).keywords || '').toLowerCase().includes(keyword);
+      const matchesStatus = filterStatus.value === 'all' ||
+        (filterStatus.value === 'active' ? dim.status : !dim.status);
+      const matchesCategory = filterCategory.value === 'all' ||
         dim.categoryId === Number(filterCategory.value) ||
         dim.type === filterCategory.value;
-        
       return matchesSearch && matchesStatus && matchesCategory;
-    });
+    };
+
+    const matchedIds = new Set<number | string>();
+    for (const dim of all) {
+      if (matches(dim)) matchedIds.add(dim.id);
+    }
+
+    // 主/子联动：子维度命中时带上父维度作为上下文；搜索命中主维度时整组展示，
+    // 避免出现「孤儿子维度」被甩到列表底部、父子显示不在一块的问题
+    const groupIds = new Set<number | string>();
+    for (const dim of all) {
+      if (!dim.parentDimensionId) {
+        if (matchedIds.has(dim.id)) {
+          groupIds.add(dim.id);
+          for (const child of byParentId.get(dim.id) || []) {
+            if (keyword || matchedIds.has(child.id)) groupIds.add(child.id);
+          }
+        }
+      } else if (dim.parentDimensionId && matchedIds.has(dim.id)) {
+        groupIds.add(dim.id);
+        groupIds.add(dim.parentDimensionId);
+      }
+    }
+
+    return all.filter(dim => groupIds.has(dim.id));
   });
 
   const isAllSelected = computed(() => {
@@ -580,13 +604,12 @@ export function useEvaluation() {
   }
 
   function searchDimensions() {
+    // 全量已在前端，搜索/筛选由 filteredDimensions 计算属性联动，无需重新请求
     currentPage.value = 1;
-    fetchData();
   }
 
   function filterDimensions() {
     currentPage.value = 1;
-    fetchData();
   }
 
   function resetFilters() {
@@ -594,7 +617,6 @@ export function useEvaluation() {
     filterStatus.value = 'all';
     filterCategory.value = 'all';
     currentPage.value = 1;
-    fetchData();
   }
 
   async function saveDimension(payload: any, type: 'add' | 'edit' = 'add') {
@@ -951,7 +973,7 @@ export function useEvaluation() {
       await evaluationApi.batchAction('enable', selectedDimensions.value);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '成功',
-        content: '批量启用成功',
+        content: '批量启用成功（选中主维度时其子维度一并启用）',
         onConfirm: () => {
         }
       });
@@ -984,7 +1006,7 @@ export function useEvaluation() {
       await evaluationApi.batchAction('disable', selectedDimensions.value);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
         title: '成功',
-        content: '批量禁用成功',
+        content: '批量禁用成功（选中主维度时其子维度一并禁用）',
         onConfirm: () => {
         }
       });
@@ -1015,14 +1037,14 @@ export function useEvaluation() {
     
     modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
       title: '批量删除维度',
-      content: `确定要删除选中的 ${selectedDimensions.value.length} 个维度吗？`,
+      content: `确定要删除选中的 ${selectedDimensions.value.length} 个维度吗？主维度将连同其全部子维度一并删除。`,
       onConfirm: async () => {
         loading.value = true;
         try {
           await evaluationApi.batchAction('delete', selectedDimensions.value);
           modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
             title: '成功',
-            content: '批量删除成功',
+            content: '批量删除成功（含关联子维度）',
             onConfirm: () => {
             }
           });
