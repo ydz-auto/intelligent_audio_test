@@ -71,9 +71,11 @@ const hasMore = computed(() => {
   return visibleItems.value.length < (Array.isArray(props.items) ? props.items.length : 0);
 });
 
-watch(() => props.items, () => {
+// 仅当列表长度变化（增删数据）时重置页码；
+// 排序/原地重排等引用变化但长度不变时不重置，避免已展开的列表回缩闪烁
+watch(() => props.items?.length, () => {
   currentPage.value = 1;
-}, { deep: false });
+});
 
 const loadMore = () => {
   if (loadingMore.value || !hasMore.value) return;

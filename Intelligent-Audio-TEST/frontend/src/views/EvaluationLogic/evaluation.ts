@@ -1126,8 +1126,17 @@ export function useEvaluation() {
     }
   }
 
+  // 筛选生效时禁用排序：排序依赖全量层级列表，筛选态提交的 id 子集会破坏未显示维度的序号
+  const isFiltering = computed(() =>
+    !!searchKeyword.value || filterStatus.value !== 'all' || filterCategory.value !== 'all'
+  );
+  // 排序请求进行中（防连点，不触发列表 loading 遮罩）
+  const sorting = ref(false);
+
   // 是否可上移/下移：主维度整体移动，子维度仅在同组内移动（不越过父维度或其它组）
+  // 注意：不依赖 sorting —— 防连点在 moveDimension 内部逻辑拦截，避免排序期间所有按钮变灰抖动
   function canMoveUp(dim: any): boolean {
+    if (isFiltering.value) return false;
     const list = hierarchicalDimensions.value;
     const index = list.findIndex(d => d.id === dim.id);
     if (index <= 0) return false;
@@ -1140,6 +1149,7 @@ export function useEvaluation() {
   }
 
   function canMoveDown(dim: any): boolean {
+    if (isFiltering.value) return false;
     const list = hierarchicalDimensions.value;
     const index = list.findIndex(d => d.id === dim.id);
     if (index < 0 || index >= list.length - 1) return false;
@@ -1158,31 +1168,39 @@ export function useEvaluation() {
     if (index < 0) return;
     if (direction === -1 ? !canMoveUp(list[index]) : !canMoveDown(list[index])) return;
 
-    // 计算本次移动的块：主维度 = 自身 + 紧随其后的子维度；子维度 = 同一父维度的相邻同级片段
+    // 计算本次移动的块：主维度 = 自身 + 紧随其后的子维度；子维度 = 仅当前行（同级相邻移动由 canMoveUp/canMoveDown 约束）
     const isMain = list[index]._level === 0;
     let blockStart = index;
     let blockEnd = index;
     if (isMain) {
       while (blockEnd < list.length - 1 && list[blockEnd + 1]._level === 1) blockEnd++;
-    } else {
-      const parentId = list[index].parentDimensionId;
-      while (blockStart > 0 && list[blockStart - 1].parentDimensionId === parentId) blockStart--;
-      while (blockEnd < list.length - 1 && list[blockEnd + 1].parentDimensionId === parentId) blockEnd++;
     }
 
     const ids = list.map(d => d.id);
     const block = ids.splice(blockStart, blockEnd - blockStart + 1);
     if (direction === -1) {
+      // 上移：插回原块前一个元素之后（删除后原块前有 blockStart 个元素）
       ids.splice(blockStart - 1, 0, ...block);
     } else {
-      ids.splice(blockStart, 0, ...block);
+      // 下移：删除后 blockStart 已指向原块后第一个元素，需再后移一位，否则插回原位顺序不变
+      ids.splice(blockStart + 1, 0, ...block);
     }
 
-    loading.value = true;
+    if (sorting.value) return;
+    sorting.value = true;
     error.value = null;
     try {
       await evaluationApi.reorder(ids);
-      await fetchData();
+      // 本地按新顺序重排维度列表（行 key 复用，Vue 原地 patch，避免整表重新拉取导致的闪烁）
+      const idOrder = new Map(ids.map((dimId, idx) => [dimId, idx]));
+      dimensions.value = [...dimensions.value].sort((a, b) => {
+        const oa = idOrder.get(a.id);
+        const ob = idOrder.get(b.id);
+        if (oa !== undefined && ob !== undefined) return oa - ob;
+        if (oa !== undefined) return -1;
+        if (ob !== undefined) return 1;
+        return 0;
+      });
     } catch (err: any) {
       console.error('Failed to reorder dimensions:', err);
       modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
@@ -1192,7 +1210,7 @@ export function useEvaluation() {
         }
       });
     } finally {
-      loading.value = false;
+      sorting.value = false;
     }
   }
 

@@ -8,7 +8,7 @@ from flask import request, send_file
 from backend.models.models import Dimension, Category, Task, TaskCase, TestResult, TestResultDimension, Device
 from backend.models.algorithm_models import EvaluationDimensionParam, AlgorithmDimensionRelation, ParamMapping
 from backend.models.database import db
-from sqlalchemy import and_
+from sqlalchemy import and_, or_
 from backend.utils.web.response import success_response, error_response
 from backend.utils.web.log_handler import log_and_emit
 from backend.schemas.common import IdData
@@ -34,6 +34,11 @@ from backend.schemas.evaluation import (
 from datetime import datetime, timezone, timedelta
 from backend.utils.common.query_utils import now_cst
 import re
+
+# 主/子维度分段排序步长：主维度 sort_order 占独立段（SORT_STEP 的整数倍：0, 1000, 2000...），
+# 子维度 sort_order = 父主维度段值 + 组内序号（1 起：1001, 1002...）。
+# 由此 order_by(Dimension.sort_order, Dimension.id) 天然得到「先主维度、组内子维度紧随」的层级顺序。
+SORT_STEP = 1000
 
 
 def _sync_body_template(api_settings, param_codes):
@@ -488,10 +493,22 @@ class EvaluationController:
                     value = None
                 create_data[field] = value
 
-        # 未指定排序时，新维度默认追加到末尾（当前最大 sort_order + 1）
+        # 未指定排序时，按层级追加到末尾：主维度新开一段（SORT_STEP 递增），子维度挂到父维度段内末尾
         if 'sort_order' not in create_data or create_data.get('sort_order') is None:
-            max_sort = db.session.query(db.func.max(Dimension.sort_order)).scalar()
-            create_data['sort_order'] = (max_sort if max_sort is not None else 0) + 1
+            parent_id = create_data.get('parent_dimension_id') or None
+            dim_type = create_data.get('dimension_type') or 'main'
+            if dim_type == 'sub' or parent_id:
+                parent_dim = db.session.get(Dimension, parent_id) if parent_id else None
+                base = parent_dim.sort_order if parent_dim else 0
+                max_sub = db.session.query(db.func.max(Dimension.sort_order)).filter(
+                    Dimension.parent_dimension_id == parent_id
+                ).scalar()
+                create_data['sort_order'] = max(base, max_sub if max_sub is not None else base) + 1
+            else:
+                max_main = db.session.query(db.func.max(Dimension.sort_order)).filter(
+                    or_(Dimension.parent_dimension_id.is_(None), Dimension.parent_dimension_id == 0)
+                ).scalar()
+                create_data['sort_order'] = (max_main if max_main is not None else 0) + SORT_STEP
 
         try:
             new_dim = Dimension(**create_data)
@@ -1081,7 +1098,7 @@ class EvaluationController:
             db.session.rollback()
             return error_response(str(e))
 
-    # 批量调整维度排序（ids 顺序即新展示顺序，sort_order 赋值为数组下标）
+    # 批量调整维度排序（ids 顺序即新展示顺序；按主/子层级分段编码写入 sort_order）
     @staticmethod
     def reorder():
         try:
@@ -1100,8 +1117,22 @@ class EvaluationController:
             if missing:
                 return error_response(f"存在不存在的维度ID: {missing}")
 
-            for idx, dim_id in enumerate(id_list):
-                dim_map[dim_id].sort_order = idx
+            # 分段编码：主维度占独立段（SORT_STEP 的整数倍），子维度挂到父主维度段内（父段 + 组内序号）。
+            # ids 为前端按层级重组后的全量顺序，主维度先于其子维度出现，因此遍历时可拿到父维度最新段值。
+            main_order = 0
+            sub_counters = {}
+            for dim_id in id_list:
+                dim = dim_map[dim_id]
+                if dim.parent_dimension_id:
+                    parent = dim_map.get(dim.parent_dimension_id)
+                    if parent is None:  # 防御：父维度不在本次列表（如筛选态），取库中当前段值
+                        parent = db.session.get(Dimension, dim.parent_dimension_id)
+                    base = parent.sort_order if parent else 0
+                    sub_counters[dim.parent_dimension_id] = sub_counters.get(dim.parent_dimension_id, 0) + 1
+                    dim.sort_order = base + sub_counters[dim.parent_dimension_id]
+                else:
+                    dim.sort_order = main_order * SORT_STEP
+                    main_order += 1
             db.session.commit()
 
             from backend.utils.report.stats_cache import refresh_stats_cache
@@ -1246,7 +1277,10 @@ class EvaluationController:
                         dim.updated_at = now_cst()
                         update_count += 1
                 else:
-                    max_sort = db.session.query(db.func.max(Dimension.sort_order)).scalar()
+                    # 导入的新维度视为主维度：追加到主维度段末尾（SORT_STEP 递增）
+                    max_main = db.session.query(db.func.max(Dimension.sort_order)).filter(
+                        or_(Dimension.parent_dimension_id.is_(None), Dimension.parent_dimension_id == 0)
+                    ).scalar()
                     new_dim = Dimension(
                         name=name,
                         description=row.get('描述') or row.get('description'),
@@ -1258,7 +1292,7 @@ class EvaluationController:
                         score_unit=row.get('分数单位') or row.get('score_unit') or row.get('scoreUnit'),
                         rule=rule,
                         api_settings=api_settings,
-                        sort_order=(max_sort if max_sort is not None else 0) + 1,
+                        sort_order=(max_main if max_main is not None else 0) + SORT_STEP,
                         status=True
                     )
                     db.session.add(new_dim)
