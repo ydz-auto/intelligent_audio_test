@@ -29,6 +29,10 @@ TURN_NUM_WORDS_THRESHOLD = 3   # tor 命中词去标点总字符数阈值
 PAUSE_MIN_GAP = 0.2  # pause 区间最小间隙(秒)
 PAUSE_MAX_GAP = 3.0  # pause 区间最大间隙(秒)
 
+# ─────────── 轮次切分阈值 ───────────
+TURN_SPLIT_PRE_GAP_S = 1.5   # 预切用户语音段聚类间隙(秒)
+TURN_SPLIT_MAX_GAP_S = 3.0   # 无 AI 回复时用户段间最大间隙(秒)，超过则判为不同轮次
+
 YIELD_GRACE_S = 0.5  # 让出宽限(秒)
 EPS_S = 1e-6          # 浮点容差(秒)
 

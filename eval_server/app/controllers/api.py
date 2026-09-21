@@ -165,11 +165,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
 
     if task_type in ['wer', 'ser']:
         if 'rounds' not in task_params:
-            if not task_params.get('asr_ref') or not task_params.get('asr_hyp'):
-                return error_response(f"Missing required fields for {task_type}: asr_ref, asr_hyp (or 'rounds' for multi-round mode)", code=CODE_VALIDATION_ERROR)
-    elif task_type in ['cpwer', 'tcpwer', 'stm_wer']:
-        if not task_params.get('ref_stm') or not task_params.get('hyp_stm'):
-            return error_response(f"Missing required fields for {task_type}: ref_stm, hyp_stm", code=CODE_VALIDATION_ERROR)
+            if not task_params.get('ref_stm') or not task_params.get('hyp_stm'):
+                return error_response(f"Missing required fields for {task_type}: ref_stm, hyp_stm", code=CODE_VALIDATION_ERROR)
     elif task_type == 'der':
         required_fields = ['rttm_ref', 'stm_ref', 'rttm_res', 'stm_res']
         missing = [f for f in required_fields if not task_params.get(f)]
