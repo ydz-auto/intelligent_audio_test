@@ -1,0 +1,299 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1500" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowViolet); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .st-n { font-size: 12px; font-weight: 700; text-anchor: middle; }
+      .st-d { font-size: 9px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1500" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">Intelligent Audio TEST · 系统总体架构图</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">docs / 系统架构.md — DDD + CQRS + 消息驱动 + 事件驱动 + 11 微服务 + Redis EventBus · 前端四层镜像 · 分环境部署（开发 run_all.py ↔ 生产 docker-compose）</text>
+
+  <!-- ① 前端四层镜像 -->
+  <rect x="24" y="92" width="1192" height="180" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="111" r="11" fill="#6366f1"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#3730a3">前端四层镜像 — Vue3 + TypeScript + Pinia + Electron（依赖方向自上而下，下层不见上层）</text>
+
+  <rect x="44" y="142" width="1172" height="40" rx="6" fill="#ffffff" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="60" y="158" font-size="11" font-weight="700" fill="#3730a3">Presentation — views/ + components/</text>
+  <text x="60" y="174" class="note">只见 camelCase Domain 与 composables（Ports）· 禁止 import infrastructure/api 或 dto</text>
+
+  <line x1="630" y1="182" x2="630" y2="196" class="flow"/>
+  <text x="642" y="192" font-size="9.5" font-weight="600" fill="#475569">调用 Ports（composables）</text>
+
+  <rect x="44" y="198" width="1172" height="40" rx="6" fill="#ffffff" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="60" y="214" font-size="11" font-weight="700" fill="#3730a3">Application — composables/ + store/（Pinia）</text>
+  <text x="60" y="230" class="note">编排用例 · 缓存 ReadModel · 只与 Domain 打交道 · 不直接发请求</text>
+
+  <line x1="630" y1="238" x2="630" y2="252" class="flow"/>
+  <text x="642" y="248" font-size="9.5" font-weight="600" fill="#475569">读写 Domain（model）</text>
+
+  <rect x="44" y="254" width="1172" height="40" rx="6" fill="#ffffff" stroke="#10b981" stroke-width="1.2"/>
+  <text x="60" y="270" font-size="11" font-weight="700" fill="#065f46">Domain — domain/model/ + enums.ts</text>
+  <text x="60" y="286" class="note">camelCase · 零依赖 · 无索引签名兜底 · enums.ts 镜像后端枚举（TaskStatus / ReportStatus / ReportType）</text>
+
+  <line x1="630" y1="294" x2="630" y2="308" class="flow"/>
+  <text x="642" y="304" font-size="9.5" font-weight="600" fill="#475569">经 Port 由 Infrastructure 实现</text>
+
+  <rect x="44" y="310" width="1172" height="40" rx="6" fill="#ffffff" stroke="#64748b" stroke-width="1.2"/>
+  <text x="60" y="326" font-size="11" font-weight="700" fill="#1e293b">Infrastructure — api/ + adapters/ + dto/ + http/</text>
+  <text x="60" y="342" class="note">唯一知道 snake_case 的层 · socket 通道接入（utils/socket.ts + infrastructure/socket/taskChannel.ts）· 与后端强命名契约在此收敛</text>
+
+  <!-- ② 后端 DDD+CQRS 四层与通讯 -->
+  <rect x="24" y="288" width="1192" height="252" rx="10" fill="#fff7ed" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="288" width="1192" height="38" rx="10" fill="#ffedd5"/>
+  <rect x="24" y="314" width="1192" height="12" fill="#ffedd5"/>
+  <circle cx="46" cy="307" r="11" fill="#f59e0b"/>
+  <text x="46" y="311" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="312" class="sec-title" fill="#9a3412">后端服务四层 — interfaces → application → domain → infrastructure（每服务同构，CQRS 命令/查询分离）</text>
+
+  <rect x="44" y="338" width="1172" height="60" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="60" y="356" font-size="11" font-weight="700" fill="#9a3412">interfaces/ — 入站适配器</text>
+  <rect x="60" y="364" width="250" height="26" rx="13" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+  <text x="185" y="381" class="pill-t" fill="#9a3412">grpc/ servicer + server</text>
+  <rect x="320" y="364" width="250" height="26" rx="13" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+  <text x="445" y="381" class="pill-t" fill="#9a3412">api/ HTTP 路由（网关侧）</text>
+  <rect x="580" y="364" width="330" height="26" rx="13" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+  <text x="745" y="381" class="pill-t" fill="#9a3412">接收 Command / Query 输入</text>
+  <text x="60" y="398" class="note">入站请求 → command/query → handler → 返回 DTO；不承载业务逻辑</text>
+
+  <line x1="630" y1="398" x2="630" y2="412" class="flow"/>
+
+  <rect x="44" y="414" width="1172" height="56" rx="6" fill="#ffffff" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="60" y="432" font-size="11" font-weight="700" fill="#9a3412">application/ — 用例编排（CQRS）</text>
+  <rect x="60" y="440" width="230" height="24" rx="12" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+  <text x="175" y="456" class="pill-t" fill="#9a3412">commands/ + handlers</text>
+  <rect x="300" y="440" width="230" height="24" rx="12" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+  <text x="415" y="456" class="pill-t" fill="#9a3412">queries/ + handlers</text>
+  <rect x="540" y="440" width="330" height="24" rx="12" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+  <text x="705" y="456" class="pill-t" fill="#9a3412">面向 repository ABC（依赖倒置）</text>
+  <text x="60" y="478" class="note">命令与查询 Handler 严格分离，禁止互调；缓存 ReadModel 供查询侧读取</text>
+
+  <line x1="630" y1="470" x2="630" y2="484" class="flow"/>
+
+  <rect x="44" y="486" width="1172" height="56" rx="6" fill="#ffffff" stroke="#10b981" stroke-width="1.2"/>
+  <text x="60" y="504" font-size="11" font-weight="700" fill="#065f46">domain/ — 纯领域逻辑（零依赖）</text>
+  <rect x="60" y="512" width="210" height="24" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="165" y="528" class="pill-t" fill="#166534">entities/ 聚合根（pure @dataclass）</text>
+  <rect x="280" y="512" width="210" height="24" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="385" y="528" class="pill-t" fill="#166534">value_objects/</text>
+  <rect x="500" y="512" width="200" height="24" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="600" y="528" class="pill-t" fill="#166534">events/（frozen）</text>
+  <rect x="710" y="512" width="230" height="24" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="825" y="528" class="pill-t" fill="#166534">services/ 领域服务</text>
+  <text x="60" y="550" class="note">禁止 db.session / ORM PO / infrastructure import · repository 一律接口（ABC）· DTO 规则 D1-D4：dataclass 全 Optional、&lt;service&gt;_acl_dto.py、dict_to_dto 转换、不返回裸 dict</text>
+
+  <line x1="630" y1="542" x2="630" y2="556" class="flow"/>
+
+  <rect x="44" y="558" width="1172" height="56" rx="6" fill="#ffffff" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="60" y="576" font-size="11" font-weight="700" fill="#7f1d1d">infrastructure/ — 技术实现</text>
+  <rect x="60" y="584" width="200" height="24" rx="12" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="160" y="600" class="pill-t" fill="#991b1b">persistence/ PO + Repository</text>
+  <rect x="270" y="584" width="220" height="24" rx="12" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="380" y="600" class="pill-t" fill="#991b1b">acl/ ACL 仓储（gRPC 出站）</text>
+  <rect x="500" y="584" width="200" height="24" rx="12" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="600" y="600" class="pill-t" fill="#991b1b">oss/ 大字段落盘</text>
+  <rect x="710" y="584" width="290" height="24" rx="12" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/>
+  <text x="855" y="600" class="pill-t" fill="#991b1b">实现 domain 定义的 ABC</text>
+  <text x="60" y="622" class="note">唯一知道 snake_case 的层 · 跨服务数据访问必须经 ACL gRPC（repository 返回 dict 或 Entity）</text>
+
+  <!-- ③ 服务拓扑 -->
+  <rect x="24" y="556" width="1192" height="390" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="556" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="582" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="575" r="11" fill="#16a34a"/>
+  <text x="46" y="579" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="580" class="sec-title" fill="#14532d">微服务拓扑 — 11 后端服务 + 3 基础设施（端口唯一真相源 shared/config/service_ports.py，禁止硬编码）</text>
+
+  <rect x="44" y="606" width="270" height="118" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="60" y="626" font-size="11" font-weight="700" fill="#9a3412">api_gateway :5000</text>
+  <text x="60" y="644" class="body">唯一对外入口 · REST 聚合</text>
+  <text x="60" y="660" class="body">snake_case ↔ camelCase 唯一转换边界</text>
+  <text x="60" y="676" class="body">鉴权（AuthMiddleware）· 事件回推</text>
+  <text x="60" y="696" class="note">routes/*_bp.py · grpc_proxies/ + acl/</text>
+  <text x="60" y="712" class="note">websocket/socketio_server.py · read_models.py</text>
+
+  <rect x="326" y="606" width="230" height="118" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="342" y="626" font-size="11" font-weight="700" fill="#14532d">task_service :5001/:50061</text>
+  <text x="342" y="644" class="body">任务调度引擎 · 状态机</text>
+  <text x="342" y="660" class="body">ExecutionEngine 五 Mixin</text>
+  <text x="342" y="676" class="body">device_type 跨服务分发</text>
+  <text x="342" y="696" class="note">Scheduler·Progress·Control·Case·Runner</text>
+  <text x="342" y="712" class="note">DB CAS 防重复 + Redis 抢占兜底</text>
+
+  <rect x="568" y="606" width="230" height="118" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="584" y="626" font-size="11" font-weight="700" fill="#14532d">e2e_test_service :5002/:50051</text>
+  <text x="584" y="644" class="body">physical 执行（单实例）</text>
+  <text x="584" y="660" class="body">设备驱动 · 音频播放编排</text>
+  <text x="584" y="676" class="body">结果采集 · 协同 audio/device</text>
+  <text x="584" y="696" class="note">ExecutionService · BaseExecutor 五 mixin</text>
+  <text x="584" y="712" class="note">SPL：device.spl_mapping_id → spl_to_gain</text>
+
+  <rect x="810" y="606" width="230" height="118" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="826" y="626" font-size="11" font-weight="700" fill="#14532d">api_test_service :5003/:50071</text>
+  <text x="826" y="644" class="body">http_api + websocket_api</text>
+  <text x="826" y="660" class="body">replicas: 2（唯一扩容服务）</text>
+  <text x="826" y="676" class="body">APISessionExecutor / Realtime</text>
+  <text x="826" y="696" class="note">_task_pool max_workers=8</text>
+  <text x="826" y="712" class="note">DistributedSemaphore api:sem:{api_id}</text>
+
+  <line x1="179" y1="606" x2="179" y2="590" class="flow"/>
+  <line x1="441" y1="606" x2="441" y2="590" class="flow"/>
+  <line x1="683" y1="606" x2="683" y2="590" class="flow"/>
+  <line x1="925" y1="606" x2="925" y2="590" class="flow"/>
+
+  <rect x="44" y="736" width="290" height="90" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="60" y="756" font-size="11" font-weight="700" fill="#5b21b6">evaluation_service :5004/:50091</text>
+  <text x="60" y="774" class="body">统一评估出口 · 维度管理</text>
+  <text x="60" y="790" class="body">WER/DER/LLM Judge · 多轮聚合</text>
+  <text x="60" y="808" class="note">EvaluateCase / Reevaluate 系列</text>
+  <text x="60" y="822" class="note">结论落 PG · 大字段落 MinIO</text>
+
+  <rect x="346" y="736" width="290" height="90" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="362" y="756" font-size="11" font-weight="700" fill="#5b21b6">report_service :5006/:50068</text>
+  <text x="362" y="774" class="body">报告生成（异步）与查询</text>
+  <text x="362" y="790" class="body">对比分析 · 趋势</text>
+  <text x="362" y="808" class="note">report_bp · 报告发布</text>
+  <text x="362" y="822" class="note">消费 REPORT_EVENTS</text>
+
+  <rect x="648" y="736" width="290" height="90" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="664" y="756" font-size="11" font-weight="700" fill="#5b21b6">algorithm_service :5007/:50067</text>
+  <text x="664" y="774" class="body">算法配置管理（共享内核）</text>
+  <text x="664" y="790" class="body">参考参数生成器</text>
+  <text x="664" y="808" class="note">SyncDimensionRelations</text>
+  <text x="664" y="822" class="note">GetRelationsByDimension</text>
+
+  <rect x="950" y="736" width="266" height="90" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.2"/>
+  <text x="966" y="756" font-size="11" font-weight="700" fill="#1e293b">auth_service :5009/:50069</text>
+  <text x="966" y="774" class="body">认证 / OAuth / RBAC 角色权限</text>
+  <text x="966" y="790" class="body">User/OAuthClient/RefreshToken 表</text>
+  <text x="966" y="808" class="note">AUTH_MODE = off/dev/prod</text>
+  <text x="966" y="822" class="note">require_permission 辅助</text>
+
+  <rect x="44" y="838" width="290" height="90" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.2" stroke-dasharray="5 4"/>
+  <text x="60" y="858" font-size="11" font-weight="700" fill="#475569">api_adapter_service :5008/:50081</text>
+  <text x="60" y="876" class="body">语音 LLM 适配（P3 下线）</text>
+  <text x="60" y="892" class="body">Qwen/火山 AST/SSE/HTTP/Mock</text>
+  <text x="60" y="910" class="note">P1：并入 api_test_service/adapters/</text>
+  <text x="60" y="924" class="note">遗留：容器内 8000 注册 5008</text>
+
+  <rect x="346" y="838" width="290" height="90" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="362" y="858" font-size="11" font-weight="700" fill="#075985">audio_service（纯 gRPC :50052）</text>
+  <text x="362" y="876" class="body">音频播放 · 混音 · SPL 测量</text>
+  <text x="362" y="892" class="body">PlayAudio · MeasureSPL</text>
+  <text x="362" y="910" class="note">RenderAudioStream（100ms chunk）</text>
+  <text x="362" y="924" class="note">Orchestrator/FormatAdapter/ApiRmsSpl</text>
+
+  <rect x="648" y="838" width="290" height="90" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="664" y="858" font-size="11" font-weight="700" fill="#075985">device_service（纯 gRPC :50053）</text>
+  <text x="664" y="876" class="body">播放/环境设备驱动 · SPL 校准</text>
+  <text x="664" y="892" class="body">DeviceResultService · 结果提取</text>
+  <text x="664" y="910" class="note">13 个 device_driver</text>
+  <text x="664" y="924" class="note">spl_mappings 物理校准</text>
+
+  <!-- ④ 任务状态机 -->
+  <rect x="24" y="962" width="1192" height="170" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="962" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="988" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="981" r="11" fill="#dc2626"/>
+  <text x="46" y="985" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="986" class="sec-title" fill="#7f1d1d">任务状态机 — task_service/domain/services/task_state_machine.py（纯逻辑 · 枚举化 · 双轨 TaskStatus / TaskCaseStatus / ExecutionStatus / EvaluationStatus）</text>
+
+  <rect x="60" y="1012" width="150" height="52" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="135" y="1032" class="st-n" fill="#475569">pending</text>
+  <text x="135" y="1050" class="st-d" fill="#64748b">创建待调度</text>
+
+  <line x1="210" y1="1038" x2="260" y2="1038" class="flow"/>
+  <text x="235" y="1030" font-size="9" font-weight="600" fill="#16a34a" text-anchor="middle">BRPOP/调度</text>
+
+  <rect x="262" y="1012" width="150" height="52" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="337" y="1032" class="st-n" fill="#b45309">queued</text>
+  <text x="337" y="1050" class="st-d" fill="#64748b">入队占位</text>
+
+  <line x1="412" y1="1038" x2="462" y2="1038" class="flow"/>
+  <text x="437" y="1030" font-size="9" font-weight="600" fill="#16a34a" text-anchor="middle">执行</text>
+
+  <rect x="464" y="1012" width="150" height="52" rx="8" fill="#ffffff" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="539" y="1032" class="st-n" fill="#4338ca">running</text>
+  <text x="539" y="1050" class="st-d" fill="#64748b">执行中（可暂停）</text>
+
+  <line x1="614" y1="1038" x2="664" y2="1038" class="flow"/>
+  <text x="639" y="1030" font-size="9" font-weight="600" fill="#16a34a" text-anchor="middle">结果回收</text>
+
+  <rect x="666" y="1012" width="160" height="52" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="746" y="1032" class="st-n" fill="#5b21b6">evaluating</text>
+  <text x="746" y="1050" class="st-d" fill="#64748b">评估打分中</text>
+
+  <line x1="826" y1="1038" x2="876" y2="1038" class="flow"/>
+
+  <rect x="878" y="998" width="290" height="52" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="1023" y="1018" class="st-n" fill="#15803d">completed</text>
+  <text x="1023" y="1036" class="st-d" fill="#64748b">完成 · REPORT_EVENTS → 报告</text>
+
+  <line x1="1023" y1="1050" x2="1023" y2="1066" class="flow-red"/>
+  <text x="1023" y="1078" font-size="9" font-weight="600" fill="#dc2626" text-anchor="middle">失败/停止</text>
+
+  <rect x="878" y="1080" width="290" height="38" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.2"/>
+  <text x="1023" y="1104" class="st-n" fill="#b91c1c">failed / stopped</text>
+
+  <text x="60" y="1116" class="note">暂停/停止信号经 Redis flag（task:pause / task:stop，ttl 86400s）广播；任务级防重复用 DB CAS（UPDATE … WHERE status IN ('pending','queued')），Redis 抢占仅作兜底</text>
+
+  <!-- ⑤ 部署形态与共享层 -->
+  <rect x="24" y="1148" width="1192" height="210" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1148" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1174" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="1167" r="11" fill="#64748b"/>
+  <text x="46" y="1171" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="66" y="1172" class="sec-title" fill="#1e293b">部署形态与共享层 — 分开发/生产环境 · Redis 运行时真相源 · PostgreSQL 持久化真相源 · MinIO 大字段</text>
+
+  <rect x="44" y="1198" width="560" height="70" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <text x="56" y="1218" class="chip-t" fill="#166534" text-anchor="start" font-weight="700">开发环境（run_all.py）</text>
+  <text x="56" y="1236" class="note" text-anchor="start">11 服务本地进程顺序启动 + 前端 Vite（VITE_API_TARGET → :5000）· Redis 不持久化</text>
+  <text x="56" y="1250" class="note" text-anchor="start">DISTRIBUTED_COORDINATOR_ENABLED 可关（锁降级放行）· stop_all.py 优雅停止</text>
+
+  <rect x="616" y="1198" width="600" height="70" rx="6" fill="#ffffff" stroke="#fcd34d" stroke-width="1"/>
+  <text x="628" y="1218" class="chip-t" fill="#92400e" text-anchor="start" font-weight="700">生产环境（docker/docker-compose.yml）</text>
+  <text x="628" y="1236" class="note" text-anchor="start">8 个 Dockerfile + compose（postgres + redis + minio）· api_test_service replicas: 2</text>
+  <text x="628" y="1250" class="note" text-anchor="start">auth/algorithm/report 未含于 compose，按需补充 · DATABASE_URL / OSS_* 注入 · 开关强制开启</text>
+
+  <rect x="44" y="1280" width="560" height="64" rx="6" fill="#ffffff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="56" y="1300" class="chip-t" fill="#3730a3" text-anchor="start" font-weight="700">共享层 shared/</text>
+  <text x="56" y="1318" class="note" text-anchor="start">models/（database.py + common_enums.py 枚举）· proto/（11 个 .proto 契约）· clients/（grpc_clients lru_cache + OSS）</text>
+  <text x="56" y="1332" class="note" text-anchor="start">config/（service_ports.py + concurrency_config.json）· infrastructure/ · utils/（服务注册/分布式协调/事件管理）</text>
+
+  <rect x="616" y="1280" width="600" height="64" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1"/>
+  <text x="628" y="1300" class="chip-t" fill="#1e293b" text-anchor="start" font-weight="700">基础设施（端口唯一真相源）</text>
+  <text x="628" y="1318" class="note" text-anchor="start">PostgreSQL 16 :5432（业务持久化）· Redis 7 :6379（服务注册/EventBus/协调/日志 Pub/Sub）</text>
+  <text x="628" y="1332" class="note" text-anchor="start">MinIO :9000/:9001（对象存储：音频/结果/报告/归档）· 前端 Vite :5173（proxy → :5000）</text>
+
+  <line x1="0" y1="1440" x2="1240" y2="1440" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1460" font-size="10.5" fill="#64748b">依据：docs/系统架构.md · docs/微服务.md — 前端四层镜像 · 服务内 DDD 四层 · CQRS · 事件驱动（Redis EventBus）· 分环境配置矩阵</text>
+  <text x="24" y="1476" font-size="10.5" fill="#64748b">配套图纸：02_微服务拓扑与端口 · 03_DDD领域划分与上下文映射 · 04_RBAC角色权限矩阵 · 05_OAuth双模式认证 · 06_分布式协调器 · 07_迁移验证报告</text>
+</svg>

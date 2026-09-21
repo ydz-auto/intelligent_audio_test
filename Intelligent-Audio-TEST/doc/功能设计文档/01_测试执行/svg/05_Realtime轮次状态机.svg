@@ -1,0 +1,206 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1170" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .st-n { font-size: 12px; font-weight: 700; text-anchor: middle; }
+      .st-d { font-size: 9px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1170" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">Realtime 轮次状态机（单轮生命周期）· 正常轮 / 打断轮双泳道</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">两条链在 AI_SPEAKING 汇合，统一收敛到 ROUND_RESULT 后回到 IDLE · 事件名全部为归一化事件（11 种），阈值全部配置化</text>
+
+  <!-- ① 状态机 -->
+  <rect x="24" y="92" width="1192" height="650" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="111" r="11" fill="#64748b"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#1e293b">状态流转 — 对应 03_流程图.md §2.3（状态语义与 V9.7.10 §4.3 一致，仅替换为归一化事件名）</text>
+
+  <!-- Lane A -->
+  <text x="46" y="150" class="body" font-weight="700" fill="#166534">LANE A · 正常轮 is_interruption = false</text>
+  <rect x="44" y="156" width="1172" height="104" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <g filter="url(#softShadow)">
+    <rect x="54" y="162" width="200" height="84" rx="8" fill="#ffffff" stroke="#6366f1" stroke-width="1.4"/>
+    <text x="154" y="184" class="st-n" fill="#3730a3">IDLE</text>
+    <text x="154" y="202" class="st-d" fill="#64748b">轮次起始 · 会话就绪</text>
+    <text x="154" y="216" class="st-d" fill="#64748b">pre_process 已完成</text>
+    <text x="154" y="236" class="chip-t" fill="#3730a3">分支：is_interruption</text>
+    <rect x="286" y="162" width="200" height="84" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.4"/>
+    <text x="386" y="184" class="st-n" fill="#166534">SENDING</text>
+    <text x="386" y="202" class="st-d" fill="#64748b">推送混音 chunk × N</text>
+    <text x="386" y="216" class="st-d" fill="#64748b">+ commit_input</text>
+    <text x="386" y="236" class="chip-t" fill="#166534">commit 完成 → AI_THINKING</text>
+    <rect x="518" y="162" width="200" height="84" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.4"/>
+    <text x="618" y="184" class="st-n" fill="#166534">AI_THINKING</text>
+    <text x="618" y="202" class="st-d" fill="#64748b">commit 后等 AI 开口</text>
+    <text x="618" y="216" class="st-d" fill="#64748b">计时起点 → latency_ms</text>
+    <text x="618" y="236" class="chip-t" fill="#166534">ai_audio_delta → AI_SPEAKING</text>
+    <rect x="750" y="162" width="200" height="84" rx="8" fill="#ffffff" stroke="#0891b2" stroke-width="1.6"/>
+    <text x="850" y="184" class="st-n" fill="#155e75">AI_SPEAKING（汇合态）</text>
+    <text x="850" y="202" class="st-d" fill="#64748b">ai_audio_delta × N 流式接收</text>
+    <text x="850" y="216" class="st-d" fill="#0e7490">帧结果 frame 实时产出</text>
+    <text x="850" y="236" class="chip-t" fill="#155e75">ai_audio_done → AI_DONE</text>
+    <rect x="982" y="162" width="200" height="84" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.4"/>
+    <text x="1082" y="184" class="st-n" fill="#166534">AI_DONE</text>
+    <text x="1082" y="202" class="st-d" fill="#64748b">AI 完成，聚合 summary</text>
+    <text x="1082" y="216" class="st-d" fill="#64748b">文本合并 delta · 音频拼接</text>
+    <text x="1082" y="236" class="chip-t" fill="#166534">→ ROUND_RESULT</text>
+  </g>
+  <line x1="254" y1="204" x2="284" y2="204" class="flow-green"/>
+  <line x1="486" y1="204" x2="516" y2="204" class="flow-green"/>
+  <line x1="718" y1="204" x2="748" y2="204" class="flow-green"/>
+  <line x1="950" y1="204" x2="980" y2="204" class="flow-green"/>
+
+  <!-- Lane B -->
+  <text x="46" y="312" class="body" font-weight="700" fill="#b91c1c">LANE B · 打断轮 is_interruption = true（barge-in）</text>
+  <rect x="44" y="316" width="1172" height="104" rx="8" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>
+  <g filter="url(#softShadow)">
+    <rect x="54" y="326" width="200" height="84" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.4"/>
+    <text x="154" y="348" class="st-n" fill="#991b1b">WAIT_AI_START</text>
+    <text x="154" y="366" class="st-d" fill="#64748b">只等阶段 A（AI 开口）</text>
+    <text x="154" y="380" class="st-d" fill="#64748b">不等完整回复</text>
+    <text x="154" y="400" class="chip-t" fill="#991b1b">ai_audio_delta → DELAY</text>
+    <rect x="286" y="326" width="200" height="84" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.4"/>
+    <text x="386" y="348" class="st-n" fill="#991b1b">DELAY</text>
+    <text x="386" y="366" class="st-d" fill="#64748b">interruption_delay_ms</text>
+    <text x="386" y="380" class="st-d" fill="#64748b">配置化（如 1500ms）</text>
+    <text x="386" y="400" class="chip-t" fill="#991b1b">延迟到点 → PUSH_INTERRUPT</text>
+    <rect x="518" y="326" width="200" height="84" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.4"/>
+    <text x="618" y="348" class="st-n" fill="#991b1b">PUSH_INTERRUPT</text>
+    <text x="618" y="366" class="st-d" fill="#64748b">推打断音频 × N</text>
+    <text x="618" y="380" class="st-d" fill="#64748b">+ commit_input</text>
+    <text x="618" y="400" class="chip-t" fill="#991b1b">→ BARGE_DETECT</text>
+    <rect x="750" y="326" width="200" height="84" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.6"/>
+    <text x="850" y="348" class="st-n" fill="#92400e">BARGE_DETECT</text>
+    <text x="850" y="366" class="st-d" fill="#64748b">5s 归一化事件窗口</text>
+    <text x="850" y="380" class="st-d" fill="#64748b">（窗口值配置化）</text>
+    <text x="850" y="400" class="chip-t" fill="#92400e">命中 / 未命中 双出口</text>
+    <rect x="982" y="326" width="200" height="84" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.4"/>
+    <text x="1082" y="348" class="st-n" fill="#991b1b">BARGE_IN</text>
+    <text x="1082" y="366" class="st-d" fill="#64748b">AI 停止输出</text>
+    <text x="1082" y="380" class="st-d" fill="#64748b">等 AI 重新回复</text>
+    <text x="1082" y="400" class="chip-t" fill="#16a34a">ai_audio_delta → 回到 AI_SPEAKING</text>
+  </g>
+  <line x1="254" y1="368" x2="284" y2="368" class="flow-red"/>
+  <line x1="486" y1="368" x2="516" y2="368" class="flow-red"/>
+  <line x1="718" y1="368" x2="748" y2="368" class="flow-red"/>
+  <line x1="950" y1="368" x2="980" y2="368" class="flow-red"/>
+  <text x="968" y="360" class="chip-t" fill="#047857" text-anchor="end">命中</text>
+
+  <!-- Lane C -->
+  <text x="46" y="476" class="body" font-weight="700" fill="#334155">LANE C · 收敛</text>
+  <rect x="44" y="480" width="1172" height="104" rx="8" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+  <g filter="url(#softShadow)">
+    <rect x="54" y="490" width="300" height="84" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.4"/>
+    <text x="204" y="512" class="st-n" fill="#991b1b">BARGE_FAIL</text>
+    <text x="204" y="530" class="st-d" fill="#64748b">barge_in_detected = false</text>
+    <text x="204" y="545" class="st-d" fill="#64748b">AI 已说完，检测窗口已过</text>
+    <text x="204" y="564" class="chip-t" fill="#334155">→ ROUND_RESULT（本轮仍可有结果）</text>
+    <rect x="420" y="490" width="300" height="84" rx="8" fill="#ffffff" stroke="#475569" stroke-width="1.6"/>
+    <text x="570" y="512" class="st-n" fill="#1e293b">ROUND_RESULT</text>
+    <text x="570" y="530" class="st-d" fill="#64748b">success · latency · barge_in_latency_ms · frame</text>
+    <text x="570" y="545" class="st-d" fill="#64748b">frame 逐帧记录 + summary 聚合分别持久化</text>
+    <text x="570" y="564" class="chip-t" fill="#334155">落库 → 回到 IDLE 进入下一轮</text>
+    <rect x="750" y="490" width="466" height="84" rx="8" fill="#fefce8" stroke="#ca8a04" stroke-width="1"/>
+    <text x="766" y="510" class="chip-t" fill="#854d0e" text-anchor="start" font-weight="700">超时特例与语义要点</text>
+    <text x="766" y="528" class="note" text-anchor="start">· 等待 ai_audio_done 超时，但窗口内已捕获 ai_audio_delta（AI 已开口）→ success = true</text>
+    <text x="766" y="543" class="note" text-anchor="start">· 打断成功后 AI 重新回复仍走 AI_SPEAKING → AI_DONE，本轮才收敛</text>
+    <text x="766" y="558" class="note" text-anchor="start">· stop_intent（停止指令轮）与 is_interruption（打断轮）是两个独立标记，不合并</text>
+    <text x="766" y="573" class="note" text-anchor="start">· interferers[].startDelay / spl 在三类执行方式下语义完全一致（仅 E2E 用播放设备字段）</text>
+  </g>
+
+  <!-- cross edges -->
+  <line x1="154" y1="246" x2="154" y2="326" class="flow-red"/>
+  <text x="164" y="282" class="chip-t" fill="#b91c1c" text-anchor="start">is_interruption = true</text>
+  <path class="flow-green" d="M1082,326 V286 H850 V250"/>
+  <text x="880" y="280" class="chip-t" fill="#16a34a" text-anchor="start">AI 重新回复（汇合）</text>
+  <path class="flow" d="M1182,204 H1200 V532 H724"/>
+  <path class="flow-red" d="M850,410 V450 H204 V490"/>
+  <text x="560" y="444" class="chip-t" fill="#b91c1c" text-anchor="start">未命中：ai_audio_done</text>
+  <line x1="354" y1="532" x2="418" y2="532" class="flow"/>
+  <path class="flow" d="M570,490 V462 H36 V204 H54"/>
+  <text x="40" y="454" class="chip-t" fill="#475569" text-anchor="start">下一轮</text>
+
+  <!-- 双通道说明 -->
+  <g filter="url(#softShadow)">
+    <rect x="44" y="600" width="570" height="126" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.2"/>
+    <text x="60" y="622" font-size="11.5" font-weight="700" fill="#3730a3">frame 通道（过程证据 · 高频 · 不落库）</text>
+    <text x="60" y="640" class="body">_ai_audio_chunks[i] · _frame_timestamps[i] · _frame_types[i]</text>
+    <text x="60" y="656" class="note">每帧 {seq, direction, offset_ms, event_type, ts}，ms 精度</text>
+    <text x="60" y="672" class="note">节流聚合（帧数 / 时间窗阈值配置化）→ CASE_EVENTS → 网关 → 房间</text>
+    <text x="60" y="688" class="note">用途：实时波形与时序渲染、执行中状态展示、时延分析与断点回放</text>
+    <text x="60" y="708" class="body" fill="#b91c1c">数据量大，不进评估 prompt</text>
+    <rect x="646" y="600" width="570" height="126" rx="8" fill="#ffffff" stroke="#6ee7b7" stroke-width="1.2"/>
+    <text x="662" y="622" font-size="11.5" font-weight="700" fill="#065f46">summary 通道（最终结果 · 低频 · 必落库）</text>
+    <text x="662" y="640" class="body">AdapterOutput：audio · text · video_chunks · images · event_log</text>
+    <text x="662" y="656" class="note">raw_event_log · latency_ms（commit → 首个 ai_audio_delta）· frame_results</text>
+    <text x="662" y="672" class="note">barge_in_detected · barge_in_latency_ms　→　CASE_EXECUTION_COMPLETED</text>
+    <text x="662" y="688" class="note">验收不变式：帧拼接结果 == summary.audio；评估只读 summary</text>
+    <text x="662" y="708" class="body" fill="#065f46">断线重连：frame 从当前帧续传，历史轮次查 DB 不重放事件</text>
+  </g>
+
+  <!-- ② 职责矩阵 -->
+  <rect x="24" y="758" width="1192" height="248" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="758" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="784" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="777" r="11" fill="#6366f1"/>
+  <text x="46" y="781" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="782" class="sec-title" fill="#3730a3">厂商适配职责矩阵（模板方法 + 工厂 + 注册表 · OCP 验证）</text>
+
+  <g>
+    <text x="60" y="818" class="body" font-weight="700" fill="#334155">职责</text>
+    <text x="440" y="818" class="body" font-weight="700" fill="#5b21b6">基类 RealtimeAPIAdapter</text>
+    <text x="740" y="818" class="body" font-weight="700" fill="#065f46">子类（OpenAI / Doubao / …）</text>
+    <text x="1020" y="818" class="body" font-weight="700" fill="#9a3412">Executor</text>
+    <line x1="44" y1="826" x2="1216" y2="826" stroke="#a5b4fc"/>
+    <g class="note" fill="#475569">
+      <text x="60" y="844">WebSocket 连接管理 · 接收线程 + 事件队列</text><text x="440" y="844" fill="#16a34a">✓ 基类持有</text><text x="740" y="844">—</text><text x="1020" y="844">—</text>
+      <text x="60" y="864">send / recv / post_process 通用逻辑 · commit / create_response</text><text x="440" y="864" fill="#16a34a">✓</text><text x="740" y="864">—</text><text x="1020" y="864">—</text>
+      <text x="60" y="884">_build_connect_url / _build_connect_headers（鉴权差异）</text><text x="440" y="884">abstract</text><text x="740" y="884" fill="#16a34a">✓ 实现</text><text x="1020" y="884">—</text>
+      <text x="60" y="904">_build_session_config · _parse_event（厂商字段解读 → 归一化）</text><text x="440" y="904">abstract</text><text x="740" y="904" fill="#16a34a">✓ 实现</text><text x="1020" y="904">—</text>
+      <text x="60" y="924">帧结果存储（_ai_audio_chunks / _frame_timestamps）· output 聚合</text><text x="440" y="924" fill="#16a34a">✓</text><text x="740" y="924">—</text><text x="1020" y="924">—</text>
+      <text x="60" y="944">barge_in_detected / barge_in_latency_ms</text><text x="440" y="944" fill="#16a34a">✓</text><text x="740" y="944">—</text><text x="1020" y="944">—</text>
+      <text x="60" y="964">多轮循环 + 评估提交（读通用属性，不读厂商字段）</text><text x="440" y="964">—</text><text x="740" y="964">—</text><text x="1020" y="964" fill="#16a34a">✓</text>
+    </g>
+    <text x="60" y="990" class="body" fill="#b91c1c" font-weight="700">铁律：executor 永不直接访问 event["delta"] / event["audio_chunk"] 等厂商字段 —— 新增厂商只新增一个子类文件 + 一次 register，基类 / executor / 工厂零改动。</text>
+  </g>
+
+  <!-- ③ 设计原则 -->
+  <rect x="24" y="1022" width="1192" height="104" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1022" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="1048" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="1041" r="11" fill="#7c3aed"/>
+  <text x="46" y="1045" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="1046" class="sec-title" fill="#4c1d95">关键设计原则（07 §十二）</text>
+  <text x="46" y="1074" class="body">① 数据面与控制面分离建模：测试数据链路（WS 全双工）与观测链路（EventBus + Socket.IO）不混用同一条通道</text>
+  <text x="46" y="1092" class="body">② 帧结果与最终结果分离：frame 供时序分析、summary 供评估与报告，两者不可合并（合并即失去 barge-in 时序与断点回放能力）</text>
+  <text x="46" y="1110" class="body">③ 厂商差异只活在子类：11 种归一化事件是稳定契约（enum 化），executor / 前端 / 评估只消费契约　④ 密钥链逐级回退，日志零明文</text>
+
+  <line x1="0" y1="1140" x2="1240" y2="1140" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1160" font-size="10.5" fill="#64748b">依据：03_流程图.md §2.3 轮次状态机；07_流式推送与结果获取.md §1 §2 §5 §6 §7 §12；01_UseCase总览.md §0.11 UC-1002 / UC-1003 与厂商适配职责矩阵</text>
+</svg>

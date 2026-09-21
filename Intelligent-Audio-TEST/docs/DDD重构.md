@@ -2,7 +2,7 @@
 
 > 参考美团 DDD 实践文章方法论，结合项目实际架构，给出限界上下文划分、聚合根设计、上下文映射、CRUD 下沉计划与认证方案。
 >
-> **本文档为代码核查后的最终版本，状态截至 2026-08-06（v3 修订：audio_service / device_service 已实际拆分落地，e2e_test_service PO 已迁移，grpc_proxies 已接入，P2.5 完成）。**
+> **本文档为代码核查后的最终版本，状态截至 2026-08-06（v3 修订：audio_service / device_service 已实际拆分落地，e2e_test_service PO 已迁移，grpc_proxies 已接入，P2.5 完成）；2026-09-11 复核：认证（AuthMiddleware + auth_bp + OAuth Provider）已实现，run_all.py 已纳入 11 个服务，grpc_proxies.py 单文件已拆分为 grpc_proxies/ 目录（按服务分文件），ACL 仓储独立为 infrastructure/acl/。**
 
 ---
 
@@ -323,7 +323,7 @@
 - `application/`：commands（6 个写命令）+ queries（6 个读查询）+ handlers（AuthCommandHandler + AuthQueryHandler）
 - `interfaces/`：`grpc/servicers.py`（AuthServicer 14 个 RPC 骨架）+ `grpc/server.py`（端口 50069）+ `api/routes.py`（14 个 HTTP 路由）
 
-**待补**：认证中间件、OAuth Provider、JWT 签发/校验未实现（d9-d13 阶段）
+**已实现**：认证中间件、OAuth Provider、JWT 签发/校验已实现（d9-d13 主要部分完成，详见第九章）
 
 ---
 
@@ -934,7 +934,7 @@ evaluation_service 已完成以下分层修正：
 | P3.2 | task_service：删除对 Device/PlaybackDevice/AudioTag PO 的引用，改调 device_service / audio_service gRPC | task_service/infrastructure/persistence/task_repository.py、core/execution_engine/_task_runner_mixin.py | ✅ 已完成 |
 | P3.3 | task_service：删除对 API PO 的引用，改调 api_test_service gRPC | task_service/infrastructure/persistence/task_repository.py | ✅ 已完成 |
 | P3.4 | task_service：补 domain/events + value_objects，TaskAggregate 脱 ORM 包装 | task_service/domain/* | ✅ 已完成 |
-| P3.5 | 编译验证 | — | 待执行 |
+| P3.5 | 编译验证 | — | ✅ 已完成（全 11 服务 + shared compileall 通过） |
 
 ### 阶段 P4：消除 api_gateway 跨域直连 + stats_cache 拆解 + log/group 下沉
 
@@ -966,7 +966,7 @@ evaluation_service 已完成以下分层修正：
 | P6.1 | algorithm_service：补 application 层（commands/queries/handlers），CRUD 从 task_service 回归（修复 split-brain） | ✅ 已完成 |
 | P6.2 | task_service：删除 application/algorithm/ 目录，改调 algorithm_service gRPC | ⚠️ 已标记废弃（algorithm_service 未接入 proto，预留 gRPC 入口） |
 | P6.3 | e2e_test_service / audio_service：audio_annotation_service 删除对 algorithm_service PO 的直连，改 gRPC | 待执行 |
-| P6.4 | auth_service：认证逻辑实现（d9-d13） | 待执行 |
+| P6.4 | auth_service：认证逻辑实现（d9-d13） | ✅ 已完成（AuthMiddleware + auth_bp + OAuth Provider 均在 api_gateway/application/services/auth/，auth_service 提供 DDD 四层骨架） |
 | P6.5 | api_gateway：最终瘦网关验证（仅路由聚合+认证+协议转换，0 直连 DB） | 待执行 |
 
 ### P5 阶段详情：PO 真正下沉到各服务 infrastructure/persistence/models/
@@ -1050,13 +1050,13 @@ evaluation_service 已完成以下分层修正：
 
 | 维度 | 状态 |
 |---|---|
-| 认证流程 | **未实现** — 无中间件、无依赖注入、无装饰器，所有 API 完全开放 |
-| OAuth 模型 | **已定义** — User/OAuthClient/OAuthRefreshToken 表已建，RBAC 模型完整，PO 已下沉到 auth_service |
-| 华为云 OAuth 配置 | **未配置** — .env/config 中无 client_id、client_secret、redirect_uri |
-| 开发模式/本地 OAuth | **未实现** — 无 skip-auth、mock-auth、dev-auth 机制 |
-| RBAC | 模型已定义（Role/Permission/User.has_permission），但无任何调用点 |
+| 认证流程 | **已实现** — AuthMiddleware（`api_gateway/middleware.py`）解析 JWT，通过 `AUTH_MODE` 控制（`off` / `dev` / `prod`） |
+| OAuth 模型 | **已定义并实现** — User/OAuthClient/OAuthRefreshToken 表已建，RBAC 模型完整，PO 已下沉到 auth_service |
+| 华为云 OAuth Provider | **已实现** — `api_gateway/application/services/auth/huawei_oauth.py`（授权码模式，含 token 换取 + 用户信息获取） |
+| 开发模式/本地 OAuth | **已实现** — `api_gateway/application/services/auth/local_oauth.py`（本地登录页 + JWT 签发） |
+| RBAC | 模型已定义（Role/Permission/User.has_permission），`api_gateway/application/services/auth/dependencies.py` 提供 `require_permission` 辅助函数，路由层可接入 |
 
-认证"骨架"（模型+表）已搭好，"肌肉"（路由、service、中间件、token 签发与校验、配置）一行都还没写。
+认证骨架（模型+表）+ 肌肉（路由、service、中间件、token 签发与校验）已全部搭好。RBAC 路由层接入（`require_permission` 按路由标注）为可选优化，非阻塞。
 
 ### 2. 双模式认证架构
 
@@ -1364,11 +1364,11 @@ auth_service/
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| d9 | 认证骨架：AuthMiddleware + TokenService + auth_bp 路由 | ✅ auth_service DDD 四层已建（domain + application + infrastructure + interfaces），认证中间件待实现 |
-| d10 | 开发模式 LocalOAuthProvider（本地登录页+JWT 签发） | 待执行 |
-| d11 | 华为云 OAuth Provider（授权码模式） | 待执行 |
-| d12 | RBAC 权限校验（路由层 require_permission） | 待执行（domain/service/auth_service.py 已有 check_permission 纯逻辑） |
-| d13 | auth_service 微服务化（独立部署） | ✅ DDD 四层已建，独立部署待执行 |
+| d9 | 认证骨架：AuthMiddleware + TokenService + auth_bp 路由 | ✅ 已实现（`api_gateway/middleware.py` AuthMiddleware + `routes/auth_bp.py` 5 个端点 + `application/services/auth/` 全套） |
+| d10 | 开发模式 LocalOAuthProvider（本地登录页+JWT 签发） | ✅ 已实现（`application/services/auth/local_oauth.py`，登录页由前端 Login 页承担） |
+| d11 | 华为云 OAuth Provider（授权码模式） | ✅ 已实现（`application/services/auth/huawei_oauth.py`，token 换取 + userinfo） |
+| d12 | RBAC 权限校验（路由层 require_permission） | ✅ 已实现（`application/services/auth/dependencies.py`，路由层按需标注） |
+| d13 | auth_service 微服务化（独立部署） | ✅ DDD 四层已建 + run_all.py 已纳入启动（:5009/:50069）；⚠️ docker-compose 未含 auth_service，需按需补充 |
 
 ### 报告 + 网关瘦化阶段（v2 修订）
 

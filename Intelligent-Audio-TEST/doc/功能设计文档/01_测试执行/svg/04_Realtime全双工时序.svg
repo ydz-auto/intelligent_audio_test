@@ -1,0 +1,189 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1420" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowViolet); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .ms { font-size: 9.5px; fill: #334155; }
+      .rt { font-size: 9.5px; fill: #7c3aed; }
+      .life { stroke: #cbd5e1; stroke-width: 1; stroke-dasharray: 4 4; }
+      .fr { fill: none; stroke: #94a3b8; stroke-width: 1.2; }
+      .fra { fill: none; stroke: #dc2626; stroke-width: 1.2; stroke-dasharray: 5 4; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1420" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">Realtime（websocket_api）全双工时序 · 含 barge-in 打断轮</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">数据面 = 执行器 ↔ RealtimeAPIAdapter ↔ 被测 API 的 WS 全双工（高带宽、时延敏感、随用例结束断开）· 控制面 = EventBus → 网关 → Socket.IO（低频、全程存活）</text>
+
+  <!-- ① 时序 -->
+  <rect x="24" y="92" width="1192" height="900" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="111" r="11" fill="#64748b"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#1e293b">全双工时序 — 对应 03_流程图.md §2.2（事件名全部为 11 种归一化事件，厂商字段零泄漏）</text>
+
+  <g>
+    <rect x="61" y="140" width="200" height="42" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-width="1.2"/>
+    <text x="161" y="158" class="box-name" text-anchor="middle" font-size="11">RealtimeSessionExecutor</text>
+    <text x="161" y="174" class="chip-t" fill="#64748b">api_test_service worker 实例内</text>
+    <rect x="295" y="140" width="200" height="42" rx="8" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>
+    <text x="395" y="158" class="box-name" text-anchor="middle" font-size="11">RealtimeAPIAdapter</text>
+    <text x="395" y="174" class="chip-t" fill="#64748b">api_adapter_service → P1 迁入 adapters/</text>
+    <rect x="530" y="140" width="200" height="42" rx="8" fill="#cffafe" stroke="#0891b2" stroke-width="1.2"/>
+    <text x="630" y="158" class="box-name" text-anchor="middle" font-size="11">audio_service</text>
+    <text x="630" y="174" class="chip-t" fill="#64748b">gRPC :50052 RenderAudioStream（新增）</text>
+    <rect x="764" y="140" width="200" height="42" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>
+    <text x="864" y="158" class="box-name" text-anchor="middle" font-size="11">被测 Realtime API</text>
+    <text x="864" y="174" class="chip-t" fill="#64748b">wss://api.openai.com/v1/realtime</text>
+    <rect x="998" y="140" width="200" height="42" rx="8" fill="#eef2ff" stroke="#6366f1" stroke-width="1.2"/>
+    <text x="1098" y="158" class="box-name" text-anchor="middle" font-size="11">evaluation_service</text>
+    <text x="1098" y="174" class="chip-t" fill="#64748b">:5004 / gRPC :50091</text>
+  </g>
+  <g class="life">
+    <line x1="161" y1="182" x2="161" y2="972"/><line x1="395" y1="182" x2="395" y2="972"/><line x1="630" y1="182" x2="630" y2="972"/>
+    <line x1="864" y1="182" x2="864" y2="972"/><line x1="1098" y1="182" x2="1098" y2="972"/>
+  </g>
+
+  <line x1="161" y1="212" x2="395" y2="212" class="flow"/>
+  <text x="169" y="208" class="ms">1  adapter.initialize()</text>
+  <line x1="395" y1="240" x2="864" y2="240" class="flow"/>
+  <text x="403" y="236" class="ms">2  WebSocket 握手 ?model=…　Authorization: Bearer（密钥链 case_config → meta → env OPENAI_API_KEY，日志零明文）</text>
+  <line x1="864" y1="268" x2="395" y2="268" class="flow-violet"/>
+  <text x="403" y="264" class="rt">3  connection established → 归一化 session.created</text>
+  <rect x="405" y="278" width="290" height="34" rx="6" fill="#fefce8" stroke="#ca8a04" stroke-width="1"/>
+  <text x="413" y="292" class="chip-t" fill="#854d0e" text-anchor="start">4  启动 _recv_loop（daemon 线程，生产者）</text>
+  <text x="413" y="305" class="chip-t" fill="#854d0e" text-anchor="start">厂商事件 → _parse_event() → 归一化事件入 queue.Queue</text>
+
+  <line x1="161" y1="330" x2="395" y2="330" class="flow"/>
+  <text x="169" y="326" class="ms">5  adapter.pre_process()</text>
+  <line x1="395" y1="358" x2="864" y2="358" class="flow"/>
+  <text x="403" y="354" class="ms">6  session.update（VAD / 音频格式 / voice / temperature）</text>
+  <line x1="864" y1="386" x2="395" y2="386" class="flow-violet"/>
+  <text x="403" y="382" class="rt">7  session.updated（归一化确认）</text>
+
+  <rect class="fr" x="52" y="400" width="920" height="204" rx="6"/>
+  <rect x="52" y="400" width="520" height="20" rx="4" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1"/>
+  <text x="62" y="414" class="chip-t" fill="#334155" text-anchor="start" font-weight="700">loop 每轮 round · 正常轮 / 干扰轮 / 打断轮（噪声由轮次混音参数表达）</text>
+  <line x1="161" y1="440" x2="630" y2="440" class="flow"/>
+  <text x="169" y="436" class="ms">8  gRPC RenderAudioStream（主讲 + 干扰 + 噪声；轮次级 &gt; 全局级；SPL 增益随请求传入）</text>
+  <line x1="630" y1="470" x2="161" y2="470" class="flow-violet"/>
+  <text x="169" y="466" class="rt">9  server-streaming：100ms base64 PCM chunk × N（离线混音 6 步，边收边发不落盘等待）</text>
+  <line x1="161" y1="500" x2="395" y2="500" class="flow"/>
+  <text x="169" y="496" class="ms">10  adapter.send(chunk, is_audio=true) → input_audio_buffer.append</text>
+  <line x1="161" y1="530" x2="395" y2="530" class="flow"/>
+  <text x="169" y="526" class="ms">11  adapter.commit_input() → input_audio_buffer.commit ＋ create_response()</text>
+  <line x1="161" y1="560" x2="395" y2="560" class="flow"/>
+  <text x="169" y="556" class="ms">12  adapter.post_process(is_interruption = false)</text>
+  <line x1="395" y1="590" x2="161" y2="590" class="flow-violet"/>
+  <text x="169" y="586" class="rt">13  ai_audio_delta × N → ai_audio_done（frame 逐帧实时产出，summary 轮末聚合，两者分离持久化）</text>
+
+  <rect class="fra" x="52" y="618" width="920" height="242" rx="6"/>
+  <rect x="52" y="618" width="470" height="20" rx="4" fill="#fef2f2" stroke="#dc2626" stroke-width="1"/>
+  <text x="62" y="632" class="chip-t" fill="#b91c1c" text-anchor="start" font-weight="700">alt 打断轮 barge-in · is_interruption = true（stop_intent 另有独立分支）</text>
+  <line x1="161" y1="658" x2="395" y2="658" class="flow"/>
+  <text x="169" y="654" class="ms">14  adapter.post_process(is_interruption=true) —— 只等阶段 A：ai_audio_delta（AI 开口）</text>
+  <rect x="171" y="668" width="290" height="34" rx="6" fill="#fefce8" stroke="#ca8a04" stroke-width="1"/>
+  <text x="179" y="682" class="chip-t" fill="#854d0e" text-anchor="start">15  延迟 interruption_delay_ms（配置化，如 1500ms）</text>
+  <text x="179" y="695" class="chip-t" fill="#854d0e" text-anchor="start">语义：先让 AI 说满 1.5 秒，再推打断音频</text>
+  <line x1="161" y1="722" x2="630" y2="722" class="flow"/>
+  <text x="169" y="718" class="ms">16  RenderAudioStream（打断音频混音）</text>
+  <line x1="630" y1="750" x2="161" y2="750" class="flow-violet"/>
+  <text x="169" y="746" class="rt">17  100ms chunk × N</text>
+  <line x1="161" y1="778" x2="395" y2="778" class="flow"/>
+  <text x="169" y="774" class="ms">18  adapter.send(chunk) × N ＋ adapter.commit_input()</text>
+  <line x1="161" y1="806" x2="395" y2="806" class="flow-red"/>
+  <text x="169" y="802" class="ms" fill="#b91c1c">19  barge-in 打断检测（5s 归一化事件窗口，窗口值配置化）</text>
+  <line x1="395" y1="834" x2="161" y2="834" class="flow-violet"/>
+  <text x="169" y="830" class="rt">20  user_speech_started / response_cancelled</text>
+  <rect x="171" y="844" width="790" height="34" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="181" y="858" class="chip-t" fill="#047857" text-anchor="start">命中 → barge_in_detected = true，记录 barge_in_latency_ms，等 AI 重新回复（ai_audio_delta × N → ai_audio_done）</text>
+  <text x="181" y="871" class="chip-t" fill="#b91c1c" text-anchor="start">未命中 → barge_in_detected = false（AI 已说完，窗口已过）→ 直接进入 round_result　｜　超时但已捕获 ai_audio_delta → success = true</text>
+
+  <line x1="161" y1="890" x2="395" y2="890" class="flow"/>
+  <text x="169" y="886" class="ms">21（轮末）帧结果 frame 与最终结果 summary 分别持久化（大字段落盘 MinIO，结论落库 DB）</text>
+  <line x1="161" y1="920" x2="395" y2="920" class="flow"/>
+  <text x="169" y="916" class="ms">22  adapter.teardown() —— ws.close()（会话随用例结束断开）</text>
+  <line x1="161" y1="950" x2="1098" y2="950" class="flow"/>
+  <text x="169" y="946" class="ms">23  ResultsMixin → gRPC EvaluateCase（result_type = 'realtime'，扩展 first_frame_ms / event_log / frame_results / rounds）</text>
+
+  <!-- ② 归一化事件与生产者消费者 -->
+  <rect x="24" y="1008" width="1192" height="212" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1008" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="1034" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="1027" r="11" fill="#7c3aed"/>
+  <text x="46" y="1031" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="1032" class="sec-title" fill="#4c1d95">归一化事件全集（RealtimeEventType 枚举 · 新增）与生产者-消费者事件队列</text>
+
+  <g>
+    <rect x="44" y="1054" width="112" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="100" y="1070" class="pill-t" fill="#5b21b6">ai_audio_delta</text>
+    <rect x="164" y="1054" width="112" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="220" y="1070" class="pill-t" fill="#5b21b6">ai_audio_done</text>
+    <rect x="284" y="1054" width="110" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="339" y="1070" class="pill-t" fill="#5b21b6">ai_text_delta</text>
+    <rect x="402" y="1054" width="110" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="457" y="1070" class="pill-t" fill="#5b21b6">ai_text_done</text>
+    <rect x="520" y="1054" width="134" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="587" y="1070" class="pill-t" fill="#5b21b6">user_speech_started</text>
+    <rect x="662" y="1054" width="134" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="729" y="1070" class="pill-t" fill="#5b21b6">user_speech_stopped</text>
+    <rect x="804" y="1054" width="134" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="871" y="1070" class="pill-t" fill="#5b21b6">response_cancelled</text>
+    <rect x="946" y="1054" width="70" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="981" y="1070" class="pill-t" fill="#5b21b6">error</text>
+    <rect x="1024" y="1054" width="90" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="1069" y="1070" class="pill-t" fill="#5b21b6">session.created</text>
+    <rect x="44" y="1084" width="92" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="90" y="1100" class="pill-t" fill="#5b21b6">session.updated</text>
+    <rect x="144" y="1084" width="120" height="24" rx="12" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/><text x="204" y="1100" class="pill-t" fill="#5b21b6">connection_closed</text>
+    <text x="280" y="1100" class="note" text-anchor="start">↑ 共 11 种 · 枚举化定义（新增 RealtimeEventType(str, Enum)），禁止裸字符串与厂商字段直读</text>
+  </g>
+
+  <rect x="44" y="1118" width="560" height="100" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="60" y="1138" font-size="11" font-weight="700" fill="#4c1d95">厂商事件 → 归一化映射（子类 _parse_event 职责）</text>
+  <text x="60" y="1156" class="body">OpenAI：response.audio.delta → ai_audio_delta</text>
+  <text x="60" y="1172" class="body">response.audio.done / response.done → ai_audio_done</text>
+  <text x="60" y="1188" class="body">speech_started → user_speech_started · cancelled → response_cancelled</text>
+  <text x="60" y="1206" class="note">豆包 / 通义：audio_chunk · audio_complete · user_speech_start</text>
+
+  <rect x="616" y="1118" width="580" height="100" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="632" y="1138" font-size="11" font-weight="700" fill="#4c1d95">生产者-消费者（避免半双工错觉 · 削峰）</text>
+  <text x="632" y="1156" class="body">_recv_loop（daemon，生产者）：ws.recv() → _parse_event() → queue.Queue</text>
+  <text x="632" y="1172" class="body">主线程（消费者）：adapter.recv(timeout) 取事件，无事件返回 None</text>
+  <text x="632" y="1192" class="note">异常入队而非抛出（connection_closed）· 生产者线程永不抛异常</text>
+  <text x="632" y="1208" class="note">teardown 后 daemon 自动退出</text>
+
+  <!-- ③ 异常矩阵 -->
+  <rect x="24" y="1236" width="1192" height="140" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1236" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1262" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1255" r="11" fill="#dc2626"/>
+  <text x="46" y="1259" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="1260" class="sec-title" fill="#7f1d1d">异常与超时矩阵（07 §九）· 任意轮次状态可触发</text>
+  <g>
+    <text x="60" y="1292" class="body" font-weight="700" fill="#334155">触发条件</text>
+    <text x="300" y="1292" class="body" font-weight="700" fill="#334155">处理</text>
+    <text x="760" y="1292" class="body" font-weight="700" fill="#334155">结果</text>
+    <line x1="44" y1="1300" x2="1216" y2="1300" stroke="#fca5a5"/>
+    <g class="note" fill="#475569">
+      <text x="60" y="1318">connection_closed（WS 断连）</text><text x="300" y="1318">保留已收集 frame，不重连；立即 flush 未推 frame 通道</text><text x="760" y="1318">round_result(success = false) → 会话结束</text>
+      <text x="60" y="1338">等待 ai_audio_done 超时</text><text x="300" y="1338">窗口内已捕获 ai_audio_delta（AI 已开口）视为成功</text><text x="760" y="1338">round_result(success = true)　·　否则 false</text>
+      <text x="60" y="1358">error 事件</text><text x="300" y="1358">记录 error = msg 并终止本轮</text><text x="760" y="1358">round_result(success = false, error = msg)</text>
+    </g>
+  </g>
+
+  <line x1="0" y1="1388" x2="1240" y2="1388" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1408" font-size="10.5" fill="#64748b">依据：03_流程图.md §2.2 Realtime 全双工时序 · §2.3 轮次状态机；07_流式推送与结果获取.md §1-§5 §9；01_UseCase总览.md UC-1002 / UC-1003（厂商适配职责矩阵）</text>
+</svg>

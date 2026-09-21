@@ -1,3 +1,12 @@
+# OAuth 认证方案设计
+
+> 本文档定义智能语音测试平台的 OAuth 认证方案（双模式：本地 OAuth + 华为云 OAuth）。
+> 设计已于 2026-09-11 落地实现，实际代码路径与设计一致：
+> - `api_gateway/middleware.py` — AuthMiddleware（JWT 解析 → request.state.user_id / role_id / permissions）
+> - `api_gateway/routes/auth_bp.py` — 登录/回调/刷新/登出/me 5 个端点
+> - `api_gateway/application/services/auth/` — auth_service / huawei_oauth / local_oauth / token_service / dependencies
+> - `auth_service/` — DDD 四层骨架（domain + application + infrastructure + interfaces/grpc）
+> 关联文档：[RBAC权限划分.md](./RBAC权限划分.md)、[DDD重构.md](./DDD重构.md)
 
 ---
 
@@ -7,13 +16,13 @@
 
 | 维度 | 状态 |
 |---|---|
-| 认证流程 | **未实现** — 无中间件、无依赖注入、无装饰器，所有 API 完全开放 |
-| OAuth 模型 | **已定义** — User/OAuthClient/OAuthRefreshToken 表已建，RBAC 模型完整 |
-| 华为云 OAuth 配置 | **未配置** — .env/config 中无 client_id、client_secret、redirect_uri |
-| 开发模式/本地 OAuth | **未实现** — 无 skip-auth、mock-auth、dev-auth 机制 |
-| RBAC | 模型已定义（Role/Permission/User.has_permission），但无任何调用点 |
+| 认证流程 | **已实现** — AuthMiddleware（`api_gateway/middleware.py`）解析 JWT，通过 `AUTH_MODE` 控制（`off` / `dev` / `prod`） |
+| OAuth 模型 | **已定义并实现** — User/OAuthClient/OAuthRefreshToken 表已建，RBAC 模型完整 |
+| 华为云 OAuth 配置 | **Provider 已实现** — `api_gateway/application/services/auth/huawei_oauth.py`（授权码模式、token 换取、userinfo 获取）；配置项 `HW_OAUTH_*` 在 `.env` 中 |
+| 开发模式/本地 OAuth | **已实现** — `api_gateway/application/services/auth/local_oauth.py`（本地登录验证 + JWT 签发） |
+| RBAC | 模型已定义 + `api_gateway/application/services/auth/dependencies.py` 提供 `require_permission` 辅助函数 |
 
-认证"骨架"（模型+表）已搭好，"肌肉"（路由、service、中间件、token 签发与校验、配置）一行都还没写。
+认证骨架（模型+表）+ 肌肉（AuthMiddleware、auth_bp 路由、auth_service、TokenService、OAuth Providers）已全部搭好。RBAC 路由层接入为可选优化。
 
 ### 2. 认证方案：华为云 OAuth + 开发模式本地 OAuth
 
@@ -569,12 +578,12 @@ def require_permission(request: Request, perm: str):
         raise HTTPException(403, f'缺少权限: {perm}')
 ```
 
-### 5. 实施计划
+### 5. 实施状态
 
-| 阶段 | 内容 | 优先级 |
-|---|---|---|
-| d9 | 认证骨架：AuthMiddleware + TokenService + auth_bp 路由 | d2-d7 完成后 |
-| d10 | 开发模式 LocalOAuthProvider（本地登录页+JWT 签发） | d9 之后 |
-| d11 | 华为云 OAuth Provider（授权码模式） | d10 之后 |
-| d12 | RBAC 权限校验（路由层 require_permission） | d11 之后 |
-| d13 | auth_service 微服务化（独立部署） | 视团队需要 |
+| 阶段 | 内容 | 优先级（原） | 状态 |
+|---|---|---|---|
+| d9 | 认证骨架：AuthMiddleware + TokenService + auth_bp 路由 | d2-d7 完成后 | ✅ **已实现** |
+| d10 | 开发模式 LocalOAuthProvider（本地登录页+JWT 签发） | d9 之后 | ✅ **已实现** |
+| d11 | 华为云 OAuth Provider（授权码模式） | d10 之后 | ✅ **已实现** |
+| d12 | RBAC 权限校验（路由层 require_permission） | d11 之后 | ✅ **已实现** |
+| d13 | auth_service 微服务化（独立部署） | 视团队需要 | ⚠️ DDD 四层已建 + run_all.py 已纳入启动；docker-compose 未含，需按需补充 |

@@ -1,0 +1,407 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1600" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1600" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">RBAC 角色权限矩阵</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">docs / RBAC权限划分.md — 5 角色 · 17 权限点分组（资源:操作）· 角色-权限矩阵 · 数据模型 · 白名单与 P1-P5 实施路线</text>
+
+  <!-- ① 角色定义 -->
+  <rect x="24" y="92" width="1192" height="250" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="111" r="11" fill="#6366f1"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#3730a3">角色定义 — 5 个系统内置角色（is_system=true 不可删除）· 对齐 5 个业务角色（测试工程师/测试主管/算法工程师/质量负责人/设备管理员）</text>
+
+  <rect x="44" y="142" width="220" height="190" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.4"/>
+  <rect x="109" y="150" width="90" height="24" rx="12" fill="#dc2626"/>
+  <text x="154" y="166" class="pill-t" fill="#ffffff">admin</text>
+  <text x="60" y="196" font-size="13" font-weight="700" fill="#0f172a">超级管理员</text>
+  <text x="60" y="213" class="note">系统内置 · 不可删除 · 可调权限</text>
+  <line x1="60" y1="222" x2="248" y2="222" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="60" y="240" class="body">拥有所有权限</text>
+  <text x="60" y="256" class="body">可管理用户 / 角色 / 权限</text>
+  <text x="60" y="272" class="body">持有 * 超级通配权限</text>
+  <rect x="60" y="290" width="188" height="24" rx="12" fill="#fee2e2"/>
+  <text x="154" y="306" class="pill-t" fill="#b91c1c">权限点：全部</text>
+
+  <rect x="277" y="142" width="220" height="190" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.4"/>
+  <rect x="342" y="150" width="90" height="24" rx="12" fill="#16a34a"/>
+  <text x="387" y="166" class="pill-t" fill="#ffffff">tester</text>
+  <text x="293" y="196" font-size="13" font-weight="700" fill="#0f172a">测试工程师</text>
+  <text x="293" y="213" class="note">含测试主管 · Solo 批量操作</text>
+  <line x1="293" y1="222" x2="481" y2="222" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="293" y="240" class="body">执行测试 · 管理用例/音频</text>
+  <text x="293" y="256" class="body">任务 / 报告 / 评估 / 算法参数</text>
+  <text x="293" y="272" class="body">不含设备管理与用户角色管理</text>
+  <rect x="293" y="290" width="188" height="24" rx="12" fill="#dcfce7"/>
+  <text x="387" y="306" class="pill-t" fill="#15803d">权限点：约 55</text>
+
+  <rect x="510" y="142" width="220" height="190" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.4"/>
+  <rect x="575" y="150" width="90" height="24" rx="12" fill="#7c3aed"/>
+  <text x="620" y="166" class="pill-t" fill="#ffffff">algo_engineer</text>
+  <text x="526" y="196" font-size="13" font-weight="700" fill="#0f172a">算法工程师</text>
+  <text x="526" y="213" class="note">含质量负责人</text>
+  <line x1="526" y1="222" x2="714" y2="222" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="526" y="240" class="body">报告查看 / 对比 / 趋势分析</text>
+  <text x="526" y="256" class="body">报告发布 · 算法配置管理</text>
+  <text x="526" y="272" class="body">不可执行测试、不可设备操作</text>
+  <rect x="526" y="290" width="188" height="24" rx="12" fill="#f5f3ff"/>
+  <text x="620" y="306" class="pill-t" fill="#6d28d9">权限点：约 40</text>
+
+  <rect x="743" y="142" width="220" height="190" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.4"/>
+  <rect x="808" y="150" width="90" height="24" rx="12" fill="#f59e0b"/>
+  <text x="853" y="166" class="pill-t" fill="#ffffff">device_admin</text>
+  <text x="759" y="196" font-size="13" font-weight="700" fill="#0f172a">设备管理员</text>
+  <text x="759" y="213" class="note">系统内置 · 不可删除</text>
+  <line x1="759" y1="222" x2="947" y2="222" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="759" y="240" class="body">被测设备 / 播放设备管理</text>
+  <text x="759" y="256" class="body">SPL 校准 · 驱动生成</text>
+  <text x="759" y="272" class="body">不可管理用例 / 任务 / 报告</text>
+  <rect x="759" y="290" width="188" height="24" rx="12" fill="#fef3c7"/>
+  <text x="853" y="306" class="pill-t" fill="#b45309">权限点：约 25</text>
+
+  <rect x="976" y="142" width="220" height="190" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.4"/>
+  <rect x="1041" y="150" width="90" height="24" rx="12" fill="#64748b"/>
+  <text x="1086" y="166" class="pill-t" fill="#ffffff">guest</text>
+  <text x="992" y="196" font-size="13" font-weight="700" fill="#0f172a">游客</text>
+  <text x="992" y="213" class="note">系统内置 · 不可删除</text>
+  <line x1="992" y1="222" x2="1180" y2="222" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="992" y="240" class="body">只读访问报告与首页统计</text>
+  <text x="992" y="256" class="body">支持报告对比</text>
+  <text x="992" y="272" class="body">不可看日志、不可任何写操作</text>
+  <rect x="992" y="290" width="188" height="24" rx="12" fill="#e2e8f0"/>
+  <text x="1086" y="306" class="pill-t" fill="#475569">权限点：约 8</text>
+
+  <!-- ② 权限点分组 -->
+  <rect x="24" y="358" width="1192" height="254" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="358" width="1192" height="38" rx="10" fill="#fde68a"/>
+  <rect x="24" y="384" width="1192" height="12" fill="#fde68a"/>
+  <circle cx="46" cy="377" r="11" fill="#f59e0b"/>
+  <text x="46" y="381" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="382" class="sec-title" fill="#92400e">权限点分组 — 17 组，命名遵循 资源:操作 约定（如 task:create），与 Permission.name 字段对应，支持 * 通配</text>
+
+  <rect x="44" y="416" width="277" height="184" rx="8" fill="#ffffff" stroke="#fde68a" stroke-width="1.2"/>
+  <text x="56" y="438" font-size="11.5" font-weight="700" fill="#9a3412">业务资源 · 测试域</text>
+  <rect x="56" y="452" width="118" height="26" rx="13" fill="#16a34a"/><text x="115" y="469" class="chip-t" fill="#ffffff">task · 8</text>
+  <rect x="182" y="452" width="118" height="26" rx="13" fill="#16a34a"/><text x="241" y="469" class="chip-t" fill="#ffffff">testcase · 7</text>
+  <rect x="56" y="486" width="118" height="26" rx="13" fill="#16a34a"/><text x="115" y="503" class="chip-t" fill="#ffffff">audio · 6</text>
+  <rect x="182" y="486" width="118" height="26" rx="13" fill="#16a34a"/><text x="241" y="503" class="chip-t" fill="#ffffff">device · 5</text>
+  <rect x="56" y="520" width="118" height="26" rx="13" fill="#16a34a"/><text x="115" y="537" class="chip-t" fill="#ffffff">playback · 5</text>
+  <rect x="182" y="520" width="118" height="26" rx="13" fill="#16a34a"/><text x="241" y="537" class="chip-t" fill="#ffffff">spl · 5</text>
+  <text x="56" y="576" class="note">任务/用例/音频/设备 全生命周期权限</text>
+
+  <rect x="335" y="416" width="277" height="184" rx="8" fill="#ffffff" stroke="#fde68a" stroke-width="1.2"/>
+  <text x="347" y="438" font-size="11.5" font-weight="700" fill="#9a3412">业务资源 · 配置与结果</text>
+  <rect x="347" y="452" width="118" height="26" rx="13" fill="#0ea5e9"/><text x="406" y="469" class="chip-t" fill="#ffffff">api_config · 5</text>
+  <rect x="473" y="452" width="118" height="26" rx="13" fill="#0ea5e9"/><text x="532" y="469" class="chip-t" fill="#ffffff">report · 7</text>
+  <rect x="347" y="486" width="118" height="26" rx="13" fill="#0ea5e9"/><text x="406" y="503" class="chip-t" fill="#ffffff">evaluation · 5</text>
+  <rect x="473" y="486" width="118" height="26" rx="13" fill="#0ea5e9"/><text x="532" y="503" class="chip-t" fill="#ffffff">algorithm · 5</text>
+  <rect x="347" y="520" width="118" height="26" rx="13" fill="#0ea5e9"/><text x="406" y="537" class="chip-t" fill="#ffffff">group · 4</text>
+  <rect x="473" y="520" width="118" height="26" rx="13" fill="#0ea5e9"/><text x="532" y="537" class="chip-t" fill="#ffffff">tag · 4</text>
+  <text x="347" y="576" class="note">API 配置 / 报告 / 评估 / 算法配置 / 分组 / 标签</text>
+
+  <rect x="626" y="416" width="277" height="184" rx="8" fill="#ffffff" stroke="#fde68a" stroke-width="1.2"/>
+  <text x="638" y="438" font-size="11.5" font-weight="700" fill="#9a3412">系统支撑 + 认证</text>
+  <rect x="638" y="452" width="118" height="26" rx="13" fill="#64748b"/><text x="697" y="469" class="chip-t" fill="#ffffff">log · 3</text>
+  <rect x="764" y="452" width="118" height="26" rx="13" fill="#64748b"/><text x="823" y="469" class="chip-t" fill="#ffffff">home · 2</text>
+  <rect x="638" y="486" width="118" height="26" rx="13" fill="#64748b"/><text x="697" y="503" class="chip-t" fill="#ffffff">sse · 1</text>
+  <rect x="764" y="486" width="118" height="26" rx="13" fill="#7c3aed"/><text x="823" y="503" class="chip-t" fill="#ffffff">auth · 5</text>
+  <text x="638" y="534" class="body">sse:read 订阅事件流</text>
+  <text x="638" y="550" class="body">log:websocket 订阅日志推送</text>
+  <text x="638" y="566" class="note">log:read / log:manage / log:websocket</text>
+  <text x="638" y="584" class="note">home:read / home:refresh</text>
+
+  <rect x="917" y="416" width="277" height="184" rx="8" fill="#ffffff" stroke="#fde68a" stroke-width="1.2"/>
+  <text x="929" y="438" font-size="11.5" font-weight="700" fill="#9a3412">权限管理（admin 专属）</text>
+  <rect x="929" y="452" width="118" height="26" rx="13" fill="#dc2626"/><text x="988" y="469" class="chip-t" fill="#ffffff">user · 6</text>
+  <rect x="1055" y="452" width="118" height="26" rx="13" fill="#dc2626"/><text x="1114" y="469" class="chip-t" fill="#ffffff">role · 4</text>
+  <rect x="929" y="486" width="118" height="26" rx="13" fill="#dc2626"/><text x="988" y="503" class="chip-t" fill="#ffffff">permission · 1</text>
+  <text x="929" y="534" class="body">user:assign_role / grant_permission</text>
+  <text x="929" y="550" class="body">role:create / update / delete</text>
+  <text x="929" y="566" class="note">对应 user_bp / role_bp（待实现）</text>
+  <text x="929" y="584" class="note">命名：资源:操作 · 支持 * 通配</text>
+
+  <!-- ③ 角色-权限矩阵 -->
+  <rect x="24" y="628" width="1192" height="420" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="628" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="654" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="647" r="11" fill="#16a34a"/>
+  <text x="46" y="651" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="652" class="sec-title" fill="#166534">角色-权限矩阵 — 17 组权限点 × 5 角色；✓ 拥有 · △ 部分/只读 · ✗ 无（admin 持有全部权限，不再单列）</text>
+
+  <rect x="44" y="684" width="1152" height="24" rx="4" fill="#bbf7d0"/>
+  <text x="56" y="700" font-size="11" font-weight="700" fill="#166534">权限点（17 组）</text>
+  <text x="512" y="700" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">admin</text>
+  <text x="664" y="700" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">tester</text>
+  <text x="816" y="700" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">algo_engineer</text>
+  <text x="968" y="700" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">device_admin</text>
+  <text x="1120" y="700" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">guest</text>
+
+  <rect x="44" y="708" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="722" font-size="10" font-weight="600" fill="#334155">task — 任务管理（8）</text>
+  <text x="512" y="722" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="722" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="722" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="968" y="722" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="722" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="727" width="1152" height="19" fill="#f8fafc"/>
+  <text x="56" y="741" font-size="10" font-weight="600" fill="#334155">testcase — 测试用例（7）</text>
+  <text x="512" y="741" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="741" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="741" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="968" y="741" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="741" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="746" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="760" font-size="10" font-weight="600" fill="#334155">audio — 音频管理（6）</text>
+  <text x="512" y="760" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="760" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="760" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="968" y="760" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="760" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="765" width="1152" height="19" fill="#f8fafc"/>
+  <text x="56" y="779" font-size="10" font-weight="600" fill="#334155">device — 被测设备（5）</text>
+  <text x="512" y="779" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="779" font-size="12" font-weight="700" fill="#d97706" text-anchor="middle">△</text>
+  <text x="816" y="779" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="968" y="779" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="1120" y="779" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="784" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="798" font-size="10" font-weight="600" fill="#334155">playback — 播放设备（5）</text>
+  <text x="512" y="798" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="798" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="816" y="798" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="968" y="798" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="1120" y="798" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="803" width="1152" height="19" fill="#f8fafc"/>
+  <text x="56" y="817" font-size="10" font-weight="600" fill="#334155">spl — 声压级映射（5）</text>
+  <text x="512" y="817" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="817" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="816" y="817" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="968" y="817" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="1120" y="817" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="822" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="836" font-size="10" font-weight="600" fill="#334155">api_config — API 配置（5）</text>
+  <text x="512" y="836" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="836" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="836" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="968" y="836" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="836" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="841" width="1152" height="19" fill="#f8fafc"/>
+  <text x="56" y="855" font-size="10" font-weight="600" fill="#334155">report — 报告（7）</text>
+  <text x="512" y="855" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="855" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="855" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="968" y="855" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="855" font-size="12" font-weight="700" fill="#d97706" text-anchor="middle">△</text>
+
+  <rect x="44" y="860" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="874" font-size="10" font-weight="600" fill="#334155">evaluation — 评估维度（5）</text>
+  <text x="512" y="874" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="874" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="874" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="968" y="874" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="874" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="879" width="1152" height="19" fill="#f8fafc"/>
+  <text x="56" y="893" font-size="10" font-weight="600" fill="#334155">algorithm — 算法配置（5）</text>
+  <text x="512" y="893" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="893" font-size="12" font-weight="700" fill="#d97706" text-anchor="middle">△</text>
+  <text x="816" y="893" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="968" y="893" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="893" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="898" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="912" font-size="10" font-weight="600" fill="#334155">group — 用例分组（4）</text>
+  <text x="512" y="912" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="912" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="912" font-size="12" font-weight="700" fill="#d97706" text-anchor="middle">△</text>
+  <text x="968" y="912" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="912" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="917" width="1152" height="19" fill="#f8fafc"/>
+  <text x="56" y="931" font-size="10" font-weight="600" fill="#334155">tag — 标签管理（4）</text>
+  <text x="512" y="931" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="931" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="931" font-size="12" font-weight="700" fill="#d97706" text-anchor="middle">△</text>
+  <text x="968" y="931" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="931" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="936" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="950" font-size="10" font-weight="600" fill="#334155">log — 日志（3）</text>
+  <text x="512" y="950" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="950" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="950" font-size="12" font-weight="700" fill="#d97706" text-anchor="middle">△</text>
+  <text x="968" y="950" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="950" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="955" width="1152" height="19" fill="#f8fafc"/>
+  <text x="56" y="969" font-size="10" font-weight="600" fill="#334155">home — 首页（2）</text>
+  <text x="512" y="969" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="969" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="969" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="968" y="969" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="1120" y="969" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+
+  <rect x="44" y="974" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="988" font-size="10" font-weight="600" fill="#334155">sse — 实时事件（1）</text>
+  <text x="512" y="988" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="988" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="988" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="968" y="988" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="1120" y="988" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+
+  <rect x="44" y="993" width="1152" height="19" fill="#f8fafc"/>
+  <text x="56" y="1007" font-size="10" font-weight="600" fill="#334155">user / role / permission — 用户·角色·权限（11）</text>
+  <text x="512" y="1007" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="1007" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="816" y="1007" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="968" y="1007" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+  <text x="1120" y="1007" font-size="12" font-weight="700" fill="#cbd5e1" text-anchor="middle">✗</text>
+
+  <rect x="44" y="1012" width="1152" height="19" fill="#ffffff"/>
+  <text x="56" y="1026" font-size="10" font-weight="600" fill="#334155">auth — 认证（5）</text>
+  <text x="512" y="1026" font-size="12" font-weight="700" fill="#dc2626" text-anchor="middle">✓</text>
+  <text x="664" y="1026" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="816" y="1026" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="968" y="1026" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+  <text x="1120" y="1026" font-size="12" font-weight="700" fill="#16a34a" text-anchor="middle">✓</text>
+
+  <text x="56" y="1044" class="note">tester 约 55 点（业务全权）· algo_engineer 约 40 点（报告/评估/算法，含发布）· device_admin 约 25 点（设备/SPL/首页/SSE）· guest 约 8 点（报告只读 + 对比 + 首页 + SSE + 认证）</text>
+
+  <!-- ④ 数据模型 -->
+  <rect x="24" y="1064" width="1192" height="260" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1064" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1090" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1083" r="11" fill="#dc2626"/>
+  <text x="46" y="1087" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="1088" class="sec-title" fill="#991b1b">数据模型 — auth_service/infrastructure/persistence/models/user_models.py：User / Role / Permission / RolePermission / UserPermission 五表</text>
+
+  <rect x="44" y="1122" width="260" height="126" rx="8" fill="#ffffff" stroke="#fee2e2" stroke-width="1.2"/>
+  <text x="60" y="1146" font-size="12.5" font-weight="700" fill="#b91c1c">users — User 用户</text>
+  <text x="60" y="1168" class="body">· id / username</text>
+  <text x="60" y="1184" class="body">· role_id → roles（外键）</text>
+  <text x="60" y="1200" class="body">· user_permissions 附加授权</text>
+  <text x="60" y="1226" class="note">User.has_permission() 校验入口</text>
+
+  <rect x="470" y="1122" width="260" height="126" rx="8" fill="#ffffff" stroke="#fee2e2" stroke-width="1.2"/>
+  <text x="486" y="1146" font-size="12.5" font-weight="700" fill="#b91c1c">roles — Role 角色</text>
+  <text x="486" y="1168" class="body">· name 唯一</text>
+  <text x="486" y="1184" class="body">· is_system 内置角色标记</text>
+  <text x="486" y="1200" class="body">· role_permissions M:N 映射</text>
+  <text x="486" y="1226" class="note">系统角色不可删除，可按需调权限</text>
+
+  <rect x="900" y="1122" width="260" height="126" rx="8" fill="#ffffff" stroke="#fee2e2" stroke-width="1.2"/>
+  <text x="916" y="1146" font-size="12.5" font-weight="700" fill="#b91c1c">permissions — Permission 权限</text>
+  <text x="916" y="1168" class="body">· name 格式 资源:操作</text>
+  <text x="916" y="1184" class="body">· 支持 * 通配（仅授予 admin）</text>
+  <text x="916" y="1200" class="body">· 全部权限点见文档第三节</text>
+  <text x="916" y="1226" class="note">role_permissions / user_permissions 关联</text>
+
+  <line x1="304" y1="1164" x2="462" y2="1164" class="flow"/>
+  <text x="383" y="1156" font-size="9" fill="#64748b" text-anchor="middle">role_id</text>
+  <line x1="730" y1="1188" x2="892" y2="1188" class="flow"/>
+  <text x="811" y="1180" font-size="9" fill="#64748b" text-anchor="middle">role_permissions</text>
+  <path d="M 174 1248 L 174 1260 L 1030 1260 L 1030 1248" class="flow" fill="none"/>
+  <text x="602" y="1272" font-size="9.5" fill="#334155" text-anchor="middle">user_permissions（granted=true 授予 / granted=false 撤销）</text>
+
+  <text x="56" y="1304" class="body" font-weight="600" fill="#991b1b">校验顺序：① 角色权限（遍历 role.permissions 匹配 name 或 *）→ ② 用户附加权限（授予/撤销）→ ③ 判定通过</text>
+  <text x="56" y="1322" class="note">种子数据：5 个系统角色 + 全部权限点 + 角色-权限映射，建议在 auth_service 初始化脚本或 migration 中执行</text>
+
+  <!-- ⑤ 落地要点 -->
+  <rect x="24" y="1340" width="1192" height="200" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1340" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1366" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="1359" r="11" fill="#64748b"/>
+  <text x="46" y="1363" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="66" y="1364" class="sec-title" fill="#334155">落地要点 — 白名单路由免鉴权 · AuthMiddleware 三模式（off/dev/prod）· require_permission 路由校验 · 实施优先级 P1-P5</text>
+
+  <rect x="44" y="1398" width="330" height="128" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1.2"/>
+  <text x="58" y="1420" font-size="11.5" font-weight="700" fill="#334155">白名单路由（免鉴权）</text>
+  <rect x="58" y="1432" width="150" height="22" rx="11" fill="#e2e8f0"/><text x="133" y="1447" class="chip-t" fill="#475569">/auth/login</text>
+  <rect x="216" y="1432" width="142" height="22" rx="11" fill="#e2e8f0"/><text x="287" y="1447" class="chip-t" fill="#475569">/auth/callback</text>
+  <rect x="58" y="1462" width="150" height="22" rx="11" fill="#e2e8f0"/><text x="133" y="1477" class="chip-t" fill="#475569">/auth/register（dev）</text>
+  <rect x="216" y="1462" width="142" height="22" rx="11" fill="#e2e8f0"/><text x="287" y="1477" class="chip-t" fill="#475569">/docs · /redoc</text>
+  <rect x="58" y="1492" width="150" height="22" rx="11" fill="#e2e8f0"/><text x="133" y="1507" class="chip-t" fill="#475569">/home/stats/summary</text>
+  <text x="58" y="1524" class="note">/openapi.json 亦免鉴权 · 首页公开统计可选</text>
+
+  <rect x="390" y="1398" width="150" height="128" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <circle cx="465" cy="1418" r="10" fill="#16a34a"/>
+  <text x="465" y="1422" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">P1</text>
+  <text x="465" y="1452" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">认证骨架</text>
+  <text x="404" y="1472" class="note" text-anchor="middle">AuthMiddleware +</text>
+  <text x="404" y="1486" class="note" text-anchor="middle">TokenService + auth_bp</text>
+  <text x="404" y="1500" class="note" text-anchor="middle">（登录/回调/刷新/登出/me）</text>
+
+  <rect x="554" y="1398" width="150" height="128" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <circle cx="629" cy="1418" r="10" fill="#16a34a"/>
+  <text x="629" y="1422" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">P2</text>
+  <text x="629" y="1452" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">开发模式</text>
+  <text x="568" y="1472" class="note" text-anchor="middle">LocalOAuthProvider</text>
+  <text x="568" y="1486" class="note" text-anchor="middle">本地登录页 + JWT 签发</text>
+  <text x="568" y="1500" class="note" text-anchor="middle">+ 种子数据初始化</text>
+
+  <rect x="718" y="1398" width="150" height="128" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <circle cx="793" cy="1418" r="10" fill="#16a34a"/>
+  <text x="793" y="1422" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">P3</text>
+  <text x="793" y="1452" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">路由接入</text>
+  <text x="732" y="1472" class="note" text-anchor="middle">require_permission</text>
+  <text x="732" y="1486" class="note" text-anchor="middle">按业务模块逐步铺开</text>
+  <text x="732" y="1500" class="note" text-anchor="middle">403 统一返回</text>
+
+  <rect x="882" y="1398" width="150" height="128" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <circle cx="957" cy="1418" r="10" fill="#16a34a"/>
+  <text x="957" y="1422" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">P4</text>
+  <text x="957" y="1452" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">管理 API</text>
+  <text x="896" y="1472" class="note" text-anchor="middle">user_bp / role_bp</text>
+  <text x="896" y="1486" class="note" text-anchor="middle">用户·角色·权限管理</text>
+  <text x="896" y="1500" class="note" text-anchor="middle">（自定义角色）</text>
+
+  <rect x="1046" y="1398" width="150" height="128" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.4"/>
+  <circle cx="1121" cy="1418" r="10" fill="#16a34a"/>
+  <text x="1121" y="1422" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">P5</text>
+  <text x="1121" y="1452" font-size="11" font-weight="700" fill="#166534" text-anchor="middle">生产模式</text>
+  <text x="1060" y="1472" class="note" text-anchor="middle">华为云 OAuth Provider</text>
+  <text x="1060" y="1486" class="note" text-anchor="middle">授权码模式</text>
+  <text x="1060" y="1500" class="note" text-anchor="middle">HW_OAUTH_* 配置</text>
+
+  <line x1="540" y1="1462" x2="552" y2="1462" class="flow-green"/>
+  <line x1="704" y1="1462" x2="716" y2="1462" class="flow-green"/>
+  <line x1="868" y1="1462" x2="880" y2="1462" class="flow-green"/>
+  <line x1="1032" y1="1462" x2="1044" y2="1462" class="flow-green"/>
+
+  <line x1="24" y1="1564" x2="1216" y2="1564" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1582" font-size="9.5" fill="#94a3b8">docs / RBAC权限划分.md — 认证中间件 AuthMiddleware（JWT → request.state.user_id / role_id / permissions）· require_permission 路由接入 · 权限命名 资源:操作 · 支持 * 通配</text>
+</svg>

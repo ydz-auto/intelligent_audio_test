@@ -1,0 +1,501 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 2100" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#f59e0b"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .body-s { font-size: 9.5px; fill: #475569; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .flow-solid { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; marker-end: url(#arrowRed); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-amber { stroke: #f59e0b; stroke-width: 1.6; fill: none; marker-end: url(#arrowAmber); }
+      .flow-blue { stroke: #3b82f6; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="2100" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">跨区网络传输方案 · A/B/C 三区链路设计</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">DDD + CQRS + 微服务 + 多站点隔离 · 主线方案（高优先级）+ 备选方案（低优先级）· 版本 V9.7.31 v1.0</text>
+  <line x1="24" y1="76" x2="1216" y2="76" stroke="#cbd5e1" stroke-width="1"/>
+
+  <!-- ============================================================ -->
+  <!-- ① 背景与约束（indigo）-->
+  <!-- ============================================================ -->
+  <rect x="24" y="92" width="1192" height="170" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="111" r="11" fill="#6366f1"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#3730a3">背景与约束 — 三区网络隔离环境下的跨区协同设计</text>
+
+  <rect x="48" y="146" width="378" height="50" rx="6" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="60" y="162" class="body-s" font-weight="600">三区网络隔离</text>
+  <text x="60" y="180" class="note">A↔B 双向过 GW-1 · B→C 单向过 GW-2 · A↔C 经 B 中继过双 GW</text>
+
+  <rect x="438" y="146" width="378" height="50" rx="6" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="450" y="162" class="body-s" font-weight="600">用例执行跨区</text>
+  <text x="450" y="180" class="note">A/B/C 均具备执行能力 · 能力有差异 · 用例在其可执行区域执行</text>
+
+  <rect x="828" y="146" width="372" height="50" rx="6" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="840" y="162" class="body-s" font-weight="600">执行能力分布</text>
+  <text x="840" y="180" class="note">A/B：完整微服务栈 + 本地评估 · C：仅 THIRD_PARTY_C 评估</text>
+
+  <rect x="48" y="202" width="378" height="50" rx="6" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="60" y="218" class="body-s" font-weight="600">数据隔离</text>
+  <text x="60" y="236" class="note">A/B 数据不持久化到 C · C 不反向回连 A/B</text>
+
+  <rect x="438" y="202" width="378" height="50" rx="6" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="450" y="218" class="body-s" font-weight="600">百 MB 级传输</text>
+  <text x="450" y="236" class="note">单用例百 MB（音频 + 结果），需分片上传 + 校验</text>
+
+  <rect x="828" y="202" width="372" height="50" rx="6" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <text x="840" y="218" class="body-s" font-weight="600">报告共享</text>
+  <text x="840" y="236" class="note">C 评估结果需在 A/B 可见，通过 API 同步响应带回</text>
+
+  <!-- ============================================================ -->
+  <!-- ② 三区拓扑（amber - A 黄 / B 绿 / C 蓝） -->
+  <!-- ============================================================ -->
+  <rect x="24" y="278" width="1192" height="250" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="278" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="304" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="297" r="11" fill="#f59e0b"/>
+  <text x="46" y="301" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="302" class="sec-title" fill="#92400e">三区拓扑 — A（主站点·黄）× B（评估中枢·绿）× C（第三方API·蓝）+ 软件网关隔离</text>
+
+  <!-- Zone A (yellow/amber) -->
+  <rect x="44" y="340" width="330" height="150" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.4"/>
+  <rect x="44" y="340" width="330" height="26" rx="8" fill="#fbbf24"/>
+  <rect x="44" y="358" width="330" height="8" fill="#fbbf24"/>
+  <text x="209" y="358" class="pill-t" fill="#78350f">A 区（主站点）</text>
+  <text x="60" y="382" class="body">11 个微服务（完整栈）</text>
+  <text x="60" y="400" class="body">PostgreSQL + Redis</text>
+  <text x="60" y="418" class="body">MinIO（本地存储）</text>
+  <text x="60" y="448" class="body" font-weight="600">transfer_agent (T-A)</text>
+  <rect x="60" y="454" width="130" height="18" rx="4" fill="#fde68a" stroke="#d97706" stroke-width="0.8"/>
+  <text x="125" y="467" class="chip-t" fill="#92400e">gw 白名单: 5000→B</text>
+
+  <!-- Gateway AB -->
+  <rect x="382" y="395" width="34" height="40" rx="5" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="399" y="418" font-size="8" font-weight="600" fill="#475569" text-anchor="middle">GW</text>
+  <!-- A→GW-AB -->
+  <line x1="374" y1="415" x2="382" y2="415" stroke="#94a3b8" stroke-width="1.6" fill="none"/>
+  <polygon points="382,415 377,411 377,419" fill="#94a3b8"/>
+  <!-- GW-AB→A -->
+  <line x1="382" y1="405" x2="374" y2="405" stroke="#94a3b8" stroke-width="1.6" fill="none"/>
+  <polygon points="374,405 379,401 379,409" fill="#94a3b8"/>
+  <!-- GW-AB→B -->
+  <line x1="416" y1="415" x2="424" y2="415" stroke="#94a3b8" stroke-width="1.6" fill="none"/>
+  <polygon points="424,415 419,411 419,419" fill="#94a3b8"/>
+  <!-- B→GW-AB -->
+  <line x1="424" y1="405" x2="416" y2="405" stroke="#94a3b8" stroke-width="1.6" fill="none"/>
+  <polygon points="416,405 421,401 421,409" fill="#94a3b8"/>
+  <text x="399" y="385" class="note" text-anchor="middle">A↔B 双向</text>
+
+  <!-- Zone B (green) -->
+  <rect x="424" y="340" width="330" height="150" rx="8" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4"/>
+  <rect x="424" y="340" width="330" height="26" rx="8" fill="#4ade80"/>
+  <rect x="424" y="358" width="330" height="8" fill="#4ade80"/>
+  <text x="589" y="358" class="pill-t" fill="#14532d">B 区（评估中枢）</text>
+  <text x="440" y="382" class="body">11 个微服务（完整栈）</text>
+  <text x="440" y="400" class="body">PostgreSQL + Redis</text>
+  <text x="440" y="418" class="body">MinIO（本地存储 + 中转缓存）</text>
+  <text x="440" y="448" class="body" font-weight="600">transfer_agent (T-B)</text>
+  <rect x="440" y="454" width="150" height="18" rx="4" fill="#bbf7d0" stroke="#16a34a" stroke-width="0.8"/>
+  <text x="515" y="467" class="chip-t" fill="#166534">中继枢纽 · 校验 + 转发</text>
+
+  <!-- Gateway BC -->
+  <rect x="762" y="395" width="34" height="40" rx="5" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="779" y="418" font-size="8" font-weight="600" fill="#475569" text-anchor="middle">GW</text>
+  <!-- B→GW-BC -->
+  <line x1="754" y1="415" x2="762" y2="415" stroke="#94a3b8" stroke-width="1.6" fill="none"/>
+  <polygon points="762,415 757,411 757,419" fill="#94a3b8"/>
+  <text x="779" y="385" class="note" text-anchor="middle">B→C 单向</text>
+
+  <!-- Zone C (blue) -->
+  <rect x="804" y="340" width="330" height="150" rx="8" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4"/>
+  <rect x="804" y="340" width="330" height="26" rx="8" fill="#60a5fa"/>
+  <rect x="804" y="358" width="330" height="8" fill="#60a5fa"/>
+  <text x="969" y="358" class="pill-t" fill="#1e3a5f">C 区（第三方 LLM API）</text>
+  <text x="820" y="382" class="body">仅执行 THIRD_PARTY_C 评估</text>
+  <text x="820" y="400" class="body">无持久化存储</text>
+  <text x="820" y="418" class="body">不反向回连 A/B</text>
+  <text x="820" y="448" class="body" font-weight="600">第三方 LLM 评估 API</text>
+  <rect x="804" y="472" width="330" height="18" rx="4" fill="#dbeafe" stroke="#60a5fa" stroke-width="0.8"/>
+  <text x="969" y="485" class="chip-t" fill="#1e40af">仅执行 THIRD_PARTY_C 评估用例</text>
+
+  <!-- GW-BC→C -->
+  <line x1="796" y1="415" x2="804" y2="415" stroke="#16a34a" stroke-width="1.6" fill="none"/>
+  <polygon points="804,415 799,411 799,419" fill="#16a34a"/>
+
+  <!-- A↔C logical path: purple dashed → 经 B 中继过双 GW（逻辑链路·不直连）-->
+  <line x1="209" y1="490" x2="209" y2="502" stroke="#7c3aed" stroke-width="1.4" fill="none" stroke-dasharray="6 4"/>
+  <line x1="209" y1="502" x2="969" y2="502" stroke="#7c3aed" stroke-width="1.4" fill="none" stroke-dasharray="6 4"/>
+  <line x1="969" y1="502" x2="969" y2="490" stroke="#7c3aed" stroke-width="1.4" fill="none" stroke-dasharray="6 4"/>
+  <polygon points="969,490 965,495 973,495" fill="#7c3aed"/>
+  <text x="589" y="516" font-size="9.5" fill="#7c3aed" text-anchor="middle" font-weight="600">A↔C 经 B 中继过双 GW（逻辑链路·不直连）</text>
+
+  <!-- ============================================================ -->
+  <!-- ③ 连通性矩阵（blue） -->
+  <!-- ============================================================ -->
+  <rect x="24" y="544" width="1192" height="164" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="544" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="570" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="563" r="11" fill="#3b82f6"/>
+  <text x="46" y="567" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="568" class="sec-title" fill="#1e40af">连通性矩阵 — 三区网络段方向与协议约束</text>
+
+  <!-- Table header -->
+  <rect x="48" y="598" width="1144" height="22" rx="4" fill="#bfdbfe"/>
+  <text x="70" y="613" class="body-s" font-weight="600" fill="#1e3a5f">段</text>
+  <text x="260" y="613" class="body-s" font-weight="600" fill="#1e3a5f">方向</text>
+  <text x="470" y="613" class="body-s" font-weight="600" fill="#1e3a5f">协议</text>
+  <text x="680" y="613" class="body-s" font-weight="600" fill="#1e3a5f">说明</text>
+
+  <!-- Row 1: A↔B -->
+  <rect x="48" y="620" width="1144" height="22" fill="#ffffff"/>
+  <circle cx="70" cy="631" r="6" fill="#f59e0b"/>
+  <text x="86" y="635" class="body">A ↔ B</text>
+  <text x="260" y="635" class="body">双向</text>
+  <text x="470" y="635" class="body">HTTPS</text>
+  <text x="680" y="635" class="body">transfer_agent 端口需网关白名单；A/B 同安全域，数据/报告自由同步</text>
+
+  <!-- Row 2: B→C -->
+  <rect x="48" y="642" width="1144" height="22" fill="#f8fafc"/>
+  <circle cx="70" cy="653" r="6" fill="#16a34a"/>
+  <text x="86" y="657" class="body">B → C</text>
+  <text x="260" y="657" class="body">单向请求</text>
+  <text x="470" y="657" class="body">HTTPS</text>
+  <text x="680" y="657" class="body">B 的评估服务通过 transfer_agent 调 C 第三方 API；请求仅输出，不依赖 C 回调</text>
+
+  <!-- Row 3: C→A/B -->
+  <rect x="48" y="664" width="1144" height="22" fill="#ffffff"/>
+  <circle cx="70" cy="675" r="6" fill="#dc2626"/>
+  <text x="86" y="679" class="body">C → A/B</text>
+  <text x="260" y="679" class="body">不通</text>
+  <text x="470" y="679" class="body">—</text>
+  <text x="680" y="679" class="body">C 不做任何主动推送或回调，所有结果仅随 API 同步响应返回 B</text>
+
+  <!-- Row 4: A→C 经 B 中继 -->
+  <rect x="48" y="686" width="1144" height="22" fill="#f8fafc"/>
+  <circle cx="70" cy="697" r="6" fill="#7c3aed"/>
+  <text x="86" y="701" class="body">A → C</text>
+  <text x="260" y="701" class="body">经 B 中继</text>
+  <text x="470" y="701" class="body">HTTPS ×2</text>
+  <text x="680" y="701" class="body">逻辑链路 A→GW-1→B→GW-2→C，物理不直连；B 校验 + 转发</text>
+
+  <!-- ============================================================ -->
+  <!-- ④ 主线方案·评估中枢（green） -->
+  <!-- ============================================================ -->
+  <rect x="24" y="720" width="1192" height="220" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="720" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="746" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="739" r="11" fill="#16a34a"/>
+  <text x="46" y="743" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="744" class="sec-title" fill="#166534">主线方案·评估中枢 — B 区作为评估中枢 + evaluation_service ACL 适配层 + transfer_agent 传输代理</text>
+
+  <!-- 评估能力注册表 -->
+  <text x="60" y="780" font-size="12" font-weight="600" fill="#14532d">评估能力注册表（配置化维度路由）</text>
+  <rect x="60" y="788" width="540" height="20" rx="3" fill="#bbf7d0"/>
+  <text x="80" y="803" class="body-s" font-weight="600" fill="#14532d">维度</text>
+  <text x="220" y="803" class="body-s" font-weight="600" fill="#14532d">target</text>
+  <text x="380" y="803" class="body-s" font-weight="600" fill="#14532d">路由目标</text>
+  <rect x="60" y="808" width="540" height="20" fill="#ffffff"/>
+  <text x="80" y="823" class="body-s">wer</text>
+  <text x="220" y="823" class="pill-t" fill="#16a34a" text-anchor="start">LOCAL</text>
+  <text x="380" y="823" class="body-s">evaluation_service gRPC EvaluateCase</text>
+  <rect x="60" y="828" width="540" height="20" fill="#f8fafc"/>
+  <text x="80" y="843" class="body-s">der</text>
+  <text x="220" y="843" class="pill-t" fill="#16a34a" text-anchor="start">LOCAL</text>
+  <text x="380" y="843" class="body-s">evaluation_service gRPC EvaluateCase</text>
+  <rect x="60" y="848" width="540" height="20" fill="#ffffff"/>
+  <text x="80" y="863" class="body-s">llm_judge</text>
+  <text x="220" y="863" class="pill-t" fill="#f59e0b" text-anchor="start">THIRD_PARTY_C</text>
+  <text x="380" y="863" class="body-s">transfer_agent → C 第三方评估 API</text>
+  <rect x="60" y="868" width="540" height="20" fill="#f8fafc"/>
+  <text x="80" y="883" class="body-s">mos</text>
+  <text x="220" y="883" class="pill-t" fill="#f59e0b" text-anchor="start">THIRD_PARTY_C</text>
+  <text x="380" y="883" class="body-s">transfer_agent → C 第三方评估 API</text>
+
+  <!-- transfer_agent DDD 结构 -->
+  <text x="640" y="780" font-size="12" font-weight="600" fill="#14532d">transfer_agent（传输代理·DDD 四层）</text>
+  <rect x="640" y="790" width="560" height="136" rx="6" fill="#ffffff" stroke="#86efac" stroke-width="1"/>
+  <rect x="650" y="798" width="540" height="22" rx="4" fill="#dcfce7"/><text x="920" y="814" class="pill-t" fill="#166534">interfaces/api/ — /internal/transfer/receive（收包）</text>
+  <rect x="650" y="824" width="540" height="22" rx="4" fill="#fef3c7"/><text x="920" y="840" class="pill-t" fill="#92400e">application/services/ — 传输编排：打包、分片、重试、幂等</text>
+  <rect x="650" y="850" width="540" height="22" rx="4" fill="#e0e7ff"/><text x="920" y="866" class="pill-t" fill="#3730a3">domain/models/ + domain/services/ — TransferPackage + 签名验证</text>
+  <rect x="650" y="876" width="540" height="22" rx="4" fill="#fce7f3"/><text x="920" y="892" class="pill-t" fill="#9d174d">infrastructure/ — acl/出站适配 · storage/复用 shared · persistence/传输流水表</text>
+  <rect x="650" y="902" width="540" height="18" rx="4" fill="#f0fdf4" stroke="#86efac" stroke-width="0.8"/>
+  <text x="920" y="915" class="chip-t" fill="#166534">新增微服务端口：参考 gozero 微服务 01 + shared/config/service_ports.py</text>
+
+  <!-- ============================================================ -->
+  <!-- ⑤ EVAL_REQUEST 完整流程（amber） -->
+  <!-- ============================================================ -->
+  <rect x="24" y="956" width="1192" height="310" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="956" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="982" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="975" r="11" fill="#f59e0b"/>
+  <text x="46" y="979" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="66" y="980" class="sec-title" fill="#92400e">EVAL_REQUEST 完整流程 — A 区用例命中第三方评估 → 经 B 中继 → 调 C 第三方 API → 结果返回 A</text>
+
+  <!-- Flow: row 1 (①→②→③→④) -->
+  <rect x="48" y="1016" width="265" height="66" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>
+  <circle cx="68" cy="1036" r="10" fill="#f59e0b"/>
+  <text x="68" y="1040" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="86" y="1036" class="body-s" font-weight="600">A 区用例执行完成</text>
+  <text x="86" y="1054" class="note">评估维度命中 THIRD_PARTY_C</text>
+  <text x="86" y="1070" class="note">触发跨区评估流程</text>
+
+  <line x1="313" y1="1049" x2="347" y2="1049" class="flow-amber" marker-end="url(#arrowAmber)"/>
+
+  <rect x="353" y="1016" width="265" height="66" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>
+  <circle cx="373" cy="1036" r="10" fill="#f59e0b"/>
+  <text x="373" y="1040" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="391" y="1036" class="body-s" font-weight="600">打包 EVAL_REQUEST</text>
+  <text x="391" y="1054" class="note">algorithm_result JSON +</text>
+  <text x="391" y="1070" class="note">引用音频/结果文件</text>
+
+  <line x1="618" y1="1049" x2="652" y2="1049" class="flow-amber" marker-end="url(#arrowAmber)"/>
+
+  <rect x="658" y="1016" width="265" height="66" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>
+  <circle cx="678" cy="1036" r="10" fill="#f59e0b"/>
+  <text x="678" y="1040" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="696" y="1036" class="body-s" font-weight="600">T-A 传输到 T-B</text>
+  <text x="696" y="1054" class="note">分片并发上传（4MB/片）</text>
+  <text x="696" y="1070" class="note">签名 + token → 网关白名单鉴权</text>
+
+  <line x1="923" y1="1049" x2="957" y2="1049" class="flow-amber" marker-end="url(#arrowAmber)"/>
+
+  <rect x="963" y="1016" width="253" height="66" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>
+  <circle cx="983" cy="1036" r="10" fill="#f59e0b"/>
+  <text x="983" y="1040" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="1001" y="1036" class="body-s" font-weight="600">B 中转·校验</text>
+  <text x="1001" y="1054" class="note">校验签名 + 幂等去重</text>
+  <text x="1001" y="1070" class="note">暂存 transit 桶（TTL 清理）</text>
+
+  <!-- Arrow ④→⑤ (down connector) -->
+  <line x1="1089" y1="1082" x2="1089" y2="1114" class="flow-amber" marker-end="url(#arrowAmber)"/>
+
+  <!-- Flow: row 2 (⑤→⑥→⑦→⑧) -->
+  <rect x="963" y="1120" width="253" height="66" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.2"/>
+  <circle cx="983" cy="1140" r="10" fill="#16a34a"/>
+  <text x="983" y="1144" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="1001" y="1140" class="body-s" font-weight="600">T-B → C 第三方 API</text>
+  <text x="1001" y="1158" class="note">multipart / chunked / presigned</text>
+  <text x="1001" y="1174" class="note">取决于第三方契约</text>
+
+  <line x1="963" y1="1153" x2="929" y2="1153" class="flow-solid"/>
+
+  <rect x="658" y="1120" width="265" height="66" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.2"/>
+  <circle cx="678" cy="1140" r="10" fill="#3b82f6"/>
+  <text x="678" y="1144" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+  <text x="696" y="1140" class="body-s" font-weight="600">C 第三方 API 处理</text>
+  <text x="696" y="1158" class="note">一次性请求-响应</text>
+  <text x="696" y="1174" class="note">不反向回调 · 不持久化 A/B 数据</text>
+
+  <line x1="658" y1="1153" x2="624" y2="1153" class="flow-solid"/>
+
+  <rect x="353" y="1120" width="265" height="66" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.2"/>
+  <circle cx="373" cy="1140" r="10" fill="#16a34a"/>
+  <text x="373" y="1144" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">7</text>
+  <text x="391" y="1140" class="body-s" font-weight="600">EVAL_RESULT 返回 B</text>
+  <text x="391" y="1158" class="note">B 评估服务解析结果</text>
+  <text x="391" y="1174" class="note">落 B 区 DB / MinIO</text>
+
+  <line x1="353" y1="1153" x2="319" y2="1153" class="flow-solid"/>
+
+  <rect x="48" y="1120" width="265" height="66" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>
+  <circle cx="68" cy="1140" r="10" fill="#f59e0b"/>
+  <text x="68" y="1144" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">8</text>
+  <text x="86" y="1140" class="body-s" font-weight="600">EVAL_RESULT 回同步 A</text>
+  <text x="86" y="1158" class="note">T-B → GW-1 → T-A</text>
+  <text x="86" y="1174" class="note">落 A 区 DB / MinIO</text>
+
+  <!-- Note at bottom -->
+  <text x="60" y="1226" class="note">包类型：EVAL_REQUEST（A/B→C 评估输入）· EVAL_RESULT（C→B 同步响应）· REPORT_SYNC（B→A 报告同步）· DATA_SYNC（A↔B 数据同步）</text>
+  <text x="60" y="1246" class="note">传输包协议：transfer_id（全局唯一幂等）· 分片 4MB · sha256 文件校验 · HMAC-SHA256 签名 · TTL 3600s · ephemeral true（C 侧不持久化）</text>
+
+  <!-- ============================================================ -->
+  <!-- ⑥ 权限与安全 + 传输可靠性（red） -->
+  <!-- ============================================================ -->
+  <rect x="24" y="1282" width="1192" height="240" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1282" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1308" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1301" r="11" fill="#dc2626"/>
+  <text x="46" y="1305" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+  <text x="66" y="1306" class="sec-title" fill="#991b1b">权限与安全 + 传输可靠性 — 五层安全防护 · 六项可靠性保障</text>
+
+  <!-- Left: 权限与安全 -->
+  <text x="60" y="1346" font-size="12" font-weight="600" fill="#7f1d1d">五层安全防护</text>
+  <rect x="60" y="1354" width="546" height="20" rx="3" fill="#fecaca"/>
+  <text x="80" y="1369" class="body-s" font-weight="600" fill="#7f1d1d">层</text>
+  <text x="200" y="1369" class="body-s" font-weight="600" fill="#7f1d1d">机制</text>
+  <text x="380" y="1369" class="body-s" font-weight="600" fill="#7f1d1d">配置位置</text>
+  <rect x="60" y="1374" width="546" height="20" fill="#ffffff"/>
+  <text x="80" y="1389" class="body-s">网络层</text>
+  <text x="200" y="1389" class="body-s">网关 IP + 端口白名单</text>
+  <text x="380" y="1389" class="body-s">运维网关配置</text>
+  <rect x="60" y="1394" width="546" height="20" fill="#f8fafc"/>
+  <text x="80" y="1409" class="body-s">访问层</text>
+  <text x="200" y="1409" class="body-s">每对站点预共享 Token</text>
+  <text x="380" y="1409" class="body-s">shared/config/secrets_config.json</text>
+  <rect x="60" y="1414" width="546" height="20" fill="#ffffff"/>
+  <text x="80" y="1429" class="body-s">签名层</text>
+  <text x="200" y="1429" class="body-s">HMAC-SHA256 + file_hash 校验</text>
+  <text x="380" y="1429" class="body-s">third_party_eval_acl</text>
+  <rect x="60" y="1434" width="546" height="20" fill="#f8fafc"/>
+  <text x="80" y="1449" class="body-s">内容层</text>
+  <text x="200" y="1449" class="body-s">C 入口只收 EVAL_REQUEST</text>
+  <text x="380" y="1449" class="body-s">transfer_agent 收包过滤</text>
+  <rect x="60" y="1454" width="546" height="20" fill="#ffffff"/>
+  <text x="80" y="1469" class="body-s">审计层</text>
+  <text x="200" y="1469" class="body-s">每包流水记录</text>
+  <text x="380" y="1469" class="body-s">transfer_agent 持久表</text>
+
+  <!-- Right: 传输可靠性 -->
+  <text x="640" y="1346" font-size="12" font-weight="600" fill="#7f1d1d">六项传输可靠性保障</text>
+  <rect x="640" y="1354" width="546" height="20" rx="3" fill="#fecaca"/>
+  <text x="660" y="1369" class="body-s" font-weight="600" fill="#7f1d1d">特性</text>
+  <text x="800" y="1369" class="body-s" font-weight="600" fill="#7f1d1d">实现方式</text>
+  <rect x="640" y="1374" width="546" height="20" fill="#ffffff"/>
+  <text x="660" y="1389" class="body-s">幂等</text>
+  <text x="800" y="1389" class="body-s">transfer_id 唯一索引，重复接收直接返回已存在</text>
+  <rect x="640" y="1394" width="546" height="20" fill="#f8fafc"/>
+  <text x="660" y="1409" class="body-s">断点续传</text>
+  <text x="800" y="1409" class="body-s">分片状态记录在 B 端已收片表，A 可从失败片重传</text>
+  <rect x="640" y="1414" width="546" height="20" fill="#ffffff"/>
+  <text x="660" y="1429" class="body-s">重试</text>
+  <text x="800" y="1429" class="body-s">指数退避（3 次）+ 超时熔断</text>
+  <rect x="640" y="1434" width="546" height="20" fill="#f8fafc"/>
+  <text x="660" y="1449" class="body-s">TTL 清理</text>
+  <text x="800" y="1449" class="body-s">中转桶定时扫描，超时文件回收</text>
+  <rect x="640" y="1454" width="546" height="20" fill="#ffffff"/>
+  <text x="660" y="1469" class="body-s">限速</text>
+  <text x="800" y="1469" class="body-s">B 端令牌桶限速，防大文件压垮网关</text>
+  <rect x="640" y="1474" width="546" height="20" fill="#f8fafc"/>
+  <text x="660" y="1489" class="body-s">分片传输</text>
+  <text x="800" y="1489" class="body-s">4MB/片，支持并发上传</text>
+
+  <!-- ============================================================ -->
+  <!-- ⑦ 备选方案·C 完整站点（violet） -->
+  <!-- ============================================================ -->
+  <rect x="24" y="1538" width="1192" height="230" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1538" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="1564" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="1557" r="11" fill="#7c3aed"/>
+  <text x="46" y="1561" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">7</text>
+  <text x="66" y="1562" class="sec-title" fill="#5b21b6">备选方案（低优先级）— C 区部署完整微服务栈 + 开通 C→B 单向链路</text>
+
+  <!-- Topology mini -->
+  <rect x="48" y="1596" width="320" height="50" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1"/>
+  <text x="62" y="1614" class="body-s" font-weight="600">A 区（完整微服务栈）</text>
+  <text x="62" y="1632" class="note">transfer_agent (T-A)</text>
+  <line x1="368" y1="1621" x2="396" y2="1621" class="flow-solid"/>
+  <text x="382" y="1610" class="note" text-anchor="middle">A↔B</text>
+
+  <rect x="400" y="1596" width="320" height="50" rx="6" fill="#f0fdf4" stroke="#16a34a" stroke-width="1"/>
+  <text x="414" y="1614" class="body-s" font-weight="600">B 区（中继枢纽）</text>
+  <text x="414" y="1632" class="note">transfer_agent (T-B)</text>
+  <line x1="720" y1="1621" x2="748" y2="1621" class="flow-green" marker-end="url(#arrowGreen)"/>
+  <text x="734" y="1610" class="note" text-anchor="middle">B→C</text>
+  <line x1="740" y1="1616" x2="720" y2="1616" stroke="#7c3aed" stroke-width="1.6" fill="none" marker-end="url(#arrowViolet)"/>
+  <text x="734" y="1638" class="note" text-anchor="middle" fill="#7c3aed">C→B 新增</text>
+
+  <rect x="752" y="1596" width="320" height="50" rx="6" fill="#eff6ff" stroke="#3b82f6" stroke-width="1"/>
+  <text x="766" y="1614" class="body-s" font-weight="600">C 区（完整站点·新增）</text>
+  <text x="766" y="1632" class="note">transfer_agent (T-C)</text>
+
+  <!-- 新增包类型 -->
+  <text x="60" y="1678" font-size="12" font-weight="600" fill="#5b21b6">新增包类型</text>
+  <rect x="60" y="1686" width="400" height="20" rx="3" fill="#ddd6fe"/>
+  <text x="80" y="1701" class="body-s" font-weight="600" fill="#5b21b6">pkg_type</text>
+  <text x="220" y="1701" class="body-s" font-weight="600" fill="#5b21b6">方向</text>
+  <text x="340" y="1701" class="body-s" font-weight="600" fill="#5b21b6">说明</text>
+  <rect x="60" y="1706" width="400" height="22" fill="#ffffff"/>
+  <text x="80" y="1721" class="body-s">C_REPORT</text>
+  <text x="220" y="1721" class="body-s">C→B→A</text>
+  <text x="340" y="1721" class="body-s">C 自产报告推送</text>
+  <rect x="60" y="1728" width="400" height="22" fill="#f8fafc"/>
+  <text x="80" y="1743" class="body-s">C_RESULT</text>
+  <text x="220" y="1743" class="body-s">C→B→A</text>
+  <text x="340" y="1743" class="body-s">C 自产评估结果推送</text>
+
+  <text x="500" y="1690" class="note" font-weight="600" fill="#5b21b6">数据隔离规则（备选方案下保留）</text>
+  <circle cx="510" cy="1708" r="3" fill="#7c3aed"/><text x="520" y="1712" class="note">C 的 MinIO 不保留 A/B 的执行原始数据</text>
+  <circle cx="510" cy="1726" r="3" fill="#7c3aed"/><text x="520" y="1730" class="note">A/B 用 MinIO + DB 确认已收 C 只读副本不可从 C 侧跨区查询</text>
+  <circle cx="510" cy="1744" r="3" fill="#7c3aed"/><text x="520" y="1748" class="note">C→B 推送包在 B 侧重新签名后转发，C 不持有 A/B 密钥</text>
+
+  <!-- ============================================================ -->
+  <!-- ⑧ 实施路线（slate） -->
+  <!-- ============================================================ -->
+  <rect x="24" y="1784" width="1192" height="200" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1784" width="1192" height="38" rx="10" fill="#f1f5f9"/>
+  <rect x="24" y="1810" width="1192" height="12" fill="#f1f5f9"/>
+  <circle cx="46" cy="1803" r="11" fill="#64748b"/>
+  <text x="46" y="1807" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">8</text>
+  <text x="66" y="1808" class="sec-title" fill="#334155">实施路线 — P0 核心能力 · P1 同步与监控 · P2 备选方案（低优先级）</text>
+
+  <!-- P0 -->
+  <rect x="48" y="1840" width="372" height="130" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.2"/>
+  <rect x="48" y="1840" width="372" height="26" rx="8" fill="#fecaca"/>
+  <rect x="48" y="1858" width="372" height="8" fill="#fecaca"/>
+  <text x="234" y="1858" class="pill-t" fill="#991b1b">阶段一 · P0 · 评估能力注册 + B→C 调用</text>
+  <text x="60" y="1880" class="body">评估能力注册表（配置化维度路由）</text>
+  <text x="60" y="1898" class="body">third_party_eval_acl 适配器 → C 对接</text>
+  <text x="60" y="1916" class="body">transfer_agent 骨架 + 分片 + 幂等（新建）</text>
+  <text x="60" y="1934" class="body">网关 A↔B + B→C 白名单权限申请（运维）</text>
+  <rect x="300" y="1942" width="108" height="18" rx="4" fill="#dcfce7" stroke="#16a34a" stroke-width="0.8"/>
+  <text x="354" y="1955" class="chip-t" fill="#166534">高优先级 · 先落地</text>
+
+  <!-- P1 -->
+  <rect x="432" y="1840" width="372" height="130" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.2"/>
+  <rect x="432" y="1840" width="372" height="26" rx="8" fill="#fef3c7"/>
+  <rect x="432" y="1858" width="372" height="8" fill="#fef3c7"/>
+  <text x="618" y="1858" class="pill-t" fill="#92400e">阶段二 · P1 · A/B 数据同步 + 报告分发</text>
+  <text x="444" y="1880" class="body">DATA_SYNC / REPORT_SYNC 包类型实现</text>
+  <text x="444" y="1898" class="body">A↔B 双向同步逻辑</text>
+  <text x="444" y="1916" class="body">传输流水审计与监控告警</text>
+  <text x="444" y="1934" class="body">TTL 清理 + 限速 + 断点续传完善</text>
+  <rect x="684" y="1942" width="108" height="18" rx="4" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.8"/>
+  <text x="738" y="1955" class="chip-t" fill="#92400e">中优先级 · 次之</text>
+
+  <!-- P2 -->
+  <rect x="816" y="1840" width="384" height="130" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <rect x="816" y="1840" width="384" height="26" rx="8" fill="#dbeafe"/>
+  <rect x="816" y="1858" width="384" height="8" fill="#dbeafe"/>
+  <text x="1008" y="1858" class="pill-t" fill="#1e40af">阶段三 · P2 · C 完整站点 + C→B 链路（低优）</text>
+  <text x="828" y="1880" class="body">C 区部署完整微服务栈（运维·大）</text>
+  <text x="828" y="1898" class="body">C→B 单向网关权限申请（运维）</text>
+  <text x="828" y="1916" class="body">C_REPORT / C_RESULT 推送逻辑</text>
+  <text x="828" y="1934" class="body">A/B 侧接收落库 + source_zone 标记</text>
+  <rect x="1080" y="1942" width="108" height="18" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.8"/>
+  <text x="1134" y="1955" class="chip-t" fill="#1e40af">低优先级 · 预留</text>
+
+  <!-- Footer -->
+  <line x1="24" y1="2030" x2="1216" y2="2030" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="2050" font-size="10" fill="#94a3b8">V9.7.31 · 跨区网络传输方案设计 · A/B/C 三区链路 · DDD + CQRS + 微服务 + 多站点隔离 · 主线方案优先</text>
+</svg>

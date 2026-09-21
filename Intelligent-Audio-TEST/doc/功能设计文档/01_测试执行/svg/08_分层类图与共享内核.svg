@@ -1,0 +1,222 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1400" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowViolet); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1400" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">测试执行 · 跨服务类图与共享内核（协作分层）</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">自上而下 = 调用方向 · proto 为唯一跨服务契约 · 跨上下文数据访问一律经 ACL 仓储（禁止跨服务直连数据库）· 虚线 = 共享内核被各层组合 / 继承</text>
+
+  <!-- ① 调用分层 -->
+  <rect x="24" y="92" width="1192" height="252" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="111" r="11" fill="#6366f1"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#3730a3">调用分层 — 五层落位（Presentation → Application → Domain → Infrastructure → 外部系统）</text>
+
+  <rect x="44" y="142" width="1172" height="34" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.2"/>
+  <text x="60" y="164" class="body" fill="#3730a3" font-weight="700">L0 前端（Vue3 + TS + Pinia）<tspan class="note" font-weight="400">　SPLMapping.vue → useSplMapping（composable / Port）→ splPort → splApi → splAdapter → splDto → domain/model/spl.ts（camelCase 全程）· taskChannel.ts（Socket.IO）</tspan></text>
+  <line x1="630" y1="176" x2="630" y2="186" class="flow"/>
+  <rect x="44" y="186" width="1172" height="34" rx="8" fill="#ffffff" stroke="#7dd3fc" stroke-width="1.2"/>
+  <text x="60" y="208" class="body" fill="#075985" font-weight="700">L1 api_gateway :5000（Presentation）<tspan class="note" font-weight="400">　routes/*_bp.py + schemas → application/services/*_command_service · *_query_service → infrastructure/grpc_proxies + acl（snake↔camel 边界）→ read_models（CQRS 读视图）</tspan></text>
+  <line x1="630" y1="220" x2="630" y2="230" class="flow"/>
+  <text x="642" y="232" class="chip-t" fill="#3730a3" text-anchor="start">gRPC :50061 / :50071 / :50051 / :50091 / :50052 / :50053</text>
+  <rect x="44" y="232" width="584" height="34" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="60" y="254" class="body" fill="#9a3412" font-weight="700">L2 task_service :5001<tspan class="note" font-weight="400">　TaskDispatchMixin · SchedulerMixin · ExecutionEngine（五 Mixin）· Task / TaskCase 聚合</tspan></text>
+  <rect x="632" y="232" width="584" height="34" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="648" y="254" class="body" fill="#065f46" font-weight="700">L2 api_test_service :5003 ×2<tspan class="note" font-weight="400">　APISession / RealtimeSession Executor · AdapterFactory · 聚合与处理器</tspan></text>
+  <line x1="336" y1="266" x2="336" y2="276" class="flow"/>
+  <line x1="924" y1="266" x2="924" y2="276" class="flow"/>
+  <rect x="44" y="276" width="584" height="34" rx="8" fill="#ffffff" stroke="#67e8f9" stroke-width="1.2"/>
+  <text x="60" y="298" class="body" fill="#155e75" font-weight="700">L3 audio_service gRPC :50052<tspan class="note" font-weight="400">　RenderService · AudioStreamOrchestrator · AudioFormatAdapter · ApiRmsSpl</tspan></text>
+  <rect x="632" y="276" width="584" height="34" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1.2"/>
+  <text x="648" y="298" class="body" fill="#9a3412" font-weight="700">L3 e2e_test_service / device_service<tspan class="note" font-weight="400">　ExecutionService · DeviceService · DeviceResultService · SPLConfigService</tspan></text>
+  <line x1="630" y1="310" x2="630" y2="320" class="flow"/>
+  <rect x="44" y="320" width="1172" height="34" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+  <text x="60" y="342" class="body" fill="#5b21b6" font-weight="700">L4 外部系统<tspan class="note" font-weight="400">　被测 HTTP / SSE / WebSocket API（厂商 Realtime）· 物理设备（音箱 / 串口驱动）· 声卡播放与 PCM 抓取 · evaluation_service :5004 / :50091（统一评估出口）</tspan></text>
+  <text x="46" y="370" class="note">实线 = 同步调用（HTTP → gRPC）· 前端与后端仅经 api_gateway 交互 · 微服务间仅经 proto 契约 · 任何服务不得读写他服务的表</text>
+
+  <!-- ② api_test_service 内部类 -->
+  <rect x="24" y="392" width="1192" height="288" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="392" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="418" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="411" r="11" fill="#16a34a"/>
+  <text x="46" y="415" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="416" class="sec-title" fill="#14532d">api_test_service 内部类与协作 — CQRS 入口 → 执行器 → 适配器体系 → 聚合 / 处理器 / 发布器</text>
+
+  <g filter="url(#softShadow)">
+    <rect x="44" y="440" width="286" height="72" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+    <text x="60" y="460" font-size="11.5" font-weight="700" fill="#065f46">StartAPITestCommandHandler</text>
+    <text x="60" y="476" class="note">application/handlers · Command 只写</text>
+    <text x="60" y="490" class="note">device_type → 选择执行器（枚举分派）</text>
+    <text x="60" y="506" class="note">复用 StartAPITestRequest + device_type（新增）</text>
+
+    <rect x="350" y="440" width="286" height="72" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+    <text x="366" y="460" font-size="11.5" font-weight="700" fill="#065f46">RealtimeSessionExecutor</text>
+    <text x="366" y="476" class="note">application/services/（P1 自 core/ 迁入）</text>
+    <text x="366" y="490" class="note">多轮循环 · barge-in 时序 · 评估提交</text>
+    <text x="366" y="506" class="note" fill="#b91c1c">BaseExecutor &lt;|—— 本类（继承基座）</text>
+
+    <rect x="656" y="440" width="272" height="72" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+    <text x="672" y="460" font-size="11.5" font-weight="700" fill="#065f46">APISessionExecutor</text>
+    <text x="672" y="476" class="note">非实时 / 流式 HTTP 会话</text>
+    <text x="672" y="490" class="note">session_context.py（实例内存闭环）</text>
+    <text x="672" y="506" class="note">api_concurrency_manager 控并发</text>
+
+    <rect x="946" y="440" width="270" height="72" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+    <text x="962" y="460" font-size="11.5" font-weight="700" fill="#065f46">APIAdapterFactory</text>
+    <text x="962" y="476" class="note">register((protocol, vendor) → Cls)</text>
+    <text x="962" y="490" class="note">get_adapter(adapter_class 优先)</text>
+    <text x="962" y="506" class="note">P3 起落位 infrastructure/adapters/</text>
+  </g>
+  <line x1="330" y1="476" x2="348" y2="476" class="flow"/>
+  <line x1="636" y1="476" x2="654" y2="476" class="flow"/>
+  <line x1="928" y1="476" x2="944" y2="476" class="flow"/>
+
+  <g filter="url(#softShadow)">
+    <rect x="44" y="524" width="286" height="64" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.2"/>
+    <text x="60" y="544" font-size="11.5" font-weight="700" fill="#3730a3">BaseAPIAdapter（生命周期模板方法）</text>
+    <text x="60" y="560" class="note">initialize → pre_process → send → recv</text>
+    <text x="60" y="574" class="note">→ post_process → teardown（语义不变）</text>
+    <rect x="350" y="524" width="286" height="64" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.2"/>
+    <text x="366" y="544" font-size="11.5" font-weight="700" fill="#3730a3">三个具体适配器</text>
+    <text x="366" y="560" class="note">HttpAPIAdapter（text / image）</text>
+    <text x="366" y="574" class="note">HttpStreamAdapter ｜ RealtimeAPIAdapter（+厂商子类）</text>
+    <rect x="656" y="524" width="272" height="64" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+    <text x="672" y="544" font-size="11.5" font-weight="700" fill="#92400e">两个聚合（Domain）</text>
+    <text x="672" y="560" class="note">APIAggregate · apis 表（列新增）</text>
+    <text x="672" y="574" class="note">ApiRmsSplMappingAggregate · 新表（新增）</text>
+    <rect x="946" y="524" width="270" height="64" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+    <text x="962" y="544" font-size="11.5" font-weight="700" fill="#92400e">结果与事件出口</text>
+    <text x="962" y="560" class="note">APIResultProcessor · create_multi_round_test_result</text>
+    <text x="962" y="574" class="note">ApiTestEventPublisher → CASE_EVENTS（发布订阅）</text>
+  </g>
+  <line x1="1080" y1="512" x2="1080" y2="522" class="flow"/>
+  <line x1="493" y1="512" x2="493" y2="522" class="flow"/>
+  <line x1="187" y1="512" x2="187" y2="522" class="flow-violet"/>
+  <line x1="493" y1="556" x2="654" y2="556" class="flow"/>
+  <text x="520" y="550" class="chip-t" fill="#3730a3" text-anchor="start">实例化 / 读快照</text>
+
+  <g filter="url(#softShadow)">
+    <rect x="44" y="600" width="1172" height="60" rx="8" fill="#ffffff" stroke="#67e8f9" stroke-width="1.2"/>
+    <text x="60" y="620" font-size="11.5" font-weight="700" fill="#155e75">audio_service 协作类（混音下沉后的实现体）</text>
+    <text x="60" y="638" class="body">RenderService Servicer（新增，双出口：RenderAudioStream / RenderAudioFile）→ Orchestrator（离线混音 6 步）→ FormatAdapter（格式适配）→ ApiRmsSplService（spl→gain）/ SPLMapping</text>
+    <text x="60" y="654" class="note">AudioStreamClient ..&gt; RenderAudioStreamServicer：gRPC server-streaming · ACL 只读 + TTL 缓存读 api_rms_spl_mappings</text>
+  </g>
+  <line x1="630" y1="588" x2="630" y2="600" class="flow-violet"/>
+  <text x="642" y="602" class="chip-t" fill="#7c3aed" text-anchor="start">跨服务 gRPC（proto 唯一契约）</text>
+
+  <!-- ③ shared 内核 -->
+  <rect x="24" y="696" width="1192" height="272" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="696" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="722" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="715" r="11" fill="#64748b"/>
+  <text x="46" y="719" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="720" class="sec-title" fill="#1e293b">shared 共享内核 — 被各服务组合 / 继承的唯一基座（禁止各服务自行实现同类能力）</text>
+
+  <g filter="url(#softShadow)">
+    <rect x="44" y="744" width="392" height="106" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+    <text x="60" y="764" font-size="11.5" font-weight="700" fill="#334155">BaseExecutor（shared/infrastructure/base_executor/_base.py）</text>
+    <rect x="60" y="774" width="70" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="95" y="789" class="chip-t" fill="#475569">Control</text>
+    <rect x="136" y="774" width="70" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="171" y="789" class="chip-t" fill="#475569">Logging</text>
+    <rect x="212" y="774" width="70" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="247" y="789" class="chip-t" fill="#475569">Params</text>
+    <rect x="288" y="774" width="70" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="323" y="789" class="chip-t" fill="#475569">Results</text>
+    <rect x="364" y="774" width="58" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="393" y="789" class="chip-t" fill="#475569">Db</text>
+    <text x="60" y="816" class="note">五 mixin 组装：启停控制 · 统一日志 · 参数映射 · 结果与评估提交 · 校验与落库</text>
+    <text x="60" y="831" class="note">自 task_service/core/ 迁至 shared，供 api_test/e2e/task 三侧共用</text>
+    <text x="60" y="846" class="note">ResultsMixin → _grpc_task_data.submit_evaluate_case（gRPC 化）</text>
+
+    <rect x="448" y="744" width="392" height="106" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
+    <text x="464" y="764" font-size="11.5" font-weight="700" fill="#991b1b">EventBus · RedisPubSub（shared/utils/redis_pubsub.py）</text>
+    <rect x="464" y="774" width="94" height="22" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/><text x="511" y="789" class="chip-t" fill="#991b1b">EventChannel</text>
+    <rect x="564" y="774" width="86" height="22" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/><text x="607" y="789" class="chip-t" fill="#991b1b">EventType</text>
+    <rect x="656" y="774" width="86" height="22" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/><text x="699" y="789" class="chip-t" fill="#991b1b">RedisStore</text>
+    <rect x="748" y="774" width="78" height="22" rx="6" fill="#fef2f2" stroke="#fca5a5" stroke-width="1"/><text x="787" y="789" class="chip-t" fill="#991b1b">阻塞 client</text>
+    <text x="464" y="816" class="note">领域事件（TASK/CASE/DEVICE/REPORT/CONFIG）与进度日志分道</text>
+    <text x="464" y="831" class="note">DomainEvent = frozen dataclass（不可变）· create_blocking_redis_client 供 BRPOP</text>
+    <text x="464" y="846" class="note">publish_progress / publish_log 直连网关订阅侧，不进领域事件总线</text>
+
+    <rect x="852" y="744" width="364" height="106" rx="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2"/>
+    <text x="868" y="764" font-size="11.5" font-weight="700" fill="#334155">协调与发现原语</text>
+    <rect x="868" y="774" width="106" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="921" y="789" class="chip-t" fill="#475569">DistributedLock</text>
+    <rect x="980" y="774" width="118" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="1039" y="789" class="chip-t" fill="#475569">DistributedSemaphore</text>
+    <rect x="868" y="800" width="86" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="911" y="815" class="chip-t" fill="#475569">set_flag</text>
+    <rect x="960" y="800" width="120" height="22" rx="6" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/><text x="1020" y="815" class="chip-t" fill="#475569">try_claim_task</text>
+    <text x="868" y="840" class="note">RedisServiceRegistry：service:instances Hash</text>
+    <text x="868" y="854" class="note">+ service:set:{name}　TTL 15s · 心跳 ttl/3</text>
+  </g>
+
+  <g>
+    <rect x="44" y="862" width="1172" height="90" rx="8" fill="#ffffff" stroke="#c4b5fd" stroke-width="1.2"/>
+    <text x="60" y="882" font-size="11.5" font-weight="700" fill="#5b21b6">枚举与常量（唯一落点，前后端镜像）</text>
+    <text x="60" y="900" class="body">后端 shared/models/common_enums.py：DeviceType · APIProtocol · OutputType · CalibrationStatus（新增）· RedisKeyPrefix（扩充）· 存量 TaskStatus / TestType / ReportStatus / FieldType…</text>
+    <text x="60" y="916" class="body">前端 frontend/src/domain/enums.ts：现状 14 个枚举已镜像，缺 DeviceType / OutputType / CalibrationStatus（待补）· RealtimeEventType 11 值（新增）</text>
+    <text x="60" y="934" class="note" fill="#b91c1c">状态判定统一走 shared/utils/status_constants.py 的 FINISHED_* / ACTIVE_* / INTERRUPTED_* frozenset —— 禁止散落字符串比较与魔法数字</text>
+  </g>
+
+  <line x1="630" y1="660" x2="630" y2="696" class="flow-violet" opacity="0"/>
+
+  <!-- ④ proto 契约 -->
+  <rect x="24" y="984" width="1192" height="238" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="984" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="1010" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="1003" r="11" fill="#3b82f6"/>
+  <text x="46" y="1007" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="1008" class="sec-title" fill="#1e3a8a">gRPC 契约扩展（shared/proto 为唯一跨服务契约 · P0 先行）</text>
+
+  <g>
+    <text x="60" y="1044" class="body" font-weight="700" fill="#334155">proto 文件</text>
+    <text x="300" y="1044" class="body" font-weight="700" fill="#334155">现有 RPC / Service</text>
+    <text x="760" y="1044" class="body" font-weight="700" fill="#1e3a8a">扩展点</text>
+    <line x1="44" y1="1052" x2="1216" y2="1052" stroke="#93c5fd"/>
+    <g class="note" fill="#475569">
+      <text x="60" y="1070">api_test_service.proto</text><text x="300" y="1070">APITestService：CreateAPITest · StartAPITest · StopAPITest · GetAPITestStatus + API 配置 CRUD</text><text x="760" y="1070" fill="#c2410c">StartAPITestRequest 增 device_type / device_id（现仅 task_id）</text>
+      <text x="60" y="1090">audio_service.proto</text><text x="300" y="1090">AudioService：PlayAudio · StopAudio · MeasureSPL · PrepareAudios；PlaybackService</text><text x="760" y="1090" fill="#c2410c">新增 RenderAudioStream（server-streaming）+ RenderAudioFile</text>
+      <text x="60" y="1110">evaluation_service.proto</text><text x="300" y="1110">EvaluationService：EvaluateCase · Reevaluate · ReevaluateMultiRound · ReevaluateSingle</text><text x="760" y="1110" fill="#c2410c">Req 增 device_type / user_wav / ai_wav / rounds / first_frame_ms / event_log / frame_results</text>
+      <text x="60" y="1130">e2e_service.proto</text><text x="300" y="1130">ExecutionService（Start/Stop/GetE2E）· DeviceResultService · SPLConfig · PlaybackConfig</text><text x="760" y="1130" fill="#16a34a">无需扩展</text>
+      <text x="60" y="1150">device_service.proto</text><text x="300" y="1150">DeviceService · DeviceResultService（ReextractResult）· EnvDeviceService · 配置类 Service</text><text x="760" y="1150" fill="#16a34a">无需扩展</text>
+    </g>
+    <text x="60" y="1174" class="body" fill="#1e3a8a" font-weight="700">数据模型：Task.worker_instance_id（已有）· TaskCase 增 device_type / device_id（P0 迁移脚本 + 索引）· apis 增 device_type / adapter_class / audio_config / output_types（新增列）· api_rms_spl_mappings（新表）</text>
+    <text x="60" y="1192" class="note">改造节奏：proto 与领域模型先行（P0）→ 服务实现（P1）→ 消费方（网关 / 前端）随后切换；禁止先改消费方再补契约</text>
+  </g>
+
+  <!-- ⑤ 关键时序协作 -->
+  <rect x="24" y="1238" width="1192" height="118" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1238" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="1264" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="1257" r="11" fill="#7c3aed"/>
+  <text x="46" y="1261" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="66" y="1262" class="sec-title" fill="#4c1d95">三段关键协作（04 §七）与职责边界</text>
+  <text x="46" y="1290" class="body">① Realtime 用例执行：CommandHandler → RealtimeSessionExecutor → AdapterFactory.get_adapter → adapter.initialize/pre_process → 混音 chunk 流 → send/commit → post_process（含打断）→ 聚合 → EvaluateCase → teardown</text>
+  <text x="46" y="1308" class="body">② physical 用例执行：task_service 分发 → DistributedLock（锁设备）→ e2e ExecutionService → audio / device_service 协同 → DeviceResultService.CollectResult → submit_evaluate_case → finally release</text>
+  <text x="46" y="1326" class="body">③ 结果聚合与评估：APIResultProcessor.create_multi_round_test_result → 结论落库（DbMixin._save_result）+ 大字段落盘（ResultStorage / MinIO archives）→ CASE_EVENTS 发布 → report_service 消费生成报告</text>
+  <text x="46" y="1346" class="note" fill="#b91c1c">边界纪律：协议细节（报文格式、WS 帧）只允许出现在 api_test_service/infrastructure/adapters/；executor 只调通用接口与 adapter.output 属性，厂商字段零泄漏</text>
+
+  <line x1="0" y1="1372" x2="1240" y2="1372" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1392" font-size="10.5" fill="#64748b">依据：04_类设计.md §1.2 总体类图 · §2.1 BaseExecutor · §2.2 EventBus 与领域事件 · §2.3 枚举 · §2.4 分布式协调类 · §三 api_test_service · §四 audio_service · §五 task_service · §七 关键时序；02_架构设计.md §7.2 gRPC 契约扩展</text>
+</svg>

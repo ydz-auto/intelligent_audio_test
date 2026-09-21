@@ -2,7 +2,7 @@
 
 > 本文档定义智能语音测试平台的 RBAC（Role-Based Access Control）角色与权限划分方案，作为认证鉴权落地的依据。
 >
-> 关联文档：[oauth.md](./oauth.md)（认证方案设计）、[系统架构.md](./系统架构.md)、数据模型 [shared/models/models/user_models.py](../shared/models/models/user_models.py)
+> 关联文档：[oauth.md](./oauth.md)（认证方案设计）、[系统架构.md](./系统架构.md)、数据模型 [auth_service/infrastructure/persistence/models/user_models.py](../auth_service/infrastructure/persistence/models/user_models.py)
 
 ## 一、现状与目标
 
@@ -10,21 +10,21 @@
 
 | 维度 | 状态 |
 |---|---|
-| RBAC 数据模型 | **已定义** — `Role` / `Permission` / `RolePermission` / `UserPermission` / `User` 表已建，User 内置 `has_permission()` |
+| RBAC 数据模型 | **已定义** — `Role` / `Permission` / `RolePermission` / `UserPermission` / `User` 表已建，User 内置 `has_permission()`，PO 下沉到 auth_service |
 | 权限命名约定 | `资源:操作`（如 `task:create`），支持 `*` 通配 |
-| 认证中间件 | **未实现** — `middleware.py` 仅含 `RequestAdapterMiddleware`，无鉴权 |
-| 路由权限校验 | **未接入** — 16 个蓝图 ~170 个端点完全开放，无 `require_permission` 调用 |
-| 用户/角色/权限管理 API | **未实现** — 无 `auth_bp` / `user_bp` / `role_bp` 路由 |
+| 认证中间件 | **已实现** — `middleware.py` 含 `AuthMiddleware`（JWT 解析 → request.state.user_id / role_id / permissions），另有 `RequestAdapterMiddleware` + `NamingAliasMiddleware` |
+| 路由权限校验 | **可接入** — `api_gateway/application/services/auth/dependencies.py` 提供 `require_permission`，路由层按需标注 |
+| 用户/角色/权限管理 API | **待实现** — `auth_bp` 已提供 login/callback/refresh/logout/me；`user_bp` / `role_bp`（用户/角色/权限管理）尚未实现，见 3.16 节设计依据 |
 
 ### 1.2 目标
 
 - 为系统所有 REST 端点定义清晰的权限点
-- 划分 4 个系统内置角色：`admin` / `tester` / `algo_engineer` / `device_admin`，覆盖 [Agent 化用户场景](../doc/agent化/02_用户场景.md) 中的 5 个业务角色
+- 划分 4 个系统内置角色：`admin` / `tester` / `algo_engineer` / `device_admin`，覆盖测试工程师、测试主管、算法工程师、质量负责人、设备管理员 5 个业务角色
 - 提供权限点 → 角色 → 端点的完整映射表，供落地实现参考
 
 ## 二、角色定义
 
-角色划分对齐 [Agent 化用户场景](../doc/agent化/02_用户场景.md) 中的 5 个业务角色，合并职责相近的为 4 个系统内置角色：
+角色划分对齐测试工程师、测试主管、算法工程师、质量负责人、设备管理员 5 个业务角色，合并职责相近的为 4 个系统内置角色：
 
 | 角色 | name | 对应业务角色 | 说明 | is_system |
 |---|---|---|---|---|
@@ -348,7 +348,7 @@
 
 ### 5.1 表结构对应
 
-RBAC 数据模型定义在 [user_models.py](../shared/models/models/user_models.py)：
+RBAC 数据模型定义在 [user_models.py](../auth_service/infrastructure/persistence/models/user_models.py)：
 
 ```
 users ──role_id──> roles ──< role_permissions >── permissions
@@ -410,11 +410,13 @@ INSERT INTO roles (name, description, is_system) VALUES
 
 ## 六、落地实现要点
 
-### 6.1 认证中间件
+### 6.1 认证中间件（已实现）
 
-在 [api_gateway/middleware.py](../api_gateway/middleware.py) 新增 `AuthMiddleware`，从 JWT 中解析 `user_id` / `role_id` / `permissions` 注入 `request.state`，详见 [oauth.md](./oauth.md) 2.5 节。
+[api_gateway/middleware.py](../api_gateway/middleware.py) 已包含 `AuthMiddleware`，从 JWT 中解析 `user_id` / `role_id` / `permissions` 注入 `request.state`，详见 [oauth.md](./oauth.md) 2.5 节。`AUTH_MODE` 支持 `off` / `dev` / `prod` 三模式。
 
-### 6.2 路由层权限校验
+### 6.2 路由层权限校验（可接入）
+
+`api_gateway/application/services/auth/dependencies.py` 提供 `require_permission` 辅助函数：
 
 ```python
 # 辅助函数

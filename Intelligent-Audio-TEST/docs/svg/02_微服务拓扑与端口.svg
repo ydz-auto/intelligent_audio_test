@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1560" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowViolet); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1560" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">微服务拓扑与端口 — 11 后端服务 · 3 基础设施</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">docs / 微服务.md — 端口唯一真相源 shared/config/service_ports.py · 跨服务一律 gRPC（shared/proto 11 个 .proto）· Redis 服务注册/发现（15s TTL 心跳）</text>
+
+  <!-- ① 服务分组拓扑 -->
+  <rect x="24" y="92" width="1192" height="240" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="111" r="11" fill="#6366f1"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#3730a3">服务分组 — 业务服务 / 支撑·通用服务 / gRPC-only 服务（前端仅经 api_gateway :5000）</text>
+
+  <rect x="44" y="142" width="560" height="62" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <text x="60" y="162" font-size="12" font-weight="700" fill="#9a3412">api_gateway :5000</text>
+  <text x="60" y="180" class="body">唯一对外入口 · REST 聚合 · 认证鉴权 · Socket.IO/SSE 推送 · snake_case ↔ camelCase 转换边界</text>
+  <text x="60" y="196" class="note">启动：uvicorn api_gateway.app:app · 无业务逻辑，仅协议转换与聚合</text>
+
+  <line x1="324" y1="204" x2="324" y2="222" class="flow"/>
+  <text x="336" y="218" font-size="9.5" font-weight="600" fill="#475569">gRPC（grpc_proxies/ + acl/）</text>
+
+  <rect x="44" y="224" width="366" height="94" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.3"/>
+  <text x="60" y="244" font-size="11.5" font-weight="700" fill="#14532d">业务服务（4）</text>
+  <text x="60" y="262" class="body">task_service　5001 / 50061　调度引擎</text>
+  <text x="60" y="278" class="body">e2e_test_service　5002 / 50051　physical 执行</text>
+  <text x="60" y="294" class="body">api_test_service　5003 / 50071　API 测试（replicas: 2）</text>
+  <text x="60" y="310" class="body">evaluation_service　5004 / 50091　评估</text>
+
+  <rect x="422" y="224" width="398" height="94" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="438" y="244" font-size="11.5" font-weight="700" fill="#5b21b6">支撑 · 通用服务（5）</text>
+  <text x="438" y="262" class="body">report_service　5006 / 50068　报告生成与查询</text>
+  <text x="438" y="278" class="body">algorithm_service　5007 / 50067　算法配置（共享内核）</text>
+  <text x="438" y="294" class="body">api_adapter_service　5008 / 50081　语音 LLM 适配（P3 下线）</text>
+  <text x="438" y="310" class="body">auth_service　5009 / 50069　认证 / OAuth / RBAC</text>
+
+  <rect x="832" y="224" width="384" height="94" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.3"/>
+  <text x="848" y="244" font-size="11.5" font-weight="700" fill="#075985">gRPC-only 服务（2）</text>
+  <text x="848" y="262" class="body">audio_service　— / 50052　播放·混音·SPL</text>
+  <text x="848" y="278" class="body">device_service　— / 50053　设备驱动·结果提取</text>
+  <text x="848" y="294" class="body">无 HTTP 入口，不挂载 uvicorn</text>
+  <text x="848" y="310" class="note">python -m audio_service.interfaces.grpc.server</text>
+
+  <!-- ② 服务清单与端口 -->
+  <rect x="24" y="348" width="1192" height="330" rx="10" fill="#fff7ed" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="348" width="1192" height="38" rx="10" fill="#ffedd5"/>
+  <rect x="24" y="374" width="1192" height="12" fill="#ffedd5"/>
+  <circle cx="46" cy="367" r="11" fill="#f59e0b"/>
+  <text x="46" y="371" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="372" class="sec-title" fill="#9a3412">服务清单 — 端口统一注册在 shared/config/service_ports.py，禁止散落硬编码</text>
+
+  <g>
+    <text x="60" y="412" class="body" font-weight="700" fill="#334155">服务 · HTTP / gRPC · 启动方式 · 职责</text>
+    <line x1="60" y1="420" x2="1160" y2="420" stroke="#cbd5e1"/>
+    <text x="60" y="438" class="body" font-weight="700">api_gateway　<tspan fill="#64748b" font-weight="400">5000 / —　uvicorn api_gateway.app:app　REST + Socket.IO/SSE + 鉴权</tspan></text>
+    <text x="60" y="456" class="body" font-weight="700">task_service　<tspan fill="#64748b" font-weight="400">5001 / 50061　任务调度引擎 · 状态机 · 执行引擎</tspan></text>
+    <text x="60" y="474" class="body" font-weight="700">e2e_test_service　<tspan fill="#64748b" font-weight="400">5002 / 50051　设备驱动 · 音频播放编排 · 结果采集（纯执行器）</tspan></text>
+    <text x="60" y="492" class="body" font-weight="700">api_test_service　<tspan fill="#64748b" font-weight="400">5003 / 50071　并发控制 · 会话执行　</tspan><tspan fill="#c2410c">replicas: 2</tspan></text>
+    <text x="60" y="510" class="body" font-weight="700">evaluation_service　<tspan fill="#64748b" font-weight="400">5004 / 50091　维度管理 · WER/DER/LLM Judge · 多轮聚合 · 重评估</tspan></text>
+    <text x="60" y="528" class="body" font-weight="700">report_service　<tspan fill="#64748b" font-weight="400">5006 / 50068　报告生成（异步）与查询 · 对比分析</tspan></text>
+    <text x="60" y="546" class="body" font-weight="700">algorithm_service　<tspan fill="#64748b" font-weight="400">5007 / 50067　算法配置管理 · 参考参数生成器</tspan></text>
+    <text x="60" y="564" class="body" font-weight="700">api_adapter_service　<tspan fill="#64748b" font-weight="400">5008 / 50081　Qwen/火山 AST/SSE/HTTP/Mock　</tspan><tspan fill="#b91c1c">P3 下线</tspan></text>
+    <text x="60" y="582" class="body" font-weight="700">auth_service　<tspan fill="#64748b" font-weight="400">5009 / 50069　认证 / OAuth / RBAC 角色权限</tspan></text>
+    <text x="60" y="600" class="body" font-weight="700">audio_service　<tspan fill="#64748b" font-weight="400">— / 50052　gRPC-only：播放 / 停止 / 状态查询</tspan></text>
+    <text x="60" y="618" class="body" font-weight="700">device_service　<tspan fill="#64748b" font-weight="400">— / 50053　gRPC-only：播放/环境设备驱动 · SPL 测量</tspan></text>
+    <text x="60" y="638" class="note">共 11 个后端服务（run_all.py 编排）· shared/proto 11 个 .proto 为唯一跨服务契约</text>
+  </g>
+
+  <!-- ③ 服务间通信 -->
+  <rect x="24" y="694" width="1192" height="330" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="694" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="720" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="713" r="11" fill="#16a34a"/>
+  <text x="46" y="717" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="718" class="sec-title" fill="#14532d">服务间通信 — 一律 gRPC（shared/clients/grpc_clients.py lru_cache 复用 channel）· ACL 仓储封装出站调用</text>
+
+  <g>
+    <text x="60" y="758" class="body" font-weight="700" fill="#334155">调用方 → 被调方 · gRPC Service · 主要用途</text>
+    <line x1="60" y1="766" x2="1160" y2="766" stroke="#cbd5e1"/>
+    <text x="60" y="784" class="body">api_gateway → task_service　<tspan fill="#64748b">TaskDataService　任务 CRUD · 进度 · 提交用例结果</tspan></text>
+    <text x="60" y="800" class="body">api_gateway → evaluation_service　<tspan fill="#64748b">EvaluationService　维度 CRUD · 评分结果</tspan></text>
+    <text x="60" y="816" class="body">api_gateway → audio_service　<tspan fill="#64748b">AudioConfigService　音频 CRUD/上传/转换/预览</tspan></text>
+    <text x="60" y="832" class="body">api_gateway → device_service　<tspan fill="#64748b">Device/Playback/SPLConfigService　设备 CRUD</tspan></text>
+    <text x="60" y="848" class="body">api_gateway → algorithm_service　<tspan fill="#64748b">AlgorithmService　算法配置 CRUD</tspan></text>
+    <text x="60" y="864" class="body">api_gateway → auth_service　<tspan fill="#64748b">AuthService　用户信息查询</tspan></text>
+    <text x="60" y="880" class="body">api_gateway → report_service　<tspan fill="#64748b">ReportService　报告列表/详情查询</tspan></text>
+    <text x="60" y="896" class="body" font-weight="700">task_service → e2e_test_service　<tspan fill="#64748b" font-weight="400">ExecutionService　StartE2ETask / StopE2ETask</tspan></text>
+    <text x="60" y="912" class="body" font-weight="700">task_service → api_test_service　<tspan fill="#64748b" font-weight="400">APITestService　CreateAPITest / StartAPITest</tspan></text>
+    <text x="60" y="928" class="body" font-weight="700">task_service → evaluation_service　<tspan fill="#64748b" font-weight="400">EvaluationService　EvaluateCase / Reevaluate</tspan></text>
+    <text x="60" y="944" class="body" font-weight="700">task_service → audio_service　<tspan fill="#64748b" font-weight="400">AudioService / PlaybackService　音频播放编排</tspan></text>
+    <text x="60" y="960" class="body" font-weight="700">task_service → device_service　<tspan fill="#64748b" font-weight="400">DeviceService / DeviceResultService　设备驱动创建/销毁 · 结果采集</tspan></text>
+    <text x="60" y="978" class="note">出站调用的业务语义封装在各服务 infrastructure/acl/ 下的 ACL 仓储中；禁止跨服务直连数据库</text>
+  </g>
+
+  <!-- ④ 服务内部 DDD 四层 -->
+  <rect x="24" y="1040" width="1192" height="240" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1040" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1066" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="1059" r="11" fill="#dc2626"/>
+  <text x="46" y="1063" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="1064" class="sec-title" fill="#7f1d1d">服务内部架构 — 每服务统一 DDD 四层：interfaces → application → domain → infrastructure</text>
+
+  <rect x="44" y="1090" width="272" height="170" rx="8" fill="#ffffff" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="60" y="1110" font-size="11.5" font-weight="700" fill="#3730a3">interfaces/ 入站适配器</text>
+  <text x="60" y="1130" class="body">grpc/ — servicer + server</text>
+  <text x="60" y="1146" class="body">api/ — HTTP 路由（如有）</text>
+  <text x="60" y="1166" class="note">接收 Command / Query 输入</text>
+  <text x="60" y="1182" class="note">不承载业务逻辑</text>
+  <text x="60" y="1202" class="note">servicer 全部位于 interfaces/grpc/</text>
+  <text x="60" y="1218" class="note">禁止 infrastructure/grpc/ 目录</text>
+  <text x="60" y="1246" class="body" font-weight="700" fill="#3730a3">↓ 命令/查询</text>
+
+  <rect x="328" y="1090" width="272" height="170" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.2"/>
+  <text x="344" y="1110" font-size="11.5" font-weight="700" fill="#9a3412">application/ 用例编排（CQRS）</text>
+  <text x="344" y="1130" class="body">commands/ — CreateTask, StartTask…</text>
+  <text x="344" y="1146" class="body">queries/ — GetTask, GetProgress…</text>
+  <text x="344" y="1162" class="body">handlers/ — Command/Query Handler</text>
+  <text x="344" y="1182" class="note">Command 与 Query Handler 严格分离</text>
+  <text x="344" y="1198" class="note">缓存 ReadModel 供查询侧读取</text>
+  <text x="344" y="1218" class="note">面向 repository ABC（依赖倒置）</text>
+  <text x="344" y="1246" class="body" font-weight="700" fill="#9a3412">↓ 依赖倒置</text>
+
+  <rect x="612" y="1090" width="272" height="170" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.2"/>
+  <text x="628" y="1110" font-size="11.5" font-weight="700" fill="#14532d">domain/ 纯领域逻辑</text>
+  <text x="628" y="1130" class="body">entities/ — TaskAggregate…（pure @dataclass）</text>
+  <text x="628" y="1146" class="body">value_objects/ — TaskConfig…</text>
+  <text x="628" y="1162" class="body">events/ — TaskStarted, TaskCompleted</text>
+  <text x="628" y="1178" class="body">services/ — 领域服务（纯逻辑）</text>
+  <text x="628" y="1198" class="note">零 DB / ORM / infrastructure 依赖</text>
+  <text x="628" y="1214" class="note">repository 一律接口（ABC）</text>
+  <text x="628" y="1234" class="note">DTO 规则 D1-D4（全 Optional dataclass）</text>
+  <text x="628" y="1246" class="body" font-weight="700" fill="#14532d">↓ 技术实现</text>
+
+  <rect x="896" y="1090" width="308" height="170" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.2"/>
+  <text x="912" y="1110" font-size="11.5" font-weight="700" fill="#1e293b">infrastructure/ 技术实现</text>
+  <text x="912" y="1130" class="body">persistence/ — PO 模型 + Repository 实现</text>
+  <text x="912" y="1146" class="body">　└ models/ — task_models, testcase_models…</text>
+  <text x="912" y="1162" class="body">acl/ — ACL 仓储（调其他服务 gRPC）</text>
+  <text x="912" y="1178" class="body">oss/ — OSS 存储</text>
+  <text x="912" y="1198" class="note">唯一知道 snake_case 的层</text>
+  <text x="912" y="1214" class="note">实现 domain 定义的 ABC 接口</text>
+  <text x="912" y="1234" class="note">出站 gRPC 语义封装在 ACL 仓储</text>
+  <text x="912" y="1246" class="body" font-weight="700" fill="#1e293b">PO 下沉 + 跨服务隔离</text>
+
+  <!-- ⑤ 注册发现与部署 -->
+  <rect x="24" y="1296" width="1192" height="210" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1296" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1322" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="1315" r="11" fill="#64748b"/>
+  <text x="46" y="1319" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="66" y="1320" class="sec-title" fill="#1e293b">服务注册与发现 · 配置管理 · Docker 部署（多实例 replicas 控制）</text>
+
+  <rect x="44" y="1346" width="560" height="80" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="60" y="1366" font-size="11.5" font-weight="700" fill="#1e293b">Redis 服务注册与发现（shared/utils/service_registry.py）</text>
+  <text x="60" y="1386" class="body">启动时注册到 Hash 键　service:info:{service_name}:{instance_id}</text>
+  <text x="60" y="1402" class="body">心跳 15s TTL，超时自动剔除；调用方从 Redis 获取可用实例列表</text>
+  <text x="60" y="1418" class="note">配置：SERVICE_HOST / TASK_SERVICE_HOST（跨服务 gRPC 地址）· REDIS_URL 默认 redis://localhost:6379</text>
+
+  <rect x="616" y="1346" width="600" height="80" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="632" y="1366" font-size="11.5" font-weight="700" fill="#92400e">Docker 部署（docker/docker-compose.yml）</text>
+  <text x="632" y="1386" class="body">8 个后端服务 + postgres + redis + minio（不含 auth/algorithm/report，按需补充）</text>
+  <text x="632" y="1402" class="body">多实例经 deploy.replicas 控制 —— api_test_service 默认 2 副本</text>
+  <text x="632" y="1418" class="note">每个服务独立 Dockerfile：Dockerfile.api_gateway … Dockerfile.api_adapter_service（共 9 个文件）</text>
+
+  <rect x="44" y="1438" width="560" height="52" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="60" y="1458" font-size="11.5" font-weight="700" fill="#166534">一键启动（本地开发）python run_all.py</text>
+  <text x="60" y="1478" class="body">清理端口 → 启动 Redis/PG/MinIO → 顺序启动 11 后端（等端口就绪）→ 启动前端 Vite（proxy → :5000）→ Ctrl+C 优雅停止</text>
+
+  <rect x="616" y="1438" width="600" height="52" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="632" y="1458" font-size="11.5" font-weight="700" fill="#075985">关键配置项</text>
+  <text x="632" y="1478" class="body">DATABASE_URL（必填）· OSS_ENDPOINT/OSS_ACCESS_KEY/OSS_SECRET_KEY · PORT/GRPC_PORT · AUTH_MODE（off/dev/prod）· DISTRIBUTED_COORDINATOR_ENABLED</text>
+
+  <line x1="0" y1="1516" x2="1240" y2="1516" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1536" font-size="10.5" fill="#64748b">依据：docs/微服务.md §概览 · §服务列表 · §服务间通信 · §服务内部架构 · §服务注册与发现 · §Docker 部署 · §一键启动（V9.7.31）</text>
+  <text x="24" y="1552" font-size="10.5" fill="#64748b">配套图纸：01_系统总体架构 · 03_DDD领域划分与上下文映射 · 05_OAuth双模式认证 · 06_分布式协调器</text>
+</svg>

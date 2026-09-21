@@ -1,0 +1,282 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1750" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+  <rect x="0" y="0" width="1240" height="1750" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">平台迁移验证报告</text>
+  <text x="24" y="64" font-size="12" fill="#64748b">验证日期：2026-08-06 ｜ 源：Flask 单体 ｜ 目标：FastAPI + DDD + CQRS 微服务架构（11 服务 + 共享层 + 前端）</text>
+  <line x1="24" y1="76" x2="1216" y2="76" stroke="#cbd5e1" stroke-width="1"/>
+
+  <!-- ① 验证概述 -->
+  <rect x="24" y="92" width="1192" height="210" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="111" r="11" fill="#6366f1"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" font-size="14" font-weight="700" fill="#3730a3">验证概述</text>
+
+  <rect x="44" y="144" width="360" height="50" rx="8" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.4"/>
+  <text x="224" y="164" font-size="11" font-weight="700" fill="#3730a3" text-anchor="middle">源目录（Flask 单体）</text>
+  <text x="224" y="180" font-size="9" fill="#6366f1" text-anchor="middle">backend/</text>
+
+  <line x1="404" y1="169" x2="426" y2="169" stroke="#6366f1" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <rect x="436" y="144" width="160" height="50" rx="8" fill="#6366f1"/>
+  <text x="516" y="164" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">迁移重构</text>
+  <text x="516" y="180" font-size="9" fill="#e0e7ff" text-anchor="middle">DDD + CQRS + gRPC</text>
+
+  <line x1="596" y1="169" x2="618" y2="169" stroke="#6366f1" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <rect x="628" y="144" width="360" height="50" rx="8" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.4"/>
+  <text x="808" y="164" font-size="11" font-weight="700" fill="#3730a3" text-anchor="middle">目标目录（FastAPI 微服务）</text>
+  <text x="808" y="180" font-size="9" fill="#6366f1" text-anchor="middle">11 微服务 + shared/ + frontend/</text>
+
+  <rect x="44" y="216" width="380" height="72" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="56" y="236" font-size="10" font-weight="700" fill="#0f172a">验证方法</text>
+  <text x="56" y="254" font-size="9" fill="#475569">文件完整性 · 编译构建 (python -m compileall)</text>
+  <text x="56" y="270" font-size="9" fill="#475569">架构合规 · 单元测试 (282) · 集成测试 · 代码质量</text>
+
+  <rect x="456" y="216" width="340" height="72" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="468" y="236" font-size="10" font-weight="700" fill="#0f172a">覆盖范围</text>
+  <text x="468" y="254" font-size="9" fill="#475569">全部 11 个后端微服务 + shared 共享层</text>
+  <text x="468" y="270" font-size="9" fill="#475569">前端 Vue 3 + 重构 + 新增架构文档</text>
+
+  <rect x="828" y="216" width="366" height="72" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="840" y="236" font-size="10" font-weight="700" fill="#0f172a">参考文档</text>
+  <text x="840" y="254" font-size="9" fill="#475569">DDD重构.md · RBAC权限划分.md</text>
+  <text x="840" y="270" font-size="9" fill="#475569">oauth.md · 分布式协调器.md</text>
+
+  <!-- ② 核心指标仪表盘 -->
+  <rect x="24" y="318" width="1192" height="170" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="318" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="344" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="337" r="11" fill="#f59e0b"/>
+  <text x="46" y="341" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="342" font-size="14" font-weight="700" fill="#92400e">核心迁移指标</text>
+
+  <rect x="44" y="372" width="370" height="54" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="44" y="372" width="6" height="54" rx="6" fill="#16a34a"/>
+  <text x="60" y="392" font-size="11" font-weight="600" fill="#0f172a">单元测试</text>
+  <text x="390" y="392" font-size="16" font-weight="700" fill="#16a34a" text-anchor="end">282</text>
+  <text x="60" y="411" font-size="9" fill="#64748b">全部通过，0 失败 · 核心模块覆盖率 93%–100%</text>
+
+  <rect x="434" y="372" width="370" height="54" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="434" y="372" width="6" height="54" rx="6" fill="#16a34a"/>
+  <text x="450" y="392" font-size="11" font-weight="600" fill="#0f172a">架构合规检查</text>
+  <text x="780" y="392" font-size="16" font-weight="700" fill="#16a34a" text-anchor="end">12</text>
+  <text x="450" y="411" font-size="9" fill="#64748b">12 项 DDD + CQRS 合规检查全部通过</text>
+
+  <rect x="824" y="372" width="370" height="54" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="824" y="372" width="6" height="54" rx="6" fill="#dc2626"/>
+  <text x="840" y="392" font-size="11" font-weight="600" fill="#0f172a">架构违规</text>
+  <text x="1170" y="392" font-size="16" font-weight="700" fill="#dc2626" text-anchor="end">48</text>
+  <text x="840" y="411" font-size="9" fill="#64748b">跨服务 PO 直连（21）· domain 层违规（10）· 其他（17）</text>
+
+  <rect x="44" y="434" width="370" height="42" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="44" y="434" width="6" height="42" rx="6" fill="#f59e0b"/>
+  <text x="60" y="454" font-size="11" font-weight="600" fill="#0f172a">编译构建</text>
+  <text x="390" y="454" font-size="14" font-weight="700" fill="#f59e0b" text-anchor="end">✅ 通过</text>
+  <text x="60" y="468" font-size="9" fill="#64748b">11 服务 + shared 全量编译通过</text>
+
+  <rect x="434" y="434" width="370" height="42" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="434" y="434" width="6" height="42" rx="6" fill="#3b82f6"/>
+  <text x="450" y="454" font-size="11" font-weight="600" fill="#0f172a">微服务</text>
+  <text x="780" y="454" font-size="14" font-weight="700" fill="#3b82f6" text-anchor="end">11</text>
+  <text x="450" y="468" font-size="9" fill="#64748b">11 个微服务 + gRPC proto × 11 + shared 共享层</text>
+
+  <rect x="824" y="434" width="370" height="42" rx="6" fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="824" y="434" width="6" height="42" rx="6" fill="#dc2626"/>
+  <text x="840" y="454" font-size="11" font-weight="600" fill="#0f172a">违规分级</text>
+  <text x="1170" y="454" font-size="14" font-weight="700" fill="#dc2626" text-anchor="end">P0:7</text>
+  <text x="840" y="468" font-size="9" fill="#64748b">P0:7 ｜ P1:4 ｜ P2:4 ｜ P3:2</text>
+
+  <!-- ③ 违规分级 -->
+  <rect x="24" y="504" width="1192" height="350" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="504" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="530" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="523" r="11" fill="#dc2626"/>
+  <text x="46" y="527" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="528" font-size="14" font-weight="700" fill="#991b1b">架构违规分级（48 项违规，按严重程度分级）</text>
+
+  <rect x="44" y="552" width="570" height="140" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="1.3"/>
+  <rect x="44" y="552" width="570" height="26" rx="8" fill="#fee2e2"/>
+  <rect x="44" y="566" width="570" height="12" fill="#fee2e2"/>
+  <circle cx="58" cy="565" r="8" fill="#dc2626"/>
+  <text x="58" y="569" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">P</text>
+  <text x="72" y="569" font-size="10" font-weight="700" fill="#991b1b">P0 — 立即修复（7 项）</text>
+  <text x="56" y="592" font-size="9" fill="#475569">· evaluation_service domain 直接 import infrastructure（10 处）</text>
+  <text x="56" y="608" font-size="9" fill="#475569">· evaluation_service ACL 实现未继承 domain ABC</text>
+  <text x="56" y="624" font-size="9" fill="#475569">· api_gateway / shared 直写 task_service Log 表（8 处）</text>
+  <text x="56" y="640" font-size="9" fill="#475569">· SQL 注入风险（2 处）· 前端 vitest CVE-2026-47429（CVSS 9.8）</text>
+
+  <rect x="630" y="552" width="570" height="140" rx="8" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.3"/>
+  <rect x="630" y="552" width="570" height="26" rx="8" fill="#fef3c7"/>
+  <rect x="630" y="566" width="570" height="12" fill="#fef3c7"/>
+  <circle cx="644" cy="565" r="8" fill="#f59e0b"/>
+  <text x="644" y="569" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">P</text>
+  <text x="658" y="569" font-size="10" font-weight="700" fill="#92400e">P1 — 高优先级（4 项）</text>
+  <text x="642" y="592" font-size="9" fill="#475569">· api_gateway 跨服务 PO 直连（9 处）</text>
+  <text x="642" y="608" font-size="9" fill="#475569">· shared/utils 跨服务 PO 直连（11 处）</text>
+  <text x="642" y="624" font-size="9" fill="#475569">· run_all.py 缺 6 个服务配置 · 超大文件 grpc_proxies.py（3036 行）</text>
+  <text x="642" y="640" font-size="9" fill="#475569">· 代码重复 normalize_summary_metrics（3-4 处）· XSS 2 处</text>
+
+  <rect x="44" y="706" width="570" height="130" rx="8" fill="#f8fafc" stroke="#64748b" stroke-width="1.3"/>
+  <rect x="44" y="706" width="570" height="26" rx="8" fill="#e2e8f0"/>
+  <rect x="44" y="720" width="570" height="12" fill="#e2e8f0"/>
+  <circle cx="58" cy="719" r="8" fill="#64748b"/>
+  <text x="58" y="723" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">P</text>
+  <text x="72" y="723" font-size="10" font-weight="700" fill="#334155">P2 — 中优先级（4 项）</text>
+  <text x="56" y="746" font-size="9" fill="#475569">· domain 层 import shared.utils.log_handler（9 处）</text>
+  <text x="56" y="762" font-size="9" fill="#475569">· application 层直接 import PO（3 处）</text>
+  <text x="56" y="778" font-size="9" fill="#475569">· 100+ 处裸异常捕获 · electron 多 CVE · 5 个 500+ 行大文件</text>
+  <text x="56" y="798" font-size="9" fill="#64748b">注：P2 项为后续优化，不影响现有功能运行</text>
+
+  <rect x="630" y="706" width="570" height="130" rx="8" fill="#faf5ff" stroke="#7c3aed" stroke-width="1.3"/>
+  <rect x="630" y="706" width="570" height="26" rx="8" fill="#f3e8ff"/>
+  <rect x="630" y="720" width="570" height="12" fill="#f3e8ff"/>
+  <circle cx="644" cy="719" r="8" fill="#7c3aed"/>
+  <text x="644" y="723" font-size="9" font-weight="700" fill="#ffffff" text-anchor="middle">P</text>
+  <text x="658" y="723" font-size="10" font-weight="700" fill="#6b21a8">P3 — 低优先级（2 项）</text>
+  <text x="642" y="746" font-size="9" fill="#475569">· device_service command 调用 repository 读方法</text>
+  <text x="642" y="762" font-size="9" fill="#475569">  （CQRS 轻度违规，可解释为「聚合加载」）</text>
+  <text x="642" y="778" font-size="9" fill="#475569">· report_service Command / Query Handler 同文件</text>
+  <text x="642" y="798" font-size="9" fill="#64748b">注：P3 项建议拆分，不影响正常运行</text>
+
+  <!-- ④ 已修复进展 -->
+  <rect x="24" y="870" width="1192" height="300" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="870" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="896" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="889" r="11" fill="#16a34a"/>
+  <text x="46" y="893" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="894" font-size="14" font-weight="700" fill="#166534">后续修复进展（截至 2026-09-11）</text>
+
+  <rect x="44" y="918" width="1152" height="24" rx="4" fill="#16a34a"/>
+  <text x="80" y="934" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">#</text>
+  <text x="190" y="934" font-size="10" font-weight="700" fill="#ffffff">报告编号</text>
+  <text x="420" y="934" font-size="10" font-weight="700" fill="#ffffff">问题描述</text>
+  <text x="1030" y="934" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">修复状态</text>
+
+  <rect x="44" y="942" width="1152" height="24" fill="#ffffff"/>
+  <text x="80" y="959" font-size="9.5" fill="#475569" text-anchor="middle">1</text>
+  <text x="190" y="959" font-size="9.5" fill="#475569">2.7</text>
+  <text x="240" y="959" font-size="9.5" fill="#475569">run_all.py 缺 6 个服务配置</text>
+  <rect x="1000" y="945" width="60" height="18" rx="9" fill="#dcfce7"/>
+  <text x="1030" y="958" font-size="9" font-weight="600" fill="#166534" text-anchor="middle">✅ 已修复</text>
+
+  <rect x="44" y="966" width="1152" height="24" fill="#f8fafc"/>
+  <text x="80" y="983" font-size="9.5" fill="#475569" text-anchor="middle">2</text>
+  <text x="190" y="983" font-size="9.5" fill="#475569">9</text>
+  <text x="240" y="983" font-size="9.5" fill="#475569">超大文件 grpc_proxies.py（3036 行）拆分</text>
+  <rect x="1000" y="969" width="60" height="18" rx="9" fill="#dcfce7"/>
+  <text x="1030" y="982" font-size="9" font-weight="600" fill="#166534" text-anchor="middle">✅ 已修复</text>
+
+  <rect x="44" y="990" width="1152" height="24" fill="#ffffff"/>
+  <text x="80" y="1007" font-size="9.5" fill="#475569" text-anchor="middle">3</text>
+  <text x="190" y="1007" font-size="9.5" fill="#475569">1-4</text>
+  <text x="240" y="1007" font-size="9.5" fill="#475569">认证未实现（AuthMiddleware + auth_bp + OAuth Provider）</text>
+  <rect x="1000" y="993" width="60" height="18" rx="9" fill="#dcfce7"/>
+  <text x="1030" y="1006" font-size="9" font-weight="600" fill="#166534" text-anchor="middle">✅ 已实现</text>
+
+  <rect x="44" y="1014" width="1152" height="24" fill="#f8fafc"/>
+  <text x="80" y="1031" font-size="9.5" fill="#475569" text-anchor="middle">4</text>
+  <text x="190" y="1031" font-size="9.5" fill="#475569">1-1</text>
+  <text x="240" y="1031" font-size="9.5" fill="#475569">evaluation_service domain 直接 import infrastructure（10 处）</text>
+  <rect x="1000" y="1017" width="60" height="18" rx="9" fill="#dcfce7"/>
+  <text x="1030" y="1030" font-size="9" font-weight="600" fill="#166534" text-anchor="middle">✅ 已修复</text>
+
+  <rect x="44" y="1038" width="1152" height="24" fill="#ffffff"/>
+  <text x="80" y="1055" font-size="9.5" fill="#475569" text-anchor="middle">5</text>
+  <text x="190" y="1055" font-size="9.5" fill="#475569">V4</text>
+  <text x="240" y="1055" font-size="9.5" fill="#475569">跨服务 PO 直连（21 处）部分修复，1 处延迟导入待清理</text>
+  <rect x="1000" y="1041" width="60" height="18" rx="9" fill="#fef3c7"/>
+  <text x="1030" y="1054" font-size="9" font-weight="600" fill="#92400e" text-anchor="middle">⚠️ 部分修复</text>
+
+  <rect x="44" y="1062" width="1152" height="24" fill="#f8fafc"/>
+  <text x="80" y="1079" font-size="9.5" fill="#475569" text-anchor="middle">6</text>
+  <text x="190" y="1079" font-size="9.5" fill="#475569">1-2</text>
+  <text x="240" y="1079" font-size="9.5" fill="#475569">evaluation_service ACL 实现未继承 domain ABC</text>
+  <rect x="1000" y="1065" width="60" height="18" rx="9" fill="#dcfce7"/>
+  <text x="1030" y="1078" font-size="9" font-weight="600" fill="#166534" text-anchor="middle">✅ 已修复</text>
+
+  <rect x="44" y="1086" width="1152" height="24" fill="#ffffff"/>
+  <text x="80" y="1103" font-size="9.5" fill="#475569" text-anchor="middle">7</text>
+  <text x="190" y="1103" font-size="9.5" fill="#475569">—</text>
+  <text x="240" y="1103" font-size="9.5" fill="#475569">代码重复 normalize_summary_metrics — 尚未提取为共享方法</text>
+  <rect x="1000" y="1089" width="60" height="18" rx="9" fill="#fef3c7"/>
+  <text x="1030" y="1102" font-size="9" font-weight="600" fill="#92400e" text-anchor="middle">⚠️ 待修复</text>
+
+  <rect x="44" y="1110" width="1152" height="24" fill="#f8fafc"/>
+  <text x="80" y="1127" font-size="9.5" fill="#475569" text-anchor="middle">8</text>
+  <text x="190" y="1127" font-size="9.5" fill="#475569">P4/P6</text>
+  <text x="240" y="1127" font-size="9.5" fill="#475569">stats_cache 拆解 + audio_annotation_service 直连 algorithm PO</text>
+  <rect x="1000" y="1113" width="60" height="18" rx="9" fill="#fef3c7"/>
+  <text x="1030" y="1126" font-size="9" font-weight="600" fill="#92400e" text-anchor="middle">⚠️ 待执行</text>
+
+  <text x="44" y="1150" font-size="9.5" fill="#64748b">说明：run_all.py 已补充 6 个服务 → 现一键启动 11 个后端微服务 + 3 基础设施 + 前端 ｜ grpc_proxies.py 已拆分为 grpc_proxies/ + acl/ 目录 ｜ 认证全链路已实现（OAuth 双模式）</text>
+
+  <!-- ⑤ 迁移状态总结 -->
+  <rect x="24" y="1186" width="1192" height="280" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1186" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1212" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="1205" r="11" fill="#64748b"/>
+  <text x="46" y="1209" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="66" y="1210" font-size="14" font-weight="700" fill="#334155">迁移状态总结</text>
+
+  <rect x="44" y="1240" width="180" height="36" rx="6" fill="#16a34a"/>
+  <text x="134" y="1263" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">✅ 良好</text>
+  <text x="240" y="1254" font-size="11" font-weight="600" fill="#0f172a">文件完整性</text>
+  <text x="340" y="1254" font-size="10" fill="#475569">核心业务模块全部迁移，仅 3 个工具文件和 35 个历史迁移脚本缺失</text>
+  <text x="340" y="1268" font-size="10" fill="#475569">16 个源模块全部完整映射到目标架构，新增 10 个模块（auth/report/device/proto 等）</text>
+  <line x1="44" y1="1282" x2="1170" y2="1282" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <rect x="44" y="1294" width="180" height="36" rx="6" fill="#16a34a"/>
+  <text x="134" y="1317" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">✅ 通过</text>
+  <text x="240" y="1308" font-size="11" font-weight="600" fill="#0f172a">编译构建</text>
+  <text x="340" y="1308" font-size="10" fill="#475569">全部 11 个服务 + shared 全量编译通过（退出码 0），requirements.txt 无版本冲突</text>
+  <text x="340" y="1322" font-size="10" fill="#475569">frontend package.json 无重复依赖，vitest CVE 待升级</text>
+  <line x1="44" y1="1336" x2="1170" y2="1336" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <rect x="44" y="1348" width="180" height="36" rx="6" fill="#f59e0b"/>
+  <text x="134" y="1371" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">⚠️ 中等</text>
+  <text x="240" y="1362" font-size="11" font-weight="600" fill="#0f172a">架构合规</text>
+  <text x="340" y="1362" font-size="10" fill="#475569">12 项 DDD + CQRS 合规检查通过，48 项违规（P0:7、P1:4、P2:4、P3:2）</text>
+  <text x="340" y="1376" font-size="10" fill="#475569">集中在 evaluation_service domain 层和跨服务 PO 直连，按路线图推进修复</text>
+  <line x1="44" y1="1390" x2="1170" y2="1390" stroke="#e2e8f0" stroke-width="0.5"/>
+
+  <rect x="44" y="1402" width="180" height="36" rx="6" fill="#16a34a"/>
+  <text x="134" y="1425" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">✅ 优秀</text>
+  <text x="240" y="1416" font-size="11" font-weight="600" fill="#0f172a">单元测试</text>
+  <text x="340" y="1416" font-size="10" fill="#475569">282 个测试全部通过，0 失败。被测模块平均覆盖率 99.66%（291 语句 / 1 未覆盖）</text>
+  <text x="340" y="1430" font-size="10" fill="#475569">覆盖率达标的模块：task 100% / evaluation 100% / state_machine 100% / camel_case 93%</text>
+
+  <line x1="24" y1="1448" x2="1216" y2="1448" stroke="#cbd5e1" stroke-width="0.5"/>
+
+  <rect x="44" y="1460" width="180" height="36" rx="6" fill="#16a34a"/>
+  <text x="134" y="1483" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">✅ 通过</text>
+  <text x="240" y="1474" font-size="11" font-weight="600" fill="#0f172a">集成测试</text>
+  <text x="340" y="1474" font-size="10" fill="#475569">gRPC proto 编译验证 28 个测试全部通过，11 个 .proto 文件正确生成 pb2/pb2_grpc</text>
+  <text x="340" y="1488" font-size="10" fill="#475569">proto 模块可通过 shared/proto/ 路径正确导入，gRPC channel 复用工厂正常</text>
+
+  <rect x="340" y="1510" width="180" height="36" rx="6" fill="#f59e0b"/>
+  <text x="430" y="1533" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">⚠️ 中等</text>
+  <text x="240" y="1524" font-size="11" font-weight="600" fill="#0f172a">代码质量</text>
+  <text x="340" y="1524" font-size="10" fill="#475569">2 处 SQL 注入、2 处 XSS、100+ 裸异常捕获、5 个 500+ 行大文件</text>
+  <text x="340" y="1538" font-size="10" fill="#475569">56 处 #noqa、58 处 TODO/FIXME、代码重复 normalize_summary_metrics</text>
+
+  <rect x="340" y="1556" width="180" height="36" rx="6" fill="#f59e0b"/>
+  <text x="430" y="1579" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">⚠️ 需关注</text>
+  <text x="240" y="1570" font-size="11" font-weight="600" fill="#0f172a">安全性</text>
+  <text x="340" y="1570" font-size="10" fill="#475569">前端 vitest CVE-2026-47429（CVSS 9.8）、electron 多 CVE（建议升级 ^31.7.4）</text>
+  <text x="340" y="1584" font-size="10" fill="#475569">SQL 注入 2 处（high）· XSS (v-html) 2 处（medium）</text>
+
+  <line x1="24" y1="1620" x2="1216" y2="1620" stroke="#cbd5e1" stroke-width="1"/>
+
+  <text x="24" y="1650" font-size="10" font-weight="700" fill="#0f172a">整体评估</text>
+  <text x="24" y="1670" font-size="10" fill="#475569">迁移已验证完成：Flask 单体 → FastAPI + DDD + CQRS 微服务架构（11 服务 + shared + frontend）。核心业务全部迁移，282 测试全通过，gRPC 框架已搭建。</text>
+  <text x="24" y="1688" font-size="10" fill="#475569">主要技术债：evaluation_service domain 层 10 处 infrastructure 依赖、21 处跨服务 PO 直连、58 处 TODO 标记。已按 P0 → P1 → P2 路线图推进修复。</text>
+  <text x="24" y="1710" font-size="10" fill="#94a3b8">Intelligent-Audio-TEST · 迁移验证报告 ｜ Flask 单体 → FastAPI + DDD + CQRS ｜ 验证日期：2026-08-06</text>
+</svg>

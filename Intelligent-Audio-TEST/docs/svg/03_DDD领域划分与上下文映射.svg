@@ -1,0 +1,233 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1700" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#dc2626"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-red { stroke: #dc2626; stroke-width: 1.6; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowRed); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.8; fill: none; stroke-dasharray: 6 4; marker-end: url(#arrowViolet); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1700" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">DDD 领域划分与上下文映射</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">docs / DDD重构.md — 核心域 / 支撑域 / 通用域 13 上下文 · 聚合根设计 · 上下文映射（SH/CS/ACL/OHS/PL）· CRUD 下沉与 PO 归属 · 8 条 DDD+CQRS 铁律 · P1-P6 实施路线</text>
+
+  <!-- ① 领域划分 -->
+  <rect x="24" y="92" width="1192" height="300" rx="10" fill="#eef2ff" stroke="#6366f1" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="92" width="1192" height="38" rx="10" fill="#e0e7ff"/>
+  <rect x="24" y="118" width="1192" height="12" fill="#e0e7ff"/>
+  <circle cx="46" cy="111" r="11" fill="#6366f1"/>
+  <text x="46" y="115" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="116" class="sec-title" fill="#3730a3">领域划分 — 限界上下文从需求出发，按领域划分，紧耦合的圈在一起（核心价值 / 差异化能力 / 横切共享）</text>
+
+  <rect x="44" y="142" width="382" height="236" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.4"/>
+  <text x="60" y="164" font-size="12" font-weight="700" fill="#b91c1c">核心域（4）— 平台核心价值与差异化能力</text>
+  <text x="60" y="186" class="body">· 测试任务上下文 → task_service（Task 聚合，用户最高频交互）</text>
+  <text x="60" y="204" class="body">· 测试执行上下文 → api_test_service / e2e_test_service（调度设备/API、采集结果）</text>
+  <text x="60" y="222" class="body">· 评估上下文 → evaluation_service（跨 API/E2E 共享，维度打分/多轮聚合）</text>
+  <text x="60" y="240" class="body">· 报告上下文 → report_service（单任务/对比报告生成，PO 已下沉）</text>
+  <text x="60" y="262" class="note">执行上下文只采集原始结果，不再负责打分——打分移交给评估上下文</text>
+  <text x="60" y="280" class="note">Task 是全系统最大聚合根，通过唯一标识引用 TestCase/Device/API（小聚合）</text>
+  <text x="60" y="298" class="note">TestResult（元数据）归属 task_service，执行器 gRPC 回调 SubmitResult 写入</text>
+  <text x="60" y="316" class="note">TestResultDimension 归属 evaluation_service（TestResult 经 gRPC 访问）</text>
+  <text x="60" y="340" class="body" font-weight="700" fill="#b91c1c">跨域数据枢纽：原始结果 TestResult ↔ 维度打分 DimensionScore</text>
+
+  <rect x="438" y="142" width="356" height="236" rx="8" fill="#ffffff" stroke="#f59e0b" stroke-width="1.4"/>
+  <text x="454" y="164" font-size="12" font-weight="700" fill="#9a3412">支撑域（5）— 为任务提供输入配置</text>
+  <text x="454" y="186" class="body">· 测试用例上下文 → task_service（第十一章决策，为任务提供输入）</text>
+  <text x="454" y="204" class="body">· 设备管理上下文 → device_service（DUT + 播放设备 + SPL 校准）</text>
+  <text x="454" y="222" class="body">· 音频管理上下文 → audio_service（素材 CRUD/上传/标注/转换/预览）</text>
+  <text x="454" y="240" class="body">· API 配置上下文 → api_test_service（被测对象配置）</text>
+  <text x="454" y="258" class="body">· 评估维度上下文 → evaluation_service（Dimension CRUD 定义与评分规则）</text>
+  <text x="454" y="280" class="note">被 task/report/e2e/api 多方读，不直接产生业务价值</text>
+  <text x="454" y="298" class="note">device / audio 于 v3 已从 e2e_test_service 实际拆分落地</text>
+  <text x="454" y="316" class="note">e2e_test_service 保留 re-export 存根过渡</text>
+  <text x="454" y="340" class="body" font-weight="700" fill="#9a3412">设备 / 音频 / 用例 为执行域提供输入</text>
+
+  <rect x="806" y="142" width="396" height="236" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.4"/>
+  <text x="822" y="164" font-size="12" font-weight="700" fill="#166534">通用域（4）— 横切所有上下文</text>
+  <text x="822" y="186" class="body">· 算法配置上下文 → algorithm_service（共享"算法类型"字典，跨上下文引用）</text>
+  <text x="822" y="204" class="body">· 用户与权限上下文 → auth_service（RBAC + OAuth，横切全部）</text>
+  <text x="822" y="222" class="body">· 系统审计上下文 → task_service + 各服务自维护统计（Log CRUD 待下沉）</text>
+  <text x="822" y="240" class="body">· API 适配上下文 → api_adapter_service（多 vendor 协议适配，已有完整 DDD 分层）</text>
+  <text x="822" y="262" class="note">algorithm：PO + domain 已建，CRUD 待从 task_service 回归</text>
+  <text x="822" y="280" class="note">auth：PO 骨架已建（User/OAuthClient/RefreshToken + RBAC 表）</text>
+  <text x="822" y="298" class="note">审计：Log CRUD 待从网关下沉（gRPC Log CRUD RPC 补全后）</text>
+  <text x="822" y="316" class="note">适配：Qwen / 火山 AST / SSE / HTTP / Mock（P3 并入 api_test_service）</text>
+  <text x="822" y="340" class="body" font-weight="700" fill="#166534">共享内核：common_enums.py / shared/proto / 端口唯一真相源</text>
+
+  <!-- ② 聚合根一览 -->
+  <rect x="24" y="408" width="1192" height="246" rx="10" fill="#fff7ed" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="408" width="1192" height="38" rx="10" fill="#ffedd5"/>
+  <rect x="24" y="434" width="1192" height="12" fill="#ffedd5"/>
+  <circle cx="46" cy="427" r="11" fill="#f59e0b"/>
+  <text x="46" y="431" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="432" class="sec-title" fill="#9a3412">聚合根一览 — 聚合根通过唯一标识引用其他实体（不持有对象引用），符合"设计小聚合"原则</text>
+
+  <g>
+    <text x="60" y="472" class="body" font-weight="700" fill="#334155">限界上下文 · 聚合根 · 主要实体 / 值对象</text>
+    <line x1="60" y1="480" x2="1160" y2="480" stroke="#cbd5e1"/>
+    <text x="60" y="498" class="body" font-weight="700">测试任务　<tspan fill="#64748b" font-weight="400">Task　— TaskCase / TaskDevice / TaskAPI / TaskTag / TaskMergeRelation · TaskConfig / AlgorithmParams（值对象）</tspan></text>
+    <text x="60" y="516" class="body" font-weight="700">测试执行　<tspan fill="#64748b" font-weight="400">TestResult　— AlgorithmResult / ExecutionSteps / ResultDataRef（大字段文件路径引用）</tspan></text>
+    <text x="60" y="534" class="body" font-weight="700">评估　<tspan fill="#64748b" font-weight="400">EvaluationDimension　— DimensionScore / DimensionSnapshot / RoundResult / ScoringRule（direct/linear/threshold）</tspan></text>
+    <text x="60" y="552" class="body" font-weight="700">报告　<tspan fill="#64748b" font-weight="400">Report（PO 已下沉，CRUD 待回归）</tspan></text>
+    <text x="60" y="570" class="body" font-weight="700">用例　<tspan fill="#64748b" font-weight="400">TestCase · TestCaseGroup　（轮次 rounds / 参考参数 ref-params）</tspan></text>
+    <text x="60" y="588" class="body" font-weight="700">设备　<tspan fill="#64748b" font-weight="400">Device / PlaybackDevice / SPLMapping　— DeviceResult / Calibration 实体</tspan></text>
+    <text x="60" y="606" class="body" font-weight="700">音频　<tspan fill="#64748b" font-weight="400">Audio / UploadTask　— 上传调度 upload_scheduler</tspan></text>
+    <text x="60" y="624" class="body" font-weight="700">API 配置　<tspan fill="#64748b" font-weight="400">API　— APIAggregate / APISnapshot / HTTPMethod / APIStatus</tspan></text>
+    <text x="60" y="642" class="body" font-weight="700">用户权限　<tspan fill="#64748b" font-weight="400">User / Role / Permission / RolePermission / UserPermission（User 内置 has_permission）</tspan></text>
+  </g>
+
+  <!-- ③ 上下文映射 -->
+  <rect x="24" y="670" width="1192" height="290" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="670" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="696" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="689" r="11" fill="#16a34a"/>
+  <text x="46" y="693" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="694" class="sec-title" fill="#14532d">上下文映射 — 共享内核 Shared Kernel · 客户-供应商 CS · ACL 防腐层 · 开放主机服务 OHS · 发布语言 PL</text>
+
+  <rect x="44" y="720" width="228" height="52" rx="8" fill="#ffffff" stroke="#16a34a" stroke-width="1.3"/>
+  <text x="158" y="740" class="pill-t" fill="#166534">shared/ 共享内核（SK）</text>
+  <text x="158" y="756" class="chip-t" fill="#64748b">common_enums · proto · 端口</text>
+
+  <rect x="286" y="720" width="228" height="52" rx="8" fill="#ffffff" stroke="#6366f1" stroke-width="1.3"/>
+  <text x="400" y="740" class="pill-t" fill="#3730a3">测试任务 客户-供应商（CS）</text>
+  <text x="400" y="756" class="chip-t" fill="#64748b">TaskDataService gRPC 11 RPC</text>
+
+  <rect x="528" y="720" width="228" height="52" rx="8" fill="#ffffff" stroke="#dc2626" stroke-width="1.3"/>
+  <text x="642" y="740" class="pill-t" fill="#991b1b">防腐层（ACL）</text>
+  <text x="642" y="756" class="chip-t" fill="#64748b">infrastructure/acl/ 仓储实现</text>
+
+  <rect x="770" y="720" width="228" height="52" rx="8" fill="#ffffff" stroke="#7c3aed" stroke-width="1.3"/>
+  <text x="884" y="740" class="pill-t" fill="#5b21b6">开放主机服务（OHS）</text>
+  <text x="884" y="756" class="chip-t" fill="#64748b">interfaces/grpc/servicers</text>
+
+  <rect x="1012" y="720" width="190" height="52" rx="8" fill="#ffffff" stroke="#64748b" stroke-width="1.3"/>
+  <text x="1107" y="740" class="pill-t" fill="#1e293b">发布语言（PL）</text>
+  <text x="1107" y="756" class="chip-t" fill="#64748b">shared/proto 契约</text>
+
+  <text x="60" y="806" class="body" font-weight="700" fill="#14532d">关键映射关系（全部走 gRPC + proto 契约，禁止跨服务直连 DB）：</text>
+  <text x="60" y="826" class="body">· task_service（CS 供应商）→ e2e_test_service / api_test_service（客户）：ExecutionService / APITestService — Start/Stop/Execute</text>
+  <text x="60" y="844" class="body">· 执行域（客户）→ 评估域（供应商）：submit_evaluate_case gRPC — 评估完成后 REPORT_EVENTS → report_service</text>
+  <text x="60" y="862" class="body">· 执行域 → 支撑域：audio_service（Audio/Playback）+ device_service（Device/DeviceResult）— 播放/混音/SPL/结果提取</text>
+  <text x="60" y="880" class="body">· evaluation_service → algorithm_service：SyncDimensionRelations / GetRelationsByDimension；→ device_service：ReextractResult</text>
+  <text x="60" y="898" class="body">· api_gateway（OHS 门面）→ 全部服务：grpc_proxies/ 目录（按服务分文件）+ acl/（2026-09-11 已拆分落地）</text>
+  <text x="60" y="918" class="note">ACL 仓储接口 ABC 定义在 domain/repositories/ 下，实现在 infrastructure/acl/，且必须继承 domain ABC（依赖倒置，V3.1 已修复）</text>
+  <text x="60" y="936" class="note">跨上下文数据访问一律经 ACL 仓储；repository 返回 dict 或 Entity，不返回裸 ORM</text>
+
+  <!-- ④ CRUD 下沉与 PO 归属 -->
+  <rect x="24" y="976" width="1192" height="210" rx="10" fill="#fef2f2" stroke="#dc2626" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="976" width="1192" height="38" rx="10" fill="#fee2e2"/>
+  <rect x="24" y="1002" width="1192" height="12" fill="#fee2e2"/>
+  <circle cx="46" cy="995" r="11" fill="#dc2626"/>
+  <text x="46" y="999" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="1000" class="sec-title" fill="#7f1d1d">CRUD 下沉与 PO 归属 — 53 张表 / 52 个 PO + 3 个共享枚举（ReportStatus / TaskStatus / ReportType），PO 归各服务 infrastructure/persistence/models/</text>
+
+  <g>
+    <text x="60" y="1040" class="body" font-weight="700" fill="#334155">归属服务 · 数据表（例） · 状态</text>
+    <line x1="60" y1="1048" x2="1160" y2="1048" stroke="#cbd5e1"/>
+    <text x="60" y="1066" class="body" font-weight="700">task_service　<tspan fill="#64748b" font-weight="400">test_tasks / task_case_relations / testcases / test_result / system_models　</tspan><tspan fill="#16a34a">✅ 下沉（4 PO↔Entity 转换）</tspan></text>
+    <text x="60" y="1084" class="body" font-weight="700">evaluation_service　<tspan fill="#64748b" font-weight="400">Category / Dimension / TestResultDimension　</tspan><tspan fill="#16a34a">✅ 真正下沉（9 Mixin + DDD 仓储）</tspan></text>
+    <text x="60" y="1102" class="body" font-weight="700">e2e_test_service　<tspan fill="#64748b" font-weight="400">PO 已迁移（v3），保留 re-export 存根</tspan></text>
+    <text x="60" y="1120" class="body" font-weight="700">device_service　<tspan fill="#64748b" font-weight="400">Device / SPL 等 PO　</tspan><tspan fill="#16a34a">✅ v3 落地（从 e2e 分离）</tspan></text>
+    <text x="60" y="1138" class="body" font-weight="700">audio_service　<tspan fill="#64748b" font-weight="400">Audio / UploadTask 等 PO　</tspan><tspan fill="#16a34a">✅ v3 落地（从 e2e 分离）</tspan></text>
+    <text x="60" y="1156" class="body" font-weight="700">report_service　<tspan fill="#64748b" font-weight="400">Report PO　</tspan><tspan fill="#f59e0b">✅ 已下沉（CRUD 待回归）</tspan></text>
+    <text x="60" y="1174" class="body" font-weight="700">algorithm_service　<tspan fill="#64748b" font-weight="400">算法配置 PO　</tspan><tspan fill="#f59e0b">✅ PO + domain 已建（CRUD 待回归）</tspan></text>
+    <text x="60" y="1192" class="body" font-weight="700">auth_service　<tspan fill="#64748b" font-weight="400">User/OAuthClient/OAuthRefreshToken/Role/Permission　</tspan><tspan fill="#f59e0b">✅ PO 骨架已建</tspan></text>
+    <text x="60" y="1212" class="body" font-weight="700">api_test_service　<tspan fill="#64748b" font-weight="400">api_models.py（API PO）　</tspan><tspan fill="#16a34a">✅ 下沉</tspan></text>
+    <text x="60" y="1230" class="body" font-weight="700">shared/models　<tspan fill="#64748b" font-weight="400">仅 database.py + common_enums.py　</tspan><tspan fill="#16a34a">✅ models/ 子目录已删除</tspan></text>
+    <text x="60" y="1248" class="note">api_gateway 与 shared 直连他服务 PO 已改为 gRPC proxies + ACL（round_data_builder.py:243 尚有 1 处 get_db_session 延迟导入待清理）</text>
+    <text x="60" y="1264" class="note">shared/utils event_manager（5 处）+ _time_estimate（5 处）历史直连已按 P4.6 stats_cache 拆解计划推进</text>
+  </g>
+
+  <!-- ⑤ 8 条铁律 + DTO 规则 -->
+  <rect x="24" y="1202" width="1192" height="200" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1202" width="1192" height="38" rx="10" fill="#e2e8f0"/>
+  <rect x="24" y="1228" width="1192" height="12" fill="#e2e8f0"/>
+  <circle cx="46" cy="1221" r="11" fill="#64748b"/>
+  <text x="46" y="1225" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">5</text>
+  <text x="66" y="1226" class="sec-title" fill="#1e293b">8 条 DDD + CQRS 铁律 · DTO 规则 D1-D4（2026-09-11 复核：均已落实为架构约束）</text>
+
+  <g>
+    <text x="60" y="1266" class="body" font-weight="700" fill="#334155">架构铁律（8）</text>
+    <text x="60" y="1286" class="body">① interfaces 层零 DB 　② domain 层零基础设施 　③ repository 继承 ABC 　④ application 面向 ABC 编程</text>
+    <text x="60" y="1304" class="body">⑤ CQRS handler 分离（command 与 query 禁止互调）　⑥ repository 返回 dict 或 Entity（不返回裸 ORM）</text>
+    <text x="60" y="1322" class="body">⑦ domain/repositories ABC 统一在 domain 侧定义　⑧ 跨服务必须 ACL gRPC（禁止直连他服务 PO）</text>
+    <text x="60" y="1344" class="body" font-weight="700" fill="#334155">DTO 规则（D1-D4）</text>
+    <text x="60" y="1364" class="body">D1 dataclass 字段全 Optional　　D2 命名 &lt;service&gt;_acl_dto.py 放 domain/dto/　　D3 dict_to_dto 显式转换　　D4 不返回裸 dict</text>
+    <text x="60" y="1384" class="note">2026-09-11：evaluation domain 直连 infrastructure 10 处已修复（依赖注入 ABC）；ACL 未继承 ABC（V3.1）已修复；auth 已实现（AuthMiddleware + auth_bp + OAuth Provider）</text>
+  </g>
+
+  <!-- ⑥ 实施路线 -->
+  <rect x="24" y="1418" width="1192" height="228" rx="10" fill="#e0f2fe" stroke="#0ea5e9" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1418" width="1192" height="38" rx="10" fill="#bae6fd"/>
+  <rect x="24" y="1444" width="1192" height="12" fill="#bae6fd"/>
+  <circle cx="46" cy="1437" r="11" fill="#0ea5e9"/>
+  <text x="46" y="1441" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">6</text>
+  <text x="66" y="1442" class="sec-title" fill="#075985">实施路线 P1-P6 — 先重构，再管消费方（P0 契约改造后消费方才切换）</text>
+
+  <rect x="60" y="1472" width="180" height="70" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="150" y="1496" class="pill-t" fill="#075985">P1 gRPC 契约改造</text>
+  <text x="150" y="1512" class="chip-t" fill="#64748b">task 11 RPC · proto 先行</text>
+  <text x="150" y="1526" class="chip-t" fill="#64748b">消费方最后切换</text>
+
+  <line x1="240" y1="1507" x2="290" y2="1507" class="flow"/>
+
+  <rect x="292" y="1472" width="180" height="70" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="382" y="1496" class="pill-t" fill="#075985">P2 执行链路改造</text>
+  <text x="382" y="1512" class="chip-t" fill="#64748b">P2.1/P2.2 SubmitResult gRPC ✅</text>
+  <text x="382" y="1526" class="chip-t" fill="#64748b">P2.5 audio/device 拆分 ✅</text>
+
+  <line x1="472" y1="1507" x2="522" y2="1507" class="flow"/>
+
+  <rect x="524" y="1472" width="180" height="70" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="614" y="1496" class="pill-t" fill="#075985">P3 适配服务收编</text>
+  <text x="614" y="1512" class="chip-t" fill="#64748b">api_adapter → api_test/adapters</text>
+  <text x="614" y="1526" class="chip-t" fill="#64748b">遗留 5008 注册消除</text>
+
+  <line x1="704" y1="1507" x2="754" y2="1507" class="flow"/>
+
+  <rect x="756" y="1472" width="180" height="70" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="846" y="1496" class="pill-t" fill="#075985">P4 审计下沉</text>
+  <text x="846" y="1512" class="chip-t" fill="#64748b">Log CRUD RPC · stats_cache 拆解</text>
+  <text x="846" y="1526" class="chip-t" fill="#64748b">网关/shared 改 gRPC</text>
+
+  <line x1="936" y1="1507" x2="986" y2="1507" class="flow"/>
+
+  <rect x="988" y="1472" width="180" height="70" rx="8" fill="#ffffff" stroke="#0ea5e9" stroke-width="1.2"/>
+  <text x="1078" y="1496" class="pill-t" fill="#075985">P5-P6 收尾</text>
+  <text x="1078" y="1512" class="chip-t" fill="#64748b">剩余 PO 直连消除 · 验收</text>
+  <text x="1078" y="1526" class="chip-t" fill="#64748b">docker-compose 按需补充</text>
+
+  <text x="60" y="1580" class="body" font-weight="700" fill="#075985">2026-09-11 进展：</text>
+  <text x="60" y="1598" class="body">✅ run_all.py 已纳入 11 服务　✅ grpc_proxies.py 拆为 grpc_proxies/ 目录 + acl/　✅ 认证（AuthMiddleware + auth_bp + OAuth Provider）已实现　✅ evaluation domain 净化完成</text>
+  <text x="60" y="1616" class="body">⏳ 待办：stats_cache 拆分（P4.6 评估中）· audio_annotation_service 直连 algorithm PO（P6.3 评估中）· normalize_summary_metrics 去重（3-4 处重复定义）</text>
+  <text x="60" y="1634" class="note">认证设计细节见 05_OAuth双模式认证.svg · RBAC 见 04_RBAC角色权限矩阵.svg · 迁移验证见 07_迁移验证报告.svg</text>
+
+  <line x1="0" y1="1656" x2="1240" y2="1656" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1676" font-size="10.5" fill="#64748b">依据：docs/DDD重构.md — 方法论（美团 DDD）· 领域划分 · 限界上下文详解 · 聚合根设计 · 上下文映射 · CRUD 下沉 · 8 条铁律 · DTO 规则 · P1-P6 路线（v3 修订 2026-08-06，2026-09-11 复核）</text>
+  <text x="24" y="1692" font-size="10.5" fill="#64748b">配套图纸：01_系统总体架构 · 02_微服务拓扑与端口 · 04_RBAC角色权限矩阵 · 05_OAuth双模式认证 · 07_迁移验证报告</text>
+</svg>
