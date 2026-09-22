@@ -38,6 +38,9 @@ class HarmonyDriver(BaseDeviceDriver):
             try:
                 self._drivers[device_sn] = UiDriver.connect(device_sn=device_sn)
             except Exception as e:
+                if is_rpc_not_running_error(e):
+                    # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                    raise
                 self._log(level='ERROR', content=f"Failed to connect to Harmony device {device_sn}: {e}")
                 return None
         return self._drivers[device_sn]
@@ -171,6 +174,9 @@ class HarmonyDriver(BaseDeviceDriver):
                         confirm_btn.click()
                         break
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='ERROR', content=f"Unlock via clicking digits failed: {e}")
 
         time.sleep(1)
@@ -369,6 +375,9 @@ class HarmonyDriver(BaseDeviceDriver):
             self._log(level='INFO', content=f"Popup check completed for HarmonyOS device {device_sn}")
             return True
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='ERROR', content=f"Error closing popups on HarmonyOS device {device_sn}: {e}")
             return False
 

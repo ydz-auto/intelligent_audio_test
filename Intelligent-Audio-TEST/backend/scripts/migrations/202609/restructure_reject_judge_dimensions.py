@@ -60,12 +60,24 @@ def restructure():
     engine = create_engine(POSTGRES_URI)
 
     with engine.begin() as conn:
-        # ── Step 1: 找到原主维度 ──
+        # ── Step 0: 幂等守卫：若目标 2 级结构已就位，直接跳过 ──
+        target_mains = conn.execute(text(
+            "SELECT id, name FROM dimensions "
+            "WHERE task_type_code = 'reject_judge' AND dimension_type = 'main' "
+            "AND parent_dimension_id IS NULL AND deleted = FALSE "
+            "AND name IN ('拒识成功率占比', '拒识询问率占比', '拒识失败率占比')"
+        )).fetchall()
+        if len(target_mains) == 3:
+            print("  ✓ 目标 2 级结构已存在（3 个 rate 主维度已就位），无需重复迁移，跳过")
+            return
+
+        # ── Step 1: 找到原主维度（仅限旧主维度「拒识裁判v2」） ──
         main_dim = conn.execute(text(
             "SELECT id, name, api_url, api_settings, api_endpoints, task_type_code "
             "FROM dimensions "
             "WHERE task_type_code = 'reject_judge' AND dimension_type = 'main' "
-            "AND parent_dimension_id IS NULL AND deleted = FALSE"
+            "AND parent_dimension_id IS NULL AND deleted = FALSE "
+            "AND name = '拒识裁判v2'"
         )).fetchone()
 
         if not main_dim:
@@ -109,8 +121,8 @@ def restructure():
                 "WHERE id = :rid"
             ), {
                 'api_url': main_api_url,
-                'api_settings': main_api_settings,
-                'api_endpoints': main_api_endpoints,
+                'api_settings': json.dumps(main_api_settings, ensure_ascii=False),
+                'api_endpoints': json.dumps(main_api_endpoints, ensure_ascii=False),
                 'rid': rate_id,
             })
             print(f"  - {rate_name} (id={rate_id}): API 配置已复制")
