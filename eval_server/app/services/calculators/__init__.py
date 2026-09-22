@@ -34,6 +34,7 @@ from app.services.calculators.xiaoyi_metrics.rejection_scene_awareness.strategy 
 )
 from app.services.calculators.xiaoyi_metrics.env_judge.strategy import (
     EnvJudgeCalculator,
+    RejectionJudgeCalculator,
 )
 from app.services.calculators.xiaoyi_metrics.llm_judge.strategy import LlmJudgeCalculator
 from app.services.calculators.xiaoyi_metrics.interruptibility.strategy import (
@@ -68,5 +69,7 @@ TaskService.register_calculator('non_interactive_latency', NonInteractiveLatency
 TaskService.register_calculator('noise_latency', NoiseLatencyCalculator())
 # env_judge 域
 TaskService.register_calculator('env_judge', EnvJudgeCalculator())
+# reject_judge 域（拒识裁判：评估模型在拒识场景下的行为表现）
+TaskService.register_calculator('reject_judge', RejectionJudgeCalculator())
 # llm_judge 域
 TaskService.register_calculator('llm_judge', LlmJudgeCalculator())

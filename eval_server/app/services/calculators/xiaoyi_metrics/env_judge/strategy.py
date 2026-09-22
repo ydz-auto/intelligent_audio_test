@@ -103,3 +103,61 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
             max_tokens=params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS),
             temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
         )
+
+
+class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
+    """拒识裁判：评估模型在拒识场景（非意图交互内容出现时）下的行为表现
+
+    裁判 LLM 直接听取 ai_wav + user_wav 音频，判断模型行为类别（五选一），
+    再由代码根据 timing + behavior 计算 rate 评级。
+
+    输入：ai_wav, user_wav, is_single_round, timing, model, max_tokens, temperature
+    输出：evaluations, behavior_*(5个0/1字段), rate, rate_*(3个0/1字段),
+          rate_*_count(3组分组统计字典)
+    """
+    task_type = 'reject_judge'
+    supports_per_round = True
+
+    def validate(self, task_params):
+        idx = self._get_target_round_index(task_params)
+        rd = self._get_round_safe(task_params, idx)
+        has_ai = task_params.get('ai_wav') or rd.get('ai_wav')
+        if not has_ai:
+            return False, f"Missing required field for {self.task_type}: ai_wav"
+        return True, None
+
+    def prepare_params(self, task_params):
+        """提取拒识裁判所需参数"""
+        rounds = task_params.get('rounds') or []
+        idx = self._get_target_round_index(task_params)
+        rd = self._get_round_safe(task_params, idx)
+        llm_config = self._extract_llm_config(task_params, rd)
+
+        is_single_round = rd.get('is_single_round', task_params.get('is_single_round', False))
+        if isinstance(is_single_round, str):
+            is_single_round = is_single_round.strip().lower() in ('true', '1', 'yes')
+
+        timing = rd.get('timing', task_params.get('timing', '静默'))
+
+        return {
+            'mode': 'single',
+            'rounds': rounds,
+            'ai_wav': task_params.get('ai_wav') or rd.get('ai_wav') or '',
+            'user_wav': task_params.get('user_wav') or rd.get('user_wav') or '',
+            'is_single_round': is_single_round,
+            'timing': timing,
+            **llm_config,
+        }
+
+    def calculate(self, params):
+        from app.services.calculators.xiaoyi_metrics.env_judge.rejection_judge import evaluate_rejection_judge
+
+        return evaluate_rejection_judge(
+            ai_wav=params['ai_wav'],
+            user_wav=params.get('user_wav', ''),
+            is_single_round=params.get('is_single_round', False),
+            timing=params.get('timing', '静默'),
+            model=params.get('model', ''),
+            max_tokens=params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS),
+            temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
+        )
