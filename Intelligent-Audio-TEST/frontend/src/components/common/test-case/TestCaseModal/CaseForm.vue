@@ -241,7 +241,7 @@
     </div>
 
     <!-- ===== 整体评估维度（config.dimensions）===== -->
-    <div v-if="localFormData.config.rounds && localFormData.config.rounds.length > 1" class="form-section overall-eval-section">
+    <div v-if="localFormData.config.rounds" class="form-section overall-eval-section">
       <OverallEvaluationEditor
         v-model="localFormData.config.dimensions"
         :available-dimensions="availableDimensions"

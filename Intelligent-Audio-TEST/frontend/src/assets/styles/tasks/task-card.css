@@ -102,6 +102,51 @@
     transition: color 0.3s ease;
 }
 
+/* 任务标题和编辑按钮 */
+.task-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+}
+
+.task-title-row .task-title {
+    flex: 0 1 auto;
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+.task-title-edit-btn {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: none;
+    background: transparent;
+    color: #3b82f6;
+    cursor: pointer;
+    border-radius: 50%;
+    padding: 0;
+    font-size: 20px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+}
+
+.task-title-row:hover .task-title-edit-btn,
+.task-title-edit-btn:focus-visible {
+    opacity: 1;
+}
+
+.task-title-edit-btn:hover {
+    color: #2563eb;
+    background-color: rgba(59, 130, 246, 0.12);
+}
+
+/* 任务标题和编辑按钮 */
 .task-card:hover .task-title,
 .card:hover .card__head {
     color: inherit;

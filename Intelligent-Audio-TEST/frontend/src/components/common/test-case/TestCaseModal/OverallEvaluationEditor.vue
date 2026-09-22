@@ -32,25 +32,67 @@
 
     <!-- 可折叠内容 -->
     <div v-if="enabled" class="overall-content">
-      <!-- 维度 chips 选择区 -->
-      <div class="eval-chip-grid">
-        <div
-          v-for="dim in filteredDimensions"
-          :key="dim.id"
-          class="eval-chip"
-          :class="{ active: isDimSelected(dim) }"
-          :title="(dim as any).requiresAudio ? '该维度需要音频文件，将随多轮音频一起上传' : ''"
-          @click="toggleDim(dim)"
-        >
-          <i :class="isDimSelected(dim) ? 'fas fa-check' : 'fas fa-plus'"></i>
-          {{ dim.name }}
-          <i v-if="(dim as any).requiresAudio" class="fas fa-music" style="margin-left: 2px; font-size: 9px;"></i>
+      <!-- 搜索工具栏 -->
+      <div class="eval-toolbar">
+        <div class="eval-search-box">
+          <i class="fas fa-search"></i>
+          <input
+            type="text"
+            v-model="searchQuery"
+            placeholder="搜索评估维度"
+            class="eval-search-input"
+          />
+        </div>
+        <span class="eval-dim-count">已选 {{ localDimensions.length }} 项</span>
+      </div>
+
+      <!-- 维度徽章（按主/子层级分组展示） -->
+      <div v-if="cloudGroups.length > 0" class="eval-chip-groups">
+        <div v-for="(group, gi) in cloudGroups" :key="gi" class="eval-chip-group">
+          <template v-if="group.main">
+            <div
+              class="eval-chip eval-chip-main"
+              :class="{ active: isDimSelected(group.main) }"
+              :title="dimTitle(group.main)"
+              @click="toggleMain(group)"
+            >
+              <i :class="isDimSelected(group.main) ? 'fas fa-check' : 'fas fa-plus'"></i>
+              {{ group.main.name }}
+              <span class="eval-badge eval-badge-main">主</span>
+              <span
+                v-if="group.children.length > 0"
+                class="eval-expand-btn"
+                :class="{ expanded: isGroupExpanded(group.main) }"
+                :title="isGroupExpanded(group.main) ? '收起子维度' : '展开子维度'"
+                @click.stop="toggleExpand(group.main)"
+              >
+                <i :class="isGroupExpanded(group.main) ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+                <span class="eval-sub-count">{{ group.children.length }}</span>
+              </span>
+              <i v-if="(group.main as any).requiresAudio" class="fas fa-music" style="margin-left: 2px; font-size: 9px;"></i>
+            </div>
+            <div v-if="group.children.length > 0 && isGroupExpanded(group.main)" class="eval-chip-subs">
+              <div
+                v-for="dim in group.children"
+                :key="dim.id"
+                class="eval-chip eval-chip-sub"
+                :class="{ active: isDimSelected(dim) }"
+                :title="dimTitle(dim)"
+                @click="toggleDim(dim)"
+              >
+                <i :class="isDimSelected(dim) ? 'fas fa-check' : 'fas fa-plus'"></i>
+                {{ dim.name }}
+                <span class="eval-badge eval-badge-sub">子</span>
+                <i v-if="(dim as any).requiresAudio" class="fas fa-music" style="margin-left: 2px; font-size: 9px;"></i>
+              </div>
+            </div>
+          </template>
         </div>
       </div>
 
-      <div v-if="filteredDimensions.length === 0" class="eval-empty">
+      <div v-else class="eval-empty">
         <i class="fas fa-info-circle"></i>
-        暂无可用维度{{ algorithmType ? '（当前算法类型无关联维度）' : '' }}
+        {{ searchQuery ? '没有匹配的评估维度' : (algorithmType ? '暂无可用维度（当前算法类型无关联维度）' : '暂无可用维度') }}
       </div>
 
       <!-- 已选维度参数卡片 -->
@@ -137,6 +179,7 @@
 import { ref, computed, watch } from 'vue'
 import type { DimensionConfig } from './types'
 import type { Dimension } from '../../../../shared/types'
+import type { DimensionCloudGroup } from '../../DimensionCloud.vue'
 
 const props = defineProps<{
   modelValue?: DimensionConfig[]
@@ -182,6 +225,88 @@ const filteredDimensions = computed(() => {
   })
 })
 
+// ---- 搜索 ----
+const searchQuery = ref('')
+
+// ---- 主/子层级分组（与批量评估维度设置的分组逻辑一致） ----
+const getParentId = (dim: any): string | number | null =>
+  dim?.parentDimensionId ?? dim?.parent_dimension_id ?? null
+
+function buildCloudGroups(keyword: string): DimensionCloudGroup[] {
+  const dims = filteredDimensions.value
+  const kw = keyword.trim().toLowerCase()
+
+  const matches = (d: any): boolean => {
+    if (!kw) return true
+    return String(d?.name || '').toLowerCase().includes(kw) ||
+      String(d?.description || '').toLowerCase().includes(kw) ||
+      String(d?.keywords || '').toLowerCase().includes(kw)
+  }
+
+  const matchedIds = new Set<string>()
+  dims.forEach(d => { if (matches(d)) matchedIds.add(String(d.id)) })
+
+  // 父子聚合：子维度命中带父维度；主维度命中整组展示（非搜索时仅展示命中的子维度）
+  const visibleIds = new Set<string>()
+  dims.forEach(d => {
+    const pid = getParentId(d)
+    if (!pid) {
+      if (matchedIds.has(String(d.id))) {
+        visibleIds.add(String(d.id))
+        dims.forEach(c => {
+          if (String(getParentId(c)) === String(d.id) && (kw || matchedIds.has(String(c.id)))) {
+            visibleIds.add(String(c.id))
+          }
+        })
+      }
+    } else if (matchedIds.has(String(d.id))) {
+      visibleIds.add(String(d.id))
+      visibleIds.add(String(pid))
+    }
+  })
+
+  const visible = dims.filter(d => visibleIds.has(String(d.id)))
+  const mainDims = visible.filter(d => !getParentId(d))
+  const childrenMap = new Map<string, any[]>()
+  visible.forEach(d => {
+    const pid = getParentId(d)
+    if (!pid) return
+    const key = String(pid)
+    if (!childrenMap.has(key)) childrenMap.set(key, [])
+    childrenMap.get(key)!.push(d)
+  })
+
+  const groups: DimensionCloudGroup[] = []
+  mainDims.forEach(m => {
+    const children = childrenMap.get(String(m.id)) || []
+    groups.push({ main: m, children })
+  })
+  return groups
+}
+
+const cloudGroups = computed(() => buildCloudGroups(searchQuery.value))
+
+// ---- 子维度展开/收起（默认收起，搜索时自动展开） ----
+const expandedMainIds = ref<Set<string>>(new Set())
+
+function isGroupExpanded(main: any): boolean {
+  // 搜索时自动展开，便于看到命中的子维度
+  if (searchQuery.value.trim()) return true
+  return expandedMainIds.value.has(String(main.id))
+}
+
+function toggleExpand(main: any) {
+  const id = String(main.id)
+  const next = new Set(expandedMainIds.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedMainIds.value = next
+}
+
+function dimTitle(dim: any): string {
+  return (dim as any).requiresAudio ? '该维度需要音频文件，将随多轮音频一起上传' : ''
+}
+
 function isDimSelected(dim: Dimension): boolean {
   return localDimensions.value.some((d) => d.id === dim.id || d.name === dim.name)
 }
@@ -193,16 +318,44 @@ function toggleDim(dim: Dimension) {
   if (idx >= 0) {
     localDimensions.value.splice(idx, 1)
   } else {
-    const isLlm = isLlmJudgeDim(dim)
-    localDimensions.value.push({
-      id: dim.id,
-      name: dim.name,
-      weight: dim.weight ?? 50,
-      threshold: isLlm ? 0 : 80,
-      ...(isLlm ? { llmJudgeConfig: { model: 'gpt-4', promptTemplate: 'default' } } : {}),
-    } as DimensionConfig)
+    localDimensions.value.push(makeDimConfig(dim))
   }
   emitUpdate()
+}
+
+// 勾选主维度：自动勾选/取消其所有子维度
+function toggleMain(group: DimensionCloudGroup) {
+  const main = group.main
+  const children = group.children || []
+  const ids = new Set([String(main.id), ...children.map(c => String(c.id))])
+  const mainSelected = localDimensions.value.some(d => String(d.id) === String(main.id))
+  if (mainSelected) {
+    // 主维度已选 → 连同所有子维度一起取消
+    localDimensions.value = localDimensions.value.filter(d => !ids.has(String(d.id)))
+  } else {
+    // 勾选主维度 → 主维度 + 所有子维度一并选中（已选过的跳过）
+    const existingIds = new Set(localDimensions.value.map(d => String(d.id)))
+    const toAdd: DimensionConfig[] = []
+    for (const dim of [main, ...children]) {
+      if (!existingIds.has(String(dim.id))) {
+        toAdd.push(makeDimConfig(dim))
+        existingIds.add(String(dim.id))
+      }
+    }
+    localDimensions.value.push(...toAdd)
+  }
+  emitUpdate()
+}
+
+function makeDimConfig(dim: Dimension): DimensionConfig {
+  const isLlm = isLlmJudgeDim(dim)
+  return {
+    id: dim.id,
+    name: dim.name,
+    weight: dim.weight ?? 50,
+    threshold: isLlm ? 0 : 80,
+    ...(isLlm ? { llmJudgeConfig: { model: 'gpt-4', promptTemplate: 'default' } } : {}),
+  } as DimensionConfig
 }
 
 function removeDim(index: number) {
@@ -364,11 +517,57 @@ watch(enabled, () => {
   gap: 12px;
 }
 
-/* Eval chips */
-.eval-chip-grid {
+/* 搜索工具栏 */
+.eval-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.eval-search-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  max-width: 320px;
+  padding: 6px 12px;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  background: #FFF;
+  transition: border-color 0.2s;
+}
+.eval-search-box:focus-within {
+  border-color: #FF6A00;
+}
+.eval-search-box i {
+  color: #999;
+  font-size: 12px;
+}
+.eval-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #333;
+  background: transparent;
+}
+.eval-search-input::placeholder {
+  color: #aaa;
+}
+.eval-dim-count {
+  font-size: 12px;
+  color: #999;
+  white-space: nowrap;
+}
+
+/* Eval chips：按主/子层级分组，流式换行 */
+.eval-chip-groups {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.eval-chip-group {
+  display: contents;
 }
 .eval-chip {
   display: inline-flex;
@@ -405,6 +604,93 @@ watch(enabled, () => {
 }
 .eval-chip i {
   font-size: 10px;
+}
+/* 主维度徽章 */
+.eval-chip-main {
+  background: rgba(255, 106, 0, 0.08);
+  border-color: rgba(255, 106, 0, 0.4);
+  color: #e85d04;
+  font-weight: 600;
+}
+.eval-chip-main:hover {
+  background: rgba(255, 106, 0, 0.14);
+  border-color: #FF6A00;
+}
+.eval-chip-main.active {
+  background: #FF6A00;
+  border-color: #FF6A00;
+  color: #FFF;
+}
+/* 子维度徽章（展开后跟随主维度流式展示） */
+.eval-chip-subs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: 2px;
+}
+.eval-chip-sub {
+  background: #FFF;
+}
+/* 主/子徽标 */
+.eval-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 12px;
+  height: 15px;
+  padding: 0 3px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.eval-badge-main {
+  background: #FF6A00;
+  color: #FFF;
+}
+.eval-chip-main .eval-badge-main {
+  background: #FFF;
+  color: #FF6A00;
+}
+.eval-badge-sub {
+  background: rgba(255, 106, 0, 0.12);
+  color: #e85d04;
+  border: 1px solid rgba(255, 106, 0, 0.3);
+}
+/* 主维度组内子维度数量角标 */
+.eval-sub-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: rgba(255, 106, 0, 0.12);
+  color: #e85d04;
+  font-size: 10px;
+  font-weight: 600;
+}
+/* 子维度展开/收起按钮 */
+.eval-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 2px;
+  color: rgba(255, 106, 0, 0.7);
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+.eval-expand-btn:hover {
+  color: #FF6A00;
+  background: rgba(255, 106, 0, 0.1);
+}
+.eval-expand-btn.expanded {
+  color: #FF6A00;
+}
+.eval-chip-main.active .eval-expand-btn {
+  color: #FFF;
 }
 
 .eval-empty {

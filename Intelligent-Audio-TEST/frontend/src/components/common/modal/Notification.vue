@@ -104,7 +104,8 @@ defineExpose({ show, close })
   position: fixed;
   top: 20px;
   right: 20px;
-  z-index: 10000;
+  /* 需高于 BasicModal 遮罩层(13000)及 --z-index-modal-top(13000)，否则提示被压在遮罩层下方 */
+  z-index: 20000;
   max-width: 500px;
   animation: slideIn 0.3s ease;
 }

@@ -226,7 +226,11 @@ def create_algorithm():
     if req.associated_dimensions is not None:
         _update_associated_dimensions(req.type, req.associated_dimensions)
     
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return error_response('保存失败：存在重复的参数映射（相同来源+源参数+维度）', 409)
 
     return success_response(_serialize_algorithm(req.type), 'Algorithm created')
 
@@ -263,7 +267,11 @@ def update_algorithm(algo_type: str):
     if req_data.associated_dimensions is not None:
         _update_associated_dimensions(algo_type, req_data.associated_dimensions)
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return error_response('保存失败：存在重复的参数映射（相同来源+源参数+维度）', 409)
 
     return success_response(_serialize_algorithm(algo_type), 'Algorithm updated')
 
@@ -447,14 +455,24 @@ def _update_case_params(algo_type: str, params: List[Dict]):
 
 def _update_mappings(algo_type: str, mappings: Dict):
     """更新映射"""
+    from backend.models.models import Dimension
     existing_mappings = ParamMapping.query.filter_by(algorithm_type=algo_type, deleted=False).all()
     existing_ids = {m.id for m in existing_mappings}
     submitted_ids = set()
+
+    def _dimension_valid(dim_id) -> bool:
+        """维度必须存在且未删除，否则该映射不落库（避免孤儿映射导致前端显示空）"""
+        if not dim_id:
+            return True
+        dim = db.session.get(Dimension, int(dim_id))
+        return bool(dim) and not dim.deleted
 
     for source_type, mapping_list in mappings.items():
         if source_type not in ('device', 'api', 'evaluation'):
             continue
         for mapping_data in mapping_list:
+            if not _dimension_valid(mapping_data.get('dimension_id')):
+                continue
             mapping_id = mapping_data.get('id')
             if mapping_id:
                 mapping = ParamMapping.query.filter_by(id=mapping_id, deleted=False).first()
@@ -468,6 +486,23 @@ def _update_mappings(algo_type: str, mappings: Dict):
             else:
                 source_value = mapping_data.get('source', 'case') if source_type == 'evaluation' else source_type
                 source_value = source_value if source_value in ('device', 'api', 'case', 'reference', 'case_config') else 'api'
+                # 新增前查重（含软删除）：命中同键映射时复用而非插入，
+                # 避免与 uq_algorithm_source_to_dimension 唯一约束冲突导致整单保存 500
+                existing_key = ParamMapping.query.filter_by(
+                    algorithm_type=algo_type,
+                    source=source_value,
+                    source_param=mapping_data.get('source_param'),
+                    dimension_id=mapping_data.get('dimension_id'),
+                ).first()
+                if existing_key:
+                    existing_key.deleted = False
+                    existing_key.source_direction = mapping_data.get('source_direction', 'output')
+                    existing_key.target_param = mapping_data.get('target_param')
+                    existing_key.transform_type = mapping_data.get('transform_type', 'none')
+                    if source_type == 'evaluation':
+                        existing_key.source = source_value
+                    submitted_ids.add(existing_key.id)
+                    continue
                 mapping = ParamMapping(
                     algorithm_type=algo_type,
                     source=source_value,

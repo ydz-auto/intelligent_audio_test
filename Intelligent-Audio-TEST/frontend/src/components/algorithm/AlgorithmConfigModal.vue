@@ -206,9 +206,44 @@
                 用例参数
               </button>
             </div>
-            <button class="btn btn-primary btn-sm" @click="handleAddParam">
-              <i class="fas fa-plus btn-icon"></i>添加参数
-            </button>
+            <div class="params-toolbar-actions">
+              <div class="search-box">
+                <i class="fas fa-search search-icon"></i>
+                <input
+                  type="text"
+                  class="search-input"
+                  :placeholder="paramConfigType === 'case' ? '搜索参数代码/名称/标注/路径...' : '搜索参数代码/名称...'"
+                  v-model="paramSearchModel"
+                >
+              </div>
+              <select v-if="paramConfigType === 'case'" class="form-input param-filter-select" v-model="caseParamTypeFilter">
+                <option value="all">全部类型</option>
+                <option value="text">文本</option>
+                <option value="number">数字</option>
+                <option value="textarea">多行文本</option>
+                <option value="switch">开关</option>
+                <option value="slider">滑块</option>
+                <option value="audio_select">音频选择</option>
+                <option value="device_select">设备选择</option>
+                <option value="json">JSON结构化</option>
+              </select>
+              <select v-if="paramConfigType === 'case'" class="form-input param-filter-select" v-model="caseParamScopeFilter">
+                <option value="all">全部范围</option>
+                <option value="common">通用</option>
+                <option value="api">API</option>
+                <option value="e2e">E2E</option>
+              </select>
+              <select v-else class="form-input param-filter-select" v-model="paramDirectionFilter">
+                <option value="all">全部方向</option>
+                <option value="input">输入</option>
+                <option value="output">输出</option>
+              </select>
+              <select class="form-input param-filter-select" v-model="paramRequiredFilter">
+                <option value="all">全部必填</option>
+                <option value="required">必填</option>
+                <option value="optional">选填</option>
+              </select>
+            </div>
           </div>
 
           <!-- 设备参数和API参数表格 -->
@@ -216,11 +251,51 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>参数代码</th>
-                  <th>参数名称</th>
-                  <th>方向</th>
-                  <th>类型</th>
-                  <th>必填</th>
+                  <th>
+                    参数代码
+                    <ColumnFilter
+                      v-model="deviceApiFilters.param_code"
+                      label="参数代码"
+                      :options="distinctValues(currentParams, 'param_code')"
+                      :active="deviceApiFilters.param_code !== 'all'"
+                    />
+                  </th>
+                  <th>
+                    参数名称
+                    <ColumnFilter
+                      v-model="deviceApiFilters.param_name"
+                      label="参数名称"
+                      :options="distinctValues(currentParams, 'param_name')"
+                      :active="deviceApiFilters.param_name !== 'all'"
+                    />
+                  </th>
+                  <th>
+                    方向
+                    <ColumnFilter
+                      v-model="deviceApiFilters.direction"
+                      label="方向"
+                      :options="directionOptions"
+                      :active="deviceApiFilters.direction !== 'all'"
+                    />
+                  </th>
+                  <th>
+                    类型
+                    <ColumnFilter
+                      v-model="deviceApiFilters.param_type"
+                      label="类型"
+                      :options="deviceApiTypeOptions"
+                      :active="deviceApiFilters.param_type !== 'all'"
+                    />
+                  </th>
+                  <th>
+                    必填
+                    <ColumnFilter
+                      v-model="deviceApiFilters.required"
+                      label="必填"
+                      :options="requiredOptions"
+                      :active="deviceApiFilters.required !== 'all'"
+                    />
+                  </th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -228,21 +303,24 @@
                 <tr v-if="currentParams.length === 0">
                   <td colspan="6" class="empty-row">暂无参数</td>
                 </tr>
-                <tr v-else v-for="(param, index) in currentParams" :key="param.id || param.tempId || index">
+                <tr v-else-if="filteredCurrentParams.length === 0">
+                  <td colspan="6" class="empty-row">无匹配参数</td>
+                </tr>
+                <tr v-else v-for="(param, index) in filteredCurrentParams" :key="param.id || param.tempId || index">
                   <td>
-                    <input type="text" class="form-input form-input-sm param-code-input" v-model="param.param_code" @blur="handleParamBlur(param, index, paramConfigType)">
+                    <input type="text" class="form-input form-input-sm param-code-input" v-model="param.param_code" @blur="handleParamBlur(param, paramConfigType)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.param_name" @blur="handleParamBlur(param, index, paramConfigType)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.param_name" @blur="handleParamBlur(param, paramConfigType)">
                   </td>
                   <td>
-                    <select class="form-input form-input-sm" v-model="param.direction" @change="handleParamBlur(param, index, paramConfigType)">
+                    <select class="form-input form-input-sm" v-model="param.direction" @change="handleParamBlur(param, paramConfigType)">
                       <option value="input">输入</option>
                       <option value="output">输出</option>
                     </select>
                   </td>
                   <td>
-                    <select class="form-input form-input-sm" v-model="param.param_type" @change="handleParamBlur(param, index, paramConfigType)">
+                    <select class="form-input form-input-sm" v-model="param.param_type" @change="handleParamBlur(param, paramConfigType)">
                       <option value="text">文本</option>
                       <option value="audio_stream">音频流</option>
                       <option value="audio_file">音频文件</option>
@@ -254,13 +332,21 @@
                   </td>
                   <td>
                     <label class="checkbox-container">
-                      <input type="checkbox" v-model="param.required" @change="handleParamBlur(param, index, paramConfigType)">
+                      <input type="checkbox" v-model="param.required" @change="handleParamBlur(param, paramConfigType)">
                     </label>
                   </td>
                   <td>
-                    <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveParam(index)">
+                    <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveParam(param)">
                       <i class="fas fa-trash btn-icon"></i>
                     </button>
+                  </td>
+                </tr>
+                <tr class="add-row" @click="handleAddParam">
+                  <td :colspan="6">
+                    <span class="add-row-content">
+                      <span class="add-row-icon"><i class="fas fa-plus"></i></span>
+                      <span>添加参数</span>
+                    </span>
                   </td>
                 </tr>
               </tbody>
@@ -272,16 +358,88 @@
             <table class="data-table" style="table-layout: fixed;">
               <thead>
                 <tr>
-                  <th style="width: 110px;">参数代码</th>
-                  <th style="width: 100px;">参数名称</th>
-                  <th style="width: 90px;">类型</th>
-                  <th style="width: 80px;">适用范围</th>
-                  <th style="width: 50px;">必填</th>
-                  <th style="width: 80px;">默认值</th>
+                  <th style="width: 110px;">
+                    参数代码
+                    <ColumnFilter
+                      v-model="caseFilters.param_code"
+                      label="参数代码"
+                      :options="distinctValues(formState.case_params, 'param_code')"
+                      :active="caseFilters.param_code !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 100px;">
+                    参数名称
+                    <ColumnFilter
+                      v-model="caseFilters.param_name"
+                      label="参数名称"
+                      :options="distinctValues(formState.case_params, 'param_name')"
+                      :active="caseFilters.param_name !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 90px;">
+                    类型
+                    <ColumnFilter
+                      v-model="caseFilters.param_type"
+                      label="类型"
+                      :options="caseTypeOptions"
+                      :active="caseFilters.param_type !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 80px;">
+                    适用范围
+                    <ColumnFilter
+                      v-model="caseFilters.scope"
+                      label="适用范围"
+                      :options="scopeOptions"
+                      :active="caseFilters.scope !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 50px;">
+                    必填
+                    <ColumnFilter
+                      v-model="caseFilters.required"
+                      label="必填"
+                      :options="requiredOptions"
+                      :active="caseFilters.required !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 80px;">
+                    默认值
+                    <ColumnFilter
+                      v-model="caseFilters.default_value"
+                      label="默认值"
+                      :options="distinctValues(formState.case_params, 'default_value')"
+                      :active="caseFilters.default_value !== 'all'"
+                    />
+                  </th>
                   <th style="width: 160px;">范围约束</th>
-                  <th style="width: 120px;">标注代码</th>
-                  <th style="width: 120px;">字段路径</th>
-                  <th style="width: 100px;">帮助文本</th>
+                  <th style="width: 120px;">
+                    标注代码
+                    <ColumnFilter
+                      v-model="caseFilters.annotation_code"
+                      label="标注代码"
+                      :options="distinctValues(formState.case_params, 'annotation_code')"
+                      :active="caseFilters.annotation_code !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 120px;">
+                    字段路径
+                    <ColumnFilter
+                      v-model="caseFilters.field_path"
+                      label="字段路径"
+                      :options="distinctValues(formState.case_params, 'field_path')"
+                      :active="caseFilters.field_path !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 100px;">
+                    帮助文本
+                    <ColumnFilter
+                      v-model="caseFilters.help_text"
+                      label="帮助文本"
+                      :options="distinctValues(formState.case_params, 'help_text')"
+                      :active="caseFilters.help_text !== 'all'"
+                    />
+                  </th>
                   <th style="width: 50px;">操作</th>
                 </tr>
               </thead>
@@ -289,15 +447,18 @@
                 <tr v-if="formState.case_params.length === 0">
                   <td colspan="11" class="empty-row">暂无用例参数</td>
                 </tr>
-                <tr v-else v-for="(param, index) in formState.case_params" :key="param.id || param.tempId || index">
+                <tr v-else-if="filteredCaseParams.length === 0">
+                  <td colspan="11" class="empty-row">无匹配参数</td>
+                </tr>
+                <tr v-else v-for="(param, index) in filteredCaseParams" :key="param.id || param.tempId || index">
                   <td>
-                    <input type="text" list="case-param-code-presets" class="form-input form-input-sm param-code-input" v-model="param.param_code" @change="handleParamCodeSelect(param, index)" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" list="case-param-code-presets" class="form-input form-input-sm param-code-input" v-model="param.param_code" @change="handleParamCodeSelect(param)" @blur="handleCaseParamBlur(param)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.param_name" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.param_name" @blur="handleCaseParamBlur(param)">
                   </td>
                   <td>
-                    <select class="form-input form-input-sm" v-model="param.param_type" @change="handleCaseParamTypeChange(param, index)">
+                    <select class="form-input form-input-sm" v-model="param.param_type" @change="handleCaseParamTypeChange(param)">
                       <option value="text">文本</option>
                       <option value="number">数字</option>
                       <option value="textarea">多行文本</option>
@@ -309,7 +470,7 @@
                     </select>
                   </td>
                   <td>
-                    <select class="form-input form-input-sm" v-model="param.scope" @change="handleCaseParamBlur(param, index)">
+                    <select class="form-input form-input-sm" v-model="param.scope" @change="handleCaseParamBlur(param)">
                       <option value="common">通用</option>
                       <option value="api">API</option>
                       <option value="e2e">E2E</option>
@@ -317,35 +478,43 @@
                   </td>
                   <td>
                     <label class="checkbox-container">
-                      <input type="checkbox" v-model="param.required" @change="handleCaseParamBlur(param, index)">
+                      <input type="checkbox" v-model="param.required" @change="handleCaseParamBlur(param)">
                     </label>
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.default_value" placeholder="默认值" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.default_value" placeholder="默认值" @blur="handleCaseParamBlur(param)">
                   </td>
                   <td>
                     <div v-if="['slider', 'number'].includes(param.param_type)" class="range-constraints">
-                      <input type="number" class="form-input form-input-sm range-input" v-model="param.min_value" placeholder="最小" @blur="handleCaseParamBlur(param, index)">
+                      <input type="number" class="form-input form-input-sm range-input" v-model="param.min_value" placeholder="最小" @blur="handleCaseParamBlur(param)">
                       <span class="range-sep">~</span>
-                      <input type="number" class="form-input form-input-sm range-input" v-model="param.max_value" placeholder="最大" @blur="handleCaseParamBlur(param, index)">
-                      <input type="number" class="form-input form-input-sm range-input" v-model="param.step" placeholder="步长" @blur="handleCaseParamBlur(param, index)">
-                      <input type="text" class="form-input form-input-sm range-input range-unit" v-model="param.unit" placeholder="单位" @blur="handleCaseParamBlur(param, index)">
+                      <input type="number" class="form-input form-input-sm range-input" v-model="param.max_value" placeholder="最大" @blur="handleCaseParamBlur(param)">
+                      <input type="number" class="form-input form-input-sm range-input" v-model="param.step" placeholder="步长" @blur="handleCaseParamBlur(param)">
+                      <input type="text" class="form-input form-input-sm range-input range-unit" v-model="param.unit" placeholder="单位" @blur="handleCaseParamBlur(param)">
                     </div>
                     <span v-else class="text-muted">—</span>
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.annotation_code" placeholder="默认同算法类型" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.annotation_code" placeholder="默认同算法类型" @blur="handleCaseParamBlur(param)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.field_path" placeholder="默认同参数代码" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.field_path" placeholder="默认同参数代码" @blur="handleCaseParamBlur(param)">
                   </td>
                   <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="帮助提示" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="帮助提示" @blur="handleCaseParamBlur(param)">
                   </td>
                   <td>
-                    <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveCaseParam(index)">
+                    <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveCaseParam(param)">
                       <i class="fas fa-trash btn-icon"></i>
                     </button>
+                  </td>
+                </tr>
+                <tr class="add-row" @click="handleAddParam">
+                  <td :colspan="11">
+                    <span class="add-row-content">
+                      <span class="add-row-icon"><i class="fas fa-plus"></i></span>
+                      <span>添加参数</span>
+                    </span>
                   </td>
                 </tr>
               </tbody>
@@ -364,23 +533,109 @@
           </div>
 
           <div class="params-toolbar">
-            <button class="btn btn-primary btn-sm" @click="handleAddReferenceParam">
-              <i class="fas fa-plus btn-icon"></i>添加参考字段
-            </button>
+            <div class="params-toolbar-actions">
+              <div class="search-box">
+                <i class="fas fa-search search-icon"></i>
+                <input
+                  type="text"
+                  class="search-input"
+                  placeholder="搜索参考参数..."
+                  v-model="referenceSearchKeyword"
+                >
+              </div>
+              <select class="form-input param-filter-select" v-model="referenceTypeFilter">
+                <option value="all">全部类型</option>
+                <option value="text">文本</option>
+                <option value="audio">音频</option>
+                <option value="json">JSON</option>
+                <option value="rttm">RTTM</option>
+                <option value="stm">STM</option>
+              </select>
+              <select class="form-input param-filter-select" v-model="referenceMergeFilter">
+                <option value="all">全部合并</option>
+                <option value="join">拼接</option>
+                <option value="collect">收集数组</option>
+                <option value="first">取第一个</option>
+              </select>
+            </div>
           </div>
 
           <div class="table-container">
             <table class="data-table" style="table-layout: fixed;">
               <thead>
                   <tr>
-                    <th style="width: 120px;">参数代码</th>
-                    <th style="width: 120px;">标注代码</th>
-                    <th style="width: 100px;">参数名称</th>
-                    <th style="width: 100px;">参考类型</th>
-                    <th style="width: 100px;">标注格式</th>
-                    <th style="width: 140px;">字段路径</th>
-                    <th style="width: 90px;">合并方式</th>
-                    <th style="width: 120px;">帮助文本</th>
+                    <th style="width: 120px;">
+                      参数代码
+                      <ColumnFilter
+                        v-model="referenceFilters.code"
+                        label="参数代码"
+                        :options="distinctValues(formState.reference_params, 'code')"
+                        :active="referenceFilters.code !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 120px;">
+                      标注代码
+                      <ColumnFilter
+                        v-model="referenceFilters.annotation_code"
+                        label="标注代码"
+                        :options="distinctValues(formState.reference_params, 'annotation_code')"
+                        :active="referenceFilters.annotation_code !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 100px;">
+                      参数名称
+                      <ColumnFilter
+                        v-model="referenceFilters.name"
+                        label="参数名称"
+                        :options="distinctValues(formState.reference_params, 'name')"
+                        :active="referenceFilters.name !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 100px;">
+                      参考类型
+                      <ColumnFilter
+                        v-model="referenceFilters.type"
+                        label="参考类型"
+                        :options="referenceTypeOptions"
+                        :active="referenceFilters.type !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 100px;">
+                      标注格式
+                      <ColumnFilter
+                        v-model="referenceFilters.annotation_format"
+                        label="标注格式"
+                        :options="referenceFormatOptions"
+                        :active="referenceFilters.annotation_format !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 140px;">
+                      字段路径
+                      <ColumnFilter
+                        v-model="referenceFilters.field_path"
+                        label="字段路径"
+                        :options="distinctValues(formState.reference_params, 'field_path')"
+                        :active="referenceFilters.field_path !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 90px;">
+                      合并方式
+                      <ColumnFilter
+                        v-model="referenceFilters.merge_mode"
+                        label="合并方式"
+                        :options="mergeOptions"
+                        :active="referenceFilters.merge_mode !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 120px;">
+                      帮助文本
+                      <ColumnFilter
+                        v-model="referenceFilters.help_text"
+                        label="帮助文本"
+                        :options="distinctValues(formState.reference_params, 'help_text')"
+                        :active="referenceFilters.help_text !== 'all'"
+                      />
+                    </th>
                     <th style="width: 60px;">操作</th>
                   </tr>
                 </thead>
@@ -388,7 +643,10 @@
                   <tr v-if="formState.reference_params.length === 0">
                     <td colspan="9" class="empty-row">暂无参考参数</td>
                   </tr>
-                <tr v-else v-for="(param, index) in formState.reference_params" :key="param.id || param.tempId || index">
+                  <tr v-else-if="filteredReferenceParams.length === 0">
+                    <td colspan="9" class="empty-row">无匹配参数</td>
+                  </tr>
+                <tr v-else v-for="(param, index) in filteredReferenceParams" :key="param.id || param.tempId || index">
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.code" placeholder="如: asr_reference_text" @blur="handleReferenceParamBlur(param, index)">
                   </td>
@@ -430,9 +688,17 @@
                       <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="可选提示" @blur="handleReferenceParamBlur(param, index)">
                     </td>
                   <td>
-                    <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveReferenceParam(index)">
+                    <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveReferenceParam(param)">
                       <i class="fas fa-trash btn-icon"></i>
                     </button>
+                  </td>
+                </tr>
+                <tr class="add-row" @click="handleAddReferenceParam">
+                  <td :colspan="9">
+                    <span class="add-row-content">
+                      <span class="add-row-icon"><i class="fas fa-plus"></i></span>
+                      <span>添加参考字段</span>
+                    </span>
                   </td>
                 </tr>
               </tbody>
@@ -448,6 +714,7 @@
             </div>
             <div class="mapping-body" v-show="mappingExpanded.device">
               <MappingEditor
+                :key="`mapping-device-${mappingEditorKey}`"
                 :mappings="formState.mappings.device"
                 :algorithm-type="formState.type"
                 :case-params="[...caseParams, ...referenceParams]"
@@ -465,6 +732,7 @@
             </div>
             <div class="mapping-body" v-show="mappingExpanded.api">
               <MappingEditor
+                :key="`mapping-api-${mappingEditorKey}`"
                 :mappings="formState.mappings.api"
                 :algorithm-type="formState.type"
                 :case-params="[...caseParams, ...referenceParams]"
@@ -482,6 +750,7 @@
             </div>
             <div class="mapping-body" v-show="mappingExpanded.evaluation">
               <MappingEditor
+                :key="`mapping-evaluation-${mappingEditorKey}`"
                 :mappings="formState.mappings.evaluation"
                 :algorithm-type="formState.type"
                 :case-params="caseParams"
@@ -498,18 +767,40 @@
 
         <div v-show="activeTab === 'dimensions'" class="tab-content">
           <div class="dimensions-toolbar">
-            <button class="btn btn-primary btn-sm" @click="handleAddDimension">
-              <i class="fas fa-plus btn-icon"></i>添加关联维度
-            </button>
+            <div class="search-box">
+              <i class="fas fa-search search-icon"></i>
+              <input
+                type="text"
+                class="search-input"
+                placeholder="搜索评估维度..."
+                v-model="dimensionSearchKeyword"
+              >
+            </div>
           </div>
 
           <div class="table-container">
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>评估维度</th>
+                  <th>
+                    评估维度
+                    <ColumnFilter
+                      v-model="dimensionFilters.dimension_id"
+                      label="评估维度"
+                      :options="dimensionFilterOptions"
+                      :active="dimensionFilters.dimension_id !== 'all'"
+                    />
+                  </th>
                   <th>权重</th>
-                  <th>默认</th>
+                  <th>
+                    默认
+                    <ColumnFilter
+                      v-model="dimensionFilters.is_default"
+                      label="默认"
+                      :options="[{ value: 'default', label: '默认' }, { value: 'optional', label: '非默认' }]"
+                      :active="dimensionFilters.is_default !== 'all'"
+                    />
+                  </th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -517,9 +808,12 @@
                 <tr v-if="formState.associated_dimensions.length === 0">
                   <td colspan="4" class="empty-row">暂无关联维度</td>
                 </tr>
-                <tr v-else v-for="(dim, index) in formState.associated_dimensions" :key="index">
+                <tr v-else-if="filteredDimensions.length === 0">
+                  <td colspan="4" class="empty-row">无匹配维度</td>
+                </tr>
+                <tr v-else v-for="(dim, index) in filteredDimensions" :key="index">
                   <td>
-                    <select class="form-input form-input-sm" v-model="dim.dimension_id" @blur="handleDimensionBlur(index)">
+                    <select class="form-input form-input-sm" v-model="dim.dimension_id" @blur="handleDimensionBlur(dim)">
                       <option :value="null">请选择维度</option>
                       <option v-for="dimension in availableDimensions" :key="dimension.id" :value="dimension.id">
                         {{ dimension.name }}
@@ -527,17 +821,25 @@
                     </select>
                   </td>
                   <td>
-                    <input type="number" class="form-input form-input-sm" v-model.number="dim.weight" min="0" max="1" step="0.1" @blur="handleDimensionBlur(index)">
+                    <input type="number" class="form-input form-input-sm" v-model.number="dim.weight" min="0" max="1" step="0.1" @blur="handleDimensionBlur(dim)">
                   </td>
                   <td>
                     <label class="checkbox-container">
-                      <input type="checkbox" v-model="dim.is_default" @change="handleDimensionChange(index)">
+                      <input type="checkbox" v-model="dim.is_default" @change="handleDimensionChange(dim)">
                     </label>
                   </td>
                   <td>
-                    <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveDimension(index)">
+                    <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveDimension(dim)">
                       <i class="fas fa-trash btn-icon"></i>
                     </button>
+                  </td>
+                </tr>
+                <tr class="add-row" @click="handleAddDimension">
+                  <td :colspan="4">
+                    <span class="add-row-content">
+                      <span class="add-row-icon"><i class="fas fa-plus"></i></span>
+                      <span>添加关联维度</span>
+                    </span>
                   </td>
                 </tr>
               </tbody>
@@ -553,10 +855,14 @@
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import BasicModal from '../common/modal/BasicModal.vue'
 import MappingEditor from './MappingEditor.vue'
+import ColumnFilter from './ColumnFilter.vue'
 import { useModalControl, MODAL_TYPES } from '../../composables/useModal'
 import { useDimensions } from '../../composables/useDimensions'
 import { useAlgorithmConfig } from '../../composables/useAlgorithmConfig'
 import { algorithmApi, evaluationApi } from '../../utils/api'
+import { useNotification } from '../../composables/useNotification'
+
+const { error: notifyError } = useNotification()
 
 const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string; default_value?: string; help_text?: string; min_value?: number; max_value?: number; step?: number; unit?: string}> = {
   'translation_direction': { param_name: '翻译方向', param_type: 'text', help_text: '翻译方向字符串（如 zh2en, en2zh）' },
@@ -664,6 +970,7 @@ async function saveCaseParams() {
     }
   } catch (e) {
     console.error('[toggleBundle] 保存失败:', e)
+    notifyError(`用例参数保存失败: ${e?.message || e}`)
   }
 }
 
@@ -771,8 +1078,121 @@ const okText = computed(() => {
 const cancelText = computed(() => '取消')
 
 const searchKeyword = ref('')
+// 参数配置页签搜索/过滤
+const paramSearchKeyword = ref('')
+const caseParamSearchKeyword = ref('')
+const paramDirectionFilter = ref('all')
+const paramRequiredFilter = ref('all')
+const caseParamTypeFilter = ref('all')
+const caseParamScopeFilter = ref('all')
+// 参考参数页签搜索/过滤
+const referenceSearchKeyword = ref('')
+const referenceTypeFilter = ref('all')
+const referenceMergeFilter = ref('all')
+// 关联维度页签搜索
+const dimensionSearchKeyword = ref('')
+// 列头过滤状态
+const deviceApiFilters = reactive({
+  param_code: 'all',
+  param_name: 'all',
+  direction: 'all',
+  param_type: 'all',
+  required: 'all'
+})
+const caseFilters = reactive({
+  param_code: 'all',
+  param_name: 'all',
+  param_type: 'all',
+  scope: 'all',
+  required: 'all',
+  default_value: 'all',
+  annotation_code: 'all',
+  field_path: 'all',
+  help_text: 'all'
+})
+const referenceFilters = reactive({
+  code: 'all',
+  annotation_code: 'all',
+  name: 'all',
+  type: 'all',
+  annotation_format: 'all',
+  field_path: 'all',
+  merge_mode: 'all',
+  help_text: 'all'
+})
+const dimensionFilters = reactive({
+  dimension_id: 'all',
+  is_default: 'all'
+})
+
+// 参数配置搜索框：按当前页签路由到设备/API 或 用例参数 的关键字
+const paramSearchModel = computed({
+  get: () => paramConfigType.value === 'case' ? caseParamSearchKeyword.value : paramSearchKeyword.value,
+  set: (v: string) => {
+    if (paramConfigType.value === 'case') caseParamSearchKeyword.value = v
+    else paramSearchKeyword.value = v
+  }
+})
+
+// 列头过滤下拉的可选值
+const directionOptions = [
+  { value: 'input', label: '输入' },
+  { value: 'output', label: '输出' }
+]
+const requiredOptions = [
+  { value: 'required', label: '必填' },
+  { value: 'optional', label: '选填' }
+]
+const deviceApiTypeOptions = [
+  { value: 'text', label: '文本' },
+  { value: 'audio_stream', label: '音频流' },
+  { value: 'audio_file', label: '音频文件' },
+  { value: 'text_file', label: '文本文件' },
+  { value: 'rttm', label: 'RTTM标注' },
+  { value: 'stm', label: 'STM标注' },
+  { value: 'json', label: 'JSON结构化' }
+]
+const caseTypeOptions = [
+  { value: 'text', label: '文本' },
+  { value: 'number', label: '数字' },
+  { value: 'textarea', label: '多行文本' },
+  { value: 'switch', label: '开关' },
+  { value: 'slider', label: '滑块' },
+  { value: 'audio_select', label: '音频选择' },
+  { value: 'device_select', label: '设备选择' },
+  { value: 'json', label: 'JSON结构化' }
+]
+const scopeOptions = [
+  { value: 'common', label: '通用' },
+  { value: 'api', label: 'API' },
+  { value: 'e2e', label: 'E2E' }
+]
+const referenceTypeOptions = [
+  { value: 'text', label: '文本' },
+  { value: 'audio', label: '音频' },
+  { value: 'json', label: 'JSON' },
+  { value: 'rttm', label: 'RTTM' },
+  { value: 'stm', label: 'STM' }
+]
+const referenceFormatOptions = [
+  { value: 'text', label: '文本' },
+  { value: 'json', label: 'JSON' },
+  { value: 'rttm', label: 'RTTM' },
+  { value: 'stm', label: 'STM' }
+]
+const mergeOptions = [
+  { value: 'join', label: '拼接' },
+  { value: 'collect', label: '收集数组' },
+  { value: 'first', label: '取第一个' }
+]
+const dimensionFilterOptions = computed(() =>
+  availableDimensions.value.map(d => ({ value: String(d.id), label: d.name }))
+)
+
 const activeTab = ref('basic')
 const paramConfigType = ref<'device' | 'api' | 'case'>('device')
+// 每次打开弹窗自增，强制重建 MappingEditor，重置其内部过滤状态
+const mappingEditorKey = ref(0)
 const mappingExpanded = ref({
   device: true,
   api: true,
@@ -940,6 +1360,191 @@ const filteredAlgorithms = computed(() => {
   )
 })
 
+// 列头下拉过滤选项：返回某列的非空去重取值
+function distinctValues(list: any[], key: string): string[] {
+  const set = new Set<string>()
+  for (const item of list) {
+    const v = item?.[key]
+    if (v !== undefined && v !== null && String(v).trim() !== '') {
+      set.add(String(v))
+    }
+  }
+  return Array.from(set)
+}
+
+// 设备/API 参数表格过滤：搜索 + 方向/必填（含列头过滤）
+const filteredCurrentParams = computed(() => {
+  let list = currentParams.value
+  const kw = paramSearchKeyword.value.trim().toLowerCase()
+  if (kw) {
+    list = list.filter(p =>
+      (p.param_code || '').toLowerCase().includes(kw) ||
+      (p.param_name || '').toLowerCase().includes(kw)
+    )
+  }
+  const hf = deviceApiFilters
+  if (hf.param_code !== 'all') {
+    const v = String(hf.param_code).toLowerCase()
+    list = list.filter(p => (p.param_code || '').toLowerCase().includes(v))
+  }
+  if (hf.param_name !== 'all') {
+    const v = String(hf.param_name).toLowerCase()
+    list = list.filter(p => (p.param_name || '').toLowerCase().includes(v))
+  }
+  if (hf.direction !== 'all') {
+    list = list.filter(p => p.direction === hf.direction)
+  }
+  if (hf.param_type !== 'all') {
+    list = list.filter(p => p.param_type === hf.param_type)
+  }
+  if (hf.required !== 'all') {
+    const req = hf.required === 'required'
+    list = list.filter(p => !!p.required === req)
+  }
+  if (paramDirectionFilter.value !== 'all') {
+    list = list.filter(p => p.direction === paramDirectionFilter.value)
+  }
+  if (paramRequiredFilter.value !== 'all') {
+    const req = paramRequiredFilter.value === 'required'
+    list = list.filter(p => !!p.required === req)
+  }
+  return list
+})
+
+// 用例参数表格过滤：搜索 + 类型/范围/必填（含列头过滤）
+const filteredCaseParams = computed(() => {
+  let list = formState.case_params
+  const kw = caseParamSearchKeyword.value.trim().toLowerCase()
+  if (kw) {
+    list = list.filter(p =>
+      (p.param_code || '').toLowerCase().includes(kw) ||
+      (p.param_name || '').toLowerCase().includes(kw) ||
+      (p.annotation_code || '').toLowerCase().includes(kw) ||
+      (p.field_path || '').toLowerCase().includes(kw) ||
+      (p.help_text || '').toLowerCase().includes(kw)
+    )
+  }
+  const hf = caseFilters
+  if (hf.param_code !== 'all') {
+    const v = String(hf.param_code).toLowerCase()
+    list = list.filter(p => (p.param_code || '').toLowerCase().includes(v))
+  }
+  if (hf.param_name !== 'all') {
+    const v = String(hf.param_name).toLowerCase()
+    list = list.filter(p => (p.param_name || '').toLowerCase().includes(v))
+  }
+  if (hf.param_type !== 'all') {
+    list = list.filter(p => p.param_type === hf.param_type)
+  }
+  if (hf.scope !== 'all') {
+    list = list.filter(p => p.scope === hf.scope)
+  }
+  if (hf.required !== 'all') {
+    const req = hf.required === 'required'
+    list = list.filter(p => !!p.required === req)
+  }
+  if (hf.default_value !== 'all') {
+    const v = String(hf.default_value).toLowerCase()
+    list = list.filter(p => (p.default_value || '').toLowerCase().includes(v))
+  }
+  if (hf.annotation_code !== 'all') {
+    const v = String(hf.annotation_code).toLowerCase()
+    list = list.filter(p => (p.annotation_code || '').toLowerCase().includes(v))
+  }
+  if (hf.field_path !== 'all') {
+    const v = String(hf.field_path).toLowerCase()
+    list = list.filter(p => (p.field_path || '').toLowerCase().includes(v))
+  }
+  if (hf.help_text !== 'all') {
+    const v = String(hf.help_text).toLowerCase()
+    list = list.filter(p => (p.help_text || '').toLowerCase().includes(v))
+  }
+  if (caseParamTypeFilter.value !== 'all') {
+    list = list.filter(p => p.param_type === caseParamTypeFilter.value)
+  }
+  if (caseParamScopeFilter.value !== 'all') {
+    list = list.filter(p => p.scope === caseParamScopeFilter.value)
+  }
+  if (paramRequiredFilter.value !== 'all') {
+    const req = paramRequiredFilter.value === 'required'
+    list = list.filter(p => !!p.required === req)
+  }
+  return list
+})
+
+// 参考参数表格过滤：搜索 + 类型/合并（含列头过滤）
+const filteredReferenceParams = computed(() => {
+  let list = formState.reference_params
+  const kw = referenceSearchKeyword.value.trim().toLowerCase()
+  if (kw) {
+    list = list.filter(p =>
+      (p.code || '').toLowerCase().includes(kw) ||
+      (p.annotation_code || '').toLowerCase().includes(kw) ||
+      (p.name || '').toLowerCase().includes(kw) ||
+      (p.field_path || '').toLowerCase().includes(kw) ||
+      (p.help_text || '').toLowerCase().includes(kw)
+    )
+  }
+  const hf = referenceFilters
+  if (hf.code !== 'all') {
+    const v = String(hf.code).toLowerCase()
+    list = list.filter(p => (p.code || '').toLowerCase().includes(v))
+  }
+  if (hf.annotation_code !== 'all') {
+    const v = String(hf.annotation_code).toLowerCase()
+    list = list.filter(p => (p.annotation_code || '').toLowerCase().includes(v))
+  }
+  if (hf.name !== 'all') {
+    const v = String(hf.name).toLowerCase()
+    list = list.filter(p => (p.name || '').toLowerCase().includes(v))
+  }
+  if (hf.type !== 'all') {
+    list = list.filter(p => p.type === hf.type)
+  }
+  if (hf.annotation_format !== 'all') {
+    list = list.filter(p => p.annotation_format === hf.annotation_format)
+  }
+  if (hf.field_path !== 'all') {
+    const v = String(hf.field_path).toLowerCase()
+    list = list.filter(p => (p.field_path || '').toLowerCase().includes(v))
+  }
+  if (hf.merge_mode !== 'all') {
+    list = list.filter(p => p.merge_mode === hf.merge_mode)
+  }
+  if (hf.help_text !== 'all') {
+    const v = String(hf.help_text).toLowerCase()
+    list = list.filter(p => (p.help_text || '').toLowerCase().includes(v))
+  }
+  if (referenceTypeFilter.value !== 'all') {
+    list = list.filter(p => p.type === referenceTypeFilter.value)
+  }
+  if (referenceMergeFilter.value !== 'all') {
+    list = list.filter(p => p.merge_mode === referenceMergeFilter.value)
+  }
+  return list
+})
+
+// 关联维度表格过滤：按维度名称搜索 + 维度/默认筛选
+const filteredDimensions = computed(() => {
+  let list = formState.associated_dimensions
+  const kw = dimensionSearchKeyword.value.trim().toLowerCase()
+  if (kw) {
+    list = list.filter(dim => {
+      const dimObj = availableDimensions.value.find(x => x.id === dim.dimension_id)
+      return (dimObj?.name || '').toLowerCase().includes(kw)
+    })
+  }
+  if (dimensionFilters.dimension_id !== 'all') {
+    const targetId = Number(dimensionFilters.dimension_id)
+    list = list.filter(dim => dim.dimension_id === targetId)
+  }
+  if (dimensionFilters.is_default !== 'all') {
+    const isDef = dimensionFilters.is_default === 'default'
+    list = list.filter(dim => !!dim.is_default === isDef)
+  }
+  return list
+})
+
 function getGroupTagClass(groupName: string | undefined): string {
   if (!groupName) return ''
   const classes: Record<string, string> = {
@@ -953,6 +1558,9 @@ function getGroupTagClass(groupName: string | undefined): string {
 
 watch(() => props.visible, (visible) => {
   if (visible) {
+    // 每次打开都重置搜索/过滤状态，避免残留过滤导致数据不显示
+    resetFilters()
+    mappingEditorKey.value++
     if (effectiveMode.value === 'list') {
       loadAlgorithms()
     } else if (effectiveMode.value === 'create') {
@@ -1139,6 +1747,25 @@ function resetForm() {
   newGroupName.value = ''
   activeTab.value = 'basic'
   paramConfigType.value = 'device'
+  resetFilters()
+}
+
+// 重置所有搜索/过滤状态（每次打开弹窗时调用，避免残留过滤导致数据不显示）
+function resetFilters() {
+  paramSearchKeyword.value = ''
+  caseParamSearchKeyword.value = ''
+  paramDirectionFilter.value = 'all'
+  paramRequiredFilter.value = 'all'
+  caseParamTypeFilter.value = 'all'
+  caseParamScopeFilter.value = 'all'
+  referenceSearchKeyword.value = ''
+  referenceTypeFilter.value = 'all'
+  referenceMergeFilter.value = 'all'
+  dimensionSearchKeyword.value = ''
+  Object.assign(deviceApiFilters, { param_code: 'all', param_name: 'all', direction: 'all', param_type: 'all', required: 'all' })
+  Object.assign(caseFilters, { param_code: 'all', param_name: 'all', param_type: 'all', scope: 'all', required: 'all', default_value: 'all', annotation_code: 'all', field_path: 'all', help_text: 'all' })
+  Object.assign(referenceFilters, { code: 'all', annotation_code: 'all', name: 'all', type: 'all', annotation_format: 'all', field_path: 'all', merge_mode: 'all', help_text: 'all' })
+  Object.assign(dimensionFilters, { dimension_id: 'all', is_default: 'all' })
 }
 
 function handleCancel() {
@@ -1216,8 +1843,9 @@ async function saveAlgorithm() {
     emit('success')
     emit('update:visible', false)
     loadAlgorithms()
-  } catch (error) {
-    console.error('操作失败:', error)
+  } catch (err) {
+    console.error('操作失败:', err)
+    notifyError(`保存失败: ${err?.message || err}`)
   }
 }
 
@@ -1367,8 +1995,9 @@ function handleAddParam() {
   })
 }
 
-function handleRemoveCaseParam(index: number) {
-  const param = formState.case_params[index]
+function handleRemoveCaseParam(param: any) {
+  const index = formState.case_params.indexOf(param)
+  if (index < 0) return
   if (param && param.id) {
     const backup = { ...param }
     formState.case_params.splice(index, 1)
@@ -1396,8 +2025,9 @@ function handleAddReferenceParam() {
   })
 }
 
-function handleRemoveReferenceParam(index: number) {
-  const param = formState.reference_params[index]
+function handleRemoveReferenceParam(param: any) {
+  const index = formState.reference_params.indexOf(param)
+  if (index < 0) return
   if (param && param.id) {
     const backup = { ...param }
     formState.reference_params.splice(index, 1)
@@ -1425,16 +2055,16 @@ function getDefaultComponent(paramType: string): string {
   return typeComponentMap[paramType] || 'input'
 }
 
-function handleCaseParamTypeChange(param: any, index: number) {
+function handleCaseParamTypeChange(param: any) {
   param.component = getDefaultComponent(param.param_type)
-  handleCaseParamBlur(param, index)
+  handleCaseParamBlur(param)
 }
 
 let saveTimeout: any = null
 let caseParamSaveTimeout: any = null
 let referenceParamSaveTimeout: any = null
 
-async function handleParamBlur(param: any, index: number, paramType: string) {
+async function handleParamBlur(param: any, paramType: string) {
   if (!formState.type || !param.param_code) return
   if (saveTimeout) clearTimeout(saveTimeout)
   saveTimeout = setTimeout(async () => {
@@ -1442,7 +2072,7 @@ async function handleParamBlur(param: any, index: number, paramType: string) {
   }, 1500)
 }
 
-function handleParamCodeSelect(param: any, index: number) {
+function handleParamCodeSelect(param: any) {
   const preset = PARAM_CODE_PRESETS[param.param_code]
   if (preset && !param.param_name) {
     param.param_name = preset.param_name
@@ -1455,14 +2085,14 @@ function handleParamCodeSelect(param: any, index: number) {
     if (preset.step !== undefined) param.step = preset.step
     if (preset.unit) param.unit = preset.unit
   }
-  handleCaseParamBlur(param, index)
+  handleCaseParamBlur(param)
 }
 
-async function handleCaseParamBlur(param: any, index: number) {
+async function handleCaseParamBlur(param: any) {
   if (!formState.type || !param.param_code) return
   if (caseParamSaveTimeout) clearTimeout(caseParamSaveTimeout)
   caseParamSaveTimeout = setTimeout(async () => {
-    await autoSaveCaseParams(param, index)
+    await autoSaveCaseParams(param)
   }, 1000)
 }
 
@@ -1490,8 +2120,9 @@ async function autoSaveParams(param: any, paramType: string) {
       result = await algorithmApi.createParam(bodyData)
       param.id = result.id
     }
-  } catch (error) {
-    console.error('自动保存参数失败:', error)
+  } catch (err) {
+    console.error('自动保存参数失败:', err)
+    notifyError(`参数自动保存失败(${param.param_code}): ${err?.message || err}`)
   }
 }
 
@@ -1500,6 +2131,7 @@ async function autoSaveCaseParams(param: any, index: number) {
   // 检查 param_code 是否重复
   const duplicates = formState.case_params.filter((p: any) => p.param_code === param.param_code)
   if (duplicates.length > 1) {
+    notifyError(`参数代码 "${param.param_code}" 重复，请先处理重复行`)
     console.warn(`参数代码 "${param.param_code}" 重复，跳过自动保存`)
     return
   }
@@ -1530,8 +2162,9 @@ async function autoSaveCaseParams(param: any, index: number) {
       result = await algorithmApi.createCaseParam(bodyData)
       param.id = result.id
     }
-  } catch (error) {
-    console.error('自动保存用例参数失败:', error)
+  } catch (err) {
+    console.error('自动保存用例参数失败:', err)
+    notifyError(`用例参数自动保存失败(${param.param_code}): ${err?.message || err}`)
   }
 }
 
@@ -1591,9 +2224,10 @@ async function savePendingReferenceParams() {
   }
 }
 
-function handleRemoveParam(index: number) {
+function handleRemoveParam(param: any) {
   const params = paramConfigType.value === 'device' ? formState.device_params : formState.api_params
-  const param = params[index]
+  const index = params.indexOf(param)
+  if (index < 0) return
   if (param && param.id) {
     const backup = { ...param }
     params.splice(index, 1)
@@ -1625,8 +2259,9 @@ function handleAddDimension() {
   })
 }
 
-function handleRemoveDimension(index: number) {
-  const dim = formState.associated_dimensions[index]
+function handleRemoveDimension(dim: any) {
+  const index = formState.associated_dimensions.indexOf(dim)
+  if (index < 0) return
   formState.associated_dimensions.splice(index, 1)
   if (effectiveMode.value === 'edit' && formState.type && dim) {
     if (dim.id) {
@@ -1638,8 +2273,8 @@ function handleRemoveDimension(index: number) {
   }
 }
 
-async function handleDimensionChange(index: number) {
-  const dim = formState.associated_dimensions[index]
+async function handleDimensionChange(dim: any) {
+  const index = formState.associated_dimensions.indexOf(dim)
   if (!dim) return
 
   if (dim.is_default) {
@@ -1665,8 +2300,8 @@ async function handleDimensionChange(index: number) {
   }
 }
 
-async function handleDimensionBlur(index: number) {
-  const dim = formState.associated_dimensions[index]
+async function handleDimensionBlur(dim: any) {
+  const index = formState.associated_dimensions.indexOf(dim)
   if (!dim) return
 
   if (dim.is_default) {
@@ -1884,6 +2519,110 @@ async function handleDimensionBlur(index: number) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.params-toolbar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--spacing-sm);
+}
+
+.params-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.params-toolbar-actions .search-box,
+.dimensions-toolbar .search-box {
+  width: 220px;
+  height: 32px;
+  margin-bottom: 0;
+}
+
+.params-toolbar-actions .search-box .search-input,
+.dimensions-toolbar .search-box .search-input {
+  width: 220px;
+  height: 32px;
+}
+
+.params-toolbar-actions .btn-sm:not(.btn-text):not(.btn-icon-only),
+.dimensions-toolbar .btn-sm:not(.btn-text):not(.btn-icon-only) {
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+}
+
+.param-filter-select {
+  width: auto;
+  min-width: 96px;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+/* 表格底部"添加"行：整行可点击 */
+.add-row {
+  cursor: pointer;
+}
+
+.add-row:hover {
+  transform: none !important;
+}
+
+.add-row td {
+  display: table-cell !important;
+  min-width: 0 !important;
+  padding: 10px 12px !important;
+  border-bottom: none !important;
+  background: transparent;
+  text-align: center;
+  transition: background var(--transition-normal);
+}
+
+.add-row:hover td {
+  background: var(--primary-light);
+}
+
+.add-row:active td {
+  background: var(--primary-light);
+}
+
+.add-row-content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-normal);
+}
+
+.add-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--border-radius-full);
+  background: var(--primary-light);
+  color: var(--primary-color);
+  font-size: 11px;
+  transition: all var(--transition-normal);
+}
+
+.add-row:hover .add-row-content {
+  color: var(--primary-color);
+}
+
+.add-row:hover .add-row-icon {
+  background: var(--primary-gradient);
+  color: #fff;
 }
 
 .param-type-tabs {

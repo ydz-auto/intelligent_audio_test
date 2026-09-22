@@ -29,7 +29,12 @@
               }"></i>
               {{ getStatusText(task.status) }}
             </span>
-            <div class="task-title" v-if="!isEditingName" @click.stop="startEditName" title="点击修改任务名称">{{ task.name || task.title || '未命名任务' }}</div>
+            <div class="task-title-row" v-if="!isEditingName">
+              <div class="task-title">{{ task.name || task.title || '未命名任务' }}</div>
+              <button class="task-title-edit-btn" type="button" title="修改任务名称" aria-label="修改任务名称" style="color:#3b82f6" @click.stop="startEditName">
+                <i class="fas fa-pen-to-square"></i>
+              </button>
+            </div>
             <div class="task-title-edit" v-else @click.stop>
               <input 
                 type="text" 
@@ -40,6 +45,9 @@
                 class="name-edit-input"
                 autofocus
               />
+              <button type="button" class="name-edit-cancel" title="取消编辑" aria-label="取消编辑" @mousedown.prevent @click.stop="cancelEditName">
+                <i class="fas fa-times"></i>
+              </button>
             </div>
           </div>
           <div class="task-description">{{ task.description || '' }}</div>
@@ -93,7 +101,12 @@
             }"></i>
             {{ getStatusText(task.status) }}
           </span>
-          <div class="task-title" v-if="!isEditingName" @click.stop="startEditName" title="点击修改任务名称">{{ task.name || task.title || '未命名任务' }}</div>
+          <div class="task-title-row" v-if="!isEditingName">
+            <div class="task-title">{{ task.name || task.title || '未命名任务' }}</div>
+            <button class="task-title-edit-btn" type="button" title="修改任务名称" aria-label="修改任务名称" style="color:#3b82f6" @click.stop="startEditName">
+              <i class="fas fa-pen-to-square"></i>
+            </button>
+          </div>
           <div class="task-title-edit" v-else @click.stop>
             <input 
               type="text" 
@@ -104,6 +117,9 @@
               class="name-edit-input"
               autofocus
             />
+            <button type="button" class="name-edit-cancel" title="取消编辑" aria-label="取消编辑" @mousedown.prevent @click.stop="cancelEditName">
+              <i class="fas fa-times"></i>
+            </button>
           </div>
         </div>
         <div class="task-description">{{ task.description || '' }}</div>
@@ -198,9 +214,11 @@ const emit = defineEmits(['toggle-selection', 'action', 'name-updated']);
 const isEditingName = ref(false);
 const editedName = ref('');
 let pendingBlurTask = null;
+let nameEditCancelled = false;
 
 const startEditName = (e) => {
   e.stopPropagation();
+  nameEditCancelled = false;
   editedName.value = props.task.name || props.task.title || '';
   isEditingName.value = true;
 };
@@ -211,7 +229,7 @@ const saveEditName = (e) => {
     clearTimeout(pendingBlurTask);
     pendingBlurTask = null;
   }
-  if (editedName.value.trim()) {
+  if (!nameEditCancelled && editedName.value.trim()) {
     emit('name-updated', { taskId: props.task.id, newName: editedName.value.trim() });
   }
   isEditingName.value = false;
@@ -219,6 +237,7 @@ const saveEditName = (e) => {
 
 const cancelEditName = (e) => {
   e?.stopPropagation();
+  nameEditCancelled = true;
   if (pendingBlurTask) {
     clearTimeout(pendingBlurTask);
     pendingBlurTask = null;
@@ -229,11 +248,14 @@ const cancelEditName = (e) => {
 const handleBlur = (e) => {
   e.stopPropagation();
   pendingBlurTask = setTimeout(() => {
+    pendingBlurTask = null;
+    if (nameEditCancelled) {
+      return;
+    }
     if (editedName.value.trim()) {
       emit('name-updated', { taskId: props.task.id, newName: editedName.value.trim() });
     }
     isEditingName.value = false;
-    pendingBlurTask = null;
   }, 200);
 };
 
@@ -455,6 +477,8 @@ const calculateCompletionRate = (task) => {
 
 
 
+
+
 .btn-primary {
   background-color: var(--primary-color);
   color: white;
@@ -552,33 +576,87 @@ const calculateCompletionRate = (task) => {
   color: #dc2626;
 }
 
-.task-title {
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+.task-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
 }
 
-.task-title:hover {
-  background-color: rgba(255, 106, 0, 0.1);
+.task-title-row .task-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.task-title-edit-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: #3b82f6;
+  cursor: pointer;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+}
+
+.task-title-row:hover .task-title-edit-btn,
+.task-title-edit-btn:focus-visible {
+  opacity: 1;
+}
+
+.task-title-edit-btn:hover {
+  color: #2563eb;
+  background-color: rgba(59, 130, 246, 0.12);
 }
 
 .task-title-edit {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .name-edit-input {
-  font-size: 16px;
-  font-weight: 600;
-  padding: 2px 8px;
+  font-size: 22px;
+  font-weight: 700;
+  padding: 4px 10px;
   border: 2px solid var(--primary-color);
   border-radius: 4px;
   outline: none;
+  field-sizing: content;
   min-width: 200px;
+  max-width: 100%;
+  color: var(--text-primary);
 }
 
 .name-edit-input:focus {
   box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.2);
+}
+
+.name-edit-cancel {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  line-height: 1;
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.name-edit-cancel:hover {
+  color: #dc2626;
+  background-color: rgba(220, 38, 38, 0.1);
 }
 </style>
