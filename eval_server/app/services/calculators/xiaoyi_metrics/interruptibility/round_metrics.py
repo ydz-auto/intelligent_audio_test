@@ -339,6 +339,12 @@ def derive_round_metrics(round_timing: Optional[List[Dict[str, Any]]],
 
     for t in rt:
         b = bmap.get(t['round']) if round_behaviors is not None else None
+        # 停止指令轮口径（2026-09-22）：直接静默=遵从停止 → 按「回复」成功计。
+        # "好的"等确认语后静默由 prompt 指引 LLM 直接判回复；此处兜底重映射静默，
+        # 无回应内容可评 → score_overall 置 None 不入内容均分。
+        if b and b.get('behavior') == BEHAVIOR_SILENCE and t.get('stop_intent'):
+            b = dict(b, behavior=BEHAVIOR_REPLY, stop_complied=True, score_overall=None)
+            bmap[t['round']] = b  # 停止遵从率统计取重映射后的值
         behavior = (b or {}).get('behavior')
         known = behavior in BEHAVIOR_LABELS_V2
         if known and counts is not None:

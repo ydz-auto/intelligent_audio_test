@@ -199,3 +199,20 @@ def test_behaviors_from_judge_mapping():
     assert out[0]['stop_complied'] is False
     assert out[1]['round'] is None and out[1]['behavior'] is None
     assert out[1]['score'] is None and out[1]['score_overall'] is None
+
+
+def test_stop_round_prompt_rules():
+    """停止指令轮 prompt 口径：静默/确认语后静默 → 判「回复」成功（LLM 侧指引）。"""
+    from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import (
+        build_rounds_judge_prompt,
+    )
+
+    p = build_rounds_judge_prompt('(时间线)', [
+        {'round': 1, 'role': '停止', 'window': [1.0, 2.0],
+         'user_text': '别说了', 'model_interrupted_text': '正在播放…',
+         'model_recovery_text': ''},
+    ])
+    # 轮块内提示 + 全局遵从口径 + 输出格式例外说明三处都要在
+    assert p.count('behavior 判为「回复」') >= 1
+    assert '确认语后静默' in p and '停止指令轮除外' in p
+    assert '请同时判定 stop_complied' in p

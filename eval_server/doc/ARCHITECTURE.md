@@ -203,7 +203,7 @@ tor / false_takeover / takeover_latency 共用**双路 ASR**方案：
 
 - 输入：`rounds[]`（逐轮 `user_asr`/`model_asr`/`query`/`is_interruption`/`stop_intent`/`is_return_to_topic`/`played_audios`）+ 用例级 `interruption_rounds`/`dangling_interruption_rounds`；兼容单轮平铺 `user_asr`/`model_asr`（平台逐轮切片路径）
 - 用例类型 `case_type`（轮次标记本地推导，7 类）：`single` / `single_stop` / `multi` / `stop_resume_single` / `stop_resume_multi` / `topic_resume_single` / `topic_resume_multi`
-- 行为五分类（LLM 逐轮判 → 本地确定性映射成败）：回复→成功；恢复/无关/静默→失败；询问→询问；解析失败→unknown（不入数量、时延记 -1）
+- 行为五分类（LLM 逐轮判 → 本地确定性映射成败）：回复→成功；恢复/无关/静默→失败；询问→询问；解析失败→unknown（不入数量、时延记 -1）。**停止指令轮例外**：直接静默或"好的"等确认语后静默=遵从停止 → 按「回复」成功计（prompt 指引 + 派生层兜底重映射，score 不入内容均分）
 - 数量字段：`success_count` / `failure_count` / `inquiry_count` + 各行为计数（`reply/recover/irrelevant/silence/ask_behavior_count`）；分母＝非 dangling 实际打断轮（恢复轮不入）
 - 时延字段（毫秒；行为失败/unknown 轮 list 记 -1，avg/min/max 排除 -1、全 -1 → None）：
   - **响应时延** `response_latency_avg/min/max_ms` + `round_response_latencies`：用户开始打断 → 模型当前段停口

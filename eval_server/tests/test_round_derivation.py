@@ -221,6 +221,39 @@ def test_stop_compliance_only_for_stop_case_types():
     assert m['stop_compliance_rate'] == 0.0
 
 
+def test_stop_round_silence_counts_as_reply_success():
+    """停止指令轮口径(2026-09-22)：直接静默=遵从 → 按「回复」成功计，不再判失败。"""
+    from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+        build_per_round,
+        derive_round_metrics,
+    )
+
+    timing = [_t(1, 300.0, None, stop=True), _t(2, 250.0, 700.0)]
+    behaviors = [
+        # LLM 旧口径产物：静默 + score 0 + 甚至 stop_complied=False → 派生层确定性重映射
+        {'round': 1, 'behavior': '静默', 'score_overall': 0.0, 'stop_complied': False},
+        {'round': 2, 'behavior': '回复', 'score_overall': 4.0},
+    ]
+    m = derive_round_metrics(timing, behaviors, {'is_stop_type': True})
+    assert m['success_count'] == 2 and m['failure_count'] == 0
+    assert m['silence_behavior_count'] == 0 and m['reply_behavior_count'] == 2
+    # 成功轮时延照记（本轮无回复 → reply 记 -1）
+    assert m['round_response_latencies'] == [300.0, 250.0]
+    assert m['round_reply_latencies'] == [-1, 700.0]
+    # 静默遵从无内容可评 → score 不入内容均分
+    assert m['reply_content_score'] == 4.0
+    # 遵从率取重映射后的 True（LLM 给的 False 被确定性口径覆盖）
+    assert m['stop_compliance_rate'] == 1.0
+    d1 = m['round_details'][0]
+    assert d1['behavior'] == '回复' and d1['stop_complied'] is True
+    assert d1['score_overall'] is None
+    # per_round 投影同步
+    pr = build_per_round(3, m['round_details'])
+    assert pr[1]['interruption']['success_count'] == 1
+    assert pr[1]['interruption']['response_latency_avg_ms'] == 300.0
+    assert pr[1]['interruption']['stop_compliance_rate'] == 1.0
+
+
 def test_resume_latency_fallback_and_explicit():
     from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
         derive_round_metrics,

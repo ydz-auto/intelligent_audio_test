@@ -611,7 +611,8 @@ def build_rounds_judge_prompt(interaction_text: str,
             lines.append(f'【被打断时模型正在说】{b.get("model_interrupted_text") or "(无)"}')
         lines.append(f'【模型随后的回应】{b.get("model_recovery_text") or "(无语音输出)"}')
         if b.get('role') == '停止':
-            lines.append('本轮为停止指令轮：请同时判定 stop_complied。')
+            lines.append('本轮为停止指令轮：请同时判定 stop_complied；若模型直接静默、'
+                         '或仅回复"好的"等简短确认语后静默，属打断成功，behavior 判为「回复」。')
         blocks.append('\n'.join(lines))
     rounds_text = '\n\n'.join(blocks)
 
@@ -633,7 +634,7 @@ def build_rounds_judge_prompt(interaction_text: str,
 ═══════════════════════════════════════
 {_SCORE_CRITERIA}
 
-【停止指令遵从口径】遵从(true)=模型停止了原内容输出；只回复"好的""我明白了"等简短确认语同样算遵从；停止后完全没有新的语音输出也算遵从。不遵从(false)=模型无视停止指令继续输出原内容。
+【停止指令遵从口径】遵从(true)=模型停止了原内容输出；只回复"好的""我明白了"等简短确认语同样算遵从；停止后完全没有新的语音输出也算遵从。不遵从(false)=模型无视停止指令继续输出原内容。停止指令轮遵从时（直接静默或确认语后静默）属打断成功：behavior 判为「回复」而非「静默」，直接静默无内容可评时 score 省略。
 
 ═══════════════════════════════════════
 【待判定轮次】
@@ -648,7 +649,7 @@ def build_rounds_judge_prompt(interaction_text: str,
 其中：
 - rounds 必须与【待判定轮次】一一对应（round 相同），不得缺轮或加轮
 - 恢复轮不判行为（behavior 留空），只对模型回到原话题后的回应评分
-- 模型无任何语音输出时：behavior=静默，score 三维均给 0
+- 模型无任何语音输出时：behavior=静默，score 三维均给 0（停止指令轮除外——直接静默属遵从，判「回复」）
 - stop_complied 仅停止指令轮有意义，其他轮省略
 - behavior_reason 需说明你从该轮回应与时间线中观察到了什么、为何归为此类"""
 
