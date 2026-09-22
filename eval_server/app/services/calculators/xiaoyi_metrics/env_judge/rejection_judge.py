@@ -145,6 +145,26 @@ def _build_timeline_block(timeline_text: str) -> str:
     )
 
 
+def _build_scene_block(scene: str) -> str:
+    """构建本次拒识场景提示块（有助于 LLM 针对具体场景判断行为）
+
+    传入用例/轮次的 type（拒识场景）时高亮该场景及其定义，
+    下方的【场景定义】仍保留全量场景作为分类参考。
+    """
+    if not scene:
+        return ''
+    definition = REJECTION_SCENES.get(scene, '')
+    line = f'本次评估的拒识场景为：【{scene}】'
+    if definition:
+        line += f'——{definition}'
+    return (
+        '═══════════════════════════════════════\n'
+        '【本次拒识场景】\n'
+        '═══════════════════════════════════════\n\n'
+        f'{line}\n\n'
+    )
+
+
 def _get_behaviors_for_timing(timing: str) -> str:
     """根据 timing 返回对应的行为类别定义"""
     if timing == '静默':
@@ -152,7 +172,7 @@ def _get_behaviors_for_timing(timing: str) -> str:
     return REJECTION_BEHAVIORS_REPLY
 
 
-def build_multi_round_rejection_prompt(timeline_text: str = '', timing: str = '', interaction_text: str = '') -> str:
+def build_multi_round_rejection_prompt(timeline_text: str = '', timing: str = '', interaction_text: str = '', scene: str = '') -> str:
     """构建多轮拒识场景评估 prompt
 
     多轮模式：用户输入音频包含两部分内容，
@@ -162,10 +182,12 @@ def build_multi_round_rejection_prompt(timeline_text: str = '', timing: str = ''
         timeline_text: 用户侧 ASR 转写时间线
         timing: 拒识发生时机（"回复过程中" / "静默"）
         interaction_text: 完整交互文字（query/answer + 时间戳，辅助参考）
+        scene: 拒识场景（type），如 非目标人拒识/目标人非交互意图/环境噪声/用户BC
     """
     timeline_block = _build_timeline_block(timeline_text)
     scenes_text = _build_scenes_text()
     behaviors_text = _get_behaviors_for_timing(timing)
+    scene_block = _build_scene_block(scene)
 
     interaction_block = f"""═══════════════════════════════════════
 【完整交互文字】（query/answer + 时间戳，辅助参考，以实际音频为准）
@@ -183,7 +205,7 @@ def build_multi_round_rejection_prompt(timeline_text: str = '', timing: str = ''
 
 本次评估的拒识发生时机为：【{timing}】。请根据该时机对应的行为类别定义进行判断。
 
-【判断要点】
+{scene_block}【判断要点】
 1. 仔细听模型回复音频，关注模型在重叠内容出现后说了什么。
 2. 【关键】对比模型回复内容与拒识干扰内容的语义关联：如果模型回复内容与干扰内容（第二段非意图交互内容）在语义上相关或直接回应了干扰内容，应判定为"回应"。例如：干扰内容提到"开门"，模型回复中出现"门"相关内容；干扰内容提到人名，模型回复中出现对人名的回应。
 3. 只有当模型完全忽略干扰内容、继续完成重叠之前的任务且回复内容与干扰内容无任何语义关联时，才判定为"恢复"。
@@ -225,7 +247,7 @@ def build_multi_round_rejection_prompt(timeline_text: str = '', timing: str = ''
 - reason 为简短判定理由，需说明你从回复音频中听到了什么、结合时间线观察到什么、为何归类为此行为"""
 
 
-def build_single_round_rejection_prompt(timeline_text: str = '', timing: str = '', interaction_text: str = '') -> str:
+def build_single_round_rejection_prompt(timeline_text: str = '', timing: str = '', interaction_text: str = '', scene: str = '') -> str:
     """构建单轮拒识场景评估 prompt
 
     单轮模式：user_wav 直接就是需要被拒识的语音内容，
@@ -235,10 +257,12 @@ def build_single_round_rejection_prompt(timeline_text: str = '', timing: str = '
         timeline_text: 用户侧 ASR 转写时间线
         timing: 拒识发生时机（"回复过程中" / "静默"）
         interaction_text: 完整交互文字（query/answer + 时间戳，辅助参考）
+        scene: 拒识场景（type），如 非目标人拒识/目标人非交互意图/环境噪声/用户BC
     """
     timeline_block = _build_timeline_block(timeline_text)
     scenes_text = _build_scenes_text()
     behaviors_text = _get_behaviors_for_timing(timing)
+    scene_block = _build_scene_block(scene)
 
     interaction_block = f"""═══════════════════════════════════════
 【完整交互文字】（query/answer + 时间戳，辅助参考，以实际音频为准）
@@ -256,7 +280,7 @@ def build_single_round_rejection_prompt(timeline_text: str = '', timing: str = '
 
 本次评估的拒识发生时机为：【{timing}】。请根据该时机对应的行为类别定义进行判断。
 
-【判断要点】
+{scene_block}【判断要点】
 1. 仔细听模型回复音频，关注模型在接收到拒识干扰内容后说了什么。
 2. 对比模型回复内容与拒识干扰内容的语义关联：如果模型回复内容与干扰内容在语义上相关或直接回应了干扰内容，应判定为"回应"。
 3. 只有当模型完全忽略干扰内容、继续完成之前的任务或保持静默时，才判定为"恢复"或"静默"。
@@ -292,7 +316,7 @@ def build_single_round_rejection_prompt(timeline_text: str = '', timing: str = '
 - reason 为简短判定理由，需说明你从回复音频中听到了什么、结合时间线观察到什么、为何归类为此行为"""
 
 
-def build_rejection_prompt(timeline_text: str = '', is_single_round: bool = False, timing: str = '', interaction_text: str = '') -> str:
+def build_rejection_prompt(timeline_text: str = '', is_single_round: bool = False, timing: str = '', interaction_text: str = '', scene: str = '') -> str:
     """构建拒识场景评估 prompt（统一入口）
 
     Args:
@@ -300,10 +324,11 @@ def build_rejection_prompt(timeline_text: str = '', is_single_round: bool = Fals
         is_single_round: True=单轮拒识，False=多轮拒识
         timing: 拒识发生时机（"回复过程中" / "静默"）
         interaction_text: 完整交互文字（query/answer + 时间戳，辅助参考）
+        scene: 拒识场景（type），如 非目标人拒识/目标人非交互意图/环境噪声/用户BC
     """
     if is_single_round:
-        return build_single_round_rejection_prompt(timeline_text, timing, interaction_text)
-    return build_multi_round_rejection_prompt(timeline_text, timing, interaction_text)
+        return build_single_round_rejection_prompt(timeline_text, timing, interaction_text, scene)
+    return build_multi_round_rejection_prompt(timeline_text, timing, interaction_text, scene)
 
 
 # ─────────── 主入口 ───────────
@@ -315,6 +340,7 @@ def evaluate_rejection_judge(
     temperature: float = LLM_DEFAULT_TEMPERATURE,
     is_single_round: bool = False,
     timing: str = '',
+    scene: str = '',
 ) -> Dict[str, Any]:
     """拒识场景 LLM 裁判主入口
 
@@ -327,6 +353,8 @@ def evaluate_rejection_judge(
         is_single_round: True=单轮拒识（user_wav 直接为拒识内容），
                          False=多轮拒识（user_wav 包含意图交互+拒识干扰两段）
         timing: 拒识发生时机，手动传入（"回复过程中" / "静默"）
+        scene: 拒识场景（type），如 非目标人拒识/目标人非交互意图/环境噪声/用户BC，
+               注入 prompt 帮助 LLM 按场景判断行为
 
     Returns:
         dict: {
@@ -387,13 +415,14 @@ def evaluate_rejection_judge(
     query_text = get_asr_text(user_wav)
     answer_text = get_asr_text(ai_wav)
 
-    prompt = build_rejection_prompt(timeline_text, is_single_round=is_single_round, timing=timing, interaction_text=interaction_text)
+    prompt = build_rejection_prompt(timeline_text, is_single_round=is_single_round, timing=timing, interaction_text=interaction_text, scene=scene)
 
     result: Dict[str, Any] = {
         'enabled': True,
         'model': model,
         'ai_wav': ai_wav,
         'timing': timing,
+        'type': scene,
         'evaluations': [],
         'interaction_text': interaction_text,
         'query': query_text,
@@ -496,7 +525,7 @@ def evaluate_rejection_judge(
     logger.info(
         f'[rejection_judge] '
         f'model={model} ai_wav={ai_wav} '
-        f'timing={timing} '
+        f'timing={timing} scene={scene} '
         f'n_evaluations={len(evaluations)} '
         f'tokens={result["tokens_used"]}'
     )
@@ -555,6 +584,8 @@ if __name__ == '__main__':
     parser.add_argument('--timing', default='回复过程中',
                         choices=['回复过程中', '静默'],
                         help='拒识发生时机（回复过程中/静默）')
+    parser.add_argument('--scene', default='',
+                        help='拒识场景（非目标人拒识/目标人非交互意图/环境噪声/用户BC）')
     args = parser.parse_args()
 
     r = evaluate_rejection_judge(
@@ -562,6 +593,7 @@ if __name__ == '__main__':
         user_wav=args.user_wav,
         is_single_round=args.is_single_round,
         timing=args.timing,
+        scene=args.scene,
     )
 
     print('=' * 60)

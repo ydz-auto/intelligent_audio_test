@@ -65,15 +65,21 @@ _PARAMS = [
     ('user_wav', '用户通道音频', '用户通道音频路径', 'audio', 'input',
      None, None, None, False,
      False, None, '用户通道音频(可选)，直接发给LLM + 经ASR转写生成时间线上下文', 6),
+    ('type', '拒识场景', '拒识场景类型', 'text', 'input',
+     None, None, None, False,
+     False, None, '拒识场景(非目标人拒识/目标人非交互意图/环境噪声/用户BC)，按轮从用例取', 7),
+    ('is_reject', '是否为拒识内容', '是否为拒识内容', 'boolean', 'input',
+     None, None, None, False,
+     False, 'true', 'True=该轮为拒识内容，参与拒识评估统计；False=非拒识轮，跳过不统计', 8),
     ('is_single_round', '单轮拒识', '是否为单轮拒识模式', 'boolean', 'input',
      None, None, None, False,
-     False, 'false', 'True=单轮拒识(user_wav直接为拒识内容)，False=多轮拒识(user_wav包含意图交互+拒识干扰)', 7),
+     False, 'false', 'True=单轮拒识(user_wav直接为拒识内容)，False=多轮拒识(user_wav包含意图交互+拒识干扰)', 9),
     ('timing', '拒识时机', '拒识发生时机', 'text', 'input',
      None, None, None, False,
-     False, None, '拒识发生时机(回复过程中/静默)，决定行为类别定义和rate计算规则', 8),
+     False, None, '拒识发生时机(回复过程中/静默)，决定行为类别定义和rate计算规则', 10),
     ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
      None, None, None, False,
-     False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频)', 10),
+     False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频)', 11),
     ('max_tokens', '最大token', '最大输出 token 数', 'number', 'input',
      None, None, None, False,
      False, '4096', 'LLM 最大输出 token 数', 15),
@@ -124,12 +130,16 @@ _BODY_TEMPLATE = {
     'temperature': '{{temperature}}',
     'is_single_round': '{{is_single_round}}',
     'timing': '{{timing}}',
+    'type': '{{type}}',
+    'is_reject': '{{is_reject}}',
     'rounds': [
         {
             'ai_wav': '{{ai_wav}}',
             'user_wav': '{{user_wav}}',
             'is_single_round': '{{is_single_round}}',
             'timing': '{{timing}}',
+            'type': '{{type}}',
+            'is_reject': '{{is_reject}}',
         }
     ],
 }
@@ -138,6 +148,8 @@ _BODY_TEMPLATE = {
 _PARAM_MAPPINGS = [
     ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
     ('device', 'output', 'user_wav', 'user_wav', 'none'),
+    ('case', 'output', 'type', 'type', 'none'),
+    ('case', 'output', 'is_reject', 'is_reject', 'none'),
     ('reference', 'output', 'is_single_round', 'is_single_round', 'none'),
     ('reference', 'output', 'timing', 'timing', 'none'),
 ]
@@ -653,7 +665,7 @@ if __name__ == '__main__':
     print("2. 3 个父级子维度（拒识成功率/拒识询问率/拒识失败率 占比）")
     print("3. 9 个子级子维度（按 timing+behavior 细分）")
     print()
-    print("   入参: ai_wav, user_wav, is_single_round, timing, model, max_tokens, temperature")
+    print("   入参: ai_wav, user_wav, type, is_reject, is_single_round, timing, model, max_tokens, temperature")
     print()
     seed_reject_judge()
     print()

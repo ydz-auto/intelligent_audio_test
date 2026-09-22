@@ -25,6 +25,7 @@ from app.services.calculators.xiaoyi_metrics.shared.constants import (
     LLM_DEFAULT_MAX_TOKENS,
     LLM_DEFAULT_TEMPERATURE,
 )
+from app.services.calculators.xiaoyi_metrics.interruptibility import _as_bool
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,20 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
     task_type = 'rejection_judge'
     supports_per_round = True
 
+    @staticmethod
+    def _resolve_is_reject(task_params, rd):
+        """is_reject 判定：轮内值优先，其次顶层，缺省视为拒识轮(True)。
+
+        payload 构建时缺失的占位符会被填成 ''，此处与 None 同等视为"无显式值"→ True，
+        保证旧用例（未配 is_reject）行为不变；只有显式 false 才跳过该轮拒识评估。
+        """
+        raw = rd.get('is_reject')
+        if raw is None or raw == '':
+            raw = (task_params or {}).get('is_reject')
+        if raw is None or raw == '':
+            return True
+        return _as_bool(raw)
+
     def prepare_params(self, task_params):
         params = super().prepare_params(task_params)
         params['is_single_round'] = bool(task_params.get('is_single_round', False))
@@ -104,9 +119,19 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         idx = self._get_target_round_index(task_params)
         rd = self._get_round_safe(task_params, idx)
         params['timing'] = task_params.get('timing') or rd.get('timing') or ''
+        params['is_reject'] = self._resolve_is_reject(task_params, rd)
+        # type（拒识场景）注入 prompt，帮助 LLM 按场景判断行为；轮内值优先，其次顶层
+        params['scene'] = rd.get('type') or task_params.get('type') or ''
         return params
 
     def calculate(self, params):
+        # 非拒识轮（is_reject=false）不参与拒识评估：不调 LLM，产出跳过结果
+        if not params.get('is_reject', True):
+            return {
+                'enabled': False,
+                'message': '跳过: 非拒识轮(is_reject=false)，不参与拒识统计',
+            }
+
         from app.services.calculators.xiaoyi_metrics.env_judge.rejection_judge import evaluate_rejection_judge
 
         return evaluate_rejection_judge(
@@ -117,6 +142,7 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
             is_single_round=params.get('is_single_round', False),
             timing=params.get('timing', ''),
+            scene=params.get('scene', ''),
         )
 
 
