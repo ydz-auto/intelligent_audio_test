@@ -211,16 +211,20 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         # model_asr / ai_wav / pcm_first_ms 可能为空（body_template 未包含或驱动未输出），
         # 不在此拦截，交给 calculate 层返回带说明的空结果
         pass
-    elif task_type in ('rejection_judge', 'reject_judge', 'interruption_judge'):
-        # 模型回复音频(ai_wav)为主输入，录屏(video_path/record_file)为 legacy 回退
-        _r0_ej = (task_params.get('rounds') or [{}])[0] if isinstance(task_params.get('rounds'), list) and task_params.get('rounds') else {}
-        has_audio = (
-            task_params.get('ai_wav') or _r0_ej.get('ai_wav')
-            or task_params.get('video_path') or task_params.get('record_file')
-            or _r0_ej.get('video_path') or _r0_ej.get('record_file')
-        )
-        if not has_audio:
-            return error_response(f"Missing required field for {task_type}: ai_wav (模型回复音频) 或 video_path (录屏)，至少需要一个", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'env_judge':
+        # 环境理解：需要 ai_wav + user_wav + play_audio + correctAnswer
+        _r0_env = (task_params.get('rounds') or [{}])[0] if isinstance(task_params.get('rounds'), list) and task_params.get('rounds') else {}
+        _missing = []
+        if not (task_params.get('ai_wav') or _r0_env.get('ai_wav')):
+            _missing.append('ai_wav')
+        if not (task_params.get('user_wav') or _r0_env.get('user_wav')):
+            _missing.append('user_wav')
+        if not (task_params.get('play_audio') or _r0_env.get('play_audio')):
+            _missing.append('play_audio')
+        if not (task_params.get('correctAnswer') or _r0_env.get('correctAnswer')):
+            _missing.append('correctAnswer')
+        if _missing:
+            return error_response(f"Missing required field for env_judge: {', '.join(_missing)}", code=CODE_VALIDATION_ERROR)
     elif task_type == 'high_freq_turn_taking':
         # 高频轮换：user_wav + ai_wav 双路音频（从顶层或 rounds[0] 取）
         _rounds_hftt = task_params.get('rounds') or []
@@ -493,11 +497,11 @@ def create_task_upload():
     # （record_file / user_wav / ai_wav 已作为文件上传保存，这里补充其他标量字段；
     #   interruption_metrics 走 wav 路径，user_wav/ai_wav 同样需提顶层供 calculate_interruption_metrics 取值）
     # 单轮取 rounds[0]；多轮取最后一轮 rounds[-1]
-    if task_type in ('xiaoyi_metrics', 'turn_taking', 'takeover_latency', 'interruption_metrics', 'rejection_judge', 'interruption_judge'):
+    if task_type in ('xiaoyi_metrics', 'turn_taking', 'takeover_latency', 'interruption_metrics', 'env_judge'):
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) >= 1 and isinstance(rounds_list[-1], dict):
             rd = rounds_list[-1]
-            for fld in ('record_file', 'user_wav', 'ai_wav', 'played_audios', 'pause', 'first_frame_ms', 'start_ms', 'input', 'input_lastword', 'offset_ms'):
+            for fld in ('record_file', 'user_wav', 'ai_wav', 'played_audios', 'pause', 'first_frame_ms', 'start_ms', 'input', 'input_lastword', 'offset_ms', 'play_audio', 'correctAnswer', 'task_type'):
                 val = rd.get(fld)
                 if val is not None and val != '' and not task_params.get(fld):
                     task_params[fld] = val
