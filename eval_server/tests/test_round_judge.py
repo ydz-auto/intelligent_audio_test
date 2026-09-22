@@ -174,8 +174,8 @@ def test_single_round_direct_path_flat_output(fake_llm):
     assert result['success_count'] == 1
     assert result['reply_content_score'] == 5.0
     assert result['round_response_latencies'] == [RESP]
-    # preserve_resume：__init__ 的 is_last_actual 门控结果不被裁判重派生覆盖
-    assert result['resume_first_reply_latency_ms'] == REPLY
+    # preserve_resume：__init__ 门控（仅恢复轮本身产出）不被裁判重派生覆盖；普通轮 → None
+    assert result['resume_first_reply_latency_ms'] is None
 
 
 def test_behaviors_from_judge_mapping():
@@ -190,15 +190,17 @@ def test_behaviors_from_judge_mapping():
     out = behaviors_from_judge({'enabled': True, 'rounds': [
         {'round': '2', 'behavior': '静默', 'reason': '无输出',  # reason 键兼容、round 字符串强转
          'score': {'coherence': 4, 'relevance': 5, 'adaptability': 3},  # overall 缺省=三维均值
-         'stop_complied': 'no'},
+         'stop_complied': 'no', 'topic_resumed': 'yes'},
         {'round': 'x', 'behavior': '乱码'},
     ]})
     assert out[0]['round'] == 2 and out[0]['behavior'] == '静默'
     assert out[0]['behavior_reason'] == '无输出'
     assert out[0]['score_overall'] == 4.0
     assert out[0]['stop_complied'] is False
+    assert out[0]['topic_resumed'] is True  # 字符串归一同 stop_complied
     assert out[1]['round'] is None and out[1]['behavior'] is None
     assert out[1]['score'] is None and out[1]['score_overall'] is None
+    assert out[1]['topic_resumed'] is None
 
 
 def test_stop_round_prompt_rules():
@@ -211,8 +213,13 @@ def test_stop_round_prompt_rules():
         {'round': 1, 'role': '停止', 'window': [1.0, 2.0],
          'user_text': '别说了', 'model_interrupted_text': '正在播放…',
          'model_recovery_text': ''},
+        {'round': 2, 'role': '恢复', 'window': [5.0, 7.0],
+         'user_text': '接着刚才的讲', 'model_recovery_text': '好的，刚才说到…'},
     ])
     # 轮块内提示 + 全局遵从口径 + 输出格式例外说明三处都要在
     assert p.count('behavior 判为「回复」') >= 1
     assert '确认语后静默' in p and '停止指令轮除外' in p
     assert '请同时判定 stop_complied' in p
+    # 恢复原话题轮：判定标准必须在 prompt 里显式给出
+    assert '恢复原话题轮口径' in p and 'topic_resumed' in p
+    assert '未回到原话题' in p and 'topic_resumed=false 时三维均应给低分' in p

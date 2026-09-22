@@ -298,8 +298,8 @@ def test_multi_round_payload_carries_v2_spec_fields():
     assert result['success_count'] is None and result['failure_count'] is None
     assert result['round_response_latencies'] == [-1, -1]
     assert result['response_latency_avg_ms'] is None
-    # 恢复首轮内容时延回退 = 末个实际打断轮的回复时延
-    assert result['resume_first_reply_latency_ms'] == result['round_timing'][-1]['reply_latency_ms']
+    # 普通用例（无恢复轮）不产恢复首轮内容时延 → 显示 -
+    assert result['resume_first_reply_latency_ms'] is None
     # 旧字段保持不变
     assert result['interruption_success_rate'] == 1
     assert result['first_recovery_latency_s'] is not None

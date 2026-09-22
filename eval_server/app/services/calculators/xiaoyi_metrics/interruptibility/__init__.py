@@ -289,7 +289,7 @@ def calculate_interruption_metrics(task_params):
     # ── v2 spec 字段：本轮时序锚定 + 用例类型推导 + 派生层（round_metrics）──
     #    行为判定来自 LLM（round_behaviors，由统一计算器进程内合流）；
     #    缺省时派生层走降级路径：数量/评分 None、时延 list 记 -1
-    from .round_metrics import derive_case_type, derive_round_metrics, extract_round_timing
+    from .round_metrics import _RESUME_ALIASES, derive_case_type, derive_round_metrics, extract_round_timing
 
     if (isinstance(_rounds, list) and current_round is not None
             and 0 <= current_round < len(_rounds) and isinstance(_rounds[current_round], dict)):
@@ -304,7 +304,11 @@ def calculate_interruption_metrics(task_params):
         stop_intent=_si if isinstance(_si, list) else result['stop_intent'],
     )
     spec = derive_round_metrics([timing], result.get('round_behaviors'), case_info)
-    if not is_last_actual:
+    # 恢复首轮内容时延：仅恢复轮本身产出（=该轮回复时延）；其余轮（含普通用例
+    # 末轮）→ None 显示 -，与恢复内容评分口径一致
+    if any(_as_bool(_cur_rd.get(k)) for k in _RESUME_ALIASES):
+        spec['resume_first_reply_latency_ms'] = timing.get('reply_latency_ms')
+    else:
         spec['resume_first_reply_latency_ms'] = None
     result.update(spec)
     result['round_timing'] = [timing]

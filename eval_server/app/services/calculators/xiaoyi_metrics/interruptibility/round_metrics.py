@@ -319,7 +319,7 @@ def derive_round_metrics(round_timing: Optional[List[Dict[str, Any]]],
             [{'round', 'behavior', 'behavior_reason', 'score_overall', 'stop_complied'}]；
             None = 行为不可用（数量/评分 None、时延 list 全 -1）
         case_info: derive_case_type 输出
-        resume_timing: 恢复轮锚定条目（缺省时回退末个实际打断轮的回复时延＝spec"最后一轮模型的回复时延"）
+        resume_timing: 恢复轮锚定条目（无恢复轮 → resume_first_reply_latency_ms=None，普通用例显示 -）
 
     Returns:
         dict: case_type/label、8 个数量、2 个时延 list(-1)、avg/min/max×2、
@@ -373,14 +373,15 @@ def derive_round_metrics(round_timing: Optional[List[Dict[str, Any]]],
 
     resp_agg, reply_agg = _agg(resp_list), _agg(reply_list)
 
-    # 恢复首轮内容时延：恢复轮回复时延；无恢复轮锚定 → 末个实际打断轮回复时延（spec 括号口径）
+    # 恢复首轮内容时延：仅取恢复轮回复时延；无恢复轮 → None（普通用例显示 -，
+    # 该指标对无"恢复前文"概念的用例无意义，不再回退末个打断轮的回复时延）
     resume_ms = (resume_timing or {}).get('reply_latency_ms')
-    if resume_ms is None and rt:
-        resume_ms = rt[-1].get('reply_latency_ms')
     if resume_timing:
+        # topic_resumed=LLM 判定"模型实际是否回到原话题"（输入标记是 is_return_to_topic，
+        # 只表示用例设计上该轮应恢复；两者语义不同故不同名）
         details.append(dict({k: resume_timing.get(k) for k in
                              ('round', 'role', 'anchor_method', 'response_latency_ms',
-                              'reply_latency_ms', 'stop_intent')},
+                              'reply_latency_ms', 'stop_intent', 'topic_resumed')},
                             behavior=None, behavior_reason=None,
                             score_overall=None, stop_complied=None))
 
@@ -426,6 +427,7 @@ def derive_round_metrics(round_timing: Optional[List[Dict[str, Any]]],
         # 评分类
         'reply_content_score': round(sum(scores) / len(scores), 2) if scores else None,
         'resume_content_score': (resume_timing or {}).get('score_overall'),
+        'topic_resumed': (resume_timing or {}).get('topic_resumed'),
         'stop_compliance_rate': stop_compliance_rate,
         'round_details': details,
     }

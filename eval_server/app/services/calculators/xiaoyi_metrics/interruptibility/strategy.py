@@ -270,10 +270,11 @@ class InterruptionMetricsCalculator(BaseCalculator):
             rb = next((b for b in behaviors if b.get('round') == resume_timing.get('round')), None)
             if rb is not None:
                 resume_timing['score_overall'] = rb.get('score_overall')
+                resume_timing['topic_resumed'] = rb.get('topic_resumed')
         if behaviors is not None:
             spec = derive_round_metrics(timing, behaviors, case_info, resume_timing)
             if preserve_resume:
-                # 单轮路径的恢复时延门控(is_last_actual)在 __init__ 已定，不覆盖
+                # 单轮路径的恢复时延门控（仅恢复轮本身产出）在 __init__ 已定，不覆盖
                 spec['resume_first_reply_latency_ms'] = result.get('resume_first_reply_latency_ms')
             result.update(spec)
         result['llm_round_evaluations'] = judge_result.get('rounds') or []

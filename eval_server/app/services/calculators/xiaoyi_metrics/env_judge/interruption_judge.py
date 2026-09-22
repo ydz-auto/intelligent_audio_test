@@ -613,6 +613,9 @@ def build_rounds_judge_prompt(interaction_text: str,
         if b.get('role') == '停止':
             lines.append('本轮为停止指令轮：请同时判定 stop_complied；若模型直接静默、'
                          '或仅回复"好的"等简短确认语后静默，属打断成功，behavior 判为「回复」。')
+        if b.get('role') == '恢复':
+            lines.append('本轮为恢复原话题轮：请判定 topic_resumed——模型是否回到打断前的'
+                         '原话题并继续输出（true/false），并对回到原话题后的回应内容评分。')
         blocks.append('\n'.join(lines))
     rounds_text = '\n\n'.join(blocks)
 
@@ -636,6 +639,8 @@ def build_rounds_judge_prompt(interaction_text: str,
 
 【停止指令遵从口径】遵从(true)=模型停止了原内容输出；只回复"好的""我明白了"等简短确认语同样算遵从；停止后完全没有新的语音输出也算遵从。不遵从(false)=模型无视停止指令继续输出原内容。停止指令轮遵从时（直接静默或确认语后静默）属打断成功：behavior 判为「回复」而非「静默」，直接静默无内容可评时 score 省略。
 
+【恢复原话题轮口径】topic_resumed=true：模型回到打断序列开始前的原话题并继续输出（允许先简短承接再续讲原内容）；false：未回到原话题（停留在打断话题、答非所问、或声称无法继续）。恢复轮评分针对"回到原话题后的回应"：coherence=与原话题的衔接度，relevance=是否按用户要求续接前文；topic_resumed=false 时三维均应给低分（≤2）。
+
 ═══════════════════════════════════════
 【待判定轮次】
 ═══════════════════════════════════════
@@ -644,11 +649,12 @@ def build_rounds_judge_prompt(interaction_text: str,
 ═══════════════════════════════════════
 【输出格式】输出严格 JSON，不要输出 JSON 以外的任何内容：
 ═══════════════════════════════════════
-{{"rounds": [{{"round": 轮号整数, "behavior": "五类之一(恢复轮留空)", "behavior_reason": "简短理由", "score": {{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0.0}}, "stop_complied": true, "stop_compliance_reason": "仅停止指令轮填写"}}]}}
+{{"rounds": [{{"round": 轮号整数, "behavior": "五类之一(恢复轮留空)", "behavior_reason": "简短理由", "score": {{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0.0}}, "stop_complied": true, "stop_compliance_reason": "仅停止指令轮填写", "topic_resumed": true, "topic_resume_reason": "仅恢复原话题轮填写"}}]}}
 
 其中：
 - rounds 必须与【待判定轮次】一一对应（round 相同），不得缺轮或加轮
-- 恢复轮不判行为（behavior 留空），只对模型回到原话题后的回应评分
+- 恢复轮不判行为（behavior 留空），判定 topic_resumed 并对模型回到原话题后的回应评分
+- topic_resumed 仅恢复原话题轮填写，其他轮省略
 - 模型无任何语音输出时：behavior=静默，score 三维均给 0（停止指令轮除外——直接静默属遵从，判「回复」）
 - stop_complied 仅停止指令轮有意义，其他轮省略
 - behavior_reason 需说明你从该轮回应与时间线中观察到了什么、为何归为此类"""
@@ -762,6 +768,7 @@ def behaviors_from_judge(judge_result: Optional[Dict[str, Any]]) -> Optional[Lis
             'score': score_out,
             'score_overall': overall,
             'stop_complied': _tri_state(item.get('stop_complied')),
+            'topic_resumed': _tri_state(item.get('topic_resumed')),
         })
     return out or None
 

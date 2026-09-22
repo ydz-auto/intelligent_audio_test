@@ -260,9 +260,9 @@ def test_resume_latency_fallback_and_explicit():
     )
 
     timing = [_t(1, 300.0, 800.0)]
-    # 无恢复轮锚定 → 回退末个实际打断轮回复时延（spec"最后一轮模型的回复时延"）
+    # 无恢复轮 → None（普通用例显示 -，不回退末个打断轮的回复时延）
     m = derive_round_metrics(timing, [], {'is_stop_type': False})
-    assert m['resume_first_reply_latency_ms'] == 800.0
+    assert m['resume_first_reply_latency_ms'] is None
     # 恢复轮锚定优先
     rt = _t(2, None, 1200.0, role='resume')
     m2 = derive_round_metrics(timing, [], {'is_stop_type': False}, rt)
@@ -270,6 +270,12 @@ def test_resume_latency_fallback_and_explicit():
     # 恢复轮不入数量分母/list
     assert m2['round_response_latencies'] == [-1]
     assert len(m2['round_details']) == 2 and m2['round_details'][-1]['role'] == 'resume'
+    # topic_resumed 透传（LLM 判"实际是否回到原话题"；输入标记 is_return_to_topic 是另一回事）
+    assert m2['topic_resumed'] is None  # 降级/未判 → None
+    rt['topic_resumed'] = True
+    m3 = derive_round_metrics(timing, [], {'is_stop_type': False}, rt)
+    assert m3['topic_resumed'] is True
+    assert m3['round_details'][-1]['topic_resumed'] is True
 
 
 # ─────────── per_round 逐轮投影（整体评估返回逐轮结果方案 §4.2） ───────────
