@@ -104,18 +104,24 @@ def _init_failure_count() -> Dict[str, int]:
 
 
 def _update_count(count_dict: Dict[str, int], timing: str, behavior: str):
-    """更新分组统计字典"""
+    """更新分组统计字典
+
+    每个字典只更新自身包含的键：timing_behavior 分组键 + 所属类别的总数键。
+    """
     key = f'{timing}_{behavior}'
     if key in count_dict:
         count_dict[key] += 1
-    # 更新总数
+    # 更新总数（仅当该键存在于当前字典中时才递增）
     rate = compute_rate(timing, behavior)
+    total_key = None
     if rate == '拒识成功':
-        count_dict['拒识成功数量'] += 1
+        total_key = '拒识成功数量'
     elif rate == '拒识询问':
-        count_dict['拒识询问数量'] += 1
+        total_key = '拒识询问数量'
     elif rate == '拒识失败':
-        count_dict['拒识失败数量'] += 1
+        total_key = '拒识失败数量'
+    if total_key and total_key in count_dict:
+        count_dict[total_key] += 1
 
 
 def _normalize_behavior(behavior: str) -> str:
