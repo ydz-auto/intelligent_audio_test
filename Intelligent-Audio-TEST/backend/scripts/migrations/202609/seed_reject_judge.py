@@ -1,33 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-拒识裁判 v2 维度种子数据（reject_judge 主维度 + 行为/评级子维度）
+拒识裁判 v2 维度种子数据（2 级层级：3 个主维度 + 9 个子维度）
 
-功能：
-1. 注册一个主维度（dimension_type='main'）：
-   - reject_judge  拒识裁判 v2（非目标人拒识/目标人非交互意图/环境噪声/用户BC）
-2. 注册主维度的输入/输出参数（evaluation_dimension_params）
-   输入：ai_wav, user_wav, is_single_round, timing, model, max_tokens, temperature
-   输出：evaluations, ej_behavior, ej_timing, ej_rate, ej_reason,
-         ej_interaction, ej_query, ej_answer,
-         rate_success_count, rate_inquiry_count, rate_failure_count
-3. 注册子维度（dimension_type='sub'）：
-   - 3 个父级子维度：拒识成功率/拒识询问率/拒识失败率 占比
-   - 9 个子级子维度：按 timing+behavior 细分
-   子维度 statistic_method='pass_rate'，agg_role='pass_eq'，pass_threshold=1
-4. 注册 voice_llm 算法与主维度的关联（algorithm_dimension_relations）
-5. 注册 voice_llm → 主维度的参数映射（param_mappings）
+层级结构：
+  拒识成功率占比 (main)
+    ├── 静默时拒识恢复行为占比 (sub)
+    └── 回复时拒识恢复行为占比 (sub)
+  拒识询问率占比 (main)
+    ├── 静默时拒识询问行为占比 (sub)
+    └── 回复时拒识询问行为占比 (sub)
+  拒识失败率占比 (main)
+    ├── 静默时拒识回应行为占比 (sub)
+    ├── 回复时拒识回应行为占比 (sub)
+    ├── 静默时拒识无关行为占比 (sub)
+    ├── 回复时拒识无关行为占比 (sub)
+    └── 回复时拒识静默行为占比 (sub)
+
+每个主维度都有完整的 API 配置、输入参数、aux 输出参数和 param_mappings，
+可以独立发请求给 eval_server。
+子维度 statistic_method='pass_rate'，agg_role='pass_eq'，pass_threshold=1。
 
 对应 eval_server 服务：
    - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py
    - 入口：evaluate_rejection_judge
    - task_type：reject_judge（复用 RejectionJudgeCalculator）
-
-与旧版 rejection_judge 的区别：
-   - 新增 is_single_round（单轮/多轮拒识）、timing（拒识时机）输入参数
-   - 场景更新为：非目标人拒识/目标人非交互意图/环境噪声/用户BC（去掉环境回溯）
-   - 行为类别从 4 种改为 5 种（回应/恢复/不确定询问/无关回复/静默）
-   - 新增 rate 评级输出（0=拒识成功, 1=拒识询问, 2=拒识失败）
-   - user_wav 音频直接发给 LLM（不仅是 ASR 时间线）
 
 使用方法：
     cd Intelligent-Audio-TEST
@@ -53,12 +49,11 @@ POSTGRES_URI = os.environ.get(
 API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
 
 # ============================================================
-# 维度定义
+# 参数定义
 # ============================================================
 
-# ── 输入参数 ──
-_PARAMS = [
-    # ─── 输入参数 ───
+# ── 输入参数（所有主维度共享） ──
+_INPUT_PARAMS = [
     ('ai_wav', '模型回复音频', '模型回复音频路径(被判定对象)', 'audio', 'input',
      None, None, None, True,
      False, None, '模型回复音频路径，裁判模型直接听回复音频判断行为', 5),
@@ -86,8 +81,10 @@ _PARAMS = [
     ('temperature', '采样温度', '采样温度', 'number', 'input',
      None, None, None, False,
      False, '0.1', '采样温度，评判场景建议低温 0.1', 20),
+]
 
-    # ─── 输出参数 ───
+# ── aux 输出参数（所有主维度共享） ──
+_AUX_OUTPUT_PARAMS = [
     ('evaluations', '裁判结果', 'LLM 裁判结果', 'json', 'output',
      'evaluations', None, 'aux', True,
      False, None, 'LLM 裁判结果列表 [{behavior, reason}, ...]', 60),
@@ -154,44 +151,11 @@ _PARAM_MAPPINGS = [
     ('reference', 'output', 'timing', 'timing', 'none'),
 ]
 
-# ── 主维度定义 ──
-DIMENSIONS = [
-    {
-        'task_type_code': 'reject_judge',
-        'legacy_task_type_codes': [],
-        'name': '拒识裁判v2',
-        'keywords': 'reject,judge,拒识,裁判,非目标人,目标人非交互意图,环境噪声,用户BC,单轮,多轮,timing,rate',
-        'description': (
-            '拒识裁判 v2：评估模型在拒识场景下的行为。'
-            '以模型回复音频(ai_wav)为主输入，裁判模型直接听回复，'
-            '用户通道音频(user_wav)也直接发给裁判模型（不仅是ASR时间线）。'
-            '场景包括非目标人拒识/目标人非交互意图/环境噪声/用户BC，'
-            '支持单轮(is_single_round=true)和多轮(is_single_round=false)拒识模式，'
-            '由裁判模型对语音大模型的行为进行评判（回应/恢复/不确定询问/无关回复/静默），'
-            '并给出拒识时机（回复过程中/静默）和拒识评级（0=拒识成功/1=拒识询问/2=拒识失败）。'
-        ),
-        'type': 'auto',
-        'result_type': 1,  # 文本型，LLM 裁判输出为 JSON，evaluations 为 main
-        'result_min': 0.0,
-        'result_max': 0.0,
-        'decimal_places': 2,
-        'weight': 1,
-        'estimated_exec_time': 120,
-        'score_unit': '',
-        'statistic_method': 'average',
-        'params': _PARAMS,
-        'param_mappings': _PARAM_MAPPINGS,
-        'body_template': _BODY_TEMPLATE,
-    },
-]
-
 # ============================================================
-# 子维度定义（3个父级 + 9个子级）
-# 父级：拒识成功率/拒识询问率/拒识失败率 占比
-# 子级：按 timing+behavior 细分
+# 主维度定义（3 个主维度，每个都有完整的 API 配置和参数）
 # ============================================================
 
-_SUB_DIMENSIONS_DEF = [
+_MAIN_DIMENSIONS_DEF = [
     {
         'name': '拒识成功率占比',
         'field': 'rate_success',
@@ -225,12 +189,19 @@ _SUB_DIMENSIONS_DEF = [
 ]
 
 
-def _build_parent_dim(task_type_code, name, field, help):
+def _build_main_dim(name, field, help):
+    """构建主维度定义：输入参数 + 自身 output(main) + aux 输出参数"""
+    own_output = [
+        (field, name, name,
+         'number', 'output',
+         field, 'pass_eq', 'main', True,
+         False, '0', help, 60, 1),
+    ]
     return {
-        'task_type_code': task_type_code,
+        'task_type_code': 'reject_judge',
         'name': name,
-        'keywords': f'{task_type_code},{field},{name}',
-        'description': f'父级子维度：{name}。output field_path = {field}',
+        'keywords': f'reject_judge,{field},{name}',
+        'description': f'主维度：{name}。output field_path = {field}。评估模型在拒识场景下的行为表现。',
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
@@ -240,20 +211,18 @@ def _build_parent_dim(task_type_code, name, field, help):
         'estimated_exec_time': 120,
         'score_unit': '%',
         'statistic_method': 'pass_rate',
-        'params': [
-            (field, name, name,
-             'number', 'output',
-             field, 'pass_eq', 'main', True,
-             False, '0', help, 60, 1),
-        ],
+        'params': _INPUT_PARAMS + own_output + _AUX_OUTPUT_PARAMS,
+        'param_mappings': _PARAM_MAPPINGS,
+        'body_template': _BODY_TEMPLATE,
     }
 
 
-def _build_child_dim(task_type_code, name, field, help, ui_order):
+def _build_sub_dim(name, field, help, ui_order):
+    """构建子维度定义：只有自身的 output(main) 参数"""
     return {
-        'task_type_code': task_type_code,
+        'task_type_code': 'reject_judge',
         'name': name,
-        'keywords': f'{task_type_code},{field},{name}',
+        'keywords': f'reject_judge,{field},{name}',
         'description': f'子维度：{name}。output field_path = {field}',
         'type': 'auto',
         'result_type': 0,
@@ -273,22 +242,8 @@ def _build_child_dim(task_type_code, name, field, help, ui_order):
     }
 
 
-SUB_DIMENSIONS = {
-    'reject_judge': [
-        {
-            'parent': _build_parent_dim('reject_judge', p['name'], p['field'], p['help']),
-            'children': [
-                _build_child_dim('reject_judge', cname, cfield, chelp, 61 + j)
-                for j, (cfield, cname, chelp) in enumerate(p['children'])
-            ],
-        }
-        for p in _SUB_DIMENSIONS_DEF
-    ],
-}
-
-
 # ============================================================
-# 数据库操作函数（从 seed_env_sound_judge.py 复用）
+# 数据库操作函数
 # ============================================================
 
 def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
@@ -296,27 +251,22 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
     task_code = dim_def['task_type_code']
     name = dim_def['name']
 
-    if dimension_type == 'sub':
-        existing = conn.execute(text(
-            "SELECT id FROM dimensions "
-            "WHERE name = :name "
-            "AND dimension_type = 'sub' AND deleted = FALSE"
-        ), {'name': name}).fetchone()
-        if existing:
-            old_tc = conn.execute(text(
-                "SELECT task_type_code FROM dimensions WHERE id = :did"
-            ), {'did': existing[0]}).scalar()
-            if old_tc != task_code:
-                print(f"  ! 检测到子维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，原地更新 id={existing[0]}")
-                conn.execute(text(
-                    "UPDATE dimensions SET task_type_code = :tc, updated_at = NOW() WHERE id = :did"
-                ), {'tc': task_code, 'did': existing[0]})
-    else:
-        existing = conn.execute(text(
-            "SELECT id FROM dimensions "
-            "WHERE task_type_code = :tc AND dimension_type = 'main' "
-            "AND parent_dimension_id IS NULL AND deleted = FALSE"
-        ), {'tc': task_code}).fetchone()
+    # main 和 sub 都按 name 查找（支持同 task_type_code 下多个 main 维度）
+    existing = conn.execute(text(
+        "SELECT id FROM dimensions "
+        "WHERE name = :name "
+        "AND dimension_type = :dtype AND deleted = FALSE"
+    ), {'name': name, 'dtype': dimension_type}).fetchone()
+
+    if existing:
+        old_tc = conn.execute(text(
+            "SELECT task_type_code FROM dimensions WHERE id = :did"
+        ), {'did': existing[0]}).scalar()
+        if old_tc != task_code:
+            print(f"  ! 检测到维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，原地更新 id={existing[0]}")
+            conn.execute(text(
+                "UPDATE dimensions SET task_type_code = :tc, updated_at = NOW() WHERE id = :did"
+            ), {'tc': task_code, 'did': existing[0]})
 
     api_settings = json.dumps({
         'method': 'POST',
@@ -358,7 +308,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  statistic_method = :sm, api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, api_url = :api_url, "
-                "  deleted = FALSE, updated_at = NOW() "
+                "  deleted = FALSE, status = TRUE, updated_at = NOW() "
                 "WHERE id = :did"
             ), {**common_fields, 'api_url': API_URL, 'did': dim_id})
         else:
@@ -371,7 +321,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  statistic_method = :sm, api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, "
-                "  deleted = FALSE, updated_at = NOW() "
+                "  deleted = FALSE, status = TRUE, updated_at = NOW() "
                 "WHERE id = :did"
             ), {**common_fields, 'did': dim_id})
     else:
@@ -537,7 +487,7 @@ def _upsert_relation(conn, dim_id):
 
 
 def _upsert_param_mappings(conn, dim_id, dim_def):
-    """注册 voice_llm → 维度的 param_mappings（幂等）。只在主维度配。"""
+    """注册 voice_llm → 维度的 param_mappings（幂等）。"""
     print(f"  --- 注册 param_mappings (dimension_id={dim_id}) ---")
     inserted = 0
     updated = 0
@@ -574,96 +524,102 @@ def _upsert_param_mappings(conn, dim_id, dim_def):
     print(f"  插入 {inserted} 条，更新 {updated} 条")
 
 
+def _soft_delete_old_main_dimension(conn):
+    """软删除旧的主维度（拒识裁判v2），如果存在且不是新结构中的主维度。"""
+    old_main = conn.execute(text(
+        "SELECT id, name FROM dimensions "
+        "WHERE task_type_code = 'reject_judge' AND dimension_type = 'main' "
+        "AND parent_dimension_id IS NULL AND deleted = FALSE "
+        "AND name NOT IN ('拒识成功率占比', '拒识询问率占比', '拒识失败率占比')"
+    )).fetchall()
+    for row in old_main:
+        print(f"  ! 软删除旧主维度: id={row[0]}, name={row[1]}")
+        conn.execute(text(
+            "UPDATE dimensions SET deleted = TRUE, status = FALSE, updated_at = NOW() "
+            "WHERE id = :did"
+        ), {'did': row[0]})
+
+
 def seed_reject_judge():
     engine = create_engine(POSTGRES_URI)
 
     with engine.begin() as conn:
-        for dim_def in DIMENSIONS:
-            task_code = dim_def['task_type_code']
-            legacy_codes = dim_def.get('legacy_task_type_codes', [])
-            print(f"\n{'=' * 60}")
-            print(f"  处理维度: {task_code} ({dim_def['name']})")
-            if legacy_codes:
-                print(f"  legacy codes 将被改名: {legacy_codes}")
-            print(f"{'=' * 60}")
+        print(f"\n{'=' * 60}")
+        print("  拒识裁判v2(reject_judge) 维度种子数据注册 — 2 级层级")
+        print(f"{'=' * 60}")
 
-            # Step 0: 旧 code 改名
-            if legacy_codes:
-                print(f"\n--- Step 0: 迁移旧 code {legacy_codes} → {task_code} ---")
-                for old_code in legacy_codes:
-                    rows = conn.execute(text(
-                        "SELECT id, name FROM dimensions "
-                        "WHERE task_type_code = :oc AND deleted = FALSE"
-                    ), {'oc': old_code}).fetchall()
-                    if not rows:
-                        print(f"  - 无 {old_code} 记录，跳过")
-                        continue
-                    for rid, rname in rows:
-                        conflict = conn.execute(text(
-                            "SELECT id FROM dimensions "
-                            "WHERE task_type_code = :nc AND deleted = FALSE "
-                            "AND id <> :rid"
-                        ), {'nc': task_code, 'rid': rid}).fetchone()
-                        if conflict:
-                            print(f"  ! {old_code}(id={rid}) 与 {task_code}(id={conflict[0]}) 冲突，软删旧记录")
-                            conn.execute(text(
-                                "UPDATE dimensions SET deleted = TRUE, "
-                                "updated_at = NOW() WHERE id = :rid"
-                            ), {'rid': rid})
-                        else:
-                            print(f"  - {old_code}(id={rid}, name={rname}) "
-                                  f"→ rename task_type_code = {task_code}")
-                            conn.execute(text(
-                                "UPDATE dimensions SET task_type_code = :nc, "
-                                "updated_at = NOW() WHERE id = :rid"
-                            ), {'nc': task_code, 'rid': rid})
+        # Step 0: 软删除旧的主维度（拒识裁判v2）
+        print(f"\n--- Step 0: 清理旧主维度 ---")
+        _soft_delete_old_main_dimension(conn)
 
-            # Step 1: 注册主维度
-            print(f"\n--- Step 1: 注册 {task_code} 主维度 ---")
-            main_id = _upsert_dimension(conn, dim_def, dimension_type='main', parent_id=None)
+        # Step 1: 注册 3 个主维度
+        print(f"\n--- Step 1: 注册 {len(_MAIN_DIMENSIONS_DEF)} 个主维度 ---")
+        main_dim_ids = {}
+        for main_def_data in _MAIN_DIMENSIONS_DEF:
+            main_dim = _build_main_dim(
+                main_def_data['name'],
+                main_def_data['field'],
+                main_def_data['help'],
+            )
+            print(f"\n  -- 主维度: {main_def_data['name']} --")
+            main_id = _upsert_dimension(conn, main_dim, dimension_type='main', parent_id=None)
             print(f"  主维度 id = {main_id}")
-            _upsert_params(conn, main_id, dim_def)
+            _upsert_params(conn, main_id, main_dim)
             _upsert_relation(conn, main_id)
-            _upsert_param_mappings(conn, main_id, dim_def)
+            _upsert_param_mappings(conn, main_id, main_dim)
+            main_dim_ids[main_def_data['name']] = main_id
 
-            # Step 2: 注册子维度（3个父级 + 9个子级）
-            sub_groups = SUB_DIMENSIONS.get(task_code, [])
-            total_subs = sum(len(g['children']) for g in sub_groups) + len(sub_groups)
-            print(f"\n--- Step 2: 注册 {len(sub_groups)} 个父级 + {sum(len(g['children']) for g in sub_groups)} 个子级子维度 ---")
-            for group in sub_groups:
-                parent_def = group['parent']
-                print(f"\n  -- 父级子维度: {parent_def['name']} --")
-                parent_sub_id = _upsert_dimension(conn, parent_def, dimension_type='sub', parent_id=main_id)
-                print(f"  父级子维度 id = {parent_sub_id}")
-                _upsert_params(conn, parent_sub_id, parent_def)
-                _upsert_relation(conn, parent_sub_id)
+        # Step 2: 注册 9 个子维度
+        total_subs = sum(len(p['children']) for p in _MAIN_DIMENSIONS_DEF)
+        print(f"\n--- Step 2: 注册 {total_subs} 个子维度 ---")
+        for main_def_data in _MAIN_DIMENSIONS_DEF:
+            parent_id = main_dim_ids[main_def_data['name']]
+            for j, (cfield, cname, chelp) in enumerate(main_def_data['children']):
+                child_dim = _build_sub_dim(cname, cfield, chelp, 61 + j)
+                print(f"\n  -- 子维度: {cname} (parent={main_def_data['name']}) --")
+                child_id = _upsert_dimension(conn, child_dim, dimension_type='sub', parent_id=parent_id)
+                print(f"  子维度 id = {child_id}")
+                _upsert_params(conn, child_id, child_dim)
+                _upsert_relation(conn, child_id)
 
-                for child_def in group['children']:
-                    print(f"    -- 子级: {child_def['name']} --")
-                    child_id = _upsert_dimension(conn, child_def, dimension_type='sub', parent_id=parent_sub_id)
-                    print(f"    子级 id = {child_id}")
-                    _upsert_params(conn, child_id, child_def)
-                    _upsert_relation(conn, child_id)
+        # Step 3: 验证结果
+        print(f"\n--- Step 3: 验证结果 ---")
+        result = conn.execute(text(
+            "SELECT id, name, dimension_type, parent_dimension_id, deleted, status "
+            "FROM dimensions "
+            "WHERE task_type_code = 'reject_judge' AND deleted = FALSE "
+            "ORDER BY sort_order, name"
+        )).fetchall()
+
+        print(f"\n  拒识裁判维度结构（共 {len(result)} 个活跃维度）:")
+        for r in result:
+            dim_id, name, dtype, parent_id, deleted, status = r
+            parent_name = ""
+            if parent_id:
+                p = conn.execute(text(
+                    "SELECT name FROM dimensions WHERE id = :pid"
+                ), {'pid': parent_id}).fetchone()
+                parent_name = f" → parent: {p[0]}" if p else f" → parent_id: {parent_id}"
+            print(f"    [{dtype:4s}] id={dim_id:4d}  {name}{parent_name}")
 
         print(f"\n{'=' * 60}")
-        print("  拒识裁判v2(reject_judge) 维度种子数据注册完成")
+        print("  拒识裁判v2(reject_judge) 维度种子数据注册完成 — 2 级层级")
         print(f"{'=' * 60}")
 
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("拒识裁判v2维度种子数据注册")
+    print("拒识裁判v2维度种子数据注册 — 2 级层级")
     print("=" * 60)
     print()
     print(f"数据库: {POSTGRES_URI[:POSTGRES_URI.rindex('@')]}@localhost/...")
     print()
     print("此脚本将注册：")
-    print("1. reject_judge 主维度 — 拒识裁判v2")
-    print("   场景: 非目标人拒识/目标人非交互意图/环境噪声/用户BC")
-    print("   模式: 单轮(is_single_round=true)/多轮(is_single_round=false)")
-    print("   时机: timing(回复过程中/静默)")
-    print("2. 3 个父级子维度（拒识成功率/拒识询问率/拒识失败率 占比）")
-    print("3. 9 个子级子维度（按 timing+behavior 细分）")
+    print("1. 3 个主维度（拒识成功率/拒识询问率/拒识失败率 占比）")
+    print("   每个主维度都有完整的 API 配置、输入参数、aux 输出参数")
+    print("2. 9 个子维度（按 timing+behavior 细分）")
+    print("   子维度 dimension_type='sub'，parent_dimension_id 指向各主维度")
+    print("3. 软删除旧主维度（拒识裁判v2），如果存在")
     print()
     print("   入参: ai_wav, user_wav, type, is_reject, is_single_round, timing, model, max_tokens, temperature")
     print()
