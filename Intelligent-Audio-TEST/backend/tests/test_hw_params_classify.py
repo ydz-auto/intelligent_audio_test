@@ -35,3 +35,18 @@ def test_wait_end_debounce_and_fallback(monkeypatch):
     # 连续 3 次读不到 → False(调用方回退 UI 法)
     monkeypatch.setattr(drv, '_hw_params_replying', lambda sn: None)
     assert drv._wait_ai_reply_end_via_hw_params('sn') is False
+
+
+def test_stop_recorder_idempotent(monkeypatch):
+    """aa start 录屏是 toggle 语义: 重复 stop 必须只 toggle 一次(防双开)"""
+    drv = Xiaoyilivechat.__new__(Xiaoyilivechat)
+    drv._recording = True
+    calls = []
+    monkeypatch.setattr(drv, '_hdc_shell', lambda *a, **kw: calls.append(a))
+    assert drv._stop_recorder('sn') is True
+    assert drv._stop_recorder('sn') is True   # teardown 兜底再调一次
+    assert len(calls) == 1                     # 第二次被 _recording=False 挡掉
+    assert drv._recording is False
+    # 未录制时直接调也是 no-op
+    assert drv._stop_recorder('sn') is True
+    assert len(calls) == 1

@@ -105,6 +105,9 @@ class Xiaoyilivechat(HarmonyDriver):
     HW_PARAMS_PATH = '/proc/asound/card0/pcm0p/sub0/hw_params'  # 设备路径若漂移改这里
     HW_PARAMS_END_TIMEOUT = 300    # 等回复结束超时(对齐原 UI 法"正在听"超时)
     HW_PARAMS_CLOSED_CONFIRM = 3   # 连续 N 次 closed 才判定结束(约3s,防句间瞬时关流误判)
+    # 等回复开始超时。engine post_process 总预算 future.result(timeout=300),
+    # start 若也 300s 必与 engine 同时到期(竞态: teardown 与末轮停止录屏双 toggle),须留余量
+    REPLY_START_TIMEOUT = 30
 
     def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
         """将 mp4 无损转换为 wav（pcm_s16le，44.1kHz，双声道）。
@@ -328,10 +331,15 @@ class Xiaoyilivechat(HarmonyDriver):
     def _stop_recorder(self, device_sn, task_id=None, test_case_id=None):
         """停止录屏服务
 
-        说明: 与 _start_recorder 同理, aa dump -l 的二次校验不可靠,
-        这里直接以 toggle 命令执行成功为准; 真正的兜底放在 teardown 中按
-        _recording 标志位判断, 避免对已停止的录屏再次 toggle 反而打开。
+        说明: aa start 对录屏 ability 是 toggle 语义——对已停止的录屏再 toggle 反而打开。
+        故以 _recording 标志做幂等保护(先置 False 再 toggle): engine post_process future
+        超时后 teardown 兜底停止与仍在跑的 post_process 末轮停止会先后各调一次,
+        无保护则双 toggle 把录屏重新打开——残留录制还会让下个用例 _start_recorder
+        的 toggle 变成"停止"(整段录不到+30s 空等)。aa dump -l 校验不可靠,不二次确认。
         """
+        if not getattr(self, '_recording', False):
+            return True
+        self._recording = False  # 先置位再 toggle,并发调用方(末轮/teardown)只会生效一次
         self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
         return True
 
@@ -1309,12 +1317,21 @@ class Xiaoyilivechat(HarmonyDriver):
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
                 device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
                 task_id=task_id, test_case_id=test_case_id)
-            # ===== 开始回复检测（UI 法）：等"说话可打断"控件消失=AI 开始说话 =====
+            # ===== 开始回复检测（hw_params 法,主信号）：播放流 open=AI 开始说话 =====
+            # 旧 UI 法(等"说话可打断"控件消失)在语音态透传不稳: 拒识轮提示常驻时
+            # find_component 恒命中,整轮干等满 timeout 判"未回复"(实测卡 300s)。
             replied = self._wait_for_condition(
-                lambda: driver.find_component(By.text("说话可打断")) is None,
-                timeout=300, interval=1,
-                operation_name='等待回复开始',
+                lambda: self._hw_params_replying(device_sn) is True,
+                timeout=self.REPLY_START_TIMEOUT, interval=1,
+                operation_name='等待回复开始(hw_params)',
             )
+            if not replied and self._hw_params_replying(device_sn) is None:
+                # hw_params 读不到(路径漂移/无权限) → 回退旧 UI 法
+                replied = self._wait_for_condition(
+                    lambda: driver.find_component(By.text("说话可打断")) is None,
+                    timeout=self.REPLY_START_TIMEOUT, interval=1,
+                    operation_name='等待回复开始(UI兜底)',
+                )
             if not replied:
                 self._log(level='INFO', content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
                 self.question_text = '小艺识别为空'
