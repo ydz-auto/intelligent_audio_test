@@ -84,6 +84,9 @@ const loadMore = () => {
     currentPage.value++;
     loadingMore.value = false;
     emit('page-change', currentPage.value);
+    // loadingMore 置回 false 时触发器 v-if 重新挂载为全新元素，
+    // 旧 IntersectionObserver 仍盯着已脱离 DOM 的旧元素，必须重建观察
+    nextTick(setupObserver);
   }, 200);
 };
 
