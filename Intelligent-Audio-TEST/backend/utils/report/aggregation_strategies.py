@@ -304,7 +304,9 @@ class RatioStrategy(AggregationStrategy):
 
 _REGISTRY: Dict[str, AggregationStrategy] = {
     'average': SimpleAverageStrategy(),
-    'weighted_wer': WeightedSumRatioStrategy(),
+    # 通用名：加权比率 Σ分子/Σ分母（原 weighted_wer 仅适用于 WER，现兼容保留）
+    'weighted_sum_ratio': WeightedSumRatioStrategy(),
+    'weighted_wer': WeightedSumRatioStrategy(),  # 旧枚举值兼容别名，新配置请用 weighted_sum_ratio
     'pass_rate': PassRateStrategy(),
     'ratio': RatioStrategy(),
 }

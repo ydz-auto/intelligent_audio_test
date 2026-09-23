@@ -499,7 +499,8 @@ class ReportUtils:
                                             excluded_round_vals.append(dr_val)  # 排除轮次不参与分子/分母
                                             continue
                                         round_items.append(item)
-                            if overall_item and not exclude_set:
+                            if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) == 'weighted_sum_ratio'):
+                                # 加权WER：分子/分母由评估侧返回后直接Σ聚合，忽略排除轮次
                                 collected_items = [overall_item]
                             elif overall_item and dim_statistic_method.get(dim_name) == 'ratio':
                                 # 比率维度：有整体结果且配置了排除 → 分子 = 整体值 − Σ被排除轮次的逐轮值（下限 0），
@@ -861,7 +862,8 @@ class ReportUtils:
                                     continue  # 排除轮次不参与分子/分母
                                 round_items.append(item)
                     # 无排除配置且整体存在 → 取整体；有排除或无整体 → 取过滤后的各轮；否则整体兜底
-                    if overall_item and not exclude_set:
+                    # 加权WER：分子/分母由评估侧返回后直接Σ聚合，忽略排除轮次
+                    if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) == 'weighted_sum_ratio'):
                         collected = [overall_item]
                     elif round_items:
                         collected = round_items
@@ -1873,7 +1875,8 @@ class ReportUtils:
                                 continue  # 排除轮次不参与分子/分母
                             round_items.append(item)
                 # 无排除配置且整体存在 → 取整体；有排除或无整体 → 取过滤后的各轮；否则整体兜底
-                if overall_item and not exclude_set:
+                # 加权WER：分子/分母由评估侧返回后直接Σ聚合，忽略排除轮次
+                if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) == 'weighted_sum_ratio'):
                     collected = [overall_item]
                 elif round_items:
                     collected = round_items

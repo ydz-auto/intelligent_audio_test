@@ -190,12 +190,19 @@ _MAIN_DIMENSIONS_DEF = [
 
 
 def _build_main_dim(name, field, help):
-    """构建主维度定义：输入参数 + 自身 output(main) + aux 输出参数"""
+    """构建主维度定义：输入参数 + 自身 output(main) + 拒识总轮次 aux + aux 输出参数"""
     own_output = [
         (field, name, name,
          'number', 'output',
          field, 'sum', 'main', True,
          False, '0', help, 60, 1),
+    ]
+    # 拒识总轮次（is_reject=true 的轮次总数），多轮聚合由 eval_server 统计返回
+    total_rounds_aux = [
+        ('n_reject_rounds', '拒识总轮次', '拒识总轮次(is_reject=true轮次总数)',
+         'number', 'output',
+         'n_reject_rounds', None, 'aux', True,
+         False, '0', 'is_reject=true 的拒识轮次总数（多轮聚合由 eval_server 统计，n_reject_rounds）', 61),
     ]
     return {
         'task_type_code': 'reject_judge',
@@ -211,14 +218,20 @@ def _build_main_dim(name, field, help):
         'estimated_exec_time': 120,
         'score_unit': '次',
         'statistic_method': 'sum',
-        'params': _INPUT_PARAMS + own_output + _AUX_OUTPUT_PARAMS,
+        # 数量类维度：报告按轮次占比聚合（Σ数量 / Σ各用例拒识总轮次 × 100）
+        'agg_denominator': 'round',
+        'params': _INPUT_PARAMS + own_output + total_rounds_aux + _AUX_OUTPUT_PARAMS,
         'param_mappings': _PARAM_MAPPINGS,
         'body_template': _BODY_TEMPLATE,
     }
 
 
-def _build_sub_dim(name, field, help, ui_order):
-    """构建子维度定义：只有自身的 output(main) 参数"""
+def _build_sub_dim(name, field, help, ui_order, parent_field, parent_name):
+    """构建子维度定义：自身 output(main) 参数 + 所属主维度总数量 aux 输出参数
+
+    parent_field/parent_name 为所属主维度的数量字段（n_ 前缀）与维度名，
+    aux 参数 field_path 指向主维度总数，使子维度同时返回主维度总量。
+    """
     return {
         'task_type_code': 'reject_judge',
         'name': name,
@@ -233,11 +246,17 @@ def _build_sub_dim(name, field, help, ui_order):
         'estimated_exec_time': 120,
         'score_unit': '次',
         'statistic_method': 'sum',
+        # 数量类维度：报告按轮次占比聚合（Σ数量 / Σ各用例拒识总轮次 × 100）
+        'agg_denominator': 'round',
         'params': [
             (field, name, name,
              'number', 'output',
              field, 'sum', 'main', True,
              False, '0', help, ui_order, 1),
+            (parent_field, f'{parent_name}(主维度总数)', f'{parent_name}(主维度总数)',
+             'number', 'output',
+             parent_field, None, 'aux', True,
+             False, '0', f'所属主维度「{parent_name}」的总数量', ui_order + 1),
         ],
     }
 
@@ -289,6 +308,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
         'et': dim_def['estimated_exec_time'],
         'su': dim_def['score_unit'],
         'sm': dim_def['statistic_method'],
+        'ad': dim_def.get('agg_denominator', 'case'),
         'apis': api_settings,
         'rule': rule,
         'dtype': dimension_type,
@@ -305,7 +325,8 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  type = :type, result_type = :rt, result_min = :rmin, "
                 "  result_max = :rmax, decimal_places = :dp, weight = :w, "
                 "  estimated_exec_time = :et, score_unit = :su, "
-                "  statistic_method = :sm, api_settings = :apis, "
+                "  statistic_method = :sm, agg_denominator = :ad, "
+                "  api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, api_url = :api_url, "
                 "  deleted = FALSE, status = TRUE, updated_at = NOW() "
@@ -318,7 +339,8 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  type = :type, result_type = :rt, result_min = :rmin, "
                 "  result_max = :rmax, decimal_places = :dp, weight = :w, "
                 "  estimated_exec_time = :et, score_unit = :su, "
-                "  statistic_method = :sm, api_settings = :apis, "
+                "  statistic_method = :sm, agg_denominator = :ad, "
+                "  api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, "
                 "  deleted = FALSE, status = TRUE, updated_at = NOW() "
@@ -331,13 +353,13 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
                 "   type, result_type, result_min, result_max, decimal_places, "
                 "   weight, estimated_exec_time, rule, api_settings, status, "
-                "   api_status, score_unit, statistic_method, api_url, "
+                "   api_status, score_unit, statistic_method, agg_denominator, api_url, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
                 "  (:name, :kw, :dtype, :pid, :tc, :desc, "
                 "   :type, :rt, :rmin, :rmax, :dp, "
                 "   :w, :et, :rule, :apis, TRUE, "
-                "   'online', :su, :sm, :api_url, "
+                "   'online', :su, :sm, :ad, :api_url, "
                 "   FALSE, NOW(), NOW()) "
                 "RETURNING id"
             ), {**common_fields, 'tc': task_code, 'api_url': API_URL})
@@ -347,13 +369,13 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
                 "   type, result_type, result_min, result_max, decimal_places, "
                 "   weight, estimated_exec_time, rule, api_settings, status, "
-                "   api_status, score_unit, statistic_method, "
+                "   api_status, score_unit, statistic_method, agg_denominator, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
                 "  (:name, :kw, :dtype, :pid, :tc, :desc, "
                 "   :type, :rt, :rmin, :rmax, :dp, "
                 "   :w, :et, :rule, :apis, TRUE, "
-                "   'online', :su, :sm, "
+                "   'online', :su, :sm, :ad, "
                 "   FALSE, NOW(), NOW()) "
                 "RETURNING id"
             ), {**common_fields, 'tc': task_code})
@@ -575,7 +597,10 @@ def seed_reject_judge():
         for main_def_data in _MAIN_DIMENSIONS_DEF:
             parent_id = main_dim_ids[main_def_data['name']]
             for j, (cfield, cname, chelp) in enumerate(main_def_data['children']):
-                child_dim = _build_sub_dim(cname, cfield, chelp, 61 + j)
+                child_dim = _build_sub_dim(
+                    cname, cfield, chelp, 61 + j,
+                    main_def_data['field'], main_def_data['name'],
+                )
                 print(f"\n  -- 子维度: {cname} (parent={main_def_data['name']}) --")
                 child_id = _upsert_dimension(conn, child_dim, dimension_type='sub', parent_id=parent_id)
                 print(f"  子维度 id = {child_id}")

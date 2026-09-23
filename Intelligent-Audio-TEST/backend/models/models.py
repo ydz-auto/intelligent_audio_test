@@ -734,7 +734,7 @@ class Dimension(db.Model):
     api_endpoints = Column(JSON, nullable=True, default=list, comment='多个评估算法 API 地址及配置')
     api_url = Column(String(512), comment='评估微服务主入口URL')
     score_unit = Column(String(50), nullable=True, default='', comment='分数单位')
-    statistic_method = Column(String(30), nullable=False, default='average', comment='统计方式: average(简单平均), weighted_wer(加权WER: Σerrors/Σlength), pass_rate(达标率: 达标用例数/总用例数), ratio(比率: Σ数量/Σ分母, 产出%)')
+    statistic_method = Column(String(30), nullable=False, default='average', comment='统计方式: average(简单平均), weighted_sum_ratio(加权比率: Σ分子/Σ分母, 旧别名 weighted_wer), pass_rate(达标率: 达标用例数/总用例数), ratio(比率: Σ数量/Σ分母, 产出%)')
     agg_denominator = Column(String(20), nullable=False, default='case', comment='聚合分母口径(适用于所有统计方式): case(按用例, 默认)/round(按轮次)，如 pass_rate=达标用例数/用例数 或 达标轮次数/轮次数')
     exclude_rounds = Column(JSON, nullable=True, default=list, comment='按轮次统计时排除的轮次（不参与分子/分母），如 [0, 2]')
 

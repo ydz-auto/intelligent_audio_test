@@ -130,6 +130,12 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
     task_type = 'reject_judge'
     supports_per_round = True
 
+    # 单轮也走逐轮聚合：只有 1 个拒识轮（rounds<2）时同样输出
+    # n_ 前缀数量字段（n_rate_* / n_子维度）与 n_reject_rounds，
+    # 避免单轮场景主维度/子维度 field_path 提取为 None。
+    min_rounds_for_aggregate = 1
+    aggregate_overall_only = False
+
     def validate(self, task_params):
         idx = self._get_target_round_index(task_params)
         rd = self._get_round_safe(task_params, idx)

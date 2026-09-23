@@ -10,7 +10,8 @@ export interface ValidationField {
   arrayItemType?: string;
   conditional?: {
     field: string;
-    value: any;
+    value?: any;
+    value_not?: any;
   };
 }
 
@@ -39,8 +40,12 @@ export function useFormValidation() {
     fields.forEach(field => {
       // 检查字段是否有条件显示设置，如果有，只在条件满足时验证
       const isFieldVisible = !field.conditional || 
-        (formValues[field.conditional.field] === field.conditional.value) ||
-        (Array.isArray(field.conditional.value) && field.conditional.value.includes(formValues[field.conditional.field]))
+        (field.conditional.value_not !== undefined
+          ? (Array.isArray(field.conditional.value_not)
+              ? !field.conditional.value_not.includes(formValues[field.conditional.field])
+              : formValues[field.conditional.field] !== field.conditional.value_not)
+          : (formValues[field.conditional.field] === field.conditional.value) ||
+            (Array.isArray(field.conditional.value) && field.conditional.value.includes(formValues[field.conditional.field])))
       
       if (!isFieldVisible) {
         // 跳过隐藏字段的验证

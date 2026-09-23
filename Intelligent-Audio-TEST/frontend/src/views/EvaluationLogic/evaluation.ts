@@ -395,16 +395,19 @@ export function useEvaluation() {
     { key: 'statisticMethod', label: '统计方式', type: 'select', required: false, default: 'average', group: 'API配置',
       options: [
         { value: 'average', label: '简单平均' },
-        { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' },
+        { value: 'weighted_sum_ratio', label: '加权比率 (Σ分子/Σ分母)' },
         { value: 'pass_rate', label: '达标率 (达标数/总数)' },
         { value: 'ratio', label: '比率 (Σ数量/Σ分母, %)' }
       ] },
     { key: 'aggDenominator', label: '聚合分母口径', type: 'select', required: false, default: 'case', group: 'API配置',
+      conditional: { field: 'statisticMethod', value_not: 'weighted_sum_ratio' },
+      helpText: '仅简单平均/达标率/比率适用；加权比率的分子分母来自评估侧返回值累加，与用例数/轮次数无关',
       options: [
         { value: 'case', label: '按用例 (分母=配置该维度的用例数)' },
         { value: 'round', label: '按轮次 (分母=该维度有值轮次数)' }
       ] },
     { key: 'excludeRounds', label: '排除轮次（按轮次统计时跳过）', type: 'multiSelect', required: false, group: 'API配置',
+      conditional: { field: 'statisticMethod', value_not: 'weighted_sum_ratio' },
       options: [
         ...Array.from({length: 10}, (_, i) => ({ value: i, label: `第${i + 1}轮` })),
         { value: -1, label: '最后一轮' }

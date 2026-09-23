@@ -423,6 +423,12 @@ const getDefaultValue = (field) => {
 const checkCondition = (condition) => {
   if (!condition || !condition.field) return true
   const fieldValue = formValues.value[condition.field]
+  if (condition.value_not !== undefined) {
+    if (Array.isArray(condition.value_not)) {
+      return !condition.value_not.includes(fieldValue)
+    }
+    return fieldValue !== condition.value_not
+  }
   if (Array.isArray(condition.value)) {
     return condition.value.includes(fieldValue)
   }

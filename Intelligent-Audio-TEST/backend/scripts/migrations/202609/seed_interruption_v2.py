@@ -9,10 +9,10 @@
    - 旧「打断成功率」维度取消，spec 指标除时延归一个容器维度外全部为主维度。
 
 功能（幂等，可重复执行）：
-1. Step 0 软删旧树（先删后建，避免子维度按 name 匹配复活旧行）：
+1. Step 0 物理删除旧树（先删后建，避免子维度按 name 匹配复活旧行）：
    - interruption_metrics 旧主维度（打断成功率/打断指标，排除本 seed 新族名字）+ 其子树
    - interruption_judge（打断场景裁判）+ 其子树
-   - 历史 TestResultDimension 行保留不动
+   - 引用旧维度的历史 TestResultDimension 行级联物理删除（软删数据直接移除）
 2. Step 1 注册 11 个主维度（task_type_code 全部 = interruption_metrics）：
    成功/失败/询问数量、回复/恢复/无关/静默/询问行为数量、
    回复内容评分、停止指令遵循、恢复首轮内容评分
@@ -393,7 +393,7 @@ LATENCY_SUBS = [
 
 
 # ============================================================
-# upsert helpers（沿用 202606/seed_interruption_dimensions.py 模式）
+# upsert helpers（沿用 202606 seed 脚本通用模式；软删逻辑已改为物理删除）
 # 差异：主维度按 name 匹配（全族 12 个主维度共用 task_type_code，不能按 tc fetchone）
 # ============================================================
 def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
@@ -515,7 +515,10 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
 
 
 def _cleanup_stale_params(conn, dim_id, dim_def):
-    """软清理 DB 中当前 dim_def.params 不再出现的 param_code（按 direction 分组）。"""
+    """物理清理 DB 中当前 dim_def.params 不再出现的 param_code（按 direction 分组）。
+
+    历史软删（deleted=TRUE）的遗留参数一并物理删除，不留软删垃圾数据。
+    """
     current_output_codes = {p[0] for p in dim_def['params'] if p[4] == 'output'}
     current_input_codes = {p[0] for p in dim_def['params'] if p[4] == 'input'}
     for direction, current_codes in (
@@ -525,15 +528,13 @@ def _cleanup_stale_params(conn, dim_id, dim_def):
         if not current_codes:
             stale = conn.execute(text(
                 "SELECT param_code FROM evaluation_dimension_params "
-                "WHERE dimension_id = :did AND param_direction = :dir "
-                "AND deleted = FALSE"
+                "WHERE dimension_id = :did AND param_direction = :dir"
             ), {'did': dim_id, 'dir': direction}).fetchall()
             if stale:
                 stale_codes = [r[0] for r in stale]
-                print(f"  ! 清理已废弃 {direction} 参数: {stale_codes}")
+                print(f"  ! 物理清理已废弃 {direction} 参数: {stale_codes}")
                 conn.execute(text(
-                    "UPDATE evaluation_dimension_params SET "
-                    "  deleted = TRUE, updated_at = NOW() "
+                    "DELETE FROM evaluation_dimension_params "
                     "WHERE dimension_id = :did AND param_direction = :dir"
                 ), {'did': dim_id, 'dir': direction})
             continue
@@ -542,18 +543,16 @@ def _cleanup_stale_params(conn, dim_id, dim_def):
         stale = conn.execute(text(
             "SELECT param_code FROM evaluation_dimension_params "
             "WHERE dimension_id = :did AND param_direction = :dir "
-            f"AND param_code NOT IN ({placeholders}) "
-            "AND deleted = FALSE"
+            f"AND param_code NOT IN ({placeholders})"
         ), {'did': dim_id, 'dir': direction, **bind}).fetchall()
         if stale:
             stale_codes = [r[0] for r in stale]
-            print(f"  ! 清理已废弃 {direction} 参数: {stale_codes}")
+            print(f"  ! 物理清理已废弃 {direction} 参数: {stale_codes}")
             # 用 stale_codes(要删的) 建 IN 列表，勿用 current_codes(要留的)——否则删错+被upsert复活
             stale_placeholders = ','.join(f':s{i}' for i in range(len(stale_codes)))
             stale_bind = {f's{i}': code for i, code in enumerate(stale_codes)}
             conn.execute(text(
-                "UPDATE evaluation_dimension_params SET "
-                "  deleted = TRUE, updated_at = NOW() "
+                "DELETE FROM evaluation_dimension_params "
                 "WHERE dimension_id = :did AND param_direction = :dir "
                 f"AND param_code IN ({stale_placeholders})"
             ), {'did': dim_id, 'dir': direction, **stale_bind})
@@ -621,18 +620,24 @@ def _upsert_params(conn, dim_id, dim_def):
 
 
 def _upsert_relation(conn, dim_id):
-    """注册 voice_llm → 维度关联（幂等；软删过的原地复活，避免撞唯一约束）。"""
+    """注册 voice_llm → 维度关联（幂等；历史软删行直接物理删除后重建，不留软删垃圾）。"""
     existing = conn.execute(text(
         "SELECT id, deleted FROM algorithm_dimension_relations "
         "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did"
     ), {'did': dim_id}).fetchone()
     if existing:
         if existing[1]:
+            print(f"  ! 删除历史软删关联 voice_llm → dim {dim_id} 并重建")
             conn.execute(text(
-                "UPDATE algorithm_dimension_relations SET deleted = FALSE, updated_at = NOW() "
-                "WHERE id = :id"
+                "DELETE FROM algorithm_dimension_relations WHERE id = :id"
             ), {'id': existing[0]})
-            print(f"  ~ 关联 voice_llm → dim {dim_id} 已复活")
+            conn.execute(text(
+                "INSERT INTO algorithm_dimension_relations "
+                "  (algorithm_type, dimension_id, is_default, weight, "
+                "   deleted, created_at, updated_at) "
+                "VALUES "
+                "  ('voice_llm', :did, FALSE, 1.0, FALSE, NOW(), NOW())"
+            ), {'did': dim_id})
         else:
             print(f"  - 关联 voice_llm → dim {dim_id} 已存在，跳过")
     else:
@@ -684,36 +689,40 @@ def _upsert_param_mappings(conn, dim_id, dim_def):
     print(f"  插入 {inserted} 条，更新 {updated} 条")
 
 
-def _soft_delete_dimension_tree(conn, dim_id, reason):
-    """软删除一个维度及其 params / mappings / relations / 子维度（递归）。"""
+def _hard_delete_dimension_tree(conn, dim_id, reason):
+    """物理删除一个维度及其 params / mappings / relations / 子维度 / 历史结果行。
+
+    库中该维度已是金标口径下的废弃数据（含历史软删遗留），直接移除，
+    不再保留软删（deleted=TRUE）记录。
+    """
     subs = conn.execute(text(
-        "SELECT id, name FROM dimensions "
-        "WHERE parent_dimension_id = :pid AND deleted = FALSE"
+        "SELECT id, name FROM dimensions WHERE parent_dimension_id = :pid"
     ), {'pid': dim_id}).fetchall()
     for sub_id, sub_name in subs:
-        _soft_delete_dimension_tree(conn, sub_id, f"父维度 {dim_id} 被软删")
+        _hard_delete_dimension_tree(conn, sub_id, f"父维度 {dim_id} 被物理删除")
 
+    n_results = conn.execute(text(
+        "DELETE FROM test_result_dimensions WHERE dimension_id = :did"
+    ), {'did': dim_id}).rowcount
+    if n_results:
+        print(f"  ! 级联删除 test_result_dimensions {n_results} 行 (dimension_id={dim_id})")
     conn.execute(text(
-        "UPDATE dimensions SET deleted = TRUE, updated_at = NOW() "
-        "WHERE id = :did AND deleted = FALSE"
+        "DELETE FROM evaluation_dimension_params WHERE dimension_id = :did"
     ), {'did': dim_id})
     conn.execute(text(
-        "UPDATE evaluation_dimension_params SET deleted = TRUE, updated_at = NOW() "
-        "WHERE dimension_id = :did AND deleted = FALSE"
+        "DELETE FROM param_mappings WHERE dimension_id = :did"
     ), {'did': dim_id})
     conn.execute(text(
-        "UPDATE param_mappings SET deleted = TRUE, updated_at = NOW() "
-        "WHERE dimension_id = :did AND deleted = FALSE"
+        "DELETE FROM algorithm_dimension_relations WHERE dimension_id = :did"
     ), {'did': dim_id})
     conn.execute(text(
-        "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() "
-        "WHERE dimension_id = :did AND deleted = FALSE"
+        "DELETE FROM dimensions WHERE id = :did"
     ), {'did': dim_id})
-    print(f"  ! 软删维度 id={dim_id}（{reason}）：dimensions/params/mappings/relations 已置 deleted=TRUE")
+    print(f"  ! 物理删除维度 id={dim_id}（{reason}）：dimensions/params/mappings/relations/结果行已移除")
 
 
 def _verify(conn):
-    """出口核对：每个输出维度 main param 唯一；容器无 output；旧树已软删。"""
+    """出口核对：每个输出维度 main param 唯一；容器无 output；旧树已物理删除。"""
     ok = True
     rows = conn.execute(text(
         "SELECT d.id, d.name, d.dimension_type, "
@@ -737,7 +746,7 @@ def _verify(conn):
     )).fetchall()
     if stale:
         ok = False
-        print(f"    [!!] 旧打断场景裁判主维度未软删: {stale}")
+        print(f"    [!!] 旧打断场景裁判主维度未物理删除: {stale}")
     legacy = conn.execute(text(
         "SELECT id, name FROM dimensions "
         "WHERE deleted = FALSE AND dimension_type = 'main' AND parent_dimension_id IS NULL "
@@ -745,7 +754,7 @@ def _verify(conn):
     )).fetchall()
     if legacy:
         ok = False
-        print(f"    [!!] 旧打断成功率主维度未软删: {legacy}")
+        print(f"    [!!] 旧打断成功率主维度未物理删除: {legacy}")
     print(f"  核对结果: {'通过' if ok else '未通过'}")
     return ok
 
@@ -755,11 +764,11 @@ def seed_interruption_v2():
 
     with engine.begin() as conn:
         # ============================================================
-        # Step 0: 软删旧树（必须先于新建：子维度按 name 匹配 deleted=FALSE，
+        # Step 0: 物理删除旧树（必须先于新建：子维度按 name 匹配 deleted=FALSE，
         #         「恢复首轮内容时延」新旧同名，先删旧行避免复活旧 parent/field_path）
         # ============================================================
         print(f"\n{'=' * 60}")
-        print("  Step 0: 软删旧维度树（打断成功率主+4子 / 打断场景裁判主+11子）")
+        print("  Step 0: 物理删除旧维度树（打断成功率主+4子 / 打断场景裁判主+11子）")
         print(f"{'=' * 60}")
         new_main_names = [d['name'] for d in MAIN_DIMENSIONS] + [LATENCY_CONTAINER['name']]
         placeholders = ','.join(f':n{i}' for i in range(len(new_main_names)))
@@ -779,11 +788,11 @@ def seed_interruption_v2():
         if not legacy and not judge:
             print("  无旧树需清理")
         for dim_id, name, tc in legacy:
-            print(f"  软删旧主维度: id={dim_id}, name={name}, task_type_code={tc}")
-            _soft_delete_dimension_tree(conn, dim_id, "被打断指标 v2 维度树替代")
+            print(f"  物理删除旧主维度: id={dim_id}, name={name}, task_type_code={tc}")
+            _hard_delete_dimension_tree(conn, dim_id, "被打断指标 v2 维度树替代")
         for dim_id, name, tc in judge:
-            print(f"  软删旧主维度: id={dim_id}, name={name}, task_type_code={tc}")
-            _soft_delete_dimension_tree(conn, dim_id, "LLM 裁判已并入打断指标 v2 族（进程内直调，不再独立维度）")
+            print(f"  物理删除旧主维度: id={dim_id}, name={name}, task_type_code={tc}")
+            _hard_delete_dimension_tree(conn, dim_id, "LLM 裁判已并入打断指标 v2 族（进程内直调，不再独立维度）")
 
         # ============================================================
         # Step 1: 11 个主维度
@@ -841,7 +850,8 @@ if __name__ == '__main__':
     print(f"eval_server: {API_URL}")
     print()
     print("此脚本将：")
-    print("1. 软删旧树：「打断成功率」(主+4子) 与「打断场景裁判」(主+11子)；历史结果行保留")
+    print("1. 物理删除旧树：「打断成功率」(主+4子) 与「打断场景裁判」(主+11子)")
+    print("   及其引用结果行（软删数据直接移除，不再保留 deleted=TRUE 记录）")
     print("2. 注册 11 个主维度（成功/失败/询问数量、5 个行为数量、回复内容评分、")
     print("   停止指令遵循、恢复首轮内容评分），全族 task_type_code=interruption_metrics")
     print("3. 注册「打断时延」容器主维度 + 3 个子维度（响应时延/回复时延/恢复首轮内容时延）")

@@ -147,12 +147,18 @@ class TaskService:
         result = calculator.run(task_params)
 
         # 整体评估模式 + calculator 声明支持逐轮 → 附加 per_round[]（逐轮结果回填）
-        # 仅当响应可附加（dict）且当前为整体评估（round_number 不存在）且有多轮数据（>=2轮）时生效
-        # 单轮场景整体结果即唯一结果，无需额外 per_round
+        # 默认仅当响应可附加（dict）且为整体评估（round_number 不存在）且有多轮数据（>=2轮）时生效
+        # calculator 可通过属性调整：
+        #   min_rounds_for_aggregate  — 触发聚合的最少轮数（reject_judge 单轮=1 也要走聚合，
+        #                               保证 n_ 前缀数量字段与 n_reject_rounds 在单轮场景同样产出）
+        #   aggregate_overall_only    — False 时逐轮评估（round_number 有值）也允许聚合
         rounds = task_params.get('rounds')
         is_overall = task_params.get('round_number') in (None, '')
+        min_rounds = getattr(calculator, 'min_rounds_for_aggregate', 2)
+        aggregate_overall_only = getattr(calculator, 'aggregate_overall_only', True)
         if (isinstance(result, dict)
-                and is_overall and rounds and isinstance(rounds, list) and len(rounds) >= 2
+                and (is_overall or not aggregate_overall_only)
+                and rounds and isinstance(rounds, list) and len(rounds) >= min_rounds
                 and getattr(calculator, 'supports_per_round', False)
                 and 'per_round' not in result):  # 计算器已原生产出 per_round（如打断 v2 零成本投影）则不再切片重跑
             try:

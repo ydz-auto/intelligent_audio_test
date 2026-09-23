@@ -800,7 +800,7 @@ def step10_fix_test_results(engine, dry_run=False):
 # ========================================================================
 
 def step11_ensure_dimensions_statistic_method(engine, dry_run=False):
-    """确保 dimensions.statistic_method 列存在（统计方式: average/weighted_wer）"""
+    """确保 dimensions.statistic_method 列存在（统计方式: average/weighted_sum_ratio 等）"""
     print("\n" + "=" * 60)
     print("Step 11: 确保 dimensions.statistic_method 列存在")
     print("=" * 60)
