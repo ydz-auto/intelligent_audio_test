@@ -8,11 +8,13 @@
    source=case_config 取用这些字段，注入到评估维度 input 参数。
 
 功能（幂等，可重复执行）：
-1. 给所有启用中的主维度（dimension_type='main'，deleted=FALSE）
-   - 注册/更新 input 参数 played_audios / background_noise / interferers
-     （field_type='json'，required=FALSE）
-   - 注册/更新参数映射 case_config → audios/background_noise/interferers
-     → 对应 input 参数（挂主维度 id）
+1. 按族（task_type_code）给启用中的主维度注册/更新轮次结构化音频参数与映射，
+   范围与金标一致：
+   - interruption_metrics（打断族）：played_audios / background_noise / interferers
+     三个 input 参数 + case_config → audios/background_noise/interferers 映射
+   - turn_eval（话轮评估族）：仅 played_audios 参数 + case_config → audios 映射
+   - 其他族（reject_judge 等）金标无音频参数，跳过
+   （参数 field_type='json'，required=FALSE，映射挂主维度 id）
 2. 将历史 stimulus_audios 参数与映射目标归一化为 played_audios
 3. 不清理、不删除任何已有参数/映射（区别于维度 seed 的 _cleanup_stale_params）
 4. 不做维度创建/删除，仅扩展主维度参数与映射
@@ -32,7 +34,7 @@
 
 使用方法：
     cd Intelligent-Audio-TEST
-    python backend/scripts/migrations/202606/seed_stimulus_audios.py
+    python backend/scripts/migrations/202609/seed_stimulus_audios.py
 
 注意：此脚本可重复执行（幂等）
 """
@@ -85,6 +87,21 @@ AUDIO_MAPPINGS = (
     ('case_config', 'output', 'background_noise', 'background_noise', 'none'),
     ('case_config', 'output', 'interferers', 'interferers', 'none'),
 )
+
+# 话轮评估族（turn_eval）：金标仅 played_audios 参数 + audios 映射（无背景噪声/干扰人）
+TURN_EVAL_AUDIO_PARAMS = (
+    AUDIO_PARAMS[0],
+)
+TURN_EVAL_AUDIO_MAPPINGS = (
+    AUDIO_MAPPINGS[0],
+)
+
+# task_type_code → (params, mappings) 金标音频配置
+# 其他族（reject_judge 等）金标无音频参数，跳过
+AUDIO_CONFIG = {
+    'interruption_metrics': (AUDIO_PARAMS, AUDIO_MAPPINGS),
+    'turn_eval': (TURN_EVAL_AUDIO_PARAMS, TURN_EVAL_AUDIO_MAPPINGS),
+}
 
 
 def _find_main_dimensions(conn):
@@ -210,15 +227,22 @@ def seed_audio_params():
         if not dims:
             print("  未找到启用中的主维度，跳过")
             return
-        print(f"  将处理 {len(dims)} 个主维度:")
-        for dim_id, name, tc in dims:
+        handled = [(d[0], d[1], d[2]) for d in dims if d[2] in AUDIO_CONFIG]
+        skipped = [(d[0], d[1], d[2]) for d in dims if d[2] not in AUDIO_CONFIG]
+        print(f"  将处理 {len(handled)} 个主维度（金标音频族）:")
+        for dim_id, name, tc in handled:
             print(f"    - id={dim_id}, name={name}, task_type_code={tc}")
+        if skipped:
+            print(f"  跳过 {len(skipped)} 个主维度（金标无音频参数）:")
+            for dim_id, name, tc in skipped:
+                print(f"    - id={dim_id}, name={name}, task_type_code={tc}")
 
-        for dim_id, name, tc in dims:
-            print(f"\n  -- 维度 id={dim_id} ({name}) --")
-            for param_def in AUDIO_PARAMS:
+        for dim_id, name, tc in handled:
+            params, mappings = AUDIO_CONFIG[tc]
+            print(f"\n  -- 维度 id={dim_id} ({name}, {tc}) --")
+            for param_def in params:
                 _upsert_param(conn, dim_id, param_def)
-            for mapping_def in AUDIO_MAPPINGS:
+            for mapping_def in mappings:
                 _upsert_mapping(conn, dim_id, mapping_def)
 
 
@@ -232,11 +256,12 @@ if __name__ == '__main__':
     print(f"算法类型: {ALGORITHM_TYPE}")
     print()
     print("此脚本将：")
-    print("1. 给所有启用中的主维度注册 input 参数 played_audios / background_noise / interferers")
-    print("   （field_type=json, required=False）")
-    print("2. 注册参数映射 case_config → audios / background_noise / interferers")
-    print("3. 将历史 stimulus_audios 参数与映射目标归一化为 played_audios")
-    print("4. 不创建/删除维度，不清理其他参数/映射（幂等）")
+    print("1. 按族（金标口径）给启用中的主维度注册轮次结构化音频参数与映射：")
+    print("   - interruption_metrics: played_audios / background_noise / interferers + 3 条映射")
+    print("   - turn_eval: 仅 played_audios + case_config→audios 映射")
+    print("   - 其他族（reject_judge 等）跳过")
+    print("2. 将历史 stimulus_audios 参数与映射目标归一化为 played_audios")
+    print("3. 不创建/删除维度，不清理其他参数/映射（幂等）")
     print()
     print("执行链路：前端映射 case_config → 用例配置 rounds[].{audios,background_noise,"
           "interferers}")
