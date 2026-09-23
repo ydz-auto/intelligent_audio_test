@@ -303,6 +303,17 @@ class EvaluationService(EvaluationLoggerMixin):
             if interruption_metadata and 'is_actual_interruption' not in item:
                 item['is_actual_interruption'] = round_number in actual_interruption_rounds
 
+            # 透传 is_reject 字段（拒识裁判按轮配置，控制该轮是否参与拒识统计）
+            # 优先取 param_mapping 已映射的值；缺失时从 case_config rounds 补充
+            if 'is_reject' not in item:
+                cfg_round = _get_config_round(
+                    case_config.get('rounds') if case_config else None, round_number
+                )
+                if cfg_round and 'is_reject' in cfg_round:
+                    item['is_reject'] = cfg_round['is_reject']
+                elif 'is_reject' in rd:
+                    item['is_reject'] = rd['is_reject']
+
             # 携带轮次号，供评估服务端 per_round 结果回填时按 round_number 字段定位
             item['round'] = round_number
 

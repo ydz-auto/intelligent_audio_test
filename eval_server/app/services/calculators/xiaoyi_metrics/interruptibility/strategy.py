@@ -13,7 +13,7 @@
 
 委托计算给 interruptibility.calculate_interruption_metrics 统一入口，
 该入口内部完成 wav→ASR 与本地时序指标(compute_interruption_metrics)，
-不调用任何 LLM；LLM 语义/行为/停止指令判定由 env_judge.interruption_judge 承担。
+不调用任何 LLM；LLM 语义/行为/停止指令判定由 interruptibility.interruption_judge 承担。
 
 多轮语义：
   - 有效实际打断轮 = 平台传入的 interruption_rounds，或按 is_actual_interruption /
@@ -237,7 +237,7 @@ class InterruptionMetricsCalculator(BaseCalculator):
     def _judge_and_attach(self, result, blocks, interaction_text, task_params,
                           timing, resume_timing, case_info, preserve_resume=False):
         """进程内直调逐轮 LLM 五分类裁判，成功则重派生覆盖降级 spec 字段。"""
-        from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import (
+        from app.services.calculators.xiaoyi_metrics.interruptibility.interruption_judge import (
             behaviors_from_judge, judge_interruption_rounds,
         )
         from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (

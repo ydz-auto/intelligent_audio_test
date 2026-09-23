@@ -8,7 +8,7 @@ import json
 
 import pytest
 
-from app.services.calculators.xiaoyi_metrics.env_judge import interruption_judge as judge_mod
+from app.services.calculators.xiaoyi_metrics.interruptibility import interruption_judge as judge_mod
 
 
 def _full_round_pair(model_recovered=True):
@@ -180,7 +180,7 @@ def test_single_round_direct_path_flat_output(fake_llm):
 
 def test_behaviors_from_judge_mapping():
     """裁判输出 → round_behaviors 的确定性映射（纯函数）。"""
-    from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import (
+    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption_judge import (
         behaviors_from_judge,
     )
 
@@ -205,7 +205,7 @@ def test_behaviors_from_judge_mapping():
 
 def test_stop_round_prompt_rules():
     """停止指令轮 prompt 口径：静默/确认语后静默 → 判「回复」成功（LLM 侧指引）。"""
-    from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import (
+    from app.services.calculators.xiaoyi_metrics.interruptibility.interruption_judge import (
         build_rounds_judge_prompt,
     )
 

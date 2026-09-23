@@ -39,7 +39,7 @@ def _patch_fft(monkeypatch):
 
 def _patch_judge(monkeypatch, rounds_items):
     """假 LLM 裁判：捕获 blocks/interaction，返回 behaviors_from_judge 可解析的形状。"""
-    from app.services.calculators.xiaoyi_metrics.env_judge import interruption_judge as ij
+    from app.services.calculators.xiaoyi_metrics.interruptibility import interruption_judge as ij
 
     captured = {'calls': 0}
 

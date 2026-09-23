@@ -131,7 +131,7 @@ call_llm(...)
 1. **单元（sanitize）**：5000 字符 base64 → `<base64 omitted, 5000 chars>`，text 原样，断言无 base64 残留。
 2. **失败路径（真 401）**：`attempts=1`（401 不重试）、`error.status_code=401`、`body_snippet` 含真实 API 错误体、`raw_response=null`、评估仍按原逻辑失败。
 3. **失败路径（不可达端点）**：`ConnectError`、`attempts=4`（重试 3 次）、原样 raise。
-4. **成功路径**：换有效 key 后跑一次打断裁判评估（或 `PYTHONPATH=. python -m app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge <ai_wav> --user_wav <user_wav>`），看 JSONL 出现 `status=success` + 真实 token 数 + `raw_response`（choices+usage）。
+4. **成功路径**：换有效 key 后跑一次打断裁判评估（或 `PYTHONPATH=. python -m app.services.calculators.xiaoyi_metrics.interruptibility.interruption_judge <ai_wav> --user_wav <user_wav>`），看 JSONL 出现 `status=success` + 真实 token 数 + `raw_response`（choices+usage）。
 5. **开关**：`LLM_CALL_LOG_ENABLED=0` 重启后跑一次，确认不生成文件、评估正常。
 
 ---

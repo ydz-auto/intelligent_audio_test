@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from app.services.calculators.xiaoyi_metrics.env_judge import interruption_judge as judge_mod
+from app.services.calculators.xiaoyi_metrics.interruptibility import interruption_judge as judge_mod
 
 USER_CHUNKS = [
     {'text': '初始问题', 'timestamp': [1.0, 1.8]},
