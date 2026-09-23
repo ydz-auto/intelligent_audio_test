@@ -2,6 +2,65 @@ from backend.models.models import TestResultDimension, TestCase, Device, API, Ta
 from backend.models.database import db
 from backend.utils.common.result_data_store import load_full_result_data
 from backend.schemas.testcase import ReportAudioItem, ReportTestCaseItem
+import json as _json
+
+# ── reject_judge 子维度 field_path → (count_dict 字段, [统计键]) 映射 ──
+# 用于从已有 api_raw_response 的 count 字典中回补子维度 dimension_value
+_REJECT_SUB_DIM_FALLBACK = {
+    'success_silent_recover':   ('rate_success_count', ['静默_恢复', '静默_静默']),
+    'success_reply_recover':    ('rate_success_count', ['回复过程中_恢复']),
+    'inquiry_silent':           ('rate_inquiry_count', ['静默_不确定询问']),
+    'inquiry_reply':            ('rate_inquiry_count', ['回复过程中_不确定询问']),
+    'failure_silent_respond':   ('rate_failure_count', ['静默_回应']),
+    'failure_reply_respond':    ('rate_failure_count', ['回复过程中_回应']),
+    'failure_silent_irrelevant': ('rate_failure_count', ['静默_无关回复']),
+    'failure_reply_irrelevant':  ('rate_failure_count', ['回复过程中_无关回复']),
+    'failure_reply_silent':      ('rate_failure_count', ['回复过程中_静默']),
+}
+
+
+def _parse_raw_response(raw):
+    """解析 api_raw_response，返回 result 对象（eval_server 响应格式: {code:0, data:{result:{...}}}）。"""
+    if not raw:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = _json.loads(raw)
+        except (_json.JSONDecodeError, TypeError):
+            return None
+    if not isinstance(raw, dict):
+        return None
+    if raw.get('code') == 0:
+        result_obj = raw.get('data', {}).get('result', {})
+    else:
+        result_obj = raw
+    return result_obj if isinstance(result_obj, dict) else None
+
+
+def _extract_sub_dim_from_counts(raw_resp, field_path):
+    """
+    当子维度 dimension_value 为 None 时，从 api_raw_response 的 count 字典回补值。
+    返回 int (0/1) 或 None。
+    """
+    mapping = _REJECT_SUB_DIM_FALLBACK.get(field_path)
+    if not mapping:
+        return None
+    result_obj = _parse_raw_response(raw_resp)
+    if not result_obj:
+        return None
+    count_field, count_keys = mapping
+    count_dict = result_obj.get(count_field)
+    if not isinstance(count_dict, dict):
+        return None
+    total = 0
+    for k in count_keys:
+        v = count_dict.get(k)
+        if v is not None:
+            try:
+                total += int(v)
+            except (ValueError, TypeError):
+                pass
+    return total
 
 class ReportUtils:
     @staticmethod
@@ -275,6 +334,15 @@ class ReportUtils:
                         'pass_threshold': p.pass_threshold
                     })
 
+        # 构建 dim_id → field_path 映射（用于子维度回补）
+        dim_id_to_field_path = {}
+        for dim in all_dimensions:
+            if dim.name in custom_agg_dims:
+                for p in dim_output_params.get(dim.id, []):
+                    if p.get('output_role') == 'main' and p.get('field_path'):
+                        dim_id_to_field_path[dim.id] = p['field_path']
+                        break
+
         # 收集需要聚合的 items: {dim_name: {group_key: {resource: [items]}}}
         # 每个 item 是 {dimension_value, api_raw_response, test_result_id}
         category_agg_items = {}
@@ -304,18 +372,20 @@ class ReportUtils:
             # 3. 获取用例信息（使用预加载的映射）
             test_case = test_cases_map.get(result.test_case_id)
             if not test_case:
-                continue
-            
-            # 4. 获取分类(Group)和标签(Tags)
-            # category 使用 ID，tags 使用 name（前端需要显示名称）
-            category = test_case.group.id if test_case.group else "default_group"
-            
-            tc_tags = getattr(test_case, 'tags', []) or []
-            tags = [tag.name for tag in tc_tags if tag.name] or ["default_tag"]
-            
-            for tag in tc_tags:
-                if hasattr(tag, 'category_id') and tag.category_id:
-                    tag_category_map[tag.name] = tag.category_id
+                # test_case 未找到时使用默认值，不跳过累加器初始化
+                category = "default_group"
+                tags = ["default_tag"]
+            else:
+                # 4. 获取分类(Group)和标签(Tags)
+                # category 使用 ID，tags 使用 name（前端需要显示名称）
+                category = test_case.group.id if test_case.group else "default_group"
+                
+                tc_tags = getattr(test_case, 'tags', []) or []
+                tags = [tag.name for tag in tc_tags if tag.name] or ["default_tag"]
+                
+                for tag in tc_tags:
+                    if hasattr(tag, 'category_id') and tag.category_id:
+                        tag_category_map[tag.name] = tag.category_id
 
             # 5. 收集分组统计数据
             if category not in results_by_group:
@@ -413,9 +483,14 @@ class ReportUtils:
                                 if dr_dim_id and dr_dim_id == target_dim_id:
                                     dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
                                     dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
-                                    if dr_val is None:
-                                        continue
                                     raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
+                                    if dr_val is None:
+                                        # reject_judge 子维度回补：从 count 字典提取 dimension_value
+                                        field_path = dim_id_to_field_path.get(target_dim_id)
+                                        if field_path:
+                                            dr_val = _extract_sub_dim_from_counts(raw_resp, field_path)
+                                        if dr_val is None:
+                                            continue
                                     item = {'dimension_value': dr_val, 'api_raw_response': raw_resp, 'test_result_id': result.id}
                                     if dr_round is None:
                                         overall_item = item
@@ -735,9 +810,11 @@ class ReportUtils:
         for result in results:
             test_case = test_cases_map.get(result.test_case_id)
             if not test_case:
-                continue
-            group_id = test_case.group.id if test_case.group else "default_group"
-            group_name = test_case.group.name if test_case.group else "default_group"
+                group_id = "default_group"
+                group_name = "default_group"
+            else:
+                group_id = test_case.group.id if test_case.group else "default_group"
+                group_name = test_case.group.name if test_case.group else "default_group"
 
             if group_id not in group_scores:
                 group_scores[group_id] = {'__name__': group_name, **{dim.name: [] for dim in all_dimensions}}
@@ -769,9 +846,13 @@ class ReportUtils:
                         if dr_dim_id and dr_dim_id == target_dim_id:
                             dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
                             dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
-                            if dr_val is None:
-                                continue
                             raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
+                            if dr_val is None:
+                                field_path = dim_id_to_field_path.get(target_dim_id)
+                                if field_path:
+                                    dr_val = _extract_sub_dim_from_counts(raw_resp, field_path)
+                                if dr_val is None:
+                                    continue
                             item = {'dimension_value': dr_val, 'api_raw_response': raw_resp, 'test_result_id': result.id}
                             if dr_round is None:
                                 overall_item = item
@@ -848,6 +929,15 @@ class ReportUtils:
                     })
         elif dim_output_params is None:
             dim_output_params = {}
+
+        # 构建 dim_id → field_path 映射（用于子维度回补）
+        dim_id_to_field_path = {}
+        for dim in all_dimensions:
+            if dim.name in custom_agg_dims:
+                for p in dim_output_params.get(dim.id, []):
+                    if p.get('output_role') == 'main' and p.get('field_path'):
+                        dim_id_to_field_path[dim.id] = p['field_path']
+                        break
 
         device_results = {}
         api_results = {}
@@ -1741,6 +1831,15 @@ class ReportUtils:
         dim_exclude_rounds = {dim.name: set(dim.exclude_rounds or []) for dim in all_dimensions}
         dim_name_to_id = {dim.name: dim.id for dim in all_dimensions}
 
+        # 构建 dim_id → field_path 映射（用于子维度回补）
+        dim_id_to_field_path = {}
+        for dim in all_dimensions:
+            if dim.name in custom_agg_dims:
+                for p in (dim_output_params or {}).get(dim.id, []):
+                    if p.get('output_role') == 'main' and p.get('field_path'):
+                        dim_id_to_field_path[dim.id] = p['field_path']
+                        break
+
         # 预收集非average维度的items
         dim_agg_items = {}  # {dim_name: [items]}
         for dim_name in custom_agg_dims:
@@ -1759,9 +1858,13 @@ class ReportUtils:
                     if dr_dim_id and dr_dim_id == target_dim_id:
                         dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
                         dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
-                        if dr_val is None:
-                            continue
                         raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
+                        if dr_val is None:
+                            field_path = dim_id_to_field_path.get(target_dim_id)
+                            if field_path:
+                                dr_val = _extract_sub_dim_from_counts(raw_resp, field_path)
+                            if dr_val is None:
+                                continue
                         item = {'dimension_value': dr_val, 'api_raw_response': raw_resp, 'test_result_id': result.id}
                         if dr_round is None:
                             overall_item = item

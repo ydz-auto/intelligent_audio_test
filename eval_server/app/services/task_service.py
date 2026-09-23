@@ -147,15 +147,22 @@ class TaskService:
         result = calculator.run(task_params)
 
         # 整体评估模式 + calculator 声明支持逐轮 → 附加 per_round[]（逐轮结果回填）
-        # 仅当响应可附加（dict）且当前为整体评估（round_number 不存在）且有多轮数据时生效
+        # 仅当响应可附加（dict）且当前为整体评估（round_number 不存在）且有多轮数据（>=2轮）时生效
+        # 单轮场景整体结果即唯一结果，无需额外 per_round
         rounds = task_params.get('rounds')
         is_overall = task_params.get('round_number') in (None, '')
         if (isinstance(result, dict)
-                and is_overall and rounds and isinstance(rounds, list) and len(rounds) >= 1
+                and is_overall and rounds and isinstance(rounds, list) and len(rounds) >= 2
                 and getattr(calculator, 'supports_per_round', False)
                 and 'per_round' not in result):  # 计算器已原生产出 per_round（如打断 v2 零成本投影）则不再切片重跑
             try:
-                result['per_round'] = calculator._calculate_per_round(task_params)
+                per_round = calculator._calculate_per_round(task_params)
+                # reject_judge 的 _calculate_per_round 会通过 _agg_result 返回聚合结果
+                # 聚合结果覆盖顶层 result（数量+占比），per_round 附加为逐轮明细
+                agg_result = getattr(calculator, '_agg_result', None)
+                if agg_result is not None:
+                    result = agg_result
+                result['per_round'] = per_round
             except Exception as e:
                 # 不阻断，整体结果已返回
                 print(f"[TaskService] {task_type} per_round 计算失败: {e}")

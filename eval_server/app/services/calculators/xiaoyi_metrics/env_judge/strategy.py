@@ -19,6 +19,18 @@ from app.services.calculators.xiaoyi_metrics.shared.constants import (
     LLM_DEFAULT_TEMPERATURE,
 )
 
+# 0/1 字段：多轮聚合时求和得到数量，再除以总拒识轮次得到占比
+_SUM_FIELDS = (
+    'rate_success', 'rate_inquiry', 'rate_failure',
+    'success_silent_recover', 'success_reply_recover',
+    'inquiry_silent', 'inquiry_reply',
+    'failure_silent_respond', 'failure_reply_respond',
+    'failure_silent_irrelevant', 'failure_reply_irrelevant',
+    'failure_reply_silent',
+)
+# count 字典字段：多轮聚合时合并累加
+_COUNT_DICT_FIELDS = ('rate_success_count', 'rate_inquiry_count', 'rate_failure_count')
+
 logger = logging.getLogger(__name__)
 
 
@@ -161,3 +173,89 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             max_tokens=params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS),
             temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
         )
+
+    def _calculate_per_round(self, task_params):
+        """逐轮切片计算 + 多轮聚合
+
+        与 BaseCalculator 默认实现的区别：
+        1. 跳过 is_reject=false 的轮次（非拒识轮不参与统计）
+        2. 聚合时 0/1 字段求和得到数量，再除以拒识总轮次得到占比
+        3. count 字典合并累加
+
+        Returns:
+            list: per_round 结果列表（task_service 会赋值到 result['per_round']）
+            聚合结果通过 self._agg_result 传递，task_service 检测后覆盖顶层 result
+        """
+        rounds = (task_params or {}).get('rounds') or []
+        per_round = []
+        n_reject_rounds = 0
+
+        for i in range(len(rounds)):
+            rd = rounds[i] if isinstance(rounds[i], dict) else {}
+
+            # 跳过 is_reject=false 的轮次
+            is_reject = rd.get('is_reject', task_params.get('is_reject', True))
+            if isinstance(is_reject, str):
+                is_reject = is_reject.strip().lower() in ('true', '1', 'yes')
+            if not is_reject:
+                continue
+
+            n_reject_rounds += 1
+
+            single = dict(task_params)
+            single['round_number'] = i
+            # 清空顶层轮次相关字段
+            for k in self._TOP_LEVEL_ROUND_FIELDS:
+                single.pop(k, None)
+            # 注入该轮音频字段
+            for k in self._AUDIO_FIELD_NAMES:
+                if rd.get(k):
+                    single[k] = rd[k]
+            try:
+                result = self.run(single)
+            except Exception as e:
+                logger.warning(f"[_calculate_per_round] round={i} 失败: {e}")
+                result = {}
+            result['round_number'] = rd.get('round', i)
+            per_round.append(result)
+
+        # 聚合
+        if not per_round:
+            self._agg_result = None
+            return per_round
+
+        # 以最后一轮为基底
+        agg = dict(per_round[-1])
+        agg['n_reject_rounds'] = n_reject_rounds
+
+        # 0/1 字段求和 → 数量（n_ 前缀），再算占比
+        for field in _SUM_FIELDS:
+            vals = [r.get(field, 0) for r in per_round if r.get(field) is not None]
+            count = sum(vals)
+            agg[f'n_{field}'] = count
+            agg[field] = round(count / n_reject_rounds, 3) if n_reject_rounds else 0
+
+        # count 字典合并累加（rate_success_count / rate_inquiry_count / rate_failure_count）
+        for dict_field in _COUNT_DICT_FIELDS:
+            merged = {}
+            for r in per_round:
+                d = r.get(dict_field, {})
+                if isinstance(d, dict):
+                    for k, v in d.items():
+                        merged[k] = merged.get(k, 0) + (v if isinstance(v, (int, float)) else 0)
+            agg[dict_field] = merged
+
+        # token 求和
+        agg['tokens_used'] = sum(r.get('tokens_used', 0) for r in per_round)
+        agg['input_token'] = sum(r.get('input_token', 0) for r in per_round)
+        agg['output_token'] = sum(r.get('output_token', 0) for r in per_round)
+
+        logger.info(
+            f'[reject_judge] 多轮聚合: n_reject_rounds={n_reject_rounds} '
+            f'success={agg.get("n_rate_success", 0)} '
+            f'inquiry={agg.get("n_rate_inquiry", 0)} '
+            f'failure={agg.get("n_rate_failure", 0)}'
+        )
+
+        self._agg_result = agg
+        return per_round

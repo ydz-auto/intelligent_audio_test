@@ -28,6 +28,15 @@
     rate_success_count: dict — 拒识成功分组统计
     rate_inquiry_count: dict — 拒识询问分组统计
     rate_failure_count: dict — 拒识失败分组统计
+    success_silent_recover: int  — 静默时拒识恢复行为(恢复或静默) → 1
+    success_reply_recover: int   — 回复时拒识恢复行为(恢复) → 1
+    inquiry_silent: int          — 静默时拒识询问行为(不确定询问) → 1
+    inquiry_reply: int           — 回复时拒识询问行为(不确定询问) → 1
+    failure_silent_respond: int  — 静默时拒识回应行为(回应) → 1
+    failure_reply_respond: int   — 回复时拒识回应行为(回应) → 1
+    failure_silent_irrelevant: int — 静默时拒识无关行为(无关回复) → 1
+    failure_reply_irrelevant: int  — 回复时拒识无关行为(无关回复) → 1
+    failure_reply_silent: int      — 回复时拒识静默行为(静默) → 1
 """
 import os
 import logging
@@ -350,6 +359,16 @@ def evaluate_rejection_judge(
         'rate_success_count': _init_success_count(),
         'rate_inquiry_count': _init_inquiry_count(),
         'rate_failure_count': _init_failure_count(),
+        # 子维度 0/1 字段（按 timing+behavior 组合，供子维度 field_path 提取）
+        'success_silent_recover': 0,
+        'success_reply_recover': 0,
+        'inquiry_silent': 0,
+        'inquiry_reply': 0,
+        'failure_silent_respond': 0,
+        'failure_reply_respond': 0,
+        'failure_silent_irrelevant': 0,
+        'failure_reply_irrelevant': 0,
+        'failure_reply_silent': 0,
         'tokens_used': 0,
         'input_token': 0,
         'output_token': 0,
@@ -458,6 +477,23 @@ def evaluate_rejection_judge(
         _update_count(result['rate_success_count'], timing, ev_behavior)
         _update_count(result['rate_inquiry_count'], timing, ev_behavior)
         _update_count(result['rate_failure_count'], timing, ev_behavior)
+
+    # ─── 子维度 0/1 字段（按 timing+behavior 组合设置） ───
+    _SUB_BEHAVIOR_MAP = {
+        ('静默', '恢复'): 'success_silent_recover',
+        ('静默', '静默'): 'success_silent_recover',
+        ('回复过程中', '恢复'): 'success_reply_recover',
+        ('静默', '不确定询问'): 'inquiry_silent',
+        ('回复过程中', '不确定询问'): 'inquiry_reply',
+        ('静默', '回应'): 'failure_silent_respond',
+        ('回复过程中', '回应'): 'failure_reply_respond',
+        ('静默', '无关回复'): 'failure_silent_irrelevant',
+        ('回复过程中', '无关回复'): 'failure_reply_irrelevant',
+        ('回复过程中', '静默'): 'failure_reply_silent',
+    }
+    sub_field = _SUB_BEHAVIOR_MAP.get((timing, behavior))
+    if sub_field:
+        result[sub_field] = 1
 
     result['message'] = 'OK'
 

@@ -3,22 +3,22 @@
 拒识裁判 v2 维度种子数据（2 级层级：3 个主维度 + 9 个子维度）
 
 层级结构：
-  拒识成功率占比 (main)
-    ├── 静默时拒识恢复行为占比 (sub)
-    └── 回复时拒识恢复行为占比 (sub)
-  拒识询问率占比 (main)
-    ├── 静默时拒识询问行为占比 (sub)
-    └── 回复时拒识询问行为占比 (sub)
-  拒识失败率占比 (main)
-    ├── 静默时拒识回应行为占比 (sub)
-    ├── 回复时拒识回应行为占比 (sub)
-    ├── 静默时拒识无关行为占比 (sub)
-    ├── 回复时拒识无关行为占比 (sub)
-    └── 回复时拒识静默行为占比 (sub)
+  拒识成功数量 (main)
+    ├── 静默时拒识恢复行为数量 (sub)
+    └── 回复时拒识恢复行为数量 (sub)
+  拒识询问数量 (main)
+    ├── 静默时拒识询问行为数量 (sub)
+    └── 回复时拒识询问行为数量 (sub)
+  拒识失败数量 (main)
+    ├── 静默时拒识回应行为数量 (sub)
+    ├── 回复时拒识回应行为数量 (sub)
+    ├── 静默时拒识无关行为数量 (sub)
+    ├── 回复时拒识无关行为数量 (sub)
+    └── 回复时拒识静默行为数量 (sub)
 
 每个主维度都有完整的 API 配置、输入参数、aux 输出参数和 param_mappings，
 可以独立发请求给 eval_server。
-子维度 statistic_method='pass_rate'，agg_role='pass_eq'，pass_threshold=1。
+子维度 statistic_method='sum'，agg_role='sum'，返回数量（非占比）。
 
 对应 eval_server 服务：
    - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py
@@ -157,33 +157,33 @@ _PARAM_MAPPINGS = [
 
 _MAIN_DIMENSIONS_DEF = [
     {
-        'name': '拒识成功率占比',
-        'field': 'rate_success',
-        'help': 'rate=拒识成功的占比',
+        'name': '拒识成功数量',
+        'field': 'n_rate_success',
+        'help': 'rate=拒识成功的数量',
         'children': [
-            ('success_silent_recover',  '静默时拒识恢复行为占比', '静默期间behavior=恢复或静默，拒识成功'),
-            ('success_reply_recover',    '回复时拒识恢复行为占比', '回复过程中behavior=恢复，拒识成功'),
+            ('n_success_silent_recover',  '静默时拒识恢复行为数量', '静默期间behavior=恢复或静默，拒识成功'),
+            ('n_success_reply_recover',   '回复时拒识恢复行为数量', '回复过程中behavior=恢复，拒识成功'),
         ],
     },
     {
-        'name': '拒识询问率占比',
-        'field': 'rate_inquiry',
-        'help': 'rate=拒识询问的占比',
+        'name': '拒识询问数量',
+        'field': 'n_rate_inquiry',
+        'help': 'rate=拒识询问的数量',
         'children': [
-            ('inquiry_silent',  '静默时拒识询问行为占比', '静默期间behavior=不确定询问'),
-            ('inquiry_reply',    '回复时拒识询问行为占比', '回复过程中behavior=不确定询问'),
+            ('n_inquiry_silent',  '静默时拒识询问行为数量', '静默期间behavior=不确定询问'),
+            ('n_inquiry_reply',    '回复时拒识询问行为数量', '回复过程中behavior=不确定询问'),
         ],
     },
     {
-        'name': '拒识失败率占比',
-        'field': 'rate_failure',
-        'help': 'rate=拒识失败的占比',
+        'name': '拒识失败数量',
+        'field': 'n_rate_failure',
+        'help': 'rate=拒识失败的数量',
         'children': [
-            ('failure_silent_respond',    '静默时拒识回应行为占比',   '静默期间behavior=回应'),
-            ('failure_reply_respond',      '回复时拒识回应行为占比',   '回复过程中behavior=回应'),
-            ('failure_silent_irrelevant',  '静默时拒识无关行为占比',   '静默期间behavior=无关回复'),
-            ('failure_reply_irrelevant',   '回复时拒识无关行为占比',   '回复过程中behavior=无关回复'),
-            ('failure_reply_silent',       '回复时拒识静默行为占比',   '回复过程中behavior=静默'),
+            ('n_failure_silent_respond',    '静默时拒识回应行为数量',   '静默期间behavior=回应'),
+            ('n_failure_reply_respond',      '回复时拒识回应行为数量',   '回复过程中behavior=回应'),
+            ('n_failure_silent_irrelevant',  '静默时拒识无关行为数量',   '静默期间behavior=无关回复'),
+            ('n_failure_reply_irrelevant',   '回复时拒识无关行为数量',   '回复过程中behavior=无关回复'),
+            ('n_failure_reply_silent',       '回复时拒识静默行为数量',   '回复过程中behavior=静默'),
         ],
     },
 ]
@@ -194,7 +194,7 @@ def _build_main_dim(name, field, help):
     own_output = [
         (field, name, name,
          'number', 'output',
-         field, 'pass_eq', 'main', True,
+         field, 'sum', 'main', True,
          False, '0', help, 60, 1),
     ]
     return {
@@ -205,12 +205,12 @@ def _build_main_dim(name, field, help):
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
-        'result_max': 1.0,
-        'decimal_places': 2,
+        'result_max': 100.0,
+        'decimal_places': 0,
         'weight': 1,
         'estimated_exec_time': 120,
-        'score_unit': '%',
-        'statistic_method': 'pass_rate',
+        'score_unit': '次',
+        'statistic_method': 'sum',
         'params': _INPUT_PARAMS + own_output + _AUX_OUTPUT_PARAMS,
         'param_mappings': _PARAM_MAPPINGS,
         'body_template': _BODY_TEMPLATE,
@@ -227,16 +227,16 @@ def _build_sub_dim(name, field, help, ui_order):
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
-        'result_max': 1.0,
-        'decimal_places': 2,
+        'result_max': 100.0,
+        'decimal_places': 0,
         'weight': 1,
         'estimated_exec_time': 120,
-        'score_unit': '%',
-        'statistic_method': 'pass_rate',
+        'score_unit': '次',
+        'statistic_method': 'sum',
         'params': [
             (field, name, name,
              'number', 'output',
-             field, 'pass_eq', 'main', True,
+             field, 'sum', 'main', True,
              False, '0', help, ui_order, 1),
         ],
     }
@@ -530,7 +530,7 @@ def _soft_delete_old_main_dimension(conn):
         "SELECT id, name FROM dimensions "
         "WHERE task_type_code = 'reject_judge' AND dimension_type = 'main' "
         "AND parent_dimension_id IS NULL AND deleted = FALSE "
-        "AND name NOT IN ('拒识成功率占比', '拒识询问率占比', '拒识失败率占比')"
+        "AND name NOT IN ('拒识成功数量', '拒识询问数量', '拒识失败数量')"
     )).fetchall()
     for row in old_main:
         print(f"  ! 软删除旧主维度: id={row[0]}, name={row[1]}")
