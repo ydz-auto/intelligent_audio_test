@@ -283,11 +283,14 @@ class EndpointWorker(EvaluationLoggerMixin):
                 test_case_id=test_case_id
             )
 
-        # 从维度 input_params 提取 field_type='audio' 的字段名集合
-        audio_field_names = {
-            inp.get('param_code') for inp in representative_dim_data.get('input_params', [])
-            if inp.get('field_type') == 'audio' and inp.get('param_code')
-        }
+        # 从整组维度提取 field_type='audio' 的字段名集合。
+        # 不能只取代表维度：代表维度可能是子维度（无 input_params），
+        # 会导致 ai_wav/user_wav 不被识别为文件上传，评估端收到本地路径串而取不到音频
+        audio_field_names = set()
+        for _dim_data, _ in group_items:
+            for inp in _dim_data.get('input_params', []) or []:
+                if inp.get('field_type') == 'audio' and inp.get('param_code'):
+                    audio_field_names.add(inp.get('param_code'))
         self._log(
             level='DEBUG',
             content=f"[audio_field_names] input_params={representative_dim_data.get('input_params', [])}, audio_field_names={audio_field_names}",

@@ -124,11 +124,15 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                         field_value = rd.get(field_name)
                         if isinstance(field_value, str) and field_value:
                             if len(rounds_copy) == 1:
-                                # 单轮：把字符串音频字段提到顶层上传，rounds 里删掉该字段
-                                rd.pop(field_name, None)
-                                self._extract_single_file(field_name, field_value, files,
-                                                          form_fields_fallback=form_fields,
-                                                          fallback_key=field_name, fallback_value=field_value)
+                                # 单轮：字符串音频字段提到顶层上传，同时保留轮级 __MULTIPART__ 占位符。
+                                # 仅提顶层会让评估端逐轮切片（reject_judge 等 per_round 计算）清空顶层后
+                                # 从 rounds[i] 取不到该轮音频 → 该轮失败并回灌污染整体结果
+                                extracted = self._extract_single_file(
+                                    field_name, field_value, files,
+                                    form_fields_fallback=form_fields,
+                                    fallback_key=field_name, fallback_value=field_value,
+                                )
+                                rd[field_name] = f'__MULTIPART__:{field_name}' if extracted else field_value
                             else:
                                 upload_field_name = f'rounds_{idx}_{field_name}'
                                 extracted = self._extract_single_file(upload_field_name, field_value, files)
