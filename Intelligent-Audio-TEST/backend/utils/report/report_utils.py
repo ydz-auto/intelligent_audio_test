@@ -265,6 +265,54 @@ class ReportUtils:
         return exclude_set
 
     @staticmethod
+    def _get_dimension_configured_rounds(test_case, dim_id, dim_name, exclude_rounds=None):
+        """
+        该用例配置中该维度覆盖的轮次数（agg_denominator='round' 的分母来源）。
+
+        与逐轮 TRD 记录是否存在无关，直接来自用例配置：
+          - 维度配置在顶层 config.dimensions（整体评估）→ 覆盖全部轮次
+          - 维度配置在 rounds[i].evaluation.dimensions（逐轮评估）→ 只统计配置了该维度的轮次
+        排除轮次后返回未排除轮次数（-1 解析为该用例最后一轮）。无配置/无轮次返回 0。
+        """
+        if test_case is None:
+            return 0
+        config = getattr(test_case, 'config', None)
+        if not isinstance(config, dict):
+            return 0
+        rounds = config.get('rounds')
+        if not isinstance(rounds, list) or not rounds:
+            return 0
+
+        def _has_dim(entries):
+            if not isinstance(entries, list):
+                return False
+            for d in entries:
+                if not isinstance(d, dict):
+                    continue
+                if d.get('id') == dim_id or d.get('name') == dim_name:
+                    return True
+            return False
+
+        if _has_dim(config.get('dimensions')):
+            n = len(rounds)
+        else:
+            n = 0
+            for rd in rounds:
+                if not isinstance(rd, dict):
+                    continue
+                ev = rd.get('evaluation')
+                round_dims = ev.get('dimensions') if isinstance(ev, dict) else None
+                if _has_dim(round_dims):
+                    n += 1
+        if n == 0:
+            return 0
+        exclude_set = set(exclude_rounds or [])
+        if -1 in exclude_set:
+            exclude_set = (exclude_set - {-1}) | {n - 1}
+        excluded = sum(1 for r in exclude_set if 0 <= r < n)
+        return n - excluded
+
+    @staticmethod
     def _get_round_values(result, dim_name, fallback_score, dim_results_map, dim_name_to_id, exclude_rounds=None):
         """
         取某用例某维度"有值的每轮值"（按轮次口径的样本），用于按轮次平均。
@@ -523,9 +571,11 @@ class ReportUtils:
                                 collected_items = round_items
                             elif overall_item:
                                 collected_items = [overall_item]
-                            # 记录该用例该维度有值（且未排除）的轮次数（ratio 策略按轮次口径的分母来源）
+                            # 记录该用例配置中该维度覆盖的轮次数（ratio 策略按轮次口径的分母来源）
                             if collected_items:
-                                round_count = len(round_items)
+                                round_count = ReportUtils._get_dimension_configured_rounds(
+                                    test_case, target_dim_id, dim_name,
+                                    dim_exclude_rounds.get(dim_name))
                                 for it in collected_items:
                                     it['round_count'] = round_count
 
@@ -536,7 +586,13 @@ class ReportUtils:
                                 for tag in tags:
                                     tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(item)
                         elif score is not None:
-                            agg_item = {'dimension_value': score, 'api_raw_response': None, 'test_result_id': result.id, 'round_count': 0}
+                            agg_item = {
+                                'dimension_value': score, 'api_raw_response': None,
+                                'test_result_id': result.id,
+                                'round_count': ReportUtils._get_dimension_configured_rounds(
+                                    test_case, target_dim_id, dim_name,
+                                    dim_exclude_rounds.get(dim_name)),
+                            }
                             category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
                             resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(agg_item)
                             for tag in tags:
@@ -872,7 +928,9 @@ class ReportUtils:
                     else:
                         collected = []
                     if collected:
-                        round_count = len(round_items)
+                        round_count = ReportUtils._get_dimension_configured_rounds(
+                            test_case, target_dim_id, dim_name,
+                            dim_exclude_rounds.get(dim_name))
                         for it in collected:
                             it['round_count'] = round_count
                     group_agg_items[group_id][dim_name].extend(collected)
@@ -1842,6 +1900,12 @@ class ReportUtils:
                         dim_id_to_field_path[dim.id] = p['field_path']
                         break
 
+        # 加载用例配置（round_count 分母来自用例配置的轮次数，与逐轮 TRD 是否存在无关）
+        test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
+        test_cases_map = {}
+        if test_case_ids:
+            test_cases_map = {tc.id: tc for tc in TestCase.query.filter(TestCase.id.in_(test_case_ids)).all()}
+
         # 预收集非average维度的items
         dim_agg_items = {}  # {dim_name: [items]}
         for dim_name in custom_agg_dims:
@@ -1885,7 +1949,9 @@ class ReportUtils:
                 else:
                     collected = []
                 if collected:
-                    round_count = len(round_items)
+                    round_count = ReportUtils._get_dimension_configured_rounds(
+                        test_cases_map.get(result.test_case_id), target_dim_id, dim_name,
+                        dim_exclude_rounds.get(dim_name))
                     for it in collected:
                         it['round_count'] = round_count
                 dim_agg_items[dim_name].extend(collected)
