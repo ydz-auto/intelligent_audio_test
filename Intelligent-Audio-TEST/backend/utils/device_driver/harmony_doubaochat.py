@@ -7,7 +7,7 @@ import subprocess
 from hypium import BY
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 from .driver_types import AppType, AppVersion, DevicePlatform
@@ -397,6 +397,9 @@ class DoubaoChat(Xiaoyilivechat):
             driver.touch((990,266))
             # 第2步: 点击"删除聊天记录"(或"删除对话记录",豆包不同版本文案可能不同)
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由 @with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='WARNING', content=f"清除聊天记录失败(跳过继续): {e}",
                       task_id=task_id, test_case_id=test_case_id)
         return True
@@ -446,6 +449,9 @@ class DoubaoChat(Xiaoyilivechat):
             driver.wait(0.5)
             driver.wait(2)
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由 @with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='WARNING', content=f"点击通话入口失败,尝试备用方式: {e}",
                       task_id=task_id, test_case_id=test_case_id)
             try:
@@ -454,6 +460,9 @@ class DoubaoChat(Xiaoyilivechat):
                     alt.click()
                     driver.wait(2)
             except Exception as e2:
+                if is_rpc_not_running_error(e2):
+                    # RPC 服务异常不吞掉，交由 @with_rpc_retry 执行 ui restart 恢复
+                    raise
                 self._log(level='ERROR', content=f"通话入口未找到: {e2}",
                           task_id=task_id, test_case_id=test_case_id)
                 return False
