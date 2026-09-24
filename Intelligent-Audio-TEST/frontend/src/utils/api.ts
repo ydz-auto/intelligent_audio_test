@@ -861,6 +861,11 @@ export const testcasesApi = {
 
   async getIdsByFilter(filters: Record<string, any> = {}) {
     return request<{ ids: (string | number)[] }>('POST', '/testcases/ids', filters);
+  },
+
+  /** 获取指定用例指定轮的参考参数文件内容（独立列 reference_params 指向的文件） */
+  async getRefParams(tcId: string | number, roundNumber: number) {
+    return request<any>('GET', `/testcases/${tcId}/rounds/${roundNumber}/ref-params`);
   }
 };
 

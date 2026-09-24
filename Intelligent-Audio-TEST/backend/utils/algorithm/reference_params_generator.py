@@ -1057,6 +1057,9 @@ def _extract_field_from_audios(config: Dict, field_path: str, merge_mode: str = 
         value = collected_values[0]
     elif merge_mode == 'collect':
         value = collected_values
+    elif all(isinstance(v, bool) for v in collected_values):
+        # 布尔字段（如 env_type）：join 无意义且 str() 会得到 "True"/"False" 字符串，保留原始布尔类型
+        value = collected_values[0]
     else:  # join
         value = ' '.join(str(v) for v in collected_values)
     

@@ -91,7 +91,12 @@
         </div>
 
         <!-- ===== 步骤 5: 参考参数（只读） ===== -->
-        <ReferencePathStep v-if="currentRound" :round="currentRound" />
+        <ReferencePathStep
+          v-if="currentRound"
+          :round="currentRound"
+          :reference-params="currentRoundRefParams"
+          :tc-id="tcId"
+        />
       </div>
     </div>
   </div>
@@ -123,6 +128,10 @@ const props = defineProps<{
   algorithmFormSchema?: any
   /** 按轮分组的算法参数独立列（来自 test_cases.algorithm_params） */
   algorithmParams?: any[]
+  /** 按轮分组的参考参数独立列（来自 test_cases.reference_params） */
+  referenceParams?: any[]
+  /** 测试用例 ID，用于拉取参考参数内容 */
+  tcId?: string | number
 }>()
 
 const emit = defineEmits<{
@@ -173,6 +182,13 @@ const currentRoundAlgoParams = computed<AlgorithmParamItem[]>(() => {
   const rn = currentRound.value.roundNumber ?? 1
   const entry = props.algorithmParams.find((e: any) => e.round_number === rn)
   return (entry?.params as AlgorithmParamItem[]) || []
+})
+
+// 当前轮的参考参数独立列条目（从独立列 referenceParams 按 round_number 匹配）
+const currentRoundRefParams = computed<any>(() => {
+  if (!currentRound.value || !props.referenceParams) return null
+  const rn = currentRound.value.roundNumber ?? 1
+  return props.referenceParams.find((e: any) => e.round_number === rn) || null
 })
 
 // 子组件更新算法参数 → 写回独立列

@@ -129,6 +129,8 @@
         :algorithm-type="localFormData.algorithmType"
         :algorithm-form-schema="algorithmFormSchema"
         :algorithm-params="localFormData.algorithm_params"
+        :reference-params="localFormData.reference_params"
+        :tc-id="localFormData.id"
         @update:model-value="handleRoundsUpdate"
         @update:algorithm-params="handleAlgorithmParamsUpdate"
         @open-audio-select="handleAudioSelectRequest"
@@ -545,6 +547,13 @@ function initFormData() {
         })),
       }))
     : [];
+  const rawRefParams = (raw as any).referenceParams || (raw as any).reference_params;
+  const normalizedRefParams = Array.isArray(rawRefParams)
+    ? rawRefParams.map((e: any) => ({
+        round_number: e.round_number ?? e.roundNumber,
+        reference_params_path: e.reference_params_path ?? e.referenceParamsPath ?? '',
+      }))
+    : [];
   localFormData.value = {
     id: raw.id,
     name: raw.name || '',
@@ -563,6 +572,8 @@ function initFormData() {
     },
     // 新设计：algorithm_params 作为 test_cases 独立列（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
     algorithm_params: normalizedAlgParams,
+    // 新设计：reference_params 作为 test_cases 独立列（按轮分组 [{round_number, reference_params_path}]）
+    reference_params: normalizedRefParams,
   };
   // 从独立列读取第一个 round 的 params，用于 AlgorithmSelector 的 initial-params（单轮编辑器）
   const groupedAlgParams = localFormData.value.algorithm_params as any[];

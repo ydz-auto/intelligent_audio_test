@@ -2993,19 +2993,23 @@ class TestCaseController:
         if not tc:
             return error_response("未找到测试用例", 404)
         
-        config = tc.config or {}
-        rounds = config.get('rounds', [])
+        # 新架构：参考参数路径存于 test_cases.reference_params 独立列（[{round_number, reference_params_path}]）
+        # 兼容旧架构：config.rounds[].referenceParamsPath
+        ref_path = None
+        ref_params_col = tc.reference_params or []
+        if isinstance(ref_params_col, list):
+            for item in ref_params_col:
+                if isinstance(item, dict) and item.get('round_number') == round_number:
+                    ref_path = item.get('reference_params_path') or item.get('referenceParamsPath')
+                    break
         
-        target_round = None
-        for r in rounds:
-            if isinstance(r, dict) and r.get('roundNumber') == round_number:
-                target_round = r
-                break
+        if not ref_path:
+            config = tc.config or {}
+            for r in config.get('rounds', []):
+                if isinstance(r, dict) and (r.get('roundNumber') or r.get('round_number')) == round_number:
+                    ref_path = r.get('referenceParamsPath') or r.get('reference_params_path')
+                    break
         
-        if not target_round:
-            return error_response(f"未找到第 {round_number} 轮", 404)
-        
-        ref_path = target_round.get('referenceParamsPath')
         if not ref_path:
             return error_response(f"第 {round_number} 轮未配置参考参数路径", 404)
         

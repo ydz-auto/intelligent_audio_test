@@ -137,7 +137,7 @@ export function useEvaluation() {
         rounds: [
           {
             answer: "{{answer}}",
-            correctAnswer: "{{correct_answer}}"
+            correctAnswer: "{{correctAnswer}}"
           }
         ]
       },
@@ -190,7 +190,7 @@ export function useEvaluation() {
         rounds: [
           {
             answer: "{{answer}}",
-            correctAnswer: "{{correct_answer}}"
+            correctAnswer: "{{correctAnswer}}"
           }
         ]
       },

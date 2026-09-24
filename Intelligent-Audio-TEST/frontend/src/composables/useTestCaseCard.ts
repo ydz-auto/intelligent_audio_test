@@ -105,6 +105,15 @@ export function useTestCaseCard() {
           })),
         }));
       })(),
+      // 新设计：reference_params 独立列（后端返回驼峰 referenceParams，此处归一化为 snake_case）
+      reference_params: (() => {
+        const raw = (testCase as any).referenceParams || (testCase as any).reference_params;
+        if (!Array.isArray(raw)) return [];
+        return raw.map((e: any) => ({
+          round_number: e.round_number ?? e.roundNumber,
+          reference_params_path: e.reference_params_path ?? e.referenceParamsPath ?? '',
+        }));
+      })(),
     } as TestCaseFormData;
     
     try {

@@ -361,8 +361,8 @@ def seed_voice_llm():
             ('voice_llm', 'is_reject', '是否为拒识轮次', 'text',
              'voice_llm', 'boolean', 'is_reject', 'first',
              '是否为拒识轮次'),
-            ('voice_llm', 'env_type', '环境理解类型', 'boolean',
-             'voice_llm', 'boolean', 'env_type', 'first',
+            ('voice_llm', 'env_type', '环境理解类型', 'text',
+             'voice_llm', 'boolean', 'env_type', 'join',
              '环境理解类型'),
         ]
 

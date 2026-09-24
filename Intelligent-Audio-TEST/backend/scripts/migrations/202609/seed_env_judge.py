@@ -70,9 +70,9 @@ _INPUT_PARAMS = [
     ('correctAnswer', '正确答案', '环境音参考内容文本', 'text', 'input',
      None, None, None, True,
      False, None, '环境音参考内容文本（正确答案），作为 LLM 判定模型理解是否正确的参考标准', 8),
-    ('task_type', '脚本类型', '脚本类型', 'number', 'input',
+    ('env_type', '环境类型', '脚本类型', 'boolean', 'input',
      None, None, None, True,
-     False, '0', '脚本类型: 0=无语义(non_semantic, 环境声为噪声判断声音类型), 1=有语义(semantic, 判断内容理解)', 9),
+     False, '"false"', '环境类型: 0=无语义(non_semantic, 环境声为噪声判断声音类型), 1=有语义(semantic, 判断内容理解)', 9),
     ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
      None, None, None, False,
      False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频)', 10),
@@ -92,20 +92,27 @@ _AUDIO_MAPPINGS = [
     ('case_config', 'output', 'interferers', 'interferers', 'none'),
 ]
 
-# body_template（与库 api_settings 一致）
+# body_template（与库 api_settings 一致；顶层 task_type 为库中残留字段，rounds 内
+# correctAnswer/背景噪声/干扰人/env_type 等字段均由库同步）
 _BODY_TEMPLATE = {
     'model': '{{model}}',
+    'max_tokens': '{{max_tokens}}',
+    'temperature': '{{temperature}}',
+    'task_type': '{{task_type}}',
     'rounds': [
         {
             'ai_wav': '{{ai_wav}}',
             'user_wav': '{{user_wav}}',
             'played_audios': '{{played_audios}}',
             'correctAnswer': '{{correctAnswer}}',
+            'model': '{{model}}',
+            'max_tokens': '{{max_tokens}}',
+            'temperature': '{{temperature}}',
+            'background_noise': '{{background_noise}}',
+            'interferers': '{{interferers}}',
+            'env_type': '{{env_type}}',
         }
     ],
-    'task_type': '{{task_type}}',
-    'max_tokens': '{{max_tokens}}',
-    'temperature': '{{temperature}}',
 }
 
 # ============================================================
@@ -127,7 +134,7 @@ _MAIN_DIMENSIONS_DEF = [
              False, None, 'LLM 1-5 评分（有语义场景参考主指标）', 60),
             ('understand_correct_pass', '环境理解准确率', '环境理解准确率', 'number', 'output',
              'understand_correct_pass', 'pass_eq', 'main', True,
-             False, '0', '达标轮次数/有值轮次数×100；达标=understand_correct_pass=1', 60, 1.0),
+             False, None, '达标轮次数/有值轮次数×100；达标=understand_correct_pass=1', 60, 1.0),
             ('understand_correct', '理解正确标记', '理解正确标记', 'boolean', 'output',
              'understand_correct', None, 'aux', True,
              False, None, 'LLM 判定的理解正确标记(True/False)', 61),
@@ -154,7 +161,7 @@ _MAIN_DIMENSIONS_DEF = [
         'description': '环境理解裁判主维度：用户询问结束到模型首字开始的平均时延(毫秒)。本地时序计算'
                        '（FFT 互相关定位环境声 + ASR 词级时间戳），非 LLM 判定。计算失败(response_latency_ms 为空)的轮次不参与统计。'
                        '报告按 average 聚合：Σ(response_latency_ms) / 有值用例数，产出毫秒均值。',
-        'result_type': 1, 'result_min': 0.0, 'result_max': None, 'decimal_places': 0,
+        'result_type': 1, 'result_min': 0.0, 'result_max': 0.0, 'decimal_places': 0,
         'weight': 1, 'estimated_exec_time': 120, 'score_unit': 'ms',
         'statistic_method': 'average', 'agg_denominator': 'case',
         'output_params': [

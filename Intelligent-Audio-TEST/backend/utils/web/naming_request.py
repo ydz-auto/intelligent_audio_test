@@ -38,7 +38,12 @@ def normalize_keys_to_snake(data, depth=0):
                     key = _camel_to_snake(k)
             else:
                 key = k
-            out[key] = normalize_keys_to_snake(v, depth + 1)
+            # body_template 是要原样转发给外部评估 API 的 JSON 模板，
+            # 其中的字段名（如 correctAnswer）必须保持原样，不能做驼峰转 snake
+            if key == 'body_template':
+                out[key] = v
+            else:
+                out[key] = normalize_keys_to_snake(v, depth + 1)
         return out
     return data
 
