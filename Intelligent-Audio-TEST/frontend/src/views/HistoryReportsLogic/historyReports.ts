@@ -14,7 +14,7 @@ interface AlgorithmOption {
   group_name?: string;
 }
 
-type ReportTypeFilter = 'all' | 'comparison' | 'secondaryComparison' | 'task';
+type ReportTypeFilter = 'all' | 'comparison' | 'secondary_comparison' | 'task';
 type ReportStatusFilter = 'all' | 'draft' | 'published';
 type TimeRangeFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 

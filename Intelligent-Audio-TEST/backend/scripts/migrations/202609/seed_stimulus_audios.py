@@ -9,10 +9,11 @@
 
 功能（幂等，可重复执行）：
 1. 按族（task_type_code）给启用中的主维度注册/更新轮次结构化音频参数与映射，
-   范围与金标一致：
+   范围与运行时真实状态一致：
    - interruption_metrics（打断族）：played_audios / background_noise / interferers
      三个 input 参数 + case_config → audios/background_noise/interferers 映射
-   - turn_eval（话轮评估族）：仅 played_audios 参数 + case_config → audios 映射
+   - turn_eval（话轮评估族）：仅 played_audios input 参数，
+     映射挂 3 条 case_config → audios/background_noise/interferers（与库一致）
    - 其他族（reject_judge 等）金标无音频参数，跳过
    （参数 field_type='json'，required=FALSE，映射挂主维度 id）
 2. 将历史 stimulus_audios 参数与映射目标归一化为 played_audios
@@ -88,13 +89,12 @@ AUDIO_MAPPINGS = (
     ('case_config', 'output', 'interferers', 'interferers', 'none'),
 )
 
-# 话轮评估族（turn_eval）：金标仅 played_audios 参数 + audios 映射（无背景噪声/干扰人）
+# 话轮评估族（turn_eval）：参数仅 played_audios（库真实状态），映射与运行时一致挂 3 条
+# case_config → audios/background_noise/interferers（voice_llm 全量注册 + dim72 body_template 均含）
 TURN_EVAL_AUDIO_PARAMS = (
     AUDIO_PARAMS[0],
 )
-TURN_EVAL_AUDIO_MAPPINGS = (
-    AUDIO_MAPPINGS[0],
-)
+TURN_EVAL_AUDIO_MAPPINGS = AUDIO_MAPPINGS
 
 # task_type_code → (params, mappings) 金标音频配置
 # 其他族（reject_judge 等）金标无音频参数，跳过
@@ -256,9 +256,9 @@ if __name__ == '__main__':
     print(f"算法类型: {ALGORITHM_TYPE}")
     print()
     print("此脚本将：")
-    print("1. 按族（金标口径）给启用中的主维度注册轮次结构化音频参数与映射：")
+    print("1. 按族（运行时真实状态）给启用中的主维度注册轮次结构化音频参数与映射：")
     print("   - interruption_metrics: played_audios / background_noise / interferers + 3 条映射")
-    print("   - turn_eval: 仅 played_audios + case_config→audios 映射")
+    print("   - turn_eval: 仅 played_audios 参数 + 3 条 case_config 映射（与库一致）")
     print("   - 其他族（reject_judge 等）跳过")
     print("2. 将历史 stimulus_audios 参数与映射目标归一化为 played_audios")
     print("3. 不创建/删除维度，不清理其他参数/映射（幂等）")

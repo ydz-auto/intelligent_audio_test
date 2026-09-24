@@ -155,6 +155,10 @@ def _sync_param_mappings(dimension_id, params, direction='output', algorithm_typ
               dimension_id=dimension_id, target_param=param_code,
               source_direction=direction (input/output),
               algorithm_type=维度的关联算法类型（如 voice_llm）
+
+    注意：仅 input 方向会创建/更新映射（target 必须是 input 参数）；
+          output 方向不生成映射（target=输出参数违反 target=input 规则），
+          仅清理历史遗留的 output 映射（source='evaluation' 且 source_direction='output'）。
     """
     if params is None:
         return
@@ -173,6 +177,14 @@ def _sync_param_mappings(dimension_id, params, direction='output', algorithm_typ
         dimension_id=dimension_id,
         source='evaluation'
     ).all()
+
+    # output 方向：清理历史遗留（软删全部 source='evaluation' 且 direction=output 的映射），不再创建
+    if direction == 'output':
+        for m in all_mappings:
+            if not m.deleted:
+                m.deleted = True
+        return
+
     active_map = {m.source_param: m for m in all_mappings if not m.deleted}
     soft_deleted_map = {m.source_param: m for m in all_mappings if m.deleted}
 

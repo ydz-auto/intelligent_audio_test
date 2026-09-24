@@ -10,33 +10,38 @@
 """
 
 import os
-import re
 import subprocess
 import sys
 
 
-def find_pids_by_port(port):
-    """通过端口号查找占用该端口的进程 PID"""
+def run_powershell(command):
+    """执行 PowerShell 命令并返回标准输出"""
     try:
         result = subprocess.run(
-            ["netstat", "-ano", "-p", "TCP"],
+            ["powershell", "-NoProfile", "-Command", command],
             capture_output=True,
-            text=True,
             creationflags=subprocess.CREATE_NO_WINDOW,
+            encoding="utf-8",
+            errors="ignore",
+        )
+        return result.stdout
+    except Exception as e:
+        print(f"   执行 PowerShell 命令时出错: {e}")
+        return ""
+
+
+def find_pids_by_port(port):
+    """通过端口号查找占用该端口的进程 PID (使用 PowerShell)"""
+    try:
+        output = run_powershell(
+            "Get-NetTCPConnection -LocalPort %d -State Listen -ErrorAction SilentlyContinue"
+            " | Select-Object -ExpandProperty OwningProcess -Unique" % port
         )
         pids = set()
-        for line in result.stdout.splitlines():
-            # 匹配 LISTENING 状态的行
-            if "LISTENING" in line:
-                parts = line.split()
-                if len(parts) >= 4:
-                    local_addr = parts[1]
-                    pid = parts[-1]
-                    # 提取端口号
-                    match = re.search(r":(\d+)$", local_addr)
-                    if match and int(match.group(1)) == port:
-                        if pid.isdigit():
-                            pids.add(int(pid))
+        for line in output.splitlines():
+            line = line.strip()
+            if line.isdigit():
+                pids.add(int(line))
         return pids
     except Exception as e:
         print(f"   查找端口 {port} 时出错: {e}")
@@ -44,25 +49,19 @@ def find_pids_by_port(port):
 
 
 def find_pids_by_command(pattern):
-    """通过命令行匹配查找进程 PID (使用 wmic)"""
+    """通过命令行匹配查找进程 PID (使用 PowerShell, 替代已废弃的 wmic)"""
     try:
-        result = subprocess.run(
-            ["wmic", "process", "get", "ProcessId,CommandLine"],
-            capture_output=True,
-            text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+        escaped = pattern.replace("'", "''")
+        output = run_powershell(
+            "Get-CimInstance Win32_Process"
+            " | Where-Object { $_.CommandLine -match '%s' }"
+            " | Select-Object -ExpandProperty ProcessId" % escaped
         )
         pids = set()
-        for line in result.stdout.splitlines():
+        for line in output.splitlines():
             line = line.strip()
-            if not line:
-                continue
-            # 匹配命令行模式
-            if re.search(pattern, line, re.IGNORECASE):
-                # 提取行末的数字 (PID)
-                match = re.search(r"(\d+)\s*$", line)
-                if match:
-                    pids.add(int(match.group(1)))
+            if line.isdigit():
+                pids.add(int(line))
         return pids
     except Exception as e:
         print(f"   查找命令行模式 '{pattern}' 时出错: {e}")

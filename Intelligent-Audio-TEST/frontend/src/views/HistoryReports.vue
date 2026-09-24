@@ -39,7 +39,7 @@
                   @change="handleFilterChange">
             <option value="all">全部类型</option>
             <option value="comparison">对比报告</option>
-            <option value="secondaryComparison">二次对比报告</option>
+            <option value="secondary_comparison">二次对比报告</option>
             <option value="task">任务报告</option>
           </select>
         </div>
@@ -205,7 +205,7 @@
                 <i class="fas fa-calendar-alt"></i>
                 {{ formatDate(report.createdAt) }}
               </span>
-              <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison'">
+              <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison' || report.type === 'secondary_comparison'">
                 <span class="report-card-meta-item">
                   <i class="fas fa-cubes"></i>
                   {{ report.summary?.taskCount || 0 }} 个任务对比
@@ -279,7 +279,7 @@
                 <i class="fas fa-calendar-alt"></i>
                 {{ formatDate(report.createdAt) }}
               </span>
-              <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison'">
+              <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison' || report.type === 'secondary_comparison'">
                 <span class="report-card-meta-item">
                   <i class="fas fa-cubes"></i>
                   {{ report.summary?.taskCount || 0 }} 个任务对比

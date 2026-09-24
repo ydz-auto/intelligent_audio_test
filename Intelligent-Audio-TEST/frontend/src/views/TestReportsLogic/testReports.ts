@@ -24,7 +24,8 @@ export function useTestReports() {
     const types: Record<string, string> = {
       'task': '任务报告',
       'comparison': '对比报告',
-      'secondaryComparison': '二次对比报告'
+      'secondaryComparison': '二次对比报告',
+      'secondary_comparison': '二次对比报告'
     };
     return types[type] || type;
   };

@@ -40,9 +40,9 @@
     <!-- 对比报告类型 (comparison / secondaryComparison) -->
     <section class="comparison-report-container" v-else-if="report && isComparisonType">
       <div class="comparison-header">
-        <h3 class="comparison-title">{{ report.type === 'secondaryComparison' ? '二次对比报告' : '任务对比报告' }}</h3>
+        <h3 class="comparison-title">{{ isSecondaryComparisonType(report.type) ? '二次对比报告' : '任务对比报告' }}</h3>
         <p class="comparison-subtitle">
-          {{ report.type === 'secondaryComparison' 
+          {{ isSecondaryComparisonType(report.type) 
             ? '深度分析对比报告的二次对比，帮助您更深入地了解性能变化趋势和关键差异点。'
             : '对比分析所选任务的执行情况和结果，帮助您识别系统性能瓶颈和质量问题，为后续优化提供依据。' }}
         </p>
@@ -285,8 +285,10 @@ function showToast(type: ToastMessage['type'], message: string): void {
   setTimeout(() => { toast.value = null; }, 3000);
 }
 
+const isSecondaryComparisonType = (type?: string) => type === 'secondaryComparison' || type === 'secondary_comparison'
+
 const isComparisonType = computed(() => {
-  return report.value?.type === 'comparison' || report.value?.type === 'secondaryComparison'
+  return report.value?.type === 'comparison' || isSecondaryComparisonType(report.value?.type)
 })
 
 const analysisContent = computed(() => {
@@ -328,7 +330,7 @@ const loadReport = async (reportId: string) => {
       }
       reportName.value = report.value.name
       
-      if (report.value.type === 'comparison' || report.value.type === 'secondaryComparison') {
+      if (report.value.type === 'comparison' || isSecondaryComparisonType(report.value.type)) {
         reportService.comparisonReport.value = report.value
         reportService.extractDevicesFromTasks([], report.value)
       }

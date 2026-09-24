@@ -212,15 +212,15 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         # 不在此拦截，交给 calculate 层返回带说明的空结果
         pass
     elif task_type == 'env_judge':
-        # 环境理解：需要 ai_wav + user_wav + play_audio + correctAnswer
+        # 环境理解：需要 ai_wav + user_wav + played_audios + correctAnswer
         _r0_env = (task_params.get('rounds') or [{}])[0] if isinstance(task_params.get('rounds'), list) and task_params.get('rounds') else {}
         _missing = []
         if not (task_params.get('ai_wav') or _r0_env.get('ai_wav')):
             _missing.append('ai_wav')
         if not (task_params.get('user_wav') or _r0_env.get('user_wav')):
             _missing.append('user_wav')
-        if not (task_params.get('play_audio') or _r0_env.get('play_audio')):
-            _missing.append('play_audio')
+        if not (task_params.get('played_audios') or _r0_env.get('played_audios')):
+            _missing.append('played_audios')
         if not (task_params.get('correctAnswer') or _r0_env.get('correctAnswer')):
             _missing.append('correctAnswer')
         if _missing:

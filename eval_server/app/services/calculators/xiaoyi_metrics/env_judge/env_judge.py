@@ -11,7 +11,7 @@
 输入:
     user_wav      — 用户通道音频(含环境声 + 用户询问)
     ai_wav        — 模型回复音频
-    play_audio    — 原始环境声音频(干净音源)
+    played_audios — 本轮被播放音频(经 case_config→audios 映射取用，取首位为原始环境声)
     correctAnswer — 正确答案(字符串)
 
 输出:
@@ -244,10 +244,10 @@ def _build_semantic_prompt(correct_answer: str) -> str:
 
 
 # ─────────── 时延计算 ───────────
-def _calculate_response_latency(play_audio, user_wav, ai_wav):
+def _calculate_response_latency(played_audios, user_wav, ai_wav):
     """计算用户询问到模型回复的时延
 
-    1. 用 FFT 互相关在 user_wav 中定位环境声(play_audio)的起止时间
+    1. 用 FFT 互相关在 user_wav 中定位环境声(played_audios)的起止时间
     2. 从 user_wav ASR chunks 中找到环境声后的用户询问，获取其结束时间
     3. 从 ai_wav ASR chunks 中找到模型首字时间
     4. 时延 = 模型首字时间 - 用户询问结束时间
@@ -262,10 +262,10 @@ def _calculate_response_latency(play_audio, user_wav, ai_wav):
         'message': '',
     }
 
-    # 解析 play_audio 路径
-    played_audio_path = _resolve_played_audio_path(play_audio)
+    # 解析 played_audios 路径
+    played_audio_path = _resolve_played_audio_path(played_audios)
     if not played_audio_path or not os.path.isfile(played_audio_path):
-        result['message'] = f'play_audio 文件不存在: {play_audio!r}'
+        result['message'] = f'played_audios 文件不存在: {played_audios!r}'
         logger.error(result['message'])
         return result
 
@@ -377,7 +377,7 @@ def _calculate_response_latency(play_audio, user_wav, ai_wav):
 def evaluate_env_judge(
     user_wav: str,
     ai_wav: str,
-    play_audio: str,
+    played_audios: str,
     correctAnswer: str,
     task_type=0,
     model: str = '',
@@ -391,7 +391,7 @@ def evaluate_env_judge(
     Args:
         user_wav:      用户通道音频路径(含环境声 + 用户询问)
         ai_wav:        模型回复音频路径
-        play_audio:    原始环境声音频路径(干净音源)
+        played_audios: 本轮被播放音频（列表/JSON/路径，取首位为原始环境声）
         correctAnswer: 正确答案(字符串)
         task_type:     脚本类型: 0=无语义(non_semantic), 1=有语义(semantic)
         model:         LLM 模型名(空则按维度配置解析)
@@ -416,7 +416,7 @@ def evaluate_env_judge(
         'model': model,
         'user_wav': user_wav,
         'ai_wav': ai_wav,
-        'play_audio': play_audio,
+        'played_audios': played_audios,
         'correctAnswer': correctAnswer,
         'task_type': task_type,
         'script_type': script_type,
@@ -487,7 +487,7 @@ def evaluate_env_judge(
     result['reason'] = parsed.get('reason', '')
 
     # ─── 2. 计算时延 ───
-    latency_result = _calculate_response_latency(play_audio, user_wav, ai_wav)
+    latency_result = _calculate_response_latency(played_audios, user_wav, ai_wav)
     result['response_latency_ms'] = latency_result.get('response_latency_ms')
     result['env_sound_start_ms'] = latency_result.get('env_sound_start_ms')
     result['env_sound_end_ms'] = latency_result.get('env_sound_end_ms')
@@ -529,7 +529,7 @@ if __name__ == '__main__':
     )
     parser.add_argument('user_wav', help='用户通道音频路径(含环境声+用户询问)')
     parser.add_argument('ai_wav', help='模型回复音频路径')
-    parser.add_argument('play_audio', help='原始环境声音频路径(干净音源)')
+    parser.add_argument('played_audios', help='本轮被播放音频路径/JSON(取首位为原始环境声)')
     parser.add_argument('--correct_answer', default='', help='正确答案(字符串)')
     parser.add_argument('--task_type', type=int, default=0,
                         choices=[0, 1],
@@ -539,7 +539,7 @@ if __name__ == '__main__':
     r = evaluate_env_judge(
         user_wav=args.user_wav,
         ai_wav=args.ai_wav,
-        play_audio=args.play_audio,
+        played_audios=args.played_audios,
         correctAnswer=args.correct_answer,
         task_type=args.task_type,
     )

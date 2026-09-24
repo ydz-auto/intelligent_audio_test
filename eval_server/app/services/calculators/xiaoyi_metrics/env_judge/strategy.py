@@ -7,7 +7,7 @@
 
   - 主音频：ai_wav（模型回复，被判定对象）
   - 用户侧：user_wav（用户通道音频，含环境声+用户询问）
-  - 环境声：play_audio（原始干净音源，FFT互相关定位）
+  - 环境声：played_audios（本轮被播放音频，FFT互相关定位）
   - 正确答案：correctAnswer（参考内容文本）
   - LLM 配置：model / max_tokens / temperature
 """
@@ -61,7 +61,7 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
     通过 task_type 输入参数区分无语义/有语义：
       task_type=0 → non_semantic（无语义：环境声为噪声，判断声音类型识别）
       task_type=1 → semantic（有语义：环境声含语义内容，判断内容理解）
-    输入：user_wav, ai_wav, play_audio, correctAnswer, task_type
+    输入：user_wav, ai_wav, played_audios, correctAnswer, task_type
     输出：understand_correct (True/False), response_latency_ms, score, reason
     """
     task_type = 'env_judge'
@@ -72,14 +72,14 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
         rd = self._get_round_safe(task_params, idx)
         has_ai = task_params.get('ai_wav') or rd.get('ai_wav')
         has_user = task_params.get('user_wav') or rd.get('user_wav')
-        has_play = task_params.get('play_audio') or rd.get('play_audio')
+        has_play = task_params.get('played_audios') or rd.get('played_audios')
         has_answer = task_params.get('correctAnswer') or rd.get('correctAnswer')
         if not has_ai:
             return False, f"Missing required field for {self.task_type}: ai_wav"
         if not has_user:
             return False, f"Missing required field for {self.task_type}: user_wav"
         if not has_play:
-            return False, f"Missing required field for {self.task_type}: play_audio"
+            return False, f"Missing required field for {self.task_type}: played_audios"
         if not has_answer:
             return False, f"Missing required field for {self.task_type}: correctAnswer"
         return True, None
@@ -96,7 +96,7 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
             'rounds': rounds,
             'ai_wav': task_params.get('ai_wav') or rd.get('ai_wav') or '',
             'user_wav': task_params.get('user_wav') or rd.get('user_wav') or '',
-            'play_audio': task_params.get('play_audio') or rd.get('play_audio') or '',
+            'played_audios': task_params.get('played_audios') or rd.get('played_audios') or '',
             'correctAnswer': task_params.get('correctAnswer') or rd.get('correctAnswer') or '',
             'task_type': task_params.get('task_type', rd.get('task_type', 0)),
             **llm_config,
@@ -108,7 +108,7 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
         return evaluate_env_judge(
             user_wav=params['user_wav'],
             ai_wav=params['ai_wav'],
-            play_audio=params['play_audio'],
+            played_audios=params['played_audios'],
             correctAnswer=params['correctAnswer'],
             task_type=params.get('task_type', 0),
             model=params.get('model', ''),

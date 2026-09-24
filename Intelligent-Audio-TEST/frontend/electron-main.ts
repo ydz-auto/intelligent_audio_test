@@ -4,9 +4,14 @@ import { fileURLToPath } from 'url';
 import isDev from 'electron-is-dev';
 import axios from 'axios';
 import * as fs from 'fs';
+import { loadEnv } from 'vite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// 读取 .env.development 中的后端地址，与 vite.config.ts 保持一致
+const env = loadEnv('development', __dirname, '');
+const apiTarget = env.VITE_API_TARGET || 'http://127.0.0.1:5000';
 
 let mainWindow: BrowserWindow | null = null;
 

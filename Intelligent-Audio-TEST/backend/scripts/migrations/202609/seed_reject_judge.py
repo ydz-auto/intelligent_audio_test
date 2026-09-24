@@ -18,7 +18,8 @@
 
 每个主维度都有完整的 API 配置、输入参数、aux 输出参数和 param_mappings，
 可以独立发请求给 eval_server。
-子维度 statistic_method='sum'，agg_role='sum'，返回数量（非占比）。
+子维度 statistic_method='weighted_sum_ratio'，agg_role='numerator'（分子），
+父维度总数 agg_role='denominator'（分母），产出占比（非纯数量）。
 
 对应 eval_server 服务：
    - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py
@@ -81,6 +82,19 @@ _INPUT_PARAMS = [
     ('temperature', '采样温度', '采样温度', 'number', 'input',
      None, None, None, False,
      False, '0.1', '采样温度，评判场景建议低温 0.1', 20),
+    # ── 轮次结构化音频（case_config 源，映射 target 必须落在 input 参数） ──
+    ('played_audios', '被播放音频', '被播放音频', 'json', 'input',
+     None, None, None, False,
+     False, None, '本轮被播放音频（用例配置 rounds[].audios，含 audio_id/spl/audio_path），'
+                  '评估时经 case_config→audios 映射取用', 12),
+    ('background_noise', '背景噪声', '背景噪声', 'json', 'input',
+     None, None, None, False,
+     False, None, '本轮背景噪声配置（轮次级 background_noise），'
+                  '评估时经 case_config→background_noise 映射取用', 13),
+    ('interferers', '干扰人', '干扰人', 'json', 'input',
+     None, None, None, False,
+     False, None, '本轮干扰人音频列表（algorithm_params.interferers），'
+                  '评估时经 case_config→interferers 映射取用', 14),
 ]
 
 # ── aux 输出参数（所有主维度共享） ──
@@ -149,6 +163,10 @@ _PARAM_MAPPINGS = [
     ('case', 'output', 'is_reject', 'is_reject', 'none'),
     ('reference', 'output', 'is_single_round', 'is_single_round', 'none'),
     ('reference', 'output', 'timing', 'timing', 'none'),
+    # 轮次结构化音频（case_config 源，与库一致挂 3 条）
+    ('case_config', 'output', 'audios', 'played_audios', 'none'),
+    ('case_config', 'output', 'background_noise', 'background_noise', 'none'),
+    ('case_config', 'output', 'interferers', 'interferers', 'none'),
 ]
 
 # ============================================================
@@ -194,14 +212,14 @@ def _build_main_dim(name, field, help):
     own_output = [
         (field, name, name,
          'number', 'output',
-         field, 'sum', 'main', True,
+         field, 'numerator', 'main', True,
          False, '0', help, 60, 1),
     ]
-    # 拒识总轮次（is_reject=true 的轮次总数），多轮聚合由 eval_server 统计返回
+    # 拒识总轮次（is_reject=true 的轮次总数），多轮聚合由 eval_server 统计返回，作占比分母
     total_rounds_aux = [
         ('n_reject_rounds', '拒识总轮次', '拒识总轮次(is_reject=true轮次总数)',
          'number', 'output',
-         'n_reject_rounds', None, 'aux', True,
+         'n_reject_rounds', 'denominator', 'aux', True,
          False, '0', 'is_reject=true 的拒识轮次总数（多轮聚合由 eval_server 统计，n_reject_rounds）', 61),
     ]
     return {
@@ -217,9 +235,9 @@ def _build_main_dim(name, field, help):
         'weight': 1,
         'estimated_exec_time': 120,
         'score_unit': '次',
-        'statistic_method': 'sum',
-        # 数量类维度：报告按轮次占比聚合（Σ数量 / Σ各用例拒识总轮次 × 100）
-        'agg_denominator': 'round',
+        'statistic_method': 'weighted_sum_ratio',
+        # 占比类维度：分子=Σ达标数量，分母=Σ拒识总轮次（weighted_sum_ratio 加权聚合）
+        'agg_denominator': 'case',
         'params': _INPUT_PARAMS + own_output + total_rounds_aux + _AUX_OUTPUT_PARAMS,
         'param_mappings': _PARAM_MAPPINGS,
         'body_template': _BODY_TEMPLATE,
@@ -245,17 +263,17 @@ def _build_sub_dim(name, field, help, ui_order, parent_field, parent_name):
         'weight': 1,
         'estimated_exec_time': 120,
         'score_unit': '次',
-        'statistic_method': 'sum',
-        # 数量类维度：报告按轮次占比聚合（Σ数量 / Σ各用例拒识总轮次 × 100）
-        'agg_denominator': 'round',
+        'statistic_method': 'weighted_sum_ratio',
+        # 占比类维度：分子=Σ达标数量，分母=所属主维度总数（weighted_sum_ratio 加权聚合）
+        'agg_denominator': 'case',
         'params': [
             (field, name, name,
              'number', 'output',
-             field, 'sum', 'main', True,
+             field, 'numerator', 'main', True,
              False, '0', help, ui_order, 1),
             (parent_field, f'{parent_name}(主维度总数)', f'{parent_name}(主维度总数)',
              'number', 'output',
-             parent_field, None, 'aux', True,
+             parent_field, 'denominator', 'aux', True,
              False, '0', f'所属主维度「{parent_name}」的总数量', ui_order + 1),
         ],
     }
@@ -546,6 +564,45 @@ def _upsert_param_mappings(conn, dim_id, dim_def):
     print(f"  插入 {inserted} 条，更新 {updated} 条")
 
 
+# 族 → 分类（同族同分组）
+_CATEGORY_NAME = '拒识'
+_CATEGORY_ICON = 'fas fa-user-slash'
+_CATEGORY_DESC = '拒识类评估维度（非目标人拒识/目标人非交互意图/环境噪声/用户BC 等）'
+
+
+def _assign_dimension_category(conn):
+    """幂等：确保族分类存在，并把族内所有维度 category_id 回填为该分类。"""
+    # 1) upsert category（按 name 匹配，软删行复活）
+    row = conn.execute(text(
+        "SELECT id, deleted FROM categories WHERE name = :name"
+    ), {'name': _CATEGORY_NAME}).fetchone()
+    if row:
+        cat_id = row[0]
+        conn.execute(text(
+            "UPDATE categories SET description = :desc, icon = :icon, "
+            "deleted = FALSE, deleted_at = NULL, updated_at = NOW() WHERE id = :cid"
+        ), {'desc': _CATEGORY_DESC, 'icon': _CATEGORY_ICON, 'cid': cat_id})
+        print(f"  ~ 分类已存在并更新: id={cat_id}, name={_CATEGORY_NAME}")
+    else:
+        res = conn.execute(text(
+            "INSERT INTO categories (name, description, icon, created_at, updated_at, deleted) "
+            "VALUES (:name, :desc, :icon, NOW(), NOW(), FALSE) RETURNING id"
+        ), {'name': _CATEGORY_NAME, 'desc': _CATEGORY_DESC, 'icon': _CATEGORY_ICON})
+        cat_id = res.fetchone()[0]
+        print(f"  + 分类已插入: id={cat_id}, name={_CATEGORY_NAME}")
+
+    # 2) 回填族内维度 category_id（同族同组）
+    dims = conn.execute(text(
+        "SELECT id, name FROM dimensions "
+        "WHERE task_type_code = 'reject_judge' AND deleted = FALSE ORDER BY id"
+    )).fetchall()
+    for dim_id, dim_name in dims:
+        conn.execute(text(
+            "UPDATE dimensions SET category_id = :cid, updated_at = NOW() WHERE id = :did"
+        ), {'cid': cat_id, 'did': dim_id})
+    print(f"  ~ 已回填 {len(dims)} 个维度 → category_id={cat_id}（{_CATEGORY_NAME}）")
+
+
 def _soft_delete_old_main_dimension(conn):
     """软删除旧的主维度（拒识裁判v2），如果存在且不是新结构中的主维度。"""
     old_main = conn.execute(text(
@@ -606,6 +663,10 @@ def seed_reject_judge():
                 print(f"  子维度 id = {child_id}")
                 _upsert_params(conn, child_id, child_dim)
                 _upsert_relation(conn, child_id)
+
+        # Step 2.5: 族分类分配（同族同分组）
+        print(f"\n--- Step 2.5: 分类分配（{_CATEGORY_NAME}） ---")
+        _assign_dimension_category(conn)
 
         # Step 3: 验证结果
         print(f"\n--- Step 3: 验证结果 ---")

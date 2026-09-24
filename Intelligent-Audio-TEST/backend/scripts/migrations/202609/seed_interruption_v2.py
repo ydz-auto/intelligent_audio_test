@@ -53,6 +53,11 @@ API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
 TASK_TYPE = 'interruption_metrics'
 GROUP_KEY = 'interruption_v2'
 
+# 族 → 分类（同族同分组）
+_CATEGORY_NAME = '打断'
+_CATEGORY_ICON = 'fas fa-hand-paper'
+_CATEGORY_DESC = '打断类评估维度（打断成功/失败/时延/停止指令遵循/恢复内容等）'
+
 # ============================================================
 # 全族同一份 body_template（组代表任取安全）
 # 顶层字段兼容单轮/平台切片路径；rounds 承载多轮音频/ASR/轮次标记
@@ -78,7 +83,6 @@ BODY_TEMPLATE = {
             'user_asr': '{{user_asr}}',
             'model_asr': '{{model_asr}}',
             'query': '{{query}}',
-            'answer': '{{answer}}',
             'is_return_to_topic': '{{is_return_to_topic}}',
             'is_interruption': '{{is_interruption}}',
             'is_actual_interruption': '{{is_actual_interruption}}',
@@ -160,6 +164,12 @@ _COMMON_INPUT_PARAMS = [
     ('interferers', '干扰人', '干扰人', 'json', 'input',
      None, None, None, True,
      False, None, '本轮干扰人音频列表（algorithm_params.interferers，评估前提升为轮级字段）', 21),
+    ('query', '用户提问', '用户提问', 'text', 'input',
+     None, None, None, False,
+     False, None, '用户提问文本（reference.query 映射取用，打断内容评分/回复质量参考）', 22),
+    ('is_return_to_topic', '是否回到原话题', '是否回到原话题', 'boolean', 'input',
+     None, None, None, False,
+     False, None, '该轮是否回到原话题（case.is_return_to_topic 用例参数映射取用，打断行为统计参考）', 23),
 ]
 
 # 每个主维度全量挂载（映射提取按选中维度 id 过滤，见 case_parameter_extractor）
@@ -168,8 +178,7 @@ _PARAM_MAPPINGS = [
     ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
     ('device', 'output', 'case_wav', 'case_wav', 'none'),
     ('reference', 'output', 'query', 'query', 'none'),
-    ('device', 'output', 'answer', 'answer', 'none'),
-    ('reference', 'output', 'is_return_to_topic', 'is_return_to_topic', 'none'),
+    ('case', 'output', 'is_return_to_topic', 'is_return_to_topic', 'none'),
     ('case_config', 'output', 'audios', 'played_audios', 'none'),
     ('case_config', 'output', 'background_noise', 'background_noise', 'none'),
     ('case_config', 'output', 'interferers', 'interferers', 'none'),
@@ -721,6 +730,37 @@ def _hard_delete_dimension_tree(conn, dim_id, reason):
     print(f"  ! 物理删除维度 id={dim_id}（{reason}）：dimensions/params/mappings/relations/结果行已移除")
 
 
+def _assign_dimension_category(conn):
+    """幂等：确保族分类存在，并把族内所有维度 category_id 回填为该分类。"""
+    row = conn.execute(text(
+        "SELECT id, deleted FROM categories WHERE name = :name"
+    ), {'name': _CATEGORY_NAME}).fetchone()
+    if row:
+        cat_id = row[0]
+        conn.execute(text(
+            "UPDATE categories SET description = :desc, icon = :icon, "
+            "deleted = FALSE, deleted_at = NULL, updated_at = NOW() WHERE id = :cid"
+        ), {'desc': _CATEGORY_DESC, 'icon': _CATEGORY_ICON, 'cid': cat_id})
+        print(f"  ~ 分类已存在并更新: id={cat_id}, name={_CATEGORY_NAME}")
+    else:
+        res = conn.execute(text(
+            "INSERT INTO categories (name, description, icon, created_at, updated_at, deleted) "
+            "VALUES (:name, :desc, :icon, NOW(), NOW(), FALSE) RETURNING id"
+        ), {'name': _CATEGORY_NAME, 'desc': _CATEGORY_DESC, 'icon': _CATEGORY_ICON})
+        cat_id = res.fetchone()[0]
+        print(f"  + 分类已插入: id={cat_id}, name={_CATEGORY_NAME}")
+
+    dims = conn.execute(text(
+        "SELECT id, name FROM dimensions "
+        "WHERE task_type_code = :tc AND deleted = FALSE ORDER BY id"
+    ), {'tc': TASK_TYPE}).fetchall()
+    for dim_id, dim_name in dims:
+        conn.execute(text(
+            "UPDATE dimensions SET category_id = :cid, updated_at = NOW() WHERE id = :did"
+        ), {'cid': cat_id, 'did': dim_id})
+    print(f"  ~ 已回填 {len(dims)} 个维度 → category_id={cat_id}（{_CATEGORY_NAME}）")
+
+
 def _verify(conn):
     """出口核对：每个输出维度 main param 唯一；容器无 output；旧树已物理删除。"""
     ok = True
@@ -825,11 +865,12 @@ def seed_interruption_v2():
             # 子维度不配 input params / param_mappings：继承容器主维度
 
         # ============================================================
-        # Step 3: 出口核对
+        # Step 3: 分类分配 + 出口核对
         # ============================================================
         print(f"\n{'=' * 60}")
-        print("  Step 3: 出口核对")
+        print("  Step 3: 分类分配 + 出口核对")
         print(f"{'=' * 60}")
+        _assign_dimension_category(conn)
         if not _verify(conn):
             raise RuntimeError("出口核对未通过，请检查上方 [!!] 项（事务将回滚）")
 

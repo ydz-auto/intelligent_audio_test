@@ -312,7 +312,8 @@ class ReferenceParamsGenerator:
             f'_generate_single_param: code={code}, value={value}', 
             category='algorithm')
         
-        if not value:
+        # 注意: 布尔 False / 数字 0 是合法值，不能按 truthiness 过滤（not False == True 会导致 env_type=false 被丢弃）
+        if value is None or (isinstance(value, str) and not value):
             log_not_emit('DEBUG', 'reference_params_generator', 
                 f'_generate_single_param: code={code} filtered out - value is empty', 
                 category='algorithm')

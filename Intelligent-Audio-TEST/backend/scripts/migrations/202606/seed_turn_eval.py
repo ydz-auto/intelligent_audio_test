@@ -52,6 +52,12 @@ POSTGRES_URI = os.environ.get(
 # eval_server 微服务地址
 API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
 
+# 族 → 分类（同族同分组；复用已有分类「话轮接管」id=1）
+_CATEGORY_NAME = '话轮接管'
+_CATEGORY_ICON = 'fas fa-tachometer-alt'
+_CATEGORY_DESC = '话轮接管类评估维度（逐轮话轮评估/三分类/接管率/时延/质量等）'
+_CATEGORY_TASK_CODES = ('turn_eval', 'turn_evaluation')
+
 # ============================================================
 # 主维度定义：turn_eval（只配 input + api_settings + param_mappings，不配 output）
 # ============================================================
@@ -88,19 +94,19 @@ MAIN_DIMENSION = {
         ('ai_wav', 'AI回复通道音频', 'AI回复通道音频', 'audio', 'input',
          None, None, None, True,
          False, None, 'AI 回复通道 wav 路径（cap_client_ec_out.wav）', 2),
-        ('played_audios', '用例干净音源', '用例干净音源', 'audio', 'input',
+        ('played_audios', '被播放音频', '被播放音频', 'json', 'input',
          None, None, None, False,
-         False, None, '用例干净音源 wav 路径（音频对齐 + 回复质量子维度用）', 3),
+         False, None, '本轮被播放音频列表（用例配置 rounds[].audios），运行时补全上传', 3),
         ('query', '用户提问', '用户提问', 'text', 'input',
          None, None, None, False,
          False, None, '用户提问文本（回复质量评分参考）', 4),
         # 主维度不配 output 参数
     ],
     'param_mappings': [
-        ('device', 'output', 'user_wav', 'user_wav', 'none'),
-        ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
+        # 与库真实运行状态一致：仅 case_config 轮次音频映射（音频路径运行时按维度注入，无需 device 映射）
         ('case_config', 'output', 'audios', 'played_audios', 'none'),
-        ('device', 'output', 'query', 'query', 'none'),
+        ('case_config', 'output', 'background_noise', 'background_noise', 'none'),
+        ('case_config', 'output', 'interferers', 'interferers', 'none'),
     ],
 }
 
@@ -313,26 +319,13 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
             "AND dimension_type = 'sub' AND deleted = FALSE"
         ), {'name': name}).fetchone()
         if existing:
-            # 如果旧记录 task_type_code 与当前定义不一致，说明是改名场景，
-            # 软删旧记录的从属数据（params/mappings/relations），避免新旧并存
+            # task_type_code 不一致时原地更新（保留 id/参数/映射/关联与历史结果），
+            # 不软删重建（软删重建会使历史 test_result_dimensions 悬空）
             old_tc = conn.execute(text(
                 "SELECT task_type_code FROM dimensions WHERE id = :did"
             ), {'did': existing[0]}).scalar()
             if old_tc and old_tc != task_code:
-                print(f"  ! 检测到子维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，软删旧记录 id={existing[0]} 并新建")
-                conn.execute(text(
-                    "UPDATE dimensions SET deleted = TRUE, updated_at = NOW() WHERE id = :did"
-                ), {'did': existing[0]})
-                conn.execute(text(
-                    "UPDATE evaluation_dimension_params SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
-                ), {'did': existing[0]})
-                conn.execute(text(
-                    "UPDATE param_mappings SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
-                ), {'did': existing[0]})
-                conn.execute(text(
-                    "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
-                ), {'did': existing[0]})
-                existing = None
+                print(f"  ~ 子维度 '{name}' task_type_code 原地对齐: {old_tc} → {task_code} (id={existing[0]})")
     else:
         existing = conn.execute(text(
             "SELECT id FROM dimensions "
@@ -392,9 +385,10 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  statistic_method = :sm, api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, api_url = :api_url, "
+                "  task_type_code = :tc, "
                 "  deleted = FALSE, updated_at = NOW() "
                 "WHERE id = :did"
-            ), {**common_fields, 'api_url': API_URL, 'did': dim_id})
+            ), {**common_fields, 'api_url': API_URL, 'tc': task_code, 'did': dim_id})
         else:
             conn.execute(text(
                 "UPDATE dimensions SET "
@@ -404,10 +398,10 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  estimated_exec_time = :et, score_unit = :su, "
                 "  statistic_method = :sm, api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
-                "  parent_dimension_id = :pid, "
+                "  parent_dimension_id = :pid, task_type_code = :tc, "
                 "  deleted = FALSE, updated_at = NOW() "
                 "WHERE id = :did"
-            ), {**common_fields, 'did': dim_id})
+            ), {**common_fields, 'tc': task_code, 'did': dim_id})
     else:
         if dimension_type == 'main':
             result = conn.execute(text(
@@ -607,6 +601,39 @@ def _upsert_param_mappings(conn, dim_id, dim_def):
     print(f"  插入 {inserted} 条，更新 {updated} 条")
 
 
+def _assign_dimension_category(conn):
+    """幂等：确保族分类存在（复用已有「话轮接管」），并把族内所有维度 category_id 回填。"""
+    row = conn.execute(text(
+        "SELECT id, deleted FROM categories WHERE name = :name"
+    ), {'name': _CATEGORY_NAME}).fetchone()
+    if row:
+        cat_id = row[0]
+        conn.execute(text(
+            "UPDATE categories SET description = :desc, icon = :icon, "
+            "deleted = FALSE, deleted_at = NULL, updated_at = NOW() WHERE id = :cid"
+        ), {'desc': _CATEGORY_DESC, 'icon': _CATEGORY_ICON, 'cid': cat_id})
+        print(f"  ~ 分类已存在并更新: id={cat_id}, name={_CATEGORY_NAME}")
+    else:
+        res = conn.execute(text(
+            "INSERT INTO categories (name, description, icon, created_at, updated_at, deleted) "
+            "VALUES (:name, :desc, :icon, NOW(), NOW(), FALSE) RETURNING id"
+        ), {'name': _CATEGORY_NAME, 'desc': _CATEGORY_DESC, 'icon': _CATEGORY_ICON})
+        cat_id = res.fetchone()[0]
+        print(f"  + 分类已插入: id={cat_id}, name={_CATEGORY_NAME}")
+
+    placeholders = ','.join(f':tc{i}' for i in range(len(_CATEGORY_TASK_CODES)))
+    bind = {f'tc{i}': tc for i, tc in enumerate(_CATEGORY_TASK_CODES)}
+    dims = conn.execute(text(
+        "SELECT id, name FROM dimensions "
+        f"WHERE task_type_code IN ({placeholders}) AND deleted = FALSE ORDER BY id"
+    ), bind).fetchall()
+    for dim_id, dim_name in dims:
+        conn.execute(text(
+            "UPDATE dimensions SET category_id = :cid, updated_at = NOW() WHERE id = :did"
+        ), {'cid': cat_id, 'did': dim_id})
+    print(f"  ~ 已回填 {len(dims)} 个维度 → category_id={cat_id}（{_CATEGORY_NAME}）")
+
+
 def seed_turn_eval():
     engine = create_engine(POSTGRES_URI)
 
@@ -636,6 +663,14 @@ def seed_turn_eval():
             _upsert_params(conn, sub_id, sub_def)
             _upsert_relation(conn, sub_id)
             # 子维度不配 param_mappings，共用主维度的 mappings
+
+        # ============================================================
+        # Step 3: 分类分配（同族同分组）
+        # ============================================================
+        print(f"\n{'=' * 60}")
+        print(f"  Step 3: 分类分配（{_CATEGORY_NAME}）")
+        print(f"{'=' * 60}")
+        _assign_dimension_category(conn)
 
         print(f"\n{'=' * 60}")
         print(f"  turn_eval 维度种子数据注册完成")

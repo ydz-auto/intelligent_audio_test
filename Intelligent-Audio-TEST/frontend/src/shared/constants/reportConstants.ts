@@ -17,6 +17,7 @@ export const REPORT_TYPE_MAP: Record<string, string> = {
   'task': '任务报告',
   'comparison': '对比报告',
   'secondaryComparison': '二次对比报告',
+  'secondary_comparison': '二次对比报告',
   'secondary': '二次对比报告'
 } as const;
 
@@ -54,7 +55,7 @@ export const TIME_RANGE_OPTIONS = [
 export const REPORT_TYPE_OPTIONS = [
   { value: 'all', label: '全部类型' },
   { value: 'comparison', label: '对比报告' },
-  { value: 'secondaryComparison', label: '二次对比报告' },
+  { value: 'secondary_comparison', label: '二次对比报告' },
   { value: 'task', label: '任务报告' }
 ] as const;
 
