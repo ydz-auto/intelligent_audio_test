@@ -438,16 +438,16 @@ export function useTasks() {
       return;
     }
     isGeneratingReport.value = true;
-    notification.info('正在生成报告，请稍候...');
+    notification.info('正在获取报告，请稍候...');
     try {
       const result = await reportService.viewTaskReport(task);
       if (result && result.id) {
-        notification.success('报告生成成功');
+        notification.success('报告已就绪');
         router.push({ name: 'reportView', params: { id: result.id } });
       }
     } catch (error) {
       console.error('Failed to view task report:', error);
-      notification.error('报告生成失败');
+      notification.error('获取报告失败');
     } finally {
       isGeneratingReport.value = false;
     }
@@ -773,7 +773,7 @@ export function useTasks() {
     }
 
     const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
-    const incompleteTasks = selectedTasksArray.filter(t => t.status !== 'completed');
+    const incompleteTasks = selectedTasksArray.filter(t => !['completed', 'merged'].includes(t.status));
     if (incompleteTasks.length > 0) {
       const names = incompleteTasks.map(t => t.name).join(', ');
       notification.warning(`以下任务未完成，无法合并: ${names}`);

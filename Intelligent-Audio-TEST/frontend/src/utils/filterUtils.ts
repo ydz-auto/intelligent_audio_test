@@ -116,3 +116,47 @@ export function sortTasks(tasks: any[], sortConfig: SortConfig): any[] {
   
   return sortedTasks;
 }
+
+/**
+ * 时间范围 → 后端 start_date/end_date 参数（日常/发布/合并三视图统一）
+ * @param timeRange - 时间范围选项 (all/today/yesterday/week/month/custom)
+ * @param customRange - 自定义日期范围
+ */
+export function buildTimeRangeParams(
+  timeRange: string,
+  customRange: { start: string; end: string }
+): Record<string, string> {
+  const params: Record<string, string> = {};
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  switch (timeRange) {
+    case 'today':
+      params.start_date = today.toISOString();
+      break;
+    case 'yesterday': {
+      const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+      params.start_date = yesterday.toISOString();
+      params.end_date = today.toISOString();
+      break;
+    }
+    case 'week': {
+      const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+      params.start_date = weekAgo.toISOString();
+      break;
+    }
+    case 'month': {
+      const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+      params.start_date = monthAgo.toISOString();
+      break;
+    }
+    case 'custom':
+      if (customRange.start) params.start_date = new Date(customRange.start).toISOString();
+      if (customRange.end) {
+        const end = new Date(customRange.end);
+        end.setHours(23, 59, 59, 999);
+        params.end_date = end.toISOString();
+      }
+      break;
+  }
+  return params;
+}

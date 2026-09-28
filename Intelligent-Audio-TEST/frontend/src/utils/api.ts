@@ -441,6 +441,33 @@ export const tasksApi = {
   }
 };
 
+/** 已发布任务 API（Infrastructure 层：snake_case 只出现在这里与 DTO 转换） */
+export const publishedTasksApi = {
+  async getAll(params: Record<string, any> = {}) {
+    return request('GET', '/published-tasks', null, { params });
+  },
+
+  async getOne(id: number) {
+    return request('GET', `/published-tasks/${id}`);
+  },
+
+  async publish(data: { sourceTaskId: number; name: string; description?: string; publishReason?: string }) {
+    return request('POST', '/published-tasks', data);
+  },
+
+  async execute(id: number) {
+    return request('POST', `/published-tasks/${id}/execute`);
+  },
+
+  async createVersion(id: number, data: { sourceTaskId?: number; name?: string; description?: string; publishReason?: string }) {
+    return request('POST', `/published-tasks/${id}/versions`, data);
+  },
+
+  async archive(id: number) {
+    return request('POST', `/published-tasks/${id}/archive`);
+  }
+};
+
 export const logsApi = {
   async getAll(params: LogQueryParams = {}, options: RequestOptions = {}) {
     return request<PaginatedResponse<Log>>('GET', '/logs', null, { ...options, params });
@@ -1417,6 +1444,7 @@ export const tagsApi = {
 
 export default {
   tasks: tasksApi,
+  publishedTasks: publishedTasksApi,
   logs: logsApi,
   devices: devicesApi,
   playback: playbackApi,

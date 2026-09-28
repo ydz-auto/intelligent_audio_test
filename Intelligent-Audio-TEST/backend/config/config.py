@@ -77,6 +77,8 @@ def _get_int_env(key, default):
 
 class Config:
     SECRET_KEY = _get_secret_key()
+    # 认证总开关：false（默认）时权限校验直接放行（G 域 RBAC 落地前过渡），true 时从 X-User-Permissions 头校验
+    AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() in ('true', '1', 'yes')
     BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     PROJECT_ROOT = r'D:\00_code\v9.7.10\Intelligent-Audio-TEST'
     SQLALCHEMY_DATABASE_URI = _get_database_uri()

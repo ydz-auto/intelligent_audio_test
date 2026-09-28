@@ -129,18 +129,19 @@ const isSelected = (dim: any) => selectedIdSet.value.has(String(dim.id))
 }
 
 .dimension-tag.selected {
-  background-color: #ffe9d4;
-  color: #e85d04;
+  background-color: var(--primary-color);
+  color: #fff;
   border-color: var(--primary-color);
   font-weight: 600;
+  box-shadow: 0 1px 4px rgba(255, 106, 0, 0.35);
 }
 
 .dimension-tag.selected:hover {
-  background-color: #ffe2c6;
-  color: #e85d04;
-  border-color: var(--primary-color);
+  background-color: #ff8533;
+  color: #fff;
+  border-color: #ff8533;
   transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.35);
 }
 
 /* 主维度标签 */
@@ -157,15 +158,17 @@ const isSelected = (dim: any) => selectedIdSet.value.has(String(dim.id))
 }
 
 .dimension-tag-main.selected {
-  background-color: #ffe9d4;
-  color: #e85d04;
+  background-color: var(--primary-color);
+  color: #fff;
   border-color: var(--primary-color);
   font-weight: 700;
+  box-shadow: 0 1px 4px rgba(255, 106, 0, 0.35);
 }
 
 .dimension-tag-main.selected:hover {
-  background-color: #ffe2c6;
-  border-color: var(--primary-color);
+  background-color: #ff8533;
+  color: #fff;
+  border-color: #ff8533;
   transform: translateY(-1px);
 }
 
@@ -177,14 +180,15 @@ const isSelected = (dim: any) => selectedIdSet.value.has(String(dim.id))
 }
 
 .dimension-tag-sub.selected {
-  background-color: #fff3e3;
-  color: #e85d04;
+  background-color: var(--primary-color);
+  color: #fff;
   border-color: var(--primary-color);
 }
 
 .dimension-tag-sub.selected:hover {
-  background-color: #ffe9d4;
-  border-color: var(--primary-color);
+  background-color: #ff8533;
+  color: #fff;
+  border-color: #ff8533;
   transform: translateY(-1px);
 }
 
@@ -228,6 +232,24 @@ const isSelected = (dim: any) => selectedIdSet.value.has(String(dim.id))
   border: 1px solid rgba(255, 106, 0, 0.35);
   font-size: 11px;
   font-weight: 600;
+}
+
+/* 选中态：内部徽标反色保证在实心橙底上可读 */
+.dimension-tag.selected .dim-badge {
+  background-color: #fff;
+  color: var(--primary-color);
+  border: none;
+}
+.dimension-tag.selected .dim-group-count {
+  background-color: #fff;
+  color: var(--primary-color);
+  border: none;
+}
+.dimension-tag.selected .tree-branch {
+  color: rgba(255, 255, 255, 0.7);
+}
+.dimension-tag.selected .parent-name-hint {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* 树形分支符号 */

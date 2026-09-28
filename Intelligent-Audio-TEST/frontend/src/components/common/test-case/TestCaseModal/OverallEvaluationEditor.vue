@@ -588,10 +588,16 @@ watch(enabled, () => {
   color: #FF6A00;
 }
 .eval-chip.active {
-  background: rgba(255, 106, 0, 0.1);
+  background: #FF6A00;
   border-color: #FF6A00;
-  color: #FF6A00;
+  color: #FFF;
   font-weight: 600;
+  box-shadow: 0 1px 4px rgba(255, 106, 0, 0.3);
+}
+.eval-chip.active:hover {
+  background: #FF8533;
+  border-color: #FF8533;
+  color: #FFF;
 }
 .eval-chip.disabled {
   opacity: 0.4;
@@ -656,6 +662,16 @@ watch(enabled, () => {
   background: rgba(255, 106, 0, 0.12);
   color: #e85d04;
   border: 1px solid rgba(255, 106, 0, 0.3);
+}
+/* 选中态：内部徽标反色保证在实心橙底上可读 */
+.eval-chip.active .eval-badge-sub {
+  background: #FFF;
+  color: #FF6A00;
+  border-color: #FFF;
+}
+.eval-chip-main.active .eval-sub-count {
+  background: #FFF;
+  color: #FF6A00;
 }
 /* 主维度组内子维度数量角标 */
 .eval-sub-count {

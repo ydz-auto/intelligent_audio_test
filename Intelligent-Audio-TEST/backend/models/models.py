@@ -401,11 +401,50 @@ class Task(db.Model):
     estimated_time = Column(Integer, comment='预计执行耗时 (秒)')
     actual_duration = Column(Integer, comment='实际执行耗时 (秒)')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
+    # 已发布任务追溯字段（从已发布任务执行生成的日常任务回填）
+    published_task_id = Column(Integer, comment='来源已发布任务 ID')
+    published_task_version = Column(Integer, comment='来源已发布任务版本号')
+    execution_source = Column(String(20), default='manual', comment='执行来源 (manual/published_task)')
     
     tags = relationship('Tag', secondary='task_tags', backref='tasks')
     cases = relationship('TestCase', secondary='task_case_relations', backref='tasks')
     devices = relationship('Device', secondary='task_device_relations', backref='tasks')
     apis = relationship('API', secondary='task_api_relations', backref='tasks')
+
+class PublishedTaskStatus(str, Enum):
+    PUBLISHED = 'published'
+    ARCHIVED = 'archived'
+
+class PublishedTask(db.Model):
+    """
+    已发布任务模型 (Published Task Model)
+    从日常任务发布得到，保存发布时的完整配置快照（不可变版本）。
+    不承担执行进度，执行时读取快照创建新的日常任务。
+    """
+    __tablename__ = 'published_tasks'
+    __table_args__ = (
+        Index('idx_published_task_status', 'status'),
+        Index('idx_published_task_source', 'source_task_id'),
+        Index('idx_published_task_is_current', 'is_current'),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='已发布任务 ID')
+    task_group_id = Column(Integer, comment='已发布任务逻辑分组 ID（首个版本 ID，版本链锚点）')
+    source_task_id = Column(Integer, comment='来源日常任务 ID，可为空')
+    name = Column(String(255), nullable=False, comment='已发布任务名称')
+    description = Column(Text, comment='说明')
+    type = Column(String(50), nullable=False, comment='任务类型 (api/e2e)')
+    status = Column(String(20), nullable=False, default='published', comment='状态 (published/archived)')
+    version = Column(Integer, nullable=False, default=1, comment='版本号，从 1 开始')
+    is_current = Column(Boolean, nullable=False, default=True, comment='是否当前版本')
+    snapshot_config = Column(JSON, comment='发布时的完整配置快照')
+    report_snapshot = Column(JSON, comment='发布时源任务报告快照（冻结报告/执行数据/评估数据/用例日志）')
+    publish_reason = Column(Text, comment='发布说明')
+    published_by = Column(String(50), comment='发布人')
+    published_at = Column(DateTime, default=utc8now, nullable=False, comment='发布时间')
+    archived_by = Column(String(50), comment='归档人')
+    archived_at = Column(DateTime, comment='归档时间')
+    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 
 class TaskTag(db.Model):
     """

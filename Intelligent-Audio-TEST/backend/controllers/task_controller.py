@@ -21,6 +21,7 @@ from backend.schemas.task import (
     TaskProgressData,
     TaskReportItem,
     TaskReportsData,
+    TaskSourceBrief,
     TaskStartData,
     TaskStatsData,
     TaskUpdateCasesData,
@@ -235,6 +236,32 @@ class TaskController:
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         tasks = pagination.items
 
+        # 批量获取合并任务来源（仅 type == 'merged' 的任务需要，避免 N+1）
+        from backend.models.models import TaskMergeRelation
+        source_tasks_map = {}
+        merged_task_ids = [task.id for task in tasks if task.type == 'merged']
+        if merged_task_ids:
+            relations = TaskMergeRelation.query.filter(
+                TaskMergeRelation.merged_task_id.in_(merged_task_ids)
+            ).all()
+            source_ids = sorted({r.source_task_id for r in relations})
+            source_map = {t.id: t for t in Task.query.filter(Task.id.in_(source_ids)).all()} if source_ids else {}
+            for mid in merged_task_ids:
+                briefs = []
+                for rel in [r for r in relations if r.merged_task_id == mid]:
+                    st = source_map.get(rel.source_task_id)
+                    if st:
+                        briefs.append(TaskSourceBrief(
+                            id=st.id,
+                            name=st.name,
+                            status=st.status,
+                            total_cases=st.total_cases,
+                            completed_cases=st.completed_cases,
+                            failed_cases=st.failed_cases,
+                            created_at=st.created_at.isoformat() if st.created_at else None,
+                        ))
+                source_tasks_map[mid] = briefs
+
         data = []
         for task in tasks:
             # 查询任务关联的报告
@@ -289,6 +316,7 @@ class TaskController:
                     reports=report_info,
                     devices=devices,
                     apis=apis,
+                    source_tasks=source_tasks_map.get(task.id, []),
                 )
             )
         
@@ -1554,10 +1582,42 @@ class TaskController:
                 return error_response("部分任务未找到", code=ErrorCode.NOT_FOUND)
 
             for t in tasks:
-                if t.status != 'completed':
+                # 允许合并已完成任务、合并任务、已合并任务（后两者会在下方展开为原始源任务）
+                if t.status not in ('completed', 'merged'):
                     return error_response(f"任务 '{t.name}' 未完成，无法合并", code=ErrorCode.INVALID_STATUS)
 
-            task_names = [t.name for t in tasks]
+            # 展开合并任务/已合并任务：找到合并之前的原始源任务，
+            # 使"合并任务再次被合并"时不会丢失其历史源任务
+            final_source_ids = set()
+            remerged_task_ids = set()
+            for t in tasks:
+                if t.type == 'merged':
+                    relations = TaskMergeRelation.query.filter_by(merged_task_id=t.id).all()
+                    if relations:
+                        final_source_ids.update(r.source_task_id for r in relations)
+                        remerged_task_ids.add(t.id)
+                        continue
+                    final_source_ids.add(t.id)
+                elif t.status == 'merged':
+                    relations = TaskMergeRelation.query.filter_by(source_task_id=t.id).order_by(TaskMergeRelation.id.desc()).all()
+                    if relations:
+                        latest_merged_id = relations[0].merged_task_id
+                        source_relations = TaskMergeRelation.query.filter_by(merged_task_id=latest_merged_id).all()
+                        if source_relations:
+                            final_source_ids.update(r.source_task_id for r in source_relations)
+                            remerged_task_ids.add(latest_merged_id)
+                            continue
+                    final_source_ids.add(t.id)
+                else:
+                    final_source_ids.add(t.id)
+
+            if not final_source_ids:
+                return error_response("合并后没有可用的源任务", code=ErrorCode.INVALID_STATUS)
+
+            source_tasks = Task.query.filter(Task.id.in_(list(final_source_ids))).all()
+            source_task_map = {st.id: st for st in source_tasks}
+            ordered_source_ids = [sid for sid in final_source_ids if sid in source_task_map]
+            task_names = [source_task_map[sid].name for sid in ordered_source_ids]
             merged_name = f"合并任务_{'_'.join(task_names[:3])}{'_等' if len(task_names) > 3 else ''}"
 
             source_result_counts = {}
@@ -1566,7 +1626,7 @@ class TaskController:
             case_ids_set = set()
             tag_ids_set = set()
 
-            for task in tasks:
+            for task in source_tasks:
                 results = TestResult.query.filter_by(task_id=task.id).all()
                 source_result_counts[task.id] = len(results)
 
@@ -1575,15 +1635,23 @@ class TaskController:
                         device_ids_set.add(result.device_id)
                     if result.api_id:
                         api_ids_set.add(result.api_id)
-                    if result.test_case_id:
-                        case_ids_set.add(result.test_case_id)
+
+                # 从任务关联表继承设备/API（即使源任务没有执行结果）
+                for td in TaskDevice.query.filter_by(task_id=task.id).all():
+                    device_ids_set.add(td.device_id)
+                for ta in TaskAPI.query.filter_by(task_id=task.id).all():
+                    api_ids_set.add(ta.api_id)
+
+                # 用例集合以源任务 TaskCase 为准（TestResult 可能包含已删除用例的执行记录，
+                # 若从 TestResult 提取会导致合并任务 TaskCase 数量与 total_cases 不一致）
+                for tc in TaskCase.query.filter_by(task_id=task.id).all():
+                    case_ids_set.add(tc.test_case_id)
 
                 for tag in task.tags:
                     tag_ids_set.add(tag.id)
 
-            total_cases = sum(t.total_cases for t in tasks)
-            completed_cases = sum(t.completed_cases for t in tasks)
-            failed_cases = sum(t.failed_cases for t in tasks)
+            # total_cases 与合并任务的 TaskCase 集合保持一致（源任务用例重叠时 SUM 会重复计数）
+            total_cases = len(case_ids_set)
 
             new_task = Task(
                 name=merged_name,
@@ -1591,8 +1659,8 @@ class TaskController:
                 status='completed',
                 description=f"合并自任务: {', '.join(task_names)}",
                 total_cases=total_cases,
-                completed_cases=completed_cases,
-                failed_cases=failed_cases,
+                completed_cases=0,
+                failed_cases=0,
                 started_at=min(t.started_at for t in tasks if t.started_at),
                 completed_at=max(t.completed_at for t in tasks if t.completed_at),
                 actual_duration=max((t.completed_at - t.started_at).total_seconds() for t in tasks if t.started_at and t.completed_at) if any(t.started_at and t.completed_at for t in tasks) else 0
@@ -1613,10 +1681,29 @@ class TaskController:
                     task_api = TaskAPI(task_id=new_task.id, api_id=api_id)
                     db.session.add(task_api)
 
+            # 源任务用例状态映射，供合并任务新建 TaskCase 时继承
+            source_case_status = {}
+            for task in tasks:
+                for tc in TaskCase.query.filter_by(task_id=task.id).all():
+                    if tc.test_case_id not in source_case_status:
+                        source_case_status[tc.test_case_id] = tc
+
             for case_id in case_ids_set:
                 existing = TaskCase.query.filter_by(task_id=new_task.id, test_case_id=case_id).first()
                 if not existing:
-                    task_case = TaskCase(task_id=new_task.id, test_case_id=case_id, status='completed')
+                    src_tc = source_case_status.get(case_id)
+                    # 继承源任务的执行/评估状态，避免合并任务详情中所有用例都显示为待执行
+                    task_case = TaskCase(
+                        task_id=new_task.id,
+                        test_case_id=case_id,
+                        status=src_tc.status if src_tc else 'completed',
+                        execution_status=src_tc.execution_status if src_tc else 'completed',
+                        evaluation_status=src_tc.evaluation_status if src_tc else 'completed',
+                        started_at=getattr(src_tc, 'started_at', None) if src_tc else None,
+                        completed_at=getattr(src_tc, 'completed_at', None) if src_tc else None,
+                        duration=getattr(src_tc, 'duration', None) if src_tc else None,
+                        error_message=getattr(src_tc, 'error_message', None) if src_tc else None,
+                    )
                     db.session.add(task_case)
 
             for tag_id in tag_ids_set:
@@ -1625,14 +1712,32 @@ class TaskController:
                     task_tag = TaskTag(task_id=new_task.id, tag_id=tag_id)
                     db.session.add(task_tag)
 
-            for task in tasks:
-                task.status = 'merged'
+            # 被再次合并的合并任务标记为已合并（其历史源任务由新合并任务接管）
+            for mid in remerged_task_ids:
+                m_task = db.session.get(Task, mid)
+                if m_task:
+                    m_task.status = 'merged'
+
+            # 原始源任务标记为已合并（已是 merged 的保持不动）
+            for sid in ordered_source_ids:
+                s_task = source_task_map[sid]
+                if s_task.status != 'merged':
+                    s_task.status = 'merged'
+
+            # 新合并任务直接关联展开后的原始源任务
+            for sid in ordered_source_ids:
                 merge_relation = TaskMergeRelation(
                     merged_task_id=new_task.id,
-                    source_task_id=task.id,
-                    source_result_count=source_result_counts.get(task.id, 0)
+                    source_task_id=sid,
+                    source_result_count=source_result_counts.get(sid, 0)
                 )
                 db.session.add(merge_relation)
+
+            # 以合并任务自身 TaskCase 统计完成/失败数，保证与总用例数自洽
+            db.session.flush()
+            new_task.total_cases = TaskCase.query.filter_by(task_id=new_task.id).count()
+            new_task.completed_cases = TaskCase.query.filter_by(task_id=new_task.id, status='completed').count()
+            new_task.failed_cases = TaskCase.query.filter_by(task_id=new_task.id, status='failed').count()
 
             db.session.commit()
 

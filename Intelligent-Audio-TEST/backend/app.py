@@ -270,6 +270,7 @@ def create_app(config_name='default'):
     from blueprints.spl_bp import spl_bp
     from blueprints.algorithm_bp import algorithm_bp
     from blueprints.tag_bp import tag_bp
+    from blueprints.published_task_bp import published_task_bp
     from controllers.home_controller import home_bp
 
     # 注册 API 路由前缀
@@ -289,6 +290,7 @@ def create_app(config_name='default'):
     app.register_blueprint(spl_bp, url_prefix='/api/v1/spl')
     app.register_blueprint(algorithm_bp, url_prefix='/api/v1/algorithm')
     app.register_blueprint(tag_bp, url_prefix='/api/v1/tags')
+    app.register_blueprint(published_task_bp, url_prefix='/api/v1/published-tasks')
     app.register_blueprint(home_bp, url_prefix='/api/v1/home')
 
     # 注册 WebSocket 事件处理器
