@@ -1,4 +1,4 @@
-from backend.models.models import TestResultDimension, TestCase, Device, API, Task, Dimension
+from backend.models.models import TestResultDimension, TestResult, TestCase, Device, API, Task, Dimension
 from backend.models.database import db
 from backend.utils.common.result_data_store import load_full_result_data
 from backend.schemas.testcase import ReportAudioItem, ReportTestCaseItem
@@ -63,6 +63,32 @@ def _extract_sub_dim_from_counts(raw_resp, field_path):
     return total
 
 class ReportUtils:
+    @staticmethod
+    def filter_results_by_case_evaluation(results):
+        """
+        过滤测试结果：如果某个用例的任一维度评估状态非 completed，
+        则该用例的所有测试结果都不参与统计。
+        """
+        if not results:
+            return results
+
+        result_ids = [r.id for r in results]
+
+        # 查询有非 completed 评估状态的 test_case_id
+        excluded_rows = db.session.query(TestResult.test_case_id).distinct().join(
+            TestResultDimension, TestResultDimension.test_result_id == TestResult.id
+        ).filter(
+            TestResult.id.in_(result_ids),
+            TestResultDimension.evaluation_status != 'completed'
+        ).all()
+
+        excluded_case_ids = {r[0] for r in excluded_rows if r[0] is not None}
+
+        if not excluded_case_ids:
+            return results
+
+        return [r for r in results if r.test_case_id not in excluded_case_ids]
+
     @staticmethod
     def get_task_time_prefix(task):
         """获取任务执行标识前缀（任务ID + 时间）"""
