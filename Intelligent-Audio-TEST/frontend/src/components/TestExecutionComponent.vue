@@ -408,7 +408,8 @@ const emit = defineEmits([
   'skipTestCase',
   'addTestCase',
   'removeTestCase',
-  'loadMoreLogs'
+  'loadMoreLogs',
+  'loadMoreCases'
 ]);
 
 const shouldShowPauseResumeButton = computed(() => {
@@ -600,8 +601,14 @@ watch([caseViewMode, caseFilterStatus], () => {
 });
 
 const handleCaseScroll = (e) => {
-  const scrollTop = e.target.scrollTop;
+  const { scrollTop, scrollHeight, clientHeight } = e.target;
   caseStartIndex.value = Math.floor(scrollTop / caseItemHeight);
+
+  // 滚动到底部时触发加载更多用例
+  const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+  if (isNearBottom) {
+    emit('loadMoreCases');
+  }
 };
 
 const logItemHeight = 28;

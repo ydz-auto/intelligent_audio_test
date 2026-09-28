@@ -34,15 +34,18 @@ class AndroidDriver(BaseDeviceDriver):
         driver = self._drivers.get(device_sn)
         if driver:
             try:
-                driver.sceen_on()
+                driver.screen_on()
                 time.sleep(0.5)
-                flashlight_elem = driver(resourcId="com.android.systemui:id/flashlight_imageview")
-                if flashlight_elem.exists(timeout=1):
-                    return True
-                unlock_bar_elem = driver(resourcId="com.android.systemui:id/lock_indication")
-                if unlock_bar_elem.exists(timeout=1):
-                    return True
+                result = subprocess.run(
+                    ['adb', '-s', device_sn, 'shell', 'dumpsys', 'window'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    if 'mDreamingLockscreen=true' in result.stdout or 'isStatusBarKeyguard=true' in result.stdout:
+                        self._log(level='INFO', content=f"设备{device_sn} 处于锁屏状态")
+                        return True
                 self._log(level='INFO', content=f"设备{device_sn} 已解锁")
+                return False
             except Exception as e:
                 self._log(level='ERROR', content=f"检查锁屏状态失败：{e}")
                 return False
@@ -351,6 +354,6 @@ class AndroidDriver(BaseDeviceDriver):
             return -1
 
     @check_stop("get_results")
-    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
+    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> list:
         """获取设备输出结果 - 返回原始文本列表"""
-        return {'success': True, 'message': 'Success', 'asr': 'asr中文', 'translation': 'translation中文'}
+        return [{'success': True, 'message': 'Success', 'asr': 'asr中文', 'translation': 'translation中文'}]

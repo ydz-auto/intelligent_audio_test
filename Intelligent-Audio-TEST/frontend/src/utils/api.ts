@@ -380,6 +380,10 @@ export const tasksApi = {
     return request('GET', `/tasks/${id}`);
   },
 
+  async getCases(id: string | number, params: Record<string, any> = {}) {
+    return request('GET', `/tasks/${id}/cases`, null, { params });
+  },
+
   async getProgress(id: string | number) {
     return request('GET', `/tasks/${id}/progress`);
   },
