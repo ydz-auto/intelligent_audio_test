@@ -103,15 +103,15 @@ def build_env_judge_prompt(correct_answer: str, script_type: str = 'semantic') -
     return _build_semantic_prompt(correct_answer)
 
 
-def _task_type_to_script_type(task_type) -> str:
-    """将输入参数 task_type 映射为 script_type
+def _env_type_to_script_type(env_type) -> str:
+    """将输入参数 env_type 映射为 script_type
 
-    task_type=0 或 '0' → 'non_semantic'（无语义）
-    task_type=1 或 '1' → 'semantic'（有语义）
+    env_type=false/0/'0' → 'non_semantic'（无语义）
+    env_type=true/1/'1'  → 'semantic'（有语义）
     """
-    if isinstance(task_type, str):
-        task_type = task_type.strip()
-    if task_type in (0, '0', 'non_semantic'):
+    if isinstance(env_type, str):
+        env_type = env_type.strip().lower()
+    if env_type in (0, '0', False, 'false', 'non_semantic'):
         return 'non_semantic'
     return 'semantic'
 
@@ -379,7 +379,7 @@ def evaluate_env_judge(
     ai_wav: str,
     played_audios: str,
     correctAnswer: str,
-    task_type=0,
+    env_type=0,
     model: str = '',
     max_tokens: Optional[int] = None,
     temperature: Optional[float] = None,
@@ -393,7 +393,7 @@ def evaluate_env_judge(
         ai_wav:        模型回复音频路径
         played_audios: 本轮被播放音频（列表/JSON/路径，取首位为原始环境声）
         correctAnswer: 正确答案(字符串)
-        task_type:     脚本类型: 0=无语义(non_semantic), 1=有语义(semantic)
+        env_type:      脚本类型: false/0=无语义(non_semantic), true/1=有语义(semantic)
         model:         LLM 模型名(空则按维度配置解析)
         max_tokens:    LLM max_tokens
         temperature:   LLM temperature
@@ -401,7 +401,7 @@ def evaluate_env_judge(
     Returns:
         dict: {understand_correct, score, reason, response_latency_ms, ...}
     """
-    script_type = _task_type_to_script_type(task_type)
+    script_type = _env_type_to_script_type(env_type)
 
     llm_config = get_llm_config()
     if not model:
@@ -418,7 +418,7 @@ def evaluate_env_judge(
         'ai_wav': ai_wav,
         'played_audios': played_audios,
         'correctAnswer': correctAnswer,
-        'task_type': task_type,
+        'env_type': env_type,
         'script_type': script_type,
         'understand_correct': None,
         'understand_correct_pass': None,
@@ -486,18 +486,23 @@ def evaluate_env_judge(
     result['score'] = parsed.get('score')
     result['reason'] = parsed.get('reason', '')
 
-    # ─── 2. 计算时延 ───
-    latency_result = _calculate_response_latency(played_audios, user_wav, ai_wav)
-    result['response_latency_ms'] = latency_result.get('response_latency_ms')
-    result['env_sound_start_ms'] = latency_result.get('env_sound_start_ms')
-    result['env_sound_end_ms'] = latency_result.get('env_sound_end_ms')
-    result['user_question_end_ms'] = latency_result.get('user_question_end_ms')
-    result['model_first_word_start_ms'] = latency_result.get('model_first_word_start_ms')
-    result['ncc'] = latency_result.get('ncc')
-
-    if not result['message']:
-        latency_msg = latency_result.get('message', '')
-        result['message'] = latency_msg if latency_msg else 'OK'
+    # ─── 2. 计算时延（played_audios 可选：缺失时跳过） ───
+    _resolved_played_audio = _resolve_played_audio_path(played_audios)
+    if _resolved_played_audio and os.path.isfile(_resolved_played_audio):
+        latency_result = _calculate_response_latency(played_audios, user_wav, ai_wav)
+        result['response_latency_ms'] = latency_result.get('response_latency_ms')
+        result['env_sound_start_ms'] = latency_result.get('env_sound_start_ms')
+        result['env_sound_end_ms'] = latency_result.get('env_sound_end_ms')
+        result['user_question_end_ms'] = latency_result.get('user_question_end_ms')
+        result['model_first_word_start_ms'] = latency_result.get('model_first_word_start_ms')
+        result['ncc'] = latency_result.get('ncc')
+        if not result['message']:
+            latency_msg = latency_result.get('message', '')
+            result['message'] = latency_msg if latency_msg else 'OK'
+    else:
+        logger.info(f'[env_judge] played_audios 缺失，跳过时延计算')
+        if not result['message']:
+            result['message'] = 'OK (skipped latency: no played_audios)'
 
     logger.info(
         f'[env_judge] '
@@ -531,7 +536,7 @@ if __name__ == '__main__':
     parser.add_argument('ai_wav', help='模型回复音频路径')
     parser.add_argument('played_audios', help='本轮被播放音频路径/JSON(取首位为原始环境声)')
     parser.add_argument('--correct_answer', default='', help='正确答案(字符串)')
-    parser.add_argument('--task_type', type=int, default=0,
+    parser.add_argument('--env_type', type=int, default=0,
                         choices=[0, 1],
                         help='脚本类型: 0=无语义(non_semantic), 1=有语义(semantic)')
     args = parser.parse_args()
@@ -541,12 +546,12 @@ if __name__ == '__main__':
         ai_wav=args.ai_wav,
         played_audios=args.played_audios,
         correctAnswer=args.correct_answer,
-        task_type=args.task_type,
+        env_type=args.env_type,
     )
 
     print('=' * 60)
     print(f'模型: {r["model"]}')
-    print(f'task_type: {r["task_type"]} → script_type: {r["script_type"]}')
+    print(f'env_type: {r["env_type"]} → script_type: {r["script_type"]}')
     print(f'tokens: {r["tokens_used"]} (in={r["input_token"]}, out={r["output_token"]})')
     print(f'message: {r["message"]}')
     print('-' * 60)

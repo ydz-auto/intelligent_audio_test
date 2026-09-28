@@ -156,11 +156,7 @@ class TaskService:
         is_overall = task_params.get('round_number') in (None, '')
         min_rounds = getattr(calculator, 'min_rounds_for_aggregate', 2)
         aggregate_overall_only = getattr(calculator, 'aggregate_overall_only', True)
-        if (isinstance(result, dict)
-                and (is_overall or not aggregate_overall_only)
-                and rounds and isinstance(rounds, list) and len(rounds) >= min_rounds
-                and getattr(calculator, 'supports_per_round', False)
-                and 'per_round' not in result):  # 计算器已原生产出 per_round（如打断 v2 零成本投影）则不再切片重跑
+        if rounds and (is_overall or not aggregate_overall_only) and len(rounds) >= min_rounds:
             try:
                 per_round = calculator._calculate_per_round(task_params)
                 # reject_judge 的 _calculate_per_round 会通过 _agg_result 返回聚合结果

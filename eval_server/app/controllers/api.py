@@ -501,7 +501,7 @@ def create_task_upload():
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) >= 1 and isinstance(rounds_list[-1], dict):
             rd = rounds_list[-1]
-            for fld in ('record_file', 'user_wav', 'ai_wav', 'played_audios', 'pause', 'first_frame_ms', 'start_ms', 'input', 'input_lastword', 'offset_ms', 'play_audio', 'correctAnswer', 'task_type'):
+            for fld in ('record_file', 'user_wav', 'ai_wav', 'played_audios', 'pause', 'first_frame_ms', 'start_ms', 'input', 'input_lastword', 'offset_ms', 'correctAnswer', 'env_type'):
                 val = rd.get(fld)
                 if val is not None and val != '' and not task_params.get(fld):
                     task_params[fld] = val

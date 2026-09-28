@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """env_judge 策略类
 
-环境理解裁判：通过 task_type 输入参数区分无语义/有语义场景
-  - task_type=0 → non_semantic（无语义：环境声为噪声，判断声音类型识别）
-  - task_type=1 → semantic（有语义：环境声含语义内容，判断内容理解）
+环境理解裁判：通过 env_type 输入参数区分无语义/有语义场景
+  - env_type=false/0 → non_semantic（无语义：环境声为噪声，判断声音类型识别）
+  - env_type=true/1  → semantic（有语义：环境声含语义内容，判断内容理解）
 
   - 主音频：ai_wav（模型回复，被判定对象）
   - 用户侧：user_wav（用户通道音频，含环境声+用户询问）
@@ -58,10 +58,10 @@ class _BaseEnvJudgeCalculator(BaseCalculator):
 class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
     """环境理解裁判：判断模型对环境音内容的理解是否正确 + 计算用户询问到模型回复的时延
 
-    通过 task_type 输入参数区分无语义/有语义：
-      task_type=0 → non_semantic（无语义：环境声为噪声，判断声音类型识别）
-      task_type=1 → semantic（有语义：环境声含语义内容，判断内容理解）
-    输入：user_wav, ai_wav, played_audios, correctAnswer, task_type
+    通过 env_type 输入参数区分无语义/有语义：
+      env_type=false/0 → non_semantic（无语义：环境声为噪声，判断声音类型识别）
+      env_type=true/1  → semantic（有语义：环境声含语义内容，判断内容理解）
+    输入：user_wav, ai_wav, played_audios, correctAnswer, env_type
     输出：understand_correct (True/False), response_latency_ms, score, reason
     """
     task_type = 'env_judge'
@@ -72,16 +72,14 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
         rd = self._get_round_safe(task_params, idx)
         has_ai = task_params.get('ai_wav') or rd.get('ai_wav')
         has_user = task_params.get('user_wav') or rd.get('user_wav')
-        has_play = task_params.get('played_audios') or rd.get('played_audios')
         has_answer = task_params.get('correctAnswer') or rd.get('correctAnswer')
         if not has_ai:
             return False, f"Missing required field for {self.task_type}: ai_wav"
         if not has_user:
             return False, f"Missing required field for {self.task_type}: user_wav"
-        if not has_play:
-            return False, f"Missing required field for {self.task_type}: played_audios"
         if not has_answer:
             return False, f"Missing required field for {self.task_type}: correctAnswer"
+        # played_audios 可选：缺失时跳过时延计算，仅做 LLM 评判
         return True, None
 
     def prepare_params(self, task_params):
@@ -98,7 +96,7 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
             'user_wav': task_params.get('user_wav') or rd.get('user_wav') or '',
             'played_audios': task_params.get('played_audios') or rd.get('played_audios') or '',
             'correctAnswer': task_params.get('correctAnswer') or rd.get('correctAnswer') or '',
-            'task_type': task_params.get('task_type', rd.get('task_type', 0)),
+            'env_type': task_params.get('env_type', rd.get('env_type', 0)),
             **llm_config,
         }
 
@@ -110,7 +108,7 @@ class EnvJudgeCalculator(_BaseEnvJudgeCalculator):
             ai_wav=params['ai_wav'],
             played_audios=params['played_audios'],
             correctAnswer=params['correctAnswer'],
-            task_type=params.get('task_type', 0),
+            env_type=params.get('env_type', 0),
             model=params.get('model', ''),
             max_tokens=params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS),
             temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
@@ -184,9 +182,13 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         """逐轮切片计算 + 多轮聚合
 
         与 BaseCalculator 默认实现的区别：
-        1. 跳过 is_reject=false 的轮次（非拒识轮不参与统计）
-        2. 聚合时 0/1 字段求和得到数量，再除以拒识总轮次得到占比
-        3. count 字典合并累加
+        1. is_reject=false 的轮次不参与统计，per_round 中保留跳过项
+           （{"round_number": i, "message": "跳过: 非拒识轮(is_reject=false)"}，
+            per_round 数组长度与 rounds 一致，平台按 round_number 字段定位，不依赖下标）
+        2. 每轮结果补充 n_ 前缀数量字段（与整体结果同构），平台据此
+           process_group_dimension_results 解析并覆盖/创建逐轮 TRD
+        3. 聚合时 0/1 字段求和得到数量，再除以拒识总轮次得到占比
+        4. count 字典合并累加
 
         Returns:
             list: per_round 结果列表（task_service 会赋值到 result['per_round']）
@@ -200,7 +202,7 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         for i in range(len(rounds)):
             rd = rounds[i] if isinstance(rounds[i], dict) else {}
 
-            # 跳过 is_reject=false 的轮次（非拒识轮不参与统计）
+            # 跳过 is_reject=false 的轮次（非拒识轮不参与统计，per_round 保留跳过项）
             is_reject = rd.get('is_reject', task_params.get('is_reject', True))
             if isinstance(is_reject, str):
                 is_reject = is_reject.strip().lower() in ('true', '1', 'yes')
@@ -229,6 +231,10 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
                 logger.warning(f"[_calculate_per_round] round={i} 失败: {e}")
                 result = {}
             result['round_number'] = rd.get('round', i)
+            # 与整体结果同构：单轮也输出 n_ 前缀数量字段（0/1），
+            # 平台按维度 field_path（如 n_rate_success / n_success_silent_recover）提取逐轮 TRD
+            for field in _SUM_FIELDS:
+                result.setdefault(f'n_{field}', 1 if result.get(field) else 0)
             per_round.append(result)
             reject_results.append(result)
 
@@ -237,8 +243,10 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             self._agg_result = None
             return per_round
 
-        # 以最后一个有效拒识轮为基底
+        # 以最后一个有效拒识轮为基底，剥离逐轮残留字段（round_number），
+        # 保证整体结果顶层不含轮次字段（round_number 只属于 per_round 元素）
         agg = dict(reject_results[-1])
+        agg.pop('round_number', None)
         agg['n_reject_rounds'] = n_reject_rounds
 
         # 0/1 字段求和 → 数量（n_ 前缀），再算占比

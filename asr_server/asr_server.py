@@ -283,11 +283,7 @@ def parse_result(raw_res):
     item = raw_res[0] if isinstance(raw_res, list) else raw_res
     return {
         "text": item.get("text", ""),
-        "chunks": item.get("chunks", []),
-    }
 
-
-# ─────────── FastAPI 服务 ───────────
 app = FastAPI(title="ASR Service", version="3.0")
 
 

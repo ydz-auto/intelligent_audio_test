@@ -538,6 +538,17 @@
 }
 ```
 
+**整体评估（多轮聚合）额外输出**（`round_number` 不存在的整体评估模式 + `supports_per_round=True`）：
+
+- 顶层：聚合结果，`rate_*` 改为占比（数量/拒识轮次），并新增 `n_` 前缀数量字段
+  （`n_rate_success` / `n_rate_inquiry` / `n_rate_failure` / `n_success_silent_recover` /
+  `n_success_reply_recover` / `n_inquiry_silent` / `n_inquiry_reply` / `n_failure_silent_respond` /
+  `n_failure_reply_respond` / `n_failure_silent_irrelevant` / `n_failure_reply_irrelevant` /
+  `n_failure_reply_silent`）与 `n_reject_rounds`（拒识轮总数）。顶层**不含** `round_number`。
+- `per_round[]`：数组长度与请求 `rounds` 一致，每轮携带 `round_number`（与该轮 `rounds[i].round` 对应）。
+  - 拒识轮（is_reject=true）：与整体结果同构（含上述 `n_` 前缀 0/1 字段），平台据此覆盖/创建逐轮 TRD；
+  - 非拒识轮（is_reject=false）：`{"round_number": i, "message": "跳过: 非拒识轮(is_reject=false)"}`，不计入聚合。
+
 ### 场景定义（4种）
 
 | 场景 | 名称 | 说明 |

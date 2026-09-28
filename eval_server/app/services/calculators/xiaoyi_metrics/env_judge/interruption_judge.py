@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """interruption_judge.py
 打断场景 LLM 裁判：一次纯文本 LLM 调用产出全部打断 LLM 维度
 
