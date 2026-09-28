@@ -64,7 +64,6 @@ backend/data.db
 node_modules/
  Intelligent-Audio-TEST/frontend/node_modules/
  Intelligent-Audio-TEST/node_modules/
-
 # Frontend build outputs
 dist/
 *.tsbuildinfo
@@ -76,7 +75,7 @@ coverage/
 .env
 .env.local
 .env.*.local
-
+.env.development
 # Tooling / agent artifacts
 .codegraph/
 CLAUDE.md

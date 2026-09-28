@@ -33,51 +33,70 @@ class ReportControllerTask(ReportControllerBase):
         if not task:
             return None, None, error_response("未找到指定任务")
         
-        from backend.models.models import TaskMergeRelation
+        from backend.models.models import TaskMergeRelation, TaskCase
         
-        if task.type == 'merged' and task.status == TaskStatus.COMPLETED.value:
+        source_task_ids = []
+        
+        if task.type == 'merged':
+            # 合并任务：结果取自其源任务（含合并任务重新生成的场景）
             merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
             if merge_relations:
                 source_task_ids = [r.source_task_id for r in merge_relations]
-                results = TestResult.query.filter(TestResult.task_id.in_(source_task_ids)).all()
-            else:
-                results = TestResult.query.filter_by(task_id=task_id).all()
-            if not results:
-                return None, None, error_response("生成失败: 合并任务没有测试结果数据")
-            return task, results, None
-            
-        elif task.type == 'merged':
-            merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
-            if merge_relations:
-                source_task_ids = [r.source_task_id for r in merge_relations]
-                results = TestResult.query.filter(TestResult.task_id.in_(source_task_ids)).all()
-            else:
-                results = TestResult.query.filter_by(task_id=task_id).all()
-            if not results:
-                return None, None, error_response("生成失败: 合并任务没有测试结果数据")
-            return task, results, None
             
         elif task.status == TaskStatus.MERGED.value:
-            merge_relations = TaskMergeRelation.query.filter_by(source_task_id=task_id).all()
+            # 源任务被合并后重新生成报告：取最新的合并任务，结果取自其全部原始源任务
+            merge_relations = TaskMergeRelation.query.filter_by(source_task_id=task_id).order_by(TaskMergeRelation.id.desc()).all()
             if merge_relations:
-                merged_task_id = merge_relations[0].merged_task_id
-                source_relations = TaskMergeRelation.query.filter_by(merged_task_id=merged_task_id).all()
+                latest_merged_id = merge_relations[0].merged_task_id
+                source_relations = TaskMergeRelation.query.filter_by(merged_task_id=latest_merged_id).all()
                 source_task_ids = [r.source_task_id for r in source_relations]
-                results = TestResult.query.filter(TestResult.task_id.in_(source_task_ids)).all()
-            else:
-                results = TestResult.query.filter_by(task_id=task_id).all()
-            if not results:
-                return None, None, error_response("生成失败: 任务没有测试结果数据")
-            return task, results, None
             
         elif task.status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]:
             return None, None, error_response("只有任务状态为completed、failed或merged时才能生成报告")
         
-        results = TestResult.query.filter_by(task_id=task_id).all()
+        if source_task_ids:
+            # 源任务集合里若包含合并任务（历史链式合并数据），递归展开为原始源任务
+            result_task_ids = ReportControllerTask._expand_leaf_source_task_ids(source_task_ids)
+        else:
+            result_task_ids = [task_id]
+        
+        results = TestResult.query.filter(TestResult.task_id.in_(result_task_ids)).all()
+        if not results:
+            return None, None, error_response("生成失败: 任务没有测试结果数据")
+        
+        # 只统计任务 TaskCase 中仍存在的用例结果，避免把已删除用例的执行记录计入统计，
+        # 导致设备/API 用例数与任务总用例数（以 TaskCase 为准）不一致
+        valid_case_ids = {tc.test_case_id for tc in TaskCase.query.filter(TaskCase.task_id.in_(result_task_ids)).all()}
+        if valid_case_ids:
+            results = [r for r in results if r.test_case_id in valid_case_ids]
         if not results:
             return None, None, error_response("生成失败: 任务没有测试结果数据")
         
         return task, results, None
+
+    @staticmethod
+    def _expand_leaf_source_task_ids(task_ids):
+        """递归展开合并任务为原始源任务（叶子），兼容历史链式合并数据"""
+        from backend.models.models import TaskMergeRelation
+
+        leaf_ids = set()
+        pending = list(task_ids)
+        visited = set()
+        while pending:
+            tid = pending.pop()
+            if tid in visited:
+                continue
+            visited.add(tid)
+            t = db.session.get(Task, tid)
+            if not t:
+                continue
+            if t.type == 'merged':
+                relations = TaskMergeRelation.query.filter_by(merged_task_id=tid).all()
+                if relations:
+                    pending.extend(r.source_task_id for r in relations)
+                    continue
+            leaf_ids.add(tid)
+        return list(leaf_ids)
 
     @staticmethod
     def _get_dimension_results_batch(result_ids):

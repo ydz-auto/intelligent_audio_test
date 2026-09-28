@@ -452,7 +452,8 @@ function emitUpdate() {
   border-color: var(--primary-color, #ff6a00);
 }
 .eval-chip.active:hover {
-  background: var(--primary-dark, #e05500);
+  background: #ff8533;
+  border-color: #ff8533;
 }
 .eval-chip i {
   font-size: 10px;
@@ -492,7 +493,8 @@ function emitUpdate() {
   color: #fff;
 }
 .eval-chip-main.active:hover {
-  background: var(--primary-dark, #e05500);
+  background: #ff8533;
+  border-color: #ff8533;
   color: #fff;
 }
 
@@ -521,6 +523,16 @@ function emitUpdate() {
   background: rgba(255, 106, 0, 0.12);
   color: #e85d04;
   border: 1px solid rgba(255, 106, 0, 0.3);
+}
+/* 选中态：内部徽标反色保证在实心橙底上可读 */
+.eval-chip.active .eval-badge-sub {
+  background: #fff;
+  color: var(--primary-color, #ff6a00);
+  border-color: #fff;
+}
+.eval-chip-main.active .eval-sub-count {
+  background: #fff;
+  color: var(--primary-color, #ff6a00);
 }
 
 /* 子维度展开/收起按钮 */

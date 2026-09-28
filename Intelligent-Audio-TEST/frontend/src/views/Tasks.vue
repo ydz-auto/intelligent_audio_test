@@ -108,41 +108,29 @@
         </section>
       </div>
 
-      <!-- 筛选和排序栏 -->
+      <!-- 筛选和排序栏（日常 / 已发布 / 合并 三大视图统一） -->
       <section class="filter-sort-section" v-if="!showComparisonReport">
         <div class="filter-row">
-          <input type="text" class="search-input" placeholder="搜索任务名称、标签..." v-model="searchTerm" @input="handleSearch">
+          <input type="text" class="search-input" placeholder="搜索任务名称、标签..." v-model="currentFilter.search" @input="applyCurrentFilter">
           
-          <div class="filter-item">
+          <div class="filter-item" v-if="activeTab !== 'merged'">
             <label for="type-filter">任务类型：</label>
-            <select class="filter-select" id="type-filter" v-model="filters.type" @change="applyFilters">
-              <option value="all">全部类型</option>
-              <option value="e2e">端到端测试</option>
-              <option value="api">API测试</option>
+            <select class="filter-select" id="type-filter" v-model="currentFilter.type" @change="applyCurrentFilter">
+              <option v-for="opt in TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </div>
           
-          <div class="filter-item">
+          <div class="filter-item" v-if="activeTab === 'daily'">
             <label for="algorithm-filter">算法类型：</label>
-            <select class="filter-select" id="algorithm-filter" v-model="filters.algorithmType" @change="applyFilters">
+            <select class="filter-select" id="algorithm-filter" v-model="currentFilter.algorithmType" @change="applyCurrentFilter">
               <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
             </select>
           </div>
           
           <div class="filter-item">
             <label for="status-filter">任务状态：</label>
-            <select class="filter-select" id="status-filter" v-model="filters.status" @change="applyFilters">
-              <option value="all">全部状态</option>
-              <option value="pending">待执行</option>
-              <option value="queued">排队中</option>
-              <option value="running">执行中</option>
-              <option value="evaluating">评估中</option>
-              <option value="reevaluate_queued">重新评估排队中</option>
-              <option value="reevaluating">重新评估中</option>
-              <option value="completed">已完成</option>
-              <option value="failed">执行失败</option>
-              <option value="deleted">已删除</option>
-              <option value="merged">已合并</option>
+            <select class="filter-select" id="status-filter" v-model="currentFilter.status" @change="applyCurrentFilter">
+              <option v-for="opt in currentStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </div>
         </div>
@@ -150,39 +138,34 @@
         <div class="filter-row">
           <div class="filter-item">
             <label for="time-filter">时间范围：</label>
-            <select class="filter-select" id="time-filter" v-model="filters.timeRange" @change="applyFilters">
-              <option value="all">全部时间</option>
-              <option value="today">今日</option>
-              <option value="yesterday">昨日</option>
-              <option value="week">近7天</option>
-              <option value="month">近30天</option>
-              <option value="custom">自定义</option>
+            <select class="filter-select" id="time-filter" v-model="currentFilter.timeRange" @change="applyCurrentFilter">
+              <option v-for="opt in TIME_RANGE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
             </select>
           </div>
           
           <!-- 自定义时间范围 -->
-          <div class="filter-item custom-time-range" v-if="filters.timeRange === 'custom'">
+          <div class="filter-item custom-time-range" v-if="currentFilter.timeRange === 'custom'">
             <div>
               <label for="start-date">开始:</label>
-              <input type="date" id="task-start-date" class="date-input" v-model="customDateRange.start">
+              <input type="date" id="task-start-date" class="date-input" v-model="currentFilter.customRange.start" @change="applyCurrentFilter">
             </div>
             <span>至</span>
             <div>
               <label for="end-date">结束:</label>
-              <input type="date" id="task-end-date" class="date-input" v-model="customDateRange.end">
+              <input type="date" id="task-end-date" class="date-input" v-model="currentFilter.customRange.end" @change="applyCurrentFilter">
             </div>
           </div>
           
           <div class="sort-options">
             <span>排序：</span>
-            <div class="sort-item" :class="{ active: sortConfig.field === 'createdAt' }" @click="toggleSort('createdAt')">
-              创建时间 <i class="fas" :class="sortConfig.field === 'createdAt' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
+            <div class="sort-item" :class="{ active: currentFilter.sort.field === sortFieldKey }" @click="toggleViewSort(sortFieldKey)">
+              创建时间 <i class="fas" :class="currentFilter.sort.field === sortFieldKey ? (currentFilter.sort.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
             </div>
-            <div class="sort-item" :class="{ active: sortConfig.field === 'status' }" @click="toggleSort('status')">
-              状态 <i class="fas" :class="sortConfig.field === 'status' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
+            <div class="sort-item" :class="{ active: currentFilter.sort.field === 'status' }" @click="toggleViewSort('status')">
+              状态 <i class="fas" :class="currentFilter.sort.field === 'status' ? (currentFilter.sort.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
             </div>
-            <div class="sort-item" :class="{ active: sortConfig.field === 'title' }" @click="toggleSort('title')">
-              名称 <i class="fas" :class="sortConfig.field === 'title' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
+            <div class="sort-item" :class="{ active: currentFilter.sort.field === 'title' || currentFilter.sort.field === 'name' }" @click="toggleViewSort(activeTab === 'published' ? 'name' : 'title')">
+              名称 <i class="fas" :class="(currentFilter.sort.field === 'title' || currentFilter.sort.field === 'name') ? (currentFilter.sort.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
             </div>
           </div>
         </div>
@@ -190,15 +173,39 @@
       
       <!-- 任务列表 -->
       <section class="tasks-container" v-if="!showComparisonReport">
+        <!-- 日常任务 / 已发布任务 Tab -->
+        <div class="task-tabs">
+          <button class="task-tab" :class="{ active: activeTab === 'daily' }" @click="switchTab('daily')">
+            <i class="fas fa-tasks"></i> 日常任务
+          </button>
+          <button
+            v-if="can(PermissionPoint.PUBLISHED_TASK_READ)"
+            class="task-tab"
+            :class="{ active: activeTab === 'published' }"
+            @click="switchTab('published')"
+          >
+            <i class="fas fa-bookmark"></i> 已发布任务
+            <span v-if="published.total > 0" class="task-tab-count">{{ published.total }}</span>
+          </button>
+          <button class="task-tab" :class="{ active: activeTab === 'merged' }" @click="switchTab('merged')">
+            <i class="fas fa-object-group"></i> 合并任务
+            <span v-if="merged.total > 0" class="task-tab-count">{{ merged.total }}</span>
+          </button>
+        </div>
+
+        <template v-if="activeTab === 'daily'">
         <!-- 批量操作栏 -->
         <div class="batch-actions" v-if="selectedTasks.size > 0">
           <button class="btn-danger" @click="batchDelete">
             <i class="fas fa-trash"></i> 批量删除
           </button>
+          <button v-if="can(PermissionPoint.TASK_PUBLISH)" class="btn-primary" @click="batchPublish" :disabled="published.actionLoading">
+            <i class="fas fa-bookmark"></i> 发布
+          </button>
           <button class="btn-primary" @click="batchCompare" :disabled="selectedTasks.size < 2">
             <i class="fas fa-exchange-alt"></i> 任务对比
           </button>
-          <button class="btn-primary" @click="batchMerge" :disabled="!canMerge" :title="mergeButtonTitle">
+          <button class="btn-primary" @click="handleBatchMerge" :disabled="!canMerge" :title="mergeButtonTitle">
             <i class="fas fa-object-ungroup"></i> 合并任务
           </button>
           <button class="btn-primary" @click="batchRestore" :style="{ display: filters.status === 'deleted' ? 'inline-block' : 'none' }">
@@ -255,25 +262,253 @@
             :page-size="pageSize"
             :total-items="totalTasks"
             :total-pages="totalPages"
-            :actions="[
-              { id: 'view-details', label: '查看详情', icon: 'fa-eye', type: 'secondary' },
-              { id: 'view-report', label: '查看报告', icon: 'fa-file-alt', type: 'primary' },
-              { id: 'regenerate-report', label: '重新生成报告', icon: 'fa-sync', type: 'warning', show: (task: any) => ['completed', 'failed', 'stopped', 'paused', 'skipped', 'merged'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              // { id: 'pause', label: '暂停', icon: 'fa-pause', type: 'secondary', show: (task: any) => task.status === 'running', disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'resume', label: '继续', icon: 'fa-play', type: 'secondary', show: (task: any) => ['paused', 'stopped'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              // { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => ['running', 'paused', 'queued'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'retry', label: '重新执行', icon: 'fa-redo', type: 'success', show: (task: any) => ['pending', 'failed', 'completed', 'stopped'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => ['completed', 'failed', 'stopped', 'paused', 'skipped', 'merged'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.has(task.id) }
-            ]"
+            :actions="taskActions"
             :search-query="searchTerm"
             @toggle-selection="toggleTaskSelection"
-            @action="handleTaskAction"
+            @action="handleDailyAction"
             @name-updated="handleNameUpdated"
             @page-change="handlePageChange"
             @page-size-change="handlePageSizeChange"
           />
         </div>
+        </template>
+
+        <!-- 已发布任务面板 -->
+        <template v-else-if="activeTab === 'published'">
+          <div class="published-task-header">
+            <h3 class="task-list-title">已发布任务</h3>
+          </div>
+
+          <div class="published-task-list">
+            <div v-for="pt in published.items" :key="pt.id" class="published-task-item">
+              <div class="published-task-item-main">
+                <div class="published-task-title-row">
+                  <span class="published-task-name" :title="pt.name">{{ pt.name }}</span>
+                  <span class="published-task-version-badge">v{{ pt.version }}</span>
+                  <span v-if="pt.isCurrent" class="published-task-current-badge">当前版本</span>
+                  <span class="published-task-status" :class="pt.status">{{ publishedStatusText(pt.status) }}</span>
+                </div>
+                <div class="published-task-meta">
+                  <span><i class="fas fa-tag"></i>{{ getTaskTypeText(pt.type) }}</span>
+                  <span><i class="fas fa-layer-group"></i>共 {{ pt.versionCount ?? 1 }} 个版本</span>
+                  <span v-if="pt.publishedAt"><i class="fas fa-calendar-alt"></i>{{ formatDate(pt.publishedAt) }}</span>
+                </div>
+              </div>
+              <div class="published-task-actions">
+                <button
+                  v-if="can(PermissionPoint.PUBLISHED_TASK_EXECUTE)"
+                  class="btn btn-primary btn-sm"
+                  :disabled="pt.status === 'archived' || published.actionLoading"
+                  @click="handlePublishedExecute(pt)"
+                >
+                  <i class="fas fa-play"></i> 执行此版本
+                </button>
+                <button class="btn btn-secondary btn-sm" @click="togglePublishedDetail(pt)">
+                  <i class="fas fa-history"></i> 版本
+                </button>
+                <button
+                  v-if="can(PermissionPoint.PUBLISHED_TASK_ARCHIVE)"
+                  class="btn btn-danger btn-sm"
+                  :disabled="pt.status === 'archived' || published.actionLoading"
+                  @click="handlePublishedArchive(pt)"
+                >
+                  <i class="fas fa-archive"></i> 归档
+                </button>
+              </div>
+
+              <!-- 版本历史（展开） -->
+              <div v-if="expandedPublishedId === pt.id" class="published-task-versions">
+                <div class="published-task-versions-title">
+                  <i class="fas fa-history"></i> 版本历史（共 {{ publishedDetail?.versions?.length ?? 0 }} 个版本）
+                </div>
+                <div v-for="v in publishedDetail?.versions || []" :key="v.id" class="published-task-version-row">
+                  <span class="published-task-version-badge">v{{ v.version }}</span>
+                  <span class="published-task-status" :class="v.status">{{ publishedStatusText(v.status) }}</span>
+                  <span class="published-task-version-time">{{ formatDate(v.publishedAt) }}</span>
+                  <span class="published-task-version-source" v-if="v.sourceTaskId">来源任务 #{{ v.sourceTaskId }}</span>
+                </div>
+
+                <!-- 来源任务（发布来源的日常任务及其已有执行数据） -->
+                <div v-if="publishedSourceTaskId" class="published-task-exec-history">
+                  <div class="published-task-versions-title">
+                    <i class="fas fa-file-import"></i> 来源任务（发布时取自该日常任务）
+                  </div>
+                  <div class="published-task-version-row">
+                    <span class="published-task-exec-name" :title="publishedDetail.sourceTaskName || ''">{{ publishedDetail.sourceTaskName }}</span>
+                    <span class="published-task-status" :class="publishedDetail.sourceTaskStatus">{{ getStatusText(publishedDetail.sourceTaskStatus || '') }}</span>
+                    <span class="published-task-version-time" v-if="publishedDetail.sourceTaskTotalCases != null">用例 {{ publishedDetail.sourceTaskCompletedCases ?? 0 }}/{{ publishedDetail.sourceTaskTotalCases }}</span>
+                    <span class="published-task-version-time">{{ formatDate(publishedDetail.publishedAt) }}</span>
+                    <button class="btn btn-secondary btn-sm" @click="handleDailyAction({ action: { id: 'view-details' }, task: { id: publishedSourceTaskId } })">
+                      <i class="fas fa-eye"></i> 详情
+                    </button>
+                    <button class="btn btn-primary btn-sm" @click="handleDailyAction({ action: { id: 'view-report' }, task: { id: publishedSourceTaskId, name: publishedDetail.sourceTaskName } })">
+                      <i class="fas fa-file-alt"></i> 报告
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 冻结报告（发布时冻结的报告/执行数据/评估数据/用例日志，不可变） -->
+                <div v-if="publishedDetail?.reportSnapshot" class="published-task-exec-history">
+                  <div class="published-task-versions-title">
+                    <i class="fas fa-file-archive"></i> 冻结报告（发布时快照 · 不可变）
+                  </div>
+                  <div class="published-task-version-row">
+                    <span class="published-task-exec-name" :title="publishedDetail.reportSnapshot.name">{{ publishedDetail.reportSnapshot.name }}</span>
+                    <span class="published-task-version-time">用例 {{ publishedDetail.reportSnapshot.summary.completedCases }}/{{ publishedDetail.reportSnapshot.summary.totalCases }}</span>
+                    <span class="published-task-version-time">通过率 {{ formatPassRate(publishedDetail.reportSnapshot.summary.passRate) }}</span>
+                    <button class="btn btn-primary btn-sm" @click="reportSnapshotOpen = true">
+                      <i class="fas fa-eye"></i> 查看冻结报告
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="published-task-exec-history">
+                  <div class="published-task-versions-title">
+                    <i class="fas fa-file-archive"></i> 冻结报告
+                  </div>
+                  <div class="published-task-version-row">
+                    <span class="published-task-version-time">该版本发布时未冻结执行数据（无报告）</span>
+                  </div>
+                </div>
+
+                <!-- 执行记录（冻结快照 → 执行生成的日常任务） -->
+                <div v-if="(publishedDetail?.executionHistory || []).length > 0" class="published-task-exec-history">
+                  <div class="published-task-versions-title">
+                    <i class="fas fa-play-circle"></i> 执行记录（按冻结快照执行生成的日常任务）
+                  </div>
+                  <div v-for="exec in publishedDetail.executionHistory" :key="exec.taskId" class="published-task-version-row">
+                    <span class="published-task-version-badge">v{{ exec.version }}</span>
+                    <span class="published-task-exec-name" :title="exec.taskName">{{ exec.taskName }}</span>
+                    <span class="published-task-status" :class="exec.status">{{ getStatusText(exec.status) }}</span>
+                    <span class="published-task-version-time">用例 {{ exec.completedCases }}/{{ exec.totalCases }}</span>
+                    <span class="published-task-version-time">{{ formatDate(exec.createdAt) }}</span>
+                    <button class="btn btn-secondary btn-sm" @click="handleDailyAction({ action: { id: 'view-details' }, task: { id: exec.taskId } })">
+                      <i class="fas fa-eye"></i> 详情
+                    </button>
+                    <button class="btn btn-primary btn-sm" @click="handleDailyAction({ action: { id: 'view-report' }, task: { id: exec.taskId, name: exec.taskName } })">
+                      <i class="fas fa-file-alt"></i> 报告
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="empty-state" v-if="!published.loading && published.items.length === 0">
+              <i class="fas fa-bookmark"></i>
+              <p>暂无已发布任务</p>
+              <p class="empty-state-hint">从日常任务列表发布，沉淀可复用、可追踪的任务资产</p>
+            </div>
+          </div>
+
+          <PaginationComponent
+            v-if="published.total > 0"
+            :current-page="published.page"
+            :page-size="published.perPage"
+            :total-items="published.total"
+            :total-pages="published.pages"
+            @prev-page="handlePublishedPage(-1)"
+            @next-page="handlePublishedPage(1)"
+            @go-to-page="handlePublishedGoTo"
+            @page-size-change="handlePublishedPageSize"
+          />
+        </template>
+
+        <!-- 合并任务面板 -->
+        <template v-else-if="activeTab === 'merged'">
+          <div class="published-task-header">
+            <h3 class="task-list-title">合并任务</h3>
+          </div>
+
+          <div class="published-task-list" v-if="!merged.loading">
+            <div v-for="mt in merged.items" :key="mt.id" class="published-task-item merged-task-item">
+              <div class="published-task-item-main">
+                <div class="published-task-title-row">
+                  <span class="published-task-name" :title="mt.name">{{ mt.name }}</span>
+                  <span class="published-task-version-badge merged-task-badge">合并任务</span>
+                  <span class="published-task-status published">{{ getStatusText(mt.status) }}</span>
+                </div>
+                <div class="published-task-meta">
+                  <span><i class="fas fa-code-branch"></i>来源 {{ mt.sourceTasks?.length ?? 0 }} 个任务</span>
+                  <span><i class="fas fa-list-alt"></i>用例 {{ mt.completedCases ?? 0 }}/{{ mt.totalCases ?? 0 }}</span>
+                  <span v-if="mt.createdAt"><i class="fas fa-calendar-alt"></i>{{ formatDate(mt.createdAt) }}</span>
+                </div>
+              </div>
+
+              <!-- 源任务列表（支持查看/执行/评估/报告等全部操作） -->
+              <div class="merged-source-list" v-if="mt.sourceTasks && mt.sourceTasks.length > 0">
+                <div class="merged-source-list-title">
+                  <i class="fas fa-object-ungroup"></i> 源任务列表（{{ mt.sourceTasks.length }} 个）
+                </div>
+                <div v-for="src in mt.sourceTasks" :key="src.id" class="merged-source-row">
+                  <div class="merged-source-row-info">
+                    <span class="merged-source-row-name" :title="src.name">{{ src.name }}</span>
+                    <span class="merged-source-status" :class="src.status">{{ getStatusText(src.status) }}</span>
+                    <span class="merged-source-row-cases"><i class="fas fa-list-alt"></i>用例 {{ src.completedCases ?? 0 }}/{{ src.totalCases ?? 0 }}</span>
+                    <span v-if="src.createdAt" class="merged-source-row-time"><i class="fas fa-calendar-alt"></i>{{ formatDate(src.createdAt) }}</span>
+                  </div>
+                  <div class="merged-source-row-actions">
+                    <template v-for="act in taskActions" :key="act.id">
+                      <button
+                        v-if="!act.show || act.show(src)"
+                        class="btn btn-sm"
+                        :class="`btn-${act.type}`"
+                        :disabled="typeof act.disabled === 'function' ? act.disabled(src) : act.disabled"
+                        :title="act.title || act.label"
+                        @click="handleDailyAction({ action: { id: act.id }, task: src })"
+                      >
+                        <i v-if="act.icon" :class="`fas ${act.icon}`"></i>
+                        {{ act.label }}
+                      </button>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <div class="merged-source-list empty-source-hint" v-else>
+                <div class="merged-source-row">
+                  <span class="merged-source-row-cases">该合并任务暂无来源任务记录</span>
+                </div>
+              </div>
+
+              <div class="published-task-actions">
+                <template v-for="act in taskActions" :key="act.id">
+                  <button
+                    v-if="!act.show || act.show(mt)"
+                    class="btn btn-sm"
+                    :class="`btn-${act.type}`"
+                    :disabled="typeof act.disabled === 'function' ? act.disabled(mt) : act.disabled"
+                    :title="act.title || act.label"
+                    @click="handleDailyAction({ action: { id: act.id }, task: mt })"
+                  >
+                    <i v-if="act.icon" :class="`fas ${act.icon}`"></i>
+                    {{ act.label }}
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <div class="empty-state" v-if="merged.items.length === 0">
+              <i class="fas fa-object-group"></i>
+              <p>暂无合并任务</p>
+              <p class="empty-state-hint">在任务列表勾选多个已完成任务，点击「合并任务」创建</p>
+            </div>
+          </div>
+
+          <div class="loading-state" v-else>
+            <div class="loading-spinner"></div>
+            <p>正在加载合并任务...</p>
+          </div>
+
+          <PaginationComponent
+            v-if="merged.total > 0"
+            :current-page="merged.page"
+            :page-size="merged.perPage"
+            :total-items="merged.total"
+            :total-pages="merged.pages"
+            @prev-page="handleMergedPage(-1)"
+            @next-page="handleMergedPage(1)"
+            @go-to-page="handleMergedGoTo"
+            @page-size-change="handleMergedPageSize"
+          />
+        </template>
       </section>
       
       <!-- 任务对比报告区域 -->
@@ -456,6 +691,23 @@
       @close="isTaskTypeModalVisible = false"
       @confirm="handleCreateTask"
     />
+
+    <!-- 发布已发布任务弹窗 -->
+    <PublishTaskModal
+      v-if="isPublishModalVisible"
+      :tasks="tasks"
+      :submitting="published.actionLoading"
+      :preset-source-task-id="publishPresetTaskId"
+      @close="handleClosePublishModal"
+      @confirm="handlePublishConfirm"
+    />
+
+    <!-- 冻结报告查看弹窗 -->
+    <ReportSnapshotModal
+      v-if="reportSnapshotOpen && publishedDetail?.reportSnapshot"
+      :snapshot="publishedDetail.reportSnapshot"
+      @close="reportSnapshotOpen = false"
+    />
   </div>
 
   <!-- 操作按钮区域 -->
@@ -475,14 +727,54 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch, computed } from 'vue';
+import { onMounted, ref, watch, computed, reactive } from 'vue';
 import { useTasks } from './TasksLogic/tasks';
 import TaskListWithPagination from '../components/TaskListWithPagination.vue';
+import PaginationComponent from '../components/common/PaginationComponent.vue';
 import ComparisonTableComponent from '../components/report/ComparisonTableComponent.vue';
 import CaseCategoryComparisonComponent from '../components/report/CaseCategoryComparisonComponent.vue';
 import CaseTagComparisonComponent from '../components/report/CaseTagComparisonComponent.vue';
 import SpecificCaseComparisonComponent from '../components/report/SpecificCaseComparisonComponent.vue';
 import TaskTypeModal from './TasksLogic/TaskTypeModal.vue';
+import PublishTaskModal from '../components/published-task/PublishTaskModal.vue';
+import ReportSnapshotModal from '../components/published-task/ReportSnapshotModal.vue';
+import { usePublishedTasks } from '../composables/usePublishedTasks';
+import { useMergedTasks } from '../composables/useMergedTasks';
+import { usePermissions } from '../composables/usePermissions';
+import { useModalControl, MODAL_TYPES } from '../composables/useModal';
+import { useNotification } from '../composables/useNotification';
+import { PermissionPoint, PublishedTaskStatusText } from '../domain/enums';
+import type { PublishedTaskItem } from '../domain/model/publishedTask';
+
+const notification = useNotification();
+const modalControl = useModalControl();
+const { can } = usePermissions();
+
+// 日常任务 / 已发布任务 / 合并任务 Tab
+const activeTab = ref<'daily' | 'published' | 'merged'>('daily');
+const published = usePublishedTasks();
+const merged = useMergedTasks();
+const isPublishModalVisible = ref(false);
+const expandedPublishedId = ref<number | null>(null);
+const publishedDetail = ref<any>(null);
+const reportSnapshotOpen = ref(false);
+// 卡片「发布」入口预选的源任务（弹窗打开时带入）
+const publishPresetTaskId = ref<number | null>(null);
+
+// 可发布状态（对齐后端 PUBLISHABLE_STATUSES）
+const PUBLISHABLE_STATUSES = ['completed', 'failed', 'stopped', 'pending'];
+
+/** 任务操作定义（日常任务卡片与合并任务来源行共用，保证行为一致） */
+const taskActions: any[] = [
+  { id: 'view-details', label: '查看详情', icon: 'fa-eye', type: 'secondary' },
+  { id: 'view-report', label: '查看报告', icon: 'fa-file-alt', type: 'primary' },
+  { id: 'publish', label: '发布', icon: 'fa-bookmark', type: 'primary', show: (task: any) => PUBLISHABLE_STATUSES.includes(task.status) && can(PermissionPoint.TASK_PUBLISH), disabled: (task: any) => isControlling.value.has(task.id) || published.actionLoading },
+  { id: 'regenerate-report', label: '重新生成报告', icon: 'fa-sync', type: 'warning', show: (task: any) => ['completed', 'failed', 'stopped', 'paused', 'skipped', 'merged'].includes(task.status), disabled: (task: any) => isControlling.value.has(task.id) },
+  { id: 'resume', label: '继续', icon: 'fa-play', type: 'secondary', show: (task: any) => ['paused', 'stopped'].includes(task.status), disabled: (task: any) => isControlling.value.has(task.id) },
+  { id: 'retry', label: '重新执行', icon: 'fa-redo', type: 'success', show: (task: any) => ['pending', 'failed', 'completed', 'stopped', 'merged'].includes(task.status), disabled: (task: any) => isControlling.value.has(task.id) },
+  { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => ['completed', 'failed', 'stopped', 'paused', 'skipped', 'merged'].includes(task.status), disabled: (task: any) => isControlling.value.has(task.id) },
+  { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.value.has(task.id) },
+];
 
 const {
   tasks,
@@ -494,7 +786,7 @@ const {
   inProgressTasks, completedTasks, failedTasks, deletedTasks,
   isAllSelected, formatDate, applyFilters, handleSearch, toggleSort,
   toggleTag, toggleTaskSelection, toggleSelectAll, cancelSelect, createNewTask, handleCreateTask,
-  handleTaskAction, updateTaskName, batchDelete,
+  handleTaskAction, updateTaskName, batchDelete, getStatusText,
   batchCompare, batchMerge, batchRestore, closeComparisonReport, saveComparisonReport,
   publishComparisonReport, saveConclusion, toggleEditConclusion, reevaluateTask,
   cancelEditConclusion, toggleEditReport, cancelEditReport,
@@ -529,6 +821,137 @@ const {
   loadAlgorithmOptions
 } = useTasks();
 
+// ========== 三大视图统一筛选排序（日常 / 已发布 / 合并）==========
+
+/** 日常视图状态选项（对齐原硬编码） */
+const DAILY_STATUS_OPTIONS = [
+  { value: 'all', label: '全部状态' },
+  { value: 'pending', label: '待执行' },
+  { value: 'queued', label: '排队中' },
+  { value: 'running', label: '执行中' },
+  { value: 'evaluating', label: '评估中' },
+  { value: 'reevaluate_queued', label: '重新评估排队中' },
+  { value: 'reevaluating', label: '重新评估中' },
+  { value: 'completed', label: '已完成' },
+  { value: 'failed', label: '执行失败' },
+  { value: 'deleted', label: '已删除' },
+  { value: 'merged', label: '已合并' },
+];
+
+/** 合并视图状态选项 */
+const MERGED_STATUS_OPTIONS = [
+  { value: 'all', label: '全部状态' },
+  { value: 'completed', label: '已完成' },
+  { value: 'merged', label: '已合并' },
+];
+
+/** 任务类型选项（日常 / 发布视图） */
+const TYPE_OPTIONS = [
+  { value: 'all', label: '全部类型' },
+  { value: 'e2e', label: '端到端测试' },
+  { value: 'api', label: 'API测试' },
+];
+
+/** 时间范围选项（三视图共用） */
+const TIME_RANGE_OPTIONS = [
+  { value: 'all', label: '全部时间' },
+  { value: 'today', label: '今日' },
+  { value: 'yesterday', label: '昨日' },
+  { value: 'week', label: '近7天' },
+  { value: 'month', label: '近30天' },
+  { value: 'custom', label: '自定义' },
+];
+
+/** 各视图筛选状态适配为统一结构（search/type/algorithmType/status/timeRange/customRange/sort），
+ *  使顶部筛选排序栏在三大视图间可复用同一套控件 */
+const dailyFilterState = reactive({
+  get search() { return searchTerm.value; },
+  set search(v: string) { searchTerm.value = v; },
+  get type() { return filters.value.type; },
+  set type(v: string) { filters.value.type = v; },
+  get algorithmType() { return filters.value.algorithmType; },
+  set algorithmType(v: string) { filters.value.algorithmType = v; },
+  get status() { return filters.value.status; },
+  set status(v: string) { filters.value.status = v; },
+  get timeRange() { return filters.value.timeRange; },
+  set timeRange(v: string) { filters.value.timeRange = v; },
+  get customRange() { return customDateRange.value; },
+  set customRange(v: { start: string; end: string }) { customDateRange.value = v; },
+  get sort() { return sortConfig.value; },
+  set sort(v: { field: string; order: string }) { sortConfig.value = v; },
+});
+
+const publishedFilterState = reactive({
+  get search() { return published.filters.keyword; },
+  set search(v: string) { published.filters.keyword = v; },
+  get type() { return published.filters.type; },
+  set type(v: string) { published.filters.type = v; },
+  algorithmType: '',
+  get status() { return published.filters.status; },
+  set status(v: string) { published.filters.status = v; },
+  get timeRange() { return published.filters.timeRange; },
+  set timeRange(v: string) { published.filters.timeRange = v; },
+  get customRange() { return published.filters.customRange; },
+  set customRange(v: { start: string; end: string }) { published.filters.customRange = v; },
+  get sort() { return published.filters.sort; },
+  set sort(v: { field: string; order: 'asc' | 'desc' }) { published.filters.sort = v; },
+});
+
+const mergedFilterState = reactive({
+  get search() { return merged.filters.search; },
+  set search(v: string) { merged.filters.search = v; },
+  type: 'merged',
+  algorithmType: '',
+  get status() { return merged.filters.status; },
+  set status(v: string) { merged.filters.status = v; },
+  get timeRange() { return merged.filters.timeRange; },
+  set timeRange(v: string) { merged.filters.timeRange = v; },
+  get customRange() { return merged.filters.customRange; },
+  set customRange(v: { start: string; end: string }) { merged.filters.customRange = v; },
+  get sort() { return merged.filters.sort; },
+  set sort(v: { field: string; order: 'asc' | 'desc' }) { merged.filters.sort = v; },
+});
+
+/** 当前视图的筛选状态（筛选排序栏统一绑定） */
+const currentFilter = computed(() => {
+  if (activeTab.value === 'published') return publishedFilterState;
+  if (activeTab.value === 'merged') return mergedFilterState;
+  return dailyFilterState;
+});
+
+/** 当前视图的状态选项 */
+const currentStatusOptions = computed(() => {
+  if (activeTab.value === 'published') return published.statusOptions;
+  if (activeTab.value === 'merged') return MERGED_STATUS_OPTIONS;
+  return DAILY_STATUS_OPTIONS;
+});
+
+/** 当前视图的创建时间排序字段（发布任务用 publishedAt） */
+const sortFieldKey = computed(() => (activeTab.value === 'published' ? 'publishedAt' : 'createdAt'));
+
+/** 筛选变更：按当前视图触发对应列表拉取 */
+function applyCurrentFilter() {
+  if (activeTab.value === 'published') {
+    published.page = 1;
+    published.fetchList();
+  } else if (activeTab.value === 'merged') {
+    merged.apply();
+  } else {
+    applyFilters();
+  }
+}
+
+/** 排序变更：按当前视图触发对应排序 */
+function toggleViewSort(field: string) {
+  if (activeTab.value === 'published') {
+    published.toggleSort(field);
+  } else if (activeTab.value === 'merged') {
+    merged.toggleSort(field);
+  } else {
+    toggleSort(field);
+  }
+}
+
 // 监听图表容器ref变化，初始化图表
 watch([taskTypeChartRef, taskTrendChartRef, taskStatusChartRef], () => {
   if (taskTypeChartRef.value && taskTrendChartRef.value && taskStatusChartRef.value) {
@@ -561,10 +984,12 @@ const handleNameUpdated = ({ taskId, newName }: { taskId: string | number; newNa
   updateTaskName(taskId, newName);
 };
 
+const MERGEABLE_STATUSES = ['completed', 'merged'];
+
 const canMerge = computed(() => {
   if (selectedTasks.value.size < 2) return false;
   const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
-  return selectedTasksArray.every(t => t.status === 'completed');
+  return selectedTasksArray.every(t => MERGEABLE_STATUSES.includes(t.status));
 });
 
 const mergeButtonTitle = computed(() => {
@@ -572,18 +997,585 @@ const mergeButtonTitle = computed(() => {
     return '请至少选择两个任务进行合并';
   }
   const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
-  const incompleteTasks = selectedTasksArray.filter(t => t.status !== 'completed');
+  const incompleteTasks = selectedTasksArray.filter(t => !MERGEABLE_STATUSES.includes(t.status));
   if (incompleteTasks.length > 0) {
     const names = incompleteTasks.map(t => t.name).join(', ');
     return `以下任务未完成，无法合并: ${names}`;
   }
   return '点击将选中的已完成任务合并为一个新任务';
 });
+
+// ---------- 已发布任务（Tab 化展示，权限点驱动显隐） ----------
+
+function switchTab(tab: 'daily' | 'published' | 'merged') {
+  activeTab.value = tab;
+  if (tab === 'published') {
+    published.fetchList();
+  } else if (tab === 'merged') {
+    merged.fetchList();
+  }
+}
+
+function publishedStatusText(status: string): string {
+  return PublishedTaskStatusText[status as keyof typeof PublishedTaskStatusText] || status;
+}
+
+function getTaskTypeText(type: string): string {
+  const map: Record<string, string> = { api: 'API 测试', e2e: 'E2E 测试' };
+  return map[type] || type;
+}
+
+/** 日常任务列表 action 分发：拦截「发布」走发布弹窗，其余透传原逻辑 */
+function handleDailyAction(event: any) {
+  if (event?.action?.id === 'publish') {
+    openPublishForTask(event.task);
+    return;
+  }
+  handleTaskAction(event);
+}
+
+/** 从卡片打开发布弹窗并预选源任务 */
+function openPublishForTask(task: any) {
+  publishPresetTaskId.value = task?.id ?? null;
+  isPublishModalVisible.value = true;
+}
+
+/** 关闭发布弹窗（重置预选，避免下次打开残留） */
+function handleClosePublishModal() {
+  publishPresetTaskId.value = null;
+  isPublishModalVisible.value = false;
+}
+
+/** 勾选批量发布：名称沿用源任务名，不可发布状态自动跳过 */
+async function batchPublish() {
+  const selected = tasks.value.filter((t: any) => selectedTasks.value.has(t.id));
+  if (selected.length === 0) return;
+  const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    title: '批量发布',
+    content: `将为选中的 ${selected.length} 个任务发布（名称沿用源任务名，不可发布状态自动跳过）。是否继续？`,
+    confirmText: '发布',
+    cancelText: '取消',
+  });
+  if (!confirmed) return;
+
+  let successCount = 0;
+  const failedNames: string[] = [];
+  for (const task of selected) {
+    try {
+      await published.publish(task.id, task.name || task.title || `任务${task.id}`, task.description);
+      successCount += 1;
+    } catch (error: any) {
+      failedNames.push(task.name || `#${task.id}`);
+    }
+  }
+  if (successCount > 0) {
+    notification.success(`批量发布完成：成功 ${successCount} 个${failedNames.length ? `，失败 ${failedNames.length} 个` : ''}`);
+  } else {
+    notification.error('批量发布失败，请确认任务状态是否可发布');
+  }
+  if (failedNames.length > 0) {
+    console.warn('批量发布失败的任务:', failedNames);
+  }
+}
+
+async function handlePublishConfirm(payload: { sourceTaskId: number; name: string; description?: string; publishReason?: string }) {
+  try {
+    await published.publish(payload.sourceTaskId, payload.name, payload.description, payload.publishReason);
+    handleClosePublishModal();
+    notification.success('已发布任务创建成功');
+    activeTab.value = 'published';
+    await published.fetchList();
+  } catch (error: any) {
+    notification.error(error?.response?.data?.message || error?.message || '发布失败，请稍后重试');
+  }
+}
+
+async function handlePublishedExecute(pt: PublishedTaskItem) {
+  if (pt.status === 'archived') {
+    notification.warning('已归档任务禁止执行，请先创建新版本');
+    return;
+  }
+  const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    title: '执行此版本',
+    content: `将按版本 v${pt.version} 的快照创建新的日常任务「${pt.name}」，创建后到任务列表启动执行。是否继续？`,
+    confirmText: '创建任务',
+    cancelText: '取消',
+  });
+  if (!confirmed) return;
+  try {
+    const result = await published.execute(pt.id);
+    if (result?.taskId) {
+      notification.success(`日常任务已创建（ID: ${result.taskId}），请到任务列表启动执行`);
+      await fetchTasks();
+      activeTab.value = 'daily';
+    }
+  } catch (error: any) {
+    notification.error(error?.response?.data?.message || error?.message || '创建日常任务失败');
+  }
+}
+
+async function handlePublishedArchive(pt: PublishedTaskItem) {
+  const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    title: '归档已发布任务',
+    content: `确定归档「${pt.name}」v${pt.version} 吗？归档后不可直接执行。`,
+    confirmText: '归档',
+    cancelText: '取消',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await published.archive(pt.id);
+    notification.success('任务已归档');
+  } catch (error: any) {
+    notification.error(error?.response?.data?.message || error?.message || '归档失败');
+  }
+}
+
+async function togglePublishedDetail(pt: PublishedTaskItem) {
+  if (expandedPublishedId.value === pt.id) {
+    expandedPublishedId.value = null;
+    publishedDetail.value = null;
+    return;
+  }
+  expandedPublishedId.value = pt.id;
+  publishedDetail.value = await published.fetchDetail(pt.id);
+}
+
+/** 来源任务 ID（兼容旧记录 source_task_id 为空时从快照兜底） */
+const publishedSourceTaskId = computed(() =>
+  publishedDetail.value?.sourceTaskId ?? publishedDetail.value?.snapshotConfig?.sourceTaskId ?? null
+);
+
+/** 通过率格式化（支持 0~1 与百分比两种存储） */
+function formatPassRate(val: number | null | undefined): string {
+  if (val == null) return '0%';
+  if (val <= 1) return `${(val * 100).toFixed(1)}%`;
+  return `${Number(val).toFixed(1)}%`;
+}
+
+function handlePublishedPage(delta: number) {
+  const next = published.page + delta;
+  if (next < 1 || next > published.pages) return;
+  published.setPage(next);
+}
+
+function handlePublishedGoTo(p: number) {
+  if (p >= 1 && p <= published.pages) {
+    published.setPage(p);
+  }
+}
+
+function handlePublishedPageSize(size: number) {
+  published.perPage = size;
+  published.page = 1;
+  published.fetchList();
+}
+
+// ---------- 合并任务（Tab 化展示） ----------
+
+function handleMergedPage(delta: number) {
+  const next = merged.page + delta;
+  if (next < 1 || next > merged.pages) return;
+  merged.setPage(next);
+}
+
+function handleMergedGoTo(p: number) {
+  if (p >= 1 && p <= merged.pages) {
+    merged.setPage(p);
+  }
+}
+
+function handleMergedPageSize(size: number) {
+  merged.setPageSize(size);
+}
+
+/** 合并成功后同步刷新合并任务列表 */
+async function handleBatchMerge() {
+  await batchMerge();
+  if (activeTab.value === 'merged') {
+    merged.refresh();
+  }
+}
 </script>
 
 <style scoped>
 /* 只导入主样式文件，所有组件样式已包含在main.css中 */
 @import '../assets/styles/main.css';
+
+/* 日常任务 / 已发布任务 Tab */
+.task-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 12px;
+}
+
+.task-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px 8px 0 0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: none;
+}
+
+.task-tab:hover {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.task-tab.active {
+  background: #fff;
+  color: #FF6A00;
+  border-color: #FF6A00;
+  box-shadow: 0 -2px 0 0 #FF6A00 inset;
+  font-weight: 600;
+}
+
+.task-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #ff6a00;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* 已发布任务面板 */
+.published-task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.published-task-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.published-search-input {
+  width: 220px;
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: #334155;
+}
+
+.published-search-input:focus {
+  outline: none;
+  border-color: #FF6A00;
+  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.1);
+}
+
+.published-status-select {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.published-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.published-task-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  transition: box-shadow 0.2s ease;
+}
+
+.published-task-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
+}
+
+.published-task-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.published-task-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.published-task-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.published-task-version-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.published-task-current-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  color: #059669;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.published-task-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.published-task-status.published {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.published-task-status.archived {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.published-task-meta {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.published-task-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.published-task-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.published-task-versions {
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px dashed #e2e8f0;
+}
+
+.published-task-exec-history {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.published-task-exec-name {
+  font-weight: 500;
+  color: #334155;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.published-task-versions-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 10px;
+}
+
+.published-task-version-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 4px;
+  border-bottom: 1px solid #eef2f7;
+  font-size: 13px;
+}
+
+.published-task-version-row:last-child {
+  border-bottom: none;
+}
+
+.published-task-version-time {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.published-task-version-source {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+/* 合并任务面板 */
+.merged-task-badge {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.merged-source-list {
+  margin-top: 4px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border: 1px dashed #e2e8f0;
+  border-radius: 8px;
+}
+
+.merged-source-list-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.merged-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 6px 4px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.merged-source-row:last-child {
+  border-bottom: none;
+}
+
+.merged-source-row-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.merged-source-row-name {
+  font-weight: 500;
+  color: #334155;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merged-source-row-cases {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.merged-source-row-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.merged-source-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.empty-source-hint .merged-source-row {
+  justify-content: flex-start;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.merged-source-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #e2e8f0;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.merged-source-status.merged {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.merged-source-status.completed {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.merged-source-status.failed {
+  background: #fee2e2;
+  color: #dc2626;
+}
 
 /* 图表头部样式 */
 .chart-header {

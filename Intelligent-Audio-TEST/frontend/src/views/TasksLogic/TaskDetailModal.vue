@@ -249,7 +249,7 @@ const computedAssociatedDevices = computed(() => {
   if (associatedDevices.value && associatedDevices.value.length > 0) {
     return associatedDevices.value
   }
-  if (task.value?.type === 'e2e') {
+  if (task.value?.type === 'e2e' || task.value?.type === 'merged') {
     return task.value?.devices || []
   }
   return task.value?.apis || []
@@ -296,7 +296,7 @@ async function fetchTaskDetails() {
       });
     }
     
-    if (taskData.type === 'e2e') {
+    if (taskData.type === 'e2e' || taskData.type === 'merged') {
       associatedDevices.value = taskData.devices || [];
     } else {
       associatedDevices.value = taskData.apis || [];

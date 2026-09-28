@@ -1081,8 +1081,8 @@ class ReportUtils:
                                                       dim_statistic_method=dim_statistic_method,
                                                       dim_output_params=dim_output_params,
                                                       dim_agg_denominator=dim_agg_denominator)
-            total = len(res_list)
-            completed = len([r for r in res_list if r.execution_status == 'completed'])
+            total = len({r.test_case_id for r in res_list})
+            completed = len({r.test_case_id for r in res_list if r.execution_status == 'completed'})
 
             device_stats.append({
                 "id": device.id, "name": device.name, "model": device.model, "type": device.type,
@@ -1100,8 +1100,8 @@ class ReportUtils:
                                                       dim_statistic_method=dim_statistic_method,
                                                       dim_output_params=dim_output_params,
                                                       dim_agg_denominator=dim_agg_denominator)
-            total = len(res_list)
-            completed = len([r for r in res_list if r.execution_status == 'completed'])
+            total = len({r.test_case_id for r in res_list})
+            completed = len({r.test_case_id for r in res_list if r.execution_status == 'completed'})
             
             api_stats.append({
                 "id": api.id, "name": api.name, "status": api.status, "max_process": api.max_process,

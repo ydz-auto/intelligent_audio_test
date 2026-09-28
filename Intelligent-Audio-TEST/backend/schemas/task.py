@@ -33,6 +33,17 @@ class TaskApiBrief(APIModel):
     status: Optional[str] = Field(None, alias='status', validation_alias='status')
 
 
+class TaskSourceBrief(APIModel):
+    """合并任务来源任务摘要（用于合并任务视图）"""
+    id: int = Field(..., alias='id', validation_alias='id')
+    name: str = Field(..., alias='name', validation_alias='name')
+    status: str = Field(..., alias='status', validation_alias='status')
+    total_cases: Optional[int] = Field(None, alias='totalCases', validation_alias='totalCases')
+    completed_cases: Optional[int] = Field(None, alias='completedCases', validation_alias='completedCases')
+    failed_cases: Optional[int] = Field(None, alias='failedCases', validation_alias='failedCases')
+    created_at: Optional[str] = Field(None, alias='createdAt', validation_alias='createdAt')
+
+
 class TaskListItem(APIModel):
     id: int = Field(..., alias='id', validation_alias='id')
     name: str = Field(..., alias='name', validation_alias='name')
@@ -55,6 +66,7 @@ class TaskListItem(APIModel):
     reports: Optional[TaskReportsData] = Field(None, alias='reports', validation_alias='reports')
     devices: List[TaskDeviceBrief] = Field(default_factory=list, alias='devices', validation_alias='devices')
     apis: List[TaskApiBrief] = Field(default_factory=list, alias='apis', validation_alias='apis')
+    source_tasks: List[TaskSourceBrief] = Field(default_factory=list, alias='sourceTasks', validation_alias='sourceTasks')
 
 
 class TaskListData(PaginatedData[TaskListItem]):
