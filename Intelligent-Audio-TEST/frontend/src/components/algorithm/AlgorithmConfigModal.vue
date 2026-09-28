@@ -672,6 +672,7 @@
                         <option value="json">JSON</option>
                         <option value="rttm">RTTM</option>
                         <option value="stm">STM</option>
+                        <option value="boolean">布尔</option>
                       </select>
                     </td>
                     <td>
@@ -1178,7 +1179,8 @@ const referenceFormatOptions = [
   { value: 'text', label: '文本' },
   { value: 'json', label: 'JSON' },
   { value: 'rttm', label: 'RTTM' },
-  { value: 'stm', label: 'STM' }
+  { value: 'stm', label: 'STM' },
+  { value: 'boolean', label: '布尔' }
 ]
 const mergeOptions = [
   { value: 'join', label: '拼接' },
@@ -1656,6 +1658,21 @@ function normalizeCaseParamFields(param: any) {
   return normalized
 }
 
+function normalizeReferenceParamFields(param: any) {
+  // 后端响应经响应层转为 camelCase，这里兼容 snake_case / camelCase 两种键名
+  return {
+    ...param,
+    code: param.code || '',
+    name: param.name || '',
+    type: param.type || 'text',
+    annotation_code: param.annotation_code || param.annotationCode || param.code || '',
+    annotation_format: param.annotation_format || param.annotationFormat || '',
+    field_path: param.field_path || param.fieldPath || '',
+    merge_mode: param.merge_mode || param.mergeMode || 'join',
+    help_text: param.help_text || param.helpText || ''
+  }
+}
+
 watch(() => [props.mode, props.editData] as const, ([mode, editData]) => {
   console.log('watch mode:', mode, 'editData:', editData)
   if (mode === 'edit' && editData) {
@@ -1684,17 +1701,7 @@ watch(() => [props.mode, props.editData] as const, ([mode, editData]) => {
         weight: d.weight ?? 1.0,
         is_default: d.isDefault ?? d.is_default ?? false
       })),
-      reference_params: (refConfig || []).map((p: any) => ({
-        id: p.id,
-        code: p.code || '',
-        name: p.name || '',
-        type: p.type || 'text',
-        annotation_code: p.annotation_code || p.code || '',
-        annotation_format: p.annotation_format || '',
-        field_path: p.field_path || '',
-        merge_mode: p.merge_mode || 'join',
-        help_text: p.help_text || ''
-      }))
+      reference_params: (refConfig || []).map(normalizeReferenceParamFields)
     })
   } else if (mode === 'create') {
     resetForm()
@@ -1884,17 +1891,7 @@ async function handleEdit(record: AlgorithmRecord) {
           weight: d.weight ?? 1.0,
           is_default: d.isDefault ?? d.is_default ?? false
         })),
-        reference_params: (refConfig || []).map((p: any) => ({
-          id: p.id,
-          code: p.code || '',
-          name: p.name || '',
-          type: p.type || 'text',
-          annotation_code: p.annotation_code || p.code || '',
-          annotation_format: p.annotation_format || '',
-          field_path: p.field_path || '',
-          merge_mode: p.merge_mode || 'join',
-          help_text: p.help_text || ''
-        }))
+        reference_params: (refConfig || []).map(normalizeReferenceParamFields)
       })
       paramConfigType.value = 'device'
       creatingNewGroup.value = false

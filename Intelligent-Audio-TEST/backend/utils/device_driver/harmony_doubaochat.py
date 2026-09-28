@@ -601,6 +601,9 @@ class DoubaoChat(Xiaoyilivechat):
             driver.touch((1060, 2368))
             self._log(level='DEBUG', content="已挂断通话", task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
         driver.wait(5)
 
@@ -674,6 +677,9 @@ class DoubaoChat(Xiaoyilivechat):
                       task_id=task_id, test_case_id=test_case_id)
             time.sleep(2)
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='DEBUG', content=f"teardown: 无残留通话或挂断失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
@@ -682,6 +688,9 @@ class DoubaoChat(Xiaoyilivechat):
             driver.press_home()
             time.sleep(1)
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
@@ -694,6 +703,9 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='DEBUG', content="teardown: 已停止豆包 APP",
                       task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='WARNING', content=f"teardown: 停止豆包 APP 失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 

@@ -638,9 +638,16 @@ class ReferenceParamsGenerator:
 
         for code, params in by_code.items():
             # 如果该 code 有多个轮次的参数，按 round_number 展开为 code@round:N
-            has_multi_round = any(p.get('round_number') is not None for p in params) and len(params) > 1
-            for param in params:
+            has_round_info = any(p.get('round_number') is not None for p in params)
+            has_multi_round = has_round_info and len(params) > 1
+            # 兼容旧数据：同一 code 出现多次但都没带 round_number
+            # （例如 adjusted_reference_params 按轮次顺序平铺的场景），按出现顺序推断轮次号
+            if not has_round_info and len(params) > 1:
+                has_multi_round = True
+            for idx, param in enumerate(params):
                 rn = param.get('round_number')
+                if rn is None and has_multi_round:
+                    rn = idx + 1
                 if has_multi_round and rn is not None:
                     key = f'{code}@round:{rn}'
                 else:

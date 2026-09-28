@@ -4,7 +4,7 @@ import os
 import re
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from config.config import Config
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
@@ -40,6 +40,9 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
                 return True
             return False
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='INFO', content=f"设备{device_sn}锁屏检查失败：{e}")
             return False
 
@@ -63,6 +66,9 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             driver.click((1560, 1040))
             return
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='WARNING', content=f"Wakeup interaction failed: {e}")
 
         time.sleep(1)
@@ -104,6 +110,9 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             driver.click(By.key('Ctrl.NewToggleBaseComponent_Image_meeting'))
             return True
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='ERROR', content=f"打开{device_sn}小艺慧记失败：{e}", task_id=task_id, test_case_id=test_case_id)
             return False
 
@@ -125,6 +134,9 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             self._log(level='INFO', content=f"--- 开启{device_sn} 小艺慧记 失败---", task_id=task_id, test_case_id=test_case_id)
             return False
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='INFO', content=f": 开启{device_sn} 小艺慧记 失败{e}", task_id=task_id, test_case_id=test_case_id)
             return False
 
@@ -148,6 +160,9 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             return True
 
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='INFO', content=f": 结束{device_sn} 小艺慧记 失败{e}", task_id=task_id, test_case_id=test_case_id)
             return False
 

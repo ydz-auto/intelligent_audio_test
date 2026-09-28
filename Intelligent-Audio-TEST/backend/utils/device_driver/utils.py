@@ -22,20 +22,62 @@ except Exception as e:
 def restart_uitest_daemon(device_sn):
     """重启设备端 uitest RPC 服务（RpcNotRunningError 恢复用）
 
-    通过 hdc 执行: ui restart 重启 RPC 服务。
+    通过 hdc 执行: ui restart 重启 RPC 服务, 并轮询等待端口 8012 重新监听。
     """
     try:
         subprocess.run(['hdc', '-t', device_sn, 'shell',
                         'ui', 'restart'],
                        check=False, timeout=30)
-        time.sleep(2)
-        log_and_emit(level='INFO', module='DeviceDriver',
-                     content=f"uitest daemon restarted for device {device_sn}")
-        return True
+        # 轮询等待 RPC 端口重新监听(ui restart 后 daemon 需要数秒起来)
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            try:
+                r = subprocess.run(
+                    ['hdc', '-t', device_sn, 'shell', 'netstat', '-atn', '|', 'grep', ':8012'],
+                    capture_output=True, text=True, timeout=5)
+                if 'LISTEN' in (r.stdout or '') and ':8012' in (r.stdout or ''):
+                    log_and_emit(level='INFO', module='DeviceDriver',
+                                 content=f"uitest daemon restarted for device {device_sn}")
+                    return True
+            except Exception:
+                pass
+            time.sleep(1)
+        log_and_emit(level='ERROR', module='DeviceDriver',
+                     content=f"uitest daemon restart 后 RPC 端口 8012 仍未监听: {device_sn}")
+        return False
     except Exception as e:
         log_and_emit(level='ERROR', module='DeviceDriver',
                      content=f"Failed to restart uitest daemon for {device_sn}: {e}")
         return False
+
+
+def ensure_uitest_rpc_healthy(device_sn):
+    """确保设备端 uitest RPC(端口 8012)存活；已死则 ui restart 恢复。
+
+    背景: find_component 等 UI 调用失败时, hypium 内部的 MultiModeComponentFinder 会把
+    RPC 异常吞掉并走 dumpLayout 兜底(返回 None 而不是抛异常), 后端拿不到 RPC 异常,
+    with_rpc_retry 无法触发 ui restart。因此在进入 with_rpc_retry 且有缓存驱动时,
+    先主动探测 RPC 端口, 已死直接 ui restart, 避免 hypium 自身每步 7-8s 的无效重连。
+
+    Returns:
+        True: RPC 存活, 或状态未知(hdc 自身失败, 不擅自重启)
+        False: 已尝试 ui restart, 调用方需重连 driver
+    """
+    try:
+        r = subprocess.run(
+            ['hdc', '-t', device_sn, 'shell', 'netstat', '-atn', '|', 'grep', ':8012'],
+            capture_output=True, text=True, timeout=5)
+        out = r.stdout or ''
+        if 'LISTEN' in out and ':8012' in out:
+            return True
+        if r.returncode != 0 and not out.strip():
+            # hdc 自身失败(设备断线等), 无法判断, 不擅自重启
+            return True
+    except Exception:
+        return True
+    log_and_emit(level='WARNING', module='DeviceDriver',
+                 content=f"uitest RPC 端口 8012 未监听, 执行 ui restart 恢复: {device_sn}")
+    return restart_uitest_daemon(device_sn)
 
 
 def is_rpc_not_running_error(exc):
@@ -60,6 +102,23 @@ def with_rpc_retry(max_retries=1):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
             last_exc = None
+            # 从 args 提取 device_sn (通常是第一个位置参数)
+            device_sn = None
+            if args:
+                device_sn = args[0]
+            elif 'device_sn' in kwargs:
+                device_sn = kwargs['device_sn']
+            # 已有缓存驱动时先探测 RPC 存活: find_component 等失败时 hypium 内部会把 RPC
+            # 异常吞掉走 dumpLayout 兜底, 后端拿不到异常无法触发重试, 故主动探测恢复
+            if device_sn:
+                cached = getattr(self, '_drivers', None)
+                if cached and device_sn in cached:
+                    try:
+                        if not ensure_uitest_rpc_healthy(device_sn):
+                            if hasattr(self, '_reconnect_driver'):
+                                self._reconnect_driver(device_sn)
+                    except Exception:
+                        pass
             for attempt in range(max_retries + 1):
                 try:
                     return func(self, *args, **kwargs)
@@ -69,12 +128,6 @@ def with_rpc_retry(max_retries=1):
                         raise
                     if attempt >= max_retries:
                         raise
-                    # 从 args 提取 device_sn (通常是第一个位置参数)
-                    device_sn = None
-                    if args:
-                        device_sn = args[0]
-                    elif 'device_sn' in kwargs:
-                        device_sn = kwargs['device_sn']
                     if not device_sn:
                         raise
                     _task_id = getattr(self, '_task_id', None)

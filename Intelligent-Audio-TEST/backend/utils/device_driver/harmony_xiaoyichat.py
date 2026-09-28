@@ -12,7 +12,7 @@ except Exception:
     UiParam = None
 
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 from .driver_types import AppType, AppVersion, DevicePlatform
@@ -364,6 +364,9 @@ class Xiaoyilivechat(HarmonyDriver):
             self._log(level='DEBUG', content=f"stop_app {self.MUSIC_BUNDLE} 完成",
                       task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='WARNING',
                       content=f"stop_app {self.MUSIC_BUNDLE} 失败(忽略,不阻断用例): {e}",
                       task_id=task_id, test_case_id=test_case_id)
@@ -1274,7 +1277,10 @@ class Xiaoyilivechat(HarmonyDriver):
         try:
             if driver.find_component(By.text("小艺")):
                 self._log(level='DEBUG', content="成功进行通话", task_id=task_id, test_case_id=test_case_id)
-        except Exception:
+        except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由 @with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
             return False
         # 开启录屏

@@ -1,4 +1,4 @@
-from .utils import get_task_events, log_and_emit
+from .utils import get_task_events, log_and_emit, is_rpc_not_running_error
 
 class BaseDeviceDriver:
     """基础设备驱动类"""
@@ -343,8 +343,10 @@ class BaseDeviceDriver:
             try:
                 if condition_fn():
                     return True
-            except Exception:
-                pass
+            except Exception as e:
+                if is_rpc_not_running_error(e):
+                    # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                    raise
             time.sleep(interval)
         self._log(
             level='WARNING',

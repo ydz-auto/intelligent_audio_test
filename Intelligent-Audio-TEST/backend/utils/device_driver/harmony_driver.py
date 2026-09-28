@@ -307,11 +307,16 @@ class HarmonyDriver(BaseDeviceDriver):
                     try:
                         result = driver.find_components(by_obj, 1)
                         break
-                    except Exception:
+                    except Exception as e:
+                        if is_rpc_not_running_error(e):
+                            # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                            raise
                         time.sleep(0.5)
                         continue
-            except Exception:
-                pass
+            except Exception as e:
+                if is_rpc_not_running_error(e):
+                    # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                    raise
             return result
 
         try:
@@ -335,7 +340,10 @@ class HarmonyDriver(BaseDeviceDriver):
                                 if center_y > max_y:
                                     max_y = center_y
                                     best_btn = btn
-                            except Exception:
+                            except Exception as e:
+                                if is_rpc_not_running_error(e):
+                                    # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                                    raise
                                 continue
 
                         if best_btn:
@@ -344,10 +352,16 @@ class HarmonyDriver(BaseDeviceDriver):
                             try:
                                 best_btn.click()
                             except Exception as e:
+                                if is_rpc_not_running_error(e):
+                                    # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                                    raise
                                 self._log(level='DEBUG', content=f"Failed to click button: {e}")
                             time.sleep(0.5)
                             continue
                 except Exception as e:
+                    if is_rpc_not_running_error(e):
+                        # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                        raise
                     self._log(level='DEBUG', content=f"Error checking button '{btn_text}' on HarmonyOS: {e}")
                     continue
 
@@ -369,6 +383,9 @@ class HarmonyDriver(BaseDeviceDriver):
                             time.sleep(0.5)
                             break
                     except Exception as e:
+                        if is_rpc_not_running_error(e):
+                            # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                            raise
                         self._log(level='DEBUG', content=f"Error clicking button '{btn_text}' on HarmonyOS: {e}")
                         continue
 

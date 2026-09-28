@@ -3,7 +3,7 @@ import subprocess
 
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .harmony_driver import HarmonyDriver
-from .utils import By, log_and_emit, with_rpc_retry
+from .utils import By, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
@@ -75,6 +75,9 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             driver.click(x, y)
             return True
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='DEBUG', content=f"坐标点击失败 ({x},{y}): {e}")
             return False
 
@@ -104,16 +107,20 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             found = driver.find_all_components(By.xpath('//android.widget.TextView'))
             if found:
                 comps = found
-        except Exception:
-            pass
+        except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
         # 策略2: type 匹配
         if not comps:
             try:
                 found = driver.find_all_components(By.type('android.widget.TextView'))
                 if found:
                     comps = found
-            except Exception:
-                pass
+            except Exception as e:
+                if is_rpc_not_running_error(e):
+                    # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                    raise
         result = []
         for c in comps:
             try:
@@ -126,7 +133,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                 bounds = c.getBounds()
                 x0 = bounds[0] if bounds else 0
                 result.append((txt, x0))
-            except Exception:
+            except Exception as e:
+                if is_rpc_not_running_error(e):
+                    # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                    raise
                 continue
         return result
 
@@ -362,6 +372,9 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                           task_id=task_id, test_case_id=test_case_id)
                 return
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='DEBUG', content=f"退出语音校验异常: {e}",
                       task_id=task_id, test_case_id=test_case_id)
         self._log(level='INFO',
@@ -370,8 +383,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         try:
             driver.press_home()
             time.sleep(1)
-        except Exception:
-            pass
+        except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
 
     # ------------------------------------------------------------------
     # 生命周期
@@ -403,7 +418,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             return False
         try:
             driver.swipe_to_home()
-        except Exception:
+        except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             driver.press_home()
         time.sleep(2)
 
@@ -411,6 +429,9 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         try:
             driver.stop_app(self.app_name)
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='DEBUG', content=f"stop_app ChatGPT 失败(忽略): {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
@@ -499,6 +520,9 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                 b = edit.getBounds()  # (left, right, top, bottom)
                 tap_y = (b[2] + b[3]) // 2
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='DEBUG', content=f"定位 EditText 失败,用默认坐标: {e}")
         self._tap_xy(driver, tap_x, tap_y)
         driver.wait(4)
@@ -507,7 +531,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         try:
             edit = driver.find_component(By.type('android.widget.EditText'))
             entered = edit is None
-        except Exception:
+        except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             entered = True
         self._log(level='INFO',
                   content="已点击蓝色语音按钮,进入语音通话" if entered else "进入语音通话校验未通过(继续)",

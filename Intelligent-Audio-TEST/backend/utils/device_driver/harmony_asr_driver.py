@@ -7,7 +7,7 @@ from nacl.pwhash import PASSWD_MAX
 
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 try:
@@ -48,6 +48,9 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
                 return True
             return False
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='INFO', content=f"设备{device_sn}锁屏检查失败：{e}")
             return False
 
@@ -71,6 +74,9 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
             driver.click((1560, 1040))
             return
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='WARNING', content=f"Wakeup interaction failed: {e}")
 
         time.sleep(1)

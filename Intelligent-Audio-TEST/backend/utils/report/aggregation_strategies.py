@@ -140,10 +140,10 @@ class SimpleAverageStrategy(AggregationStrategy):
 
 class WeightedSumRatioStrategy(AggregationStrategy):
     """
-    加权比率：Σ(numerator) / Σ(denominator)。
+    加权比率：Σ(numerator) / Σ(denominator) * 100，产出百分比 (0~100)。
 
     按 agg_role 找分子和分母的 field_path，从每条结果的 api_raw_response 提取值后累加。
-    典型场景：WER = Σerrors / Σlength（按字数加权）。
+    典型场景：WER = Σerrors / Σlength（按字数加权），或 拒识成功数量 = Σ成功 / Σ拒识轮次。
     """
 
     def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
@@ -169,7 +169,8 @@ class WeightedSumRatioStrategy(AggregationStrategy):
         if total_den == 0:
             return None
 
-        return round(total_num / total_den, 4)
+        # 转为百分比制 (0~100)，配合 score_unit='%' 显示为 "100%"
+        return round(total_num / total_den * 100, 4)
 
 
 def _parse_numeric(value: Any) -> Optional[float]:

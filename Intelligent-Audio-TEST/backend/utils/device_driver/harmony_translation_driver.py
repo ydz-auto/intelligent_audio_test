@@ -3,7 +3,7 @@ import subprocess
 import os
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 try:
@@ -96,6 +96,9 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
                 self._log(level='INFO', content=f"成功打开面对面翻译", task_id=task_id, test_case_id=test_case_id)
                 return True
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='ERROR', content=f"Failed to get mode for device {device_sn}: {e}", task_id=task_id, test_case_id=test_case_id)
             return False
 
@@ -166,6 +169,9 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
                 self._log(level='INFO', content=f"成功打开同传", task_id=task_id, test_case_id=test_case_id)
                 return True
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='ERROR', content=f"Failed to get mode for device {device_sn}: {e}", task_id=task_id, test_case_id=test_case_id)
             return False
 
@@ -279,4 +285,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
                       content=f'成功提取：ori_text:{asr_final_result},translate_text:{transl_final_result}', task_id=task_id, test_case_id=test_case_id)
             return {'success': True, 'message': 'Success', 'asr': asr_final_result, 'translation': transl_final_result}
         except Exception as e:
+            if is_rpc_not_running_error(e):
+                # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
+                raise
             self._log(level='ERROR', content=f"Failed to get results for 小艺同传 {device_sn}，{e}", task_id=task_id, test_case_id=test_case_id)

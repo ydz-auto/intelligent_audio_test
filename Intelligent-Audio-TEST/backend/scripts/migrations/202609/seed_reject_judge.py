@@ -234,7 +234,7 @@ def _build_main_dim(name, field, help):
         'decimal_places': 0,
         'weight': 1,
         'estimated_exec_time': 120,
-        'score_unit': '次',
+        'score_unit': '%',
         'statistic_method': 'weighted_sum_ratio',
         # 占比类维度：分子=Σ达标数量，分母=Σ拒识总轮次（weighted_sum_ratio 加权聚合）
         'agg_denominator': 'case',
@@ -262,7 +262,7 @@ def _build_sub_dim(name, field, help, ui_order, parent_field, parent_name):
         'decimal_places': 0,
         'weight': 1,
         'estimated_exec_time': 120,
-        'score_unit': '次',
+        'score_unit': '%',
         'statistic_method': 'weighted_sum_ratio',
         # 占比类维度：分子=Σ达标数量，分母=所属主维度总数（weighted_sum_ratio 加权聚合）
         'agg_denominator': 'case',

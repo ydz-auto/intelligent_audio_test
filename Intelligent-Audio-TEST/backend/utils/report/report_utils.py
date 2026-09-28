@@ -857,6 +857,39 @@ class ReportUtils:
         dim_id_to_name = {dim.id: dim.name for dim in all_dimensions}
         dim_name_to_id = {dim.name: dim.id for dim in all_dimensions}
 
+        # 预加载非average维度的 output_params（如果未传入），用于子维度回补
+        if dim_output_params is None and custom_agg_dims:
+            dim_output_params = {}
+            from backend.models.algorithm_models import EvaluationDimensionParam
+            output_dim_ids = [dim.id for dim in all_dimensions if dim.name in custom_agg_dims]
+            if output_dim_ids:
+                output_params = EvaluationDimensionParam.query.filter(
+                    EvaluationDimensionParam.dimension_id.in_(output_dim_ids),
+                    EvaluationDimensionParam.param_direction == 'output',
+                    EvaluationDimensionParam.deleted == False
+                ).all()
+                for p in output_params:
+                    dim_output_params.setdefault(p.dimension_id, []).append({
+                        'param_code': p.param_code,
+                        'field_path': p.field_path,
+                        'field_type': p.field_type,
+                        'agg_role': p.agg_role,
+                        'output_role': p.output_role,
+                        'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True,
+                        'pass_threshold': p.pass_threshold
+                    })
+        elif dim_output_params is None:
+            dim_output_params = {}
+
+        # 构建 dim_id → field_path 映射（用于子维度回补）
+        dim_id_to_field_path = {}
+        for dim in all_dimensions:
+            if dim.name in custom_agg_dims:
+                for p in dim_output_params.get(dim.id, []):
+                    if p.get('output_role') == 'main' and p.get('field_path'):
+                        dim_id_to_field_path[dim.id] = p['field_path']
+                        break
+
         # 预加载所有 TestCase
         test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
         test_cases_map = {}

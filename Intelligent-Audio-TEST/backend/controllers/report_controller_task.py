@@ -814,8 +814,8 @@ class ReportControllerTask(ReportControllerBase):
         all_metrics = []
         for dim in all_dimensions:
             statistic_method = dim.statistic_method or "average"
-            # 聚合方式决定 unit：pass_rate/ratio 产出百分比，强制为 %；其余用维度配置的 score_unit
-            if statistic_method in ('pass_rate', 'ratio'):
+            # 聚合方式决定 unit：pass_rate/ratio/weighted_sum_ratio 产出百分比，强制为 %；其余用维度配置的 score_unit
+            if statistic_method in ('pass_rate', 'ratio', 'weighted_sum_ratio', 'weighted_wer'):
                 unit = "%"
             else:
                 unit = dim.score_unit if dim.score_unit and dim.score_unit.strip() else ""

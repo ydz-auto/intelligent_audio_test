@@ -4,15 +4,17 @@
 
 背景：
    环境理解族评估"模型对环境音内容的理解"：模型回复音频(ai_wav) + 用户通道音频(user_wav)
-   + 被播放音频(played_audios) + 参考答案(correctAnswer)/脚本类型(task_type)，
+   + 被播放音频(played_audios) + 参考答案(correctAnswer)/环境类型(env_type)，
    由 LLM 判定理解正确性 / 本地时序计算回复时延。评估经 eval_server 的
    env_judge 计算器执行，输出 understand_correct_pass / response_latency_ms / score 等。
 
 功能（幂等，可重复执行）：
 1. 注册/更新 env_judge 主维度（133 环境理解准确率 / 134 平均回复时延 / 135 环境理解评分）
-2. 注册共享输入参数（ai_wav/user_wav/played_audios/correctAnswer/task_type/model/max_tokens/temperature）
+2. 注册共享输入参数（ai_wav/user_wav/played_audios/correctAnswer/env_type/model/max_tokens/temperature）
    与各维度输出参数（main + aux）
-3. 注册 case_config → audios/background_noise/interferers 映射（轮次结构化音频，与运行时一致）
+3. 注册参数映射（与库一致）：case_config → audios/background_noise/interferers 3 条，
+   且 LLM 判定维度（环境理解准确率/环境理解评分）额外挂 case → correctAnswer 1 条；
+   平均回复时延为本地时序计算，仅 3 条音频映射
 4. 注册 voice_llm → 维度关联
 5. 不做维度创建/删除，仅 upsert（与库真实运行状态对齐）
 
@@ -92,6 +94,10 @@ _AUDIO_MAPPINGS = [
     ('case_config', 'output', 'interferers', 'interferers', 'none'),
 ]
 
+# 参考答案映射（case）：仅 LLM 判定维度（环境理解准确率/环境理解评分）挂载，
+# 平均回复时延为本地时序计算，不消费 correctAnswer（与库一致）
+_CASE_ANSWER_MAPPING = ('case', 'output', 'correctAnswer', 'correctAnswer', 'none')
+
 # body_template（与库 api_settings 一致；顶层 task_type 为库中残留字段，rounds 内
 # correctAnswer/背景噪声/干扰人/env_type 等字段均由库同步）
 _BODY_TEMPLATE = {
@@ -128,6 +134,7 @@ _MAIN_DIMENSIONS_DEF = [
         'result_type': 0, 'result_min': 0.0, 'result_max': 100.0, 'decimal_places': 2,
         'weight': 1, 'estimated_exec_time': 120, 'score_unit': '%',
         'statistic_method': 'pass_rate', 'agg_denominator': 'round',
+        'param_mappings': list(_AUDIO_MAPPINGS) + [_CASE_ANSWER_MAPPING],
         'output_params': [
             ('score', '环境理解评分', '环境理解评分', 'number', 'output',
              'score', 'value', 'main', True,
@@ -194,6 +201,7 @@ _MAIN_DIMENSIONS_DEF = [
         'result_type': 0, 'result_min': 1.0, 'result_max': 5.0, 'decimal_places': 2,
         'weight': 1, 'estimated_exec_time': 120, 'score_unit': '分',
         'statistic_method': 'average', 'agg_denominator': 'case',
+        'param_mappings': list(_AUDIO_MAPPINGS) + [_CASE_ANSWER_MAPPING],
         'output_params': [
             ('score', '环境理解评分', '环境理解评分', 'number', 'output',
              'score', 'value', 'main', True,
@@ -360,9 +368,11 @@ def _upsert_params(conn, dim_id, dim_def):
         print(f"    * 软删陈旧参数 {cleaned} 条 (dimension_id={dim_id})")
 
 
-def _upsert_mappings(conn, dim_id):
-    """注册 case_config → audios/background_noise/interferers 映射（与运行时一致）。"""
-    for (source, source_direction, source_param, target_param, transform_type) in _AUDIO_MAPPINGS:
+def _upsert_mappings(conn, dim_id, dim_def):
+    """注册参数映射（与库一致）：case_config 轮次音频 3 条 + LLM 判定维度追加
+    case→correctAnswer 1 条；按 dim_def['param_mappings'] 差异化。"""
+    mappings = dim_def.get('param_mappings', _AUDIO_MAPPINGS)
+    for (source, source_direction, source_param, target_param, transform_type) in mappings:
         existing = conn.execute(text(
             "SELECT id FROM param_mappings "
             "WHERE algorithm_type = :at AND source = :src "
@@ -449,7 +459,7 @@ def seed_env_judge():
             print(f"\n-- 维度: {dim_def['name']} --")
             dim_id = _upsert_dimension(conn, dim_def)
             _upsert_params(conn, dim_id, dim_def)
-            _upsert_mappings(conn, dim_id)
+            _upsert_mappings(conn, dim_id, dim_def)
             _upsert_relation(conn, dim_id, dim_def['name'])
         print("\n-- 分类分配（环境理解）--")
         _assign_dimension_category(conn)

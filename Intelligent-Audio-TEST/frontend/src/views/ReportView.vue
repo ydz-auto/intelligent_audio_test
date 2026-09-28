@@ -38,165 +38,26 @@
     </div>
 
     <!-- 对比报告类型 (comparison / secondaryComparison) -->
-    <section class="comparison-report-container" v-else-if="report && isComparisonType">
-      <div class="comparison-header">
-        <h3 class="comparison-title">{{ isSecondaryComparisonType(report.type) ? '二次对比报告' : '任务对比报告' }}</h3>
-        <p class="comparison-subtitle">
-          {{ isSecondaryComparisonType(report.type) 
-            ? '深度分析对比报告的二次对比，帮助您更深入地了解性能变化趋势和关键差异点。'
-            : '对比分析所选任务的执行情况和结果，帮助您识别系统性能瓶颈和质量问题，为后续优化提供依据。' }}
-        </p>
-      </div>
-      
-      <!-- 报告保存区域 -->
-      <div class="report-save-section analysis-conclusion-card">
-        <div class="analysis-icon">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#1890ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#1890ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M10 2v20" stroke="#1890ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M14 2v20" stroke="#1890ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        
-        <div class="analysis-content">
-          <div class="analysis-header">
-            <h4 class="analysis-title">{{ reportName || report.name || '对比报告' }}</h4>
-            <div class="analysis-status">
-              <span class="status-dot"></span>
-              {{ report.status === 'draft' ? '草稿' : '已发布' }}
-            </div>
-          </div>
-          
-          <div v-if="!isEditingReport" class="analysis-text">
-            <div>{{ report.description || '请输入报告描述' }}</div>
-          </div>
-          
-          <div v-else class="analysis-edit">
-            <div class="edit-field">
-              <label for="report-name">报告名称</label>
-              <input type="text" id="report-name" placeholder="请输入报告名称" v-model="reportName">
-            </div>
-            <div class="edit-field">
-              <label for="report-description">报告描述</label>
-              <textarea id="report-description" placeholder="请输入报告描述" rows="3" v-model="report.description"></textarea>
-            </div>
-          </div>
-          
-          <div class="analysis-actions">
-            <button v-if="!isEditingReport" class="btn btn-primary" @click="toggleEditReport">
-              <i class="fas fa-edit"></i> 编辑
-            </button>
-            <template v-else>
-              <button class="btn btn-primary" @click="saveReport">
-                <i class="fas fa-save"></i> 保存
-              </button>
-              <button class="btn btn-secondary" @click="cancelEditReport">
-                <i class="fas fa-times"></i> 取消
-              </button>
-            </template>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 设备/API选择器 -->
-      <div class="comparison-selectors">
-        <h4 class="selector-title">
-          <i class="fas fa-list"></i> 选择要对比的设备和API
-        </h4>
-        <div class="selector-content">
-          <div id="unified-selector">
-            <div v-for="device in reportService.devices.value" :key="device.id"
-                 class="device-select-item" :class="{ 'selected': device.selected, 'api-item': device.type === 'API' }"
-                 @click="reportService.toggleDeviceSelection(device.id)"
-                 role="button" tabindex="0"
-                 @keydown.enter.prevent="reportService.toggleDeviceSelection(device.id)"
-                 @keydown.space.prevent="reportService.toggleDeviceSelection(device.id)">
-              <div class="device-icon-wrapper">
-                <i :class="device.type === '设备' ? 'fas fa-headphones' : 'fas fa-exchange-alt'"></i>
-              </div>
-              <div class="device-info">
-                <span class="device-name">{{ device.name }}</span>
-                <span class="device-type-tag">{{ device.type }}</span>
-              </div>
-              <div class="selection-indicator">
-                <i class="fas fa-check-circle"></i>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 分析结论 -->
-      <div class="analysis-conclusion-card">
-        <div class="analysis-icon">
-          <i class="fas fa-chart-line"></i>
-        </div>
-        <div class="analysis-content">
-          <div class="analysis-header">
-            <h4 class="analysis-title">分析结论</h4>
-            <div class="analysis-status" :class="report.status">
-              <span class="status-dot"></span>
-              {{ report.status === 'draft' ? '草稿' : '已发布' }}
-            </div>
-          </div>
-          <div v-if="!isEditingConclusion" class="analysis-text" v-html="sanitizedConclusion"></div>
-          <div v-else class="analysis-edit">
-            <textarea class="analysis-textarea" v-model="reportConclusion" placeholder="请输入分析结论..."></textarea>
-          </div>
-          <div class="analysis-actions">
-            <button v-if="!isEditingConclusion" class="btn btn-primary" @click="toggleEditConclusion">
-              <i class="fas fa-edit"></i> 编辑
-            </button>
-            <template v-else>
-              <button class="btn btn-primary" @click="saveConclusion">
-                <i class="fas fa-save"></i> 保存
-              </button>
-              <button class="btn btn-secondary" @click="cancelEditConclusion">
-                <i class="fas fa-times"></i> 取消
-              </button>
-            </template>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 设备/API信息对比 -->
-      <div class="comparison-section">
-        <ComparisonTableComponent 
-          title="设备/API信息对比"
-          :columns="reportService.deviceApiColumns.value"
-          :data="reportService.deviceApiComparisonData.value"
-          :default-collapsed="true"
-          :show-search="false"
-        />
-      </div>
-      
-      <!-- 用例执行数量对比 -->
-      <div class="comparison-section">
-        <ComparisonTableComponent 
-          title="用例执行数量对比"
-          :columns="reportService.caseExecutionColumns.value"
-          :data="reportService.caseExecutionData.value"
-          :default-collapsed="true"
-          :show-search="false"
-        />
-      </div>
-      
-      <!-- 按用例分组对比 -->
-      <div class="comparison-section">
-        <CaseCategoryComparisonComponent :report-data="report" />
-      </div>
-      
-      <!-- 按用例标签对比 -->
-      <div class="comparison-section">
-        <CaseTagComparisonComponent :report-data="report" />
-      </div>
-      
-      <!-- 具体用例对比 -->
-      <div class="comparison-section">
-        <SpecificCaseComparisonComponent :report-data="report" />
-      </div>
-    </section>
+    <ComparisonReportPanel
+      v-else-if="report && isComparisonType"
+      :report="report"
+      :report-name="reportName"
+      :is-editing-report="isEditingReport"
+      :is-editing-conclusion="isEditingConclusion"
+      :analysis-content="analysisContent"
+      :comparison-devices="reportService.devices.value"
+      :device-api-columns="reportService.deviceApiColumns"
+      :device-api-comparison-data="reportService.deviceApiComparisonData.value"
+      :case-execution-columns="reportService.caseExecutionColumns"
+      :case-execution-data="reportService.caseExecutionData.value"
+      @toggle-edit="toggleEditReport"
+      @save-report="handleComparisonSaveReport"
+      @cancel-edit="cancelEditReport"
+      @toggle-conclusion-edit="toggleEditConclusion"
+      @save-conclusion="saveConclusion"
+      @cancel-conclusion="cancelEditConclusion"
+      @toggle-device="reportService.toggleDeviceSelection"
+    />
     
     <div v-else class="empty-state">
       <h2>未找到报告</h2>
@@ -255,10 +116,7 @@ import { sanitizeConclusion } from '../utils/sanitize'
 import { normalizeReport } from '../utils/fieldNaming'
 import JSZip from 'jszip'
 import TaskReportPanel from '../components/report/TaskReportPanel.vue'
-import ComparisonTableComponent from '../components/report/ComparisonTableComponent.vue'
-import CaseCategoryComparisonComponent from '../components/report/CaseCategoryComparisonComponent.vue'
-import CaseTagComparisonComponent from '../components/report/CaseTagComparisonComponent.vue'
-import SpecificCaseComparisonComponent from '../components/report/SpecificCaseComparisonComponent.vue'
+import ComparisonReportPanel from '../components/report/ComparisonReportPanel.vue'
 import { reportsApi } from '../utils/api'
 import reportService from '../services/reportService'
 
@@ -362,6 +220,20 @@ const saveReport = async () => {
         summary: report.value.summary
       })
     }
+    isEditingReport.value = false
+    showToast('success', '报告保存成功')
+  } catch (e: any) {
+    console.error('保存报告失败:', e)
+    showToast('error', '保存失败: ' + (e.message || '未知错误'))
+  }
+}
+
+const handleComparisonSaveReport = async (payload: { name?: string; description?: string }) => {
+  if (!report.value) return
+  try {
+    if (payload?.name) reportName.value = payload.name
+    if (payload?.description !== undefined) report.value.description = payload.description
+    await reportService.saveReport(report.value)
     isEditingReport.value = false
     showToast('success', '报告保存成功')
   } catch (e: any) {
@@ -487,7 +359,7 @@ const generateExportZip = async (): Promise<Blob> => {
   const zip = new JSZip()
 
   // ---------- 1. 捕获 DOM ----------
-  const reportEl = document.querySelector('.task-report-panel') || document.querySelector('.comparison-report-container') || document.querySelector('.report-view-page')
+  const reportEl = document.querySelector('.task-report-panel') || document.querySelector('.comparison-report-panel') || document.querySelector('.comparison-report-container') || document.querySelector('.report-view-page')
   if (!reportEl) throw new Error('未找到报告内容')
 
   const clone = reportEl.cloneNode(true) as HTMLElement
@@ -565,7 +437,7 @@ html, body { background: #fff; }
 }
 body { padding: 0; }
 .report-view-page { margin: 0; padding: 0; width: 100% !important; }
-.task-report-panel, .comparison-report-container { max-width: 100% !important; }
+.task-report-panel, .comparison-report-container, .comparison-report-panel { max-width: 100% !important; }
 .report-layout { max-width: 1200px; margin: 0 auto; }
 canvas, svg { max-width: 100%; }
 .collapse-btn, .case-header, .section-header { cursor: pointer; }
