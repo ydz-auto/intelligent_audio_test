@@ -12,7 +12,7 @@
 """
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, Boolean, Float, JSON, Index, text
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, Boolean, Float, JSON, Index, UniqueConstraint, text
 from sqlalchemy.orm import relationship
 from .database import db
 
