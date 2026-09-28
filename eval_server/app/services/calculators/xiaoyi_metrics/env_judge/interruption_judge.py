@@ -721,7 +721,21 @@ def judge_interruption_rounds(round_blocks: List[Dict[str, Any]],
     raw_rounds = parsed.get('rounds')
     if not isinstance(raw_rounds, list):
         raw_rounds = [parsed]  # 单轮平铺输出兼容
-    result['rounds'] = [r for r in raw_rounds if isinstance(r, dict)]
+    valid_rounds = [r for r in raw_rounds if isinstance(r, dict)]
+    # 轮号对齐兜底：LLM 偶尔改写轮号（如整体+1 或按自身序号重编），
+    # derive 层按 round 号查 bmap 会整例 miss → 全部 unknown 不入数量。
+    # 数量恰好一致且轮号集合对不上时按位置对齐；仅乱序（集合相同）无害不处理；
+    # 缺轮无法安全对位，保持原样（缺失轮由派生层按 unknown 降级）。
+    expected = [b.get('round') for b in blocks]
+    try:
+        got = [int(str(r.get('round')).strip()) for r in valid_rounds]
+    except (TypeError, ValueError):
+        got = None
+    if got is not None and len(got) == len(expected) and set(got) != set(expected):
+        for r, exp in zip(valid_rounds, expected):
+            r['round'] = exp
+        logger.warning(f'[interruption_judge_v2] LLM 轮号 {got} 与输入 {expected} 不符，已按位置对齐')
+    result['rounds'] = valid_rounds
     result['message'] = 'OK'
     logger.info(f'[interruption_judge_v2] model={model} 判定轮数={len(result["rounds"])} '
                 f'tokens={result["tokens_used"]}')

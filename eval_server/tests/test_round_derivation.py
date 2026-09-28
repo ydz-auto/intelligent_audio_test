@@ -322,3 +322,25 @@ def test_build_per_round():
     assert 'interruption' not in pr[5]
     # 轮6 超出 details：跳过
     assert 'message' in pr[6]
+
+
+def test_build_per_round_stop_compliance_gated_by_stop_intent():
+    """非停止轮 LLM 误标 stop_complied → 不投影（回归：报告379 非停止用例的
+    逐轮 TRD 被污染，pass_rate 兜底把整例算进停止指令遵循分母）。"""
+    from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+        build_per_round,
+    )
+
+    details = [
+        # 非停止轮：LLM 多给了 stop_complied → 不得投影
+        {'round': 0, 'role': 'interruption', 'behavior': '回复', 'stop_intent': False,
+         'response_latency_ms': 300.0, 'reply_latency_ms': 800.0,
+         'score_overall': 4.0, 'stop_complied': True},
+        # 停止轮：正常投影
+        {'round': 1, 'role': 'interruption', 'behavior': '回复', 'stop_intent': True,
+         'response_latency_ms': 150.0, 'reply_latency_ms': 500.0,
+         'score_overall': None, 'stop_complied': False},
+    ]
+    pr = build_per_round(2, details)
+    assert 'stop_compliance_rate' not in pr[0]['interruption']
+    assert pr[1]['interruption']['stop_compliance_rate'] == 0.0

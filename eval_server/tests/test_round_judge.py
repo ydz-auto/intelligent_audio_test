@@ -223,3 +223,43 @@ def test_stop_round_prompt_rules():
     # 恢复原话题轮：判定标准必须在 prompt 里显式给出
     assert '恢复原话题轮口径' in p and 'topic_resumed' in p
     assert '未回到原话题' in p and 'topic_resumed=false 时三维均应给低分' in p
+
+
+def test_judge_round_misnumbering_aligned_by_position(fake_llm):
+    """LLM 整体偏移轮号（如从 1 数起）→ 按位置对齐，避免 bmap 查空整例 unknown。
+
+    回归：报告379 有 16 个已锚定轮因 judge 轮号对不上而 behavior=None，
+    成功+失败+询问占比之和差 5% 到不了 100%。
+    """
+    user, model_ok = _full_round_pair(True)
+    # 实际打断轮索引为 1、2；LLM 返回 2、3（整体 +1）
+    _set_rounds(fake_llm, [
+        {'round': 2, 'behavior': '回复', 'score': {'overall': 4.0}},
+        {'round': 3, 'behavior': '恢复', 'score': {'overall': 1.0}},
+    ])
+    result = _run({'rounds': [
+        # is_interruption 是标记轮：实际计时轮 = 标记轮的下一轮（此处轮1、轮2）
+        {'is_interruption': True, 'user_asr': user, 'model_asr': model_ok},
+        {'is_interruption': True, 'user_asr': user, 'model_asr': model_ok},
+        {'user_asr': user, 'model_asr': model_ok},
+    ]})
+    assert result['case_type'] == 'multi'
+    assert result['success_count'] == 1 and result['failure_count'] == 1
+    # 失败(恢复)轮时延按口径记 -1
+    assert result['round_response_latencies'] == [RESP, -1]
+
+
+def test_judge_round_reordering_left_alone(fake_llm):
+    """轮号集合一致仅乱序 → bmap 按号查找本就命中，不得按位置改写。"""
+    user, model_ok = _full_round_pair(True)
+    _set_rounds(fake_llm, [
+        {'round': 2, 'behavior': '恢复', 'score': {'overall': 1.0}},
+        {'round': 1, 'behavior': '回复', 'score': {'overall': 4.0}},
+    ])
+    result = _run({'rounds': [
+        # is_interruption 是标记轮：实际计时轮 = 标记轮的下一轮（此处轮1、轮2）
+        {'is_interruption': True, 'user_asr': user, 'model_asr': model_ok},
+        {'is_interruption': True, 'user_asr': user, 'model_asr': model_ok},
+        {'user_asr': user, 'model_asr': model_ok},
+    ]})
+    assert result['success_count'] == 1 and result['failure_count'] == 1

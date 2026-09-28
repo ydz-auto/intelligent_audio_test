@@ -470,7 +470,9 @@ def build_per_round(n_rounds: int, round_details: List[Dict[str, Any]]) -> List[
                 item['reply_latency_avg_ms'] = d['reply_latency_ms']
         if d.get('score_overall') is not None:
             item['reply_content_score'] = d['score_overall']
-        if d.get('stop_complied') is not None:
+        # 停止遵从仅投停止意图轮：LLM 偶发给非停止轮标 stop_complied，
+        # 不拦会污染非停止用例的逐轮 TRD，报告 pass_rate 兜底把整例算进分母
+        if d.get('stop_complied') is not None and d.get('stop_intent'):
             item['stop_compliance_rate'] = float(d['stop_complied'])
         per_round.append({'round_number': i, 'interruption': item} if item
                          else {'round_number': i, 'message': '跳过: 该轮无可投影指标'})
