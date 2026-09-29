@@ -52,7 +52,7 @@ class PublishedTaskController:
         if not case_ids:
             # 历史数据兜底：task_case_relations 缺失时，从该任务的报告用例取（有报告的任务必可发布）
             report = (
-                Report.query.filter_by(task_id=task.id, type='task')
+                Report.query.filter_by(task_id=task.id, type='task', deleted=False)
                 .order_by(Report.id.desc()).first()
             )
             if report:
@@ -84,7 +84,7 @@ class PublishedTaskController:
         if not source_task_id:
             return None
         report = (
-            Report.query.filter_by(task_id=source_task_id, type='task')
+            Report.query.filter_by(task_id=source_task_id, type='task', deleted=False)
             .order_by(Report.id.desc()).first()
         )
         if not report:

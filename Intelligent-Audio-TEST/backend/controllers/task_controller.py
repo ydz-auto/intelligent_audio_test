@@ -267,7 +267,10 @@ class TaskController:
         for task in tasks:
             # 查询任务关联的报告
             from backend.models.models import Report
-            reports = Report.query.filter_by(task_id=task.id).all()
+            reports = Report.query.filter(
+                Report.task_id == task.id,
+                Report.deleted == False
+            ).all()
             
             # 构建报告信息
             report_info = TaskReportsData(
@@ -348,7 +351,10 @@ class TaskController:
         group_name_map = {}
         for ci in case_infos.values():
             if ci.group_id and ci.group_id not in group_name_map:
-                g = db.session.get(TestCaseGroup, ci.group_id)
+                g = TestCaseGroup.query.filter(
+                    TestCaseGroup.id == ci.group_id,
+                    TestCaseGroup.deleted == False
+                ).first()
                 group_name_map[ci.group_id] = g.name if g else None
         for tc in task_cases:
             case_info = case_infos.get(tc.test_case_id)

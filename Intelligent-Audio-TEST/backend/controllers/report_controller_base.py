@@ -484,7 +484,7 @@ class ReportControllerBase:
         sort_by = query_params.sort_by
         order = query_params.order
         
-        query = Report.query
+        query = Report.query.filter(Report.deleted == False)
         
         if algorithm_type and algorithm_type != 'all':
             # 直接查报告自身冗余列（创建时从关联任务/明细写入），对比类报告 task_id 为 NULL 也能命中
@@ -591,7 +591,7 @@ class ReportControllerBase:
     # 获取单个测试报告详情
     @staticmethod
     def get_one(report_id):
-        report = db.session.get(Report, report_id)
+        report = Report.query.filter(Report.id == report_id, Report.deleted == False).first()
         if not report:
             return error_response("未找到测试报告", 404)
 
@@ -666,7 +666,7 @@ class ReportControllerBase:
     # 获取报告的用例列表，支持分页
     @staticmethod
     def get_report_cases(report_id):
-        report = db.session.get(Report, report_id)
+        report = Report.query.filter(Report.id == report_id, Report.deleted == False).first()
         if not report:
             return error_response("未找到测试报告", 404)
         
@@ -751,7 +751,7 @@ class ReportControllerBase:
             content=f'开始下载用例日志 - report_id: {report_id}, case_id: {case_id}'
         )
         
-        report = db.session.get(Report, report_id)
+        report = Report.query.filter(Report.id == report_id, Report.deleted == False).first()
         if not report:
             log_and_emit(
                 level='WARNING',
@@ -1074,7 +1074,7 @@ class ReportControllerBase:
 
     @staticmethod
     def search_report_cases(report_id):
-        report = db.session.get(Report, report_id)
+        report = Report.query.filter(Report.id == report_id, Report.deleted == False).first()
         if not report:
             return error_response("未找到测试报告", 404)
         

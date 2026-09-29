@@ -25,7 +25,10 @@ class ReportQueryBuilder:
         task_cases = TaskCase.query.filter_by(task_id=task_id).all()
         test_case_ids = [tc.test_case_id for tc in task_cases]
         
-        query = TestCase.query.filter(TestCase.id.in_(test_case_ids))
+        query = TestCase.query.filter(
+            TestCase.id.in_(test_case_ids),
+            TestCase.deleted == False
+        )
         
         if category and category != 'all':
             query = query.filter(TestCase.group.has(name=category))
@@ -58,7 +61,10 @@ class ReportQueryBuilder:
         task_cases = TaskCase.query.filter(TaskCase.task_id.in_(source_task_ids)).all()
         test_case_ids = [tc.test_case_id for tc in task_cases]
         
-        query = TestCase.query.filter(TestCase.id.in_(test_case_ids))
+        query = TestCase.query.filter(
+            TestCase.id.in_(test_case_ids),
+            TestCase.deleted == False
+        )
         
         if category and category != 'all':
             query = query.filter(TestCase.group.has(name=category))

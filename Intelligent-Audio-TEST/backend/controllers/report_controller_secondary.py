@@ -29,7 +29,10 @@ class ReportControllerSecondary(ReportControllerBase):
     @staticmethod
     def _validate_reports(report_ids):
         """验证报告存在且至少2个，返回报告列表"""
-        reports = Report.query.filter(Report.id.in_(report_ids)).order_by(Report.created_at.asc()).all()
+        reports = Report.query.filter(
+            Report.id.in_(report_ids),
+            Report.deleted == False
+        ).order_by(Report.created_at.asc()).all()
         if len(reports) < 2:
             return None, "二次对比至少需要两个报告"
         return reports, None

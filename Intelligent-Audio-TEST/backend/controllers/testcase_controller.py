@@ -653,7 +653,7 @@ class TestCaseController:
         
         if group_id is None and data.group:
             group_name = data.group
-            group = TestCaseGroup.query.filter_by(name=group_name).first()
+            group = TestCaseGroup.query.filter_by(name=group_name, deleted=False).first()
             if group:
                 group_id = group.id
             else:
@@ -817,7 +817,7 @@ class TestCaseController:
             # 2. 如果没有group_id，但有group名称，根据名称查找或创建分组
             if group_id is None and data.group:
                 group_name = data.group
-                group = TestCaseGroup.query.filter_by(name=group_name).first()
+                group = TestCaseGroup.query.filter_by(name=group_name, deleted=False).first()
                 if group:
                     group_id = group.id
                 else:
@@ -1280,7 +1280,7 @@ class TestCaseController:
         target_group_id = req_data.target_group_id
         if not target_group_id:
             return error_response("复制到分组操作需要 'target_group_id'")
-        target_group = TestCaseGroup.query.filter_by(id=target_group_id).first()
+        target_group = TestCaseGroup.query.filter_by(id=target_group_id, deleted=False).first()
         if not target_group:
             return error_response(f"未找到目标分组: {target_group_id}")
         copied_count = 0
@@ -1335,12 +1335,12 @@ class TestCaseController:
         group_name = req_data.group_name
         if not group_name:
             return error_response("复制分组操作需要 'group_name'")
-        source_group = TestCaseGroup.query.filter_by(name=group_name).first()
+        source_group = TestCaseGroup.query.filter_by(name=group_name, deleted=False).first()
         if not source_group:
             return error_response(f"未找到分组: {group_name}")
 
         new_group_name = f"{group_name}_copy"
-        existing_group = TestCaseGroup.query.filter_by(name=new_group_name).first()
+        existing_group = TestCaseGroup.query.filter_by(name=new_group_name, deleted=False).first()
         if existing_group:
             new_group = existing_group
         else:
@@ -1393,7 +1393,7 @@ class TestCaseController:
         new_group = None
         if req_data.copy_to_new_group:
             new_group_name = f"{tag_name}_copy"
-            existing_group = TestCaseGroup.query.filter_by(name=new_group_name).first()
+            existing_group = TestCaseGroup.query.filter_by(name=new_group_name, deleted=False).first()
             if existing_group:
                 new_group = existing_group
             else:
@@ -2032,7 +2032,7 @@ class TestCaseController:
 
             if data.get('group'):
                 # 通过 group_name 查找 group_id
-                group = TestCaseGroup.query.filter_by(name=data['group']).first()
+                group = TestCaseGroup.query.filter_by(name=data['group'], deleted=False).first()
                 if group:
                     query = query.filter(TestCase.group_id == group.id)
                 else:
@@ -2086,7 +2086,10 @@ class TestCaseController:
             group_stats = db.session.query(
                 TestCaseGroup.name, db.func.count(TestCase.id)
             ).join(TestCase, TestCase.group_id == TestCaseGroup.id)\
-             .filter(TestCase.deleted == False)\
+             .filter(
+                 TestCase.deleted == False,
+                 TestCaseGroup.deleted == False
+             )\
              .group_by(TestCaseGroup.name).all()
             
             # 最近更新 (前5条)
@@ -2446,11 +2449,17 @@ class TestCaseController:
 
                         group_rows = []
                         if unique_groups:
-                            group_objects = TestCaseGroup.query.filter(TestCaseGroup.id.in_(list(unique_groups.keys()))).all()
+                            group_objects = TestCaseGroup.query.filter(
+                                TestCaseGroup.id.in_(list(unique_groups.keys())),
+                                TestCaseGroup.deleted == False
+                            ).all()
                             group_by_id = {g.id: g for g in group_objects}
                             missing_names = [v for k, v in unique_groups.items() if k not in group_by_id]
                             if missing_names:
-                                group_objects_by_name = TestCaseGroup.query.filter(TestCaseGroup.name.in_(missing_names)).all()
+                                group_objects_by_name = TestCaseGroup.query.filter(
+                                    TestCaseGroup.name.in_(missing_names),
+                                    TestCaseGroup.deleted == False
+                                ).all()
                                 for g in group_objects_by_name:
                                     group_by_id[g.id] = g
 
@@ -2705,10 +2714,13 @@ class TestCaseController:
                     group_name = case_data.get('group', '未分类')
                     
                     if group_id:
-                        group = db.session.get(TestCaseGroup, group_id)
+                        group = TestCaseGroup.query.filter(
+                            TestCaseGroup.id == group_id,
+                            TestCaseGroup.deleted == False
+                        ).first()
                     
                     if not group:
-                        group = TestCaseGroup.query.filter_by(name=group_name).first()
+                        group = TestCaseGroup.query.filter_by(name=group_name, deleted=False).first()
                     
                     if not group:
                         # 如果都没有，则创建（注意：如果 group_id 是 UUID 字符串，建议使用 name 创建）

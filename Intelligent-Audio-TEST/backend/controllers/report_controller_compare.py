@@ -35,7 +35,8 @@ class ReportControllerCompare(ReportControllerBase):
         task_ids = [t.id for t in tasks]
         reports = Report.query.filter(
             Report.task_id.in_(task_ids),
-            Report.type == ReportType.TASK.value
+            Report.type == ReportType.TASK.value,
+            Report.deleted == False
         ).order_by(Report.created_at.desc()).all()
 
         # 每个任务取最新一条报告

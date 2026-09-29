@@ -1763,7 +1763,7 @@ class AudioController:
 
         with db.session.no_autoflush:
             # 获取或创建分组（按 name + algorithm_type 联合查找）
-            group = TestCaseGroup.query.filter_by(name=effective_group_name, algorithm_type=algorithm_type).first()
+            group = TestCaseGroup.query.filter_by(name=effective_group_name, algorithm_type=algorithm_type, deleted=False).first()
             if not group:
                 group = TestCaseGroup(
                     id=str(uuid.uuid4()),

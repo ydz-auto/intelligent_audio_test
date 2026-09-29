@@ -65,15 +65,16 @@ class ReportController(ReportControllerBase):
     def secondary_compare():
         return ReportControllerSecondary.secondary_compare()
 
-    # 删除测试报告
+    # 删除测试报告（软删除）
     @staticmethod
     def delete(report_id):
-        report = db.session.get(Report, report_id)
+        report = Report.query.filter(Report.id == report_id, Report.deleted == False).first()
         if not report:
             return error_response("未找到测试报告", 404)
 
         try:
-            db.session.delete(report)
+            report.deleted = True
+            report.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "测试报告已删除")
         except Exception as e:
@@ -84,7 +85,7 @@ class ReportController(ReportControllerBase):
 
     @staticmethod
     def update(report_id):
-        report = db.session.get(Report, report_id)
+        report = Report.query.filter(Report.id == report_id, Report.deleted == False).first()
         if not report:
             return error_response("未找到测试报告", 404)
 
@@ -226,7 +227,7 @@ class ReportController(ReportControllerBase):
 
     @staticmethod
     def publish(report_id):
-        report = db.session.get(Report, report_id)
+        report = Report.query.filter(Report.id == report_id, Report.deleted == False).first()
         if not report:
             return error_response("未找到测试报告", 404)
         try:
@@ -257,12 +258,16 @@ class ReportController(ReportControllerBase):
             return error_response("单次最多删除100个报告")
 
         try:
-            reports = Report.query.filter(Report.id.in_(report_ids)).all()
+            reports = Report.query.filter(
+                Report.id.in_(report_ids),
+                Report.deleted == False
+            ).all()
             if not reports:
                 return success_response(None, "未找到指定的测试报告，无需删除")
 
             for report in reports:
-                db.session.delete(report)
+                report.deleted = True
+                report.updated_at = now_cst()
             
             db.session.commit()
             return success_response(None, f"成功删除 {len(reports)} 个测试报告")
@@ -293,7 +298,10 @@ class ReportController(ReportControllerBase):
             format_type = req.format
 
         try:
-            reports = Report.query.filter(Report.id.in_(report_ids)).all()
+            reports = Report.query.filter(
+                Report.id.in_(report_ids),
+                Report.deleted == False
+            ).all()
             if not reports:
                 return error_response("未找到指定报告", 404)
 
@@ -484,7 +492,10 @@ class ReportController(ReportControllerBase):
             task_cases = TaskCase.query.filter_by(task_id=task_id_filter).all()
 
         test_case_ids = [tc.test_case_id for tc in task_cases]
-        query = TestCase.query.filter(TestCase.id.in_(test_case_ids))
+        query = TestCase.query.filter(
+            TestCase.id.in_(test_case_ids),
+            TestCase.deleted == False
+        )
 
         if category and category != 'all':
             query = query.filter(TestCase.group.has(name=category))

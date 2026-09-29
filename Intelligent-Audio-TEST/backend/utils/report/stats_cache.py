@@ -28,7 +28,9 @@ def refresh_stats_cache():
             TestCase.deleted == False
         ).scalar() or 0
 
-        test_case_groups_count = db.session.query(func.count(TestCaseGroup.id)).scalar() or 0
+        test_case_groups_count = db.session.query(func.count(TestCaseGroup.id)).filter(
+            TestCaseGroup.deleted == False
+        ).scalar() or 0
 
         tasks_count = db.session.query(func.count(Task.id)).filter(
             Task.deleted == False
@@ -109,7 +111,9 @@ def refresh_stats_cache():
             API.deleted == False
         ).scalar() or 0
 
-        reports_count = db.session.query(func.count(Report.id)).scalar() or 0
+        reports_count = db.session.query(func.count(Report.id)).filter(
+            Report.deleted == False
+        ).scalar() or 0
 
         dimensions_count = db.session.query(func.count(Dimension.id)).filter(
             Dimension.deleted == False

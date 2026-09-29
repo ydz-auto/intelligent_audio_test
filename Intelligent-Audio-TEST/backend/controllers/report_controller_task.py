@@ -1010,7 +1010,10 @@ class ReportControllerTask(ReportControllerBase):
         if not task:
             return error_response("未找到指定任务")
 
-        existing_report = Report.query.filter_by(task_id=task_id).first()
+        existing_report = Report.query.filter(
+            Report.task_id == task_id,
+            Report.deleted == False
+        ).first()
         if existing_report:
             return success_response({"id": existing_report.id, "status": "exists"}, "任务报告已存在", ErrorCode.SUCCESS)
 
@@ -1033,8 +1036,11 @@ class ReportControllerTask(ReportControllerBase):
 
     @staticmethod
     def regenerate_report(report_id):
-        """重新生成报告：删除旧报告数据，基于原 task_id 重新生成"""
-        report = db.session.get(Report, report_id)
+        """重新生成报告：软删除旧报告数据，基于原 task_id 重新生成"""
+        report = Report.query.filter(
+            Report.id == report_id,
+            Report.deleted == False
+        ).first()
         if not report:
             return error_response("未找到测试报告", 404)
 
@@ -1056,10 +1062,11 @@ class ReportControllerTask(ReportControllerBase):
             _generating_tasks.add(task_id)
 
         try:
-            # 删除旧报告（级联删除 summary_meta, raw_data, cases, metric_stats 等）
-            db.session.delete(report)
+            # 软删除旧报告（保留历史快照，不再物理删除）
+            report.deleted = True
+            report.updated_at = now_cst()
             db.session.commit()
-            log_and_emit('INFO', 'report', f'[regenerate_report] Deleted old report {report_id}, regenerating for task_id={task_id}', task_id=task_id)
+            log_and_emit('INFO', 'report', f'[regenerate_report] Soft-deleted old report {report_id}, regenerating for task_id={task_id}', task_id=task_id)
         except Exception as e:
             db.session.rollback()
             with _generating_lock:
@@ -1108,7 +1115,10 @@ class ReportControllerTask(ReportControllerBase):
                 # 过滤：用例下任一维度评估状态非 completed 则整个用例不参与统计
                 results = ReportUtils.filter_results_by_case_evaluation(results)
 
-                existing_report = Report.query.filter_by(task_id=task_id).first()
+                existing_report = Report.query.filter(
+                    Report.task_id == task_id,
+                    Report.deleted == False
+                ).first()
                 if existing_report:
                     with _generating_lock:
                         _generating_tasks.discard(task_id)

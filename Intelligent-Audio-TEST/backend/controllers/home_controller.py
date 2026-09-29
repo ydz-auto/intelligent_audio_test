@@ -83,6 +83,7 @@ def get_stats_summary():
             TestCaseGroup,
             func.count(TestCase.id).label('case_count')
         ).outerjoin(TestCase, db.and_(
+            TestCaseGroup.deleted == False,
             TestCase.deleted == False,
             TestCase.group_id == TestCaseGroup.id
         )).group_by(TestCaseGroup.id).order_by(

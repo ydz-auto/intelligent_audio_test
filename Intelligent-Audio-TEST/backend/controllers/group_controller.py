@@ -19,7 +19,7 @@ class GroupController:
         test_type = request.args.get('type')
         dimension_id = request.args.get('dimension_id', type=int)
 
-        query = TestCaseGroup.query
+        query = TestCaseGroup.query.filter(TestCaseGroup.deleted == False)
 
         # 构建用例计数过滤条件
         case_filters = [TestCase.deleted == False]
@@ -103,7 +103,11 @@ class GroupController:
         except Exception as e:
             return error_response(f"请求参数错误: {str(e)}")
 
-        existing = TestCaseGroup.query.filter_by(name=validated_data.name, algorithm_type=validated_data.algorithm_type).first()
+        existing = TestCaseGroup.query.filter(
+            TestCaseGroup.name == validated_data.name,
+            TestCaseGroup.algorithm_type == validated_data.algorithm_type,
+            TestCaseGroup.deleted == False
+        ).first()
         if existing:
             return error_response(f"已存在名为 '{validated_data.name}' 且算法类型为 '{validated_data.algorithm_type}' 的分组")
 
@@ -126,7 +130,10 @@ class GroupController:
     # 更新分组信息
     @staticmethod
     def update(group_id):
-        group = db.session.get(TestCaseGroup, group_id)
+        group = TestCaseGroup.query.filter(
+            TestCaseGroup.id == group_id,
+            TestCaseGroup.deleted == False
+        ).first()
         if not group:
             return error_response("未找到分组", 1, 404)
 
@@ -142,7 +149,8 @@ class GroupController:
                 existing = TestCaseGroup.query.filter(
                     TestCaseGroup.name == validated_data.name,
                     TestCaseGroup.algorithm_type == effective_algo,
-                    TestCaseGroup.id != group_id
+                    TestCaseGroup.id != group_id,
+                    TestCaseGroup.deleted == False
                 ).first()
                 if existing:
                     return error_response(f"已存在名为 '{validated_data.name}' 且算法类型相同的其他分组")
@@ -161,31 +169,38 @@ class GroupController:
             db.session.rollback()
             return error_response(str(e))
 
-    # 删除分组
+    # 删除分组（软删除：分组与下属用例均置 deleted=True）
     @staticmethod
     def delete(group_id):
-        group = db.session.get(TestCaseGroup, group_id)
+        group = TestCaseGroup.query.filter(
+            TestCaseGroup.id == group_id,
+            TestCaseGroup.deleted == False
+        ).first()
         if not group:
             return error_response("未找到分组", 1, 404)
 
         # 获取cascade参数，默认为False
         cascade = request.args.get('cascade', 'false').lower() == 'true'
 
-        if group.test_cases:
+        active_cases = [tc for tc in group.test_cases if not tc.deleted]
+        if active_cases:
             if not cascade:
                 return error_response("该分组下存在测试用例，无法删除")
-            
+
             try:
-                # 级联删除分组下的所有测试用例
+                # 级联软删除分组下的所有未删除测试用例
                 from backend.models.models import TestCase
-                for test_case in group.test_cases:
-                    db.session.delete(test_case)
+                TestCase.query.filter(
+                    TestCase.group_id == group.id,
+                    TestCase.deleted == False
+                ).update({TestCase.deleted: True}, synchronize_session=False)
             except Exception as e:
                 db.session.rollback()
                 return error_response(f"删除分组下的测试用例失败: {str(e)}")
 
         try:
-            db.session.delete(group)
+            group.deleted = True
+            group.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "分组已删除")
         except Exception as e:
@@ -200,7 +215,10 @@ class GroupController:
         except Exception as e:
             return error_response(f"请求参数错误: {str(e)}")
 
-        target_group = db.session.get(TestCaseGroup, validated_data.target_group_id)
+        target_group = TestCaseGroup.query.filter(
+            TestCaseGroup.id == validated_data.target_group_id,
+            TestCaseGroup.deleted == False
+        ).first()
         if not target_group:
             return error_response("目标分组不存在", 1, 404)
 
