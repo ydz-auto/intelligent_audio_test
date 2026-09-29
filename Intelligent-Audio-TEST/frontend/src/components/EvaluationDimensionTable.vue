@@ -15,12 +15,12 @@
           <th class="dimension-name-col sortable" style="width: 200px;">维度名称</th>
           <th class="dimension-description-col" style="width: 250px;">描述</th>
           <th class="dimension-category-col sortable" style="width: 120px;">分类</th>
-          <th class="dimension-algorithms-col" style="width: 180px;">关联算法</th>
+          <th class="dimension-algorithms-col" style="width: 260px;">关联算法</th>
           <th class="dimension-weight-col sortable" style="width: 150px;">权重</th>
           <th class="dimension-api-status-col sortable" style="width: 120px;">API状态</th>
           <th class="dimension-status-col sortable" style="width: 100px;">状态</th>
           <th class="dimension-sort-col" style="width: 90px;">排序</th>
-          <th class="dimension-actions-col" style="width: 1%; white-space: nowrap;">操作</th>
+          <th class="dimension-actions-col" style="width: 340px;">操作</th>
         </tr>
       </thead>
       <tbody>
@@ -131,3 +131,165 @@ const emit = defineEmits([
 
 const isSelected = (id) => props.selectedDimensions.includes(id);
 </script>
+
+<style scoped>
+/* 全局 .data-table 为 table-layout: fixed + width:100%，窄窗口下列会按比例压扁。
+   设 min-width = 列宽总和，窄屏改为横向滚动、列保持设计宽度不挤压 */
+.table-container {
+  overflow-x: auto;
+}
+
+.table-container .data-table {
+  width: 100% !important;
+  min-width: 1680px !important;
+}
+
+/* 操作列按钮不换行、不压缩 */
+.table-container .dimension-actions-col .action-buttons {
+  white-space: nowrap;
+}
+
+/* === 层级展示样式（主/子维度徽章等，原在父组件 scoped，子组件需自带） === */
+
+/* 子维度行背景微调 */
+.sub-dimension-row {
+  background-color: var(--background-secondary, #fafafa);
+}
+
+.sub-dimension-row:hover {
+  background-color: var(--background-tertiary, #f5f5f5);
+}
+
+/* 维度名称单元格容器 */
+.dimension-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+/* 树形分支符号 */
+.tree-branch {
+  color: var(--text-light, #999);
+  font-size: 16px;
+  font-family: monospace;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+/* 主维度/子维度类型标签 */
+.dimension-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.main-dim-badge {
+  background-color: var(--primary-light, #fff3e0);
+  color: var(--primary-color, #ff6a00);
+  border: 1px solid var(--primary-color, #ff6a00);
+}
+
+.sub-dim-badge {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #2e7d32;
+}
+
+/* 维度名称文字 */
+.dimension-name-text {
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--text-primary);
+}
+
+/* 父维度提示文字 */
+.parent-name-hint {
+  font-size: 12px;
+  color: var(--text-light, #999);
+  white-space: nowrap;
+}
+
+/* 排序按钮样式 */
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sort-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s ease;
+}
+
+.sort-btn:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--primary-color-light, rgba(22, 119, 255, 0.06));
+}
+
+.sort-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* 关联算法标签样式 */
+.algorithm-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.algo-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  background-color: var(--background-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.algo-tag.is-default {
+  background-color: var(--primary-light);
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.text-muted {
+  color: var(--text-light);
+}
+
+/* LLM Judge 维度标签样式 */
+.api-status.llm-judge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 16px;
+  border: none;
+}
+
+.api-status.llm-judge i {
+  font-size: 11px;
+}
+</style>
