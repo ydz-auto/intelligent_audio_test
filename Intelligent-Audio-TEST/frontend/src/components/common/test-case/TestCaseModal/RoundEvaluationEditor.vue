@@ -6,6 +6,13 @@
       已根据算法类型「{{ algorithmType }}」过滤可用维度
     </div>
 
+    <!-- 描述说明 -->
+    <div class="eval-desc-note">
+      <i class="fas fa-info-circle"></i>
+      单轮评估对每一轮<span class="highlight">独立提交、独立打分</span>；
+      若同一维度也配置在整体评估中，整体评估返回的逐轮结果会<span class="highlight">覆盖</span>对应轮次的记录。
+    </div>
+
     <!-- 搜索工具栏 -->
     <div class="eval-toolbar">
       <div class="eval-search-box">
@@ -383,6 +390,28 @@ function emitUpdate() {
   font-size: 12px;
 }
 
+/* 描述说明 */
+.eval-desc-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #f0f8ff;
+  color: #666;
+  border: 1px solid #91caff;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.eval-desc-note i {
+  margin-top: 2px;
+  color: #1890ff;
+}
+.eval-desc-note .highlight {
+  color: #1890ff;
+  font-weight: 600;
+}
+
 /* 搜索工具栏 */
 .eval-toolbar {
   display: flex;
@@ -403,7 +432,7 @@ function emitUpdate() {
   transition: border-color 0.2s;
 }
 .eval-search-box:focus-within {
-  border-color: var(--primary-color, #ff6a00);
+  border-color: #1890ff;
 }
 .eval-search-box i {
   color: var(--text-light, #999);
@@ -426,34 +455,36 @@ function emitUpdate() {
   white-space: nowrap;
 }
 
+/* 单轮评估维度徽章：未选中=描边式（透明底+浅蓝细边+深蓝小字保证可读）；选中=填充蓝色+白字+黑阴影 */
 .eval-chip {
-  padding: 7px 14px;
+  padding: 5px 12px;
   border-radius: 20px;
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid var(--border-color, #e0e0e0);
-  background: var(--background-primary, #fff);
-  color: var(--text-secondary, #666);
+  border: 1px solid #91caff;
+  background: transparent;
+  color: #096dd9;
   display: flex;
   align-items: center;
   gap: 5px;
   user-select: none;
 }
 .eval-chip:hover {
-  border-color: var(--primary-color, #ff6a00);
-  color: var(--primary-color, #ff6a00);
+  background: #e6f7ff;
   transform: translateY(-1px);
 }
 .eval-chip.active {
-  background: var(--primary-color, #ff6a00);
+  background: #1890ff;
   color: #fff;
-  border-color: var(--primary-color, #ff6a00);
+  border-color: #1890ff;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 .eval-chip.active:hover {
-  background: #ff8533;
-  border-color: #ff8533;
+  background: #40a9ff;
+  border-color: #40a9ff;
 }
 .eval-chip i {
   font-size: 10px;
@@ -475,27 +506,13 @@ function emitUpdate() {
   margin-left: 2px;
 }
 
-/* 主维度徽章 */
+/* 主维度徽章：加粗区分层级 */
 .eval-chip-main {
-  background: rgba(255, 106, 0, 0.08);
-  border-color: rgba(255, 106, 0, 0.4);
-  color: #e85d04;
   font-weight: 600;
 }
-.eval-chip-main:hover {
-  background: rgba(255, 106, 0, 0.14);
-  border-color: var(--primary-color, #ff6a00);
-  color: #e85d04;
-}
+
 .eval-chip-main.active {
-  background: var(--primary-color, #ff6a00);
-  border-color: var(--primary-color, #ff6a00);
-  color: #fff;
-}
-.eval-chip-main.active:hover {
-  background: #ff8533;
-  border-color: #ff8533;
-  color: #fff;
+  font-weight: 700;
 }
 
 /* 主/子徽标 */
@@ -512,27 +529,21 @@ function emitUpdate() {
   flex-shrink: 0;
 }
 .eval-badge-main {
-  background: var(--primary-color, #ff6a00);
+  background: #1890ff;
   color: #fff;
 }
-.eval-chip-main.active .eval-badge-main {
-  background: #fff;
-  color: var(--primary-color, #ff6a00);
-}
 .eval-badge-sub {
-  background: rgba(255, 106, 0, 0.12);
-  color: #e85d04;
-  border: 1px solid rgba(255, 106, 0, 0.3);
+  background: #fff;
+  color: #096dd9;
+  border: 1px solid #91caff;
 }
-/* 选中态：内部徽标反色保证在实心橙底上可读 */
+/* 选中（填充态）内部徽标反色：白底深蓝字保证可读 */
+.eval-chip.active .eval-badge-main {
+  background: #fff;
+  color: #096dd9;
+}
 .eval-chip.active .eval-badge-sub {
-  background: #fff;
-  color: var(--primary-color, #ff6a00);
   border-color: #fff;
-}
-.eval-chip-main.active .eval-sub-count {
-  background: #fff;
-  color: var(--primary-color, #ff6a00);
 }
 
 /* 子维度展开/收起按钮 */
@@ -541,20 +552,24 @@ function emitUpdate() {
   align-items: center;
   gap: 3px;
   padding: 0 2px;
-  color: rgba(255, 106, 0, 0.7);
+  color: rgba(24, 144, 255, 0.7);
   border-radius: 6px;
   flex-shrink: 0;
   transition: all 0.2s;
 }
 .eval-expand-btn:hover {
-  color: var(--primary-color, #ff6a00);
-  background: rgba(255, 106, 0, 0.1);
+  color: #1890ff;
+  background: rgba(24, 144, 255, 0.1);
 }
 .eval-expand-btn.expanded {
-  color: var(--primary-color, #ff6a00);
+  color: #1890ff;
 }
+/* 选中（填充态）：展开按钮与数量角标反色 */
 .eval-chip-main.active .eval-expand-btn {
   color: #fff;
+}
+.eval-chip-main.active .eval-sub-count {
+  border-color: #fff;
 }
 
 /* 主维度组内子维度数量角标 */
@@ -566,8 +581,9 @@ function emitUpdate() {
   height: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background: rgba(255, 106, 0, 0.12);
-  color: #e85d04;
+  background: #fff;
+  color: #096dd9;
+  border: 1px solid #91caff;
   font-size: 10px;
   font-weight: 600;
 }
@@ -691,6 +707,6 @@ function emitUpdate() {
 .eval-toggle-label input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--primary-color, #ff6a00);
+  accent-color: #1890ff;
 }
 </style>

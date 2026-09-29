@@ -439,9 +439,13 @@ const dimensionCount = computed(() => {
           <span>逐轮设置（每轮可不同）</span>
         </label>
       </div>
-      <p class="mode-hint" v-if="roundMode === 'all'">所有轮次共用同一套评估维度，每轮独立评分。不选任何维度点确定即清空已有的评估维度</p>
+      <p class="mode-hint" v-if="roundMode === 'all'">所有轮次共用同一套评估维度，每轮独立提交、独立打分并单独落库。不选任何维度点确定即清空已有的评估维度</p>
       <p class="mode-hint" v-else-if="roundMode === 'specific'">仅对选中的轮次统一设置评估维度，其他轮次不受影响。不选任何维度点确定即清空选中轮次的评估维度</p>
       <p class="mode-hint" v-else>每轮可独立选择不同的评估维度，未选维度的轮次将被清空</p>
+      <p class="linkage-hint">
+        <i class="fas fa-info-circle"></i>
+        若同一维度也配置在下方多轮整体评估中，整体评估返回的逐轮结果会<span class="linkage-strong">覆盖</span>对应轮次的单轮记录，保证整体与逐轮口径一致
+      </p>
     </div>
 
     <!-- 指定轮次选择 -->
@@ -486,6 +490,7 @@ const dimensionCount = computed(() => {
           v-if="!loading"
           :groups="cloudGroups"
           :selected-ids="selectedDimensions.map(d => d.id)"
+          variant="round"
           @toggle="toggleDimension"
         />
         <div class="dimension-loading" v-else>加载中...</div>
@@ -572,6 +577,7 @@ const dimensionCount = computed(() => {
               v-if="!loading"
               :groups="cloudGroups"
               :selected-ids="getRoundSelectedDimensions(activeRoundTab).map(d => d.id)"
+              variant="round"
               @toggle="(dim: any) => toggleRoundDimension(activeRoundTab, dim)"
             />
             <div class="dimension-loading" v-else>加载中...</div>
@@ -640,11 +646,12 @@ const dimensionCount = computed(() => {
     <!-- 多轮整体评估维度 -->
     <div class="scope-section multi-section">
       <label>多轮整体评估维度（跨轮次聚合） <span class="optional-tag">可选</span></label>
-      <p class="section-desc">这些维度基于所有轮次的整体表现进行评估，与单轮维度独立配置。不选任何维度将清空已有的整体评估维度</p>
+      <p class="section-desc">这些维度在所有轮次执行完成后触发，基于全量多轮数据计算跨轮次综合指标（如多轮平均 WER、对话连贯性），与单轮维度独立配置。若评估端支持逐轮计算，会随整体结果返回各轮得分并覆盖对应轮次的单轮记录。不选任何维度将清空已有的整体评估维度</p>
       <DimensionCloud
         v-if="!loading"
         :groups="multiCloudGroups"
         :selected-ids="multiSelectedDimensions.map(d => d.id)"
+        variant="overall"
         @toggle="toggleMultiDimension"
       />
       <div class="dimension-loading" v-else>加载中...</div>
@@ -911,8 +918,31 @@ const dimensionCount = computed(() => {
 
 .mode-hint {
   font-size: 11px;
-  color: #f59e0b;
+  color: #1890ff;
   margin-top: 8px;
+}
+
+/* 单轮 ↔ 整体评估联动说明 */
+.linkage-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #666;
+  background: #f0f8ff;
+  border: 1px solid #91caff;
+  border-radius: 6px;
+}
+.linkage-hint i {
+  margin-top: 2px;
+  color: #1890ff;
+}
+.linkage-strong {
+  color: #1890ff;
+  font-weight: 600;
 }
 
 /* 指定轮次 */

@@ -20,6 +20,8 @@
       与单轮评估（每轮独立打分）不同，整体评估关注的是跨轮次的综合指标，例如
       <span class="highlight">多轮平均 WER</span>、<span class="highlight">对话连贯性</span>、
       <span class="highlight">上下文一致性</span> 等。
+      <br>
+      若评估端点支持逐轮计算，整体评估会<span class="highlight">随结果返回各轮得分</span>并<span class="highlight">覆盖单轮评估</span>的对应轮次记录，保证整体与逐轮口径一致。
     </div>
 
     <!-- 启用开关 -->
@@ -403,7 +405,7 @@ watch(enabled, () => {
   flex-direction: column;
   gap: 12px;
   margin-top: 24px;
-  border-top: 2px dashed var(--primary-color, #FF6A00);
+  border-top: 2px dashed #52c41a;
   padding-top: 24px;
 }
 
@@ -418,8 +420,8 @@ watch(enabled, () => {
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  background: rgba(255, 106, 0, 0.1);
-  color: #FF6A00;
+  background: rgba(82, 196, 26, 0.12);
+  color: #52c41a;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -442,8 +444,8 @@ watch(enabled, () => {
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  background: rgba(255, 106, 0, 0.1);
-  color: #FF6A00;
+  background: rgba(82, 196, 26, 0.12);
+  color: #52c41a;
   border-radius: 100px;
   font-size: 11px;
   font-weight: 600;
@@ -462,10 +464,10 @@ watch(enabled, () => {
   border-radius: 8px;
   padding: 8px 16px;
   line-height: 1.6;
-  border-left: 3px solid #FF6A00;
+  border-left: 3px solid #52c41a;
 }
 .overall-description .highlight {
-  color: #FF6A00;
+  color: #52c41a;
   font-weight: 600;
 }
 
@@ -481,7 +483,7 @@ watch(enabled, () => {
   padding: 4px 0;
 }
 .overall-toggle-row:hover {
-  color: #FF6A00;
+  color: #52c41a;
 }
 .toggle-switch {
   width: 36px;
@@ -493,7 +495,7 @@ watch(enabled, () => {
   flex-shrink: 0;
 }
 .toggle-switch.active {
-  background: #FF6A00;
+  background: #52c41a;
 }
 .toggle-knob {
   position: absolute;
@@ -537,7 +539,7 @@ watch(enabled, () => {
   transition: border-color 0.2s;
 }
 .eval-search-box:focus-within {
-  border-color: #FF6A00;
+  border-color: #52c41a;
 }
 .eval-search-box i {
   color: #999;
@@ -569,35 +571,35 @@ watch(enabled, () => {
 .eval-chip-group {
   display: contents;
 }
+/* 整体评估维度徽章：未选中=描边式（透明底+浅绿细边+深绿字，浅绿小字对比度不足）；选中=填充绿色+白字+黑阴影 */
 .eval-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 16px;
-  border: 1px solid #E5E7EB;
+  padding: 5px 12px;
+  border: 1px solid #b7eb8f;
   border-radius: 100px;
-  font-size: 12px;
-  color: #777;
+  font-size: 13px;
+  color: #389e0d;
   cursor: pointer;
   transition: all 0.2s;
-  background: #FFF;
+  background: transparent;
   user-select: none;
 }
 .eval-chip:hover {
-  border-color: #FF6A00;
-  color: #FF6A00;
+  background: #f6ffed;
+  transform: translateY(-1px);
 }
 .eval-chip.active {
-  background: #FF6A00;
-  border-color: #FF6A00;
-  color: #FFF;
+  background: #52c41a;
+  border-color: #52c41a;
+  color: #fff;
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(255, 106, 0, 0.3);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 .eval-chip.active:hover {
-  background: #FF8533;
-  border-color: #FF8533;
-  color: #FFF;
+  background: #73d13d;
+  border-color: #73d13d;
 }
 .eval-chip.disabled {
   opacity: 0.4;
@@ -605,27 +607,21 @@ watch(enabled, () => {
   border-style: dashed;
 }
 .eval-chip.disabled:hover {
-  border-color: #E5E7EB;
-  color: #999;
+  opacity: 0.4;
+  background: transparent;
+  border-color: #b7eb8f;
+  color: #389e0d;
+  transform: none;
 }
 .eval-chip i {
   font-size: 10px;
 }
-/* 主维度徽章 */
+/* 主维度徽章：加粗区分层级 */
 .eval-chip-main {
-  background: rgba(255, 106, 0, 0.08);
-  border-color: rgba(255, 106, 0, 0.4);
-  color: #e85d04;
   font-weight: 600;
 }
-.eval-chip-main:hover {
-  background: rgba(255, 106, 0, 0.14);
-  border-color: #FF6A00;
-}
 .eval-chip-main.active {
-  background: #FF6A00;
-  border-color: #FF6A00;
-  color: #FFF;
+  font-weight: 700;
 }
 /* 子维度徽章（展开后跟随主维度流式展示） */
 .eval-chip-subs {
@@ -633,9 +629,6 @@ watch(enabled, () => {
   flex-wrap: wrap;
   gap: 8px;
   margin-left: 2px;
-}
-.eval-chip-sub {
-  background: #FFF;
 }
 /* 主/子徽标 */
 .eval-badge {
@@ -651,27 +644,21 @@ watch(enabled, () => {
   flex-shrink: 0;
 }
 .eval-badge-main {
-  background: #FF6A00;
+  background: #52c41a;
   color: #FFF;
 }
-.eval-chip-main .eval-badge-main {
-  background: #FFF;
-  color: #FF6A00;
-}
 .eval-badge-sub {
-  background: rgba(255, 106, 0, 0.12);
-  color: #e85d04;
-  border: 1px solid rgba(255, 106, 0, 0.3);
+  background: #FFF;
+  color: #389e0d;
+  border: 1px solid #b7eb8f;
 }
-/* 选中态：内部徽标反色保证在实心橙底上可读 */
+/* 选中（填充态）内部徽标反色：白底深绿字保证可读 */
+.eval-chip.active .eval-badge-main {
+  background: #FFF;
+  color: #389e0d;
+}
 .eval-chip.active .eval-badge-sub {
-  background: #FFF;
-  color: #FF6A00;
   border-color: #FFF;
-}
-.eval-chip-main.active .eval-sub-count {
-  background: #FFF;
-  color: #FF6A00;
 }
 /* 主维度组内子维度数量角标 */
 .eval-sub-count {
@@ -682,8 +669,9 @@ watch(enabled, () => {
   height: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background: rgba(255, 106, 0, 0.12);
-  color: #e85d04;
+  background: #FFF;
+  color: #389e0d;
+  border: 1px solid #b7eb8f;
   font-size: 10px;
   font-weight: 600;
 }
@@ -693,20 +681,24 @@ watch(enabled, () => {
   align-items: center;
   gap: 3px;
   padding: 0 2px;
-  color: rgba(255, 106, 0, 0.7);
+  color: rgba(82, 196, 26, 0.7);
   border-radius: 6px;
   flex-shrink: 0;
   transition: all 0.2s;
 }
 .eval-expand-btn:hover {
-  color: #FF6A00;
-  background: rgba(255, 106, 0, 0.1);
+  color: #52c41a;
+  background: rgba(82, 196, 26, 0.1);
 }
 .eval-expand-btn.expanded {
-  color: #FF6A00;
+  color: #52c41a;
 }
+/* 选中（填充态）：展开按钮与数量角标反色 */
 .eval-chip-main.active .eval-expand-btn {
   color: #FFF;
+}
+.eval-chip-main.active .eval-sub-count {
+  border-color: #FFF;
 }
 
 .eval-empty {
@@ -753,7 +745,7 @@ watch(enabled, () => {
 .eval-card-title {
   font-size: 14px;
   font-weight: 600;
-  color: #FF6A00;
+  color: #52c41a;
 }
 .eval-card-remove-btn {
   background: none;

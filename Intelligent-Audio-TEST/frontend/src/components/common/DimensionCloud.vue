@@ -16,9 +16,12 @@ const props = withDefaults(defineProps<{
   selectedIds?: (string | number)[]
   /** 空态文案 */
   emptyText?: string
+  /** 主题变体：round=单轮评估维度(debug 蓝) / overall=整体评估维度(info 绿) */
+  variant?: 'round' | 'overall'
 }>(), {
   selectedIds: () => [],
-  emptyText: '暂无可用的评价维度'
+  emptyText: '暂无可用的评价维度',
+  variant: 'round'
 })
 
 const emit = defineEmits<{
@@ -30,7 +33,7 @@ const isSelected = (dim: any) => selectedIdSet.value.has(String(dim.id))
 </script>
 
 <template>
-  <div class="dimension-cloud-container">
+  <div class="dimension-cloud-container" :class="`variant-${variant}`">
     <!-- 主维度 + 紧随其子维度，成组展示 -->
     <div v-for="(group, gi) in groups" :key="gi" class="dimension-group">
       <template v-if="group.main">
@@ -104,92 +107,90 @@ const isSelected = (dim: any) => selectedIdSet.value.has(String(dim.id))
   margin-bottom: 4px;
 }
 
+/* 主题变体：round=单轮评估维度(debug 蓝) / overall=整体评估维度(info 绿)，仅作用于徽章，容器保持中性灰 */
+/* --dim-text 为描边态文字色：主色小字对比度不足，统一加深一档 */
+.dimension-cloud-container.variant-round {
+  --dim-accent: #1890ff;
+  --dim-accent-bg: #e6f7ff;
+  --dim-accent-border: #91caff;
+  --dim-accent-hover: #40a9ff;
+  --dim-text: #096dd9;
+}
+.dimension-cloud-container.variant-overall {
+  --dim-accent: #52c41a;
+  --dim-accent-bg: #f6ffed;
+  --dim-accent-border: #b7eb8f;
+  --dim-accent-hover: #73d13d;
+  --dim-text: #389e0d;
+}
+
+/* 维度标签云：未选中=描边式（透明底+主题色细边+实色字）；选中=填充主题色+白字+黑阴影 */
 .dimension-tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
-  background-color: var(--background-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  padding: 5px 12px;
+  background-color: transparent;
+  color: var(--dim-text);
+  border: 1px solid var(--dim-accent-border);
   border-radius: 20px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
   transition: all 0.2s ease;
   user-select: none;
   white-space: nowrap;
 }
 
 .dimension-tag:hover {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
-  border-color: var(--primary-color);
+  background-color: var(--dim-accent-bg);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
 }
 
 .dimension-tag.selected {
-  background-color: var(--primary-color);
+  background-color: var(--dim-accent);
   color: #fff;
-  border-color: var(--primary-color);
+  border-color: var(--dim-accent);
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(255, 106, 0, 0.35);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .dimension-tag.selected:hover {
-  background-color: #ff8533;
-  color: #fff;
-  border-color: #ff8533;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.35);
+  background-color: var(--dim-accent-hover);
+  border-color: var(--dim-accent-hover);
 }
 
-/* 主维度标签 */
+/* 选中（填充态）内部徽标反色：白底深主题色字保证可读 */
+.dimension-tag.selected .dim-badge-main,
+.dimension-tag.selected .dim-badge-sub {
+  background-color: #fff;
+  color: var(--dim-text);
+  border: none;
+}
+
+.dimension-tag.selected .dim-group-count {
+  background-color: #fff;
+  color: var(--dim-text);
+  border: none;
+}
+
+.dimension-tag.selected .tree-branch,
+.dimension-tag.selected .parent-name-hint {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* 主维度标签：加粗区分层级 */
 .dimension-tag-main {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
-  border-color: rgba(255, 106, 0, 0.35);
   font-weight: 600;
 }
 
-.dimension-tag-main:hover {
-  background-color: #ffe9d4;
-  border-color: var(--primary-color);
-}
-
 .dimension-tag-main.selected {
-  background-color: var(--primary-color);
-  color: #fff;
-  border-color: var(--primary-color);
   font-weight: 700;
-  box-shadow: 0 1px 4px rgba(255, 106, 0, 0.35);
 }
 
-.dimension-tag-main.selected:hover {
-  background-color: #ff8533;
-  color: #fff;
-  border-color: #ff8533;
-  transform: translateY(-1px);
-}
-
-/* 子维度标签 */
+/* 子维度标签：与主维度同主题，层级靠主/子徽标区分 */
 .dimension-tag-sub {
-  background-color: var(--background-secondary);
-  color: var(--text-primary);
-  border-color: var(--border-color);
-}
-
-.dimension-tag-sub.selected {
-  background-color: var(--primary-color);
-  color: #fff;
-  border-color: var(--primary-color);
-}
-
-.dimension-tag-sub.selected:hover {
-  background-color: #ff8533;
-  color: #fff;
-  border-color: #ff8533;
-  transform: translateY(-1px);
+  font-weight: 500;
 }
 
 /* 主/子徽标 */
@@ -207,15 +208,15 @@ const isSelected = (dim: any) => selectedIdSet.value.has(String(dim.id))
 }
 
 .dim-badge-main {
-  background-color: var(--primary-color);
+  background-color: var(--dim-accent);
   color: #fff;
   border: none;
 }
 
 .dim-badge-sub {
-  background-color: var(--primary-light);
-  color: var(--primary-color);
-  border: 1px solid rgba(255, 106, 0, 0.35);
+  background-color: #fff;
+  color: var(--dim-text);
+  border: 1px solid var(--dim-accent-border);
 }
 
 /* 主维度组内子维度数量角标 */
@@ -227,29 +228,11 @@ const isSelected = (dim: any) => selectedIdSet.value.has(String(dim.id))
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: var(--primary-light);
-  color: var(--primary-color);
-  border: 1px solid rgba(255, 106, 0, 0.35);
+  background-color: #fff;
+  color: var(--dim-text);
+  border: 1px solid var(--dim-accent-border);
   font-size: 11px;
   font-weight: 600;
-}
-
-/* 选中态：内部徽标反色保证在实心橙底上可读 */
-.dimension-tag.selected .dim-badge {
-  background-color: #fff;
-  color: var(--primary-color);
-  border: none;
-}
-.dimension-tag.selected .dim-group-count {
-  background-color: #fff;
-  color: var(--primary-color);
-  border: none;
-}
-.dimension-tag.selected .tree-branch {
-  color: rgba(255, 255, 255, 0.7);
-}
-.dimension-tag.selected .parent-name-hint {
-  color: rgba(255, 255, 255, 0.7);
 }
 
 /* 树形分支符号 */
