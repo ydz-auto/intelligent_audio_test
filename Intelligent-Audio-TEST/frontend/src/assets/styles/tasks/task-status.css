@@ -54,6 +54,21 @@
     border-color: #8c8c8c;
 }
 
+.task-status.merged, .task-status-merged {
+    color: #ea580c;
+    border-color: #ea580c;
+}
+
+.task-status.published, .task-status-published {
+    color: #059669;
+    border-color: #059669;
+}
+
+.task-status.archived, .task-status-archived {
+    color: #64748b;
+    border-color: #64748b;
+}
+
 .task-indicator {
     font-size: 12px;
     animation: pulse 2s infinite;

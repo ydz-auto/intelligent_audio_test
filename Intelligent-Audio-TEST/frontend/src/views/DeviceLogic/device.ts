@@ -606,7 +606,10 @@ const allFilteredPlaybackDevices = computed(() => {
     const actualFilterType = playbackTypeFilter.value === 'all' ? 'all' : typeMapping[playbackTypeFilter.value] || playbackTypeFilter.value;
     const matchesPlaybackType = actualFilterType === 'all' || device.type === actualFilterType;
 
-    return matchesSearch && matchesStatus && matchesPlaybackType;
+    const matchesAlgorithm = algorithmFilter.value === 'all' || 
+      ((device as any).supportedAlgorithms && (device as any).supportedAlgorithms.includes(algorithmFilter.value));
+
+    return matchesSearch && matchesStatus && matchesPlaybackType && matchesAlgorithm;
   });
 });
 

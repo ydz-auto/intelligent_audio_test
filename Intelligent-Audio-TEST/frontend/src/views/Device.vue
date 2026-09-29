@@ -113,6 +113,10 @@
                     </select>
                   </div>
                 </div>
+                <!-- 算法筛选（徽章单选） -->
+                <div class="algorithm-filter-row">
+                  <AlgorithmFilter :options="algorithmTypeOptions" v-model="algorithmFilter" title="支持算法" />
+                </div>
               </div>
             </div>
             <div class="card-body">
@@ -266,14 +270,10 @@
                       <option value="testing">测试中</option>
                     </select>
                   </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="algorithmFilter" @change="filterDevices" id="algorithmFilter">
-                      <option value="all">支持算法: 全部</option>
-                      <option v-for="algo in algorithmTypeOptions" :key="algo.value" :value="algo.value">
-                        {{ algo.label }}
-                      </option>
-                    </select>
-                  </div>
+                </div>
+                <!-- 算法筛选（徽章单选） -->
+                <div class="algorithm-filter-row">
+                  <AlgorithmFilter :options="algorithmTypeOptions" v-model="algorithmFilter" title="支持算法" />
                 </div>
               </div>
             </div>
@@ -435,14 +435,10 @@
                       <option value="testing">测试中</option>
                     </select>
                   </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="algorithmTypeFilter" @change="filterDevices" id="apiAlgorithmTypeFilter">
-                      <option value="all">所有算法类型</option>
-                      <option v-for="algo in algorithmTypeOptions" :key="algo.value" :value="algo.value">
-                        {{ algo.label }}
-                      </option>
-                    </select>
-                  </div>
+                </div>
+                <!-- 算法筛选（徽章单选） -->
+                <div class="algorithm-filter-row">
+                  <AlgorithmFilter :options="algorithmTypeOptions" v-model="algorithmTypeFilter" title="算法类型" />
                 </div>
               </div>
             </div>
@@ -564,6 +560,7 @@ import '../assets/styles/main.css';
 import { useDevice } from './DeviceLogic/Device';
 import InfiniteScrollList from '../components/common/InfiniteScrollList.vue';
 import AlgorithmTag from '../components/algorithm/AlgorithmTag.vue';
+import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
 
 // 使用组合式函数获取所有状态和函数
 const {
@@ -676,5 +673,13 @@ onMounted(async () => {
   font-size: 0.85rem;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+/* 算法徽章筛选行 */
+.algorithm-filter-row {
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-color);
 }
 </style>

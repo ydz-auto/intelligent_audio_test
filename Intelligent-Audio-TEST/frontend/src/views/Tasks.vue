@@ -120,13 +120,6 @@
             </select>
           </div>
           
-          <div class="filter-item" v-if="activeTab === 'daily'">
-            <label for="algorithm-filter">算法类型：</label>
-            <select class="filter-select" id="algorithm-filter" v-model="currentFilter.algorithmType" @change="applyCurrentFilter">
-              <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
-          </div>
-          
           <div class="filter-item">
             <label for="status-filter">任务状态：</label>
             <select class="filter-select" id="status-filter" v-model="currentFilter.status" @change="applyCurrentFilter">
@@ -168,6 +161,16 @@
               名称 <i class="fas" :class="(currentFilter.sort.field === 'title' || currentFilter.sort.field === 'name') ? (currentFilter.sort.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
             </div>
           </div>
+        </div>
+        
+        <!-- 算法筛选（徽章单选，日常视图专属） -->
+        <div class="filter-row" v-if="activeTab === 'daily'">
+          <AlgorithmFilter
+            :options="algorithmOptions"
+            :model-value="currentFilter.algorithmType"
+            title="算法筛选"
+            @update:model-value="handleAlgorithmFilterChange"
+          />
         </div>
       </section>
       
@@ -280,43 +283,18 @@
           </div>
 
           <div class="published-task-list">
-            <div v-for="pt in published.items" :key="pt.id" class="published-task-item">
-              <div class="published-task-item-main">
-                <div class="published-task-title-row">
-                  <span class="published-task-name" :title="pt.name">{{ pt.name }}</span>
-                  <span class="published-task-version-badge">v{{ pt.version }}</span>
-                  <span v-if="pt.isCurrent" class="published-task-current-badge">当前版本</span>
-                  <span class="published-task-status" :class="pt.status">{{ publishedStatusText(pt.status) }}</span>
-                </div>
-                <div class="published-task-meta">
-                  <span><i class="fas fa-tag"></i>{{ getTaskTypeText(pt.type) }}</span>
-                  <span><i class="fas fa-layer-group"></i>共 {{ pt.versionCount ?? 1 }} 个版本</span>
-                  <span v-if="pt.publishedAt"><i class="fas fa-calendar-alt"></i>{{ formatDate(pt.publishedAt) }}</span>
-                </div>
-              </div>
-              <div class="published-task-actions">
-                <button
-                  v-if="can(PermissionPoint.PUBLISHED_TASK_EXECUTE)"
-                  class="btn btn-primary btn-sm"
-                  :disabled="pt.status === 'archived' || published.actionLoading"
-                  @click="handlePublishedExecute(pt)"
-                >
-                  <i class="fas fa-play"></i> 执行此版本
-                </button>
-                <button class="btn btn-secondary btn-sm" @click="togglePublishedDetail(pt)">
-                  <i class="fas fa-history"></i> 版本
-                </button>
-                <button
-                  v-if="can(PermissionPoint.PUBLISHED_TASK_ARCHIVE)"
-                  class="btn btn-danger btn-sm"
-                  :disabled="pt.status === 'archived' || published.actionLoading"
-                  @click="handlePublishedArchive(pt)"
-                >
-                  <i class="fas fa-archive"></i> 归档
-                </button>
-              </div>
+            <div v-for="pt in published.items" :key="pt.id" class="published-card-wrap">
+              <!-- 任务主体：复用日常任务卡片（标题/状态徽章/按钮位置/尺寸完全一致） -->
+              <TaskCard
+                :task="mapPublishedTask(pt)"
+                :actions="publishedCardActions"
+                :show-checkbox="false"
+                :show-config="false"
+                @action="handlePublishedCardAction"
+                @name-updated="handlePublishedNameUpdated"
+              />
 
-              <!-- 版本历史（展开） -->
+              <!-- 版本历史（展开，发布任务专属功能） -->
               <div v-if="expandedPublishedId === pt.id" class="published-task-versions">
                 <div class="published-task-versions-title">
                   <i class="fas fa-history"></i> 版本历史（共 {{ publishedDetail?.versions?.length ?? 0 }} 个版本）
@@ -419,69 +397,53 @@
           </div>
 
           <div class="published-task-list" v-if="!merged.loading">
-            <div v-for="mt in merged.items" :key="mt.id" class="published-task-item merged-task-item">
-              <div class="published-task-item-main">
-                <div class="published-task-title-row">
-                  <span class="published-task-name" :title="mt.name">{{ mt.name }}</span>
-                  <span class="published-task-version-badge merged-task-badge">合并任务</span>
-                  <span class="published-task-status published">{{ getStatusText(mt.status) }}</span>
-                </div>
-                <div class="published-task-meta">
-                  <span><i class="fas fa-code-branch"></i>来源 {{ mt.sourceTasks?.length ?? 0 }} 个任务</span>
-                  <span><i class="fas fa-list-alt"></i>用例 {{ mt.completedCases ?? 0 }}/{{ mt.totalCases ?? 0 }}</span>
-                  <span v-if="mt.createdAt"><i class="fas fa-calendar-alt"></i>{{ formatDate(mt.createdAt) }}</span>
-                </div>
-              </div>
+            <div v-for="mt in merged.items" :key="mt.id" class="published-card-wrap">
+              <!-- 任务主体：复用日常任务卡片（标题/状态徽章/按钮位置/尺寸完全一致） -->
+              <TaskCard
+                :task="mapMergedTask(mt)"
+                :actions="taskActions"
+                :show-checkbox="false"
+                :show-config="false"
+                @action="handleDailyAction"
+                @name-updated="handleMergedNameUpdated"
+              />
 
-              <!-- 源任务列表（支持查看/执行/评估/报告等全部操作） -->
-              <div class="merged-source-list" v-if="mt.sourceTasks && mt.sourceTasks.length > 0">
-                <div class="merged-source-list-title">
+              <!-- 源任务列表（默认收起，点击标题展开，支持查看/执行/评估/报告等全部操作） -->
+              <div class="merged-source-list" v-if="(mt.sourceTasks?.length ?? 0) > 0">
+                <div class="merged-source-list-title" @click="toggleMergedSources(mt.id)">
                   <i class="fas fa-object-ungroup"></i> 源任务列表（{{ mt.sourceTasks.length }} 个）
+                  <i class="fas merged-source-toggle" :class="expandedMergedSources.has(mt.id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
                 </div>
-                <div v-for="src in mt.sourceTasks" :key="src.id" class="merged-source-row">
-                  <div class="merged-source-row-info">
-                    <span class="merged-source-row-name" :title="src.name">{{ src.name }}</span>
-                    <span class="merged-source-status" :class="src.status">{{ getStatusText(src.status) }}</span>
-                    <span class="merged-source-row-cases"><i class="fas fa-list-alt"></i>用例 {{ src.completedCases ?? 0 }}/{{ src.totalCases ?? 0 }}</span>
-                    <span v-if="src.createdAt" class="merged-source-row-time"><i class="fas fa-calendar-alt"></i>{{ formatDate(src.createdAt) }}</span>
+                <template v-if="expandedMergedSources.has(mt.id)">
+                  <div v-for="src in mt.sourceTasks" :key="src.id" class="merged-source-row">
+                    <div class="merged-source-row-info">
+                      <span class="merged-source-row-name" :title="src.name">{{ src.name }}</span>
+                      <span class="merged-source-status" :class="src.status">{{ getStatusText(src.status) }}</span>
+                      <span class="merged-source-row-cases"><i class="fas fa-list-alt"></i>用例 {{ src.completedCases ?? 0 }}/{{ src.totalCases ?? 0 }}</span>
+                      <span v-if="src.createdAt" class="merged-source-row-time"><i class="fas fa-calendar-alt"></i>{{ formatDate(src.createdAt) }}</span>
+                    </div>
+                    <div class="merged-source-row-actions">
+                      <template v-for="act in taskActions" :key="act.id">
+                        <button
+                          v-if="!act.show || act.show(src)"
+                          class="btn btn-sm"
+                          :class="`btn-${act.type}`"
+                          :disabled="typeof act.disabled === 'function' ? act.disabled(src) : act.disabled"
+                          :title="act.title || act.label"
+                          @click="handleDailyAction({ action: { id: act.id }, task: src })"
+                        >
+                          <i v-if="act.icon" :class="`fas ${act.icon}`"></i>
+                          {{ act.label }}
+                        </button>
+                      </template>
+                    </div>
                   </div>
-                  <div class="merged-source-row-actions">
-                    <template v-for="act in taskActions" :key="act.id">
-                      <button
-                        v-if="!act.show || act.show(src)"
-                        class="btn btn-sm"
-                        :class="`btn-${act.type}`"
-                        :disabled="typeof act.disabled === 'function' ? act.disabled(src) : act.disabled"
-                        :title="act.title || act.label"
-                        @click="handleDailyAction({ action: { id: act.id }, task: src })"
-                      >
-                        <i v-if="act.icon" :class="`fas ${act.icon}`"></i>
-                        {{ act.label }}
-                      </button>
-                    </template>
-                  </div>
-                </div>
+                </template>
               </div>
               <div class="merged-source-list empty-source-hint" v-else>
                 <div class="merged-source-row">
                   <span class="merged-source-row-cases">该合并任务暂无来源任务记录</span>
                 </div>
-              </div>
-
-              <div class="published-task-actions">
-                <template v-for="act in taskActions" :key="act.id">
-                  <button
-                    v-if="!act.show || act.show(mt)"
-                    class="btn btn-sm"
-                    :class="`btn-${act.type}`"
-                    :disabled="typeof act.disabled === 'function' ? act.disabled(mt) : act.disabled"
-                    :title="act.title || act.label"
-                    @click="handleDailyAction({ action: { id: act.id }, task: mt })"
-                  >
-                    <i v-if="act.icon" :class="`fas ${act.icon}`"></i>
-                    {{ act.label }}
-                  </button>
-                </template>
               </div>
             </div>
 
@@ -730,6 +692,8 @@
 import { onMounted, ref, watch, computed, reactive } from 'vue';
 import { useTasks } from './TasksLogic/tasks';
 import TaskListWithPagination from '../components/TaskListWithPagination.vue';
+import TaskCard from '../components/TaskCard.vue';
+import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../components/common/PaginationComponent.vue';
 import ComparisonTableComponent from '../components/report/ComparisonTableComponent.vue';
 import CaseCategoryComparisonComponent from '../components/report/CaseCategoryComparisonComponent.vue';
@@ -939,6 +903,12 @@ function applyCurrentFilter() {
   } else {
     applyFilters();
   }
+}
+
+/** 算法徽章筛选变更（单选，仅日常视图） */
+function handleAlgorithmFilterChange(value: string) {
+  currentFilter.value.algorithmType = value;
+  applyCurrentFilter();
 }
 
 /** 排序变更：按当前视图触发对应排序 */
@@ -1171,7 +1141,112 @@ function handlePublishedPageSize(size: number) {
   published.fetchList();
 }
 
+// ---------- 发布 / 合并视图：复用日常任务卡片（TaskCard）----------
+
+/** 发布任务 → TaskCard 数据结构（发布任务是资产，无执行进度，隐藏完成率） */
+function mapPublishedTask(pt: any) {
+  return {
+    id: pt.id,
+    name: pt.name,
+    description: pt.description || '',
+    type: pt.type,
+    status: pt.status,
+    createdAt: formatDate(pt.publishedAt || pt.createdAt),
+    tags: [],
+    versionCount: pt.versionCount ?? 1,
+    hideCompletionRate: true,
+  };
+}
+
+/** 合并任务 → TaskCard 数据结构（来源数并入描述，保留完整执行统计） */
+function mapMergedTask(mt: any) {
+  return {
+    id: mt.id,
+    name: mt.name,
+    description: mt.description || (mt.sourceTasks?.length ? `合并自 ${mt.sourceTasks.length} 个任务` : ''),
+    type: 'merged',
+    status: mt.status,
+    createdAt: formatDate(mt.createdAt),
+    tags: mt.tags || [],
+    caseCount: mt.totalCases ?? 0,
+    totalCases: mt.totalCases ?? 0,
+    completedCases: mt.completedCases ?? 0,
+  };
+}
+
+/** 发布任务专属操作（保留发布视图特殊功能） */
+const publishedCardActions: any[] = [
+  {
+    id: 'execute-version',
+    label: '执行此版本',
+    icon: 'fa-play',
+    type: 'primary',
+    show: (task: any) => task.status !== 'archived' && can(PermissionPoint.PUBLISHED_TASK_EXECUTE),
+    disabled: () => published.actionLoading,
+  },
+  { id: 'versions', label: '版本', icon: 'fa-history', type: 'secondary' },
+  {
+    id: 'archive',
+    label: '归档',
+    icon: 'fa-archive',
+    type: 'danger',
+    show: (task: any) => task.status !== 'archived' && can(PermissionPoint.PUBLISHED_TASK_ARCHIVE),
+    disabled: () => published.actionLoading,
+  },
+];
+
+/** 发布任务卡片 action 分发 */
+function handlePublishedCardAction(event: any) {
+  const { action, task } = event;
+  const pt = published.items.find((p: any) => p.id === task.id);
+  if (!pt) return;
+  switch (action.id) {
+    case 'execute-version':
+      handlePublishedExecute(pt);
+      break;
+    case 'versions':
+      togglePublishedDetail(pt);
+      break;
+    case 'archive':
+      handlePublishedArchive(pt);
+      break;
+  }
+}
+
+/** 发布任务重命名（作用于整个版本链） */
+async function handlePublishedNameUpdated({ taskId, newName }: { taskId: string | number; newName: string }) {
+  try {
+    await published.rename(Number(taskId), newName);
+    notification.success('任务名称已更新');
+  } catch (error: any) {
+    notification.error(error?.response?.data?.message || error?.message || '更新任务名称失败');
+  }
+}
+
+/** 合并任务重命名（复用日常任务重命名接口） */
+async function handleMergedNameUpdated({ taskId, newName }: { taskId: string | number; newName: string }) {
+  try {
+    await updateTaskName(taskId, newName);
+    merged.refresh();
+  } catch (error: any) {
+    notification.error(error?.response?.data?.message || error?.message || '更新任务名称失败');
+  }
+}
+
 // ---------- 合并任务（Tab 化展示） ----------
+
+/** 源任务列表展开状态（默认收起） */
+const expandedMergedSources = ref<Set<number>>(new Set());
+
+function toggleMergedSources(id: number) {
+  const next = new Set(expandedMergedSources.value);
+  if (next.has(id)) {
+    next.delete(id);
+  } else {
+    next.add(id);
+  }
+  expandedMergedSources.value = next;
+}
 
 function handleMergedPage(delta: number) {
   const next = merged.page + delta;
@@ -1264,145 +1339,9 @@ async function handleBatchMerge() {
   gap: 12px;
 }
 
-.published-task-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.published-search-input {
-  width: 220px;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
-  background: #fff;
-  color: #334155;
-}
-
-.published-search-input:focus {
-  outline: none;
-  border-color: #FF6A00;
-  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.1);
-}
-
-.published-status-select {
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 13px;
-  background: #fff;
-  color: #334155;
-  cursor: pointer;
-}
-
 .published-task-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.published-task-item {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px 18px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  transition: box-shadow 0.2s ease;
-}
-
-.published-task-item:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.07);
-}
-
-.published-task-item-main {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.published-task-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.published-task-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #1e293b;
-  max-width: 420px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.published-task-version-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: #eef2ff;
-  color: #4f46e5;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.published-task-current-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: #ecfdf5;
-  color: #059669;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.published-task-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 10px;
-  border-radius: 10px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.published-task-status.published {
-  background: #ecfdf5;
-  color: #059669;
-}
-
-.published-task-status.archived {
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-.published-task-meta {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  font-size: 12px;
-  color: #64748b;
-}
-
-.published-task-meta span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.published-task-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 .btn-sm {
@@ -1466,11 +1405,6 @@ async function handleBatchMerge() {
 }
 
 /* 合并任务面板 */
-.merged-task-badge {
-  background: #fff7ed;
-  color: #ea580c;
-}
-
 .merged-source-list {
   margin-top: 4px;
   padding: 10px 12px;
@@ -1487,6 +1421,19 @@ async function handleBatchMerge() {
   font-weight: 600;
   color: #475569;
   margin-bottom: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.merged-source-list-title:hover {
+  color: #ff6a00;
+}
+
+.merged-source-toggle {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 12px;
+  transition: transform 0.2s ease;
 }
 
 .merged-source-row {

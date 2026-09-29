@@ -25,7 +25,9 @@
                 'fa-pause-circle': task.status === 'paused',
                 'fa-stop-circle': task.status === 'stopped',
                 'fa-minus-circle': task.status === 'skipped',
-                'fa-object-group': task.status === 'merged'
+                'fa-object-group': task.status === 'merged',
+                'fa-bookmark': task.status === 'published',
+                'fa-archive': task.status === 'archived'
               }"></i>
               {{ getStatusText(task.status) }}
             </span>
@@ -60,19 +62,23 @@
               <i class="fas fa-microchip"></i>
               {{ getAlgorithmTypeText(task.algorithmType) }}
             </span>
+            <span class="task-meta-item" v-if="task.versionCount">
+              <i class="fas fa-layer-group"></i>
+              共{{ task.versionCount }}个版本
+            </span>
             <span class="task-meta-item">
               <i class="fas fa-calendar-alt"></i>
               {{ task.createdAt }}
             </span>
-            <span class="task-meta-item">
+            <span class="task-meta-item" v-if="task.caseCount != null">
               <i class="fas fa-tasks"></i>
               用例数{{ task.caseCount }}
             </span>
-            <span class="task-meta-item">
+            <span class="task-meta-item" v-if="task.deviceCount != null">
               <i class="fas fa-desktop"></i>
               设备数{{ task.deviceCount }}
             </span>
-            <span class="task-meta-item">
+            <span class="task-meta-item" v-if="!task.hideCompletionRate">
               <i class="fas fa-chart-pie"></i>
               完成率{{ calculateCompletionRate(task) }}%
             </span>
@@ -97,7 +103,9 @@
               'fa-pause-circle': task.status === 'paused',
               'fa-stop-circle': task.status === 'stopped',
               'fa-minus-circle': task.status === 'skipped',
-              'fa-object-group': task.status === 'merged'
+              'fa-object-group': task.status === 'merged',
+              'fa-bookmark': task.status === 'published',
+              'fa-archive': task.status === 'archived'
             }"></i>
             {{ getStatusText(task.status) }}
           </span>
@@ -132,27 +140,31 @@
               <i class="fas fa-microchip"></i>
               {{ getAlgorithmTypeText(task.algorithmType) }}
             </span>
+            <span class="task-meta-item" v-if="task.versionCount">
+              <i class="fas fa-layer-group"></i>
+              共{{ task.versionCount }}个版本
+            </span>
             <span class="task-meta-item">
               <i class="fas fa-calendar-alt"></i>
               {{ task.createdAt }}
             </span>
-            <span class="task-meta-item">
+            <span class="task-meta-item" v-if="task.caseCount != null">
               <i class="fas fa-tasks"></i>
               用例数{{ task.caseCount }}
             </span>
-            <span class="task-meta-item">
+            <span class="task-meta-item" v-if="task.deviceCount != null">
               <i class="fas fa-desktop"></i>
               设备数{{ task.deviceCount }}
             </span>
-            <span class="task-meta-item">
+            <span class="task-meta-item" v-if="!task.hideCompletionRate">
               <i class="fas fa-chart-pie"></i>
               完成率{{ calculateCompletionRate(task) }}%
             </span>
           </div>
-        <div class="task-tags" v-if="task.tags && task.tags.length > 0">
-          <span v-for="(tag, index) in task.tags" :key="index" class="task-tag">{{ tag }}</span>
+          <div class="task-tags" v-if="task.tags && task.tags.length > 0">
+            <span v-for="(tag, index) in task.tags" :key="index" class="task-tag">{{ tag }}</span>
+          </div>
         </div>
-      </div>
       <div class="task-status-actions">
         <div class="task-actions" v-if="actions && actions.length > 0">
           <template v-for="action in actions" :key="action.id">
@@ -188,7 +200,7 @@
         </div>
       </div>
     </div>
-  </div>
+     </div>
 </template>
 
 <script setup>
@@ -276,7 +288,7 @@ const handleAction = (action) => {
 };
 
 const getTaskTypeText = (type) => {
-  const typeMap = {api: 'API测试', e2e: '端到端测试', playback: '回放任务', evaluation: '评估任务', report: '报告任务', task: '通用任务', execution: '执行任务', comparison: '对比任务', performance: '性能测试', stress: '压力测试', audioImport: '语音导入'};
+  const typeMap = {api: 'API测试', e2e: '端到端测试', merged: '合并任务', playback: '回放任务', evaluation: '评估任务', report: '报告任务', task: '通用任务', execution: '执行任务', comparison: '对比任务', performance: '性能测试', stress: '压力测试', audioImport: '语音导入'};
   return typeMap[type] || type;
 };
 
@@ -285,7 +297,7 @@ const getAlgorithmTypeText = (type) => {
 };
 
 const getStatusText = (status) => {
-  const statusMap = {pending: '待执行', queued: '排队中', running: '执行中', evaluating: '评估中', reevaluate_queued: '重新评估排队中', reevaluating: '重新评估中', completed: '已完成', failed: '执行失败', paused: '已暂停', stopped: '已停止', skipped: '已跳过', merged: '已合并'};
+  const statusMap = {pending: '待执行', queued: '排队中', running: '执行中', evaluating: '评估中', reevaluate_queued: '重新评估排队中', reevaluating: '重新评估中', completed: '已完成', failed: '执行失败', paused: '已暂停', stopped: '已停止', skipped: '已跳过', merged: '已合并', published: '已发布', archived: '已归档'};
   return statusMap[status] || status;
 };
 

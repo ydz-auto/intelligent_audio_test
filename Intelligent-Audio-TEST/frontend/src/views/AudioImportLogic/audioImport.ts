@@ -215,6 +215,12 @@ export function useAudioImport() {
   const selectedAlgorithmType = ref<string>('');
   const algorithmParams = ref<any[]>([]);
 
+  // 算法徽章筛选（单选）：选项复用上传用算法列表（{value,name} → {value,label}）
+  const filterAlgorithm = ref('all');
+  const algorithmFilterOptions = computed(() =>
+    algorithmOptions.value.map(a => ({ value: a.value, label: a.name }))
+  );
+
   // CaseAlgorithmParam 配置缓存（按 algorithmType 缓存，避免每次上传都请求）
   const caseParamConfigCache = ref<Record<string, any[]>>({});
 
@@ -692,7 +698,8 @@ export function useAudioImport() {
         format: filters.value.format === 'all' ? undefined : filters.value.format,
         sampleRate: normalizedSampleRate,
         duration: filters.value.duration === 'all' ? undefined : filters.value.duration,
-        direction: filters.value.direction === 'all' ? undefined : filters.value.direction
+        direction: filters.value.direction === 'all' ? undefined : filters.value.direction,
+        algorithmType: filterAlgorithm.value !== 'all' ? filterAlgorithm.value : undefined
       };
       
       const shouldFilterByTags = selectedTags.value.length > 0 && !isAllTagsSelected();
@@ -862,6 +869,11 @@ export function useAudioImport() {
     fetchAudios();
   }
 
+  // 算法徽章筛选变更：走服务端过滤（audio_algorithm_relations），需重新拉取列表
+  watch(filterAlgorithm, () => {
+    applyFilters();
+  });
+
   function resetFilters() {
     filters.value.audioType = 'all';
     filters.value.format = 'all';
@@ -871,7 +883,12 @@ export function useAudioImport() {
     filters.value.dateRange = null;
     searchQuery.value = '';
     selectedTags.value = tagsLoaded.value && allTags.value.length > 0 ? [...allTags.value] : [];
-    applyFilters();
+    // 算法徽章重置：变更会经 watch 触发一次 applyFilters，避免重复请求
+    if (filterAlgorithm.value !== 'all') {
+      filterAlgorithm.value = 'all';
+    } else {
+      applyFilters();
+    }
   }
 
   function toggleTag(tag: string, mode?: 'or' | 'and') {
@@ -2382,6 +2399,7 @@ export function useAudioImport() {
     fetchAllTags().then(() => {
       fetchAudios();
     });
+    fetchAlgorithmOptions();
     fetchPlaybackDevices();
     uploadTasks.value = getLocalTasks();
     checkAndResumeTasks();
@@ -2471,6 +2489,8 @@ export function useAudioImport() {
     filteredAudios,
     totalPages,
     flattenedFolderTree,
+    algorithmFilterOptions,
+    filterAlgorithm,
     serverFolderTree,
     folderLoading,
     expandedFolderPaths,

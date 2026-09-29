@@ -191,4 +191,5 @@ export interface AudioQueryParams {
     sampleRate?: string;
     duration?: string;
     direction?: string;
+    algorithmType?: string;
 }

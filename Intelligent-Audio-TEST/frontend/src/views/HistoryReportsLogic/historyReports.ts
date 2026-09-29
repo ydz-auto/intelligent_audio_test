@@ -2,7 +2,14 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { reportsApi } from '../../utils/api';
 import { useAlgorithmLabels } from '../../composables/useAlgorithmLabels';
-import { getReportTypeLabel } from '../../shared/constants/reportConstants';
+import {
+  getReportTypeLabel,
+  REPORT_TABS,
+  REPORT_TAB_OPTIONS,
+  COMPARISON_REPORT_TYPE_QUERY,
+  isComparisonReportType
+} from '../../shared/constants/reportConstants';
+import type { ReportTabValue } from '../../shared/constants/reportConstants';
 import type { Report, ReportListParams } from '../../shared/types/index';
 import socketService from '../../utils/socket';
 import { useModalControl, MODAL_TYPES } from '../../composables/useModal';
@@ -56,6 +63,7 @@ export function useHistoryReports() {
   const pageSize = ref(10);
   const loading = ref(false);
   const selectedReports = ref<Set<string | number>>(new Set());
+  const activeTab = ref<ReportTabValue>(REPORT_TABS.ALL);
 
   const { algorithmOptions, loadAlgorithms, getAlgorithmLabel } = useAlgorithmLabels();
 
@@ -90,7 +98,11 @@ export function useHistoryReports() {
       if (filters.value.startDate) params.startTime = filters.value.startDate;
       if (filters.value.endDate) params.endTime = filters.value.endDate;
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') params.algorithmType = filters.value.algorithmType;
-      
+
+      // 视图 Tab 附加过滤：对比报告视图需要同时匹配多种类型
+      const tabMapping = TAB_TO_FILTER[activeTab.value];
+      if (tabMapping.types) params.types = tabMapping.types;
+
       const data = await reportsApi.getAll(params);
       allReports.value = data?.items || [];
       totalItems.value = data?.total || 0;
@@ -235,6 +247,60 @@ export function useHistoryReports() {
   const draftReports = computed(() => {
     return allReports.value.filter(report => report.status === 'draft');
   });
+
+  /** 归类为对比报告的报告（兼容 comparison / secondaryComparison / secondary_comparison） */
+  const comparisonReports = computed(() => {
+    return allReports.value.filter(report => isComparisonReportType(report.type));
+  });
+
+  /** 单个视图 Tab 下的可见报告列表（「全部」Tab 由视图层按状态分组展示） */
+  const visibleReports = computed(() => {
+    switch (activeTab.value) {
+      case REPORT_TABS.DRAFT:
+        return draftReports.value;
+      case REPORT_TABS.PUBLISHED:
+        return publishedReports.value;
+      case REPORT_TABS.COMPARISON:
+        return comparisonReports.value;
+      default:
+        return [];
+    }
+  });
+
+  /**
+   * Tab → 列表接口过滤参数映射（配置化，避免魔法字符串）。
+   * 与后端 /reports 的 type / status 过滤参数一一对应。
+   */
+  const TAB_TO_FILTER: Record<ReportTabValue, { status: ReportStatusFilter; type: ReportTypeFilter; types?: string[] }> = {
+    [REPORT_TABS.ALL]: { status: 'all', type: 'all' },
+    [REPORT_TABS.DRAFT]: { status: 'draft', type: 'all' },
+    [REPORT_TABS.PUBLISHED]: { status: 'published', type: 'all' },
+    [REPORT_TABS.COMPARISON]: { status: 'all', type: 'all', types: [...COMPARISON_REPORT_TYPE_QUERY] }
+  };
+
+  const handleTabChange = (tab: ReportTabValue) => {
+    activeTab.value = tab;
+    const mapping = TAB_TO_FILTER[tab];
+    filters.value.reportStatus = mapping.status;
+    filters.value.reportType = mapping.type;
+    currentPage.value = 1;
+    loadReports();
+  };
+
+  const getTabCount = (tab: ReportTabValue): number => {
+    switch (tab) {
+      case REPORT_TABS.ALL:
+        return totalItems.value;
+      case REPORT_TABS.DRAFT:
+        return draftReports.value.length;
+      case REPORT_TABS.PUBLISHED:
+        return publishedReports.value.length;
+      case REPORT_TABS.COMPARISON:
+        return comparisonReports.value.length;
+      default:
+        return 0;
+    }
+  };
 
   const toggleSelectAll = () => {
     if (isAllSelected.value) {
@@ -411,8 +477,14 @@ export function useHistoryReports() {
     handlePageSizeChange,
     totalPages,
     isAllSelected,
+    activeTab,
+    reportTabOptions: REPORT_TAB_OPTIONS,
     publishedReports,
     draftReports,
+    comparisonReports,
+    visibleReports,
+    getTabCount,
+    handleTabChange,
     toggleSelectAll,
     toggleReportSelection,
     handleBatchDelete,

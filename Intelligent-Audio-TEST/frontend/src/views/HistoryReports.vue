@@ -18,6 +18,23 @@
         <p class="page-description">查看和管理所有历史报告</p>
       </div>
     </div>
+
+    <!-- 视图 Tab 栏 -->
+    <div class="report-tabs" role="tablist">
+      <button
+        v-for="tab in reportTabOptions"
+        :key="tab.value"
+        class="report-tab"
+        :class="{ active: activeTab === tab.value }"
+        role="tab"
+        :aria-selected="activeTab === tab.value"
+        @click="handleTabChange(tab.value)"
+      >
+        <i :class="tab.icon"></i>
+        <span>{{ tab.label }}</span>
+        <span class="report-tab-count">{{ getTabCount(tab.value) }}</span>
+      </button>
+    </div>
     
     <!-- 筛选和排序栏 -->
     <section class="filter-sort-section">
@@ -97,19 +114,6 @@
           </button>
         </div>
         
-        <div class="filter-item">
-          <label for="algorithm-type-filter">算法类型：</label>
-          <select class="filter-select" 
-                  id="algorithm-type-filter"
-                  v-model="filters.algorithmType"
-                  @change="handleFilterChange">
-            <option value="all">全部类型</option>
-            <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">
-              {{ option.name }}
-            </option>
-          </select>
-        </div>
-        
         <div class="sort-options">
           <span>排序：</span>
           <div class="sort-item" 
@@ -129,6 +133,16 @@
             <i class="fas fa-sort" v-else></i>
           </div>
         </div>
+      </div>
+      
+      <!-- 算法筛选（徽章单选） -->
+      <div class="filter-row">
+        <AlgorithmFilter
+          :options="algorithmOptions"
+          :model-value="filters.algorithmType"
+          title="算法筛选"
+          @update:model-value="handleAlgorithmFilterChange"
+        />
       </div>
     </section>
     
@@ -156,155 +170,96 @@
       </div>
     </div>
     
-    <!-- 已发布报告区域 -->
-    <div class="reports-section" v-if="publishedReports.length > 0">
-      <div class="section-header">
-        <h3 class="section-title">
-          <i class="fas fa-check-circle" style="color: var(--success-color);"></i>
-          已发布报告 ({{ publishedReports.length }})
-        </h3>
-      </div>
-      
-      <div id="published-reports-list">
-        <div v-for="report in publishedReports" :key="report.id" class="card" :class="{ 'card-selected': selectedReports.has(report.id) }" @click="toggleReportSelection(report.id, $event)">
-          <div class="card-header">
-            <div class="report-checkbox-wrapper">
-              <input type="checkbox" 
-                     class="task-checkbox" 
-                     :id="`report-${report.id}`" 
-                     :checked="selectedReports.has(report.id)"
-                     @change="selectedReports.has(report.id) ? selectedReports.delete(report.id) : selectedReports.add(report.id)"
-                     @click.stop>
-              <label :for="`report-${report.id}`"></label>
-            </div>
-            <div class="report-card-title-wrapper">
-              <h3 class="report-card-title">{{ report.name }}</h3>
-              <div class="report-card-meta-tags">
-                <span class="report-card-type">{{ getReportTypeLabel(report.type) }}</span>
-                <span class="report-card-status published">已发布</span>
-                <span v-if="report.algorithmType" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithmType) }}</span>
-                <span v-if="report.taskName" class="report-card-test-type">{{ report.taskName }}</span>
-              </div>
-            </div>
-            <div class="card-actions">
-              <button class="btn btn-primary" @click.stop="viewReport(report.id, report.type)">
-                <i class="fas fa-eye"></i> 查看
-              </button>
-              <button class="btn btn-secondary" @click.stop="editReport(report.id)">
-                <i class="fas fa-edit"></i> 编辑
-              </button>
-              <button class="btn btn-danger" @click.stop="deleteReport(report.id)">
-                <i class="fas fa-trash"></i> 删除
-              </button>
-            </div>
-          </div>
-          <div class="card-body">
-            <p class="report-card-description">{{ report.description || getReportSummary(report) }}</p>
-            <div class="report-card-meta">
-              <span class="report-card-meta-item">
-                <i class="fas fa-calendar-alt"></i>
-                {{ formatDate(report.createdAt) }}
-              </span>
-              <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison' || report.type === 'secondary_comparison'">
-                <span class="report-card-meta-item">
-                  <i class="fas fa-cubes"></i>
-                  {{ report.summary?.taskCount || 0 }} 个任务对比
-                </span>
-              </template>
-              <template v-else>
-                <span class="report-card-meta-item">
-                  <i class="fas fa-list-check"></i>
-                  {{ report.summary?.totalCases || report.summary?.totalTests || report.summary?.total_cases || 0 }} 个测试用例
-                </span>
-                <span class="report-card-meta-item">
-                  <i class="fas fa-check-circle"></i>
-                  {{ report.summary?.overallSuccessRate || report.summary?.passRate || report.summary?.overall_success_rate || 0 }}% 通过率
-                </span>
-              </template>
-            </div>
-          </div>
+    <!-- 全部报告视图：按发布状态分组展示 -->
+    <template v-if="activeTab === REPORT_TABS.ALL">
+      <!-- 已发布报告区域 -->
+      <div class="reports-section" v-if="publishedReports.length > 0">
+        <div class="section-header">
+          <h3 class="section-title">
+            <i class="fas fa-check-circle" style="color: var(--success-color);"></i>
+            已发布报告 ({{ publishedReports.length }})
+          </h3>
+        </div>
+
+        <div id="published-reports-list">
+          <ReportCard
+            v-for="report in publishedReports"
+            :key="report.id"
+            :report="report"
+            :selected="selectedReports.has(report.id)"
+            :summary="getReportSummary(report)"
+            :algorithm-type-label="getAlgorithmTypeLabel(report.algorithmType)"
+            @toggle-select="toggleReportSelection"
+            @view="viewReport"
+            @edit="editReport"
+            @delete="deleteReport"
+            @publish="publishReport"
+          />
         </div>
       </div>
-    </div>
-    
-    <!-- 草稿报告区域 -->
-    <div class="reports-section draft-section" v-if="draftReports.length > 0">
-      <div class="section-header">
-        <h3 class="section-title">
-          <i class="fas fa-edit" style="color: var(--warning-color);"></i>
-          草稿报告 ({{ draftReports.length }})
-        </h3>
-      </div>
-      
-      <div id="draft-reports-list">
-        <div v-for="report in draftReports" :key="report.id" class="card" :class="{ 'card-selected': selectedReports.has(report.id) }" @click="toggleReportSelection(report.id, $event)">
-          <div class="card-header">
-            <div class="report-checkbox-wrapper">
-              <input type="checkbox" 
-                     class="task-checkbox" 
-                     :id="`report-${report.id}`" 
-                     :checked="selectedReports.has(report.id)"
-                     @change="selectedReports.has(report.id) ? selectedReports.delete(report.id) : selectedReports.add(report.id)"
-                     @click.stop>
-              <label :for="`report-${report.id}`"></label>
-            </div>
-            <div class="report-card-title-wrapper">
-              <h3 class="report-card-title">{{ report.name }}</h3>
-              <div class="report-card-meta-tags">
-                <span class="report-card-type">{{ getReportTypeLabel(report.type) }}</span>
-                <span class="report-card-status draft">草稿</span>
-                <span v-if="report.algorithmType" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithmType) }}</span>
-                <span v-if="report.taskName" class="report-card-test-type">{{ report.taskName }}</span>
-              </div>
-            </div>
-            <div class="card-actions">
-              <button class="btn btn-primary" @click.stop="viewReport(report.id, report.type)">
-                <i class="fas fa-eye"></i> 查看
-              </button>
-              <button class="btn btn-secondary" @click.stop="editReport(report.id)">
-                <i class="fas fa-edit"></i> 编辑
-              </button>
-              <button class="btn btn-danger" @click.stop="deleteReport(report.id)">
-                <i class="fas fa-trash"></i> 删除
-              </button>
-              <button class="btn btn-success" @click.stop="publishReport(report.id)">
-                <i class="fas fa-paper-plane"></i> 发布
-              </button>
-            </div>
-          </div>
-          <div class="card-body">
-            <p class="report-card-description">{{ report.description || getReportSummary(report) }}</p>
-            <div class="report-card-meta">
-              <span class="report-card-meta-item">
-                <i class="fas fa-calendar-alt"></i>
-                {{ formatDate(report.createdAt) }}
-              </span>
-              <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison' || report.type === 'secondary_comparison'">
-                <span class="report-card-meta-item">
-                  <i class="fas fa-cubes"></i>
-                  {{ report.summary?.taskCount || 0 }} 个任务对比
-                </span>
-              </template>
-              <template v-else>
-                <span class="report-card-meta-item">
-                  <i class="fas fa-list-check"></i>
-                  {{ report.summary?.totalCases || report.summary?.totalTests || report.summary?.total_cases || 0 }} 个测试用例
-                </span>
-                <span class="report-card-meta-item">
-                  <i class="fas fa-check-circle"></i>
-                  {{ report.summary?.overallSuccessRate || report.summary?.passRate || report.summary?.overall_success_rate || 0 }}% 通过率
-                </span>
-              </template>
-            </div>
-          </div>
+
+      <!-- 草稿报告区域 -->
+      <div class="reports-section draft-section" v-if="draftReports.length > 0">
+        <div class="section-header">
+          <h3 class="section-title">
+            <i class="fas fa-edit" style="color: var(--warning-color);"></i>
+            草稿报告 ({{ draftReports.length }})
+          </h3>
+        </div>
+
+        <div id="draft-reports-list">
+          <ReportCard
+            v-for="report in draftReports"
+            :key="report.id"
+            :report="report"
+            :selected="selectedReports.has(report.id)"
+            :summary="getReportSummary(report)"
+            :algorithm-type-label="getAlgorithmTypeLabel(report.algorithmType)"
+            @toggle-select="toggleReportSelection"
+            @view="viewReport"
+            @edit="editReport"
+            @delete="deleteReport"
+            @publish="publishReport"
+          />
         </div>
       </div>
-    </div>
+    </template>
+
+    <!-- 单个视图 Tab（草稿/发布/对比）：统一列表 -->
+    <template v-else>
+      <div class="reports-section" v-if="visibleReports.length > 0">
+        <div class="section-header">
+          <h3 class="section-title">
+            <i :class="activeTabMeta.icon" style="color: var(--primary-color);"></i>
+            {{ activeTabMeta.label }} ({{ visibleReports.length }})
+          </h3>
+        </div>
+
+        <div id="tab-reports-list">
+          <ReportCard
+            v-for="report in visibleReports"
+            :key="report.id"
+            :report="report"
+            :selected="selectedReports.has(report.id)"
+            :summary="getReportSummary(report)"
+            :algorithm-type-label="getAlgorithmTypeLabel(report.algorithmType)"
+            @toggle-select="toggleReportSelection"
+            @view="viewReport"
+            @edit="editReport"
+            @delete="deleteReport"
+            @publish="publishReport"
+          />
+        </div>
+      </div>
+    </template>
     
-    <!-- 无数据提示 -->
-    <div v-if="allReports.length === 0" class="no-data">
+    <!-- 无数据提示：按当前 Tab 判断当前视图是否为空 -->
+    <div
+      v-if="activeTab === REPORT_TABS.ALL ? allReports.length === 0 : visibleReports.length === 0"
+      class="no-data"
+    >
       <i class="fas fa-inbox"></i>
-      <p>暂无报告数据</p>
+      <p>{{ activeTab === REPORT_TABS.ALL ? '暂无报告数据' : `暂无${activeTabMeta.label}数据` }}</p>
     </div>
     
     <!-- 分页 -->
@@ -324,8 +279,11 @@
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { useHistoryReports } from './HistoryReportsLogic/historyReports';
+import { REPORT_TABS } from '../shared/constants/reportConstants';
 
+import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../components/common/PaginationComponent.vue';
+import ReportCard from '../components/report/ReportCard.vue';
 
 const router = useRouter();
 
@@ -334,14 +292,11 @@ const {
   totalItems,
   currentPage,
   pageSize,
-  loading,
   selectedReports,
   filters,
   sort,
   algorithmOptions,
   toast,
-  formatDate,
-  getReportTypeLabel,
   getAlgorithmTypeLabel,
   getReportSummary,
   handleFilterChange,
@@ -351,10 +306,14 @@ const {
   handleNextPage,
   handleGoToPage,
   handlePageSizeChange,
-  totalPages,
   isAllSelected,
+  activeTab,
+  reportTabOptions,
   publishedReports,
   draftReports,
+  visibleReports,
+  getTabCount,
+  handleTabChange,
   toggleSelectAll,
   toggleReportSelection,
   handleBatchDelete,
@@ -365,6 +324,16 @@ const {
   deleteReport,
   publishReport
 } = useHistoryReports();
+
+const activeTabMeta = computed(
+  () => reportTabOptions.find(tab => tab.value === activeTab.value) || reportTabOptions[0]
+);
+
+/** 算法徽章筛选变更（单选） */
+function handleAlgorithmFilterChange(value: string) {
+  filters.value.algorithmType = value;
+  handleFilterChange();
+}
 </script>
 
 <style scoped>
@@ -403,7 +372,59 @@ const {
   background-color: white !important;
 }
 
-/* 全选按钮样式 */
+/* 视图 Tab 栏样式 */
+.report-tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-sm);
+  background: var(--background-secondary);
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.report-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.report-tab:hover {
+  background: var(--background-primary);
+  color: var(--primary-color);
+}
+
+.report-tab.active {
+  background: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.report-tab-count {
+  padding: 1px 8px;
+  border-radius: var(--border-radius-full);
+  background: rgba(0, 0, 0, 0.08);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.report-tab.active .report-tab-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* 批量操作栏样式 */
 .batch-actions {
   display: flex;
   align-items: center;

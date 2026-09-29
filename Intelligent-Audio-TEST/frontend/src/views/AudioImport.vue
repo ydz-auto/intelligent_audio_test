@@ -51,6 +51,14 @@
 
     <!-- 音频列表内容 -->
     <div class="audio-content-card">
+      <!-- 算法筛选（徽章单选） -->
+      <div class="algorithm-filter-row">
+        <AlgorithmFilter
+          :options="algorithmFilterOptions"
+          v-model="filterAlgorithm"
+          title="算法筛选"
+        />
+      </div>
       <AudioListComponent
           :audios="formattedAudios"
           :loading="loading"
@@ -225,6 +233,7 @@ import AudioListComponent from '../components/common/AudioListComponent.vue';
 import UploadProgressCard from '../components/common/UploadProgressCard.vue';
 import AudioPlayerModal from '../components/common/AudioPlayerModal.vue';
 import BatchAnnotationModal from '../components/common/modal/BatchAnnotationModal.vue';
+import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
 import { useAudioImport } from './AudioImportLogic/audioImport';
 import { useUploadState } from '../composables/useUploadState';
 import { formatAudioData } from '../utils/audioUtils';
@@ -268,6 +277,8 @@ const {
   stats, 
   filteredAudios: filteredAudios, 
   totalPages: totalPages, 
+  algorithmFilterOptions: algorithmFilterOptions,
+  filterAlgorithm: filterAlgorithm,
   flattenedFolderTree: flattenedFolderTree,
   serverFolderTree,
   folderLoading,
@@ -479,6 +490,15 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
 
 <style scoped>
 @import './AudioImportLogic/audioimport.css';
+
+/* 算法徽章筛选行 */
+.algorithm-filter-row {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--background-secondary, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: var(--border-radius-lg);
+}
 
 .test-case-generated-tip {
   position: fixed;

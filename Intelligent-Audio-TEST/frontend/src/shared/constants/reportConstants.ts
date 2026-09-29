@@ -64,3 +64,46 @@ export const REPORT_STATUS_OPTIONS = [
   { value: 'draft', label: '草稿' },
   { value: 'published', label: '发布' }
 ] as const;
+
+/**
+ * 历史报告页视图 Tab 枚举。
+ * 与后端列表接口的 type / status 过滤参数一一对应（配置化、避免魔法字符串）。
+ */
+export const REPORT_TABS = {
+  ALL: 'all',
+  DRAFT: 'draft',
+  PUBLISHED: 'published',
+  COMPARISON: 'comparison'
+} as const;
+
+export type ReportTabValue = (typeof REPORT_TABS)[keyof typeof REPORT_TABS];
+
+export interface ReportTabOption {
+  value: ReportTabValue;
+  label: string;
+  icon: string;
+}
+
+export const REPORT_TAB_OPTIONS: ReadonlyArray<ReportTabOption> = [
+  { value: REPORT_TABS.ALL, label: '全部报告', icon: 'fas fa-layer-group' },
+  { value: REPORT_TABS.DRAFT, label: '草稿报告', icon: 'fas fa-edit' },
+  { value: REPORT_TABS.PUBLISHED, label: '发布报告', icon: 'fas fa-check-circle' },
+  { value: REPORT_TABS.COMPARISON, label: '对比报告', icon: 'fas fa-exchange-alt' }
+];
+
+/** 归类为「对比报告」视图的报告类型集合（兼容新旧命名，用于客户端归类展示） */
+const COMPARISON_REPORT_TYPES: readonly string[] = [
+  'comparison',
+  'secondaryComparison',
+  'secondary_comparison'
+];
+
+/** 后端 /reports 列表接口支持的多类型过滤值（对比报告视图 Tab 查询使用，与后端枚举一致） */
+export const COMPARISON_REPORT_TYPE_QUERY: readonly string[] = [
+  'comparison',
+  'secondary_comparison'
+];
+
+export function isComparisonReportType(type: string): boolean {
+  return COMPARISON_REPORT_TYPES.includes(type);
+}
