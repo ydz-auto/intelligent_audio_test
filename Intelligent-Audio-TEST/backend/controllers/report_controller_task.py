@@ -855,11 +855,14 @@ class ReportControllerTask(ReportControllerBase):
 
     @staticmethod
     def _create_report_record(name, task_id, description):
+        task = db.session.get(Task, task_id)
         new_report = Report(
             name=name,
             type=ReportType.TASK.value,
             task_id=task_id,
             description=description,
+            # 冗余算法类型：来自关联任务，列表按算法筛选直接查本列，避免运行时 JOIN
+            algorithm_type=task.algorithm_type if task else None,
             status=ReportStatus.DRAFT.value
         )
         db.session.add(new_report)

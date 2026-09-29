@@ -7,7 +7,7 @@ from backend.models.models import (
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.utils.web.error_codes import ErrorCode
-from backend.utils.report.report_utils import ReportUtils
+from backend.utils.report.report_utils import ReportUtils, derive_algorithm_type
 from backend.utils.report.report_query_builder import ReportQueryBuilder
 from backend.utils.common.query_utils import now_cst
 from backend.schemas.report import CompareReportsRequest
@@ -501,6 +501,8 @@ class ReportControllerCompare(ReportControllerBase):
                 name=name,
                 type=ReportType.COMPARISON.value,
                 description=description,
+                # 冗余算法类型：从参与对比的任务推导，列表按算法筛选直接查本列
+                algorithm_type=derive_algorithm_type([t.algorithm_type for t in tasks]),
                 status=ReportStatus.DRAFT.value
             )
             db.session.add(new_report)

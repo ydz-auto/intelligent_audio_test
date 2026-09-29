@@ -222,6 +222,7 @@ class AudioController:
             duration = data.get('duration')
             tags_data = data.get('tags', [])
             direction = data.get('direction')
+            algorithm_type = data.get('algorithmType', data.get('algorithm_type'))
         else:
             page = request.args.get('page', 1, type=int)
             per_page = request.args.get('per_page', 10, type=int)
@@ -234,6 +235,7 @@ class AudioController:
             tags = request.args.getlist('tags')
             tags_data = [{'name': t, 'mode': 'and'} for t in tags] if tags else []
             direction = request.args.get('direction')
+            algorithm_type = request.args.get('algorithm_type')
 
         query = Audio.query.filter_by(deleted=False)
         if keyword:
@@ -245,6 +247,16 @@ class AudioController:
             query = query.filter_by(format=format_)
         if audio_type:
             query = query.filter_by(audio_type=audio_type)
+        if algorithm_type and algorithm_type != 'all':
+            # 按音频-算法关联表（audio_algorithm_relations）过滤
+            from backend.models.models import AudioAlgorithmRelation
+            audio_ids_with_algo = (
+                db.session.query(AudioAlgorithmRelation.audio_id)
+                .filter(AudioAlgorithmRelation.algorithm_type == algorithm_type,
+                        AudioAlgorithmRelation.deleted == False)
+                .distinct()
+            )
+            query = query.filter(Audio.id.in_(audio_ids_with_algo))
         if folder:
             query = query.filter(Audio.file_path.like(f"{folder}%"))
         if sample_rate and sample_rate != '':
@@ -579,6 +591,7 @@ class AudioController:
             duration = data.get('duration')
             tags_data = data.get('tags', [])
             direction = data.get('direction')
+            algorithm_type = data.get('algorithmType', data.get('algorithm_type'))
         else:
             keyword = request.args.get('keyword')
             format_ = request.args.get('format')
@@ -588,6 +601,7 @@ class AudioController:
             tags = request.args.getlist('tags')
             tags_data = [{'name': t, 'mode': 'and'} for t in tags] if tags else []
             direction = request.args.get('direction')
+            algorithm_type = request.args.get('algorithm_type')
 
         query = Audio.query.filter_by(deleted=False)
 
@@ -600,6 +614,16 @@ class AudioController:
             query = query.filter_by(format=format_)
         if audio_type:
             query = query.filter_by(audio_type=audio_type)
+        if algorithm_type and algorithm_type != 'all':
+            # 与 get_all 相同的算法过滤口径（audio_algorithm_relations）
+            from backend.models.models import AudioAlgorithmRelation
+            audio_ids_with_algo = (
+                db.session.query(AudioAlgorithmRelation.audio_id)
+                .filter(AudioAlgorithmRelation.algorithm_type == algorithm_type,
+                        AudioAlgorithmRelation.deleted == False)
+                .distinct()
+            )
+            query = query.filter(Audio.id.in_(audio_ids_with_algo))
         if sample_rate and sample_rate != '':
             try:
                 rate_value = float(sample_rate.split()[0]) * 1000

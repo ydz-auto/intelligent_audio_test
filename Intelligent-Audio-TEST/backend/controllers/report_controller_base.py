@@ -1,5 +1,6 @@
 from flask import request, send_file, current_app
-from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, ReportComparisonMatrix, Task, Audio
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, ReportComparisonMatrix, Task, Audio, TestCase
+from backend.models.algorithm_models import CaseAlgorithmParam
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.utils.web.log_handler import log_not_emit
@@ -472,6 +473,9 @@ class ReportControllerBase:
         page = query_params.page
         per_page = query_params.per_page if query_params.per_page else 10
         report_type = query_params.report_type
+        # 多类型过滤：兼容「重复参数」与「逗号拼接」两种序列化方式
+        # （前端 URLSearchParams 会把数组序列化为逗号拼接；Flask getlist 可读取重复参数）
+        report_types = [t for v in request.args.getlist('types') for t in v.split(',') if t] or None
         status = query_params.status
         keyword = query_params.keyword
         start_time = query_params.start_time
@@ -482,11 +486,13 @@ class ReportControllerBase:
         
         query = Report.query
         
-        need_join_task = algorithm_type and algorithm_type != 'all'
-        if need_join_task:
-            query = query.join(Task, Report.task_id == Task.id).filter(Task.algorithm_type == algorithm_type)
+        if algorithm_type and algorithm_type != 'all':
+            # 直接查报告自身冗余列（创建时从关联任务/明细写入），对比类报告 task_id 为 NULL 也能命中
+            query = query.filter(Report.algorithm_type == algorithm_type)
         
-        if report_type and report_type != 'all':
+        if report_types:
+            query = query.filter(Report.type.in_(report_types))
+        elif report_type and report_type != 'all':
             query = query.filter(Report.type == report_type)
         if status and status != 'all':
             query = query.filter(Report.status == status)
@@ -557,7 +563,7 @@ class ReportControllerBase:
                     type=report.type,
                     task_id=report.task_id,
                     task_name=task.name if task else ("对比报告" if report.type == 'comparison' else "趋势报告"),
-                    algorithm_type=task.algorithm_type if task else None,
+                    algorithm_type=report.algorithm_type or (task.algorithm_type if task else None),
                     summary=ReportListItemSummary(
                         total_cases=total_cases,
                         completed_cases=completed_cases,
@@ -1020,6 +1026,53 @@ class ReportControllerBase:
         return reference_params
 
     @staticmethod
+    def _build_case_params_for_report(test_case, case_param_defs):
+        """
+        构建报告页用例参数（caseParams）扁平列表。
+
+        输入：test_case.algorithm_params = [{round_number, params: [{field_code, field_value}]}]
+        输出：[{param_code, label, param_type, round_number, value}, ...] 按轮次+code 排序
+        """
+        if test_case is None:
+            return []
+        raw_params = getattr(test_case, 'algorithm_params', None) or []
+        if not isinstance(raw_params, list):
+            return []
+        algo_type = getattr(test_case, 'algorithm_type', None) or ''
+        defs = case_param_defs or {}
+        items = []
+        for group in raw_params:
+            if not isinstance(group, dict):
+                continue
+            rn = group.get('round_number') or group.get('roundNumber')
+            params = group.get('params')
+            if not isinstance(params, list):
+                continue
+            for p in params:
+                if not isinstance(p, dict):
+                    continue
+                code = p.get('field_code') or p.get('fieldCode')
+                if not code:
+                    continue
+                val = p.get('field_value', p.get('fieldValue'))
+                definition = defs.get((algo_type, code))
+                label = None
+                param_type = 'text'
+                if definition:
+                    label = definition.label or definition.param_name or code
+                    param_type = definition.param_type or 'text'
+                items.append({
+                    'param_code': code,
+                    'label': label or code,
+                    'param_type': param_type,
+                    'round_number': rn,
+                    'value': val,
+                })
+        items.sort(key=lambda x: (x['round_number'] if x['round_number'] is not None else 0,
+                                  x['param_code'] or ''))
+        return items
+
+    @staticmethod
     def search_report_cases(report_id):
         report = db.session.get(Report, report_id)
         if not report:
@@ -1198,6 +1251,20 @@ class ReportControllerBase:
 
         items = []
         test_type = ReportControllerBase._get_report_test_type(report)
+        # 批量加载用例（用于取用例参数快照）及用例参数定义（用于补充 label/type）
+        case_ids = [case.test_case_id for case in page_cases if case.test_case_id]
+        test_case_map = {}
+        if case_ids:
+            for tc in TestCase.query.filter(TestCase.id.in_(case_ids)).all():
+                test_case_map[tc.id] = tc
+        algo_types = {getattr(tc, 'algorithm_type', None) for tc in test_case_map.values() if getattr(tc, 'algorithm_type', None)}
+        case_param_defs = {}
+        if algo_types:
+            for d in CaseAlgorithmParam.query.filter(
+                CaseAlgorithmParam.algorithm_type.in_(list(algo_types)),
+                CaseAlgorithmParam.deleted.is_(False)
+            ).all():
+                case_param_defs[(d.algorithm_type, d.param_code)] = d
         for case in page_cases:
             # 对 voice_llm 多轮场景做 question/answer 展开 + 参考参数多轮展开
             raw_algo_results = case.algorithm_results
@@ -1206,6 +1273,7 @@ class ReportControllerBase:
                 raw_algo_results, case.algorithm_type
             )
             expanded_ref = ReportControllerBase._expand_reference_params_for_report(raw_ref_params)
+            test_case = test_case_map.get(case.test_case_id)
             items.append({
                 "id": case.test_case_id,
                 "name": case.name,
@@ -1218,6 +1286,7 @@ class ReportControllerBase:
                 "referenceParams": expanded_ref,
                 "algorithmResults": expanded_algo,
                 "algorithmType": case.algorithm_type,
+                "caseParams": ReportControllerBase._build_case_params_for_report(test_case, case_param_defs),
                 "testType": test_type,
                 "logs": case.logs
             })

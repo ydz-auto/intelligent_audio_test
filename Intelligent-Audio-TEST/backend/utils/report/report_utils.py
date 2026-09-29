@@ -3,6 +3,15 @@ from backend.models.database import db
 from backend.utils.common.result_data_store import load_full_result_data
 from backend.schemas.testcase import ReportAudioItem, ReportTestCaseItem
 import json as _json
+from collections import Counter
+
+
+def derive_algorithm_type(values):
+    """从候选算法类型集合推导报告/任务的算法类型：取出现最多的非空值，全空返回 None。"""
+    cleaned = [v for v in (values or []) if v]
+    if not cleaned:
+        return None
+    return Counter(cleaned).most_common(1)[0][0]
 
 # ── reject_judge 子维度 field_path → (count_dict 字段, [统计键]) 映射 ──
 # 用于从已有 api_raw_response 的 count 字典中回补子维度 dimension_value

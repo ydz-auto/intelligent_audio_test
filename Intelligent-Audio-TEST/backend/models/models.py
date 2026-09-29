@@ -574,12 +574,14 @@ class Report(db.Model):
         Index('idx_report_status', 'status'),
         Index('idx_report_created_at', 'created_at'),
         Index('idx_report_type_status', 'type', 'status'),
+        Index('idx_report_algorithm_type', 'algorithm_type'),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='报告唯一ID')
     name = Column(String(255), nullable=False, comment='报告名称')
     type = Column(String(30), nullable=False, comment='报告类型')
     description = Column(Text, comment='报告详细描述')
     task_id = Column(Integer, ForeignKey('test_tasks.id'), comment='关联测试任务ID')
+    algorithm_type = Column(String(50), comment='关联算法类型（冗余：来自关联任务或报告明细，创建时写入）')
     status = Column(String(20), nullable=False, default='draft', comment='报告状态 (draft/published)')
     analysis = Column(Text, comment='人工/自动分析结论')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')

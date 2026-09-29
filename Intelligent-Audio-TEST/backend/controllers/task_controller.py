@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from collections import Counter
 from flask import request, current_app
 from backend.models.models import Task, Tag, TaskCase, TaskDevice, TaskAPI, TestCase, TestResult, TestResultDimension, Log, Dimension
 from backend.models.database import db
@@ -841,6 +842,23 @@ class TaskController:
             )
         )
 
+    # 解析任务关联算法：优先显式传入值，否则从所选用例推导（取出现最多的非空 algorithm_type）
+    @staticmethod
+    def _resolve_algorithm_type(case_ids, explicit=None):
+        if explicit:
+            return explicit
+        if not case_ids:
+            return None
+        rows = db.session.query(TestCase.algorithm_type).filter(
+            TestCase.id.in_(list(case_ids)),
+            TestCase.algorithm_type.isnot(None),
+            TestCase.algorithm_type != ''
+        ).all()
+        values = [r[0] for r in rows]
+        if not values:
+            return None
+        return Counter(values).most_common(1)[0][0]
+
     # 创建新任务
     @staticmethod
     def create():
@@ -859,7 +877,8 @@ class TaskController:
                 status='pending',
                 config=req.config or {},
                 total_cases=len(case_ids),
-                created_by=req.created_by
+                created_by=req.created_by,
+                algorithm_type=TaskController._resolve_algorithm_type(case_ids, req.algorithm_type)
             )
             db.session.add(new_task)
             db.session.flush() # 获取 ID
@@ -1661,6 +1680,7 @@ class TaskController:
                 total_cases=total_cases,
                 completed_cases=0,
                 failed_cases=0,
+                algorithm_type=TaskController._resolve_algorithm_type(case_ids_set),
                 started_at=min(t.started_at for t in tasks if t.started_at),
                 completed_at=max(t.completed_at for t in tasks if t.completed_at),
                 actual_duration=max((t.completed_at - t.started_at).total_seconds() for t in tasks if t.started_at and t.completed_at) if any(t.started_at and t.completed_at for t in tasks) else 0

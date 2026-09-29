@@ -10,6 +10,7 @@ from backend.utils.web.error_codes import ErrorCode
 from backend.utils.web.log_handler import log_and_emit
 from backend.schemas.report import SecondaryCompareRequest
 from backend.schemas.common import IdData
+from backend.utils.report.report_utils import derive_algorithm_type
 from backend.controllers.report_controller_base import ReportControllerBase
 from backend.app import socketio
 from backend.utils.common.query_utils import now_cst
@@ -650,6 +651,8 @@ class ReportControllerSecondary(ReportControllerBase):
                     name=name,
                     type=ReportType.SECONDARY_COMPARISON.value,
                     description=description,
+                    # 冗余算法类型：从参与对比的源报告推导，列表按算法筛选直接查本列
+                    algorithm_type=derive_algorithm_type([r.algorithm_type for r in reports]),
                     status=ReportStatus.DRAFT.value
                 )
                 db.session.add(new_report)
