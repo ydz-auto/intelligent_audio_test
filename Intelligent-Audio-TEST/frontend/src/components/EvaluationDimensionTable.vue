@@ -20,7 +20,7 @@
           <th class="dimension-api-status-col sortable" style="width: 120px;">API状态</th>
           <th class="dimension-status-col sortable" style="width: 100px;">状态</th>
           <th class="dimension-sort-col" style="width: 90px;">排序</th>
-          <th class="dimension-actions-col" style="width: auto;">操作</th>
+          <th class="dimension-actions-col" style="width: 1%; white-space: nowrap;">操作</th>
         </tr>
       </thead>
       <tbody>
