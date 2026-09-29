@@ -127,6 +127,8 @@
             :model-value="currentFilter.status"
             all-label="全部状态"
             title="任务状态"
+            collapsible
+            :collapsed-count="8"
             @update:model-value="handleStatusFilterChange"
           />
         </div>
@@ -912,11 +914,21 @@ function applyCurrentFilter() {
   }
 }
 
-/** 算法徽章筛选变更（单选，仅日常视图） */
+/** 算法徽章筛选变更（单选） */
 function handleAlgorithmFilterChange(value: string) {
   currentFilter.value.algorithmType = value;
   applyCurrentFilter();
 }
+
+/** 徽章筛选变更（单选）：写入当前视图对应筛选字段并刷新 */
+function handleBadgeFilterChange(key: 'type' | 'status' | 'timeRange', value: string | number) {
+  currentFilter.value[key] = String(value);
+  applyCurrentFilter();
+}
+
+const handleTypeFilterChange = (value: string | number) => handleBadgeFilterChange('type', value);
+const handleStatusFilterChange = (value: string | number) => handleBadgeFilterChange('status', value);
+const handleTimeRangeFilterChange = (value: string | number) => handleBadgeFilterChange('timeRange', value);
 
 /** 排序变更：按当前视图触发对应排序 */
 function toggleViewSort(field: string) {

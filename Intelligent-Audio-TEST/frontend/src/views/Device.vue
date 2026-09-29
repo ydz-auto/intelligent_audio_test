@@ -97,21 +97,20 @@
                       @input="searchDevices"
                     >
                   </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="statusFilter" @change="filterDevices" id="statusFilter">
-                      <option value="all">所有状态</option>
-                      <option value="online">在线</option>
-                      <option value="offline">离线</option>
-                      <option value="testing">测试中</option>
-                    </select>
-                  </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="playbackTypeFilter" @change="filterDevices" id="playbackTypeFilter">
-                      <option value="all">所有类型</option>
-                      <option value="干声">干声</option>
-                      <option value="噪声">噪声</option>
-                    </select>
-                  </div>
+                  <BadgeFilter
+                    :options="DEVICE_STATUS_OPTIONS"
+                    :model-value="statusFilter"
+                    all-label="所有状态"
+                    title="状态"
+                    @update:model-value="setStatusFilter"
+                  />
+                  <BadgeFilter
+                    :options="PLAYBACK_TYPE_OPTIONS"
+                    :model-value="playbackTypeFilter"
+                    all-label="所有类型"
+                    title="播放类型"
+                    @update:model-value="setPlaybackTypeFilter"
+                  />
                 </div>
                 <!-- 算法筛选（徽章单选） -->
                 <div class="algorithm-filter-row">
@@ -262,14 +261,13 @@
                       @input="searchDevices"
                     >
                   </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="statusFilter" @change="filterDevices" id="testStatusFilter">
-                      <option value="all">所有状态</option>
-                      <option value="online">在线</option>
-                      <option value="offline">离线</option>
-                      <option value="testing">测试中</option>
-                    </select>
-                  </div>
+                  <BadgeFilter
+                    :options="DEVICE_STATUS_OPTIONS"
+                    :model-value="statusFilter"
+                    all-label="所有状态"
+                    title="状态"
+                    @update:model-value="setStatusFilter"
+                  />
                 </div>
                 <!-- 算法筛选（徽章单选） -->
                 <div class="algorithm-filter-row">
@@ -427,14 +425,13 @@
                       @input="searchDevices"
                     >
                   </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="statusFilter" @change="filterDevices" id="apiStatusFilter">
-                      <option value="all">所有状态</option>
-                      <option value="online">在线</option>
-                      <option value="offline">离线</option>
-                      <option value="testing">测试中</option>
-                    </select>
-                  </div>
+                  <BadgeFilter
+                    :options="DEVICE_STATUS_OPTIONS"
+                    :model-value="statusFilter"
+                    all-label="所有状态"
+                    title="状态"
+                    @update:model-value="setStatusFilter"
+                  />
                 </div>
                 <!-- 算法筛选（徽章单选） -->
                 <div class="algorithm-filter-row">
@@ -561,6 +558,7 @@ import { useDevice } from './DeviceLogic/Device';
 import InfiniteScrollList from '../components/common/InfiniteScrollList.vue';
 import AlgorithmTag from '../components/algorithm/AlgorithmTag.vue';
 import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
+import BadgeFilter from '../components/common/BadgeFilter.vue';
 
 // 使用组合式函数获取所有状态和函数
 const {
@@ -626,6 +624,26 @@ const {
   apiPageSize
 } = useDevice();
 
+// ===== 徽章筛选选项（原下拉框硬编码迁移为常量）=====
+const DEVICE_STATUS_OPTIONS = [
+  { value: 'online', label: '在线' },
+  { value: 'offline', label: '离线' },
+  { value: 'testing', label: '测试中' },
+];
+
+const PLAYBACK_TYPE_OPTIONS = [
+  { value: '干声', label: '干声' },
+  { value: '噪声', label: '噪声' },
+];
+
+function setStatusFilter(value) {
+  statusFilter.value = String(value);
+}
+
+function setPlaybackTypeFilter(value) {
+  playbackTypeFilter.value = String(value);
+}
+
 import { onMounted } from 'vue';
 
 onMounted(async () => {
@@ -635,6 +653,28 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* 筛选栏：原 device.css 为定宽下拉框设计，徽章筛选需占满可用宽度并允许换行 */
+.card-actions {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-bar {
+  flex-wrap: wrap !important;
+  white-space: normal !important;
+  align-items: center !important;
+  gap: 12px 16px !important;
+  width: 100% !important;
+}
+
+/* 算法徽章筛选行：与其它徽章组自然衔接，不再用虚线分隔 */
+.algorithm-filter-row {
+  width: 100%;
+  padding-top: 0;
+  margin-top: 0;
+  border-top: none;
+}
+
 .no-devices {
   display: flex;
   flex-direction: column;
@@ -673,13 +713,5 @@ onMounted(async () => {
   font-size: 0.85rem;
   color: var(--text-secondary);
   font-weight: 500;
-}
-
-/* 算法徽章筛选行 */
-.algorithm-filter-row {
-  width: 100%;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--border-color);
 }
 </style>

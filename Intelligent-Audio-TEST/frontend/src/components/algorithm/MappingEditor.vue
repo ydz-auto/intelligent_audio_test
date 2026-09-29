@@ -3,8 +3,14 @@
     <div class="mapping-toolbar">
       <div class="mapping-toolbar-actions">
         <div v-if="componentType === 'evaluation'" class="view-mode-tabs">
-          <button class="view-mode-tab" :class="{ active: viewMode === 'flat' }" @click="switchViewMode('flat')">平铺视图</button>
-          <button class="view-mode-tab" :class="{ active: viewMode === 'dimension' }" @click="switchViewMode('dimension')">评估维度视图</button>
+          <button class="view-mode-tab" :class="{ active: viewMode === 'flat' }" @click="switchViewMode('flat')">
+            <i class="fas fa-th-list view-mode-icon"></i>
+            <span>平铺视图</span>
+          </button>
+          <button class="view-mode-tab" :class="{ active: viewMode === 'dimension' }" @click="switchViewMode('dimension')">
+            <i class="fas fa-layer-group view-mode-icon"></i>
+            <span>评估维度视图</span>
+          </button>
         </div>
         <div class="search-box">
           <i class="fas fa-search search-icon"></i>
@@ -128,12 +134,22 @@
           <tr v-else-if="filteredMappings.length === 0">
             <td :colspan="colspanCount" class="empty-row">无匹配映射</td>
           </tr>
-          <template v-else v-for="(record, index) in displayRows" :key="record.__isGroupHeader ? `group-${record.__dimensionKey}` : (record.id || `${record.source || ''}-${record.source_param}-${record.target_param}-${record.dimension_id || ''}`)">
+          <template v-else v-for="(record, index) in displayRows" :key="record.__isGroupHeader ? `group-${record.__dimensionKey}` : (record.__isGroupFooter ? `group-footer-${record.__dimensionKey}` : (record.id || `${record.source || ''}-${record.source_param}-${record.target_param}-${record.dimension_id || ''}`))">
             <tr v-if="record.__isGroupHeader" class="dimension-group-header-row">
               <td :colspan="colspanCount">
-                <i class="fas fa-layer-group dimension-group-icon"></i>
-                <span class="dimension-group-name">{{ record.__dimensionName }}</span>
-                <span class="dimension-group-count">共 {{ record.__count }} 条</span>
+                <span class="dimension-group-title">
+                  <i class="fas fa-layer-group dimension-group-icon"></i>
+                  <span class="dimension-group-name">{{ record.__dimensionName }}</span>
+                  <span class="dimension-group-count">共 {{ record.__count }} 条</span>
+                </span>
+              </td>
+            </tr>
+            <tr v-else-if="record.__isGroupFooter" class="add-row dimension-group-add-row" @click="handleAdd(record.__dimensionId)">
+              <td :colspan="colspanCount">
+                <span class="add-row-content">
+                  <span class="add-row-icon"><i class="fas fa-plus"></i></span>
+                  <span>添加映射</span>
+                </span>
               </td>
             </tr>
             <tr v-else>
@@ -216,7 +232,7 @@
             </td>
             </tr>
           </template>
-          <tr class="add-row" @click="handleAdd">
+          <tr v-if="viewMode !== 'dimension'" class="add-row" @click="handleAdd()">
             <td :colspan="colspanCount">
               <span class="add-row-content">
                 <span class="add-row-icon"><i class="fas fa-plus"></i></span>
@@ -303,7 +319,7 @@ const filters = reactive({
 })
 
 // 视图模式：平铺视图 / 评估维度视图（仅评估映射可用）
-const viewMode = ref<'flat' | 'dimension'>('flat')
+const viewMode = ref<'flat' | 'dimension'>('dimension')
 // 分页状态
 const currentPage = ref(1)
 const pageSize = ref(10)
@@ -368,10 +384,17 @@ const displayRows = computed(() => {
       rows.push({
         __isGroupHeader: true,
         __dimensionKey: key,
+        __dimensionId: key === '__none__' ? null : Number(key),
         __dimensionName: dimensionNameForGroup(key),
         __count: mappings.length
       })
       rows.push(...mappings)
+      // 分组末尾追加整行"添加映射"按钮
+      rows.push({
+        __isGroupFooter: true,
+        __dimensionKey: key,
+        __dimensionId: key === '__none__' ? null : Number(key)
+      })
     }
     return rows
   }
@@ -739,15 +762,15 @@ async function autoSaveMapping(record: any, index: number) {
   }
 }
 
-function handleAdd() {
+function handleAdd(dimensionId?: number | null) {
   const tempId = `temp_mapping_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
   const newMapping: Mapping = props.componentType === 'evaluation' ? {
     tempId,
     source: 'case',
     source_param: '',
     param_name: '',
-    dimension_id: null,
-    dimension_name: '',
+    dimension_id: dimensionId ?? null,
+    dimension_name: dimensionId ? getDimensionName(dimensionId) : '',
     target_param: '',
     transform_type: 'none'
   } : {
@@ -786,29 +809,40 @@ function handleRemove(record: any) {
 
 /* 视图模式切换（平铺/评估维度） */
 .view-mode-tabs {
-  display: flex;
-  gap: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-sm);
-  padding: 2px;
+  border-radius: var(--border-radius-full);
+  padding: 3px;
   background: var(--background-secondary);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 .view-mode-tab {
-  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
   border: none;
   background: transparent;
-  border-radius: var(--border-radius-xs);
+  border-radius: var(--border-radius-full);
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.view-mode-tab .view-mode-icon {
+  font-size: 12px;
 }
 .view-mode-tab:hover {
   color: var(--primary-color);
+  background: rgba(99, 102, 241, 0.08);
 }
 .view-mode-tab.active {
-  background: var(--primary-color);
-  color: var(--white-color);
+  background: var(--primary-gradient, linear-gradient(135deg, #6366f1, #8b5cf6));
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.35);
 }
 
 /* 评估维度分组头行 */
@@ -829,6 +863,25 @@ function handleRemove(record: any) {
   margin-left: 8px;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
+}
+
+/* 分组末尾整行添加按钮 */
+.dimension-group-add-row td {
+  background: var(--background-secondary) !important;
+  color: var(--text-secondary);
+  border-top: 1px dashed var(--border-color);
+}
+.dimension-group-add-row:hover td {
+  background: var(--primary-light) !important;
+  color: var(--primary-color);
+}
+.dimension-group-add-row .add-row-icon {
+  background: var(--primary-light);
+  color: var(--primary-color);
+}
+.dimension-group-add-row:hover .add-row-icon {
+  background: var(--primary-gradient, linear-gradient(135deg, #6366f1, #8b5cf6));
+  color: #fff;
 }
 
 .mapping-pagination {

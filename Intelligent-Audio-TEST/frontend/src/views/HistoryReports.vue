@@ -48,45 +48,29 @@
                  @input="handleFilterChange">
         </div>
         
-        <div class="filter-item">
-          <label for="report-type-filter">报告类型：</label>
-          <select class="filter-select" 
-                  id="report-type-filter"
-                  v-model="filters.reportType"
-                  @change="handleFilterChange">
-            <option value="all">全部类型</option>
-            <option value="comparison">对比报告</option>
-            <option value="secondary_comparison">二次对比报告</option>
-            <option value="task">任务报告</option>
-          </select>
-        </div>
-        
-        <div class="filter-item">
-          <label for="report-status-filter">报告状态：</label>
-          <select class="filter-select" 
-                  id="report-status-filter"
-                  v-model="filters.reportStatus"
-                  @change="handleFilterChange">
-            <option value="all">全部状态</option>
-            <option value="draft">草稿</option>
-            <option value="published">已发布</option>
-          </select>
-        </div>
-        
-        <div class="filter-item">
-          <label for="time-filter">时间范围：</label>
-          <select class="filter-select" 
-                  id="time-filter"
-                  v-model="filters.timeRange"
-                  @change="handleFilterChange">
-            <option value="all">全部时间</option>
-            <option value="today">今日</option>
-            <option value="yesterday">昨日</option>
-            <option value="week">近7天</option>
-            <option value="month">近30天</option>
-            <option value="custom">自定义</option>
-          </select>
-        </div>
+        <BadgeFilter
+          :options="REPORT_TYPE_OPTIONS"
+          :model-value="filters.reportType"
+          all-label="全部类型"
+          title="报告类型"
+          @update:model-value="handleReportTypeFilterChange"
+        />
+
+        <BadgeFilter
+          :options="REPORT_STATUS_OPTIONS"
+          :model-value="filters.reportStatus"
+          all-label="全部状态"
+          title="报告状态"
+          @update:model-value="handleReportStatusFilterChange"
+        />
+
+        <BadgeFilter
+          :options="TIME_RANGE_OPTIONS"
+          :model-value="filters.timeRange"
+          all-label="全部时间"
+          title="时间范围"
+          @update:model-value="handleTimeRangeFilterChange"
+        />
       </div>
       
       <div class="filter-row">
@@ -282,6 +266,7 @@ import { useHistoryReports } from './HistoryReportsLogic/historyReports';
 import { REPORT_TABS } from '../shared/constants/reportConstants';
 
 import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
+import BadgeFilter from '../components/common/BadgeFilter.vue';
 import PaginationComponent from '../components/common/PaginationComponent.vue';
 import ReportCard from '../components/report/ReportCard.vue';
 
@@ -334,6 +319,41 @@ function handleAlgorithmFilterChange(value: string) {
   filters.value.algorithmType = value;
   handleFilterChange();
 }
+
+/** 报告类型 / 状态 / 时间范围选项（原下拉框硬编码迁移为常量） */
+const REPORT_TYPE_OPTIONS = [
+  { value: 'comparison', label: '对比报告' },
+  { value: 'secondary_comparison', label: '二次对比报告' },
+  { value: 'task', label: '任务报告' },
+];
+
+const REPORT_STATUS_OPTIONS = [
+  { value: 'draft', label: '草稿' },
+  { value: 'published', label: '已发布' },
+];
+
+const TIME_RANGE_OPTIONS = [
+  { value: 'today', label: '今日' },
+  { value: 'yesterday', label: '昨日' },
+  { value: 'week', label: '近7天' },
+  { value: 'month', label: '近30天' },
+  { value: 'custom', label: '自定义' },
+];
+
+function handleReportTypeFilterChange(value: string | number) {
+  filters.value.reportType = String(value) as any;
+  handleFilterChange();
+}
+
+function handleReportStatusFilterChange(value: string | number) {
+  filters.value.reportStatus = String(value) as any;
+  handleFilterChange();
+}
+
+function handleTimeRangeFilterChange(value: string | number) {
+  filters.value.timeRange = String(value) as any;
+  handleFilterChange();
+}
 </script>
 
 <style scoped>
@@ -351,22 +371,6 @@ function handleAlgorithmFilterChange(value: string) {
 
 /* 搜索框聚焦状态样式 */
 .filter-sort-section :deep(.search-input:focus) {
-  border-color: var(--primary-color) !important;
-  box-shadow: 0 0 0 3px var(--primary-light) !important;
-  background-color: white !important;
-}
-
-/* 下拉选择框样式 - 确保外框为明显的灰色 */
-.filter-sort-section :deep(.filter-select) {
-  border: 2px solid #D1D5DB !important;
-  background-color: white !important;
-  border-radius: var(--border-radius-md) !important;
-  padding: var(--spacing-sm) var(--spacing-md) !important;
-  font-size: var(--font-size-md) !important;
-}
-
-/* 下拉选择框聚焦状态样式 */
-.filter-sort-section :deep(.filter-select:focus) {
   border-color: var(--primary-color) !important;
   box-shadow: 0 0 0 3px var(--primary-light) !important;
   background-color: white !important;

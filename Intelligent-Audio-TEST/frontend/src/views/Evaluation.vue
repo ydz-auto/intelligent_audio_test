@@ -62,36 +62,30 @@
               <div class="card-actions">
               <div class="filter-sort-section">
                 <div class="filter-row">
-                  <div class="filter-item">
+                  <div class="filter-item search-filter-item">
                     <div class="search-box">
                       <i class="fas fa-search search-icon"></i>
                       <input type="text" class="search-input" placeholder="搜索评估维度..." v-model="searchKeyword" @input="searchDimensions">
                     </div>
                   </div>
-                  <div class="filter-item">
-                    <div class="filter-select">
-                      <select class="form-input" v-model="filterStatus" @change="filterDimensions">
-                        <option value="all">全部状态</option>
-                        <option value="active">启用</option>
-                        <option value="inactive">禁用</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="filter-item">
-                    <div class="filter-select">
-                      <select class="form-input" v-model="filterCategory" @change="filterDimensions">
-                        <option value="all">全部分类</option>
-                        <option v-for="cat in categories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="filter-item">
+                  <BadgeFilter
+                    :options="STATUS_FILTER_OPTIONS"
+                    :model-value="filterStatus"
+                    all-label="全部状态"
+                    title="状态"
+                    @update:model-value="setStatusFilter"
+                  />
+                  <BadgeFilter
+                    :options="categoryFilterOptions"
+                    :model-value="filterCategory"
+                    all-label="全部分类"
+                    title="分类"
+                    @update:model-value="setCategoryFilter"
+                  />
+                  <AlgorithmFilter :options="algorithms" v-model="filterAlgorithm" title="关联算法" />
+                  <div class="filter-item reset-filter-item">
                     <button class="btn btn-text btn-primary" @click="resetFilters">重置筛选</button>
                   </div>
-                </div>
-                <!-- 算法筛选（徽章单选） -->
-                <div class="filter-row algorithm-filter-row">
-                  <AlgorithmFilter :options="algorithms" v-model="filterAlgorithm" title="关联算法" />
                 </div>
               </div>
               </div>
@@ -202,6 +196,7 @@ import '../assets/styles/main.css';
 // 导入滚动加载分页组件
 import InfiniteScrollList from '../components/common/InfiniteScrollList.vue';
 import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
+import BadgeFilter from '../components/common/BadgeFilter.vue';
 // 导入评估维度表格公共组件（列表/分组视图共用）
 import EvaluationDimensionTable from '../components/EvaluationDimensionTable.vue';
 
@@ -281,6 +276,26 @@ const {
   cleanupEvaluation,
   loading
 } = useEvaluation();
+
+// ===== 徽章筛选选项（原下拉框硬编码迁移为常量）=====
+const STATUS_FILTER_OPTIONS = [
+  { value: 'active', label: '启用' },
+  { value: 'inactive', label: '禁用' },
+];
+
+const categoryFilterOptions = computed(() =>
+  (categories.value || []).map(cat => ({ value: cat.id, label: cat.name }))
+);
+
+function setStatusFilter(value) {
+  filterStatus.value = String(value);
+  filterDimensions();
+}
+
+function setCategoryFilter(value) {
+  filterCategory.value = String(value);
+  filterDimensions();
+}
 
 // 添加 onMounted 钩子来初始化组件
 onMounted(() => {
@@ -561,24 +576,21 @@ onBeforeUnmount(() => {
 
 .filter-row {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 12px 16px;
   margin: 0;
   padding: 0;
   width: 100%;
-  flex-wrap: nowrap;
-  white-space: nowrap;
-  align-content: flex-end;
-}
-
-/* 算法徽章筛选行：允许换行、自动高度 */
-.algorithm-filter-row {
   flex-wrap: wrap;
   white-space: normal;
-  height: auto;
-  min-height: 32px;
-  padding-top: 8px;
+  align-content: center;
+}
+
+/* 徽章组自然换行，不被拉伸 */
+.filter-row > .badge-filter,
+.filter-row > .algorithm-filter {
+  flex: 0 1 auto;
 }
 
 /* 评估维度记录行选中样式 */
@@ -603,13 +615,26 @@ tr:has(.dimension-checkbox:checked) {
 
 .filter-item {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: flex-start;
   margin: 0;
   padding: 0;
   flex-shrink: 0;
+  flex-grow: 0;
   height: 40px;
   box-sizing: border-box;
+}
+
+/* 搜索框占满剩余宽度 */
+.filter-item.search-filter-item {
+  flex-grow: 1;
+  max-width: 460px;
+  min-width: 240px;
+}
+
+/* 重置按钮不拉伸 */
+.filter-item.reset-filter-item {
+  flex-grow: 0;
 }
 
 /* 详情模态框样式 */

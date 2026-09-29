@@ -659,16 +659,17 @@ const referenceTextFields = computed(() => {
   const result = [];
   const seenCodes = new Set();
 
-  // 1. 从 referenceParams 字典里直接提取所有 text 参数（含多轮展开的 code@round:N）
+  // 1. 从 referenceParams 字典里直接提取所有 text 参数（含多轮展开的 code@round:N，兼容 @Round:N）
   for (const [code, data] of Object.entries(refParams)) {
     if (!data || typeof data !== 'object') continue;
     if (data.type !== 'text') continue;
     const text = data.text || data.value || '';
     if (typeof text !== 'string' || !text.trim()) continue;
     seenCodes.add(code);
+    const roundMatch = code.match(/^(.*)@round:(\d+)$/i);
     result.push({
       param_code: code,
-      label: data.label || (code.includes('@round:') ? `${code.split('@round:')[0]} (第${code.split('@round:')[1]}轮)` : code),
+      label: data.label || (roundMatch ? `${roundMatch[1]} (第${roundMatch[2]}轮)` : code),
       param_type: 'text',
       round_number: data.round_number,
       text,
@@ -1028,9 +1029,9 @@ const dimIdToName = computed(() => {
 
 // 解析指标 key：提取基础名、轮次标记（'round:N' / 'overall' / null）
 const parseMetricKey = (k) => {
-  const m = k.match(/^(.*)@(round:(\d+)|overall)$/);
+  const m = k.match(/^(.*)@(round:(\d+)|overall)$/i);
   if (!m) return { base: k, roundTag: null };
-  if (m[2] === 'overall') return { base: m[1], roundTag: 'overall' };
+  if (m[2].toLowerCase() === 'overall') return { base: m[1], roundTag: 'overall' };
   return { base: m[1], roundTag: `round:${m[3]}` };
 };
 
@@ -1039,12 +1040,13 @@ const parseMetricKey = (k) => {
 // param_code 形如 "tc_summary@overall" → roundTag "overall"
 // round_number 为数字(1-indexed) → roundTag "round:N"
 // round_number 为 null/undefined 且无 @overall 后缀 → 无轮次标记(null)
+// 兼容后端历史数据中 "code@Round:N"（大写 R）的写法
 const parseFieldRoundTag = (field) => {
   // 优先从 param_code 提取
   if (field.param_code) {
-    const m = field.param_code.match(/@round:(\d+)$/);
+    const m = field.param_code.match(/@round:(\d+)$/i);
     if (m) return `round:${m[1]}`;
-    if (/@overall$/.test(field.param_code)) return 'overall';
+    if (/@overall$/i.test(field.param_code)) return 'overall';
   }
   // 回退到 round_number 字段（1-indexed）
   const rn = field.round_number;
@@ -1057,7 +1059,7 @@ const parseFieldRoundTag = (field) => {
 // 从 param_code 提取基础名（去掉 @round:N 后缀）
 const getFieldBaseName = (field) => {
   if (field.param_code) {
-    return field.param_code.replace(/@round:\d+$/, '');
+    return field.param_code.replace(/@round:\d+$/i, '');
   }
   return field.param_code || field.label || '';
 };

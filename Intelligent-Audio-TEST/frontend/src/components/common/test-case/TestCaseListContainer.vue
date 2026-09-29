@@ -62,62 +62,54 @@
           </div>
         </div>
         <div class="filters-container">
-          <div class="filter-section">
-            <label for="testTypeFilter">测试类型:</label>
-            <div class="filter-select">
-              <select id="testTypeFilter" class="form-input" v-model="testTypeFilter">
-                <option value="all">所有类型</option>
-                <option value="api">API测试</option>
-                <option value="e2e">端到端测试</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="dimensionFilter">评估维度:</label>
-            <div class="filter-select">
-              <select id="dimensionFilter" class="form-input" v-model="dimensionFilter">
-                <option value="all">所有维度</option>
-                <option v-for="dim in dimensionOptions" :key="dim.id" :value="dim.id">{{ dim.name }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="groupFilter">用例分组:</label>
-            <div class="filter-select">
-              <select id="groupFilter" class="form-input" v-model="groupFilter">
-                <option value="all">所有分组</option>
-                <option v-for="group in availableGroups" :key="group" :value="group">{{ group }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="tagFilter">标签:</label>
-            <div class="filter-select">
-              <select id="tagFilter" class="form-input" v-model="tagFilter">
-                <option value="all">所有标签</option>
-                <option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="sortBy">排序:</label>
-            <div class="filter-select">
-              <select id="sortBy" class="form-input" v-model="sortBy">
-                <option value="count">按用例数量</option>
-                <option value="name">按分组名称</option>
-                <option value="createTime">按创建时间</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="sortOrder">顺序:</label>
-            <div class="filter-select">
-              <select id="sortOrder" class="form-input" v-model="sortOrder">
-                <option value="desc">降序</option>
-                <option value="asc">升序</option>
-              </select>
-            </div>
-          </div>
+          <BadgeFilter
+            :options="TEST_TYPE_OPTIONS"
+            :model-value="testTypeFilter"
+            all-label="所有类型"
+            title="测试类型"
+            @update:model-value="setTestTypeFilter"
+          />
+          <BadgeFilter
+            :options="dimensionFilterOptions"
+            :model-value="dimensionFilter"
+            all-label="所有维度"
+            title="评估维度"
+            collapsible
+            :collapsed-count="8"
+            @update:model-value="setDimensionFilter"
+          />
+          <BadgeFilter
+            :options="groupFilterOptions"
+            :model-value="groupFilter"
+            all-label="所有分组"
+            title="用例分组"
+            @update:model-value="setGroupFilter"
+          />
+          <BadgeFilter
+            :options="tagFilterOptions"
+            :model-value="tagFilter"
+            all-label="所有标签"
+            title="标签"
+            collapsible
+            :collapsed-count="8"
+            @update:model-value="setTagFilter"
+          />
+          <BadgeFilter
+            :options="SORT_BY_OPTIONS"
+            :model-value="sortBy"
+            :show-all="false"
+            :deselectable="false"
+            title="排序"
+            @update:model-value="setSortBy"
+          />
+          <BadgeFilter
+            :options="SORT_ORDER_OPTIONS"
+            :model-value="sortOrder"
+            :show-all="false"
+            :deselectable="false"
+            title="顺序"
+            @update:model-value="setSortOrder"
+          />
           <div class="filter-section">
             <button class="btn btn-secondary" @click="() => resetFilters()">重置筛选</button>
           </div>
@@ -361,6 +353,7 @@ import TestCaseCard from './TestCaseCard.vue'
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
 import AlgorithmFilter from '../../algorithm/AlgorithmFilter.vue';
+import BadgeFilter from '../BadgeFilter.vue';
 import AudioPlayerModal from '../AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import CRUDFormModal from '../modal/CRUDFormModal.vue';
@@ -434,6 +427,52 @@ const sortBy = ref('count');
 const sortOrder = ref('desc');
 const dimensionFilter = ref<number | 'all'>('all');
 const dimensionOptions = ref<{ id: number; name: string }[]>([]);
+
+// ===== 徽章筛选选项（原下拉框硬编码迁移为常量）=====
+const TEST_TYPE_OPTIONS = [
+  { value: 'api', label: 'API测试' },
+  { value: 'e2e', label: '端到端测试' },
+];
+
+const SORT_BY_OPTIONS = [
+  { value: 'count', label: '按用例数量' },
+  { value: 'name', label: '按分组名称' },
+  { value: 'createTime', label: '按创建时间' },
+];
+
+const SORT_ORDER_OPTIONS = [
+  { value: 'desc', label: '降序' },
+  { value: 'asc', label: '升序' },
+];
+
+const dimensionFilterOptions = computed(() =>
+  dimensionOptions.value.map(d => ({ value: d.id, label: d.name }))
+);
+const groupFilterOptions = computed(() =>
+  availableGroups.value.map(g => ({ value: g, label: g }))
+);
+const tagFilterOptions = computed(() =>
+  (props.tags || []).map(t => ({ value: t, label: t }))
+);
+
+function setTestTypeFilter(value: string | number) {
+  testTypeFilter.value = String(value);
+}
+function setDimensionFilter(value: string | number) {
+  dimensionFilter.value = (value === 'all' ? 'all' : Number(value)) as number | 'all';
+}
+function setGroupFilter(value: string | number) {
+  groupFilter.value = String(value);
+}
+function setTagFilter(value: string | number) {
+  tagFilter.value = String(value);
+}
+function setSortBy(value: string | number) {
+  sortBy.value = String(value);
+}
+function setSortOrder(value: string | number) {
+  sortOrder.value = String(value);
+}
 
 // 视图模式：'group' 分组视图 | 'tag' 标签视图
 const innerViewMode = ref<'group' | 'tag'>(props.viewMode || 'group');
@@ -1880,36 +1919,6 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   justify-content: flex-start;
 }
 
-.filter-section label {
-  margin: 0;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  flex-shrink: 0;
-}
-
-.filter-select {
-  display: flex;
-  align-items: center;
-  flex-shrink: 1;
-  min-width: 100px;
-}
-
-.filter-select .form-input {
-  height: 40px;
-  box-sizing: border-box;
-  flex-shrink: 1;
-  width: 100%;
-  min-width: 100px;
-}
-
-.filter-section .form-input {
-  width: 150px;
-  min-width: 100px;
-  flex-shrink: 1;
-}
-
 /* 确保重置筛选按钮高度与其他元素一致 */
 .filter-section .btn-secondary {
   padding: var(--spacing-sm) var(--spacing-md);
@@ -1991,10 +2000,6 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
     justify-content: flex-start;
   }
   
-  .filter-section .form-input {
-    width: 130px;
-  }
-  
   .search-box {
     width: 100%;
     min-width: 250px;
@@ -2023,11 +2028,6 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
     min-width: 120px;
   }
   
-  .filter-section .form-input {
-    width: 100px;
-    font-size: 13px;
-  }
-  
   .search-box {
     min-width: 150px;
   }
@@ -2050,10 +2050,6 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   
   .filter-section {
     min-width: 160px;
-  }
-  
-  .filter-section .form-input {
-    width: 140px;
   }
   
   .search-box {

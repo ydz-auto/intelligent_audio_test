@@ -60,36 +60,23 @@
             <!-- 格式筛选 -->
             <div class="filter-item">
               <label class="filter-label">音频格式</label>
-              <select 
-                class="filter-select" 
-                v-model="filters.format"
-                @change="handleFilterChange"
-              >
-                <option value="all">所有格式</option>
-                <option value="mp3">MP3</option>
-                <option value="wav">WAV</option>
-                <option value="flac">FLAC</option>
-                <option value="aac">AAC</option>
-                <option value="m4a">M4A</option>
-              </select>
+              <BadgeFilter
+                :options="FORMAT_OPTIONS"
+                :model-value="filters.format"
+                all-label="所有格式"
+                @update:model-value="value => setFilter('format', value)"
+              />
             </div>
             
             <!-- 采样率筛选 -->
             <div class="filter-item">
               <label class="filter-label">采样率</label>
-              <select 
-                class="filter-select" 
-                v-model="filters.sampleRate"
-                @change="handleFilterChange"
-              >
-                <option value="all">所有采样率</option>
-                <option value="8000">8 kHz</option>
-                <option value="16000">16 kHz</option>
-                <option value="24000">24 kHz</option>
-                <option value="44100">44.1 kHz</option>
-                <option value="48000">48 kHz</option>
-                <option value="96000">96 kHz</option>
-              </select>
+              <BadgeFilter
+                :options="SAMPLE_RATE_OPTIONS"
+                :model-value="filters.sampleRate"
+                all-label="所有采样率"
+                @update:model-value="value => setFilter('sampleRate', value)"
+              />
             </div>
             
             <!-- 标签云筛选 -->
@@ -142,32 +129,23 @@
             <!-- 时长筛选 -->
             <div class="filter-item">
               <label class="filter-label">音频时长</label>
-              <select 
-                class="filter-select" 
-                v-model="filters.duration"
-                @change="handleFilterChange"
-              >
-                <option value="all">所有时长</option>
-                <option value="short">短 (<= 30秒)</option>
-                <option value="medium">中 (30秒 - 5分钟)</option>
-                <option value="long">长 (> 5分钟)</option>
-              </select>
+              <BadgeFilter
+                :options="DURATION_OPTIONS"
+                :model-value="filters.duration"
+                all-label="所有时长"
+                @update:model-value="value => setFilter('duration', value)"
+              />
             </div>
             
             <!-- 类型筛选 -->
             <div class="filter-item">
               <label class="filter-label">音频类型</label>
-              <select 
-                class="filter-select" 
-                v-model="filters.audioType"
-                @change="handleFilterChange"
-              >
-                <option value="all">所有类型</option>
-                <option value="dry">干声</option>
-                <option value="noise">噪声</option>
-                <option value="prompt">提示词音频</option>
-                <option value="mixed">混合音频</option>
-              </select>
+              <BadgeFilter
+                :options="AUDIO_TYPE_OPTIONS"
+                :model-value="filters.audioType"
+                all-label="所有类型"
+                @update:model-value="value => setFilter('audioType', value)"
+              />
             </div>
             
             <!-- 筛选操作按钮 -->
@@ -417,6 +395,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { buildFolderTree, extractAllTags, filterAudios as filterAudiosUtil } from '../../utils/audioUtils';
 import { useTagFilter, type TagFilterState } from '../../composables/useTagFilter';
+import BadgeFilter from './BadgeFilter.vue';
 import FolderNodeComponent from './FolderNodeComponent.vue';
 import PaginationComponent from './PaginationComponent.vue';
 
@@ -501,6 +480,44 @@ const filters = ref({
   duration: 'all',
   audioType: props.audioType || 'all'
 });
+
+// ===== 徽章筛选选项（原下拉框硬编码迁移为常量）=====
+const FORMAT_OPTIONS = [
+  { value: 'mp3', label: 'MP3' },
+  { value: 'wav', label: 'WAV' },
+  { value: 'flac', label: 'FLAC' },
+  { value: 'aac', label: 'AAC' },
+  { value: 'm4a', label: 'M4A' },
+];
+
+const SAMPLE_RATE_OPTIONS = [
+  { value: '8000', label: '8 kHz' },
+  { value: '16000', label: '16 kHz' },
+  { value: '24000', label: '24 kHz' },
+  { value: '44100', label: '44.1 kHz' },
+  { value: '48000', label: '48 kHz' },
+  { value: '96000', label: '96 kHz' },
+];
+
+const DURATION_OPTIONS = [
+  { value: 'short', label: '短 (<= 30秒)' },
+  { value: 'medium', label: '中 (30秒 - 5分钟)' },
+  { value: 'long', label: '长 (> 5分钟)' },
+];
+
+const AUDIO_TYPE_OPTIONS = [
+  { value: 'dry', label: '干声' },
+  { value: 'noise', label: '噪声' },
+  { value: 'prompt', label: '提示词音频' },
+  { value: 'mixed', label: '混合音频' },
+];
+
+type FilterKey = 'format' | 'sampleRate' | 'duration' | 'audioType';
+
+const setFilter = (key: FilterKey, value: string | number) => {
+  filters.value[key] = String(value);
+  handleFilterChange();
+};
 
 const {
   selectedTags: localSelectedTags,
@@ -965,27 +982,6 @@ onUnmounted(() => {
 
 .filter-item:hover .filter-label {
   color: var(--primary-color);
-}
-
-.filter-select {
-  border-radius: var(--border-radius-md);
-  border: 1px solid var(--border-color);
-  padding: var(--spacing-xs) var(--spacing-md);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  background-color: var(--background-primary);
-  color: var(--text-secondary);
-  transition: all var(--transition-normal);
-  min-height: auto;
-  height: auto;
-  cursor: pointer;
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='%236B7280'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right var(--spacing-sm) center;
-  background-size: 16px 16px;
-  position: relative;
-  z-index: 1;
 }
 
 .tag-search-wrapper {
