@@ -122,12 +122,15 @@ class TestCaseGroup(db.Model):
     """
     __tablename__ = 'test_case_groups'
     __table_args__ = (
-        UniqueConstraint('name', 'algorithm_type', name='uq_group_name_algorithm'),
+        # 部分唯一索引：仅约束未删除分组，软删除后可复用同名
+        Index('uq_group_name_algorithm', 'name', 'algorithm_type', unique=True,
+              postgresql_where=text('deleted = false')),
     )
     id = Column(String(50), primary_key=True, comment='分组唯一标识符')
     name = Column(String(100), nullable=False, comment='分组显示名称')
     description = Column(Text, comment='分组详细描述')
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
     test_cases = relationship('TestCase', backref='group', lazy=True)
@@ -586,6 +589,7 @@ class Report(db.Model):
     algorithm_type = Column(String(50), comment='关联算法类型（冗余：来自关联任务或报告明细，创建时写入）')
     status = Column(String(20), nullable=False, default='draft', comment='报告状态 (draft/published)')
     analysis = Column(Text, comment='人工/自动分析结论')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 
