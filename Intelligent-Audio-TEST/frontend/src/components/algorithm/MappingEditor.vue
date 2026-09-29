@@ -2,6 +2,10 @@
   <div class="mapping-editor">
     <div class="mapping-toolbar">
       <div class="mapping-toolbar-actions">
+        <div v-if="componentType === 'evaluation'" class="view-mode-tabs">
+          <button class="view-mode-tab" :class="{ active: viewMode === 'flat' }" @click="switchViewMode('flat')">平铺视图</button>
+          <button class="view-mode-tab" :class="{ active: viewMode === 'dimension' }" @click="switchViewMode('dimension')">评估维度视图</button>
+        </div>
         <div class="search-box">
           <i class="fas fa-search search-icon"></i>
           <input
@@ -119,12 +123,20 @@
         </thead>
         <tbody>
           <tr v-if="mappings.length === 0">
-            <td :colspan="componentType === 'evaluation' ? 7 : 6" class="empty-row">暂无映射</td>
+            <td :colspan="colspanCount" class="empty-row">暂无映射</td>
           </tr>
           <tr v-else-if="filteredMappings.length === 0">
-            <td :colspan="componentType === 'evaluation' ? 7 : 6" class="empty-row">无匹配映射</td>
+            <td :colspan="colspanCount" class="empty-row">无匹配映射</td>
           </tr>
-          <tr v-else v-for="(record, index) in filteredMappings" :key="record.id || `${record.source || ''}-${record.source_param}-${record.target_param}`">
+          <template v-else v-for="(record, index) in displayRows" :key="record.__isGroupHeader ? `group-${record.__dimensionKey}` : (record.id || `${record.source || ''}-${record.source_param}-${record.target_param}-${record.dimension_id || ''}`)">
+            <tr v-if="record.__isGroupHeader" class="dimension-group-header-row">
+              <td :colspan="colspanCount">
+                <i class="fas fa-layer-group dimension-group-icon"></i>
+                <span class="dimension-group-name">{{ record.__dimensionName }}</span>
+                <span class="dimension-group-count">共 {{ record.__count }} 条</span>
+              </td>
+            </tr>
+            <tr v-else>
             <template v-if="componentType === 'evaluation'">
               <td>
                 <select v-model="record.source" class="form-input form-input-sm" @blur="handleSourceTypeChange(record)">
@@ -202,9 +214,10 @@
                 <i class="fas fa-trash btn-icon"></i>
               </button>
             </td>
-          </tr>
+            </tr>
+          </template>
           <tr class="add-row" @click="handleAdd">
-            <td :colspan="componentType === 'evaluation' ? 7 : 6">
+            <td :colspan="colspanCount">
               <span class="add-row-content">
                 <span class="add-row-icon"><i class="fas fa-plus"></i></span>
                 <span>添加映射</span>
@@ -214,6 +227,18 @@
         </tbody>
       </table>
     </div>
+
+    <div class="mapping-pagination" v-if="viewMode !== 'dimension' && filteredMappings.length > pageSize">
+      <PaginationComponent
+        :current-page="currentPage"
+        :page-size="pageSize"
+        :total-items="filteredMappings.length"
+        @prev-page="currentPage--"
+        @next-page="currentPage++"
+        @go-to-page="handleGoToPage"
+        @page-size-change="handlePageSizeChange"
+      />
+    </div>
   </div>
 </template>
 
@@ -222,6 +247,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { algorithmApi } from '../../utils/api'
 import { useNotification } from '../../composables/useNotification'
 import ColumnFilter from './ColumnFilter.vue'
+import PaginationComponent from '../common/PaginationComponent.vue'
 
 const { warning, error } = useNotification()
 
@@ -276,6 +302,110 @@ const filters = reactive({
   transform_type: 'all'
 })
 
+// 视图模式：平铺视图 / 评估维度视图（仅评估映射可用）
+const viewMode = ref<'flat' | 'dimension'>('flat')
+// 分页状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+const colspanCount = computed(() => (props.componentType === 'evaluation' ? 7 : 6))
+
+// 过滤后的映射列表（全量，用于分页总条数）
+const filteredMappings = computed(() => {
+  let list = props.mappings
+  const kw = filters.keyword.trim().toLowerCase()
+  if (kw) {
+    list = list.filter(m =>
+      (m.source_param || '').toLowerCase().includes(kw) ||
+      (m.param_name || '').toLowerCase().includes(kw) ||
+      (m.target_param || '').toLowerCase().includes(kw) ||
+      (getDimensionName(m.dimension_id || 0) || '').toLowerCase().includes(kw)
+    )
+  }
+  if (filters.source !== 'all') {
+    list = list.filter(m => m.source === filters.source)
+  }
+  if (filters.source_param !== 'all') {
+    const spKw = String(filters.source_param).toLowerCase()
+    list = list.filter(m => (m.source_param || '').toLowerCase().includes(spKw))
+  }
+  if (filters.dimension_id !== 'all') {
+    const targetId = Number(filters.dimension_id)
+    list = list.filter(m => m.dimension_id === targetId)
+  }
+  if (filters.target_param !== 'all') {
+    const tpKw = String(filters.target_param).toLowerCase()
+    list = list.filter(m => (m.target_param || '').toLowerCase().includes(tpKw))
+  }
+  if (filters.transform_type !== 'all') {
+    list = list.filter(m => m.transform_type === filters.transform_type)
+  }
+  return list
+})
+
+// 当前页的映射（平铺视图分页切片）
+const paginatedMappings = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value
+  return filteredMappings.value.slice(start, start + pageSize.value)
+})
+
+// 实际渲染行：平铺视图直接分页切片；评估维度视图按评估维度分组并在组首插入分组头
+const displayRows = computed(() => {
+  const rows: any[] = []
+  if (viewMode.value === 'dimension' && props.componentType === 'evaluation') {
+    const groups = new Map<string, any[]>()
+    for (const m of filteredMappings.value) {
+      const key = m.dimension_id == null ? '__none__' : String(m.dimension_id)
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(m)
+    }
+    const ordered = Array.from(groups.entries()).sort((a, b) => {
+      const nameA = dimensionNameForGroup(a[0])
+      const nameB = dimensionNameForGroup(b[0])
+      return nameA.localeCompare(nameB)
+    })
+    for (const [key, mappings] of ordered) {
+      rows.push({
+        __isGroupHeader: true,
+        __dimensionKey: key,
+        __dimensionName: dimensionNameForGroup(key),
+        __count: mappings.length
+      })
+      rows.push(...mappings)
+    }
+    return rows
+  }
+  return paginatedMappings.value
+})
+
+function dimensionNameForGroup(key: string): string {
+  if (key === '__none__') return '未指定维度'
+  const dim = availableDimensions.value.find(d => d.id === Number(key))
+  return dim?.name || `维度(${key})`
+}
+
+function handleGoToPage(page: number) {
+  currentPage.value = page
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = size
+  currentPage.value = 1
+}
+
+function switchViewMode(mode: 'flat' | 'dimension') {
+  viewMode.value = mode
+  currentPage.value = 1
+}
+
+// 过滤条件/映射数据变化时回到第一页
+watch(() => [filters.keyword, filters.source, filters.source_param, filters.dimension_id, filters.target_param, filters.transform_type], () => {
+  currentPage.value = 1
+})
+watch(() => props.mappings, () => {
+  currentPage.value = 1
+})
+
 // 列头过滤下拉的可选值
 const sourceOptions = [
   { value: 'case', label: '用例参数' },
@@ -308,39 +438,6 @@ function distinctValues(list: any[], key: string): string[] {
   }
   return Array.from(set)
 }
-
-// 过滤后的映射列表
-const filteredMappings = computed(() => {
-  let list = props.mappings
-  const kw = filters.keyword.trim().toLowerCase()
-  if (kw) {
-    list = list.filter(m =>
-      (m.source_param || '').toLowerCase().includes(kw) ||
-      (m.param_name || '').toLowerCase().includes(kw) ||
-      (m.target_param || '').toLowerCase().includes(kw) ||
-      (getDimensionName(m.dimension_id || 0) || '').toLowerCase().includes(kw)
-    )
-  }
-  if (filters.source !== 'all') {
-    list = list.filter(m => m.source === filters.source)
-  }
-  if (filters.source_param !== 'all') {
-    const spKw = String(filters.source_param).toLowerCase()
-    list = list.filter(m => (m.source_param || '').toLowerCase().includes(spKw))
-  }
-  if (filters.dimension_id !== 'all') {
-    const targetId = Number(filters.dimension_id)
-    list = list.filter(m => m.dimension_id === targetId)
-  }
-  if (filters.target_param !== 'all') {
-    const tpKw = String(filters.target_param).toLowerCase()
-    list = list.filter(m => (m.target_param || '').toLowerCase().includes(tpKw))
-  }
-  if (filters.transform_type !== 'all') {
-    list = list.filter(m => m.transform_type === filters.transform_type)
-  }
-  return list
-})
 
 // 当前可用维度ID集合（用于回退显示已删除维度的映射）
 const dimensionOptionIds = computed<Set<number>>(() => {
@@ -686,6 +783,58 @@ function handleRemove(record: any) {
   gap: var(--spacing-sm);
   flex-wrap: wrap;
 }
+
+/* 视图模式切换（平铺/评估维度） */
+.view-mode-tabs {
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 2px;
+  background: var(--background-secondary);
+}
+.view-mode-tab {
+  padding: 4px 12px;
+  border: none;
+  background: transparent;
+  border-radius: var(--border-radius-xs);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.view-mode-tab:hover {
+  color: var(--primary-color);
+}
+.view-mode-tab.active {
+  background: var(--primary-color);
+  color: var(--white-color);
+}
+
+/* 评估维度分组头行 */
+.dimension-group-header-row td {
+  background: var(--primary-light) !important;
+  font-weight: var(--font-weight-medium);
+  color: var(--primary-color);
+  padding: 6px 12px;
+}
+.dimension-group-icon {
+  margin-right: 6px;
+  font-size: 12px;
+}
+.dimension-group-name {
+  font-size: var(--font-size-sm);
+}
+.dimension-group-count {
+  margin-left: 8px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.mapping-pagination {
+  margin-top: var(--spacing-sm);
+}
+
 .mapping-toolbar-actions .search-box {
   width: 220px;
   height: 32px;

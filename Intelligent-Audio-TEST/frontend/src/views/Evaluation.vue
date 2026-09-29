@@ -48,7 +48,18 @@
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">评估维度列表</h3>
-            <div class="card-actions">
+            <div class="card-header-right">
+              <div class="view-switcher">
+                <button class="btn-toggle" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'" title="列表视图">
+                  <i class="fas fa-list"></i>
+                  列表视图
+                </button>
+                <button class="btn-toggle" :class="{ active: viewMode === 'group' }" @click="viewMode = 'group'" title="分组视图">
+                  <i class="fas fa-folder"></i>
+                  分组视图
+                </button>
+              </div>
+              <div class="card-actions">
               <div class="filter-sort-section">
                 <div class="filter-row">
                   <div class="filter-item">
@@ -78,102 +89,39 @@
                     <button class="btn btn-text btn-primary" @click="resetFilters">重置筛选</button>
                   </div>
                 </div>
+                <!-- 算法筛选（徽章单选） -->
+                <div class="filter-row algorithm-filter-row">
+                  <AlgorithmFilter :options="algorithms" v-model="filterAlgorithm" title="关联算法" />
+                </div>
+              </div>
               </div>
             </div>
           </div>
           <div class="card-body">
+            <!-- 列表视图 -->
             <InfiniteScrollList
+              v-if="viewMode === 'list'"
               :items="hierarchicalDimensions"
               :page-size="pageSize"
               :loading="loading"
             >
               <template #default="{ items }">
-                <div class="table-container">
-                  <table class="data-table">
-                    <thead>
-                      <tr>
-                        <th class="checkbox-column" style="width: 50px;">
-                          <input type="checkbox" id="selectAll" v-model="isAllSelected" @change="toggleSelectAll">
-                        </th>
-                        <th class="dimension-name-col sortable" style="width: 200px;">维度名称</th>
-                        <th class="dimension-description-col" style="width: 250px;">描述</th>
-                        <th class="dimension-category-col sortable" style="width: 120px;">分类</th>
-                        <th class="dimension-algorithms-col" style="width: 180px;">关联算法</th>
-                        <th class="dimension-weight-col sortable" style="width: 150px;">权重</th>
-                        <th class="dimension-api-status-col sortable" style="width: 120px;">API状态</th>
-                        <th class="dimension-status-col sortable" style="width: 100px;">状态</th>
-                        <th class="dimension-sort-col" style="width: 90px;">排序</th>
-                        <th class="dimension-actions-col" style="width: auto;">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody id="dimensionsTable">
-                      <tr v-for="dimension in items" :key="dimension.id" :class="{ 'sub-dimension-row': dimension._level === 1 }" @click="toggleDimensionSelection(dimension.id)">
-                        <td class="checkbox-column"><input type="checkbox" class="dimension-checkbox" v-model="selectedDimensions" :value="dimension.id" @click.stop></td>
-                        <td class="dimension-name-col" @click.stop="openEditModal(dimension.id)">
-                          <div class="dimension-name-cell" :style="{ paddingLeft: dimension._level === 1 ? '28px' : '0' }">
-                            <span v-if="dimension._level === 1" class="tree-branch">└</span>
-                            <span class="dimension-type-badge" :class="dimension._isMain ? 'main-dim-badge' : 'sub-dim-badge'">
-                              {{ dimension._isMain ? '主' : '子' }}
-                            </span>
-                            <span class="dimension-name-text">{{ dimension.name }}</span>
-                            <span v-if="dimension._level === 1 && dimension._parentName" class="parent-name-hint">（{{ dimension._parentName }}）</span>
-                          </div>
-                        </td>
-                        <td class="dimension-description-col text-truncate" :title="dimension.description">{{ dimension.description || '-' }}</td>
-                        <td class="dimension-category-col">{{ dimension.category || dimension.type }}</td>
-                        <td class="dimension-algorithms-col">
-                          <div class="algorithm-tags" v-if="dimension.associatedAlgorithms && dimension.associatedAlgorithms.length > 0">
-                            <span class="algo-tag" v-for="algo in dimension.associatedAlgorithms" :key="algo.algorithmType" :class="{ 'is-default': algo.isDefault }">
-                              {{ getAlgorithmLabel(algo.algorithmType) }}
-                            </span>
-                          </div>
-                          <span v-else class="text-muted">-</span>
-                        </td>
-                        <td class="dimension-weight-col">
-                          <div class="weight-control">
-                            <input type="range" class="weight-slider" min="1" max="10" v-model="dimension.weight" @input="updateWeight(dimension.id, dimension.weight)" @click.stop>
-                            <span class="weight-value">{{ dimension.weight }}</span>
-                          </div>
-                        </td>
-                        <td class="dimension-api-status-col">
-                          <span v-if="isLlmJudge(dimension)" class="api-status llm-judge">
-                            <i class="fas fa-robot"></i> LLM Judge
-                          </span>
-                          <span v-else class="api-status" :class="dimension.apiStatus">
-                            <i class="fas fa-circle" :class="dimension.apiStatus === 'online' ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.apiStatus === 'online' ? '在线' : '离线' }}
-                          </span>
-                        </td>
-                        <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
-                        <td class="dimension-sort-col">
-                          <div class="sort-control" @click.stop>
-                            <button class="sort-btn" :disabled="!canMoveUp(dimension)" @click="moveDimension(dimension.id, -1)" title="上移">
-                              <i class="fas fa-chevron-up"></i>
-                            </button>
-                            <button class="sort-btn" :disabled="!canMoveDown(dimension)" @click="moveDimension(dimension.id, 1)" title="下移">
-                              <i class="fas fa-chevron-down"></i>
-                            </button>
-                          </div>
-                        </td>
-                        <td class="dimension-actions-col">
-                          <div class="action-buttons">
-                            <button class="btn btn-text btn-primary" @click.stop="openEditModal(dimension.id)">
-                              <i class="fas fa-edit btn-icon"></i>
-                              编辑
-                            </button>
-                            <button class="btn btn-text btn-info" @click.stop="testApiHealth(dimension.id)">
-                              <i class="fas fa-heartbeat btn-icon"></i>
-                              测试API
-                            </button>
-                            <button class="btn btn-text btn-danger" @click.stop="deleteDimension(dimension.id)">
-                              <i class="fas fa-trash btn-icon"></i>
-                              删除
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <EvaluationDimensionTable
+                  :items="items"
+                  :selected-dimensions="selectedDimensions"
+                  :is-all-selected="isAllSelected"
+                  :can-move-up="canMoveUp"
+                  :can-move-down="canMoveDown"
+                  :get-algorithm-label="getAlgorithmLabel"
+                  :is-llm-judge="isLlmJudge"
+                  @toggle-select-all="toggleSelectAll"
+                  @toggle-selection="toggleDimensionSelection"
+                  @edit="openEditModal"
+                  @test-api="testAPIHealth"
+                  @delete="deleteDimension"
+                  @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
+                  @move="(payload) => moveDimension(payload.id, payload.direction)"
+                />
               </template>
               <template #empty>
                 <div class="empty-dimensions">
@@ -182,6 +130,61 @@
                 </div>
               </template>
             </InfiniteScrollList>
+
+            <!-- 分组视图：按分类聚合，分类内保留主/子维度层级 -->
+            <template v-else>
+              <div v-if="loading" class="empty-dimensions">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>加载中...</p>
+              </div>
+              <template v-else>
+                <div
+                  v-for="group in groupedDimensions"
+                  :key="group.key"
+                  class="group-card"
+                >
+                  <div class="group-header" @click="toggleGroupExpanded(group.key)">
+                    <div class="group-header-left">
+                      <input
+                        type="checkbox"
+                        class="group-checkbox"
+                        :checked="groupAllSelected(group)"
+                        @click.stop
+                        @change="toggleGroupSelectAll(group)"
+                        title="全选该分组"
+                      >
+                      <i class="fas fa-chevron-down group-toggle" :class="{ expanded: isGroupExpanded(group.key) }"></i>
+                      <i :class="group.category?.icon || 'fas fa-folder'" class="group-icon"></i>
+                      <h4 class="group-title">{{ group.category?.name || '未分类' }}</h4>
+                      <span class="group-count">{{ group.items.length }}</span>
+                      <span v-if="group.category?.description" class="group-desc">{{ group.category.description }}</span>
+                    </div>
+                  </div>
+                  <div v-show="isGroupExpanded(group.key)" class="group-content">
+                    <EvaluationDimensionTable
+                      :items="group.items"
+                      :selected-dimensions="selectedDimensions"
+                      :show-header-checkbox="false"
+                      :can-move-up="canMoveUp"
+                      :can-move-down="canMoveDown"
+                      :get-algorithm-label="getAlgorithmLabel"
+                      :is-llm-judge="isLlmJudge"
+                      @toggle-selection="toggleDimensionSelection"
+                      @edit="openEditModal"
+                      @test-api="testAPIHealth"
+                      @delete="deleteDimension"
+                      @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
+                      @move="(payload) => moveDimension(payload.id, payload.direction)"
+                    />
+                  </div>
+                </div>
+
+                <div v-if="groupedDimensions.length === 0" class="empty-dimensions">
+                  <i class="fas fa-inbox"></i>
+                  <p>暂无评估维度数据</p>
+                </div>
+              </template>
+            </template>
           </div>
         </div>
       </section>
@@ -198,6 +201,9 @@ import '../assets/styles/main.css';
 
 // 导入滚动加载分页组件
 import InfiniteScrollList from '../components/common/InfiniteScrollList.vue';
+import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
+// 导入评估维度表格公共组件（列表/分组视图共用）
+import EvaluationDimensionTable from '../components/EvaluationDimensionTable.vue';
 
 // 导入API
 import { evaluationApi } from '../utils/api';
@@ -211,9 +217,12 @@ const {
   searchKeyword,
   filterStatus,
   filterCategory,
+  filterAlgorithm,
+  algorithms,
   selectedDimensions,
   pageSize,
   dimensions,
+  categories,
   newDimension,
   apiHealthResult,
   apiSettings,
@@ -225,6 +234,12 @@ const {
   editingDimension,
   filteredDimensions,
   hierarchicalDimensions,
+  groupedDimensions,
+  viewMode,
+  isGroupExpanded,
+  toggleGroupExpanded,
+  groupAllSelected,
+  toggleGroupSelectAll,
   isAllSelected,
   saveDimension,
   deleteDimension,
@@ -287,6 +302,155 @@ onBeforeUnmount(() => {
 .evaluation-view {
   width: 100%;
   height: 100%;
+}
+
+/* 卡片头部右侧：视图切换 + 筛选操作 */
+.card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* 视图切换按钮组 */
+.view-switcher {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 40px;
+  box-sizing: border-box;
+}
+
+.view-switcher .btn-toggle {
+  padding: 0 14px;
+  background: var(--background-primary);
+  border: none;
+  color: var(--text-secondary, #666);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.view-switcher .btn-toggle:hover {
+  background: var(--background-secondary, #f5f5f5);
+  color: var(--primary-color);
+}
+
+.view-switcher .btn-toggle.active {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+/* ===== 分组视图卡片样式 ===== */
+.group-card {
+  background-color: var(--background-primary);
+  border: var(--card-border);
+  border-radius: var(--card-radius);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+  overflow: visible;
+  transition: box-shadow 0.3s ease;
+}
+
+.group-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #eef1f5 100%);
+  border-bottom: 1px solid var(--border-color);
+  border-radius: var(--card-radius) var(--card-radius) 0 0;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  user-select: none;
+}
+
+.group-header:hover {
+  background: linear-gradient(135deg, #eef1f5 0%, #e2e6ea 100%);
+}
+
+.group-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.group-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.group-toggle {
+  color: var(--text-light, #999);
+  font-size: 13px;
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+
+.group-toggle.expanded {
+  transform: rotate(180deg);
+}
+
+.group-icon {
+  color: var(--primary-color);
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.group-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group-count {
+  background-color: var(--primary-color);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: 12px;
+  min-width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.group-desc {
+  font-size: 13px;
+  color: var(--text-light, #999);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: 4px;
+}
+
+.group-content {
+  padding: 12px 16px 16px;
+  overflow-x: auto;
+}
+
+.group-content .table-container {
+  overflow-x: auto;
 }
 
 /* 排序按钮样式 */
@@ -406,6 +570,15 @@ onBeforeUnmount(() => {
   flex-wrap: nowrap;
   white-space: nowrap;
   align-content: flex-end;
+}
+
+/* 算法徽章筛选行：允许换行、自动高度 */
+.algorithm-filter-row {
+  flex-wrap: wrap;
+  white-space: normal;
+  height: auto;
+  min-height: 32px;
+  padding-top: 8px;
 }
 
 /* 评估维度记录行选中样式 */
