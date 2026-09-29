@@ -38,10 +38,3 @@ export interface MergedTaskPage {
   perPage: number;
   pages: number;
 }
-
-/** 合并任务列表查询参数 */
-export interface MergedTaskQuery {
-  page?: number;
-  perPage?: number;
-  search?: string;
-}

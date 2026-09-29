@@ -73,14 +73,6 @@
             </div>
           </div>
           <div class="filter-section">
-            <label for="algorithmTypeFilter">算法类型:</label>
-            <div class="filter-select">
-              <select id="algorithmTypeFilter" class="form-input" v-model="algorithmTypeFilter">
-                <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
             <label for="dimensionFilter">评估维度:</label>
             <div class="filter-select">
               <select id="dimensionFilter" class="form-input" v-model="dimensionFilter">
@@ -130,10 +122,19 @@
             <button class="btn btn-secondary" @click="() => resetFilters()">重置筛选</button>
           </div>
         </div>
+        <!-- 算法筛选（徽章单选） -->
+        <div class="algorithm-filter-row">
+          <AlgorithmFilter
+            :options="algorithmOptions"
+            :model-value="algorithmTypeFilter"
+            title="算法筛选"
+            @update:model-value="algorithmTypeFilter = $event"
+          />
+        </div>
       </div>
     </div>
     
-    <div class="single-column-layout" ref="listContainerRef" @scroll="handleScroll">
+    <div class="single-column-layout">
       <!-- ===== 分组视图 ===== -->
       <template v-if="innerViewMode === 'group'">
       <div
@@ -174,20 +175,24 @@
               />
         </div>
         <div class="category-content" :class="{ expanded: expandedCategories[group] }">
-          <div v-if="isGroupLoading(group)" class="group-loading">
-            <i class="fas fa-spinner fa-spin"></i>
-            <span>加载中...</span>
-          </div>
           <TestCaseListWithPagination 
-            v-else
+            :key="group"
             :test-cases="formattedTestCases[group]"
             :actions="getTestCaseActions()"
             :show-config="false"
             :search-query="searchQuery"
             :is-loading="isLoading"
+            :backend-has-more="hasMoreGroupCases(group)"
+            :backend-loading="isGroupLoading(group)"
             @toggle-selection="toggleTestCaseSelection"
             @action="(actionEvent) => handleAction(actionEvent, group)"
+            @load-more-backend="loadMoreCases(group)"
           />
+          <!-- 加载中提示放在列表下方：不要用 v-if 切换掉列表，否则后端加载会卸载/重建列表导致页码重置、内容跳动 -->
+          <div v-if="isGroupLoading(group)" class="group-loading">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>加载中...</span>
+          </div>
           <div v-if="hasMoreGroupCases(group) && expandedCategories[group]" class="load-more-container">
             <button class="btn btn-secondary btn-sm" @click="loadMoreCases(group)" :disabled="isGroupLoading(group)">
               <i class="fas fa-chevron-down"></i>
@@ -204,22 +209,6 @@
         <i class="fas fa-inbox"></i>
         <p>没有找到测试用例分组</p>
         <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
-      </div>
-
-      <div v-if="isLoadingMore" class="loading-more">
-        <i class="fas fa-spinner fa-spin"></i>
-        <span>加载更多分组...</span>
-      </div>
-
-      <div v-if="hasMoreGroups && !isLoadingMore && paginatedGroups.length > 0" class="load-more-trigger" ref="loadMoreTriggerRef">
-        <span class="load-more-hint">已显示 {{ paginatedGroups.length }} / {{ paginationInfo.totalItems }} 个分组</span>
-        <button class="btn btn-secondary btn-sm" @click="loadMoreGroups">
-          <i class="fas fa-chevron-down"></i> 加载更多
-        </button>
-      </div>
-
-      <div v-if="!hasMoreGroups && paginatedGroups.length > 0" class="all-loaded">
-        <span>已加载全部 {{ paginationInfo.totalItems }} 个分组</span>
       </div>
       </template>
 
@@ -265,6 +254,7 @@
           </div>
           <div class="category-content" :class="{ expanded: expandedTagCategories[tagName] }">
             <TestCaseListWithPagination
+              :key="tagName"
               :test-cases="formattedTagCases[tagName]"
               :actions="getTestCaseActions()"
               :show-config="false"
@@ -281,23 +271,29 @@
           <p>没有找到标签分组的测试用例</p>
           <p class="empty-state-hint">请为测试用例添加标签</p>
         </div>
-
-        <div v-if="tagViewLoading" class="loading-more">
-          <i class="fas fa-spinner fa-spin"></i>
-          <span>加载更多标签...</span>
-        </div>
-
-        <div v-if="hasMoreTagsFromBackend && !tagViewLoading && sortedTags.length > 0" class="load-more-trigger" ref="loadMoreTriggerRef">
-          <span class="load-more-hint">已加载 {{ sortedTags.length }} / {{ props.tagViewPagination?.total || sortedTags.length }} 个标签</span>
-          <button class="btn btn-secondary btn-sm" @click="emit('loadMoreTags')">
-            <i class="fas fa-chevron-down"></i> 加载更多
-          </button>
-        </div>
-
-        <div v-if="!hasMoreTagsFromBackend && sortedTags.length > 0" class="all-loaded">
-          <span>已加载全部 {{ props.tagViewPagination?.total || sortedTags.length }} 个标签</span>
-        </div>
       </template>
+
+      <!-- ===== 统一的加载更多哨兵 =====
+        常驻挂载（不随 loading/hasMore 卸载），IntersectionObserver 只观察一次，
+        避免 v-if 重建后对仍在视口内的元素“立即回调”导致多页连发加载（页面跳动）。
+        滚动内层卡片列表不会移动它；滚动外层 main-content 使其进入视口即触发加载。 -->
+      <div class="load-more-trigger" ref="loadMoreTriggerRef">
+        <template v-if="hasAnyContent">
+          <template v-if="isAnyLoading">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>加载中...</span>
+          </template>
+          <template v-else-if="hasMore">
+            <span class="load-more-hint">{{ loadMoreHint }}</span>
+            <button class="btn btn-secondary btn-sm" @click="loadMoreForCurrentView">
+              <i class="fas fa-chevron-down"></i> 加载更多
+            </button>
+          </template>
+          <template v-else>
+            <span class="all-loaded-text">{{ allLoadedText }}</span>
+          </template>
+        </template>
+      </div>
     </div>
     
   </div>
@@ -364,6 +360,7 @@ import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, shallowR
 import TestCaseCard from './TestCaseCard.vue'
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
+import AlgorithmFilter from '../../algorithm/AlgorithmFilter.vue';
 import AudioPlayerModal from '../AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import CRUDFormModal from '../modal/CRUDFormModal.vue';
@@ -464,7 +461,6 @@ const currentPage = ref(1);
 const itemsPerPage = ref(5);
 const isLoadingMore = ref(false);
 const hasMoreGroups = ref(true);
-const listContainerRef = ref<HTMLElement | null>(null);
 const loadMoreTriggerRef = ref<HTMLElement | null>(null);
 
 const showAudioPlayer = ref(false);
@@ -1181,54 +1177,86 @@ const resetFilters = () => {
   setTimeout(() => { suppressFilterEmit = false; }, 350);
 };
 
+// ===== 统一加载更多（滚动/按钮共用） =====
+// loadingMore 是跨渲染持久的在途锁：哨兵常驻挂载 + 只观察一次，
+// 配合“加载完成后若仍在视口内则补一页”的续载逻辑，避免多页连发加载导致的页面跳动。
+const loadingMore = ref(false);
+const isAnyLoading = computed(() => (innerViewMode.value === 'tag' ? !!props.tagViewLoading : isLoadingMore.value));
+
+const hasAnyContent = computed(() => (innerViewMode.value === 'tag' ? sortedTags.value.length > 0 : paginatedGroups.value.length > 0));
+const loadMoreHint = computed(() => {
+  if (innerViewMode.value === 'tag') {
+    return `已加载 ${sortedTags.value.length} / ${props.tagViewPagination?.total || sortedTags.value.length} 个标签`;
+  }
+  return `已显示 ${paginatedGroups.value.length} / ${paginationInfo.value.totalItems} 个分组`;
+});
+const allLoadedText = computed(() => {
+  if (innerViewMode.value === 'tag') {
+    return `已加载全部 ${props.tagViewPagination?.total || sortedTags.value.length} 个标签`;
+  }
+  return `已加载全部 ${paginationInfo.value.totalItems} 个分组`;
+});
+
 const loadMoreGroups = () => {
-  if (isLoadingMore.value || !hasMore.value) return;
+  if (loadingMore.value || isLoadingMore.value || !hasMore.value) return;
+  loadingMore.value = true;
   isLoadingMore.value = true;
   setTimeout(() => {
     currentPage.value++;
     isLoadingMore.value = false;
+    loadingMore.value = false;
+    // 加载完成后哨兵若仍在视口内（一屏尚未填满），继续补一页
+    nextTick(checkAndContinueLoad);
   }, 300);
 };
 
-const handleScroll = (event: Event) => {
-  const target = event.target as HTMLElement;
-  const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-  if (scrollBottom < 100 && hasMore.value && !isLoadingMore.value && !props.tagViewLoading) {
-    if (innerViewMode.value === 'tag') {
-      emit('loadMoreTags');
-    } else {
-      loadMoreGroups();
-    }
+// 标签视图走 emit 无法 await，锁在 tagViewLoading 由 true→false 时释放
+watch(() => props.tagViewLoading, (v) => {
+  if (!v && loadingMore.value && innerViewMode.value === 'tag') {
+    loadingMore.value = false;
+    nextTick(checkAndContinueLoad);
+  }
+});
+
+const loadMoreForCurrentView = () => {
+  if (loadingMore.value || isAnyLoading.value || !hasMore.value) return;
+  if (innerViewMode.value === 'tag') {
+    loadingMore.value = true;
+    emit('loadMoreTags');
+  } else {
+    loadMoreGroups();
   }
 };
 
-// 滚动加载兜底：页面真正滚动的是外层 MAIN.main-content（overflow:auto），
-// 既不是 window 也不是 .single-column-layout，所以 @scroll 和 window 监听都捕获不到。
-// 用 IntersectionObserver 监听"加载更多"哨兵，进入视口即自动加载，不受滚动容器归属影响。
+function checkAndContinueLoad() {
+  if (loadingMore.value || isAnyLoading.value || !hasMore.value) return;
+  const trigger = loadMoreTriggerRef.value;
+  if (!trigger) return;
+  const rect = trigger.getBoundingClientRect();
+  if (rect.top <= window.innerHeight + 100) {
+    loadMoreForCurrentView();
+  }
+}
+
+// 页面真正滚动的是外层 MAIN.main-content（overflow:auto），
+// 既不是 window 也不是 .single-column-layout，所以 @scroll 捕获不到。
+// 哨兵常驻挂载，observer 建立一次即可：无论内外层哪个滚动容器滚动，
+// 只要哨兵进入视口（含 200px 提前量）就会触发，不会因重建而连发。
 let loadMoreObserver: IntersectionObserver | null = null;
 const setupLoadMoreObserver = () => {
   if (typeof IntersectionObserver === 'undefined') return;
   if (loadMoreObserver) loadMoreObserver.disconnect();
   loadMoreObserver = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
-      if (entry.isIntersecting && hasMore.value && !isLoadingMore.value && !props.tagViewLoading) {
-        if (innerViewMode.value === 'tag') {
-          emit('loadMoreTags');
-        } else {
-          loadMoreGroups();
-        }
+      if (entry.isIntersecting && hasMore.value && !loadingMore.value && !isAnyLoading.value) {
+        loadMoreForCurrentView();
       }
     });
-  }, { rootMargin: '100px' });
+  }, { rootMargin: '200px' });
   if (loadMoreTriggerRef.value) {
     loadMoreObserver.observe(loadMoreTriggerRef.value);
   }
 };
-// 哨兵是 v-if 元素，每次加载后会重新挂载，需重新观察；
-// 分组/标签视图切换时哨兵也会换元素，需一并重新观察。
-watch([hasMore, isLoadingMore, () => paginatedGroups.value.length, () => sortedTags.value.length, innerViewMode, () => props.tagViewLoading], () => {
-  nextTick(setupLoadMoreObserver);
-});
 
 const deleteGroup = (groupName: string) => {
   emit('deleteGroup', groupName);
@@ -1809,6 +1837,14 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   margin-left: auto;
 }
 
+/* 算法徽章筛选行 */
+.algorithm-filter-row {
+  width: 100%;
+  padding-top: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+  border-top: 1px dashed var(--border-color);
+}
+
 /* 确保筛选器在所有屏幕尺寸下都在同一行 */
 .filter-section {
   flex-shrink: 0;
@@ -2033,7 +2069,6 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   width: 100%;
   overflow-y: visible;
   padding-right: 8px;
-  scroll-behavior: smooth;
 }
 
 .single-column-layout::-webkit-scrollbar {

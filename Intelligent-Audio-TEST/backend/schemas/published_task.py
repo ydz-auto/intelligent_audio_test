@@ -27,6 +27,11 @@ class PublishedTaskVersionCreateRequest(APIModel):
     publish_reason: Optional[str] = Field(None, alias='publishReason', validation_alias='publishReason')
 
 
+class PublishedTaskUpdateRequest(APIModel):
+    """重命名已发布任务请求（作用于整个版本链）"""
+    name: str = Field(..., alias='name', validation_alias='name')
+
+
 class PublishedTaskItem(APIModel):
     """已发布任务列表项"""
     id: int = Field(..., alias='id', validation_alias='id')

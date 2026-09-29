@@ -32,3 +32,8 @@ def create_version(published_task_id):
 @published_task_bp.route('/<int:published_task_id>/archive', methods=['POST'])
 def archive(published_task_id):
     return PublishedTaskController.archive(published_task_id)
+
+
+@published_task_bp.route('/<int:published_task_id>', methods=['PUT'])
+def update(published_task_id):
+    return PublishedTaskController.update(published_task_id)

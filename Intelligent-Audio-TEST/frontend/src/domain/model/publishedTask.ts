@@ -142,12 +142,3 @@ export interface PublishedTaskExecuteResult {
   publishedTaskId: number;
   publishedTaskVersion: number;
 }
-
-/** 已发布任务列表查询参数 */
-export interface PublishedTaskQuery {
-  page?: number;
-  perPage?: number;
-  status?: PublishedTaskStatus | '';
-  keyword?: string;
-  type?: string;
-}

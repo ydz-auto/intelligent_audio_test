@@ -1,7 +1,7 @@
 /**
  * 已发布任务 composable（Application 层：编排用例、缓存 ReadModel、只见 Domain）
  */
-import { ref, computed, reactive } from 'vue';
+import { ref, reactive } from 'vue';
 import { publishedTasksApi } from '../utils/api';
 import { buildTimeRangeParams, sortTasks } from '../utils/filterUtils';
 import type {
@@ -9,7 +9,6 @@ import type {
   PublishedTaskExecuteResult,
   PublishedTaskItem,
   PublishedTaskPage,
-  PublishedTaskQuery,
 } from '../domain/model/publishedTask';
 import { PublishedTaskStatus } from '../domain/enums';
 
@@ -39,7 +38,6 @@ export function usePublishedTasks() {
     customRange: { start: '', end: '' },
     sort: { field: 'publishedAt', order: 'desc' },
   });
-  const filteredItems = computed(() => items.value);
 
   /** 前端排序（对齐日常视图，对当前页生效） */
   function sortItems() {
@@ -151,28 +149,19 @@ export function usePublishedTasks() {
     }
   }
 
+  /** 重命名已发布任务（后端同步更新整个版本链） */
+  async function rename(id: number, name: string) {
+    try {
+      await publishedTasksApi.update(id, { name });
+      await fetchList();
+    } catch (error) {
+      console.error('Failed to rename published task:', error);
+      throw error;
+    }
+  }
+
   function setPage(p: number) {
     page.value = p;
-    fetchList();
-  }
-
-  function setFilter(status: string, keyword: string) {
-    filters.value.status = status;
-    filters.value.keyword = keyword;
-    page.value = 1;
-    fetchList();
-  }
-
-  function resetFilters() {
-    filters.value = {
-      status: 'all',
-      keyword: '',
-      type: 'all',
-      timeRange: 'all',
-      customRange: { start: '', end: '' },
-      sort: { field: 'publishedAt', order: 'desc' },
-    };
-    page.value = 1;
     fetchList();
   }
 
@@ -188,7 +177,6 @@ export function usePublishedTasks() {
     loading,
     actionLoading,
     filters,
-    filteredItems,
     statusOptions: [
       { value: 'all', label: '全部状态' },
       { value: PublishedTaskStatus.PUBLISHED, label: '已发布' },
@@ -200,9 +188,8 @@ export function usePublishedTasks() {
     execute,
     createVersion,
     archive,
+    rename,
     setPage,
-    setFilter,
-    resetFilters,
     toggleSort,
   });
 

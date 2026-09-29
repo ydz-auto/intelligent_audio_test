@@ -297,6 +297,7 @@
             :referenceTrans="caseItem._preparedReferenceTrans"
             :algorithmResults="caseItem._preparedAlgorithmResults"
             :referenceParams="caseItem._preparedReferenceParams"
+            :caseParams="caseItem._preparedCaseParams"
             :algorithmType="caseItem._preparedAlgorithmType"
             :fieldMapping="caseItem._preparedFieldMapping"
             :results="caseItem.results || []"
@@ -340,6 +341,7 @@
             :referenceTrans="currentCaseDetailWithPreparedData._preparedReferenceTrans"
             :algorithmResults="currentCaseDetailWithPreparedData._preparedAlgorithmResults"
             :referenceParams="currentCaseDetailWithPreparedData._preparedReferenceParams"
+            :caseParams="currentCaseDetailWithPreparedData._preparedCaseParams"
             :algorithmType="currentCaseDetailWithPreparedData._preparedAlgorithmType"
             :fieldMapping="currentCaseDetailWithPreparedData._preparedFieldMapping"
             :results="currentCaseDetailWithPreparedData.results || []"
@@ -553,6 +555,7 @@ const currentCaseDetailWithPreparedData = computed(() => {
     _preparedReferenceTrans: caseItem.translation?.referenceText || caseItem.translation?.reference_text || '',
     _preparedAlgorithmResults: getAlgorithmResults(caseItem),
     _preparedReferenceParams: caseItem.referenceParams || caseItem.reference_params || {},
+    _preparedCaseParams: caseItem.caseParams || caseItem.case_params || [],
     _preparedAlgorithmType: caseItem.algorithmType || caseItem.algorithm_type || '',
     _preparedFieldMapping: getFieldMapping(caseItem)
   }
@@ -1188,6 +1191,7 @@ const paginatedCasesWithPreparedData = computed(() => {
     _preparedReferenceTrans: caseItem.translation?.referenceText || caseItem.translation?.reference_text || '',
     _preparedAlgorithmResults: getAlgorithmResults(caseItem),
     _preparedReferenceParams: caseItem.referenceParams || caseItem.reference_params || {},
+    _preparedCaseParams: caseItem.caseParams || caseItem.case_params || [],
     _preparedAlgorithmType: caseItem.algorithmType || caseItem.algorithm_type || '',
     _preparedFieldMapping: getFieldMapping(caseItem)
   }))

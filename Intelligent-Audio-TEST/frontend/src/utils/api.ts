@@ -465,6 +465,10 @@ export const publishedTasksApi = {
 
   async archive(id: number) {
     return request('POST', `/published-tasks/${id}/archive`);
+  },
+
+  async update(id: number, data: { name: string }) {
+    return request('PUT', `/published-tasks/${id}`, data);
   }
 };
 

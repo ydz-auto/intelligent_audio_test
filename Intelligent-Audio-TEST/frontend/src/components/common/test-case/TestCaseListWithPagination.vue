@@ -29,22 +29,27 @@
         <span>加载更多用例...</span>
       </div>
       
-      <div v-if="hasMore && !isLoadingMore && paginatedTestCases.length > 0" class="load-more-trigger">
+      <div v-if="(hasMore || props.backendHasMore) && !isLoadingMore && paginatedTestCases.length > 0" class="load-more-trigger">
         <span class="load-more-hint">已显示 {{ paginatedTestCases.length }} / {{ filteredTestCases.length }} 条用例</span>
         <button class="btn btn-secondary btn-sm" @click="loadMore">
           <i class="fas fa-chevron-down"></i> 加载更多
         </button>
       </div>
       
-      <div v-if="!hasMore && paginatedTestCases.length > 0 && filteredTestCases.length > pageSize" class="all-loaded">
+      <div v-if="!hasMore && !props.backendHasMore && paginatedTestCases.length > 0 && filteredTestCases.length > pageSize" class="all-loaded">
         <span>已加载全部 {{ filteredTestCases.length }} 条用例</span>
       </div>
+
+      <!-- 底部哨兵：常驻挂载，进入视口即触发加载。
+        列表内容不足一屏时无法产生滚动事件，靠它保证“展开后也能继续加载”，
+        内容超出后用户滚动内层列表也会让哨兵进入视口触发加载。 -->
+      <div class="list-more-sentinel" ref="moreSentinelRef"></div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import TestCaseCard from './TestCaseCard.vue';
 
 interface TestCaseItem {
@@ -64,10 +69,13 @@ const props = defineProps({
   actions: { type: Array, default: () => [] },
   filter: { type: Object, default: () => ({}) },
   searchQuery: { type: String, default: '' },
-  isLoading: { type: Boolean, default: false }
+  isLoading: { type: Boolean, default: false },
+  // 分组视图下后端还有更多用例（store 分页未取完）时传入，供滚动/按钮触达后端加载
+  backendHasMore: { type: Boolean, default: false },
+  backendLoading: { type: Boolean, default: false }
 });
 
-const emit = defineEmits(['toggle-selection', 'action', 'page-change', 'page-size-change']);
+const emit = defineEmits(['toggle-selection', 'action', 'page-change', 'page-size-change', 'load-more-backend']);
 
 const currentPage = ref(1);
 const pageSize = ref(10);
@@ -75,10 +83,9 @@ const listContainerRef = ref<HTMLElement | null>(null);
 const isLoadingMore = ref(false);
 const hasMore = ref(true);
 
-watch(() => props.testCases, () => {
-  currentPage.value = 1;
-}, { deep: true });
-
+// 数据集身份由父层 `:key="group/tagName"` 保证：分组/标签切换会重建实例，无需监听重置页码。
+// 追加（后端加载更多）与选中状态变化都会重算 props.testCases，若一律重置，
+// 已展开列表会缩回第一页造成跳动，因此这里不重置，仅搜索词变化时回到第一页。
 watch(() => props.searchQuery, () => {
   currentPage.value = 1;
 });
@@ -132,22 +139,74 @@ const handleAction = (event: any) => {
 };
 
 const loadMore = () => {
-  if (isLoadingMore.value || !hasMore.value) return;
-  isLoadingMore.value = true;
-  setTimeout(() => {
-    currentPage.value++;
-    isLoadingMore.value = false;
-    emit('page-change', currentPage.value);
-  }, 200);
+  if (isLoadingMore.value) return;
+  if (hasMore.value) {
+    // 前端缓冲内还有未展示的用例：本地翻页
+    isLoadingMore.value = true;
+    setTimeout(() => {
+      currentPage.value++;
+      isLoadingMore.value = false;
+      emit('page-change', currentPage.value);
+    }, 200);
+  } else if (props.backendHasMore && !props.backendLoading) {
+    // 前端缓冲已展示完、后端还有更多：请求下一批
+    emit('load-more-backend');
+  }
 };
 
 const handleScroll = (event: Event) => {
   const target = event.target as HTMLElement;
   const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-  if (scrollBottom < 80 && hasMore.value && !isLoadingMore.value) {
+  if (scrollBottom < 80 && !isLoadingMore.value) {
     loadMore();
   }
 };
+
+// 底部哨兵 + 视口观察：不依赖内层列表自身是否可滚动。
+// 内容不足一屏（无滚动事件）时哨兵仍在视口内，自动继续加载直到填满/取完；
+// 内容超出后滚动内层列表，哨兵进入视口同样触发。
+const moreSentinelRef = ref<HTMLElement | null>(null);
+let moreObserver: IntersectionObserver | null = null;
+const setupMoreObserver = () => {
+  if (typeof IntersectionObserver === 'undefined') return;
+  if (moreObserver) moreObserver.disconnect();
+  moreObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting && !isLoadingMore.value && !props.backendLoading) {
+        loadMore();
+      }
+    });
+  }, { rootMargin: '100px' });
+  if (moreSentinelRef.value) moreObserver.observe(moreSentinelRef.value);
+};
+
+// 每页加载后补一次检查：哨兵仍在视口内（尚未填满一屏）就继续加载下一页。
+function checkAndContinueLoad() {
+  if (isLoadingMore.value || props.backendLoading) return;
+  const sentinel = moreSentinelRef.value;
+  // 折叠卡片 display:none 时 offsetParent 为 null，跳过，避免对不可见列表自动加载
+  if (!sentinel || !sentinel.offsetParent) return;
+  const rect = sentinel.getBoundingClientRect();
+  if (rect.top <= window.innerHeight + 100 && (hasMore.value || props.backendHasMore)) {
+    loadMore();
+  }
+}
+
+watch(paginatedTestCases, () => {
+  nextTick(checkAndContinueLoad);
+});
+
+onMounted(() => {
+  setupMoreObserver();
+  nextTick(checkAndContinueLoad);
+});
+
+onBeforeUnmount(() => {
+  if (moreObserver) {
+    moreObserver.disconnect();
+    moreObserver = null;
+  }
+});
 
 defineExpose({
   resetPage: () => {
@@ -166,7 +225,6 @@ defineExpose({
   max-height: 400px;
   overflow-y: auto;
   padding-right: 8px;
-  scroll-behavior: smooth;
 }
 
 .test-case-list-with-pagination::-webkit-scrollbar {
@@ -278,6 +336,11 @@ defineExpose({
 .load-more-hint {
   color: var(--text-tertiary);
   font-size: 12px;
+}
+
+/* 底部加载哨兵：保持可见性以便 IntersectionObserver 可靠触发 */
+.list-more-sentinel {
+  min-height: 2px;
 }
 
 .all-loaded {

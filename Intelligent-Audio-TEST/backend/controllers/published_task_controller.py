@@ -26,6 +26,7 @@ from backend.schemas.common import IdData, StatusData
 from backend.schemas.published_task import (
     PublishedTaskCreateRequest,
     PublishedTaskVersionCreateRequest,
+    PublishedTaskUpdateRequest,
     PublishedTaskDetailData,
     PublishedTaskExecuteData,
     PublishedTaskItem,
@@ -570,5 +571,37 @@ class PublishedTaskController:
         except Exception as e:
             db.session.rollback()
             logger.exception('归档已发布任务失败')
+            return error_response(str(e), code=ErrorCode.DATABASE_ERROR)
+
+    # ---------- 重命名 ----------
+
+    @staticmethod
+    def update(published_task_id):
+        perm_err = require_permission(PermissionPoints.PUBLISHED_TASK_READ)
+        if perm_err:
+            return perm_err
+
+        req = PublishedTaskUpdateRequest.model_validate(request.get_json())
+        name = req.name.strip()
+        if not name:
+            return error_response('任务名称不能为空', code=ErrorCode.MISSING_PARAMS)
+
+        pt = db.session.get(PublishedTask, published_task_id)
+        if not pt:
+            return error_response('已发布任务不存在', code=ErrorCode.NOT_FOUND, http_code=404)
+
+        try:
+            # 重命名作用于整个版本链（task_group_id 锚点），保持版本间名称一致
+            group_id = pt.task_group_id or pt.id
+            versions = PublishedTask.query.filter(
+                or_(PublishedTask.task_group_id == group_id, PublishedTask.id == group_id)
+            ).all()
+            for v in versions:
+                v.name = name
+            db.session.commit()
+            return success_response(IdData(id=pt.id, name=name), '任务名称已更新')
+        except Exception as e:
+            db.session.rollback()
+            logger.exception('重命名已发布任务失败')
             return error_response(str(e), code=ErrorCode.DATABASE_ERROR)
 

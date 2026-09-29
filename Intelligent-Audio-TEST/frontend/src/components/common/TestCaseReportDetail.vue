@@ -199,6 +199,26 @@
           </div>
         </div>
 
+        <!-- 用例参数（算法输入参数，按轮次展示） -->
+        <div v-if="currentRoundCaseParamFields.length > 0" class="result-subsection">
+          <div class="subsection-label"><i class="fas fa-sliders-h"></i> 用例参数</div>
+          <div class="kv-table">
+            <div class="kv-table-row" v-for="field in currentRoundCaseParamFields" :key="'case_' + field.param_code">
+              <div class="kv-table-key">{{ field.label }}</div>
+              <div class="kv-table-value">
+                <pre v-if="isJsonString(field.value)" class="json-formatted">{{ formatJson(field.value) }}</pre>
+                <span v-else-if="String(field.value || '').length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['case_' + field.param_code] }">
+                  <span class="text-content">{{ field.value }}</span>
+                  <span class="expand-toggle" @click="toggleText('case_' + field.param_code)">
+                    {{ expandedTexts['case_' + field.param_code] ? '收起' : '展开' }}
+                  </span>
+                </span>
+                <span v-else>{{ field.value }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 评估结果（维度 tab 切换） -->
         <div v-if="dimResultGroups.length" class="result-subsection">
           <div class="subsection-label"><i class="fas fa-clipboard-list"></i> 评估结果</div>
@@ -384,6 +404,7 @@ const props = defineProps({
   results: { type: Array, default: () => [] },
   fieldMapping: { type: Object, default: () => ({ result: [], reference: [] }) },
   resultAudios: { type: Object, default: () => ({}) },
+  caseParams: { type: Array, default: () => [] },
 });
 
 const multiRoundAlgorithmResult = computed(() => {
@@ -535,6 +556,8 @@ const hasMetrics = computed(() => {
 const hasExecutionResults = computed(() => {
   // 动态文本字段（来自 fieldMapping 或 algorithmResults/referenceParams）
   if (referenceTextFields.value.length > 0 || resultTextFields.value.length > 0) return true;
+  // 用例参数
+  if (hasCaseParams.value) return true;
   // 时间轴数据
   if (hasTimelineData.value) return true;
   // 音频数据
@@ -542,6 +565,11 @@ const hasExecutionResults = computed(() => {
   // 结果音频
   if (hasResultAudioData.value) return true;
   return false;
+});
+
+// 是否有用例参数字段
+const hasCaseParams = computed(() => {
+  return (props.caseParams || []).length > 0;
 });
 
 // 从 referenceParams 中提取参考文本值
@@ -761,10 +789,44 @@ const subDimToParent = computed(() => {
   return map;
 });
 
-// 判断是否多轮场景：任一字段（结果/参考）带轮次标记
+// 用例参数字段值格式化（用于 kv 展示）
+const formatCaseParamValue = (val) => {
+  if (val === null || val === undefined || val === '') return '';
+  if (typeof val === 'boolean') return val ? '是' : '否';
+  if (typeof val === 'object') {
+    try {
+      return JSON.stringify(val, null, 2);
+    } catch {
+      return String(val);
+    }
+  }
+  return String(val);
+};
+
+// 动态用例参数字段（算法输入参数，按轮分组）
+const caseParamFields = computed(() => {
+  return (props.caseParams || [])
+    .map(item => ({
+      ...item,
+      param_code: item.param_code ?? item.paramCode,
+      param_type: item.param_type ?? item.paramType ?? 'text',
+      round_number: item.round_number ?? item.roundNumber,
+      label: item.label || item.param_code || item.paramCode,
+      value: formatCaseParamValue(item.value ?? item.field_value ?? item.fieldValue),
+    }))
+    .sort((a, b) => {
+      const ra = a.round_number ?? 0;
+      const rb = b.round_number ?? 0;
+      if (ra !== rb) return ra - rb;
+      return (a.param_code || '').localeCompare(b.param_code || '');
+    });
+});
+
+// 判断是否多轮场景：任一字段（结果/参考/用例参数）带轮次标记
 const isMultiRoundFields = computed(() => {
   return resultTextFields.value.some(fieldHasRoundTag)
-    || referenceTextFields.value.some(fieldHasRoundTag);
+    || referenceTextFields.value.some(fieldHasRoundTag)
+    || caseParamFields.value.some(fieldHasRoundTag);
 });
 
 // 当前轮次 Tab 对应的结果文本字段
@@ -803,6 +865,22 @@ const currentRoundReferenceTextFields = computed(() => {
   // 整体 Tab：显示所有轮次的参考数据
   if (tab.roundTag === 'overall') return referenceTextFields.value;
   return referenceTextFields.value.filter(field => {
+    const roundTag = parseFieldRoundTag(field);
+    if (tab.roundTag === null) return true;
+    // 有明确轮次标记的字段按轮次匹配
+    // 无轮次标记的字段在所有轮次 Tab 下都显示
+    return roundTag === null || roundTag === tab.roundTag;
+  });
+});
+
+// 当前轮次 Tab 对应的用例参数字段
+const currentRoundCaseParamFields = computed(() => {
+  const tab = roundTabs.value[activeRoundTab.value];
+  if (!tab) return caseParamFields.value;
+  if (!isMultiRoundFields.value) return caseParamFields.value;
+  // 整体 Tab：显示所有轮次的用例参数
+  if (tab.roundTag === 'overall') return caseParamFields.value;
+  return caseParamFields.value.filter(field => {
     const roundTag = parseFieldRoundTag(field);
     if (tab.roundTag === null) return true;
     // 有明确轮次标记的字段按轮次匹配
@@ -1052,8 +1130,8 @@ const roundTabs = computed(() => {
       }
     }
   });
-  // 2. 从执行结果/参考字段中提取轮次
-  [...resultTextFields.value, ...referenceTextFields.value].forEach(field => {
+  // 2. 从执行结果/参考/用例参数字段中提取轮次
+  [...resultTextFields.value, ...referenceTextFields.value, ...caseParamFields.value].forEach(field => {
     const roundTag = parseFieldRoundTag(field);
     if (roundTag && !seen.has(roundTag)) {
       seen.add(roundTag);
@@ -1066,7 +1144,7 @@ const roundTabs = computed(() => {
     }
   });
   // 如果有指标或字段但没有任何 roundTag（全部无后缀），就放一个默认 tab
-  if (tabs.length === 0 && (allMetricKeys.value.length > 0 || resultTextFields.value.length > 0 || referenceTextFields.value.length > 0)) {
+  if (tabs.length === 0 && (allMetricKeys.value.length > 0 || resultTextFields.value.length > 0 || referenceTextFields.value.length > 0 || caseParamFields.value.length > 0)) {
     tabs.push({ key: 'all', label: '指标', roundTag: null, order: 0 });
   }
   tabs.sort((a, b) => a.order - b.order);
