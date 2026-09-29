@@ -429,6 +429,7 @@ class PublishedTask(db.Model):
         Index('idx_published_task_status', 'status'),
         Index('idx_published_task_source', 'source_task_id'),
         Index('idx_published_task_is_current', 'is_current'),
+        Index('idx_published_task_algorithm_type', 'algorithm_type'),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='已发布任务 ID')
     task_group_id = Column(Integer, comment='已发布任务逻辑分组 ID（首个版本 ID，版本链锚点）')
@@ -436,6 +437,7 @@ class PublishedTask(db.Model):
     name = Column(String(255), nullable=False, comment='已发布任务名称')
     description = Column(Text, comment='说明')
     type = Column(String(50), nullable=False, comment='任务类型 (api/e2e)')
+    algorithm_type = Column(String(50), comment='关联算法类型（冗余：发布时从源任务/快照写入）')
     status = Column(String(20), nullable=False, default='published', comment='状态 (published/archived)')
     version = Column(Integer, nullable=False, default=1, comment='版本号，从 1 开始')
     is_current = Column(Boolean, nullable=False, default=True, comment='是否当前版本')

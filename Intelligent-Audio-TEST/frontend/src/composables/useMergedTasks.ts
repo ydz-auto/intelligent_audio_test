@@ -16,10 +16,11 @@ export function useMergedTasks() {
   const pages = ref(0);
   const loading = ref(false);
 
-  // 统一筛选排序状态（type 恒为 merged，无类型/算法筛选）
+  // 统一筛选排序状态（type 恒为 merged；algorithmType 走后端 test_tasks.algorithm_type 过滤）
   const filters = reactive({
     search: '',
     status: 'all',
+    algorithmType: 'all',
     timeRange: 'all',
     customRange: { start: '', end: '' },
     sort: { field: 'createdAt', order: 'desc' as 'asc' | 'desc' },
@@ -35,6 +36,7 @@ export function useMergedTasks() {
       };
       if (filters.search) params.search = filters.search;
       if (filters.status && filters.status !== 'all') params.status = filters.status;
+      if (filters.algorithmType && filters.algorithmType !== 'all') params.algorithm_type = filters.algorithmType;
       Object.assign(params, buildTimeRangeParams(filters.timeRange, filters.customRange));
       const data = (await tasksApi.getAll(params)) as any;
       const payload = data?.data ?? data ?? {};

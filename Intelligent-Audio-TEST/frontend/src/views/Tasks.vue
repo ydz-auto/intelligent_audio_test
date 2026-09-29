@@ -112,30 +112,34 @@
       <section class="filter-sort-section" v-if="!showComparisonReport">
         <div class="filter-row">
           <input type="text" class="search-input" placeholder="搜索任务名称、标签..." v-model="currentFilter.search" @input="applyCurrentFilter">
-          
-          <div class="filter-item" v-if="activeTab !== 'merged'">
-            <label for="type-filter">任务类型：</label>
-            <select class="filter-select" id="type-filter" v-model="currentFilter.type" @change="applyCurrentFilter">
-              <option v-for="opt in TYPE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-          </div>
-          
-          <div class="filter-item">
-            <label for="status-filter">任务状态：</label>
-            <select class="filter-select" id="status-filter" v-model="currentFilter.status" @change="applyCurrentFilter">
-              <option v-for="opt in currentStatusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-          </div>
+
+          <BadgeFilter
+            v-if="activeTab !== 'merged'"
+            :options="TYPE_OPTIONS"
+            :model-value="currentFilter.type"
+            all-label="全部类型"
+            title="任务类型"
+            @update:model-value="handleTypeFilterChange"
+          />
+
+          <BadgeFilter
+            :options="currentStatusOptions"
+            :model-value="currentFilter.status"
+            all-label="全部状态"
+            title="任务状态"
+            @update:model-value="handleStatusFilterChange"
+          />
         </div>
-        
+
         <div class="filter-row">
-          <div class="filter-item">
-            <label for="time-filter">时间范围：</label>
-            <select class="filter-select" id="time-filter" v-model="currentFilter.timeRange" @change="applyCurrentFilter">
-              <option v-for="opt in TIME_RANGE_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-          </div>
-          
+          <BadgeFilter
+            :options="TIME_RANGE_OPTIONS"
+            :model-value="currentFilter.timeRange"
+            all-label="全部时间"
+            title="时间范围"
+            @update:model-value="handleTimeRangeFilterChange"
+          />
+
           <!-- 自定义时间范围 -->
           <div class="filter-item custom-time-range" v-if="currentFilter.timeRange === 'custom'">
             <div>
@@ -163,8 +167,8 @@
           </div>
         </div>
         
-        <!-- 算法筛选（徽章单选，日常视图专属） -->
-        <div class="filter-row" v-if="activeTab === 'daily'">
+        <!-- 算法筛选（徽章单选，日常/已发布/合并三视图统一） -->
+        <div class="filter-row">
           <AlgorithmFilter
             :options="algorithmOptions"
             :model-value="currentFilter.algorithmType"
@@ -694,6 +698,7 @@ import { useTasks } from './TasksLogic/tasks';
 import TaskListWithPagination from '../components/TaskListWithPagination.vue';
 import TaskCard from '../components/TaskCard.vue';
 import AlgorithmFilter from '../components/algorithm/AlgorithmFilter.vue';
+import BadgeFilter from '../components/common/BadgeFilter.vue';
 import PaginationComponent from '../components/common/PaginationComponent.vue';
 import ComparisonTableComponent from '../components/report/ComparisonTableComponent.vue';
 import CaseCategoryComparisonComponent from '../components/report/CaseCategoryComparisonComponent.vue';
@@ -850,7 +855,8 @@ const publishedFilterState = reactive({
   set search(v: string) { published.filters.keyword = v; },
   get type() { return published.filters.type; },
   set type(v: string) { published.filters.type = v; },
-  algorithmType: '',
+  get algorithmType() { return published.filters.algorithmType; },
+  set algorithmType(v: string) { published.filters.algorithmType = v; },
   get status() { return published.filters.status; },
   set status(v: string) { published.filters.status = v; },
   get timeRange() { return published.filters.timeRange; },
@@ -865,7 +871,8 @@ const mergedFilterState = reactive({
   get search() { return merged.filters.search; },
   set search(v: string) { merged.filters.search = v; },
   type: 'merged',
-  algorithmType: '',
+  get algorithmType() { return merged.filters.algorithmType; },
+  set algorithmType(v: string) { merged.filters.algorithmType = v; },
   get status() { return merged.filters.status; },
   set status(v: string) { merged.filters.status = v; },
   get timeRange() { return merged.filters.timeRange; },

@@ -27,6 +27,7 @@ export function usePublishedTasks() {
     status: string;
     keyword: string;
     type: string;
+    algorithmType: string;
     timeRange: string;
     customRange: { start: string; end: string };
     sort: { field: string; order: 'asc' | 'desc' };
@@ -34,6 +35,7 @@ export function usePublishedTasks() {
     status: 'all',
     keyword: '',
     type: 'all',
+    algorithmType: 'all',
     timeRange: 'all',
     customRange: { start: '', end: '' },
     sort: { field: 'publishedAt', order: 'desc' },
@@ -63,6 +65,7 @@ export function usePublishedTasks() {
       if (filters.value.status && filters.value.status !== 'all') params.status = filters.value.status;
       if (filters.value.keyword) params.keyword = filters.value.keyword;
       if (filters.value.type && filters.value.type !== 'all') params.type = filters.value.type;
+      if (filters.value.algorithmType && filters.value.algorithmType !== 'all') params.algorithmType = filters.value.algorithmType;
       Object.assign(params, buildTimeRangeParams(filters.value.timeRange, filters.value.customRange));
       const data = (await publishedTasksApi.getAll(params)) as any;
       const payload = data?.data ?? data ?? {};

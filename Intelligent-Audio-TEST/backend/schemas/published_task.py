@@ -39,6 +39,7 @@ class PublishedTaskItem(APIModel):
     name: str = Field(..., alias='name', validation_alias='name')
     description: Optional[str] = Field(None, alias='description', validation_alias='description')
     type: str = Field(..., alias='type', validation_alias='type')
+    algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
     status: str = Field(..., alias='status', validation_alias='status')
     version: int = Field(..., alias='version', validation_alias='version')
     is_current: bool = Field(..., alias='isCurrent', validation_alias='isCurrent')

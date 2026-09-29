@@ -268,6 +268,8 @@ class PublishedTaskController:
                 description=req.description,
                 source_task_id=req.source_task_id,
                 type=task.type,
+                # 冗余算法类型：发布时冻结自源任务，列表按算法筛选直接查本列
+                algorithm_type=snapshot.get('algorithmType'),
                 status='published',
                 version=1,
                 is_current=True,
@@ -299,6 +301,7 @@ class PublishedTaskController:
         status = request.args.get('status', '')
         keyword = request.args.get('keyword', '').strip()
         task_type = request.args.get('type', '')
+        algorithm_type = request.args.get('algorithm_type', '')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
 
@@ -307,6 +310,9 @@ class PublishedTaskController:
             query = query.filter(PublishedTask.status == status)
         if task_type:
             query = query.filter(PublishedTask.type == task_type)
+        if algorithm_type and algorithm_type != 'all':
+            # 直接查发布时冻结的冗余列
+            query = query.filter(PublishedTask.algorithm_type == algorithm_type)
         if keyword:
             like = f'%{keyword}%'
             query = query.filter(or_(PublishedTask.name.ilike(like), PublishedTask.description.ilike(like)))
@@ -347,6 +353,7 @@ class PublishedTaskController:
                 name=r.name,
                 description=r.description,
                 type=r.type,
+                algorithm_type=r.algorithm_type,
                 status=r.status,
                 version=r.version,
                 is_current=r.is_current,
@@ -532,6 +539,8 @@ class PublishedTaskController:
                 name=req.name or current.name,
                 description=req.description if req.description is not None else current.description,
                 type=current.type,
+                # 冗余算法类型：沿用快照冻结值
+                algorithm_type=snapshot.get('algorithmType'),
                 status='published',
                 version=current.version + 1,
                 is_current=True,
