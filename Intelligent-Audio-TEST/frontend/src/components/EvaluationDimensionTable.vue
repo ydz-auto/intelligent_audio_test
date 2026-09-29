@@ -85,21 +85,25 @@
             </div>
           </td>
           <td class="dimension-actions-col">
-            <div class="action-buttons">
-              <button class="btn btn-text btn-primary" @click.stop="emit('edit', dimension.id)">
-                <i class="fas fa-edit btn-icon"></i>
-                编辑
-              </button>
-              <button class="btn btn-text btn-info" @click.stop="emit('test-api', dimension.id)">
-                <i class="fas fa-heartbeat btn-icon"></i>
-                测试API
-              </button>
-              <button class="btn btn-text btn-danger" @click.stop="emit('delete', dimension.id)">
-                <i class="fas fa-trash btn-icon"></i>
-                删除
-              </button>
-            </div>
-          </td>
+                          <div class="action-buttons">
+                            <button class="btn btn-text btn-primary" @click.stop="emit('edit', dimension.id)">
+                              <i class="fas fa-edit btn-icon"></i>
+                              编辑
+                            </button>
+                            <button v-if="dimension._level === 0" class="btn btn-text btn-success" @click.stop="emit('add-sub', { id: dimension.id, categoryId: dimension.categoryId })">
+                              <i class="fas fa-plus btn-icon"></i>
+                              添加子维度
+                            </button>
+                            <button class="btn btn-text btn-info" @click.stop="emit('test-api', dimension.id)">
+                              <i class="fas fa-heartbeat btn-icon"></i>
+                              测试API
+                            </button>
+                            <button class="btn btn-text btn-danger" @click.stop="emit('delete', dimension.id)">
+                              <i class="fas fa-trash btn-icon"></i>
+                              删除
+                            </button>
+                          </div>
+                        </td>
         </tr>
       </tbody>
     </table>
@@ -125,6 +129,7 @@ const emit = defineEmits([
   'edit',
   'test-api',
   'delete',
+  'add-sub',
   'weight-change',
   'move'
 ]);

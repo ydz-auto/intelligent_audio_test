@@ -113,6 +113,7 @@
                   @edit="openEditModal"
                   @test-api="testAPIHealth"
                   @delete="deleteDimension"
+                  @add-sub="(payload) => openAddModal(payload.categoryId, payload.id)"
                   @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
                   @move="(payload) => moveDimension(payload.id, payload.direction)"
                 />
@@ -153,6 +154,12 @@
                       <span class="group-count">{{ group.items.length }}</span>
                       <span v-if="group.category?.description" class="group-desc">{{ group.category.description }}</span>
                     </div>
+                    <div class="group-header-actions" @click.stop>
+                      <button class="btn btn-text btn-primary btn-sm" @click="openAddModal(group.category?.id)">
+                        <i class="fas fa-plus btn-icon"></i>
+                        添加维度
+                      </button>
+                    </div>
                   </div>
                   <div v-show="isGroupExpanded(group.key)" class="group-content">
                     <EvaluationDimensionTable
@@ -167,6 +174,7 @@
                       @edit="openEditModal"
                       @test-api="testAPIHealth"
                       @delete="deleteDimension"
+                      @add-sub="(payload) => openAddModal(payload.categoryId, payload.id)"
                       @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
                       @move="(payload) => moveDimension(payload.id, payload.direction)"
                     />
@@ -457,6 +465,21 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   margin-left: 4px;
+}
+
+.group-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.group-header-actions .btn-sm {
+  padding: 4px 12px;
+  font-size: 13px;
+  height: 32px;
+  border-radius: var(--border-radius-md);
 }
 
 .group-content {

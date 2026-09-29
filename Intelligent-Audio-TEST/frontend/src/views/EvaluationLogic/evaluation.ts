@@ -1381,12 +1381,14 @@ export function useEvaluation() {
     modalManager.close(id);
   }
 
-  function openAddModal() {
+  function openAddModal(categoryId?: number | string, parentDimensionId?: number | string) {
     const formData = {
       name: '',
       description: '',
       type: 'auto',
-      categoryId: undefined, 
+      categoryId: categoryId ?? undefined,
+      dimensionType: parentDimensionId ? 'sub' : 'main',
+      parentDimensionId: parentDimensionId || '',
       apiUrl: '',
       scoreUnit: '',
       apiSettings: {
