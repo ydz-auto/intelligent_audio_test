@@ -221,7 +221,19 @@ class TaskService:
 
         try:
             result = TaskService.calculate(task_type, task_params)
-            
+
+            # calculator 返回 is_success=False 表示评估内部失败（如 LLM 调用失败），
+            # 任务应标记为 failed，而非 completed
+            if isinstance(result, dict) and result.get('is_success') is False:
+                error_msg = result.get('message', '评估失败')
+                TaskModel.update_task_status(
+                    eval_task_id,
+                    'failed',
+                    completed_at=datetime.now().isoformat(),
+                    error_msg=error_msg
+                )
+                return
+
             TaskModel.update_task_status(
                 eval_task_id, 
                 'completed', 

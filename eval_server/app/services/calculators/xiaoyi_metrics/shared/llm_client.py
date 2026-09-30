@@ -185,7 +185,7 @@ def call_llm(model: str,
         messages.append({'role': 'system', 'content': system_message})
     messages.append({'role': 'user', 'content': user_content})
 
-    # 判断模型类型
+    # 判断模型类型（仅影响 response_format，不影响 stream）
     model_lower = model.lower()
     is_omni = 'omni' in model_lower
     is_audio_model = is_omni or ('audio' in model_lower)
@@ -197,11 +197,10 @@ def call_llm(model: str,
         'temperature': temperature,
     }
 
-    if is_omni:
-        payload['stream'] = True
-        payload['stream_options'] = {'include_usage': True}
-        payload['timeout'] = LLM_DEFAULT_TIMEOUT
-    elif not is_audio_model:
+    # 统一使用流式调用：增量返回 token，避免长响应整体超时断连
+    payload['stream'] = True
+    payload['stream_options'] = {'include_usage': True}
+    if not is_audio_model:
         payload['response_format'] = {'type': 'json_object'}
 
     url = f'{api_base.rstrip("/")}/chat/completions'
@@ -213,37 +212,34 @@ def call_llm(model: str,
         for attempt in range(max_retries + 1):
             attempts_made = attempt + 1
             try:
+                content_text = ''
+                usage_data: Dict[str, Any] = {}
                 with httpx.Client(trust_env=False, timeout=httpx_timeout) as client:
-                    response = client.post(url, headers=headers, json=payload)
-
-                response.raise_for_status()
-
-                if is_omni:
-                    content_text = ''
-                    usage_data: Dict[str, Any] = {}
-                    for line in response.text.split('\n'):
-                        line = line.strip()
-                        if not line or not line.startswith('data: '):
-                            continue
-                        chunk_str = line[6:]
-                        if chunk_str == '[DONE]':
-                            break
-                        try:
-                            chunk = json.loads(chunk_str)
-                        except json.JSONDecodeError:
-                            continue
-                        choices = chunk.get('choices', [])
-                        if choices:
-                            delta = choices[0].get('delta', {})
-                            content_text += delta.get('content', '')
-                        if chunk.get('usage'):
-                            usage_data = chunk['usage']
-                    data = {
-                        'choices': [{'message': {'content': content_text}}],
-                        'usage': usage_data,
-                    }
-                else:
-                    data = response.json()
+                    with client.stream("POST", url, headers=headers, json=payload) as response:
+                        if response.status_code >= 400:
+                            response.read()
+                        response.raise_for_status()
+                        for line in response.iter_lines():
+                            line = line.strip()
+                            if not line or not line.startswith('data: '):
+                                continue
+                            chunk_str = line[6:]
+                            if chunk_str == '[DONE]':
+                                break
+                            try:
+                                chunk = json.loads(chunk_str)
+                            except json.JSONDecodeError:
+                                continue
+                            choices = chunk.get('choices', [])
+                            if choices:
+                                delta = choices[0].get('delta', {})
+                                content_text += delta.get('content', '')
+                            if chunk.get('usage'):
+                                usage_data = chunk['usage']
+                data = {
+                    'choices': [{'message': {'content': content_text}}],
+                    'usage': usage_data,
+                }
                 break
             except httpx.HTTPStatusError as e:
                 last_exc = e

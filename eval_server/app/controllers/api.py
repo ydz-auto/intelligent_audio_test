@@ -316,6 +316,18 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                             f"ai_first_word_start_ms={tl.get('ai_first_word_start_ms')} "
                             f"message={tl.get('message')}"
                         )
+                # calculator 返回 is_success=False 表示评估内部失败（如 LLM 调用失败），
+                # 任务应标记为 failed，而非 completed
+                if isinstance(result, dict) and result.get('is_success') is False:
+                    error_msg = result.get('message', '评估失败')
+                    logger.error(f"[process_local_task] 评估内部失败 eval_task_id={eval_task_id}: {error_msg}")
+                    TaskModel.update_task_status(
+                        eval_task_id,
+                        'failed',
+                        completed_at=datetime.now().isoformat(),
+                        error_msg=error_msg
+                    )
+                    return
                 TaskModel.update_task_status(
                     eval_task_id,
                     'completed',

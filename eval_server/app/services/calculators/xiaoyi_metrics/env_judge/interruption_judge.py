@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """interruption_judge.py
 打断场景 LLM 裁判：一次纯文本 LLM 调用产出全部打断 LLM 维度
 
@@ -489,6 +489,7 @@ def evaluate_interruption_judge(
     except Exception as e:
         result['message'] = f'LLM 调用失败: {e}'
         result['enabled'] = False
+        result['is_success'] = False
         logger.error(f'[interruption_judge] LLM 调用失败: {e}')
         return result
 

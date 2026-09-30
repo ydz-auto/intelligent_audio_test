@@ -45,7 +45,8 @@ class Config:
     OSS_REGION = os.environ.get('OSS_REGION', 'us-east-1')
 
     # 日志配置（归档到 static 目录下）
-    LOG_DIR = os.path.join(STATIC_BASE_PATH, 'logs', 'eval_server')
+    # 可通过 .env 的 LOG_DIR 覆盖，将日志写到其他磁盘
+    LOG_DIR = os.environ.get('LOG_DIR', os.path.join(STATIC_BASE_PATH, 'logs', 'eval_server'))
     LOG_FILE = os.path.join(LOG_DIR, 'eval_server.log')
     LOG_MAX_BYTES = 10 * 1024 * 1024   # 10MB
     LOG_BACKUP_COUNT = 30              # 保留 30 个历史文件
@@ -56,30 +57,30 @@ class Config:
     HOST = '0.0.0.0'
 
     # Local concurrency control
-    LOCAL_MAX_CONCURRENCY = 30
+    LOCAL_MAX_CONCURRENCY = 60
 
     # WSGI 服务器线程数（waitress 固定线程池）
     # None = 自动计算（LOCAL_MAX_CONCURRENCY * 2 + 4，上限 64）
-    WSGI_THREADS = 64
+    WSGI_THREADS = 128
 
     # Task settings
     CONCURRENCY_LIMITS = {
-        'wer': 10,
-        'ser': 10,
-        'der': 5,
-        'cpwer': 10,
-        'tcpwer': 10,
-        'stm_wer': 10,
-        'llm_judge': 10,
-        'turn_taking': 10,
-        'interruption_metrics': 10,
-        'non_interactive_latency': 10,
-        'noise_latency': 10,
-        'env_judge': 10,
-        'high_freq_turn_taking': 10,
-        'high_freq_llm_judge': 10,
+        'wer': 30,
+        'ser': 30,
+        'der': 30,
+        'cpwer': 30,
+        'tcpwer': 30,
+        'stm_wer': 30,
+        'llm_judge': 30,
+        'turn_taking': 30,
+        'interruption_metrics': 30,
+        'non_interactive_latency': 30,
+        'noise_latency': 30,
+        'env_judge': 30,
+        'high_freq_turn_taking': 30,
+        'high_freq_llm_judge': 30,
     }
-    DEFAULT_MAX_CONCURRENCY = 10
+    DEFAULT_MAX_CONCURRENCY = 30
 
     # LLM Judge 配置（OpenAI 兼容代理 https://az.gptplus5.com/v1）
     # 所有字段均可在 eval_server/.env 覆盖

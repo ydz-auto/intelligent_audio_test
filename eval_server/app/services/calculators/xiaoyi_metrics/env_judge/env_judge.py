@@ -463,6 +463,7 @@ def evaluate_env_judge(
     except Exception as e:
         result['message'] = f'LLM 调用失败: {e}'
         result['enabled'] = False
+        result['is_success'] = False
         logger.error(f'[env_judge] LLM 调用失败: {e}')
         return result
 

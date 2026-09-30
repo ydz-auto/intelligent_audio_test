@@ -175,7 +175,7 @@ class TaskModel:
 
     @staticmethod
     def reset_processing_tasks():
-        """服务重启后将所有 processing 状态的任务重置为 pending，避免任务永久卡死"""
+        """服务重启后将所有 processing 状态的任务标记为 failed，避免任务永久卡死"""
         count = 0
         with TaskModel._lock:
             if not os.path.exists(config.TASKS_DIR):
@@ -191,8 +191,9 @@ class TaskModel:
                     try:
                         task_data = TaskModel._read_json(filepath)
                         if task_data.get('status') == 'processing':
-                            task_data['status'] = 'pending'
-                            task_data['started_at'] = None
+                            task_data['status'] = 'failed'
+                            task_data['completed_at'] = datetime.now().isoformat()
+                            task_data['error_msg'] = '服务重启，任务未完成'
                             TaskModel._write_json(filepath, task_data)
                             count += 1
                     except (json.JSONDecodeError, OSError):

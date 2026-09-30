@@ -46,7 +46,7 @@ def create_app():
     # 初始化文件存储目录
     TaskModel.init_db()
 
-    # 恢复上次重启前卡死的任务
+    # 将上次重启前卡死的任务标记为 failed
     TaskModel.reset_processing_tasks()
 
     # 注册蓝图

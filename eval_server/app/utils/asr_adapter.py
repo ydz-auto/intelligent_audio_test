@@ -17,6 +17,7 @@ import os
 import json
 import logging
 import time
+import threading
 from pathlib import Path
 
 # ─── 加载 .env 到 os.environ（参考 app/config.py，让本模块可独立运行） ───
@@ -37,6 +38,11 @@ logger = logging.getLogger(__name__)
 ASR_SERVER_URL = os.environ.get("ASR_SERVER_URL", "http://127.0.0.1:10095").rstrip("/")
 ASR_TIMEOUT = int(os.environ.get("ASR_TIMEOUT", "120"))
 ASR_JSON_OUTPUT_DIR = os.environ.get("ASR_JSON_OUTPUT_DIR", "").strip()
+
+# ASR 并发限制：ASR 服务器是单实例，高并发时容易过载超时
+# 用信号量限制同时调用的数量，避免压垮 ASR 服务
+ASR_MAX_CONCURRENCY = int(os.environ.get("ASR_MAX_CONCURRENCY", "10"))
+_asr_semaphore = threading.Semaphore(ASR_MAX_CONCURRENCY)
 
 
 def _build_json_save_path(wav_path):
@@ -117,11 +123,12 @@ def call_modelscope_asr(wav_path, language=None):
     url = f"{ASR_SERVER_URL}/asr"
     logger.info(f"调用远程 ASR: {url}  wav={wav_path}")
 
-    with open(wav_path, "rb") as f:
-        files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
-        t0 = time.time()
-        resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
-        elapsed = time.time() - t0
+    with _asr_semaphore:
+        with open(wav_path, "rb") as f:
+            files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
+            t0 = time.time()
+            resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
+            elapsed = time.time() - t0
 
     if resp.status_code != 200:
         raise RuntimeError(
@@ -154,11 +161,12 @@ def call_modelscope_asr_word(wav_path, language=None):
     url = f"{ASR_SERVER_URL}/asr_word"
     logger.info(f"调用远程 ASR(词级): {url}  wav={wav_path}")
 
-    with open(wav_path, "rb") as f:
-        files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
-        t0 = time.time()
-        resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
-        elapsed = time.time() - t0
+    with _asr_semaphore:
+        with open(wav_path, "rb") as f:
+            files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
+            t0 = time.time()
+            resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
+            elapsed = time.time() - t0
 
     if resp.status_code != 200:
         raise RuntimeError(

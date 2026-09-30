@@ -125,9 +125,9 @@ class LlmJudgeCalculator(BaseCalculator):
     @staticmethod
     def _score_one(model: str, prompt: str, max_tokens: int,
                    temperature: float) -> Dict[str, Any]:
-        """单次 LLM 评分调用，返回 {score, reason}。
+        """单次 LLM 评分调用，返回 {score, reason, failed}。
 
-        调用失败或解析失败时 score=0，不抛异常（单轮失败不阻断整体）。
+        调用失败或解析失败时 score=0, failed=True，不抛异常（单轮失败不阻断整体）。
         """
         try:
             response = call_llm(
@@ -140,11 +140,12 @@ class LlmJudgeCalculator(BaseCalculator):
                 return {
                     'score': parsed.get('score', 0),
                     'reason': parsed.get('reason', ''),
+                    'failed': False,
                 }
-            return {'score': 0, 'reason': 'LLM 输出解析失败'}
+            return {'score': 0, 'reason': 'LLM 输出解析失败', 'failed': True}
         except Exception as e:
             logger.error(f'LLM judge failed: {e}')
-            return {'score': 0, 'reason': str(e)}
+            return {'score': 0, 'reason': str(e), 'failed': True}
 
     @staticmethod
     def _build_prompt(prompt_template: str, query: str, answer: str) -> str:
@@ -162,6 +163,7 @@ class LlmJudgeCalculator(BaseCalculator):
 
         if params.get('mode') == 'multi':
             per_round = []
+            all_failed = True
             for item in params['round_items']:
                 if not item.get('answer'):
                     continue
@@ -170,8 +172,10 @@ class LlmJudgeCalculator(BaseCalculator):
                 correct = str(item.get('correct_answer') or '')
                 prompt = self._build_prompt(prompt_template, query, answer)
                 res = self._score_one(model, prompt, max_tokens, temperature)
+                if not res.get('failed'):
+                    all_failed = False
                 per_round.append({
-                    'enabled': True,
+                    'enabled': not res.get('failed', False),
                     'llm_judge_score': res['score'],
                     'reasoning': res['reason'],
                     'model': model,
@@ -180,9 +184,13 @@ class LlmJudgeCalculator(BaseCalculator):
                     'correct_answer': correct,
                 })
             if not per_round:
-                return {'enabled': False, 'message': '所有轮次均无有效 answer'}
+                return {'enabled': False, 'is_success': False, 'message': '所有轮次均无有效 answer'}
+            # 所有轮次 LLM 调用均失败 → 整体标记失败
+            if all_failed:
+                return {'enabled': False, 'is_success': False, 'message': 'LLM 调用失败: 所有轮次均失败'}
             agg = self._aggregate_results(per_round)
             agg.setdefault('enabled', True)
+            agg.setdefault('is_success', True)
             agg.setdefault('model', model)
             return agg
 
@@ -190,8 +198,19 @@ class LlmJudgeCalculator(BaseCalculator):
         answer = str(params.get('answer') or '')
         prompt = self._build_prompt(prompt_template, query, answer)
         res = self._score_one(model, prompt, max_tokens, temperature)
+        # 单轮 LLM 调用失败 → 标记失败
+        if res.get('failed'):
+            return {
+                'enabled': True,
+                'is_success': False,
+                'message': f"LLM 调用失败: {res['reason']}",
+                'llm_judge_score': res['score'],
+                'reasoning': res['reason'],
+                'model': model,
+            }
         return {
             'enabled': True,
+            'is_success': True,
             'llm_judge_score': res['score'],
             'criteria_scores': None,
             'reasoning': res['reason'],

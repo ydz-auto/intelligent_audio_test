@@ -173,6 +173,7 @@ def evaluate_reply_quality_per_turn(
     except Exception as exc:
         logger.exception('[reply_quality] LLM 调用失败')
         result['message'] = f'LLM 调用失败: {exc}'
+        result['is_success'] = False
         return result
 
     # 解析返回
