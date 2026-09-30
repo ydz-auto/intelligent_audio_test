@@ -487,9 +487,12 @@ class ReportController(ReportControllerBase):
         from backend.models.models import TestCaseGroup, Tag
 
         if isinstance(task_id_filter, list):
-            task_cases = TaskCase.query.filter(TaskCase.task_id.in_(task_id_filter)).all()
+            task_cases = TaskCase.query.filter(
+                TaskCase.task_id.in_(task_id_filter),
+                TaskCase.deleted == False
+            ).all()
         else:
-            task_cases = TaskCase.query.filter_by(task_id=task_id_filter).all()
+            task_cases = TaskCase.query.filter_by(task_id=task_id_filter, deleted=False).all()
 
         test_case_ids = [tc.test_case_id for tc in task_cases]
         query = TestCase.query.filter(
@@ -515,12 +518,14 @@ class ReportController(ReportControllerBase):
         if isinstance(result_task_filter, list):
             test_results = TestResult.query.filter(
                 TestResult.test_case_id.in_(filtered_case_ids),
-                TestResult.task_id.in_(result_task_filter)
+                TestResult.task_id.in_(result_task_filter),
+                TestResult.deleted == False
             ).all()
         else:
             test_results = TestResult.query.filter(
                 TestResult.test_case_id.in_(filtered_case_ids),
-                TestResult.task_id == result_task_filter
+                TestResult.task_id == result_task_filter,
+                TestResult.deleted == False
             ).all()
 
         return filtered_case_ids, test_results

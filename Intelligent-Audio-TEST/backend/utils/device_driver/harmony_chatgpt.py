@@ -42,17 +42,19 @@ class ChatGptVoiceChat(Xiaoyilivechat):
     # ChatGPT 包名（鸿蒙 Android 兼容层）
     APP_PACKAGE = 'com.openai.chatgpt'
 
-    # 聊天首页底部输入栏按钮坐标（屏幕 1280x2832；实测 2026-08-13 ChatGPT 改版后输入栏上移至 y≈1607，
-    # 旧版 y=2650 已失效）。四件套结构不变：[+] / EditText / 麦克风 / 蓝色语音(最右)。
-    #   [+]     : (126, 1607)
-    #   输入框   : EditText, bounds≈(210,1523,916,1691), center (563,1607)
-    #   麦克风   : (1000, 1607)
-    #   蓝色语音 : (1154, 1607)  <- 语音通话入口（最右侧按钮）
-    # pre_process 用 EditText.getBounds() 动态取中心 y、x 固定 1147；1147∈右侧按钮 x[1098,1210]，故
-    # (1147, edit_center_y) 仍命中蓝色语音按钮（实测 (1154,1607) 可进入语音全屏）。
-    HOME_BTN_VOICE = (1147, 1607)      # 蓝色语音按钮（语音通话入口，fallback；实际靠 EditText 取 y）
-    HOME_BTN_TOPRIGHT = (1154, 261)    # 右上角（临时聊天/新对话面板）
-    HOME_BTN_MIC = (1000, 1607)        # 麦克风（语音输入，非通话）
+    # 聊天首页底部输入栏按钮坐标。实测 2026-09-28（设备 6YF0126211000225，屏幕 1256x2760）：
+    # ChatGPT 改版后输入栏四件套变为：EditText 在上、按钮一行在 EditText【下方】的最右侧。
+    #   [+]     : (126, 1535)
+    #   输入框   : EditText, bounds≈(98,1158,1308,1476), center (628,1392)
+    #   麦克风   : (955, 1535)
+    #   蓝色语音 : (1123, 1535), bounds≈(1039,1207,1451,1619)  <- 语音通话入口（最右侧按钮）
+    # 蓝色按钮中心 y = EditText.bottom + 59（不再与 EditText 同高），故 pre_process 用
+    # EditText.getBounds() 动态取 bottom、加 HOME_BTN_VOICE_Y_OFFSET，x 固定 1147
+    # （1147∈右侧按钮 x[1039,1207]，实测 (1147,1535) 可进入语音全屏）。
+    HOME_BTN_VOICE = (1123, 1535)      # 蓝色语音按钮（语音通话入口，fallback；实际靠 EditText.bottom+59 取 y）
+    HOME_BTN_VOICE_Y_OFFSET = 59       # 蓝色按钮中心相对 EditText.bottom 的下移量（2026-09-28 实测）
+    HOME_BTN_TOPRIGHT = (1130, 227)    # 右上角（临时聊天/新对话面板）
+    HOME_BTN_MIC = (955, 1577)         # 麦克风（语音输入，非通话）
 
     # 语音全屏 orb：实测改版后 orb 移至屏幕下方，385×385，center≈(640,2247)，clickable。
     # ⚠️ 驱动不再点击 orb：通话进行中点 orb 会触发相机/视频界面（运行期“每轮结束开相机”bug 的来源），
@@ -65,6 +67,21 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self.app_name = self.APP_PACKAGE
         # PCM 抓取目标固定为 chatgpt（cap_client 写 /data/local/tmp）
         self._pcm_app = 'chatgpt'
+
+    @staticmethod
+    def _as_bool(value):
+        """兼容配置中 snake/camel 的布尔值（与 e2e_aggregator._as_bool 一致）。
+
+        algorithm_params 的 field_value 可能为 int(1/0)/bool/str('true'/'True'/'1')，
+        统一解析，避免聚合层识别为打断轮而驱动层未走 barge-in 分支。
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+        return False
 
     # ------------------------------------------------------------------
     # 辅助
@@ -272,6 +289,12 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             if remote:
                 rms, size = self._read_tail_rms(device_sn, remote, tail_bytes=tail_bytes,
                                                 task_id=task_id, test_case_id=test_case_id)
+                # 每次轮询都记录：选中的 pcm 文件 / size / 尾窗 RMS，用于排查
+                # "AI已开口但检测不到 fresh"（阈值过高 / 选错文件 / 流格式不符）
+                self._log(level='DEBUG',
+                          content=f"[等AI回复开始] poll remote={remote} size={size} "
+                                  f"tail_rms={None if rms is None else round(rms)} thr={energy_thr}",
+                          task_id=task_id, test_case_id=test_case_id)
                 if rms is not None and rms > energy_thr:
                     saw_speech = True
                     self._log(level='INFO',
@@ -492,10 +515,12 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。方法继承自父类。
         self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
-        # 会破坏连续通话已积累的音频)。打断轮不清(pcm 可能仍在写入/尚未拉取)。
+        # 会破坏连续通话已积累的音频)。首轮即使打断轮也清——否则会残留上个用例/上轮
+        # 的 client_in..pcm,打断轮的 _pick_pcm(取最大文件)会选中残留静音文件,导致第一轮
+        # 25s 内检测不到 AI 开始回复、barge-in 错过(实测 2026-09-28)。case 中间轮由
+        # is_first 天然排除,无需额外按打断轮再挡。
         # 必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
-        is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
-        if (record_mode != 'case' or is_first) and not is_interruption:
+        if record_mode != 'case' or is_first:
             self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'chatgpt'),
                             task_id=task_id, test_case_id=test_case_id)
         # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长
@@ -511,14 +536,15 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             return True
 
         # 首轮：点击蓝色语音按钮进入语音通话
-        # 蓝色按钮位于输入栏最右侧、EditText 同高；输入栏 y 随布局变化，故由 EditText
-        # bounds 动态取中心 y，x 取屏幕最右侧(该设备 1280 宽 → 1147)以稳定命中蓝按钮
+        # 2026-09-28 改版后蓝色按钮位于 EditText【下方】的最右侧(不再与 EditText 同高)，
+        # 输入栏 y 随布局变化，故由 EditText bounds 动态取 bottom + 下移量作 y，
+        # x 固定 1147(∈右侧按钮 x[1039,1207])以稳定命中蓝按钮
         tap_x, tap_y = self.HOME_BTN_VOICE
         try:
             edit = driver.find_component(By.type('android.widget.EditText'))
             if edit:
-                b = edit.getBounds()  # (left, right, top, bottom)
-                tap_y = (b[2] + b[3]) // 2
+                b = edit.getBounds()  # Rect: [left, right, top, bottom]
+                tap_y = b[3] + self.HOME_BTN_VOICE_Y_OFFSET
         except Exception as e:
             if is_rpc_not_running_error(e):
                 # RPC 服务异常不吞掉，交由上层 with_rpc_retry 执行 ui restart 恢复
@@ -575,11 +601,12 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                           f"(start_ms={ts['start_ms']} end_ms={ts['end_ms']})",
                   task_id=task_id, test_case_id=test_case_id)
 
+        is_interruption = self._as_bool(kwargs.get('is_interruption'))
         # 等 AI 回复：
         # - 打断轮(is_interruption=True): 只等 AI 开始回复(phase A)即放下一轮,
         #   不等 AI 说完(phase B)→ 让下一轮打断音频在 AI 回复期间播出(真 barge-in)
         # - 其它: 等 AI 回复完成(phase A+B)
-        if kwargs.get('is_interruption') in (True, 'true', '1', 1):
+        if is_interruption:
             # 打断轮：只等 AI 开始回复(phase A)即放下一轮，让打断发生在 AI 回复期间(真 barge-in)
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
                 device_sn, app=getattr(self, '_pcm_app', 'chatgpt'),
@@ -614,7 +641,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
 
         # 打断轮：检测到 AI 开始回复后延迟 1s 再放下一轮打断音频，让 AI 先说 1s
         # （真 barge-in 落在回复中段而非刚开口）；仅 case 模式非末轮有"下一轮"才需延迟
-        if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        if (is_interruption
                 and replied and record_mode == 'case' and not is_last):
             self._log(level='INFO',
                       content=f"[post_process] 检测到AI开始回复,等1s再放下一轮打断音频"

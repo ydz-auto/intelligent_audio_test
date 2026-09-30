@@ -60,13 +60,19 @@ class ReportControllerTask(ReportControllerBase):
         else:
             result_task_ids = [task_id]
         
-        results = TestResult.query.filter(TestResult.task_id.in_(result_task_ids)).all()
+        results = TestResult.query.filter(
+            TestResult.task_id.in_(result_task_ids),
+            TestResult.deleted == False
+        ).all()
         if not results:
             return None, None, error_response("生成失败: 任务没有测试结果数据")
         
         # 只统计任务 TaskCase 中仍存在的用例结果，避免把已删除用例的执行记录计入统计，
         # 导致设备/API 用例数与任务总用例数（以 TaskCase 为准）不一致
-        valid_case_ids = {tc.test_case_id for tc in TaskCase.query.filter(TaskCase.task_id.in_(result_task_ids)).all()}
+        valid_case_ids = {tc.test_case_id for tc in TaskCase.query.filter(
+            TaskCase.task_id.in_(result_task_ids),
+            TaskCase.deleted == False
+        ).all()}
         if valid_case_ids:
             results = [r for r in results if r.test_case_id in valid_case_ids]
         if not results:
@@ -148,7 +154,8 @@ class ReportControllerTask(ReportControllerBase):
         if device_ids:
             device_results = TestResult.query.filter(
                 task_id_filter,
-                TestResult.device_id.in_(device_ids)
+                TestResult.device_id.in_(device_ids),
+                TestResult.deleted == False
             ).all()
             
             for result in device_results:
@@ -160,7 +167,8 @@ class ReportControllerTask(ReportControllerBase):
         if api_ids:
             api_results = TestResult.query.filter(
                 task_id_filter,
-                TestResult.api_id.in_(api_ids)
+                TestResult.api_id.in_(api_ids),
+                TestResult.deleted == False
             ).all()
             
             for result in api_results:
@@ -806,7 +814,10 @@ class ReportControllerTask(ReportControllerBase):
         if isinstance(task_ids, int):
             task_ids = [task_ids]
         
-        task_cases = TaskCase.query.filter(TaskCase.task_id.in_(task_ids)).all()
+        task_cases = TaskCase.query.filter(
+            TaskCase.task_id.in_(task_ids),
+            TaskCase.deleted == False
+        ).all()
         test_case_ids = list(set([tc.test_case_id for tc in task_cases]))
         test_cases = TestCase.query.options(
             joinedload(TestCase.tags),
@@ -1225,7 +1236,7 @@ class ReportControllerTask(ReportControllerBase):
                     all_dimensions=all_dimensions,
                     dim_results_map=dim_results_map,
                     dim_statistic_method={dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions},
-                    dim_output_params={}
+                    dim_output_params=None
                 )
 
                 cases = ReportControllerTask._build_case_data(

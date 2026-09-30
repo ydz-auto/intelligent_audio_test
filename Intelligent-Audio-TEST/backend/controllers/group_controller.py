@@ -193,7 +193,7 @@ class GroupController:
                 TestCase.query.filter(
                     TestCase.group_id == group.id,
                     TestCase.deleted == False
-                ).update({TestCase.deleted: True}, synchronize_session=False)
+                ).update({TestCase.deleted: True, TestCase.updated_at: now_cst()}, synchronize_session=False)
             except Exception as e:
                 db.session.rollback()
                 return error_response(f"删除分组下的测试用例失败: {str(e)}")

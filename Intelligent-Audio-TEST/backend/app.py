@@ -181,7 +181,7 @@ def create_app(config_name='default'):
         
         try:
             # 服务重启时，将所有待执行和运行中的任务设置为失败状态
-            from backend.models.models import Task, TaskCase, TestResult
+            from backend.models.models import Task, TaskCase, TestResult, TestResultDimension
             
             # 更新Task状态：将pending/queued/running/evaluating状态的任务设置为failed
             task_update_count = db.session.query(Task).filter(
@@ -201,9 +201,11 @@ def create_app(config_name='default'):
                 TaskCase.completed_at: backend.models.models.utc8now()
             }, synchronize_session=False)
             
-            # 更新TaskCase评估状态：将pending/queued/running/evaluating状态的评估设置为failed
+            # 更新TaskCase评估状态：将遗留的 queued/pending/running/calculating 状态评估设置为failed
+            # 注意：evaluation_status 合法值为 queued/pending/running/calculating/completed/stopped/failed，
+            # 必须覆盖 calculating（评估已提交、正在计算），否则重启后用例会永远停留在"进行中"
             task_case_eval_update_count = db.session.query(TaskCase).filter(
-                TaskCase.evaluation_status.in_(['pending', 'queued', 'running', 'evaluating'])
+                TaskCase.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
             ).update({
                 TaskCase.evaluation_status: 'failed',
                 TaskCase.status: 'failed',
@@ -218,14 +220,25 @@ def create_app(config_name='default'):
                 TestResult.execution_status: 'failed',
                 TestResult.error_message: '服务重启导致任务中断'
             }, synchronize_session=False)
+
+            # 更新TestResultDimension评估状态：将遗留的 queued/pending/running/calculating 维度设置为failed。
+            # 服务重启后评估线程已丢失，未完成的维度不会再有回调，必须主动收尾为failed，
+            # 否则维度/用例会永远停留在"进行中"
+            test_result_dimension_update_count = db.session.query(TestResultDimension).filter(
+                TestResultDimension.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
+            ).update({
+                TestResultDimension.evaluation_status: 'failed',
+                TestResultDimension.error_message: '服务重启导致评估中断'
+            }, synchronize_session=False)
             
             db.session.commit()
             
             app.logger.info(f"服务重启后任务状态更新：")
             app.logger.info(f"- 更新任务状态数: {task_update_count} (pending/queued/running/evaluating → failed)")
             app.logger.info(f"- 更新任务用例执行状态数: {task_case_exec_update_count} (pending/queued/running/evaluating → failed)")
-            app.logger.info(f"- 更新任务用例评估状态数: {task_case_eval_update_count} (pending/queued/running/evaluating → failed)")
+            app.logger.info(f"- 更新任务用例评估状态数: {task_case_eval_update_count} (pending/queued/running/calculating → failed)")
             app.logger.info(f"- 更新测试结果执行状态数: {test_result_update_count} (pending/queued/running/evaluating → failed)")
+            app.logger.info(f"- 更新测试结果维度评估状态数: {test_result_dimension_update_count} (pending/queued/running/calculating → failed)")
             
         except Exception as e:
             app.logger.error(f"服务重启时更新任务状态失败: {str(e)}")

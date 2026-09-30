@@ -343,7 +343,7 @@ class TaskController:
         
         # 获取关联用例详情
         cases = []
-        task_cases = TaskCase.query.filter_by(task_id=task_id).all()
+        task_cases = TaskCase.query.filter_by(task_id=task_id, deleted=False).all()
         # 预取分组名映射，避免逐条查询
         group_ids = {tc.test_case_id for tc in task_cases}
         from backend.models.models import TestCaseGroup
@@ -1042,6 +1042,7 @@ class TaskController:
 
             retry_cases = TaskCase.query.filter(
                 TaskCase.task_id == task_id,
+                TaskCase.deleted == False,
                 or_(
                     TaskCase.status == 'failed',
                     TaskCase.execution_status != 'completed',
@@ -1096,8 +1097,8 @@ class TaskController:
 
             # 4. 更新任务统计信息
             # 重新计算已完成和失败的数量 (基于已经执行成功且状态为completed的用例)
-            task.completed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='completed').count()
-            task.failed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='failed').count()
+            task.completed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='completed', deleted=False).count()
+            task.failed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='failed', deleted=False).count()
             
             # 如果任务之前是失败、停止或完成状态，改回 running (由执行引擎启动)
             if task.status in ['failed', 'stopped', 'completed']:
@@ -1182,8 +1183,8 @@ class TaskController:
                             code=ErrorCode.OPERATION_FAILED
                         )
 
-                    task.completed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='completed').count()
-                    task.failed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='failed').count()
+                    task.completed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='completed', deleted=False).count()
+                    task.failed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='failed', deleted=False).count()
                     if task.status in ['failed', 'stopped', 'completed']:
                         task.status = 'pending'
                         task.started_at = None
@@ -1254,7 +1255,7 @@ class TaskController:
                 ).delete(synchronize_session=False)
 
             # 重新计算总数
-            task.total_cases = TaskCase.query.filter_by(task_id=task_id).count()
+            task.total_cases = TaskCase.query.filter_by(task_id=task_id, deleted=False).count()
             task.updated_at = now_cst()
             db.session.commit()
             return success_response(
@@ -1276,8 +1277,8 @@ class TaskController:
         total = task.total_cases
         completed = task.completed_cases
         failed = task.failed_cases
-        pending = TaskCase.query.filter_by(task_id=task_id, execution_status='pending').count()
-        skipped = TaskCase.query.filter_by(task_id=task_id, status='skipped').count()
+        pending = TaskCase.query.filter_by(task_id=task_id, execution_status='pending', deleted=False).count()
+        skipped = TaskCase.query.filter_by(task_id=task_id, status='skipped', deleted=False).count()
         
         # 2. 按标签统计通过率和平均耗时
         tag_stats = {}
@@ -1285,7 +1286,7 @@ class TaskController:
         results = db.session.query(Tag.name, TaskCase.status, TaskCase.duration)\
             .join(TestCase, TaskCase.test_case_id == TestCase.id)\
             .join(TestCase.tags)\
-            .filter(TaskCase.task_id == task_id).all()
+            .filter(TaskCase.task_id == task_id, TaskCase.deleted == False).all()
         
         for tag_name, status, duration in results:
             if tag_name not in tag_stats:
@@ -1652,7 +1653,7 @@ class TaskController:
             tag_ids_set = set()
 
             for task in source_tasks:
-                results = TestResult.query.filter_by(task_id=task.id).all()
+                results = TestResult.query.filter_by(task_id=task.id, deleted=False).all()
                 source_result_counts[task.id] = len(results)
 
                 for result in results:
@@ -1669,7 +1670,7 @@ class TaskController:
 
                 # 用例集合以源任务 TaskCase 为准（TestResult 可能包含已删除用例的执行记录，
                 # 若从 TestResult 提取会导致合并任务 TaskCase 数量与 total_cases 不一致）
-                for tc in TaskCase.query.filter_by(task_id=task.id).all():
+                for tc in TaskCase.query.filter_by(task_id=task.id, deleted=False).all():
                     case_ids_set.add(tc.test_case_id)
 
                 for tag in task.tags:
@@ -1710,7 +1711,7 @@ class TaskController:
             # 源任务用例状态映射，供合并任务新建 TaskCase 时继承
             source_case_status = {}
             for task in tasks:
-                for tc in TaskCase.query.filter_by(task_id=task.id).all():
+                for tc in TaskCase.query.filter_by(task_id=task.id, deleted=False).all():
                     if tc.test_case_id not in source_case_status:
                         source_case_status[tc.test_case_id] = tc
 

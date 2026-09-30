@@ -11,7 +11,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
     负责发起HTTP请求、管理异步任务流程（创建、轮询、获取结果）
     """
 
-    def make_api_request(self, url, method, headers, payload, timeout=10):
+    def make_api_request(self, url, method, headers, payload, timeout=120):
         """
         发起API请求，支持GET和POST方法
         """
@@ -65,7 +65,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         return resp_data
 
-    def create_task(self, url, payload, timeout=10, task_id=None):
+    def create_task(self, url, payload, timeout=300, task_id=None):
         """
         创建WER/SER计算任务
         """
@@ -311,7 +311,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         return None
 
-    def create_task_upload(self, url, form_fields, files, timeout=30, task_id=None):
+    def create_task_upload(self, url, form_fields, files, timeout=300, task_id=None):
         """
         通过 multipart/form-data 创建评估任务（支持文件上传）
         """
@@ -351,14 +351,14 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             )
             return {'__error__': str(e)}
 
-    def get_task_status(self, url, eval_task_id, timeout=30):
+    def get_task_status(self, url, eval_task_id, timeout=120):
         """
         查询评估任务状态
         """
         status_url = f"{url}/api/get_status/{eval_task_id}"
         return self.make_api_request(status_url, 'GET', {}, {}, timeout)
 
-    def get_task_result(self, url, eval_task_id, timeout=30):
+    def get_task_result(self, url, eval_task_id, timeout=120):
         """
         获取评估任务结果
         """

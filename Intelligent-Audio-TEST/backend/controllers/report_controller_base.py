@@ -788,7 +788,8 @@ class ReportControllerBase:
         try:
             test_result = TestResult.query.filter(
                 TestResult.task_id.in_(task_ids_to_search),
-                TestResult.test_case_id == case_id
+                TestResult.test_case_id == case_id,
+                TestResult.deleted == False
             ).first()
 
             zip_buffer = io.BytesIO()

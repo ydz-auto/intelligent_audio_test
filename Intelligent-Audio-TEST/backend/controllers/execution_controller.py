@@ -15,7 +15,7 @@ class ExecutionController:
             return error_response("未找到任务", 404)
         
         # 检查是否有待运行的用例
-        cases = TaskCase.query.filter_by(task_id=task_id, execution_status='pending').all()
+        cases = TaskCase.query.filter_by(task_id=task_id, execution_status='pending', deleted=False).all()
         if not cases:
             return error_response("该任务中没有待运行的用例")
 

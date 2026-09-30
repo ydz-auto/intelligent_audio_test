@@ -22,7 +22,7 @@ class ReportQueryBuilder:
         Returns:
             (test_cases, test_case_ids, task_cases)
         """
-        task_cases = TaskCase.query.filter_by(task_id=task_id).all()
+        task_cases = TaskCase.query.filter_by(task_id=task_id, deleted=False).all()
         test_case_ids = [tc.test_case_id for tc in task_cases]
         
         query = TestCase.query.filter(
@@ -58,7 +58,10 @@ class ReportQueryBuilder:
         tags: Optional[List[str]] = None,
         include_untagged: bool = False
     ) -> tuple:
-        task_cases = TaskCase.query.filter(TaskCase.task_id.in_(source_task_ids)).all()
+        task_cases = TaskCase.query.filter(
+            TaskCase.task_id.in_(source_task_ids),
+            TaskCase.deleted == False
+        ).all()
         test_case_ids = [tc.test_case_id for tc in task_cases]
         
         query = TestCase.query.filter(
@@ -94,7 +97,10 @@ class ReportQueryBuilder:
         if not test_case_ids:
             return []
         
-        query = TestResult.query.filter(TestResult.test_case_id.in_(test_case_ids))
+        query = TestResult.query.filter(
+            TestResult.test_case_id.in_(test_case_ids),
+            TestResult.deleted == False
+        )
         if task_ids:
             if len(task_ids) == 1:
                 query = query.filter(TestResult.task_id == task_ids[0])
@@ -152,7 +158,8 @@ class ReportQueryBuilder:
         if device_ids:
             device_results = TestResult.query.filter(
                 TestResult.task_id == task_id,
-                TestResult.device_id.in_(device_ids)
+                TestResult.device_id.in_(device_ids),
+                TestResult.deleted == False
             ).all()
             
             for result in device_results:
@@ -173,7 +180,8 @@ class ReportQueryBuilder:
         if api_ids:
             api_results = TestResult.query.filter(
                 TestResult.task_id == task_id,
-                TestResult.api_id.in_(api_ids)
+                TestResult.api_id.in_(api_ids),
+                TestResult.deleted == False
             ).all()
             
             for result in api_results:

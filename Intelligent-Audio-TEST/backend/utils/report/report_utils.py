@@ -560,7 +560,6 @@ class ReportUtils:
                         if dim_results_map and result.id in dim_results_map:
                             overall_item = None
                             round_items = []
-                            excluded_round_vals = []  # 被排除轮次的逐轮值（供从整体值中扣减）
                             for dr in dim_results_map[result.id]:
                                 dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
                                 if dr_dim_id and dr_dim_id == target_dim_id:
@@ -579,29 +578,12 @@ class ReportUtils:
                                         overall_item = item
                                     else:
                                         if exclude_set and dr_round in exclude_set:
-                                            excluded_round_vals.append(dr_val)  # 排除轮次不参与分子/分母
-                                            continue
+                                            continue  # 排除轮次不参与分子/分母
                                         round_items.append(item)
-                            if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) == 'weighted_sum_ratio'):
-                                # 加权WER：分子/分母由评估侧返回后直接Σ聚合，忽略排除轮次
+                            if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) in ('ratio', 'weighted_sum_ratio')):
+                                # ratio/加权：分子用整体值（不随排除轮次扣减），
+                                # 排除轮次只作用于分母（round_count 已按 exclude_rounds 计算）
                                 collected_items = [overall_item]
-                            elif overall_item and dim_statistic_method.get(dim_name) == 'ratio':
-                                # 比率维度：有整体结果且配置了排除 → 分子 = 整体值 − Σ被排除轮次的逐轮值（下限 0），
-                                # 分母 = 未排除轮次数。整体值是该用例的判定总数（如打断失败数），
-                                # 逐轮值与整体值可能不一致（整体为上下文重判），故以整体为基准扣减被排除轮次。
-                                try:
-                                    base_val = float(overall_item.get('dimension_value'))
-                                except (TypeError, ValueError):
-                                    base_val = 0.0
-                                sub_val = 0.0
-                                for ev in excluded_round_vals:
-                                    try:
-                                        sub_val += float(ev)
-                                    except (TypeError, ValueError):
-                                        pass
-                                adj_item = dict(overall_item)
-                                adj_item['dimension_value'] = max(base_val - sub_val, 0)
-                                collected_items = [adj_item]
                             elif round_items:
                                 collected_items = round_items
                             elif overall_item:
@@ -986,8 +968,8 @@ class ReportUtils:
                                     continue  # 排除轮次不参与分子/分母
                                 round_items.append(item)
                     # 无排除配置且整体存在 → 取整体；有排除或无整体 → 取过滤后的各轮；否则整体兜底
-                    # 加权WER：分子/分母由评估侧返回后直接Σ聚合，忽略排除轮次
-                    if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) == 'weighted_sum_ratio'):
+                    # ratio/加权：分子用整体值（不随排除轮次扣减），排除轮次只作用于分母（round_count）
+                    if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) in ('ratio', 'weighted_sum_ratio')):
                         collected = [overall_item]
                     elif round_items:
                         collected = round_items
@@ -2007,8 +1989,8 @@ class ReportUtils:
                                 continue  # 排除轮次不参与分子/分母
                             round_items.append(item)
                 # 无排除配置且整体存在 → 取整体；有排除或无整体 → 取过滤后的各轮；否则整体兜底
-                # 加权WER：分子/分母由评估侧返回后直接Σ聚合，忽略排除轮次
-                if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) == 'weighted_sum_ratio'):
+                # ratio/加权：分子用整体值（不随排除轮次扣减），排除轮次只作用于分母（round_count）
+                if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) in ('ratio', 'weighted_sum_ratio')):
                     collected = [overall_item]
                 elif round_items:
                     collected = round_items

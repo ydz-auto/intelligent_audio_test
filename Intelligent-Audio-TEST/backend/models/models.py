@@ -481,6 +481,7 @@ class TaskCase(db.Model):
     completed_at = Column(DateTime, comment='执行结束时间')
     duration = Column(Integer, comment='执行耗时 (秒)')
     error_message = Column(Text, comment='执行过程中的错误信息')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
 
 class TaskDevice(db.Model):
@@ -541,6 +542,7 @@ class TestResult(db.Model):
     result_data = Column(JSON, nullable=True, comment='轻量结果元数据 (JSON)，大字段存 result_data_path 文件')
     result_data_path = Column(String(500), nullable=True, comment='结果数据文件路径 (大字段存文件，DB仅存轻量元数据)')
     error_message = Column(Text, comment='错误信息描述')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='生成时间')
 
 class TestResultDimension(db.Model):

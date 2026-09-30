@@ -36,6 +36,10 @@ def _convert_keys_to_camel(data: Any) -> Any:
         out: Dict[Any, Any] = {}
         for k, v in data.items():
             if isinstance(k, str):
+                # body_template 原样透传（字段名保持 snake_case/correctAnswer 不变）
+                if k == 'body_template':
+                    out[k] = v
+                    continue
                 key = to_camel(k)
             else:
                 key = k

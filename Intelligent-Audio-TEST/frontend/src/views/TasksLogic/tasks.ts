@@ -830,6 +830,7 @@ export function useTasks() {
     try {
       if (reportService.comparisonReport.value) {
         await reportService.saveReport(reportService.comparisonReport.value);
+        isEditingReport.value = false;
         notification.success('报告已保存');
       }
     } catch (error) {
@@ -854,10 +855,15 @@ export function useTasks() {
     isEditingConclusion.value = true;
   };
 
-  const saveConclusion = async () => {
+  const saveConclusion = async (content?: string) => {
     try {
-      const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
-      await reportService.updateComparisonReportConclusion(selectedTasksArray);
+      if (content !== undefined && reportService.comparisonReport.value) {
+        // 用户在编辑器中输入的内容（与报告详情页行为一致，保留手工编辑）
+        reportService.comparisonReport.value.conclusion = content;
+      } else {
+        const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
+        await reportService.updateComparisonReportConclusion(selectedTasksArray);
+      }
       if (reportService.comparisonReport.value) {
         await reportService.saveReport(reportService.comparisonReport.value);
       }

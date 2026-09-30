@@ -98,13 +98,13 @@ _AUDIO_MAPPINGS = [
 # 平均回复时延为本地时序计算，不消费 correctAnswer（与库一致）
 _CASE_ANSWER_MAPPING = ('case', 'output', 'correctAnswer', 'correctAnswer', 'none')
 
-# body_template（与库 api_settings 一致；顶层 task_type 为库中残留字段，rounds 内
-# correctAnswer/背景噪声/干扰人/env_type 等字段均由库同步）
+# body_template（正确形态：顶层/rounds 均 snake_case，correctAnswer 为代码库固定驼峰字段；
+# 不包含已下线的 task_type。eval_server env_judge 校验 ai_wav/user_wav/played_audios/correctAnswer，
+# rounds 内另带背景噪声/干扰人/env_type 等轮次字段）
 _BODY_TEMPLATE = {
     'model': '{{model}}',
     'max_tokens': '{{max_tokens}}',
     'temperature': '{{temperature}}',
-    'task_type': '{{task_type}}',
     'rounds': [
         {
             'ai_wav': '{{ai_wav}}',
@@ -133,7 +133,7 @@ _MAIN_DIMENSIONS_DEF = [
                        '报告按 pass_rate 聚合（按轮次）：达标轮次数 / 有值轮次数 × 100，产出准确率(%)。',
         'result_type': 0, 'result_min': 0.0, 'result_max': 100.0, 'decimal_places': 2,
         'weight': 1, 'estimated_exec_time': 120, 'score_unit': '%',
-        'statistic_method': 'pass_rate', 'agg_denominator': 'round',
+        'statistic_method': 'pass_rate', 'agg_denominator': 'case',
         'param_mappings': list(_AUDIO_MAPPINGS) + [_CASE_ANSWER_MAPPING],
         'output_params': [
             ('score', '环境理解评分', '环境理解评分', 'number', 'output',

@@ -205,7 +205,7 @@ def _count_dim(name, code, behavior_help, ui_order, extra_out=()):
                        'LLM 降级时为空（不当作 0）。'
                        f'报告按 ratio 聚合（按轮次）：Σ{name} / Σ有值轮次数 × 100，产出占比(%)。',
         'type': 'auto',
-        'result_type': 0, 'result_min': 0.0, 'result_max': None,
+        'result_type': 0, 'result_min': 0.0, 'result_max': 0.0,
         'decimal_places': 0, 'weight': 1, 'estimated_exec_time': 120,
         'score_unit': '%', 'statistic_method': 'ratio', 'agg_denominator': 'round',
         'params': _COMMON_INPUT_PARAMS + [

@@ -3,7 +3,7 @@ from .android_plaud import PlaudDriver
 from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .utils import log_and_emit
 from .driver_types import AppType, AppVersion, DevicePlatform
-from .registry import driver_registry
+from .registry import driver_registry, DriverNotFoundError
 
 _LEGACY_KEYWORDS = {
     AppType.PLAUD: ['plaud', 'ai录音', 'ai record'],
@@ -252,7 +252,14 @@ class DeviceDriverFactory:
                      content=f"get_driver_for_device: 回落 path → app_type={app_type.value}, "
                              f"matched_legacy={matched_legacy.value if matched_legacy else None}, "
                              f"platform={platform.value}")
-        return self.get_driver_typed(app_type, platform)
+        try:
+            return self.get_driver_typed(app_type, platform)
+        except DriverNotFoundError as e:
+            # 该平台未注册驱动（如 iOS 无驱动、hypium 不可用时的 HarmonyOS），
+            # 扫描等调用方按 `if driver:` 判空即可，不应抛异常导致 500
+            log_and_emit(level='WARNING', module='DeviceDriverFactory',
+                         content=f"get_driver_for_device: 未找到可用驱动, 返回 None: {e}")
+            return None
 
     def list_registered_drivers(self):
         """返回新版注册表中的驱动元数据。"""

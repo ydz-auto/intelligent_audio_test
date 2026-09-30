@@ -554,28 +554,12 @@ export function useEvaluation() {
         if (!Array.isArray(apiSettingsObj.bodyTemplate.rounds)) {
           apiSettingsObj.bodyTemplate.rounds = [{}];
         }
-        // 对齐 rounds 内的字段
-        // 防御：rounds[0] 必须是普通对象，否则 delete/赋值会抛
-        //  "Cannot create property 'xxx' on string"（历史脏数据可能为字符串）
-        const rawRound = apiSettingsObj.bodyTemplate.rounds[0];
-        const roundTpl = (rawRound && typeof rawRound === 'object' && !Array.isArray(rawRound))
-          ? rawRound
-          : {};
-        const requiredInputKeys = new Set(
-          requiredInputsArray.map((input: any) => input.paramCode || input.param_code || input.key).filter(Boolean)
-        );
-        Object.keys(roundTpl).forEach(key => {
-          if (!requiredInputKeys.has(key)) {
-            delete roundTpl[key];
-          }
-        });
-        requiredInputsArray.forEach((input: any) => {
-          const inputKey = input.paramCode || input.param_code || input.key;
-          if (inputKey && !roundTpl[inputKey]) {
-            roundTpl[inputKey] = `{{${inputKey}}}`;
-          }
-        });
-        apiSettingsObj.bodyTemplate.rounds[0] = roundTpl;
+        // 防御：rounds[0] 必须是普通对象（历史脏数据可能为字符串）
+        // 注意：不再按 requiredInputs 隐式重建 rounds —— 那会误删模板专用字段（如 is_interruption）
+        // 并塞入全部 input 参数，破坏由 seed 维护的模板；修改模板请用 APISettingsEditor 显式编辑。
+        if (!apiSettingsObj.bodyTemplate.rounds[0] || typeof apiSettingsObj.bodyTemplate.rounds[0] !== 'object' || Array.isArray(apiSettingsObj.bodyTemplate.rounds[0])) {
+          apiSettingsObj.bodyTemplate.rounds[0] = {};
+        }
       }
       
       const rawRule = dimension.rule;
@@ -775,31 +759,13 @@ export function useEvaluation() {
             if (!Array.isArray(dimensionData.apiSettings.bodyTemplate.rounds)) {
               dimensionData.apiSettings.bodyTemplate.rounds = [{}];
             }
-            // 防御：rounds[0] 必须是普通对象，否则无法设置属性
+            // 防御：rounds[0] 必须是普通对象，否则后续序列化报错
+            // 注意：不再按 requiredInputs 隐式重建 rounds —— 那会误删模板专用字段（如 is_interruption）
+            // 并塞入全部 input 参数，破坏由 seed 维护的模板；修改模板请用 APISettingsEditor 显式编辑。
             const roundTplRaw = dimensionData.apiSettings.bodyTemplate.rounds[0];
-            const roundTpl = (roundTplRaw && typeof roundTplRaw === 'object' && !Array.isArray(roundTplRaw))
-              ? roundTplRaw
-              : {};
-
-            dimensionData.requiredInputs.forEach((input: any) => {
-              const inputKey = input.paramCode || input.param_code || input.key;
-              if (inputKey && !roundTpl[inputKey]) {
-                roundTpl[inputKey] = `{{${inputKey}}}`;
-              }
-            });
-
-            // 清理 rounds 内不在 requiredInputs 中的 key
-            Object.keys(roundTpl).forEach(key => {
-              const exists = dimensionData.requiredInputs.some((input: any) => {
-                const inputKey = input.paramCode || input.param_code || input.key;
-                return inputKey === key;
-              });
-              if (!exists) {
-                delete roundTpl[key];
-              }
-            });
-
-            dimensionData.apiSettings.bodyTemplate.rounds[0] = roundTpl;
+            if (!roundTplRaw || typeof roundTplRaw !== 'object' || Array.isArray(roundTplRaw)) {
+              dimensionData.apiSettings.bodyTemplate.rounds[0] = {};
+            }
           }
         } else {
           delete dimensionData.requiredInputs;

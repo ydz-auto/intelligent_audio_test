@@ -47,7 +47,7 @@ class PublishedTaskController:
         """从日常任务生成不可变配置快照（Domain 层约定 camelCase 字段名）"""
         case_ids = [
             tc.test_case_id
-            for tc in TaskCase.query.filter_by(task_id=task.id).order_by(TaskCase.id).all()
+            for tc in TaskCase.query.filter_by(task_id=task.id, deleted=False).order_by(TaskCase.id).all()
         ]
         if not case_ids:
             # 历史数据兜底：task_case_relations 缺失时，从该任务的报告用例取（有报告的任务必可发布）
