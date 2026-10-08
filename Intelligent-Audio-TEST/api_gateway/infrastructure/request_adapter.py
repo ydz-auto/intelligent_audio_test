@@ -94,6 +94,14 @@ class _RequestProxy:
         ct = self.content_type
         return ct.startswith('application/json')
 
+    @property
+    def username(self):
+        """当前登录用户名（AuthMiddleware 注入 request.state.username；未登录为 ''）"""
+        req = get_current_request()
+        if req is None:
+            return ''
+        return getattr(req.state, 'username', '') or ''
+
 
 class _QueryParams:
     """模拟 Flask 的 request.args"""

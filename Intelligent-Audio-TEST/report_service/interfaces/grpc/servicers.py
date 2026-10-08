@@ -617,8 +617,8 @@ class BenchmarkServicer:
             command = ComputeBenchmarkRankingCommand(
                 suite=(params.get('suite') or '').strip() or None,
                 category=(params.get('category') or '').strip() or None,
-                published_task_id=params.get('published_task_id'),
                 source=(params.get('source') or '').strip() or None,
+                operator=params.get('operator') or '',
             )
             result = self.command_handler.handle_compute_ranking(command)
             return self._resp(result.get('success', False), result.get('message', ''),

@@ -328,3 +328,92 @@ class TestCqrs:
         service.compute_ranking(ComputeBenchmarkRankingCommand())
         assert repo.rankings == first
         assert len(repo.rankings) == 1
+
+
+# ==================== 审计打回修复回归（INT-27 二次提测） ====================
+
+class _RaisingPtAcl:
+    """模拟 ACL 瞬时故障：重试后仍失败（上抛异常）。"""
+
+    def __init__(self, tasks=None, fail_list=False, fail_detail=False):
+        self.tasks = tasks or []
+        self.fail_list = fail_list
+        self.fail_detail = fail_detail
+
+    def list_benchmark_published_tasks(self):
+        if self.fail_list:
+            raise RuntimeError('task_service unavailable')
+        return list(self.tasks)
+
+    def get_published_task_detail(self, published_task_id):
+        if self.fail_detail:
+            raise RuntimeError('task_service unavailable')
+        return None
+
+
+def test_acl_impl_retries_once_then_raises():
+    # 审计 P3-2：ACL 瞬时失败自动重试一次，仍失败上抛（禁止降级空结果）
+    from report_service.infrastructure.acl.published_task_acl_repository import (
+        _call_with_retry,
+    )
+    calls = {'n': 0}
+
+    def _op():
+        calls['n'] += 1
+        raise RuntimeError('transient')
+
+    with pytest.raises(RuntimeError):
+        _call_with_retry(_op, 'list_benchmark_published_tasks')
+    assert calls['n'] == 2
+
+
+class TestAclFailureSemantics:
+    def test_list_failure_fails_compute_keeps_old_ranking(self):
+        # 审计 P3-2：LIST 失败不得降级为"仅外部轨"刷新，整体失败保留旧榜
+        repo = FakeRankingRepo(
+            mappings=[_wer_mapping()],
+            baselines=[
+                {'id': 1, 'category': 'asr', 'model_name': 'Nova', 'metric_code': 'WER',
+                 'value': 5.0, 'unit': '%', 'direction': 'lower_is_better',
+                 'scenario_tags': [], 'version': 1, 'is_current': True},
+            ])
+        repo.replace_ranking_rows(
+            [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '普通话通用',
+              'source': 'platform_test'}],
+            [{'source': 'platform_test', 'subject_name': 'Moshi', 'category': 'asr',
+              'metric_code': 'WER', 'scenario_key': '普通话通用', 'metric_value': 7.0}])
+        before = list(repo.rankings)
+        acl = _RaisingPtAcl(fail_list=True)
+        result = BenchmarkRankingService(repo=repo, pt_acl=acl).compute_ranking(
+            ComputeBenchmarkRankingCommand())
+        assert result['success'] is False
+        assert result['code'] == 301
+        assert repo.rankings == before  # ReadModel 未被触碰
+        assert result['message'] != '排行计算失败: task_service unavailable'  # 不透传内部异常
+
+    def test_detail_failure_fails_compute_not_disguised_as_no_report(self):
+        # 审计 P3-2：detail 失败不得伪装成 no_report 静默丢主体行
+        repo = FakeRankingRepo(mappings=[_wer_mapping()])
+        acl = _RaisingPtAcl(tasks=[_pt(1, 1)], fail_detail=True)
+        result = BenchmarkRankingService(repo=repo, pt_acl=acl).compute_ranking(
+            ComputeBenchmarkRankingCommand())
+        assert result['success'] is False
+        assert repo.replace_calls == []
+
+    def test_empty_detail_is_legitimate_no_report(self):
+        # 服务端明确返回无数据（None）仍是 no_report 合法形态，不算故障
+        repo = FakeRankingRepo(mappings=[_wer_mapping()])
+        acl = FakePtAcl(tasks=[_pt(1, 1)], details={})  # detail 缺失 → None
+        result = BenchmarkRankingService(repo=repo, pt_acl=acl).compute_ranking(
+            ComputeBenchmarkRankingCommand())
+        assert result['success'] is True
+        assert result['data']['skipped'][0]['reason'] == 'no_report'
+
+
+class TestCommandContract:
+    def test_compute_command_rejects_task_scoped_recompute(self):
+        # 审计 P2-1（方案 A）：按任务范围重算会静默删除同组其他任务排行行，
+        # 命令不再提供 published_task_id 参数（设计文档 §7.1 仅全量重算）
+        import pytest as _pytest
+        with _pytest.raises(TypeError):
+            ComputeBenchmarkRankingCommand(published_task_id=1)

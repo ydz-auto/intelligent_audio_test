@@ -332,19 +332,37 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
 
     def insert_baseline_version(
         self, rows: List[Dict[str, Any]], demote_source_id: int, demote_category: str,
-    ) -> List[int]:
+    ) -> Dict[str, Any]:
         session = get_db_session()
         try:
+            # 数据源行锁串行化同源同类并发导入：版本号在锁内分配，
+            # 杜绝并发重复 version 号 / 双 is_current
+            session.query(BenchmarkSource).filter(
+                BenchmarkSource.id == int(demote_source_id),
+            ).with_for_update().one()
             # 同事务：同源同类旧当前版本翻转 False → 新行 is_current=True（快照切换）
             session.query(BenchmarkBaseline).filter(
                 BenchmarkBaseline.source_id == int(demote_source_id),
                 BenchmarkBaseline.category == demote_category,
                 BenchmarkBaseline.is_current.is_(True),
             ).update({'is_current': False}, synchronize_session=False)
-            pos = [BenchmarkBaseline(**row) for row in rows]
+            next_version = (
+                session.query(func.max(BenchmarkBaseline.version)).filter(
+                    BenchmarkBaseline.source_id == int(demote_source_id),
+                    BenchmarkBaseline.category == demote_category,
+                ).scalar() or 0
+            ) + 1
+            pos = [
+                BenchmarkBaseline(
+                    version=next_version, is_current=True,
+                    **{k: v for k, v in row.items()
+                       if k not in ('version', 'is_current')},
+                )
+                for row in rows
+            ]
             session.add_all(pos)
             session.commit()
-            return [po.id for po in pos]
+            return {'version': next_version, 'ids': [po.id for po in pos]}
         except Exception:
             session.rollback()
             raise

@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import logging
+import math
+import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from report_service.application.commands.benchmark_commands import (
@@ -29,6 +31,10 @@ from report_service.domain.services.benchmark_metric_mapper import normalize_dir
 from shared.models.common_enums import AuditEvent
 
 logger = logging.getLogger(__name__)
+
+# 导入串行化（进程内）：版本分配已由仓储行锁保证，此处避免同源多批次
+# 并发导入在幂等检查与建版本之间交错
+_IMPORT_LOCK = threading.Lock()
 
 
 def _default_repo():
@@ -88,9 +94,10 @@ class BenchmarkBaselineService:
                 'created_by': command.created_by or '',
             })
             return {'success': True, 'message': '数据源创建成功', 'data': source, 'code': 201}
-        except Exception as e:
+        except Exception:
             logger.exception('创建外部基线数据源失败')
-            return {'success': False, 'message': f'创建数据源失败: {e}', 'data': None, 'code': 301}
+            return {'success': False, 'message': '创建数据源失败，请稍后重试',
+                    'data': None, 'code': 301}
 
     # ---------- 基线导入（不可变版本快照 + 幂等） ----------
 
@@ -111,6 +118,9 @@ class BenchmarkBaselineService:
             value = float(entry.value)
         except (TypeError, ValueError):
             return None, {'row': row_index, 'field': 'value', 'message': '指标值必须为数值'}
+        if not math.isfinite(value):
+            return None, {'row': row_index, 'field': 'value',
+                          'message': '指标值必须为有限数值（不允许 NaN/Infinity）'}
         direction = normalize_direction(entry.direction or '')
         if direction is None:
             return None, {
@@ -162,96 +172,100 @@ class BenchmarkBaselineService:
 
     def import_baselines(self, command: ImportBenchmarkBaselinesCommand) -> Dict[str, Any]:
         try:
-            source = self.repo.get_source(command.source_id)
-            if source is None:
-                return {'success': False, 'message': '数据源不存在', 'data': None, 'code': 201}
-            category = (command.category or '').strip().lower()
-            valid_categories = {c.value for c in BenchmarkCategory}
-            if category not in valid_categories:
-                return {'success': False,
-                        'message': f'被测类别非法，仅支持: {", ".join(sorted(valid_categories))}',
-                        'data': None, 'code': 102}
-            if not command.entries:
-                return {'success': False, 'message': '导入条目为空', 'data': None, 'code': 103}
+            with _IMPORT_LOCK:
+                return self._import_baselines_locked(command)
+        except Exception:
+            logger.exception('外部基线导入失败')
+            return {'success': False, 'message': '基线导入失败，请稍后重试',
+                    'data': None, 'code': 301}
 
-            mappings_by_code = {
-                m.metric_code: m for m in self.repo.list_metric_mappings(active_only=True)
+    def _import_baselines_locked(self, command: ImportBenchmarkBaselinesCommand) -> Dict[str, Any]:
+        source = self.repo.get_source(command.source_id)
+        if source is None:
+            return {'success': False, 'message': '数据源不存在', 'data': None, 'code': 201}
+        category = (command.category or '').strip().lower()
+        valid_categories = {c.value for c in BenchmarkCategory}
+        if category not in valid_categories:
+            return {'success': False,
+                    'message': f'被测类别非法，仅支持: {", ".join(sorted(valid_categories))}',
+                    'data': None, 'code': 102}
+        if not command.entries:
+            return {'success': False, 'message': '导入条目为空', 'data': None, 'code': 103}
+
+        mappings_by_code = {
+            m.metric_code: m for m in self.repo.list_metric_mappings(active_only=True)
+        }
+
+        errors: List[Dict[str, Any]] = []
+        rows: List[Dict[str, Any]] = []
+        for index, entry in enumerate(command.entries):
+            row, error = self._validate_entry(index, entry, mappings_by_code)
+            if error:
+                errors.append(error)
+            else:
+                row['source_id'] = command.source_id
+                row['category'] = category
+                rows.append(row)
+
+        if not rows:
+            return {
+                'success': False,
+                'message': '全部条目校验失败，未入库',
+                'data': {'errors': errors, 'imported': 0},
+                'code': 104,
             }
 
-            errors: List[Dict[str, Any]] = []
-            rows: List[Dict[str, Any]] = []
-            for index, entry in enumerate(command.entries):
-                row, error = self._validate_entry(index, entry, mappings_by_code)
-                if error:
-                    errors.append(error)
-                else:
-                    row['source_id'] = command.source_id
-                    row['category'] = category
-                    rows.append(row)
-
-            if not rows:
+        # 幂等：合法行内容与既有任一版本完全一致 → 返回该版本，不新建
+        existing_versions = self.repo.list_baseline_versions(command.source_id, category)
+        new_identity = {_baseline_identity(row) for row in rows}
+        for version_info in existing_versions:
+            existing_rows = self.repo.get_baseline_rows(
+                command.source_id, category, version_info['version'])
+            if {_baseline_identity(r) for r in existing_rows} == new_identity:
                 return {
-                    'success': False,
-                    'message': '全部条目校验失败，未入库',
-                    'data': {'errors': errors, 'imported': 0},
-                    'code': 104,
+                    'success': True,
+                    'message': f'重复导入，幂等返回已有版本 v{version_info["version"]}',
+                    'data': {
+                        'source_id': command.source_id,
+                        'category': category,
+                        'version': version_info['version'],
+                        'is_new_version': False,
+                        'entry_count': len(rows),
+                        'errors': errors,
+                        'imported': 0,
+                    },
+                    'code': 0,
                 }
 
-            # 幂等：合法行内容与既有任一版本完全一致 → 返回该版本，不新建
-            existing_versions = self.repo.list_baseline_versions(command.source_id, category)
-            new_identity = {_baseline_identity(row) for row in rows}
-            for version_info in existing_versions:
-                existing_rows = self.repo.get_baseline_rows(
-                    command.source_id, category, version_info['version'])
-                if {_baseline_identity(r) for r in existing_rows} == new_identity:
-                    return {
-                        'success': True,
-                        'message': f'重复导入，幂等返回已有版本 v{version_info["version"]}',
-                        'data': {
-                            'source_id': command.source_id,
-                            'category': category,
-                            'version': version_info['version'],
-                            'is_new_version': False,
-                            'entry_count': len(rows),
-                            'errors': errors,
-                            'imported': 0,
-                        },
-                        'code': 0,
-                    }
+        # 版本号由仓储在行锁事务内分配（并发导入防重复版本号 / 双 is_current）
+        inserted = self.repo.insert_baseline_version(
+            rows, demote_source_id=command.source_id, demote_category=category)
+        next_version = inserted['version']
+        inserted_ids = inserted['ids']
 
-            next_version = max((v['version'] for v in existing_versions), default=0) + 1
-            for row in rows:
-                row['version'] = next_version
-                row['is_current'] = True
-            inserted_ids = self.repo.insert_baseline_version(
-                rows, demote_source_id=command.source_id, demote_category=category)
-
-            write_benchmark_audit(AuditEvent.BENCHMARK_BASELINE_IMPORTED, 'benchmark_baseline', {
+        write_benchmark_audit(AuditEvent.BENCHMARK_BASELINE_IMPORTED, 'benchmark_baseline', {
+            'source_id': command.source_id,
+            'source_name': source.get('name'),
+            'category': category,
+            'version': next_version,
+            'entry_count': len(inserted_ids),
+            'error_count': len(errors),
+            'published_by': command.published_by or '',
+        })
+        return {
+            'success': True,
+            'message': f'基线导入成功：v{next_version}（{len(inserted_ids)} 条，{len(errors)} 行校验失败）',
+            'data': {
                 'source_id': command.source_id,
-                'source_name': source.get('name'),
                 'category': category,
                 'version': next_version,
+                'is_new_version': True,
                 'entry_count': len(inserted_ids),
-                'error_count': len(errors),
-                'published_by': command.published_by or '',
-            })
-            return {
-                'success': True,
-                'message': f'基线导入成功：v{next_version}（{len(inserted_ids)} 条，{len(errors)} 行校验失败）',
-                'data': {
-                    'source_id': command.source_id,
-                    'category': category,
-                    'version': next_version,
-                    'is_new_version': True,
-                    'entry_count': len(inserted_ids),
-                    'errors': errors,
-                    'imported': len(inserted_ids),
-                },
-                'code': 201,
-            }
-        except Exception as e:
-            logger.exception('外部基线导入失败')
-            return {'success': False, 'message': f'基线导入失败: {e}', 'data': None, 'code': 301}
+                'errors': errors,
+                'imported': len(inserted_ids),
+            },
+            'code': 201,
+        }
 
     # ---------- 指标映射 ----------
 
@@ -290,9 +304,10 @@ class BenchmarkBaselineService:
                              'metric_code': mapping.metric_code, 'direction': mapping.direction.value,
                              'unit': mapping.unit, 'scenario_tags': mapping.scenario_tags,
                              'active': mapping.active}, 'code': 0}
-        except Exception as e:
+        except Exception:
             logger.exception('更新指标映射失败')
-            return {'success': False, 'message': f'更新指标映射失败: {e}', 'data': None, 'code': 301}
+            return {'success': False, 'message': '更新指标映射失败，请稍后重试',
+                    'data': None, 'code': 301}
 
 
 # 模块级默认实例（接口层使用；单测可自建实例注入替身）

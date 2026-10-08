@@ -84,7 +84,12 @@ class FakeRepo:
         ]
 
     def insert_baseline_version(self, rows, demote_source_id, demote_category):
-        # 模拟同事务：旧当前版本翻转 False → 新行 is_current=True
+        # 模拟同事务：行锁内分配版本号 + 旧当前版本翻转 False → 新行 is_current=True
+        next_version = max(
+            (r['version'] for r in self.rows
+             if r['source_id'] == demote_source_id and r['category'] == demote_category),
+            default=0,
+        ) + 1
         for r in self.rows:
             if (r['source_id'] == demote_source_id and r['category'] == demote_category
                     and r['is_current']):
@@ -92,11 +97,15 @@ class FakeRepo:
         ids = []
         for row in rows:
             record = dict(row)
+            record.pop('version', None)
+            record.pop('is_current', None)
+            record['version'] = next_version
+            record['is_current'] = True
             record['id'] = self.next_id
             self.next_id += 1
             self.rows.append(record)
             ids.append(record['id'])
-        return ids
+        return {'version': next_version, 'ids': ids}
 
     def list_current_baselines(self, **kwargs):
         return {'items': [], 'total': 0, 'page': 1, 'per_page': 20, 'pages': 0}
@@ -179,6 +188,39 @@ class TestRowValidation:
         result = service.import_baselines(ImportBenchmarkBaselinesCommand(
             source_id=1, category='asr', entries=[_entry(value='abc')]))
         assert result['data']['errors'][0]['field'] == 'value'
+
+    def test_nan_value_row_error(self):
+        # 审计 P3-4：NaN 入库会毒化整组排行（竞赛排名全并列），逐行拦截
+        repo = FakeRepo()
+        service = BenchmarkBaselineService(repo)
+        result = service.import_baselines(ImportBenchmarkBaselinesCommand(
+            source_id=1, category='asr', entries=[_entry(value=float('nan'))]))
+        assert result['success'] is False and result['code'] == 104
+        assert result['data']['errors'][0]['field'] == 'value'
+        assert '有限数值' in result['data']['errors'][0]['message']
+        assert repo.rows == []
+
+    def test_inf_value_row_error(self):
+        # 审计 P3-4：Infinity 同样拦截
+        repo = FakeRepo()
+        service = BenchmarkBaselineService(repo)
+        result = service.import_baselines(ImportBenchmarkBaselinesCommand(
+            source_id=1, category='asr',
+            entries=[_entry(value=float('inf')), _entry(value=float('-inf'))]))
+        assert result['success'] is False and result['code'] == 104
+        assert len(result['data']['errors']) == 2
+        assert repo.rows == []
+
+    def test_valid_row_not_blocked_by_nan_row(self):
+        # NaN 行拦截不影响合法行入库
+        repo = FakeRepo()
+        service = BenchmarkBaselineService(repo)
+        result = service.import_baselines(ImportBenchmarkBaselinesCommand(
+            source_id=1, category='asr',
+            entries=[_entry(value=float('nan')), _entry(model_name='Whisper', value=8.1)]))
+        assert result['success'] is True
+        assert result['data']['entry_count'] == 1
+        assert len(result['data']['errors']) == 1
 
     def test_invalid_direction_row_error(self):
         service = BenchmarkBaselineService(FakeRepo())

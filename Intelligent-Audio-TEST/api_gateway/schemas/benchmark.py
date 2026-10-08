@@ -13,10 +13,9 @@ from api_gateway.schemas.base import APIModel
 
 
 class BenchmarkRankingComputeRequest(APIModel):
-    """排行计算请求（全字段可选 = 全量重算）"""
+    """排行计算请求（全字段可选 = 全量重算；不支持按任务范围，见设计文档 §7.1）"""
     suite: Optional[str] = Field(None)
     category: Optional[str] = Field(None)
-    published_task_id: Optional[int] = Field(None)
     source: Optional[str] = Field(None, description='platform_test / external_import')
 
 

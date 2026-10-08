@@ -12,7 +12,7 @@
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
-    Index,
+    Index, UniqueConstraint,
 )
 
 
@@ -20,6 +20,9 @@ class BenchmarkRanking(Base):
     """Benchmark 排行结果（ReadModel）。"""
     __tablename__ = 'benchmark_rankings'
     __table_args__ = (
+        # 排行行唯一性兜底（并发重算防重复行）：组内每来源每主体至多一行
+        UniqueConstraint('category', 'metric_code', 'scenario_key', 'source',
+                         'subject_name', name='uq_benchmark_ranking_row'),
         Index('idx_benchmark_ranking_group', 'benchmark_suite', 'category', 'metric_code', 'source'),
         Index('idx_benchmark_ranking_subject', 'subject_name'),
         Index('idx_benchmark_ranking_pt', 'published_task_id'),

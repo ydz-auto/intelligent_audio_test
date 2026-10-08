@@ -16,16 +16,20 @@ from report_service.domain.entities.benchmark import BaselineDraftEntry
 class ComputeBenchmarkRankingCommand:
     """触发排行计算命令（幂等：重复计算同口径返回相同结果，ReadModel 整体刷新）。
 
+    仅支持全量重算（设计文档 §7.1）：按任务范围筛选会造成整组刷新时
+    其他任务的排行行被静默删除，故不提供任务级范围参数。
+    实测轨始终拉取全部 benchmark=true 已发布任务。
+
     Attributes:
         suite: 可选测试集筛选（只重算该测试集）
         category: 可选被测类别筛选
-        published_task_id: 可选已发布任务筛选（只重算该任务引用的分组）
         source: 可选数据来源筛选（platform_test / external_import）
+        operator: 触发人（审计；网关注入认证身份）
     """
     suite: Optional[str] = None
     category: Optional[str] = None
-    published_task_id: Optional[int] = None
     source: Optional[str] = None
+    operator: str = ''
 
 
 @dataclass(frozen=True)

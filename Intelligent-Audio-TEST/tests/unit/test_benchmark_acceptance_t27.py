@@ -13,6 +13,7 @@
 """
 import os
 import tempfile
+from datetime import datetime
 
 import pytest
 
@@ -289,6 +290,52 @@ class TestServiceEdgesRealRepo:
         assert any(s['reason'] == 'no_mapping' and s['metric'] == 'WER'
                    for s in result['data']['skipped'])
         assert repo.query_rankings({}) == []
+
+
+# ==================== 审计打回修复回归（INT-27 二次提测，真仓储） ====================
+
+class TestConcurrencyBackstopsRealRepo:
+    def test_insert_version_allocates_version_in_txn(self, sqlite_db):
+        # 审计 P3-3：版本号由仓储在行锁事务内分配（行不携带 version/is_current），
+        # 并发导入不可能产生重复版本号 / 双 is_current
+        repo = BenchmarkRepositoryImpl()
+        source = _seed_source(repo)
+        base_row = {
+            'source_id': source['id'], 'category': 'asr', 'model_name': 'Nova',
+            'vendor': '', 'metric_code': 'WER', 'metric_name': 'WER', 'value': 5.6,
+            'unit': '%', 'direction': 'lower_is_better', 'scenario_tags': ['普通话通用'],
+            'sample_size': 1000, 'metric_date': '2026-09-01',
+        }
+        first = repo.insert_baseline_version(
+            [dict(base_row)], demote_source_id=source['id'], demote_category='asr')
+        assert first['version'] == 1 and len(first['ids']) == 1
+        second = repo.insert_baseline_version(
+            [dict(base_row, value=5.9)], demote_source_id=source['id'], demote_category='asr')
+        assert second['version'] == 2
+        versions = repo.list_baseline_versions(source['id'], 'asr')
+        assert [v['is_current'] for v in versions] == [True, False]  # 单一当前版本
+
+    def test_ranking_row_unique_constraint_blocks_duplicates(self, sqlite_db):
+        # 审计 P3-3：ReadModel 行唯一约束兜底——组内同来源同主体重复插入被 DB 拒绝
+        repo = BenchmarkRepositoryImpl()
+        row = {
+            'source': 'platform_test', 'subject_name': 'Moshi', 'subject_type': 'app',
+            'category': 'asr', 'metric_code': 'WER', 'metric_value': 7.0,
+            'direction': 'lower_is_better', 'scenario_key': '通用',
+            'benchmark_suite': 'general', 'computed_at': datetime.now(),
+        }
+        repo.replace_ranking_rows(
+            [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
+              'source': 'platform_test'}],
+            [dict(row)])
+        with pytest.raises(Exception):
+            repo.replace_ranking_rows(
+                [{'category': 'asr', 'metric_code': 'WER', 'scenario_key': '通用',
+                  'source': 'platform_test'}],
+                [dict(row), dict(row, metric_value=8.0)])
+        # 唯一冲突回滚后原数据完好
+        rows = repo.query_rankings({})
+        assert len(rows) == 1 and rows[0]['metric_value'] == pytest.approx(7.0)
 
 
 # ==================== 行为快照：ReadModel 按 key 刷新的已知边界 ====================

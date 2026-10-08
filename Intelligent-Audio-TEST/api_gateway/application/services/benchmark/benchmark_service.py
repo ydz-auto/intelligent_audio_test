@@ -40,7 +40,10 @@ class BenchmarkService:
             req = BenchmarkRankingComputeRequest.model_validate(request.get_json(silent=True) or {})
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", code=ErrorCode.INVALID_PARAMS, http_code=400)
-        result = _benchmark_acl.compute_ranking(req.model_dump(by_alias=False, exclude_none=True))
+        payload = req.model_dump(by_alias=False, exclude_none=True)
+        # 审计操作人以网关认证身份为准（设计文档 §9）
+        payload['operator'] = request.username
+        result = _benchmark_acl.compute_ranking(payload)
         if not result.get('success'):
             return error_response(
                 result.get('message', '排行计算失败'),
@@ -66,7 +69,10 @@ class BenchmarkService:
             req = BenchmarkBaselineImportRequest.model_validate(request.get_json())
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", code=ErrorCode.INVALID_PARAMS, http_code=400)
-        result = _benchmark_acl.import_baselines(req.model_dump(by_alias=False, exclude_none=True))
+        payload = req.model_dump(by_alias=False, exclude_none=True)
+        # 审计操作人以网关认证身份为准，前端自报值仅作未认证场景回退（设计文档 §9）
+        payload['published_by'] = request.username or payload.get('published_by') or ''
+        result = _benchmark_acl.import_baselines(payload)
         if not result.get('success'):
             return error_response(
                 result.get('message', '基线导入失败'),

@@ -7,7 +7,7 @@
 - 读操作 -> BenchmarkQueryHandler（只读 ReadModel，无写副作用）
 
 路由列表（设计文档 §7）：
-    POST /api/benchmarks/ranking/compute        全量/按范围重算排行
+    POST /api/benchmarks/ranking/compute        全量重算排行（设计文档 §7.1）
     GET  /api/benchmarks/ranking                排行查询（suite/category/metricCode/source/...）
     GET  /api/benchmarks/ranking/subjects       参与排行的被测主体列表
     GET  /api/benchmarks/sources                数据源列表
@@ -57,7 +57,6 @@ class BenchmarkCommandRequest(BaseModel):
     """排行计算请求（全字段可选 = 全量重算）。"""
     suite: Optional[str] = None
     category: Optional[str] = None
-    published_task_id: Optional[int] = None
     source: Optional[str] = None
 
 
@@ -113,7 +112,6 @@ def compute_ranking(req: BenchmarkCommandRequest):
     command = ComputeBenchmarkRankingCommand(
         suite=(req.suite or '').strip() or None,
         category=(req.category or '').strip() or None,
-        published_task_id=req.published_task_id,
         source=(req.source or '').strip() or None,
     )
     return _command_handler.handle_compute_ranking(command)

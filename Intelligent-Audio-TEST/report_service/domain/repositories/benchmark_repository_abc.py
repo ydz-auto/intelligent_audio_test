@@ -97,11 +97,15 @@ class BenchmarkRepository(ABC):
     @abstractmethod
     def insert_baseline_version(
         self, rows: List[Dict[str, Any]], demote_source_id: int, demote_category: str,
-    ) -> List[int]:
-        """写入新版本基线行（同事务：旧版本 is_current 翻转 False → 新行 is_current=True）。
+    ) -> Dict[str, Any]:
+        """写入新版本基线行（同事务：锁内分配版本号 → 旧版本 is_current 翻转
+        False → 新行 is_current=True）。
+
+        版本号由实现在本事务内分配（当前最大版本 + 1），调用方传入的行
+        不携带 version / is_current。
 
         Returns:
-            新行 ID 列表
+            {'version': 新版本号, 'ids': 新行 ID 列表}
         """
         ...
 

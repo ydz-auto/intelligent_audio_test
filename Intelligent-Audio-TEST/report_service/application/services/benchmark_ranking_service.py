@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -32,6 +33,7 @@ from report_service.domain.entities.benchmark import (
     RankingDirection,
     RankingEntry,
     RankingSource,
+    SubjectType,
 )
 from report_service.domain.services.benchmark_metric_mapper import (
     resolve_external_metric,
@@ -45,6 +47,10 @@ from shared.models.common_enums import AuditEvent
 logger = logging.getLogger(__name__)
 
 _SOURCE_VALUES = {source.value for source in RankingSource}
+
+# 并发重算串行化（事件线程 × 手动触发）：ReadModel 整组删插非并发安全，
+# 串行避免同组并发刷新；跨进程冲突由 ReadModel 行唯一约束兜底（失败保留旧榜）
+_COMPUTE_LOCK = threading.Lock()
 
 
 def _default_repo():
@@ -73,12 +79,12 @@ def _resolve_subject(summary: Dict[str, Any], fallback_name: str) -> Tuple[str, 
         api = apis[0]
         raw_type = (api.get('type') or api.get('protocol') or 'http').lower()
         device_type = 'websocket_api' if 'websocket' in raw_type else 'http_api'
-        return (api.get('name') or fallback_name, device_type, 'closed_source')
+        return (api.get('name') or fallback_name, device_type, SubjectType.CLOSED_SOURCE.value)
     if devices:
         device = devices[0]
         name = device.get('app_name') or device.get('name') or fallback_name
-        return (name, 'physical', 'app')
-    return (fallback_name, '', 'closed_source')
+        return (name, 'physical', SubjectType.APP.value)
+    return (fallback_name, '', SubjectType.CLOSED_SOURCE.value)
 
 
 def _scenario_of(tags: Optional[List[str]]) -> str:
@@ -111,19 +117,17 @@ class BenchmarkRankingService:
     # ---------- 双轨数据采集 ----------
 
     def _collect_platform_entries(
-        self, command: ComputeBenchmarkRankingCommand,
-        mappings_by_dimension: Dict[str, MetricMapping],
+        self, mappings_by_dimension: Dict[str, MetricMapping],
     ) -> Tuple[List[RankingEntry], List[Dict[str, Any]]]:
         """实测轨：已发布任务冻结报告快照 → RankingEntry 列表。
 
+        始终拉取全部 benchmark=true 已发布任务（全量重算口径）；
         无报告的已发布任务跳过并标记 no_report；维度无映射配置的指标
         跳过并标记 no_mapping（设计文档 §10）。
         """
         entries: List[RankingEntry] = []
         skipped: List[Dict[str, Any]] = []
         for pt in self.pt_acl.list_benchmark_published_tasks():
-            if command.published_task_id and pt.get('id') != command.published_task_id:
-                continue
             detail = self.pt_acl.get_published_task_detail(pt.get('id')) or {}
             snapshot = detail.get('report_snapshot') or {}
             summary = snapshot.get('summary') or {}
@@ -199,7 +203,7 @@ class BenchmarkRankingService:
                 category=row.get('category') or '',
                 scenario_key=_scenario_of(
                     row.get('scenario_tags') or mapping.scenario_tags),
-                subject_type='closed_source',
+                subject_type=SubjectType.CLOSED_SOURCE.value,
                 device_type='',
                 baseline_id=row.get('id'),
             ))
@@ -292,7 +296,11 @@ class BenchmarkRankingService:
     # ---------- 入口 ----------
 
     def compute_ranking(self, command: ComputeBenchmarkRankingCommand) -> Dict[str, Any]:
-        """排行计算：合并双轨 → 映射 → 分组 → 6 算法 → ReadModel 刷新 + 审计。"""
+        """排行计算：合并双轨 → 映射 → 分组 → 6 算法 → ReadModel 刷新 + 审计。
+
+        失败语义（设计文档 §10）：采集 / 计算 / 刷新任一环节失败即整体失败，
+        不触碰 ReadModel，上次排行结果保持可用。
+        """
         try:
             if command.source and command.source not in _SOURCE_VALUES:
                 return {'success': False, 'message': f'非法数据来源: {command.source}',
@@ -306,7 +314,7 @@ class BenchmarkRankingService:
             skipped: List[Dict[str, Any]] = []
             if not command.source or command.source == RankingSource.PLATFORM_TEST.value:
                 platform_entries, platform_skipped = self._collect_platform_entries(
-                    command, mappings_by_dimension)
+                    mappings_by_dimension)
                 entries.extend(platform_entries)
                 skipped.extend(platform_skipped)
             if not command.source or command.source == RankingSource.EXTERNAL_IMPORT.value:
@@ -353,15 +361,16 @@ class BenchmarkRankingService:
 
             unique_keys = list(refresh_keys.values())
 
-            written = self.repo.replace_ranking_rows(unique_keys, rows)
+            with _COMPUTE_LOCK:
+                written = self.repo.replace_ranking_rows(unique_keys, rows)
             computed_at = datetime.now().isoformat()
             write_benchmark_audit(AuditEvent.BENCHMARK_RANKING_COMPUTED, 'benchmark_ranking', {
                 'rows_written': written,
                 'group_count': len(unique_keys),
                 'suite': command.suite or '',
                 'category': command.category or '',
-                'published_task_id': command.published_task_id or '',
                 'source': command.source or '',
+                'operator': command.operator or '',
             })
             return {
                 'success': True,
@@ -375,9 +384,10 @@ class BenchmarkRankingService:
                 },
                 'code': 0,
             }
-        except Exception as e:
+        except Exception:
             logger.exception('Benchmark 排行计算失败')
-            return {'success': False, 'message': f'排行计算失败: {e}', 'data': None, 'code': 301}
+            return {'success': False, 'message': '排行计算失败，请稍后重试',
+                    'data': None, 'code': 301}
 
 
 # 模块级默认实例（接口层使用；单测可自建实例注入替身）

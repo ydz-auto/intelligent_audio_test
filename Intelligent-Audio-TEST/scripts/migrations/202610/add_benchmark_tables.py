@@ -92,7 +92,10 @@ TABLE_DDL = {
             gap_median DOUBLE PRECISION,
             delta_external DOUBLE PRECISION,
             scenario_key VARCHAR(120),
-            computed_at TIMESTAMP NOT NULL DEFAULT NOW()
+            computed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            -- 排行行唯一性兜底（并发重算防重复行）：组内每来源每主体至多一行
+            CONSTRAINT uq_benchmark_ranking_row
+                UNIQUE (category, metric_code, scenario_key, source, subject_name)
         )
     """,
     'benchmark_metric_mappings': """
