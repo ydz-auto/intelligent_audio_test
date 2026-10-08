@@ -40,6 +40,8 @@ from shared.config.service_ports import (
     API_ADAPTER_SERVICE_GRPC_PORT,
     AUDIO_SERVICE_GRPC_PORT,
     DEVICE_SERVICE_GRPC_PORT,
+    TRANSFER_AGENT_HTTP_PORT,
+    TRANSFER_AGENT_GRPC_PORT,
     REDIS_PORT,
     POSTGRESQL_PORT,
     RUSTFS_PORT,
@@ -73,6 +75,7 @@ CHILD_ENV = os.environ.copy()
 # - HTTP 服务用 uvicorn 启动 {dir}.app:app
 # - gRPC-only 服务（audio_service / device_service）用 python -m {dir}.interfaces.grpc.server 启动
 # - report_service HTTP 端口改为 5006，避免与 api_adapter_service 的 5008 冲突
+# - transfer_agent（INT-28 跨区传输）HTTP 5010 / gRPC 50101
 services = [
     {'name': 'api_gateway',        'port': API_GATEWAY_PORT,            'grpc_port': None,                          'dir': 'api_gateway',         'http': True},
     {'name': 'task_service',        'port': TASK_SERVICE_HTTP_PORT,     'grpc_port': TASK_SERVICE_GRPC_PORT,        'dir': 'task_service',        'http': True},
@@ -83,6 +86,7 @@ services = [
     {'name': 'report_service',      'port': REPORT_SERVICE_HTTP_PORT,   'grpc_port': REPORT_SERVICE_GRPC_PORT,      'dir': 'report_service',      'http': True},
     {'name': 'auth_service',        'port': AUTH_SERVICE_HTTP_PORT,      'grpc_port': AUTH_SERVICE_GRPC_PORT,         'dir': 'auth_service',        'http': True},
     {'name': 'api_adapter_service', 'port': API_ADAPTER_SERVICE_HTTP_PORT, 'grpc_port': API_ADAPTER_SERVICE_GRPC_PORT, 'dir': 'api_adapter_service', 'http': True},
+    {'name': 'transfer_agent',      'port': TRANSFER_AGENT_HTTP_PORT,   'grpc_port': TRANSFER_AGENT_GRPC_PORT,      'dir': 'transfer_agent',      'http': True},
     # gRPC-only 服务：无 app.py，仅启动 gRPC server
     {'name': 'audio_service',       'port': None,                       'grpc_port': AUDIO_SERVICE_GRPC_PORT,        'dir': 'audio_service',      'http': False},
     {'name': 'device_service',      'port': None,                       'grpc_port': DEVICE_SERVICE_GRPC_PORT,       'dir': 'device_service',      'http': False},

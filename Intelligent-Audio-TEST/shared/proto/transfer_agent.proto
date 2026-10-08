@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package transfer;
+
+// ===== 跨区网络传输服务（transfer_agent，T-A / T-B 双实例形态）=====
+//
+// 职责：跨区传输链路的打包、分片、签名、续传、校验（设计文档 09_跨区网络传输方案 §4.2）。
+// 调用方：
+//   - 本区微服务（evaluation_service / task_service / report_service）经 gRPC 发起传输
+//   - 远端 transfer_agent 经 HTTP /internal/transfer/* 收包（跨区走 HTTPS 过网关）
+//
+// 传输包协议字段（transfer_id / pkg_type / signature / ttl / ephemeral 等）见
+// CreateTransferRequest；签名规则：hmac_sha256(预共享token, canonical_string)，
+// canonical_string 见 transfer_agent.domain.services.signature_service。
+service TransferAgentService {
+  // 创建传输会话（幂等：同 transfer_id 且 file_hash 一致直接返回已存在会话）
+  rpc CreateTransfer(CreateTransferRequest) returns (TransferActionResponse);
+  // 上传一个分片（幂等去重：同分片同 checksum 重复上传直接成功）
+  rpc UploadChunk(UploadChunkRequest) returns (TransferActionResponse);
+  // 查询传输状态与已收分片清单（断点续传依据）
+  rpc GetTransferStatus(GetTransferStatusRequest) returns (TransferStatusResponse);
+  // 结束传输：合并分片 + file_hash 完整性校验
+  rpc CompleteTransfer(CompleteTransferRequest) returns (TransferActionResponse);
+  // 查询传输包元数据（含审计流水字段）
+  rpc GetTransfer(GetTransferRequest) returns (TransferStatusResponse);
+}
+
+message CreateTransferRequest {
+  string transfer_id = 1;    // 全局唯一，幂等去重键
+  string pkg_type = 2;       // EVAL_REQUEST | EVAL_RESULT | REPORT_SYNC | DATA_SYNC | C_REPORT | C_RESULT
+  string src_zone = 3;       // 源区 A | B | C
+  string dst_zone = 4;       // 目的区 A | B | C
+  string category = 5;       // case-result | audios | reports
+  string key = 6;            // 对象键，如 task_1/case_2/dev_3/result.wav
+  string file_hash = 7;      // sha256:<hex>，完成时校验
+  int64 file_size = 8;       // 字节数，分片数由此计算
+  string meta = 9;           // JSON（task_id / eval_params 等）
+  int32 ttl_seconds = 10;    // 传输有效期，超时清理
+  bool ephemeral = 11;       // true=仅中转临时处理（不落目的区持久存储）
+  string timestamp = 12;     // 发起方 ISO8601 时间，参与签名
+  string signature = 13;     // hmac_sha256(token, canonical_string)
+  string token = 14;         // 访问层预共享 token（TOKEN_A_B / TOKEN_B_C）
+}
+
+message UploadChunkRequest {
+  string transfer_id = 1;
+  int32 chunk_index = 2;     // 从 0 开始
+  bytes data = 3;            // 分片数据（默认 4MB/片，末片可小）
+  string checksum = 4;       // 分片 sha256 hex，去重与完整性依据
+  string token = 5;          // 访问层预共享 token
+}
+
+message GetTransferStatusRequest {
+  string transfer_id = 1;
+  string token = 2;          // 访问层预共享 token
+}
+
+message CompleteTransferRequest {
+  string transfer_id = 1;
+  string token = 2;          // 访问层预共享 token
+}
+
+message GetTransferRequest {
+  string transfer_id = 1;
+  string token = 2;          // 访问层预共享 token
+}
+
+// 统一响应结构（对齐 shared/proto/README.md 约定）
+message TransferActionResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;           // JSON：{transfer_id, status, total_chunks, received_chunks, dedup, ...}
+}
+
+message TransferStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;           // JSON：传输包元数据 + received_chunks 分片清单
+}

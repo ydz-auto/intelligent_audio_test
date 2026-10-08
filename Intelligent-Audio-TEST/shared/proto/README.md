@@ -13,6 +13,7 @@
 | `adapter_service.proto` | api_adapter_service | e2e_test_service / task_service | 多厂商 API 适配器服务 |
 | `algorithm_service.proto` | algorithm_service | api_gateway / task_service | 算法分组/定义管理 |
 | `report_service.proto` | report_service | api_gateway | 报告配置服务 |
+| `transfer_agent.proto` | transfer_agent | evaluation_service / task_service / 远端 transfer_agent | 跨区传输会话/分片/状态/完成（T-A / T-B） |
 
 ## 待办
 
@@ -34,7 +35,7 @@
 在当前目录（`shared/proto`）下执行：
 
 ```bash
-protoc --python_out=. --grpc_python_out=. -I. e2e_service.proto task_service.proto api_test_service.proto evaluation_service.proto adapter_service.proto algorithm_service.proto report_service.proto
+protoc --python_out=. --grpc_python_out=. -I. e2e_service.proto task_service.proto api_test_service.proto evaluation_service.proto adapter_service.proto algorithm_service.proto report_service.proto auth_service.proto transfer_agent.proto
 ```
 
 生成后的文件（`*_pb2.py` 与 `*_pb2_grpc.py`）会位于本目录，作为 Python 包的一部分被各服务 import。

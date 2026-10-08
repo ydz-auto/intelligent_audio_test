@@ -132,3 +132,37 @@ class AuditEvent(str, Enum):
     命名对齐设计文档《任务发布功能设计文档》§9 /《报告Benchmark排行功能设计文档》。
     """
     PUBLISHED_TASK_BENCHMARK_MARKED = 'PUBLISHED_TASK_BENCHMARK_MARKED'
+
+
+class PkgType(str, Enum):
+    """跨区传输包类型枚举 — transfer_agent 传输包协议（设计文档 09_跨区网络传输方案 §4.2.1）
+
+    EVAL_REQUEST  A/B→B→C  评估输入包（算法结果 JSON + 所需文件，C 侧临时处理不落持久盘）
+    EVAL_RESULT   C→B      评估结果包（随第三方 API 同步响应返回）
+    REPORT_SYNC   A↔B      报告同步
+    DATA_SYNC     A↔B      A/B 之间任务数据同步
+    C_REPORT      C→B→A    C 自产报告推送（备选方案）
+    C_RESULT      C→B→A    C 自产评估结果推送（备选方案）
+    """
+    EVAL_REQUEST = 'EVAL_REQUEST'
+    EVAL_RESULT = 'EVAL_RESULT'
+    REPORT_SYNC = 'REPORT_SYNC'
+    DATA_SYNC = 'DATA_SYNC'
+    C_REPORT = 'C_REPORT'
+    C_RESULT = 'C_RESULT'
+
+
+class TransferStatus(str, Enum):
+    """跨区传输包状态枚举 — transfer_agent 传输流水状态机
+
+    CREATED      会话已创建（收到 CreateTransfer）
+    TRANSFERRING 分片传输中（已收到至少一个分片）
+    COMPLETED    传输完成（分片合并 + file_hash 校验通过）
+    FAILED       传输失败（合并校验失败等终态，需新建 transfer_id 重传）
+    EXPIRED      超过 TTL 被清理（分片/临时文件回收，流水保留供审计）
+    """
+    CREATED = 'CREATED'
+    TRANSFERRING = 'TRANSFERRING'
+    COMPLETED = 'COMPLETED'
+    FAILED = 'FAILED'
+    EXPIRED = 'EXPIRED'
