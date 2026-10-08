@@ -76,6 +76,7 @@
               <span class="pt-version-badge">v{{ ptItem.version }}</span>
               <span class="pt-card-name" :title="ptItem.name">{{ ptItem.name }}</span>
               <span class="pt-card-status" :class="ptItem.status">{{ statusText(ptItem.status) }}</span>
+              <span class="pt-benchmark-badge" v-if="ptItem.benchmark" title="参与 Benchmark 排行（实测轨数据源）">Benchmark</span>
               <span class="pt-card-version-count" v-if="(ptItem.versionCount ?? 1) > 1">共 {{ ptItem.versionCount }} 个版本</span>
               <span class="pt-card-current" v-if="ptItem.isCurrent">当前</span>
             </div>
@@ -115,6 +116,16 @@
               <span class="pt-card-status" :class="v.status">{{ statusText(v.status) }}</span>
               <span class="pt-detail-time">{{ formatDate(v.publishedAt) }}</span>
               <span class="pt-detail-source" v-if="v.sourceTaskId">来源任务 #{{ v.sourceTaskId }}</span>
+            </div>
+          </div>
+
+          <div class="pt-detail-section" v-if="benchmarkInfo">
+            <h4 class="pt-detail-title"><i class="fas fa-ranking-star"></i> Benchmark 标记（发布时冻结）</h4>
+            <div class="pt-detail-row">
+              <span class="pt-benchmark-badge">Benchmark</span>
+              <span class="pt-detail-name">参与 Benchmark 排行（实测轨数据源）</span>
+              <span class="pt-detail-time" v-if="benchmarkInfo.suite">测试集：{{ benchmarkInfo.suite }}</span>
+              <span class="pt-detail-time" v-if="benchmarkInfo.categoryLabel">类别：{{ benchmarkInfo.categoryLabel }}</span>
             </div>
           </div>
 
@@ -188,6 +199,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { usePublishedTasks, PublishedTaskStatusEnum } from '../../composables/publishedTask/usePublishedTasks';
 import { tasksApi } from '../../infrastructure/api';
+import { BenchmarkCategoryLabels, type BenchmarkCategoryType } from '../../domain/enums';
 import type { Task } from '../../domain/model/task';
 import type { PublishedTaskItem } from '../../domain/model/publishedTask';
 import PublishTaskModal from '../../components/published-task/PublishTaskModal.vue';
@@ -204,6 +216,17 @@ const dailyTasks = ref<Task[]>([]);
 const sourceTaskId = computed(() =>
   pt.detail?.sourceTaskId ?? (pt.detail?.snapshotConfig as any)?.sourceTaskId ?? null
 );
+
+/** 详情的 Benchmark 展示信息（行级标记 + 快照冻结的测试集/类别） */
+const benchmarkInfo = computed(() => {
+  if (!pt.detail?.benchmark) return null;
+  const snapshot = pt.detail.snapshotConfig as any;
+  const category = snapshot?.benchmarkCategory as string | undefined | null;
+  return {
+    suite: (snapshot?.benchmarkSuite as string | undefined | null) || '',
+    categoryLabel: category ? (BenchmarkCategoryLabels[category as BenchmarkCategoryType] ?? category) : '',
+  };
+});
 
 function handleFilterChange() {
   pt.page = 1;
@@ -267,9 +290,23 @@ function closePublishModal() {
   publishModalVisible.value = false;
 }
 
-async function handlePublishConfirm(payload: { sourceTaskId: number; name: string; description?: string; publishReason?: string }) {
+async function handlePublishConfirm(payload: {
+  sourceTaskId: number;
+  name: string;
+  description?: string;
+  publishReason?: string;
+  benchmark: boolean;
+  benchmarkSuite?: string;
+  benchmarkCategory?: string;
+}) {
   try {
-    await pt.publish(payload.sourceTaskId, payload.name, payload.description, payload.publishReason);
+    await pt.publish(
+      payload.sourceTaskId,
+      payload.name,
+      payload.description,
+      payload.publishReason,
+      { benchmark: payload.benchmark, benchmarkSuite: payload.benchmarkSuite, benchmarkCategory: payload.benchmarkCategory }
+    );
     closePublishModal();
     await pt.fetchList();
     alert('已发布任务创建成功');
@@ -572,6 +609,17 @@ onMounted(() => {
   background: #dcfce7;
   border-radius: 8px;
   padding: 1px 6px;
+}
+
+.pt-benchmark-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: #ede9fe;
+  color: #7c3aed;
+  white-space: nowrap;
 }
 
 .pt-card-desc {

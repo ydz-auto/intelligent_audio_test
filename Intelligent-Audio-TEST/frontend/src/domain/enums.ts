@@ -204,3 +204,22 @@ export const CalibrationStatus = {
 
 /** SPL 校准状态类型 */
 export type CalibrationStatusType = typeof CalibrationStatus[keyof typeof CalibrationStatus]
+
+/** Benchmark 被测类别枚举（值 = 网关 PublishedTaskCreateRequest.benchmark_category 契约值，快照 benchmarkCategory，排行分组用） */
+export const BenchmarkCategory = {
+  ASR: 'asr',
+  VOICE_LLM: 'voice_llm',
+  TTS: 'tts',
+  TRANSLATION: 'translation',
+} as const
+
+/** Benchmark 被测类别类型（由 BenchmarkCategory 派生的字符串联合） */
+export type BenchmarkCategoryType = typeof BenchmarkCategory[keyof typeof BenchmarkCategory]
+
+/** Benchmark 被测类别标签（展示用，与枚举值一一对应） */
+export const BenchmarkCategoryLabels: Record<BenchmarkCategoryType, string> = {
+  [BenchmarkCategory.ASR]: '语音识别（ASR）',
+  [BenchmarkCategory.VOICE_LLM]: '语音大模型（Voice LLM）',
+  [BenchmarkCategory.TTS]: '语音合成（TTS）',
+  [BenchmarkCategory.TRANSLATION]: '翻译（Translation）',
+}

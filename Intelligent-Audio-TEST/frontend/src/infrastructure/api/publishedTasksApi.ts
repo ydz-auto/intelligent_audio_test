@@ -20,6 +20,7 @@ interface PublishedTaskItemDto {
   description?: string | null;
   type: string;
   status: PublishedTaskStatus;
+  benchmark?: boolean;
   version: number;
   is_current: boolean;
   version_count?: number;
@@ -72,6 +73,7 @@ function toPublishedTaskItem(raw: PublishedTaskItemDto): PublishedTaskItem {
     description: raw.description ?? undefined,
     type: raw.type,
     status: raw.status,
+    benchmark: raw.benchmark ?? false,
     version: raw.version,
     isCurrent: raw.is_current,
     versionCount: raw.version_count,
@@ -125,6 +127,7 @@ export const publishedTasksApi = {
       description: dto.description ?? undefined,
       type: dto.type,
       status: dto.status,
+      benchmark: dto.benchmark ?? false,
       version: dto.version,
       isCurrent: dto.is_current,
       snapshotConfig: (dto.snapshot_config ?? {}) as unknown as PublishedTaskDetail['snapshotConfig'],
@@ -156,14 +159,25 @@ export const publishedTasksApi = {
     };
   },
 
-  /** 发布：日常任务 → 已发布任务 v1（请求体 snake_case） */
-  async publish(payload: { sourceTaskId: number; name: string; description?: string; publishReason?: string }) {
+  /** 发布：日常任务 → 已发布任务 v1（请求体 snake_case；benchmark 透传至快照与行级标记） */
+  async publish(payload: {
+    sourceTaskId: number;
+    name: string;
+    description?: string;
+    publishReason?: string;
+    benchmark?: boolean;
+    benchmarkSuite?: string;
+    benchmarkCategory?: string;
+  }) {
     const body: Record<string, any> = {
       source_task_id: payload.sourceTaskId,
       name: payload.name,
     };
     if (payload.description) body.description = payload.description;
     if (payload.publishReason) body.publish_reason = payload.publishReason;
+    if (payload.benchmark != null) body.benchmark = payload.benchmark;
+    if (payload.benchmarkSuite) body.benchmark_suite = payload.benchmarkSuite;
+    if (payload.benchmarkCategory) body.benchmark_category = payload.benchmarkCategory;
     const raw = await request<{ id: number }>('POST', '/published-tasks', body);
     return { id: raw?.id };
   },

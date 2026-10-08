@@ -17,6 +17,10 @@ export interface PublishedTaskSnapshot {
   algorithmParams: Record<string, unknown>;
   tags: string[];
   sourceTaskId: number;
+  /** Benchmark 测试集标识（发布时显式指定则随快照冻结，排行分组用） */
+  benchmarkSuite?: string | null;
+  /** Benchmark 被测类别（asr/voice_llm/tts/translation，发布时显式指定则随快照冻结） */
+  benchmarkCategory?: string | null;
 }
 
 /** 已发布任务列表项 */
@@ -27,6 +31,8 @@ export interface PublishedTaskItem {
   description?: string | null;
   type: string;
   status: PublishedTaskStatus;
+  /** 是否参与 Benchmark 排行（published_tasks.benchmark 行级布尔列） */
+  benchmark: boolean;
   version: number;
   isCurrent: boolean;
   versionCount?: number;
@@ -109,6 +115,8 @@ export interface PublishedTaskDetail {
   description?: string | null;
   type: string;
   status: PublishedTaskStatus;
+  /** 是否参与 Benchmark 排行（published_tasks.benchmark 行级布尔列） */
+  benchmark: boolean;
   version: number;
   isCurrent: boolean;
   snapshotConfig: PublishedTaskSnapshot;

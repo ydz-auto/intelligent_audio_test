@@ -44,6 +44,35 @@
               <label class="form-label">发布说明</label>
               <input v-model="form.publishReason" class="form-input" placeholder="例如：完成基线验证（可选）" />
             </div>
+
+            <div class="form-group">
+              <label class="form-checkbox-label">
+                <input type="checkbox" v-model="form.benchmark" :disabled="submitting" />
+                <span>参与 Benchmark 排行（实测轨数据源标记）</span>
+              </label>
+              <div class="form-hint">勾选后该已发布任务将进入 Benchmark 双轨排行的实测轨</div>
+            </div>
+
+            <template v-if="form.benchmark">
+              <div class="form-group">
+                <label class="form-label">Benchmark 测试集标识</label>
+                <input
+                  v-model="form.benchmarkSuite"
+                  class="form-input"
+                  placeholder="例如：librispeech-test-clean（可选，随快照冻结）"
+                  maxlength="128"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Benchmark 被测类别</label>
+                <select v-model="form.benchmarkCategory" class="form-select" :disabled="submitting">
+                  <option value="">不指定</option>
+                  <option v-for="(label, value) in BenchmarkCategoryLabels" :key="value" :value="value">
+                    {{ label }}
+                  </option>
+                </select>
+              </div>
+            </template>
           </div>
         </div>
         <div class="modal-footer">
@@ -60,6 +89,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import type { Task } from '../../domain/model/task';
+import { BenchmarkCategoryLabels } from '../../domain/enums';
 
 const props = defineProps<{
   tasks: Task[];
@@ -70,7 +100,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'confirm', payload: { sourceTaskId: number; name: string; description?: string; publishReason?: string }): void;
+  (e: 'confirm', payload: {
+    sourceTaskId: number;
+    name: string;
+    description?: string;
+    publishReason?: string;
+    benchmark: boolean;
+    benchmarkSuite?: string;
+    benchmarkCategory?: string;
+  }): void;
 }>();
 
 // 可发布状态（对齐后端 PUBLISHABLE_STATUSES）
@@ -81,11 +119,22 @@ const publishableTasks = computed(() =>
   (props.tasks || []).filter((t: any) => PUBLISHABLE_STATUSES.includes(t.status))
 );
 
-const form = ref<{ sourceTaskId: number | null; name: string; description: string; publishReason: string }>({
+const form = ref<{
+  sourceTaskId: number | null;
+  name: string;
+  description: string;
+  publishReason: string;
+  benchmark: boolean;
+  benchmarkSuite: string;
+  benchmarkCategory: string;
+}>({
   sourceTaskId: null,
   name: '',
   description: '',
   publishReason: '',
+  benchmark: false,
+  benchmarkSuite: '',
+  benchmarkCategory: '',
 });
 
 const selectedTask = computed(() =>
@@ -143,6 +192,9 @@ function handleConfirm() {
     name: form.value.name.trim(),
     description: form.value.description.trim() || undefined,
     publishReason: form.value.publishReason.trim() || undefined,
+    benchmark: form.value.benchmark,
+    benchmarkSuite: form.value.benchmark ? form.value.benchmarkSuite.trim() || undefined : undefined,
+    benchmarkCategory: form.value.benchmark ? form.value.benchmarkCategory || undefined : undefined,
   });
 }
 </script>
@@ -335,5 +387,22 @@ function handleConfirm() {
   margin-top: 6px;
   font-size: 12px;
   color: #9ca3af;
+}
+
+.form-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+.form-checkbox-label input[type='checkbox'] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary-color, #ff6a00);
+  cursor: pointer;
 }
 </style>

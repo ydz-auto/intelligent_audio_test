@@ -133,10 +133,22 @@ export function usePublishedTasks() {
     }
   }
 
-  async function publish(sourceTaskId: number, name: string, description?: string, publishReason?: string) {
+  async function publish(
+    sourceTaskId: number,
+    name: string,
+    description?: string,
+    publishReason?: string,
+    benchmarkOptions?: { benchmark: boolean; benchmarkSuite?: string; benchmarkCategory?: string }
+  ) {
     actionLoading.value = true;
     try {
-      const data = await publishedTasksApi.publish({ sourceTaskId, name, description, publishReason });
+      const data = await publishedTasksApi.publish({
+        sourceTaskId,
+        name,
+        description,
+        publishReason,
+        ...benchmarkOptions,
+      });
       await fetchList();
       return data?.id ?? null;
     } catch (error) {
