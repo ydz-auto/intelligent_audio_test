@@ -225,3 +225,13 @@ class AlgoReferenceParamsDTO:
     无固定 schema，result_data 保留完整负载供 dto_to_dict 还原。
     """
     result_data: Any = None
+
+
+@dataclass
+class AlgoFieldMappingDTO:
+    """算法字段映射快照 DTO（AlgorithmQueryService.GetFullFieldMapping 返回）。
+
+    返回值为 {'result': [...], 'reference': [...]}（元素为动态键 dict），
+    无固定 schema，result_data 保留完整负载供 dto_to_dict 还原。
+    """
+    result_data: Any = None

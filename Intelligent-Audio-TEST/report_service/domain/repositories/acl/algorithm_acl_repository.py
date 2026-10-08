@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 
 from report_service.domain.dto import (
+    AlgoFieldMappingDTO,
     AlgoNormalizedParamsDTO,
     AlgoReferenceParamsDTO,
     DimensionParamDTO,
@@ -28,4 +29,9 @@ class AlgorithmConfigAclRepository(ABC):
     @abstractmethod
     def get_reference_params_for_report(self, reference_params_col) -> AlgoReferenceParamsDTO:
         """获取报告用参考参数。"""
+        ...
+
+    @abstractmethod
+    def get_full_field_mapping(self, algorithm_type) -> Optional[AlgoFieldMappingDTO]:
+        """获取算法字段映射快照。"""
         ...

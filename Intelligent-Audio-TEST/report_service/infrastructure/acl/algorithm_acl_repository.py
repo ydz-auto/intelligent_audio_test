@@ -6,6 +6,7 @@ import logging
 from typing import List, Optional
 
 from report_service.domain.dto import (
+    AlgoFieldMappingDTO,
     AlgoNormalizedParamsDTO,
     AlgoReferenceParamsDTO,
     DimensionParamDTO,
@@ -70,4 +71,15 @@ class AlgorithmConfigAclRepositoryImpl(AlgorithmConfigAclRepository):
             return _attach(dict_to_dto(data, AlgoReferenceParamsDTO), data)
         except Exception as e:
             logger.warning("get_reference_params_for_report gRPC failed: %s", e)
+            return None
+
+    def get_full_field_mapping(self, algorithm_type) -> Optional[AlgoFieldMappingDTO]:
+        from shared.clients.grpc_clients import algo_get_full_field_mapping
+        try:
+            data = algo_get_full_field_mapping(algorithm_type)
+            if not isinstance(data, dict):
+                return None
+            return _attach(dict_to_dto(data, AlgoFieldMappingDTO), data)
+        except Exception as e:
+            logger.warning("get_full_field_mapping gRPC failed: %s", e)
             return None

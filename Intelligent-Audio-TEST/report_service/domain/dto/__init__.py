@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """report_service domain DTO 包。"""
 from report_service.domain.dto.report_acl_dto import (
+    AlgoFieldMappingDTO,
     AlgoNormalizedParamsDTO,
     AlgoReferenceParamsDTO,
     ApiConfigDTO,
@@ -21,6 +22,7 @@ from report_service.domain.dto.report_acl_dto import (
 )
 
 __all__ = [
+    'AlgoFieldMappingDTO',
     'AlgoNormalizedParamsDTO',
     'AlgoReferenceParamsDTO',
     'ApiConfigDTO',
