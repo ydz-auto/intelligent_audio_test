@@ -325,6 +325,7 @@ class APIExecutor(BaseExecutor):
             self._evaluate_result(
                 task_id=task_id, result_id=result_id, test_case_id=test_case_id,
                 algo_result=algo_result_dict, case_config=case_config,
+                case_reference_params=case_config.get('reference_params', {}) if case_config else {},
                 algorithm_type=algorithm_type, test_type='api',
                 case_algorithm_params=case_algorithm_params
             )

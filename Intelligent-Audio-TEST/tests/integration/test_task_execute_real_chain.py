@@ -20,7 +20,10 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
 - INT-38：api_test_service/core/api_executor.py _run_single_api 调用共享
   _evaluate_result 时漏传必填参数 case_reference_params（af2dbbd9 重构移除了其
   =None 默认值），评估提交必然 TypeError → 用例悬挂在 exec=completed/eval=pending
-  → 引擎死等，任务永久卡 running。
+  → 引擎死等，任务永久卡 running。（INT-38 已修复：调用点显式传
+  case_reference_params=case_config.get('reference_params', {})，与同文件
+  _log_single_api_result 及多轮会话 _submit_evaluation 同源取参；隔离探针改为
+  调用点 AST 检查，锁定测试转为常驻守卫）
 - INT-39：shared/utils/event_manager/_progress.py _build_test_cases_from_grpc 把
   进度载荷里的 error_message=None 直接传给 ProgressCaseItem（pydantic 严格 str），
   引擎线程在任务启动后的首次进度发射即崩溃死亡 → 任务永久卡 running。
@@ -55,8 +58,8 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
 
 隔离策略（测试侧自愈，不影响产品代码）：int35_quarantine 夹具对上述缺陷做
 "探针检测 + 最小替身"，仅在缺陷仍在时生效（缺陷修复后探针通过、补丁自动卸除，
-回归不会静默绕过修复后的产品代码）。其中 INT-38/41 各有一个
-xfail(strict) 锁定测试，修复后 XPASS 提醒移除标记；INT-39/43 已修复，其锁定
+回归不会静默绕过修复后的产品代码）。其中 INT-41 有一个
+xfail(strict) 锁定测试，修复后 XPASS 提醒移除标记；INT-38/39/43 已修复，其锁定
 测试转为常驻守卫；INT-40/42/45 为守卫型或
 非致命缺陷，无独立锁定测试。
 """
@@ -463,6 +466,24 @@ def gateway(pg_db, grpc_mesh):
 
 # ──────────────────────────── 已知缺陷的测试侧自愈隔离 ────────────────────────────
 
+def _int38_call_site_passes_case_reference_params():
+    """INT-38 探针：api 线性链 _run_single_api 调用 _evaluate_result 时是否
+    显式传 case_reference_params（签名默认值探测无法发现「调用点显式传参」类修复，
+    故对调用点做 AST 检查）。"""
+    import ast
+    import inspect
+
+    import api_test_service.core.api_executor as _api_exec
+    tree = ast.parse(inspect.getsource(_api_exec))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == '_run_single_api':
+            for sub in ast.walk(node):
+                if (isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                        and sub.func.attr == '_evaluate_result'):
+                    return any(kw.arg == 'case_reference_params' for kw in sub.keywords)
+    return False
+
+
 @pytest.fixture(scope='module')
 def int35_quarantine(oss_fast_fail, pg_db):
     """对 INT-38 / INT-39 / INT-40 / INT-41 / INT-43 五个执行链路缺陷做「探针检测 + 最小替身」隔离。
@@ -481,7 +502,8 @@ def int35_quarantine(oss_fast_fail, pg_db):
     orig_evaluate = BaseExecutor._evaluate_result
     sig = inspect.signature(orig_evaluate)
     param = sig.parameters['case_reference_params']
-    if param.default is inspect.Parameter.empty:
+    int38_call_site_ok = _int38_call_site_passes_case_reference_params()
+    if param.default is inspect.Parameter.empty and not int38_call_site_ok:
         # 位置序：self, task_id, result_id, test_case_id, algo_result, case_config, case_reference_params, ...
         case_ref_position = list(sig.parameters).index('case_reference_params') - 1  # 去掉 self
 
@@ -586,7 +608,7 @@ def int35_quarantine(oss_fast_fail, pg_db):
     mp.setattr(APIDriver, '_log', _apidriver_log_dedup)
 
     yield {
-        'int38_quarantined': param.default is inspect.Parameter.empty,
+        'int38_quarantined': param.default is inspect.Parameter.empty and not int38_call_site_ok,
         'int39_quarantined': probe_crashed,
         'int40_guarded': True,
         'int41_quarantined': True,
@@ -779,7 +801,6 @@ class TestTaskExecuteRealChain:
 
     def test_start_execute_progress_terminal(
             self, gateway, api_double, eval_double, int35_quarantine):
-        assert int35_quarantine['int38_quarantined'], '预期 INT-38 仍在（隔离生效）'
         assert int35_quarantine['int41_quarantined'], '预期 INT-41 仍在（隔离生效）'
         assert int35_quarantine['int43_quarantined'], '预期 INT-43 仍在（隔离生效）'
 
@@ -813,7 +834,7 @@ class TestTaskExecuteRealChain:
         assert reached, f'任务未在 {_WAIT_TERMINAL_SECONDS}s 内收敛到终态: ' \
                         f'{row.status if row else None}，现场:\n{_dump_chain_state(task_id)}'
         assert row.status == 'completed', \
-            f'隔离 INT-38/INT-39/INT-41/INT-43/INT-44 后任务应 completed（failed 视为回归）: ' \
+            f'隔离 INT-39/INT-41/INT-43/INT-44 后任务应 completed（failed 视为回归）: ' \
             f'{row.status}，现场:\n{_dump_chain_state(task_id)}\n' \
             f'api_double命中: {sorted({r["path"] for r in api_double.requests})}\n' \
             f'eval_double命中: {sorted({r["path"] for r in eval_double.requests})}'
@@ -948,18 +969,16 @@ class TestTaskExecuteRealChain:
 
 
 class TestKnownExecuteChainDefects:
-    """INT-38 / INT-41 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。（INT-39 / INT-43 / INT-44 已修复，相应锁定测试已移除或转为守卫）"""
+    """INT-41 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。
+    （INT-38 / INT-39 / INT-43 已修复，相应锁定测试转为常驻守卫；INT-44 已修复，锁定测试已移除）"""
 
-    @pytest.mark.xfail(strict=True, reason='INT-38：_evaluate_result 的 '
-                                           'case_reference_params 被重构移除默认值，调用点漏传')
-    def test_int38_evaluate_result_signature_has_default(self):
-        import inspect
-
-        from shared.infrastructure.base_executor import BaseExecutor
-        param = inspect.signature(BaseExecutor._evaluate_result) \
-            .parameters['case_reference_params']
-        assert param.default is not inspect.Parameter.empty, \
-            'INT-38 修复后 case_reference_params 应有默认值（或调用点显式传参后删除本测试）'
+    def test_int38_evaluate_result_call_site_passes_case_reference_params(self):
+        """常驻守卫：api 线性链 _run_single_api 调用 _evaluate_result 必须显式传
+        case_reference_params（INT-38：af2dbbd9 移除基类默认值后该调用点漏传，
+        评估提交必然 TypeError → 用例悬挂 exec=completed/eval=pending →
+        任务永久卡 running；本守卫防调用点回归）。"""
+        assert _int38_call_site_passes_case_reference_params(), \
+            'INT-38 回归：_run_single_api 调用 _evaluate_result 缺少 case_reference_params'
 
     def test_int39_progress_case_item_tolerates_none(self):
         from shared.schemas.socket_payloads import ProgressCaseItem
