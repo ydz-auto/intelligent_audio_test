@@ -166,6 +166,20 @@ class AuthErrorCode(str, Enum):
     PERMISSION_NOT_GRANTED = 'PERMISSION_NOT_GRANTED'
 
 
+class AuditLogCategory(str, Enum):
+    """审计类日志 category 枚举 — log_handler emit 分流按此判定入 DB 队列
+
+    审计事件（auth/benchmark）无 task_id/test_case_id，emit 分流不得按
+    任务/用例条件降级为只写本地文件：凡 category 属于本枚举的日志必须
+    落 logs 表（INT-30 P1 回归修复）。
+    """
+    AUTH = 'auth'
+    BENCHMARK = 'benchmark'
+
+
+AUDIT_LOG_CATEGORIES = frozenset(item.value for item in AuditLogCategory)
+
+
 class PkgType(str, Enum):
     """跨区传输包类型枚举 — transfer_agent 传输包协议（设计文档 09_跨区网络传输方案 §4.2.1）
 

@@ -345,3 +345,75 @@ class TestAuditEvents:
         assert captured[0]['event'].value == 'AUTH_ROLE_DELETED'
         assert captured[0]['content']['operator_id'] == 42
         assert captured[0]['content']['target_id'] == po.id
+
+
+class TestAuditLandsInLogsTable:
+    """P1 打回修复回归（验收标准 5 落库通道）：不桩 write_auth_audit，
+    走真实链路 write_auth_audit → log_not_emit → emit 分流入库队列 →
+    _process_batch → gRPC batch_create_logs（桩为直连真实 task_service
+    LogRepository.batch_create）→ logs 表真实落行。
+    """
+
+    def test_delete_role_audit_row_lands_in_logs_table(
+            self, servicer, monkeypatch, tmp_path):
+        import queue as _queue
+        from datetime import datetime
+
+        import shared.clients.grpc_clients as grpc_clients_mod
+        import shared.utils.log_handler._state as lh_state
+        from shared.models.database import Base
+        from shared.utils.log_handler import DatabaseLogHandler
+        from task_service.infrastructure.persistence.log_repository import (
+            log_repository as task_log_repository,
+        )
+        from task_service.infrastructure.persistence.models.system_models import Log
+
+        svc, pb = servicer
+        session = get_db_session()
+        Base.metadata.create_all(bind=session.get_bind(), tables=[Log.__table__])
+
+        def _fake_batch_create(logs_payload):
+            # prod 为 Postgres（timestamp 列可收 ISO 字符串）；SQLite DATETIME
+            # 绑定只收 datetime 对象，此处还原类型后再走真实仓储写入
+            fixed = []
+            for item in logs_payload:
+                item = dict(item)
+                t = item.get('time')
+                if isinstance(t, str):
+                    try:
+                        item['time'] = datetime.fromisoformat(t)
+                    except ValueError:
+                        pass
+                fixed.append(item)
+            return task_log_repository.batch_create(fixed)
+
+        monkeypatch.setattr(grpc_clients_mod, 'batch_create_logs', _fake_batch_create)
+        monkeypatch.chdir(tmp_path)
+        handler = DatabaseLogHandler()
+        handler.set_console_log(False)
+        handler.queue.put(None)  # 停掉后台 worker：主线程同步冲刷，消除线程竞争
+        monkeypatch.setattr(lh_state, '_global_db_handler', handler)
+
+        po = Role(name='audit_landing_role')
+        session.add(po)
+        session.commit()
+        resp = svc.DeleteRole(pb.DeleteRoleRequest(role_id=po.id, operator_id=42))
+        assert resp.success, resp.message
+
+        batch = []
+        while True:
+            try:
+                item = handler.queue.get_nowait()
+            except _queue.Empty:
+                break
+            if item is not None:
+                batch.append(item)
+        assert batch, '审计日志未进入 emit 入库队列'
+        handler._process_batch(batch)
+
+        rows = session.query(Log).filter_by(category='auth').all()
+        assert len(rows) == 1, f'logs 表 auth 审计行数错误: {len(rows)}'
+        payload = json.loads(rows[0].content)
+        assert payload['event'] == 'AUTH_ROLE_DELETED'
+        assert payload['operator_id'] == 42
+        assert payload['target_id'] == po.id

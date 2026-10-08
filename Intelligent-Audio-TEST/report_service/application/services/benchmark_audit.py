@@ -10,7 +10,7 @@ import json
 import logging
 from typing import Any, Dict
 
-from shared.models.common_enums import AuditEvent
+from shared.models.common_enums import AuditEvent, AuditLogCategory
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def write_benchmark_audit(
         payload['event'] = event.value
         log_not_emit(
             'INFO', module, json.dumps(payload, ensure_ascii=False, default=str),
-            category='benchmark', source=module,
+            category=AuditLogCategory.BENCHMARK.value, source=module,
         )
     except Exception:
         logger.warning('审计事件 %s 落库失败', event.value, exc_info=True)

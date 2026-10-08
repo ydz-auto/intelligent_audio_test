@@ -10,6 +10,7 @@ import threading
 import queue
 from datetime import datetime, timezone, timedelta
 
+from shared.models.common_enums import AUDIT_LOG_CATEGORIES
 from shared.utils.log_handler._constants import (
     CONSOLE_LOG_MAX_LENGTH,
     LOG_CONTENT_MAX_LENGTH,
@@ -46,9 +47,14 @@ class _EmitMixin:
             # === 分流判断：是否为任务/用例相关日志 ===
             task_id = getattr(record, 'task_id', None)
             test_case_id = getattr(record, 'test_case_id', None)
+            category = str(getattr(record, 'category', '') or '').lower()
+            # 审计类日志（auth/benchmark）无 task_id/test_case_id，但必须落库
+            # （INT-30 P1 回归修复：原分流把无任务上下文的审计事件降级为只写
+            # 本地文件，logs 表永远收不到审计行）
+            is_audit_log = category in AUDIT_LOG_CATEGORIES
             is_task_related = task_id is not None or test_case_id is not None
 
-            # 非任务/用例日志：只写文件，不入库不推 WS
+            # 非任务/用例日志：默认只写文件不入库不推 WS；审计类双写文件 + 入库队列
             if not is_task_related:
                 if self._file_handler:
                     try:
@@ -56,24 +62,27 @@ class _EmitMixin:
                     except Exception:
                         # 文件写入失败不影响主流程
                         pass
-                return
-
-            # === 以下为任务/用例日志：走 DB + WS 路径 ===
-
-            # 去重检查：指纹带上 task_id/test_case_id/category，避免同结构不同用例日志被误吞
-            ctx_key = f"{record.levelno}-{record.module}-{task_id}-{test_case_id}-{getattr(record, 'category', '')}-{log_message}"
-            log_fingerprint = hashlib.md5(ctx_key.encode('utf-8')).hexdigest()
-            current_time = datetime.now().timestamp()
-
-            if log_fingerprint in self.recent_logs:
-                if current_time - self.recent_logs[log_fingerprint] < self.log_ttl:
+                if not is_audit_log:
                     return
 
-            self.recent_logs[log_fingerprint] = current_time
+            # === 以下为入库路径（任务/用例日志 或 审计日志）===
 
-            # 清理过期指纹
-            if len(self.recent_logs) > self.max_recent_logs:
-                self.recent_logs = {fp: ts for fp, ts in self.recent_logs.items() if current_time - ts < self.log_ttl}
+            # 去重检查：指纹带上 task_id/test_case_id/category，避免同结构不同用例日志被误吞
+            # 审计日志例外：每笔管理事件都必须落库，不参与 TTL 去重
+            if not is_audit_log:
+                ctx_key = f"{record.levelno}-{record.module}-{task_id}-{test_case_id}-{category}-{log_message}"
+                log_fingerprint = hashlib.md5(ctx_key.encode('utf-8')).hexdigest()
+                current_time = datetime.now().timestamp()
+
+                if log_fingerprint in self.recent_logs:
+                    if current_time - self.recent_logs[log_fingerprint] < self.log_ttl:
+                        return
+
+                self.recent_logs[log_fingerprint] = current_time
+
+                # 清理过期指纹
+                if len(self.recent_logs) > self.max_recent_logs:
+                    self.recent_logs = {fp: ts for fp, ts in self.recent_logs.items() if current_time - ts < self.log_ttl}
 
             # 准备异步写入的数据
             # 超长日志截断：超过 LOG_CONTENT_MAX_LENGTH 字符时截断并追加标记，避免大日志长驻队列/DB 导致内存膨胀
@@ -84,7 +93,7 @@ class _EmitMixin:
                 'time': datetime.now(timezone(timedelta(hours=8))),
                 'level': record.levelname.upper(),
                 'module': record.module if hasattr(record, 'module') else 'unknown',
-                'category': getattr(record, 'category', 'system').lower(),
+                'category': category or 'system',
                 'source': getattr(record, 'source', 'backend').lower(),
                 'content': _content,
                 'task_id': task_id,
