@@ -35,6 +35,7 @@ from auth_service.domain.entities.role import RoleEntity
 from auth_service.domain.exceptions import AuthDomainError
 from auth_service.domain.services.auth_service import (
     validate_grant,
+    validate_revoke,
     validate_role_deletion,
     validate_role_permission_set,
     validate_status_transition,
@@ -77,6 +78,15 @@ class TestDomainValidations:
 
     def test_validate_grant_accepts_normal_code(self):
         validate_grant('task:read')
+
+    def test_validate_revoke_rejects_wildcard(self):
+        """撤销 '*' 必须封禁：清空基线含 '*' 用户的生效权限后无 API 恢复路径。"""
+        with pytest.raises(AuthDomainError) as ei:
+            validate_revoke('*')
+        assert ei.value.error_code == AuthErrorCode.WILDCARD_FORBIDDEN
+
+    def test_validate_revoke_accepts_normal_code(self):
+        validate_revoke('task:read')
 
     def test_validate_role_deletion_rejects_system_role(self):
         with pytest.raises(AuthDomainError) as ei:
@@ -237,7 +247,10 @@ class FakeUserRepository:
         return True
 
     def soft_delete(self, user_id):
-        self.users[user_id].status = 'deleted'
+        agg = self.users[user_id]
+        agg.status = 'deleted'
+        agg.deleted = True
+        agg.role_id = None
         return True
 
     def upsert_override(self, user_id, permission_id, granted):
@@ -411,6 +424,27 @@ class TestGrantRevokeHandlers:
                 RevokePermissionCommand(user_id=1, permission_id=999))
         assert ei.value.error_code == AuthErrorCode.PERMISSION_NOT_FOUND
 
+    def test_revoke_wildcard_code_forbidden(self, handler):
+        """撤销 '*' 按码定位 → WILDCARD_FORBIDDEN，无 override 写入、无审计。"""
+        handler['users'].seed(1, baseline=['*'])
+        handler['roles'].seed_permission(1, '*')
+        with pytest.raises(AuthDomainError) as ei:
+            handler['handler'].handle_revoke_permission(
+                RevokePermissionCommand(user_id=1, permission='*'))
+        assert ei.value.error_code == AuthErrorCode.WILDCARD_FORBIDDEN
+        assert handler['users'].overrides == {}
+        assert handler['audits'] == []
+
+    def test_revoke_wildcard_by_permission_id_forbidden(self, handler):
+        """撤销 '*' 按 permission_id 定位同样拒绝（验收复现路径）。"""
+        handler['users'].seed(1, baseline=['*'])
+        handler['roles'].seed_permission(9, '*')
+        with pytest.raises(AuthDomainError) as ei:
+            handler['handler'].handle_revoke_permission(
+                RevokePermissionCommand(user_id=1, permission_id=9))
+        assert ei.value.error_code == AuthErrorCode.WILDCARD_FORBIDDEN
+        assert handler['users'].overrides == {}
+
     def test_regrant_restores_revoked_baseline_perm(self, handler):
         """角色基线权限被撤销后重新授予恢复生效（差量语义闭环）。"""
         handler['users'].seed(1, baseline=['base:read'])
@@ -483,6 +517,20 @@ class TestUserManagementHandlers:
             user_id=1, username='alice', email='a@x.com'))
         assert handler['users'].users[1].email == 'a@x.com'
 
+    def test_update_user_status_audits_status_changed(self, handler):
+        """规格§六：状态变更（含禁用）落 AUTH_USER_STATUS_CHANGED。"""
+        handler['users'].seed(1)
+        handler['handler'].handle_update_user(UpdateUserCommand(
+            user_id=1, status='inactive'))
+        assert handler['audits'][0]['event'] == AuditEvent.AUTH_USER_STATUS_CHANGED
+        assert handler['audits'][0]['content']['delta']['status'] == 'inactive'
+
+    def test_update_user_profile_only_audits_updated(self, handler):
+        handler['users'].seed(1)
+        handler['handler'].handle_update_user(UpdateUserCommand(
+            user_id=1, email='n@x.com'))
+        assert handler['audits'][0]['event'] == AuditEvent.AUTH_USER_UPDATED
+
     def test_delete_user_self_forbidden(self, handler):
         handler['users'].seed(7, username='admin1')
         with pytest.raises(AuthDomainError) as ei:
@@ -503,6 +551,13 @@ class TestUserManagementHandlers:
         assert handler['users'].users[2].status == 'deleted'
         assert handler['audits'][0]['event'] == AuditEvent.AUTH_USER_STATUS_CHANGED
         assert handler['audits'][0]['content']['delta'] == {'status': 'deleted'}
+
+    def test_delete_user_clears_role_id(self, handler):
+        """软删除解除角色引用：角色删除不再被已删除用户 ROLE_IN_USE 卡住。"""
+        handler['users'].seed(2, username='alice', role_id=3)
+        handler['handler'].handle_delete_user(
+            DeleteUserCommand(user_id=2, operator_id=1))
+        assert handler['users'].users[2].role_id is None
 
     def test_set_user_role_self_forbidden(self, handler):
         handler['users'].seed(7, username='admin1')
@@ -525,6 +580,17 @@ class TestUserManagementHandlers:
             SetUserRoleCommand(user_id=1, role_id=3, operator_id=2))
         assert handler['users'].users[1].role_id == 3
         assert handler['audits'][0]['event'] == AuditEvent.AUTH_USER_ROLE_ASSIGNED
+
+    def test_set_user_role_deleted_user_rejected(self, handler):
+        """软删除用户对管理接口不可见：分配角色 → USER_NOT_FOUND（拒绝）。"""
+        handler['users'].seed(1, role_id=3)
+        handler['roles'].seed_role(3, 'tester')
+        handler['users'].soft_delete(1)
+        with pytest.raises(AuthDomainError) as ei:
+            handler['handler'].handle_set_user_role(
+                SetUserRoleCommand(user_id=1, role_id=3, operator_id=2))
+        assert ei.value.error_code == AuthErrorCode.USER_NOT_FOUND
+        assert handler['audits'] == []
 
 
 # ============================================================

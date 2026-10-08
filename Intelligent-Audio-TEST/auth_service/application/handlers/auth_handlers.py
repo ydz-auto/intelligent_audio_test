@@ -22,6 +22,7 @@ from auth_service.domain.entities.role import PermissionEntity, RoleEntity
 from auth_service.domain.exceptions import AuthDomainError
 from auth_service.domain.services.auth_service import (
     validate_grant,
+    validate_revoke,
     validate_role_deletion,
     validate_role_permission_set,
     validate_status_transition,
@@ -184,7 +185,14 @@ class AuthCommandHandler:
             status=cmd.status,
             password=cmd.password or None,
         )
-        write_auth_audit(AuditEvent.AUTH_USER_UPDATED, _AUDIT_MODULE_USER, {
+        # 规格§六：AUTH_USER_STATUS_CHANGED 含禁用/解锁/锁定（软删走 DeleteUser）；
+        # 仅资料字段变更才落 AUTH_USER_UPDATED
+        event = (
+            AuditEvent.AUTH_USER_STATUS_CHANGED
+            if cmd.status is not None
+            else AuditEvent.AUTH_USER_UPDATED
+        )
+        write_auth_audit(event, _AUDIT_MODULE_USER, {
             'operator_id': cmd.operator_id,
             'target_id': cmd.user_id,
             'delta': {
@@ -221,21 +229,22 @@ class AuthCommandHandler:
         """设置用户角色（管理端分配角色）。
 
         - 不可修改自己的角色（SELF_OPERATION_FORBIDDEN，防自我降权锁死）；
-        - 用户/角色不存在 → USER_NOT_FOUND / ROLE_NOT_FOUND。
+        - 用户不存在或已软删除 → USER_NOT_FOUND（软删除用户对管理接口不可见）；
+        - 角色不存在 → ROLE_NOT_FOUND。
         """
         _raise_if(
             cmd.operator_id and cmd.operator_id == cmd.user_id,
             '不允许修改当前登录用户自己的角色',
             AuthErrorCode.SELF_OPERATION_FORBIDDEN,
         )
+        aggregate = user_repository.get_by_id(cmd.user_id)
         _raise_if(
-            user_repository.get_by_id(cmd.user_id) is None,
+            aggregate is None or aggregate.deleted,
             f'用户不存在: id={cmd.user_id}', AuthErrorCode.USER_NOT_FOUND,
         )
         role = role_repository.get_by_id(cmd.role_id)
         _raise_if(role is None,
                   f'角色不存在: id={cmd.role_id}', AuthErrorCode.ROLE_NOT_FOUND)
-        aggregate = user_repository.get_by_id(cmd.user_id)
         aggregate.role_id = role.id
         user_repository.save(aggregate)
         write_auth_audit(AuditEvent.AUTH_USER_ROLE_ASSIGNED, _AUDIT_MODULE_USER, {
@@ -276,6 +285,7 @@ class AuthCommandHandler:
         """差量撤销用户权限，返回执行动作（override_revoke/delete_grant/noop）。
 
         编排语义（spec §五.3）：
+        0. 通配 '*' 拒绝撤销（WILDCARD_FORBIDDEN，与授予双向封禁）；
         1. 权限点不存在（按 permission_id 或 permission 码定位）→ PERMISSION_NOT_FOUND；
         2. 权限 ∈ 用户角色基线 → upsert_override(granted=False)（覆盖撤销角色权限）；
         3. 否则存在 granted=True 的 override 行 → delete_override（收回附加授予）；
@@ -286,6 +296,7 @@ class AuthCommandHandler:
             f'用户不存在: id={cmd.user_id}', AuthErrorCode.USER_NOT_FOUND,
         )
         perm = self._resolve_permission(cmd)
+        validate_revoke(perm.code)
         baseline = set(user_repository.get_user_role_baseline(cmd.user_id))
         action = 'noop'
         if perm.code in baseline:

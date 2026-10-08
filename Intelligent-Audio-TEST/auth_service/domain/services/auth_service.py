@@ -108,6 +108,18 @@ def validate_grant(perm: str) -> None:
         )
 
 
+def validate_revoke(perm: str) -> None:
+    """校验撤销用户权限合法性：拒绝通配 '*'。
+
+    撤销与授予必须双向封禁：对基线含 '*' 的用户写 granted=False 覆盖行
+    会清空其生效权限，且重新授予被 WILDCARD_FORBIDDEN 拒绝，无 API 恢复路径。
+    """
+    if perm == '*':
+        raise AuthDomainError(
+            '不允许撤销通配权限 *', AuthErrorCode.WILDCARD_FORBIDDEN,
+        )
+
+
 def validate_role_deletion(is_system: bool, user_ref_count: int) -> None:
     """校验角色删除前置条件。
 

@@ -234,6 +234,31 @@ class TestUserPermissionPersistence:
             user_id=user.id, permission='*', operator_id=1))
         assert json.loads(resp.data) == {'error_code': 'WILDCARD_FORBIDDEN'}
 
+    def test_revoke_wildcard_rejected(self, servicer):
+        """撤销 '*' 双向封禁（复验 P1 复现路径）：基线含 '*' 的用户按
+        permission_id 撤销 '*' → WILDCARD_FORBIDDEN，生效权限保持 ['*']，
+        不落 granted=False 覆盖行。"""
+        svc, pb = servicer
+        session = get_db_session()
+        role = Role(name='wildcard_role')
+        session.add(role)
+        session.flush()
+        pid_star = _seed_permission('*')
+        session.add(RolePermission(role_id=role.id, permission_id=pid_star))
+        user = User(username='perm_user_5', status='active', role_id=role.id)
+        session.add(user)
+        session.commit()
+
+        resp = svc.RevokePermission(pb.RevokePermissionRequest(
+            user_id=user.id, permission_id=pid_star, operator_id=1))
+        assert resp.success is False
+        assert json.loads(resp.data) == {'error_code': 'WILDCARD_FORBIDDEN'}
+
+        session.expire_all()
+        assert session.query(UserPermission).filter_by(user_id=user.id).count() == 0
+        resp = svc.GetUserPermissions(pb.GetUserPermissionsRequest(user_id=user.id))
+        assert json.loads(resp.data)['permissions'] == ['*']
+
 
 class TestUserManagementChain:
 
@@ -277,6 +302,33 @@ class TestUserManagementChain:
         assert resp.success
         session.expire_all()
         assert session.query(User).filter_by(id=user_id).first().status == 'deleted'
+
+    def test_set_user_role_on_deleted_user_rejected(self, servicer):
+        """软删除用户：role_id 解除引用，再分配角色 → USER_NOT_FOUND（拒绝）。"""
+        svc, pb = servicer
+        resp = svc.CreateUser(pb.CreateUserRequest(
+            username='deleted_role_user', operator_id=1))
+        assert resp.success, resp.message
+        user_id = json.loads(resp.data)['user_id']
+        session = get_db_session()
+        role = Role(name='doomed_role')
+        session.add(role)
+        session.commit()
+        resp = svc.SetUserRole(pb.SetUserRoleRequest(
+            user_id=user_id, role_id=role.id, operator_id=1))
+        assert resp.success, resp.message
+
+        resp = svc.DeleteUser(pb.DeleteUserRequest(user_id=user_id, operator_id=1))
+        assert resp.success
+        session.expire_all()
+        po = session.query(User).filter_by(id=user_id).first()
+        assert po.status == 'deleted'
+        assert po.role_id is None
+
+        resp = svc.SetUserRole(pb.SetUserRoleRequest(
+            user_id=user_id, role_id=role.id, operator_id=1))
+        assert resp.success is False
+        assert json.loads(resp.data) == {'error_code': 'USER_NOT_FOUND'}
 
     def test_self_delete_and_self_role_forbidden(self, servicer):
         svc, pb = servicer
@@ -324,6 +376,28 @@ class TestAuditEvents:
     此处在 handler 模块层捕获 write_auth_audit 调用，验证 servicer 全链路
     触发了正确的事件名与负载（落库通道由旁路 worker 保证，失败不阻断）。
     """
+
+    def test_update_user_status_emits_status_changed_audit(self, servicer, monkeypatch):
+        """规格§六：PUT 用户改状态落 AUTH_USER_STATUS_CHANGED（含禁用）。"""
+        import auth_service.application.handlers.auth_handlers as ah
+        captured = []
+
+        def _capture(event, module, content):
+            captured.append({'event': event, 'module': module, 'content': content})
+
+        monkeypatch.setattr(ah, 'write_auth_audit', _capture)
+        svc, pb = servicer
+        session = get_db_session()
+        po = User(username='audit_status_user', status='active')
+        session.add(po)
+        session.commit()
+        resp = svc.UpdateUser(pb.UpdateUserRequest(
+            user_id=po.id, status='inactive', operator_id=42))
+        assert resp.success, resp.message
+        assert captured, 'UpdateUser 状态变更未触发审计'
+        assert captured[0]['event'].value == 'AUTH_USER_STATUS_CHANGED'
+        assert captured[0]['content']['delta']['status'] == 'inactive'
+        assert captured[0]['content']['operator_id'] == 42
 
     def test_delete_role_emits_audit(self, servicer, monkeypatch):
         import auth_service.application.handlers.auth_handlers as ah
@@ -412,8 +486,17 @@ class TestAuditLandsInLogsTable:
         handler._process_batch(batch)
 
         rows = session.query(Log).filter_by(category='auth').all()
-        assert len(rows) == 1, f'logs 表 auth 审计行数错误: {len(rows)}'
-        payload = json.loads(rows[0].content)
-        assert payload['event'] == 'AUTH_ROLE_DELETED'
-        assert payload['operator_id'] == 42
-        assert payload['target_id'] == po.id
+        # 按本测试的审计负载精确匹配行：同进程其他真实审计（如全局 handler
+        # 批次延迟冲刷）可能带来额外 auth 行，按总行数断言会误伤
+        matching = []
+        for r in rows:
+            payload = json.loads(r.content)
+            if (payload.get('event') == 'AUTH_ROLE_DELETED'
+                    and payload.get('operator_id') == 42
+                    and payload.get('target_id') == po.id):
+                matching.append(payload)
+        assert len(matching) == 1, \
+            f'logs 表本测试审计行数错误: {len(matching)}（auth 总行数 {len(rows)}）'
+        assert matching[0]['event'] == 'AUTH_ROLE_DELETED'
+        assert matching[0]['operator_id'] == 42
+        assert matching[0]['target_id'] == po.id

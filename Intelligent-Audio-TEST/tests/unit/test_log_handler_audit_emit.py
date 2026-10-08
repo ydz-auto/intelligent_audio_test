@@ -56,6 +56,17 @@ def audit_env(monkeypatch, tmp_path):
     import shared.utils.log_handler._state as lh_state
     from shared.utils.log_handler import DatabaseLogHandler
 
+    # 跨文件收集顺序隔离：真实审计链路（sqlite e2e 等）会经 get_db_handler()
+    # 惰性创建全局 handler，其 worker 的 pending 批次（_batch_timeout=1s）会在
+    # 本 fixture 打上 fake 后补发进 captured，污染断言。先停既有全局 handler
+    # 的 worker（收到 None 即 break，pending 批次不冲刷），再装 fake 与新实例。
+    prev = lh_state._global_db_handler
+    if prev is not None:
+        prev.queue.put(None)
+        prev_worker = getattr(prev, 'worker_thread', None)
+        if prev_worker is not None:
+            prev_worker.join(timeout=2.0)
+
     captured = []
 
     def _fake_batch_create(logs_payload):

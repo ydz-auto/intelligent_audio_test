@@ -248,7 +248,10 @@ class UserRepository(UserRepositoryABC):
         return po.id
 
     def soft_delete(self, user_id: int) -> bool:
-        """软删除用户（置 status='deleted'，仅 flush）。
+        """软删除用户（置 status='deleted' 并解除角色引用，仅 flush）。
+
+        role_id 置空：软删除用户不再占用角色引用，
+        避免 ROLE_IN_USE 误判（删除角色被迫"迁移已删除用户"）。
 
         Returns:
             True 表示找到并删除；False 表示用户不存在。
@@ -258,6 +261,7 @@ class UserRepository(UserRepositoryABC):
         if not po:
             return False
         po.status = UserStatus.DELETED.value
+        po.role_id = None
         session.flush()
         return True
 
@@ -499,11 +503,15 @@ class RoleRepository(RoleRepositoryABC):
         session.flush()
 
     def count_users(self, role_id: int) -> int:
-        """统计引用该角色的用户数（users.role_id 计数）。"""
+        """统计引用该角色的用户数（users.role_id 计数，软删除用户不计入）。
+
+        软删除已在删除时清 role_id，此处再按状态排除以兜底历史数据。
+        """
         session = get_db_session()
         return (
             session.query(User)
             .filter(User.role_id == role_id)
+            .filter(User.status != UserStatus.DELETED.value)
             .count()
         )
 
