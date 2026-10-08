@@ -5,6 +5,7 @@
 提供算法定义、参数、映射的 CRUD API
 """
 
+import json
 from typing import List, Dict, Any
 from flask import request
 from sqlalchemy.exc import IntegrityError
@@ -314,6 +315,20 @@ def _update_associated_dimensions(algo_type: str, dimensions_data: List[Dict]):
             relation.deleted = True
 
 
+# 存储为 JSON 字符串的 Text 列（前端回传的是反序列化后的对象，写库前需转回字符串）
+_JSON_TEXT_FIELDS = ('default_value', 'validation_rules')
+
+
+def _coerce_json_text(value: Any) -> Any:
+    """把反序列化后的 JSON 对象（dict/list/bool/数字）转回 JSON 字符串，适配 Text 列"""
+    if isinstance(value, (dict, list, bool, int, float)):
+        try:
+            return json.dumps(value, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return value
+    return value
+
+
 def _update_params(algo_type: str, params: List[Dict], param_type: str):
     """更新参数"""
     ParamModel = AlgorithmApiParam if param_type == 'api' else AlgorithmDeviceParam
@@ -333,7 +348,10 @@ def _update_params(algo_type: str, params: List[Dict], param_type: str):
                 for field in ['param_name', 'label', 'param_type', 'direction', 'required', 
                               'default_value', 'validation_rules', 'help_text', 'ui_order', 'hidden']:
                     if field in param_data:
-                        setattr(param, field, param_data[field])
+                        value = param_data[field]
+                        if field in _JSON_TEXT_FIELDS:
+                            value = _coerce_json_text(value)
+                        setattr(param, field, value)
         else:
             existing_param = ParamModel.query.filter_by(
                 algorithm_type=algo_type,
@@ -347,7 +365,10 @@ def _update_params(algo_type: str, params: List[Dict], param_type: str):
                 for field in ['param_name', 'label', 'param_type', 'required', 
                               'default_value', 'validation_rules', 'help_text', 'ui_order', 'hidden']:
                     if field in param_data:
-                        setattr(existing_param, field, param_data[field])
+                        value = param_data[field]
+                        if field in _JSON_TEXT_FIELDS:
+                            value = _coerce_json_text(value)
+                        setattr(existing_param, field, value)
             else:
                 param = ParamModel(
                     algorithm_type=algo_type,
@@ -391,7 +412,10 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                     if field in param_data and param_data[field] is not None:
                         if field == 'scope' and param_data[field] not in valid_scopes:
                             continue
-                        setattr(param, field, param_data[field])
+                        value = param_data[field]
+                        if field in _JSON_TEXT_FIELDS:
+                            value = _coerce_json_text(value)
+                        setattr(param, field, value)
         else:
             raw_scope = param_data.get('scope', 'common')
             scope_value = raw_scope if raw_scope in valid_scopes else 'common'
@@ -411,7 +435,10 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                     if field in param_data and param_data[field] is not None:
                         if field == 'scope' and param_data[field] not in valid_scopes:
                             continue
-                        setattr(dup, field, param_data[field])
+                        value = param_data[field]
+                        if field in _JSON_TEXT_FIELDS:
+                            value = _coerce_json_text(value)
+                        setattr(dup, field, value)
                 continue
             # 软删除的同名参数 → 复活而非新建（避免唯一约束冲突）
             soft_dup = CaseAlgorithmParam.query.filter_by(
@@ -426,7 +453,10 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                     if field in param_data and param_data[field] is not None:
                         if field == 'scope' and param_data[field] not in valid_scopes:
                             continue
-                        setattr(soft_dup, field, param_data[field])
+                        value = param_data[field]
+                        if field in _JSON_TEXT_FIELDS:
+                            value = _coerce_json_text(value)
+                        setattr(soft_dup, field, value)
                 continue
             param = CaseAlgorithmParam(
                 algorithm_type=algo_type,

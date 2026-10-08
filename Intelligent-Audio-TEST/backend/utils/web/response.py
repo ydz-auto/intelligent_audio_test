@@ -46,9 +46,10 @@ def _normalize_payload_data(value):
         new_data = {}
         for k, v in value.items():
             # body_template 是要原样转发给外部评估 API 的 JSON 模板，
-            # 其中的字段名（user_wav/correctAnswer 等）必须保持原样，不能驼峰化
+            # 其中的字段名（user_wav/correctAnswer 等）必须保持原样，不能驼峰化；
+            # 但键名本身仍按 API 契约输出 camelCase（bodyTemplate）
             if k == 'body_template':
-                new_data[k] = v
+                new_data['bodyTemplate'] = v
                 continue
             if isinstance(k, str) and '_' in k:
                 new_key = to_camel(k)
@@ -65,9 +66,10 @@ def convert_keys_to_camel(data):
     if isinstance(data, dict):
         new_data = {}
         for k, v in data.items():
-            # body_template 原样透传（字段名保持 snake_case/correctAnswer 不变）
+            # body_template 的值原样透传（字段名保持 snake_case/correctAnswer 不变），
+            # 键名按 API 契约输出 camelCase（bodyTemplate）
             if k == 'body_template':
-                new_data[k] = v
+                new_data['bodyTemplate'] = v
                 continue
             if isinstance(k, str) and '_' in k:
                 new_key = to_camel(k)

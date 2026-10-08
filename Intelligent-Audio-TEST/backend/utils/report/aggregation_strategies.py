@@ -261,32 +261,43 @@ def _is_pass(value: float, threshold: float, compare_op: str) -> bool:
 
 class RatioStrategy(AggregationStrategy):
     """
-    比率/占比统计：Σ(分子) / Σ(分母) * 100，产出百分比 (0~100)。
+    比率/占比统计：Σ(分子数量) / Σ(轮次数) * 100，产出百分比 (0~100)。
 
-    分子 = Σ(item['dimension_value'])（各结果/轮次的原始数量，如打断成功数量）。
+    分子 = 各结果/轮次的原始数量求和：
+      优先取 agg_role='numerator' 参数从 api_raw_response 提取的数量（如
+      turn_classification.normal_takeover_count），保证是"数量"而非比率；
+      未配置 numerator 参数时回退 item['dimension_value']（打断等维度直接存数量）。
 
     分母口径由 denominator_mode 决定（维度配置 agg_denominator，值 round/case）：
-      - 'case'（按用例，默认）：分母 = 配置了该维度且有值的用例数（按 test_result_id 去重）
-      - 'round'（按轮次）：分母 = 各用例该维度有值轮次数之和（item['round_count']）
-    无论有/无整体结果，轮次数都来自每个用例自身的 round_count，天然避免每轮
-    api_raw_response 重复携带 interruption_rounds 造成的重复计数。
+      - 'round'（按轮次）：分母 = 各用例该维度有值轮次数之和（item['round_count']，
+        取实际轮次：打断=success+failure+inquiry，话轮=total_turns）
+      - 'case'（按用例）：分母 = 配置了该维度且有值的用例数（按 test_result_id 去重）
 
     无轮次记录（如纯 overall 数据）时按轮次口径回退为用例数。
 
-    典型场景：打断成功数量（agg_denominator='round'）
-      → Σ(成功次数) / Σ(各用例实际打断轮数) × 100 = 打断成功率(%)。
+    典型场景：接管率占比（agg_denominator='round'）
+      → Σ(正常接管轮次) / Σ(各用例实际话轮数) × 100 = 接管率(%)，三率和=100%。
     """
 
     def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
                   denominator_mode: str = None) -> Optional[float]:
         mode = (denominator_mode or 'case').lower()
+        numerator_path = _find_by_role(output_params, 'numerator')
 
-        total_num = 0
+        total_num = 0.0
         for item in items:
-            num_val = _parse_numeric(item.get('dimension_value'))
-            if num_val is None:
-                continue
-            total_num += num_val
+            if numerator_path:
+                result_obj = _parse_raw_response(item.get('api_raw_response'))
+                num_val = _extract_by_path(result_obj, numerator_path) if result_obj else None
+                parsed = _parse_numeric(num_val)
+                if parsed is None:
+                    continue
+                total_num += parsed
+            else:
+                num_val = _parse_numeric(item.get('dimension_value'))
+                if num_val is None:
+                    continue
+                total_num += num_val
 
         n_cases, total_rounds = _count_items(items)
 

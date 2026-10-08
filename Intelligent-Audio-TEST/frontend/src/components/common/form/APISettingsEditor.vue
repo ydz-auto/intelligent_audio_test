@@ -88,7 +88,11 @@ watch(() => props.modelValue, (newVal) => {
   if (newVal && typeof newVal === 'object') {
     localValue.method = newVal.method || 'POST'
     localValue.headers = newVal.headers ? { ...newVal.headers } : {}
-    localValue.bodyTemplate = newVal.bodyTemplate ? JSON.parse(JSON.stringify(newVal.bodyTemplate)) : {}
+    // 后端按 body_template(snake) 存储/返回，历史数据也可能为 bodyTemplate(camel)，双兼容读取
+    const rawBodyTemplate = newVal.bodyTemplate ?? newVal.body_template ?? {}
+    localValue.bodyTemplate = (rawBodyTemplate && typeof rawBodyTemplate === 'object')
+      ? JSON.parse(JSON.stringify(rawBodyTemplate))
+      : {}
     localValue.timeout = newVal.timeout || 30000
 
     headersJson.value = JSON.stringify(localValue.headers, null, 2)
@@ -209,8 +213,19 @@ function syncBodyTemplate() {
 }
 
 function handleChange() {
-  emit('update:modelValue', { ...localValue })
-  emit('change', { ...localValue })
+  // 合并到原始值上，保留 bodyTemplate 之外的扩展键（如 groupKey），
+  // 否则仅回传 4 个已知键会丢失打断族维度的 group_key 等配置
+  const merged = {
+    ...(props.modelValue && typeof props.modelValue === 'object' ? props.modelValue : {}),
+    method: localValue.method,
+    headers: { ...localValue.headers },
+    bodyTemplate: localValue.bodyTemplate,
+    timeout: localValue.timeout
+  }
+  // 去掉后端下发的 snake 旧键，统一以 bodyTemplate(camel) 契约提交
+  delete merged.body_template
+  emit('update:modelValue', merged)
+  emit('change', merged)
 }
 </script>
 

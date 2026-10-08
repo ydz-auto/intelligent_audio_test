@@ -161,8 +161,11 @@ _PARAM_MAPPINGS = [
     ('device', 'output', 'user_wav', 'user_wav', 'none'),
     ('case', 'output', 'type', 'type', 'none'),
     ('case', 'output', 'is_reject', 'is_reject', 'none'),
+    # timing 从 case 源（用例 algorithm_params 按轮配置的 timing 字段）取值；
+    # 原配置取 reference 源，但 reference 参数里没有 timing，导致请求体 timing 为空，
+    # eval_server 按默认规则把所有轮次判为"拒识失败"，子行为维度全部统计为 0。
+    ('case', 'output', 'timing', 'timing', 'none'),
     ('reference', 'output', 'is_single_round', 'is_single_round', 'none'),
-    ('reference', 'output', 'timing', 'timing', 'none'),
     # 轮次结构化音频（case_config 源，与库一致挂 3 条）
     ('case_config', 'output', 'audios', 'played_audios', 'none'),
     ('case_config', 'output', 'background_noise', 'background_noise', 'none'),

@@ -540,6 +540,12 @@ export function useEvaluation() {
           }
         }
       }
+      // 兼容后端 body_template(snake) 与历史 bodyTemplate(camel) 两种键名，统一归一为 camel，
+      // 后端存储键 body_template 为准，避免模板显示为空 / 保存时被清空
+      if (apiSettingsObj.body_template !== undefined) {
+        apiSettingsObj.bodyTemplate = apiSettingsObj.body_template;
+        delete apiSettingsObj.body_template;
+      }
       
       const rawRequiredInputs = dimension.requiredInputs || (dimension as any).required_inputs || [];
       const requiredInputsArray = Array.isArray(rawRequiredInputs) ? rawRequiredInputs : [];
