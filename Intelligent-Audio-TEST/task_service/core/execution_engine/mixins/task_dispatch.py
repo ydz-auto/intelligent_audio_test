@@ -132,8 +132,7 @@ class TaskDispatchMixin:
             self._execute_api_case(task_id, tc_rel.id)
         except Exception as e:
             self._log(level='ERROR', content=f"API任务执行异常: {str(e)}", task_id=task_id)
-            tc_rel.execution_status = ExecutionStatus.FAILED
-            tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
+            self._finalize_dispatch_failure(tc_rel)
             tc_rel.error_message = f"API任务执行异常: {str(e)}"
             session.commit()
 
@@ -164,6 +163,18 @@ class TaskDispatchMixin:
             TaskCase.execution_status: ExecutionStatus.QUEUED,
             TaskCase.status: derive_task_case_status(ExecutionStatus.QUEUED, EvaluationStatus.PENDING)
         }, synchronize_session=False)
+
+    def _finalize_dispatch_failure(self, tc_rel):
+        """分发侧失败兜底：执行置终态失败；评估尚未启动时同步补写评估终态。
+
+        evaluation_status 停留 pending/queued 会被主循环计入评估中活跃集合
+        （ACTIVE_EVALUATION_STATUSES 含 PENDING），导致 _handle_no_pending_case 死等、任务永不收敛；
+        评估置 completed 与 api_test_service 侧失败逃生门语义一致（失败由 execution_status 承载）。
+        """
+        if (tc_rel.evaluation_status or EvaluationStatus.PENDING) in (EvaluationStatus.PENDING, EvaluationStatus.QUEUED):
+            tc_rel.evaluation_status = EvaluationStatus.COMPLETED
+        tc_rel.execution_status = ExecutionStatus.FAILED
+        tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
 
     def _handle_e2e_failure(self, task_id, tc_rel):
         """E2E 执行失败处理"""
