@@ -133,6 +133,11 @@ class FakeRepo:
     def get_version_counts(self, group_ids):
         return {}
 
+    # ---- archive 链路 ----
+    def archive(self, published_task_id, archived_by=None):
+        self.current_pt.status = 'archived'
+        return self.current_pt
+
 
 class FakeLogRepo:
     """log_repository 替身：捕获审计写入。"""
@@ -401,3 +406,42 @@ class TestBenchmarkSnapshotFields:
         snapshot = repo.create_version_kwargs['snapshot_config']
         assert snapshot['benchmarkSuite'] == 'full-duplex-v2'
         assert snapshot['benchmarkCategory'] == 'voice_llm'
+
+
+class TestArchiveBenchmarkRetention:
+    """归档保留 Benchmark 标记（INT-34 验收点：归档后标记保留）。"""
+
+    def test_archive_keeps_benchmark_flag_and_snapshot(self, env, monkeypatch):
+        pt = make_pt(benchmark=True, snapshot_config={
+            'caseIds': [1], 'benchmarkSuite': 'librispeech-v1', 'benchmarkCategory': 'asr'})
+        env['repo'].current_pt = pt
+        archive_calls = []
+
+        def fake_archive(pid, archived_by=None):
+            # 模拟仓储实现：仅置 status/archived_by/archived_at，不触碰 benchmark 与快照
+            archive_calls.append(pid)
+            pt.status = 'archived'
+            return pt
+
+        monkeypatch.setattr(env['repo'], 'archive', fake_archive)
+        result = published_task_service.archive(1001)
+        assert result['success'] is True
+        assert archive_calls == [1001]
+        assert pt.benchmark is True
+        assert pt.snapshot_config['benchmarkSuite'] == 'librispeech-v1'
+        assert pt.snapshot_config['benchmarkCategory'] == 'asr'
+
+    def test_archive_service_does_not_mutate_benchmark_fields(self, env, monkeypatch):
+        # 服务层归档只透传 id：仓储收到的调用不携带任何 benchmark 相关改写
+        pt = make_pt(benchmark=True, snapshot_config={'benchmarkSuite': 's', 'benchmarkCategory': 'tts'})
+        env['repo'].current_pt = pt
+        captured = {}
+
+        def fake_archive(pid, archived_by=None):
+            captured['kwargs'] = {'pid': pid, 'archived_by': archived_by}
+            pt.status = 'archived'
+            return pt
+
+        monkeypatch.setattr(env['repo'], 'archive', fake_archive)
+        published_task_service.archive(1001)
+        assert captured['kwargs'] == {'pid': 1001, 'archived_by': None}
