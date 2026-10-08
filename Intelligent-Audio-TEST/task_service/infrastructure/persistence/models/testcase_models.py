@@ -9,7 +9,7 @@ shared/models/models/testcase_models.py 改为从这里 re-export。
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
     ForeignKey,
 )
 from sqlalchemy.orm import relationship
@@ -27,8 +27,8 @@ class TagCategory(Base):
     sort_order = Column(Integer, default=0, comment='排序顺序 (数值越小越靠前)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
 
@@ -47,8 +47,8 @@ class Tag(Base):
     category_id = Column(Integer, ForeignKey('tag_categories.id'), comment='所属分类ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
 
@@ -64,8 +64,8 @@ class TestCaseGroup(Base):
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     test_cases = relationship('TestCase', foreign_keys='TestCase.group_id', backref='group', lazy=True)
@@ -87,8 +87,8 @@ class TestCase(Base):
     test_type = Column(String(10), nullable=False, default='api', index=True, comment='测试类型 (api/e2e)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
 
@@ -108,4 +108,4 @@ class TestCaseTag(Base):
     tag_id = Column(BigInteger, comment='关联标签ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

@@ -4,7 +4,7 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 94 个权限点（permissions）
+  - 96 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -25,6 +25,8 @@ import sys
 import argparse
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 
 # ========================================================================
 # 配置
@@ -394,12 +396,20 @@ def verify(conn):
             print(f'    {role_name}: {cnt} 个权限')
 
 
+def _display_uri(uri):
+    """控制台展示用连接串：隐藏密码，解析失败不崩溃（INT-47）。"""
+    try:
+        return make_url(uri).render_as_string(hide_password=True)
+    except ArgumentError:
+        return '<无法解析的连接串>'
+
+
 def main():
     parser = argparse.ArgumentParser(description='RBAC 种子数据初始化')
     parser.add_argument('--dry-run', action='store_true', help='仅预览，不实际执行')
     args = parser.parse_args()
 
-    print(f'数据库: {POSTGRES_URI.split("@")[1]}')
+    print(f'数据库: {_display_uri(POSTGRES_URI)}')
     print(f'模式: {"DRY-RUN" if args.dry_run else "正式执行"}\n')
 
     engine = create_engine(POSTGRES_URI)

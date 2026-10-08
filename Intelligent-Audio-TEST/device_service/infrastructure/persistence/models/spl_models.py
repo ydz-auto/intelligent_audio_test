@@ -11,7 +11,7 @@ shared 只保留 Log 的 re-export（从 task_service），SPLMapping/Calibratio
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
 )
 
 
@@ -35,8 +35,8 @@ class SPLMapping(Base):
 
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False)
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False)
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False)
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
 
@@ -50,4 +50,4 @@ class CalibrationHistory(Base):
     calibration_data = Column(JSON)
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False)
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False)

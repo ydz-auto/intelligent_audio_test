@@ -11,7 +11,7 @@ P5 改造：从 shared/models/models/audio_models.py 真正下沉到本服务。
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
     Index, ForeignKey, text,
 )
 from sqlalchemy.orm import relationship
@@ -46,8 +46,8 @@ class Audio(Base):
     source_language = Column(String(32), comment='源语言')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
 
 class AudioAnnotation(Base):
@@ -70,8 +70,8 @@ class AudioAnnotation(Base):
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
     audio = relationship('Audio', foreign_keys='AudioAnnotation.audio_id', backref='annotations')
 
@@ -91,7 +91,7 @@ class AudioTag(Base):
     tag_id = Column(Integer, comment='关联标签ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
 
 
 class AudioAlgorithmRelation(Base):
@@ -118,8 +118,8 @@ class AudioAlgorithmRelation(Base):
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
     audio = relationship('Audio', foreign_keys='AudioAlgorithmRelation.audio_id', backref='algorithm_relations')
 

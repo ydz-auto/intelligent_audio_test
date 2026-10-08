@@ -12,7 +12,7 @@ P5 改造：从 shared/models/models/task_models.py 真正下沉到本服务。
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
     Index, ForeignKey,
 )
 from sqlalchemy.orm import relationship
@@ -43,8 +43,8 @@ class Task(Base):
     created_by = Column(Integer, comment='创建者用户ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     started_at = Column(DateTime, comment='任务实际开始执行时间')
     completed_at = Column(DateTime, comment='任务执行结束时间')
     estimated_time = Column(Integer, comment='预计执行耗时 (秒)')
@@ -82,7 +82,7 @@ class TaskTag(Base):
     tag_id = Column(BigInteger, comment='关联标签ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
 
 
 class TaskCase(Base):
@@ -102,7 +102,7 @@ class TaskCase(Base):
     error_message = Column(Text, comment='执行过程中的错误信息')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     # 执行域 P0 新增：用例级被测设备路由（取代 task.type 语义）
     device_type = Column(String(20), nullable=True, comment='被测设备类型 (physical/http_api/websocket_api，用例级决定执行路由，为空时回退 task.type)')
     device_id = Column(String(50), nullable=True, comment='被测设备ID (physical=设备ID / http_api|websocket_api=api.id)')
@@ -141,7 +141,7 @@ class TaskMergeRelation(Base):
     source_result_count = Column(Integer, default=0, comment='该源任务贡献的结果数量')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
 
     merged_task = relationship('Task', foreign_keys=[merged_task_id], backref='source_relations')
     source_task = relationship('Task', foreign_keys=[source_task_id], backref='target_relations')

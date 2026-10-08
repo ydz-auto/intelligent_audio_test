@@ -13,7 +13,7 @@ shared 只保留 Log 的 re-export（SPLMapping/CalibrationHistory 归 e2e_test_
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime,
+    func, Column, Integer, BigInteger, String, Text, DateTime,
     Index,
 )
 
@@ -49,4 +49,4 @@ class Log(Base):
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='记录创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='记录创建时间')

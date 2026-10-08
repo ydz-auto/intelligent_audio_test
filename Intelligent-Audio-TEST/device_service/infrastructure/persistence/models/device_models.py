@@ -8,7 +8,7 @@ P5 改造：从 shared/models/models/device_models.py 真正下沉到本服务�
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
     Index, text,
 )
 
@@ -42,8 +42,8 @@ class Device(Base):
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
 
 class PlaybackDevice(Base):
@@ -68,8 +68,8 @@ class PlaybackDevice(Base):
     current_spl_mapping_id = Column(Integer, comment='当前生效的声压级映射ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     created_by = Column(String(50), comment='创建者姓名/账号')
 
 
@@ -83,4 +83,4 @@ class DeviceTag(Base):
     tag_id = Column(Integer, comment='关联标签ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

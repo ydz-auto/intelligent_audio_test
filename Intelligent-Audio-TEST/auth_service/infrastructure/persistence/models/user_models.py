@@ -12,7 +12,7 @@ P5 改造：从 shared/models/models/user_models.py 真正下沉到本服务。
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
     ForeignKey,
 )
 from sqlalchemy.orm import relationship
@@ -27,8 +27,8 @@ class Role(Base):
     name = Column(String(50), unique=True, nullable=False, comment='角色名称 (admin/editor/viewer)')
     description = Column(Text, comment='角色描述')
     is_system = Column(Boolean, nullable=False, default=False, comment='是否系统内置角色 (内置不可删除)')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
     permissions = relationship('Permission', secondary='role_permissions',
         primaryjoin='Role.id == RolePermission.role_id',
@@ -44,7 +44,7 @@ class Permission(Base):
     id = Column(Integer, primary_key=True, autoincrement=True, comment='权限唯一ID')
     name = Column(String(100), unique=True, nullable=False, comment='权限名称 (资源:操作)')
     description = Column(Text, comment='权限详细描述')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
 
 
 class RolePermission(Base):
@@ -88,8 +88,8 @@ class User(Base):
     oauth_avatar_url = Column(String(500), nullable=True, comment='OAuth 提供商返回的头像URL')
     last_login_at = Column(DateTime, nullable=True, comment='最后登录时间')
     last_login_ip = Column(String(50), nullable=True, comment='最后登录IP')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
     role = relationship('Role', foreign_keys='User.role_id', backref='users')
 
@@ -122,8 +122,8 @@ class OAuthClient(Base):
     scopes = Column(JSON, nullable=False, default=list, comment='允许的 scope 列表')
     is_confidential = Column(Boolean, nullable=False, default=True, comment='是否机密客户端 (需要 client_secret)')
     status = Column(String(20), nullable=False, default='active', comment='状态 (active/disabled)')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
 
 class OAuthRefreshToken(Base):
@@ -138,4 +138,4 @@ class OAuthRefreshToken(Base):
     scope = Column(Text, nullable=True, comment='令牌的 scope (空格分隔)')
     expires_at = Column(DateTime, nullable=False, comment='过期时间')
     revoked = Column(Boolean, nullable=False, default=False, comment='是否已撤销')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

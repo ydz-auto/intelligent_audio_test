@@ -8,7 +8,7 @@ P5 改造：从 shared/models/models/upload_models.py 真正下沉到本服务�
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, JSON,
     ForeignKey,
 )
 from sqlalchemy.orm import relationship
@@ -28,8 +28,8 @@ class UploadTask(Base):
     status = Column(String(20), nullable=False, default='preparing', comment='任务状态 (preparing/uploading/completed/failed)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     expired_at = Column(DateTime, comment='任务过期时间')
 
     files = relationship('UploadFile', foreign_keys='UploadFile.task_id', backref='task', cascade="all, delete-orphan")
@@ -53,8 +53,8 @@ class UploadFile(Base):
     total_chunks = Column(Integer, nullable=False, default=0, comment='总分片数量')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
     chunks = relationship('UploadChunk', foreign_keys='UploadChunk.file_id', backref='file', cascade="all, delete-orphan")
 
@@ -72,7 +72,7 @@ class UploadChunk(Base):
     status = Column(String(20), nullable=False, default='pending', comment='分片状态 (pending/uploading/completed/failed)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
     stored_path = Column(String(500), comment='分片存储路径')

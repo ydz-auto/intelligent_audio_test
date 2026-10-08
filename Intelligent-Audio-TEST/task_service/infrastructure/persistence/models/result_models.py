@@ -12,7 +12,7 @@ shared 只保留 TestResult 的 re-export（TestResultDimension 从 evaluation_s
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, JSON,
 )
 
 
@@ -38,4 +38,4 @@ class TestResult(Base):
     error_message = Column(Text, comment='错误信息描述')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='生成时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='生成时间')

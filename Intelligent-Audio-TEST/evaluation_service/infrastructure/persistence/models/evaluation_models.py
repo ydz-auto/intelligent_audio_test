@@ -9,7 +9,7 @@ shared/models/models/evaluation_models.py 改为从这里 re-export。
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
     ForeignKey,
 )
 from sqlalchemy.orm import relationship
@@ -26,8 +26,8 @@ class Category(Base):
     icon = Column(String(50), nullable=False, comment='分类图标标识')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
 
@@ -61,8 +61,8 @@ class Dimension(Base):
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
     api_status = Column(String(20), nullable=False, default='online', comment='算法 API 在线状态')
     api_endpoints = Column(JSON, nullable=True, default=list, comment='多个评估算法 API 地址及配置')
     api_url = Column(String(512), comment='评估微服务主入口URL')

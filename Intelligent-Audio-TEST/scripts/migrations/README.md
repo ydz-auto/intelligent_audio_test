@@ -26,7 +26,8 @@ python scripts/migrations/202609/add_published_tasks.py                   # ⑩ 
 python scripts/migrations/202609/seed_voice_llm.py                        # ⑪ 算法/维度种子（按需）
 
 # ── 202610 ──────────────────────────────────────────────
-python scripts/migrations/202610/add_benchmark_tables.py                  # ⑫ Benchmark 排行 4 表 + 指标映射种子（D1 双轨排行，INT-27）
+python scripts/migrations/202610/add_timestamp_db_defaults.py             # ⑫ 时间戳列补 DB 级 DEFAULT（INT-47，既有库对齐；全新库为 no-op）
+python scripts/migrations/202610/add_benchmark_tables.py                  # ⑬ Benchmark 排行 4 表 + 指标映射种子（D1 双轨排行，INT-27）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -53,7 +54,7 @@ python scripts/migrations/202610/add_benchmark_tables.py                  # ⑫ 
 | [add_reevaluated_at.py](202608/add_reevaluated_at.py) | 重新评估功能 | `test_tasks` 加 `reevaluated_at` / `reevaluation_count` |
 | [fix_audio_tags_types.py](202608/fix_audio_tags_types.py) | 类型修复 | `audio_tags` 审计列 VARCHAR(36) → BIGINT（历史临时脚本遗留）；⚠️ 连接串硬编码 |
 | [fix_partial_unique_indexes.py](202608/fix_partial_unique_indexes.py) | 唯一约束与软删除冲突 | 将 UniqueConstraint 替换为部分唯一索引（`WHERE deleted = false`），软删除记录不再占用唯一键；默认 dry-run，`--apply` 执行 |
-| [seed_rbac.py](202608/seed_rbac.py) | RBAC 种子数据 | 86 个权限点、5 个系统角色（admin/tester/algo_engineer/device_admin/guest）及角色-权限映射；依赖 RBAC 表已存在（① 已建） |
+| [seed_rbac.py](202608/seed_rbac.py) | RBAC 种子数据 | 96 个权限点、5 个系统角色（admin/tester/algo_engineer/device_admin/guest）及角色-权限映射；依赖 RBAC 表已存在（① 已建） |
 
 ### 202609 — 评估维度与算法种子
 
@@ -74,6 +75,7 @@ python scripts/migrations/202610/add_benchmark_tables.py                  # ⑫ 
 
 | 脚本 | 用途 |
 |------|------|
+| [add_timestamp_db_defaults.py](202610/add_timestamp_db_defaults.py) | 时间戳列 DB 级 DEFAULT 对齐（INT-47）：以 ORM 元数据为准，对缺失 DB 级默认值的 created_at/updated_at 等时间戳列 `SET DEFAULT now()`；既有库对齐用，全新库（PO 已带 server_default）为 no-op；幂等，支持 `--dry-run` |
 | [add_benchmark_tables.py](202610/add_benchmark_tables.py) | 建 `benchmark_rankings`（排行 ReadModel）/ `benchmark_metric_mappings`（指标映射单一事实源，含设计文档 §5.1 默认映射种子 13 条）/ `benchmark_sources`（外部基线数据源）/ `benchmark_baselines`（外部基线条目，导入即不可变版本快照）四表及索引；支持 `--dry-run` |
 
 ## 新增迁移脚本约定

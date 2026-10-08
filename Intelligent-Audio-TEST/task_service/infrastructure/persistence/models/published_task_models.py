@@ -11,7 +11,7 @@
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, String, Text, DateTime, Boolean, JSON, Index,
+    func, Column, Integer, String, Text, DateTime, Boolean, JSON, Index,
 )
 
 
@@ -42,8 +42,8 @@ class PublishedTask(Base):
     report_snapshot = Column(JSON, comment='发布时源任务报告快照（冻结报告/执行数据/评估数据/用例日志）')
     publish_reason = Column(Text, comment='发布说明')
     published_by = Column(String(50), comment='发布人')
-    published_at = Column(DateTime, default=utc8now, nullable=False, comment='发布时间')
+    published_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='发布时间')
     archived_by = Column(String(50), comment='归档人')
     archived_at = Column(DateTime, comment='归档时间')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')

@@ -8,7 +8,7 @@ PkgType / TransferStatus 枚举不是 PO，定义在 shared/models/common_enums.
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    BigInteger, Boolean, Column, DateTime, Integer, String, Text, UniqueConstraint,
+    func, BigInteger, Boolean, Column, DateTime, Integer, String, Text, UniqueConstraint,
 )
 
 
@@ -37,8 +37,8 @@ class TransferRecord(Base):
     status = Column(String(20), nullable=False, index=True,
                     comment='状态 CREATED/TRANSFERRING/COMPLETED/FAILED/EXPIRED')
     final_path = Column(Text, nullable=True, comment='合并完成后的存储路径（带 scheme）')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
 
 class TransferChunk(Base):
@@ -53,4 +53,4 @@ class TransferChunk(Base):
     chunk_index = Column(Integer, nullable=False, comment='分片序号，从 0 开始')
     checksum = Column(String(64), nullable=False, comment='分片 sha256 hex')
     size = Column(BigInteger, nullable=False, comment='分片字节数')
-    received_at = Column(DateTime, default=utc8now, nullable=False, comment='接收时间')
+    received_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='接收时间')

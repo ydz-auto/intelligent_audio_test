@@ -11,7 +11,7 @@
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
     Index, UniqueConstraint,
 )
 
@@ -52,7 +52,7 @@ class BenchmarkRanking(Base):
     gap_median = Column(Float, comment='与排行中位数差距')
     delta_external = Column(Float, comment='实测值与外部基线值的差异（双轨并存时有值）')
     scenario_key = Column(String(120), comment='排行所用场景')
-    computed_at = Column(DateTime, default=utc8now, nullable=False, comment='计算时间')
+    computed_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='计算时间')
 
 
 class BenchmarkMetricMapping(Base):
@@ -69,7 +69,7 @@ class BenchmarkMetricMapping(Base):
     direction = Column(String(20), nullable=False, comment='lower_is_better / higher_is_better')
     scenario_tags = Column(JSON, comment='默认场景标签')
     active = Column(Boolean, nullable=False, default=True, comment='是否启用')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
 
 
 class BenchmarkSource(Base):
@@ -87,7 +87,7 @@ class BenchmarkSource(Base):
     version = Column(String(60), comment='数据源版本')
     description = Column(Text, comment='说明')
     created_by = Column(String(120), comment='创建人')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
 
 
 class BenchmarkBaseline(Base):
@@ -112,4 +112,4 @@ class BenchmarkBaseline(Base):
     metric_date = Column(String(20), comment='数据产生日期（YYYY-MM-DD）')
     version = Column(Integer, nullable=False, default=1, comment='基线版本号，从 1 开始')
     is_current = Column(Boolean, nullable=False, default=True, comment='是否当前版本')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

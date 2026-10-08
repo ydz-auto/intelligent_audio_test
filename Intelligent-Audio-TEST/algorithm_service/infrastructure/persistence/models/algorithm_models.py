@@ -20,7 +20,7 @@ from datetime import datetime
 
 from shared.models.database import Base
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, Boolean, Float,
+    func, Column, Integer, BigInteger, String, Text, Boolean, Float,
     DateTime, JSON, ForeignKey, Index, text,
 )
 from sqlalchemy.orm import relationship
@@ -39,8 +39,8 @@ class AlgorithmGroup(Base):
     icon = Column(String(200), comment='图标URL')
     display_order = Column(Integer, default=0, comment='排序权重')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     algorithms = relationship('AlgorithmDefinition', back_populates='group', lazy='dynamic', foreign_keys='AlgorithmDefinition.group_id')
 
@@ -69,8 +69,8 @@ class AlgorithmDefinition(Base):
     icon = Column(String(200), comment='图标URL')
     display_order = Column(Integer, default=0, comment='排序权重')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     group = relationship('AlgorithmGroup', back_populates='algorithms', foreign_keys='AlgorithmDefinition.group_id')
     device_params = relationship('AlgorithmDeviceParam', back_populates='algorithm', cascade='all, delete-orphan', foreign_keys='AlgorithmDeviceParam.algorithm_type')
@@ -115,8 +115,8 @@ class AlgorithmDeviceParam(Base):
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     algorithm = relationship('AlgorithmDefinition', back_populates='device_params', foreign_keys='AlgorithmDeviceParam.algorithm_type')
 
@@ -168,8 +168,8 @@ class AlgorithmApiParam(Base):
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     algorithm = relationship('AlgorithmDefinition', back_populates='api_params', foreign_keys='AlgorithmApiParam.algorithm_type')
 
@@ -218,8 +218,8 @@ class AlgorithmReferenceParam(Base):
     merge_mode = Column(String(20), nullable=True, default='join', comment='多音频合并方式：join(空格拼接)/collect(收集数组)/first(取第一个)')
     help_text = Column(Text, comment='帮助提示文字')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     def to_dict(self):
         return {
@@ -262,8 +262,8 @@ class EvaluationDimensionParam(Base):
     ui_order = Column(Integer, default=0, comment='界面排序')
     pass_threshold = Column(Float, nullable=True, comment='评估通过阈值（agg_role=pass_le/pass_ge/pass_eq 时使用）')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     # P5: 跨域 relationship dimension 移除（Dimension 归属 evaluation_service）
     # 跨域查询 Dimension 改通过 evaluation_service.EvaluationConfigService.GetDimensionByIds gRPC
@@ -314,8 +314,8 @@ class ParamMapping(Base):
     target_param = Column(String(50), nullable=False, comment='目标评估维度参数代码')
     transform_type = Column(String(20), default='none', comment='转换类型：none, uppercase, lowercase, json_parse, base64')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     algorithm = relationship('AlgorithmDefinition', back_populates='mappings', foreign_keys='ParamMapping.algorithm_type')
     # P5: 跨域 relationship dimension 移除（Dimension 归属 evaluation_service）
@@ -346,8 +346,8 @@ class AlgorithmDimensionRelation(Base):
     is_default = Column(Boolean, default=False, comment='是否默认评估维度')
     weight = Column(Float, default=1.0, comment='权重')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     algorithm = relationship('AlgorithmDefinition', back_populates='dimension_relations', foreign_keys='AlgorithmDimensionRelation.algorithm_type')
     # P5: 跨域 relationship dimension 移除（Dimension 归属 evaluation_service）
@@ -388,8 +388,8 @@ class CaseAlgorithmParam(Base):
     annotation_code = Column(String(100), nullable=True, comment='关联的音频标注代码，默认同 param_code')
     field_path = Column(String(255), nullable=True, comment='标注数据字段路径，默认同 param_code')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+    created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
+    updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
     algorithm = relationship('AlgorithmDefinition', foreign_keys='CaseAlgorithmParam.algorithm_type')
 

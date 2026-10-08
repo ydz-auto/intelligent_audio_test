@@ -12,7 +12,7 @@ shared/models/models/result_models.py 中的 TestResultDimension 改为从这里
 """
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
+    func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
     Index,
 )
 from shared.utils.status_constants import EvaluationStatus
@@ -41,4 +41,4 @@ class TestResultDimension(Base):
     api_request_body = Column(JSON, comment='评测API的原始请求体数据')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='生成时间')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='生成时间')
