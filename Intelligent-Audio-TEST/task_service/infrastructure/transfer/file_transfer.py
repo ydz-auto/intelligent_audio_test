@@ -149,11 +149,18 @@ def write_audio_files(entries: Iterator[Tuple[str, bytes]],
     return written
 
 
-def delete_written_files(written: List[Tuple[str, str]]) -> None:
-    """按 (key, 存储路径) 删除已回写的文件（文件段失败清理）"""
+def delete_written_files(written: List[Tuple[str, str]]) -> List[str]:
+    """按 (key, 存储路径) 删除已回写的文件（文件段失败清理）。
+
+    返回失败清单（"存储路径: 原因"）——审计问题 4：清理失败不得静默吞掉，
+    由调用方并入补偿错误清单提示人工介入。
+    """
+    failures: List[str] = []
     for _key, stored_path in written:
         try:
             storage.delete(stored_path)
         except Exception as e:
             log_not_emit('WARNING', _MODULE_NAME,
                          f'清理已回写文件失败: {stored_path}: {e}', category='system')
+            failures.append(f'{stored_path}: {e}')
+    return failures

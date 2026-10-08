@@ -157,7 +157,6 @@ class DimensionTransferRepository:
         try:
             count = session.query(TestResultDimension).filter(
                 TestResultDimension.id.in_(pks)).delete(synchronize_session=False)
-            self._sync_sequences(session)
             session.commit()
             return count
         except Exception:
@@ -168,14 +167,23 @@ class DimensionTransferRepository:
 
     @staticmethod
     def _sync_sequences(session) -> None:
-        """显式 ID 插入后同步 Postgres 序列（SQLite 无需）"""
+        """显式 ID 插入后把自增序列上调到 GREATEST(当前 last_value, MAX(id))。
+
+        审计问题 3：只上调不下调，避免回拨撞并发未提交消费的 id。
+        仅 Postgres 需要；SQLite 无需处理。
+        """
         if session.bind is None or session.bind.dialect.name != 'postgresql':
             return
         from sqlalchemy import text
         try:
+            seq = session.execute(text(
+                "SELECT pg_get_serial_sequence('test_result_dimensions', 'id')")).scalar()
+            if not seq:
+                return
             session.execute(text(
-                "SELECT setval(pg_get_serial_sequence('test_result_dimensions', 'id'), "
-                "GREATEST((SELECT COALESCE(MAX(id), 0) FROM test_result_dimensions), 1))"))
+                "SELECT setval(:seq, GREATEST((SELECT last_value FROM " + seq + "), "
+                "(SELECT COALESCE(MAX(id), 0) FROM test_result_dimensions), 1))"
+            ), {'seq': seq})
         except Exception as e:
             log_not_emit('WARNING', _MODULE_NAME,
                          f'同步 test_result_dimensions 序列失败: {e}', category='system')

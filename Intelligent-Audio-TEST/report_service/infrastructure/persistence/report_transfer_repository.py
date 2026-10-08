@@ -183,7 +183,7 @@ class ReportTransferRepository:
                 count = session.query(po_cls).filter(po_cls.id.in_(pks)).delete(
                     synchronize_session=False)
                 deleted[table] = count
-            _sync_sequences(session)
+            # 审计问题 3：回滚路径不做序列同步（纯装饰性且可能向下回拨）
             session.commit()
             return deleted
         except Exception:
@@ -191,6 +191,7 @@ class ReportTransferRepository:
             raise
         finally:
             session.close()
+
 
 def _insert_two_pass(session, po_cls, table: str, rows: List[dict],
                      conflict_old_ids: List[int]) -> List[Tuple[int, object]]:
@@ -232,8 +233,10 @@ def _insert_two_pass(session, po_cls, table: str, rows: List[dict],
 
 
 def _sync_sequences(session, tables=None) -> None:
-    """显式 ID 插入后同步 Postgres 序列（SQLite 无需）。
+    """显式 ID 插入后把自增序列上调到 GREATEST(当前 last_value, MAX(id))。
 
+    审计问题 3：只上调不下调，避免回拨撞并发未提交消费的 id。
+    仅 Postgres 需要；SQLite 无需处理。
     Args:
         tables: 指定表名列表；None 则同步全部 7 表。
     """
@@ -242,10 +245,14 @@ def _sync_sequences(session, tables=None) -> None:
     from sqlalchemy import text
     for table in (tables or _TABLE_PO):
         try:
+            seq = session.execute(text("SELECT pg_get_serial_sequence(:tbl, 'id')"),
+                                  {'tbl': table}).scalar()
+            if not seq:
+                continue
             session.execute(text(
-                "SELECT setval(pg_get_serial_sequence(:tbl, 'id'), "
-                "GREATEST((SELECT COALESCE(MAX(id), 0) FROM " + table + "), 1))"
-            ), {'tbl': table})
+                "SELECT setval(:seq, GREATEST((SELECT last_value FROM " + seq + "), "
+                "(SELECT COALESCE(MAX(id), 0) FROM " + table + "), 1))"
+            ), {'seq': seq})
         except Exception as e:
             log_not_emit('WARNING', _MODULE_NAME,
                          f'同步 {table} 序列失败: {e}', category='system')

@@ -58,6 +58,10 @@ _REPORT_TABLES = (TransferTable.TEST_REPORTS, TransferTable.REPORT_SUMMARIES,
 
 _CONFLICT_PREVIEW_CAP = 500
 
+# 远端应用服务在"DB 已提交但批次登记失败"时返回的专用错误前缀（审计问题 1③）：
+# 编排层据此把该段并入人工介入清单，防止孤儿数据静默残留
+_COMMITTED_WITHOUT_REGISTRY_MARKER = '已提交但批次登记失败'
+
 
 def _remaps_only(mapping: Dict[int, int]) -> Dict[int, int]:
     """只保留真正的重映射条目（远端 rewrite 语义 mapping.get(old, old) 下，
@@ -167,9 +171,9 @@ class DataTransferImportService:
         """执行导入：分段提交 + 失败逆序补偿。返回导入统计（含 remappedIds）。"""
         batch_id = uuid.uuid4().hex
         reporter = ImportProgressReporter(batch_id)
-        committed_segments: List[str] = []
         files_tracker: List[tuple] = []
         mappings: Dict[str, Dict[int, int]] = {}
+        inserted_pks: Dict[str, List[int]] = {}
         rows_by_table: Dict[str, List[dict]] = {}
 
         try:
@@ -206,7 +210,6 @@ class DataTransferImportService:
                 progress_fn=lambda table, n: reporter.table_progress(table, n),
             )
             transfer_batch_registry.record(batch_id, 'task_service', inserted_pks)
-            committed_segments.append('task')
 
             # ===== 段 2：维度评分（evaluation_service 单事务）=====
             if dims_rows:
@@ -216,7 +219,6 @@ class DataTransferImportService:
                     dims_rows, _remaps_only(mappings['test_results']), batch_id)
                 mappings[FkMappingKey.TEST_RESULT_DIMENSIONS.value] = {
                     int(k): v for k, v in (eval_result.get('id_mapping') or {}).items()}
-            committed_segments.append('evaluation')
 
             # ===== 段 3：报告 7 表（report_service 单事务）=====
             if any(report_tables_rows.values()):
@@ -226,7 +228,6 @@ class DataTransferImportService:
                     report_tables_rows, _remaps_only(mappings['tasks']), batch_id)
                 mappings[FkMappingKey.TEST_REPORTS.value] = {
                     int(k): v for k, v in (report_result.get('id_mapping') or {}).items()}
-            committed_segments.append('report')
 
             # ===== 段 4：文件回写存储（最后动文件；失败走补偿）=====
             reporter.report(ImportProgressStep.EXTRACTING_FILES, '回写结果与参考参数文件')
@@ -254,8 +255,13 @@ class DataTransferImportService:
         except Exception as e:
             log_not_emit('ERROR', _MODULE_NAME,
                          f'导入失败 batch={batch_id}: {e}', category='system', exc_info=True)
-            compensation_errors = self._compensate(
-                committed_segments, files_tracker, batch_id)
+            compensation_errors = self._compensate(files_tracker, inserted_pks, batch_id)
+            # 远端段"已提交但批次登记失败"：远端存在无登记孤儿行，自动补偿够不着，
+            # 必须并入人工介入清单（规格架构决策 3"不得静默"）
+            if _COMMITTED_WITHOUT_REGISTRY_MARKER in str(e):
+                compensation_errors.append(
+                    '远端段已提交但批次登记失败，远端存在无登记孤儿行需人工清理'
+                    f'（batch_id={batch_id}）')
             message = f'导入失败: {e}'
             if compensation_errors:
                 message += ('；补偿回滚部分失败，需人工介入核查'
@@ -272,30 +278,34 @@ class DataTransferImportService:
 
     # ---------- 补偿（逆序：文件 → 报表 → 维度 → task 段）----------
 
-    def _compensate(self, committed_segments: List[str],
-                    files_tracker: List[tuple],
+    def _compensate(self, files_tracker: List[tuple],
+                    inserted_pks: Dict[str, List[int]],
                     batch_id: str) -> List[str]:
-        """按逆序回滚已提交段。返回补偿失败清单（非空即需人工介入）。"""
+        """按逆序回滚已提交段。返回补偿失败清单（非空即需人工介入）。
+
+        问题 1 修复：远端段回滚**无条件**调用——批次未登记时远端本就 no-op
+        返回 success，不存在"响应丢失/登记失败导致跳过补偿"的静默窗口；
+        仅当全部回滚成功才销毁批次登记。
+        问题 2 修复：task 段直接用编排方内存中的 inserted_pks 回滚，
+        不依赖 Redis 读登记（登记恰可能因本次故障不可用）。
+        """
         errors: List[str] = []
         if files_tracker:
+            cleanup_failures = delete_written_files(files_tracker)
+            errors.extend(f'文件清理失败: {f}' for f in cleanup_failures)
+        # 远端段：无条件回滚（未登记 = no-op）
+        try:
+            report_transfer_acl_repository.rollback_report_import(batch_id)
+        except Exception as e:
+            errors.append(f'报表段回滚失败: {e}')
+        try:
+            evaluation_transfer_acl_repository.rollback_dimension_import(batch_id)
+        except Exception as e:
+            errors.append(f'维度评分段回滚失败: {e}')
+        # task 段：内存主键回滚（非空 ⇔ 该段已提交）
+        if any(inserted_pks.values()):
             try:
-                delete_written_files(files_tracker)
-            except Exception as e:
-                errors.append(f'文件清理失败: {e}')
-        if 'report' in committed_segments:
-            try:
-                report_transfer_acl_repository.rollback_report_import(batch_id)
-            except Exception as e:
-                errors.append(f'报表段回滚失败: {e}')
-        if 'evaluation' in committed_segments:
-            try:
-                evaluation_transfer_acl_repository.rollback_dimension_import(batch_id)
-            except Exception as e:
-                errors.append(f'维度评分段回滚失败: {e}')
-        if 'task' in committed_segments:
-            try:
-                pks = transfer_batch_registry.load_service(batch_id, 'task_service')
-                transfer_repository.rollback_task_segment(pks)
+                transfer_repository.rollback_task_segment(inserted_pks)
                 transfer_batch_registry.remove_service(batch_id, 'task_service')
             except Exception as e:
                 errors.append(f'任务段回滚失败: {e}')

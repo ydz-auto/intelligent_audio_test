@@ -322,7 +322,6 @@ class TransferRepository:
                 count = session.query(po_cls).filter(po_cls.id.in_(pks)).delete(
                     synchronize_session=False)
                 deleted[table] = count
-            self._sync_sequences(session)
             session.commit()
             return deleted
         except Exception:
@@ -333,8 +332,10 @@ class TransferRepository:
 
     @staticmethod
     def _sync_sequences(session, tables=None) -> None:
-        """显式 ID 插入后把自增序列推到 max(id)，防止后续自增主键冲突。
+        """显式 ID 插入后把自增序列上调到 GREATEST(当前 last_value, MAX(id))。
 
+        审计问题 3：只上调不下调——向下回拨会与并发事务已消费但未提交的更大
+        id 撞 UNIQUE。两遍插入的正确性只依赖 nextval > 本批次显式 max，上调即满足。
         仅 Postgres 需要；SQLite（开发库）自增取 max(rowid)+1 无需处理。
         Args:
             tables: 指定表名列表；None 则同步全部 7 表。
@@ -344,10 +345,14 @@ class TransferRepository:
         from sqlalchemy import text
         for table in (tables or _TABLE_PO):
             try:
+                seq = session.execute(text("SELECT pg_get_serial_sequence(:tbl, 'id')"),
+                                      {'tbl': table}).scalar()
+                if not seq:
+                    continue
                 session.execute(text(
-                    "SELECT setval(pg_get_serial_sequence(:tbl, 'id'), "
-                    "GREATEST((SELECT COALESCE(MAX(id), 0) FROM " + table + "), 1))"
-                ), {'tbl': table})
+                    "SELECT setval(:seq, GREATEST((SELECT last_value FROM " + seq + "), "
+                    "(SELECT COALESCE(MAX(id), 0) FROM " + table + "), 1))"
+                ), {'seq': seq})
             except Exception as e:
                 log_not_emit('WARNING', _MODULE_NAME,
                              f'同步 {table} 序列失败（不影响导入提交）: {e}', category='system')

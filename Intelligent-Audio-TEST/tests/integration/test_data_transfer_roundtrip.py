@@ -536,6 +536,102 @@ class TestRoundtrip:
         finally:
             session.close()
 
+    def test_response_lost_after_eval_commit_triggers_cleanup(
+            self, db, storage_env, patched_acl, fake_redis, monkeypatch):
+        """审计问题 1 场景 a：远端段已提交并登记、但 gRPC 响应丢失 →
+        无条件补偿回滚清理远端孤儿与 task 段，批次登记销毁，errors 为空"""
+        _seed(db, storage_env)
+        data = _export_zip(storage_env, patched_acl, fake_redis)
+
+        import task_service.application.task.data_transfer_import_service as import_mod
+
+        real_eval = import_mod.evaluation_transfer_acl_repository
+
+        class _ResponseLostEval:
+            """模拟响应丢失：远端 import 已成功提交+登记，但客户端收到失败"""
+
+            def export_dimensions_for_tasks(self, result_ids):
+                return real_eval.export_dimensions_for_tasks(result_ids)
+
+            def import_dimensions(self, rows, result_id_mapping, batch_id):
+                real_eval.import_dimensions(rows, result_id_mapping, batch_id)
+                raise RuntimeError('维度评分导入失败: 模拟响应丢失（服务端已提交）')
+
+            def rollback_dimension_import(self, batch_id):
+                return real_eval.rollback_dimension_import(batch_id)
+
+        monkeypatch.setattr(import_mod, 'evaluation_transfer_acl_repository', _ResponseLostEval())
+
+        from shared.models.database import get_db_session
+        from evaluation_service.infrastructure.persistence.models import TestResultDimension
+        from report_service.infrastructure.persistence.models import Report
+        from task_service.infrastructure.persistence.models import Task
+
+        result = import_mod.data_transfer_import_service.execute_import(data['zip_path'])
+        assert result['success'] is False
+        assert '响应丢失' in result['message']
+        assert result['data']['compensation_errors'] == []
+
+        session = get_db_session()
+        try:
+            # 远端孤儿行被无条件回滚清理，task 段同样回滚：仅剩种子数据
+            assert session.query(Task).count() == 2
+            assert session.query(TestResultDimension).count() == 1
+            assert session.query(Report).count() == 1
+        finally:
+            session.close()
+
+        from shared.utils.data_transfer_batch import transfer_batch_registry
+        assert transfer_batch_registry.load_service(
+            result['data']['batch_id'], 'task_service') == {}
+
+    def test_remote_commit_without_registry_surfaces_manual_intervention(
+            self, db, storage_env, patched_acl, fake_redis, monkeypatch):
+        """审计问题 1 场景 b：远端已提交但登记失败（Redis 故障）→
+        返回专用错误、编排层显式提示人工介入，不得静默"""
+        _seed(db, storage_env)
+        data = _export_zip(storage_env, patched_acl, fake_redis)
+
+        import evaluation_service.application.dimension_transfer_service as eval_svc_mod
+
+        class _BrokenRecordRegistry:
+            def record(self, *a, **k):
+                raise RuntimeError('模拟 Redis 故障')
+
+            def load_service(self, batch_id, service):
+                return {}
+
+            def remove_service(self, *a, **k):
+                pass
+
+            def delete(self, *a, **k):
+                pass
+
+        monkeypatch.setattr(eval_svc_mod, 'transfer_batch_registry', _BrokenRecordRegistry())
+
+        from shared.models.database import get_db_session
+        from evaluation_service.infrastructure.persistence.models import TestResultDimension
+        from task_service.infrastructure.persistence.models import Task
+
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        result = data_transfer_import_service.execute_import(data['zip_path'])
+        assert result['success'] is False
+        assert '已提交但批次登记失败' in result['message']
+        compensation_errors = result['data']['compensation_errors']
+        assert any('需人工清理' in e for e in compensation_errors)
+
+        session = get_db_session()
+        try:
+            # task 段经内存主键回滚干净（审计问题 2）
+            assert session.query(Task).count() == 2
+            # 远端维度段已提交且无登记：孤儿行保留（自动补偿够不着），
+            # 由人工介入清单显式暴露——本断言验证"不静默"
+            assert session.query(TestResultDimension).count() == 2
+        finally:
+            session.close()
+
 
 def _hard_delete_all_15_tables():
     """清空目标库 15 张迁移表（模拟"另一套部署"或已清空的目标库）"""
@@ -558,3 +654,4 @@ def _hard_delete_all_15_tables():
         session.commit()
     finally:
         session.close()
+

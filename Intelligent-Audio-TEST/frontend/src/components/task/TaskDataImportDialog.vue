@@ -186,19 +186,10 @@ const startImport = async () => {
 const pollProgress = async () => {
   try {
     const snapshot = await dataTransferPort.getImportProgress();
-    if (snapshot && typeof snapshot === 'object' && 'step' in snapshot) {
-      // 快照兜底：仅在 socket 尚未推送时更新（避免回退旧值）
-      if (progress.value.percentage === 0 || progress.value.step === 'parsing') {
-        progress.value = {
-          step: (snapshot.step as ImportProgress['step']) || 'parsing',
-          currentTable: String(snapshot.current_table ?? ''),
-          processedRows: Number(snapshot.processed_rows ?? 0),
-          totalRows: Number(snapshot.total_rows ?? 0),
-          percentage: Number(snapshot.percentage ?? 0),
-          message: String(snapshot.message ?? ''),
-          batchId: String(snapshot.batch_id ?? ''),
-        };
-      }
+    // 快照兜底：仅在 socket 尚未推送时更新（避免回退旧值）；
+    // snake_case→camelCase 转换已在 infrastructure adapter 内完成（审计问题 5）
+    if (snapshot && (progress.value.percentage === 0 || progress.value.step === 'parsing')) {
+      progress.value = snapshot;
     }
   } catch {
     // 快照兜底失败忽略（socket 为主通道）

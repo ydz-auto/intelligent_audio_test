@@ -44,7 +44,18 @@ class ReportTransferService:
                         for table, rows in (tables_rows or {}).items()}
         id_mapping, inserted_pks = report_transfer_repository.import_reports(
             clean_tables, clean_mapping)
-        transfer_batch_registry.record(batch_id, _OWNER, inserted_pks)
+        try:
+            transfer_batch_registry.record(batch_id, _OWNER, inserted_pks)
+        except Exception as e:
+            # DB 已提交但登记失败：返回专用前缀错误（编排层并入人工介入清单，
+            # 防止孤儿行静默残留——审计问题 1③）
+            log_not_emit('ERROR', _MODULE_NAME,
+                         f'报告已提交但批次登记失败 batch={batch_id}: {e}',
+                         category='system', exc_info=True)
+            return {'success': False,
+                    'message': f'已提交但批次登记失败: {e}',
+                    'data': {'batch_id': batch_id,
+                             'imported': sum(len(v) for v in inserted_pks.values())}}
         log_not_emit('INFO', _MODULE_NAME,
                      f'报告导入完成 batch={batch_id} rows={sum(len(v) for v in inserted_pks.values())}',
                      category='system')

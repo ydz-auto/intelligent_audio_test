@@ -3,9 +3,9 @@
  * 出口契约：Domain（camelCase）；DTO / FormData 组装收敛在本文件。
  */
 import { request } from '../http/client';
-import { toImportPreview, toImportResult } from '../adapters/dataTransferAdapter';
-import type { TaskDataExportDto, TaskImportPreviewDto, TaskImportResultDto } from '../dto/dataTransferDto';
-import type { ImportPreview, ImportResult, DataTransferOptions } from '../../domain/model/dataTransfer';
+import { toImportPreview, toImportResult, toImportProgress } from '../adapters/dataTransferAdapter';
+import type { TaskDataExportDto, TaskImportPreviewDto, TaskImportResultDto, ImportProgressDto } from '../dto/dataTransferDto';
+import type { ImportPreview, ImportResult, ImportProgress, DataTransferOptions } from '../../domain/model/dataTransfer';
 
 export const dataTransferApi = {
   /** 导出任务数据 ZIP（响应为二进制流） */
@@ -40,8 +40,9 @@ export const dataTransferApi = {
     return toImportResult(dto);
   },
 
-  /** 最近一次导入进度快照（兜底） */
-  async getImportProgress(): Promise<Record<string, unknown> | null> {
-    return request<Record<string, unknown> | null>('GET', '/data-transfer/import/progress', null);
+  /** 最近一次导入进度快照（兜底；snake_case→camelCase 转换收敛在本层） */
+  async getImportProgress(): Promise<ImportProgress | null> {
+    const dto = await request<ImportProgressDto | null>('GET', '/data-transfer/import/progress', null);
+    return dto ? toImportProgress(dto) : null;
   },
 };
