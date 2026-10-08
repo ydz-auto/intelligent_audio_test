@@ -1013,3 +1013,77 @@ class TestKnownExecuteChainDefects:
         orig_log = int35_quarantine['orig_int43_log']
         orig_log(driver, level='INFO', content='probe', task_id=7, test_case_id='c1')
         assert captured.get('task_id') == 7 and captured.get('test_case_id') == 'c1'
+
+
+class TestInt44MultiRoundWritePath:
+    """INT-44 验收补充：多轮会话写路径 algorithm_result 落库必须是 dict。
+
+    create_multi_round_test_result 与 create_test_result 是同一缺陷模式的两处
+    写点；真实链路用例只执行单轮，本类直接驱动多轮写路径（经 ACL gRPC
+    SubmitResult → task_service 真实落库）并回读断言，防双重编码回归。
+    """
+
+    def test_multi_round_algorithm_result_persisted_as_dict(
+            self, pg_db, grpc_mesh, oss_fast_fail):
+        from api_test_service.core.api_result_processor import APIResultProcessor
+        from shared.domain.algorithm_result_builder import (
+            build_algorithm_results_for_result,
+        )
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task, TestResult
+
+        class _StubExecutor:
+            def _log(self, **kwargs):
+                pass
+
+        s = get_db_session()
+        task = Task(name=f'int44-multi-{uuid.uuid4().hex[:8]}', type='api',
+                    status='pending', total_cases=1, algorithm_type='translation')
+        s.add(task)
+        s.commit()
+        task_id = task.id
+        s.close()
+
+        aggregated = {
+            'success': True,
+            'algorithm_result': {
+                'text_output': '今天天气怎么样',
+                'round_count': 2,
+                'success_count': 2,
+                'total_latency': 0.4,
+                'avg_latency': 0.2,
+                'session_id': str(uuid.uuid4()),
+                'rounds': [
+                    {'round': 1, 'success': True, 'output': '今天', 'latency': 0.2},
+                    {'round': 2, 'success': True, 'output': '天气怎么样', 'latency': 0.2},
+                ],
+            },
+            'total_latency': 0.4,
+            'round_count': 2,
+            'session_summary': {'rounds': 2},
+        }
+
+        processor = APIResultProcessor(_StubExecutor())
+        result_id = processor.create_multi_round_test_result(
+            task_id=task_id, test_case_id=f'INT44-{uuid.uuid4().hex[:12]}',
+            api_config_id=None, algorithm_type='translation',
+            aggregated=aggregated, success=True)
+        assert result_id, '多轮会话测试结果应写入成功'
+
+        s = get_db_session()
+        tr = s.get(TestResult, result_id)
+        # INT-44 修复锁定：JSON 列落库必须是 dict（双重编码会把整个字符串存成 JSON 标量）
+        assert isinstance(tr.algorithm_result, dict), \
+            f'algorithm_result 落库应为 dict 而非双重编码字符串: {tr.algorithm_result!r}'
+        assert tr.algorithm_result.get('round_count') == 2
+        assert [r['output'] for r in tr.algorithm_result.get('rounds', [])] == \
+            ['今天', '天气怎么样']
+
+        # 读侧 builder 对多轮 dict 输入不再 {**str} TypeError
+        rows = build_algorithm_results_for_result(
+            result={'id': result_id}, resource='api',
+            algo_res=tr.algorithm_result, result_data=None,
+            aux_params_map=None, dim_result_rows=[],
+            output_fields=[], algorithm_type='translation')
+        s.close()
+        assert rows == []
