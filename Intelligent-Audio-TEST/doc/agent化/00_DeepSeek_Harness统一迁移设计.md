@@ -86,7 +86,11 @@ DSH 的 `SAFETY.md` 明示开发者预览、**未经安全审计、不应作为�
 - `02_用户场景.md` 的场景与结果目标继续有效；实现角色不是“自研 Agent Loop”。
 - `03_技术设计文档.md` 里的自研 Agent Loop、Registry、ModelClient、通用 Session 实现、目录落地建议、配置项和 P0-P5 计划属于**被替换的旧方案**；与本文件冲突时以本设计为准，下一实施阶段再按锁定的 DSH 插件 SDK 转换具体代码/配置。业务权限、审批、隔离、任务幂等原则保留。
 
-## 7. 官方参考
+## 7. 前后端实施细化
+
+前端 Vue 3 的页面、Store、SSE/DTO 分层，以及 FastAPI Gateway 的路由、业务工具、审批、Run/Event 持久化、DSH Worker 部署及验收计划，统一参考 [04_前后端改造方案.md](04_前后端改造方案.md)。
+
+## 8. 官方参考
 
 - https://github.com/deepseek-ai/deepseek-harness
 - https://github.com/deepseek-ai/deepseek-harness/blob/master/README.zh.md
