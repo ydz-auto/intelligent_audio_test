@@ -6,6 +6,8 @@
 API 配置 CRUD 命令处理器（CreateAPI/UpdateAPI/DeleteAPI）则直接通过
 api_test_repository 操作聚合根，不直接 import PO，保持领域隔离。
 """
+import dataclasses
+
 from api_test_service.application.commands.api_test_commands import (
     CreateAPITestCommand,
     StopAPITestCommand,
@@ -17,6 +19,19 @@ from api_test_service.core.api_test_service import api_test_service as _service
 from api_test_service.infrastructure.persistence.api_test_repository import api_test_repository
 
 
+def _normalize_case_ids(case_ids):
+    """跨服务 gRPC JSON 边界不保类型：数值字符串规范化为 int（INT-41）。
+
+    与 CreateAPITestCommand.case_ids 的 List[int] 声明及执行链的 int 主键
+    比对对齐——2 == '2' 恒 False 会让用例被静默跳过（无 ERROR 日志）。
+    非数值字符串原样保留，由下游按既有语义处理。
+    """
+    return [
+        int(c) if isinstance(c, str) and c.strip().isdigit() else c
+        for c in case_ids
+    ]
+
+
 class CreateAPITestCommandHandler:
     """处理 CreateAPITestCommand — 启动一个 API 测试任务
 
@@ -24,6 +39,10 @@ class CreateAPITestCommandHandler:
     """
 
     def handle(self, command: CreateAPITestCommand) -> dict:
+        if command.case_ids:
+            normalized = _normalize_case_ids(command.case_ids)
+            if normalized != list(command.case_ids):
+                command = dataclasses.replace(command, case_ids=normalized)
         return _service.start_task(
             task_id=command.task_id,
             case_ids=command.case_ids,

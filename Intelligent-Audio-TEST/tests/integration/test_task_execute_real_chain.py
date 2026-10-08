@@ -40,6 +40,9 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
   （_claim_tc_rel_running / _validate_and_get_data 的 tc.get('id') == tc_rel_id），
   2 == '2' 恒 False → 用例被静默跳过、TaskCase 永远停在 queued/pending →
   引擎主循环死等 → 任务卡 running（微服务模式下 API 用例从不执行）。
+  （INT-41 已修复：api_test_service 应用层入口 CreateAPITestCommandHandler.handle
+  对数值字符串 case_ids 做 dataclasses.replace 幂等规范化，与命令 List[int]
+  声明对齐；锁定测试转为常驻守卫，隔离替身自动等价于幂等操作）
 - INT-43：api_test_service/clients/api_driver.py APIDriver._log 把 **kwargs
   转发给 log_and_emit 又显式传 task_id/test_case_id，调用点传了这两个参数即抛
   TypeError("got multiple values for keyword argument") → 每次真实 API 调用在
@@ -58,9 +61,8 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
 
 隔离策略（测试侧自愈，不影响产品代码）：int35_quarantine 夹具对上述缺陷做
 "探针检测 + 最小替身"，仅在缺陷仍在时生效（缺陷修复后探针通过、补丁自动卸除，
-回归不会静默绕过修复后的产品代码）。其中 INT-41 有一个
-xfail(strict) 锁定测试，修复后 XPASS 提醒移除标记；INT-38/39/43 已修复，其锁定
-测试转为常驻守卫；INT-40/42/45 为守卫型或
+回归不会静默绕过修复后的产品代码）。INT-38/39/41/43 曾各有
+xfail(strict) 锁定测试，修复后已全部转为常驻守卫；INT-40/42/45 为守卫型或
 非致命缺陷，无独立锁定测试。
 """
 import json
@@ -969,8 +971,8 @@ class TestTaskExecuteRealChain:
 
 
 class TestKnownExecuteChainDefects:
-    """INT-41 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。
-    （INT-38 / INT-39 / INT-43 已修复，相应锁定测试转为常驻守卫；INT-44 已修复，锁定测试已移除）"""
+    """执行链缺陷锁定测试（常驻守卫）：INT-38 / INT-39 / INT-41 / INT-43 已修复，
+    相应锁定测试转为常驻守卫防回归；INT-44 已修复，锁定测试已移除。"""
 
     def test_int38_evaluate_result_call_site_passes_case_reference_params(self):
         """常驻守卫：api 线性链 _run_single_api 调用 _evaluate_result 必须显式传
@@ -986,9 +988,6 @@ class TestKnownExecuteChainDefects:
                                 evaluation_status='', duration=0, error_message=None)
         assert item.error_message == '' or item.error_message is None
 
-    @pytest.mark.xfail(strict=True, reason='INT-41：gRPC test_config 以 str 传 case_ids，'
-                                           'api_test_service 以 int 主键比对，'
-                                           "2 == '2' 恒 False → 用例被静默跳过")
     def test_int41_case_ids_normalized_at_api_boundary(
             self, monkeypatch, int35_quarantine):
         """边界语义锁定：字符串 case_ids 到达应用层 start_task 前应被规范化为 int
