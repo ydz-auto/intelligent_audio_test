@@ -43,12 +43,14 @@ class EvaluationTransferAclRepository:
         Raises: 失败抛出 RuntimeError（编排层据此回滚已提交前序段）。
         """
         stub = get_evaluation_data_service_stub()
-        resp = stub.ImportDimensions(eval_pb.ImportDimensionsRequest(
-            data=json.dumps({
+        # timeout 是 gRPC 调用的关键字参数，不是 Request 消息字段（缺陷 4 修复）
+        resp = stub.ImportDimensions(
+            eval_pb.ImportDimensionsRequest(data=json.dumps({
                 'rows': rows,
                 'result_id_mapping': {str(k): v for k, v in result_id_mapping.items()},
                 'batch_id': batch_id,
-            }, ensure_ascii=False, default=str), timeout=_GRPC_TIMEOUT_SECONDS))
+            }, ensure_ascii=False, default=str)),
+            timeout=_GRPC_TIMEOUT_SECONDS)
         if not resp.success:
             raise RuntimeError(f'维度评分导入失败: {resp.message}')
         return _loads(resp.data, {})

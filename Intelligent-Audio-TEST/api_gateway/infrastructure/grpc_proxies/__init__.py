@@ -45,6 +45,10 @@ from .published_task_config_proxies import (
 from .report_proxies import report_config_service
 from .auth_proxies import auth_config_service
 from .algorithm_proxies import algorithm_query_service
+from .data_transfer_proxies import (
+    _DataTransferProxy,
+    data_transfer_service,
+)
 
 __all__ = [
     'execution_engine',
@@ -72,4 +76,6 @@ __all__ = [
     'report_config_service',
     'auth_config_service',
     'algorithm_query_service',
+    '_DataTransferProxy',
+    'data_transfer_service',
 ]

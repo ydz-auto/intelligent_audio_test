@@ -41,12 +41,14 @@ class ReportTransferAclRepository:
         Raises: 失败抛出 RuntimeError。
         """
         stub = get_report_config_service_stub()
-        resp = stub.ImportReports(report_pb.ImportReportsRequest(
-            data=json.dumps({
+        # timeout 是 gRPC 调用的关键字参数，不是 Request 消息字段（缺陷 4 修复）
+        resp = stub.ImportReports(
+            report_pb.ImportReportsRequest(data=json.dumps({
                 'tables': tables_rows,
                 'task_id_mapping': {str(k): v for k, v in task_id_mapping.items()},
                 'batch_id': batch_id,
-            }, ensure_ascii=False, default=str), timeout=_GRPC_TIMEOUT_SECONDS))
+            }, ensure_ascii=False, default=str)),
+            timeout=_GRPC_TIMEOUT_SECONDS)
         if not resp.success:
             raise RuntimeError(f'报告导入失败: {resp.message}')
         return _loads(resp.data, {})
