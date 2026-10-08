@@ -43,7 +43,9 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
   JSON 列（result_models.py algorithm_result Column(JSON)），读回是 str；
   报告侧 shared/domain/algorithm_result_builder.py:177
   {**(algo_res or {}), **(result_data or {})} 期望 dict → TypeError →
-  API 任务报告生成必崩。
+  API 任务报告生成必崩。（INT-44 已修复：写侧 create_test_result /
+  create_multi_round_test_result 直接传 dict，读侧 builder 入口 str 幂等规范化；
+  其隔离替身与 xfail 锁定测试已移除，链路测试改锁落库为 dict）
 - INT-45：report_service AlgorithmConfigAclRepositoryImpl 缺少
   get_full_field_mapping 方法（report_task_generator 经
   _grpc_algo_get_field_mapping 调用），字段映射快照静默降级为空（仅 WARNING），
@@ -461,7 +463,7 @@ def gateway(pg_db, grpc_mesh):
 
 @pytest.fixture(scope='module')
 def int35_quarantine(oss_fast_fail, pg_db):
-    """对 INT-38 / INT-39 / INT-40 / INT-41 / INT-43 / INT-44 六个执行链路缺陷做「探针检测 + 最小替身」隔离。
+    """对 INT-38 / INT-39 / INT-40 / INT-41 / INT-43 五个执行链路缺陷做「探针检测 + 最小替身」隔离。
 
     - 仅当探针证实缺陷仍存在时才打补丁；缺陷修复后探针通过、补丁不生效，
       回归测试不会静默绕过修复后的产品代码。
@@ -581,45 +583,14 @@ def int35_quarantine(oss_fast_fail, pg_db):
 
     mp.setattr(APIDriver, '_log', _apidriver_log_dedup)
 
-    # ── INT-44：algorithm_result 双重编码，报告 builder 对 str 做 {**str} 即崩 ──
-    # 隔离：builder 入口做 str→dict 幂等规范化（与读侧推荐修复一致）。
-    import json as _json
-
-    from shared.domain import algorithm_result_builder as _arb
-    from report_service.application.services import (
-        report_data_builder_case_mixin as _case_mixin,
-    )
-    _orig_builder = _arb.build_algorithm_results_for_result
-
-    def _builder_str_tolerant(result, resource, algo_res, result_data,
-                              *args, **kwargs):
-        if isinstance(algo_res, str):
-            try:
-                algo_res = _json.loads(algo_res)
-            except Exception:
-                algo_res = None
-        if isinstance(result_data, str):
-            try:
-                result_data = _json.loads(result_data)
-            except Exception:
-                result_data = None
-        return _orig_builder(result, resource, algo_res, result_data,
-                             *args, **kwargs)
-
-    mp.setattr(_arb, 'build_algorithm_results_for_result', _builder_str_tolerant)
-    mp.setattr(_case_mixin, 'build_algorithm_results_for_result',
-               _builder_str_tolerant)
-
     yield {
         'int38_quarantined': param.default is inspect.Parameter.empty,
         'int39_quarantined': probe_crashed,
         'int40_guarded': True,
         'int41_quarantined': True,
         'int43_quarantined': True,
-        'int44_quarantined': True,
         'orig_int41_handle': orig_create_api_test,
         'orig_int43_log': orig_apidriver_log,
-        'orig_int44_builder': _orig_builder,
     }
     mp.undo()
 
@@ -810,7 +781,6 @@ class TestTaskExecuteRealChain:
         assert int35_quarantine['int39_quarantined'], '预期 INT-39 仍在（隔离生效）'
         assert int35_quarantine['int41_quarantined'], '预期 INT-41 仍在（隔离生效）'
         assert int35_quarantine['int43_quarantined'], '预期 INT-43 仍在（隔离生效）'
-        assert int35_quarantine['int44_quarantined'], '预期 INT-44 仍在（隔离生效）'
 
         ids = _seed_execute_scenario(api_double, eval_double)
         task_id = ids['task_id']
@@ -868,10 +838,11 @@ class TestTaskExecuteRealChain:
         tr = results[0]
         assert tr.execution_status == 'completed'
         assert tr.test_case_id == ids['case_id']
-        algo = json.loads(tr.algorithm_result) if isinstance(tr.algorithm_result, str) \
-            else (tr.algorithm_result or {})
-        assert algo.get('answer') == '今天天气怎么样', \
-            f'algorithm_result 应从被测 API 最终结果提取 answer: {algo}'
+        # INT-44 修复锁定：JSON 列落库必须是 dict（双重编码会把整个字符串存成 JSON 标量）
+        assert isinstance(tr.algorithm_result, dict), \
+            f'algorithm_result 落库应为 dict 而非双重编码字符串: {tr.algorithm_result!r}'
+        assert tr.algorithm_result.get('answer') == '今天天气怎么样', \
+            f'algorithm_result 应从被测 API 最终结果提取 answer: {tr.algorithm_result}'
 
         # 8. 评估完成：评估得分落库（真实评估链路 → eval_server 替身 → 得分回写）
         from evaluation_service.infrastructure.persistence.models import TestResultDimension
@@ -976,7 +947,7 @@ class TestTaskExecuteRealChain:
 
 
 class TestKnownExecuteChainDefects:
-    """INT-38 / INT-39 / INT-41 / INT-44 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。（INT-43 已修复，锁定测试保留为守卫）"""
+    """INT-38 / INT-39 / INT-41 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。（INT-43 / INT-44 已修复，相应锁定测试已移除或转为守卫）"""
 
     @pytest.mark.xfail(strict=True, reason='INT-38：_evaluate_result 的 '
                                            'case_reference_params 被重构移除默认值，调用点漏传')
@@ -1042,16 +1013,3 @@ class TestKnownExecuteChainDefects:
         orig_log = int35_quarantine['orig_int43_log']
         orig_log(driver, level='INFO', content='probe', task_id=7, test_case_id='c1')
         assert captured.get('task_id') == 7 and captured.get('test_case_id') == 'c1'
-
-    @pytest.mark.xfail(strict=True, reason='INT-44：algorithm_result 双重编码'
-                                           '（json.dumps 写入 JSON 列），报告 builder '
-                                           '对 str 输入即 TypeError；若修复落在写入侧，'
-                                           '闭合 INT-44 时请一并删除本锁定测试')
-    def test_int44_builder_tolerates_json_string(self, int35_quarantine):
-        """读侧契约锁定：builder 收到 JSON 字符串形式的 algorithm_result 不应崩
-        （直调隔离夹具保存的未补丁原始 builder，避免被隔离替身污染）。"""
-        orig_builder = int35_quarantine['orig_int44_builder']
-        orig_builder(
-            result={'id': 1}, resource='api', algo_res='{"answer": "你好"}',
-            result_data=None, aux_params_map=None, result_dims=[],
-            output_fields=[], algorithm_type='translation')

@@ -65,7 +65,8 @@ class APIResultProcessor:
             'algorithm_type': algorithm_type,
             'execution_status': ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
             'response_time': response_time,
-            'algorithm_result': json.dumps(algo_result, ensure_ascii=False) if algo_result else None,
+            # JSON 列直接传 dict（json.dumps 会双重编码成字符串标量，读回即崩）
+            'algorithm_result': algo_result if algo_result else None,
             'execution_steps': '[]',
             'result_data': json.dumps(lightweight_data, ensure_ascii=False),
             'result_data_path': result_data_path or None,
@@ -203,7 +204,8 @@ class APIResultProcessor:
             'algorithm_type': algorithm_type,
             'execution_status': ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
             'response_time': response_time,
-            'algorithm_result': json.dumps(algo_result, ensure_ascii=False) if algo_result else None,
+            # JSON 列直接传 dict（json.dumps 会双重编码成字符串标量，读回即崩）
+            'algorithm_result': algo_result if algo_result else None,
             'execution_steps': json.dumps(algo_result.get('rounds', []), ensure_ascii=False),
             'result_data': json.dumps(lightweight_data, ensure_ascii=False),
             'result_data_path': result_data_path or None,

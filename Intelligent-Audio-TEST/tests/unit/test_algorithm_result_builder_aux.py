@@ -109,3 +109,30 @@ def test_evaluation_data_fallback_only_when_api_raw_response_missing():
     )
     assert 'interruption_count@round:2' in codes
     assert by_code['interruption_count@round:2']['value'] == 7
+
+
+# ---------- JSON 字符串幂等规范化（双重编码历史数据兼容） ----------
+
+def test_json_string_inputs_normalized_to_dict():
+    """JSON 列读回 str（双重编码）时入口应解析为 dict，而非 {**str} TypeError。"""
+    algorithm_results = build_algorithm_results_for_result(
+        result=None, resource='dev_01',
+        algo_res='{"answer": "你好"}',
+        result_data='{"evaluation_data": {}}',
+        aux_params_map=None, dim_result_rows=[],
+        output_fields=[{'source_param': 'answer', 'target_param': 'answer', 'param_type': 'text'}],
+        algorithm_type='translation',
+    )
+    by_code = {r['param_code']: r for r in algorithm_results}
+    assert by_code['answer']['value'] == '你好'
+
+
+def test_unparsable_string_treated_as_empty():
+    """解析失败的字符串视为损坏数据置 None，走空值路径不崩。"""
+    algorithm_results = build_algorithm_results_for_result(
+        result=None, resource='dev_01',
+        algo_res='not-json', result_data=None,
+        aux_params_map=None, dim_result_rows=[],
+        output_fields=[], algorithm_type='translation',
+    )
+    assert algorithm_results == []

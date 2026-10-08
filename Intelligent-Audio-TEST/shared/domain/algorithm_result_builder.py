@@ -62,8 +62,8 @@ def build_algorithm_results_for_result(
     Args:
         result: TestResult 对象（dict 或 ORM，当前仅作签名占位）
         resource: 设备/API 名称
-        algo_res: algorithm_result (dict)
-        result_data: 完整 result_data (dict 或 None)
+        algo_res: algorithm_result (dict；历史双重编码数据可能为 JSON 字符串，入口幂等规范化)
+        result_data: 完整 result_data (dict 或 None；JSON 字符串形式同样幂等规范化)
         aux_params_map: {dimension_id: [{param, dimension_name}, ...]}
         dim_result_rows: 该 TestResult 的维度结果行列表（dict 或 ORM 均可）
         output_fields: 算法输出字段列表
@@ -74,6 +74,19 @@ def build_algorithm_results_for_result(
         list[dict]: algorithm_results 扁平列表
     """
     algorithm_results = []
+
+    # JSON 列幂等规范化：历史数据经 json.dumps 双重编码后读回是字符串标量，
+    # 直接参与 {**x} 合并会 TypeError；解析还原为 dict，解析失败视为损坏数据置 None
+    if isinstance(algo_res, str):
+        try:
+            algo_res = json.loads(algo_res)
+        except Exception:
+            algo_res = None
+    if isinstance(result_data, str):
+        try:
+            result_data = json.loads(result_data)
+        except Exception:
+            result_data = None
 
     if not (algo_res or result_data):
         return algorithm_results
