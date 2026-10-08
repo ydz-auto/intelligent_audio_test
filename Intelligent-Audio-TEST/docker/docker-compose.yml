@@ -92,6 +92,10 @@ services:
       - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
       - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-24}
       - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - DATA_TRANSFER_TMP_DIR=/app/storage/data_transfer
+    volumes:
+      # 与 task_service 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
+      - data_transfer_tmp:/app/storage/data_transfer
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,6 +144,10 @@ services:
       - AUDIO_SERVICE_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=device_service
       - DEVICE_SERVICE_GRPC_PORT=50053
+      - DATA_TRANSFER_TMP_DIR=/app/storage/data_transfer
+    volumes:
+      # 与 api_gateway 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
+      - data_transfer_tmp:/app/storage/data_transfer
     depends_on:
       postgres:
         condition: service_healthy
@@ -458,3 +466,5 @@ volumes:
   rustfs_data_1:
   rustfs_data_2:
   rustfs_data_3:
+  # 网关 ↔ task_service 数据导入/导出 ZIP 中转卷（INT-25 链路依赖）
+  data_transfer_tmp:
