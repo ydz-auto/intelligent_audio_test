@@ -24,6 +24,8 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
 - INT-39：shared/utils/event_manager/_progress.py _build_test_cases_from_grpc 把
   进度载荷里的 error_message=None 直接传给 ProgressCaseItem（pydantic 严格 str），
   引擎线程在任务启动后的首次进度发射即崩溃死亡 → 任务永久卡 running。
+  （INT-39 已修复：载荷侧 None 兜底为空串，ProgressCaseItem.error_message 放宽为
+  Optional[str]；隔离替身自动失效，锁定测试转为常驻守卫）
 - INT-40：引擎线程内嵌套调用 _execute_api_case 时 close 了线程共享 scoped
   session，把主循环仍持有的 Task ORM 对象 expunge，后续 _emit_progress(task)
   触发 DetachedInstanceError → 引擎线程死亡 → 任务异常终态/进度中断。
@@ -53,8 +55,8 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
 
 隔离策略（测试侧自愈，不影响产品代码）：int35_quarantine 夹具对上述缺陷做
 "探针检测 + 最小替身"，仅在缺陷仍在时生效（缺陷修复后探针通过、补丁自动卸除，
-回归不会静默绕过修复后的产品代码）。其中 INT-38/39/41 各有一个
-xfail(strict) 锁定测试，修复后 XPASS 提醒移除标记；INT-43 已修复，其锁定
+回归不会静默绕过修复后的产品代码）。其中 INT-38/41 各有一个
+xfail(strict) 锁定测试，修复后 XPASS 提醒移除标记；INT-39/43 已修复，其锁定
 测试转为常驻守卫；INT-40/42/45 为守卫型或
 非致命缺陷，无独立锁定测试。
 """
@@ -778,7 +780,6 @@ class TestTaskExecuteRealChain:
     def test_start_execute_progress_terminal(
             self, gateway, api_double, eval_double, int35_quarantine):
         assert int35_quarantine['int38_quarantined'], '预期 INT-38 仍在（隔离生效）'
-        assert int35_quarantine['int39_quarantined'], '预期 INT-39 仍在（隔离生效）'
         assert int35_quarantine['int41_quarantined'], '预期 INT-41 仍在（隔离生效）'
         assert int35_quarantine['int43_quarantined'], '预期 INT-43 仍在（隔离生效）'
 
@@ -947,7 +948,7 @@ class TestTaskExecuteRealChain:
 
 
 class TestKnownExecuteChainDefects:
-    """INT-38 / INT-39 / INT-41 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。（INT-43 / INT-44 已修复，相应锁定测试已移除或转为守卫）"""
+    """INT-38 / INT-41 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。（INT-39 / INT-43 / INT-44 已修复，相应锁定测试已移除或转为守卫）"""
 
     @pytest.mark.xfail(strict=True, reason='INT-38：_evaluate_result 的 '
                                            'case_reference_params 被重构移除默认值，调用点漏传')
@@ -960,8 +961,6 @@ class TestKnownExecuteChainDefects:
         assert param.default is not inspect.Parameter.empty, \
             'INT-38 修复后 case_reference_params 应有默认值（或调用点显式传参后删除本测试）'
 
-    @pytest.mark.xfail(strict=True, reason='INT-39：进度载荷 error_message=None 崩溃 '
-                                           'ProgressCaseItem，引擎线程死于首次进度发射')
     def test_int39_progress_case_item_tolerates_none(self):
         from shared.schemas.socket_payloads import ProgressCaseItem
         item = ProgressCaseItem(id='1', status='', execution_status='',

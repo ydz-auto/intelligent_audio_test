@@ -38,7 +38,7 @@ class ProgressCaseItem(SocketPayload):
     execution_status: str = ""
     evaluation_status: str = ""
     duration: int = 0
-    error_message: str = ""
+    error_message: Optional[str] = ""
     round_progress: Optional[RoundProgress] = None
 
 

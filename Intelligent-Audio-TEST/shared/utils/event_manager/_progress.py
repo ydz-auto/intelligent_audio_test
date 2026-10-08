@@ -335,7 +335,7 @@ class ProgressMixin:
                 execution_status=tc.get('execution_status', tc.get('executionStatus', '')),
                 evaluation_status=tc.get('evaluation_status', tc.get('evaluationStatus', '')),
                 duration=tc.get('duration', 0),
-                error_message=tc.get('error_message', tc.get('errorMessage', '')),
+                error_message=tc.get('error_message') or tc.get('errorMessage') or '',
                 round_progress=_collect_round_progress(rpc_cache) if items == [] else None,
             ))
         return items
