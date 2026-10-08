@@ -156,14 +156,15 @@ class TestInt42ExecuteApiCaseGrpcFailurePath:
         fake_session.get.side_effect = lambda model, obj_id: (
             tc_rel if model is TaskCase else None)
 
-        original_db = mod.get_db_session
+        # INT-40 起嵌套链路改用独立 Session（create_db_session），替换该取用点
+        original_db = mod.create_db_session
         saved_stub_getter = shared_grpc_clients.get_api_test_service_stub
-        mod.get_db_session = lambda: fake_session
+        mod.create_db_session = lambda: fake_session
         shared_grpc_clients.get_api_test_service_stub = lambda: stub
         try:
             ok = eng._execute_api_case('task-1', 'tc-rel-1')
         finally:
-            mod.get_db_session = original_db
+            mod.create_db_session = original_db
             shared_grpc_clients.get_api_test_service_stub = saved_stub_getter
         return ok, fake_session
 

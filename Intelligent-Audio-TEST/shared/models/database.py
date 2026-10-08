@@ -8,6 +8,7 @@ pool_recycle, pool_pre_ping)，scoped_session 基于 threading.local，
 公开 API：
 - `Base`：ORM 基类（declarative_base()），PO 继承它
 - `get_db_session()`：取当前线程的 scoped_session
+- `create_db_session()`：创建独立 Session 实例（嵌套调用链专用，close 不影响外层）
 - `get_engine()`：取全局 engine（init_db 后可用）
 - `init_db(pool_size)`：初始化连接池
 - `remove_db_session()`：清理当前线程的 session
@@ -155,6 +156,17 @@ def get_db_session():
     线程结束前应调用 `remove_db_session()` 清理（gRPC 由 DbScopeInterceptor 自动处理）。
     """
     return _scoped_session
+
+
+def create_db_session():
+    """创建独立 Session 实例（非线程 scoped_session，嵌套调用链专用）。
+
+    同线程内 `get_db_session()` 恒返回同一个 session，嵌套链路对它 close()
+    会 expunge 全部实例，使外层仍持有的 ORM 对象脱管（已被 commit 过期的
+    对象再访问属性即抛 DetachedInstanceError，见 INT-40）。独立 Session 的
+    close 只释放自己的连接与实例，不影响外层。
+    """
+    return _SessionFactory()
 
 
 def remove_db_session():

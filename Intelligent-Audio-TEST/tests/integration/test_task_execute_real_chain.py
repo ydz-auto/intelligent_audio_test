@@ -32,6 +32,11 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
 - INT-40：引擎线程内嵌套调用 _execute_api_case 时 close 了线程共享 scoped
   session，把主循环仍持有的 Task ORM 对象 expunge，后续 _emit_progress(task)
   触发 DetachedInstanceError → 引擎线程死亡 → 任务异常终态/进度中断。
+  （INT-40 已修复：嵌套链路改用独立 Session（shared.models.database
+  新增 create_db_session），close 自己的会话不影响外层；同模式隐患点
+  _check_queue / _schedule_pending_tasks 一并治理，守卫单测在
+  tests/unit/test_int40_independent_session_nested_chain.py，其测试侧
+  _emit_progress DetachedInstanceError 隔离守卫已物理移除）
 - INT-42：task_service 引擎分发侧失败（_dispatch_api_case 兜底）只置
   execution_status=FAILED，evaluation_status 恒留 pending（计入活跃评估集合）→
   引擎死等，任务永久卡 running。
@@ -62,8 +67,9 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
 隔离策略（测试侧自愈，不影响产品代码）：int35_quarantine 夹具对上述缺陷做
 "探针检测 + 最小替身"，仅在缺陷仍在时生效（缺陷修复后探针通过、补丁自动卸除，
 回归不会静默绕过修复后的产品代码）。INT-38/39/41/43 曾各有
-xfail(strict) 锁定测试，修复后已全部转为常驻守卫；INT-40/42/45 为守卫型或
-非致命缺陷，无独立锁定测试。
+xfail(strict) 锁定测试，修复后已全部转为常驻守卫；INT-40 的隔离守卫已随
+修复物理移除（守卫单测在 tests/unit/test_int40_independent_session_nested_chain.py），
+INT-42 为守卫型或非致命缺陷，无独立锁定测试。
 """
 import json
 import os
@@ -488,12 +494,15 @@ def _int38_call_site_passes_case_reference_params():
 
 @pytest.fixture(scope='module')
 def int35_quarantine(oss_fast_fail, pg_db):
-    """对 INT-38 / INT-39 / INT-40 / INT-41 / INT-43 五个执行链路缺陷做「探针检测 + 最小替身」隔离。
+    """对 INT-38 / INT-39 / INT-41 / INT-43 四个执行链路缺陷做「探针检测 + 最小替身」隔离。
 
     - 仅当探针证实缺陷仍存在时才打补丁；缺陷修复后探针通过、补丁不生效，
       回归测试不会静默绕过修复后的产品代码。
     - 替身行为与修复方案语义一致（INT-38 补 None 默认值；INT-39 对 None 做 '' 兜底），
       不会改变被测链路的可观测行为。
+    - INT-40（嵌套链路 close 共享 scoped session）已修复，其 _emit_progress
+      DetachedInstanceError 守卫已物理移除，回归由产品代码与
+      tests/unit/test_int40_independent_session_nested_chain.py 守卫承载。
     """
     import inspect
 
@@ -549,27 +558,6 @@ def int35_quarantine(oss_fast_fail, pg_db):
 
         mp.setattr(EventManager, '_build_test_cases_from_grpc', _build_test_cases_none_tolerant)
 
-    # ── INT-40：引擎线程内嵌套调用 _execute_api_case 时 close 了线程共享 scoped
-    # session，把主循环仍持有的 Task ORM 对象 expunge，后续 _emit_progress(task)
-    # 触发 DetachedInstanceError → 引擎线程死亡 → 任务 failed。
-    # 隔离：给引擎 ProgressMixin._emit_progress 加守卫——ORM 对象已不可用（脱管）
-    # 时跳过本次进度发射；对象健康时行为与原实现完全一致（探针刷新等价）。
-    from sqlalchemy.orm.exc import DetachedInstanceError
-
-    from task_service.core.execution_engine.mixins.progress import ProgressMixin
-    orig_engine_emit = ProgressMixin._emit_progress
-
-    def _emit_progress_guarded(self, task, force=False):
-        if isinstance(task, (str, int)):
-            return orig_engine_emit(self, task, force=force)
-        try:
-            str(task.id)  # 过期实例：会话仍开放时触发刷新（与原实现等价）
-        except DetachedInstanceError:
-            return  # INT-40：对象已被嵌套 session close 脱管，跳过本次发射
-        return orig_engine_emit(self, task, force=force)
-
-    mp.setattr(ProgressMixin, '_emit_progress', _emit_progress_guarded)
-
     # ── INT-41：跨服务 case_ids 类型失配，api_test_service 以 int 比对 str 静默跳过 ──
     # 隔离：在 api_test_service 应用层入口（CreateAPITestCommandHandler.handle）做
     # 服务端类型规范化（数值字符串 → int，与 CreateAPITestCommand.case_ids 的
@@ -612,7 +600,6 @@ def int35_quarantine(oss_fast_fail, pg_db):
     yield {
         'int38_quarantined': param.default is inspect.Parameter.empty and not int38_call_site_ok,
         'int39_quarantined': probe_crashed,
-        'int40_guarded': True,
         'int41_quarantined': True,
         'int43_quarantined': True,
         'orig_int41_handle': orig_create_api_test,

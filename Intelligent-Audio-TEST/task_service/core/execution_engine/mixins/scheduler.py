@@ -203,11 +203,15 @@ class SchedulerMixin:
             if not pending_tasks:
                 return
 
-            for task in pending_tasks:
+            # INT-40：start_task 内部会 close 线程共享的 scoped session，
+            # 循环若跨该调用持有 ORM 对象，对象被 expunge（且已被本方法/
+            # start_task 的 commit 过期）后访问属性即抛 DetachedInstanceError，
+            # 整轮兜底调度中止。先抽取纯数据，循环内不持有 ORM 对象。
+            candidates = [(t.id, t.type) for t in pending_tasks]
+
+            for task_id, task_type in candidates:
                 if self.scheduler_stop_event.is_set():
                     break
-
-                task_id = task.id
 
                 if task_id in self.workers and self.workers[task_id].is_alive():
                     continue
@@ -222,7 +226,7 @@ class SchedulerMixin:
 
                 can_run = False
 
-                if task.type == 'e2e':
+                if task_type == 'e2e':
                     if not self.running_e2e:
                         can_run = True
                 else:
@@ -234,7 +238,7 @@ class SchedulerMixin:
                     try:
                         success, message = self.start_task(task_id)
                         if success:
-                            self._log(level='INFO', content=f"任务 {task_id} ({task.type}) DB兜底调度启动成功")
+                            self._log(level='INFO', content=f"任务 {task_id} ({task_type}) DB兜底调度启动成功")
                     except Exception as e:
                         logger.error(f"[Scheduler] DB兜底自动启动任务 {task_id} 失败: {e}")
 

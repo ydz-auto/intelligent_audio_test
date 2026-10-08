@@ -1,6 +1,6 @@
 from datetime import datetime
 from task_service.infrastructure.persistence.models import Task, TaskCase
-from shared.models.database import get_db_session
+from shared.models.database import create_db_session
 from shared.utils.status_constants import TaskCaseStatus
 
 # gRPC 调用封装函数（模块级）
@@ -66,7 +66,11 @@ class CaseExecutionMixin:
                 raise RuntimeError(f"api_test_service 执行失败: {resp.message}")
 
             # 更新任务统计信息（基于 api_test_service 已写入数据库的 TaskCase 状态）
-            local_db_session = get_db_session()
+            # INT-40：嵌套链路必须用独立 Session——此处处于主循环的调用栈内，
+            # 主循环仍持有 scoped session 上的 Task ORM 对象；若取线程共享的
+            # scoped session 并 close，会把外层对象 expunge，后续
+            # _emit_progress(task) 访问已过期属性即抛 DetachedInstanceError
+            local_db_session = create_db_session()
             try:
                 tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 if tc_rel:
@@ -90,8 +94,8 @@ class CaseExecutionMixin:
                 task_id=task_id
             )
 
-            # 更新测试用例状态为失败
-            local_db_session = get_db_session()
+            # 更新测试用例状态为失败（INT-40：独立 Session，理由同上）
+            local_db_session = create_db_session()
             try:
                 tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 if tc_rel:

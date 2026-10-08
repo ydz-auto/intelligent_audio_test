@@ -2,7 +2,7 @@ import threading
 from datetime import datetime
 from collections import deque
 from task_service.infrastructure.persistence.models import Task, TaskCase
-from shared.models.database import get_db_session
+from shared.models.database import create_db_session, get_db_session
 from shared.utils import distributed_coordinator as _dc
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import (
@@ -150,7 +150,10 @@ class TaskControlMixin:
     
     def _check_queue(self):
         """检查任务队列，启动可以执行的任务，一次启动多个可执行任务"""
-        local_db_session = get_db_session()
+        # INT-40：本方法被 control_task（外层仍持有 scoped session 上的 Task
+        # 对象）与 _cleanup_task_resources 嵌套调用，须用独立 Session，
+        # 避免本方法的 close 把外层会话上的对象 expunge 脱管
+        local_db_session = create_db_session()
         try:
             tasks_to_start = []
             
