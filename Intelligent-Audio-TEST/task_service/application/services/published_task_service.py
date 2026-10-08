@@ -96,6 +96,21 @@ class PublishedTaskService:
         return bool(value)
 
     @staticmethod
+    def _merge_benchmark_snapshot_fields(snapshot: dict, data: dict) -> dict:
+        """Benchmark 分组字段合并进快照（设计文档 §6.2）。
+
+        benchmarkSuite / benchmarkCategory：请求显式指定时写入快照；
+        未指定时保留快照原值（新版本继承语义由调用方按当前版本快照处理）。
+        """
+        snapshot = dict(snapshot or {})
+        for key in ('benchmarkSuite', 'benchmarkCategory'):
+            value = data.get(key) or data.get(
+                'benchmark_suite' if key == 'benchmarkSuite' else 'benchmark_category')
+            if value is not None and str(value).strip():
+                snapshot[key] = str(value).strip()
+        return snapshot
+
+    @staticmethod
     def _audit_benchmark_marked(pt) -> None:
         """Benchmark 标记审计事件落库（PUBLISHED_TASK_BENCHMARK_MARKED）。
 
@@ -134,6 +149,7 @@ class PublishedTaskService:
                 return {'success': False, 'message': err, 'data': None, 'code': code}
 
             snapshot = PublishedTaskService._build_snapshot(task)
+            snapshot = PublishedTaskService._merge_benchmark_snapshot_fields(snapshot, data)
             _, err, code, _ = PublishedTaskService._validate_snapshot(snapshot)
             if err:
                 return {'success': False, 'message': err, 'data': None, 'code': code}
@@ -345,6 +361,14 @@ class PublishedTaskService:
             else:
                 snapshot = dict(current.snapshot_config or {})
                 new_source_task_id = current.source_task_id
+            # Benchmark 分组字段：请求未显式指定时继承当前版本快照（版本链语义延续）
+            request_snapshot = PublishedTaskService._merge_benchmark_snapshot_fields({}, data)
+            if not request_snapshot.get('benchmarkSuite'):
+                request_snapshot['benchmarkSuite'] = (current.snapshot_config or {}).get('benchmarkSuite')
+            if not request_snapshot.get('benchmarkCategory'):
+                request_snapshot['benchmarkCategory'] = (current.snapshot_config or {}).get('benchmarkCategory')
+            snapshot = PublishedTaskService._merge_benchmark_snapshot_fields(
+                snapshot, request_snapshot)
             _, err, code, _ = PublishedTaskService._validate_snapshot(snapshot)
             if err:
                 return {'success': False, 'message': err, 'data': None, 'code': code}

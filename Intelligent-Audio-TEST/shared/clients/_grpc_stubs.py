@@ -280,6 +280,19 @@ def get_report_config_service_stub():
     return report_service_pb2_grpc.ReportConfigServiceStub(_get_report_channel())
 
 
+@lru_cache(maxsize=1)
+def get_benchmark_config_service_stub():
+    """BenchmarkConfigService stub：Benchmark 双轨排行（D1）
+
+    RPC（与 report_service/interfaces/grpc/servicers.BenchmarkServicer 对齐）：
+    ComputeBenchmarkRanking / GetBenchmarkRanking / GetBenchmarkRankingSubjects /
+    ListBenchmarkSources / CreateBenchmarkSource / ListBenchmarkBaselines /
+    ImportBenchmarkBaselines / ListBenchmarkMetricMappings / UpdateBenchmarkMetricMapping
+    """
+    from shared.proto import report_service_pb2_grpc
+    return report_service_pb2_grpc.BenchmarkConfigServiceStub(_get_report_channel())
+
+
 # ==================== auth_service stubs ====================
 
 @lru_cache(maxsize=1)

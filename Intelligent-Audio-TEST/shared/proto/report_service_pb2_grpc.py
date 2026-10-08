@@ -980,3 +980,431 @@ class ReportConfigService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class BenchmarkConfigServiceStub:
+    """===== Benchmark 排行服务（D1 双轨排行：实测轨 + 外部基线导入 + 6 算法 + 指标映射）=====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.ComputeBenchmarkRanking = channel.unary_unary(
+                '/report.BenchmarkConfigService/ComputeBenchmarkRanking',
+                request_serializer=report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.GetBenchmarkRanking = channel.unary_unary(
+                '/report.BenchmarkConfigService/GetBenchmarkRanking',
+                request_serializer=report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.GetBenchmarkRankingSubjects = channel.unary_unary(
+                '/report.BenchmarkConfigService/GetBenchmarkRankingSubjects',
+                request_serializer=report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.ListBenchmarkSources = channel.unary_unary(
+                '/report.BenchmarkConfigService/ListBenchmarkSources',
+                request_serializer=report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.CreateBenchmarkSource = channel.unary_unary(
+                '/report.BenchmarkConfigService/CreateBenchmarkSource',
+                request_serializer=report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.ListBenchmarkBaselines = channel.unary_unary(
+                '/report.BenchmarkConfigService/ListBenchmarkBaselines',
+                request_serializer=report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.ImportBenchmarkBaselines = channel.unary_unary(
+                '/report.BenchmarkConfigService/ImportBenchmarkBaselines',
+                request_serializer=report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.ListBenchmarkMetricMappings = channel.unary_unary(
+                '/report.BenchmarkConfigService/ListBenchmarkMetricMappings',
+                request_serializer=report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+        self.UpdateBenchmarkMetricMapping = channel.unary_unary(
+                '/report.BenchmarkConfigService/UpdateBenchmarkMetricMapping',
+                request_serializer=report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
+
+
+class BenchmarkConfigServiceServicer:
+    """===== Benchmark 排行服务（D1 双轨排行：实测轨 + 外部基线导入 + 6 算法 + 指标映射）=====
+    """
+
+    def ComputeBenchmarkRanking(self, request, context):
+        """触发排行计算（写侧命令：合并双轨 → 指标映射 → 6 算法 → ReadModel 落库 + 审计）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetBenchmarkRanking(self, request, context):
+        """查询排行（读侧：只读 benchmark_rankings ReadModel，无写副作用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetBenchmarkRankingSubjects(self, request, context):
+        """查询参与排行的被测主体列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListBenchmarkSources(self, request, context):
+        """外部基线数据源列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateBenchmarkSource(self, request, context):
+        """创建外部基线数据源
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListBenchmarkBaselines(self, request, context):
+        """外部基线条目列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportBenchmarkBaselines(self, request, context):
+        """批量导入外部基线（导入即不可变快照新版本；逐行校验，非法行返回错误明细；内容重复幂等）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListBenchmarkMetricMappings(self, request, context):
+        """指标映射列表（读侧）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateBenchmarkMetricMapping(self, request, context):
+        """更新指标映射（写侧命令 + 审计）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_BenchmarkConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'ComputeBenchmarkRanking': grpc.unary_unary_rpc_method_handler(
+                    servicer.ComputeBenchmarkRanking,
+                    request_deserializer=report__service__pb2.BenchmarkCommandRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'GetBenchmarkRanking': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetBenchmarkRanking,
+                    request_deserializer=report__service__pb2.BenchmarkQueryRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'GetBenchmarkRankingSubjects': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetBenchmarkRankingSubjects,
+                    request_deserializer=report__service__pb2.BenchmarkQueryRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'ListBenchmarkSources': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListBenchmarkSources,
+                    request_deserializer=report__service__pb2.BenchmarkQueryRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'CreateBenchmarkSource': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateBenchmarkSource,
+                    request_deserializer=report__service__pb2.BenchmarkCommandRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'ListBenchmarkBaselines': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListBenchmarkBaselines,
+                    request_deserializer=report__service__pb2.BenchmarkQueryRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'ImportBenchmarkBaselines': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportBenchmarkBaselines,
+                    request_deserializer=report__service__pb2.BenchmarkCommandRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'ListBenchmarkMetricMappings': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListBenchmarkMetricMappings,
+                    request_deserializer=report__service__pb2.BenchmarkQueryRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'UpdateBenchmarkMetricMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateBenchmarkMetricMapping,
+                    request_deserializer=report__service__pb2.BenchmarkCommandRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'report.BenchmarkConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('report.BenchmarkConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class BenchmarkConfigService:
+    """===== Benchmark 排行服务（D1 双轨排行：实测轨 + 外部基线导入 + 6 算法 + 指标映射）=====
+    """
+
+    @staticmethod
+    def ComputeBenchmarkRanking(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/ComputeBenchmarkRanking',
+            report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetBenchmarkRanking(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/GetBenchmarkRanking',
+            report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetBenchmarkRankingSubjects(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/GetBenchmarkRankingSubjects',
+            report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListBenchmarkSources(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/ListBenchmarkSources',
+            report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateBenchmarkSource(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/CreateBenchmarkSource',
+            report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListBenchmarkBaselines(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/ListBenchmarkBaselines',
+            report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportBenchmarkBaselines(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/ImportBenchmarkBaselines',
+            report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListBenchmarkMetricMappings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/ListBenchmarkMetricMappings',
+            report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateBenchmarkMetricMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/UpdateBenchmarkMetricMapping',
+            report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

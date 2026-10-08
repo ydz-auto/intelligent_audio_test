@@ -158,6 +158,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.home_bp import router as home_router
     from api_gateway.routes.sse_bp import router as sse_router
     from api_gateway.routes.data_transfer_bp import router as data_transfer_router
+    from api_gateway.routes.benchmark_bp import router as benchmark_router
 
     app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
     app.include_router(testcase_router, prefix='/api/v1/testcases', tags=['testcases'])
@@ -178,6 +179,7 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(home_router, prefix='/api/v1/home', tags=['home'])
     app.include_router(sse_router, prefix='/api/v1/sse', tags=['sse'])
     app.include_router(data_transfer_router, prefix='/api/v1/data-transfer', tags=['data-transfer'])
+    app.include_router(benchmark_router, prefix='/api/v1/benchmarks', tags=['benchmarks'])
 
     # 挂载 Socket.IO ASGI 子应用（前端 socket.io-client 连 /socket.io/）
     from api_gateway.websocket.socketio_server import sio_app

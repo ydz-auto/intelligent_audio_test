@@ -360,3 +360,44 @@ class TestGatewayBenchmarkFilter:
         assert http_code == 400
         assert payload['success'] is False
         assert payload['code'] == 100
+
+
+class TestBenchmarkSnapshotFields:
+    """D1 衔接：发布/新版本携带 benchmarkSuite/benchmarkCategory 进快照（INT-27）。"""
+
+    def test_publish_writes_suite_and_category_into_snapshot(self, env):
+        published_task_service.publish({
+            'sourceTaskId': 123, 'name': '基准', 'benchmark': True,
+            'benchmarkSuite': 'librispeech-v1', 'benchmarkCategory': 'asr',
+        })
+        snapshot = env['repo'].create_kwargs['snapshot_config']
+        assert snapshot['benchmarkSuite'] == 'librispeech-v1'
+        assert snapshot['benchmarkCategory'] == 'asr'
+        # 快照其余结构不受影响
+        assert snapshot['caseIds'] == [1, 2]
+
+    def test_publish_without_fields_keeps_snapshot_clean(self, env):
+        published_task_service.publish({'sourceTaskId': 123, 'name': '基准'})
+        snapshot = env['repo'].create_kwargs['snapshot_config']
+        assert 'benchmarkSuite' not in snapshot
+        assert 'benchmarkCategory' not in snapshot
+
+    def test_version_inherits_fields_from_current_snapshot(self, env, monkeypatch):
+        repo = FakeRepo(current_pt=make_pt(snapshot_config={
+            'caseIds': [1], 'benchmarkSuite': 'librispeech-v1', 'benchmarkCategory': 'asr'}))
+        monkeypatch.setattr(pts_module, 'repo', repo)
+        published_task_service.create_version(1001, {'name': '升级'})
+        snapshot = repo.create_version_kwargs['snapshot_config']
+        # 请求未显式指定 → 继承当前版本快照（版本链语义延续）
+        assert snapshot['benchmarkSuite'] == 'librispeech-v1'
+        assert snapshot['benchmarkCategory'] == 'asr'
+
+    def test_version_explicit_override(self, env, monkeypatch):
+        repo = FakeRepo(current_pt=make_pt(snapshot_config={
+            'caseIds': [1], 'benchmarkSuite': 'old-v1', 'benchmarkCategory': 'asr'}))
+        monkeypatch.setattr(pts_module, 'repo', repo)
+        published_task_service.create_version(1001, {
+            'benchmarkSuite': 'full-duplex-v2', 'benchmarkCategory': 'voice_llm'})
+        snapshot = repo.create_version_kwargs['snapshot_config']
+        assert snapshot['benchmarkSuite'] == 'full-duplex-v2'
+        assert snapshot['benchmarkCategory'] == 'voice_llm'

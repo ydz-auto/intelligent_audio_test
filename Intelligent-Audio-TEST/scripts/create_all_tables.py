@@ -48,6 +48,10 @@ def _import_all_models():
         Report, ReportSummary, ReportSummaryMeta, ReportRawData,
         ReportCase, ReportMetricStats, ReportComparisonMatrix,
     )
+    # report_service: Benchmark 排行 4 张表（D1）
+    from report_service.infrastructure.persistence.models import (  # noqa: F401
+        BenchmarkRanking, BenchmarkMetricMapping, BenchmarkSource, BenchmarkBaseline,
+    )
     # auth_service: 7 张表
     from auth_service.infrastructure.persistence.models import (  # noqa: F401
         Role, Permission, RolePermission, UserPermission,

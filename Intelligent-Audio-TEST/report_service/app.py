@@ -67,6 +67,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("report_service 事件订阅启动失败，将仅依赖手动触发: %s", e)
 
+    # 启动事件订阅：监听 REPORT_EVENTS（报告生成完成）自动刷新 Benchmark 排行 ReadModel（D1）
+    from report_service.application.services.benchmark_ranking_event_subscriber import (
+        start_benchmark_ranking_subscriber,
+    )
+    try:
+        start_benchmark_ranking_subscriber()
+        logger.info("Benchmark 排行事件订阅已启动，监听 REPORT_EVENTS 事件")
+    except Exception as e:
+        logger.warning("Benchmark 排行事件订阅启动失败，将仅依赖手动触发: %s", e)
+
     logger.info("report_service FastAPI app started")
     yield
 
@@ -99,6 +109,9 @@ def create_app(config_name='default') -> FastAPI:
 
     from report_service.interfaces.api.routes import router as report_router
     app.include_router(report_router)
+
+    from report_service.interfaces.api.benchmark_routes import router as benchmark_router
+    app.include_router(benchmark_router)
 
     return app
 

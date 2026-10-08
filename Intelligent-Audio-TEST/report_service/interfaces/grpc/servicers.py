@@ -23,9 +23,22 @@ from report_service.application.commands.report_commands import (
     GenerateReportCommand,
     UpdateReportStatusCommand,
 )
+from report_service.application.commands.benchmark_commands import (
+    ComputeBenchmarkRankingCommand,
+    CreateBenchmarkSourceCommand,
+    ImportBenchmarkBaselinesCommand,
+    UpdateBenchmarkMetricMappingCommand,
+)
 from report_service.application.handlers.report_handlers import (
     ReportCommandHandler,
     ReportQueryHandler,
+)
+from report_service.application.queries.benchmark_queries import (
+    GetBenchmarkRankingQuery,
+    GetBenchmarkRankingSubjectsQuery,
+    ListBenchmarkBaselinesQuery,
+    ListBenchmarkMetricMappingsQuery,
+    ListBenchmarkSourcesQuery,
 )
 from report_service.application.queries.report_queries import (
     GetReportByTaskQuery,
@@ -34,6 +47,7 @@ from report_service.application.queries.report_queries import (
     ListReportsQuery,
 )
 from report_service.domain.entities import ReportAggregate
+from report_service.domain.entities.benchmark import BaselineDraftEntry
 
 logger = logging.getLogger(__name__)
 
@@ -568,3 +582,200 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         except Exception as e:
             logger.exception("RollbackReportImport failed")
             return self._resp(False, str(e), {})
+
+
+class BenchmarkServicer:
+    """Benchmark 排行 gRPC Servicer（D1 双轨排行）。
+
+    每个方法委托 application 层 BenchmarkCommandHandler / BenchmarkQueryHandler
+    （严格 CQRS：写侧命令刷新 ReadModel，读侧只读）。
+    """
+
+    def __init__(self):
+        from report_service.application.handlers.benchmark_handlers import (
+            BenchmarkCommandHandler,
+            BenchmarkQueryHandler,
+        )
+        self.command_handler = BenchmarkCommandHandler()
+        self.query_handler = BenchmarkQueryHandler()
+
+    @staticmethod
+    def _resp(success: bool, message: str = '', data: Any = None, code: int = 0) -> report_pb.BenchmarkResponse:
+        return report_pb.BenchmarkResponse(
+            success=success,
+            message=message,
+            data=_dumps(data) if data is not None else '',
+            code=code,
+        )
+
+    # ==================== 写侧 ====================
+
+    def ComputeBenchmarkRanking(self, request, context=None):
+        """触发排行计算（合并双轨 → 映射 → 6 算法 → ReadModel 刷新 + 审计）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            command = ComputeBenchmarkRankingCommand(
+                suite=(params.get('suite') or '').strip() or None,
+                category=(params.get('category') or '').strip() or None,
+                published_task_id=params.get('published_task_id'),
+                source=(params.get('source') or '').strip() or None,
+            )
+            result = self.command_handler.handle_compute_ranking(command)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ComputeBenchmarkRanking failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def CreateBenchmarkSource(self, request, context=None):
+        """创建外部基线数据源。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            command = CreateBenchmarkSourceCommand(
+                name=params.get('name') or '',
+                provider=params.get('provider') or '',
+                source_type=params.get('source_type') or params.get('sourceType') or 'manual',
+                url=params.get('url') or '',
+                version=params.get('version') or '',
+                description=params.get('description') or '',
+                created_by=params.get('created_by') or params.get('createdBy') or '',
+            )
+            result = self.command_handler.handle_create_source(command)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateBenchmarkSource failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ImportBenchmarkBaselines(self, request, context=None):
+        """批量导入外部基线（导入即不可变快照新版本，重复内容幂等）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            entries_data = params.get('entries') or []
+            entries = [
+                BaselineDraftEntry(
+                    model_name=e.get('model_name') or e.get('modelName') or '',
+                    metric_code=e.get('metric_code') or e.get('metricCode') or '',
+                    value=e.get('value'),
+                    vendor=e.get('vendor') or '',
+                    metric_name=e.get('metric_name') or e.get('metricName') or '',
+                    unit=e.get('unit') or '',
+                    direction=e.get('direction') or '',
+                    scenario_tags=e.get('scenario_tags') or e.get('scenarioTags') or [],
+                    sample_size=e.get('sample_size', e.get('sampleSize')),
+                    metric_date=e.get('metric_date') or e.get('metricDate') or '',
+                )
+                for e in entries_data if isinstance(e, dict)
+            ]
+            command = ImportBenchmarkBaselinesCommand(
+                source_id=params.get('source_id') or params.get('sourceId'),
+                category=params.get('category') or '',
+                entries=entries,
+                published_by=params.get('published_by') or params.get('publishedBy') or '',
+            )
+            result = self.command_handler.handle_import_baselines(command)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ImportBenchmarkBaselines failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def UpdateBenchmarkMetricMapping(self, request, context=None):
+        """更新指标映射（写侧 + 审计）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            command = UpdateBenchmarkMetricMappingCommand(
+                mapping_id=params.get('mapping_id') or params.get('mappingId'),
+                metric_name=params.get('metric_name', params.get('metricName')),
+                unit=params.get('unit'),
+                direction=params.get('direction'),
+                scenario_tags=params.get('scenario_tags', params.get('scenarioTags')),
+                active=params.get('active'),
+            )
+            result = self.command_handler.handle_update_metric_mapping(command)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("UpdateBenchmarkMetricMapping failed")
+            return self._resp(False, str(e), {}, 500)
+
+    # ==================== 读侧 ====================
+
+    def GetBenchmarkRanking(self, request, context=None):
+        """查询排行（只读 ReadModel，无写副作用）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            query = GetBenchmarkRankingQuery(
+                suite=(params.get('suite') or '').strip() or None,
+                category=(params.get('category') or '').strip() or None,
+                metric_code=(params.get('metric_code') or params.get('metricCode') or '').strip() or None,
+                source=(params.get('source') or '').strip() or None,
+                published_task_id=params.get('published_task_id', params.get('publishedTaskId')),
+                subject_name=(params.get('subject_name') or params.get('subjectName') or '').strip() or None,
+            )
+            result = self.query_handler.handle_get_ranking(query)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("GetBenchmarkRanking failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def GetBenchmarkRankingSubjects(self, request, context=None):
+        """查询参与排行的被测主体列表。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            query = GetBenchmarkRankingSubjectsQuery(
+                suite=(params.get('suite') or '').strip() or None)
+            result = self.query_handler.handle_get_ranking_subjects(query)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("GetBenchmarkRankingSubjects failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ListBenchmarkSources(self, request, context=None):
+        """外部基线数据源列表。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            query = ListBenchmarkSourcesQuery(
+                page=params.get('page', 1),
+                per_page=params.get('per_page', params.get('perPage', 10)),
+                source_type=(params.get('source_type') or params.get('sourceType') or '').strip() or None,
+            )
+            result = self.query_handler.handle_list_sources(query)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ListBenchmarkSources failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ListBenchmarkBaselines(self, request, context=None):
+        """外部基线条目列表（当前生效版本）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            query = ListBenchmarkBaselinesQuery(
+                category=(params.get('category') or '').strip() or None,
+                metric_code=(params.get('metric_code') or params.get('metricCode') or '').strip() or None,
+                source_id=params.get('source_id', params.get('sourceId')),
+                page=params.get('page', 1),
+                per_page=params.get('per_page', params.get('perPage', 20)),
+            )
+            result = self.query_handler.handle_list_baselines(query)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ListBenchmarkBaselines failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def ListBenchmarkMetricMappings(self, request, context=None):
+        """指标映射列表（读侧）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            query = ListBenchmarkMetricMappingsQuery(
+                active_only=bool(params.get('active_only', params.get('activeOnly', False))))
+            result = self.query_handler.handle_list_metric_mappings(query)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("ListBenchmarkMetricMappings failed")
+            return self._resp(False, str(e), {}, 500)

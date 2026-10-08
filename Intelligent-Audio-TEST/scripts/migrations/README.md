@@ -24,6 +24,9 @@ python scripts/migrations/202609/add_pass_threshold_to_eval_params.py     # ⑧ 
 python scripts/migrations/202609/add_task_case_device_type.py             # ⑨ 用例级设备路由列（执行域 P0）
 python scripts/migrations/202609/add_published_tasks.py                   # ⑩ 已发布任务表 + 日常任务追溯字段（任务发布功能）
 python scripts/migrations/202609/seed_voice_llm.py                        # ⑪ 算法/维度种子（按需）
+
+# ── 202610 ──────────────────────────────────────────────
+python scripts/migrations/202610/add_benchmark_tables.py                  # ⑫ Benchmark 排行 4 表 + 指标映射种子（D1 双轨排行，INT-27）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -66,6 +69,12 @@ python scripts/migrations/202609/seed_voice_llm.py                        # ⑪ 
 | [seed_non_interactive_latency.py](202609/seed_non_interactive_latency.py) | 非交互时延维度 |
 | [seed_noise_latency.py](202609/seed_noise_latency.py) | 噪声场景时延维度 |
 | [seed_xiaoyi_dimensions.py](202609/seed_xiaoyi_dimensions.py) | 小艺指标维度 |
+
+### 202610 — Benchmark 排行（D1 双轨排行）
+
+| 脚本 | 用途 |
+|------|------|
+| [add_benchmark_tables.py](202610/add_benchmark_tables.py) | 建 `benchmark_rankings`（排行 ReadModel）/ `benchmark_metric_mappings`（指标映射单一事实源，含设计文档 §5.1 默认映射种子 13 条）/ `benchmark_sources`（外部基线数据源）/ `benchmark_baselines`（外部基线条目，导入即不可变版本快照）四表及索引；支持 `--dry-run` |
 
 ## 新增迁移脚本约定
 

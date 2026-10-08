@@ -7,6 +7,9 @@ infrastructure/persistence 层提供具体实现。
 from report_service.domain.repositories.report_repository_abc import (
     ReportRepositoryABC,
 )
+from report_service.domain.repositories.benchmark_repository_abc import (
+    BenchmarkRepository,
+)
 from report_service.domain.repositories.acl import (
     AlgorithmConfigAclRepository,
     ApiTestAclRepository,
@@ -23,6 +26,7 @@ from report_service.domain.repositories.acl import (
 
 __all__ = [
     'ReportRepositoryABC',
+    'BenchmarkRepository',
     'AlgorithmConfigAclRepository',
     'ApiTestAclRepository',
     'AudioConfigAclRepository',

@@ -21,6 +21,9 @@ class PublishedTaskCreateRequest(APIModel):
     description: Optional[str] = Field(None)
     publish_reason: Optional[str] = Field(None)
     benchmark: bool = Field(False, description='是否参与 Benchmark 排行（实测轨数据源标记）')
+    benchmark_suite: Optional[str] = Field(None, description='测试集标识（快照 benchmarkSuite，排行分组用）')
+    benchmark_category: Optional[str] = Field(
+        None, description='被测类别 asr/voice_llm/tts/translation（快照 benchmarkCategory）')
 
 
 class PublishedTaskVersionCreateRequest(APIModel):
@@ -30,6 +33,8 @@ class PublishedTaskVersionCreateRequest(APIModel):
     description: Optional[str] = Field(None)
     publish_reason: Optional[str] = Field(None)
     benchmark: Optional[bool] = Field(None, description='不传时继承当前版本的 Benchmark 标记')
+    benchmark_suite: Optional[str] = Field(None, description='不传时继承当前版本的测试集标识')
+    benchmark_category: Optional[str] = Field(None, description='不传时继承当前版本的被测类别')
 
 
 class PublishedTaskUpdateRequest(APIModel):

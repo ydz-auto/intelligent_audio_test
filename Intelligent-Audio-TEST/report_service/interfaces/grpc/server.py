@@ -19,7 +19,7 @@ from shared.proto import report_service_pb2_grpc as report_grpc
 from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import REPORT_SERVICE_GRPC_PORT
-from report_service.interfaces.grpc.servicers import ReportServicer
+from report_service.interfaces.grpc.servicers import ReportServicer, BenchmarkServicer
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +45,7 @@ def start_grpc_server(port: int = REPORT_SERVICE_GRPC_PORT) -> grpc.Server:
     )
 
     report_grpc.add_ReportConfigServiceServicer_to_server(ReportServicer(), server)
+    report_grpc.add_BenchmarkConfigServiceServicer_to_server(BenchmarkServicer(), server)
 
     server.add_insecure_port(f'[::]:{port}')
     server.start()

@@ -135,3 +135,38 @@ message ImportReportsRequest {
 message RollbackReportImportRequest {
   string batch_id = 1;
 }
+
+// ===== Benchmark 排行服务（D1 双轨排行：实测轨 + 外部基线导入 + 6 算法 + 指标映射）=====
+service BenchmarkConfigService {
+  // 触发排行计算（写侧命令：合并双轨 → 指标映射 → 6 算法 → ReadModel 落库 + 审计）
+  rpc ComputeBenchmarkRanking(BenchmarkCommandRequest) returns (BenchmarkResponse);
+  // 查询排行（读侧：只读 benchmark_rankings ReadModel，无写副作用）
+  rpc GetBenchmarkRanking(BenchmarkQueryRequest) returns (BenchmarkResponse);
+  // 查询参与排行的被测主体列表
+  rpc GetBenchmarkRankingSubjects(BenchmarkQueryRequest) returns (BenchmarkResponse);
+  // 外部基线数据源列表
+  rpc ListBenchmarkSources(BenchmarkQueryRequest) returns (BenchmarkResponse);
+  // 创建外部基线数据源
+  rpc CreateBenchmarkSource(BenchmarkCommandRequest) returns (BenchmarkResponse);
+  // 外部基线条目列表
+  rpc ListBenchmarkBaselines(BenchmarkQueryRequest) returns (BenchmarkResponse);
+  // 批量导入外部基线（导入即不可变快照新版本；逐行校验，非法行返回错误明细；内容重复幂等）
+  rpc ImportBenchmarkBaselines(BenchmarkCommandRequest) returns (BenchmarkResponse);
+  // 指标映射列表（读侧）
+  rpc ListBenchmarkMetricMappings(BenchmarkQueryRequest) returns (BenchmarkResponse);
+  // 更新指标映射（写侧命令 + 审计）
+  rpc UpdateBenchmarkMetricMapping(BenchmarkCommandRequest) returns (BenchmarkResponse);
+}
+
+message BenchmarkCommandRequest {
+  string data = 1;  // JSON: 命令参数
+}
+message BenchmarkQueryRequest {
+  string data = 1;  // JSON: 查询参数（suite/category/metricCode/source/publishedTaskId/page/perPage 等）
+}
+message BenchmarkResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+  int32 code = 4;
+}

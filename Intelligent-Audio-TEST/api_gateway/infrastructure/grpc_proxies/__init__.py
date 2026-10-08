@@ -42,6 +42,10 @@ from .published_task_config_proxies import (
     _PublishedTaskConfigProxy,
     published_task_config_service,
 )
+from .benchmark_proxies import (
+    _BenchmarkConfigProxy,
+    benchmark_config_service,
+)
 from .report_proxies import report_config_service
 from .auth_proxies import auth_config_service
 from .algorithm_proxies import algorithm_query_service

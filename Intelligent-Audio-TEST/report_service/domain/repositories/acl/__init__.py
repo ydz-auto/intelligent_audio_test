@@ -27,6 +27,9 @@ from report_service.domain.repositories.acl.tag_acl_repository import (
 from report_service.domain.repositories.acl.task_data_acl_repository import (
     TaskDataAclRepository,
 )
+from report_service.domain.repositories.acl.published_task_acl_repository import (
+    PublishedTaskAclRepository,
+)
 from report_service.domain.repositories.acl.task_merge_relation_acl_repository import (
     TaskMergeRelationAclRepository,
 )
@@ -46,4 +49,5 @@ __all__ = [
     'TaskDataAclRepository',
     'TaskMergeRelationAclRepository',
     'TestCaseConfigAclRepository',
+    'PublishedTaskAclRepository',
 ]

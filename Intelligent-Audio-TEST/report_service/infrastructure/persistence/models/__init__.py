@@ -21,8 +21,16 @@ from .report_models import (
     ReportMetricStats,
     ReportComparisonMatrix,
 )
+from .benchmark_models import (
+    BenchmarkRanking,
+    BenchmarkMetricMapping,
+    BenchmarkSource,
+    BenchmarkBaseline,
+)
 
 __all__ = [
     'Report', 'ReportSummary', 'ReportSummaryMeta', 'ReportRawData',
     'ReportCase', 'ReportMetricStats', 'ReportComparisonMatrix',
+    'BenchmarkRanking', 'BenchmarkMetricMapping', 'BenchmarkSource',
+    'BenchmarkBaseline',
 ]

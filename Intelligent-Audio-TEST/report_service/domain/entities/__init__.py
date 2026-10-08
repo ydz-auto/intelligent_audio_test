@@ -15,6 +15,18 @@ from report_service.domain.entities.report import (
     ReportSummaryMetaEntity,
     ReportType,
 )
+from report_service.domain.entities.benchmark import (
+    BaselineDraftEntry,
+    BenchmarkCategory,
+    BenchmarkSourceType,
+    MetricMapping,
+    RankingDirection,
+    RankingEntry,
+    RankingMetricValues,
+    RankingNote,
+    RankingSource,
+    SubjectType,
+)
 
 __all__ = [
     'ReportAggregate',
@@ -26,4 +38,14 @@ __all__ = [
     'ReportMetricStatsEntity',
     'ReportRawDataEntity',
     'ReportComparisonMatrixEntity',
+    'BaselineDraftEntry',
+    'BenchmarkCategory',
+    'BenchmarkSourceType',
+    'MetricMapping',
+    'RankingDirection',
+    'RankingEntry',
+    'RankingMetricValues',
+    'RankingNote',
+    'RankingSource',
+    'SubjectType',
 ]
