@@ -14,10 +14,17 @@
 """
 import json
 import os
+import tempfile
 
 import pytest
 
-os.environ.setdefault('DATABASE_URL', 'sqlite:///:memory:')
+# 共享配置在导入期校验必填环境变量，且 BaseConfig.DATABASE_URL 为类属性、
+# 在进程内首次导入时冻结 —— 本模块设置的默认值会决定后续收集模块
+# （如 sqlite e2e）实际拿到的库。因此必须用文件型 sqlite（QueuePool 兼容），
+# 不能用 :memory:（SingletonThreadPool 拒收 init_db 的 pool_size/max_overflow）。
+# 本模块测试全程 fake 注入，不依赖真库。
+os.environ.setdefault('DATABASE_URL',
+                      'sqlite:///' + tempfile.mkdtemp(prefix='int30_unit_') + '/unit.db')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
