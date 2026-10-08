@@ -27,6 +27,10 @@ def _parse_query_params():
     return params
 
 
+# benchmark 筛选参数三态合法值（''=不过滤）
+_BENCHMARK_FILTER_VALUES = ('true', 'false', '')
+
+
 class PublishedTaskService:
     """已发布任务网关服务（CQRS）。
 
@@ -66,12 +70,18 @@ class PublishedTaskService:
         status = params.get('status', '')
         keyword = params.get('keyword', '').strip()
         task_type = params.get('type', '')
+        benchmark = (params.get('benchmark') or '').strip().lower()
+        if benchmark not in _BENCHMARK_FILTER_VALUES:
+            return error_response(
+                'benchmark 筛选参数仅支持 true/false', code=ErrorCode.INVALID_PARAMS, http_code=400,
+            )
         start_date = params.get('start_date')
         end_date = params.get('end_date')
 
         result = _pt_acl.get_list(
             page=page, per_page=per_page, status=status, keyword=keyword,
-            task_type=task_type, start_date=start_date or '', end_date=end_date or '',
+            task_type=task_type, benchmark=benchmark,
+            start_date=start_date or '', end_date=end_date or '',
         )
 
         if not result.get('success'):
@@ -86,6 +96,7 @@ class PublishedTaskService:
                 description=item.get('description'),
                 type=item.get('type'),
                 status=item.get('status'),
+                benchmark=bool(item.get('benchmark', False)),
                 version=item.get('version'),
                 is_current=item.get('is_current'),
                 version_count=item.get('version_count'),
@@ -125,6 +136,7 @@ class PublishedTaskService:
                 description=v.get('description'),
                 type=v.get('type'),
                 status=v.get('status'),
+                benchmark=bool(v.get('benchmark', False)),
                 version=v.get('version'),
                 is_current=v.get('is_current'),
                 version_count=v.get('version_count'),
@@ -157,6 +169,7 @@ class PublishedTaskService:
                 description=d.get('description'),
                 type=d.get('type'),
                 status=d.get('status'),
+                benchmark=bool(d.get('benchmark', False)),
                 version=d.get('version'),
                 is_current=d.get('is_current'),
                 snapshot_config=d.get('snapshot_config') or {},

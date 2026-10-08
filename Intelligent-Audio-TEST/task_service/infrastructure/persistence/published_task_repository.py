@@ -42,6 +42,25 @@ PUBLISHABLE_STATUSES = (
 )
 
 
+def parse_benchmark_filter(value) -> bool | None:
+    """benchmark 筛选参数解析（三态）：'true'/'True'/'1' → True，
+    'false'/'False'/'0' → False，其余（空/None）→ None 表示不过滤。
+
+    网关与 gRPC 层以字符串承载该布尔筛选（proto string 字段），
+    仅在仓储入口归一化为 bool，下游查询不再做字符串判断。
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ('true', '1'):
+        return True
+    if text in ('false', '0'):
+        return False
+    return None
+
+
 class PublishedTaskRepository:
     """已发布任务仓储（单例使用，方法级 session 管理）。"""
 
@@ -58,6 +77,7 @@ class PublishedTaskRepository:
         status: str = 'published',
         version: int = 1,
         is_current: bool = True,
+        benchmark: bool = False,
         snapshot_config=None,
         report_snapshot=None,
         publish_reason=None,
@@ -80,6 +100,7 @@ class PublishedTaskRepository:
                 status=status,
                 version=version,
                 is_current=is_current,
+                benchmark=bool(benchmark),
                 snapshot_config=snapshot_config,
                 report_snapshot=report_snapshot,
                 publish_reason=publish_reason,
@@ -93,6 +114,9 @@ class PublishedTaskRepository:
             if pt.task_group_id is None:
                 pt.task_group_id = pt.id
             session.commit()
+            # commit 后属性已过期，close 后实例脱离 session；
+            # refresh 重载属性，保证调用方在方法返回后仍可读取（如审计/响应组装）
+            session.refresh(pt)
             return pt
         except Exception:
             session.rollback()
@@ -124,10 +148,15 @@ class PublishedTaskRepository:
         status: str = '',
         keyword: str = '',
         task_type: str = '',
+        benchmark=None,
         start_date: str = '',
         end_date: str = '',
     ):
-        """分页查询当前版本列表（含筛选），返回 (rows, total)。"""
+        """分页查询当前版本列表（含筛选），返回 (rows, total)。
+
+        benchmark: True/False 精确过滤（供 Benchmark 排行实测轨消费），
+        None/'' 表示不过滤。
+        """
         session = get_db_session()
         try:
             query = session.query(PublishedTask).filter(
@@ -137,6 +166,9 @@ class PublishedTaskRepository:
                 query = query.filter(PublishedTask.status == status)
             if task_type:
                 query = query.filter(PublishedTask.type == task_type)
+            benchmark_flag = parse_benchmark_filter(benchmark)
+            if benchmark_flag is not None:
+                query = query.filter(PublishedTask.benchmark.is_(benchmark_flag))
             if keyword:
                 like = f'%{keyword}%'
                 query = query.filter(
@@ -249,6 +281,7 @@ class PublishedTaskRepository:
             pt.archived_at = datetime.now(_UTC_PLUS_8)
             pt.updated_at = datetime.now(_UTC_PLUS_8)
             session.commit()
+            session.refresh(pt)
             return pt
         except Exception:
             session.rollback()
@@ -265,6 +298,7 @@ class PublishedTaskRepository:
         description=None,
         task_type: str,
         version: int,
+        benchmark: bool = False,
         snapshot_config=None,
         publish_reason=None,
         demote_id: int = None,
@@ -272,6 +306,7 @@ class PublishedTaskRepository:
         """创建新版本 PO。
 
         Args:
+            benchmark: 新版本 Benchmark 标记（默认 False，由应用服务继承当前版本）
             demote_id: 旧当前版本 ID；同事务内置为 is_current=False
                 （与 V9.7.10 create_version 原子语义一致：旧版本 vN 置 False + 新版本 vN+1）。
         """
@@ -292,6 +327,7 @@ class PublishedTaskRepository:
                 status='published',
                 version=version,
                 is_current=True,
+                benchmark=bool(benchmark),
                 snapshot_config=snapshot_config,
                 publish_reason=publish_reason,
                 published_at=now,
@@ -300,6 +336,7 @@ class PublishedTaskRepository:
             )
             session.add(new_version)
             session.commit()
+            session.refresh(new_version)
             return new_version
         except Exception:
             session.rollback()

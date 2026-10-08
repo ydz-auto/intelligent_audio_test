@@ -26,6 +26,7 @@ class PublishedTask(Base):
         Index('idx_published_task_status', 'status'),
         Index('idx_published_task_source', 'source_task_id'),
         Index('idx_published_task_is_current', 'is_current'),
+        Index('idx_published_task_benchmark_status', 'benchmark', 'status'),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='已发布任务 ID')
     task_group_id = Column(Integer, comment='已发布任务逻辑分组 ID（首个版本 ID，版本链锚点）')
@@ -34,6 +35,7 @@ class PublishedTask(Base):
     description = Column(Text, comment='说明')
     type = Column(String(50), nullable=False, comment='任务类型 (api/e2e)')
     status = Column(String(20), nullable=False, default='published', comment='状态 (published/archived)')
+    benchmark = Column(Boolean, nullable=False, default=False, comment='是否参与 Benchmark 排行（实测轨数据源标记）')
     version = Column(Integer, nullable=False, default=1, comment='版本号，从 1 开始')
     is_current = Column(Boolean, nullable=False, default=True, comment='是否当前版本')
     snapshot_config = Column(JSON, comment='发布时的完整配置快照（camelCase 结构）')

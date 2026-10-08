@@ -271,6 +271,8 @@ message ListPublishedTasksRequest {
   string type = 5;
   string start_date = 6;
   string end_date = 7;
+  // benchmark 筛选（三态字符串）：""=不过滤，"true"/"false"=按 Benchmark 标记过滤
+  string benchmark = 8;
 }
 message GetPublishedTaskDetailRequest {
   int32 published_task_id = 1;

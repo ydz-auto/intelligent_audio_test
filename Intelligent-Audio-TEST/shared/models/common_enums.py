@@ -118,3 +118,17 @@ class EvalTaskStatus(str, Enum):
     """eval_server 任务状态枚举 — 替代裸字符串状态判断"""
     COMPLETED = 'completed'
     FAILED = 'failed'
+
+
+class PublishedTaskStatus(str, Enum):
+    """已发布任务状态枚举 — 发布/归档状态机（任务发布功能）"""
+    PUBLISHED = 'published'
+    ARCHIVED = 'archived'
+
+
+class AuditEvent(str, Enum):
+    """审计事件名枚举 — 落库到 logs（category=System），供审计查询过滤
+
+    命名对齐设计文档《任务发布功能设计文档》§9 /《报告Benchmark排行功能设计文档》。
+    """
+    PUBLISHED_TASK_BENCHMARK_MARKED = 'PUBLISHED_TASK_BENCHMARK_MARKED'

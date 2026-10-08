@@ -20,6 +20,7 @@ class PublishedTaskCreateRequest(APIModel):
     name: str = Field(...)
     description: Optional[str] = Field(None)
     publish_reason: Optional[str] = Field(None)
+    benchmark: bool = Field(False, description='是否参与 Benchmark 排行（实测轨数据源标记）')
 
 
 class PublishedTaskVersionCreateRequest(APIModel):
@@ -28,6 +29,7 @@ class PublishedTaskVersionCreateRequest(APIModel):
     name: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
     publish_reason: Optional[str] = Field(None)
+    benchmark: Optional[bool] = Field(None, description='不传时继承当前版本的 Benchmark 标记')
 
 
 class PublishedTaskUpdateRequest(APIModel):
@@ -43,6 +45,7 @@ class PublishedTaskItem(APIModel):
     description: Optional[str] = Field(None)
     type: str = Field(...)
     status: str = Field(...)
+    benchmark: bool = Field(False, description='是否参与 Benchmark 排行')
     version: int = Field(...)
     is_current: bool = Field(...)
     version_count: Optional[int] = Field(None)
@@ -77,6 +80,7 @@ class PublishedTaskDetailData(APIModel):
     description: Optional[str] = Field(None)
     type: str = Field(...)
     status: str = Field(...)
+    benchmark: bool = Field(False, description='是否参与 Benchmark 排行')
     version: int = Field(...)
     is_current: bool = Field(...)
     snapshot_config: Dict[str, Any] = Field(default_factory=dict)

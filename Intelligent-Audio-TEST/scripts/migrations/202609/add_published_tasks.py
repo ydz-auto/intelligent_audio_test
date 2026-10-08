@@ -5,6 +5,7 @@
 - 建 published_tasks 表（已发布任务：不可变版本快照 / 版本链 / 归档）
 - test_tasks 加追溯字段：execution_source / published_task_id / published_task_version
 - published_tasks 加 report_snapshot 列（冻结报告/执行数据/评估数据/用例日志）
+- published_tasks 加 benchmark 列（Benchmark 实测轨入口标记，INT-26）+ (benchmark, status) 索引
 
 幂等，可重复执行。
 
@@ -126,6 +127,40 @@ def main(dry_run=False):
             print("[DONE] published_tasks.report_snapshot 已添加")
     else:
         print("[SKIP] published_tasks.report_snapshot 列已存在")
+
+    # 4. Benchmark 实测轨入口标记（INT-26：published_tasks.benchmark 布尔列）
+    if not _col_exists(cur, 'published_tasks', 'benchmark'):
+        sql = (
+            "ALTER TABLE published_tasks "
+            "ADD COLUMN benchmark BOOLEAN NOT NULL DEFAULT false"
+        )
+        if dry_run:
+            print(f"[DRY-RUN] {sql}")
+        else:
+            print(f"[EXEC] {sql}")
+            cur.execute(sql)
+            conn.commit()
+            print("[DONE] published_tasks.benchmark 已添加")
+    else:
+        print("[SKIP] published_tasks.benchmark 列已存在")
+
+    idx_benchmark_sql = (
+        "CREATE INDEX idx_published_task_benchmark_status "
+        "ON published_tasks (benchmark, status)"
+    )
+    cur.execute(
+        "SELECT 1 FROM pg_indexes WHERE indexname = 'idx_published_task_benchmark_status'"
+    )
+    if cur.fetchone() is None:
+        if dry_run:
+            print(f"[DRY-RUN] {idx_benchmark_sql}")
+        else:
+            print(f"[EXEC] {idx_benchmark_sql}")
+            cur.execute(idx_benchmark_sql)
+            conn.commit()
+            print("[DONE] 索引 idx_published_task_benchmark_status 已创建")
+    else:
+        print("[SKIP] 索引 idx_published_task_benchmark_status 已存在")
 
     cur.close()
     conn.close()

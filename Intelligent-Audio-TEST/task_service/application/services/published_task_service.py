@@ -12,14 +12,18 @@
 约定：所有方法返回 dict: {success, message, data, code}（与 task_service 应用服务一致）。
 数据经 gRPC 序列化为 JSON，网关层负责转换 snake_case 契约。
 """
+import json
 import logging
 from datetime import datetime
+
+from shared.models.common_enums import AuditEvent
 
 from task_service.infrastructure.persistence._task_converters import _UTC_PLUS_8
 from task_service.infrastructure.persistence.published_task_repository import (
     published_task_repository as repo,
     PUBLISHABLE_STATUSES,
 )
+from task_service.infrastructure.persistence.log_repository import log_repository
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +87,38 @@ class PublishedTaskService:
     # ---------- 发布 ----------
 
     @staticmethod
+    def _coerce_benchmark(value) -> bool:
+        """benchmark 请求字段归一化：接受 bool / 'true'/'false' 字符串，默认 False。"""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() == 'true'
+        return bool(value)
+
+    @staticmethod
+    def _audit_benchmark_marked(pt) -> None:
+        """Benchmark 标记审计事件落库（PUBLISHED_TASK_BENCHMARK_MARKED）。
+
+        审计写入失败仅告警不回滚：发布主流程已成功，审计为旁路记录。
+        """
+        try:
+            log_repository.batch_create([{
+                'module': 'published_task',
+                'source': 'published_task_service',
+                'content': json.dumps({
+                    'event': AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value,
+                    'published_task_id': pt.id,
+                    'task_group_id': pt.task_group_id or pt.id,
+                    'version': pt.version,
+                    'source_task_id': pt.source_task_id,
+                    'published_by': pt.published_by,
+                    'result': 'success',
+                }, ensure_ascii=False),
+            }])
+        except Exception:
+            logger.warning('审计事件 %s 落库失败', AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value, exc_info=True)
+
+    @staticmethod
     def publish(data: dict) -> dict:
         """发布：日常任务 → 已发布任务 v1（冻结快照 + 报告快照）。"""
         try:
@@ -103,6 +139,7 @@ class PublishedTaskService:
                 return {'success': False, 'message': err, 'data': None, 'code': code}
             report_snapshot = repo.freeze_report_snapshot(source_task_id)
 
+            benchmark = PublishedTaskService._coerce_benchmark(data.get('benchmark'))
             pt = repo.create(
                 name=name,
                 description=data.get('description'),
@@ -111,11 +148,14 @@ class PublishedTaskService:
                 status='published',
                 version=1,
                 is_current=True,
+                benchmark=benchmark,
                 snapshot_config=snapshot,
                 report_snapshot=report_snapshot,
                 publish_reason=data.get('publish_reason') or data.get('publishReason'),
                 published_by=None,  # G 域落地后从请求上下文回填
             )
+            if benchmark:
+                PublishedTaskService._audit_benchmark_marked(pt)
             return {'success': True, 'message': '已发布任务创建成功', 'data': {'id': pt.id}, 'code': 201}
         except Exception as e:
             logger.exception('发布已发布任务失败')
@@ -133,6 +173,7 @@ class PublishedTaskService:
             'description': pt.description,
             'type': pt.type,
             'status': pt.status,
+            'benchmark': bool(pt.benchmark),
             'version': pt.version,
             'is_current': pt.is_current,
             'version_count': version_count,
@@ -145,12 +186,14 @@ class PublishedTaskService:
     @staticmethod
     def get_list(page: int = 1, per_page: int = 10, status: str = '',
                  keyword: str = '', task_type: str = '',
+                 benchmark=None,
                  start_date: str = '', end_date: str = '') -> dict:
-        """当前版本列表（分页 + status/keyword/type/时间筛选 + 版本数统计）。"""
+        """当前版本列表（分页 + status/keyword/type/benchmark/时间筛选 + 版本数统计）。"""
         try:
             rows, total = repo.get_list(
                 page=page, per_page=per_page, status=status, keyword=keyword,
-                task_type=task_type, start_date=start_date, end_date=end_date,
+                task_type=task_type, benchmark=benchmark,
+                start_date=start_date, end_date=end_date,
             )
             group_ids = [r.task_group_id or r.id for r in rows]
             version_counts = repo.get_version_counts(group_ids)
@@ -210,6 +253,7 @@ class PublishedTaskService:
                     'description': pt.description,
                     'type': pt.type,
                     'status': pt.status,
+                    'benchmark': bool(pt.benchmark),
                     'version': pt.version,
                     'is_current': pt.is_current,
                     'snapshot_config': pt.snapshot_config or {},
@@ -305,6 +349,12 @@ class PublishedTaskService:
             if err:
                 return {'success': False, 'message': err, 'data': None, 'code': code}
 
+            # benchmark 标记：请求未显式指定时继承当前版本（版本链语义延续）
+            if data.get('benchmark') is not None:
+                benchmark = PublishedTaskService._coerce_benchmark(data.get('benchmark'))
+            else:
+                benchmark = bool(current.benchmark)
+
             new_version = repo.create_version(
                 task_group_id=group_id,
                 source_task_id=new_source_task_id,
@@ -313,10 +363,13 @@ class PublishedTaskService:
                 if data.get('description') is not None else current.description,
                 task_type=current.type,
                 version=current.version + 1,
+                benchmark=benchmark,
                 snapshot_config=snapshot,
                 publish_reason=data.get('publish_reason') or data.get('publishReason'),
                 demote_id=current.id,  # 同事务：旧版本 is_current=False
             )
+            if benchmark:
+                PublishedTaskService._audit_benchmark_marked(new_version)
             return {
                 'success': True,
                 'message': f'已发布任务 v{new_version.version} 创建成功',
