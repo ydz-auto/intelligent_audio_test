@@ -33,8 +33,10 @@ class APIDriver:
         self._task_id = task_id
 
     def _log(self, level='INFO', content='', **kwargs):
-        """记录日志"""
-        log_and_emit(level=level, module='APIDriver', content=content, task_id=self._task_id, test_case_id=self._test_case_id, **kwargs)
+        """记录日志（调用方传参优先，实例属性兜底）"""
+        kwargs.setdefault('task_id', self._task_id)
+        kwargs.setdefault('test_case_id', self._test_case_id)
+        log_and_emit(level=level, module='APIDriver', content=content, **kwargs)
 
     def execute(self, context_data, files=None, method=None):
         """

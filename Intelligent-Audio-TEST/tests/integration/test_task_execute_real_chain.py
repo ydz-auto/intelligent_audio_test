@@ -51,8 +51,9 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
 
 隔离策略（测试侧自愈，不影响产品代码）：int35_quarantine 夹具对上述缺陷做
 "探针检测 + 最小替身"，仅在缺陷仍在时生效（缺陷修复后探针通过、补丁自动卸除，
-回归不会静默绕过修复后的产品代码）。其中 INT-38/39/41/43/44 各有一个
-xfail(strict) 锁定测试，修复后 XPASS 提醒移除标记；INT-40/42/45 为守卫型或
+回归不会静默绕过修复后的产品代码）。其中 INT-38/39/41 各有一个
+xfail(strict) 锁定测试，修复后 XPASS 提醒移除标记；INT-43 已修复，其锁定
+测试转为常驻守卫；INT-40/42/45 为守卫型或
 非致命缺陷，无独立锁定测试。
 """
 import json
@@ -975,7 +976,7 @@ class TestTaskExecuteRealChain:
 
 
 class TestKnownExecuteChainDefects:
-    """INT-38 / INT-39 / INT-41 / INT-43 / INT-44 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。"""
+    """INT-38 / INT-39 / INT-41 / INT-44 缺陷锁定：修复后 XPASS，届时移除 xfail 标记。（INT-43 已修复，锁定测试保留为守卫）"""
 
     @pytest.mark.xfail(strict=True, reason='INT-38：_evaluate_result 的 '
                                            'case_reference_params 被重构移除默认值，调用点漏传')
@@ -1027,8 +1028,6 @@ class TestKnownExecuteChainDefects:
             all(isinstance(c, int) for c in captured['case_ids']), \
             f'边界应把字符串 case_ids 规范化为 int: {captured["case_ids"]}'
 
-    @pytest.mark.xfail(strict=True, reason='INT-43：APIDriver._log 显式传参与 **kwargs '
-                                           '重复传 task_id，调用即 TypeError')
     def test_int43_api_driver_log_tolerates_task_id_kwarg(
             self, monkeypatch, int35_quarantine):
         """调用方传 task_id/test_case_id 时 _log 不应抛 TypeError（探针直调
