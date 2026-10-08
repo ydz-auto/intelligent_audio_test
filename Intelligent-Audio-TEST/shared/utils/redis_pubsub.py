@@ -244,6 +244,17 @@ class RedisStore:
                 result[k] = v
         return result
 
+    def remove_fields(self, key: str, *fields: str) -> None:
+        """删除 HASH 中指定字段（HDEL，字段级删除而非整体覆盖）。
+
+        最后一个字段被删后 Redis 自动移除整个 key。key 不存在时无操作。
+        多段共用一个 HASH 键、各自移除自己字段时必须用本方法，
+        load → 修改 → save_task 的覆盖写会因 HSET 合并语义丢不掉旧字段。
+        """
+        if not fields:
+            return
+        self.redis_client.hdel(key, *fields)
+
     def delete_task(self, key: str) -> None:
         self.redis_client.delete(key)
 

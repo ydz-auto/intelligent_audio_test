@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Dict, List, Set, Tuple
 
 from shared.models.database import get_db_session
-from shared.utils.data_transfer import strip_conflicting_ids
 from shared.utils.log_handler import log_not_emit
 from report_service.infrastructure.persistence.models import (
     Report,
@@ -107,8 +106,11 @@ class ReportTransferRepository:
                        task_id_mapping: Dict[int, int]) -> Tuple[Dict[int, int], Dict[str, List[int]]]:
         """单事务写入报告 7 表：冲突剥离 + 外键重映射 + 插入。
 
+        两遍插入（缺陷 1 修复）：每表先插显式 id 行并同步自增序列，再插去 id
+        冲突行，避免同批次自增分配与显式 ID 撞 UNIQUE。
+
         Args:
-            tables_rows: 表名 → 已剥离冲突 id 的待插入行（冲突行无 'id' 键）
+            tables_rows: 表名 → 待插入行（冲突行无 'id' 键）
             task_id_mapping: test_tasks old→new 映射（来自 task_service 段）
 
         Returns:
@@ -122,55 +124,44 @@ class ReportTransferRepository:
                 for table, po_cls in _TABLE_PO.items()
             }
 
-            # 1) test_reports：冲突剥离 + task_id 重映射 + 插入 → report 映射
+            def _conflicts(table: str, rows: List[dict]) -> List[int]:
+                return [r['id'] for r in rows
+                        if r.get('id') is not None and r['id'] in existing_ids[table]]
+
+            # 1) test_reports：task_id 重映射后两遍插入 → report 映射
             report_rows = tables_rows.get('test_reports') or []
-            report_conflicts = [r['id'] for r in report_rows
-                                if r.get('id') is not None
-                                and r['id'] in existing_ids['test_reports']]
-            stripped = strip_conflicting_ids(report_rows, existing_ids['test_reports'])
-            conflict_iter = iter(report_conflicts)
-            report_pairs = []
-            for row in stripped:
+            report_conflicts = _conflicts('test_reports', report_rows)
+            prepared = []
+            for row in report_rows:
                 rewritten = dict(row)
                 old_task_id = rewritten.get('task_id')
                 if old_task_id is not None:
                     rewritten['task_id'] = task_id_mapping.get(old_task_id, old_task_id)
-                old_id = rewritten.get('id')
-                if old_id is None:
-                    old_id = next(conflict_iter)
-                po = Report(**_coerce_row(Report, rewritten))
-                session.add(po)
-                report_pairs.append((old_id, po))
-            session.flush()
+                prepared.append(rewritten)
+            report_pairs = _insert_two_pass(session, Report, 'test_reports',
+                                            prepared, report_conflicts)
             report_mapping = {old_id: po.id for old_id, po in report_pairs}
             inserted_pks: Dict[str, List[int]] = {
                 'test_reports': [po.id for _, po in report_pairs]}
 
-            # 2) 子表：report_id 重映射后插入
+            # 2) 子表：report_id 重映射后两遍插入
             for table in _CHILD_TABLES:
                 po_cls = _TABLE_PO[table]
                 rows = tables_rows.get(table) or []
-                conflicts = [r['id'] for r in rows
-                             if r.get('id') is not None and r['id'] in existing_ids[table]]
-                stripped_rows = strip_conflicting_ids(rows, existing_ids[table])
-                conflict_iter = iter(conflicts)
-                pairs = []
-                for row in stripped_rows:
+                conflicts = _conflicts(table, rows)
+                prepared_rows = []
+                for row in rows:
                     rewritten = dict(row)
                     old_report_id = rewritten.get('report_id')
                     if old_report_id is not None:
                         rewritten['report_id'] = report_mapping.get(
                             old_report_id, old_report_id)
-                    old_id = rewritten.get('id')
-                    if old_id is None:
-                        old_id = next(conflict_iter)
-                    po = po_cls(**_coerce_row(po_cls, rewritten))
-                    session.add(po)
-                    pairs.append((old_id, po))
-                session.flush()
+                    prepared_rows.append(rewritten)
+                pairs = _insert_two_pass(session, po_cls, table,
+                                         prepared_rows, conflicts)
                 inserted_pks[table] = [po.id for _, po in pairs]
 
-            self._sync_sequences(session)
+            _sync_sequences(session)
             session.commit()
             return report_mapping, inserted_pks
         except Exception:
@@ -192,7 +183,7 @@ class ReportTransferRepository:
                 count = session.query(po_cls).filter(po_cls.id.in_(pks)).delete(
                     synchronize_session=False)
                 deleted[table] = count
-            self._sync_sequences(session)
+            _sync_sequences(session)
             session.commit()
             return deleted
         except Exception:
@@ -201,21 +192,63 @@ class ReportTransferRepository:
         finally:
             session.close()
 
-    @staticmethod
-    def _sync_sequences(session) -> None:
-        """显式 ID 插入后同步 Postgres 序列（SQLite 无需）"""
-        if session.bind is None or session.bind.dialect.name != 'postgresql':
-            return
-        from sqlalchemy import text
-        for table in _TABLE_PO:
-            try:
-                session.execute(text(
-                    "SELECT setval(pg_get_serial_sequence(:tbl, 'id'), "
-                    "GREATEST((SELECT COALESCE(MAX(id), 0) FROM " + table + "), 1))"
-                ), {'tbl': table})
-            except Exception as e:
-                log_not_emit('WARNING', _MODULE_NAME,
-                             f'同步 {table} 序列失败: {e}', category='system')
+def _insert_two_pass(session, po_cls, table: str, rows: List[dict],
+                     conflict_old_ids: List[int]) -> List[Tuple[int, object]]:
+    """同一表内「显式 ID 行 + 去 ID 冲突行」混插的两遍插入（缺陷 1 修复）。
+
+    冲突行判定：id 命中 conflict_old_ids（或原本就无 id，配对 conflict_old_ids
+    序列）。先插全部保留行 → flush → 把该表自增序列推到 max(id) → 再插全部
+    冲突行 → flush，保证自增分配避开本批次显式 ID 集合（自增序列不感知同事务
+    后续显式 ID 插入）。返回 [(old_id, po)]。
+    """
+    conflict_set = set(conflict_old_ids or [])
+    conflict_iter = iter(conflict_old_ids or [])
+    kept: List[Tuple[int, dict]] = []
+    conflicted: List[Tuple[int, dict]] = []
+    for row in rows:
+        old_id = row.get('id')
+        if old_id is not None and old_id in conflict_set:
+            stripped = {k: v for k, v in row.items() if k != 'id'}
+            conflicted.append((old_id, stripped))
+        elif old_id is not None:
+            kept.append((old_id, row))
+        else:
+            conflicted.append((next(conflict_iter), row))
+
+    pairs: List[Tuple[int, object]] = []
+    for old_id, row in kept:
+        po = po_cls(**_coerce_row(po_cls, row))
+        session.add(po)
+        pairs.append((old_id, po))
+    session.flush()
+    if conflicted:
+        _sync_sequences(session, [table])
+        for old_id, row in conflicted:
+            po = po_cls(**_coerce_row(po_cls, row))
+            session.add(po)
+            pairs.append((old_id, po))
+        session.flush()
+    return pairs
+
+
+def _sync_sequences(session, tables=None) -> None:
+    """显式 ID 插入后同步 Postgres 序列（SQLite 无需）。
+
+    Args:
+        tables: 指定表名列表；None 则同步全部 7 表。
+    """
+    if session.bind is None or session.bind.dialect.name != 'postgresql':
+        return
+    from sqlalchemy import text
+    for table in (tables or _TABLE_PO):
+        try:
+            session.execute(text(
+                "SELECT setval(pg_get_serial_sequence(:tbl, 'id'), "
+                "GREATEST((SELECT COALESCE(MAX(id), 0) FROM " + table + "), 1))"
+            ), {'tbl': table})
+        except Exception as e:
+            log_not_emit('WARNING', _MODULE_NAME,
+                         f'同步 {table} 序列失败: {e}', category='system')
 
 
 report_transfer_repository = ReportTransferRepository()

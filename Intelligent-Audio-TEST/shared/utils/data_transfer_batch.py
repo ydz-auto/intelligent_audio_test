@@ -41,12 +41,14 @@ class TransferBatchRegistry:
         return data.get(service, {}).get('tables', {}) or {}
 
     def remove_service(self, batch_id: str, service: str) -> None:
-        data = self._store.load_task(self._key(batch_id))
-        data.pop(service, None)
-        if data:
-            self._store.save_task(self._key(batch_id), data, ttl_seconds=BATCH_TTL_SECONDS)
-        else:
-            self._store.delete_task(self._key(batch_id))
+        """移除某服务段的登记（HDEL 字段级删除；整键最后一个字段删空时 Redis 自动清键）。
+
+        缺陷 2 修复：save_task 是 HSET 字段级合并写，load → pop → save 的
+        整体覆盖假象删不掉旧 field，多段登记下 remove 不生效，必须 HDEL。
+        """
+        if not batch_id or not service:
+            return
+        self._store.remove_fields(self._key(batch_id), service)
 
     def delete(self, batch_id: str) -> None:
         self._store.delete_task(self._key(batch_id))

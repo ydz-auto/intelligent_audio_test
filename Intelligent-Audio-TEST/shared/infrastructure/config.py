@@ -30,6 +30,9 @@ def _get_bool(key: str, default: bool = False) -> bool:
 class BaseConfig:
     """基础设施配置（所有服务共用）"""
 
+    # --- 平台版本（/health 暴露，供 tests/api 健康检查区分 V9.7.10/V9.7.31，避免误连）---
+    PLATFORM_VERSION: str = _get_env('PLATFORM_VERSION', 'V9.7.31')
+
     # --- 数据库 ---
     AUDIO_STORAGE_PATH: str = os.environ.get(
         'AUDIO_STORAGE_PATH',

@@ -78,7 +78,7 @@ def _render_bigint_as_integer_sqlite(type_, compiler, **kw):
 
 
 class _FakeRedisStore:
-    """内存版 RedisStore（save_task/load_task/delete_task 语义一致）"""
+    """内存版 RedisStore（save_task/load_task/remove_fields/delete_task 语义一致）"""
 
     def __init__(self, *a, **k):
         self._data = {}
@@ -88,6 +88,15 @@ class _FakeRedisStore:
 
     def load_task(self, key):
         return dict(self._data.get(key, {}))
+
+    def remove_fields(self, key, *fields):
+        entry = self._data.get(key)
+        if entry is None or not fields:
+            return
+        for f in fields:
+            entry.pop(f, None)
+        if not entry:  # 与 Redis HDEL 语义一致：最后一个字段删除后整键消失
+            self._data.pop(key, None)
 
     def delete_task(self, key):
         self._data.pop(key, None)
@@ -438,3 +447,114 @@ class TestRoundtrip:
         # 批次登记已清理（task 段回滚成功后删除）
         from shared.utils.data_transfer_batch import transfer_batch_registry
         assert transfer_batch_registry.load_service(result['data']['batch_id'], 'task_service') == {}
+
+    def test_partial_conflict_in_eval_and_report_segments(
+            self, db, storage_env, patched_acl, fake_redis):
+        """缺陷 1 回归（维度/报告段）：仅维度与报告表冲突时同样只重映射冲突行，
+        且自增新 ID 不与本批次显式 ID 撞 UNIQUE。"""
+        _seed(db, storage_env)
+        data = _export_zip(storage_env, patched_acl, fake_redis)
+        _hard_delete_all_15_tables()
+
+        # 目标库放置与包内冲突的维度/报告/摘要占位行（悬空外键，无 FK 约束可插入）
+        from datetime import datetime
+        from shared.models.database import get_db_session
+        from evaluation_service.infrastructure.persistence.models import TestResultDimension
+        from report_service.infrastructure.persistence.models import (
+            Report, ReportSummary,
+        )
+        now = datetime.now()
+        session = get_db_session()
+        try:
+            session.add_all([
+                TestResultDimension(id=200, test_result_id=999, dimension_id=1,
+                                    algorithm_type='translation', round_number=0,
+                                    dimension_value=0.0, score=0.0,
+                                    evaluation_status='completed', created_at=now),
+                Report(id=300, name='占位报告', type='standard', task_id=999,
+                       status='draft', deleted=False, created_at=now, updated_at=now),
+                ReportSummary(id=301, report_id=999, task_ids=[],
+                              created_at=now, updated_at=now),
+            ])
+            session.commit()
+        finally:
+            session.close()
+
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        from evaluation_service.infrastructure.persistence.models import (
+            TestResultDimension as DimPO,
+        )
+        from report_service.infrastructure.persistence.models import (
+            Report as ReportPO,
+            ReportCase as ReportCasePO,
+            ReportSummary as ReportSummaryPO,
+        )
+        from task_service.infrastructure.persistence.models import (
+            Task as TaskPO,
+            TestResult as TestResultPO,
+        )
+        result = data_transfer_import_service.execute_import(data['zip_path'])
+        assert result['success'], result.get('message')
+        stats = result['data']
+
+        # remappedIds 反映维度/报告段的重映射（报告子表重映射仅用于段内 FK 改写，
+        # 不进入响应契约——四类映射键见规格）
+        new_dim_id = int(stats['remappedIds']['test_result_dimensions']['200'])
+        new_report_id = int(stats['remappedIds']['test_reports']['300'])
+        assert new_dim_id not in (200, 100, 101)
+        assert new_report_id not in (300, 1, 2)
+
+        # 任务/结果段无冲突：原 ID 保留
+        session = get_db_session()
+        try:
+            assert {t.id for t in session.query(TaskPO).all()} == {1, 2}
+            assert {r.id for r in session.query(TestResultPO).all()} == {100, 101}
+
+            # 维度段：占位 200 仍在，导入行重映射为 new_dim_id，
+            # 且 test_result_id 指向无冲突保留的结果 100
+            dims = {d.id: d for d in session.query(DimPO).all()}
+            assert set(dims) == {200, new_dim_id}
+            assert dims[new_dim_id].test_result_id == 100
+            assert dims[200].test_result_id == 999
+
+            # 报告段：占位 300/301 仍在，导入行重映射；report.task_id 保留为 1；
+            # 摘要 report_id 指向新报告 id（摘要重映射不进 remappedIds，
+            # 以 report_id 关联定位导入行）；报告用例行（无冲突）原 ID 保留
+            reports = {r.id: r for r in session.query(ReportPO).all()}
+            assert set(reports) == {300, new_report_id}
+            assert reports[new_report_id].task_id == 1
+            assert reports[300].task_id == 999
+            summaries = list(session.query(ReportSummaryPO).all())
+            assert {s.id for s in summaries} != {301}
+            imported_summary = [s for s in summaries if s.report_id == new_report_id]
+            assert len(imported_summary) == 1
+            assert imported_summary[0].id != 301
+            assert {s.id for s in summaries} == {301, imported_summary[0].id}
+            assert {c.id for c in session.query(ReportCasePO).all()} == {302}
+        finally:
+            session.close()
+
+
+def _hard_delete_all_15_tables():
+    """清空目标库 15 张迁移表（模拟"另一套部署"或已清空的目标库）"""
+    from shared.models.database import get_db_session
+    from evaluation_service.infrastructure.persistence.models import TestResultDimension
+    from report_service.infrastructure.persistence.models import (
+        Report, ReportCase, ReportComparisonMatrix, ReportMetricStats,
+        ReportRawData, ReportSummary, ReportSummaryMeta,
+    )
+    from task_service.infrastructure.persistence.models import (
+        Task, TaskAPI, TaskCase, TaskDevice, TaskMergeRelation, TaskTag, TestResult,
+    )
+    session = get_db_session()
+    try:
+        for model in (TaskCase, TaskDevice, TaskAPI, TaskTag, TaskMergeRelation,
+                      TestResultDimension, ReportSummary, ReportSummaryMeta,
+                      ReportRawData, ReportCase, ReportMetricStats,
+                      ReportComparisonMatrix, Report, TestResult, Task):
+            session.query(model).delete()
+        session.commit()
+    finally:
+        session.close()

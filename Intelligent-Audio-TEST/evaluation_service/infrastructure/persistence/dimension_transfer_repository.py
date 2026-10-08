@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Dict, List, Set, Tuple
 
 from shared.models.database import get_db_session
-from shared.utils.data_transfer import strip_conflicting_ids
 from shared.utils.log_handler import log_not_emit
 from evaluation_service.infrastructure.persistence.models import (
     Dimension,
@@ -101,6 +100,9 @@ class DimensionTransferRepository:
                     result_id_mapping: Dict[int, int]) -> Tuple[Dict[int, int], List[int]]:
         """单事务写入维度评分：冲突剥离 + test_result_id 重映射 + 插入。
 
+        两遍插入（缺陷 1 修复）：先插显式 id 行并同步自增序列，再插去 id 冲突行，
+        避免同批次自增分配与显式 ID 撞 UNIQUE。
+
         Returns:
             (id_mapping {old: new}（含映射到自身）, inserted_pks)
         Raises: 任一写失败回滚并抛出。
@@ -108,23 +110,35 @@ class DimensionTransferRepository:
         session = get_db_session()
         try:
             existing = {row[0] for row in session.query(TestResultDimension.id).all()}
-            stripped = strip_conflicting_ids(rows, existing)
-            conflict_iter = iter([r['id'] for r in rows
-                                  if r.get('id') is not None and r['id'] in existing])
-            pairs = []
-            for row in stripped:
+            kept: List[Tuple[int, dict]] = []
+            conflicted: List[Tuple[int, dict]] = []
+            for row in rows:
                 rewritten = dict(row)
                 old_result_id = rewritten.get('test_result_id')
                 if old_result_id is not None:
                     rewritten['test_result_id'] = result_id_mapping.get(
                         old_result_id, old_result_id)
                 old_id = rewritten.get('id')
-                if old_id is None:
-                    old_id = next(conflict_iter)
-                po = TestResultDimension(**_coerce_row(rewritten))
+                if old_id is not None and old_id in existing:
+                    # 冲突行：去 id 交由自增分配，old_id 记入映射
+                    rewritten.pop('id', None)
+                    conflicted.append((old_id, rewritten))
+                else:
+                    kept.append((old_id, rewritten))
+
+            pairs: List[Tuple[int, TestResultDimension]] = []
+            for old_id, row in kept:
+                po = TestResultDimension(**_coerce_row(row))
                 session.add(po)
                 pairs.append((old_id, po))
             session.flush()
+            if conflicted:
+                self._sync_sequences(session)
+                for old_id, row in conflicted:
+                    po = TestResultDimension(**_coerce_row(row))
+                    session.add(po)
+                    pairs.append((old_id, po))
+                session.flush()
             self._sync_sequences(session)
             session.commit()
             return ({old_id: po.id for old_id, po in pairs},

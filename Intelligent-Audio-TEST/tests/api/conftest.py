@@ -21,20 +21,30 @@ SAMPLE_AUDIO_FILES = ['2026144010.wav', '2026144019.wav', '2026144026.wav']
 
 
 # ── 后端健康检查 ──────────────────────────────────────────
+# 平台版本标记：V9.7.31 网关 /health 返回 version=V9.7.31；同端口可能被
+# V9.7.10 单体版进程占用（返回体无此标记），据此区分避免跨版本误连假失败。
+_PLATFORM_MARKER = 'V9.7.31'
+
+
 def _backend_alive() -> bool:
     try:
         # trust_env=False: 忽略系统代理（Windows 注册表代理会劫持 localhost 请求）
         r = httpx.get(HEALTH_URL, timeout=3, trust_env=False)
-        return r.status_code == 200
+        if r.status_code != 200:
+            return False
+        body = r.json() if r.headers.get('content-type', '').startswith('application/json') else {}
+        return body.get('version') == _PLATFORM_MARKER
     except Exception:
         return False
 
 
 @pytest.fixture(scope='session')
 def require_backend():
-    """后端未运行时跳过全部 API 测试。"""
+    """V9.7.31 后端未运行（或端口被其他版本进程占用）时跳过全部 API 测试。"""
     if not _backend_alive():
-        pytest.skip('后端未运行，跳过 API 集成测试。启动后端后重试。')
+        pytest.skip(
+            f'V9.7.31 后端未运行（/health 无 {_PLATFORM_MARKER} 标记，'
+            '可能为 V9.7.10 单体占用端口），跳过 API 集成测试。')
 
 
 # ── httpx 客户端 ──────────────────────────────────────────

@@ -251,13 +251,13 @@ class TestImportIdStrategy:
         finally:
             session.close()
 
-    @pytest.mark.xfail(strict=True, reason=(
-        'INT-25 缺陷：部分冲突导入时，冲突行（去 id 自增）与保留行（显式 id）按包内顺序混插，'
-        '自增分配不感知本批次后续的显式 ID（如目标库有 id=1，包内 [1,2] → 冲突行自增分到 2，'
-        '与包内保留的 task 2 撞 UNIQUE）。修复后本测试自动转通过（XPASS 即提醒移除标记）'))
     def test_partial_conflict_remaps_only_conflicted_rows(self, db, storage_env,
                                                           patched_acl, fake_redis):
-        """部分冲突：task 1 冲突重映射、task 2 及下游原 ID 保留、外键按行精确转换"""
+        """部分冲突：task 1 冲突重映射、task 2 及下游原 ID 保留、外键按行精确转换
+
+        INT-25 缺陷 1 已修复（两遍插入：先插显式 id 行并同步序列，再插去 id 冲突行），
+        开发提测修复时移除原 xfail(strict) 标记。
+        """
         _seed(db, storage_env)
         data = _export_zip(storage_env, patched_acl, fake_redis)
         _hard_delete_all_15_tables()

@@ -185,7 +185,10 @@ def create_app(config_name='default') -> FastAPI:
 
     @app.get('/health')
     def health():
-        return {'status': 'ok', 'service': 'api_gateway'}
+        # PLATFORM_VERSION 标记：tests/api 健康检查据此区分 V9.7.31 与同端口
+        # 的 V9.7.10 单体版，避免跨版本误连产生假失败
+        return {'status': 'ok', 'service': 'api_gateway',
+                'version': Config.PLATFORM_VERSION}
 
     return app
 

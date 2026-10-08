@@ -210,17 +210,10 @@ class TransferRepository:
             inserted_pks: Dict[str, List[int]] = {}
 
             # 1) 主表 test_tasks：flush 捕获冲突行自增新 id → tasks 映射
-            task_rows = rows_by_table.get('test_tasks') or []
-            conflict_iter = iter(conflicts_by_table.get('test_tasks') or [])
-            task_pairs: List[Tuple[int, Task]] = []
-            for row in task_rows:
-                old_id = row.get('id')
-                if old_id is None:
-                    old_id = next(conflict_iter)
-                po = Task(**_coerce_row(Task, row))
-                session.add(po)
-                task_pairs.append((old_id, po))
-            session.flush()
+            task_pairs = self._insert_two_pass(
+                session, Task, 'test_tasks',
+                rows_by_table.get('test_tasks') or [],
+                conflicts_by_table.get('test_tasks') or [])
             mappings['tasks'] = {old_id: po.id for old_id, po in task_pairs}
             inserted_pks['test_tasks'] = [po.id for _, po in task_pairs]
             task_map = mappings['tasks']
@@ -232,16 +225,9 @@ class TransferRepository:
                 rows = rows_by_table.get(table) or []
                 rewritten = rewrite_fk_fn(table, rows, task_map)
                 po_cls = _TABLE_PO[table]
-                conflict_iter = iter(conflicts_by_table.get(table) or [])
-                pairs: List[Tuple[int, object]] = []
-                for row in rewritten:
-                    old_id = row.get('id')
-                    if old_id is None:
-                        old_id = next(conflict_iter)
-                    po = po_cls(**_coerce_row(po_cls, row))
-                    session.add(po)
-                    pairs.append((old_id, po))
-                session.flush()
+                pairs = self._insert_two_pass(
+                    session, po_cls, table, rewritten,
+                    conflicts_by_table.get(table) or [])
                 inserted_pks[table] = [po.id for _, po in pairs]
                 if progress_fn:
                     progress_fn(table, len(pairs))
@@ -256,6 +242,52 @@ class TransferRepository:
             raise
         finally:
             session.close()
+
+    def _insert_two_pass(self, session, po_cls, table: str,
+                         rows: List[dict],
+                         conflict_old_ids: List[int]) -> List[Tuple[int, object]]:
+        """同一表内「显式 ID 行 + 去 ID 冲突行」混插的两遍插入（缺陷 1 修复）。
+
+        自增序列不感知同批次后续显式 ID：包内保留行 id=2 与冲突行自增分配的
+        id=2 相互撞 UNIQUE（SQLite rowid 与 Postgres nextval 同样命中）。
+        顺序：先插全部保留行 → flush → 把该表自增序列推到 max(id) → 再插全部
+        冲突行 → flush，保证自增分配避开本批次显式 ID 集合。
+
+        冲突行判定兼容两种约定：行已剥 id（task 段计划层剥离，old_id 从
+        conflict_old_ids 按序配对）或行仍带 id 但命中 conflict_old_ids
+        （评测/报告段本地判活场景，直接去 id）。
+
+        Returns:
+            [(old_id, po)]：保留行在前，冲突行按包内相对顺序在后。
+        """
+        conflict_set = set(conflict_old_ids or [])
+        conflict_iter = iter(conflict_old_ids or [])
+        kept: List[Tuple[int, dict]] = []
+        conflicted: List[Tuple[int, dict]] = []
+        for row in rows:
+            old_id = row.get('id')
+            if old_id is not None and old_id in conflict_set:
+                stripped = {k: v for k, v in row.items() if k != 'id'}
+                conflicted.append((old_id, stripped))
+            elif old_id is not None:
+                kept.append((old_id, row))
+            else:
+                conflicted.append((next(conflict_iter), row))
+
+        pairs: List[Tuple[int, object]] = []
+        for old_id, row in kept:
+            po = po_cls(**_coerce_row(po_cls, row))
+            session.add(po)
+            pairs.append((old_id, po))
+        session.flush()
+        if conflicted:
+            self._sync_sequences(session, [table])
+            for old_id, row in conflicted:
+                po = po_cls(**_coerce_row(po_cls, row))
+                session.add(po)
+                pairs.append((old_id, po))
+            session.flush()
+        return pairs
 
     def update_result_data_paths(self, changes: List[Tuple[int, str]]) -> int:
         """导入文件段完成后更新 result_data_path（task_id 重映射的行）。
@@ -300,15 +332,17 @@ class TransferRepository:
             session.close()
 
     @staticmethod
-    def _sync_sequences(session) -> None:
+    def _sync_sequences(session, tables=None) -> None:
         """显式 ID 插入后把自增序列推到 max(id)，防止后续自增主键冲突。
 
         仅 Postgres 需要；SQLite（开发库）自增取 max(rowid)+1 无需处理。
+        Args:
+            tables: 指定表名列表；None 则同步全部 7 表。
         """
         if session.bind is None or session.bind.dialect.name != 'postgresql':
             return
         from sqlalchemy import text
-        for table in _TABLE_PO:
+        for table in (tables or _TABLE_PO):
             try:
                 session.execute(text(
                     "SELECT setval(pg_get_serial_sequence(:tbl, 'id'), "
