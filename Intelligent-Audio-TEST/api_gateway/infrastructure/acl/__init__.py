@@ -18,6 +18,9 @@ from api_gateway.infrastructure.acl.config_acl_repository import (
     TaskConfigAclRepositoryImpl,
     TestCaseConfigAclRepositoryImpl,
 )
+from api_gateway.infrastructure.acl.data_transfer_acl_repository import (
+    DataTransferAclRepositoryImpl,
+)
 from api_gateway.infrastructure.acl.device_acl_repository import (
     DeviceAclRepositoryImpl,
     PlaybackConfigAclRepositoryImpl,
@@ -36,6 +39,7 @@ __all__ = [
     'AlgorithmConfigAclRepositoryImpl',
     'ApiConfigAclRepositoryImpl',
     'AudioAclRepositoryImpl',
+    'DataTransferAclRepositoryImpl',
     'DeviceAclRepositoryImpl',
     'EvaluationConfigAclRepositoryImpl',
     'ExecutionAclRepositoryImpl',

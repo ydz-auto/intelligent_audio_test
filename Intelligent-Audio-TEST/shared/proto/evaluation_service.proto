@@ -172,6 +172,13 @@ service EvaluationDataService {
   rpc GetDimensionResultsByResultIds(GetDimensionResultsByResultIdsRequest) returns (EvaluationDataResponse);
   // 按 result_id 列表批量删除维度评估记录（用于 task_service 清理用例结果时联动）
   rpc DeleteDimensionResultsByResultIds(DeleteDimensionResultsByResultIdsRequest) returns (EvaluationDataResponse);
+  // 任务数据导出：按 result_id 列表拉取维度评分行 + 引用到的维度定义快照（只读）
+  rpc ExportDimensionsForTasks(ExportDimensionsForTasksRequest) returns (EvaluationDataResponse);
+  // 任务数据导入：写入维度评分（单事务，内部做主键冲突剥离与 test_result_id 重映射），
+  // 出参 {imported, id_mapping, batch_id}
+  rpc ImportDimensions(ImportDimensionsRequest) returns (EvaluationDataResponse);
+  // 回滚一次维度导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
+  rpc RollbackDimensionImport(RollbackDimensionImportRequest) returns (EvaluationDataResponse);
 }
 
 message GetDimensionResultsByResultIdsRequest {
@@ -180,6 +187,18 @@ message GetDimensionResultsByResultIdsRequest {
 
 message DeleteDimensionResultsByResultIdsRequest {
   string result_ids = 1;  // JSON: list[int]，TestResult.id 列表
+}
+
+message ExportDimensionsForTasksRequest {
+  string result_ids = 1;  // JSON: list[int]，TestResult.id 列表
+}
+
+message ImportDimensionsRequest {
+  string data = 1;       // JSON: {rows: [维度评分行], result_id_mapping: {old: new}, batch_id: str}
+}
+
+message RollbackDimensionImportRequest {
+  string batch_id = 1;
 }
 
 message EvaluationDataResponse {

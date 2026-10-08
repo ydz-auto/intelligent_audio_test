@@ -521,3 +521,50 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         except Exception as e:
             logger.exception("BuildReferenceParams failed")
             return self._resp(False, str(e), {})
+
+    # ==================== 任务数据导入导出（INT-25） ====================
+    # 注：追加在类定义尾部，与上方方法同属 ReportServicer
+
+    def ExportReportsForTasks(self, request, context=None):
+        """按 task_id 列表导出报告 7 表只读行（数据导入导出用）。"""
+        try:
+            task_ids = _loads(request.task_ids, [])
+            from report_service.application.report_transfer_service import (
+                report_transfer_service,
+            )
+            result = report_transfer_service.export_reports_for_tasks(task_ids)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("ExportReportsForTasks failed")
+            return self._resp(False, str(e), {})
+
+    def ImportReports(self, request, context=None):
+        """导入报告 7 表（单事务 + 主键冲突剥离 + 外键重映射）。"""
+        try:
+            data = _loads(request.data, {}) or {}
+            from report_service.application.report_transfer_service import (
+                report_transfer_service,
+            )
+            result = report_transfer_service.import_reports(
+                data.get('tables') or {},
+                data.get('task_id_mapping') or {},
+                data.get('batch_id') or '')
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("ImportReports failed")
+            return self._resp(False, str(e), {})
+
+    def RollbackReportImport(self, request, context=None):
+        """回滚报告导入批次（按批次登记主键删除）。"""
+        try:
+            from report_service.application.report_transfer_service import (
+                report_transfer_service,
+            )
+            result = report_transfer_service.rollback_report_import(request.batch_id)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("RollbackReportImport failed")
+            return self._resp(False, str(e), {})

@@ -62,3 +62,43 @@ class EvaluationDataServiceServicer(eval_grpc.EvaluationDataServiceServicer):
             return self._resp(*self._from_result(result))
         except Exception as e:
             return self._resp(False, str(e))
+
+    # ==================== 任务数据导入导出（INT-25） ====================
+
+    def ExportDimensionsForTasks(self, request, context=None):
+        """按 result_id 列表导出维度评分行 + 维度定义快照（只读）。"""
+        try:
+            result_ids = _loads(request.result_ids, [])
+            from evaluation_service.application.dimension_transfer_service import (
+                dimension_transfer_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_transfer_service.export_dimensions_for_tasks(result_ids)))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def ImportDimensions(self, request, context=None):
+        """导入维度评分（单事务 + 主键冲突剥离 + test_result_id 重映射）。"""
+        try:
+            data = _loads(request.data, {})
+            from evaluation_service.application.dimension_transfer_service import (
+                dimension_transfer_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_transfer_service.import_dimensions(
+                    data.get('rows') or [],
+                    data.get('result_id_mapping') or {},
+                    data.get('batch_id') or '')))
+        except Exception as e:
+            return self._resp(False, str(e))
+
+    def RollbackDimensionImport(self, request, context=None):
+        """回滚维度导入批次（按批次登记主键删除）。"""
+        try:
+            from evaluation_service.application.dimension_transfer_service import (
+                dimension_transfer_service,
+            )
+            return self._resp(*self._from_result(
+                dimension_transfer_service.rollback_dimension_import(request.batch_id)))
+        except Exception as e:
+            return self._resp(False, str(e))

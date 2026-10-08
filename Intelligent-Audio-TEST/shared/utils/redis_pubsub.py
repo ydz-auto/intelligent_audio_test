@@ -34,6 +34,7 @@ class EventType(str, Enum):
     TASK_COMPLETED = 'task_completed'
     TASK_FAILED = 'task_failed'
     TASK_STOPPED = 'task_stopped'
+    TASK_IMPORTED = 'task_imported'
     # 用例级
     CASE_EXECUTION_COMPLETED = 'case_execution_completed'
     CASE_EVALUATION_COMPLETED = 'case_evaluation_completed'

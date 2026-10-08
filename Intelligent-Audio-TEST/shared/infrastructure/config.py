@@ -67,6 +67,15 @@ class BaseConfig:
     STORAGE_FALLBACK_ENABLED: bool = _get_bool('STORAGE_FALLBACK_ENABLED', True)  # OSS 不可用时降级到本地磁盘
     STORAGE_LOCAL_ROOT: str = _get_env('STORAGE_LOCAL_ROOT', './storage_local')   # 本地降级存储根目录
 
+    # --- 任务数据导入导出（INT-25）---
+    # 网关与 task_service 共享磁盘读写导出/导入 ZIP：docker 部署时两容器需挂载同一卷
+    DATA_TRANSFER_TMP_DIR: str = _get_env(
+        'DATA_TRANSFER_TMP_DIR',
+        os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'data_transfer')
+    )
+    # 网关 ZIP 上传大小上限（MB），显式设置防超大包拖垮网关
+    DATA_TRANSFER_MAX_UPLOAD_MB: int = _get_int('DATA_TRANSFER_MAX_UPLOAD_MB', 2048)
+
     # --- 服务发现 ---
     SERVICE_HOST: str = _get_env('SERVICE_HOST', '0.0.0.0')
     SERVICE_NAME: str = _get_env('SERVICE_NAME', 'unknown')

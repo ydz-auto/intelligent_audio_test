@@ -46,6 +46,10 @@ from task_service.application.commands.task_commands import (
     UpdateTagCommand,
     DeleteTagCommand,
     BatchUpdateTagCategoryCommand,
+    ExportTasksCommand,
+    PreviewImportCommand,
+    ExecuteImportCommand,
+    RollbackImportCommand,
 )
 from task_service.domain.entities import TaskStatus
 from task_service.domain.events import TaskCreated
@@ -330,6 +334,39 @@ class TaskCommandHandler:
     def handle_merge_tasks_config(self, cmd: MergeTasksConfigCommand) -> Dict:
         """处理合并任务命令（dict 参数版）。委托 task_crud_service.merge。"""
         return self.task_crud_service.merge(cmd.data)
+
+    # ==================================================================
+    # 任务数据导入导出命令（INT-25）
+    # 委托 data_transfer 应用服务（导出引擎 / 分段导入编排）
+    # ==================================================================
+
+    def handle_export_tasks(self, cmd: ExportTasksCommand) -> Dict:
+        """处理导出任务数据命令。委托 data_transfer_export_service.export_tasks。"""
+        from task_service.application.task.data_transfer_export_service import (
+            data_transfer_export_service,
+        )
+        return data_transfer_export_service.export_tasks(cmd.task_ids, cmd.options)
+
+    def handle_preview_import(self, cmd: PreviewImportCommand) -> Dict:
+        """处理导入预检命令。委托 data_transfer_import_service.preview_import。"""
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        return data_transfer_import_service.preview_import(cmd.zip_path)
+
+    def handle_execute_import(self, cmd: ExecuteImportCommand) -> Dict:
+        """处理执行导入命令。委托 data_transfer_import_service.execute_import。"""
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        return data_transfer_import_service.execute_import(cmd.zip_path)
+
+    def handle_rollback_import(self, cmd: RollbackImportCommand) -> Dict:
+        """处理批次回滚命令。委托 data_transfer_import_service.rollback_import。"""
+        from task_service.application.task.data_transfer_import_service import (
+            data_transfer_import_service,
+        )
+        return data_transfer_import_service.rollback_import(cmd.batch_id)
 
     # ==================================================================
     # task 域生命周期命令（gRPC servicer 入口）

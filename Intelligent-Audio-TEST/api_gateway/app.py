@@ -100,9 +100,18 @@ def _start_redis_subscriber(sio, ws_manager):
                 loop
             )
 
+        elif channel == 'import_progress':
+            # 任务数据导入进度（INT-25）：payload 契约见
+            # shared/schemas/socket_payloads.ImportProgressPayload
+            event_data = data.get('data', data)
+            asyncio.run_coroutine_threadsafe(
+                sio.emit('import_progress', event_data, namespace='/'),
+                loop
+            )
+
     def _subscriber_loop():
-        print(f"[RedisSubscriber] starting, subscribing to task_logs + task_progress on {BaseConfig.REDIS_URL}", flush=True)
-        RedisPubSub().subscribe(['task_logs', 'task_progress'], _handle_message)
+        print(f"[RedisSubscriber] starting, subscribing to task_logs + task_progress + import_progress on {BaseConfig.REDIS_URL}", flush=True)
+        RedisPubSub().subscribe(['task_logs', 'task_progress', 'import_progress'], _handle_message)
 
     t = threading.Thread(target=_subscriber_loop, daemon=True)
     t.start()
@@ -148,6 +157,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.tag_bp import router as tag_router
     from api_gateway.routes.home_bp import router as home_router
     from api_gateway.routes.sse_bp import router as sse_router
+    from api_gateway.routes.data_transfer_bp import router as data_transfer_router
 
     app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
     app.include_router(testcase_router, prefix='/api/v1/testcases', tags=['testcases'])
@@ -167,6 +177,7 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(tag_router, prefix='/api/v1/tags', tags=['tags'])
     app.include_router(home_router, prefix='/api/v1/home', tags=['home'])
     app.include_router(sse_router, prefix='/api/v1/sse', tags=['sse'])
+    app.include_router(data_transfer_router, prefix='/api/v1/data-transfer', tags=['data-transfer'])
 
     # 挂载 Socket.IO ASGI 子应用（前端 socket.io-client 连 /socket.io/）
     from api_gateway.websocket.socketio_server import sio_app

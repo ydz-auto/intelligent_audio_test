@@ -272,3 +272,33 @@ class DeleteTagCommand(Command):
 class BatchUpdateTagCategoryCommand(Command):
     """批量更新标签分类命令。委托 tag_crud_service.batch_update_category。"""
     data: Dict[str, Any] = field(default_factory=dict)
+
+
+# ==================== 任务数据导入导出命令（INT-25） ====================
+# 委托 data_transfer_export_service / data_transfer_import_service，
+# 返回 dict: {success, message, data, code?}
+
+
+@dataclass(frozen=True)
+class ExportTasksCommand(Command):
+    """导出任务数据命令。委托 data_transfer_export_service.export_tasks。"""
+    task_ids: List[int] = field(default_factory=list)
+    options: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PreviewImportCommand(Command):
+    """导入预检命令。委托 data_transfer_import_service.preview_import。"""
+    zip_path: str = ''
+
+
+@dataclass(frozen=True)
+class ExecuteImportCommand(Command):
+    """执行导入命令（分段提交 + 补偿回滚）。委托 data_transfer_import_service.execute_import。"""
+    zip_path: str = ''
+
+
+@dataclass(frozen=True)
+class RollbackImportCommand(Command):
+    """批次回滚命令（人工介入兜底入口）。委托 data_transfer_import_service.rollback_import。"""
+    batch_id: str = ''

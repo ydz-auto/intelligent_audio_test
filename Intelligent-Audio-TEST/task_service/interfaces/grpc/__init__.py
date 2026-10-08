@@ -6,6 +6,7 @@ from .testcase_config import TestCaseConfigServiceServicer
 from .tag_config import TagConfigServiceServicer
 from .algorithm_config import AlgorithmConfigServiceServicer
 from .task_data_service import TaskDataServiceServicer
+from .data_transfer import DataTransferServiceServicer
 # 注：EvaluationConfigServiceServicer 已迁移至 evaluation_service
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     'TagConfigServiceServicer',
     'AlgorithmConfigServiceServicer',
     'TaskDataServiceServicer',
+    'DataTransferServiceServicer',
 ]

@@ -5993,3 +5993,219 @@ class TaskDataService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class DataTransferServiceStub:
+    """===== 任务数据导入导出服务（INT-25）=====
+    编排归属 task_service：导出读自身 7 表并经 gRPC 拉 evaluation/report 只读数据后打 ZIP；
+    导入分段提交（task 7 表 → evaluation 维度 → report 7 表 → 文件），任一段失败按逆序补偿回滚。
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.ExportTasks = channel.unary_unary(
+                '/task_service.DataTransferService/ExportTasks',
+                request_serializer=task__service__pb2.ExportTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.PreviewImport = channel.unary_unary(
+                '/task_service.DataTransferService/PreviewImport',
+                request_serializer=task__service__pb2.PreviewImportRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ExecuteImport = channel.unary_unary(
+                '/task_service.DataTransferService/ExecuteImport',
+                request_serializer=task__service__pb2.ExecuteImportRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.RollbackImport = channel.unary_unary(
+                '/task_service.DataTransferService/RollbackImport',
+                request_serializer=task__service__pb2.RollbackImportRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+
+
+class DataTransferServiceServicer:
+    """===== 任务数据导入导出服务（INT-25）=====
+    编排归属 task_service：导出读自身 7 表并经 gRPC 拉 evaluation/report 只读数据后打 ZIP；
+    导入分段提交（task 7 表 → evaluation 维度 → report 7 表 → 文件），任一段失败按逆序补偿回滚。
+    """
+
+    def ExportTasks(self, request, context):
+        """导出任务数据为 ZIP：入参 {task_ids, options:{include_ref_params, include_audios}}
+        出参 {zip_path(共享盘相对 DATA_TRANSFER_TMP_DIR), manifest}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PreviewImport(self, request, context):
+        """导入预检：入参 {zip_path}，出参 manifest 摘要 + stats + conflicts + warnings
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ExecuteImport(self, request, context):
+        """执行导入：入参 {zip_path}，出参导入统计（含 remappedIds）。长耗时调用，
+        客户端超时需放宽（网关代理 timeout=3600s）；进度经 Redis 频道 import_progress 推送。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RollbackImport(self, request, context):
+        """回滚一次导入批次：入参 {batch_id}，按批次登记的主键删除（补偿失败时人工介入的兜底入口）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_DataTransferServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'ExportTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExportTasks,
+                    request_deserializer=task__service__pb2.ExportTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'PreviewImport': grpc.unary_unary_rpc_method_handler(
+                    servicer.PreviewImport,
+                    request_deserializer=task__service__pb2.PreviewImportRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ExecuteImport': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExecuteImport,
+                    request_deserializer=task__service__pb2.ExecuteImportRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RollbackImport': grpc.unary_unary_rpc_method_handler(
+                    servicer.RollbackImport,
+                    request_deserializer=task__service__pb2.RollbackImportRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.DataTransferService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.DataTransferService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class DataTransferService:
+    """===== 任务数据导入导出服务（INT-25）=====
+    编排归属 task_service：导出读自身 7 表并经 gRPC 拉 evaluation/report 只读数据后打 ZIP；
+    导入分段提交（task 7 表 → evaluation 维度 → report 7 表 → 文件），任一段失败按逆序补偿回滚。
+    """
+
+    @staticmethod
+    def ExportTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/ExportTasks',
+            task__service__pb2.ExportTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PreviewImport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/PreviewImport',
+            task__service__pb2.PreviewImportRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExecuteImport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/ExecuteImport',
+            task__service__pb2.ExecuteImportRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RollbackImport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.DataTransferService/RollbackImport',
+            task__service__pb2.RollbackImportRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

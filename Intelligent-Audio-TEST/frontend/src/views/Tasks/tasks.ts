@@ -62,6 +62,33 @@ export function useTasks() {
   const isTaskTypeModalVisible = ref(false);
   const currentTask = ref<Task | null>(null);
 
+  // 任务数据导入导出弹窗（INT-25）
+  const isDataExportDialogVisible = ref(false);
+  const isDataImportDialogVisible = ref(false);
+
+  const openDataExport = () => {
+    isDataExportDialogVisible.value = true;
+  };
+
+  const openDataImport = () => {
+    isDataImportDialogVisible.value = true;
+  };
+
+  const selectedTasksForExport = computed(() => {
+    return listModule.tasks.value
+      .filter(t => listModule.selectedTasks.value.has(t.id))
+      .map(t => ({
+        id: t.id,
+        name: t.name,
+        type: String(t.type ?? ''),
+        status: String(t.status ?? ''),
+      }));
+  });
+
+  const handleDataImported = () => {
+    listModule.fetchTasks();
+  };
+
   const createNewTask = () => {
     isTaskTypeModalVisible.value = true;
   };
@@ -266,6 +293,14 @@ export function useTasks() {
     currentTask,
     createNewTask,
     handleCreateTask,
+
+    // 任务数据导入导出（INT-25）
+    isDataExportDialogVisible,
+    isDataImportDialogVisible,
+    openDataExport,
+    openDataImport,
+    selectedTasksForExport,
+    handleDataImported,
 
     // 生命周期
     initTasks,

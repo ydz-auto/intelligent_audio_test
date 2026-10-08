@@ -201,6 +201,9 @@
           <button class="btn-primary" @click="batchMerge" :disabled="!canMerge" :title="mergeButtonTitle">
             <i class="fas fa-object-ungroup"></i> 合并任务
           </button>
+          <button class="btn-primary" @click="openDataExport">
+            <i class="fas fa-file-export"></i> 导出数据
+          </button>
           <button class="btn-primary" @click="batchRestore" :style="{ display: filters.status === 'deleted' ? 'inline-block' : 'none' }">
             <i class="fas fa-undo"></i> 批量恢复
           </button>
@@ -215,6 +218,9 @@
           <div class="task-actions">
             <button class="btn btn-primary" @click="createNewTask">
               <i class="fas fa-plus"></i> 创建新任务
+            </button>
+            <button class="btn btn-secondary" @click="openDataImport">
+              <i class="fas fa-file-import"></i> 导入数据
             </button>
             <label class="btn btn-secondary select-all-btn">
               <input 
@@ -309,6 +315,20 @@
       @close="isTaskTypeModalVisible = false"
       @confirm="handleCreateTask"
     />
+
+    <!-- 任务数据导出弹窗（INT-25） -->
+    <TaskDataExportDialog
+      v-if="isDataExportDialogVisible"
+      :tasks="selectedTasksForExport"
+      @close="isDataExportDialogVisible = false"
+    />
+
+    <!-- 任务数据导入弹窗（INT-25） -->
+    <TaskDataImportDialog
+      v-if="isDataImportDialogVisible"
+      @close="isDataImportDialogVisible = false"
+      @imported="handleDataImported"
+    />
   </div>
 </template>
 
@@ -318,6 +338,8 @@ import { TaskStatus, FINISHED_STATUSES, TestType, ViewMode } from '@/domain/enum
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
+import TaskDataExportDialog from '../../components/task/TaskDataExportDialog.vue';
+import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue';
 
 const {
   tasks,
@@ -363,7 +385,14 @@ const {
   // 协调逻辑
   handleNameUpdated,
   canMerge,
-  mergeButtonTitle
+  mergeButtonTitle,
+  // 任务数据导入导出（INT-25）
+  isDataExportDialogVisible,
+  isDataImportDialogVisible,
+  openDataExport,
+  openDataImport,
+  selectedTasksForExport,
+  handleDataImported
 } = useTasks();
 </script>
 

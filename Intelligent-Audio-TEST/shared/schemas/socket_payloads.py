@@ -83,3 +83,17 @@ class TaskLogEnvelope(SocketPayload):
     """task_log 事件外层包装（/ws/logs，Redis 转发路径）"""
     task_id: str
     log: Dict = {}
+
+
+class ImportProgressPayload(SocketPayload):
+    """import_progress 事件 payload（/ 命名空间，任务数据导入进度）
+
+    task_service 经 Redis 频道 import_progress 推送，api_gateway 订阅后
+    以同名事件在 / 命名空间转发。GET /import/progress 快照兜底同构。
+    """
+    step: str                       # parsing | writing_db | extracting_files | updating_paths | done | error
+    current_table: str = ""         # 当前写入的表名（写库段）
+    processed_rows: int = 0
+    total_rows: int = 0
+    percentage: float = 0.0
+    message: str = ""

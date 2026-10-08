@@ -879,3 +879,33 @@ message ArchiveLogsRequest {
   bool dry_run = 2;   // 为 true 时只统计不执行
 }
 
+// ===== 任务数据导入导出服务（INT-25）=====
+// 编排归属 task_service：导出读自身 7 表并经 gRPC 拉 evaluation/report 只读数据后打 ZIP；
+// 导入分段提交（task 7 表 → evaluation 维度 → report 7 表 → 文件），任一段失败按逆序补偿回滚。
+service DataTransferService {
+  // 导出任务数据为 ZIP：入参 {task_ids, options:{include_ref_params, include_audios}}
+  // 出参 {zip_path(共享盘相对 DATA_TRANSFER_TMP_DIR), manifest}
+  rpc ExportTasks(ExportTasksRequest) returns (TaskConfigResponse);
+  // 导入预检：入参 {zip_path}，出参 manifest 摘要 + stats + conflicts + warnings
+  rpc PreviewImport(PreviewImportRequest) returns (TaskConfigResponse);
+  // 执行导入：入参 {zip_path}，出参导入统计（含 remappedIds）。长耗时调用，
+  // 客户端超时需放宽（网关代理 timeout=3600s）；进度经 Redis 频道 import_progress 推送。
+  rpc ExecuteImport(ExecuteImportRequest) returns (TaskConfigResponse);
+  // 回滚一次导入批次：入参 {batch_id}，按批次登记的主键删除（补偿失败时人工介入的兜底入口）
+  rpc RollbackImport(RollbackImportRequest) returns (TaskConfigResponse);
+}
+
+message ExportTasksRequest {
+  string data = 1;  // JSON: {task_ids: [int], options: {include_ref_params: bool, include_audios: bool}}
+}
+message PreviewImportRequest {
+  string zip_path = 1;  // 共享盘上 ZIP 文件的绝对路径（DATA_TRANSFER_TMP_DIR/import/ 下）
+}
+message ExecuteImportRequest {
+  string zip_path = 1;  // 共享盘上 ZIP 文件的绝对路径
+}
+message RollbackImportRequest {
+  string batch_id = 1;
+}
+
+

@@ -40,6 +40,13 @@ service ReportConfigService {
   rpc DownloadCaseLogs(DownloadCaseLogsRequest) returns (ReportConfigResponse);
   // 构建参考参数（供 api_gateway task_query_service 调用）
   rpc BuildReferenceParams(BuildReferenceParamsRequest) returns (ReportConfigResponse);
+  // 任务数据导出：按 task_id 列表拉取报告 7 表只读行
+  rpc ExportReportsForTasks(ExportReportsForTasksRequest) returns (ReportConfigResponse);
+  // 任务数据导入：写入报告 7 表（单事务，内部做主键冲突剥离与 task_id/report_id 重映射），
+  // 出参 {imported, id_mapping(test_reports), batch_id}
+  rpc ImportReports(ImportReportsRequest) returns (ReportConfigResponse);
+  // 回滚一次报告导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
+  rpc RollbackReportImport(RollbackReportImportRequest) returns (ReportConfigResponse);
 }
 
 message CreateReportRequest {
@@ -118,4 +125,13 @@ message DownloadCaseLogsRequest {
 }
 message BuildReferenceParamsRequest {
   string data = 1;  // JSON: {case_info: dict, case_results: list, test_type: str}
+}
+message ExportReportsForTasksRequest {
+  string task_ids = 1;  // JSON: list[int]，任务 ID 列表
+}
+message ImportReportsRequest {
+  string data = 1;  // JSON: {tables: {表名: [行]}, task_id_mapping: {old: new}, batch_id: str}
+}
+message RollbackReportImportRequest {
+  string batch_id = 1;
 }

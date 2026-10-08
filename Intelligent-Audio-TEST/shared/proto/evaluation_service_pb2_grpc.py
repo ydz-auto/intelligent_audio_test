@@ -903,6 +903,21 @@ class EvaluationDataServiceStub:
                 request_serializer=evaluation__service__pb2.DeleteDimensionResultsByResultIdsRequest.SerializeToString,
                 response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
                 _registered_method=True)
+        self.ExportDimensionsForTasks = channel.unary_unary(
+                '/evaluation_service.EvaluationDataService/ExportDimensionsForTasks',
+                request_serializer=evaluation__service__pb2.ExportDimensionsForTasksRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
+                _registered_method=True)
+        self.ImportDimensions = channel.unary_unary(
+                '/evaluation_service.EvaluationDataService/ImportDimensions',
+                request_serializer=evaluation__service__pb2.ImportDimensionsRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
+                _registered_method=True)
+        self.RollbackDimensionImport = channel.unary_unary(
+                '/evaluation_service.EvaluationDataService/RollbackDimensionImport',
+                request_serializer=evaluation__service__pb2.RollbackDimensionImportRequest.SerializeToString,
+                response_deserializer=evaluation__service__pb2.EvaluationDataResponse.FromString,
+                _registered_method=True)
 
 
 class EvaluationDataServiceServicer:
@@ -924,6 +939,28 @@ class EvaluationDataServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ExportDimensionsForTasks(self, request, context):
+        """任务数据导出：按 result_id 列表拉取维度评分行 + 引用到的维度定义快照（只读）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportDimensions(self, request, context):
+        """任务数据导入：写入维度评分（单事务，内部做主键冲突剥离与 test_result_id 重映射），
+        出参 {imported, id_mapping, batch_id}
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RollbackDimensionImport(self, request, context):
+        """回滚一次维度导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_EvaluationDataServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -935,6 +972,21 @@ def add_EvaluationDataServiceServicer_to_server(servicer, server):
             'DeleteDimensionResultsByResultIds': grpc.unary_unary_rpc_method_handler(
                     servicer.DeleteDimensionResultsByResultIds,
                     request_deserializer=evaluation__service__pb2.DeleteDimensionResultsByResultIdsRequest.FromString,
+                    response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
+            ),
+            'ExportDimensionsForTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExportDimensionsForTasks,
+                    request_deserializer=evaluation__service__pb2.ExportDimensionsForTasksRequest.FromString,
+                    response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
+            ),
+            'ImportDimensions': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportDimensions,
+                    request_deserializer=evaluation__service__pb2.ImportDimensionsRequest.FromString,
+                    response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
+            ),
+            'RollbackDimensionImport': grpc.unary_unary_rpc_method_handler(
+                    servicer.RollbackDimensionImport,
+                    request_deserializer=evaluation__service__pb2.RollbackDimensionImportRequest.FromString,
                     response_serializer=evaluation__service__pb2.EvaluationDataResponse.SerializeToString,
             ),
     }
@@ -993,6 +1045,87 @@ class EvaluationDataService:
             target,
             '/evaluation_service.EvaluationDataService/DeleteDimensionResultsByResultIds',
             evaluation__service__pb2.DeleteDimensionResultsByResultIdsRequest.SerializeToString,
+            evaluation__service__pb2.EvaluationDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExportDimensionsForTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationDataService/ExportDimensionsForTasks',
+            evaluation__service__pb2.ExportDimensionsForTasksRequest.SerializeToString,
+            evaluation__service__pb2.EvaluationDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportDimensions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationDataService/ImportDimensions',
+            evaluation__service__pb2.ImportDimensionsRequest.SerializeToString,
+            evaluation__service__pb2.EvaluationDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RollbackDimensionImport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/evaluation_service.EvaluationDataService/RollbackDimensionImport',
+            evaluation__service__pb2.RollbackDimensionImportRequest.SerializeToString,
             evaluation__service__pb2.EvaluationDataResponse.FromString,
             options,
             channel_credentials,

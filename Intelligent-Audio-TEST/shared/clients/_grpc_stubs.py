@@ -112,6 +112,13 @@ def get_task_config_service_stub():
 
 
 @lru_cache(maxsize=1)
+def get_data_transfer_service_stub():
+    """DataTransferService stub：任务数据导入导出（导出/预检/执行导入/批次回滚，INT-25）"""
+    from shared.proto import task_service_pb2_grpc
+    return task_service_pb2_grpc.DataTransferServiceStub(_get_task_channel())
+
+
+@lru_cache(maxsize=1)
 def get_published_task_config_service_stub():
     """PublishedTaskConfigService stub：已发布任务 CRUD（发布/列表/详情/执行/新版本/归档/重命名）"""
     from shared.proto import task_service_pb2_grpc
