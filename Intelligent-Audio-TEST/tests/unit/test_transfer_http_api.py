@@ -155,3 +155,14 @@ class TestTransferHttpApi:
         )
         assert r.status_code == 410
         assert r.json()['detail']['code'] == 'TRANSFER_PACKAGE_EXPIRED'
+
+    def test_chunk_body_over_limit_rejected_before_read(self, client):
+        # 审计 P7：先校验 Content-Length 再读 body，超大请求体不进内存、未认证也拒绝
+        from transfer_agent.config.config import Config
+        r = client.post(
+            '/internal/transfer/chunks?transfer_id=t-1&chunk_index=0',
+            content=b'x' * (Config.TRANSFER_CHUNK_SIZE + 1),
+            headers={'X-Transfer-Token': '', 'X-Chunk-Checksum': 'x'},
+        )
+        assert r.status_code == 413
+        assert r.json()['detail']['code'] == 'TRANSFER_CHUNK_SIZE_INVALID'

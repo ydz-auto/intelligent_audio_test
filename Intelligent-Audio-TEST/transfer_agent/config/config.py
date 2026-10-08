@@ -28,8 +28,13 @@ class Config(BaseConfig):
     TRANSFER_ZONE: str = os.environ.get('TRANSFER_ZONE', 'A').upper()
 
     # --- 分片传输 ---
+    # TRANSFER_CHUNK_SIZE 既是分片默认大小，也是分片大小上限（接收端传输容量边界）：
+    # create 时 chunk_size 超过该值拒绝；HTTP /chunks 请求体上限同值。
     TRANSFER_CHUNK_SIZE_MB: int = int(os.environ.get('TRANSFER_CHUNK_SIZE_MB', 4))
     TRANSFER_CHUNK_SIZE: int = TRANSFER_CHUNK_SIZE_MB * _MB
+
+    # --- gRPC 收发消息上限（满片 4MB + 元数据须可通过；应不小于分片上限）---
+    TRANSFER_GRPC_MAX_MESSAGE_MB: int = int(os.environ.get('TRANSFER_GRPC_MAX_MESSAGE_MB', 16))
 
     # --- TTL 边界（秒）---
     TRANSFER_MIN_TTL_SECONDS: int = int(os.environ.get('TRANSFER_MIN_TTL_SECONDS', 60))

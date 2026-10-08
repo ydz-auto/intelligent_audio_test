@@ -98,6 +98,25 @@ class TestTransferPackage:
             pkg.validate_file_hash('cd' * 32)
 
 
+# ================= 路径安全不变量（审计 P1/P5）=================
+class TestPackageFieldInvariants:
+    def test_invalid_transfer_id_rejected(self):
+        for bad in ('../evil', 'a/b', 'a\\b', 'x' * 65, ''):
+            with pytest.raises(InvalidPackageFieldError):
+                make_package(transfer_id=bad)
+
+    def test_invalid_key_rejected(self):
+        for bad in ('../etc/evil', 'a/../b', '/abs', 'a\\b', 'C:/x'):
+            with pytest.raises(InvalidPackageFieldError):
+                make_package(key=bad)
+
+    def test_invalid_enum_raises_field_error_not_value_error(self):
+        # 实体层枚举外值 → 统一 InvalidPackageFieldError（400 语义），非裸 ValueError
+        for kwargs in ({'pkg_type': 'NOPE'}, {'category': 'nope'}, {'status': 'NOPE'}):
+            with pytest.raises(InvalidPackageFieldError):
+                make_package(**kwargs)
+
+
 # ================= 签名服务（访问层 + 签名层）=================
 def sign_fields(**fields):
     return SignatureService.compute_signature(TOKENS['A_B'], **fields)

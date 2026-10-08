@@ -10,6 +10,7 @@ PkgType / TransferStatus 枚举为跨服务共享语义，定义在 shared.model
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -18,6 +19,7 @@ from shared.models.common_enums import PkgType, TransferStatus
 
 from transfer_agent.domain.errors import (
     FileHashMismatchError,
+    InvalidPackageFieldError,
     InvalidTransferStateError,
 )
 from transfer_agent.domain.services.zone_category import TransferCategory
@@ -35,6 +37,31 @@ def _utc8(dt: Optional[datetime]) -> datetime:
     if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone(timedelta(hours=8)))
     return dt.astimezone(timezone(timedelta(hours=8)))
+
+
+# transfer_id 进入存储路径（transit/{transfer_id}/chunks/...），白名单防路径穿越
+_TRANSFER_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
+
+def validate_transfer_id(transfer_id: str) -> str:
+    if not _TRANSFER_ID_RE.match(transfer_id or ''):
+        raise InvalidPackageFieldError(
+            f'transfer_id 非法（仅允许字母/数字/下划线/连字符，长度 1~64）: {transfer_id!r}'
+        )
+    return transfer_id
+
+
+def validate_storage_key(key: str) -> str:
+    """key 落盘时拼接为 {root}/{category}/{key}，拒绝一切可逃逸存储根的形态。"""
+    if not key:
+        raise InvalidPackageFieldError('key 为必填')
+    if '\\' in key or ':' in key:
+        raise InvalidPackageFieldError(f'key 不允许反斜杠/冒号: {key!r}')
+    if key.startswith('/'):
+        raise InvalidPackageFieldError(f'key 不允许绝对路径: {key!r}')
+    if '..' in key.split('/'):
+        raise InvalidPackageFieldError(f'key 不允许相对上跳段（..）: {key!r}')
+    return key
 
 
 @dataclass
@@ -73,9 +100,16 @@ class TransferPackage:
     final_path: Optional[str] = None   # 合并完成后的存储路径（带 scheme）
 
     def __post_init__(self):
-        self.pkg_type = PkgType(self.pkg_type).value
-        self.category = TransferCategory(self.category).value
-        self.status = TransferStatus(self.status).value
+        # 路径安全不变量（5 层基座 · 内容校验层的落盘前置）：transfer_id / key
+        # 均进入存储路径，实体层强制校验，任何构造路径（含 PO 重建）都不可绕过
+        validate_transfer_id(self.transfer_id)
+        validate_storage_key(self.key)
+        try:
+            self.pkg_type = PkgType(self.pkg_type).value
+            self.category = TransferCategory(self.category).value
+            self.status = TransferStatus(self.status).value
+        except ValueError as e:
+            raise InvalidPackageFieldError(f'传输包枚举字段非法: {e}') from e
         if self.expires_at is None:
             self.expires_at = _utc8(self.created_at) + timedelta(seconds=self.ttl_seconds)
 

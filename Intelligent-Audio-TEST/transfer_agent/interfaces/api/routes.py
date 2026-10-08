@@ -32,7 +32,8 @@ from transfer_agent.application.handlers.transfer_handlers import (
     TransferCommandHandler,
     TransferQueryHandler,
 )
-from transfer_agent.domain.errors import TransferError
+from transfer_agent.config.config import Config
+from transfer_agent.domain.errors import ChunkSizeInvalidError, TransferError
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,12 @@ async def upload_chunk(request: Request):
         chunk_index = int(request.query_params.get('chunk_index', '-1'))
     except ValueError:
         chunk_index = -1
+    # 请求体上限预检：先看 Content-Length 再读 body，避免未认证方以超大 body 耗尽内存
+    content_length = request.headers.get('content-length', '')
+    if content_length.isdigit() and int(content_length) > Config.TRANSFER_CHUNK_SIZE:
+        return _error_response(ChunkSizeInvalidError(
+            f'分片请求体 {content_length}B 超过上限 {Config.TRANSFER_CHUNK_SIZE}B'
+        ))
     try:
         data = await request.body()
         result = _command_handler.upload_chunk(UploadChunkCommand(

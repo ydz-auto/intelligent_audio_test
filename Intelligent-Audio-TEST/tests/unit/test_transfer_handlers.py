@@ -135,14 +135,20 @@ class FakeStorage:
             self.chunk_files.pop((transfer_id, i), None)
             self.deleted_chunks.add((transfer_id, i))
 
-    def merge_chunks(self, transfer_id, total_chunks, dest_category, dest_key):
+    def merge_chunks(self, transfer_id, total_chunks):
         import hashlib
         data = b''.join(
             self.chunk_files[(transfer_id, i)] for i in range(total_chunks)
         )
-        path = f'oss://{dest_category}/{dest_key}'
+        path = f'oss://transit/{transfer_id}/merged.pkg'
         self.final_files[path] = data
         return path, hashlib.sha256(data).hexdigest()
+
+    def promote_file(self, staged_path, dest_category, dest_key):
+        data = self.final_files.pop(staged_path)
+        path = f'oss://{dest_category}/{dest_key}'
+        self.final_files[path] = data
+        return path
 
     def delete_transit_file(self, path):
         self.final_files.pop(path, None)
@@ -254,6 +260,30 @@ class TestCreateTransfer:
     def test_create_rejects_missing_required_fields(self, deps):
         with pytest.raises(InvalidPackageFieldError):
             deps['handler'].create_transfer(make_create_cmd(transfer_id=''))
+
+    def test_create_rejects_transfer_id_path_traversal(self, deps):
+        # transfer_id 进入存储路径（transit/{transfer_id}/chunks/...），白名单拒绝穿越形态
+        for bad in ('../evil', 'a/b', 'a\\b', 'x' * 65, '', '点.id', 'id;drop'):
+            with pytest.raises(InvalidPackageFieldError):
+                deps['handler'].create_transfer(make_create_cmd(transfer_id=bad))
+
+    def test_create_rejects_key_escape_forms(self, deps):
+        # key 拼接为 {root}/{category}/{key}，拒绝 .. 段 / 绝对路径 / 反斜杠 / 冒号
+        for bad in ('../../etc/evil', 'a/../b', '/abs/path.wav', 'a\\..\\b', 'C:/evil', 'a/../..'):
+            with pytest.raises(InvalidPackageFieldError):
+                deps['handler'].create_transfer(make_create_cmd(key=bad))
+
+    def test_create_rejects_unknown_category(self, deps):
+        # 非法 category → 400 语义（InvalidPackageFieldError），而非实体层裸 ValueError→500
+        with pytest.raises(InvalidPackageFieldError) as ei:
+            deps['handler'].create_transfer(make_create_cmd(category='no-such-category'))
+        assert ei.value.code == 'TRANSFER_PACKAGE_FIELD_INVALID'
+
+    def test_create_rejects_chunk_size_over_receiver_limit(self, deps):
+        # 分片上限 = 接收端 TRANSFER_CHUNK_SIZE（依赖注入 max_chunk_bytes 模拟小上限）
+        deps['handler']._max_chunk_bytes = 16
+        with pytest.raises(InvalidPackageFieldError):
+            deps['handler'].create_transfer(make_create_cmd(chunk_size=17))
 
 
 # ================= 分片上传 / 断点续传 =================
@@ -395,6 +425,31 @@ class TestCompleteTransfer:
         assert pkg.status == TransferStatus.FAILED.value
         assert deps['chunk_repo'].list_records('t-1') == []
         assert not deps['storage'].chunk_files
+
+    def test_complete_hash_mismatch_never_touches_final_bucket(self, deps):
+        # P2 回归：合并先落 transit 暂存，验 hash 失败时终桶同 key 原有对象不受影响
+        original = b'ORIGINAL-OBJECT'
+        deps['storage'].final_files['oss://audios/task_1/case_2/audio.wav'] = original
+        deps['handler'].create_transfer(make_create_cmd(
+            file_hash='sha256:' + 'f' * 64,
+        ))
+        upload_all(deps['handler'], 't-1', b'12345678901234567890')
+        with pytest.raises(FileHashMismatchError):
+            deps['handler'].complete_transfer(CompleteTransferCommand(
+                transfer_id='t-1', token='secret-ab',
+            ))
+        assert deps['storage'].final_files['oss://audios/task_1/case_2/audio.wav'] == original
+        # 暂存合并产物已回收，终桶从未出现暂存路径
+        assert 'oss://transit/t-1/merged.pkg' not in deps['storage'].final_files
+        assert 'oss://transit/t-1/merged.pkg' in deps['storage'].deleted_final
+
+    def test_complete_merges_to_transit_then_promotes(self, deps):
+        # P2 时序：先暂存（transit/t-1/merged.pkg），验签通过后提升到终桶（暂存消失）
+        result = self._create_and_upload(deps)
+        assert result['final_path'] == 'oss://audios/task_1/case_2/audio.wav'
+        assert 'oss://transit/t-1/merged.pkg' not in deps['storage'].final_files
+        assert deps['storage'].final_files[
+            'oss://audios/task_1/case_2/audio.wav'] == STANDARD_PAYLOAD
 
     def test_complete_ephemeral_goes_to_transit(self, deps):
         result = self._create_and_upload(deps, ephemeral=True)

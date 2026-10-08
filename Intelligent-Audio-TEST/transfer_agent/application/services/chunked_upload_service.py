@@ -22,10 +22,6 @@ from transfer_agent.domain.services.signature_service import SignatureService
 
 logger = logging.getLogger(__name__)
 
-RETRYABLE_CODES = frozenset({
-    'TRANSFER_ERROR',
-})
-
 
 class ChunkedUploadService:
     """分片上传编排服务（发送侧）。"""
@@ -34,13 +30,16 @@ class ChunkedUploadService:
         self,
         client: RemoteTransferClientABC,
         signature_service: SignatureService,
-        chunk_size: int = 4 * 1024 * 1024,
+        chunk_size: Optional[int] = None,
         max_retries: int = 3,
         backoff_seconds: float = 1.0,
         default_ttl: int = 3600,
     ):
         self._client = client
         self._signature_service = signature_service
+        if chunk_size is None:
+            from transfer_agent.config.config import Config
+            chunk_size = Config.TRANSFER_CHUNK_SIZE
         self._chunk_size = chunk_size
         self._max_retries = max_retries
         self._backoff_seconds = backoff_seconds

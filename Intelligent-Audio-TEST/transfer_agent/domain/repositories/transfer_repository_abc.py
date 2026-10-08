@@ -77,11 +77,18 @@ class TransferStorageABC(ABC):
         """删除该会话全部分片文件（幂等，容忍缺失）。"""
 
     @abstractmethod
-    def merge_chunks(self, transfer_id: str, total_chunks: int,
-                     dest_category: str, dest_key: str) -> Tuple[str, str]:
-        """按序合并分片并写入目标桶，返回 (final_path, sha256_hex)。
+    def merge_chunks(self, transfer_id: str, total_chunks: int) -> Tuple[str, str]:
+        """按序合并分片到 transit 暂存区（不触碰终桶），返回 (staged_path, sha256_hex)。
 
-        合并流式进行并同步计算整体 sha256（内容校验层）。
+        合并流式进行并同步计算整体 sha256（内容校验层）；
+        终桶写入由调用方在 file_hash 校验通过后经 promote_file 完成。
+        """
+
+    @abstractmethod
+    def promote_file(self, staged_path: str, dest_category: str, dest_key: str) -> str:
+        """将 transit 暂存文件提升（移动）到目标桶，返回 final_path。
+
+        仅在内容校验通过后调用，保证终桶不被未验证内容覆盖。
         """
 
     @abstractmethod

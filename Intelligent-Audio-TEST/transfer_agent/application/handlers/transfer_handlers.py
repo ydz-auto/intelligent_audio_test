@@ -33,6 +33,8 @@ from transfer_agent.domain.entities.transfer_package import (
     TransferChunkRecord,
     TransferPackage,
     utc8now,
+    validate_storage_key,
+    validate_transfer_id,
 )
 from transfer_agent.domain.errors import (
     ChunkChecksumMismatchError,
@@ -81,7 +83,8 @@ class TransferCommandHandler:
         route_policy: Optional[ZoneRoutePolicy] = None,
         event_sink: Optional[Callable[[TransferEvent], None]] = None,
         ttl_bounds: Optional[tuple] = None,
-        default_chunk_size: int = 4 * 1024 * 1024,
+        default_chunk_size: Optional[int] = None,
+        max_chunk_bytes: Optional[int] = None,
     ):
         self._record_repo = record_repo
         self._chunk_repo = chunk_repo
@@ -91,6 +94,7 @@ class TransferCommandHandler:
         self._event_sink = event_sink or _default_event_sink
         self._ttl_bounds = ttl_bounds
         self._default_chunk_size = default_chunk_size
+        self._max_chunk_bytes = max_chunk_bytes
 
     # ---- 依赖延迟装配（避免导入期触发 DB/OSS 连接）----
     @property
@@ -141,6 +145,20 @@ class TransferCommandHandler:
             self._ttl_bounds = (Config.TRANSFER_MIN_TTL_SECONDS, Config.TRANSFER_MAX_TTL_SECONDS)
         return self._ttl_bounds
 
+    @property
+    def default_chunk_size(self) -> int:
+        if self._default_chunk_size is None:
+            from transfer_agent.config.config import Config
+            return Config.TRANSFER_CHUNK_SIZE
+        return self._default_chunk_size
+
+    @property
+    def max_chunk_bytes(self) -> int:
+        if self._max_chunk_bytes is None:
+            from transfer_agent.config.config import Config
+            return Config.TRANSFER_CHUNK_SIZE
+        return self._max_chunk_bytes
+
     def _emit(self, event: TransferEvent) -> None:
         try:
             self._event_sink(event)
@@ -171,6 +189,10 @@ class TransferCommandHandler:
         """创建传输会话（幂等：同 transfer_id 同 file_hash 直接返回已存在）。"""
         # ① 网络隔离点/内容层：路由 + 枚举合法性
         self.route_policy.check(cmd.src_zone, cmd.dst_zone, cmd.pkg_type)
+        try:
+            TransferCategory(str(cmd.category))
+        except ValueError:
+            raise InvalidPackageFieldError(f'非法传输类别 category: {cmd.category}')
         # ② 访问控制层
         self.signature_service.verify_token(cmd.src_zone, cmd.dst_zone, cmd.token)
         # TTL 边界（配置化，拒绝越界）
@@ -181,6 +203,9 @@ class TransferCommandHandler:
             )
         if not cmd.transfer_id or not cmd.key or not cmd.file_hash:
             raise InvalidPackageFieldError('transfer_id / key / file_hash 均为必填')
+        # 路径安全：transfer_id / key 均进入存储路径，入口即拒绝穿越形态
+        validate_transfer_id(cmd.transfer_id)
+        validate_storage_key(cmd.key)
         # ③ 签名层：HMAC-SHA256 规范串验签
         self.signature_service.verify_signature({
             'transfer_id': cmd.transfer_id, 'pkg_type': cmd.pkg_type,
@@ -204,9 +229,13 @@ class TransferCommandHandler:
             ))
             return {**existing.to_dict(), 'dedup': True}
 
-        chunk_size = cmd.chunk_size or self._default_chunk_size
+        chunk_size = cmd.chunk_size or self.default_chunk_size
         if chunk_size <= 0:
             raise InvalidPackageFieldError(f'chunk_size={chunk_size} 非法')
+        if chunk_size > self.max_chunk_bytes:
+            raise InvalidPackageFieldError(
+                f'chunk_size={chunk_size} 超过接收端分片上限 {self.max_chunk_bytes}'
+            )
         package = TransferPackage(
             transfer_id=cmd.transfer_id,
             pkg_type=cmd.pkg_type,
@@ -304,32 +333,34 @@ class TransferCommandHandler:
                 f'（已收 {len(received)}/{total}），请断点续传缺失分片'
             )
 
-        # ephemeral 包落中转暂存（目的区不持久化）；普通包按 category 落对应桶
+        # ephemeral 包提升目标仍为中转暂存（目的区不持久化）；普通包按 category 落对应桶
         if package.ephemeral:
             dest_category = TransferCategory.TRANSIT.value
             dest_key = f'{package.transfer_id}/{package.key}'
         else:
             dest_category = package.category
             dest_key = package.key
-        final_path, actual_hash = self.storage.merge_chunks(
-            cmd.transfer_id, total, dest_category, dest_key,
-        )
 
-        # ④ 内容校验层：整体 sha256
+        # ② 合并到 transit 暂存区（终桶保持不动），流式计算整体 sha256
+        staged_path, actual_hash = self.storage.merge_chunks(cmd.transfer_id, total)
+
+        # ③ 内容校验层：整体 sha256 通过之前不触碰终桶，失败仅回收暂存与分片
         try:
             package.validate_file_hash(actual_hash)
         except Exception:
-            # 校验失败：终态 FAILED，分片与合并产物回收，需换 transfer_id 重传
             package.mark_failed()
             self.record_repo.save(package)
             self.chunk_repo.delete_all(cmd.transfer_id)
             self.storage.delete_chunks(cmd.transfer_id, total)
-            self.storage.delete_transit_file(final_path)
+            self.storage.delete_transit_file(staged_path)
             self._emit(TransferFailed(
                 transfer_id=package.transfer_id,
                 reason=f'file_hash 校验失败 actual={actual_hash}',
             ))
             raise
+
+        # ④ 校验通过 → 暂存文件提升到终桶（移动语义，不产生未验证覆盖）
+        final_path = self.storage.promote_file(staged_path, dest_category, dest_key)
 
         package.mark_completed(final_path)
         self.record_repo.save(package)
