@@ -10,7 +10,8 @@
 algorithm_service_pb2.AlgorithmResponse(success/message/data)。
 
 说明：
-- AlgorithmGroupServicer: 算法分组 CRUD，委托 AlgorithmCommandHandler / AlgorithmQueryHandler
+- AlgorithmGroupServicer: 算法分组 CRUD，写操作委托 AlgorithmCommandHandler，
+  分组查询委托 AlgorithmParamQueryHandler（dict 读模型，与 GetGroup/ListGroups RPC 一致）
 - AlgorithmDefinitionServicer: 算法定义 CRUD + 参数/映射/维度关联查询/写操作
   参数/映射/维度关系/分组/事务方法从 _param_mixin.py 继承
 """
@@ -50,13 +51,15 @@ def _definition_to_dict(aggregate) -> Dict[str, Any]:
 class AlgorithmGroupServicer(_pb_grpc.AlgorithmGroupServiceServicer):
     """算法分组 gRPC servicer。
 
-    委托 AlgorithmCommandHandler / AlgorithmQueryHandler 完成分组 CRUD。
+    分组写操作委托 AlgorithmCommandHandler，
+    分组查询委托 AlgorithmParamQueryHandler（dict 读模型）。
     """
 
     def __init__(self) -> None:
         # 延迟导入，避免循环依赖与启动期开销
         self._command_handler = None
         self._query_handler = None
+        self._param_query_handler = None
 
     # ---- handler 懒加载 ----
 
@@ -79,6 +82,16 @@ class AlgorithmGroupServicer(_pb_grpc.AlgorithmGroupServiceServicer):
             )
             self._query_handler = AlgorithmQueryHandler()
         return self._query_handler
+
+    @property
+    def param_query_handler(self):
+        """分组/参数查询处理器（读操作，dict 读模型）"""
+        if self._param_query_handler is None:
+            from algorithm_service.application.handlers.algorithm_param_handlers import (
+                AlgorithmParamQueryHandler,
+            )
+            self._param_query_handler = AlgorithmParamQueryHandler()
+        return self._param_query_handler
 
     # ---- 分组 CRUD ----
 
@@ -138,11 +151,11 @@ class AlgorithmGroupServicer(_pb_grpc.AlgorithmGroupServiceServicer):
 
         请求字段（GetAlgorithmGroupRequest）：group_id
         """
-        from algorithm_service.application.queries.algorithm_queries import (
+        from algorithm_service.application.queries.algorithm_param_queries import (
             GetGroupQuery,
         )
         query = GetGroupQuery(group_id=request.group_id)
-        result = self.query_handler.handle_get_group(query)
+        result = self.param_query_handler.handle_get_group(query)
         if result is None:
             return build_response(
                 _pb.AlgorithmResponse, success=False, message="Group not found"
@@ -152,11 +165,11 @@ class AlgorithmGroupServicer(_pb_grpc.AlgorithmGroupServiceServicer):
     @grpc_rpc_handler(response_cls=_pb.AlgorithmResponse)
     def ListAlgorithmGroups(self, request, context=None):
         """查询算法分组列表（按 display_order、id 排序）。"""
-        from algorithm_service.application.queries.algorithm_queries import (
+        from algorithm_service.application.queries.algorithm_param_queries import (
             ListGroupsQuery,
         )
         query = ListGroupsQuery()
-        result = self.query_handler.handle_list_groups(query)
+        result = self.param_query_handler.handle_list_groups(query)
         return {"items": result}
 
 
@@ -291,35 +304,33 @@ class AlgorithmDefinitionServicer(_ParamMethodsMixin, _pb_grpc.AlgorithmDefiniti
 
     @grpc_rpc_handler(response_cls=_pb.AlgorithmResponse)
     def ListAlgorithms(self, request, context=None):
-        """查询算法定义列表（可按 group_id / status 过滤）。
+        """查询算法定义列表（可按 group_id 过滤；active_only=True 仅在线）。
 
-        请求字段（ListAlgorithmsRequest）：group_id / status
+        请求字段（ListAlgorithmsRequest）：group_id / active_only
         """
-        from algorithm_service.application.queries.algorithm_queries import (
+        from algorithm_service.application.queries.algorithm_param_queries import (
             ListAlgorithmDefinitionsQuery,
         )
         group_id = request.group_id or None
-        status = request.status or None
+        status = "online" if request.active_only else None
         query = ListAlgorithmDefinitionsQuery(group_id=group_id, status=status)
-        result = self.query_handler.handle_list_definitions(query)
-        return {"items": [_definition_to_dict(d) for d in result]}
+        result = self.param_query_handler.handle_list_algorithm_definitions(query)
+        return {"items": result}
 
     @grpc_rpc_handler(response_cls=_pb.AlgorithmResponse)
     def GetAlgorithmOptions(self, request, context=None):
-        """查询算法定义选项列表（下拉框，按 group_id 过滤）。
+        """查询算法定义选项列表（下拉框，全部在线算法）。
 
-        请求字段（GetAlgorithmOptionsRequest）：group_id
+        请求字段（GetAlgorithmOptionsRequest）：algorithm_type（未用作过滤条件）
         """
-        from algorithm_service.application.queries.algorithm_queries import (
+        from algorithm_service.application.queries.algorithm_param_queries import (
             ListAlgorithmDefinitionsQuery,
         )
-        query = ListAlgorithmDefinitionsQuery(
-            group_id=request.group_id or None, status="online"
-        )
-        result = self.query_handler.handle_list_definitions(query)
+        query = ListAlgorithmDefinitionsQuery(status="online")
+        result = self.param_query_handler.handle_list_algorithm_definitions(query)
         return {
             "options": [
-                {"id": d.id, "name": d.name, "type": d.algorithm_type}
+                {"id": d["id"], "name": d["name"], "type": d["type"]}
                 for d in result
             ]
         }
