@@ -1,0 +1,1201 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 3660" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:#2563eb"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:#16a34a"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:#f97316"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:#7c3aed"/>
+    </marker>
+    <marker id="arrowIndigo" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:#4f46e5"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill:#64748b"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <filter id="mediumShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #2563eb; stroke-width: 1.6; fill: none; marker-end: url(#arrowBlue); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.6; fill: none; marker-end: url(#arrowGreen); }
+      .flow-orange { stroke: #f97316; stroke-width: 1.6; fill: none; marker-end: url(#arrowOrange); }
+      .flow-violet { stroke: #7c3aed; stroke-width: 1.6; fill: none; marker-end: url(#arrowViolet); }
+      .flow-indigo { stroke: #4f46e5; stroke-width: 1.6; fill: none; marker-end: url(#arrowIndigo); }
+      .flow-slate { stroke: #64748b; stroke-width: 1.6; fill: none; marker-end: url(#arrowSlate); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .cell { font-size: 8.5px; fill: #334155; }
+      .cell-s { font-size: 8px; fill: #64748b; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+      .lbl { font-size: 9.5px; font-weight: 600; }
+      .num-badge { font-size: 11px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
+      .step-t { font-size: 11px; font-weight: 600; fill: #1e3a8a; }
+      .step-d { font-size: 9.5px; fill: #64748b; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="3660" style="fill:#f1f5f9"/>
+
+  <text x="620" y="42" text-anchor="middle" font-size="22" font-weight="700" style="fill:#0f172a">智能语音测试平台 · 七大核心更新总览 V2</text>
+  <text x="620" y="66" text-anchor="middle" font-size="12" style="fill:#64748b">用例统一 · 任务发布 · Agent 智能报告 · Benchmark 双轨排行 · 微服务化 · 网络跨区 · 角色权限 + 统一登录 · 方案评审 v2.0</text>
+
+  <!-- ================================================================================== -->
+  <!-- ① 用例统一 (blue) y=80 h=290 -->
+  <!-- ================================================================================== -->
+  <rect x="24" y="80" width="1192" height="290" rx="10" style="fill:#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="80" width="1192" height="38" rx="10" style="fill:#dbeafe"/>
+  <rect x="24" y="106" width="1192" height="12" style="fill:#dbeafe"/>
+  <circle cx="46" cy="99" r="11" style="fill:#3b82f6"/>
+  <text x="46" y="103" class="num-badge">1</text>
+  <text x="66" y="104" class="sec-title" style="fill:#1e3a8a">用例统一 — 从「执行方式绑定」到「纯数据资产」</text>
+
+  <rect x="48" y="126" width="360" height="196" style="fill:#ffffff" rx="8" stroke="#bfdbfe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="126" width="360" height="24" rx="8" style="fill:#dbeafe"/>
+  <text x="60" y="142" class="box-name" style="fill:#1e3a8a">旧 vs 新 对比</text>
+  <!-- 对比表头 -->
+  <rect x="56" y="154" width="344" height="16" style="fill:#eff6ff" rx="2"/>
+  <text x="100" y="165" class="cell" font-weight="600" style="fill:#1e3a8a" text-anchor="middle">维度</text>
+  <text x="228" y="165" class="cell" font-weight="600" style="fill:#1e3a8a" text-anchor="middle">旧体系</text>
+  <text x="356" y="165" class="cell" font-weight="600" style="fill:#1e3a8a" text-anchor="middle">新体系</text>
+  <line x1="152" y1="154" x2="152" y2="310" stroke="#bfdbfe" stroke-width="0.5"/>
+  <line x1="280" y1="154" x2="280" y2="310" stroke="#bfdbfe" stroke-width="0.5"/>
+  <!-- Row 1 -->
+  <text x="100" y="181" class="cell" text-anchor="middle">执行方式</text>
+  <text x="228" y="181" class="cell" text-anchor="middle">绑定死</text>
+  <text x="356" y="181" class="cell" style="fill:#2563eb" text-anchor="middle">运行时决定</text>
+  <line x1="56" y1="188" x2="400" y2="188" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 2 -->
+  <rect x="56" y="188" width="344" height="18" style="fill:#f8fafc"/>
+  <text x="100" y="201" class="cell" text-anchor="middle">复用性</text>
+  <text x="228" y="201" class="cell" text-anchor="middle">各自一套</text>
+  <text x="356" y="201" class="cell" style="fill:#2563eb" text-anchor="middle">同一用例复用</text>
+  <line x1="56" y1="206" x2="400" y2="206" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 3 -->
+  <text x="100" y="221" class="cell" text-anchor="middle">批量操作</text>
+  <text x="228" y="221" class="cell" text-anchor="middle">无</text>
+  <text x="356" y="221" class="cell" style="fill:#2563eb" text-anchor="middle">14 种 action</text>
+  <line x1="56" y1="228" x2="400" y2="228" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 4 -->
+  <rect x="56" y="228" width="344" height="18" style="fill:#f8fafc"/>
+  <text x="100" y="241" class="cell" text-anchor="middle">数据隔离</text>
+  <text x="228" y="241" class="cell" text-anchor="middle">无</text>
+  <text x="356" y="241" class="cell" style="fill:#2563eb" text-anchor="middle">单轮/整体隔离</text>
+  <line x1="56" y1="246" x2="400" y2="246" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 5 -->
+  <text x="100" y="261" class="cell" text-anchor="middle">依赖编排</text>
+  <text x="228" y="261" class="cell" text-anchor="middle">不支持</text>
+  <text x="356" y="261" class="cell" style="fill:#2563eb" text-anchor="middle">跨 executor 编排</text>
+  <line x1="56" y1="268" x2="400" y2="268" stroke="#e2e8f0" stroke-width="0.5"/>
+  <!-- Row 6 -->
+  <rect x="56" y="268" width="344" height="18" style="fill:#f8fafc"/>
+  <text x="100" y="281" class="cell" text-anchor="middle">事件驱动</text>
+  <text x="228" y="281" class="cell" text-anchor="middle">无</text>
+  <text x="356" y="281" class="cell" style="fill:#2563eb" text-anchor="middle">CASE_EVENTS</text>
+  <!-- 执行器分派数据流 -->
+  <rect x="416" y="126" width="408" height="196" style="fill:#ffffff" rx="8" stroke="#bfdbfe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="416" y="126" width="408" height="24" rx="8" style="fill:#dbeafe"/>
+  <text x="428" y="142" class="box-name" style="fill:#1e3a8a">执行器分派链路</text>
+  <!-- Flow chain -->
+  <rect x="432" y="158" width="126" height="36" rx="6" style="fill:#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="495" y="176" text-anchor="middle" class="body" font-weight="600" style="fill:#2563eb">用例表</text>
+  <text x="495" y="188" text-anchor="middle" class="cell-s">device_type 枚举</text>
+  <path d="M 558 176 L 586 176" class="flow-blue"/>
+  <rect x="586" y="158" width="126" height="36" rx="6" style="fill:#ffffff" stroke="#bfdbfe" stroke-width="1"/>
+  <text x="649" y="174" text-anchor="middle" class="body" font-weight="600" style="fill:#2563eb">能力矩阵</text>
+  <text x="649" y="186" text-anchor="middle" class="cell-s">执行器映射</text>
+  <path d="M 712 176 L 740 176" class="flow-blue"/>
+  <rect x="740" y="158" width="72" height="36" rx="6" style="fill:#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="776" y="178" text-anchor="middle" class="body" font-weight="600" style="fill:#1d4ed8">执行器</text>
+  <!-- 三个执行器 -->
+  <rect x="432" y="202" width="126" height="50" rx="6" style="fill:#f8fafc" stroke="#bfdbfe" stroke-width="0.8"/>
+  <rect x="432" y="202" width="4" height="50" rx="2" style="fill:#3b82f6"/>
+  <text x="444" y="218" class="body" font-size="9" font-weight="600" style="fill:#1e3a8a">E2EExecutor</text>
+  <text x="444" y="232" class="cell-s">物理设备/声卡</text>
+  <text x="444" y="244" class="cell-s">PyAudio 播放</text>
+
+  <rect x="566" y="202" width="126" height="50" rx="6" style="fill:#f8fafc" stroke="#bfdbfe" stroke-width="0.8"/>
+  <rect x="566" y="202" width="4" height="50" rx="2" style="fill:#3b82f6"/>
+  <text x="578" y="218" class="body" font-size="9" font-weight="600" style="fill:#1e3a8a">APISessionExecutor</text>
+  <text x="578" y="232" class="cell-s">HTTP 非实时/流式</text>
+  <text x="578" y="244" class="cell-s">整段/逐 chunk</text>
+
+  <rect x="700" y="202" width="112" height="50" rx="6" style="fill:#f8fafc" stroke="#bfdbfe" stroke-width="0.8"/>
+  <rect x="700" y="202" width="4" height="50" rx="2" style="fill:#3b82f6"/>
+  <text x="712" y="218" class="body" font-size="9" font-weight="600" style="fill:#1e3a8a">RealtimeSessionExecutor</text>
+  <text x="712" y="232" class="cell-s">WebSocket</text>
+  <text x="712" y="244" class="cell-s">逐帧推送</text>
+
+  <rect x="432" y="258" width="380" height="50" rx="4" style="fill:#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="432" y="258" width="4" height="50" rx="2" style="fill:#2563eb"/>
+  <text x="622" y="273" text-anchor="middle" class="box-desc" font-weight="700" style="fill:#1d4ed8">混音 / SPL / 降噪 → 统一为纯数据资产，不绑定执行方式</text>
+  <text x="622" y="286" text-anchor="middle" class="cell-s" style="fill:#2563eb">device_type 运行时路由执行器 · 声卡直出 / API 流式 / WebSocket 逐帧</text>
+  <text x="622" y="298" text-anchor="middle" class="cell-s" style="fill:#2563eb">14 种批量 action 统一编排混音 / noise / SPL · 单测/整测共享同一用例资产</text>
+
+  <!-- 14 种 action chips -->
+  <rect x="832" y="126" width="376" height="196" style="fill:#ffffff" rx="8" stroke="#bfdbfe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="832" y="126" width="376" height="24" rx="8" style="fill:#dbeafe"/>
+  <text x="844" y="142" class="box-name" style="fill:#1e3a8a">统一批量操作（14 种 action）</text>
+
+  <rect x="844" y="156" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="882" y="170" class="chip-t" style="fill:#1e40af">copy</text>
+  <rect x="928" y="156" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="966" y="170" class="chip-t" style="fill:#1e40af">move</text>
+  <rect x="1012" y="156" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="1050" y="170" class="chip-t" style="fill:#1e40af">delete</text>
+  <rect x="1096" y="156" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="1134" y="170" class="chip-t" style="fill:#1e40af">tags</text>
+  <rect x="844" y="182" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="882" y="196" class="chip-t" style="fill:#1e40af">status</text>
+  <rect x="928" y="182" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="966" y="196" class="chip-t" style="fill:#1e40af">SPL</text>
+  <rect x="1012" y="182" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="1050" y="196" class="chip-t" style="fill:#1e40af">noise</text>
+  <rect x="1096" y="182" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="1134" y="196" class="chip-t" style="fill:#1e40af">refresh</text>
+  <rect x="844" y="208" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="882" y="222" class="chip-t" style="fill:#1e40af">export</text>
+  <rect x="928" y="208" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="966" y="222" class="chip-t" style="fill:#1e40af">import</text>
+  <rect x="1012" y="208" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="1050" y="222" class="chip-t" style="fill:#1e40af">clone</text>
+  <rect x="1096" y="208" width="76" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="1134" y="222" class="chip-t" style="fill:#1e40af">archive</text>
+  <rect x="844" y="234" width="106" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="897" y="248" class="chip-t" style="fill:#1e40af">restore</text>
+  <rect x="958" y="234" width="106" height="22" rx="4" style="fill:#eff6ff" stroke="#bfdbfe" stroke-width="0.8"/>
+  <text x="1011" y="248" class="chip-t" style="fill:#1e40af">validate</text>
+
+  <text x="844" y="272" class="body" font-size="9.5" style="fill:#1e293b">批量操作统一鉴权 + 审计日志</text>
+  <text x="844" y="286" class="body" font-size="9.5" style="fill:#1e293b">CASE_EVENTS 频道异步幂等消费</text>
+  <text x="844" y="300" class="body" font-size="9.5" style="fill:#475569">软删除，不影响已发布任务版本</text>
+
+  <!-- ① 结论条 -->
+  <rect x="48" y="332" width="1144" height="26" rx="6" style="fill:#eff6ff" stroke="#93c5fd" stroke-width="1"/>
+  <text x="620" y="349" text-anchor="middle" font-size="9.5" style="fill:#1e40af">用例统一后：执行域 / 报告域 / Agent 域 同源消费，device_type 运行时决定执行器，单一事实来源</text>
+
+  <!-- ================================================================================== -->
+  <g transform="translate(0,10)">
+  <!-- ② 任务发布 (green) y=390 h=290 -->
+  <!-- ================================================================================== -->
+  <rect x="24" y="390" width="1192" height="290" rx="10" style="fill:#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="390" width="1192" height="38" rx="10" style="fill:#dcfce7"/>
+  <rect x="24" y="416" width="1192" height="12" style="fill:#dcfce7"/>
+  <circle cx="46" cy="409" r="11" style="fill:#16a34a"/>
+  <text x="46" y="413" class="num-badge">2</text>
+  <text x="66" y="414" class="sec-title" style="fill:#14532d">任务发布 — published_tasks 版本快照 · 不可变配置</text>
+
+  <!-- 发布步骤 Step 1-3 -->
+  <rect x="48" y="436" width="540" height="196" style="fill:#ffffff" rx="8" stroke="#bbf7d0" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="436" width="540" height="24" rx="8" style="fill:#dcfce7"/>
+  <text x="60" y="452" class="box-name" style="fill:#14532d">版本快照发布流程</text>
+
+  <!-- Step 1 -->
+  <rect x="56" y="466" width="524" height="38" rx="6" style="fill:#ffffff" stroke="#bbf7d0" stroke-width="1"/>
+  <rect x="56" y="466" width="5" height="38" rx="2.5" style="fill:#16a34a"/>
+  <circle cx="78" cy="485" r="10" style="fill:#16a34a"/>
+  <text x="78" y="489" class="num-badge" font-size="10">1</text>
+  <text x="96" y="482" class="step-t" style="fill:#166534">Step 1: 编辑任务配置（用例/算法/API/指标）</text>
+  <text x="96" y="496" class="step-d">field_mappings · retrieval · post_processing · alerts · benchmark:true</text>
+
+  <path d="M 316 504 L 316 514" class="flow-green"/>
+
+  <!-- Step 2 -->
+  <rect x="56" y="514" width="524" height="38" rx="6" style="fill:#ffffff" stroke="#bbf7d0" stroke-width="1"/>
+  <rect x="56" y="514" width="5" height="38" rx="2.5" style="fill:#16a34a"/>
+  <circle cx="78" cy="533" r="10" style="fill:#16a34a"/>
+  <text x="78" y="537" class="num-badge" font-size="10">2</text>
+  <text x="96" y="530" class="step-t" style="fill:#166534">Step 2: 发布 → 冻结配置，生成不可变 published_tasks 版本</text>
+  <text x="96" y="544" class="step-d">published_task_id / version / execution_source · 权限 task.publish + 审计事件</text>
+
+  <path d="M 316 552 L 316 562" class="flow-green"/>
+
+  <!-- Step 3 -->
+  <rect x="56" y="562" width="524" height="38" rx="6" style="fill:#ffffff" stroke="#bbf7d0" stroke-width="1"/>
+  <rect x="56" y="562" width="5" height="38" rx="2.5" style="fill:#16a34a"/>
+  <circle cx="78" cy="581" r="10" style="fill:#16a34a"/>
+  <text x="78" y="585" class="num-badge" font-size="10">3</text>
+  <text x="96" y="578" class="step-t" style="fill:#166534">Step 3: TASK_EVENTS 发布 → 执行/定时/触发编排</text>
+  <text x="96" y="592" class="step-d">幂等保障：同一版本多次发布不产生重复执行 · 追溯回滚</text>
+
+  <text x="56" y="618" class="body" font-size="9.5" style="fill:#166534">15 表导入导出 ZIP · 跨环境迁移配置快照 · 依赖用例/算法/API 冻结防漂移</text>
+
+  <!-- 右侧：benchmark 钩子 + 数据校验 -->
+  <rect x="596" y="436" width="620" height="196" style="fill:#ffffff" rx="8" stroke="#bbf7d0" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="596" y="436" width="620" height="24" rx="8" style="fill:#dcfce7"/>
+  <text x="608" y="452" class="box-name" style="fill:#14532d">关联能力 + 数据治理</text>
+
+  <!-- benchmark:true highlight card -->
+  <rect x="608" y="468" width="596" height="34" rx="6" style="fill:#f0fdf4" stroke="#86efac" stroke-width="1.2"/>
+  <rect x="608" y="468" width="6" height="34" rx="3" style="fill:#16a34a"/>
+  <text x="624" y="484" class="body" font-size="10" font-weight="600" style="fill:#14532d">benchmark:true 钩子</text>
+  <text x="624" y="496" class="cell-s" style="fill:#166534">发布时标记 benchmark:true → 自动入 Benchmark 实测轨排行，无需二次登记</text>
+
+  <!-- 数据校验表格 -->
+  <text x="608" y="516" class="lbl" style="fill:#14532d">数据校验规则</text>
+  <rect x="608" y="524" width="596" height="16" style="fill:#dcfce7" rx="2"/>
+  <text x="660" y="536" class="cell" font-weight="600" style="fill:#14532d" text-anchor="middle">校验项</text>
+  <text x="860" y="536" class="cell" font-weight="600" style="fill:#14532d" text-anchor="middle">说明</text>
+  <line x1="720" y1="524" x2="720" y2="600" stroke="#bbf7d0" stroke-width="0.5"/>
+
+  <text x="660" y="552" class="cell-s" text-anchor="middle">field_mappings</text>
+  <text x="860" y="552" class="cell-s">字段映射完整性与目标 API 参数一致性</text>
+  <rect x="608" y="556" width="596" height="15" style="fill:#f8fafc"/>
+  <text x="660" y="568" class="cell-s" text-anchor="middle">retrieval</text>
+  <text x="860" y="568" class="cell-s">检索插件配置与召回参数有效性</text>
+  <text x="660" y="584" class="cell-s" text-anchor="middle">post_processing</text>
+  <text x="860" y="584" class="cell-s">后处理插件链可执行性与参数完整性</text>
+  <rect x="608" y="588" width="596" height="15" style="fill:#f8fafc"/>
+  <text x="660" y="600" class="cell-s" text-anchor="middle">alerts</text>
+  <text x="860" y="600" class="cell-s">告警规则阈值合法性与通知渠道可达性</text>
+
+  <text x="608" y="620" class="body" font-size="9" style="fill:#475569">调度编排：发布后任务可立即执行 / 定时 / 触发式 · 幂等保障不重复执行</text>
+
+  <!-- ② 结论条 -->
+  <rect x="48" y="642" width="1144" height="26" rx="6" style="fill:#f0fdf4" stroke="#86efac" stroke-width="1"/>
+  <text x="620" y="659" text-anchor="middle" font-size="9.5" style="fill:#166534">任务发布后：执行 / Benchmark / Agent 三域基于不可变版本协同，发布即绑定口径</text>
+
+  <!-- ================================================================================== -->
+  </g>
+  <g transform="translate(0,20)">
+  <!-- ③ Agent 智能报告 (violet) y=700 h=360 -->
+  <!-- ================================================================================== -->
+  <rect x="24" y="700" width="1192" height="360" rx="10" style="fill:#f5f3ff" stroke="#7c3aed" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="700" width="1192" height="38" rx="10" style="fill:#ede9fe"/>
+  <rect x="24" y="726" width="1192" height="12" style="fill:#ede9fe"/>
+  <circle cx="46" cy="719" r="11" style="fill:#7c3aed"/>
+  <text x="46" y="723" class="num-badge">3</text>
+  <text x="66" y="724" class="sec-title" style="fill:#4c1d95">Agent 智能报告 — LLM + LangGraph · 自然语言即得结论（本轮重点）</text>
+  <rect x="1180" y="708" width="28" height="22" rx="4" style="fill:#facc15"/>
+  <text x="1194" y="723" text-anchor="middle" font-size="9" font-weight="700" style="fill:#713f12">重点</text>
+
+  <!-- 左侧：Supervisor 拓扑 -->
+  <rect x="48" y="746" width="540" height="266" style="fill:#ffffff" rx="8" stroke="#ddd6fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="746" width="540" height="24" rx="8" style="fill:#ede9fe"/>
+  <text x="60" y="762" class="box-name" style="fill:#4c1d95">LangGraph 拓扑：Supervisor + 8 子图</text>
+
+  <!-- Supervisor 节点 -->
+  <rect x="220" y="776" width="120" height="32" rx="6" style="fill:#ede9fe" stroke="#c4b5fd" stroke-width="1.5" filter="url(#softShadow)"/>
+  <text x="280" y="796" text-anchor="middle" class="body" font-weight="700" style="fill:#4c1d95">Supervisor</text>
+
+  <!-- 分支线 -->
+  <path d="M 280 808 L 280 816" class="flow-violet"/>
+  <line x1="126" y1="816" x2="434" y2="816" stroke="#94a3b8" stroke-width="1.2"/>
+  <path d="M 126 816 L 126 824" class="flow-violet"/>
+  <path d="M 203 816 L 203 824" class="flow-violet"/>
+  <path d="M 280 816 L 280 824" class="flow-violet"/>
+  <path d="M 357 816 L 357 824" class="flow-violet"/>
+  <path d="M 434 816 L 434 824" class="flow-violet"/>
+
+  <!-- 子图 Row 1 -->
+  <rect x="56" y="824" width="124" height="46" rx="6" style="fill:#f8fafc" stroke="#ddd6fe" stroke-width="0.8"/>
+  <text x="118" y="842" class="cell" font-weight="600" style="fill:#4c1d95" text-anchor="middle">报告生成</text>
+  <text x="118" y="854" class="cell-s" text-anchor="middle">结论先行+数据</text>
+
+  <rect x="192" y="824" width="124" height="46" rx="6" style="fill:#f8fafc" stroke="#ddd6fe" stroke-width="0.8"/>
+  <text x="254" y="842" class="cell" font-weight="600" style="fill:#4c1d95" text-anchor="middle">结果分析</text>
+  <text x="254" y="854" class="cell-s" text-anchor="middle">compare/对比</text>
+
+  <rect x="328" y="824" width="124" height="46" rx="6" style="fill:#f8fafc" stroke="#ddd6fe" stroke-width="0.8"/>
+  <text x="390" y="842" class="cell" font-weight="600" style="fill:#4c1d95" text-anchor="middle">竞品分析</text>
+  <text x="390" y="854" class="cell-s" text-anchor="middle">外部基线对比</text>
+
+  <rect x="464" y="824" width="112" height="46" rx="6" style="fill:#fef3c7" stroke="#fcd34d" stroke-width="0.8"/>
+  <text x="520" y="842" class="cell" font-weight="600" style="fill:#92400e" text-anchor="middle">codegen</text>
+  <text x="520" y="854" class="cell-s" text-anchor="middle">HTML/CSV 导出</text>
+
+  <!-- 子图 Row 2 -->
+  <path d="M 118 870 L 118 878" class="flow"/>
+  <path d="M 254 870 L 254 878" class="flow"/>
+  <path d="M 390 870 L 390 878" class="flow"/>
+  <path d="M 520 870 L 520 878" class="flow"/>
+
+  <rect x="56" y="878" width="124" height="46" rx="6" style="fill:#f8fafc" stroke="#ddd6fe" stroke-width="0.8"/>
+  <text x="118" y="896" class="cell" font-weight="600" style="fill:#4c1d95" text-anchor="middle">排行解读</text>
+  <text x="118" y="908" class="cell-s" text-anchor="middle">rank/percentile</text>
+
+  <rect x="192" y="878" width="124" height="46" rx="6" style="fill:#f8fafc" stroke="#ddd6fe" stroke-width="0.8"/>
+  <text x="254" y="896" class="cell" font-weight="600" style="fill:#4c1d95" text-anchor="middle">回归报告</text>
+  <text x="254" y="908" class="cell-s" text-anchor="middle">失败用例分析</text>
+
+  <rect x="328" y="878" width="124" height="46" rx="6" style="fill:#f8fafc" stroke="#ddd6fe" stroke-width="0.8"/>
+  <text x="390" y="896" class="cell" font-weight="600" style="fill:#4c1d95" text-anchor="middle">驱动生成</text>
+  <text x="390" y="908" class="cell-s" text-anchor="middle">Testcase 生成</text>
+
+  <rect x="464" y="878" width="112" height="46" rx="6" style="fill:#f8fafc" stroke="#ddd6fe" stroke-width="0.8"/>
+  <text x="520" y="896" class="cell" font-weight="600" style="fill:#4c1d95" text-anchor="middle">任务编排</text>
+  <text x="520" y="908" class="cell-s" text-anchor="middle">触发新任务</text>
+
+  <text x="60" y="948" class="cell-s" style="fill:#475569">61 工具 · 交互 + Solo 双模式 · human-in-the-loop · SSE 流式输出 · 5 层上下文注入</text>
+  <text x="60" y="962" class="cell-s" style="fill:#475569">上下文：系统指令 / 任务数据 / 历史 / 文档 / 用例 · API 权限 api_key / service_role 双层校验</text>
+  <text x="60" y="976" class="cell-s" style="fill:#475569">报告要点 → REPORT_EVENTS → 任务改进循环消费</text>
+
+  <!-- 右侧：能力描述 + NL 示例 -->
+  <rect x="596" y="746" width="620" height="266" style="fill:#ffffff" rx="8" stroke="#ddd6fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="596" y="746" width="620" height="24" rx="8" style="fill:#ede9fe"/>
+  <text x="608" y="762" class="box-name" style="fill:#4c1d95">报告能力 + 典型交互（自然语言 → 结论）</text>
+
+  <!-- 5 项能力 -->
+  <rect x="608" y="776" width="596" height="70" style="fill:#f8fafc" rx="6" stroke="#ddd6fe" stroke-width="0.5"/>
+  <circle cx="624" cy="788" r="7" style="fill:#7c3aed"/>
+  <text x="624" y="792" class="num-badge" font-size="7">1</text>
+  <text x="640" y="792" class="body" font-size="9.5" font-weight="600" style="fill:#4c1d95">报告自动生成</text>
+  <text x="640" y="806" class="cell-s">任务结果 → 结构化报告（结论先行 + 数据支撑）</text>
+  <circle cx="624" cy="816" r="7" style="fill:#7c3aed"/>
+  <text x="624" y="820" class="num-badge" font-size="7">2</text>
+  <text x="640" y="820" class="body" font-size="9.5" font-weight="600" style="fill:#4c1d95">报告智能对比</text>
+  <text x="640" y="834" class="cell-s">result_compare / report_compare 工具，任务/报告双维度</text>
+
+  <rect x="608" y="852" width="596" height="70" style="fill:#f8fafc" rx="6" stroke="#ddd6fe" stroke-width="0.5"/>
+  <circle cx="624" cy="864" r="7" style="fill:#7c3aed"/>
+  <text x="624" y="868" class="num-badge" font-size="7">3</text>
+  <text x="640" y="868" class="body" font-size="9.5" font-weight="600" style="fill:#4c1d95">Benchmark 排行解读</text>
+  <text x="640" y="882" class="cell-s">rank / percentile / score100 自动定位与差距归因</text>
+  <circle cx="624" cy="896" r="7" style="fill:#7c3aed"/>
+  <text x="624" y="900" class="num-badge" font-size="7">4</text>
+  <text x="640" y="900" class="body" font-size="9.5" font-weight="600" style="fill:#4c1d95">报告导出</text>
+  <text x="640" y="914" class="cell-s">codegen 子图产出 HTML / CSV 报告模板与脚本</text>
+
+  <!-- NL 示例气泡 -->
+  <rect x="608" y="928" width="596" height="40" rx="6" style="fill:#f5f3ff" stroke="#ddd6fe" stroke-width="0.8"/>
+  <path d="M 616 936 Q 620 928 628 936" style="fill:#f5f3ff" stroke="#ddd6fe" stroke-width="0.8"/>
+  <text x="616" y="944" class="body" font-size="9" style="fill:#4c1d95">「对比 task 101 / 102 的报告差异」→ 自动出差异结论 + 数据表</text>
+  <text x="616" y="958" class="body" font-size="9" style="fill:#4c1d95">「上周 Benchmark 排行解读」→ 「帮我把 103 的报告导出成 HTML」→ 「生成驱动报告的模板」</text>
+
+  <!-- ③ 结论条 -->
+  <rect x="48" y="1022" width="1144" height="26" rx="6" style="fill:#f5f3ff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="620" y="1039" text-anchor="middle" font-size="9.5" style="fill:#4c1d95">Agent 化核心：报告从「看数据」升级为「直接给结论」，自然语言驱动，Benchmark 排行自动解读</text>
+
+  <!-- ================================================================================== -->
+  </g>
+  <g transform="translate(0,20)">
+  <!-- ④ Benchmark 双轨排行 (orange) y=1080 h=290 -->
+  <!-- ================================================================================== -->
+  <rect x="24" y="1080" width="1192" height="360" rx="10" style="fill:#fff7ed" stroke="#f97316" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1080" width="1192" height="38" rx="10" style="fill:#ffedd5"/>
+  <rect x="24" y="1106" width="1192" height="12" style="fill:#ffedd5"/>
+  <circle cx="46" cy="1099" r="11" style="fill:#f97316"/>
+  <text x="46" y="1103" class="num-badge">4</text>
+  <text x="66" y="1104" class="sec-title" style="fill:#7c2d12">Benchmark 双轨排行 — 平台实测 + 外部基线，度量能力演进</text>
+
+  <!-- 左：平台实测轨 -->
+  <rect x="48" y="1126" width="368" height="196" style="fill:#ffffff" rx="8" stroke="#fed7aa" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="1126" width="368" height="24" rx="8" style="fill:#ffedd5"/>
+  <text x="60" y="1142" class="box-name" style="fill:#9a3412">① 平台实测轨</text>
+
+  <rect x="56" y="1156" width="352" height="60" rx="6" style="fill:#f8fafc" stroke="#fed7aa" stroke-width="0.5"/>
+  <rect x="56" y="1156" width="4" height="60" rx="2" style="fill:#f97316"/>
+  <text x="68" y="1172" class="body" font-size="9.5" style="fill:#1e293b">数据来源</text>
+  <text x="68" y="1186" class="cell-s">published_tasks 标记 benchmark:true</text>
+  <text x="68" y="1200" class="cell-s">与任务发布联动，版本快照口径一致</text>
+
+  <path d="M 232 1216 L 232 1224" class="flow-orange"/>
+
+  <rect x="56" y="1224" width="352" height="36" rx="6" style="fill:#f8fafc" stroke="#fed7aa" stroke-width="0.5"/>
+  <text x="68" y="1240" class="body" font-size="9.5" style="fill:#1e293b">执行完成 → REPORT_EVENTS</text>
+  <text x="68" y="1254" class="cell-s">异步重算排行，不阻塞执行链路</text>
+
+  <text x="56" y="1280" class="body" font-size="9.5" style="fill:#334155">排行快照隔离：不同版本各自成榜</text>
+  <text x="56" y="1296" class="body" font-size="9.5" style="fill:#334155">指标映射配置化：benchmark_metric_mappings</text>
+  <text x="56" y="1312" class="body" font-size="9.5" style="fill:#475569">度量「自己 vs 自己」的能力演进</text>
+
+  <!-- 右：外部基线轨 -->
+  <rect x="424" y="1126" width="368" height="196" style="fill:#ffffff" rx="8" stroke="#fed7aa" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="424" y="1126" width="368" height="24" rx="8" style="fill:#ffedd5"/>
+  <text x="436" y="1142" class="box-name" style="fill:#9a3412">② 外部基线导入轨</text>
+
+  <rect x="432" y="1156" width="352" height="60" rx="6" style="fill:#f8fafc" stroke="#fed7aa" stroke-width="0.5"/>
+  <rect x="432" y="1156" width="4" height="60" rx="2" style="fill:#f97316"/>
+  <text x="444" y="1172" class="body" font-size="9.5" style="fill:#1e293b">数据来源</text>
+  <text x="444" y="1186" class="cell-s">benchmark_sources / baselines 不可变快照</text>
+  <text x="444" y="1200" class="cell-s">厂商 / 论文 / 内部历史基线</text>
+
+  <path d="M 608 1216 L 608 1224" class="flow-orange"/>
+
+  <rect x="432" y="1224" width="352" height="36" rx="6" style="fill:#f8fafc" stroke="#fed7aa" stroke-width="0.5"/>
+  <text x="444" y="1240" class="body" font-size="9.5" style="fill:#1e293b">只读不可变，导入即冻结</text>
+  <text x="444" y="1254" class="cell-s">用于跨平台横向对比</text>
+
+  <text x="432" y="1280" class="body" font-size="9.5" style="fill:#334155">deltaExternal：与业界差距量化</text>
+  <text x="432" y="1296" class="body" font-size="9.5" style="fill:#334155">支持多厂商多论文基线同时导入</text>
+  <text x="432" y="1312" class="body" font-size="9.5" style="fill:#475569">度量「自己 vs 业界」的竞争定位</text>
+
+  <!-- 6 种排行算法 -->
+  <rect x="800" y="1126" width="416" height="126" style="fill:#ffffff" rx="8" stroke="#fed7aa" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="800" y="1126" width="416" height="24" rx="8" style="fill:#ffedd5"/>
+  <text x="812" y="1142" class="box-name" style="fill:#9a3412">6 种排行算法</text>
+
+  <rect x="812" y="1156" width="116" height="22" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="870" y="1170" class="chip-t" style="fill:#9a3412">rank 名次</text>
+  <rect x="936" y="1156" width="116" height="22" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="994" y="1170" class="chip-t" style="fill:#9a3412">percentile 百分位</text>
+  <rect x="1060" y="1156" width="116" height="22" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="1118" y="1170" class="chip-t" style="fill:#9a3412">score100 归一化</text>
+
+  <rect x="812" y="1182" width="116" height="22" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="870" y="1196" class="chip-t" style="fill:#9a3412">gapBest 距最优</text>
+  <rect x="936" y="1182" width="116" height="22" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="994" y="1196" class="chip-t" style="fill:#9a3412">gapMedian 距中位</text>
+  <rect x="1060" y="1182" width="116" height="22" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="1118" y="1196" class="chip-t" style="fill:#9a3412">deltaExternal 外部差</text>
+
+  <text x="812" y="1220" class="body" font-size="9.5" style="fill:#475569">指标映射配置化，口径统一 · 双轨各自成榜互不污染</text>
+  <text x="812" y="1236" class="body" font-size="9.5" style="fill:#475569">排行 ReadModel 按版本快照隔离，支持历史趋势回溯</text>
+
+  <g transform="translate(0,78)">
+  <!-- 数据流链 -->
+  <rect x="48" y="1260" width="1168" height="52" rx="6" style="fill:#ffffff" stroke="#fed7aa" stroke-width="1"/>
+  <text x="620" y="1276" text-anchor="middle" class="lbl" style="fill:#9a3412">数据链路</text>
+
+  <rect x="80" y="1284" width="120" height="24" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="140" y="1300" class="chip-t" style="fill:#9a3412">任务发布(②)</text>
+  <path d="M 200 1296 L 228 1296" class="flow-orange"/>
+  <rect x="228" y="1284" width="100" height="24" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="278" y="1300" class="chip-t" style="fill:#9a3412">实测轨入榜</text>
+  <path d="M 328 1296 L 356 1296" class="flow-orange"/>
+  <rect x="356" y="1284" width="130" height="24" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="421" y="1300" class="chip-t" style="fill:#9a3412">REPORT_EVENTS</text>
+  <path d="M 486 1296 L 514 1296" class="flow-orange"/>
+  <rect x="514" y="1284" width="110" height="24" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="569" y="1300" class="chip-t" style="fill:#9a3412">排行 ReadModel</text>
+  <path d="M 624 1296 L 652 1296" class="flow-orange"/>
+  <rect x="652" y="1284" width="120" height="24" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="712" y="1300" class="chip-t" style="fill:#9a3412">Benchmark 报告</text>
+  <path d="M 772 1296 L 800 1296" class="flow-orange"/>
+  <rect x="800" y="1284" width="90" height="24" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="845" y="1300" class="chip-t" style="fill:#9a3412">Agent(③)</text>
+  <path d="M 890 1296 L 918 1296" class="flow-orange"/>
+  <rect x="918" y="1284" width="110" height="24" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="973" y="1300" class="chip-t" style="fill:#9a3412">外部基线导入</text>
+  <path d="M 1028 1296 L 1056 1296" class="flow-orange"/>
+  <rect x="1056" y="1284" width="130" height="24" rx="4" style="fill:#fff7ed" stroke="#fed7aa" stroke-width="0.8"/>
+  <text x="1121" y="1300" class="chip-t" style="fill:#9a3412">deltaExternal</text>
+
+  </g>
+  <g transform="translate(0,74)">
+  <!-- ④ 结论条 -->
+  <rect x="48" y="1332" width="1144" height="26" rx="6" style="fill:#fff7ed" stroke="#fdba74" stroke-width="1"/>
+  <text x="620" y="1349" text-anchor="middle" font-size="9.5" style="fill:#9a3412">Benchmark 双轨：实测轨度量「自己 vs 自己」，外部轨度量「自己 vs 业界」，Agent 自动解读排行</text>
+
+  <!-- ================================================================================== -->
+  </g>
+  </g>
+  <g transform="translate(0,120)">
+  <!-- ⑤ 微服务化 (indigo) y=1390 h=290 -->
+  <!-- ================================================================================== -->
+  <rect x="24" y="1390" width="1192" height="290" rx="10" style="fill:#eef2ff" stroke="#4f46e5" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1390" width="1192" height="38" rx="10" style="fill:#e0e7ff"/>
+  <rect x="24" y="1416" width="1192" height="12" style="fill:#e0e7ff"/>
+  <circle cx="46" cy="1409" r="11" style="fill:#4f46e5"/>
+  <text x="46" y="1413" class="num-badge">5</text>
+  <text x="66" y="1414" class="sec-title" style="fill:#312e81">微服务化 — 11 服务独立部署 · gRPC + ACL · 去单体</text>
+
+  <!-- 服务拓扑图 -->
+  <rect x="48" y="1436" width="540" height="196" style="fill:#ffffff" rx="8" stroke="#c7d2fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="1436" width="540" height="24" rx="8" style="fill:#e0e7ff"/>
+  <text x="60" y="1452" class="box-name" style="fill:#312e81">11 服务节点拓扑</text>
+
+  <!-- Gateway 顶层 -->
+  <rect x="220" y="1466" width="140" height="28" rx="6" style="fill:#e0e7ff" stroke="#a5b4fc" stroke-width="1.2" filter="url(#softShadow)"/>
+  <text x="290" y="1485" text-anchor="middle" class="body" font-weight="700" style="fill:#312e81">gateway</text>
+
+  <!-- 向下箭头 -->
+  <path d="M 290 1494 L 290 1502" class="flow-indigo"/>
+
+  <!-- 中间层 4 服务 -->
+  <rect x="62" y="1502" width="100" height="26" rx="4" style="fill:#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="112" y="1519" class="chip-t" style="fill:#3730a3">task</text>
+  <rect x="174" y="1502" width="100" height="26" rx="4" style="fill:#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="224" y="1519" class="chip-t" style="fill:#3730a3">e2e_test</text>
+  <rect x="286" y="1502" width="100" height="26" rx="4" style="fill:#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="336" y="1519" class="chip-t" style="fill:#3730a3">api_test</text>
+  <rect x="398" y="1502" width="100" height="26" rx="4" style="fill:#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="448" y="1519" class="chip-t" style="fill:#3730a3">evaluation</text>
+
+  <!-- 箭头 -->
+  <path d="M 112 1528 L 112 1536" class="flow"/>
+  <path d="M 224 1528 L 224 1536" class="flow"/>
+  <path d="M 336 1528 L 336 1536" class="flow"/>
+  <path d="M 448 1528 L 448 1536" class="flow"/>
+
+  <!-- 中间层 4 服务 Row 2 -->
+  <rect x="62" y="1536" width="100" height="26" rx="4" style="fill:#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="112" y="1553" class="chip-t" style="fill:#3730a3">report</text>
+  <rect x="174" y="1536" width="100" height="26" rx="4" style="fill:#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="224" y="1553" class="chip-t" style="fill:#3730a3">audio</text>
+  <rect x="286" y="1536" width="100" height="26" rx="4" style="fill:#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="336" y="1553" class="chip-t" style="fill:#3730a3">device</text>
+  <rect x="398" y="1536" width="100" height="26" rx="4" style="fill:#eef2ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="448" y="1553" class="chip-t" style="fill:#3730a3">api_key</text>
+
+  <!-- 箭头 -->
+  <path d="M 112 1562 L 112 1570" class="flow"/>
+  <path d="M 224 1562 L 224 1570" class="flow"/>
+  <path d="M 336 1562 L 336 1570" class="flow"/>
+  <path d="M 448 1562 L 448 1570" class="flow"/>
+
+  <!-- 底层 2 个特殊服务 -->
+  <rect x="108" y="1570" width="164" height="26" rx="4" style="fill:#eef2ff" stroke="#a5b4fc" stroke-width="0.8" filter="url(#softShadow)"/>
+  <text x="190" y="1587" class="chip-t" style="fill:#3730a3">agent</text>
+  <rect x="284" y="1570" width="164" height="26" rx="4" style="fill:#eef2ff" stroke="#a5b4fc" stroke-width="0.8" filter="url(#softShadow)"/>
+  <text x="366" y="1587" class="chip-t" style="fill:#3730a3">transfer_agent</text>
+
+  <!-- 说明 -->
+  <text x="60" y="1618" class="body" font-size="9" style="fill:#475569">前端 API 前缀 → gateway 路由 · 端口 service_ports.py 枚举化 · local/docker/k8s 渐进切换</text>
+
+  <!-- 右侧：关键设计 + 事件总线 -->
+  <rect x="596" y="1436" width="620" height="196" style="fill:#ffffff" rx="8" stroke="#c7d2fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="596" y="1436" width="620" height="24" rx="8" style="fill:#e0e7ff"/>
+  <text x="608" y="1452" class="box-name" style="fill:#312e81">关键设计 + 事件总线</text>
+
+  <!-- gRPC + ACL 卡片 -->
+  <rect x="608" y="1466" width="596" height="52" rx="6" style="fill:#f8fafc" stroke="#c7d2fe" stroke-width="0.5"/>
+  <rect x="608" y="1466" width="4" height="52" rx="2" style="fill:#4f46e5"/>
+  <text x="624" y="1482" class="body" font-size="9.5" font-weight="600" style="fill:#312e81">DDD + CQRS 架构 · gRPC + ACL 仓储</text>
+  <text x="624" y="1496" class="cell-s">DDD：Presentation / Application / Domain / Infrastructure 四层分离 · 领域零依赖</text>
+  <text x="624" y="1510" class="cell-s">CQRS：commands → write 模型 · queries → read 模型（排行/报告 ReadModel 读写隔离）</text>
+
+  <!-- 事件总线 -->
+  <text x="608" y="1532" class="lbl" style="fill:#312e81">Redis 事件总线（5 频道）</text>
+  <rect x="608" y="1540" width="108" height="26" rx="4" style="fill:#e0e7ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="662" y="1557" class="chip-t" style="fill:#3730a3">TASK</text>
+  <rect x="724" y="1540" width="108" height="26" rx="4" style="fill:#e0e7ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="778" y="1557" class="chip-t" style="fill:#3730a3">CASE</text>
+  <rect x="840" y="1540" width="108" height="26" rx="4" style="fill:#e0e7ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="894" y="1557" class="chip-t" style="fill:#3730a3">DEVICE</text>
+  <rect x="956" y="1540" width="108" height="26" rx="4" style="fill:#e0e7ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="1010" y="1557" class="chip-t" style="fill:#3730a3">REPORT</text>
+  <rect x="1072" y="1540" width="108" height="26" rx="4" style="fill:#e0e7ff" stroke="#c7d2fe" stroke-width="0.8"/>
+  <text x="1126" y="1557" class="chip-t" style="fill:#3730a3">CONFIG</text>
+
+  <!-- 数据流：各频道消费关系 -->
+  <rect x="608" y="1574" width="596" height="52" rx="6" style="fill:#f8fafc" stroke="#c7d2fe" stroke-width="0.5"/>
+  <text x="616" y="1590" class="body" font-size="9" style="fill:#1e293b">TASK → 执行链路调度 · CASE → 用例缓存重建 · DEVICE → 设备状态同步</text>
+  <text x="616" y="1604" class="body" font-size="9" style="fill:#1e293b">REPORT → 排行重算 + Agent 报告触发 · CONFIG → 配置热更新</text>
+  <text x="616" y="1618" class="cell-s" style="fill:#475569">统一事件协议 + 幂等消费 · 服务间最终一致性 · 跨服务事件路由</text>
+
+  <!-- ⑤ 结论条 -->
+  <rect x="48" y="1642" width="1144" height="26" rx="6" style="fill:#eef2ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="620" y="1659" text-anchor="middle" font-size="9.5" style="fill:#3730a3">微服务化是六大更新的承载底座：用例 / 任务 / 报告 / Agent / 跨区全部服务化，Redis 事件总线跨服务协同</text>
+
+  <!-- ================================================================================== -->
+  </g>
+  <g transform="translate(0,130)">
+  <!-- ⑥ 网络跨区 (slate) y=1700 h=290 -->
+  <!-- ================================================================================== -->
+  <rect x="24" y="1700" width="1192" height="290" rx="10" style="fill:#f8fafc" stroke="#64748b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1700" width="1192" height="38" rx="10" style="fill:#e2e8f0"/>
+  <rect x="24" y="1726" width="1192" height="12" style="fill:#e2e8f0"/>
+  <circle cx="46" cy="1719" r="11" style="fill:#64748b"/>
+  <text x="46" y="1723" class="num-badge">6</text>
+  <text x="66" y="1724" class="sec-title" style="fill:#1e293b">网络跨区 — 三区拓扑 · transfer_agent · 百 MB 级传输</text>
+
+  <!-- 三区拓扑 -->
+  <rect x="48" y="1746" width="540" height="196" style="fill:#ffffff" rx="8" stroke="#e2e8f0" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="1746" width="540" height="24" rx="8" style="fill:#e2e8f0"/>
+  <text x="60" y="1762" class="box-name" style="fill:#1e293b">三区拓扑</text>
+
+  <!-- A 区（黄） -->
+  <rect x="56" y="1780" width="160" height="70" rx="8" style="fill:#fef9c3" stroke="#fde047" stroke-width="1.2"/>
+  <text x="136" y="1804" text-anchor="middle" class="body" font-weight="700" style="fill:#854d0e">A 区</text>
+  <text x="136" y="1818" text-anchor="middle" class="cell-s" style="fill:#854d0e">任务编排 · 执行</text>
+  <text x="136" y="1832" text-anchor="middle" class="cell-s" style="fill:#854d0e">测试结果产出</text>
+
+  <!-- B 区（绿） -->
+  <rect x="244" y="1780" width="160" height="70" rx="8" style="fill:#dcfce7" stroke="#86efac" stroke-width="1.2"/>
+  <text x="324" y="1804" text-anchor="middle" class="body" font-weight="700" style="fill:#166534">B 区（中继）</text>
+  <text x="324" y="1818" text-anchor="middle" class="cell-s" style="fill:#166534">评估能力管理</text>
+  <text x="324" y="1832" text-anchor="middle" class="cell-s" style="fill:#166534">数据中转枢纽</text>
+
+  <!-- C 区（蓝） -->
+  <rect x="432" y="1780" width="148" height="70" rx="8" style="fill:#dbeafe" stroke="#93c5fd" stroke-width="1.2"/>
+  <text x="506" y="1804" text-anchor="middle" class="body" font-weight="700" style="fill:#1e3a8a">C 区</text>
+  <text x="506" y="1818" text-anchor="middle" class="cell-s" style="fill:#1e3a8a">评估设备</text>
+  <text x="506" y="1832" text-anchor="middle" class="cell-s" style="fill:#1e3a8a">声学环境</text>
+
+  <!-- 拓扑连线 -->
+  <path d="M 216 1815 L 244 1815" class="flow" marker-end="url(#arrow)"/>
+  <path d="M 244 1815 L 216 1815" class="flow" marker-end="url(#arrow)"/>
+  <path d="M 404 1815 L 432 1815" class="flow" marker-end="url(#arrow)"/>
+  <text x="230" y="1806" class="cell-s" font-size="7.5" style="fill:#64748b" text-anchor="middle">双向</text>
+  <text x="418" y="1806" class="cell-s" font-size="7.5" style="fill:#64748b" text-anchor="middle">单向</text>
+
+  <!-- transfer_agent -->
+  <rect x="56" y="1864" width="524" height="30" rx="6" style="fill:#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="318" y="1883" text-anchor="middle" class="body" font-size="9" style="fill:#475569">transfer_agent T-A / T-B 双实例对等协商 · A 与 C 不直连，全部经 B 中转收敛暴露面</text>
+
+  <text x="56" y="1912" class="body" font-size="9.5" style="fill:#1e293b">百 MB 级评估模型/数据集分片传输 · 分片 4MB + 断点续传 + 幂等去重</text>
+  <text x="56" y="1928" class="body" font-size="9.5" style="fill:#475569">带宽感知限速 · A 区可消费 C 区能力，跨区能力复用</text>
+
+  <!-- 右侧：传输包协议 + 安全 -->
+  <rect x="596" y="1746" width="620" height="196" style="fill:#ffffff" rx="8" stroke="#e2e8f0" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="596" y="1746" width="620" height="24" rx="8" style="fill:#e2e8f0"/>
+  <text x="608" y="1762" class="box-name" style="fill:#1e293b">传输协议 + 安全体系</text>
+
+  <!-- 传输包 6 类 -->
+  <text x="608" y="1784" class="lbl" style="fill:#1e293b">传输包协议（6 类）</text>
+  <rect x="608" y="1790" width="80" height="22" rx="4" style="fill:#f1f5f9" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="648" y="1804" class="chip-t" style="fill:#334155">DATA</text>
+  <rect x="696" y="1790" width="80" height="22" rx="4" style="fill:#f1f5f9" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="736" y="1804" class="chip-t" style="fill:#334155">MANIFEST</text>
+  <rect x="784" y="1790" width="92" height="22" rx="4" style="fill:#f1f5f9" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="830" y="1804" class="chip-t" style="fill:#334155">HANDSHAKE</text>
+  <rect x="884" y="1790" width="80" height="22" rx="4" style="fill:#f1f5f9" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="924" y="1804" class="chip-t" style="fill:#334155">CHECKSUM</text>
+  <rect x="972" y="1790" width="60" height="22" rx="4" style="fill:#f1f5f9" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="1002" y="1804" class="chip-t" style="fill:#334155">ACK</text>
+  <rect x="1040" y="1790" width="60" height="22" rx="4" style="fill:#f1f5f9" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="1070" y="1804" class="chip-t" style="fill:#334155">ERROR</text>
+
+  <!-- 传输流程 -->
+  <rect x="608" y="1818" width="596" height="28" rx="4" style="fill:#f8fafc" stroke="#e2e8f0" stroke-width="0.5"/>
+  <text x="620" y="1836" class="body" font-size="9" style="fill:#475569">流程：HANDSHAKE 协商 → MANIFEST 声明 → DATA 分片传输 → CHECKSUM 校验 → ACK 确认 · 坏包 ERROR 重传</text>
+
+  <!-- 安全 5 层 -->
+  <text x="608" y="1860" class="lbl" style="fill:#1e293b">安全体系（5 层）</text>
+
+  <rect x="608" y="1866" width="108" height="26" rx="4" style="fill:#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="662" y="1883" class="chip-t" style="fill:#475569">鉴权</text>
+  <rect x="724" y="1866" width="108" height="26" rx="4" style="fill:#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="778" y="1883" class="chip-t" style="fill:#475569">加密</text>
+  <rect x="840" y="1866" width="108" height="26" rx="4" style="fill:#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="894" y="1883" class="chip-t" style="fill:#475569">审计</text>
+  <rect x="956" y="1866" width="108" height="26" rx="4" style="fill:#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="1010" y="1883" class="chip-t" style="fill:#475569">校验</text>
+  <rect x="1072" y="1866" width="108" height="26" rx="4" style="fill:#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="1126" y="1883" class="chip-t" style="fill:#475569">隔离</text>
+
+  <text x="608" y="1906" class="body" font-size="9" style="fill:#1e293b">区级 API Key + 传输令牌双重鉴权 · 传输载荷加密防中间人</text>
+  <text x="608" y="1922" class="body" font-size="9" style="fill:#475569">全程日志留痕 · CHECKSUM 坏包自动重传 · 单向链路 + 网络分段物理隔离</text>
+
+  <!-- ⑥ 结论条 -->
+  <rect x="48" y="1952" width="1144" height="26" rx="6" style="fill:#f8fafc" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="620" y="1969" text-anchor="middle" font-size="9.5" style="fill:#475569">网络跨区：把「评估能力」当作可传输资产，跨区复用，A 区直接消费 C 区能力，三区安全隔离</text>
+
+  <!-- ============================================== -->
+  </g>
+  <g transform="translate(0,160)">
+<!-- ================================================================================== -->
+  <!-- ⑦ 角色权限控制 + 登录认证 (indigo) y=1995 h=1424 -->
+  <!-- ================================================================================== -->
+  <rect x="24" y="1995" width="1192" height="1424" rx="10" fill="#eef2ff" stroke="#818cf8" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1995" width="1192" height="38" rx="10" fill="#c7d2fe"/>
+  <rect x="24" y="2021" width="1192" height="12" fill="#c7d2fe"/>
+  <circle cx="46" cy="2014" r="11" fill="#6366f1"/>
+  <text x="46" y="2018" class="num-badge">7</text>
+  <text x="66" y="2019" class="sec-title" fill="#312e81">角色权限控制 + 登录认证 — RBAC 5 角色 · 16 域 88 权限点 · OAuth 双模式 · 统一鉴权链路</text>
+
+  <!-- ① 5 系统内置角色 -->
+  <rect x="48" y="2041" width="1144" height="118" fill="#ffffff" rx="8" stroke="#c7d2fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="2041" width="1144" height="24" rx="8" fill="#e0e7ff"/>
+  <text x="60" y="2057" class="box-name" fill="#3730a3">① 5 系统内置角色 — is_system=true 不可删除 · 可挂用户 · 权限点可调</text>
+
+  <!-- admin -->
+  <rect x="56" y="2071" width="216" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="56" y="2071" width="216" height="24" rx="6" fill="#4f46e5"/>
+  <rect x="56" y="2089" width="216" height="6" fill="#4f46e5"/>
+  <text x="164" y="2088" text-anchor="middle" font-size="10.5" font-weight="700" fill="#ffffff">admin · 超级管理员</text>
+  <rect x="66" y="2110" width="96" height="18" rx="9" fill="#6366f1" opacity="0.12"/>
+  <text x="114" y="2122" text-anchor="middle" class="chip-t" fill="#4338ca" font-weight="700">88 点 · 全量</text>
+  <text x="66" y="2140" class="cell-s" fill="#64748b">全 16 域 88 权限点 · * 全局通配 · 授权/审计</text>
+
+  <!-- tester -->
+  <rect x="280" y="2071" width="216" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="280" y="2071" width="216" height="24" rx="6" fill="#2563eb"/>
+  <rect x="280" y="2089" width="216" height="6" fill="#2563eb"/>
+  <text x="388" y="2088" text-anchor="middle" font-size="10.5" font-weight="700" fill="#ffffff">tester · 测试工程师+主管</text>
+  <rect x="290" y="2110" width="96" height="18" rx="9" fill="#3b82f6" opacity="0.12"/>
+  <text x="338" y="2122" text-anchor="middle" class="chip-t" fill="#1d4ed8" font-weight="700">55 点 · 执行</text>
+  <text x="290" y="2140" class="cell-s" fill="#64748b">任务·用例·报告·执行 核心权 · home/sse 推送</text>
+
+  <!-- algo_engineer -->
+  <rect x="504" y="2071" width="216" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="504" y="2071" width="216" height="24" rx="6" fill="#7c3aed"/>
+  <rect x="504" y="2089" width="216" height="6" fill="#7c3aed"/>
+  <text x="612" y="2088" text-anchor="middle" font-size="10.5" font-weight="700" fill="#ffffff">algo_engineer · 算法+质量</text>
+  <rect x="514" y="2110" width="96" height="18" rx="9" fill="#8b5cf6" opacity="0.12"/>
+  <text x="562" y="2122" text-anchor="middle" class="chip-t" fill="#6d28d9" font-weight="700">40 点 · 算法</text>
+  <text x="514" y="2140" class="cell-s" fill="#64748b">算法·评估·质量 负责人 · 报告 只读</text>
+
+  <!-- device_admin -->
+  <rect x="728" y="2071" width="216" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="728" y="2071" width="216" height="24" rx="6" fill="#059669"/>
+  <rect x="728" y="2089" width="216" height="6" fill="#059669"/>
+  <text x="836" y="2088" text-anchor="middle" font-size="10.5" font-weight="700" fill="#ffffff">device_admin · 设备管理员</text>
+  <rect x="738" y="2110" width="96" height="18" rx="9" fill="#10b981" opacity="0.12"/>
+  <text x="786" y="2122" text-anchor="middle" class="chip-t" fill="#047857" font-weight="700">25 点 · 设备</text>
+  <text x="738" y="2140" class="cell-s" fill="#64748b">设备·播放·采集 管理 · SPL 声学数据</text>
+
+  <!-- guest -->
+  <rect x="952" y="2071" width="216" height="80" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="952" y="2071" width="216" height="24" rx="6" fill="#64748b"/>
+  <rect x="952" y="2089" width="216" height="6" fill="#64748b"/>
+  <text x="1060" y="2088" text-anchor="middle" font-size="10.5" font-weight="700" fill="#ffffff">guest · 只读游客</text>
+  <rect x="962" y="2110" width="96" height="18" rx="9" fill="#94a3b8" opacity="0.15"/>
+  <text x="1010" y="2122" text-anchor="middle" class="chip-t" fill="#475569" font-weight="700">8 点 · 只读</text>
+  <text x="962" y="2140" class="cell-s" fill="#64748b">首页/SSE/报告 浏览 · 不可写 · 不可看日志</text>
+
+  <!-- ② 权限模型 -->
+  <rect x="48" y="2167" width="1144" height="132" fill="#ffffff" rx="8" stroke="#c7d2fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="2167" width="1144" height="24" rx="8" fill="#e0e7ff"/>
+  <text x="60" y="2183" class="box-name" fill="#3730a3">② 权限模型 — 16 权限域 · 88 权限点 · 命名「资源:操作」· 支持域通配 *</text>
+
+  <!-- 16 域 chips 4x4 -->
+  <rect x="56" y="2197" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="119" y="2210" class="chip-t" fill="#4338ca">task 任务 7</text>
+  <rect x="188" y="2197" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="251" y="2210" class="chip-t" fill="#4338ca">testcase 用例 6</text>
+  <rect x="320" y="2197" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="383" y="2210" class="chip-t" fill="#4338ca">audio 音频 6</text>
+  <rect x="452" y="2197" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="515" y="2210" class="chip-t" fill="#4338ca">device 设备 5</text>
+
+  <rect x="56" y="2223" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="119" y="2236" class="chip-t" fill="#4338ca">playback 播放 3</text>
+  <rect x="188" y="2223" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="251" y="2236" class="chip-t" fill="#4338ca">spl 声学 4</text>
+  <rect x="320" y="2223" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="383" y="2236" class="chip-t" fill="#4338ca">api_config 6</text>
+  <rect x="452" y="2223" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="515" y="2236" class="chip-t" fill="#4338ca">report 报告 8</text>
+
+  <rect x="56" y="2249" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="119" y="2262" class="chip-t" fill="#4338ca">evaluation 评估 5</text>
+  <rect x="188" y="2249" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="251" y="2262" class="chip-t" fill="#4338ca">algorithm 算法 6</text>
+  <rect x="320" y="2249" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="383" y="2262" class="chip-t" fill="#4338ca">group 分组 5</text>
+  <rect x="452" y="2249" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="515" y="2262" class="chip-t" fill="#4338ca">tag 标签 4</text>
+
+  <rect x="56" y="2275" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="119" y="2288" class="chip-t" fill="#4338ca">log 日志 5</text>
+  <rect x="188" y="2275" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="251" y="2288" class="chip-t" fill="#4338ca">home 首页 3</text>
+  <rect x="320" y="2275" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="383" y="2288" class="chip-t" fill="#4338ca">sse 推送 3</text>
+  <rect x="452" y="2275" width="126" height="20" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="515" y="2288" class="chip-t" fill="#4338ca">auth 用户角色 11</text>
+
+  <!-- 右半：校验 3 步 + 示例点 -->
+  <text x="628" y="2195" class="lbl" fill="#4338ca">权限校验顺序（User.has_permission 三步）</text>
+  <rect x="628" y="2203" width="120" height="20" rx="4" fill="#818cf8"/>
+  <text x="688" y="2216" class="chip-t" fill="#ffffff" font-weight="600">① 角色权限</text>
+  <text x="756" y="2216" class="cell" fill="#94a3b8" text-anchor="middle">→</text>
+  <rect x="768" y="2203" width="130" height="20" rx="4" fill="#818cf8"/>
+  <text x="833" y="2216" class="chip-t" fill="#ffffff" font-weight="600">② 用户附加</text>
+  <text x="906" y="2216" class="cell" fill="#94a3b8" text-anchor="middle">→</text>
+  <rect x="918" y="2203" width="120" height="20" rx="4" fill="#818cf8"/>
+  <text x="978" y="2216" class="chip-t" fill="#ffffff" font-weight="600">③ * 通配</text>
+  <text x="628" y="2236" class="cell-s" fill="#64748b">匹配 name 等于或域通配 · granted=true 授予 / false 撤销 · 仅 admin 可用 * 全通配</text>
+
+  <text x="628" y="2258" class="lbl" fill="#4338ca">示例权限点（权限点 ↔ 路由端点一一映射）</text>
+  <rect x="628" y="2266" width="84" height="20" rx="4" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
+  <text x="670" y="2279" class="chip-t" fill="#6d28d9">task:create</text>
+  <rect x="718" y="2266" width="90" height="20" rx="4" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
+  <text x="763" y="2279" class="chip-t" fill="#6d28d9">report:publish</text>
+  <rect x="814" y="2266" width="92" height="20" rx="4" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
+  <text x="860" y="2279" class="chip-t" fill="#6d28d9">device:control</text>
+  <rect x="912" y="2266" width="82" height="20" rx="4" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
+  <text x="953" y="2279" class="chip-t" fill="#6d28d9">spl:collect</text>
+  <rect x="1000" y="2266" width="76" height="20" rx="4" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
+  <text x="1038" y="2279" class="chip-t" fill="#6d28d9">log:read</text>
+  <text x="628" y="2289" class="cell-s" fill="#64748b">路由装饰器校验 · 前端按权限域渲染菜单/按钮</text>
+
+  <!-- ③ 角色-权限矩阵 -->
+  <rect x="48" y="2311" width="1144" height="356" fill="#ffffff" rx="8" stroke="#c7d2fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="2311" width="1144" height="24" rx="8" fill="#e0e7ff"/>
+  <text x="60" y="2327" class="box-name" fill="#3730a3">③ 角色-权限矩阵 — 16 域 × 5 角色（✓ 全 · ◐ 部分 · ✗ 无）· 合计 88 权限点</text>
+
+  <!-- 表头 -->
+  <line x1="56" y1="2344" x2="1176" y2="2344" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="56" y="2358" class="cell-s" font-weight="600" fill="#475569">权限域</text>
+  <text x="196" y="2358" class="cell-s" font-weight="600" fill="#475569" text-anchor="middle">点数</text>
+  <text x="216" y="2358" class="cell-s" font-weight="600" fill="#475569">域内代表权限点</text>
+  <text x="638" y="2358" class="cell-s" font-weight="600" fill="#475569" text-anchor="middle">admin</text>
+  <text x="746" y="2358" class="cell-s" font-weight="600" fill="#475569" text-anchor="middle">tester</text>
+  <text x="854" y="2358" class="cell-s" font-weight="600" fill="#475569" text-anchor="middle">algo_eng</text>
+  <text x="962" y="2358" class="cell-s" font-weight="600" fill="#475569" text-anchor="middle">device</text>
+  <text x="1070" y="2358" class="cell-s" font-weight="600" fill="#475569" text-anchor="middle">guest</text>
+  <line x1="56" y1="2361" x2="1176" y2="2361" stroke="#e2e8f0" stroke-width="1"/>
+
+  <!-- 行1 task -->
+  <rect x="56" y="2362" width="1120" height="16.5" rx="2" fill="#f8fafc"/>
+  <text x="56" y="2374" class="cell" font-weight="600" fill="#4338ca">task 任务域</text>
+  <text x="196" y="2374" class="cell" text-anchor="middle" fill="#334155">7</text>
+  <text x="216" y="2374" class="cell-s" fill="#64748b">create / publish / execute / assign</text>
+  <text x="638" y="2374" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2374" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2374" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="962" y="2374" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2374" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行2 testcase -->
+  <rect x="56" y="2379" width="1120" height="16.5" rx="2" fill="#ffffff"/>
+  <text x="56" y="2391" class="cell" font-weight="600" fill="#4338ca">testcase 用例域</text>
+  <text x="196" y="2391" class="cell" text-anchor="middle" fill="#334155">6</text>
+  <text x="216" y="2391" class="cell-s" fill="#64748b">import / edit / delete / re-run</text>
+  <text x="638" y="2391" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2391" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2391" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="962" y="2391" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2391" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行3 audio -->
+  <rect x="56" y="2396" width="1120" height="16.5" rx="2" fill="#f8fafc"/>
+  <text x="56" y="2408" class="cell" font-weight="600" fill="#4338ca">audio 音频数据域</text>
+  <text x="196" y="2408" class="cell" text-anchor="middle" fill="#334155">6</text>
+  <text x="216" y="2408" class="cell-s" fill="#64748b">upload / label / export / retrieve</text>
+  <text x="638" y="2408" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2408" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2408" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="962" y="2408" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2408" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行4 device -->
+  <rect x="56" y="2413" width="1120" height="16.5" rx="2" fill="#ffffff"/>
+  <text x="56" y="2425" class="cell" font-weight="600" fill="#4338ca">device 设备域</text>
+  <text x="196" y="2425" class="cell" text-anchor="middle" fill="#334155">5</text>
+  <text x="216" y="2425" class="cell-s" fill="#64748b">register / edit / control / config</text>
+  <text x="638" y="2425" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2425" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="854" y="2425" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="962" y="2425" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="1070" y="2425" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行5 playback -->
+  <rect x="56" y="2430" width="1120" height="16.5" rx="2" fill="#f8fafc"/>
+  <text x="56" y="2442" class="cell" font-weight="600" fill="#4338ca">playback 播放域</text>
+  <text x="196" y="2442" class="cell" text-anchor="middle" fill="#334155">3</text>
+  <text x="216" y="2442" class="cell-s" fill="#64748b">start / stop / quota 控制</text>
+  <text x="638" y="2442" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2442" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2442" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="962" y="2442" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="1070" y="2442" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行6 spl -->
+  <rect x="56" y="2447" width="1120" height="16.5" rx="2" fill="#ffffff"/>
+  <text x="56" y="2459" class="cell" font-weight="600" fill="#4338ca">spl 声学域</text>
+  <text x="196" y="2459" class="cell" text-anchor="middle" fill="#334155">4</text>
+  <text x="216" y="2459" class="cell-s" fill="#64748b">collect / compare / export</text>
+  <text x="638" y="2459" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2459" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="854" y="2459" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="962" y="2459" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="1070" y="2459" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行7 api_config -->
+  <rect x="56" y="2464" width="1120" height="16.5" rx="2" fill="#f8fafc"/>
+  <text x="56" y="2476" class="cell" font-weight="600" fill="#4338ca">api_config 接口配置域</text>
+  <text x="196" y="2476" class="cell" text-anchor="middle" fill="#334155">6</text>
+  <text x="216" y="2476" class="cell-s" fill="#64748b">config / validate / enable / disable</text>
+  <text x="638" y="2476" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2476" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2476" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="962" y="2476" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2476" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行8 report -->
+  <rect x="56" y="2481" width="1120" height="16.5" rx="2" fill="#ffffff"/>
+  <text x="56" y="2493" class="cell" font-weight="600" fill="#4338ca">report 报告域</text>
+  <text x="196" y="2493" class="cell" text-anchor="middle" fill="#334155">8</text>
+  <text x="216" y="2493" class="cell-s" fill="#64748b">view / generate / publish / share</text>
+  <text x="638" y="2493" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2493" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2493" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="962" y="2493" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2493" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <!-- 行9 evaluation -->
+  <rect x="56" y="2498" width="1120" height="16.5" rx="2" fill="#f8fafc"/>
+  <text x="56" y="2510" class="cell" font-weight="600" fill="#4338ca">evaluation 评估域</text>
+  <text x="196" y="2510" class="cell" text-anchor="middle" fill="#334155">5</text>
+  <text x="216" y="2510" class="cell-s" fill="#64748b">run / compare / export / config</text>
+  <text x="638" y="2510" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2510" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="854" y="2510" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="962" y="2510" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2510" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行10 algorithm -->
+  <rect x="56" y="2515" width="1120" height="16.5" rx="2" fill="#ffffff"/>
+  <text x="56" y="2527" class="cell" font-weight="600" fill="#4338ca">algorithm 算法域</text>
+  <text x="196" y="2527" class="cell" text-anchor="middle" fill="#334155">6</text>
+  <text x="216" y="2527" class="cell-s" fill="#64748b">scene / quality:manage / deploy</text>
+  <text x="638" y="2527" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2527" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="854" y="2527" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="962" y="2527" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2527" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行11 group -->
+  <rect x="56" y="2532" width="1120" height="16.5" rx="2" fill="#f8fafc"/>
+  <text x="56" y="2544" class="cell" font-weight="600" fill="#4338ca">group 分组域</text>
+  <text x="196" y="2544" class="cell" text-anchor="middle" fill="#334155">5</text>
+  <text x="216" y="2544" class="cell-s" fill="#64748b">create / member / edit / delete</text>
+  <text x="638" y="2544" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2544" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2544" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="962" y="2544" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2544" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行12 tag -->
+  <rect x="56" y="2549" width="1120" height="16.5" rx="2" fill="#ffffff"/>
+  <text x="56" y="2561" class="cell" font-weight="600" fill="#4338ca">tag 标签域</text>
+  <text x="196" y="2561" class="cell" text-anchor="middle" fill="#334155">4</text>
+  <text x="216" y="2561" class="cell-s" fill="#64748b">create / edit / attach / delete</text>
+  <text x="638" y="2561" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2561" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2561" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="962" y="2561" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2561" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行13 log -->
+  <rect x="56" y="2566" width="1120" height="16.5" rx="2" fill="#f8fafc"/>
+  <text x="56" y="2578" class="cell" font-weight="600" fill="#4338ca">log 日志域</text>
+  <text x="196" y="2578" class="cell" text-anchor="middle" fill="#334155">5</text>
+  <text x="216" y="2578" class="cell-s" fill="#64748b">read / export / watch / delete</text>
+  <text x="638" y="2578" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2578" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="854" y="2578" class="cell" text-anchor="middle" fill="#f59e0b">◐</text>
+  <text x="962" y="2578" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2578" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <!-- 行14 home -->
+  <rect x="56" y="2583" width="1120" height="16.5" rx="2" fill="#ffffff"/>
+  <text x="56" y="2595" class="cell" font-weight="600" fill="#4338ca">home 首页域</text>
+  <text x="196" y="2595" class="cell" text-anchor="middle" fill="#334155">3</text>
+  <text x="216" y="2595" class="cell-s" fill="#64748b">stats:view / alerts:view / overview</text>
+  <text x="638" y="2595" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2595" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2595" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="962" y="2595" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="1070" y="2595" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <!-- 行15 sse -->
+  <rect x="56" y="2600" width="1120" height="16.5" rx="2" fill="#f8fafc"/>
+  <text x="56" y="2612" class="cell" font-weight="600" fill="#4338ca">sse 实时推送域</text>
+  <text x="196" y="2612" class="cell" text-anchor="middle" fill="#334155">3</text>
+  <text x="216" y="2612" class="cell-s" fill="#64748b">subscribe / unsubscribe / status</text>
+  <text x="638" y="2612" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2612" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="854" y="2612" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="962" y="2612" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="1070" y="2612" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <!-- 行16 auth -->
+  <rect x="56" y="2617" width="1120" height="16.5" rx="2" fill="#ffffff"/>
+  <text x="56" y="2629" class="cell" font-weight="600" fill="#4338ca">auth 用户-角色-权限域</text>
+  <text x="196" y="2629" class="cell" text-anchor="middle" fill="#334155">11</text>
+  <text x="216" y="2629" class="cell-s" fill="#64748b">user / role / perm:grant / oauth:config</text>
+  <text x="638" y="2629" class="cell" text-anchor="middle" fill="#16a34a">✓</text>
+  <text x="746" y="2629" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="854" y="2629" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="962" y="2629" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+  <text x="1070" y="2629" class="cell" text-anchor="middle" fill="#cbd5e1">✗</text>
+
+  <!-- 汇总行 -->
+  <rect x="56" y="2640" width="1120" height="22" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="56" y="2654" class="cell" font-weight="700" fill="#3730a3">角色权限汇总</text>
+  <text x="196" y="2654" class="cell" text-anchor="middle" font-weight="700" fill="#3730a3">88</text>
+  <text x="216" y="2654" class="cell-s" fill="#3730a3">guest 仅 report:view / home / sse 3 域只读</text>
+  <text x="638" y="2654" class="cell" text-anchor="middle" font-weight="700" fill="#3730a3">88</text>
+  <text x="746" y="2654" class="cell" text-anchor="middle" font-weight="700" fill="#3730a3">~55</text>
+  <text x="854" y="2654" class="cell" text-anchor="middle" font-weight="700" fill="#3730a3">~40</text>
+  <text x="962" y="2654" class="cell" text-anchor="middle" font-weight="700" fill="#3730a3">~25</text>
+  <text x="1070" y="2654" class="cell" text-anchor="middle" font-weight="700" fill="#3730a3">~8</text>
+
+  <!-- ④ 数据模型 -->
+  <rect x="48" y="2679" width="1144" height="200" fill="#ffffff" rx="8" stroke="#c7d2fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="2679" width="1144" height="24" rx="8" fill="#e0e7ff"/>
+  <text x="60" y="2695" class="box-name" fill="#3730a3">④ 数据模型 — 5 核心表 + 2 OAuth 辅助表（users 附带登录审计字段）</text>
+
+  <!-- roles 表 -->
+  <rect x="56" y="2709" width="216" height="92" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="56" y="2709" width="216" height="20" rx="6" fill="#6366f1"/>
+  <rect x="56" y="2723" width="216" height="6" fill="#6366f1"/>
+  <text x="164" y="2723" text-anchor="middle" class="chip-t" font-weight="600" fill="#ffffff">roles 角色表</text>
+  <text x="66" y="2746" class="cell" fill="#1e293b">id · code · name</text>
+  <text x="66" y="2759" class="cell-s" fill="#64748b">description · is_system</text>
+  <text x="66" y="2774" class="cell-s" fill="#475569">5 系统角色种子数据</text>
+  <text x="66" y="2788" class="cell-s" fill="#94a3b8">is_system=true 不可删除</text>
+
+  <!-- permissions 表 -->
+  <rect x="280" y="2709" width="216" height="92" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="280" y="2709" width="216" height="20" rx="6" fill="#2563eb"/>
+  <rect x="280" y="2723" width="216" height="6" fill="#2563eb"/>
+  <text x="388" y="2723" text-anchor="middle" class="chip-t" font-weight="600" fill="#ffffff">permissions 权限表</text>
+  <text x="290" y="2746" class="cell" fill="#1e293b">id · code 资源:操作</text>
+  <text x="290" y="2759" class="cell-s" fill="#64748b">description · enabled</text>
+  <text x="290" y="2774" class="cell-s" fill="#475569">16 域 88 权限点清单</text>
+  <text x="290" y="2788" class="cell-s" fill="#94a3b8">支持 * 通配（admin）</text>
+
+  <!-- role_permissions 表 -->
+  <rect x="504" y="2709" width="216" height="92" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="504" y="2709" width="216" height="20" rx="6" fill="#7c3aed"/>
+  <rect x="504" y="2723" width="216" height="6" fill="#7c3aed"/>
+  <text x="612" y="2723" text-anchor="middle" class="chip-t" font-weight="600" fill="#ffffff">role_permissions</text>
+  <text x="514" y="2746" class="cell" fill="#1e293b">role_id ↔ permission_id</text>
+  <text x="514" y="2759" class="cell-s" fill="#64748b">多对多关联表</text>
+  <text x="514" y="2774" class="cell-s" fill="#475569">每个权限点授予即占用</text>
+  <text x="514" y="2788" class="cell-s" fill="#94a3b8">admin 全量 88 条映射</text>
+
+  <!-- users 表 -->
+  <rect x="728" y="2709" width="216" height="92" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="728" y="2709" width="216" height="20" rx="6" fill="#059669"/>
+  <rect x="728" y="2723" width="216" height="6" fill="#059669"/>
+  <text x="836" y="2723" text-anchor="middle" class="chip-t" font-weight="600" fill="#ffffff">users 用户表</text>
+  <text x="738" y="2746" class="cell" fill="#1e293b">id · username · role_id</text>
+  <text x="738" y="2759" class="cell-s" fill="#64748b">pwd_hash · 登录审计</text>
+  <text x="738" y="2774" class="cell-s" fill="#475569">新用户默认 role_id=2</text>
+  <text x="738" y="2788" class="cell-s" fill="#94a3b8">last_login_at/ip 留痕</text>
+
+  <!-- user_permissions 表 -->
+  <rect x="952" y="2709" width="216" height="92" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="0.8"/>
+  <rect x="952" y="2709" width="216" height="20" rx="6" fill="#ea580c"/>
+  <rect x="952" y="2723" width="216" height="6" fill="#ea580c"/>
+  <text x="1060" y="2723" text-anchor="middle" class="chip-t" font-weight="600" fill="#ffffff">user_permissions</text>
+  <text x="962" y="2746" class="cell" fill="#1e293b">user_id ↔ permission_id</text>
+  <text x="962" y="2759" class="cell-s" fill="#64748b">用户级附加权限</text>
+  <text x="962" y="2774" class="cell-s" fill="#475569">granted=true 授予</text>
+  <text x="962" y="2788" class="cell-s" fill="#94a3b8">granted=false 撤销</text>
+
+  <text x="56" y="2822" class="cell-s" fill="#64748b">关联：users.role_id → roles（主角色）· roles ─ ─ role_permissions ─ ─ permissions · users ─ ─ user_permissions ─ ─ permissions（用户级增减，优先于角色）</text>
+  <rect x="56" y="2832" width="1128" height="30" rx="6" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="0.8"/>
+  <text x="68" y="2850" class="cell-s" fill="#6d28d9">OAuth 辅助表：oauth_clients（client_id · client_secret · redirect_uri · grant_type）· oauth_refresh_tokens（refresh_token 轮换失效）· JWT 无状态，权限变更最长 24h 随刷新生效</text>
+
+  <!-- ⑤ OAuth 双模式 -->
+  <rect x="48" y="2891" width="1144" height="352" fill="#ffffff" rx="8" stroke="#c7d2fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="2891" width="1144" height="24" rx="8" fill="#e0e7ff"/>
+  <text x="60" y="2907" class="box-name" fill="#3730a3">⑤ OAuth 双模式认证 + JWT — AUTH_MODE 三态 · 认证提供方配置化切换</text>
+
+  <rect x="56" y="2921" width="216" height="22" rx="4" fill="#fee2e2" stroke="#fca5a5" stroke-width="0.8"/>
+  <text x="68" y="2935" class="chip-t" fill="#991b1b" font-weight="600">prod</text>
+  <text x="100" y="2935" font-size="8.5" fill="#991b1b">华为云 OAuth 授权码</text>
+  <text x="284" y="2935" class="chip-t" fill="#94a3b8">→</text>
+  <rect x="296" y="2921" width="196" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="308" y="2935" class="chip-t" fill="#166534" font-weight="600">dev</text>
+  <text x="336" y="2935" font-size="8.5" fill="#166534">本地 OAuth 模拟</text>
+  <text x="504" y="2935" class="chip-t" fill="#94a3b8">→</text>
+  <rect x="516" y="2921" width="180" height="22" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="528" y="2935" class="chip-t" fill="#475569" font-weight="600">off</text>
+  <text x="556" y="2935" font-size="8.5" fill="#475569">关闭鉴权校验</text>
+  <text x="716" y="2935" class="cell-s" fill="#64748b">白名单路由不受影响 · 三态共用同一套 auth_bp / AuthMiddleware / JWT 签发</text>
+
+  <!-- 左卡：生产模式 6 步 -->
+  <rect x="56" y="2953" width="560" height="270" rx="8" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <rect x="56" y="2953" width="560" height="24" rx="8" fill="#e0e7ff"/>
+  <text x="68" y="2969" class="box-name" fill="#3730a3">生产模式 prod — 华为云授权码 6 步</text>
+
+  <rect x="68" y="2987" width="32" height="18" rx="9" fill="#6366f1"/>
+  <text x="84" y="2999" class="chip-t" fill="#ffffff" font-weight="600">1</text>
+  <text x="112" y="2999" class="cell" fill="#1e293b">前端跳转华为云 authorize（client_id + redirect_uri）</text>
+  <rect x="68" y="3009" width="32" height="18" rx="9" fill="#6366f1"/>
+  <text x="84" y="3021" class="chip-t" fill="#ffffff" font-weight="600">2</text>
+  <text x="112" y="3021" class="cell" fill="#1e293b">用户在华为云授权页登录并完成授权</text>
+  <rect x="68" y="3031" width="32" height="18" rx="9" fill="#6366f1"/>
+  <text x="84" y="3043" class="chip-t" fill="#ffffff" font-weight="600">3</text>
+  <text x="112" y="3043" class="cell" fill="#1e293b">302 回调网关 /auth/callback?code=xxx</text>
+  <rect x="68" y="3053" width="32" height="18" rx="9" fill="#6366f1"/>
+  <text x="84" y="3065" class="chip-t" fill="#ffffff" font-weight="600">4</text>
+  <text x="112" y="3065" class="cell" fill="#1e293b">网关用 code + client_secret 换 access_token</text>
+  <rect x="68" y="3075" width="32" height="18" rx="9" fill="#6366f1"/>
+  <text x="84" y="3087" class="chip-t" fill="#ffffff" font-weight="600">5</text>
+  <text x="112" y="3087" class="cell" fill="#1e293b">调 userinfo 校验签名，取用户 id / 名称</text>
+  <rect x="68" y="3097" width="32" height="18" rx="9" fill="#6366f1"/>
+  <text x="84" y="3109" class="chip-t" fill="#ffffff" font-weight="600">6</text>
+  <text x="112" y="3109" class="cell" fill="#1e293b">幂等查找/创建本地 user（默认 role_id=2）→ 签发 JWT</text>
+  <line x1="68" y1="3125" x2="596" y2="3125" stroke="#e2e8f0" stroke-width="0.8"/>
+  <text x="68" y="3140" class="cell-s" fill="#64748b">refresh_token 可轮换续期 · 首次登录自动建档 · JWT_EXPIRE_HOURS=24</text>
+  <text x="68" y="3156" class="cell-s" fill="#94a3b8">token 交换 / userinfo 由 HuaweiOAuthProvider 实现 · 失败统一 401 回退登录</text>
+
+  <!-- 右卡：dev / off + 配置 -->
+  <rect x="628" y="2953" width="564" height="270" rx="8" fill="#ffffff" stroke="#c7d2fe" stroke-width="1"/>
+  <rect x="628" y="2953" width="564" height="24" rx="8" fill="#e0e7ff"/>
+  <text x="640" y="2969" class="box-name" fill="#3730a3">开发模式 dev / 关闭模式 off + 关键配置</text>
+
+  <text x="640" y="2992" class="lbl" fill="#166534">dev — 本地 OAuth 模拟（4 步）</text>
+  <rect x="640" y="3000" width="122" height="26" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="701" y="3017" class="chip-t" fill="#166534">login 页</text>
+  <text x="766" y="3016" class="cell" fill="#94a3b8" text-anchor="middle">→</text>
+  <rect x="772" y="3000" width="122" height="26" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="833" y="3017" class="chip-t" fill="#166534">本地 Provider</text>
+  <text x="898" y="3016" class="cell" fill="#94a3b8" text-anchor="middle">→</text>
+  <rect x="904" y="3000" width="122" height="26" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="965" y="3017" class="chip-t" fill="#166534">查/建 user</text>
+  <text x="1030" y="3016" class="cell" fill="#94a3b8" text-anchor="middle">→</text>
+  <rect x="1036" y="3000" width="140" height="26" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="1106" y="3017" class="chip-t" fill="#166534">签发 JWT</text>
+  <text x="640" y="3042" class="cell-s" fill="#475569">LocalOAuthProvider 直接返回用户信息 · dev 专属 /auth/register · 默认口令 123456</text>
+
+  <text x="640" y="3066" class="lbl" fill="#475569">off — 演示 / 联调模式</text>
+  <text x="640" y="3081" class="cell-s" fill="#64748b">跳过 Bearer 校验 · require_permission 恒通过 · 纯前端演示或网关联调用</text>
+
+  <text x="640" y="3104" class="lbl" fill="#4338ca">关键配置（.env / 环境变量注入，杜绝硬编码）</text>
+  <rect x="640" y="3112" width="110" height="22" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="695" y="3126" class="chip-t" fill="#334155">JWT_SECRET</text>
+  <rect x="756" y="3112" width="150" height="22" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="831" y="3126" class="chip-t" fill="#334155">ALGORITHM=HS256</text>
+  <rect x="912" y="3112" width="148" height="22" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="986" y="3126" class="chip-t" fill="#334155">EXPIRE=24h</text>
+  <rect x="640" y="3138" width="152" height="22" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="716" y="3152" class="chip-t" fill="#334155">HW_OAUTH_CLIENT_ID</text>
+  <rect x="798" y="3138" width="148" height="22" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="872" y="3152" class="chip-t" fill="#334155">HW_CLIENT_SECRET</text>
+  <rect x="952" y="3138" width="124" height="22" rx="4" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="1014" y="3152" class="chip-t" fill="#334155">REDIRECT_URI</text>
+  <text x="640" y="3196" class="cell-s" fill="#64748b">AUTH_MODE 决定使用哪个 Provider（prod=HuaweiOAuthProvider / dev=LocalOAuthProvider）· 接口统一可插拔</text>
+
+  <!-- ⑥ 统一鉴权链路 -->
+  <rect x="48" y="3255" width="1144" height="110" fill="#ffffff" rx="8" stroke="#c7d2fe" stroke-width="1" filter="url(#softShadow)"/>
+  <rect x="48" y="3255" width="1144" height="24" rx="8" fill="#e0e7ff"/>
+  <text x="60" y="3271" class="box-name" fill="#3730a3">⑥ 统一鉴权链路 · 白名单 · 下游 gRPC · 落地路线 P1→P5</text>
+
+  <rect x="56" y="3285" width="96" height="24" rx="4" fill="#818cf8"/>
+  <text x="104" y="3301" class="chip-t" fill="#ffffff" font-weight="600">① 白名单</text>
+  <text x="156" y="3300" class="cell" fill="#94a3b8" text-anchor="middle">→</text>
+  <rect x="162" y="3285" width="96" height="24" rx="4" fill="#818cf8"/>
+  <text x="210" y="3301" class="chip-t" fill="#ffffff" font-weight="600">② Bearer</text>
+  <text x="262" y="3300" class="cell" fill="#94a3b8" text-anchor="middle">→</text>
+  <rect x="268" y="3285" width="96" height="24" rx="4" fill="#818cf8"/>
+  <text x="316" y="3301" class="chip-t" fill="#ffffff" font-weight="600">③ verify</text>
+  <text x="368" y="3300" class="cell" fill="#94a3b8" text-anchor="middle">→</text>
+  <rect x="374" y="3285" width="96" height="24" rx="4" fill="#818cf8"/>
+  <text x="422" y="3301" class="chip-t" fill="#ffffff" font-weight="600">④ state</text>
+  <text x="628" y="3301" class="cell-s" fill="#64748b">下游 gRPC 双方案：A 透传身份（metadata，内网轻量）/ B auth_service.ValidateToken 自验（跨区·敏感）</text>
+
+  <rect x="56" y="3317" width="118" height="22" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="115" y="3331" class="chip-t" fill="#4338ca">/auth/login</text>
+  <rect x="180" y="3317" width="110" height="22" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="235" y="3331" class="chip-t" fill="#4338ca">/auth/callback</text>
+  <rect x="296" y="3317" width="128" height="22" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="360" y="3331" class="chip-t" fill="#4338ca">/register (dev)</text>
+  <rect x="430" y="3317" width="128" height="22" rx="4" fill="#eef2ff" stroke="#a5b4fc" stroke-width="0.8"/>
+  <text x="494" y="3331" class="chip-t" fill="#4338ca">/docs /redoc</text>
+  <text x="628" y="3331" class="cell-s" fill="#64748b">白名单跳过校验 · require_permission(request,'域名:操作') 路由层按需 403</text>
+
+  <text x="56" y="3356" class="cell-s" fill="#64748b">注入 request.state.user_id / role_id / permissions / username · /home/stats/summary 可加入白名单</text>
+  <rect x="628" y="3343" width="100" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="678" y="3357" class="chip-t" fill="#166534" font-weight="600">P1 骨架 ✓</text>
+  <rect x="734" y="3343" width="100" height="22" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="0.8"/>
+  <text x="784" y="3357" class="chip-t" fill="#166534" font-weight="600">P2 本地+种子 ✓</text>
+  <rect x="840" y="3343" width="106" height="22" rx="4" fill="#fef9c3" stroke="#fde047" stroke-width="0.8"/>
+  <text x="893" y="3357" class="chip-t" fill="#854d0e" font-weight="600">P3 路由接入…</text>
+  <rect x="952" y="3343" width="100" height="22" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="1002" y="3357" class="chip-t" fill="#475569" font-weight="600">P4 管理 API</text>
+  <rect x="1058" y="3343" width="100" height="22" rx="4" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="1108" y="3357" class="chip-t" fill="#475569" font-weight="600">P5 华为云联调</text>
+
+  <!-- ⑦ 结论条 -->
+  <rect x="48" y="3377" width="1144" height="26" rx="6" fill="#e0e7ff" stroke="#a5b4fc" stroke-width="1"/>
+  <text x="620" y="3394" text-anchor="middle" font-size="9.5" fill="#4338ca">d9-d12 已实现（AuthMiddleware + auth_bp 6 端点 + Local/HuaweiOAuthProvider + require_permission）· d13 auth_service DDD 骨架已建 · P4 用户/角色/权限管理 API 待实现 · P5 华为云 OAuth 联调</text>
+
+  <!-- ============================================== -->
+  </g><g transform="translate(0,130)">
+  <!-- 底部脚注：基线约束 -->
+  <!-- ============================================== -->
+  <rect x="24" y="3470" width="1192" height="34" rx="8" style="fill:#ffffff" stroke="#cbd5e1" stroke-width="0.8"/>
+  <text x="40" y="3491" font-size="10" style="fill:#475569">基线约束（贯穿七大更新）：DDD 四层（Presentation / Application / Domain / Infrastructure）· CQRS 读写分离 · Redis 事件驱动 5 频道 · gRPC + ACL 仓储模式 · enum 化 / 配置化 · 拒绝坏味道</text>
+</g>
+</svg>

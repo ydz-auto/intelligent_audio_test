@@ -56,6 +56,149 @@
     </div>
   </div>
 </template>
+<style scoped>
+
+.algorithm-card{
+  background: white;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  outline: 1px solid var(--color-slate-200);
+  outline-offset: -2px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.2s ease-out, background-color 0.2s ease-out, box-shadow 0.2s ease-out, transform 0.2s ease-out;
+  cursor: pointer;
+  height: 100%;
+  position: relative;
+}
+
+.algorithm-card:hover{
+  border-color: color-mix(in srgb, var(--primary) 50%, transparent);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 15%, transparent);
+  transform: translateY(-2px);
+}
+
+.algorithm-select-btn{
+  flex: 1;
+  text-align: center;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+
+
+
+
+
+
+
+
+/* algorithm-grid - 自全局样式就近迁移 */
+.algorithm-grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+  width: 100%;
+}
+
+/* algorithm-card-header - 自全局样式就近迁移 */
+.algorithm-card-header{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+/* algorithm-icon - 自全局样式就近迁移 */
+.algorithm-icon{
+  font-size: 24px;
+  line-height: 1;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--color-ant-primary) 10%, transparent) 0%, color-mix(in srgb, var(--color-ant-blue-4) 10%, transparent) 100%);
+  border-radius: 10px;
+  color: var(--color-ant-primary);
+}
+
+/* algorithm-name - 自全局样式就近迁移 */
+.algorithm-name{
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--color-legacy-gray-800);
+  margin-bottom: 4px;
+  transition: color 0.2s ease-out;
+}
+
+/* algorithm-meta - 自全局样式就近迁移 */
+.algorithm-meta{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+/* algorithm-meta-item - 自全局样式就近迁移 */
+.algorithm-meta-item{
+  display: flex;
+}
+
+/* algorithm-meta-label - 自全局样式就近迁移 */
+.algorithm-meta-label{
+  color: var(--color-slate-500);
+  width: 60px;
+  flex-shrink: 0;
+}
+
+/* algorithm-meta-value - 自全局样式就近迁移 */
+.algorithm-meta-value{
+  color: var(--color-legacy-gray-800);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* algorithm-card-footer - 自全局样式就近迁移 */
+.algorithm-card-footer{
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-legacy-gray-100);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color 0.2s ease-out;
+}
+
+/* selected-info - 自全局样式就近迁移 */
+.selected-info{
+  margin-top: 20px;
+  padding: 16px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 10%, transparent) 0%, color-mix(in srgb, var(--primary) 10%, transparent) 100%);
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* selected-label - 自全局样式就近迁移 */
+.selected-label{
+  color: var(--primary-color);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+</style>
 
 <script setup lang="ts">
 import { computed } from 'vue'

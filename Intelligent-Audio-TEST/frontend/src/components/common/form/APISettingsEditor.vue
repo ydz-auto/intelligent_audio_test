@@ -120,10 +120,10 @@ function handleChange() {
 
 <style scoped>
 .api-settings-editor {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   padding: 16px;
-  background: #fafafa;
+  background: var(--color-neutral-50);
 }
 
 .api-settings-grid {
@@ -146,7 +146,7 @@ function handleChange() {
 
 .editor-section {
   background: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   padding: 16px;
   display: flex;
@@ -158,24 +158,20 @@ function handleChange() {
   margin: 0 0 12px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
   flex-shrink: 0;
 }
 
 .section-hint {
   margin: 0 0 12px 0;
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-slate-500);
 }
 
 .config-row {
   display: flex;
   gap: 12px;
   margin-bottom: 12px;
-}
-
-.config-row:last-child {
-  margin-bottom: 0;
 }
 
 .config-item {
@@ -192,14 +188,14 @@ function handleChange() {
 .config-item label {
   font-size: 12px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--color-slate-500);
 }
 
 .config-item input,
 .config-item select,
 .config-item textarea {
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   font-size: 14px;
   transition: all 0.2s;
@@ -211,8 +207,8 @@ function handleChange() {
 .config-item select:focus,
 .config-item textarea:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-500) 10%, transparent);
 }
 
 .config-item textarea {
@@ -227,8 +223,8 @@ function handleChange() {
 }
 
 .json-edit {
-  background: #1e293b;
-  color: #e2e8f0;
+  background: var(--color-slate-800);
+  color: var(--color-slate-200);
   padding: 12px;
   border-radius: 6px;
   font-family: monospace;
@@ -238,7 +234,7 @@ function handleChange() {
   flex: 1;
   overflow-y: auto;
   min-height: 200px;
-  border: 1px solid #334155;
+  border: 1px solid var(--color-slate-700);
   resize: vertical;
   width: 100%;
   box-sizing: border-box;

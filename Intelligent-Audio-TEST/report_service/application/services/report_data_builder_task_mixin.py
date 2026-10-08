@@ -15,6 +15,7 @@ from shared.utils.result_data_store import load_full_result_data
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_dimension_results_by_result_ids as _grpc_get_dim_results,
     _grpc_get_dimension_params,
+    _grpc_get_task_case_ids,
     _grpc_get_test_results_by_task_ids,
     _grpc_get_task_merge_relations,
     _grpc_get_task_merge_relations_by_source,
@@ -36,49 +37,74 @@ class ReportDataTaskMixin:
         task_type = task.get('type') if isinstance(task, dict) else task.type
         task_status = task.get('status') if isinstance(task, dict) else task.status
 
-        if task_type == 'merged' and task_status == TaskStatus.COMPLETED.value:
-            merge_relations = _grpc_get_task_merge_relations(task_id)
-            if merge_relations:
-                source_task_ids = [r.get('source_task_id') for r in merge_relations]
-                results = _grpc_get_test_results_by_task_ids(source_task_ids)
-            else:
-                results = _grpc_get_test_results_by_task_ids([task_id])
-            if not results:
-                return None, None, error_response("生成失败: 合并任务没有测试结果数据")
-            return task, results, None
+        source_task_ids = []
 
-        elif task_type == 'merged':
+        if task_type == 'merged':
+            # 合并任务：结果取自其源任务（含合并任务重新生成的场景）
             merge_relations = _grpc_get_task_merge_relations(task_id)
             if merge_relations:
                 source_task_ids = [r.get('source_task_id') for r in merge_relations]
-                results = _grpc_get_test_results_by_task_ids(source_task_ids)
-            else:
-                results = _grpc_get_test_results_by_task_ids([task_id])
-            if not results:
-                return None, None, error_response("生成失败: 合并任务没有测试结果数据")
-            return task, results, None
 
         elif task_status == TaskStatus.MERGED.value:
+            # 源任务被合并后重新生成报告：取最新的合并任务，结果取自其全部原始源任务
             merge_relations = _grpc_get_task_merge_relations_by_source(task_id)
             if merge_relations:
-                merged_task_id = merge_relations[0].get('merged_task_id')
-                source_relations = _grpc_get_task_merge_relations(merged_task_id)
+                latest_merged_id = merge_relations[0].get('merged_task_id')
+                source_relations = _grpc_get_task_merge_relations(latest_merged_id)
                 source_task_ids = [r.get('source_task_id') for r in source_relations]
-                results = _grpc_get_test_results_by_task_ids(source_task_ids)
-            else:
-                results = _grpc_get_test_results_by_task_ids([task_id])
-            if not results:
-                return None, None, error_response("生成失败: 任务没有测试结果数据")
-            return task, results, None
 
         elif task_status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]:
             return None, None, error_response("只有任务状态为completed、failed或merged时才能生成报告")
 
-        results = _grpc_get_test_results_by_task_ids([task_id])
+        if source_task_ids:
+            # 源任务集合里若包含合并任务（历史链式合并数据），递归展开为原始源任务
+            result_task_ids = ReportDataTaskMixin._expand_leaf_source_task_ids(source_task_ids)
+        else:
+            result_task_ids = [task_id]
+
+        results = _grpc_get_test_results_by_task_ids(result_task_ids)
+        if not results:
+            return None, None, error_response("生成失败: 任务没有测试结果数据")
+
+        # 只统计任务 TaskCase 中仍存在的用例结果，避免把已删除用例的执行记录计入统计，
+        # 导致设备/API 用例数与任务总用例数（以 TaskCase 为准）不一致
+        valid_case_ids = set()
+        for tid in result_task_ids:
+            for item in _grpc_get_task_case_ids(tid):
+                if isinstance(item, dict):
+                    valid_case_ids.add(item.get('test_case_id'))
+                else:
+                    valid_case_ids.add(getattr(item, 'test_case_id', item))
+        if valid_case_ids:
+            results = [r for r in results if r.get('test_case_id') in valid_case_ids]
         if not results:
             return None, None, error_response("生成失败: 任务没有测试结果数据")
 
         return task, results, None
+
+    @staticmethod
+    def _expand_leaf_source_task_ids(task_ids):
+        """递归展开合并任务为原始源任务（叶子），兼容历史链式合并数据。"""
+        leaf_ids = set()
+        pending = list(task_ids)
+        visited = set()
+        while pending:
+            tid = pending.pop()
+            if tid in visited:
+                continue
+            visited.add(tid)
+            tasks = _grpc_get_tasks_by_ids([tid])
+            t = tasks[0] if tasks else None
+            if not t:
+                continue
+            t_type = t.get('type') if isinstance(t, dict) else t.type
+            if t_type == 'merged':
+                relations = _grpc_get_task_merge_relations(tid)
+                if relations:
+                    pending.extend(r.get('source_task_id') for r in relations)
+                    continue
+            leaf_ids.add(tid)
+        return list(leaf_ids)
 
     @staticmethod
     def _get_dimension_results_batch(result_ids):

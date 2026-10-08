@@ -62,11 +62,11 @@ export function useTestCaseReportDetailMetrics(props: TestCaseReportDetailProps)
     });
   });
 
-  // 友好显示指标名：把内部 key 转成带" (第N轮)"/" (整体)"的标签
+  // 友好显示指标名：把内部 key 转成带" (第N轮)"/" (整体)"的标签（兼容大写 Round）
   const formatMetricLabel = (key: string) => {
-    const m = key.match(/^(.*)@round:(\d+)$/);
+    const m = key.match(/^(.*)@round:(\d+)$/i);
     if (m) return `${m[1]} (第${m[2]}轮)`;
-    const m2 = key.match(/^(.*)@overall$/);
+    const m2 = key.match(/^(.*)@overall$/i);
     if (m2) return `${m2[1]} (整体)`;
     return key;
   };
@@ -95,7 +95,7 @@ export function useTestCaseReportDetailMetrics(props: TestCaseReportDetailProps)
     const num = typeof value === 'number' ? value : Number(value);
     if (isNaN(num)) return String(value);
     // 从带轮次后缀的 key 中提取基础维度名（如 "WER@round:1" → "WER"）
-    const baseName = String(metricName).replace(/@round:\d+$|@overall$/, '');
+    const baseName = String(metricName).replace(/@round:\d+$|@overall$/i, '');
     const decimals = metricDecimalPlacesMap.value[baseName] ?? metricDecimalPlacesMap.value[String(metricName)] ?? 2;
     const unit = metricUnitMap.value[baseName] ?? metricUnitMap.value[String(metricName)] ?? '';
     return `${num.toFixed(decimals)}${unit ? ` ${unit}` : ''}`;
@@ -170,7 +170,7 @@ export function useTestCaseReportDetailMetrics(props: TestCaseReportDetailProps)
   // 对比模式表格列：指标名 + 每设备一列
   const comparisonTableColumns = computed<ReportDetailColumn[]>(() => {
     const columns: ReportDetailColumn[] = [
-      { key: 'metricName', label: '指标', resize: true, class: 'col-metric', color: '#1677ff' },
+      { key: 'metricName', label: '指标', resize: true, class: 'col-metric', color: 'var(--secondary)' },
     ];
     for (const device of props.devices || []) {
       columns.push({
@@ -196,7 +196,7 @@ export function useTestCaseReportDetailMetrics(props: TestCaseReportDetailProps)
 
   // 单设备模式：指标表格列
   const singleTableColumns = computed<ReportDetailColumn[]>(() => [
-    { key: 'metric', label: '指标', resize: true, class: 'col-metric', color: '#1677ff' },
+    { key: 'metric', label: '指标', resize: true, class: 'col-metric', color: 'var(--secondary)' },
     { key: 'value', label: '数值', resize: true, class: 'col-value' },
     { key: 'score', label: '评分', resize: true, class: 'col-score' },
     { key: 'errorMessage', label: '错误信息', resize: true, class: 'col-error' },

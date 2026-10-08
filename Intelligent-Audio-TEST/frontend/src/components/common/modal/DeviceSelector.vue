@@ -75,29 +75,38 @@ defineEmits(['select', 'rescan'])
 </script>
 
 <style scoped>
-.device-selector-section {
-  background-color: #f8f9fa;
+
+.device-details{
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+
+
+
+.device-selector-section{
+  background-color: var(--muted);
   padding: 20px;
   border-radius: 8px;
   margin-bottom: 24px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--muted);
 }
 
-.device-selector-header {
+.device-selector-header{
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
 }
 
-.device-selector-title {
+.device-selector-title{
   font-size: 16px;
   font-weight: 600;
-  color: #343a40;
+  color: var(--foreground);
 }
 
-.btn-scan {
-  background-color: #007bff;
+.btn-scan{
+  background-color: var(--secondary);
   color: white;
   border: 1px solid transparent;
   padding: 8px 16px;
@@ -110,37 +119,37 @@ defineEmits(['select', 'rescan'])
   transition: all 0.2s ease;
 }
 
-.btn-scan:hover:not(:disabled) {
+.btn-scan:hover:not(:disabled){
   background-color: transparent;
   color: var(--primary-color);
   border: 1px solid var(--primary-color);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(255, 106, 0, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 30%, transparent);
 }
 
-.btn-scan:disabled {
-  background-color: #e9ecef;
+.btn-scan:disabled{
+  background-color: var(--muted);
   cursor: not-allowed;
   opacity: 0.65;
   transform: none;
   box-shadow: none;
 }
 
-.scanning-spinner {
+.scanning-spinner{
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
   border-radius: 50%;
-  border-top-color: #fff;
+  border-top-color: var(--background);
   animation: spin 1s ease-in-out infinite;
 }
 
-@keyframes spin {
+@keyframes spin{
   to { transform: rotate(360deg); }
 }
 
-.device-list {
+.device-list{
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -149,29 +158,29 @@ defineEmits(['select', 'rescan'])
   padding-right: 8px;
 }
 
-.device-list::-webkit-scrollbar {
+.device-list::-webkit-scrollbar{
   width: 6px;
 }
 
-.device-list::-webkit-scrollbar-track {
-  background: #f1f1f1;
+.device-list::-webkit-scrollbar-track{
+  background: var(--color-neutral-100);
   border-radius: 3px;
 }
 
-.device-list::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+.device-list::-webkit-scrollbar-thumb{
+  background: var(--color-gray-300);
   border-radius: 3px;
 }
 
-.device-list::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+.device-list::-webkit-scrollbar-thumb:hover{
+  background: var(--color-gray-400);
 }
 
-.device-item {
+.device-item{
   background-color: white;
   padding: 16px;
   border-radius: 6px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--muted);
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -179,63 +188,60 @@ defineEmits(['select', 'rescan'])
   gap: 16px;
 }
 
-.device-item:hover {
+.device-item:hover{
   border-color: var(--primary-color);
-  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.2);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 20%, transparent);
   transform: translateY(-1px);
 }
 
-.device-item.active {
+.device-item.active{
   border: 2px solid var(--primary-color);
-  background-color: rgba(255, 106, 0, 0.2);
-  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.3), 0 4px 12px rgba(255, 106, 0, 0.25);
+  background-color: color-mix(in srgb, var(--primary) 20%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent), 0 4px 12px color-mix(in srgb, var(--primary) 25%, transparent);
   transform: translateY(-2px);
   z-index: 10;
 }
 
-.device-item.current {
+.device-item.current{
   border: 2px solid var(--success-color);
-  background-color: rgba(82, 196, 26, 0.2);
-  box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.3);
+  background-color: color-mix(in srgb, var(--success) 20%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 30%, transparent);
 }
 
-.device-item.added {
+.device-item.added{
   border: 1px solid var(--border-color);
-  background-color: rgba(108, 117, 125, 0.05);
+  background-color: color-mix(in srgb, var(--muted-foreground) 5%, transparent);
 }
 
-.device-item.added.active {
+.device-item.added.active{
   border: 2px solid var(--primary-color);
-  background-color: rgba(255, 106, 0, 0.25);
-  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.3), 0 4px 12px rgba(255, 106, 0, 0.25);
+  background-color: color-mix(in srgb, var(--primary) 25%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 30%, transparent), 0 4px 12px color-mix(in srgb, var(--primary) 25%, transparent);
   transform: translateY(-2px);
 }
 
-.device-icon {
-  color: #007bff;
+.device-icon{
+  color: var(--secondary);
 }
 
-.device-info {
+.device-info{
   flex: 1;
 }
 
-.device-name {
+.device-name{
   font-weight: 600;
-  color: #343a40;
+  color: var(--foreground);
   margin-bottom: 4px;
 }
 
-.device-details {
-  font-size: 14px;
-  color: #6c757d;
-}
 
-.device-model {
+
+.device-model{
   margin-right: 12px;
 }
 
-.current-badge {
-  background-color: #28a745;
+.current-badge{
+  background-color: var(--success);
   color: white;
   padding: 4px 12px;
   border-radius: 12px;
@@ -243,8 +249,8 @@ defineEmits(['select', 'rescan'])
   font-weight: 500;
 }
 
-.added-badge {
-  background-color: #6c757d;
+.added-badge{
+  background-color: var(--muted-foreground);
   color: white;
   padding: 4px 12px;
   border-radius: 12px;
@@ -252,32 +258,32 @@ defineEmits(['select', 'rescan'])
   font-weight: 500;
 }
 
-.select-badge {
+.select-badge{
   background-color: var(--primary-color);
   color: white;
   padding: 4px 12px;
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
-  box-shadow: 0 2px 4px rgba(255, 106, 0, 0.2);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
-.scanning-message {
+.scanning-message{
   text-align: center;
   padding: 24px;
-  color: #6c757d;
+  color: var(--muted-foreground);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
 }
 
-.no-devices-message {
+.no-devices-message{
   text-align: center;
   padding: 24px;
-  color: #6c757d;
+  color: var(--muted-foreground);
   background-color: white;
   border-radius: 6px;
-  border: 1px dashed #dee2e6;
+  border: 1px dashed var(--border);
 }
 </style>

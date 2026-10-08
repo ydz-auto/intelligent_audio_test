@@ -62,14 +62,12 @@ const {
 } = useTestCaseManager();
 </script>
 
-<style>
-@import '../../assets/styles/main.css';
-</style>
-
 <style scoped>
-.test-case-manager {
-  padding: 20px;
-  background-color: var(--background-primary);
-  min-height: 100vh;
+.test-case-manager{
+    padding: 24px;
 }
+
+
+
+
 </style>

@@ -3,13 +3,18 @@
  */
 import type { StatItem } from '../../domain/model/stats';
 
+/**
+ * 图表调色板：与 tokens.css 的 --chart-1~5 / 语义令牌保持一致（chart.js 走 canvas，不能引用 CSS var，故用等价 hex）
+ * primary=--secondary  blue | secondary=--primary  orange | success=--success  green
+ * warning=--warning  orange | info=--info  blue     | destructive=--destructive  red
+ */
 export const colors: Record<string, string> = {
-  primary: '#1677FF',
+  primary: '#1976D2',
   secondary: '#FF6A00',
   success: '#52C41A',
-  warning: '#FAAD14',
-  info: '#13C2C2',
-  purple: '#722ED1'
+  warning: '#FFA940',
+  info: '#1976D2',
+  purple: '#F5222D'
 };
 
 export const colorArray = Object.values(colors);
@@ -52,7 +57,7 @@ export const getDefaultChartConfig = (): any => {
         backgroundColor: '#FFFFFF',
         titleColor: '#333333',
         bodyColor: '#333333',
-        borderColor: '#E5E5E5',
+        borderColor: '#E5E7EB',
         borderWidth: 1,
         padding: 12,
         cornerRadius: 8,
@@ -101,7 +106,7 @@ export const getDefaultChartConfig = (): any => {
             family: 'Inter, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif'
           }
         },
-        border: { color: '#E5E5E5' }
+        border: { color: '#E5E7EB' }
       },
       y: {
         beginAtZero: true,
@@ -114,7 +119,7 @@ export const getDefaultChartConfig = (): any => {
             family: 'Inter, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif'
           }
         },
-        border: { color: '#E5E5E5' }
+        border: { color: '#E5E7EB' }
       }
     },
     animation: { duration: 1000, easing: 'easeInOutQuart' },
@@ -144,14 +149,14 @@ export const applyChartTypeConfig = (config: any, type: string, title?: string):
             return typeof value === 'number' ? value.toFixed(1) : value;
           }
         },
-        border: { color: '#E5E5E5' }
+        border: { color: '#E5E7EB' }
       },
       y: {
         title: { display: true, text: '区间内用例数量', color: '#777777' },
         grid: { color: '#F0F0F0' },
         ticks: { color: '#777777', stepSize: 1, precision: 0 },
         beginAtZero: true,
-        border: { color: '#E5E5E5' }
+        border: { color: '#E5E7EB' }
       }
     };
     // 正态分布图的tooltip显示区间范围

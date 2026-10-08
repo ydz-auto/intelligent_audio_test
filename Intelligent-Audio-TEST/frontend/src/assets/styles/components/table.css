@@ -1,26 +1,10 @@
 /* 表格组件样式 - 符合UI设计规范 */
 
 /* 表格容器 */
-.table-container {
-    position: relative;
-    overflow-x: auto;
-    margin-bottom: var(--spacing-lg);
-    width: 100%;
-    box-sizing: border-box;
-    min-width: 0;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-}
+
 
 /* 数据表格 */
-.data-table {
-    width: 100%;
-    min-width: 900px;
-    border-collapse: collapse;
-    table-layout: fixed;
-    border-spacing: 0;
-    transition: all var(--transition-normal);
-}
+
 
 /* 表格列宽优化 - 参数代码和参数名称列 */
 .data-table th:first-child,
@@ -60,10 +44,10 @@
     width: 100%;
     box-sizing: border-box;
     background: transparent;
-    padding-right: 25px !important;
-    appearance: auto !important;
-    -webkit-appearance: auto !important;
-    -moz-appearance: auto !important;
+    padding-right: 25px ;
+    appearance: auto ;
+    -webkit-appearance: auto ;
+    -moz-appearance: auto ;
 }
 
 /* 表头样式 */
@@ -126,12 +110,6 @@
     background-color: var(--primary-light);
 }
 
-.sort-icon {
-    margin-left: var(--spacing-xs);
-    font-size: var(--font-size-sm);
-    color: var(--text-light);
-    transition: all var(--transition-normal);
-}
 
 .sortable:hover .sort-icon {
     color: var(--primary-color);
@@ -190,13 +168,13 @@
 
 .data-table tbody tr:hover {
     transform: translateX(2px);
-    background-color: rgba(255, 106, 0, 0.05);
+    background-color: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 /* 表格行选中状态 */
 .data-table tbody tr.selected {
-    background-color: rgba(255, 106, 0, 0.1);
-    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2);
+    background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 /* 表格底部边框 */
@@ -230,10 +208,7 @@
 }
 
 /* 表格操作按钮组 */
-.table-actions {
-    display: flex;
-    gap: var(--spacing-xs);
-}
+
 
 /* 表格操作按钮 */
 .table-actions .btn {
@@ -271,38 +246,26 @@
 
 /* 状态标签样式 */
 .status-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
 }
 
 .status-tag.pending {
-    background-color: #e6f7ff;
-    color: #1677ff;
+    background-color: var(--secondary-light);
 }
 
 .status-tag.in-progress {
-    background-color: #fff7e6;
-    color: #ff6a00;
+    background-color: var(--warning-light);
 }
 
 .status-tag.completed {
-    background-color: #f6ffed;
-    color: #52c41a;
+    background-color: var(--success-light);
 }
 
 .status-tag.failed {
-    background-color: #fff1f0;
-    color: #ff4d4f;
+    background-color: var(--destructive-light);
 }
 
 .status-tag.deleted {
-    background-color: #f5f5f5;
-    color: #999;
+    background-color: var(--muted);
 }
 
 /* 响应式设计 */
@@ -321,9 +284,7 @@
         display: none;
     }
     
-    .data-table {
-        min-width: 700px;
-    }
+    
 }
 
 @media (max-width: 768px) {
@@ -372,13 +333,9 @@
         font-size: var(--font-size-xs);
     }
     
-    .file-name-col {
-        max-width: 120px;
-    }
     
-    .action-col {
-        min-width: 120px;
-    }
+    
+    
 }
 
 @media (max-width: 480px) {
@@ -397,9 +354,6 @@
         padding: var(--spacing-xs) var(--spacing-sm);
     }
     
-    .file-name-col {
-        max-width: 100px;
-    }
     
     .action-col {
         min-width: 100px;
@@ -466,9 +420,9 @@
     font-weight: 600;
     padding: 12px 16px;
     text-align: left;
-    border-top: 1px solid #e2e8f0;
-    border-bottom: 1px solid #e2e8f0;
-    color: #334155;
+    border-top: 1px solid var(--color-slate-200);
+    border-bottom: 1px solid var(--color-slate-200);
+    color: var(--color-slate-700);
     font-size: 13px;
     position: relative;
     box-sizing: border-box;
@@ -494,7 +448,7 @@
     top: 0;
     height: 100%;
     width: 1px;
-    background-color: #e2e8f0;
+    background-color: var(--color-slate-200);
 }
 
 .report-comparison-table .data-table th:not(:first-child),
@@ -513,9 +467,9 @@
 .specific-case-comparison .data-table td {
     padding: 12px 16px;
     text-align: left;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--color-slate-200);
     font-size: 14px;
-    color: #666;
+    color: var(--color-gray-500);
     vertical-align: middle;
     box-sizing: border-box;
     background: white;
@@ -527,7 +481,7 @@
 .case-category-comparison .data-table td:first-child,
 .specific-case-comparison .data-table td:first-child {
     font-weight: 500;
-    color: #334155;
+    color: var(--color-slate-700);
     text-align: left;
 }
 
@@ -537,7 +491,7 @@
 .case-category-comparison .data-table td:not(:first-child),
 .specific-case-comparison .data-table td:not(:first-child) {
     text-align: center;
-    color: #1677ff;
+    color: var(--secondary);
 }
 
 .report-comparison-table .data-table tr:hover td,
@@ -545,93 +499,43 @@
 .case-tag-comparison .data-table tr:hover td,
 .case-category-comparison .data-table tr:hover td,
 .specific-case-comparison .data-table tr:hover td {
-    background: #fafafa;
+    background: var(--color-neutral-50);
 }
 
 /* 指标高亮样式 */
-.metric-best {
-    color: var(--success-color);
-    font-weight: bold;
-    background-color: rgba(16, 185, 129, 0.1);
-    border-radius: 4px;
-    padding: var(--spacing-xs) var(--spacing-sm);
-}
 
-.metric-worst {
-    color: var(--danger-color);
-    font-weight: bold;
-    background-color: rgba(239, 68, 68, 0.1);
-    border-radius: 4px;
-    padding: var(--spacing-xs) var(--spacing-sm);
-}
+
+
 
 /* 差值样式 */
-.diff-score-high {
-    color: var(--success-color);
-    font-weight: bold;
-}
 
-.diff-score-low {
-    color: var(--danger-color);
-    font-weight: bold;
-}
 
-.diff-value {
-    color: var(--warning-color);
-    font-weight: bold;
-}
+
+
+
 
 /* 权重控制样式 */
-.weight-control {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-}
 
-.weight-slider {
-    flex: 1;
-    min-width: 80px;
-    margin: 0;
-}
 
-.weight-value {
-    font-weight: var(--font-weight-medium);
-    min-width: 20px;
-    text-align: center;
-}
 
 /* API状态样式 */
 .api-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-medium);
     white-space: nowrap;
 }
 
 .online-indicator {
-    color: var(--success-color);
 }
 
 .offline-indicator {
-    color: var(--error-color);
 }
 
 /* 状态标签样式 */
 .status-badge {
-    display: inline-flex !important;
-    align-items: center;
     justify-content: center;
-    padding: 3px 10px;
-    border-radius: var(--border-radius-full);
-    font-size: var(--font-size-xs);
-    font-weight: var(--font-weight-medium);
-    text-transform: uppercase;
     line-height: 1.2;
-    white-space: nowrap !important;
-    min-width: auto !important;
-    width: auto !important;
+    white-space: nowrap ;
+    min-width: auto ;
+    width: auto ;
 }
 
 .status-badge.active {

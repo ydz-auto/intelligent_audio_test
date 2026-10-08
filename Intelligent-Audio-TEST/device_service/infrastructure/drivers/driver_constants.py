@@ -39,8 +39,8 @@ RMS_READ_TIMEOUT = config_manager.get_value('device_timing', 'rms_read_timeout',
 RMS_SCAN_HDC_TIMEOUT = config_manager.get_value('device_timing', 'rms_scan_hdc_timeout', 40)
 # ai PCM 首帧检测超时（毫秒）
 AI_PCM_FIRST_FRAME_TIMEOUT_MS = config_manager.get_value('device_timing', 'ai_pcm_first_frame_timeout_ms', 15000)
-# 小艺 UI 法回复检测超时（秒）：等回复开始 / 等"说话可打断"重现 / 等"正在听…"出现
-REPLY_START_TIMEOUT = config_manager.get_value('device_timing', 'reply_start_timeout', 300)
+# 小艺回复检测超时（秒）：hw_params 播放流法为主信号（30s），UI 法仅作读不到时的兜底
+REPLY_START_TIMEOUT = config_manager.get_value('device_timing', 'reply_start_timeout', 30)
 REPLY_STATE_TIMEOUT = config_manager.get_value('device_timing', 'reply_state_timeout', 10)
 REPLY_LISTEN_TIMEOUT = config_manager.get_value('device_timing', 'reply_listen_timeout', 300)
 # barge-in 打断轮轮间延迟（秒）：检测到 AI 开口后延迟再放下一轮打断音频

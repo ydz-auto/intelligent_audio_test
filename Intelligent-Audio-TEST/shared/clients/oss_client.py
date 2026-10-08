@@ -1,8 +1,8 @@
 """
-OSS 客户端封装 - S3 兼容（开发环境 MinIO / 生产环境 AWS S3）
+OSS 客户端封装 - S3 兼容（开发环境 RustFS / 生产环境 AWS S3）
 
 通过环境变量切换：
-  开发：OSS_ENDPOINT=http://localhost:9000  (MinIO)
+  开发：OSS_ENDPOINT=http://localhost:9000  (RustFS)
   生产：OSS_ENDPOINT=https://s3.amazonaws.com (S3)
 
 所有服务通过此客户端上传/下载文件，不直接操作本地磁盘路径。

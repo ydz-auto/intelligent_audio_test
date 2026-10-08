@@ -32,7 +32,7 @@ const {
 }
 
 .report-item {
-  border: 1px solid #ccc;
+  border: 1px solid var(--color-gray-300);
   padding: 10px;
   margin: 10px 0;
   border-radius: 5px;

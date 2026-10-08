@@ -217,6 +217,6 @@ const {
 } = useUploadFileModal(props, emit)
 </script>
 
-<style scoped>
-@import './UploadFileModal.css';
+<style scoped>@import './UploadFileModal.css';
+
 </style>

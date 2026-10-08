@@ -1,0 +1,68 @@
+/* Batch 系列弹窗共享样式（从 7 个 Batch*Modal 组件提取，消除复制粘贴） */
+
+.case-count {
+color: var(--color-gray-500);
+font-size: 14px;
+margin: 0;
+}
+
+.scope-section {
+background: var(--color-slate-50);
+border-radius: 8px;
+border: 1px solid var(--color-slate-200);
+margin-bottom: 16px;
+padding: 16px;
+}
+
+.scope-section > label {
+color: var(--foreground);
+display: block;
+font-size: 14px;
+font-weight: 600;
+margin-bottom: 12px;
+}
+
+.round-checkboxs {
+display: flex;
+flex-wrap: wrap;
+gap: 12px;
+padding-left: 24px;
+}
+
+.round-checkboxs label {
+align-items: center;
+background: var(--background);
+border-radius: 20px;
+border: 1px solid var(--color-gray-300);
+cursor: pointer;
+display: flex;
+font-size: 13px;
+gap: 4px;
+padding: 4px 12px;
+}
+
+.round-checkboxs label.checked {
+background: var(--secondary-light);
+border-color: var(--secondary);
+color: var(--secondary);
+}
+
+.level-checkboxs {
+display: flex;
+flex-direction: column;
+gap: 8px;
+}
+
+.level-checkboxs label {
+align-items: center;
+cursor: pointer;
+display: flex;
+font-size: 13px;
+gap: 8px;
+}
+
+.level-hint {
+color: var(--color-gray-400);
+font-size: 11px;
+margin-left: 20px;
+}

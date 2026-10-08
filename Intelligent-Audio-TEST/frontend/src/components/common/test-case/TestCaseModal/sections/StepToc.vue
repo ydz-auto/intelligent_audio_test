@@ -31,8 +31,8 @@ defineEmits<{
   align-items: stretch;
   gap: 0;
   padding: 0 16px;
-  background: var(--background-primary, #fff);
-  border-bottom: 1px solid var(--border-color, #e8e8e8);
+  background: var(--background-primary, var(--background));
+  border-bottom: 1px solid var(--border-color, var(--border));
   flex-shrink: 0;
 }
 
@@ -42,7 +42,7 @@ defineEmits<{
   gap: 8px;
   padding: 12px 18px;
   font-size: 14px;
-  color: var(--text-secondary, #999);
+  color: var(--text-secondary, var(--color-gray-400));
   cursor: pointer;
   transition: all 0.2s ease;
   white-space: nowrap;
@@ -55,16 +55,16 @@ defineEmits<{
   bottom: 0;
   width: 0;
   height: 2px;
-  background: var(--primary-color, #ff6a00);
+  background: var(--primary-color, var(--primary));
   border-radius: 1px;
   transform: translateX(-50%);
   transition: width 0.2s ease;
 }
 .rce-toc-item:hover {
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
 }
 .rce-toc-item.active {
-  color: var(--primary-color, #ff6a00);
+  color: var(--primary-color, var(--primary));
   font-weight: 600;
 }
 .rce-toc-item.active::after {
@@ -75,8 +75,8 @@ defineEmits<{
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #f0f0f0;
-  color: var(--text-secondary, #999);
+  background: var(--gray-light);
+  color: var(--text-secondary, var(--color-gray-400));
   font-size: 12px;
   font-weight: 600;
   display: flex;
@@ -86,11 +86,11 @@ defineEmits<{
   transition: all 0.2s ease;
 }
 .rce-toc-item:hover .rce-toc-num {
-  background: #e8e8e8;
+  background: var(--border);
 }
 .rce-toc-item.active .rce-toc-num {
-  background: var(--primary-color, #ff6a00);
-  color: #fff;
+  background: var(--primary-color, var(--primary));
+  color: var(--background);
 }
 
 .rce-toc-icon {

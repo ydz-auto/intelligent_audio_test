@@ -9,7 +9,7 @@ import { useAlgorithmMappingOps } from './useAlgorithmMappingOps'
 import { useAlgorithmFeatureBundles } from './useAlgorithmFeatureBundles'
 import { useAlgorithmCrudOps, normalizeMappings } from './useAlgorithmCrudOps'
 import type { AlgorithmGroup, Dimension, AlgorithmDefinition } from '@/domain'
-import { TaskStatus, ApiEndpointStatus, ApiEndpointStatusType } from '@/domain/enums'
+import { TaskStatus, ApiEndpointStatus, ApiEndpointStatusType, TestType } from '@/domain/enums'
 
 // 组件级 Modal 契约：可见性 / 模式 / 编辑数据
 export interface ModalProps {
@@ -63,6 +63,55 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
   const searchKeyword = ref('')
   const activeTab = ref('basic')
   const paramConfigType = ref<'device' | 'api' | 'case'>('device')
+
+  // 参数配置页签搜索/过滤（纯前端行为，数据已在本地列表，不涉及重新请求）
+  const paramSearchKeyword = ref('')
+  const caseParamSearchKeyword = ref('')
+  const paramDirectionFilter = ref('all')
+  const paramRequiredFilter = ref('all')
+  const caseParamTypeFilter = ref('all')
+  const caseParamScopeFilter = ref('all')
+  // 参考参数页签搜索/过滤
+  const referenceSearchKeyword = ref('')
+  const referenceTypeFilter = ref('all')
+  const referenceMergeFilter = ref('all')
+  // 关联维度页签搜索
+  const dimensionSearchKeyword = ref('')
+  // 每次打开弹窗自增，强制重建 MappingEditor，重置其内部过滤状态
+  const mappingEditorKey = ref(0)
+  // 列头过滤状态（ColumnFilter 的 v-model 值，'all' 表示不过滤）
+  const deviceApiFilters = reactive({
+    paramCode: 'all',
+    paramName: 'all',
+    direction: 'all',
+    paramType: 'all',
+    required: 'all'
+  })
+  const caseFilters = reactive({
+    paramCode: 'all',
+    paramName: 'all',
+    paramType: 'all',
+    scope: 'all',
+    required: 'all',
+    defaultValue: 'all',
+    annotationCode: 'all',
+    fieldPath: 'all',
+    helpText: 'all'
+  })
+  const referenceFilters = reactive({
+    code: 'all',
+    annotationCode: 'all',
+    name: 'all',
+    type: 'all',
+    annotationFormat: 'all',
+    fieldPath: 'all',
+    mergeMode: 'all',
+    helpText: 'all'
+  })
+  const dimensionFilters = reactive({
+    dimensionId: 'all',
+    isDefault: 'all'
+  })
 
   const algorithms = ref<AlgorithmDefinition[]>([])
   const groups = ref<AlgorithmGroup[]>([])
@@ -202,6 +251,273 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
     )
   })
 
+  // 参数配置搜索框：按当前页签路由到设备/API 或 用例参数 的关键字
+  const paramSearchModel = computed({
+    get: () => (paramConfigType.value === 'case' ? caseParamSearchKeyword.value : paramSearchKeyword.value),
+    set: (v: string) => {
+      if (paramConfigType.value === 'case') caseParamSearchKeyword.value = v
+      else paramSearchKeyword.value = v
+    }
+  })
+
+  // 列头过滤下拉的可选值
+  const directionOptions = [
+    { value: 'input', label: '输入' },
+    { value: 'output', label: '输出' }
+  ]
+  const requiredOptions = [
+    { value: 'required', label: '必填' },
+    { value: 'optional', label: '选填' }
+  ]
+  const deviceApiTypeOptions = [
+    { value: 'text', label: '文本' },
+    { value: 'audio_stream', label: '音频流' },
+    { value: 'audio_file', label: '音频文件' },
+    { value: 'text_file', label: '文本文件' },
+    { value: 'rttm', label: 'RTTM标注' },
+    { value: 'stm', label: 'STM标注' },
+    { value: 'json', label: 'JSON结构化' }
+  ]
+  const caseTypeOptions = [
+    { value: 'text', label: '文本' },
+    { value: 'number', label: '数字' },
+    { value: 'textarea', label: '多行文本' },
+    { value: 'switch', label: '开关' },
+    { value: 'slider', label: '滑块' },
+    { value: 'audio_select', label: '音频选择' },
+    { value: 'device_select', label: '设备选择' },
+    { value: 'json', label: 'JSON结构化' }
+  ]
+  const scopeOptions = [
+    { value: 'common', label: '通用' },
+    { value: TestType.API, label: 'API' },
+    { value: TestType.E2E, label: 'E2E' }
+  ]
+  const referenceTypeOptions = [
+    { value: 'text', label: '文本' },
+    { value: 'audio', label: '音频' },
+    { value: 'json', label: 'JSON' },
+    { value: 'rttm', label: 'RTTM' },
+    { value: 'stm', label: 'STM' }
+  ]
+  const referenceFormatOptions = [
+    { value: 'text', label: '文本' },
+    { value: 'json', label: 'JSON' },
+    { value: 'rttm', label: 'RTTM' },
+    { value: 'stm', label: 'STM' },
+    { value: 'boolean', label: '布尔' }
+  ]
+  const mergeOptions = [
+    { value: 'join', label: '拼接' },
+    { value: 'collect', label: '收集数组' },
+    { value: 'first', label: '取第一个' }
+  ]
+  const dimensionFilterOptions = computed(() =>
+    availableDimensions.value.map(d => ({ value: String(d.id), label: d.name }))
+  )
+
+  // 列头下拉过滤选项：返回某列的非空去重取值
+  function distinctValues(list: any[], key: string): string[] {
+    const set = new Set<string>()
+    for (const item of list) {
+      const v = item?.[key]
+      if (v !== undefined && v !== null && String(v).trim() !== '') {
+        set.add(String(v))
+      }
+    }
+    return Array.from(set)
+  }
+
+  // 设备/API 参数表格过滤：搜索 + 方向/必填（含列头过滤）
+  const filteredCurrentParams = computed(() => {
+    let list = currentParams.value
+    const kw = paramSearchKeyword.value.trim().toLowerCase()
+    if (kw) {
+      list = list.filter(p =>
+        (p.paramCode || '').toLowerCase().includes(kw) ||
+        (p.paramName || '').toLowerCase().includes(kw)
+      )
+    }
+    const hf = deviceApiFilters
+    if (hf.paramCode !== 'all') {
+      const v = String(hf.paramCode).toLowerCase()
+      list = list.filter(p => (p.paramCode || '').toLowerCase().includes(v))
+    }
+    if (hf.paramName !== 'all') {
+      const v = String(hf.paramName).toLowerCase()
+      list = list.filter(p => (p.paramName || '').toLowerCase().includes(v))
+    }
+    if (hf.direction !== 'all') {
+      list = list.filter(p => p.direction === hf.direction)
+    }
+    if (hf.paramType !== 'all') {
+      list = list.filter(p => p.paramType === hf.paramType)
+    }
+    if (hf.required !== 'all') {
+      const req = hf.required === 'required'
+      list = list.filter(p => !!p.required === req)
+    }
+    if (paramDirectionFilter.value !== 'all') {
+      list = list.filter(p => p.direction === paramDirectionFilter.value)
+    }
+    if (paramRequiredFilter.value !== 'all') {
+      const req = paramRequiredFilter.value === 'required'
+      list = list.filter(p => !!p.required === req)
+    }
+    return list
+  })
+
+  // 用例参数表格过滤：搜索 + 类型/范围/必填（含列头过滤）
+  const filteredCaseParams = computed(() => {
+    let list = formState.caseParams
+    const kw = caseParamSearchKeyword.value.trim().toLowerCase()
+    if (kw) {
+      list = list.filter(p =>
+        (p.paramCode || '').toLowerCase().includes(kw) ||
+        (p.paramName || '').toLowerCase().includes(kw) ||
+        (p.annotationCode || '').toLowerCase().includes(kw) ||
+        (p.fieldPath || '').toLowerCase().includes(kw) ||
+        (p.helpText || '').toLowerCase().includes(kw)
+      )
+    }
+    const hf = caseFilters
+    if (hf.paramCode !== 'all') {
+      const v = String(hf.paramCode).toLowerCase()
+      list = list.filter(p => (p.paramCode || '').toLowerCase().includes(v))
+    }
+    if (hf.paramName !== 'all') {
+      const v = String(hf.paramName).toLowerCase()
+      list = list.filter(p => (p.paramName || '').toLowerCase().includes(v))
+    }
+    if (hf.paramType !== 'all') {
+      list = list.filter(p => p.paramType === hf.paramType)
+    }
+    if (hf.scope !== 'all') {
+      list = list.filter(p => p.scope === hf.scope)
+    }
+    if (hf.required !== 'all') {
+      const req = hf.required === 'required'
+      list = list.filter(p => !!p.required === req)
+    }
+    if (hf.defaultValue !== 'all') {
+      const v = String(hf.defaultValue).toLowerCase()
+      list = list.filter(p => (p.defaultValue || '').toLowerCase().includes(v))
+    }
+    if (hf.annotationCode !== 'all') {
+      const v = String(hf.annotationCode).toLowerCase()
+      list = list.filter(p => (p.annotationCode || '').toLowerCase().includes(v))
+    }
+    if (hf.fieldPath !== 'all') {
+      const v = String(hf.fieldPath).toLowerCase()
+      list = list.filter(p => (p.fieldPath || '').toLowerCase().includes(v))
+    }
+    if (hf.helpText !== 'all') {
+      const v = String(hf.helpText).toLowerCase()
+      list = list.filter(p => (p.helpText || '').toLowerCase().includes(v))
+    }
+    if (caseParamTypeFilter.value !== 'all') {
+      list = list.filter(p => p.paramType === caseParamTypeFilter.value)
+    }
+    if (caseParamScopeFilter.value !== 'all') {
+      list = list.filter(p => p.scope === caseParamScopeFilter.value)
+    }
+    if (paramRequiredFilter.value !== 'all') {
+      const req = paramRequiredFilter.value === 'required'
+      list = list.filter(p => !!p.required === req)
+    }
+    return list
+  })
+
+  // 参考参数表格过滤：搜索 + 类型/合并（含列头过滤）
+  const filteredReferenceParams = computed(() => {
+    let list = formState.referenceParams
+    const kw = referenceSearchKeyword.value.trim().toLowerCase()
+    if (kw) {
+      list = list.filter(p =>
+        (p.code || '').toLowerCase().includes(kw) ||
+        (p.annotationCode || '').toLowerCase().includes(kw) ||
+        (p.name || '').toLowerCase().includes(kw) ||
+        (p.fieldPath || '').toLowerCase().includes(kw) ||
+        (p.helpText || '').toLowerCase().includes(kw)
+      )
+    }
+    const hf = referenceFilters
+    if (hf.code !== 'all') {
+      const v = String(hf.code).toLowerCase()
+      list = list.filter(p => (p.code || '').toLowerCase().includes(v))
+    }
+    if (hf.annotationCode !== 'all') {
+      const v = String(hf.annotationCode).toLowerCase()
+      list = list.filter(p => (p.annotationCode || '').toLowerCase().includes(v))
+    }
+    if (hf.name !== 'all') {
+      const v = String(hf.name).toLowerCase()
+      list = list.filter(p => (p.name || '').toLowerCase().includes(v))
+    }
+    if (hf.type !== 'all') {
+      list = list.filter(p => p.type === hf.type)
+    }
+    if (hf.annotationFormat !== 'all') {
+      list = list.filter(p => p.annotationFormat === hf.annotationFormat)
+    }
+    if (hf.fieldPath !== 'all') {
+      const v = String(hf.fieldPath).toLowerCase()
+      list = list.filter(p => (p.fieldPath || '').toLowerCase().includes(v))
+    }
+    if (hf.mergeMode !== 'all') {
+      list = list.filter(p => p.mergeMode === hf.mergeMode)
+    }
+    if (hf.helpText !== 'all') {
+      const v = String(hf.helpText).toLowerCase()
+      list = list.filter(p => (p.helpText || '').toLowerCase().includes(v))
+    }
+    if (referenceTypeFilter.value !== 'all') {
+      list = list.filter(p => p.type === referenceTypeFilter.value)
+    }
+    if (referenceMergeFilter.value !== 'all') {
+      list = list.filter(p => p.mergeMode === referenceMergeFilter.value)
+    }
+    return list
+  })
+
+  // 关联维度表格过滤：按维度名称搜索 + 维度/默认筛选
+  const filteredDimensions = computed(() => {
+    let list = formState.associatedDimensions
+    const kw = dimensionSearchKeyword.value.trim().toLowerCase()
+    if (kw) {
+      list = list.filter(dim => {
+        const dimObj = availableDimensions.value.find(x => x.id === dim.dimensionId)
+        return (dimObj?.name || '').toLowerCase().includes(kw)
+      })
+    }
+    if (dimensionFilters.dimensionId !== 'all') {
+      const targetId = Number(dimensionFilters.dimensionId)
+      list = list.filter(dim => dim.dimensionId === targetId)
+    }
+    if (dimensionFilters.isDefault !== 'all') {
+      const isDef = dimensionFilters.isDefault === 'default'
+      list = list.filter(dim => !!dim.isDefault === isDef)
+    }
+    return list
+  })
+
+  function resetFilters() {
+    paramSearchKeyword.value = ''
+    caseParamSearchKeyword.value = ''
+    paramDirectionFilter.value = 'all'
+    paramRequiredFilter.value = 'all'
+    caseParamTypeFilter.value = 'all'
+    caseParamScopeFilter.value = 'all'
+    referenceSearchKeyword.value = ''
+    referenceTypeFilter.value = 'all'
+    referenceMergeFilter.value = 'all'
+    dimensionSearchKeyword.value = ''
+    Object.assign(deviceApiFilters, { paramCode: 'all', paramName: 'all', direction: 'all', paramType: 'all', required: 'all' })
+    Object.assign(caseFilters, { paramCode: 'all', paramName: 'all', paramType: 'all', scope: 'all', required: 'all', defaultValue: 'all', annotationCode: 'all', fieldPath: 'all', helpText: 'all' })
+    Object.assign(referenceFilters, { code: 'all', annotationCode: 'all', name: 'all', type: 'all', annotationFormat: 'all', fieldPath: 'all', mergeMode: 'all', helpText: 'all' })
+    Object.assign(dimensionFilters, { dimensionId: 'all', isDefault: 'all' })
+  }
+
   function getGroupTagClass(groupName: string | undefined): string {
     if (!groupName) return ''
     const classes: Record<string, string> = {
@@ -215,6 +531,9 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
 
   watch(() => props.visible, (visible) => {
     if (visible) {
+      // 每次打开都重置搜索/过滤状态，避免残留过滤导致数据不显示
+      resetFilters()
+      mappingEditorKey.value++
       if (effectiveMode.value === 'list') {
         loadAlgorithms()
       } else if (effectiveMode.value === 'create') {
@@ -370,6 +689,34 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
     creatingNewGroup,
     newGroupName,
     paramConfigType,
+    paramSearchModel,
+    paramDirectionFilter,
+    paramRequiredFilter,
+    caseParamTypeFilter,
+    caseParamScopeFilter,
+    referenceSearchKeyword,
+    referenceTypeFilter,
+    referenceMergeFilter,
+    dimensionSearchKeyword,
+    mappingEditorKey,
+    deviceApiFilters,
+    caseFilters,
+    referenceFilters,
+    dimensionFilters,
+    directionOptions,
+    requiredOptions,
+    deviceApiTypeOptions,
+    caseTypeOptions,
+    scopeOptions,
+    referenceTypeOptions,
+    referenceFormatOptions,
+    mergeOptions,
+    dimensionFilterOptions,
+    distinctValues,
+    filteredCurrentParams,
+    filteredCaseParams,
+    filteredReferenceParams,
+    filteredDimensions,
     isBundleActive,
     toggleBundle,
     currentParams,

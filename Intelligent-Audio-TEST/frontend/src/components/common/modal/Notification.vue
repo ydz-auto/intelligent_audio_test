@@ -127,41 +127,41 @@ defineExpose({ show, close })
   gap: 12px;
   padding: 16px;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   background: white;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
 }
 
 .notification--error {
-  border-left: 4px solid #dc2626;
+  border-left: 4px solid var(--color-red-600);
 }
 
 .notification--error .notification-icon {
-  color: #dc2626;
+  color: var(--color-red-600);
 }
 
 .notification--warning {
-  border-left: 4px solid #f59e0b;
+  border-left: 4px solid var(--color-amber-500);
 }
 
 .notification--warning .notification-icon {
-  color: #f59e0b;
+  color: var(--color-amber-500);
 }
 
 .notification--success {
-  border-left: 4px solid #10b981;
+  border-left: 4px solid var(--color-emerald-500);
 }
 
 .notification--success .notification-icon {
-  color: #10b981;
+  color: var(--color-emerald-500);
 }
 
 .notification--info {
-  border-left: 4px solid #3b82f6;
+  border-left: 4px solid var(--color-blue-500);
 }
 
 .notification--info .notification-icon {
-  color: #3b82f6;
+  color: var(--color-blue-500);
 }
 
 .notification-icon {
@@ -176,14 +176,14 @@ defineExpose({ show, close })
 
 .notification-message {
   font-size: 14px;
-  color: #1f2937;
+  color: var(--color-gray-800);
   line-height: 1.5;
   word-break: break-word;
 }
 
 .notification-details {
   margin-top: 8px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border);
   padding-top: 8px;
 }
 
@@ -192,13 +192,13 @@ defineExpose({ show, close })
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-gray-500);
   cursor: pointer;
   padding: 4px 0;
 }
 
 .notification-details-header:hover {
-  color: #374151;
+  color: var(--color-gray-700);
 }
 
 .notification-details-content {
@@ -207,7 +207,7 @@ defineExpose({ show, close })
 }
 
 .notification-details-content pre {
-  background: #f3f4f6;
+  background: var(--color-gray-100);
   padding: 8px;
   border-radius: 4px;
   font-size: 12px;
@@ -223,27 +223,27 @@ defineExpose({ show, close })
   right: 8px;
   padding: 4px 8px;
   font-size: 12px;
-  background: #e5e7eb;
+  background: var(--border);
   border: none;
   border-radius: 4px;
   cursor: pointer;
 }
 
 .copy-btn:hover {
-  background: #d1d5db;
+  background: var(--color-gray-300);
 }
 
 .notification-close {
   background: none;
   border: none;
   font-size: 16px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
   cursor: pointer;
   padding: 0;
   line-height: 1;
 }
 
 .notification-close:hover {
-  color: #6b7280;
+  color: var(--color-gray-500);
 }
 </style>

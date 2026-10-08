@@ -24,7 +24,7 @@
 | Web 框架 | FastAPI + Uvicorn |
 | RPC | gRPC + Protocol Buffers |
 | 数据库 | PostgreSQL 16 + SQLAlchemy 2.0 |
-| 对象存储 | MinIO（单桶模式 + 前端分片直传） |
+| 对象存储 | RustFS（S3 兼容，单桶模式 + 前端分片直传） |
 | 缓存 / 消息 | Redis（Pub/Sub + 服务发现 + 分布式协调） |
 | 认证 | OAuth2 + JWT + RBAC |
 | 数据校验 | Pydantic 2.0 |
@@ -68,7 +68,7 @@
         └──────┬───────┘
                │
         ┌──────┴─────────────────────────────────┐
-        │ PostgreSQL 5432 · Redis 6379 · MinIO 9000 │
+        │ PostgreSQL 5432 · Redis 6379 · RustFS 9000 │
         └────────────────────────────────────────┘
 ```
 
@@ -90,7 +90,7 @@
 | audio_service | - | 50052 | 音频播放（gRPC-only） |
 | device_service | - | 50053 | 播放 / 环境设备驱动（gRPC-only） |
 
-基础设施：PostgreSQL `5432`、Redis `6379`、MinIO `9000`（控制台 `9001`）、前端 `5173`。
+基础设施：PostgreSQL `5432`、Redis `6379`、RustFS `9000`（控制台 `9001`）、前端 `5173`。
 
 ## 快速开始
 
@@ -98,7 +98,7 @@
 
 - Python 3.10+
 - Node.js 18+
-- PostgreSQL 16 / Redis 7+ / MinIO（也可由 `run_all.py` 自动拉起本地实例）
+- PostgreSQL 16 / Redis 7+ / RustFS（也可由 `run_all.py` 自动拉起本地实例）
 - FFmpeg（音频处理依赖，需加入 PATH）
 - Android Platform Tools（`adb`，端到端测试用）
 
@@ -114,7 +114,7 @@ pip install -r requirements.txt
 cd frontend && npm install && cd ..
 
 # 3. 配置环境变量
-cp .env.example .env   # 按需修改数据库/Redis/MinIO 地址、认证模式
+cp .env.example .env   # 按需修改数据库/Redis/RustFS 地址、认证模式
 
 # 4. 初始化数据库表（详见下方「数据库初始化与迁移」）
 python scripts/create_all_tables.py
@@ -129,7 +129,7 @@ python run_all.py
 |------|------|
 | 前端 | http://localhost:5173 |
 | API Gateway | http://localhost:5000 |
-| MinIO Console | http://localhost:9001 |
+| RustFS Console | http://localhost:9001 |
 | 各微服务 | 见上方「微服务清单」 |
 
 说明：
@@ -195,8 +195,8 @@ python scripts/migrations/202609/seed_voice_llm.py                  # 按需
 |------|--------|------|
 | `DATABASE_URL` | `postgresql://...` | PostgreSQL 连接串 |
 | `REDIS_URL` | `redis://localhost:6379` | Redis 地址 |
-| `OSS_ENDPOINT` | `http://localhost:9000` | MinIO 地址 |
-| `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` | `minio` / `minio123` | MinIO 凭据 |
+| `OSS_ENDPOINT` | `http://localhost:9000` | RustFS 地址 |
+| `OSS_ACCESS_KEY` / `OSS_SECRET_KEY` | `intelligent_audio_test` / `intelligent_audio_test666` | RustFS 凭据 |
 | `AUTH_MODE` | `off` | 认证模式：`dev`(本地OAuth) / `prod`(华为云OAuth) / `off`(无认证) |
 | `DISTRIBUTED_COORDINATOR_ENABLED` | `true` | Redis 分布式锁/信号量，Redis 不可达自动降级 |
 | `LOG_LEVEL` | `INFO` | 日志级别 |

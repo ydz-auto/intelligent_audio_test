@@ -94,20 +94,10 @@ function handleCancel() {
   padding: 20px;
 }
 
-.modal-header {
-  margin-bottom: 20px;
-}
-
 .modal-header h3 {
   margin: 0 0 8px 0;
   font-size: 18px;
-  color: #333;
-}
-
-.case-count {
-  margin: 0;
-  color: #666;
-  font-size: 14px;
+  color: var(--foreground);
 }
 
 .modal-body {
@@ -120,7 +110,7 @@ function handleCancel() {
   gap: 12px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--color-gray-200);
 }
 
 .btn {
@@ -132,36 +122,13 @@ function handleCancel() {
 }
 
 .btn-secondary {
-  background: #f5f5f5;
-  color: #333;
-}
-
-.btn-secondary:hover {
-  background: #e8e8e8;
+  background: var(--muted);
+  color: var(--foreground);
 }
 
 .btn-primary {
-  background: #1677ff;
-  color: #fff;
-}
-
-.btn-primary:hover {
-  background: #4096ff;
-}
-
-.scope-section {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 16px;
-}
-.scope-section > label {
-  display: block;
-  margin-bottom: 12px;
-  font-weight: 600;
-  font-size: 14px;
-  color: #333;
+  background: var(--secondary);
+  color: var(--background);
 }
 .radio-group {
   display: flex;
@@ -175,44 +142,5 @@ function handleCancel() {
   gap: 8px;
   font-size: 14px;
   cursor: pointer;
-}
-.round-checkboxs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding-left: 24px;
-}
-.round-checkboxs label {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  cursor: pointer;
-  padding: 4px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 20px;
-  background: #fff;
-}
-.round-checkboxs label.checked {
-  border-color: #1677ff;
-  background: #e6f4ff;
-  color: #1677ff;
-}
-.level-checkboxs {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.level-checkboxs label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.level-hint {
-  font-size: 11px;
-  color: #999;
-  margin-left: 20px;
 }
 </style>

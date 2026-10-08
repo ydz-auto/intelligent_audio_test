@@ -62,6 +62,39 @@ class ViewMode(str, Enum):
     TAG = 'tag'
 
 
+class DeviceType(str, Enum):
+    """被测设备类型枚举 — 用例级决定执行路由（执行域 P0 新增）
+
+    语义取代源单体的 task.type / test_type 分支：
+    - PHYSICAL       物理设备       → e2e_test_service E2EExecutor
+    - HTTP_API       HTTP API       → api_test_service APISessionExecutor
+    - WEBSOCKET_API  WebSocket API  → api_test_service RealtimeSessionExecutor
+    """
+    PHYSICAL = 'physical'
+    HTTP_API = 'http_api'
+    WEBSOCKET_API = 'websocket_api'
+
+
+class APIProtocol(str, Enum):
+    """API 传输协议枚举 — Adapter 分型依据（执行域 P0 新增）"""
+    HTTP = 'http'
+    WEBSOCKET = 'websocket'
+
+
+class OutputType(str, Enum):
+    """API 输出类型枚举 — adapter 多模态输出采集（执行域 P0 新增）"""
+    AUDIO = 'audio'
+    TEXT = 'text'
+    VIDEO = 'video'
+    IMAGE = 'image'
+
+
+class CalibrationStatus(str, Enum):
+    """SPL 校准状态枚举（执行域 P0 新增）"""
+    CALIBRATED = 'calibrated'
+    UNCALIBRATED = 'uncalibrated'
+
+
 class RedisKeyPrefix(str, Enum):
     """Redis Key 前缀枚举 — 禁止裸字符串拼接 Redis key
 
@@ -73,6 +106,12 @@ class RedisKeyPrefix(str, Enum):
     EVAL_SEMAPHORE = 'eval:sem'
     # 评估结果回调频道前缀: eval:result:{eval_task_id}
     EVAL_RESULT = 'eval:result'
+    # physical 设备互斥锁前缀: lock:task:physical:{device_id}
+    TASK_PHYSICAL_LOCK = 'lock:task:physical'
+    # 同 endpoint 并发信号量前缀: sem:api:endpoint:{host}
+    API_ENDPOINT_SEMAPHORE = 'sem:api:endpoint'
+    # Realtime 会话实例绑定前缀: session:bind:{task_id}
+    SESSION_BIND = 'session:bind'
 
 
 class EvalTaskStatus(str, Enum):

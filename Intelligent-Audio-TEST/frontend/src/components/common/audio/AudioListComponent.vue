@@ -60,36 +60,23 @@
             <!-- 格式筛选 -->
             <div class="filter-item">
               <label class="filter-label">音频格式</label>
-              <select 
-                class="filter-select" 
-                v-model="filters.format"
-                @change="handleFilterChange"
-              >
-                <option value="all">所有格式</option>
-                <option value="mp3">MP3</option>
-                <option value="wav">WAV</option>
-                <option value="flac">FLAC</option>
-                <option value="aac">AAC</option>
-                <option value="m4a">M4A</option>
-              </select>
+              <BadgeFilter
+                :options="FORMAT_OPTIONS"
+                :model-value="filters.format"
+                all-label="所有格式"
+                @update:model-value="value => setFilter('format', value)"
+              />
             </div>
             
             <!-- 采样率筛选 -->
             <div class="filter-item">
               <label class="filter-label">采样率</label>
-              <select 
-                class="filter-select" 
-                v-model="filters.sampleRate"
-                @change="handleFilterChange"
-              >
-                <option value="all">所有采样率</option>
-                <option value="8000">8 kHz</option>
-                <option value="16000">16 kHz</option>
-                <option value="24000">24 kHz</option>
-                <option value="44100">44.1 kHz</option>
-                <option value="48000">48 kHz</option>
-                <option value="96000">96 kHz</option>
-              </select>
+              <BadgeFilter
+                :options="SAMPLE_RATE_OPTIONS"
+                :model-value="filters.sampleRate"
+                all-label="所有采样率"
+                @update:model-value="value => setFilter('sampleRate', value)"
+              />
             </div>
             
             <!-- 标签云筛选 -->
@@ -142,32 +129,23 @@
             <!-- 时长筛选 -->
             <div class="filter-item">
               <label class="filter-label">音频时长</label>
-              <select 
-                class="filter-select" 
-                v-model="filters.duration"
-                @change="handleFilterChange"
-              >
-                <option value="all">所有时长</option>
-                <option value="short">短 (<= 30秒)</option>
-                <option value="medium">中 (30秒 - 5分钟)</option>
-                <option value="long">长 (> 5分钟)</option>
-              </select>
+              <BadgeFilter
+                :options="DURATION_OPTIONS"
+                :model-value="filters.duration"
+                all-label="所有时长"
+                @update:model-value="value => setFilter('duration', value)"
+              />
             </div>
             
             <!-- 类型筛选 -->
             <div class="filter-item">
               <label class="filter-label">音频类型</label>
-              <select 
-                class="filter-select" 
-                v-model="filters.audioType"
-                @change="handleFilterChange"
-              >
-                <option value="all">所有类型</option>
-                <option value="dry">干声</option>
-                <option value="noise">噪声</option>
-                <option value="prompt">提示词音频</option>
-                <option value="mixed">混合音频</option>
-              </select>
+              <BadgeFilter
+                :options="AUDIO_TYPE_OPTIONS"
+                :model-value="filters.audioType"
+                all-label="所有类型"
+                @update:model-value="value => setFilter('audioType', value)"
+              />
             </div>
             
             <!-- 筛选操作按钮 -->
@@ -416,6 +394,7 @@
 <script setup lang="ts">
 import FolderNodeComponent from '../misc/FolderNodeComponent.vue';
 import PaginationComponent from '../data/PaginationComponent.vue';
+import BadgeFilter from '../BadgeFilter.vue';
 import { formatFileSize, formatDuration } from '../../../utils/audioUtils';
 import { useAudioListComponent } from './AudioListComponent';
 import type { AudioItem, AudioListProps } from './AudioListComponent';
@@ -450,6 +429,11 @@ const {
   searchQuery,
   tagSearchQuery,
   filters,
+  FORMAT_OPTIONS,
+  SAMPLE_RATE_OPTIONS,
+  DURATION_OPTIONS,
+  AUDIO_TYPE_OPTIONS,
+  setFilter,
   showTagModeMenu,
   menuPosition,
   selectedTags,
@@ -493,4 +477,18 @@ const {
 
 <style scoped>
 @import './AudioListComponent.css';
+
+
+/* file-name-col - 自全局样式就近迁移 */
+@media (max-width: 600px) {
+.file-name-col {
+        max-width: 120px;
+}
+}
+
+@media (max-width: 480px) {
+.file-name-col {
+        max-width: 100px;
+}
+}
 </style>

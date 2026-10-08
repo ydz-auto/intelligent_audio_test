@@ -1,0 +1,22 @@
+{
+
+      "audio": "sample_single_round_0.wav",
+      "caseId": 1001,
+      "content": "",
+      "query": "请播放斐波那契数列前10项对应的音频片段",
+      "correctAnswer": "1 1 2 3 5 8 13 21 34 55",
+      "correctnessType": "exact",
+      "text": " ",
+      "railDistance": 80,
+      "volumeLevel": 60,
+      "interferers": [],
+      "voiceprint": 
+                 
+            {
+              "audio": "B-EU-001_拒识与环境理解_环境音理解能力_环境音_门铃声.wav",
+              "spl": 55.0,
+              "playback_device_name": "设备背面（0.5m+180°）"
+            },
+      "inputText": "请播放斐波那契数列前10项"
+
+}

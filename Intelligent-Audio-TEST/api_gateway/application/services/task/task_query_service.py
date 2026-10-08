@@ -15,6 +15,7 @@ from api_gateway.schemas.task import (
     TaskCaseBrief,
     TaskDeviceBrief,
     TaskApiBrief,
+    TaskSourceBrief,
     TaskReportItem,
     TaskReportsData,
     TaskListQuery,
@@ -74,6 +75,9 @@ class TaskQueryService:
             apis = [
                 TaskApiBrief(**a) for a in item.get('apis', [])
             ]
+            source_tasks = [
+                TaskSourceBrief(**st) for st in item.get('source_tasks', [])
+            ]
             items.append(
                 TaskListItem(
                     id=item.get('id'),
@@ -109,6 +113,7 @@ class TaskQueryService:
                     ) if report_info else TaskReportsData(count=0, reports=[]),
                     devices=devices,
                     apis=apis,
+                    source_tasks=source_tasks,
                 )
             )
 

@@ -113,11 +113,11 @@ const emit = defineEmits(['edit', 'delete', 'addCase', 'copyGroup', 'updateAlgor
   min-width: 160px;
   padding: 0.5rem 0;
   margin: 0.125rem 0 0;
-  background-color: #fff;
+  background-color: var(--background);
   background-clip: padding-box;
-  border: 1px solid rgba(0, 0, 0, 0.15);
+  border: 1px solid color-mix(in srgb, var(--color-black) 15%, transparent);
   border-radius: 0.25rem;
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.175);
+  box-shadow: 0 0.5rem 1rem color-mix(in srgb, var(--color-black) 17.5%, transparent);
 }
 
 .dropdown-item {
@@ -126,7 +126,7 @@ const emit = defineEmits(['edit', 'delete', 'addCase', 'copyGroup', 'updateAlgor
   padding: 0.5rem 1rem;
   clear: both;
   font-weight: 400;
-  color: #212529;
+  color: var(--color-gray-800);
   text-align: left;
   background: none;
   border: none;
@@ -134,29 +134,29 @@ const emit = defineEmits(['edit', 'delete', 'addCase', 'copyGroup', 'updateAlgor
 }
 
 .dropdown-item:hover {
-  background-color: #f8f9fa;
-  color: #16181b;
+  background-color: var(--muted);
+  color: var(--color-gray-900);
 }
 
 .btn-warning {
-  color: #212529;
-  background-color: #ffc107;
-  border-color: #ffc107;
+  color: var(--color-gray-800);
+  background-color: var(--color-amber-500);
+  border-color: var(--color-amber-500);
 }
 
 .btn-warning:hover {
-  background-color: #e0a800;
-  border-color: #d39e00;
+  background-color: var(--color-amber-500);
+  border-color: var(--color-amber-600);
 }
 
 .btn-info {
-  color: #fff;
-  background-color: #17a2b8;
-  border-color: #17a2b8;
+  color: var(--background);
+  background-color: var(--color-cyan-500);
+  border-color: var(--color-cyan-500);
 }
 
 .btn-info:hover {
-  background-color: #138496;
-  border-color: #117a8b;
+  background-color: var(--color-cyan-600);
+  border-color: var(--color-cyan-700);
 }
 </style>

@@ -383,24 +383,63 @@ const confirmTaskName = () => {
 }
 </script>
 
-<style>
-@import '../../assets/styles/main.css';
-</style>
-
 <style scoped>
-.info-alert {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--primary-light);
-  border: 1px solid var(--primary-color);
-  border-radius: var(--border-radius-md);
-  color: var(--primary-color);
-  font-size: var(--font-size-sm);
+
+.device-toolbar{
+margin-bottom: 20px;
+padding: 16px;
+background: linear-gradient(135deg, var(--color-white) 0%, var(--muted) 100%);
+border-radius: var(--border-radius-lg);
+box-shadow: var(--shadow-sm);
+border: 1px solid var(--gray-light-color);
 }
 
-.info-alert i {
+.info-alert{
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
+  background: var(--primary-light, var(--secondary-light));
+  border: 1px solid var(--primary-color, var(--secondary));
+  border-radius: var(--border-radius-md, 6px);
+  color: var(--primary-color, var(--secondary));
+  font-size: var(--font-size-sm, 13px);
+  margin-bottom: var(--spacing-md, 16px);
+}
+
+.info-alert i{
   font-size: 16px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* step-content - 自全局样式就近迁移 */
+.step-content{
+background-color: var(--color-white);
+border-radius: var(--border-radius-lg);
+box-shadow: var(--shadow-sm);
+padding: 24px;
+margin-top: 24px;
+}
+
+
+
+.test-view-common .step-content{
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
 </style>

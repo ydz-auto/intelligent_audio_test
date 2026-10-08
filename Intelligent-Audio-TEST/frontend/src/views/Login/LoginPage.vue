@@ -72,13 +72,13 @@ async function handleLogin() {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: #f5f5f5;
+  background: var(--muted);
 }
 .login-card {
   background: white;
   padding: 40px;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-black) 10%, transparent);
   width: 360px;
 }
 .login-header {
@@ -87,11 +87,11 @@ async function handleLogin() {
 }
 .login-header i {
   font-size: 40px;
-  color: #4a90d9;
+  color: var(--secondary);
 }
 .login-header h1 {
   font-size: 20px;
-  color: #333;
+  color: var(--foreground);
   margin-top: 10px;
 }
 .form-group {
@@ -100,24 +100,24 @@ async function handleLogin() {
 .form-group label {
   display: block;
   margin-bottom: 5px;
-  color: #666;
+  color: var(--color-gray-500);
   font-size: 14px;
 }
 .form-group input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-gray-300);
   border-radius: 4px;
   font-size: 14px;
 }
 .form-group input:focus {
-  border-color: #4a90d9;
+  border-color: var(--secondary);
   outline: none;
 }
 .login-btn {
   width: 100%;
   padding: 12px;
-  background: #4a90d9;
+  background: var(--secondary);
   color: white;
   border: none;
   border-radius: 4px;
@@ -125,14 +125,14 @@ async function handleLogin() {
   cursor: pointer;
 }
 .login-btn:hover {
-  background: #357abd;
+  background: var(--color-blue-600);
 }
 .login-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 .error-msg {
-  color: #e74c3c;
+  color: var(--destructive);
   text-align: center;
   margin-bottom: 15px;
   font-size: 14px;
@@ -141,6 +141,6 @@ async function handleLogin() {
   margin-top: 20px;
   text-align: center;
   font-size: 12px;
-  color: #999;
+  color: var(--color-gray-400);
 }
 </style>

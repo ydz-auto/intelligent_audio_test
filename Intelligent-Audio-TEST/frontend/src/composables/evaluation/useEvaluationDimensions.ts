@@ -54,17 +54,22 @@ export function useEvaluationDimensions() {
     searchKeyword,
     filterStatus,
     filterCategory,
+    filterAlgorithm,
     selectedDimensions,
     currentPage,
     pageSize,
     totalItems,
     totalPages,
+    viewMode,
+    isGroupExpanded,
+    toggleGroupExpanded,
     dimensionTemplate,
     newDimension,
     apiSettings,
     filteredDimensions,
     isAllSelected,
     hierarchicalDimensions,
+    groupedDimensions,
     getAlgorithmLabel,
   } = state;
 
@@ -90,6 +95,8 @@ export function useEvaluationDimensions() {
     toggleGroupSelection,
     selectAllInGroup,
     toggleSelectAllInCategory,
+    groupAllSelected,
+    toggleGroupSelectAll,
   } = createEvalDimensionSelection(state);
 
   // 5. 保存前字段规范化处理链
@@ -125,11 +132,16 @@ export function useEvaluationDimensions() {
     searchKeyword,
     filterStatus,
     filterCategory,
+    filterAlgorithm,
     selectedDimensions,
     currentPage,
     pageSize,
     totalItems,
     totalPages,
+    // 视图模式（列表/分组）
+    viewMode,
+    isGroupExpanded,
+    toggleGroupExpanded,
     // 模板与表单数据
     dimensionTemplate,
     newDimension,
@@ -137,6 +149,7 @@ export function useEvaluationDimensions() {
     // 计算属性
     filteredDimensions,
     hierarchicalDimensions,
+    groupedDimensions,
     isAllSelected,
     evaluationFields,
     // 数据获取
@@ -155,6 +168,8 @@ export function useEvaluationDimensions() {
     toggleGroupSelection,
     selectAllInGroup,
     toggleSelectAllInCategory,
+    groupAllSelected,
+    toggleGroupSelectAll,
     // 维度 CRUD
     saveDimension,
     deleteDimension,

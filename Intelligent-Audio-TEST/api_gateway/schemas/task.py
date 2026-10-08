@@ -35,6 +35,17 @@ class TaskApiBrief(APIModel):
     status: Optional[str] = Field(None)
 
 
+class TaskSourceBrief(APIModel):
+    """合并任务来源任务摘要（TaskMergeRelation.source_task 简报）。"""
+    id: int = Field(...)
+    name: str = Field(...)
+    status: Optional[str] = Field(None)
+    total_cases: Optional[int] = Field(None)
+    completed_cases: Optional[int] = Field(None)
+    failed_cases: Optional[int] = Field(None)
+    created_at: Optional[str] = Field(None)
+
+
 class TaskListItem(APIModel):
     id: int = Field(...)
     name: str = Field(...)
@@ -57,6 +68,7 @@ class TaskListItem(APIModel):
     reports: Optional[TaskReportsData] = Field(None)
     devices: List[TaskDeviceBrief] = Field(default_factory=list)
     apis: List[TaskApiBrief] = Field(default_factory=list)
+    source_tasks: List[TaskSourceBrief] = Field(default_factory=list)
 
 
 class TaskListData(PaginatedData[TaskListItem]):
@@ -146,6 +158,18 @@ class TaskStatsData(APIModel):
     duration: Any = Field(None)
 
 
+class TaskCaseDeviceAssignment(APIModel):
+    """用例级被测设备选择（执行域 P0 新增）
+
+    每个任务用例可独立指定被测设备类型与 ID（物理设备 / HTTP API / WebSocket API），
+    为空时保持旧语义（按任务 type 路由）。device_type 取值见 DeviceType 枚举。
+    """
+    case_id: str = Field(...)
+    device_type: Optional[str] = Field(None)
+    device_id: Optional[str] = Field(None)
+    lab_id: Optional[int] = Field(None)
+
+
 class TaskCreateParameters(APIModel):
     case_ids: List[str] = Field(default_factory=list)
     device_ids: List[int] = Field(default_factory=list)
@@ -165,6 +189,7 @@ class TaskCreateRequest(APIModel):
     tags: Optional[List[str]] = Field(None)
     algorithm_type: Optional[str] = Field(None)
     algorithm_params: Optional[Dict[str, Any]] = Field(None)
+    case_devices: Optional[List[TaskCaseDeviceAssignment]] = Field(None)
 
 
 class TaskControlRequest(APIModel):

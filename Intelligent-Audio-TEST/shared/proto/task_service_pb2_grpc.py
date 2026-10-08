@@ -1265,6 +1265,341 @@ class TaskConfigService:
             _registered_method=True)
 
 
+class PublishedTaskConfigServiceStub:
+    """===== 已发布任务配置服务（任务发布功能）=====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.PublishTask = channel.unary_unary(
+                '/task_service.PublishedTaskConfigService/PublishTask',
+                request_serializer=task__service__pb2.PublishTaskRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ExecutePublishedTask = channel.unary_unary(
+                '/task_service.PublishedTaskConfigService/ExecutePublishedTask',
+                request_serializer=task__service__pb2.ExecutePublishedTaskRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.CreatePublishedTaskVersion = channel.unary_unary(
+                '/task_service.PublishedTaskConfigService/CreatePublishedTaskVersion',
+                request_serializer=task__service__pb2.CreatePublishedTaskVersionRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ArchivePublishedTask = channel.unary_unary(
+                '/task_service.PublishedTaskConfigService/ArchivePublishedTask',
+                request_serializer=task__service__pb2.ArchivePublishedTaskRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.RenamePublishedTask = channel.unary_unary(
+                '/task_service.PublishedTaskConfigService/RenamePublishedTask',
+                request_serializer=task__service__pb2.RenamePublishedTaskRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListPublishedTasks = channel.unary_unary(
+                '/task_service.PublishedTaskConfigService/ListPublishedTasks',
+                request_serializer=task__service__pb2.ListPublishedTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetPublishedTaskDetail = channel.unary_unary(
+                '/task_service.PublishedTaskConfigService/GetPublishedTaskDetail',
+                request_serializer=task__service__pb2.GetPublishedTaskDetailRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+
+
+class PublishedTaskConfigServiceServicer:
+    """===== 已发布任务配置服务（任务发布功能）=====
+    """
+
+    def PublishTask(self, request, context):
+        """---- 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ExecutePublishedTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreatePublishedTaskVersion(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ArchivePublishedTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RenamePublishedTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListPublishedTasks(self, request, context):
+        """---- 读操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetPublishedTaskDetail(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_PublishedTaskConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'PublishTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.PublishTask,
+                    request_deserializer=task__service__pb2.PublishTaskRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ExecutePublishedTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExecutePublishedTask,
+                    request_deserializer=task__service__pb2.ExecutePublishedTaskRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'CreatePublishedTaskVersion': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreatePublishedTaskVersion,
+                    request_deserializer=task__service__pb2.CreatePublishedTaskVersionRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ArchivePublishedTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.ArchivePublishedTask,
+                    request_deserializer=task__service__pb2.ArchivePublishedTaskRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RenamePublishedTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.RenamePublishedTask,
+                    request_deserializer=task__service__pb2.RenamePublishedTaskRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListPublishedTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListPublishedTasks,
+                    request_deserializer=task__service__pb2.ListPublishedTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetPublishedTaskDetail': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPublishedTaskDetail,
+                    request_deserializer=task__service__pb2.GetPublishedTaskDetailRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.PublishedTaskConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.PublishedTaskConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class PublishedTaskConfigService:
+    """===== 已发布任务配置服务（任务发布功能）=====
+    """
+
+    @staticmethod
+    def PublishTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.PublishedTaskConfigService/PublishTask',
+            task__service__pb2.PublishTaskRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExecutePublishedTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.PublishedTaskConfigService/ExecutePublishedTask',
+            task__service__pb2.ExecutePublishedTaskRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreatePublishedTaskVersion(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.PublishedTaskConfigService/CreatePublishedTaskVersion',
+            task__service__pb2.CreatePublishedTaskVersionRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ArchivePublishedTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.PublishedTaskConfigService/ArchivePublishedTask',
+            task__service__pb2.ArchivePublishedTaskRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RenamePublishedTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.PublishedTaskConfigService/RenamePublishedTask',
+            task__service__pb2.RenamePublishedTaskRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListPublishedTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.PublishedTaskConfigService/ListPublishedTasks',
+            task__service__pb2.ListPublishedTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPublishedTaskDetail(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.PublishedTaskConfigService/GetPublishedTaskDetail',
+            task__service__pb2.GetPublishedTaskDetailRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
 class TestCaseConfigServiceStub:
     """===== 测试用例配置 CRUD 服务 =====
     """

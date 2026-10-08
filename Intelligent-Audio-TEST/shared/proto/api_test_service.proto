@@ -45,6 +45,8 @@ message CreateAPITestResponse {
 
 message StartAPITestRequest {
   string task_id = 1;
+  string device_type = 2;  // physical / http_api / websocket_api（用例级路由，执行域 P0 新增）
+  string device_id = 3;    // 被测设备 ID（physical=设备ID / API 类=api.id，执行域 P0 新增）
 }
 
 message StartAPITestResponse {

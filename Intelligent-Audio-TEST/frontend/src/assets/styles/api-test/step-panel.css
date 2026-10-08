@@ -1,21 +1,11 @@
-/* 步骤面板样式 */
-.step-panel {
-    background: #fff;
-    border: 2px solid var(--border-color);
-    border-radius: var(--border-radius-xl);
-    padding: var(--spacing-xl);
-    margin-bottom: var(--spacing-lg);
-    box-shadow: var(--shadow-md);
-    transition: all var(--transition-normal);
-    display: none;
-}
 
-.step-panel.active {
+
+.step-panel.active{
     display: block;
     animation: slideIn 0.5s ease-out;
 }
 
-@keyframes slideIn {
+@keyframes slideIn{
     from {
         opacity: 0;
         transform: translateY(20px);
@@ -26,7 +16,7 @@
     }
 }
 
-.step-title {
+.step-title{
     font-size: 24px;
     font-weight: var(--font-weight-bold);
     color: var(--text-primary);
@@ -36,7 +26,7 @@
     gap: var(--spacing-md);
 }
 
-.step-title::before {
+.step-title::before{
     content: '';
     width: 48px;
     height: 4px;
@@ -44,7 +34,7 @@
     border-radius: 2px;
 }
 
-.step-actions {
+.step-actions{
     display: flex;
     gap: var(--spacing-md);
     justify-content: flex-end;

@@ -21,21 +21,21 @@
 }
 
 .log-algorithm.translation {
-  background: #e6f7ff;
-  color: #1890ff;
+  background: var(--secondary-light);
+  color: var(--secondary);
 }
 
 .log-algorithm.asr {
-  background: #f6ffed;
-  color: #52c41a;
+  background: var(--success-light);
+  color: var(--success);
 }
 
 .log-algorithm.speaker_recognition {
-  background: #fff7e6;
-  color: #fa8c16;
+  background: var(--warning-light);
+  color: var(--warning);
 }
 
 .log-algorithm.tts {
-  background: #fff1f0;
-  color: #f5222d;
+  background: var(--destructive-light);
+  color: var(--destructive);
 }

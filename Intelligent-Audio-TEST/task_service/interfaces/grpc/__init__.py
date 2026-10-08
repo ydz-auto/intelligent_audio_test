@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from .execution import ExecutionServiceServicer
 from .task_config import TaskConfigServiceServicer
+from .published_task_config import PublishedTaskConfigServiceServicer
 from .testcase_config import TestCaseConfigServiceServicer
 from .tag_config import TagConfigServiceServicer
 from .algorithm_config import AlgorithmConfigServiceServicer
@@ -10,6 +11,7 @@ from .task_data_service import TaskDataServiceServicer
 __all__ = [
     'ExecutionServiceServicer',
     'TaskConfigServiceServicer',
+    'PublishedTaskConfigServiceServicer',
     'TestCaseConfigServiceServicer',
     'TagConfigServiceServicer',
     'AlgorithmConfigServiceServicer',

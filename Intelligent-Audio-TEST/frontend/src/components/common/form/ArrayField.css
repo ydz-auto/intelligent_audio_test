@@ -4,15 +4,15 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  background-color: #f8fafc;
+  background-color: var(--color-slate-50);
   border-radius: 8px;
-  border: 1px dashed #e2e8f0;
+  border: 1px dashed var(--color-slate-200);
 }
 
 .field-label {
   font-size: 14px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--color-slate-800);
   margin-bottom: 4px;
 }
 
@@ -27,8 +27,8 @@
   align-items: flex-start;
   gap: 12px;
   padding: 16px;
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background-color: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   position: relative;
 }
@@ -53,36 +53,36 @@
 }
 
 .readonly-field {
-  background-color: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  background-color: var(--color-slate-100);
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-slate-500);
   cursor: default;
 }
 
 .readonly-field:focus {
   outline: none;
-  border-color: #cbd5e1;
+  border-color: var(--color-slate-300);
 }
 
 .readonly-field.error-field {
-  border-color: #ef4444;
-  background-color: rgba(239, 68, 68, 0.05);
-  color: #ef4444;
+  border-color: var(--color-red-500);
+  background-color: color-mix(in srgb, var(--color-red-500) 5%, transparent);
+  color: var(--color-red-500);
   font-weight: 500;
 }
 
 .warning-text {
   font-size: 10px;
-  color: #f59e0b;
+  color: var(--color-amber-500);
   margin-top: 2px;
 }
 
 .has-error {
-  border-color: #f59e0b !important;
-  background-color: rgba(245, 158, 11, 0.05) !important;
+  border-color: var(--color-amber-500) !important;
+  background-color: color-mix(in srgb, var(--color-amber-500) 5%, transparent) !important;
 }
 
 .api-endpoint-row {
@@ -97,9 +97,9 @@
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 16px;
   padding: 12px;
-  background-color: #f1f5f9;
+  background-color: var(--color-slate-100);
   border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
 }
 
 .api-priority-wrapper, .api-name-wrapper, .api-url-wrapper,
@@ -113,7 +113,7 @@
 .sub-label {
   font-size: 12px;
   font-weight: 500;
-  color: #64748b;
+  color: var(--color-slate-500);
   margin: 0;
 }
 
@@ -126,13 +126,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ef4444;
+  color: var(--color-red-500);
   transition: all 0.2s ease;
   margin-top: 8px;
 }
 
 .remove-array-item-btn:hover:not(:disabled) {
-  background-color: rgba(239, 68, 68, 0.1);
+  background-color: color-mix(in srgb, var(--color-red-500) 10%, transparent);
 }
 
 .remove-array-item-btn:disabled {
@@ -142,26 +142,26 @@
 
 .add-array-item-btn {
   background: none;
-  border: 1px dashed #94a3b8;
+  border: 1px dashed var(--color-slate-400);
   padding: 10px 16px;
   cursor: pointer;
   border-radius: 6px;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #64748b;
+  color: var(--color-slate-500);
   transition: all 0.2s ease;
   font-size: 14px;
 }
 
 .add-array-item-btn:hover {
-  background-color: rgba(148, 163, 184, 0.1);
-  border-color: #64748b;
-  color: #334155;
+  background-color: color-mix(in srgb, var(--color-slate-400) 10%, transparent);
+  border-color: var(--color-slate-500);
+  color: var(--color-slate-700);
 }
 
 .test-spl-btn {
-  background-color: var(--primary-color, #ff6a00);
+  background-color: var(--primary-color, var(--primary));
   color: white;
   border: 2px solid transparent;
   padding: 6px 10px;
@@ -177,31 +177,31 @@
 }
 
 .test-spl-btn:hover:not(:disabled) {
-  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.3);
-  border: 2px solid var(--primary-color, #ff6a00);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 30%, transparent);
+  border: 2px solid var(--primary-color, var(--primary));
 }
 
 .test-spl-btn:disabled {
-  background-color: #e9ecef;
-  color: #adb5bd;
+  background-color: var(--muted);
+  color: var(--gray);
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
 }
 
 .test-spl-btn.stop-btn {
-  background-color: #dc2626;
+  background-color: var(--color-red-600);
 }
 
 .test-spl-btn.stop-btn:hover:not(:disabled) {
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
-  border: 2px solid #dc2626;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-red-600) 30%, transparent);
+  border: 2px solid var(--color-red-600);
 }
 
 .field-error {
   margin: 8px 0 0 0;
   font-size: 12px;
-  color: #ef4444;
+  color: var(--color-red-500);
 }
 
 @media (max-width: 768px) {

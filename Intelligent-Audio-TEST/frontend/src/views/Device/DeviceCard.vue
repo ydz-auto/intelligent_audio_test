@@ -82,6 +82,158 @@
     </div>
   </div>
 </template>
+<style scoped>
+
+.device-checkbox{
+width: 16px;
+height: 16px;
+cursor: pointer;
+margin-right: 8px ;
+-webkit-appearance: none ;
+appearance: none ;
+background-color: var(--color-white) !important;
+border: 2px solid var(--border-color) !important;
+border-radius: 4px ;
+position: relative ;
+transition: all 0.2s ease ;
+display: flex ;
+align-items: center ;
+justify-content: center ;
+flex-shrink: 0 ;
+vertical-align: middle ;
+z-index: 10 ;
+opacity: 1 ;
+visibility: visible ;
+}
+
+.device-checkbox:disabled{
+cursor: not-allowed;
+opacity: 0.5 ;
+}
+
+.device-card{
+border: 2px solid transparent;
+padding: 20px;
+margin-bottom: 20px;
+display: flex;
+flex-direction: column;
+gap: 16px;
+background: white;
+border-radius: 12px;
+box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
+transition: all 0.3s ease;
+cursor: pointer;
+overflow: hidden;
+}
+
+.device-card:hover{
+border-color: var(--primary-color);
+transform: translateY(-5px);
+box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 12%, transparent);
+}
+
+
+
+.device-checkbox:checked{
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) ;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
+}
+
+.device-checkbox:checked::after{
+    content: '✓' ;
+    color: white ;
+    font-size: 16px ;
+    font-weight: bold ;
+    position: absolute ;
+}
+
+
+
+
+
+
+
+.testing-indicator{
+    font-size: 10px;
+    animation: spin 1s linear infinite;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* device-specs - 自全局样式就近迁移 */
+.device-specs{
+display: grid;
+grid-template-columns: 1fr 1fr;
+gap: 12px;
+padding: 16px;
+border-top: 1px solid var(--border-color);
+border-bottom: 1px solid var(--border-color);
+background: var(--color-bs-gray-100);
+border-radius: 8px;
+}
+
+
+
+@media (max-width: 768px){
+.device-specs {
+        grid-template-columns: 1fr;
+}
+}
+
+.test-view-common .device-specs{
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+/* device-select - 自全局样式就近迁移 */
+.device-select{
+    flex-shrink: 0;
+}
+
+/* device-card-content - 自全局样式就近迁移 */
+.device-card-content{
+    padding: 20px;
+}
+
+/* connection-controls - 自全局样式就近迁移 */
+.connection-controls{
+    display: flex;
+    gap: 8px;
+    margin: 8px 0;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* fade-in - 自全局样式就近迁移 */
+.fade-in{
+    animation: fadeIn 0.3s ease forwards;
+}
+
+</style>
 
 <script setup lang="ts">
 import { computed } from 'vue'

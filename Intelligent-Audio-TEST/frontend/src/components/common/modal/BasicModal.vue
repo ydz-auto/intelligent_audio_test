@@ -144,7 +144,7 @@ onUnmounted(() => {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -152,15 +152,10 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.modal-overlay.active {
-  opacity: 1;
-  visibility: visible;
-}
-
 .modal {
   background-color: white;
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   max-height: 90vh;
   overflow: hidden;
   transition: transform 0.3s ease, opacity 0.3s ease;
@@ -180,8 +175,8 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid #e9ecef;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 1px solid var(--muted);
+  background: linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%);
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
 }
@@ -190,7 +185,7 @@ onUnmounted(() => {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: #343a40;
+  color: var(--foreground);
 }
 
 .modal-close {
@@ -198,7 +193,7 @@ onUnmounted(() => {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #6c757d;
+  color: var(--muted-foreground);
   width: 32px;
   height: 32px;
   display: flex;
@@ -209,8 +204,8 @@ onUnmounted(() => {
 }
 
 .modal-close:hover {
-  color: #343a40;
-  background-color: #e9ecef;
+  color: var(--foreground);
+  background-color: var(--muted);
   transform: rotate(90deg);
 }
 
@@ -225,8 +220,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 20px 24px;
-  border-top: 1px solid #e9ecef;
-  background-color: #f8f9fa;
+  border-top: 1px solid var(--muted);
+  background-color: var(--muted);
   border-bottom-left-radius: 8px;
   border-bottom-right-radius: 8px;
   /* 确保底部固定在模态窗底部 */
@@ -245,34 +240,25 @@ onUnmounted(() => {
   transition: all 0.2s;
 }
 
-.btn-primary {
-  background-color: #1677ff;
-  color: white;
-}
-
 .btn-primary:hover {
-  background-color: #4096ff;
+  background-color: var(--secondary);
 }
 
 .btn-primary:disabled {
-  background-color: #d9d9d9;
+  background-color: var(--border);
   cursor: not-allowed;
 }
 
 .btn-secondary {
-  background-color: #f0f0f0;
-  color: #333;
-}
-
-.btn-secondary:hover {
-  background-color: #e0e0e0;
+  background-color: var(--gray-light);
+  color: var(--foreground);
 }
 
 .loading-spinner {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
   border-radius: 50%;
   border-top-color: white;
   animation: spin 1s ease-in-out infinite;

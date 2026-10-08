@@ -194,7 +194,7 @@ function onDynamicFormUpdate(values: Record<string, any>) {
 .rce-step {
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gray-light);
 }
 .rce-step:last-child { border-bottom: none; }
 
@@ -204,8 +204,8 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   gap: 8px;
   margin-bottom: 12px;
 }
-.rce-step-icon { font-size: 14px; color: var(--primary-color, #ff6a00); }
-.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, #333); }
+.rce-step-icon { font-size: 14px; color: var(--primary-color, var(--primary)); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, var(--foreground)); }
 
 .rce-tag {
   padding: 2px 8px;
@@ -213,20 +213,20 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   font-size: 10px;
   font-weight: 500;
 }
-.rce-tag-orange { background: #fff3e8; color: #ff6a00; }
+.rce-tag-orange { background: var(--color-orange-50); color: var(--primary); }
 
 .rce-section { margin-bottom: 14px; }
 
 .rce-sub-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
   margin-bottom: 8px;
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.rce-sub-title i { font-size: 12px; color: var(--text-light, #999); }
+.rce-sub-title i { font-size: 12px; color: var(--text-light, var(--color-gray-400)); }
 
 .rce-audio-card {
   display: flex;
@@ -234,16 +234,16 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid #e0e7ff;
+  border: 1px solid var(--color-indigo-100);
   border-radius: 6px;
-  background: #f8f9ff;
+  background: var(--muted);
 }
 .rce-audio-card-info { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.rce-audio-card-icon { color: #6366f1; font-size: 12px; }
+.rce-audio-card-icon { color: var(--color-indigo-500); font-size: 12px; }
 .rce-audio-card-name {
   font-size: 13px;
   font-weight: 500;
-  color: #333;
+  color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -255,11 +255,11 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   justify-content: center;
   gap: 6px;
   padding: 16px;
-  border: 1px dashed #ccc;
+  border: 1px dashed var(--color-gray-300);
   border-radius: 6px;
   cursor: pointer;
-  color: #999;
+  color: var(--color-gray-400);
   font-size: 13px;
 }
-.rce-audio-empty:hover { border-color: #6366f1; color: #6366f1; background: #f8f9ff; }
+.rce-audio-empty:hover { border-color: var(--color-indigo-500); color: var(--color-indigo-500); background: var(--muted); }
 </style>

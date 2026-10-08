@@ -27,11 +27,11 @@ EVALUATION_SERVICE_GRPC_PORT = 50091
 # 基础设施端口
 REDIS_PORT = 6379
 POSTGRESQL_PORT = 5432
-MINIO_PORT = 9000
+RUSTFS_PORT = 9000
 
 # 前端端口（来源：frontend/vite.config.ts）
 FRONTEND_PORT = 6173
 # 前端开发端口（run_all.py / stop_all.py 用 --port 覆盖 vite.config.ts 的 6173 为 5173）
 FRONTEND_DEV_PORT = 5173
-# MinIO 控制台端口（minio server --console-address :9001）
-MINIO_CONSOLE_PORT = 9001
+# RustFS 控制台端口（rustfs server --console-address :9001）
+RUSTFS_CONSOLE_PORT = 9001

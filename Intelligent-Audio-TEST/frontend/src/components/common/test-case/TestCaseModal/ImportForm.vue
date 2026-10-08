@@ -256,16 +256,16 @@ defineExpose({
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #495057;
+  color: var(--muted-foreground);
 }
 
 .required {
-  color: #dc3545;
+  color: var(--destructive);
   font-weight: bold;
 }
 
 .file-upload {
-  border: 2px dashed var(--border-color, #ced4da);
+  border: 2px dashed var(--border-color, var(--border));
   border-radius: 8px;
   padding: 24px;
   text-align: center;
@@ -274,13 +274,13 @@ defineExpose({
 }
 
 .file-upload:hover {
-  border-color: var(--primary-color, #007bff);
-  background: rgba(0, 123, 255, 0.05);
+  border-color: var(--primary-color, var(--secondary));
+  background: color-mix(in srgb, var(--secondary) 5%, transparent);
 }
 
 .file-upload.is-dragging {
-  border-color: var(--primary-color, #007bff);
-  background: rgba(0, 123, 255, 0.1);
+  border-color: var(--primary-color, var(--secondary));
+  background: color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .file-info {
@@ -298,7 +298,7 @@ defineExpose({
 }
 
 .stat-item {
-  background: #e9ecef;
+  background: var(--muted);
   padding: 4px 12px;
   border-radius: 4px;
 }
@@ -316,12 +316,12 @@ defineExpose({
 .table th,
 .table td {
   padding: 8px 12px;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--border);
   text-align: left;
 }
 
 .table th {
-  background: #f8f9fa;
+  background: var(--muted);
   font-weight: 600;
 }
 
@@ -332,29 +332,29 @@ defineExpose({
 }
 
 .badge-api {
-  background: #28a745;
+  background: var(--success);
   color: white;
 }
 
 .badge-e2e {
-  background: #17a2b8;
+  background: var(--color-cyan-500);
   color: white;
 }
 
 .status-existing {
-  color: #ffc107;
+  color: var(--color-amber-500);
   font-weight: 500;
 }
 
 .status-new {
-  color: #28a745;
+  color: var(--success);
   font-weight: 500;
 }
 
 .preview-more {
   text-align: center;
   padding: 8px;
-  color: #6c757d;
+  color: var(--muted-foreground);
   font-size: 12px;
 }
 </style>

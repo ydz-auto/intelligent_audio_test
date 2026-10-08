@@ -33,7 +33,7 @@ export function createTaskTypeChart(ctx: HTMLCanvasElement | CanvasRenderingCont
     labels: ['API测试', '端到端测试'],
     datasets: [{
       data: [taskTypeCounts[TestType.API], taskTypeCounts[TestType.E2E]],
-      backgroundColor: ['#FF6A00', '#1677FF'],
+      backgroundColor: ['#FF6A00', '#1976D2'],
       borderColor: '#ffffff',
       borderWidth: 2,
       hoverOffset: 4
@@ -356,8 +356,8 @@ export function createTaskStatusChart(ctx: HTMLCanvasElement | CanvasRenderingCo
     datasets: [{
       label: '任务数量',
       data: [taskStatusCounts.pending, taskStatusCounts.queued, taskStatusCounts.running, taskStatusCounts.completed, taskStatusCounts.failed],
-      backgroundColor: ['#1677FF', '#1677FF', '#FF6A00', '#52C41A', '#FF4D4F'], // 使用多种颜色
-      borderColor: ['#1677FF', '#1677FF', '#FF6A00', '#52C41A', '#FF4D4F'],
+      backgroundColor: ['#1976D2', '#1976D2', '#FF6A00', '#52C41A', '#F5222D'], // 使用多种颜色
+      borderColor: ['#1976D2', '#1976D2', '#FF6A00', '#52C41A', '#F5222D'],
       borderWidth: 2,
       borderRadius: 4
     }]

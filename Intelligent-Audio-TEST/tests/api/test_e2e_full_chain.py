@@ -33,7 +33,7 @@ def _resp_data(resp):
 
 
 def _put_to_oss(presigned_url: str, file_path: str) -> str:
-    """直传文件到 OSS/MinIO 预签名 URL，返回 ETag。"""
+    """直传文件到 OSS 预签名 URL，返回 ETag。"""
     with open(file_path, 'rb') as f:
         content = f.read()
     r = httpx.put(presigned_url, content=content, timeout=30, trust_env=False)

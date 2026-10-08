@@ -20,10 +20,11 @@ from shared.utils import distributed_coordinator as dc
 
 logger = logging.getLogger(__name__)
 
-# Redis 控制 key 前缀与 TTL
-_E2E_STOP_KEY_PREFIX = 'e2e:stop:'
-_E2E_PAUSE_KEY_PREFIX = 'e2e:pause:'
-# 默认 24 小时兜底 TTL，避免进程崩溃后标志位长期残留
+# 统一使用 shared.distributed_coordinator 的 task:stop: / task:pause: key，
+# 与 task_service / device_service 三方共享同一组 Redis 标志位（多实例一致）。
+# 语义约定：
+#   task:stop:{task_id}    存在 = 已停止
+#   task:pause:{task_id}   存在 = 已暂停
 _CONTROL_FLAG_TTL = 86400
 
 
@@ -33,24 +34,37 @@ class _RedisEvent:
     兼容现有调用点（.is_set() / .set() / .clear() / .wait()），
     将进程内 threading.Event 替换为 Redis 分布式标志位，支持多实例部署。
     Redis 不可用时降级：is_set 返回 False（不阻塞），set/clear 静默忽略（不抛异常）。
+
+    Args:
+        inverted: 反转语义。默认 False 表示"key 存在 = is_set True"；
+            置 True 时"key 不存在 = is_set True"（用于 pause：存在=已暂停，
+            而调用方期望 is_set True 表示未暂停）。
     """
 
-    def __init__(self, key, initial_set=False):
+    def __init__(self, key, initial_set=False, inverted=False):
         self._key = key
+        self._inverted = inverted
         if initial_set:
             self.set()
 
     def set(self):
-        """置位（标志位存在 = 已设置）"""
-        dc.set_flag(self._key, value=1, ttl=_CONTROL_FLAG_TTL)
+        """置位（非反转：写入 key；反转：删除 key = 恢复未暂停）"""
+        if self._inverted:
+            dc.clear_flag(self._key)
+        else:
+            dc.set_flag(self._key, value=1, ttl=_CONTROL_FLAG_TTL)
 
     def clear(self):
-        """复位（标志位不存在 = 未设置）"""
-        dc.clear_flag(self._key)
+        """复位（非反转：删除 key；反转：写入 key = 置为已暂停）"""
+        if self._inverted:
+            dc.set_flag(self._key, value=1, ttl=_CONTROL_FLAG_TTL)
+        else:
+            dc.clear_flag(self._key)
 
     def is_set(self):
-        """判断是否已置位"""
-        return dc.is_flag_set(self._key)
+        """判断是否已置位（反转模式下与 key 存在性取反）"""
+        exists = dc.is_flag_set(self._key)
+        return (not exists) if self._inverted else exists
 
     def wait(self, timeout=None):
         """阻塞等待标志位被置位，超时返回 False。
@@ -85,16 +99,17 @@ class E2EEngineContext:
         """获取或创建任务的控制标志位（Redis 适配的 _RedisEvent）
 
         stop 默认未置位，pause 默认置位（即默认不暂停，可执行）。
+        key 与 task_service / device_service 统一（task:stop: / task:pause:）。
         """
         with self._lock:
             if task_id not in self.stop_flags:
                 self.stop_flags[task_id] = _RedisEvent(
-                    f'{_E2E_STOP_KEY_PREFIX}{task_id}', initial_set=False
+                    f'task:stop:{task_id}', initial_set=False
                 )
             if task_id not in self.pause_flags:
-                # pause 初始置位 = 未暂停（is_set 为 True 表示可执行）
+                # pause 初始置位 = 未暂停（inverted 模式下：task:pause: key 不存在）
                 self.pause_flags[task_id] = _RedisEvent(
-                    f'{_E2E_PAUSE_KEY_PREFIX}{task_id}', initial_set=True
+                    f'task:pause:{task_id}', initial_set=True, inverted=True
                 )
             return self.stop_flags[task_id], self.pause_flags[task_id]
 
@@ -131,6 +146,7 @@ class E2EEngineContext:
             pause = self.pause_flags.pop(task_id, None)
             self._round_progress.pop(task_id, None)
         if stop is not None:
-            stop.clear()
+            stop.clear()  # 删除 task:stop: key
         if pause is not None:
-            pause.clear()
+            # inverted 模式下 set() = 删除 task:pause: key（恢复未暂停语义，避免残留暂停标志）
+            pause.set()

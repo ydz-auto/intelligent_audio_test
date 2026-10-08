@@ -22,9 +22,10 @@ import { FieldType } from '../../../domain/enums';
 
 // 从结果/参考字段的 paramCode 或 roundNumber 提取轮次标记
 // paramCode 形如 "answer@round:1" → 'round:1'；roundNumber 为数字(1-indexed) → 'round:N'；无 → null
+// 兼容后端历史数据中 "code@Round:N"（大写 R）的写法（i flag）
 export const parseFieldRoundTag = (field: { paramCode?: string; roundNumber?: number | null }) => {
   if (field.paramCode) {
-    const m = field.paramCode.match(/@round:(\d+)$/);
+    const m = field.paramCode.match(/@round:(\d+)$/i);
     if (m) return `round:${m[1]}`;
   }
   const rn = field.roundNumber;
@@ -65,8 +66,8 @@ export function useTestCaseReportDetailTextFields(props: TestCaseReportDetailPro
     const exact = pool.find(i => i.paramCode === paramCode);
     if (exact) return formatItemValue(exact);
 
-    // 2. @round:N 展开码 → 按 base 参数 + roundNumber 匹配
-    const roundMatch = paramCode.match(/^(.*)@round:(\d+)$/);
+    // 2. @round:N 展开码 → 按 base 参数 + roundNumber 匹配（兼容大写 Round）
+    const roundMatch = paramCode.match(/^(.*)@round:(\d+)$/i);
     if (roundMatch) {
       const roundNum = Number(roundMatch[2]);
       const byRound = pool.find(i => i.paramCode === roundMatch[1] && Number(i.roundNumber) === roundNum);
@@ -87,7 +88,7 @@ export function useTestCaseReportDetailTextFields(props: TestCaseReportDetailPro
     const result: ReferenceTextField[] = [];
     const seenCodes = new Set<string>();
 
-    // 1. 从 referenceParams 字典里直接提取所有 text 参数（含多轮展开的 code@round:N）
+    // 1. 从 referenceParams 字典里直接提取所有 text 参数（含多轮展开的 code@round:N，兼容 @Round:N）
     //    字典键为参数 code 数据 key（原样保留），条目字段为 camelCase
     for (const [code, data] of Object.entries(refParams)) {
       if (!data || typeof data !== 'object') continue;
@@ -95,9 +96,10 @@ export function useTestCaseReportDetailTextFields(props: TestCaseReportDetailPro
       const text = data.text || data.value || '';
       if (typeof text !== 'string' || !text.trim()) continue;
       seenCodes.add(code);
+      const roundMatch = code.match(/^(.*)@round:(\d+)$/i);
       result.push({
         paramCode: code,
-        label: String(data.label || (code.includes('@round:') ? `${code.split('@round:')[0]} (第${code.split('@round:')[1]}轮)` : code)),
+        label: String(data.label || (roundMatch ? `${roundMatch[1]} (第${roundMatch[2]}轮)` : code)),
         paramType: FieldType.TEXT,
         roundNumber: typeof data.roundNumber === 'number' ? data.roundNumber : undefined,
         text,

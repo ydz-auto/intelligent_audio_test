@@ -6,6 +6,7 @@ import threading
 from typing import Callable
 
 from shared.utils.log_handler import log_and_emit
+from shared.utils import distributed_coordinator as dc
 
 _task_control_events = {}
 _task_control_lock = threading.Lock()
@@ -54,6 +55,35 @@ def restart_uitest_daemon(device_sn):
         return False
 
 
+def ensure_uitest_rpc_healthy(device_sn):
+    """确保设备端 uitest RPC(端口 8012)存活；已死则 ui restart 恢复。
+
+    背景: find_component 等 UI 调用失败时, hypium 内部的 MultiModeComponentFinder 会把
+    RPC 异常吞掉并走 dumpLayout 兜底(返回 None 而不是抛异常), 后端拿不到 RPC 异常,
+    with_rpc_retry 无法触发重启。因此在进入 with_rpc_retry 且有缓存驱动时,
+    先主动探测 RPC 端口, 已死直接重启, 避免 hypium 自身每步 7-8s 的无效重连。
+
+    Returns:
+        True: RPC 存活, 或状态未知(hdc 自身失败, 不擅自重启)
+        False: 已尝试重启, 调用方需重连 driver
+    """
+    try:
+        r = subprocess.run(
+            ['hdc', '-t', device_sn, 'shell', 'netstat', '-atn', '|', 'grep', ':8012'],
+            capture_output=True, text=True, timeout=5)
+        out = r.stdout or ''
+        if 'LISTEN' in out and ':8012' in out:
+            return True
+        if r.returncode != 0 and not out.strip():
+            # hdc 自身失败(设备断线等), 无法判断, 不擅自重启
+            return True
+    except Exception:
+        return True
+    log_and_emit(level='WARNING', module='DeviceDriver',
+                 content=f"uitest RPC 端口 8012 未监听, 执行 ui restart 恢复: {device_sn}")
+    return restart_uitest_daemon(device_sn)
+
+
 def is_rpc_not_running_error(exc):
     """判断异常是否为 RPC 服务未运行（RpcNotRunningError）"""
     msg = str(exc).lower()
@@ -70,6 +100,23 @@ def with_rpc_retry(max_retries=1):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
             last_exc = None
+            # 从 args 提取 device_sn (通常是第一个位置参数)
+            device_sn = None
+            if args:
+                device_sn = args[0]
+            elif 'device_sn' in kwargs:
+                device_sn = kwargs['device_sn']
+            # 已有缓存驱动时先探测 RPC 存活: find_component 等失败时 hypium 内部会把 RPC
+            # 异常吞掉走 dumpLayout 兜底, 后端拿不到异常无法触发重试, 故主动探测恢复
+            if device_sn:
+                cached = getattr(self, '_drivers', None)
+                if cached and device_sn in cached:
+                    try:
+                        if not ensure_uitest_rpc_healthy(device_sn):
+                            if hasattr(self, '_reconnect_driver'):
+                                self._reconnect_driver(device_sn)
+                    except Exception:
+                        pass
             for attempt in range(max_retries + 1):
                 try:
                     return func(self, *args, **kwargs)
@@ -79,12 +126,6 @@ def with_rpc_retry(max_retries=1):
                         raise
                     if attempt >= max_retries:
                         raise
-                    # 从 args 提取 device_sn (通常是第一个位置参数)
-                    device_sn = None
-                    if args:
-                        device_sn = args[0]
-                    elif 'device_sn' in kwargs:
-                        device_sn = kwargs['device_sn']
                     if not device_sn:
                         raise
                     _task_id = getattr(self, '_task_id', None)
@@ -197,6 +238,31 @@ def check_stop(operation_name: str = "", check_pause: bool = True):
                     return "Mock Result"
                 return None
 
+            task_id = getattr(self, '_task_id', None)
+
+            # 优先读取 Redis 分布式信号（多实例一致）：stop 或 pause 置位时走 Redis 判断
+            if task_id and (dc.is_task_stopped(task_id) or dc.is_task_paused(task_id)):
+                if dc.is_task_stopped(task_id):
+                    _test_case_id = getattr(self, '_test_case_id', None)
+                    log_and_emit(level='INFO', module='DeviceDriver',
+                               content=f"Task stopped during {operation_name} operation",
+                               task_id=task_id, test_case_id=_test_case_id)
+                    return _get_default_return(func)
+
+                # 暂停：阻塞等待恢复；暂停期间同时检测停止
+                if check_pause and dc.is_task_paused(task_id):
+                    _test_case_id = getattr(self, '_test_case_id', None)
+                    log_and_emit(level='INFO', module='DeviceDriver',
+                               content=f"Task paused during {operation_name} operation",
+                               task_id=task_id, test_case_id=_test_case_id)
+                    while dc.is_task_paused(task_id):
+                        time.sleep(0.1)
+                        if dc.is_task_stopped(task_id):
+                            log_and_emit(level='INFO', module='DeviceDriver',
+                                       content=f"Task stopped during {operation_name} operation",
+                                       task_id=task_id, test_case_id=_test_case_id)
+                            return _get_default_return(func)
+
             events = self._get_events()
             if events is None or not isinstance(events, dict):
                 stop_event = None
@@ -213,14 +279,7 @@ def check_stop(operation_name: str = "", check_pause: bool = True):
                            content=f"Task stopped during {operation_name} operation",
                            task_id=_task_id, test_case_id=_test_case_id)
                 # 根据函数返回类型返回相应的停止值
-                sig = func.__annotations__.get('return')
-                if sig is bool or sig == 'bool':
-                    return False
-                elif sig is dict or sig == 'dict':
-                    return {"asr": "Stopped", "translation": "Stopped"}
-                elif sig is str or sig == 'str':
-                    return "Stopped"
-                return
+                return _get_default_return(func)
 
             # 检查暂停事件
             if check_pause and pause_event and not pause_event.is_set():
@@ -236,14 +295,7 @@ def check_stop(operation_name: str = "", check_pause: bool = True):
                         log_and_emit(level='INFO', module='DeviceDriver', 
                                    content=f"Task stopped during {operation_name} operation",
                                    task_id=_task_id, test_case_id=_test_case_id)
-                        sig = func.__annotations__.get('return')
-                        if sig is bool or sig == 'bool':
-                            return False
-                        elif sig is dict or sig == 'dict':
-                            return {"asr": "Stopped", "translation": "Stopped"}
-                        elif sig is str or sig == 'str':
-                            return "Stopped"
-                        return
+                        return _get_default_return(func)
 
             return func(self, *args, **kwargs)
 

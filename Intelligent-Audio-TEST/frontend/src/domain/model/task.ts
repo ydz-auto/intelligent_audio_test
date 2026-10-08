@@ -19,6 +19,17 @@ export interface TaskApiBrief {
   status?: string
 }
 
+/** 合并任务来源任务摘要（TaskMergeRelation 源任务简报） */
+export interface TaskSourceBrief {
+  id: number
+  name: string
+  status?: string
+  totalCases?: number | null
+  completedCases?: number | null
+  failedCases?: number | null
+  createdAt?: string | null
+}
+
 /** 任务关联测试用例简报（TaskCaseBrief → camelCase） */
 export interface TaskCaseBrief {
   caseId: string
@@ -70,6 +81,8 @@ export interface Task {
   }
   devices?: TaskDeviceBrief[]
   apis?: TaskApiBrief[]
+  /** 合并任务来源任务列表（type='merged' 时由后端填充） */
+  sourceTasks?: TaskSourceBrief[]
   /** 任务详情接口返回的关联测试用例列表（TaskDetailData.cases） */
   cases?: TaskCaseBrief[]
 }

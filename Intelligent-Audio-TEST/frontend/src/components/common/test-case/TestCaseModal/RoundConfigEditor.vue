@@ -348,7 +348,7 @@ onMounted(() => {
   max-height: 60vh;
   min-height: 400px;
   gap: 0;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--border));
   border-radius: 8px;
   overflow: hidden;
 }
@@ -365,14 +365,14 @@ onMounted(() => {
   flex: 1;
   overflow-y: auto;
   padding: 16px 20px;
-  background: var(--background-primary, #fff);
+  background: var(--background-primary, var(--background));
 }
 
 /* 评估维度步骤的共享样式 */
 .rce-step {
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gray-light);
 }
 .rce-step:last-child { border-bottom: none; }
 
@@ -383,8 +383,8 @@ onMounted(() => {
   margin-bottom: 12px;
 }
 
-.rce-step-icon { font-size: 14px; color: var(--primary-color, #ff6a00); }
-.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, #333); }
+.rce-step-icon { font-size: 14px; color: var(--primary-color, var(--primary)); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, var(--foreground)); }
 
 .rce-tag {
   padding: 2px 8px;
@@ -392,13 +392,13 @@ onMounted(() => {
   font-size: 10px;
   font-weight: 500;
 }
-.rce-tag-green { background: #e8f5e9; color: #4caf50; }
-.rce-tag-gray { background: #f5f5f5; color: #999; }
+.rce-tag-green { background: var(--success-light); color: var(--color-green-500); }
+.rce-tag-gray { background: var(--muted); color: var(--color-gray-400); }
 
 .rce-empty {
   padding: 40px;
   text-align: center;
-  color: var(--text-light, #999);
+  color: var(--text-light, var(--color-gray-400));
   font-size: 14px;
 }
 .rce-empty i { margin-right: 6px; }

@@ -219,6 +219,28 @@ onMounted(async () => {
 });
 </script>
 
-<style>
-@import '../../assets/styles/main.css';
+<style scoped>
+@import './splMapping.css';
+
+
+/* active-icon - 自全局样式就近迁移 */
+.active-icon {
+    background: color-mix(in srgb, var(--success) 10%, transparent);
+    color: var(--success-color);
+}
+
+.active-icon {
+    background: color-mix(in srgb, var(--success) 10%, transparent);
+    color: var(--success-color);
+}
+/* test-icon - 自全局样式就近迁移 */
+.test-icon {
+    background: color-mix(in srgb, var(--color-ant-gold-6) 10%, transparent);
+    color: var(--warning-color);
+}
+
+.test-icon {
+    background: color-mix(in srgb, var(--color-ant-gold-6) 10%, transparent);
+    color: var(--warning-color);
+}
 </style>

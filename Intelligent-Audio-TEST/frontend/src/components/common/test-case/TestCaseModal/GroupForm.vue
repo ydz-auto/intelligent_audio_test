@@ -117,13 +117,13 @@ onMounted(async () => {
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #495057;
+  color: var(--muted-foreground);
 }
 
 .form-control {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 14px;
   transition: all 0.2s;
@@ -132,13 +132,13 @@ onMounted(async () => {
 
 .form-control:focus {
   outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--secondary) 25%, transparent);
 }
 
 .form-text {
   font-size: 12px;
-  color: #6c757d;
+  color: var(--muted-foreground);
   margin-top: 4px;
   display: block;
 }

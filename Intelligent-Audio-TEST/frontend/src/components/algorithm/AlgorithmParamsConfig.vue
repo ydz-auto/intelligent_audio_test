@@ -191,7 +191,7 @@ onMounted(async () => {
 
 .section-label {
   font-weight: 600;
-  color: #374151;
+  color: var(--color-gray-700);
   margin-bottom: 8px;
   display: block;
 }
@@ -206,21 +206,21 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   padding: 6px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-gray-300);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
-  background-color: #fff;
+  background-color: var(--background);
 }
 
 .algorithm-checkbox:hover {
-  border-color: #3b82f6;
-  background-color: #eff6ff;
+  border-color: var(--color-blue-500);
+  background-color: var(--color-blue-50);
 }
 
 .algorithm-checkbox--checked {
-  border-color: #3b82f6;
-  background-color: #dbeafe;
+  border-color: var(--color-blue-500);
+  background-color: var(--color-blue-100);
 }
 
 .algorithm-checkbox input {
@@ -229,7 +229,7 @@ onMounted(async () => {
 
 .checkbox-label {
   font-size: 14px;
-  color: #374151;
+  color: var(--color-gray-700);
 }
 
 .params-panels {
@@ -239,7 +239,7 @@ onMounted(async () => {
 }
 
 .params-panel {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -248,13 +248,13 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  background-color: #f9fafb;
+  background-color: var(--color-gray-50);
   cursor: pointer;
   transition: background-color 0.2s ease;
 }
 
 .params-panel-header:hover {
-  background-color: #f3f4f6;
+  background-color: var(--color-gray-100);
 }
 
 .panel-title {
@@ -262,23 +262,23 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-gray-700);
 }
 
 .panel-title i {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-gray-500);
   transition: transform 0.2s ease;
 }
 
 .params-panel-body {
   padding: 16px;
-  background-color: #fff;
-  border-top: 1px solid #e5e7eb;
+  background-color: var(--background);
+  border-top: 1px solid var(--border);
 }
 
 .no-params {
-  color: #9ca3af;
+  color: var(--color-gray-400);
   font-size: 14px;
   text-align: center;
   padding: 16px;

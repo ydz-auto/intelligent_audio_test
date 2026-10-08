@@ -1,46 +1,51 @@
-/* 全局样式变量 - 符合UI设计规范 */
+/*
+ * 旧变量兼容别名层（迁移期专用）
+ * 背景：存量 50+ 个 CSS 文件使用了以下旧变量名。
+ * 策略：颜色类旧名统一指向 tokens.css 的语义令牌，非颜色 token 原样保留。
+ * 迁移完成后删除本文件，所有消费方改用 tokens.css 语义令牌。
+ */
 :root {
-    /* 主色调 */
-    --primary-color: #FF6A00;
-    --primary-light: rgba(255, 106, 0, 0.1);
-    --primary-dark: #E65C00;
-    --primary-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
-    
-    /* 次要色调 */
-    --secondary-color: #1976d2;
+    /* ── 颜色旧名 → 语义令牌别名 ── */
+    --primary-color: var(--primary);
+    --primary-light: var(--accent);
+    --primary-dark: var(--primary-hover);
+    --primary-gradient: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+
+    --secondary-color: var(--secondary);
     --secondary-light: #e3f2fd;
-    --secondary-dark: #0958D9;
-    --secondary-gradient: linear-gradient(135deg, var(--secondary-color) 0%, var(--secondary-dark) 100%);
+    --secondary-dark: var(--secondary-deep);
+    --secondary-gradient: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-deep) 100%);
 
     /* 页面标题渐变 */
-    --title-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    --title-gradient: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
 
     /* 功能色 */
-    --success-color: #52C41A;
+    --success-color: var(--success);
     --success-light: rgba(82, 196, 26, 0.1);
-    --warning-color: #FFA940;
+    --warning-color: var(--warning);
     --warning-light: rgba(255, 169, 64, 0.1);
-    --error-color: #F5222D;
+    --error-color: var(--destructive);
     --error-light: rgba(245, 34, 45, 0.1);
-    --danger-color: #F5222D;
+    --danger-color: var(--destructive);
     --danger-light: rgba(245, 34, 45, 0.1);
 
     /* 中性色 */
-    --text-primary: #333333;
-    --text-secondary: #777777;
+    --text-primary: var(--foreground);
+    --text-secondary: var(--muted-foreground);
     --text-light: #999999;
-    --text-disabled: #CCCCCC;
-    --gray-color: #737373;
-    --gray-light-color: #F0F0F0;
-    --border-color: #E5E7EB;
-    --white-color: #FFFFFF;
-    
+    --text-disabled: #cccccc;
+    --gray-color: var(--gray);
+    --gray-light-color: var(--gray-light);
+    --border-color: var(--border);
+    --white-color: #ffffff;
+    --dark-color: var(--foreground);
+
     /* 背景色 */
-    --background-primary: #FFFFFF;
-    --background-secondary: #F5F5F5;
-    --background-tertiary: #F0F0F0;
-    
-    /* 字体 */
+    --background-primary: var(--background);
+    --background-secondary: var(--muted);
+    --background-tertiary: var(--gray-light);
+
+    /* ── 字体 ── */
     --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
     --font-size-xs: 12px;
     --font-size-sm: 14px;
@@ -49,13 +54,13 @@
     --font-size-xl: 20px;
     --font-size-xxl: 24px;
     --font-size-xxxl: 32px;
-    
+
     --font-weight-normal: 400;
     --font-weight-medium: 500;
     --font-weight-semibold: 600;
     --font-weight-bold: 700;
-    
-    /* 间距 */
+
+    /* ── 间距 ── */
     --spacing-xs: 4px;
     --spacing-sm: 8px;
     --spacing-md: 16px;
@@ -63,15 +68,15 @@
     --spacing-xl: 32px;
     --spacing-xxl: 48px;
     --spacing-xxxl: 64px;
-    
-    /* 布局尺寸 */
+
+    /* ── 布局尺寸（与 tokens.css 保持一致） ── */
     --sidebar-width: 240px;
     --header-height: 64px;
     --footer-height: 60px;
     --page-margin: 24px;
     --content-min-width: 1024px;
-    
-    /* 边框与圆角 */
+
+    /* ── 边框与圆角 ── */
     --border-width: 1px;
     --border-radius-sm: 4px;
     --border-radius-md: 8px;
@@ -79,36 +84,65 @@
     --border-radius-xl: 16px;
     --border-radius-xxl: 24px;
     --border-radius-full: 9999px;
-    
-    /* 阴影 */
+
+    /* ── 阴影 ── */
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
     --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
     --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
-    
-    /* 过渡 */
+
+    /* ── 过渡 ── */
     --transition-fast: 0.2s ease;
     --transition-normal: 0.3s ease;
     --transition-slow: 0.5s ease;
-    
-    /* Z-index */
+
+    /* ── Z-index ── */
     --z-index-dropdown: 1000;
     --z-index-modal: 10000;
     --z-index-modal-top: 13000;
     --z-index-tooltip: 3000;
-    
-    /* 卡片样式 */
+
+    /* ── 卡片样式 ── */
     --card-border: var(--border-width) solid var(--gray-light-color);
     --card-radius: var(--border-radius-xl);
     --card-shadow: var(--shadow-md);
     --card-shadow-hover: var(--shadow-lg);
-    
-    /* 按钮样式 */
+
+    /* ── 按钮样式 ── */
     --btn-primary-bg: var(--primary-gradient);
-    --btn-secondary-bg: linear-gradient(135deg, #E5E7EB 0%, #F3F4F6 100%);
-    --btn-danger-bg: linear-gradient(135deg, var(--danger-color) 0%, #DC2626 100%);
-    --btn-success-bg: linear-gradient(135deg, var(--success-color) 0%, #389E0D 100%);
+    --btn-secondary-bg: linear-gradient(135deg, #e5e7eb 0%, #f3f4f6 100%);
+    --btn-danger-bg: linear-gradient(135deg, var(--destructive) 0%, #dc2626 100%);
+    --btn-success-bg: linear-gradient(135deg, var(--success) 0%, #389e0d 100%);
     --btn-height: 40px;
     --btn-padding: 0 20px;
     --btn-border-radius: var(--border-radius-md);
+
+    /* ── 补齐历史迁移遗漏令牌（曾被引用但未定义，导致样式失效） ── */
+    --text-tertiary: var(--text-light);
+    --text-muted: var(--muted-foreground);
+    --input-bg: var(--background);
+    --disabled-bg: var(--gray-light);
+    --background-hover: var(--gray-light);
+    --btn-secondary-hover: var(--secondary-light);
+    --border-color-light: var(--border);
+
+    /* 状态色 */
+    --pending-color: var(--warning);
+    --pending-light: rgba(255, 169, 64, 0.1);
+    --pending-border: var(--warning);
+    --in-progress-color: var(--info);
+    --info-color: var(--info);
+    --info-light: rgba(25, 118, 210, 0.1);
+    --success-border: var(--success);
+    --warning-border: var(--warning);
+    --success-gradient: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+    --danger-gradient: linear-gradient(135deg, var(--destructive) 0%, var(--destructive) 100%);
+
+    /* 外来色板兼容（ant/bs/legacy 遗留引用，值保真） */
+    --color-ant-primary: #1677ff;
+    --color-ant-blue-4: #40a9ff;
+    --color-ant-gold-6: #faad14;
+    --color-bs-gray-100: #f8f9fa;
+    --color-legacy-gray-100: #edf2f7;
+    --color-legacy-gray-800: #2d3748;
 }

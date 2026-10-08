@@ -355,13 +355,13 @@ onUnmounted(() => {
 .scan-progress {
   margin-bottom: 20px;
   padding: 15px;
-  background: #f5f5f5;
+  background: var(--muted);
   border-radius: 8px;
 }
 
 .progress-bar-container {
   height: 8px;
-  background: #e0e0e0;
+  background: var(--border);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 10px;
@@ -369,19 +369,19 @@ onUnmounted(() => {
 
 .progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #4CAF50, #8BC34A);
+  background: linear-gradient(90deg, var(--success), var(--success-dark));
   transition: width 0.3s ease;
 }
 
 .progress-text {
   text-align: center;
-  color: #666;
+  color: var(--color-gray-500);
   font-size: 14px;
 }
 
 .scan-results h4 {
   margin-bottom: 15px;
-  color: #333;
+  color: var(--foreground);
 }
 
 .scan-device-type-section {
@@ -390,7 +390,7 @@ onUnmounted(() => {
 
 .scan-device-type-section h5 {
   margin-bottom: 10px;
-  color: #666;
+  color: var(--color-gray-500);
   font-size: 14px;
 }
 
@@ -412,15 +412,15 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 12px 15px;
-  background: #f9f9f9;
-  border: 1px solid #e0e0e0;
+  background: var(--color-neutral-50);
+  border: 1px solid var(--border);
   border-radius: 8px;
   transition: all 0.2s ease;
 }
 
 .scan-device-item:hover {
-  background: #f0f0f0;
-  border-color: #2196F3;
+  background: var(--gray-light);
+  border-color: var(--secondary);
 }
 
 .scan-device-info {
@@ -429,13 +429,13 @@ onUnmounted(() => {
 
 .scan-device-info h5 {
   margin: 0 0 5px 0;
-  color: #333;
+  color: var(--foreground);
   font-size: 15px;
 }
 
 .scan-device-info p {
   margin: 3px 0;
-  color: #666;
+  color: var(--color-gray-500);
   font-size: 13px;
 }
 
@@ -446,7 +446,7 @@ onUnmounted(() => {
 .no-results {
   text-align: center;
   padding: 30px;
-  color: #999;
+  color: var(--color-gray-400);
 }
 
 .no-results p {
@@ -472,18 +472,18 @@ onUnmounted(() => {
 }
 
 .btn-primary {
-  background-color: #3b82f6;
+  background-color: var(--color-blue-500);
   color: white;
 }
 
 .btn-primary:hover {
-  background-color: #2563eb;
+  background-color: var(--color-blue-600);
 }
 
 .btn-secondary {
-  background-color: #f8f9fa;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
+  background-color: var(--muted);
+  color: var(--color-slate-500);
+  border: 1px solid var(--color-slate-200);
 }
 
 .btn-secondary:hover {

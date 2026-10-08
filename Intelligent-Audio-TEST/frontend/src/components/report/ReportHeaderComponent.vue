@@ -71,9 +71,9 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  background: #ffffff;
+  background: var(--color-white);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   margin-bottom: 24px;
 }
 
@@ -84,9 +84,9 @@ export default {
 .report-title {
   font-size: 24px;
   font-weight: bold;
-  color: #333;
+  color: var(--foreground);
   margin: 0 0 12px 0;
-  background: linear-gradient(90deg, #FF6A00, #1677FF);
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -107,28 +107,28 @@ export default {
 }
 
 .report-type {
-  background: #e6f7ff;
-  color: #1890ff;
+  background: var(--secondary-light);
+  color: var(--secondary);
 }
 
 .report-type-task {
-  background: #e6f7ff;
-  color: #1890ff;
+  background: var(--secondary-light);
+  color: var(--secondary);
 }
 
 .report-type-comparison {
-  background: #fff7e6;
-  color: #fa8c16;
+  background: var(--warning-light);
+  color: var(--warning);
 }
 
 .report-type-historical {
-  background: #f6ffed;
-  color: #52c41a;
+  background: var(--success-light);
+  color: var(--success);
 }
 
 .report-date {
-  background: #f5f5f5;
-  color: #666;
+  background: var(--muted);
+  color: var(--color-gray-500);
 }
 
 .report-status {
@@ -167,11 +167,6 @@ export default {
 .btn-primary {
   background: var(--btn-primary-bg);
   color: var(--white-color);
-}
-
-.btn-primary:hover {
-  opacity: 0.9;
-  box-shadow: var(--shadow-lg);
 }
 
 .btn-secondary {

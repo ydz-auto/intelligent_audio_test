@@ -1,19 +1,6 @@
 
 /* 基础按钮样式 */
-.btn,
-.btn-label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--spacing-sm) var(--spacing-md);
-    font-size: var(--font-size-md);
-    font-weight: var(--font-weight-medium);
-    border: none;
-    border-radius: var(--border-radius-md);
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background-color: transparent;
-    color: var(--text-primary);
+.btn{
 }
 
 /* 按钮样式 - 统一为文本和SVG有颜色，背景无颜色 */
@@ -48,22 +35,7 @@ label.btn:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only) {
 }
 
 /* 纯图标按钮公共样式 */
-.btn-icon-only, .svg-btn-only, .icon-btn-only {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    padding: 2px;
-    min-width: auto;
-    line-height: 1;
-    border: none;
-    border-radius: var(--border-radius-md);
-    cursor: pointer;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    background: transparent;
-    color: var(--primary-color);
-    width: 28px;
-    height: 28px;
+.btn-icon-only{
 }
 
 /* 禁用状态 */
@@ -239,11 +211,6 @@ button:active {
     border: 2px solid var(--primary-color);
 }
 
-.btn-outline-secondary {
-    background: transparent;
-    color: var(--secondary-color);
-    border: 2px solid var(--secondary-color);
-}
 
 .btn-outline-danger {
     background: transparent;
@@ -251,17 +218,7 @@ button:active {
     border: 2px solid var(--danger-color);
 }
 
-.btn-outline-success {
-    background: transparent;
-    color: var(--success-color);
-    border: 2px solid var(--success-color);
-}
 
-.btn-outline-warning {
-    background: transparent;
-    color: var(--warning-color);
-    border: 2px solid var(--warning-color);
-}
 
 /* 外框按钮悬停效果 */
 .btn-outline:hover {
@@ -273,7 +230,7 @@ button:active {
 
 
 button.primary:hover, .btn-primary:hover {
-        background: var(--primary-light)!important;
+        background: var(--primary-light);
     transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -287,13 +244,13 @@ button.danger, .btn-danger {
 
 }
 button.danger:hover, .btn-danger:hover {
-    background: linear-gradient(135deg, #DC2626 0%, var(--danger-color) 100%) !important;
+    background: linear-gradient(135deg, var(--color-red-600) 0%, var(--danger-color) 100%) ;
 
-    color: var(--white-color) !important;
-    box-shadow: var(--shadow-lg) !important;
-    transform: translateY(-2px) !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    opacity: 1 !important;
+    color: var(--white-color) ;
+    box-shadow: var(--shadow-lg) ;
+    transform: translateY(-2px) ;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) ;
+    opacity: 1 ;
 }
 /* 确保btn-secondary按钮有高亮效果 */
 button.btn-secondary:hover,
@@ -301,36 +258,24 @@ button.btn-secondary:hover,
 label.btn.btn-secondary:hover,
 button.secondary:hover,
 .modal-footer .btn-secondary:hover {
-    background: var(--secondary-light) !important;
+    background: var(--secondary-light) ;
     color: var(--secondary-dark) ;
-    transform: translateY(-2px) !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    opacity: 1 !important;
+    transform: translateY(-2px) ;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) ;
+    opacity: 1 ;
 }
 
 
 
 .btn-outline-danger:hover {
-    background: var(--danger-light) !important;
-    color: var(--danger-color) !important;
-    transform: translateY(-2px) !important;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    opacity: 1 !important;
+    background: var(--danger-light) ;
+    color: var(--danger-color) ;
+    transform: translateY(-2px) ;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) ;
+    opacity: 1 ;
 }
 
-.btn-outline-success:hover {
-    background: var(--success-light);
-    color: var(--success-color);
-    transform: translateY(-2px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
 
-.btn-outline-warning:hover {
-    background: var(--warning-light);
-    color: var(--warning-color);
-    transform: translateY(-2px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
 
 /* 小型按钮 */
 .btn-small:not(.btn-icon-only):not(.svg-btn-only):not(.icon-btn-only),
@@ -382,14 +327,7 @@ button.secondary:hover,
 
 /* 复选框样式 */
 .checkbox-label {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    font-size: var(--font-size-md);
-    color: var(--text-primary);
-    gap: var(--spacing-sm);
     user-select: none;
-    transition: all var(--transition-normal);
 }
 
 .checkbox-label:hover {
@@ -420,14 +358,14 @@ button.secondary:hover,
     border-radius: var(--border-radius-sm);
     background-color: var(--background-primary);
     transition: all var(--transition-normal);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--color-black) 5%, transparent);
     flex-shrink: 0;
 }
 
 .checkbox-label input[type="checkbox"]:checked + .checkbox-text::before {
     background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
     border-color: var(--primary-color);
-    box-shadow: 0 2px 8px rgba(255, 106, 0, 0.25);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 25%, transparent);
     transform: scale(0.95);
 }
 
@@ -457,7 +395,7 @@ button.secondary:hover,
 
 .checkbox-label input[type="checkbox"]:focus + .checkbox-text::before {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.1);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
     border-color: var(--primary-color);
 }
 
@@ -471,7 +409,7 @@ button.success, .btn-success {
 
 button.success:hover, .btn-success:hover {
     background: var(--success-light);
-    color: #389E0D;
+    color: var(--success-dark);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -658,7 +596,7 @@ button.warning, .btn-warning {
 
 button.warning:hover, .btn-warning:hover {
     background: var(--warning-light);
-    color: #D48806;
+    color: var(--warning-dark);
     transform: translateY(-2px);
     box-shadow: none;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -745,32 +683,24 @@ button.text.danger:hover, .btn-text.btn-danger:hover {
 }
 
 /* 文本按钮 - 次要颜色 */
-.btn-text-secondary {
-    color: var(--secondary-color);
-}
 
-.btn-text-secondary:hover {
-    background: var(--secondary-light);
-    color: var(--secondary-dark);
-    transform: translateY(-2px);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
+
 
 /* 禁用按钮样式 */
 button:disabled, .btn:disabled {
-    background: transparent !important;
-    color: var(--text-disabled) !important;
-    cursor: not-allowed !important;
-    transform: none !important;
-    box-shadow: none !important;
+    background: transparent ;
+    color: var(--text-disabled) ;
+    cursor: not-allowed ;
+    transform: none ;
+    box-shadow: none ;
     opacity: 0.6;
-    border: none !important;
+    border: none ;
 }
 
 button:disabled:hover, .btn:disabled:hover {
-    background: transparent !important;
-    transform: none !important;
-    box-shadow: none !important;
+    background: transparent ;
+    transform: none ;
+    box-shadow: none ;
 }
 
 /* 按钮尺寸系列 */
@@ -979,14 +909,14 @@ button.secondary:hover, .btn-secondary:hover {
 
 button.success:hover, .btn-success:hover {
     background: var(--success-light);
-    color: #389E0D;
+    color: var(--success-dark);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 button.warning:hover, .btn-warning:hover {
     background: var(--warning-light);
-    color: #D48806;
+    color: var(--warning-dark);
     transform: translateY(-2px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }

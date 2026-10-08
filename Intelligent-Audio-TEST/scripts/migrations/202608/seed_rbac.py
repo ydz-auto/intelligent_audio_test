@@ -4,7 +4,7 @@ RBAC 种子数据初始化
 ===================================
 
 向 permissions / roles / role_permissions 表插入系统内置数据：
-  - 86 个权限点（permissions）
+  - 94 个权限点（permissions）
   - 5 个系统角色（roles: admin / tester / algo_engineer / device_admin / guest）
   - 超级通配权限 * → admin
   - tester / algo_engineer / device_admin / guest 各自的角色-权限映射
@@ -38,7 +38,7 @@ POSTGRES_URI = os.environ.get(
 
 
 # ========================================================================
-# 权限点定义（85 个）
+# 权限点定义（94 个）
 # ========================================================================
 
 PERMISSIONS = [
@@ -51,6 +51,12 @@ PERMISSIONS = [
     ('task:merge', '合并任务'),
     ('task:batch', '批量任务'),
     ('task:reextract', '重新提取任务结果'),
+    ('task:publish', '发布已发布任务'),
+    # 已发布任务 (4)
+    ('published_task:read', '查看已发布任务'),
+    ('published_task:execute', '执行已发布任务'),
+    ('published_task:version', '创建已发布任务新版本'),
+    ('published_task:archive', '归档已发布任务'),
     # 测试用例 (7)
     ('testcase:read', '查看测试用例'),
     ('testcase:create', '创建测试用例'),
@@ -170,7 +176,9 @@ ROLES = [
 # tester 权限（对应 RBAC 权限划分文档 4.1 矩阵 tester = ✓）
 TESTER_PERMS = [
     'task:read', 'task:create', 'task:update', 'task:delete', 'task:execute',
-    'task:merge', 'task:batch', 'task:reextract',
+    'task:merge', 'task:batch', 'task:reextract', 'task:publish',
+    'published_task:read', 'published_task:execute', 'published_task:version',
+    'published_task:archive',
     'testcase:read', 'testcase:create', 'testcase:update', 'testcase:delete',
     'testcase:copy', 'testcase:preview', 'testcase:import_export',
     'audio:read', 'audio:upload', 'audio:update', 'audio:delete',
@@ -194,6 +202,7 @@ TESTER_PERMS = [
 # algo_engineer 权限
 ALGO_ENGINEER_PERMS = [
     'task:read',
+    'published_task:read',
     'testcase:read',
     'audio:read',
     'api_config:read',

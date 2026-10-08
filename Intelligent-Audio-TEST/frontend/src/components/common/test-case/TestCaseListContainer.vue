@@ -54,70 +54,61 @@
           </div>
         </div>
         <div class="filters-container">
-          <div class="filter-section">
-            <label for="testTypeFilter">测试类型:</label>
-            <div class="filter-select">
-              <select id="testTypeFilter" class="form-input" v-model="testTypeFilter">
-                <option value="all">所有类型</option>
-                <option value="api">API测试</option>
-                <option value="e2e">端到端测试</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="algorithmTypeFilter">算法类型:</label>
-            <div class="filter-select">
-              <select id="algorithmTypeFilter" class="form-input" v-model="algorithmTypeFilter">
-                <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="dimensionFilter">评估维度:</label>
-            <div class="filter-select">
-              <select id="dimensionFilter" class="form-input" v-model="dimensionFilter">
-                <option value="all">所有维度</option>
-                <option v-for="dim in dimensionOptions" :key="dim.id" :value="dim.id">{{ dim.name }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="groupFilter">用例分组:</label>
-            <div class="filter-select">
-              <select id="groupFilter" class="form-input" v-model="groupFilter">
-                <option value="all">所有分组</option>
-                <option v-for="group in availableGroups" :key="group" :value="group">{{ group }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="tagFilter">标签:</label>
-            <div class="filter-select">
-              <select id="tagFilter" class="form-input" v-model="tagFilter">
-                <option value="all">所有标签</option>
-                <option v-for="tag in tags" :key="tag" :value="tag">{{ tag }}</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="sortBy">排序:</label>
-            <div class="filter-select">
-              <select id="sortBy" class="form-input" v-model="sortBy">
-                <option value="count">按用例数量</option>
-                <option value="name">按分组名称</option>
-                <option value="createTime">按创建时间</option>
-              </select>
-            </div>
-          </div>
-          <div class="filter-section">
-            <label for="sortOrder">顺序:</label>
-            <div class="filter-select">
-              <select id="sortOrder" class="form-input" v-model="sortOrder">
-                <option value="desc">降序</option>
-                <option value="asc">升序</option>
-              </select>
-            </div>
-          </div>
+          <BadgeFilter
+            :options="TEST_TYPE_OPTIONS"
+            :model-value="testTypeFilter"
+            all-label="所有类型"
+            title="测试类型"
+            @update:model-value="setTestTypeFilter"
+          />
+          <BadgeFilter
+            :options="algorithmOptions"
+            :model-value="algorithmTypeFilter"
+            all-label="所有算法"
+            title="算法类型"
+            @update:model-value="value => algorithmTypeFilter = String(value)"
+          />
+          <BadgeFilter
+            :options="dimensionFilterOptions"
+            :model-value="dimensionFilter"
+            all-label="所有维度"
+            title="评估维度"
+            collapsible
+            :collapsed-count="8"
+            @update:model-value="setDimensionFilter"
+          />
+          <BadgeFilter
+            :options="groupFilterOptions"
+            :model-value="groupFilter"
+            all-label="所有分组"
+            title="用例分组"
+            @update:model-value="setGroupFilter"
+          />
+          <BadgeFilter
+            :options="tagFilterOptions"
+            :model-value="tagFilter"
+            all-label="所有标签"
+            title="标签"
+            collapsible
+            :collapsed-count="8"
+            @update:model-value="setTagFilter"
+          />
+          <BadgeFilter
+            :options="SORT_BY_OPTIONS"
+            :model-value="sortBy"
+            :show-all="false"
+            :deselectable="false"
+            title="排序"
+            @update:model-value="setSortBy"
+          />
+          <BadgeFilter
+            :options="SORT_ORDER_OPTIONS"
+            :model-value="sortOrder"
+            :show-all="false"
+            :deselectable="false"
+            title="顺序"
+            @update:model-value="setSortOrder"
+          />
           <div class="filter-section">
             <button class="btn btn-secondary" @click="() => resetFilters()">重置筛选</button>
           </div>
@@ -229,7 +220,7 @@
                      @click.stop
                      :checked="tagSelectionStates[tagName]">
               <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedTagCategories[tagName] }"></i>
-              <i class="fas fa-tag" style="color: var(--primary-color, #4a90e2); margin-right: 6px;"></i>
+              <i class="fas fa-tag" style="color: var(--primary-color); margin-right: 6px;"></i>
               <h4 class="category-title">{{ tagName }}</h4>
               <span class="category-count">{{ filteredTagCases[tagName]?.length || 0 }}</span>
               <span v-if="getTagDurationStats(tagName).totalDuration > 0" class="group-duration-tags">
@@ -354,6 +345,7 @@
 <script setup lang="ts">
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
+import BadgeFilter from '../BadgeFilter.vue';
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../domain';
@@ -408,6 +400,18 @@ const {
   sortOrder,
   dimensionFilter,
   dimensionOptions,
+  TEST_TYPE_OPTIONS,
+  SORT_BY_OPTIONS,
+  SORT_ORDER_OPTIONS,
+  dimensionFilterOptions,
+  groupFilterOptions,
+  tagFilterOptions,
+  setTestTypeFilter,
+  setDimensionFilter,
+  setGroupFilter,
+  setTagFilter,
+  setSortBy,
+  setSortOrder,
   hasMoreGroups,
   expandedCategories,
   expandedTagCategories,
@@ -527,6 +531,33 @@ const handleTagAddCase = (tagName: string) => {
 }
 </script>
 
-<style scoped>
-@import './TestCaseListContainer.css';
+<style scoped>@import './TestCaseListContainer.css';
+
+/* 以下为 TestCaseListContainer.css 未覆盖的补充规则（选中态/交互态） */
+
+.category-card:has(.group-checkbox:checked){
+    background-color: color-mix(in srgb, var(--primary) 5%, transparent);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.category-card:has(.group-checkbox:checked) .category-header{
+    background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 10%, transparent) 0%, color-mix(in srgb, var(--primary) 5%, transparent) 100%);
+    border-bottom: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+}
+
+.group-checkbox{
+    pointer-events: auto ;
+    cursor: pointer ;
+}
+
+.category-header > button{
+    margin-left: auto;
+}
+
+.group-checkbox:checked ~ .category-title{
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
 </style>

@@ -1,0 +1,245 @@
+<svg viewBox="0 0 1400 1120" xmlns="http://www.w3.org/2000/svg" font-family="Microsoft YaHei, sans-serif">
+  <defs>
+    <marker id="arr-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arr-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d97706"/>
+    </marker>
+    <marker id="arr-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#059669"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1400" height="1120" fill="#f8fafc" rx="12"/>
+
+  <!-- ===== TITLE ===== -->
+  <text x="700" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#1e293b">Benchmark 排行架构总览</text>
+  <text x="700" y="54" text-anchor="middle" font-size="13" fill="#64748b">双轨制：平台实测 + 外部基线导入 — 同模型两者并存可对比</text>
+
+  <!-- ===== LEFT COLUMN: Platform Test ===== -->
+  <!-- Header -->
+  <rect x="40" y="70" width="340" height="40" rx="8" fill="#2563eb"/>
+  <text x="210" y="95" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">来源一：平台实测（主）</text>
+
+  <!-- Step 1 -->
+  <rect x="50" y="125" width="320" height="52" rx="8" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+  <circle cx="72" cy="151" r="12" fill="#2563eb"/>
+  <text x="72" y="155" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">1</text>
+  <text x="92" y="146" font-size="13" font-weight="bold" fill="#1e40af">注册被测主体</text>
+  <text x="92" y="164" font-size="11" fill="#64748b">devices / apis · device_type 决定执行方式</text>
+  <line x1="210" y1="177" x2="210" y2="185" stroke="#2563eb" stroke-width="2" marker-end="url(#arr-b)"/>
+
+  <!-- Step 2 -->
+  <rect x="50" y="185" width="320" height="52" rx="8" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+  <circle cx="72" cy="211" r="12" fill="#2563eb"/>
+  <text x="72" y="215" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">2</text>
+  <text x="92" y="206" font-size="13" font-weight="bold" fill="#1e40af">创建任务 + 测试集</text>
+  <text x="92" y="224" font-size="11" fill="#64748b">test_case_groups + 标签</text>
+  <line x1="210" y1="237" x2="210" y2="245" stroke="#2563eb" stroke-width="2" marker-end="url(#arr-b)"/>
+
+  <!-- Step 3 -->
+  <rect x="50" y="245" width="320" height="52" rx="8" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+  <circle cx="72" cy="271" r="12" fill="#2563eb"/>
+  <text x="72" y="275" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">3</text>
+  <text x="92" y="266" font-size="13" font-weight="bold" fill="#1e40af">执行测试</text>
+  <text x="92" y="284" font-size="11" fill="#64748b">E2E / API / Realtime</text>
+  <line x1="210" y1="297" x2="210" y2="305" stroke="#2563eb" stroke-width="2" marker-end="url(#arr-b)"/>
+
+  <!-- Step 4 -->
+  <rect x="50" y="305" width="320" height="52" rx="8" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>
+  <circle cx="72" cy="331" r="12" fill="#2563eb"/>
+  <text x="72" y="335" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">4</text>
+  <text x="92" y="326" font-size="13" font-weight="bold" fill="#1e40af">评估 + 报告生成</text>
+  <text x="92" y="344" font-size="11" fill="#64748b">xiaoyi_metrics 计算维度指标</text>
+  <line x1="210" y1="357" x2="210" y2="365" stroke="#2563eb" stroke-width="2" marker-end="url(#arr-b)"/>
+
+  <!-- Step 5 -->
+  <rect x="50" y="365" width="320" height="52" rx="8" fill="#bfdbfe" stroke="#3b82f6" stroke-width="2"/>
+  <circle cx="72" cy="391" r="12" fill="#2563eb"/>
+  <text x="72" y="395" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">5</text>
+  <text x="92" y="386" font-size="13" font-weight="bold" fill="#1e40af">发布正式任务</text>
+  <text x="92" y="404" font-size="11" fill="#64748b">snapshot_config.benchmark = true</text>
+
+  <!-- Arrow from step 5 → merge box -->
+  <path d="M 370 391 L 430 391 L 430 428" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arr-b)"/>
+  <text x="400" y="384" text-anchor="middle" font-size="10" fill="#2563eb" font-style="italic">发布即触发</text>
+
+  <!-- ===== RIGHT COLUMN: External Baseline ===== -->
+  <!-- Header -->
+  <rect x="1020" y="70" width="340" height="40" rx="8" fill="#d97706"/>
+  <text x="1190" y="95" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">来源二：外部基线导入（辅）</text>
+
+  <!-- Step 1 -->
+  <rect x="1030" y="125" width="320" height="52" rx="8" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>
+  <circle cx="1052" cy="151" r="12" fill="#d97706"/>
+  <text x="1052" y="155" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">1</text>
+  <text x="1072" y="146" font-size="13" font-weight="bold" fill="#92400e">录入/批量导入</text>
+  <text x="1072" y="164" font-size="11" fill="#64748b">业界公开 Benchmark 榜单数据</text>
+  <line x1="1190" y1="177" x2="1190" y2="185" stroke="#d97706" stroke-width="2" marker-end="url(#arr-a)"/>
+
+  <!-- Step 2 -->
+  <rect x="1030" y="185" width="320" height="52" rx="8" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>
+  <circle cx="1052" cy="211" r="12" fill="#d97706"/>
+  <text x="1052" y="215" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">2</text>
+  <text x="1072" y="206" font-size="13" font-weight="bold" fill="#92400e">校验</text>
+  <text x="1072" y="224" font-size="11" fill="#64748b">模型/指标/单位/方向/来源/采样</text>
+  <line x1="1190" y1="237" x2="1190" y2="245" stroke="#d97706" stroke-width="2" marker-end="url(#arr-a)"/>
+
+  <!-- Step 3 -->
+  <rect x="1030" y="245" width="320" height="52" rx="8" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>
+  <circle cx="1052" cy="271" r="12" fill="#d97706"/>
+  <text x="1052" y="275" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">3</text>
+  <text x="1072" y="266" font-size="13" font-weight="bold" fill="#92400e">逐行校验</text>
+  <text x="1072" y="284" font-size="11" fill="#64748b">合法行入库，非法行返回错误明细</text>
+  <line x1="1190" y1="297" x2="1190" y2="305" stroke="#d97706" stroke-width="2" marker-end="url(#arr-a)"/>
+
+  <!-- Step 4 -->
+  <rect x="1030" y="305" width="320" height="52" rx="8" fill="#fde68a" stroke="#f59e0b" stroke-width="2"/>
+  <circle cx="1052" cy="331" r="12" fill="#d97706"/>
+  <text x="1052" y="335" text-anchor="middle" font-size="12" font-weight="bold" fill="#fff">4</text>
+  <text x="1072" y="326" font-size="13" font-weight="bold" fill="#92400e">发布基线版本</text>
+  <text x="1072" y="344" font-size="11" fill="#64748b">不可变快照 is_current = true</text>
+
+  <!-- Arrow from step 4 → merge box -->
+  <path d="M 1030 331 L 970 331 L 970 428" fill="none" stroke="#d97706" stroke-width="2.5" marker-end="url(#arr-a)"/>
+  <text x="1000" y="324" text-anchor="middle" font-size="10" fill="#d97706" font-style="italic">导入即入榜</text>
+
+  <!-- ===== CENTER: Merge & Ranking Engine ===== -->
+  <!-- Merge box -->
+  <rect x="430" y="430" width="540" height="64" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="700" y="456" text-anchor="middle" font-size="14" font-weight="bold" fill="#5b21b6">双轨合并：同模型两者并存，不互相覆盖</text>
+  <text x="700" y="477" text-anchor="middle" font-size="12" fill="#7c3aed">排名以实测值排序；无实测值时以导入值排序 · 计算 delta = 实测值 - 导入值</text>
+  <line x1="700" y1="494" x2="700" y2="502" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+
+  <!-- Center Step 1: Metric Mapping -->
+  <rect x="430" y="504" width="540" height="52" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="450" y="525" font-size="13" font-weight="bold" fill="#5b21b6">⚙ 指标映射配置 (benchmark_metric_mappings)</text>
+  <text x="450" y="543" font-size="11" fill="#64748b">系统维度 → 排行指标 + 单位 + 方向 + 场景标签（配置化，拒绝魔法字符串）</text>
+  <line x1="700" y1="556" x2="700" y2="564" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+
+  <!-- Center Step 2: Grouping -->
+  <rect x="430" y="564" width="540" height="52" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="450" y="585" font-size="13" font-weight="bold" fill="#5b21b6">⚙ 按测试集 + 场景标签分组</text>
+  <text x="450" y="603" font-size="11" fill="#64748b">同测试集、同场景下的被测主体才互相排名 · 无匹配场景时使用「通用」</text>
+  <line x1="700" y1="616" x2="700" y2="624" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+
+  <!-- Center Step 3: Calculation -->
+  <rect x="430" y="624" width="540" height="52" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <text x="450" y="645" font-size="13" font-weight="bold" fill="#5b21b6">⚙ 计算排行结果</text>
+  <text x="450" y="663" font-size="11" fill="#64748b">rank · percentile · score100 · gapBest · gapMedian · delta_external</text>
+  <line x1="700" y1="676" x2="700" y2="684" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+
+  <!-- Center Step 4: Storage -->
+  <rect x="430" y="684" width="540" height="52" rx="8" fill="#ddd6fe" stroke="#8b5cf6" stroke-width="2"/>
+  <text x="450" y="705" font-size="13" font-weight="bold" fill="#5b21b6">⚙ 存储 benchmark_rankings</text>
+  <text x="450" y="723" font-size="11" fill="#64748b">同模型可有两条记录（source = platform_test / external_import）</text>
+
+  <!-- Version immutability note -->
+  <text x="980" y="752" text-anchor="end" font-size="10" fill="#7c3aed" font-style="italic">版本不可变：新版本发布后旧排行不漂移</text>
+
+  <!-- ===== OUTPUTS ===== -->
+  <!-- Arrows from storage to 3 outputs -->
+  <path d="M 560 736 L 560 762 L 260 762 L 260 782" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-g)"/>
+  <path d="M 700 736 L 700 782" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-g)"/>
+  <path d="M 840 736 L 840 762 L 1140 762 L 1140 782" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-g)"/>
+
+  <!-- Output 1: Report Embedded -->
+  <rect x="60" y="784" width="400" height="132" rx="10" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="260" y="809" text-anchor="middle" font-size="14" font-weight="bold" fill="#065f46">报告详情页 — Benchmark 排行区块</text>
+  <text x="80" y="829" font-size="11" fill="#064e3b">• 排行表：名次/主体/类型/来源/值/delta</text>
+  <text x="80" y="847" font-size="11" fill="#064e3b">• ECharts 横向柱状图（实测蓝/导入橙双柱）</text>
+  <text x="80" y="865" font-size="11" fill="#064e3b">• 来源筛选：仅实测/仅导入/全部/有差异</text>
+  <text x="80" y="883" font-size="11" fill="#064e3b">• delta 差异高亮（正/负值随指标方向）</text>
+  <text x="80" y="901" font-size="11" fill="#064e3b">• 异步计算 + 进度轮询</text>
+
+  <!-- Output 2: Standalone Ranking Page -->
+  <rect x="500" y="784" width="400" height="132" rx="10" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="700" y="809" text-anchor="middle" font-size="14" font-weight="bold" fill="#065f46">独立 Benchmark 排行页</text>
+  <text x="520" y="829" font-size="11" fill="#064e3b">• /benchmarks 排行概览</text>
+  <text x="520" y="847" font-size="11" fill="#064e3b">• /benchmarks/ranking 排行详情</text>
+  <text x="520" y="865" font-size="11" fill="#064e3b">• /benchmarks/baselines 基线管理</text>
+  <text x="520" y="883" font-size="11" fill="#064e3b">• 筛选：测试集 + 类别 + 指标 + 来源</text>
+  <text x="520" y="901" font-size="11" fill="#064e3b">• 被测主体类型：开源 / 闭源 / APP</text>
+
+  <!-- Output 3: Benchmark Report -->
+  <rect x="940" y="784" width="400" height="132" rx="10" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="1140" y="809" text-anchor="middle" font-size="14" font-weight="bold" fill="#065f46">Benchmark 报告发布</text>
+  <text x="960" y="829" font-size="11" fill="#064e3b">• 复用报告 7 表结构</text>
+  <text x="960" y="847" font-size="11" fill="#064e3b">• report_type = 'benchmark'</text>
+  <text x="960" y="865" font-size="11" fill="#064e3b">• /benchmarks/reports 列表 + 详情</text>
+  <text x="960" y="883" font-size="11" fill="#064e3b">• 可查看 / 导出 HTML</text>
+  <text x="960" y="901" font-size="11" fill="#064e3b">• 包含全部参与排行主体横向对比</text>
+
+  <!-- ===== DATA MODEL ===== -->
+  <line x1="40" y1="936" x2="1360" y2="936" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="700" y="958" text-anchor="middle" font-size="14" font-weight="bold" fill="#1e293b">数据模型</text>
+
+  <!-- New tables label -->
+  <text x="50" y="978" font-size="12" font-weight="bold" fill="#475569">新增 5 表：</text>
+
+  <!-- Table 1: benchmark_rankings -->
+  <rect x="50" y="986" width="250" height="44" rx="6" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.5"/>
+  <text x="175" y="1006" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">benchmark_rankings</text>
+  <text x="175" y="1022" text-anchor="middle" font-size="10" fill="#7c3aed">排行结果 (source, rank, delta_external)</text>
+
+  <!-- Table 2: benchmark_metric_mappings -->
+  <rect x="310" y="986" width="250" height="44" rx="6" fill="#ede9fe" stroke="#8b5cf6" stroke-width="1.5"/>
+  <text x="435" y="1006" text-anchor="middle" font-size="12" font-weight="bold" fill="#5b21b6">benchmark_metric_mappings</text>
+  <text x="435" y="1022" text-anchor="middle" font-size="10" fill="#7c3aed">指标映射配置</text>
+
+  <!-- Table 3: benchmark_sources -->
+  <rect x="570" y="986" width="250" height="44" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="695" y="1006" text-anchor="middle" font-size="12" font-weight="bold" fill="#92400e">benchmark_sources</text>
+  <text x="695" y="1022" text-anchor="middle" font-size="10" fill="#d97706">外部基线数据源</text>
+
+  <!-- Table 4: benchmark_baselines -->
+  <rect x="830" y="986" width="250" height="44" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="955" y="1006" text-anchor="middle" font-size="12" font-weight="bold" fill="#92400e">benchmark_baselines</text>
+  <text x="955" y="1022" text-anchor="middle" font-size="10" fill="#d97706">外部基线条目 (版本快照)</text>
+
+  <!-- Table 5: benchmark_reports -->
+  <rect x="1090" y="986" width="270" height="44" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="1225" y="1006" text-anchor="middle" font-size="12" font-weight="bold" fill="#065f46">benchmark_reports</text>
+  <text x="1225" y="1022" text-anchor="middle" font-size="10" fill="#059669">Benchmark 报告发布记录</text>
+
+  <!-- Reused tables label -->
+  <text x="50" y="1054" font-size="12" font-weight="bold" fill="#475569">复用现有表：</text>
+
+  <!-- Reused: published_tasks -->
+  <rect x="50" y="1062" width="280" height="36" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="190" y="1085" text-anchor="middle" font-size="11" fill="#475569">published_tasks (snapshot_config.benchmark)</text>
+
+  <!-- Reused: test_reports -->
+  <rect x="340" y="1062" width="260" height="36" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="470" y="1085" text-anchor="middle" font-size="11" fill="#475569">test_reports (report_type = benchmark)</text>
+
+  <!-- Reused: devices / apis -->
+  <rect x="610" y="1062" width="200" height="36" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="710" y="1085" text-anchor="middle" font-size="11" fill="#475569">devices / apis (被测主体)</text>
+
+  <!-- Reused: test_case_groups -->
+  <rect x="820" y="1062" width="220" height="36" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="930" y="1085" text-anchor="middle" font-size="11" fill="#475569">test_case_groups (测试集)</text>
+
+  <!-- Reused: dimensions -->
+  <rect x="1050" y="1062" width="200" height="36" rx="6" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4,3"/>
+  <text x="1150" y="1085" text-anchor="middle" font-size="11" fill="#475569">dimensions (评测维度)</text>
+
+  <!-- ===== LEGEND ===== -->
+  <rect x="40" y="1108" width="14" height="14" rx="3" fill="#dbeafe" stroke="#93c5fd"/>
+  <text x="60" y="1120" font-size="10" fill="#64748b">平台实测</text>
+  <rect x="130" y="1108" width="14" height="14" rx="3" fill="#fef3c7" stroke="#fcd34d"/>
+  <text x="150" y="1120" font-size="10" fill="#64748b">外部基线导入</text>
+  <rect x="240" y="1108" width="14" height="14" rx="3" fill="#ede9fe" stroke="#c4b5fd"/>
+  <text x="260" y="1120" font-size="10" fill="#64748b">排行引擎</text>
+  <rect x="330" y="1108" width="14" height="14" rx="3" fill="#d1fae5" stroke="#6ee7b7"/>
+  <text x="350" y="1120" font-size="10" fill="#64748b">输出</text>
+  <rect x="400" y="1108" width="14" height="14" rx="3" fill="#f1f5f9" stroke="#94a3b8" stroke-dasharray="4,3"/>
+  <text x="420" y="1120" font-size="10" fill="#64748b">复用现有表</text>
+
+</svg>

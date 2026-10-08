@@ -9,12 +9,12 @@
 .modal-header h3 {
   margin: 0 0 8px 0;
   font-size: 18px;
-  color: #333;
+  color: var(--foreground);
 }
 
 .case-count {
   margin: 0;
-  color: #666;
+  color: var(--color-gray-500);
   font-size: 14px;
 }
 
@@ -31,7 +31,7 @@
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
-  color: #333;
+  color: var(--foreground);
 }
 
 .radio-group {
@@ -57,8 +57,8 @@
   flex-wrap: wrap;
   gap: 10px;
   padding: 16px;
-  background-color: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background-color: var(--muted);
+  border: 1px solid var(--muted);
   border-radius: 6px;
   max-height: 150px;
   overflow-y: auto;
@@ -67,9 +67,9 @@
 .dimension-tag {
   display: inline-block;
   padding: 8px 16px;
-  background-color: #e3f2fd;
-  color: #1976d2;
-  border: 1px solid #bbdefb;
+  background-color: var(--color-secondary-light);
+  color: var(--secondary);
+  border: 1px solid var(--secondary-light);
   border-radius: 20px;
   cursor: pointer;
   font-size: 14px;
@@ -78,28 +78,28 @@
 }
 
 .dimension-tag:hover {
-  background-color: #bbdefb;
-  border-color: #1976d2;
+  background-color: var(--secondary-light);
+  border-color: var(--secondary);
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--secondary) 20%, transparent);
 }
 
 .dimension-tag.selected {
-  background-color: #1976d2;
+  background-color: var(--secondary);
   color: white;
-  border-color: #1976d2;
+  border-color: var(--secondary);
 }
 
 .dimension-tag.selected:hover {
-  background-color: #1565c0;
-  border-color: #1565c0;
+  background-color: var(--secondary-deep);
+  border-color: var(--secondary-deep);
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
 .empty-hint {
   margin: 8px 0;
-  color: #999;
+  color: var(--text-light);
   font-size: 13px;
 }
 
@@ -113,7 +113,7 @@
 .dimension-config-item {
   padding: 16px;
   background-color: white;
-  border: 1px solid #dee2e6;
+  border: 1px solid var(--border);
   border-radius: 4px;
 }
 
@@ -123,12 +123,12 @@
   align-items: center;
   margin-bottom: 12px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--muted);
 }
 
 .dimension-config-name {
   font-weight: 600;
-  color: #495057;
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
@@ -158,7 +158,7 @@
 .form-input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 14px;
   transition: all 0.2s;
@@ -167,8 +167,8 @@
 
 .form-input:focus {
   outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--secondary) 25%, transparent);
 }
 
 .modal-footer {
@@ -177,7 +177,7 @@
   gap: 12px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--color-gray-200);
 }
 
 .btn {
@@ -195,34 +195,34 @@
 
 .btn:active {
   transform: translateY(0);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 10%, transparent);
 }
 
 .btn-secondary {
-  background-color: #6c757d;
+  background-color: var(--muted-foreground);
   color: white;
 }
 
 .btn-secondary:hover {
-  background-color: #5a6268;
+  background-color: var(--color-gray-600);
 }
 
 .btn-secondary:disabled {
-  background-color: #adb5bd;
+  background-color: var(--gray);
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background-color: #007bff;
+  background-color: var(--secondary);
   color: white;
 }
 
 .btn-primary:hover {
-  background-color: #0056b3;
+  background-color: var(--secondary-deep);
 }
 
 .btn-primary:disabled {
-  background-color: #6c757d;
+  background-color: var(--muted-foreground);
   cursor: not-allowed;
 }
 
@@ -232,17 +232,17 @@
 }
 
 .btn-danger {
-  background-color: #dc3545;
+  background-color: var(--destructive);
   color: white;
 }
 
 .btn-danger:hover {
-  background-color: #c82333;
+  background-color: var(--color-red-600);
 }
 
 .scope-section {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
@@ -252,7 +252,7 @@
   margin-bottom: 12px;
   font-weight: 600;
   font-size: 14px;
-  color: #333;
+  color: var(--foreground);
 }
 .round-checkboxs {
   display: flex;
@@ -267,27 +267,27 @@
   font-size: 13px;
   cursor: pointer;
   padding: 4px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-gray-300);
   border-radius: 20px;
-  background: #fff;
+  background: var(--color-white);
 }
 .round-checkboxs label.checked {
-  border-color: #1677ff;
-  background: #e6f4ff;
-  color: #1677ff;
+  border-color: var(--secondary);
+  background: var(--secondary-light);
+  color: var(--secondary);
 }
 
 /* 逐轮设置模式样式 */
 .per-round-container {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   overflow: hidden;
 }
 
 .round-tabs {
   display: flex;
-  border-bottom: 2px solid #e2e8f0;
-  background: #f8fafc;
+  border-bottom: 2px solid var(--color-slate-200);
+  background: var(--color-slate-50);
   overflow-x: auto;
 }
 
@@ -295,7 +295,7 @@
   padding: 10px 20px;
   cursor: pointer;
   font-size: 14px;
-  color: #64748b;
+  color: var(--color-slate-500);
   border-bottom: 2px solid transparent;
   margin-bottom: -2px;
   transition: all 0.2s;
@@ -306,19 +306,19 @@
 }
 
 .round-tab:hover {
-  color: #1677ff;
-  background: #f0f9ff;
+  color: var(--secondary);
+  background: var(--color-sky-50);
 }
 
 .round-tab.active {
-  color: #1677ff;
-  border-bottom-color: #1677ff;
-  background: #fff;
+  color: var(--secondary);
+  border-bottom-color: var(--secondary);
+  background: var(--color-white);
   font-weight: 600;
 }
 
 .round-tab-special {
-  border-left: 1px solid #e2e8f0;
+  border-left: 1px solid var(--color-slate-200);
 }
 
 .round-tab-close {
@@ -330,20 +330,20 @@
   margin-left: 2px;
   border-radius: 50%;
   font-size: 10px;
-  color: #94a3b8;
+  color: var(--color-slate-400);
   transition: all 0.2s;
 }
 
 .round-tab-close:hover {
-  background: #ef4444;
-  color: #fff;
+  background: var(--color-red-500);
+  color: var(--color-white);
 }
 
 .round-tab-add {
   padding: 10px 16px;
   cursor: pointer;
   font-size: 13px;
-  color: #1677ff;
+  color: var(--secondary);
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -356,8 +356,8 @@
 }
 
 .round-tab-add:hover {
-  color: #0958d9;
-  background: #f0f9ff;
+  color: var(--secondary-deep);
+  background: var(--color-sky-50);
 }
 
 .round-tab-count {
@@ -367,8 +367,8 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  background: #1677ff;
-  color: #fff;
+  background: var(--secondary);
+  color: var(--color-white);
   border-radius: 9px;
   font-size: 11px;
   font-weight: 600;
@@ -382,8 +382,8 @@
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border-top: 1px solid var(--color-slate-200);
+  background: var(--color-slate-50);
   flex-wrap: wrap;
 }
 
@@ -392,10 +392,10 @@
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: #fff3cd;
-  border-top: 1px solid #ffe08a;
+  background: var(--color-amber-100);
+  border-top: 1px solid var(--color-amber-300);
   font-size: 13px;
-  color: #856404;
+  color: var(--color-yellow-800);
 }
 
 .copy-source-select {
@@ -407,41 +407,41 @@
 .last-round-hint {
   margin-top: 12px;
   padding: 8px 12px;
-  background: #e6f4ff;
-  border: 1px solid #91caff;
+  background: var(--secondary-light);
+  border: 1px solid var(--color-blue-300);
   border-radius: 6px;
   font-size: 12px;
-  color: #0958d9;
+  color: var(--secondary-deep);
 }
 
 .level-hint {
   font-size: 11px;
-  color: #999;
+  color: var(--text-light);
   margin-left: 24px;
   margin-top: 8px;
 }
 
 .mode-hint {
   font-size: 11px;
-  color: #f59e0b;
+  color: var(--color-amber-500);
   margin-top: 8px;
 }
 
 /* 多轮整体评估维度区域 */
 .multi-section {
-  background: #f0fdf4;
-  border-color: #bbf7d0;
+  background: var(--color-green-50);
+  border-color: var(--color-green-200);
 }
 
 .multi-section > label {
-  color: #166534;
+  color: var(--color-green-800);
 }
 
 .optional-tag {
   display: inline-block;
   padding: 1px 8px;
-  background: #dcfce7;
-  color: #166534;
+  background: var(--color-green-100);
+  color: var(--color-green-800);
   border-radius: 10px;
   font-size: 11px;
   font-weight: normal;
@@ -451,5 +451,5 @@
 .section-desc {
   margin: 0 0 12px 0;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-gray-500);
 }

@@ -1,0 +1,262 @@
+<svg viewBox="0 0 1400 1050" xmlns="http://www.w3.org/2000/svg" font-family="Microsoft YaHei, sans-serif">
+  <defs>
+    <marker id="arr-b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2563eb"/>
+    </marker>
+    <marker id="arr-p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c3aed"/>
+    </marker>
+    <marker id="arr-g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#059669"/>
+    </marker>
+    <marker id="arr-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d97706"/>
+    </marker>
+
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="50%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1400" height="1050" fill="#f8fafc" rx="12"/>
+
+  <!-- ===== TITLE ===== -->
+  <text x="700" y="32" text-anchor="middle" font-size="22" font-weight="bold" fill="#1e293b">AI 增强报告与结果分析架构总览</text>
+  <text x="700" y="54" text-anchor="middle" font-size="13" fill="#64748b">增强而非重构 · 异步注入 · 统计优先 LLM 兜底 · 降级可用</text>
+
+  <!-- ============================================================ -->
+  <!-- TOP: Trigger & Data Flow Bar -->
+  <!-- ============================================================ -->
+  <rect x="40" y="70" width="1320" height="38" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.2"/>
+  <text x="60" y="94" font-size="13" font-weight="bold" fill="#475569">触发时机：</text>
+  <rect x="140" y="76" width="200" height="26" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="240" y="93" text-anchor="middle" font-size="11" fill="#1e40af">任务报告生成完成</text>
+  <text x="345" y="94" font-size="13" fill="#94a3b8">→</text>
+  <rect x="365" y="76" width="200" height="26" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <text x="465" y="93" text-anchor="middle" font-size="11" fill="#1e40af">异步触发 AI Pipeline</text>
+  <text x="570" y="94" font-size="13" fill="#94a3b8">→</text>
+  <rect x="590" y="76" width="200" height="26" rx="4" fill="#ede9fe" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="690" y="93" text-anchor="middle" font-size="11" fill="#5b21b6">AI 分析完成</text>
+  <text x="795" y="94" font-size="13" fill="#94a3b8">→</text>
+  <rect x="815" y="76" width="200" height="26" rx="4" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1"/>
+  <text x="915" y="93" text-anchor="middle" font-size="11" fill="#065f46">前端轮询刷新</text>
+  <text x="1020" y="94" font-size="13" fill="#94a3b8">→</text>
+  <rect x="1040" y="76" width="200" height="26" rx="4" fill="#fef3c7" stroke="#fcd34d" stroke-width="1"/>
+  <text x="1140" y="93" text-anchor="middle" font-size="11" fill="#92400e">展示增强区块</text>
+
+  <!-- ============================================================ -->
+  <!-- LEFT COLUMN: Existing Report System (数据源) -->
+  <!-- ============================================================ -->
+  <rect x="40" y="125" width="360" height="40" rx="8" fill="#2563eb"/>
+  <text x="220" y="150" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">现有报告体系（数据源）</text>
+
+  <!-- 报告7表 -->
+  <rect x="50" y="175" width="340" height="146" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="220" y="195" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e40af">报告 7 表（PostgreSQL）</text>
+  <text x="65" y="213" font-size="10.5" fill="#475569">• test_reports — 报告主表（含新增 AI 字段）</text>
+  <text x="65" y="231" font-size="10.5" fill="#475569">• report_summaries — 摘要（通过率/时长）</text>
+  <text x="65" y="249" font-size="10.5" fill="#475569">• report_summary_meta — 元数据（设备/维度）</text>
+  <text x="65" y="267" font-size="10.5" fill="#475569">• report_cases — 用例明细（metrics 数组）</text>
+  <text x="65" y="285" font-size="10.5" fill="#475569">• report_metric_stats — 分组/标签/设备统计</text>
+  <text x="65" y="303" font-size="10.5" fill="#475569">• report_raw_data / report_comparison_matrix</text>
+
+  <!-- 报告组件 -->
+  <rect x="50" y="331" width="340" height="130" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="220" y="351" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e40af">报告前端组件（Vue 3）</text>
+  <text x="65" y="369" font-size="10.5" fill="#475569">• ReportHeaderComponent — 报告头部</text>
+  <text x="65" y="387" font-size="10.5" fill="#475569">• OverviewCardComponent — 概览卡片</text>
+  <text x="65" y="405" font-size="10.5" fill="#475569">• AnalysisEditorComponent — 分析结论编辑</text>
+  <text x="65" y="423" font-size="10.5" fill="#475569">• CaseCategoryComparisonComponent — 分组对比</text>
+  <text x="65" y="441" font-size="10.5" fill="#475569">• ComparisonResult / TrendAnalysis — 对比/趋势</text>
+
+  <!-- 后端报告生成 -->
+  <rect x="50" y="471" width="340" height="86" rx="8" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <text x="220" y="491" text-anchor="middle" font-size="12" font-weight="bold" fill="#1e40af">后端报告生成链路</text>
+  <text x="65" y="509" font-size="10.5" fill="#475569">• report_controller_task.py / compare.py / secondary.py</text>
+  <text x="65" y="527" font-size="10.5" fill="#475569">• report_utils.py（聚合策略 + 维度取值）</text>
+  <text x="65" y="545" font-size="10.5" fill="#475569">• aggregation_strategies.py（3 大策略配置化）</text>
+
+  <!-- ============================================================ -->
+  <!-- MIDDLE COLUMN: AI Enhancement Layer -->
+  <!-- ============================================================ -->
+  <rect x="440" y="125" width="520" height="40" rx="8" fill="#7c3aed"/>
+  <text x="700" y="150" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">AI 增强层（backend/ai/）</text>
+
+  <!-- AI 能力卡片区域 -->
+  <!-- Row 1 -->
+  <rect x="450" y="175" width="245" height="140" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <circle cx="470" cy="195" r="10" fill="#7c3aed"/>
+  <text x="470" y="199" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">1</text>
+  <text x="488" y="199" font-size="13" font-weight="bold" fill="#5b21b6">AI 报告摘要自动生成</text>
+  <text x="460" y="218" font-size="10.5" fill="#475569">源：report_summaries + meta + stats</text>
+  <text x="460" y="236" font-size="10.5" fill="#475569">输出：ai_summary（one_liner +</text>
+  <text x="465" y="252" font-size="10.5" fill="#475569">key_findings + risk_highlights）</text>
+  <text x="460" y="270" font-size="10.5" fill="#475569">组件：AiSummaryBanner 轮播横幅</text>
+  <text x="460" y="288" font-size="10.5" fill="#475569">模板：prompt_templates/conclusion.j2</text>
+
+  <rect x="705" y="175" width="245" height="140" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <circle cx="725" cy="195" r="10" fill="#7c3aed"/>
+  <text x="725" y="199" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">2</text>
+  <text x="743" y="199" font-size="13" font-weight="bold" fill="#5b21b6">AI 分析结论自动撰写</text>
+  <text x="715" y="218" font-size="10.5" fill="#475569">替代现有空白 analysis 字段</text>
+  <text x="715" y="236" font-size="10.5" fill="#475569">LLM 预填 → 用户微调</text>
+  <text x="715" y="254" font-size="10.5" fill="#475569">支持 task / comparison /</text>
+  <text x="720" y="270" font-size="10.5" fill="#475569">secondary_comparison 类型</text>
+  <text x="715" y="288" font-size="10.5" fill="#475569">组件：AnalysisEditorComponent（无修改）</text>
+
+  <!-- Row 2 -->
+  <rect x="450" y="325" width="245" height="140" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <circle cx="470" cy="345" r="10" fill="#7c3aed"/>
+  <text x="470" y="349" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">3</text>
+  <text x="488" y="349" font-size="13" font-weight="bold" fill="#5b21b6">AI 异常检测与根因分析</text>
+  <text x="460" y="368" font-size="10.5" fill="#475569">统计方法检测 + LLM 根因解释</text>
+  <text x="460" y="386" font-size="10.5" fill="#475569">5 种检测：阈值超限 / 跨设备 /</text>
+  <text x="465" y="402" font-size="10.5" fill="#475569">跨分组 / 历史突变 / 趋势异常</text>
+  <text x="460" y="420" font-size="10.5" fill="#475569">预警分级：critical / high / medium / low</text>
+  <text x="460" y="438" font-size="10.5" fill="#475569">组件：AnomalyPanel（新增）</text>
+
+  <rect x="705" y="325" width="245" height="140" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <circle cx="725" cy="345" r="10" fill="#7c3aed"/>
+  <text x="725" y="349" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">4</text>
+  <text x="743" y="349" font-size="13" font-weight="bold" fill="#5b21b6">AI 趋势分析与预测</text>
+  <text x="715" y="368" font-size="10.5" fill="#475569">对比报告 / 二次对比报告专用</text>
+  <text x="715" y="386" font-size="10.5" fill="#475569">线性回归 / 指数平滑预测</text>
+  <text x="715" y="404" font-size="10.5" fill="#475569">输出 ai_trend：历史值 + 预测值</text>
+  <text x="715" y="422" font-size="10.5" fill="#475569">+ LLM 趋势解读</text>
+  <text x="715" y="440" font-size="10.5" fill="#475569">组件：TrendAnalysis 叠加预测虚线</text>
+
+  <!-- Row 3 -->
+  <rect x="450" y="475" width="245" height="140" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <circle cx="470" cy="495" r="10" fill="#7c3aed"/>
+  <text x="470" y="499" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">5</text>
+  <text x="488" y="499" font-size="13" font-weight="bold" fill="#5b21b6">AI 报告问答（RAG）</text>
+  <text x="460" y="518" font-size="10.5" fill="#475569">右下角浮动问答浮窗</text>
+  <text x="460" y="536" font-size="10.5" fill="#475569">RAG：报告 7 表数据 → context</text>
+  <text x="460" y="554" font-size="10.5" fill="#475569">支持常见问题：通过率/最差设备/</text>
+  <text x="465" y="570" font-size="10.5" fill="#475569">与上版差异/优化建议</text>
+  <text x="460" y="588" font-size="10.5" fill="#475569">API：POST /api/v1/reports/{id}/qa</text>
+  <text x="460" y="605" font-size="10.5" fill="#475569">组件：ReportChatWidget（新增）</text>
+
+  <rect x="705" y="475" width="245" height="140" rx="8" fill="#f5f3ff" stroke="#c4b5fd" stroke-width="1.5"/>
+  <circle cx="725" cy="495" r="10" fill="#7c3aed"/>
+  <text x="725" y="499" text-anchor="middle" font-size="9" font-weight="bold" fill="#fff">6</text>
+  <text x="743" y="499" font-size="13" font-weight="bold" fill="#5b21b6">AI 对比分析增强</text>
+  <text x="715" y="518" font-size="10.5" fill="#475569">多报告自然语言对比解读</text>
+  <text x="715" y="536" font-size="10.5" fill="#475569">总览 → 关键指标变化 →</text>
+  <text x="720" y="552" font-size="10.5" fill="#475569">风险点 → 优化建议</text>
+  <text x="715" y="570" font-size="10.5" fill="#475569">只取 Top-5 关键指标投喂</text>
+  <text x="715" y="588" font-size="10.5" fill="#475569">组件：AiComparisonInsight（新增）</text>
+
+  <!-- ============================================================ -->
+  <!-- RIGHT COLUMN: LLM Service Layer -->
+  <!-- ============================================================ -->
+  <rect x="1000" y="125" width="360" height="40" rx="8" fill="#059669"/>
+  <text x="1180" y="150" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">LLM 服务层</text>
+
+  <rect x="1010" y="175" width="340" height="120" rx="8" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="1180" y="195" text-anchor="middle" font-size="12" font-weight="bold" fill="#065f46">模型与调用</text>
+  <text x="1025" y="215" font-size="10.5" fill="#475569">• 模型：DeepSeek / GPT-4o-mini（环境变量配置）</text>
+  <text x="1025" y="233" font-size="10.5" fill="#475569">• 开发/生产环境模型分离</text>
+  <text x="1025" y="251" font-size="10.5" fill="#475569">• Prompt 模板：Jinja2（prompt_templates/）</text>
+  <text x="1025" y="269" font-size="10.5" fill="#475569">• Token 限制：每次投喂控制在 4K 以内</text>
+  <text x="1025" y="287" font-size="10.5" fill="#475569">• 调用方式：HTTP 同步调用（异步编排）</text>
+
+  <rect x="1010" y="305" width="340" height="120" rx="8" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="1180" y="325" text-anchor="middle" font-size="12" font-weight="bold" fill="#065f46">降级与可观测性</text>
+  <text x="1025" y="345" font-size="10.5" fill="#475569">• LLM 失败 → AI 字段置空，报告正常展示</text>
+  <text x="1025" y="363" font-size="10.5" fill="#475569">• JSON 解析失败 → 丢弃该字段，保留其他</text>
+  <text x="1025" y="381" font-size="10.5" fill="#475569">• 审计日志：{model, latency, tokens, success}</text>
+  <text x="1025" y="399" font-size="10.5" fill="#475569">• 报告 ID 维度加锁，避免并发重复调用</text>
+  <text x="1025" y="417" font-size="10.5" fill="#475569">• 降级时提供"重新生成 AI 分析"按钮</text>
+
+  <rect x="1010" y="435" width="340" height="140" rx="8" fill="#d1fae5" stroke="#6ee7b7" stroke-width="1.5"/>
+  <text x="1180" y="455" text-anchor="middle" font-size="12" font-weight="bold" fill="#065f46">设计原则</text>
+  <text x="1025" y="475" font-size="10.5" fill="#475569">1. 结构化 Prompt：模板与代码分离</text>
+  <text x="1025" y="495" font-size="10.5" fill="#475569">2. 数据投喂而非全量：只传提炼关键指标</text>
+  <text x="1025" y="515" font-size="10.5" fill="#475569">3. 分步而非一次性：统计→LLM 分步解耦</text>
+  <text x="1025" y="535" font-size="10.5" fill="#475569">4. 增强而非重构：不改变 7 表结构与数据流</text>
+  <text x="1025" y="555" font-size="10.5" fill="#475569">5. 降级可用：AI 不可用时与现状完全一致</text>
+
+  <!-- ============================================================ -->
+  <!-- BOTTOM: Frontend Integration -->
+  <!-- ============================================================ -->
+
+  <!-- Arrows from AI Layer down to integration -->
+  <path d="M 570 615 L 570 640 L 220 640 L 220 658" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+  <path d="M 700 615 L 700 658" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+  <path d="M 830 615 L 830 640 L 1180 640 L 1180 658" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-g)"/>
+
+  <rect x="40" y="660" width="1320" height="40" rx="8" fill="#d97706"/>
+  <text x="700" y="685" text-anchor="middle" font-size="15" font-weight="bold" fill="#ffffff">前端集成（最小侵入修改）</text>
+
+  <!-- 集成卡片 -->
+  <rect x="50" y="710" width="190" height="100" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="145" y="730" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">AiSummaryBanner</text>
+  <text x="145" y="748" text-anchor="middle" font-size="10" fill="#64748b">报告头部·摘要轮播</text>
+  <text x="145" y="764" text-anchor="middle" font-size="10" fill="#64748b">one_liner +</text>
+  <text x="145" y="780" text-anchor="middle" font-size="10" fill="#64748b">key_findings</text>
+
+  <rect x="255" y="710" width="190" height="100" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="350" y="730" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">AnomalyPanel</text>
+  <text x="350" y="748" text-anchor="middle" font-size="10" fill="#64748b">异常检测面板</text>
+  <text x="350" y="764" text-anchor="middle" font-size="10" fill="#64748b">按 severity 分级</text>
+  <text x="350" y="780" text-anchor="middle" font-size="10" fill="#64748b">LLM 根因分析</text>
+
+  <rect x="460" y="710" width="190" height="100" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="555" y="730" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">AiComparisonInsight</text>
+  <text x="555" y="748" text-anchor="middle" font-size="10" fill="#64748b">对比分析卡片</text>
+  <text x="555" y="764" text-anchor="middle" font-size="10" fill="#64748b">对比报告专属</text>
+  <text x="555" y="780" text-anchor="middle" font-size="10" fill="#64748b">自然语言对比</text>
+
+  <rect x="665" y="710" width="190" height="100" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="760" y="730" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">AiTrendSummary</text>
+  <text x="760" y="748" text-anchor="middle" font-size="10" fill="#64748b">趋势解读气泡</text>
+  <text x="760" y="764" text-anchor="middle" font-size="10" fill="#64748b">折线图预测虚线</text>
+  <text x="760" y="780" text-anchor="middle" font-size="10" fill="#64748b">趋势方向标注</text>
+
+  <rect x="870" y="710" width="190" height="100" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="965" y="730" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">ReportChatWidget</text>
+  <text x="965" y="748" text-anchor="middle" font-size="10" fill="#64748b">问答浮窗</text>
+  <text x="965" y="764" text-anchor="middle" font-size="10" fill="#64748b">RAG 上下文</text>
+  <text x="965" y="780" text-anchor="middle" font-size="10" fill="#64748b">HTTP 非 WebSocket</text>
+
+  <rect x="1075" y="710" width="190" height="100" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="1170" y="730" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">OverviewCardComponent</text>
+  <text x="1170" y="748" text-anchor="middle" font-size="10" fill="#64748b">通过率旁异常数徽标</text>
+  <text x="1170" y="764" text-anchor="middle" font-size="10" fill="#64748b">BenchmarkRankingCard</text>
+  <text x="1170" y="780" text-anchor="middle" font-size="10" fill="#64748b">排行 AI 解读</text>
+
+  <!-- ============================================================ -->
+  <!-- ARROWS from left report system to AI layer -->
+  <!-- ============================================================ -->
+  <!-- 7表 → AI层 -->
+  <path d="M 390 248 L 448 248" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+  <path d="M 390 396 L 448 396" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+  <path d="M 390 514 L 448 514" fill="none" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr-p)"/>
+
+  <!-- AI层 → LLM -->
+  <path d="M 950 245 L 1008 245" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-g)"/>
+  <path d="M 950 395 L 1008 395" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-g)"/>
+  <path d="M 950 545 L 1008 545" fill="none" stroke="#059669" stroke-width="2" marker-end="url(#arr-g)"/>
+
+  <!-- ============================================================ -->
+  <!-- LEGEND -->
+  <!-- ============================================================ -->
+  <rect x="40" y="830" width="1320" height="36" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="60" y="840" width="14" height="14" rx="3" fill="#eff6ff" stroke="#93c5fd"/>
+  <text x="80" y="852" font-size="10" fill="#64748b">现有报告体系</text>
+  <rect x="180" y="840" width="14" height="14" rx="3" fill="#f5f3ff" stroke="#c4b5fd"/>
+  <text x="200" y="852" font-size="10" fill="#64748b">AI 增强层</text>
+  <rect x="290" y="840" width="14" height="14" rx="3" fill="#d1fae5" stroke="#6ee7b7"/>
+  <text x="310" y="852" font-size="10" fill="#64748b">LLM 服务</text>
+  <rect x="390" y="840" width="14" height="14" rx="3" fill="#fef3c7" stroke="#fcd34d"/>
+  <text x="410" y="852" font-size="10" fill="#64748b">前端集成组件</text>
+  <text x="520" y="852" font-size="10" fill="#94a3b8">|</text>
+  <text x="535" y="852" font-size="10" fill="#64748b">数据投喂（提炼指标非全量）</text>
+  <rect x="680" y="840" width="14" height="14" rx="3" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="700" y="852" font-size="10" fill="#64748b">降级可用（LLM 失败不影响报告正常展示）</text>
+
+</svg>

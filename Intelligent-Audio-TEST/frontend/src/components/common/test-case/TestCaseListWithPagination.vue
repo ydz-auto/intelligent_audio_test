@@ -220,8 +220,8 @@ defineExpose({
 }
 
 .empty-state-hint {
-  margin-top: 8px !important;
-  font-size: 14px !important;
+  margin-top: 8px ;
+  font-size: 14px ;
   color: var(--text-tertiary);
 }
 
@@ -238,25 +238,7 @@ defineExpose({
   margin-bottom: 16px;
 }
 
-.spinner {
-  border: 4px solid var(--background-tertiary);
-  border-top: 4px solid var(--primary-color);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-  margin-bottom: 16px;
-}
-
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.loading-state p {
-  margin: 0;
-  color: var(--text-secondary);
-  font-size: 16px;
 }
 
 /* 加载更多提示 */

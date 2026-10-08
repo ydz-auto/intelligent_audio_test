@@ -84,11 +84,17 @@ export function useEvaluation() {
     searchKeyword: dimensionsModule.searchKeyword,
     filterStatus: dimensionsModule.filterStatus,
     filterCategory: dimensionsModule.filterCategory,
+    filterAlgorithm: dimensionsModule.filterAlgorithm,
     selectedDimensions: dimensionsModule.selectedDimensions,
     currentPage: dimensionsModule.currentPage,
     pageSize: dimensionsModule.pageSize,
     totalItems: dimensionsModule.totalItems,
     totalPages: dimensionsModule.totalPages,
+
+    // 视图模式（列表/分组，来自维度模块）
+    viewMode: dimensionsModule.viewMode,
+    isGroupExpanded: dimensionsModule.isGroupExpanded,
+    toggleGroupExpanded: dimensionsModule.toggleGroupExpanded,
 
     // 数据列表（来自维度模块）
     dimensions: dimensionsModule.dimensions,
@@ -108,6 +114,7 @@ export function useEvaluation() {
     // 计算属性（来自维度模块）
     filteredDimensions: dimensionsModule.filteredDimensions,
     hierarchicalDimensions: dimensionsModule.hierarchicalDimensions,
+    groupedDimensions: dimensionsModule.groupedDimensions,
     isAllSelected: dimensionsModule.isAllSelected,
 
     // 数据获取（来自维度模块）
@@ -156,6 +163,8 @@ export function useEvaluation() {
     toggleGroupSelection: dimensionsModule.toggleGroupSelection,
     selectAllInGroup: dimensionsModule.selectAllInGroup,
     toggleSelectAllInCategory: dimensionsModule.toggleSelectAllInCategory,
+    groupAllSelected: dimensionsModule.groupAllSelected,
+    toggleGroupSelectAll: dimensionsModule.toggleGroupSelectAll,
 
     // API 健康检查 / 权重（来自维度模块）
     testAPIHealth: dimensionsModule.testAPIHealth,

@@ -130,10 +130,10 @@ function handleChange() {
 
 <style scoped>
 .required-inputs-editor {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   padding: 16px;
-  background: #fafafa;
+  background: var(--color-neutral-50);
 }
 
 .inputs-header {
@@ -145,7 +145,7 @@ function handleChange() {
 
 .inputs-hint {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-slate-500);
 }
 
 .btn-add {
@@ -153,7 +153,7 @@ function handleChange() {
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: #3b82f6;
+  background: var(--color-blue-500);
   color: white;
   border: none;
   border-radius: 6px;
@@ -163,13 +163,13 @@ function handleChange() {
 }
 
 .btn-add:hover {
-  background: #2563eb;
+  background: var(--color-blue-600);
 }
 
 .inputs-table {
   display: flex;
   flex-direction: column;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   overflow: hidden;
   background: white;
@@ -179,11 +179,11 @@ function handleChange() {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  background: var(--color-slate-50);
+  border-bottom: 1px solid var(--color-slate-200);
   font-size: 12px;
   font-weight: 600;
-  color: #64748b;
+  color: var(--color-slate-500);
 }
 
 .table-body {
@@ -195,7 +195,7 @@ function handleChange() {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--color-slate-100);
   align-items: center;
 }
 
@@ -207,7 +207,7 @@ function handleChange() {
   width: 24px;
   text-align: center;
   font-weight: 600;
-  color: #64748b;
+  color: var(--color-slate-500);
   font-size: 12px;
   flex-shrink: 0;
 }
@@ -255,7 +255,7 @@ function handleChange() {
 .default-input,
 .desc-input {
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   font-size: 14px;
   width: 100%;
@@ -281,7 +281,7 @@ function handleChange() {
 .source-select {
   width: 100px;
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   font-size: 14px;
   flex-shrink: 0;
@@ -293,8 +293,8 @@ function handleChange() {
 .desc-input:focus,
 .source-select:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-500) 10%, transparent);
 }
 
 .checkbox-wrapper {
@@ -319,22 +319,22 @@ function handleChange() {
   background: transparent;
   border: none;
   border-radius: 4px;
-  color: #ef4444;
+  color: var(--color-red-500);
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
 }
 
 .btn-remove:hover {
-  background: #fee2e2;
+  background: var(--color-red-100);
 }
 
 .empty-state {
   text-align: center;
   padding: 40px 20px;
-  color: #94a3b8;
+  color: var(--color-slate-400);
   background: white;
-  border: 1px dashed #e2e8f0;
+  border: 1px dashed var(--color-slate-200);
   border-radius: 8px;
 }
 

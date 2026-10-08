@@ -110,17 +110,36 @@ const getDisplaySpecs = (item) => {
 </script>
 
 <style scoped>
-.resource-grid {
+
+.spec-label{
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    min-width: 80px;
+}
+
+.spec-value{
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+
+
+
+
+
+.resource-grid{
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 20px;
   margin-top: 20px;
 }
 
-.resource-card {
+.resource-card{
   background: white;
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -129,18 +148,18 @@ const getDisplaySpecs = (item) => {
   height: 100%;
 }
 
-.resource-card:hover {
+.resource-card:hover{
   border-color: var(--primary-color);
-  box-shadow: 0 4px 12px rgba(255, 106, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
-.resource-card.selected {
+.resource-card.selected{
   border: 2px solid var(--primary-color);
-  background-color: rgba(255, 106, 0, 0.15);
-  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.2), 0 4px 16px rgba(255, 106, 0, 0.1);
+  background-color: color-mix(in srgb, var(--primary) 15%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent), 0 4px 16px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
-.card-header {
+.card-header{
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -148,122 +167,113 @@ const getDisplaySpecs = (item) => {
   gap: 8px;
 }
 
-.card-info {
+.card-info{
   flex: 1;
   min-width: 0;
   overflow: hidden;
 }
 
-.card-name {
+.card-name{
   font-weight: 600;
   font-size: 16px;
-  color: #2d3748;
+  color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.card-status {
+.card-status{
   font-size: 12px;
   margin-top: 4px;
 }
 
-.online-indicator { color: #52c41a; }
-.offline-indicator { color: #bfbfbf; }
+.online-indicator{ color: var(--success); }
+.offline-indicator{ color: var(--color-gray-300); }
 
-.card-actions {
+.card-actions{
   display: flex;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.btn-icon-only {
+.btn-icon-only{
   background: transparent;
   border: none;
-  color: #718096;
+  color: var(--color-slate-500);
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
   transition: all 0.2s;
 }
 
-.btn-icon-only:hover:not(:disabled) {
-  background: #edf2f7;
-  color: #1890ff;
+.btn-icon-only:hover:not(:disabled){
+  background: var(--muted);
+  color: var(--secondary);
 }
 
-.card-content {
+.card-content{
   flex: 1;
   margin-bottom: 16px;
 }
 
-.specs-list {
+.specs-list{
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.spec-item {
+.spec-item{
   display: flex;
   font-size: 13px;
 }
 
-.spec-label {
-  color: #718096;
-  width: 80px;
-  flex-shrink: 0;
-}
 
-.spec-value {
-  color: #2d3748;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.card-footer {
+
+
+.card-footer{
   margin-top: auto;
   padding-top: 12px;
-  border-top: 1px solid #edf2f7;
+  border-top: 1px solid var(--muted);
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.resource-checkbox {
+.resource-checkbox{
   width: 18px;
   height: 18px;
 }
 
-.resource-select-btn {
+.resource-select-btn{
   flex: 1;
   text-align: center;
   padding: 8px;
   border-radius: 6px;
-  background: #f7fafc;
-  border: 1px solid #e2e8f0;
+  background: var(--color-slate-50);
+  border: 1px solid var(--color-slate-200);
   font-size: 14px;
   cursor: pointer;
 }
 
-.resource-card.selected .resource-select-btn {
+.resource-card.selected .resource-select-btn{
   background: var(--primary-color);
   color: white;
   border-color: var(--primary-color);
 }
 
-.resource-select-btn.disabled {
+.resource-select-btn.disabled{
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.empty-resource {
+.empty-resource{
   text-align: center;
   padding: 60px 0;
-  color: #a0aec0;
+  color: var(--color-slate-400);
 }
 
-.empty-resource i {
+.empty-resource i{
   font-size: 48px;
   margin-bottom: 16px;
 }

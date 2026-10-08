@@ -9,6 +9,7 @@ export { request, apiBaseUrl, addRequestInterceptor, addResponseInterceptor, typ
 // API domain modules
 export { authApi } from './authApi';
 export { tasksApi } from './tasksApi';
+export { publishedTasksApi } from './publishedTasksApi';
 export { logsApi } from './logsApi';
 export { devicesApi, BATCH_LIST_PARAMS } from './devicesApi';
 export type { DeviceListQueryParams } from './devicesApi';
@@ -38,6 +39,7 @@ export type {
 
 // Default export mapping (matches the original api.ts default export)
 import { tasksApi } from './tasksApi';
+import { publishedTasksApi } from './publishedTasksApi';
 import { logsApi } from './logsApi';
 import { devicesApi } from './devicesApi';
 import { playbackApi } from './playbackApi';
@@ -54,6 +56,7 @@ import { tagsApi } from './tagsApi';
 
 export default {
   tasks: tasksApi,
+  publishedTasks: publishedTasksApi,
   logs: logsApi,
   devices: devicesApi,
   playback: playbackApi,

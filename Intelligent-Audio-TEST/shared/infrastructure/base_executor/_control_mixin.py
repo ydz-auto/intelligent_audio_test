@@ -22,12 +22,12 @@ class ControlMixin:
     def _handle_control(self, task_id):
         # 分布式控制标志位（多实例下，其它实例发出的 stop/pause 信号）
         from shared.utils import distributed_coordinator as dc
-        if dc.is_flag_set(f'task:stop:{task_id}'):
+        if dc.is_task_stopped(task_id):
             raise TaskStopSignal("任务已停止（分布式停止信号）")
-        if dc.is_flag_set(f'task:pause:{task_id}'):
+        if dc.is_task_paused(task_id):
             self._log(level='INFO', content="检测到暂停指令（分布式），等待恢复...", task_id=task_id)
-            while dc.is_flag_set(f'task:pause:{task_id}'):
-                if dc.is_flag_set(f'task:stop:{task_id}'):
+            while dc.is_task_paused(task_id):
+                if dc.is_task_stopped(task_id):
                     raise TaskStopSignal("任务已停止")
                 time.sleep(0.5)
             self._log(level='INFO', content="任务已恢复执行", task_id=task_id)
@@ -44,7 +44,7 @@ class ControlMixin:
                 if stop_event is not None and stop_event.is_set():
                     raise TaskStopSignal("任务已停止")
                 # 多实例下也检查分布式停止信号
-                if dc.is_flag_set(f'task:stop:{task_id}'):
+                if dc.is_task_stopped(task_id):
                     raise TaskStopSignal("任务已停止（分布式停止信号）")
                 pause_event.wait(timeout=0.5)
             self._log(level='INFO', content="任务已恢复执行", task_id=task_id)

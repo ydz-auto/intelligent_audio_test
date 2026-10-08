@@ -4,37 +4,21 @@
 .card {
     position: relative;
     background-color: var(--background-primary);
-    border: var(--card-border);
-    border-radius: var(--card-radius);
-    box-shadow: var(--card-shadow);
-    overflow: visible;
-    transition: all var(--transition-normal);
-    width: 100%;
-    box-sizing: border-box;
 }
 
 /* 卡片悬停效果 */
 .card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--card-shadow-hover);
 }
 
 /* 卡片头部 */
-.card-header,
-.card__head {
-    padding: var(--spacing-md);
-    border-bottom: var(--card-border);
+.card-header{
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-semibold);
     color: var(--text-primary);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
 }
 
 /* 卡片标题 */
-.card-title,
-.card__title {
+.card-title{
     font-size: var(--font-size-xl);
     font-weight: var(--font-weight-semibold);
     color: var(--text-primary);
@@ -42,17 +26,14 @@
 }
 
 /* 卡片内容 */
-.card-body,
-.card__body {
-    padding: var(--spacing-md);
+.card-body{
     color: var(--text-primary);
     line-height: 1.6;
     background-color: var(--background-primary);
 }
 
 /* 卡片底部 */
-.card-footer,
-.card__foot {
+.card-footer{
     padding: var(--spacing-md);
     border-top: var(--card-border);
     display: flex;
@@ -68,17 +49,15 @@
 
 /* 卡片操作按钮组 */
 .card-actions {
-    display: flex;
-    gap: var(--spacing-sm);
 }
 
 /* 卡片选中状态 - 增强高亮效果 */
 .card.card-selected,
 .task-card:has(input[type="checkbox"].test-task-checkbox:checked),
 .case-card:has(input[type="checkbox"].test-case-checkbox:checked) {
-    background-color: rgba(255, 106, 0, 0.1) !important;
-    border-color: var(--primary-color) !important;
-    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2) !important;
+    background-color: color-mix(in srgb, var(--primary) 10%, transparent) !important;
+    border-color: var(--primary-color) ;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
     transition: all var(--transition-normal);
 }
 
@@ -132,15 +111,12 @@
 .case-card.card-selected .config-details,
 .case-card.card-selected .case-info,
 .case-card.card-selected .task-info {
-    background-color: transparent !important;
-    border-color: transparent !important;
+    background-color: transparent ;
+    border-color: transparent ;
 }
 
 /* 卡片头部操作区 */
-.card__action {
-    display: flex;
-    gap: var(--spacing-sm);
-}
+
 
 /* 卡片标题样式 */
 .card-header h3,
@@ -152,68 +128,29 @@
 }
 
 /* 统计卡片样式 */
-.stat-card {
-    background-color: var(--background-primary);
-    border: var(--card-border);
-    border-radius: var(--card-radius);
-    box-shadow: var(--card-shadow);
-    padding: var(--spacing-lg);
-    transition: all var(--transition-normal);
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-    align-items: center;
-    text-align: center;
-}
+
 
 .stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: var(--card-shadow-hover);
 }
 
 /* 统计卡片头部 */
-.stat-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-}
+
 
 .stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: var(--border-radius-lg);
     background-color: var(--primary-light);
     color: var(--primary-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: var(--font-size-xl);
 }
 
 .stat-label {
-    font-size: var(--font-size-md);
-    color: var(--text-secondary);
-    font-weight: var(--font-weight-medium);
 }
 
 /* 统计卡片数值 */
-.stat-value {
-    font-size: var(--font-size-xxxl);
-    font-weight: var(--font-weight-bold);
-    color: var(--primary-color);
-}
+
 
 /* 统计卡片底部 */
-.stat-footer {
-    font-size: var(--font-size-sm);
-    color: var(--text-secondary);
-}
 
-.stat-change {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-}
+
+
 
 .stat-change.positive {
     color: var(--success-color);
@@ -228,18 +165,10 @@
 }
 
 /* 卡片网格布局 */
-.card-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: var(--spacing-lg);
-}
+
 
 /* 卡片列表布局 */
-.card-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-md);
-}
+
 
 /* 响应式卡片布局 */
 @media (max-width: 768px) {

@@ -455,7 +455,7 @@ onUnmounted(() => {
 .spinner {
   width: 40px;
   height: 40px;
-  border: 4px solid rgba(0, 0, 0, 0.1);
+  border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
   border-left-color: var(--primary-color);
   border-radius: 50%;
   animation: spin 1s linear infinite;

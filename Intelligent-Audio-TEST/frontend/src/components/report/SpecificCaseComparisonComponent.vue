@@ -13,13 +13,13 @@
       <div v-if="casesLoading" class="no-data-tip" style="margin-bottom: 12px;">
         正在加载用例数据...
       </div>
-      <div v-else-if="casesLoadError" class="no-data-tip" style="margin-bottom: 12px; color: #ff4d4f;">
+      <div v-else-if="casesLoadError" class="no-data-tip" style="margin-bottom: 12px; color: var(--destructive);">
         {{ casesLoadError }}
       </div>
       <!-- Filter Section -->
       <div class="report-filter-card filter-card">
         <div class="filter-title">
-          <i class="fas fa-filter" style="color: #ff6a00; font-size: 18px;"></i>
+          <i class="fas fa-filter" style="color: var(--primary); font-size: 18px;"></i>
           筛选条件
         </div>
         <div class="filter-content">
@@ -36,13 +36,13 @@
                 v-model="searchKeyword"
               />
             </div>
-            <div class="filter-item category-filter-section" style="flex: 1;">
+            <div class="filter-item category-filter-section flex-1">
               <label class="filter-label">
                 <i class="fas fa-list-check"></i> 用例分组
                 <span class="filter-hint" v-if="selectedCategories.length === 0">(显示全部)</span>
                 <span class="filter-count" v-else>已选 {{ selectedCategories.length }} 个</span>
               </label>
-              <div class="category-search-box search-box-flex" style="display: flex; align-items: center;">
+              <div class="category-search-box search-box-flex flex items-center">
                 <i class="fas fa-search search-icon"></i>
                 <input 
                   type="text" 
@@ -50,7 +50,7 @@
                   placeholder="搜索分组..." 
                   class="search-input"
                 />
-                <button class="search-clear" :class="{ visible: categorySearchQuery }" @click="categorySearchQuery = ''" style="margin-left: auto;">
+                <button class="search-clear ml-auto" :class="{ visible: categorySearchQuery }" @click="categorySearchQuery = ''">
                   <i class="fas fa-times"></i>
                 </button>
               </div>
@@ -81,13 +81,13 @@
           
           <!-- 第二行：标签筛选 + 评估维度筛选（多选） + 排序方式 -->
           <div class="filter-row">
-            <div class="filter-item" style="flex: 1;">
+            <div class="filter-item flex-1">
               <label class="filter-label">
-                <i class="fas fa-tag" style="color: #ff6a00;"></i> 标签筛选
+                <i class="fas fa-tag" style="color: var(--primary);"></i> 标签筛选
                 <span class="filter-hint" v-if="selectedTags.length === 0">(显示全部)</span>
                 <span class="filter-count" v-else>已选 {{ selectedTags.length }} 个</span>
               </label>
-              <div class="tag-search-box search-box-flex" style="display: flex; align-items: center;">
+              <div class="tag-search-box search-box-flex flex items-center">
                 <i class="fas fa-search search-icon"></i>
                 <input 
                   type="text" 
@@ -95,7 +95,7 @@
                   placeholder="搜索标签..." 
                   class="search-input"
                 />
-                <button class="search-clear" :class="{ visible: tagSearchQuery }" @click="tagSearchQuery = ''" style="margin-left: auto;">
+                <button class="search-clear ml-auto" :class="{ visible: tagSearchQuery }" @click="tagSearchQuery = ''">
                   <i class="fas fa-times"></i>
                 </button>
               </div>
@@ -122,13 +122,13 @@
                 </button>
               </div>
             </div>
-            <div class="filter-item" style="flex: 1;">
+            <div class="filter-item flex-1">
               <label class="filter-label">
                 <i class="fas fa-chart-line"></i> 评估维度筛选（多选）
                 <span class="filter-hint" v-if="selectedMetrics.length === 0">(显示全部)</span>
                 <span class="filter-count" v-else>已选 {{ selectedMetrics.length }} 个</span>
               </label>
-              <div class="metric-search-box search-box-flex" style="display: flex; align-items: center;">
+              <div class="metric-search-box search-box-flex flex items-center">
                 <i class="fas fa-search search-icon"></i>
                 <input 
                   type="text" 
@@ -136,7 +136,7 @@
                   placeholder="搜索评估维度..." 
                   class="search-input"
                 />
-                <button class="search-clear" :class="{ visible: metricSearchQuery }" @click="metricSearchQuery = ''" style="margin-left: auto;">
+                <button class="search-clear ml-auto" :class="{ visible: metricSearchQuery }" @click="metricSearchQuery = ''">
                   <i class="fas fa-times"></i>
                 </button>
               </div>
@@ -164,7 +164,7 @@
                 </button>
               </div>
             </div>
-            <div class="filter-item" style="flex: 1;">
+            <div class="filter-item flex-1">
               <label class="filter-label">
                 <i class="fas fa-sort"></i> 排序方式
               </label>
@@ -478,6 +478,53 @@ const {
 } = useSpecificCaseComparison(props)
 </script>
 
-<style scoped>
-@import './SpecificCaseComparisonComponent.css';
+<style scoped>@import './SpecificCaseComparisonComponent.css';
+
+
+
+.case-tags{
+flex-wrap: wrap ;
+width: 100% ;
+box-sizing: border-box;
+}
+
+.modal-close-btn{
+  background: transparent;
+  border: none;
+  color: var(--color-slate-500);
+  cursor: pointer;
+  font-size: 20px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.modal-close-btn:hover{
+  color: var(--color-slate-700);
+  background: var(--color-slate-100);
+  border-radius: 4px;
+}
+
+/* detail-section-title - 自全局样式就近迁移 */
+
+
+/* case-actions - 自全局样式就近迁移 */
+@media (max-width: 1024px){
+.case-actions {
+    align-self: flex-end;
+}
+}
+
+.case-actions{
+display: flex;
+gap: 8px;
+align-items: flex-start;
+justify-content: flex-end;
+}
+
+
+
+
 </style>

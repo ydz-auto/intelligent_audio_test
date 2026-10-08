@@ -10,6 +10,7 @@ import type {
   TaskDeviceBrief,
   TaskApiBrief,
   TaskCaseBrief,
+  TaskSourceBrief,
 } from '../../domain/model/task'
 import type {
   CaseDetail,
@@ -20,7 +21,7 @@ import type {
 } from '../../domain/model/taskCaseDetail'
 import type { TaskStatusType, TaskType } from '../../domain/enums'
 import type { ReportMetricConfig } from '../../domain/model/report'
-import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto } from '../dto/taskDto'
+import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto, TaskSourceBriefDto } from '../dto/taskDto'
 import { s } from './report.utils'
 import { toSafeNumber as n } from './commonAdapter'
 import { toAlgorithmResultItem, toReferenceParamsDict, toFieldMappingItem } from './report.mapping'
@@ -33,6 +34,18 @@ function toDeviceBrief(raw: TaskDto['devices'][number]): TaskDeviceBrief {
 
 function toApiBrief(raw: TaskDto['apis'][number]): TaskApiBrief {
   return { id: raw.id, name: raw.name, status: raw.status ?? undefined }
+}
+
+function toSourceBrief(raw: TaskSourceBriefDto): TaskSourceBrief {
+  return {
+    id: raw.id,
+    name: raw.name,
+    status: raw.status ?? undefined,
+    totalCases: raw.total_cases ?? undefined,
+    completedCases: raw.completed_cases ?? undefined,
+    failedCases: raw.failed_cases ?? undefined,
+    createdAt: raw.created_at ?? undefined,
+  }
 }
 
 /** 任务详情关联用例简报 → TaskCaseBrief（Domain） */
@@ -96,6 +109,7 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
       : undefined,
     devices: (d.devices ?? []).map(toDeviceBrief),
     apis: (d.apis ?? []).map(toApiBrief),
+    sourceTasks: (d.source_tasks ?? []).map(toSourceBrief),
     cases: Array.isArray(d.cases) ? d.cases.map(toTaskCaseBrief) : undefined,
   }
 }

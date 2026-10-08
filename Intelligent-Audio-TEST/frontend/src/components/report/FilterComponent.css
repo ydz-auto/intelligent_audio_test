@@ -1,7 +1,7 @@
 .filter-component-container {
-  background: #ffffff;
+  background: var(--color-white);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 24px;
   margin-bottom: 24px;
 }
@@ -18,7 +18,7 @@
 .filter-title {
   font-size: 18px;
   font-weight: bold;
-  color: #333;
+  color: var(--foreground);
   margin: 0;
 }
 
@@ -39,7 +39,7 @@
 .filter-group-title {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
   margin: 0 0 12px 0;
 }
 
@@ -50,7 +50,7 @@
 .filter-input, .filter-select, .filter-number-input, .filter-date-input {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.3s ease;
@@ -67,8 +67,8 @@ select.filter-select {
 
 .filter-input:focus, .filter-select:focus, .filter-number-input:focus, .filter-date-input:focus {
   outline: none;
-  border-color: #1677FF;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .radio-group, .checkbox-group {
@@ -82,7 +82,7 @@ select.filter-select {
   align-items: center;
   cursor: pointer;
   font-size: 14px;
-  color: #666;
+  color: var(--color-gray-500);
 }
 
 .radio-label input[type="radio"], .checkbox-label input[type="checkbox"] {
@@ -110,12 +110,12 @@ select.filter-select {
 
 .date-input-group label, .range-input-group label {
   font-size: 14px;
-  color: #666;
+  color: var(--color-gray-500);
   min-width: 60px;
 }
 
 .date-separator, .range-separator {
-  color: #999;
+  color: var(--text-light);
   font-size: 16px;
   font-weight: 500;
 }
@@ -141,8 +141,8 @@ select.filter-select {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: #f5f5f5;
-  color: #666;
+  background: var(--muted);
+  color: var(--color-gray-500);
   border-radius: 16px;
   font-size: 14px;
   cursor: pointer;
@@ -151,13 +151,13 @@ select.filter-select {
 }
 
 .tag-item:hover {
-  background: #e6f7ff;
-  color: #1677FF;
-  border-color: #1677FF;
+  background: var(--secondary-light);
+  color: var(--secondary);
+  border-color: var(--secondary);
 }
 
 .tag-selected {
-  background: #1677FF;
+  background: var(--secondary);
   color: white;
 }
 
@@ -169,7 +169,7 @@ select.filter-select {
 .filter-footer {
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--color-slate-200);
 }
 
 .active-filters {
@@ -179,7 +179,7 @@ select.filter-select {
 .active-filters-title {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
   margin: 0 0 12px 0;
 }
 
@@ -194,8 +194,8 @@ select.filter-select {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: #e6f7ff;
-  color: #1677FF;
+  background: var(--secondary-light);
+  color: var(--secondary);
   border-radius: 16px;
   font-size: 14px;
 }
@@ -205,13 +205,13 @@ select.filter-select {
 }
 
 .filter-value {
-  color: #1890ff;
+  color: var(--secondary);
 }
 
 .filter-remove-btn {
   background: transparent;
   border: none;
-  color: #1677FF;
+  color: var(--secondary);
   cursor: pointer;
   font-size: 12px;
   padding: 0;
@@ -226,7 +226,7 @@ select.filter-select {
 }
 
 .filter-remove-btn:hover {
-  background: #1677FF;
+  background: var(--secondary);
   color: white;
 }
 
@@ -245,22 +245,22 @@ select.filter-select {
 }
 
 .btn-primary {
-  background: linear-gradient(90deg, #FF6A00, #1677FF);
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
   color: white;
 }
 
 .btn-primary:hover {
   opacity: 0.9;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
 }
 
 .btn-secondary {
   background: white;
-  color: #666;
-  border: 1px solid #d9d9d9;
+  color: var(--color-gray-500);
+  border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
-  background: #f5f5f5;
-  border-color: #1677FF;
+  background: var(--muted);
+  border-color: var(--secondary);
 }

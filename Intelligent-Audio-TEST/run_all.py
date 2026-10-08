@@ -2,7 +2,7 @@
 一键启动所有微服务（FastAPI + DDD 版）
 
 - 自动加载 .env 注入子进程环境变量
-- 启动基础设施：redis / postgres / minio
+- 启动基础设施：redis / postgres / rustfs
 - 启动 11 个后端微服务（FastAPI + gRPC-only）
 - 实时转发每个子进程的 stdout/stderr
 - 端口就绪探测，Ctrl+C 优雅停止全部
@@ -42,8 +42,8 @@ from shared.config.service_ports import (
     DEVICE_SERVICE_GRPC_PORT,
     REDIS_PORT,
     POSTGRESQL_PORT,
-    MINIO_PORT,
-    MINIO_CONSOLE_PORT,
+    RUSTFS_PORT,
+    RUSTFS_CONSOLE_PORT,
     FRONTEND_DEV_PORT,
 )
 
@@ -369,48 +369,50 @@ def start_postgres():
     _wait_port('localhost', POSTGRESQL_PORT, 'postgres')
 
 
-def start_minio():
-    """本地直接启动 MinIO（Windows 下用 minio.exe server）。"""
-    if _is_port_open('localhost', MINIO_PORT):
-        print(f"[INFO] minio already running on :{MINIO_PORT}", flush=True)
+def start_rustfs():
+    """本地直接启动 RustFS（S3 兼容对象存储，单节点模式：rustfs <data_dir>）。"""
+    if _is_port_open('localhost', RUSTFS_PORT):
+        print(f"[INFO] rustfs already running on :{RUSTFS_PORT}", flush=True)
         return
     candidates = []
     if os.name == 'nt':
         candidates = [
-            r'C:\S2TT\environment\minio\minio.exe',
-            r'D:\00_env\minio\minio.exe',
+            r'C:\S2TT\environment\rustfs\rustfs.exe',
+            r'D:\00_env\rustfs\rustfs.exe',
         ]
     else:
-        candidates = ['minio']
-    minio_bin = next((p for p in candidates if os.path.exists(p)), None)
-    if not minio_bin:
+        candidates = ['rustfs']
+    rustfs_bin = next((p for p in candidates if os.path.exists(p)), None)
+    if not rustfs_bin:
         try:
             import shutil
-            minio_bin = shutil.which('minio')
+            rustfs_bin = shutil.which('rustfs')
         except Exception:
-            minio_bin = None
-    if not minio_bin:
-        print(f"[WARN] minio not found, please start minio manually on :{MINIO_PORT}", flush=True)
+            rustfs_bin = None
+    if not rustfs_bin:
+        print(f"[WARN] rustfs not found, please start rustfs manually on :{RUSTFS_PORT}", flush=True)
         return
-    minio_root_user = CHILD_ENV.get('OSS_ACCESS_KEY', 'minio')
-    minio_root_password = CHILD_ENV.get('OSS_SECRET_KEY', 'minio123')
-    minio_data_dir = CHILD_ENV.get('MINIO_DATA_DIR') or os.path.join(os.path.dirname(minio_bin), 'data')
-    print(f"[START] minio: {minio_bin} (data: {minio_data_dir})", flush=True)
+    data_dir = CHILD_ENV.get('RUSTFS_DATA_DIR') or os.path.join(BASE_DIR, 'storage', 'rustfs')
+    os.makedirs(data_dir, exist_ok=True)
+    print(f"[START] rustfs: {rustfs_bin} (data: {data_dir})", flush=True)
     env = dict(CHILD_ENV)
-    env['MINIO_ROOT_USER'] = minio_root_user
-    env['MINIO_ROOT_PASSWORD'] = minio_root_password
+    env['RUSTFS_ACCESS_KEY'] = CHILD_ENV.get('OSS_ACCESS_KEY', 'intelligent_audio_test')
+    env['RUSTFS_SECRET_KEY'] = CHILD_ENV.get('OSS_SECRET_KEY', 'intelligent_audio_test666')
+    env['RUSTFS_ADDRESS'] = f':{RUSTFS_PORT}'
+    env['RUSTFS_CONSOLE_ADDRESS'] = f':{RUSTFS_CONSOLE_PORT}'
+    env['RUSTFS_CONSOLE_ENABLE'] = 'true'
     proc = subprocess.Popen(
-        [minio_bin, 'server', minio_data_dir, '--console-address', f':{MINIO_CONSOLE_PORT}'],
-        cwd=os.path.dirname(minio_bin) or None,
+        [rustfs_bin, data_dir],
+        cwd=os.path.dirname(rustfs_bin) or None,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         bufsize=0,
     )
-    t = threading.Thread(target=_stream, args=(proc, 'minio'), daemon=True)
+    t = threading.Thread(target=_stream, args=(proc, 'rustfs'), daemon=True)
     t.start()
-    processes.append({'name': 'minio', 'proc': proc, 'thread': t})
-    _wait_port('localhost', MINIO_PORT, 'minio')
+    processes.append({'name': 'rustfs', 'proc': proc, 'thread': t})
+    _wait_port('localhost', RUSTFS_PORT, 'rustfs')
 
 
 def start_frontend():
@@ -451,7 +453,7 @@ def start_all():
     cleanup_occupied_ports()
     start_redis()
     start_postgres()
-    start_minio()
+    start_rustfs()
     for svc in services:
         start_service(svc)
     start_frontend()
@@ -468,7 +470,7 @@ def start_all():
     print(f"[INFO] Auth Service:       http://localhost:{AUTH_SERVICE_HTTP_PORT}", flush=True)
     print(f"[INFO] Audio Service:      gRPC :{AUDIO_SERVICE_GRPC_PORT}", flush=True)
     print(f"[INFO] Device Service:     gRPC :{DEVICE_SERVICE_GRPC_PORT}", flush=True)
-    print(f"[INFO] MinIO Console:      http://localhost:{MINIO_CONSOLE_PORT}", flush=True)
+    print(f"[INFO] RustFS Console:     http://localhost:{RUSTFS_CONSOLE_PORT}", flush=True)
     print("[INFO] Ctrl+C to stop all.", flush=True)
 
 

@@ -18,7 +18,7 @@
           {{ detail.caseName }}
         </h4>
         <div class="case-meta" style="display: flex; gap: 20px; flex-wrap: wrap;">
-          <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
+          <div class="meta-item flex items-center gap-2">
             <i class="fas fa-info-circle" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">状态: </span>
             <span :class="'status-tag ' + (detail.executionStatus || ExecutionStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
@@ -35,14 +35,14 @@
             <i class="fas fa-clock" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">耗时{{ (detail.duration / 1000).toFixed(2) }}s</span>
           </div>
-          <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
+          <div class="meta-item flex items-center gap-2">
             <i class="fas fa-star" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">评分: </span>
             <span :class="'status-tag ' + (detail.evaluationStatus || EvaluationStatus.PENDING).toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
               {{ detail.evaluationStatus === EvaluationStatus.COMPLETED ? '评分完成' : '待评分' }}
             </span>
           </div>
-          <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
+          <div class="meta-item flex items-center gap-2">
             <CaseIdBadge :case-id="caseId" />
           </div>
         </div>
@@ -355,12 +355,20 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.test-case-detail {
-  padding: 0;
-  min-height: 200px;
+
+.test-case-detail{
+    background-color: var(--background-primary);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--border-color);
 }
 
-.loading-state, .error-state {
+
+
+
+
+
+.loading-state, .error-state{
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -370,54 +378,54 @@ onMounted(() => {
   color: var(--text-secondary);
 }
 
-.spinner {
+.spinner{
   width: 40px;
   height: 40px;
-  border: 4px solid rgba(0, 0, 0, 0.1);
+  border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
   border-left-color: var(--primary-color);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
 
-@keyframes spin {
+@keyframes spin{
   to { transform: rotate(360deg); }
 }
 
-.status-tag {
+.status-tag{
   display: inline-block;
 }
 
-.status-tag.completed { background-color: var(--success-light); color: var(--success-color); }
-.status-tag.failed { background-color: var(--error-light); color: var(--error-color); }
-.status-tag.inProgress { background-color: var(--warning-light); color: var(--warning-color); }
-.status-tag.pending { background-color: var(--secondary-light); color: var(--secondary-color); }
+.status-tag.completed{ background-color: var(--success-light); color: var(--success-color); }
+.status-tag.failed{ background-color: var(--error-light); color: var(--error-color); }
+.status-tag.inProgress{ background-color: var(--warning-light); color: var(--warning-color); }
+.status-tag.pending{ background-color: var(--secondary-light); color: var(--secondary-color); }
 
-.log-line.error .log-lvl { background-color: #f85149; color: white; }
-.log-line.warn .log-lvl { background-color: #d29922; color: white; }
-.log-line.info .log-lvl { background-color: #388bfd; color: white; }
-.log-line.debug .log-lvl { background-color: #6e7681; color: white; }
+.log-line.error .log-lvl{ background-color: var(--color-red-500); color: white; }
+.log-line.warn .log-lvl{ background-color: var(--color-amber-500); color: white; }
+.log-line.info .log-lvl{ background-color: var(--color-blue-500); color: white; }
+.log-line.debug .log-lvl{ background-color: var(--color-slate-500); color: white; }
 
-.log-line.error .log-msg { color: #f85149; }
-.log-line.warn .log-msg { color: #d29922; }
+.log-line.error .log-msg{ color: var(--color-red-500); }
+.log-line.warn .log-msg{ color: var(--color-amber-500); }
 
-.modern-log-container::-webkit-scrollbar {
+.modern-log-container::-webkit-scrollbar{
   width: 8px;
 }
 
-.modern-log-container::-webkit-scrollbar-track {
-  background: #1e1e1e;
+.modern-log-container::-webkit-scrollbar-track{
+  background: var(--color-foreground-deep);
 }
 
-.modern-log-container::-webkit-scrollbar-thumb {
-  background: #333;
+.modern-log-container::-webkit-scrollbar-thumb{
+  background: var(--foreground);
   border-radius: 4px;
 }
 
-.modern-log-container::-webkit-scrollbar-thumb:hover {
+.modern-log-container::-webkit-scrollbar-thumb:hover{
   background: #444;
 }
 
-.btn {
+.btn{
   padding: 10px 20px;
   border: none;
   border-radius: 6px;
@@ -427,16 +435,16 @@ onMounted(() => {
   transition: all 0.2s ease;
 }
 
-.btn-primary {
-  background-color: #3b82f6;
+.btn-primary{
+  background-color: var(--color-blue-500);
   color: white;
 }
 
-.btn-primary:hover {
-  background-color: #2563eb;
+.btn-primary:hover{
+  background-color: var(--color-blue-600);
 }
 
-.log-toolbar {
+.log-toolbar{
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -444,7 +452,7 @@ onMounted(() => {
   padding: 4px 0;
 }
 
-.btn-load-more-logs {
+.btn-load-more-logs{
   padding: 4px 12px;
   border: 1px solid var(--border-color);
   border-radius: 4px;
@@ -454,13 +462,34 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.btn-load-more-logs:disabled {
+.btn-load-more-logs:disabled{
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.log-count {
+.log-count{
   font-size: 12px;
   color: var(--text-secondary);
 }
+
+
+/* case-meta - 自全局样式就近迁移 */
+.case-meta{
+display: flex;
+gap: 20px;
+flex-wrap: wrap;
+margin-bottom: 16px;
+}
+
+
+
+@media (max-width: 512px){
+.case-meta {
+    gap: 12px;
+}
+}
+
+
+
+
 </style>

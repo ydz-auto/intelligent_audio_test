@@ -309,4 +309,20 @@ const {
 
 <style scoped>
 @import './UploadOptions.css';
+
+
+/* config-header - 自全局样式就近迁移 */
+.config-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-color);
+  transition: background-color 0.2s ease;
+}
+
+.config-header:hover {
+  background-color: var(--background-secondary);
+}
+
 </style>

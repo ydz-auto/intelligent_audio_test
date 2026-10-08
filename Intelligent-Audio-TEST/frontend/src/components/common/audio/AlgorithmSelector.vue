@@ -133,4 +133,24 @@ defineExpose({
 
 <style scoped>
 @import './AlgorithmSelector.css';
+
+
+
+                             
+.group-count:hover{
+    transform: scale(1.05);
+    box-shadow: var(--shadow-md);
+}
+
+
+
+.group-count:hover{
+    transform: scale(1.05);
+    box-shadow: var(--shadow-md);
+}
+
+
+/* selected-tags - 自全局样式就近迁移 */
+
+
 </style>

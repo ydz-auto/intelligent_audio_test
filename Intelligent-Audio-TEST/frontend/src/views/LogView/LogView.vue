@@ -334,10 +334,83 @@ const {
 } = useLogView({ startDateTimeRef, endDateTimeRef, startContainerRef, endContainerRef });
 </script>
 
-<style>
-@import '../../assets/styles/main.css';
-</style>
-
 <style scoped>
 @import './LogView.css';
+
+
+/* sort-icon - 自全局样式就近迁移 */
+.sort-icon {
+    margin-left: 5px;
+    font-size: 12px;
+    color: var(--color-gray-400);
+}
+
+.sortable:hover .sort-icon {
+    color: var(--color-blue-500);
+}
+
+.sort-icon {
+    margin-left: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    color: var(--text-light);
+    transition: all var(--transition-normal);
+}
+
+.sortable:hover .sort-icon {
+    color: var(--primary-color);
+}
+/* log-checkbox - 自全局样式就近迁移 */
+.log-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+/* log-module - 自全局样式就近迁移 */
+.log-module {
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+}
+
+/* monitor-indicator - 自全局样式就近迁移 */
+.monitor-indicator {
+    margin-bottom: var(--spacing-xl);
+    padding: var(--spacing-md);
+    background-color: var(--background-secondary);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all var(--transition-normal);
+}
+
+/* monitor-status - 自全局样式就近迁移 */
+.monitor-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+/* monitor-icon - 自全局样式就近迁移 */
+.monitor-icon {
+    font-size: var(--font-size-xs);
+    color: var(--success-color);
+    animation: pulse 2s infinite;
+}
+
+/* error-icon - 自全局样式就近迁移 */
+.error-icon {
+    font-size: 48px;
+    color: var(--danger-color);
+    margin-bottom: var(--spacing-md);
+}
+
+/* warning-icon - 自全局样式就近迁移 */
+.warning-icon {
+    font-size: 48px;
+    color: var(--warning-color);
+    margin-bottom: var(--spacing-md);
+}
+
 </style>

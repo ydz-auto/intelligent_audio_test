@@ -6,7 +6,7 @@
   2. POST /audios/upload/register     → [fileId, ...]
   3. 循环每个 WAV:
      a. POST /audios/upload/presign   → uploadId, ossKey, presigned URLs
-     b. PUT <presigned_url>           → 直传 OSS/MinIO
+     b. PUT <presigned_url>           → 直传 OSS
      c. POST /audios/upload/complete-direct → audioId
      d. POST /audios/upload/merge     → 非末尾文件 createTestCase=false;
                                          末尾文件 createTestCase=true + testCaseConfig
@@ -28,7 +28,7 @@ def _resp_data(resp):
 
 
 def _put_to_oss(presigned_url: str, file_path: str) -> str:
-    """直传文件到 OSS/MinIO 预签名 URL，返回 ETag。"""
+    """直传文件到 OSS 预签名 URL，返回 ETag。"""
     with open(file_path, 'rb') as f:
         content = f.read()
     r = httpx.put(presigned_url, content=content, timeout=30, trust_env=False)

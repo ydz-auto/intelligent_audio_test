@@ -13,7 +13,7 @@
       <!-- Filter Card -->
       <div class="report-filter-card filter-card">
         <div class="filter-title">
-          <i class="fas fa-filter" style="color: #ff6a00; font-size: 18px;"></i>
+          <i class="fas fa-filter" style="color: var(--primary); font-size: 18px;"></i>
           筛选条件
         </div>
         <div class="filter-content">
@@ -25,7 +25,7 @@
                 <span class="filter-hint" v-if="selectedTags.length === 0">(显示全部)</span>
                 <span class="filter-count" v-else>已选 {{ selectedTags.length }} 个</span>
               </label>
-              <div class="tag-search-box search-box-flex" style="display: flex; align-items: center;">
+              <div class="tag-search-box search-box-flex flex items-center">
                 <i class="fas fa-search search-icon"></i>
                 <input
                   type="text"
@@ -33,7 +33,7 @@
                   placeholder="搜索标签..."
                   class="search-input"
                 />
-                <button class="search-clear" :class="{ visible: tagSearchQuery }" @click="tagSearchQuery = ''" style="margin-left: auto;">
+                <button class="search-clear ml-auto" :class="{ visible: tagSearchQuery }" @click="tagSearchQuery = ''">
                   <i class="fas fa-times"></i>
                 </button>
               </div>
@@ -68,7 +68,7 @@
                 <span class="filter-hint" v-if="selectedCategories.length === 0">(显示全部)</span>
                 <span class="filter-count" v-else>已选 {{ selectedCategories.length }} 个</span>
               </label>
-              <div class="category-search-box search-box-flex" style="display: flex; align-items: center;">
+              <div class="category-search-box search-box-flex flex items-center">
                 <i class="fas fa-search search-icon"></i>
                 <input
                   type="text"
@@ -76,7 +76,7 @@
                   placeholder="搜索分组..."
                   class="search-input"
                 />
-                <button class="search-clear" :class="{ visible: categorySearchQuery }" @click="categorySearchQuery = ''" style="margin-left: auto;">
+                <button class="search-clear ml-auto" :class="{ visible: categorySearchQuery }" @click="categorySearchQuery = ''">
                   <i class="fas fa-times"></i>
                 </button>
               </div>
@@ -120,12 +120,12 @@
       <!-- 评估维度选择区域 -->
       <div class="metric-selection">
         <div class="metric-selection-title">
-          <i class="fas fa-chart-line" style="color: #1677ff; font-size: 18px;"></i>
+          <i class="fas fa-chart-line" style="color: var(--secondary); font-size: 18px;"></i>
           选择评估维度（可多选）
           <span class="filter-hint" v-if="selectedMetrics.length === 0">(显示全部)</span>
           <span class="filter-count" v-else>已选 {{ selectedMetrics.length }} 个</span>
         </div>
-        <div class="metric-search-box search-box-flex" style="display: flex; align-items: center;">
+        <div class="metric-search-box search-box-flex flex items-center">
           <i class="fas fa-search search-icon"></i>
           <input
             type="text"
@@ -133,7 +133,7 @@
             placeholder="搜索评估维度..."
             class="search-input"
           />
-          <button class="search-clear" :class="{ visible: metricSearchQuery }" @click="metricSearchQuery = ''" style="margin-left: auto;">
+          <button class="search-clear ml-auto" :class="{ visible: metricSearchQuery }" @click="metricSearchQuery = ''">
             <i class="fas fa-times"></i>
           </button>
         </div>
@@ -230,7 +230,7 @@
 
               <!-- 空状态 -->
               <template #empty>
-                <div style="padding: 40px; text-align: center; color: #94a3b8;">
+                <div style="padding: 40px; text-align: center; color: var(--color-slate-400);">
                   暂无数据
                 </div>
               </template>

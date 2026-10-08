@@ -94,38 +94,38 @@ const getAlgorithmClass = (algo: string): string => {
 }
 
 .algorithm-tag--translation {
-  background-color: #e3f2fd;
-  color: #1565c0;
+  background-color: var(--color-secondary-light);
+  color: var(--secondary-deep);
 }
 
 .algorithm-tag--asr {
-  background-color: #e8f5e9;
-  color: #2e7d32;
+  background-color: var(--success-light);
+  color: var(--success-dark);
 }
 
 .algorithm-tag--speaker {
-  background-color: #fff3e0;
-  color: #e65100;
+  background-color: var(--warning-light);
+  color: var(--color-orange-700);
 }
 
 .algorithm-tag--tts {
-  background-color: #f3e5f5;
-  color: #7b1fa2;
+  background-color: var(--color-purple-100);
+  color: var(--color-purple-700);
 }
 
 .algorithm-tag--default {
-  background-color: #f5f5f5;
-  color: #616161;
+  background-color: var(--muted);
+  color: var(--color-gray-500);
 }
 
 .algorithm-tag--more {
-  background-color: #e0e0e0;
-  color: #424242;
+  background-color: var(--border);
+  color: var(--color-gray-700);
 }
 
 .algorithm-tag--none {
-  background-color: #fafafa;
-  color: #9e9e9e;
+  background-color: var(--color-neutral-50);
+  color: var(--color-gray-400);
   font-style: italic;
 }
 </style>

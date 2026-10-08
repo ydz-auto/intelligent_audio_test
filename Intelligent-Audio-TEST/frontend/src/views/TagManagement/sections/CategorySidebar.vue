@@ -75,6 +75,24 @@
     </div>
   </div>
 </template>
+<style scoped>
+
+/* category-actions - 自全局样式就近迁移 */
+.category-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+.category-actions {
+    display: flex ;
+    gap: 8px ;
+}
+
+.category-actions {
+    display: flex;
+    gap: 8px;
+}
+</style>
 
 <script setup lang="ts">
 import { ref } from 'vue'

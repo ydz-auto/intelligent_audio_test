@@ -241,4 +241,49 @@ const {
 
 <style scoped>
 @import './TaskReportPanel.css';
+
+
+                          
+.api-info{
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.api-info{
+  flex: 1;
+}
+/* api-name - 自全局样式就近迁移 */
+.api-name{
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.api-name{
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.api-name{
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--foreground);
+  margin-bottom: 4px;
+}
+/* metric-value - 自全局样式就近迁移 */
+
+
+
+
+
+/* metric-item - 自全局样式就近迁移 */
+
+
+/* metric-name - 自全局样式就近迁移 */
+
+
 </style>

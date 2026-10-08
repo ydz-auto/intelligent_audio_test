@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 // 注意：.env.* 里的 VITE_API_TARGET 必须用 loadEnv 读取（process.env 拿不到 Vite env 文件的值）。
@@ -10,7 +11,7 @@ export default defineConfig(({ mode }) => {
 
   // https://vitejs.dev/config/
   return {
-    plugins: [vue()],
+    plugins: [vue(), tailwindcss()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

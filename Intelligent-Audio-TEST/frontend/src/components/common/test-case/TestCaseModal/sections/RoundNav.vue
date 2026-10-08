@@ -63,8 +63,8 @@ function getRoundSummary(round: RoundConfigItem): string {
 .rce-round-nav {
   width: 180px;
   min-width: 180px;
-  background: var(--background-secondary, #f5f6f8);
-  border-right: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-secondary, var(--muted));
+  border-right: 1px solid var(--border-color, var(--border));
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
@@ -75,19 +75,19 @@ function getRoundSummary(round: RoundConfigItem): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  border-bottom: 1px solid var(--border-color, var(--border));
 }
 
 .rce-nav-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
 }
 
 .rce-nav-count {
   font-size: 11px;
-  color: var(--text-light, #999);
-  background: var(--background-primary, #fff);
+  color: var(--text-light, var(--color-gray-400));
+  background: var(--background-primary, var(--background));
   padding: 2px 8px;
   border-radius: 10px;
 }
@@ -109,19 +109,19 @@ function getRoundSummary(round: RoundConfigItem): string {
   margin-bottom: 2px;
 }
 .rce-nav-item:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: color-mix(in srgb, var(--color-black) 4%, transparent);
 }
 .rce-nav-item.active {
-  background: var(--primary-light, #fff3e8);
-  color: var(--primary-color, #ff6a00);
+  background: var(--primary-light, var(--color-orange-50));
+  color: var(--primary-color, var(--primary));
 }
 
 .rce-nav-num {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--border-color, #e0e0e0);
-  color: var(--text-secondary, #666);
+  background: var(--border-color, var(--border));
+  color: var(--text-secondary, var(--color-gray-500));
   font-size: 11px;
   font-weight: 600;
   display: flex;
@@ -130,28 +130,28 @@ function getRoundSummary(round: RoundConfigItem): string {
   flex-shrink: 0;
 }
 .rce-nav-item.active .rce-nav-num {
-  background: var(--primary-color, #ff6a00);
-  color: #fff;
+  background: var(--primary-color, var(--primary));
+  color: var(--background);
 }
 .rce-nav-num.has-error {
-  background: var(--danger-color, #f44336);
-  color: #fff;
+  background: var(--danger-color, var(--destructive));
+  color: var(--background);
 }
 
 .rce-nav-meta {
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, var(--color-gray-500));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .rce-nav-item.active .rce-nav-meta {
-  color: var(--primary-color, #ff6a00);
+  color: var(--primary-color, var(--primary));
 }
 
 .rce-nav-footer {
   padding: 8px;
-  border-top: 1px solid var(--border-color, #e0e0e0);
+  border-top: 1px solid var(--border-color, var(--border));
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -160,10 +160,10 @@ function getRoundSummary(round: RoundConfigItem): string {
 .rce-nav-btn {
   padding: 6px 10px;
   font-size: 12px;
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--border));
   border-radius: 6px;
-  background: var(--background-primary, #fff);
-  color: var(--text-secondary, #666);
+  background: var(--background-primary, var(--background));
+  color: var(--text-secondary, var(--color-gray-500));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -171,8 +171,8 @@ function getRoundSummary(round: RoundConfigItem): string {
   transition: all 0.15s;
 }
 .rce-nav-btn:hover:not(:disabled) {
-  border-color: var(--primary-color, #ff6a00);
-  color: var(--primary-color, #ff6a00);
+  border-color: var(--primary-color, var(--primary));
+  color: var(--primary-color, var(--primary));
 }
 .rce-nav-btn:disabled {
   opacity: 0.5;

@@ -323,11 +323,11 @@
 }
 .range-sep {
   font-size: 11px;
-  color: #999;
+  color: var(--text-light);
   flex-shrink: 0;
 }
 .text-muted {
-  color: #ccc;
+  color: var(--color-gray-300);
   font-size: 12px;
 }
 
@@ -335,8 +335,8 @@
 .feature-bundles {
   margin-bottom: 16px;
   padding: 12px 16px;
-  background: #f8f9ff;
-  border: 1px solid #e0e7ff;
+  background: var(--muted);
+  border: 1px solid var(--color-indigo-100);
   border-radius: 8px;
 }
 .feature-bundles-header {
@@ -346,17 +346,17 @@
   margin-bottom: 10px;
 }
 .feature-bundles-header i {
-  color: #6366f1;
+  color: var(--color-indigo-500);
   font-size: 14px;
 }
 .feature-bundles-title {
   font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
 }
 .feature-bundles-hint {
   font-size: 11px;
-  color: #999;
+  color: var(--text-light);
   margin-left: auto;
 }
 .feature-bundles-list {
@@ -369,26 +369,26 @@
   align-items: center;
   gap: 6px;
   padding: 6px 14px;
-  border: 1px solid #e0e7ff;
+  border: 1px solid var(--color-indigo-100);
   border-radius: 20px;
   cursor: pointer;
   transition: all 0.15s;
-  background: #fff;
+  background: var(--color-white);
   font-size: 13px;
 }
 .feature-bundle-chip:hover {
-  border-color: #6366f1;
+  border-color: var(--color-indigo-500);
   background: #f0f4ff;
 }
 .feature-bundle-chip--active {
-  border-color: #6366f1;
-  background: #eef2ff;
-  color: #4f46e5;
+  border-color: var(--color-indigo-500);
+  background: var(--color-indigo-50);
+  color: var(--color-indigo-600);
 }
 .feature-bundle-chip input[type="checkbox"] {
   width: 14px;
   height: 14px;
-  accent-color: #6366f1;
+  accent-color: var(--color-indigo-500);
   margin: 0;
 }
 .feature-bundle-label {
@@ -397,11 +397,40 @@
 .feature-bundle-count {
   font-size: 10px;
   color: #aaa;
-  background: #f5f5f5;
+  background: var(--muted);
   padding: 1px 6px;
   border-radius: 8px;
 }
 .feature-bundle-chip--active .feature-bundle-count {
   color: #818cf8;
-  background: #e0e7ff;
+  background: var(--color-indigo-100);
+}
+
+/* 参数配置/参考参数/关联维度 工具条过滤区 */
+.params-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.params-toolbar-actions .search-box,
+.dimensions-toolbar .search-box {
+  width: 220px;
+  height: 32px;
+  margin-bottom: 0;
+  flex: none;
+}
+
+.params-toolbar-actions .search-box .search-input,
+.dimensions-toolbar .search-box .search-input {
+  width: 220px;
+  height: 32px;
+}
+
+.param-filter-select {
+  width: auto;
+  min-width: 96px;
+  height: 32px;
+  box-sizing: border-box;
 }

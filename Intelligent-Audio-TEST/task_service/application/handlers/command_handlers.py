@@ -139,6 +139,7 @@ class TaskCommandHandler:
                 api_ids=cmd.api_ids,
                 created_by=cmd.created_by,
                 now=now,
+                case_devices=cmd.case_devices,
             )
 
             # 发布领域事件

@@ -257,7 +257,7 @@ const tableColumns = computed(() => {
       label: device,
       resize: true,
       class: 'device-column',
-      color: '#1677ff'
+      color: 'var(--secondary)'
     })
   })
 
@@ -428,14 +428,14 @@ const getAverageValue = (metricName, device) => {
 
 .stat-label {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-slate-500);
   font-weight: 500;
 }
 
 .stat-value {
   font-size: 24px;
   font-weight: 700;
-  color: #1677ff;
+  color: var(--secondary);
 }
 
 .overview-table-container {
@@ -456,7 +456,7 @@ const getAverageValue = (metricName, device) => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  color: #999;
+  color: var(--color-gray-400);
 }
 
 .empty-state i {
@@ -471,14 +471,14 @@ const getAverageValue = (metricName, device) => {
 
 .dim-name.dim-sub {
   padding-left: 20px;
-  color: #595959;
+  color: var(--gray);
   font-weight: 400;
 }
 
 .dim-group-header {
   font-weight: 600;
   font-size: 13px;
-  color: var(--primary-color, #1677ff);
+  color: var(--primary-color, var(--secondary));
   display: inline-block;
   padding: 2px 0;
 }

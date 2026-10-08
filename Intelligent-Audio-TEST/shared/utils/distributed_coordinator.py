@@ -316,3 +316,98 @@ def release_task_claim(task_id):
         client.delete(f'task:claim:{task_id}')
     except Exception as e:
         logger.warning(f"释放任务抢占 {task_id} 失败: {e}")
+
+
+# === 任务控制信号（stop / pause）统一 Redis Key ===
+# 多实例下，task_service / e2e_test_service / device_service 三方统一读写同一组 key：
+#   task:stop:{task_id}   存在 = 已停止
+#   task:pause:{task_id}  存在 = 已暂停
+# 冷启动后由各服务启动时调用 cleanup_orphan_task_control_flags 清理孤儿标志。
+
+TASK_STOP_KEY_PREFIX = 'task:stop:'
+TASK_PAUSE_KEY_PREFIX = 'task:pause:'
+
+
+def task_stop_key(task_id):
+    """构造任务停止信号 key"""
+    return f'{TASK_STOP_KEY_PREFIX}{task_id}'
+
+
+def task_pause_key(task_id):
+    """构造任务暂停信号 key"""
+    return f'{TASK_PAUSE_KEY_PREFIX}{task_id}'
+
+
+def set_task_stop(task_id, ttl=86400):
+    """置位任务停止信号（多实例可见）"""
+    set_flag(task_stop_key(task_id), value=1, ttl=ttl)
+
+
+def clear_task_stop(task_id):
+    """清除任务停止信号"""
+    clear_flag(task_stop_key(task_id))
+
+
+def is_task_stopped(task_id):
+    """判断任务停止信号是否已置位（Redis 不可用时返回 False，不阻塞）"""
+    return is_flag_set(task_stop_key(task_id))
+
+
+def set_task_pause(task_id, ttl=86400):
+    """置位任务暂停信号（多实例可见）"""
+    set_flag(task_pause_key(task_id), value=1, ttl=ttl)
+
+
+def clear_task_pause(task_id):
+    """清除任务暂停信号"""
+    clear_flag(task_pause_key(task_id))
+
+
+def is_task_paused(task_id):
+    """判断任务暂停信号是否已置位（Redis 不可用时返回 False，不阻塞）"""
+    return is_flag_set(task_pause_key(task_id))
+
+
+def _scan_keys(pattern):
+    """使用 SCAN 迭代匹配 key，避免 KEYS 阻塞 Redis；Redis 不可用返回空列表"""
+    if not _enabled():
+        return []
+    client = _client()
+    if client is None:
+        return []
+    keys = []
+    try:
+        for k in client.scan_iter(match=pattern, count=500):
+            if isinstance(k, bytes):
+                k = k.decode('utf-8', errors='ignore')
+            keys.append(k)
+    except Exception as e:
+        logger.warning(f"SCAN {pattern} 失败: {e}")
+    return keys
+
+
+def cleanup_orphan_task_control_flags(active_task_ids):
+    """清理孤儿任务控制标志（冷启动恢复用）。
+
+    多实例场景下，若 task_id 仍处于 active_task_ids（本实例或其它实例正在运行/暂停），
+    则保留其 stop/pause 标志；否则删除，防止残留信号影响后续同名任务。
+
+    Args:
+        active_task_ids: 集合/可迭代，当前仍处于运行态（running/paused）的任务 ID 集合。
+    """
+    if not _enabled():
+        return 0
+    active = {str(t) for t in (active_task_ids or [])}
+    cleaned = 0
+    for prefix in (TASK_STOP_KEY_PREFIX, TASK_PAUSE_KEY_PREFIX):
+        for key in _scan_keys(f'{prefix}*'):
+            task_id = key[len(prefix):]
+            if task_id in active:
+                continue
+            try:
+                _client().delete(key)
+                cleaned += 1
+                logger.info("清理孤儿任务控制标志: %s", key)
+            except Exception as e:
+                logger.warning(f"清理孤儿任务控制标志 {key} 失败: {e}")
+    return cleaned

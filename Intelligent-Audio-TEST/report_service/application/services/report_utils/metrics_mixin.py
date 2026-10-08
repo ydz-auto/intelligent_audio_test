@@ -8,6 +8,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_tag_category,
     _grpc_get_device,
     _grpc_get_api,
+    _dim_agg_denominator,
 )
 
 
@@ -328,11 +329,16 @@ class MetricsMixin:
         if custom_agg_dims:
             # dim_name -> output_params 映射
             dim_name_to_output_params = {}
+            dim_agg_denominator = {}
             for dim in all_dimensions:
-                if _dim_name(dim) in custom_agg_dims:
-                    dim_name_to_output_params[_dim_name(dim)] = dim_output_params.get(_dim_id(dim), [])
-            ReportUtils._apply_resource_aggregation_strategies(metric_data, resource_agg_items, dim_statistic_method, dim_name_to_output_params)
-            ReportUtils._apply_aggregation_strategies(tag_metric_data, tag_agg_items, dim_statistic_method, dim_name_to_output_params)
+                dim_name = _dim_name(dim)
+                if dim_name in custom_agg_dims:
+                    dim_name_to_output_params[dim_name] = dim_output_params.get(_dim_id(dim), [])
+                    dim_agg_denominator[dim_name] = _dim_agg_denominator(dim)
+            ReportUtils._apply_resource_aggregation_strategies(
+                metric_data, resource_agg_items, dim_statistic_method, dim_name_to_output_params, dim_agg_denominator)
+            ReportUtils._apply_aggregation_strategies(
+                tag_metric_data, tag_agg_items, dim_statistic_method, dim_name_to_output_params, dim_agg_denominator)
 
         # 9.5 计算按标签分类统计的数据
         tag_category_metric_data = ReportUtils._calculate_tag_category_averages(
@@ -383,32 +389,40 @@ class MetricsMixin:
         return result_data
 
     @staticmethod
-    def _apply_resource_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None):
+    def _apply_resource_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None,
+                                               dim_agg_denominator=None):
         """
         对非 average 维度，用策略类聚合替换简单平均值（resource 级别）。
 
         agg_items 结构: {dim_name: {resource: [items]}}
         metric_data 结构: {resource: {dim_name: value}}
+        dim_agg_denominator: {dim_name: 'round'|'case'} 比率统计分母口径，默认 'round'
         """
         if not agg_items:
             return
 
-        from report_service.application.services.aggregation_strategies import get_strategy
+        from report_service.domain.services.aggregation_strategies import get_strategy
 
         for dim_name, resources in agg_items.items():
             method = dim_statistic_method.get(dim_name, 'average')
             strategy = get_strategy(method)
             output_params = (dim_output_params or {}).get(dim_name, [])
+            denominator_mode = (dim_agg_denominator or {}).get(dim_name, 'round')
 
             for resource, items in resources.items():
                 if not items:
                     continue
-                agg_val = strategy.aggregate(items, output_params=output_params)
+                agg_val = strategy.aggregate(
+                    items,
+                    output_params=output_params,
+                    denominator_mode=denominator_mode,
+                )
                 if agg_val is not None and resource in metric_data:
                     metric_data[resource][dim_name] = agg_val
 
     @staticmethod
-    def _apply_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None):
+    def _apply_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None,
+                                      dim_agg_denominator=None):
         """
         对非 average 维度，用策略类聚合替换简单平均值。
 
@@ -416,22 +430,28 @@ class MetricsMixin:
         metric_data 结构: {group_key: {resource: {dim_name: value}}}
         dim_statistic_method: {dim_name: statistic_method}
         dim_output_params: {dim_name: [{param_code, field_path, field_type}, ...]}
+        dim_agg_denominator: {dim_name: 'round'|'case'} 比率统计分母口径，默认 'round'
         """
         if not agg_items:
             return
 
-        from report_service.application.services.aggregation_strategies import get_strategy
+        from report_service.domain.services.aggregation_strategies import get_strategy
 
         for dim_name, groups in agg_items.items():
             method = dim_statistic_method.get(dim_name, 'average')
             strategy = get_strategy(method)
             output_params = (dim_output_params or {}).get(dim_name, [])
+            denominator_mode = (dim_agg_denominator or {}).get(dim_name, 'round')
 
             for group_key, resources in groups.items():
                 for resource, items in resources.items():
                     if not items:
                         continue
-                    agg_val = strategy.aggregate(items, output_params=output_params)
+                    agg_val = strategy.aggregate(
+                        items,
+                        output_params=output_params,
+                        denominator_mode=denominator_mode,
+                    )
                     if agg_val is not None and group_key in metric_data and resource in metric_data[group_key]:
                         metric_data[group_key][resource][dim_name] = agg_val
 

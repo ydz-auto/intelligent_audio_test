@@ -48,126 +48,136 @@
         <div class="card">
           <div class="card-header">
             <h3 class="card-title">评估维度列表</h3>
-            <div class="card-actions">
-              <div class="filter-sort-section">
-                <div class="filter-row">
-                  <div class="filter-item">
-                    <div class="search-box">
-                      <i class="fas fa-search search-icon"></i>
-                      <input type="text" class="search-input" placeholder="搜索评估维度..." v-model="searchKeyword" @input="searchDimensions">
+            <div class="card-header-right">
+              <div class="view-switcher">
+                <button class="btn-toggle" :class="{ active: viewMode === 'list' }" @click="viewMode = 'list'" title="列表视图">
+                  <i class="fas fa-list"></i>
+                  列表视图
+                </button>
+                <button class="btn-toggle" :class="{ active: viewMode === 'group' }" @click="viewMode = 'group'" title="分组视图">
+                  <i class="fas fa-folder"></i>
+                  分组视图
+                </button>
+              </div>
+              <div class="card-actions">
+                <div class="filter-sort-section">
+                  <div class="filter-row">
+                    <div class="filter-item search-filter-item">
+                      <div class="search-box">
+                        <i class="fas fa-search search-icon"></i>
+                        <input type="text" class="search-input" placeholder="搜索评估维度..." v-model="searchKeyword" @input="searchDimensions">
+                      </div>
                     </div>
-                  </div>
-                  <div class="filter-item">
-                    <div class="filter-select">
-                      <select class="form-input" v-model="filterStatus" @change="filterDimensions">
-                        <option value="all">全部状态</option>
-                        <option value="active">启用</option>
-                        <option value="inactive">禁用</option>
-                      </select>
+                    <BadgeFilter
+                      :options="STATUS_FILTER_OPTIONS"
+                      :model-value="filterStatus"
+                      all-label="全部状态"
+                      title="状态"
+                      @update:model-value="setStatusFilter"
+                    />
+                    <BadgeFilter
+                      :options="CATEGORY_FILTER_OPTIONS"
+                      :model-value="filterCategory"
+                      all-label="全部分类"
+                      title="分类"
+                      @update:model-value="setCategoryFilter"
+                    />
+                    <AlgorithmFilter :options="algorithms" v-model="filterAlgorithm" title="关联算法" />
+                    <div class="filter-item reset-filter-item">
+                      <button class="btn btn-text btn-primary" @click="resetFilters">重置筛选</button>
                     </div>
-                  </div>
-                  <div class="filter-item">
-                    <div class="filter-select">
-                      <select class="form-input" v-model="filterCategory" @change="filterDimensions">
-                        <option value="all">全部分类</option>
-                        <option value="性能指标">性能指标</option>
-                        <option value="功能指标">功能指标</option>
-                        <option value="质量指标">质量指标</option>
-                        <option value="环境适应性">环境适应性</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div class="filter-item">
-                    <button class="btn btn-text btn-primary" @click="resetFilters">重置筛选</button>
                   </div>
                 </div>
               </div>
             </div>
           </div>
           <div class="card-body">
-            <div class="table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th class="checkbox-column" style="width: 50px;">
-                      <input type="checkbox" id="selectAll" v-model="isAllSelected" @change="toggleSelectAll">
-                    </th>
-                    <th class="dimension-name-col sortable" style="width: 200px;">维度名称</th>
-                    <th class="dimension-description-col" style="width: 250px;">描述</th>
-                    <th class="dimension-category-col sortable" style="width: 120px;">分类</th>
-                    <th class="dimension-algorithms-col" style="width: 180px;">关联算法</th>
-                    <th class="dimension-weight-col sortable" style="width: 150px;">权重</th>
-                    <th class="dimension-api-status-col sortable" style="width: 120px;">API状态</th>
-                    <th class="dimension-status-col sortable" style="width: 100px;">状态</th>
-                    <th class="dimension-actions-col" style="width: auto;">操作</th>
-                  </tr>
-                </thead>
-                <tbody id="dimensionsTable">
-                  <tr v-for="dimension in hierarchicalDimensions" :key="dimension.id" :class="{ 'sub-dimension-row': dimension._level === 1 }" @click="toggleDimensionSelection(dimension.id)">
-                    <td class="checkbox-column"><input type="checkbox" class="dimension-checkbox" v-model="selectedDimensions" :value="dimension.id" @click.stop></td>
-                    <td class="dimension-name-col" @click.stop="openEditModal(dimension.id)">
-                      <div class="dimension-name-cell" :style="{ paddingLeft: dimension._level === 1 ? '28px' : '0' }">
-                        <span v-if="dimension._level === 1" class="tree-branch">└</span>
-                        <span class="dimension-type-badge" :class="dimension._isMain ? 'main-dim-badge' : 'sub-dim-badge'">
-                          {{ dimension._isMain ? '主' : '子' }}
-                        </span>
-                        <span class="dimension-name-text">{{ dimension.name }}</span>
-                        <span v-if="dimension._level === 1 && dimension._parentName" class="parent-name-hint">（{{ dimension._parentName }}）</span>
-                      </div>
-                    </td>
-                    <td class="dimension-description-col text-truncate" :title="dimension.description">{{ dimension.description || '-' }}</td>
-                    <td class="dimension-category-col">{{ dimension.category || dimension.type }}</td>
-                    <td class="dimension-algorithms-col">
-                      <div class="algorithm-tags" v-if="dimension.associatedAlgorithms && dimension.associatedAlgorithms.length > 0">
-                        <span class="algo-tag" v-for="algo in dimension.associatedAlgorithms" :key="algo.algorithmType" :class="{ 'is-default': algo.isDefault }">
-                          {{ getAlgorithmLabel(algo.algorithmType) }}
-                        </span>
-                      </div>
-                      <span v-else class="text-muted">-</span>
-                    </td>
-                    <td class="dimension-weight-col">
-                      <div class="weight-control">
-                        <input type="range" class="weight-slider" min="1" max="10" v-model="dimension.weight" @input="updateWeight(dimension.id, dimension.weight)" @click.stop>
-                        <span class="weight-value">{{ dimension.weight }}</span>
-                      </div>
-                    </td>
-                    <td class="dimension-api-status-col">
-                      <span v-if="isLlmJudge(dimension)" class="api-status llm-judge">
-                        <i class="fas fa-robot"></i> LLM Judge
-                      </span>
-                      <span v-else class="api-status" :class="dimension.apiStatus">
-                        <i class="fas fa-circle" :class="dimension.apiStatus === ApiEndpointStatus.ONLINE ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.apiStatus === ApiEndpointStatus.ONLINE ? '在线' : '离线' }}
-                      </span>
-                    </td>
-                    <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
-                    <td class="dimension-actions-col">
-                      <div class="action-buttons">
-                        <button class="btn btn-text btn-info" :disabled="!canMoveUp(dimension)" @click.stop="moveDimension(dimension.id, -1)" title="上移">
-                          <i class="fas fa-arrow-up btn-icon"></i>
-                          上移
-                        </button>
-                        <button class="btn btn-text btn-info" :disabled="!canMoveDown(dimension)" @click.stop="moveDimension(dimension.id, 1)" title="下移">
-                          <i class="fas fa-arrow-down btn-icon"></i>
-                          下移
-                        </button>
-                        <button class="btn btn-text btn-primary" @click.stop="openEditModal(dimension.id)">
-                          <i class="fas fa-edit btn-icon"></i>
-                          编辑
-                        </button>
-                        <button class="btn btn-text btn-info" @click.stop="testApiHealth(dimension.id)">
-                          <i class="fas fa-heartbeat btn-icon"></i>
-                          测试API
-                        </button>
-                        <button class="btn btn-text btn-danger" @click.stop="deleteDimension(dimension.id)">
-                          <i class="fas fa-trash btn-icon"></i>
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <!-- 列表视图 -->
+            <template v-if="viewMode === 'list'">
+              <EvaluationDimensionTable
+                :items="hierarchicalDimensions"
+                :selected-dimensions="selectedDimensions"
+                :is-all-selected="isAllSelected"
+                :can-move-up="canMoveUp"
+                :can-move-down="canMoveDown"
+                :get-algorithm-label="getAlgorithmLabel"
+                :is-llm-judge="isLlmJudge"
+                @toggle-select-all="toggleSelectAll"
+                @toggle-selection="toggleDimensionSelection"
+                @edit="openEditModal"
+                @test-api="testApiHealth"
+                @delete="deleteDimension"
+                @add-sub="(payload) => openAddModal(payload.categoryId, payload.id)"
+                @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
+                @move="(payload) => moveDimension(payload.id, payload.direction)"
+              />
+              <div v-if="!loading && hierarchicalDimensions.length === 0" class="empty-dimensions">
+                <i class="fas fa-inbox"></i>
+                <p>暂无评估维度数据</p>
+              </div>
+            </template>
+
+            <!-- 分组视图：按分类聚合，分类内保留主/子维度层级 -->
+            <template v-else>
+              <div v-if="loading" class="empty-dimensions">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p>加载中...</p>
+              </div>
+              <template v-else>
+                <div
+                  v-for="group in groupedDimensions"
+                  :key="group.key"
+                  class="group-card"
+                >
+                  <div class="group-header" @click="toggleGroupExpanded(group.key)">
+                    <div class="group-header-left">
+                      <input
+                        type="checkbox"
+                        class="group-checkbox"
+                        :checked="groupAllSelected(group)"
+                        @click.stop
+                        @change="toggleGroupSelectAll(group)"
+                        title="全选该分组"
+                      >
+                      <i class="fas fa-chevron-down group-toggle" :class="{ expanded: isGroupExpanded(group.key) }"></i>
+                      <i :class="group.category?.icon || 'fas fa-folder'" class="group-icon"></i>
+                      <h4 class="group-title">{{ group.category?.name || '未分类' }}</h4>
+                      <span class="group-count">{{ group.items.length }}</span>
+                      <span v-if="group.category?.description" class="group-desc">{{ group.category.description }}</span>
+                    </div>
+                    <div class="group-header-actions" @click.stop>
+                      <button class="btn btn-text btn-primary btn-sm" @click="openAddModal(group.category?.id)">
+                        <i class="fas fa-plus btn-icon"></i>
+                        添加维度
+                      </button>
+                    </div>
+                  </div>
+                  <div v-show="isGroupExpanded(group.key)" class="group-content">
+                    <EvaluationDimensionTable
+                      :items="group.items"
+                      :selected-dimensions="selectedDimensions"
+                      :show-header-checkbox="false"
+                      :can-move-up="canMoveUp"
+                      :can-move-down="canMoveDown"
+                      :get-algorithm-label="getAlgorithmLabel"
+                      :is-llm-judge="isLlmJudge"
+                      @toggle-selection="toggleDimensionSelection"
+                      @edit="openEditModal"
+                      @test-api="testApiHealth"
+                      @delete="deleteDimension"
+                      @add-sub="(payload) => openAddModal(payload.categoryId, payload.id)"
+                      @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
+                      @move="(payload) => moveDimension(payload.id, payload.direction)"
+                    />
+                  </div>
+                </div>
+
+                <div v-if="groupedDimensions.length === 0" class="empty-dimensions">
+                  <i class="fas fa-inbox"></i>
+                  <p>暂无评估维度数据</p>
+                </div>
+              </template>
+            </template>
           </div>
         </div>
         <!-- 分页控件 - 显示在卡片下方 -->
@@ -191,17 +201,16 @@
 </template>
 
 <script setup>
-// 只导入主样式文件，所有组件样式已包含在main.css中
-import '../../assets/styles/main.css';
-
 // 导入分页组件
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
+import BadgeFilter from '../../components/common/BadgeFilter.vue';
+// 关联算法筛选组件
+import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
+// 评估维度表格公共组件（列表/分组视图共用）
+import EvaluationDimensionTable from '../../components/EvaluationDimensionTable.vue';
 
 // 导入组件逻辑
 import { useEvaluation } from './evaluation';
-
-// 枚举
-import { ApiEndpointStatus } from '../../domain/enums';
 
 const {
   batchMenuRef,
@@ -209,6 +218,8 @@ const {
   searchKeyword,
   filterStatus,
   filterCategory,
+  filterAlgorithm,
+  algorithms,
   selectedDimensions,
   currentPage,
   pageSize,
@@ -224,6 +235,12 @@ const {
   editingDimension,
   filteredDimensions,
   hierarchicalDimensions,
+  groupedDimensions,
+  viewMode,
+  isGroupExpanded,
+  toggleGroupExpanded,
+  groupAllSelected,
+  toggleGroupSelectAll,
   totalPages,
   totalItems,
   isAllSelected,
@@ -272,8 +289,55 @@ const {
   loading,
   isLlmJudge,
 } = useEvaluation();
+
+// ===== 徽章筛选选项（原下拉框硬编码迁移为常量）=====
+const STATUS_FILTER_OPTIONS = [
+  { value: 'active', label: '启用' },
+  { value: 'inactive', label: '禁用' },
+];
+
+const CATEGORY_FILTER_OPTIONS = [
+  { value: '性能指标', label: '性能指标' },
+  { value: '功能指标', label: '功能指标' },
+  { value: '质量指标', label: '质量指标' },
+  { value: '环境适应性', label: '环境适应性' },
+];
+
+function setStatusFilter(value) {
+  filterStatus.value = String(value);
+  filterDimensions();
+}
+
+function setCategoryFilter(value) {
+  filterCategory.value = String(value);
+  filterDimensions();
+}
 </script>
 
 <style scoped>
 @import './Evaluation.css';
+
+
+                           
+.btn-group{
+    position: relative;
+    display: inline-block;
+}
+
+/* content-wrapper - 自全局样式就近迁移 */
+.content-wrapper{
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+    transition: all var(--transition-normal);
+    width: auto;
+    min-width: 100%;
+    box-sizing: border-box;
+    overflow-x: visible;
+}
+
+/* evaluation-view - 自全局样式就近迁移 */
+
+
 </style>

@@ -70,7 +70,7 @@
       </div>
 
       <div class="global-noise-field-row">
-        <div class="global-noise-field" style="flex:1">
+        <div class="global-noise-field flex-1">
           <label class="global-noise-field-label">声压级 (dB)</label>
           <input
             type="number"
@@ -80,7 +80,7 @@
             @input="updateNoise('spl', Number(($event.target as HTMLInputElement).value))"
           />
         </div>
-        <div class="global-noise-field" style="flex:1">
+        <div class="global-noise-field flex-1">
           <label class="global-noise-field-label">循环播放</label>
           <label class="global-noise-switch">
             <input
@@ -94,7 +94,7 @@
       </div>
 
       <div class="global-noise-field-row">
-        <div class="global-noise-field" style="flex:1">
+        <div class="global-noise-field flex-1">
           <label class="global-noise-field-label">播放设备</label>
           <select
             class="form-control form-control-sm"
@@ -175,10 +175,10 @@ function previewNoise() {
 
 <style scoped>
 .global-noise-editor {
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 16px;
-  background: #fafafa;
+  background: var(--color-neutral-50);
 }
 .global-noise-header {
   display: flex;
@@ -190,11 +190,11 @@ function previewNoise() {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: #e3f2fd;
+  background: var(--color-secondary-light);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #1976d2;
+  color: var(--secondary);
   font-size: 16px;
 }
 .global-noise-title-group {
@@ -203,7 +203,7 @@ function previewNoise() {
 .global-noise-title {
   font-size: 15px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -212,25 +212,25 @@ function previewNoise() {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 10px;
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: var(--success-light);
+  color: var(--success-dark);
 }
 .global-noise-subtitle {
   font-size: 12px;
-  color: #888;
+  color: var(--color-gray-500);
   margin-top: 2px;
 }
 .global-noise-description {
   font-size: 12px;
-  color: #666;
+  color: var(--color-gray-500);
   line-height: 1.6;
   margin-bottom: 12px;
   padding: 8px 12px;
-  background: #fff3e0;
+  background: var(--warning-light);
   border-radius: 6px;
 }
 .global-noise-description .highlight {
-  color: #e65100;
+  color: var(--color-orange-700);
   font-weight: 500;
 }
 .global-noise-toggle-row {
@@ -248,7 +248,7 @@ function previewNoise() {
 }
 .global-noise-field-label {
   font-size: 12px;
-  color: #666;
+  color: var(--color-gray-500);
   font-weight: 500;
 }
 .global-noise-field-row {
@@ -260,9 +260,9 @@ function previewNoise() {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--background);
 }
 .global-noise-card-info {
   flex: 1;
@@ -274,19 +274,19 @@ function previewNoise() {
   gap: 8px;
 }
 .global-noise-card-icon {
-  color: #1976d2;
+  color: var(--secondary);
   font-size: 14px;
 }
 .global-noise-card-name {
   font-size: 13px;
-  color: #333;
+  color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .global-noise-card-duration {
   font-size: 11px;
-  color: #888;
+  color: var(--color-gray-500);
 }
 .global-noise-card-actions {
   display: flex;
@@ -297,11 +297,11 @@ function previewNoise() {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: #555;
+  color: var(--color-gray-600);
 }
 .global-noise-empty {
   font-size: 13px;
-  color: #999;
+  color: var(--color-gray-400);
   padding: 12px;
   text-align: center;
 }

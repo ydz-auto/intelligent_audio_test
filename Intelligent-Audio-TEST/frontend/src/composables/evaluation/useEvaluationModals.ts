@@ -188,12 +188,15 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
   }
 
   // ========== 新增维度模态框 ==========
-  function openAddModal() {
+  function openAddModal(categoryId?: number | string, parentDimensionId?: number | string) {
     const formData = {
       name: '',
       description: '',
       type: 'auto',
-      categoryId: undefined,
+      // 预填参数：分组视图「添加维度」带入分类，主维度行「添加子维度」带入父维度
+      categoryId: categoryId ?? undefined,
+      dimensionType: parentDimensionId ? 'sub' : 'main',
+      parentDimensionId: parentDimensionId || '',
       apiUrl: '',
       scoreUnit: '',
       apiSettings: {

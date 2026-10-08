@@ -95,7 +95,7 @@ const handleCancel = () => {
   margin: 0;
   font-size: 16px;
   font-weight: 500;
-  color: #333;
+  color: var(--foreground);
   text-align: center;
 }
 
@@ -110,21 +110,21 @@ const handleCancel = () => {
   align-items: flex-start;
   gap: 14px;
   padding: 16px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--border);
   border-radius: 10px;
-  background-color: #fff;
+  background-color: var(--background);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .reevaluate-option:hover {
-  border-color: #1677ff;
-  background-color: #f8fbff;
+  border-color: var(--secondary);
+  background-color: var(--color-slate-50);
 }
 
 .reevaluate-option.active {
-  border-color: #1677ff;
-  background-color: #e6f0ff;
+  border-color: var(--secondary);
+  background-color: var(--color-blue-50);
 }
 
 .option-radio {
@@ -137,19 +137,19 @@ const handleCancel = () => {
 .radio-circle {
   width: 20px;
   height: 20px;
-  border: 2px solid #d1d5db;
+  border: 2px solid var(--color-gray-300);
   border-radius: 50%;
   transition: all 0.2s ease;
 }
 
 .reevaluate-option:hover .radio-circle {
-  border-color: #1677ff;
+  border-color: var(--secondary);
 }
 
 .reevaluate-option.active .radio-circle {
-  border-color: #1677ff;
-  background-color: #1677ff;
-  box-shadow: inset 0 0 0 3px #fff;
+  border-color: var(--secondary);
+  background-color: var(--secondary);
+  box-shadow: inset 0 0 0 3px var(--background);
 }
 
 .option-content {
@@ -161,24 +161,24 @@ const handleCancel = () => {
 .option-title {
   font-size: 15px;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-gray-700);
 }
 
 .reevaluate-option.active .option-title {
-  color: #1677ff;
+  color: var(--secondary);
 }
 
 .option-desc {
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
 }
 
 .reevaluate-option:hover .option-desc {
-  color: #6b7280;
+  color: var(--color-gray-500);
 }
 
 .reevaluate-option.active .option-desc {
-  color: #6b7280;
+  color: var(--color-gray-500);
 }
 
 .reevaluate-checkbox {
@@ -186,9 +186,9 @@ const handleCancel = () => {
   flex-direction: column;
   gap: 4px;
   padding: 12px 16px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background-color: #f9fafb;
+  background-color: var(--color-gray-50);
 }
 
 .checkbox-label {
@@ -202,18 +202,18 @@ const handleCancel = () => {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #1677ff;
+  accent-color: var(--secondary);
 }
 
 .checkbox-text {
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-gray-700);
 }
 
 .checkbox-desc {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
   margin-left: 28px;
 }
 
@@ -222,6 +222,6 @@ const handleCancel = () => {
   justify-content: flex-end;
   gap: 12px;
   padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid var(--border);
 }
 </style>

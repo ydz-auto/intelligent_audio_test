@@ -15,6 +15,7 @@ export function createEvalDimensionLoaders(state: EvalDimensionState) {
     searchKeyword,
     filterStatus,
     filterCategory,
+    filterAlgorithm,
     currentPage,
     pageSize,
     dimensions,
@@ -105,6 +106,7 @@ export function createEvalDimensionLoaders(state: EvalDimensionState) {
     searchKeyword.value = '';
     filterStatus.value = 'all';
     filterCategory.value = 'all';
+    filterAlgorithm.value = 'all';
     currentPage.value = 1;
     fetchData();
   }

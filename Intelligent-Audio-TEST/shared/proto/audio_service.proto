@@ -26,6 +26,8 @@ service AudioService {
   rpc StopAudioByPattern(StopAudioByPatternRequest) returns (StopAudioByPatternResponse);
   // 预下载并按设备目标采样率重采样音频
   rpc PrepareAudios(PrepareAudiosRequest) returns (PrepareAudiosResponse);
+  // 渲染音频流（离线混音 6 步 → chunk 流式返回，server-streaming，执行域 P0 新增）
+  rpc RenderAudioStream(RenderAudioStreamRequest) returns (stream RenderAudioChunk);
 }
 
 // ===== 播放编排服务 =====
@@ -184,6 +186,21 @@ message PrepareAudiosResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON: {audio_id: {target_rate: local_path, "original": local_path}}
+}
+
+// ===== RenderAudioStream Messages（执行域 P0 新增） =====
+
+message RenderAudioStreamRequest {
+  string task_id = 1;
+  string render_config = 2;  // JSON 序列化的混音渲染配置（轮次级：audios + spl + 噪声/干扰合并）
+}
+
+message RenderAudioChunk {
+  string task_id = 1;
+  int32 sequence = 2;       // chunk 序号（从 0 开始）
+  string data = 3;          // base64 编码的 PCM chunk（100ms 粒度）
+  bool is_last = 4;         // 是否最后一帧
+  string message = 5;       // 非空表示渲染失败/终止原因
 }
 
 // ==================== PlaybackService Messages ====================

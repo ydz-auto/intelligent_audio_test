@@ -1,0 +1,285 @@
+/*
+ * 语义化设计令牌（照 newAPI web/src/styles/theme.css 结构）
+ * 职责：
+ *  - 颜色 / 圆角 / 字体等所有"设计决策"统一收敛于此，禁止在业务 CSS 中硬编码色值
+ *  - @theme inline 将令牌映射为 Tailwind 原子类色板（bg-primary、text-muted-foreground 等）
+ *  - :root / .dark 双主题，换肤只改这里的变量
+ * 迁移原则：新组件一律使用本文件的语义令牌 + Tailwind 原子类；
+ *           存量 CSS 通过 variables.css 的旧名别名无缝兼容。
+ */
+
+@custom-variant dark (&:is(.dark *));
+
+/* 映射为 Tailwind 原子类色板 */
+@theme inline {
+  --font-sans:
+    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-deep: var(--secondary-deep);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-gray: var(--gray);
+  --color-gray-light: var(--gray-light);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) * 1.5);
+  --radius-xl: calc(var(--radius) * 2);
+  --radius-xxl: calc(var(--radius) * 3);
+  --radius-full: 9999px;
+}
+
+:root {
+  /* ── 品牌与功能色 ── */
+  --primary: #ff6a00;
+  --primary-hover: #e65c00;
+  --primary-foreground: #ffffff;
+  --secondary: #1976d2;
+  --secondary-deep: #0958d9;
+  --secondary-foreground: #ffffff;
+  --success: #52c41a;
+  --success-foreground: #ffffff;
+  --warning: #ffa940;
+  --warning-foreground: #333333;
+  --destructive: #f5222d;
+  --destructive-foreground: #ffffff;
+  --info: #1976d2;
+  --info-foreground: #ffffff;
+
+  /* ── 中性色 / 表面 ── */
+  --foreground: #333333;
+  --muted: #f5f5f5;
+  --muted-foreground: #777777;
+  --accent: rgba(255, 106, 0, 0.1);
+  --accent-foreground: #333333;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #ff6a00;
+  --background: #ffffff;
+  --card: #ffffff;
+  --card-foreground: #333333;
+  --popover: #ffffff;
+  --popover-foreground: #333333;
+  --gray: #737373;
+  --gray-light: #f0f0f0;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #333333;
+  --sidebar-border: #e5e7eb;
+
+  /* ── 图表色板（chart.js） ── */
+  --chart-1: #ff6a00;
+  --chart-2: #1976d2;
+  --chart-3: #52c41a;
+  --chart-4: #f5222d;
+  --chart-5: #ffa940;
+
+  /* ── 功能色衍生（浅底 / 深色变体） ── */
+  --secondary-light: #e3f2fd;
+  --success-light: rgba(82, 196, 26, 0.1);
+  --success-dark: #389e0d;
+  --warning-light: rgba(255, 169, 64, 0.1);
+  --warning-dark: #d48806;
+  --destructive-light: rgba(245, 34, 45, 0.1);
+
+  /* ── 布局 ── */
+  --radius: 8px;
+  --header-height: 64px;
+  --footer-height: 60px;
+  --sidebar-width: 240px;
+  --page-margin: 24px;
+  --content-min-width: 1024px;
+}
+
+/*
+ * 补充色阶令牌：存量样式高频色收编（值保真，替换后视觉零变化）
+ * 说明：Tailwind v4 默认主题会 tree-shake 未使用色板，故在此显式声明；
+ *       命名与 Tailwind 默认色板对齐，新代码可直接用 bg-slate-200 等原子类。
+ */
+@theme {
+  /* Slate（对齐 Tailwind 默认色板） */
+  --color-slate-50: #f8fafc;
+  --color-slate-100: #f1f5f9;
+  --color-slate-200: #e2e8f0;
+  --color-slate-300: #cbd5e1;
+  --color-slate-400: #94a3b8;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+
+  /* Gray / Neutral（对齐 Tailwind 默认色板） */
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f5f5f5;
+
+  /* Blue（对齐 Tailwind 默认色板） */
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+
+  /* Red / Green / Emerald / Amber / Indigo / Sky / Orange / Cyan（对齐 Tailwind 默认色板） */
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-green-50: #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-200: #bbf7d0;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-700: #15803d;
+  --color-green-800: #166534;
+  --color-emerald-100: #d1fae5;
+  --color-emerald-500: #10b981;
+  --color-emerald-600: #059669;
+  --color-emerald-800: #065f46;
+  --color-amber-50: #fffbeb;
+  --color-amber-100: #fef3c7;
+  --color-amber-200: #fde68a;
+  --color-amber-300: #fcd34d;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-amber-600: #d97706;
+  --color-amber-700: #b45309;
+  --color-amber-800: #92400e;
+  --color-indigo-50: #eef2ff;
+  --color-indigo-100: #e0e7ff;
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
+  --color-sky-50: #f0f9ff;
+  --color-sky-100: #e0f2fe;
+  --color-sky-200: #bae6fd;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #0284c7;
+  --color-sky-700: #0369a1;
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-600: #0891b2;
+  --color-cyan-700: #0e7490;
+  --color-teal-100: #ccfbf1;
+  --color-teal-800: #115e59;
+  --color-indigo-800: #3730a3;
+  --color-purple-50: #faf5ff;
+  --color-purple-100: #f3e8ff;
+  --color-purple-300: #d8b4fe;
+  --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+  --color-purple-700: #7e22ce;
+  --color-lime-200: #d9f99d;
+  --color-rose-50: #fff1f2;
+  --color-rose-300: #fda4af;
+  --color-rose-500: #f43f5e;
+  --color-pink-100: #fce7f3;
+  --color-pink-200: #fbcfe8;
+  --color-pink-500: #ec4899;
+  --color-pink-700: #be185d;
+  --color-yellow-400: #facc15;
+  --color-yellow-800: #854d0e;
+  --color-violet-500: #8b5cf6;
+
+  /* 补充语义色 */
+  --color-secondary-light: #e3f2fd;
+  --color-foreground-deep: #1a1a1a;
+  --color-white: #ffffff;
+  --color-black: #000000;
+}
+
+/* 暗色主题：结构预留（照 newAPI 双主题设计），项目当前未启用 .dark */
+.dark {
+  --background: #2a2a2a;
+  --foreground: #f5f5f5;
+  --card: #333333;
+  --card-foreground: #f5f5f5;
+  --popover: #3a3a3a;
+  --popover-foreground: #f5f5f5;
+  --primary: #ff8c3b;
+  --primary-hover: #ffa05c;
+  --primary-foreground: #1a1a1a;
+  --secondary: #4a90d9;
+  --secondary-deep: #6aa5e0;
+  --secondary-foreground: #1a1a1a;
+  --muted: #3a3a3a;
+  --muted-foreground: #a3a3a3;
+  --accent: rgba(255, 138, 59, 0.18);
+  --accent-foreground: #f5f5f5;
+  --destructive: #ff6b70;
+  --destructive-foreground: #1a1a1a;
+  --success: #6fd45c;
+  --success-foreground: #1a1a1a;
+  --warning: #ffc069;
+  --warning-foreground: #1a1a1a;
+  --info: #6aa5e0;
+  --info-foreground: #1a1a1a;
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.18);
+  --ring: #ff8c3b;
+  --gray: #a3a3a3;
+  --gray-light: #3a3a3a;
+  --sidebar: #2a2a2a;
+  --sidebar-foreground: #f5f5f5;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --chart-1: #ff8c3b;
+  --chart-2: #6aa5e0;
+  --chart-3: #6fd45c;
+  --chart-4: #ff6b70;
+  --chart-5: #ffc069;
+}

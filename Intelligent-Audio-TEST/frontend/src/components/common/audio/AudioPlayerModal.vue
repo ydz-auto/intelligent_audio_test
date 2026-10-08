@@ -122,6 +122,6 @@ const {
 } = useAudioPlayerModal(props, emit)
 </script>
 
-<style scoped>
-@import './AudioPlayerModal.css';
+<style scoped>@import './AudioPlayerModal.css';
+
 </style>

@@ -158,20 +158,10 @@ onMounted(async () => {
   padding: 20px;
 }
 
-.modal-header {
-  margin-bottom: 20px;
-}
-
 .modal-header h3 {
   margin: 0 0 8px 0;
   font-size: 18px;
-  color: #333;
-}
-
-.case-count {
-  margin: 0;
-  color: #666;
-  font-size: 14px;
+  color: var(--foreground);
 }
 
 .modal-body {
@@ -187,31 +177,31 @@ onMounted(async () => {
   display: block;
   margin-bottom: 6px;
   font-weight: 500;
-  color: #333;
+  color: var(--foreground);
 }
 
 .required {
-  color: #dc3545;
+  color: var(--destructive);
 }
 
 .form-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-gray-300);
   border-radius: 4px;
   font-size: 14px;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .new-group-input {
   margin-top: 12px;
   padding: 12px;
-  background: #f5f5f5;
+  background: var(--muted);
   border-radius: 4px;
 }
 
@@ -239,7 +229,7 @@ onMounted(async () => {
   gap: 12px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--color-gray-200);
 }
 
 .btn {
@@ -251,25 +241,17 @@ onMounted(async () => {
 }
 
 .btn-secondary {
-  background: #f5f5f5;
-  color: #333;
-}
-
-.btn-secondary:hover {
-  background: #e8e8e8;
+  background: var(--muted);
+  color: var(--foreground);
 }
 
 .btn-primary {
-  background: #1677ff;
-  color: #fff;
-}
-
-.btn-primary:hover {
-  background: #4096ff;
+  background: var(--secondary);
+  color: var(--background);
 }
 
 .btn-primary:disabled {
-  background: #ccc;
+  background: var(--color-gray-300);
   cursor: not-allowed;
 }
 </style>

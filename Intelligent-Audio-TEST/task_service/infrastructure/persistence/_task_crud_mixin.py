@@ -15,7 +15,7 @@ from shared.utils.status_constants import (
     TaskCaseStatus,
     TaskStatus as SharedTaskStatus,
 )
-from task_service.infrastructure.persistence.models import Task, TaskCase, TaskAPI, TaskDevice
+from task_service.infrastructure.persistence.models import Task, TaskCase, TaskAPI, TaskDevice, TaskTag
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,7 @@ class TaskCrudMixin:
         api_ids: List[int],
         created_by: Optional[int],
         now: Optional[datetime] = None,
+        case_devices: Optional[List[Dict[str, Any]]] = None,
     ) -> int:
         """创建任务记录及其关联关系（用例/设备/API）。
 
@@ -54,6 +55,9 @@ class TaskCrudMixin:
             api_ids: 关联 API ID 列表
             created_by: 创建人
             now: 创建时间（调用方传入，保证时区一致）
+            case_devices: 用例级设备选择（执行域 P0 新增）：
+                [{"case_id": str, "device_type": str, "device_id": str, "lab_id": int|None}, ...]，
+                为空时保持旧语义（按 task_type 路由）。
 
         Returns:
             新任务 ID。
@@ -76,7 +80,7 @@ class TaskCrudMixin:
             session.flush()  # 获取自增 ID
             task_id = task.id
 
-            self._add_task_relations(session, task_id, case_ids, device_ids, api_ids, now)
+            self._add_task_relations(session, task_id, case_ids, device_ids, api_ids, now, case_devices)
 
             session.commit()
             return task_id
@@ -113,16 +117,34 @@ class TaskCrudMixin:
     @staticmethod
     def _add_task_relations(session, task_id: int, case_ids: List[str],
                             device_ids: List[int], api_ids: List[int],
-                            now: datetime) -> None:
-        """批量添加任务关联记录（用例/设备/API）。"""
+                            now: datetime,
+                            case_devices: Optional[List[Dict[str, Any]]] = None) -> None:
+        """批量添加任务关联记录（用例/设备/API）。
+
+        Args:
+            case_devices: 用例级设备选择（执行域 P0 新增）：
+                [{"case_id": str, "device_type": str, "device_id": str, "lab_id": int|None}, ...]，
+                按 case_id 归一化后写入 TaskCase.device_type / device_id / lab_id。
+        """
+        # 归一化用例级设备选择: {case_id: {device_type, device_id, lab_id}}
+        device_map: Dict[str, Dict[str, Any]] = {}
+        for item in case_devices or []:
+            case_id = item.get('case_id')
+            if case_id is not None:
+                device_map[str(case_id)] = item
+
         # 关联用例
         for case_id in case_ids:
+            dev = device_map.get(str(case_id), {})
             session.add(TaskCase(
                 task_id=task_id,
                 test_case_id=case_id,
                 status=TaskCaseStatus.PENDING,
                 execution_status=ExecutionStatus.PENDING,
                 evaluation_status=EvaluationStatus.PENDING,
+                device_type=dev.get('device_type') or None,
+                device_id=str(dev['device_id']) if dev.get('device_id') is not None else None,
+                lab_id=dev.get('lab_id') or None,
                 created_at=now,
             ))
 
@@ -155,52 +177,188 @@ class TaskCrudMixin:
 
         Returns:
             (merged_task_id, total_results)
+
+        说明（迁移自 V9.7.10 task_controller.merge 增强）:
+        - 允许合并已完成/合并任务/已合并任务（后两者会展开为原始源任务，
+          使"合并任务再次被合并"时不会丢失其历史源任务）
+        - 用例集合以源任务 TaskCase 为准（TestResult 可能包含已删除用例的执行记录，
+          否则会导致合并任务 TaskCase 数量与 total_cases 不一致）
+        - 新建 TaskCase 继承源任务的执行/评估状态，避免合并任务详情中所有用例显示为待执行
+        - 设备/API/标签从源任务关联表继承
         """
-        from task_service.infrastructure.persistence.models import TaskMergeRelation
+        from task_service.infrastructure.persistence.models import (
+            TaskMergeRelation, TaskCase, TaskDevice, TaskAPI, TaskTag,
+        )
         if now is None:
             now = datetime.now(_UTC_PLUS_8)
 
         session = get_db_session()
         try:
-            total_results, source_counts = self._collect_source_counts(session, source_task_ids)
+            tasks = session.query(Task).filter(Task.id.in_(list(source_task_ids))).all()
+            if len(tasks) != len(source_task_ids):
+                raise ValueError("部分任务未找到")
+
+            for t in tasks:
+                # 允许合并已完成任务、合并任务、已合并任务（后两者在下方展开为原始源任务）
+                if t.status not in (SharedTaskStatus.COMPLETED, SharedTaskStatus.MERGED):
+                    raise ValueError(f"任务 '{t.name}' 未完成，无法合并")
+
+            # 展开合并任务/已合并任务：找到合并之前的原始源任务
+            final_source_ids = set()
+            remerged_task_ids = set()
+            for t in tasks:
+                if t.type == 'merged':
+                    relations = session.query(TaskMergeRelation).filter_by(merged_task_id=t.id).all()
+                    if relations:
+                        final_source_ids.update(r.source_task_id for r in relations)
+                        remerged_task_ids.add(t.id)
+                        continue
+                    final_source_ids.add(t.id)
+                elif t.status == SharedTaskStatus.MERGED:
+                    relations = (session.query(TaskMergeRelation)
+                                 .filter_by(source_task_id=t.id)
+                                 .order_by(TaskMergeRelation.id.desc()).all())
+                    if relations:
+                        latest_merged_id = relations[0].merged_task_id
+                        source_relations = (session.query(TaskMergeRelation)
+                                            .filter_by(merged_task_id=latest_merged_id).all())
+                        if source_relations:
+                            final_source_ids.update(r.source_task_id for r in source_relations)
+                            remerged_task_ids.add(latest_merged_id)
+                            continue
+                    final_source_ids.add(t.id)
+                else:
+                    final_source_ids.add(t.id)
+
+            if not final_source_ids:
+                raise ValueError("合并后没有可用的源任务")
+
+            source_tasks = session.query(Task).filter(Task.id.in_(list(final_source_ids))).all()
+            source_task_map = {st.id: st for st in source_tasks}
+            ordered_source_ids = [sid for sid in final_source_ids if sid in source_task_map]
+
+            # 源任务贡献结果数、设备/API/用例/标签集合
+            source_result_counts = {}
+            device_ids_set = set()
+            api_ids_set = set()
+            case_ids_set = set()
+            tag_ids_set = set()
+
+            for task in source_tasks:
+                source_result_counts[task.id] = task.completed_cases or 0
+                for td in session.query(TaskDevice).filter_by(task_id=task.id).all():
+                    device_ids_set.add(td.device_id)
+                for ta in session.query(TaskAPI).filter_by(task_id=task.id).all():
+                    api_ids_set.add(ta.api_id)
+                for tc in session.query(TaskCase).filter_by(task_id=task.id).all():
+                    case_ids_set.add(tc.test_case_id)
+                for tag in task.tags:
+                    tag_ids_set.add(tag.id)
+
+            # total_cases 与合并任务的 TaskCase 集合保持一致（源任务用例重叠时 SUM 会重复计数）
+            total_cases = len(case_ids_set)
 
             merged_task = self._build_new_task(
-                name=merged_task_name, description=description, task_type=merged_task_type,
+                name=merged_task_name, description=description, task_type='merged',
                 config=None, algorithm_type=None, algorithm_params=None,
-                total_cases=total_results, created_by=created_by, now=now,
+                total_cases=total_cases, created_by=created_by, now=now,
             )
+            merged_task.status = SharedTaskStatus.COMPLETED
+            merged_task.completed_cases = 0
+            merged_task.failed_cases = 0
+            started_list = [t.started_at for t in source_tasks if t.started_at]
+            completed_list = [t.completed_at for t in source_tasks if t.completed_at]
+            if started_list:
+                merged_task.started_at = min(started_list)
+            if completed_list:
+                merged_task.completed_at = max(completed_list)
             session.add(merged_task)
             session.flush()
             merged_task_id = merged_task.id
 
-            # 建立合并关系
-            for src_id, count in source_counts:
+            # 关联设备
+            for device_id in device_ids_set:
+                existing = session.query(TaskDevice).filter_by(
+                    task_id=merged_task_id, device_id=device_id).first()
+                if not existing:
+                    session.add(TaskDevice(task_id=merged_task_id, device_id=device_id))
+
+            # 关联 API
+            for api_id in api_ids_set:
+                existing = session.query(TaskAPI).filter_by(
+                    task_id=merged_task_id, api_id=api_id).first()
+                if not existing:
+                    session.add(TaskAPI(task_id=merged_task_id, api_id=api_id))
+
+            # 源任务用例状态映射，供合并任务新建 TaskCase 时继承
+            source_case_status = {}
+            for task in tasks:
+                for tc in session.query(TaskCase).filter_by(task_id=task.id).all():
+                    if tc.test_case_id not in source_case_status:
+                        source_case_status[tc.test_case_id] = tc
+
+            for case_id in case_ids_set:
+                existing = session.query(TaskCase).filter_by(
+                    task_id=merged_task_id, test_case_id=case_id).first()
+                if not existing:
+                    src_tc = source_case_status.get(case_id)
+                    # 继承源任务的执行/评估状态，避免合并任务详情中所有用例都显示为待执行
+                    session.add(TaskCase(
+                        task_id=merged_task_id,
+                        test_case_id=case_id,
+                        status=(src_tc.status if src_tc else TaskCaseStatus.COMPLETED),
+                        execution_status=(src_tc.execution_status if src_tc else ExecutionStatus.COMPLETED),
+                        evaluation_status=(src_tc.evaluation_status if src_tc else EvaluationStatus.COMPLETED),
+                        started_at=getattr(src_tc, 'started_at', None) if src_tc else None,
+                        completed_at=getattr(src_tc, 'completed_at', None) if src_tc else None,
+                        duration=getattr(src_tc, 'duration', None) if src_tc else None,
+                        error_message=getattr(src_tc, 'error_message', None) if src_tc else None,
+                        created_at=now,
+                    ))
+
+            # 关联标签
+            for tag_id in tag_ids_set:
+                existing = session.query(TaskTag).filter_by(
+                    task_id=merged_task_id, tag_id=tag_id).first()
+                if not existing:
+                    session.add(TaskTag(task_id=merged_task_id, tag_id=tag_id))
+
+            # 被再次合并的合并任务标记为已合并（其历史源任务由新合并任务接管）
+            for mid in remerged_task_ids:
+                m_task = session.get(Task, mid)
+                if m_task:
+                    m_task.status = SharedTaskStatus.MERGED
+
+            # 原始源任务标记为已合并（已是 merged 的保持不动）
+            for sid in ordered_source_ids:
+                s_task = source_task_map[sid]
+                if s_task.status != SharedTaskStatus.MERGED:
+                    s_task.status = SharedTaskStatus.MERGED
+
+            # 新合并任务直接关联展开后的原始源任务
+            for sid in ordered_source_ids:
                 session.add(TaskMergeRelation(
                     merged_task_id=merged_task_id,
-                    source_task_id=src_id,
-                    source_result_count=count,
+                    source_task_id=sid,
+                    source_result_count=source_result_counts.get(sid, 0),
                     created_at=now,
                 ))
 
+            # 以合并任务自身 TaskCase 统计完成/失败数，保证与总用例数自洽
+            session.flush()
+            merged_task.total_cases = session.query(TaskCase).filter_by(task_id=merged_task_id).count()
+            merged_task.completed_cases = session.query(TaskCase).filter_by(
+                task_id=merged_task_id, status=TaskCaseStatus.COMPLETED).count()
+            merged_task.failed_cases = session.query(TaskCase).filter_by(
+                task_id=merged_task_id, status=TaskCaseStatus.FAILED).count()
+
             session.commit()
-            return merged_task_id, total_results
+            return merged_task_id, merged_task.total_cases
         except Exception:
             session.rollback()
             raise
         finally:
             session.close()
-
-    @staticmethod
-    def _collect_source_counts(session, source_task_ids: List[int]) -> Tuple[int, List[Tuple[int, int]]]:
-        """统计源任务的完成用例数，返回 (total_results, [(src_id, count), ...])。"""
-        total_results = 0
-        source_counts: List[Tuple[int, int]] = []
-        for src_id in source_task_ids:
-            src_task = session.get(Task, src_id)
-            count = (src_task.completed_cases or 0) if src_task else 0
-            source_counts.append((src_id, count))
-            total_results += count
-        return total_results, source_counts
 
     # ========== task_crud_service 兼容方法 ==========
 

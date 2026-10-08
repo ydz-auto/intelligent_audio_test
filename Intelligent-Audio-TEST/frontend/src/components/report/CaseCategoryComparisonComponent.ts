@@ -362,7 +362,7 @@ export function useCaseCategoryComparison(props: CaseCategoryComparisonProps) {
         editable: true,
         resize: true,
         class: 'device-column',
-        color: '#1677ff',
+        color: 'var(--secondary)',
         unit: unit
       })
     })

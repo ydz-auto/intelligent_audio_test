@@ -1,9 +1,9 @@
 """
-停止所有前后端微服务，保留基础设施（redis / postgres / minio）。
+停止所有前后端微服务，保留基础设施（redis / postgres / rustfs）。
 
 - 停止 11 个后端微服务（FastAPI HTTP + gRPC-only）
 - 停止前端 Vite dev server
-- 不停止 redis(:6379) / postgres(:5432) / minio(:9000)
+- 不停止 redis(:6379) / postgres(:5432) / rustfs(:9000)
 
 用法：
     python stop_all.py
@@ -38,8 +38,8 @@ from shared.config.service_ports import (
     DEVICE_SERVICE_GRPC_PORT,
     REDIS_PORT,
     POSTGRESQL_PORT,
-    MINIO_PORT,
-    MINIO_CONSOLE_PORT,
+    RUSTFS_PORT,
+    RUSTFS_CONSOLE_PORT,
     FRONTEND_DEV_PORT,
 )
 
@@ -66,7 +66,7 @@ SERVICES_TO_STOP = [
 ]
 
 # 基础设施端口——明确排除，绝不触碰
-INFRA_PORTS = {REDIS_PORT, POSTGRESQL_PORT, MINIO_PORT, MINIO_CONSOLE_PORT}
+INFRA_PORTS = {REDIS_PORT, POSTGRESQL_PORT, RUSTFS_PORT, RUSTFS_CONSOLE_PORT}
 
 
 def _is_port_open(host, port):
@@ -140,7 +140,7 @@ def _get_proc_name(pid):
 
 def stop_all():
     """停止所有前后端微服务，保留基础设施。"""
-    print("[INFO] Stopping frontend + 11 backend services (keeping redis/postgres/minio)...",
+    print("[INFO] Stopping frontend + 11 backend services (keeping redis/postgres/rustfs)...",
           flush=True)
 
     # 收集需要停止的端口
@@ -189,7 +189,7 @@ def stop_all():
     infra_check = [
         ('redis', REDIS_PORT),
         ('postgres', POSTGRESQL_PORT),
-        ('minio', MINIO_PORT),
+        ('rustfs', RUSTFS_PORT),
     ]
     for name, port in infra_check:
         if _is_port_open('localhost', port):

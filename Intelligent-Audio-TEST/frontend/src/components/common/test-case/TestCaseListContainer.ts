@@ -100,6 +100,52 @@ export function useTestCaseListContainer(props: any, emit: any) {
     getTagDurationStats
   } = createTagViewData(props, state);
 
+  // ===== 徽章筛选选项（原下拉框硬编码迁移为常量，供 BadgeFilter 使用）=====
+  const TEST_TYPE_OPTIONS: { value: string; label: string }[] = [
+    { value: 'api', label: 'API测试' },
+    { value: 'e2e', label: '端到端测试' },
+  ];
+
+  const SORT_BY_OPTIONS: { value: string; label: string }[] = [
+    { value: 'count', label: '按用例数量' },
+    { value: 'name', label: '按分组名称' },
+    { value: 'createTime', label: '按创建时间' },
+  ];
+
+  const SORT_ORDER_OPTIONS: { value: string; label: string }[] = [
+    { value: 'desc', label: '降序' },
+    { value: 'asc', label: '升序' },
+  ];
+
+  const dimensionFilterOptions = computed(() =>
+    dimensionOptions.value.map(d => ({ value: d.id, label: d.name }))
+  );
+  const groupFilterOptions = computed(() =>
+    availableGroups.value.map(g => ({ value: g, label: g }))
+  );
+  const tagFilterOptions = computed(() =>
+    (props.tags || []).map((t: string) => ({ value: t, label: t }))
+  );
+
+  function setTestTypeFilter(value: string | number) {
+    testTypeFilter.value = String(value);
+  }
+  function setDimensionFilter(value: string | number) {
+    dimensionFilter.value = (value === 'all' ? 'all' : Number(value)) as number | 'all';
+  }
+  function setGroupFilter(value: string | number) {
+    groupFilter.value = String(value);
+  }
+  function setTagFilter(value: string | number) {
+    tagFilter.value = String(value);
+  }
+  function setSortBy(value: string | number) {
+    sortBy.value = String(value);
+  }
+  function setSortOrder(value: string | number) {
+    sortOrder.value = String(value);
+  }
+
   // ===== 批量操作 composable =====
   const {
     handleCopyGroup,
@@ -214,6 +260,19 @@ export function useTestCaseListContainer(props: any, emit: any) {
     sortOrder,
     dimensionFilter,
     dimensionOptions,
+    // 徽章筛选选项与 setter
+    TEST_TYPE_OPTIONS,
+    SORT_BY_OPTIONS,
+    SORT_ORDER_OPTIONS,
+    dimensionFilterOptions,
+    groupFilterOptions,
+    tagFilterOptions,
+    setTestTypeFilter,
+    setDimensionFilter,
+    setGroupFilter,
+    setTagFilter,
+    setSortBy,
+    setSortOrder,
     hasMoreGroups,
     // 分组展开
     expandedCategories,

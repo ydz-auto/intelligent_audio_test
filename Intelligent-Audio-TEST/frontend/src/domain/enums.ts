@@ -165,3 +165,42 @@ export const ApiEndpointStatus = {
 
 /** API 端点/配置状态类型 */
 export type ApiEndpointStatusType = typeof ApiEndpointStatus[keyof typeof ApiEndpointStatus]
+
+/** 被测设备类型枚举（值 = 后端 shared.models.common_enums.DeviceType 原值，决定执行路由） */
+export const DeviceType = {
+  PHYSICAL: 'physical',
+  HTTP_API: 'http_api',
+  WEBSOCKET_API: 'websocket_api',
+} as const
+
+/** 被测设备类型（由 DeviceType 派生的字符串联合） */
+export type DeviceTypeType = typeof DeviceType[keyof typeof DeviceType]
+
+/** API 传输协议枚举（值 = 后端 shared.models.common_enums.APIProtocol 原值，Adapter 分型依据） */
+export const APIProtocol = {
+  HTTP: 'http',
+  WEBSOCKET: 'websocket',
+} as const
+
+/** API 传输协议类型 */
+export type APIProtocolType = typeof APIProtocol[keyof typeof APIProtocol]
+
+/** API 输出类型枚举（值 = 后端 shared.models.common_enums.OutputType 原值，多模态输出采集） */
+export const OutputType = {
+  AUDIO: 'audio',
+  TEXT: 'text',
+  VIDEO: 'video',
+  IMAGE: 'image',
+} as const
+
+/** API 输出类型（由 OutputType 派生的字符串联合） */
+export type OutputTypeType = typeof OutputType[keyof typeof OutputType]
+
+/** SPL 校准状态枚举（值 = 后端 shared.models.common_enums.CalibrationStatus 原值） */
+export const CalibrationStatus = {
+  CALIBRATED: 'calibrated',
+  UNCALIBRATED: 'uncalibrated',
+} as const
+
+/** SPL 校准状态类型 */
+export type CalibrationStatusType = typeof CalibrationStatus[keyof typeof CalibrationStatus]

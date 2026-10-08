@@ -18,6 +18,7 @@ class TaskStatus(str):
     STOPPED = 'stopped'
     PAUSED = 'paused'
     SKIPPED = 'skipped'
+    MERGED = 'merged'
 
     @classmethod
     def is_terminal(cls, status: str) -> bool:

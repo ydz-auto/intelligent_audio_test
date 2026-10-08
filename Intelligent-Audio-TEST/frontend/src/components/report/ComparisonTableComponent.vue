@@ -293,25 +293,36 @@ export default {
       return statusMap[status] || status;
     },
     getProgressColor(percentage) {
-      if (percentage >= 90) return '#52C41A';
-      if (percentage >= 70) return '#1677FF';
-      if (percentage >= 50) return '#FAAD14';
-      return '#F5222D';
+      if (percentage >= 90) return 'var(--success)';
+      if (percentage >= 70) return 'var(--secondary)';
+      if (percentage >= 50) return 'var(--warning)';
+      return 'var(--destructive)';
     }
   }
 };
 </script>
 
 <style scoped>
-.comparison-table-container {
-  background: #ffffff;
+
+#useCasePagination .pagination-controls{
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+
+
+
+.comparison-table-container{
+  background: var(--color-white);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 24px;
   margin-bottom: 24px;
 }
 
-.table-header {
+.table-header{
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -322,140 +333,140 @@ export default {
   user-select: none;
 }
 
-.header-content {
+.header-content{
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.header-content i {
+.header-content i{
   font-size: 14px;
-  color: #999;
+  color: var(--color-gray-400);
   transition: all 0.3s ease;
 }
 
-.header-content i:hover {
-  color: #1677FF;
+.header-content i:hover{
+  color: var(--secondary);
 }
 
-.table-content {
+.table-content{
   overflow: hidden;
   transition: all 0.3s ease;
 }
 
-.table-title {
+.table-title{
   font-size: 18px;
   font-weight: bold;
-  color: #333;
+  color: var(--foreground);
   margin: 0;
 }
 
-.table-actions {
+.table-actions{
   display: flex;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
 }
 
-.table-wrapper {
+.table-wrapper{
   overflow-x: auto;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
 }
 
-.comparison-table {
+.comparison-table{
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
 }
 
-.comparison-table th {
-  background: #fafafa;
+.comparison-table th{
+  background: var(--color-neutral-50);
   padding: 12px 16px;
   text-align: left;
   font-weight: 600;
-  color: #333;
-  border-bottom: 2px solid #e2e8f0;
+  color: var(--foreground);
+  border-bottom: 2px solid var(--color-slate-200);
   white-space: nowrap;
 }
 
-.th-content {
+.th-content{
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
 }
 
-.th-content i {
-  color: #999;
+.th-content i{
+  color: var(--color-gray-400);
   transition: color 0.3s ease;
 }
 
-.th-content i:hover {
-  color: #1677FF;
+.th-content i:hover{
+  color: var(--secondary);
 }
 
-.comparison-table td {
+.comparison-table td{
   padding: 12px 16px;
-  border-bottom: 1px solid #e2e8f0;
-  color: #666;
+  border-bottom: 1px solid var(--color-slate-200);
+  color: var(--color-gray-500);
   vertical-align: middle;
 }
 
-.table-row {
+.table-row{
   transition: all 0.3s ease;
 }
 
-.table-row:hover {
-  background: #f0f5ff;
+.table-row:hover{
+  background: var(--secondary-light);
 }
 
-.table-row-highlight {
-  background: #e6f7ff;
+.table-row-highlight{
+  background: var(--secondary-light);
 }
 
-.status-pending {
-  background: #fff7e6;
-  color: #fa8c16;
+.status-pending{
+  background: var(--warning-light);
+  color: var(--warning);
 }
 
-.status-in-progress {
-  background: #e6f7ff;
-  color: #1890ff;
+.status-in-progress{
+  background: var(--secondary-light);
+  color: var(--secondary);
 }
 
-.status-completed {
-  background: #f6ffed;
-  color: #52c41a;
+.status-completed{
+  background: var(--success-light);
+  color: var(--success);
 }
 
-.status-failed {
-  background: #fff1f0;
-  color: #ff4d4f;
+.status-failed{
+  background: var(--destructive-light);
+  color: var(--destructive);
 }
 
-.status-draft {
-  background: #f0f0f0;
-  color: #666;
+.status-draft{
+  background: var(--gray-light);
+  color: var(--color-gray-500);
 }
 
-.status-published {
-  background: #f6ffed;
-  color: #52c41a;
+.status-published{
+  background: var(--success-light);
+  color: var(--success);
 }
 
-.percentage-cell {
+.percentage-cell{
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.percentage-value {
+.percentage-value{
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
 }
 
-.progress-bar {
+.progress-bar{
   width: 100%;
   height: 6px;
   background: var(--secondary-color);
@@ -463,7 +474,7 @@ export default {
   overflow: hidden;
 }
 
-.progress-fill {
+.progress-fill{
   height: 100%;
   background: var(--primary-gradient);
   border-radius: var(--border-radius-full);
@@ -472,39 +483,39 @@ export default {
   overflow: hidden;
 }
 
-.number-cell {
+.number-cell{
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
 }
 
-.pagination-controls {
+.pagination-controls{
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.btn-primary {
-  background: linear-gradient(90deg, #FF6A00, #1677FF);
+.btn-primary{
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
   color: white;
 }
 
-.btn-primary:hover {
+.btn-primary:hover{
   opacity: 0.9;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
 }
 
-.btn-secondary {
+.btn-secondary{
   background: white;
-  color: #666;
-  border: 1px solid #d9d9d9;
+  color: var(--color-gray-500);
+  border: 1px solid var(--border);
 }
 
-.btn-secondary:hover {
-  background: #f5f5f5;
-  border-color: #1677FF;
+.btn-secondary:hover{
+  background: var(--muted);
+  border-color: var(--secondary);
 }
 
-.btn:disabled {
+.btn:disabled{
   opacity: 0.5;
   cursor: not-allowed;
 }

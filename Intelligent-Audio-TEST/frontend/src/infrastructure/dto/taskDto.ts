@@ -18,6 +18,17 @@ export interface TaskApiBriefDto {
   status?: string | null
 }
 
+/** 合并任务来源任务摘要（TaskSourceBrief → source_tasks[]） */
+export interface TaskSourceBriefDto {
+  id: number
+  name: string
+  status?: string | null
+  total_cases?: number | null
+  completed_cases?: number | null
+  failed_cases?: number | null
+  created_at?: string | null
+}
+
 /** 任务关联报告项（TaskReportsData.reports[]） */
 export interface TaskReportItemDto {
   id: number
@@ -66,6 +77,7 @@ export interface TaskDto {
   reports?: TaskReportsDataDto | null
   devices: TaskDeviceBriefDto[]
   apis: TaskApiBriefDto[]
+  source_tasks?: TaskSourceBriefDto[] | null
 }
 
 /** 任务详情关联用例简报（TaskCaseBrief） */

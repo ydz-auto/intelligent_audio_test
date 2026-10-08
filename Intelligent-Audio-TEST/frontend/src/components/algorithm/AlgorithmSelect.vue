@@ -282,24 +282,24 @@ defineExpose({
   justify-content: space-between;
   min-height: 40px;
   padding: 6px 12px;
-  background-color: #ffffff;
-  border: 1px solid #E5E7EB;
+  background-color: var(--color-white);
+  border: 1px solid var(--border);
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .select-trigger:hover {
-  border-color: #FF6A00;
+  border-color: var(--primary);
 }
 
 .select-trigger.focused {
-  border-color: #FF6A00;
-  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.1);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 10%, transparent);
 }
 
 .select-trigger.disabled {
-  background-color: #F3F4F6;
+  background-color: var(--color-gray-100);
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -317,8 +317,8 @@ defineExpose({
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  background-color: #FFF3E6;
-  color: #FF6A00;
+  background-color: var(--color-orange-50);
+  color: var(--primary);
   border-radius: 4px;
   font-size: 13px;
 }
@@ -332,14 +332,14 @@ defineExpose({
   padding: 0;
   border: none;
   background: none;
-  color: #FF6A00;
+  color: var(--primary);
   cursor: pointer;
   border-radius: 50%;
   transition: background-color 0.2s;
 }
 
 .tag-close:hover {
-  background-color: #FFE0CC;
+  background-color: var(--color-orange-100);
 }
 
 .single-value {
@@ -356,17 +356,17 @@ defineExpose({
 }
 
 .status-badge.online {
-  background-color: #D1FAE5;
-  color: #059669;
+  background-color: var(--color-emerald-100);
+  color: var(--color-emerald-600);
 }
 
 .status-badge.offline {
-  background-color: #FEE2E2;
-  color: #DC2626;
+  background-color: var(--color-red-100);
+  color: var(--color-red-600);
 }
 
 .placeholder {
-  color: #9CA3AF;
+  color: var(--color-gray-400);
 }
 
 .select-arrow {
@@ -374,7 +374,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   width: 20px;
-  color: #9CA3AF;
+  color: var(--color-gray-400);
   transition: transform 0.2s;
 }
 
@@ -384,10 +384,10 @@ defineExpose({
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: #ffffff;
-  border: 1px solid #E5E7EB;
+  background-color: var(--color-white);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 10%, transparent);
   z-index: 1000;
   max-height: 300px;
   overflow: hidden;
@@ -398,7 +398,7 @@ defineExpose({
 .search-box {
   position: relative;
   padding: 8px;
-  border-bottom: 1px solid #E5E7EB;
+  border-bottom: 1px solid var(--border);
 }
 
 .search-icon {
@@ -406,7 +406,7 @@ defineExpose({
   left: 16px;
   top: 50%;
   transform: translateY(-50%);
-  color: #9CA3AF;
+  color: var(--color-gray-400);
   font-size: 12px;
 }
 
@@ -414,7 +414,7 @@ defineExpose({
   width: 100%;
   height: 32px;
   padding: 0 12px 0 32px;
-  border: 1px solid #E5E7EB;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 13px;
   outline: none;
@@ -422,7 +422,7 @@ defineExpose({
 }
 
 .search-input:focus {
-  border-color: #FF6A00;
+  border-color: var(--primary);
 }
 
 .options-container {
@@ -443,8 +443,8 @@ defineExpose({
   padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
-  color: #6B7280;
-  background-color: #F9FAFB;
+  color: var(--color-gray-500);
+  background-color: var(--color-gray-50);
 }
 
 .option-item {
@@ -457,12 +457,12 @@ defineExpose({
 }
 
 .option-item:hover:not(.disabled) {
-  background-color: #FFF3E6;
+  background-color: var(--color-orange-50);
 }
 
 .option-item.selected {
-  background-color: #FFF3E6;
-  color: #FF6A00;
+  background-color: var(--color-orange-50);
+  color: var(--primary);
 }
 
 .option-item.disabled {
@@ -489,17 +489,17 @@ defineExpose({
 }
 
 .status-tag.online {
-  background-color: #D1FAE5;
-  color: #059669;
+  background-color: var(--color-emerald-100);
+  color: var(--color-emerald-600);
 }
 
 .status-tag.offline {
-  background-color: #FEE2E2;
-  color: #DC2626;
+  background-color: var(--color-red-100);
+  color: var(--color-red-600);
 }
 
 .check-icon {
-  color: #FF6A00;
+  color: var(--primary);
   font-size: 12px;
 }
 
@@ -509,7 +509,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   padding: 24px;
-  color: #9CA3AF;
+  color: var(--color-gray-400);
   gap: 8px;
 }
 

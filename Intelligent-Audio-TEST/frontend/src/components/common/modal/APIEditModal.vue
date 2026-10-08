@@ -126,73 +126,78 @@ const handleSave = () => {
 </script>
 
 <style scoped>
-.api-edit-modal {
+
+.form-textarea{
+    resize: vertical;
+    min-height: 100px;
+}
+
+
+
+
+.api-edit-modal{
   padding: 20px;
 }
 
-.modal-header {
+.modal-header{
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--color-slate-200);
 }
 
-.modal-header h3 {
+.modal-header h3{
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
-.modal-body {
+.modal-body{
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.form-group {
+.form-group{
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.form-label {
+.form-label{
   font-size: 14px;
   font-weight: 500;
-  color: #475569;
+  color: var(--color-slate-600);
 }
 
 .form-input,
-.form-textarea {
+.form-textarea{
   padding: 10px 12px;
   font-size: 14px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-input:focus,
-.form-textarea:focus {
+.form-textarea:focus{
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-500) 10%, transparent);
 }
 
-.form-textarea {
-  font-family: monospace;
-  resize: vertical;
-  min-height: 100px;
-}
 
-.modal-footer {
+
+.modal-footer{
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--color-slate-200);
 }
 
-.btn {
+.btn{
   padding: 10px 20px;
   font-size: 14px;
   font-weight: 500;
@@ -201,24 +206,24 @@ const handleSave = () => {
   transition: all 0.2s ease;
 }
 
-.btn-secondary {
-  background-color: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  color: #475569;
+.btn-secondary{
+  background-color: var(--color-slate-100);
+  border: 1px solid var(--color-slate-200);
+  color: var(--color-slate-600);
 }
 
-.btn-secondary:hover {
-  background-color: #e2e8f0;
+.btn-secondary:hover{
+  background-color: var(--color-slate-200);
 }
 
-.btn-primary {
-  background-color: #3b82f6;
-  border: 1px solid #3b82f6;
+.btn-primary{
+  background-color: var(--color-blue-500);
+  border: 1px solid var(--color-blue-500);
   color: white;
 }
 
-.btn-primary:hover {
-  background-color: #2563eb;
-  border-color: #2563eb;
+.btn-primary:hover{
+  background-color: var(--color-blue-600);
+  border-color: var(--color-blue-600);
 }
 </style>

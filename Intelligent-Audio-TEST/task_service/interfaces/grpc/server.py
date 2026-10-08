@@ -26,6 +26,7 @@ from shared.config.service_ports import TASK_SERVICE_GRPC_PORT
 from task_service.interfaces.grpc import (
     ExecutionServiceServicer,
     TaskConfigServiceServicer,
+    PublishedTaskConfigServiceServicer,
     TestCaseConfigServiceServicer,
     TagConfigServiceServicer,
     AlgorithmConfigServiceServicer,
@@ -52,6 +53,7 @@ def start_grpc_server(port=TASK_SERVICE_GRPC_PORT):
     )
     task_grpc.add_ExecutionServiceServicer_to_server(ExecutionServiceServicer(), server)
     task_grpc.add_TaskConfigServiceServicer_to_server(TaskConfigServiceServicer(), server)
+    task_grpc.add_PublishedTaskConfigServiceServicer_to_server(PublishedTaskConfigServiceServicer(), server)
     task_grpc.add_TestCaseConfigServiceServicer_to_server(TestCaseConfigServiceServicer(), server)
     task_grpc.add_TagConfigServiceServicer_to_server(TagConfigServiceServicer(), server)
     task_grpc.add_AlgorithmConfigServiceServicer_to_server(AlgorithmConfigServiceServicer(), server)

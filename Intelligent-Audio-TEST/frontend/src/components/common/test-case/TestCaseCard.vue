@@ -268,7 +268,105 @@ const handleResize = () => {
 </script>
 
 <style scoped>
-.case-name-wrapper {
+
+input[type="checkbox"].test-case-checkbox{
+    margin-right: 8px !important;
+    width: 24px ;
+    height: 24px ;
+    min-width: 24px ;
+    min-height: 24px ;
+    max-width: 24px ;
+    max-height: 24px ;
+    padding: 0 !important;
+    cursor: pointer ;
+    -webkit-appearance: none ;
+    appearance: none ;
+    background-color: var(--color-white) !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: 4px ;
+    position: relative ;
+    transition: all 0.2s ease ;
+    display: flex ;
+    align-items: center ;
+    justify-content: center ;
+    flex-shrink: 0 ;
+    vertical-align: middle ;
+    z-index: 1000 ;
+    opacity: 1 ;
+    visibility: visible ;
+    box-sizing: border-box;
+    margin-top: 2px;
+}
+
+input[type="checkbox"].test-case-checkbox:checked{
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent) ;
+}
+
+input[type="checkbox"].test-case-checkbox:checked::after{
+    content: '✓' ;
+    color: white ;
+    font-size: 16px ;
+    font-weight: bold ;
+    position: absolute ;
+    top: 50% ;
+    left: 50% ;
+    transform: translate(-50%, -50%) ;
+}
+
+input[type="checkbox"].test-case-checkbox:hover{
+    border-color: var(--primary-color) !important;
+}
+
+.case-config{
+    background-color: var(--background-secondary);
+    border-radius: var(--border-radius-sm);
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.config-section{
+    margin-bottom: 10px;
+}
+
+.config-title{
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.config-details{
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.config-label{
+    font-weight: 500;
+    min-width: 60px;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+.case-name-wrapper{
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -277,7 +375,7 @@ const handleResize = () => {
   gap: 8px;
 }
 
-.case-name {
+.case-name{
   white-space: normal;
   word-break: break-word;
   position: relative;
@@ -285,7 +383,7 @@ const handleResize = () => {
   min-width: 0;
 }
 
-.case-name-tooltip {
+.case-name-tooltip{
   position: absolute;
   left: 0;
   bottom: 100%;
@@ -305,7 +403,7 @@ const handleResize = () => {
   box-shadow: var(--shadow-lg);
 }
 
-.case-name-tooltip::after {
+.case-name-tooltip::after{
   content: '';
   position: absolute;
   top: 100%;
@@ -315,19 +413,19 @@ const handleResize = () => {
   border-color: var(--text-primary) transparent transparent transparent;
 }
 
-.case-name:hover .case-name-tooltip {
+.case-name:hover .case-name-tooltip{
   opacity: 1;
 }
 
 /* 测试类型标签样式 */
-.test-type-tags {
+.test-type-tags{
   display: inline-flex;
   gap: 6px;
   margin-left: 8px;
   vertical-align: middle;
 }
 
-.test-type-tag {
+.test-type-tag{
   padding: 2px 8px;
   border-radius: 12px;
   font-size: 12px;
@@ -335,54 +433,54 @@ const handleResize = () => {
   color: white;
 }
 
-.tag-api {
-  background-color: #1677FF;
+.tag-api{
+  background-color: var(--secondary);
 }
 
-.tag-e2e {
-  background-color: #FF6A00;
+.tag-e2e{
+  background-color: var(--primary);
 }
 
 /* 算法类型标签样式 */
-.tag-algorithm {
-  background-color: #8b5cf6;
+.tag-algorithm{
+  background-color: var(--color-violet-500);
 }
 
-.tag-translation {
-  background-color: #8b5cf6;
+.tag-translation{
+  background-color: var(--color-violet-500);
 }
 
-.tag-asr {
-  background-color: #06b6d4;
+.tag-asr{
+  background-color: var(--color-cyan-500);
 }
 
-.tag-speaker-recognition {
-  background-color: #f59e0b;
+.tag-speaker-recognition{
+  background-color: var(--color-amber-500);
 }
 
-.tag-tts {
-  background-color: #10b981;
+.tag-tts{
+  background-color: var(--color-emerald-500);
 }
 
-.tag-vad {
-  background-color: #6366f1;
+.tag-vad{
+  background-color: var(--color-indigo-500);
 }
 
-.tag-diarization {
-  background-color: #ec4899;
+.tag-diarization{
+  background-color: var(--color-pink-500);
 }
 
 /* 用例卡片音频时长信息 */
-.case-duration-info {
+.case-duration-info{
   display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
 }
 
-.duration-tag {
+.duration-tag{
   display: inline-block;
-  background-color: #FF6A00;
+  background-color: var(--primary);
   color: white;
   font-size: 12px;
   font-weight: 500;
@@ -392,9 +490,9 @@ const handleResize = () => {
   text-align: center;
 }
 
-.round-count-tag {
+.round-count-tag{
   display: inline-block;
-  background-color: #6366f1;
+  background-color: var(--color-indigo-500);
   color: white;
   font-size: 12px;
   font-weight: 500;
@@ -406,10 +504,34 @@ const handleResize = () => {
 }
 
 /* 用例ID徽章 - 点击可复制 */
-.case-id-row {
+.case-id-row{
   display: flex;
   align-items: center;
   margin-bottom: 8px;
 }
+
+
+/* meta-label - 自全局样式就近迁移 */
+.meta-label{
+font-size: var(--font-size-xs);
+color: var(--text-primary);
+font-weight: 500;
+text-transform: uppercase;
+letter-spacing: 0.5px;
+margin-right: 4px;
+white-space: nowrap;
+}
+
+
+
+
+
+
+
+
+
+
+
+
 </style>
 

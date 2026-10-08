@@ -293,8 +293,8 @@ class TaskControlMixin:
 
                 # 分布式停止信号（多实例下通知所有实例的执行线程）
                 # 优先广播，确保 gRPC 调用失败时不阻塞停止信号传播
-                _dc.set_flag(f'task:stop:{task_id}')
-                _dc.clear_flag(f'task:pause:{task_id}')
+                _dc.set_task_stop(task_id)
+                _dc.clear_task_pause(task_id)
 
                 # 如果任务在workers中，设置停止标志
                 if task_id in self.workers:
@@ -402,7 +402,7 @@ class TaskControlMixin:
                     # 暂停任务
                     self.pause_flags[task_id].clear()  # 清除暂停标志，触发暂停
                     # 分布式暂停信号（多实例下通知所有实例的执行线程）
-                    _dc.set_flag(f'task:pause:{task_id}')
+                    _dc.set_task_pause(task_id)
                     # 通过 gRPC 通知 e2e_test_service 同步暂停事件
                     _register_task_events_via_grpc(
                         task_id, self.stop_flags[task_id], self.pause_flags[task_id]
@@ -444,7 +444,7 @@ class TaskControlMixin:
 
                     self.pause_flags[task_id].set()  # 设置暂停标志，恢复执行
                     # 清除分布式暂停信号（多实例下通知所有实例恢复执行）
-                    _dc.clear_flag(f'task:pause:{task_id}')
+                    _dc.clear_task_pause(task_id)
                     # 通过 gRPC 通知 e2e_test_service 同步恢复事件
                     _register_task_events_via_grpc(
                         task_id, self.stop_flags[task_id], self.pause_flags[task_id]

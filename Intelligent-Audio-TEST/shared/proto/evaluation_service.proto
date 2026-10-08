@@ -25,6 +25,14 @@ message EvaluateCaseRequest {
   string test_case_id = 3;
   string algorithm_result = 4;  // JSON 序列化的算法结果
   string eval_params = 5;  // JSON 序列化的评估参数 (algorithm_type, test_type, round_number 等)
+  // 执行域 P0 新增：多模态评估入参（E2E / API / Realtime 统一口径）
+  string device_type = 6;      // physical / http_api / websocket_api（用例级路由）
+  string user_wav = 7;         // 用户语音文件路径（E2E 采集）
+  string ai_wav = 8;           // AI 回复音频文件路径（E2E / 流式拼接）
+  string rounds = 9;           // JSON: 多轮结果数组（逐轮评估入参）
+  int32 first_frame_ms = 10;   // 首帧/首 token 延迟（ms）
+  string event_log = 11;       // JSON: 归一化事件时间线（barge-in / 时序分析）
+  string frame_results = 12;   // JSON: 帧结果列表（逐 chunk 中间状态）
 }
 
 message EvaluateCaseResponse {

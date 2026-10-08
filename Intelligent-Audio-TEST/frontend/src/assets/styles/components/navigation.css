@@ -3,38 +3,26 @@
 /* 侧边栏样式 */
 .sidebar {
     width: var(--sidebar-width);
-    background: linear-gradient(180deg, #FFFFFF 0%, #F8F9FA 100%);
-    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.08);
+    background: linear-gradient(180deg, var(--color-white) 0%, var(--muted) 100%);
+    box-shadow: 2px 0 16px color-mix(in srgb, var(--color-black) 8%, transparent);
     border-right: 1px solid var(--gray-light-color);
     padding: var(--spacing-lg);
     display: flex;
     flex-direction: column;
-    transition: all var(--transition-normal);
-    position: fixed;
-    left: 0;
-    top: 0;
-    height: 100vh;
-    z-index: 100;
     overflow-y: auto;
 }
 
 /* 侧边栏滚动条样式 */
 .sidebar::-webkit-scrollbar {
-    width: 6px;
 }
 
 .sidebar::-webkit-scrollbar-track {
-    background: var(--background-secondary);
-    border-radius: 3px;
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-    background: var(--gray-color);
-    border-radius: 3px;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
 }
 
 /* 侧边栏头部 */
@@ -123,7 +111,7 @@ nav a::after {
     left: 0;
     width: 100%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-white) 20%, transparent), transparent);
     transform: translateX(-100%);
     transition: transform var(--transition-fast);
 }
@@ -139,9 +127,9 @@ nav a:hover::after {
 
 /* 导航链接激活状态 */
 nav a:hover, nav a.active, nav .router-link-active {
-    background: linear-gradient(135deg, var(--primary-light) 0%, rgba(255, 106, 0, 0.15) 100%);
+    background: linear-gradient(135deg, var(--primary-light) 0%, color-mix(in srgb, var(--primary) 15%, transparent) 100%);
     color: var(--primary-color);
-    box-shadow: 0 8px 24px rgba(255, 106, 0, 0.2);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--primary) 20%, transparent);
     transform: translateX(8px);
 }
 
@@ -159,7 +147,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     gap: var(--spacing-lg);
     margin: var(--spacing-lg);
     padding: var(--spacing-md);
-    background: #fff;
+    background: var(--color-white);
     border-radius: var(--border-radius-lg);
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-color);
@@ -231,9 +219,9 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 
 .progress-step.active .progress-step-number {
     background-color: var(--primary-color);
-    color: #FFFFFF;
-    box-shadow: 0 0 0 8px rgba(255, 106, 0, 0.15);
-    border-color: #FFFFFF;
+    color: var(--color-white);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 15%, transparent);
+    border-color: var(--color-white);
     transition: all var(--transition-fast);
 }
 
@@ -247,7 +235,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     background: var(--success-color);
     color: var(--white-color);
     border-color: var(--success-color);
-    box-shadow: 0 0 15px rgba(82, 196, 26, 0.4);
+    box-shadow: 0 0 15px color-mix(in srgb, var(--success) 40%, transparent);
     
 
 }
@@ -263,16 +251,16 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 }
 
 .progress-step:hover .progress-step-number {
-    color: #FFFFFF;
+    color: var(--color-white);
     background-color: var(--primary-color);
-    box-shadow: 0 0 0 8px rgba(255, 106, 0, 0.15);
-    border-color: #FFFFFF;
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 15%, transparent);
+    border-color: var(--color-white);
     transition: all var(--transition-fast);
 }
 
 .progress-step.active:hover .progress-step-number {
     transform: none;
-    box-shadow: 0 0 0 8px rgba(255, 106, 0, 0.15);
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .progress-step:hover .progress-step-label {
@@ -358,25 +346,10 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 }
 
 /* 面包屑导航 */
-.breadcrumb {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-lg);
-    font-size: var(--font-size-sm);
-    color: var(--text-secondary);
-}
 
-.breadcrumb-item {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-}
 
-.breadcrumb-item:not(:last-child)::after {
-    content: '>';
-    color: var(--text-light);
-}
+
+
 
 .breadcrumb-item a {
     color: var(--secondary-color);
@@ -390,16 +363,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 }
 
 /* 标签页导航 */
-.tab-nav {
-    display: flex;
-    gap: var(--spacing-xs);
-    margin-bottom: var(--spacing-lg);
-    background-color: var(--background-secondary);
-    padding: var(--spacing-xs);
-    border-radius: var(--border-radius-md);
-    overflow-x: auto;
-    scrollbar-width: thin;
-}
+
 
 .tab-nav::-webkit-scrollbar {
     height: 4px;
@@ -416,24 +380,8 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 }
 
 /* 标签页 */
-.tab-item {
-    flex-shrink: 0;
-    padding: var(--spacing-sm) var(--spacing-md);
-    border: none;
-    background: transparent;
-    border-radius: var(--border-radius-sm);
-    cursor: pointer;
-    font-size: var(--font-size-md);
-    font-weight: var(--font-weight-medium);
-    color: var(--text-secondary);
-    transition: all var(--transition-normal);
-    white-space: nowrap;
-}
 
-.tab-item:hover {
-    background-color: var(--primary-light);
-    color: var(--primary-color);
-}
+
 
 .tab-item.active {
     background-color: var(--background-primary);
@@ -443,14 +391,8 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 
 
     /* 移动端标签页 */
-    .tab-nav {
-        gap: 0;
-        padding: 0;
-    }
+    
 
-    .tab-item {
-        padding: var(--spacing-xs) var(--spacing-sm);
-        font-size: 13px;
-    }
+    
 
 

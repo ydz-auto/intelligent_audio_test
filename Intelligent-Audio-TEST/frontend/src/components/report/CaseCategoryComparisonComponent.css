@@ -24,13 +24,13 @@
 
 /* No Metrics Selected */
 .no-metrics-selected {
-  background: #fef3c7;
-  border: 1px solid #fbbf24;
+  background: var(--color-amber-100);
+  border: 1px solid var(--color-amber-400);
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 24px;
   text-align: center;
-  color: #92400e;
+  color: var(--color-amber-800);
   font-size: 14px;
   display: flex;
   align-items: center;
@@ -46,7 +46,7 @@
 }
 
 .metric-table-title {
-  color: #334155;
+  color: var(--color-slate-700);
   font-size: 16px;
   font-weight: 600;
   margin: 0;
@@ -60,9 +60,9 @@
   width: 100%;
   box-sizing: border-box;
   border-radius: 16px 16px 0 0;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-bottom: none;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 10%, transparent);
 }
 
 .title-content {
@@ -91,7 +91,7 @@
   background: none;
   border: none;
   font-size: 14px;
-  color: #64748b;
+  color: var(--color-slate-500);
   cursor: pointer;
   padding: 6px;
   border-radius: 6px;
@@ -102,8 +102,8 @@
 }
 
 .metric-collapse-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #1677ff;
+  background: color-mix(in srgb, var(--color-black) 5%, transparent);
+  color: var(--secondary);
 }
 
 .metric-collapse-btn.collapsed {
@@ -126,10 +126,10 @@
 .display-type-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   background: white;
-  color: #64748b;
+  color: var(--color-slate-500);
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -139,15 +139,15 @@
 }
 
 .display-type-btn:hover {
-  border-color: #1677ff;
-  color: #1677ff;
-  background: rgba(22, 119, 255, 0.05);
+  border-color: var(--secondary);
+  color: var(--secondary);
+  background: color-mix(in srgb, var(--secondary) 5%, transparent);
 }
 
 .display-type-btn.active {
-  background: #1677ff;
+  background: var(--secondary);
   color: white;
-  border-color: #1677ff;
+  border-color: var(--secondary);
 }
 
 /* Responsive Styles */

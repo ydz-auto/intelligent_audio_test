@@ -50,11 +50,11 @@ const handleExportChart = () => {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  background: #f8fafc;
+  background: var(--color-slate-50);
   padding: 12px 16px;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--color-slate-200);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--color-black) 5%, transparent);
 }
 
 .btn {
@@ -72,23 +72,23 @@ const handleExportChart = () => {
 }
 
 .btn-primary {
-  background: linear-gradient(90deg, #FF6A00, #1677FF);
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
   color: white;
 }
 
 .btn-primary:hover {
   opacity: 0.9;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
 }
 
 .btn-secondary {
   background: white;
-  color: #666;
-  border: 1px solid #d9d9d9;
+  color: var(--color-gray-500);
+  border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
-  background: #f5f5f5;
-  border-color: #1677FF;
+  background: var(--muted);
+  border-color: var(--secondary);
 }
 </style>

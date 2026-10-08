@@ -70,6 +70,34 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("服务重启状态恢复失败（不阻塞启动）: %s", e)
 
+    # 清理孤儿任务控制标志（task:stop: / task:pause:）
+    # 多实例下保留仍在运行/暂停任务（含其它存活实例名下）的标志，
+    # 其余残留标志一并清除，避免冷启动后残留信号影响后续同名任务。
+    try:
+        from shared.models.database import get_db_session
+        from task_service.infrastructure.persistence.models import Task
+        from shared.utils.status_constants import TaskStatus as SharedTaskStatus
+        from shared.utils import distributed_coordinator as _dc
+        session = get_db_session()
+        try:
+            active_rows = session.query(Task.id).filter(
+                Task.deleted == False,  # noqa: E712
+                Task.status.in_([
+                    SharedTaskStatus.RUNNING,
+                    SharedTaskStatus.PAUSED,
+                    SharedTaskStatus.EVALUATING,
+                    SharedTaskStatus.REEVALUATING,
+                ]),
+            ).all()
+            active_ids = [row[0] for row in active_rows]
+        finally:
+            session.close()
+        cleaned = _dc.cleanup_orphan_task_control_flags(active_ids)
+        if cleaned:
+            logger.info("清理孤儿任务控制标志完成: %s 个", cleaned)
+    except Exception as e:
+        logger.warning("清理孤儿任务控制标志失败（不阻塞启动）: %s", e)
+
     # 初始化任务调度器
     execution_engine._init_scheduler()
     execution_engine.start_event_subscribers()

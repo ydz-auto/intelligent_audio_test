@@ -76,7 +76,7 @@
 }
 
 .algo-tag .primary-badge {
-  background: rgba(255, 255, 255, 0.3);
+  background: color-mix(in srgb, var(--color-white) 30%, transparent);
   padding: 0 4px;
   border-radius: 2px;
   font-size: 10px;
@@ -232,7 +232,7 @@
 .algorithm-params-section {
   margin-top: 16px;
   padding: 12px;
-  background: #f9f9f9;
+  background: var(--color-neutral-50);
   border-radius: 4px;
 }
 
@@ -240,7 +240,7 @@
   margin: 0 0 12px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
 }
 
 .algo-type-hint {
@@ -252,5 +252,5 @@
 .empty-state {
   padding: 20px;
   text-align: center;
-  color: #999;
+  color: var(--text-light);
 }

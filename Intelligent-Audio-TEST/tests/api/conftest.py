@@ -66,8 +66,7 @@ def sample_audio_files(sample_dir):
             'name': name,
             'size': os.path.getsize(path),
             'md5': md5,
-            # 注意: relativePath 用 ASCII 前缀规避 MinIO 中文对象名 bug
-            # (XMinioInvalidObjectName),见 issue 回复中的缺陷报告
+            # 注意: relativePath 用 ASCII 前缀规避对象存储对非 ASCII 对象名的兼容性问题
             'relativePath': f'sample/{name}',
         })
     return files

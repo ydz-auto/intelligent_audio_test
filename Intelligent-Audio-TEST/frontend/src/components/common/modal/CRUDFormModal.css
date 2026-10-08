@@ -5,8 +5,8 @@
 .form-grid .full-width { grid-column: 1 / -1; }
 
 .form-group-section {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background: var(--muted);
+  border: 1px solid var(--muted);
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 20px;
@@ -18,9 +18,9 @@
   margin: 0 0 16px 0;
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
   padding-bottom: 12px;
-  border-bottom: 1px solid #e9ecef;
+  border-bottom: 1px solid var(--muted);
 }
 
 .form-content { margin-top: 24px; }
@@ -31,11 +31,11 @@
   gap: 12px;
   margin-top: 24px;
   padding-top: 20px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid var(--muted);
 }
 
 .btn-primary {
-  background-color: #007bff;
+  background-color: var(--secondary);
   color: white;
   border: none;
   padding: 10px 20px;
@@ -47,13 +47,13 @@
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #0056b3;
+  background-color: var(--secondary-deep);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
 .btn-primary:disabled {
-  background-color: #e9ecef;
+  background-color: var(--muted);
   cursor: not-allowed;
   opacity: 0.65;
   transform: none;
@@ -61,7 +61,7 @@
 }
 
 .btn-secondary {
-  background-color: #6c757d;
+  background-color: var(--muted-foreground);
   color: white;
   border: none;
   padding: 10px 20px;
@@ -73,13 +73,13 @@
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: #545b62;
+  background-color: var(--color-gray-600);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--muted-foreground) 30%, transparent);
 }
 
 .btn-secondary:disabled {
-  background-color: #e9ecef;
+  background-color: var(--muted);
   cursor: not-allowed;
   opacity: 0.65;
   transform: none;
@@ -90,9 +90,9 @@
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
   border-radius: 50%;
-  border-top-color: #fff;
+  border-top-color: var(--color-white);
   animation: spin 1s ease-in-out infinite;
   margin-right: 8px;
 }

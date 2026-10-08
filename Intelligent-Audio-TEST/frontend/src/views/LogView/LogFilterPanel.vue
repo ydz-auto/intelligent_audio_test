@@ -158,6 +158,49 @@
     </div>
   </div>
 </template>
+<style scoped>
+
+/* level-tags - 自全局样式就近迁移 */
+.level-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+    height: auto ;
+    overflow: visible ;
+    flex-shrink: 0 ;
+    white-space: normal ;
+}
+
+/* spacer - 自全局样式就近迁移 */
+.spacer {
+    flex: 1;
+}
+
+/* date-time-inputs - 自全局样式就近迁移 */
+.log-view .filter-bar .date-time-inputs {
+    flex-wrap: wrap ;
+    height: auto ;
+    overflow: visible ;
+}
+
+.date-time-inputs {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.date-time-inputs {
+    /* 确保不会阻止点击事件 */
+    pointer-events: auto ;
+}
+/* advanced-filter-panel - 自全局样式就近迁移 */
+.advanced-filter-panel {
+    margin-bottom: var(--spacing-xl);
+    transition: all var(--transition-normal);
+}
+
+</style>
 
 <script setup lang="ts">
 import { ref } from 'vue'

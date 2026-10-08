@@ -1,0 +1,228 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 1420" font-family="system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3b82f6"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d97706"/>
+    </marker>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sec-title { font-size: 14px; font-weight: 700; }
+      .flow { stroke: #94a3b8; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-blue { stroke: #3b82f6; stroke-width: 1.8; fill: none; marker-end: url(#arrowBlue); }
+      .flow-green { stroke: #16a34a; stroke-width: 1.8; fill: none; marker-end: url(#arrowGreen); }
+      .box-name { font-size: 12.5px; font-weight: 600; fill: #1e293b; }
+      .box-desc { font-size: 10px; fill: #64748b; }
+      .note { font-size: 9.5px; fill: #64748b; }
+      .body { font-size: 10.5px; fill: #334155; }
+      .mono { font-size: 9.8px; fill: #475569; font-family: Consolas, 'Courier New', monospace; }
+      .pill-t { font-size: 10px; font-weight: 600; text-anchor: middle; }
+      .chip-t { font-size: 9.5px; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1240" height="1420" fill="#f1f5f9"/>
+
+  <text x="24" y="44" font-size="21" font-weight="700" fill="#0f172a">多轮评估维度隔离与报告聚合 — 设计总览</text>
+  <text x="24" y="68" font-size="12" fill="#64748b">执行/评估阶段维度隔离 + 报告阶段优先级取值与策略聚合 · 依据《多轮评估维度隔离与报告聚合设计文档》绘制</text>
+
+  <!-- ① 配置模式与 DB 记录 -->
+  <rect x="24" y="88" width="1192" height="250" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="88" width="1192" height="38" rx="10" fill="#dbeafe"/>
+  <rect x="24" y="114" width="1192" height="12" fill="#dbeafe"/>
+  <circle cx="46" cy="107" r="11" fill="#3b82f6"/>
+  <text x="46" y="111" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">1</text>
+  <text x="66" y="112" class="sec-title" fill="#1e3a8a">配置模式与 DB 记录 — 三种用例配置模式映射到 TestResultDimension</text>
+
+  <rect x="44" y="142" width="384" height="110" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <rect x="44" y="142" width="384" height="26" rx="8" fill="#3b82f6"/>
+  <rect x="44" y="156" width="384" height="12" fill="#3b82f6"/>
+  <text x="60" y="160" font-size="11.5" font-weight="700" fill="#ffffff">模式 A · 每轮都评估</text>
+  <text x="60" y="186" class="body" fill="#334155">每轮各自配置维度：</text>
+  <text x="60" y="204" class="mono">rounds[n].evaluation.dimensions</text>
+  <text x="60" y="228" class="body" fill="#334155">DB 记录：</text>
+  <text x="60" y="244" class="mono">round=0, round=1, ... 各有记录</text>
+
+  <rect x="444" y="142" width="384" height="110" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <rect x="444" y="142" width="384" height="26" rx="8" fill="#3b82f6"/>
+  <rect x="444" y="156" width="384" height="12" fill="#3b82f6"/>
+  <text x="460" y="160" font-size="11.5" font-weight="700" fill="#ffffff">模式 B · 只配特定轮次</text>
+  <text x="460" y="186" class="body" fill="#334155">仅某一轮配置了评估维度：</text>
+  <text x="460" y="204" class="mono">仅 rounds[1].evaluation.dimensions</text>
+  <text x="460" y="228" class="body" fill="#334155">DB 记录：</text>
+  <text x="460" y="244" class="mono">只有 round=1 有记录</text>
+
+  <rect x="844" y="142" width="372" height="110" rx="8" fill="#ffffff" stroke="#3b82f6" stroke-width="1.2"/>
+  <rect x="844" y="142" width="372" height="26" rx="8" fill="#3b82f6"/>
+  <rect x="844" y="156" width="372" height="12" fill="#3b82f6"/>
+  <text x="860" y="160" font-size="11.5" font-weight="700" fill="#ffffff">模式 C · 配了整体评估</text>
+  <text x="860" y="186" class="body" fill="#334155">顶层配置多轮聚合维度：</text>
+  <text x="860" y="204" class="mono">config.dimensions</text>
+  <text x="860" y="228" class="body" fill="#334155">DB 记录：</text>
+  <text x="860" y="244" class="mono">round_number=None 的 overall 记录</text>
+
+  <rect x="44" y="266" width="1172" height="58" rx="8" fill="#fff7ed" stroke="#f97316" stroke-width="1.2"/>
+  <text x="60" y="286" font-size="10.5" font-weight="700" fill="#c2410c">问题聚焦（改造动机）</text>
+  <text x="60" y="304" class="note" fill="#9a3412">① 维度全局合并 → 每轮评估了不该评估的维度（evaluate_case 不按 round_number 过滤） · ② 报告取值不区分轮次 → 后遍历覆盖前面，取值不确定（extract_dimension_values）</text>
+  <text x="60" y="318" class="note" fill="#9a3412">③ pass_rate 等策略维度被算术平均合并成 1 个 item → PassRateStrategy 统计错误 · ④ 执行阶段聚合硬编码 wer/llm_judge 维度名，全部匹配不上，聚合结果无用</text>
+
+  <!-- ② 执行与评估阶段修改点 -->
+  <rect x="24" y="348" width="1192" height="350" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="348" width="1192" height="38" rx="10" fill="#ede9fe"/>
+  <rect x="24" y="374" width="1192" height="12" fill="#ede9fe"/>
+  <circle cx="46" cy="367" r="11" fill="#8b5cf6"/>
+  <text x="46" y="371" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">2</text>
+  <text x="66" y="372" class="sec-title" fill="#4c1d95">执行与评估阶段 — 5 处修改：维度隔离 + 聚合简化 + 合并不覆盖</text>
+
+  <rect x="44" y="400" width="384" height="120" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.2"/>
+  <rect x="44" y="400" width="384" height="24" rx="8" fill="#8b5cf6"/>
+  <rect x="44" y="412" width="384" height="12" fill="#8b5cf6"/>
+  <text x="60" y="417" font-size="11" font-weight="700" fill="#ffffff">3.1 单轮评估触发条件</text>
+  <text x="60" y="444" class="mono">e2e_executor.py</text>
+  <text x="60" y="462" class="box-desc">_build_and_submit_round_data</text>
+  <text x="60" y="484" class="body" fill="#334155">本轮 dimensions 为空 → 跳过评估：</text>
+  <text x="60" y="502" class="note" fill="#64748b">enabled=False 优先；未禁用时 dimensions 为空同样跳过</text>
+
+  <rect x="444" y="400" width="384" height="120" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.2"/>
+  <rect x="444" y="400" width="384" height="24" rx="8" fill="#8b5cf6"/>
+  <rect x="444" y="412" width="384" height="12" fill="#8b5cf6"/>
+  <text x="460" y="417" font-size="11" font-weight="700" fill="#ffffff">3.2 维度隔离：按 round_number 过滤</text>
+  <text x="460" y="444" class="mono">evaluation_service.py</text>
+  <text x="460" y="462" class="box-desc">_load_test_case_and_refs</text>
+  <text x="460" y="484" class="body" fill="#334155">单轮评估 → 只取该轮 dimensions；</text>
+  <text x="460" y="502" class="body" fill="#334155">整体评估 → 只取 config.dimensions</text>
+
+  <rect x="844" y="400" width="372" height="120" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.2"/>
+  <rect x="844" y="400" width="372" height="24" rx="8" fill="#8b5cf6"/>
+  <rect x="844" y="412" width="372" height="12" fill="#8b5cf6"/>
+  <text x="860" y="417" font-size="11" font-weight="700" fill="#ffffff">3.3 重新评估对齐</text>
+  <text x="860" y="444" class="mono">reevaluation_executor.py</text>
+  <text x="860" y="462" class="box-desc">E2E 分支重写</text>
+  <text x="860" y="484" class="body" fill="#334155">修改前：只走 round_number=None 整体评估</text>
+  <text x="860" y="502" class="body" fill="#334155">修改后：逐轮评估 + 整体评估，与执行一致</text>
+
+  <rect x="44" y="532" width="570" height="120" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.2"/>
+  <rect x="44" y="532" width="570" height="24" rx="8" fill="#8b5cf6"/>
+  <rect x="44" y="544" width="570" height="12" fill="#8b5cf6"/>
+  <text x="60" y="549" font-size="11" font-weight="700" fill="#ffffff">3.4 执行阶段聚合简化</text>
+  <text x="60" y="576" class="mono">e2e_aggregator.py · update_algorithm_result_evaluation</text>
+  <text x="60" y="596" class="body" fill="#334155">修改前：硬编码 avg_wer / avg_llm_judge（维度名全不匹配 → null）+ 写 algo_result.aggregated</text>
+  <text x="60" y="614" class="body" fill="#334155">修改后：仅回填 rounds[].evaluation（每轮分数），聚合由报告层查 DB 完成</text>
+  <text x="60" y="638" class="note" fill="#64748b">执行阶段不重复计算聚合 → 单一职责：只回填轮次分数</text>
+
+  <rect x="630" y="532" width="586" height="120" rx="8" fill="#ffffff" stroke="#8b5cf6" stroke-width="1.2"/>
+  <rect x="630" y="532" width="586" height="24" rx="8" fill="#8b5cf6"/>
+  <rect x="630" y="544" width="586" height="12" fill="#8b5cf6"/>
+  <text x="646" y="549" font-size="11" font-weight="700" fill="#ffffff">3.5 RoundAggregator 合并而非覆盖</text>
+  <text x="646" y="576" class="mono">round_aggregator.py · _update_algorithm_result_aggregated</text>
+  <text x="646" y="596" class="body" fill="#334155">修改前：result_data['aggregated'] = aggregated（整块覆盖）</text>
+  <text x="646" y="614" class="body" fill="#334155">修改后：existing_aggregated.update(aggregated)（按维度名合并）</text>
+  <text x="646" y="638" class="note" fill="#64748b">避免覆盖历史已聚合维度 → 多轮场景聚合结果可累积</text>
+
+  <rect x="44" y="666" width="1172" height="26" rx="6" fill="#ffffff" stroke="#c4b5fd" stroke-width="1"/>
+  <text x="630" y="683" class="body" fill="#4c1d95" text-anchor="middle">维度隔离核心：评估阶段「按 round_number 过滤」→ DB 中 round/overall 记录互不干扰 · 回填阶段「只回填 + 合并」→ 不污染数据</text>
+
+  <!-- ③ 报告聚合阶段修改点 -->
+  <rect x="24" y="708" width="1192" height="410" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="708" width="1192" height="38" rx="10" fill="#dcfce7"/>
+  <rect x="24" y="734" width="1192" height="12" fill="#dcfce7"/>
+  <circle cx="46" cy="727" r="11" fill="#16a34a"/>
+  <text x="46" y="731" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">3</text>
+  <text x="66" y="732" class="sec-title" fill="#14532d">报告聚合阶段 — 优先级取值 + 非 average 维度每轮独立 item</text>
+
+  <rect x="44" y="760" width="570" height="300" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="64" y="784" font-size="12" font-weight="700" fill="#166534">3.6 extract_dimension_values 按优先级取值</text>
+  <text x="64" y="806" class="mono">report_utils.py · report_controller_base.py</text>
+  <text x="64" y="828" class="body" fill="#334155">① 按 round_number 分两组收集：</text>
+  <rect x="80" y="838" width="232" height="40" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="196" y="854" class="pill-t" fill="#166534">overall 组</text>
+  <text x="196" y="871" class="chip-t" fill="#64748b">round_number = None</text>
+  <rect x="324" y="838" width="232" height="40" rx="6" fill="#dcfce7" stroke="#86efac" stroke-width="1"/>
+  <text x="440" y="854" class="pill-t" fill="#166534">单轮组</text>
+  <text x="440" y="871" class="chip-t" fill="#64748b">round_number = 0,1,2...</text>
+  <line x1="196" y1="878" x2="196" y2="898" class="flow-green"/>
+  <rect x="64" y="900" width="492" height="116" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="80" y="920" font-size="10.5" font-weight="700" fill="#166534">取值规则（② 按优先级取值）</text>
+  <text x="80" y="942" class="body" fill="#334155">有 overall 记录 → 取 overall 的 dimension_value</text>
+  <text x="80" y="962" class="body" fill="#334155">无 overall → 各轮 dimension_value 算术平均</text>
+  <text x="80" y="982" class="body" fill="#334155">某轮未评估 → 该轮不计入平均</text>
+  <text x="80" y="1002" class="note" fill="#64748b">兜底查询（无 dim_results_map）同样全量查后按优先级取值，不再 .first() 只取一条</text>
+
+  <rect x="630" y="760" width="586" height="300" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.2"/>
+  <text x="650" y="784" font-size="12" font-weight="700" fill="#166534">3.7 聚合策略适配 — 每轮独立成 item（策略类本身不改）</text>
+  <rect x="650" y="800" width="166" height="104" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="733" y="820" class="pill-t" fill="#166534">average</text>
+  <text x="733" y="840" class="chip-t" fill="#64748b">SimpleAverageStrategy</text>
+  <text x="733" y="860" class="note" text-anchor="middle">sum(values)/count</text>
+  <text x="733" y="878" class="note" text-anchor="middle">走 extract_dimension_values</text>
+  <text x="733" y="894" class="note" text-anchor="middle">→ 算术平均 · 不受影响</text>
+  <rect x="830" y="800" width="186" height="104" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="923" y="820" class="pill-t" fill="#166534">pass_rate</text>
+  <text x="923" y="840" class="chip-t" fill="#64748b">PassRateStrategy</text>
+  <text x="923" y="860" class="note" text-anchor="middle">达标 item 数 / 总数 × 100</text>
+  <text x="923" y="878" class="note" text-anchor="middle">每轮独立 item</text>
+  <text x="923" y="894" class="note" text-anchor="middle">✓ pass_count/total 正确</text>
+  <rect x="1030" y="800" width="170" height="104" rx="8" fill="#f0fdf4" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="1115" y="820" class="pill-t" fill="#166534">weighted_wer</text>
+  <text x="1115" y="840" class="chip-t" fill="#64748b">WeightedSumRatio</text>
+  <text x="1115" y="860" class="note" text-anchor="middle">Σ分子 / Σ分母</text>
+  <text x="1115" y="878" class="note" text-anchor="middle">每轮独立 item</text>
+  <text x="1115" y="894" class="note" text-anchor="middle">api_raw_response 按轮取</text>
+  <text x="650" y="926" class="body" fill="#334155">item 收集逻辑（3.7 修改点）：</text>
+  <text x="650" y="946" class="body" fill="#334155">修改前：用 extract_dimension_values 的算术平均值作为 1 个 item</text>
+  <text x="650" y="966" class="body" fill="#334155">修改后：从 dim_results_map 取每轮独立记录，每轮 1 个 item（含 api_raw_response）</text>
+  <rect x="650" y="984" width="550" height="62" rx="8" fill="#fff7ed" stroke="#fdba74" stroke-width="1"/>
+  <text x="666" y="1004" font-size="10.5" font-weight="700" fill="#c2410c">3.8 报告查询：_get_dimension_results_batch 恢复全量查询</text>
+  <text x="666" y="1022" class="note" fill="#9a3412">report_controller_task.py — 查询不带 round_number 过滤（中间态曾只查 overall，已修正）</text>
+  <text x="666" y="1038" class="note" fill="#9a3412">恢复查所有轮次记录，查询结果新增 round_number 字段 → 供 extract_dimension_values 与策略 item 使用</text>
+
+  <rect x="44" y="1076" width="1172" height="30" rx="6" fill="#ffffff" stroke="#bbf7d0" stroke-width="1"/>
+  <text x="630" y="1095" class="body" fill="#166534" text-anchor="middle">average → 算术平均（整体口径） · pass_rate / weighted_wer → 每轮独立 item（轮次口径）· 同一份 dim_results_map 双口径并行</text>
+
+  <!-- ④ 数据流总结 -->
+  <rect x="24" y="1128" width="1192" height="250" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="1.4" filter="url(#softShadow)"/>
+  <rect x="24" y="1128" width="1192" height="38" rx="10" fill="#fef3c7"/>
+  <rect x="24" y="1154" width="1192" height="12" fill="#fef3c7"/>
+  <circle cx="46" cy="1147" r="11" fill="#f59e0b"/>
+  <text x="46" y="1151" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">4</text>
+  <text x="66" y="1152" class="sec-title" fill="#92400e">数据流总结 — 执行 / 重新评估 / 报告生成 三阶段</text>
+
+  <rect x="44" y="1180" width="384" height="150" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="60" y="1202" font-size="11" font-weight="700" fill="#92400e">执行阶段（e2e_executor）</text>
+  <rect x="60" y="1212" width="352" height="22" rx="5" fill="#fef3c7" stroke="#fde68a"/>
+  <text x="236" y="1227" class="chip-t" fill="#92400e">_finalize_rounds</text>
+  <text x="60" y="1254" class="body" fill="#334155">逐轮评估 round_number=0 → rounds[0] 维度</text>
+  <text x="60" y="1272" class="body" fill="#334155">逐轮评估 round_number=1 → rounds[1] 维度</text>
+  <text x="60" y="1290" class="body" fill="#334155">整体评估 round_number=None → config.dimensions</text>
+  <text x="60" y="1314" class="note" fill="#64748b">+ update_algorithm_result_evaluation 回填轮次分数</text>
+
+  <rect x="444" y="1180" width="384" height="150" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="460" y="1202" font-size="11" font-weight="700" fill="#92400e">重新评估阶段（reevaluation_executor）</text>
+  <rect x="460" y="1212" width="352" height="22" rx="5" fill="#fef3c7" stroke="#fde68a"/>
+  <text x="636" y="1227" class="chip-t" fill="#92400e">_evaluate_e2e_case</text>
+  <text x="460" y="1254" class="body" fill="#334155">与执行阶段对齐：逐轮评估 + 整体评估</text>
+  <text x="460" y="1272" class="body" fill="#334155">每轮检查 enabled 与 dimensions 非空</text>
+  <text x="460" y="1290" class="body" fill="#334155">非空才提交 evaluate_case</text>
+  <text x="460" y="1314" class="note" fill="#64748b">any_submitted 跟踪是否有任一轮/整体真正提交</text>
+
+  <rect x="844" y="1180" width="372" height="150" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.2"/>
+  <text x="860" y="1202" font-size="11" font-weight="700" fill="#92400e">报告生成阶段（report_controller_task）</text>
+  <rect x="860" y="1212" width="340" height="22" rx="5" fill="#fef3c7" stroke="#fde68a"/>
+  <text x="1030" y="1227" class="chip-t" fill="#92400e">_generate_task_report_async</text>
+  <text x="860" y="1254" class="body" fill="#334155">_get_dimension_results_batch（含 round_number）</text>
+  <text x="860" y="1272" class="body" fill="#334155">calculate_core_metrics → extract_dimension_values</text>
+  <text x="860" y="1290" class="body" fill="#334155">+ 非 average 维度每轮独立 item → 策略聚合</text>
+  <text x="860" y="1314" class="note" fill="#64748b">产出 metric_data / raw_data / case_type_stats</text>
+
+  <line x1="0" y1="1396" x2="1240" y2="1396" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="24" y="1412" font-size="10.5" fill="#64748b">设计价值：评估阶段维度隔离（单轮/整体各评各的）→ DB 数据干净 · 报告阶段按优先级取值（overall 优先，无则各轮平均）→ 三种配置模式统一口径</text>
+</svg>

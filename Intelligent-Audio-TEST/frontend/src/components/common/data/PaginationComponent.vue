@@ -149,4 +149,39 @@ const handleJump = () => {
 .pagination-btn.active {
     /* 公共样式已在 components/common.css 中定义 */
 }
+
+
+/* pagination-buttons - 自全局样式就近迁移 */
+.pagination-buttons {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: center;
+    justify-content: center;
+}
+
+/* pagination-ellipsis - 自全局样式就近迁移 */
+.pagination-ellipsis {
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    cursor: default;
+}
+
+/* pagination-input - 自全局样式就近迁移 */
+.pagination-input {
+    width: 50px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    background-color: var(--background-primary);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    text-align: center;
+}
+
+.pagination-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
 </style>

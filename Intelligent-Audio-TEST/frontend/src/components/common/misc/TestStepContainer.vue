@@ -45,41 +45,61 @@ defineEmits(['prev', 'next']);
 </script>
 
 <style scoped>
-.step-panel {
-  display: none;
-  animation: fadeIn 0.3s ease;
+
+.step-panel{
+background: var(--color-white);
+border: 2px solid var(--border-color);
+border-radius: var(--border-radius-xl);
+padding: var(--spacing-xl);
+margin-bottom: var(--spacing-lg);
+box-shadow: var(--shadow-md);
+transition: all var(--transition-normal);
+display: none;
 }
 
-.step-panel.active {
+
+
+
+
+
+
+
+
+
+
+
+
+
+.step-panel.active{
   display: flex;
   flex-direction: column;
   min-height: 100%;
 }
 
-.step-header {
+.step-header{
   margin-bottom: 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.step-title {
+.step-title{
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--foreground);
 }
 
-.step-body {
+.step-body{
   flex: 1;
   padding-bottom: 20px;
 }
 
-.actions-spacer {
+.actions-spacer{
   flex: 1;
 }
 
-@keyframes fadeIn {
+@keyframes fadeIn{
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }

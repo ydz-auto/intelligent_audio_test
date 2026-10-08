@@ -13,6 +13,35 @@ import { usePagination } from '../../composables/usePagination';
 import { ReportStatus } from '@/domain/enums';
 import { formatDate } from '@/utils/utils';
 
+/**
+ * 历史报告页视图 Tab 常量（全部/草稿/已发布/对比）。
+ * 值与后端列表接口的 type / status 过滤参数对应；对比视图为客户端归类。
+ */
+export const REPORT_TABS = {
+  ALL: 'all',
+  DRAFT: 'draft',
+  PUBLISHED: 'published',
+  COMPARISON: 'comparison',
+} as const;
+
+export type ReportTabValue = (typeof REPORT_TABS)[keyof typeof REPORT_TABS];
+
+export interface ReportTabOption {
+  value: ReportTabValue;
+  label: string;
+  icon: string;
+}
+
+export const REPORT_TAB_OPTIONS: ReadonlyArray<ReportTabOption> = [
+  { value: REPORT_TABS.ALL, label: '全部报告', icon: 'fas fa-layer-group' },
+  { value: REPORT_TABS.DRAFT, label: '草稿报告', icon: 'fas fa-edit' },
+  { value: REPORT_TABS.PUBLISHED, label: '发布报告', icon: 'fas fa-check-circle' },
+  { value: REPORT_TABS.COMPARISON, label: '对比报告', icon: 'fas fa-exchange-alt' },
+];
+
+/** 归类为「对比报告」视图的报告类型集合（domain ReportType 后端原值：task/comparison/secondary_comparison/standard） */
+const COMPARISON_REPORT_TYPES: readonly string[] = ['comparison', 'secondary_comparison'];
+
 type ReportTypeFilter = 'all' | 'comparison' | 'secondaryComparison' | 'task';
 type ReportStatusFilter = 'all' | 'draft' | 'published';
 type TimeRangeFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
@@ -50,6 +79,7 @@ export function useHistoryReports() {
   const pageSize = ref(10);
   const loading = ref(false);
   const selectedReports = ref<Set<string | number>>(new Set());
+  const activeTab = ref<ReportTabValue>(REPORT_TABS.ALL);
 
   const { algorithmOptions, loadAlgorithms, getAlgorithmLabel } = useAlgorithmLabels();
 
@@ -230,6 +260,48 @@ export function useHistoryReports() {
     return allReports.value.filter(report => report.status === ReportStatus.DRAFT);
   });
 
+  /** 归类为对比报告的报告（domain ReportType：comparison / secondary_comparison） */
+  const comparisonReports = computed(() => {
+    return allReports.value.filter(report => COMPARISON_REPORT_TYPES.includes(report.type));
+  });
+
+  /** 当前视图 Tab 下的可见报告列表（「全部」Tab 由视图层按状态分组展示） */
+  const visibleReports = computed(() => {
+    switch (activeTab.value) {
+      case REPORT_TABS.DRAFT:
+        return draftReports.value;
+      case REPORT_TABS.PUBLISHED:
+        return publishedReports.value;
+      case REPORT_TABS.COMPARISON:
+        return comparisonReports.value;
+      default:
+        return allReports.value;
+    }
+  });
+
+  /** 各 Tab 的可见数量（当前页统计口径：全部=allReports；草稿/已发布/对比按类型统计） */
+  const getTabCount = (tab: ReportTabValue): number => {
+    switch (tab) {
+      case REPORT_TABS.ALL:
+        return allReports.value.length;
+      case REPORT_TABS.DRAFT:
+        return draftReports.value.length;
+      case REPORT_TABS.PUBLISHED:
+        return publishedReports.value.length;
+      case REPORT_TABS.COMPARISON:
+        return comparisonReports.value.length;
+      default:
+        return 0;
+    }
+  };
+
+  /** 切换视图 Tab：更新 activeTab、清空已选、触发筛选（重置分页并重新加载） */
+  const handleTabChange = (tab: ReportTabValue) => {
+    activeTab.value = tab;
+    selectedReports.value.clear();
+    handleFilterChange();
+  };
+
   const toggleSelectAll = () => {
     if (isAllSelected.value) {
       selectedReports.value.clear();
@@ -403,8 +475,13 @@ export function useHistoryReports() {
     handlePageSizeChange,
     totalPages,
     isAllSelected,
+    activeTab,
+    reportTabOptions: REPORT_TAB_OPTIONS,
     publishedReports,
     draftReports,
+    visibleReports,
+    getTabCount,
+    handleTabChange,
     toggleSelectAll,
     toggleReportSelection,
     handleBatchDelete,

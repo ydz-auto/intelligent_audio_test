@@ -1,14 +1,14 @@
 .audio-quick-btn.api-audio {
-  color: #1976d2;
+  color: var(--secondary);
 }
 .audio-quick-btn.api-audio:hover {
-  background-color: #e3f2fd;
+  background-color: var(--color-secondary-light);
 }
 .audio-quick-btn.e2e-audio {
-  color: #7b1fa2;
+  color: var(--color-purple-700);
 }
 .audio-quick-btn.e2e-audio:hover {
-  background-color: #f3e5f5;
+  background-color: var(--color-purple-100);
 }
 
 .audio-btns-container {
@@ -29,7 +29,7 @@
 .audio-type-label {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #495057;
+  color: var(--muted-foreground);
   min-width: 90px;
 }
 
@@ -39,9 +39,9 @@
   gap: 8px;
   padding: 6px 16px;
   border-radius: 20px;
-  border: 1px solid #1976d2;
-  background: #fff;
-  color: #1976d2;
+  border: 1px solid var(--secondary);
+  background: var(--color-white);
+  color: var(--secondary);
   font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s;
@@ -50,24 +50,24 @@
 }
 
 .audio-action-btn:hover {
-  background: #1976d2;
-  color: #fff;
+  background: var(--secondary);
+  color: var(--color-white);
 }
 
 .audio-action-btn.e2e-theme {
-  border-color: #9c27b0;
-  color: #9c27b0;
-  background: #fff;
+  border-color: var(--color-purple-600);
+  color: var(--color-purple-600);
+  background: var(--color-white);
 }
 
 .audio-action-btn.e2e-theme:hover {
-  background: #9c27b0;
-  color: #fff;
+  background: var(--color-purple-600);
+  color: var(--color-white);
 }
 
 .audio-filename {
   font-size: 0.8rem;
-  color: #6c757d;
+  color: var(--muted-foreground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -76,7 +76,7 @@
 
 .no-audio-info {
   font-size: 0.85rem;
-  color: #adb5bd;
+  color: var(--gray);
   font-style: italic;
   padding: 4px 0;
 }
@@ -139,12 +139,12 @@
 }
 
 .pinned-case-card {
-  background: #fff;
-  border: 1px solid #ffe58f;
+  background: var(--background);
+  border: 1px solid var(--warning);
   border-radius: 8px;
   padding: 12px;
   min-width: 200px;
-  box-shadow: 0 2px 8px rgba(250, 140, 22, 0.05);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--warning) 5%, transparent);
 }
 
 .pinned-case-header {
@@ -157,7 +157,7 @@
 .pinned-case-name {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
   margin: 0;
 }
 
@@ -165,7 +165,7 @@
   background: none;
   border: none;
   font-size: 14px;
-  color: #fa8c16;
+  color: var(--warning);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
@@ -173,7 +173,7 @@
 }
 
 .unpin-btn:hover {
-  background: #fff7e6;
+  background: var(--warning-light);
   color: #ff7a45;
 }
 
@@ -239,7 +239,7 @@
 .case-id-badge {
   padding: 2px 10px;
   background: white;
-  color: #1677ff;
+  color: var(--secondary);
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
@@ -251,8 +251,8 @@
 }
 
 .case-id-badge:hover {
-  background: #f8fafc;
-  color: #1677ff;
+  background: var(--color-slate-50);
+  color: var(--secondary);
 }
 
 .case-id-badge .fa-copy {
@@ -260,9 +260,9 @@
 }
 
 .download-log-btn {
-  background: #FF6A00;
-  border: 1px solid #FF6A00;
-  color: #fff;
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  color: var(--color-white);
   cursor: pointer;
   padding: 10px 20px;
   border-radius: 6px;
@@ -280,12 +280,12 @@
 }
 
 .download-log-btn:hover {
-  background: #ff8533;
-  border-color: #ff8533;
+  background: var(--color-orange-400);
+  border-color: var(--color-orange-400);
 }
 
 .expand-icon {
-  color: #94a3b8;
+  color: var(--color-slate-400);
   transition: transform 0.3s;
   font-size: 12px;
   width: 16px;
@@ -300,10 +300,10 @@
 .detail-section-title {
   font-size: 14px;
   font-weight: 500;
-  color: #333;
+  color: var(--foreground);
   margin: 0 0 12px 0;
   padding-bottom: 6px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gray-light);
 }
 
 .logs-section {
@@ -357,7 +357,7 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -369,7 +369,7 @@
   border-radius: 12px;
   padding: 32px 48px;
   text-align: center;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 32px color-mix(in srgb, var(--color-black) 20%, transparent);
   animation: fadeIn 0.2s ease;
   min-width: 400px;
 }
@@ -388,8 +388,8 @@
 .download-loading-spinner {
   width: 48px;
   height: 48px;
-  border: 4px solid #e9ecef;
-  border-top-color: #1677ff;
+  border: 4px solid var(--muted);
+  border-top-color: var(--secondary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 16px;
@@ -404,13 +404,13 @@
 .download-loading-title {
   font-size: 18px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-gray-800);
   margin-bottom: 8px;
 }
 
 .download-loading-text {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--color-gray-500);
   margin-bottom: 4px;
   max-width: 300px;
   overflow: hidden;
@@ -420,13 +420,13 @@
 
 .download-loading-hint {
   font-size: 13px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
 }
 
 .download-progress-bar-container {
   width: 100%;
   height: 8px;
-  background: #e9ecef;
+  background: var(--muted);
   border-radius: 4px;
   margin: 16px 0 8px;
   overflow: hidden;
@@ -434,7 +434,7 @@
 
 .download-progress-bar {
   height: 100%;
-  background: linear-gradient(90deg, #1677ff, #40a9ff);
+  background: linear-gradient(90deg, var(--secondary), var(--secondary));
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -443,6 +443,6 @@
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-gray-500);
   width: 100%;
 }

@@ -1,9 +1,6 @@
-/* 只导入主样式文件，所有组件样式已包含在main.css中 */
-@import '../../assets/styles/main.css';
-
 /* 搜索框样式 - 确保外框为明显的灰色 */
 .filter-sort-section :deep(.search-input) {
-  border: 2px solid #D1D5DB !important;
+  border: 2px solid var(--color-gray-300) !important;
   background-color: white !important;
   border-radius: var(--border-radius-lg) !important;
   padding: var(--spacing-sm) var(--spacing-md) !important;
@@ -19,7 +16,7 @@
 
 /* 下拉选择框样式 - 确保外框为明显的灰色 */
 .filter-sort-section :deep(.filter-select) {
-  border: 2px solid #D1D5DB !important;
+  border: 2px solid var(--color-gray-300) !important;
   background-color: white !important;
   border-radius: var(--border-radius-md) !important;
   padding: var(--spacing-sm) var(--spacing-md) !important;
@@ -31,6 +28,58 @@
   border-color: var(--primary-color) !important;
   box-shadow: 0 0 0 3px var(--primary-light) !important;
   background-color: white !important;
+}
+
+/* 视图 Tab 栏样式 */
+.report-tabs {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-lg);
+  padding: var(--spacing-sm);
+  background: var(--background-secondary);
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.report-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  border: 1px solid transparent;
+  border-radius: var(--border-radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.report-tab:hover {
+  background: var(--background-primary);
+  color: var(--primary-color);
+}
+
+.report-tab.active {
+  background: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.report-tab-count {
+  padding: 1px 8px;
+  border-radius: var(--border-radius-full);
+  background: color-mix(in srgb, var(--color-black) 8%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+}
+
+.report-tab.active .report-tab-count {
+  background: color-mix(in srgb, var(--color-white) 25%, transparent);
+  color: #fff;
 }
 
 /* 全选按钮样式 */
@@ -67,19 +116,19 @@
 .reports-section.draft-section {
   margin-top: 32px;
   padding-top: 24px;
-  border-top: 2px dashed #e2e8f0;
+  border-top: 2px dashed var(--color-slate-200);
 }
 
 .section-header {
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--color-slate-200);
 }
 
 .section-title {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--color-slate-800);
   margin: 0;
   display: flex;
   align-items: center;
@@ -92,21 +141,21 @@
 
 /* 状态标签样式 */
 .report-card-status.published {
-  background-color: var(--success-light, #f0fdf4);
-  color: var(--success-color, #16a34a);
-  border: 1px solid var(--success-color, #16a34a);
+  background-color: var(--success-light, var(--color-green-50));
+  color: var(--success-color, var(--color-green-600));
+  border: 1px solid var(--success-color, var(--color-green-600));
 }
 
 .report-card-status.draft {
-  background-color: var(--warning-light, #fffbeb);
-  color: var(--warning-color, #d97706);
-  border: 1px solid var(--warning-color, #d97706);
+  background-color: var(--warning-light, var(--color-amber-50));
+  color: var(--warning-color, var(--color-amber-600));
+  border: 1px solid var(--warning-color, var(--color-amber-600));
 }
 
 .report-card-algorithm-type {
-  background-color: #f0f9ff;
-  color: #0284c7;
-  border: 1px solid #0284c7;
+  background-color: var(--color-sky-50);
+  color: var(--color-sky-600);
+  border: 1px solid var(--color-sky-600);
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 0.75rem;
@@ -124,7 +173,7 @@
   gap: 10px;
   z-index: 10000;
   animation: slideIn 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
 }
 
 .toast-container i {
@@ -132,27 +181,27 @@
 }
 
 .toast-success {
-  background-color: #f0fdf4;
-  color: #16a34a;
-  border: 1px solid #16a34a;
+  background-color: var(--color-green-50);
+  color: var(--color-green-600);
+  border: 1px solid var(--color-green-600);
 }
 
 .toast-error {
-  background-color: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #dc2626;
+  background-color: var(--color-red-50);
+  color: var(--color-red-600);
+  border: 1px solid var(--color-red-600);
 }
 
 .toast-warning {
-  background-color: #fffbeb;
-  color: #d97706;
-  border: 1px solid #d97706;
+  background-color: var(--color-amber-50);
+  color: var(--color-amber-600);
+  border: 1px solid var(--color-amber-600);
 }
 
 .toast-info {
-  background-color: #eff6ff;
-  color: #2563eb;
-  border: 1px solid #2563eb;
+  background-color: var(--color-blue-50);
+  color: var(--color-blue-600);
+  border: 1px solid var(--color-blue-600);
 }
 
 @keyframes slideIn {
@@ -164,4 +213,123 @@
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+/* 历史报告视图（自全局 reports/base.css 迁移，页面专属） */
+.history-reports-view {
+    padding: var(--spacing-lg);
+}
+
+.reports-container {
+    background: var(--background-primary);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    margin-top: var(--spacing-lg);
+}
+
+#reports-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+}
+
+/* 报告卡片标题包装器 */
+.report-card-title-wrapper {
+    flex: 1;
+    margin: 0 var(--spacing-lg);
+}
+
+.report-card-title {
+    margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-xs);
+}
+
+/* 报告卡片元标签 */
+.report-card-meta-tags {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+.report-card-type {
+    background: var(--secondary-light);
+    color: var(--secondary-color);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+.report-card-status {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+.report-card-status.draft {
+    background: var(--warning-light);
+    color: var(--warning-color);
+}
+
+.report-card-status.published {
+    background: var(--success-light);
+    color: var(--success-color);
+}
+
+.report-card-test-type {
+    background: var(--primary-light);
+    color: var(--primary-color);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+/* 报告卡片复选框包装器 */
+.report-checkbox-wrapper {
+    display: flex !important;
+    align-items: center !important;
+    margin-right: var(--spacing-md);
+}
+
+/* 报告卡片描述 */
+.report-card-description {
+    margin: 0 0 var(--spacing-lg) 0;
+    color: var(--text-secondary);
+    font-size: var(--font-size-md);
+    line-height: 1.5;
+}
+
+/* 报告卡片元数据 */
+.report-card-meta {
+    display: flex;
+    gap: var(--spacing-lg);
+    flex-wrap: wrap;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.report-card-meta-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.report-card-meta-item i {
+    color: var(--primary-color);
+    font-size: var(--font-size-md);
+}
+
+/* 报告卡片复选框 */
+.task-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
 }

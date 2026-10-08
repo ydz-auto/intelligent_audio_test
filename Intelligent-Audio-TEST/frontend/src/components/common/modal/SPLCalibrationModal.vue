@@ -242,7 +242,7 @@ const handleStart = async () => {
 .form-control {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 14px;
   box-sizing: border-box;
@@ -250,12 +250,12 @@ const handleStart = async () => {
 
 .form-control:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-500) 10%, transparent);
 }
 
 .calibration-info {
-  background-color: #e3f2fd;
+  background-color: var(--color-secondary-light);
   padding: 12px;
   border-radius: 4px;
   display: flex;
@@ -265,13 +265,13 @@ const handleStart = async () => {
 }
 
 .calibration-info i {
-  color: #1976d2;
+  color: var(--secondary);
 }
 
 .calibration-info p {
   margin: 0;
   font-size: 0.85em;
-  color: #0d47a1;
+  color: var(--secondary-deep);
 }
 
 .calibrating-state {
@@ -290,7 +290,7 @@ const handleStart = async () => {
 
 .progress-bar-container {
   height: 8px;
-  background-color: #f5f5f5;
+  background-color: var(--muted);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 15px;
@@ -311,7 +311,7 @@ const handleStart = async () => {
   display: inline-block;
   width: 40px;
   height: 40px;
-  border: 4px solid rgba(0, 0, 0, 0.1);
+  border: 4px solid color-mix(in srgb, var(--color-black) 10%, transparent);
   border-left-color: var(--primary-color);
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -332,7 +332,7 @@ const handleStart = async () => {
   justify-content: flex-end;
   gap: 10px;
   padding-top: 15px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--color-gray-200);
 }
 
 .btn {
@@ -346,12 +346,12 @@ const handleStart = async () => {
 }
 
 .btn-primary {
-  background-color: #3b82f6;
+  background-color: var(--color-blue-500);
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #2563eb;
+  background-color: var(--color-blue-600);
 }
 
 .btn-primary:disabled {
@@ -360,19 +360,19 @@ const handleStart = async () => {
 }
 
 .btn-secondary {
-  background-color: #f8f9fa;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
+  background-color: var(--muted);
+  color: var(--color-slate-500);
+  border: 1px solid var(--color-slate-200);
 }
 
 .btn-secondary:hover {
-  background-color: #e2e8f0;
+  background-color: var(--color-slate-200);
 }
 
 .d-curve-preview {
   margin-top: 15px;
   padding: 15px;
-  background-color: #f8f9fa;
+  background-color: var(--muted);
   border-radius: 6px;
 }
 
@@ -396,9 +396,9 @@ const handleStart = async () => {
   gap: 2px;
   height: 80px;
   padding: 5px;
-  background-color: #fff;
+  background-color: var(--background);
   border-radius: 4px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
 }
 
 .curve-bar {
@@ -411,7 +411,7 @@ const handleStart = async () => {
 }
 
 .curve-bar:hover {
-  background-color: #FF6A00;
+  background-color: var(--primary);
 }
 
 .curve-labels {

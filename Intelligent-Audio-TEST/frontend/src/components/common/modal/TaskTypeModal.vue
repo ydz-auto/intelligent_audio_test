@@ -58,7 +58,7 @@ const selectTestType = (type) => {
 .modal-message {
   margin: 0;
   font-size: 16px;
-  color: #475569;
+  color: var(--color-slate-600);
   text-align: center;
 }
 
@@ -91,26 +91,26 @@ const selectTestType = (type) => {
 }
 
 .task-type-btn.e2e-test {
-  background-color: #e0f2fe;
-  color: #0284c7;
-  box-shadow: 0 4px 6px -1px rgba(2, 132, 199, 0.1), 0 2px 4px -1px rgba(2, 132, 199, 0.06);
+  background-color: var(--color-sky-100);
+  color: var(--color-sky-600);
+  box-shadow: 0 4px 6px -1px color-mix(in srgb, var(--color-sky-600) 10%, transparent), 0 2px 4px -1px color-mix(in srgb, var(--color-sky-600) 6%, transparent);
 }
 
 .task-type-btn.e2e-test:hover {
-  background-color: #bae6fd;
-  box-shadow: 0 10px 15px -3px rgba(2, 132, 199, 0.1), 0 4px 6px -2px rgba(2, 132, 199, 0.05);
+  background-color: var(--color-sky-200);
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-sky-600) 10%, transparent), 0 4px 6px -2px color-mix(in srgb, var(--color-sky-600) 5%, transparent);
   transform: translateY(-2px);
 }
 
 .task-type-btn.api-test {
-  background-color: #fef3c7;
-  color: #d97706;
-  box-shadow: 0 4px 6px -1px rgba(217, 119, 6, 0.1), 0 2px 4px -1px rgba(217, 119, 6, 0.06);
+  background-color: var(--color-amber-100);
+  color: var(--color-amber-600);
+  box-shadow: 0 4px 6px -1px color-mix(in srgb, var(--color-amber-600) 10%, transparent), 0 2px 4px -1px color-mix(in srgb, var(--color-amber-600) 6%, transparent);
 }
 
 .task-type-btn.api-test:hover {
-  background-color: #fde68a;
-  box-shadow: 0 10px 15px -3px rgba(217, 119, 6, 0.1), 0 4px 6px -2px rgba(217, 119, 6, 0.05);
+  background-color: var(--color-amber-200);
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-amber-600) 10%, transparent), 0 4px 6px -2px color-mix(in srgb, var(--color-amber-600) 5%, transparent);
   transform: translateY(-2px);
 }
 </style>

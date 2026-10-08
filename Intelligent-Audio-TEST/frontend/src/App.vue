@@ -72,6 +72,7 @@ const navItems: NavItem[] = [
   { path: '/APITest', label: 'API测试', icon: 'fas fa-exchange-alt navIcon', permission: 'task:execute' },
   { path: '/AlgorithmConfig', label: '算法配置', icon: 'fas fa-cogs navIcon', permission: 'algorithm:read' },
   { path: '/tasks', label: '测试任务记录', icon: 'fas fa-tasks navIcon', permission: 'task:read' },
+  { path: '/published-tasks', label: '已发布任务', icon: 'fas fa-bookmark navIcon', permission: 'published_task:read' },
   { path: '/history-reports', label: '历史报告', icon: 'fas fa-history navIcon', permission: 'report:read' },
   { path: '/TestCaseManager', label: '用例管理', icon: 'fas fa-tasks navIcon', permission: 'testcase:read' },
   { path: '/Evaluation', label: '评估维度管理', icon: 'fas fa-star navIcon', permission: 'evaluation:read' },

@@ -41,8 +41,8 @@ onUnmounted(() => { if (timer) clearTimeout(timer); });
   gap: 4px;
   padding: 2px 8px;
   border-radius: 3px;
-  background: #eef2f7;
-  color: #475569;
+  background: var(--color-slate-100);
+  color: var(--color-slate-600);
   font-size: 12px;
   cursor: pointer;
   user-select: none;
@@ -50,12 +50,12 @@ onUnmounted(() => { if (timer) clearTimeout(timer); });
 }
 
 .case-id-badge:hover {
-  background: #e2e8f0;
-  color: #1e293b;
+  background: var(--color-slate-200);
+  color: var(--color-slate-800);
 }
 
 .case-id-copied {
-  color: #16a34a;
+  color: var(--color-green-600);
   font-weight: 600;
 }
 </style>

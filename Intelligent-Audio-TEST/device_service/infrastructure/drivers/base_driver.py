@@ -1,4 +1,5 @@
 from .utils import get_task_events, log_and_emit
+from shared.utils import distributed_coordinator as dc
 
 class BaseDeviceDriver:
     """基础设备驱动类"""
@@ -296,33 +297,63 @@ class BaseDeviceDriver:
 
     def _check_stop(self, operation_name=""):
         """检查是否需要停止操作
-        
+
+        多实例下优先读 Redis 分布式停止/暂停信号（task:stop: / task:pause:），
+        Redis 不可用（DISTRIBUTED_COORDINATOR_ENABLED=false 或连接失败）时
+        降级为本进程注册表事件，保证单实例行为不变。
+
         Args:
             operation_name: 操作名称
-            
+
         Returns:
             bool: 是否需要停止
         """
+        # 优先读取 Redis 分布式信号（多实例一致）
+        if self._task_id and (dc.is_task_stopped(self._task_id) or dc.is_task_paused(self._task_id)):
+            return self._check_control_from_redis(operation_name)
+
+        # 降级：本进程注册表事件（单实例 / Redis 未启用）
         events = self._get_events()
         if events is None:
             return False
-        
+
         stop_event = events.get('stop_event')
         if stop_event and stop_event.is_set():
             self._log(level='INFO', content=f"Task stopped during {operation_name} operation")
             return True
-        
+
         pause_event = events.get('pause_event')
         if pause_event and not pause_event.is_set():
             self._log(level='INFO', content=f"Task paused during {operation_name} operation")
             import time
-            while pause_event.is_set():
+            # 等待恢复；暂停期间同时检测停止
+            while not pause_event.is_set():
                 time.sleep(0.1)
-                # 检查是否同时被停止
                 if stop_event and stop_event.is_set():
                     self._log(level='INFO', content=f"Task stopped during {operation_name} operation")
                     return True
-        
+
+        return False
+
+    def _check_control_from_redis(self, operation_name=""):
+        """基于 Redis 分布式信号检查停止/暂停（多实例路径）
+
+        Returns:
+            bool: 是否需要停止（暂停会阻塞等待恢复，恢复后返回 False）
+        """
+        if not self._task_id:
+            return False
+        import time
+        if dc.is_task_stopped(self._task_id):
+            self._log(level='INFO', content=f"Task stopped during {operation_name} operation")
+            return True
+        if dc.is_task_paused(self._task_id):
+            self._log(level='INFO', content=f"Task paused during {operation_name} operation")
+            while dc.is_task_paused(self._task_id):
+                time.sleep(0.1)
+                if dc.is_task_stopped(self._task_id):
+                    self._log(level='INFO', content=f"Task stopped during {operation_name} operation")
+                    return True
         return False
 
     def _wait_for_condition(self, condition_fn, timeout=30, interval=1.0, operation_name=""):

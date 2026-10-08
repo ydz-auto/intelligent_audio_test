@@ -311,12 +311,12 @@ onMounted(() => {
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #495057;
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
 .description {
-  color: #6c757d;
+  color: var(--muted-foreground);
   font-size: 14px;
 }
 
@@ -332,20 +332,20 @@ onMounted(() => {
   gap: 6px;
   cursor: pointer;
   font-weight: normal;
-  color: #495057;
+  color: var(--muted-foreground);
 }
 
 .radio-label input[type="radio"] {
   cursor: pointer;
-  accent-color: #1677ff;
+  accent-color: var(--secondary);
 }
 
 .form-control {
   padding: 10px 12px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 14px;
-  color: #495057;
+  color: var(--muted-foreground);
   transition: border-color 0.2s, box-shadow 0.2s;
   width: 100%;
   box-sizing: border-box;
@@ -353,17 +353,17 @@ onMounted(() => {
 
 .form-control:focus {
   outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .form-control::placeholder {
-  color: #adb5bd;
+  color: var(--gray);
 }
 
 select.form-control {
   cursor: pointer;
-  background: #fff;
+  background: var(--background);
 }
 
 .tag-input-wrapper {
@@ -389,13 +389,13 @@ select.form-control {
 }
 
 .tag-item-remove {
-  background-color: #ffebee;
-  color: #c62828;
-  border: 1px solid #ffcdd2;
+  background-color: var(--destructive-light);
+  color: var(--color-red-800);
+  border: 1px solid var(--destructive-light);
 }
 
 .tag-item-remove .tag-remove {
-  color: #c62828;
+  color: var(--color-red-800);
 }
 
 .tag-remove {
@@ -426,7 +426,7 @@ select.form-control {
 
 .existing-tags-label {
   font-size: 12px;
-  color: #6c757d;
+  color: var(--muted-foreground);
   margin-right: 4px;
 }
 
@@ -435,12 +435,12 @@ select.form-control {
 }
 
 .existing-tag:hover {
-  background-color: #bbdefb;
+  background-color: var(--secondary-light);
   border-color: var(--secondary-color);
 }
 
 .existing-tag.selected {
-  background-color: #bbdefb;
+  background-color: var(--secondary-light);
   border-color: var(--secondary-color);
 }
 
@@ -454,7 +454,7 @@ select.form-control {
   gap: 12px;
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid var(--color-gray-200);
 }
 
 .btn {
@@ -467,26 +467,18 @@ select.form-control {
 }
 
 .btn-secondary {
-  background: #f5f5f5;
-  color: #333;
-  border: 1px solid #ddd;
-}
-
-.btn-secondary:hover {
-  background: #e8e8e8;
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--color-gray-300);
 }
 
 .btn-primary {
-  background: #1677ff;
-  color: #fff;
-}
-
-.btn-primary:hover {
-  background: #4096ff;
+  background: var(--secondary);
+  color: var(--background);
 }
 
 .btn-primary:disabled {
-  background: #ccc;
+  background: var(--color-gray-300);
   cursor: not-allowed;
 }
 
@@ -501,21 +493,21 @@ select.form-control {
 .page-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid #d9d9d9;
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--background);
   border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #666;
+  color: var(--color-gray-500);
   font-size: 12px;
   transition: all 0.2s;
 }
 
 .page-btn:hover:not(:disabled) {
-  border-color: #1677ff;
-  color: #1677ff;
+  border-color: var(--secondary);
+  color: var(--secondary);
 }
 
 .page-btn:disabled {
@@ -525,7 +517,7 @@ select.form-control {
 
 .page-info {
   font-size: 12px;
-  color: #666;
+  color: var(--color-gray-500);
   min-width: 50px;
   text-align: center;
 }

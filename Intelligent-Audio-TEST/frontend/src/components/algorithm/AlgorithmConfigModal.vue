@@ -183,28 +183,66 @@
             </div>
           </div>
           <div class="params-toolbar">
-            <div class="param-type-tabs">
-              <button 
-                class="param-type-tab" 
-                :class="{ active: paramConfigType === 'device' }"
-                @click="paramConfigType = 'device'"
-              >
-                设备参数
-              </button>
-              <button 
-                class="param-type-tab" 
-                :class="{ active: paramConfigType === 'api' }"
-                @click="paramConfigType = 'api'"
-              >
-                API参数
-              </button>
-              <button 
-                class="param-type-tab" 
-                :class="{ active: paramConfigType === 'case' }"
-                @click="paramConfigType = 'case'"
-              >
-                用例参数
-              </button>
+            <div class="params-toolbar-actions">
+              <div class="param-type-tabs">
+                <button 
+                  class="param-type-tab" 
+                  :class="{ active: paramConfigType === 'device' }"
+                  @click="paramConfigType = 'device'"
+                >
+                  设备参数
+                </button>
+                <button 
+                  class="param-type-tab" 
+                  :class="{ active: paramConfigType === 'api' }"
+                  @click="paramConfigType = 'api'"
+                >
+                  API参数
+                </button>
+                <button 
+                  class="param-type-tab" 
+                  :class="{ active: paramConfigType === 'case' }"
+                  @click="paramConfigType = 'case'"
+                >
+                  用例参数
+                </button>
+              </div>
+              <div class="search-box">
+                <i class="fas fa-search search-icon"></i>
+                <input
+                  type="text"
+                  class="search-input"
+                  :placeholder="paramConfigType === 'case' ? '搜索参数代码/名称/标注/路径...' : '搜索参数代码/名称...'"
+                  v-model="paramSearchModel"
+                >
+              </div>
+              <select v-if="paramConfigType === 'case'" class="form-input param-filter-select" v-model="caseParamTypeFilter">
+                <option value="all">全部类型</option>
+                <option value="text">文本</option>
+                <option value="number">数字</option>
+                <option value="textarea">多行文本</option>
+                <option value="switch">开关</option>
+                <option value="slider">滑块</option>
+                <option value="audio_select">音频选择</option>
+                <option value="device_select">设备选择</option>
+                <option value="json">JSON结构化</option>
+              </select>
+              <select v-if="paramConfigType === 'case'" class="form-input param-filter-select" v-model="caseParamScopeFilter">
+                <option value="all">全部范围</option>
+                <option value="common">通用</option>
+                <option :value="TestType.API">API</option>
+                <option :value="TestType.E2E">E2E</option>
+              </select>
+              <select v-else class="form-input param-filter-select" v-model="paramDirectionFilter">
+                <option value="all">全部方向</option>
+                <option value="input">输入</option>
+                <option value="output">输出</option>
+              </select>
+              <select class="form-input param-filter-select" v-model="paramRequiredFilter">
+                <option value="all">全部必填</option>
+                <option value="required">必填</option>
+                <option value="optional">选填</option>
+              </select>
             </div>
             <button class="btn btn-primary btn-sm" @click="handleAddParam">
               <i class="fas fa-plus btn-icon"></i>添加参数
@@ -216,11 +254,51 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>参数代码</th>
-                  <th>参数名称</th>
-                  <th>方向</th>
-                  <th>类型</th>
-                  <th>必填</th>
+                  <th>
+                    参数代码
+                    <ColumnFilter
+                      v-model="deviceApiFilters.paramCode"
+                      label="参数代码"
+                      :options="distinctValues(currentParams, 'paramCode')"
+                      :active="deviceApiFilters.paramCode !== 'all'"
+                    />
+                  </th>
+                  <th>
+                    参数名称
+                    <ColumnFilter
+                      v-model="deviceApiFilters.paramName"
+                      label="参数名称"
+                      :options="distinctValues(currentParams, 'paramName')"
+                      :active="deviceApiFilters.paramName !== 'all'"
+                    />
+                  </th>
+                  <th>
+                    方向
+                    <ColumnFilter
+                      v-model="deviceApiFilters.direction"
+                      label="方向"
+                      :options="directionOptions"
+                      :active="deviceApiFilters.direction !== 'all'"
+                    />
+                  </th>
+                  <th>
+                    类型
+                    <ColumnFilter
+                      v-model="deviceApiFilters.paramType"
+                      label="类型"
+                      :options="deviceApiTypeOptions"
+                      :active="deviceApiFilters.paramType !== 'all'"
+                    />
+                  </th>
+                  <th>
+                    必填
+                    <ColumnFilter
+                      v-model="deviceApiFilters.required"
+                      label="必填"
+                      :options="requiredOptions"
+                      :active="deviceApiFilters.required !== 'all'"
+                    />
+                  </th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -228,7 +306,10 @@
                 <tr v-if="currentParams.length === 0">
                   <td colspan="6" class="empty-row">暂无参数</td>
                 </tr>
-                <tr v-else v-for="(param, index) in currentParams" :key="param.id || param.tempId || index">
+                <tr v-else-if="filteredCurrentParams.length === 0">
+                  <td colspan="6" class="empty-row">无匹配参数</td>
+                </tr>
+                <tr v-else v-for="(param, index) in filteredCurrentParams" :key="param.id || param.tempId || index">
                   <td>
                     <input type="text" class="form-input form-input-sm param-code-input" v-model="param.paramCode" @blur="handleParamBlur(param, index, paramConfigType)">
                   </td>
@@ -272,16 +353,88 @@
             <table class="data-table" style="table-layout: fixed;">
               <thead>
                 <tr>
-                  <th style="width: 110px;">参数代码</th>
-                  <th style="width: 100px;">参数名称</th>
-                  <th style="width: 90px;">类型</th>
-                  <th style="width: 80px;">适用范围</th>
-                  <th style="width: 50px;">必填</th>
-                  <th style="width: 80px;">默认值</th>
+                  <th style="width: 110px;">
+                    参数代码
+                    <ColumnFilter
+                      v-model="caseFilters.paramCode"
+                      label="参数代码"
+                      :options="distinctValues(formState.caseParams, 'paramCode')"
+                      :active="caseFilters.paramCode !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 100px;">
+                    参数名称
+                    <ColumnFilter
+                      v-model="caseFilters.paramName"
+                      label="参数名称"
+                      :options="distinctValues(formState.caseParams, 'paramName')"
+                      :active="caseFilters.paramName !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 90px;">
+                    类型
+                    <ColumnFilter
+                      v-model="caseFilters.paramType"
+                      label="类型"
+                      :options="caseTypeOptions"
+                      :active="caseFilters.paramType !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 80px;">
+                    适用范围
+                    <ColumnFilter
+                      v-model="caseFilters.scope"
+                      label="适用范围"
+                      :options="scopeOptions"
+                      :active="caseFilters.scope !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 50px;">
+                    必填
+                    <ColumnFilter
+                      v-model="caseFilters.required"
+                      label="必填"
+                      :options="requiredOptions"
+                      :active="caseFilters.required !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 80px;">
+                    默认值
+                    <ColumnFilter
+                      v-model="caseFilters.defaultValue"
+                      label="默认值"
+                      :options="distinctValues(formState.caseParams, 'defaultValue')"
+                      :active="caseFilters.defaultValue !== 'all'"
+                    />
+                  </th>
                   <th style="width: 160px;">范围约束</th>
-                  <th style="width: 120px;">标注代码</th>
-                  <th style="width: 120px;">字段路径</th>
-                  <th style="width: 100px;">帮助文本</th>
+                  <th style="width: 120px;">
+                    标注代码
+                    <ColumnFilter
+                      v-model="caseFilters.annotationCode"
+                      label="标注代码"
+                      :options="distinctValues(formState.caseParams, 'annotationCode')"
+                      :active="caseFilters.annotationCode !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 120px;">
+                    字段路径
+                    <ColumnFilter
+                      v-model="caseFilters.fieldPath"
+                      label="字段路径"
+                      :options="distinctValues(formState.caseParams, 'fieldPath')"
+                      :active="caseFilters.fieldPath !== 'all'"
+                    />
+                  </th>
+                  <th style="width: 100px;">
+                    帮助文本
+                    <ColumnFilter
+                      v-model="caseFilters.helpText"
+                      label="帮助文本"
+                      :options="distinctValues(formState.caseParams, 'helpText')"
+                      :active="caseFilters.helpText !== 'all'"
+                    />
+                  </th>
                   <th style="width: 50px;">操作</th>
                 </tr>
               </thead>
@@ -289,7 +442,10 @@
                 <tr v-if="formState.caseParams.length === 0">
                   <td colspan="11" class="empty-row">暂无用例参数</td>
                 </tr>
-                <tr v-else v-for="(param, index) in formState.caseParams" :key="param.id || param.tempId || index">
+                <tr v-else-if="filteredCaseParams.length === 0">
+                  <td colspan="11" class="empty-row">无匹配参数</td>
+                </tr>
+                <tr v-else v-for="(param, index) in filteredCaseParams" :key="param.id || param.tempId || index">
                   <td>
                     <input type="text" list="case-param-code-presets" class="form-input form-input-sm param-code-input" v-model="param.paramCode" @change="handleParamCodeSelect(param, index)" @blur="handleCaseParamBlur(param, index)">
                   </td>
@@ -364,6 +520,31 @@
           </div>
 
           <div class="params-toolbar">
+            <div class="params-toolbar-actions">
+              <div class="search-box">
+                <i class="fas fa-search search-icon"></i>
+                <input
+                  type="text"
+                  class="search-input"
+                  placeholder="搜索参考参数..."
+                  v-model="referenceSearchKeyword"
+                >
+              </div>
+              <select class="form-input param-filter-select" v-model="referenceTypeFilter">
+                <option value="all">全部类型</option>
+                <option value="text">文本</option>
+                <option value="audio">音频</option>
+                <option value="json">JSON</option>
+                <option value="rttm">RTTM</option>
+                <option value="stm">STM</option>
+              </select>
+              <select class="form-input param-filter-select" v-model="referenceMergeFilter">
+                <option value="all">全部合并</option>
+                <option value="join">拼接</option>
+                <option value="collect">收集数组</option>
+                <option value="first">取第一个</option>
+              </select>
+            </div>
             <button class="btn btn-primary btn-sm" @click="handleAddReferenceParam">
               <i class="fas fa-plus btn-icon"></i>添加参考字段
             </button>
@@ -373,14 +554,78 @@
             <table class="data-table" style="table-layout: fixed;">
               <thead>
                   <tr>
-                    <th style="width: 120px;">参数代码</th>
-                    <th style="width: 120px;">标注代码</th>
-                    <th style="width: 100px;">参数名称</th>
-                    <th style="width: 100px;">参考类型</th>
-                    <th style="width: 100px;">标注格式</th>
-                    <th style="width: 140px;">字段路径</th>
-                    <th style="width: 90px;">合并方式</th>
-                    <th style="width: 120px;">帮助文本</th>
+                    <th style="width: 120px;">
+                      参数代码
+                      <ColumnFilter
+                        v-model="referenceFilters.code"
+                        label="参数代码"
+                        :options="distinctValues(formState.referenceParams, 'code')"
+                        :active="referenceFilters.code !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 120px;">
+                      标注代码
+                      <ColumnFilter
+                        v-model="referenceFilters.annotationCode"
+                        label="标注代码"
+                        :options="distinctValues(formState.referenceParams, 'annotationCode')"
+                        :active="referenceFilters.annotationCode !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 100px;">
+                      参数名称
+                      <ColumnFilter
+                        v-model="referenceFilters.name"
+                        label="参数名称"
+                        :options="distinctValues(formState.referenceParams, 'name')"
+                        :active="referenceFilters.name !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 100px;">
+                      参考类型
+                      <ColumnFilter
+                        v-model="referenceFilters.type"
+                        label="参考类型"
+                        :options="referenceTypeOptions"
+                        :active="referenceFilters.type !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 100px;">
+                      标注格式
+                      <ColumnFilter
+                        v-model="referenceFilters.annotationFormat"
+                        label="标注格式"
+                        :options="referenceFormatOptions"
+                        :active="referenceFilters.annotationFormat !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 140px;">
+                      字段路径
+                      <ColumnFilter
+                        v-model="referenceFilters.fieldPath"
+                        label="字段路径"
+                        :options="distinctValues(formState.referenceParams, 'fieldPath')"
+                        :active="referenceFilters.fieldPath !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 90px;">
+                      合并方式
+                      <ColumnFilter
+                        v-model="referenceFilters.mergeMode"
+                        label="合并方式"
+                        :options="mergeOptions"
+                        :active="referenceFilters.mergeMode !== 'all'"
+                      />
+                    </th>
+                    <th style="width: 120px;">
+                      帮助文本
+                      <ColumnFilter
+                        v-model="referenceFilters.helpText"
+                        label="帮助文本"
+                        :options="distinctValues(formState.referenceParams, 'helpText')"
+                        :active="referenceFilters.helpText !== 'all'"
+                      />
+                    </th>
                     <th style="width: 60px;">操作</th>
                   </tr>
                 </thead>
@@ -388,7 +633,10 @@
                   <tr v-if="formState.referenceParams.length === 0">
                     <td colspan="9" class="empty-row">暂无参考参数</td>
                   </tr>
-                <tr v-else v-for="(param, index) in formState.referenceParams" :key="param.id || param.tempId || index">
+                  <tr v-else-if="filteredReferenceParams.length === 0">
+                    <td colspan="9" class="empty-row">无匹配参数</td>
+                  </tr>
+                <tr v-else v-for="(param, index) in filteredReferenceParams" :key="param.id || param.tempId || index">
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.code" placeholder="如: asr_reference_text" @blur="handleReferenceParamBlur(param, index)">
                   </td>
@@ -414,6 +662,7 @@
                         <option value="json">JSON</option>
                         <option value="rttm">RTTM</option>
                         <option value="stm">STM</option>
+                        <option value="boolean">布尔</option>
                       </select>
                     </td>
                     <td>
@@ -448,6 +697,7 @@
             </div>
             <div class="mapping-body" v-show="mappingExpanded.device">
               <MappingEditor
+                :key="`mapping-device-${mappingEditorKey}`"
                 :mappings="formState.mappings.device"
                 :algorithm-type="formState.type"
                 :case-params="[...caseParams, ...referenceParams]"
@@ -465,6 +715,7 @@
             </div>
             <div class="mapping-body" v-show="mappingExpanded.api">
               <MappingEditor
+                :key="`mapping-api-${mappingEditorKey}`"
                 :mappings="formState.mappings.api"
                 :algorithm-type="formState.type"
                 :case-params="[...caseParams, ...referenceParams]"
@@ -482,6 +733,7 @@
             </div>
             <div class="mapping-body" v-show="mappingExpanded.evaluation">
               <MappingEditor
+                :key="`mapping-evaluation-${mappingEditorKey}`"
                 :mappings="formState.mappings.evaluation"
                 :algorithm-type="formState.type"
                 :case-params="caseParams"
@@ -498,6 +750,15 @@
 
         <div v-show="activeTab === 'dimensions'" class="tab-content">
           <div class="dimensions-toolbar">
+            <div class="search-box">
+              <i class="fas fa-search search-icon"></i>
+              <input
+                type="text"
+                class="search-input"
+                placeholder="搜索评估维度..."
+                v-model="dimensionSearchKeyword"
+              >
+            </div>
             <button class="btn btn-primary btn-sm" @click="handleAddDimension">
               <i class="fas fa-plus btn-icon"></i>添加关联维度
             </button>
@@ -507,9 +768,25 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>评估维度</th>
+                  <th>
+                    评估维度
+                    <ColumnFilter
+                      v-model="dimensionFilters.dimensionId"
+                      label="评估维度"
+                      :options="dimensionFilterOptions"
+                      :active="dimensionFilters.dimensionId !== 'all'"
+                    />
+                  </th>
                   <th>权重</th>
-                  <th>默认</th>
+                  <th>
+                    默认
+                    <ColumnFilter
+                      v-model="dimensionFilters.isDefault"
+                      label="默认"
+                      :options="[{ value: 'default', label: '默认' }, { value: 'optional', label: '非默认' }]"
+                      :active="dimensionFilters.isDefault !== 'all'"
+                    />
+                  </th>
                   <th>操作</th>
                 </tr>
               </thead>
@@ -517,7 +794,10 @@
                 <tr v-if="formState.associatedDimensions.length === 0">
                   <td colspan="4" class="empty-row">暂无关联维度</td>
                 </tr>
-                <tr v-else v-for="(dim, index) in formState.associatedDimensions" :key="index">
+                <tr v-else-if="filteredDimensions.length === 0">
+                  <td colspan="4" class="empty-row">无匹配维度</td>
+                </tr>
+                <tr v-else v-for="(dim, index) in filteredDimensions" :key="index">
                   <td>
                     <select class="form-input form-input-sm" v-model="dim.dimensionId" @blur="handleDimensionBlur(index)">
                       <option :value="null">请选择维度</option>
@@ -552,6 +832,7 @@
 <script setup lang="ts">
 import BasicModal from '../common/modal/BasicModal.vue'
 import MappingEditor from './MappingEditor.vue'
+import ColumnFilter from '../common/ColumnFilter.vue'
 import { useAlgorithmConfigModal } from './AlgorithmConfigModal'
 import type { ModalProps } from './AlgorithmConfigModal'
 import type { AlgorithmDefinition } from '@/domain'
@@ -597,6 +878,34 @@ const {
   creatingNewGroup,
   newGroupName,
   paramConfigType,
+  paramSearchModel,
+  paramDirectionFilter,
+  paramRequiredFilter,
+  caseParamTypeFilter,
+  caseParamScopeFilter,
+  referenceSearchKeyword,
+  referenceTypeFilter,
+  referenceMergeFilter,
+  dimensionSearchKeyword,
+  mappingEditorKey,
+  deviceApiFilters,
+  caseFilters,
+  referenceFilters,
+  dimensionFilters,
+  directionOptions,
+  requiredOptions,
+  deviceApiTypeOptions,
+  caseTypeOptions,
+  scopeOptions,
+  referenceTypeOptions,
+  referenceFormatOptions,
+  mergeOptions,
+  dimensionFilterOptions,
+  distinctValues,
+  filteredCurrentParams,
+  filteredCaseParams,
+  filteredReferenceParams,
+  filteredDimensions,
   isBundleActive,
   toggleBundle,
   currentParams,

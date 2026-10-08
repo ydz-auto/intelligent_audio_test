@@ -123,8 +123,8 @@ class ReportDataResourceMixin:
         all_metrics = []
         for dim in all_dimensions:
             statistic_method = _dim_statistic_method(dim) or 'average'
-            # 聚合方式决定 unit：pass_rate/ratio 产出百分比，强制为 %；其余用维度配置的 score_unit
-            if statistic_method in ('pass_rate', 'ratio'):
+            # 聚合方式决定 unit：pass_rate/ratio/weighted_sum_ratio/weighted_wer 产出百分比，强制为 %；其余用维度配置的 score_unit
+            if statistic_method in ('pass_rate', 'ratio', 'weighted_sum_ratio', 'weighted_wer'):
                 unit = "%"
             else:
                 score_unit = _dim_score_unit(dim)

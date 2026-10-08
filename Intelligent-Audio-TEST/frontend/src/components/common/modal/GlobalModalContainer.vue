@@ -426,7 +426,7 @@ const handleSelectFolder = (modalId: string, data: any) => {
 .modal-error {
   padding: 20px;
   text-align: center;
-  color: #ef4444;
+  color: var(--color-red-500);
 }
 
 .modal-error p {
@@ -435,6 +435,6 @@ const handleSelectFolder = (modalId: string, data: any) => {
 
 .error-details {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--color-gray-400);
 }
 </style>

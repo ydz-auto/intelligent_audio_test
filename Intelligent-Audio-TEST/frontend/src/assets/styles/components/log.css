@@ -8,43 +8,38 @@
 
 .log-row:hover {
     transform: translateX(2px);
-    background-color: rgba(255, 106, 0, 0.05);
+    background-color: color-mix(in srgb, var(--primary) 5%, transparent);
 }
 
 /* 日志行选中状态 */
 .log-row:has(.log-checkbox:checked) {
-    background-color: rgba(255, 106, 0, 0.05);
+    background-color: color-mix(in srgb, var(--primary) 5%, transparent);
     border-left: 4px solid var(--primary-color);
 }
 
 /* 日志复选框样式 */
-.log-checkbox {
-    width: 20px;
-    height: 20px;
-    cursor: pointer;
-}
 
 /* 日志详情行样式 */
 .log-details {
     background-color: var(--background-secondary);
     transition: all var(--transition-normal);
-    width: 100% !important;
-    table-layout: auto !important;
+    width: 100% ;
+    table-layout: auto ;
 }
 
 .log-details td {
-    padding: 0 !important;
-    border-bottom: none !important;
-    white-space: normal !important;
-    overflow: visible !important;
-    text-overflow: clip !important;
-    cursor: default !important;
-    width: 100% !important;
-    display: table-cell !important;
-    position: static !important;
-    left: 0 !important;
-    right: 0 !important;
-    margin: 0 !important;
+    padding: 0 ;
+    border-bottom: none ;
+    white-space: normal ;
+    overflow: visible ;
+    text-overflow: clip;
+    cursor: default ;
+    width: 100% ;
+    display: table-cell ;
+    position: static ;
+    left: 0 ;
+    right: 0 ;
+    margin: 0 ;
 }
 
 .log-details-content {
@@ -52,42 +47,42 @@
     background-color: var(--background-primary);
     border-radius: var(--border-radius-md);
     box-shadow: var(--shadow-sm);
-    width: 100% !important;
-    max-width: 100% !important;
-    box-sizing: border-box !important;
-    white-space: normal !important;
-    overflow: visible !important;
-    position: static !important;
-    margin: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
+    width: 100% ;
+    max-width: 100% ;
+    box-sizing: border-box;
+    white-space: normal ;
+    overflow: visible ;
+    position: static ;
+    margin: 0 ;
+    left: 0 ;
+    right: 0 ;
 }
 
 /* 修复固定表格布局下的详情行宽度问题 */
 .data-table {
-    overflow-x: visible !important;
+    overflow-x: visible ;
 }
 
 .data-table tbody {
-    overflow-x: visible !important;
+    overflow-x: visible ;
 }
 
 /* 确保详情行在固定表格布局中正确显示 */
 .data-table .log-details {
-    overflow-x: visible !important;
-    table-layout: auto !important;
-    width: 100% !important;
-    /* 移除 display: table-row !important; 以允许内联样式控制显示/隐藏 */
+    overflow-x: visible ;
+    table-layout: auto ;
+    width: 100% ;
+    /* 移除 display: table-row ; 以允许内联样式控制显示/隐藏 */
 }
 
 /* 确保合并单元格正确占满宽度 */
 .data-table .log-details td[colspan="8"] {
-    width: 100% !important;
-    min-width: 100% !important;
-    max-width: 100% !important;
-    overflow-x: visible !important;
-    display: table-cell !important;
-    position: static !important;
+    width: 100% ;
+    min-width: 100% ;
+    max-width: 100% ;
+    overflow-x: visible ;
+    display: table-cell ;
+    position: static ;
 }
 
 .log-details-content h4 {
@@ -134,36 +129,32 @@
 }
 
 .log-level.debug {
-    background-color: #e6f7ff;
-    color: #1890ff;
+    background-color: var(--secondary-light);
+    color: var(--secondary);
 }
 
 .log-level.info {
-    background-color: #f6ffed;
-    color: #52c41a;
+    background-color: var(--success-light);
+    color: var(--success);
 }
 
 .log-level.warning {
-    background-color: #fff7e6;
-    color: #fa8c16;
+    background-color: var(--warning-light);
+    color: var(--warning);
 }
 
 .log-level.error {
-    background-color: #fff2f0;
-    color: #f5222d;
+    background-color: var(--color-red-50);
+    color: var(--destructive);
 }
 
 .log-level.critical {
-    background-color: #fff1f0;
-    color: #f5222d;
+    background-color: var(--destructive-light);
+    color: var(--destructive);
     font-weight: bold;
 }
 
 /* 日志模块和来源样式 */
-.log-module {
-    font-weight: var(--font-weight-medium);
-    color: var(--text-primary);
-}
 
 .log-source {
     display: inline-flex;
@@ -196,7 +187,6 @@
 .filter-section {
     margin-bottom: var(--spacing-xl);
     width: 100%;
-    box-sizing: border-box;
 }
 
 .log-view {
@@ -220,193 +210,193 @@
 }
 
 .log-view > .filter-section > .filter-bar {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: var(--spacing-sm) !important;
-    padding: var(--spacing-md) var(--spacing-md) !important;
-    background-color: var(--background-primary) !important;
-    border: 1px solid var(--border-color) !important;
-    border-radius: var(--border-radius-lg) !important;
-    box-shadow: var(--shadow-sm) !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    white-space: normal !important;
-    overflow: visible !important;
-    position: relative !important;
-    z-index: 1 !important;
-    min-height: 120px !important;
-    height: auto !important;
-    flex-grow: 1 !important;
-    flex-wrap: wrap !important;
+    display: flex ;
+    flex-direction: column ;
+    align-items: flex-start ;
+    gap: var(--spacing-sm) ;
+    padding: var(--spacing-md) var(--spacing-md) ;
+    background-color: var(--background-primary) ;
+    border: 1px solid var(--border-color) ;
+    border-radius: var(--border-radius-lg) ;
+    box-shadow: var(--shadow-sm) ;
+    width: 100% ;
+    box-sizing: border-box;
+    white-space: normal ;
+    overflow: visible ;
+    position: relative ;
+    z-index: 1 ;
+    min-height: 120px ;
+    height: auto ;
+    flex-grow: 1 ;
+    flex-wrap: wrap ;
     /* 防止路由切换时的高度塌陷 */
-    transition: height 0.1s ease-in-out !important;
-    will-change: height !important;
-    contain: layout style !important;
+    transition: height 0.1s ease-in-out ;
+    will-change: height;
+    contain: layout style;
 }
 
 /* 添加强制重绘的规则 */
 .log-view > .filter-section > .filter-bar::after {
     content: '';
-    display: table !important;
-    clear: both !important;
-    height: 0 !important;
-    visibility: hidden !important;
+    display: table ;
+    clear: both;
+    height: 0 ;
+    visibility: hidden ;
 }
 
 /* 确保筛选卡片在任何状态下都能正确渲染 */
 .log-view > .filter-section {
-    display: block !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: 150px !important;
-    overflow: visible !important;
-    box-sizing: border-box !important;
+    display: block ;
+    width: 100% ;
+    height: auto ;
+    min-height: 150px ;
+    overflow: visible ;
+    box-sizing: border-box;
 }
 
 /* 覆盖main.css中的全局样式，确保筛选卡片能正确换行 */
 .log-view .filter-bar,
 .log-view .filter-bar * {
-    flex-wrap: wrap !important;
-    white-space: normal !important;
-    overflow: visible !important;
-    height: auto !important;
+    flex-wrap: wrap ;
+    white-space: normal ;
+    overflow: visible ;
+    height: auto ;
 }
 
 .log-view .filter-row {
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    gap: var(--spacing-md) !important;
-    min-height: 40px !important;
-    flex-wrap: wrap !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    white-space: normal !important;
-    flex-shrink: 0 !important;
-    overflow: visible !important;
-    flex-basis: auto !important;
-    flex-grow: 0 !important;
+    display: flex ;
+    align-items: center ;
+    justify-content: flex-start ;
+    gap: var(--spacing-md) ;
+    min-height: 40px ;
+    flex-wrap: wrap ;
+    width: 100% ;
+    box-sizing: border-box;
+    padding-left: 0;
+    padding-right: 0 ;
+    white-space: normal ;
+    flex-shrink: 0 ;
+    overflow: visible ;
+    flex-basis: auto;
+    flex-grow: 0 ;
 }
 
 /* 确保所有筛选相关元素都能正确换行 */
 .log-view .filter-bar * {
-    white-space: normal !important;
-    flex-shrink: 0 !important;
-    min-width: auto !important;
-    max-width: none !important;
-    height: auto !important;
+    white-space: normal ;
+    flex-shrink: 0 ;
+    min-width: auto ;
+    max-width: none ;
+    height: auto ;
 }
 
 /* 确保筛选组和搜索框在任何情况下都能正确布局 */
 .log-view .filter-bar .filter-group,
 .log-view .filter-bar .search-box {
-    white-space: normal !important;
-    flex-shrink: 0 !important;
-    flex-wrap: wrap !important;
-    overflow: visible !important;
-    min-width: fit-content !important;
-    max-width: calc(100% - 16px) !important;
-    height: auto !important;
-    align-self: flex-start !important;
+    white-space: normal ;
+    flex-shrink: 0 ;
+    flex-wrap: wrap ;
+    overflow: visible ;
+    min-width: fit-content ;
+    max-width: calc(100% - 16px) ;
+    height: auto ;
+    align-self: flex-start;
 }
 
 .log-view .filter-row.main-row {
-    justify-content: flex-start !important;
-    padding-bottom: var(--spacing-sm) !important;
-    border-bottom: 1px solid var(--border-color-light) !important;
+    justify-content: flex-start ;
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--border-color-light) ;
 }
 
 .log-view .filter-row.secondary-row {
-    padding-top: var(--spacing-xs) !important;
-    justify-content: flex-start !important;
+    padding-top: var(--spacing-xs) ;
+    justify-content: flex-start ;
 }
 
 .log-view .filter-row.level-row {
-    width: 100% !important;
-    margin-top: var(--spacing-sm) !important;
-    justify-content: flex-start !important;
+    width: 100% ;
+    margin-top: var(--spacing-sm) ;
+    justify-content: flex-start ;
 }
 
 .log-view .filter-row.button-row {
-    width: 100% !important;
-    gap: var(--spacing-md) !important;
-    margin-top: var(--spacing-sm) !important;
-    padding-top: var(--spacing-md) !important;
-    border-top: 1px solid var(--border-color) !important;
-    justify-content: flex-start !important;
+    width: 100% ;
+    gap: var(--spacing-md) ;
+    margin-top: var(--spacing-sm) ;
+    padding-top: var(--spacing-md) ;
+    border-top: 1px solid var(--border-color);
+    justify-content: flex-start ;
 }
 
 .log-view .advanced-filter-panel {
-    margin-top: var(--spacing-md) !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    overflow-x: hidden !important;
-    position: relative !important;
-    z-index: 2 !important;
+    margin-top: var(--spacing-md) ;
+    width: 100% ;
+    box-sizing: border-box;
+    overflow-x: hidden ;
+    position: relative ;
+    z-index: 2 ;
 }
 
 .log-view .advanced-filter-panel .filter-bar {
-    display: flex !important;
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: var(--spacing-sm) !important;
-    padding: var(--spacing-md) !important;
-    background-color: var(--background-primary) !important;
-    border: 1px solid var(--border-color) !important;
-    border-radius: var(--border-radius-lg) !important;
-    box-shadow: var(--shadow-sm) !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
-    flex-wrap: wrap !important;
-    white-space: normal !important;
-    overflow-x: hidden !important;
+    display: flex ;
+    flex-direction: column ;
+    align-items: flex-start ;
+    gap: var(--spacing-sm) ;
+    padding: var(--spacing-md) ;
+    background-color: var(--background-primary) ;
+    border: 1px solid var(--border-color) ;
+    border-radius: var(--border-radius-lg) ;
+    box-shadow: var(--shadow-sm) ;
+    width: 100% ;
+    box-sizing: border-box;
+    flex-wrap: wrap ;
+    white-space: normal ;
+    overflow-x: hidden ;
 }
 
 .log-view .advanced-filter-panel .filter-row.filter-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, 1fr) !important;
-    gap: var(--spacing-md) !important;
-    width: 100% !important;
-    margin-bottom: var(--spacing-xs) !important;
+    display: grid ;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-md) ;
+    width: 100% ;
+    margin-bottom: var(--spacing-xs);
 }
 
 .log-view .advanced-filter-panel .filter-bar .filter-group {
-    flex: 1 !important;
-    min-width: 0 !important;
-    white-space: normal !important;
+    flex: 1 ;
+    min-width: 0 ;
+    white-space: normal ;
 }
 
 .log-view .advanced-filter-panel .filter-bar .filter-select {
-    width: 100% !important;
-    flex: 1 !important;
-    height: auto !important;
+    width: 100% ;
+    flex: 1 ;
+    height: auto ;
 }
 
 .log-view .advanced-filter-panel .filter-bar .form-input {
-    width: 100% !important;
-    box-sizing: border-box !important;
-    height: auto !important;
+    width: 100% ;
+    box-sizing: border-box;
+    height: auto ;
 }
 
 /* 修复日志页面所有筛选相关的选择器和输入框高度 */
 .log-view .filter-bar .filter-select,
 .log-view .filter-bar .form-input {
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-    display: flex !important;
-    align-items: center !important;
-    flex-wrap: wrap !important;
+    height: auto ;
+    max-height: none ;
+    overflow: visible ;
+    display: flex ;
+    align-items: center ;
+    flex-wrap: wrap ;
 }
 
 /* 确保时间范围选择器也能正确适应 */
 .log-view .filter-bar .date-time-inputs {
-    flex-wrap: wrap !important;
-    height: auto !important;
-    overflow: visible !important;
+    flex-wrap: wrap ;
+    height: auto ;
+    overflow: visible ;
 }
 
 .log-view .filter-group {
@@ -421,29 +411,21 @@
 
 .log-view .search-box {
     position: relative;
-    flex: 1 !important;
-    min-width: 200px !important;
-    max-width: 300px !important;
-    white-space: normal !important;
-    flex-shrink: 1 !important;
-    box-sizing: border-box !important;
+    flex: 1 ;
+    min-width: 200px ;
+    max-width: 300px ;
+    white-space: normal ;
+    flex-shrink: 1 ;
+    box-sizing: border-box;
 }
 
 .search-input {
-    width: 100%;
-    padding: 8px 32px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius-md);
-    font-size: var(--font-size-sm);
     transition: all var(--transition-fast);
 }
 
 .search-icon {
-    position: absolute;
-    left: 10px;
     top: 50%;
     transform: translateY(-50%);
-    color: var(--text-tertiary);
 }
 
 .search-clear {
@@ -458,36 +440,16 @@
     padding: 0;
 }
 
-.action-buttons-compact {
-    display: flex;
-    gap: 8px;
-    margin-left: auto;
-    align-items: center;
-    padding-left: var(--spacing-md);
-}
+
 
 .btn-icon-only {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    border: 1px solid var(--border-color);
-    background: #fdfdfd;
-    color: #606266;
-    cursor: pointer;
-    transition: all 0.2s;
-    font-size: 14px;
 }
 
 .btn-icon-only i {
-    color: #909399;
+    color: var(--color-gray-400);
 }
 
 .btn-icon-only:hover {
-    background: #f0f7ff;
-    color: var(--primary-color);
     border-color: var(--primary-color);
 }
 
@@ -506,13 +468,13 @@
 }
 
 .btn-icon-only.delete:hover {
-    background: #fef0f0;
-    color: #f56c6c;
-    border-color: #f56c6c;
+    background: var(--color-red-50);
+    color: var(--color-red-400);
+    border-color: var(--color-red-400);
 }
 
 .btn-icon-only.delete:hover i {
-    color: #f56c6c;
+    color: var(--color-red-400);
 }
 
 .btn-text.btn-sm {
@@ -521,7 +483,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    color: #606266;
+    color: var(--color-gray-600);
     background: transparent;
     border: 1px solid transparent;
     border-radius: 4px;
@@ -538,28 +500,11 @@
     font-size: 14px;
 }
 
-.level-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--spacing-sm);
-    align-items: center;
-    height: auto !important;
-    overflow: visible !important;
-    flex-shrink: 0 !important;
-    white-space: normal !important;
-}
 
 .level-tag {
     cursor: pointer;
-    padding: 4px 12px;
-    border-radius: var(--border-radius-full);
-    font-size: var(--font-size-xs);
-    font-weight: 500;
     border: 1px solid transparent;
     transition: all var(--transition-fast);
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
     opacity: 0.6;
 }
 
@@ -570,28 +515,20 @@
 .level-tag.active {
     opacity: 1;
     border-color: currentColor;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 2px 4px color-mix(in srgb, var(--color-black) 10%, transparent);
 }
 
 .level-tag .close-icon {
     font-size: 10px;
 }
 
-.spacer {
-    flex: 1;
-}
 
 /* 筛选标签样式 */
-.filter-label {
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-semibold);
-    color: var(--text-secondary);
-    white-space: nowrap;
-}
+
 /* 搜索框 */
 .log-view .filter-row.search-row {
-    width: 100% !important;
-    justify-content: flex-start !important;
+    width: 100% ;
+    justify-content: flex-start ;
 }
 
 .filter-group.time-range-group {
@@ -602,11 +539,6 @@
     flex-shrink: 1;
 }
 
-.date-time-inputs {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-}
 
 .date-separator {
     color: var(--text-tertiary);
@@ -623,68 +555,28 @@
 
 /* 筛选标签样式 */
 .filter-label {
-    font-size: var(--font-size-sm);
-    font-weight: var(--font-weight-semibold);
-    color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     transition: color var(--transition-normal);
 }
 
 /* 级别筛选器样式 */
-.level-filters {
-    display: flex;
-    gap: var(--spacing-xs);
-    flex-wrap: wrap;
-    align-items: center;
-}
+
 
 /* 复选框样式 */
 .checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    cursor: pointer;
-    transition: all var(--transition-normal);
-    padding: var(--spacing-xs) var(--spacing-sm);
     border-radius: var(--border-radius-md);
 }
 
 .checkbox-label:hover {
-    background-color: var(--background-primary);
     box-shadow: var(--shadow-sm);
 }
 
 /* 高级筛选面板 */
-.advanced-filter-panel {
-    margin-bottom: var(--spacing-xl);
-    transition: all var(--transition-normal);
-}
 
 /* 实时监控指示器 */
-.monitor-indicator {
-    margin-bottom: var(--spacing-xl);
-    padding: var(--spacing-md);
-    background-color: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
-    box-shadow: var(--shadow-sm);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    transition: all var(--transition-normal);
-}
 
-.monitor-status {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-}
 
-.monitor-icon {
-    font-size: var(--font-size-xs);
-    color: var(--success-color);
-    animation: pulse 2s infinite;
-}
 
 @keyframes pulse {
     0% {
@@ -703,14 +595,6 @@
 
 /* 分页插件样式 */
 .pagination {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: var(--spacing-md);
-    margin-top: var(--spacing-lg);
-    padding: var(--spacing-lg);
-    background: var(--background-secondary);
-    border-radius: var(--border-radius-lg);
 }
 
 .pagination button {
@@ -743,10 +627,7 @@
 }
 
 /* 日志详情弹窗样式 */
-.log-detail-modal {
-    width: 90%;
-    max-width: 900px;
-}
+
 
 /* 日志标记样式 */
 .log-row.marked {
@@ -755,23 +636,23 @@
 }
 
 .log-row.marked-yellow {
-    border-left-color: #ffd60a;
-    background-color: rgba(255, 214, 10, 0.05);
+    border-left-color: var(--color-yellow-400);
+    background-color: color-mix(in srgb, var(--color-yellow-400) 5%, transparent);
 }
 
 .log-row.marked-red {
-    border-left-color: #ff4d4f;
-    background-color: rgba(255, 77, 79, 0.05);
+    border-left-color: var(--destructive);
+    background-color: color-mix(in srgb, var(--destructive) 5%, transparent);
 }
 
 .log-row.marked-green {
-    border-left-color: #52c41a;
-    background-color: rgba(82, 196, 26, 0.05);
+    border-left-color: var(--success);
+    background-color: color-mix(in srgb, var(--success) 5%, transparent);
 }
 
 .log-row.marked-blue {
-    border-left-color: #1890ff;
-    background-color: rgba(24, 144, 255, 0.05);
+    border-left-color: var(--secondary);
+    background-color: color-mix(in srgb, var(--secondary) 5%, transparent);
 }
 
 /* 日志表格操作列样式 */
@@ -800,21 +681,21 @@
 }
 
 .log-mark.yellow {
-    background-color: #ffd60a;
-    box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.3);
+    background-color: var(--color-yellow-400);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-yellow-400) 30%, transparent);
 }
 
 .log-mark.red {
-    background-color: #ff4d4f;
-    box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.3);
+    background-color: var(--destructive);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--destructive) 30%, transparent);
 }
 
 .log-mark.green {
-    background-color: #52c41a;
-    box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.3);
+    background-color: var(--success);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 30%, transparent);
 }
 
 .log-mark.blue {
-    background-color: #1890ff;
-    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.3);
+    background-color: var(--secondary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 30%, transparent);
 }

@@ -21,7 +21,9 @@ python scripts/migrations/202608/seed_rbac.py                             # ⑦ 
 
 # ── 202609 ──────────────────────────────────────────────
 python scripts/migrations/202609/add_pass_threshold_to_eval_params.py     # ⑧ 评估阈值列
-python scripts/migrations/202609/seed_voice_llm.py                        # ⑨ 算法/维度种子（按需）
+python scripts/migrations/202609/add_task_case_device_type.py             # ⑨ 用例级设备路由列（执行域 P0）
+python scripts/migrations/202609/add_published_tasks.py                   # ⑩ 已发布任务表 + 日常任务追溯字段（任务发布功能）
+python scripts/migrations/202609/seed_voice_llm.py                        # ⑪ 算法/维度种子（按需）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -55,6 +57,8 @@ python scripts/migrations/202609/seed_voice_llm.py                        # ⑨ 
 | 脚本 | 用途 |
 |------|------|
 | [add_pass_threshold_to_eval_params.py](202609/add_pass_threshold_to_eval_params.py) | `evaluation_dimension_params` 加 `pass_threshold` 列（评估通过阈值） |
+| [add_task_case_device_type.py](202609/add_task_case_device_type.py) | `task_case_relations` 加 `device_type` / `device_id` / `lab_id` 列及索引（执行域 P0：用例级设备路由 + 实验室扩展列） |
+| [add_published_tasks.py](202609/add_published_tasks.py) | 任务发布功能：建 `published_tasks` 表（不可变版本快照/版本链/归档）；`test_tasks` 加 `execution_source` / `published_task_id` / `published_task_version` 追溯列；`published_tasks.report_snapshot` 冻结报告列 |
 | [seed_voice_llm.py](202609/seed_voice_llm.py) | voice_llm 算法全套种子：算法定义 / 用例参数 / 设备输出字段 / API 输入输出字段 / 参考参数 / 参数映射 / 算法-维度关联（`ON CONFLICT DO NOTHING`） |
 | [seed_llm_judge_dimension.py](202609/seed_llm_judge_dimension.py) | LLM Judge 评估维度 |
 | [seed_interruption_dimensions.py](202609/seed_interruption_dimensions.py) | 打断（tor / false_takeover / takeover_latency）维度 |

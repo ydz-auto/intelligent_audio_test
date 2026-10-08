@@ -327,11 +327,11 @@ function getTypeLabel(type: string): string {
 }
 
 .folder-header:hover {
-  background-color: var(--background-secondary, #f5f5f5);
+  background-color: var(--background-secondary, var(--muted));
 }
 
 .folder-header i {
-  color: var(--primary-color, #4a90d9);
+  color: var(--primary-color, var(--secondary));
   font-size: 14px;
   width: 16px;
   text-align: center;
@@ -339,12 +339,12 @@ function getTypeLabel(type: string): string {
 
 .folder-name {
   font-weight: 500;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
 }
 
 .folder-stats {
   font-size: 12px;
-  color: var(--text-muted, #999);
+  color: var(--text-muted, var(--color-gray-400));
 }
 
 .folder-content {
@@ -364,7 +364,7 @@ function getTypeLabel(type: string): string {
   align-items: center;
   gap: var(--spacing-md, 12px);
   padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--border));
   border-radius: var(--border-radius-md, 6px);
   margin-bottom: var(--spacing-xs, 4px);
   transition: all 0.15s;
@@ -372,19 +372,19 @@ function getTypeLabel(type: string): string {
 }
 
 .file-item:hover {
-  background-color: var(--background-secondary, #f5f5f5);
-  border-color: var(--primary-color, #4a90d9);
+  background-color: var(--background-secondary, var(--muted));
+  border-color: var(--primary-color, var(--secondary));
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--color-black) 5%, transparent);
 }
 
 .file-item.highlighted {
-  background-color: var(--primary-light, #e8f0fe);
-  border-color: var(--primary-color, #4a90d9);
+  background-color: var(--primary-light, var(--color-indigo-100));
+  border-color: var(--primary-color, var(--secondary));
 }
 
 .file-icon {
-  color: var(--primary-color, #4a90d9);
+  color: var(--primary-color, var(--secondary));
   font-size: var(--font-size-lg, 18px);
   width: 24px;
   text-align: center;
@@ -397,7 +397,7 @@ function getTypeLabel(type: string): string {
 
 .file-name {
   font-weight: 500;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
   margin-bottom: var(--spacing-xs, 4px);
   white-space: normal;
   word-wrap: break-word;
@@ -416,11 +416,11 @@ function getTypeLabel(type: string): string {
 }
 
 .file-size {
-  color: var(--text-muted, #999);
+  color: var(--text-muted, var(--color-gray-400));
 }
 
 .file-duration {
-  color: var(--text-muted, #999);
+  color: var(--text-muted, var(--color-gray-400));
 }
 
 .format-badge {
@@ -430,14 +430,14 @@ function getTypeLabel(type: string): string {
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
-  background-color: var(--background-tertiary, #eee);
-  color: var(--text-secondary, #666);
+  background-color: var(--background-tertiary, var(--color-gray-200));
+  color: var(--text-secondary, var(--color-gray-500));
 }
 
-.format-badge.wav { background-color: #e3f2fd; color: #1565c0; }
-.format-badge.mp3 { background-color: #f3e5f5; color: #7b1fa2; }
-.format-badge.flac { background-color: #e8f5e9; color: #2e7d32; }
-.format-badge.aac { background-color: #fff3e0; color: #e65100; }
+.format-badge.wav { background-color: var(--color-secondary-light); color: var(--secondary-deep); }
+.format-badge.mp3 { background-color: var(--color-purple-100); color: var(--color-purple-700); }
+.format-badge.flac { background-color: var(--success-light); color: var(--success-dark); }
+.format-badge.aac { background-color: var(--warning-light); color: var(--color-orange-700); }
 
 .audio-type-badge {
   display: inline-block;
@@ -447,10 +447,10 @@ function getTypeLabel(type: string): string {
   font-weight: 500;
 }
 
-.audio-type-badge.dry { background-color: #e8eaf6; color: #283593; }
-.audio-type-badge.noise { background-color: #fff8e1; color: #f57f17; }
-.audio-type-badge.mixed { background-color: #e0f2f1; color: #00695c; }
-.audio-type-badge.prompt { background-color: #fce4ec; color: #c62828; }
+.audio-type-badge.dry { background-color: var(--color-indigo-100); color: var(--color-indigo-800); }
+.audio-type-badge.noise { background-color: var(--color-amber-50); color: var(--color-amber-600); }
+.audio-type-badge.mixed { background-color: var(--color-teal-100); color: var(--color-teal-800); }
+.audio-type-badge.prompt { background-color: var(--color-pink-100); color: var(--color-red-800); }
 
 .file-actions {
   display: flex;
@@ -475,24 +475,24 @@ function getTypeLabel(type: string): string {
 }
 
 .btn-secondary {
-  background-color: var(--background-secondary, #f5f5f5);
-  border: 1px solid var(--border-color, #e0e0e0) !important;
-  color: var(--text-primary, #333);
+  background-color: var(--background-secondary, var(--muted));
+  border: 1px solid var(--border-color, var(--border)) ;
+  color: var(--text-primary, var(--foreground));
 }
 
 .btn-secondary:hover {
-  background-color: var(--background-tertiary, #eee);
-  border-color: var(--primary-color, #4a90d9) !important;
-  color: var(--primary-color, #4a90d9);
+  background-color: var(--background-tertiary, var(--color-gray-200));
+  border-color: var(--primary-color, var(--secondary)) ;
+  color: var(--primary-color, var(--secondary));
 }
 
 .btn-danger {
-  background-color: #ef5350;
+  background-color: var(--color-red-500);
   color: white;
 }
 
 .btn-danger:hover {
-  background-color: #e53935;
+  background-color: var(--color-red-600);
 }
 
 .btn-icon {
@@ -500,14 +500,14 @@ function getTypeLabel(type: string): string {
 }
 
 .audio-checkbox {
-  accent-color: var(--primary-color, #4a90d9);
+  accent-color: var(--primary-color, var(--secondary));
   cursor: pointer;
   width: 16px;
   height: 16px;
 }
 
 .folder-checkbox {
-  accent-color: var(--primary-color, #4a90d9);
+  accent-color: var(--primary-color, var(--secondary));
   cursor: pointer;
   width: 16px;
   height: 16px;
@@ -517,13 +517,13 @@ function getTypeLabel(type: string): string {
 
 .folder-loading {
   margin-left: 8px;
-  color: var(--primary-color, #4a90d9);
+  color: var(--primary-color, var(--secondary));
   font-size: 12px;
 }
 
 .lazy-load-hint {
   padding: 12px 20px;
-  color: var(--text-muted, #999);
+  color: var(--text-muted, var(--color-gray-400));
   font-size: 13px;
   text-align: center;
 }

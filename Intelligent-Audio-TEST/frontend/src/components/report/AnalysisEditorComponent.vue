@@ -197,9 +197,9 @@ export default {
 
 <style scoped>
 .analysis-editor-container {
-  background: #ffffff;
+  background: var(--color-white);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 0;
   margin-bottom: 24px;
   width: 100%;
@@ -241,28 +241,28 @@ export default {
 }
 
 .status-draft {
-  background: #fff7e6;
-  color: #fa8c16;
+  background: var(--warning-light);
+  color: var(--warning);
 }
 
 .status-saved {
-  background: #f6ffed;
-  color: #52c41a;
+  background: var(--success-light);
+  color: var(--success);
 }
 
 .status-published {
-  background: #e6f7ff;
-  color: #1890ff;
+  background: var(--secondary-light);
+  color: var(--secondary);
 }
 
 .status-updating {
-  background: #fff1f0;
-  color: #ff4d4f;
+  background: var(--destructive-light);
+  color: var(--destructive);
 }
 
 .status-pending {
-  background: #f5f5f5;
-  color: #666;
+  background: var(--muted);
+  color: var(--color-gray-500);
 }
 
 .editor-content {
@@ -274,10 +274,10 @@ export default {
 
 .analysis-text-wrapper {
   position: relative;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   min-height: 150px;
-  background: #fafafa;
+  background: var(--color-neutral-50);
 }
 
 .analysis-text {
@@ -285,16 +285,16 @@ export default {
   min-height: 150px;
   outline: none;
   line-height: 1.6;
-  color: #333;
-  background: #ffffff;
+  color: var(--foreground);
+  background: var(--color-white);
   border-radius: 8px;
   transition: all 0.3s ease;
 }
 
 .analysis-text[contenteditable="true"] {
-  background: #ffffff;
-  border-color: #1677FF;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  background: var(--color-white);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .analysis-text:focus {
@@ -303,7 +303,7 @@ export default {
 
 .analysis-text h1, .analysis-text h2, .analysis-text h3, .analysis-text h4 {
   margin: 16px 0 8px 0;
-  color: #333;
+  color: var(--foreground);
 }
 
 .analysis-text h1 { font-size: 24px; }
@@ -325,7 +325,7 @@ export default {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  color: #999;
+  color: var(--color-gray-400);
   text-align: center;
   padding: 20px;
   pointer-events: none;
@@ -345,7 +345,7 @@ export default {
 .editor-footer {
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--color-slate-200);
 }
 
 .editor-tools {
@@ -356,8 +356,8 @@ export default {
 }
 
 .tool-btn {
-  background: #f5f5f5;
-  border: 1px solid #d9d9d9;
+  background: var(--muted);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 8px 12px;
   cursor: pointer;
@@ -369,15 +369,15 @@ export default {
 }
 
 .tool-btn:hover {
-  background: #e6f7ff;
-  border-color: #1677FF;
-  color: #1677FF;
+  background: var(--secondary-light);
+  border-color: var(--secondary);
+  color: var(--secondary);
 }
 
 .tool-divider {
   width: 1px;
   height: 20px;
-  background: #d9d9d9;
+  background: var(--border);
   margin: 0 4px;
 }
 
@@ -388,7 +388,7 @@ export default {
 .tags-title {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
   margin: 0 0 12px 0;
 }
 
@@ -402,8 +402,8 @@ export default {
 .tag-item {
   padding: 6px 14px;
   border-radius: 16px;
-  background: #f5f5f5;
-  color: #666;
+  background: var(--muted);
+  color: var(--color-gray-500);
   font-size: 14px;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -411,13 +411,13 @@ export default {
 }
 
 .tag-item:hover {
-  background: #e6f7ff;
-  color: #1677FF;
-  border-color: #1677FF;
+  background: var(--secondary-light);
+  color: var(--secondary);
+  border-color: var(--secondary);
 }
 
 .tag-selected {
-  background: #1677FF;
+  background: var(--secondary);
   color: white;
 }
 
@@ -430,7 +430,7 @@ export default {
 .add-tag-container input {
   flex: 1;
   padding: 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
   max-width: 200px;
@@ -438,8 +438,8 @@ export default {
 
 .add-tag-container input:focus {
   outline: none;
-  border-color: #1677FF;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .btn {
@@ -457,23 +457,23 @@ export default {
 }
 
 .btn-primary {
-  background: linear-gradient(90deg, #FF6A00, #1677FF);
+  background: linear-gradient(90deg, var(--primary), var(--secondary));
   color: white;
 }
 
 .btn-primary:hover {
   opacity: 0.9;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
 }
 
 .btn-secondary {
   background: white;
-  color: #666;
-  border: 1px solid #d9d9d9;
+  color: var(--color-gray-500);
+  border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
-  background: #f5f5f5;
-  border-color: #1677FF;
+  background: var(--muted);
+  border-color: var(--secondary);
 }
 </style>

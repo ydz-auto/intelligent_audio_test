@@ -5,7 +5,7 @@ h3 {
   margin: 0 0 20px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .upload-content {
@@ -23,7 +23,7 @@ h3 {
 
 .dimension-summary {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-slate-500);
   white-space: nowrap;
 }
 
@@ -35,16 +35,16 @@ h3 {
   max-height: 200px;
   overflow: auto;
   padding: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--color-white);
   pointer-events: auto;
 }
 
 .upload-file-modal .upload-options .dimension-cloud button.dimension-chip {
-  border: 1px solid #dbe2ea;
-  background: #f3f6fa;
-  color: #334155;
+  border: 1px solid var(--color-slate-200);
+  background: var(--color-slate-50);
+  color: var(--color-slate-700);
   padding: 6px 12px;
   border-radius: 999px;
   font-size: 13px;
@@ -59,38 +59,38 @@ h3 {
 }
 
 .upload-file-modal .upload-options .dimension-cloud button.dimension-chip:hover {
-  background: #eaf2ff;
+  background: var(--color-blue-50);
 }
 
 .upload-file-modal .upload-options .dimension-cloud button.dimension-chip.dimension-chip-selected {
-  border-color: #1677ff;
-  background: #1677ff;
-  color: #ffffff;
+  border-color: var(--secondary);
+  background: var(--secondary);
+  color: var(--color-white);
 }
 
 .dimension-empty,
 .dimension-loading {
   width: 100%;
   padding: 10px 6px;
-  color: #64748b;
+  color: var(--color-slate-500);
   font-size: 12px;
 }
 
 /* 拖放区域 */
 .drop-zone {
-  border: 2px dashed #cbd5e1;
+  border: 2px dashed var(--color-slate-300);
   border-radius: 8px;
   padding: 40px 20px;
   text-align: center;
   transition: all 0.2s ease;
-  background-color: #f8fafc;
+  background-color: var(--color-slate-50);
   cursor: pointer;
 }
 
 .drop-zone:hover,
 .drop-zone-active {
-  border-color: #3b82f6;
-  background-color: #eff6ff;
+  border-color: var(--color-blue-500);
+  background-color: var(--color-blue-50);
 }
 
 .drop-zone-content {
@@ -102,33 +102,33 @@ h3 {
 
 .drop-zone-content i {
   font-size: 48px;
-  color: #94a3b8;
+  color: var(--color-slate-400);
   transition: color 0.2s ease;
 }
 
 .drop-zone:hover i,
 .drop-zone-active i {
-  color: #3b82f6;
+  color: var(--color-blue-500);
 }
 
 .drop-zone-content h4 {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .drop-zone-hint {
   margin: 0;
   font-size: 14px;
-  color: #64748b;
+  color: var(--color-slate-500);
   line-height: 1.5;
 }
 
 .browse-btn {
   display: inline-block;
   padding: 10px 20px;
-  background-color: #3b82f6;
+  background-color: var(--color-blue-500);
   color: white;
   border-radius: 6px;
   font-size: 14px;
@@ -139,7 +139,7 @@ h3 {
 }
 
 .browse-btn:hover {
-  background-color: #2563eb;
+  background-color: var(--color-blue-600);
 }
 
 .browse-btn input[type="file"] {
@@ -148,8 +148,8 @@ h3 {
 
 /* 文件统计信息 */
 .file-stats {
-  background-color: #f0f9ff;
-  border: 1px solid #bfdbfe;
+  background-color: var(--color-sky-50);
+  border: 1px solid var(--color-blue-200);
   border-radius: 8px;
   padding: 16px;
   margin: 16px 0;
@@ -169,19 +169,19 @@ h3 {
 
 .stat-label {
   font-size: 12px;
-  color: #64748b;
+  color: var(--color-slate-500);
   font-weight: 500;
 }
 
 .stat-value {
   font-size: 18px;
   font-weight: 600;
-  color: #3b82f6;
+  color: var(--color-blue-500);
 }
 
 /* 上传选项 */
 .upload-options {
-  background-color: #f8fafc;
+  background-color: var(--color-slate-50);
   padding: 16px;
   border-radius: 8px;
 }
@@ -190,7 +190,7 @@ h3 {
   margin: 0 0 16px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .options-grid {
@@ -211,14 +211,14 @@ h3 {
 
 .option-item label {
   font-size: 14px;
-  color: #334155;
+  color: var(--color-slate-700);
   margin: 0;
 }
 
 .option-hint {
   margin: 4px 0 0 0 !important;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .radio-group {
@@ -239,7 +239,7 @@ h3 {
 
 .radio-label .radio-text {
   font-size: 14px;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .checkbox-group {
@@ -265,7 +265,7 @@ h3 {
 
 .checkbox-label .checkbox-text {
   font-size: 14px;
-  color: #334155;
+  color: var(--color-slate-700);
   position: static;
   display: inline;
 }
@@ -277,16 +277,16 @@ h3 {
 
 .form-input {
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   font-size: 14px;
-  color: #334155;
+  color: var(--color-slate-700);
   transition: border-color 0.2s ease;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #3b82f6;
+  border-color: var(--color-blue-500);
 }
 
 .custom-select-wrapper {
@@ -317,7 +317,7 @@ h3 {
   top: 50%;
   transform: translateY(-50%);
   font-size: 12px;
-  color: #3b82f6;
+  color: var(--color-blue-500);
   pointer-events: none;
 }
 
@@ -335,7 +335,7 @@ h3 {
 
 /* 上传进度 */
 .upload-progress {
-  background-color: #f8fafc;
+  background-color: var(--color-slate-50);
   padding: 16px;
   border-radius: 8px;
 }
@@ -343,7 +343,7 @@ h3 {
 .progress-bar-container {
   width: 100%;
   height: 8px;
-  background-color: #e2e8f0;
+  background-color: var(--color-slate-200);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: 8px;
@@ -351,7 +351,7 @@ h3 {
 
 .progress-bar {
   height: 100%;
-  background-color: #3b82f6;
+  background-color: var(--color-blue-500);
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -359,7 +359,7 @@ h3 {
 .progress-text {
   margin: 0;
   font-size: 14px;
-  color: #64748b;
+  color: var(--color-slate-500);
   text-align: center;
 }
 
@@ -370,12 +370,12 @@ h3 {
   gap: 12px;
   margin-top: 20px;
   padding-top: 20px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--color-slate-200);
 }
 
 .btn-primary {
   padding: 10px 20px;
-  background-color: #3b82f6;
+  background-color: var(--color-blue-500);
   color: white;
   border: none;
   border-radius: 6px;
@@ -386,7 +386,7 @@ h3 {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #2563eb;
+  background-color: var(--color-blue-600);
 }
 
 .btn-primary:disabled {
@@ -397,8 +397,8 @@ h3 {
 .btn-secondary {
   padding: 10px 20px;
   background-color: white;
-  color: #374151;
-  border: 1px solid #d1d5db;
+  color: var(--color-gray-700);
+  border: 1px solid var(--color-gray-300);
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
@@ -407,7 +407,7 @@ h3 {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: #f3f4f6;
+  background-color: var(--color-gray-100);
 }
 
 .btn-secondary:disabled {
@@ -420,7 +420,7 @@ h3 {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
   border-radius: 50%;
   border-top-color: white;
   animation: spin 0.8s linear infinite;
@@ -433,7 +433,7 @@ h3 {
 
 /* 文件夹分组设置样式 */
 .folder-groups {
-  background-color: #f8fafc;
+  background-color: var(--color-slate-50);
   padding: 16px;
   border-radius: 8px;
   margin: 16px 0;
@@ -443,7 +443,7 @@ h3 {
   margin: 0 0 16px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .folder-group-list {
@@ -458,14 +458,14 @@ h3 {
   gap: 12px;
   padding: 12px;
   background-color: white;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
 }
 
 .folder-name {
   min-width: 150px;
   font-weight: 500;
-  color: #334155;
+  color: var(--color-slate-700);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -500,19 +500,19 @@ h3 {
 .test-type-config {
   margin-top: 16px;
   padding: 16px;
-  background-color: #f8fafc;
+  background-color: var(--color-slate-50);
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
 }
 
 .test-type-config.api-config {
-  background-color: #f0f9ff;
-  border-color: #bae6fd;
+  background-color: var(--color-sky-50);
+  border-color: var(--color-sky-200);
 }
 
 .test-type-config.e2e-config {
-  background-color: #fdf4ff;
-  border-color: #fbcfe8;
+  background-color: var(--color-purple-50);
+  border-color: var(--color-pink-200);
 }
 
 .config-header {
@@ -522,15 +522,15 @@ h3 {
   margin-bottom: 16px;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .api-config .config-header {
-  color: #0369a1;
+  color: var(--color-sky-700);
 }
 
 .e2e-config .config-header {
-  color: #be185d;
+  color: var(--color-pink-700);
 }
 
 .config-header i {
@@ -542,18 +542,18 @@ h3 {
 }
 
 .dimension-summary.has-error {
-  color: #ef4444;
+  color: var(--color-red-500);
   font-weight: 500;
 }
 
 .form-input.has-error {
-  border-color: #ef4444;
+  border-color: var(--color-red-500);
 }
 
 .option-hint.error {
-  color: #ef4444;
+  color: var(--color-red-500);
 }
 
 .required {
-  color: #ef4444;
+  color: var(--color-red-500);
 }

@@ -157,28 +157,39 @@ export default {
 </script>
 
 <style scoped>
-.chart-component-container {
-  background: #ffffff;
+
+.chart-wrapper{
+    flex: 1;
+    position: relative;
+    min-height: 300px;
+    width: 100%;
+}
+
+
+
+
+.chart-component-container{
+  background: var(--color-white);
   border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 8%, transparent);
   padding: 24px;
   margin-bottom: 24px;
   box-sizing: border-box;
   width: 100%;
 }
 
-.chart-type-switcher {
+.chart-type-switcher{
   display: flex;
   gap: 4px;
   margin-bottom: 12px;
 }
 
-.switcher-btn {
+.switcher-btn{
   padding: 6px 16px;
-  border: 1px solid #d0d5dd;
+  border: 1px solid var(--color-slate-300);
   border-radius: 4px;
   background: white;
-  color: #64748b;
+  color: var(--color-slate-500);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
@@ -187,19 +198,19 @@ export default {
   gap: 6px;
 }
 
-.switcher-btn:hover {
-  border-color: #fa8c16;
-  color: #fa8c16;
+.switcher-btn:hover{
+  border-color: var(--warning);
+  color: var(--warning);
 }
 
-.switcher-btn.active {
-  background: #fff7e6;
-  border-color: #fa8c16;
-  color: #fa8c16;
-  box-shadow: 0 0 8px rgba(250, 140, 22, 0.4);
+.switcher-btn.active{
+  background: var(--warning-light);
+  border-color: var(--warning);
+  color: var(--warning);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--warning) 40%, transparent);
 }
 
-.chart-header {
+.chart-header{
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -208,38 +219,30 @@ export default {
   gap: 16px;
 }
 
-.chart-title {
+.chart-title{
   font-size: 18px;
   font-weight: bold;
-  color: #333;
+  color: var(--foreground);
   margin: 0;
 }
 
-.chart-wrapper {
-  position: relative;
-  width: 100%;
-  overflow: visible;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  padding: 0;
-  box-sizing: border-box;
-}
 
-.chart-wrapper .chart-container {
+
+.chart-wrapper .chart-container{
   width: 100%;
   height: 100%;
   position: relative;
   overflow: visible;
 }
 
-.chart-wrapper canvas {
+.chart-wrapper canvas{
   width: 100%;
   height: 100%;
   display: block;
 }
 
 .chart-loading,
-.chart-empty {
+.chart-empty{
   position: absolute;
   top: 0;
   left: 0;
@@ -249,47 +252,45 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.8);
-  color: #666;
+  background: color-mix(in srgb, var(--color-white) 80%, transparent);
+  color: var(--color-gray-500);
   font-size: 16px;
   gap: 12px;
 }
 
-.chart-loading i {
+.chart-loading i{
   font-size: 32px;
-  color: #1677FF;
+  color: var(--secondary);
   animation: spin 1s linear infinite;
 }
 
-.chart-empty i {
+.chart-empty i{
   font-size: 32px;
-  color: #999;
+  color: var(--color-gray-400);
   opacity: 0.5;
 }
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+@keyframes spin{
 }
 
-.chart-footer {
+.chart-footer{
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--color-slate-200);
 }
 
-.chart-stats {
+.chart-stats{
   display: flex;
   gap: 24px;
   flex-wrap: wrap;
 }
 
-.stat-item {
+.stat-item{
   font-size: 14px;
-  color: #666;
+  color: var(--color-gray-500);
 }
 
-.stat-item strong {
-  color: #333;
+.stat-item strong{
+  color: var(--foreground);
 }
 </style>

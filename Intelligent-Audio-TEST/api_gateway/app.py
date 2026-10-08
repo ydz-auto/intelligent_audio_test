@@ -137,6 +137,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.playback_bp import router as playback_router
     from api_gateway.routes.report_bp import router as report_router
     from api_gateway.routes.task_bp import router as task_router
+    from api_gateway.routes.published_task_bp import router as published_task_router
     from api_gateway.routes.api_bp import router as api_router
     from api_gateway.routes.execution_bp import router as execution_router
     from api_gateway.routes.audio_bp import router as audio_router
@@ -155,6 +156,7 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(playback_router, prefix='/api/v1/playback-devices', tags=['playback'])
     app.include_router(report_router, prefix='/api/v1/reports', tags=['reports'])
     app.include_router(task_router, prefix='/api/v1/tasks', tags=['tasks'])
+    app.include_router(published_task_router, prefix='/api/v1/published-tasks', tags=['published-tasks'])
     app.include_router(api_router, prefix='/api/v1/apis', tags=['apis'])
     app.include_router(execution_router, prefix='/api/v1/execution', tags=['execution'])
     app.include_router(audio_router, prefix='/api/v1/audios', tags=['audios'])

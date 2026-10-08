@@ -46,6 +46,7 @@
     "adb_timeout": 10,
     "hdc_timeout": 30,
     "long_hdc_timeout": 300,
-    "extra_long_hdc_timeout": 120
+    "extra_long_hdc_timeout": 120,
+    "reply_start_timeout": 30
   }
 }

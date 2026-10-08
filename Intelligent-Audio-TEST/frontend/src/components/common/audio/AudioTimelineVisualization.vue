@@ -270,11 +270,11 @@ const closeAudioModal = () => {
   gap: 8px;
   font-size: 15px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
 }
 
 .timeline-title i {
-  color: #1890ff;
+  color: var(--secondary);
 }
 
 .timeline-controls {
@@ -291,9 +291,9 @@ const closeAudioModal = () => {
 
 .zoom-btn {
   padding: 4px 8px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: #fff;
+  background: var(--background);
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -302,13 +302,13 @@ const closeAudioModal = () => {
 }
 
 .zoom-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
+  border-color: var(--secondary);
+  color: var(--secondary);
 }
 
 .zoom-level {
   font-size: 13px;
-  color: #666;
+  color: var(--color-gray-500);
   min-width: 40px;
   text-align: center;
 }
@@ -326,9 +326,9 @@ const closeAudioModal = () => {
 .track-container {
   flex: 1;
   position: relative;
-  background: #fff;
+  background: var(--background);
   border-radius: 6px;
-  border: 1px solid #e8e8e8;
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -348,34 +348,34 @@ const closeAudioModal = () => {
 .audio-segment:hover {
   transform: scaleY(1.1);
   z-index: 10;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 15%, transparent);
 }
 
 .api-segment {
-  background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);
-  border: 1px solid #91d5ff;
+  background: linear-gradient(135deg, var(--secondary-light) 0%, var(--color-sky-200) 100%);
+  border: 1px solid var(--secondary-light);
 }
 
 .api-segment:hover {
-  border-color: #1890ff;
+  border-color: var(--secondary);
 }
 
 .e2e-segment {
-  background: linear-gradient(135deg, #f9f0ff 0%, #efdbff 100%);
-  border: 1px solid #d3adf7;
+  background: linear-gradient(135deg, var(--color-purple-50) 0%, var(--color-purple-100) 100%);
+  border: 1px solid var(--color-purple-300);
 }
 
 .e2e-segment:hover {
-  border-color: #722ed1;
+  border-color: var(--secondary-deep);
 }
 
 .noise-segment {
-  background: linear-gradient(135deg, #fff7e6 0%, #ffe58f 100%);
-  border: 1px solid #ffc069;
+  background: linear-gradient(135deg, var(--warning-light) 0%, var(--warning) 100%);
+  border: 1px solid var(--warning);
 }
 
 .noise-segment:hover {
-  border-color: #fa8c16;
+  border-color: var(--warning);
 }
 
 .segment-content {
@@ -392,7 +392,7 @@ const closeAudioModal = () => {
 .segment-label {
   font-size: 11px;
   font-weight: 500;
-  color: #333;
+  color: var(--foreground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -400,7 +400,7 @@ const closeAudioModal = () => {
 
 .segment-time {
   font-size: 10px;
-  color: #666;
+  color: var(--color-gray-500);
   margin-top: 2px;
 }
 
@@ -409,7 +409,7 @@ const closeAudioModal = () => {
   align-items: center;
   padding: 8px 0;
   font-size: 12px;
-  color: #888;
+  color: var(--color-gray-500);
 }
 
 .scale-start {
@@ -428,7 +428,7 @@ const closeAudioModal = () => {
   flex: 1;
   position: relative;
   height: 20px;
-  border-bottom: 1px solid #d9d9d9;
+  border-bottom: 1px solid var(--border);
 }
 
 .scale-tick {
@@ -439,7 +439,7 @@ const closeAudioModal = () => {
 
 .tick-label {
   font-size: 10px;
-  color: #888;
+  color: var(--color-gray-500);
 }
 
 .audio-legend {
@@ -447,7 +447,7 @@ const closeAudioModal = () => {
   justify-content: center;
   gap: 24px;
   padding-top: 8px;
-  border-top: 1px solid #e8e8e8;
+  border-top: 1px solid var(--border);
 }
 
 .legend-item {
@@ -455,7 +455,7 @@ const closeAudioModal = () => {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #666;
+  color: var(--color-gray-500);
 }
 
 .legend-color {
@@ -465,18 +465,18 @@ const closeAudioModal = () => {
 }
 
 .legend-item.api .legend-color {
-  background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);
-  border: 1px solid #91d5ff;
+  background: linear-gradient(135deg, var(--secondary-light) 0%, var(--color-sky-200) 100%);
+  border: 1px solid var(--secondary-light);
 }
 
 .legend-item.e2e .legend-color {
-  background: linear-gradient(135deg, #f9f0ff 0%, #efdbff 100%);
-  border: 1px solid #d3adf7;
+  background: linear-gradient(135deg, var(--color-purple-50) 0%, var(--color-purple-100) 100%);
+  border: 1px solid var(--color-purple-300);
 }
 
 .legend-item.noise .legend-color {
-  background: linear-gradient(135deg, #fff7e6 0%, #ffe58f 100%);
-  border: 1px solid #ffc069;
+  background: linear-gradient(135deg, var(--warning-light) 0%, var(--warning) 100%);
+  border: 1px solid var(--warning);
 }
 
 .timeline-empty {
@@ -485,12 +485,12 @@ const closeAudioModal = () => {
   align-items: center;
   justify-content: center;
   padding: 40px;
-  color: #999;
+  color: var(--color-gray-400);
 }
 
 .timeline-empty i {
   font-size: 32px;
   margin-bottom: 8px;
-  color: #d9d9d9;
+  color: var(--border);
 }
 </style>

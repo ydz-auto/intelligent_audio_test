@@ -23,23 +23,23 @@
 }
 .content h1 {
   font-size: 72px;
-  color: #4a90d9;
+  color: var(--secondary);
   margin-bottom: 10px;
 }
 .content p {
   font-size: 18px;
-  color: #666;
+  color: var(--color-gray-500);
   margin-bottom: 20px;
 }
 .back-link {
   display: inline-block;
   padding: 8px 24px;
-  background: #4a90d9;
+  background: var(--secondary);
   color: white;
   border-radius: 4px;
   text-decoration: none;
 }
 .back-link:hover {
-  background: #357abd;
+  background: var(--color-blue-600);
 }
 </style>

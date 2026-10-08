@@ -56,6 +56,44 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
     audioType: props.audioType || 'all'
   });
 
+  // ===== 徽章筛选选项（原下拉框硬编码迁移为常量，供 BadgeFilter 使用）=====
+  const FORMAT_OPTIONS: { value: string; label: string }[] = [
+    { value: 'mp3', label: 'MP3' },
+    { value: 'wav', label: 'WAV' },
+    { value: 'flac', label: 'FLAC' },
+    { value: 'aac', label: 'AAC' },
+    { value: 'm4a', label: 'M4A' },
+  ];
+
+  const SAMPLE_RATE_OPTIONS: { value: string; label: string }[] = [
+    { value: '8000', label: '8 kHz' },
+    { value: '16000', label: '16 kHz' },
+    { value: '24000', label: '24 kHz' },
+    { value: '44100', label: '44.1 kHz' },
+    { value: '48000', label: '48 kHz' },
+    { value: '96000', label: '96 kHz' },
+  ];
+
+  const DURATION_OPTIONS: { value: string; label: string }[] = [
+    { value: 'short', label: '短 (<= 30秒)' },
+    { value: 'medium', label: '中 (30秒 - 5分钟)' },
+    { value: 'long', label: '长 (> 5分钟)' },
+  ];
+
+  const AUDIO_TYPE_OPTIONS: { value: string; label: string }[] = [
+    { value: 'dry', label: '干声' },
+    { value: 'noise', label: '噪声' },
+    { value: 'prompt', label: '提示词音频' },
+    { value: 'mixed', label: '混合音频' },
+  ];
+
+  type FilterKey = 'format' | 'sampleRate' | 'duration' | 'audioType';
+
+  const setFilter = (key: FilterKey, value: string | number) => {
+    filters.value[key] = String(value);
+    handleFilterChange();
+  };
+
   const {
     selectedTags: localSelectedTags,
     tagModes: localTagModes,
@@ -385,6 +423,11 @@ export function useAudioListComponent(props: AudioListProps, emit: any) {
     searchQuery,
     tagSearchQuery,
     filters,
+    FORMAT_OPTIONS,
+    SAMPLE_RATE_OPTIONS,
+    DURATION_OPTIONS,
+    AUDIO_TYPE_OPTIONS,
+    setFilter,
     showTagModeMenu,
     menuPosition,
     selectedTags,

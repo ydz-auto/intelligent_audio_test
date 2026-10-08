@@ -97,7 +97,8 @@ export function useTasks() {
   const canMerge = computed(() => {
     if (listModule.selectedTasks.value.size < 2) return false;
     const selectedTasksArray = listModule.tasks.value.filter(t => listModule.selectedTasks.value.has(t.id));
-    return selectedTasksArray.every(t => t.status === TaskStatus.COMPLETED);
+    // 对齐 V9.7.10：已完成(completed)与已合并(merged)任务均可再次合并
+    return selectedTasksArray.every(t => t.status === TaskStatus.COMPLETED || t.status === TaskStatus.MERGED);
   });
 
   const mergeButtonTitle = computed(() => {
@@ -105,7 +106,7 @@ export function useTasks() {
       return '请至少选择两个任务进行合并';
     }
     const selectedTasksArray = listModule.tasks.value.filter(t => listModule.selectedTasks.value.has(t.id));
-    const incompleteTasks = selectedTasksArray.filter(t => t.status !== TaskStatus.COMPLETED);
+    const incompleteTasks = selectedTasksArray.filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.MERGED);
     if (incompleteTasks.length > 0) {
       const names = incompleteTasks.map(t => t.name).join(', ');
       return `以下任务未完成，无法合并: ${names}`;

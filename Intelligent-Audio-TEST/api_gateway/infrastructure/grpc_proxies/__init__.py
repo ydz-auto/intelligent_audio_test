@@ -38,6 +38,10 @@ from .task_config_proxies import (
     algorithm_config_service,
     task_data_service,
 )
+from .published_task_config_proxies import (
+    _PublishedTaskConfigProxy,
+    published_task_config_service,
+)
 from .report_proxies import report_config_service
 from .auth_proxies import auth_config_service
 from .algorithm_proxies import algorithm_query_service
@@ -63,6 +67,8 @@ __all__ = [
     'tag_config_service',
     'algorithm_config_service',
     'task_data_service',
+    '_PublishedTaskConfigProxy',
+    'published_task_config_service',
     'report_config_service',
     'auth_config_service',
     'algorithm_query_service',

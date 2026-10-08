@@ -17,6 +17,7 @@ User/OAuth 下沉到 auth_service；StatsCache 保留 api_gateway。
 from .task_models import (
     Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
 )
+from .published_task_models import PublishedTask
 from .result_models import TestResult
 from .testcase_models import (
     TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
@@ -26,6 +27,8 @@ from .system_models import Log
 __all__ = [
     # 任务
     'Task', 'TaskTag', 'TaskCase', 'TaskDevice', 'TaskAPI', 'TaskMergeRelation',
+    # 已发布任务（任务发布功能）
+    'PublishedTask',
     # 测试结果（不含 TestResultDimension，归属 evaluation_service）
     'TestResult',
     # 标签与用例

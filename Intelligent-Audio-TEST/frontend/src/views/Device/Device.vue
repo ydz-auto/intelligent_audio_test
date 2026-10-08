@@ -87,21 +87,20 @@
                     <i class="fas fa-search search-icon"></i>
                     <input type="text" class="search-input" placeholder="搜索设备名称或型号..." v-model="searchQuery" @input="searchDevices">
                   </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="statusFilter" @change="filterDevices" id="statusFilter">
-                      <option value="all">所有状态</option>
-                      <option :value="DeviceStatus.ONLINE">在线</option>
-                      <option :value="DeviceStatus.OFFLINE">离线</option>
-                      <option :value="DeviceStatus.TESTING">测试中</option>
-                    </select>
-                  </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="playbackTypeFilter" @change="filterDevices" id="playbackTypeFilter">
-                      <option value="all">所有类型</option>
-                      <option value="干声">干声</option>
-                      <option value="噪声">噪声</option>
-                    </select>
-                  </div>
+                  <BadgeFilter
+                    :options="DEVICE_STATUS_OPTIONS"
+                    :model-value="statusFilter"
+                    all-label="所有状态"
+                    title="状态"
+                    @update:model-value="setStatusFilter"
+                  />
+                  <BadgeFilter
+                    :options="PLAYBACK_TYPE_OPTIONS"
+                    :model-value="playbackTypeFilter"
+                    all-label="所有类型"
+                    title="播放类型"
+                    @update:model-value="setPlaybackTypeFilter"
+                  />
                 </div>
               </div>
             </div>
@@ -171,14 +170,13 @@
                     <i class="fas fa-search search-icon"></i>
                     <input type="text" class="search-input" placeholder="搜索测试设备名称或型号..." v-model="searchQuery" @input="searchDevices">
                   </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="statusFilter" @change="filterDevices" id="testStatusFilter">
-                      <option value="all">所有状态</option>
-                      <option :value="DeviceStatus.ONLINE">在线</option>
-                      <option :value="DeviceStatus.OFFLINE">离线</option>
-                      <option :value="DeviceStatus.TESTING">测试中</option>
-                    </select>
-                  </div>
+                  <BadgeFilter
+                    :options="DEVICE_STATUS_OPTIONS"
+                    :model-value="statusFilter"
+                    all-label="所有状态"
+                    title="状态"
+                    @update:model-value="setStatusFilter"
+                  />
                   <div class="filter-select">
                     <select class="form-input" v-model="algorithmFilter" @change="filterDevices" id="algorithmFilter">
                       <option value="all">支持算法: 全部</option>
@@ -256,14 +254,13 @@
                     <i class="fas fa-search search-icon"></i>
                     <input type="text" class="search-input" placeholder="搜索测试API名称或URL..." v-model="searchQuery" @input="searchDevices">
                   </div>
-                  <div class="filter-select">
-                    <select class="form-input" v-model="statusFilter" @change="filterDevices" id="apiStatusFilter">
-                      <option value="all">所有状态</option>
-                      <option :value="DeviceStatus.ONLINE">在线</option>
-                      <option :value="DeviceStatus.OFFLINE">离线</option>
-                      <option :value="DeviceStatus.TESTING">测试中</option>
-                    </select>
-                  </div>
+                  <BadgeFilter
+                    :options="DEVICE_STATUS_OPTIONS"
+                    :model-value="statusFilter"
+                    all-label="所有状态"
+                    title="状态"
+                    @update:model-value="setStatusFilter"
+                  />
                   <div class="filter-select">
                     <select class="form-input" v-model="algorithmTypeFilter" @change="filterDevices" id="apiAlgorithmTypeFilter">
                       <option value="all">所有算法类型</option>
@@ -329,9 +326,9 @@
 </template>
 
 <script setup lang="ts">
-import '../../assets/styles/main.css';
 import { useDevice } from './Device';
 import { DeviceStatus } from '../../domain/enums';
+import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import DeviceCard from './DeviceCard.vue';
 
@@ -403,8 +400,114 @@ const {
   handleAPIPrevPage,
   handleAPINextPage
 } = useDevice();
+
+// ===== 徽章筛选选项（原下拉框硬编码迁移为常量）=====
+const DEVICE_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: DeviceStatus.ONLINE, label: '在线' },
+  { value: DeviceStatus.OFFLINE, label: '离线' },
+  { value: DeviceStatus.TESTING, label: '测试中' },
+];
+
+const PLAYBACK_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: '干声', label: '干声' },
+  { value: '噪声', label: '噪声' },
+];
+
+function setStatusFilter(value: string | number) {
+  // deviceState 中 statusFilter 类型收窄为 ViewMode.ALL 字面量，实际运行值为设备状态字符串，此处显式放宽
+  statusFilter.value = String(value) as any;
+}
+
+function setPlaybackTypeFilter(value: string | number) {
+  playbackTypeFilter.value = String(value) as any;
+}
 </script>
 
-<style scoped>
-@import './Device.css';
+<style scoped>@import './Device.css';
+
+/* 筛选栏：徽章筛选需占满可用宽度并允许换行 */
+.card-actions {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-bar {
+  flex-wrap: wrap !important;
+  white-space: normal !important;
+  align-items: center !important;
+  gap: 12px 16px !important;
+  width: 100% !important;
+}
+
+
+.middle-content{
+    width: 100%;
+}
+
+.status-good{
+    color: var(--success-color);
+}
+
+.dropdown{
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown button{
+    position: relative;
+    z-index: 1001;
+}
+
+.device-type-tabs{
+    display: flex;
+    gap: 8px;
+    margin-bottom: var(--spacing-xl);
+    background-color: var(--background-secondary);
+    padding: 4px;
+    border-radius: var(--border-radius-lg);
+}
+
+@media (max-width: 768px){
+.device-type-tabs {
+        flex-direction: column;
+}
+}
+/* device-three-column-layout - 自全局样式就近迁移 */
+.device-three-column-layout{
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+    transition: all var(--transition-normal);
+}
+
+/* middle-content - 自全局样式就近迁移 */
+
+
+/* devices-grid - 自全局样式就近迁移 */
+.devices-grid{
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+@media (max-width: 1200px){
+.devices-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+}
+
+@media (max-width: 768px){
+.devices-grid {
+        grid-template-columns: 1fr;
+}
+}
+/* device-meta - 自全局样式就近迁移 */
+.device-meta{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
 </style>

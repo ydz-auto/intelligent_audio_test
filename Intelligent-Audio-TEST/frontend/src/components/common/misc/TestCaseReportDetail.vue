@@ -30,7 +30,7 @@
             <span v-else class="dim-name" :class="{ 'dim-sub': row.isSubDim }">{{ row.metricName }}</span>
           </template>
           <template #empty>
-            <div style="padding: 20px; text-align: center; color: #94a3b8;">
+            <div style="padding: 20px; text-align: center; color: var(--color-slate-400);">
               暂无指标数据
             </div>
           </template>
@@ -65,7 +65,7 @@
             </div>
           </template>
           <template #empty>
-            <div style="padding: 20px; text-align: center; color: #94a3b8;">
+            <div style="padding: 20px; text-align: center; color: var(--color-slate-400);">
               暂无指标数据
             </div>
           </template>

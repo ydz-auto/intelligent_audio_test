@@ -232,6 +232,50 @@ message TaskConfigResponse {
   string data = 3;
 }
 
+// ===== 已发布任务配置服务（任务发布功能）=====
+service PublishedTaskConfigService {
+  // ---- 写操作 ----
+  rpc PublishTask(PublishTaskRequest) returns (TaskConfigResponse);
+  rpc ExecutePublishedTask(ExecutePublishedTaskRequest) returns (TaskConfigResponse);
+  rpc CreatePublishedTaskVersion(CreatePublishedTaskVersionRequest) returns (TaskConfigResponse);
+  rpc ArchivePublishedTask(ArchivePublishedTaskRequest) returns (TaskConfigResponse);
+  rpc RenamePublishedTask(RenamePublishedTaskRequest) returns (TaskConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListPublishedTasks(ListPublishedTasksRequest) returns (TaskConfigResponse);
+  rpc GetPublishedTaskDetail(GetPublishedTaskDetailRequest) returns (TaskConfigResponse);
+}
+
+message PublishTaskRequest {
+  string data = 1;  // JSON: {sourceTaskId, name, description, publishReason}
+}
+message ExecutePublishedTaskRequest {
+  int32 published_task_id = 1;
+}
+message CreatePublishedTaskVersionRequest {
+  int32 published_task_id = 1;
+  string data = 2;  // JSON: {sourceTaskId, name, description, publishReason}
+}
+message ArchivePublishedTaskRequest {
+  int32 published_task_id = 1;
+}
+message RenamePublishedTaskRequest {
+  int32 published_task_id = 1;
+  string data = 2;  // JSON: {name}
+}
+message ListPublishedTasksRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string status = 3;
+  string keyword = 4;
+  string type = 5;
+  string start_date = 6;
+  string end_date = 7;
+}
+message GetPublishedTaskDetailRequest {
+  int32 published_task_id = 1;
+}
+
 // ===== 测试用例配置 CRUD 服务 =====
 service TestCaseConfigService {
   // ---- 写操作 ----

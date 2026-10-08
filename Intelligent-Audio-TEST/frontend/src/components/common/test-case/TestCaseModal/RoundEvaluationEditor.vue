@@ -234,8 +234,8 @@ function emitUpdate() {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  background: var(--info-light, #e8f4fd);
-  color: var(--info-color, #1890ff);
+  background: var(--info-light, var(--color-blue-50));
+  color: var(--info-color, var(--secondary));
   border-radius: 6px;
   font-size: 12px;
 }
@@ -254,26 +254,26 @@ function emitUpdate() {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid var(--border-color, #e0e0e0);
-  background: var(--background-primary, #fff);
-  color: var(--text-secondary, #666);
+  border: 1px solid var(--border-color, var(--border));
+  background: var(--background-primary, var(--background));
+  color: var(--text-secondary, var(--color-gray-500));
   display: flex;
   align-items: center;
   gap: 5px;
   user-select: none;
 }
 .eval-chip:hover {
-  border-color: var(--primary-color, #ff6a00);
-  color: var(--primary-color, #ff6a00);
+  border-color: var(--primary-color, var(--primary));
+  color: var(--primary-color, var(--primary));
   transform: translateY(-1px);
 }
 .eval-chip.active {
-  background: var(--primary-color, #ff6a00);
-  color: #fff;
-  border-color: var(--primary-color, #ff6a00);
+  background: var(--primary-color, var(--primary));
+  color: var(--background);
+  border-color: var(--primary-color, var(--primary));
 }
 .eval-chip.active:hover {
-  background: var(--primary-dark, #e05500);
+  background: var(--primary-dark, var(--color-orange-600));
 }
 .eval-chip i {
   font-size: 10px;
@@ -283,7 +283,7 @@ function emitUpdate() {
 .eval-empty {
   padding: 16px;
   text-align: center;
-  color: var(--text-light, #999);
+  color: var(--text-light, var(--color-gray-400));
   font-size: 13px;
 }
 .eval-empty i {
@@ -298,7 +298,7 @@ function emitUpdate() {
 .eval-sub-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
   margin-bottom: 10px;
   display: flex;
   align-items: center;
@@ -306,7 +306,7 @@ function emitUpdate() {
 }
 .eval-sub-title i {
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, var(--color-gray-500));
 }
 
 .eval-cards-row {
@@ -319,16 +319,16 @@ function emitUpdate() {
   flex: 1;
   min-width: 180px;
   max-width: 280px;
-  background: var(--background-primary, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-primary, var(--background));
+  border: 1px solid var(--border-color, var(--border));
   border-radius: 8px;
   overflow: hidden;
 }
 
 .eval-card-header {
   padding: 8px 12px;
-  background: var(--background-secondary, #f5f5f5);
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-secondary, var(--muted));
+  border-bottom: 1px solid var(--border-color, var(--border));
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -337,16 +337,16 @@ function emitUpdate() {
 .eval-card-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
 }
 
 .eval-card-remove-btn {
   width: 22px;
   height: 22px;
-  border: 1px solid #ffcdd2;
+  border: 1px solid var(--destructive-light);
   border-radius: 4px;
   background: transparent;
-  color: var(--danger-color, #f44336);
+  color: var(--danger-color, var(--destructive));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -355,7 +355,7 @@ function emitUpdate() {
   transition: background 0.15s;
 }
 .eval-card-remove-btn:hover {
-  background: #ffebee;
+  background: var(--destructive-light);
 }
 
 .eval-card-body {
@@ -373,7 +373,7 @@ function emitUpdate() {
 
 .eval-field-label {
   font-size: 11px;
-  color: var(--text-light, #999);
+  color: var(--text-light, var(--color-gray-400));
   font-weight: 500;
 }
 
@@ -392,12 +392,12 @@ function emitUpdate() {
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
   cursor: pointer;
 }
 .eval-toggle-label input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--primary-color, #ff6a00);
+  accent-color: var(--primary-color, var(--primary));
 }
 </style>

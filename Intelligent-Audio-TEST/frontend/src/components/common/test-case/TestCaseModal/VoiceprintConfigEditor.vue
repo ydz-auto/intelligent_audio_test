@@ -204,7 +204,7 @@ function clearAudio() {
 
 <style scoped>
 .voiceprint-editor {
-  border: 1px solid var(--border-color, #e0e0e0);
+  border: 1px solid var(--border-color, var(--border));
   border-radius: 8px;
   overflow: hidden;
 }
@@ -214,30 +214,30 @@ function clearAudio() {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: var(--background-secondary, #f5f5f5);
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-secondary, var(--muted));
+  border-bottom: 1px solid var(--border-color, var(--border));
 }
 
 .vp-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
   display: flex;
   align-items: center;
   gap: 6px;
 }
 .vp-title i {
   font-size: 12px;
-  color: var(--text-light, #999);
+  color: var(--text-light, var(--color-gray-400));
 }
 
 .vp-remove-btn {
   padding: 4px 10px;
   font-size: 12px;
-  border: 1px solid var(--danger-color, #f44336);
+  border: 1px solid var(--danger-color, var(--destructive));
   border-radius: 4px;
   background: transparent;
-  color: var(--danger-color, #f44336);
+  color: var(--danger-color, var(--destructive));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -245,8 +245,8 @@ function clearAudio() {
   transition: all 0.15s;
 }
 .vp-remove-btn:hover {
-  background: var(--danger-color, #f44336);
-  color: #fff;
+  background: var(--danger-color, var(--destructive));
+  color: var(--background);
 }
 
 .vp-body {
@@ -265,12 +265,12 @@ function clearAudio() {
 .vp-field-label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, var(--color-gray-500));
 }
 
 .vp-hint {
   font-size: 11px;
-  color: var(--text-light, #999);
+  color: var(--text-light, var(--color-gray-400));
   margin-top: 2px;
 }
 
@@ -281,9 +281,9 @@ function clearAudio() {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid #e0e7ff;
+  border: 1px solid var(--color-indigo-100);
   border-radius: 6px;
-  background: #f8f9ff;
+  background: var(--muted);
 }
 .vp-audio-card-info {
   flex: 1;
@@ -295,13 +295,13 @@ function clearAudio() {
   gap: 6px;
 }
 .vp-audio-card-icon {
-  color: #6366f1;
+  color: var(--color-indigo-500);
   font-size: 12px;
 }
 .vp-audio-card-name {
   font-size: 13px;
   font-weight: 500;
-  color: #333;
+  color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -309,7 +309,7 @@ function clearAudio() {
 }
 .vp-audio-card-duration {
   font-size: 11px;
-  color: #999;
+  color: var(--color-gray-400);
   display: flex;
   align-items: center;
   gap: 3px;
@@ -325,8 +325,8 @@ function clearAudio() {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 8px;
-  background: #e0e7ff;
-  color: #4f46e5;
+  background: var(--color-indigo-100);
+  color: var(--color-indigo-600);
 }
 .vp-audio-card-actions {
   display: flex;
@@ -340,16 +340,16 @@ function clearAudio() {
   justify-content: center;
   gap: 6px;
   padding: 16px;
-  border: 1px dashed #ccc;
+  border: 1px dashed var(--color-gray-300);
   border-radius: 6px;
   cursor: pointer;
-  color: #999;
+  color: var(--color-gray-400);
   font-size: 13px;
   transition: all 0.15s;
 }
 .vp-audio-empty:hover {
-  border-color: #6366f1;
-  color: #6366f1;
-  background: #f8f9ff;
+  border-color: var(--color-indigo-500);
+  color: var(--color-indigo-500);
+  background: var(--muted);
 }
 </style>

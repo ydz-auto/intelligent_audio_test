@@ -1,0 +1,11 @@
+/*
+ * 全局样式唯一入口（照 newAPI web/src/styles/index.css 结构）
+ * 职责：只做引入汇总，业务样式一律走组件级（<style scoped> + 原子类）。
+ * 加载顺序：Tailwind(preflight) → 语义令牌 → 存量样式库（迁移期保留）→ 全局覆写规则。
+ */
+@import 'tailwindcss';
+@import './tokens.css';
+@import './main.css';
+
+/* Tailwind 内容扫描范围：src 下所有源码（.vue/.ts/.css） */
+@source '../../';

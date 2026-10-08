@@ -114,7 +114,7 @@ function handleConfirm() {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -127,14 +127,6 @@ function handleConfirm() {
   box-shadow: var(--shadow-lg);
   max-height: 90vh;
   overflow-y: auto;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
 }
 
 .modal-header h3 {
@@ -157,11 +149,6 @@ function handleConfirm() {
   justify-content: center;
   border-radius: 50%;
   transition: all 0.2s;
-}
-
-.modal-close:hover {
-  background-color: var(--background-secondary);
-  color: var(--text-primary);
 }
 
 .modal-body {

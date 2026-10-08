@@ -48,6 +48,7 @@ export function createEvalDimensionState() {
   const searchKeyword = ref('');
   const filterStatus = ref<'all' | 'active' | 'inactive'>('all');
   const filterCategory = ref(ViewMode.ALL);
+  const filterAlgorithm = ref('all');
 
   const selectedDimensions = ref<(number | string)[]>([]);
 
@@ -172,23 +173,77 @@ export function createEvalDimensionState() {
     responseMapping: ''
   });
 
+  // ========== 视图模式（列表/分组） ==========
+  // 'list' 列表视图（平铺表格） | 'group' 分组视图（按分类聚合）
+  const viewMode = ref<'list' | 'group'>('list');
+  // 分组折叠状态：key 为分类 id（'uncategorized' 表示未分类组），缺省默认展开
+  const collapsedGroups = ref<Record<string, boolean>>({});
+
+  function isGroupExpanded(key: string): boolean {
+    return !collapsedGroups.value[key];
+  }
+
+  function toggleGroupExpanded(key: string) {
+    collapsedGroups.value = { ...collapsedGroups.value, [key]: isGroupExpanded(key) };
+  }
+
   // ========== 计算属性 ==========
   const filteredDimensions = computed(() => {
-    return dimensions.value.filter(dim => {
-      const matchesSearch = !searchKeyword.value ||
-        dim.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
-        (dim.description && dim.description.toLowerCase().includes(searchKeyword.value.toLowerCase()));
+    const all = dimensions.value;
+    const keyword = (searchKeyword.value || '').trim().toLowerCase();
 
+    // 单个维度的筛选匹配（搜索 / 状态 / 分类 / 关联算法）
+    const matches = (dim: EvaluationDimension): boolean => {
+      const matchesSearch = !keyword ||
+        dim.name.toLowerCase().includes(keyword) ||
+        (dim.description && dim.description.toLowerCase().includes(keyword)) ||
+        ((dim as any).keywords || '').toLowerCase().includes(keyword);
       const matchesStatus = filterStatus.value === 'all' ||
         (filterStatus.value === 'active' && dim.status) ||
         (filterStatus.value === 'inactive' && !dim.status);
-
       const matchesCategory = filterCategory.value === 'all' ||
         dim.categoryId === Number(filterCategory.value) ||
         dim.type === filterCategory.value;
+      const matchesAlgorithm = filterAlgorithm.value === 'all' ||
+        (dim.associatedAlgorithms || []).some((algo: any) =>
+          typeof algo === 'string'
+            ? algo === filterAlgorithm.value
+            : algo?.algorithmType === filterAlgorithm.value
+        );
+      return matchesSearch && matchesStatus && matchesCategory && matchesAlgorithm;
+    };
 
-      return matchesSearch && matchesStatus && matchesCategory;
-    });
+    const matchedIds = new Set<number | string>();
+    for (const dim of all) {
+      if (matches(dim)) matchedIds.add(dim.id);
+    }
+
+    // 主/子联动：子维度命中时带上父维度作为上下文；搜索/算法筛选命中主维度时整组展示，
+    // 避免出现「孤儿子维度」被甩到列表底部、父子显示不在一块的问题
+    const byParentId = new Map<number | string, EvaluationDimension[]>();
+    for (const dim of all) {
+      const pid = dim.parentDimensionId ?? '';
+      if (!byParentId.has(pid)) byParentId.set(pid, []);
+      byParentId.get(pid)!.push(dim);
+    }
+
+    const groupIds = new Set<number | string>();
+    for (const dim of all) {
+      if (!dim.parentDimensionId) {
+        if (matchedIds.has(dim.id)) {
+          groupIds.add(dim.id);
+          for (const child of byParentId.get(dim.id) || []) {
+            // 搜索/算法筛选时主维度命中则整组展示（子维度作为该维度的完整上下文）
+            if (keyword || filterAlgorithm.value !== 'all' || matchedIds.has(child.id)) groupIds.add(child.id);
+          }
+        }
+      } else if (matchedIds.has(dim.id)) {
+        groupIds.add(dim.id);
+        groupIds.add(dim.parentDimensionId);
+      }
+    }
+
+    return all.filter(dim => groupIds.has(dim.id));
   });
 
   const isAllSelected = computed(() => {
@@ -228,6 +283,48 @@ export function createEvalDimensionState() {
     return result;
   });
 
+  // 分组视图数据：基于 hierarchicalDimensions（已含主/子层级）按分类聚合，
+  // 未设置分类的维度归入「未分类」组，保证每个维度都有归属
+  const groupedDimensions = computed(() => {
+    const list = hierarchicalDimensions.value;
+    const byCategory = new Map<string, any[]>();
+    const uncategorized: any[] = [];
+
+    for (const dim of list) {
+      const catId = dim.categoryId;
+      if (catId === null || catId === undefined || catId === '') {
+        uncategorized.push(dim);
+      } else {
+        const key = String(catId);
+        if (!byCategory.has(key)) byCategory.set(key, []);
+        byCategory.get(key)!.push(dim);
+      }
+    }
+
+    const groups: { key: string; category: EvaluationCategory | null; items: any[] }[] = [];
+
+    // 分类按接口返回顺序展示（无维度数据的空分类不展示）
+    for (const cat of categories.value) {
+      const items = byCategory.get(String(cat.id));
+      if (items && items.length > 0) {
+        groups.push({ key: String(cat.id), category: cat, items });
+      }
+    }
+
+    // 兜底：存在分类id但分类信息未加载到的维度，作为独立组展示
+    for (const [key, items] of byCategory.entries()) {
+      if (!groups.some(g => g.key === key)) {
+        groups.push({ key, category: null, items });
+      }
+    }
+
+    if (uncategorized.length > 0) {
+      groups.push({ key: 'uncategorized', category: null, items: uncategorized });
+    }
+
+    return groups;
+  });
+
   // ========== 工具方法 ==========
   function getAlgorithmLabel(algorithmType: string): string {
     if (algorithms.value && algorithms.value.length > 0) {
@@ -251,11 +348,17 @@ export function createEvalDimensionState() {
     searchKeyword,
     filterStatus,
     filterCategory,
+    filterAlgorithm,
     selectedDimensions,
     currentPage,
     pageSize,
     totalItems,
     totalPages,
+    // 视图模式（列表/分组）
+    viewMode,
+    collapsedGroups,
+    isGroupExpanded,
+    toggleGroupExpanded,
     // 模板与表单数据
     dimensionTemplate,
     newDimension,
@@ -264,6 +367,7 @@ export function createEvalDimensionState() {
     filteredDimensions,
     isAllSelected,
     hierarchicalDimensions,
+    groupedDimensions,
     // 工具方法
     getAlgorithmLabel,
   };

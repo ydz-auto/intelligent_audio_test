@@ -34,6 +34,8 @@ class CreateTaskCommand(Command):
     device_ids: List[int] = field(default_factory=list)
     api_ids: List[int] = field(default_factory=list)
     created_by: Optional[int] = None
+    # 执行域 P0 新增：用例级设备选择 [{"case_id", "device_type", "device_id", "lab_id"}]，为空回退 task_type 路由
+    case_devices: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

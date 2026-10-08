@@ -246,7 +246,8 @@
               completedCases: task.completedCases,
               totalCases: task.totalCases,
               algorithmType: task.algorithmType,
-              algorithmParams: task.algorithmParams
+              algorithmParams: task.algorithmParams,
+              sourceTasks: task.sourceTasks
             }))"
             :is-selected="(task: any) => selectedTasks.has(task.id)"
             :show-checkbox="true"
@@ -366,6 +367,161 @@ const {
 } = useTasks();
 </script>
 
-<style scoped>
-@import './Tasks.css';
+<style scoped>@import './Tasks.css';
+
+
+
+.chart-card{
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: var(--background-primary);
+    border-radius: var(--border-radius-lg);
+    border: 1px solid var(--border-color);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 5%, transparent);
+}
+
+.chart-card:hover{
+    transform: translateY(-5px);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 12%, transparent);
+}
+
+.chart-card h3{
+    margin-bottom: 20px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--foreground);
+}
+
+.stats-panel{
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    box-shadow: 0 2px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
+}
+
+.stats-panel h3{
+    margin-bottom: 20px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--foreground);
+}
+
+.tags-section{
+    margin-top: 24px;
+}
+
+.tags-section h4{
+    margin-bottom: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--foreground);
+}
+
+
+
+
+.tags-cloud{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    min-height: 40px;
+}
+
+.tags-cloud{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    min-height: 40px;
+}
+/* stats-charts-container - 自全局样式就近迁移 */
+.stats-charts-container{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 1024px){
+.stats-charts-container {
+        grid-template-columns: repeat(2, 1fr);
+}
+}
+
+@media (max-width: 767px){
+.stats-charts-container {
+        grid-template-columns: 1fr;
+}
+}
+/* stats-charts-row - 自全局样式就近迁移 */
+.stats-charts-row{
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+    align-items: start;
+}
+
+/* stats-cards - 自全局样式就近迁移 */
+.stats-cards{
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+gap: 16px;
+margin-bottom: 24px;
+align-items: center;
+}
+
+
+
+@media (max-width: 1279px){
+.stats-cards {
+        grid-template-columns: repeat(3, 1fr);
+}
+}
+
+@media (max-width: 1023px){
+.stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+}
+}
+
+@media (max-width: 767px){
+.stats-cards {
+        grid-template-columns: 1fr;
+}
+}
+/* tags-pagination - 自全局样式就近迁移 */
+.tags-pagination{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--gray-light);
+}
+
+/* time-granularity-selector - 自全局样式就近迁移 */
+
+
+/* tasks-container - 自全局样式就近迁移 */
+.tasks-container{
+    overflow: visible ;
+    padding: 0 ;
+}
+
+/* task-list-header - 自全局样式就近迁移 */
+.task-list-header{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 16px;
+}
+
 </style>

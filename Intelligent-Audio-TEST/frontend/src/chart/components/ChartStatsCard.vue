@@ -110,13 +110,13 @@ const negativeStats = computed<StatItem[]>(() => {
   gap: 12px;
   margin-bottom: 16px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--color-slate-300);
 }
 
 .statsCardTitle {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
   margin: 0;
 }
 
@@ -128,25 +128,25 @@ const negativeStats = computed<StatItem[]>(() => {
 
 .deviceTab {
   padding: 4px 12px;
-  border: 1px solid #d0d5dd;
+  border: 1px solid var(--color-slate-300);
   border-radius: 4px;
   background: white;
-  color: #64748b;
+  color: var(--color-slate-500);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .deviceTab:hover {
-  border-color: #FF6A00 !important;
-  color: #FF6A00 !important;
-  background-color: rgba(255, 106, 0, 0.1) !important;
+  border-color: var(--primary) ;
+  color: var(--primary) ;
+  background-color: color-mix(in srgb, var(--primary) 10%, transparent) ;
 }
 
 .deviceTab.active {
-  background-color: rgba(255, 106, 0, 0.1) !important;
-  border-color: #FF6A00 !important;
-  color: #FF6A00 !important;
+  background-color: color-mix(in srgb, var(--primary) 10%, transparent) ;
+  border-color: var(--primary) ;
+  color: var(--primary) ;
 }
 
 .statsGrid {
@@ -164,14 +164,14 @@ const negativeStats = computed<StatItem[]>(() => {
   padding: 16px;
   background: white;
   border-radius: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-black) 10%, transparent);
   box-sizing: border-box;
   min-width: 180px;
 }
 
 .chartStatsCard .statLabel {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-slate-500);
   margin-bottom: 8px;
   text-align: center;
 }
@@ -179,17 +179,17 @@ const negativeStats = computed<StatItem[]>(() => {
 .chartStatsCard .statValue {
   font-size: 20px;
   font-weight: 600;
-  color: #1677FF;
+  color: var(--secondary);
   text-align: center;
 }
 
 .statsSectionTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #333;
+  color: var(--foreground);
   margin: 20px 0 12px 0;
   padding-bottom: 4px;
-  border-bottom: 1px solid #cbd5e1;
+  border-bottom: 1px solid var(--color-slate-300);
 }
 
 .basicStats {

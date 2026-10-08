@@ -61,7 +61,7 @@
         </div>
 
         <div class="rce-field-row">
-          <div class="rce-field" style="flex:1">
+          <div class="rce-field flex-1">
             <label class="rce-field-label">声压级 (dB)</label>
             <input
               type="number"
@@ -71,7 +71,7 @@
               @input="updateNoise('spl', Number(($event.target as HTMLInputElement).value))"
             />
           </div>
-          <div class="rce-field" style="flex:1">
+          <div class="rce-field flex-1">
             <label class="rce-field-label">循环播放</label>
             <label class="rce-switch">
               <input
@@ -290,7 +290,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
 .rce-step {
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--gray-light);
 }
 .rce-step:last-child { border-bottom: none; }
 
@@ -300,8 +300,8 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   gap: 8px;
   margin-bottom: 12px;
 }
-.rce-step-icon { font-size: 14px; color: var(--primary-color, #ff6a00); }
-.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, #333); }
+.rce-step-icon { font-size: 14px; color: var(--primary-color, var(--primary)); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, var(--foreground)); }
 
 .rce-tag {
   padding: 2px 8px;
@@ -309,7 +309,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   font-size: 10px;
   font-weight: 500;
 }
-.rce-tag-gray { background: #f5f5f5; color: #999; }
+.rce-tag-gray { background: var(--muted); color: var(--color-gray-400); }
 
 .rce-section { margin-bottom: 14px; }
 
@@ -318,28 +318,28 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: var(--background-secondary, #f5f5f5);
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-secondary, var(--muted));
+  border: 1px solid var(--border-color, var(--border));
   border-radius: 8px 8px 0 0;
   border-bottom: none;
 }
 .rce-noise-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #333);
+  color: var(--text-primary, var(--foreground));
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.rce-noise-title i { font-size: 12px; color: var(--text-light, #999); }
+.rce-noise-title i { font-size: 12px; color: var(--text-light, var(--color-gray-400)); }
 
 .rce-noise-remove-btn {
   padding: 4px 10px;
   font-size: 12px;
-  border: 1px solid var(--danger-color, #f44336);
+  border: 1px solid var(--danger-color, var(--destructive));
   border-radius: 4px;
   background: transparent;
-  color: var(--danger-color, #f44336);
+  color: var(--danger-color, var(--destructive));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -347,8 +347,8 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   transition: all 0.15s;
 }
 .rce-noise-remove-btn:hover {
-  background: var(--danger-color, #f44336);
-  color: #fff;
+  background: var(--danger-color, var(--destructive));
+  color: var(--background);
 }
 
 .rce-noise-empty {
@@ -357,15 +357,15 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   justify-content: center;
   gap: 6px;
   padding: 16px;
-  border: 1px dashed #ccc;
+  border: 1px dashed var(--color-gray-300);
   border-radius: 0 0 8px 8px;
-  color: #999;
+  color: var(--color-gray-400);
   font-size: 13px;
 }
 
 .rce-noise-body {
-  background: var(--background-primary, #fff);
-  border: 1px solid var(--border-color, #e0e0e0);
+  background: var(--background-primary, var(--background));
+  border: 1px solid var(--border-color, var(--border));
   border-radius: 0 0 8px 8px;
   padding: 12px;
   display: flex;
@@ -380,25 +380,25 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  border: 1px solid #e0e7ff;
+  border: 1px solid var(--color-indigo-100);
   border-radius: 6px;
-  background: #f8f9ff;
+  background: var(--muted);
 }
 .rce-noise-card-info { flex: 1; min-width: 0; }
 .rce-noise-card-row { display: flex; align-items: center; gap: 6px; }
-.rce-noise-card-icon { color: #6366f1; font-size: 12px; }
+.rce-noise-card-icon { color: var(--color-indigo-500); font-size: 12px; }
 .rce-noise-card-name {
-  font-size: 13px; font-weight: 500; color: #333;
+  font-size: 13px; font-weight: 500; color: var(--foreground);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;
 }
 .rce-noise-card-duration {
-  font-size: 11px; color: #999;
+  font-size: 11px; color: var(--color-gray-400);
   display: flex; align-items: center; gap: 3px; white-space: nowrap;
 }
 .rce-noise-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .rce-noise-tag {
   font-size: 10px; padding: 1px 6px; border-radius: 8px;
-  background: #e0e7ff; color: #4f46e5;
+  background: var(--color-indigo-100); color: var(--color-indigo-600);
 }
 .rce-noise-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
 
@@ -413,9 +413,9 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  border: 1px solid #d0d7de;
+  border: 1px solid var(--color-slate-300);
   border-radius: 16px;
-  background: #f6f8fa;
+  background: var(--color-slate-50);
   font-size: 12px;
   cursor: pointer;
   user-select: none;
@@ -424,31 +424,31 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   margin: 0;
 }
 .rce-noise-device-chip:has(input:checked) {
-  background: #e6f4ff;
-  border-color: #4096ff;
-  color: #1677ff;
+  background: var(--secondary-light);
+  border-color: var(--secondary);
+  color: var(--secondary);
 }
 .rce-noise-device-unmatched {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  border: 1px solid #ffd591;
+  border: 1px solid var(--color-orange-200);
   border-radius: 16px;
-  background: #fffbe6;
-  color: #d48806;
+  background: var(--color-amber-50);
+  color: var(--warning-dark);
   font-size: 12px;
 }
 
 .rce-field { display: flex; flex-direction: column; gap: 3px; }
 .rce-field-row { display: flex; gap: 12px; }
-.rce-field-label { font-size: 12px; font-weight: 500; color: var(--text-secondary, #666); }
+.rce-field-label { font-size: 12px; font-weight: 500; color: var(--text-secondary, var(--color-gray-500)); }
 
 .rce-audio-input { display: flex; gap: 4px; align-items: center; }
 .rce-audio-input input {
   flex: 1;
   cursor: pointer;
-  background: var(--background-primary, #fff) !important;
+  background: var(--background-primary, var(--background)) ;
 }
 
 .rce-switch {
@@ -457,12 +457,12 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   gap: 6px;
   cursor: pointer;
   font-size: 12px;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, var(--color-gray-500));
 }
 .rce-switch input[type="checkbox"] {
   width: 16px;
   height: 16px;
-  accent-color: var(--primary-color, #ff6a00);
+  accent-color: var(--primary-color, var(--primary));
 }
 
 .rce-param-grid { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -471,7 +471,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   display: block;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text-secondary, #666);
+  color: var(--text-secondary, var(--color-gray-500));
   margin-bottom: 4px;
 }
 
@@ -481,7 +481,7 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   -webkit-appearance: none;
   height: 4px;
   border-radius: 2px;
-  background: var(--border-color, #e0e0e0);
+  background: var(--border-color, var(--border));
   outline: none;
 }
 .rce-slider::-webkit-slider-thumb {
@@ -489,12 +489,12 @@ function toggleNoiseDevice(deviceId: string, checked: boolean) {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--primary-color, #ff6a00);
+  background: var(--primary-color, var(--primary));
   cursor: pointer;
 }
 .rce-slider-val {
   font-size: 12px;
-  color: var(--primary-color, #ff6a00);
+  color: var(--primary-color, var(--primary));
   font-weight: 600;
   min-width: 40px;
   text-align: right;

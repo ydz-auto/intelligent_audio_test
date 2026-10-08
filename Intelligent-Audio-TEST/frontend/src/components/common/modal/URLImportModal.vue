@@ -198,7 +198,7 @@ h3 {
   margin: 0 0 20px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .import-content {
@@ -216,32 +216,32 @@ h3 {
 .form-group label {
   font-size: 14px;
   font-weight: 500;
-  color: #374151;
+  color: var(--color-gray-700);
 }
 
 .form-input {
   padding: 10px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--color-gray-300);
   border-radius: 6px;
   font-size: 14px;
-  color: #374151;
+  color: var(--color-gray-700);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--color-blue-500);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-blue-500) 10%, transparent);
 }
 
 .form-hint {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-gray-500);
   margin: 0;
 }
 
 .upload-options {
-  background-color: #f8fafc;
+  background-color: var(--color-slate-50);
   padding: 16px;
   border-radius: 8px;
   margin-top: 8px;
@@ -251,7 +251,7 @@ h3 {
   margin: 0 0 16px 0;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .options-grid {
@@ -272,14 +272,14 @@ h3 {
 
 .option-item label {
   font-size: 14px;
-  color: #334155;
+  color: var(--color-slate-700);
   margin: 0;
 }
 
 .option-hint {
-  margin: 4px 0 0 0 !important;
+  margin: 4px 0 0 0 ;
   font-size: 12px;
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .radio-group {
@@ -300,7 +300,7 @@ h3 {
 
 .radio-label .radio-text {
   font-size: 14px;
-  color: #334155;
+  color: var(--color-slate-700);
 }
 
 .modal-footer {
@@ -309,12 +309,12 @@ h3 {
   gap: 12px;
   margin-top: 20px;
   padding-top: 20px;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--color-slate-200);
 }
 
 .btn-primary {
   padding: 10px 20px;
-  background-color: #3b82f6;
+  background-color: var(--color-blue-500);
   color: white;
   border: none;
   border-radius: 6px;
@@ -328,7 +328,7 @@ h3 {
 }
 
 .btn-primary:hover:not(:disabled) {
-  background-color: #2563eb;
+  background-color: var(--color-blue-600);
 }
 
 .btn-primary:disabled {
@@ -339,8 +339,8 @@ h3 {
 .btn-secondary {
   padding: 10px 20px;
   background-color: white;
-  color: #374151;
-  border: 1px solid #d1d5db;
+  color: var(--color-gray-700);
+  border: 1px solid var(--color-gray-300);
   border-radius: 6px;
   font-size: 14px;
   font-weight: 500;
@@ -349,7 +349,7 @@ h3 {
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: #f3f4f6;
+  background-color: var(--color-gray-100);
 }
 
 .btn-secondary:disabled {
@@ -361,7 +361,7 @@ h3 {
   display: inline-block;
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  border: 2px solid color-mix(in srgb, var(--color-white) 30%, transparent);
   border-radius: 50%;
   border-top-color: white;
   animation: spin 0.8s linear infinite;

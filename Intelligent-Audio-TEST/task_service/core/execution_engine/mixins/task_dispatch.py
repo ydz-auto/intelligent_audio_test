@@ -32,11 +32,11 @@ class TaskDispatchMixin:
 
     def _handle_no_pending_case(self, task_id, task, session):
         """没有待执行用例时的处理，返回 True 表示需要继续循环"""
-        if task.type != 'api':
+        if not self._task_uses_api_async(task_id, task, session):
             self._log(level='INFO', content=f"任务 {task_id} 所有用例执行完成，退出主循环", task_id=task_id)
             return False
 
-        # API 任务：检查是否有执行中/评估中的用例
+        # API 流程：检查是否有执行中/评估中的用例
         in_progress = self._count_in_progress_cases(task_id, session)
         evaluating = self._count_evaluating_cases(task_id, session)
         if in_progress > 0 or evaluating > 0:
@@ -48,6 +48,26 @@ class TaskDispatchMixin:
 
         self._log(level='INFO', content=f"任务 {task_id} 所有用例执行完成，退出主循环", task_id=task_id)
         return False
+
+    def _task_uses_api_async(self, task_id, task, session):
+        """任务是否需要 API 异步等待流程
+
+        执行域 P0：路由判定迁至用例级 device_type（http_api / websocket_api 为异步 API 流程）；
+        旧数据 device_type 为空时回退任务级 task.type（api → 异步等待），保证旧任务行为不变。
+        """
+        from shared.models.common_enums import DeviceType
+        api_types = (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value)
+        api_case = session.query(TaskCase).filter(
+            TaskCase.task_id == task_id,
+            TaskCase.device_type.in_(api_types),
+        ).first()
+        if api_case:
+            return True
+        legacy_case = session.query(TaskCase).filter(
+            TaskCase.task_id == task_id,
+            TaskCase.device_type.is_(None),
+        ).first()
+        return bool(legacy_case) and task.type == 'api'
 
     def _count_in_progress_cases(self, task_id, session):
         """统计执行中/排队中的用例数"""
@@ -87,8 +107,16 @@ class TaskDispatchMixin:
         ).count()
 
     def _dispatch_case_by_type(self, task_id, task, tc_rel, session):
-        """根据任务类型分发用例执行"""
-        if task.type == 'api':
+        """根据用例级 device_type 分发用例执行
+
+        执行域 P0：路由判定由 task.type 迁至 task_case_relations.device_type；
+        旧数据 device_type 为空时回退 task.type（api → http_api / 其他 → physical），保证兼容。
+        """
+        from shared.models.common_enums import DeviceType
+        device_type = tc_rel.device_type or (
+            DeviceType.HTTP_API.value if task.type == 'api' else DeviceType.PHYSICAL.value
+        )
+        if device_type in (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value):
             self._dispatch_api_case(task_id, tc_rel, session)
         else:
             self._dispatch_e2e_case(task_id, task, tc_rel, session)

@@ -142,7 +142,30 @@ class TaskReadModel(
             tasks = pagination.items
 
             items = []
-            from task_service.infrastructure.persistence.models import TaskDevice, TaskAPI
+            from task_service.infrastructure.persistence.models import TaskDevice, TaskAPI, TaskMergeRelation
+            # 批量获取合并任务来源（仅 type == 'merged' 的任务需要，避免 N+1）
+            merged_task_ids = [task.id for task in tasks if task.type == 'merged']
+            source_tasks_map = {}
+            if merged_task_ids:
+                relations = (session.query(TaskMergeRelation)
+                             .filter(TaskMergeRelation.merged_task_id.in_(merged_task_ids)).all())
+                source_ids = sorted({r.source_task_id for r in relations})
+                source_map = {t.id: t for t in session.query(Task).filter(Task.id.in_(source_ids)).all()} if source_ids else {}
+                for mid in merged_task_ids:
+                    briefs = []
+                    for rel in [r for r in relations if r.merged_task_id == mid]:
+                        st = source_map.get(rel.source_task_id)
+                        if st:
+                            briefs.append({
+                                'id': st.id,
+                                'name': st.name,
+                                'status': st.status,
+                                'total_cases': st.total_cases,
+                                'completed_cases': st.completed_cases,
+                                'failed_cases': st.failed_cases,
+                                'created_at': st.created_at.isoformat() if st.created_at else None,
+                            })
+                    source_tasks_map[mid] = briefs
             for task in tasks:
                 # 通过 gRPC 查询任务的报告（替代直连 report_service PO）
                 reports = []
@@ -198,6 +221,7 @@ class TaskReadModel(
                     'reports': report_info,
                     'devices': devices,
                     'apis': apis,
+                    'source_tasks': source_tasks_map.get(task.id, []),
                 })
 
             return {

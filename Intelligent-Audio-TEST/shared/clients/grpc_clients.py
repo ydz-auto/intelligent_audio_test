@@ -64,6 +64,7 @@ from shared.clients._grpc_stubs import (
     get_spl_config_service_stub,
     get_execution_service_stub,
     get_task_config_service_stub,
+    get_published_task_config_service_stub,
     get_testcase_config_service_stub,
     get_tag_config_service_stub,
     get_algorithm_config_service_stub,

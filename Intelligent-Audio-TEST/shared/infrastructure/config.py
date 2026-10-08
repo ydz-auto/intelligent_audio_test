@@ -41,7 +41,7 @@ class BaseConfig:
     # --- Redis ---
     REDIS_URL: str = _get_env('REDIS_URL', 'redis://localhost:6379')
 
-    # --- OSS (MinIO / S3 兼容) ---
+    # --- OSS (RustFS / S3 兼容) ---
     OSS_ENDPOINT: str = _get_env('OSS_ENDPOINT', 'http://localhost:9000')
     OSS_ACCESS_KEY: str = _get_env('OSS_ACCESS_KEY', required=True)
     OSS_SECRET_KEY: str = _get_env('OSS_SECRET_KEY', required=True)

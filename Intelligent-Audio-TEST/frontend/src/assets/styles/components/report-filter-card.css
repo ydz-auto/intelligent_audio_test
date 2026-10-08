@@ -1,8 +1,8 @@
 /* 报告页面筛选卡片统一样式 - 基于参考设计 */
 .report-filter-card {
-  background: #ffffff;
+  background: var(--color-white);
   border-radius: 16px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   box-shadow: none;
   padding: 20px;
   margin-bottom: 24px;
@@ -11,7 +11,7 @@
 
 .report-filter-card .filter-title {
   font-weight: 600;
-  color: #1e293b;
+  color: var(--color-slate-800);
   font-size: 16px;
   margin-bottom: 20px;
   padding-left: 0;
@@ -46,7 +46,7 @@
 .report-filter-card .filter-label {
   display: block;
   font-weight: 600;
-  color: #64748b;
+  color: var(--color-slate-500);
   font-size: 14px;
   margin-bottom: 12px;
   display: flex;
@@ -55,20 +55,20 @@
 }
 
 .report-filter-card .filter-label i {
-  color: #ff6a00;
+  color: var(--primary);
   font-size: 14px;
 }
 
 .report-filter-card .filter-hint {
   font-weight: normal;
-  color: #10b981;
+  color: var(--color-emerald-500);
   font-size: 12px;
   margin-left: 8px;
 }
 
 .report-filter-card .filter-count {
   font-weight: normal;
-  color: #1677ff;
+  color: var(--secondary);
   font-size: 12px;
   margin-left: 8px;
 }
@@ -78,7 +78,7 @@
   display: flex;
   align-items: center;
   margin-bottom: 12px;
-  border: 1px solid #e2e8f0 !important;
+  border: 1px solid var(--color-slate-200) ;
   border-radius: 8px;
   padding: 0 12px;
   background-color: white;
@@ -90,12 +90,12 @@
 
 .report-filter-card .search-box-flex:focus-within {
   outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .report-filter-card .search-box-flex .search-icon {
-  color: #94a3b8;
+  color: var(--color-slate-400);
   font-size: 14px;
   flex-shrink: 0;
   margin-right: 8px;
@@ -113,13 +113,13 @@
 }
 
 .report-filter-card .search-box-flex .search-input::placeholder {
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .report-filter-card .search-box-flex .search-clear {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--color-slate-400);
   cursor: pointer;
   padding: 4px;
   font-size: 12px;
@@ -136,7 +136,7 @@
 }
 
 .report-filter-card .search-box-flex .search-clear:hover {
-  color: #64748b;
+  color: var(--color-slate-500);
 }
 
 /* 标签筛选器样式 - 蓝色主题 */
@@ -160,9 +160,9 @@
 
 .report-filter-card .tag-filter-item {
   padding: 6px 14px;
-  background: white !important;
-  color: #64748b !important;
-  border: 1px solid #e2e8f0 !important;
+  background: white ;
+  color: var(--color-slate-500) ;
+  border: 1px solid var(--color-slate-200) ;
   border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -174,16 +174,16 @@
 }
 
 .report-filter-card .tag-filter-item:hover {
-  background: #f8fafc !important;
-  color: #334155 !important;
-  border-color: #cbd5e1 !important;
+  background: var(--color-slate-50) ;
+  color: var(--color-slate-700) ;
+  border-color: var(--color-slate-300) ;
 }
 
 .report-filter-card .tag-filter-item.active {
-  background: #1677ff !important;
-  color: white !important;
-  border-color: #1677ff !important;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
+  background: var(--secondary) ;
+  color: white ;
+  border-color: var(--secondary) ;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
 /* 分类筛选器样式 - 橙色主题 */
@@ -207,9 +207,9 @@
 
 .report-filter-card .case-type-item {
   padding: 6px 14px;
-  background: white !important;
-  color: #64748b !important;
-  border: 1px solid #e2e8f0 !important;
+  background: white ;
+  color: var(--color-slate-500) ;
+  border: 1px solid var(--color-slate-200) ;
   border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -221,19 +221,19 @@
 }
 
 .report-filter-card .case-type-item:hover {
-  background: #f8fafc !important;
-  color: #334155 !important;
-  border-color: #cbd5e1 !important;
+  background: var(--color-slate-50) ;
+  color: var(--color-slate-700) ;
+  border-color: var(--color-slate-300) ;
 }
 
 .report-filter-card .case-type-item.active {
-  background: #1677ff !important;
-  color: white !important;
-  border-color: #1677ff !important;
+  background: var(--secondary) ;
+  color: white ;
+  border-color: var(--secondary) ;
   font-weight: 600;
   text-decoration: none;
   text-underline-offset: 3px;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
 /* 分页器样式 */
@@ -250,10 +250,10 @@
 
 .report-filter-card .pagination-btn {
   padding: 6px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 6px;
   background: white;
-  color: #64748b;
+  color: var(--color-slate-500);
   cursor: pointer;
   font-size: 12px;
   transition: all 0.2s ease;
@@ -263,9 +263,9 @@
 }
 
 .report-filter-card .pagination-btn:hover:not(:disabled) {
-  border-color: #1677ff;
-  color: #1677ff;
-  background: rgba(22, 119, 255, 0.05);
+  border-color: var(--secondary);
+  color: var(--secondary);
+  background: color-mix(in srgb, var(--secondary) 5%, transparent);
 }
 
 .report-filter-card .pagination-btn:disabled {
@@ -275,7 +275,7 @@
 
 .report-filter-card .pagination-info {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-slate-500);
   min-width: 60px;
   text-align: center;
 }
@@ -304,32 +304,32 @@
 }
 
 .report-filter-card .btn-primary {
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary) 100%);
   color: white;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.2);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 20%, transparent);
 }
 
 .report-filter-card .btn-primary:hover {
   opacity: 0.9;
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--secondary) 30%, transparent);
   transform: translateY(-1px);
 }
 
 .report-filter-card .btn-secondary {
   background: white;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
+  color: var(--color-slate-500);
+  border: 1px solid var(--color-slate-200);
 }
 
 .report-filter-card .btn-secondary:hover {
-  background: #f5f5f5;
-  border-color: #1677ff;
-  color: #1677ff;
+  background: var(--muted);
+  border-color: var(--secondary);
+  color: var(--secondary);
 }
 
 /* 无数据提示 */
 .report-filter-card .no-data-tip {
-  color: #94a3b8;
+  color: var(--color-slate-400);
   font-size: 13px;
   font-style: italic;
   padding: 12px;
@@ -381,9 +381,9 @@
 
 .report-filter-card .tag-filter-item-orange {
   padding: 6px 12px;
-  background: white !important;
-  color: #64748b !important;
-  border: 1px solid #e2e8f0 !important;
+  background: white ;
+  color: var(--color-slate-500) ;
+  border: 1px solid var(--color-slate-200) ;
   border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -395,16 +395,16 @@
 }
 
 .report-filter-card .tag-filter-item-orange:hover {
-  background: #f8fafc !important;
-  color: #334155 !important;
-  border-color: #cbd5e1 !important;
+  background: var(--color-slate-50) ;
+  color: var(--color-slate-700) ;
+  border-color: var(--color-slate-300) ;
 }
 
 .report-filter-card .tag-filter-item-orange.active {
-  background: #1677ff !important;
-  color: white !important;
-  border-color: #1677ff !important;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
+  background: var(--secondary) ;
+  color: white ;
+  border-color: var(--secondary) ;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
 /* 评估维度筛选器样式 */
@@ -428,9 +428,9 @@
 
 .report-filter-card .metric-filter-item {
   padding: 6px 12px;
-  background: white !important;
-  color: #64748b !important;
-  border: 1px solid #e2e8f0 !important;
+  background: white ;
+  color: var(--color-slate-500) ;
+  border: 1px solid var(--color-slate-200) ;
   border-radius: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -448,16 +448,16 @@
 }
 
 .report-filter-card .metric-filter-item:hover {
-  background: #f8fafc !important;
-  color: #334155 !important;
-  border-color: #cbd5e1 !important;
+  background: var(--color-slate-50) ;
+  color: var(--color-slate-700) ;
+  border-color: var(--color-slate-300) ;
 }
 
 .report-filter-card .metric-filter-item.active {
-  background: #1677ff !important;
-  color: white !important;
-  border-color: #1677ff !important;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
+  background: var(--secondary) ;
+  color: white ;
+  border-color: var(--secondary) ;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
 .report-filter-card .metric-filter-item.active i {
@@ -470,7 +470,7 @@
   display: flex;
   align-items: center;
   margin-bottom: 12px;
-  border: 1px solid #e2e8f0 !important;
+  border: 1px solid var(--color-slate-200) ;
   border-radius: 8px;
   padding: 0 12px;
   background-color: white;
@@ -482,12 +482,12 @@
 
 .report-filter-card .metric-search-box:focus-within {
   outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .report-filter-card .metric-search-box .search-icon {
-  color: #94a3b8;
+  color: var(--color-slate-400);
   font-size: 14px;
   flex-shrink: 0;
   margin-right: 8px;
@@ -505,13 +505,13 @@
 }
 
 .report-filter-card .metric-search-box .search-input::placeholder {
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .report-filter-card .metric-search-box .search-clear {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--color-slate-400);
   cursor: pointer;
   padding: 4px;
   font-size: 12px;
@@ -528,7 +528,7 @@
 }
 
 .report-filter-card .metric-search-box .search-clear:hover {
-  color: #64748b;
+  color: var(--color-slate-500);
 }
 
 /* 评估维度选择区域的搜索框样式 */
@@ -536,7 +536,7 @@
   display: flex;
   align-items: center;
   margin-bottom: 12px;
-  border: 1px solid #e2e8f0 !important;
+  border: 1px solid var(--color-slate-200) ;
   border-radius: 8px;
   padding: 0 12px;
   background-color: white;
@@ -548,12 +548,12 @@
 
 .metric-selection .metric-search-box:focus-within {
   outline: none;
-  border-color: #1677ff !important;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary) ;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .metric-selection .metric-search-box .search-icon {
-  color: #94a3b8;
+  color: var(--color-slate-400);
   font-size: 14px;
   flex-shrink: 0;
   margin-right: 8px;
@@ -571,13 +571,13 @@
 }
 
 .metric-selection .metric-search-box .search-input::placeholder {
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .metric-selection .metric-search-box .search-clear {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--color-slate-400);
   cursor: pointer;
   padding: 4px;
   font-size: 12px;
@@ -594,7 +594,7 @@
 }
 
 .metric-selection .metric-search-box .search-clear:hover {
-  color: #64748b;
+  color: var(--color-slate-500);
 }
 
 .report-filter-card .metric-pagination {
@@ -639,7 +639,7 @@
 .report-filter-card .filter-input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   font-size: 14px;
   transition: all 0.3s ease;
@@ -649,18 +649,18 @@
 
 .report-filter-card .filter-input:focus {
   outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 .report-filter-card .filter-input::placeholder {
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .report-filter-card .filter-select {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-slate-200);
   border-radius: 8px;
   font-size: 14px;
   background: white;
@@ -671,8 +671,8 @@
 
 .report-filter-card .filter-select:focus {
   outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--secondary) 10%, transparent);
 }
 
 /* 标签搜索框 */

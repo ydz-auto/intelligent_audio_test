@@ -130,7 +130,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                         if isinstance(field_value, str) and field_value:
                             if self._is_oss_pass_through(field_value):
                                 # 透传模式：oss:// 路径提到顶层 form_fields，
-                                # 由 eval_server 本地从 MinIO 下载（镜像文件提取逻辑，但不做字节上传）
+                                # 由 eval_server 本地从对象存储下载（镜像文件提取逻辑，但不做字节上传）
                                 rd.pop(field_name, None)
                                 form_fields[field_name] = field_value
                                 continue
@@ -187,7 +187,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         """判断值是否为 oss:// 透传路径。
 
         oss:// 前缀本身就是信号：透传模式下不会作为 multipart 文件提取，
-        而是原样传给 eval_server，由其在本地从 MinIO 下载后计算，
+        而是原样传给 eval_server，由其在本地从对象存储下载后计算，
         避免文件字节在主服务与评估服务之间流转。
         """
         return isinstance(value, str) and value.startswith('oss://')
@@ -205,7 +205,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         if os.path.isabs(value):
             return os.path.exists(value)
         # oss:// 路径不作为文件提取，原样透传给 eval_server，
-        # 由其在本地从 MinIO 下载（避免字节流转）
+        # 由其在本地从对象存储下载（避免字节流转）
         if value.startswith('oss://'):
             return False
         # 存储路径（兼容裸 OSS key）

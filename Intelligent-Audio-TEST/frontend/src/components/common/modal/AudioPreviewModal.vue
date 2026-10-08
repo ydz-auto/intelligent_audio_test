@@ -105,7 +105,7 @@ const handlePreview = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -124,7 +124,7 @@ const handlePreview = () => {
 .modal-container {
   background-color: white;
   border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 20px color-mix(in srgb, var(--color-black) 15%, transparent);
   width: 90%;
   max-width: 600px;
   max-height: 90vh;
@@ -142,15 +142,15 @@ const handlePreview = () => {
   justify-content: space-between;
   align-items: center;
   padding: 20px 24px;
-  border-bottom: 1px solid #e9ecef;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-bottom: 1px solid var(--muted);
+  background: linear-gradient(135deg, var(--muted) 0%, var(--muted) 100%);
 }
 
 .modal-header h3 {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
-  color: #343a40;
+  color: var(--foreground);
 }
 
 .modal-close {
@@ -158,7 +158,7 @@ const handlePreview = () => {
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #6c757d;
+  color: var(--muted-foreground);
   width: 32px;
   height: 32px;
   display: flex;
@@ -169,8 +169,8 @@ const handlePreview = () => {
 }
 
 .modal-close:hover {
-  color: #343a40;
-  background-color: #e9ecef;
+  color: var(--foreground);
+  background-color: var(--muted);
   transform: rotate(90deg);
 }
 
@@ -181,9 +181,9 @@ const handlePreview = () => {
 .form-section {
   margin-bottom: 24px;
   padding: 20px;
-  background-color: #f8f9fa;
+  background-color: var(--muted);
   border-radius: 8px;
-  border: 1px solid #e9ecef;
+  border: 1px solid var(--muted);
 }
 
 .form-section h4 {
@@ -191,7 +191,7 @@ const handlePreview = () => {
   margin-bottom: 16px;
   font-size: 18px;
   font-weight: 600;
-  color: #343a40;
+  color: var(--foreground);
 }
 
 .form-row {
@@ -210,18 +210,18 @@ const handlePreview = () => {
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #495057;
+  color: var(--muted-foreground);
 }
 
 .required {
-  color: #dc3545;
+  color: var(--destructive);
   font-weight: bold;
 }
 
 .form-control {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ced4da;
+  border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 14px;
   transition: all 0.2s;
@@ -230,13 +230,13 @@ const handlePreview = () => {
 
 .form-control:focus {
   outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--secondary) 25%, transparent);
 }
 
 .form-control:invalid {
-  border-color: #dc3545;
-  box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+  border-color: var(--destructive);
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--destructive) 25%, transparent);
 }
 
 .scan-status {
@@ -250,22 +250,22 @@ const handlePreview = () => {
 }
 
 .scan-status-scanning {
-  background-color: #e3f2fd;
-  color: #1976d2;
-  border: 1px solid #bbdefb;
+  background-color: var(--color-secondary-light);
+  color: var(--secondary);
+  border: 1px solid var(--secondary-light);
 }
 
 .scan-status-error {
-  background-color: #ffebee;
-  color: #d32f2f;
-  border: 1px solid #ffcdd2;
+  background-color: var(--destructive-light);
+  color: var(--color-red-700);
+  border: 1px solid var(--destructive-light);
 }
 
 .device-group {
   margin-bottom: 20px;
   padding: 16px;
-  background-color: #ffffff;
-  border: 1px solid #e9ecef;
+  background-color: var(--color-white);
+  border: 1px solid var(--muted);
   border-radius: 6px;
 }
 
@@ -274,7 +274,7 @@ const handlePreview = () => {
   margin-bottom: 12px;
   font-size: 16px;
   font-weight: 600;
-  color: #495057;
+  color: var(--muted-foreground);
 }
 
 .checkbox-group {
@@ -288,16 +288,16 @@ const handlePreview = () => {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background-color: #f8f9fa;
-  border: 1px solid #e9ecef;
+  background-color: var(--muted);
+  border: 1px solid var(--muted);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .checkbox-item:hover {
-  background-color: #e3f2fd;
-  border-color: #bbdefb;
+  background-color: var(--color-secondary-light);
+  border-color: var(--secondary-light);
 }
 
 .checkbox-item input[type="checkbox"] {
@@ -341,11 +341,11 @@ const handlePreview = () => {
 .mode-description {
   margin-top: 12px;
   padding: 12px;
-  background-color: #e3f2fd;
-  border: 1px solid #bbdefb;
+  background-color: var(--color-secondary-light);
+  border: 1px solid var(--secondary-light);
   border-radius: 6px;
   font-size: 14px;
-  color: #1976d2;
+  color: var(--secondary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -357,7 +357,7 @@ const handlePreview = () => {
 
 .modal-footer {
   padding: 20px 24px;
-  border-top: 1px solid #e9ecef;
+  border-top: 1px solid var(--muted);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -376,19 +376,14 @@ const handlePreview = () => {
   gap: 8px;
 }
 
-.btn-primary {
-  background-color: #007bff;
-  color: white;
-}
-
 .btn-primary:hover:not(:disabled) {
-  background-color: #0056b3;
+  background-color: var(--secondary-deep);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--secondary) 30%, transparent);
 }
 
 .btn-primary:disabled {
-  background-color: #6c757d;
+  background-color: var(--muted-foreground);
   cursor: not-allowed;
   opacity: 0.65;
   transform: none;
@@ -396,15 +391,15 @@ const handlePreview = () => {
 }
 
 .btn-secondary {
-  background-color: #f8f9fa;
-  color: #6c757d;
-  border: 1px solid #dee2e6;
+  background-color: var(--muted);
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
-  background-color: #e9ecef;
-  color: #495057;
+  background-color: var(--muted);
+  color: var(--muted-foreground);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 10%, transparent);
 }
 </style>

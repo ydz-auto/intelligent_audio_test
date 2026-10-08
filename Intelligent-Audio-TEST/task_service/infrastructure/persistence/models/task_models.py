@@ -54,6 +54,10 @@ class Task(Base):
     reevaluated_at = Column(DateTime, nullable=True, comment='最后一次重新评估完成时间')
     reevaluation_count = Column(Integer, nullable=False, default=0, comment='重新评估次数')
     worker_instance_id = Column(String(100), nullable=True, index=True, comment='归属执行实例ID (task_service:{host}:{port}:{hex})，NULL 表示未绑定，任意实例可接管')
+    # 已发布任务追溯字段（从已发布任务执行生成的日常任务回填）
+    published_task_id = Column(Integer, nullable=True, comment='来源已发布任务 ID')
+    published_task_version = Column(Integer, nullable=True, comment='来源已发布任务版本号')
+    execution_source = Column(String(20), nullable=True, default='manual', comment='执行来源 (manual/published_task)')
 
     # 跨上下文 relationship（Tag/TestCase 归属本服务，可保留）
     tags = relationship('Tag', secondary='task_tags',
@@ -99,6 +103,11 @@ class TaskCase(Base):
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    # 执行域 P0 新增：用例级被测设备路由（取代 task.type 语义）
+    device_type = Column(String(20), nullable=True, comment='被测设备类型 (physical/http_api/websocket_api，用例级决定执行路由，为空时回退 task.type)')
+    device_id = Column(String(50), nullable=True, comment='被测设备ID (physical=设备ID / http_api|websocket_api=api.id)')
+    # 实验室扩展：用例级实验室归属（可空=通用任务，随设备选择按实验室过滤）
+    lab_id = Column(Integer, nullable=True, index=True, comment='关联实验室ID (实验室扩展)')
 
 
 class TaskDevice(Base):

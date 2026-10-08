@@ -75,12 +75,35 @@ export function createEvalDimensionSelection(state: EvalDimensionState) {
     }
   }
 
+  // ========== 分组视图组内全选 ==========
+  /** 分组视图：组内维度是否全部选中 */
+  function groupAllSelected(group: { items: Array<{ id: number | string }> }): boolean {
+    const ids = group.items.map(d => d.id);
+    return ids.length > 0 && ids.every(id => selectedDimensions.value.includes(id));
+  }
+
+  /** 分组视图：切换组内全选状态 */
+  function toggleGroupSelectAll(group: { items: Array<{ id: number | string }> }) {
+    const ids = group.items.map(d => d.id);
+    const allSelected = ids.every(id => selectedDimensions.value.includes(id));
+    if (allSelected) {
+      const idSet = new Set(ids);
+      selectedDimensions.value = selectedDimensions.value.filter(id => !idSet.has(id));
+    } else {
+      ids.forEach(id => {
+        if (!selectedDimensions.value.includes(id)) selectedDimensions.value.push(id);
+      });
+    }
+  }
+
   return {
     toggleSelectAll,
     toggleDimensionSelection,
     toggleGroupSelection,
     selectAllInGroup,
     toggleSelectAllInCategory,
+    groupAllSelected,
+    toggleGroupSelectAll,
   };
 }
 

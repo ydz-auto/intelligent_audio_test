@@ -384,10 +384,6 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
 // 处理设备选择
 </script>
 
-<style>
-@import '../../assets/styles/main.css';
-</style>
-
 <style scoped>
 @import './audioImport.css';
 
@@ -396,10 +392,10 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
   bottom: 24px;
   right: 24px;
   z-index: 9999;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--background);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
   min-width: 380px;
   max-width: 480px;
   animation: slideIn 0.3s ease;
@@ -419,7 +415,7 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
 
 .tip-icon {
   font-size: 24px;
-  color: #10b981;
+  color: var(--color-emerald-500);
   flex-shrink: 0;
 }
 
@@ -433,12 +429,12 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
 .tip-title {
   font-size: 14px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--color-gray-800);
 }
 
 .tip-desc {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--color-gray-500);
 }
 
 .tip-actions {

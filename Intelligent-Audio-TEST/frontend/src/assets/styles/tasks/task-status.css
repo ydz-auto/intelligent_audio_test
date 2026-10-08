@@ -1,4 +1,45 @@
-/* 任务状态标签 - 现代化设计 */
+/*
+ * 状态标签通用样式（.task-status/.task-indicator 已迁至 components/task/TaskCard.css）
+ * 本文件保留跨组件复用的 .status-tag 兜底定义
+ */
+.status-tag{
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: transparent;
+    border: 1px solid currentColor;
+}
+
+.status-tag.pending{
+    color: var(--secondary);
+    border-color: var(--secondary);
+}
+
+.status-tag.in-progress{
+    color: var(--primary);
+    border-color: var(--primary);
+}
+
+.status-tag.completed{
+    color: var(--success);
+    border-color: var(--success);
+}
+
+.status-tag.failed{
+    color: var(--destructive);
+    border-color: var(--destructive);
+}
+
+.status-tag.deleted{
+    color: var(--gray);
+    border-color: var(--gray);
+}
+
+/* ── [恢复] 死类误删的样式（HEAD 原样） ── */
 .task-status {
     display: inline-flex;
     align-items: center;
@@ -30,15 +71,6 @@
     animation: statusPulse 2s infinite;
 }
 
-@keyframes statusPulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.7;
-    }
-}
-
 .task-status.completed, .task-status-completed {
     color: #52c41a;
     border-color: #52c41a;
@@ -52,73 +84,4 @@
 .task-status.deleted, .task-status-deleted {
     color: #8c8c8c;
     border-color: #8c8c8c;
-}
-
-.task-indicator {
-    font-size: 12px;
-    animation: pulse 2s infinite;
-    display: inline-block;
-}
-
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.5;
-    }
-}
-
-.task-indicator.pending {
-    color: #1677FF;
-}
-
-.task-indicator.in-progress {
-    color: #FF6A00;
-}
-
-.task-indicator.completed {
-    color: #52C41A;
-}
-
-.task-indicator.failed {
-    color: #FF4D4F;
-}
-
-/* 状态标签样式 */
-.status-tag {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 500;
-    background: transparent;
-    border: 1px solid currentColor;
-}
-
-.status-tag.pending {
-    color: #1677ff;
-    border-color: #1677ff;
-}
-
-.status-tag.in-progress {
-    color: #ff6a00;
-    border-color: #ff6a00;
-}
-
-.status-tag.completed {
-    color: #52c41a;
-    border-color: #52c41a;
-}
-
-.status-tag.failed {
-    color: #ff4d4f;
-    border-color: #ff4d4f;
-}
-
-.status-tag.deleted {
-    color: #999;
-    border-color: #999;
 }

@@ -313,10 +313,6 @@ const {
 } = useAlgorithmConfigPage()
 </script>
 
-<style>
-@import '../../assets/styles/main.css';
-</style>
+<style scoped>@import './AlgorithmConfigPage.css';
 
-<style scoped>
-@import './AlgorithmConfigPage.css';
 </style>

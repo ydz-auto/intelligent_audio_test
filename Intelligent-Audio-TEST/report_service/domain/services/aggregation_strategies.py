@@ -172,7 +172,8 @@ class WeightedSumRatioStrategy(AggregationStrategy):
         if total_den == 0:
             return None
 
-        return round(total_num / total_den, 4)
+        # 转为百分比制 (0~100)，配合 score_unit='%' 显示为 "100%"
+        return round(total_num / total_den * 100, 4)
 
 
 def _parse_numeric(value: Any) -> Optional[float]:
@@ -307,7 +308,9 @@ class RatioStrategy(AggregationStrategy):
 
 _REGISTRY: Dict[str, AggregationStrategy] = {
     'average': SimpleAverageStrategy(),
-    'weighted_wer': WeightedSumRatioStrategy(),
+    # 通用名：加权比率 Σ分子/Σ分母（原 weighted_wer 仅适用于 WER，现兼容保留）
+    'weighted_sum_ratio': WeightedSumRatioStrategy(),
+    'weighted_wer': WeightedSumRatioStrategy(),  # 旧枚举值兼容别名，新配置请用 weighted_sum_ratio
     'pass_rate': PassRateStrategy(),
     'ratio': RatioStrategy(),
 }

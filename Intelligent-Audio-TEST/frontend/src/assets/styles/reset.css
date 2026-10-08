@@ -17,7 +17,7 @@ html, body {
 
 /* 移除Vue默认样式 */
 [v-cloak] {
-  display: none !important;
+  display: none ;
 }
 
 /* 重置列表样式 */

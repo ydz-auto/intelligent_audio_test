@@ -207,6 +207,94 @@ const {
 } = useTaskCard(props, emit)
 </script>
 
-<style scoped>
-@import './TaskCard.css';
+<style scoped>@import './TaskCard.css';
+
+.task-meta-item{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: color-mix(in srgb, var(--color-white) 80%, transparent);
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--color-black) 5%, transparent);
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.task-meta-item:hover{
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
+}
+
+.task-meta-item i{
+    width: 16px;
+    text-align: center;
+    color: var(--primary-color);
+    font-size: 14px;
+}
+
+.task-type{
+    background: transparent;
+    color: var(--primary-color);
+    font-weight: 600;
+    border: 1px solid var(--primary-color);
+    padding: 4px 12px;
+    border-radius: 16px;
+}
+
+.task-card:hover .task-description{
+    background: color-mix(in srgb, var(--color-white) 100%, transparent);
+    box-shadow: inset 0 1px 4px color-mix(in srgb, var(--color-black) 8%, transparent);
+}
+
+
+
+
+
+
+
+.task-title-section{
+    flex: 1;
+    min-width: 0;
+}
+
+/* task-description - 自全局样式就近迁移 */
+
+
+/* task-tags - 自全局样式就近迁移 */
+
+
+/* task-tag - 自全局样式就近迁移 */
+.task-tag{
+    background: transparent;
+    color: var(--color-slate-500);
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    border: 1px solid var(--color-slate-300);
+    white-space: nowrap;
+}
+
+.task-tag:hover{
+    background: transparent;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
+    border-color: var(--color-slate-400);
+}
+
+/* task-status-actions - 自全局样式就近迁移 */
+.task-status-actions{
+    flex: 0 0 767px;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 </style>
