@@ -7,6 +7,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 5008
+EXPOSE 5007 50067
 
-CMD ["python", "-m", "api_adapter_service.run"]
+CMD ["python", "-m", "algorithm_service.app"]

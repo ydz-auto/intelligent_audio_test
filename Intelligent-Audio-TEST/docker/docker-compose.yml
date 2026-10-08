@@ -82,6 +82,16 @@ services:
       - AUDIO_SERVICE_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=device_service
       - DEVICE_SERVICE_GRPC_PORT=50053
+      - REPORT_SERVICE_HOST=report_service
+      - REPORT_SERVICE_GRPC_PORT=50068
+      - ALGORITHM_SERVICE_HOST=algorithm_service
+      - ALGORITHM_SERVICE_GRPC_PORT=50067
+      - AUTH_SERVICE_HOST=auth_service
+      - AUTH_SERVICE_GRPC_PORT=50069
+      - AUTH_MODE=${AUTH_MODE:-off}
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-production}
+      - JWT_EXPIRE_HOURS=${JWT_EXPIRE_HOURS:-24}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
     depends_on:
       postgres:
         condition: service_healthy
@@ -89,6 +99,18 @@ services:
         condition: service_healthy
       rustfs:
         condition: service_healthy
+      report_service:
+        condition: service_healthy
+      algorithm_service:
+        condition: service_healthy
+      auth_service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   task_service:
     build:
@@ -125,6 +147,12 @@ services:
         condition: service_healthy
       rustfs:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   evaluation_service:
     build:
@@ -154,6 +182,12 @@ services:
         condition: service_healthy
       rustfs:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5004/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   e2e_test_service:
     build:
@@ -182,11 +216,20 @@ services:
       - DEVICE_SERVICE_HOST=device_service
       - DEVICE_SERVICE_GRPC_PORT=50053
     depends_on:
-      - postgres
-      - redis
-      - rustfs
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
     devices:
       - /dev/bus/usb:/dev/bus/usb
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5002/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   audio_service:
     build:
@@ -213,6 +256,12 @@ services:
         condition: service_healthy
       rustfs:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc; grpc.channel_ready_future(grpc.insecure_channel('localhost:50052')).result(timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   device_service:
     build:
@@ -241,14 +290,118 @@ services:
         condition: service_healthy
     devices:
       - /dev/bus/usb:/dev/bus/usb
+    healthcheck:
+      test: ["CMD", "python", "-c", "import grpc; grpc.channel_ready_future(grpc.insecure_channel('localhost:50053')).result(timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  report_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.report_service
+    ports:
+      - "5006:5006"
+      - "50068:50068"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=report_service
+      - GRPC_PORT=50068
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=50061
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5006/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  algorithm_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.algorithm_service
+    ports:
+      - "5007:5007"
+      - "50067:50067"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=algorithm_service
+      - GRPC_PORT=50067
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5007/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  auth_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.auth_service
+    ports:
+      - "5009:5009"
+      - "50069:50069"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://rustfs:9000
+      - OSS_ACCESS_KEY=${OSS_ACCESS_KEY:-intelligent_audio_test}
+      - OSS_SECRET_KEY=${OSS_SECRET_KEY:-intelligent_audio_test666}
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=auth_service
+      - GRPC_PORT=50069
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5009/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   api_adapter_service:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api_adapter_service
     ports:
-      - "8000:8000"
+      - "5008:5008"
+      - "50081:50081"
     environment:
+      - ADAPTER_SERVICE_HTTP_PORT=5008
+      - ADAPTER_SERVICE_GRPC_PORT=50081
       - VOICE_LLM_API_BASE=${VOICE_LLM_API_BASE:-}
       - VOICE_LLM_API_KEY=${VOICE_LLM_API_KEY:-}
       - VOLC_WS_URL=${VOLC_WS_URL:-}
@@ -256,6 +409,12 @@ services:
     depends_on:
       - postgres
       - redis
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5008/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   api_test_service:
     build:
@@ -274,8 +433,8 @@ services:
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=api_test_service
       - GRPC_PORT=50071
-      - API_ADAPTER_SERVICE_HOST=api_adapter_service
-      - API_ADAPTER_SERVICE_PORT=8000
+      - ADAPTER_SERVICE_HOST=api_adapter_service
+      - ADAPTER_SERVICE_HTTP_PORT=5008
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=50091
     depends_on:
@@ -283,8 +442,15 @@ services:
       - redis
       - rustfs
       - api_adapter_service
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5003/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # 多实例扩容（--scale / deploy.replicas）前需先移除上方固定宿主端口映射，否则第二个副本端口冲突
     deploy:
-      replicas: 2
+      replicas: 1
 
 volumes:
   postgres_data:
