@@ -1,9 +1,39 @@
 import threading
 import time
+import logging
+import requests
 from datetime import datetime
 from ..models.task import TaskModel
 from ..utils.concurrency import ConcurrencyManager
 from ..utils.decorators import limit_task_concurrency
+
+logger = logging.getLogger('task_service')
+
+
+def notify_callback(callback_url, eval_task_id, task_type, caller_task_id, status, result=None, error_msg=None):
+    """任务完成/失败后，通过回调 URL 主动通知调用方（事件化，替代调用方轮询）。
+
+    带简单重试：失败后指数退避重试 3 次；仍失败则放弃（调用方有兜底结算线程补查）。
+    """
+    if not callback_url:
+        return
+    payload = {
+        'eval_task_id': eval_task_id,
+        'task_id': caller_task_id,
+        'task_type': task_type,
+        'status': status,
+        'result': result,
+        'error_msg': error_msg,
+    }
+    for attempt in range(3):
+        try:
+            requests.post(callback_url, json=payload, timeout=10)
+            return
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+            else:
+                logger.warning(f'回调通知失败(已重试): eval_task_id={eval_task_id}, callback_url={callback_url}, err={e}')
 
 class TaskService:
     _worker_thread = None
@@ -219,6 +249,10 @@ class TaskService:
         task_type = task['task_type']
         task_params = task.get('task_params', {})
 
+        # 事件化回调：调用方传 callback_url，算完后主动通知，替代调用方轮询等待
+        callback_url = (task_params or {}).get('callback_url') or task.get('callback_url')
+        caller_task_id = task.get('task_id')
+
         try:
             result = TaskService.calculate(task_type, task_params)
 
@@ -232,6 +266,8 @@ class TaskService:
                     completed_at=datetime.now().isoformat(),
                     error_msg=error_msg
                 )
+                notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
+                                'failed', error_msg=error_msg)
                 return
 
             TaskModel.update_task_status(
@@ -240,6 +276,8 @@ class TaskService:
                 completed_at=datetime.now().isoformat(),
                 result=result
             )
+            notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
+                            'completed', result=result)
 
         except Exception as e:
             TaskModel.update_task_status(
@@ -248,6 +286,8 @@ class TaskService:
                 completed_at=datetime.now().isoformat(),
                 error_msg=str(e)
             )
+            notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
+                            'failed', error_msg=str(e))
 
 def calculate_in_process(task_type, task_params):
     """模块级函数，供 ThreadPoolExecutor 调用。

@@ -68,3 +68,8 @@ def update_category(cat_id):
 @evaluation_bp.route('/categories/<int:cat_id>', methods=['DELETE'])
 def delete_category(cat_id):
     return EvaluationController.delete_category(cat_id)
+
+@evaluation_bp.route('/result_callback', methods=['POST'])
+def eval_result_callback():
+    """eval_server 评估任务完成回调（事件化评估，替代后端阻塞轮询）"""
+    return EvaluationController.eval_result_callback()

@@ -1465,3 +1465,69 @@ class EvaluationController:
             )
         else:
             return error_response(message)
+
+    @staticmethod
+    def eval_result_callback():
+        """eval_server 评估任务完成后的回调端点（事件化评估）。
+
+        eval_server 算完后 POST 到这里（callback_url 在提交任务时注入）：
+        - completed: 写维度结果 + 更新用例状态
+        - failed:    标记维度/用例失败
+        幂等：按 eval_task_id 从注册表取出上下文，已处理/未知任务直接返回成功。
+        """
+        try:
+            data = request.get_json(silent=True) or {}
+        except Exception:
+            data = {}
+
+        eval_task_id = data.get('eval_task_id')
+        status = data.get('status')
+
+        if not eval_task_id:
+            return error_response("缺少 eval_task_id")
+
+        # token 校验（EVAL_CALLBACK_TOKEN 配置后生效，防伪造回调）
+        from backend.config.config import Config as BackendConfig
+        expected_token = BackendConfig.EVAL_CALLBACK_TOKEN
+        if expected_token:
+            token = request.args.get('token', '')
+            if token != expected_token:
+                return error_response("回调 token 校验失败", http_code=401)
+
+        from backend.services.evaluation.eval_callback_registry import eval_callback_registry
+        ctx = eval_callback_registry.pop(eval_task_id)
+        if not ctx:
+            # 已处理或服务重启后上下文丢失：幂等返回成功
+            return success_response()
+
+        task_id = ctx.get('task_id')
+        test_case_id = ctx.get('test_case_id')
+        on_complete = ctx.get('on_complete')
+        on_failed = ctx.get('on_failed')
+
+        def _safe_call(fn, *args):
+            if not fn:
+                return
+            try:
+                fn(*args)
+            except Exception as e:
+                log_and_emit('ERROR', 'evaluation',
+                             f"回调处理器执行异常: eval_task_id={eval_task_id}, err={e}",
+                             task_id=task_id, test_case_id=test_case_id)
+
+        if status == 'completed':
+            result = data.get('result') or {}
+            _safe_call(on_complete, result)
+            log_and_emit('INFO', 'evaluation',
+                         f"回调写入评估结果: eval_task_id={eval_task_id}, 状态=completed",
+                         task_id=task_id, test_case_id=test_case_id)
+        elif status == 'failed':
+            error_msg = data.get('error_msg') or '评估失败'
+            _safe_call(on_failed, error_msg)
+            log_and_emit('ERROR', 'evaluation',
+                         f"回调标记评估失败: eval_task_id={eval_task_id}, error={error_msg}",
+                         task_id=task_id, test_case_id=test_case_id)
+        else:
+            return success_response(message=f"未知回调状态: {status}")
+
+        return success_response()

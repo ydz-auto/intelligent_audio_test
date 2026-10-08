@@ -33,6 +33,21 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         self.max_wait_time = config_manager.get_value('evaluation_service', 'max_wait_time', 30)  # 任务在队列中的最大等待时间（秒）
         self.default_max_concurrent = config_manager.get_value('evaluation_service', 'default_max_concurrent', 10)  # 端点未配置时的默认并发数
 
+        # 事件化评估配置：配置 EVAL_CALLBACK_BASE_URL 后，异步任务提交即注册回调、不再阻塞轮询等待
+        from backend.config.config import Config as BackendConfig
+        callback_base = BackendConfig.EVAL_CALLBACK_BASE_URL or os.environ.get('EVAL_CALLBACK_BASE_URL', '')
+        callback_token = BackendConfig.EVAL_CALLBACK_TOKEN or os.environ.get('EVAL_CALLBACK_TOKEN', '')
+        self.event_mode = bool(callback_base)
+        self.callback_url = None
+        if callback_base:
+            self.callback_url = f"{callback_base.rstrip('/')}/api/v1/evaluation/result_callback"
+            if callback_token:
+                self.callback_url += f"?token={callback_token}"
+            import logging
+            logging.getLogger('evaluation_api_client').info(
+                f"事件化评估已启用，回调地址: {self.callback_url}"
+            )
+
     def load_endpoint_configs(self, dimensions):
         """
         从维度数据加载端点配置
@@ -208,6 +223,11 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             api_id=api_id
         )
 
+        # 事件化评估：在 payload 中带上回调地址，eval_server 算完后主动通知后端，
+        # 后端不再阻塞轮询（避免 600s 等待超时把维度/用例误判为失败）
+        if self.event_mode and self.callback_url:
+            create_task_payload['callback_url'] = self.callback_url
+
         # 如果有endpoints且使用api_url，添加endpoints参数用于分布式调度
         # 注意：当 api_url 就是评估服务自身时，不传 endpoints，避免远程分发到自身形成循环
         if endpoints and api_url and api_url != selected_url:
@@ -245,6 +265,18 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         if isinstance(create_response, dict) and create_response.get('code') == 0:
             eval_task_id = create_response.get('data', {}).get('eval_task_id')
             if eval_task_id:
+                # 事件化评估：提交成功即注册回调，返回事件标记，不阻塞轮询等待
+                if self.event_mode:
+                    self._log(
+                        level='INFO',
+                        category='execution',
+                        content=f"成功创建异步任务并已注册回调: {eval_task_id}（等待 eval_server 主动回调）",
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
+                    )
+                    return {'__event__': True, 'eval_task_id': eval_task_id}
+
                 self._log(
                     level='INFO',
                     category='execution',

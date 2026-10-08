@@ -130,6 +130,15 @@ class Config:
     
     EVALUATION_SERVICE_MAX_QUEUE_SIZE = _get_int_env('EVALUATION_SERVICE_MAX_QUEUE_SIZE', 10)
     EVALUATION_SERVICE_MAX_WAIT_TIME = _get_int_env('EVALUATION_SERVICE_MAX_WAIT_TIME', 300)
+
+    # ---- 事件化评估（eval_server 完成回调）----
+    # EVAL_CALLBACK_BASE_URL：后端对外可达地址（如 http://192.168.x.x:5000），
+    #   配置后提交异步评估任务时注入 callback_url，eval_server 算完主动回调，
+    #   后端不再阻塞轮询（避免 600s 等待超时把维度/用例误判失败）。
+    #   留空则保持旧行为（提交后轮询等待）。
+    # EVAL_CALLBACK_TOKEN：回调鉴权 token（可选，配置后回调 URL 附带并校验）。
+    EVAL_CALLBACK_BASE_URL = os.environ.get('EVAL_CALLBACK_BASE_URL', '')
+    EVAL_CALLBACK_TOKEN = os.environ.get('EVAL_CALLBACK_TOKEN', '')
      
     LOG_LEVEL = _get_log_level()
     CONSOLE_LOG_ENABLED = _get_console_log_enabled()

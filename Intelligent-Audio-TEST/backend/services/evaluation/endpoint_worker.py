@@ -333,6 +333,20 @@ class EndpointWorker(EvaluationLoggerMixin):
                 audio_field_names=audio_field_names
             )
 
+            # 事件化评估：提交成功、等待 eval_server 回调，注册上下文后立即释放 worker 线程
+            if isinstance(resp_data, dict) and resp_data.get('__event__'):
+                self._register_eval_callback(
+                    eval_task_id=resp_data.get('eval_task_id'),
+                    selected_url=selected_url,
+                    group_items=group_items,
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    result_id=result_id,
+                    api_request_body=payload,
+                    test_type=test_type
+                )
+                return
+
             if resp_data and '__error__' not in resp_data:
                 self.eval_service.result_processor.process_group_dimension_results(
                     resp_data=resp_data,
@@ -362,3 +376,51 @@ class EndpointWorker(EvaluationLoggerMixin):
                 test_case_id=test_case_id,
                 api_request_body=payload
             )
+
+    def _register_eval_callback(self, eval_task_id, selected_url, group_items, task_id,
+                                test_case_id, result_id, api_request_body, test_type):
+        """事件化评估：把待完成任务的上下文注册到回调注册表。
+
+        回调到达（或兜底结算线程补查成功）时，用这里闭包捕获的上下文写维度结果，
+        复用与同步流程完全相同的处理器，保证结果口径一致。
+        """
+        processor = self.eval_service.result_processor
+
+        def on_complete(resp_data):
+            processor.process_group_dimension_results(
+                resp_data=resp_data,
+                group_items=group_items,
+                task_id=task_id,
+                test_case_id=test_case_id,
+                result_id=result_id,
+                api_request_body=api_request_body,
+                test_type=test_type
+            )
+
+        def on_failed(error_message, api_raw_response=None):
+            processor.update_all_dimensions_in_group_failed(
+                group_items=group_items,
+                error_message=error_message,
+                task_id=task_id,
+                test_case_id=test_case_id,
+                api_raw_response=api_raw_response,
+                api_request_body=api_request_body
+            )
+
+        from backend.services.evaluation.eval_callback_registry import eval_callback_registry
+        eval_callback_registry.register(eval_task_id, {
+            'eval_task_id': eval_task_id,
+            'endpoint_url': selected_url,
+            'task_id': task_id,
+            'test_case_id': test_case_id,
+            'on_complete': on_complete,
+            'on_failed': on_failed,
+        })
+
+        self._log(
+            level='INFO',
+            content=f"评估任务已提交并注册回调: eval_task_id={eval_task_id}, 端点={selected_url}, "
+                    f"维度组={[item[0]['name'] for item in group_items]}（结果将由回调/兜底结算写入）",
+            task_id=task_id,
+            test_case_id=test_case_id
+        )

@@ -49,7 +49,7 @@ def _safe_filename(filename):
 
 from datetime import datetime
 from ..config import config  # 配置信息
-from ..services.task_service import calculate_in_process  # 线程池计算包装函数
+from ..services.task_service import calculate_in_process, notify_callback  # 线程池计算包装函数 / 事件化回调通知
 from ..utils.concurrency import ConcurrencyManager  # 并发管理器
 
 logger = logging.getLogger('api')
@@ -303,6 +303,10 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             raise
 
         def process_local_task(eval_task_id, task_type, task_params):
+            # 事件化回调：调用方传 callback_url，算完后主动通知，替代调用方轮询等待
+            callback_url = task_params.get('callback_url') if isinstance(task_params, dict) else None
+            caller_task_id = task_params.get('task_id') if isinstance(task_params, dict) else None
+
             try:
                 pool = _get_calc_pool()
                 future = pool.submit(calculate_in_process, task_type, task_params)
@@ -327,6 +331,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                         completed_at=datetime.now().isoformat(),
                         error_msg=error_msg
                     )
+                    notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
+                                    'failed', error_msg=error_msg)
                     return
                 TaskModel.update_task_status(
                     eval_task_id,
@@ -334,6 +340,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                     completed_at=datetime.now().isoformat(),
                     result=result
                 )
+                notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
+                                'completed', result=result)
             except Exception as e:
                 logger.exception(f"[process_local_task] 任务失败 eval_task_id={eval_task_id} task_type={task_type}: {e}")
                 TaskModel.update_task_status(
@@ -342,6 +350,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                     completed_at=datetime.now().isoformat(),
                     error_msg=str(e)
                 )
+                notify_callback(callback_url, eval_task_id, task_type, caller_task_id,
+                                'failed', error_msg=str(e))
 
         def _run_with_decrement(*args, **kwargs):
             try:
