@@ -95,6 +95,46 @@ class AuthServiceStub:
                 request_serializer=auth__service__pb2.DeleteUserRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.AuthResponse.FromString,
                 _registered_method=True)
+        self.UpdateUser = channel.unary_unary(
+                '/auth.AuthService/UpdateUser',
+                request_serializer=auth__service__pb2.UpdateUserRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.SetUserRole = channel.unary_unary(
+                '/auth.AuthService/SetUserRole',
+                request_serializer=auth__service__pb2.SetUserRoleRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.GetRole = channel.unary_unary(
+                '/auth.AuthService/GetRole',
+                request_serializer=auth__service__pb2.GetRoleRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.CreateRole = channel.unary_unary(
+                '/auth.AuthService/CreateRole',
+                request_serializer=auth__service__pb2.CreateRoleRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.UpdateRole = channel.unary_unary(
+                '/auth.AuthService/UpdateRole',
+                request_serializer=auth__service__pb2.UpdateRoleRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.SetRolePermissions = channel.unary_unary(
+                '/auth.AuthService/SetRolePermissions',
+                request_serializer=auth__service__pb2.SetRolePermissionsRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.DeleteRole = channel.unary_unary(
+                '/auth.AuthService/DeleteRole',
+                request_serializer=auth__service__pb2.DeleteRoleRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.ListPermissions = channel.unary_unary(
+                '/auth.AuthService/ListPermissions',
+                request_serializer=auth__service__pb2.ListPermissionsRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer:
@@ -185,6 +225,63 @@ class AuthServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def UpdateUser(self, request, context):
+        """更新用户资料（username/email/status/password，空串字段不修改）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetUserRole(self, request, context):
+        """设置用户角色
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetRole(self, request, context):
+        """===== 角色与权限管理 =====
+        按角色 ID 获取角色（含权限码列表）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateRole(self, request, context):
+        """创建角色（name/description/repeated permission_codes）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateRole(self, request, context):
+        """更新角色信息（name/description 空串=不修改）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetRolePermissions(self, request, context):
+        """全量替换角色权限（repeated permission_codes）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteRole(self, request, context):
+        """删除角色（连带 role_permissions）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListPermissions(self, request, context):
+        """列出全部权限点
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AuthServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -246,6 +343,46 @@ def add_AuthServiceServicer_to_server(servicer, server):
             'DeleteUser': grpc.unary_unary_rpc_method_handler(
                     servicer.DeleteUser,
                     request_deserializer=auth__service__pb2.DeleteUserRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'UpdateUser': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateUser,
+                    request_deserializer=auth__service__pb2.UpdateUserRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'SetUserRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetUserRole,
+                    request_deserializer=auth__service__pb2.SetUserRoleRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'GetRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRole,
+                    request_deserializer=auth__service__pb2.GetRoleRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'CreateRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateRole,
+                    request_deserializer=auth__service__pb2.CreateRoleRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'UpdateRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateRole,
+                    request_deserializer=auth__service__pb2.UpdateRoleRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'SetRolePermissions': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetRolePermissions,
+                    request_deserializer=auth__service__pb2.SetRolePermissionsRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'DeleteRole': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteRole,
+                    request_deserializer=auth__service__pb2.DeleteRoleRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'ListPermissions': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListPermissions,
+                    request_deserializer=auth__service__pb2.ListPermissionsRequest.FromString,
                     response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
             ),
     }
@@ -573,6 +710,222 @@ class AuthService:
             target,
             '/auth.AuthService/DeleteUser',
             auth__service__pb2.DeleteUserRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateUser(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/UpdateUser',
+            auth__service__pb2.UpdateUserRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetUserRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/SetUserRole',
+            auth__service__pb2.SetUserRoleRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/GetRole',
+            auth__service__pb2.GetRoleRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/CreateRole',
+            auth__service__pb2.CreateRoleRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/UpdateRole',
+            auth__service__pb2.UpdateRoleRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetRolePermissions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/SetRolePermissions',
+            auth__service__pb2.SetRolePermissionsRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteRole(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/DeleteRole',
+            auth__service__pb2.DeleteRoleRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListPermissions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ListPermissions',
+            auth__service__pb2.ListPermissionsRequest.SerializeToString,
             auth__service__pb2.AuthResponse.FromString,
             options,
             channel_credentials,

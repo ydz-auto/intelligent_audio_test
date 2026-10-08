@@ -28,6 +28,24 @@ service AuthService {
   rpc RevokePermission(RevokePermissionRequest) returns (AuthResponse);
   // 软删除用户
   rpc DeleteUser(DeleteUserRequest) returns (AuthResponse);
+  // 更新用户资料（username/email/status/password，空串字段不修改）
+  rpc UpdateUser(UpdateUserRequest) returns (AuthResponse);
+  // 设置用户角色
+  rpc SetUserRole(SetUserRoleRequest) returns (AuthResponse);
+
+  // ===== 角色与权限管理 =====
+  // 按角色 ID 获取角色（含权限码列表）
+  rpc GetRole(GetRoleRequest) returns (AuthResponse);
+  // 创建角色（name/description/repeated permission_codes）
+  rpc CreateRole(CreateRoleRequest) returns (AuthResponse);
+  // 更新角色信息（name/description 空串=不修改）
+  rpc UpdateRole(UpdateRoleRequest) returns (AuthResponse);
+  // 全量替换角色权限（repeated permission_codes）
+  rpc SetRolePermissions(SetRolePermissionsRequest) returns (AuthResponse);
+  // 删除角色（连带 role_permissions）
+  rpc DeleteRole(DeleteRoleRequest) returns (AuthResponse);
+  // 列出全部权限点
+  rpc ListPermissions(ListPermissionsRequest) returns (AuthResponse);
 }
 
 message GetUserRequest {
@@ -47,6 +65,8 @@ message CreateUserRequest {
   string oauth_subject = 4;
   int32 role_id = 5;
   string role_name = 6;  // 角色名（如 'guest'），为空时用 role_id
+  string password = 7;   // 明文密码（本地注册用户），为空表示无密码（OAuth 用户）
+  int32 operator_id = 8; // 操作者用户 ID（审计归因，自注册为 0）
 }
 message UpdateLastLoginRequest {
   int32 user_id = 1;
@@ -60,24 +80,69 @@ message ListUsersRequest {
   int32 page = 1;
   int32 page_size = 2;
   string status = 3;
+  string keyword = 4;  // username/email 模糊匹配，空串不过滤
+  int32 role_id = 5;   // 角色过滤，0 不过滤
 }
 message UpdateUserStatusRequest {
   int32 user_id = 1;
   string status = 2;
+  int32 operator_id = 3; // 操作者用户 ID（审计归因）
 }
 message GrantPermissionRequest {
   int32 user_id = 1;
   string permission = 2;
+  int32 operator_id = 3; // 操作者用户 ID（审计归因）
 }
 message RevokePermissionRequest {
   int32 user_id = 1;
   string permission = 2;
+  int32 permission_id = 3; // 按权限点 ID 撤销（差量撤销语义），优先于 permission 码
+  int32 operator_id = 4;   // 操作者用户 ID（审计归因）
 }
 message DeleteUserRequest {
   int32 user_id = 1;
+  int32 operator_id = 2; // 操作者用户 ID（审计归因）
 }
+message UpdateUserRequest {
+  int32 user_id = 1;
+  string username = 2;    // 空串=不修改
+  string email = 3;       // 空串=不修改
+  string status = 4;      // 空串=不修改；active/inactive/locked
+  string password = 5;    // 空串=不修改；明文密码，服务端哈希落库
+  int32 operator_id = 6;  // 操作者用户 ID（审计归因）
+}
+message SetUserRoleRequest {
+  int32 user_id = 1;
+  int32 role_id = 2;
+  int32 operator_id = 3; // 操作者用户 ID（审计归因）
+}
+message GetRoleRequest {
+  int32 role_id = 1;
+}
+message CreateRoleRequest {
+  string name = 1;
+  string description = 2;
+  repeated string permission_codes = 3;
+  int32 operator_id = 4; // 操作者用户 ID（审计归因）
+}
+message UpdateRoleRequest {
+  int32 role_id = 1;
+  string name = 2;        // 空串=不修改
+  string description = 3; // 空串=不修改
+  int32 operator_id = 4;  // 操作者用户 ID（审计归因）
+}
+message SetRolePermissionsRequest {
+  int32 role_id = 1;
+  repeated string permission_codes = 2; // 全量替换 role_permissions
+  int32 operator_id = 3;                // 操作者用户 ID（审计归因）
+}
+message DeleteRoleRequest {
+  int32 role_id = 1;
+  int32 operator_id = 2; // 操作者用户 ID（审计归因）
+}
+message ListPermissionsRequest {}
 message AuthResponse {
   bool success = 1;
   string message = 2;
-  string data = 3;  // JSON 序列化的结果
+  string data = 3;  // JSON 序列化的结果；失败时返回 {"error_code": "<AuthErrorCode>"}
 }

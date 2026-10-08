@@ -3,6 +3,11 @@
 
 继承 proto 生成的 AuthServiceServicer 基类，通过 application 层 handler 处理业务逻辑，
 不直接操作 PO。
+
+失败语义（INT-30）：管理 RPC 校验失败时 AuthDomainError 携带 AuthErrorCode，
+_fail 将 error_code 写入 data（{"error_code": "..."}），api_gateway 据此映射
+HTTP 400/403/404/409。事务约定：写命令成功后由 servicer commit（interfaces 层
+为工作单元边界），失败 rollback，session 清理仍由 DbScopeInterceptor 兜底。
 """
 from __future__ import annotations
 
@@ -26,24 +31,71 @@ def _ok(data: Any, message: str = 'ok') -> auth_pb.AuthResponse:
     )
 
 
-def _fail(message: str) -> auth_pb.AuthResponse:
-    """失败响应"""
-    return auth_pb.AuthResponse(success=False, message=message, data='')
+def _fail(message: str, error_code=None) -> auth_pb.AuthResponse:
+    """失败响应
+
+    Args:
+        message: 失败描述。
+        error_code: AuthErrorCode 成员（可选）；提供时 data 返回
+            {"error_code": "<成员值>"} 供网关映射 HTTP 状态码。
+    """
+    data = ''
+    if error_code is not None:
+        data = json.dumps({'error_code': error_code.value}, ensure_ascii=False)
+    return auth_pb.AuthResponse(success=False, message=message, data=data)
 
 
-def _user_to_dict(user) -> dict:
-    """UserAggregate → dict"""
-    return {
+def _datetime_str(value) -> str:
+    """datetime → ISO 字符串（None → ''）。"""
+    if value is None:
+        return ''
+    return value.isoformat() if hasattr(value, 'isoformat') else str(value)
+
+
+def _user_to_dict(user, overrides=None) -> dict:
+    """UserAggregate → dict
+
+    Args:
+        overrides: 权限 override 明细 [{permission_id, code, granted}]；
+            仅详情查询传入（列表查询不额外查询 override）。
+    """
+    d = {
         'id': user.id,
         'username': user.username,
         'email': user.email,
         'role_id': user.role_id,
-        'role_name': '',
+        'role_name': user.role_name,
         'status': user.status,
         'is_active': user.is_active(),
         'permissions': list(user.permissions),
         'oauth_provider': user.oauth_provider,
         'oauth_subject': user.oauth_subject,
+        'created_at': _datetime_str(user.created_at),
+        'updated_at': _datetime_str(user.updated_at),
+        'last_login_at': _datetime_str(user.last_login_at),
+    }
+    if overrides is not None:
+        d['overrides'] = overrides
+    return d
+
+
+def _role_to_dict(role) -> dict:
+    """RoleEntity → dict"""
+    return {
+        'id': role.id,
+        'name': role.name,
+        'description': role.description,
+        'permissions': list(role.permissions),
+        'is_system': bool(role.is_system),
+    }
+
+
+def _permission_to_dict(perm) -> dict:
+    """PermissionEntity → dict"""
+    return {
+        'id': perm.id,
+        'name': perm.code,
+        'description': perm.description,
     }
 
 
@@ -78,20 +130,42 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             self._query_handler = AuthQueryHandler()
         return self._query_handler
 
+    def _commit(self) -> None:
+        """提交当前线程 DB 会话（写命令成功后调用）。"""
+        from shared.models.database import get_db_session
+        get_db_session().commit()
+
+    def _rollback(self) -> None:
+        """回滚当前线程 DB 会话（写命令失败后调用）。"""
+        try:
+            from shared.models.database import get_db_session
+            get_db_session().rollback()
+        except Exception:
+            logger.debug('rollback 失败', exc_info=True)
+
+    def _error_response(self, e: Exception, op: str) -> auth_pb.AuthResponse:
+        """领域异常 → 携带 error_code 的失败响应；其余异常按未知错误处理。"""
+        from auth_service.domain.exceptions import AuthDomainError
+        if isinstance(e, AuthDomainError):
+            return _fail(e.message, e.error_code)
+        logger.error('%s 失败: %s', op, e, exc_info=True)
+        return _fail(str(e))
+
     # ---- 用户查询 ----
 
     def GetUser(self, request, context=None) -> auth_pb.AuthResponse:
-        """按 ID 获取用户"""
+        """按 ID 获取用户（详情：含 role_name / 时间戳 / overrides 明细）"""
         try:
-            from auth_service.application.queries.auth_queries import GetUserQuery
+            from auth_service.application.queries.auth_queries import (
+                GetUserQuery, ListUserOverridesQuery,
+            )
             q = GetUserQuery(user_id=getattr(request, 'user_id', 0))
             user = self.query_handler.handle_get_user(q)
-            if user is None:
-                return _fail('用户不存在')
-            return _ok(_user_to_dict(user))
+            overrides = self.query_handler.handle_list_user_overrides(
+                ListUserOverridesQuery(user_id=user.id))
+            return _ok(_user_to_dict(user, overrides=overrides))
         except Exception as e:
-            logger.error("GetUser 失败: %s", e, exc_info=True)
-            return _fail(str(e))
+            return self._error_response(e, 'GetUser')
 
     def GetUserByUsername(self, request, context=None) -> auth_pb.AuthResponse:
         """按用户名获取用户"""
@@ -129,7 +203,7 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             return _fail(str(e))
 
     def ListUsers(self, request, context=None) -> auth_pb.AuthResponse:
-        """列出用户"""
+        """列出用户（分页 + status/keyword/role_id 过滤）"""
         try:
             from auth_service.application.queries.auth_queries import (
                 ListUsersQuery,
@@ -138,6 +212,8 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
                 page=getattr(request, 'page', 1),
                 page_size=getattr(request, 'page_size', 20),
                 status=getattr(request, 'status', '') or None,
+                keyword=getattr(request, 'keyword', '') or None,
+                role_id=getattr(request, 'role_id', 0) or None,
             )
             total, users = self.query_handler.handle_list_users(q)
             return _ok({
@@ -164,25 +240,43 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             return _fail(str(e))
 
     def ListRoles(self, request, context=None) -> auth_pb.AuthResponse:
-        """列出所有角色"""
+        """列出所有角色（含权限码列表与 is_system）"""
         try:
             from auth_service.application.queries.auth_queries import ListRolesQuery
             q = ListRolesQuery()
             roles = self.query_handler.handle_list_roles(q)
-            return _ok({
-                'roles': [{'id': r.id, 'name': r.name,
-                           'description': r.description,
-                           'permissions': list(r.permissions)}
-                          for r in roles]
-            })
+            return _ok({'roles': [_role_to_dict(r) for r in roles]})
         except Exception as e:
             logger.error("ListRoles 失败: %s", e, exc_info=True)
             return _fail(str(e))
 
+    def ListPermissions(self, request, context=None) -> auth_pb.AuthResponse:
+        """列出全部权限点"""
+        try:
+            from auth_service.application.queries.auth_queries import (
+                ListPermissionsQuery,
+            )
+            perms = self.query_handler.handle_list_permissions(
+                ListPermissionsQuery())
+            return _ok({'permissions': [_permission_to_dict(p) for p in perms]})
+        except Exception as e:
+            logger.error("ListPermissions 失败: %s", e, exc_info=True)
+            return _fail(str(e))
+
+    def GetRole(self, request, context=None) -> auth_pb.AuthResponse:
+        """按角色 ID 获取角色（含权限码列表）"""
+        try:
+            from auth_service.application.queries.auth_queries import GetRoleQuery
+            role = self.query_handler.handle_get_role(
+                GetRoleQuery(role_id=getattr(request, 'role_id', 0)))
+            return _ok(_role_to_dict(role))
+        except Exception as e:
+            return self._error_response(e, 'GetRole')
+
     # ---- 用户管理（写操作）----
 
     def CreateUser(self, request, context=None) -> auth_pb.AuthResponse:
-        """创建用户（OAuth 方式）"""
+        """创建用户（OAuth 方式或本地注册，含密码与角色解析）"""
         try:
             from auth_service.application.commands.auth_commands import (
                 CreateUserCommand,
@@ -193,12 +287,16 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
                 oauth_provider=getattr(request, 'oauth_provider', '') or None,
                 oauth_subject=getattr(request, 'oauth_subject', '') or None,
                 role_id=getattr(request, 'role_id', 0) or None,
+                role_name=getattr(request, 'role_name', ''),
+                password=getattr(request, 'password', ''),
+                operator_id=getattr(request, 'operator_id', 0),
             )
             user_id = self.command_handler.handle_create_user(cmd)
+            self._commit()
             return _ok({'user_id': user_id}, '创建成功')
         except Exception as e:
-            logger.error("CreateUser 失败: %s", e, exc_info=True)
-            return _fail(str(e))
+            self._rollback()
+            return self._error_response(e, 'CreateUser')
 
     def UpdateUserStatus(self, request, context=None) -> auth_pb.AuthResponse:
         """更新用户状态"""
@@ -209,12 +307,35 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             cmd = UpdateUserStatusCommand(
                 user_id=getattr(request, 'user_id', 0),
                 status=getattr(request, 'status', 'active'),
+                operator_id=getattr(request, 'operator_id', 0),
             )
             self.command_handler.handle_update_status(cmd)
+            self._commit()
             return _ok({}, '更新成功')
         except Exception as e:
-            logger.error("UpdateUserStatus 失败: %s", e, exc_info=True)
-            return _fail(str(e))
+            self._rollback()
+            return self._error_response(e, 'UpdateUserStatus')
+
+    def UpdateUser(self, request, context=None) -> auth_pb.AuthResponse:
+        """更新用户资料（username/email/status/password，空串=不修改）"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                UpdateUserCommand,
+            )
+            cmd = UpdateUserCommand(
+                user_id=getattr(request, 'user_id', 0),
+                username=getattr(request, 'username', '') or None,
+                email=getattr(request, 'email', '') or None,
+                status=getattr(request, 'status', '') or None,
+                password=getattr(request, 'password', '') or None,
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            self.command_handler.handle_update_user(cmd)
+            self._commit()
+            return _ok({}, '更新成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'UpdateUser')
 
     def UpdateLastLogin(self, request, context=None) -> auth_pb.AuthResponse:
         """更新最后登录时间/IP"""
@@ -226,13 +347,15 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
                 getattr(request, 'user_id', 0),
                 getattr(request, 'ip', '') or None,
             )
+            self._commit()
             return _ok({}, '更新成功')
         except Exception as e:
+            self._rollback()
             logger.error("UpdateLastLogin 失败: %s", e, exc_info=True)
             return _fail(str(e))
 
     def GrantPermission(self, request, context=None) -> auth_pb.AuthResponse:
-        """授予权限"""
+        """授予用户附加权限（差量 upsert override，真实落 user_permissions 表）"""
         try:
             from auth_service.application.commands.auth_commands import (
                 GrantPermissionCommand,
@@ -240,15 +363,17 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             cmd = GrantPermissionCommand(
                 user_id=getattr(request, 'user_id', 0),
                 permission=getattr(request, 'permission', ''),
+                operator_id=getattr(request, 'operator_id', 0),
             )
-            self.command_handler.handle_grant_permission(cmd)
-            return _ok({}, '授权成功')
+            permission_id = self.command_handler.handle_grant_permission(cmd)
+            self._commit()
+            return _ok({'permission_id': permission_id}, '授权成功')
         except Exception as e:
-            logger.error("GrantPermission 失败: %s", e, exc_info=True)
-            return _fail(str(e))
+            self._rollback()
+            return self._error_response(e, 'GrantPermission')
 
     def RevokePermission(self, request, context=None) -> auth_pb.AuthResponse:
-        """撤销权限"""
+        """差量撤销用户权限（permission_id 优先）"""
         try:
             from auth_service.application.commands.auth_commands import (
                 RevokePermissionCommand,
@@ -256,12 +381,33 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             cmd = RevokePermissionCommand(
                 user_id=getattr(request, 'user_id', 0),
                 permission=getattr(request, 'permission', ''),
+                permission_id=getattr(request, 'permission_id', 0) or None,
+                operator_id=getattr(request, 'operator_id', 0),
             )
-            self.command_handler.handle_revoke_permission(cmd)
-            return _ok({}, '撤销成功')
+            action = self.command_handler.handle_revoke_permission(cmd)
+            self._commit()
+            return _ok({'action': action}, '撤销成功')
         except Exception as e:
-            logger.error("RevokePermission 失败: %s", e, exc_info=True)
-            return _fail(str(e))
+            self._rollback()
+            return self._error_response(e, 'RevokePermission')
+
+    def SetUserRole(self, request, context=None) -> auth_pb.AuthResponse:
+        """设置用户角色"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                SetUserRoleCommand,
+            )
+            cmd = SetUserRoleCommand(
+                user_id=getattr(request, 'user_id', 0),
+                role_id=getattr(request, 'role_id', 0),
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            self.command_handler.handle_set_user_role(cmd)
+            self._commit()
+            return _ok({}, '分配角色成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'SetUserRole')
 
     def DeleteUser(self, request, context=None) -> auth_pb.AuthResponse:
         """删除用户（软删除）"""
@@ -271,9 +417,86 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
             )
             cmd = DeleteUserCommand(
                 user_id=getattr(request, 'user_id', 0),
+                operator_id=getattr(request, 'operator_id', 0),
             )
             self.command_handler.handle_delete_user(cmd)
+            self._commit()
             return _ok({}, '删除成功')
         except Exception as e:
-            logger.error("DeleteUser 失败: %s", e, exc_info=True)
-            return _fail(str(e))
+            self._rollback()
+            return self._error_response(e, 'DeleteUser')
+
+    # ---- 角色管理（写操作）----
+
+    def CreateRole(self, request, context=None) -> auth_pb.AuthResponse:
+        """创建自定义角色"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                CreateRoleCommand,
+            )
+            cmd = CreateRoleCommand(
+                name=getattr(request, 'name', ''),
+                description=getattr(request, 'description', ''),
+                permission_codes=list(getattr(request, 'permission_codes', [])),
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            role_id = self.command_handler.handle_create_role(cmd)
+            self._commit()
+            return _ok({'role_id': role_id}, '创建成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'CreateRole')
+
+    def UpdateRole(self, request, context=None) -> auth_pb.AuthResponse:
+        """更新角色信息（name/description 空串=不修改）"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                UpdateRoleCommand,
+            )
+            cmd = UpdateRoleCommand(
+                role_id=getattr(request, 'role_id', 0),
+                name=getattr(request, 'name', '') or None,
+                description=getattr(request, 'description', '') or None,
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            self.command_handler.handle_update_role(cmd)
+            self._commit()
+            return _ok({}, '更新成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'UpdateRole')
+
+    def SetRolePermissions(self, request, context=None) -> auth_pb.AuthResponse:
+        """全量替换角色权限"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                SetRolePermissionsCommand,
+            )
+            cmd = SetRolePermissionsCommand(
+                role_id=getattr(request, 'role_id', 0),
+                permission_codes=list(getattr(request, 'permission_codes', [])),
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            codes = self.command_handler.handle_set_role_permissions(cmd)
+            self._commit()
+            return _ok({'permission_codes': codes}, '角色权限已更新')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'SetRolePermissions')
+
+    def DeleteRole(self, request, context=None) -> auth_pb.AuthResponse:
+        """删除角色（系统角色/仍被引用的角色拒绝）"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                DeleteRoleCommand,
+            )
+            cmd = DeleteRoleCommand(
+                role_id=getattr(request, 'role_id', 0),
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            self.command_handler.handle_delete_role(cmd)
+            self._commit()
+            return _ok({}, '删除成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'DeleteRole')

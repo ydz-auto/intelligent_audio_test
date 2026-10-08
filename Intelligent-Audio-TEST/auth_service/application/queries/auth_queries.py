@@ -33,14 +33,17 @@ class GetUserByOAuthQuery:
 
 @dataclass(frozen=True)
 class ListUsersQuery:
-    """用户列表（分页，可按状态过滤）。
+    """用户列表（分页，可按状态/关键词/角色过滤）。
 
     page 从 1 开始计数；page_size 为每页条数。
     status 为 None 表示不过滤状态。
+    keyword 为 username/email 模糊匹配；role_id 为角色过滤，None 不过滤。
     """
     page: int = 1
     page_size: int = 20
     status: Optional[str] = None
+    keyword: Optional[str] = None
+    role_id: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -53,3 +56,21 @@ class GetUserPermissionsQuery:
 class ListRolesQuery:
     """列出全部角色。"""
     pass
+
+
+@dataclass(frozen=True)
+class GetRoleQuery:
+    """按角色 ID 获取角色（含权限码列表）。"""
+    role_id: int
+
+
+@dataclass(frozen=True)
+class ListPermissionsQuery:
+    """列出全部权限点。"""
+    pass
+
+
+@dataclass(frozen=True)
+class ListUserOverridesQuery:
+    """列出用户权限 override 明细（差量授予/撤销记录）。"""
+    user_id: int

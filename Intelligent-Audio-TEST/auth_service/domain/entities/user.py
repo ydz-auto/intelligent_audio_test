@@ -8,6 +8,7 @@ PO 映射仍在 infrastructure/persistence/models/user_models.py。
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 
@@ -36,6 +37,11 @@ class UserAggregate:
     deleted: bool = False
     oauth_provider: Optional[str] = None
     oauth_subject: Optional[str] = None
+    # 展示字段（仓储从 roles 表 join / PO 时间戳透出，聚合根不负责修改）
+    role_name: str = ''
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    last_login_at: Optional[datetime] = None
 
     # ---- 状态变更 ----
     def lock(self) -> None:

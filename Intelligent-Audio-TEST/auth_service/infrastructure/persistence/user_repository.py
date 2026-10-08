@@ -13,7 +13,9 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
+
+from sqlalchemy import or_
 
 from shared.models.database import get_db_session
 from auth_service.infrastructure.persistence.models import (
@@ -31,6 +33,12 @@ from auth_service.domain.repositories.user_repository_abc import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _hash_password(password: str) -> str:
+    """明文密码 → bcrypt 哈希（infrastructure 层职责，聚合根不持有密码）。"""
+    import bcrypt
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 # ── PO ↔ Entity 转换函数 ────────────────────────────────────────────
@@ -96,6 +104,7 @@ def _permission_po_to_entity(po: Permission) -> PermissionEntity:
         code=po.name,
         name=po.name,
         module='',
+        description=po.description or '',
     )
 
 
@@ -113,7 +122,16 @@ def _role_po_to_entity(po: Role, permissions: Optional[List[str]] = None) -> Rol
         name=po.name,
         description=po.description or '',
         permissions=list(permissions),
+        is_system=bool(po.is_system),
     )
+
+
+def _role_name_by_id(session, role_id: Optional[int]) -> str:
+    """按角色 ID 查角色名（无匹配返回空串）。"""
+    if not role_id:
+        return ''
+    row = session.query(Role.name).filter_by(id=role_id).first()
+    return row[0] if row else ''
 
 
 def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> UserAggregate:
@@ -126,6 +144,7 @@ def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> Use
     字段映射：
         po.oauth_id         → aggregate.oauth_subject（OAuth 提供商返回的用户唯一 ID）
         po.status=='deleted' → aggregate.deleted（软删除标记由状态派生）
+        po.role（join roles）→ aggregate.role_name（展示字段）
     """
     if permissions is None:
         permissions = _query_user_permissions(po.id, po.role_id)
@@ -139,6 +158,10 @@ def _user_po_to_entity(po: User, permissions: Optional[List[str]] = None) -> Use
         deleted=(po.status == UserStatus.DELETED.value),
         oauth_provider=po.oauth_provider,
         oauth_subject=po.oauth_id,
+        role_name=_role_name_by_id(get_db_session(), po.role_id),
+        created_at=po.created_at,
+        updated_at=po.updated_at,
+        last_login_at=po.last_login_at,
     )
 
 
@@ -202,8 +225,14 @@ class UserRepository(UserRepositoryABC):
         _apply_user_to_po(aggregate, po)
         session.flush()
 
-    def add(self, aggregate: UserAggregate) -> int:
-        """新增用户，返回新用户 ID（含 flush，未 commit）。"""
+    def add(self, aggregate: UserAggregate, password: Optional[str] = None) -> int:
+        """新增用户，返回新用户 ID（含 flush，未 commit）。
+
+        Args:
+            aggregate: 用户聚合。
+            password: 明文密码（本地注册用户）；哈希在本基础设施层完成，
+                聚合根不持有密码；为 None 表示无密码（OAuth 用户）。
+        """
         session = get_db_session()
         po = User(
             username=aggregate.username,
@@ -212,6 +241,7 @@ class UserRepository(UserRepositoryABC):
             status=UserStatus.DELETED.value if aggregate.deleted else aggregate.status,
             oauth_provider=aggregate.oauth_provider,
             oauth_id=aggregate.oauth_subject,
+            password_hash=_hash_password(password) if password else None,
         )
         session.add(po)
         session.flush()
@@ -240,6 +270,34 @@ class UserRepository(UserRepositoryABC):
         po.status = status
         session.flush()
 
+    def update_user_fields(
+        self,
+        user_id: int,
+        username: Optional[str] = None,
+        email: Optional[str] = None,
+        status: Optional[str] = None,
+        password: Optional[str] = None,
+    ) -> bool:
+        """按字段更新用户资料（None=不修改；password 哈希落库，仅 flush）。
+
+        Returns:
+            用户是否存在。
+        """
+        session = get_db_session()
+        po = session.query(User).filter_by(id=user_id).first()
+        if not po:
+            return False
+        if username is not None:
+            po.username = username
+        if email is not None:
+            po.email = email
+        if status is not None:
+            po.status = status
+        if password is not None:
+            po.password_hash = _hash_password(password)
+        session.flush()
+        return True
+
     def update_last_login(self, user_id: int, ip: Optional[str] = None) -> None:
         """更新最后登录时间/IP（仅 flush，用户不存在则静默无操作）。"""
         from datetime import datetime, timezone
@@ -257,6 +315,8 @@ class UserRepository(UserRepositoryABC):
         page: int = 1,
         page_size: int = 20,
         status: Optional[str] = None,
+        keyword: Optional[str] = None,
+        role_id: Optional[int] = None,
     ) -> Tuple[int, List[UserAggregate]]:
         """分页查询用户列表，返回 (总数, 当前页用户聚合列表)。
 
@@ -266,11 +326,20 @@ class UserRepository(UserRepositoryABC):
             status: 用户状态过滤；为 None 表示不过滤，
                     为 'active'/'inactive'/'locked' 时按 status 字段精确匹配，
                     不返回 status='deleted' 的软删除记录。
+            keyword: username/email 模糊匹配（大小写不敏感），空值不过滤。
+            role_id: 角色过滤，空值不过滤。
         """
         session = get_db_session()
         q = session.query(User).filter(User.status != UserStatus.DELETED.value)
         if status:
             q = q.filter(User.status == status)
+        if keyword:
+            like = f'%{keyword}%'
+            q = q.filter(
+                or_(User.username.ilike(like), User.email.ilike(like)),
+            )
+        if role_id:
+            q = q.filter(User.role_id == role_id)
         total = q.count()
         pos = (
             q.order_by(User.id.asc())
@@ -288,6 +357,70 @@ class UserRepository(UserRepositoryABC):
         if not po:
             return []
         return _query_user_permissions(po.id, po.role_id)
+
+    # ---- 用户权限 override（差量授予/撤销持久化，INT-30 修复点） ----
+
+    def upsert_override(self, user_id: int, permission_id: int, granted: bool) -> None:
+        """按 (user_id, permission_id) 差量 upsert 用户权限 override 行（仅 flush）。
+
+        既有行更新 granted 方向，无行插入新记录。
+        user_permissions 表无 (user_id, permission_id) 唯一约束，
+        以先查后写保证单线程幂等；并发重复行由 _query_user_permissions
+        按集合语义兜底（唯一索引 migration 后置独立卡）。
+        """
+        session = get_db_session()
+        row = (
+            session.query(UserPermission)
+            .filter(
+                UserPermission.user_id == user_id,
+                UserPermission.permission_id == permission_id,
+            )
+            .first()
+        )
+        if row is not None:
+            row.granted = granted
+        else:
+            session.add(UserPermission(
+                user_id=user_id, permission_id=permission_id, granted=granted,
+            ))
+        session.flush()
+
+    def delete_override(self, user_id: int, permission_id: int) -> int:
+        """删除用户权限 override 行（仅 flush），返回删除行数。"""
+        session = get_db_session()
+        deleted = (
+            session.query(UserPermission)
+            .filter(
+                UserPermission.user_id == user_id,
+                UserPermission.permission_id == permission_id,
+            )
+            .delete(synchronize_session=False)
+        )
+        session.flush()
+        return deleted
+
+    def list_overrides(self, user_id: int) -> List[dict]:
+        """列出用户全部 override 明细（含权限码），granted 方向原样返回。"""
+        session = get_db_session()
+        rows = (
+            session.query(UserPermission.permission_id, Permission.name, UserPermission.granted)
+            .join(Permission, Permission.id == UserPermission.permission_id)
+            .filter(UserPermission.user_id == user_id)
+            .order_by(UserPermission.permission_id.asc())
+            .all()
+        )
+        return [
+            {'permission_id': pid, 'code': code, 'granted': bool(granted)}
+            for pid, code, granted in rows
+        ]
+
+    def get_user_role_baseline(self, user_id: int) -> List[str]:
+        """获取用户角色基线权限码集合（不经 override 修正的原始角色权限）。"""
+        session = get_db_session()
+        po = session.query(User).filter_by(id=user_id).first()
+        if not po:
+            return []
+        return _query_role_permissions(po.role_id) if po.role_id else []
 
 
 # ── RoleRepository ──────────────────────────────────────────────────
@@ -313,6 +446,84 @@ class RoleRepository(RoleRepositoryABC):
     def get_role_permissions(self, role_id: int) -> List[str]:
         """获取角色权限码列表。"""
         return _query_role_permissions(role_id)
+
+    # ---- 角色与权限点管理（INT-30） ----
+
+    def get_by_name(self, name: str) -> Optional[RoleEntity]:
+        """按角色名查询角色实体（含权限码列表）。"""
+        session = get_db_session()
+        po = session.query(Role).filter_by(name=name).first()
+        if not po:
+            return None
+        return _role_po_to_entity(po)
+
+    def add(self, name: str, description: str = '',
+            is_system: bool = False) -> int:
+        """新增角色，返回新角色 ID（含 flush，未 commit）。"""
+        session = get_db_session()
+        po = Role(name=name, description=description or '', is_system=is_system)
+        session.add(po)
+        session.flush()
+        return po.id
+
+    def save(self, entity: RoleEntity) -> bool:
+        """更新既有角色（name/description；仅 flush），返回角色是否存在。"""
+        session = get_db_session()
+        po = session.query(Role).filter_by(id=entity.id).first()
+        if not po:
+            return False
+        po.name = entity.name
+        po.description = entity.description or ''
+        session.flush()
+        return True
+
+    def delete(self, role_id: int) -> bool:
+        """删除角色并连带删除 role_permissions 行（仅 flush），返回角色是否存在。"""
+        session = get_db_session()
+        po = session.query(Role).filter_by(id=role_id).first()
+        if not po:
+            return False
+        session.query(RolePermission).filter_by(role_id=role_id).delete(
+            synchronize_session=False)
+        session.delete(po)
+        session.flush()
+        return True
+
+    def set_permissions(self, role_id: int, permission_ids: List[int]) -> None:
+        """全量替换角色-权限映射（去重；仅 flush）。"""
+        session = get_db_session()
+        session.query(RolePermission).filter_by(role_id=role_id).delete(
+            synchronize_session=False)
+        for pid in dict.fromkeys(permission_ids):
+            session.add(RolePermission(role_id=role_id, permission_id=pid))
+        session.flush()
+
+    def count_users(self, role_id: int) -> int:
+        """统计引用该角色的用户数（users.role_id 计数）。"""
+        session = get_db_session()
+        return (
+            session.query(User)
+            .filter(User.role_id == role_id)
+            .count()
+        )
+
+    def get_permission_by_code(self, code: str) -> Optional[PermissionEntity]:
+        """按权限码查询权限点。"""
+        session = get_db_session()
+        po = session.query(Permission).filter_by(name=code).first()
+        return _permission_po_to_entity(po) if po else None
+
+    def get_permission_by_id(self, permission_id: int) -> Optional[PermissionEntity]:
+        """按 ID 查询权限点。"""
+        session = get_db_session()
+        po = session.query(Permission).filter_by(id=permission_id).first()
+        return _permission_po_to_entity(po) if po else None
+
+    def list_permissions(self) -> List[PermissionEntity]:
+        """列出全部权限点（按 id 升序）。"""
+        session = get_db_session()
+        pos = session.query(Permission).order_by(Permission.id.asc()).all()
+        return [_permission_po_to_entity(po) for po in pos]
 
 
 # ── 模块级单例 ──────────────────────────────────────────────────────

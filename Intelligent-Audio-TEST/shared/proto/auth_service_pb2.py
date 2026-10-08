@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x61uth_service.proto\x12\x04\x61uth\"!\n\x0eGetUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\",\n\x18GetUserByUsernameRequest\x12\x10\n\x08username\x18\x01 \x01(\t\":\n\x15GetUserByOAuthRequest\x12\x10\n\x08provider\x18\x01 \x01(\t\x12\x0f\n\x07subject\x18\x02 \x01(\t\"\x87\x01\n\x11\x43reateUserRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x16\n\x0eoauth_provider\x18\x03 \x01(\t\x12\x15\n\roauth_subject\x18\x04 \x01(\t\x12\x0f\n\x07role_id\x18\x05 \x01(\x05\x12\x11\n\trole_name\x18\x06 \x01(\t\"5\n\x16UpdateLastLoginRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\n\n\x02ip\x18\x02 \x01(\t\",\n\x19GetUserPermissionsRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\"\x12\n\x10ListRolesRequest\"C\n\x10ListUsersRequest\x12\x0c\n\x04page\x18\x01 \x01(\x05\x12\x11\n\tpage_size\x18\x02 \x01(\x05\x12\x0e\n\x06status\x18\x03 \x01(\t\":\n\x17UpdateUserStatusRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x0e\n\x06status\x18\x02 \x01(\t\"=\n\x16GrantPermissionRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x12\n\npermission\x18\x02 \x01(\t\">\n\x17RevokePermissionRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x12\n\npermission\x18\x02 \x01(\t\"$\n\x11\x44\x65leteUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\">\n\x0c\x41uthResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t2\x99\x06\n\x0b\x41uthService\x12\x33\n\x07GetUser\x12\x14.auth.GetUserRequest\x1a\x12.auth.AuthResponse\x12G\n\x11GetUserByUsername\x12\x1e.auth.GetUserByUsernameRequest\x1a\x12.auth.AuthResponse\x12\x41\n\x0eGetUserByOAuth\x12\x1b.auth.GetUserByOAuthRequest\x1a\x12.auth.AuthResponse\x12\x39\n\nCreateUser\x12\x17.auth.CreateUserRequest\x1a\x12.auth.AuthResponse\x12\x43\n\x0fUpdateLastLogin\x12\x1c.auth.UpdateLastLoginRequest\x1a\x12.auth.AuthResponse\x12I\n\x12GetUserPermissions\x12\x1f.auth.GetUserPermissionsRequest\x1a\x12.auth.AuthResponse\x12\x37\n\tListRoles\x12\x16.auth.ListRolesRequest\x1a\x12.auth.AuthResponse\x12\x37\n\tListUsers\x12\x16.auth.ListUsersRequest\x1a\x12.auth.AuthResponse\x12\x45\n\x10UpdateUserStatus\x12\x1d.auth.UpdateUserStatusRequest\x1a\x12.auth.AuthResponse\x12\x43\n\x0fGrantPermission\x12\x1c.auth.GrantPermissionRequest\x1a\x12.auth.AuthResponse\x12\x45\n\x10RevokePermission\x12\x1d.auth.RevokePermissionRequest\x1a\x12.auth.AuthResponse\x12\x39\n\nDeleteUser\x12\x17.auth.DeleteUserRequest\x1a\x12.auth.AuthResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12\x61uth_service.proto\x12\x04\x61uth\"!\n\x0eGetUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\",\n\x18GetUserByUsernameRequest\x12\x10\n\x08username\x18\x01 \x01(\t\":\n\x15GetUserByOAuthRequest\x12\x10\n\x08provider\x18\x01 \x01(\t\x12\x0f\n\x07subject\x18\x02 \x01(\t\"\xae\x01\n\x11\x43reateUserRequest\x12\x10\n\x08username\x18\x01 \x01(\t\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x16\n\x0eoauth_provider\x18\x03 \x01(\t\x12\x15\n\roauth_subject\x18\x04 \x01(\t\x12\x0f\n\x07role_id\x18\x05 \x01(\x05\x12\x11\n\trole_name\x18\x06 \x01(\t\x12\x10\n\x08password\x18\x07 \x01(\t\x12\x13\n\x0boperator_id\x18\x08 \x01(\x05\"5\n\x16UpdateLastLoginRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\n\n\x02ip\x18\x02 \x01(\t\",\n\x19GetUserPermissionsRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\"\x12\n\x10ListRolesRequest\"e\n\x10ListUsersRequest\x12\x0c\n\x04page\x18\x01 \x01(\x05\x12\x11\n\tpage_size\x18\x02 \x01(\x05\x12\x0e\n\x06status\x18\x03 \x01(\t\x12\x0f\n\x07keyword\x18\x04 \x01(\t\x12\x0f\n\x07role_id\x18\x05 \x01(\x05\"O\n\x17UpdateUserStatusRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x0e\n\x06status\x18\x02 \x01(\t\x12\x13\n\x0boperator_id\x18\x03 \x01(\x05\"R\n\x16GrantPermissionRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x12\n\npermission\x18\x02 \x01(\t\x12\x13\n\x0boperator_id\x18\x03 \x01(\x05\"j\n\x17RevokePermissionRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x12\n\npermission\x18\x02 \x01(\t\x12\x15\n\rpermission_id\x18\x03 \x01(\x05\x12\x13\n\x0boperator_id\x18\x04 \x01(\x05\"9\n\x11\x44\x65leteUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x13\n\x0boperator_id\x18\x02 \x01(\x05\"|\n\x11UpdateUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x10\n\x08username\x18\x02 \x01(\t\x12\r\n\x05\x65mail\x18\x03 \x01(\t\x12\x0e\n\x06status\x18\x04 \x01(\t\x12\x10\n\x08password\x18\x05 \x01(\t\x12\x13\n\x0boperator_id\x18\x06 \x01(\x05\"K\n\x12SetUserRoleRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x05\x12\x0f\n\x07role_id\x18\x02 \x01(\x05\x12\x13\n\x0boperator_id\x18\x03 \x01(\x05\"!\n\x0eGetRoleRequest\x12\x0f\n\x07role_id\x18\x01 \x01(\x05\"e\n\x11\x43reateRoleRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12\x18\n\x10permission_codes\x18\x03 \x03(\t\x12\x13\n\x0boperator_id\x18\x04 \x01(\x05\"\\\n\x11UpdateRoleRequest\x12\x0f\n\x07role_id\x18\x01 \x01(\x05\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x13\n\x0boperator_id\x18\x04 \x01(\x05\"[\n\x19SetRolePermissionsRequest\x12\x0f\n\x07role_id\x18\x01 \x01(\x05\x12\x18\n\x10permission_codes\x18\x02 \x03(\t\x12\x13\n\x0boperator_id\x18\x03 \x01(\x05\"9\n\x11\x44\x65leteRoleRequest\x12\x0f\n\x07role_id\x18\x01 \x01(\x05\x12\x13\n\x0boperator_id\x18\x02 \x01(\x05\"\x18\n\x16ListPermissionsRequest\">\n\x0c\x41uthResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t2\x87\n\n\x0b\x41uthService\x12\x33\n\x07GetUser\x12\x14.auth.GetUserRequest\x1a\x12.auth.AuthResponse\x12G\n\x11GetUserByUsername\x12\x1e.auth.GetUserByUsernameRequest\x1a\x12.auth.AuthResponse\x12\x41\n\x0eGetUserByOAuth\x12\x1b.auth.GetUserByOAuthRequest\x1a\x12.auth.AuthResponse\x12\x39\n\nCreateUser\x12\x17.auth.CreateUserRequest\x1a\x12.auth.AuthResponse\x12\x43\n\x0fUpdateLastLogin\x12\x1c.auth.UpdateLastLoginRequest\x1a\x12.auth.AuthResponse\x12I\n\x12GetUserPermissions\x12\x1f.auth.GetUserPermissionsRequest\x1a\x12.auth.AuthResponse\x12\x37\n\tListRoles\x12\x16.auth.ListRolesRequest\x1a\x12.auth.AuthResponse\x12\x37\n\tListUsers\x12\x16.auth.ListUsersRequest\x1a\x12.auth.AuthResponse\x12\x45\n\x10UpdateUserStatus\x12\x1d.auth.UpdateUserStatusRequest\x1a\x12.auth.AuthResponse\x12\x43\n\x0fGrantPermission\x12\x1c.auth.GrantPermissionRequest\x1a\x12.auth.AuthResponse\x12\x45\n\x10RevokePermission\x12\x1d.auth.RevokePermissionRequest\x1a\x12.auth.AuthResponse\x12\x39\n\nDeleteUser\x12\x17.auth.DeleteUserRequest\x1a\x12.auth.AuthResponse\x12\x39\n\nUpdateUser\x12\x17.auth.UpdateUserRequest\x1a\x12.auth.AuthResponse\x12;\n\x0bSetUserRole\x12\x18.auth.SetUserRoleRequest\x1a\x12.auth.AuthResponse\x12\x33\n\x07GetRole\x12\x14.auth.GetRoleRequest\x1a\x12.auth.AuthResponse\x12\x39\n\nCreateRole\x12\x17.auth.CreateRoleRequest\x1a\x12.auth.AuthResponse\x12\x39\n\nUpdateRole\x12\x17.auth.UpdateRoleRequest\x1a\x12.auth.AuthResponse\x12I\n\x12SetRolePermissions\x12\x1f.auth.SetRolePermissionsRequest\x1a\x12.auth.AuthResponse\x12\x39\n\nDeleteRole\x12\x17.auth.DeleteRoleRequest\x1a\x12.auth.AuthResponse\x12\x43\n\x0fListPermissions\x12\x1c.auth.ListPermissionsRequest\x1a\x12.auth.AuthResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,25 +38,41 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_GETUSERBYOAUTHREQUEST']._serialized_start=109
   _globals['_GETUSERBYOAUTHREQUEST']._serialized_end=167
   _globals['_CREATEUSERREQUEST']._serialized_start=170
-  _globals['_CREATEUSERREQUEST']._serialized_end=305
-  _globals['_UPDATELASTLOGINREQUEST']._serialized_start=307
-  _globals['_UPDATELASTLOGINREQUEST']._serialized_end=360
-  _globals['_GETUSERPERMISSIONSREQUEST']._serialized_start=362
-  _globals['_GETUSERPERMISSIONSREQUEST']._serialized_end=406
-  _globals['_LISTROLESREQUEST']._serialized_start=408
-  _globals['_LISTROLESREQUEST']._serialized_end=426
-  _globals['_LISTUSERSREQUEST']._serialized_start=428
-  _globals['_LISTUSERSREQUEST']._serialized_end=495
-  _globals['_UPDATEUSERSTATUSREQUEST']._serialized_start=497
-  _globals['_UPDATEUSERSTATUSREQUEST']._serialized_end=555
-  _globals['_GRANTPERMISSIONREQUEST']._serialized_start=557
-  _globals['_GRANTPERMISSIONREQUEST']._serialized_end=618
-  _globals['_REVOKEPERMISSIONREQUEST']._serialized_start=620
-  _globals['_REVOKEPERMISSIONREQUEST']._serialized_end=682
-  _globals['_DELETEUSERREQUEST']._serialized_start=684
-  _globals['_DELETEUSERREQUEST']._serialized_end=720
-  _globals['_AUTHRESPONSE']._serialized_start=722
-  _globals['_AUTHRESPONSE']._serialized_end=784
-  _globals['_AUTHSERVICE']._serialized_start=787
-  _globals['_AUTHSERVICE']._serialized_end=1580
+  _globals['_CREATEUSERREQUEST']._serialized_end=344
+  _globals['_UPDATELASTLOGINREQUEST']._serialized_start=346
+  _globals['_UPDATELASTLOGINREQUEST']._serialized_end=399
+  _globals['_GETUSERPERMISSIONSREQUEST']._serialized_start=401
+  _globals['_GETUSERPERMISSIONSREQUEST']._serialized_end=445
+  _globals['_LISTROLESREQUEST']._serialized_start=447
+  _globals['_LISTROLESREQUEST']._serialized_end=465
+  _globals['_LISTUSERSREQUEST']._serialized_start=467
+  _globals['_LISTUSERSREQUEST']._serialized_end=568
+  _globals['_UPDATEUSERSTATUSREQUEST']._serialized_start=570
+  _globals['_UPDATEUSERSTATUSREQUEST']._serialized_end=649
+  _globals['_GRANTPERMISSIONREQUEST']._serialized_start=651
+  _globals['_GRANTPERMISSIONREQUEST']._serialized_end=733
+  _globals['_REVOKEPERMISSIONREQUEST']._serialized_start=735
+  _globals['_REVOKEPERMISSIONREQUEST']._serialized_end=841
+  _globals['_DELETEUSERREQUEST']._serialized_start=843
+  _globals['_DELETEUSERREQUEST']._serialized_end=900
+  _globals['_UPDATEUSERREQUEST']._serialized_start=902
+  _globals['_UPDATEUSERREQUEST']._serialized_end=1026
+  _globals['_SETUSERROLEREQUEST']._serialized_start=1028
+  _globals['_SETUSERROLEREQUEST']._serialized_end=1103
+  _globals['_GETROLEREQUEST']._serialized_start=1105
+  _globals['_GETROLEREQUEST']._serialized_end=1138
+  _globals['_CREATEROLEREQUEST']._serialized_start=1140
+  _globals['_CREATEROLEREQUEST']._serialized_end=1241
+  _globals['_UPDATEROLEREQUEST']._serialized_start=1243
+  _globals['_UPDATEROLEREQUEST']._serialized_end=1335
+  _globals['_SETROLEPERMISSIONSREQUEST']._serialized_start=1337
+  _globals['_SETROLEPERMISSIONSREQUEST']._serialized_end=1428
+  _globals['_DELETEROLEREQUEST']._serialized_start=1430
+  _globals['_DELETEROLEREQUEST']._serialized_end=1487
+  _globals['_LISTPERMISSIONSREQUEST']._serialized_start=1489
+  _globals['_LISTPERMISSIONSREQUEST']._serialized_end=1513
+  _globals['_AUTHRESPONSE']._serialized_start=1515
+  _globals['_AUTHRESPONSE']._serialized_end=1577
+  _globals['_AUTHSERVICE']._serialized_start=1580
+  _globals['_AUTHSERVICE']._serialized_end=2867
 # @@protoc_insertion_point(module_scope)

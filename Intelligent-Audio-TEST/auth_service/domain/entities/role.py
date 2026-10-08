@@ -22,6 +22,7 @@ class PermissionEntity:
     code: str
     name: str = ''
     module: str = ''
+    description: str = ''
 
 
 @dataclass
@@ -30,11 +31,13 @@ class RoleEntity:
 
     permissions 为权限码列表（资源:操作）。
     通过 has_permission 判断角色是否拥有某权限。
+    is_system 标记系统内置角色（内置角色不可删除）。
     """
     id: int
     name: str
     description: str = ''
     permissions: List[str] = field(default_factory=list)
+    is_system: bool = False
 
     def has_permission(self, code: str) -> bool:
         """判断角色是否拥有指定权限码（含通配 '*'）。"""

@@ -159,8 +159,12 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.sse_bp import router as sse_router
     from api_gateway.routes.data_transfer_bp import router as data_transfer_router
     from api_gateway.routes.benchmark_bp import router as benchmark_router
+    from api_gateway.routes.user_bp import router as user_router
+    from api_gateway.routes.role_bp import router as role_router
 
     app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
+    app.include_router(user_router, prefix='/api/v1/auth', tags=['auth-management'])
+    app.include_router(role_router, prefix='/api/v1/auth', tags=['auth-management'])
     app.include_router(testcase_router, prefix='/api/v1/testcases', tags=['testcases'])
     app.include_router(group_router, prefix='/api/v1/groups', tags=['groups'])
     app.include_router(device_router, prefix='/api/v1/test-devices', tags=['devices'])
