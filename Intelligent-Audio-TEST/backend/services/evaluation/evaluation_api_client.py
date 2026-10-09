@@ -334,6 +334,18 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 resp_data = {'__error__': error_msg}
         else:
             if isinstance(create_response, dict):
+                # eval_server 并发满（code=3001）：可重试，标记为"重新排队"而不是判失败
+                if create_response.get('code') == 3001:
+                    concurrency_msg = create_response.get('msg', '达到最大并发限制')
+                    self._log(
+                        level='WARNING',
+                        category='execution',
+                        content=f"评估端点并发满(code=3001)，任务重新排队等待重试: {concurrency_msg}",
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
+                    )
+                    return {'__concurrency_wait__': True, 'message': concurrency_msg}
                 # 优先取 __error__（网络异常等场景），其次取 msg，最后兜底
                 error_msg = create_response.get('__error__') or create_response.get('msg', '创建任务失败')
             else:

@@ -269,23 +269,40 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         except RuntimeError as e:
             return error_response(str(e), code=CODE_CONCURRENCY_EXCEEDED)
     else:
-        if not LocalConcurrencyManager.can_start():
-            return error_response(
-                f"达到最大并发限制: {config.LOCAL_MAX_CONCURRENCY}",
-                code=CODE_CONCURRENCY_EXCEEDED,
-                data={
-                    "max_concurrency": config.LOCAL_MAX_CONCURRENCY,
-                    "current_concurrency": LocalConcurrencyManager.get_current()
-                }
-            )
-
         # 本地处理：解析 oss:// 路径为本地文件（双模式支持，与 multipart 上传并存）。
-        # 未配置 OSS 时原样返回，不影响既有传参方式。
+        # 未配置 OSS 时原样返回，不影响既有传参方式。排队任务同样需要真实文件路径。
         from ..utils.oss_client import resolve_oss_paths
         task_params = resolve_oss_paths(
             task_params,
             local_dir=os.path.join(config.UPLOAD_DIR, _storage_id(caller_task_id, eval_task_id)),
         )
+
+        if not LocalConcurrencyManager.can_start():
+            # 并发已满：不再 400 拒绝，创建为 pending 任务，由后台文件 worker（TaskService._process_tasks）
+            # 按 task_type 并发上限排队执行；计算完成后 _run_task 通过 notify_callback 主动通知主服务。
+            # （主服务侧已支持：回调写结果 + 兜底结算补查，pending 不会导致用例误判失败）
+            TaskModel.create_task(
+                eval_task_id=eval_task_id,
+                task_type=task_type,
+                task_params=task_params,
+                endpoints=None,
+                endpoint_url=None,
+                task_id=caller_task_id
+            )
+            logger.info(
+                f"[queue] 评估并发已满({config.LOCAL_MAX_CONCURRENCY})，任务进入排队: "
+                f"eval_task_id={eval_task_id}, task_type={task_type}, caller_task_id={caller_task_id}"
+            )
+            base_url = request.host_url.rstrip('/')
+            return success_response({
+                "eval_task_id": eval_task_id,
+                "task_id": caller_task_id,
+                "status_url": f"{base_url}/api/get_status/{eval_task_id}",
+                "final_result_url": f"{base_url}/api/get_final_result/{eval_task_id}",
+                "task_type": task_type,
+                "queued": True,
+                "msg": f"评估端点并发已满({config.LOCAL_MAX_CONCURRENCY})，任务已进入排队等待"
+            })
 
         LocalConcurrencyManager.increment()
         try:

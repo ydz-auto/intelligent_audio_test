@@ -100,7 +100,9 @@ class EndpointWorker(EvaluationLoggerMixin):
                         except Exception as e:
                             local_db_session.rollback()
                             self._log(level='WARNING', content=f"更新评估状态为running失败: {str(e)}", task_id=task_id)
-                        self._execute_evaluation(**task_data)
+                        # 下划线前缀为内部字段（如重排队计数 _retry_count），不进入评估 payload
+                        _task_kwargs = {k: v for k, v in task_data.items() if not k.startswith('_')}
+                        self._execute_evaluation(_task_data=task_data, **_task_kwargs)
 
                         self._log(
                             level='INFO',
@@ -132,7 +134,7 @@ class EndpointWorker(EvaluationLoggerMixin):
 
     def _execute_evaluation(self, task_id, result_id, test_case_id, algorithm_result,
                            representative_dim_data, group_items, algorithm_type='translation',
-                           test_type='api', **kwargs):
+                           test_type='api', _task_data=None, **kwargs):
         field_mapper = get_field_mapper()
         # 按维度获取映射字段（多对一映射时不同维度可能映射不同 source）
         dim_id = representative_dim_data.get('id')
@@ -347,6 +349,11 @@ class EndpointWorker(EvaluationLoggerMixin):
                 )
                 return
 
+            # 评估端点并发满（code=3001）：重新排队等待重试，而不是判失败
+            if isinstance(resp_data, dict) and resp_data.get('__concurrency_wait__'):
+                self._requeue_or_fail(_task_data, resp_data, payload)
+                return
+
             if resp_data and '__error__' not in resp_data:
                 self.eval_service.result_processor.process_group_dimension_results(
                     resp_data=resp_data,
@@ -424,3 +431,54 @@ class EndpointWorker(EvaluationLoggerMixin):
             task_id=task_id,
             test_case_id=test_case_id
         )
+
+    # 端点并发满时的重排队参数
+    CONCURRENCY_RETRY_INTERVAL = 10      # 每次重试间隔（秒）
+    CONCURRENCY_MAX_RETRY = 60           # 最大重试次数（10s × 60 ≈ 10 分钟排队上限）
+
+    def _requeue_or_fail(self, task_data, resp_data, api_request_body=None):
+        """评估端点并发满（code=3001）时把任务重新排回队列，等待端点有空位再试。
+
+        配合事件化评估：worker 提交后不再阻塞，任务在 task_queue 里排队，
+        由消费线程在端点释放并发后自动重试；超过重试上限才判失败。
+        """
+        if not task_data:
+            return
+
+        task_id = task_data.get('task_id')
+        test_case_id = task_data.get('test_case_id')
+        retry_count = int(task_data.get('_retry_count', 0) or 0) + 1
+        task_data['_retry_count'] = retry_count
+
+        if retry_count > self.CONCURRENCY_MAX_RETRY:
+            error_msg = (f"评估端点排队等待超时: 连续 {self.CONCURRENCY_MAX_RETRY} 次被拒绝(并发满)，"
+                         f"排队时长约 {self.CONCURRENCY_MAX_RETRY * self.CONCURRENCY_RETRY_INTERVAL / 60:.0f} 分钟")
+            self._log(
+                level='ERROR',
+                content=error_msg,
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
+            self.eval_service.result_processor.update_all_dimensions_in_group_failed(
+                group_items=task_data.get('group_items', []),
+                error_message=error_msg,
+                task_id=task_id,
+                test_case_id=test_case_id,
+                api_raw_response=resp_data,
+                api_request_body=api_request_body
+            )
+            return
+
+        self._log(
+            level='INFO',
+            content=f"评估端点并发满，任务重新排队(第{retry_count}/{self.CONCURRENCY_MAX_RETRY}次): "
+                    f"TaskID={task_id}, TestCaseID={test_case_id}, 维度组="
+                    f"{[item[0]['name'] for item in task_data.get('group_items', [])]}, "
+                    f"原因={resp_data.get('message', '达到最大并发限制')}",
+            task_id=task_id,
+            test_case_id=test_case_id
+        )
+
+        # 等待间隔后重新入队（避免忙轮询打满端点）
+        time.sleep(self.CONCURRENCY_RETRY_INTERVAL)
+        self.task_queue.put(task_data)
