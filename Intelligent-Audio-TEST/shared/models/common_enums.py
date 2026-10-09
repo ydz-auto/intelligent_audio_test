@@ -212,3 +212,25 @@ class TransferStatus(str, Enum):
     COMPLETED = 'COMPLETED'
     FAILED = 'FAILED'
     EXPIRED = 'EXPIRED'
+
+
+class EvalCapabilityTarget(str, Enum):
+    """评估能力归属枚举 — 评估能力注册表路由目标（设计文档 09_跨区网络传输方案 §4.1.1）
+
+    LOCAL          本区 evaluation_service gRPC（现有 EvaluateCase 链路不变）
+    THIRD_PARTY_C  经 transfer_agent 传输链路调 C 第三方评估 API（B 为评估中枢）
+    """
+    LOCAL = 'LOCAL'
+    THIRD_PARTY_C = 'THIRD_PARTY_C'
+
+
+class ThirdPartyAdapterKind(str, Enum):
+    """B→C 第三方评估适配形态枚举 — ThirdPartyEvalPort 适配器策略（设计文档 §4.3）
+
+    MULTIPART       支持 multipart/form-data + 同步响应，流式上传文件
+    FEATURE_EXTRACT B 预处理大文件→提取特征向量→只传特征（C 仅接受小参数字段）
+    PRESIGNED_URL   B 生成预签名 URL→C 主动拉取→携带对象引用评估
+    """
+    MULTIPART = 'multipart'
+    FEATURE_EXTRACT = 'feature_extract'
+    PRESIGNED_URL = 'presigned_url'

@@ -15,6 +15,16 @@ class TaskDispatcherMixin:
                                     round_number, field_mapper, ref_texts, rounds_list=None,
                                     flat_eval_fields=None):
         """将维度按端点分组并异步提交评估任务"""
+        # 评估能力注册表分流：THIRD_PARTY_C 维度走第三方评估链路（8 步流程），LOCAL 维度走原端点链路
+        local_list, third_party_list = self._split_by_eval_capability(
+            dimension_data_list, task_id, test_case_id)
+        if third_party_list:
+            self._dispatch_third_party_tasks(
+                third_party_list, dimension_result_map, result_id, task_id, test_case_id,
+                algorithm_result, algorithm_type, test_type, round_number, field_mapper,
+                ref_texts, rounds_list, flat_eval_fields)
+        dimension_data_list = local_list
+
         endpoint_groups, no_endpoint_groups = self._group_dimensions_by_endpoint(
             dimension_data_list, dimension_result_map, task_id, test_case_id
         )

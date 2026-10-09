@@ -1,0 +1,32 @@
+{
+  "dimension_capabilities": [
+    {
+      "dimension": "llm_judge",
+      "target": "THIRD_PARTY_C",
+      "adapter": "multipart",
+      "enabled": false
+    },
+    {
+      "dimension": "mos",
+      "target": "THIRD_PARTY_C",
+      "adapter": "presigned_url",
+      "enabled": false
+    }
+  ],
+  "third_party": {
+    "self_zone": "B",
+    "hub_zone": "B",
+    "transfer_agent_base_url": "http://127.0.0.1:5010",
+    "hub_transfer_agent_base_url": "http://127.0.0.1:5010",
+    "c_api_base_url": "http://127.0.0.1:5101",
+    "adapter": "multipart",
+    "timeout_seconds": 120,
+    "max_retries": 3,
+    "backoff_seconds": 1.0,
+    "staging_enabled": true,
+    "staging_ttl_seconds": 3600,
+    "sync_back_enabled": true,
+    "sync_back_zone": "A",
+    "response_required_keys": []
+  }
+}

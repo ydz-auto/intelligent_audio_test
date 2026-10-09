@@ -17,6 +17,7 @@ from evaluation_service.domain.services.evaluation_service.dimension_result_reco
 from evaluation_service.domain.services.evaluation_service.post_evaluation import PostEvaluationMixin
 from evaluation_service.infrastructure.evaluation_api.worker_management import WorkerManagementMixin
 from evaluation_service.infrastructure.evaluation_api.task_dispatcher import TaskDispatcherMixin
+from evaluation_service.infrastructure.evaluation_api.third_party_worker import ThirdPartyDispatcherMixin
 
 
 class _EvaluationServiceHost(
@@ -27,6 +28,7 @@ class _EvaluationServiceHost(
     DimensionLoaderMixin,
     DimensionResultRecorderMixin,
     TaskDispatcherMixin,
+    ThirdPartyDispatcherMixin,
     PostEvaluationMixin,
     EvaluationLoggerMixin,
 ):
@@ -37,6 +39,8 @@ class _EvaluationServiceHost(
     和 self._evaluation_dimension_repo，供所有 Domain Mixin 使用。
     """
 
+    _third_party_eval = None
+
     def __init__(self):
         # 注入 repository 实例（infrastructure 层单例）
         from evaluation_service.infrastructure.acl.task_acl_repository import task_acl_repository
@@ -45,6 +49,14 @@ class _EvaluationServiceHost(
             task_acl_repo=task_acl_repository,
             evaluation_dimension_repo=evaluation_dimension_repository,
         )
+
+    @property
+    def third_party_eval(self):
+        """第三方评估 ACL 单例（THIRD_PARTY_C 维度组的 8 步流程编排入口）。"""
+        if self._third_party_eval is None:
+            from evaluation_service.infrastructure.acl.third_party_eval_acl import third_party_eval_acl
+            self._third_party_eval = third_party_eval_acl
+        return self._third_party_eval
 
 
 # 模块级单例（保持与原 domain/services/evaluation_service 导入路径兼容）

@@ -167,3 +167,52 @@ def health_check(dim_id: int):
         return result
     except Exception as e:
         return {'success': False, 'message': str(e)}
+
+
+# ================= 评估能力注册表（LOCAL / THIRD_PARTY_C 路由管理） =================
+
+@router.get('/capabilities')
+def list_capabilities():
+    """发现：列出全部已注册的评估能力归属"""
+    try:
+        from evaluation_service.domain.services.evaluation_capability_registry import evaluation_capability_registry
+        return {'success': True, 'data': evaluation_capability_registry.list_capabilities()}
+    except Exception as e:
+        return {'success': False, 'message': str(e)}
+
+
+@router.post('/capabilities')
+def register_capability(body: dict):
+    """注册/更新：维度评估归属（dimension + target + adapter + enabled）"""
+    try:
+        from evaluation_service.domain.services.evaluation_capability_registry import evaluation_capability_registry
+        entry = evaluation_capability_registry.register(
+            dimension=str(body.get('dimension') or ''),
+            target=str(body.get('target') or ''),
+            adapter=body.get('adapter'),
+            enabled=bool(body.get('enabled', True)),
+            settings=body.get('settings'),
+        )
+        return {'success': True, 'data': entry}
+    except Exception as e:
+        return {'success': False, 'message': str(e)}
+
+
+@router.post('/capabilities/{dimension}/disable')
+def disable_capability(dimension: str):
+    """禁用：维度回退本地评估链路"""
+    try:
+        from evaluation_service.domain.services.evaluation_capability_registry import evaluation_capability_registry
+        return {'success': True, 'data': evaluation_capability_registry.disable(dimension)}
+    except Exception as e:
+        return {'success': False, 'message': str(e)}
+
+
+@router.post('/capabilities/{dimension}/enable')
+def enable_capability(dimension: str):
+    """启用：恢复维度第三方评估链路"""
+    try:
+        from evaluation_service.domain.services.evaluation_capability_registry import evaluation_capability_registry
+        return {'success': True, 'data': evaluation_capability_registry.enable(dimension)}
+    except Exception as e:
+        return {'success': False, 'message': str(e)}
