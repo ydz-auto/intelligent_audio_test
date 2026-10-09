@@ -149,6 +149,32 @@ class ClientLogInterceptor(grpc.UnaryUnaryClientInterceptor):
             raise
 
 
+class ClientDeadlineInterceptor(grpc.UnaryUnaryClientInterceptor):
+    """客户端 deadline 拦截器：为未显式设置 timeout 的 unary-unary 调用注入默认 deadline。
+
+    背景（INT-54）：依赖服务「接受连接但不响应」（进程驻留但处理线程假死）时，
+    无 deadline 的客户端调用在 grpc._channel._blocking 永久阻塞 —— 上层调用点
+    try/except 的失败收敛路径（设计上视为可降级，如引擎侧设备事件注册）永不执行，
+    调用线程悬挂（集成回归现场：StartTaskLifecycle → _register_task_events_via_grpc
+    → device_service 假死 → gateway.post 悬挂 25 分钟+）。
+
+    注入 deadline 后 DEADLINE_EXCEEDED 与 UNAVAILABLE 同为 grpc.RpcError，
+    走既有失败收敛路径。规则：
+    - 调用方显式传 timeout 的调用不做改写（显式优先）；
+    - 默认值取 BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS（环境变量可覆盖）；
+    - 已知长耗时的调用点应显式传更大的 timeout；
+    - 流式 RPC 不在 unary 拦截范围（渲染等长时操作本就不应设短 deadline）。
+    """
+
+    def intercept_unary_unary(self, continuation, client_call_details, request):
+        if client_call_details.timeout is not None:
+            return continuation(client_call_details, request)
+        from shared.infrastructure.config import BaseConfig
+        new_details = client_call_details._replace(
+            timeout=BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS)
+        return continuation(new_details, request)
+
+
 # ==================== DB scope 拦截器 ====================
 
 class ServerDbScopeInterceptor(grpc.ServerInterceptor):
@@ -182,5 +208,6 @@ class ServerDbScopeInterceptor(grpc.ServerInterceptor):
 
 # 单例
 client_log_interceptor = ClientLogInterceptor()
+client_deadline_interceptor = ClientDeadlineInterceptor()
 server_log_interceptor = ServerLogInterceptor()
 server_db_scope_interceptor = ServerDbScopeInterceptor()

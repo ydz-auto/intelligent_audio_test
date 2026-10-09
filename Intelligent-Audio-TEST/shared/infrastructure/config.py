@@ -122,6 +122,15 @@ class BaseConfig:
     AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
     AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', 50069)
 
+    # --- gRPC 客户端默认 deadline（INT-54）---
+    # 未显式传 timeout 的 gRPC 客户端调用统一注入该 deadline（秒）。
+    # 依赖服务「接受连接但不响应」时，无 deadline 的调用在 grpc._channel._blocking
+    # 永久阻塞，调用点 try/except 的失败收敛路径永不执行（INT-54：StartTaskLifecycle
+    # 内 RegisterTaskEvents → 假死 device_service → 集成回归全量悬挂 25 分钟+）。
+    # 注入后 DEADLINE_EXCEEDED 与 UNAVAILABLE 同为 RpcError，走既有失败收敛路径。
+    # 显式传 timeout 的调用不受影响；已知长耗时调用点应显式传更大的 timeout。
+    GRPC_CLIENT_DEADLINE_SECONDS: int = _get_int('GRPC_CLIENT_DEADLINE_SECONDS', 60)
+
     # --- 工具 ---
     FFMPEG_PATH: str = _get_env('FFMPEG_PATH', 'ffmpeg')
     FFPROBE_PATH: str = _get_env('FFPROBE_PATH', 'ffprobe')
