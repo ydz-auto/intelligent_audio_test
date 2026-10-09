@@ -1,9 +1,10 @@
 """
 数据库初始化模块 - 共享层
 
-原生 SQLAlchemy 实现。连接池：create_engine(pool_size, max_overflow,
-pool_recycle, pool_pre_ping)，scoped_session 基于 threading.local，
-线程内复用、跨线程隔离。
+原生 SQLAlchemy 实现。连接池：QueuePool 池类传 pool_size/max_overflow/
+pool_recycle/pool_pre_ping，SQLite 内存库（SingletonThreadPool）等非
+QueuePool 池类仅传池类兼容参数（INT-48）；scoped_session 基于
+threading.local，线程内复用、跨线程隔离。
 
 公开 API：
 - `Base`：ORM 基类（declarative_base()），PO 继承它
@@ -19,7 +20,9 @@ import threading
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker, Query
+from sqlalchemy.pool import QueuePool
 
 from shared.infrastructure.config import BaseConfig
 
@@ -118,11 +121,31 @@ def get_engine():
     return _engine
 
 
+def _pool_kwargs(uri, pool_size):
+    """按 create_engine 实际将选用的池类装配连接池参数。
+
+    pool_size/max_overflow 是 QueuePool 专属参数：生产（PostgreSQL/MySQL）
+    与 SQLite 文件库的默认池类均为 QueuePool，参数照传、行为不变；SQLite
+    内存库的默认池类是 SingletonThreadPool，仅接受 Pool 基类参数
+    （pool_recycle/pool_pre_ping），传入 QueuePool 专属参数即 TypeError
+    （INT-48）。
+    """
+    pool_kwargs = {
+        'pool_recycle': 3600,
+        'pool_pre_ping': True,
+    }
+    url = make_url(uri)
+    if issubclass(url.get_dialect().get_pool_class(url), QueuePool):
+        pool_kwargs.update({'pool_size': pool_size, 'max_overflow': 5})
+    return pool_kwargs
+
+
 def init_db(pool_size=3):
     """初始化数据库连接池。
 
     Args:
-        pool_size: 连接池大小（默认 3，配合 max_overflow=5 上限 8 条，控制内存占用）
+        pool_size: 连接池大小（默认 3，配合 max_overflow=5 上限 8 条，控制内存占用；
+            仅 QueuePool 池类生效，SQLite 内存库等非 QueuePool 池类忽略）
 
     Returns:
         scoped_session 对象
@@ -134,10 +157,7 @@ def init_db(pool_size=3):
 
     engine = create_engine(
         uri,
-        pool_size=pool_size,
-        pool_recycle=3600,
-        pool_pre_ping=True,
-        max_overflow=5,
+        **_pool_kwargs(uri, pool_size),
     )
 
     # 绑定 session 工厂到 engine
