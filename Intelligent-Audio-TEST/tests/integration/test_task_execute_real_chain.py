@@ -63,6 +63,10 @@ INT-26 遗留项：execute 执行链路在 INT-26 验收时以 fake/集成替身
   get_full_field_mapping 方法（report_task_generator 经
   _grpc_algo_get_field_mapping 调用），字段映射快照静默降级为空（仅 WARNING），
   报告算法结果提取退化，不阻断生成。
+  （INT-45 已修复：ACL 仓储补 get_full_field_mapping——shared 客户端
+  algo_get_full_field_mapping 现成，仅漏 ACL 方法与接口声明；报告快照
+  非空断言并入 test_benchmark_score_output_consumable_by_ranking，
+  单测守卫在 tests/unit/test_int45_acl_full_field_mapping.py）
 
 隔离策略（测试侧自愈，不影响产品代码）：int35_quarantine 夹具对上述缺陷做
 "探针检测 + 最小替身"，仅在缺陷仍在时生效（缺陷修复后探针通过、补丁自动卸除，
@@ -922,6 +926,18 @@ class TestTaskExecuteRealChain:
         wer = [d for d in dim_values if d['name'] == 'WER']
         assert wer and float(wer[0]['average_value']) == pytest.approx(7.2), \
             f'报告维度均值应来自执行得分: {dim_values}'
+
+        # INT-45 验收：字段映射快照须经 ACL get_full_field_mapping 落库为非空
+        # （修复前 AttributeError 被吞成 WARNING，快照恒为 {}）。条目结构
+        # {result: [...], reference: [...]}；列表内容取决于 ParamMapping 配置数据
+        # （本场景未播种映射行，列表可为空，键与结构必须存在）。
+        fm = metas[0].field_mappings or {}
+        if isinstance(fm, str):
+            fm = json.loads(fm)
+        trans_fm = fm.get('translation') or {}
+        assert isinstance(trans_fm.get('result'), list) and \
+            isinstance(trans_fm.get('reference'), list), \
+            f'INT-45 回归：报告字段映射快照应含 translation 条目且结构完整: {fm}'
 
         # 2. 发布为 benchmark:true（报告快照冻结）
         pub = gateway.post('/api/v1/published-tasks', json={
