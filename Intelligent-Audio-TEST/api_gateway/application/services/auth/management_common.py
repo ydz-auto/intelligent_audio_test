@@ -40,7 +40,7 @@ _ERROR_HTTP_STATUS = {
     # 自定义 OAuth 提供方（INT-51）
     AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND: 404,
     AuthErrorCode.OAUTH_SLUG_DUPLICATED: 409,
-    AuthErrorCode.OAUTH_PROVIDER_ENABLED_EXISTS: 409,
+    AuthErrorCode.OAUTH_PROVIDER_DISABLED: 403,
 }
 
 

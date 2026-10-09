@@ -12,7 +12,6 @@ from api_gateway.domain.entities.auth_entities import AuthUser
 from api_gateway.domain.value_objects.auth_value_objects import UserInfo
 from api_gateway.application.services.auth.token_service import TokenService
 from api_gateway.application.services.auth.local_oauth import LocalOAuthProvider
-from api_gateway.application.services.auth.huawei_oauth import HuaweiOAuthProvider
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,9 @@ class AuthService:
         if config is not None:
             return OAuthProviderService.build_authorize_url(
                 config, Config.HW_OAUTH_REDIRECT_URI)
-        return HuaweiOAuthProvider.get_login_url()
+        # 禁用/未配置不回退旧硬编码授权页 —— 禁用开关必须生效（INT-51
+        # 审计 P1-2，事件响应切断 SSO 的手段）；账号密码登录仍可用
+        return '/#/login'
 
     @staticmethod
     def login_with_password(username: str, password: str) -> dict:
@@ -124,6 +125,9 @@ class AuthService:
         from shared.utils.grpc_json import loads as _loads
 
         stub = auth_config_service.stub
+        from api_gateway.application.services.auth.oauth_provider_service import (
+            PRESET_HUAWEI_SLUG,
+        )
 
         # 1. 按 OAuth 外部 ID 查找
         if user_info.external_id:
@@ -135,23 +139,37 @@ class AuthService:
                 if data:
                     return _to_auth_user(data)
 
-        # 2. 按用户名查找
-        resp = stub.GetUserByUsername(auth_pb.GetUserByUsernameRequest(
-            username=user_info.username,
-        ))
-        if resp.success and resp.data:
-            data = _loads(resp.data, {}) or {}
-            if data:
-                return _to_auth_user(data)
+        # 2. 按用户名查找 —— 仅限本地密码登录（凭据已在入口验过）与预置
+        #    huawei（企业受控 IdP，用户名即员工身份，存量账户绑定语义）。
+        #    自定义提供方一律不合并：IdP 用户名可自选，按用户名签发既有
+        #    账户 JWT 即同名账户接管（INT-51 审计 P1-1；对齐 newAPI：
+        #    新身份一律新账户，仅按 provider+subject 绑定）。
+        is_oauth = bool(user_info.external_id)
+        if not is_oauth or provider == PRESET_HUAWEI_SLUG:
+            resp = stub.GetUserByUsername(auth_pb.GetUserByUsernameRequest(
+                username=user_info.username,
+            ))
+            if resp.success and resp.data:
+                data = _loads(resp.data, {}) or {}
+                if data:
+                    return _to_auth_user(data)
 
-        # 3. 自动创建新用户
-        resp = stub.CreateUser(auth_pb.CreateUserRequest(
-            username=user_info.username,
-            email=user_info.email or '',
-            oauth_provider=provider if user_info.external_id else '',
-            oauth_subject=user_info.external_id or '',
-        ))
-        if resp.success and resp.data:
+        # 3. 自动创建新用户；自定义提供方 OAuth 新身份 username 被既有
+        #    账户占用时降级 {slug}_{username} 重试（不合并既有账户）
+        create_candidates = [user_info.username]
+        if is_oauth and provider != PRESET_HUAWEI_SLUG:
+            create_candidates.append(f'{provider}_{user_info.username}')
+        resp = None
+        for created_username in create_candidates:
+            resp = stub.CreateUser(auth_pb.CreateUserRequest(
+                username=created_username,
+                email=user_info.email or '',
+                oauth_provider=provider if user_info.external_id else '',
+                oauth_subject=user_info.external_id or '',
+            ))
+            if resp.success and resp.data:
+                break
+        if resp is not None and resp.success and resp.data:
             data = _loads(resp.data, {}) or {}
             # 新建用户需要再查一次拿权限
             new_id = data.get('user_id')
@@ -164,7 +182,7 @@ class AuthService:
             # 降级：返回最小信息
             return AuthUser(
                 id=data.get('user_id', 0),
-                username=user_info.username,
+                username=created_username,
                 role_id=None,
                 role_name='',
                 permissions=[],

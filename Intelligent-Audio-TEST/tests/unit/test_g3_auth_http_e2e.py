@@ -422,6 +422,117 @@ class TestHuaweiPresetHttpEntry:
         OAuthProviderService._verify_state(qs['state'][0], 'huawei')
 
 
+class TestOAuthTakeoverGuardHttp:
+    """审计 P1-1 e2e：自定义提供方 OAuth 同名 userinfo 不接管既有账户。"""
+
+    def test_same_username_callback_creates_distinct_account(
+            self, client, seeded, svc, mock_idp):
+        from shared.proto import auth_service_pb2 as auth_pb
+        from api_gateway.config.config import Config
+        existing = f'e2e_victim_{_RUN}'
+        _register_and_login(client, existing)
+
+        # mock IdP 回 userinfo：用户名与既有本地账户同名，外部 subject 不同
+        original_userinfo = _MockIdPHandler.userinfo
+        _MockIdPHandler.userinfo = {
+            'sub': f'ext-hijack-{_RUN}', 'preferred_username': existing,
+            'name': '攻击者', 'email': 'evil@example.com'}
+        slug = f'takeover-idp-{_RUN}'
+        try:
+            resp = svc.CreateOAuthProvider(auth_pb.CreateOAuthProviderRequest(
+                name='接管防护验收', slug=slug, icon='', enabled=True,
+                client_id='cid-tk', client_secret='sec-tk',
+                authorize_url=f'{mock_idp}/authorize',
+                token_url=f'{mock_idp}/token',
+                userinfo_url=f'{mock_idp}/userinfo',
+                user_id_field='sub', username_field='preferred_username',
+                operator_id=1))
+            assert resp.success, resp.message
+
+            loc = _assert_redirect(
+                client.get(f'/api/v1/auth/oauth/{slug}/authorize'))
+            state = parse_qs(urlparse(loc).query)['state'][0]
+            resp = client.get(f'/api/v1/auth/oauth/{slug}/callback',
+                              params={'code': 'good-code', 'state': state})
+            loc = _assert_redirect(resp)
+            assert 'oauth_error' not in loc, loc
+            token = parse_qs(
+                urlparse(loc).fragment.split('?', 1)[1])['oauth_token'][0]
+
+            # 签发的是降级新账户 {slug}_{username}，而非既有同名账户
+            import jwt as pyjwt
+            claims = pyjwt.decode(token, Config.JWT_SECRET,
+                                  algorithms=[Config.JWT_ALGORITHM])
+            assert claims['username'] == f'{slug}_{existing}'
+
+            resp = client.get('/api/v1/auth/me',
+                              headers={'Authorization': f'Bearer {token}'})
+            assert resp.status_code == 200, resp.text
+            assert resp.json()['username'] == f'{slug}_{existing}'
+        finally:
+            _MockIdPHandler.userinfo = original_userinfo
+
+        # 既有账户未被绑定外部身份（接管未发生）；降级新账户正常落库
+        from auth_service.infrastructure.persistence.models import User
+        session = get_db_session()
+        victim = session.query(User).filter(User.username == existing).one()
+        assert not victim.oauth_provider
+        assert not victim.oauth_id
+        newcomer = session.query(User).filter(
+            User.username == f'{slug}_{existing}').one()
+        assert newcomer.oauth_provider == slug
+        assert newcomer.oauth_id == f'ext-hijack-{_RUN}'
+
+
+class TestPresetProviderDisableHttp:
+    """审计 P1-2 e2e：预置 huawei 禁用后，环境回退不再复活 SSO 入口。"""
+
+    def test_disabled_huawei_blocks_authorize_callback_login_entry(
+            self, client, seeded, monkeypatch):
+        from api_gateway.config.config import Config
+        # 生产迁移形态：环境变量保留 + DB 禁用 huawei
+        monkeypatch.setattr(Config, 'AUTH_MODE', 'prod')
+        monkeypatch.setattr(Config, 'HW_OAUTH_CLIENT_ID', 'hw-acc-1')
+        monkeypatch.setattr(Config, 'HW_OAUTH_CLIENT_SECRET', 'hw-sec-1')
+        monkeypatch.setattr(Config, 'HW_OAUTH_AUTHORIZE_URL',
+                            'https://oauth.huaweicloud.com/oauth2/authorize')
+        monkeypatch.setattr(Config, 'HW_OAUTH_REDIRECT_URI',
+                            'http://localhost:8000/api/v1/auth/callback')
+
+        from auth_service.infrastructure.persistence.models import (
+            CustomOAuthProvider,
+        )
+        session = get_db_session()
+        row = CustomOAuthProvider(
+            name='华为云', slug='huawei', icon='', enabled=False,
+            client_id='hw-acc-1', client_secret='hw-sec-1',
+            authorize_url='https://oauth.huaweicloud.com/oauth2/authorize',
+            token_url='https://oauth.huaweicloud.com/oauth2/token',
+            userinfo_url='https://oauth.huaweicloud.com/oauth2/userinfo')
+        session.add(row)
+        session.commit()
+        try:
+            # 授权跳转：拒绝并回跳前端错误页，不下发 IdP 授权 URL
+            resp = client.get('/api/v1/auth/oauth/huawei/authorize')
+            loc = _assert_redirect(resp)
+            assert 'oauth_error=' in urlparse(loc).fragment
+            assert 'oauth.huaweicloud.com' not in loc
+
+            # 回调：同样拒绝
+            resp = client.get('/api/v1/auth/oauth/huawei/callback',
+                              params={'code': 'c', 'state': 'x'})
+            loc = _assert_redirect(resp)
+            assert 'oauth_error=' in urlparse(loc).fragment
+
+            # 登录入口：不再回退旧硬编码授权页（账号密码登录页仍可用）
+            resp = client.get('/api/v1/auth/login')
+            loc = _assert_redirect(resp)
+            assert 'oauth.huaweicloud.com' not in loc
+        finally:
+            session.delete(row)
+            session.commit()
+
+
 class TestSeedCustomOAuthProvidersScript:
     """seed_custom_oauth_providers.py：幂等 + 未配置环境变量跳过。"""
 

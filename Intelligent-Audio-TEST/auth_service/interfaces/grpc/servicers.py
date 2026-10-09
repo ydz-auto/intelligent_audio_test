@@ -15,6 +15,7 @@ import json
 import logging
 from typing import Any
 
+from shared.models.common_enums import AuthErrorCode
 from shared.proto import auth_service_pb2 as auth_pb
 from shared.proto import auth_service_pb2_grpc as auth_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
@@ -584,7 +585,8 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
                 return _fail('提供方不存在',
                              AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND)
             if not provider.enabled:
-                return _fail('提供方未启用')
+                return _fail('提供方未启用',
+                             AuthErrorCode.OAUTH_PROVIDER_DISABLED)
             return _ok(_provider_to_full_dict(provider))
         except Exception as e:
             logger.error("GetOAuthProviderBySlug 失败: %s", e, exc_info=True)

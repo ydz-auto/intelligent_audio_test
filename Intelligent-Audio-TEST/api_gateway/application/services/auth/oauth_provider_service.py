@@ -166,7 +166,13 @@ class OAuthProviderService:
     @staticmethod
     def get_provider_config(slug: str, include_disabled: bool = False
                             ) -> Optional[Dict]:
-        """按 slug 取提供方完整配置（DB；华为云 slug 回退环境预置）。"""
+        """按 slug 取提供方完整配置（DB；仅「未配置」回退华为云环境预置）。
+
+        servicer 失败三态显式（INT-51 审计 P1-2）：不存在 →
+        OAUTH_PROVIDER_NOT_FOUND，存在但禁用 → OAUTH_PROVIDER_DISABLED。
+        环境预置回退仅对 NOT_FOUND 生效：禁用/其他失败一律拒绝，
+        禁用开关对预置提供方必须真实生效（事件响应切断 SSO 的手段）。
+        """
         from api_gateway.infrastructure.grpc_proxies import auth_config_service
         resp = auth_config_service.stub.GetOAuthProviderBySlug(
             _pb().GetOAuthProviderBySlugRequest(slug=slug))
@@ -174,9 +180,16 @@ class OAuthProviderService:
             data = _loads(resp.data, {}) or {}
             if data:
                 return data
-        if slug == PRESET_HUAWEI_SLUG and Config.HW_OAUTH_CLIENT_ID:
+        from shared.models.common_enums import AuthErrorCode
+        try:
+            error_code = AuthErrorCode(
+                (_loads(resp.data, {}) or {}).get('error_code'))
+        except ValueError:
+            error_code = None
+        if (slug == PRESET_HUAWEI_SLUG and Config.HW_OAUTH_CLIENT_ID
+                and error_code == AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND):
             # 兼容回退：未执行 seed 的部署，以环境变量构造预置提供方
-            # （等效旧 HuaweiOAuthProvider 硬编码行为）
+            # （等效旧 HuaweiOAuthProvider 硬编码行为）；禁用不走此分支
             logger.info('huawei 提供方未配置，回退环境预置（等效旧行为）')
             return _huawei_preset_config()
         return None
