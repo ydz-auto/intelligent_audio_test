@@ -119,10 +119,12 @@ class ThirdPartyDispatcherMixin:
                           test_case_id=test_case_id)
 
     def _get_or_create_third_party_worker(self, adapter_kind, representative_dim_data):
-        if not hasattr(self, '_third_party_workers'):
-            self._third_party_workers = {}
         key = f"third-party-c://{adapter_kind}/{representative_dim_data.get('id')}"
-        if key not in self._third_party_workers:
-            self._third_party_workers[key] = ThirdPartyEndpointWorker(
-                endpoint_url=key, eval_service=self, adapter_kind=adapter_kind)
-        return self._third_party_workers[key]
+        # 与端点 Worker 字典同锁（WorkerManagementMixin），防并发评估重复建 Worker
+        with self.endpoint_workers_lock:
+            if not hasattr(self, '_third_party_workers'):
+                self._third_party_workers = {}
+            if key not in self._third_party_workers:
+                self._third_party_workers[key] = ThirdPartyEndpointWorker(
+                    endpoint_url=key, eval_service=self, adapter_kind=adapter_kind)
+            return self._third_party_workers[key]

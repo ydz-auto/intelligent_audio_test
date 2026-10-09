@@ -100,6 +100,20 @@ class TestResolve:
         with pytest.raises(KeyError):
             registry.disable('no_such_dim')
 
+    def test_remove_persists_and_does_not_revive_after_hot_reload(self, registry, config_path):
+        registry.register('llm_judge', 'THIRD_PARTY_C')
+        assert registry.remove('llm_judge') is True
+        assert registry.remove('llm_judge') is False
+        data = json.loads(open(config_path, encoding='utf-8').read())
+        assert data['dimension_capabilities'] == []
+        # 外部改写配置触发 mtime 热加载后，已移除条目不得从文件复活
+        data['dimension_capabilities'] = [{'dimension': 'mos', 'target': 'THIRD_PARTY_C'}]
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.utime(config_path, None)
+        assert registry.resolve({'task_type_code': 'llm_judge'}) is None
+        assert registry.resolve({'task_type_code': 'mos'}) is not None
+
 
 class TestPersistAndHotReload:
     def test_register_persists_to_config_file(self, registry, config_path):

@@ -173,7 +173,11 @@ class EvaluationCapabilityRegistry:
     def remove(self, dimension: str) -> bool:
         with self._lock:
             self._reload_if_changed()
-            return self._entries.pop(str(dimension), None) is not None
+            removed = self._entries.pop(str(dimension), None) is not None
+            if removed:
+                # 写回配置：否则 mtime 热加载后已移除条目会从文件复活
+                self._save()
+            return removed
 
     # ---- 发现 ----
     def list_capabilities(self) -> List[dict]:

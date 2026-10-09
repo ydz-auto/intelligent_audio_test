@@ -89,7 +89,13 @@ class ThirdPartyEvalSettings:
         self.staging_ttl_seconds = int(_get('staging_ttl_seconds', 3600))
         self.sync_back_enabled = str(_get('sync_back_enabled', 'true')).lower() not in ('0', 'false', 'no')
         self.sync_back_zone = str(_get('sync_back_zone', 'A')).upper()
-        self.response_required_keys = list(_get('response_required_keys', []) or [])
+        raw_required_keys = _get('response_required_keys', []) or []
+        if isinstance(raw_required_keys, str):
+            # 环境变量覆盖恒为字符串：按逗号切分（"a,b" → ['a','b']）
+            self.response_required_keys = [part.strip() for part in raw_required_keys.split(',')
+                                           if part.strip()]
+        else:
+            self.response_required_keys = list(raw_required_keys)
 
     @property
     def is_hub(self) -> bool:
@@ -221,7 +227,10 @@ class ThirdPartyEvalACL:
             # ①② 打包 + 传输登记（幂等 transfer_id，审计流水）
             bundle_path = self._pack_bundle(request)
             try:
-                self._stage_eval_request(bundle_path, request)
+                # staging_enabled=false：跳过暂存登记仅直调 C
+                # （dst='C' 登记本身为暂存/审计锚点，非数据面传输；数据面暂直连 C，F2.1 切换经 T-B）
+                if self.settings.staging_enabled:
+                    self._stage_eval_request(bundle_path, request)
             finally:
                 try:
                     os.remove(bundle_path)
@@ -293,6 +302,7 @@ class ThirdPartyEvalACL:
         if not final_path:
             raise RuntimeError(f'transfer {transfer_id} 尚未完成传输（无 final_path）')
         started = time.monotonic()
+        request = None
         try:
             request = self._unpack_bundle(self._bundle_reader(final_path))
             result = self._run_adapter_call(request, request.eval_params.get('adapter'))
@@ -314,11 +324,14 @@ class ThirdPartyEvalACL:
                 synced_back=synced_back))
             return result.data
         except Exception as e:
+            # 解包失败（transit 包被 TTL 回收/损坏）时 request 尚未构建：
+            # 空参数兜底发 Failed 审计（stage=unpack），原始错误原样上抛
+            params = (request.eval_params if request is not None else {}) or {}
             self._emit(ThirdPartyEvalFailed(
                 transfer_id=transfer_id,
-                task_id=request.eval_params.get('task_id'),
-                test_case_id=request.eval_params.get('test_case_id'),
-                stage=_error_stage(e), error=str(e)))
+                task_id=params.get('task_id'),
+                test_case_id=params.get('test_case_id'),
+                stage='unpack' if request is None else _error_stage(e), error=str(e)))
             raise
 
     # ================ 边缘区：取回回同步的 EVAL_RESULT（⑧接收侧） ================
@@ -405,7 +418,13 @@ class ThirdPartyEvalACL:
 
     def _stage_eval_request(self, bundle_path: str, request: ThirdPartyEvalRequest,
                             to_hub: bool = False) -> Dict:
-        """② 传输：EVAL_REQUEST 包分片上传到本区/中枢 transfer_agent（幂等 + 审计 + transit 暂存）。"""
+        """② 传输：EVAL_REQUEST 包分片上传到本区/中枢 transfer_agent（幂等 + 审计 + transit 暂存）。
+
+        to_hub=True 为 A→B 中转腿，真实数据面（中枢 execute_incoming 取包执行）；
+        to_hub=False 登记 dst='C'，过渡形态下仅为暂存/审计锚点、非数据面传输——
+        评估数据面暂由 third_party_adapters 直连 C，切换经 transfer_agent 出站腿
+        见 F2.1（INT-49），ephemeral 包由 TTL 回收。
+        """
         if to_hub:
             dst_zone = self.settings.hub_zone
             base_url = self.settings.hub_transfer_agent_base_url
@@ -417,6 +436,11 @@ class ThirdPartyEvalACL:
         task_id = (request.eval_params or {}).get('task_id')
         test_case_id = (request.eval_params or {}).get('test_case_id')
         key = f'eval_request/{task_id or "unknown"}/{test_case_id or "unknown"}/{request.transfer_id}.zip'
+        meta = {'adapter': request.eval_params.get('adapter'),
+                'dimensions': request.eval_params.get('dimensions')}
+        if not to_hub:
+            # 流水语义标注：dst='C' 登记为暂存/审计锚点，非数据面传输（过渡形态，F2.1 切换经 T-B）
+            meta['staging_purpose'] = 'audit_anchor'
         return client.send_file(
             transfer_id=request.transfer_id,
             pkg_type=PKG_EVAL_REQUEST,
@@ -427,8 +451,7 @@ class ThirdPartyEvalACL:
             local_path=bundle_path,
             ephemeral=True,
             ttl_seconds=self.settings.staging_ttl_seconds,
-            meta={'adapter': request.eval_params.get('adapter'),
-                  'dimensions': request.eval_params.get('dimensions')},
+            meta=meta,
         )
 
     def _run_adapter_call(self, request: ThirdPartyEvalRequest, adapter_kind: str):

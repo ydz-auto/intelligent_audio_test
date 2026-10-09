@@ -177,6 +177,12 @@ class TestHubFullFlow:
         # 中枢自有评估不产生 EVAL_RESULT 回传包
         assert all(s['pkg_type'] == 'EVAL_REQUEST' for s in client.sent)
 
+    def test_hub_inline_staging_meta_marks_audit_anchor(self, tmp_path):
+        acl, client, factory, events = make_acl(tmp_path)
+        acl.evaluate_dimension_group(**group_kwargs())
+        # 流水语义（问题 2 过渡对齐）：中枢内联 dst='C' 登记为暂存/审计锚点，非数据面传输
+        assert client.sent[0]['meta'].get('staging_purpose') == 'audit_anchor'
+
     def test_adapter_failure_emits_failed_event(self, tmp_path):
         factory = StubAdapterFactory(ThirdPartyEvalResult(
             ok=False, transfer_id='tid', error='C 返回失败'))
@@ -265,3 +271,77 @@ class TestEdgeRelayFlow:
             assert manifest['form_fields']['task_type'] == 'llm_judge'
             assert manifest['files']['record_file']['filename'] == 'a.wav'
             assert zf.read('files/record_file') == b'RIFFxxxxWAVEfmt '
+
+    def test_edge_dispatch_to_hub_meta_is_real_transfer_leg(self, tmp_path):
+        settings = make_settings(tmp_path, self_zone='A', hub_zone='B',
+                                 hub_transfer_agent_base_url='http://ta-b')
+        acl, client, factory, _ = make_acl(tmp_path, settings=settings)
+        acl.dispatch_eval_request(
+            form_fields={'task_type': 'llm_judge'},
+            files={'record_file': ('a.wav', b'RIFFxxxxWAVEfmt ', 'audio/wav')},
+            eval_params={'task_id': 1, 'test_case_id': '11', 'dimensions': ['llm_judge'],
+                         'adapter': 'multipart'})
+        # A→B 中转腿是真实数据面：不携带暂存/审计锚点标注
+        assert client.sent[0]['dst_zone'] == 'B'
+        assert 'staging_purpose' not in client.sent[0]['meta']
+
+
+class TestHubFailurePaths:
+    def test_execute_incoming_bundle_missing_audits_failed_with_unpack_stage(self, tmp_path):
+        final_dir = str(tmp_path / 'final')
+        os.makedirs(final_dir)
+        client = FakeTransferClient(final_dir=final_dir)
+        acl, _, _, events = make_acl(tmp_path, client=client)
+        client.send_file(transfer_id='x2', pkg_type='EVAL_REQUEST', src_zone='A', dst_zone='B',
+                         category='case-result', key='e.zip', local_path=__file__,
+                         ephemeral=True, ttl_seconds=600, meta={})
+        # transit 包被 TTL 清理/文件缺失：读包失败发生在解包前（request 未构建）
+        os.remove(client.sent[0]['final_path'])
+        with pytest.raises(OSError):  # 原始错误原样上抛，不被 UnboundLocalError 掩蔽
+            acl.execute_incoming('x2')
+        failed = [e for e in events if isinstance(e, ThirdPartyEvalFailed)]
+        assert len(failed) == 1
+        assert failed[0].transfer_id == 'x2'
+        assert failed[0].stage == 'unpack'
+        assert failed[0].task_id is None and failed[0].test_case_id is None
+
+    def test_execute_incoming_corrupt_bundle_audits_failed_with_unpack_stage(self, tmp_path):
+        final_dir = str(tmp_path / 'final')
+        os.makedirs(final_dir)
+        client = FakeTransferClient(final_dir=final_dir)
+        acl, _, _, events = make_acl(tmp_path, client=client)
+        client.send_file(transfer_id='x3', pkg_type='EVAL_REQUEST', src_zone='A', dst_zone='B',
+                         category='case-result', key='e.zip', local_path=__file__,
+                         ephemeral=True, ttl_seconds=600, meta={})
+        with open(client.sent[0]['final_path'], 'wb') as f:
+            f.write(b'not-a-zip')
+        with pytest.raises(zipfile.BadZipFile):
+            acl.execute_incoming('x3')
+        failed = [e for e in events if isinstance(e, ThirdPartyEvalFailed)]
+        assert [e.stage for e in failed] == ['unpack']
+
+    def test_staging_disabled_skips_transfer_registration(self, tmp_path):
+        settings = make_settings(tmp_path, staging_enabled=False)
+        acl, client, factory, events = make_acl(tmp_path, settings=settings)
+        resp = acl.evaluate_dimension_group(**group_kwargs())
+        assert resp == OK_DATA
+        # 暂存登记关闭：仅直调 C，不产生 transfer_agent 登记流水
+        assert client.sent == []
+        assert [type(e) for e in events] == [ThirdPartyEvalDispatched, ThirdPartyEvalCompleted]
+
+
+class TestSettings:
+    def test_response_required_keys_list_from_config(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('THIRD_PARTY_EVAL_RESPONSE_REQUIRED_KEYS', raising=False)
+        cfg = tmp_path / 'cfg.json'
+        cfg.write_text(json.dumps({'third_party': {'response_required_keys': ['code', 'msg']}}),
+                       encoding='utf-8')
+        settings = ThirdPartyEvalSettings(config_path=str(cfg))
+        assert settings.response_required_keys == ['code', 'msg']
+
+    def test_response_required_keys_str_env_override_splits_by_comma(self, tmp_path, monkeypatch):
+        cfg = tmp_path / 'cfg.json'
+        cfg.write_text(json.dumps({'third_party': {}}), encoding='utf-8')
+        monkeypatch.setenv('THIRD_PARTY_EVAL_RESPONSE_REQUIRED_KEYS', 'code, data.result.score')
+        settings = ThirdPartyEvalSettings(config_path=str(cfg))
+        assert settings.response_required_keys == ['code', 'data.result.score']
