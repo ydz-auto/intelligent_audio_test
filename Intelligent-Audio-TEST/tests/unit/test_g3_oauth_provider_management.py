@@ -95,13 +95,15 @@ class TestOAuthProviderCrudChain:
         provider_id = json.loads(resp.data)['provider_id']
         assert provider_id
 
-        # 管理端列表：client_secret 掩去
+        # 管理端列表：client_secret 掩去（全量运行共享进程级 SQLite 库，
+        # 其他模块可能已建提供方——按本模块 slug 过滤断言，不假设总数）
         resp = svc.ListOAuthProviders(pb.ListOAuthProvidersRequest(
             include_disabled=True))
         data = json.loads(resp.data)
-        assert len(data['providers']) == 1
-        provider = data['providers'][0]
-        assert provider['slug'] == f'test-idp-{_RUN_TAG}'
+        mine = [p for p in data['providers']
+                if p['slug'] == f'test-idp-{_RUN_TAG}']
+        assert len(mine) == 1
+        provider = mine[0]
         assert 'client_secret' not in provider
         assert provider['has_client_secret'] is True
         # 缺省字段映射补默认值
