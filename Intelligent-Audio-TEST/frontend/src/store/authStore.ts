@@ -51,6 +51,39 @@ export const useAuthStore = defineStore('auth', () => {
     setAuth(result.accessToken, result.user)
   }
 
+  /**
+   * OAuth 回调登录（INT-51）：后端 302 回前端携带 oauth_token，
+   * 先落 token 再拉 /auth/me 补全用户信息。
+   */
+  async function loginWithToken(t: string): Promise<void> {
+    token.value = t
+    localStorage.setItem(TOKEN_KEY, t)
+    try {
+      const payload = await authPort.getMe()
+      const u: AuthUser = {
+        id: payload.userId ?? 0,
+        username: payload.username ?? '',
+        roleId: payload.roleId ?? null,
+        roleName: payload.roleName ?? '',
+        permissions: payload.permissions ?? [],
+      }
+      setAuth(t, u)
+    } catch (e) {
+      initialized = false  // me 失败保留 token，下次 init 重试
+      throw e
+    }
+  }
+
+  /** 自助注册（INT-51）：成功返回 user_id，登录由调用方引导走 login Tab */
+  async function register(payload: {
+    username: string
+    password: string
+    email?: string
+  }): Promise<number> {
+    const result = await authPort.register(payload)
+    return result.userId
+  }
+
   /** 登录成功后设置 token 和用户信息 */
   function setAuth(t: string, u: AuthUser) {
     token.value = t
@@ -118,6 +151,8 @@ export const useAuthStore = defineStore('auth', () => {
     hasPermission,
     hasAnyPermission,
     login,
+    loginWithToken,
+    register,
     setAuth,
     updateUser,
     logout,

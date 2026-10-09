@@ -99,6 +99,23 @@ def _permission_to_dict(perm) -> dict:
     }
 
 
+def _provider_to_public_dict(provider) -> dict:
+    """OAuthProviderEntity → 登录页公开 dict（无任何凭证字段）。"""
+    return provider.to_public_dict()
+
+
+def _provider_to_admin_dict(provider) -> dict:
+    """OAuthProviderEntity → 管理端 dict（掩去 client_secret）。"""
+    return provider.to_admin_dict()
+
+
+def _provider_to_full_dict(provider) -> dict:
+    """OAuthProviderEntity → 完整 dict（含 client_secret，仅服务间内部链路）。"""
+    d = provider.to_admin_dict()
+    d['client_secret'] = provider.client_secret
+    return d
+
+
 class AuthServicer(auth_grpc.AuthServiceServicer):
     """认证服务 gRPC servicer。
 
@@ -290,6 +307,7 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
                 role_name=getattr(request, 'role_name', ''),
                 password=getattr(request, 'password', ''),
                 operator_id=getattr(request, 'operator_id', 0),
+                registered=bool(getattr(request, 'registered', False)),
             )
             user_id = self.command_handler.handle_create_user(cmd)
             self._commit()
@@ -500,3 +518,170 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
         except Exception as e:
             self._rollback()
             return self._error_response(e, 'DeleteRole')
+
+    # ---- 登录体系改造（INT-51）----
+
+    def LoginWithPassword(self, request, context=None) -> auth_pb.AuthResponse:
+        """用户名+密码登录校验（bcrypt 在 auth_service 内完成）"""
+        try:
+            from auth_service.application.queries.auth_queries import (
+                VerifyCredentialsQuery,
+            )
+            user = self.query_handler.handle_verify_credentials(
+                VerifyCredentialsQuery(
+                    username=getattr(request, 'username', ''),
+                    password=getattr(request, 'password', ''),
+                ))
+            if user is None:
+                return _fail('用户名或密码错误')
+            if not user.is_active():
+                return _fail('用户已被禁用')
+            return _ok(_user_to_dict(user))
+        except Exception as e:
+            logger.error("LoginWithPassword 失败: %s", e, exc_info=True)
+            return _fail(str(e))
+
+    def ListOAuthProviders(self, request, context=None) -> auth_pb.AuthResponse:
+        """列出 OAuth 提供方（管理端，含禁用；client_secret 掩去）"""
+        try:
+            from auth_service.application.queries.auth_queries import (
+                ListOAuthProvidersQuery,
+            )
+            providers = self.query_handler.handle_list_oauth_providers(
+                ListOAuthProvidersQuery(
+                    include_disabled=bool(
+                        getattr(request, 'include_disabled', True)),
+                ))
+            return _ok({'providers': [_provider_to_admin_dict(p)
+                                      for p in providers]})
+        except Exception as e:
+            logger.error("ListOAuthProviders 失败: %s", e, exc_info=True)
+            return _fail(str(e))
+
+    def GetOAuthProvider(self, request, context=None) -> auth_pb.AuthResponse:
+        """按 ID 获取提供方（管理端，client_secret 掩去）"""
+        try:
+            from auth_service.application.queries.auth_queries import (
+                GetOAuthProviderQuery,
+            )
+            provider = self.query_handler.handle_get_oauth_provider(
+                GetOAuthProviderQuery(
+                    provider_id=getattr(request, 'provider_id', 0)))
+            return _ok(_provider_to_admin_dict(provider))
+        except Exception as e:
+            return self._error_response(e, 'GetOAuthProvider')
+
+    def GetOAuthProviderBySlug(self, request, context=None) -> auth_pb.AuthResponse:
+        """按 slug 获取提供方（登录链路，含 client_secret 供网关换 token）"""
+        try:
+            from auth_service.application.queries.auth_queries import (
+                GetOAuthProviderBySlugQuery,
+            )
+            provider = self.query_handler.handle_get_oauth_provider_by_slug(
+                GetOAuthProviderBySlugQuery(
+                    slug=getattr(request, 'slug', '')))
+            if provider is None:
+                return _fail('提供方不存在',
+                             AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND)
+            if not provider.enabled:
+                return _fail('提供方未启用')
+            return _ok(_provider_to_full_dict(provider))
+        except Exception as e:
+            logger.error("GetOAuthProviderBySlug 失败: %s", e, exc_info=True)
+            return self._error_response(e, 'GetOAuthProviderBySlug')
+
+    def ListEnabledOAuthProviders(self, request,
+                                  context=None) -> auth_pb.AuthResponse:
+        """已启用提供方列表（登录页动态渲染，公开数据）"""
+        try:
+            from auth_service.application.queries.auth_queries import (
+                ListOAuthProvidersQuery,
+            )
+            providers = self.query_handler.handle_list_oauth_providers(
+                ListOAuthProvidersQuery(include_disabled=False))
+            return _ok({'providers': [_provider_to_public_dict(p)
+                                      for p in providers]})
+        except Exception as e:
+            logger.error("ListEnabledOAuthProviders 失败: %s", e, exc_info=True)
+            return _fail(str(e))
+
+    def CreateOAuthProvider(self, request, context=None) -> auth_pb.AuthResponse:
+        """创建自定义 OAuth 提供方"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                CreateOAuthProviderCommand,
+            )
+            cmd = CreateOAuthProviderCommand(
+                name=getattr(request, 'name', ''),
+                slug=getattr(request, 'slug', ''),
+                client_id=getattr(request, 'client_id', ''),
+                client_secret=getattr(request, 'client_secret', ''),
+                authorize_url=getattr(request, 'authorize_url', ''),
+                token_url=getattr(request, 'token_url', ''),
+                userinfo_url=getattr(request, 'userinfo_url', ''),
+                icon=getattr(request, 'icon', ''),
+                enabled=bool(getattr(request, 'enabled', False)),
+                scopes=getattr(request, 'scopes', ''),
+                user_id_field=getattr(request, 'user_id_field', ''),
+                username_field=getattr(request, 'username_field', ''),
+                display_name_field=getattr(request, 'display_name_field', ''),
+                email_field=getattr(request, 'email_field', ''),
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            provider_id = self.command_handler.handle_create_oauth_provider(cmd)
+            self._commit()
+            return _ok({'provider_id': provider_id}, '创建成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'CreateOAuthProvider')
+
+    def UpdateOAuthProvider(self, request, context=None) -> auth_pb.AuthResponse:
+        """更新提供方（空串字段=不修改；client_secret 空串=保留原值）"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                UpdateOAuthProviderCommand,
+            )
+            update_enabled = bool(getattr(request, 'update_enabled', False))
+            cmd = UpdateOAuthProviderCommand(
+                provider_id=getattr(request, 'provider_id', 0),
+                name=getattr(request, 'name', '') or None,
+                slug=getattr(request, 'slug', '') or None,
+                icon=getattr(request, 'icon', '') or None,
+                enabled=(bool(getattr(request, 'enabled', False))
+                         if update_enabled else None),
+                client_id=getattr(request, 'client_id', '') or None,
+                client_secret=getattr(request, 'client_secret', '') or None,
+                authorize_url=getattr(request, 'authorize_url', '') or None,
+                token_url=getattr(request, 'token_url', '') or None,
+                userinfo_url=getattr(request, 'userinfo_url', '') or None,
+                scopes=getattr(request, 'scopes', '') or None,
+                user_id_field=getattr(request, 'user_id_field', '') or None,
+                username_field=getattr(request, 'username_field', '') or None,
+                display_name_field=(getattr(request, 'display_name_field', '')
+                                    or None),
+                email_field=getattr(request, 'email_field', '') or None,
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            self.command_handler.handle_update_oauth_provider(cmd)
+            self._commit()
+            return _ok({}, '更新成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'UpdateOAuthProvider')
+
+    def DeleteOAuthProvider(self, request, context=None) -> auth_pb.AuthResponse:
+        """删除提供方"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                DeleteOAuthProviderCommand,
+            )
+            cmd = DeleteOAuthProviderCommand(
+                provider_id=getattr(request, 'provider_id', 0),
+                operator_id=getattr(request, 'operator_id', 0),
+            )
+            self.command_handler.handle_delete_oauth_provider(cmd)
+            self._commit()
+            return _ok({}, '删除成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'DeleteOAuthProvider')

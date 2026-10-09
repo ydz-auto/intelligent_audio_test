@@ -27,6 +27,7 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/LogView', name: 'logView', component: () => import('../views/LogView/LogView.vue'), meta: { permission: 'log:read', title: '日志查看' } },
   { path: '/AlgorithmConfig', name: 'algorithmConfig', component: () => import('../views/AlgorithmConfig/AlgorithmConfigPage.vue'), meta: { permission: 'algorithm:read', title: '算法配置' } },
   { path: '/TagManagement', name: 'tagManagement', component: () => import('../views/TagManagement/TagManagement.vue'), meta: { permission: 'tag:read', title: '标签管理' } },
+  { path: '/OAuthProviders', name: 'oauthProviders', component: () => import('../views/OAuthProviders/OAuthProviderManagement.vue'), meta: { permission: 'auth:manage_provider', title: 'OAuth 提供方管理' } },
   // 404 兜底
   { path: '/:pathMatch(.*)*', name: 'notFound', component: () => import('../views/NotFound/NotFoundPage.vue'), meta: { public: true, title: '页面不存在' } },
 ]

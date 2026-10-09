@@ -81,6 +81,7 @@ const navItems: NavItem[] = [
   { path: '/SPLMapping', label: '声压级映射管理', icon: 'fas fa-sliders-h navIcon', permission: 'spl:read' },
   { path: '/LogView', label: '日志查看', icon: 'fas fa-file-alt navIcon', permission: 'log:read' },
   { path: '/TagManagement', label: '标签管理', icon: 'fas fa-tags navIcon', permission: 'tag:read' },
+  { path: '/OAuthProviders', label: 'OAuth 提供方', icon: 'fas fa-plug navIcon', permission: 'auth:manage_provider' },
 ]
 
 // ===== Stores & refs =====

@@ -28,14 +28,18 @@ _REGISTER_DEFAULT_ROLE = 'guest'
 class UserManagementService:
     """用户管理服务：注册 / 查询 / 建改删 / 角色分配 / 附加权限授予撤销"""
 
-    # ---------- 注册（白名单，仅 dev） ----------
+    # ---------- 注册（白名单） ----------
 
     @staticmethod
     def register() -> Tuple[Dict, int]:
-        """dev 模式自注册（无权限校验）：username/password 必填，默认角色 guest。"""
+        """自助注册（无权限校验）：username/password 必填，默认角色 guest。
+
+        INT-51：注册开关 AUTH_REGISTRATION_ENABLED 配置化，
+        关闭后端点 403；任意 AUTH_MODE 可用（prod 密码登录同步放开）。
+        """
         from api_gateway.config.config import Config
-        if Config.AUTH_MODE != 'dev':
-            return error_response('仅开发模式支持自注册',
+        if not Config.AUTH_REGISTRATION_ENABLED:
+            return error_response('注册未开放',
                                   code=ErrorCode.OPERATION_FAILED, http_code=403)
         body = _json_body()
         username = (body.get('username') or '').strip()
@@ -48,6 +52,7 @@ class UserManagementService:
             email=(body.get('email') or '').strip(),
             password=password,
             role_name=_REGISTER_DEFAULT_ROLE,
+            registered=True,
         ), default_error='注册失败')
         if fail:
             return fail

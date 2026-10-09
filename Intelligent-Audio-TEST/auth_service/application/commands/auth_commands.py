@@ -65,6 +65,7 @@ class CreateUserCommand:
     role_name: str = ''
     password: str = ''
     operator_id: int = 0
+    registered: bool = False  # 自助注册（INT-51）：审计事件区分管理员建号
 
 
 @dataclass(frozen=True)
@@ -123,4 +124,52 @@ class SetRolePermissionsCommand:
 class DeleteRoleCommand:
     """删除角色（连带 role_permissions）。"""
     role_id: int
+    operator_id: int = 0
+
+
+@dataclass(frozen=True)
+class CreateOAuthProviderCommand:
+    """创建自定义 OAuth 提供方（INT-51）。"""
+    name: str
+    slug: str
+    client_id: str
+    client_secret: str
+    authorize_url: str
+    token_url: str
+    userinfo_url: str
+    icon: str = ''
+    enabled: bool = False
+    scopes: str = ''
+    user_id_field: str = ''
+    username_field: str = ''
+    display_name_field: str = ''
+    email_field: str = ''
+    operator_id: int = 0
+
+
+@dataclass(frozen=True)
+class UpdateOAuthProviderCommand:
+    """更新 OAuth 提供方（None=不修改；client_secret None=保留原值）。"""
+    provider_id: int
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    icon: Optional[str] = None
+    enabled: Optional[bool] = None
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
+    authorize_url: Optional[str] = None
+    token_url: Optional[str] = None
+    userinfo_url: Optional[str] = None
+    scopes: Optional[str] = None
+    user_id_field: Optional[str] = None
+    username_field: Optional[str] = None
+    display_name_field: Optional[str] = None
+    email_field: Optional[str] = None
+    operator_id: int = 0
+
+
+@dataclass(frozen=True)
+class DeleteOAuthProviderCommand:
+    """删除 OAuth 提供方。"""
+    provider_id: int
     operator_id: int = 0

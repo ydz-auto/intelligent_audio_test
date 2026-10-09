@@ -13,8 +13,13 @@
  */
 import { request, type RequestOptions } from '../http/client';
 import type { AuthLoginResultDto, AuthMeResultDto } from '../dto/authDto';
+import type { OAuthProviderDto, OAuthProviderPublicDto } from '../dto/authDto';
 import type { AuthLoginResult, CurrentUserInfo } from '../../domain/model/auth';
-import { toAuthLoginResult, toCurrentUserInfo } from '../adapters/authAdapter';
+import type { OAuthProvider, OAuthProviderDetail } from '../../domain/model/auth';
+import {
+  toAuthLoginResult, toCurrentUserInfo,
+  toOAuthProviderPublicList, toOAuthProvider, toOAuthProviderList,
+} from '../adapters/authAdapter';
 
 export const authApi = {
   /**
@@ -42,5 +47,79 @@ export const authApi = {
   async getMe(options: RequestOptions = {}): Promise<CurrentUserInfo> {
     const dto = await request<AuthMeResultDto>('GET', '/auth/me', undefined, options);
     return toCurrentUserInfo(dto);
-  }
+  },
+
+  // ===== 登录体系改造（INT-51）=====
+
+  /**
+   * 自助注册（POST /auth/register；后端注册开关关闭时 403）
+   * 成功后调用方引导用户走登录 Tab 完成登录。
+   */
+  async register(
+    payload: { username: string; password: string; email?: string },
+    options: RequestOptions = {},
+  ): Promise<{ userId: number }> {
+    const dto = await request<{ user_id: number }>(
+      'POST', '/auth/register', payload, {
+        ...options,
+        skipAuthRedirect: true,
+      });
+    return { userId: dto?.user_id ?? 0 };
+  },
+
+  /** 已启用 OAuth 提供方（登录页动态渲染，公开端点无凭证字段） */
+  async listPublicOAuthProviders(options: RequestOptions = {}): Promise<OAuthProvider[]> {
+    const dto = await request<{ providers: OAuthProviderPublicDto[] }>(
+      'GET', '/auth/oauth/providers', undefined, {
+        ...options,
+        skipAuthRedirect: true,
+      });
+    return toOAuthProviderPublicList(dto?.providers ?? []);
+  },
+
+  /** OAuth 授权跳转地址（整页跳转由调用方 window.location.href 拼接） */
+  getOAuthAuthorizeUrl(slug: string): string {
+    return `/api/v1/auth/oauth/${encodeURIComponent(slug)}/authorize`;
+  },
+
+  /** 管理端：全部提供方（含禁用；clientSecret 掩去） */
+  async listOAuthProviders(options: RequestOptions = {}): Promise<OAuthProviderDetail[]> {
+    const dto = await request<{ providers: OAuthProviderDto[] }>(
+      'GET', '/auth/oauth-providers', undefined, options);
+    return toOAuthProviderList(dto?.providers ?? []);
+  },
+
+  /** 管理端：提供方详情 */
+  async getOAuthProvider(id: number, options: RequestOptions = {}): Promise<OAuthProviderDetail> {
+    const dto = await request<OAuthProviderDto>(
+      'GET', `/auth/oauth-providers/${id}`, undefined, options);
+    return toOAuthProvider(dto);
+  },
+
+  /** 管理端：创建提供方（clientSecret 必填；缺省键走后端默认值） */
+  async createOAuthProvider(
+    payload: Partial<Record<string, unknown>> & {
+      name: string; slug: string; client_id: string; client_secret: string;
+      authorize_url: string; token_url: string; userinfo_url: string;
+    },
+    options: RequestOptions = {},
+  ): Promise<{ providerId: number }> {
+    const dto = await request<{ provider_id: number }>(
+      'POST', '/auth/oauth-providers', payload, options);
+    return { providerId: dto?.provider_id ?? 0 };
+  },
+
+  /** 管理端：更新提供方（body 键缺省=不修改；client_secret 空串=保留原值） */
+  async updateOAuthProvider(
+    id: number,
+    payload: Record<string, unknown>,
+    options: RequestOptions = {},
+  ): Promise<void> {
+    await request('PUT', `/auth/oauth-providers/${id}`, payload, options);
+  },
+
+  /** 管理端：删除提供方 */
+  async deleteOAuthProvider(id: number, options: RequestOptions = {}): Promise<void> {
+    await request('DELETE', `/auth/oauth-providers/${id}`, undefined, options);
+  },
 }

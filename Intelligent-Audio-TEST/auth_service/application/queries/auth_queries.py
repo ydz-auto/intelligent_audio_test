@@ -74,3 +74,28 @@ class ListPermissionsQuery:
 class ListUserOverridesQuery:
     """列出用户权限 override 明细（差量授予/撤销记录）。"""
     user_id: int
+
+
+@dataclass(frozen=True)
+class ListOAuthProvidersQuery:
+    """列出 OAuth 提供方（include_disabled=False 仅启用，登录页公开列表）。"""
+    include_disabled: bool = True
+
+
+@dataclass(frozen=True)
+class GetOAuthProviderQuery:
+    """按 ID 获取 OAuth 提供方。"""
+    provider_id: int
+
+
+@dataclass(frozen=True)
+class GetOAuthProviderBySlugQuery:
+    """按 slug 获取 OAuth 提供方（登录链路定位）。"""
+    slug: str
+
+
+@dataclass(frozen=True)
+class VerifyCredentialsQuery:
+    """用户名+密码凭证校验（登录链路，只读无副作用）。"""
+    username: str
+    password: str

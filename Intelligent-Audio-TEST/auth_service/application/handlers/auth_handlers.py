@@ -31,6 +31,13 @@ from auth_service.infrastructure.persistence.user_repository import (
     user_repository,
     role_repository,
 )
+from auth_service.infrastructure.persistence.oauth_provider_repository import (
+    oauth_provider_repository,
+)
+from auth_service.domain.entities.oauth_provider import OAuthProviderEntity
+from auth_service.domain.services.oauth_provider_service import (
+    validate_provider_config,
+)
 from auth_service.application.services.auth_audit import write_auth_audit
 from auth_service.application.commands.auth_commands import (
     RegisterUserCommand,
@@ -45,6 +52,9 @@ from auth_service.application.commands.auth_commands import (
     UpdateRoleCommand,
     SetRolePermissionsCommand,
     DeleteRoleCommand,
+    CreateOAuthProviderCommand,
+    UpdateOAuthProviderCommand,
+    DeleteOAuthProviderCommand,
 )
 from auth_service.application.queries.auth_queries import (
     GetUserQuery,
@@ -56,11 +66,15 @@ from auth_service.application.queries.auth_queries import (
     GetRoleQuery,
     ListPermissionsQuery,
     ListUserOverridesQuery,
+    ListOAuthProvidersQuery,
+    GetOAuthProviderQuery,
+    GetOAuthProviderBySlugQuery,
 )
 from shared.models.common_enums import AuditEvent, AuthErrorCode
 
 _AUDIT_MODULE_USER = 'user_management'
 _AUDIT_MODULE_ROLE = 'role_management'
+_AUDIT_MODULE_OAUTH = 'oauth_provider_management'
 
 
 def _raise_if(condition: bool, message: str,
@@ -116,13 +130,17 @@ class AuthCommandHandler:
             status='active',
         )
         user_id = user_repository.add(aggregate, password=cmd.password or None)
-        write_auth_audit(AuditEvent.AUTH_USER_CREATED, _AUDIT_MODULE_USER, {
+        # 自助注册与管理员建号审计事件区分（INT-51）
+        event = (AuditEvent.AUTH_USER_REGISTERED if cmd.registered
+                 else AuditEvent.AUTH_USER_CREATED)
+        write_auth_audit(event, _AUDIT_MODULE_USER, {
             'operator_id': cmd.operator_id,
             'target_id': user_id,
             'delta': {
                 'username': cmd.username, 'email': cmd.email,
                 'role_id': role_id, 'oauth_provider': cmd.oauth_provider,
                 'has_password': bool(cmd.password),
+                'registered': cmd.registered,
             },
         })
         return user_id
@@ -442,6 +460,125 @@ class AuthCommandHandler:
             ids.append(perm.id)
         return ids
 
+    # ---- OAuth 提供方管理（INT-51）----
+
+    def handle_create_oauth_provider(self, cmd: CreateOAuthProviderCommand) -> int:
+        """创建自定义 OAuth 提供方，返回新 ID。
+
+        - name/slug/client_id/client_secret/三端点必填，slug 规则校验；
+        - slug 唯一（重复 → OAUTH_SLUG_DUPLICATED）；
+        - 字段映射缺省自动补默认值（validate_provider_config 就地填充）。
+        """
+        entity = OAuthProviderEntity(
+            name=cmd.name.strip(), slug=cmd.slug, icon=cmd.icon,
+            enabled=cmd.enabled, client_id=cmd.client_id,
+            client_secret=cmd.client_secret,
+            authorize_url=cmd.authorize_url, token_url=cmd.token_url,
+            userinfo_url=cmd.userinfo_url, scopes=cmd.scopes,
+            user_id_field=cmd.user_id_field,
+            username_field=cmd.username_field,
+            display_name_field=cmd.display_name_field,
+            email_field=cmd.email_field,
+        )
+        validate_provider_config(entity)
+        _raise_if(
+            oauth_provider_repository.slug_exists(entity.slug),
+            f'slug 已被占用: {entity.slug}', AuthErrorCode.OAUTH_SLUG_DUPLICATED,
+        )
+        provider_id = oauth_provider_repository.add(entity)
+        write_auth_audit(AuditEvent.AUTH_OAUTH_PROVIDER_CREATED,
+                         _AUDIT_MODULE_OAUTH, {
+                             'operator_id': cmd.operator_id,
+                             'target_id': provider_id,
+                             'delta': {
+                                 'name': entity.name, 'slug': entity.slug,
+                                 'enabled': entity.enabled,
+                                 'client_id': entity.client_id,
+                                 'authorize_url': entity.authorize_url,
+                             },
+                         })
+        return provider_id
+
+    def handle_update_oauth_provider(self, cmd: UpdateOAuthProviderCommand) -> None:
+        """更新 OAuth 提供方（None=不修改；client_secret 空串=保留原值）。
+
+        - 提供方不存在 → OAUTH_PROVIDER_NOT_FOUND；
+        - slug 变更时唯一性校验（OAUTH_SLUG_DUPLICATED）；
+        - 变更后整体重校验配置（含必填端点与字段映射默认值）。
+        """
+        entity = oauth_provider_repository.get_by_id(cmd.provider_id)
+        _raise_if(entity is None,
+                  f'提供方不存在: id={cmd.provider_id}',
+                  AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND)
+        old_slug = entity.slug
+        if cmd.name is not None:
+            entity.name = cmd.name.strip()
+        if cmd.slug is not None:
+            entity.slug = cmd.slug
+        if cmd.icon is not None:
+            entity.icon = cmd.icon
+        if cmd.enabled is not None:
+            entity.enabled = cmd.enabled
+        if cmd.client_id is not None:
+            entity.client_id = cmd.client_id
+        if cmd.client_secret:  # None/空串均保留原值
+            entity.client_secret = cmd.client_secret
+        if cmd.authorize_url is not None:
+            entity.authorize_url = cmd.authorize_url
+        if cmd.token_url is not None:
+            entity.token_url = cmd.token_url
+        if cmd.userinfo_url is not None:
+            entity.userinfo_url = cmd.userinfo_url
+        if cmd.scopes is not None:
+            entity.scopes = cmd.scopes
+        if cmd.user_id_field is not None:
+            entity.user_id_field = cmd.user_id_field
+        if cmd.username_field is not None:
+            entity.username_field = cmd.username_field
+        if cmd.display_name_field is not None:
+            entity.display_name_field = cmd.display_name_field
+        if cmd.email_field is not None:
+            entity.email_field = cmd.email_field
+        validate_provider_config(entity)
+        if entity.slug != old_slug:
+            _raise_if(
+                oauth_provider_repository.slug_exists(entity.slug,
+                                                      exclude_id=entity.id),
+                f'slug 已被占用: {entity.slug}',
+                AuthErrorCode.OAUTH_SLUG_DUPLICATED,
+            )
+        oauth_provider_repository.save(entity)
+        write_auth_audit(AuditEvent.AUTH_OAUTH_PROVIDER_UPDATED,
+                         _AUDIT_MODULE_OAUTH, {
+                             'operator_id': cmd.operator_id,
+                             'target_id': entity.id,
+                             'delta': {
+                                 'name': entity.name, 'slug': entity.slug,
+                                 'enabled': entity.enabled,
+                                 'slug_changed': entity.slug != old_slug,
+                                 'secret_changed': bool(cmd.client_secret),
+                             },
+                         })
+
+    def handle_delete_oauth_provider(self, cmd: DeleteOAuthProviderCommand) -> None:
+        """删除 OAuth 提供方（不存在 → OAUTH_PROVIDER_NOT_FOUND）。
+
+        用户侧 oauth_provider 字段按 slug 字符串存储，删除提供方
+        不级联改写用户（历史用户保留登录记录，重新配置同 slug 可续登）。
+        """
+        entity = oauth_provider_repository.get_by_id(cmd.provider_id)
+        _raise_if(entity is None,
+                  f'提供方不存在: id={cmd.provider_id}',
+                  AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND)
+        oauth_provider_repository.delete(cmd.provider_id)
+        write_auth_audit(AuditEvent.AUTH_OAUTH_PROVIDER_DELETED,
+                         _AUDIT_MODULE_OAUTH, {
+                             'operator_id': cmd.operator_id,
+                             'target_id': cmd.provider_id,
+                             'delta': {'name': entity.name,
+                                       'slug': entity.slug},
+                         })
+
 
 class AuthQueryHandler:
     """认证查询处理器 —— 处理所有用户与权限相关读操作。
@@ -515,3 +652,34 @@ class AuthQueryHandler:
     ) -> List[dict]:
         """列出用户权限 override 明细 [{permission_id, code, granted}]。"""
         return user_repository.list_overrides(query.user_id)
+
+    # ---- OAuth 提供方查询（INT-51）----
+
+    def handle_list_oauth_providers(
+        self, query: ListOAuthProvidersQuery
+    ) -> List[OAuthProviderEntity]:
+        """列出 OAuth 提供方（include_disabled=False 仅启用）。"""
+        return oauth_provider_repository.get_all(
+            include_disabled=query.include_disabled)
+
+    def handle_get_oauth_provider(
+        self, query: GetOAuthProviderQuery
+    ) -> OAuthProviderEntity:
+        """按 ID 获取提供方，不存在抛 OAUTH_PROVIDER_NOT_FOUND。"""
+        entity = oauth_provider_repository.get_by_id(query.provider_id)
+        _raise_if(entity is None,
+                  f'提供方不存在: id={query.provider_id}',
+                  AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND)
+        return entity
+
+    def handle_get_oauth_provider_by_slug(
+        self, query: GetOAuthProviderBySlugQuery
+    ) -> Optional[OAuthProviderEntity]:
+        """按 slug 获取提供方（登录链路：不存在返回 None，不抛错）。"""
+        return oauth_provider_repository.get_by_slug(query.slug)
+
+    def handle_verify_credentials(
+        self, query: VerifyCredentialsQuery
+    ) -> Optional[UserAggregate]:
+        """用户名+密码凭证校验（登录链路，只读；失败返回 None 不抛错）。"""
+        return user_repository.verify_password(query.username, query.password)

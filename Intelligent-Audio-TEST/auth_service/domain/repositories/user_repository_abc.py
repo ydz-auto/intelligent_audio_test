@@ -67,6 +67,10 @@ class UserRepositoryABC(ABC):
         """按字段更新用户资料（None=不修改；password 哈希落库，仅 flush）。"""
 
     @abstractmethod
+    def verify_password(self, username: str, password: str) -> Optional['UserAggregate']:
+        """校验用户名+密码（bcrypt），成功返回用户聚合，失败返回 None。"""
+
+    @abstractmethod
     def update_last_login(self, user_id: int, ip: Optional[str] = None) -> None:
         """更新最后登录时间/IP（仅 flush，用户不存在则静默无操作）。"""
 

@@ -46,6 +46,24 @@ service AuthService {
   rpc DeleteRole(DeleteRoleRequest) returns (AuthResponse);
   // 列出全部权限点
   rpc ListPermissions(ListPermissionsRequest) returns (AuthResponse);
+
+  // ===== 登录体系改造（INT-51）=====
+  // 用户名+密码登录校验（服务端 bcrypt 校验 password_hash，成功返回用户数据）
+  rpc LoginWithPassword(LoginWithPasswordRequest) returns (AuthResponse);
+  // 自定义 OAuth 提供方管理：全部（管理端，含禁用）
+  rpc ListOAuthProviders(ListOAuthProvidersRequest) returns (AuthResponse);
+  // 按 ID 获取提供方
+  rpc GetOAuthProvider(GetOAuthProviderRequest) returns (AuthResponse);
+  // 按 slug 获取提供方（登录链路）
+  rpc GetOAuthProviderBySlug(GetOAuthProviderBySlugRequest) returns (AuthResponse);
+  // 已启用提供方列表（登录页动态渲染，公开）
+  rpc ListEnabledOAuthProviders(ListEnabledOAuthProvidersRequest) returns (AuthResponse);
+  // 创建提供方
+  rpc CreateOAuthProvider(CreateOAuthProviderRequest) returns (AuthResponse);
+  // 更新提供方（空串字段=不修改；client_secret 空串=保留原值）
+  rpc UpdateOAuthProvider(UpdateOAuthProviderRequest) returns (AuthResponse);
+  // 删除提供方
+  rpc DeleteOAuthProvider(DeleteOAuthProviderRequest) returns (AuthResponse);
 }
 
 message GetUserRequest {
@@ -67,6 +85,7 @@ message CreateUserRequest {
   string role_name = 6;  // 角色名（如 'guest'），为空时用 role_id
   string password = 7;   // 明文密码（本地注册用户），为空表示无密码（OAuth 用户）
   int32 operator_id = 8; // 操作者用户 ID（审计归因，自注册为 0）
+  bool registered = 9;   // true=自助注册（审计事件 AUTH_USER_REGISTERED，INT-51）
 }
 message UpdateLastLoginRequest {
   int32 user_id = 1;
@@ -141,6 +160,62 @@ message DeleteRoleRequest {
   int32 operator_id = 2; // 操作者用户 ID（审计归因）
 }
 message ListPermissionsRequest {}
+
+// ===== 登录体系改造（INT-51）=====
+message LoginWithPasswordRequest {
+  string username = 1;
+  string password = 2;
+}
+message ListOAuthProvidersRequest {
+  bool include_disabled = 1; // 管理端 true=全部；false=仅启用
+}
+message GetOAuthProviderRequest {
+  int32 provider_id = 1;
+}
+message GetOAuthProviderBySlugRequest {
+  string slug = 1;
+}
+message ListEnabledOAuthProvidersRequest {}
+message CreateOAuthProviderRequest {
+  string name = 1;
+  string slug = 2;
+  string icon = 3;
+  bool enabled = 4;
+  string client_id = 5;
+  string client_secret = 6;
+  string authorize_url = 7;
+  string token_url = 8;
+  string userinfo_url = 9;
+  string scopes = 10;
+  string user_id_field = 11;
+  string username_field = 12;
+  string display_name_field = 13;
+  string email_field = 14;
+  int32 operator_id = 15; // 操作者用户 ID（审计归因）
+}
+message UpdateOAuthProviderRequest {
+  int32 provider_id = 1;
+  string name = 2;                // 空串=不修改
+  string slug = 3;                // 空串=不修改
+  string icon = 4;                // 空串=不修改
+  bool enabled = 5;               // 以 update_enabled 判定是否应用
+  bool update_enabled = 6;        // true 时应用 enabled 字段
+  string client_id = 7;           // 空串=不修改
+  string client_secret = 8;       // 空串=保留原值
+  string authorize_url = 9;       // 空串=不修改
+  string token_url = 10;          // 空串=不修改
+  string userinfo_url = 11;       // 空串=不修改
+  string scopes = 12;             // 空串=不修改
+  string user_id_field = 13;      // 空串=不修改
+  string username_field = 14;     // 空串=不修改
+  string display_name_field = 15; // 空串=不修改
+  string email_field = 16;        // 空串=不修改
+  int32 operator_id = 17;         // 操作者用户 ID（审计归因）
+}
+message DeleteOAuthProviderRequest {
+  int32 provider_id = 1;
+  int32 operator_id = 2; // 操作者用户 ID（审计归因）
+}
 message AuthResponse {
   bool success = 1;
   string message = 2;

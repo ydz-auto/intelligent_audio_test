@@ -302,6 +302,26 @@ class UserRepository(UserRepositoryABC):
         session.flush()
         return True
 
+    def verify_password(self, username: str, password: str) -> Optional[UserAggregate]:
+        """校验用户名+密码（bcrypt），成功返回用户聚合，失败返回 None。
+
+        用户不存在 / 无密码（OAuth 用户）/ 哈希不匹配 一律返回 None
+        （不区分失败原因，避免用户名枚举）。
+        """
+        import bcrypt
+        session = get_db_session()
+        po = session.query(User).filter_by(username=username).first()
+        if not po or not po.password_hash:
+            return None
+        try:
+            if not bcrypt.checkpw(
+                    password.encode('utf-8'),
+                    po.password_hash.encode('utf-8')):
+                return None
+        except ValueError:
+            return None
+        return _user_po_to_entity(po)
+
     def update_last_login(self, user_id: int, ip: Optional[str] = None) -> None:
         """更新最后登录时间/IP（仅 flush，用户不存在则静默无操作）。"""
         from datetime import datetime, timezone

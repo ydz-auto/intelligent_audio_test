@@ -73,6 +73,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         '/api/v1/auth/login',
         '/api/v1/auth/callback',
         '/api/v1/auth/register',
+        '/api/v1/auth/oauth',  # INT-51：提供方列表 / 授权跳转 / 授权回调
         '/docs',
         '/openapi.json',
         '/redoc',

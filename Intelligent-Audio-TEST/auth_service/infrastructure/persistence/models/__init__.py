@@ -4,6 +4,7 @@
 归属：auth_service（用户与权限上下文）
 表：roles / permissions / role_permissions / user_permissions
      / users / oauth_clients / oauth_refresh_tokens
+     / custom_oauth_providers
 
 P5 改造：PO 定义真正下沉到本包，shared/models/models/user_models.py
 中的 PO 改为从这里 re-export。
@@ -20,8 +21,9 @@ from .user_models import (
     OAuthClient,
     OAuthRefreshToken,
 )
+from .oauth_provider_models import CustomOAuthProvider
 
 __all__ = [
     'Role', 'Permission', 'RolePermission', 'UserPermission',
-    'User', 'OAuthClient', 'OAuthRefreshToken',
+    'User', 'OAuthClient', 'OAuthRefreshToken', 'CustomOAuthProvider',
 ]

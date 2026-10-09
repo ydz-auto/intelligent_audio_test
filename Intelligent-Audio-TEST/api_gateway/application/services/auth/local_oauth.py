@@ -6,6 +6,8 @@ dev 模式登录 UI 已统一由前端 LoginPage.vue 处理，
 本模块只负责凭证校验与自动创建用户。
 
 改造说明：原直连 UserRepository（DB）改为通过 gRPC 调用 auth_service。
+INT-51 改造：非默认凭证走 LoginWithPassword（auth_service 内 bcrypt
+校验 password_hash），自助注册用户可用 用户名+密码 登录。
 """
 import logging
 
@@ -22,7 +24,11 @@ class LocalOAuthProvider:
     def verify_credentials(username: str, password: str) -> UserInfo:
         """
         校验用户名/密码，返回 UserInfo。
-        开发模式下：用户不存在则自动创建，密码与 .env 默认值匹配即放行。
+
+        - 默认凭证：引导路径（INT-36 语义不变）——用户不存在则
+          以 DEV_DEFAULT_ROLE 角色自动创建；
+        - 其他凭证：经 gRPC LoginWithPassword 由 auth_service 校验
+          password_hash（自助注册用户 / 管理员建号用户均可登录）。
         """
         from api_gateway.infrastructure.grpc_proxies import auth_config_service
         from shared.proto import auth_service_pb2 as auth_pb
@@ -55,13 +61,14 @@ class LocalOAuthProvider:
             logger.warning('自动创建用户失败: %s', resp.message)
             raise ValueError(f'默认用户自动创建失败: {resp.message}')
 
-        # 非默认凭证：通过 gRPC 查用户，DB 中有用户就放行
-        resp = stub.GetUserByUsername(auth_pb.GetUserByUsernameRequest(
+        # 非默认凭证：auth_service 内 bcrypt 校验（INT-51）
+        resp = stub.LoginWithPassword(auth_pb.LoginWithPasswordRequest(
             username=username,
+            password=password,
         ))
         if resp.success and resp.data:
             data = _loads(resp.data, {}) or {}
-            if data and data.get('is_active'):
+            if data and data.get('is_active', True):
                 return UserInfo(username=data.get('username', username))
 
         raise ValueError('用户名或密码错误')

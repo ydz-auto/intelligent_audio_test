@@ -26,3 +26,34 @@ export interface AuthMeResultDto {
   role_id: number | null
   permissions: string[]
 }
+
+// ===== 登录体系改造（INT-51）=====
+
+/** 已启用 OAuth 提供方（GET /auth/oauth/providers，公开无凭证字段） */
+export interface OAuthProviderPublicDto {
+  id: number
+  name: string
+  slug: string
+  icon: string
+}
+
+/** OAuth 提供方（管理端 GET/POST/PUT /auth/oauth-providers；掩去 client_secret） */
+export interface OAuthProviderDto {
+  id: number
+  name: string
+  slug: string
+  icon: string
+  enabled: boolean
+  client_id: string
+  has_client_secret: boolean
+  authorize_url: string
+  token_url: string
+  userinfo_url: string
+  scopes: string
+  user_id_field: string
+  username_field: string
+  display_name_field: string
+  email_field: string
+  created_at: string
+  updated_at: string
+}

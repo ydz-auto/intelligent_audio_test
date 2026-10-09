@@ -31,3 +31,30 @@ export interface CurrentUserInfo {
   roleName?: string
   permissions: string[]
 }
+
+// ===== 登录体系改造（INT-51）=====
+
+/** 登录页 OAuth 提供方（公开数据，无凭证字段） */
+export interface OAuthProvider {
+  id: number
+  name: string
+  slug: string
+  icon: string
+}
+
+/** 管理端 OAuth 提供方（camelCase；后端掩去 clientSecret，仅回传是否已配置） */
+export interface OAuthProviderDetail extends OAuthProvider {
+  enabled: boolean
+  clientId: string
+  hasClientSecret: boolean
+  authorizeUrl: string
+  tokenUrl: string
+  userinfoUrl: string
+  scopes: string
+  userIdField: string
+  usernameField: string
+  displayNameField: string
+  emailField: string
+  createdAt: string
+  updatedAt: string
+}

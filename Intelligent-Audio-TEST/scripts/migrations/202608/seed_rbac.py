@@ -146,6 +146,7 @@ PERMISSIONS = [
     ('user:delete', '禁用/删除用户'),
     ('user:assign_role', '分配用户角色'),
     ('user:grant_permission', '授予/撤销用户额外权限'),
+    ('auth:manage_provider', '管理自定义 OAuth 提供方'),
     ('role:read', '查看角色列表/详情/权限'),
     ('role:create', '创建自定义角色'),
     ('role:update', '修改角色信息/权限分配'),

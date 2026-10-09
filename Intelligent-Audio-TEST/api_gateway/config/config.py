@@ -20,6 +20,18 @@ class Config(BaseConfig):
     # 认证模式: dev(本地OAuth) / prod(华为云OAuth) / off(无认证)
     AUTH_MODE = os.environ.get('AUTH_MODE', 'off')
 
+    # 自助注册开关（INT-51）：关闭后 POST /api/v1/auth/register 返回 403
+    AUTH_REGISTRATION_ENABLED = os.environ.get(
+        'AUTH_REGISTRATION_ENABLED', 'true').strip().lower() in (
+        '1', 'true', 'yes', 'on')
+
+    # OAuth state 防伪签名有效期（秒）：授权跳转到回调的最长间隔
+    OAUTH_STATE_TTL_SECONDS = int(os.environ.get('OAUTH_STATE_TTL_SECONDS', '600'))
+
+    # 自定义 OAuth 提供方回调基址（authorize redirect_uri 由它 + slug 拼接）
+    OAUTH_REDIRECT_BASE = os.environ.get(
+        'OAUTH_REDIRECT_BASE', 'http://localhost:8000')
+
     # JWT 配置
     JWT_SECRET = os.environ.get('JWT_SECRET', 'dev-secret-change-in-production')
     JWT_EXPIRE_HOURS = int(os.environ.get('JWT_EXPIRE_HOURS', '24'))

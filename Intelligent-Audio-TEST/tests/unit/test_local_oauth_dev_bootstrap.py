@@ -120,11 +120,16 @@ class TestDefaultCredentialRoleBinding:
                 Config.DEV_DEFAULT_USERNAME, Config.DEV_DEFAULT_PASSWORD)
 
     def test_non_default_credentials_do_not_create_user(self, monkeypatch):
-        """非默认凭证且用户不存在 → 拒绝登录，不触发建号。"""
+        """非默认凭证且凭证校验失败 → 拒绝登录，不触发建号。
+
+        INT-51：非默认凭证改走 LoginWithPassword（auth_service 内
+        bcrypt 校验 password_hash）；建号只允许默认凭证引导路径。
+        """
         stub = _install_stub(monkeypatch, {
-            'GetUserByUsername': _user_not_found_resp(),
+            'LoginWithPassword': auth_pb.AuthResponse(
+                success=False, message='用户名或密码错误', data=''),
         })
         with pytest.raises(ValueError, match='用户名或密码错误'):
             local_oauth_module.LocalOAuthProvider.verify_credentials(
                 'nobody', 'wrong-password')
-        assert [name for name, _ in stub.calls] == ['GetUserByUsername']
+        assert [name for name, _ in stub.calls] == ['LoginWithPassword']

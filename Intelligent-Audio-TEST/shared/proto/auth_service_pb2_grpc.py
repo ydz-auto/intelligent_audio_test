@@ -135,6 +135,46 @@ class AuthServiceStub:
                 request_serializer=auth__service__pb2.ListPermissionsRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.AuthResponse.FromString,
                 _registered_method=True)
+        self.LoginWithPassword = channel.unary_unary(
+                '/auth.AuthService/LoginWithPassword',
+                request_serializer=auth__service__pb2.LoginWithPasswordRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.ListOAuthProviders = channel.unary_unary(
+                '/auth.AuthService/ListOAuthProviders',
+                request_serializer=auth__service__pb2.ListOAuthProvidersRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.GetOAuthProvider = channel.unary_unary(
+                '/auth.AuthService/GetOAuthProvider',
+                request_serializer=auth__service__pb2.GetOAuthProviderRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.GetOAuthProviderBySlug = channel.unary_unary(
+                '/auth.AuthService/GetOAuthProviderBySlug',
+                request_serializer=auth__service__pb2.GetOAuthProviderBySlugRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.ListEnabledOAuthProviders = channel.unary_unary(
+                '/auth.AuthService/ListEnabledOAuthProviders',
+                request_serializer=auth__service__pb2.ListEnabledOAuthProvidersRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.CreateOAuthProvider = channel.unary_unary(
+                '/auth.AuthService/CreateOAuthProvider',
+                request_serializer=auth__service__pb2.CreateOAuthProviderRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.UpdateOAuthProvider = channel.unary_unary(
+                '/auth.AuthService/UpdateOAuthProvider',
+                request_serializer=auth__service__pb2.UpdateOAuthProviderRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.DeleteOAuthProvider = channel.unary_unary(
+                '/auth.AuthService/DeleteOAuthProvider',
+                request_serializer=auth__service__pb2.DeleteOAuthProviderRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer:
@@ -282,6 +322,63 @@ class AuthServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def LoginWithPassword(self, request, context):
+        """===== 登录体系改造（INT-51）=====
+        用户名+密码登录校验（服务端 bcrypt 校验 password_hash，成功返回用户数据）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListOAuthProviders(self, request, context):
+        """自定义 OAuth 提供方管理：全部（管理端，含禁用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetOAuthProvider(self, request, context):
+        """按 ID 获取提供方
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetOAuthProviderBySlug(self, request, context):
+        """按 slug 获取提供方（登录链路）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListEnabledOAuthProviders(self, request, context):
+        """已启用提供方列表（登录页动态渲染，公开）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateOAuthProvider(self, request, context):
+        """创建提供方
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateOAuthProvider(self, request, context):
+        """更新提供方（空串字段=不修改；client_secret 空串=保留原值）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteOAuthProvider(self, request, context):
+        """删除提供方
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AuthServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -383,6 +480,46 @@ def add_AuthServiceServicer_to_server(servicer, server):
             'ListPermissions': grpc.unary_unary_rpc_method_handler(
                     servicer.ListPermissions,
                     request_deserializer=auth__service__pb2.ListPermissionsRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'LoginWithPassword': grpc.unary_unary_rpc_method_handler(
+                    servicer.LoginWithPassword,
+                    request_deserializer=auth__service__pb2.LoginWithPasswordRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'ListOAuthProviders': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListOAuthProviders,
+                    request_deserializer=auth__service__pb2.ListOAuthProvidersRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'GetOAuthProvider': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetOAuthProvider,
+                    request_deserializer=auth__service__pb2.GetOAuthProviderRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'GetOAuthProviderBySlug': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetOAuthProviderBySlug,
+                    request_deserializer=auth__service__pb2.GetOAuthProviderBySlugRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'ListEnabledOAuthProviders': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListEnabledOAuthProviders,
+                    request_deserializer=auth__service__pb2.ListEnabledOAuthProvidersRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'CreateOAuthProvider': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateOAuthProvider,
+                    request_deserializer=auth__service__pb2.CreateOAuthProviderRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'UpdateOAuthProvider': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateOAuthProvider,
+                    request_deserializer=auth__service__pb2.UpdateOAuthProviderRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'DeleteOAuthProvider': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteOAuthProvider,
+                    request_deserializer=auth__service__pb2.DeleteOAuthProviderRequest.FromString,
                     response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
             ),
     }
@@ -926,6 +1063,222 @@ class AuthService:
             target,
             '/auth.AuthService/ListPermissions',
             auth__service__pb2.ListPermissionsRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LoginWithPassword(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/LoginWithPassword',
+            auth__service__pb2.LoginWithPasswordRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListOAuthProviders(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ListOAuthProviders',
+            auth__service__pb2.ListOAuthProvidersRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetOAuthProvider(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/GetOAuthProvider',
+            auth__service__pb2.GetOAuthProviderRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetOAuthProviderBySlug(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/GetOAuthProviderBySlug',
+            auth__service__pb2.GetOAuthProviderBySlugRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListEnabledOAuthProviders(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ListEnabledOAuthProviders',
+            auth__service__pb2.ListEnabledOAuthProvidersRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateOAuthProvider(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/CreateOAuthProvider',
+            auth__service__pb2.CreateOAuthProviderRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateOAuthProvider(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/UpdateOAuthProvider',
+            auth__service__pb2.UpdateOAuthProviderRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteOAuthProvider(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/DeleteOAuthProvider',
+            auth__service__pb2.DeleteOAuthProviderRequest.SerializeToString,
             auth__service__pb2.AuthResponse.FromString,
             options,
             channel_credentials,

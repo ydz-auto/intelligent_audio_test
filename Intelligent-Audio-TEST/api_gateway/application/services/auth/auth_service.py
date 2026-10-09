@@ -24,36 +24,46 @@ class AuthService:
 
     @staticmethod
     def get_login_entry() -> str:
-        """返回登录入口 URL（dev: 前端登录页; prod: 华为云授权 URL）"""
+        """返回登录入口 URL（dev: 前端登录页; prod: 预置提供方授权 URL）"""
         if Config.AUTH_MODE == 'dev':
             return '/#/login'  # 前端 Vue 登录页路由
+        # 生产模式：华为云预置提供方（DB 优先，无记录回退环境配置）
+        from api_gateway.application.services.auth.oauth_provider_service import (
+            OAuthProviderService,
+        )
+        config = OAuthProviderService.get_provider_config('huawei')
+        if config is not None:
+            return OAuthProviderService.build_authorize_url(
+                config, Config.HW_OAUTH_REDIRECT_URI)
         return HuaweiOAuthProvider.get_login_url()
 
     @staticmethod
     def login_with_password(username: str, password: str) -> dict:
         """
-        开发模式：用户名/密码登录
+        用户名/密码登录（自助注册用户与默认引导用户，INT-51 起全模式可用）
 
         Returns: {access_token, token_type, user}
         """
-        if Config.AUTH_MODE != 'dev':
-            raise PermissionError('仅开发模式支持本地密码登录')
-
         user_info = LocalOAuthProvider.verify_credentials(username, password)
-        return AuthService._issue_token(user_info)
+        return AuthService._issue_token(user_info, provider='')
 
     @staticmethod
     def handle_callback(code: str, state: str = '') -> dict:
         """
-        生产模式：OAuth 回调
+        OAuth 回调（华为云预置提供方，兼容旧 /api/v1/auth/callback 入口）
 
         Returns: {access_token, token_type, user}
         """
-        if Config.AUTH_MODE != 'prod':
-            raise PermissionError('仅生产模式支持 OAuth 回调')
-
-        user_info = HuaweiOAuthProvider.handle_callback(code, state)
-        return AuthService._issue_token(user_info)
+        from api_gateway.application.services.auth.oauth_provider_service import (
+            OAuthProviderService, OAuthProviderError,
+        )
+        redirect_uri = Config.HW_OAUTH_REDIRECT_URI
+        try:
+            user_info = OAuthProviderService.handle_callback(
+                'huawei', code, state, redirect_uri)
+        except OAuthProviderError as e:
+            raise PermissionError(str(e)) from e
+        return AuthService._issue_token(user_info, provider='huawei')
 
     # ---- Token 操作 ----
 
@@ -76,9 +86,9 @@ class AuthService:
     # ---- 内部方法 ----
 
     @staticmethod
-    def _issue_token(user_info: UserInfo) -> dict:
+    def _issue_token(user_info: UserInfo, provider: str = '') -> dict:
         """查找/创建用户 → 签发 JWT → 返回响应"""
-        user = AuthService._find_or_create_user(user_info)
+        user = AuthService._find_or_create_user(user_info, provider=provider)
         if not user.is_active:
             raise PermissionError('用户已被禁用')
 
@@ -102,8 +112,13 @@ class AuthService:
         }
 
     @staticmethod
-    def _find_or_create_user(user_info: UserInfo) -> AuthUser:
-        """查找或创建用户（通过 gRPC 调用 auth_service）"""
+    def _find_or_create_user(user_info: UserInfo,
+                             provider: str = 'huawei') -> AuthUser:
+        """查找或创建用户（通过 gRPC 调用 auth_service）
+
+        provider 为 OAuth 提供方 slug（'huawei' 预置 / 自定义 slug），
+        空串表示本地密码登录（无 OAuth 外部标识）。
+        """
         from api_gateway.infrastructure.grpc_proxies import auth_config_service
         from shared.proto import auth_service_pb2 as auth_pb
         from shared.utils.grpc_json import loads as _loads
@@ -113,7 +128,7 @@ class AuthService:
         # 1. 按 OAuth 外部 ID 查找
         if user_info.external_id:
             resp = stub.GetUserByOAuth(auth_pb.GetUserByOAuthRequest(
-                provider='huawei', subject=user_info.external_id,
+                provider=provider, subject=user_info.external_id,
             ))
             if resp.success and resp.data:
                 data = _loads(resp.data, {}) or {}
@@ -133,7 +148,7 @@ class AuthService:
         resp = stub.CreateUser(auth_pb.CreateUserRequest(
             username=user_info.username,
             email=user_info.email or '',
-            oauth_provider='huawei' if user_info.external_id else '',
+            oauth_provider=provider if user_info.external_id else '',
             oauth_subject=user_info.external_id or '',
         ))
         if resp.success and resp.data:
