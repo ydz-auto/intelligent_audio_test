@@ -287,7 +287,8 @@ def transfer_http(fake_c, tmp_path_factory):
 
 
 # ================= 被测 ACL 装配 =================
-def write_settings_config(base_dir, ta_url, self_zone='B', hub_zone='B'):
+def write_settings_config(base_dir, ta_url, self_zone='B', hub_zone='B',
+                          relay_poll_interval_seconds=2, relay_result_timeout_seconds=900):
     os.makedirs(base_dir, exist_ok=True)
     config_path = os.path.join(base_dir, 'eval_capability_config.json')
     with open(config_path, 'w', encoding='utf-8') as f:
@@ -304,6 +305,8 @@ def write_settings_config(base_dir, ta_url, self_zone='B', hub_zone='B'):
                 'staging_ttl_seconds': 600,
                 'sync_back_enabled': True, 'sync_back_zone': 'A',
                 'response_required_keys': [],
+                'relay_poll_interval_seconds': relay_poll_interval_seconds,
+                'relay_result_timeout_seconds': relay_result_timeout_seconds,
             },
         }, f, ensure_ascii=False)
     return config_path
@@ -460,3 +463,61 @@ class TestEdgeRelayFullEightSteps:
         # 中枢审计事件：Dispatched→Completed（synced_back）
         completed = [e for e in hub_events if isinstance(e, ThirdPartyEvalCompleted)]
         assert completed and completed[0].synced_back is True
+
+
+class TestEdgeAutoRelayFullChain:
+    """A 区（EDGE）自动中转接线（F2.2/INT-50）：evaluate_dimension_group 一跳完成
+    A→B→C→B→A 全链路（后台线程模拟中枢侧中转执行触发器），模拟 A 区部署形态下
+    THIRD_PARTY_C 维度用例自动完成全链路，传输流水与审计事件全链路可验证。"""
+
+    def test_auto_relay_full_chain(self, tmp_path, fake_c, transfer_http):
+        c_url, c_state = fake_c
+        ta_url, record_repo = transfer_http
+        config_hub = write_settings_config(tmp_path / 'hub', ta_url)
+        config_edge = write_settings_config(tmp_path / 'edge', ta_url, self_zone='A',
+                                            relay_poll_interval_seconds=0.05,
+                                            relay_result_timeout_seconds=30)
+        hub_events, edge_events = [], []
+        hub_acl = build_acl(config_hub, ta_url, events=hub_events)
+        edge_acl = build_acl(config_edge, ta_url, events=edge_events)
+
+        # 中枢侧（B）模拟：发现本卡 A→B 的 EVAL_REQUEST 包完成传输（COMPLETED）即执行
+        # （生产形态为中枢侧中转执行触发器调 execute_incoming，本测试代为触发）
+        def _hub_relay():
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                package = record_repo.packages.get('auto-relay-001')
+                if package is not None and package.pkg_type == 'EVAL_REQUEST' \
+                        and str(package.status) == 'COMPLETED':
+                    try:
+                        hub_acl.execute_incoming('auto-relay-001')
+                        return
+                    except Exception:
+                        if time.monotonic() >= deadline:
+                            return
+                        time.sleep(0.05)
+                time.sleep(0.02)
+        relay_thread = threading.Thread(target=_hub_relay, daemon=True)
+        relay_thread.start()
+
+        # A 区生产入口一跳完成全链路（EDGE 自动 ①②③ dispatch → ⑧ 轮询取回）
+        resp = edge_acl.evaluate_dimension_group(
+            **group_kwargs(), transfer_id='auto-relay-001')
+        relay_thread.join(timeout=25)
+        assert not relay_thread.is_alive(), '中枢侧中转执行未被触发'
+
+        assert resp == {'code': 0, 'msg': 'ok',
+                        'data': {'result': {'score': 0.92, 'value': '0.92'}}}, \
+            f'A 区自动中转未取回回同步结果: {resp}'
+        assert c_state['hits']['auto-relay-001'] == 1, 'C 端未收到评估请求（T-B 出站投递未发生）'
+        # 传输流水全链路完整：EVAL_REQUEST A→B（出站投递后 DELIVERED）+ EVAL_RESULT B→A
+        types = sorted((p.pkg_type, p.src_zone, p.dst_zone, p.status)
+                       for p in record_repo.packages.values())
+        assert ('EVAL_REQUEST', 'A', 'B', 'DELIVERED') in types
+        assert ('EVAL_RESULT', 'B', 'A', 'COMPLETED') in types
+        # A 区审计事件：Dispatched（发起中转）→ Completed（取回回同步结果）
+        assert [type(e) for e in edge_events] == [
+            ThirdPartyEvalDispatched, ThirdPartyEvalCompleted]
+        assert edge_events[0].transfer_id == edge_events[1].transfer_id == 'auto-relay-001'
+        assert (edge_events[0].src_zone, edge_events[0].dst_zone) == ('A', 'B')
+        assert edge_events[1].synced_back is True

@@ -14,8 +14,10 @@
   ⑧ 回调（EVAL_RESULT 经 transfer_agent 回同步源区，pkg_type=EVAL_RESULT）
 
 区角色（配置化）：self_zone == hub_zone 即评估中枢（B，主线方案），全流程内联执行；
-self_zone != hub_zone 为边缘区（A），仅做①②打包传输（dispatch_eval_request），
-C 执行在中枢（execute_incoming），结果经 fetch_incoming_result 取回。
+self_zone != hub_zone 为边缘区（A），evaluate_dimension_group 自动中转：
+①②③ 打包传输（dispatch_eval_request）→ ④⑤⑥⑦ 中枢 execute_incoming 执行
+（T-B 出站投递 C，EVAL_RESULT 回同步）→ ⑧ fetch_incoming_result 轮询取回，
+resp_data 交调用方经 result_processor 落库（CQRS）。
 """
 from __future__ import annotations
 
@@ -86,6 +88,10 @@ class ThirdPartyEvalSettings:
         self.timeout_seconds = int(_get('timeout_seconds', 120))
         # 出站投递同步等待 C 端执行（T-B 侧含重试退避），须大于 T-B 最坏投递时长
         self.dispatch_timeout_seconds = int(_get('dispatch_timeout_seconds', 600))
+        # 边缘区中转：轮询取回回同步 EVAL_RESULT 的节奏与最坏等待
+        # （超时须覆盖中枢执行 + T-B 出站投递 + B→A 回同步全链路，默认大于 dispatch_timeout）
+        self.relay_poll_interval_seconds = float(_get('relay_poll_interval_seconds', 2))
+        self.relay_result_timeout_seconds = int(_get('relay_result_timeout_seconds', 900))
         self.staging_ttl_seconds = int(_get('staging_ttl_seconds', 3600))
         self.sync_back_enabled = str(_get('sync_back_enabled', 'true')).lower() not in ('0', 'false', 'no')
         self.sync_back_zone = str(_get('sync_back_zone', 'A')).upper()
@@ -188,7 +194,7 @@ class ThirdPartyEvalACL:
         except Exception:
             logger.warning('第三方评估事件发布失败（不阻塞主流程）: %s', event, exc_info=True)
 
-    # ================ 主入口：中枢侧维度组评估（8 步全流程） ================
+    # ================ 主入口：维度组评估（区角色分流：中枢内联 / 边缘中转） ================
     def evaluate_dimension_group(self, *, payload: Dict, form_fields: Dict,
                                  files: Dict[str, tuple], representative_dim_data: Dict,
                                  dim_names: List[str], dim_info: Dict,
@@ -198,6 +204,8 @@ class ThirdPartyEvalACL:
         """执行第三方评估，返回 resp_data（成功）或 {'__error__': ...}（失败）。
 
         resp_data 形态与本地评估端点响应一致，由调用方经 result_processor 落库。
+        中枢（self_zone == hub_zone）内联执行全流程；边缘区自动中转
+        （_evaluate_via_hub_relay：dispatch → 轮询取回回同步 EVAL_RESULT）。
         """
         started = time.monotonic()
         adapter_kind = adapter_kind or self._resolve_adapter_kind(representative_dim_data)
@@ -213,11 +221,14 @@ class ThirdPartyEvalACL:
         request = self._build_request(transfer_id, form_fields, files, eval_params)
         try:
             if not self.settings.is_hub:
-                raise RuntimeError(
-                    f'第三方评估须在评估中枢（{self.settings.hub_zone}）执行，'
-                    f'当前区 {self.settings.self_zone} 请经 dispatch_eval_request 中转')
+                # 边缘区（A）自动中转：①②③ 打包传输到中枢 → 轮询 ⑧ 取回回同步结果
+                # （④⑤⑥⑦ 在中枢 execute_incoming 执行，⑥落库由本侧调用方完成 — CQRS）
+                return self._evaluate_via_hub_relay(
+                    form_fields=form_fields, files=files, eval_params=eval_params,
+                    transfer_id=transfer_id, task_id=task_id,
+                    test_case_id=test_case_id, started=started)
 
-            # ①② 打包 + 传输登记（幂等 transfer_id，审计流水）
+            # 中枢（B）：①② 打包 + 传输登记（幂等 transfer_id，审计流水）
             # dst='C' 登记即真实 B→C 数据面：T-B 出站投递腿将读取本暂存包，
             # 按第三方契约经 GW-2 投递 C（设计文档 §4.2.2 步骤⑤，F2.1/INT-49 起）
             bundle_path = self._pack_bundle(request)
@@ -259,6 +270,58 @@ class ThirdPartyEvalACL:
                 test_case_id=str(test_case_id) if test_case_id else None,
                 stage=_error_stage(e), error=str(e)))
             return {'__error__': f'第三方评估失败: {e}'}
+
+    # ================ 边缘区：自动中转（①②③ 发起 → ⑧ 轮询取回） ================
+    def _evaluate_via_hub_relay(self, *, form_fields: Dict, files: Dict[str, tuple],
+                                eval_params: Dict, transfer_id: str,
+                                task_id, test_case_id, started: float) -> Dict:
+        """边缘区（A）维度组评估的中转执行：dispatch → 轮询取回回同步 EVAL_RESULT。
+
+        中枢侧 ④⑤⑥⑦ 由 execute_incoming 完成（T-B 出站投递 C + 结果回同步）；
+        本方法失败一律收敛为 {'__error__': ...} 并发 Failed 审计事件（stage 标注），
+        不悬挂任务；成功返回回同步载荷中的 resp_data（与本地评估端点响应同形态）。
+        """
+        task_id_arg = task_id
+        test_case_id_arg = str(test_case_id) if test_case_id else None
+        try:
+            self.dispatch_eval_request(
+                form_fields=form_fields, files=files, eval_params=eval_params,
+                transfer_id=transfer_id)
+        except Exception as e:
+            self._emit(ThirdPartyEvalFailed(
+                transfer_id=transfer_id, task_id=task_id_arg,
+                test_case_id=test_case_id_arg,
+                stage=_error_stage(e), error=str(e)))
+            return {'__error__': f'第三方评估中转发起失败: {e}'}
+
+        result_transfer_id = f'{transfer_id}-result'
+        timeout_seconds = self.settings.relay_result_timeout_seconds
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            try:
+                payload = self.fetch_incoming_result(result_transfer_id)
+            except Exception as e:
+                if time.monotonic() >= deadline:
+                    self._emit(ThirdPartyEvalFailed(
+                        transfer_id=transfer_id, task_id=task_id_arg,
+                        test_case_id=test_case_id_arg,
+                        stage='fetch_result',
+                        error=f'等待中枢回同步 EVAL_RESULT 超时（{timeout_seconds}s）: {e}'))
+                    return {'__error__': f'第三方评估中转结果取回失败: {e}'}
+                time.sleep(self.settings.relay_poll_interval_seconds)
+                continue
+            if not isinstance(payload, dict) or 'result' not in payload:
+                error = f'EVAL_RESULT 载荷缺少 result 字段: {payload}'
+                self._emit(ThirdPartyEvalFailed(
+                    transfer_id=transfer_id, task_id=task_id_arg,
+                    test_case_id=test_case_id_arg, stage='fetch_result', error=error))
+                return {'__error__': f'第三方评估中转结果取回失败: {error}'}
+            self._emit(ThirdPartyEvalCompleted(
+                transfer_id=transfer_id, task_id=task_id_arg,
+                test_case_id=test_case_id_arg,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                synced_back=True))
+            return payload['result']
 
     # ================ 边缘区：发起中转（8 步之①②） ================
     def dispatch_eval_request(self, *, form_fields: Dict, files: Dict[str, tuple],
@@ -511,8 +574,6 @@ def _error_stage(e: Exception) -> str:
     from evaluation_service.infrastructure.acl.transfer_eval_client import ThirdPartyEvalError
     if isinstance(e, ThirdPartyEvalError):
         return 'transfer'
-    if isinstance(e, RuntimeError) and '评估中枢' in str(e):
-        return 'zone_role'
     return 'unknown'
 
 

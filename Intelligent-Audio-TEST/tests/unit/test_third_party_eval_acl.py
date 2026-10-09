@@ -1,16 +1,21 @@
 # -*- coding: utf-8 -*-
-"""第三方评估 ACL 编排单元测试（INT-29/INT-49）。
+"""第三方评估 ACL 编排单元测试（INT-29/INT-49/INT-50）。
 
 8 步流程编排语义（替身传输客户端/出站适配器工厂，不依赖网络）：
 - 中枢全流程：打包→传输登记→T-B 出站投递→校验→审计事件（Dispatched→Completed）
 - 幂等 transfer_id 链路传递（重试/重发同键）
 - 失败审计：投递失败 / 传输失败 → Failed 事件（stage 标注）+ __error__ 语义
 - 边缘中转 8 步：dispatch → execute_incoming（解包→出站投递→结果回同步）→ fetch
+- 边缘自动中转（F2.2 接线）：evaluate_dimension_group 在边缘区自动
+  dispatch → 轮询取回回同步 EVAL_RESULT（后台线程模拟中枢执行），失败收敛
 """
 import io
 import json
 import os
 import sys
+import tempfile
+import threading
+import time
 import zipfile
 
 os.environ.setdefault('DATABASE_URL', 'sqlite://')
@@ -136,6 +141,7 @@ def make_settings(tmp_path, **overrides):
         staging_ttl_seconds=600,
         sync_back_enabled=True, sync_back_zone='A',
         response_required_keys=[],
+        relay_poll_interval_seconds=2, relay_result_timeout_seconds=900,
     )
     defaults.update(overrides)
     settings = ThirdPartyEvalSettings.__new__(ThirdPartyEvalSettings)
@@ -246,13 +252,6 @@ class TestHubFullFlow:
         assert [type(e) for e in events] == [ThirdPartyEvalDispatched, ThirdPartyEvalFailed]
         assert events[1].stage == 'transfer'
 
-    def test_non_hub_rejected_with_clear_error(self, tmp_path):
-        settings = make_settings(tmp_path, self_zone='A', hub_zone='B')
-        acl, client, factory, events = make_acl(tmp_path, settings=settings)
-        resp = acl.evaluate_dimension_group(**group_kwargs())
-        assert '__error__' in resp and '评估中枢' in resp['__error__']
-        assert events[0].stage == 'zone_role'
-
 
 class TestEdgeRelayFlow:
     def test_full_relay_chain_a_to_b_to_c_and_back(self, tmp_path):
@@ -332,6 +331,116 @@ class TestEdgeRelayFlow:
         # A→B 中转腿是真实数据面：不携带暂存/审计锚点标注
         assert client.sent[0]['dst_zone'] == 'B'
         assert 'staging_purpose' not in client.sent[0]['meta']
+
+
+class TestEdgeAutoRelay:
+    """边缘区（A）evaluate_dimension_group 自动中转接线（F2.2/INT-50）。
+
+    区角色分流：EDGE 命中 THIRD_PARTY_C 不再拦截失败，自动 dispatch →
+    轮询取回回同步 EVAL_RESULT（后台线程模拟中枢 execute_incoming 执行）；
+    失败路径一律收敛为 {'__error__'} + Failed 审计（stage 标注），任务不悬挂。
+    """
+
+    def _edge_acl(self, tmp_path, client, factory, events, **overrides):
+        settings = make_settings(
+            tmp_path, self_zone='A', hub_zone='B',
+            hub_transfer_agent_base_url='http://ta-b',
+            relay_poll_interval_seconds=overrides.pop('relay_poll_interval_seconds', 0.01),
+            relay_result_timeout_seconds=overrides.pop('relay_result_timeout_seconds', 10),
+            **overrides)
+        return ThirdPartyEvalACL(settings=settings, adapter_factory=factory,
+                                 client=client, event_sink=events.append)
+
+    def _start_hub_relay(self, hub_acl, client, transfer_id, timeout=8.0):
+        """后台线程模拟中枢：发现 A→B 的 EVAL_REQUEST 包即执行 execute_incoming。"""
+
+        def _run():
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if any(s['pkg_type'] == 'EVAL_REQUEST' and s['src_zone'] == 'A'
+                       and s['transfer_id'] == transfer_id for s in client.sent):
+                    hub_acl.execute_incoming(transfer_id)
+                    return
+                time.sleep(0.01)
+
+        thread = threading.Thread(target=_run, daemon=True)
+        thread.start()
+        return thread
+
+    def test_auto_relay_full_chain_returns_result(self, tmp_path):
+        final_dir = str(tmp_path / 'final')
+        os.makedirs(final_dir)
+        client = FakeTransferClient(final_dir=final_dir)
+        factory = StubAdapterFactory()
+        hub_acl = ThirdPartyEvalACL(
+            settings=make_settings(tmp_path, self_zone='B', hub_zone='B'),
+            adapter_factory=factory, client=client, event_sink=lambda e: None)
+        events = []
+        edge_acl = self._edge_acl(tmp_path, client, factory, events)
+        self._start_hub_relay(hub_acl, client, 'relay-auto-1')
+
+        resp = edge_acl.evaluate_dimension_group(**group_kwargs(), transfer_id='relay-auto-1')
+
+        # ⑧ 取回的回同步结果原样返回（resp_data 与本地评估端点响应同形态）
+        assert resp == OK_DATA
+        # 传输流水全链路：EVAL_REQUEST A→B + EVAL_RESULT B→A
+        assert [(s['pkg_type'], s['src_zone'], s['dst_zone']) for s in client.sent] == [
+            ('EVAL_REQUEST', 'A', 'B'), ('EVAL_RESULT', 'B', 'A')]
+        # 边缘审计事件：Dispatched（发起）→ Completed（取回，synced_back）
+        assert [type(e) for e in events] == [ThirdPartyEvalDispatched, ThirdPartyEvalCompleted]
+        assert (events[0].src_zone, events[0].dst_zone) == ('A', 'B')
+        assert events[0].transfer_id == events[1].transfer_id == 'relay-auto-1'
+        assert events[1].synced_back is True
+
+    def test_dispatch_failure_converges_immediately(self, tmp_path):
+        client = FakeTransferClient()
+        client.fail_on_send = True
+        events = []
+        acl = self._edge_acl(tmp_path, client, StubAdapterFactory(), events)
+
+        resp = acl.evaluate_dimension_group(**group_kwargs())
+
+        assert '__error__' in resp and '中转发起失败' in resp['__error__']
+        assert [type(e) for e in events] == [ThirdPartyEvalFailed]
+        assert events[0].stage == 'transfer'
+
+    def test_fetch_timeout_converges_with_fetch_result_stage(self, tmp_path):
+        # 中枢不执行（无回同步包）：轮询到超时收敛为失败，任务不悬挂
+        events = []
+        acl = self._edge_acl(tmp_path, FakeTransferClient(), StubAdapterFactory(),
+                             events, relay_result_timeout_seconds=0)
+
+        resp = acl.evaluate_dimension_group(**group_kwargs())
+
+        assert '__error__' in resp and '中转结果取回失败' in resp['__error__']
+        assert [type(e) for e in events] == [ThirdPartyEvalDispatched, ThirdPartyEvalFailed]
+        assert events[1].stage == 'fetch_result'
+        assert '超时' in events[1].error
+
+    def test_malformed_result_payload_converges(self, tmp_path):
+        final_dir = str(tmp_path / 'final')
+        os.makedirs(final_dir)
+        client = FakeTransferClient(final_dir=final_dir)
+        # 预置一份缺 result 字段的回同步包（中枢回同步契约被破坏）
+        fd, path = tempfile.mkstemp(suffix='.zip')
+        with os.fdopen(fd, 'wb') as raw:
+            with zipfile.ZipFile(raw, 'w') as zf:
+                zf.writestr('result.json', json.dumps({'transfer_id': 'relay-bad'}))
+        try:
+            client.send_file(transfer_id='relay-bad-result', pkg_type='EVAL_RESULT',
+                             src_zone='B', dst_zone='A', category='case-result',
+                             key='eval_result/relay-bad.zip', local_path=path,
+                             ephemeral=False, ttl_seconds=600, meta={})
+        finally:
+            os.remove(path)
+        events = []
+        acl = self._edge_acl(tmp_path, client, StubAdapterFactory(), events)
+
+        resp = acl.evaluate_dimension_group(**group_kwargs(), transfer_id='relay-bad')
+
+        assert '__error__' in resp and 'result 字段' in resp['__error__']
+        assert events[-1].stage == 'fetch_result'
+        assert events[-1].transfer_id == 'relay-bad'
 
 
 class TestHubFailurePaths:

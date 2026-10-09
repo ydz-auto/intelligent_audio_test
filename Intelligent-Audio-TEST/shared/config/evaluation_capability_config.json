@@ -21,6 +21,8 @@
     "adapter": "multipart",
     "timeout_seconds": 120,
     "dispatch_timeout_seconds": 600,
+    "relay_poll_interval_seconds": 2,
+    "relay_result_timeout_seconds": 900,
     "staging_ttl_seconds": 3600,
     "sync_back_enabled": true,
     "sync_back_zone": "A",
