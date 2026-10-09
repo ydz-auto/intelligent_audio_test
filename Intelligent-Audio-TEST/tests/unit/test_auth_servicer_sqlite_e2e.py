@@ -64,9 +64,11 @@ def servicer(db):
     from auth_service.interfaces.grpc.servicers import AuthServicer
     from shared.proto import auth_service_pb2 as auth_pb
     session = get_db_session()
-    if session.query(Permission).count() == 0:
-        _seed_permission('task:read', '查看任务')
-        _seed_permission('audio:delete', '删除音频')
+    # 按名幂等补种：共享库下 Permission 可能已被先收集的模块建过部分条目，
+    # count==0 门控会跳过缺名的权限（如共享库序下 test_g3_oauth_provider_management
+    # 先冻结 DATABASE_URL 且只种了 task:read，本模块 audio:delete 缺失致 404）
+    _seed_permission('task:read', '查看任务')
+    _seed_permission('audio:delete', '删除音频')
     return AuthServicer(), auth_pb
 
 

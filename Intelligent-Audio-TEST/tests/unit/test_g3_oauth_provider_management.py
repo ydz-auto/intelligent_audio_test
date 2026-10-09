@@ -72,9 +72,9 @@ def servicer(db):
     from auth_service.interfaces.grpc.servicers import AuthServicer
     from shared.proto import auth_service_pb2 as auth_pb
     session = get_db_session()
-    if session.query(Permission).count() == 0:
-        po = Permission(name='task:read', description='查看任务')
-        session.add(po)
+    # 按名幂等补种（勿用 count==0 门控：共享库下部分条目已存在时会漏种本模块所需权限）
+    if session.query(Permission).filter_by(name='task:read').first() is None:
+        session.add(Permission(name='task:read', description='查看任务'))
         session.flush()
     return AuthServicer(), auth_pb
 
