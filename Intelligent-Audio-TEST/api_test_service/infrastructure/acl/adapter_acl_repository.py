@@ -28,8 +28,18 @@ class AdapterAclRepositoryImpl(AdapterAclRepository):
 
     def send_round(self, request) -> AdapterRoundResultDTO:
         from shared.clients.grpc_clients import get_adapter_service_stub
+
+        from shared.infrastructure.config import BaseConfig
         stub = get_adapter_service_stub()
-        response = stub.SendRound(request)
+        # 显式放宽 deadline（INT-54 P1-2）：SendRound 同步执行被测请求，
+        # 单轮上限 = request.timeout（session_timeout，默认 60s）——默认 deadline
+        # 与之相等会竞态击杀合法慢请求；deadline 必须严格大于单轮上限。
+        base = request.timeout if request.timeout and request.timeout > 0 \
+            else BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS
+        response = stub.SendRound(
+            request,
+            timeout=base + BaseConfig.GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS,
+        )
         if not response.success:
             raise RuntimeError(f"adapter gRPC SendRound failed: {response.message}")
         task_result = _json.loads(response.data) if response.data else {}

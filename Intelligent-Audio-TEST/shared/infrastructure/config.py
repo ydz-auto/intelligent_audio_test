@@ -131,6 +131,14 @@ class BaseConfig:
     # 显式传 timeout 的调用不受影响；已知长耗时调用点应显式传更大的 timeout。
     GRPC_CLIENT_DEADLINE_SECONDS: int = _get_int('GRPC_CLIENT_DEADLINE_SECONDS', 60)
 
+    # --- gRPC 显式长调用 deadline（INT-54 打回修复）---
+    # StartE2ETask 在 e2e_test_service 处理器内同步执行整个 E2E 用例
+    # （多轮设备准备/播放/采集/评估），总时长结构性可超默认 deadline，须显式放宽。
+    GRPC_E2E_SYNC_TIMEOUT_SECONDS: int = _get_int('GRPC_E2E_SYNC_TIMEOUT_SECONDS', 600)
+    # SendRound 同步执行被测请求：deadline = 请求单轮上限（request.timeout，
+    # 即 session_timeout，默认 60s）+ 本余量；余量覆盖适配器渲染/序列化/网络开销。
+    GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS: int = _get_int('GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS', 30)
+
     # --- 工具 ---
     FFMPEG_PATH: str = _get_env('FFMPEG_PATH', 'ffmpeg')
     FFPROBE_PATH: str = _get_env('FFPROBE_PATH', 'ffprobe')

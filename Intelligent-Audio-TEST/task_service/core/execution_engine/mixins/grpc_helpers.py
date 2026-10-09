@@ -109,13 +109,20 @@ def _execute_e2e_case_via_grpc(task_id, tc_rel_id):
     from shared.proto import e2e_test_service_pb2
     # 延迟 import 避免 circular dependency
     from shared.clients.grpc_clients import get_e2e_execution_service_stub
+    from shared.infrastructure.config import BaseConfig
     try:
         stub = get_e2e_execution_service_stub()
-        resp = stub.StartE2ETask(e2e_test_service_pb2.StartE2ETaskRequest(
-            task_id=str(task_id),
-            tc_rel_id=str(tc_rel_id),
-            e2e_config='',
-        ))
+        # 显式放宽 deadline（INT-54 P1-1）：StartE2ETask 在 e2e_test_service
+        # 处理器内同步执行整个多轮 E2E 用例（设备准备/播放/采集/评估），
+        # 总时长结构性可超默认 60s deadline；不放宽则合法慢用例被误杀标 FAILED。
+        resp = stub.StartE2ETask(
+            e2e_test_service_pb2.StartE2ETaskRequest(
+                task_id=str(task_id),
+                tc_rel_id=str(tc_rel_id),
+                e2e_config='',
+            ),
+            timeout=BaseConfig.GRPC_E2E_SYNC_TIMEOUT_SECONDS,
+        )
         if not resp.success:
             return False
         return True

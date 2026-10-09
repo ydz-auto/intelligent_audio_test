@@ -156,3 +156,120 @@ class TestEndToEnd:
             assert time.monotonic() - t0 < 5
         finally:
             server.stop(grace=None).wait(timeout=5)
+
+
+class TestExplicitLongCallSites:
+    """打回项（INT-54 P1-1/P1-2）守卫：同步执行长工作的调用点必须显式传
+    大于其工作上限的 deadline，且该 deadline 须随请求内工作上限联动。
+
+    - StartE2ETask：e2e 处理器内同步跑完整个多轮用例 → 显式
+      GRPC_E2E_SYNC_TIMEOUT_SECONDS（默认 600s > 默认 deadline 60s）。
+    - SendRound：同步执行被测请求，单轮上限 = request.timeout
+      （session_timeout，默认 60s，用户可调大）→ deadline = 上限 + 余量，
+      恒大于单轮上限，消除竞态击杀。
+    """
+
+    class _KwargsCaptured(Exception):
+        def __init__(self, kwargs):
+            super().__init__('captured')
+            self.kwargs = kwargs
+
+    def test_send_round_deadline_exceeds_default_session_timeout(self, monkeypatch):
+        import types
+
+        import shared.clients.grpc_clients as gc
+
+        captured = {}
+
+        class _Stub:
+            def SendRound(self, request, **kwargs):
+                captured.update(kwargs)
+                raise TestExplicitLongCallSites._KwargsCaptured(kwargs)
+
+        monkeypatch.setattr(gc, 'get_adapter_service_stub', lambda: _Stub())
+        from api_test_service.infrastructure.acl.adapter_acl_repository import (
+            AdapterAclRepositoryImpl,
+        )
+        with pytest.raises(self._KwargsCaptured):
+            AdapterAclRepositoryImpl().send_round(types.SimpleNamespace(timeout=60))
+        # session_timeout 默认 60s == 默认 deadline（竞态）→ 显式 deadline 必须严格更大
+        assert captured['timeout'] > 60
+        assert captured['timeout'] == 60 + BaseConfig.GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS
+
+    def test_send_round_deadline_follows_raised_session_timeout(self, monkeypatch):
+        import types
+
+        import shared.clients.grpc_clients as gc
+
+        captured = {}
+
+        class _Stub:
+            def SendRound(self, request, **kwargs):
+                captured.update(kwargs)
+                raise TestExplicitLongCallSites._KwargsCaptured(kwargs)
+
+        monkeypatch.setattr(gc, 'get_adapter_service_stub', lambda: _Stub())
+        from api_test_service.infrastructure.acl.adapter_acl_repository import (
+            AdapterAclRepositoryImpl,
+        )
+        # 用户调大 session_timeout 后 deadline 必须同步放大（否则必杀）
+        with pytest.raises(self._KwargsCaptured):
+            AdapterAclRepositoryImpl().send_round(types.SimpleNamespace(timeout=300))
+        assert captured['timeout'] == 300 + BaseConfig.GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS
+
+    def test_send_round_zero_timeout_falls_back_to_default_base(self, monkeypatch):
+        import types
+
+        import shared.clients.grpc_clients as gc
+
+        captured = {}
+
+        class _Stub:
+            def SendRound(self, request, **kwargs):
+                captured.update(kwargs)
+                raise TestExplicitLongCallSites._KwargsCaptured(kwargs)
+
+        monkeypatch.setattr(gc, 'get_adapter_service_stub', lambda: _Stub())
+        from api_test_service.infrastructure.acl.adapter_acl_repository import (
+            AdapterAclRepositoryImpl,
+        )
+        with pytest.raises(self._KwargsCaptured):
+            AdapterAclRepositoryImpl().send_round(types.SimpleNamespace(timeout=0))
+        assert captured['timeout'] == BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS + \
+            BaseConfig.GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS
+
+    def test_start_e2e_task_passes_explicit_sync_deadline(self, monkeypatch):
+        import types
+
+        import shared.clients.grpc_clients as gc
+
+        captured = {}
+
+        class _Stub:
+            def StartE2ETask(self, request, **kwargs):
+                captured.update(kwargs)
+                return types.SimpleNamespace(success=True, message='ok', data='{}')
+
+        monkeypatch.setattr(gc, 'get_e2e_execution_service_stub', lambda: _Stub())
+        from task_service.core.execution_engine.mixins.grpc_helpers import (
+            _execute_e2e_case_via_grpc,
+        )
+        assert _execute_e2e_case_via_grpc(1, 2) is True
+        assert captured['timeout'] == BaseConfig.GRPC_E2E_SYNC_TIMEOUT_SECONDS
+        # 结构性要求：同步 E2E 用例总时长上限必须大于默认 deadline（60s）
+        assert captured['timeout'] > BaseConfig.GRPC_CLIENT_DEADLINE_SECONDS
+
+    def test_start_e2e_task_returns_false_on_failure(self, monkeypatch):
+        import types
+
+        import shared.clients.grpc_clients as gc
+
+        class _Stub:
+            def StartE2ETask(self, request, **kwargs):
+                return types.SimpleNamespace(success=False, message='no', data='')
+
+        monkeypatch.setattr(gc, 'get_e2e_execution_service_stub', lambda: _Stub())
+        from task_service.core.execution_engine.mixins.grpc_helpers import (
+            _execute_e2e_case_via_grpc,
+        )
+        assert _execute_e2e_case_via_grpc(1, 2) is False
