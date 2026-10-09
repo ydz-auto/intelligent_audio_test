@@ -175,3 +175,80 @@ def test_exclude_last_round_minus_one():
     assert ReportUtils._get_round_values(result, 'X', 0.0, dim_results_map, dim_name_to_id, exclude_rounds=[-1, 0]) == [2.0]
     # 无轮次记录时 -1 无效 → 回退整体值
     assert ReportUtils._get_round_values(result, 'X', 9.0, {}, dim_name_to_id, exclude_rounds=[-1]) == [9.0]
+
+
+# ---------- 实际打断轮数分母（LLM 评估失败剔除） ----------
+
+def test_actual_interruption_rounds_prefers_counts_sum():
+    """ratio 分母 = 实际打断轮数：优先 success_count+failure_count+inquiry_count（与分子同源，保证三率和=100%）。"""
+    from backend.utils.report.report_utils import _actual_interruption_rounds
+    raw = {'interruption': {
+        'success_count': 2, 'failure_count': 1, 'inquiry_count': 0,
+        'round_details': [{'role': 'interruption', 'behavior': '回复'}] * 5,  # counts 优先于 details
+    }}
+    assert _actual_interruption_rounds(raw) == 3
+    # eval_server 包装格式 {code:0,data:{result:...}} 也识别
+    wrapped = {'code': 0, 'data': {'result': {'interruption': {
+        'success_count': 1, 'failure_count': 1, 'inquiry_count': 1}}}}
+    assert _actual_interruption_rounds(wrapped) == 3
+    # counts 全 0（无已判定打断轮）→ 0，整例从分子分母剔除
+    assert _actual_interruption_rounds({'interruption': {
+        'success_count': 0, 'failure_count': 0, 'inquiry_count': 0}}) == 0
+
+
+def test_actual_interruption_rounds_details_fallback():
+    """counts 缺失（LLM 降级）→ 兜底 round_details 中 role≠resume 且 behavior 非 None 的条数。"""
+    from backend.utils.report.report_utils import _actual_interruption_rounds
+    raw = {'interruption': {'round_details': [
+        {'role': 'interruption', 'behavior': '回复'},
+        {'role': 'interruption', 'behavior': None},   # 判定失败 → 不计（分子同样不含它）
+        {'role': 'resume', 'behavior': None},          # 恢复轮 → 不计
+        {'behavior': '静默'},                          # 旧数据无 role → 视为打断轮
+    ]}}
+    assert _actual_interruption_rounds(raw) == 2
+    # 顶层 round_details 也识别
+    assert _actual_interruption_rounds({'round_details': [{'behavior': '回复'}]}) == 1
+    # 无法提取 → None，调用方回退配置轮次
+    assert _actual_interruption_rounds({'foo': 1}) is None
+    assert _actual_interruption_rounds(None) is None
+    assert _actual_interruption_rounds('not-json') is None
+
+
+def test_weighted_sum_ratio_skips_llm_failed_items():
+    """LLM 调用失败的用例整例剔出分子分母。"""
+    from backend.utils.report.aggregation_strategies import WeightedSumRatioStrategy
+    params = [{'agg_role': 'numerator', 'field_path': 'n_rate_success'},
+              {'agg_role': 'denominator', 'field_path': 'n_reject_rounds'}]
+    items = [
+        {'api_raw_response': {'message': 'OK', 'n_rate_success': 1, 'n_reject_rounds': 2}},
+        {'api_raw_response': {'message': 'LLM 调用失败: Server disconnected', 'n_rate_success': 0, 'n_reject_rounds': 2}},
+    ]
+    # 失败例剔除 → 1/2 而不是 1/4
+    assert WeightedSumRatioStrategy().aggregate(items, output_params=params) == 50.0
+
+
+def test_weighted_sum_ratio_takeover_family():
+    """接管族三率：Σcount/Σtotal_turns 加权，total_turns=0 用例剔除，三率和=100；
+    turn_eval raw 无顶层 message，不被 'LLM 调用失败' 跳过逻辑误伤。"""
+    from backend.utils.report.aggregation_strategies import WeightedSumRatioStrategy
+
+    def _params(count_field):
+        return [{'agg_role': 'numerator', 'field_path': f'turn_classification.{count_field}'},
+                {'agg_role': 'denominator', 'field_path': 'turn_classification.total_turns'}]
+
+    def _item(normal, no, false, total):
+        return {'api_raw_response': {'turn_classification': {
+            'normal_takeover_count': normal, 'no_takeover_count': no,
+            'false_takeover_count': false, 'total_turns': total}}}
+
+    items = [
+        _item(2, 1, 0, 3),
+        _item(0, 0, 0, 0),   # 零判定轮用例 → den=0 剔除，不稀释占比
+        _item(1, 0, 1, 2),
+    ]
+    strat = WeightedSumRatioStrategy()
+    normal = strat.aggregate(items, output_params=_params('normal_takeover_count'))   # 3/5
+    no = strat.aggregate(items, output_params=_params('no_takeover_count'))          # 1/5
+    false = strat.aggregate(items, output_params=_params('false_takeover_count'))    # 1/5
+    assert (normal, no, false) == (60.0, 20.0, 20.0)
+    assert normal + no + false == 100.0

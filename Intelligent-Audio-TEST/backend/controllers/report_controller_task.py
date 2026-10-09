@@ -1236,6 +1236,8 @@ class ReportControllerTask(ReportControllerBase):
                     all_dimensions=all_dimensions,
                     dim_results_map=dim_results_map,
                     dim_statistic_method={dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions},
+                    # dim_output_params 传 None → 内部预加载 weighted_sum_ratio 等维度的 field_path/agg_role；
+                    # 传 {} 会跳过预加载导致设备/API 级加权维度全为 null
                     dim_output_params=None
                 )
 

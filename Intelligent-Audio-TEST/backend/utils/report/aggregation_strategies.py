@@ -159,6 +159,10 @@ class WeightedSumRatioStrategy(AggregationStrategy):
             if not result_obj:
                 continue
 
+            # LLM 评估失败（裁判服务断连/超时等）→ 整例从分子分母剔除，避免失败轮把占比分母撑大
+            if 'LLM 调用失败' in str(result_obj.get('message') or ''):
+                continue
+
             num_val = _extract_by_path(result_obj, numerator_path)
             den_val = _extract_by_path(result_obj, denominator_path)
 

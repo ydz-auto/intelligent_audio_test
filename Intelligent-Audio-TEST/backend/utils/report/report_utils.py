@@ -71,6 +71,39 @@ def _extract_sub_dim_from_counts(raw_resp, field_path):
                 pass
     return total
 
+
+def _actual_interruption_rounds(raw_resp):
+    """
+    该用例的实际打断轮数（ratio 按轮次口径的分母），从整体评估 raw response 提取。
+
+    口径（与评估侧自洽恒等式对齐）：
+      1. 优先 success_count + failure_count + inquiry_count —— 每个已判定打断轮必归三者之一，
+         与分子（interruption.*_count 经 field_path 提取的 TRD 整体值）同源，
+         保证 成功/失败/询问 三率之和 = 100%；未实际发生打断或 LLM 判定失败
+         （behavior=None）的轮次分子分母均不计入。
+      2. counts 缺失时兜底：round_details 中已判定打断轮条数
+         （role≠'resume' 且 behavior 非 None；role 缺省视为 interruption，兼容旧数据）。
+    两者均无法提取返回 None，调用方回退用例配置轮次数。
+    """
+    result_obj = _parse_raw_response(raw_resp)
+    if not result_obj:
+        return None
+    obj = result_obj
+    interruption = result_obj.get('interruption')
+    if isinstance(interruption, dict):
+        obj = interruption
+    counts = [obj.get(k) for k in ('success_count', 'failure_count', 'inquiry_count')]
+    if all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in counts):
+        return int(sum(counts))
+    details = obj.get('round_details')
+    if not isinstance(details, list):
+        details = result_obj.get('round_details')
+    if not isinstance(details, list):
+        return None
+    return sum(1 for d in details
+               if isinstance(d, dict) and d.get('role') != 'resume' and d.get('behavior') is not None)
+
+
 class ReportUtils:
     @staticmethod
     def filter_results_by_case_evaluation(results):
@@ -581,18 +614,22 @@ class ReportUtils:
                                             continue  # 排除轮次不参与分子/分母
                                         round_items.append(item)
                             if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) in ('ratio', 'weighted_sum_ratio')):
-                                # ratio/加权：分子用整体值（不随排除轮次扣减），
-                                # 排除轮次只作用于分母（round_count 已按 exclude_rounds 计算）
+                                # ratio/加权：分子用整体值（不随排除轮次扣减；整体计数本就只含已判定轮），
+                                # 排除轮次只作用于分母（round_count）
                                 collected_items = [overall_item]
                             elif round_items:
                                 collected_items = round_items
                             elif overall_item:
                                 collected_items = [overall_item]
-                            # 记录该用例配置中该维度覆盖的轮次数（ratio 策略按轮次口径的分母来源）
+                            # 分母轮次数：ratio 优先取实际打断轮数（eval 返回 success+failure+inquiry_count，与分子同源；未打断/判定失败轮不计），否则取配置轮次数
                             if collected_items:
-                                round_count = ReportUtils._get_dimension_configured_rounds(
-                                    test_case, target_dim_id, dim_name,
-                                    dim_exclude_rounds.get(dim_name))
+                                round_count = None
+                                if dim_statistic_method.get(dim_name) == 'ratio' and overall_item:
+                                    round_count = _actual_interruption_rounds(overall_item.get('api_raw_response'))
+                                if round_count is None:
+                                    round_count = ReportUtils._get_dimension_configured_rounds(
+                                        test_case, target_dim_id, dim_name,
+                                        dim_exclude_rounds.get(dim_name))
                                 for it in collected_items:
                                     it['round_count'] = round_count
 
@@ -968,7 +1005,7 @@ class ReportUtils:
                                     continue  # 排除轮次不参与分子/分母
                                 round_items.append(item)
                     # 无排除配置且整体存在 → 取整体；有排除或无整体 → 取过滤后的各轮；否则整体兜底
-                    # ratio/加权：分子用整体值（不随排除轮次扣减），排除轮次只作用于分母（round_count）
+                    # ratio/加权：分子用整体值（不随排除轮次扣减；整体计数只含已判定轮），排除轮次只作用于分母（round_count）
                     if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) in ('ratio', 'weighted_sum_ratio')):
                         collected = [overall_item]
                     elif round_items:
@@ -977,10 +1014,15 @@ class ReportUtils:
                         collected = [overall_item]
                     else:
                         collected = []
+                    # 分母轮次数：ratio 优先取实际打断轮数（eval 返回 success+failure+inquiry_count，与分子同源；未打断/判定失败轮不计），否则取配置轮次数
                     if collected:
-                        round_count = ReportUtils._get_dimension_configured_rounds(
-                            test_case, target_dim_id, dim_name,
-                            dim_exclude_rounds.get(dim_name))
+                        round_count = None
+                        if dim_statistic_method.get(dim_name) == 'ratio' and overall_item:
+                            round_count = _actual_interruption_rounds(overall_item.get('api_raw_response'))
+                        if round_count is None:
+                            round_count = ReportUtils._get_dimension_configured_rounds(
+                                test_case, target_dim_id, dim_name,
+                                dim_exclude_rounds.get(dim_name))
                         for it in collected:
                             it['round_count'] = round_count
                     group_agg_items[group_id][dim_name].extend(collected)
@@ -1989,7 +2031,7 @@ class ReportUtils:
                                 continue  # 排除轮次不参与分子/分母
                             round_items.append(item)
                 # 无排除配置且整体存在 → 取整体；有排除或无整体 → 取过滤后的各轮；否则整体兜底
-                # ratio/加权：分子用整体值（不随排除轮次扣减），排除轮次只作用于分母（round_count）
+                # ratio/加权：分子用整体值（不随排除轮次扣减；整体计数只含已判定轮），排除轮次只作用于分母（round_count）
                 if overall_item and (not exclude_set or dim_statistic_method.get(dim_name) in ('ratio', 'weighted_sum_ratio')):
                     collected = [overall_item]
                 elif round_items:
@@ -1998,10 +2040,15 @@ class ReportUtils:
                     collected = [overall_item]
                 else:
                     collected = []
+                # 分母轮次数：ratio 优先取实际打断轮数（eval 返回 success+failure+inquiry_count，与分子同源；未打断/判定失败轮不计），否则取配置轮次数
                 if collected:
-                    round_count = ReportUtils._get_dimension_configured_rounds(
-                        test_cases_map.get(result.test_case_id), target_dim_id, dim_name,
-                        dim_exclude_rounds.get(dim_name))
+                    round_count = None
+                    if dim_statistic_method.get(dim_name) == 'ratio' and overall_item:
+                        round_count = _actual_interruption_rounds(overall_item.get('api_raw_response'))
+                    if round_count is None:
+                        round_count = ReportUtils._get_dimension_configured_rounds(
+                            test_cases_map.get(result.test_case_id), target_dim_id, dim_name,
+                            dim_exclude_rounds.get(dim_name))
                     for it in collected:
                         it['round_count'] = round_count
                 dim_agg_items[dim_name].extend(collected)

@@ -308,8 +308,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                             api_id=api_id
                         )
                     else:
-                        # 任务失败
-                        error_msg = result_response.get('msg', 'Unknown error')
+                        # 任务失败（wait_for_task_completion 失败时返回 {'__error__': ...}，与创建失败分支同口径）
+                        error_msg = result_response.get('__error__') or result_response.get('msg', 'Unknown error')
                         self._log(
                             level='ERROR',
                             category='execution',
