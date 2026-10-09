@@ -48,7 +48,7 @@ from evaluation_service.infrastructure.acl.third_party_eval_acl import (
     ThirdPartyEvalACL,
     ThirdPartyEvalSettings,
 )
-from evaluation_service.infrastructure.acl.third_party_adapters import (
+from evaluation_service.infrastructure.acl.third_party_outbound_adapter import (
     ThirdPartyEvalAdapterFactory,
 )
 from evaluation_service.infrastructure.acl.transfer_eval_client import TransferEvalClient
@@ -180,15 +180,21 @@ def fake_c():
     server.server_close()
 
 
-# ================= transfer_agent 真实路由栈（内存仓储） =================
+# ================= transfer_agent 真实路由栈（内存仓储 + 出站投递腿） =================
 @pytest.fixture(scope='module')
-def transfer_http():
+def transfer_http(fake_c):
+    c_url, _ = fake_c
     record_repo, chunk_repo, storage = FakeRecordRepo(), FakeChunkRepo(), FakeStorage()
     from transfer_agent.application.handlers.transfer_handlers import (
         TransferCommandHandler,
         TransferQueryHandler,
     )
+    from transfer_agent.application.services.outbound_delivery_service import (
+        OutboundDeliveryService,
+    )
     from transfer_agent.domain.services.signature_service import SignatureService
+    from transfer_agent.domain.services.zone_route_policy import ZoneRoutePolicy
+    from transfer_agent.infrastructure.acl.c_api_client import ThirdPartyCAPIClient
     command_handler = TransferCommandHandler(
         record_repo=record_repo, chunk_repo=chunk_repo, storage=storage,
         signature_service=SignatureService(TOKENS),
@@ -198,10 +204,19 @@ def transfer_http():
         record_repo=record_repo, chunk_repo=chunk_repo,
         signature_service=SignatureService(TOKENS),
     )
+    # 出站投递腿（B→C 数据面）：C 客户端指向模拟 C 端点，重试退避压缩到测试节奏
+    outbound_service = OutboundDeliveryService(
+        record_repo=record_repo, storage=storage, route_policy=ZoneRoutePolicy(),
+        c_client=ThirdPartyCAPIClient(base_url=c_url, timeout_seconds=5,
+                                      max_retries=3, backoff_seconds=0.05),
+        signature_service=SignatureService(TOKENS), outbound_zone='B',
+    )
     original_command = transfer_routes._command_handler
     original_query = transfer_routes._query_handler
+    original_outbound = transfer_routes._outbound_service
     transfer_routes._command_handler = command_handler
     transfer_routes._query_handler = query_handler
+    transfer_routes._outbound_service = outbound_service
     try:
         import uvicorn
         from fastapi import FastAPI
@@ -224,6 +239,7 @@ def transfer_http():
     finally:
         transfer_routes._command_handler = original_command
         transfer_routes._query_handler = original_query
+        transfer_routes._outbound_service = original_outbound
 
 
 # ================= 被测 ACL 装配 =================
@@ -494,11 +510,12 @@ class TestAcceptance23LinkLayer:
         assert c_state['hits']['c5xx-1'] == 2, '应恰好重试一次'
         assert [type(e) for e in events] == [ThirdPartyEvalDispatched, ThirdPartyEvalCompleted]
 
-    def test_staging_audit_anchor_meta_persisted_in_transfer_records(
+    def test_dst_c_transfer_record_aligns_with_real_outbound_delivery(
             self, tmp_path, fake_c, transfer_http):
-        """AC3：问题 2 过渡语义——dst='C' 暂存登记的 staging_purpose=audit_anchor
-        经真实 transfer_agent 落库后可读；A→B 中转腿（真实数据面）不携带该标注，
-        审计流水与真实数据路径一致。"""
+        """AC（INT-49）：transfer_records dst=C 流水与真实数据路径对齐——中枢内联
+        dst='C' 登记即真实 B→C 数据面，经 T-B 出站投递腿送达 C 后流水转 DELIVERED、
+        meta.delivery 记录真实投递结果；A→B 中转腿（dst='B'）不携带投递语义，
+        审计流水与真实传输一一对应。"""
         c_url, c_state = fake_c
         ta_url, record_repo = transfer_http
         edge_config = write_capability_config(
@@ -511,7 +528,7 @@ class TestAcceptance23LinkLayer:
              'transfer_agent_base_url': ta_url,
              'hub_transfer_agent_base_url': ta_url})
 
-        # A→B 中转腿：真实数据面，dst='B'，不携带暂存锚点标注。
+        # A→B 中转腿：真实数据面，dst='B'，不携带投递语义标注。
         # 包体取极小值（整包 < 单分片上限）：harness 服务端分片上限人为设为 1024，
         # 而 A→B 腿经 _client_for 构造的客户端用默认 4MB 分片（与生产默认一致），
         # 大包体会触发 413——本测试验证 meta 语义而非分片（多分片由其余用例覆盖）
@@ -524,14 +541,21 @@ class TestAcceptance23LinkLayer:
             transfer_id='stage-meta-ab')
         ab_pkg = record_repo.packages.get('stage-meta-ab')
         assert ab_pkg is not None and ab_pkg.dst_zone == 'B'
+        assert 'delivery' not in (ab_pkg.meta or {}), \
+            'A→B 中转腿登记不应携带出站投递语义'
         assert 'staging_purpose' not in (ab_pkg.meta or {}), \
-            'A→B 真实数据面腿不应携带暂存锚点标注'
+            '过渡期审计锚点标注应已随 F2.1 退役'
 
-        # 中枢内联 dst='C' 登记：暂存/审计锚点（非数据面），标注经落库持久可读
+        # 中枢内联 dst='C' 登记：真实 B→C 数据面，出站投递后 DELIVERED + meta.delivery
         hub_acl = build_acl(hub_config, ta_url, c_url)
         resp = hub_acl.evaluate_dimension_group(**group_kwargs(transfer_id='stage-meta-c'))
         assert resp.get('code') == 0, f'中枢内联流程未成功: {resp}'
         c_pkg = record_repo.packages.get('stage-meta-c')
         assert c_pkg is not None and c_pkg.dst_zone == 'C'
-        assert (c_pkg.meta or {}).get('staging_purpose') == 'audit_anchor', \
-            f'dst=C 暂存登记落库后缺少审计锚点标注: {c_pkg.meta}'
+        assert c_pkg.status == 'DELIVERED', \
+            f'dst=C 流水应反映真实传输（DELIVERED）: {c_pkg.status}'
+        delivery = (c_pkg.meta or {}).get('delivery') or {}
+        assert delivery.get('status') == 'delivered', \
+            f'dst=C 流水 meta 缺少真实投递结果: {c_pkg.meta}'
+        assert delivery.get('dst_status') == 200
+        assert delivery.get('delivered_at')

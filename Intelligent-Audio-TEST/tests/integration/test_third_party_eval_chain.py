@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""A→B→C 三区评估链路集成测试（INT-29）。
+"""A→B→C 三区评估链路集成测试（INT-29/INT-49）。
 
-验收标准 2/3：EVAL_REQUEST → EVAL_RESULT 全流程联调（本地模拟 C 区端点），
-幂等去重与失败重试在链路层可验证，审计事件与传输流水完整。
+验收标准：EVAL_REQUEST → T-B 出站投递 → EVAL_RESULT 全流程联调（本地模拟 C 区端点），
+幂等去重与失败重试在链路层可验证，审计事件与传输流水完整（dst=C 流水对应真实传输）。
 
 - 本地模拟 C 区端点：http.server（multipart / feature / presigned 三种契约 + 幂等计数）
-- transfer_agent：真实 FastAPI 路由栈 + uvicorn（port=0），注入内存仓储 + 临时目录存储
-- evaluation_service ACL：真实打包/签名/分片上传/解包/适配器调用全链路
+- transfer_agent：真实 FastAPI 路由栈 + uvicorn（port=0），注入内存仓储 + 临时目录存储，
+  含出站投递腿 /outbound/{transfer_id}/dispatch（C 客户端指向模拟 C 端点）
+- evaluation_service ACL：真实打包/签名/分片上传/出站投递/解包全链路（B→C 经 T-B，无直连）
 
 不依赖 DB / OSS / Redis。
 """
@@ -41,7 +42,7 @@ from evaluation_service.infrastructure.acl.third_party_eval_acl import (
     ThirdPartyEvalACL,
     ThirdPartyEvalSettings,
 )
-from evaluation_service.infrastructure.acl.third_party_adapters import (
+from evaluation_service.infrastructure.acl.third_party_outbound_adapter import (
     ThirdPartyEvalAdapterFactory,
 )
 from evaluation_service.infrastructure.acl.transfer_eval_client import TransferEvalClient
@@ -49,8 +50,12 @@ from transfer_agent.application.handlers.transfer_handlers import (
     TransferCommandHandler,
     TransferQueryHandler,
 )
+from transfer_agent.application.services.outbound_delivery_service import (
+    OutboundDeliveryService,
+)
 from transfer_agent.domain.services.signature_service import SignatureService
-from transfer_agent.domain.services.zone_category import TransferCategory
+from transfer_agent.domain.services.zone_route_policy import ZoneRoutePolicy
+from transfer_agent.infrastructure.acl.c_api_client import ThirdPartyCAPIClient
 from tests.unit.test_transfer_handlers import FakeChunkRepo, FakeRecordRepo
 
 TOKENS = {'A_B': 'secret-ab', 'B_C': 'secret-bc'}
@@ -174,7 +179,7 @@ def fake_c():
     server.server_close()
 
 
-# ================= transfer_agent HTTP（内存仓储 + 临时目录存储） =================
+# ================= transfer_agent HTTP（内存仓储 + 临时目录存储 + 出站投递腿） =================
 class TempDirStorage:
     """TransferStorageABC 的本地临时目录实现（分片→transit 合并→提升终桶）。"""
 
@@ -219,13 +224,18 @@ class TempDirStorage:
         os.replace(staged_path, final_path)
         return final_path
 
+    def read_file(self, path):
+        with open(path, 'rb') as f:
+            return f.read()
+
     def delete_transit_file(self, path):
         if os.path.isfile(path):
             os.remove(path)
 
 
 @pytest.fixture(scope='module')
-def transfer_http(tmp_path_factory):
+def transfer_http(fake_c, tmp_path_factory):
+    c_url, _c_state = fake_c
     record_repo = FakeRecordRepo()
     chunk_repo = FakeChunkRepo()
     storage = TempDirStorage(str(tmp_path_factory.mktemp('transfer_storage')))
@@ -238,10 +248,19 @@ def transfer_http(tmp_path_factory):
         record_repo=record_repo, chunk_repo=chunk_repo,
         signature_service=SignatureService(TOKENS),
     )
+    # 出站投递腿（B→C 数据面）：真实编排服务，C 客户端指向模拟 C 端点
+    outbound_service = OutboundDeliveryService(
+        record_repo=record_repo, storage=storage, route_policy=ZoneRoutePolicy(),
+        c_client=ThirdPartyCAPIClient(base_url=c_url, timeout_seconds=5,
+                                      max_retries=3, backoff_seconds=0.05),
+        signature_service=SignatureService(TOKENS), outbound_zone='B',
+    )
     original_command = transfer_routes._command_handler
     original_query = transfer_routes._query_handler
+    original_outbound = transfer_routes._outbound_service
     transfer_routes._command_handler = command_handler
     transfer_routes._query_handler = query_handler
+    transfer_routes._outbound_service = outbound_service
     try:
         import uvicorn
         from fastapi import FastAPI
@@ -264,10 +283,11 @@ def transfer_http(tmp_path_factory):
     finally:
         transfer_routes._command_handler = original_command
         transfer_routes._query_handler = original_query
+        transfer_routes._outbound_service = original_outbound
 
 
 # ================= 被测 ACL 装配 =================
-def write_settings_config(base_dir, ta_url, c_url, self_zone='B', hub_zone='B'):
+def write_settings_config(base_dir, ta_url, self_zone='B', hub_zone='B'):
     os.makedirs(base_dir, exist_ok=True)
     config_path = os.path.join(base_dir, 'eval_capability_config.json')
     with open(config_path, 'w', encoding='utf-8') as f:
@@ -279,9 +299,9 @@ def write_settings_config(base_dir, ta_url, c_url, self_zone='B', hub_zone='B'):
             'third_party': {
                 'self_zone': self_zone, 'hub_zone': hub_zone,
                 'transfer_agent_base_url': ta_url, 'hub_transfer_agent_base_url': ta_url,
-                'c_api_base_url': c_url, 'adapter': 'multipart',
-                'timeout_seconds': 10, 'max_retries': 3, 'backoff_seconds': 0.05,
-                'staging_enabled': True, 'staging_ttl_seconds': 600,
+                'adapter': 'multipart',
+                'timeout_seconds': 10, 'dispatch_timeout_seconds': 30,
+                'staging_ttl_seconds': 600,
                 'sync_back_enabled': True, 'sync_back_zone': 'A',
                 'response_required_keys': [],
             },
@@ -312,12 +332,12 @@ def group_kwargs():
 
 
 class TestHubFullChain:
-    """中枢（B）全流程：打包→分片传输登记→C 执行→结果校验→审计。"""
+    """中枢（B）全流程：打包→分片传输登记→T-B 出站投递 C→结果校验→审计。"""
 
     def test_eval_request_to_eval_result_full_chain(self, tmp_path, fake_c, transfer_http):
         c_url, c_state = fake_c
         ta_url, record_repo = transfer_http
-        config = write_settings_config(tmp_path, ta_url, c_url)
+        config = write_settings_config(tmp_path, ta_url)
         events = []
         acl = build_acl(config, ta_url, events=events)
 
@@ -325,16 +345,18 @@ class TestHubFullChain:
 
         assert resp['code'] == 0
         assert resp['data']['result']['score'] == 0.92
-        # ② 传输流水：EVAL_REQUEST B→C COMPLETED（审计层）
+        # ② 传输流水：EVAL_REQUEST B→C DELIVERED（dst=C 流水对应真实传输）
         packages = list(record_repo.packages.values())
         assert len(packages) == 1
         pkg = packages[0]
         assert pkg.pkg_type == 'EVAL_REQUEST'
         assert (pkg.src_zone, pkg.dst_zone) == ('B', 'C')
-        assert pkg.status == 'COMPLETED'
+        assert pkg.status == 'DELIVERED'
         assert pkg.ephemeral is True  # transit 暂存，不落持久盘
         assert pkg.total_chunks >= 4  # 3KB 文件按 1KB 分片
-        # ③ C 端收到完整 multipart（字段 + 文件字节一致）
+        assert pkg.meta['delivery']['status'] == 'delivered'
+        assert pkg.meta['delivery']['dst_status'] == 200
+        # ③ C 端收到完整 multipart（T-B 出站腿按契约投递，字段 + 文件字节一致）
         tid = pkg.transfer_id
         assert c_state['hits'][tid] == 1
         assert c_state['seen_files'][tid]['record_file'] == hashlib.sha256(AUDIO_BYTES).hexdigest()
@@ -346,7 +368,7 @@ class TestHubFullChain:
     def test_idempotent_resend_dedups_transfer_record(self, tmp_path, fake_c, transfer_http):
         c_url, c_state = fake_c
         ta_url, record_repo = transfer_http
-        config = write_settings_config(tmp_path, ta_url, c_url)
+        config = write_settings_config(tmp_path, ta_url)
         acl = build_acl(config, ta_url)
 
         resp1 = acl.evaluate_dimension_group(**group_kwargs(), transfer_id='dedup-tid')
@@ -356,13 +378,13 @@ class TestHubFullChain:
         # 幂等：同 transfer_id 重复接收，传输流水仅一条（create 幂等去重）
         dedup_records = [p for p in record_repo.packages.values() if p.transfer_id == 'dedup-tid']
         assert len(dedup_records) == 1
-        # C 侧幂等计数：两次评估同 transfer_id（结果一致语义）
+        # 出站投递幂等重投（DELIVERED 重投）：C 按 transfer_id 去重，结果一致
         assert c_state['hits']['dedup-tid'] == 2
 
     def test_retry_on_transient_c_failure(self, tmp_path, fake_c, transfer_http):
         c_url, c_state = fake_c
         ta_url, record_repo = transfer_http
-        config = write_settings_config(tmp_path, ta_url, c_url)
+        config = write_settings_config(tmp_path, ta_url)
         events = []
         acl = build_acl(config, ta_url, events=events)
 
@@ -370,7 +392,7 @@ class TestHubFullChain:
         c_state['fail_first'].add('retry-tid-2')
         resp = acl.evaluate_dimension_group(**group_kwargs(), transfer_id='retry-tid-2')
 
-        # 失败重试：首次 500 → 指数退避重试 → 成功
+        # 失败重试（T-B 出站腿内）：首次 500 → 指数退避重试 → 成功
         assert resp['code'] == 0
         assert c_state['hits']['retry-tid-2'] == 2
         # 第二次评估的审计事件完整（前两组为首次评估事件）
@@ -379,17 +401,17 @@ class TestHubFullChain:
     def test_feature_extract_and_presigned_forms(self, tmp_path, fake_c, transfer_http):
         c_url, c_state = fake_c
         ta_url, _ = transfer_http
-        config = write_settings_config(tmp_path, ta_url, c_url)
+        config = write_settings_config(tmp_path, ta_url)
         acl = build_acl(config, ta_url)
         kwargs = group_kwargs()
 
-        # 特征提取形态：B 预处理→只传特征（C 收 JSON）
+        # 特征提取形态：T-B 出站腿预处理→只传特征（C 收 JSON）
         acl.evaluate_dimension_group(**{**kwargs, 'adapter_kind': 'feature_extract',
                                         'transfer_id': 'feat-tid'})
         feature_blob = c_state['last_fields'].get('features') or {}
         record_features = feature_blob.get('record_file') or {}
         assert 'sha256' in str(record_features)
-        # 预签名 URL 形态：申请预签名→PUT 上传→携带对象引用评估
+        # 预签名 URL 形态：T-B 申请预签名→PUT 上传→携带对象引用评估
         acl.evaluate_dimension_group(**{**kwargs, 'adapter_kind': 'presigned_url',
                                         'transfer_id': 'presign-tid'})
         assert c_state['presigned'], '预签名申请未到达 C 端'
@@ -399,13 +421,13 @@ class TestHubFullChain:
 
 
 class TestEdgeRelayFullEightSteps:
-    """边缘（A）发起 → 中枢（B）执行 → C → 结果回同步 A：8 步完整链路。"""
+    """边缘（A）发起 → 中枢（B）执行（出站投递 C）→ 结果回同步 A：8 步完整链路。"""
 
     def test_relay_chain(self, tmp_path, fake_c, transfer_http):
         c_url, c_state = fake_c
         ta_url, record_repo = transfer_http
-        config_hub = write_settings_config(tmp_path / 'hub', ta_url, c_url)
-        config_edge = write_settings_config(tmp_path / 'edge', ta_url, c_url, self_zone='A')
+        config_hub = write_settings_config(tmp_path / 'hub', ta_url)
+        config_edge = write_settings_config(tmp_path / 'edge', ta_url, self_zone='A')
         hub_events, edge_events = [], []
         hub_acl = build_acl(config_hub, ta_url, events=hub_events)
         edge_acl = build_acl(config_edge, ta_url, events=edge_events)
@@ -419,7 +441,7 @@ class TestEdgeRelayFullEightSteps:
             transfer_id='relay-001')
         assert dispatched['hub_zone'] == 'B'
 
-        # ③~⑦ B 解包→C 执行→校验→审计
+        # ③~⑦ B 解包→T-B 出站投递 C→校验→审计
         hub_resp = hub_acl.execute_incoming('relay-001')
         assert hub_resp['code'] == 0
         assert hub_resp['data']['result']['score'] == 0.92
@@ -430,10 +452,10 @@ class TestEdgeRelayFullEightSteps:
         assert fetched['transfer_id'] == 'relay-001'
         assert fetched['result'] == hub_resp
 
-        # 传输流水审计完整：EVAL_REQUEST A→B + EVAL_RESULT B→A
+        # 传输流水审计完整：EVAL_REQUEST A→B（出站投递后 DELIVERED）+ EVAL_RESULT B→A
         types = sorted((p.pkg_type, p.src_zone, p.dst_zone, p.status)
                        for p in record_repo.packages.values())
-        assert ('EVAL_REQUEST', 'A', 'B', 'COMPLETED') in types
+        assert ('EVAL_REQUEST', 'A', 'B', 'DELIVERED') in types
         assert ('EVAL_RESULT', 'B', 'A', 'COMPLETED') in types
         # 中枢审计事件：Dispatched→Completed（synced_back）
         completed = [e for e in hub_events if isinstance(e, ThirdPartyEvalCompleted)]

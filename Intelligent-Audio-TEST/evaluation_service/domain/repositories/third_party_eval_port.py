@@ -51,8 +51,13 @@ class ThirdPartyEvalResult:
 
 
 class ThirdPartyEvalPort(ABC):
-    """B→C 第三方评估端口（策略形态由配置选择，运行时可切换）。"""
+    """B→C 第三方评估端口（策略形态由配置选择，运行时可切换）。
+
+    实现契约：C 契约/结果语义错误进 result（不抛）；transfer_agent 不可达等
+    传输层异常原样上抛，由编排层按 stage=transfer 审计（F2.1/INT-49 起
+    B→C 数据面统一经 T-B 出站投递腿）。
+    """
 
     @abstractmethod
     def evaluate(self, request: ThirdPartyEvalRequest) -> ThirdPartyEvalResult:
-        """执行一次第三方评估调用，返回 EVAL_RESULT 值对象（不抛网络异常，错误进 result）。"""
+        """执行一次第三方评估调用，返回 EVAL_RESULT 值对象。"""

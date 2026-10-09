@@ -69,15 +69,22 @@ def load_transfer_tokens(secrets_file: Optional[str] = None) -> Dict[str, str]:
 
 
 class TransferEvalClient:
-    """transfer_agent /internal/transfer/* 发送侧客户端（EVAL 传输链路专用）。"""
+    """transfer_agent /internal/transfer/* 发送侧客户端（EVAL 传输链路专用）。
+
+    契约：收包（/packages、/chunks、/complete、/audit）+ 出站投递
+    （/outbound/{transfer_id}/dispatch，B→C 数据面，F2.1/INT-49 起）。
+    """
 
     def __init__(self, base_url: str, tokens: Dict[str, str],
                  timeout_seconds: int = 120, chunk_size: int = 4 * 1024 * 1024,
+                 dispatch_timeout_seconds: Optional[int] = None,
                  session: Optional[requests.Session] = None):
         self._base_url = base_url.rstrip('/')
         self._tokens = dict(tokens or {})
         self._timeout = timeout_seconds
         self._chunk_size = chunk_size
+        # 出站投递同步等待 C 端执行（T-B 侧含重试退避），超时须大于其最坏投递时长
+        self._dispatch_timeout = dispatch_timeout_seconds or max(timeout_seconds, 600)
         self._session = session or requests.Session()
 
     @property
@@ -116,6 +123,22 @@ class TransferEvalClient:
         return self._request('POST', f'/internal/transfer/packages/{transfer_id}/complete',
                              token=token)
 
+    def dispatch_outbound(self, *, transfer_id: str, adapter_kind: str,
+                          src_zone: str, dst_zone: str) -> Dict:
+        """T-B 出站投递契约（B→C 数据面）：投递暂存包并同步取回投递视图。
+
+        token 取暂存包自身路由（中枢内联 B→C 与中转 A→B 包路由不同）；
+        返回 data={'delivered', 'dst_status', 'dst_body', 'dst_text', 'attempts', ...}。
+        """
+        token = self.get_token(src_zone, dst_zone)
+        if not token:
+            raise ThirdPartyEvalError(
+                f'路由 {src_zone}->{dst_zone} 未配置预共享 token，出站投递拒绝发出（fail-closed）')
+        return self._request(
+            'POST', f'/internal/transfer/outbound/{transfer_id}/dispatch',
+            json_body={'adapter_kind': adapter_kind}, token=token,
+            timeout_seconds=self._dispatch_timeout)
+
     def send_file(self, *, transfer_id: str, pkg_type: str, src_zone: str, dst_zone: str,
                   category: str, key: str, local_path: str, ephemeral: bool = True,
                   ttl_seconds: int = 3600, meta: Optional[Dict] = None) -> Dict:
@@ -153,14 +176,16 @@ class TransferEvalClient:
     # ---- 内部 ----
     def _request(self, method: str, path: str, token: str = '',
                  json_body: Optional[Dict] = None, data: Optional[bytes] = None,
-                 headers: Optional[Dict] = None) -> Dict:
+                 headers: Optional[Dict] = None,
+                 timeout_seconds: Optional[int] = None) -> Dict:
         url = f'{self._base_url}{path}'
         all_headers = {'X-Transfer-Token': token or ''}
         if headers:
             all_headers.update(headers)
         try:
             resp = self._session.request(method, url, json=json_body, data=data,
-                                         headers=all_headers, timeout=self._timeout)
+                                         headers=all_headers,
+                                         timeout=timeout_seconds or self._timeout)
         except requests.RequestException as e:
             raise ThirdPartyEvalError(f'transfer_agent 不可达: {url} ({e})') from e
         try:

@@ -36,7 +36,7 @@ class TransferRecordRepositoryABC(ABC):
         """列出已过 TTL 且需要回收的包：
 
         - 未完成包（CREATED/TRANSFERRING）超时
-        - COMPLETED 且 ephemeral=true 的包（中转临时数据到期回收）
+        - COMPLETED/DELIVERED 且 ephemeral=true 的包（中转临时数据到期回收）
         - FAILED 包的残留分片同样纳入清理
         """
 
@@ -90,6 +90,10 @@ class TransferStorageABC(ABC):
 
         仅在内容校验通过后调用，保证终桶不被未验证内容覆盖。
         """
+
+    @abstractmethod
+    def read_file(self, path: str) -> bytes:
+        """按存储路径（带 scheme）读取文件内容（出站投递腿读取 transit 暂存包）。"""
 
     @abstractmethod
     def delete_transit_file(self, path: str) -> None:

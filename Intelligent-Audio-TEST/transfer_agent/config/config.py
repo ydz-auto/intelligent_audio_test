@@ -57,6 +57,17 @@ class Config(BaseConfig):
     #（格式：{"routes": [{"src": "A", "dst": "B", "pkg_types": [...]}, ...]}）
     TRANSFER_ROUTE_POLICY_FILE: str = os.environ.get('TRANSFER_ROUTE_POLICY_FILE', '')
 
+    # --- B→C 出站投递（第三方 C API，设计文档 §4.2.2 步骤⑤ / §4.3 三契约）---
+    # T-B 出站投递腿按契约投递 transit 暂存包；仅路由白名单允许 →C 的区生效
+    THIRD_PARTY_C_API_BASE_URL: str = os.environ.get(
+        'TRANSFER_THIRD_PARTY_C_API_BASE_URL', 'http://127.0.0.1:5101')
+    THIRD_PARTY_C_TIMEOUT_SECONDS: int = int(
+        os.environ.get('TRANSFER_THIRD_PARTY_C_TIMEOUT_SECONDS', 120))
+    THIRD_PARTY_C_MAX_RETRIES: int = int(
+        os.environ.get('TRANSFER_THIRD_PARTY_C_MAX_RETRIES', 3))
+    THIRD_PARTY_C_BACKOFF_SECONDS: float = float(
+        os.environ.get('TRANSFER_THIRD_PARTY_C_BACKOFF_SECONDS', 1.0))
+
     @classmethod
     def transfer_tokens(cls) -> dict:
         """汇总预共享 token：环境变量优先，secrets_config.json 兜底。"""

@@ -204,12 +204,16 @@ class TransferStatus(str, Enum):
     CREATED      会话已创建（收到 CreateTransfer）
     TRANSFERRING 分片传输中（已收到至少一个分片）
     COMPLETED    传输完成（分片合并 + file_hash 校验通过）
+    DELIVERED    出站交付完成（transit 暂存包已按第三方契约投递 C 并收到同步响应；
+                 允许幂等重投，C 按 transfer_id 去重；ephemeral 暂存仍按 TTL 回收，
+                 交付事实保留于流水 meta.delivery 与 TransferDelivered 事件）
     FAILED       传输失败（合并校验失败等终态，需新建 transfer_id 重传）
     EXPIRED      超过 TTL 被清理（分片/临时文件回收，流水保留供审计）
     """
     CREATED = 'CREATED'
     TRANSFERRING = 'TRANSFERRING'
     COMPLETED = 'COMPLETED'
+    DELIVERED = 'DELIVERED'
     FAILED = 'FAILED'
     EXPIRED = 'EXPIRED'
 

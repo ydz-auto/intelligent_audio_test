@@ -3,8 +3,10 @@
 
 8 步流程：
   ① 请求打包（algorithm_result 载荷 + 所需文件 → EVAL_REQUEST zip 包）
-  ② 传输（经 transfer_agent 分片上传登记：幂等 transfer_id + 审计流水 + transit 暂存）
-  ③ C 执行（ThirdPartyEvalPort 适配器：multipart / feature_extract / presigned_url）
+  ② 传输（经 transfer_agent 分片上传登记：幂等 transfer_id + 审计流水 + transit 暂存；
+     dst='C' 登记即真实 B→C 数据面）
+  ③ C 执行（经 T-B 出站投递腿：POST /outbound/{transfer_id}/dispatch，按第三方契约
+     multipart / feature_extract / presigned PUT 投递 transit 暂存包，§4.2.2 步骤⑤）
   ④ 结果回传（C 同步响应 = EVAL_RESULT）
   ⑤ 校验（响应结构 + 必填字段）
   ⑥ 落库（调用方持 resp_data 走 result_processor，本 ACL 不落库 — CQRS）
@@ -36,7 +38,7 @@ from evaluation_service.domain.repositories.third_party_eval_port import (
     ThirdPartyEvalFile,
     ThirdPartyEvalRequest,
 )
-from evaluation_service.infrastructure.acl.third_party_adapters import (
+from evaluation_service.infrastructure.acl.third_party_outbound_adapter import (
     ThirdPartyEvalAdapterFactory,
 )
 from evaluation_service.infrastructure.acl.transfer_eval_client import (
@@ -80,12 +82,10 @@ class ThirdPartyEvalSettings:
         self.transfer_agent_base_url = str(_get('transfer_agent_base_url', 'http://127.0.0.1:5010'))
         self.hub_transfer_agent_base_url = str(_get('hub_transfer_agent_base_url',
                                                     self.transfer_agent_base_url))
-        self.c_api_base_url = str(_get('c_api_base_url', 'http://127.0.0.1:5101'))
         self.adapter = str(_get('adapter', 'multipart'))
         self.timeout_seconds = int(_get('timeout_seconds', 120))
-        self.max_retries = int(_get('max_retries', 3))
-        self.backoff_seconds = float(_get('backoff_seconds', 1.0))
-        self.staging_enabled = str(_get('staging_enabled', 'true')).lower() not in ('0', 'false', 'no')
+        # 出站投递同步等待 C 端执行（T-B 侧含重试退避），须大于 T-B 最坏投递时长
+        self.dispatch_timeout_seconds = int(_get('dispatch_timeout_seconds', 600))
         self.staging_ttl_seconds = int(_get('staging_ttl_seconds', 3600))
         self.sync_back_enabled = str(_get('sync_back_enabled', 'true')).lower() not in ('0', 'false', 'no')
         self.sync_back_zone = str(_get('sync_back_zone', 'A')).upper()
@@ -100,14 +100,6 @@ class ThirdPartyEvalSettings:
     @property
     def is_hub(self) -> bool:
         return self.self_zone == self.hub_zone
-
-    def adapter_settings(self) -> dict:
-        return {
-            'base_url': self.c_api_base_url,
-            'timeout_seconds': self.timeout_seconds,
-            'max_retries': self.max_retries,
-            'backoff_seconds': self.backoff_seconds,
-        }
 
 
 def _deterministic_zinfo(name: str) -> zipfile.ZipInfo:
@@ -187,6 +179,7 @@ class ThirdPartyEvalACL:
             base_url=base_url,
             tokens=self.tokens,
             timeout_seconds=self.settings.timeout_seconds,
+            dispatch_timeout_seconds=self.settings.dispatch_timeout_seconds,
         )
 
     def _emit(self, event) -> None:
@@ -225,12 +218,11 @@ class ThirdPartyEvalACL:
                     f'当前区 {self.settings.self_zone} 请经 dispatch_eval_request 中转')
 
             # ①② 打包 + 传输登记（幂等 transfer_id，审计流水）
+            # dst='C' 登记即真实 B→C 数据面：T-B 出站投递腿将读取本暂存包，
+            # 按第三方契约经 GW-2 投递 C（设计文档 §4.2.2 步骤⑤，F2.1/INT-49 起）
             bundle_path = self._pack_bundle(request)
             try:
-                # staging_enabled=false：跳过暂存登记仅直调 C
-                # （dst='C' 登记本身为暂存/审计锚点，非数据面传输；数据面暂直连 C，F2.1 切换经 T-B）
-                if self.settings.staging_enabled:
-                    self._stage_eval_request(bundle_path, request)
+                self._stage_eval_request(bundle_path, request)
             finally:
                 try:
                     os.remove(bundle_path)
@@ -305,6 +297,11 @@ class ThirdPartyEvalACL:
         request = None
         try:
             request = self._unpack_bundle(self._bundle_reader(final_path))
+            # 出站投递 token 按暂存包自身路由（A→B 中转包路由与 manifest 内 dst='C' 不同）
+            request.eval_params['package_route'] = {
+                'src': str(info.get('src_zone') or request.src_zone),
+                'dst': str(info.get('dst_zone') or request.dst_zone),
+            }
             result = self._run_adapter_call(request, request.eval_params.get('adapter'))
             synced_back = False
             try:
@@ -420,10 +417,10 @@ class ThirdPartyEvalACL:
                             to_hub: bool = False) -> Dict:
         """② 传输：EVAL_REQUEST 包分片上传到本区/中枢 transfer_agent（幂等 + 审计 + transit 暂存）。
 
-        to_hub=True 为 A→B 中转腿，真实数据面（中枢 execute_incoming 取包执行）；
-        to_hub=False 登记 dst='C'，过渡形态下仅为暂存/审计锚点、非数据面传输——
-        评估数据面暂由 third_party_adapters 直连 C，切换经 transfer_agent 出站腿
-        见 F2.1（INT-49），ephemeral 包由 TTL 回收。
+        to_hub=True 为 A→B 中转腿（真实数据面，中枢 execute_incoming 取包执行）；
+        to_hub=False 登记 dst='C' —— 即真实 B→C 数据面：T-B 出站投递腿读取本暂存包
+        按第三方契约投递 C（设计文档 §4.2.2 步骤⑤，F2.1/INT-49 起），
+        交付结果落 transfer_records（DELIVERED）与 meta.delivery。
         """
         if to_hub:
             dst_zone = self.settings.hub_zone
@@ -438,9 +435,6 @@ class ThirdPartyEvalACL:
         key = f'eval_request/{task_id or "unknown"}/{test_case_id or "unknown"}/{request.transfer_id}.zip'
         meta = {'adapter': request.eval_params.get('adapter'),
                 'dimensions': request.eval_params.get('dimensions')}
-        if not to_hub:
-            # 流水语义标注：dst='C' 登记为暂存/审计锚点，非数据面传输（过渡形态，F2.1 切换经 T-B）
-            meta['staging_purpose'] = 'audit_anchor'
         return client.send_file(
             transfer_id=request.transfer_id,
             pkg_type=PKG_EVAL_REQUEST,
@@ -455,12 +449,12 @@ class ThirdPartyEvalACL:
         )
 
     def _run_adapter_call(self, request: ThirdPartyEvalRequest, adapter_kind: str):
-        """③④⑤ C 执行 → EVAL_RESULT 回传 → 校验（统一错误语义）。"""
-        from evaluation_service.infrastructure.acl.third_party_adapters import (
+        """③④⑤ T-B 出站投递 C（§4.2.2 步骤⑤）→ EVAL_RESULT 回传 → 校验（统一错误语义）。"""
+        from evaluation_service.infrastructure.acl.third_party_outbound_adapter import (
             ThirdPartyEvalAdapterError,
         )
         adapter = self.adapter_factory.create(
-            adapter_kind or self.settings.adapter, self.settings.adapter_settings())
+            adapter_kind or self.settings.adapter, self.client)
         result = adapter.evaluate(request)
         if not result.ok:
             raise ThirdPartyEvalAdapterError(result.error or '第三方评估返回失败')
@@ -509,7 +503,7 @@ class ThirdPartyEvalACL:
 
 def _error_stage(e: Exception) -> str:
     """按异常类型标注失败环节（⑦审计事件的 stage 字段）。"""
-    from evaluation_service.infrastructure.acl.third_party_adapters import (
+    from evaluation_service.infrastructure.acl.third_party_outbound_adapter import (
         ThirdPartyEvalAdapterError,
     )
     if isinstance(e, ThirdPartyEvalAdapterError):

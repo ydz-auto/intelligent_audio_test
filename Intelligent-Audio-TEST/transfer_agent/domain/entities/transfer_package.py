@@ -151,6 +151,11 @@ class TransferPackage:
         self.status = TransferStatus.COMPLETED.value
         self.final_path = final_path
 
+    def mark_delivered(self) -> None:
+        """出站交付完成（B→C 第三方 API 同步响应已收到）；重复交付幂等。"""
+        self._require(TransferStatus.COMPLETED, TransferStatus.DELIVERED)
+        self.status = TransferStatus.DELIVERED.value
+
     def mark_failed(self) -> None:
         self._require(TransferStatus.CREATED, TransferStatus.TRANSFERRING)
         self.status = TransferStatus.FAILED.value

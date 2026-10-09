@@ -109,12 +109,14 @@ class TransferRecordRepository(TransferRecordRepositoryABC):
             )
         po.status = package.status
         po.final_path = package.final_path
+        po.meta = json.dumps(package.meta, ensure_ascii=False) if package.meta else None
         session.commit()
 
     def list_expired(self, now: datetime, limit: int = 100) -> List[TransferPackage]:
-        """过期回收清单：未完成包超时 / FAILED 包残留 / COMPLETED 且 ephemeral 到期。
+        """过期回收清单：未完成包超时 / FAILED 包残留 / COMPLETED·DELIVERED 且 ephemeral 到期。
 
-        COMPLETED 且非 ephemeral 的包永不回收（目的区持久数据）。
+        COMPLETED/DELIVERED 且非 ephemeral 的包永不回收（目的区持久数据）；
+        DELIVERED 包的 transit 暂存同样按 TTL 回收（交付事实保留于 meta）。
         """
         session = get_db_session()
         now_naive = now.astimezone(_E8).replace(tzinfo=None)
@@ -122,7 +124,9 @@ class TransferRecordRepository(TransferRecordRepositoryABC):
         rows = session.query(TransferRecord).filter(
             TransferRecord.status.in_(unfinished)
             | (
-                (TransferRecord.status == TransferStatus.COMPLETED.value)
+                (TransferRecord.status.in_([
+                    TransferStatus.COMPLETED.value, TransferStatus.DELIVERED.value,
+                ]))
                 & (TransferRecord.ephemeral == True)  # noqa: E712
             ),
         ).all()

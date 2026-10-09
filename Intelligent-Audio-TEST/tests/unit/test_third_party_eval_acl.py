@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""第三方评估 ACL 编排单元测试（INT-29）。
+"""第三方评估 ACL 编排单元测试（INT-29/INT-49）。
 
-8 步流程编排语义（替身传输客户端/适配器工厂，不依赖网络）：
-- 中枢全流程：打包→传输登记→C 执行→校验→审计事件（Dispatched→Completed）
+8 步流程编排语义（替身传输客户端/出站适配器工厂，不依赖网络）：
+- 中枢全流程：打包→传输登记→T-B 出站投递→校验→审计事件（Dispatched→Completed）
 - 幂等 transfer_id 链路传递（重试/重发同键）
-- 失败审计：适配器失败 / 传输失败 → Failed 事件（stage 标注）+ __error__ 语义
-- 边缘中转 8 步：dispatch → execute_incoming（解包→执行→结果回同步）→ fetch
+- 失败审计：投递失败 / 传输失败 → Failed 事件（stage 标注）+ __error__ 语义
+- 边缘中转 8 步：dispatch → execute_incoming（解包→出站投递→结果回同步）→ fetch
 """
 import io
 import json
@@ -31,16 +31,21 @@ from evaluation_service.infrastructure.acl.third_party_eval_acl import (
     ThirdPartyEvalACL,
     ThirdPartyEvalSettings,
 )
+from evaluation_service.infrastructure.acl.third_party_outbound_adapter import (
+    ThirdPartyEvalAdapterFactory,
+)
 from evaluation_service.infrastructure.acl.transfer_eval_client import ThirdPartyEvalError
 
 OK_DATA = {'code': 0, 'msg': 'ok', 'data': {'result': {'score': 0.92}}}
+DELIVERED_VIEW = {'delivered': True, 'dst_status': 200, 'dst_body': OK_DATA,
+                  'dst_text': '', 'attempts': 1}
 
 
 class FakeTransferClient:
-    """传输链路替身：记录 send_file / 提供 get_transfer 审计视图。
+    """传输链路替身：记录 send_file / 出站投递 / 提供审计视图。
 
     发送时对 bundle 做字节快照（真实链路中分片上传后源文件即可回收，
-    审计/后续读取走远端 final_path —— 与 ACL「先删临时 bundle」的行为对齐）。
+    出站投递腿读取远端 final_path 的 transit 暂存包）。
     """
 
     def __init__(self, tokens=None, final_dir=None):
@@ -48,6 +53,9 @@ class FakeTransferClient:
         self.tokens = tokens or {'A_B': 'x', 'B_C': 'x'}
         self.final_dir = final_dir
         self.fail_on_send = False
+        self.fail_on_dispatch = False
+        self.dispatch_calls = []
+        self.dispatch_view = dict(DELIVERED_VIEW)
 
     def get_token(self, src_zone, dst_zone):
         route = '_'.join(sorted([src_zone.upper(), dst_zone.upper()]))
@@ -68,6 +76,14 @@ class FakeTransferClient:
         self.sent.append(record)
         return {'transfer_id': kwargs['transfer_id'], 'status': 'COMPLETED', 'dedup': False}
 
+    def dispatch_outbound(self, *, transfer_id, adapter_kind, src_zone, dst_zone):
+        if self.fail_on_dispatch:
+            raise ThirdPartyEvalError('transfer_agent 不可达')
+        self.dispatch_calls.append({'transfer_id': transfer_id,
+                                    'adapter_kind': adapter_kind,
+                                    'src_zone': src_zone, 'dst_zone': dst_zone})
+        return dict(self.dispatch_view)
+
     def get_transfer(self, transfer_id, token=''):
         for record in self.sent:
             if record['transfer_id'] == transfer_id:
@@ -81,12 +97,22 @@ class FakeTransferClient:
 
 
 class StubAdapter:
-    def __init__(self, result):
+    """出站适配器替身：记录请求并触发 client.dispatch_outbound（与真实适配器同构），
+    返回注入结果（用于分别驱动投递失败/成功路径）。"""
+
+    def __init__(self, result, client):
         self.result = result
+        self.client = client
         self.requests = []
 
     def evaluate(self, request):
         self.requests.append(request)
+        route = request.eval_params.get('package_route') or {}
+        self.client.dispatch_outbound(
+            transfer_id=request.transfer_id,
+            adapter_kind=str(request.eval_params.get('adapter') or 'multipart'),
+            src_zone=str(route.get('src') or request.src_zone),
+            dst_zone=str(route.get('dst') or request.dst_zone))
         return self.result
 
 
@@ -95,9 +121,9 @@ class StubAdapterFactory:
         self.result = result or ThirdPartyEvalResult(ok=True, transfer_id='tid', data=OK_DATA)
         self.created = []
 
-    def create(self, kind, settings):
-        adapter = StubAdapter(self.result)
-        self.created.append((kind, settings, adapter))
+    def create(self, kind, client):
+        adapter = StubAdapter(self.result, client)
+        self.created.append((kind, client, adapter))
         return adapter
 
 
@@ -105,9 +131,9 @@ def make_settings(tmp_path, **overrides):
     defaults = dict(
         self_zone='B', hub_zone='B',
         transfer_agent_base_url='http://ta-b', hub_transfer_agent_base_url='http://ta-b',
-        c_api_base_url='http://c', adapter='multipart',
-        timeout_seconds=10, max_retries=3, backoff_seconds=0.01,
-        staging_enabled=True, staging_ttl_seconds=600,
+        adapter='multipart',
+        timeout_seconds=10, dispatch_timeout_seconds=30,
+        staging_ttl_seconds=600,
         sync_back_enabled=True, sync_back_zone='A',
         response_required_keys=[],
     )
@@ -147,15 +173,21 @@ class TestHubFullFlow:
         acl, client, factory, events = make_acl(tmp_path)
         resp = acl.evaluate_dimension_group(**group_kwargs())
         assert resp == OK_DATA
-        # ①② 传输登记：EVAL_REQUEST、src=B、dst=C、ephemeral=True（transit 暂存）
+        # ② 传输登记：EVAL_REQUEST、src=B、dst=C、ephemeral=True（真实 B→C 数据面暂存）
         assert len(client.sent) == 1
         sent = client.sent[0]
         assert sent['pkg_type'] == 'EVAL_REQUEST'
         assert sent['src_zone'] == 'B' and sent['dst_zone'] == 'C'
         assert sent['ephemeral'] is True
-        # ③ 适配器收到解包等价的请求（文件完整）
-        kind, settings, adapter = factory.created[0]
+        # ③ 出站投递经 T-B（同 transfer_id，契约形态 multipart）
+        assert len(client.dispatch_calls) == 1
+        dispatch = client.dispatch_calls[0]
+        assert dispatch == {'transfer_id': sent['transfer_id'],
+                            'adapter_kind': 'multipart', 'src_zone': 'B', 'dst_zone': 'C'}
+        # 适配器收到解包等价的请求（文件完整）
+        kind, bound_client, adapter = factory.created[0]
         assert kind == 'multipart'
+        assert bound_client is client
         req = adapter.requests[0]
         assert req.transfer_id == sent['transfer_id']
         assert req.files['record_file'].content == b'RIFFxxxxWAVEfmt '
@@ -168,8 +200,9 @@ class TestHubFullFlow:
         acl, client, factory, events = make_acl(tmp_path)
         acl.evaluate_dimension_group(**group_kwargs(), transfer_id='fixed-tid')
         acl.evaluate_dimension_group(**group_kwargs(), transfer_id='fixed-tid')
-        # 链路幂等键：两次调用同 transfer_id（传输层凭此去重）
+        # 链路幂等键：两次调用同 transfer_id（传输层凭此去重，出站投递幂等重投）
         assert [s['transfer_id'] for s in client.sent] == ['fixed-tid', 'fixed-tid']
+        assert [c['transfer_id'] for c in client.dispatch_calls] == ['fixed-tid', 'fixed-tid']
 
     def test_no_sync_back_for_hub_self_origin(self, tmp_path):
         acl, client, factory, events = make_acl(tmp_path)
@@ -177,11 +210,12 @@ class TestHubFullFlow:
         # 中枢自有评估不产生 EVAL_RESULT 回传包
         assert all(s['pkg_type'] == 'EVAL_REQUEST' for s in client.sent)
 
-    def test_hub_inline_staging_meta_marks_audit_anchor(self, tmp_path):
+    def test_hub_inline_staging_is_real_data_plane(self, tmp_path):
         acl, client, factory, events = make_acl(tmp_path)
         acl.evaluate_dimension_group(**group_kwargs())
-        # 流水语义（问题 2 过渡对齐）：中枢内联 dst='C' 登记为暂存/审计锚点，非数据面传输
-        assert client.sent[0]['meta'].get('staging_purpose') == 'audit_anchor'
+        # dst='C' 登记即真实 B→C 数据面（F2.1 起），不再携带过渡期审计锚点标注
+        assert 'staging_purpose' not in client.sent[0]['meta']
+        assert client.sent[0]['meta']['adapter'] == 'multipart'
 
     def test_adapter_failure_emits_failed_event(self, tmp_path):
         factory = StubAdapterFactory(ThirdPartyEvalResult(
@@ -201,6 +235,16 @@ class TestHubFullFlow:
         assert '__error__' in resp
         assert [type(e) for e in events] == [ThirdPartyEvalFailed]
         assert events[0].stage == 'transfer'
+
+    def test_dispatch_unreachable_emits_failed_event(self, tmp_path):
+        # 暂存成功但出站投递不可达：传输层异常按 stage=transfer 审计
+        client = FakeTransferClient()
+        client.fail_on_dispatch = True
+        acl, client, factory, events = make_acl(tmp_path, client=client)
+        resp = acl.evaluate_dimension_group(**group_kwargs())
+        assert '__error__' in resp
+        assert [type(e) for e in events] == [ThirdPartyEvalDispatched, ThirdPartyEvalFailed]
+        assert events[1].stage == 'transfer'
 
     def test_non_hub_rejected_with_clear_error(self, tmp_path):
         settings = make_settings(tmp_path, self_zone='A', hub_zone='B')
@@ -236,9 +280,13 @@ class TestEdgeRelayFlow:
         assert request_sent['pkg_type'] == 'EVAL_REQUEST'
         assert request_sent['src_zone'] == 'A' and request_sent['dst_zone'] == 'B'
 
-        # B: ③~⑧ 执行中转请求（解包→C→校验→EVAL_RESULT 回同步 A）
+        # B: ③~⑧ 执行中转请求（解包→T-B 出站投递→校验→EVAL_RESULT 回同步 A）
         hub_resp = hub_acl.execute_incoming('relay-001')
         assert hub_resp == OK_DATA
+        # 出站投递 token 按暂存包自身路由（A→B）
+        assert client.dispatch_calls[0] == {'transfer_id': 'relay-001',
+                                            'adapter_kind': 'multipart',
+                                            'src_zone': 'A', 'dst_zone': 'B'}
         result_sent = client.sent[1]
         assert result_sent['pkg_type'] == 'EVAL_RESULT'
         assert result_sent['src_zone'] == 'B' and result_sent['dst_zone'] == 'A'
@@ -320,15 +368,6 @@ class TestHubFailurePaths:
         failed = [e for e in events if isinstance(e, ThirdPartyEvalFailed)]
         assert [e.stage for e in failed] == ['unpack']
 
-    def test_staging_disabled_skips_transfer_registration(self, tmp_path):
-        settings = make_settings(tmp_path, staging_enabled=False)
-        acl, client, factory, events = make_acl(tmp_path, settings=settings)
-        resp = acl.evaluate_dimension_group(**group_kwargs())
-        assert resp == OK_DATA
-        # 暂存登记关闭：仅直调 C，不产生 transfer_agent 登记流水
-        assert client.sent == []
-        assert [type(e) for e in events] == [ThirdPartyEvalDispatched, ThirdPartyEvalCompleted]
-
 
 class TestSettings:
     def test_response_required_keys_list_from_config(self, tmp_path, monkeypatch):
@@ -345,3 +384,13 @@ class TestSettings:
         monkeypatch.setenv('THIRD_PARTY_EVAL_RESPONSE_REQUIRED_KEYS', 'code, data.result.score')
         settings = ThirdPartyEvalSettings(config_path=str(cfg))
         assert settings.response_required_keys == ['code', 'data.result.score']
+
+    def test_direct_call_settings_retired(self, tmp_path):
+        settings = make_settings(tmp_path)
+        # 直连路径退役（F2.1）：c_api_base_url / staging_enabled / 适配器重试配置不再存在
+        assert not hasattr(settings, 'c_api_base_url')
+        assert not hasattr(settings, 'staging_enabled')
+        assert not hasattr(settings, 'max_retries')
+        assert not hasattr(settings, 'backoff_seconds')
+        assert not hasattr(settings, 'adapter_settings')
+        assert settings.dispatch_timeout_seconds == 30

@@ -107,6 +107,9 @@ class TransferStorageAdapter(TransferStorageABC):
         self.delete_transit_file(staged_path)
         return final_path
 
+    def read_file(self, path: str) -> bytes:
+        return shared_storage.load_bytes(path)
+
     def delete_transit_file(self, path: str) -> None:
         """删除中转暂存文件。严格比对 scheme 后的 category 段，持久桶路径拒绝删除。"""
         if not path:

@@ -48,6 +48,22 @@ class TransferCompleted(TransferEvent):
 
 
 @dataclass
+class TransferDelivered(TransferEvent):
+    """出站交付完成（transit 暂存包按第三方契约投递 C，同步响应已收到）。"""
+    adapter_kind: str = ''
+    dst_status: int = 0
+    attempts: int = 0
+
+
+@dataclass
+class TransferDeliveryFailed(TransferEvent):
+    """出站交付失败（C 不可达/4xx/5xx 重试穷尽；包保持 COMPLETED 可重投）。"""
+    adapter_kind: str = ''
+    reason: str = ''
+    attempts: int = 0
+
+
+@dataclass
 class TransferFailed(TransferEvent):
     """传输失败（终态，通常为内容校验不过）。"""
     reason: str = ''

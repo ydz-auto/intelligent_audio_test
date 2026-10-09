@@ -46,3 +46,11 @@ class ExpirePackagesCommand:
     """TTL 过期清理命令（sweeper / 测试触发）。"""
     now: Optional[object] = None         # datetime，None 取当前时间
     limit: int = 100
+
+
+@dataclass
+class OutboundDispatchCommand:
+    """出站投递命令（EVAL_REQUEST transit 暂存包 → C 第三方 API，设计文档 §4.2.2 步骤⑤）。"""
+    transfer_id: str
+    adapter_kind: str
+    token: str = ''

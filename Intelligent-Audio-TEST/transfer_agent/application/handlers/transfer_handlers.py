@@ -320,7 +320,9 @@ class TransferCommandHandler:
     def complete_transfer(self, cmd: CompleteTransferCommand) -> dict:
         """合并分片 + file_hash 完整性校验（幂等：已完成会话重复 complete 直接返回）。"""
         package = self._load_package(cmd.transfer_id, cmd.token)
-        if package.status == TransferStatus.COMPLETED.value:
+        if package.status in (TransferStatus.COMPLETED.value,
+                              TransferStatus.DELIVERED.value):
+            # 幂等：已完成/已交付会话重复 complete 直接返回（出站重投场景依赖此分支）
             return {**package.to_dict(), 'dedup': True}
         self._require_not_expired(package)
         self._require_transferring(package)

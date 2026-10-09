@@ -35,7 +35,7 @@ class TransferRecord(Base):
     timestamp = Column(String(48), nullable=False, comment='发起方 ISO8601 时间（参与签名）')
     signature = Column(String(128), nullable=False, comment='HMAC-SHA256 签名')
     status = Column(String(20), nullable=False, index=True,
-                    comment='状态 CREATED/TRANSFERRING/COMPLETED/FAILED/EXPIRED')
+                    comment='状态 CREATED/TRANSFERRING/COMPLETED/DELIVERED/FAILED/EXPIRED')
     final_path = Column(Text, nullable=True, comment='合并完成后的存储路径（带 scheme）')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')

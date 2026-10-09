@@ -86,7 +86,7 @@ class FakeRecordRepo:
         expired = []
         for pkg in self.packages.values():
             if pkg.status in ('CREATED', 'TRANSFERRING', 'FAILED') or (
-                pkg.status == 'COMPLETED' and pkg.ephemeral
+                pkg.status in ('COMPLETED', 'DELIVERED') and pkg.ephemeral
             ):
                 if pkg.is_expired(now):
                     expired.append(pkg)
@@ -149,6 +149,11 @@ class FakeStorage:
         path = f'oss://{dest_category}/{dest_key}'
         self.final_files[path] = data
         return path
+
+    def read_file(self, path):
+        if path not in self.final_files:
+            raise FileNotFoundError(path)
+        return self.final_files[path]
 
     def delete_transit_file(self, path):
         self.final_files.pop(path, None)
