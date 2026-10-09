@@ -368,6 +368,19 @@ class TurnEvalCalculator(BaseCalculator):
             turn_idx_offset += len(turn_results)
 
         # ════════════════════════════════════════════
+        # 兜底校验：音频为空 / 三分类全 0 → 评估失败
+        # ════════════════════════════════════════════
+        if not (all_user_chunks or all_ai_word_chunks):
+            _msg = '评估失败: 音频为空（无可用ASR转写内容），无法进行轮次评估'
+            logger.error(f"[turn_eval] {_msg}")
+            return {'message': _msg}
+        if total_normal == 0 and total_no_takeover == 0 and total_false_takeover == 0:
+            _msg = ('评估失败: 正常接管0，未接管0，误解管0，无有效轮次可评估'
+                    '（请检查音频内容与ASR识别结果）')
+            logger.error(f"[turn_eval] {_msg}")
+            return {'message': _msg}
+
+        # ════════════════════════════════════════════
         # 汇总输出
         # ════════════════════════════════════════════
         results = {}

@@ -36,6 +36,45 @@ from .constants import (
 logger = logging.getLogger(__name__)
 
 
+class LLMError(Exception):
+    """LLM 调用失败异常，携带详细报错信息。
+
+    相比裸异常，额外携带 HTTP 状态码 / 响应体 / 请求地址 / 模型名 / 重试次数，
+    供调用方在 except 中读取（``str(e)`` 即为可直接展示的详细中文报错）。
+    """
+
+    def __init__(self,
+                 message: str,
+                 *,
+                 error_type: str = 'LLMError',
+                 status_code: Optional[int] = None,
+                 body_snippet: str = '',
+                 url: str = '',
+                 model: str = '',
+                 attempts: int = 1,
+                 cause: Optional[BaseException] = None):
+        super().__init__(message)
+        self.error_type = error_type
+        self.status_code = status_code
+        self.body_snippet = body_snippet
+        self.url = url
+        self.model = model
+        self.attempts = attempts
+        self.cause = cause
+
+    def to_dict(self) -> Dict[str, Any]:
+        """返回结构化报错信息 dict，便于写入结果 / 日志。"""
+        return {
+            'error_type': self.error_type,
+            'message': str(self),
+            'status_code': self.status_code,
+            'body_snippet': self.body_snippet,
+            'url': self.url,
+            'model': self.model,
+            'attempts': self.attempts,
+        }
+
+
 # ─────────── 文件编码 ───────────
 def is_audio(file_path: str) -> bool:
     return os.path.splitext(file_path)[1].lower() in AUDIO_EXTS
@@ -154,6 +193,10 @@ def call_llm(model: str,
 
     Returns:
         dict: {content, tokens_used, input_token, output_token}
+
+    Raises:
+        LLMError: 调用失败时抛出，携带详细报错信息（HTTP 状态码 / 响应体 /
+                  请求地址 / 模型名 / 重试次数），可通过 e.to_dict() 取结构化数据。
     """
     llm_config = get_llm_config()
     api_base = llm_config.get('api_base_url', '')
@@ -282,10 +325,12 @@ def call_llm(model: str,
         else:
             raise last_exc
     except Exception as e:
-        # 失败也记审计日志（含失败原因），再原样抛出，评估按原逻辑失败
+        # 失败也记审计日志（含失败原因），再以携带详细信息的 LLMError 抛出
+        details = _extract_error(e)
         log_llm_call(model, payload, None, log_context,
-                     status='failed', error=_extract_error(e), attempts=attempts_made)
-        raise
+                     status='failed', error=details, attempts=attempts_made)
+        raise _build_llm_error(e, url=url, model=model,
+                               attempts=attempts_made) from e
 
     # 成功：记审计日志（剥离 base64，含 token/原始请求响应）
     log_llm_call(model, payload, data, log_context,
@@ -312,6 +357,33 @@ def _extract_error(e: Exception) -> Dict[str, Any]:
         except Exception:
             err['body_snippet'] = '<无法读取>'
     return err
+
+
+def _build_llm_error(e: Exception, *, url: str, model: str,
+                     attempts: int) -> LLMError:
+    """从逃逸异常构建携带详细报错信息的 LLMError。
+
+    组装可读中文 message（含状态码 / 响应体 / 重试次数 / 请求地址），
+    并保留结构化字段供 to_dict() 输出。
+    """
+    details = _extract_error(e)
+    parts = [f"LLM 调用失败（模型={model or '<未指定>'}）: {details['message']}"]
+    if details.get('status_code') is not None:
+        parts.append(f"HTTP 状态码={details['status_code']}")
+    if details.get('body_snippet'):
+        parts.append(f"响应体={details['body_snippet']}")
+    parts.append(f"已重试 {max(attempts - 1, 0)} 次")
+    parts.append(f"请求地址={url or '<未配置>'}")
+    return LLMError(
+        '，'.join(parts),
+        error_type=details['type'],
+        status_code=details.get('status_code'),
+        body_snippet=details.get('body_snippet', ''),
+        url=url,
+        model=model,
+        attempts=attempts,
+        cause=e,
+    )
 
 
 # ─────────── JSON 解析 ───────────
