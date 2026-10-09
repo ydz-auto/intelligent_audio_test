@@ -39,6 +39,9 @@ from transfer_agent.application.handlers.transfer_handlers import (
 from transfer_agent.application.services.outbound_delivery_service import (
     OutboundDeliveryService,
 )
+from transfer_agent.application.services.relay_execution_service import (
+    RelayExecutionService,
+)
 from transfer_agent.config.config import Config
 from transfer_agent.domain.errors import ChunkSizeInvalidError, TransferError
 
@@ -63,6 +66,23 @@ def _error_response(exc: TransferError) -> JSONResponse:
 
 def _token(request: Request) -> str:
     return request.headers.get(_TOKEN_HEADER, '')
+
+
+async def _json_body(request: Request) -> dict:
+    """解析 JSON 请求体（空体/非法 JSON 按空 body 处理；与既有端点语义一致）。"""
+    import json
+
+    try:
+        body = await request.body()
+    except Exception:
+        return {}
+    if not body:
+        return {}
+    try:
+        parsed = json.loads(body)
+    except (TypeError, ValueError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 @router.post('/packages')
@@ -178,5 +198,46 @@ def get_transfer(transfer_id: str, request: Request):
             transfer_id=transfer_id, token=_token(request),
         ))
         return {'success': True, 'data': result}
+    except TransferError as e:
+        return _error_response(e)
+
+
+# ================= 中转执行触发器端点（F2.3/INT-53 中枢侧生产触发） =================
+_relay_service = RelayExecutionService()
+
+
+@router.post('/relay/claim')
+async def claim_relay(request: Request):
+    """原子认领一个待执行中转包（中枢触发器轮询入口；无候选 data.transfer_id=null）。
+
+    幂等去重前提（F2.3 验收 2）：仓储行锁 CAS，同一中转包不重复认领；
+    访问控制：token 须为任一指向本区的预共享路由 token（fail-closed）。
+    """
+    try:
+        body = await _json_body(request)
+    except TransferError as e:
+        return _error_response(e)
+    try:
+        package = _relay_service.claim_next(
+            token=_token(request), stale_seconds=int(body.get('stale_seconds') or 0))
+        return {'success': True,
+                'data': {'transfer_id': package.transfer_id if package else None}}
+    except TransferError as e:
+        return _error_response(e)
+
+
+@router.post('/relay/{transfer_id}/finish')
+async def finish_relay(transfer_id: str, request: Request):
+    """中转执行终态收敛（executed/failed；重复收敛/未认领幂等拒绝，流水不悬挂）。"""
+    try:
+        body = await _json_body(request)
+    except TransferError as e:
+        return _error_response(e)
+    try:
+        finished = _relay_service.finish(
+            transfer_id=transfer_id, token=_token(request),
+            state=str(body.get('state') or ''),
+            error=str(body.get('error') or '') or None)
+        return {'success': True, 'data': {'finished': bool(finished)}}
     except TransferError as e:
         return _error_response(e)

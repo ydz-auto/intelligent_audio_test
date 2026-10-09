@@ -40,6 +40,29 @@ class TransferRecordRepositoryABC(ABC):
         - FAILED 包的残留分片同样纳入清理
         """
 
+    @abstractmethod
+    def claim_relay_execution(self, *, dst_zone: str, stale_seconds: int,
+                              now: Optional[datetime] = None) -> Optional[TransferPackage]:
+        """原子认领一个待执行中转包（F2.3 中枢触发器，幂等去重前提）。
+
+        行锁内做资格判定与 meta.relay 认领写入，并发认领方仅一方成功：
+        - 资格：pkg_type=EVAL_REQUEST、dst_zone=本区、status=COMPLETED、未过期，
+          且 meta.relay 缺失，或 relay.state=executing 且 claimed_at 超过
+          stale_seconds（认领方死亡后的崩溃恢复，重复执行安全：C 按 transfer_id
+          幂等去重）；
+        - 认领成功回写 relay.state=executing + claimed_at + attempts 并返回聚合；
+        - 无候选包返回 None。
+        """
+
+    @abstractmethod
+    def finish_relay_execution(self, *, transfer_id: str, state: str,
+                               error: Optional[str] = None,
+                               now: Optional[datetime] = None) -> bool:
+        """中转执行终态收敛（仅认领方调用；executing→executed/failed）。
+
+        幂等守卫：仅 relay.state=executing 允许收敛，重复收敛/未认领返回 False。
+        """
+
 
 class TransferChunkRepositoryABC(ABC):
     """已收分片仓储抽象（断点续传依据）。"""

@@ -41,8 +41,9 @@ logging.getLogger().addHandler(get_db_handler())
 from shared.infrastructure.logging_adapter import inject as _inject_logging_port
 _inject_logging_port()
 
-# 全局引用，防止 GC（gRPC server 需要在 lifespan 之外保持引用）
+# 全局引用，防止 GC（gRPC server / 中转触发线程需在 lifespan 之外保持引用）
 _grpc_server = None
+_relay_trigger = None
 
 
 @asynccontextmanager
@@ -87,8 +88,29 @@ async def lifespan(app: FastAPI):
     _soft_delete_cleaner = get_soft_delete_cleaner()
     _soft_delete_cleaner.start()
 
+    # 中枢侧中转执行生产触发器（F2.3/INT-53）：A→B 传输到位的 EVAL_REQUEST 自动
+    # 发现并执行（start 内部按 is_hub + relay_trigger_enabled 自门控，边缘区不启动；
+    # 启动失败不阻塞服务启动）
+    global _relay_trigger
+    try:
+        from evaluation_service.infrastructure.acl.hub_relay_trigger import HubRelayTrigger
+        from evaluation_service.infrastructure.acl.third_party_eval_acl import (
+            third_party_eval_acl,
+        )
+        _relay_trigger = HubRelayTrigger(third_party_eval_acl)
+        _relay_trigger.start()
+    except Exception as e:
+        logger.warning("中枢侧中转执行触发器启动失败（不阻塞服务启动）: %s", e)
+
     logger.info("evaluation_service FastAPI app started")
     yield
+
+    # 停止中转执行触发线程
+    if _relay_trigger is not None:
+        try:
+            _relay_trigger.stop()
+        except Exception as e:
+            logger.warning("中转执行触发器停止异常: %s", e)
 
     # 停止软删除清理线程
     _soft_delete_cleaner.stop()

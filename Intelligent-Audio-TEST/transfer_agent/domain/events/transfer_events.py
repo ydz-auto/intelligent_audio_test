@@ -70,6 +70,26 @@ class TransferFailed(TransferEvent):
 
 
 @dataclass
+class TransferRelayClaimed(TransferEvent):
+    """中转执行认领（F2.3 中枢触发器原子认领待执行 EVAL_REQUEST 包）。"""
+    pkg_type: str = ''
+    src_zone: str = ''
+    dst_zone: str = ''
+    attempts: int = 1
+
+
+@dataclass
+class TransferRelayCompleted(TransferEvent):
+    """中转执行完成（execute_incoming 成功：出站投递 C + 结果回同步已交付）。"""
+
+
+@dataclass
+class TransferRelayFailed(TransferEvent):
+    """中转执行失败收敛（终态不重试；A 侧按既有超时路径收敛，任务不悬挂）。"""
+    reason: str = ''
+
+
+@dataclass
 class TransferExpired(TransferEvent):
     """传输过期回收（分片/临时文件清理）。"""
     status_before: str = ''

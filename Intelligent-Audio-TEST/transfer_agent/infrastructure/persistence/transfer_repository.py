@@ -11,10 +11,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-from shared.models.common_enums import TransferStatus
+from shared.models.common_enums import PkgType, TransferStatus
 from shared.models.database import get_db_session
 
 from transfer_agent.domain.entities.transfer_package import (
+    RelayExecutionState,
     TransferChunkRecord,
     TransferPackage,
 )
@@ -65,6 +66,17 @@ def _record_to_aggregate(po: TransferRecord) -> TransferPackage:
         if po.created_at else None,
         final_path=po.final_path,
     )
+
+
+def _parse_e8(value) -> Optional[datetime]:
+    """解析 meta 中的 ISO 时间串（naive 东八区），非法/缺失返回 None。"""
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return _as_e8(parsed).replace(tzinfo=None)
 
 
 class TransferRecordRepository(TransferRecordRepositoryABC):
@@ -140,6 +152,98 @@ class TransferRecordRepository(TransferRecordRepositoryABC):
             if len(expired) >= limit:
                 break
         return expired
+
+
+    def claim_relay_execution(self, *, dst_zone: str, stale_seconds: int,
+                              now: Optional[datetime] = None) -> Optional[TransferPackage]:
+        """原子认领一个待执行中转包（F2.3 中枢触发器，幂等去重前提）。
+
+        行锁（FOR UPDATE；SQLite 由写串行化兜底）内做资格判定与 meta.relay
+        认领写入，并发认领方仅一方成功：
+        - 资格：pkg_type=EVAL_REQUEST、dst_zone=本区、status=COMPLETED、未过期，
+          且 meta.relay 缺失，或 relay.state=executing 且 claimed_at 已超过
+          stale_seconds（认领方死亡后的崩溃恢复；重复执行安全：C 按 transfer_id
+          幂等去重，EVAL_RESULT 同 id 回写传输层幂等去重）；
+        - 认领成功回写 relay.state=executing + claimed_at + attempts 并返回聚合；
+        - 无候选包返回 None（已终态 executed/failed 的包不再认领）。
+        """
+        session = get_db_session()
+        now_e8 = _as_e8(now or datetime.now(_E8)).replace(tzinfo=None)
+        rows = session.query(TransferRecord).filter(
+            TransferRecord.pkg_type == PkgType.EVAL_REQUEST.value,
+            TransferRecord.dst_zone == dst_zone,
+            TransferRecord.status == TransferStatus.COMPLETED.value,
+        ).order_by(TransferRecord.created_at).with_for_update().all()
+        for po in rows:
+            if po.created_at is not None:
+                deadline = po.created_at + timedelta(seconds=po.ttl_seconds or 0)
+                if now_e8 > deadline:
+                    continue  # 已过期：交由既有过期清理收敛，不认领
+            try:
+                meta = json.loads(po.meta) if po.meta else {}
+            except (TypeError, ValueError):
+                meta = {}
+            if not isinstance(meta, dict):
+                meta = {}
+            relay = dict(meta.get('relay') or {})
+            state = str(relay.get('state') or '')
+            if state in (RelayExecutionState.EXECUTED.value,
+                         RelayExecutionState.FAILED.value):
+                continue
+            if state == RelayExecutionState.EXECUTING.value:
+                claimed_at = _parse_e8(relay.get('claimed_at'))
+                if claimed_at is not None and (now_e8 - claimed_at).total_seconds() < stale_seconds:
+                    continue  # 认领方执行中（未失效），跳过
+            relay.update({
+                'state': RelayExecutionState.EXECUTING.value,
+                'claimed_at': now_e8.isoformat(),
+                'attempts': int(relay.get('attempts') or 0) + 1,
+            })
+            meta['relay'] = relay
+            po.meta = json.dumps(meta, ensure_ascii=False)
+            session.commit()
+            return _record_to_aggregate(po)
+        session.rollback()  # 无候选：释放行锁
+        return None
+
+    def finish_relay_execution(self, *, transfer_id: str, state: str,
+                               error: Optional[str] = None,
+                               now: Optional[datetime] = None) -> bool:
+        """中转执行终态收敛（仅认领方调用；executing→executed/failed）。
+
+        幂等守卫：仅 relay.state=executing 允许收敛，重复收敛/未认领返回 False；
+        终态后触发器轮询不再认领（同一中转包不重复执行）。
+        """
+        if state not in (RelayExecutionState.EXECUTED.value,
+                         RelayExecutionState.FAILED.value):
+            raise InvalidPackageFieldError(f'relay 终态非法: {state}')
+        session = get_db_session()
+        po = session.query(TransferRecord).filter(
+            TransferRecord.transfer_id == transfer_id,
+        ).with_for_update().first()
+        if po is None:
+            session.rollback()
+            return False
+        try:
+            meta = json.loads(po.meta) if po.meta else {}
+        except (TypeError, ValueError):
+            meta = {}
+        if not isinstance(meta, dict):
+            meta = {}
+        relay = dict(meta.get('relay') or {})
+        if relay.get('state') != RelayExecutionState.EXECUTING.value:
+            session.rollback()
+            return False
+        now_e8 = _as_e8(now or datetime.now(_E8)).replace(tzinfo=None)
+        relay.update({
+            'state': state,
+            'finished_at': now_e8.isoformat(),
+            'error': error or '',
+        })
+        meta['relay'] = relay
+        po.meta = json.dumps(meta, ensure_ascii=False)
+        session.commit()
+        return True
 
 
 class TransferChunkRepository(TransferChunkRepositoryABC):

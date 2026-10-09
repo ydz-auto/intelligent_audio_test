@@ -48,6 +48,21 @@ class SignatureService:
                 f'路由 {src_zone}->{dst_zone} 预共享 token 缺失或不匹配'
             )
 
+    def verify_inbound_token(self, dst_zone: str, token: Optional[str]) -> None:
+        """入站路由 token 成员资格校验（F2.3 中转执行触发器认领端点专用）。
+
+        认领端点无具体传输包上下文（按包路由验签不可行），退化为“token 须为
+        任一指向本区的预共享路由 token”fail-closed 校验；未配置任何指向本区
+        的路由时一律拒绝。
+        """
+        zone = str(dst_zone or '').upper()
+        if not token:
+            raise AccessTokenInvalidError(f'缺少访问 token（入站路由 ->{zone}）')
+        for key, value in self._tokens.items():
+            if key.endswith('_' + zone) and hmac.compare_digest(str(token), value):
+                return
+        raise AccessTokenInvalidError(f'token 与任何指向 {zone} 的入站路由均不匹配')
+
     # ---- 签名层 ----
     CANONICAL_FIELDS = (
         'transfer_id', 'pkg_type', 'src_zone', 'dst_zone', 'category', 'key',

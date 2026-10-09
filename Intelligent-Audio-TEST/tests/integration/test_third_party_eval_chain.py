@@ -38,6 +38,7 @@ from evaluation_service.domain.events.evaluation_events import (
     ThirdPartyEvalCompleted,
     ThirdPartyEvalDispatched,
 )
+from evaluation_service.infrastructure.acl.hub_relay_trigger import HubRelayTrigger
 from evaluation_service.infrastructure.acl.third_party_eval_acl import (
     ThirdPartyEvalACL,
     ThirdPartyEvalSettings,
@@ -53,10 +54,19 @@ from transfer_agent.application.handlers.transfer_handlers import (
 from transfer_agent.application.services.outbound_delivery_service import (
     OutboundDeliveryService,
 )
+from transfer_agent.application.services.relay_execution_service import (
+    RelayExecutionService,
+)
+from transfer_agent.domain.events.transfer_events import (
+    TransferRelayClaimed,
+    TransferRelayCompleted,
+    TransferRelayFailed,
+)
 from transfer_agent.domain.services.signature_service import SignatureService
 from transfer_agent.domain.services.zone_route_policy import ZoneRoutePolicy
 from transfer_agent.infrastructure.acl.c_api_client import ThirdPartyCAPIClient
 from tests.unit.test_transfer_handlers import FakeChunkRepo, FakeRecordRepo
+from tests.unit.test_transfer_relay_execution import RelayCapableRecordRepo
 
 TOKENS = {'A_B': 'secret-ab', 'B_C': 'secret-bc'}
 CHUNK = 1024
@@ -288,26 +298,39 @@ def transfer_http(fake_c, tmp_path_factory):
 
 # ================= 被测 ACL 装配 =================
 def write_settings_config(base_dir, ta_url, self_zone='B', hub_zone='B',
-                          relay_poll_interval_seconds=2, relay_result_timeout_seconds=900):
+                          relay_poll_interval_seconds=2, relay_result_timeout_seconds=900,
+                          relay_trigger_enabled=None,
+                          relay_trigger_poll_interval_seconds=None,
+                          relay_trigger_claim_stale_seconds=None):
     os.makedirs(base_dir, exist_ok=True)
     config_path = os.path.join(base_dir, 'eval_capability_config.json')
+    third_party = {
+        'self_zone': self_zone, 'hub_zone': hub_zone,
+        'transfer_agent_base_url': ta_url, 'hub_transfer_agent_base_url': ta_url,
+        'adapter': 'multipart',
+        'timeout_seconds': 10, 'dispatch_timeout_seconds': 30,
+        'staging_ttl_seconds': 600,
+        'sync_back_enabled': True, 'sync_back_zone': 'A',
+        'response_required_keys': [],
+        'relay_poll_interval_seconds': relay_poll_interval_seconds,
+        'relay_result_timeout_seconds': relay_result_timeout_seconds,
+    }
+    # F2.3 中枢触发器配置（缺省不写，走 Settings 默认值）
+    if relay_trigger_enabled is not None:
+        third_party['relay_trigger_enabled'] = relay_trigger_enabled
+    if relay_trigger_poll_interval_seconds is not None:
+        third_party['relay_trigger_poll_interval_seconds'] = \
+            relay_trigger_poll_interval_seconds
+    if relay_trigger_claim_stale_seconds is not None:
+        third_party['relay_trigger_claim_stale_seconds'] = \
+            relay_trigger_claim_stale_seconds
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump({
             'dimension_capabilities': [
                 {'dimension': 'llm_judge', 'target': 'THIRD_PARTY_C',
                  'adapter': 'multipart', 'enabled': True},
             ],
-            'third_party': {
-                'self_zone': self_zone, 'hub_zone': hub_zone,
-                'transfer_agent_base_url': ta_url, 'hub_transfer_agent_base_url': ta_url,
-                'adapter': 'multipart',
-                'timeout_seconds': 10, 'dispatch_timeout_seconds': 30,
-                'staging_ttl_seconds': 600,
-                'sync_back_enabled': True, 'sync_back_zone': 'A',
-                'response_required_keys': [],
-                'relay_poll_interval_seconds': relay_poll_interval_seconds,
-                'relay_result_timeout_seconds': relay_result_timeout_seconds,
-            },
+            'third_party': third_party,
         }, f, ensure_ascii=False)
     return config_path
 
@@ -521,3 +544,206 @@ class TestEdgeAutoRelayFullChain:
         assert edge_events[0].transfer_id == edge_events[1].transfer_id == 'auto-relay-001'
         assert (edge_events[0].src_zone, edge_events[0].dst_zone) == ('A', 'B')
         assert edge_events[1].synced_back is True
+
+
+# ================= 中枢侧生产触发器（F2.3/INT-53）=================
+class _FailingExecACL:
+    """execute_incoming 注入失败的 ACL 包装（settings/client 委托真实实例）。"""
+
+    def __init__(self, inner):
+        self._inner = inner
+        self.settings = inner.settings
+        self.client = inner.client
+
+    def execute_incoming(self, transfer_id):
+        raise RuntimeError('boom-unpack')
+
+
+@pytest.fixture(scope='module')
+def relay_transfer_http(fake_c, tmp_path_factory):
+    """真实 HTTP 路由栈 + relay 认领/终态端点接线（内存 relay 仓储）。"""
+    c_url, _c_state = fake_c
+    record_repo = RelayCapableRecordRepo()
+    chunk_repo = FakeChunkRepo()
+    storage = TempDirStorage(str(tmp_path_factory.mktemp('relay_transfer_storage')))
+    command_handler = TransferCommandHandler(
+        record_repo=record_repo, chunk_repo=chunk_repo, storage=storage,
+        signature_service=SignatureService(TOKENS),
+        ttl_bounds=(60, 7 * 86400), default_chunk_size=CHUNK,
+    )
+    query_handler = TransferQueryHandler(
+        record_repo=record_repo, chunk_repo=chunk_repo,
+        signature_service=SignatureService(TOKENS),
+    )
+    outbound_service = OutboundDeliveryService(
+        record_repo=record_repo, storage=storage, route_policy=ZoneRoutePolicy(),
+        c_client=ThirdPartyCAPIClient(base_url=c_url, timeout_seconds=5,
+                                      max_retries=3, backoff_seconds=0.05),
+        signature_service=SignatureService(TOKENS), outbound_zone='B',
+    )
+    relay_events = []
+    relay_service = RelayExecutionService(
+        record_repo=record_repo, signature_service=SignatureService(TOKENS),
+        self_zone='B', event_sink=relay_events.append)
+    originals = (transfer_routes._command_handler, transfer_routes._query_handler,
+                 transfer_routes._outbound_service, transfer_routes._relay_service)
+    transfer_routes._command_handler = command_handler
+    transfer_routes._query_handler = query_handler
+    transfer_routes._outbound_service = outbound_service
+    transfer_routes._relay_service = relay_service
+    try:
+        import uvicorn
+        from fastapi import FastAPI
+        app = FastAPI()
+        app.include_router(transfer_routes.router)
+        config = uvicorn.Config(app, host='127.0.0.1', port=0, lifespan='off',
+                                log_level='error')
+        server = uvicorn.Server(config)
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        for _ in range(100):
+            if server.started:
+                break
+            time.sleep(0.05)
+        assert server.started, 'transfer_agent uvicorn 启动失败'
+        host, port = server.servers[0].sockets[0].getsockname()[:2]
+        yield f'http://{host}:{port}', record_repo, relay_events
+        server.should_exit = True
+        thread.join(timeout=5)
+    finally:
+        (transfer_routes._command_handler, transfer_routes._query_handler,
+         transfer_routes._outbound_service, transfer_routes._relay_service) = originals
+
+
+class TestHubRelayTriggerFullChain:
+    """中枢侧生产触发器全链路（F2.3/INT-53）：不再以后台线程模拟中枢——
+    真实 HubRelayTrigger 轮询真实 /relay/claim 认领 → execute_incoming →
+    /relay/{id}/finish 收敛，验收 A→B→C→B→A 生产形态自动完成、重复触发
+    幂等、触发失败收敛。"""
+
+    def test_full_chain_auto_executes_with_production_trigger(
+            self, tmp_path, fake_c, relay_transfer_http):
+        c_url, c_state = fake_c
+        ta_url, record_repo, relay_events = relay_transfer_http
+        config_hub = write_settings_config(
+            tmp_path / 'hub', ta_url,
+            relay_trigger_poll_interval_seconds=0.05,
+            relay_trigger_claim_stale_seconds=1800)
+        config_edge = write_settings_config(
+            tmp_path / 'edge', ta_url, self_zone='A',
+            relay_poll_interval_seconds=0.05, relay_result_timeout_seconds=30)
+        hub_events, edge_events = [], []
+        hub_acl = build_acl(config_hub, ta_url, events=hub_events)
+        edge_acl = build_acl(config_edge, ta_url, events=edge_events)
+
+        # 生产形态：中枢侧触发器自动发现 A→B 传输到位的 EVAL_REQUEST 并执行
+        trigger = HubRelayTrigger(hub_acl)
+        trigger.start()
+        try:
+            resp = edge_acl.evaluate_dimension_group(
+                **group_kwargs(), transfer_id='prod-relay-001')
+        finally:
+            trigger.stop()
+
+        # A→B→C→B→A 全链路自动完成（A 区生产入口一跳取回结果）
+        assert resp == {'code': 0, 'msg': 'ok',
+                        'data': {'result': {'score': 0.92, 'value': '0.92'}}}, \
+            f'生产触发器未驱动全链路完成: {resp}'
+        assert c_state['hits']['prod-relay-001'] == 1
+        types = sorted((p.pkg_type, p.src_zone, p.dst_zone, p.status)
+                       for p in record_repo.packages.values())
+        assert ('EVAL_REQUEST', 'A', 'B', 'DELIVERED') in types
+        assert ('EVAL_RESULT', 'B', 'A', 'COMPLETED') in types
+        # relay 流水终态与审计事件完整（认领一次、执行一次）
+        relay_meta = record_repo.packages['prod-relay-001'].meta['relay']
+        assert relay_meta['state'] == 'executed'
+        assert relay_meta['attempts'] == 1
+        assert [type(e) for e in relay_events] == [
+            TransferRelayClaimed, TransferRelayCompleted]
+        assert relay_events[0].transfer_id == 'prod-relay-001'
+        assert [type(e) for e in edge_events] == [
+            ThirdPartyEvalDispatched, ThirdPartyEvalCompleted]
+        assert edge_events[1].synced_back is True
+
+    def test_duplicate_trigger_does_not_reexecute(
+            self, tmp_path, fake_c, relay_transfer_http):
+        c_url, c_state = fake_c
+        ta_url, record_repo, _relay_events = relay_transfer_http
+        config_hub = write_settings_config(tmp_path / 'hub', ta_url)
+        config_edge = write_settings_config(tmp_path / 'edge', ta_url, self_zone='A')
+        hub_acl = build_acl(config_hub, ta_url)
+        edge_acl = build_acl(config_edge, ta_url)
+        headers = {'X-Transfer-Token': 'secret-ab'}
+
+        # A 侧发起（包传输到位即 COMPLETED），无触发器运行——手动模拟重复触发
+        dispatched = edge_acl.dispatch_eval_request(
+            form_fields={'task_type': 'llm_judge', 'prompt': '评分'},
+            files={'record_file': ('a.wav', AUDIO_BYTES, 'audio/wav')},
+            eval_params={'task_id': 101, 'test_case_id': '2024',
+                         'dimensions': ['llm_judge'], 'adapter': 'multipart'},
+            transfer_id='dup-relay-001')
+        assert dispatched['hub_zone'] == 'B'
+
+        r1 = requests.post(f'{ta_url}/internal/transfer/relay/claim',
+                           json={'stale_seconds': 1800}, headers=headers, timeout=10)
+        r2 = requests.post(f'{ta_url}/internal/transfer/relay/claim',
+                           json={'stale_seconds': 1800}, headers=headers, timeout=10)
+        r3 = requests.post(f'{ta_url}/internal/transfer/relay/dup-relay-001/finish',
+                           json={'state': 'executed'}, headers=headers, timeout=10)
+        r4 = requests.post(f'{ta_url}/internal/transfer/relay/claim',
+                           json={'stale_seconds': 1800}, headers=headers, timeout=10)
+
+        # 幂等去重：认领一次后 executing 不再认领；终态后永久不再认领
+        assert r1.json()['data']['transfer_id'] == 'dup-relay-001'
+        assert r2.json()['data']['transfer_id'] is None
+        assert r3.json()['data']['finished'] is True
+        assert r4.json()['data']['transfer_id'] is None
+        assert c_state['hits'].get('dup-relay-001', 0) == 0  # 从未重复执行
+
+    def test_trigger_failure_converges_to_failed_with_audit(
+            self, tmp_path, fake_c, relay_transfer_http):
+        c_url, c_state = fake_c
+        ta_url, record_repo, relay_events = relay_transfer_http
+        config_hub = write_settings_config(
+            tmp_path / 'hub', ta_url,
+            relay_trigger_poll_interval_seconds=0.05,
+            relay_trigger_claim_stale_seconds=1800)
+        config_edge = write_settings_config(tmp_path / 'edge', ta_url, self_zone='A')
+        hub_acl = build_acl(config_hub, ta_url)
+        edge_acl = build_acl(config_edge, ta_url)
+
+        dispatched = edge_acl.dispatch_eval_request(
+            form_fields={'task_type': 'llm_judge', 'prompt': '评分'},
+            files={'record_file': ('a.wav', AUDIO_BYTES, 'audio/wav')},
+            eval_params={'task_id': 101, 'test_case_id': '2024',
+                         'dimensions': ['llm_judge'], 'adapter': 'multipart'},
+            transfer_id='fail-relay-001')
+        assert dispatched['hub_zone'] == 'B'
+
+        # 执行失败注入：触发器认领后 execute_incoming 异常 → finish(failed) 收敛
+        trigger = HubRelayTrigger(_FailingExecACL(hub_acl))
+        trigger.start()
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                relay_meta = (record_repo.packages['fail-relay-001'].meta or {}).get(
+                    'relay') or {}
+                if relay_meta.get('state') == 'failed':
+                    break
+                time.sleep(0.05)
+        finally:
+            trigger.stop()
+
+        # 失败收敛：终态 failed 不悬挂、审计事件完整、C 未被投递、流水可审计
+        assert relay_meta.get('state') == 'failed', '触发失败未收敛 failed 终态'
+        assert 'boom-unpack' in relay_meta.get('error', '')
+        assert c_state['hits'].get('fail-relay-001', 0) == 0
+        types = [(p.transfer_id, p.pkg_type, p.status)
+                 for p in record_repo.packages.values()
+                 if p.transfer_id == 'fail-relay-001']
+        assert types == [('fail-relay-001', 'EVAL_REQUEST', 'COMPLETED')]
+        fail_events = [e for e in relay_events
+                       if e.transfer_id == 'fail-relay-001']
+        assert [type(e) for e in fail_events] == [
+            TransferRelayClaimed, TransferRelayFailed]
+        assert 'boom-unpack' in fail_events[1].reason

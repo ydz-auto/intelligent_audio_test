@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 from typing import Optional
 
 from shared.models.common_enums import PkgType, TransferStatus
@@ -62,6 +63,21 @@ def validate_storage_key(key: str) -> str:
     if '..' in key.split('/'):
         raise InvalidPackageFieldError(f'key 不允许相对上跳段（..）: {key!r}')
     return key
+
+
+class RelayExecutionState(str, Enum):
+    """中转执行子状态（F2.3 中枢触发器；落 transfer_records.meta.relay，非传输状态机）。
+
+    executing  已被中枢触发器原子认领，execute_incoming 执行中
+               （超过认领失效窗视为认领方死亡，允许重新认领 — 崩溃恢复）；
+    executed   执行完成（出站投递 C + EVAL_RESULT 回同步均已完成）；
+    failed     执行失败收敛（终态，不自动重试 — A 侧按既有超时路径收敛不悬挂，
+               C 按 transfer_id 幂等去重保证重复执行安全）。
+    """
+
+    EXECUTING = 'executing'
+    EXECUTED = 'executed'
+    FAILED = 'failed'
 
 
 @dataclass

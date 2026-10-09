@@ -92,6 +92,14 @@ class ThirdPartyEvalSettings:
         # （超时须覆盖中枢执行 + T-B 出站投递 + B→A 回同步全链路，默认大于 dispatch_timeout）
         self.relay_poll_interval_seconds = float(_get('relay_poll_interval_seconds', 2))
         self.relay_result_timeout_seconds = int(_get('relay_result_timeout_seconds', 900))
+        # 中枢侧中转执行触发器（F2.3）：轮询认领节奏与认领失效窗（崩溃恢复阈值，
+        # 须大于最坏单包执行时长 = 解包 + 出站投递 + 结果回同步）
+        self.relay_trigger_enabled = str(
+            _get('relay_trigger_enabled', 'true')).lower() not in ('0', 'false', 'no')
+        self.relay_trigger_poll_interval_seconds = float(
+            _get('relay_trigger_poll_interval_seconds', 2))
+        self.relay_trigger_claim_stale_seconds = int(
+            _get('relay_trigger_claim_stale_seconds', 1800))
         self.staging_ttl_seconds = int(_get('staging_ttl_seconds', 3600))
         self.sync_back_enabled = str(_get('sync_back_enabled', 'true')).lower() not in ('0', 'false', 'no')
         self.sync_back_zone = str(_get('sync_back_zone', 'A')).upper()

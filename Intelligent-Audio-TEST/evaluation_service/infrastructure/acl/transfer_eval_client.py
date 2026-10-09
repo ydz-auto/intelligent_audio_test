@@ -139,6 +139,25 @@ class TransferEvalClient:
             json_body={'adapter_kind': adapter_kind}, token=token,
             timeout_seconds=self._dispatch_timeout)
 
+    def claim_relay(self, *, token: str, stale_seconds: int) -> Optional[str]:
+        """中转执行触发器认领契约（F2.3/INT-53）：原子认领一个待执行中转包。
+
+        返回认领成功的 transfer_id；无候选包返回 None（轮询节奏由调用方控制）。
+        认领幂等去重由 transfer_agent 仓储行锁 CAS 保证（同一中转包不重复执行）。
+        """
+        data = self._request('POST', '/internal/transfer/relay/claim',
+                             json_body={'stale_seconds': int(stale_seconds)},
+                             token=token)
+        transfer_id = data.get('transfer_id')
+        return str(transfer_id) if transfer_id else None
+
+    def finish_relay(self, transfer_id: str, *, state: str,
+                     error: Optional[str] = None, token: str = '') -> Dict:
+        """中转执行终态收敛契约（executed/failed；失败不悬挂，流水与审计完整）。"""
+        return self._request(
+            'POST', f'/internal/transfer/relay/{transfer_id}/finish',
+            json_body={'state': state, 'error': error or ''}, token=token)
+
     def send_file(self, *, transfer_id: str, pkg_type: str, src_zone: str, dst_zone: str,
                   category: str, key: str, local_path: str, ephemeral: bool = True,
                   ttl_seconds: int = 3600, meta: Optional[Dict] = None) -> Dict:
