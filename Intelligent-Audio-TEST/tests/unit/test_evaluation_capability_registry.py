@@ -10,6 +10,7 @@
 import json
 import os
 import sys
+import time
 
 os.environ.setdefault('DATABASE_URL', 'sqlite://')
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
@@ -110,7 +111,8 @@ class TestResolve:
         data['dimension_capabilities'] = [{'dimension': 'mos', 'target': 'THIRD_PARTY_C'}]
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False)
-        os.utime(config_path, None)
+        future = time.time() + 120
+        os.utime(config_path, (future, future))
         assert registry.resolve({'task_type_code': 'llm_judge'}) is None
         assert registry.resolve({'task_type_code': 'mos'}) is not None
 
@@ -129,7 +131,10 @@ class TestPersistAndHotReload:
         data['dimension_capabilities'][0]['enabled'] = False
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False)
-        os.utime(config_path, None)  # 确保 mtime 变化
+        # utime(None) 的"当前时间"与 _save() 刚记录的 mtime 在 Windows 文件时间粒度下可能同值，
+        # 热加载按 mtime 变化检测会被跳过——必须用显式错开的时间戳
+        future = time.time() + 120
+        os.utime(config_path, (future, future))
         assert registry.resolve({'task_type_code': 'llm_judge'}) is None
 
     def test_corrupt_config_fails_closed(self, config_path):

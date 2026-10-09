@@ -493,3 +493,45 @@ class TestAcceptance23LinkLayer:
         assert resp['code'] == 0, f'瞬时失败重试后未成功: {resp}'
         assert c_state['hits']['c5xx-1'] == 2, '应恰好重试一次'
         assert [type(e) for e in events] == [ThirdPartyEvalDispatched, ThirdPartyEvalCompleted]
+
+    def test_staging_audit_anchor_meta_persisted_in_transfer_records(
+            self, tmp_path, fake_c, transfer_http):
+        """AC3：问题 2 过渡语义——dst='C' 暂存登记的 staging_purpose=audit_anchor
+        经真实 transfer_agent 落库后可读；A→B 中转腿（真实数据面）不携带该标注，
+        审计流水与真实数据路径一致。"""
+        c_url, c_state = fake_c
+        ta_url, record_repo = transfer_http
+        edge_config = write_capability_config(
+            os.path.join(str(tmp_path), 'edge'), [],
+            {'c_api_base_url': c_url, 'self_zone': 'A', 'hub_zone': 'B',
+             'hub_transfer_agent_base_url': ta_url})
+        hub_config = write_capability_config(
+            os.path.join(str(tmp_path), 'hub'), [],
+            {'c_api_base_url': c_url, 'self_zone': 'B', 'hub_zone': 'B',
+             'transfer_agent_base_url': ta_url,
+             'hub_transfer_agent_base_url': ta_url})
+
+        # A→B 中转腿：真实数据面，dst='B'，不携带暂存锚点标注。
+        # 包体取极小值（整包 < 单分片上限）：harness 服务端分片上限人为设为 1024，
+        # 而 A→B 腿经 _client_for 构造的客户端用默认 4MB 分片（与生产默认一致），
+        # 大包体会触发 413——本测试验证 meta 语义而非分片（多分片由其余用例覆盖）
+        edge_acl = build_acl(edge_config, ta_url, c_url)
+        edge_acl.dispatch_eval_request(
+            form_fields={'task_type': 'llm_judge'},
+            files={'record_file': ('a.wav', b'RIFFsmallWAVEfmt ', 'audio/wav')},
+            eval_params={'task_id': 902, 'test_case_id': '9002',
+                         'dimensions': ['llm_judge'], 'adapter': 'multipart'},
+            transfer_id='stage-meta-ab')
+        ab_pkg = record_repo.packages.get('stage-meta-ab')
+        assert ab_pkg is not None and ab_pkg.dst_zone == 'B'
+        assert 'staging_purpose' not in (ab_pkg.meta or {}), \
+            'A→B 真实数据面腿不应携带暂存锚点标注'
+
+        # 中枢内联 dst='C' 登记：暂存/审计锚点（非数据面），标注经落库持久可读
+        hub_acl = build_acl(hub_config, ta_url, c_url)
+        resp = hub_acl.evaluate_dimension_group(**group_kwargs(transfer_id='stage-meta-c'))
+        assert resp.get('code') == 0, f'中枢内联流程未成功: {resp}'
+        c_pkg = record_repo.packages.get('stage-meta-c')
+        assert c_pkg is not None and c_pkg.dst_zone == 'C'
+        assert (c_pkg.meta or {}).get('staging_purpose') == 'audit_anchor', \
+            f'dst=C 暂存登记落库后缺少审计锚点标注: {c_pkg.meta}'
