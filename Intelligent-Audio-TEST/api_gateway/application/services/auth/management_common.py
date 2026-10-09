@@ -82,6 +82,21 @@ def call_auth_rpc(rpc_name: str, request_msg: Any,
     return None, (payload, http_code)
 
 
+def mapped_error_response(message: str, data: str,
+                          default_error: str = '操作失败') -> Tuple[Dict, int]:
+    """已获得的失败 AuthResponse → HTTP 错误响应（按 data.error_code 映射）。
+
+    供网关侧自行调用 stub 的管理路径复用 call_auth_rpc 同款映射语义
+    （AuthErrorCode 命中 _ERROR_HTTP_STATUS，缺失/未知一律 400）。
+    """
+    error_code = _parse_error_code(data)
+    http_code = _ERROR_HTTP_STATUS.get(error_code, 400)
+    payload, _ = error_response(message or default_error,
+                                code=ErrorCode.OPERATION_FAILED,
+                                http_code=http_code)
+    return payload, http_code
+
+
 def _parse_error_code(data: str) -> Any:
     """解析失败响应 data 中的 error_code（缺失/未知返回 None）。"""
     try:

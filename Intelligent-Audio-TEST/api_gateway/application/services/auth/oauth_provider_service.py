@@ -22,9 +22,7 @@ import jwt
 
 from api_gateway.config.config import Config
 from api_gateway.domain.value_objects.auth_value_objects import UserInfo
-from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.utils.response import error_response, success_response
-from shared.models.common_enums import AuthErrorCode
+from api_gateway.utils.response import success_response
 from shared.utils.grpc_json import loads as _loads
 
 logger = logging.getLogger(__name__)
@@ -37,9 +35,16 @@ class OAuthProviderError(Exception):
     """OAuth 流程失败（登录链路 401 语义）。"""
 
 
-def _provider_error(message: str) -> Tuple[Dict, int]:
-    return error_response(message, code=ErrorCode.OPERATION_FAILED,
-                          http_code=400)
+def _provider_error(resp, default_message: str) -> Tuple[Dict, int]:
+    """管理端失败响应：复用 management_common 的 AuthErrorCode → HTTP 映射。
+
+    servicer 失败响应 data 携带 {"error_code": "<AuthErrorCode>"}，
+    命中映射表转对应状态码（如 OAUTH_SLUG_DUPLICATED → 409），未知/缺失 400。
+    """
+    from api_gateway.application.services.auth.management_common import (
+        mapped_error_response,
+    )
+    return mapped_error_response(resp.message, resp.data, default_message)
 
 
 class OAuthProviderService:
@@ -72,7 +77,7 @@ class OAuthProviderService:
         resp = auth_config_service.stub.ListOAuthProviders(
             _pb().ListOAuthProvidersRequest(include_disabled=True))
         if not resp.success:
-            return _provider_error(resp.message or '查询提供方失败')
+            return _provider_error(resp, '查询提供方失败')
         data = _loads(resp.data, {}) or {}
         return success_response({'providers': data.get('providers', [])})
 
@@ -83,7 +88,7 @@ class OAuthProviderService:
         resp = auth_config_service.stub.GetOAuthProvider(
             _pb().GetOAuthProviderRequest(provider_id=provider_id))
         if not resp.success:
-            return _provider_error(resp.message or '提供方不存在')
+            return _provider_error(resp, '提供方不存在')
         return success_response(_loads(resp.data, {}) or {})
 
     @staticmethod
@@ -109,7 +114,7 @@ class OAuthProviderService:
                 operator_id=operator_id,
             ))
         if not resp.success:
-            return _provider_error(resp.message or '创建提供方失败')
+            return _provider_error(resp, '创建提供方失败')
         data = _loads(resp.data, {}) or {}
         return success_response(
             {'provider_id': data.get('provider_id')}, '创建成功',
@@ -142,7 +147,7 @@ class OAuthProviderService:
         from api_gateway.infrastructure.grpc_proxies import auth_config_service
         resp = auth_config_service.stub.UpdateOAuthProvider(req)
         if not resp.success:
-            return _provider_error(resp.message or '更新提供方失败')
+            return _provider_error(resp, '更新提供方失败')
         return success_response(None, '更新成功')
 
     @staticmethod
@@ -153,7 +158,7 @@ class OAuthProviderService:
             _pb().DeleteOAuthProviderRequest(
                 provider_id=provider_id, operator_id=operator_id))
         if not resp.success:
-            return _provider_error(resp.message or '删除提供方失败')
+            return _provider_error(resp, '删除提供方失败')
         return success_response(None, '删除成功')
 
     # ---------- 授权码流程 ----------

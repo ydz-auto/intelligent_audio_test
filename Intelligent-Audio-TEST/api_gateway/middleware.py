@@ -68,7 +68,9 @@ class RequestAdapterMiddleware(BaseHTTPMiddleware):
 class AuthMiddleware(BaseHTTPMiddleware):
     """认证中间件 — 解析 JWT 并注入用户信息到 request.state"""
 
-    # 无需认证的路由前缀（白名单）
+    # 无需认证的路由前缀（白名单）。
+    # 匹配按路径段边界（见 _is_public_path）：/api/v1/auth/oauth 不得误伤
+    # /api/v1/auth/oauth-providers 这类共享字符串前缀的管理端路径
     PUBLIC_PATHS = (
         '/api/v1/auth/login',
         '/api/v1/auth/callback',
@@ -85,6 +87,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.auth_mode = auth_mode
 
+    @classmethod
+    def _is_public_path(cls, path: str) -> bool:
+        return any(
+            path == p or path.startswith(p.rstrip('/') + '/')
+            for p in cls.PUBLIC_PATHS
+        )
+
     async def dispatch(self, request, call_next):
         # off 模式：完全跳过认证，注入默认开发用户
         if self.auth_mode == 'off':
@@ -95,8 +104,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # 白名单路由：跳过认证
-        path = request.url.path
-        if any(path.startswith(p) for p in self.PUBLIC_PATHS):
+        if self._is_public_path(request.url.path):
             return await call_next(request)
 
         # 从 Authorization 头提取 Bearer token
