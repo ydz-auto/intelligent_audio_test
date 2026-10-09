@@ -74,6 +74,17 @@ def audit_env(monkeypatch, tmp_path):
         return [9000 + i for i in range(len(logs_payload))]
 
     monkeypatch.setattr(grpc_clients_mod, 'batch_create_logs', _fake_batch_create)
+    # worker 批刷路径会同步触发归档巡检（_check_and_archive → 真实 gRPC
+    # get_log_count → OSS 客户端初始化）。机器上有驻留服务栈时该真实调用
+    # 可阻塞 worker 30s+（INT-55 缺陷二：第二条审计滞留队列，3s 断言窗口
+    # 超时；12:17 通过 / 19:3x 确定性失败的机器态差异即此）。本文件只验证
+    # emit 分流与批写路由，归档巡检链路整体 fake 为空转。
+    monkeypatch.setattr(grpc_clients_mod, 'get_log_count', lambda: {'total': 0})
+    monkeypatch.setattr(
+        grpc_clients_mod, 'archive_logs',
+        lambda days=30, dry_run=False: {'groups': {}, 'remaining_count': 0})
+    import shared.clients.oss_client as oss_client_mod
+    monkeypatch.setattr(oss_client_mod.oss, 'is_available', lambda: False)
     monkeypatch.chdir(tmp_path)
     handler = DatabaseLogHandler()
     handler._batch_size = 1

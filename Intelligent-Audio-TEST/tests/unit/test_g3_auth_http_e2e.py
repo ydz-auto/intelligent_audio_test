@@ -53,7 +53,7 @@ from sqlalchemy import BigInteger
 from sqlalchemy import create_engine
 from sqlalchemy.ext.compiler import compiles
 
-from shared.models.database import init_db, get_db_session, remove_db_session
+from shared.models.database import init_db, get_db_session, get_engine, remove_db_session
 
 _RUN = uuid.uuid4().hex[:8]
 
@@ -68,13 +68,22 @@ def _render_bigint_as_integer_sqlite(type_, compiler, **kw):
 def svc():
     """真实 AuthServicer + 真实 SQLite 库（auth 相关表）。"""
     init_db(pool_size=3)
+    # INT-55 缺陷一夹具自证：本文件经 HTTP 线程池线程取 session（跨线程），
+    # 库必须是文件型——:memory: 下每个 engine 是独立空库，建表库与请求库
+    # 不一致，servicer 必报 no such table: users
+    engine = get_engine()
+    assert ':memory:' not in str(engine.url), \
+        f'G3 e2e 需要文件型 sqlite（跨线程共享表），实际绑定 {engine.url}'
+    # 清先序模块可能残留的主线程 session（绑在旧 engine 上），
+    # 确保建表与本文件请求全部落在 init_db 刚创建的 engine 上
+    remove_db_session()
     from shared.models.database import Base
     from auth_service.infrastructure.persistence.models import (
         Role, Permission, RolePermission, UserPermission, User,
         CustomOAuthProvider,
     )
     Base.metadata.create_all(
-        bind=get_db_session().get_bind(),
+        bind=engine,
         tables=[Role.__table__, Permission.__table__,
                 RolePermission.__table__, UserPermission.__table__,
                 User.__table__, CustomOAuthProvider.__table__],

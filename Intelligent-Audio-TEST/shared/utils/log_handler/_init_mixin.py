@@ -37,6 +37,7 @@ class _InitMixin:
         self._batch_timeout = 1.0
         self._last_archive_check = 0
         self._archive_check_interval = 300
+        self._archive_thread = None  # 归档巡检后台线程（进行中不重叠）
 
         # 非任务/用例日志的文件处理器
         self._file_handler = self._init_file_handler()

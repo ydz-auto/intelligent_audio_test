@@ -8,6 +8,7 @@ P0-3 DDD 改造：日志写入改为通过 gRPC 调用 task_service.BatchCreateL
 
 import time
 import queue
+import threading
 from datetime import datetime, timezone, timedelta
 
 from . import _state
@@ -56,8 +57,20 @@ class _WorkerMixin:
                     last_flush = current_time
 
                     if current_time - self._last_archive_check >= self._archive_check_interval:
-                        self._check_and_archive()
+                        # 归档巡检含真实外部 I/O（get_log_count gRPC、OSS 初始化），
+                        # 同步执行会阻塞日志批刷——task_service 连接池耗尽时该调用
+                        # 可挂 30s+（INT-55 缺陷二机器态根因，审计/任务日志全部
+                        # 滞留队列）。移出 worker 关键路径：后台线程执行，进行中
+                        # 不重叠；_last_archive_check 按触发时刻推进，周期不受
+                        # 巡检时长影响。
                         self._last_archive_check = current_time
+                        if self._archive_thread is None or not self._archive_thread.is_alive():
+                            self._archive_thread = threading.Thread(
+                                target=self._check_and_archive,
+                                daemon=True,
+                                name='log-archive-check',
+                            )
+                            self._archive_thread.start()
                 else:
                     # batch 未满且未超时：暂不推送，等入库后再推（保证前端拿到合法 id）
                     pass

@@ -20,7 +20,7 @@ os.environ.setdefault('DATABASE_URL',
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
-from shared.models.database import init_db, get_db_session, remove_db_session
+from shared.models.database import init_db, get_db_session, get_engine, remove_db_session
 from auth_service.infrastructure.persistence.models import (
     Role, Permission, RolePermission, UserPermission, User,
 )
@@ -38,9 +38,15 @@ def _render_bigint_as_integer_sqlite(type_, compiler, **kw):
 def db():
     """初始化 SQLite 库并建 RBAC 相关表。"""
     init_db(pool_size=3)
+    # INT-55 夹具自证：库必须是文件型——:memory: 下每个 engine 是独立空库，
+    # gRPC 线程的 session 与建表库不一致，servicer 必报 no such table
+    engine = get_engine()
+    assert ':memory:' not in str(engine.url), \
+        f'auth sqlite e2e 需要文件型 sqlite（跨线程共享表），实际绑定 {engine.url}'
+    remove_db_session()  # 清先序模块残留的主线程 session，保证建表与请求同库
     from shared.models.database import Base
     Base.metadata.create_all(
-        bind=get_db_session().get_bind(),
+        bind=engine,
         tables=[Role.__table__, Permission.__table__, RolePermission.__table__,
                 UserPermission.__table__, User.__table__],
     )
@@ -343,9 +349,14 @@ class TestUserManagementChain:
     def test_register_resolves_guest_role(self, servicer):
         svc, pb = servicer
         session = get_db_session()
-        guest = Role(name='guest')
-        session.add(guest)
-        session.commit()
+        # INT-55：进程级共享库下种子幂等——guest 角色可能已被先序 G3 文件
+        # 种入（roles.name 唯一约束），无条件 add 会令本测试与后续用例
+        # 连环 PendingRollbackError；与 test_g3_auth_http_e2e.seeded 同款
+        guest = session.query(Role).filter_by(name='guest').first()
+        if guest is None:
+            guest = Role(name='guest')
+            session.add(guest)
+            session.commit()
         resp = svc.CreateUser(pb.CreateUserRequest(
             username='self_registered', password='pw123456',
             role_name='guest'))
