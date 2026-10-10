@@ -13,8 +13,9 @@
 
 import logging
 
-from shared.models.common_enums import FieldType, TaskStatus, TestType
+from shared.models.common_enums import FieldType, TaskStatus
 from shared.utils.log_handler import log_not_emit
+from shared.utils.testcase_helpers import derive_case_test_type
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
 
@@ -123,7 +124,11 @@ class ReportHelpers:
                 dev_map = _grpc_get_playback_devices_by_ids(list(all_device_ids))
                 devices = {k: v.get('name') for k, v in dev_map.items()}
 
-        tc_test_type = (test_case.get('test_type') if isinstance(test_case, dict) else test_case.test_type) or TestType.API.value
+        # 差异#2 收尾：用例不再存储 test_type（数据源仅携带派生 type 键，
+        # SimpleNamespace 调用方更无该键），音频口径改由配置形态派生；
+        # 传用例名兼容 INT-129 上传双变体（两变体配置形态相同，靠 _api/_e2e 后缀区分）
+        tc_name = test_case.get('name') if isinstance(test_case, dict) else getattr(test_case, 'name', None)
+        tc_test_type = derive_case_test_type(config, tc_name)
 
         per_round_dry = []
         noise_audios = []
@@ -332,43 +337,6 @@ class ReportHelpers:
             "start_time": _to_iso(created_at),
             "end_time": _to_iso(created_at)
         }
-
-    # 公共函数：提取音频列表
-    @staticmethod
-    def _extract_audios_list(test_case, test_type=None):
-        """
-        从用例配置中提取所有匹配的音频信息列表
-        """
-        config = test_case.config if hasattr(test_case, 'config') else None
-        if not config and isinstance(test_case, dict):
-            config = test_case.get('config')
-        if not config or 'audios' not in config:
-            return []
-
-        test_audios = config.get('audios', [])
-        if not test_audios:
-            return []
-
-        results = []
-        tc_test_type = test_case.test_type if hasattr(test_case, 'test_type') else (test_case.get('test_type') if isinstance(test_case, dict) else TestType.API.value)
-
-        # 如果指定了类型且不匹配记录类型，直接返回空
-        if test_type is not None and test_type != tc_test_type:
-            return results
-
-        for audio_cfg in test_audios:
-            audio_id = audio_cfg.get('audio_id')
-            if audio_id:
-                audio = _grpc_get_audio(audio_id)
-                if audio:
-                    results.append({
-                        "id": audio.get('id'),
-                        "filename": audio.get('original_filename') or audio.get('name'),
-                        "duration": audio.get('duration'),
-                        "url": f"/api/v1/audios/{audio.get('id')}/stream",
-                        "test_type": tc_test_type
-                    })
-        return results
 
     # 公共函数：计算正态分布数据
     @staticmethod

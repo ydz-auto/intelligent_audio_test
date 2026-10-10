@@ -112,14 +112,12 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
             status_info = {
                 "task_id": str(task_id),
                 "status": task.get('status'),
-                "type": task.get('type'),
                 "total_cases": task.get('total_cases'),
                 "completed_cases": task.get('completed_cases'),
                 "failed_cases": task.get('failed_cases'),
                 "started_at": task.get('started_at'),
                 "completed_at": task.get('completed_at'),
                 "actual_duration": task.get('actual_duration'),
-                "error_message": None,
             }
             return task_pb.TaskStatusResponse(
                 success=True, message="ok", data=_dumps(status_info)
