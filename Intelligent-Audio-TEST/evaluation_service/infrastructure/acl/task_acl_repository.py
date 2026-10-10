@@ -8,6 +8,7 @@ P1.4 新增。替代 evaluation_service 直接 `from shared.models.models import
 向上层（domain/services）返回 dataclass DTO（部分结构不固定的接口仍返回 dict），不返回 ORM 对象。
 """
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from evaluation_service.domain.dto import (
@@ -28,6 +29,11 @@ from shared.utils.id_normalizer import to_int_id
 
 logger = logging.getLogger(__name__)
 
+# INT-116：task_service 瞬时过载（连接池耗尽→超时/失败）时的内联重试参数。
+# 重试仅覆盖传输级失败（异常/服务端 success=False），空结果是合法应答不重试。
+_TRANSIENT_ATTEMPTS = 3
+_TRANSIENT_BACKOFF_SECONDS = (0.5, 1.0)
+
 
 def _norm_task_id(task_id) -> int:
     """task_service protobuf 的 task_id 为 int 字段，构造前统一归一。
@@ -40,6 +46,30 @@ def _norm_task_id(task_id) -> int:
 
 def _norm_result_id(result_id) -> int:
     return to_int_id('result_id', result_id)
+
+
+def _with_transient_retry(desc, call):
+    """带内联重试的 gRPC 调用（INT-116）。
+
+    Args:
+        desc: 日志标识
+        call: 无参可调用，返回 (ok, value)；ok=False 表示可重试的失败
+
+    Returns:
+        value: 成功时为 call 的第二返回值；最终失败时为 None
+    """
+    for attempt in range(_TRANSIENT_ATTEMPTS):
+        try:
+            ok, value = call()
+        except Exception as e:
+            ok, value = False, None
+            logger.warning('%s 第 %s 次调用异常: %s', desc, attempt + 1, e)
+        if ok:
+            return value
+        if attempt < _TRANSIENT_ATTEMPTS - 1:
+            time.sleep(_TRANSIENT_BACKOFF_SECONDS[min(attempt, len(_TRANSIENT_BACKOFF_SECONDS) - 1)])
+    logger.error('%s 内联重试 %s 次仍失败', desc, _TRANSIENT_ATTEMPTS)
+    return None
 
 
 class TaskAclRepository(_TaskAclRepositoryABC):
@@ -68,21 +98,25 @@ class TaskAclRepository(_TaskAclRepositoryABC):
     def get_task_case_by_ids(
         self, task_id: int, case_ids: Optional[List[str]] = None
     ) -> List[TaskCaseDTO]:
-        """批量读取 TaskCase。case_ids 为空时返回该 task 下所有 TaskCase。"""
+        """批量读取 TaskCase。case_ids 为空时返回该 task 下所有 TaskCase。
+
+        INT-116: 传输级失败内联重试（评估后状态推进依赖本读取，瞬时失败
+        曾导致整个状态推进被跳过、用例永久停留 evaluating）。
+        """
         task_id = _norm_task_id(task_id)
-        try:
+
+        def _call():
             stub = get_task_data_service_stub()
             req = task_pb.GetTaskCaseByIdsRequest(task_id=task_id)
             if case_ids:
                 req.case_ids.extend(list(case_ids))
             resp = stub.GetTaskCaseByIds(req)
             if not resp.success:
-                logger.warning('GetTaskCaseByIds failed: %s', resp.message)
-                return []
-            return dict_list_to_dto(_loads(resp.data, []), TaskCaseDTO)
-        except Exception as e:
-            logger.exception('get_task_case_by_ids failed: %s', e)
-            return []
+                return False, None
+            return True, dict_list_to_dto(_loads(resp.data, []), TaskCaseDTO)
+
+        dtos = _with_transient_retry(f'GetTaskCaseByIds task_id={task_id}', _call)
+        return dtos if dtos is not None else []
 
     def get_task_by_id(self, task_id: int) -> Optional[TaskDTO]:
         """按 task_id 读取 Task 详情。"""
@@ -187,9 +221,15 @@ class TaskAclRepository(_TaskAclRepositoryABC):
         evaluation_status: str = '',
         error_message: str = '',
     ) -> bool:
-        """更新 TaskCase 状态。返回是否成功。"""
+        """更新 TaskCase 状态。返回是否成功。
+
+        INT-116: 传输级失败内联重试（终态/进度推进写库，瞬时失败曾导致
+        task_case_relations 永久停留 evaluating）。持久失败由调用方决定
+        是否转延迟重试队列。
+        """
         task_id = _norm_task_id(task_id)
-        try:
+
+        def _call():
             stub = get_task_data_service_stub()
             resp = stub.UpdateTaskCaseStatus(task_pb.UpdateTaskCaseStatusRequest(
                 task_id=task_id,
@@ -200,12 +240,11 @@ class TaskAclRepository(_TaskAclRepositoryABC):
                 error_message=error_message,
             ))
             if not resp.success:
-                logger.warning('UpdateTaskCaseStatus failed: %s', resp.message)
-                return False
-            return True
-        except Exception as e:
-            logger.exception('update_task_case_status failed: %s', e)
-            return False
+                return False, None
+            return True, True
+
+        return _with_transient_retry(
+            f'UpdateTaskCaseStatus task_id={task_id} case_id={case_id}', _call) is True
 
     def update_test_result_algorithm_result(
         self, result_id: int, algorithm_result: Dict
@@ -285,21 +324,25 @@ class TaskAclRepository(_TaskAclRepositoryABC):
             return False
 
     def update_task_status(self, task_id: int, status: str) -> bool:
-        """更新 Task.status。返回是否成功。"""
+        """更新 Task.status。返回是否成功。
+
+        INT-116: 传输级失败内联重试（任务终态写库失败是"任务永不收敛→
+        执行引擎无限忙等"的直接原因）。
+        """
         task_id = _norm_task_id(task_id)
-        try:
+
+        def _call():
             stub = get_task_data_service_stub()
             resp = stub.UpdateTaskStatus(task_pb.UpdateTaskStatusRequest(
                 task_id=task_id,
                 status=status,
             ))
             if not resp.success:
-                logger.warning('UpdateTaskStatus failed: %s', resp.message)
-                return False
-            return True
-        except Exception as e:
-            logger.exception('update_task_status failed: %s', e)
-            return False
+                return False, None
+            return True, True
+
+        return _with_transient_retry(
+            f'UpdateTaskStatus task_id={task_id} status={status}', _call) is True
 
     def notify_task_progress(self, task_id: int, force: bool = False) -> None:
         """通知 task_service 发送进度更新。"""

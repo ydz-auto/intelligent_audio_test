@@ -27,7 +27,7 @@ from datetime import timedelta
 
 from sqlalchemy import text, bindparam
 
-from shared.models.database import init_db, get_db_session, remove_db_session
+from shared.models.database import get_db_session, remove_db_session
 from shared.utils.query_utils import now_cst
 
 logger = logging.getLogger(__name__)
@@ -166,6 +166,15 @@ class SoftDeleteCleanerBase:
         Returns:
             counts: dict，key 为表名，value 为删除条数。失败时返回空 dict。
         """
+        # INT-116：禁止在此重建全局 engine——旧实现调 init_db()（默认 pool_size=3）
+        # 会把宿主服务 lifespan 初始化的连接池（如 evaluation_service pool_size=20）
+        # 整体替换成 3+overflow5，且每次扫描都重建一次。清理线程只复用宿主已
+        # 初始化的 engine；engine 未就绪时跳过本轮，下轮扫描重试。
+        from shared.models.database import get_engine
+        if get_engine() is None:
+            logger.warning(
+                f"[软删除清理:{self.service_name}] 宿主 DB engine 未初始化，本轮跳过")
+            return {}
         lock_key = f'soft_delete_cleaner:{self.service_name}:lock'
         lock_ttl = self.scan_interval
         store = None
@@ -177,7 +186,6 @@ class SoftDeleteCleanerBase:
             if not acquired:
                 logger.debug(f"[软删除清理:{self.service_name}] 其他实例正在执行，跳过")
                 return {}
-            init_db()
             session = get_db_session()
             threshold_dt = now_cst() - timedelta(days=self.retention_days)
             counts = self.hard_delete_expired(session, threshold_dt)

@@ -55,6 +55,11 @@ class GroupResultMixin:
 
         P1.4: TestResult 通过 gRPC 读取（task_service）；TestResultDimension 本地写（自有 PO）
 
+        INT-116: DB 会话只覆盖本地 TestResultDimension 写入并尽快提交释放连接，
+        gRPC 读取、快照预提取（多次 gRPC+文件 IO）与状态推进全部移出会话——
+        严禁在持连接（开事务）期间做跨服务调用/长 IO，防止连接池被长耗时
+        调用占满（task_service 过载时每次 gRPC 可达 30s 超时）。
+
         Args:
             resp_data: API响应数据
             group_items: 维度组项列表 [(dim_data, dimension_result_id), ...]
@@ -64,19 +69,19 @@ class GroupResultMixin:
             api_request_body: API请求体
             test_type: 测试类型 (api 或 e2e)
         """
-        # 使用单个数据库会话处理整组维度的更新（仅 TestResultDimension）
+        # 获取api_id和device_id（P1.4: 通过 gRPC 读 TestResult）——会话外执行
+        api_id = None
+        device_id = None
+        if result_id:
+            test_result = task_acl_repository.get_test_result_by_id(result_id)
+            if test_result:
+                api_id = test_result.api_id
+                device_id = test_result.device_id
+                test_case_id = test_case_id or test_result.test_case_id
+
+        # 本地写：整组 TestResultDimension 更新，事务内只做本地 DB，提交即释放连接
         local_db_session = get_db_session()
         try:
-            # 获取api_id和device_id（P1.4: 通过 gRPC 读 TestResult）
-            api_id = None
-            device_id = None
-            if result_id:
-                test_result = task_acl_repository.get_test_result_by_id(result_id)
-                if test_result:
-                    api_id = test_result.api_id
-                    device_id = test_result.device_id
-                    test_case_id = test_case_id or test_result.test_case_id
-
             for dim_data, dimension_result_id in group_items:
                 dim_id = dim_data['id']
                 dim_name = dim_data['name']
@@ -115,21 +120,21 @@ class GroupResultMixin:
 
             # 循环结束后统一提交
             local_db_session.commit()
-
-            # 预提取 algorithm_results 快照，存入 result_data['algorithm_results']
-            self._build_and_store_algorithm_results(
-                result_id, task_id, test_case_id, test_type
-            )
-
-            # 检查是否所有维度都已完成评估，如果是，更新TaskCase状态
-            if result_id and test_case_id:
-                if self.check_all_dimensions_completed(result_id, task_id):
-                    # Multi-round: aggregate before final status update
-                    if self.is_multi_round_result(result_id):
-                        self.aggregate_round_results(result_id, task_id, test_case_id)
-                    self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
         finally:
             local_db_session.close()
+
+        # 会话外：预提取 algorithm_results 快照，存入 result_data['algorithm_results']
+        self._build_and_store_algorithm_results(
+            result_id, task_id, test_case_id, test_type
+        )
+
+        # 检查是否所有维度都已完成评估，如果是，更新TaskCase状态
+        if result_id and test_case_id:
+            if self.check_all_dimensions_completed(result_id, task_id):
+                # Multi-round: aggregate before final status update
+                if self.is_multi_round_result(result_id):
+                    self.aggregate_round_results(result_id, task_id, test_case_id)
+                self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
 
     def _build_and_store_algorithm_results(self, result_id, task_id, test_case_id, test_type=TestType.API.value):
         """预提取 algorithm_results 扁平列表并存入 result_data['algorithm_results']。

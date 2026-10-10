@@ -274,7 +274,10 @@ class ResultStatusMixin:
     def _update_task_status_and_notify(self, task_id, test_case_id, new_status, task):
         """更新 Task 状态并发任务级事件、通知进度（同步路径，保留兼容）"""
         from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
-        ok = task_acl_repository.update_task_status(task_id, new_status)
+        # INT-116: 任务终态写库失败即"任务永不收敛→引擎无限忙等"，
+        # 走内联重试 + 延迟队列兜底
+        from evaluation_service.infrastructure.evaluation_mixin import update_task_status_with_retry
+        ok = update_task_status_with_retry(task_id, new_status)
         self._log(
             level='INFO' if ok else 'ERROR',
             category='database',

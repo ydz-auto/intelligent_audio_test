@@ -13,6 +13,80 @@ from evaluation_service.domain.services.endpoint_helpers import (  # noqa: F401
 from shared.utils.status_constants import ExecutionStatus
 
 
+def update_task_case_status_with_retry(task_id, case_id, status='',
+                                       execution_status='',
+                                       evaluation_status='',
+                                       error_message=''):
+    """带可靠性的 TaskCase 状态写库（INT-116）。
+
+    ACL 仓储内已对传输级失败做内联重试；本包装在其仍失败（task_service
+    持续不可用等）时转入延迟重试队列，由后台线程按指数退避持续补写，
+    杜绝 task_case_relations 永久停留在 evaluating/queued 等中间态。
+
+    Returns:
+        bool: 是否已确认落库成功（False 表示已入延迟队列，最终落库与否见日志）
+    """
+    from evaluation_service.infrastructure.acl import task_acl_repository
+    from evaluation_service.infrastructure.acl.task_case_status_retry import (
+        task_status_retry_queue,
+    )
+
+    success = False
+    try:
+        success = task_acl_repository.update_task_case_status(
+            task_id=task_id,
+            case_id=str(case_id),
+            status=status,
+            execution_status=execution_status,
+            evaluation_status=evaluation_status,
+            error_message=error_message,
+        )
+    except Exception:
+        pass
+    if success:
+        return True
+
+    task_status_retry_queue.enqueue_case_status(
+        task_id=task_id, case_id=str(case_id), status=status,
+        evaluation_status=evaluation_status, error_message=error_message,
+    )
+    import logging
+    logging.getLogger(__name__).warning(
+        'TaskCase 状态写库失败已转延迟重试队列: task_id=%s case_id=%s '
+        'status=%s evaluation_status=%s',
+        task_id, case_id, status, evaluation_status,
+    )
+    return False
+
+
+def update_task_status_with_retry(task_id, status):
+    """带可靠性的 Task 状态写库（INT-116）：仓储内联重试仍失败转延迟队列。
+
+    Returns:
+        bool: 是否已确认落库成功
+    """
+    from evaluation_service.infrastructure.acl import task_acl_repository
+    from evaluation_service.infrastructure.acl.task_case_status_retry import (
+        task_status_retry_queue,
+    )
+
+    success = False
+    try:
+        success = task_acl_repository.update_task_status(task_id, status)
+    except Exception:
+        pass
+    if success:
+        return True
+
+    task_status_retry_queue.enqueue_task_status(task_id=task_id, status=status)
+    import logging
+    logging.getLogger(__name__).warning(
+        'Task 状态写库失败已转延迟重试队列: task_id=%s status=%s',
+        task_id, status,
+    )
+    return False
+
+
 def update_task_case_status_in_db(local_db_session, task_id, test_case_id, status,
                                   evaluation_status=None, execution_status=ExecutionStatus.COMPLETED,
                                   exclude_stopped=True, error_message=''):
@@ -31,14 +105,13 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
             服务端仅在非空时写入，不会覆盖已有值）
 
     Returns:
-        int: 影响行数（gRPC 调用成功返回 1，失败返回 0）
+        int: 影响行数（gRPC 调用成功返回 1，失败转延迟队列返回 0）
 
     注意：
         P1.4 改造后，此函数通过 gRPC 调用 task_service，不再参与本地事务。
         调用方需意识到：更新 TaskCase 是独立的 gRPC 调用，无法在本地事务内回滚。
-        失败时通过日志告警，不影响本地 TestResultDimension 的写入。
+        INT-116：写库失败先内联重试，仍失败转延迟重试队列补写，不再静默丢失。
     """
-    from evaluation_service.infrastructure.acl import task_acl_repository
     from shared.utils.status_utils import derive_task_case_status
 
     if evaluation_status is None:
@@ -46,7 +119,7 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
 
     derived_status = derive_task_case_status(execution_status, evaluation_status)
 
-    success = task_acl_repository.update_task_case_status(
+    success = update_task_case_status_with_retry(
         task_id=task_id,
         case_id=str(test_case_id),
         status=derived_status,

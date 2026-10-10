@@ -1,6 +1,13 @@
 """评估后状态更新混入：更新 TaskCase 状态、任务统计并通知执行引擎
 
 P0 DDD 改造：移除模块级 infrastructure/acl import，改用方法内延迟导入。
+
+P1.4 改造：所有 TaskCase/Task 读写通过 gRPC 调 task_service。
+注意：跨服务调用无原子事务，失败时通过日志告警。
+
+INT-116 改造：TaskCase/Task gRPC 读写对 task_service 瞬时过载（连接池耗尽
+导致超时/失败）具备内联重试能力（重试在 ACL 仓储实现内，本混入仍只依赖
+注入的 ABC），杜绝用例永久停留 evaluating / 任务永不收敛。
 """
 from datetime import datetime, timezone, timedelta
 from shared.utils.status_constants import (
@@ -35,7 +42,7 @@ class PostEvaluationMixin:
             dict: 已更新的任务信息（来自 task_service）；无对应 task 则返回 None
         """
         # P0-1: 通过依赖注入的 ABC 访问 ACL，domain 层不 import infrastructure
-        # 1. 读取该任务的所有 TaskCase（P1.4: 通过 gRPC）
+        # 1. 读取该任务的所有 TaskCase（P1.4: 通过 gRPC；瞬时失败由仓储内联重试）
         tc_rels = self._task_acl_repo.get_task_case_by_ids(task_id=task_id)
         if not tc_rels:
             return None

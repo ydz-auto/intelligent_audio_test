@@ -172,6 +172,21 @@ class EndpointWorker(EvaluationLoggerMixin):
                             task_id=task_data.get('task_id'),
                             test_case_id=task_data.get('test_case_id')
                         )
+                        # INT-116: 任务处理异常（含评估调用前置阶段失败）兜底落
+                        # failed 终态，杜绝用例永久停留 evaluating
+                        try:
+                            self.eval_service.result_processor.mark_case_failed_if_active(
+                                task_data.get('task_id'),
+                                task_data.get('test_case_id'),
+                                f"端点Worker处理任务异常: {str(e)}",
+                            )
+                        except Exception as mark_err:
+                            self._log(
+                                level='ERROR',
+                                content=f"评估异常兜底落终态失败: {str(mark_err)}",
+                                task_id=task_data.get('task_id'),
+                                test_case_id=task_data.get('test_case_id')
+                            )
                     finally:
                         self.task_done()
 
@@ -435,15 +450,29 @@ class EndpointWorker(EvaluationLoggerMixin):
     def _process_evaluation_result(self, resp_data, group_items, task_id, test_case_id, result_id, payload, test_type):
         """处理评估结果（成功/失败）"""
         if resp_data and '__error__' not in resp_data:
-            self.eval_service.result_processor.process_group_dimension_results(
-                resp_data=resp_data,
-                group_items=group_items,
-                task_id=task_id,
-                test_case_id=test_case_id,
-                result_id=result_id,
-                api_request_body=payload,
-                test_type=test_type
-            )
+            try:
+                self.eval_service.result_processor.process_group_dimension_results(
+                    resp_data=resp_data,
+                    group_items=group_items,
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    result_id=result_id,
+                    api_request_body=payload,
+                    test_type=test_type
+                )
+            except Exception as e:
+                # INT-116: 结果处理链路异常（本地 DB 写失败/状态推进失败等）原先
+                # 只向外抛由 worker_loop 记日志，用例永久停留 evaluating；
+                # 此处兜底落 failed 终态（仍活跃时才写，内联重试+延迟队列保落库）
+                self._log(
+                    level='ERROR',
+                    content=f"评估结果处理异常: {str(e)}\n{traceback.format_exc()}",
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                )
+                self.eval_service.result_processor.mark_case_failed_if_active(
+                    task_id, test_case_id, f"评估结果处理异常: {str(e)}"
+                )
         else:
             error_msg = resp_data.get('__error__', '未知错误') if isinstance(resp_data, dict) else 'API 调用失败'
             self.eval_service.result_processor.update_all_dimensions_in_group_failed(

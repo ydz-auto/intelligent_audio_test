@@ -147,18 +147,10 @@ class RoundAggregator(EvaluationLoggerMixin):
                 if r.round_number is not None and r.evaluation_status == EvaluationStatus.COMPLETED
             ))
 
-            self._update_algorithm_result_aggregated(local_db_session, result_id, aggregated)
+            # INT-116：先提交本地事务释放连接，gRPC 写回移出会话——
+            # 严禁持连接（开事务）期间做跨服务调用（task_service 过载时
+            # 每次 gRPC 可达 30s 超时，连接将被同步占住）
             local_db_session.commit()
-
-            self._log(
-                level='INFO',
-                category='execution',
-                content=f"多轮评估聚合完成: result_id={result_id}, aggregated={json.dumps(aggregated, ensure_ascii=False)}",
-                task_id=task_id,
-                test_case_id=test_case_id,
-            )
-
-            return aggregated
         except Exception as e:
             local_db_session.rollback()
             self._log(
@@ -171,10 +163,24 @@ class RoundAggregator(EvaluationLoggerMixin):
         finally:
             local_db_session.close()
 
-    def _update_algorithm_result_aggregated(self, db_session, result_id, aggregated):
+        # gRPC 读 TestResult + 合并 aggregated + gRPC 写回（会话外执行）
+        self._update_algorithm_result_aggregated(result_id, aggregated)
+
+        self._log(
+            level='INFO',
+            category='execution',
+            content=f"多轮评估聚合完成: result_id={result_id}, aggregated={json.dumps(aggregated, ensure_ascii=False)}",
+            task_id=task_id,
+            test_case_id=test_case_id,
+        )
+
+        return aggregated
+
+    def _update_algorithm_result_aggregated(self, result_id, aggregated):
         """
         Write aggregated results into TestResult.algorithm_result['aggregated'].
         P1.4: 通过 gRPC 调 task_service.UpdateTestResultAlgorithmResult
+        INT-116: 在 DB 会话释放后调用，不持有本地连接
         """
         # P1.4: 读取 TestResult 算法结果（通过 gRPC），合并 aggregated 后写回
         test_result = task_acl_repository.get_test_result_by_id(result_id)

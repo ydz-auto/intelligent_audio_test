@@ -166,6 +166,8 @@ class DimensionResultMixin:
         更新组内所有维度的评估结果为失败状态
 
         P1.4: TestResultDimension 本地写（自有 PO），TaskCase 通过 gRPC 更新
+        INT-116: 本地事务先提交并释放连接，再做 gRPC 终态写库——
+        本地 commit 失败也不得跳过 TaskCase failed 终态（杜绝永久 evaluating）
         """
         # 使用单个会话写 TestResultDimension
         local_db_session = get_db_session()
@@ -186,13 +188,22 @@ class DimensionResultMixin:
                 self.update_dimension_result_failed(dimension_result_id, error_message, task_id=task_id, test_case_id=test_case_id, api_raw_response=api_raw_response, api_request_body=api_request_body, session=local_db_session)
 
             local_db_session.commit()
-
-            # 更新 TaskCase 的 evaluation_status 和 status 都为 failed（P1.4: 通过 gRPC）
-            # INT-107: 失败原因同步写入 task_case_relations.error_message，不再整例静默失败
-            if test_case_id:
-                self._mark_group_case_failed(task_id, test_case_id, error_message)
+        except Exception as e:
+            # TRD 失败记录落库失败（如连接池耗尽）不能阻断 TaskCase 终态推进
+            self._log(
+                level='ERROR',
+                content=f"维度评估失败记录(TestResultDimension)落库失败: {str(e)}",
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
         finally:
             local_db_session.close()
+
+        # 更新 TaskCase 的 evaluation_status 和 status 都为 failed（P1.4: 通过 gRPC）
+        # INT-107: 失败原因同步写入 task_case_relations.error_message，不再整例静默失败
+        # INT-116: 在会话释放后执行（gRPC 失败有内联重试+延迟队列兜底）
+        if test_case_id:
+            self._mark_group_case_failed(task_id, test_case_id, error_message)
 
     def _mark_group_case_failed(self, task_id, test_case_id, error_message=''):
         """组内维度评估失败时，将 TaskCase 状态置为失败（P1.4: 通过 gRPC）"""
@@ -216,6 +227,35 @@ class DimensionResultMixin:
                 level='ERROR',
                 category='database',
                 content=f"更新TaskCase状态失败: {str(e)}",
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
+
+    def mark_case_failed_if_active(self, task_id, test_case_id, error_message):
+        """评估处理异常兜底（INT-116）：仅当用例评估状态仍活跃时落 failed 终态。
+
+        端点 Worker 处理任务抛出未捕获异常（本地 DB 写失败、状态推进异常等）时，
+        原先只记日志，task_case_relations 永久停留在 evaluating。此处先读当前
+        评估状态，仍处于 pending/queued/running/calculating 才写 failed，避免
+        覆盖并发链路已写下的 completed/skipped 等终态。
+        """
+        if not task_id or not test_case_id:
+            return
+        try:
+            from evaluation_service.infrastructure.acl import task_acl_repository
+            from shared.utils.status_constants import ACTIVE_EVALUATION_STATUSES
+            tc_rels = task_acl_repository.get_task_case_by_ids(
+                task_id=task_id, case_ids=[str(test_case_id)]
+            )
+            if not tc_rels:
+                return
+            if tc_rels[0].evaluation_status not in ACTIVE_EVALUATION_STATUSES:
+                return
+            self._mark_group_case_failed(task_id, test_case_id, error_message)
+        except Exception as e:
+            self._log(
+                level='ERROR',
+                content=f"评估异常兜底落 failed 终态失败: test_case_id={test_case_id}, error={e}",
                 task_id=task_id,
                 test_case_id=test_case_id
             )
