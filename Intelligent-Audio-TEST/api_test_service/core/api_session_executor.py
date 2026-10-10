@@ -10,19 +10,22 @@ from shared.utils.dto_utils import dto_to_dict
 from shared.utils.status_constants import ExecutionStatus
 from shared.utils.query_utils import now_cst
 from shared.utils.config_manager import config_manager
+from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
-    AudioConfigAclRepositoryImpl,
+    AudioRenderACLRepositoryImpl,
     AlgorithmQueryAclRepositoryImpl,
     AdapterAclRepositoryImpl,
     EvaluationAclRepositoryImpl,
+)
+from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
+    ApiRmsSplRepositoryImpl,
 )
 from api_test_service.core.session_context import SessionContext
 from api_test_service.clients.api_driver import APIDriver
 
 # 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
 _task_data_acl = TaskDataAclRepositoryImpl()
-_audio_acl = AudioConfigAclRepositoryImpl()
 _algo_acl = AlgorithmQueryAclRepositoryImpl()
 _adapter_acl = AdapterAclRepositoryImpl()
 _evaluation_acl = EvaluationAclRepositoryImpl()
@@ -35,6 +38,9 @@ class APISessionExecutor:
 
     def __init__(self, executor):
         self._executor = executor
+        # 混音渲染经 ACL 端口出站（RenderService 消费链路，INT-82 接线）
+        self._render_service = RoundRenderService(
+            AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl())
 
     @property
     def _log(self):
@@ -89,7 +95,7 @@ class APISessionExecutor:
                 all_rounds_success = self._run_rounds(
                     task_id, tc_rel_id, rounds, api_config, api_specific_config,
                     session, case_algorithm_params, algorithm_type,
-                    round_results
+                    round_results, case_config
                 )
 
                 aggregated = self._aggregate_round_results(round_results, session)
@@ -121,7 +127,7 @@ class APISessionExecutor:
 
     def _run_rounds(self, task_id, tc_rel_id, rounds, api_config, api_specific_config,
                     session, case_algorithm_params, algorithm_type,
-                    round_results):
+                    round_results, case_config=None):
         """执行多轮循环，返回 all_rounds_success"""
         all_rounds_success = True
 
@@ -144,7 +150,7 @@ class APISessionExecutor:
                 api_specific_config=api_specific_config, session=session,
                 round_number=round_number, round_config=round_config,
                 case_algorithm_params=case_algorithm_params,
-                algorithm_type=algorithm_type,
+                algorithm_type=algorithm_type, case_config=case_config,
                 total_rounds=len(rounds)
             )
 
@@ -228,7 +234,8 @@ class APISessionExecutor:
             self._log(level='WARNING', content=f"更新 TaskCase 状态失败: {e}", task_id=task_id)
 
     def _build_round_context(self, session, round_number, round_config, total_rounds,
-                             case_algorithm_params, algorithm_type, audio=None, case_name=''):
+                             case_algorithm_params, algorithm_type, case_name='',
+                             api_config=None, case_config=None, task_id=None):
         """构建单轮上下文"""
         round_algo_params = round_config.get('algorithm_params', [])
 
@@ -239,7 +246,8 @@ class APISessionExecutor:
             if fc == 'input_text':
                 input_text = fv
 
-        input_audio_path = self._get_round_audio_path(round_config)
+        input_audio_path = self._get_round_audio_path(
+            api_config, round_config, case_config, task_id, round_number)
 
         context = {
             'session_id': session.session_id,
@@ -262,28 +270,25 @@ class APISessionExecutor:
 
         return context
 
-    def _get_round_audio_path(self, round_config):
-        """从 round_config 获取音频路径"""
-        audios = round_config.get('audios', [])
-        if isinstance(audios, list) and audios:
-            first_audio = audios[0] if isinstance(audios[0], dict) else {}
-            audio_id = first_audio.get('audio_id')
-            if audio_id:
-                return self._query_audio_path(audio_id)
+    def _get_round_audio_path(self, api_config, round_config, case_config,
+                              task_id, round_number):
+        """轮次音频路径：整段混音（RenderAudioFile 经 ACL）产物落存储后引用。
 
-        audio_id = round_config.get('audio_id')
-        if audio_id:
-            return self._query_audio_path(audio_id)
-        return ''
-
-    def _query_audio_path(self, audio_id):
-        """查询音频文件路径（通过 ACL 仓储调用 audio_service.AudioConfigService.GetAudio）"""
-        try:
-            audio_data = dto_to_dict(_audio_acl.get_audio(audio_id)) or {}
-            return audio_data.get('file_path', '')
-        except Exception as e:
-            self._log(level='WARNING', content=f"查询 Audio {audio_id} 失败: {e}")
-        return ''
+        仅当轮次配置了音频内容时触发混音；混音 6 步全部发生在
+        RenderService 消费链路内，渲染失败抛错由轮次级收敛为轮次失败，
+        不静默回退原始音频路径。
+        """
+        audios = [a for a in (round_config.get('audios') or [])
+                  if isinstance(a, dict) and a.get('audio_id')]
+        if not audios and not round_config.get('audio_id'):
+            return ''   # 纯文本轮：无音频内容，不经混音链路
+        rendered = self._render_service.render_round_file_to_storage(
+            api_config, round_config, case_config, task_id,
+            name_hint=f'round_{round_number}')
+        if rendered is None or not rendered.get('path'):
+            raise ValueError(
+                f"第 {round_number} 轮混音渲染失败（RenderAudioFile 无产物）")
+        return rendered['path']
 
     def _get_vendor_api_url(self, api_config):
         """获取供应商 API URL"""
@@ -297,29 +302,33 @@ class APISessionExecutor:
 
     def _send_round_request(self, task_id, api_config, api_specific_config, session,
                             round_number, round_config, case_algorithm_params,
-                            algorithm_type, total_rounds=None):
+                            algorithm_type, case_config=None, total_rounds=None):
         """发送单轮请求"""
         if total_rounds is None:
             total_rounds = round_number
 
-        context_data = self._build_round_context(
-            session=session, round_number=round_number, round_config=round_config,
-            total_rounds=total_rounds, case_algorithm_params=case_algorithm_params,
-            algorithm_type=algorithm_type, case_name=''
-        )
-
-        driver = APIDriver(api_config, api_specific_config, task_id=task_id)
-        rendered_headers, rendered_body = driver.render_request_parts(context_data)
-
-        meta = api_config.meta or {}
-        use_adapter = meta.get('use_adapter', True)
-        timeout = session.session_timeout + 10
-
-        input_text = context_data.get('input_text', '')
+        input_text = ''
         input_type = round_config.get('input_type', 'text')
         start_time = time.time()
 
         try:
+            # 混音渲染（RenderAudioFile 经 ACL）与请求组装纳入轮次级失败收敛：
+            # 渲染失败/模板异常定轮次失败，不中断整个用例
+            context_data = self._build_round_context(
+                session=session, round_number=round_number, round_config=round_config,
+                total_rounds=total_rounds, case_algorithm_params=case_algorithm_params,
+                algorithm_type=algorithm_type, case_name='', api_config=api_config,
+                case_config=case_config, task_id=task_id
+            )
+            input_text = context_data.get('input_text', '')
+
+            driver = APIDriver(api_config, api_specific_config, task_id=task_id)
+            rendered_headers, rendered_body = driver.render_request_parts(context_data)
+
+            meta = api_config.meta or {}
+            use_adapter = meta.get('use_adapter', True)
+            timeout = session.session_timeout + 10
+
             if use_adapter:
                 return self._send_via_adapter(
                     task_id, algorithm_type, session, round_number, total_rounds,

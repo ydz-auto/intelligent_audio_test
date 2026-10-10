@@ -4,14 +4,16 @@
 真实链路（服务边界内全部真实组件）：
 RealtimeSessionExecutor（真实执行器 + 真实路由）
   → RealtimeWSClient（真实 WS 客户端）→ 进程内伪厂商 Realtime 服务器
-  → RealtimeAudioRenderer（真实渲染：格式适配 + SPL 增益 + 100ms 切片）
+  → RoundRenderService → RenderService 消费链路（INT-82 接线：混音渲染
+    经 ACL 出站，测试以 chunk 流桩替身）
   → frame 双通道推送（桩发布器捕获）→ summary 落库（桩结果处理器捕获）
   → 评估队列提交（桩评估 ACL 捕获）
 
 外部系统以替身仿真（生产中为真实外部系统，测试只替换系统边界）：
 - 厂商 Realtime API：伪 WS 服务器（session.update 确认 / delta 流 / done /
   barge-in 事件）
-- 轮次音频：内存生成的 s16 PCM（真实 WAV 解析见渲染器/音频源单测）
+- 轮次混音：RenderService 消费桩（逐 chunk s16 PCM，真实混音链路见
+  audio_service 侧 INT-67 专项测试）
 - 跨服务 gRPC（task/algorithm/evaluation）：ACL 桩
 
 覆盖（对照验收标准 1）：
@@ -36,7 +38,9 @@ from shared.utils.config_manager import config_manager
 from shared.models.common_enums import DeviceType
 import api_test_service.core.realtime_session_executor as rt_executor_module
 from api_test_service.core.realtime_session_executor import RealtimeSessionExecutor
-from api_test_service.domain.services.realtime_audio_renderer import AudioFormat
+from api_test_service.domain.repositories.acl.audio_render_acl_repository import (
+    RenderChunkDTO,
+)
 from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
 from tests.unit.test_int61_realtime_ws_client import FakeVendorRealtimeServer
 
@@ -190,6 +194,38 @@ class SplRepoStub:
         return None
 
 
+class RenderServiceStub:
+    """RenderService 消费桩（INT-82 接线替身）：按 chunk 时长产出 s16 chunk 流"""
+
+    def __init__(self, audio_pcm: bytes, chunk_ms: int = 20):
+        self._audio_pcm = audio_pcm
+        self._chunk_ms = chunk_ms
+        self.stream_calls = []
+
+    def stream_round_chunks(self, api_config, round_config, case_config, task_id):
+        self.stream_calls.append({
+            'api_id': getattr(api_config, 'id', None),
+            'round_config': round_config,
+            'case_config': case_config,
+            'task_id': task_id,
+        })
+        rate = 24000
+        window_bytes = int(rate * self._chunk_ms / 1000) * 2   # s16 每窗字节
+        pcm = self._audio_pcm
+        windows = []
+        for i in range(0, len(pcm), window_bytes):
+            seg = pcm[i:i + window_bytes]
+            if len(seg) < window_bytes:
+                seg = seg + b'\x00' * (window_bytes - len(seg))
+            windows.append(seg)
+        chunks = [
+            RenderChunkDTO(sequence=idx, data_b64=base64.b64encode(w).decode('ascii'),
+                           is_last=idx == len(windows) - 1, message='')
+            for idx, w in enumerate(windows)
+        ]
+        return iter(chunks)
+
+
 # ── 夹具 ──────────────────────────────────────────────────
 
 @pytest.fixture
@@ -227,15 +263,11 @@ def harness(vendor_server, audio_pcm, monkeypatch):
     # SPL 域服务为纯计算：仅把查表仓储替换为桩（口径走线性近似），
     # 本链路全程不触全局 DB 会话，避免线程局部 Session 污染后续测试
     from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
-    from api_test_service.domain.services.realtime_audio_renderer import (
-        RealtimeAudioRenderer,
-    )
     rt_executor._spl_repo = SplRepoStub()
     rt_executor._spl_service = ApiRmsSplService(rt_executor._spl_repo)
-    rt_executor._renderer = RealtimeAudioRenderer(rt_executor._spl_service)
-    # 轮次音频：内存 PCM 替身（音频字节加载链路另有单测/桩覆盖）
-    rt_executor._audio_source = type('SrcStub', (), {
-        'get_pcm': staticmethod(lambda audio_id: (audio_pcm, AudioFormat(24000, 's16', 1)))})()
+    # 混音渲染：RenderService 消费桩（混音渲染本身由 INT-67 专项覆盖）
+    render_stub = RenderServiceStub(audio_pcm, chunk_ms=20)
+    rt_executor._render_service = render_stub
 
     from types import SimpleNamespace
     api_config = SimpleNamespace(
@@ -258,6 +290,7 @@ def harness(vendor_server, audio_pcm, monkeypatch):
     yield {
         'executor': rt_executor, 'stub': executor_stub,
         'publisher': publisher, 'eval_acl': eval_acl,
+        'render_stub': render_stub,
         'data': data, 'case_config': case_config,
         'server': vendor_server,
     }
@@ -279,6 +312,10 @@ class TestRealtimeEndToEnd:
 
         # ① WS 建立：厂商收到 session.update
         assert 'session.update' in harness['server'].received
+
+        # ①' 混音渲染走 RenderService 消费链路：两轮各一次（INT-82 接线）
+        assert len(harness['render_stub'].stream_calls) == 2
+        assert all(call['api_id'] == 7 for call in harness['render_stub'].stream_calls)
 
         # ② 流式执行：chunk 逐帧推送 + commit（两轮各一次）
         appends = harness['server'].received.count('input_audio_buffer.append')

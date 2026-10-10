@@ -11,6 +11,11 @@ RealtimeSessionRegistry（session:bind:{task_id}）记录 task → 实例绑定�
 流式双通道：frame（逐帧归一化事件）+ summary（会话汇总）经
 RealtimeStreamPublisher 推送（REPORT_EVENTS 领域事件 + sse_events SSE 桥）。
 
+混音渲染（INT-82 接线）：多源时间轴混音在 audio_service RenderAudioStream
+进程内完成（08 设计文档 §7.1）；本执行器经 RoundRenderService → ACL 端口
+「组装请求 + 消费 chunk」，逐 chunk 推送 WS 并按 chunk 时长 sleep 模拟实时速率，
+不得直调 gRPC stub。
+
 SPL 对称：推送增益与 AI 输出实测口径均经 ApiRmsSplService（被测 API 数字域
 RMS→SPL 映射），与 E2E/API 结果对称可比。
 
@@ -23,12 +28,12 @@ import wave
 
 from shared.models.common_enums import RealtimeRoundMode
 from shared.utils.config_manager import config_manager
+from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
-from api_test_service.domain.services.realtime_audio_renderer import (
-    AudioFormat,
-    RealtimeAudioRenderer,
+from api_test_service.infrastructure.acl import (
+    AudioRenderACLRepositoryImpl,
+    EvaluationAclRepositoryImpl,
 )
-from api_test_service.infrastructure.audio import RoundAudioSource
 from api_test_service.infrastructure.messaging import RealtimeStreamPublisher
 from api_test_service.infrastructure.vendor_ws import RealtimeWSClient
 from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
@@ -39,8 +44,6 @@ from shared.utils.realtime_session_registry import RealtimeSessionRegistry
 logger = logging.getLogger(__name__)
 
 # 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
-from api_test_service.infrastructure.acl import EvaluationAclRepositoryImpl
-
 _evaluation_acl = EvaluationAclRepositoryImpl()
 
 
@@ -51,8 +54,9 @@ class RealtimeSessionExecutor:
         self._executor = executor
         self._spl_repo = ApiRmsSplRepositoryImpl()
         self._spl_service = ApiRmsSplService(self._spl_repo)
-        self._renderer = RealtimeAudioRenderer(self._spl_service)
-        self._audio_source = RoundAudioSource()
+        # 混音渲染经 ACL 端口出站（RenderService 消费链路，INT-82 接线）
+        self._render_service = RoundRenderService(
+            AudioRenderACLRepositoryImpl(), spl_repo=self._spl_repo)
         self._publisher = RealtimeStreamPublisher()
         self._session_registry = RealtimeSessionRegistry(
             bind_ttl_seconds=int(config_manager.get_value(
@@ -66,9 +70,6 @@ class RealtimeSessionExecutor:
     # ── 配置化参数（无魔法数字）──
     def _cfg(self, key, default):
         return config_manager.get_value('realtime_session', key, default)
-
-    def _default_spl(self):
-        return ApiRmsSplService.REFERENCE_SPL
 
     # ── 执行入口 ──
     def execute(self, task_id, tc_rel_id, data, case_config) -> bool:
@@ -156,7 +157,7 @@ class RealtimeSessionExecutor:
                 try:
                     result = self._execute_round(
                         client, api_config, round_config, round_number,
-                        len(rounds), task_id)
+                        len(rounds), task_id, case_config)
                 except Exception as e:
                     import traceback
                     self._log(level='ERROR',
@@ -223,43 +224,35 @@ class RealtimeSessionExecutor:
 
     # ── 轮次执行 ──
     def _execute_round(self, client, api_config, round_config, round_number,
-                       total_rounds, task_id) -> dict:
+                       total_rounds, task_id, case_config) -> dict:
         mode = RealtimeRoundMode.INTERRUPTION if round_config.get('is_interruption') \
             else RealtimeRoundMode.NORMAL
         if mode == RealtimeRoundMode.INTERRUPTION:
             return self._execute_interruption_round(
-                client, api_config, round_config, round_number, task_id)
+                client, api_config, round_config, round_number, task_id, case_config)
         return self._execute_normal_round(
-            client, api_config, round_config, round_number, task_id)
+            client, api_config, round_config, round_number, task_id, case_config)
 
     def _execute_normal_round(self, client, api_config, round_config,
-                              round_number, task_id) -> dict:
-        """正常轮：流式推送用户音频（SPL 校准增益）→ commit → 等 AI 完整回复"""
+                              round_number, task_id, case_config) -> dict:
+        """正常轮：流式推送混音音频（RenderAudioStream 消费链路）→ commit → 等 AI 完整回复"""
         start_time = time.time()
         chunk_ms = int(self._cfg('chunk_duration_ms', 100))
         ai_start_timeout = float(self._cfg('ai_start_timeout_seconds', 25))
         ai_complete_timeout = float(self._cfg('ai_complete_timeout_seconds', 60))
 
-        target_spl = float(round_config.get('spl') or self._default_spl())
-        audio_id = self._resolve_round_audio_id(round_config)
-        if not audio_id:
-            return {'round_number': round_number, 'success': False,
-                    'error': '轮次未配置有效音频 (audio_id)'}
-
-        pcm_bytes, src_fmt = self._audio_source.get_pcm(audio_id)
-        dst_fmt = AudioFormat(
-            sample_rate=int((api_config.meta or {}).get('audio_config', {}).get('sample_rate', 24000)),
-            bit_depth='s16',
-            channels=1,
-        )
-
         input_chunk_count = 0
-        for chunk_b64 in self._renderer.render(
-                pcm_bytes, src_fmt, dst_fmt,
-                api_id=api_config.id, target_spl=target_spl,
-                chunk_duration_ms=chunk_ms):
+        # 混音渲染经 ACL（多源时间轴混音在 audio_service 进程内，08 设计文档 §7.1）；
+        # chunk 恒定时长，逐 chunk 推送 + sleep 模拟实时速率
+        chunks = self._render_service.stream_round_chunks(
+            api_config, round_config, case_config, task_id)
+        for chunk in chunks:
+            if chunk.sequence < 0 and chunk.message:
+                # ACL 失败收敛终止帧（gRPC 异常 / 渲染失败）：轮次失败，不静默吞掉
+                return {'round_number': round_number, 'success': False,
+                        'error': f'混音渲染失败: {chunk.message}'}
             self._executor._handle_control(task_id)
-            client.send_audio_chunk(chunk_b64)
+            client.send_audio_chunk(chunk.data_b64)
             input_chunk_count += 1
             time.sleep(chunk_ms / 1000.0)
 
@@ -285,8 +278,8 @@ class RealtimeSessionExecutor:
         return result
 
     def _execute_interruption_round(self, client, api_config, round_config,
-                                    round_number, task_id) -> dict:
-        """打断轮（barge-in）：等 AI 开始 → 推打断音频 → 检测打断 → 等新回复"""
+                                    round_number, task_id, case_config) -> dict:
+        """打断轮（barge-in）：等 AI 开始 → 推打断混音音频 → 检测打断 → 等新回复"""
         start_time = time.time()
         chunk_ms = int(self._cfg('chunk_duration_ms', 100))
         ai_start_timeout = float(self._cfg('ai_start_timeout_seconds', 25))
@@ -308,27 +301,19 @@ class RealtimeSessionExecutor:
         # ② 等 AI 说一会儿再打断
         time.sleep(interrupt_delay_ms / 1000.0)
 
-        # ③ 流式推送打断音频 + commit
-        target_spl = float(round_config.get('spl') or self._default_spl())
-        audio_id = self._resolve_round_audio_id(round_config)
-        if not audio_id:
-            return {'round_number': round_number,
-                    'mode': RealtimeRoundMode.INTERRUPTION.value,
-                    'success': False, 'error': '轮次未配置有效音频 (audio_id)'}
-
-        pcm_bytes, src_fmt = self._audio_source.get_pcm(audio_id)
-        dst_fmt = AudioFormat(
-            sample_rate=int((api_config.meta or {}).get('audio_config', {}).get('sample_rate', 24000)),
-            bit_depth='s16',
-            channels=1,
-        )
+        # ③ 流式推送打断音频（RenderAudioStream 消费链路）+ commit
+        chunks = self._render_service.stream_round_chunks(
+            api_config, round_config, case_config, task_id)
         client.mark_commit()
-        for chunk_b64 in self._renderer.render(
-                pcm_bytes, src_fmt, dst_fmt,
-                api_id=api_config.id, target_spl=target_spl,
-                chunk_duration_ms=chunk_ms):
+        for chunk in chunks:
+            if chunk.sequence < 0 and chunk.message:
+                return {'round_number': round_number,
+                        'mode': RealtimeRoundMode.INTERRUPTION.value,
+                        'success': False,
+                        'error': f'混音渲染失败: {chunk.message}',
+                        'latency': round(time.time() - start_time, 3)}
             self._executor._handle_control(task_id)
-            client.send_audio_chunk(chunk_b64)
+            client.send_audio_chunk(chunk.data_b64)
             time.sleep(chunk_ms / 1000.0)
         client.commit_input()
 
@@ -524,20 +509,6 @@ class RealtimeSessionExecutor:
         merged.setdefault('input_audio_format', 'pcm16')
         merged.setdefault('input_audio_sample_rate', audio_cfg.get('sample_rate', 24000))
         return merged
-
-    @staticmethod
-    def _resolve_round_audio_id(round_config) -> str:
-        """轮次主讲人音频 ID：audios[0].audio_id（speaker 优先）→ audio_id 字段"""
-        audios = round_config.get('audios') or []
-        speaker = next((a for a in audios if isinstance(a, dict)
-                        and a.get('audio_id')
-                        and a.get('type', 'speaker') == 'speaker'), None)
-        if speaker is None:
-            first = next((a for a in audios if isinstance(a, dict) and a.get('audio_id')), None)
-            speaker = first
-        if speaker is not None:
-            return speaker.get('audio_id')
-        return round_config.get('audio_id') or ''
 
     @staticmethod
     def _collect_eval_fields(round_config, output) -> dict:

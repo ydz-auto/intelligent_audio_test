@@ -6,7 +6,8 @@
   http_api → APISessionExecutor；未知类型回退 APISessionExecutor（旧任务兼容）
 - _execute_single_or_multi：device_type=websocket_api 分发至 Realtime 执行器；
   http_api 数据维持既有行为（多轮会话 / 线性）
-- _resolve_ws_url / _resolve_ws_headers / _resolve_round_audio_id 辅助逻辑
+- _resolve_ws_url / _resolve_ws_headers 辅助逻辑；
+  轮次音频解析接线 INT-82 后归 RoundRenderService（见 TestRoundAudioResolution）
 """
 import os
 
@@ -164,18 +165,21 @@ class TestWSResolutionHelpers:
 
 
 class TestRoundAudioResolution:
-    def test_speaker_audio_preferred(self):
+    """轮次音频解析（INT-82 接线后归 RoundRenderService._normalize_round_audios：
+    多源 audios 全量进入混音时间轴，不再单源挑选；旧 audio_id 字段合成 speaker 源）"""
+
+    def test_all_audios_enter_mix(self):
+        from api_test_service.application.round_render_service import RoundRenderService
         rc = {'audios': [
-            {'audio_id': 2, 'type': 'interferer'},
-            {'audio_id': 1, 'type': 'speaker'}]}
-        assert RealtimeSessionExecutor._resolve_round_audio_id(rc) == 1
+            {'audio_id': 2, 'type': 'interferer', 'spl': 55},
+            {'audio_id': 1, 'type': 'speaker', 'spl': 65}]}
+        assert RoundRenderService._normalize_round_audios(rc) == rc['audios']
 
-    def test_first_audio_fallback(self):
-        rc = {'audios': [{'audio_id': 5, 'type': 'interferer'}]}
-        assert RealtimeSessionExecutor._resolve_round_audio_id(rc) == 5
-
-    def test_plain_audio_id_field(self):
-        assert RealtimeSessionExecutor._resolve_round_audio_id({'audio_id': 9}) == 9
+    def test_legacy_audio_id_synthesized_as_speaker(self):
+        from api_test_service.application.round_render_service import RoundRenderService
+        assert RoundRenderService._normalize_round_audios({'audio_id': 9}) == [
+            {'audio_id': 9, 'type': 'speaker', 'spl': 65.0}]
 
     def test_missing_audio_returns_empty(self):
-        assert RealtimeSessionExecutor._resolve_round_audio_id({}) == ''
+        from api_test_service.application.round_render_service import RoundRenderService
+        assert RoundRenderService._normalize_round_audios({}) == []
