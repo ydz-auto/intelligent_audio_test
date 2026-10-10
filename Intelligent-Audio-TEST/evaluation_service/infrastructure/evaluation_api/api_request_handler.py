@@ -6,8 +6,8 @@ import requests
 import traceback
 import threading
 from shared.infrastructure.storage import storage
+from shared.models.common_enums import RedisKeyPrefix, EvalTaskStatus, EvalErrorKind
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin
-from shared.models.common_enums import RedisKeyPrefix, EvalTaskStatus
 from shared.utils.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,11 @@ class ApiRequestHandler(EvaluationLoggerMixin):
     """
     负责发起HTTP请求、管理异步任务流程（创建、轮询、获取结果）
     """
+
+    @staticmethod
+    def _connection_error(message):
+        """构造连接级错误响应（INT-107：标注 __error_kind__，供降级路径识别端点不可达）"""
+        return {'__error__': message, '__error_kind__': EvalErrorKind.CONNECTION.value}
 
     def make_api_request(self, url, method, headers, payload, timeout=10):
         """
@@ -67,8 +72,11 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 category='execution',
                 content=f"API请求异常: {error_msg}"
             )
-            # 返回异常信息作为响应数据
-            resp_data = {'__error__': error_msg}
+            # 返回异常信息作为响应数据；连接级失败标注 __error_kind__（INT-107 降级路径）
+            if isinstance(e, requests.exceptions.ConnectionError):
+                resp_data = self._connection_error(error_msg)
+            else:
+                resp_data = {'__error__': error_msg}
 
         return resp_data
 
@@ -347,6 +355,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 category='execution',
                 content=f"上传API请求异常: {str(e)}"
             )
+            if isinstance(e, requests.exceptions.ConnectionError):
+                return self._connection_error(str(e))
             return {'__error__': str(e)}
 
     def get_task_status(self, url, eval_task_id, timeout=30):

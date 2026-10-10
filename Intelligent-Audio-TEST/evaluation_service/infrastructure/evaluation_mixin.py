@@ -15,7 +15,7 @@ from shared.utils.status_constants import ExecutionStatus
 
 def update_task_case_status_in_db(local_db_session, task_id, test_case_id, status,
                                   evaluation_status=None, execution_status=ExecutionStatus.COMPLETED,
-                                  exclude_stopped=True):
+                                  exclude_stopped=True, error_message=''):
     """
     统一更新 TaskCase 状态（P1.4 改造：通过 gRPC 调 task_service.UpdateTaskCaseStatus）
 
@@ -27,6 +27,8 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
         evaluation_status: 评估状态，默认与 status 一致
         execution_status: 执行状态，默认 'completed'（评估服务调用时执行已完成）
         exclude_stopped: 是否排除已停止的任务（gRPC 接口暂未支持，服务端处理）
+        error_message: 失败原因（INT-107：评估失败时写入 task_case_relations.error_message，
+            服务端仅在非空时写入，不会覆盖已有值）
 
     Returns:
         int: 影响行数（gRPC 调用成功返回 1，失败返回 0）
@@ -49,5 +51,6 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
         case_id=str(test_case_id),
         status=derived_status,
         evaluation_status=evaluation_status,
+        error_message=error_message or '',
     )
     return 1 if success else 0

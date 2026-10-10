@@ -66,7 +66,9 @@ class ReportCompareDataMixin:
         )
 
         total_cases = sum(_t_get(t, 'total_cases', 0) or 0 for t in tasks)
-        completed_cases = sum((_t_get(t, 'completed_cases', 0) or 0) - (_t_get(t, 'failed_cases', 0) or 0) for t in tasks)
+        # task.completed_cases 口径为 status=completed 的用例数，与 failed_cases 不相交（INT-107：不可再减）
+        completed_cases = sum(_t_get(t, 'completed_cases', 0) or 0 for t in tasks)
+        failed_cases = sum(_t_get(t, 'failed_cases', 0) or 0 for t in tasks)
         success_rate = (completed_cases / total_cases * 100) if total_cases > 0 else 0
 
         test_case_ids = set()
@@ -164,6 +166,8 @@ class ReportCompareDataMixin:
             "report_task_type": report_task_type,
             "task_weighted_values": task_weighted_values,
             "total_cases": total_cases,
+            "completed_cases": completed_cases,
+            "failed_cases": failed_cases,
             "success_rate": success_rate,
             "test_cases": test_cases,
             "case_categories_list": case_categories_list,
@@ -206,6 +210,8 @@ class ReportCompareDataMixin:
             "task_count": len(tasks),
             "task_type": data_dict["report_task_type"],
             "total_cases": data_dict["total_cases"],
+            "completed_cases": data_dict.get("completed_cases", 0),
+            "failed_cases": data_dict.get("failed_cases", 0),
             "overall_success_rate": round(data_dict["success_rate"], 2),
             "tasks_info": tasks_info,
             "case_categories": data_dict["case_categories_list"],

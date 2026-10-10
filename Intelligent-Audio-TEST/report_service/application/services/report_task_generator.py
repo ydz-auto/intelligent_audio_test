@@ -257,8 +257,9 @@ class ReportTaskGenerator:
 
         total_cases = _task_get('total_cases', 0) or 0
         failed_cases_val = _task_get('failed_cases', 0) or 0
+        # task.completed_cases 口径为 status=completed 的用例数，与 failed_cases 不相交（INT-107：不可再减，
+        # 否则全失败任务出现 completed_cases=-1 / pass_rate=-100）
         completed_cases = _task_get('completed_cases', 0) or 0
-        completed_cases = completed_cases - failed_cases_val
         success_rate = (completed_cases / total_cases * 100) if total_cases > 0 else 0
 
         res_ids = [r.get('id') if isinstance(r, dict) else r.id for r in results]

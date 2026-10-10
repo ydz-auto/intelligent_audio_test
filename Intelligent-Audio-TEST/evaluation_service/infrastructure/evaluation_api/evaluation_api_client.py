@@ -13,7 +13,7 @@ from evaluation_service.infrastructure.evaluation_api.payload_builder import Pay
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin, get_endpoint_url, get_endpoint_field
 from shared.utils.config_manager import config_manager
 from shared.utils.distributed_coordinator import DistributedSemaphore
-from shared.models.common_enums import RedisKeyPrefix
+from shared.models.common_enums import RedisKeyPrefix, EvalErrorKind
 
 
 class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMixin):
@@ -322,6 +322,9 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 api_id=api_id
             )
             resp_data = {'__error__': error_msg}
+            # INT-107: 透传错误类别标记（connection/business），供兜底端点降级判定
+            if isinstance(create_response, dict) and create_response.get('__error_kind__'):
+                resp_data['__error_kind__'] = create_response['__error_kind__']
 
         return resp_data
 
@@ -459,6 +462,10 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         发起API请求，支持失败时切换到备用端点
         同时支持同步API和异步任务API（WER/SER计算器服务）
 
+        INT-107 降级路径：主端点连接级失败（不可达）时，按配置
+        evaluation_service.eval_fallback_urls 依次尝试兜底评估端点；
+        业务级失败（HTTP 4xx/5xx、任务执行失败）不切换，避免重复计分。
+
         Args:
             endpoints: API端点列表
             method: 请求方法
@@ -503,7 +510,89 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                     audio_field_names=audio_field_names
                 )
 
+        # INT-107: 主端点连接级失败时，按配置尝试兜底评估端点
+        if self._is_connection_error(resp_data):
+            fb_selected_url, fb_resp_data = self._try_configured_fallback_urls(
+                selected_url, endpoints, method, headers, payload, task_id,
+                test_case_id, api_id, dim_names, dim_info, audio_field_names,
+                primary_error=resp_data,
+            )
+            if fb_resp_data is not None:
+                return fb_selected_url, fb_resp_data
+
         return selected_url, resp_data
+
+    @staticmethod
+    def _is_connection_error(resp_data):
+        """响应是否为连接级失败（端点不可达，评估任务未被接受）"""
+        return (isinstance(resp_data, dict)
+                and resp_data.get('__error_kind__') == EvalErrorKind.CONNECTION.value)
+
+    @staticmethod
+    def _get_fallback_urls(exclude_url=None):
+        """读取配置的兜底评估端点列表（默认空 = 不降级）
+
+        优先级：环境变量 EVAL_FALLBACK_URLS（逗号分隔）>
+        shared/config/concurrency_config.json 的 evaluation_service.eval_fallback_urls（列表）。
+        """
+        raw = os.environ.get('EVAL_FALLBACK_URLS', '')
+        if raw.strip():
+            urls = [u.strip() for u in raw.split(',')]
+        else:
+            cfg = config_manager.get_value('evaluation_service', 'eval_fallback_urls', [])
+            urls = [str(u).strip() for u in cfg] if isinstance(cfg, (list, tuple)) else (
+                [u.strip() for u in str(cfg).split(',')] if str(cfg).strip() else [])
+        return [u for u in urls if u and u != exclude_url]
+
+    def _try_configured_fallback_urls(self, selected_url, endpoints, method, headers, payload,
+                                       task_id, test_case_id, api_id, dim_names, dim_info,
+                                       audio_field_names, primary_error):
+        """按配置依次尝试兜底评估端点
+
+        Returns:
+            (selected_url, resp_data) 元组：兜底成功时指向兜底端点与其结果；
+            全部失败时返回 (主端点, None)（调用方保留主端点错误继续原流程）
+        """
+        fallback_urls = self._get_fallback_urls(exclude_url=selected_url)
+        if not fallback_urls:
+            return selected_url, None
+
+        self._log(
+            level='WARNING',
+            category='execution',
+            content=f"评估端点 {selected_url} 连接失败（{primary_error.get('__error__', '')}），"
+                    f"尝试兜底端点: {fallback_urls}",
+            task_id=task_id,
+            test_case_id=test_case_id,
+            api_id=api_id
+        )
+
+        for fallback_url in fallback_urls:
+            should_break, new_selected_url, fb_resp = self._try_single_fallback(
+                fallback_url, endpoints, method, headers, payload,
+                task_id, test_case_id, api_id, dim_names, dim_info,
+                audio_field_names=audio_field_names
+            )
+            if should_break and isinstance(fb_resp, dict) and '__error__' not in fb_resp:
+                self._log(
+                    level='INFO',
+                    category='execution',
+                    content=f"兜底端点 {fallback_url} 评估成功，替代主端点 {selected_url}",
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id
+                )
+                return new_selected_url or fallback_url, fb_resp
+
+        self._log(
+            level='ERROR',
+            category='execution',
+            content=f"评估端点 {selected_url} 与全部兜底端点均不可达，维度评估失败",
+            task_id=task_id,
+            test_case_id=test_case_id,
+            api_id=api_id
+        )
+        return selected_url, None
 
     def _try_single_fallback(self, fallback_url, endpoints, method, headers, payload,
                               task_id, test_case_id, api_id, dim_names, dim_info, audio_field_names=None):

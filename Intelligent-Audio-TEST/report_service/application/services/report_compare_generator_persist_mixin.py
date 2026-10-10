@@ -37,8 +37,8 @@ class ReportComparePersistMixin:
         # 摘要
         summary_data = {
             'total_cases': summary.get('total_cases', 0),
-            'completed_cases': summary.get('total_cases', 0),
-            'failed_cases': 0,
+            'completed_cases': summary.get('completed_cases', 0),
+            'failed_cases': summary.get('failed_cases', 0),
             'pass_rate': summary.get('overall_success_rate', 0),
             'duration': 0,
             'started_at': None,
@@ -119,7 +119,8 @@ class ReportComparePersistMixin:
             return getattr(t, key, default)
 
         total_cases = sum(_t_get(t, 'total_cases', 0) or 0 for t in tasks) if tasks else 0
-        completed_cases = sum((_t_get(t, 'completed_cases', 0) or 0) - (_t_get(t, 'failed_cases', 0) or 0) for t in tasks) if tasks else 0
+        # task.completed_cases 口径为 status=completed 的用例数，与 failed_cases 不相交（INT-107：不可再减）
+        completed_cases = sum(_t_get(t, 'completed_cases', 0) or 0 for t in tasks) if tasks else 0
         failed_cases = sum(_t_get(t, 'failed_cases', 0) or 0 for t in tasks) if tasks else 0
         success_rate = (completed_cases / total_cases * 100) if total_cases > 0 else 0
 

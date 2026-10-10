@@ -60,7 +60,8 @@ class ConfigManager:
                     "poll_interval": 5,
                     "eval_max_wait_time": 600,
                     "redis_queue_brpop_timeout": 1,
-                    "redis_result_callback_timeout": 5
+                    "redis_result_callback_timeout": 5,
+                    "eval_fallback_urls": []
                 },
                 "execution_engine": {
                     "max_queue_size": 100,
@@ -108,7 +109,8 @@ class ConfigManager:
                     "poll_interval": 5,
                     "eval_max_wait_time": 600,
                     "redis_queue_brpop_timeout": 1,
-                    "redis_result_callback_timeout": 5
+                    "redis_result_callback_timeout": 5,
+                    "eval_fallback_urls": []
                 },
                 "execution_engine": {
                     "max_queue_size": 100,

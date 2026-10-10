@@ -384,6 +384,16 @@ class ThirdPartyAdapterKind(str, Enum):
     PRESIGNED_URL = 'presigned_url'
 
 
+class EvalErrorKind(str, Enum):
+    """评估外呼错误类型枚举（INT-107）— 标注 __error__ 的失败类别，供降级路径判定
+
+    CONNECTION  连接级失败（端点不可达/DNS/连接超时），评估任务未被接受，可安全切换兜底端点
+    BUSINESS    业务级失败（HTTP 4xx/5xx、评估任务执行失败），重投可能重复计分，不做端点切换
+    """
+    CONNECTION = 'connection'
+    BUSINESS = 'business'
+
+
 class PlaybackQueryCode(int, Enum):
     """播放设备查询响应业务码枚举（INT-92）
 

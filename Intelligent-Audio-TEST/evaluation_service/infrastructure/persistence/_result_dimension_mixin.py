@@ -188,17 +188,20 @@ class DimensionResultMixin:
             local_db_session.commit()
 
             # 更新 TaskCase 的 evaluation_status 和 status 都为 failed（P1.4: 通过 gRPC）
+            # INT-107: 失败原因同步写入 task_case_relations.error_message，不再整例静默失败
             if test_case_id:
-                self._mark_group_case_failed(task_id, test_case_id)
+                self._mark_group_case_failed(task_id, test_case_id, error_message)
         finally:
             local_db_session.close()
 
-    def _mark_group_case_failed(self, task_id, test_case_id):
+    def _mark_group_case_failed(self, task_id, test_case_id, error_message=''):
         """组内维度评估失败时，将 TaskCase 状态置为失败（P1.4: 通过 gRPC）"""
         from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
+        from evaluation_service.domain.services.evaluation_utils import compose_case_error_message
         try:
             update_count = update_task_case_status_in_db(
-                None, task_id, test_case_id, TaskCaseStatus.FAILED, EvaluationStatus.FAILED
+                None, task_id, test_case_id, TaskCaseStatus.FAILED, EvaluationStatus.FAILED,
+                error_message=compose_case_error_message([error_message] if error_message else []),
             )
 
             self._log(

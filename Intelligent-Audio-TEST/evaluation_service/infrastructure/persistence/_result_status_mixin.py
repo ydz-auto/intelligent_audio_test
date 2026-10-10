@@ -48,7 +48,7 @@ class ResultStatusMixin:
             expected_dim_count = self._get_expected_dim_count(test_case_id)
 
             # 5. 检查是否所有预期结果都已采集并完成评估
-            case_all_finished, case_any_failed = self._check_all_results_completed(
+            case_all_finished, case_any_failed, failed_reasons = self._check_all_results_completed(
                 task_id, test_case_id, expected_count, expected_dim_count, all_results
             )
 
@@ -58,7 +58,8 @@ class ResultStatusMixin:
             # 6. 只有当维度结果搜集全且都评估完成了，才更新最终状态
             new_evaluation_status = EvaluationStatus.FAILED if case_any_failed else EvaluationStatus.COMPLETED
             new_status = derive_task_case_status(ExecutionStatus.COMPLETED, new_evaluation_status)
-            self._apply_final_status(task_id, test_case_id, new_status, new_evaluation_status, task)
+            self._apply_final_status(task_id, test_case_id, new_status, new_evaluation_status, task,
+                                     failed_reasons=failed_reasons)
         except Exception as e:
             self._log(
                 level='ERROR',
@@ -156,9 +157,10 @@ class ResultStatusMixin:
             local_db_session.close()
 
     def _check_all_results_completed(self, task_id, test_case_id, expected_count, expected_dim_count, all_results):
-        """检查所有结果是否完成评估，返回 (case_all_finished, case_any_failed)
+        """检查所有结果是否完成评估，返回 (case_all_finished, case_any_failed, failed_reasons)
 
         P1.4: all_results 是 dict 列表（来自 gRPC），TestResultDimension 仍本地查询（自有 PO）
+        failed_reasons: 失败维度的原因列表（INT-107: 供用例级 error_message 聚合）
         """
         if len(all_results) < expected_count:
             self._log(
@@ -168,10 +170,11 @@ class ResultStatusMixin:
                 task_id=task_id,
                 test_case_id=test_case_id
             )
-            return False, False
+            return False, False, []
 
         case_all_finished = True
         case_any_failed = False
+        failed_reasons = []
 
         from shared.models.database import get_db_session
         from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
@@ -206,6 +209,8 @@ class ResultStatusMixin:
                     # 如果有任何维度评估失败，这个 TestResult 就是失败的
                     if dim.evaluation_status == EvaluationStatus.FAILED:
                         res_failed = True
+                        if dim.error_message:
+                            failed_reasons.append(f"{dim.error_message}")
 
                 # 如果这个 TestResult 还没完成，整体也不能算完成
                 if not res_finished:
@@ -216,9 +221,10 @@ class ResultStatusMixin:
         finally:
             local_db_session.close()
 
-        return case_all_finished, case_any_failed
+        return case_all_finished, case_any_failed, failed_reasons
 
-    def _apply_final_status(self, task_id, test_case_id, new_status, new_evaluation_status, task):
+    def _apply_final_status(self, task_id, test_case_id, new_status, new_evaluation_status, task,
+                            failed_reasons=None):
         """应用最终状态
 
         P1.4: 通过 gRPC 更新 TaskCase 和 Task
@@ -227,9 +233,15 @@ class ResultStatusMixin:
         gRPC 调用保留作为同步路径，事件作为异步通知补充。
         """
         # 更新TaskCase状态（P1.4: 通过 gRPC）
+        # INT-107: 失败时把维度失败原因聚合写入 task_case_relations.error_message
         from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
+        from evaluation_service.domain.services.evaluation_utils import compose_case_error_message
+        error_message = ''
+        if new_evaluation_status == EvaluationStatus.FAILED:
+            error_message = compose_case_error_message(failed_reasons)
         update_count = update_task_case_status_in_db(
-            None, task_id, test_case_id, new_status, new_evaluation_status
+            None, task_id, test_case_id, new_status, new_evaluation_status,
+            error_message=error_message
         )
 
         self._log(
