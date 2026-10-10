@@ -11,6 +11,7 @@ from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerM
 from shared.models.common_enums import FieldType, RedisKeyPrefix
 from shared.utils.status_constants import EvaluationStatus
 from shared.utils.config_manager import config_manager
+from shared.utils.round_data_utils import normalize_round_output
 
 logger = logging.getLogger(__name__)
 
@@ -268,8 +269,9 @@ class EndpointWorker(EvaluationLoggerMixin):
             rounds_data = algorithm_result.get('rounds', [])
             if rounds_data:
                 idx = round_number if round_number is not None else -1
+                # INT-123：API 多轮链 output 为纯文本串，归一为 dict 再取字段
                 if 0 <= idx < len(rounds_data) and isinstance(rounds_data[idx], dict):
-                    ref_output = rounds_data[idx].get('output', {})
+                    ref_output = normalize_round_output(rounds_data[idx].get('output'))
                 else:
                     ref_output = {}
             else:

@@ -5,6 +5,7 @@ P0-1 DDD 改造：从 domain/services/ 移至 infrastructure/。
 线程池提交、端点 Worker 调度是基础设施逻辑，不属于 Domain 层。
 """
 from evaluation_service.domain.services.endpoint_helpers import get_endpoint_url
+from shared.utils.round_data_utils import normalize_round_output
 
 
 class TaskDispatcherMixin:
@@ -167,8 +168,9 @@ class TaskDispatcherMixin:
             rounds_data = algorithm_result.get('rounds', [])
             if rounds_data:
                 idx = round_number if round_number is not None else -1
+                # INT-123：API 多轮链 output 为纯文本串，归一为 dict 再取字段
                 if 0 <= idx < len(rounds_data) and isinstance(rounds_data[idx], dict):
-                    ref_output = rounds_data[idx].get('output', {})
+                    ref_output = normalize_round_output(rounds_data[idx].get('output'))
                 else:
                     ref_output = {}
             else:

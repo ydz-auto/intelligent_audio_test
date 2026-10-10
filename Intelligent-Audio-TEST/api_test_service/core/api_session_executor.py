@@ -7,7 +7,7 @@ import requests as http_requests
 from datetime import timezone, timedelta
 
 from shared.utils.dto_utils import dto_to_dict
-from shared.utils.status_constants import ExecutionStatus
+from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 from shared.utils.query_utils import now_cst
 from shared.utils.config_manager import config_manager
 from shared.utils.api_key_provider import resolver_from_config
@@ -111,9 +111,17 @@ class APISessionExecutor:
                 )
 
                 if result_id and all_rounds_success:
-                    self._submit_evaluation(task_id, result_id, test_case_id, case_name,
-                                           case_config, case_algorithm_params,
-                                           algorithm_type, aggregated, api_id)
+                    # INT-123：评估提交失败不降级执行终态——执行已完成的事实
+                    # 保留在 execution_status，失败由 evaluation_status 终态
+                    # 承载（对齐 INT-107/INT-115 评估侧终态口径），不再把整例
+                    # 打成 execution failed
+                    try:
+                        self._submit_evaluation(task_id, result_id, test_case_id, case_name,
+                                               case_config, case_algorithm_params,
+                                               algorithm_type, aggregated, api_id)
+                    except Exception as eval_err:
+                        self._finalize_evaluation_submit_failure(
+                            task_id, test_case_id, api_id, eval_err)
 
             except Exception as e:
                 import traceback
@@ -130,6 +138,30 @@ class APISessionExecutor:
                     logger.debug("销毁 session 失败 (api_id=%s)", api_id, exc_info=True)
 
         return True
+
+    def _finalize_evaluation_submit_failure(self, task_id, test_case_id, api_id, eval_err):
+        """评估提交失败收口（INT-123）：不动 execution_status，仅补评估终态
+
+        execution_status 已由 create_multi_round_test_result 写为 COMPLETED，
+        此处只把 evaluation_status 置 FAILED 并留痕原因，复合状态由
+        task_service 按 derive_task_case_status(completed, failed) 推导，
+        保留"执行成功、评估失败"的事实边界。
+        """
+        import traceback
+        error_msg = f"API {api_id} 多轮会话评估提交失败: {eval_err}"
+        self._log(level='ERROR', content=f"{error_msg}\n{traceback.format_exc()}",
+                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+        try:
+            _task_data_acl.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                evaluation_status=EvaluationStatus.FAILED,
+                error_message=error_msg,
+            )
+        except Exception as status_err:
+            self._log(level='WARNING',
+                      content=f"评估失败终态回写失败: {status_err}",
+                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
 
     def _run_rounds(self, task_id, tc_rel_id, rounds, api_config, api_specific_config,
                     session, case_algorithm_params, algorithm_type,

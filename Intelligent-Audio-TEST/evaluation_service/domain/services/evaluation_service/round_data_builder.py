@@ -2,6 +2,7 @@
 import copy
 
 from shared.utils.json_utils import deserialize_algorithm_result
+from shared.utils.round_data_utils import normalize_round_index, normalize_round_output
 
 
 class RoundDataBuilderMixin:
@@ -31,10 +32,8 @@ class RoundDataBuilderMixin:
             return None
 
         round_data = rounds[round_number]
-        output = round_data.get('output', {})
-
-        # 构建扁平结构，把 rounds[i].output 的字段提升到顶层
-        flat = dict(output) if isinstance(output, dict) else {}
+        # INT-123：API 多轮链 output 为纯文本串，归一为 {'text': str} 后提升
+        flat = dict(normalize_round_output(round_data.get('output')))
         if 'latency' in round_data:
             flat['latency'] = round_data['latency']
 
@@ -146,8 +145,10 @@ class RoundDataBuilderMixin:
 
         按轮加载 reference_params，遍历 mappings 按 source 类型从 output / reference / case_config 取值。
         """
-        output = round_item.get('output', {})
-        round_number = round_item.get('round', 0)
+        # INT-123：output 双链口径归一（E2E 已映射 dict / API 多轮纯文本串），
+        # 轮次编号统一归一为 0-indexed（API 链仅 1-indexed round_number）
+        output = normalize_round_output(round_item.get('output'))
+        round_number = normalize_round_index(round_item)
 
         item = {}
 
