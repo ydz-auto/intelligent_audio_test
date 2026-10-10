@@ -39,6 +39,7 @@ class EventType(str, Enum):
     CASE_EXECUTION_COMPLETED = 'case_execution_completed'
     CASE_EVALUATION_COMPLETED = 'case_evaluation_completed'
     CASE_FAILED = 'case_failed'
+    CASE_BATCH_ACTION_COMPLETED = 'case_batch_action_completed'  # 用例批量操作完成/异步提交（INT-75）
     # 设备级
     DEVICE_STATUS_CHANGED = 'device_status_changed'
     # 报告级

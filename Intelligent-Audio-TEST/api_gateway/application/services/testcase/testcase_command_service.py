@@ -208,6 +208,12 @@ class TestCaseCommandService:
 
         data_dict = req_data.model_dump(by_alias=False, exclude_none=True)
 
+        # 幂等键（INT-75）：body 未携带时回退标准 Idempotency-Key 请求头
+        if not data_dict.get('idempotency_key'):
+            header_key = (request.headers.get('Idempotency-Key') or '').strip()
+            if header_key:
+                data_dict['idempotency_key'] = header_key
+
         result = _testcase_acl.batch_action(data_dict)
 
         if not result.get('success'):

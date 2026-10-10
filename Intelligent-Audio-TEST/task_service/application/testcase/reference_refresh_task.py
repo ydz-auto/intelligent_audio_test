@@ -85,6 +85,27 @@ class ReferenceRefreshTask:
         except Exception as e:
             logger.warning(f"[ReferenceRefreshTask-{self.task_id}] 推送进度失败，降级忽略: {e}")
 
+    def _publish_completion_event(self):
+        """任务终态补发 CASE_EVENTS / case_batch_action_completed 领域事件（INT-75）。
+
+        提交时 batch_action 调度器已发布 status='submitted' 事件；此处补发
+        completed/failed 终态。降级：Redis 不可用时只打日志，不影响任务状态。
+        """
+        try:
+            from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+            from task_service.domain.events.testcase_events import TestCaseBatchAction
+            event = TestCaseBatchAction(
+                action='refresh_reference',
+                case_ids=list(self.case_ids),
+                success_count=self.updated_count,
+                message=f"异步刷新任务终态: 成功 {self.updated_count}, 失败 {self.failed_count}",
+                status=self.status,
+                async_task_id=self.task_id,
+            )
+            EventBus().publish(EventChannel.CASE_EVENTS, EventType.CASE_BATCH_ACTION_COMPLETED, event.to_dict())
+        except Exception as e:
+            logger.warning(f"[ReferenceRefreshTask-{self.task_id}] 发布终态事件失败，降级忽略: {e}")
+
     def run(self, refresher=None):
         """在新线程中执行刷新任务
 
@@ -130,6 +151,7 @@ class ReferenceRefreshTask:
             self.status = 'completed'
             self.completed_at = datetime.now(_CST)
             self._persist()
+            self._publish_completion_event()
 
             logger.info(f"[ReferenceRefreshTask-{self.task_id}] 完成! 成功: {self.updated_count}, 失败: {self.failed_count}")
 
@@ -137,6 +159,7 @@ class ReferenceRefreshTask:
             self.status = 'failed'
             self.completed_at = datetime.now(_CST)
             self._persist()
+            self._publish_completion_event()
             logger.error(f"[ReferenceRefreshTask-{self.task_id}] 任务执行失败: {e}")
 
     def get_progress(self) -> dict:

@@ -526,6 +526,8 @@ class TestCaseBatchActionRequest(APIModel):
     round_numbers: Optional[List[int]] = Field(None, alias='round_numbers', validation_alias='roundNumbers')
     # 批量操作应用层级（声压/设备/噪声用）
     targets: Optional[List[str]] = None
+    # 幂等键（可选，INT-75）：客户端生成；未提供时后端按请求内容指纹在短窗口内去重
+    idempotency_key: Optional[str] = Field(None, validation_alias=AliasChoices('idempotency_key', 'idempotencyKey'))
 
 
 class TestCaseExportRequest(APIModel):
