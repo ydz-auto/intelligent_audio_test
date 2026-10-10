@@ -92,7 +92,7 @@ class DeviceQueryService:
         all_devices = []
 
         try:
-            android_driver = device_driver_factory.get_driver_for_device('Android')
+            android_driver = device_driver_factory.get_driver_by_system('Android')
             if android_driver:
                 original_mock_mode = getattr(android_driver, '_mock_mode', False)
                 if hasattr(android_driver, '_mock_mode'):
@@ -101,7 +101,7 @@ class DeviceQueryService:
                 if hasattr(android_driver, '_mock_mode'):
                     android_driver._mock_mode = original_mock_mode
 
-            ios_driver = device_driver_factory.get_driver_for_device('iOS')
+            ios_driver = device_driver_factory.get_driver_by_system('iOS')
             if ios_driver:
                 original_mock_mode = getattr(ios_driver, '_mock_mode', False)
                 if hasattr(ios_driver, '_mock_mode'):
@@ -110,7 +110,7 @@ class DeviceQueryService:
                 if hasattr(ios_driver, '_mock_mode'):
                     ios_driver._mock_mode = original_mock_mode
 
-            harmony_driver = device_driver_factory.get_driver_for_device('HarmonyOS')
+            harmony_driver = device_driver_factory.get_driver_by_system('HarmonyOS')
             if harmony_driver:
                 original_mock_mode = getattr(harmony_driver, '_mock_mode', False)
                 if hasattr(harmony_driver, '_mock_mode'):
