@@ -46,8 +46,8 @@ def create_app():
     # 初始化文件存储目录
     TaskModel.init_db()
 
-    # 将上次重启前卡死的任务标记为 failed
-    TaskModel.reset_processing_tasks()
+    # 将上次重启前未完成的任务（processing/pending）标记为 failed，避免重启后 worker 自动处理积压任务
+    TaskModel.reset_incomplete_tasks()
 
     # 注册蓝图
     app.register_blueprint(health_bp)

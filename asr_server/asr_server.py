@@ -50,6 +50,23 @@ if _env_path.exists():
 for _k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
            "http_proxy", "https_proxy", "all_proxy"):
     os.environ.pop(_k, None)
+# 兜底：不代理任何域名（requests 走 NO_PROXY 检查）
+os.environ["NO_PROXY"] = "*"
+os.environ["no_proxy"] = "*"
+
+# 仅删环境变量不够：Windows 上 requests/urllib 还会读注册表系统代理
+# （ProxyEnable=1），导致下载 ModelScope 模型仍走代理而 SSL 失败。
+# 这里强制让 requests/urllib 忽略环境变量与注册表代理。
+try:
+    import urllib.request as _urllib_request
+    import requests.utils as _req_utils
+    _urllib_request.getproxies = lambda *a, **k: {}
+    _req_utils.getproxies = lambda *a, **k: {}
+    _req_utils.proxy_bypass = lambda *a, **k: True
+    _urllib_request.proxy_bypass = lambda *a, **k: True
+    _urllib_request.proxy_bypass_environment = lambda *a, **k: True
+except Exception:
+    pass
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse

@@ -79,6 +79,19 @@ class LocalConcurrencyManager:
             return cls._current_concurrency < cls._max_concurrency
 
     @classmethod
+    def try_start(cls):
+        """原子地检查并占用一个全局并发位。
+
+        可用（current < max）则 current+1 并返回 True；否则返回 False。
+        避免 can_start() + increment() 两步之间的 TOCTOU 竞态。
+        """
+        with cls._lock:
+            if cls._current_concurrency < cls._max_concurrency:
+                cls._current_concurrency += 1
+                return True
+            return False
+
+    @classmethod
     def increment(cls):
         """
         增加当前并发数
@@ -277,10 +290,22 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             local_dir=os.path.join(config.UPLOAD_DIR, _storage_id(caller_task_id, eval_task_id)),
         )
 
-        if not LocalConcurrencyManager.can_start():
-            # 并发已满：不再 400 拒绝，创建为 pending 任务，由后台文件 worker（TaskService._process_tasks）
-            # 按 task_type 并发上限排队执行；计算完成后 _run_task 通过 notify_callback 主动通知主服务。
-            # （主服务侧已支持：回调写结果 + 兜底结算补查，pending 不会导致用例误判失败）
+        # 并发控制：全局并发位（LocalConcurrencyManager）与维度并发位（ConcurrencyManager）
+        # 双重限制。任一已满 → 不再 400 拒绝，创建为 pending 任务，由后台文件 worker
+        # （TaskService._process_tasks）按相同限制排队执行；计算完成后 _run_task 通过
+        # notify_callback 主动通知主服务。
+        # （主服务侧已支持：回调写结果 + 兜底结算补查，pending 不会导致用例误判失败）
+        got_global = LocalConcurrencyManager.try_start()
+        got_dim = False
+        if got_global:
+            got_dim = ConcurrencyManager.try_start(task_type)
+            if not got_dim:
+                # 全局并发位已占用但该维度并发已满 → 释放全局位，任务走排队
+                LocalConcurrencyManager.decrement()
+
+        if not got_global or not got_dim:
+            reason = f"全局并发({config.LOCAL_MAX_CONCURRENCY})" if not got_global \
+                else f"维度并发({task_type})"
             TaskModel.create_task(
                 eval_task_id=eval_task_id,
                 task_type=task_type,
@@ -290,7 +315,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 task_id=caller_task_id
             )
             logger.info(
-                f"[queue] 评估并发已满({config.LOCAL_MAX_CONCURRENCY})，任务进入排队: "
+                f"[queue] 评估{reason}已满，任务进入排队: "
                 f"eval_task_id={eval_task_id}, task_type={task_type}, caller_task_id={caller_task_id}"
             )
             base_url = request.host_url.rstrip('/')
@@ -301,10 +326,9 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 "final_result_url": f"{base_url}/api/get_final_result/{eval_task_id}",
                 "task_type": task_type,
                 "queued": True,
-                "msg": f"评估端点并发已满({config.LOCAL_MAX_CONCURRENCY})，任务已进入排队等待"
+                "msg": f"评估{reason}已满，任务已进入排队等待"
             })
 
-        LocalConcurrencyManager.increment()
         try:
             TaskModel.create_task(
                 eval_task_id=eval_task_id,
@@ -317,6 +341,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             TaskModel.update_task_status(eval_task_id, 'processing', started_at=datetime.now().isoformat())
         except Exception:
             LocalConcurrencyManager.decrement()
+            ConcurrencyManager.decrement(task_type)
             raise
 
         def process_local_task(eval_task_id, task_type, task_params):
@@ -375,6 +400,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 process_local_task(*args, **kwargs)
             finally:
                 LocalConcurrencyManager.decrement()
+                ConcurrencyManager.decrement(task_type)
 
         thread = threading.Thread(target=_run_with_decrement, args=(eval_task_id, task_type, task_params))
         thread.daemon = True
@@ -558,6 +584,7 @@ def get_status_info():
         json: 包含本地并发统计和远程端点并发统计的响应
     """
     local_stats = LocalConcurrencyManager.get_stats()
+    dimension_stats = ConcurrencyManager.get_stats()
     from ..services.remote_service import remote_service
     remote_stats = remote_service.get_endpoints_stats()
     
@@ -585,6 +612,7 @@ def get_status_info():
     
     return success_response({
         "local": local_stats,
+        "dimension": dimension_stats,
         "worker_concurrency": worker_concurrency
     })
 

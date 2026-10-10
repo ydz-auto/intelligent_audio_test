@@ -174,8 +174,12 @@ class TaskModel:
         return result
 
     @staticmethod
-    def reset_processing_tasks():
-        """服务重启后将所有 processing 状态的任务标记为 failed，避免任务永久卡死"""
+    def reset_incomplete_tasks():
+        """服务重启后将所有 processing / pending 状态的任务标记为 failed。
+
+        避免上次运行中断留下的任务永久卡死，也避免重启后 worker 自动
+        重新处理积压的 pending 任务。
+        """
         count = 0
         with TaskModel._lock:
             if not os.path.exists(config.TASKS_DIR):
@@ -190,7 +194,7 @@ class TaskModel:
                     filepath = os.path.join(day_path, filename)
                     try:
                         task_data = TaskModel._read_json(filepath)
-                        if task_data.get('status') == 'processing':
+                        if task_data.get('status') in ('processing', 'pending'):
                             task_data['status'] = 'failed'
                             task_data['completed_at'] = datetime.now().isoformat()
                             task_data['error_msg'] = '服务重启，任务未完成'

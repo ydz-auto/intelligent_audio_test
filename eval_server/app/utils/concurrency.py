@@ -65,6 +65,26 @@ class ConcurrencyManager:
             return stats['current'] < stats['max']
 
     @classmethod
+    def try_start(cls, task_type):
+        """原子地检查并占用该任务类型的一个并发位。
+
+        可用（current < max）则 current+1 并返回 True；否则返回 False。
+        避免 can_start() + increment() 两步之间的 TOCTOU 竞态。
+        """
+        cls._ensure_initialized()
+        with cls._lock:
+            stats = cls._stats.get(task_type)
+            if stats is None:
+                stats = cls._stats[task_type] = {
+                    'current': 0,
+                    'max': getattr(config, 'DEFAULT_MAX_CONCURRENCY', 3),
+                }
+            if stats['current'] < stats['max']:
+                stats['current'] += 1
+                return True
+            return False
+
+    @classmethod
     def increment(cls, task_type):
         cls._ensure_initialized()
         with cls._lock:

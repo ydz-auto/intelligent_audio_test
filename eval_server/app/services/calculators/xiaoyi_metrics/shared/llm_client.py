@@ -16,6 +16,7 @@ import re
 import time
 import base64
 import logging
+import threading
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -34,6 +35,59 @@ from .constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────── LLM 调用共享并发上限（按中转站 × 模型品牌两级分池）───────────
+# 所有 LLM 裁判调用（文本 + 传音频/视频的多模态）按「中转站(api_base) × 模型品牌」分池：
+#   一级：中转站（api_base_url，如 az.gptplus5.com / azpro.xunxkj.cn）
+#   二级：模型品牌（gemini* → Gemini；gpt*/chatgpt/o1/o3/o4 → OpenAI；claude* → Anthropic；其他按模型名）
+# 每个「站 × 品牌」分两个信号量池：
+#   - 文本(非音频)调用池   LLM_TEXT_MAX_CONCURRENCY  （默认 100）
+#   - 多模态(传音频/视频)池 LLM_AUDIO_MAX_CONCURRENCY （默认 5）
+# 同一「站 × 品牌」的各维度共用所属池，池满后新增调用排队等待空位，
+# 避免各维度独立计数叠加把该站/该品牌模型打满。
+# 上限通过 eval_server/.env 配置：LLM_TEXT_MAX_CONCURRENCY / LLM_AUDIO_MAX_CONCURRENCY。
+try:
+    from app.config import config as _eval_config
+    _LLM_TEXT_MAX = int(getattr(_eval_config, 'LLM_TEXT_MAX_CONCURRENCY', 100) or 100)
+    _LLM_AUDIO_MAX = int(getattr(_eval_config, 'LLM_AUDIO_MAX_CONCURRENCY', 5) or 5)
+except Exception:
+    _LLM_TEXT_MAX, _LLM_AUDIO_MAX = 100, 5
+
+_llm_pools_lock = threading.Lock()
+_llm_pools: Dict[str, Dict[str, threading.Semaphore]] = {}
+
+
+def _get_llm_brand(model: str) -> str:
+    """从模型名识别品牌（规则见 config.LLM_BRAND_KEYWORDS，可配置）。
+
+    同品牌（如 Gemini 各代模型 / 千问各代）在同一个「站 × 品牌」池内共用并发位；
+    未命中任何品牌规则的模型按模型名单独分池。
+    """
+    m = (model or '').lower()
+    try:
+        from app.config import config as _cfg
+        rules = getattr(_cfg, 'LLM_BRAND_KEYWORDS', None) or {}
+    except Exception:
+        rules = {}
+    for brand, keywords in rules.items():
+        for kw in keywords:
+            if kw in m:
+                return brand
+    return m or 'default'
+
+
+def _get_llm_pool(api_base: str, brand: str) -> Dict[str, threading.Semaphore]:
+    """按「中转站(api_base) × 品牌」获取/创建两个并发信号量池：{'text': ..., 'audio': ...}。"""
+    key = f'{api_base}|{brand}'
+    with _llm_pools_lock:
+        pool = _llm_pools.get(key)
+        if pool is None:
+            pool = _llm_pools[key] = {
+                'text': threading.Semaphore(_LLM_TEXT_MAX),
+                'audio': threading.Semaphore(_LLM_AUDIO_MAX),
+            }
+        return pool
 
 
 class LLMError(Exception):
@@ -201,6 +255,7 @@ def call_llm(model: str,
     llm_config = get_llm_config()
     api_base = llm_config.get('api_base_url', '')
     api_key = llm_config.get('api_key', '')
+    proxy = (llm_config.get('http_proxy') or '').strip() or None
     timeout = llm_config.get('timeout', LLM_DEFAULT_TIMEOUT)
     httpx_timeout = httpx.Timeout(
         connect=LLM_HTTP_CONNECT_TIMEOUT,
@@ -249,6 +304,9 @@ def call_llm(model: str,
     url = f'{api_base.rstrip("/")}/chat/completions'
     max_retries = llm_config.get('max_retries', LLM_MAX_RETRIES)
 
+    # 按「中转站(api_base) × 模型品牌」取信号量池：文本调用走 text 池，传音频/视频走 audio 池
+    _sem = _get_llm_pool(api_base, _get_llm_brand(model))['audio' if file_paths else 'text']
+
     last_exc = None
     attempts_made = 0
     try:
@@ -257,28 +315,33 @@ def call_llm(model: str,
             try:
                 content_text = ''
                 usage_data: Dict[str, Any] = {}
-                with httpx.Client(trust_env=False, timeout=httpx_timeout) as client:
-                    with client.stream("POST", url, headers=headers, json=payload) as response:
-                        if response.status_code >= 400:
-                            response.read()
-                        response.raise_for_status()
-                        for line in response.iter_lines():
-                            line = line.strip()
-                            if not line or not line.startswith('data: '):
-                                continue
-                            chunk_str = line[6:]
-                            if chunk_str == '[DONE]':
-                                break
-                            try:
-                                chunk = json.loads(chunk_str)
-                            except json.JSONDecodeError:
-                                continue
-                            choices = chunk.get('choices', [])
-                            if choices:
-                                delta = choices[0].get('delta', {})
-                                content_text += delta.get('content', '')
-                            if chunk.get('usage'):
-                                usage_data = chunk['usage']
+                # 同品牌 LLM 调用共用信号量池：池满时排队等待空位
+                _sem.acquire()
+                try:
+                    with httpx.Client(trust_env=False, timeout=httpx_timeout, proxy=proxy) as client:
+                        with client.stream("POST", url, headers=headers, json=payload) as response:
+                            if response.status_code >= 400:
+                                response.read()
+                            response.raise_for_status()
+                            for line in response.iter_lines():
+                                line = line.strip()
+                                if not line or not line.startswith('data: '):
+                                    continue
+                                chunk_str = line[6:]
+                                if chunk_str == '[DONE]':
+                                    break
+                                try:
+                                    chunk = json.loads(chunk_str)
+                                except json.JSONDecodeError:
+                                    continue
+                                choices = chunk.get('choices', [])
+                                if choices:
+                                    delta = choices[0].get('delta', {})
+                                    content_text += delta.get('content', '')
+                                if chunk.get('usage'):
+                                    usage_data = chunk['usage']
+                finally:
+                    _sem.release()
                 data = {
                     'choices': [{'message': {'content': content_text}}],
                     'usage': usage_data,

@@ -226,6 +226,8 @@ class TaskService:
 
     @staticmethod
     def _process_tasks():
+        # 延迟导入，避免与 controllers.api 循环依赖（api.py 顶层导入了本模块）
+        from ..controllers.api import LocalConcurrencyManager
         while not TaskService._stop_event.is_set():
             pending_tasks = TaskModel.get_pending_tasks()
             if pending_tasks:
@@ -236,13 +238,32 @@ class TaskService:
                 
                 task_type = task.get('task_type', 'wer')
                 
-                if ConcurrencyManager.can_start(task_type):
-                    print(f"Worker: Starting task {task['eval_task_id']} (Type: {task_type})")
-                    ConcurrencyManager.increment(task_type)
-                    TaskModel.update_task_status(task['eval_task_id'], 'processing', started_at=datetime.now().isoformat())
-                    threading.Thread(target=TaskService._run_task_wrapper, args=(task,), daemon=True).start()
+                # 与直处理路径共用维度并发位 + 全局并发位：
+                # 先占维度位（按 CONCURRENCY_LIMITS），再占全局位（LOCAL_MAX_CONCURRENCY），
+                # 避免 worker 在全局已满时再叠加启动任务导致总并发超限。
+                if ConcurrencyManager.try_start(task_type):
+                    if LocalConcurrencyManager.try_start():
+                        print(f"Worker: Starting task {task['eval_task_id']} (Type: {task_type})")
+                        TaskModel.update_task_status(task['eval_task_id'], 'processing', started_at=datetime.now().isoformat())
+                        threading.Thread(target=TaskService._run_queued_task, args=(task,), daemon=True).start()
+                    else:
+                        # 全局并发位已满，释放维度位，任务继续保持 pending 等待
+                        ConcurrencyManager.decrement(task_type)
                 
             time.sleep(1)
+
+    @staticmethod
+    def _run_queued_task(task):
+        """worker 启动的排队任务：计算完成后同时释放全局与维度并发位。
+
+        维度位由 _run_task_wrapper 上的 limit_task_concurrency 装饰器释放；
+        这里负责释放全局位。
+        """
+        from ..controllers.api import LocalConcurrencyManager
+        try:
+            TaskService._run_task_wrapper(task)
+        finally:
+            LocalConcurrencyManager.decrement()
 
     @staticmethod
     @limit_task_concurrency
