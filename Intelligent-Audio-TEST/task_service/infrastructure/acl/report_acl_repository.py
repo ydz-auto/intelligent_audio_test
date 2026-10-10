@@ -133,6 +133,70 @@ class ApiTestAclRepository:
         from shared.clients.grpc_clients import get_api_test_service_stub
         return get_api_test_service_stub()
 
+    # ==================== 用例执行分发（INT-71：执行域 P0 契约贯通） ====================
+
+    @staticmethod
+    def _resolve_stub(dispatch_target=None):
+        """按会话亲和路由目标取 stub：指定实例直连，否则走默认负载均衡通道。"""
+        if dispatch_target and dispatch_target.get('grpc_port'):
+            from shared.clients.grpc_instance_client import (
+                get_api_test_service_stub_for_instance,
+            )
+            return get_api_test_service_stub_for_instance(
+                dispatch_target['host'], dispatch_target['grpc_port'])
+        from shared.clients.grpc_clients import get_api_test_service_stub
+        return get_api_test_service_stub()
+
+    def create_api_test(self, task_id, case_ids, dispatch_target=None) -> dict:
+        """分发 API 用例执行（CreateAPITest 通道，HTTP 非实时路径）。
+
+        封装 api_test_service.APITestService.CreateAPITest，test_config
+        携带精确 case_ids；执行失败抛 RuntimeError 由分发侧失败兜底收敛。
+        """
+        from shared.proto import api_test_service_pb2 as api_pb
+        from shared.utils.grpc_json import dumps as _dumps
+        try:
+            stub = self._resolve_stub(dispatch_target)
+            resp = stub.CreateAPITest(api_pb.CreateAPITestRequest(
+                task_id=str(task_id),
+                test_config=_dumps({'case_ids': [str(c) for c in case_ids]}),
+            ))
+            if not resp.success:
+                raise RuntimeError(f"api_test_service 执行失败: {resp.message}")
+            return _loads(getattr(resp, 'data', '') or '', {}) or {}
+        except RuntimeError:
+            raise
+        except Exception as e:
+            _logger.warning("CreateAPITest gRPC 异常 (task_id=%s): %s", task_id, e)
+            raise
+
+    def start_api_test(self, task_id, case_ids, device_type='', device_id='',
+                       dispatch_target=None) -> dict:
+        """分发 API 用例执行（StartAPITest 通道，执行域 P0 契约贯通）。
+
+        封装 api_test_service.APITestService.StartAPITest：case_ids 精确
+        用例分发，device_type/device_id 为调度侧路由决策随请求传递；
+        websocket_api 会话亲和场景经 dispatch_target 直连绑定实例。
+        执行失败抛 RuntimeError 由分发侧失败兜底收敛。
+        """
+        from shared.proto import api_test_service_pb2 as api_pb
+        try:
+            stub = self._resolve_stub(dispatch_target)
+            resp = stub.StartAPITest(api_pb.StartAPITestRequest(
+                task_id=str(task_id),
+                device_type=device_type or '',
+                device_id=str(device_id) if device_id else '',
+                case_ids=[int(c) for c in case_ids],
+            ))
+            if not resp.success:
+                raise RuntimeError(f"api_test_service 执行失败: {resp.message}")
+            return _loads(getattr(resp, 'data', '') or '', {}) or {}
+        except RuntimeError:
+            raise
+        except Exception as e:
+            _logger.warning("StartAPITest gRPC 异常 (task_id=%s): %s", task_id, e)
+            raise
+
 
 # 模块级单例
 api_test_acl_repository = ApiTestAclRepository()

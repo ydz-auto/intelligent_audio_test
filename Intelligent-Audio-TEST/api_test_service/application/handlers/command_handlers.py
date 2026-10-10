@@ -10,6 +10,7 @@ import dataclasses
 
 from api_test_service.application.commands.api_test_commands import (
     CreateAPITestCommand,
+    StartAPITestCommand,
     StopAPITestCommand,
     CreateAPICommand,
     UpdateAPICommand,
@@ -72,6 +73,24 @@ class CreateAPITestCommandHandler:
             task_id=command.task_id,
             case_ids=command.case_ids,
             api_ids=command.api_ids,
+        )
+
+
+class StartAPITestCommandHandler:
+    """处理 StartAPITestCommand — 按调度侧路由决策启动 API 用例执行（INT-71）
+
+    委托给 APITestService.start_task(task_id, case_ids, device_type, device_id)。
+    device_type/device_id 为 task_service 逐用例分发携带的路由决策，
+    空值时执行侧回退 TaskCase 行值（兼容不携带路由决策的调用方）。
+    """
+
+    def handle(self, command: StartAPITestCommand) -> dict:
+        return _service.start_task(
+            task_id=command.task_id,
+            case_ids=command.case_ids,
+            api_ids=(),
+            device_type=command.device_type,
+            device_id=command.device_id,
         )
 
 
@@ -173,6 +192,7 @@ class DeleteAPICommandHandler:
 
 # 便于直接调用的模块级实例
 create_api_test_handler = CreateAPITestCommandHandler()
+start_api_test_handler = StartAPITestCommandHandler()
 stop_api_test_handler = StopAPITestCommandHandler()
 create_api_handler = CreateAPICommandHandler()
 update_api_handler = UpdateAPICommandHandler()

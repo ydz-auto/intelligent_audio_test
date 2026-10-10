@@ -145,8 +145,9 @@ class TestInt42DispatchApiCaseExceptPath:
 
 
 class TestInt42ExecuteApiCaseGrpcFailurePath:
-    """_execute_api_case gRPC 失败（CreateAPITest 抛错 / resp.success=False）——
-    真实链路中分发侧失败的主要落点，必须推进 evaluation_status。"""
+    """_execute_api_case gRPC 失败（StartAPITest 抛错 / resp.success=False）——
+    真实链路中分发侧失败的主要落点，必须推进 evaluation_status。
+    （INT-71：分发经 ACL 仓储收敛到 StartAPITest 通道。）"""
 
     def _run_grpc_failure(self, tc_rel, stub):
         import task_service.core.execution_engine.mixins.case_execution as mod
@@ -173,8 +174,8 @@ class TestInt42ExecuteApiCaseGrpcFailurePath:
         tc_rel.started_at = datetime.now(timezone(timedelta(hours=8)))
 
         def _raise(req):
-            raise RuntimeError('CreateAPITest unavailable')
-        stub = SimpleNamespace(CreateAPITest=_raise)
+            raise RuntimeError('StartAPITest unavailable')
+        stub = SimpleNamespace(StartAPITest=_raise)
 
         ok, _ = self._run_grpc_failure(tc_rel, stub)
 
@@ -188,7 +189,7 @@ class TestInt42ExecuteApiCaseGrpcFailurePath:
     def test_grpc_failure_response_advances_evaluation_status(self):
         tc_rel = _dispatch_side_failure_case()
         tc_rel.started_at = datetime.now(timezone(timedelta(hours=8)))
-        stub = SimpleNamespace(CreateAPITest=lambda req: SimpleNamespace(
+        stub = SimpleNamespace(StartAPITest=lambda req: SimpleNamespace(
             success=False, message='api_test_service 内部错误'))
 
         ok, _ = self._run_grpc_failure(tc_rel, stub)
@@ -202,7 +203,7 @@ class TestInt42ExecuteApiCaseGrpcFailurePath:
         """started_at 为空时兜底补齐（原逻辑保留），duration 落库为非负整数。"""
         tc_rel = _dispatch_side_failure_case()
         tc_rel.started_at = None
-        stub = SimpleNamespace(CreateAPITest=lambda req: SimpleNamespace(
+        stub = SimpleNamespace(StartAPITest=lambda req: SimpleNamespace(
             success=False, message='boom'))
 
         ok, _ = self._run_grpc_failure(tc_rel, stub)

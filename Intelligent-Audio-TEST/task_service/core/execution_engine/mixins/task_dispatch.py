@@ -121,8 +121,11 @@ class TaskDispatchMixin:
 
         会话亲和（架构设计 §5.2 认领即绑定）：Realtime（websocket_api）用例
         派发前经 RealtimeSessionRegistry.route_or_bind 解析 task → 实例绑定
-        （无健康绑定则选最闲在册实例写入），CreateAPITest 直连该实例派发，
+        （无健康绑定则选最闲在册实例写入），StartAPITest 直连该实例派发，
         保证同任务的 Realtime 会话粘同实例；解析降级时回退默认负载均衡通道。
+
+        INT-71：device_type/device_id 路由决策随 StartAPITestRequest 下发，
+        api_test_service 按其路由 executor。
         """
         from shared.models.common_enums import DeviceType
         try:
@@ -134,7 +137,9 @@ class TaskDispatchMixin:
             dispatch_target = None
             if device_type == DeviceType.WEBSOCKET_API.value:
                 dispatch_target = self._route_realtime_dispatch(task_id)
-            self._execute_api_case(task_id, tc_rel.id, dispatch_target=dispatch_target)
+            self._execute_api_case(
+                task_id, tc_rel.id, dispatch_target=dispatch_target,
+                device_type=device_type, device_id=tc_rel.device_id)
         except Exception as e:
             self._log(level='ERROR', content=f"API任务执行异常: {str(e)}", task_id=task_id)
             self._finalize_dispatch_failure(tc_rel)

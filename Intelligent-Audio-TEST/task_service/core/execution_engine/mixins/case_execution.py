@@ -1,5 +1,6 @@
 from datetime import datetime
 from task_service.infrastructure.persistence.models import Task, TaskCase
+from task_service.infrastructure.acl.report_acl_repository import api_test_acl_repository
 from shared.models.database import create_db_session
 from shared.utils.status_constants import TaskCaseStatus
 
@@ -36,43 +37,41 @@ class CaseExecutionMixin:
                 self._log(level='WARNING' if not available else 'INFO', 
                          content=f"API入口状态变更: {endpoint_url} -> {status_str}")
 
-    def _execute_api_case(self, task_id, tc_rel_id, dispatch_target=None):
+    def _execute_api_case(self, task_id, tc_rel_id, dispatch_target=None,
+                          device_type=None, device_id=None):
         """执行API测试用例
 
         微服务化迁移后，不再直接调用本地 self.api_executor，
-        改为通过 gRPC 调用 api_test_service 执行用例。
+        经 ACL 仓储跨服务分发到 api_test_service（INT-71：core 层
+        不直触 gRPC stub；device_type/device_id 路由决策随请求贯通）。
+
+        路由决策表（05_路由与废弃.md 2.1）：
+        - websocket_api → StartAPITest（携带 device_type/device_id，
+          会话亲和场景经 dispatch_target 直连绑定实例）
+        - 其余（http_api）→ StartAPITest 同通道分发（02_架构设计.md：
+          调度侧随契约演进收敛到 StartAPITest），device_type 随请求传递
 
         Args:
             task_id: 任务ID
             tc_rel_id: 任务用例关联ID
             dispatch_target: 会话亲和路由目标（websocket_api 用例经
                 route_or_bind 解析）；None 走默认负载均衡通道
+            device_type: 用例级被测设备类型（TaskCase.device_type）
+            device_id: 被测设备 ID（API 类=api.id）
 
         Returns:
             执行结果
         """
         try:
-            # 通过 gRPC 调用 api_test_service 的 CreateAPITest
-            # test_config 携带 case_ids，由 api_test_service 内部驱动 APIExecutor 执行
-            import json as _json
-            from shared.proto import api_test_service_pb2 as api_pb
-            if dispatch_target and dispatch_target.get('grpc_port'):
-                from shared.clients.grpc_instance_client import (
-                    get_api_test_service_stub_for_instance,
-                )
-                stub = get_api_test_service_stub_for_instance(
-                    dispatch_target['host'], dispatch_target['grpc_port'])
-            else:
-                from shared.clients.grpc_clients import get_api_test_service_stub
-                stub = get_api_test_service_stub()
-
-            req = api_pb.CreateAPITestRequest(
-                task_id=str(task_id),
-                test_config=_json.dumps({'case_ids': [str(tc_rel_id)]}),
+            # 逐用例精确分发：StartAPITestRequest 携带 case_ids +
+            # device_type/device_id（调度层路由决策随请求传递）
+            api_test_acl_repository.start_api_test(
+                task_id=task_id,
+                case_ids=[tc_rel_id],
+                device_type=device_type or '',
+                device_id=device_id or '',
+                dispatch_target=dispatch_target,
             )
-            resp = stub.CreateAPITest(req)
-            if not resp.success:
-                raise RuntimeError(f"api_test_service 执行失败: {resp.message}")
 
             # 更新任务统计信息（基于 api_test_service 已写入数据库的 TaskCase 状态）
             # INT-40：嵌套链路必须用独立 Session——此处处于主循环的调用栈内，

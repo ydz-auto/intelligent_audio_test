@@ -17,6 +17,21 @@ class CreateAPITestCommand:
 
 
 @dataclass(frozen=True)
+class StartAPITestCommand:
+    """启动 API 测试命令（执行域 P0 分发通道，INT-71）
+
+    task_service 逐用例领取后的分发经 StartAPITest 下发：case_ids 为
+    精确用例集合，device_type/device_id 为调度侧路由决策随请求传递
+    （空值时执行侧回退 TaskCase 行值，兼容不携带路由决策的调用方）。
+    """
+
+    task_id: int
+    case_ids: List[int] = field(default_factory=list)
+    device_type: str = ''
+    device_id: str = ''
+
+
+@dataclass(frozen=True)
 class StopAPITestCommand:
     """停止 API 测试会话命令"""
 

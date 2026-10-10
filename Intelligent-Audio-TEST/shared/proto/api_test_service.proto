@@ -67,6 +67,7 @@ message StartAPITestRequest {
   string task_id = 1;
   string device_type = 2;  // physical / http_api / websocket_api（用例级路由，执行域 P0 新增）
   string device_id = 3;    // 被测设备 ID（physical=设备ID / API 类=api.id，执行域 P0 新增）
+  repeated int32 case_ids = 4;  // 精确用例分发（INT-71）：task_service 逐用例领取后按 TaskCase.id 派发；空则按 pending/queued 兜底读取
 }
 
 message StartAPITestResponse {

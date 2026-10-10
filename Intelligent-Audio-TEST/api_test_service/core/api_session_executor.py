@@ -335,7 +335,8 @@ class APISessionExecutor:
                 return self._send_via_adapter(
                     task_id, algorithm_type, session, round_number, total_rounds,
                     rendered_headers, rendered_body, api_specific_config, meta,
-                    api_config, timeout, input_text, input_type, start_time
+                    api_config, timeout, input_text, input_type, start_time,
+                    input_audio_path=context_data.get('input_audio', ''),
                 )
             else:
                 return self._send_direct(
@@ -361,7 +362,8 @@ class APISessionExecutor:
 
     def _send_via_adapter(self, task_id, algorithm_type, session, round_number, total_rounds,
                           rendered_headers, rendered_body, api_specific_config, meta,
-                          api_config, timeout, input_text, input_type, start_time):
+                          api_config, timeout, input_text, input_type, start_time,
+                          input_audio_path=''):
         """通过 ACL 仓储调用 adapter 发送请求"""
         from shared.proto import adapter_service_pb2 as adapter_pb
 
@@ -372,9 +374,18 @@ class APISessionExecutor:
             'timeout': session.session_timeout,
         }
 
-        # Determine input_data: text content or audio path
+        # 音频轮次必须携带混音产物引用（SendRoundRequest.input_data 约定：
+        # text 内容 或 audio_path，adapter 侧经统一存储层读取）。
+        # 缺失时定轮次失败，不静默空发送（INT-71 正确性缺陷修复）。
         input_type_val = input_type or 'text'
-        actual_input = input_text if input_type_val == 'text' else ''
+        if input_type_val == 'text':
+            actual_input = input_text
+        else:
+            actual_input = input_audio_path or ''
+            if not actual_input:
+                raise ValueError(
+                    f"第 {round_number} 轮 input_type={input_type_val} "
+                    f"但无音频输入（混音产物缺失），拒绝空音频发送")
 
         # Parse translation direction for source/target lang
         translation_direction = api_specific_config.get('translation_direction', '')

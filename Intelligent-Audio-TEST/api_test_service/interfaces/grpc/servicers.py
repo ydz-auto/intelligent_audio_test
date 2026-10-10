@@ -20,6 +20,7 @@ from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
 from api_test_service.application.commands.api_test_commands import (
     CreateAPITestCommand,
+    StartAPITestCommand,
     StopAPITestCommand,
 )
 from api_test_service.application.queries.api_test_queries import GetAPITestStatusQuery
@@ -31,6 +32,7 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
     def __init__(self):
         self._create_handler = None
         self._stop_handler = None
+        self._start_handler = None
         self._status_handler = None
         self._crud_service = None
 
@@ -61,6 +63,14 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
             from api_test_service.application.handlers import stop_api_test_handler
             self._stop_handler = stop_api_test_handler
         return self._stop_handler
+
+    @property
+    def start_handler(self):
+        """application 层 — 按路由决策启动 API 测试命令处理器（INT-71）"""
+        if self._start_handler is None:
+            from api_test_service.application.handlers import start_api_test_handler
+            self._start_handler = start_api_test_handler
+        return self._start_handler
 
     @property
     def status_handler(self):
@@ -104,16 +114,22 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
             return api_pb.CreateAPITestResponse(success=False, message=str(e), data="")
 
     def StartAPITest(self, request, context=None):
-        """启动 API 测试
+        """启动 API 测试（执行域 P0 分发通道，INT-71）
 
-        task_service 调用此方法将 API 用例执行下沉到 api_test_service。
-        不传 case_ids 时，由 api_test_service 自行从数据库按 pending 状态读取。
+        task_service 逐用例领取后经此 RPC 下发执行：case_ids 为精确
+        TaskCase.id 集合；device_type/device_id 为调度侧路由决策，随命令
+        传入执行链（按 device_type 路由 executor）。case_ids 为空时由
+        api_test_service 自行从数据库按 pending/queued 状态读取。
         """
         try:
             self._bind_worker_context(context)
-            task_id = request.task_id
-            command = CreateAPITestCommand(task_id=task_id, case_ids=[], api_ids=[])
-            result = self.create_handler.handle(command)
+            command = StartAPITestCommand(
+                task_id=request.task_id,
+                case_ids=list(request.case_ids),
+                device_type=request.device_type or '',
+                device_id=request.device_id or '',
+            )
+            result = self.start_handler.handle(command)
             return api_pb.StartAPITestResponse(
                 success=result.get('success', True),
                 message=result.get('message', 'ok'),

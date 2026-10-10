@@ -287,8 +287,9 @@ from task_service.core.execution_engine.mixins.task_dispatch import TaskDispatch
 
 
 class _TcRel:
-    def __init__(self, tc_rel_id):
+    def __init__(self, tc_rel_id, device_id=None):
         self.id = tc_rel_id
+        self.device_id = device_id
 
 
 class _DispatchHarness(TaskDispatchMixin):
@@ -303,9 +304,12 @@ class _DispatchHarness(TaskDispatchMixin):
     def _claim_case(self, task_id, tc_rel_id, session):
         return 1
 
-    def _execute_api_case(self, task_id, tc_rel_id, dispatch_target=None):
+    def _execute_api_case(self, task_id, tc_rel_id, dispatch_target=None,
+                          device_type=None, device_id=None):
         self.exec_calls.append({'task_id': task_id, 'tc_rel_id': tc_rel_id,
-                                'dispatch_target': dispatch_target})
+                                'dispatch_target': dispatch_target,
+                                'device_type': device_type,
+                                'device_id': device_id})
 
     def _finalize_dispatch_failure(self, tc_rel):
         pass

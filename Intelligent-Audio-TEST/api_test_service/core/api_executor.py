@@ -90,8 +90,13 @@ class APIExecutor(BaseExecutor):
         return self._concurrency.release(api_id, task_id)
 
     # ── 入口方法 ──
-    def execute_api_case(self, task_id, tc_rel_id):
-        """执行 API 测试用例"""
+    def execute_api_case(self, task_id, tc_rel_id, device_type=None, device_id=None):
+        """执行 API 测试用例
+
+        Args:
+            device_type/device_id: 调度侧路由决策（StartAPITest 下发，INT-71）；
+                None 时回退 TaskCase 行值
+        """
         try:
             self._log(level='DEBUG', content=f"开始执行测试用例: {tc_rel_id}", task_id=task_id)
             self._handle_control(task_id)
@@ -101,7 +106,8 @@ class APIExecutor(BaseExecutor):
 
             task_lock = self._get_task_lock(task_id)
             with task_lock:
-                validate_result, data = self._validate_and_get_data(task_id, tc_rel_id)
+                validate_result, data = self._validate_and_get_data(
+                    task_id, tc_rel_id, device_type=device_type, device_id=device_id)
                 if not validate_result:
                     self._handle_validation_failure(task_id, tc_rel_id, data)
                     return False
@@ -424,8 +430,12 @@ class APIExecutor(BaseExecutor):
             self._log(level='WARNING', content=f"加载用例配置失败: {e}", test_case_id=test_case_id)
             return {}
 
-    def _validate_and_get_data(self, task_id, tc_rel_id):
-        """验证并获取执行数据"""
+    def _validate_and_get_data(self, task_id, tc_rel_id, device_type=None, device_id=None):
+        """验证并获取执行数据
+
+        device_type/device_id 为调度侧路由决策（StartAPITest 下发，INT-71），
+        优先于 TaskCase 行值（兼容不携带路由决策的调用方）。
+        """
         self._handle_control(task_id)
 
         # 通过 ACL 仓储查询 TaskCase
@@ -503,7 +513,8 @@ class APIExecutor(BaseExecutor):
             'test_case_id': test_case_id,
             'case_name': case_name,
             'algorithm_type': algorithm_type,
-            'device_type': tc_rel.get('device_type') or '',
+            'device_type': device_type or tc_rel.get('device_type') or '',
+            'device_id': device_id or tc_rel.get('device_id') or '',
             'api_configs': processed_api_configs,
             'audio': audio_data,
             'api_specific_config': api_specific_config,

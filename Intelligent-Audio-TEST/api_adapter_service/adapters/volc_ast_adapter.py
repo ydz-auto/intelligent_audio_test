@@ -20,6 +20,7 @@ _proto_dir = os.path.abspath(os.path.join(_current, '..', 'proto', 'volc_ast'))
 if _proto_dir not in sys.path:
     sys.path.insert(0, _proto_dir)
 
+from api_adapter_service.adapters.audio_input import resolve_audio_bytes
 from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.utils.logger import logger
 
@@ -183,28 +184,16 @@ class VolcAstAdapter(BaseAdapter):
     def _read_audio_chunks(self, audio_source, chunk_size: int = 3200):
         """读取音频为固定大小分片(3200 字节 = 100ms @16k/16bit/单声道)
 
-        audio_source: 文件路径(str)或字节(bytes)
+        audio_source: 文件路径(str，含 local:// oss:// 存储引用)或字节(bytes)
         """
         chunks = []
-        if isinstance(audio_source, (bytes, bytearray)):
-            data = bytes(audio_source)
-            for i in range(0, len(data), chunk_size):
-                chunks.append(data[i:i + chunk_size])
-            return chunks
-
-        if not isinstance(audio_source, str) or not os.path.isfile(audio_source):
-            logger.error(f'VolcAstAdapter: 音频文件不存在或格式无效: {audio_source}')
-            return chunks
-
         try:
-            with open(audio_source, 'rb') as f:
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    chunks.append(chunk)
-        except Exception as e:
-            logger.error(f'VolcAstAdapter: 读取音频文件失败: {e}')
+            data = resolve_audio_bytes(audio_source)
+        except (ValueError, OSError) as e:
+            logger.error(f'VolcAstAdapter: 音频读取失败: {audio_source} ({e})')
+            return chunks
+        for i in range(0, len(data), chunk_size):
+            chunks.append(data[i:i + chunk_size])
         return chunks
 
     async def _translate(self, audio_source, source_lang: str,

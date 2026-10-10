@@ -12,6 +12,7 @@ import time
 import requests
 from typing import Optional
 
+from api_adapter_service.adapters.audio_input import resolve_audio_bytes
 from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.utils.logger import logger
 
@@ -58,7 +59,7 @@ class HttpAdapter(BaseAdapter):
             task_id: Task ID
             session_id: Session ID for multi-round dialog
             input_type: 'text' or 'audio'
-            input_data: Text string or audio bytes
+            input_data: Text string, or audio bytes / path / storage ref for audio
             source_lang: Source language
             target_lang: Target language
             context: Context history (role/content pairs)
@@ -149,7 +150,9 @@ class HttpAdapter(BaseAdapter):
                              context, algorithm_params, case_algorithm_params,
                              translation_direction, round_number, total_rounds,
                              task_type):
-        audio_bytes = audio_data if isinstance(audio_data, bytes) else b''
+        # input_data 约定为音频引用（路径/存储引用）或字节，统一解析为真实
+        # 字节上传；解析失败抛错收敛为请求失败，禁止静默空音频（INT-71）
+        audio_bytes = resolve_audio_bytes(audio_data)
         files = {
             'audio': ('audio.wav', audio_bytes, 'audio/wav'),
         }

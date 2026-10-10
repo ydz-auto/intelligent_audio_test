@@ -115,6 +115,8 @@ class TaskCaseStatsMixin:
                 # INT-61：api_test_service 按 device_type 运行时分发执行器
                 # （websocket_api → RealtimeSessionExecutor），缺省回退 http_api 旧行为
                 'device_type': tc.device_type,
+                # INT-71：device_id 随执行数据下发（API 类=api.id / physical=设备ID）
+                'device_id': tc.device_id,
                 'started_at': tc.started_at.isoformat() if tc.started_at else None,
                 'completed_at': tc.completed_at.isoformat() if tc.completed_at else None,
                 'duration': tc.duration,

@@ -97,13 +97,16 @@ class APITestService:
                     self._executor = APIExecutor(self._engine)
         return self._executor
 
-    def start_task(self, task_id, case_ids, api_ids):
+    def start_task(self, task_id, case_ids, api_ids, device_type='', device_id=''):
         """启动 API 测试任务
 
         Args:
             task_id: 任务ID
             case_ids: 待执行的 TaskCase 关联ID列表
             api_ids: 任务关联的 API ID 列表
+            device_type: 调度侧路由决策（StartAPITest 下发，INT-71）；
+                空值时执行侧回退 TaskCase 行值
+            device_id: 被测设备 ID（随 device_type 一并下发）
 
         Returns:
             dict: 启动结果
@@ -132,7 +135,10 @@ class APITestService:
 
         def _run_case(tc_rel_id):
             try:
-                executor.execute_api_case(task_id, tc_rel_id)
+                executor.execute_api_case(
+                    task_id, tc_rel_id,
+                    device_type=device_type or None,
+                    device_id=device_id or None)
             except Exception as e:
                 import traceback
                 self._log(task_id, 'ERROR', f"API 用例 {tc_rel_id} 执行异常: {str(e)}\n{traceback.format_exc()}")

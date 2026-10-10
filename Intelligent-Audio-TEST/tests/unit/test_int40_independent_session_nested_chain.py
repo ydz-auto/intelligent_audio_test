@@ -145,7 +145,8 @@ def _seed_task_with_case():
 
 
 def _success_stub():
-    return SimpleNamespace(CreateAPITest=lambda req: SimpleNamespace(
+    # INT-71：分发收敛到 StartAPITest 通道（经 ACL 仓储出站）
+    return SimpleNamespace(StartAPITest=lambda req: SimpleNamespace(
         success=True, message='ok'))
 
 
