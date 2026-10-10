@@ -785,11 +785,25 @@ message GetTaskMergeRelationsRequest {
 }
 message ListLogsRequest {
   int32 task_id = 1;          // 可选，按 task_id 过滤
-  string level = 2;           // 可选，按级别过滤
+  string level = 2;           // 可选，按级别过滤（支持逗号分隔多级别，INT-100 下推 DB）
   int32 page = 3;             // 分页页码
   int32 per_page = 4;        // 每页条数
   string start_date = 5;     // 可选，开始日期
   string end_date = 6;       // 可选，结束日期
+  // ---- INT-100 下推过滤（旧调用方不传 = 不过滤，行为不变）----
+  // 语义与 GetLogStatsRequest 对齐；api_gateway 合并视图以下推过滤替代
+  // per_page=100000 全量拉取。
+  string module = 7;           // 可选，模块精确匹配（忽略大小写；'all' 视为不过滤）
+  string category = 8;         // 可选，分类精确匹配（忽略大小写；'all' 视为不过滤）
+  string mark = 9;             // 可选，标记精确匹配
+  int32 device_id = 10;        // 可选，设备 ID 精确匹配
+  int32 api_id = 11;           // 可选，API ID 精确匹配
+  string test_case_id = 12;    // 可选，用例 ID 精确匹配
+  string thread_id = 13;       // 可选，线程 ID 包含匹配
+  string keyword = 14;         // 可选，content 包含匹配
+  string content_include = 15; // 可选，content 包含匹配
+  string content_exclude = 16; // 可选，content 排除包含匹配
+  string algorithm_type = 17;  // 可选，算法类型精确匹配（'all' 视为不过滤）
 }
 message ListTestCaseGroupsRequest {
   string algorithm_type = 1;  // 可选，按算法类型过滤

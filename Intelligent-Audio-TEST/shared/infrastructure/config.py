@@ -107,6 +107,13 @@ class BaseConfig:
     LOG_BUSINESS_RETENTION_DAYS: int = _get_int('LOG_BUSINESS_RETENTION_DAYS', 30)
     # 读取侧单次查询最大物化条数（0 = 不限）：大任务轮询兜底，total 变下界语义
     LOG_BUSINESS_MAX_SCAN_ENTRIES: int = _get_int('LOG_BUSINESS_MAX_SCAN_ENTRIES', 100000)
+    # 读取侧同参数查询结果短 TTL 缓存秒数（0 = 关闭，INT-100）：TTL 窗口内
+    # list 与 stats 共享一次文件扫描，消除任务维度轮询双遍扫描；只缓存查询
+    # 结果（CQRS 查询侧只读），新写入行在 TTL 内不可见（有界展示时延）
+    LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS: int = _get_int('LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS', 3)
+    # 任务维度合并视图 DB 侧单次拉取行数上限（0 = 不限，INT-100）：替代
+    # per_page=100000 全量拉取，与文件侧 MAX_SCAN_ENTRIES 同为下界语义兜底
+    LOG_DB_MERGE_MAX_ROWS: int = _get_int('LOG_DB_MERGE_MAX_ROWS', 100000)
 
     # --- gRPC 服务发现 ---
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')

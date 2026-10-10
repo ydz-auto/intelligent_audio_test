@@ -164,8 +164,12 @@ class _TaskDataProxy:
 
     # ---- 日志查询 ----
 
-    def list_logs(self, task_id=None, level=None, page=1, per_page=20, start_date=None, end_date=None):
-        """通过 gRPC 查询 Log 列表（分页 + 过滤）"""
+    def list_logs(self, task_id=None, level=None, page=1, per_page=20,
+                  start_date=None, end_date=None, module=None, category=None,
+                  mark=None, device_id=None, api_id=None, test_case_id=None,
+                  thread_id=None, keyword=None, content_include=None,
+                  content_exclude=None, algorithm_type=None):
+        """通过 gRPC 查询 Log 列表（分页 + 过滤；INT-100 过滤下推 task_service）"""
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.ListLogs(task_pb.ListLogsRequest(
@@ -175,6 +179,17 @@ class _TaskDataProxy:
                 per_page=per_page,
                 start_date=start_date or '',
                 end_date=end_date or '',
+                module=module or '',
+                category=category or '',
+                mark=mark or '',
+                device_id=int(device_id) if device_id else 0,
+                api_id=int(api_id) if api_id else 0,
+                test_case_id=test_case_id or '',
+                thread_id=thread_id or '',
+                keyword=keyword or '',
+                content_include=content_include or '',
+                content_exclude=content_exclude or '',
+                algorithm_type=algorithm_type or '',
             ))
             if not resp.success:
                 raise RuntimeError(f"ListLogs gRPC 失败: {resp.message}")

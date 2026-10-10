@@ -236,7 +236,9 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
     def ListLogs(self, request, context=None):
         """查询 Log 列表（分页 + 过滤）
 
-        支持 task_id / level / 日期范围过滤，按 id 倒序分页。
+        支持 task_id / level（逗号分隔多级别）/ 日期范围及 module/category/
+        mark/device_id/api_id/test_case_id/thread_id/keyword/content_*/
+        algorithm_type 下推过滤（INT-100），按 id 倒序分页。
         """
         try:
             result = log_repository.list_logs(
@@ -246,6 +248,17 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 end_date=request.end_date or '',
                 page=request.page or 1,
                 per_page=request.per_page or 20,
+                module=request.module or '',
+                category=request.category or '',
+                mark=request.mark or '',
+                device_id=request.device_id or 0,
+                api_id=request.api_id or 0,
+                test_case_id=request.test_case_id or '',
+                thread_id=request.thread_id or '',
+                keyword=request.keyword or '',
+                content_include=request.content_include or '',
+                content_exclude=request.content_exclude or '',
+                algorithm_type=request.algorithm_type or '',
             )
             return self._resp(True, '', result)
         except Exception as e:

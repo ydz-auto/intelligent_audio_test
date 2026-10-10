@@ -9,9 +9,16 @@ JSON Lines 并过滤、排序、分页。历史 logs 表数据保留只读不迁
 条（LOG_BUSINESS_MAX_SCAN_ENTRIES，0 = 不限）。文件按活跃（最新）在前
 枚举，超限时停止扫描更旧文件、溢出文件保留最新部分——total 为下界语义，
 防止大任务轮询把读取侧拖垮；常规任务远低于上限无感知。
+
+同参数短 TTL 结果缓存（INT-100）：TTL（LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS，
+默认 3s，0 = 关闭）窗口内相同过滤参数的查询共享一次文件扫描，消除任务
+维度轮询 list + stats 的双遍扫描。只缓存查询结果、不引入写副作用（CQRS
+查询侧只读纪律）；TTL 内新写入的行不可见（有界展示时延，前端展示处注明）。
 """
 import json
 import os
+import threading
+import time
 from datetime import datetime
 from typing import List, Optional
 
@@ -21,6 +28,12 @@ from shared.logging.path_builder import BusinessLogPathBuilder
 
 # 条目字段（与写入侧 _ENTRY_FIELDS 对齐，读取时兜底空值）
 _LEVELS = ('debug', 'info', 'warning', 'error', 'critical')
+
+# TTL 结果缓存（模块级：BusinessLogReader 无状态定位不变，实例可随手创建）
+_SCAN_CACHE: dict = {}
+_SCAN_CACHE_LOCK = threading.Lock()
+# 缓存条目上限：不同过滤组合有限收敛，溢出先清过期、再逐出最旧
+_SCAN_CACHE_MAX = 32
 
 
 def _stable_int_id(text: str) -> int:
@@ -194,6 +207,61 @@ class BusinessLogReader:
             'service': record.get('service'),
         }
 
+    # ---- 同参数查询结果短 TTL 缓存（INT-100，只缓存查询结果） ----
+
+    @staticmethod
+    def _scan_cache_key(root_dir: str, kwargs: dict) -> tuple:
+        """过滤参数 → 规范化缓存键（log_type 取枚举值，其余 str 化）。"""
+        parts = [str(root_dir)]
+        for name in ('task_id', 'device_id', 'api_id', 'evaluation_id',
+                     'round_value', 'level', 'category', 'module', 'keyword',
+                     'content_include', 'content_exclude', 'algorithm_type',
+                     'test_case_id', 'start_time', 'end_time'):
+            parts.append(str(kwargs.get(name)))
+        log_type = kwargs.get('log_type')
+        parts.append(log_type.value if log_type is not None else '')
+        return tuple(parts)
+
+    @staticmethod
+    def _scan_cache_ttl() -> int:
+        """TTL 秒数（0 = 关闭）；配置缺失/非法时按关闭降级（与 cap 兜底同风格）。"""
+        try:
+            return max(0, int(get_log_settings().business_scan_cache_ttl_seconds or 0))
+        except (AttributeError, TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _scan_cache_get(key: tuple):
+        """TTL 内命中返回条目列表快照（浅拷贝，条目只读共享），否则 None。"""
+        ttl = BusinessLogReader._scan_cache_ttl()
+        if not ttl:
+            return None
+        now = time.monotonic()
+        with _SCAN_CACHE_LOCK:
+            entry = _SCAN_CACHE.get(key)
+            if entry is None:
+                return None
+            stored_at, items = entry
+            if now - stored_at > ttl:
+                _SCAN_CACHE.pop(key, None)
+                return None
+            return list(items)
+
+    @staticmethod
+    def _scan_cache_put(key: tuple, items: List[dict]) -> None:
+        ttl = BusinessLogReader._scan_cache_ttl()
+        if not ttl:
+            return
+        now = time.monotonic()
+        with _SCAN_CACHE_LOCK:
+            if len(_SCAN_CACHE) >= _SCAN_CACHE_MAX:
+                expired = [k for k, (ts, _v) in _SCAN_CACHE.items() if now - ts > ttl]
+                for k in expired:
+                    _SCAN_CACHE.pop(k, None)
+                while len(_SCAN_CACHE) >= _SCAN_CACHE_MAX:
+                    _SCAN_CACHE.pop(min(_SCAN_CACHE, key=lambda k: _SCAN_CACHE[k][0]))
+            _SCAN_CACHE[key] = (now, list(items))
+
     # ---- 公开查询 ----
 
     def read_entries(self, *, task_id, device_id=None, api_id=None,
@@ -208,10 +276,26 @@ class BusinessLogReader:
         条数上限 business_max_scan_entries（0 = 不限）：文件按活跃（最新）
         在前枚举，达上限即停止扫描更旧文件；溢出文件保留最新部分，
         total 为下界语义（防止大任务轮询全量物化拖垮读取侧）。
+
+        同参数短 TTL 结果缓存（business_scan_cache_ttl_seconds，0 = 关闭）：
+        TTL 窗口内相同过滤参数直接复用上次扫描结果（list 与 stats 共享一次
+        文件扫描）；命中返回列表浅拷贝，条目为共享只读 dict。
         """
         levels = None
         if level:
             levels = {lv.strip().lower() for lv in str(level).split(',') if lv.strip()}
+        cache_key = self._scan_cache_key(self._root_dir, {
+            'task_id': task_id, 'device_id': device_id, 'api_id': api_id,
+            'evaluation_id': evaluation_id, 'round_value': round_value,
+            'log_type': log_type, 'level': level, 'category': category,
+            'module': module, 'keyword': keyword,
+            'content_include': content_include, 'content_exclude': content_exclude,
+            'algorithm_type': algorithm_type, 'test_case_id': test_case_id,
+            'start_time': start_time, 'end_time': end_time,
+        })
+        cached = self._scan_cache_get(cache_key)
+        if cached is not None:
+            return cached
         try:
             cap = max(0, int(get_log_settings().business_max_scan_entries))
         except (AttributeError, TypeError, ValueError):
@@ -238,7 +322,8 @@ class BusinessLogReader:
                 file_items = file_items[-(cap - len(items)):]
             items.extend(file_items)
         items.sort(key=lambda item: item['time'] or '', reverse=True)
-        return items
+        self._scan_cache_put(cache_key, items)
+        return list(items)
 
     def read_page(self, **filters) -> dict:
         """分页查询：filters 含 page/per_page，返回 {items, total, page, per_page}。"""

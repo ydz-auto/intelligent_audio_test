@@ -29,8 +29,18 @@ const DEFAULT_SELECTED_LEVELS: string[] = Object.values(LogLevel).map(level => l
 const LOG_LEVEL_MAP: Record<string, string> = Object.fromEntries(
   Object.values(LogLevel).map(level => [level.toLowerCase(), level]),
 );
-// 实时日志轮询间隔（毫秒）
-const REALTIME_POLL_INTERVAL_MS = 5000;
+// INT-100：实时轮询间隔与空闲退避上限配置化（VITE_LOG_POLL_INTERVAL_MS /
+// VITE_LOG_POLL_IDLE_MAX_MS，默认 5s / 30s）。空闲任务连续轮询无新日志时
+// 间隔按 2 的幂退避至上限，出现新数据或查询条件变化立即恢复基础间隔。
+const parsePositiveInt = (raw: unknown, fallback: number): number => {
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback;
+};
+const REALTIME_POLL_BASE_INTERVAL_MS = parsePositiveInt(import.meta.env.VITE_LOG_POLL_INTERVAL_MS, 5000);
+const REALTIME_POLL_IDLE_MAX_MS = Math.max(
+  REALTIME_POLL_BASE_INTERVAL_MS,
+  parsePositiveInt(import.meta.env.VITE_LOG_POLL_IDLE_MAX_MS, 30000),
+);
 // 实时监控连接状态文案
 const CONNECTION_STATUS = { CONNECTED: '已连接', ERROR: '连接异常' } as const;
 
@@ -422,40 +432,73 @@ export function useLogView(refs?: LogViewRefs) {
   const startRealTimeLog = () => {
     if (realTimeLogInterval.value) return;
 
-    realTimeLogInterval.value = window.setInterval(async () => {
+    // INT-100 空闲退避：连续轮询无新日志时按 2 的幂放大间隔至上限；
+    // 新数据或查询条件变化立即恢复基础间隔。轮询tick用递归 setTimeout
+    // 实现（间隔可变），stopRealTimeLog 取消挂起 tick。
+    let idleRounds = 0;
+    let lastDelayMs = REALTIME_POLL_BASE_INTERVAL_MS;
+    let lastQueryKey = '';
+
+    const nextDelay = (rounds: number) => Math.min(
+      REALTIME_POLL_BASE_INTERVAL_MS * 2 ** rounds,
+      REALTIME_POLL_IDLE_MAX_MS,
+    );
+
+    const scheduleNext = (delayMs: number) => {
+      realTimeLogInterval.value = window.setTimeout(tick, delayMs);
+    };
+
+    const tick = async () => {
       if (autoScrollEnabled.value && currentPage.value === 1) {
         const pollStartTime = performance.now();
         try {
+          const queryKey = JSON.stringify(buildQueryParams());
+          const queryChanged = queryKey !== lastQueryKey;
+          lastQueryKey = queryKey;
           // INT-81：任务/评估维度的业务日志在文件中，DB 增量接口感知不到，
           // 直接重查列表（服务端分页 + 时间倒序，首页即最新）
           if (hasTaskScopeFilters.value) {
+            const prevSignature = `${logs.value.length}:${logs.value[0]?.id ?? ''}:${logs.value[0]?.time ?? ''}:${totalLogs.value}`;
             await fetchLogs();
+            const nextSignature = `${logs.value.length}:${logs.value[0]?.id ?? ''}:${logs.value[0]?.time ?? ''}:${totalLogs.value}`;
+            idleRounds = queryChanged || nextSignature !== prevSignature ? 0 : idleRounds + 1;
+            lastDelayMs = nextDelay(idleRounds);
             logRate.value = 0;
             logDelay.value = Math.round(performance.now() - pollStartTime);
             connectionStatus.value = CONNECTION_STATUS.CONNECTED;
+            scheduleNext(lastDelayMs);
             return;
           }
           const lastId = logs.value.length > 0 ? Math.max(...logs.value.map(l => l.id)) : 0;
           const response = await logsPort.refresh(lastId);
           const newCount = response.newCount;
-          // 基于真实增量计算日志速率（条/秒）与响应延迟（毫秒）
-          logRate.value = Math.round((newCount * 1000 / REALTIME_POLL_INTERVAL_MS) * 10) / 10;
+          idleRounds = queryChanged || newCount > 0 ? 0 : idleRounds + 1;
+          lastDelayMs = nextDelay(idleRounds);
+          // 基于真实增量与实际轮询间隔计算日志速率（条/秒）与响应延迟（毫秒）
+          logRate.value = Math.round((newCount * 1000 / lastDelayMs) * 10) / 10;
           logDelay.value = Math.round(performance.now() - pollStartTime);
           connectionStatus.value = CONNECTION_STATUS.CONNECTED;
           if (newCount > 0) {
             fetchLogs();
           }
+          scheduleNext(lastDelayMs);
+          return;
         } catch (e) {
           connectionStatus.value = CONNECTION_STATUS.ERROR;
           console.error('Real-time refresh failed:', e);
+          scheduleNext(lastDelayMs);
+          return;
         }
       }
-    }, REALTIME_POLL_INTERVAL_MS);
+      scheduleNext(REALTIME_POLL_BASE_INTERVAL_MS);
+    };
+
+    scheduleNext(REALTIME_POLL_BASE_INTERVAL_MS);
   };
 
   const stopRealTimeLog = () => {
     if (realTimeLogInterval.value) {
-      clearInterval(realTimeLogInterval.value);
+      window.clearTimeout(realTimeLogInterval.value);
       realTimeLogInterval.value = null;
     }
   };

@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
+from shared.infrastructure.config import BaseConfig
 from shared.utils.log_handler import log_not_emit
 from shared.utils.query_utils import now_cst
 from shared.infrastructure.storage import storage
@@ -46,32 +47,8 @@ def _to_log_item(log: dict) -> LogItem:
     )
 
 
-def _match_db_log(query, log: dict) -> bool:
-    """DB 日志行客户端过滤（gRPC ListLogs 仅支持 task_id/level/日期）。"""
-    if query.module and (log.get('module') or '').lower() != query.module.lower():
-        return False
-    if query.category and query.category != 'all' and (log.get('category') or '').lower() != query.category.lower():
-        return False
-    if query.mark and log.get('mark') != query.mark:
-        return False
-    if query.device_id and log.get('device_id') != query.device_id:
-        return False
-    if query.api_id and log.get('api_id') != query.api_id:
-        return False
-    if query.test_case_id and log.get('test_case_id') != query.test_case_id:
-        return False
-    if query.thread_id and query.thread_id not in (log.get('thread_id') or ''):
-        return False
-    content = log.get('content') or ''
-    if query.keyword and query.keyword not in content:
-        return False
-    if query.content_include and query.content_include not in content:
-        return False
-    if query.content_exclude and query.content_exclude in content:
-        return False
-    if query.algorithm_type and query.algorithm_type != 'all' and log.get('algorithm_type') != query.algorithm_type:
-        return False
-    return True
+# LOG_DB_MERGE_MAX_ROWS = 0（不限）时传给 gRPC per_page 的占位值（int32 上限）
+_DB_PAGE_UNBOUNDED = 2 ** 31 - 1
 
 
 class LogQueryService:
@@ -92,21 +69,31 @@ class LogQueryService:
             if query.task_id:
                 return LogQueryService._get_task_logs_merged(query)
 
-            # 通过 gRPC 查询 Log 列表（task_id/level/日期由服务端过滤，其余条件客户端过滤）
+            # INT-100：全部过滤条件（task_id/level 多级别/日期/module/category/
+            # mark/device/api/case/thread/keyword/content/algorithm_type）下推
+            # task_service DB 过滤，服务端分页，不再客户端二次过滤
             from api_gateway.infrastructure.grpc_proxies import task_data_service
             resp = task_data_service.list_logs(
                 task_id=query.task_id,
-                level=query.level.split(',')[0].strip() if query.level else None,
+                level=query.level or None,
                 page=query.page,
                 per_page=query.per_page,
                 start_date=query.start_time,
                 end_date=query.end_time,
+                module=query.module,
+                category=query.category,
+                mark=query.mark,
+                device_id=query.device_id,
+                api_id=query.api_id,
+                test_case_id=query.test_case_id,
+                thread_id=query.thread_id,
+                keyword=query.keyword,
+                content_include=query.content_include,
+                content_exclude=query.content_exclude,
+                algorithm_type=query.algorithm_type,
             )
             logs = resp.get('items') or []
             total = resp.get('total', 0)
-
-            # 客户端过滤：gRPC ListLogs 仅支持 task_id/level/日期，其余条件在此过滤
-            logs = [log for log in logs if _match_db_log(query, log)]
 
             data = [_to_log_item(log) for log in logs]
 
@@ -128,6 +115,19 @@ class LogQueryService:
     # ------------------------------------------------------------------
     # 任务维度日志（INT-81）：业务文件 + DB 历史行合并
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _db_merge_page_size() -> int:
+        """任务维度合并视图 DB 侧单次拉取行数上限（0 = 不限）。
+
+        INT-100：替代硬编码 per_page=100000 全量拉取，大任务 DB 行拉取量
+        有界且可配置；与文件侧 LOG_BUSINESS_MAX_SCAN_ENTRIES 同为下界语义
+        兜底（超限时 total 为下界，保留最新行）。
+        """
+        try:
+            return max(0, int(BaseConfig.LOG_DB_MERGE_MAX_ROWS))
+        except (TypeError, ValueError):
+            return 100_000
 
     @staticmethod
     def _get_task_logs_merged(query):
@@ -153,18 +153,31 @@ class LogQueryService:
         )
         file_items = [_to_log_item(entry) for entry in file_entries]
 
-        # DB 历史行（审计事件与改造前任务日志，保留只读不迁移）
+        # DB 历史行（审计事件与改造前任务日志，保留只读不迁移）。
+        # INT-100：level 多级别/日期/其余条件全部下推 task_service 过滤，
+        # 拉取行数受 LOG_DB_MERGE_MAX_ROWS 上限约束，不再全量物化。
         from api_gateway.infrastructure.grpc_proxies import task_data_service
+        page_size = LogQueryService._db_merge_page_size()
         resp = task_data_service.list_logs(
             task_id=query.task_id,
-            level=query.level.split(',')[0].strip() if query.level else None,
+            level=query.level or None,
             page=1,
-            per_page=100000,
+            per_page=page_size if page_size > 0 else _DB_PAGE_UNBOUNDED,
             start_date=query.start_time,
             end_date=query.end_time,
+            module=query.module,
+            category=query.category,
+            mark=query.mark,
+            device_id=query.device_id,
+            api_id=query.api_id,
+            test_case_id=query.test_case_id,
+            thread_id=query.thread_id,
+            keyword=query.keyword,
+            content_include=query.content_include,
+            content_exclude=query.content_exclude,
+            algorithm_type=query.algorithm_type,
         )
-        db_logs = [log for log in (resp.get('items') or []) if _match_db_log(query, log)]
-        db_items = [_to_log_item(log) for log in db_logs]
+        db_items = [_to_log_item(log) for log in (resp.get('items') or [])]
 
         merged = sorted(
             file_items + db_items,

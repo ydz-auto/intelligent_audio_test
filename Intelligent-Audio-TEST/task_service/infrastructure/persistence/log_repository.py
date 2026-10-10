@@ -71,15 +71,30 @@ class LogRepository(LogRepositoryABC):
 
     def list_logs(self, task_id: int = 0, level: str = '',
                   start_date: str = '', end_date: str = '',
-                  page: int = 1, per_page: int = 20) -> Dict[str, Any]:
-        """查询 Log 列表（分页 + 过滤），返回 {items, total, page, per_page}。"""
+                  page: int = 1, per_page: int = 20,
+                  module: str = '', category: str = '', mark: str = '',
+                  device_id: int = 0, api_id: int = 0,
+                  test_case_id: str = '', thread_id: str = '',
+                  keyword: str = '', content_include: str = '',
+                  content_exclude: str = '', algorithm_type: str = '') -> Dict[str, Any]:
+        """查询 Log 列表（分页 + 过滤），返回 {items, total, page, per_page}。
+
+        INT-100：level 支持逗号分隔多级别（大小写不敏感，与 get_stats 同语义）；
+        module/category/mark/device_id/api_id/test_case_id/thread_id/keyword/
+        content_*/algorithm_type 全部下推到 DB 过滤（调用方不传 = 不过滤）。
+        """
         session = get_db_session()
         try:
             query = session.query(Log)
             if task_id:
                 query = query.filter(Log.task_id == task_id)
             if level:
-                query = query.filter(Log.level == level)
+                if ',' in level:
+                    levels = [lv.strip().lower() for lv in level.split(',') if lv.strip()]
+                    if levels:
+                        query = query.filter(_func.lower(Log.level).in_(levels))
+                else:
+                    query = query.filter(_func.lower(Log.level) == level.lower())
             if start_date:
                 try:
                     query = query.filter(Log.time >= datetime.fromisoformat(start_date))
@@ -90,6 +105,28 @@ class LogRepository(LogRepositoryABC):
                     query = query.filter(Log.time <= datetime.fromisoformat(end_date))
                 except ValueError:
                     logger.debug("list_logs end_date 非法 ISO 格式已忽略: %r", end_date)
+            if module and module != 'all':
+                query = query.filter(_func.lower(Log.module) == module.lower())
+            if category and category != 'all':
+                query = query.filter(_func.lower(Log.category) == category.lower())
+            if mark:
+                query = query.filter_by(mark=mark)
+            if device_id:
+                query = query.filter_by(device_id=device_id)
+            if api_id:
+                query = query.filter_by(api_id=api_id)
+            if test_case_id:
+                query = query.filter_by(test_case_id=test_case_id)
+            if thread_id:
+                query = query.filter(Log.thread_id.like(f"%{thread_id}%"))
+            if keyword:
+                query = query.filter(Log.content.like(f"%{keyword}%"))
+            if content_include:
+                query = query.filter(Log.content.like(f"%{content_include}%"))
+            if content_exclude:
+                query = query.filter(~Log.content.like(f"%{content_exclude}%"))
+            if algorithm_type and algorithm_type != 'all':
+                query = query.filter(Log.algorithm_type == algorithm_type)
             page = page or 1
             per_page = per_page or 20
             total = query.count()

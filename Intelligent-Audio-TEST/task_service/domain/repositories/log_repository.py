@@ -13,8 +13,18 @@ class LogRepositoryABC(ABC):
     @abstractmethod
     def list_logs(self, task_id: int = 0, level: str = '',
                   start_date: str = '', end_date: str = '',
-                  page: int = 1, per_page: int = 20) -> Dict[str, Any]:
-        """查询 Log 列表（分页 + 过滤），返回 {items, total, page, per_page}。"""
+                  page: int = 1, per_page: int = 20,
+                  module: str = '', category: str = '', mark: str = '',
+                  device_id: int = 0, api_id: int = 0,
+                  test_case_id: str = '', thread_id: str = '',
+                  keyword: str = '', content_include: str = '',
+                  content_exclude: str = '', algorithm_type: str = '') -> Dict[str, Any]:
+        """查询 Log 列表（分页 + 过滤），返回 {items, total, page, per_page}。
+
+        level 支持逗号分隔多级别（INT-100 下推）；其余过滤字段语义与
+        get_stats 对齐（module/category/algorithm_type 'all' 视为不过滤，
+        thread_id/keyword/content_* 为包含匹配）。
+        """
         ...
 
     @abstractmethod

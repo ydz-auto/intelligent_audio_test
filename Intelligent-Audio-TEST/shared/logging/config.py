@@ -30,6 +30,9 @@ class LogSettings:
     # 读取侧单次查询最大物化条数（0 = 不限）；默认远高于常规任务量，
     # 仅在大任务轮询场景兜底（total 变下界语义）
     business_max_scan_entries: int = 100_000
+    # 读取侧同参数查询结果短 TTL 缓存秒数（0 = 关闭，INT-100）：TTL 窗口内
+    # list 与 stats 共享一次文件扫描；只缓存查询结果，不引入写副作用
+    business_scan_cache_ttl_seconds: int = 3
 
     @property
     def is_prod(self) -> bool:
@@ -47,6 +50,7 @@ def _build_settings() -> LogSettings:
         business_max_bytes=max(1, BaseConfig.LOG_BUSINESS_MAX_MB) * 1024 * 1024,
         business_retention_days=max(1, BaseConfig.LOG_BUSINESS_RETENTION_DAYS),
         business_max_scan_entries=max(0, BaseConfig.LOG_BUSINESS_MAX_SCAN_ENTRIES),
+        business_scan_cache_ttl_seconds=max(0, BaseConfig.LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS),
     )
 
 

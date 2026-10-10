@@ -58,7 +58,8 @@
     />
 
     <!-- 实时监控指示器 -->
-    <div class="monitor-indicator" v-show="showMonitorIndicator">
+    <div class="monitor-indicator" v-show="showMonitorIndicator"
+         title="任务维度轮询在空闲时按指数退避（VITE_LOG_POLL_IDLE_MAX_MS 可配）；列表/统计共享短 TTL 扫描缓存，新日志展示可能有至多一个 TTL 窗口的时延">
       <div class="monitor-status">
         <i class="fas fa-circle monitor-icon" :class="{ 'connected': connectionStatus === '已连接', 'disconnected': connectionStatus !== '已连接' }"></i>
         <span class="monitor-text">实时监控中</span>
@@ -81,7 +82,8 @@
     </div>
 
     <!-- 日志统计概览 -->
-    <div class="stats-grid">
+    <div class="stats-grid"
+         title="统计与列表共享短 TTL 扫描缓存（LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS，默认 3 秒，0 关闭），展示可能存在至多一个 TTL 窗口的时延">
       <div class="stat-card">
         <div class="stat-icon total-icon">
           <i class="fas fa-file-alt"></i>
