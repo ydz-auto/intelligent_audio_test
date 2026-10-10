@@ -429,8 +429,15 @@ export function useLogView(refs?: LogViewRefs) {
     }
   };
 
+  // INT-100 审计P1修复：轮询循环世代号。tick 为 async，await 期间 stop 后恢复
+  // 若仍无条件 scheduleNext 会复活轮询（僵尸轮询/双循环）；世代号使旧循环
+  // 在 stop/重启后所有 scheduleNext 调用变为空操作。
+  let realtimeLoopGen = 0;
+
   const startRealTimeLog = () => {
     if (realTimeLogInterval.value) return;
+
+    const myGen = ++realtimeLoopGen;
 
     // INT-100 空闲退避：连续轮询无新日志时按 2 的幂放大间隔至上限；
     // 新数据或查询条件变化立即恢复基础间隔。轮询tick用递归 setTimeout
@@ -445,6 +452,7 @@ export function useLogView(refs?: LogViewRefs) {
     );
 
     const scheduleNext = (delayMs: number) => {
+      if (realtimeLoopGen !== myGen) return;
       realTimeLogInterval.value = window.setTimeout(tick, delayMs);
     };
 
@@ -497,6 +505,8 @@ export function useLogView(refs?: LogViewRefs) {
   };
 
   const stopRealTimeLog = () => {
+    // 先失效世代号再清定时器：即使无挂起定时器，也要让在途 async tick 失效
+    realtimeLoopGen += 1;
     if (realTimeLogInterval.value) {
       window.clearTimeout(realTimeLogInterval.value);
       realTimeLogInterval.value = null;
