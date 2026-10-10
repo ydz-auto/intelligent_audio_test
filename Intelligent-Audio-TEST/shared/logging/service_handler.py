@@ -8,11 +8,14 @@
   不再复用 TimedRotatingFileHandler 默认的纯日期后缀，避免同日覆盖）
 - 保留 N 天由 retention 清扫器按 mtime 清理（backupCount 仅作兜底）
 
-多进程/多副本安全（审计问题 1 修复）：活跃文件名含进程 PID
-（app-{pid}.log）——compose 共享日志卷 + deploy.replicas 场景下同一服务的
-多个副本进程各有独立活跃文件，轮转 os.replace 只触碰本进程文件：跨天/
-超限同时轮转也不会 rename 他副本正写入的文件、不会以同序号互相覆盖。
-PID 复用（容器重启）时同名活跃文件追加续写，切分序号扫描接续不丢行。
+多进程/多副本安全（审计问题 1 修复）：活跃文件名含进程标识
+（app-{hostname}-{pid}.log，见 shared.logging.identity）——同宿主多进程
+靠 PID 区分；容器多副本（compose 共享日志卷 + deploy.replicas）各副本
+PID namespace 独立、入口进程 PID 恒为 1，靠 Docker 注入的短容器 ID
+（主机名）区分，两者合取后各写入方持有独立活跃文件，轮转 os.replace
+只触碰本进程文件：跨天/超限同时轮转也不会 rename 他副本正写入的文件、
+不会以同序号互相覆盖。进程标识复用（容器重启）时同名活跃文件追加续写，
+切分序号扫描接续不丢行。
 """
 import logging
 import os
@@ -20,6 +23,7 @@ import time
 from datetime import datetime
 
 from shared.logging.config import LogSettings, get_log_settings, resolve_service_name
+from shared.logging.identity import process_identity
 
 _DAY_FORMAT = '%Y%m%d'
 _DATE_SUFFIX_LEN = len('YYYYMMDD') + len('-')
@@ -27,8 +31,12 @@ _SEQ_SUFFIX_LEN = len('-001')
 
 
 def default_service_base_name() -> str:
-    """默认活跃文件名：app-{pid}.log（进程独立，多副本共享卷互不冲突）。"""
-    return f'app-{os.getpid()}.log'
+    """默认活跃文件名：app-{hostname}-{pid}.log。
+
+    hostname+pid 合取唯一：同宿主多进程靠 PID 区分，容器多副本（副本内
+    PID 恒为 1）靠 Docker 注入的短容器 ID 区分，多副本共享卷互不冲突。
+    """
+    return f'app-{process_identity()}.log'
 
 
 class ServiceRotatingFileHandler(logging.Handler):
@@ -143,11 +151,11 @@ class ServiceRotatingFileHandler(logging.Handler):
 def setup_service_file_logging(settings: LogSettings = None,
                                service_name: str = None,
                                base_name: str = None) -> logging.Handler:
-    """构建当前服务的运行日志文件处理器（logs/{service_name}/app-{pid}.log）。
+    """构建当前服务的运行日志文件处理器（logs/{service_name}/app-{hostname}-{pid}.log）。
 
-    活跃文件名默认含进程 PID（多副本共享日志卷互不冲突）；base_name 显式
-    传入时按传入名轮转（仅测试/单进程场景使用）。由 shared.utils.log_handler
-    统一调用，各服务禁止自造文件 handler。
+    活跃文件名默认含 hostname+pid 进程标识（多副本共享日志卷互不冲突）；
+    base_name 显式传入时按传入名轮转（仅测试/单进程场景使用）。由
+    shared.utils.log_handler 统一调用，各服务禁止自造文件 handler。
     """
     resolved_settings = settings or get_log_settings()
     name = service_name or resolve_service_name()

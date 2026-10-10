@@ -51,8 +51,9 @@ class _InitMixin:
     def _init_file_handler(self):
         """初始化服务运行日志文件处理器（INT-81：统一由 shared/logging 基座提供）
 
-        写入 logs/{service_name}/app-{pid}.log（文件名含进程 PID，多副本共享
-        日志卷互不冲突），按天 + 按大小（LOG_SERVICE_MAX_MB，默认 50MB）
+        写入 logs/{service_name}/app-{hostname}-{pid}.log（文件名含 hostname+pid
+        进程标识：同宿主多进程靠 PID 区分，容器多副本靠 Docker 注入的短容器
+        ID 区分，共享日志卷互不冲突），按天 + 按大小（LOG_SERVICE_MAX_MB，默认 50MB）
         双条件轮转，保留 LOG_SERVICE_RETENTION_DAYS 天（默认 30，由后台清扫器执行）。
         Windows 下文件被占用时轮转失败不中断日志。
         """

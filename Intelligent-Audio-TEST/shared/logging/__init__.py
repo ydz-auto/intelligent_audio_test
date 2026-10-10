@@ -10,6 +10,7 @@
     enums           业务日志类型/环境枚举与 category 映射
     context         轮次/评估ID 线程上下文
     path_builder    业务日志路径模板（唯一权威实现）
+    identity        写入进程唯一标识（hostname+pid，容器多副本安全）
     service_handler 服务运行日志处理器（双条件轮转）
     business_writer 业务日志 JSONL 写入器（超限切分、进程独立文件名）
     business_reader 业务日志读取器（按 task/device/evaluation 检索）
@@ -34,6 +35,7 @@ from shared.logging.context import (
     set_current_round,
 )
 from shared.logging.path_builder import BusinessLogPathBuilder
+from shared.logging.identity import process_identity
 from shared.logging.service_handler import ServiceRotatingFileHandler, setup_service_file_logging
 from shared.logging.business_writer import BusinessLogFileWriter
 from shared.logging.business_reader import BusinessLogReader
@@ -53,6 +55,7 @@ __all__ = [
     'set_current_evaluation_id',
     'log_round',
     'BusinessLogPathBuilder',
+    'process_identity',
     'ServiceRotatingFileHandler',
     'setup_service_file_logging',
     'BusinessLogFileWriter',

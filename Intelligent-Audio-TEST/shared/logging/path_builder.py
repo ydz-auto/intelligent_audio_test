@@ -2,16 +2,18 @@
 """业务日志路径模板（INT-81）。
 
 路径规则（唯一权威实现，写入/读取两侧共用）：
-    business/{task_id}/{device_id|api_id|common}/{evaluation_id|round|shared}/{log_type}.{service_name}[.{pid}][-NNN].log
+    business/{task_id}/{device_id|api_id|common}/{evaluation_id|round|shared}/{log_type}.{service_name}[.{hostname}-{pid}][-NNN].log
 
 - 第二段：被测设备ID（E2E/设备日志）或 API 定义ID（API 用例日志），缺省 common
 - 第三段：评估ID或轮次号，缺省 shared（任务级日志不区分轮次）
-- 文件名：写入侧带进程标识 {log_type}.{service_name}.{pid}.log —— service_name
-  只区分服务不区分副本，多副本（compose deploy.replicas）共享日志卷时同名
-  活跃文件会共写互踩；PID 保证同一服务的每个写入进程持有独立活跃文件，
-  轮转改名只触碰本进程文件（多副本/多 worker 安全，审计问题 1 修复）
-- 超限切分 {log_type}.{service_name}.{pid}-001.log：切分序号扫描以活跃文件
-  stem 为前缀，天然按进程隔离，不跨进程合并序号
+- 文件名：写入侧带进程标识 {log_type}.{service_name}.{hostname}-{pid}.log
+  —— service_name 只区分服务不区分副本；进程标识（shared.logging.identity）
+  同宿主多进程靠 PID 区分、容器多副本（副本内 PID namespace 独立、入口
+  进程 PID 恒为 1）靠 Docker 注入的短容器 ID（hostname）区分，两者合取
+  保证同一服务的每个写入进程持有独立活跃文件，轮转改名只触碰本进程文件
+  （多副本/多 worker 安全，审计问题 1 修复）
+- 超限切分 {log_type}.{service_name}.{hostname}-{pid}-001.log：切分序号
+  扫描以活跃文件 stem 为前缀，天然按进程隔离，不跨进程合并序号
 
 所有段取值经 sanitize 校验（拒绝路径分隔符/..），路径模板本身不可配置拼接。
 """
@@ -47,8 +49,9 @@ class BusinessLogPathBuilder:
             api_id: API 定义ID（无设备上下文的 API 用例日志）
             evaluation_id: 评估ID（优先于 round_value）
             round_value: 轮次号
-            process_id: 写入进程标识（写入侧必须传，文件名含 PID 实现多副本
-                互不冲突；读取侧按目录通配枚举，不依赖具体文件名）
+            process_id: 写入进程标识（写入侧必须传，默认 {hostname}-{pid}，
+                同宿主多进程靠 PID、容器多副本靠 Docker 短容器 ID 合取唯一；
+                读取侧按目录通配枚举，不依赖具体文件名）
         """
         if task_id is None or str(task_id).strip() == '':
             raise ValueError('business log path requires task_id')
@@ -104,8 +107,9 @@ class BusinessLogPathBuilder:
     def next_split_path(dir_path: str, active_filename: str) -> str:
         """返回活跃文件的下一个切分目标路径（-NNN 序号取现存最大值+1）。
 
-        序号扫描以活跃文件 stem 为前缀：写入侧文件名含 PID，切分序号天然
-        按进程隔离，多副本各自递增互不覆盖（os.replace 只触碰本进程文件）。
+        序号扫描以活跃文件 stem 为前缀：写入侧文件名含 hostname+pid 进程
+        标识，切分序号天然按进程隔离，多副本各自递增互不覆盖（os.replace
+        只触碰本进程文件）。
         """
         stem = active_filename[:-len('.log')]
         max_index = 0

@@ -26,6 +26,7 @@ from shared.logging import (
     BusinessLogReader,
     BusinessLogType,
     LogSettings,
+    process_identity,
     reset_log_settings,
     sweep_expired_files,
 )
@@ -254,7 +255,7 @@ class TestBusinessWriter:
             from shared.logging import resolve_service_name
             deadline = time.time() + 3
             biz_file = os.path.join(log_root, 'business', '701', '1', '1',
-                                    f'execution.{resolve_service_name()}.{os.getpid()}.log')
+                                    f'execution.{resolve_service_name()}.{process_identity()}.log')
             while time.time() < deadline and not os.path.exists(biz_file):
                 time.sleep(0.05)
             assert os.path.exists(biz_file), 'INFO 日志未落文件'
@@ -374,10 +375,11 @@ class TestServiceRotation:
         assert 'hello service log' in log_file.read_text(encoding='utf-8')
 
     def test_default_base_name_contains_pid(self):
-        """默认活跃文件名含进程 PID：多副本共享日志卷互不冲突（审计问题 1）。"""
+        """默认活跃文件名含 hostname+pid 进程标识：多副本共享日志卷互不冲突（审计问题 1）。"""
+        import socket
         from shared.logging.service_handler import default_service_base_name
         name = default_service_base_name()
-        assert name == f'app-{os.getpid()}.log'
+        assert name == f'app-{socket.gethostname()}-{os.getpid()}.log'
 
     def test_size_rollover_names_with_day_and_seq(self, tmp_path, log_root):
         handler = ServiceRotatingFileHandler(str(tmp_path / 'svc_logs'),

@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""INT-81 审计打回修复回归（2026-10-10 审计问题 1-4/6）。
+"""INT-81 审计打回修复回归（2026-10-10 审计问题 1-4/6 + 二次打回容器多副本维度）。
 
-- 问题 1（阻塞）：多副本日志轮转竞态 —— 服务运行日志活跃名含 PID
-  （app-{pid}.log）、业务日志文件名含 PID；两真实子进程并发高频轮转/
-  切分零丢行（旧实现共享文件名会 os.replace 互踩）
+- 问题 1（阻塞）：多副本日志轮转竞态 —— 服务运行日志活跃名含进程标识
+  （app-{hostname}-{pid}.log）、业务日志文件名含 hostname+pid；两真实子
+  进程并发高频轮转/切分零丢行（旧实现共享文件名会 os.replace 互踩）。
+  二次修复：容器副本 PID namespace 独立（入口进程 PID 恒为 1），进程标识
+  合入 Docker 注入的短容器 ID（hostname），见 TestContainerPidCollision
 - 问题 2（子集）：读取侧条数上限 LOG_BUSINESS_MAX_SCAN_ENTRIES，
   total 下界语义，超限保留最新条目
 - 问题 3：服务日志清扫排除 business/ 子树，两套保留天数互不叠加
@@ -32,6 +34,7 @@ from shared.logging import (  # noqa: E402
     BusinessLogFileWriter,
     BusinessLogReader,
     LogSettings,
+    process_identity,
     reset_log_settings,
     sweep_expired_files,
     sweep_log_root,
@@ -169,9 +172,9 @@ class TestTwoProcessConcurrency:
 
         biz_dir = os.path.join(root, BUSINESS_DIR, '9001', '1', '1')
         names = os.listdir(biz_dir)
-        # 每个写入进程持有独立文件族（PID 进文件名，活跃或切分形态均算）
+        # 每个写入进程持有独立文件族（进程标识进文件名，活跃或切分形态均算）
         pid_files = {n for n in names
-                     for pid in pids if f'.{pid}.' in n or f'.{pid}-' in n}
+                     for pid in pids if f'-{pid}.' in n or f'-{pid}-' in n}
         assert len(pid_files) >= 2, f'两副本应各持有独立活跃文件，实际: {names[:8]}...'
         contents = []
         for name in names:
@@ -337,7 +340,7 @@ class TestDeviceCategoryTaskScopedRouting:
         assert not _wait_for(lambda: len(captured) >= 1, timeout=1.5), \
             "category='device' 业务日志被审计类别改道入库"
         biz_file = (logs_root / 'business' / '301' / '9' / '1'
-                    / f'device.{resolve_service_name()}.{os.getpid()}.log')
+                    / f'device.{resolve_service_name()}.{process_identity()}.log')
         assert _wait_for(biz_file.exists), '设备交互业务日志未落业务文件'
         entry = json.loads(biz_file.read_text(encoding='utf-8').splitlines()[0])
         assert entry['log_type'] == 'device'
@@ -448,15 +451,17 @@ class TestScanCap:
 
 
 # ---------------------------------------------------------------------------
-# 问题 1 收尾：默认服务日志活跃名 / 业务文件名均含 PID
+# 问题 1 收尾：默认服务日志活跃名 / 业务文件名均含 hostname+pid 进程标识
 # ---------------------------------------------------------------------------
 
 class TestPidNaming:
 
     def test_default_service_base_name(self):
-        assert default_service_base_name() == f'app-{os.getpid()}.log'
+        import socket
+        assert default_service_base_name() == f'app-{socket.gethostname()}-{os.getpid()}.log'
 
-    def test_writer_default_process_id_is_current_pid(self, log_root):
+    def test_writer_default_process_id_is_current_identity(self, log_root):
+        import socket
         writer = BusinessLogFileWriter(settings=_make_settings(log_root),
                                        service_name='svc')
         rel = writer.write({
@@ -464,4 +469,167 @@ class TestPidNaming:
             'category': 'execution', 'module': 'm', 'source': 'backend',
             'content': 'pid line', 'task_id': 701, 'device_id': 2, 'round': 1,
         })
-        assert rel.replace(os.sep, '/').endswith(f'execution.svc.{os.getpid()}.log')
+        identity = f'{socket.gethostname()}-{os.getpid()}'
+        assert rel.replace(os.sep, '/').endswith(f'execution.svc.{identity}.log')
+
+
+# ---------------------------------------------------------------------------
+# 二次打回：容器多副本维度 —— PID 跨容器重号，hostname 合取唯一
+# ---------------------------------------------------------------------------
+
+class TestContainerPidCollision:
+    """容器副本模拟：PID namespace 独立（入口进程恒为 1），Docker 注入的
+    短容器 ID（hostname）互异。旧实现（纯 PID 命名）在本组用例下两副本
+    文件名必然重号。"""
+
+    _REPLICA_A = 'aaaa_container'
+    _REPLICA_B = 'bbbb_container'
+
+    def test_identity_format_and_hostname_takes_effect(self, monkeypatch):
+        import socket
+        from shared.logging import process_identity
+        from shared.logging.service_handler import default_service_base_name
+
+        monkeypatch.setattr(socket, 'gethostname', lambda: 'aabbccddeeff')
+        monkeypatch.setattr(os, 'getpid', lambda: 1)
+        assert process_identity() == 'aabbccddeeff-1'
+        assert default_service_base_name() == 'app-aabbccddeeff-1.log'
+
+        # 另一副本：同 PID（入口进程恒 1）、不同容器 ID → 默认名互异
+        monkeypatch.setattr(socket, 'gethostname', lambda: 'ffffffffffff')
+        assert process_identity() == 'ffffffffffff-1'
+        assert default_service_base_name() == 'app-ffffffffffff-1.log'
+        assert default_service_base_name() != 'app-aabbccddeeff-1.log'
+
+    def test_writer_default_identity_embeds_hostname(self, log_root, monkeypatch):
+        import socket
+        monkeypatch.setattr(socket, 'gethostname', lambda: 'aabbccddeeff')
+        monkeypatch.setattr(os, 'getpid', lambda: 1)
+        writer = BusinessLogFileWriter(settings=_make_settings(log_root),
+                                       service_name='svc')
+        rel = writer.write({
+            'time': '2026-10-10 12:00:00.000000', 'level': 'INFO',
+            'category': 'execution', 'module': 'm', 'source': 'backend',
+            'content': 'container line', 'task_id': 702, 'device_id': 2, 'round': 1,
+        })
+        assert rel.replace(os.sep, '/').endswith('execution.svc.aabbccddeeff-1.log')
+
+    def test_hostname_unsafe_chars_sanitized(self, monkeypatch):
+        import socket
+        from shared.logging.identity import process_identity
+        monkeypatch.setattr(socket, 'gethostname', lambda: 'weird host/x')
+        monkeypatch.setattr(os, 'getpid', lambda: 7)
+        assert process_identity() == 'weird_host_x-7'
+
+    # -- 双子进程端到端：两"副本"同 PID=1、不同容器 ID，高频轮转/切分 ----
+
+    _CONTAINER_WORKER_SCRIPT = '''
+import os
+import socket
+import sys
+
+repo_root, mode, log_dir, count, sim_host = (
+    sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5])
+sys.path.insert(0, repo_root)
+os.environ.setdefault(
+    'DATABASE_URL',
+    'sqlite:///' + os.path.join(os.environ.get('TEMP', '/tmp'), 'int81_worker_unused.db'))
+os.environ.setdefault('OSS_ACCESS_KEY', 'test')
+os.environ.setdefault('OSS_SECRET_KEY', 'test')
+
+# 模拟容器副本：入口进程 PID 恒为 1，Docker 注入短容器 ID 为主机名
+os.getpid = lambda: 1
+socket.gethostname = lambda: sim_host
+
+if mode == 'service':
+    import logging
+    from shared.logging.service_handler import ServiceRotatingFileHandler
+
+    handler = ServiceRotatingFileHandler(log_dir, max_bytes=256)
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    logger = logging.getLogger('int81_container_worker')
+    logger.propagate = False
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    for i in range(count):
+        logger.info('replica-%s-line-%04d' % (sim_host, i))
+    handler.close()
+else:
+    from datetime import datetime
+    from shared.logging import BusinessLogFileWriter, LogEnvironment, LogSettings
+
+    settings = LogSettings(
+        root_dir=log_dir, environment=LogEnvironment.DEV,
+        service_max_bytes=50 * 1024 * 1024, service_retention_days=30,
+        business_enabled=True, business_db_enabled=False,
+        business_max_bytes=300, business_retention_days=30)
+    writer = BusinessLogFileWriter(settings=settings, service_name='worker_svc')
+    for i in range(count):
+        writer.write({
+            'time': datetime.now(), 'level': 'INFO', 'category': 'execution',
+            'module': 'worker', 'source': 'backend',
+            'content': 'replica-%s-line-%04d' % (sim_host, i),
+            'task_id': 9002, 'device_id': 1, 'round': 1,
+        })
+    writer.close_all()
+print('OK')
+'''
+
+    def _run_two_replicas(self, log_root, mode, count=60):
+        """并发拉起两个"容器副本"子进程（同 PID=1、不同容器 ID）。"""
+        script = Path(log_root).parent / 'int81_container_worker.py'
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(self._CONTAINER_WORKER_SCRIPT, encoding='utf-8')
+        procs = [
+            subprocess.Popen(
+                [sys.executable, str(script), _REPO_ROOT, mode, str(log_root),
+                 str(count), sim_host],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            for sim_host in (self._REPLICA_A, self._REPLICA_B)
+        ]
+        for proc in procs:
+            out, err = proc.communicate()
+            assert proc.returncode == 0, f'副本异常退出: {err}'
+
+    def test_service_logs_same_pid_replicas_distinct_names_no_loss(self, tmp_path):
+        log_dir = str(tmp_path / 'logs' / 'api_test_service')
+        count = 60
+        self._run_two_replicas(log_dir, 'service', count)
+
+        names = os.listdir(log_dir)
+        family_a = [n for n in names if n.startswith(f'app-{self._REPLICA_A}-1')]
+        family_b = [n for n in names if n.startswith(f'app-{self._REPLICA_B}-1')]
+        assert family_a and family_b, (
+            f'同 PID 两副本默认名应互异（hostname 生效），实际: {names[:8]}...')
+        lines = []
+        for name in names:
+            with open(os.path.join(log_dir, name), 'rb') as handle:
+                lines.extend(handle.read().decode('utf-8').splitlines())
+        expected = {f'replica-{host}-line-{i:04d}'
+                    for host in (self._REPLICA_A, self._REPLICA_B)
+                    for i in range(count)}
+        assert sorted(lines) == sorted(expected), '同 PID 两副本并发轮转丢行/重复行'
+
+    def test_business_logs_same_pid_replicas_distinct_names_no_loss(self, tmp_path):
+        root = str(tmp_path / 'logs')
+        count = 60
+        self._run_two_replicas(root, 'business', count)
+
+        biz_dir = os.path.join(root, BUSINESS_DIR, '9002', '1', '1')
+        names = os.listdir(biz_dir)
+        family_a = [n for n in names
+                    if f'.{self._REPLICA_A}-1.log' in n or f'.{self._REPLICA_A}-1-' in n]
+        family_b = [n for n in names
+                    if f'.{self._REPLICA_B}-1.log' in n or f'.{self._REPLICA_B}-1-' in n]
+        assert family_a and family_b, (
+            f'同 PID 两副本业务文件名应互异（hostname 生效），实际: {names[:8]}...')
+        contents = []
+        for name in names:
+            with open(os.path.join(biz_dir, name), 'rb') as handle:
+                for line in handle.read().decode('utf-8').splitlines():
+                    if line.strip():
+                        contents.append(json.loads(line)['content'])
+        expected = [f'replica-{host}-line-{i:04d}'
+                    for host in (self._REPLICA_A, self._REPLICA_B)
+                    for i in range(count)]
+        assert sorted(contents) == sorted(expected), '同 PID 两副本并发切分丢行/重复行'

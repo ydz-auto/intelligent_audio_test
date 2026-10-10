@@ -22,7 +22,7 @@ os.environ.setdefault('DATABASE_URL',
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
-from shared.logging import LogSettings, reset_log_settings
+from shared.logging import LogSettings, process_identity, reset_log_settings
 from shared.logging.config import resolve_service_name
 from shared.logging.enums import LogEnvironment
 from shared.logging.service_handler import ServiceRotatingFileHandler
@@ -171,7 +171,7 @@ class TestThreadRoundContext:
                      category='execution', task_id=88, device_id=4)
 
         svc = resolve_service_name()
-        round_file = logs_root / 'business' / '88' / '4' / '5' / f'execution.{svc}.{os.getpid()}.log'
+        round_file = logs_root / 'business' / '88' / '4' / '5' / f'execution.{svc}.{process_identity()}.log'
         deadline = time.time() + 3
         while time.time() < deadline and not round_file.exists():
             time.sleep(0.05)
@@ -180,7 +180,7 @@ class TestThreadRoundContext:
         assert 'thread-scoped round line' in content
 
         # 上下文退出后（round=None）落 shared 目录
-        shared_file = logs_root / 'business' / '88' / '4' / 'shared' / f'execution.{svc}.{os.getpid()}.log'
+        shared_file = logs_root / 'business' / '88' / '4' / 'shared' / f'execution.{svc}.{process_identity()}.log'
         deadline = time.time() + 3
         while time.time() < deadline and not shared_file.exists():
             time.sleep(0.05)
@@ -222,7 +222,7 @@ class TestThreadRoundContext:
 
         # 双写：文件侧同样落盘
         svc = resolve_service_name()
-        biz_file = logs_root / 'business' / '99' / '2' / 'shared' / f'execution.{svc}.{os.getpid()}.log'
+        biz_file = logs_root / 'business' / '99' / '2' / 'shared' / f'execution.{svc}.{process_identity()}.log'
         deadline = time.time() + 3
         while time.time() < deadline and not biz_file.exists():
             time.sleep(0.05)

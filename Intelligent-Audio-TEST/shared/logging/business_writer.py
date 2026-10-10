@@ -2,14 +2,16 @@
 """业务日志文件写入器（INT-81）。
 
 业务日志（执行/评估/设备）停止写 logs 表，按路径模板落文件：
-    business/{task_id}/{device_id|api_id|common}/{evaluation_id|round|shared}/{log_type}.{service_name}.{pid}.log
+    business/{task_id}/{device_id|api_id|common}/{evaluation_id|round|shared}/{log_type}.{service_name}.{hostname}-{pid}.log
 
 - JSON Lines 格式（每行一个 JSON 对象），读取侧按行解析可精确过滤
 - 单文件超过 business_max_bytes 切分：活跃文件改名 {base}-NNN.log 后重建
-- 文件名含 service_name + 进程 PID：同一服务的多副本/多 worker（compose
-  deploy.replicas 共享日志卷）各持有独立活跃文件，轮转改名只触碰本进程
-  文件，互不冲突；PID 复用（容器重启）时同名活跃文件追加续写，切分序号
-  扫描接续，不丢不覆盖
+- 文件名含 service_name + hostname+pid 进程标识（shared.logging.identity）：
+  同宿主多进程靠 PID 区分；容器多副本（compose deploy.replicas 共享日志
+  卷）各副本 PID namespace 独立、入口进程 PID 恒为 1，靠 Docker 注入的
+  短容器 ID（主机名）区分——两者合取后各写入方持有独立活跃文件，轮转
+  改名只触碰本进程文件，互不冲突；进程标识复用（容器重启）时同名活跃
+  文件追加续写，切分序号扫描接续，不丢不覆盖
 - 时间字段统一 LOG_TIME_FORMAT 固定 strftime（拒绝 str(datetime) 的
   微秒+时区后缀，保证与 DB/WS 侧时间格式一致可排序）
 - 打开句柄按目录缓存 + LRU 上限，防止长任务刷爆句柄数
@@ -21,6 +23,7 @@ from typing import Dict, Optional, Tuple
 
 from shared.logging.config import LogSettings, get_log_settings, resolve_service_name
 from shared.logging.enums import BusinessLogType, LOG_TIME_FORMAT, log_type_for_category
+from shared.logging.identity import process_identity
 from shared.logging.path_builder import BusinessLogPathBuilder
 
 # 打开句柄缓存上限（超出后关闭最久未写的文件句柄）
@@ -39,12 +42,14 @@ class BusinessLogFileWriter:
 
     def __init__(self, settings: LogSettings = None, service_name: str = None,
                  path_builder: BusinessLogPathBuilder = None,
-                 process_id: Optional[int] = None):
+                 process_id=None):
         self._settings = settings or get_log_settings()
         self._service_name = service_name or resolve_service_name()
-        # 进程标识进文件名：多副本共享日志卷时各写各的活跃文件（审计问题 1 修复）；
-        # 测试可注入固定 process_id 换取确定性路径断言
-        self._process_id = os.getpid() if process_id is None else process_id
+        # 进程标识（{hostname}-{pid}）进文件名：同宿主多进程靠 PID 区分，
+        # 容器多副本（副本内 PID 恒为 1）靠 Docker 注入的短容器 ID 区分
+        # （审计问题 1 二次修复）；测试可注入固定 process_id 换取确定性
+        # 路径断言
+        self._process_id = process_identity() if process_id is None else process_id
         self._path_builder = path_builder or BusinessLogPathBuilder()
         self._lock = threading.Lock()
         # cache key (dir, base_name) -> (file_handle, current_size)
