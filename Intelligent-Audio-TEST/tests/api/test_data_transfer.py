@@ -14,9 +14,10 @@ from tests.api.conftest import API_BASE  # noqa: F401
 
 
 def _unwrap(resp):
+    # 平台信封契约：{success, code, message} 恒在；data/detail 有值才出现（None 省略）
     assert resp.status_code < 500, f'服务端错误: {resp.status_code} {resp.text[:300]}'
     body = resp.json()
-    assert {'success', 'code', 'message', 'data'} <= set(body.keys()), f'信封缺失: {body}'
+    assert {'success', 'code', 'message'} <= set(body.keys()), f'信封缺失: {body}'
     return body
 
 
