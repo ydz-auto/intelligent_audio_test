@@ -164,21 +164,93 @@ class TaskDispatchMixin:
             return None
 
     def _dispatch_e2e_case(self, task_id, task, tc_rel, session):
-        """E2E 任务用例执行"""
+        """E2E 任务用例执行
+
+        physical 设备互斥（INT-80）：派发前经 DistributedLock
+        （lock:task:physical:{device_id}，RedisKeyPrefix.TASK_PHYSICAL_LOCK）
+        抢占物理设备，同一设备同一时刻仅允许一个用例执行；
+        抢占失败按分发失败收敛（设备被其他任务/用例占用）。
+        Redis 不可用时 DistributedLock 降级放行，不阻塞执行链。
+        """
         claimed = self._claim_case(task_id, tc_rel.id, session)
         if claimed != 1:
             session.rollback()
             return
         session.commit()
 
-        success = self._execute_e2e_case(task_id, tc_rel.id)
-        tc_rel = session.get(TaskCase, tc_rel.id)
+        device_lock = self._acquire_physical_device_lock(task_id, tc_rel)
+        if device_lock is None:
+            self._handle_physical_lock_busy(task_id, tc_rel)
+            return
 
-        task.completed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.COMPLETED)
-        task.failed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.FAILED, use_filter_by=True)
+        try:
+            success = self._execute_e2e_case(task_id, tc_rel.id)
+            tc_rel = session.get(TaskCase, tc_rel.id)
 
-        if not success:
-            self._handle_e2e_failure(task_id, tc_rel)
+            task.completed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.COMPLETED)
+            task.failed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.FAILED, use_filter_by=True)
+
+            if not success:
+                self._handle_e2e_failure(task_id, tc_rel)
+        finally:
+            try:
+                device_lock.release()
+            except Exception:
+                self._log(level='WARNING',
+                          content=f"释放物理设备互斥锁失败 (device_id={tc_rel.device_id})",
+                          task_id=task_id)
+
+    def _acquire_physical_device_lock(self, task_id, tc_rel):
+        """抢占物理设备互斥锁；无 device_id 返回无锁句柄，被占用返回 None。
+
+        TTL 覆盖单用例同步执行上限（StartE2ETask 同步执行整个 E2E 用例），
+        持有者崩溃后由 TTL 兜底自愈。
+        """
+        from shared.models.common_enums import RedisKeyPrefix
+        from shared.utils.distributed_coordinator import DistributedLock
+        from shared.infrastructure.config import BaseConfig
+
+        device_id = tc_rel.device_id
+        if not device_id:
+            # 用例未绑定具体物理设备：无可锁资源，直接放行（保持原行为）
+            class _NoOpLock:
+                def release(self):
+                    pass
+            return _NoOpLock()
+
+        ttl = int(getattr(BaseConfig, 'GRPC_E2E_SYNC_TIMEOUT_SECONDS', 600)) + 60
+        lock = DistributedLock(
+            f'{RedisKeyPrefix.TASK_PHYSICAL_LOCK.value}:{device_id}',
+            ttl=ttl, retry_timeout=10,
+        )
+        if not lock.acquire(blocking=True):
+            return None
+        return lock
+
+    def _handle_physical_lock_busy(self, task_id, tc_rel):
+        """物理设备被占用：用例置失败收敛，避免主循环死等活跃用例"""
+        self._log(level='WARNING',
+                  content=f"物理设备 {tc_rel.device_id} 正被其他任务/用例占用，"
+                          f"用例 {tc_rel.id} 派发失败",
+                  task_id=task_id, device_id=tc_rel.device_id)
+        from task_service.infrastructure.persistence.models import TaskCase
+        from shared.utils.status_utils import derive_task_case_status
+        from shared.models.database import create_db_session
+        from datetime import datetime as _dt
+        session = create_db_session()
+        try:
+            row = session.get(TaskCase, tc_rel.id)
+            if row and row.execution_status in (ExecutionStatus.QUEUED, ExecutionStatus.RUNNING):
+                now = _dt.now()
+                if not row.started_at:
+                    row.started_at = now
+                row.completed_at = now
+                row.execution_status = ExecutionStatus.FAILED
+                row.status = derive_task_case_status(ExecutionStatus.FAILED, row.evaluation_status)
+                row.error_message = f'物理设备 {tc_rel.device_id} 正被其他任务/用例占用'
+                session.commit()
+        finally:
+            session.close()
 
     def _claim_case(self, task_id, tc_rel_id, session):
         """原子占用用例，避免重复提交"""

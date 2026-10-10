@@ -62,9 +62,12 @@ def _import_all_models():
         Audio, AudioAnnotation, AudioTag, AudioAlgorithmRelation,
         UploadTask, UploadFile, UploadChunk,
     )
-    # device_service: 5 张表
+    # device_service: 10 张表（INT-80 新增 device_groups/device_group_members/
+    #                 device_status_events/device_alarm_rules/device_alarms）
     from device_service.infrastructure.persistence.models import (  # noqa: F401
         Device, DeviceTag, PlaybackDevice, SPLMapping, CalibrationHistory,
+        DeviceGroup, DeviceGroupMember, DeviceStatusEvent,
+        DeviceAlarmRule, DeviceAlarm,
     )
     # api_test_service: 1 张表
     from api_test_service.infrastructure.persistence.models import API  # noqa: F401
@@ -91,8 +94,8 @@ def create_all_tables(dry_run=False):
     for name in table_names:
         print(f"  - {name}")
 
-    if len(table_names) != 53:
-        print(f"\n⚠️ 警告: 预期 53 张表，实际注册 {len(table_names)} 张")
+    if len(table_names) != 64:
+        print(f"\n⚠️ 警告: 预期 64 张表，实际注册 {len(table_names)} 张")
 
     if dry_run:
         print("\n--dry-run 模式，未执行 DDL")

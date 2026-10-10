@@ -543,6 +543,354 @@ class _DeviceConfigProxy:
             error_msg_prefix='获取可用序列号失败',
         )
 
+    # ==================== INT-80 设备操作/批量/分组/监控告警 ====================
+
+    def control(self, device_id, data):
+        """设备操作（connect/disconnect/reboot/shutdown/install_app/uninstall_app）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.ControlDevice(device_pb.ControlDeviceRequest(
+                device_id=int(device_id),
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'设备操作失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='设备操作失败',
+        )
+
+    def batch_action(self, data):
+        """设备批量操作（幂等模式对齐 testcase batch）"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.BatchDeviceAction(device_pb.BatchDeviceActionRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'批量操作失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='批量操作失败',
+        )
+
+    def get_status_history(self, query):
+        """设备状态历史/趋势查询"""
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.GetDeviceStatusHistory(device_pb.GetDeviceStatusHistoryRequest(
+                data=json.dumps(query or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询状态历史失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询状态历史失败',
+        )
+
+    def create_group(self, data):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.CreateDeviceGroup(device_pb.CreateDeviceGroupRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'创建设备分组失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='创建设备分组失败',
+        )
+
+    def update_group(self, group_id, data):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.UpdateDeviceGroup(device_pb.UpdateDeviceGroupRequest(
+                group_id=str(group_id),
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'更新设备分组失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='更新设备分组失败',
+        )
+
+    def delete_group(self, group_id, cascade=False):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.DeleteDeviceGroup(device_pb.DeleteDeviceGroupRequest(
+                group_id=str(group_id), cascade=bool(cascade),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'删除设备分组失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='删除设备分组失败',
+        )
+
+    def get_groups(self, page=1, per_page=100, keyword=None, group_type=None):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.ListDeviceGroups(device_pb.ListDeviceGroupsRequest(
+                page=int(page or 1), per_page=int(per_page or 100),
+                keyword=keyword or '', group_type=group_type or '',
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询设备分组失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询设备分组失败',
+        )
+
+    def get_group(self, group_id):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.GetDeviceGroup(device_pb.GetDeviceGroupRequest(group_id=str(group_id)))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询设备分组失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询设备分组失败',
+        )
+
+    def add_devices_to_group(self, group_id, device_ids):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.AddDevicesToGroup(device_pb.AddDevicesToGroupRequest(
+                group_id=str(group_id),
+                data=json.dumps({'device_ids': list(device_ids or [])}, ensure_ascii=False),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'分组添加设备失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='分组添加设备失败',
+        )
+
+    def remove_devices_from_group(self, group_id, device_ids):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.RemoveDevicesFromGroup(device_pb.RemoveDevicesFromGroupRequest(
+                group_id=str(group_id),
+                data=json.dumps({'device_ids': list(device_ids or [])}, ensure_ascii=False),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'分组移除设备失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='分组移除设备失败',
+        )
+
+    def list_alarm_rules(self, page=1, per_page=50, metric_type=None, enabled=None):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.ListAlarmRules(device_pb.ListAlarmRulesRequest(
+                page=int(page or 1), per_page=int(per_page or 50),
+                metric_type=metric_type or '',
+                enabled='' if enabled is None else ('true' if enabled else 'false'),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询告警规则失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询告警规则失败',
+        )
+
+    def create_alarm_rule(self, data):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.CreateAlarmRule(device_pb.CreateAlarmRuleRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'创建告警规则失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='创建告警规则失败',
+        )
+
+    def update_alarm_rule(self, rule_id, data):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.UpdateAlarmRule(device_pb.UpdateAlarmRuleRequest(
+                rule_id=int(rule_id),
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'更新告警规则失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='更新告警规则失败',
+        )
+
+    def delete_alarm_rule(self, rule_id):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.DeleteAlarmRule(device_pb.DeleteAlarmRuleRequest(rule_id=int(rule_id)))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'删除告警规则失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='删除告警规则失败',
+        )
+
+    def list_alarms(self, query):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.ListAlarms(device_pb.ListAlarmsRequest(
+                data=json.dumps(query or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询告警失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询告警失败',
+        )
+
+    def acknowledge_alarm(self, alarm_id, data):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.AcknowledgeAlarm(device_pb.AcknowledgeAlarmRequest(
+                alarm_id=int(alarm_id),
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'确认告警失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='确认告警失败',
+        )
+
+    def get_alarm_stats(self):
+        from shared.proto import device_service_pb2 as device_pb
+
+        def _call():
+            stub = get_device_config_service_stub()
+            resp = stub.GetAlarmStats(device_pb.GetAlarmStatsRequest())
+            return {
+                'success': resp.success,
+                'message': resp.message,
+                'data': json.loads(resp.data) if resp.data else None,
+            }
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询告警统计失败: {e}', 'data': None, 'code': 400},
+            error_msg_prefix='查询告警统计失败',
+        )
+
 
 # Device 配置 CRUD 模块级单例
 device_config_service = _DeviceConfigProxy()

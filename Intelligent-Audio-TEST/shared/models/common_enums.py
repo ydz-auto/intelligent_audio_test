@@ -187,6 +187,18 @@ class AuditEvent(str, Enum):
     AUTH_OAUTH_PROVIDER_CREATED = 'AUTH_OAUTH_PROVIDER_CREATED'
     AUTH_OAUTH_PROVIDER_UPDATED = 'AUTH_OAUTH_PROVIDER_UPDATED'
     AUTH_OAUTH_PROVIDER_DELETED = 'AUTH_OAUTH_PROVIDER_DELETED'
+    # 设备管理审计（INT-80，category='device'）
+    DEVICE_GROUP_CREATED = 'DEVICE_GROUP_CREATED'
+    DEVICE_GROUP_UPDATED = 'DEVICE_GROUP_UPDATED'
+    DEVICE_GROUP_DELETED = 'DEVICE_GROUP_DELETED'
+    DEVICE_GROUP_MEMBERSHIP_CHANGED = 'DEVICE_GROUP_MEMBERSHIP_CHANGED'
+    DEVICE_CONTROL_EXECUTED = 'DEVICE_CONTROL_EXECUTED'
+    DEVICE_BATCH_ACTION_EXECUTED = 'DEVICE_BATCH_ACTION_EXECUTED'
+    DEVICE_ALARM_RULE_CREATED = 'DEVICE_ALARM_RULE_CREATED'
+    DEVICE_ALARM_RULE_UPDATED = 'DEVICE_ALARM_RULE_UPDATED'
+    DEVICE_ALARM_RULE_DELETED = 'DEVICE_ALARM_RULE_DELETED'
+    DEVICE_ALARM_TRIGGERED = 'DEVICE_ALARM_TRIGGERED'
+    DEVICE_ALARM_ACKNOWLEDGED = 'DEVICE_ALARM_ACKNOWLEDGED'
     # 任务发布审计（INT-65，category='System'）
     PUBLISHED_TASK_CREATED = 'PUBLISHED_TASK_CREATED'
     PUBLISHED_TASK_VERSION_CREATED = 'PUBLISHED_TASK_VERSION_CREATED'
@@ -225,9 +237,66 @@ class AuditLogCategory(str, Enum):
     """
     AUTH = 'auth'
     BENCHMARK = 'benchmark'
+    # 设备管理审计（INT-80：分组/操作/批量端点）
+    DEVICE = 'device'
 
 
 AUDIT_LOG_CATEGORIES = frozenset(item.value for item in AuditLogCategory)
+
+
+class DeviceOperation(str, Enum):
+    """设备操作枚举（INT-80 设备操作端点/批量操作）
+
+    connect     连接设备（远程设备 adb connect / USB 设备唤醒校验）
+    disconnect  断开设备连接
+    reboot      重启设备
+    shutdown    关闭设备
+    install_app 安装应用（params: file_path）
+    uninstall_app 卸载应用（params: package_name）
+    """
+    CONNECT = 'connect'
+    DISCONNECT = 'disconnect'
+    REBOOT = 'reboot'
+    SHUTDOWN = 'shutdown'
+    INSTALL_APP = 'install_app'
+    UNINSTALL_APP = 'uninstall_app'
+
+
+class DeviceGroupType(str, Enum):
+    """设备分组类型枚举（INT-80 设备分组，区别于用例分组 group_bp）"""
+    TEST = 'test'          # 测试设备组（被测设备）
+    PLAYBACK = 'playback'  # 播放设备组
+
+
+class AlarmMetricType(str, Enum):
+    """设备告警指标枚举（INT-80 监控告警）"""
+    OFFLINE_DURATION = 'offline_duration'    # 离线时长（秒）
+    HEALTH_CHECK_FAILURES = 'health_check_failures'  # 连续健康检查失败次数
+    CPU = 'cpu'                              # CPU 使用率（%）
+    MEMORY = 'memory'                        # 内存使用率（%）
+    BATTERY = 'battery'                      # 电量（%）
+
+
+class AlarmSeverity(str, Enum):
+    """告警级别枚举（INT-80）"""
+    INFO = 'info'
+    WARNING = 'warning'
+    CRITICAL = 'critical'
+
+
+class AlarmStatus(str, Enum):
+    """告警状态枚举（INT-80 告警确认流）"""
+    ACTIVE = 'active'
+    ACKNOWLEDGED = 'acknowledged'
+    RESOLVED = 'resolved'
+
+
+class DeviceStatusEventType(str, Enum):
+    """设备状态事件类型枚举（INT-80 状态历史）"""
+    ONLINE = 'online'
+    OFFLINE = 'offline'
+    HEALTH_CHECK = 'health_check'
+    OPERATION = 'operation'
 
 
 class PkgType(str, Enum):

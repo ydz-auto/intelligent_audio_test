@@ -236,8 +236,9 @@ class DeviceCommandService:
         }
 
     def health_check(self, device_ids: list = None) -> dict:
-        """批量健康检查"""
+        """批量健康检查（每次结果落状态历史事件并发布 DEVICE_EVENTS，INT-80）"""
         from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        from device_service.application.services.device_monitor_service import device_monitor_service
 
         if not device_ids:
             # 查询所有设备
@@ -281,10 +282,32 @@ class DeviceCommandService:
                 logger.debug("健康检查扫描设备时发生异常 device_id=%s error=%s", device_data.get('id'), scan_error, exc_info=True)
 
             new_status = 'online' if is_online else 'offline'
+            old_status = device_data.get('status')
             self.repo.update_device_status(
                 device_data['id'], new_status,
                 now_cst() if is_online else None
             )
+
+            # 状态历史事件落库 + DEVICE_EVENTS 发布（INT-80：publish_device_status 接上真实生产方）
+            device_monitor_service.record_status_event(
+                device_id=device_data['id'],
+                event_type='health_check',
+                from_status=old_status,
+                to_status=new_status,
+                source='health_check',
+                success=is_online,
+                detail={'serial_number': device_data.get('serial_number')},
+            )
+            if new_status != old_status:
+                device_monitor_service.record_status_event(
+                    device_id=device_data['id'],
+                    event_type=new_status,  # online / offline
+                    from_status=old_status,
+                    to_status=new_status,
+                    source='health_check',
+                    success=is_online,
+                    detail={'serial_number': device_data.get('serial_number')},
+                )
 
             health_results.append({
                 'id': device_data['id'],

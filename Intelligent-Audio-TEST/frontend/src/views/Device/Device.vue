@@ -14,9 +14,13 @@
           <i class="fas fa-plus btn-icon"></i>
           {{ addButtonText }}
         </button>
-        <button class="btn btn-secondary" @click="scanDevices(activeTab)" v-if="activeTab !== 'api'">
+        <button class="btn btn-secondary" @click="scanDevices(activeTab)" v-if="activeTab !== DeviceTabType.API">
           <i class="fas fa-search btn-icon"></i>
           扫描设备
+        </button>
+        <button class="btn btn-secondary" @click="openGroupManager" v-if="activeTab === DeviceTabType.TEST">
+          <i class="fas fa-layer-group btn-icon"></i>
+          分组管理
         </button>
 
         <div class="dropdown">
@@ -26,8 +30,9 @@
             <i class="fas fa-chevron-down dropdown-icon"></i>
           </button>
           <div id="batchDropdown" class="dropdown-menu" :class="{ active: dropdowns.batchDropdown }">
-            <a href="#" @click.prevent="batchEnableDevices" class="dropdown-item">批量启用</a>
-            <a href="#" @click.prevent="batchDisableDevices" class="dropdown-item">批量禁用</a>
+            <a href="#" @click.prevent="batchEnableDevices" class="dropdown-item">批量连接</a>
+            <a href="#" @click.prevent="batchDisableDevices" class="dropdown-item">批量断开</a>
+            <a href="#" @click.prevent="batchRebootDevices" class="dropdown-item">批量重启</a>
             <a href="#" @click.prevent="batchDeleteDevices" class="dropdown-item">批量删除</a>
             <a href="#" @click.prevent="batchHealthCheck" class="dropdown-item">批量健康度检查</a>
           </div>
@@ -75,7 +80,7 @@
     </div>
 
     <!-- 播放设备管理内容区域 -->
-    <div id="playbackDeviceContent" v-show="activeTab === 'playback'">
+    <div id="playbackDeviceContent" v-show="activeTab === DeviceTabType.PLAYBACK">
       <div class="device-three-column-layout">
         <div class="middle-content">
           <div class="card">
@@ -158,7 +163,7 @@
     </div>
 
     <!-- 测试设备管理内容区域 -->
-    <div id="testDeviceContent" v-show="activeTab === 'test'">
+    <div id="testDeviceContent" v-show="activeTab === DeviceTabType.TEST">
       <div class="device-three-column-layout">
         <div class="middle-content">
           <div class="card">
@@ -199,11 +204,13 @@
                   :device="device"
                   :selected="selectedDevices.includes(device.id)"
                   :status-text-map="deviceStatusText"
+                  :show-operations="true"
                   @toggle-select="toggleDeviceSelection(device.id)"
                   @edit="openEditModal(device.id)"
                   @delete="deleteDevice(device.id)"
                   @test="device.status === DeviceStatus.TESTING ? stopTest(device.id) : testDevice(device.id)"
                   @health-check="healthCheckDevice(device.id)"
+                  @operate="(op: string) => handleDeviceOperate(device.id, op)"
                 >
                   <template #meta="{ device }">
                     <div class="device-meta">
@@ -242,7 +249,7 @@
     </div>
 
     <!-- 测试API管理内容区域 -->
-    <div id="apiDeviceContent" v-show="activeTab === 'api'">
+    <div id="apiDeviceContent" v-show="activeTab === DeviceTabType.API">
       <div class="device-three-column-layout">
         <div class="middle-content">
           <div class="card">
@@ -322,20 +329,29 @@
         </div>
       </div>
     </div>
+
+    <!-- 设备分组管理弹窗（INT-80） -->
+    <DeviceGroupManager
+      v-model:visible="groupManagerVisible"
+      :test-devices="testDevices"
+      @changed="fetchAllDevices"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { useDevice } from './Device';
-import { DeviceStatus } from '../../domain/enums';
+import { DeviceStatus, DeviceTabType } from '../../domain/enums';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import DeviceCard from './DeviceCard.vue';
+import DeviceGroupManager from './DeviceGroupManager.vue';
 
 const {
   tabs,
   activeTab,
   dropdowns,
+  groupManagerVisible,
   searchQuery,
   statusFilter,
   playbackTypeFilter,
@@ -371,10 +387,13 @@ const {
   scanDevices,
   batchEnableDevices,
   batchDisableDevices,
+  batchRebootDevices,
   batchDeleteDevices,
   batchHealthCheck,
   importDevices,
   exportDevices,
+  openGroupManager,
+  handleDeviceOperate,
   playbackCurrentPage,
   playbackPageSize,
   playbackTotalItems,

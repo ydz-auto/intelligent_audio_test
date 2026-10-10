@@ -16,6 +16,9 @@ from device_service.domain.entities.playback_device import (
     PlaybackDeviceAggregate,
     PlaybackDeviceSnapshot,
 )
+from device_service.domain.entities.device_group import (
+    DeviceGroupEntity,
+)
 from device_service.domain.entities.spl import (
     CalibrationHistoryEntity,
     SPLMappingEntity,
@@ -29,6 +32,8 @@ __all__ = [
     # 播放设备聚合
     "PlaybackDeviceAggregate",
     "PlaybackDeviceSnapshot",
+    # 设备分组（INT-80）
+    "DeviceGroupEntity",
     # 声压级映射与校准
     "SPLMappingEntity",
     "CalibrationHistoryEntity",

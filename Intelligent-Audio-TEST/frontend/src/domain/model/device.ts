@@ -6,7 +6,8 @@
  * 枚举值保持后端原值（如 'online' / 'offline' / 'testing'），只转字段名。
  */
 
-import type { DeviceStatusType } from '../enums'
+import type { DeviceStatusType, DeviceTypeType } from '../enums'
+import { DeviceType } from '../enums'
 
 /** 测试设备系统类型（后端 system 字段原值） */
 export type DeviceSystem = 'android' | 'ios' | 'harmony' | (string & {})
@@ -210,6 +211,15 @@ export function matchDriverOptionValue(storedKeywords: string, driverOptionValue
 // ===== 设备管理页 UI 扩展视图（原 views/Device/deviceTypes.ts 内联定义收敛） =====
 
 /**
+ * 领域规则：由 API 端点 URL 推导被测设备类型（DeviceType，执行路由依据）。
+ * 与后端 report_service._resolve_subject 同口径：ws/wss → websocket_api，其余 → http_api。
+ */
+export function resolveApiDeviceType(endpointUrl?: string): DeviceTypeType {
+  const scheme = (endpointUrl || '').trim().toLowerCase()
+  return scheme.startsWith('ws') ? DeviceType.WEBSOCKET_API : DeviceType.HTTP_API
+}
+
+/**
  * 测试设备（管理页 UI 扩展视图）
  * Device 领域模型 + 前端分组标记；domain 层禁止索引签名兜底，
  * 原由 [key: string]: any 承载的零散展示字段经 DeviceCard 的
@@ -218,6 +228,8 @@ export function matchDriverOptionValue(storedKeywords: string, driverOptionValue
 export interface TestDeviceView extends Device {
   /** 前端分组标记（fetchAllDevices 写入：'测试设备' / 'API设备'） */
   category?: string
+  /** 被测设备类型（执行路由依据，DeviceType 枚举原值；物理被测设备恒为 physical） */
+  deviceType?: DeviceTypeType
 }
 
 /**
@@ -227,6 +239,8 @@ export interface TestDeviceView extends Device {
 export interface ApiDeviceView extends Device {
   /** 前端分组标记（fetchAllDevices 写入：'API设备'） */
   category?: string
+  /** 被测设备类型（执行路由依据，DeviceType 枚举原值，按端点协议推导） */
+  deviceType?: DeviceTypeType
   /** 供应方 */
   vendor?: string
   /** API 端点列表（fetchAllDevices 归一化 endpoint/url 兜底） */
@@ -237,3 +251,95 @@ export interface ApiDeviceView extends Device {
 
 /** 设备管理页三个 tab 的统一联合类型（测试设备 / API设备 / 播放设备） */
 export type DeviceUnion = TestDeviceView | ApiDeviceView | PlaybackDevice
+
+// ==================== INT-80 设备分组/操作/监控告警领域模型 ====================
+
+/** 设备操作类型（后端 DeviceOperation 枚举原值） */
+export type DeviceOperationType =
+  | 'connect'
+  | 'disconnect'
+  | 'reboot'
+  | 'shutdown'
+  | 'install_app'
+  | 'uninstall_app'
+
+/** 设备批量操作类型（含健康检查） */
+export type DeviceBatchActionType = DeviceOperationType | 'health_check'
+
+/** 设备分组（INT-80，区别于用例分组 TestCaseGroup） */
+export interface DeviceGroup {
+  id: string
+  name: string
+  description?: string
+  /** 分组类型：test 测试设备组 / playback 播放设备组 */
+  groupType?: string
+  deviceCount?: number
+  /** 分组详情接口返回的成员设备 ID 集合 */
+  deviceIds?: (string | number)[]
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** 设备状态历史事件（趋势查询） */
+export interface DeviceStatusEvent {
+  id: string | number
+  deviceId: string | number
+  eventType?: string
+  fromStatus?: string
+  toStatus?: string
+  source?: string
+  success?: boolean
+  detail?: Record<string, unknown>
+  createdAt?: string
+}
+
+/** 告警指标类型（后端 AlarmMetricType 原值） */
+export type AlarmMetricType =
+  | 'offline_duration'
+  | 'health_check_failures'
+  | 'cpu'
+  | 'memory'
+  | 'battery'
+
+/** 告警规则 */
+export interface DeviceAlarmRule {
+  id: string | number
+  name: string
+  metricType: AlarmMetricType
+  thresholdValue: number
+  severity?: string
+  notifyEmail?: boolean
+  enabled?: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** 告警记录 */
+export interface DeviceAlarm {
+  id: string | number
+  ruleId?: string | number
+  ruleName?: string
+  deviceId: string | number
+  deviceName?: string
+  metricType?: AlarmMetricType
+  severity?: string
+  status?: string
+  triggerValue?: number
+  thresholdValue?: number
+  content?: string
+  emailSent?: boolean
+  emailError?: string
+  triggeredAt?: string
+  acknowledgedAt?: string
+  acknowledgedBy?: string
+  resolvedAt?: string
+}
+
+/** 设备批量操作结果 */
+export interface DeviceBatchActionResult {
+  action?: string
+  total?: number
+  successCount?: number
+  results?: { id: string | number; success?: boolean; message?: string }[]
+  idempotentReplay?: boolean
+}

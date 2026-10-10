@@ -3,11 +3,15 @@ import { playbackPort } from '../../composables/device/playbackPort';
 import { apisPort } from '../../composables/apiTest/apisPort';
 import { algorithmPort } from '../../composables/algorithm/algorithmPort';
 import { MODAL_TYPES } from '../../composables/modal/constants';
-import { DeviceStatus } from '../../domain/enums';
+import { DeviceStatus, DeviceTabType } from '../../domain/enums';
+import type { DeviceTabTypeType } from '../../domain/enums';
 import type { DeviceUnion } from '@/domain';
+import { devicesApi } from '../../infrastructure/api/devicesApi';
+import type { DeviceBatchActionType } from '../../domain/model/device';
 import {
   activeTab,
   dropdowns,
+  groupManagerVisible,
   searchQuery,
   statusFilter,
   playbackTypeFilter,
@@ -29,11 +33,11 @@ import { useNotification } from '../../composables/modal/useNotification';
 
 const notification = useNotification();
 
-export function switchDeviceType(type: string) {
+export function switchDeviceType(type: DeviceTabTypeType) {
   activeTab.value = type;
   const deviceManagement = getDeviceManagement()!;
   if (deviceManagement.activeDeviceType) {
-    deviceManagement.activeDeviceType.value = type as 'test' | 'playback' | 'api';
+    deviceManagement.activeDeviceType.value = type;
   }
   statusFilter.value = 'all';
   playbackTypeFilter.value = 'all';
@@ -75,32 +79,95 @@ export function showDeviceDetails(deviceId: string) {
   });
 }
 
-export function batchEnableDevices() {
+/** 批量操作通用入口（INT-80：走 /test-devices/batch 幂等批量端点） */
+async function runDeviceBatchAction(action: DeviceBatchActionType, title: string, params?: Record<string, unknown>) {
+  if (selectedDevices.value.length === 0) {
+    notification.warning('请先选择要操作的设备');
+    return;
+  }
+  const ids = [...selectedDevices.value];
   getDeviceManagement()!.modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-    title: '确认批量启用',
-    message: `确定要启用选中的 ${selectedDevices.value.length} 个设备吗？`,
-    confirmText: '确认启用',
+    title: `确认${title}`,
+    message: `确定要对选中的 ${ids.length} 个设备执行「${title}」吗？`,
+    confirmText: '确认执行',
     cancelText: '取消',
     options: { closable: true },
-    onConfirm: () => {
-      console.log('批量启用设备:', selectedDevices.value);
-      selectedDevices.value = [];
+    onConfirm: async () => {
+      try {
+        const result = await devicesApi.batchAction(action, ids, params);
+        notification.success(result.idempotentReplay
+          ? `${title}：命中幂等回放，未重复执行`
+          : `${title}完成：成功 ${result.successCount ?? 0}/${result.total ?? ids.length}`);
+        selectedDevices.value = [];
+        await fetchAllDevices();
+      } catch (error) {
+        console.error(`${title}失败:`, error);
+        notification.error(`${title}失败: ` + (error instanceof Error ? error.message : '未知错误'));
+      }
     }
   });
 }
 
+export function batchEnableDevices() {
+  // 批量启用 → 批量连接（INT-80 批量操作端点；原 console.log 占位实现替换）
+  runDeviceBatchAction('connect', '批量连接');
+}
+
 export function batchDisableDevices() {
-  getDeviceManagement()!.modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-    title: '确认批量禁用',
-    message: `确定要禁用选中的 ${selectedDevices.value.length} 个设备吗？`,
-    confirmText: '确认禁用',
-    cancelText: '取消',
-    options: { closable: true },
-    onConfirm: () => {
-      console.log('批量禁用设备:', selectedDevices.value);
-      selectedDevices.value = [];
-    }
+  // 批量禁用 → 批量断开（INT-80 批量操作端点）
+  runDeviceBatchAction('disconnect', '批量断开');
+}
+
+export function batchRebootDevices() {
+  runDeviceBatchAction('reboot', '批量重启');
+}
+
+/** 设备分组管理弹窗开关（INT-80） */
+export function openGroupManager() {
+  groupManagerVisible.value = true;
+}
+
+/** 设备卡操作菜单：单设备操作（INT-80 设备操作端点） */
+export async function handleDeviceOperate(deviceId: string | number, operation: string) {
+  const opLabels: Record<string, string> = {
+    connect: '连接设备', disconnect: '断开连接', reboot: '重启设备',
+    shutdown: '关闭设备', install_app: '安装应用', uninstall_app: '卸载应用',
+  };
+  const label = opLabels[operation] || operation;
+
+  let params: Record<string, unknown> | undefined;
+  if (operation === 'install_app') {
+    const filePath = window.prompt('请输入服务器侧安装包路径（APK/HAP）:', '');
+    if (!filePath) return;
+    params = { file_path: filePath.trim() };
+  } else if (operation === 'uninstall_app') {
+    const pkg = window.prompt('请输入要卸载的应用包名:', '');
+    if (!pkg) return;
+    params = { package_name: pkg.trim() };
+  }
+
+  const confirmed = await new Promise<boolean>((resolve) => {
+    getDeviceManagement()!.modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: `确认${label}`,
+      message: `确定要对设备执行「${label}」吗？`,
+      confirmText: '确认执行',
+      cancelText: '取消',
+      options: { closable: true },
+      onConfirm: () => resolve(true),
+      onCancel: () => resolve(false),
+      onClose: () => resolve(false),
+    });
   });
+  if (!confirmed) return;
+
+  try {
+    await devicesApi.control(deviceId, operation as DeviceBatchActionType, params);
+    notification.success(`${label}指令已下发`);
+    await fetchAllDevices();
+  } catch (error) {
+    console.error(`${label}失败:`, error);
+    notification.error(`${label}失败: ` + (error instanceof Error ? error.message : '未知错误'));
+  }
 }
 
 export async function batchDeleteDevices() {
@@ -116,11 +183,11 @@ export async function batchHealthCheck() {
   try {
     for (const deviceId of selectedDevices.value) {
       let deviceList: DeviceUnion[] = [];
-      if (activeTab.value === 'test') {
+      if (activeTab.value === DeviceTabType.TEST) {
         deviceList = testDevices.value;
-      } else if (activeTab.value === 'playback') {
+      } else if (activeTab.value === DeviceTabType.PLAYBACK) {
         deviceList = playbackDevices.value;
-      } else if (activeTab.value === 'api') {
+      } else if (activeTab.value === DeviceTabType.API) {
         deviceList = apiDevices.value;
       } else {
         continue;
@@ -131,9 +198,9 @@ export async function batchHealthCheck() {
         deviceList[deviceIndex].status = DeviceStatus.TESTING;
       }
 
-      if (activeTab.value === 'test') {
+      if (activeTab.value === DeviceTabType.TEST) {
         await devicesPort.healthCheck([deviceId]);
-      } else if (activeTab.value === 'playback') {
+      } else if (activeTab.value === DeviceTabType.PLAYBACK) {
         const result = await playbackPort.checkStatus() as { id: string | number; status: string }[];
         result.forEach(item => {
           const playbackDeviceIndex = playbackDevices.value.findIndex(d => d.id === item.id);
@@ -141,7 +208,7 @@ export async function batchHealthCheck() {
             playbackDevices.value[playbackDeviceIndex].status = item.status as any;
           }
         });
-      } else if (activeTab.value === 'api') {
+      } else if (activeTab.value === DeviceTabType.API) {
         await apisPort.testConnection(deviceId as string | number);
       }
     }
@@ -155,20 +222,20 @@ export async function batchHealthCheck() {
 }
 
 export function importDevices() {
-  getDeviceManagement()!.importDevices(activeTab.value as 'test' | 'playback' | 'api');
+  getDeviceManagement()!.importDevices(activeTab.value);
 }
 
 export function exportDevices() {
-  getDeviceManagement()!.exportDevices(activeTab.value as 'test' | 'playback' | 'api');
+  getDeviceManagement()!.exportDevices(activeTab.value);
 }
 
 export async function testDevice(deviceId: string | number) {
   let deviceList: DeviceUnion[] = [];
-  if (activeTab.value === 'test') {
+  if (activeTab.value === DeviceTabType.TEST) {
     deviceList = testDevices.value;
-  } else if (activeTab.value === 'playback') {
+  } else if (activeTab.value === DeviceTabType.PLAYBACK) {
     deviceList = playbackDevices.value;
-  } else if (activeTab.value === 'api') {
+  } else if (activeTab.value === DeviceTabType.API) {
     deviceList = apiDevices.value;
   } else {
     return;
@@ -195,7 +262,7 @@ export async function testDevice(deviceId: string | number) {
       if (deviceIndex > -1) {
         deviceList[deviceIndex].status = DeviceStatus.TESTING;
       }
-      await getDeviceManagement()!.testDeviceConnection(deviceId, activeTab.value as 'test' | 'playback' | 'api');
+      await getDeviceManagement()!.testDeviceConnection(deviceId, activeTab.value);
     } catch (error) {
       console.error('测试设备失败:', error);
       if (deviceIndex > -1 && originalStatus) {
@@ -215,11 +282,11 @@ export async function stopTest(deviceId: string | number) {
     onConfirm: async () => {
       try {
         let deviceList: DeviceUnion[] = [];
-        if (activeTab.value === 'playback') {
+        if (activeTab.value === DeviceTabType.PLAYBACK) {
           deviceList = playbackDevices.value;
-        } else if (activeTab.value === 'test') {
+        } else if (activeTab.value === DeviceTabType.TEST) {
           deviceList = testDevices.value;
-        } else if (activeTab.value === 'api') {
+        } else if (activeTab.value === DeviceTabType.API) {
           deviceList = apiDevices.value;
         } else {
           return;
@@ -230,11 +297,11 @@ export async function stopTest(deviceId: string | number) {
           deviceList[deviceIndex].status = DeviceStatus.ONLINE;
         }
 
-        if (activeTab.value === 'playback') {
+        if (activeTab.value === DeviceTabType.PLAYBACK) {
           await (playbackPort as any).stopTest(deviceId);
-        } else if (activeTab.value === 'test') {
+        } else if (activeTab.value === DeviceTabType.TEST) {
           await (devicesPort as any).stopTest(deviceId);
-        } else if (activeTab.value === 'api') {
+        } else if (activeTab.value === DeviceTabType.API) {
           await (apisPort as any).stopTest(deviceId);
         }
       } catch (error) {
@@ -249,11 +316,11 @@ export async function healthCheckDevice(deviceId: string | number) {
   let deviceIndex = -1;
 
   try {
-    if (activeTab.value === 'test') {
+    if (activeTab.value === DeviceTabType.TEST) {
       deviceList = testDevices.value;
-    } else if (activeTab.value === 'playback') {
+    } else if (activeTab.value === DeviceTabType.PLAYBACK) {
       deviceList = playbackDevices.value;
-    } else if (activeTab.value === 'api') {
+    } else if (activeTab.value === DeviceTabType.API) {
       deviceList = apiDevices.value;
     }
 
@@ -263,7 +330,7 @@ export async function healthCheckDevice(deviceId: string | number) {
       deviceList[deviceIndex].status = DeviceStatus.TESTING;
     }
 
-    if (activeTab.value === 'test') {
+    if (activeTab.value === DeviceTabType.TEST) {
       const healthCheckResult = await devicesPort.healthCheck([deviceId]) as { id: string | number; status: string }[];
       if (healthCheckResult && Array.isArray(healthCheckResult)) {
         healthCheckResult.forEach(item => {
@@ -273,7 +340,7 @@ export async function healthCheckDevice(deviceId: string | number) {
           }
         });
       }
-    } else if (activeTab.value === 'playback') {
+    } else if (activeTab.value === DeviceTabType.PLAYBACK) {
       const healthCheckResult = await playbackPort.checkStatus() as { id: string | number; status: string }[];
       if (healthCheckResult && Array.isArray(healthCheckResult)) {
         healthCheckResult.forEach(item => {
@@ -283,7 +350,7 @@ export async function healthCheckDevice(deviceId: string | number) {
           }
         });
       }
-    } else if (activeTab.value === 'api') {
+    } else if (activeTab.value === DeviceTabType.API) {
       const healthCheckResult = await apisPort.testConnection(deviceId as string | number);
       if (healthCheckResult) {
         const apiDeviceIndex = apiDevices.value.findIndex(d => d.id === deviceId);
@@ -303,7 +370,7 @@ export async function healthCheckDevice(deviceId: string | number) {
 }
 
 export function scanDevices(type?: string) {
-  const targetType = (type || activeTab.value) as 'test' | 'playback' | 'api';
+  const targetType = (type || activeTab.value) as DeviceTabTypeType;
   getDeviceManagement()!.scanDevices(targetType);
 }
 
@@ -329,7 +396,7 @@ export function toggleDeviceSelection(deviceId: string | number) {
 }
 
 export function resetAllStates() {
-  activeTab.value = 'test';
+  activeTab.value = DeviceTabType.TEST;
   dropdowns.value = { batchDropdown: false, importExportDropdown: false };
   searchQuery.value = '';
   statusFilter.value = 'all';

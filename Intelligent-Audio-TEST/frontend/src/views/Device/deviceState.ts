@@ -18,6 +18,8 @@ export const dropdowns = ref({
   batchDropdown: false,
   importExportDropdown: false
 });
+// INT-80 设备分组管理弹窗
+export const groupManagerVisible = ref(false);
 export const searchQuery = ref('');
 export const statusFilter = ref(ViewMode.ALL);
 export const playbackTypeFilter = ref(ViewMode.ALL);

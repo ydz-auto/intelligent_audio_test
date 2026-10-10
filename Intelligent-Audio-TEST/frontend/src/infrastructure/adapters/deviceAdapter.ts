@@ -248,3 +248,160 @@ export function toPlaybackStatusInfo(dto: PlaybackStatusItemDto): DeviceStatusIn
 export function toPlaybackStatusList(dtos: PlaybackStatusItemDto[] | null | undefined): DeviceStatusInfo[] {
   return (dtos ?? []).map(toPlaybackStatusInfo)
 }
+
+// ===== INT-80 设备分组/操作/监控告警转换 =====
+
+import type {
+  DeviceGroupItemDto,
+  DeviceGroupListDto,
+  DeviceGroupUpsertDto,
+  DeviceStatusEventDto,
+  DeviceStatusHistoryDto,
+  DeviceAlarmRuleDto,
+  DeviceAlarmRuleListDto,
+  DeviceAlarmRuleUpsertDto,
+  DeviceAlarmDto,
+  DeviceAlarmListDto,
+} from '../dto/deviceDto'
+import type {
+  DeviceGroup,
+  DeviceStatusEvent,
+  DeviceAlarmRule,
+  DeviceAlarm,
+  DeviceBatchActionResult,
+  AlarmMetricType,
+} from '../../domain/model/device'
+
+/** DeviceGroupItemDto → DeviceGroup */
+export function toDeviceGroup(dto: DeviceGroupItemDto): DeviceGroup {
+  return {
+    id: dto?.id ?? '',
+    name: dto?.name ?? '',
+    description: dto?.description ?? '',
+    groupType: dto?.group_type ?? 'test',
+    deviceCount: dto?.device_count ?? 0,
+    deviceIds: dto?.device_ids,
+    createdAt: dto?.created_at,
+    updatedAt: dto?.updated_at,
+  }
+}
+
+/** 设备分组分页 → Paginated<DeviceGroup> */
+export function toDeviceGroupPage(dto: DeviceGroupListDto | null | undefined): Paginated<DeviceGroup> {
+  return toPaginated(dto, toDeviceGroup)
+}
+
+/** camelCase Domain 分组 → snake_case 请求体 */
+export function toDeviceGroupUpsertDto(data: Partial<DeviceGroup>): DeviceGroupUpsertDto {
+  const dto: DeviceGroupUpsertDto = {}
+  if (data.name !== undefined) dto.name = data.name
+  if (data.description !== undefined) dto.description = data.description
+  if (data.groupType !== undefined) dto.group_type = data.groupType
+  if (data.deviceIds !== undefined) dto.device_ids = data.deviceIds
+  return dto
+}
+
+/** DeviceStatusEventDto → DeviceStatusEvent */
+export function toDeviceStatusEvent(dto: DeviceStatusEventDto): DeviceStatusEvent {
+  return {
+    id: dto?.id ?? '',
+    deviceId: dto?.device_id ?? '',
+    eventType: dto?.event_type,
+    fromStatus: dto?.from_status,
+    toStatus: dto?.to_status,
+    source: dto?.source,
+    success: dto?.success,
+    detail: dto?.detail,
+    createdAt: dto?.created_at,
+  }
+}
+
+/** 状态历史分页 → Paginated<DeviceStatusEvent> */
+export function toDeviceStatusHistoryPage(
+  dto: DeviceStatusHistoryDto | null | undefined
+): Paginated<DeviceStatusEvent> {
+  return toPaginated(dto, toDeviceStatusEvent)
+}
+
+/** DeviceAlarmRuleDto → DeviceAlarmRule */
+export function toDeviceAlarmRule(dto: DeviceAlarmRuleDto): DeviceAlarmRule {
+  return {
+    id: dto?.id ?? '',
+    name: dto?.name ?? '',
+    metricType: (dto?.metric_type ?? 'offline_duration') as AlarmMetricType,
+    thresholdValue: dto?.threshold_value ?? 0,
+    severity: dto?.severity,
+    notifyEmail: dto?.notify_email,
+    enabled: dto?.enabled,
+    createdAt: dto?.created_at,
+    updatedAt: dto?.updated_at,
+  }
+}
+
+/** 告警规则分页 → Paginated<DeviceAlarmRule> */
+export function toDeviceAlarmRulePage(
+  dto: DeviceAlarmRuleListDto | null | undefined
+): Paginated<DeviceAlarmRule> {
+  return toPaginated(dto, toDeviceAlarmRule)
+}
+
+/** camelCase 域规则 → snake_case 请求体 */
+export function toDeviceAlarmRuleUpsertDto(data: Partial<DeviceAlarmRule>): DeviceAlarmRuleUpsertDto {
+  const dto: DeviceAlarmRuleUpsertDto = {}
+  if (data.name !== undefined) dto.name = data.name
+  if (data.metricType !== undefined) dto.metric_type = data.metricType
+  if (data.thresholdValue !== undefined) dto.threshold_value = data.thresholdValue
+  if (data.severity !== undefined) dto.severity = data.severity
+  if (data.notifyEmail !== undefined) dto.notify_email = data.notifyEmail
+  if (data.enabled !== undefined) dto.enabled = data.enabled
+  return dto
+}
+
+/** DeviceAlarmDto → DeviceAlarm */
+export function toDeviceAlarm(dto: DeviceAlarmDto): DeviceAlarm {
+  return {
+    id: dto?.id ?? '',
+    ruleId: dto?.rule_id,
+    ruleName: dto?.rule_name,
+    deviceId: dto?.device_id ?? '',
+    deviceName: dto?.device_name,
+    metricType: dto?.metric_type as AlarmMetricType | undefined,
+    severity: dto?.severity,
+    status: dto?.status,
+    triggerValue: dto?.trigger_value,
+    thresholdValue: dto?.threshold_value,
+    content: dto?.content,
+    emailSent: dto?.email_sent,
+    emailError: dto?.email_error,
+    triggeredAt: dto?.triggered_at,
+    acknowledgedAt: dto?.acknowledged_at,
+    acknowledgedBy: dto?.acknowledged_by,
+    resolvedAt: dto?.resolved_at,
+  }
+}
+
+/** 告警分页（含 stats）→ { items, total, stats } */
+export function toDeviceAlarmPage(
+  dto: DeviceAlarmListDto | null | undefined
+): { items: DeviceAlarm[]; total: number; stats: DeviceAlarmListDto['stats'] } {
+  const items = (dto?.items ?? []).map(toDeviceAlarm)
+  return { items, total: dto?.total ?? items.length, stats: dto?.stats }
+}
+
+/** 批量操作响应 DTO → Domain */
+export function toDeviceBatchActionResult(dto: unknown): DeviceBatchActionResult {
+  const shape = (dto ?? {}) as {
+    action?: string
+    total?: number
+    success_count?: number
+    results?: { id: number | string; success?: boolean; message?: string }[]
+    idempotent_replay?: boolean
+  }
+  return {
+    action: shape.action,
+    total: shape.total,
+    successCount: shape.success_count,
+    results: shape.results,
+    idempotentReplay: shape.idempotent_replay,
+  }
+}

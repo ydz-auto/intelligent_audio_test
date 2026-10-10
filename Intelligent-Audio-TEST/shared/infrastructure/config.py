@@ -143,6 +143,15 @@ class BaseConfig:
     FFMPEG_PATH: str = _get_env('FFMPEG_PATH', 'ffmpeg')
     FFPROBE_PATH: str = _get_env('FFPROBE_PATH', 'ffprobe')
 
+    # --- 邮件通知 SMTP（INT-80 设备告警通知渠道，未配置=禁用）---
+    SMTP_HOST: str = _get_env('SMTP_HOST', '')
+    SMTP_PORT: int = _get_int('SMTP_PORT', 465)
+    SMTP_USER: str = _get_env('SMTP_USER', '')
+    SMTP_PASSWORD: str = _get_env('SMTP_PASSWORD', '')
+    SMTP_USE_SSL: bool = _get_env('SMTP_USE_SSL', 'true').lower() in ('true', '1', 'yes')
+    SMTP_FROM: str = _get_env('SMTP_FROM', '')  # 发件人，空则回退 SMTP_USER
+    ALERT_EMAIL_RECIPIENTS: str = _get_env('ALERT_EMAIL_RECIPIENTS', '')  # 逗号分隔收件人列表
+
     @classmethod
     def validate(cls):
         """启动时调用，校验必填项"""

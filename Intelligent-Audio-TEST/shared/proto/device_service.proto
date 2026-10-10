@@ -56,6 +56,29 @@ service DeviceConfigService {
   rpc GetDriverKeywords(GetDriverKeywordsRequest) returns (GetDriverKeywordsResponse);
   rpc HealthCheckDevices(HealthCheckDevicesRequest) returns (HealthCheckDevicesResponse);
   rpc GetAvailableSerials(GetAvailableSerialsRequest) returns (GetAvailableSerialsResponse);
+  // 设备分组（INT-80）
+  rpc CreateDeviceGroup(CreateDeviceGroupRequest) returns (CreateDeviceGroupResponse);
+  rpc UpdateDeviceGroup(UpdateDeviceGroupRequest) returns (UpdateDeviceGroupResponse);
+  rpc DeleteDeviceGroup(DeleteDeviceGroupRequest) returns (DeleteDeviceGroupResponse);
+  rpc ListDeviceGroups(ListDeviceGroupsRequest) returns (ListDeviceGroupsResponse);
+  rpc GetDeviceGroup(GetDeviceGroupRequest) returns (GetDeviceGroupResponse);
+  rpc AddDevicesToGroup(AddDevicesToGroupRequest) returns (AddDevicesToGroupResponse);
+  rpc RemoveDevicesFromGroup(RemoveDevicesFromGroupRequest) returns (RemoveDevicesFromGroupResponse);
+  // 设备操作（INT-80：connect/disconnect/reboot/shutdown/install_app/uninstall_app）
+  rpc ControlDevice(ControlDeviceRequest) returns (ControlDeviceResponse);
+  // 设备批量操作（INT-80：幂等模式对齐 testcase batch）
+  rpc BatchDeviceAction(BatchDeviceActionRequest) returns (BatchDeviceActionResponse);
+  // 设备状态历史/趋势（INT-80）
+  rpc GetDeviceStatusHistory(GetDeviceStatusHistoryRequest) returns (GetDeviceStatusHistoryResponse);
+  // 告警规则（INT-80）
+  rpc CreateAlarmRule(CreateAlarmRuleRequest) returns (CreateAlarmRuleResponse);
+  rpc UpdateAlarmRule(UpdateAlarmRuleRequest) returns (UpdateAlarmRuleResponse);
+  rpc DeleteAlarmRule(DeleteAlarmRuleRequest) returns (DeleteAlarmRuleResponse);
+  rpc ListAlarmRules(ListAlarmRulesRequest) returns (ListAlarmRulesResponse);
+  // 告警与确认流（INT-80）
+  rpc ListAlarms(ListAlarmsRequest) returns (ListAlarmsResponse);
+  rpc AcknowledgeAlarm(AcknowledgeAlarmRequest) returns (AcknowledgeAlarmResponse);
+  rpc GetAlarmStats(GetAlarmStatsRequest) returns (GetAlarmStatsResponse);
 }
 
 // ===== 播放设备 CRUD 服务 =====
@@ -356,6 +379,177 @@ message GetAvailableSerialsResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+}
+
+// ==================== INT-80 设备分组 Messages ====================
+
+message CreateDeviceGroupRequest {
+  string data = 1;  // JSON: {name, description?, group_type?}
+}
+message CreateDeviceGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdateDeviceGroupRequest {
+  string group_id = 1;
+  string data = 2;  // JSON: {name?, description?, group_type?}
+}
+message UpdateDeviceGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeleteDeviceGroupRequest {
+  string group_id = 1;
+  bool cascade = 2;  // true: 组内设备一并移出分组
+}
+message DeleteDeviceGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListDeviceGroupsRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string group_type = 4;
+}
+message ListDeviceGroupsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 分页列表（含 device_count）
+}
+
+message GetDeviceGroupRequest {
+  string group_id = 1;
+}
+message GetDeviceGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 分组详情（含 device_ids）
+}
+
+message AddDevicesToGroupRequest {
+  string group_id = 1;
+  string data = 2;  // JSON: {"device_ids": [int]}
+}
+message AddDevicesToGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message RemoveDevicesFromGroupRequest {
+  string group_id = 1;
+  string data = 2;  // JSON: {"device_ids": [int]}
+}
+message RemoveDevicesFromGroupResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== INT-80 设备操作/批量 Messages ====================
+
+message ControlDeviceRequest {
+  int32 device_id = 1;
+  string data = 2;  // JSON: {"operation": str, "params": {...}?}
+}
+message ControlDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message BatchDeviceActionRequest {
+  string data = 1;  // JSON: {"action": str, "device_ids": [int], "params"?: {...}, "idempotency_key"?: str}
+}
+message BatchDeviceActionResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== INT-80 状态历史/告警 Messages ====================
+
+message GetDeviceStatusHistoryRequest {
+  string data = 1;  // JSON: {device_ids?: [int], event_type?: str, start_time?: str, end_time?: str, page: int, per_page: int}
+}
+message GetDeviceStatusHistoryResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 分页事件列表（趋势查询）
+}
+
+message CreateAlarmRuleRequest {
+  string data = 1;  // JSON: {name, metric_type, threshold_value, severity?, notify_email?, enabled?}
+}
+message CreateAlarmRuleResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdateAlarmRuleRequest {
+  int32 rule_id = 1;
+  string data = 2;
+}
+message UpdateAlarmRuleResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeleteAlarmRuleRequest {
+  int32 rule_id = 1;
+}
+message DeleteAlarmRuleResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListAlarmRulesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string metric_type = 3;
+  string enabled = 4;  // 'true'/'false'/'' 全部
+}
+message ListAlarmRulesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListAlarmsRequest {
+  string data = 1;  // JSON: {status?: str, severity?: str, device_id?: int, page: int, per_page: int}
+}
+message ListAlarmsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 分页告警列表（含 stats）
+}
+
+message AcknowledgeAlarmRequest {
+  int32 alarm_id = 1;
+  string data = 2;  // JSON: {"acknowledged_by": str}
+}
+message AcknowledgeAlarmResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetAlarmStatsRequest {
+}
+message GetAlarmStatsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {active, acknowledged, resolved, total}
 }
 
 // ==================== PlaybackConfigService Messages ====================

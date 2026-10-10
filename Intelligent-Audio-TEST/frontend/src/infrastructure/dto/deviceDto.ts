@@ -145,6 +145,123 @@ export interface PlaybackStatusItemDto {
   device_index?: number
 }
 
+// ==================== INT-80 设备分组/操作/监控告警 DTO ====================
+
+/** 对应设备分组列表项（ListDeviceGroups data.items[]，snake_case） */
+export interface DeviceGroupItemDto {
+  id: string
+  name: string
+  description?: string
+  group_type?: string
+  device_count?: number
+  device_ids?: (number | string)[]
+  created_at?: string
+  updated_at?: string
+}
+
+/** 设备分组分页（PaginatedData[DeviceGroupItem]） */
+export interface DeviceGroupListDto extends PaginatedBaseDto {
+  items: DeviceGroupItemDto[]
+}
+
+/** 创建/更新设备分组请求体（snake_case） */
+export interface DeviceGroupUpsertDto {
+  name?: string
+  description?: string
+  group_type?: string
+  device_ids?: (number | string)[]
+}
+
+/** 设备批量操作请求体（snake_case） */
+export interface DeviceBatchActionDto {
+  action: string
+  device_ids: (number | string)[]
+  params?: Record<string, unknown>
+  idempotency_key?: string
+}
+
+/** 设备批量操作响应（BatchDeviceAction data） */
+export interface DeviceBatchActionResultDto {
+  action?: string
+  total?: number
+  success_count?: number
+  results?: { id: number | string; success?: boolean; message?: string }[]
+  idempotent_replay?: boolean
+}
+
+/** 设备状态历史事件（device_status_events，snake_case） */
+export interface DeviceStatusEventDto {
+  id: number | string
+  device_id: number | string
+  event_type?: string
+  from_status?: string
+  to_status?: string
+  source?: string
+  success?: boolean
+  detail?: Record<string, unknown>
+  created_at?: string
+}
+
+/** 状态历史分页 */
+export interface DeviceStatusHistoryDto extends PaginatedBaseDto {
+  items: DeviceStatusEventDto[]
+}
+
+/** 告警规则（device_alarm_rules，snake_case） */
+export interface DeviceAlarmRuleDto {
+  id: number | string
+  name: string
+  metric_type: string
+  threshold_value: number
+  severity?: string
+  notify_email?: boolean
+  enabled?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+/** 告警规则分页 */
+export interface DeviceAlarmRuleListDto extends PaginatedBaseDto {
+  items: DeviceAlarmRuleDto[]
+}
+
+/** 创建/更新告警规则请求体（snake_case） */
+export interface DeviceAlarmRuleUpsertDto {
+  name?: string
+  metric_type?: string
+  threshold_value?: number
+  severity?: string
+  notify_email?: boolean
+  enabled?: boolean
+}
+
+/** 告警记录（device_alarms，snake_case） */
+export interface DeviceAlarmDto {
+  id: number | string
+  rule_id?: number | string
+  rule_name?: string
+  device_id: number | string
+  device_name?: string
+  metric_type?: string
+  severity?: string
+  status?: string
+  trigger_value?: number
+  threshold_value?: number
+  content?: string
+  email_sent?: boolean
+  email_error?: string
+  triggered_at?: string
+  acknowledged_at?: string
+  acknowledged_by?: string
+  resolved_at?: string
+}
+
+/** 告警分页（含统计） */
+export interface DeviceAlarmListDto extends PaginatedBaseDto {
+  items: DeviceAlarmDto[]
+  stats?: { active?: number; acknowledged?: number; resolved?: number; total?: number }
+}
+
 /**
  * 扫描结果 / 已添加设备条目 DTO —— snake_case
  *

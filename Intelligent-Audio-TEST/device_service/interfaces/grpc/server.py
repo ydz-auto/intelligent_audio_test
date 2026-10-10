@@ -55,6 +55,11 @@ def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
     _cleaner = get_soft_delete_cleaner()
     _cleaner.start()
 
+    # 启动设备监控守护线程（INT-80：周期健康检查 + 告警规则评估）
+    from device_service.application.services.device_monitor_service import get_monitor_thread
+    _monitor = get_monitor_thread()
+    _monitor.start()
+
     # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.device_service_workers
     _max_workers = config_manager.get_value('grpc', 'device_service_workers', 5)
     server = grpc.server(

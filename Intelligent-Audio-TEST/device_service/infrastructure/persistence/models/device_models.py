@@ -3,6 +3,8 @@
 
 归属：device_service（e2e 测试上下文，物理设备所有权）
 表：devices / playback_devices / device_tags
+INT-80 新增表：device_groups / device_group_members / device_status_events /
+               device_alarm_rules / device_alarms
 
 P5 改造：从 shared/models/models/device_models.py 真正下沉到本服务。
 """
@@ -84,3 +86,96 @@ class DeviceTag(Base):
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+
+
+class DeviceGroup(Base):
+    """设备分组模型（INT-80，区别于 task_service 的用例分组 test_case_groups）
+
+    对设备进行逻辑分组，方便管理和批量操作。
+    """
+    __tablename__ = 'device_groups'
+    id = Column(String(50), primary_key=True, comment='分组唯一标识符 (UUID)')
+    name = Column(String(100), nullable=False, index=True, comment='分组名称')
+    description = Column(Text, comment='分组描述')
+    group_type = Column(String(20), nullable=False, default='test', comment='分组类型 (test: 测试设备组 / playback: 播放设备组)')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
+    deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间')
+
+
+class DeviceGroupMember(Base):
+    """设备分组成员关联模型（INT-80）
+
+    维护设备分组与被测设备之间的多对多映射关系。
+    """
+    __tablename__ = 'device_group_members'
+    __table_args__ = (
+        Index('uq_device_group_member', 'group_id', 'device_id', unique=True),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    group_id = Column(String(50), nullable=False, index=True, comment='所属分组ID')
+    device_id = Column(Integer, nullable=False, index=True, comment='关联被测设备ID')
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='加入时间')
+
+
+class DeviceStatusEvent(Base):
+    """设备状态历史事件模型（INT-80 监控告警：在线/离线/健康事件落库）"""
+    __tablename__ = 'device_status_events'
+    __table_args__ = (
+        Index('ix_status_event_device_time', 'device_id', 'created_at'),
+    )
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    device_id = Column(Integer, nullable=False, index=True, comment='设备ID')
+    event_type = Column(String(20), nullable=False, comment='事件类型 (online/offline/health_check/operation)')
+    from_status = Column(String(20), comment='变更前状态')
+    to_status = Column(String(20), comment='变更后状态')
+    source = Column(String(50), default='monitor', comment='事件来源 (health_check/monitor/manual/operation)')
+    success = Column(Boolean, default=True, comment='检查/操作是否成功')
+    detail = Column(JSON, comment='事件详情 (操作结果/健康数据等)')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, index=True, comment='事件时间')
+
+
+class DeviceAlarmRule(Base):
+    """设备告警规则模型（INT-80：离线时长/健康检查失败次数/CPU/内存/电池阈值）"""
+    __tablename__ = 'device_alarm_rules'
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    name = Column(String(100), nullable=False, comment='规则名称')
+    metric_type = Column(String(30), nullable=False, index=True, comment='告警指标 (offline_duration/health_check_failures/cpu/memory/battery)')
+    threshold_value = Column(Float, nullable=False, comment='阈值')
+    severity = Column(String(20), nullable=False, default='warning', comment='告警级别 (info/warning/critical)')
+    notify_email = Column(Boolean, nullable=False, default=True, comment='触发时是否发送邮件通知')
+    enabled = Column(Boolean, nullable=False, default=True, comment='规则是否启用')
+    created_by_user_id = Column(BigInteger, nullable=True, comment='创建者用户ID')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
+
+
+class DeviceAlarm(Base):
+    """设备告警记录模型（INT-80 告警落库与确认流）"""
+    __tablename__ = 'device_alarms'
+    __table_args__ = (
+        Index('ix_alarm_status_time', 'status', 'triggered_at'),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    rule_id = Column(Integer, comment='触发的告警规则ID')
+    rule_name = Column(String(100), comment='规则名称快照（规则删除后仍可读）')
+    device_id = Column(Integer, nullable=False, index=True, comment='设备ID')
+    device_name = Column(String(100), comment='设备名称快照')
+    metric_type = Column(String(30), nullable=False, comment='告警指标')
+    severity = Column(String(20), nullable=False, default='warning', comment='告警级别 (info/warning/critical)')
+    status = Column(String(20), nullable=False, default='active', index=True, comment='告警状态 (active/acknowledged/resolved)')
+    trigger_value = Column(Float, comment='触发时的指标值')
+    threshold_value = Column(Float, comment='触发时的阈值')
+    content = Column(Text, comment='告警内容描述')
+    email_sent = Column(Boolean, nullable=False, default=False, comment='是否已发送邮件通知')
+    email_error = Column(Text, comment='邮件发送失败原因')
+    triggered_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='触发时间')
+    acknowledged_at = Column(DateTime, nullable=True, comment='确认时间')
+    acknowledged_by = Column(String(100), nullable=True, comment='确认人')
+    resolved_at = Column(DateTime, nullable=True, comment='恢复时间')

@@ -51,6 +51,66 @@ class DeviceAclRepository(ABC):
     @abstractmethod
     def get_available_serials(self) -> CommandResultDTO: ...
 
+    # ---- INT-80 设备操作/批量 ----
+    @abstractmethod
+    def control(self, device_id, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def batch_action(self, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_status_history(self, query: dict) -> CommandResultDTO: ...
+
+
+class DeviceGroupAclRepository(ABC):
+    """device_group 实体 ACL 接口（INT-80 设备分组）。"""
+
+    @abstractmethod
+    def create(self, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def update(self, group_id, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def delete(self, group_id, cascade: bool = False) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_all(self, page=1, per_page=100, keyword=None, group_type=None) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_one(self, group_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def add_devices(self, group_id, device_ids) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def remove_devices(self, group_id, device_ids) -> CommandResultDTO: ...
+
+
+class DeviceMonitorAclRepository(ABC):
+    """device_monitor 实体 ACL 接口（INT-80 状态历史/告警）。"""
+
+    @abstractmethod
+    def list_alarm_rules(self, page=1, per_page=50, metric_type=None, enabled=None) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def create_alarm_rule(self, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def update_alarm_rule(self, rule_id, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def delete_alarm_rule(self, rule_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def list_alarms(self, query: dict) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def acknowledge_alarm(self, alarm_id, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_alarm_stats(self) -> CommandResultDTO: ...
+
 
 class PlaybackConfigAclRepository(ABC):
     """playback_config_service 实体 ACL 接口。"""

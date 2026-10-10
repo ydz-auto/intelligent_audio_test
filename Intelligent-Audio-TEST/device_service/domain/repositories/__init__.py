@@ -11,9 +11,15 @@ from device_service.domain.repositories.device_repository_abc import (
     PlaybackRepositoryInterface,
     SPLRepositoryInterface,
 )
+from device_service.domain.repositories.device_group_repository_abc import (
+    DeviceGroupRepositoryInterface,
+    DeviceMonitorRepositoryInterface,
+)
 
 __all__ = [
     'DeviceRepositoryInterface',
     'PlaybackRepositoryInterface',
     'SPLRepositoryInterface',
+    'DeviceGroupRepositoryInterface',
+    'DeviceMonitorRepositoryInterface',
 ]

@@ -2,7 +2,11 @@ import logging
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response, wrap_grpc_response
-from api_gateway.infrastructure.acl import DeviceAclRepositoryImpl
+from api_gateway.infrastructure.acl import (
+    DeviceAclRepositoryImpl,
+    DeviceGroupAclRepositoryImpl,
+    DeviceMonitorAclRepositoryImpl,
+)
 from api_gateway.schemas.device import (
     DeviceListQuery,
     DeviceStatusQuery,
@@ -12,6 +16,8 @@ from api_gateway.schemas.device import (
 logger = logging.getLogger(__name__)
 
 _device_acl = DeviceAclRepositoryImpl()
+_device_group_acl = DeviceGroupAclRepositoryImpl()
+_device_monitor_acl = DeviceMonitorAclRepositoryImpl()
 
 
 class DeviceQueryService:
@@ -164,3 +170,96 @@ class DeviceQueryService:
 
         data = result.get('data') or []
         return success_response(data, result.get('message', f'成功获取 {len(data)} 个设备详细信息'))
+
+    # ==================== INT-80 状态历史/分组/告警（读侧） ====================
+
+    @staticmethod
+    def _parse_query(model_cls):
+        params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+        return model_cls.model_validate(params)
+
+    @staticmethod
+    def get_status_history(device_id: int = None):
+        """设备状态历史/趋势查询"""
+        from api_gateway.schemas.device import DeviceStatusHistoryQuery
+        try:
+            query = DeviceQueryService._parse_query(DeviceStatusHistoryQuery)
+        except Exception as e:
+            return error_response(f"请求参数错误: {str(e)}", 400)
+
+        if device_id is not None:
+            query.device_ids = [device_id]
+
+        result = _device_acl.get_status_history(query.model_dump(by_alias=False, exclude_none=True))
+
+        if not result.get('success'):
+            return wrap_grpc_response(result, default_error_msg='查询状态历史失败')
+
+        return success_response(result.get('data'))
+
+    @staticmethod
+    def get_groups():
+        """设备分组列表（INT-80，区别于用例分组 group_bp）"""
+        from api_gateway.schemas.device import DeviceGroupListQuery
+        try:
+            query = DeviceQueryService._parse_query(DeviceGroupListQuery)
+        except Exception as e:
+            return error_response(f"请求参数错误: {str(e)}", 400)
+
+        result = _device_group_acl.get_all(
+            page=query.page, per_page=query.per_page,
+            keyword=query.keyword, group_type=query.group_type,
+        )
+
+        if not result.get('success'):
+            return wrap_grpc_response(result, default_error_msg='查询设备分组失败')
+
+        return success_response(result.get('data'))
+
+    @staticmethod
+    def get_group(group_id: str):
+        """设备分组详情（含 device_ids）"""
+        result = _device_group_acl.get_one(group_id)
+
+        if not result.get('success'):
+            return wrap_grpc_response(
+                result, default_error_msg='查询设备分组失败',
+                error_code_mapping={404: ('未找到设备分组', 404)},
+            )
+
+        return success_response(result.get('data'))
+
+    @staticmethod
+    def get_alarm_rules():
+        """告警规则列表"""
+        from api_gateway.schemas.device import AlarmRuleListQuery
+        try:
+            query = DeviceQueryService._parse_query(AlarmRuleListQuery)
+        except Exception as e:
+            return error_response(f"请求参数错误: {str(e)}", 400)
+
+        result = _device_monitor_acl.list_alarm_rules(
+            page=query.page, per_page=query.per_page,
+            metric_type=query.metric_type, enabled=query.enabled,
+        )
+
+        if not result.get('success'):
+            return wrap_grpc_response(result, default_error_msg='查询告警规则失败')
+
+        return success_response(result.get('data'))
+
+    @staticmethod
+    def get_alarms():
+        """告警列表（含统计）"""
+        from api_gateway.schemas.device import AlarmListQuery
+        try:
+            query = DeviceQueryService._parse_query(AlarmListQuery)
+        except Exception as e:
+            return error_response(f"请求参数错误: {str(e)}", 400)
+
+        result = _device_monitor_acl.list_alarms(query.model_dump(by_alias=False, exclude_none=True))
+
+        if not result.get('success'):
+            return wrap_grpc_response(result, default_error_msg='查询告警失败')
+
+        return success_response(result.get('data'))

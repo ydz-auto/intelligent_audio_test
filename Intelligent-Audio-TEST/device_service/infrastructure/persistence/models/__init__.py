@@ -8,6 +8,11 @@ from device_service.infrastructure.persistence.models.device_models import (
     Device,
     DeviceTag,
     PlaybackDevice,
+    DeviceGroup,
+    DeviceGroupMember,
+    DeviceStatusEvent,
+    DeviceAlarmRule,
+    DeviceAlarm,
 )
 from device_service.infrastructure.persistence.models.spl_models import (
     CalibrationHistory,
@@ -18,6 +23,11 @@ __all__ = [
     "Device",
     "PlaybackDevice",
     "DeviceTag",
+    "DeviceGroup",
+    "DeviceGroupMember",
+    "DeviceStatusEvent",
+    "DeviceAlarmRule",
+    "DeviceAlarm",
     "SPLMapping",
     "CalibrationHistory",
 ]

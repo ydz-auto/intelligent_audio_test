@@ -807,6 +807,91 @@ class DeviceConfigServiceStub:
                 request_serializer=device__service__pb2.GetAvailableSerialsRequest.SerializeToString,
                 response_deserializer=device__service__pb2.GetAvailableSerialsResponse.FromString,
                 _registered_method=True)
+        self.CreateDeviceGroup = channel.unary_unary(
+                '/device_service.DeviceConfigService/CreateDeviceGroup',
+                request_serializer=device__service__pb2.CreateDeviceGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.CreateDeviceGroupResponse.FromString,
+                _registered_method=True)
+        self.UpdateDeviceGroup = channel.unary_unary(
+                '/device_service.DeviceConfigService/UpdateDeviceGroup',
+                request_serializer=device__service__pb2.UpdateDeviceGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.UpdateDeviceGroupResponse.FromString,
+                _registered_method=True)
+        self.DeleteDeviceGroup = channel.unary_unary(
+                '/device_service.DeviceConfigService/DeleteDeviceGroup',
+                request_serializer=device__service__pb2.DeleteDeviceGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.DeleteDeviceGroupResponse.FromString,
+                _registered_method=True)
+        self.ListDeviceGroups = channel.unary_unary(
+                '/device_service.DeviceConfigService/ListDeviceGroups',
+                request_serializer=device__service__pb2.ListDeviceGroupsRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ListDeviceGroupsResponse.FromString,
+                _registered_method=True)
+        self.GetDeviceGroup = channel.unary_unary(
+                '/device_service.DeviceConfigService/GetDeviceGroup',
+                request_serializer=device__service__pb2.GetDeviceGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.GetDeviceGroupResponse.FromString,
+                _registered_method=True)
+        self.AddDevicesToGroup = channel.unary_unary(
+                '/device_service.DeviceConfigService/AddDevicesToGroup',
+                request_serializer=device__service__pb2.AddDevicesToGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.AddDevicesToGroupResponse.FromString,
+                _registered_method=True)
+        self.RemoveDevicesFromGroup = channel.unary_unary(
+                '/device_service.DeviceConfigService/RemoveDevicesFromGroup',
+                request_serializer=device__service__pb2.RemoveDevicesFromGroupRequest.SerializeToString,
+                response_deserializer=device__service__pb2.RemoveDevicesFromGroupResponse.FromString,
+                _registered_method=True)
+        self.ControlDevice = channel.unary_unary(
+                '/device_service.DeviceConfigService/ControlDevice',
+                request_serializer=device__service__pb2.ControlDeviceRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ControlDeviceResponse.FromString,
+                _registered_method=True)
+        self.BatchDeviceAction = channel.unary_unary(
+                '/device_service.DeviceConfigService/BatchDeviceAction',
+                request_serializer=device__service__pb2.BatchDeviceActionRequest.SerializeToString,
+                response_deserializer=device__service__pb2.BatchDeviceActionResponse.FromString,
+                _registered_method=True)
+        self.GetDeviceStatusHistory = channel.unary_unary(
+                '/device_service.DeviceConfigService/GetDeviceStatusHistory',
+                request_serializer=device__service__pb2.GetDeviceStatusHistoryRequest.SerializeToString,
+                response_deserializer=device__service__pb2.GetDeviceStatusHistoryResponse.FromString,
+                _registered_method=True)
+        self.CreateAlarmRule = channel.unary_unary(
+                '/device_service.DeviceConfigService/CreateAlarmRule',
+                request_serializer=device__service__pb2.CreateAlarmRuleRequest.SerializeToString,
+                response_deserializer=device__service__pb2.CreateAlarmRuleResponse.FromString,
+                _registered_method=True)
+        self.UpdateAlarmRule = channel.unary_unary(
+                '/device_service.DeviceConfigService/UpdateAlarmRule',
+                request_serializer=device__service__pb2.UpdateAlarmRuleRequest.SerializeToString,
+                response_deserializer=device__service__pb2.UpdateAlarmRuleResponse.FromString,
+                _registered_method=True)
+        self.DeleteAlarmRule = channel.unary_unary(
+                '/device_service.DeviceConfigService/DeleteAlarmRule',
+                request_serializer=device__service__pb2.DeleteAlarmRuleRequest.SerializeToString,
+                response_deserializer=device__service__pb2.DeleteAlarmRuleResponse.FromString,
+                _registered_method=True)
+        self.ListAlarmRules = channel.unary_unary(
+                '/device_service.DeviceConfigService/ListAlarmRules',
+                request_serializer=device__service__pb2.ListAlarmRulesRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ListAlarmRulesResponse.FromString,
+                _registered_method=True)
+        self.ListAlarms = channel.unary_unary(
+                '/device_service.DeviceConfigService/ListAlarms',
+                request_serializer=device__service__pb2.ListAlarmsRequest.SerializeToString,
+                response_deserializer=device__service__pb2.ListAlarmsResponse.FromString,
+                _registered_method=True)
+        self.AcknowledgeAlarm = channel.unary_unary(
+                '/device_service.DeviceConfigService/AcknowledgeAlarm',
+                request_serializer=device__service__pb2.AcknowledgeAlarmRequest.SerializeToString,
+                response_deserializer=device__service__pb2.AcknowledgeAlarmResponse.FromString,
+                _registered_method=True)
+        self.GetAlarmStats = channel.unary_unary(
+                '/device_service.DeviceConfigService/GetAlarmStats',
+                request_serializer=device__service__pb2.GetAlarmStatsRequest.SerializeToString,
+                response_deserializer=device__service__pb2.GetAlarmStatsResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceConfigServiceServicer:
@@ -885,6 +970,114 @@ class DeviceConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateDeviceGroup(self, request, context):
+        """设备分组（INT-80）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateDeviceGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteDeviceGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDeviceGroups(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDeviceGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AddDevicesToGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RemoveDevicesFromGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ControlDevice(self, request, context):
+        """设备操作（INT-80：connect/disconnect/reboot/shutdown/install_app/uninstall_app）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchDeviceAction(self, request, context):
+        """设备批量操作（INT-80：幂等模式对齐 testcase batch）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDeviceStatusHistory(self, request, context):
+        """设备状态历史/趋势（INT-80）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateAlarmRule(self, request, context):
+        """告警规则（INT-80）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateAlarmRule(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteAlarmRule(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAlarmRules(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAlarms(self, request, context):
+        """告警与确认流（INT-80）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AcknowledgeAlarm(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAlarmStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -947,6 +1140,91 @@ def add_DeviceConfigServiceServicer_to_server(servicer, server):
                     servicer.GetAvailableSerials,
                     request_deserializer=device__service__pb2.GetAvailableSerialsRequest.FromString,
                     response_serializer=device__service__pb2.GetAvailableSerialsResponse.SerializeToString,
+            ),
+            'CreateDeviceGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateDeviceGroup,
+                    request_deserializer=device__service__pb2.CreateDeviceGroupRequest.FromString,
+                    response_serializer=device__service__pb2.CreateDeviceGroupResponse.SerializeToString,
+            ),
+            'UpdateDeviceGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateDeviceGroup,
+                    request_deserializer=device__service__pb2.UpdateDeviceGroupRequest.FromString,
+                    response_serializer=device__service__pb2.UpdateDeviceGroupResponse.SerializeToString,
+            ),
+            'DeleteDeviceGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteDeviceGroup,
+                    request_deserializer=device__service__pb2.DeleteDeviceGroupRequest.FromString,
+                    response_serializer=device__service__pb2.DeleteDeviceGroupResponse.SerializeToString,
+            ),
+            'ListDeviceGroups': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDeviceGroups,
+                    request_deserializer=device__service__pb2.ListDeviceGroupsRequest.FromString,
+                    response_serializer=device__service__pb2.ListDeviceGroupsResponse.SerializeToString,
+            ),
+            'GetDeviceGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDeviceGroup,
+                    request_deserializer=device__service__pb2.GetDeviceGroupRequest.FromString,
+                    response_serializer=device__service__pb2.GetDeviceGroupResponse.SerializeToString,
+            ),
+            'AddDevicesToGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.AddDevicesToGroup,
+                    request_deserializer=device__service__pb2.AddDevicesToGroupRequest.FromString,
+                    response_serializer=device__service__pb2.AddDevicesToGroupResponse.SerializeToString,
+            ),
+            'RemoveDevicesFromGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.RemoveDevicesFromGroup,
+                    request_deserializer=device__service__pb2.RemoveDevicesFromGroupRequest.FromString,
+                    response_serializer=device__service__pb2.RemoveDevicesFromGroupResponse.SerializeToString,
+            ),
+            'ControlDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.ControlDevice,
+                    request_deserializer=device__service__pb2.ControlDeviceRequest.FromString,
+                    response_serializer=device__service__pb2.ControlDeviceResponse.SerializeToString,
+            ),
+            'BatchDeviceAction': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchDeviceAction,
+                    request_deserializer=device__service__pb2.BatchDeviceActionRequest.FromString,
+                    response_serializer=device__service__pb2.BatchDeviceActionResponse.SerializeToString,
+            ),
+            'GetDeviceStatusHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDeviceStatusHistory,
+                    request_deserializer=device__service__pb2.GetDeviceStatusHistoryRequest.FromString,
+                    response_serializer=device__service__pb2.GetDeviceStatusHistoryResponse.SerializeToString,
+            ),
+            'CreateAlarmRule': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateAlarmRule,
+                    request_deserializer=device__service__pb2.CreateAlarmRuleRequest.FromString,
+                    response_serializer=device__service__pb2.CreateAlarmRuleResponse.SerializeToString,
+            ),
+            'UpdateAlarmRule': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAlarmRule,
+                    request_deserializer=device__service__pb2.UpdateAlarmRuleRequest.FromString,
+                    response_serializer=device__service__pb2.UpdateAlarmRuleResponse.SerializeToString,
+            ),
+            'DeleteAlarmRule': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteAlarmRule,
+                    request_deserializer=device__service__pb2.DeleteAlarmRuleRequest.FromString,
+                    response_serializer=device__service__pb2.DeleteAlarmRuleResponse.SerializeToString,
+            ),
+            'ListAlarmRules': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAlarmRules,
+                    request_deserializer=device__service__pb2.ListAlarmRulesRequest.FromString,
+                    response_serializer=device__service__pb2.ListAlarmRulesResponse.SerializeToString,
+            ),
+            'ListAlarms': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAlarms,
+                    request_deserializer=device__service__pb2.ListAlarmsRequest.FromString,
+                    response_serializer=device__service__pb2.ListAlarmsResponse.SerializeToString,
+            ),
+            'AcknowledgeAlarm': grpc.unary_unary_rpc_method_handler(
+                    servicer.AcknowledgeAlarm,
+                    request_deserializer=device__service__pb2.AcknowledgeAlarmRequest.FromString,
+                    response_serializer=device__service__pb2.AcknowledgeAlarmResponse.SerializeToString,
+            ),
+            'GetAlarmStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAlarmStats,
+                    request_deserializer=device__service__pb2.GetAlarmStatsRequest.FromString,
+                    response_serializer=device__service__pb2.GetAlarmStatsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1274,6 +1552,465 @@ class DeviceConfigService:
             '/device_service.DeviceConfigService/GetAvailableSerials',
             device__service__pb2.GetAvailableSerialsRequest.SerializeToString,
             device__service__pb2.GetAvailableSerialsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateDeviceGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/CreateDeviceGroup',
+            device__service__pb2.CreateDeviceGroupRequest.SerializeToString,
+            device__service__pb2.CreateDeviceGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateDeviceGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/UpdateDeviceGroup',
+            device__service__pb2.UpdateDeviceGroupRequest.SerializeToString,
+            device__service__pb2.UpdateDeviceGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteDeviceGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/DeleteDeviceGroup',
+            device__service__pb2.DeleteDeviceGroupRequest.SerializeToString,
+            device__service__pb2.DeleteDeviceGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDeviceGroups(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/ListDeviceGroups',
+            device__service__pb2.ListDeviceGroupsRequest.SerializeToString,
+            device__service__pb2.ListDeviceGroupsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDeviceGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/GetDeviceGroup',
+            device__service__pb2.GetDeviceGroupRequest.SerializeToString,
+            device__service__pb2.GetDeviceGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddDevicesToGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/AddDevicesToGroup',
+            device__service__pb2.AddDevicesToGroupRequest.SerializeToString,
+            device__service__pb2.AddDevicesToGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RemoveDevicesFromGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/RemoveDevicesFromGroup',
+            device__service__pb2.RemoveDevicesFromGroupRequest.SerializeToString,
+            device__service__pb2.RemoveDevicesFromGroupResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ControlDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/ControlDevice',
+            device__service__pb2.ControlDeviceRequest.SerializeToString,
+            device__service__pb2.ControlDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchDeviceAction(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/BatchDeviceAction',
+            device__service__pb2.BatchDeviceActionRequest.SerializeToString,
+            device__service__pb2.BatchDeviceActionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDeviceStatusHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/GetDeviceStatusHistory',
+            device__service__pb2.GetDeviceStatusHistoryRequest.SerializeToString,
+            device__service__pb2.GetDeviceStatusHistoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateAlarmRule(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/CreateAlarmRule',
+            device__service__pb2.CreateAlarmRuleRequest.SerializeToString,
+            device__service__pb2.CreateAlarmRuleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateAlarmRule(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/UpdateAlarmRule',
+            device__service__pb2.UpdateAlarmRuleRequest.SerializeToString,
+            device__service__pb2.UpdateAlarmRuleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteAlarmRule(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/DeleteAlarmRule',
+            device__service__pb2.DeleteAlarmRuleRequest.SerializeToString,
+            device__service__pb2.DeleteAlarmRuleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAlarmRules(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/ListAlarmRules',
+            device__service__pb2.ListAlarmRulesRequest.SerializeToString,
+            device__service__pb2.ListAlarmRulesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAlarms(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/ListAlarms',
+            device__service__pb2.ListAlarmsRequest.SerializeToString,
+            device__service__pb2.ListAlarmsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AcknowledgeAlarm(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/AcknowledgeAlarm',
+            device__service__pb2.AcknowledgeAlarmRequest.SerializeToString,
+            device__service__pb2.AcknowledgeAlarmResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAlarmStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/device_service.DeviceConfigService/GetAlarmStats',
+            device__service__pb2.GetAlarmStatsRequest.SerializeToString,
+            device__service__pb2.GetAlarmStatsResponse.FromString,
             options,
             channel_credentials,
             insecure,
