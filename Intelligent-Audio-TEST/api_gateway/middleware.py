@@ -33,6 +33,26 @@ class RequestAdapterMiddleware(BaseHTTPMiddleware):
         else:
             request.state._json_body = None
 
+        # 预解析 multipart/form-data（分片上传等文件表单，INT-106）：
+        # 字段进 _form_data，文件进 _files，经 request_adapter 的
+        # form / files 代理以 Flask 语义消费
+        if 'multipart/form-data' in content_type:
+            request.state._form_data = {}
+            request.state._files = {}
+            try:
+                form = await request.form()
+                fields, files = {}, {}
+                for key, value in form.multi_items():
+                    if hasattr(value, 'file') and hasattr(value, 'filename'):
+                        files[key] = value
+                    else:
+                        fields[key] = value
+                request.state._form_data = fields
+                request.state._files = files
+            except Exception:
+                logger.warning("multipart 表单解析失败: %s", request.url.path,
+                               exc_info=True)
+
         # 注入到 ContextVar
         set_current_request(request)
 

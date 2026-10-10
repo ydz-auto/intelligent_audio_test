@@ -7,10 +7,12 @@ Key endpoints (delegated to application-layer command/query handlers):
 - GET    /api/adapter/tasks/{task_id}/result          — query task final result
 - DELETE /api/adapter/sessions/{session_id}           — close/destroy a session
 
-说明：本模块与已有的 ``routes/api.py`` 并存，但严格遵循 DDD 四层
-架构——只调用 ``application.commands.handlers`` /
-``application.queries.handlers`` 中已存在的处理器单例，不直接访问
-``services/`` 或 ``adapters/`` 等基础设施层。
+单轮（非 session）被测协议（INT-106，与 api_test_service 单轮执行器默认
+api_paths 及 tests/integration/test_task_execute_real_chain.py 契约一致）：
+- POST   /api/create_task                — async create single-turn task
+- GET    /api/get_status/{task_id}        — implemented in routes/api.py
+- GET    /api/get_final_result/{task_id}  — implemented in routes/api.py
+- DELETE /api/delete_task/{task_id}       — delete task
 """
 
 from fastapi import APIRouter, Request
@@ -23,6 +25,10 @@ from api_adapter_service.application.commands.dialog_commands import (
 from api_adapter_service.application.commands.handlers import (
     close_session_handler,
     create_dialog_task_handler,
+    create_single_turn_task_handler,
+)
+from api_adapter_service.application.commands.single_turn_commands import (
+    CreateSingleTurnTaskCommand,
 )
 from api_adapter_service.application.queries.dialog_queries import (
     GetFinalResultQuery,
@@ -32,6 +38,7 @@ from api_adapter_service.application.queries.handlers import (
     get_final_result_handler,
     get_task_status_handler,
 )
+from api_adapter_service.services.task_manager import task_manager
 
 router = APIRouter()
 
@@ -84,6 +91,37 @@ def get_final_result(task_id: str):
     result = get_final_result_handler.handle(query)
     status = 200 if result.get('code') == 0 else 404
     return _json(result, status)
+
+
+# ── Single-turn (non-session) protocol ─────────────────────────────
+
+@router.post('/api/create_task')
+async def create_single_turn_task(request: Request):
+    """创建并异步执行单轮任务，立即返回 data.task_id。
+
+    请求体为单轮执行器按字段映射平铺的参数（audio_path/audio_url、
+    vendor 等）；音频存储引用（oss:// 等）由应用层经统一存储层解析。
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return _json({'code': 4000, 'msg': 'request body is required'}, 400)
+
+    try:
+        cmd = CreateSingleTurnTaskCommand.from_request(data)
+    except ValueError as e:
+        return _json({'code': 4000, 'msg': str(e)}, 400)
+
+    result = create_single_turn_task_handler.handle(cmd)
+    status = 200 if result.get('code') == 0 else 400
+    return _json(result, status)
+
+
+@router.delete('/api/delete_task/{task_id}')
+def delete_single_turn_task(task_id: str):
+    """删除任务及其结果。"""
+    task_manager.delete_task(task_id)
+    return _json({'code': 0, 'msg': f'task {task_id} deleted'})
 
 
 # ── Session management ─────────────────────────────────────────────

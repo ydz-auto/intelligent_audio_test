@@ -9,6 +9,7 @@ _logger = logging.getLogger(__name__)
 
 from api_test_service.infrastructure.adapters import vendor_adapter_registry
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.audio_path_utils import resolve_audio_local_path
 from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
 from shared.utils.config_manager import config_manager
 
@@ -80,11 +81,12 @@ class APITaskRunner:
         }
 
         audio_file_path = audio.get('file_path', '') if audio else ''
-        if audio_file_path:
-            audio_file_path = os.path.normpath(audio_file_path)
+        # 存储引用（oss:// 等）与历史绝对路径统一解析为本地可用路径，
+        # 不做 normpath（会破坏 scheme 前缀，INT-106）
+        audio_local_path = resolve_audio_local_path(audio_file_path) if audio_file_path else ''
 
-        if not audio or not os.path.exists(audio_file_path):
-            error_msg = f"音频文件不存在: {audio_file_path}"
+        if not audio or not audio_local_path:
+            error_msg = f"音频文件不存在或无法从存储解析: {audio_file_path or '(空)'}"
             self._log('ERROR', error_msg, task_id, api_config=api_config)
             raise Exception(error_msg)
 
@@ -139,8 +141,8 @@ class APITaskRunner:
                 api_config, api_specific_config, endpoint=create_task_url)
 
             audio_path = audio.get('file_path')
-            if audio_path:
-                audio_path = os.path.normpath(audio_path)
+            # 存储引用原样透传（DUT 侧经统一存储层解析，见
+            # api_adapter_service/adapters/audio_input.py），不做 normpath
 
             vendor = api_specific_config.get('vendor')
             if not vendor and hasattr(api_config, 'vendor') and api_config.vendor:

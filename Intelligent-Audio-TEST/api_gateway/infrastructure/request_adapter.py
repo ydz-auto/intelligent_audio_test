@@ -157,14 +157,66 @@ class _FormProxy:
     def __init__(self, request):
         self._request = request
 
-    def get(self, key, default=None):
-        return getattr(self._request.state, '_form_data', {}).get(key, default)
+    def get(self, key, default=None, type=None):
+        """Flask 兼容：支持 type 类型转换（如 form.get('chunk_index', type=int)），
+        转换失败返回 default（INT-106：_FormProxy 缺 type 形参导致 chunk 上传 400）。"""
+        val = getattr(self._request.state, '_form_data', {}).get(key, default)
+        if val is None or type is None:
+            return val
+        try:
+            return type(val)
+        except (ValueError, TypeError):
+            return default
 
     def __getitem__(self, key):
         return getattr(self._request.state, '_form_data', {})[key]
 
     def __contains__(self, key):
         return key in getattr(self._request.state, '_form_data', {})
+
+    def keys(self):
+        return getattr(self._request.state, '_form_data', {}).keys()
+
+    def values(self):
+        return getattr(self._request.state, '_form_data', {}).values()
+
+    def items(self):
+        return getattr(self._request.state, '_form_data', {}).items()
+
+    def __iter__(self):
+        return iter(getattr(self._request.state, '_form_data', {}))
+
+    def __len__(self):
+        return len(getattr(self._request.state, '_form_data', {}))
+
+    def to_dict(self):
+        return dict(getattr(self._request.state, '_form_data', {}))
+
+
+class _UploadedFile:
+    """Flask FileStorage 兼容包装：Starlette UploadFile 的同步读取视图。
+
+    Starlette UploadFile.read 为异步，旧控制器按 Flask 语义同步调用
+    file.read() / file.save()，经此包装统一。
+    """
+
+    def __init__(self, upload):
+        self._upload = upload
+        self.filename = getattr(upload, 'filename', None)
+        self.name = getattr(upload, 'name', None)
+        self.content_type = getattr(upload, 'content_type', None)
+        self.file = getattr(upload, 'file', None)  # 同步文件句柄
+
+    def read(self, *args, **kwargs):
+        return self.file.read(*args, **kwargs)
+
+    def save(self, dst, buffer_size=16384):
+        import shutil
+        with open(dst, 'wb') as out:
+            shutil.copyfileobj(self.file, out, buffer_size)
+
+    def close(self):
+        self.file.close()
 
 
 class _FilesProxy:
@@ -173,11 +225,20 @@ class _FilesProxy:
     def __init__(self, request):
         self._request = request
 
-    def __getitem__(self, key):
-        return getattr(self._request.state, '_files', {}).get(key)
+    def _wrap(self, value):
+        if value is None or isinstance(value, _UploadedFile):
+            return value
+        return _UploadedFile(value)
 
-    def get(self, key):
-        return getattr(self._request.state, '_files', {}).get(key)
+    def __getitem__(self, key):
+        return self._wrap(getattr(self._request.state, '_files', {}).get(key))
+
+    def get(self, key, default=None):
+        value = getattr(self._request.state, '_files', {}).get(key)
+        return self._wrap(value) if value is not None else default
+
+    def __contains__(self, key):
+        return key in getattr(self._request.state, '_files', {})
 
 
 class _EmptyDict:

@@ -14,9 +14,13 @@ from api_adapter_service.application.commands.dialog_commands import (
     CreateDialogTaskCommand,
     CloseSessionCommand,
 )
+from api_adapter_service.application.commands.single_turn_commands import (
+    CreateSingleTurnTaskCommand,
+)
 from api_adapter_service.services.session_store import session_store
 from api_adapter_service.services.task_manager import task_manager
 from api_adapter_service.adapters.factory import api_adapter_factory
+from api_adapter_service.adapters.audio_input import resolve_audio_bytes
 from api_adapter_service.utils.config import config
 from api_adapter_service.utils.logger import logger
 
@@ -144,6 +148,104 @@ class CreateDialogTaskHandler:
             }
 
 
+class CreateSingleTurnTaskHandler:
+    """创建并异步执行单轮（非会话）任务（INT-106）。
+
+    对接 api_test_service 单轮执行器的标准被测协议：POST /api/create_task
+    立即返回 data.task_id，状态经 GET /api/get_status 轮询，最终结果经
+    GET /api/get_final_result 获取（平铺结果字段，供执行器字段映射提取）。
+    """
+
+    def handle(self, cmd: CreateSingleTurnTaskCommand) -> dict:
+        import threading
+        import uuid
+
+        task_id = str(uuid.uuid4())
+        session_id = f'single-turn-{task_id}'
+
+        # 音频入参先行校验（存储引用 oss:// / local:// 经统一存储层解析；
+        # 读取失败立即拒绝，禁止受理后静默失败）
+        try:
+            resolve_audio_bytes(cmd.audio_path)
+        except Exception as e:
+            logger.error(f'Single-turn task rejected, audio unavailable: {e}')
+            return {
+                'code': 4000,
+                'msg': f'audio unavailable: {e}',
+            }
+
+        task_manager.create_task(
+            task_id,
+            session_id=session_id,
+            vendor=cmd.vendor,
+            task_type='voice_llm',
+        )
+        task_manager.update_task_status(task_id, 'processing')
+
+        thread = threading.Thread(
+            target=self._process,
+            args=(task_id, session_id, cmd),
+            daemon=True,
+        )
+        thread.start()
+
+        return {
+            'code': 0,
+            'msg': 'success',
+            'data': {'task_id': task_id},
+        }
+
+    def _process(self, task_id: str, session_id: str,
+                 cmd: CreateSingleTurnTaskCommand):
+        """后台执行单轮请求：适配器调用 → 平铺最终结果 → 状态收敛。
+
+        set_final_result 先于 completed 状态写入，保证执行器轮询到
+        completed 后立即查询最终结果不会命中空窗。
+        """
+        try:
+            base_vendor_config = config.get_vendor_config(cmd.vendor)
+            session_config = base_vendor_config.get('session', {})
+            session_store.ensure_session(
+                session_id=session_id,
+                task_id=task_id,
+                context_mode=session_config.get('context_mode', 'full'),
+                max_history_rounds=session_config.get('max_history_rounds', 10),
+                session_timeout=session_config.get('session_timeout', 60),
+            )
+
+            adapter = api_adapter_factory.get_adapter(
+                cmd.vendor, base_vendor_config, is_dialog=True)
+
+            result = adapter.send_request(
+                task_id=task_id,
+                session_id=session_id,
+                input_type='audio',
+                input_data=cmd.audio_path,
+            )
+
+            task_manager.set_final_result(task_id, {
+                'task_id': task_id,
+                'session_id': session_id,
+                'status': 'completed',
+                'result_type': 'single_turn',
+                'asr_text': result.get('asr_text', ''),
+                'trans_text': result.get('trans_text', ''),
+                'output': result.get('output', '') or result.get('asr_text', ''),
+                'latency': result.get('latency', 0),
+                'raw_response': result.get('raw_response', {}),
+            })
+            task_manager.update_task_status(task_id, 'completed')
+            logger.info(
+                f'[event] SingleTurnTaskCompleted task={task_id} '
+                f'vendor={cmd.vendor} latency={result.get("latency", 0)}'
+            )
+        except Exception as e:
+            logger.error(f'Single-turn task failed: {e}', exc_info=True)
+            task_manager.update_task_status(task_id, 'failed', str(e))
+        finally:
+            session_store.destroy_session(session_id)
+
+
 class CloseSessionHandler:
     """关闭/销毁会话。"""
 
@@ -160,4 +262,5 @@ class CloseSessionHandler:
 
 # 命令处理器单例
 create_dialog_task_handler = CreateDialogTaskHandler()
+create_single_turn_task_handler = CreateSingleTurnTaskHandler()
 close_session_handler = CloseSessionHandler()

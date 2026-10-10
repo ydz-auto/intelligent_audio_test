@@ -64,9 +64,11 @@ def create_app(config_name='default') -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 注册路由
+    # 注册路由：旧版对话协议 + DDD 接口层（含单轮被测协议 /api/create_task）
     from api_adapter_service.routes.api import router as api_router
+    from api_adapter_service.interfaces.api.routes import router as ddd_router
     app.include_router(api_router, tags=['adapter'])
+    app.include_router(ddd_router, tags=['adapter-ddd'])
 
     @app.get('/health')
     def health():

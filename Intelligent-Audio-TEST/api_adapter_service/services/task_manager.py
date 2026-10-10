@@ -136,7 +136,8 @@ class TaskManager:
         # Streaming mode
         if task_id in self.final_results:
             result = self.final_results[task_id]
-            result['result_type'] = 'streaming'
+            # 保留写入方已标注的 result_type（如单轮协议 single_turn），缺省 streaming
+            result.setdefault('result_type', 'streaming')
             return result
 
         return None

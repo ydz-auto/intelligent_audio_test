@@ -38,6 +38,11 @@ class BaseConfig:
         'AUDIO_STORAGE_PATH',
         os.path.join(os.environ.get('LOCAL_STORAGE_ROOT', './storage'), 'audios')
     )
+    # 本地静态资源根（音频上传临时目录/历史数据重映射基准）
+    LOCAL_STORAGE_ROOT: str = os.environ.get('LOCAL_STORAGE_ROOT', './storage')
+    # 历史静态根（逗号分隔）：存量绝对路径音频的旧存储根，解析时重映射到
+    # LOCAL_STORAGE_ROOT 下同相对路径（存储根迁移后救活旧记录，INT-106）
+    AUDIO_LEGACY_STATIC_ROOTS: str = _get_env('AUDIO_LEGACY_STATIC_ROOTS', '')
 
     DATABASE_URL: str = _get_env('DATABASE_URL', required=True)
 
