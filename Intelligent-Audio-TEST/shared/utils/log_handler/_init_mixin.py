@@ -3,10 +3,11 @@
 从原 log_handler.py 拆分而来，保持行为不变。
 """
 
-import sys
 import threading
 import queue
 from datetime import datetime, timezone, timedelta
+
+from shared.utils.log_handler._console import safe_console_print
 
 
 class _InitMixin:
@@ -77,5 +78,5 @@ class _InitMixin:
 
     def _console_log(self, level, message):
         if self.enable_console_log:
-            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - DatabaseLogHandler - {level} - {message}")
-            sys.stdout.flush()
+            # stdout 可能是坏管道/受限编码（INT-102），写失败静默不炸业务路径
+            safe_console_print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - DatabaseLogHandler - {level} - {message}")

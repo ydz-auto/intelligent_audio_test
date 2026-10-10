@@ -12,6 +12,7 @@ from datetime import datetime, timezone, timedelta
 
 from shared.models.common_enums import AUDIT_LOG_CATEGORIES
 from shared.utils.secret_mask import mask_text
+from shared.utils.log_handler._console import safe_console_print
 from shared.utils.log_handler._constants import (
     CONSOLE_LOG_MAX_LENGTH,
     LOG_CONTENT_MAX_LENGTH,
@@ -137,8 +138,9 @@ class _EmitMixin:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - put queue failed: {qe}", file=sys.stderr)
 
         except Exception as e:
-            # emit 自身异常总是打印，避免静默失败
-            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - emit failed: {str(e)}", file=sys.stderr)
+            # emit 自身异常总是打印，避免静默失败；
+            # stderr 可能是坏管道（INT-102），打印失败静默，不影响调用方
+            safe_console_print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - emit failed: {str(e)}", file=sys.stderr)
 
     def _enqueue_db_log(self, record, task_id, test_case_id, category, log_message, is_audit_log):
         """业务日志兼容性入库路径（LOG_BUSINESS_DB_ENABLED=True 回滚开关）。

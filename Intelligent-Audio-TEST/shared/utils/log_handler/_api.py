@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from . import _state
+from ._console import safe_console_print
 from shared.utils.secret_mask import mask_text
 from shared.utils.log_handler._constants import (
     CONSOLE_LOG_MAX_LENGTH,
@@ -88,9 +89,9 @@ def log_and_emit(level, module, content, category='system', source='backend', ta
         return  # 直接返回，不记录DEBUG日志
 
     if enable_console_log:
-        # 统一输出到 stdout 确保可见性
-        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_and_emit - {level_upper} - [{module}] {content[:CONSOLE_LOG_MAX_LENGTH]}{'...' if len(content) > CONSOLE_LOG_MAX_LENGTH else ''}")
-        sys.stdout.flush()
+        # 统一输出到 stdout 确保可见性；stdout 可能是坏管道/受限编码（INT-102），
+        # 写失败静默丢弃，不得炸业务路径（merge 400 事故根因）
+        safe_console_print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_and_emit - {level_upper} - [{module}] {content[:CONSOLE_LOG_MAX_LENGTH]}{'...' if len(content) > CONSOLE_LOG_MAX_LENGTH else ''}")
 
     try:
         # 创建日志记录对象
@@ -128,5 +129,6 @@ def log_and_emit(level, module, content, category='system', source='backend', ta
         handler.emit(record)
 
     except Exception as e:
-        # 如果获取不到 handler，尝试直接打印
-        print(f"Error in log_and_emit: {str(e)}", file=sys.stderr)
+        # 如果获取不到 handler，尝试直接打印；
+        # stderr 同样可能是坏管道（INT-102），失败静默
+        safe_console_print(f"Error in log_and_emit: {str(e)}", file=sys.stderr)

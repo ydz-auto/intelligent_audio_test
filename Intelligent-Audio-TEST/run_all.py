@@ -52,6 +52,17 @@ from shared.config.service_ports import (
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s %(name)s: %(message)s')
 
+# INT-102：主进程 stdout/stderr 被重定向为文件时用 locale 编码（中文 Windows 为
+# GBK），_stream 转发的服务日志常含 GBK 无法编码的字符（含 errors='replace'
+# 产生的 U+FFFD），print 抛 UnicodeEncodeError 杀死转发线程 → 子进程 stdout
+# 管道无人消化塞满 → 服务卡死、日志调用抛 OSError 炸业务路径。
+# 显式改用 UTF-8 并对极少数不可编码字符替换，保证任何输出都不抛异常。
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILE = os.path.join(BASE_DIR, '.env')
 
@@ -68,6 +79,10 @@ except ImportError:
 
 # 子进程环境（继承当前进程 + .env）
 CHILD_ENV = os.environ.copy()
+# INT-102：子进程 stdout 是管道（非控制台）时 Python 用 locale 编码（中文
+# Windows 为 GBK），服务日志含 GBK 外字符即 UnicodeEncodeError，是服务启动期
+# 死亡的另一根因。强制子进程 UTF-8 模式（外部显式设置的值优先，可覆盖）。
+CHILD_ENV.setdefault('PYTHONUTF8', '1')
 
 # 11 个后端微服务配置
 # .env 里 PORT/GRPC_PORT 是全局变量，多个服务共用会互相覆盖，
@@ -107,7 +122,12 @@ processes = []
 
 
 def _stream(proc, name):
-    """实时读取子进程 stdout 并加上服务名前缀打印到主进程。"""
+    """实时读取子进程 stdout 并加上服务名前缀打印到主进程。
+
+    打印失败（INT-102：磁盘/句柄异常等残余场景）只丢弃该行，
+    绝不停止读管道——否则子进程 stdout PIPE 无人消化，塞满后
+    服务卡死或日志调用抛 OSError 炸业务路径。
+    """
     try:
         for line in iter(proc.stdout.readline, b''):
             if not line:
@@ -116,7 +136,10 @@ def _stream(proc, name):
                 text = line.decode('utf-8', errors='replace').rstrip('\r\n')
             except Exception:
                 text = repr(line)
-            print(f"[{name}] {text}", flush=True)
+            try:
+                print(f"[{name}] {text}", flush=True)
+            except Exception:
+                pass
     finally:
         try:
             proc.stdout.close()
