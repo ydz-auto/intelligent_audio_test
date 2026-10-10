@@ -17,5 +17,6 @@ class HarmonyHardenXiaoyiHuiJiDriver(LockMixin, LifecycleMixin, ResultsMixin, Ha
     app_type = AppType.XIAOYI_HUIJI
     version = AppVersion.V1
     platform = DevicePlatform.HARMONYOS
+    keywords = "harmony.xiaoyi_huiji.v1"
     display_name = "鸿蒙小艺慧记 v1"
     dependencies = ["hypium"]
