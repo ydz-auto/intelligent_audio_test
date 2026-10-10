@@ -192,6 +192,11 @@ class TaskService:
             # 避免额外 N 次 ASR/LLM，且保证逐轮口径与整体（turns）一致；
             # 重跑产生的是另一遍独立评估，结果与整体不一致（曾导致逐轮 TRD 落错分）。
             if isinstance(result, dict) and isinstance(result.get('per_round'), list) and result['per_round']:
+                # 原生 per_round 投影（与整体评估同源、整例一次产出）：打来源标记。
+                # 平台落库侧据此在 upsert 后清理本次未产出的旧逐轮行（VEGA-6 自愈）。
+                # 切片重跑 fallback 路径【不】打此标记——切片轮失败会产生无指标 entry，
+                # 且切片自身投影 round-0 幻影，按其清理会误删既有好行/无法自愈幽灵行。
+                result['per_round_native'] = True
                 return result
             try:
                 per_round = calculator._calculate_per_round(task_params)

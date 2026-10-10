@@ -47,6 +47,8 @@ def test_native_per_round_skips_reslice():
     result = _run(_FakeNative())
     assert _FakeNative.sliced == 0          # 未重跑切片 → 无额外 LLM/ASR
     assert result['per_round'] == [{'round_number': 0}, {'round_number': 1}]
+    # 原生投影打来源标记：平台据此在落库后清理旧逐轮行（VEGA-6）
+    assert result['per_round_native'] is True
 
 
 def test_no_native_per_round_still_slices():
@@ -55,3 +57,5 @@ def test_no_native_per_round_still_slices():
     assert _FakeSliced.sliced == 1          # reject_judge 聚合路径不受影响
     assert result['score'] == 9             # _agg_result 覆盖顶层
     assert len(result['per_round']) == 2
+    # 切片重跑 fallback 不打 native 标记 → 平台不会据其清理旧行（避免轮失败误删）
+    assert 'per_round_native' not in result
