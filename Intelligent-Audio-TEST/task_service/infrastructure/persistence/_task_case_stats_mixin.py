@@ -222,9 +222,12 @@ class TaskCaseStatsMixin:
     @staticmethod
     def _get_task_stats_grouped(session, _func, status: str,
                                 algorithm_type: str, group_by: str) -> dict:
-        """按字段分组统计分支。"""
-        allowed = {'status': Task.status, 'algorithm_type': Task.algorithm_type,
-                   'type': Task.type}
+        """按字段分组统计分支。
+
+        差异#2 收尾：task.type 列已废弃删除，group_by='type' 不再支持
+        （历史调用方 e2e_test_service 门禁已改 ListTasks + device_type='physical'）。
+        """
+        allowed = {'status': Task.status, 'algorithm_type': Task.algorithm_type}
         col = allowed.get(group_by)
         if col is None:
             return {'error': f'unsupported group_by field: {group_by}'}

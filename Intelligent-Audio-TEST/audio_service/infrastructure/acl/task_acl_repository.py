@@ -150,16 +150,12 @@ class TaskACLRepositoryImpl(TaskACLRepository):
         config = tc.config or {}
         return config.get('audios', []) if isinstance(config, dict) else []
 
-    def get_testcase_test_type(self, testcase_id) -> Optional[str]:
-        """查询 TestCase 的 test_type（只读）"""
-        tc = self.get_testcase_by_id(testcase_id)
-        return tc.test_type if tc else None
-
     def has_running_e2e_tasks(self) -> bool:
-        """查询 task_service 是否有运行中的 e2e 任务
+        """查询 task_service 是否有运行中的 e2e（物理设备形态）任务
 
-        通过 gRPC 调用 task_service.TaskConfigService.ListTasks（status=running, type=e2e）
-        替代原 shared.utils.task_utils.has_running_e2e_tasks 直连。
+        通过 gRPC 调用 task_service.TaskConfigService.ListTasks（status=running）。
+        差异#2 收尾：proto ListTasksRequest.type 字段改承载 device_type 过滤值，
+        E2E 门禁按含物理设备用例的任务判定（type='physical'，对齐网关侧门禁）。
         gRPC 不可用时回退到无运行任务。
         """
         try:
@@ -172,7 +168,7 @@ class TaskACLRepositoryImpl(TaskACLRepository):
                 page=1,
                 per_page=1,
                 status='running',
-                type='e2e',
+                type='physical',
             ))
             if not resp.success:
                 return False

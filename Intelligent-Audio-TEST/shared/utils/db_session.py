@@ -106,7 +106,7 @@ def not_deleted(query: Query) -> Query:
 
         from shared.utils.db_session import not_deleted
 
-        query = not_deleted(session.query(Task)).filter(Task.type == 'api')
+        query = not_deleted(session.query(Task)).filter(Task.status == 'running')
     """
     # 尝试从 query 的主实体获取 deleted 列
     try:

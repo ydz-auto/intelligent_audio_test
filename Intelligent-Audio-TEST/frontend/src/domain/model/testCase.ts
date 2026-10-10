@@ -172,8 +172,6 @@ export interface TestCaseDraft {
   id?: string | number
   name: string
   description?: string
-  type?: string
-  testType?: 'api' | 'e2e'
   config?: TestCaseConfig
   groupId?: string | number
   group?: string

@@ -194,10 +194,15 @@ class AudioQueryHandler:
         audio = self.repo.get_audio_with_deleted(query.audio_id)
 
         if not audio or audio.deleted:
-            audios_config = self._task_acl.get_testcase_config_audios(query.audio_id)
+            # audio_id 实为 testcase_id：从用例 config 解析真实 audio_id
+            # 差异#2 收尾：用例口径（test_type 列已废弃）由配置形态派生，
+            # 与请求携带的 task_type 口径值比对，一致才允许借用用例音频
+            from shared.utils.testcase_helpers import derive_case_test_type
             task_type = (query.data or {}).get('task_type', 'api')
-            tc_test_type = self._task_acl.get_testcase_test_type(query.audio_id)
-            if tc_test_type == task_type:
+            tc = self._task_acl.get_testcase_by_id(query.audio_id)
+            tc_config = (tc.config or {}) if tc else {}
+            if tc and derive_case_test_type(tc_config) == task_type:
+                audios_config = tc_config.get('audios', []) if isinstance(tc_config, dict) else []
                 target_audio_config = next((c for c in audios_config if c.get('audio_id')), None)
                 if target_audio_config:
                     target_audio_id = target_audio_config.get('audio_id')

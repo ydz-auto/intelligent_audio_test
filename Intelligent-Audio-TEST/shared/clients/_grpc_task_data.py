@@ -608,7 +608,8 @@ def get_task_stats(status=None, algorithm_type=None, group_by=None):
     Args:
         status: 可选，按任务状态过滤（pending/queued/running/evaluating/completed/...）
         algorithm_type: 可选，按算法类型过滤
-        group_by: 可选，分组字段（status / algorithm_type / type）；为空返回 total
+        group_by: 可选，分组字段（status / algorithm_type；task.type 已废弃删除，
+                  'type' 不再支持）；为空返回 total
 
     Returns:
         dict: {'total': N} 或 {'items': [{'key': str, 'count': int}, ...]}

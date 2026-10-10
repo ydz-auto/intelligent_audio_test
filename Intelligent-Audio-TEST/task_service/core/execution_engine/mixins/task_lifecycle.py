@@ -184,9 +184,9 @@ class TaskLifecycleMixin:
                         task_id=task_id
                     )
                     # API任务初始化失败，将任务标记为失败
+                    # （Task 无 error_message 列，失败原因已记录执行日志）
                     task.status = TaskStatus.FAILED
                     task.completed_at = datetime.now(self.utc_plus_8)
-                    task.error_message = f"API任务初始化失败: {str(e)}"
                     local_db_session.commit()
                     return False
         finally:

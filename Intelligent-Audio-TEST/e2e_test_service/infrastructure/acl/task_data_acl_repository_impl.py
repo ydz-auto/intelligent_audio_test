@@ -20,15 +20,37 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
     """TaskDataService ACL 仓储实现"""
 
     def has_running_e2e_tasks(self) -> bool:
-        """检查是否有运行中的 E2E 任务"""
-        from shared.clients.grpc_clients import get_task_stats
+        """检查是否有运行中的 E2E（物理设备形态）任务
+
+        差异#2 收尾：task.type 已废弃删除，GetTaskStats 的 group_by='type'
+        不再支持；改经 TaskConfigService.ListTasks 以 device_type 过滤
+        （proto ListTasksRequest.type 字段承载 device_type='physical'），
+        覆盖 queued/pending/running 三种中间态。
+        """
+        from shared.clients.grpc_clients import get_task_config_service_stub
+        from shared.proto import task_service_pb2 as task_pb
+        from shared.utils.grpc_json import loads as _loads
         for status in ('queued', 'pending', 'running'):
             try:
-                result = get_task_stats(status=status, group_by='type')
-                items = result.get('items', []) if isinstance(result, dict) else []
-                for item in items:
-                    if item.get('key') == 'e2e' and item.get('count', 0) > 0:
+                stub = get_task_config_service_stub()
+                resp = stub.ListTasks(task_pb.ListTasksRequest(
+                    page=1,
+                    per_page=1,
+                    status=status,
+                    type='physical',
+                ))
+                if not resp.success:
+                    continue
+                data = _loads(resp.data, {}) or {}
+                if isinstance(data, dict):
+                    total = data.get('total')
+                    if total is not None and int(total) > 0:
                         return True
+                    items = data.get('items') or data.get('list') or []
+                    if len(items) > 0:
+                        return True
+                elif isinstance(data, list) and len(data) > 0:
+                    return True
             except Exception as e:
                 logger.error("has_running_e2e_tasks 查询 status=%s 失败: %s", status, e)
                 continue

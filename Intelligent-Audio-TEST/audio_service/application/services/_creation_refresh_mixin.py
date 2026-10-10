@@ -77,9 +77,12 @@ class CreationRefreshMixin:
 
     def _refresh_single_testcase_params(self, tc, tc_id, tc_algo_type):
         """刷新单个用例的 algorithm_params（从标注重新提取）"""
+        from shared.utils.testcase_helpers import derive_case_test_type
+
         case_params_list = self._algorithm_acl.list_case_params(tc_algo_type)
 
-        tc_test_type = tc.get('type') or tc.get('test_type') or 'api'
+        # 差异#2 收尾：test_type 列已废弃，参考参数 scope 口径由配置形态派生
+        tc_test_type = derive_case_test_type(tc.get('config') or {})
         scoped_params = [
             p for p in case_params_list
             if p.get('scope') == 'common' or p.get('scope') == tc_test_type

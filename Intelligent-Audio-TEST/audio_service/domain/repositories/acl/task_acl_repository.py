@@ -41,11 +41,6 @@ class TaskACLRepository(ABC):
         ...
 
     @abstractmethod
-    def get_testcase_test_type(self, testcase_id) -> Optional[str]:
-        """查询 TestCase 的 test_type（只读）"""
-        ...
-
-    @abstractmethod
     def has_running_e2e_tasks(self) -> bool:
         """查询 task_service 是否有运行中的 e2e 任务"""
         ...

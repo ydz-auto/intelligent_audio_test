@@ -93,15 +93,13 @@ class ReportDataTaskMixin:
                 continue
             visited.add(tid)
             tasks = _grpc_get_tasks_by_ids([tid])
-            t = tasks[0] if tasks else None
-            if not t:
+            if not tasks:
                 continue
-            t_type = t.get('type') if isinstance(t, dict) else t.type
-            if t_type == 'merged':
-                relations = _grpc_get_task_merge_relations(tid)
-                if relations:
-                    pending.extend(r.get('source_task_id') for r in relations)
-                    continue
+            # 差异#2 收尾：合并容器任务由 TaskMergeRelation(merged_task_id) 存在性判定（task.type 已废弃）
+            relations = _grpc_get_task_merge_relations(tid)
+            if relations:
+                pending.extend(r.get('source_task_id') for r in relations)
+                continue
             leaf_ids.add(tid)
         return list(leaf_ids)
 

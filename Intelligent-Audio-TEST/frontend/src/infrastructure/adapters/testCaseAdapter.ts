@@ -76,7 +76,6 @@ export function toTestCaseUpsertDto(draft: TestCaseDraft): TestCaseUpsertDto {
   return {
     name: draft.name,
     description: draft.description,
-    type: draft.type,
     group_id: draft.groupId,
     tags: draft.tags,
     // config 深度 snakify：fieldCode→field_code, roundNumber→round_number 等

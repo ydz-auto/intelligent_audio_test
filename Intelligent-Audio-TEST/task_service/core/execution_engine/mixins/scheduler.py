@@ -287,7 +287,6 @@ class SchedulerMixin:
                 Task.status.notin_(FINISHED_TASK_STATUSES),
             ).update({
                 Task.status: TaskStatus.PENDING,
-                Task.error_message: None,
                 Task.completed_at: None,
             }, synchronize_session=False)
             local_db_session.commit()

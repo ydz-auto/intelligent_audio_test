@@ -12,10 +12,13 @@ from typing import Any, Optional
 
 @dataclass
 class TestCaseDTO:
-    """测试用例 DTO（用于 check_audio_in_testcases 返回的 tc）"""
+    """测试用例 DTO（用于 check_audio_in_testcases 返回的 tc）
+
+    差异#2 收尾：test_type 列已废弃删除，用例口径由 config 形态派生
+    （shared.utils.testcase_helpers.derive_case_test_type），DTO 不再承载。
+    """
     id: Optional[int] = None
     name: Optional[str] = None
-    test_type: Optional[str] = None
     config: Any = None
 
 

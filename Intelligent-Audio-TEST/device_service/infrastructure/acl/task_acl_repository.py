@@ -23,9 +23,11 @@ class TaskACLRepository:
     """
 
     def has_running_e2e_tasks(self) -> bool:
-        """查询 task_service 是否有运行中的 e2e 任务
+        """查询 task_service 是否有运行中的 e2e（物理设备形态）任务
 
-        通过 gRPC 调用 task_service.TaskConfigService.ListTasks（status=running, type=e2e）
+        通过 gRPC 调用 task_service.TaskConfigService.ListTasks（status=running）。
+        差异#2 收尾：proto ListTasksRequest.type 字段改承载 device_type 过滤值，
+        E2E 门禁按含物理设备用例的任务判定（type='physical'，对齐网关侧门禁）。
         替代原 shared.utils.task_utils.has_running_e2e_tasks 直连。
         gRPC 不可用时回退到无运行任务。
         """
@@ -39,7 +41,7 @@ class TaskACLRepository:
                 page=1,
                 per_page=1,
                 status=TaskStatus.RUNNING,
-                type='e2e',
+                type='physical',
             ))
             if not resp.success:
                 return False

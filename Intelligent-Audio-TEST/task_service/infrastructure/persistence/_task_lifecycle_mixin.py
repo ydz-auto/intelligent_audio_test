@@ -352,11 +352,11 @@ class TaskLifecycleMixin:
                         'task_case_evaluation': 0, 'test_result': 0}
 
             # 2. 任务状态 → failed
+            # （Task 无 error_message 列，任务级失败原因仅落 TaskCase.error_message）
             task_count = session.query(Task).filter(
                 Task.id.in_(task_ids),
             ).update({
                 Task.status: SharedTaskStatus.FAILED,
-                Task.error_message: _INTERRUPTED_ERROR_MESSAGE,
                 Task.completed_at: now,
             }, synchronize_session=False)
 

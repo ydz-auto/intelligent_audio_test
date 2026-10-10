@@ -44,8 +44,6 @@ export interface TestCaseGroupDto {
 export interface TestCaseUpsertDto {
   name?: string
   description?: string
-  type?: string
-  test_type?: 'api' | 'e2e'
   group_id?: string | number | null
   tags?: string[]
   config?: TestCaseConfigRaw

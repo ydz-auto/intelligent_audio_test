@@ -29,7 +29,7 @@ class _TaskDataProxy:
     # ---- 聚合统计 ----
 
     def get_task_stats(self, status=None, algorithm_type=None, group_by=None):
-        """通过 gRPC 聚合统计 Task（group_by 可选 status/algorithm_type/type）"""
+        """通过 gRPC 聚合统计 Task（group_by 可选 status/algorithm_type；task.type 已废弃删除，'type' 不再支持）"""
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.GetTaskStats(task_pb.TaskAggStatsRequest(
