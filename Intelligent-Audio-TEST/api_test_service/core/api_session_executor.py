@@ -196,6 +196,14 @@ class APISessionExecutor:
         # 算法服务不可达时 ACL 回退 ExtractedCaseParamsDTO()（evaluation=None），
         # 键存在但值为 None，get 默认值不生效 → 显式 None 兜底（INT-119）
         eval_params = (all_params.get('evaluation') or {}) if isinstance(all_params, dict) else {}
+        if not eval_params:
+            # INT-118：评估参数提取为空（算法服务失败 / 该算法类型无 evaluation
+            # param mappings）显式告警，评估降级可观察，不再静默空参提交
+            self._log(level='WARNING', category='evaluation',
+                      content=f"用例 {case_name} 评估参数提取为空"
+                              f"（算法服务不可达或算法类型 {algorithm_type} 无 evaluation param mappings），"
+                              f"评估将以空参数提交",
+                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
         eval_params['algorithm_type'] = algorithm_type
         eval_params['test_type'] = 'api'
 

@@ -10,6 +10,7 @@ from algorithm_service.domain.services.param_normalizer import ParamNormalizerSe
 from algorithm_service.domain.services.reference_helpers import ReferenceHelpersService
 from algorithm_service.infrastructure.persistence.config_cache import get_config_cache
 from algorithm_service.application.queries.field_mapping_queries import FieldMappingQueryHandler
+from algorithm_service.application.queries.reference_params_queries import ReferenceParamsQueryHandler
 from shared.utils.log_handler import log_not_emit
 
 
@@ -119,7 +120,7 @@ class CaseParameterQueryHandler:
                 value = algo_params.get(source_param)
             elif source == 'reference':
                 ref_params_col = case_config.get('reference_params')
-                ref_params = ReferenceParamsGeneratorQueryHandler.get_all_reference_params(ref_params_col)
+                ref_params = ReferenceParamsQueryHandler.get_all_reference_params(ref_params_col)
                 value = None
                 for p in ref_params:
                     if p.get('code') == source_param:
@@ -143,7 +144,7 @@ class CaseParameterQueryHandler:
                             value = output.get(target_param)
             elif source == 'adjusted_reference':
                 ref_params_col = case_config.get('reference_params')
-                ref_params = ReferenceParamsGeneratorQueryHandler.get_all_reference_params(ref_params_col)
+                ref_params = ReferenceParamsQueryHandler.get_all_reference_params(ref_params_col)
                 value = None
                 for p in ref_params:
                     if p.get('code') == source_param:
@@ -237,8 +238,3 @@ class CaseParameterQueryHandler:
             'advanced': '高级选项',
         }
         return mapping.get(group_name, group_name)
-
-
-class ReferenceParamsGeneratorQueryHandler:
-    """参考参数生成查询处理器 - 委托给 application/queries/reference_params_queries"""
-    pass
