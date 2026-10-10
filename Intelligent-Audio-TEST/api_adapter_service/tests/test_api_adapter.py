@@ -235,25 +235,125 @@ class TestMockDialogAdapter(unittest.TestCase):
 
 
 class TestAdapterFactory(unittest.TestCase):
-    """Tests for adapter factory."""
+    """Tests for adapter factory（注册表形态，UC-1003）。"""
 
     def test_mock_adapter(self):
-        from api_adapter_service.adapters.factory import select_adapter
+        from api_adapter_service.adapters.factory import api_adapter_factory
         from api_adapter_service.adapters.mock_adapter import MockDialogAdapter
-        adapter = select_adapter('mock', {'protocol': 'mock'}, is_dialog=True)
+        adapter = api_adapter_factory.get_adapter('mock', {'protocol': 'mock'}, is_dialog=True)
         self.assertIsInstance(adapter, MockDialogAdapter)
 
     def test_http_adapter(self):
-        from api_adapter_service.adapters.factory import select_adapter
+        from api_adapter_service.adapters.factory import api_adapter_factory
         from api_adapter_service.adapters.http_adapter import HttpAdapter
-        adapter = select_adapter('voice_llm', {'protocol': 'http', 'base_url': 'http://localhost:9000'})
+        adapter = api_adapter_factory.get_adapter(
+            'voice_llm', {'protocol': 'http', 'base_url': 'http://localhost:9000'})
         self.assertIsInstance(adapter, HttpAdapter)
 
     def test_default_http_adapter(self):
-        from api_adapter_service.adapters.factory import select_adapter
+        from api_adapter_service.adapters.factory import api_adapter_factory
         from api_adapter_service.adapters.http_adapter import HttpAdapter
-        adapter = select_adapter('some_vendor', {'base_url': 'http://api.example.com'})
+        adapter = api_adapter_factory.get_adapter(
+            'some_vendor', {'base_url': 'http://api.example.com'})
         self.assertIsInstance(adapter, HttpAdapter)
+
+    def test_sse_and_vendor_websocket_adapters(self):
+        from api_adapter_service.adapters.factory import api_adapter_factory
+        from api_adapter_service.adapters.sse_adapter import SseAdapter
+        from api_adapter_service.adapters.volc_ast_adapter import VolcAstAdapter
+        from api_adapter_service.adapters.qwen_adapter import QwenAdapter
+        self.assertIsInstance(
+            api_adapter_factory.get_adapter('openai', {'protocol': 'sse'}), SseAdapter)
+        self.assertIsInstance(
+            api_adapter_factory.get_adapter('volc_ast', {'protocol': 'websocket'}),
+            VolcAstAdapter)
+        # 历史别名归一：volc → volc_ast，qwen3 → qwen
+        self.assertIsInstance(
+            api_adapter_factory.get_adapter('volc', {'protocol': 'websocket'}),
+            VolcAstAdapter)
+        self.assertIsInstance(
+            api_adapter_factory.get_adapter('qwen3', {'protocol': 'websocket'}),
+            QwenAdapter)
+
+    def test_adapter_class_channel(self):
+        """adapter_class 显式类名优先于 (protocol, vendor) 自动匹配（UC-0901/UC-1003 步骤5）。"""
+        from api_adapter_service.adapters.factory import api_adapter_factory
+        adapter = api_adapter_factory.get_adapter('openai', {
+            'protocol': 'sse', 'adapter_class': 'QwenAdapter'})
+        from api_adapter_service.adapters.qwen_adapter import QwenAdapter
+        self.assertIsInstance(adapter, QwenAdapter)
+
+    def test_adapter_class_unknown_rejected(self):
+        from api_adapter_service.adapters.factory import api_adapter_factory
+        with self.assertRaises(ValueError):
+            api_adapter_factory.get_adapter('openai', {
+                'protocol': 'sse', 'adapter_class': 'NoSuchAdapter'})
+
+    def test_mock_protocol_any_vendor_hits_mock(self):
+        """protocol='mock' 且 vendor 未单独注册 → (mock, default) 兜底
+        命中 mock（旧版 select_adapter protocol=='mock' 行为）。"""
+        from api_adapter_service.adapters.factory import api_adapter_factory
+        from api_adapter_service.adapters.mock_adapter import MockDialogAdapter
+        adapter = api_adapter_factory.get_adapter(
+            'some_vendor', {'protocol': 'mock'})
+        self.assertIsInstance(adapter, MockDialogAdapter)
+
+    def test_websocket_unregistered_rejected(self):
+        """websocket 未注册抛 ValueError（拒绝静默降级，设计文档 §5.5）。"""
+        from api_adapter_service.adapters.factory import api_adapter_factory
+        with self.assertRaises(ValueError):
+            api_adapter_factory.get_adapter('doubao', {'protocol': 'websocket'})
+
+    def test_registry_semantics(self):
+        """注册冲突启动期抛错（UC-1003 5a）；adapter_class 优先；OCP 注册即生效。"""
+        from api_adapter_service.adapters.base import BaseAdapter
+        from api_adapter_service.adapters.factory import APIAdapterFactory
+        from api_adapter_service.domain.enums import AdapterProtocol, Vendor
+
+        factory = APIAdapterFactory()
+
+        class FakeA(BaseAdapter):
+            def send_request(self, **kwargs):
+                return {}
+
+        class FakeB(BaseAdapter):
+            def send_request(self, **kwargs):
+                return {}
+
+        factory.register(AdapterProtocol.WEBSOCKET, Vendor.QWEN, FakeA)
+        self.assertIs(factory.resolve('qwen3', {'protocol': 'websocket'}), FakeA)
+        self.assertIsInstance(
+            factory.get_adapter('qwen', {'protocol': 'websocket'}), FakeA)
+
+        # 同 (protocol, vendor) 注册不同实现 → 冲突（注册期/启动期抛错）
+        with self.assertRaises(ValueError):
+            factory.register(AdapterProtocol.WEBSOCKET, Vendor.QWEN, FakeB)
+
+        # 同类重复注册幂等
+        factory.register(AdapterProtocol.WEBSOCKET, Vendor.QWEN, FakeA)
+
+        # 类名通道冲突：不同类同名注册 → 注册期抛错（防 adapter_class
+        # 按类名解析到错误实现）；冲突注册不留半态
+        DupA = type('DupAdapter', (BaseAdapter,), {
+            'send_request': lambda self, **kwargs: {}})
+        DupB = type('DupAdapter', (BaseAdapter,), {
+            'send_request': lambda self, **kwargs: {}})
+        factory.register(AdapterProtocol.HTTP, 'vendor_dup', DupA)
+        with self.assertRaises(ValueError):
+            factory.register(AdapterProtocol.HTTP, 'vendor_dup2', DupB)
+        self.assertIs(
+            factory.resolve('vendor_dup', {'adapter_class': 'DupAdapter'}),
+            DupA)
+
+        # adapter_class 显式通道优先于自动匹配
+        factory.register(AdapterProtocol.WEBSOCKET, 'qwen_v2', FakeB)
+        self.assertIs(
+            factory.resolve('qwen', {
+                'protocol': 'websocket', 'adapter_class': 'FakeB'}), FakeB)
+
+        # 非法注册拒绝
+        with self.assertRaises(TypeError):
+            factory.register(AdapterProtocol.HTTP, 'x', object)
 
 
 class TestConfig(unittest.TestCase):

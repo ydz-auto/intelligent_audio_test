@@ -113,3 +113,18 @@ class MockDialogAdapter(BaseAdapter):
     def destroy_session(self, session_id: str):
         """Clean up session counter."""
         self._round_counter.pop(session_id, None)
+
+
+# —— 注册表自注册（UC-1003）：导入即注册，新增厂商无需改动工厂 ——
+from api_adapter_service.adapters.factory import api_adapter_factory
+from api_adapter_service.domain.enums import (
+    DEFAULT_REGISTRY_VENDOR,
+    AdapterProtocol,
+    Vendor,
+)
+
+api_adapter_factory.register(AdapterProtocol.MOCK, Vendor.MOCK, MockDialogAdapter)
+# 协议级兜底：protocol='mock' 且 vendor 未单独注册时仍命中 mock（旧版
+# select_adapter 的 protocol=='mock' 行为，避免回退 HttpAdapter 的回归）
+api_adapter_factory.register(
+    AdapterProtocol.MOCK, DEFAULT_REGISTRY_VENDOR, MockDialogAdapter)

@@ -50,6 +50,7 @@ api_adapter_factory.register(
 
 DEFAULT_REGISTRY_SNAPSHOT = {
     '(http, default)': 'HttpAdapter',
+    '(mock, default)': 'MockDialogAdapter',
     '(mock, mock)': 'MockDialogAdapter',
     '(sse, default)': 'SseAdapter',
     '(websocket, qwen)': 'QwenAdapter',
@@ -133,7 +134,7 @@ class TestUC1003OCPDrill:
         ) is mod.AcmeRealtimeAdapter
 
     def test_registry_restored_to_default_snapshot(self):
-        """演练还原后注册表回到五内置快照（不污染同进程其他用例）。"""
+        """演练还原后注册表回到内置快照（不污染同进程其他用例）。"""
         from api_adapter_service.adapters.factory import api_adapter_factory
         assert api_adapter_factory.list_adapters() == (
             DEFAULT_REGISTRY_SNAPSHOT)

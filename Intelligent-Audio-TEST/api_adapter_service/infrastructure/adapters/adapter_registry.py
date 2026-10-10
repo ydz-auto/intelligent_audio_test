@@ -1,47 +1,28 @@
 # -*- coding: utf-8 -*-
-"""适配器注册表：包装已有的 adapters/factory.py。
+"""适配器注册表门面 — 委托 adapters/factory.APIAdapterFactory（UC-1003）。
 
-将领域层 AdapterSelector 推导出的“适配器类型标识”映射到
-具体的 BaseAdapter 实例，委托给已有的 select_adapter 工厂函数。
+注册表本体（(protocol, vendor) → 适配器类、adapter_class 显式通道、
+注册冲突检测）在 adapters.factory.APIAdapterFactory；本类保留
+infrastructure 层调用面，委托单例完成解析与实例化。
 """
 
-from typing import Dict
-
 from api_adapter_service.adapters.base import BaseAdapter
-from api_adapter_service.adapters.factory import select_adapter
-from api_adapter_service.domain.services import AdapterSelector
+from api_adapter_service.adapters.factory import api_adapter_factory
 from api_adapter_service.utils.logger import logger
 
 
 class AdapterRegistry:
-    """适配器注册表。
-
-    职责：
-    1. 由领域层 AdapterSelector 推导适配器类型；
-    2. 委托已有 factory.select_adapter 完成实例化；
-    3. （可选）缓存适配器实例。
-    """
-
-    def __init__(self):
-        self._cache: Dict[str, BaseAdapter] = {}
+    """适配器注册表门面 — 委托 APIAdapterFactory 单例。"""
 
     def get_adapter(
         self, vendor: str, vendor_config: dict, is_dialog: bool = False
     ) -> BaseAdapter:
-        """获取适配器实例。"""
-        # 领域层推导类型（用于日志/审计）
-        adapter_type = AdapterSelector.select_adapter_type_from_dict(
-            vendor, vendor_config
+        """获取适配器实例（adapter_class 优先，未指定按 protocol+vendor）。"""
+        adapter_cls = api_adapter_factory.resolve(vendor, vendor_config)
+        logger.debug(f'AdapterRegistry: vendor={vendor} type={adapter_cls.__name__}')
+        return api_adapter_factory.get_adapter(
+            vendor, vendor_config, is_dialog=is_dialog
         )
-        logger.debug(
-            f'AdapterRegistry: vendor={vendor} type={adapter_type}'
-        )
-        # 委托已有工厂实例化
-        return select_adapter(vendor, vendor_config, is_dialog=is_dialog)
-
-    def clear_cache(self) -> None:
-        """清空适配器缓存。"""
-        self._cache.clear()
 
 
 # 单例
