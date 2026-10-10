@@ -107,7 +107,7 @@
  * 与用例分组（TestCaseManager）相互独立：走 /test-devices/device-groups 契约。
  */
 import { ref, computed, watch } from 'vue'
-import { devicesApi } from '../../infrastructure/api/devicesApi'
+import { devicesPort } from '../../composables/device/devicesPort'
 import type { DeviceGroup, TestDeviceView } from '../../domain/model/device'
 import { useNotification } from '../../composables/modal/useNotification'
 
@@ -145,7 +145,7 @@ watch(() => props.visible, (val) => {
 async function fetchGroups() {
   loading.value = true
   try {
-    const page = await devicesApi.getGroups({ per_page: 200 })
+    const page = await devicesPort.getGroups({ per_page: 200 })
     groups.value = page.items
   } catch (error) {
     console.error('加载设备分组失败:', error)
@@ -182,10 +182,10 @@ async function saveGroup() {
   saving.value = true
   try {
     if (editingId.value) {
-      await devicesApi.updateGroup(editingId.value, form.value)
+      await devicesPort.updateGroup(editingId.value, form.value)
       notification.success('分组已更新')
     } else {
-      await devicesApi.createGroup(form.value)
+      await devicesPort.createGroup(form.value)
       notification.success('分组已创建')
     }
     cancelEdit()
@@ -206,7 +206,7 @@ async function deleteGroup(group: DeviceGroup) {
     : `确定删除分组「${group.name}」吗？`
   if (!window.confirm(message)) return
   try {
-    await devicesApi.deleteGroup(group.id, true)
+    await devicesPort.deleteGroup(group.id, true)
     notification.success('分组已删除')
     if (expandedId.value === group.id) expandedId.value = null
     await fetchGroups()
@@ -226,7 +226,7 @@ async function toggleExpand(group: DeviceGroup) {
   expandedId.value = group.id
   addMemberId.value = ''
   try {
-    const detail = await devicesApi.getGroup(group.id)
+    const detail = await devicesPort.getGroup(group.id)
     const memberIds = detail.deviceIds ?? []
     const all = props.testDevices ?? []
     expandedDevices.value = all.filter(d => memberIds.map(String).includes(String(d.id))) as TestDeviceView[]
@@ -239,7 +239,7 @@ async function toggleExpand(group: DeviceGroup) {
 async function addMember(group: DeviceGroup) {
   if (!addMemberId.value) return
   try {
-    await devicesApi.addDevicesToGroup(group.id, [addMemberId.value])
+    await devicesPort.addDevicesToGroup(group.id, [addMemberId.value])
     addMemberId.value = ''
     await toggleExpand(group)
     await fetchGroups()
@@ -252,7 +252,7 @@ async function addMember(group: DeviceGroup) {
 
 async function removeMember(group: DeviceGroup, deviceId: string | number) {
   try {
-    await devicesApi.removeDevicesFromGroup(group.id, [deviceId])
+    await devicesPort.removeDevicesFromGroup(group.id, [deviceId])
     await toggleExpand(group)
     await fetchGroups()
     emit('changed')

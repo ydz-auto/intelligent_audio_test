@@ -198,7 +198,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { usePublishedTasks, PublishedTaskStatusEnum } from '../../composables/publishedTask/usePublishedTasks';
-import { tasksApi } from '../../infrastructure/api';
+import { tasksPort } from '../../composables/task/tasksPort';
 import { BenchmarkCategoryLabels, type BenchmarkCategoryType } from '../../domain/enums';
 import type { Task } from '../../domain/model/task';
 import type { PublishedTaskItem } from '../../domain/model/publishedTask';
@@ -276,7 +276,7 @@ async function openPublishModal() {
   presetSourceTaskId.value = null;
   // 拉取日常任务作为来源候选（可发布状态由弹窗过滤）
   try {
-    const data = await tasksApi.getAll({ page: 1, perPage: 100 });
+    const data = await tasksPort.getAll({ page: 1, perPage: 100 });
     dailyTasks.value = (data as any).items ?? [];
   } catch (error) {
     console.error('Failed to fetch tasks for publish modal:', error);

@@ -172,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { useSplMapping } from './SPLMapping';
+import { useSplMapping } from '../../composables/device/useSplMapping';
 import { onMounted, watch } from 'vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 

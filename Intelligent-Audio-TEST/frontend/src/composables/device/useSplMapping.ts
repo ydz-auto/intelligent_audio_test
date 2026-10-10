@@ -1,17 +1,17 @@
 import { ref, reactive, computed, watch, nextTick } from 'vue';
-import { getModalManager } from '../../composables/modal/useModal';
-import { splPort } from '../../composables/device/splPort';
-import { playbackPort } from '../../composables/device/playbackPort';
+import { getModalManager } from '../modal/useModal';
+import { splPort } from './splPort';
+import { playbackPort } from './playbackPort';
 import Chart, { ChartDataset } from 'chart.js/auto';
 import type {
   SPLMapping,
   SPLQuery as SPLQueryParams,
   Device
 } from '../../domain';
-import { MODAL_TYPES } from '../../composables/modal/constants';
+import { MODAL_TYPES } from '../modal/constants';
 import { volumeToDb, DB_MIN, DB_MAX } from '../../utils/audioUtils';
-import { usePagination } from '../../composables/usePagination';
-import { useNotification } from '../../composables/modal/useNotification';
+import { usePagination } from '../usePagination';
+import { useNotification } from '../modal/useNotification';
 
 export function useSplMapping() {
   const notification = useNotification();

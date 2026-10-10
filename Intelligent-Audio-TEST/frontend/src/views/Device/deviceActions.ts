@@ -6,7 +6,6 @@ import { MODAL_TYPES } from '../../composables/modal/constants';
 import { DeviceStatus, DeviceTabType } from '../../domain/enums';
 import type { DeviceTabTypeType } from '../../domain/enums';
 import type { DeviceUnion } from '@/domain';
-import { devicesApi } from '../../infrastructure/api/devicesApi';
 import type { DeviceBatchActionType } from '../../domain/model/device';
 import {
   activeTab,
@@ -94,7 +93,7 @@ async function runDeviceBatchAction(action: DeviceBatchActionType, title: string
     options: { closable: true },
     onConfirm: async () => {
       try {
-        const result = await devicesApi.batchAction(action, ids, params);
+        const result = await devicesPort.batchAction(action, ids, params);
         notification.success(result.idempotentReplay
           ? `${title}：命中幂等回放，未重复执行`
           : `${title}完成：成功 ${result.successCount ?? 0}/${result.total ?? ids.length}`);
@@ -161,7 +160,7 @@ export async function handleDeviceOperate(deviceId: string | number, operation: 
   if (!confirmed) return;
 
   try {
-    await devicesApi.control(deviceId, operation as DeviceBatchActionType, params);
+    await devicesPort.control(deviceId, operation as DeviceBatchActionType, params);
     notification.success(`${label}指令已下发`);
     await fetchAllDevices();
   } catch (error) {
