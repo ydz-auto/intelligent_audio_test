@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: '0.0.0.0',
+      // 放行所有 Host（Tailscale MagicDNS 域名、Cloudflare Tunnel 公网域名等远程访问）
+      allowedHosts: true,
       proxy: {
         '/api': {
           target: apiTarget,

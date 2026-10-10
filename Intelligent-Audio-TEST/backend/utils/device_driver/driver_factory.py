@@ -183,6 +183,20 @@ class DeviceDriverFactory:
 
         return None
 
+    def get_base_driver(self, system):
+        """按系统名返回基础驱动实例（Android / HarmonyOS）。
+
+        扫描设备、在线状态检测只关心物理设备本身，应始终使用基础驱动
+        （android_driver.AndroidDriver / harmony_driver.HarmonyDriver），
+        不走 keywords → 专用驱动（子类）的解析路径。
+        """
+        key = {
+            'android': 'Android',
+            'harmony': 'HarmonyOS',
+            'harmonyos': 'HarmonyOS',
+        }.get((system or '').lower())
+        return self._base_drivers.get(key)
+
     def get_driver_typed(
             self,
             app_type: AppType,

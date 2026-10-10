@@ -154,7 +154,7 @@ class DeviceController:
         all_devices = []
         
         # 1. 扫描 Android（不受 mock 模式影响，始终扫描真实设备）
-        android_driver = device_driver_factory.get_driver_for_device('Android')
+        android_driver = device_driver_factory.get_base_driver('Android')
         if android_driver:
             # 保存原始 mock 状态，临时关闭以扫描真实设备
             original_mock_mode = getattr(android_driver, '_mock_mode', False)
@@ -166,7 +166,7 @@ class DeviceController:
                 android_driver._mock_mode = original_mock_mode
             
         # 2. 扫描 iOS（不受 mock 模式影响）
-        ios_driver = device_driver_factory.get_driver_for_device('iOS')
+        ios_driver = device_driver_factory.get_base_driver('iOS')
         if ios_driver:
             original_mock_mode = getattr(ios_driver, '_mock_mode', False)
             if hasattr(ios_driver, '_mock_mode'):
@@ -176,7 +176,7 @@ class DeviceController:
                 ios_driver._mock_mode = original_mock_mode
             
         # 3. 扫描 HarmonyOS（不受 mock 模式影响）
-        harmony_driver = device_driver_factory.get_driver_for_device('HarmonyOS')
+        harmony_driver = device_driver_factory.get_base_driver('HarmonyOS')
         if harmony_driver:
             original_mock_mode = getattr(harmony_driver, '_mock_mode', False)
             if hasattr(harmony_driver, '_mock_mode'):
@@ -344,7 +344,7 @@ class DeviceController:
 
             # 创建设备后立即检查设备是否在线
             try:
-                driver = device_driver_factory.get_driver_for_device(new_device.system, keywords=new_device.keywords)
+                driver = device_driver_factory.get_base_driver(new_device.system)
                 if driver:
                     # 扫描当前系统的在线设备
                     online_devices = driver.scan()
@@ -449,7 +449,7 @@ class DeviceController:
             # 实际检查设备是否在线
             is_online = False
             try:
-                driver = device_driver_factory.get_driver_for_device(device.system)
+                driver = device_driver_factory.get_base_driver(device.system)
                 from backend.utils.web.log_handler import log_and_emit
                 if driver:
                     log_and_emit('DEBUG', 'DeviceHealthCheck', f'开始扫描 {device.system} 设备 {device.name} (ID: {device.id})', device_id=device.id, push_to_websocket=False)
@@ -512,7 +512,7 @@ class DeviceController:
         
         try:
             # 扫描 Android 设备 (使用 ADB，不受 mock 模式影响)
-            android_driver = device_driver_factory.get_driver_for_device('Android')
+            android_driver = device_driver_factory.get_base_driver('Android')
             if android_driver:
                 original_mock_mode = getattr(android_driver, '_mock_mode', False)
                 if hasattr(android_driver, '_mock_mode'):
@@ -523,7 +523,7 @@ class DeviceController:
                     android_driver._mock_mode = original_mock_mode
             
             # 扫描 iOS 设备（不受 mock 模式影响）
-            ios_driver = device_driver_factory.get_driver_for_device('iOS')
+            ios_driver = device_driver_factory.get_base_driver('iOS')
             if ios_driver:
                 original_mock_mode = getattr(ios_driver, '_mock_mode', False)
                 if hasattr(ios_driver, '_mock_mode'):
@@ -534,7 +534,7 @@ class DeviceController:
                     ios_driver._mock_mode = original_mock_mode
             
             # 扫描 HarmonyOS 设备（不受 mock 模式影响）
-            harmony_driver = device_driver_factory.get_driver_for_device('HarmonyOS')
+            harmony_driver = device_driver_factory.get_base_driver('HarmonyOS')
             if harmony_driver:
                 original_mock_mode = getattr(harmony_driver, '_mock_mode', False)
                 if hasattr(harmony_driver, '_mock_mode'):
