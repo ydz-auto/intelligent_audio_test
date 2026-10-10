@@ -269,7 +269,10 @@ class TestInt103FullConvergence:
         tc = _query(TaskCase, task_id=task_id)[0]
         assert tc.evaluation_status == 'completed', \
             f'评估完成后 evaluation_status 应 completed，实际 {tc.evaluation_status}'
-        assert tc.status == 'completed', f'复合状态应 completed，实际 {tc.status}'
+        # 复合 status 为终态即可：评估侧能构建轮次数据时 completed；无法构建时按
+        # INT-115/INT-118 skipped 语义显式收口（INT-115 交付后本场景走 skipped）
+        assert tc.status in ('completed', 'skipped'), \
+            f'复合状态应为终态 completed/skipped，实际 {tc.status}'
 
         in_progress, evaluating = _engine_counts(task_id)
         assert (in_progress, evaluating) == (0, 0), \
