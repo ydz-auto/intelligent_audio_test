@@ -2,7 +2,7 @@
 """测试用例创建 - 标注数据处理 Mixin
 
 从 audio_testcase_creation_service.py 拆分出的职责：
-- _inject_spl_and_device_from_annotations：从标注 JSON 提取 spl 和 playback_device_name
+- _inject_spl_and_device_from_annotations：从标注 JSON 提取 spl 和 playback_device_name；e2e 用例缺省回填自动选中设备
 - _extract_case_params_from_annotations：从原始标注提取用例参数
 """
 import re
@@ -13,19 +13,17 @@ class CreationAnnotationMixin:
 
     def _inject_spl_and_device_from_annotations(self, rounds_resolved, raw_annotations,
                                                   tt, effective_playback_device_id, spl):
-        """从标注 JSON 提取 spl 和 playback_device_name
+        """从标注 JSON 提取 spl 和 playback_device_name，并对 e2e 用例缺省回填播放设备
 
         通过 ACL 仓储 ListPlaybackDevices 获取设备 name→id 映射，避免直接 import PO。
         """
-        if not raw_annotations:
-            return
-
         dev_name_to_id = {}
         devices = self._playback_acl.list_playback_devices()
         for dev in devices:
             if not dev.get('is_deleted'):
                 dev_name_to_id.setdefault(dev.get('name'), dev.get('id'))
 
+        # rounds 音频条目自身的 playback_device_name → id 解析（不依赖标注数据）
         for round_item in rounds_resolved:
             if not isinstance(round_item, dict):
                 continue
@@ -37,53 +35,62 @@ class CreationAnnotationMixin:
                     if dev_name and dev_name in dev_name_to_id:
                         audio_item['playback_device_id'] = dev_name_to_id[dev_name]
 
-        for round_item in rounds_resolved:
-            if not isinstance(round_item, dict):
-                continue
-            for audio_item in round_item.get('audios', []):
-                if not isinstance(audio_item, dict):
+        if raw_annotations:
+            for round_item in rounds_resolved:
+                if not isinstance(round_item, dict):
                     continue
-                need_spl = audio_item.get('spl') is None
-                need_dev = not audio_item.get('playback_device_id')
-                if not need_spl and not need_dev:
-                    continue
-                for ann in raw_annotations:
-                    data = ann.get('data')
-                    if not isinstance(data, dict):
+                for audio_item in round_item.get('audios', []):
+                    if not isinstance(audio_item, dict):
                         continue
-                    segments = data.get('segments', [])
-                    if not isinstance(segments, list):
+                    need_spl = audio_item.get('spl') is None
+                    need_dev = not audio_item.get('playback_device_id')
+                    if not need_spl and not need_dev:
                         continue
-                    for seg in segments:
-                        if not isinstance(seg, dict):
+                    for ann in raw_annotations:
+                        data = ann.get('data')
+                        if not isinstance(data, dict):
                             continue
-                        if need_spl and audio_item.get('spl') is None:
-                            v = seg.get('spl')
-                            if v is not None:
-                                try:
-                                    audio_item['spl'] = float(v)
-                                except (TypeError, ValueError):
-                                    audio_item['spl'] = v
-                                need_spl = False
-                        if need_dev and not audio_item.get('playback_device_id'):
-                            dev_name = seg.get('playback_device_name') or seg.get('playbackDeviceName')
-                            if dev_name and dev_name in dev_name_to_id:
-                                audio_item['playback_device_id'] = dev_name_to_id[dev_name]
-                                need_dev = False
-                            elif not dev_name:
-                                v = seg.get('playback_device_id') or seg.get('playbackDeviceId')
-                                if v:
-                                    audio_item['playback_device_id'] = v
+                        segments = data.get('segments', [])
+                        if not isinstance(segments, list):
+                            continue
+                        for seg in segments:
+                            if not isinstance(seg, dict):
+                                continue
+                            if need_spl and audio_item.get('spl') is None:
+                                v = seg.get('spl')
+                                if v is not None:
+                                    try:
+                                        audio_item['spl'] = float(v)
+                                    except (TypeError, ValueError):
+                                        audio_item['spl'] = v
+                                    need_spl = False
+                            if need_dev and not audio_item.get('playback_device_id'):
+                                dev_name = seg.get('playback_device_name') or seg.get('playbackDeviceName')
+                                if dev_name and dev_name in dev_name_to_id:
+                                    audio_item['playback_device_id'] = dev_name_to_id[dev_name]
                                     need_dev = False
+                                elif not dev_name:
+                                    v = seg.get('playback_device_id') or seg.get('playbackDeviceId')
+                                    if v:
+                                        audio_item['playback_device_id'] = v
+                                        need_dev = False
+                            if not need_spl and not need_dev:
+                                break
                         if not need_spl and not need_dev:
                             break
-                    if not need_spl and not need_dev:
-                        break
-            if tt == 'e2e':
+
+        if tt == 'e2e':
+            # task_service 契约：e2e 用例逐音频必须指定 playback_device_id，
+            # 标注未命中的条目回填自动选中的 dry 设备与默认 spl
+            for round_item in rounds_resolved:
+                if not isinstance(round_item, dict):
+                    continue
                 for audio_item in round_item.get('audios', []):
-                    if isinstance(audio_item, dict) and not audio_item.get('playback_device_id'):
+                    if not isinstance(audio_item, dict):
+                        continue
+                    if not audio_item.get('playback_device_id'):
                         audio_item['playback_device_id'] = effective_playback_device_id
-                    if isinstance(audio_item, dict) and audio_item.get('spl') is None:
+                    if audio_item.get('spl') is None:
                         audio_item['spl'] = spl if spl else 65.0
 
     def _extract_case_params_from_annotations(self, rounds_resolved, raw_annotations,
