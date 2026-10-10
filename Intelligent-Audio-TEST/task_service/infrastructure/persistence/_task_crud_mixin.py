@@ -121,6 +121,11 @@ class TaskCrudMixin:
             case_devices: 用例级设备选择（执行域 P0 新增）：
                 [{"case_id": str, "device_type": str, "device_id": str, "lab_id": int|None}, ...]，
                 按 case_id 归一化后写入 TaskCase.device_type / device_id / lab_id。
+
+        说明（INT-104）：未显式指定 device_type 的用例由配置形态派生，
+        与 PATCH 用例路径 _apply_case_action 口径一致——device_type 是
+        执行路由唯一依据（task_dispatch），NULL 会兜底 physical 把
+        API 任务误路由到 E2E 执行器。
         """
         # 归一化用例级设备选择: {case_id: {device_type, device_id, lab_id}}
         device_map: Dict[str, Dict[str, Any]] = {}
@@ -129,16 +134,33 @@ class TaskCrudMixin:
             if case_id is not None:
                 device_map[str(case_id)] = item
 
+        from shared.models.common_enums import DeviceType
+        from shared.utils.testcase_helpers import derive_case_test_type
+        from task_service.infrastructure.persistence.models import TestCase
+        missing_type_ids = [str(c) for c in case_ids
+                            if not device_map.get(str(c), {}).get('device_type')]
+        case_config_map: Dict[str, Any] = {}
+        if missing_type_ids:
+            case_config_map = dict(
+                session.query(TestCase.id, TestCase.config)
+                .filter(TestCase.id.in_(missing_type_ids)).all()
+            )
+
         # 关联用例
         for case_id in case_ids:
             dev = device_map.get(str(case_id), {})
+            device_type = dev.get('device_type') or None
+            if device_type is None:
+                derived = derive_case_test_type(case_config_map.get(str(case_id)))
+                device_type = (DeviceType.PHYSICAL.value if derived == 'e2e'
+                               else DeviceType.HTTP_API.value)
             session.add(TaskCase(
                 task_id=task_id,
                 test_case_id=case_id,
                 status=TaskCaseStatus.PENDING,
                 execution_status=ExecutionStatus.PENDING,
                 evaluation_status=EvaluationStatus.PENDING,
-                device_type=dev.get('device_type') or None,
+                device_type=device_type,
                 device_id=str(dev['device_id']) if dev.get('device_id') is not None else None,
                 lab_id=dev.get('lab_id') or None,
                 created_at=now,
