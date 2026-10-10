@@ -11,7 +11,7 @@ from shared.utils.log_handler import log_not_emit
 logger = logging.getLogger(__name__)
 
 # 规则可编辑字段（枚举化白名单，拒绝任意字段透传）
-_RULE_EDITABLE_FIELDS = {'name', 'threshold_value', 'severity', 'notify_email', 'enabled'}
+_RULE_EDITABLE_FIELDS = {'name', 'metric_type', 'threshold_value', 'severity', 'notify_email', 'enabled'}
 
 
 class DeviceAlarmRuleService:
@@ -66,11 +66,13 @@ class DeviceAlarmRuleService:
                 return {'success': False, 'message': '未找到告警规则', 'data': None, 'code': 404}
             update_fields = {k: v for k, v in data.items()
                              if k in _RULE_EDITABLE_FIELDS and v is not None}
-            if 'metric_type' in data and data['metric_type'] is not None:
+            if data.get('metric_type') is not None:
                 metric = self._validate_metric(data['metric_type'])
                 if not metric:
                     return {'success': False, 'message': f"不支持的告警指标: {data['metric_type']}",
                             'data': None, 'code': 400}
+                # 以校验后的枚举值落库（metric_type 属可编辑字段，不接受白名单外的透传值）
+                update_fields['metric_type'] = metric
             if not update_fields:
                 return {'success': False, 'message': '无可更新字段', 'data': None, 'code': 400}
             rule = self.repo.update_alarm_rule(rule_id, update_fields)

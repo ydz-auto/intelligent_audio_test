@@ -18,7 +18,7 @@ from datetime import datetime
 from typing import Tuple
 
 from device_service.domain.repositories import DeviceRepositoryInterface
-from shared.models.common_enums import DeviceOperation
+from shared.models.common_enums import DeviceOperation, DeviceStatusEventType
 from shared.utils.log_handler import log_not_emit
 
 logger = logging.getLogger(__name__)
@@ -79,7 +79,7 @@ class DeviceOperationService:
             result = self.executor.execute(device, operation, params or {})
             self._monitor.record_status_event(
                 device_id=device_id,
-                event_type='operation',
+                event_type=DeviceStatusEventType.OPERATION.value,
                 from_status=device.status,
                 to_status=device.status,
                 source='operation',
@@ -99,7 +99,8 @@ class DeviceOperationService:
             # 失败也落事件（success=False），供趋势/告警侧观测
             try:
                 self._monitor.record_status_event(
-                    device_id=device_id, event_type='operation',
+                    device_id=device_id,
+                    event_type=DeviceStatusEventType.OPERATION.value,
                     source='operation', success=False,
                     detail={'operation': operation, 'error': str(e)[:500]},
                 )

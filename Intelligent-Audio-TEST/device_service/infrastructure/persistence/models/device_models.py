@@ -94,6 +94,11 @@ class DeviceGroup(Base):
     对设备进行逻辑分组，方便管理和批量操作。
     """
     __tablename__ = 'device_groups'
+    __table_args__ = (
+        # 并发重名兜底（应用层重名检查存在 TOCTOU）：仅约束未删除分组
+        Index('uq_device_group_name_active', 'name', unique=True,
+              postgresql_where=text('deleted = false')),
+    )
     id = Column(String(50), primary_key=True, comment='分组唯一标识符 (UUID)')
     name = Column(String(100), nullable=False, index=True, comment='分组名称')
     description = Column(Text, comment='分组描述')

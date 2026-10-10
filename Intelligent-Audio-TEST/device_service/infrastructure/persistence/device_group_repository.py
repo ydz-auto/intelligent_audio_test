@@ -11,6 +11,8 @@ from typing import Dict, List, Optional
 
 import uuid
 
+from sqlalchemy import func
+
 from shared.models.database import get_db_session
 from device_service.infrastructure.persistence.models import (
     Device,
@@ -36,6 +38,18 @@ def _group_po_to_entity(po: DeviceGroup, member_device_ids: Optional[List[int]] 
     )
 
 
+def _existing_device_ids(session, device_ids: List[int]) -> set:
+    """单次 IN 查询过滤出真实存在且未删除的设备 ID（拒绝悬空成员行）。"""
+    ids = [int(d) for d in (device_ids or [])]
+    if not ids:
+        return set()
+    return {
+        row[0] for row in session.query(Device.id).filter(
+            Device.id.in_(ids), Device.deleted == False,  # noqa: E712
+        ).all()
+    }
+
+
 class DeviceGroupRepository(DeviceGroupRepositoryInterface):
     """设备分组仓储"""
 
@@ -51,13 +65,15 @@ class DeviceGroupRepository(DeviceGroupRepositoryInterface):
         )
         session.add(group)
         session.flush()
-        for device_id in (member_device_ids or []):
+        # 初始成员与 add_devices 同口径：过滤不存在/已删除设备，不写悬空成员行
+        valid_ids = sorted(_existing_device_ids(session, member_device_ids))
+        for device_id in valid_ids:
             session.add(DeviceGroupMember(
-                group_id=group.id, device_id=int(device_id),
+                group_id=group.id, device_id=device_id,
                 created_by_user_id=data.get('created_by_user_id'),
             ))
         session.commit()
-        return _group_po_to_entity(group, member_device_ids or [])
+        return _group_po_to_entity(group, valid_ids)
 
     def update_group(self, group_id: str, update_fields: dict) -> Optional[DeviceGroupEntity]:
         session = get_db_session()
@@ -128,19 +144,20 @@ class DeviceGroupRepository(DeviceGroupRepositoryInterface):
         group = session.query(DeviceGroup).filter_by(id=group_id, deleted=False).first()
         if not group:
             return 0
-        existing = {
+        device_ids = [int(d) for d in device_ids]
+        existing_members = {
             m.device_id for m in
             session.query(DeviceGroupMember).filter(
                 DeviceGroupMember.group_id == group_id,
-                DeviceGroupMember.device_id.in_([int(d) for d in device_ids]),
+                DeviceGroupMember.device_id.in_(device_ids),
             ).all()
         }
+        existing_devices = _existing_device_ids(session, device_ids)
         added = 0
         for device_id in device_ids:
-            device_id = int(device_id)
-            if device_id in existing:
+            if device_id in existing_members:
                 continue
-            if not session.query(Device).filter_by(id=device_id, deleted=False).first():
+            if device_id not in existing_devices:
                 continue
             session.add(DeviceGroupMember(group_id=group_id, device_id=device_id))
             added += 1
@@ -160,12 +177,15 @@ class DeviceGroupRepository(DeviceGroupRepositoryInterface):
         if not group_ids:
             return {}
         session = get_db_session()
-        rows = session.query(DeviceGroupMember).filter(
+        rows = session.query(
+            DeviceGroupMember.group_id,
+            func.count(DeviceGroupMember.id),
+        ).filter(
             DeviceGroupMember.group_id.in_(group_ids)
-        ).all()
+        ).group_by(DeviceGroupMember.group_id).all()
         counts: Dict[str, int] = {gid: 0 for gid in group_ids}
-        for row in rows:
-            counts[row.group_id] = counts.get(row.group_id, 0) + 1
+        for group_id, count in rows:
+            counts[group_id] = count
         return counts
 
     def get_group_device_ids(self, group_id: str) -> List[int]:

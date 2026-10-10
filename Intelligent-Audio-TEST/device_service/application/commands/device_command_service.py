@@ -16,6 +16,7 @@ from shared.utils.log_handler import log_not_emit, log_and_emit
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from device_service.domain.repositories import DeviceRepositoryInterface
 from shared.config.query_constants import QueryConstants
+from shared.models.common_enums import DeviceStatusEventType
 
 logger = logging.getLogger(__name__)
 
@@ -281,7 +282,10 @@ class DeviceCommandService:
             except Exception as scan_error:
                 logger.debug("健康检查扫描设备时发生异常 device_id=%s error=%s", device_data.get('id'), scan_error, exc_info=True)
 
-            new_status = 'online' if is_online else 'offline'
+            new_status = (
+                DeviceStatusEventType.ONLINE.value if is_online
+                else DeviceStatusEventType.OFFLINE.value
+            )
             old_status = device_data.get('status')
             self.repo.update_device_status(
                 device_data['id'], new_status,
@@ -291,7 +295,7 @@ class DeviceCommandService:
             # 状态历史事件落库 + DEVICE_EVENTS 发布（INT-80；INT-69 收敛至单一 EventBus 链路）
             device_monitor_service.record_status_event(
                 device_id=device_data['id'],
-                event_type='health_check',
+                event_type=DeviceStatusEventType.HEALTH_CHECK.value,
                 from_status=old_status,
                 to_status=new_status,
                 source='health_check',
@@ -301,7 +305,7 @@ class DeviceCommandService:
             if new_status != old_status:
                 device_monitor_service.record_status_event(
                     device_id=device_data['id'],
-                    event_type=new_status,  # online / offline
+                    event_type=new_status,
                     from_status=old_status,
                     to_status=new_status,
                     source='health_check',

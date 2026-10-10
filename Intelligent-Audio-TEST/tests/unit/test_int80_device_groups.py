@@ -29,18 +29,22 @@ class FakeDeviceGroupRepository:
         self.existing_device_ids = {1, 2, 3}
         self._seq = 0
 
-    def _add(self, group_id, name, description='', group_type='test'):
+    def _add(self, group_id, name, description='', group_type='test', member_device_ids=None):
         self.groups[group_id] = DeviceGroupEntity(
-            id=group_id, name=name, description=description, group_type=group_type)
+            id=group_id, name=name, description=description, group_type=group_type,
+            member_device_ids=list(member_device_ids or []))
         self.members[group_id] = set()
 
     def create_group(self, data, member_device_ids=None):
         self._seq += 1
         group_id = data.get('id') or f'g{self._seq}'
+        # 对齐真实仓储语义：初始成员过滤不存在/已删除设备
+        valid_ids = sorted(int(did) for did in (member_device_ids or [])
+                           if int(did) in self.existing_device_ids)
         self._add(group_id, data['name'], data.get('description', ''),
-                  data.get('group_type', 'test'))
-        for did in (member_device_ids or []):
-            self.members[group_id].add(int(did))
+                  data.get('group_type', 'test'), member_device_ids=valid_ids)
+        for did in valid_ids:
+            self.members[group_id].add(did)
         return self.groups[group_id]
 
     def update_group(self, group_id, update_fields):
@@ -148,6 +152,14 @@ class TestCreateGroup:
         result = command.create({'name': 'g', 'group_type': 'unknown-type'})
         assert result['success'] is True
         assert result['data']['group_type'] == 'test'
+
+    def test_create_filters_nonexistent_members(self, command, repo):
+        """审计修复：初始成员不写悬空行，device_count 取实际成员数"""
+        result = command.create({'name': '混入幽灵', 'device_ids': [1, 99999]})
+        assert result['success'] is True
+        group_id = result['data']['id']
+        assert repo.members[group_id] == {1}
+        assert result['data']['device_count'] == 1
 
 
 class TestUpdateDeleteGroup:

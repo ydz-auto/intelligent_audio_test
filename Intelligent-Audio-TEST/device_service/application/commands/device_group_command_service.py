@@ -50,12 +50,14 @@ class DeviceGroupCommandService:
                 'group_type': self._validate_group_type(data.get('group_type')),
                 'created_by_user_id': data.get('created_by_user_id'),
             }, member_device_ids=member_ids)
-            self._log('INFO', f"创建设备分组: {name} (id={group.id}, 设备数={len(member_ids)})",
+            # 仓储已过滤不存在/已删除设备，device_count 取实际写入的成员数
+            actual_count = len(group.member_device_ids)
+            self._log('INFO', f"创建设备分组: {name} (id={group.id}, 设备数={actual_count})",
                       category='device')
             return {
                 'success': True,
                 'message': '设备分组创建成功',
-                'data': {**group.to_dict(), 'device_count': len(member_ids)},
+                'data': {**group.to_dict(), 'device_count': actual_count},
                 'code': 201,
             }
         except Exception as e:

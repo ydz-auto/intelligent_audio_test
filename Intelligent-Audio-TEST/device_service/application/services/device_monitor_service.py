@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 from datetime import datetime
@@ -24,7 +25,13 @@ from device_service.domain.repositories import (
     DeviceMonitorRepositoryInterface,
     DeviceRepositoryInterface,
 )
-from shared.models.common_enums import AlarmMetricType, AlarmSeverity
+from shared.config.query_constants import QueryConstants
+from shared.models.common_enums import (
+    AlarmMetricType,
+    AlarmSeverity,
+    AuditEvent,
+    AuditLogCategory,
+)
 from shared.utils.log_handler import log_not_emit
 
 logger = logging.getLogger(__name__)
@@ -120,13 +127,25 @@ class DeviceMonitorService:
         if not rules:
             return []
         if devices is None:
-            result = self.device_repo.list_devices(page=1, per_page=99999)
+            # 告警评估必须覆盖全部设备，单次全量拉取（UNLIMITED_PAGE_SIZE 为全量语义上限）
+            result = self.device_repo.list_devices(
+                page=1, per_page=QueryConstants.UNLIMITED_PAGE_SIZE)
             devices = result.get('items') or []
+        if not devices:
+            return []
+
+        # 指标数据按设备一次聚合，规则×设备循环只读快照（消除逐设备 N+1 查询）
+        device_ids = [d['id'] for d in devices]
+        snapshots = {
+            'failure_counts': self.monitor_repo.count_health_check_failures_batch(device_ids),
+            'last_online_events': self.monitor_repo.get_last_online_events(device_ids),
+            'latest_health': self.monitor_repo.get_latest_health_details(device_ids),
+        }
 
         triggered = []
         for rule in rules:
             for device in devices:
-                metric_value, context = self._collect_metric(rule, device)
+                metric_value, context = self._collect_metric(rule, device, snapshots)
                 if metric_value is None:
                     continue
                 if not self._exceeds_threshold(rule['metric_type'], metric_value, float(rule['threshold_value'])):
@@ -144,14 +163,17 @@ class DeviceMonitorService:
             return value <= threshold  # 低电量：低于阈值告警
         return value >= threshold  # 离线时长/失败次数/CPU/内存：超过阈值告警
 
-    def _collect_metric(self, rule: dict, device: dict) -> tuple:
-        """采集规则指标当前值；无数据返回 (None, None) 不评估。"""
+    def _collect_metric(self, rule: dict, device: dict, snapshots: dict) -> tuple:
+        """采集规则指标当前值；无数据返回 (None, None) 不评估。
+
+        指标数据取自 evaluate_alarm_rules 预聚合的按设备快照，不再逐设备查询。
+        """
         metric = rule['metric_type']
         device_id = device['id']
         if metric == AlarmMetricType.OFFLINE_DURATION.value:
             if device.get('status') != 'offline':
                 return None, None
-            event = self.monitor_repo.get_last_online_event(device_id)
+            event = snapshots['last_online_events'].get(device_id)
             baseline = None
             if event and event.get('created_at'):
                 try:
@@ -174,11 +196,11 @@ class DeviceMonitorService:
             return seconds, {'since': baseline.isoformat()}
 
         if metric == AlarmMetricType.HEALTH_CHECK_FAILURES.value:
-            return self.monitor_repo.count_health_check_failures(device_id), None
+            return snapshots['failure_counts'].get(device_id, 0), None
 
         if metric in (AlarmMetricType.CPU.value, AlarmMetricType.MEMORY.value,
                       AlarmMetricType.BATTERY.value):
-            detail = self.monitor_repo.get_latest_health_detail(device_id) or {}
+            detail = snapshots['latest_health'].get(device_id) or {}
             metrics = detail.get('metrics') or {}
             value = metrics.get(metric)
             if value is None:
@@ -227,12 +249,29 @@ class DeviceMonitorService:
 
     @staticmethod
     def _log_alarm_triggered(alarm: dict) -> None:
+        """告警触发审计（旁路）：AuditEvent.DEVICE_ALARM_TRIGGERED 落 logs（category=device）。
+
+        device_service 内部触发无网关请求上下文，直接经 log_not_emit 写审计事件，
+        payload 结构对齐 api_gateway write_device_audit（content 为含 event 键的 JSON）。
+        """
         try:
+            payload = {
+                'event': AuditEvent.DEVICE_ALARM_TRIGGERED.value,
+                'alarm_id': alarm.get('id'),
+                'rule_id': alarm.get('rule_id'),
+                'rule_name': alarm.get('rule_name'),
+                'device_id': alarm.get('device_id'),
+                'device_name': alarm.get('device_name'),
+                'metric_type': alarm.get('metric_type'),
+                'severity': alarm.get('severity'),
+                'trigger_value': alarm.get('trigger_value'),
+                'threshold_value': alarm.get('threshold_value'),
+                'content': alarm.get('content'),
+            }
             log_not_emit(
                 'WARNING', 'DeviceMonitor',
-                f"设备告警触发: [{alarm.get('severity')}] {alarm.get('content')} "
-                f"(alarm_id={alarm.get('id')})",
-                category='device', source='backend',
+                json.dumps(payload, ensure_ascii=False, default=str),
+                category=AuditLogCategory.DEVICE.value, source='backend',
                 device_id=alarm.get('device_id'),
             )
         except Exception:

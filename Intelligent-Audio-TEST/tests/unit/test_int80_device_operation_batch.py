@@ -64,14 +64,14 @@ class FakeMonitorRepo:
     def list_enabled_alarm_rules(self):
         return []
 
-    def get_last_online_event(self, device_id):
-        return None
+    def get_last_online_events(self, device_ids):
+        return {}
 
-    def count_health_check_failures(self, device_id):
-        return 0
+    def count_health_check_failures_batch(self, device_ids):
+        return {}
 
-    def get_latest_health_detail(self, device_id):
-        return None
+    def get_latest_health_details(self, device_ids):
+        return {}
 
     def has_unresolved_alarm(self, rule_id, device_id):
         return False

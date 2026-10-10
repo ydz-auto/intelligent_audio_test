@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List, Optional, Sequence
@@ -102,7 +103,8 @@ def send_email(
                 smtp.sendmail(sender, addrs, msg.as_string())
         else:
             with smtplib.SMTP(BaseConfig.SMTP_HOST, BaseConfig.SMTP_PORT, timeout=10) as smtp:
-                smtp.starttls()
+                # 校验服务器证书：STARTTLS 明文升级不验证书时 SMTP 凭据可被中间人截获
+                smtp.starttls(context=ssl.create_default_context())
                 if BaseConfig.SMTP_USER:
                     smtp.login(BaseConfig.SMTP_USER, BaseConfig.SMTP_PASSWORD)
                 smtp.sendmail(sender, addrs, msg.as_string())

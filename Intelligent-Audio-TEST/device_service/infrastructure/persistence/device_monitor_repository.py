@@ -6,9 +6,12 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import List, Optional
 
+from sqlalchemy import func
+
+from shared.models.common_enums import AlarmStatus, DeviceStatusEventType
 from shared.models.database import get_db_session
 from device_service.infrastructure.persistence.models import (
     DeviceAlarm,
@@ -113,40 +116,76 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
             'pages': pagination.pages,
         }
 
-    def count_health_check_failures(self, device_id: int) -> int:
-        """统计设备最近一次成功健康检查之后的连续失败次数"""
-        session = get_db_session()
-        last_success = session.query(DeviceStatusEvent).filter(
-            DeviceStatusEvent.device_id == device_id,
-            DeviceStatusEvent.event_type == 'health_check',
-            DeviceStatusEvent.success == True,  # noqa: E712
-        ).order_by(DeviceStatusEvent.created_at.desc()).first()
-        query = session.query(DeviceStatusEvent).filter(
-            DeviceStatusEvent.device_id == device_id,
-            DeviceStatusEvent.event_type == 'health_check',
-            DeviceStatusEvent.success == False,  # noqa: E712
-        )
-        if last_success:
-            query = query.filter(DeviceStatusEvent.created_at > last_success.created_at)
-        return query.count()
+    def count_health_check_failures_batch(self, device_ids: List[int]) -> dict:
+        """批量统计各设备最近一次成功健康检查之后的连续失败次数。
 
-    def get_last_online_event(self, device_id: int) -> Optional[dict]:
-        """查询设备最后一次 online/offline 状态事件（供离线时长阈值计算）"""
+        单次查询取回全部设备的 health_check 事件（(device_id, created_at) 复合索引），
+        内存内按设备回放计数，替代逐设备 N+1 查询。
+        """
+        if not device_ids:
+            return {}
         session = get_db_session()
-        po = session.query(DeviceStatusEvent).filter(
-            DeviceStatusEvent.device_id == device_id,
-            DeviceStatusEvent.event_type.in_(['online', 'offline']),
-        ).order_by(DeviceStatusEvent.created_at.desc()).first()
-        return _event_to_dict(po) if po else None
+        rows = session.query(
+            DeviceStatusEvent.device_id,
+            DeviceStatusEvent.success,
+        ).filter(
+            DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]),
+            DeviceStatusEvent.event_type == DeviceStatusEventType.HEALTH_CHECK.value,
+        ).order_by(
+            DeviceStatusEvent.device_id,
+            DeviceStatusEvent.created_at,
+            DeviceStatusEvent.id,  # created_at 并列时按自增 id 定序（追加写单调）
+        ).all()
+        counts = {int(d): 0 for d in device_ids}
+        for device_id, success in rows:
+            if success:
+                counts[device_id] = 0  # 成功健康检查重置连续失败计数
+            else:
+                counts[device_id] = counts.get(device_id, 0) + 1
+        return counts
 
-    def get_latest_health_detail(self, device_id: int) -> Optional[dict]:
-        """查询设备最近一次健康检查的 detail（含 cpu/memory/battery 上报数据时可得）"""
+    def get_last_online_events(self, device_ids: List[int]) -> dict:
+        """批量查询各设备最后一次 online/offline 状态事件（供离线时长阈值计算）。
+
+        事件表为追加写，max(id) 即最新事件（自增无并列，避免 created_at 同刻含糊）。
+        """
+        if not device_ids:
+            return {}
         session = get_db_session()
-        po = session.query(DeviceStatusEvent).filter(
-            DeviceStatusEvent.device_id == device_id,
-            DeviceStatusEvent.event_type == 'health_check',
-        ).order_by(DeviceStatusEvent.created_at.desc()).first()
-        return dict(po.detail or {}) if po and po.detail else None
+        latest = session.query(
+            DeviceStatusEvent.device_id,
+            func.max(DeviceStatusEvent.id).label('max_id'),
+        ).filter(
+            DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]),
+            DeviceStatusEvent.event_type.in_(
+                [DeviceStatusEventType.ONLINE.value, DeviceStatusEventType.OFFLINE.value]),
+        ).group_by(DeviceStatusEvent.device_id).subquery()
+        rows = session.query(DeviceStatusEvent).join(
+            latest,
+            DeviceStatusEvent.id == latest.c.max_id,
+        ).all()
+        return {po.device_id: _event_to_dict(po) for po in rows}
+
+    def get_latest_health_details(self, device_ids: List[int]) -> dict:
+        """批量查询各设备最近一次健康检查的 detail（含 cpu/memory/battery 上报数据时可得）。"""
+        if not device_ids:
+            return {}
+        session = get_db_session()
+        latest = session.query(
+            DeviceStatusEvent.device_id,
+            func.max(DeviceStatusEvent.id).label('max_id'),
+        ).filter(
+            DeviceStatusEvent.device_id.in_([int(d) for d in device_ids]),
+            DeviceStatusEvent.event_type == DeviceStatusEventType.HEALTH_CHECK.value,
+        ).group_by(DeviceStatusEvent.device_id).subquery()
+        rows = session.query(DeviceStatusEvent).join(
+            latest,
+            DeviceStatusEvent.id == latest.c.max_id,
+        ).all()
+        return {
+            po.device_id: dict(po.detail or {})
+            for po in rows if po.detail
+        }
 
     def update_alarm_email(self, alarm_id: int, sent: bool, error: str = '') -> None:
         """回写告警邮件发送结果"""
@@ -237,7 +276,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
             device_name=data.get('device_name'),
             metric_type=data['metric_type'],
             severity=data.get('severity') or 'warning',
-            status='active',
+            status=AlarmStatus.ACTIVE.value,
             trigger_value=data.get('trigger_value'),
             threshold_value=data.get('threshold_value'),
             content=data.get('content'),
@@ -271,9 +310,9 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
         """确认告警：active → acknowledged（已恢复/已确认的不可重复确认）"""
         session = get_db_session()
         po = session.query(DeviceAlarm).filter_by(id=alarm_id).first()
-        if not po or po.status != 'active':
+        if not po or po.status != AlarmStatus.ACTIVE.value:
             return None
-        po.status = 'acknowledged'
+        po.status = AlarmStatus.ACKNOWLEDGED.value
         po.acknowledged_at = datetime.now()
         po.acknowledged_by = acknowledged_by or ''
         session.commit()
@@ -282,9 +321,9 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
     def get_alarm_stats(self) -> dict:
         session = get_db_session()
         return {
-            'active': session.query(DeviceAlarm).filter_by(status='active').count(),
-            'acknowledged': session.query(DeviceAlarm).filter_by(status='acknowledged').count(),
-            'resolved': session.query(DeviceAlarm).filter_by(status='resolved').count(),
+            'active': session.query(DeviceAlarm).filter_by(status=AlarmStatus.ACTIVE.value).count(),
+            'acknowledged': session.query(DeviceAlarm).filter_by(status=AlarmStatus.ACKNOWLEDGED.value).count(),
+            'resolved': session.query(DeviceAlarm).filter_by(status=AlarmStatus.RESOLVED.value).count(),
             'total': session.query(DeviceAlarm).count(),
         }
 
@@ -294,7 +333,7 @@ class DeviceMonitorRepository(DeviceMonitorRepositoryInterface):
         return session.query(DeviceAlarm).filter(
             DeviceAlarm.rule_id == rule_id,
             DeviceAlarm.device_id == device_id,
-            DeviceAlarm.status.in_(['active', 'acknowledged']),
+            DeviceAlarm.status.in_([AlarmStatus.ACTIVE.value, AlarmStatus.ACKNOWLEDGED.value]),
         ).first() is not None
 
 

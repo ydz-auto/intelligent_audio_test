@@ -56,28 +56,36 @@ class FakeMonitorRepo:
         return {'items': items, 'total': len(items), 'page': page,
                 'per_page': per_page, 'pages': 1}
 
-    def count_health_check_failures(self, device_id):
-        count = 0
-        for event in reversed(self.events):
-            if event['device_id'] != device_id:
-                continue
-            if event.get('event_type') != 'health_check':
+    def count_health_check_failures_batch(self, device_ids):
+        counts = {int(d): 0 for d in device_ids}
+        for event in sorted(self.events, key=lambda e: e.get('created_at') or ''):
+            if event.get('event_type') != 'health_check' or event['device_id'] not in counts:
                 continue
             if event.get('success'):
-                break
-            count += 1
-        return count
+                counts[event['device_id']] = 0
+            else:
+                counts[event['device_id']] += 1
+        return counts
 
-    def get_last_online_event(self, device_id):
-        candidates = [e for e in self.events
-                      if e['device_id'] == device_id and e.get('event_type') in ('online', 'offline')]
-        return candidates[-1] if candidates else None
+    def get_last_online_events(self, device_ids):
+        ids = {int(d) for d in device_ids}
+        latest = {}
+        for e in self.events:
+            if e['device_id'] in ids and e.get('event_type') in ('online', 'offline'):
+                current = latest.get(e['device_id'])
+                if current is None or (e.get('created_at') or '') >= (current.get('created_at') or ''):
+                    latest[e['device_id']] = e
+        return latest
 
-    def get_latest_health_detail(self, device_id):
-        candidates = [e for e in self.events
-                      if e['device_id'] == device_id and e.get('event_type') == 'health_check'
-                      and e.get('detail', {}).get('metrics')]
-        return candidates[-1]['detail'] if candidates else None
+    def get_latest_health_details(self, device_ids):
+        ids = {int(d) for d in device_ids}
+        latest = {}
+        for e in self.events:
+            if e['device_id'] in ids and e.get('event_type') == 'health_check':
+                current = latest.get(e['device_id'])
+                if current is None or (e.get('created_at') or '') >= (current.get('created_at') or ''):
+                    latest[e['device_id']] = e
+        return {did: e['detail'] for did, e in latest.items() if e.get('detail')}
 
     # --- 告警规则 ---
     def list_enabled_alarm_rules(self):
@@ -91,6 +99,13 @@ class FakeMonitorRepo:
 
     def get_alarm_rule(self, rule_id):
         return next((dict(r) for r in self.rules if r['id'] == rule_id), None)
+
+    def update_alarm_rule(self, rule_id, update_fields):
+        rule = next((r for r in self.rules if r['id'] == rule_id), None)
+        if not rule:
+            return None
+        rule.update(update_fields)
+        return dict(rule)
 
     # --- 告警记录 ---
     def create_alarm(self, data):
@@ -384,6 +399,77 @@ class TestStatusEventPublishing:
             assert payload_arg['device_id'] == 1
             published['channel'] = channel_arg
         assert published['channel'].value == 'device_events'
+
+
+class TestAlarmRuleUpdate:
+    """审计修复：metric_type 纳入可编辑白名单（不再静默丢弃）"""
+
+    @pytest.fixture
+    def rule_service(self, monitor_repo):
+        from device_service.application.commands.device_alarm_rule_service import DeviceAlarmRuleService
+        return DeviceAlarmRuleService(repo=monitor_repo)
+
+    def test_metric_type_editable(self, rule_service, monitor_repo):
+        rule = rule_service.create({
+            'name': 'CPU高', 'metric_type': AlarmMetricType.CPU.value,
+            'threshold_value': 90})['data']
+        result = rule_service.update(rule['id'], {'metric_type': AlarmMetricType.MEMORY.value})
+        assert result['success'] is True
+        assert result['data']['metric_type'] == AlarmMetricType.MEMORY.value
+        assert monitor_repo.get_alarm_rule(rule['id'])['metric_type'] == AlarmMetricType.MEMORY.value
+
+    def test_metric_type_invalid_rejected(self, rule_service):
+        rule = rule_service.create({
+            'name': 'CPU高', 'metric_type': AlarmMetricType.CPU.value,
+            'threshold_value': 90})['data']
+        result = rule_service.update(rule['id'], {'metric_type': 'galaxy_temperature'})
+        assert result['success'] is False
+        assert result['code'] == 400
+
+
+class TestAlarmTriggerAudit:
+    """审计修复：DEVICE_ALARM_TRIGGERED 接入审计事件（content 为含 event 键的 JSON）"""
+
+    def test_trigger_writes_audit_event(self, monitor, monitor_repo):
+        from shared.models.common_enums import AuditEvent
+        monitor_repo.create_alarm_rule({
+            'name': '离线告警', 'metric_type': AlarmMetricType.OFFLINE_DURATION.value,
+            'threshold_value': 60, 'severity': 'warning', 'notify_email': False,
+            'enabled': True,
+        })
+        with patch('device_service.application.services.device_monitor_service.log_not_emit') as log_mock:
+            triggered = monitor.evaluate_alarm_rules([
+                _device(1, status='offline', last_online_at=datetime.now() - timedelta(hours=2))])
+        assert len(triggered) == 1
+        log_mock.assert_called_once()
+        args, kwargs = log_mock.call_args
+        payload = json.loads(args[2])
+        assert payload['event'] == AuditEvent.DEVICE_ALARM_TRIGGERED.value
+        assert payload['alarm_id'] == triggered[0]['id']
+        assert kwargs['category'] == 'device'
+
+
+class TestSmtpStarttlsCertificate:
+    """审计修复：STARTTLS 升级必须校验服务器证书（防中间人截获凭据）"""
+
+    def test_starttls_uses_verifying_ssl_context(self, monkeypatch):
+        import ssl
+        from shared.infrastructure.config import BaseConfig
+        from shared.utils import email_sender
+        # BaseConfig 类属性首import即冻结，混合收集下 import 顺序不定，显式 patch 保证确定性
+        monkeypatch.setattr(BaseConfig, 'SMTP_HOST', 'smtp.mock.local', raising=False)
+        monkeypatch.setattr(BaseConfig, 'ALERT_EMAIL_RECIPIENTS', 'oncall@example.com', raising=False)
+        monkeypatch.setattr(BaseConfig, 'SMTP_USE_SSL', False, raising=False)
+        monkeypatch.setattr(BaseConfig, 'SMTP_PORT', 587, raising=False)
+        monkeypatch.setattr(BaseConfig, 'SMTP_USER', '', raising=False)
+        with patch('shared.utils.email_sender.smtplib.SMTP') as smtp_cls:
+            smtp_instance = MagicMock()
+            smtp_cls.return_value.__enter__.return_value = smtp_instance
+            result = email_sender.send_email('主题', '正文')
+            assert result.success is True
+            assert smtp_instance.starttls.called
+            tls_kwargs = smtp_instance.starttls.call_args.kwargs
+            assert isinstance(tls_kwargs.get('context'), ssl.SSLContext)
 
 
 class TestMonitorThread:
