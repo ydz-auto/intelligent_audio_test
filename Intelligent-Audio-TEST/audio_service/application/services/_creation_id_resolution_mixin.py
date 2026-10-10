@@ -11,11 +11,16 @@
 class CreationIdResolutionMixin:
     """文件名/设备名 → audio_id/device_ids 的 ID 解析职责"""
 
+    # name→id 预查映射的最大翻页数（每页 1000 条，50 页 = 5 万条封顶）
+    _NAME_MAP_MAX_PAGES = 50
+
     def _build_name_to_id_maps(self):
         """预查音频文件名→ID、设备名→ID 映射（用于 interferers/background_noise 的 ID 解析）。
 
         通过 ACL 仓储获取设备列表，避免直接 import PO。
-        音频列表通过仓储分页获取前 1000 条构建映射，超出部分逐个查库兜底。
+        音频列表通过仓储分页遍历全量构建映射（list_audios 按 created_at 倒序，
+        setdefault 使同名多条记录保留最新创建的一条——最近上传的优先于陈旧同名记录），
+        超出封顶页数的部分由逐个查库兜底（find_audio_by_name 同样最新优先）。
         """
         # 设备名→ID 映射
         dev_name_to_id = {}
@@ -23,18 +28,24 @@ class CreationIdResolutionMixin:
         for dev in devices:
             if not dev.get('is_deleted'):
                 dev_name_to_id.setdefault(dev.get('name'), dev.get('id'))
-        # 音频文件名→ID 映射（通过仓储批量查库，取前 1000 条）
+        # 音频文件名→ID 映射（通过仓储批量查库，翻页遍历全量）
         audio_name_to_id_map = {}
         try:
-            pagination = self.repo.list_audios({'page': 1, 'per_page': 1000})
-            items = getattr(pagination, 'items', []) or []
-            for _a in items:
-                _name = getattr(_a, 'name', None)
-                if _name:
-                    audio_name_to_id_map.setdefault(_name, getattr(_a, 'id', None))
-                _orig = getattr(_a, 'original_filename', None)
-                if _orig:
-                    audio_name_to_id_map.setdefault(_orig, getattr(_a, 'id', None))
+            per_page = 1000
+            for page in range(1, self._NAME_MAP_MAX_PAGES + 1):
+                pagination = self.repo.list_audios({'page': page, 'per_page': per_page})
+                items = getattr(pagination, 'items', []) or []
+                if not items:
+                    break
+                for _a in items:
+                    _name = getattr(_a, 'name', None)
+                    if _name:
+                        audio_name_to_id_map.setdefault(_name, getattr(_a, 'id', None))
+                    _orig = getattr(_a, 'original_filename', None)
+                    if _orig:
+                        audio_name_to_id_map.setdefault(_orig, getattr(_a, 'id', None))
+                if len(items) < per_page:
+                    break
         except Exception:
             pass
         return audio_name_to_id_map, dev_name_to_id

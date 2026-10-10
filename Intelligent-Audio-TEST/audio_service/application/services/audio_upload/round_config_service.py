@@ -99,21 +99,19 @@ class AudioRoundConfigService:
             return [{'field_code': k, 'field_value': v} for k, v in algorithm_params.items()]
         return None
 
-    def match_existing_audio_in_rounds(self, rounds_config, existing_audio):
+    def match_existing_audio_in_rounds(self, rounds_config, existing_audio, upload_filenames=None):
         """秒传场景：将已存在的音频匹配到 rounds_config 中的音频项
 
         :param rounds_config: 轮次配置列表
         :param existing_audio: 已存在的 Audio 记录
+        :param upload_filenames: 本次上传的文件名（upload_file.filename/original_filename）。
+            秒传改名场景下已有记录 name 可能与前端传的 audio_name 不一致，用它们兜底匹配。
         :return: int，匹配数量
         """
         if not rounds_config:
             return 0
         unmatched_items = self._collect_unmatched_audio_items(rounds_config)
-        matched_count = self._match_by_name(unmatched_items, existing_audio)
-        # 兜底：若按名称都匹配不上，且仅剩1个未匹配项，直接赋值（秒传的音频就是它）
-        if matched_count == 0 and len(unmatched_items) == 1:
-            unmatched_items[0]['audio_id'] = existing_audio.id
-        return matched_count
+        return self._match_by_name(unmatched_items, existing_audio, upload_filenames)
 
     def _collect_unmatched_audio_items(self, rounds_config):
         """收集 rounds_config 中所有未匹配的音频项"""
@@ -127,15 +125,24 @@ class AudioRoundConfigService:
                 unmatched_items.append(a)
         return unmatched_items
 
-    def _match_by_name(self, unmatched_items, existing_audio):
-        """按 name/original_filename/md5 匹配未匹配项"""
+    def _match_by_name(self, unmatched_items, existing_audio, upload_filenames=None):
+        """按 name/original_filename/md5/本次上传文件名 匹配未匹配项。
+
+        只做名称校验内的绑定：名称对不上的轮次项保持未匹配，绝不强赋
+        （否则会把当前秒传音频绑到名字不同的轮次项上，造成语义错配）。
+        """
+        candidate_names = {
+            existing_audio.name,
+            existing_audio.original_filename or '',
+            existing_audio.md5 or '',
+        }
+        for fn in upload_filenames or ():
+            if fn:
+                candidate_names.add(fn)
         matched_count = 0
         for a in unmatched_items:
             item_name = a.get('audio_name') or ''
-            if (item_name == existing_audio.name
-                    or item_name == (existing_audio.original_filename or '')
-                    or item_name == (existing_audio.md5 or '')
-                    or not item_name):
+            if item_name in candidate_names or not item_name:
                 a['audio_id'] = existing_audio.id
                 matched_count += 1
         return matched_count

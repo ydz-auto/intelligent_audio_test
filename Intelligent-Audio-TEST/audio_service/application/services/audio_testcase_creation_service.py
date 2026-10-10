@@ -57,11 +57,15 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
                                     dimensions_data=None, algorithm_type=None,
                                     algorithm_params=None, rounds_config=None,
                                     inherit_tags=True, raw_annotations=None,
-                                    noise_device_ids=None, case_background_noise=None):
+                                    noise_device_ids=None, case_background_noise=None,
+                                    upload_task_id=None):
         """从音频创建测试用例
 
         通过 ACL 仓储调用 gRPC TestCaseConfigService 创建测试用例（含分组/标签/参考参数），
         避免直接 import task_service PO。
+
+        :param upload_task_id: 本次上传任务 ID（合并/秒传流程传入）。用于把轮次音频名
+            优先解析到本任务内的音频记录，避免同名素材绑到库中陈旧同名记录。
         """
         if isinstance(test_types, str):
             test_types = [test_types.strip()]
@@ -126,7 +130,8 @@ class AudioTestCaseCreationService(CreationRoundConfigMixin,
 
             rounds_resolved, algo_params_col = self._resolve_rounds_and_strip_params(
                 tt, audio_id, audio, spl, effective_playback_device_id,
-                rounds_config, algorithm_params
+                rounds_config, algorithm_params,
+                upload_task_id=upload_task_id,
             )
 
             self._inject_spl_and_device_from_annotations(

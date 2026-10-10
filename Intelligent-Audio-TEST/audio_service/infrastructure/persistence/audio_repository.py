@@ -232,13 +232,23 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         """按文件名查音频（用于补全 rounds_config 中的 audio_id），返回 AudioAggregate。
 
         先按 name 查，未命中再按 original_filename 查（兼容统一标注文件格式）。
+        同名多条记录时取最新创建的一条（最近上传的记录优先于库中陈旧同名记录）。
         """
         session = get_db_session()
-        po = session.query(Audio).filter_by(name=name, deleted=False).first()
+        _newest_first = (Audio.created_at.desc(), Audio.id.desc())
+        po = (
+            session.query(Audio)
+            .filter_by(name=name, deleted=False)
+            .order_by(*_newest_first)
+            .first()
+        )
         if po is None:
-            po = session.query(Audio).filter_by(
-                original_filename=name, deleted=False
-            ).first()
+            po = (
+                session.query(Audio)
+                .filter_by(original_filename=name, deleted=False)
+                .order_by(*_newest_first)
+                .first()
+            )
         if po is None:
             return None
         return _audio_po_to_entity(po)

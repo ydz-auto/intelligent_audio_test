@@ -12,7 +12,14 @@ class CreationRoundConfigMixin:
     """轮次配置（rounds_config）解析与 config 构建职责"""
 
     def _resolve_rounds_and_strip_params(self, tt, audio_id, audio, spl,
-                                          effective_playback_device_id, rounds_config, algorithm_params):
+                                          effective_playback_device_id, rounds_config, algorithm_params,
+                                          upload_task_id=None):
+        """构建 rounds_resolved，剥离 algorithm_params 到独立列
+
+        :param upload_task_id: 本次上传任务 ID。提供时优先在任务内文件（按 md5 定位
+            本次上传/秒传命中的音频记录）解析轮次音频名，避免同名素材绑到库中
+            陈旧同名记录；任务内记录尚未创建的文件名保持未匹配，不回退库内旧记录。
+        """
         """构建 rounds_resolved，剥离 algorithm_params 到独立列"""
         if rounds_config:
             rounds_resolved = copy.deepcopy(rounds_config)
@@ -69,6 +76,8 @@ class CreationRoundConfigMixin:
         audio_name_for_match = audio.name
         audio_original_for_match = getattr(audio, 'original_filename', None) or audio.name
         audio_md5_for_match = getattr(audio, 'md5', None) or ''
+        # 本次上传任务内 文件名→audio_id 映射（新上传记录优先于库中陈旧同名记录）
+        task_name_to_id, task_file_names = self._build_task_audio_name_map(upload_task_id)
         # 预查所有 audio_name → audio_id 映射（避免循环里重复查库）
         # 按 name / original_filename / md5 三重匹配
         audio_name_to_id = {}
@@ -80,12 +89,13 @@ class CreationRoundConfigMixin:
                     continue
                 item_name = audio_item.get('audio_name') or ''
                 if item_name and not audio_item.get('audio_id') and item_name not in audio_name_to_id:
-                    # 查库：按文件名找已入库的音频
+                    if upload_task_id and item_name in task_file_names:
+                        continue  # 本任务文件名不查库：记录存在与否均由任务内映射决定
+                    # 查库：按文件名找已入库的音频（同名多条时最新创建的优先）
                     found = self.repo.find_audio_by_name(item_name)
                     if found:
                         audio_name_to_id[item_name] = found.id
-        # 第一轮：按 name / original_filename / md5 / 预查映射 匹配
-        unmatched_items = []
+        # 逐项匹配：当前音频 → 任务内记录 → 库内最新同名记录
         for round_item in rounds_resolved:
             if not isinstance(round_item, dict):
                 continue
@@ -105,17 +115,57 @@ class CreationRoundConfigMixin:
                         or (audio_md5_for_match and item_name == audio_md5_for_match)
                         or not item_name):
                     audio_item['audio_id'] = audio_id
-                # 其次用预查映射补全
+                # 其次用本次上传任务内的记录
+                elif upload_task_id and item_name in task_name_to_id:
+                    audio_item['audio_id'] = task_name_to_id[item_name]
+                # 名字属于本任务文件但记录尚未创建（分文件 merge 时序）：保持未匹配，
+                # 不回退库内陈旧同名记录，也不强赋当前音频
+                elif upload_task_id and item_name in task_file_names:
+                    continue
+                # 再用预查映射补全（库内最新同名记录）
                 elif item_name in audio_name_to_id:
                     audio_item['audio_id'] = audio_name_to_id[item_name]
-                else:
-                    unmatched_items.append(audio_item)
-        # 第二轮兜底：剩余唯一未匹配项直接用当前 audio_id
-        # （秒传场景下当前 audio_id 就是已有音频 ID，无论单轮多轮都适用）
-        if len(unmatched_items) == 1:
-            unmatched_items[0]['audio_id'] = audio_id
 
         return rounds_resolved, algo_params_col
+
+    def _build_task_audio_name_map(self, upload_task_id):
+        """构建本次上传任务内 文件名→audio_id 映射与任务文件名集合。
+
+        任务文件按 md5 定位音频记录（本次新建或秒传命中），同 md5 多条记录取
+        最新创建的一条；任务文件尚无对应音频记录时不入映射（仅入文件名集合，
+        供调用方对该名字跳过库内陈旧同名记录回退）。
+        """
+        task_name_to_id = {}
+        task_file_names = set()
+        if not upload_task_id:
+            return task_name_to_id, task_file_names
+        try:
+            task_files = self.repo.list_upload_files(upload_task_id) or []
+        except Exception:
+            return task_name_to_id, task_file_names
+        for f in task_files:
+            for key in (getattr(f, 'filename', None), getattr(f, 'original_filename', None)):
+                if key:
+                    task_file_names.add(key)
+        md5s = {f.md5 for f in task_files if getattr(f, 'md5', None)}
+        md5_to_id = {}
+        if md5s:
+            try:
+                audios = self.repo.get_audios_by_md5_list(list(md5s)) or []
+            except Exception:
+                audios = []
+            # id 单调递增：同名/同 md5 多条记录时保留最新创建的一条
+            for _a in sorted(audios, key=lambda x: getattr(x, 'id', 0) or 0, reverse=True):
+                if getattr(_a, 'md5', None):
+                    md5_to_id.setdefault(_a.md5, getattr(_a, 'id', None))
+        for f in task_files:
+            audio_id = md5_to_id.get(getattr(f, 'md5', None) or '')
+            if not audio_id:
+                continue
+            for key in (getattr(f, 'filename', None), getattr(f, 'original_filename', None)):
+                if key:
+                    task_name_to_id.setdefault(key, audio_id)
+        return task_name_to_id, task_file_names
 
     def _build_config_and_apply_dimensions(self, audio, rounds_resolved, dimensions_data, tt,
                                             noise_spl, noise_audio_id, noise_device_ids=None,

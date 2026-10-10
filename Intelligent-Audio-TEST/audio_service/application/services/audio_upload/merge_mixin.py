@@ -56,7 +56,7 @@ class AudioMergeMixin:
 
             # 创建测试用例（如果需要）
             tc_result = self._create_test_case_if_needed(
-                new_audio, params, audio_tags, raw_annotations_data
+                new_audio, params, audio_tags, raw_annotations_data, task_id
             )
 
             self.repo.commit()
@@ -107,13 +107,19 @@ class AudioMergeMixin:
         audio_tags = self.repo.get_audio_tag_names(existing_audio.id)
 
         if params['create_test_case']:
-            return self._instant_upload_with_testcase(existing_audio, data, params, audio_tags)
+            return self._instant_upload_with_testcase(
+                existing_audio, upload_file, data, params, audio_tags
+            )
         return self._instant_upload_without_testcase(existing_audio, data, params)
 
-    def _instant_upload_with_testcase(self, existing_audio, data, params, audio_tags):
+    def _instant_upload_with_testcase(self, existing_audio, upload_file, data, params, audio_tags):
         """秒传 + 创建测试用例：匹配轮次、创建用例、返回响应"""
         self._round_config_service.match_existing_audio_in_rounds(
-            params['rounds_config'], existing_audio
+            params['rounds_config'], existing_audio,
+            upload_filenames=(
+                getattr(upload_file, 'filename', None),
+                getattr(upload_file, 'original_filename', None),
+            ),
         )
         raw_annotations_data = self._annotation_service.persist_annotations_and_raw(
             existing_audio.id,
@@ -137,6 +143,7 @@ class AudioMergeMixin:
             raw_annotations=raw_annotations_data,
             noise_device_ids=params.get('noise_device_ids'),
             case_background_noise=params.get('case_background_noise'),
+            upload_task_id=getattr(upload_file, 'upload_task_id', None),
         )
         self.repo.commit()
         return {
@@ -264,7 +271,8 @@ class AudioMergeMixin:
                 'params': None,
             })
 
-    def _create_test_case_if_needed(self, new_audio, params, audio_tags, raw_annotations_data):
+    def _create_test_case_if_needed(self, new_audio, params, audio_tags, raw_annotations_data,
+                                    task_id=None):
         """如果需要，创建测试用例"""
         if not params['create_test_case']:
             return None
@@ -286,6 +294,7 @@ class AudioMergeMixin:
             raw_annotations=raw_annotations_data or None,
             noise_device_ids=params.get('noise_device_ids'),
             case_background_noise=params.get('case_background_noise'),
+            upload_task_id=task_id,
         )
 
         if isinstance(tc_ids, list):
