@@ -116,10 +116,16 @@ class AlgorithmConfigCache:
     # ---- L1 内存加载 ----
 
     def _load_all_configs(self):
-        """从本地数据库加载所有算法配置（线程安全）"""
+        """从本地数据库加载所有算法配置（线程安全）。
+
+        先构建完整新快照、全部查询成功后才原子替换 L1：加载中途失败（如
+        engine 已被换绑/销毁——pytest 模块级临时库、服务重启换库——时旧
+        session 首查即抛）不得把 L1 清空，否则执行链路在空缓存上提取
+        algorithm_result 恒为空（INT-94 全量回归失败族根因）。
+        """
         with self._reload_lock:
             log_not_emit('DEBUG', 'algorithm_config_cache', 'Starting to load all algorithm configs', category='algorithm')
-            self._config_cache = {
+            new_cache = {
                 'algorithms': {},
                 'device_params': {},
                 'api_params': {},
@@ -137,7 +143,7 @@ class AlgorithmConfigCache:
                 algo_type = algo.get('algorithm_type') or algo.get('type')
                 if not algo_type:
                     continue
-                self._config_cache['algorithms'][algo_type] = {
+                new_cache['algorithms'][algo_type] = {
                     'id': algo.get('id'),
                     'type': algo_type,
                     'name': algo.get('name'),
@@ -148,29 +154,30 @@ class AlgorithmConfigCache:
                 }
 
                 device_params = algorithm_param_repository.list_by_algorithm(algo_type, 'device')
-                self._config_cache['device_params'][algo_type] = self._serialize_params(device_params)
+                new_cache['device_params'][algo_type] = self._serialize_params(device_params)
 
                 api_params = algorithm_param_repository.list_by_algorithm(algo_type, 'api')
-                self._config_cache['api_params'][algo_type] = self._serialize_params(api_params)
+                new_cache['api_params'][algo_type] = self._serialize_params(api_params)
 
                 mappings = mapping_repository.list_by_algorithm(algo_type)
-                self._config_cache['mappings'][algo_type] = self._serialize_mappings(mappings)
+                new_cache['mappings'][algo_type] = self._serialize_mappings(mappings)
 
                 case_params = case_param_repository.list_by_algorithm(algo_type)
-                self._config_cache['case_params'][algo_type] = self._serialize_params(case_params)
+                new_cache['case_params'][algo_type] = self._serialize_params(case_params)
 
                 ref_params = reference_param_repository.list_by_algorithm(algo_type)
-                self._config_cache['reference_params'][algo_type] = self._serialize_reference_params(ref_params)
+                new_cache['reference_params'][algo_type] = self._serialize_reference_params(ref_params)
 
                 dim_relations = dimension_relation_repository.list_by_algorithm(algo_type)
                 for rel in dim_relations:
                     dim_id = rel.get('dimension_id') if isinstance(rel, dict) else None
-                    if dim_id and dim_id not in self._config_cache['evaluation_dimension_params']:
+                    if dim_id and dim_id not in new_cache['evaluation_dimension_params']:
                         params = dimension_param_repository.list_by_dimension(dim_id)
-                        self._config_cache['evaluation_dimension_params'][dim_id] = [
+                        new_cache['evaluation_dimension_params'][dim_id] = [
                             self._serialize_dimension_param(p) for p in params
                         ]
 
+            self._config_cache = new_cache
             self._last_reload_time = datetime.now()
 
             # 将快照写入 Redis（L2）
@@ -223,6 +230,8 @@ class AlgorithmConfigCache:
         """启动后台线程，监听 Redis pubsub 失效通知"""
         def _listen():
             import time
+
+            from shared.models.database import remove_db_session
             while True:
                 r = _get_redis()
                 if r is None:
@@ -235,8 +244,16 @@ class AlgorithmConfigCache:
                         if _msg.get('type') == 'message':
                             log_not_emit('INFO', 'algorithm_config_cache',
                                          'Received invalidation notice from Redis pubsub, reloading L1', category='algorithm')
+                            # 本线程的线程级 session 跨进程/套件生命周期存活，引擎
+                            # 换绑（pytest 模块级临时库、服务重启换库）后旧 session
+                            # 首查即抛，reload 静默失败——每条通知强制丢弃旧
+                            # session，绑定当前 engine（INT-94）。
+                            remove_db_session()
                             self._load_all_configs()
-                except Exception:
+                except Exception as e:
+                    log_not_emit('WARN', 'algorithm_config_cache',
+                                 f'Reload on invalidation notice failed, kept last snapshot: {e}',
+                                 category='algorithm')
                     time.sleep(3)
 
         Thread(target=_listen, daemon=True, name='algo-cache-pubsub').start()

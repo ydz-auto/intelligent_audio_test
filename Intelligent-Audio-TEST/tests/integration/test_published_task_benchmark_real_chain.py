@@ -106,7 +106,7 @@ def _seed_publishable_task():
 
     s = get_db_session()
     case = TestCase(id=f'PT-BENCH-{uuid.uuid4().hex[:12]}', name='基准用例',
-                    config={}, test_type='e2e')
+                    config={})
     s.add(case)
     s.flush()
     now = datetime.now()

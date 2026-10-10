@@ -111,10 +111,11 @@ class TestInt42DispatchFailureConvergence:
         assert _query(TestResult, task_id=task_id) == [], \
             '分发侧失败不应产出 TestResult'
 
-        # 任务日志可观测（引擎 ERROR 落 logs 表）
-        from task_service.infrastructure.persistence.models.system_models import Log
-        logs = _query(Log, task_id=task_id)
-        assert logs, '执行链路应写任务日志'
+        # 任务日志可观测（INT-81 日志三分流：带 task_id 的业务日志落业务
+        # 日志文件，logs 表仅收审计/无任务上下文系统日志）
+        from shared.logging.business_reader import BusinessLogReader
+        entries = BusinessLogReader().read_entries(task_id=task_id)
+        assert entries, '执行链路应写任务日志（业务日志文件）'
 
 
 def _query_task_cases(task_id):

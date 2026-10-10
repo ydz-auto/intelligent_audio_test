@@ -319,6 +319,11 @@ class TestCqrs:
 
     def test_compute_idempotent(self):
         # 幂等：同输入重复计算 → ReadModel 行集一致，不产生重复记录
+        # computed_at 是每次计算的固有新鲜时间戳（Windows 时钟 ~15.6ms 粒度，
+        # 负载下两次计算跨刻度即不相等），幂等断言按业务字段比较、排除该列
+        def _rows_without_ts(rows):
+            return [{k: v for k, v in r.items() if k != 'computed_at'} for r in rows]
+
         repo = FakeRankingRepo(mappings=[_wer_mapping()])
         pt = _pt(1, 1, snapshot={'benchmarkCategory': 'asr'})
         acl = FakePtAcl(tasks=[pt], details={1: _detail(pt, [{'name': 'WER', 'average_value': 4.0}])})
@@ -326,7 +331,7 @@ class TestCqrs:
         service.compute_ranking(ComputeBenchmarkRankingCommand())
         first = list(repo.rankings)
         service.compute_ranking(ComputeBenchmarkRankingCommand())
-        assert repo.rankings == first
+        assert _rows_without_ts(repo.rankings) == _rows_without_ts(first)
         assert len(repo.rankings) == 1
 
 

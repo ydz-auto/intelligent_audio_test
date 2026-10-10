@@ -697,7 +697,7 @@ def _seed_execute_scenario(api_double, eval_double):
             'api': {},
             'reference_params': {},
         },
-        algorithm_type='translation', test_type='api')
+        algorithm_type='translation')
     s.add(case)
 
     task = Task(name=f'int35-execute-{uuid.uuid4().hex[:8]}', status='pending', total_cases=1, algorithm_type='translation')
@@ -879,10 +879,11 @@ class TestTaskExecuteRealChain:
         assert tc.execution_status == 'completed' and tc.evaluation_status == 'completed' \
             and tc.status == 'completed'
 
-        # 9. 执行日志落库（引擎/执行器 _log → logs 表）
-        from task_service.infrastructure.persistence.models.system_models import Log
-        logs = _query(Log, task_id=task_id)
-        assert logs, '执行链路应写任务日志'
+        # 9. 执行日志可观测（INT-81 日志三分流：带 task_id 的业务日志落业务
+        # 日志文件，logs 表仅收审计/无任务上下文系统日志）
+        from shared.logging.business_reader import BusinessLogReader
+        entries = BusinessLogReader().read_entries(task_id=task_id)
+        assert entries, '执行链路应写任务日志（业务日志文件）'
 
     def test_benchmark_score_output_consumable_by_ranking(
             self, gateway, api_double, eval_double, int35_quarantine):
