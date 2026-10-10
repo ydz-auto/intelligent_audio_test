@@ -24,8 +24,9 @@ class ReportComparePersistMixin:
         迁移后改用 report_repository 对应方法写入，每个方法自管理事务。
         返回 new_report_id。
         """
-        # 主报告聚合根：使用字符串字面量保持与现有数据模型一致
+        # 主报告聚合根：id 由仓储层分配（新建传 0，同 report_handlers 既有模式）
         aggregate = ReportAggregate(
+            id=0,
             task_id=0,
             report_type='comparison',
             status='draft',

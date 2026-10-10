@@ -51,6 +51,7 @@ class GenerationStage(str, Enum):
     """
     QUEUED = 'queued'                  # 已提交线程池，等待工作线程取走
     VALIDATE_TASK = 'validate_task'    # 任务校验 + 结果收集（gRPC task_service）
+    VALIDATE_REPORTS = 'validate_reports'  # 报告校验 + 关联任务收集（INT-122 对比链路，DB + gRPC）
     CHECK_EXISTING = 'check_existing'  # 已有报告检查（DB）
     PREPARE_DATA = 'prepare_data'      # 报告数据准备（gRPC + OSS 读取）
     BUILD_SUMMARY = 'build_summary'    # 汇总构建（纯计算）

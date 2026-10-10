@@ -78,6 +78,17 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("report_service 生成看门狗启动失败: %s", e)
 
+    # 启动对比报告生成看门狗（INT-122）：compare/secondary_compare 链路卡死可观察、失败可上报
+    from report_service.application.services.report_compare_generator import (
+        start_compare_generation_watchdog,
+        stop_compare_generation_watchdog,
+    )
+    try:
+        start_compare_generation_watchdog()
+        logger.info("report_service 对比报告生成看门狗已启动")
+    except Exception as e:
+        logger.warning("report_service 对比报告生成看门狗启动失败: %s", e)
+
     # 启动事件订阅：监听 REPORT_EVENTS（报告生成完成）自动刷新 Benchmark 排行 ReadModel（D1）
     from report_service.application.services.benchmark_ranking_event_subscriber import (
         start_benchmark_ranking_subscriber,
@@ -96,6 +107,9 @@ async def lifespan(app: FastAPI):
 
     # 停止报告生成看门狗
     stop_generation_watchdog()
+
+    # 停止对比报告生成看门狗
+    stop_compare_generation_watchdog()
 
     if _grpc_server is not None:
         try:

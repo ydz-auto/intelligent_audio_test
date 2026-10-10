@@ -294,7 +294,9 @@ class TestAsyncGenerationSuccessFlow:
         assert update_status_calls == [(101, 'published')]
 
         # QUEUED 由提交侧 mark_submitted 登记（无 span 日志），工作线程阶段须全部留痕
-        worker_stages = [s for s in GenerationStage if s != GenerationStage.QUEUED]
+        # （VALIDATE_REPORTS 为 INT-122 对比链路专属阶段，任务报告链路不使用）
+        worker_stages = [s for s in GenerationStage
+                         if s not in (GenerationStage.QUEUED, GenerationStage.VALIDATE_REPORTS)]
         stages = [c for _, c, _ in t.logs if 'stage=' in c]
         for stage in worker_stages:
             assert any(f'stage={stage.value}' in c for c in stages), stage.value

@@ -79,8 +79,12 @@ class GenerationTracker:
         self._lock = threading.Lock()
         self._entries = {}
 
-    def mark_submitted(self, task_id):
-        """登记一次生成提交（进入 QUEUED 阶段；同 task 重复提交覆盖旧轨迹）。"""
+    def mark_submitted(self, task_id, meta=None):
+        """登记一次生成提交（进入 QUEUED 阶段；同 task 重复提交覆盖旧轨迹）。
+
+        meta（INT-122 扩展，向后兼容）：链路元数据（如 {'chain': 'secondary',
+        'reportIds': [...]}），供链路专属看门狗构建失败事件载荷。
+        """
         with self._lock:
             self._entries[task_id] = {
                 'task_id': task_id,
@@ -91,6 +95,7 @@ class GenerationTracker:
                 'timeout_reported': False,
                 'timeout_warn_count': 0,
                 'thread_id': None,
+                'meta': meta if meta is not None else {},
             }
 
     def mark_stage(self, task_id, stage, thread_id=None):
