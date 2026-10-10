@@ -40,6 +40,23 @@ class CaseEvaluationMixin:
                 return False
             kwargs['rounds'] = rounds_list
 
+            # INT-126：多轮整体评估入口（round_number=None）补提交逐轮维度。
+            # 上传口径把评估维度逐轮注入 rounds[].evaluation.dimensions（case 级
+            # config.dimensions 为空，带音频参数的维度配 case 级会被校验拒绝），
+            # 而 API 多轮链只提交一次整体评估——旧逻辑整体只取顶层维度，0 维度
+            # 空转完成。此处按 round_scope 分流：逐轮维度按轮出分（复用外层已
+            # 构建的轮次数据，走既有单轮评估路径），multi 维度归整体评估出分。
+            # 已有逐轮 TRD 记录的轮次幂等跳过（E2E 轮次循环/重评链已逐轮提交）。
+            if round_number is None:
+                fanout_submitted, has_overall_dims = self._fan_out_per_round_evaluations(
+                    task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+                    algorithm_result=algorithm_result, field_mapper=field_mapper,
+                    test_type=test_type, rounds_list=rounds_list, kwargs=kwargs,
+                )
+                if fanout_submitted and not has_overall_dims:
+                    # 无整体口径维度：逐轮链负责 TRD 落库与用例收尾，整体部分无事可做
+                    return True
+
         self._log(
             level='DEBUG',
             content=f"[DEBUG evaluate_case] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, test_case_id={test_case_id}, test_type={test_type}, round_number={round_number}",
@@ -95,6 +112,93 @@ class CaseEvaluationMixin:
                 content=f"用例评估跳过(skipped)收尾失败: test_case_id={test_case_id}, error={e}",
                 task_id=task_id, test_case_id=test_case_id
             )
+
+    def _fan_out_per_round_evaluations(self, task_id, result_id, test_case_id,
+                                        algorithm_result, field_mapper, test_type,
+                                        rounds_list, kwargs):
+        """多轮整体评估入口的逐轮维度补提交（INT-126）。
+
+        上传口径把评估维度逐轮注入 rounds[].evaluation.dimensions，整体评估入口
+        （round_number=None）按 round_scope 分流补提交：
+
+        - 轮次注入的非 multi 维度（per_round）→ 按轮提交评估（round_number=N，
+          复用外层已构建的轮次数据，走既有单轮评估路径），逐轮出分；
+        - round_scope=multi 维度 → 归整体评估出分（_merge_dimensions_config
+          整体路径合并轮次注入的整体维度，由调用方继续走整体分发）。
+
+        幂等：已存在逐轮 TRD 记录的轮次跳过——E2E 链在轮次循环已逐轮提交、
+        重评链先逐轮后整体，整体入口不重复评估。
+
+        Returns:
+            tuple: (fanout_submitted, has_overall_dims)
+                fanout_submitted: 是否补提交了至少一轮逐轮评估
+                has_overall_dims: 是否存在整体口径维度（顶层或轮次注入的 multi）
+        """
+        test_case = self._task_acl_repo.get_test_case_detail(str(test_case_id))
+        config = getattr(test_case, 'config', None) or {}
+        if not isinstance(config, dict):
+            return False, True
+        config_rounds = config.get('rounds')
+        if not isinstance(config_rounds, list) or not config_rounds:
+            return False, True
+
+        already_submitted_rounds = set()
+        if result_id:
+            try:
+                for score in self._evaluation_dimension_repo.list_scores_by_result_id(result_id):
+                    round_no = getattr(score, 'round_number', None)
+                    if round_no is not None:
+                        already_submitted_rounds.add(round_no)
+            except Exception as e:
+                self._log(
+                    level='WARNING',
+                    content=f"整体评估入口读取已有逐轮维度记录失败，跳过幂等检查: {e}",
+                    task_id=task_id, test_case_id=test_case_id
+                )
+
+        fanout_submitted = False
+        for round_idx in range(min(len(config_rounds), len(rounds_list))):
+            round_item = config_rounds[round_idx]
+            if not isinstance(round_item, dict):
+                continue
+            evaluation = round_item.get('evaluation')
+            if isinstance(evaluation, dict) and evaluation.get('enabled', True) is False:
+                continue
+            round_dims = self._merge_dimensions_config(config, round_number=round_idx)
+            if not round_dims:
+                continue
+            if round_idx in already_submitted_rounds:
+                continue
+
+            round_kwargs = dict(kwargs)
+            round_kwargs['round_number'] = round_idx
+            round_kwargs['rounds'] = [rounds_list[round_idx]]
+            try:
+                prepared = self._prepare_evaluation_data(
+                    task_id, result_id, test_case_id, algorithm_result,
+                    field_mapper, round_kwargs, test_type, round_idx
+                )
+                if prepared is None or prepared is False:
+                    continue
+                self._dispatch_to_workers(
+                    task_id, result_id, test_case_id, algorithm_result,
+                    prepared, field_mapper, test_type, round_idx, round_kwargs
+                )
+                fanout_submitted = True
+                self._log(
+                    level='INFO',
+                    content=f"整体评估入口补提交逐轮评估: round={round_idx}, dimensions={self._extract_dimension_ids(round_dims)}",
+                    task_id=task_id, test_case_id=test_case_id
+                )
+            except Exception as e:
+                self._log(
+                    level='ERROR',
+                    content=f"整体评估入口逐轮评估补提交失败: round={round_idx}, error={e}",
+                    task_id=task_id, test_case_id=test_case_id
+                )
+
+        has_overall_dims = bool(self._merge_dimensions_config(config, round_number=None))
+        return fanout_submitted, has_overall_dims
 
     def _prepare_evaluation_data(self, task_id, result_id, test_case_id, algorithm_result,
                                   field_mapper, kwargs, test_type, round_number=None):

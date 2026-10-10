@@ -8,6 +8,9 @@ Domain 层不应在编译期依赖 infrastructure 层。
 class CaseLoaderMixin:
     """加载测试用例、算法类型、参考文本和维度配置"""
 
+    # 用例配置维度条目的多轮整体评估口径值（round_scope，与建用例侧/前端协议一致）
+    OVERALL_ROUND_SCOPE = 'multi'
+
     def _load_test_case_and_refs(self, test_case_id, field_mapper, kwargs, task_id, round_number=None):
         """加载测试用例、算法类型、参考文本和维度配置"""
         # P0-1: 通过依赖注入的 ABC 访问 ACL，domain 层不 import infrastructure
@@ -42,15 +45,19 @@ class CaseLoaderMixin:
     def _merge_dimensions_config(self, test_case_config, round_number=None):
         """按 round_number 过滤维度配置（评估维度隔离，对齐 V9.7.10 设计文档）：
 
-        - round_number=<int>（单轮评估）：只取 rounds[round_number].evaluation.dimensions
-        - round_number=None（整体评估）：只取顶层 config.dimensions，不合并任何轮次维度
-          （轮次维度需在整体评估中使用时显式配置到顶层）
+        - round_number=<int>（单轮评估）：只取 rounds[round_number].evaluation.dimensions，
+          剔除其中 round_scope=multi 的整体口径维度（整体维度不参与逐轮评估）
+        - round_number=None（整体评估）：取顶层 config.dimensions，并合并轮次注入的
+          round_scope=multi 维度（INT-126：上传口径把评估维度逐轮注入 rounds 且
+          case 级 config.dimensions 为空，整体维度不要求显式配置在顶层；
+          per_round 维度由按轮评估出分，不混入整体评估）
+        - 未标注 round_scope 的维度按逐轮（单轮）口径处理，维持既有行为
         """
         dimensions_config = []
         seen_dim_ids = set()
         rounds = test_case_config.get('rounds', [])
         if round_number is not None:
-            # 单轮评估：只取指定轮的 dimensions
+            # 单轮评估：只取指定轮的 dimensions（排除整体口径维度）
             if rounds and isinstance(rounds, list) and round_number < len(rounds):
                 round_item = rounds[round_number]
                 if isinstance(round_item, dict):
@@ -58,19 +65,43 @@ class CaseLoaderMixin:
                     if isinstance(evaluation, dict):
                         round_dims = evaluation.get('dimensions', [])
                         for d in round_dims:
+                            if self._is_overall_scope_dim(d):
+                                continue
                             dim_id = d.get('id') if isinstance(d, dict) else d
                             if dim_id and dim_id not in seen_dim_ids:
                                 seen_dim_ids.add(dim_id)
                                 dimensions_config.append(d)
             return dimensions_config
-        # 整体评估：只取顶层 config.dimensions
+        # 整体评估：顶层 config.dimensions + 轮次注入的整体口径维度（round_scope=multi）
         top_dims = test_case_config.get('dimensions', [])
         for d in top_dims:
             dim_id = d.get('id') if isinstance(d, dict) else d
             if dim_id and dim_id not in seen_dim_ids:
                 seen_dim_ids.add(dim_id)
                 dimensions_config.append(d)
+        if rounds and isinstance(rounds, list):
+            for round_item in rounds:
+                if not isinstance(round_item, dict):
+                    continue
+                evaluation = round_item.get('evaluation', {})
+                if not isinstance(evaluation, dict):
+                    continue
+                for d in evaluation.get('dimensions', []) or []:
+                    if not self._is_overall_scope_dim(d):
+                        continue
+                    dim_id = d.get('id') if isinstance(d, dict) else d
+                    if dim_id and dim_id not in seen_dim_ids:
+                        seen_dim_ids.add(dim_id)
+                        dimensions_config.append(d)
         return dimensions_config
+
+    @classmethod
+    def _is_overall_scope_dim(cls, dim):
+        """维度条目是否为多轮整体评估口径（round_scope=multi）
+
+        未标注 round_scope 或逐轮口径（single/per_round）的维度按逐轮处理。
+        """
+        return isinstance(dim, dict) and dim.get('round_scope') == cls.OVERALL_ROUND_SCOPE
 
     def _extract_ref_texts(self, eval_input_fields, kwargs, task_id, test_case_id):
         """从 kwargs 中提取参考文本"""
