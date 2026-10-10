@@ -130,18 +130,15 @@ class PyAudioDriver(AudioDriver):
     """基于 PyAudio 的音频驱动实现"""
     def __init__(self):
         self.pa = pyaudio.PyAudio()
-        self._lock = threading.Lock()
-        self._device_locks = {}
-        self._device_locks_lock = threading.Lock()
+        # PyAudio 流 open/close 的句柄线程安全护栏（进程内）：仅串行化驱动的
+        # 流打开/关闭操作，播放期间不持有（同设备噪声/主音频并发播放不受影响）。
+        # 物理设备的任务级占用互斥统一由 task_service 派发层
+        # DistributedLock（RedisKeyPrefix.TASK_PHYSICAL_LOCK）承担（UC-0903 4a /
+        # 附录A #4），此处不再维护 per-device 进程内互斥。
+        self._stream_lifecycle_lock = threading.Lock()
         # 全局安全增益系数 (0.0 - 1.0)
         # 设置为 0.5 意味着即使请求 1.0 的增益，实际输出也只有 50% 的幅值
         self.GLOBAL_SAFE_GAIN = 1
-    
-    def _get_device_lock(self, device_index):
-        with self._device_locks_lock:
-            if device_index not in self._device_locks:
-                self._device_locks[device_index] = threading.Lock()
-            return self._device_locks[device_index]
 
     def get_devices(self):
         devices = []
@@ -546,40 +543,40 @@ class PyAudioDriver(AudioDriver):
         resampled_temp_files = []
         stream = None
         try:
-            dev_lock = self._get_device_lock(device_index)
-            # dev_lock 只保护 stream 的 open/close，不保护 while stream.is_active() 循环
-            # 否则背景噪声等长时间播放会持有锁，导致同设备的其他播放永久阻塞
-            with dev_lock:
-                target_rate = default_sample_rate
-                needs_resample = any(file_rate != target_rate for file_rate in audio_file_rates)
+            target_rate = default_sample_rate
+            needs_resample = any(file_rate != target_rate for file_rate in audio_file_rates)
 
-                if needs_resample:
-                    audio_files, audio_file_rates, resampled_temp_files = self._pre_resample(
-                        audio_files, audio_file_rates, audio_file_channels, target_rate, app=app
-                    )
-                    original_rate = target_rate
+            if needs_resample:
+                audio_files, audio_file_rates, resampled_temp_files = self._pre_resample(
+                    audio_files, audio_file_rates, audio_file_channels, target_rate, app=app
+                )
+                original_rate = target_rate
 
-                # 5. 尝试打开流
-                candidate_configs = {(max_channels, target_rate), (2, target_rate)}
-                configs = list(candidate_configs)
-                log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Trying {len(configs)} unique configurations: {configs}", category='audio')
+            # 5. 尝试打开流
+            candidate_configs = {(max_channels, target_rate), (2, target_rate)}
+            configs = list(candidate_configs)
+            log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Trying {len(configs)} unique configurations: {configs}", category='audio')
 
-                formats_to_try = [pyaudio.paInt16, pyaudio.paFloat32, pyaudio.paInt32]
+            formats_to_try = [pyaudio.paInt16, pyaudio.paFloat32, pyaudio.paInt32]
 
-                callback_factory_kwargs = {
-                    'audio_gains': audio_gains,
-                    'gain_compensations': audio_gain_compensations,
-                    'file_channels_list': audio_file_channels,
-                    'file_rates_list': audio_file_rates,
-                    'channel_indices': audio_channels,
-                    'wave_files': audio_files,
-                    'parent_stop_event': stop_event,
-                    'loop': loop,
-                    'audio_is_noise_list': audio_is_noise,
-                    'audio_delays': audio_delays if audio_delays is not None else [0] * len(audio_configs),
-                    'audio_loops_list': audio_loops,
-                }
+            callback_factory_kwargs = {
+                'audio_gains': audio_gains,
+                'gain_compensations': audio_gain_compensations,
+                'file_channels_list': audio_file_channels,
+                'file_rates_list': audio_file_rates,
+                'channel_indices': audio_channels,
+                'wave_files': audio_files,
+                'parent_stop_event': stop_event,
+                'loop': loop,
+                'audio_is_noise_list': audio_is_noise,
+                'audio_delays': audio_delays if audio_delays is not None else [0] * len(audio_configs),
+                'audio_loops_list': audio_loops,
+            }
 
+            # _stream_lifecycle_lock 只保护 stream 的 open/close（句柄线程安全），
+            # 不保护 while stream.is_active() 循环——否则背景噪声等长时间播放
+            # 会持有锁，导致同设备的其他播放永久阻塞
+            with self._stream_lifecycle_lock:
                 stream, last_err = self._try_open_stream(
                     device_index, configs, formats_to_try, callback_factory_kwargs
                 )
@@ -604,8 +601,7 @@ class PyAudioDriver(AudioDriver):
         finally:
             if stream:
                 try:
-                    dev_lock = self._get_device_lock(device_index)
-                    with dev_lock:
+                    with self._stream_lifecycle_lock:
                         stream.stop_stream()
                         stream.close()
                 except Exception:

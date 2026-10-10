@@ -228,12 +228,19 @@ class TaskDispatchMixin:
         return lock
 
     def _handle_physical_lock_busy(self, task_id, tc_rel):
-        """物理设备被占用：用例置失败收敛，避免主循环死等活跃用例"""
+        """物理设备被占用：用例置失败收敛，避免主循环死等活跃用例
+
+        UC-1001 5b：等锁期间用例保持 QUEUED（仅排队状态，无执行事件；
+        RUNNING 由 e2e_test_service 拿锁开始执行后才置位，无"假运行中"）；
+        抢占失败收敛为失败终态时同步任务统计并发布告警/进度事件，
+        保证"排队→失败"收敛对前端可观测（对齐 _handle_device_check_failed）。
+        """
+        error_msg = f'物理设备 {tc_rel.device_id} 正被其他任务/用例占用'
         self._log(level='WARNING',
                   content=f"物理设备 {tc_rel.device_id} 正被其他任务/用例占用，"
                           f"用例 {tc_rel.id} 派发失败",
                   task_id=task_id, device_id=tc_rel.device_id)
-        from task_service.infrastructure.persistence.models import TaskCase
+        from task_service.infrastructure.persistence.models import Task, TaskCase
         from shared.utils.status_utils import derive_task_case_status
         from shared.models.database import create_db_session
         from datetime import datetime as _dt
@@ -247,8 +254,16 @@ class TaskDispatchMixin:
                 row.completed_at = now
                 row.execution_status = ExecutionStatus.FAILED
                 row.status = derive_task_case_status(ExecutionStatus.FAILED, row.evaluation_status)
-                row.error_message = f'物理设备 {tc_rel.device_id} 正被其他任务/用例占用'
+                row.error_message = error_msg
                 session.commit()
+
+                task = session.get(Task, task_id)
+                if task is not None:
+                    task.completed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.COMPLETED)
+                    task.failed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.FAILED, use_filter_by=True)
+                    session.commit()
+                    self._emit_alert(task_id, error_msg)
+                    self._emit_progress(task)
         finally:
             session.close()
 

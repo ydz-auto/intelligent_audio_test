@@ -75,12 +75,26 @@ class TestAcquirePhysicalLock:
 
 
 class TestBusyConvergence:
-    def test_busy_marks_case_failed(self):
+    def _busy_engine(self):
         engine = _engine(device_id=5)
+        engine._count_cases_by_status = MagicMock(return_value=0)
+        engine._emit_alert = MagicMock()
+        engine._emit_progress = MagicMock()
+        return engine
+
+    @staticmethod
+    def _session_with_rows(case_row, task_row=None):
         session = MagicMock()
+        session.get.side_effect = lambda model, pk: (
+            case_row if model.__name__ == 'TaskCase' else task_row
+        )
+        return session
+
+    def test_busy_marks_case_failed(self):
+        engine = self._busy_engine()
         row = SimpleNamespace(id=101, execution_status='queued', evaluation_status='pending',
                               started_at=None, completed_at=None, error_message=None)
-        session.get.return_value = row
+        session = self._session_with_rows(row, SimpleNamespace(id=9))
         with patch('shared.models.database.create_db_session', return_value=session), \
              patch('shared.utils.status_utils.derive_task_case_status',
                    side_effect=lambda exec_status, eval_status: 'failed'):
@@ -91,17 +105,19 @@ class TestBusyConvergence:
         session.close.assert_called()
 
     def test_busy_skips_terminal_case(self):
-        engine = _engine(device_id=5)
+        engine = self._busy_engine()
         session = MagicMock()
         row = SimpleNamespace(id=101, execution_status='failed', evaluation_status='pending',
                               started_at=None, completed_at=None, error_message=None)
-        session.get.return_value = row
+        session = self._session_with_rows(row, SimpleNamespace(id=9))
         with patch('shared.models.database.create_db_session', return_value=session):
             engine._handle_physical_lock_busy(9, engine.tc_rel)
         # 终态用例不改写，避免覆盖真实执行结果
         assert row.execution_status == 'failed'
         assert row.completed_at is None
         session.commit.assert_not_called()
+        engine._emit_alert.assert_not_called()
+        engine._emit_progress.assert_not_called()
 
 
 class TestDispatchReleaseLock:

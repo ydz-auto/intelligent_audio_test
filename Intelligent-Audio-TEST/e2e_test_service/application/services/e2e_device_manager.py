@@ -88,7 +88,10 @@ class E2EDeviceManager:
 
         pool = self._executor.execution_engine.device_control_pool
         results = []
-        lock = threading.Lock()
+        # results_lock 仅保护并行初始化结果收集（results.append）的线程安全，
+        # 非设备互斥；物理设备占用互斥统一由 task_service 派发层
+        # DistributedLock（RedisKeyPrefix.TASK_PHYSICAL_LOCK）承担（UC-0903 4a）
+        results_lock = threading.Lock()
         futures = []
 
         def init_device(info):
@@ -107,7 +110,7 @@ class E2EDeviceManager:
                     err = "Initialize returned False（常见根因：hypium/devicetest 包未安装 → UiDriver=None → 无法获取驱动，详见驱动层日志）"
             except Exception as e:
                 err = str(e)
-            with lock:
+            with results_lock:
                 results.append({'success': ok, 'error': err, 'device_name': info["device_name"]})
 
         for info in device_info_list:
