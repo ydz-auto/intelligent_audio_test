@@ -20,6 +20,7 @@ class ConcurrencyManager:
                 'turn_taking', 'interruption_metrics', 'non_interactive_latency',
                 'noise_latency', 'env_judge',
                 'high_freq_turn_taking', 'high_freq_llm_judge',
+                'reject_judge', 'turn_eval',
             ]
             limits = getattr(config, 'CONCURRENCY_LIMITS', {})
             default_max = getattr(config, 'DEFAULT_MAX_CONCURRENCY', 2)

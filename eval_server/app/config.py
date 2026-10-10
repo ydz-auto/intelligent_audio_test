@@ -64,6 +64,8 @@ class Config:
     WSGI_THREADS = 128
 
     # Task settings
+    # 传音频给 LLM 的维度（env_judge/reject_judge）并发限制为 5，避免音频请求打满；
+    # 其余维度可放开到 30。
     CONCURRENCY_LIMITS = {
         'wer': 30,
         'ser': 30,
@@ -76,9 +78,11 @@ class Config:
         'interruption_metrics': 30,
         'non_interactive_latency': 30,
         'noise_latency': 30,
-        'env_judge': 30,
+        'env_judge': 5,
         'high_freq_turn_taking': 30,
         'high_freq_llm_judge': 30,
+        'reject_judge': 5,
+        'turn_eval': 30,
     }
     DEFAULT_MAX_CONCURRENCY = 30
 
