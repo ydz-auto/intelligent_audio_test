@@ -8,9 +8,16 @@
   vendor) 键注册即生效。
 """
 import json
+import os
 from types import SimpleNamespace
 
 import pytest
+
+# api_adapter_service 侧模块（http/qwen 适配器经 api_key_provider）导入期
+# 强校验 OSS 两键；tests/conftest.py 已兜底 DATABASE_URL，此处补 OSS 两键
+# 的进程级兜底，保证本文件可独立运行（显式配置的环境变量不受影响）
+os.environ.setdefault('OSS_ACCESS_KEY', 'ut-dummy-ak')
+os.environ.setdefault('OSS_SECRET_KEY', 'ut-dummy-sk')
 
 import api_test_service.core.api_session_executor as executor_mod
 
