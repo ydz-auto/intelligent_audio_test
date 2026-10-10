@@ -9,6 +9,7 @@
 servicer 层把 gRPC JSON 参数构造成命令/查询对象后委托给本服务。
 """
 import logging
+import math
 from typing import Optional
 
 from shared.models.common_enums import CalibrationStatus, DeviceType, RedisKeyPrefix
@@ -175,10 +176,12 @@ class ApiRmsSplConfigService:
         return {'success': True, 'message': 'RMS→SPL 映射已删除', 'data': None, 'code': 200}
 
     def calibrate(self, mapping_id: int, calibration_data: dict) -> dict:
-        """执行校准（UC-0902 步骤4）：写校准点 + 置已校准。
+        """执行校准（UC-0902 步骤4）：以请求点集全量替换校准点 + 置已校准。
 
         同一 API 并发校准互斥：抢不到 lock:spl:calibration:{api_id} 直接拒绝。
         Redis 不可用时 DistributedLock 降级放行（与锁实现承诺一致）。
+        写入点集完全来自本次请求（锁内重读映射后替换），不依赖抢锁前的
+        陈旧读，消除读-改-写窗口溢出锁外的覆盖风险。
         """
         try:
             mapping = self.repository.get_mapping(mapping_id)
@@ -192,6 +195,14 @@ class ApiRmsSplConfigService:
                 if not isinstance(p, dict) or 'target_spl' not in p or 'gain_linear' not in p:
                     return {'success': False, 'message': f'校准点[{i}] 缺少 target_spl/gain_linear 字段',
                             'data': None, 'code': 400}
+                target_spl = p['target_spl']
+                gain_linear = p['gain_linear']
+                if not isinstance(target_spl, (int, float)) or not math.isfinite(target_spl):
+                    return {'success': False, 'message': f'校准点[{i}] target_spl 必须为有限数值',
+                            'data': None, 'code': 400}
+                if not isinstance(gain_linear, (int, float)) or not math.isfinite(gain_linear) or gain_linear <= 0:
+                    return {'success': False, 'message': f'校准点[{i}] gain_linear 必须为正的有限数值',
+                            'data': None, 'code': 400}
 
             lock = DistributedLock(
                 f"{RedisKeyPrefix.SPL_CALIBRATION_LOCK.value}:{mapping.api_id}"
@@ -204,12 +215,15 @@ class ApiRmsSplConfigService:
                     'code': 409,
                 }
             try:
-                for p in points:
-                    mapping.add_calibration_point(CalibrationPoint(
-                        target_spl=float(p['target_spl']),
-                        gain_linear=float(p['gain_linear']),
-                        rms_dbfs=p.get('rms_dbfs'),
-                    ))
+                # 锁内重读：抢锁前 read 的快照可能已被并发校准提交覆盖
+                mapping = self.repository.get_mapping(mapping_id)
+                if mapping is None:
+                    return {'success': False, 'message': '未找到映射记录', 'data': None, 'code': 404}
+                mapping.replace_calibration_points(CalibrationPoint(
+                    target_spl=float(p['target_spl']),
+                    gain_linear=float(p['gain_linear']),
+                    rms_dbfs=p.get('rms_dbfs'),
+                ) for p in points)
                 updated = self.repository.update_mapping(mapping.id, {
                     'calibration_status': CalibrationStatus.CALIBRATED.value,
                     'calibration_data': {

@@ -274,6 +274,7 @@ class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=int(result.get('code') or 0),
             )
         except Exception as e:
             return api_pb.CreateRmsSplMappingResponse(success=False, message=str(e), data="")
@@ -286,6 +287,7 @@ class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=int(result.get('code') or 0),
             )
         except Exception as e:
             return api_pb.UpdateRmsSplMappingResponse(success=False, message=str(e), data="")
@@ -297,6 +299,7 @@ class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=int(result.get('code') or 0),
             )
         except Exception as e:
             return api_pb.DeleteRmsSplMappingResponse(success=False, message=str(e), data="")
@@ -313,6 +316,7 @@ class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=int(result.get('code') or 0),
             )
         except Exception as e:
             return api_pb.ListRmsSplMappingsResponse(success=False, message=str(e), data="")
@@ -324,6 +328,7 @@ class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=int(result.get('code') or 0),
             )
         except Exception as e:
             return api_pb.GetRmsSplMappingResponse(success=False, message=str(e), data="")
@@ -335,6 +340,7 @@ class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=int(result.get('code') or 0),
             )
         except Exception as e:
             return api_pb.GetRmsSplMappingsByApiResponse(success=False, message=str(e), data="")
@@ -347,6 +353,7 @@ class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=int(result.get('code') or 0),
             )
         except Exception as e:
             return api_pb.CalibrateRmsSplMappingResponse(success=False, message=str(e), data="")
@@ -361,6 +368,7 @@ class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=int(result.get('code') or 0),
             )
         except Exception as e:
             return api_pb.SetDefaultRmsSplMappingResponse(success=False, message=str(e), data="")

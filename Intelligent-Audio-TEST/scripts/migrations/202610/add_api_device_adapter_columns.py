@@ -25,12 +25,14 @@ from urllib.parse import urlparse
 
 load_dotenv()
 DATABASE_URL = os.environ.get('DATABASE_URL')
-parsed = urlparse(DATABASE_URL)
-DB_HOST = parsed.hostname
-DB_PORT = parsed.port or 5432
-DB_NAME = parsed.path.lstrip('/')
-DB_USER = parsed.username
-DB_PASS = parsed.password
+# 懒解析：未配置 DATABASE_URL 时保留 None，让 __main__ 给出友好报错，
+# 而不是在模块导入期 urlparse(None) 直接崩溃
+parsed = urlparse(DATABASE_URL) if DATABASE_URL else None
+DB_HOST = parsed.hostname if parsed else None
+DB_PORT = (parsed.port or 5432) if parsed else 5432
+DB_NAME = parsed.path.lstrip('/') if parsed else None
+DB_USER = parsed.username if parsed else None
+DB_PASS = parsed.password if parsed else None
 
 API_TABLE = 'apis'
 

@@ -31,6 +31,9 @@ python scripts/migrations/202610/add_benchmark_tables.py                  # ⑬ 
 python scripts/migrations/202610/fix_users_email_unique.py --apply        # ⑭ users 空邮箱归一化 + 非空 email 部分唯一索引（INT-84；默认 dry-run）
 python scripts/migrations/202610/add_device_management_tables.py          # ⑮ 设备管理 5 表 + 索引（INT-80：分组/状态历史/告警规则/告警记录）
 python scripts/migrations/202610/fix_leftover_foreign_keys_and_indexes.py # ⑯ 修复 202608 基线未生效的残留约束（INT-88：补删 FK / test_case_groups.name 唯一约束 / 外键替代索引 / deleted_at 部分索引）
+python scripts/migrations/202610/add_api_rms_spl_mappings.py             # ⑰ 建 api_rms_spl_mappings 表 + apis.rms_spl_mapping_id 列（INT-61 数字域灵敏度映射，UC-0902）
+python scripts/migrations/202610/add_api_output_types.py                 # ⑱ apis 加 output_types 列（INT-74 多模态输出类型）
+python scripts/migrations/202610/add_api_device_adapter_columns.py       # ⑲ apis 加 device_type/adapter_class/audio_config 列（INT-68 UC-0901，audio_config 未配置回退默认格式）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -84,6 +87,9 @@ python scripts/migrations/202610/fix_leftover_foreign_keys_and_indexes.py # ⑯ 
 | [add_benchmark_tables.py](202610/add_benchmark_tables.py) | 建 `benchmark_rankings`（排行 ReadModel）/ `benchmark_metric_mappings`（指标映射单一事实源，含设计文档 §5.1 默认映射种子 13 条）/ `benchmark_sources`（外部基线数据源）/ `benchmark_baselines`（外部基线条目，导入即不可变版本快照）四表及索引；支持 `--dry-run` |
 | [add_device_management_tables.py](202610/add_device_management_tables.py) | 建 `device_groups`（设备分组，含组名未删除部分唯一索引并发兜底）/ `device_group_members`（成员关联，组内设备唯一）/ `device_status_events`（状态历史：在线/离线/健康检查/操作事件）/ `device_alarm_rules`（告警规则：离线时长/健康失败次数/CPU/内存/电池阈值）/ `device_alarms`（告警记录与确认流）五表及索引，DDL 与 device_service ORM 元数据逐列对齐；支持 `--dry-run` |
 | [fix_leftover_foreign_keys_and_indexes.py](202610/fix_leftover_foreign_keys_and_indexes.py) | 修复 202608 基线未生效的残留约束（INT-88） | 动态枚举并删除全库残留外键（应用层管理引用完整性，含多轮 lock_timeout 重试，被长事务阻塞时跳过并汇总）；删 `test_case_groups.name` 单列唯一约束；补建 202608 Step 11 外键替代索引清单与 Step 12 `deleted_at` 部分索引（动态枚举含 deleted/deleted_at 列的表）。例外保留 `algorithm_definitions_type_key`；支持 `--dry-run` |
+| [add_api_rms_spl_mappings.py](202610/add_api_rms_spl_mappings.py) | 建 `api_rms_spl_mappings` 表 + `apis.rms_spl_mapping_id` 列（INT-61，UC-0902） | 被测 API 数字域 RMS→SPL 灵敏度映射表（API 1:N，与 E2E SPLMapping 物理域对称）及默认映射指针列；幂等，支持 `--dry-run` |
+| [add_api_output_types.py](202610/add_api_output_types.py) | `apis` 加 `output_types` 列（INT-74） | 多模态输出类型 JSON 数组（OutputType 枚举值子集）；幂等，支持 `--dry-run` |
+| [add_api_device_adapter_columns.py](202610/add_api_device_adapter_columns.py) | `apis` 加 `device_type` / `adapter_class` / `audio_config` 列（INT-68，UC-0901） | 被测设备类型（默认 http_api）/ 指定适配器类名 / 目标音频格式 JSON（未配置回退默认）；幂等，支持 `--dry-run`。**提测/上线窗口需人工执行**（INT-68 验收遗留提示：本环境已于 2026-10-10 随 ⑯ 修复批次补执行） |
 
 ## 新增迁移脚本约定
 

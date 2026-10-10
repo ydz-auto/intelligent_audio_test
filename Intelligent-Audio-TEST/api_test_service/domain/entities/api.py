@@ -38,6 +38,22 @@ def normalize_output_types(raw) -> List[str]:
     return [item.value for item in OutputType if item.value in present]
 
 
+_AUDIO_CONFIG_KEYS = ('sample_rate', 'bit_depth', 'channels', 'container', 'format', 'chunk_duration_ms')
+
+
+def normalize_audio_config(raw) -> Optional[Dict]:
+    """audio_config 归一化：仅保留已知键的 JSON 对象（None 原样通过）
+
+    CRUD 写路径与聚合共用此过滤，防止未知键原样入库。
+    非 dict 输入抛 ValueError。
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("audio_config 必须是 JSON 对象")
+    return {k: raw[k] for k in _AUDIO_CONFIG_KEYS if k in raw}
+
+
 @dataclass(frozen=True)
 class APISnapshot:
     """API 快照值对象 — 不可变，记录某一时刻 API 的核心信息。"""
@@ -81,14 +97,8 @@ class APIAggregate:
         return self.output_types
 
     def set_audio_config(self, raw) -> Optional[Dict]:
-        """设置目标音频格式（仅保留已知键），返回规整后的 dict"""
-        if raw is None:
-            self.audio_config = None
-            return None
-        if not isinstance(raw, dict):
-            raise ValueError("audio_config 必须是 JSON 对象")
-        allowed = ('sample_rate', 'bit_depth', 'channels', 'container', 'format', 'chunk_duration_ms')
-        self.audio_config = {k: raw[k] for k in allowed if k in raw}
+        """设置目标音频格式（经 normalize_audio_config 仅保留已知键），返回规整后的 dict"""
+        self.audio_config = normalize_audio_config(raw)
         return self.audio_config
 
     def activate(self) -> None:

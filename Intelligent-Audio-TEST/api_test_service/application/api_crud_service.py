@@ -16,9 +16,10 @@ from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 from shared.models.common_enums import OutputType, DeviceType, AudioBitDepth, AudioContainer
-from api_test_service.domain.entities.api import normalize_output_types
+from api_test_service.domain.entities.api import normalize_output_types, normalize_audio_config
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from api_test_service.infrastructure.persistence.api_test_repository import api_test_repository
+from api_test_service.infrastructure.persistence.api_rms_spl_repository import ApiRmsSplRepositoryImpl
 
 logger = logging.getLogger(__name__)
 
@@ -327,7 +328,7 @@ class APICrudService:
                 'output_types': normalize_output_types(data.get('output_types')),
                 'device_type': data.get('device_type') or 'http_api',
                 'adapter_class': data.get('adapter_class'),
-                'audio_config': data.get('audio_config'),
+                'audio_config': normalize_audio_config(data.get('audio_config')),
             }
 
             new_api = api_test_repository.create_api(create_data)
@@ -399,11 +400,18 @@ class APICrudService:
             if data.get('adapter_class') is not None:
                 update_fields['adapter_class'] = data['adapter_class']
             if data.get('audio_config') is not None:
-                update_fields['audio_config'] = data['audio_config']
+                update_fields['audio_config'] = normalize_audio_config(data['audio_config'])
             if 'rms_spl_mapping_id' in data:
-                update_fields['rms_spl_mapping_id'] = (
-                    int(data['rms_spl_mapping_id']) if data['rms_spl_mapping_id'] else None
-                )
+                # 与 set-default 命令同口径双校验：映射必须存在且归属本 API，
+                # 防止把默认灵敏度映射指向其他 API 的校准曲线（越权配置写入）
+                spl_mapping_id = data['rms_spl_mapping_id']
+                if spl_mapping_id:
+                    spl_mapping = ApiRmsSplRepositoryImpl().get_mapping(int(spl_mapping_id))
+                    if spl_mapping is None:
+                        return {'success': False, 'message': '未找到映射记录', 'data': None, 'code': 404}
+                    if spl_mapping.api_id != int(api_id):
+                        return {'success': False, 'message': '映射不属于该 API', 'data': None, 'code': 400}
+                update_fields['rms_spl_mapping_id'] = int(spl_mapping_id) if spl_mapping_id else None
 
             if data.get('endpoints') is not None:
                 for ep in data['endpoints']:

@@ -7,12 +7,16 @@ from ._common import _grpc_call
 
 
 def _envelope(resp):
-    """gRPC 信封 → {success, message, data, code}"""
+    """gRPC 信封 → {success, message, data, code}
+
+    code 优先取微服务填的业务码（200/201/400/404/409）；旧版本 servicer
+    未填（0）时按 success 回退 200/400，保持向后兼容。
+    """
     return {
         'success': resp.success,
         'message': resp.message,
         'data': json.loads(resp.data) if resp.data else None,
-        'code': 200 if resp.success else 400,
+        'code': resp.code or (200 if resp.success else 400),
     }
 
 

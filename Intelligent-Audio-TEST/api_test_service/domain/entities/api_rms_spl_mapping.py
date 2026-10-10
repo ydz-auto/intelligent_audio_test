@@ -49,7 +49,11 @@ class ApiRmsSplMapping:
             and bool(self.calibration_points)
         )
 
-    def add_calibration_point(self, point: CalibrationPoint) -> None:
-        """追加校准点并自动置为已校准"""
-        self.calibration_points.append(point)
+    def replace_calibration_points(self, points: List[CalibrationPoint]) -> None:
+        """以本次校准测得的完整点集替换既有校准点并自动置为已校准
+
+        校准是一次完整测量会话：新点集整体取代旧曲线（而非追加），
+        避免重复校准在同一 target_spl 上累积重复点破坏插值。
+        """
+        self.calibration_points = list(points)
         self.calibration_status = CalibrationStatus.CALIBRATED.value

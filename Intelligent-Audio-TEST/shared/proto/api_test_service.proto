@@ -173,6 +173,9 @@ message StopAPITestConfigResponse {
 }
 
 // ==================== ApiRmsSplConfigService Messages ====================
+// 响应统一含 int32 code（业务 HTTP 语义码：200/201 成功、400/404/409 失败原因），
+// 网关据此映射 409 CONFLICT / 404 NOT_FOUND；旧版本 servicer 未填时为 0，
+// 网关回退为 success ? 200 : 400。
 
 message CreateRmsSplMappingRequest {
   string data = 1;  // JSON 序列化的创建参数
@@ -182,6 +185,7 @@ message CreateRmsSplMappingResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;
 }
 
 message UpdateRmsSplMappingRequest {
@@ -193,6 +197,7 @@ message UpdateRmsSplMappingResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;
 }
 
 message DeleteRmsSplMappingRequest {
@@ -203,6 +208,7 @@ message DeleteRmsSplMappingResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;
 }
 
 message ListRmsSplMappingsRequest {
@@ -216,6 +222,7 @@ message ListRmsSplMappingsResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;
 }
 
 message GetRmsSplMappingRequest {
@@ -226,6 +233,7 @@ message GetRmsSplMappingResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;
 }
 
 message GetRmsSplMappingsByApiRequest {
@@ -236,6 +244,7 @@ message GetRmsSplMappingsByApiResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;
 }
 
 message CalibrateRmsSplMappingRequest {
@@ -247,6 +256,7 @@ message CalibrateRmsSplMappingResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;
 }
 
 message SetDefaultRmsSplMappingRequest {
@@ -258,4 +268,5 @@ message SetDefaultRmsSplMappingResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  int32 code = 4;
 }

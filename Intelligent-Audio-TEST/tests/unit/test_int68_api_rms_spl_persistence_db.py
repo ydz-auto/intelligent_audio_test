@@ -528,3 +528,97 @@ class TestDigitalSplRoutes:
                            headers={'x-test-perms': 'digital_spl:update'})
         assert resp.status_code == 200
         assert fake.calls[-1] == ('set_default', 5, 3)
+
+
+# ==================== 4. 真链路端到端：真实 servicer→gRPC→proxy（审计问题1） ====================
+# 审计指出：信封 code 在 gRPC 边界丢失，此前 409 断言用假 ACL 注入掩盖了断链。
+# 本节用进程内真实 gRPC server + 真实 pb2 序列化 + 真实应用服务/仓储，
+# 验证业务码（200/201/404/409）经 servicer 透传后由代理 _envelope 正确还原。
+
+@pytest.fixture()
+def live_grpc_channel(db, monkeypatch):
+    """真实 ApiRmsSplConfigServiceServicer 挂进程内 gRPC server（随机端口），
+    网关代理的 stub 工厂指向该 server——完整走真实 pb2 序列化链路。"""
+    import grpc
+    from concurrent import futures
+
+    from api_test_service.interfaces.grpc.servicers import ApiRmsSplConfigServiceServicer
+    from shared.proto import api_test_service_pb2_grpc as pb_grpc
+    from api_gateway.infrastructure.grpc_proxies import api_rms_spl_proxies
+
+    servicer = ApiRmsSplConfigServiceServicer()
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
+    pb_grpc.add_ApiRmsSplConfigServiceServicer_to_server(servicer, server)
+    port = server.add_insecure_port('127.0.0.1:0')
+    server.start()
+    channel = grpc.insecure_channel(f'127.0.0.1:{port}')
+    monkeypatch.setattr(api_rms_spl_proxies, 'get_api_rms_spl_config_service_stub',
+                        lambda: pb_grpc.ApiRmsSplConfigServiceStub(channel))
+    yield channel
+    channel.close()
+    server.stop(grace=None)
+
+
+class TestEnvelopeCodeEndToEnd:
+    def test_create_and_calibrate_codes_passthrough(self, live_grpc_channel):
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service as proxy
+
+        created = proxy.create({'api_id': 5, 'name': 'e2e'})
+        assert created['success'] is True
+        assert created['code'] == 201  # 成功业务码 201 经真实 pb2 透传
+        mapping_id = created['data']['id']
+
+        res = proxy.calibrate(mapping_id, {'points': [
+            {'target_spl': 55, 'gain_linear': 0.5},
+            {'target_spl': 75, 'gain_linear': 2.0},
+        ]})
+        assert res['success'] is True
+        assert res['code'] == 200
+
+        # 真库写读回：点集与请求一致（全量替换语义经真实链路生效）
+        by_api = proxy.get_by_api(5)
+        assert by_api['code'] == 200
+        pts = by_api['data']['items'][0]['calibration_points']
+        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [(55.0, 0.5), (75.0, 2.0)]
+
+    def test_calibrate_conflict_409_end_to_end(self, live_grpc_channel, monkeypatch):
+        """并发校准互斥 409 经真实 servicer→proxy 链透传（不再降级 400）"""
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service as proxy
+        from api_test_service.application import api_rms_spl_config_service as app_mod
+
+        created = proxy.create({'api_id': 6, 'name': 'e2e-conflict'})
+        mapping_id = created['data']['id']
+
+        class _HeldLock:
+            def __init__(self, key, **kwargs):
+                pass
+
+            def acquire(self, blocking=True):
+                return False
+
+            def release(self):
+                pass
+
+        monkeypatch.setattr(app_mod, 'DistributedLock', _HeldLock)
+        res = proxy.calibrate(mapping_id, {'points': [{'target_spl': 65, 'gain_linear': 1.0}]})
+        assert res['success'] is False
+        assert res['code'] == 409
+        assert '正在执行校准' in res['message']
+
+    def test_get_one_missing_404_end_to_end(self, live_grpc_channel):
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service as proxy
+
+        res = proxy.get_one(424242)
+        assert res['success'] is False
+        assert res['code'] == 404
+        assert '未找到映射记录' in res['message']
+
+    def test_legacy_servicer_without_code_falls_back(self, monkeypatch):
+        """旧版本 servicer 响应无 code（0）：代理按 success 回退 200/400，向后兼容"""
+        from api_gateway.infrastructure.grpc_proxies.api_rms_spl_proxies import _envelope
+        from types import SimpleNamespace
+
+        legacy_ok = _envelope(SimpleNamespace(success=True, message='ok', data='{"id": 1}', code=0))
+        assert legacy_ok['code'] == 200
+        legacy_fail = _envelope(SimpleNamespace(success=False, message='x', data='', code=0))
+        assert legacy_fail['code'] == 400

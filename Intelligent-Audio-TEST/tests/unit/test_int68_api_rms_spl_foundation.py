@@ -560,3 +560,204 @@ class TestEnumLiterals:
 
     def test_spl_calibration_lock_prefix(self):
         assert RedisKeyPrefix.SPL_CALIBRATION_LOCK.value == 'lock:spl:calibration'
+
+
+# ========== 5. 审计返修补充：校准数值校验 / 全量替换语义 / update 路径越权校验 ==========
+
+class TestCalibratePointValidation:
+    """审计问题5：calibrate 校准点复用正数校验并加 math.isfinite（NaN 穿透插值）"""
+
+    def _service_with_mapping(self):
+        service = ApiRmsSplConfigService(repository=_FakeRmsSplRepo())
+        mapping_id = service.create({'api_id': 5})['data']['id']
+        return service, mapping_id
+
+    def test_rejects_nan_gain_400(self):
+        service, mapping_id = self._service_with_mapping()
+        res = service.calibrate(mapping_id, {
+            'points': [{'target_spl': 65, 'gain_linear': float('nan')}]})
+        assert res['code'] == 400 and 'gain_linear' in res['message']
+        assert service.get_one(mapping_id)['data']['calibration_points'] == []
+
+    def test_rejects_inf_target_spl_400(self):
+        service, mapping_id = self._service_with_mapping()
+        res = service.calibrate(mapping_id, {
+            'points': [{'target_spl': float('inf'), 'gain_linear': 1.0}]})
+        assert res['code'] == 400 and 'target_spl' in res['message']
+
+    def test_rejects_negative_gain_400(self):
+        service, mapping_id = self._service_with_mapping()
+        res = service.calibrate(mapping_id, {
+            'points': [{'target_spl': 65, 'gain_linear': -0.5}]})
+        assert res['code'] == 400 and 'gain_linear' in res['message']
+
+    def test_rejects_non_numeric_gain_400(self):
+        service, mapping_id = self._service_with_mapping()
+        res = service.calibrate(mapping_id, {
+            'points': [{'target_spl': 65, 'gain_linear': 'loud'}]})
+        assert res['code'] == 400 and 'gain_linear' in res['message']
+
+
+class TestCalibrateReplaceSemantics:
+    """审计问题4：校准以请求点集全量替换（锁内重读，不依赖抢锁前陈旧快照）"""
+
+    def test_recalibrate_replaces_not_appends(self):
+        """重复校准：新点集整体取代旧曲线，不在同一 target_spl 累积重复点"""
+        service = ApiRmsSplConfigService(repository=_FakeRmsSplRepo())
+        mapping_id = service.create({'api_id': 5})['data']['id']
+        service.calibrate(mapping_id, {'points': [
+            {'target_spl': 55, 'gain_linear': 0.5},
+            {'target_spl': 65, 'gain_linear': 1.0},
+        ]})
+        res = service.calibrate(mapping_id, {'points': [
+            {'target_spl': 65, 'gain_linear': 2.0},
+        ]})
+        assert res['code'] == 200
+        pts = res['data']['calibration_points']
+        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [(65.0, 2.0)]
+
+    def test_stale_concurrent_commit_not_merged_into_write(self):
+        """抢锁前快照陈旧（并发校准已提交）时，写入仍只含本次请求点集"""
+        repo = _FakeRmsSplRepo()
+        service = ApiRmsSplConfigService(repository=repo)
+        mapping_id = service.create({'api_id': 5})['data']['id']
+
+        real_get = repo.get_mapping
+        state = {'reads': 0}
+
+        def _get_with_concurrent_commit(mapping_id):
+            state['reads'] += 1
+            if state['reads'] == 1:
+                # 模拟并发校准 A 在 B 抢锁前完成提交：旧点集已落库
+                m = real_get(mapping_id)
+                m.replace_calibration_points([CalibrationPoint(target_spl=90.0, gain_linear=9.0)])
+            return real_get(mapping_id)
+
+        repo.get_mapping = _get_with_concurrent_commit
+        res = service.calibrate(mapping_id, {'points': [{'target_spl': 65, 'gain_linear': 1.5}]})
+        assert res['code'] == 200
+        pts = res['data']['calibration_points']
+        # A 提交的 (90, 9.0) 不被合并进 B 的写入
+        assert [(p['target_spl'], p['gain_linear']) for p in pts] == [(65.0, 1.5)]
+
+    def test_returns_404_when_mapping_deleted_before_lock(self):
+        """首读后、抢锁前映射被并发删除：锁内重读命中 None，返回 404 而非异常"""
+        repo = _FakeRmsSplRepo()
+        service = ApiRmsSplConfigService(repository=repo)
+        mapping_id = service.create({'api_id': 5})['data']['id']
+
+        real_get = repo.get_mapping
+        state = {'reads': 0}
+
+        def _get_then_delete(mapping_id):
+            state['reads'] += 1
+            if state['reads'] == 2:
+                repo._store.pop(int(mapping_id), None)
+            return real_get(mapping_id)
+
+        repo.get_mapping = _get_then_delete
+        res = service.calibrate(mapping_id, {'points': [{'target_spl': 65, 'gain_linear': 1.0}]})
+        assert res['code'] == 404
+
+
+class TestApiUpdateSplMappingOwnership:
+    """审计问题2：API update 路径 rms_spl_mapping_id 存在性/归属双校验（与 set-default 同口径）"""
+
+    @staticmethod
+    def _spl_repo():
+        class _SplRepo:
+            def get_mapping(self, mapping_id):
+                return {3: ApiRmsSplMapping(id=3, api_id=5),
+                        4: ApiRmsSplMapping(id=4, api_id=6)}.get(int(mapping_id))
+        return _SplRepo()
+
+    @staticmethod
+    def _api_repo(captured=None):
+        def _api(api_id):
+            return SimpleNamespace(id=api_id, name='n', status='online', api_endpoints=[],
+                                   output_types=[], device_type='http_api', adapter_class=None,
+                                   audio_config=None, default_max_process=5,
+                                   default_max_timeout=30, default_max_audio_duration=60)
+
+        class _ApiRepo:
+            def get_api(self, api_id):
+                return _api(api_id)
+
+            def update_api(self, api_id, fields):
+                if captured is not None:
+                    captured.update(fields)
+                return _api(api_id)
+
+        return _ApiRepo()
+
+    def _patch(self, monkeypatch, captured=None):
+        monkeypatch.setattr(api_crud_module, 'api_test_repository', self._api_repo(captured))
+        monkeypatch.setattr(api_crud_module, 'ApiRmsSplRepositoryImpl', self._spl_repo)
+
+    def test_update_rejects_missing_mapping_404(self, monkeypatch):
+        self._patch(monkeypatch)
+        res = APICrudService.update(5, {'rms_spl_mapping_id': 999})
+        assert res['code'] == 404 and '未找到映射记录' in res['message']
+
+    def test_update_rejects_foreign_mapping_400(self, monkeypatch):
+        """映射 4 归属 API 6，不得设为 API 5 的默认映射（越权配置写入）"""
+        self._patch(monkeypatch)
+        res = APICrudService.update(5, {'rms_spl_mapping_id': 4})
+        assert res['code'] == 400 and '不属于' in res['message']
+
+    def test_update_accepts_own_mapping(self, monkeypatch):
+        captured = {}
+        self._patch(monkeypatch, captured)
+        res = APICrudService.update(5, {'rms_spl_mapping_id': 3})
+        assert res['code'] == 200
+        assert captured['rms_spl_mapping_id'] == 3
+
+    def test_update_null_clears_mapping(self, monkeypatch):
+        captured = {}
+        self._patch(monkeypatch, captured)
+        res = APICrudService.update(5, {'rms_spl_mapping_id': None})
+        assert res['code'] == 200
+        assert captured['rms_spl_mapping_id'] is None
+
+
+class TestCreateAudioConfigNormalized:
+    """审计问题6：CRUD 写路径复用聚合 normalize_audio_config 过滤未知键"""
+
+    def test_create_filters_unknown_audio_config_keys(self, monkeypatch):
+        captured = {}
+
+        class _Repo:
+            def create_api(self, data):
+                captured.update(data)
+                return SimpleNamespace(id=12)
+
+        monkeypatch.setattr(api_crud_module, 'api_test_repository', _Repo())
+        res = APICrudService.create({
+            'name': 'x', 'meta': {'k': 'v'},
+            'audio_config': {'sample_rate': 24000, 'channels': 1, 'unknown_key': 'junk'},
+        })
+        assert res['code'] == 201
+        assert captured['audio_config'] == {'sample_rate': 24000, 'channels': 1}
+
+    def test_update_filters_unknown_audio_config_keys(self, monkeypatch):
+        captured = {}
+
+        class _Repo:
+            @staticmethod
+            def _api(api_id):
+                return SimpleNamespace(id=api_id, name='n', status='online', api_endpoints=[],
+                                       output_types=[], device_type='http_api', adapter_class=None,
+                                       audio_config=None, default_max_process=5,
+                                       default_max_timeout=30, default_max_audio_duration=60)
+
+            def get_api(self, api_id):
+                return self._api(api_id)
+
+            def update_api(self, api_id, fields):
+                captured.update(fields)
+                return self._api(api_id)
+
+        monkeypatch.setattr(api_crud_module, 'api_test_repository', _Repo())
+        res = APICrudService.update(9, {'audio_config': {'sample_rate': 48000, 'junk': 1}})
+        assert res['code'] == 200
+        assert captured['audio_config'] == {'sample_rate': 48000}

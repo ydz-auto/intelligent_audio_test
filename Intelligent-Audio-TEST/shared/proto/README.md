@@ -29,6 +29,7 @@
   - `bool success`
   - `string message`
   - `string data`（JSON 序列化的结果）
+- 需要网关按业务码区分错误语义的接口（如 404/409 冲突），响应额外带 `int32 code`（HTTP 语义业务码；旧版本 servicer 未填为 0，网关按 success 回退 200/400）。参见 `api_test_service.proto` ApiRmsSplConfigService 各 Response、`device_service.proto` GetPlaybackDeviceResponse
 
 ## 生成 Python 代码
 

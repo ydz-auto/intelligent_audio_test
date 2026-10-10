@@ -19,9 +19,11 @@ class RmsSplQueryService:
     @staticmethod
     def get_all():
         params = request.query_params
+        # per_page 钳制 [1,100]，防止超大分页拖垮列表查询
+        per_page = min(max(int(params.get('per_page', 10) or 10), 1), 100)
         result = _rms_spl_acl.get_all(
             page=int(params.get('page', 1) or 1),
-            per_page=int(params.get('per_page', 10) or 10),
+            per_page=per_page,
             api_id=params.get('api_id') or None,
             calibration_status=params.get('calibration_status') or None,
         )
