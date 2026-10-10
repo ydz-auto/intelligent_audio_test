@@ -126,6 +126,8 @@ class TaskCrudMixin:
         与 PATCH 用例路径 _apply_case_action 口径一致——device_type 是
         执行路由唯一依据（task_dispatch），NULL 会兜底 physical 把
         API 任务误路由到 E2E 执行器。
+        派生时传入用例名（INT-129）：上传双变体配置形态相同，仅
+        用例名 _api/_e2e 后缀可区分变体（见 derive_case_test_type）。
         """
         # 归一化用例级设备选择: {case_id: {device_type, device_id, lab_id}}
         device_map: Dict[str, Dict[str, Any]] = {}
@@ -140,18 +142,24 @@ class TaskCrudMixin:
         missing_type_ids = [str(c) for c in case_ids
                             if not device_map.get(str(c), {}).get('device_type')]
         case_config_map: Dict[str, Any] = {}
+        case_name_map: Dict[str, Any] = {}
         if missing_type_ids:
-            case_config_map = dict(
-                session.query(TestCase.id, TestCase.config)
+            for cid, cfg, name in (
+                session.query(TestCase.id, TestCase.config, TestCase.name)
                 .filter(TestCase.id.in_(missing_type_ids)).all()
-            )
+            ):
+                case_config_map[str(cid)] = cfg
+                case_name_map[str(cid)] = name
 
         # 关联用例
         for case_id in case_ids:
             dev = device_map.get(str(case_id), {})
             device_type = dev.get('device_type') or None
             if device_type is None:
-                derived = derive_case_test_type(case_config_map.get(str(case_id)))
+                derived = derive_case_test_type(
+                    case_config_map.get(str(case_id)),
+                    case_name=case_name_map.get(str(case_id)),
+                )
                 device_type = (DeviceType.PHYSICAL.value if derived == 'e2e'
                                else DeviceType.HTTP_API.value)
             session.add(TaskCase(
@@ -465,9 +473,13 @@ class TaskCrudMixin:
                 ).first()
                 if existing is None:
                     # 差异#2 收尾：用例级 device_type 为执行路由唯一依据，
-                    # 动态加入的用例由配置形态派生（含播放设备音频 → physical）
+                    # 动态加入的用例由配置形态派生（含播放设备音频 → physical）；
+                    # 传入用例名供上传双变体后缀判定（INT-129，与建任务派生同口径）
                     case = session.get(TestCase, case_id)
-                    derived = derive_case_test_type(case.config if case else None)
+                    derived = derive_case_test_type(
+                        case.config if case else None,
+                        case_name=case.name if case else None,
+                    )
                     session.add(TaskCase(
                         task_id=task_id,
                         test_case_id=case_id,
