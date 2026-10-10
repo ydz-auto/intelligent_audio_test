@@ -21,6 +21,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from shared.models.common_enums import DeviceType
 from shared.utils.log_handler import log_and_emit
 from shared.utils.config_manager import config_manager
 from audio_service.domain.services.audio_format_adapter import (
@@ -76,8 +77,6 @@ class RenderContext:
 class AudioStreamOrchestrator:
     """混音编排路由：公共前置（噪声合并/加载/适配/增益/时间轴）+ 路径分发"""
 
-    DEVICE_PHYSICAL = 'physical'
-
     def __init__(self):
         self._pcm_cache: Dict[int, Tuple[bytes, float]] = {}
         self._cache_lock = threading.Lock()
@@ -93,12 +92,12 @@ class AudioStreamOrchestrator:
         - websocket_api               → 'stream'
         - physical                    → ValueError（E2E 走 device_driver，不经此处）
         """
-        if device_type == AudioStreamOrchestrator.DEVICE_PHYSICAL:
+        if device_type == DeviceType.PHYSICAL:
             raise ValueError(
                 "physical 设备走 device_driver 物理混音路径，不经 RenderService")
-        if device_type == 'websocket_api' or (device_type == 'http_api' and stream):
+        if device_type == DeviceType.WEBSOCKET_API or (device_type == DeviceType.HTTP_API and stream):
             return 'stream'
-        if device_type == 'http_api':
+        if device_type == DeviceType.HTTP_API:
             return 'file'
         raise ValueError(f"未知执行设备类型: {device_type}")
 

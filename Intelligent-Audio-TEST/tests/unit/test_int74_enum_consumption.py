@@ -101,17 +101,11 @@ class TestAPICrudServiceOutputTypes:
         monkeypatch.setattr(api_crud_module, 'api_test_repository', _Repo())
         res = APICrudService.create({
             'name': '被测API', 'meta': {'k': 'v'},
-            'output_types': ['text', 'audio', 'audio', 'bogus'],
+            'output_types': ['text', 'audio', 'audio'],
         })
         assert res['code'] == 201
         assert captured['output_types'] == ['audio', 'text']
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason='INT-74 验收缺陷：create() 校验子集（meta/default_*）未含 output_types，'
-               '非法值被 normalize 静默剔除后 201 创建成功；update() 同载荷则 400 拒绝——'
-               '同一字段创建/更新 400 契约不一致。开发修复后此用例转 XPASS，需移除标记',
-    )
     def test_create_rejects_illegal_value_with_400(self, monkeypatch):
         monkeypatch.setattr(api_crud_module, 'api_test_repository', _NeverCalledRepo())
         res = APICrudService.create({'name': '被测API', 'meta': {'k': 'v'}, 'output_types': ['hologram']})

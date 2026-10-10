@@ -212,7 +212,8 @@ class APICrudService:
             'meta': data.get('meta'),
             'default_max_process': data.get('default_max_process'),
             'default_max_timeout': data.get('default_max_timeout'),
-            'default_max_audio_duration': data.get('default_max_audio_duration')
+            'default_max_audio_duration': data.get('default_max_audio_duration'),
+            'output_types': data.get('output_types')
         })
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
