@@ -27,6 +27,12 @@ class TestCaseCopyMoveMixin:
         self.repo.soft_delete_testcases_by_ids(ids)
         return f"已成功批量删除 {len(ids)} 个用例"
 
+    def _batch_restore(self, data, common=None):
+        """批量恢复（软删除恢复，仅已删除行计入）。"""
+        ids = data.get('ids', [])
+        restored_count = self.repo.restore_testcases_by_ids(ids)
+        return f"已成功恢复 {restored_count} 个用例"
+
     def _batch_move_to_group(self, data, common=None):
         """批量移动用例到目标分组。"""
         ids = data.get('ids', [])

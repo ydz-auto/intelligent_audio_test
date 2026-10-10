@@ -1,6 +1,6 @@
 import logging
 
-from api_gateway.infrastructure.request_adapter import request
+from api_gateway.infrastructure.request_adapter import request, get_current_request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.infrastructure.grpc_proxies import published_task_config_service
@@ -19,6 +19,23 @@ from api_gateway.schemas.published_task import (
 logger = logging.getLogger(__name__)
 
 _pt_acl = published_task_config_service
+
+
+def _current_operator_user_id():
+    """当前操作人用户 ID（AuthMiddleware 注入 request.state.user_id）。
+
+    AUTH_MODE=off 时中间件注入 0 → 归一为 None，task_service 保持 published_by=None 兜底。
+    """
+    req = get_current_request()
+    if req is None:
+        return None
+    user_id = getattr(req.state, 'user_id', None)
+    if user_id in (None, '', 0):
+        return None
+    try:
+        return int(user_id)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_query_params():
@@ -48,6 +65,7 @@ class PublishedTaskService:
             return error_response(f"请求数据验证失败: {str(e)}", code=ErrorCode.INVALID_PARAMS, http_code=400)
 
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
+        data_dict['operator_user_id'] = _current_operator_user_id()
         result = _pt_acl.publish(data_dict)
 
         if not result.get('success'):
@@ -193,7 +211,7 @@ class PublishedTaskService:
 
     @staticmethod
     def execute(published_task_id):
-        result = _pt_acl.execute(published_task_id)
+        result = _pt_acl.execute(published_task_id, operator_user_id=_current_operator_user_id())
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -222,6 +240,7 @@ class PublishedTaskService:
             return error_response(f"请求数据验证失败: {str(e)}", code=ErrorCode.INVALID_PARAMS, http_code=400)
 
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
+        data_dict['operator_user_id'] = _current_operator_user_id()
         result = _pt_acl.create_version(published_task_id, data_dict)
 
         if not result.get('success'):
@@ -237,7 +256,7 @@ class PublishedTaskService:
 
     @staticmethod
     def archive(published_task_id):
-        result = _pt_acl.archive(published_task_id)
+        result = _pt_acl.archive(published_task_id, operator_user_id=_current_operator_user_id())
 
         if not result.get('success'):
             code = result.get('code', 500)

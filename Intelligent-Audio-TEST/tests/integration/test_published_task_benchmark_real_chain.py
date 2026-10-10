@@ -183,7 +183,13 @@ class TestPublishBenchmarkRealChain:
 
         row = _published_rows(db, id=pt_id)[0]
         assert row.benchmark is False
-        assert _audit_logs(db, pt_id) == [], '不带标记发布不应产生审计事件'
+        # 不带标记发布不产生 BENCHMARK_MARKED 审计
+        # （INT-65 起仍无条件落 PUBLISHED_TASK_CREATED，见断言与单测 test_int65_published_task_audit）
+        logs = _audit_logs(db, pt_id)
+        benchmark_logs = [l for l in logs if 'PUBLISHED_TASK_BENCHMARK_MARKED' in (l.content or '')]
+        created_logs = [l for l in logs if 'PUBLISHED_TASK_CREATED' in (l.content or '')]
+        assert benchmark_logs == [], '不带标记发布不应产生 BENCHMARK_MARKED 审计'
+        assert created_logs, '发布应无条件落 PUBLISHED_TASK_CREATED 审计（INT-65）'
 
 
 class TestGatewayBenchmarkFilterRealChain:

@@ -4,7 +4,7 @@
 - ReportQueryService（读侧）
 - ReportCommandService（写侧）
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import Response
 from api_gateway.routes._response import to_response
 from api_gateway.application.services.auth.dependencies import require_permission
@@ -57,8 +57,8 @@ def batch_delete(_: None = require_permission('report:delete')):
 
 
 @router.get('/{report_id}/progress')
-def get_progress(report_id: int):
-    raise HTTPException(status_code=404, detail="report progress 端点未实现")
+def get_progress(report_id: int, _: None = require_permission('report:read')):
+    return _handle(ReportQueryService.get_progress(report_id))
 
 
 @router.post('/compare')

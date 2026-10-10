@@ -98,6 +98,22 @@ class TestCaseCrudMixin:
         session.flush()
         return count
 
+    def restore_testcases_by_ids(self, ids: List[str]) -> int:
+        """批量恢复软删除测试用例（仅已删除行会恢复，未 commit）。"""
+        session = get_db_session()
+        if not ids:
+            return 0
+        now = _now()
+        count = session.query(TestCase).filter(
+            TestCase.id.in_(ids),
+            TestCase.deleted == True,  # noqa: E712
+        ).update(
+            {"deleted": False, "deleted_at": None, "updated_at": now},
+            synchronize_session=False,
+        )
+        session.flush()
+        return count
+
     def update_testcase_group_id_by_ids(self, ids: List[str], group_id: str) -> int:
         """批量更新测试用例的 group_id（未 commit）。"""
         session = get_db_session()

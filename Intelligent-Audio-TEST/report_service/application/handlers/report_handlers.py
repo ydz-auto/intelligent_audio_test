@@ -32,6 +32,7 @@ from report_service.application.commands.report_commands import (
 )
 from report_service.application.queries.report_queries import (
     GetReportByTaskQuery,
+    GetReportProgressQuery,
     GetReportQuery,
     GetReportSummaryQuery,
     GetTrendDataQuery,
@@ -197,6 +198,63 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
             return None
         aggregate.summaries = self.repository.load_summaries(aggregate.id)
         return aggregate
+
+    @staticmethod
+    def _derive_generation_progress(task_id) -> int:
+        """从任务执行进度推导报告生成进度（0-100）。
+
+        任务查询失败/无进度数据时回退 0，不影响 generating 状态判定。
+        """
+        try:
+            from report_service.infrastructure.clients.grpc_clients import _grpc_get_tasks_by_ids
+            tasks = _grpc_get_tasks_by_ids([task_id])
+            task = tasks[0] if tasks else None
+            if task is None:
+                return 0
+
+            def _get(key, default=None):
+                if isinstance(task, dict):
+                    return task.get(key, default)
+                return getattr(task, key, default)
+
+            total = int(_get('total_cases', 0) or 0)
+            completed = int(_get('completed_cases', 0) or 0)
+            return int(completed / total * 100) if total > 0 else 0
+        except Exception:
+            logger.warning("推导报告生成进度失败 task_id=%s", task_id, exc_info=True)
+            return 0
+
+    def handle_get_report_progress(self, query: GetReportProgressQuery) -> Optional[dict]:
+        """处理报告生成进度查询（从任务/报告生成状态推导）。
+
+        语义：
+        - 报告不存在（或已软删除）→ None（调用方转 404）
+        - 该任务报告生成锁被持有 → generating，progress 按任务完成用例数推导
+        - 其余 → completed，progress=100（报告行落库即生成完成）
+
+        Returns:
+            dict: {report_id, task_id, status, progress, report_status?} 或 None
+        """
+        from report_service.application.services.report_task_generator import is_generation_locked
+
+        aggregate = self.repository.get_by_id(query.report_id)
+        if aggregate is None:
+            return None
+        task_id = aggregate.task_id
+        if task_id and is_generation_locked(task_id):
+            return {
+                'report_id': aggregate.id,
+                'task_id': task_id,
+                'status': 'generating',
+                'progress': self._derive_generation_progress(task_id),
+            }
+        return {
+            'report_id': aggregate.id,
+            'task_id': task_id,
+            'status': 'completed',
+            'progress': 100,
+            'report_status': aggregate.status,
+        }
 
     def handle_list(self, query: ListReportsQuery) -> List[ReportAggregate]:
         """处理分页列出报告（各条附摘要统计）。

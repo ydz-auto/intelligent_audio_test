@@ -42,6 +42,7 @@ from report_service.application.queries.benchmark_queries import (
 )
 from report_service.application.queries.report_queries import (
     GetReportByTaskQuery,
+    GetReportProgressQuery,
     GetReportQuery,
     GetReportSummaryQuery,
     ListReportsQuery,
@@ -399,6 +400,26 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             )
         except Exception as e:
             logger.exception("GetReportByTask failed")
+            return self._resp(False, str(e), None)
+
+    def GetReportProgress(self, request, context=None):
+        """查询报告生成进度。
+
+        请求字段（proto GetReportProgressRequest）：
+            report_id: int  报告 ID
+        """
+        try:
+            query = GetReportProgressQuery(
+                report_id=getattr(request, 'report_id'),
+            )
+            data = self.query_handler.handle_get_report_progress(query)
+            return self._resp(
+                data is not None,
+                'ok' if data is not None else 'report not found',
+                data,
+            )
+        except Exception as e:
+            logger.exception("GetReportProgress failed")
             return self._resp(False, str(e), None)
 
     def ListReports(self, request, context=None):

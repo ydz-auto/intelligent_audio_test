@@ -111,27 +111,45 @@ class PublishedTaskService:
         return snapshot
 
     @staticmethod
-    def _audit_benchmark_marked(pt) -> None:
-        """Benchmark 标记审计事件落库（PUBLISHED_TASK_BENCHMARK_MARKED）。
+    def _write_audit(event: AuditEvent, payload: dict) -> None:
+        """审计事件落 logs 表（category=System）。
 
-        审计写入失败仅告警不回滚：发布主流程已成功，审计为旁路记录。
+        审计写入失败仅告警不回滚：主流程已成功，审计为旁路记录。
         """
         try:
             log_repository.batch_create([{
                 'module': 'published_task',
                 'source': 'published_task_service',
                 'content': json.dumps({
-                    'event': AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value,
-                    'published_task_id': pt.id,
-                    'task_group_id': pt.task_group_id or pt.id,
-                    'version': pt.version,
-                    'source_task_id': pt.source_task_id,
-                    'published_by': pt.published_by,
+                    'event': event.value,
+                    **payload,
                     'result': 'success',
                 }, ensure_ascii=False),
             }])
         except Exception:
-            logger.warning('审计事件 %s 落库失败', AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value, exc_info=True)
+            logger.warning('审计事件 %s 落库失败', event.value, exc_info=True)
+
+    @staticmethod
+    def _resolve_operator(data: dict):
+        """从请求上下文提取操作人用户 ID（网关从 JWT 注入；AUTH_MODE=off 时为 None）。"""
+        value = (data or {}).get('operator_user_id')
+        if value in (None, '', 0):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _audit_benchmark_marked(pt) -> None:
+        """Benchmark 标记审计事件落库（PUBLISHED_TASK_BENCHMARK_MARKED）。"""
+        PublishedTaskService._write_audit(AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED, {
+            'published_task_id': pt.id,
+            'task_group_id': pt.task_group_id or pt.id,
+            'version': pt.version,
+            'source_task_id': pt.source_task_id,
+            'published_by': pt.published_by,
+        })
 
     @staticmethod
     def publish(data: dict) -> dict:
@@ -156,6 +174,7 @@ class PublishedTaskService:
             report_snapshot = repo.freeze_report_snapshot(source_task_id)
 
             benchmark = PublishedTaskService._coerce_benchmark(data.get('benchmark'))
+            operator = PublishedTaskService._resolve_operator(data)
             pt = repo.create(
                 name=name,
                 description=data.get('description'),
@@ -168,10 +187,17 @@ class PublishedTaskService:
                 snapshot_config=snapshot,
                 report_snapshot=report_snapshot,
                 publish_reason=data.get('publish_reason') or data.get('publishReason'),
-                published_by=None,  # G 域落地后从请求上下文回填
+                published_by=operator,
             )
             if benchmark:
                 PublishedTaskService._audit_benchmark_marked(pt)
+            PublishedTaskService._write_audit(AuditEvent.PUBLISHED_TASK_CREATED, {
+                'published_task_id': pt.id,
+                'task_group_id': pt.task_group_id or pt.id,
+                'version': pt.version,
+                'source_task_id': source_task_id,
+                'published_by': pt.published_by,
+            })
             return {'success': True, 'message': '已发布任务创建成功', 'data': {'id': pt.id}, 'code': 201}
         except Exception as e:
             logger.exception('发布已发布任务失败')
@@ -296,7 +322,7 @@ class PublishedTaskService:
     # ---------- 执行 ----------
 
     @staticmethod
-    def execute(published_task_id: int) -> dict:
+    def execute(published_task_id: int, operator_user_id=None) -> dict:
         """执行：按快照创建新的日常任务（带追溯字段）。"""
         try:
             pt = repo.get_by_id(published_task_id)
@@ -323,6 +349,13 @@ class PublishedTaskService:
                 published_task_id=pt.id,
                 published_task_version=pt.version,
             )
+            PublishedTaskService._write_audit(AuditEvent.PUBLISHED_TASK_EXECUTED, {
+                'published_task_id': pt.id,
+                'task_group_id': pt.task_group_id or pt.id,
+                'version': pt.version,
+                'new_task_id': new_task_id,
+                'operator_user_id': operator_user_id,
+            })
             return {
                 'success': True,
                 'message': '日常任务创建成功，可前往任务列表执行',
@@ -390,10 +423,19 @@ class PublishedTaskService:
                 benchmark=benchmark,
                 snapshot_config=snapshot,
                 publish_reason=data.get('publish_reason') or data.get('publishReason'),
+                published_by=PublishedTaskService._resolve_operator(data),
                 demote_id=current.id,  # 同事务：旧版本 is_current=False
             )
             if benchmark:
                 PublishedTaskService._audit_benchmark_marked(new_version)
+            PublishedTaskService._write_audit(AuditEvent.PUBLISHED_TASK_VERSION_CREATED, {
+                'published_task_id': new_version.id,
+                'task_group_id': group_id,
+                'version': new_version.version,
+                'source_task_id': new_source_task_id,
+                'published_by': new_version.published_by,
+                'previous_version_id': current.id,
+            })
             return {
                 'success': True,
                 'message': f'已发布任务 v{new_version.version} 创建成功',
@@ -407,7 +449,7 @@ class PublishedTaskService:
     # ---------- 归档 ----------
 
     @staticmethod
-    def archive(published_task_id: int) -> dict:
+    def archive(published_task_id: int, operator_user_id=None) -> dict:
         """归档（幂等：已归档直接返回成功）。"""
         try:
             pt = repo.get_by_id(published_task_id)
@@ -418,7 +460,14 @@ class PublishedTaskService:
                     'success': True, 'message': '任务已归档',
                     'data': {'id': pt.id, 'status': pt.status}, 'code': 0,
                 }
-            pt = repo.archive(published_task_id, archived_by=None)
+            pt = repo.archive(published_task_id, archived_by=operator_user_id)
+            PublishedTaskService._write_audit(AuditEvent.PUBLISHED_TASK_ARCHIVED, {
+                'published_task_id': pt.id,
+                'task_group_id': pt.task_group_id or pt.id,
+                'version': pt.version,
+                'source_task_id': pt.source_task_id,
+                'archived_by': pt.archived_by,
+            })
             return {
                 'success': True, 'message': '任务已归档',
                 'data': {'id': pt.id, 'status': pt.status}, 'code': 0,

@@ -65,6 +65,11 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.GetReportDetailRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.GetReportProgress = channel.unary_unary(
+                '/report.ReportConfigService/GetReportProgress',
+                request_serializer=report__service__pb2.GetReportProgressRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.GetReportByTask = channel.unary_unary(
                 '/report.ReportConfigService/GetReportByTask',
                 request_serializer=report__service__pb2.GetReportByTaskRequest.SerializeToString,
@@ -183,6 +188,13 @@ class ReportConfigServiceServicer:
 
     def GetReportDetail(self, request, context):
         """查询单个报告详情
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetReportProgress(self, request, context):
+        """查询报告生成进度（按报告 ID 推导任务/生成状态）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -325,6 +337,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'GetReportDetail': grpc.unary_unary_rpc_method_handler(
                     servicer.GetReportDetail,
                     request_deserializer=report__service__pb2.GetReportDetailRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'GetReportProgress': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetReportProgress,
+                    request_deserializer=report__service__pb2.GetReportProgressRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
             'GetReportByTask': grpc.unary_unary_rpc_method_handler(
@@ -565,6 +582,33 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/GetReportDetail',
             report__service__pb2.GetReportDetailRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetReportProgress(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/GetReportProgress',
+            report__service__pb2.GetReportProgressRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,

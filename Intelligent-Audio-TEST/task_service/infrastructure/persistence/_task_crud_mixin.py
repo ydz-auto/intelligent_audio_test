@@ -478,6 +478,34 @@ class TaskCrudMixin:
         finally:
             session.close()
 
+    def batch_restore(self, task_ids: List[int]) -> int:
+        """批量恢复软删除任务（仅已删除行会恢复）。
+
+        TaskCase 关联行在软删除期间未被清理（60 天硬清理按任务整体过期），
+        恢复任务行即恢复其用例关联，无需二次处理。
+
+        Returns:
+            实际恢复的条数（已删除行数；未删除/不存在的 ID 不计入）
+        """
+        if not task_ids:
+            return 0
+        session = get_db_session()
+        try:
+            count = session.query(Task).filter(
+                Task.id.in_(task_ids),
+                Task.deleted == True,  # noqa: E712
+            ).update(
+                {Task.deleted: False, Task.deleted_at: None},
+                synchronize_session=False,
+            )
+            session.commit()
+            return count
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def get_tasks_for_export(self, task_ids: List[int]) -> List[Dict[str, Any]]:
         """获取任务导出数据（dict 列表）。"""
         session = get_db_session()

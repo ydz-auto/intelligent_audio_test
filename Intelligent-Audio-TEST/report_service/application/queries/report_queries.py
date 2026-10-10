@@ -23,6 +23,16 @@ class GetReportQuery:
 
 
 @dataclass(frozen=True)
+class GetReportProgressQuery:
+    """查询报告生成进度（按报告 ID 推导生成状态）。
+
+    Attributes:
+        report_id: 报告 ID
+    """
+    report_id: int
+
+
+@dataclass(frozen=True)
 class GetReportByTaskQuery:
     """按任务 ID 查询最新一条报告。
 

@@ -199,6 +199,28 @@ export const testcasesApi = {
     };
   },
 
+  /** 指定用例指定轮的参考参数 → {roundNumber, referenceParamsPath, referenceParams}（camelCase） */
+  async getRefParams(tcId: string | number, roundNumber: number) {
+    const raw = await request<any>('GET', `/testcases/${tcId}/rounds/${roundNumber}/ref-params`);
+    return {
+      roundNumber: raw?.roundNumber ?? raw?.round_number ?? roundNumber,
+      referenceParamsPath: raw?.referenceParamsPath ?? raw?.reference_params_path,
+      referenceParams: raw?.referenceParams ?? raw?.reference_params,
+    };
+  },
+
+  /** 更新指定用例指定轮的参考参数文件（后端契约键为 camelCase referenceParams） */
+  async updateRefParams(tcId: string | number, roundNumber: number, referenceParams: unknown) {
+    const raw = await request<any>('PUT', `/testcases/${tcId}/rounds/${roundNumber}/ref-params`, {
+      referenceParams,
+    });
+    return {
+      roundNumber: raw?.roundNumber ?? raw?.round_number ?? roundNumber,
+      referenceParamsPath: raw?.referenceParamsPath ?? raw?.reference_params_path,
+      referenceParams: raw?.referenceParams ?? raw?.reference_params,
+    };
+  },
+
   async getIdsByFilter(filters: Record<string, any> = {}) {
     const queryFilters = toQueryParams(filters);
     return request<{ ids: (string | number)[] }>('POST', '/testcases/ids', queryFilters);

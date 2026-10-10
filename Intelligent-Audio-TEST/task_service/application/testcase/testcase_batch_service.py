@@ -186,6 +186,7 @@ class TestCaseBatchService(
 
         handlers = {
             'delete': self._batch_delete,
+            'restore': self._batch_restore,
             'move_to_group': self._batch_move_to_group,
             'copy_to_group': self._batch_copy_to_group,
             'copy': self._batch_copy,

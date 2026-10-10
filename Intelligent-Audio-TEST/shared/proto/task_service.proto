@@ -251,6 +251,7 @@ message PublishTaskRequest {
 }
 message ExecutePublishedTaskRequest {
   int32 published_task_id = 1;
+  int64 operator_user_id = 2;  // 操作人用户 ID（网关从 JWT 注入；0=未认证/AUTH_MODE=off）
 }
 message CreatePublishedTaskVersionRequest {
   int32 published_task_id = 1;
@@ -258,6 +259,7 @@ message CreatePublishedTaskVersionRequest {
 }
 message ArchivePublishedTaskRequest {
   int32 published_task_id = 1;
+  int64 operator_user_id = 2;  // 操作人用户 ID（网关从 JWT 注入；0=未认证/AUTH_MODE=off）
 }
 message RenamePublishedTaskRequest {
   int32 published_task_id = 1;

@@ -38,7 +38,8 @@ class PublishedTaskConfigServiceServicer(task_grpc.PublishedTaskConfigServiceSer
 
     def ExecutePublishedTask(self, request, context=None):
         try:
-            return self._resp(published_task_service.execute(request.published_task_id))
+            operator = request.operator_user_id or None
+            return self._resp(published_task_service.execute(request.published_task_id, operator_user_id=operator))
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 
@@ -51,7 +52,8 @@ class PublishedTaskConfigServiceServicer(task_grpc.PublishedTaskConfigServiceSer
 
     def ArchivePublishedTask(self, request, context=None):
         try:
-            return self._resp(published_task_service.archive(request.published_task_id))
+            operator = request.operator_user_id or None
+            return self._resp(published_task_service.archive(request.published_task_id, operator_user_id=operator))
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 

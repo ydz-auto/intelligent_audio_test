@@ -80,6 +80,20 @@ class ReportQueryService:
         except Exception as e:
             return error_response(f'查询报告失败: {str(e)}')
 
+    @staticmethod
+    def get_progress(report_id):
+        """报告生成进度查询（从任务/报告生成状态推导，report_service 读侧）。"""
+        try:
+            stub = report_config_service.stub
+            resp = stub.GetReportProgress(report_pb.GetReportProgressRequest(
+                report_id=int(report_id)))
+            if not resp.success:
+                return error_response(resp.message or '未找到测试报告', code=404, http_code=404)
+            data = _loads(resp.data, {}) or {}
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'查询报告进度失败: {str(e)}')
+
     # ------------------------------------------------------------------
     # 报告用例列表
     # ------------------------------------------------------------------

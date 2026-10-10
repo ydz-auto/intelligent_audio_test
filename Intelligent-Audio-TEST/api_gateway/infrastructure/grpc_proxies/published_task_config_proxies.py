@@ -48,12 +48,13 @@ class _PublishedTaskConfigProxy:
             error_msg_prefix='发布已发布任务失败',
         )
 
-    def execute(self, published_task_id):
+    def execute(self, published_task_id, operator_user_id=None):
         """执行：按快照创建新的日常任务"""
         def _call():
             stub = get_published_task_config_service_stub()
             resp = stub.ExecutePublishedTask(task_pb.ExecutePublishedTaskRequest(
                 published_task_id=int(published_task_id),
+                operator_user_id=int(operator_user_id or 0),
             ))
             return self._resp(resp)
 
@@ -79,12 +80,13 @@ class _PublishedTaskConfigProxy:
             error_msg_prefix='创建已发布任务新版本失败',
         )
 
-    def archive(self, published_task_id):
+    def archive(self, published_task_id, operator_user_id=None):
         """归档（幂等）"""
         def _call():
             stub = get_published_task_config_service_stub()
             resp = stub.ArchivePublishedTask(task_pb.ArchivePublishedTaskRequest(
                 published_task_id=int(published_task_id),
+                operator_user_id=int(operator_user_id or 0),
             ))
             return self._resp(resp)
 

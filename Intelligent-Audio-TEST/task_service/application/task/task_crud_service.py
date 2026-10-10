@@ -155,7 +155,7 @@ class TaskCrudService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def batch_action(self, data: dict, query_args: dict = None) -> dict:
-        """批量操作（delete/export）。"""
+        """批量操作（delete/restore/export）。"""
         try:
             action = data.get('action')
             task_ids = data.get('task_ids', [])
@@ -179,6 +179,20 @@ class TaskCrudService:
                 deleted_count = task_repository.batch_stop_and_soft_delete(task_ids)
 
                 return {'success': True, 'message': f'成功删除 {deleted_count} 个任务', 'data': None}
+
+            elif action == 'restore':
+                if not task_ids:
+                    return {'success': False, 'message': '缺少 task_ids', 'data': None, 'code': 400}
+
+                restored_count = task_repository.batch_restore(task_ids)
+
+                try:
+                    from api_gateway.application.services.stats_cache import refresh_stats_cache
+                    refresh_stats_cache()
+                except Exception:
+                    logger.debug("恢复任务后刷新统计缓存失败", exc_info=True)
+
+                return {'success': True, 'message': f'成功恢复 {restored_count} 个任务', 'data': {'restored_count': restored_count}}
 
             elif action == 'export':
                 format_ = (query_args or {}).get('format', 'json')

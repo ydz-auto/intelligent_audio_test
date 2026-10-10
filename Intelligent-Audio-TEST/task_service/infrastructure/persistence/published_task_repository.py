@@ -301,12 +301,14 @@ class PublishedTaskRepository:
         benchmark: bool = False,
         snapshot_config=None,
         publish_reason=None,
+        published_by=None,
         demote_id: int = None,
     ) -> PublishedTask:
         """创建新版本 PO。
 
         Args:
             benchmark: 新版本 Benchmark 标记（默认 False，由应用服务继承当前版本）
+            published_by: 新版本发布操作人（应用服务从请求上下文回填）
             demote_id: 旧当前版本 ID；同事务内置为 is_current=False
                 （与 V9.7.10 create_version 原子语义一致：旧版本 vN 置 False + 新版本 vN+1）。
         """
@@ -330,6 +332,7 @@ class PublishedTaskRepository:
                 benchmark=bool(benchmark),
                 snapshot_config=snapshot_config,
                 publish_reason=publish_reason,
+                published_by=published_by,
                 published_at=now,
                 created_at=now,
                 updated_at=now,

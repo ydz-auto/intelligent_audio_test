@@ -90,8 +90,12 @@
           />
         </div>
 
-        <!-- ===== 步骤 5: 参考参数（只读） ===== -->
-        <ReferencePathStep v-if="currentRound" :round="currentRound" />
+        <!-- ===== 步骤 5: 参考参数（查看/编辑，新增态只读路径） ===== -->
+        <ReferencePathStep
+          v-if="currentRound"
+          :round="currentRound"
+          :test-case-id="testCaseId"
+        />
       </div>
     </div>
   </div>
@@ -124,6 +128,8 @@ const props = defineProps<{
   algorithmFormSchema?: any
   /** 按轮分组的算法参数独立列（来自 test_cases.algorithm_params） */
   algorithmParams?: any[]
+  /** 编辑态用例 ID（供参考参数读写端点定位用例）；新增态缺省 */
+  testCaseId?: string | number
 }>()
 
 const emit = defineEmits<{

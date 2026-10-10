@@ -16,6 +16,8 @@ service ReportConfigService {
   rpc ListReports(ListReportsRequest) returns (ReportConfigResponse);
   // 查询单个报告详情
   rpc GetReportDetail(GetReportDetailRequest) returns (ReportConfigResponse);
+  // 查询报告生成进度（按报告 ID 推导任务/生成状态）
+  rpc GetReportProgress(GetReportProgressRequest) returns (ReportConfigResponse);
   // 按任务查询报告
   rpc GetReportByTask(GetReportByTaskRequest) returns (ReportConfigResponse);
   // 生成报告
@@ -75,6 +77,9 @@ message ListReportsRequest {
   string end_date = 9;
 }
 message GetReportDetailRequest {
+  int32 report_id = 1;
+}
+message GetReportProgressRequest {
   int32 report_id = 1;
 }
 message GetReportByTaskRequest {

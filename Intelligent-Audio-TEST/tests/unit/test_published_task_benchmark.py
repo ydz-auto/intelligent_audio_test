@@ -63,6 +63,7 @@ def make_pt(**overrides):
     pt.snapshot_config = {'caseIds': [1], 'deviceIds': [], 'apiIds': [], 'tags': []}
     pt.published_by = None
     pt.published_at = None
+    pt.archived_by = None
     pt.archived_at = None
     pt.created_at = None
     for k, v in overrides.items():
@@ -172,10 +173,15 @@ class TestPublishBenchmark:
         assert result['success'] is True
         assert env['repo'].create_kwargs['benchmark'] is True
 
-        # 审计事件落库：事件名 + 任务标识
-        assert len(env['log'].batch) == 1
-        content = json.loads(env['log'].batch[0]['content'])
-        assert content['event'] == AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value
+        # 审计事件落库：事件名 + 任务标识（INT-65 起 publish 无条件追加
+        # PUBLISHED_TASK_CREATED，benchmark 事件按 event 名过滤断言）
+        events = [json.loads(item['content'])['event'] for item in env['log'].batch]
+        assert AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value in events
+        benchmark_entry = next(
+            item for item in env['log'].batch
+            if json.loads(item['content'])['event'] == AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value
+        )
+        content = json.loads(benchmark_entry['content'])
         assert content['published_task_id'] == 1001
         assert content['version'] == 1
         assert content['source_task_id'] == 123
@@ -188,7 +194,10 @@ class TestPublishBenchmark:
         })
         assert result['success'] is True
         assert env['repo'].create_kwargs['benchmark'] is False
-        assert env['log'].batch == []
+        # 无 benchmark 标记：不产生 BENCHMARK_MARKED 审计
+        # （INT-65 起仍有无条件 PUBLISHED_TASK_CREATED，见 test_int65_published_task_audit.py）
+        events = [json.loads(item['content'])['event'] for item in env['log'].batch]
+        assert AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value not in events
 
     def test_publish_benchmark_string_coerced(self, env):
         published_task_service.publish({
@@ -220,29 +229,33 @@ class TestCreateVersionBenchmark:
         result = published_task_service.create_version(1001, {})
         assert result['success'] is True
         assert env['repo'].create_version_kwargs['benchmark'] is True
-        # 继承标记同样触发审计（新版本进入实测轨）
-        assert len(env['log'].batch) == 1
+        # 继承标记同样触发审计（新版本进入实测轨；INT-65 起另有 VERSION_CREATED 事件）
+        events = [json.loads(item['content'])['event'] for item in env['log'].batch]
+        assert AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value in events
 
     def test_version_inherits_false_when_unspecified(self, env):
         env['repo'].current_pt = make_pt(benchmark=False)
         result = published_task_service.create_version(1001, {})
         assert result['success'] is True
         assert env['repo'].create_version_kwargs['benchmark'] is False
-        assert env['log'].batch == []
+        events = [json.loads(item['content'])['event'] for item in env['log'].batch]
+        assert AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value not in events
 
     def test_version_explicit_override_false(self, env):
         env['repo'].current_pt = make_pt(benchmark=True)
         result = published_task_service.create_version(1001, {'benchmark': False})
         assert result['success'] is True
         assert env['repo'].create_version_kwargs['benchmark'] is False
-        assert env['log'].batch == []
+        events = [json.loads(item['content'])['event'] for item in env['log'].batch]
+        assert AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value not in events
 
     def test_version_explicit_override_true(self, env):
         env['repo'].current_pt = make_pt(benchmark=False)
         result = published_task_service.create_version(1001, {'benchmark': True})
         assert result['success'] is True
         assert env['repo'].create_version_kwargs['benchmark'] is True
-        assert len(env['log'].batch) == 1
+        events = [json.loads(item['content'])['event'] for item in env['log'].batch]
+        assert AuditEvent.PUBLISHED_TASK_BENCHMARK_MARKED.value in events
 
 
 class TestListBenchmarkFilter:

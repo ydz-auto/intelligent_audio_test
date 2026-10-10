@@ -66,6 +66,23 @@ def _acquire_generation_lock(task_id):
     return None
 
 
+def is_generation_locked(task_id) -> bool:
+    """探测指定任务的报告生成锁是否被持有（正在生成）。
+
+    Redis 不可用时返回 False（降级为"未在生成"，与锁的降级放行语义一致）。
+    """
+    try:
+        from shared.utils.distributed_coordinator import _client, _enabled
+        if not _enabled():
+            return False
+        client = _client()
+        if client is None:
+            return False
+        return bool(client.exists(f'{_REPORT_GEN_LOCK_PREFIX}{task_id}'))
+    except Exception:
+        return False
+
+
 class ReportTaskGenerator:
     """任务报告生成（原 ReportCommandService 中 C 组方法）。
 

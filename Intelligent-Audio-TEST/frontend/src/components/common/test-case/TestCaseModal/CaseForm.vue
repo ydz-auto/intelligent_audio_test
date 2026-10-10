@@ -129,6 +129,7 @@
         :algorithm-type="localFormData.algorithmType"
         :algorithm-form-schema="algorithmFormSchema"
         :algorithm-params="localFormData.algorithmParams"
+        :test-case-id="localFormData.id"
         @update:model-value="handleRoundsUpdate"
         @update:algorithm-params="handleAlgorithmParamsUpdate"
         @open-audio-select="handleAudioSelectRequest"
