@@ -7,7 +7,7 @@ import random
 
 _logger = logging.getLogger(__name__)
 
-from api_test_service.clients.api_driver import APIDriver
+from api_test_service.infrastructure.adapters import vendor_adapter_registry
 from shared.utils.dto_utils import dto_to_dict
 from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
 from shared.utils.config_manager import config_manager
@@ -104,7 +104,8 @@ class APITaskRunner:
         self._log('INFO', f"执行健康检查: {health_url}", task_id, api_config=api_config)
 
         try:
-            health_driver = APIDriver(api_config, api_specific_config, endpoint=health_url)
+            health_driver = vendor_adapter_registry.create_from_config(
+                api_config, api_specific_config, endpoint=health_url)
             health_result = health_driver.execute({}, method='GET')
             if not health_result['success']:
                 status_code = health_result.get('status_code', 0)
@@ -134,7 +135,8 @@ class APITaskRunner:
         self._log('INFO', f"创建任务: {create_task_url}", task_id, api_config=api_config)
 
         try:
-            create_task_driver = APIDriver(api_config, api_specific_config, endpoint=create_task_url)
+            create_task_driver = vendor_adapter_registry.create_from_config(
+                api_config, api_specific_config, endpoint=create_task_url)
 
             audio_path = audio.get('file_path')
             if audio_path:
@@ -274,7 +276,8 @@ class APITaskRunner:
                 self._log(level='INFO',
                           content=f"查询任务状态: {get_status_url} (已等待: {elapsed_time:.0f}秒)",
                           task_id=task_id, api_config=api_config)
-                get_status_driver = APIDriver(api_config, api_specific_config, endpoint=get_status_url)
+                get_status_driver = vendor_adapter_registry.create_from_config(
+                    api_config, api_specific_config, endpoint=get_status_url)
                 get_status_result = get_status_driver.execute({'task_id': api_task_id}, method='GET')
 
                 if not get_status_result['success']:
@@ -336,7 +339,8 @@ class APITaskRunner:
                   task_id=task_id, api_config=api_config)
 
         try:
-            driver = APIDriver(api_config, api_specific_config, endpoint=get_final_result_url)
+            driver = vendor_adapter_registry.create_from_config(
+                api_config, api_specific_config, endpoint=get_final_result_url)
             final_result_result = driver.execute({'task_id': api_task_id}, method='GET')
             if not final_result_result['success']:
                 biz_code = final_result_result.get('biz_code')
@@ -361,7 +365,8 @@ class APITaskRunner:
             selected_url = select_base_url()
             url = f"{selected_url}{api_paths['get_frame_results'].replace('{task_id}', api_task_id)}"
             self._log('INFO', f"查询帧结果: {url}", task_id, api_config=api_config)
-            driver = APIDriver(api_config, api_specific_config, endpoint=url)
+            driver = vendor_adapter_registry.create_from_config(
+                api_config, api_specific_config, endpoint=url)
             result = driver.execute({'page': 1, 'page_size': 5}, method='GET')
             if result['success']:
                 count = len(result.get('json', {}).get('data', []))
@@ -379,7 +384,8 @@ class APITaskRunner:
             selected_url = select_base_url()
             url = f"{selected_url}{api_paths['delete_task'].replace('{task_id}', api_task_id)}"
             self._log('INFO', f"删除远程任务: {url}", task_id, api_config=api_config)
-            driver = APIDriver(api_config, api_specific_config, endpoint=url)
+            driver = vendor_adapter_registry.create_from_config(
+                api_config, api_specific_config, endpoint=url)
             result = driver.execute({}, method='DELETE')
             if result['success']:
                 self._log('INFO', f"删除远程任务成功: {api_task_id}", task_id, api_config=api_config)

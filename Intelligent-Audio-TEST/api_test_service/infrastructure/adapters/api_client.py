@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""统一 API 调用传输客户端 — 支持 HTTP (GET/POST/...) 和 WebSocket (WS/WSS)。
+
+INT-62 迁移：自 api_test_service/clients/api_client.py 原样迁入
+infrastructure/adapters/（协议细节唯一落位，设计文档 §3.6），
+协议分派枚举化（APIProtocol），调用行为不变。
+"""
 import time
 import json
 import os
@@ -9,8 +16,16 @@ except ImportError:
     websocket = None
 
 from shared.utils.path_extractor import extract_by_path
+from shared.models.common_enums import APIProtocol
 
 logger = logging.getLogger(__name__)
+
+
+def endpoint_protocol(endpoint: str) -> APIProtocol:
+    """按 endpoint 前缀判定传输协议（ws:// / wss:// → WEBSOCKET，其余 HTTP）"""
+    if endpoint and endpoint.startswith(('ws://', 'wss://')):
+        return APIProtocol.WEBSOCKET
+    return APIProtocol.HTTP
 
 
 class APIClient:
@@ -23,7 +38,7 @@ class APIClient:
         """
         根据 endpoint 协议自动选择调用方式
         """
-        if endpoint.startswith('ws://') or endpoint.startswith('wss://'):
+        if endpoint_protocol(endpoint) is APIProtocol.WEBSOCKET:
             return APIClient._call_websocket(endpoint, data, headers, timeout, meta)
         else:
             return APIClient._call_http(endpoint, method, headers, data, files, timeout)

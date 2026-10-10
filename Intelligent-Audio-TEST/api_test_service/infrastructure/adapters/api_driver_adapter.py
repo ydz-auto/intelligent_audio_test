@@ -1,13 +1,29 @@
-import time
+# -*- coding: utf-8 -*-
+"""内置 HTTP/WS 协议适配器（INT-62 首个注册适配器）。
+
+自 api_test_service/clients/api_driver.py 原样迁移为 ApiVendorAdapter
+Port 实现（设计文档 §3.6 生命周期语义：pre_process 渲染 + execute 调用
+与响应解析），协议传输经同包 api_client（HTTP/WS 枚举分派）。
+请求渲染、模板占位符与响应字段映射逻辑行为不变。
+"""
 import json
-from api_test_service.clients.api_client import api_client
+
 from shared.utils.log_handler import log_and_emit
 from shared.utils.path_extractor import extract_by_path
+from shared.models.common_enums import VendorAdapterType
 
-class APIDriver:
+from api_test_service.domain.ports import ApiVendorAdapter
+from api_test_service.infrastructure.adapters.api_client import api_client
+from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
+
+
+@register_vendor_adapter
+class ApiDriverAdapter(ApiVendorAdapter):
     """
-    API 驱动程序：封装 API 调用逻辑、参数渲染及响应解析
+    API 驱动适配器：封装 API 调用逻辑、参数渲染及响应解析
     """
+
+    adapter_type = VendorAdapterType.API_DRIVER
 
     def __init__(self, api_config, case_config=None, endpoint=None, test_case_id=None, task_id=None):
         """

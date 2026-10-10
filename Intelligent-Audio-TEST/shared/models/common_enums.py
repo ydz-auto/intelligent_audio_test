@@ -81,6 +81,16 @@ class APIProtocol(str, Enum):
     WEBSOCKET = 'websocket'
 
 
+class VendorAdapterType(str, Enum):
+    """厂商适配器类型枚举 — api_test_service infrastructure/adapters 注册表 key（INT-62 新增）
+
+    新增厂商适配器 = 新增枚举成员 + @register_vendor_adapter 注册实现
+    + 用例配置 vendor_adapter 选择，执行链（core/）零改动。
+    """
+    API_DRIVER = 'api_driver'  # 内置 HTTP/WS 协议适配器（原 clients/api_driver + api_client 迁移）
+    MOCK = 'mock'              # mock 厂商适配器（扩展性验证 / 测试替身）
+
+
 class RealtimeChannel(str, Enum):
     """Realtime 流式双通道枚举 — frame 逐帧 / summary 会话汇总（INT-61 新增）
 

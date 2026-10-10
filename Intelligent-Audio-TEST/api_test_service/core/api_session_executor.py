@@ -22,7 +22,7 @@ from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
     ApiRmsSplRepositoryImpl,
 )
 from api_test_service.core.session_context import SessionContext
-from api_test_service.clients.api_driver import APIDriver
+from api_test_service.infrastructure.adapters import vendor_adapter_registry
 
 # 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
 _task_data_acl = TaskDataAclRepositoryImpl()
@@ -322,7 +322,9 @@ class APISessionExecutor:
             )
             input_text = context_data.get('input_text', '')
 
-            driver = APIDriver(api_config, api_specific_config, task_id=task_id)
+            # 厂商适配器经注册表分发（INT-62）：上层只见 ApiVendorAdapter Port
+            driver = vendor_adapter_registry.create_from_config(
+                api_config, api_specific_config, task_id=task_id)
             rendered_headers, rendered_body = driver.render_request_parts(context_data)
 
             meta = api_config.meta or {}
