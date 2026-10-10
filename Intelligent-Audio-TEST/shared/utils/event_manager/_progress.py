@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Optional, Tuple
 
 from shared.models.database import get_db_session
-from shared.models.common_enums import TestType
+from shared.models.common_enums import DeviceType
 from shared.schemas.socket_payloads import (
     ProgressApiResource,
     ProgressCaseItem,
@@ -203,10 +203,9 @@ def _build_logs_via_grpc(task_id_int) -> list:
 class _TaskProxy:
     """用于时间预估的 task 伪对象（只包含 calculate_time_estimate 需要的字段）。"""
 
-    def __init__(self, task_id, task_type, task_status, total_cases, completed_cases,
+    def __init__(self, task_id, task_status, total_cases, completed_cases,
                  failed_cases, started_at, completed_at, updated_at):
         self.id = task_id
-        self.type = task_type
         self.status = task_status
         self.total_cases = total_cases
         self.completed_cases = completed_cases
@@ -325,11 +324,12 @@ class ProgressMixin:
 
     def _build_progress_from_grpc(self, task_id, task_id_int, grpc_progress) -> Tuple[_TaskProxy, TaskProgressPayload]:
         """gRPC 路径：使用远端进度数据构造 payload，无 PO 直连。"""
-        task_type = grpc_progress.get('type', '')
-        current_case = self._build_current_case_from_grpc(task_id, task_type, grpc_progress.get('current_case'))
+        # 差异#2 收尾：进度 payload 无 type 键，分支口径改用例级 device_types 集合（task.type 已废弃）
+        device_types = grpc_progress.get('device_types') or []
+        current_case = self._build_current_case_from_grpc(task_id, device_types, grpc_progress.get('current_case'))
         test_cases = self._build_test_cases_from_grpc(grpc_progress.get('test_cases', []))
         logs = _build_logs_via_grpc(task_id_int)
-        api_resources = self._build_api_resources_from_grpc(task_type, grpc_progress.get('api_resource_status', []))
+        api_resources = self._build_api_resources_from_grpc(device_types, grpc_progress.get('api_resource_status', []))
 
         started_at = _parse_dt(grpc_progress.get('started_at'))
         completed_at = _parse_dt(grpc_progress.get('completed_at'))
@@ -362,7 +362,6 @@ class ProgressMixin:
 
         db_task = _TaskProxy(
             task_id=task_id_int,
-            task_type=task_type,
             task_status=task_status,
             total_cases=actual_total_cases,
             completed_cases=actual_completed_cases,
@@ -373,15 +372,15 @@ class ProgressMixin:
         )
         return db_task, progress
 
-    def _build_current_case_from_grpc(self, task_id, task_type, cc) -> Optional[ProgressCurrentCase]:
-        """构造当前执行用例（内存态 step 缺省按任务类型推断）。"""
+    def _build_current_case_from_grpc(self, task_id, device_types, cc) -> Optional[ProgressCurrentCase]:
+        """构造当前执行用例（内存态 step 缺省按被测设备类型推断）。"""
         if not cc:
             self._log(level='DEBUG', content=f"没有正在执行的用例", task_id=task_id)
             return None
         return ProgressCurrentCase(
             case_id=str(cc.get('case_id', cc.get('caseId', ''))),
             name=cc.get('name', '未知用例'),
-            step=cc.get('step', STEP_PLAYING if task_type == TestType.E2E.value else STEP_EVALUATING),
+            step=cc.get('step', STEP_PLAYING if set(device_types or []) == {DeviceType.PHYSICAL.value} else STEP_EVALUATING),
             start_time=_ts_ms(cc.get('started_at')),
         )
 
@@ -401,9 +400,14 @@ class ProgressMixin:
             ))
         return items
 
-    def _build_api_resources_from_grpc(self, task_type, raw_api_status) -> list:
-        """构造 API 资源状态：gRPC 提供排队/耗时，并发量从内存态 load_balancer 补充。"""
-        if task_type != TestType.API.value:
+    def _build_api_resources_from_grpc(self, device_types, raw_api_status) -> list:
+        """构造 API 资源状态：gRPC 提供排队/耗时，并发量从内存态 load_balancer 补充。
+
+        差异#2 收尾：分支依据由 task.type 改为 device_types 含 API 类被测设备
+        （与 PO 回退路径 TaskCase.device_type 口径一致）。
+        """
+        api_types = (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value)
+        if not any(dt in api_types for dt in (device_types or [])):
             return []
         current_concurrent = _current_concurrent_from_load_balancer(self.execution_engine)
         return [

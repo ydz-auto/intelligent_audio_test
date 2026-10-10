@@ -254,25 +254,18 @@ class ReportStatsQueryMixin:
         if not task:
             return {'success': False, 'message': '未找到指定任务'}
 
-        # 通过 gRPC 查询 TaskMergeRelation
-        task_type = task.get('type') if isinstance(task, dict) else getattr(task, 'type', None)
-        if task_type == 'merged':
-            merge_relations = []
-            try:
-                from report_service.infrastructure.clients.grpc_clients import _grpc_get_task_merge_relations
-                merge_relations = _grpc_get_task_merge_relations(task_id)
-            except Exception:
-                logger.debug("gRPC 查询合并任务关系失败 task_id=%s", task_id, exc_info=True)
+        # 差异#2 收尾：合并容器任务由 TaskMergeRelation(merged_task_id) 存在性判定（task.type 已废弃）
+        task_id_filter = task_id
+        result_task_filter = task_id
+        try:
+            from report_service.infrastructure.clients.grpc_clients import _grpc_get_task_merge_relations
+            merge_relations = _grpc_get_task_merge_relations(task_id)
             if merge_relations:
                 source_task_ids = [it.get('source_task_id') for it in merge_relations]
                 task_id_filter = source_task_ids
                 result_task_filter = source_task_ids
-            else:
-                task_id_filter = task_id
-                result_task_filter = task_id
-        else:
-            task_id_filter = task_id
-            result_task_filter = task_id
+        except Exception:
+            logger.debug("gRPC 查询合并任务关系失败 task_id=%s", task_id, exc_info=True)
 
         filtered_case_ids, test_results = self._query_test_cases_and_results(
             task_id_filter, result_task_filter,

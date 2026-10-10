@@ -51,12 +51,9 @@ class ReportCompareDataMixin:
                 return r.get(key, default)
             return getattr(r, key, default)
 
-        included_task_types = {_t_get(t, 'type') for t in tasks if _t_get(t, 'type')}
-        report_task_type = (
-            "api"
-            if included_task_types == {"api"}
-            else ("e2e" if included_task_types == {"e2e"} else "all")
-        )
+        # 差异#2 收尾：task.type 已废弃，对比口径由任务关联用例配置形态派生
+        # （与二次对比路径 _get_task_type 同源，读模型 DTO 无 type 键）
+        report_task_type = ReportCompareHelpers._get_task_type(tasks)
 
         res_ids_all = [_r_get(r, 'id') for r in results]
         all_dimensions = ReportCompareHelpers._get_all_dimensions_with_results(res_ids_all)
@@ -198,11 +195,11 @@ class ReportCompareDataMixin:
         tasks_info = []
         for t in tasks:
             t_id = _t_get(t, 'id')
+            # 差异#2 收尾：task.type 已废弃，不再输出恒 None 的 type 占位键
             tasks_info.append({
                 "id": t_id,
                 "name": _t_get(t, 'name'),
                 "status": _t_get(t, 'status'),
-                "type": _t_get(t, 'type'),
                 "weighted_value": data_dict["task_weighted_values"].get(t_id, 0)
             })
 

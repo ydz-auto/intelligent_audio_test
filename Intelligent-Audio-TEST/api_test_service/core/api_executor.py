@@ -520,7 +520,9 @@ class APIExecutor(BaseExecutor):
         tc_rel_id_local = tc_rel.get('id')
         test_case_id = case.get('id')
         case_name = case.get('name')
-        task_type = task.get('type') if task else 'api'
+        # 差异#2 收尾：执行方式由 device_type 决定（task.type 已废弃）——
+        # 调度侧路由决策优先于 TaskCase 行值（INT-71），旧数据缺省按 HTTP API 口径
+        case_device_type = device_type or tc_rel.get('device_type') or DeviceType.HTTP_API.value
         case_config = case.get('config', {}) or {}
         algorithm_type = self._get_algorithm_type(case, case_config)
 
@@ -531,7 +533,7 @@ class APIExecutor(BaseExecutor):
             return False, None
 
         audio_data, total_audio_duration, error_msg = self._get_audio_data(
-            tc_rel_test_case_id, task_type, case_name, task_id, tc_rel_id_local
+            tc_rel_test_case_id, case_device_type, case_name, task_id, tc_rel_id_local
         )
         if error_msg:
             return False, None
@@ -546,8 +548,7 @@ class APIExecutor(BaseExecutor):
                 algorithm_params = ap_dict
 
         api_specific_config = case_config2.get('api', {})
-        task_type_val = task.get('type') if task else 'api'
-        if not api_specific_config and task_type_val == 'api':
+        if not api_specific_config and case_device_type != DeviceType.PHYSICAL.value:
             api_specific_config = case_config2
 
         return True, {
@@ -556,7 +557,7 @@ class APIExecutor(BaseExecutor):
             'test_case_id': test_case_id,
             'case_name': case_name,
             'algorithm_type': algorithm_type,
-            'device_type': device_type or tc_rel.get('device_type') or '',
+            'device_type': case_device_type,
             'device_id': device_id or tc_rel.get('device_id') or '',
             'api_configs': processed_api_configs,
             'audio': audio_data,
@@ -629,7 +630,7 @@ class APIExecutor(BaseExecutor):
             algorithm_type = 'translation'
         return algorithm_type
 
-    def _get_audio_data(self, test_case_id, task_type, case_name, task_id, tc_rel_id):
+    def _get_audio_data(self, test_case_id, device_type, case_name, task_id, tc_rel_id):
         """获取音频数据，返回 (audio_data, total_duration, error_msg)
 
         通过 gRPC 查询 TestCase 配置和 Audio 信息。
@@ -659,7 +660,8 @@ class APIExecutor(BaseExecutor):
                         audios.extend(round_audios)
 
         target_audios = [a for a in audios if a.get('audio_id')]
-        expected_test_type = 'API' if task_type == 'api' else 'E2E'
+        # 失败文案标签与 api_specific_config 兜底同源：由 device_type 派生（差异#2 收尾）
+        expected_test_type = 'E2E' if device_type == DeviceType.PHYSICAL.value else 'API'
 
         if not target_audios:
             error_msg = f"测试用例未配置有效的 {expected_test_type} 测试音频"

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from shared.proto import task_service_pb2 as task_pb
 from shared.proto import task_service_pb2_grpc as task_grpc
-from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.grpc_json import dumps as _dumps
 
 
 class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
@@ -25,11 +25,9 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
         """
         try:
             task_id = request.task_id
-            task_config = _loads(request.task_config, {})
             result = {
                 "task_id": str(task_id),
                 "created": True,
-                "task_type": task_config.get('type'),
             }
             return task_pb.CreateTaskResponse(success=True, message="ok", data=_dumps(result))
         except Exception as e:

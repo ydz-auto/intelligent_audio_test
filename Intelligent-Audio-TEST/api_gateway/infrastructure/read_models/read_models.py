@@ -90,7 +90,7 @@ class TaskReadModel:
     @staticmethod
     def list_with_progress(page: int = 1, page_size: int = 20,
                            status: Optional[str] = None,
-                           task_type: Optional[str] = None) -> dict:
+                           device_type: Optional[str] = None) -> dict:
         """任务列表 + 进度
 
         改造后：通过 gRPC 调用 task_service.TaskConfigService.ListTasks
@@ -104,7 +104,8 @@ class TaskReadModel:
                 page=page,
                 per_page=page_size,
                 status=status or '',
-                type=task_type or '',
+                # 差异#2 收尾：proto type 字段现承载 device_type 过滤值（task.type 已废弃）
+                type=device_type or '',
             )
             resp = stub.ListTasks(req)
             if not resp.success:
@@ -123,7 +124,7 @@ class TaskReadModel:
                     'id': t.get('id'),
                     'name': t.get('name', ''),
                     'status': t.get('status'),
-                    'type': t.get('type'),
+                    'device_types': t.get('device_types') or [],
                     'total_cases': total_cases,
                     'completed_cases': completed_cases,
                     'failed_cases': failed_cases,

@@ -19,7 +19,6 @@ class TaskDTO:
     id: Optional[int] = None
     name: Optional[str] = None
     status: Optional[str] = None
-    type: Optional[str] = None
     algorithm_type: Optional[str] = None
     config: Any = None
     result_data: Any = None
@@ -52,7 +51,6 @@ class TestCaseDetailDTO:
     """测试用例详情 DTO（TestCaseConfigService.GetTestCaseDetail）"""
     id: Optional[int] = None
     name: Optional[str] = None
-    test_type: Optional[str] = None
     algorithm_type: Optional[str] = None
     config: Any = None
     result_data: Any = None

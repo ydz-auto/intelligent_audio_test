@@ -2,7 +2,7 @@ import { reportsPort } from './reportsPort';
 import socketService from '../../utils/socket';
 import { MODAL_TYPES, useModalControl } from '../modal/useModal';
 import type { Report, Task, ComparisonDevice, DeviceAPIComparisonItem, CaseExecutionItem } from '../../domain/model';
-import { TaskStatus, ReportStatus } from '../../domain/enums';
+import { TaskStatus, ReportStatus, DeviceType } from '../../domain/enums';
 import {
   getTaskStatusLabel,
   getReportTypeLabel,
@@ -721,7 +721,7 @@ export const getReportTypeLabelFromService = getReportTypeLabel;
 export function updateComparisonReportConclusion(tasks: any[]): void {
   const taskCount = tasks.length;
   if (taskCount === 0) {
-    comparisonReport.value.conclusion = '根据对比分析，共选择了 0 个测试任务进行对比。这些任务涵盖了 API 测试和端到端测试类型，状态包括进行中、已完成和失败。从设备数量和用例数量来看，各任务之间存在明显差异，建议进一步分析任务执行效率和质量。通过对比不同任务的执行结果，可以识别出系统性能瓶颈和质量问题，为后续优化提供依据。';
+    comparisonReport.value.conclusion = '根据对比分析，共选择了 0 个测试任务进行对比。这些任务涵盖的被测设备类型包括物理设备、HTTP API 与 WebSocket API，状态包括进行中、已完成和失败。从设备数量和用例数量来看，各任务之间存在明显差异，建议进一步分析任务执行效率和质量。通过对比不同任务的执行结果，可以识别出系统性能瓶颈和质量问题，为后续优化提供依据。';
     return;
   }
 
@@ -732,17 +732,24 @@ export function updateComparisonReportConclusion(tasks: any[]): void {
 
   tasks.forEach(task => {
     if (task) {
-      taskTypes.add(task.type);
+      // 差异#2 收尾：task.type 已废弃，类型集合由 device_types 派生（对齐 TaskCard 口径）
+      (task.deviceTypes as string[] | undefined || []).forEach((dt: string) => taskTypes.add(dt));
       taskStatuses.add(task.status);
       totalDevices += task.deviceCount || 0;
       totalCases += task.caseCount || 0;
     }
   });
 
-  const typeText = Array.from(taskTypes).join('、');
+  // 差异#2 收尾：类型文案由被测设备类型派生（DeviceType 枚举消费，对齐 DeviceCard 徽标）
+  const DEVICE_TYPE_TEXT: Record<string, string> = {
+    [DeviceType.PHYSICAL]: '物理设备',
+    [DeviceType.HTTP_API]: 'HTTP API',
+    [DeviceType.WEBSOCKET_API]: 'WebSocket API',
+  };
+  const typeText = Array.from(taskTypes).map(dt => DEVICE_TYPE_TEXT[dt] || dt).join('、');
   const statusText = Array.from(taskStatuses).map(status => getTaskStatusLabel(status)).join('、');
 
-  comparisonReport.value.conclusion = `根据对比分析，共选择了 ${taskCount} 个测试任务进行对比。这些任务涵盖了 ${typeText} 测试类型，状态包括 ${statusText}。从设备数量（共 ${totalDevices} 台）和用例数量（共 ${totalCases} 个）来看，各任务之间存在明显差异，建议进一步分析任务执行效率和质量。通过对比不同任务的执行结果，可以识别出系统性能瓶颈和质量问题，为后续优化提供依据。`;
+  comparisonReport.value.conclusion = `根据对比分析，共选择了 ${taskCount} 个测试任务进行对比。这些任务涵盖的被测设备类型包括 ${typeText}，状态包括 ${statusText}。从设备数量（共 ${totalDevices} 台）和用例数量（共 ${totalCases} 个）来看，各任务之间存在明显差异，建议进一步分析任务执行效率和质量。通过对比不同任务的执行结果，可以识别出系统性能瓶颈和质量问题，为后续优化提供依据。`;
 }
 
 /** 重置对比 ReadModel 至初始态 */
