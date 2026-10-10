@@ -10,6 +10,7 @@ from shared.utils.dto_utils import dto_to_dict
 from shared.utils.status_constants import ExecutionStatus
 from shared.utils.query_utils import now_cst
 from shared.utils.config_manager import config_manager
+from shared.utils.api_key_provider import resolver_from_config
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
@@ -29,6 +30,11 @@ _task_data_acl = TaskDataAclRepositoryImpl()
 _algo_acl = AlgorithmQueryAclRepositoryImpl()
 _adapter_acl = AdapterAclRepositoryImpl()
 _evaluation_acl = EvaluationAclRepositoryImpl()
+
+# 密钥链解析器（UC-0901 扩展流程 3a）：各级键名/环境变量名经
+# config_manager secrets 段配置，默认 case_config.api_key → meta.api_key
+# → env OPENAI_API_KEY 逐级回退
+_key_resolver = resolver_from_config(config_manager.get_value)
 
 logger = logging.getLogger(__name__)
 
@@ -331,12 +337,22 @@ class APISessionExecutor:
             use_adapter = meta.get('use_adapter', True)
             timeout = session.session_timeout + 10
 
+            # 密钥链 case 层候选（UC-0901 扩展流程 3a）：用例 api 段
+            # （api_specific_config）优先，回退用例顶层；键名可配置
+            case_cfg_key = _key_resolver.case_key
+            case_api_key = ''
+            if isinstance(api_specific_config, dict):
+                case_api_key = api_specific_config.get(case_cfg_key) or ''
+            if not case_api_key and isinstance(case_config, dict):
+                case_api_key = case_config.get(case_cfg_key) or ''
+
             if use_adapter:
                 return self._send_via_adapter(
                     task_id, algorithm_type, session, round_number, total_rounds,
                     rendered_headers, rendered_body, api_specific_config, meta,
                     api_config, timeout, input_text, input_type, start_time,
                     input_audio_path=context_data.get('input_audio', ''),
+                    case_api_key=case_api_key,
                 )
             else:
                 return self._send_direct(
@@ -363,7 +379,7 @@ class APISessionExecutor:
     def _send_via_adapter(self, task_id, algorithm_type, session, round_number, total_rounds,
                           rendered_headers, rendered_body, api_specific_config, meta,
                           api_config, timeout, input_text, input_type, start_time,
-                          input_audio_path=''):
+                          input_audio_path='', case_api_key=''):
         """通过 ACL 仓储调用 adapter 发送请求"""
         from shared.proto import adapter_service_pb2 as adapter_pb
 
@@ -373,6 +389,18 @@ class APISessionExecutor:
             'headers': rendered_headers,
             'timeout': session.session_timeout,
         }
+        # 密钥链候选（UC-0901 扩展流程 3a）：case_config/meta 层候选随
+        # vendor_config 下发，adapter 服务 Infrastructure 密钥提供者
+        # 统一按 case_config → meta → 服务配置层 → env 逐级回退解析
+        meta_key = _key_resolver.meta_key
+        candidates = {}
+        if case_api_key:
+            candidates['case_config'] = case_api_key
+        meta_api_key = meta.get(meta_key) if isinstance(meta, dict) else ''
+        if meta_api_key:
+            candidates['meta'] = meta_api_key
+        if candidates:
+            vendor_config['api_key_candidates'] = candidates
         # adapter_class 通道（UC-0901/UC-1003）：apis.adapter_class 显式指定
         # 适配器类名，adapter 服务注册表优先按此创建，未指定按 protocol+vendor
         adapter_class = getattr(api_config, 'adapter_class', None)

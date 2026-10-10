@@ -96,6 +96,11 @@ async def api_v1_create_task(request: Request):
             merged_config['timeout'] = vendor_config_override['timeout']
         if vendor_config_override.get('adapter_class'):
             merged_config['adapter_class'] = vendor_config_override['adapter_class']
+        # 密钥链候选（UC-0901 3a）：case_config/meta 层候选透传，
+        # 由 Infrastructure 密钥提供者统一逐级回退解析
+        candidates = vendor_config_override.get('api_key_candidates')
+        if isinstance(candidates, dict) and candidates:
+            merged_config['api_key_candidates'] = candidates
 
     # Ensure session exists in session_store
     session_config = base_vendor_config.get('session', {})

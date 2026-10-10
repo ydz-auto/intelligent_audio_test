@@ -26,6 +26,14 @@ websocket:
   connect_timeout: 10
   no_heartbeat: true
 
+# 密钥链（UC-0901 扩展流程 3a / API测试功能设计文档 §8.1，INT-70）：
+# adapter 侧解析顺序 api_key_candidates（case_config → meta 层候选，
+# 由 api_test_service 执行侧下发）→ vendor 层 api_key（上方 ${ENV:} 替换）→ env
+secrets:
+  api_key_chain:
+    service_config_key: api_key
+    env_key: OPENAI_API_KEY
+
 vendor:
   volc_ast:
     protocol: websocket

@@ -13,6 +13,8 @@ import websockets
 
 from api_adapter_service.adapters.audio_input import resolve_audio_bytes
 from api_adapter_service.adapters.base import BaseAdapter
+from api_adapter_service.infrastructure.secrets.api_key_provider import (
+    api_key_provider)
 from api_adapter_service.utils.logger import logger
 
 
@@ -32,7 +34,8 @@ class QwenAdapter(BaseAdapter):
 
     def __init__(self, vendor_config: dict):
         super().__init__(vendor_config)
-        self.api_key = vendor_config.get('api_key', '')
+        # 密钥链（UC-0901 3a）：case_config → meta → 服务配置层 → env 逐级回退
+        self.api_key = api_key_provider.resolve(vendor_config)
         self.api_url = vendor_config.get(
             'api_url',
             'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'

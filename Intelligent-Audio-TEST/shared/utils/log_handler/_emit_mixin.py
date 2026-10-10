@@ -11,6 +11,7 @@ import queue
 from datetime import datetime, timezone, timedelta
 
 from shared.models.common_enums import AUDIT_LOG_CATEGORIES
+from shared.utils.secret_mask import mask_text
 from shared.utils.log_handler._constants import (
     CONSOLE_LOG_MAX_LENGTH,
     LOG_CONTENT_MAX_LENGTH,
@@ -43,6 +44,10 @@ class _EmitMixin:
 
             # 去掉日志内容中的时间戳前缀 [2026-02-10T20:13:25.243757+08:00]
             log_message = re.sub(r'^\[\d{4}-\d{2}-\d{2}T[\d\.:+\-]+\]', '', log_message).strip()
+
+            # 统一脱敏（INT-70 §8.1）：密钥与敏感头不出现在任何落盘/推送内容，
+            # 覆盖业务文件、WebSocket 推送、DB 入库与控制台全部出口
+            log_message = mask_text(log_message)
 
             # 如果是标准的 logging 调用（不是通过 log_and_emit），也打印到控制台
             if not getattr(record, 'from_log_and_emit', False):

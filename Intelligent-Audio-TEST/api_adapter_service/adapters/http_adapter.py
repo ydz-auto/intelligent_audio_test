@@ -14,6 +14,8 @@ from typing import Optional
 
 from api_adapter_service.adapters.audio_input import resolve_audio_bytes
 from api_adapter_service.adapters.base import BaseAdapter
+from api_adapter_service.infrastructure.secrets.api_key_provider import (
+    api_key_provider)
 from api_adapter_service.utils.logger import logger
 
 
@@ -32,6 +34,12 @@ class HttpAdapter(BaseAdapter):
         super().__init__(vendor_config)
         self.base_url = vendor_config.get('base_url', vendor_config.get('api_url', ''))
         self.headers = dict(vendor_config.get('headers', {}))
+        # å¯†é’¥é“¾ï¼ˆUC-0901 3aï¼‰ï¼šcase_config â†’ meta â†’ æœåŠ¡é…ç½®å±‚ â†’ env é€çº§å›é€€ï¼›
+        # æ˜¾å¼é…ç½®çš„ Authorization å¤´ä¼˜å…ˆï¼Œä¸è¦†ç›–
+        self.api_key = api_key_provider.resolve(vendor_config)
+        if self.api_key and not any(k.lower() == 'authorization'
+                                    for k in self.headers):
+            self.headers['Authorization'] = f'Bearer {self.api_key}'
         self.timeout = vendor_config.get('timeout', 60)
         self.result_parser = vendor_config.get('result_parser', {})
 
@@ -150,8 +158,8 @@ class HttpAdapter(BaseAdapter):
                              context, algorithm_params, case_algorithm_params,
                              translation_direction, round_number, total_rounds,
                              task_type):
-        # input_data Ô¼¶¨ÎªÒôÆµÒıÓÃ£¨Â·¾¶/´æ´¢ÒıÓÃ£©»ò×Ö½Ú£¬Í³Ò»½âÎöÎªÕæÊµ
-        # ×Ö½ÚÉÏ´«£»½âÎöÊ§°ÜÅ×´íÊÕÁ²ÎªÇëÇóÊ§°Ü£¬½ûÖ¹¾²Ä¬¿ÕÒôÆµ£¨INT-71£©
+        # input_data çº¦å®šä¸ºéŸ³é¢‘å¼•ç”¨ï¼ˆè·¯å¾„/å­˜å‚¨å¼•ç”¨ï¼‰æˆ–å­—èŠ‚ï¼Œç»Ÿä¸€è§£æä¸ºçœŸå®
+        # å­—èŠ‚ä¸Šä¼ ï¼›è§£æå¤±è´¥æŠ›é”™æ”¶æ•›ä¸ºè¯·æ±‚å¤±è´¥ï¼Œç¦æ­¢é™é»˜ç©ºéŸ³é¢‘ï¼ˆINT-71ï¼‰
         audio_bytes = resolve_audio_bytes(audio_data)
         files = {
             'audio': ('audio.wav', audio_bytes, 'audio/wav'),

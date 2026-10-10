@@ -28,6 +28,7 @@ import wave
 
 from shared.models.common_enums import RealtimeRoundMode
 from shared.utils.config_manager import config_manager
+from shared.utils.api_key_provider import resolver_from_config
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.infrastructure.acl import (
@@ -45,6 +46,10 @@ logger = logging.getLogger(__name__)
 
 # 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
 _evaluation_acl = EvaluationAclRepositoryImpl()
+
+# 密钥链解析器（UC-0901 扩展流程 3a）：case_config → meta → env
+# OPENAI_API_KEY 逐级回退，各级键名经 config_manager secrets 段配置
+_key_resolver = resolver_from_config(config_manager.get_value)
 
 
 class RealtimeSessionExecutor:
@@ -127,7 +132,10 @@ class RealtimeSessionExecutor:
                               .get('audio_config', {}).get('sample_rate', 24000))
         try:
             url = self._resolve_ws_url(api_config)
-            headers = self._resolve_ws_headers(api_config)
+            headers = self._resolve_ws_headers(
+                api_config,
+                case_api_key=self._case_level_key(
+                    data.get('api_specific_config'), case_config))
             client = RealtimeWSClient(
                 url, headers=headers,
                 vendor=(getattr(api_config, 'vendor', None) or 'openai'),
@@ -490,11 +498,25 @@ class RealtimeSessionExecutor:
             "（需 ws:// 或 wss:// 前缀）")
 
     @staticmethod
-    def _resolve_ws_headers(api_config) -> dict:
-        """解析 WS 握手头：meta.ws_headers 直传 + meta.api_key → Bearer"""
+    def _case_level_key(api_specific_config, case_config) -> str:
+        """密钥链 case 层候选：用例 api 段优先，回退用例顶层（键名可配置）"""
+        case_key = _key_resolver.case_key
+        if isinstance(api_specific_config, dict):
+            value = api_specific_config.get(case_key)
+            if value:
+                return value
+        if isinstance(case_config, dict):
+            return case_config.get(case_key) or ''
+        return ''
+
+    @staticmethod
+    def _resolve_ws_headers(api_config, case_api_key='') -> dict:
+        """解析 WS 握手头（_build_connect_headers 语义）：meta.ws_headers
+        直传 + 密钥链 case_config → meta → env（UC-0901 扩展流程 3a，
+        禁止硬编码密钥）；显式 Authorization 头优先，不覆盖"""
         meta = getattr(api_config, 'meta', None) or {}
         headers = dict(meta.get('ws_headers') or {})
-        api_key = meta.get('api_key')
+        api_key = _key_resolver.resolve(case_value=case_api_key, meta=meta)
         if api_key and not any(k.lower() == 'authorization' for k in headers):
             headers['Authorization'] = f'Bearer {api_key}'
         return headers

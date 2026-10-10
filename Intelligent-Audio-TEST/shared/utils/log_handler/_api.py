@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from . import _state
+from shared.utils.secret_mask import mask_text
 from shared.utils.log_handler._constants import (
     CONSOLE_LOG_MAX_LENGTH,
 )
@@ -64,6 +65,10 @@ def log_not_emit(level, module, content, category='system', source='backend', ta
 # 保留log_and_emit作为包装函数，支持外部直接调用
 def log_and_emit(level, module, content, category='system', source='backend', task_id=None, device_id=None, api_id=None, test_case_id=None, algorithm_type=None, push_to_websocket=True, enable_console_log=None, **kwargs):
     """核心方法：保存日志到数据库并推送到 WebSocket"""
+
+    # 统一脱敏（INT-70 §8.1）：本函数的控制台直打不经过 handler.emit，
+    # 须在入口先行掩码，保证密钥与敏感头不出现在任何出口
+    content = mask_text(content)
 
     # 从配置中获取控制台日志设置
     if enable_console_log is None:

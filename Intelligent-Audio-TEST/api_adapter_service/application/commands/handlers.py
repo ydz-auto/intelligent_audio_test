@@ -45,6 +45,11 @@ class CreateDialogTaskHandler:
                 merged_config['timeout'] = override['timeout']
             if override.get('adapter_class'):
                 merged_config['adapter_class'] = override['adapter_class']
+            # 密钥链候选（UC-0901 3a）：case_config/meta 层候选透传，
+            # 由 Infrastructure 密钥提供者统一逐级回退解析
+            candidates = override.get('api_key_candidates')
+            if isinstance(candidates, dict) and candidates:
+                merged_config['api_key_candidates'] = candidates
 
         # 2) 确保会话存在（委托 session_store）
         session_config = base_vendor_config.get('session', {})

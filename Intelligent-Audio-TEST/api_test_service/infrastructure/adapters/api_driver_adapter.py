@@ -10,11 +10,18 @@ import json
 
 from shared.utils.log_handler import log_and_emit
 from shared.utils.path_extractor import extract_by_path
+from shared.utils.config_manager import config_manager
+from shared.utils.api_key_provider import resolver_from_config
 from shared.models.common_enums import VendorAdapterType
 
 from api_test_service.domain.ports import ApiVendorAdapter
 from api_test_service.infrastructure.adapters.api_client import api_client
 from api_test_service.infrastructure.adapters.registry import register_vendor_adapter
+
+# 密钥链解析器（UC-0901 扩展流程 3a）：各级键名/环境变量名经
+# config_manager secrets 段配置，默认 case_config.api_key → meta.api_key
+# → env OPENAI_API_KEY 逐级回退
+_key_resolver = resolver_from_config(config_manager.get_value)
 
 
 @register_vendor_adapter
@@ -54,6 +61,18 @@ class ApiDriverAdapter(ApiVendorAdapter):
         kwargs.setdefault('test_case_id', self._test_case_id)
         log_and_emit(level=level, module='APIDriver', content=content, **kwargs)
 
+    def _merge_headers(self) -> dict:
+        """合并 Headers：meta.headers + case_config.headers，并按密钥链
+        （case_config → meta → env，UC-0901 扩展流程 3a）注入 Bearer ——
+        解析到密钥且未显式配置 Authorization 头时才注入，显式头优先"""
+        headers = {**self.meta.get('headers', {}), **self.case_config.get('headers', {})}
+        api_key = _key_resolver.resolve(
+            case_config=self.case_config if isinstance(self.case_config, dict) else None,
+            meta=self.meta if isinstance(self.meta, dict) else None)
+        if api_key and not any(k.lower() == 'authorization' for k in headers):
+            headers['Authorization'] = f'Bearer {api_key}'
+        return headers
+
     def execute(self, context_data, files=None, method=None):
         """
         执行 API 调用并解析结果
@@ -70,8 +89,8 @@ class ApiDriverAdapter(ApiVendorAdapter):
         # 确定请求方法（优先级：参数 > 用例配置 > 元数据 > 默认POST）
         method = method or self.case_config.get('method') or self.meta.get('method', 'POST').upper()
 
-        # 合并 Headers
-        headers = {**self.meta.get('headers', {}), **self.case_config.get('headers', {})}
+        # 合并 Headers（密钥链 Bearer 注入见 _merge_headers）
+        headers = self._merge_headers()
 
         # 获取并渲染 Body 模板
         body_template = self.case_config.get('body_template') or self.meta.get('body_template') or self.meta.get('body', {})
@@ -157,7 +176,7 @@ class ApiDriverAdapter(ApiVendorAdapter):
         return template
 
     def render_request_parts(self, context_data):
-        headers = {**self.meta.get('headers', {}), **self.case_config.get('headers', {})}
+        headers = self._merge_headers()
         rendered_headers = {}
         for k, v in headers.items():
             if isinstance(v, str):
