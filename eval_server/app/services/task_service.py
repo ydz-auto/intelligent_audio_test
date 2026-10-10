@@ -187,6 +187,12 @@ class TaskService:
         min_rounds = getattr(calculator, 'min_rounds_for_aggregate', 2)
         aggregate_overall_only = getattr(calculator, 'aggregate_overall_only', True)
         if rounds and (is_overall or not aggregate_overall_only) and len(rounds) >= min_rounds:
+            # 计算器已在结果里返回原生 per_round[]（如 turn_eval/interruption 整体合并评估
+            # 一次产出全部逐轮结果）时，直接复用并跳过默认逐轮切片重跑。
+            # 避免额外 N 次 ASR/LLM，且保证逐轮口径与整体（turns）一致；
+            # 重跑产生的是另一遍独立评估，结果与整体不一致（曾导致逐轮 TRD 落错分）。
+            if isinstance(result, dict) and isinstance(result.get('per_round'), list) and result['per_round']:
+                return result
             try:
                 per_round = calculator._calculate_per_round(task_params)
                 # reject_judge 的 _calculate_per_round 会通过 _agg_result 返回聚合结果
