@@ -64,6 +64,19 @@ class OSSClient:
         except Exception:
             return False
 
+    def check_connectivity(self):
+        """连通性自检（INT-84）：head_bucket 探活，返回 (是否可用, 失败原因)。
+
+        与 is_available 的差异：携带失败原因，供启动自检一次性输出诊断信息
+        （凭据/endpoint 配置错误时指向问题，而非静默 False）。
+        """
+        try:
+            self._ensure_init()
+            self._client.head_bucket(Bucket=self._bucket('audios'))
+            return True, ''
+        except Exception as e:
+            return False, str(e)
+
     def _init(self):
         endpoint = BaseConfig.OSS_ENDPOINT
         access_key = BaseConfig.OSS_ACCESS_KEY

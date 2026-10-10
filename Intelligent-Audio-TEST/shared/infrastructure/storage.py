@@ -37,6 +37,7 @@ import os
 import shutil
 import tempfile
 import threading
+import time
 from typing import Optional, BinaryIO
 
 from shared.infrastructure.config import BaseConfig
@@ -47,6 +48,26 @@ _SCHEME_OSS = 'oss://'
 _SCHEME_LOCAL = 'local://'
 
 _MODULE_NAME = 'storage'
+
+# OSS 失败告警限频窗（INT-84）：同操作原因 5 分钟内最多 1 条 WARNING，
+# OSS 异常期间不再每次访问都刷屏（自愈后新失败重新告警）
+_OSS_WARN_SUPPRESS_SECONDS = 300
+_oss_warn_state: dict = {}
+_oss_warn_lock = threading.Lock()
+
+
+def _warn_oss_throttled(message: str, category: str) -> None:
+    """OSS 失败告警限频：按操作原因（消息冒号前段）抑制窗口内重复 WARNING。"""
+    reason = message.split(':')[0].strip()
+    now = time.monotonic()
+    with _oss_warn_lock:
+        last = _oss_warn_state.get(reason)
+        if last is not None and (now - last) < _OSS_WARN_SUPPRESS_SECONDS:
+            log_not_emit('DEBUG', _MODULE_NAME, f'{message}（限频窗口内，仅记录 DEBUG）',
+                         category=category)
+            return
+        _oss_warn_state[reason] = now
+    log_not_emit('WARNING', _MODULE_NAME, message, category=category)
 
 
 class Storage:
@@ -152,9 +173,9 @@ class Storage:
                 self._oss.upload_file(local_path, category, key)
                 return f'{_SCHEME_OSS}{category}/{key}'
         except Exception as e:
-            log_not_emit('WARNING', _MODULE_NAME,
-                         f'save_file OSS failed, fallback to local: {e}',
-                         category=category)
+            _warn_oss_throttled(
+                f'save_file OSS failed, fallback to local: {e}',
+                category=category)
             if not BaseConfig.STORAGE_FALLBACK_ENABLED:
                 raise
         # 降级到本地
@@ -172,9 +193,9 @@ class Storage:
                                        content_type=content_type)
                 return f'{_SCHEME_OSS}{category}/{key}'
         except Exception as e:
-            log_not_emit('WARNING', _MODULE_NAME,
-                         f'save_bytes OSS failed, fallback to local: {e}',
-                         category=category)
+            _warn_oss_throttled(
+                f'save_bytes OSS failed, fallback to local: {e}',
+                category=category)
             if not BaseConfig.STORAGE_FALLBACK_ENABLED:
                 raise
         # 降级到本地
@@ -193,9 +214,9 @@ class Storage:
                                         content_type=content_type)
                 return f'{_SCHEME_OSS}{category}/{key}'
         except Exception as e:
-            log_not_emit('WARNING', _MODULE_NAME,
-                         f'save_stream OSS failed, fallback to local: {e}',
-                         category=category)
+            _warn_oss_throttled(
+                f'save_stream OSS failed, fallback to local: {e}',
+                category=category)
             if not BaseConfig.STORAGE_FALLBACK_ENABLED:
                 raise
         # 降级到本地
@@ -229,9 +250,9 @@ class Storage:
         try:
             return self._oss.download_file(category, key, local_path)
         except Exception as e:
-            log_not_emit('WARNING', _MODULE_NAME,
-                         f'load_file OSS failed, try local: {e}',
-                         category=category)
+            _warn_oss_throttled(
+                f'load_file OSS failed, try local: {e}',
+                category=category)
             # 尝试从本地降级副本读取
             src = self._local_path(category, key)
             if os.path.exists(src):
@@ -253,9 +274,9 @@ class Storage:
         try:
             return self._oss.download_bytes(category, key)
         except Exception as e:
-            log_not_emit('WARNING', _MODULE_NAME,
-                         f'load_bytes OSS failed, try local: {e}',
-                         category=category)
+            _warn_oss_throttled(
+                f'load_bytes OSS failed, try local: {e}',
+                category=category)
             src = self._local_path(category, key)
             if os.path.exists(src):
                 with open(src, 'rb') as f:
@@ -325,9 +346,9 @@ class Storage:
         try:
             return self._oss.list_objects(category, prefix)
         except Exception as e:
-            log_not_emit('WARNING', _MODULE_NAME,
-                         f'list_objects OSS failed: {e}',
-                         category=category)
+            _warn_oss_throttled(
+                f'list_objects OSS failed: {e}',
+                category=category)
             # 回退：列举本地降级副本
             local_base = self._local_path(category, '')
             local_root = os.path.join(local_base, prefix) if prefix else local_base
@@ -355,8 +376,8 @@ class Storage:
         try:
             return self._oss.get_presigned_url(category, key, expires=expires)
         except Exception as e:
-            log_not_emit('WARNING', _MODULE_NAME,
-                         f'get_url OSS failed: {e}', category=category)
+            _warn_oss_throttled(
+                f'get_url OSS failed: {e}', category=category)
             return None
 
     # ---- 便捷方法 ----

@@ -172,7 +172,7 @@ def _apply_user_to_po(aggregate: UserAggregate, po: User) -> None:
     保证聚合根状态与 PO 持久化状态一致。
     """
     po.username = aggregate.username
-    po.email = aggregate.email
+    po.email = _normalize_email(aggregate.email)
     po.role_id = aggregate.role_id
     if aggregate.deleted:
         po.status = UserStatus.DELETED.value
@@ -180,6 +180,19 @@ def _apply_user_to_po(aggregate: UserAggregate, po: User) -> None:
         po.status = aggregate.status
     po.oauth_provider = aggregate.oauth_provider
     po.oauth_id = aggregate.oauth_subject
+
+
+def _normalize_email(email: Optional[str]) -> Optional[str]:
+    """空/纯空白 email 归一化为 None（INT-84）。
+
+    历史库 users.email 带 UNIQUE 约束（users_email_key），空串占位会导致
+    第二个空邮箱用户必撞唯一约束；PG 唯一索引对 NULL 不生效，注册/建号
+    传空邮箱时统一落 NULL。非空 email 按原值（trim 后）落库。
+    """
+    if email is None:
+        return None
+    normalized = str(email).strip()
+    return normalized or None
 
 
 # ── UserRepository ──────────────────────────────────────────────────
@@ -236,7 +249,7 @@ class UserRepository(UserRepositoryABC):
         session = get_db_session()
         po = User(
             username=aggregate.username,
-            email=aggregate.email,
+            email=_normalize_email(aggregate.email),
             role_id=aggregate.role_id,
             status=UserStatus.DELETED.value if aggregate.deleted else aggregate.status,
             oauth_provider=aggregate.oauth_provider,
@@ -294,7 +307,7 @@ class UserRepository(UserRepositoryABC):
         if username is not None:
             po.username = username
         if email is not None:
-            po.email = email
+            po.email = _normalize_email(email)
         if status is not None:
             po.status = status
         if password is not None:

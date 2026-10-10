@@ -28,6 +28,7 @@ python scripts/migrations/202609/seed_voice_llm.py                        # ⑪ 
 # ── 202610 ──────────────────────────────────────────────
 python scripts/migrations/202610/add_timestamp_db_defaults.py             # ⑫ 时间戳列补 DB 级 DEFAULT（INT-47，既有库对齐；全新库为 no-op）
 python scripts/migrations/202610/add_benchmark_tables.py                  # ⑬ Benchmark 排行 4 表 + 指标映射种子（D1 双轨排行，INT-27）
+python scripts/migrations/202610/fix_users_email_unique.py --apply        # ⑭ users 空邮箱归一化 + 非空 email 部分唯一索引（INT-84；默认 dry-run）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。

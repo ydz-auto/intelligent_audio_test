@@ -453,11 +453,34 @@ def start_frontend():
     _wait_port('localhost', FRONTEND_PORT, 'frontend')
 
 
+def check_oss_connectivity():
+    """启动时 OSS 连通性自检（INT-84）：一次性探测 S3 API 可达性。
+
+    成功记一条 INFO；失败仅记一条 WARNING（含 endpoint 与排查提示），
+    不阻塞启动 —— 各服务运行期按 STORAGE_FALLBACK_ENABLED 自动降级本地。
+    """
+    endpoint = CHILD_ENV.get('OSS_ENDPOINT') or 'http://localhost:9000'
+    bucket = CHILD_ENV.get('OSS_BUCKET_NAME') or 'audios'
+    try:
+        from shared.clients.oss_client import OSSClient
+        ok, reason = OSSClient().check_connectivity()
+    except Exception as e:
+        ok, reason = False, str(e)
+    if ok:
+        print(f"[OK] OSS connectivity check passed ({endpoint}, bucket={bucket})", flush=True)
+    else:
+        print(f"[WARN] OSS 连通性自检失败 endpoint={endpoint}: {reason}", flush=True)
+        print("[WARN] 请核对 .env 的 OSS_ACCESS_KEY/OSS_SECRET_KEY 与 rustfs/S3 容器"
+              "环境变量是否一致、endpoint 地址是否正确；未开启 STORAGE_FALLBACK_ENABLED"
+              " 时将直接影响文件读写", flush=True)
+
+
 def start_all():
     cleanup_occupied_ports()
     start_redis()
     start_postgres()
     start_rustfs()
+    check_oss_connectivity()
     for svc in services:
         start_service(svc)
     start_frontend()

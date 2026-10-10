@@ -159,6 +159,102 @@ class TestInboundToken:
         assert trigger._inbound_token() == 'secret-ab'
 
 
+# ================= 配置完整性门控与告警限频（INT-84） =================
+class TestConfigCompletenessGate:
+    """入站 token 缺失 → 判定未启用：不启动线程，仅记一次 INFO。"""
+
+    def test_missing_route_token_does_not_start(self, caplog):
+        import logging
+        acl = FakeACL(client=FakeClient(tokens={}))  # 未配置 A->B token
+        trigger = make_trigger(acl)
+        with caplog.at_level(logging.INFO,
+                             logger='evaluation_service.infrastructure.acl.hub_relay_trigger'):
+            trigger.start()
+        assert trigger._thread is None
+        gate_logs = [r for r in caplog.records if '区配置不完整' in r.message]
+        assert len(gate_logs) == 1, '配置不完整应仅记一次 INFO'
+
+    def test_repeated_start_with_missing_token_logs_once_each_not_spam(self, caplog):
+        import logging
+        acl = FakeACL(client=FakeClient(tokens={}))
+        trigger = make_trigger(acl)
+        with caplog.at_level(logging.INFO,
+                             logger='evaluation_service.infrastructure.acl.hub_relay_trigger'):
+            trigger.start()
+            trigger.start()
+        # start() 只在启动点调用（app lifespan 一次），此处验证重复调用也只
+        # 每次一条 INFO（无 WARNING/ERROR 周期告警路径）
+        gate_logs = [r for r in caplog.records if '区配置不完整' in r.message]
+        assert len(gate_logs) == 2
+        assert all(r.levelno == logging.INFO for r in gate_logs)
+
+    def test_token_configured_starts_normally(self):
+        acl = FakeACL(client=FakeClient(tokens={'A_B': 'secret-ab'}))
+        trigger = make_trigger(acl)
+        trigger.start()
+        try:
+            assert trigger._thread is not None and trigger._thread.is_alive()
+        finally:
+            trigger.stop()
+
+
+class TestClaimWarnRateLimit:
+    """同原因认领失败告警限频：5 分钟窗口内最多 1 条 WARNING。"""
+
+    def test_same_reason_suppressed_within_window(self, caplog):
+        import logging
+        trigger = make_trigger()
+        with caplog.at_level(logging.DEBUG,
+                             logger='evaluation_service.infrastructure.acl.hub_relay_trigger'):
+            err = RuntimeError('transfer_agent unreachable')
+            for _ in range(10):
+                trigger._warn_claim_failure_throttled(err)
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert len(warnings) == 1, '同原因窗口内只应 1 条 WARNING'
+        assert len(debugs) == 9, '窗口内重复失败降级 DEBUG'
+
+    def test_different_reason_not_suppressed(self, caplog):
+        import logging
+        trigger = make_trigger()
+        with caplog.at_level(logging.WARNING,
+                             logger='evaluation_service.infrastructure.acl.hub_relay_trigger'):
+            trigger._warn_claim_failure_throttled(RuntimeError('err-a'))
+            trigger._warn_claim_failure_throttled(RuntimeError('err-b'))
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 2
+
+    def test_window_expiry_logs_new_warning(self, caplog):
+        import logging
+        import time as _time
+        trigger = make_trigger()
+        with caplog.at_level(logging.WARNING,
+                             logger='evaluation_service.infrastructure.acl.hub_relay_trigger'):
+            trigger._warn_claim_failure_throttled(RuntimeError('same-err'))
+            # 模拟窗口过期（回拨时间戳，不真实等待 5 分钟）
+            reason, _ = trigger._last_claim_warn
+            trigger._last_claim_warn = (reason,
+                                        _time.monotonic() - 301)
+            trigger._warn_claim_failure_throttled(RuntimeError('same-err'))
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warnings) == 2
+
+    def test_success_resets_throttle_state(self):
+        """认领成功后限频状态清零：再次失败立即告警（不落入旧窗口）。"""
+        client = FakeClient()
+        client.claim_results = ['t-ok']
+        finished = threading.Event()
+        client.on_finish = lambda *_args, **_kw: finished.set()
+        trigger = make_trigger(FakeACL(client=client), poll_interval_seconds=0.01)
+        trigger._last_claim_warn = ('old-reason', 0.0)
+        trigger.start()
+        try:
+            assert finished.wait(timeout=5), '认领成功路径未走完'
+        finally:
+            trigger.stop()
+        assert trigger._last_claim_warn is None
+
+
 # ================= 认领 → 执行 → 终态收敛 =================
 class TestClaimExecuteFinishFlow:
     def test_claim_passes_token_and_stale_seconds(self):

@@ -73,6 +73,20 @@ CHUNK = 1024
 AUDIO_BYTES = b'RIFF' + os.urandom(3 * 1024)  # 3KB → 多分片
 
 
+@pytest.fixture(autouse=True)
+def _clean_third_party_eval_env(monkeypatch):
+    """清理 THIRD_PARTY_EVAL_* 进程环境变量（INT-84）。
+
+    先序集成用例 import 各服务 app.py 时会 load_dotenv('.env')，运行时
+    .env 的 THIRD_PARTY_EVAL_* 键进入进程 env 并按设计覆盖测试写入的
+    配置文件（env 优先于配置文件）。本文件用配置文件驱动区角色/触发器，
+    须先清 env 保证用例封闭。
+    """
+    for key in list(os.environ):
+        if key.startswith('THIRD_PARTY_EVAL_'):
+            monkeypatch.delenv(key, raising=False)
+
+
 # ================= 模拟 C 区第三方评估 API =================
 def _disp_attr(disposition: str, attr: str):
     match = re.search(f'{attr}="([^"]*)"', disposition)
@@ -627,6 +641,8 @@ class TestHubRelayTriggerFullChain:
         ta_url, record_repo, relay_events = relay_transfer_http
         config_hub = write_settings_config(
             tmp_path / 'hub', ta_url,
+            # INT-84 起默认关闭，触发器场景模拟跨区部署显式开启
+            relay_trigger_enabled=True,
             relay_trigger_poll_interval_seconds=0.05,
             relay_trigger_claim_stale_seconds=1800)
         config_edge = write_settings_config(
@@ -706,6 +722,7 @@ class TestHubRelayTriggerFullChain:
         ta_url, record_repo, relay_events = relay_transfer_http
         config_hub = write_settings_config(
             tmp_path / 'hub', ta_url,
+            relay_trigger_enabled=True,
             relay_trigger_poll_interval_seconds=0.05,
             relay_trigger_claim_stale_seconds=1800)
         config_edge = write_settings_config(tmp_path / 'edge', ta_url, self_zone='A')

@@ -16,15 +16,20 @@ F2.1/F2.2 已交付），完成后 /relay/{id}/finish 收敛终态（executed/fa
 事件按五通道契约不进跨服务事件通道（transfer_events 模块契约）。
 
 仅中枢（self_zone == hub_zone）且 relay_trigger_enabled 时启动；边缘区（A）
-不启动（start() 自门控）。
+不启动（start() 自门控）。所需区配置不完整（sync_back_zone 入站 token 缺失）
+同样不启动（INT-84：启动时仅记一次 INFO，不再周期性 claim 失败告警）。
 """
 from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# 运行中同类认领失败告警限频窗（INT-84）：同原因 5 分钟内最多 1 条 WARNING
+_CLAIM_WARN_SUPPRESS_SECONDS = 300
 
 
 class HubRelayTrigger:
@@ -37,6 +42,8 @@ class HubRelayTrigger:
         self._claim_stale_seconds = claim_stale_seconds
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
+        # 认领失败告警限频状态：(上次告警原因, 上次告警 monotonic 时间)
+        self._last_claim_warn: Optional[tuple] = None
 
     # ---- 配置（延迟取 ACL settings，进既有 third_party 配置框架）----
     @property
@@ -57,7 +64,7 @@ class HubRelayTrigger:
     def enabled(self) -> bool:
         settings = self._acl.settings
         return bool(settings.is_hub
-                    and getattr(settings, 'relay_trigger_enabled', True))
+                    and getattr(settings, 'relay_trigger_enabled', False))
 
     # ---- 生命周期 ----
     def start(self) -> None:
@@ -65,6 +72,8 @@ class HubRelayTrigger:
             logger.info('中枢侧中转执行触发器未启用（is_hub=%s relay_trigger_enabled=%s）',
                         self._acl.settings.is_hub,
                         getattr(self._acl.settings, 'relay_trigger_enabled', None))
+            return
+        if not self._relay_config_ready():
             return
         if self._thread is not None and self._thread.is_alive():
             return
@@ -74,6 +83,28 @@ class HubRelayTrigger:
         self._thread.start()
         logger.info('中枢侧中转执行触发器已启动（poll_interval=%ss claim_stale=%ss）',
                     self.poll_interval_seconds, self.claim_stale_seconds)
+
+    def _relay_config_ready(self) -> bool:
+        """中转区配置完整性门控（INT-84）：入站 token 缺失即判定未启用。
+
+        中枢认领依赖 sync_back_zone→self_zone 预共享 token；缺失时启动线程
+        只会每轮 poll 刷 claim 失败告警。此处拦截：仅记一次 INFO，不启动线程。
+        跨区部署补齐 token 后重启服务即正常启用。
+        """
+        settings = self._acl.settings
+        origin = str(getattr(settings, 'sync_back_zone', '') or '')
+        try:
+            token = self._acl.client.get_token(origin, settings.self_zone)
+        except Exception:
+            token = None
+        if token:
+            return True
+        route = '_'.join(sorted([origin, settings.self_zone]))
+        logger.info(
+            '中枢侧中转执行触发器未启用：区配置不完整（未配置边缘区 %s->%s 预共享 '
+            'token；单机部署无需配置，跨区部署配置 TRANSFER_TOKEN_%s 后重启）',
+            origin, settings.self_zone, route)
+        return False
 
     def stop(self, timeout: float = 5.0) -> None:
         self._stop_event.set()
@@ -89,13 +120,28 @@ class HubRelayTrigger:
                 claimed = self._claim_next()
             except Exception as e:
                 # 触发链路失败收敛：记录日志，下一轮询重试（任务不悬挂 —
-                # A 侧按 relay_result_timeout_seconds 超时进既有收敛路径）
-                logger.warning('中转执行认领失败（下一轮重试）: %s', e)
+                # A 侧按 relay_result_timeout_seconds 超时进既有收敛路径）。
+                # 同原因告警限频（INT-84）：5 分钟内最多 1 条 WARNING，避免刷屏
+                self._warn_claim_failure_throttled(e)
                 claimed = None
             if claimed is None:
                 self._stop_event.wait(self.poll_interval_seconds)
                 continue
+            self._last_claim_warn = None
             self._execute_claimed(claimed)
+
+    def _warn_claim_failure_throttled(self, error: Exception) -> None:
+        """认领失败告警限频：同原因（异常文案）在抑制窗内仅首条 WARNING，
+        窗口内的重复失败降级 DEBUG。恢复成功（认领成功）后状态清零。"""
+        reason = str(error)
+        now = time.monotonic()
+        last = self._last_claim_warn
+        if last is not None and last[0] == reason \
+                and (now - last[1]) < _CLAIM_WARN_SUPPRESS_SECONDS:
+            logger.debug('中转执行认领失败（限频窗口内，下一轮重试）: %s', reason)
+            return
+        self._last_claim_warn = (reason, now)
+        logger.warning('中转执行认领失败（下一轮重试）: %s', reason)
 
     def _claim_next(self) -> Optional[str]:
         token = self._inbound_token()

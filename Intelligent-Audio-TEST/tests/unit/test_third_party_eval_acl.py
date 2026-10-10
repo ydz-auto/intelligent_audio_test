@@ -487,6 +487,22 @@ class TestSettings:
         settings = ThirdPartyEvalSettings(config_path=str(cfg))
         assert settings.response_required_keys == ['code', 'msg']
 
+    def test_relay_trigger_enabled_default_off(self, tmp_path, monkeypatch):
+        """INT-84：relay_trigger_enabled 默认关闭（单机默认配置不启动触发器，
+        跨区部署显式开启）。"""
+        monkeypatch.delenv('THIRD_PARTY_EVAL_RELAY_TRIGGER_ENABLED', raising=False)
+        cfg = tmp_path / 'cfg.json'
+        cfg.write_text(json.dumps({'third_party': {}}), encoding='utf-8')
+        settings = ThirdPartyEvalSettings(config_path=str(cfg))
+        assert settings.relay_trigger_enabled is False
+
+    def test_relay_trigger_enabled_env_explicit_on(self, tmp_path, monkeypatch):
+        monkeypatch.setenv('THIRD_PARTY_EVAL_RELAY_TRIGGER_ENABLED', 'true')
+        cfg = tmp_path / 'cfg.json'
+        cfg.write_text(json.dumps({'third_party': {}}), encoding='utf-8')
+        settings = ThirdPartyEvalSettings(config_path=str(cfg))
+        assert settings.relay_trigger_enabled is True
+
     def test_response_required_keys_str_env_override_splits_by_comma(self, tmp_path, monkeypatch):
         cfg = tmp_path / 'cfg.json'
         cfg.write_text(json.dumps({'third_party': {}}), encoding='utf-8')

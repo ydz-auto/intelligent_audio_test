@@ -94,8 +94,9 @@ class ThirdPartyEvalSettings:
         self.relay_result_timeout_seconds = int(_get('relay_result_timeout_seconds', 900))
         # 中枢侧中转执行触发器（F2.3）：轮询认领节奏与认领失效窗（崩溃恢复阈值，
         # 须大于最坏单包执行时长 = 解包 + 出站投递 + 结果回同步）
+        # 默认关闭（INT-84）：仅跨区部署显式开启，单机默认配置不启动触发器
         self.relay_trigger_enabled = str(
-            _get('relay_trigger_enabled', 'true')).lower() not in ('0', 'false', 'no')
+            _get('relay_trigger_enabled', 'false')).lower() not in ('0', 'false', 'no')
         self.relay_trigger_poll_interval_seconds = float(
             _get('relay_trigger_poll_interval_seconds', 2))
         self.relay_trigger_claim_stale_seconds = int(
