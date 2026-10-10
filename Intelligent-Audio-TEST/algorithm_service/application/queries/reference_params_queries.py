@@ -58,6 +58,12 @@ class ReferenceParamsQueryHandler:
         preload_context = audio_acl_repository.preload_audio_data(audio_ids)
         config['_preload_context'] = preload_context
 
+        if audio_ids and not preload_context.get('audio_map'):
+            log_not_emit('WARNING', 'reference_params_queries',
+                         f'Round {round_number}: audio preload returned 0/{len(audio_ids)} audios '
+                         f'(ids={audio_ids}), reference params will likely be empty',
+                         category='algorithm')
+
         ref_params = reference_param_repository.list_by_algorithm(algorithm_type)
 
         if not ref_params:

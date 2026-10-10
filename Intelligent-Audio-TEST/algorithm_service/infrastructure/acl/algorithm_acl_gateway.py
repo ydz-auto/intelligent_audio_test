@@ -59,25 +59,36 @@ def list_reference_params(algorithm_type: str) -> List[ReferenceParamDTO]:
 def get_audios_by_ids(audio_ids: List[int]) -> Dict[int, AudioDTO]:
     """通过 gRPC 批量获取音频数据（audio_service.GetAudiosByIds）
 
+    对端契约：data 为 JSON 数组（[audio_dict, ...]，无 items 包装），
+    兼容历史 {"items": [...]} 包装。
+
     Returns:
         {audio_id: AudioDTO, ...} 或空 dict
     """
     if not audio_ids:
         return {}
     try:
+        import json as _json
         from shared.clients.grpc_clients import get_audio_config_service_stub
         from shared.proto import audio_service_pb2 as e2e_pb
         from shared.utils.grpc_json import loads as _loads
         stub = get_audio_config_service_stub()
-        req = e2e_pb.GetAudiosByIdsRequest(audio_ids=','.join(str(aid) for aid in audio_ids))
+        req = e2e_pb.GetAudiosByIdsRequest(data=_json.dumps({'ids': list(audio_ids)}))
         resp = stub.GetAudiosByIds(req)
         if not resp.success:
+            log_not_emit('WARNING', 'algorithm_acl_gateway',
+                         f'get_audios_by_ids failed: {resp.message}', category='algorithm')
             return {}
         data = _loads(resp.data, {})
+        items = data.get('items', []) if isinstance(data, dict) else data if isinstance(data, list) else []
         audio_map = {}
-        for item in data.get('items', []):
-            aid = item.get('id')
-            audio_map[aid] = dict_to_dto(item, AudioDTO)
+        for item in items:
+            if isinstance(item, dict) and item.get('id') is not None:
+                audio_map[item['id']] = dict_to_dto(item, AudioDTO)
+        if not audio_map:
+            log_not_emit('WARNING', 'algorithm_acl_gateway',
+                         f'get_audios_by_ids returned 0/{len(audio_ids)} audios (ids={list(audio_ids)})',
+                         category='algorithm')
         return audio_map
     except Exception as e:
         log_not_emit('ERROR', 'algorithm_acl_gateway',
