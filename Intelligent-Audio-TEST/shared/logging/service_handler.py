@@ -24,6 +24,7 @@ from datetime import datetime
 
 from shared.logging.config import LogSettings, get_log_settings, resolve_service_name
 from shared.logging.identity import process_identity
+from shared.utils.secret_mask import mask_text
 
 _DAY_FORMAT = '%Y%m%d'
 _DATE_SUFFIX_LEN = len('YYYYMMDD') + len('-')
@@ -137,7 +138,10 @@ class ServiceRotatingFileHandler(logging.Handler):
                 self._open_stream()
             if self._needs_rollover():
                 self._rollover()
-            msg = self.format(record) + '\n'
+            # 统一脱敏（INT-70）：本 handler 是服务文件出口唯一收口，调用方
+            # （如 DatabaseLogHandler 非任务日志分支）可能直接下发原始 record
+            # 绕过上游已掩码字符串，故在 format 后出口级掩码兜底
+            msg = mask_text(self.format(record)) + '\n'
             self._stream.write(msg)
             self._stream.flush()
         except Exception:

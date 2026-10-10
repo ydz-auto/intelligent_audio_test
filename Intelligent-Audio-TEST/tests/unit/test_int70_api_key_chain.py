@@ -375,3 +375,70 @@ def test_emit_business_entry_masked(monkeypatch):
     assert captured, 'emit 未到达业务日志入队点'
     assert 'sk-abcdef1234567890' not in captured['content']
     assert '****' in captured['content']
+
+
+# ── 无任务上下文的文件出口（服务文件）——INT-70 打回 P1 回归 ──
+
+from shared.logging.service_handler import ServiceRotatingFileHandler
+
+
+def test_service_file_handler_outlet_masked(tmp_path):
+    """ServiceRotatingFileHandler 出口级掩码：原始 record 直发也零明文"""
+    handler = ServiceRotatingFileHandler(
+        str(tmp_path), base_name='app-test.log')
+    handler.setFormatter(logging.Formatter(
+        '[%(asctime)s] %(levelname)-8s %(module)s - %(message)s'))
+
+    record = logging.LogRecord(
+        name='x', level=logging.INFO, pathname='', lineno=0,
+        msg='config dump api_key=sk-SECRETVALUE1234567890', args=(),
+        exc_info=None)
+    record.module = 'x'
+    handler.emit(record)
+    handler.close()
+
+    content = (tmp_path / 'app-test.log').read_text(encoding='utf-8')
+    assert 'sk-SECRETVALUE1234567890' not in content
+    assert 'api_key=****' in content
+
+
+def test_emit_no_task_file_outlet_masked(monkeypatch, tmp_path):
+    """端到端（打回复现）：无 task_id 系统日志/审计日志经 DatabaseLogHandler
+    emit → _file_handler 分支，文件出口不落明文（含 Bearer/裸密钥形态）"""
+    from shared.utils.log_handler import DatabaseLogHandler
+
+    handler = DatabaseLogHandler()
+    handler.set_console_log(False)
+    try:
+        file_handler = ServiceRotatingFileHandler(
+            str(tmp_path), base_name='app-test.log')
+        file_handler.setFormatter(logging.Formatter(
+            '[%(asctime)s] %(levelname)-8s %(module)s - %(message)s'))
+        monkeypatch.setattr(handler, '_file_handler', file_handler)
+
+        system_record = logging.LogRecord(
+            name='x', level=logging.INFO, pathname='', lineno=0,
+            msg='config dump api_key=sk-SECRETVALUE1234567890', args=(),
+            exc_info=None)
+        system_record.module = 'x'
+        system_record.category = 'system'
+        system_record.task_id = None
+        handler.emit(system_record)
+
+        audit_record = logging.LogRecord(
+            name='x', level=logging.INFO, pathname='', lineno=0,
+            msg="auth handshake headers={\"Authorization\": "
+                "\"Bearer sk-AUDITTOKEN123456789\"}", args=(), exc_info=None)
+        audit_record.module = 'x'
+        audit_record.category = 'auth'
+        audit_record.task_id = None
+        handler.emit(audit_record)
+    finally:
+        handler.queue.put(None)
+        handler.worker_thread.join(timeout=1.0)
+        file_handler.close()
+
+    content = (tmp_path / 'app-test.log').read_text(encoding='utf-8')
+    assert 'sk-SECRETVALUE1234567890' not in content
+    assert 'sk-AUDITTOKEN123456789' not in content
+    assert '****' in content
