@@ -91,6 +91,11 @@ def create_app(config_name='default') -> FastAPI:
     app.add_middleware(AuthMiddleware, auth_mode=Config.AUTH_MODE)
     app.add_middleware(NamingAliasMiddleware)
 
+    # 请求级 DB session scope（INT-90 缺陷 A）：请求结束归还连接池，
+    # 毒化不跨请求存活。最后添加 = 包在最外层，覆盖全部内部中间件与路由。
+    from shared.infrastructure.db_session_middleware import DbSessionScopeMiddleware
+    app.add_middleware(DbSessionScopeMiddleware)
+
     # 注册 API 路由
     from api_gateway.routes.auth_bp import router as auth_router
     from api_gateway.routes.testcase_bp import router as testcase_router

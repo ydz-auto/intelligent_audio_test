@@ -3,20 +3,28 @@
 
 原生 SQLAlchemy 实现。连接池：QueuePool 池类传 pool_size/max_overflow/
 pool_recycle/pool_pre_ping，SQLite 内存库（SingletonThreadPool）等非
-QueuePool 池类仅传池类兼容参数（INT-48）；scoped_session 基于
-threading.local，线程内复用、跨线程隔离。
+QueuePool 池类仅传池类兼容参数（INT-48）；scoped_session 的 scope 二级：
+HTTP 请求内为请求级 scope（FastAPI 侧 DbSessionScopeMiddleware 在请求开始
+bind_request_session_scope、结束 release_request_session_scope，同一线程池
+线程先后处理的请求互不共享 session，污染不跨请求存活），gRPC / 后台线程等
+未绑定场景回落线程级 scope（threading.get_ident，gRPC 由
+ServerDbScopeInterceptor 在 RPC 结束 remove_db_session）。
 
 公开 API：
 - `Base`：ORM 基类（declarative_base()），PO 继承它
-- `get_db_session()`：取当前线程的 scoped_session
+- `get_db_session()`：取当前 scope 的 scoped_session（毒化自愈兜底）
 - `create_db_session()`：创建独立 Session 实例（嵌套调用链专用，close 不影响外层）
 - `get_engine()`：取全局 engine（init_db 后可用）
 - `init_db(pool_size)`：初始化连接池
-- `remove_db_session()`：清理当前线程的 session
+- `remove_db_session()`：清理当前 scope 的 session
+- `bind_request_session_scope()` / `release_request_session_scope(token)`：
+  HTTP 请求级 scope 绑定/解绑+清理（DbSessionScopeMiddleware 专用）
 - `Model.query`：描述符，代理到 scoped_session.query(cls)（32 个文件在用）
 - `Query.paginate()`：分页补丁（17 处 repository 在用）
 """
+import contextvars
 import threading
+import uuid
 from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import create_engine
@@ -93,11 +101,12 @@ class _QueryProperty:
     """`Model.query` 描述符，代理到 `scoped_session.query(cls)`。
 
     使 `Model.query.filter_by(...)` 等写法在原生 SQLAlchemy 下可用。
+    经 get_db_session() 取 session，获得与显式取用一致的毒化自愈兜底。
     """
 
     def __get__(self, instance, owner):
         # owner 是模型类，instance 是实例（类访问时为 None）
-        return _scoped_session.query(owner)
+        return get_db_session().query(owner)
 
 
 # 全局 engine 引用（单例，由 init_db 设置，通过 get_engine() 访问）
@@ -111,9 +120,46 @@ Base = _Base
 # `Model.query` 属性：兼容 `Model.query.filter_by(...)` 写法（32 个文件在用）
 _Base.query = _QueryProperty()
 
+# HTTP 请求级 session scope：FastAPI 中间件在请求开始绑定一个唯一 scope 键、
+# 结束时解绑并 remove 该 scope 的 session（INT-90 缺陷 A——原先按线程复用
+# session，线程池线程一旦被事务内失败毒化，后续所有请求持续失败，且事务
+# 开着的连接滞留为 idle in transaction）。未绑定场景回落线程级 scope，
+# gRPC / 后台线程 / 单测行为同旧版。
+_request_session_scope: contextvars.ContextVar = contextvars.ContextVar(
+    'request_session_scope', default=None)
+
+
+def _session_scopefunc():
+    """scoped_session 的 scope 键：请求级 ContextVar 优先，否则线程标识。
+
+    ContextVar 经 anyio 线程池下发（sync 路由在 worker 线程执行时可见请求
+    scope 键），裸线程（后台任务、gRPC handler 线程）不继承则回落线程键。
+    """
+    return _request_session_scope.get() or threading.get_ident()
+
+
 # scoped_session：在 init_db 之前调用 get_db_session() 取到的 session 无绑定 engine
 _SessionFactory = sessionmaker(bind=None, autoflush=True, autocommit=False)
-_scoped_session = scoped_session(_SessionFactory, scopefunc=threading.get_ident)
+_scoped_session = scoped_session(_SessionFactory, scopefunc=_session_scopefunc)
+
+
+def bind_request_session_scope():
+    """绑定当前 HTTP 请求的 session scope（DbSessionScopeMiddleware 调用）。
+
+    返回令牌，请求结束时传给 release_request_session_scope() 解绑。
+    """
+    return _request_session_scope.set(uuid.uuid4())
+
+
+def release_request_session_scope(token):
+    """解绑请求 scope 并清理该 scope 的 session（DbSessionScopeMiddleware finally 调用）。
+
+    必须先 remove（依赖 scope 仍绑定才能定位本请求的 session）、后 reset。
+    """
+    try:
+        remove_db_session()
+    finally:
+        _request_session_scope.reset(token)
 
 
 def get_engine():
@@ -170,11 +216,22 @@ def init_db(pool_size=3):
 
 
 def get_db_session():
-    """获取当前线程的 DB session（scoped_session）。
+    """获取当前 scope 的 DB session（HTTP 请求级 / 线程级 scoped_session）。
 
-    gRPC 线程 / 后台线程均可直接调用，无需 app context。
-    线程结束前应调用 `remove_db_session()` 清理（gRPC 由 DbScopeInterceptor 自动处理）。
+    HTTP 请求内为请求级 session（DbSessionScopeMiddleware 自动绑定/清理）；
+    gRPC 线程 / 后台线程为线程级 session（线程结束前应调用 remove_db_session()，
+    gRPC 由 ServerDbScopeInterceptor 自动处理）。
+
+    毒化自愈兜底（INT-90 缺陷 A）：事务内前序语句失败（如 audit 写库类型错
+    flush 失败）会把 session 毒化为 PendingRollbackError 状态（is_active=False），
+    原先按线程复用该 session 时，毒化跨请求存活——同线程/同 scope 后续所有
+    请求持续失败。获取时检测到非活跃先 rollback 解毒。
     """
+    if not _scoped_session.is_active:
+        try:
+            _scoped_session.rollback()
+        except Exception:
+            remove_db_session()
     return _scoped_session
 
 
@@ -190,5 +247,5 @@ def create_db_session():
 
 
 def remove_db_session():
-    """清理当前线程的 DB session（gRPC 拦截器 / 后台线程结束时调用）。"""
+    """清理当前 scope 的 DB session（gRPC 拦截器 / 请求中间件 / 后台线程结束时调用）。"""
     _scoped_session.remove()

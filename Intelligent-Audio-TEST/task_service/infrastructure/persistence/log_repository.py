@@ -49,6 +49,19 @@ def _log_po_to_dict(po: Log) -> Dict[str, Any]:
     }
 
 
+def _normalize_task_id(value):
+    """logs.task_id 为 Integer 列（INT-90 缺陷 B）：数字/数字字符串规范为 int，
+    非数字任务标识（e2e 合成任务 ID 如 't1'）置 None。原样写入 PostgreSQL
+    必报「invalid input syntax for type bigint」，flush 失败毒化当前会话并
+    拖垮同批全部日志。"""
+    if value is None or value == '':
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class LogRepository(LogRepositoryABC):
     """系统日志仓储实现。
 
@@ -113,7 +126,7 @@ class LogRepository(LogRepositoryABC):
                     content=item.get('content', ''),
                     mark=item.get('mark'),
                     device_id=item.get('device_id'),
-                    task_id=item.get('task_id'),
+                    task_id=_normalize_task_id(item.get('task_id')),
                     api_id=item.get('api_id'),
                     test_case_id=item.get('test_case_id'),
                     thread_id=item.get('thread_id'),

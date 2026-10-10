@@ -21,27 +21,25 @@ def _get_playback_device_via_grpc(device_id):
     """通过 ACL 仓储从 device_service 获取 PlaybackDevice 数据（返回 dict 或 None）。
 
     PlaybackDevice 归属 device_service，audio_service 不再直连 PO。
+    基础设施失败抛 PlaybackDeviceQueryError（INT-90 缺陷 C），不再吞成 None。
     """
-    try:
-        from audio_service.infrastructure.acl.playback_acl_repository import (
-            PlaybackConfigACLRepositoryImpl,
-        )
-        _playback_acl = PlaybackConfigACLRepositoryImpl()
-        return _playback_acl.get_playback_device(device_id)
-    except Exception:
-        return None
+    from audio_service.infrastructure.acl.playback_acl_repository import (
+        PlaybackConfigACLRepositoryImpl,
+    )
+    _playback_acl = PlaybackConfigACLRepositoryImpl()
+    return _playback_acl.get_playback_device(device_id)
 
 
 def _find_playback_device_by_unique_id(device_unique_id):
-    """通过 ACL 仓储 ListPlaybackDevices 按 device_unique_id 查找（返回 dict 或 None）。"""
-    try:
-        from audio_service.infrastructure.acl.playback_acl_repository import (
-            PlaybackConfigACLRepositoryImpl,
-        )
-        _playback_acl = PlaybackConfigACLRepositoryImpl()
-        return _playback_acl.find_playback_device_by_unique_id(device_unique_id)
-    except Exception:
-        return None
+    """通过 ACL 仓储 ListPlaybackDevices 按 device_unique_id 查找（返回 dict 或 None）。
+
+    基础设施失败抛 PlaybackDeviceQueryError（INT-90 缺陷 C），不再吞成 None。
+    """
+    from audio_service.infrastructure.acl.playback_acl_repository import (
+        PlaybackConfigACLRepositoryImpl,
+    )
+    _playback_acl = PlaybackConfigACLRepositoryImpl()
+    return _playback_acl.find_playback_device_by_unique_id(device_unique_id)
 
 
 def _resolve_audio_file_path(audio_info, audio_obj=None):
@@ -142,15 +140,15 @@ def resolve_dry_audios(audios, round_config=None):
 
 
 def _find_playback_device_by_name(dev_name):
-    """通过 ACL 仓储 ListPlaybackDevices 按 name 查找（返回 dict 或 None）。"""
-    try:
-        from audio_service.infrastructure.acl.playback_acl_repository import (
-            PlaybackConfigACLRepositoryImpl,
-        )
-        _playback_acl = PlaybackConfigACLRepositoryImpl()
-        return _playback_acl.find_playback_device_by_name(dev_name)
-    except Exception:
-        return None
+    """通过 ACL 仓储 ListPlaybackDevices 按 name 查找（返回 dict 或 None）。
+
+    基础设施失败抛 PlaybackDeviceQueryError（INT-90 缺陷 C），不再吞成 None。
+    """
+    from audio_service.infrastructure.acl.playback_acl_repository import (
+        PlaybackConfigACLRepositoryImpl,
+    )
+    _playback_acl = PlaybackConfigACLRepositoryImpl()
+    return _playback_acl.find_playback_device_by_name(dev_name)
 
 
 def _find_audio_by_name(audio_name):
