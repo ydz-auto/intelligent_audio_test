@@ -37,6 +37,18 @@ def _get_database_uri():
         db_password = 'intelligent_audio_test666'
     return f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}'
 
+
+def _get_test_database_uri():
+    """测试环境使用独立数据库，避免测试的清理逻辑污染生产库。
+
+    在 DATABASE_URI（或推导出的 URI）基础上仅替换库名为
+    intelligent_audio_test_test，其余连接参数保持一致。
+    """
+    from sqlalchemy.engine import make_url
+    url = make_url(_get_database_uri())
+    url = url.set(database='intelligent_audio_test_test')
+    return url.render_as_string(hide_password=False)
+
 def _get_ffmpeg_path():
     # 路径由 backend/.env 的 FFMPEG_PATH 指定；未配置或失效时回退到 PATH 中的 ffmpeg
     ffmpeg_path = os.environ.get('FFMPEG_PATH', '').strip()
@@ -170,6 +182,9 @@ class TestingConfig(Config):
     LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG').upper()
     CONSOLE_LOG_ENABLED = _get_console_log_enabled()
     SOCKETIO_DEBUG = True
+    # 测试使用独立数据库（intelligent_audio_test_test），与生产库物理隔离，
+    # 避免 conftest 清空算法表的逻辑污染真实数据
+    SQLALCHEMY_DATABASE_URI = _get_test_database_uri()
     SQLALCHEMY_ENGINE_OPTIONS = {
         "poolclass": StaticPool,
     }

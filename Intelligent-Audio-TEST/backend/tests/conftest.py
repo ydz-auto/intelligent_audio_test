@@ -23,9 +23,43 @@ from backend.models.algorithm_models import (
 from backend.models.models import Dimension
 from sqlalchemy.orm import sessionmaker
 
+TEST_DB_NAME = 'intelligent_audio_test_test'
+
+
+def _ensure_test_database():
+    """确保独立测试数据库存在（幂等，pytest 会话加载时自动执行一次）。
+
+    测试库与生产库物理隔离：conftest 的 _cleanup_algorithm_tables 只影响测试库，
+    即使测试内 controller 的 db.session.commit() 提交了外层事务，也绝不会污染真实数据。
+    """
+    from sqlalchemy import create_engine, text
+    from backend.config.config import _get_database_uri, _get_test_database_uri
+    # 管理连接复用生产库（必然存在），用 autocommit 执行 CREATE DATABASE
+    admin_engine = create_engine(_get_database_uri(), isolation_level='AUTOCOMMIT')
+    try:
+        with admin_engine.connect() as conn:
+            exists = conn.execute(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {'name': TEST_DB_NAME}
+            ).fetchone()
+            if not exists:
+                conn.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
+                print(f'[conftest] 已创建独立测试数据库 {TEST_DB_NAME}')
+            else:
+                print(f'[conftest] 独立测试数据库 {TEST_DB_NAME} 已存在')
+    finally:
+        admin_engine.dispose()
+    return _get_test_database_uri()
+
+
+_ensure_test_database()
+
 
 def _cleanup_algorithm_tables():
-    """清理算法相关表数据（在事务中执行，测试后回滚不影响真实数据）"""
+    """清理算法相关表数据（在事务中执行，测试后回滚不影响真实数据）
+
+    仅作用于独立测试库（TestingConfig.SQLALCHEMY_DATABASE_URI），生产库不受影响。
+    """
     db.session.query(AlgorithmDimensionRelation).delete()
     db.session.query(ParamMapping).delete()
     db.session.query(AlgorithmReferenceParam).delete()
@@ -53,13 +87,22 @@ def app():
     """
     app = create_app("testing")
     with app.app_context():
+        # 独立测试库首次使用前确保表结构完整。
+        # 用独立 engine（非 StaticPool）执行 create_all，避免 Flask db 共享连接
+        # 因应用启动时表缺失导致的事务终止状态干扰建表。
+        from sqlalchemy import create_engine
+        meta_engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
+        try:
+            db.metadata.create_all(meta_engine)
+        finally:
+            meta_engine.dispose()
         connection = db.engine.connect()
         trans = connection.begin()
         # 配置 session 使用此连接
         options = dict(bind=connection, binds={})
         session = db._make_scoped_session(options=options)
         db.session = session
-        # 清理算法相关表，让测试从空表开始
+        # 清理算法相关表，让测试从空表开始（仅作用于独立测试库）
         _cleanup_algorithm_tables()
         yield app
         session.remove()
