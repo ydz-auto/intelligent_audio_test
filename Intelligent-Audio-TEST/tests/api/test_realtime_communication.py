@@ -208,12 +208,18 @@ class TestRedisPubSubForwarding:
                 sio_client.disconnect()
 
     def test_task_progress_forwarded_to_socketio(self, require_backend):
-        """发布 task_progress 频道消息 → Socket.IO / 命名空间收到 task_progress 事件。"""
+        """发布 TASK_EVENTS/task_progress 事件 → Socket.IO / 收到 task_progress。
+
+        UC-1001（INT-69）：task_progress 经 EventBus 五通道（task_events）转发，
+        裸字符串 task_progress 频道已废弃、无人订阅；断言按 task_id 匹配，
+        规避运行环境中真实任务并发进度流的干扰。
+        """
         r = redis_lib.from_url(REDIS_URL)
         sio_client = _make_sio_client()
         connected = threading.Event()
         progress_received = threading.Event()
-        received_payload = {}
+        received_payloads = []
+        TARGET_TASK_ID = 999999
 
         @sio_client.on('connect', namespace='/')
         def on_connect():
@@ -221,36 +227,116 @@ class TestRedisPubSubForwarding:
 
         @sio_client.on('task_progress', namespace='/')
         def on_progress(data):
-            received_payload['data'] = data
-            progress_received.set()
+            received_payloads.append(data)
+            if str(data.get('task_id')) == str(TARGET_TASK_ID):
+                progress_received.set()
 
         try:
             sio_client.connect(SOCKETIO_URL, namespaces=['/'], wait_timeout=10)
             assert connected.is_set()
             time.sleep(0.5)
 
-            # 发布一条进度到 Redis task_progress 频道（payload 契约：snake_case）
+            # 经 EventBus TASK_EVENTS / task_progress 发布（五通道收敛，INT-69）
             progress_data = {
-                'task_id': 999999,
+                'task_id': TARGET_TASK_ID,
                 'total_progress': 50,
                 'completed_count': 5,
                 'status': 'running',
             }
             message = {
-                'event': 'task_progress',
-                'data': progress_data,
+                'event_type': 'task_progress',
+                'payload': {
+                    'event': 'task_progress',
+                    'task_id': TARGET_TASK_ID,
+                    'data': progress_data,
+                },
             }
-            r.publish('task_progress', json.dumps(message, ensure_ascii=False))
+            r.publish('task_events', json.dumps(message, ensure_ascii=False))
 
-            # 等待 Socket.IO 转发
+            # 等待 Socket.IO 转发（按 task_id 匹配，忽略环境内其他任务的事件）
             assert progress_received.wait(timeout=5), \
-                'task_progress Redis 消息未转发到 Socket.IO /'
+                'task_events/task_progress 事件未转发到 Socket.IO /'
 
-            data = received_payload.get('data', {})
-            assert data.get('task_id') == 999999 or data.get('total_progress') == 50
+            matched = [d for d in received_payloads
+                       if str(d.get('task_id')) == str(TARGET_TASK_ID)]
+            assert matched and matched[-1].get('total_progress') == 50
         finally:
             if sio_client.connected:
                 sio_client.disconnect()
+
+    def test_concurrent_tasks_room_isolation(self, require_backend):
+        """并发 ≥2 任务房间隔离（UC-1001 验收项）。
+
+        两个客户端分别订阅 task:A / task:B 原生房间，发布两个任务的
+        task_log 后各自只收到自己任务的日志，互不串扰。
+        """
+        r = redis_lib.from_url(REDIS_URL)
+        client_a = _make_sio_client()
+        client_b = _make_sio_client()
+        task_a, task_b = '987001', '987002'
+        received = {'a': [], 'b': []}
+        got_a = threading.Event()
+        got_b = threading.Event()
+        connected = {'a': threading.Event(), 'b': threading.Event()}
+
+        def _bind(client, key, expect_task_id, got_event):
+            @client.on('connect', namespace='/ws/logs')
+            def on_connect():
+                connected[key].set()
+
+            @client.on('task_log', namespace='/ws/logs')
+            def on_log(data):
+                received[key].append(data)
+                if str(data.get('task_id')) == str(expect_task_id):
+                    got_event.set()
+
+        _bind(client_a, 'a', task_a, got_a)
+        _bind(client_b, 'b', task_b, got_b)
+
+        def _publish(task_id, content):
+            message = {
+                'event_type': 'task_log',
+                'payload': {
+                    'log_payload': {
+                        'id': int(task_id),
+                        'time': '2026-10-10 12:00:00',
+                        'level': 'INFO',
+                        'module': 'test_suite',
+                        'content': content,
+                        'task_id': int(task_id),
+                        'test_case_id': None,
+                        'category': 'test',
+                        'source': 'test_suite',
+                    },
+                    'task_id': int(task_id),
+                },
+            }
+            r.publish('task_events', json.dumps(message, ensure_ascii=False))
+
+        try:
+            client_a.connect(SOCKETIO_URL, namespaces=['/ws/logs'], wait_timeout=10)
+            client_b.connect(SOCKETIO_URL, namespaces=['/ws/logs'], wait_timeout=10)
+            assert connected['a'].is_set() and connected['b'].is_set()
+            client_a.emit('subscribe_task', {'task_id': task_a}, namespace='/ws/logs')
+            client_b.emit('subscribe_task', {'task_id': task_b}, namespace='/ws/logs')
+            time.sleep(0.5)
+
+            _publish(task_a, 'ISOLATION-LOG-A')
+            _publish(task_b, 'ISOLATION-LOG-B')
+
+            assert got_a.wait(timeout=5), '客户端A未收到任务A的 task_log'
+            assert got_b.wait(timeout=5), '客户端B未收到任务B的 task_log'
+
+            a_task_ids = {str(d.get('task_id')) for d in received['a']}
+            b_task_ids = {str(d.get('task_id')) for d in received['b']}
+            assert task_b not in a_task_ids, \
+                f'房间隔离失败：订阅任务A的客户端收到任务B日志: {received["a"]}'
+            assert task_a not in b_task_ids, \
+                f'房间隔离失败：订阅任务B的客户端收到任务A日志: {received["b"]}'
+        finally:
+            for c in (client_a, client_b):
+                if c.connected:
+                    c.disconnect()
 
 
 # ── E2E 测试服务验证 ────────────────────────────────────────
