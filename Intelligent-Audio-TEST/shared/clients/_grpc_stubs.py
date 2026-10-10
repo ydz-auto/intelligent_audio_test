@@ -51,6 +51,13 @@ def get_audio_config_service_stub():
     return audio_service_pb2_grpc.AudioConfigServiceStub(_get_audio_channel())
 
 
+@lru_cache(maxsize=1)
+def get_render_service_stub():
+    """RenderService stub（INT-67 混音下沉）：RenderAudioStream 逐 chunk 流式混音 / RenderAudioFile 整段混音整文件返回"""
+    from shared.proto import audio_service_pb2_grpc
+    return audio_service_pb2_grpc.RenderServiceStub(_get_audio_channel())
+
+
 # ==================== device_service stubs ====================
 
 @lru_cache(maxsize=1)

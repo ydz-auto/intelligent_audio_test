@@ -8,6 +8,7 @@
 import os
 
 from shared.utils.log_handler import log_and_emit
+from audio_service.domain.services.audio_format_adapter import AudioFormatAdapter
 
 
 class EngineAudioPrepareMixin:
@@ -230,8 +231,9 @@ class EngineAudioPrepareMixin:
                         frames = wf.readframes(chunk_frames)
                         if not frames:
                             break
+                        # 按实际采样宽度解析（含 24bit 逐字节重组，INT-67 防误解析），
                         # 块内变量作用域自然释放，避免多份 numpy 副本长期驻留
-                        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+                        audio_np = AudioFormatAdapter.to_int16_scale(frames, wf.getsampwidth())
                         resampled_np = self._get_driver().resample_audio_data(audio_np, orig_sr, target_rate)
                         resampled_np = np.clip(resampled_np, -32768, 32767).astype(np.int16)
                         out_wf.writeframes(resampled_np.tobytes())

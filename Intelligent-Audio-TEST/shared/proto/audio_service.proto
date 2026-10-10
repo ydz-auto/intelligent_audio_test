@@ -26,8 +26,19 @@ service AudioService {
   rpc StopAudioByPattern(StopAudioByPatternRequest) returns (StopAudioByPatternResponse);
   // 预下载并按设备目标采样率重采样音频
   rpc PrepareAudios(PrepareAudiosRequest) returns (PrepareAudiosResponse);
-  // 渲染音频流（离线混音 6 步 → chunk 流式返回，server-streaming，执行域 P0 新增）
+}
+
+// ===== 渲染服务（INT-67 混音下沉：双出口）=====
+//
+// 混音 6 步（加载 → 格式适配 → RMS+SPL 增益 → speaker 感知时间轴 → 混音叠加 → 量化输出）
+// 全部发生在 audio_service 进程内，消费端（api_test_service）仅组装请求 + 消费产物：
+// - RenderAudioFile   非实时（http_api stream=False）：服务端聚合整段 → 整文件 unary 返回
+// - RenderAudioStream 流式/Realtime（http_api stream=True / websocket_api）：逐 chunk 流式返回
+service RenderService {
+  // 流式混音（server-streaming）：100ms 粒度 base64 PCM chunk
   rpc RenderAudioStream(RenderAudioStreamRequest) returns (stream RenderAudioChunk);
+  // 整段混音（unary）：整文件聚合返回（wav/pcm 按 target_format.container 包装）
+  rpc RenderAudioFile(RenderAudioFileRequest) returns (RenderAudioFileResponse);
 }
 
 // ===== 播放编排服务 =====
@@ -188,19 +199,30 @@ message PrepareAudiosResponse {
   string data = 3;  // JSON: {audio_id: {target_rate: local_path, "original": local_path}}
 }
 
-// ===== RenderAudioStream Messages（执行域 P0 新增） =====
+// ===== RenderService Messages（INT-67 混音下沉） =====
 
 message RenderAudioStreamRequest {
   string task_id = 1;
-  string render_config = 2;  // JSON 序列化的混音渲染配置（轮次级：audios + spl + 噪声/干扰合并）
+  string render_config = 2;  // JSON 序列化的混音渲染配置（轮次级：audios + 两级噪声 + target_format + SPL 映射）
 }
 
 message RenderAudioChunk {
   string task_id = 1;
   int32 sequence = 2;       // chunk 序号（从 0 开始）
-  string data = 3;          // base64 编码的 PCM chunk（100ms 粒度）
+  string data = 3;          // base64 编码的 PCM chunk（100ms 粒度，按 target_format 位深度化）
   bool is_last = 4;         // 是否最后一帧
   string message = 5;       // 非空表示渲染失败/终止原因
+}
+
+message RenderAudioFileRequest {
+  string task_id = 1;
+  string render_config = 2;  // JSON 序列化的混音渲染配置（同 RenderAudioStreamRequest.render_config）
+}
+
+message RenderAudioFileResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {container, audio_base64, sample_rate, bit_depth, channels, duration_ms}
 }
 
 // ==================== PlaybackService Messages ====================

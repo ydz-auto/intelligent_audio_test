@@ -16,7 +16,7 @@ adapter_service / algorithm_service）只创建一个 channel，
 所有 stub 共享同一 channel。客户端拦截器自动附加到每个 channel。
 
 - e2e_test_service gRPC server（端口 50051）：ExecutionService
-- audio_service gRPC server（端口 50052）：AudioService / PlaybackService / AudioConfigService
+- audio_service gRPC server（端口 50052）：AudioService / PlaybackService / AudioConfigService / RenderService（INT-67 混音双出口）
 - device_service gRPC server（端口 50053）：DeviceService / DeviceResultService / EnvDeviceService / DeviceConfigService / PlaybackConfigService / SPLConfigService
 - task_service gRPC server（端口 50061）：ExecutionService / TaskConfigService / TestCaseConfigService / TagConfigService / AlgorithmConfigService
 - api_test_service gRPC server（端口 50071）：APITestService
@@ -56,6 +56,7 @@ from shared.clients._grpc_stubs import (
     get_audio_service_stub,
     get_playback_service_stub,
     get_audio_config_service_stub,
+    get_render_service_stub,
     get_device_service_stub,
     get_device_result_service_stub,
     get_env_device_service_stub,

@@ -90,11 +90,6 @@ class AudioServiceStub:
                 request_serializer=audio__service__pb2.PrepareAudiosRequest.SerializeToString,
                 response_deserializer=audio__service__pb2.PrepareAudiosResponse.FromString,
                 _registered_method=True)
-        self.RenderAudioStream = channel.unary_stream(
-                '/audio_service.AudioService/RenderAudioStream',
-                request_serializer=audio__service__pb2.RenderAudioStreamRequest.SerializeToString,
-                response_deserializer=audio__service__pb2.RenderAudioChunk.FromString,
-                _registered_method=True)
 
 
 class AudioServiceServicer:
@@ -178,13 +173,6 @@ class AudioServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def RenderAudioStream(self, request, context):
-        """渲染音频流（离线混音 6 步 → chunk 流式返回，server-streaming，执行域 P0 新增）
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
 
 def add_AudioServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -242,11 +230,6 @@ def add_AudioServiceServicer_to_server(servicer, server):
                     servicer.PrepareAudios,
                     request_deserializer=audio__service__pb2.PrepareAudiosRequest.FromString,
                     response_serializer=audio__service__pb2.PrepareAudiosResponse.SerializeToString,
-            ),
-            'RenderAudioStream': grpc.unary_stream_rpc_method_handler(
-                    servicer.RenderAudioStream,
-                    request_deserializer=audio__service__pb2.RenderAudioStreamRequest.FromString,
-                    response_serializer=audio__service__pb2.RenderAudioChunk.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -557,6 +540,87 @@ class AudioService:
             metadata,
             _registered_method=True)
 
+
+class RenderServiceStub:
+    """===== 渲染服务（INT-67 混音下沉：双出口）=====
+
+    混音 6 步（加载 → 格式适配 → RMS+SPL 增益 → speaker 感知时间轴 → 混音叠加 → 量化输出）
+    全部发生在 audio_service 进程内，消费端（api_test_service）仅组装请求 + 消费产物：
+    - RenderAudioFile   非实时（http_api stream=False）：服务端聚合整段 → 整文件 unary 返回
+    - RenderAudioStream 流式/Realtime（http_api stream=True / websocket_api）：逐 chunk 流式返回
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.RenderAudioStream = channel.unary_stream(
+                '/audio_service.RenderService/RenderAudioStream',
+                request_serializer=audio__service__pb2.RenderAudioStreamRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.RenderAudioChunk.FromString,
+                _registered_method=True)
+        self.RenderAudioFile = channel.unary_unary(
+                '/audio_service.RenderService/RenderAudioFile',
+                request_serializer=audio__service__pb2.RenderAudioFileRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.RenderAudioFileResponse.FromString,
+                _registered_method=True)
+
+
+class RenderServiceServicer:
+    """===== 渲染服务（INT-67 混音下沉：双出口）=====
+
+    混音 6 步（加载 → 格式适配 → RMS+SPL 增益 → speaker 感知时间轴 → 混音叠加 → 量化输出）
+    全部发生在 audio_service 进程内，消费端（api_test_service）仅组装请求 + 消费产物：
+    - RenderAudioFile   非实时（http_api stream=False）：服务端聚合整段 → 整文件 unary 返回
+    - RenderAudioStream 流式/Realtime（http_api stream=True / websocket_api）：逐 chunk 流式返回
+    """
+
+    def RenderAudioStream(self, request, context):
+        """流式混音（server-streaming）：100ms 粒度 base64 PCM chunk
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RenderAudioFile(self, request, context):
+        """整段混音（unary）：整文件聚合返回（wav/pcm 按 target_format.container 包装）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_RenderServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'RenderAudioStream': grpc.unary_stream_rpc_method_handler(
+                    servicer.RenderAudioStream,
+                    request_deserializer=audio__service__pb2.RenderAudioStreamRequest.FromString,
+                    response_serializer=audio__service__pb2.RenderAudioChunk.SerializeToString,
+            ),
+            'RenderAudioFile': grpc.unary_unary_rpc_method_handler(
+                    servicer.RenderAudioFile,
+                    request_deserializer=audio__service__pb2.RenderAudioFileRequest.FromString,
+                    response_serializer=audio__service__pb2.RenderAudioFileResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'audio_service.RenderService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('audio_service.RenderService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class RenderService:
+    """===== 渲染服务（INT-67 混音下沉：双出口）=====
+
+    混音 6 步（加载 → 格式适配 → RMS+SPL 增益 → speaker 感知时间轴 → 混音叠加 → 量化输出）
+    全部发生在 audio_service 进程内，消费端（api_test_service）仅组装请求 + 消费产物：
+    - RenderAudioFile   非实时（http_api stream=False）：服务端聚合整段 → 整文件 unary 返回
+    - RenderAudioStream 流式/Realtime（http_api stream=True / websocket_api）：逐 chunk 流式返回
+    """
+
     @staticmethod
     def RenderAudioStream(request,
             target,
@@ -571,9 +635,36 @@ class AudioService:
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/audio_service.AudioService/RenderAudioStream',
+            '/audio_service.RenderService/RenderAudioStream',
             audio__service__pb2.RenderAudioStreamRequest.SerializeToString,
             audio__service__pb2.RenderAudioChunk.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RenderAudioFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.RenderService/RenderAudioFile',
+            audio__service__pb2.RenderAudioFileRequest.SerializeToString,
+            audio__service__pb2.RenderAudioFileResponse.FromString,
             options,
             channel_credentials,
             insecure,

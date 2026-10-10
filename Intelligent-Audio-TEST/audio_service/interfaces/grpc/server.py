@@ -5,6 +5,7 @@
 - AudioServiceServicer
 - PlaybackServiceServicer
 - AudioConfigServiceServicer
+- RenderServiceServicer（INT-67 混音下沉：双出口）
 
 端口：50052
 """
@@ -24,6 +25,7 @@ from audio_service.interfaces.grpc.servicers import (
     AudioServiceServicer,
     PlaybackServiceServicer,
     AudioConfigServiceServicer,
+    RenderServiceServicer,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,6 +84,7 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
     audio_grpc.add_AudioServiceServicer_to_server(AudioServiceServicer(), server)
     audio_grpc.add_PlaybackServiceServicer_to_server(PlaybackServiceServicer(), server)
     audio_grpc.add_AudioConfigServiceServicer_to_server(AudioConfigServiceServicer(), server)
+    audio_grpc.add_RenderServiceServicer_to_server(RenderServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')
     server.start()
     logger.info("audio_service gRPC server started on port %s", port)

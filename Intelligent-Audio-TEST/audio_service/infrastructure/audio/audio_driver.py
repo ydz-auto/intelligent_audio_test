@@ -18,6 +18,7 @@ from abc import ABC, abstractmethod
 from pydub import AudioSegment
 from shared.utils.log_handler import log_and_emit
 from shared.infrastructure.storage import storage
+from audio_service.domain.services.audio_format_adapter import AudioFormatAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -46,17 +47,9 @@ class AudioDriver(ABC):
                         frames = wf.readframes(chunk_frames)
                         if not frames:
                             break
-                        # 与播放路径一致归一化到 int16 幅度范围；块内变量作用域自然释放
-                        if sampwidth == 1:
-                            audio_np = np.frombuffer(frames, dtype=np.uint8).astype(np.float32)
-                            audio_np = (audio_np - 128.0) * 256.0
-                        elif sampwidth == 2:
-                            audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
-                        elif sampwidth == 4:
-                            audio_np = np.frombuffer(frames, dtype=np.int32).astype(np.float32)
-                            audio_np = audio_np / 65536.0
-                        else:
-                            audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
+                        # 按采样宽度解析并统一归一化到 int16 幅度范围（含 24bit 逐字节重组，
+                        # INT-67 防误解析：走 AudioFormatAdapter 共享解析器，无 int16 兜底）
+                        audio_np = AudioFormatAdapter.to_int16_scale(frames, sampwidth)
                         sum_sq += float(np.sum(audio_np * audio_np))
                         total_samples += len(audio_np)
 
@@ -409,17 +402,9 @@ class PyAudioDriver(AudioDriver):
                     if not is_noise and not use_loop:
                         all_empty = False
 
-                    # 根据采样宽度正确解析字节数据，统一归一化到 int16 幅度范围
-                    if sampwidth == 1:
-                        audio_data = np.frombuffer(data, dtype=np.uint8).astype(np.float32)
-                        audio_data = (audio_data - 128.0) * 256.0
-                    elif sampwidth == 2:
-                        audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-                    elif sampwidth == 4:
-                        audio_data = np.frombuffer(data, dtype=np.int32).astype(np.float32)
-                        audio_data = audio_data / 65536.0  # int32 -> int16 范围
-                    else:
-                        audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                    # 按采样宽度正确解析字节数据，统一归一化到 int16 幅度范围
+                    # （含 24bit 逐字节重组，INT-67 防误解析：共享解析器，无 int16 兜底）
+                    audio_data = AudioFormatAdapter.to_int16_scale(data, sampwidth)
                     file_ch = file_channels_list[i]
                     actual_frames = len(audio_data) // file_ch
 

@@ -617,8 +617,62 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
             return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
 
+# ==================== RenderServiceServicer（INT-67 混音下沉） ====================
+
+class RenderServiceServicer(e2e_grpc.RenderServiceServicer):
+    """渲染服务 gRPC servicer，委托给 AudioStreamOrchestrator（application 层）。
+
+    混音 6 步全部在 audio_service 进程内完成：
+    - RenderAudioStream（server-streaming）：100ms base64 PCM chunk 逐帧产出
+    - RenderAudioFile（unary）：整段混音 → 整文件聚合返回
+    失败经 chunk.message / response.message 返回，不抛裸异常断流。
+    """
+
+    def __init__(self):
+        self._orchestrator = None
+
+    @property
+    def orchestrator(self):
+        if self._orchestrator is None:
+            from audio_service.application.services.audio_stream_orchestrator import (
+                audio_stream_orchestrator,
+            )
+            self._orchestrator = audio_stream_orchestrator
+        return self._orchestrator
+
+    def RenderAudioStream(self, request, context=None):
+        """流式混音：逐 chunk yield（100ms 粒度，is_last 终帧）"""
+        task_id = request.task_id
+        try:
+            render_config = _loads(request.render_config, {})
+            render_config['task_id'] = render_config.get('task_id', task_id)
+            for chunk in self.orchestrator.render(render_config, mode='stream'):
+                yield e2e_pb.RenderAudioChunk(
+                    task_id=task_id,
+                    sequence=int(chunk.get('sequence', 0)),
+                    data=chunk.get('data', ''),
+                    is_last=bool(chunk.get('is_last', False)),
+                    message='',
+                )
+        except Exception as e:
+            yield e2e_pb.RenderAudioChunk(
+                task_id=task_id, sequence=-1, data='', is_last=True, message=str(e))
+
+    def RenderAudioFile(self, request, context=None):
+        """整段混音：整文件聚合返回（wav/pcm 按 target_format.container 包装）"""
+        try:
+            render_config = _loads(request.render_config, {})
+            render_config['task_id'] = render_config.get('task_id', request.task_id)
+            result = self.orchestrator.render(render_config, mode='file')
+            return e2e_pb.RenderAudioFileResponse(
+                success=True, message="ok", data=_dumps(result))
+        except Exception as e:
+            return e2e_pb.RenderAudioFileResponse(success=False, message=str(e), data="")
+
+
 __all__ = [
     "AudioServiceServicer",
     "PlaybackServiceServicer",
     "AudioConfigServiceServicer",
+    "RenderServiceServicer",
 ]

@@ -163,11 +163,15 @@ def _find_audio_by_name(audio_name):
         return None
 
 
-def build_noise_info(round_config, case_config):
+def build_noise_info(round_config, case_config, require_devices=True):
     """解析本轮噪声 audio_info + 噪声设备列表。
 
     优先级：case 级（整个用例）背景噪声 > round 级（轮次内）背景噪声。
     当 case 级存在且有效时，round 级背景噪声不播放。
+
+    require_devices=True（默认，E2E 物理路径）：噪声必须同时解析出音频与
+    播放设备才生效。require_devices=False（INT-67 API 混音路径）：噪声混入
+    轮次混音缓冲，不经过物理设备，仅解析出音频即生效。
     """
     from audio_service.infrastructure.persistence.audio_repository import AudioRepository
     _repo = AudioRepository()
@@ -239,14 +243,14 @@ def build_noise_info(round_config, case_config):
     case_bg = case_config.get('background_noise') if case_config else None
     if case_bg:
         noise_audio, noise_spl, noise_devices = _resolve_bg_noise(case_bg)
-        if noise_audio and noise_devices:
+        if noise_audio and (noise_devices or not require_devices):
             return ({'spl': noise_spl, 'audio_id': getattr(noise_audio, 'id', None)},
                     noise_audio), noise_devices
 
     # round 级背景噪声
     round_bg = round_config.get('background_noise')
     noise_audio, noise_spl, noise_devices = _resolve_bg_noise(round_bg)
-    if noise_audio and noise_devices:
+    if noise_audio and (noise_devices or not require_devices):
         return ({'spl': noise_spl, 'audio_id': getattr(noise_audio, 'id', None)},
                 noise_audio), noise_devices
     return None, noise_devices
