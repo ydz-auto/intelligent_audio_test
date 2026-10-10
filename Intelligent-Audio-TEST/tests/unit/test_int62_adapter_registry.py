@@ -10,10 +10,16 @@
 - 注册表契约：校验、覆盖告警、未知配置值拒绝
 """
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
+
+# INT-106 起执行链音频解析依赖 OSS 配置，health_check 用例经 BaseConfig
+# 触达；与其他单测同口径注入测试态环境变量（须先于 BaseConfig 导入）
+os.environ.setdefault('OSS_ACCESS_KEY', 'test')
+os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 from shared.models.common_enums import APIProtocol, VendorAdapterType
 from api_test_service.domain.ports import ApiVendorAdapter

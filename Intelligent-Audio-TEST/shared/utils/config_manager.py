@@ -66,6 +66,9 @@ class ConfigManager:
                 "execution_engine": {
                     "max_queue_size": 100,
                     "test_case_wait_time": 3000,
+                    "evaluation_hang_timeout": 600,
+                    "wait_initial_interval": 2,
+                    "wait_max_interval": 30,
                     "api_task_max_workers": 10,
                     "device_control_max_workers": 5,
                     "audio_playback_max_workers": 12,
@@ -115,6 +118,9 @@ class ConfigManager:
                 "execution_engine": {
                     "max_queue_size": 100,
                     "test_case_wait_time": 3000,
+                    "evaluation_hang_timeout": 600,
+                    "wait_initial_interval": 2,
+                    "wait_max_interval": 30,
                     "api_task_max_workers": 10,
                     "device_control_max_workers": 5,
                     "audio_playback_max_workers": 12,

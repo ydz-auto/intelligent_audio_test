@@ -3,7 +3,7 @@
 
 包含主循环结束后的状态收敛、等待、异常与资源清理：
 - _update_post_loop_status：提前收敛任务状态
-- _wait_for_cases_completion：等待用例完成（事件驱动 + 兜底轮询）
+- _wait_for_cases_completion：等待用例完成（事件驱动 + 退避轮询 + 挂起仲裁，INT-120）
 - _finalize_task_status / _handle_task_exception：最终状态与异常处理
 - _cleanup_task_resources：资源清理
 """
@@ -99,6 +99,9 @@ class TaskFinalizeMixin:
 
         差异#2 收尾：原 task.type in ('api','e2e') 门槛改为按用例数判定
         （无用例任务无需等待；task.type 字段已废弃）。
+        INT-120：每拍登记活跃快照进展，等待按退避间隔轮询；评估挂起
+        （执行侧无活跃用例、评估侧无进展达 evaluation_hang_timeout）时
+        仲裁判 failed 并发事件，任务自然收敛，不再依赖人工 UPDATE。
         """
         if not self._get_total_case_count(task_id):
             return
@@ -118,19 +121,33 @@ class TaskFinalizeMixin:
                 status_counts = self._query_status_counts(local_db_session, task_id)
                 counts = self._aggregate_status_counts(status_counts)
 
-                self._log_wait_debug(task_id, all_cases, counts, task_status)
+                # INT-120：活跃快照进展登记（退避间隔与挂起仲裁共用）
+                state, _snapshot = self._register_wait_tick(task_id)
+                exec_active, eval_active = self._count_snapshot_actives(_snapshot)
+                silent_seconds = time.time() - state['progress_at']
+                self._log_throttled(state, self._log_wait_debug,
+                                    task_id, all_cases, counts, task_status)
 
                 # 任务已停止
                 if task_status == TaskStatus.STOPPED:
                     self._mark_uncompleted_cases_failed(task_id, local_db_session)
                     break
 
+                # INT-120：评估挂起超时仲裁（执行侧已无活跃用例、评估侧无进展达阈值）
+                if (exec_active == 0 and eval_active > 0
+                        and silent_seconds >= self.evaluation_hang_timeout):
+                    if self._arbitrate_hung_cases(task_id, include_execution_stuck=False,
+                                                  silent_seconds=silent_seconds):
+                        self._reset_wait_interval(state)
+                        continue
+
                 # 所有用例已处理完成
                 if counts['running'] == 0 and counts['processed'] == all_cases:
                     if self._has_evaluating_cases(task_id, local_db_session):
                         self._log_evaluating_wait(task_id, all_cases, counts, task_status)
                         local_db_session.close()
-                        self._wait_completion_event(task_id)
+                        self._wait_completion_event(task_id, timeout=state['interval'])
+                        state['interval'] = min(state['interval'] * 2, self.wait_max_interval)
                         continue
                     self._update_final_case_counts(local_db_session, task_id, counts)
                     self._log_wait_summary(task_id, all_cases, counts, task_status)
@@ -140,7 +157,7 @@ class TaskFinalizeMixin:
                 if counts['running'] == 0:
                     self._fix_stale_case_statuses(task_id, local_db_session)
 
-                # 周期性日志
+                # 周期性日志（INT-120：节流间隔随 wait_max_interval 配置化）
                 self._maybe_log_wait_status(task_id, all_cases, counts, task_status,
                                             last_counts, last_log_time)
                 last_log_time, last_counts = self._update_log_tracking(last_log_time, last_counts, counts)
@@ -150,9 +167,10 @@ class TaskFinalizeMixin:
                     self._log_wait_timeout(task_id, counts['running'])
                     break
 
-                # 事件驱动等待
+                # 事件驱动等待（INT-120：退避间隔，事件到达提前返回）
                 local_db_session.close()
-                self._wait_completion_event(task_id)
+                self._wait_completion_event(task_id, timeout=state['interval'])
+                state['interval'] = min(state['interval'] * 2, self.wait_max_interval)
             finally:
                 try:
                     local_db_session.close()
@@ -273,10 +291,10 @@ class TaskFinalizeMixin:
             session.commit()
 
     def _maybe_log_wait_status(self, task_id, all_cases, counts, task_status, last_counts, last_log_time):
-        """状态变化或超过10秒时记录日志"""
+        """状态变化或超过节流间隔（wait_max_interval，INT-120）时记录日志"""
         current_counts = self._build_counts_tuple(counts, task_status)
         current_time = time.time()
-        if current_counts != last_counts or current_time - last_log_time >= 10:
+        if current_counts != last_counts or current_time - last_log_time >= self.wait_max_interval:
             self._log_wait_summary(task_id, all_cases, counts, task_status)
             return current_time, current_counts
         return last_log_time, last_counts
@@ -313,13 +331,15 @@ class TaskFinalizeMixin:
         """记录超时日志"""
         self._log(level='WARNING', content=f"等待测试用例执行完成超时，还有 {running_count} 个用例状态为running或queued", task_id=task_id)
 
-    def _wait_completion_event(self, task_id):
-        """事件驱动等待用例完成通知"""
+    def _wait_completion_event(self, task_id, timeout=None):
+        """事件驱动等待用例完成通知（timeout 缺省保持既有 5s 兜底轮询节奏）"""
+        if timeout is None:
+            timeout = 5
         completion_event = self.task_completion_events.get(task_id)
         if completion_event:
-            completion_event.wait(timeout=5)
+            completion_event.wait(timeout=timeout)
         else:
-            time.sleep(2)
+            time.sleep(timeout)
 
     def _finalize_task_status(self, task_id, task, stop_event):
         """最终状态更新"""
@@ -518,6 +538,8 @@ class TaskFinalizeMixin:
             self.stop_flags.pop(task_id, None)
             self.pause_flags.pop(task_id, None)
             self.task_completion_events.pop(task_id, None)
+            # 清理等待退避状态（INT-120）
+            self.task_wait_states.pop(task_id, None)
             # 清理进度缓存，避免内存泄漏
             self.task_progress_cache.pop(task_id, None)
             self.last_progress_update.pop(task_id, None)

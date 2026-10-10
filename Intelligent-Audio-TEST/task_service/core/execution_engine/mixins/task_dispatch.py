@@ -40,10 +40,9 @@ class TaskDispatchMixin:
         in_progress = self._count_in_progress_cases(task_id, session)
         evaluating = self._count_evaluating_cases(task_id, session)
         if in_progress > 0 or evaluating > 0:
-            total = in_progress + evaluating
-            self._log(level='DEBUG', content=f"等待 {total} 个执行中/评估中的用例完成 (执行中: {in_progress}, 评估中: {evaluating})...", task_id=task_id)
             session.close()
-            self._wait_completion_event(task_id)
+            # INT-120：退避等待 + 评估挂起超时仲裁（日志节流与任务收敛防御）
+            self._wait_active_cases_with_backoff(task_id)
             return True
 
         self._log(level='INFO', content=f"任务 {task_id} 所有用例执行完成，退出主循环", task_id=task_id)

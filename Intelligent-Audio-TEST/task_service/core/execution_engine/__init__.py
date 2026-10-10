@@ -61,6 +61,16 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
                 cls._instance.test_case_wait_time = config_manager.get_value('execution_engine', 'test_case_wait_time', 300)  # 等待测试用例执行完成的超时时间（秒）
                 cls._instance.max_queue_size = config_manager.get_value('execution_engine', 'max_queue_size', 100)  # 任务队列最大长度
 
+                # INT-120：忙等退避与评估挂起超时仲裁参数（秒，配置化）
+                cls._instance.evaluation_hang_timeout = config_manager.get_value(
+                    'execution_engine', 'evaluation_hang_timeout', 600)  # 评估无进展超时阈值（默认 ≥10 分钟，兼顾长耗时真实评估）
+                cls._instance.wait_initial_interval = config_manager.get_value(
+                    'execution_engine', 'wait_initial_interval', 2)  # 忙等退避初始间隔（秒）
+                cls._instance.wait_max_interval = config_manager.get_value(
+                    'execution_engine', 'wait_max_interval', 30)  # 忙等退避上限间隔（秒），同时是等待日志节流间隔
+                # 等待退避状态，{task_id: {'interval','progress_at','last_log_at','snapshot'}}
+                cls._instance.task_wait_states = {}
+
                 # 任务队列管理
                 cls._instance.task_queue = deque()  # 任务队列，使用deque提高效率
                 cls._instance.queue_lock = threading.Lock()  # 队列锁，确保线程安全

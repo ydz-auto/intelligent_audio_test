@@ -3,7 +3,7 @@
 
 按职责拆分的 Mixin 模块统一收口于此，对外提供统一导出：
 - 调度器 / 进度日志 / 任务控制 / 用例执行 四大基础 Mixin
-- 任务执行核心组合 Mixin（TaskRunnerMixin = lifecycle + dispatch + device_check + finalize）
+- 任务执行核心组合 Mixin（TaskRunnerMixin = lifecycle + dispatch + device_check + finalize + arbiter）
 - gRPC 跨服务调用封装函数（grpc_helpers）
 """
 from task_service.core.execution_engine.mixins.scheduler import SchedulerMixin
@@ -15,6 +15,7 @@ from task_service.core.execution_engine.mixins.task_lifecycle import TaskLifecyc
 from task_service.core.execution_engine.mixins.task_dispatch import TaskDispatchMixin
 from task_service.core.execution_engine.mixins.device_check import DeviceCheckMixin
 from task_service.core.execution_engine.mixins.task_finalize import TaskFinalizeMixin
+from task_service.core.execution_engine.mixins.evaluation_arbiter import EvaluationArbiterMixin
 from task_service.core.execution_engine.mixins.grpc_helpers import (
     _stop_task_audio_via_grpc,
     _cleanup_devices_via_grpc,
@@ -35,6 +36,7 @@ __all__ = [
     "TaskDispatchMixin",
     "DeviceCheckMixin",
     "TaskFinalizeMixin",
+    "EvaluationArbiterMixin",
     # gRPC 封装函数
     "_stop_task_audio_via_grpc",
     "_cleanup_devices_via_grpc",
