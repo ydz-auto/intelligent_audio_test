@@ -174,6 +174,11 @@ def _api_double_responder(method, path):
     """被测 API 替身：标准异步任务协议，/api/get_final_result 返回 output 字段 answer。"""
     if method == 'GET' and path == '/health':
         return True, {'code': 0, 'msg': 'success', 'status': 'healthy'}, 200
+    if method == 'POST' and path == '/':
+        # INT-118：多轮直发路径（meta.use_adapter=False 时 _send_direct POST
+        # api_url 根路径），逐轮文本应答，与既有异步协议路由互不干扰
+        return True, {'code': 0, 'msg': 'success',
+                      'output': '你好，有什么可以帮助你的？'}, 200
     if method == 'POST' and path == '/api/create_task':
         return True, {'code': 0, 'msg': 'success', 'data': {'task_id': f'api-{uuid.uuid4().hex[:8]}'}}, 200
     if method == 'GET' and path.startswith('/api/get_status/'):
@@ -1115,3 +1120,356 @@ class TestInt44MultiRoundWritePath:
             output_fields=[], algorithm_type='translation')
         s.close()
         assert rows == []
+
+
+# ──────────────────────────── INT-118：voice_llm 多轮执行+评估参数提取链 ────────────────────────────
+
+def _seed_int118_voice_llm_scenario(api_double, eval_double, with_eval_mappings=True):
+    """播种 voice_llm 多轮可执行可评估场景（3 轮纯文本 + 评估参数映射）。
+
+    与 _seed_execute_scenario 的差异：
+    - 算法类型 voice_llm（生产被测算法，维度归属数据使然 evaluation
+      param mappings 仅 voice_llm 有——INT-118 缺陷前提）；
+    - ParamMapping 评估映射两来源：reference（修复调用点 #1，用例
+      reference_params 直接列表形态）+ device 维度级（评估侧
+      _build_rounds_list 从轮次 output 取 text，INT-123 归一口径）；
+    - with_eval_mappings=False：不播映射（容错路径——该算法类型提取为
+      空参数，评估走 INT-115 skipped 终态口径）；
+    - 用例 config 携带 rounds×3（list 形态 algorithm_params 供
+      _build_round_context 提取 input_text）→ api_executor 分流进
+      APISessionExecutor 多轮会话执行；
+    - API meta={'use_adapter': False}：多轮直发路径绕开 adapter_service
+      （mesh 外必拒端口），逐轮 POST 落到 api_double 根路由。
+    """
+    from algorithm_service.infrastructure.persistence.models import (
+        AlgorithmDefinition,
+        ParamMapping,
+    )
+    from evaluation_service.infrastructure.persistence.models import Dimension
+    from shared.models.database import get_db_session
+    from task_service.infrastructure.persistence.models import Task, TaskAPI, TaskCase
+    from task_service.infrastructure.persistence.models.testcase_models import TestCase
+    from api_test_service.infrastructure.persistence.models import API
+    from audio_service.infrastructure.persistence.models import Audio
+
+    s = get_db_session()
+    now = datetime.now()
+
+    if not s.query(AlgorithmDefinition).filter(
+            AlgorithmDefinition.type == 'voice_llm').first():
+        s.add(AlgorithmDefinition(type='voice_llm', name='小艺语音大模型',
+                                  status='online', deleted=False))
+    s.flush()
+
+    # 评估维度×2（对齐实机 api 19 场景：逐轮话轮评估 + 拒识场景裁判）
+    dims = {}
+    for name, code in (('逐轮话轮评估', 'turn_eval'), ('拒识场景裁判', 'refusal_judge')):
+        dim = s.query(Dimension).filter(
+            Dimension.name == name, Dimension.deleted == False).first()  # noqa: E712
+        if dim is None:
+            dim = Dimension(
+                name=name, dimension_type='main', task_type_code=code,
+                type='auto', result_type=1, weight=1,
+                rule={'type': 'direct'},
+                api_settings={'method': 'POST', 'headers': {},
+                              'response_mapping': 'WER'},
+                api_url=eval_double.base_url,
+                api_endpoints=[{'url': eval_double.base_url, 'name': 'Master'}],
+                api_status='online', status=True, deleted=False)
+            s.add(dim)
+            s.flush()
+        dims[name] = dim
+
+    # 评估参数映射（幂等：uq(algorithm_type, source, source_param, dimension_id)）
+    mapping_specs = []
+    if with_eval_mappings:
+        mapping_specs.extend([
+            # 修复调用点 #1：source=reference 走 ReferenceParamsQueryHandler
+            dict(source='reference', source_param='ref_text',
+                 target_param='reference_text', dimension_id=None),
+            # 维度级 device 映射：评估侧轮次构建从归一 output 取 DUT 文本应答
+            dict(source='device', source_param='text', target_param='text',
+                 dimension_id=dims['逐轮话轮评估'].id),
+            dict(source='device', source_param='text', target_param='text',
+                 dimension_id=dims['拒识场景裁判'].id),
+        ])
+    else:
+        # 容错变体：模块级共享库中前序用例可能已播种 voice_llm 映射，
+        # 先清空再跑（无映射 = 提取为空 → 评估 INT-115 skipped 终态）
+        s.query(ParamMapping).filter(
+            ParamMapping.algorithm_type == 'voice_llm',
+            ParamMapping.deleted == False).delete(synchronize_session=False)  # noqa: E712
+        s.flush()
+    for spec in mapping_specs:
+        exists = s.query(ParamMapping).filter(
+            ParamMapping.algorithm_type == 'voice_llm',
+            ParamMapping.source == spec['source'],
+            ParamMapping.source_param == spec['source_param'],
+            ParamMapping.dimension_id == spec['dimension_id'],
+            ParamMapping.deleted == False).first()  # noqa: E712
+        if not exists:
+            s.add(ParamMapping(algorithm_type='voice_llm',
+                               source_direction='output', transform_type='none',
+                               **spec))
+    s.flush()
+
+    wav_path = os.path.join(_storage_root(), f'int118_{uuid.uuid4().hex[:8]}.wav')
+    os.makedirs(os.path.dirname(wav_path), exist_ok=True)
+    with open(wav_path, 'wb') as f:
+        f.write(b'RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00' + b'\x00' * 8)
+    audio = Audio(name='int118 测试音频', file_path=wav_path, size=28, duration=1.0,
+                  asr_text='今天天气怎么样', format='wav')
+    s.add(audio)
+    s.flush()
+
+    api = API(name='int118 被测 voice_llm API', api_url=api_double.base_url,
+              meta={'use_adapter': False}, algorithm_type='voice_llm',
+              status='online', deleted=False,
+              # 生产多轮链 _get_vendor_api_url 优先 api_endpoints[].endpoint
+              #（MockAPIConfig 转换后无 api_url 属性，仅 endpoint 字段可承载）
+              api_endpoints=[{'endpoint': api_double.base_url, 'name': 'Master'}])
+    s.add(api)
+    s.flush()
+
+    case_id = f'INT118-{uuid.uuid4().hex[:12]}'
+    case = TestCase(
+        id=case_id, name='int118 voice_llm 多轮用例',
+        config={
+            'audios': [{'audio_id': audio.id}],
+            'dimensions': [{'id': dims['逐轮话轮评估'].id},
+                           {'id': dims['拒识场景裁判'].id}],
+            'api': {},
+            # 用例参考参数直接列表形态（get_all_reference_params normalize 路径）
+            'reference_params': [
+                {'code': 'ref_text', 'type': 'text', 'value': '今天天气怎么样'},
+            ],
+            'session': {'sessionTimeout': 30, 'contextMode': 'full'},
+            'rounds': [
+                {'round_number': 1,
+                 'algorithm_params': [{'field_code': 'input_text',
+                                       'field_value': '今天天气怎么样'}]},
+                {'round_number': 2,
+                 'algorithm_params': [{'field_code': 'input_text',
+                                       'field_value': '明天会下雨吗'}]},
+                {'round_number': 3,
+                 'algorithm_params': [{'field_code': 'input_text',
+                                       'field_value': '帮我打开空调'}]},
+            ],
+        },
+        algorithm_type='voice_llm')
+    s.add(case)
+
+    task = Task(name=f'int118-voice-llm-{uuid.uuid4().hex[:8]}', status='pending',
+                total_cases=1, algorithm_type='voice_llm')
+    s.add(task)
+    s.flush()
+    s.add(TaskCase(task_id=task.id, test_case_id=case_id, status='pending',
+                   execution_status='pending', evaluation_status='pending',
+                   device_type='http_api', device_id=str(api.id), created_at=now))
+    s.add(TaskAPI(task_id=task.id, api_id=api.id))
+    s.commit()
+    ids = {'task_id': task.id, 'case_id': case_id,
+           'turn_dim_id': dims['逐轮话轮评估'].id,
+           'refusal_dim_id': dims['拒识场景裁判'].id, 'api_id': api.id}
+    s.close()
+
+    # 算法配置缓存进程级单例：播种后强制重载（ExtractCaseAllParams /
+    # GetParamMapping 均经缓存读本库数据）
+    from algorithm_service.infrastructure.persistence.config_cache import get_config_cache
+    get_config_cache().invalidate()
+    return ids
+
+
+class TestInt118VoiceLlmMultiRoundEvalChain:
+    """INT-118 验收：voice_llm 多轮用例在 API 链上执行与评估同时成立。
+
+    原缺陷：ExtractCaseAllParams 空壳类 AttributeError → ACL 回退
+    evaluation=None → `eval_params['algorithm_type']` 对 None 赋值 →
+    'NoneType' object does not support item assignment → 任务整链 failed。
+    """
+
+    def test_voice_llm_multi_round_executes_and_eval_params_extracted(
+            self, gateway, api_double, eval_double, int35_quarantine, oss_fast_fail):
+        ids = _seed_int118_voice_llm_scenario(api_double, eval_double)
+        task_id = ids['task_id']
+
+        resp = gateway.post(f'/api/v1/tasks/{task_id}/start')
+        assert resp.status_code == 200, resp.text[:400]
+        assert resp.json().get('success') is True, resp.json()
+
+        reached, row = _wait_task_terminal(task_id)
+        assert reached, f'任务未收敛终态: {row.status if row else None}，' \
+                        f'现场:\n{_dump_chain_state(task_id)}'
+        assert row.status == 'completed', \
+            f'voice_llm 多轮任务应 completed（NoneType 崩溃即 failed 回归）: ' \
+            f'{row.status}，现场:\n{_dump_chain_state(task_id)}'
+        assert row.completed_cases == 1 and row.failed_cases == 0
+
+        # 执行产物：3 轮全部成功，轮次应答为 mock DUT 文本
+        from task_service.infrastructure.persistence.models import TestResult, TaskCase
+        results = _query(TestResult, task_id=task_id)
+        assert len(results) == 1, '多轮执行应产出一条 TestResult'
+        tr = results[0]
+        assert tr.execution_status == 'completed'
+        algo = tr.algorithm_result
+        assert isinstance(algo, dict), f'algorithm_result 应为 dict: {algo!r}'
+        assert algo.get('round_count') == 3 and algo.get('success_count') == 3, \
+            f'3 轮应全部执行成功: {algo}'
+        rounds = algo.get('rounds', [])
+        assert [r.get('output') for r in rounds] == \
+            ['你好，有什么可以帮助你的？'] * 3, f'逐轮应答不符: {rounds}'
+
+        # 评估维度出行：两条 voice_llm 维度均产出已完成得分
+        from evaluation_service.infrastructure.persistence.models import TestResultDimension
+        deadline = time.time() + 90
+        dim_rows = []
+        while time.time() < deadline:
+            dim_rows = _query(TestResultDimension, test_result_id=tr.id)
+            if (len(dim_rows) >= 2
+                    and all(r.evaluation_status == 'completed' for r in dim_rows)):
+                break
+            time.sleep(0.5)
+        assert len(dim_rows) >= 2, \
+            f'评估维度应出行 2 条: {len(dim_rows)}，现场:\n{_dump_chain_state(task_id)}'
+        assert {r.dimension_id for r in dim_rows} == \
+            {ids['turn_dim_id'], ids['refusal_dim_id']}
+        for r in dim_rows:
+            assert r.evaluation_status == 'completed'
+            assert float(r.score) == pytest.approx(7.2), \
+                f'维度得分应落库: dim={r.dimension_id} score={r.score}'
+
+        tc = _query(TaskCase, task_id=task_id)[0]
+        assert tc.execution_status == 'completed' \
+            and tc.evaluation_status == 'completed' and tc.status == 'completed'
+
+        # 日志口径：评估已提交、参数非空（无降级告警）、无历史崩溃指纹
+        from shared.logging.business_reader import BusinessLogReader
+        entries = BusinessLogReader().read_entries(task_id=task_id)
+        contents = [e.get('content') or '' for e in entries]
+        assert any('已提交评估' in c for c in contents), \
+            f'多轮评估提交日志缺失，实际日志:\n' + '\n'.join(contents[-30:])
+        assert not any('评估参数提取为空' in c for c in contents), \
+            '评估参数应真实提取（出现降级告警即提取链回归）'
+        assert not any('ReferenceParamsGeneratorQueryHandler' in c for c in contents), \
+            'algorithm_service 死壳类 AttributeError 不应再出现'
+        assert not any('多轮会话执行异常' in c for c in contents), \
+            f'多轮执行不应有异常日志，实际:\n' + \
+            '\n'.join(c for c in contents if '异常' in c or 'ERROR' in c)
+
+    def test_no_eval_mappings_warning_skipped_terminal_task_completes(
+            self, gateway, api_double, eval_double, int35_quarantine, oss_fast_fail):
+        """容错路径（裁定口径 2/4）：该算法类型无 evaluation param mappings →
+        执行侧「评估参数提取为空」显式 WARNING + 评估侧 INT-115 skipped
+        终态 + 任务仍完成（不造映射、不改维度归属数据）。"""
+        ids = _seed_int118_voice_llm_scenario(api_double, eval_double,
+                                              with_eval_mappings=False)
+        task_id = ids['task_id']
+
+        resp = gateway.post(f'/api/v1/tasks/{task_id}/start')
+        assert resp.status_code == 200, resp.text[:400]
+
+        reached, row = _wait_task_terminal(task_id)
+        assert reached, f'任务未收敛终态: {row.status if row else None}，' \
+                        f'现场:\n{_dump_chain_state(task_id)}'
+        assert row.status == 'completed', \
+            f'无映射用例任务应 completed（skipped 不计失败）: {row.status}，' \
+            f'现场:\n{_dump_chain_state(task_id)}'
+
+        # 执行事实保留：3 轮执行成功，TestResult 收口 completed
+        from task_service.infrastructure.persistence.models import TestResult, TaskCase
+        results = _query(TestResult, task_id=task_id)
+        assert len(results) == 1 and results[0].execution_status == 'completed', \
+            '执行不应受评估参数提取为空影响'
+        assert results[0].algorithm_result.get('success_count') == 3
+
+        # INT-115 skipped 终态：TaskCase skipped + 评估收口 completed + 留痕原因
+        tc = _query(TaskCase, task_id=task_id)[0]
+        assert tc.execution_status == 'completed'
+        assert tc.status == 'skipped', f'无映射用例应 skipped 终态: {tc.status}'
+        assert tc.evaluation_status == 'completed'
+        assert '无 evaluation param mappings' in (tc.error_message or ''), \
+            f'skipped 原因应留痕: {tc.error_message!r}'
+
+        # 无维度行出行（无映射即无法评估——与原 translation 症状同源，
+        # 差异在于现在是显式 skipped 终态而非静默 0 行）
+        from evaluation_service.infrastructure.persistence.models import TestResultDimension
+        assert _query(TestResultDimension, test_result_id=results[0].id) == []
+
+        # 降级可观察：执行侧显式 WARNING（INT-118 修复的第二半）
+        from shared.logging.business_reader import BusinessLogReader
+        deadline = time.time() + 30
+        warnings = []
+        while time.time() < deadline:
+            entries = BusinessLogReader().read_entries(task_id=task_id)
+            warnings = [e for e in entries
+                        if e.get('level') == 'WARNING'
+                        and '评估参数提取为空' in (e.get('content') or '')]
+            if warnings:
+                break
+            time.sleep(0.5)
+        assert warnings, '评估参数提取为空应显式 WARNING（不再静默空参提交），' \
+                         f'实际 WARNING:\n' + '\n'.join(
+                             (e.get('content') or '') for e in entries
+                             if e.get('level') == 'WARNING')
+        assert 'voice_llm' in warnings[0]['content'], \
+            f'告警应携带算法类型定位信息: {warnings[0]["content"]}'
+
+    def test_algorithm_service_unreachable_execution_survives(
+            self, gateway, api_double, eval_double, int35_quarantine, oss_fast_fail,
+            monkeypatch):
+        """容错路径（裁定口径 1）：algorithm_service 不可达 → 执行链不再
+        NoneType 崩任务：3 轮执行完成事实保留（execution_status=completed），
+        「评估参数提取为空」显式 WARNING 可见；评估提交失败由
+        evaluation_status 终态承载（INT-123 口径），任务收敛终态不悬挂。"""
+        # ALGORITHM gRPC 指向必拒端口（mesh 内其他服务不受影响）；
+        # extract_case_all_params 客户端捕获异常回退 None → eval_params={}
+        import shared.clients._grpc_channels as channels_mod
+        import shared.clients._grpc_stubs as stubs_mod
+        monkeypatch.setattr(channels_mod, 'ALGORITHM_GRPC_ADDR', 'localhost:1')
+        channels_mod._get_algorithm_channel.cache_clear()
+        stubs_mod.get_algorithm_query_service_stub.cache_clear()
+
+        ids = _seed_int118_voice_llm_scenario(api_double, eval_double)
+        task_id = ids['task_id']
+
+        resp = gateway.post(f'/api/v1/tasks/{task_id}/start')
+        assert resp.status_code == 200, resp.text[:400]
+
+        reached, row = _wait_task_terminal(task_id)
+        assert reached, f'算法服务不可达时任务未收敛终态: ' \
+                        f'{row.status if row else None}，现场:\n{_dump_chain_state(task_id)}'
+
+        # 执行事实保留：多轮执行本身成功（原缺陷此处 NoneType 崩任务整链 failed）
+        from task_service.infrastructure.persistence.models import TestResult, TaskCase
+        results = _query(TestResult, task_id=task_id)
+        assert len(results) == 1 and results[0].execution_status == 'completed', \
+            '执行不应受算法服务不可达影响（原缺陷 NoneType 崩溃点）'
+        assert results[0].algorithm_result.get('success_count') == 3
+
+        tc = _query(TaskCase, task_id=task_id)[0]
+        assert tc.execution_status == 'completed', \
+            f'execution_status 应保留执行成功事实: {tc.execution_status}'
+        assert row.status in ('completed', 'failed'), \
+            f'任务应收敛终态（不悬挂 running/evaluating）: {row.status}'
+        # 评估侧失败原因留痕（评估提交失败 → evaluation_status 终态承载）
+        assert tc.evaluation_status in ('failed', 'completed'), \
+            f'评估应有终态: {tc.evaluation_status}'
+
+        # 降级可观察：显式 WARNING（INT-118 修复的第二半）
+        from shared.logging.business_reader import BusinessLogReader
+        deadline = time.time() + 30
+        warnings = []
+        while time.time() < deadline:
+            entries = BusinessLogReader().read_entries(task_id=task_id)
+            warnings = [e for e in entries
+                        if e.get('level') == 'WARNING'
+                        and '评估参数提取为空' in (e.get('content') or '')]
+            if warnings:
+                break
+            time.sleep(0.5)
+        assert warnings, '评估参数提取为空应显式 WARNING（不再静默空参提交），' \
+                         f'实际 WARNING:\n' + '\n'.join(
+                             (e.get('content') or '') for e in entries
+                             if e.get('level') == 'WARNING')
+        assert 'voice_llm' in warnings[0]['content'], \
+            f'告警应携带算法类型定位信息: {warnings[0]["content"]}'
