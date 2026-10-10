@@ -151,6 +151,36 @@ class TaskModel:
             return True
 
     @staticmethod
+    def cancel_task(eval_task_id):
+        """取消任务：标记为 canceled（不删除文件，保留状态便于排查）。
+
+        取消后：
+        - 排队中（pending）的任务不会被后台 worker 启动（get_pending_tasks 只取 pending）；
+        - 正在计算（processing）的任务由计算线程在完成后检查该标志，
+          跳过写结果与回调（见 api.py process_local_task / task_service.py _run_task）。
+        返回 False 表示任务不存在。
+        """
+        with TaskModel._lock:
+            task_path = TaskModel._get_task_path(eval_task_id)
+            if not task_path:
+                return False
+            task_data = TaskModel._read_json(task_path)
+            task_data['status'] = 'canceled'
+            task_data['completed_at'] = datetime.now().isoformat()
+            task_data['error_msg'] = '任务已被调用方取消'
+            TaskModel._write_json(task_path, task_data)
+            return True
+
+    @staticmethod
+    def is_canceled(eval_task_id):
+        """查询任务是否已被取消（任务不存在时返回 False）"""
+        with TaskModel._lock:
+            task_path = TaskModel._get_task_path(eval_task_id)
+            if not task_path:
+                return False
+            return TaskModel._read_json(task_path).get('status') == 'canceled'
+
+    @staticmethod
     def get_pending_tasks():
         """扫描所有日文件夹，返回 status=pending 且 endpoint_url 为空的本地任务"""
         result = []

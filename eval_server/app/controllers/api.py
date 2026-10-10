@@ -353,6 +353,15 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 pool = _get_calc_pool()
                 future = pool.submit(calculate_in_process, task_type, task_params)
                 result = future.result()  # 阻塞等待线程完成，但释放 GIL，不阻塞 HTTP 处理线程
+
+                # 任务已被调用方取消（cancel_task）：不写结果、不回调，避免旧任务覆盖新结果
+                if TaskModel.is_canceled(eval_task_id):
+                    logger.info(
+                        f"[process_local_task] 任务已被取消，跳过写结果与回调: "
+                        f"eval_task_id={eval_task_id}, task_type={task_type}"
+                    )
+                    return
+
                 if task_type in ('xiaoyi_metrics', 'takeover_latency') and isinstance(result, dict):
                     tl = result.get('takeover_latency')
                     if tl:
@@ -696,6 +705,22 @@ def delete_task(eval_task_id):
     """
     if TaskModel.delete_task(eval_task_id):
         return success_response({"eval_task_id": eval_task_id}, msg=f"任务 {eval_task_id} 已成功删除")
+    else:
+        return error_response("Task not found", status_code=404, code=CODE_BUSINESS_ERROR)
+
+@api_bp.route('/cancel_task/<eval_task_id>', methods=['DELETE'])
+def cancel_task(eval_task_id):
+    """取消指定任务（标记为 canceled，不删除文件）。
+
+    取消语义：
+    - 排队中（pending）的任务：后台 worker 不再启动；
+    - 正在计算（processing）的任务：计算完成后由计算线程检查取消标志，
+      跳过写结果与回调（见 process_local_task / TaskService._run_task），
+      调用方不会再收到该任务的完成回调。
+    幂等：任务已取消或已存在即返回成功。
+    """
+    if TaskModel.cancel_task(eval_task_id):
+        return success_response({"eval_task_id": eval_task_id}, msg=f"任务 {eval_task_id} 已成功取消")
     else:
         return error_response("Task not found", status_code=404, code=CODE_BUSINESS_ERROR)
 

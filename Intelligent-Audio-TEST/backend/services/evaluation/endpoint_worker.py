@@ -393,6 +393,15 @@ class EndpointWorker(EvaluationLoggerMixin):
         """
         processor = self.eval_service.result_processor
 
+        def _maybe_finalize_reeval():
+            """重新评估场景：用例评估到终态后，检查任务是否可收尾为 completed。
+            普通执行引擎评估任务（running_task_id 不匹配）不受影响。"""
+            try:
+                from backend.services.execution.reevaluation_executor import ReevaluationExecutor
+                ReevaluationExecutor.get_instance().maybe_finalize(task_id)
+            except Exception:
+                pass
+
         def on_complete(resp_data):
             processor.process_group_dimension_results(
                 resp_data=resp_data,
@@ -403,6 +412,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                 api_request_body=api_request_body,
                 test_type=test_type
             )
+            _maybe_finalize_reeval()
 
         def on_failed(error_message, api_raw_response=None):
             processor.update_all_dimensions_in_group_failed(
@@ -413,6 +423,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                 api_raw_response=api_raw_response,
                 api_request_body=api_request_body
             )
+            _maybe_finalize_reeval()
 
         from backend.services.evaluation.eval_callback_registry import eval_callback_registry
         eval_callback_registry.register(eval_task_id, {

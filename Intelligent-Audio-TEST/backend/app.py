@@ -183,9 +183,10 @@ def create_app(config_name='default'):
             # 服务重启时，将所有待执行和运行中的任务设置为失败状态
             from backend.models.models import Task, TaskCase, TestResult, TestResultDimension
             
-            # 更新Task状态：将pending/queued/running/evaluating状态的任务设置为failed
+            # 更新Task状态：将pending/queued/running/evaluating/reevaluate_queued/reevaluating状态的任务设置为failed
+            # 重新评估队列为内存态，重启后已丢失，遗留的重新评估中/排队中任务必须收尾为failed，否则永远卡在"重新评估中"
             task_update_count = db.session.query(Task).filter(
-                Task.status.in_(['pending', 'queued', 'running', 'evaluating', 'paused'])
+                Task.status.in_(['pending', 'queued', 'running', 'evaluating', 'paused', 'reevaluate_queued', 'reevaluating'])
             ).update({
                 Task.status: 'failed',
                 Task.completed_at: backend.models.models.utc8now()
@@ -234,7 +235,7 @@ def create_app(config_name='default'):
             db.session.commit()
             
             app.logger.info(f"服务重启后任务状态更新：")
-            app.logger.info(f"- 更新任务状态数: {task_update_count} (pending/queued/running/evaluating → failed)")
+            app.logger.info(f"- 更新任务状态数: {task_update_count} (pending/queued/running/evaluating/paused/reevaluate_queued/reevaluating → failed)")
             app.logger.info(f"- 更新任务用例执行状态数: {task_case_exec_update_count} (pending/queued/running/evaluating → failed)")
             app.logger.info(f"- 更新任务用例评估状态数: {task_case_eval_update_count} (pending/queued/running/calculating → failed)")
             app.logger.info(f"- 更新测试结果执行状态数: {test_result_update_count} (pending/queued/running/evaluating → failed)")

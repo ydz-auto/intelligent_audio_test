@@ -413,22 +413,29 @@ class EvaluationResultProcessor(RoundAggregator):
 
                     self.update_dimension_result_failed(dimension_result_id, error_message, task_id=task_id, test_case_id=test_case_id, api_raw_response=api_raw_response, api_request_body=api_request_body, session=local_db_session)
 
-                # 更新 TaskCase 的 evaluation_status 和 status 都为 failed
+                # 先提交本组维度的 failed 标记，供后续统一收尾读取
+                local_db_session.commit()
+
+                # 不再无条件把整个 TaskCase 置为 failed：
+                # 一个维度组失败不代表用例评估结束（其他主维度组可能仍在计算），
+                # 统一交给 update_task_case_status 收尾——它会检查所有维度都有结果后才判定最终状态，
+                # 避免"还在评估中的用例被提前判失败"。
                 if test_case_id:
                     try:
-                        update_count = update_task_case_status_in_db(
-                            local_db_session, task_id, test_case_id, 'failed', 'failed'
-                        )
-
-                        local_db_session.commit()
-
-                        self._log(
-                            level='INFO',
-                            category='database',
-                            content=f"更新TaskCase评估状态和用例状态为失败: test_case_id={test_case_id}, 影响行数: {update_count}",
-                            task_id=task_id,
-                            test_case_id=test_case_id
-                        )
+                        result_id = None
+                        if group_items:
+                            first_trd_id = group_items[0][1]
+                            first_trd = local_db_session.query(TestResultDimension).filter_by(id=first_trd_id).first()
+                            if first_trd:
+                                result_id = first_trd.test_result_id
+                        if result_id:
+                            self.update_task_case_status(
+                                result_id=result_id,
+                                current_result_all_completed=False,
+                                task_id=task_id,
+                                test_case_id=test_case_id,
+                                test_type=None
+                            )
                     except Exception as e:
                         self._log(
                             level='ERROR',

@@ -58,6 +58,11 @@ class ReevaluationExecutor:
                 task.status = 'reevaluate_queued'
                 db.session.commit()
 
+        # 重新评估前清理旧评估任务（方案A+B）：
+        # A. 从回调注册表移除同 task_id 的旧 ctx —— 旧回调到达时被幂等忽略，不污染新结果；
+        # B. 逐个通知子服务 cancel_task —— 真正停止/抑制旧任务的计算结果与回调。
+        self._cancel_previous_evaluations(task_id)
+
         log_and_emit('INFO', 'reevaluator',
                      f"重新评估任务已提交: task_id={task_id}, type={reevaluate_type}",
                      task_id=task_id)
@@ -65,6 +70,43 @@ class ReevaluationExecutor:
         self._check_queue()
 
         return True, "重新评估任务已提交"
+
+    def _cancel_previous_evaluations(self, task_id):
+        """取消该任务此前已提交的评估任务（方案A+B）。
+
+        方案A：从回调注册表移除同 task_id 的旧 ctx，旧回调到达时被幂等忽略；
+        方案B：逐个调用子服务 cancel_task 端点，子服务计算线程完成后
+        检查取消标志并跳过写结果/回调，避免旧任务覆盖新评估结果。
+        """
+        try:
+            from backend.services.evaluation.eval_callback_registry import eval_callback_registry
+            import requests
+
+            old_tasks = eval_callback_registry.pop_by_task(task_id)
+            if not old_tasks:
+                return
+
+            canceled = 0
+            for eval_task_id, endpoint_url in old_tasks:
+                if not endpoint_url:
+                    continue
+                try:
+                    cancel_url = f"{endpoint_url.rstrip('/')}/api/cancel_task/{eval_task_id}"
+                    resp = requests.delete(cancel_url, timeout=5)
+                    if resp.status_code < 300:
+                        canceled += 1
+                except Exception as e:
+                    log_and_emit('WARNING', 'reevaluator',
+                                 f"通知子服务取消评估任务失败: eval_task_id={eval_task_id}, err={e}",
+                                 task_id=task_id)
+
+            log_and_emit('INFO', 'reevaluator',
+                         f"重新评估前清理旧评估任务: task_id={task_id}, "
+                         f"移除注册={len(old_tasks)}, 子服务取消={canceled}",
+                         task_id=task_id)
+        except Exception as e:
+            log_and_emit('WARNING', 'reevaluator',
+                         f"清理旧评估任务异常: err={e}", task_id=task_id)
 
     def _check_queue(self):
         """检查重新评估队列，启动下一个任务"""
@@ -209,7 +251,8 @@ class ReevaluationExecutor:
                                 'reference_params': reference_params,
                                 'device_id': result.device_id,
                                 'task_id': task_id,
-                                'reextracted': reextract_device_output
+                                'reextracted': reextract_device_output,
+                                'reevaluate_type': reevaluate_type
                             }
                             cases_to_reevaluate.append(case_info)
 
@@ -295,7 +338,8 @@ class ReevaluationExecutor:
                             'device_id': result.device_id,
                             'task_id': task_id,
                             'reextracted': reextract_device_output,
-                            'result_type': result_type
+                            'result_type': result_type,
+                            'reevaluate_type': reevaluate_type
                         }
                         cases_to_reevaluate.append(case_info)
 
@@ -347,6 +391,7 @@ class ReevaluationExecutor:
                                 test_type=test_type,
                                 algorithm_type=algorithm_type,
                                 reference_params_col=reference_params_col,
+                                reevaluate_type=case_info.get('reevaluate_type'),
                             )
                         else:
                             _eval_ok = self._reevaluate_single(
@@ -358,6 +403,7 @@ class ReevaluationExecutor:
                                 test_type=test_type,
                                 algorithm_type=algorithm_type,
                                 reference_params_col=reference_params_col,
+                                reevaluate_type=case_info.get('reevaluate_type'),
                             )
 
                         if _eval_ok is not False:
@@ -386,11 +432,15 @@ class ReevaluationExecutor:
             self._on_complete(task_id, success)
 
     def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
-                               reference_params_col=None):
+                               reference_params_col=None, reevaluate_type=None):
         """重新评估多轮结果 — 区分 API 和 E2E
 
         API 多轮结构: rounds[].round_evaluation, roundNumber (1-indexed) — 逐轮评估
         E2E 多轮结构: rounds[].evaluation, round (0-indexed) — 一次性评估所有轮
+
+        reevaluate_type='failed' 时只重评失败的维度（按 TRD 定位到轮次），
+        已完成维度的 TRD 保留不动（_create_dimension_results 会按
+        (result, dim, round) 复用并重置 pending），其余类型全量重评。
 
         返回值: True=已提交评估, False=跳过评估(无维度), None=异常
         """
@@ -405,10 +455,22 @@ class ReevaluationExecutor:
         rounds = algorithm_result.get('rounds', [])
         is_e2e = test_type == 'e2e'
 
-        # 清理旧的维度评估记录
-        db.session.query(TestResultDimension).filter_by(
-            test_result_id=result
-        ).delete()
+        # 只重评失败维度：按 (round_number -> set(dim_id)) 收集失败的维度，保留已完成维度的 TRD
+        failed_dims_by_round = {}
+        if reevaluate_type == 'failed':
+            failed_trds = db.session.query(TestResultDimension).filter(
+                TestResultDimension.test_result_id == result,
+                TestResultDimension.evaluation_status == 'failed'
+            ).all()
+            for trd in failed_trds:
+                failed_dims_by_round.setdefault(trd.round_number, set()).add(trd.dimension_id)
+            if not failed_dims_by_round:
+                return False  # 没有失败的维度，无需重新评估
+        else:
+            # 全量重评：清理旧的维度评估记录
+            db.session.query(TestResultDimension).filter_by(
+                test_result_id=result
+            ).delete()
 
         tc_rel = db.session.query(TaskCase).filter_by(
             task_id=task_id,
@@ -447,6 +509,14 @@ class ReevaluationExecutor:
                 if not _round_eval_enabled:
                     continue
 
+                # 只重评失败维度：本轮无失败维度则跳过
+                dimension_filter = None
+                if reevaluate_type == 'failed':
+                    round_failed = failed_dims_by_round.get(round_idx)
+                    if not round_failed:
+                        continue
+                    dimension_filter = list(round_failed)
+
                 # 获取本轮算法参数
                 algo_params = {}
                 algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
@@ -474,6 +544,8 @@ class ReevaluationExecutor:
                     eval_params['test_type'] = test_type
                     if reference_params_col is not None:
                         eval_params['reference_params_col'] = reference_params_col
+                    if dimension_filter is not None:
+                        eval_params['dimension_filter_ids'] = dimension_filter
 
                     _eval_ok = evaluation_service.evaluate_case(
                         task_id=task_id,
@@ -498,51 +570,65 @@ class ReevaluationExecutor:
             # 整体评估：仅当配置了顶层 config.dimensions 时才提交
             _has_overall_dims = bool(case_config.get('dimensions')) if case_config else False
             if _has_overall_dims:
-                algo_params = {}
-                algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
-                if algorithm_params_col:
-                    from backend.utils.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
-                    algo_params = _normalize_algorithm_params(_get_round_algo_params(algorithm_params_col, 1))
-                elif config_rounds and isinstance(config_rounds[0], dict):
-                    algo_params = config_rounds[0].get('algorithm_params', {})
+                # 只重评失败维度：整体（round_number=None）无失败维度则跳过
+                dimension_filter = None
+                if reevaluate_type == 'failed':
+                    overall_failed = failed_dims_by_round.get(None)
+                    if not overall_failed:
+                        dimension_filter = []  # 明确跳过整体提交
+                    else:
+                        dimension_filter = list(overall_failed)
 
-                full_case_params = {
-                    'algorithm_type': algorithm_type,
-                    'algorithm_params': algo_params,
-                    'reference_params': rounds[0].get('reference_params', []) if rounds else [],
-                    'reference_params_col': reference_params_col,
-                    'rounds': (test_case.config or {}).get('rounds') if test_case else None,
-                }
+                if dimension_filter == []:
+                    pass  # 无整体失败维度，跳过
+                else:
+                    algo_params = {}
+                    algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
+                    if algorithm_params_col:
+                        from backend.utils.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
+                        algo_params = _normalize_algorithm_params(_get_round_algo_params(algorithm_params_col, 1))
+                    elif config_rounds and isinstance(config_rounds[0], dict):
+                        algo_params = config_rounds[0].get('algorithm_params', {})
 
-                try:
-                    eval_params = CaseParameterExtractor.get_evaluation_params(
-                        case_config=full_case_params,
-                        algorithm_result=algorithm_result,
-                        test_type=test_type,
-                    )
-                    eval_params['algorithm_type'] = algorithm_type
-                    eval_params['test_type'] = test_type
-                    if reference_params_col is not None:
-                        eval_params['reference_params_col'] = reference_params_col
+                    full_case_params = {
+                        'algorithm_type': algorithm_type,
+                        'algorithm_params': algo_params,
+                        'reference_params': rounds[0].get('reference_params', []) if rounds else [],
+                        'reference_params_col': reference_params_col,
+                        'rounds': (test_case.config or {}).get('rounds') if test_case else None,
+                    }
 
-                    _eval_ok = evaluation_service.evaluate_case(
-                        task_id=task_id,
-                        result_id=result,
-                        test_case_id=test_case_id,
-                        algorithm_result=algorithm_result,
-                        **eval_params,
-                    )
+                    try:
+                        eval_params = CaseParameterExtractor.get_evaluation_params(
+                            case_config=full_case_params,
+                            algorithm_result=algorithm_result,
+                            test_type=test_type,
+                        )
+                        eval_params['algorithm_type'] = algorithm_type
+                        eval_params['test_type'] = test_type
+                        if reference_params_col is not None:
+                            eval_params['reference_params_col'] = reference_params_col
+                        if dimension_filter is not None:
+                            eval_params['dimension_filter_ids'] = dimension_filter
 
-                    if _eval_ok is not False:
-                        any_submitted = True
-                        log_and_emit('INFO', 'reevaluator',
-                                    f"已提交 E2E 整体评估: test_case_id={test_case_id}, rounds={len(rounds)}",
+                        _eval_ok = evaluation_service.evaluate_case(
+                            task_id=task_id,
+                            result_id=result,
+                            test_case_id=test_case_id,
+                            algorithm_result=algorithm_result,
+                            **eval_params,
+                        )
+
+                        if _eval_ok is not False:
+                            any_submitted = True
+                            log_and_emit('INFO', 'reevaluator',
+                                        f"已提交 E2E 整体评估: test_case_id={test_case_id}, rounds={len(rounds)}",
+                                        task_id=task_id, test_case_id=test_case_id)
+                    except Exception as e:
+                        import traceback
+                        log_and_emit('ERROR', 'reevaluator',
+                                    f"E2E 整体重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
                                     task_id=task_id, test_case_id=test_case_id)
-                except Exception as e:
-                    import traceback
-                    log_and_emit('ERROR', 'reevaluator',
-                                f"E2E 整体重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
-                                task_id=task_id, test_case_id=test_case_id)
 
             return True if any_submitted else False
 
@@ -554,6 +640,14 @@ class ReevaluationExecutor:
 
                 if not evaluation:
                     continue
+
+                # 只重评失败维度：本轮无失败维度则跳过
+                dimension_filter = None
+                if reevaluate_type == 'failed':
+                    round_failed = failed_dims_by_round.get(round_number)
+                    if not round_failed:
+                        continue
+                    dimension_filter = list(round_failed)
 
                 algo_params = {}
                 algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
@@ -584,6 +678,8 @@ class ReevaluationExecutor:
                     eval_params['test_type'] = test_type
                     if reference_params_col is not None:
                         eval_params['reference_params_col'] = reference_params_col
+                    if dimension_filter is not None:
+                        eval_params['dimension_filter_ids'] = dimension_filter
 
                     _eval_ok = evaluation_service.evaluate_case(
                         task_id=task_id,
@@ -610,8 +706,10 @@ class ReevaluationExecutor:
             return True
 
     def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, test_type, algorithm_type,
-                           reference_params_col=None):
+                           reference_params_col=None, reevaluate_type=None):
         """重新评估单轮结果（现有逻辑）
+
+        reevaluate_type='failed' 时只重评失败的维度，已完成维度的 TRD 保留不动。
 
         返回值: True=已提交评估, False=跳过评估(无维度)
         """
@@ -623,9 +721,21 @@ class ReevaluationExecutor:
                 algorithm_result = {}
         if not isinstance(algorithm_result, dict):
             algorithm_result = {}
-        db.session.query(TestResultDimension).filter_by(
-            test_result_id=result_id
-        ).delete()
+        # 只重评失败维度：收集失败的维度，保留已完成维度的 TRD
+        failed_dim_ids = None
+        if reevaluate_type == 'failed':
+            failed_trds = db.session.query(TestResultDimension).filter(
+                TestResultDimension.test_result_id == result_id,
+                TestResultDimension.evaluation_status == 'failed'
+            ).all()
+            failed_dim_ids = {trd.dimension_id for trd in failed_trds}
+            if not failed_dim_ids:
+                return False  # 没有失败的维度，无需重新评估
+        else:
+            # 全量重评：清理旧的维度评估记录
+            db.session.query(TestResultDimension).filter_by(
+                test_result_id=result_id
+            ).delete()
 
         tc_rel = db.session.query(TaskCase).filter_by(
             task_id=task_id,
@@ -674,6 +784,9 @@ class ReevaluationExecutor:
 
         db.session.commit()
 
+        if failed_dim_ids is not None:
+            eval_params['dimension_filter_ids'] = list(failed_dim_ids)
+
         return evaluation_service.evaluate_case(
             task_id=task_id,
             result_id=result_id,
@@ -713,20 +826,95 @@ class ReevaluationExecutor:
                 db.session.commit()
 
     def _on_complete(self, task_id, success):
-        """重新评估完成回调"""
-        with self.reevaluation_lock:
-            self.is_reevaluating = False
-            self.running_task_id = None
+        """重新评估提交阶段完成回调。
 
+        注意：这里只代表"评估任务已全部提交"，评估本身仍在后台计算。
+        因此不再直接把任务置为 completed——提交成功时置为 running，
+        由 maybe_finalize（所有用例评估到终态后触发）最终置 completed；
+        仅当提交本身失败时才置 failed。
+        """
         current_app = get_app()
         with current_app.app_context():
             task = db.session.query(Task).get(task_id)
             if task:
-                task.status = 'completed' if success else 'failed'
+                task.status = 'running' if success else 'failed'
                 db.session.commit()
 
+        if not success:
+            # 提交失败：任务收尾并释放重新评估队列
+            with self.reevaluation_lock:
+                self.is_reevaluating = False
+                self.running_task_id = None
+            self._check_queue()
+
         log_and_emit('INFO', 'reevaluator',
-                     f"重新评估完成: task_id={task_id}, success={success}",
+                     f"重新评估任务提交完成: task_id={task_id}, success={success}（评估仍在后台计算，任务状态=running）",
                      task_id=task_id)
 
+    def maybe_finalize(self, task_id):
+        """检查重新评估是否真正完成（所有已执行用例的评估都到终态）。
+
+        由评估结果回调（on_complete/on_failed）在写结果后调用；
+        仅当该任务确实是当前重新评估处理中的任务时才收尾，
+        普通执行引擎评估任务不受影响。
+
+        服务重启兼容（修复）：app.py 启动恢复会把"重新评估中"的任务以及
+        进行中的用例/维度置为 failed，但评估实际在远端 eval_server 继续执行，
+        回调仍会把用例逐个置回 completed。这里在用例全部到达终态后统一收尾为
+        completed；当当前进程已不再跟踪该任务（如重启后 running_task_id 清空）时，
+        仅对确系被重启恢复误标过的重新评估任务（整任务执行均已完成 + 用例带
+        "服务重启"标记）兜底收尾，避免误改普通执行中被中断/真实失败的任务。
+        """
+        current_app = get_app()
+        with current_app.app_context():
+            # 只检查已执行完成的用例（未执行用例不参与重新评估）
+            tcs = db.session.query(TaskCase).filter_by(
+                task_id=task_id,
+                execution_status='completed',
+                deleted=False
+            ).all()
+            if not tcs:
+                return False
+
+            # 仍有用例在评估，继续等待
+            if any(tc.evaluation_status in ('queued', 'running', 'calculating') for tc in tcs):
+                return False
+
+            task = db.session.query(Task).get(task_id)
+            if not task:
+                return False
+            if task.status not in ('running', 'failed', 'reevaluating', 'reevaluate_queued'):
+                return False
+
+            with self.reevaluation_lock:
+                is_current_task = (self.running_task_id == task_id)
+
+            if not is_current_task:
+                # 服务重启后进程态丢失：仅当该任务确为被重启恢复误标的重新评估任务时才兜底收尾。
+                # 重新评估不重跑执行，其用例 execution_status 应全部为 completed；
+                # 普通执行任务被重启中断时会有执行失败的用例，不会被误收尾。
+                all_tcs = db.session.query(TaskCase).filter_by(
+                    task_id=task_id, deleted=False).all()
+                all_exec_completed = all(tc.execution_status == 'completed' for tc in all_tcs)
+                restart_marked = any(
+                    (tc.error_message or '').startswith('服务重启')
+                    for tc in tcs
+                )
+                if not (all_exec_completed and restart_marked):
+                    return False
+
+            if task.status != 'completed':
+                task.status = 'completed'
+                db.session.commit()
+
+            log_and_emit('INFO', 'reevaluator',
+                         f"重新评估完成: task_id={task_id}，任务状态更新为 completed",
+                         task_id=task_id)
+
+        # 释放重新评估队列，启动下一个排队任务（仅当自己仍是当前处理任务时）
+        with self.reevaluation_lock:
+            if self.running_task_id == task_id:
+                self.is_reevaluating = False
+                self.running_task_id = None
         self._check_queue()
+        return True

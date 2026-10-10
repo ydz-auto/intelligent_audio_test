@@ -53,6 +53,23 @@ class EvalCallbackRegistry:
             return cls._entries.get(eval_task_id)
 
     @classmethod
+    def pop_by_task(cls, task_id):
+        """移除并返回该 task_id 下所有已注册的评估任务上下文。
+
+        用于重新评估提交前清理旧任务（方案A）：旧回调到达时因 ctx 已不存在
+        而被回调端点幂等忽略，避免旧任务结果覆盖新结果。
+        返回 [(eval_task_id, endpoint_url), ...]，供调用方进一步通知子服务
+        真正取消计算（方案B，见 ReevaluationExecutor._cancel_previous_evaluations）。
+        """
+        with cls._lock:
+            removed = []
+            for eval_task_id, ctx in list(cls._entries.items()):
+                if ctx.get('task_id') == task_id:
+                    removed.append((eval_task_id, ctx.get('endpoint_url')))
+                    cls._entries.pop(eval_task_id, None)
+            return removed
+
+    @classmethod
     def all(cls):
         with cls._lock:
             return dict(cls._entries)
@@ -65,13 +82,15 @@ class EvalCallbackRegistry:
 
 eval_callback_registry = EvalCallbackRegistry()
 
+
+
 # ---------------------------------------------------------------------------
 # 兜底结算线程：回调丢失时周期补查 get_final_result，避免任务卡死
 # ---------------------------------------------------------------------------
 
 FALLBACK_SCAN_INTERVAL = 60     # 扫描间隔（秒）
 FALLBACK_FIRST_CHECK = 1200     # 提交后超过该秒数仍未回调，主动查询一次结果
-FALLBACK_HARD_TIMEOUT = 7200    # 提交后超过该秒数仍未回调，判失败收尾
+FALLBACK_HARD_TIMEOUT = 72000    # 提交后超过该秒数仍未回调，判失败收尾
 
 _fallback_thread = None
 _fallback_thread_lock = threading.Lock()

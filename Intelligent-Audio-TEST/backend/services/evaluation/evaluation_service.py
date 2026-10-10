@@ -356,6 +356,9 @@ class EvaluationService(EvaluationLoggerMixin):
         test_type = kwargs.get('test_type', 'api')
         round_number = kwargs.get('round_number')  # 多轮评估: 轮次编号 (None=整体评估, 0-indexed)
         reference_params_col = kwargs.pop('reference_params_col', None)
+        # 维度过滤（重新评估失败用例时只重评失败的维度）：
+        # None=不过滤（全量评估）；非空列表=仅评估其中存在的维度
+        dimension_filter_ids = kwargs.pop('dimension_filter_ids', None)
 
         # 从 TestCase 独立列读取 algorithm_params（按轮分组），用于 _build_rounds_list 的 case 参数映射
         algorithm_params_col = None
@@ -442,6 +445,26 @@ class EvaluationService(EvaluationLoggerMixin):
         dimension_ids = self._extract_dimension_ids(dimensions_config)
 
         unique_dimension_ids = list(set(dimension_ids))
+
+        # 维度过滤：仅评估指定维度（重新评估失败用例时只重评失败维度）。
+        # 注意：config 里的维度 id 是字符串（"121"），TRD.dimension_id 是整数（121），
+        # 比较前统一转 int 避免类型不匹配导致全部被过滤掉。
+        if dimension_filter_ids is not None:
+            filter_set = set()
+            for _d in dimension_filter_ids:
+                try:
+                    filter_set.add(int(_d))
+                except (TypeError, ValueError):
+                    continue
+            unique_dimension_ids = [d for d in unique_dimension_ids if int(d) in filter_set]
+            if not unique_dimension_ids:
+                self._log(
+                    level='INFO',
+                    content=f"用例 {test_case.name} 过滤后无待评估维度（filter={sorted(filter_set)}），跳过本轮评估",
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                )
+                return False
 
         self._log(
             level='DEBUG',

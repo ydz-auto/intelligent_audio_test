@@ -283,6 +283,13 @@ class TaskService:
         try:
             result = TaskService.calculate(task_type, task_params)
 
+            # 任务已被调用方取消（cancel_task）：不写结果、不回调，避免旧任务覆盖新结果
+            if TaskModel.is_canceled(eval_task_id):
+                logger.info(
+                    f"任务已被取消，跳过写结果与回调: eval_task_id={eval_task_id}, task_type={task_type}"
+                )
+                return
+
             # calculator 返回 is_success=False 表示评估内部失败（如 LLM 调用失败），
             # 任务应标记为 failed，而非 completed
             if isinstance(result, dict) and result.get('is_success') is False:
