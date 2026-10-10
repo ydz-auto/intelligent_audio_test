@@ -23,6 +23,7 @@ from audio_service.domain.services.audio_format_adapter import (
     BitDepth,
     detect_source_format,
     parse_target_format,
+    unwrap_source_pcm,
 )
 
 
@@ -189,6 +190,47 @@ class TestSourceFormatDetection:
 
     def test_library_default_fallback(self):
         fmt = detect_source_format(b'\x00' * 8, {})
+        assert (fmt.sample_rate, fmt.bit_depth, fmt.channels) == (24000, 's16', 1)
+
+
+class TestUnwrapSourcePcm:
+    """源载入统一入口：WAV 容器剥头取数据段（打回项 P1 回归锁），裸 PCM 原样透传"""
+
+    @staticmethod
+    def _wav_bytes(rate, channels, sampwidth, frames):
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as w:
+            w.setnchannels(channels)
+            w.setsampwidth(sampwidth)
+            w.setframerate(rate)
+            w.writeframes(frames)
+        return buf.getvalue()
+
+    def test_wav_payload_stripped_to_data_segment(self):
+        frames = _s16_bytes([0.5, -0.5, 0.25, -0.25, 0.125, -0.125, 0.0625, -0.0625])
+        wav = self._wav_bytes(16000, 1, 2, frames)
+        payload, fmt = unwrap_source_pcm(wav, {'sample_rate': 9999, 'channels': 9})
+        assert payload == frames                  # 头部剥离，仅剩数据段
+        assert (fmt.sample_rate, fmt.channels, fmt.bit_depth) == (16000, 1, 's16')
+
+    def test_wav_24bit_data_segment_frame_aligned(self):
+        """24bit WAV：数据段 3 字节对齐（头部 44%3=2 错位不再发生）"""
+        frames = _s24_bytes([0, 1, -1, 2, -2, 3, -3, 4, 5, -5, 6, -6])
+        wav = self._wav_bytes(44100, 2, 3, frames)
+        payload, fmt = unwrap_source_pcm(wav, {})
+        assert payload == frames
+        assert len(payload) % 3 == 0
+        assert (fmt.sample_rate, fmt.channels, fmt.bit_depth) == (44100, 2, 's24')
+
+    def test_raw_pcm_passthrough_with_metadata(self):
+        raw = b'\x01\x02\x03\x04\x05\x06\x07\x08'
+        payload, fmt = unwrap_source_pcm(raw, {'sample_rate': 16000, 'channels': 1})
+        assert payload == raw
+        assert (fmt.sample_rate, fmt.channels, fmt.bit_depth) == (16000, 1, 's16')
+
+    def test_raw_pcm_without_metadata_defaults(self):
+        payload, fmt = unwrap_source_pcm(b'\x00' * 8, {})
+        assert payload == b'\x00' * 8
         assert (fmt.sample_rate, fmt.bit_depth, fmt.channels) == (24000, 's16', 1)
 
 

@@ -15,9 +15,10 @@ RenderServiceServicer，与 audio_service/interfaces/grpc/server.py 注册方式
 - 失败收敛：file success=False → ACL 返回 None；stream 终止帧 message 不抛裸异常
 - 消费端路由镜像 route_render_mode
 
-打回项复现锁定（验收不通过，2026-10-10）：标注 xfail(strict=True) 的 3 例即
-P1 缺陷「WAV 容器头按 PCM 解析」的复现锁——开发修复后这 3 例会通过，
-strict xfail 将令套件翻红，届时必须移除标记。
+打回项复现锁定（验收不通过，2026-10-10；开发修复后标记已移除，2026-10-10）：
+原 xfail(strict=True) 的 3 例即 P1 缺陷「WAV 容器头按 PCM 解析」的复现锁，
+P1 修复（unwrap_source_pcm 剥离头部取数据段）后转通过，标记移除；其中尾窗
+用例随 P2 裁定「不足一窗补零恒定 chunk 时长」实现，断言同步更新为恒定窗。
 """
 import base64
 import io
@@ -126,10 +127,6 @@ def _build_config(monkeypatch, pcm_by_id, **overrides):
 
 
 class TestFileExitOverRealGrpc:
-    @pytest.mark.xfail(strict=True, reason=(
-        'INT-67 打回项 P1：源加载把 WAV 容器整文件（含 44B RIFF 头）当 PCM 解析——'
-        '头部变垃圾样本且时间轴整体偏移，24bit 因 44%3=2 持续 1 字节错位全样本损毁；'
-        '修复后本用例翻红，需移除标记'))
     def test_24bit_stereo_44k_source_to_16k_mono_wav(self, acl, monkeypatch):
         src = _wav_bytes(_sine(1.0, 44100, 440, 0.5, channels=2), 44100, 2, 3)
         config = _build_config(
@@ -167,9 +164,6 @@ class TestFileExitOverRealGrpc:
 
 
 class TestStreamExitOverRealGrpc:
-    @pytest.mark.xfail(strict=True, reason=(
-        'INT-67 打回项 P1：同上——WAV 头按 PCM 解析使 duration/总帧数虚增'
-        '（22 样本/源），流式拼接==整段强不变量失配；修复后本用例翻红，需移除标记'))
     def test_chunk_contract_and_strong_invariant(self, acl, monkeypatch):
         """整窗恒定 0.1s；序号连续；is_last 仅终帧；流式拼接 == 整段输出（逐字节）"""
         pcm_by_id = {
@@ -197,18 +191,18 @@ class TestStreamExitOverRealGrpc:
         stream_raw = b''.join(base64.b64decode(c.data_b64) for c in chunks)
         assert stream_raw == file_dto.audio_bytes
 
-    @pytest.mark.xfail(strict=True, reason=(
-        'INT-67 打回项 P1：同上——WAV 头按 PCM 解析使 total_frames 虚增，'
-        '尾窗长度失配；修复后本用例翻红，需移除标记'))
-    def test_partial_tail_window_is_terminal_and_short(self, acl, monkeypatch):
-        """1.55s（非整窗倍数）→ 16 chunk，末窗短且 is_last=True（恒定窗仅覆盖整窗）"""
+    def test_partial_tail_window_is_terminal_and_zero_padded(self, acl, monkeypatch):
+        """1.55s（非整窗倍数）→ 16 chunk，末窗补零至恒定 3200B 且 is_last=True"""
         src = _wav_bytes(_sine(1.55, RATE, 440, 0.5), RATE, 1, 2)
         config = _build_config(monkeypatch, {10: (src, {'sample_rate': RATE, 'channels': 1})})
         chunks = list(acl.render_audio_stream(config, task_id='SMOKE-4'))
         assert len(chunks) == 16
         tail = base64.b64decode(chunks[-1].data_b64)
-        # 总帧 24800 = 15 整窗 + 800 帧尾窗
-        assert len(tail) == (24800 - 15 * WINDOW_FRAMES) * 2
+        # 恒定窗：总帧 24800 = 15 整窗 + 800 帧尾窗（补零至 1600 帧）
+        assert len(tail) == WINDOW_FRAMES * 2
+        tail_vals = np.frombuffer(tail, dtype='<i2')
+        assert np.any(tail_vals[:800] != 0)   # 内容区为信号
+        assert np.all(tail_vals[800:] == 0)   # 补零区
         assert chunks[-1].is_last is True
 
 

@@ -26,8 +26,8 @@ from shared.utils.config_manager import config_manager
 from audio_service.domain.services.audio_format_adapter import (
     AudioFormat,
     AudioFormatAdapter,
-    detect_source_format,
     parse_target_format,
+    unwrap_source_pcm,
 )
 from audio_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from audio_service.infrastructure.audio.audio_timeline import (
@@ -161,8 +161,8 @@ class AudioStreamOrchestrator:
             if kind not in (AudioKind.SPEAKER, AudioKind.INTERFERER, AudioKind.NOISE):
                 raise ValueError(f"未知音频类型: {kind}（可选 speaker/interferer/noise）")
             pcm, meta = self._load_source_pcm(cfg['audio_id'])
-            src_fmt = detect_source_format(pcm, meta)
-            adapted = AudioFormatAdapter.adapt(pcm, src_fmt, target_format)
+            payload, src_fmt = unwrap_source_pcm(pcm, meta)
+            adapted = AudioFormatAdapter.adapt(payload, src_fmt, target_format)
             samples = AudioFormatAdapter.parse_to_float32(adapted, target_format.bit_depth)
             target_spl = cfg.get('spl')
             gain = ApiRmsSplService.compute_source_gain(

@@ -42,7 +42,8 @@ class RenderAudioStream:
         sequence = 0
         for w0 in range(0, total_frames, window_frames):
             w1 = min(w0 + window_frames, total_frames)
-            window = np.zeros((w1 - w0) * channels, dtype=np.float32)
+            # 恒定窗缓冲：末窗不足一窗的部分保持补零（Realtime 按恒定 chunk 时长 sleep）
+            window = np.zeros(window_frames * channels, dtype=np.float32)
 
             for src_idx, start_frame in context.placements:
                 src = context.sources[src_idx]

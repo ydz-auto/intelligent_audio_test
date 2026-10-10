@@ -181,6 +181,38 @@ class TestPrepare:
             orchestrator.prepare({'audios': [{'audio_id': 1, 'type': 'alien'}]})
 
 
+class TestWavContainerSource:
+    """打回项 P1 回归（管线级）：WAV 容器源剥头取数据段，与裸 PCM 源适配结果一致"""
+
+    @staticmethod
+    def _wav_wrap(frames, rate, channels, sampwidth=2):
+        buf = io.BytesIO()
+        with wave.open(buf, 'wb') as w:
+            w.setnchannels(channels)
+            w.setsampwidth(sampwidth)
+            w.setframerate(rate)
+            w.writeframes(frames)
+        return buf.getvalue()
+
+    def test_wav_source_adapts_same_as_bare_payload(self, monkeypatch, orchestrator):
+        frames = _tone_pcm(1.0, 48000, 440, 0.5, channels=2)
+        wav = self._wav_wrap(frames, 48000, 2)
+        config = {
+            'target_format': {'sample_rate': RATE, 'bit_depth': 's16', 'channels': 1},
+            'audios': [{'audio_id': 1, 'type': 'speaker', 'spl': None}],
+        }
+        _patch_loader(monkeypatch, {1: (wav, 48000, 2)})
+        ctx_wav = orchestrator.prepare(dict(config, task_id='W1'))
+        _patch_loader(monkeypatch, {1: (frames, 48000, 2)})
+        ctx_raw = orchestrator.prepare(dict(config, task_id='W2'))
+        s_wav, s_raw = ctx_wav.sources[0], ctx_raw.sources[0]
+        # 样本序列 == 数据段适配结果：长度精确（无头部垃圾帧）、逐样本一致
+        assert s_wav.samples.size == RATE
+        assert s_wav.samples.size == s_raw.samples.size
+        np.testing.assert_allclose(s_wav.samples, s_raw.samples, atol=0)
+        assert ctx_wav.total_frames == ctx_raw.total_frames == RATE
+
+
 class TestTimeline:
     def test_sequential_and_interferer_and_noise(self, monkeypatch, orchestrator):
         _patch_loader(monkeypatch, {
@@ -376,6 +408,23 @@ class TestStreamExit:
         stream_raw = b''.join(
             base64.b64decode(c['data']) for c in RenderAudioStream.render(context))
         assert stream_raw[:len(file_raw)] == file_raw
+
+    def test_stream_tail_window_zero_padded_to_constant_chunk(self, monkeypatch, orchestrator):
+        """恒定 chunk 契约（打回项 P2）：1.55s → 16 chunk，末窗补零至整窗"""
+        _patch_loader(monkeypatch, {1: (_tone_pcm(1.55, RATE, 440, 0.5), RATE, 1)})
+        context = orchestrator.prepare({
+            'target_format': {'sample_rate': RATE, 'bit_depth': 's16', 'channels': 1},
+            'audios': [{'audio_id': 1, 'type': 'speaker', 'spl': None}],
+        })
+        assert context.total_frames == 24800
+        chunks = list(RenderAudioStream.render(context))
+        window_frames = int(RATE * AudioStreamOrchestrator.chunk_duration_ms() / 1000)
+        assert len(chunks) == 16
+        # 全部 chunk（含末窗）恒定窗口大小；末窗内容区有信号、补零区全零
+        assert all(len(base64.b64decode(c['data'])) == window_frames * 2 for c in chunks)
+        tail = np.frombuffer(base64.b64decode(chunks[-1]['data']), dtype='<i2')
+        assert np.any(tail[:800] != 0) and np.all(tail[800:] == 0)
+        assert chunks[-1]['is_last'] is True and chunks[-1]['sequence'] == 15
 
 
 class TestOrchestratorRenderDispatch:

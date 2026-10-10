@@ -215,6 +215,8 @@ class AudioFormatAdapter:
 
 > **设计原则**：转换顺序固定为「位深 → 采样率 → 通道」。下混发生在重采样之后（对 mono 重采样再扩展，比先重采样双声道再下混节省一半算力）；位深先归一化 float32 再量化，避免截断误差累积。源格式元数据读取 audio_service 现有 `Audio` 持久化模型（`sample_rate`/`channels`/`format` 列已有；`bit_depth` 为**新增**列）。
 
+> **实现差异记录（INT-67 验收，2026-10-10）**：`bit_depth` 列最终未落地（audios 表无该列，元数据置信不足），`detect_source_format` 实际优先级为 **WAV 头 > 库内元数据 > 库内默认**，与本节原述「元数据优先」相反；真实容器头部为最高置信来源，且源载入经 `unwrap_source_pcm` 统一剥离 WAV 头取数据段（防头部按 PCM 解析，24bit 因 44%3=2 错位损毁）。
+
 ---
 
 ## 三、核心组件

@@ -19,7 +19,7 @@ import io
 import math
 import wave
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -91,7 +91,7 @@ def parse_target_format(fmt: Optional[dict]) -> AudioFormat:
 
 
 def detect_source_format(pcm: bytes, audio_meta: Optional[dict] = None) -> AudioFormat:
-    """源格式探测，优先级（设计 §2.3）：
+    """源格式探测，优先级（设计 §2.3，实现差异记录见文档补记）：
 
     1. WAV 头解析（真实容器，最高置信）
     2. 库内元数据（audios 表 sample_rate/channels，bit_depth 无列默认 s16）
@@ -108,6 +108,21 @@ def detect_source_format(pcm: bytes, audio_meta: Optional[dict] = None) -> Audio
             channels=int(meta.get('channels') or 1),
         )
     return parse_target_format(None)
+
+
+def unwrap_source_pcm(pcm: bytes, audio_meta: Optional[dict] = None) -> Tuple[bytes, AudioFormat]:
+    """源载入统一入口：WAV 容器剥离头部取数据段，裸 PCM 原样返回。
+
+    容器头部字节不得进入样本解析——44B RIFF 头按 int16 解析混入 22 个垃圾
+    样本并使时间轴整体偏移；24bit 因 44%3=2 持续 1 字节错位致数据段全样本
+    损毁。WAV 源格式以头部声明为准（库内无 bit_depth 列，元数据不可信）；
+    非 WAV 源按 元数据 > 库内默认 探测。返回 (数据段 PCM, 源格式)。
+    """
+    wav_fmt = _parse_wav_header(pcm)
+    if wav_fmt is None:
+        return pcm, detect_source_format(pcm, audio_meta)
+    with wave.open(io.BytesIO(pcm), 'rb') as w:
+        return w.readframes(w.getnframes()), wav_fmt
 
 
 def _parse_wav_header(pcm: bytes) -> Optional[AudioFormat]:
