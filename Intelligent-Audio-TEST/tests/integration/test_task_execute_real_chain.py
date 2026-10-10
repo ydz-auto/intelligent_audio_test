@@ -390,12 +390,19 @@ def grpc_mesh(pg_db):
     report_grpc.add_BenchmarkConfigServiceServicer_to_server(BenchmarkServicer(), report_server)
     report_port = report_server.add_insecure_port('[::]:0')
 
-    # audio_service：音频元数据查询（API 执行前置校验）
+    # audio_service：音频元数据查询（API 执行前置校验）+ RenderService 混音
+    # （INT-98 起线性流执行链依赖 RenderAudioFile，注册集与生产
+    # audio_service/interfaces/grpc/server.py 对齐，缺注册即 UNIMPLEMENTED
+    # → 用例渲染失败收敛 FAILED，INT-119）
     from shared.proto import audio_service_pb2_grpc as audio_grpc
-    from audio_service.interfaces.grpc.servicers import AudioConfigServiceServicer
+    from audio_service.interfaces.grpc.servicers import (
+        AudioConfigServiceServicer,
+        RenderServiceServicer,
+    )
 
     audio_server = _new_server()
     audio_grpc.add_AudioConfigServiceServicer_to_server(AudioConfigServiceServicer(), audio_server)
+    audio_grpc.add_RenderServiceServicer_to_server(RenderServiceServicer(), audio_server)
     audio_port = audio_server.add_insecure_port('[::]:0')
 
     for server in (task_server, api_server, eval_server, algo_server,
@@ -438,6 +445,7 @@ def grpc_mesh(pg_db):
         stubs_mod.get_report_config_service_stub.cache_clear,
         stubs_mod.get_benchmark_config_service_stub.cache_clear,
         stubs_mod.get_audio_config_service_stub.cache_clear,
+        stubs_mod.get_render_service_stub.cache_clear,
     ]
     for clear in _channel_caches + _stub_caches:
         clear()

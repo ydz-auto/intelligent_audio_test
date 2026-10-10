@@ -466,7 +466,9 @@ class RealtimeSessionExecutor:
         from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
         all_params = dto_to_dict(
             AlgorithmQueryAclRepositoryImpl().extract_case_all_params(full_case_params)) or {}
-        eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
+        # 算法服务不可达时 ACL 回退 ExtractedCaseParamsDTO()（evaluation=None），
+        # 键存在但值为 None，get 默认值不生效 → 显式 None 兜底（INT-119）
+        eval_params = (all_params.get('evaluation') or {}) if isinstance(all_params, dict) else {}
         eval_params['algorithm_type'] = algorithm_type
         eval_params['test_type'] = 'api'
 
