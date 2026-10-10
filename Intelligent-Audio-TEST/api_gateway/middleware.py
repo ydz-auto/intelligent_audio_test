@@ -40,6 +40,12 @@ class RequestAdapterMiddleware(BaseHTTPMiddleware):
             request.state._form_data = {}
             request.state._files = {}
             try:
+                # INT-111：必须先经 body() 缓存原始请求体。BaseHTTPMiddleware 的
+                # _CachedRequest 仅在 _body 已缓存时才向下游回灌 body，只调 form()
+                # （内部走 stream()）会把流耗尽且不回灌 → 下游 FastAPI 原生
+                # UploadFile 路由拿到空 body → 422（import/preview 回归根因）。
+                # _body 已缓存后 form() 从缓存体解析，两者共用无冲突。
+                await request.body()
                 form = await request.form()
                 fields, files = {}, {}
                 for key, value in form.multi_items():
