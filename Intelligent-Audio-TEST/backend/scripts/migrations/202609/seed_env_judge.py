@@ -76,13 +76,13 @@ _INPUT_PARAMS = [
      None, None, None, True,
      False, '"false"', '环境类型: 0=无语义(non_semantic, 环境声为噪声判断声音类型), 1=有语义(semantic, 判断内容理解)', 9),
     ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
-     None, None, None, False,
+     None, None, None, True,
      False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频)', 10),
     ('max_tokens', '最大token', '最大输出 token 数', 'number', 'input',
-     None, None, None, False,
+     None, None, None, True,
      False, '4096', 'LLM 最大输出 token 数', 15),
     ('temperature', '采样温度', '采样温度', 'number', 'input',
-     None, None, None, False,
+     None, None, None, True,
      False, '0.1', '采样温度，评判场景建议低温 0.1', 20),
 ]
 
@@ -98,10 +98,11 @@ _AUDIO_MAPPINGS = [
 # 平均回复时延为本地时序计算，不消费 correctAnswer（与库一致）
 _CASE_ANSWER_MAPPING = ('case', 'output', 'correctAnswer', 'correctAnswer', 'none')
 
-# body_template（正确形态：顶层/rounds 均 snake_case，correctAnswer 为代码库固定驼峰字段；
-# 不包含已下线的 task_type。eval_server env_judge 校验 ai_wav/user_wav/played_audios/correctAnswer，
-# rounds 内另带背景噪声/干扰人/env_type 等轮次字段）
+# body_template（正确形态：顶层 task_type + model/max_tokens/temperature，rounds 均 snake_case，
+# correctAnswer 为代码库固定驼峰字段；与库一致。eval_server env_judge 校验 ai_wav/user_wav/
+# played_audios/correctAnswer，rounds 内另带背景噪声/干扰人/env_type 等轮次字段）
 _BODY_TEMPLATE = {
+    'task_type': '{{task_type}}',
     'model': '{{model}}',
     'max_tokens': '{{max_tokens}}',
     'temperature': '{{temperature}}',

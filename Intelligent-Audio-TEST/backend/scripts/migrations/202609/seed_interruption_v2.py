@@ -59,10 +59,15 @@ _CATEGORY_ICON = 'fas fa-hand-paper'
 _CATEGORY_DESC = '打断类评估维度（打断成功/失败/时延/停止指令遵循/恢复内容等）'
 
 # ============================================================
-# 全族同一份 body_template（组代表任取安全）
-# 顶层字段兼容单轮/平台切片路径；rounds 承载多轮音频/ASR/轮次标记
+# 两套 body_template（与库一致）：
+#   - COUNT 版（数量/行为数量/时延容器类维度）：rounds 18 键，承载 user_seg_merge_gap_s/
+#     model_seg_merge_gap_s/rounds/round_number/is_actual_interruption/interruption_rounds/
+#     dangling_interruption_rounds 等轮次级标记（无 is_interruption）
+#   - SCORE 版（回复内容评分/停止指令遵循/恢复首轮内容评分 + 时延子维度）：rounds 13 键
+#     （含 is_interruption，不含 merge gaps/rounds 等轮次元数据）
+# 顶层字段两版一致（12 键），兼容单轮/平台切片路径；rounds 承载多轮音频/ASR/轮次标记
 # ============================================================
-BODY_TEMPLATE = {
+_TOP_FIELDS = {
     'user_wav': '{{user_wav}}',
     'ai_wav': '{{ai_wav}}',
     'case_wav': '{{case_wav}}',
@@ -75,6 +80,10 @@ BODY_TEMPLATE = {
     'is_actual_interruption': '{{is_actual_interruption}}',
     'interruption_rounds': '{{interruption_rounds}}',
     'dangling_interruption_rounds': '{{dangling_interruption_rounds}}',
+}
+
+BODY_TEMPLATE_SCORE = {
+    **_TOP_FIELDS,
     'rounds': [
         {
             'user_wav': '{{user_wav}}',
@@ -94,14 +103,51 @@ BODY_TEMPLATE = {
     ],
 }
 
-API_SETTINGS = json.dumps({
+BODY_TEMPLATE_COUNT = {
+    **_TOP_FIELDS,
+    'rounds': [
+        {
+            'user_wav': '{{user_wav}}',
+            'ai_wav': '{{ai_wav}}',
+            'case_wav': '{{case_wav}}',
+            'user_asr': '{{user_asr}}',
+            'model_asr': '{{model_asr}}',
+            'user_seg_merge_gap_s': '{{user_seg_merge_gap_s}}',
+            'model_seg_merge_gap_s': '{{model_seg_merge_gap_s}}',
+            'rounds': '{{rounds}}',
+            'round_number': '{{round_number}}',
+            'is_actual_interruption': '{{is_actual_interruption}}',
+            'interruption_rounds': '{{interruption_rounds}}',
+            'dangling_interruption_rounds': '{{dangling_interruption_rounds}}',
+            'stop_intent': '{{stop_intent}}',
+            'is_return_to_topic': '{{is_return_to_topic}}',
+            'query': '{{query}}',
+            'played_audios': '{{played_audios}}',
+            'background_noise': '{{background_noise}}',
+            'interferers': '{{interferers}}',
+        }
+    ],
+}
+
+API_SETTINGS_SCORE = json.dumps({
     'method': 'POST',
     'headers': {},
-    'body_template': BODY_TEMPLATE,
+    'body_template': BODY_TEMPLATE_SCORE,
     'timeout': 30000,
     # 跨主维度合并分组：evaluation_service 按 (endpoint_url, group_key) 一组一请求
     'group_key': GROUP_KEY,
 }, ensure_ascii=False)
+
+API_SETTINGS_COUNT = json.dumps({
+    'method': 'POST',
+    'headers': {},
+    'body_template': BODY_TEMPLATE_COUNT,
+    'timeout': 30000,
+    'group_key': GROUP_KEY,
+}, ensure_ascii=False)
+
+# 默认用 SCORE 版；数量类维度在 dim_def 里显式指定 COUNT 版
+API_SETTINGS = API_SETTINGS_SCORE
 
 RULE = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
 
@@ -172,6 +218,32 @@ _COMMON_INPUT_PARAMS = [
      False, None, '该轮是否回到原话题（case.is_return_to_topic 用例参数映射取用，打断行为统计参考）', 23),
 ]
 
+# 数量类维度（成功/失败/询问数量、行为数量、打断时延容器）在库中这 13 个轮次元数据参数
+# visible_in_report=True（与库一致）；评分类维度（回复内容评分/停止指令遵循/恢复首轮内容评分）
+# 保持不可见（沿用 _COMMON_INPUT_PARAMS）。
+_COUNT_VISIBLE_OVERRIDE = {
+    'user_asr', 'model_asr', 'case_wav', 'user_seg_merge_gap_s',
+    'model_seg_merge_gap_s', 'rounds', 'round_number',
+    'is_actual_interruption', 'interruption_rounds',
+    'dangling_interruption_rounds', 'stop_intent',
+    'query', 'is_return_to_topic',
+}
+
+
+def _params_visible(params, visible_codes):
+    """返回 params 副本：把 visible_codes 中参数的 visible_in_report 置 True。"""
+    out = []
+    for p in params:
+        (code, name, label, ft, direction, fp, ar, or_, vir,
+         req, dv, ht, uo, *rest) = p
+        vir = True if code in visible_codes else vir
+        out.append((code, name, label, ft, direction, fp, ar, or_, vir,
+                    req, dv, ht, uo, *rest))
+    return out
+
+
+_COMMON_INPUT_PARAMS_COUNT = _params_visible(_COMMON_INPUT_PARAMS, _COUNT_VISIBLE_OVERRIDE)
+
 # 每个主维度全量挂载（映射提取按选中维度 id 过滤，见 case_parameter_extractor）
 _PARAM_MAPPINGS = [
     ('device', 'output', 'user_wav', 'user_wav', 'none'),
@@ -206,13 +278,14 @@ def _count_dim(name, code, behavior_help, ui_order, extra_out=()):
                        f'报告按 ratio 聚合（按轮次）：Σ{name} / Σ有值轮次数 × 100，产出占比(%)。',
         'type': 'auto',
         'result_type': 0, 'result_min': 0.0, 'result_max': 0.0,
-        'decimal_places': 0, 'weight': 1, 'estimated_exec_time': 120,
+        'decimal_places': 2, 'weight': 1, 'estimated_exec_time': 120,
         'score_unit': '%', 'statistic_method': 'ratio', 'agg_denominator': 'round',
-        'params': _COMMON_INPUT_PARAMS + [
+        'params': _COMMON_INPUT_PARAMS_COUNT + [
             _out(code, name, f'interruption.{code}', behavior_help, ui_order),
             *extra_out,
         ],
         'param_mappings': _PARAM_MAPPINGS,
+        'api_settings': API_SETTINGS_COUNT,
     }
 
 
@@ -334,10 +407,11 @@ LATENCY_CONTAINER = {
                    '时延由本地时序计算（ASR 词级时间戳 + FFT 精修），失败轮记 -1，avg/min/max 排除 -1。',
     'type': 'auto',
     'result_type': 0, 'result_min': 0.0, 'result_max': 1.0,
-    'decimal_places': 0, 'weight': 1, 'estimated_exec_time': 120,
+    'decimal_places': 2, 'weight': 1, 'estimated_exec_time': 120,
     'score_unit': '', 'statistic_method': 'average',
-    'params': list(_COMMON_INPUT_PARAMS),
+    'params': list(_COMMON_INPUT_PARAMS_COUNT),
     'param_mappings': _PARAM_MAPPINGS,
+    'api_settings': API_SETTINGS_COUNT,
 }
 
 
@@ -447,7 +521,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
         'su': dim_def['score_unit'],
         'sm': dim_def['statistic_method'],
         'ad': dim_def.get('agg_denominator', 'case'),
-        'apis': API_SETTINGS,
+        'apis': dim_def.get('api_settings', API_SETTINGS),
         'rule': RULE,
         'dtype': dimension_type,
         'pid': parent_id,

@@ -75,14 +75,14 @@ MAIN_DIMENSION = {
     'estimated_exec_time': 60,
     'score_unit': '',
     'statistic_method': 'pass_rate',
+    'agg_denominator': 'case',
     'body_template': {
         'rounds': [
             {
                 'user_wav': '{{user_wav}}',
                 'ai_wav': '{{ai_wav}}',
                 'played_audios': '{{played_audios}}',
-                'background_noise': '{{background_noise}}',
-                'interferers': '{{interferers}}',
+                'query': '{{query}}',
             }
         ]
     },
@@ -95,10 +95,10 @@ MAIN_DIMENSION = {
          None, None, None, True,
          False, None, 'AI 回复通道 wav 路径（cap_client_ec_out.wav）', 2),
         ('played_audios', '被播放音频', '被播放音频', 'json', 'input',
-         None, None, None, False,
+         None, None, None, True,
          False, None, '本轮被播放音频列表（用例配置 rounds[].audios），运行时补全上传', 3),
         ('query', '用户提问', '用户提问', 'text', 'input',
-         None, None, None, False,
+         None, None, None, True,
          False, None, '用户提问文本（回复质量评分参考）', 4),
         # 主维度不配 output 参数
     ],
@@ -134,6 +134,7 @@ SUB_DIMENSIONS = [
         'estimated_exec_time': 60,
         'score_unit': '',
         'statistic_method': 'pass_rate',
+        'agg_denominator': 'round',
         'params': [
             # ─── 主评分：误解管数（pass when 0，即无误解管时通过）───
             ('false_takeover_count', '误解管数', '误解管数', 'number', 'output',
@@ -185,7 +186,7 @@ SUB_DIMENSIONS = [
         'task_type_code': 'turn_evaluation',
         'name': '接管率占比',
         'keywords': 'turn_evaluation,接管率,takeover_rate,正常接管占比',
-        'description': '子维度：接管率占比 = Σ正常接管轮次 / Σ总轮次（weighted_sum_ratio 加权聚合，产出 %）。',
+        'description': '子维度：接管率占比 = Σ正常接管轮次 / Σ总轮次（ratio 加权聚合，产出 %）。',
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
@@ -194,7 +195,8 @@ SUB_DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 60,
         'score_unit': '',
-        'statistic_method': 'weighted_sum_ratio',
+        'statistic_method': 'ratio',
+        'agg_denominator': 'round',
         'params': [
             ('takeover_rate', '接管率占比', '接管率占比', 'number', 'output',
              'turn_classification.takeover_rate', 'main', 'main', True,
@@ -211,7 +213,7 @@ SUB_DIMENSIONS = [
         'task_type_code': 'turn_evaluation',
         'name': '未接管率占比',
         'keywords': 'turn_evaluation,未接管率,no_takeover_rate,未接管占比',
-        'description': '子维度：未接管率占比 = Σ未接管轮次 / Σ总轮次（weighted_sum_ratio 加权聚合，产出 %）。',
+        'description': '子维度：未接管率占比 = Σ未接管轮次 / Σ总轮次（ratio 加权聚合，产出 %）。',
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
@@ -220,7 +222,8 @@ SUB_DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 60,
         'score_unit': '',
-        'statistic_method': 'weighted_sum_ratio',
+        'statistic_method': 'ratio',
+        'agg_denominator': 'round',
         'params': [
             ('no_takeover_rate', '未接管率占比', '未接管率占比', 'number', 'output',
              'turn_classification.no_takeover_rate', 'main', 'main', True,
@@ -237,7 +240,7 @@ SUB_DIMENSIONS = [
         'task_type_code': 'turn_evaluation',
         'name': '误接管率占比',
         'keywords': 'turn_evaluation,误接管率,false_takeover_rate,误解管占比',
-        'description': '子维度：误接管率占比 = Σ误解管轮次 / Σ总轮次（weighted_sum_ratio 加权聚合，产出 %）。',
+        'description': '子维度：误接管率占比 = Σ误解管轮次 / Σ总轮次（ratio 加权聚合，产出 %）。',
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
@@ -246,7 +249,8 @@ SUB_DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 60,
         'score_unit': '',
-        'statistic_method': 'weighted_sum_ratio',
+        'statistic_method': 'ratio',
+        'agg_denominator': 'round',
         'params': [
             ('false_takeover_rate', '误接管率占比', '误接管率占比', 'number', 'output',
              'turn_classification.false_takeover_rate', 'main', 'main', True,
@@ -273,6 +277,7 @@ SUB_DIMENSIONS = [
         'estimated_exec_time': 60,
         'score_unit': 'ms',
         'statistic_method': 'average',
+        'agg_denominator': 'round',
         'params': [
             ('takeover_latency_avg_ms', '接管时延平均值', '接管时延平均值', 'number', 'output',
              'takeover_latency.takeover_latency_avg_ms', 'main', 'main', True,
@@ -293,6 +298,7 @@ SUB_DIMENSIONS = [
         'estimated_exec_time': 60,
         'score_unit': '分',
         'statistic_method': 'average',
+        'agg_denominator': 'round',
         'params': [
             ('reply_quality_avg_score', '接管内容平均分', '接管内容平均分', 'number', 'output',
              'reply_quality.reply_quality_avg_score', 'main', 'main', True,
@@ -366,6 +372,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
         'et': dim_def['estimated_exec_time'],
         'su': dim_def['score_unit'],
         'sm': dim_def['statistic_method'],
+        'ad': dim_def.get('agg_denominator', 'case'),
         'apis': api_settings,
         'rule': rule,
         'dtype': dimension_type,
@@ -382,7 +389,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  type = :type, result_type = :rt, result_min = :rmin, "
                 "  result_max = :rmax, decimal_places = :dp, weight = :w, "
                 "  estimated_exec_time = :et, score_unit = :su, "
-                "  statistic_method = :sm, api_settings = :apis, "
+                "  statistic_method = :sm, agg_denominator = :ad, api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, api_url = :api_url, "
                 "  task_type_code = :tc, "
@@ -396,7 +403,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  type = :type, result_type = :rt, result_min = :rmin, "
                 "  result_max = :rmax, decimal_places = :dp, weight = :w, "
                 "  estimated_exec_time = :et, score_unit = :su, "
-                "  statistic_method = :sm, api_settings = :apis, "
+                "  statistic_method = :sm, agg_denominator = :ad, api_settings = :apis, "
                 "  rule = :rule, dimension_type = :dtype, "
                 "  parent_dimension_id = :pid, task_type_code = :tc, "
                 "  deleted = FALSE, updated_at = NOW() "
@@ -409,13 +416,13 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
                 "   type, result_type, result_min, result_max, decimal_places, "
                 "   weight, estimated_exec_time, rule, api_settings, status, "
-                "   api_status, score_unit, statistic_method, api_url, "
+                "   api_status, score_unit, statistic_method, agg_denominator, api_url, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
                 "  (:name, :kw, :dtype, :pid, :tc, :desc, "
                 "   :type, :rt, :rmin, :rmax, :dp, "
                 "   :w, :et, :rule, :apis, TRUE, "
-                "   'online', :su, :sm, :api_url, "
+                "   'online', :su, :sm, :ad, :api_url, "
                 "   FALSE, NOW(), NOW()) "
                 "RETURNING id"
             ), {**common_fields, 'tc': task_code, 'api_url': API_URL})
@@ -425,13 +432,13 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
                 "   type, result_type, result_min, result_max, decimal_places, "
                 "   weight, estimated_exec_time, rule, api_settings, status, "
-                "   api_status, score_unit, statistic_method, "
+                "   api_status, score_unit, statistic_method, agg_denominator, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
                 "  (:name, :kw, :dtype, :pid, :tc, :desc, "
                 "   :type, :rt, :rmin, :rmax, :dp, "
                 "   :w, :et, :rule, :apis, TRUE, "
-                "   'online', :su, :sm, "
+                "   'online', :su, :sm, :ad, "
                 "   FALSE, NOW(), NOW()) "
                 "RETURNING id"
             ), {**common_fields, 'tc': task_code})

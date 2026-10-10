@@ -52,7 +52,7 @@ POSTGRES_URI = os.environ.get(
 ALGORITHM_TYPE = os.environ.get('ALGO_TYPE', 'voice_llm')
 
 # ============================================================
-# 轮次结构化音频参数定义
+# 轮次结构化音频参数定义（打断族版本，与库一致）
 # (param_code, param_name, label, field_type, param_direction,
 #  field_path, agg_role, output_role, visible_in_report,
 #  required, default_value, help_text, ui_order)
@@ -62,22 +62,19 @@ AUDIO_PARAMS = (
         'played_audios', '被播放音频', '被播放音频', 'json', 'input',
         None, None, None, True,
         False, None,
-        '本轮被播放音频（用例配置 rounds[].audios，含 audio_id/spl/play_order，'
-        'audio_path 由评估链路运行时补全上传），评估时经 case_config→audios 映射取用', 3,
+        '本轮被播放音频（用例配置 rounds[].audios）；FFT 互相关精修打断轮定位窗口用', 3,
     ),
     (
         'background_noise', '背景噪声', '背景噪声', 'json', 'input',
         None, None, None, True,
         False, None,
-        '本轮背景噪声配置（轮次级 background_noise，缺省时取用例级全局 background_noise），'
-        '评估时经 case_config→background_noise 映射取用', 4,
+        '本轮背景噪声配置（轮次级 background_noise，缺省取用例级全局）', 4,
     ),
     (
         'interferers', '干扰人', '干扰人', 'json', 'input',
         None, None, None, True,
         False, None,
-        '本轮干扰人音频列表（algorithm_params.interferers，评估前提升为轮级字段），'
-        '评估时经 case_config→interferers 映射取用', 5,
+        '本轮干扰人音频列表（algorithm_params.interferers，评估前提升为轮级字段）', 21,
     ),
 )
 
@@ -89,15 +86,22 @@ AUDIO_MAPPINGS = (
     ('case_config', 'output', 'interferers', 'interferers', 'none'),
 )
 
-# 话轮评估族（turn_eval）：参数仅 played_audios（库真实状态），映射与运行时一致挂 3 条
-# case_config → audios/background_noise/interferers（voice_llm 全量注册 + dim72 body_template 均含）
+# 话轮评估族（turn_eval）：参数仅 played_audios（库真实状态，help_text 为话轮版），
+# 映射与运行时一致挂 3 条 case_config → audios/background_noise/interferers
+# （voice_llm 全量注册 + dim72 body_template 均含）
 TURN_EVAL_AUDIO_PARAMS = (
-    AUDIO_PARAMS[0],
+    (
+        'played_audios', '被播放音频', '被播放音频', 'json', 'input',
+        None, None, None, True,
+        False, None,
+        '本轮被播放音频列表（用例配置 rounds[].audios），运行时补全上传', 3,
+    ),
 )
 TURN_EVAL_AUDIO_MAPPINGS = AUDIO_MAPPINGS
 
 # task_type_code → (params, mappings) 金标音频配置
-# 其他族（reject_judge 等）金标无音频参数，跳过
+# 其他族（reject_judge/env_judge）的音频参数与映射由各族 seed 脚本注册
+# （seed_reject_judge.py / seed_env_judge.py），此处跳过避免重复定义冲突
 AUDIO_CONFIG = {
     'interruption_metrics': (AUDIO_PARAMS, AUDIO_MAPPINGS),
     'turn_eval': (TURN_EVAL_AUDIO_PARAMS, TURN_EVAL_AUDIO_MAPPINGS),
