@@ -118,7 +118,7 @@ class HomeService:
                         {
                             'id': task.get('id'),
                             'name': task.get('name'),
-                            'type': task.get('type'),
+                            'device_types': task.get('device_types') or [],
                             'status': task.get('status'),
                             'algorithm_type': task.get('algorithm_type'),
                             'total_cases': task.get('total_cases'),
@@ -137,7 +137,7 @@ class HomeService:
                     RecentTaskItem(
                         id=task['id'],
                         name=task['name'],
-                        type=task['type'],
+                        device_types=task['device_types'],
                         status=task['status'],
                         algorithm_type=task['algorithm_type'],
                         total_cases=task['total_cases'],

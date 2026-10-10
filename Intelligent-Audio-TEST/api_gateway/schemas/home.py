@@ -75,7 +75,8 @@ class DeviceStatus(APIModel):
 class RecentTaskItem(APIModel):
     id: int = Field(...)
     name: str = Field(...)
-    type: str = Field(...)
+    # INT-79 废弃 Task.type 存储语义：读模型口径为用例级被测设备类型集合
+    device_types: List[str] = Field(default_factory=list)
     status: str = Field(...)
     algorithm_type: Optional[str] = Field(None)
     total_cases: int = Field(...)

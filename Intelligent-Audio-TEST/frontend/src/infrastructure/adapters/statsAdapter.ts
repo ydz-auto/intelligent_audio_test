@@ -108,7 +108,7 @@ function toRecentTask(dto: RecentTaskItemDto): RecentTaskSummary {
   return {
     id: dto.id,
     name: dto.name,
-    type: dto.type,
+    deviceTypes: dto.device_types ?? [],
     status: dto.status,
     algorithmType: dto.algorithm_type ?? undefined,
     totalCases: num(dto.total_cases),

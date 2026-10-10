@@ -78,7 +78,7 @@ export interface HomeStatsDetails {
 export interface RecentTaskSummary {
   id: number
   name: string
-  type: string
+  deviceTypes: string[]
   status: string
   algorithmType?: string
   totalCases: number
