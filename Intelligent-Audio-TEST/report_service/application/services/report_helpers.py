@@ -186,8 +186,8 @@ class ReportHelpers:
                         noise_item["label"] = None
                     noise_audios.append(noise_item)
 
-            if is_compare:
-                audios_list.extend(round_dry)
+            # INT-134：compare 模式不再 extend(round_dry)——音频项已在上方
+            # 无条件 append 过一次，再 extend 会同一音频重复入列
             per_round_dry.append(round_dry)
 
         # 每轮内部排序
