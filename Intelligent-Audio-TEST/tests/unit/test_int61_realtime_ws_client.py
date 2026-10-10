@@ -75,10 +75,17 @@ class FakeVendorRealtimeServer:
         return f'ws://127.0.0.1:{self.port}'
 
     def stop(self):
-        if self._server is not None:
-            self._loop.call_soon_threadsafe(self._server.close)
-        if self._loop is not None:
-            self._loop.call_soon_threadsafe(self._loop.stop)
+        # 优雅关停（P3#3 夹具噪音收口）：await 关闭完成 → serve_forever() 随
+        # wait_closed() 正常返回、线程自然退出。原实现 close 后立即 loop.stop()，
+        # 未完成的 Server._close 任务被销毁，产生 PytestUnhandledThreadExceptionWarning
+        # （Event loop stopped before Future completed / Server._close never awaited）。
+        if self._server is not None and self._loop is not None:
+            async def _close():
+                self._server.close()
+                await self._server.wait_closed()
+            asyncio.run_coroutine_threadsafe(_close(), self._loop).result(timeout=5)
+        if self._thread is not None:
+            self._thread.join(timeout=5)
 
 
 @pytest.fixture
