@@ -60,12 +60,23 @@ async def lifespan(app: FastAPI):
     _soft_delete_cleaner.start()
 
     # 启动事件订阅：监听 TaskCompleted 事件，自动触发报告生成（事件驱动补充手动触发）
-    from report_service.application.services.report_task_generator import ReportTaskGenerator
+    from report_service.application.services.report_task_generator import (
+        ReportTaskGenerator,
+        start_generation_watchdog,
+        stop_generation_watchdog,
+    )
     try:
         ReportTaskGenerator.start_event_subscriber()
         logger.info("report_service 事件订阅已启动，监听 TaskCompleted 事件")
     except Exception as e:
         logger.warning("report_service 事件订阅启动失败，将仅依赖手动触发: %s", e)
+
+    # 启动报告生成看门狗（INT-117）：卡死可观察（超时判定+线程栈转储）、失败可上报
+    try:
+        start_generation_watchdog()
+        logger.info("report_service 生成看门狗已启动")
+    except Exception as e:
+        logger.warning("report_service 生成看门狗启动失败: %s", e)
 
     # 启动事件订阅：监听 REPORT_EVENTS（报告生成完成）自动刷新 Benchmark 排行 ReadModel（D1）
     from report_service.application.services.benchmark_ranking_event_subscriber import (
@@ -82,6 +93,9 @@ async def lifespan(app: FastAPI):
 
     # 停止软删除清理线程
     _soft_delete_cleaner.stop()
+
+    # 停止报告生成看门狗
+    stop_generation_watchdog()
 
     if _grpc_server is not None:
         try:

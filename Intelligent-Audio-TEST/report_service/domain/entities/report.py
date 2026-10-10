@@ -42,6 +42,25 @@ class ReportType(str, Enum):
     DETAILED = 'detailed'
 
 
+class GenerationStage(str, Enum):
+    """报告生成过程阶段枚举（INT-117 看门狗观测用）。
+
+    _generate_task_report_async 的阶段轨迹：提交后先排队（QUEUED），
+    工作线程开始后按序推进。看门狗按「阶段停留时长 + 总时长」判定卡死点，
+    卡死时结合工作线程调用栈精确定位阻塞行。
+    """
+    QUEUED = 'queued'                  # 已提交线程池，等待工作线程取走
+    VALIDATE_TASK = 'validate_task'    # 任务校验 + 结果收集（gRPC task_service）
+    CHECK_EXISTING = 'check_existing'  # 已有报告检查（DB）
+    PREPARE_DATA = 'prepare_data'      # 报告数据准备（gRPC + OSS 读取）
+    BUILD_SUMMARY = 'build_summary'    # 汇总构建（纯计算）
+    PERSIST_RECORD = 'persist_record'  # 报告记录落库
+    PERSIST_SUMMARY = 'persist_summary'  # 摘要落库
+    PERSIST_DETAIL = 'persist_detail'  # 明细数据落库
+    SET_STATUS = 'set_status'          # 状态置 published
+    EMIT_DONE = 'emit_done'            # 完成事件发布
+
+
 @dataclass
 class ReportSummaryEntity:
     """报告摘要实体（聚合内实体）

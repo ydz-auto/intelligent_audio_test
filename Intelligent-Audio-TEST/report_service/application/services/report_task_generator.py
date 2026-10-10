@@ -8,6 +8,10 @@
 - generate_task_report 不再解析 HTTP 请求，改为直接接收参数并返回 dict
 - 异步生成逻辑中去掉手动的 commit/rollback，事务由仓储方法自行管理
 """
+import os
+import sys
+import json
+import time
 import traceback
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -15,6 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
 from report_service.application.services.report_data_builder import ReportDataBuilder
+from report_service.config.config import Config
+from report_service.domain.entities.report import GenerationStage
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_tasks_by_ids,
     _grpc_get_devices_by_ids,
@@ -53,6 +59,258 @@ _report_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='report_
 _REPORT_GEN_LOCK_PREFIX = 'report:gen:'
 # 30 分钟兜底 TTL，防止持有者崩溃后死锁；正常路径在 finally 中主动释放
 _GENERATION_LOCK_TTL = 1800
+
+
+def _now() -> float:
+    """单调时钟（看门狗与轨迹注册表统一取时点，测试可 monkeypatch）。"""
+    return time.monotonic()
+
+
+class GenerationTracker:
+    """报告生成轨迹注册表（INT-117 卡死可观察）。
+
+    记录每次生成的阶段与时间戳，供看门狗线程观测：
+    - 卡死可观察：总时长超阈值时输出工作线程当前调用栈（精确定位卡死行）
+    - 队列饥饿可观察：QUEUED 停留过长说明线程池 max_workers=3 被占满
+    工作线程写、看门狗线程读，锁保护。
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._entries = {}
+
+    def mark_submitted(self, task_id):
+        """登记一次生成提交（进入 QUEUED 阶段；同 task 重复提交覆盖旧轨迹）。"""
+        with self._lock:
+            self._entries[task_id] = {
+                'task_id': task_id,
+                'stage': GenerationStage.QUEUED.value,
+                'submitted_at': _now(),
+                'stage_since': _now(),
+                'queue_warned': False,
+                'timeout_reported': False,
+                'timeout_warn_count': 0,
+                'thread_id': None,
+            }
+
+    def mark_stage(self, task_id, stage, thread_id=None):
+        """推进阶段；thread_id 记录首次进入工作线程的标识（看门狗取栈用）。"""
+        with self._lock:
+            entry = self._entries.get(task_id)
+            if entry is None:
+                return
+            entry['stage'] = stage.value if isinstance(stage, GenerationStage) else str(stage)
+            entry['stage_since'] = _now()
+            if thread_id is not None:
+                entry['thread_id'] = thread_id
+
+    def current_stage(self, task_id) -> str:
+        with self._lock:
+            entry = self._entries.get(task_id)
+            return entry['stage'] if entry else GenerationStage.QUEUED.value
+
+    def mark_queue_warned(self, task_id):
+        with self._lock:
+            entry = self._entries.get(task_id)
+            if entry is not None:
+                entry['queue_warned'] = True
+
+    def mark_timeout_reported(self, task_id):
+        with self._lock:
+            entry = self._entries.get(task_id)
+            if entry is not None:
+                entry['timeout_reported'] = True
+                entry['timeout_warn_count'] += 1
+
+    def finish(self, task_id):
+        """生成结束（成功/失败/异常）移除轨迹。"""
+        with self._lock:
+            self._entries.pop(task_id, None)
+
+    def snapshot(self):
+        with self._lock:
+            return [dict(entry) for entry in self._entries.values()]
+
+
+_generation_tracker = GenerationTracker()
+
+
+class _StageSpan:
+    """阶段埋点上下文管理器：登记阶段、慢阶段 WARNING、完成时长 DEBUG。"""
+
+    def __init__(self, task_id, stage):
+        self.task_id = task_id
+        self.stage = stage
+        self._start = _now()
+
+    def __enter__(self):
+        _generation_tracker.mark_stage(self.task_id, self.stage, threading.get_ident())
+        log_and_emit('DEBUG', 'report',
+                     f'[generate_task_report_async] stage={self.stage.value} enter',
+                     task_id=self.task_id)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        elapsed = _now() - self._start
+        if exc_type is None:
+            level = 'WARNING' if elapsed > Config.REPORT_GEN_SLOW_STAGE_SECONDS else 'DEBUG'
+            log_and_emit(level, 'report',
+                         f'[generate_task_report_async] stage={self.stage.value} done in {elapsed:.1f}s',
+                         task_id=self.task_id)
+        return False
+
+
+def _error_message(error):
+    """从 error_response 元组 (payload, http_code) 提取 message（兼容 dict/str）。"""
+    if isinstance(error, tuple) and error and isinstance(error[0], dict):
+        return error[0].get('message') or '任务验证失败'
+    if isinstance(error, dict):
+        return error.get('message') or '任务验证失败'
+    return str(error) if error else '任务验证失败'
+
+
+def _thread_stack(thread_id):
+    """按线程 ID 取当前调用栈文本（看门狗卡死定位的核心埋点）。"""
+    if thread_id is None:
+        return '<worker thread not started (still queued)>'
+    frame = sys._current_frames().get(thread_id)
+    if frame is None:
+        return '<thread exited>'
+    return ''.join(traceback.format_stack(frame))
+
+
+def _executor_queue_depth():
+    """线程池待执行队列深度（CPython 私有属性，取不到返回 None）。"""
+    try:
+        return _report_executor._work_queue.qsize()
+    except Exception:
+        return None
+
+
+_watchdog_thread = None
+_watchdog_stop_event = threading.Event()
+
+
+def start_generation_watchdog():
+    """启动报告生成看门狗守护线程（幂等；report_service lifespan 调用）。
+
+    扫描 GenerationTracker：总时长超 REPORT_GEN_TIMEOUT_SECONDS 判卡死——
+    CRITICAL 日志（含工作线程调用栈）+ report_generated 失败事件（一次），
+    之后每次扫描升级 WARNING（时长倍增退避）；QUEUED 停留超
+    REPORT_GEN_QUEUE_STUCK_SECONDS 告警线程池饥饿。
+    """
+    global _watchdog_thread
+    if _watchdog_thread is not None and _watchdog_thread.is_alive():
+        return _watchdog_thread
+    _watchdog_stop_event.clear()
+    _watchdog_thread = threading.Thread(
+        target=_watchdog_loop, name='ReportGenWatchdog', daemon=True)
+    _watchdog_thread.start()
+    log_and_emit(
+        'INFO', 'report',
+        f'[watchdog] 报告生成看门狗已启动：扫描周期 {Config.REPORT_GEN_WATCHDOG_INTERVAL_SECONDS}s，'
+        f'超时阈值 {Config.REPORT_GEN_TIMEOUT_SECONDS}s，队列饥饿阈值 {Config.REPORT_GEN_QUEUE_STUCK_SECONDS}s')
+    return _watchdog_thread
+
+
+def stop_generation_watchdog():
+    """停止看门狗（lifespan shutdown 调用；未启动时为无害空操作）。"""
+    _watchdog_stop_event.set()
+
+
+def _watchdog_loop():
+    interval = Config.REPORT_GEN_WATCHDOG_INTERVAL_SECONDS
+    while not _watchdog_stop_event.wait(interval):
+        try:
+            _watchdog_scan_once()
+        except Exception as e:
+            log_and_emit('ERROR', 'report', f'[watchdog] 扫描异常: {e}\n{traceback.format_exc()}')
+
+
+def _watchdog_scan_once():
+    """单次扫描：对每条未完成轨迹做队列饥饿与超时判定。"""
+    timeout_seconds = Config.REPORT_GEN_TIMEOUT_SECONDS
+    queue_stuck_seconds = Config.REPORT_GEN_QUEUE_STUCK_SECONDS
+    now = _now()
+    for entry in _generation_tracker.snapshot():
+        task_id = entry['task_id']
+        stage = entry['stage']
+        queued_elapsed = now - entry['submitted_at']
+
+        if stage == GenerationStage.QUEUED.value:
+            if queued_elapsed > queue_stuck_seconds and not entry['queue_warned']:
+                _generation_tracker.mark_queue_warned(task_id)
+                log_and_emit(
+                    'WARNING', 'report',
+                    f'[watchdog] task_id={task_id} 提交后排队 {queued_elapsed:.0f}s 未开始执行'
+                    f'（线程池 max_workers=3 可能被占满，队列深度={_executor_queue_depth()}）',
+                    task_id=task_id)
+
+        total_elapsed = now - entry['submitted_at']
+        if total_elapsed <= timeout_seconds:
+            continue
+
+        stage_elapsed = now - entry['stage_since']
+        if not entry['timeout_reported']:
+            _generation_tracker.mark_timeout_reported(task_id)
+            stack = _thread_stack(entry.get('thread_id'))
+            log_and_emit(
+                'CRITICAL', 'report',
+                f'[watchdog] task_id={task_id} 报告生成疑似卡死：总耗时 {total_elapsed:.0f}s '
+                f'超过阈值 {timeout_seconds}s，卡在阶段 {stage}（已停留 {stage_elapsed:.0f}s）。'
+                f'注意：去重锁仍由该线程持有，直至 TTL {_GENERATION_LOCK_TTL}s 兜底过期。'
+                f'工作线程调用栈：\n{stack}',
+                task_id=task_id)
+            _emit_report_event('report_generated', {
+                'taskId': task_id,
+                'success': False,
+                'error': f'报告生成超时（超过 {timeout_seconds}s 未完成），卡在阶段 {stage}',
+                'status': 'timeout',
+                'stage': stage,
+            })
+        else:
+            # 持续卡死：时长每翻倍升一次 WARNING，避免逐扫描周期刷屏
+            warn_count = entry['timeout_warn_count']
+            if total_elapsed >= timeout_seconds * (2 ** warn_count):
+                _generation_tracker.mark_timeout_reported(task_id)
+                log_and_emit(
+                    'WARNING', 'report',
+                    f'[watchdog] task_id={task_id} 仍在生成中（总耗时 {total_elapsed:.0f}s，'
+                    f'阶段 {stage} 停留 {stage_elapsed:.0f}s），超时失败事件已于此前上报',
+                    task_id=task_id)
+
+
+def _submit_generation(task_id, lock, name, description, submit_log_message):
+    """登记轨迹并提交线程池；提交失败回收轨迹与锁并上报失败（INT-117 失败可上报）。"""
+    _generation_tracker.mark_submitted(task_id)
+    try:
+        _report_executor.submit(
+            ReportTaskGenerator._generate_task_report_async,
+            task_id, name, description, lock
+        )
+    except Exception as submit_err:
+        _generation_tracker.finish(task_id)
+        if lock is not None:
+            try:
+                lock.release()
+            except Exception:
+                pass
+        log_and_emit('ERROR', 'report',
+                     f'{submit_log_message} 提交失败: {submit_err}', task_id=task_id)
+        _emit_report_event('report_generated', {
+            'taskId': task_id,
+            'success': False,
+            'error': f'报告生成任务提交失败: {submit_err}',
+        })
+        return False
+    depth = _executor_queue_depth()
+    if depth:
+        log_and_emit(
+            'WARNING', 'report',
+            f'{submit_log_message} 已提交，但线程池待执行队列深度={depth}'
+            f'（工作线程可能被占满，本次生成将延迟执行）',
+            task_id=task_id)
+    return True
 
 
 def _acquire_generation_lock(task_id):
@@ -123,10 +381,9 @@ class ReportTaskGenerator:
             return {'success': True, 'data': {'taskId': task_id, 'status': 'generating'}, 'message': '报告正在生成中'}
 
         log_and_emit('INFO', 'report', f'[generate_task_report] Submitting async task for task_id={task_id}', task_id=task_id)
-        _report_executor.submit(
-            ReportTaskGenerator._generate_task_report_async,
-            task_id, name, description, lock
-        )
+        if not _submit_generation(task_id, lock, name, description,
+                                  f'[generate_task_report] task_id={task_id}'):
+            return {'success': False, 'data': None, 'message': '报告生成任务提交失败，请稍后重试'}
         log_and_emit('INFO', 'report', f'[generate_task_report] Async task submitted for task_id={task_id}', task_id=task_id)
 
         return {'success': True, 'data': {'taskId': task_id, 'status': 'generating'}, 'message': '报告生成中，请稍后刷新'}
@@ -210,10 +467,9 @@ class ReportTaskGenerator:
             return {'success': False, 'data': None, 'message': '删除旧报告失败，请稍后重试'}
 
         # 异步重新生成
-        _report_executor.submit(
-            ReportTaskGenerator._generate_task_report_async,
-            task_id, None, None, lock
-        )
+        if not _submit_generation(task_id, lock, None, None,
+                                  f'[regenerate_report] task_id={task_id}'):
+            return {'success': False, 'data': None, 'message': '报告生成任务提交失败，请稍后重试'}
         log_and_emit('INFO', 'report', f'[regenerate_report] Async task submitted for task_id={task_id}', task_id=task_id)
 
         return {'success': True, 'data': {'taskId': task_id, 'status': 'generating'}, 'message': '报告重新生成中，请稍后刷新'}
@@ -445,20 +701,30 @@ class ReportTaskGenerator:
         迁移说明：去掉手动的 commit/rollback，仓储方法自行管理事务；
         _create_report_record 等由 ReportDataBuilder 委托仓储完成写入。
         去重锁由调用方传入，在 finally 中释放（分布式锁替代原进程内 set）。
+
+        INT-117 可观察性：每个阶段经 _StageSpan 埋点（轨迹注册表 + 慢阶段
+        WARNING + 时长日志）；失败路径（验证失败/数据准备失败/异常）一律
+        ERROR 日志 + report_generated 失败事件，不再静默返回。
         """
         try:
             log_and_emit('INFO', 'report', f'[generate_task_report_async] Starting for task_id={task_id}', task_id=task_id)
 
-            task, results, error = ReportDataBuilder._validate_task_and_get_results(task_id)
+            with _StageSpan(task_id, GenerationStage.VALIDATE_TASK):
+                task, results, error = ReportDataBuilder._validate_task_and_get_results(task_id)
             if error:
+                error_msg = _error_message(error)
+                log_and_emit('ERROR', 'report',
+                             f'[generate_task_report_async] 任务验证失败: {error_msg}',
+                             task_id=task_id)
                 _emit_report_event('report_generated', {
                     'taskId': task_id,
                     'success': False,
-                    'error': '任务验证失败'
+                    'error': error_msg,
                 })
                 return
 
-            existing_report = report_repository.get_report_by_task_id_raw(task_id)
+            with _StageSpan(task_id, GenerationStage.CHECK_EXISTING):
+                existing_report = report_repository.get_report_by_task_id_raw(task_id)
             if existing_report:
                 _emit_report_event('report_generated', {
                     'taskId': task_id,
@@ -472,30 +738,40 @@ class ReportTaskGenerator:
                 task_name = task.get('name') if isinstance(task, dict) else getattr(task, 'name', '')
                 name = f"任务报告_{task_name}_{now_cst().strftime('%Y%m%d%H%M%S')}"
 
-            data_dict = ReportTaskGenerator._prepare_report_data(task, task_id, results)
+            with _StageSpan(task_id, GenerationStage.PREPARE_DATA):
+                data_dict = ReportTaskGenerator._prepare_report_data(task, task_id, results)
             if data_dict is None:
+                # 失败事件已由 _prepare_report_data 内部按具体原因发布，此处补日志防静默
+                log_and_emit('ERROR', 'report',
+                             f'[generate_task_report_async] 报告数据准备失败（具体原因见 report_generated 失败事件与上游 WARNING）',
+                             task_id=task_id)
                 return
 
-            summary = ReportTaskGenerator._build_task_summary(task, task_id, results, data_dict)
+            with _StageSpan(task_id, GenerationStage.BUILD_SUMMARY):
+                summary = ReportTaskGenerator._build_task_summary(task, task_id, results, data_dict)
 
-            # _create_report_record 返回新报告的 id（int）
-            new_report_id = ReportDataBuilder._create_report_record(name, task_id, description)
+            with _StageSpan(task_id, GenerationStage.PERSIST_RECORD):
+                # _create_report_record 返回新报告的 id（int）
+                new_report_id = ReportDataBuilder._create_report_record(name, task_id, description)
             log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created report id={new_report_id}', task_id=task_id)
 
-            summary_id, meta_id = ReportDataBuilder._create_report_summary(new_report_id, task, summary)
+            with _StageSpan(task_id, GenerationStage.PERSIST_SUMMARY):
+                summary_id, meta_id = ReportDataBuilder._create_report_summary(new_report_id, task, summary)
             log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created summary_info id={summary_id}, report_id={new_report_id}', task_id=task_id)
 
-            raw_data_record, metric_stats_record = ReportDataBuilder._create_report_detail_data(new_report_id, summary)
+            with _StageSpan(task_id, GenerationStage.PERSIST_DETAIL):
+                raw_data_record, metric_stats_record = ReportDataBuilder._create_report_detail_data(new_report_id, summary)
             log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report_id}', task_id=task_id)
 
             report_id = new_report_id
 
             # 报告生成完成，设置状态为 published
-            try:
-                report_repository.update_status(report_id, 'published')
-                log_and_emit('INFO', 'report', f'[generate_task_report_async] Report status set to published, report_id={report_id}', task_id=task_id)
-            except Exception as status_err:
-                log_and_emit('WARNING', 'report', f'[generate_task_report_async] Failed to set published status: {status_err}', task_id=task_id)
+            with _StageSpan(task_id, GenerationStage.SET_STATUS):
+                try:
+                    report_repository.update_status(report_id, 'published')
+                    log_and_emit('INFO', 'report', f'[generate_task_report_async] Report status set to published, report_id={report_id}', task_id=task_id)
+                except Exception as status_err:
+                    log_and_emit('WARNING', 'report', f'[generate_task_report_async] Failed to set published status: {status_err}', task_id=task_id)
 
             log_and_emit('INFO', 'report', f'[generate_task_report_async] Report generated successfully, report_id={report_id}', task_id=task_id)
 
@@ -505,11 +781,15 @@ class ReportTaskGenerator:
                 'success': True,
                 'status': 'completed'
             }
-            log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting report_generated: {emit_data}', task_id=task_id)
-            _emit_report_event('report_generated', emit_data)
+            with _StageSpan(task_id, GenerationStage.EMIT_DONE):
+                log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting report_generated: {emit_data}', task_id=task_id)
+                _emit_report_event('report_generated', emit_data)
 
         except Exception as e:
-            log_and_emit('ERROR', 'report', f'[generate_task_report_async] Error: {e}\n{traceback.format_exc()}', task_id=task_id)
+            stage = _generation_tracker.current_stage(task_id)
+            log_and_emit('ERROR', 'report',
+                         f'[generate_task_report_async] Error (stage={stage}): {e}\n{traceback.format_exc()}',
+                         task_id=task_id)
             emit_data = {
                 'taskId': task_id,
                 'success': False,
@@ -518,6 +798,7 @@ class ReportTaskGenerator:
             log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting error: {emit_data}', task_id=task_id)
             _emit_report_event('report_generated', emit_data)
         finally:
+            _generation_tracker.finish(task_id)
             # 释放分布式去重锁（替代原进程内 set.discard）
             if lock is not None:
                 lock.release()
