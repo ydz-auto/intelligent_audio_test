@@ -172,7 +172,11 @@ class APIResultProcessor:
 
     def create_multi_round_test_result(self, task_id, test_case_id, api_config_id,
                                        algorithm_type, aggregated, success):
-        """为多轮会话创建单条测试结果记录"""
+        """为多轮会话创建单条测试结果记录，并回写 TaskCase 终态、通知执行引擎
+
+        状态回写由 result_processor 统一负责（RealtimeSessionExecutor._refresh_progress
+        契约）；评估提交仍由各执行器按「result_id 且全轮成功」条件发起。
+        """
         total_latency = aggregated.get('total_latency', 0)
         response_data = {
             "status_code": 200,
@@ -214,17 +218,87 @@ class APIResultProcessor:
             'error_message': error_msg,
         }
 
+        result_id = None
         try:
             result_id = _task_data_acl.submit_result(task_id, result_data)
             self._log(level='INFO',
                       content=f"多轮会话测试结果已保存: result_id={result_id}, "
                               f"rounds={aggregated.get('round_count')}, success={success}",
                       task_id=task_id, test_case_id=test_case_id, api_id=api_config_id)
-            return result_id
         except Exception as e:
-            self._log(level='ERROR', content=f"保存多轮会话测试结果失败: {e}",
+            error_msg = f"保存多轮会话测试结果失败: {e}"
+            self._log(level='ERROR', content=error_msg,
                       task_id=task_id, test_case_id=test_case_id)
-            return None
+
+        # 终态回写 + 引擎通知（对齐单轮 create_test_result 链路）。收敛契约：
+        # 执行器仅当「结果已保存且全轮成功」才提交评估，故回写 COMPLETED 当且仅当
+        # 同一条件成立；否则 evaluation_status 同步补写终态（INT-42 同款语义），
+        # 避免停留 pending 被计入活跃评估集合导致引擎死等、任务永不收敛
+        self._finalize_task_case_status(
+            task_id=task_id, test_case_id=test_case_id,
+            success=bool(result_id) and bool(success),
+            error_msg=error_msg, result_id=result_id)
+        return result_id
+
+    def _finalize_task_case_status(self, task_id, test_case_id, success, error_msg, result_id):
+        """多轮会话终态回写：查 TaskCase → update_task_case_status → 引擎通知 → CASE_EVENTS
+
+        stopped 保护：任务停止后不回写状态、不广播事件，避免覆盖停止态。
+        """
+        tc_rel = None
+        try:
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            tc_rel = next((tc for tc in tcs if str(tc.get('test_case_id')) == str(test_case_id)), None)
+        except Exception as e:
+            self._log(level='WARNING', category='database',
+                      content=f"查询 TaskCase 失败: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+
+        if tc_rel and tc_rel.get('execution_status') in [ExecutionStatus.STOPPED]:
+            self._log(level='INFO', category='database',
+                      content=f"任务已停止，跳过 TaskCase 状态回写: task_id={task_id}, test_case_id={test_case_id}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return
+
+        try:
+            if success:
+                _task_data_acl.update_task_case_status(
+                    task_id=task_id,
+                    case_id=test_case_id,
+                    execution_status=ExecutionStatus.COMPLETED,
+                )
+            else:
+                # 失败且评估不会被提交：评估状态补写终态，失败由 execution_status 承载
+                _task_data_acl.update_task_case_status(
+                    task_id=task_id,
+                    case_id=test_case_id,
+                    execution_status=ExecutionStatus.FAILED,
+                    evaluation_status=EvaluationStatus.COMPLETED,
+                    error_message=error_msg,
+                    completed_at=now_cst().isoformat(),
+                )
+            if self._executor.execution_engine:
+                self._executor.execution_engine._emit_progress(task_id, force=True)
+                self._executor.execution_engine.notify_case_completed(task_id)
+        except Exception as e:
+            self._log(level='WARNING', category='database',
+                      content=f"更新 TaskCase 状态失败: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+
+        # 发布用例执行完成事件到事件总线（异步通知 task_service，唤醒等待线程）
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+        from shared.infrastructure.worker_context import get_worker_instance_id
+        EventBus().publish(
+            EventChannel.CASE_EVENTS,
+            EventType.CASE_EXECUTION_COMPLETED if success else EventType.CASE_FAILED,
+            {
+                'task_id': str(task_id),
+                'test_case_id': str(test_case_id),
+                'result_id': str(result_id) if result_id else None,
+                'success': success,
+                'worker_instance_id': get_worker_instance_id(),
+            }
+        )
 
     def update_task_case_failure(self, task_id, tc_rel_id, error_msg, utc_plus_8=None):
         """更新 TaskCase 为失败状态
