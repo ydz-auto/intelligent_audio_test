@@ -99,7 +99,8 @@ class TestCaseReferenceRefreshMixin:
 
         test_cases = self.repo.list_testcases_by_ids(ids)
 
-        if len(ids) > 50:
+        from task_service.config.config import Config
+        if len(ids) > Config.REFERENCE_REFRESH_ASYNC_THRESHOLD:
             from task_service.application.testcase.reference_refresh_task import submit_reference_refresh_task
             task_id = submit_reference_refresh_task(
                 ids,

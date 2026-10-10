@@ -121,6 +121,8 @@ def get_refresh_task_status(task_id: str, _: None = require_permission('testcase
         'started_at': data.get('started_at'),
         'completed_at': data.get('completed_at'),
         'failed_cases': data.get('failed_cases', [])[:10],
+        'recovered_count': data.get('recovered_count', 0),
+        'error_message': data.get('error_message'),
     })
 
 

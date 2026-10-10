@@ -261,3 +261,13 @@ class RedisStore:
     def delete_task(self, key: str) -> None:
         self.redis_client.delete(key)
 
+    def scan_keys(self, pattern: str, count: int = 500) -> list:
+        """按 pattern SCAN 迭代匹配的 key（非阻塞，替代 KEYS）；Redis 异常时返回空列表。"""
+        keys = []
+        try:
+            for k in self.redis_client.scan_iter(match=pattern, count=count):
+                keys.append(k.decode('utf-8') if isinstance(k, bytes) else k)
+        except Exception as e:
+            logger.warning("SCAN %s 失败: %s", pattern, e)
+        return keys
+

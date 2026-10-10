@@ -17,6 +17,12 @@ class Config(BaseConfig):
     # 占位态 TTL 上限：执行崩溃后占位到期自愈，不永久卡死重试
     IDEMPOTENCY_RESERVE_TTL_SECONDS = int(os.environ.get('IDEMPOTENCY_RESERVE_TTL_SECONDS', 300))
 
+    # --- 用例参考参数批量刷新（INT-76）---
+    # 同步处理上限：超过该条数的批量刷新转异步任务，避免请求超时（默认 50 保持行为兼容）
+    REFERENCE_REFRESH_ASYNC_THRESHOLD = int(os.environ.get('REFERENCE_REFRESH_ASYNC_THRESHOLD', 50))
+    # 异步刷新任务状态记录的 Redis TTL（秒）：过期后前端查询返回 not_found
+    REFERENCE_REFRESH_TASK_TTL_SECONDS = int(os.environ.get('REFERENCE_REFRESH_TASK_TTL_SECONDS', 86400))
+
 
 # 兼容旧代码中的 TaskServiceConfig 引用
 TaskServiceConfig = Config

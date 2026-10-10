@@ -70,6 +70,18 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("服务重启状态恢复失败（不阻塞启动）: %s", e)
 
+    # 参考参数异步刷新任务恢复（INT-76）：收养归属已下线实例的孤儿任务并重放，
+    # 必须在本实例注册之后执行（依赖心跳存活判定）
+    try:
+        from task_service.application.testcase.reference_refresh_task import (
+            recover_orphan_reference_refresh_tasks,
+        )
+        adopted = recover_orphan_reference_refresh_tasks(instance_id=instance_id)
+        if adopted:
+            logger.info("参考参数刷新孤儿任务恢复完成: %s 个", adopted)
+    except Exception as e:
+        logger.warning("参考参数刷新孤儿任务恢复失败（不阻塞启动）: %s", e)
+
     # 清理孤儿任务控制标志（task:stop: / task:pause:）
     # 多实例下保留仍在运行/暂停任务（含其它存活实例名下）的标志，
     # 其余残留标志一并清除，避免冷启动后残留信号影响后续同名任务。
