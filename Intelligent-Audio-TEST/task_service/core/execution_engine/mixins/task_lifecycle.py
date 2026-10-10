@@ -21,6 +21,16 @@ logger = logging.getLogger(__name__)
 class TaskLifecycleMixin:
     """任务生命周期编排：启动 / 初始化 / 主循环"""
 
+    def _task_thread_main(self, task_id, stop_event, pause_event):
+        """任务工作线程入口：绑定 worker_instance_id 执行上下文后进入主循环。
+
+        出站 gRPC 拦截器据此为全部任务派发调用附加 worker-instance-id
+        metadata（UC-1001：调度归属 → 执行 → 事件 payload 全链路贯通）。
+        """
+        from shared.infrastructure.worker_context import set_worker_instance_id
+        set_worker_instance_id(getattr(self, 'instance_id', None))
+        self._run_task(task_id, stop_event, pause_event)
+
     def _run_task(self, task_id, stop_event, pause_event):
         """执行测试任务的核心方法
 

@@ -4,7 +4,7 @@
 覆盖:
 1. SSE: GET /api/v1/sse/events 端点连接 + 流式响应
 2. WebSocket (Socket.IO): 连接 / 和 /ws/logs 命名空间, subscribe_task 事件
-3. Redis PubSub → Socket.IO 转发: task_logs / task_progress 频道消息能到达前端
+3. Redis PubSub → Socket.IO 转发: EventBus 五通道事件（task_events/task_log 等）能到达前端
 4. E2E 测试服务: admin 端点可访问, 模块链路完整
 5. API 测试服务: admin 端点可访问, 模块链路完整
 
@@ -57,11 +57,14 @@ class TestSSE:
             pass
 
     def test_sse_receives_pubsub_events(self, api_client, require_backend):
-        """SSE 端点接收 Redis PubSub 频道消息并推送给前端。"""
+        """SSE 端点接收 EventBus 五通道事件并推送给前端。"""
         r = redis_lib.from_url(REDIS_URL)
-        # 发布一条测试消息到 sse_events 频道
-        test_event = {'event': 'test_event', 'data': {'msg': 'INT-8 SSE test'}}
-        r.publish('sse_events', json.dumps(test_event, ensure_ascii=False))
+        # 发布一条 EventBus 格式测试消息到 REPORT_EVENTS 通道（五通道收敛，INT-69）
+        test_event = {
+            'event_type': 'report_generated',
+            'payload': {'event': 'test_event', 'data': {'msg': 'INT-8 SSE test'}},
+        }
+        r.publish('report_events', json.dumps(test_event, ensure_ascii=False))
 
         received = False
         try:
@@ -139,7 +142,11 @@ class TestRedisPubSubForwarding:
     """Redis PubSub 消息转发到 Socket.IO 验证。"""
 
     def test_task_logs_forwarded_to_socketio(self, require_backend):
-        """发布 task_logs 频道消息 → Socket.IO /ws/logs 命名空间收到 task_log 事件。"""
+        """发布 TASK_EVENTS/task_log 事件 → 订阅房间后 Socket.IO /ws/logs 收到 task_log。
+
+        UC-1001：task_log 经 EventBus 五通道转发，前端按原生房间 room=task:{task_id}
+        接收（订阅走 subscribe_task → enter_room）。
+        """
         r = redis_lib.from_url(REDIS_URL)
         sio_client = _make_sio_client()
         connected = threading.Event()
@@ -158,9 +165,11 @@ class TestRedisPubSubForwarding:
         try:
             sio_client.connect(SOCKETIO_URL, namespaces=['/ws/logs'], wait_timeout=10)
             assert connected.is_set()
+            # 订阅任务房间（原生 room=task:{task_id}）
+            sio_client.emit('subscribe_task', {'task_id': '999999'}, namespace='/ws/logs')
             time.sleep(0.5)
 
-            # 发布一条日志到 Redis task_logs 频道
+            # 经 EventBus TASK_EVENTS / task_log 发布一条日志（五通道收敛，INT-69）
             log_payload = {
                 'id': 999999,
                 'time': '2026-08-11 09:00:00',
@@ -174,19 +183,21 @@ class TestRedisPubSubForwarding:
                 'source': 'test_suite',
             }
             message = {
-                'log_payload': log_payload,
-                'task_id': 999999,
+                'event_type': 'task_log',
+                'payload': {
+                    'log_payload': log_payload,
+                    'task_id': 999999,
+                },
             }
-            r.publish('task_logs', json.dumps(message, ensure_ascii=False))
+            r.publish('task_events', json.dumps(message, ensure_ascii=False))
 
             # 等待 Socket.IO 转发
             assert log_received.wait(timeout=5), \
-                'task_logs Redis 消息未转发到 Socket.IO /ws/logs'
+                'task_events/task_log 事件未转发到 Socket.IO /ws/logs'
 
-            # 验证收到的消息内容（两种格式之一）
+            # 验证收到的消息内容（前端契约：{task_id, log: {...}}）
             data = received_payload.get('data', {})
             if isinstance(data, dict) and 'log' in data:
-                # 包装格式 {taskId, log: {...}}
                 log = data.get('log', {})
                 assert log.get('content') == 'INT-8 test log message'
             elif isinstance(data, dict) and data.get('content'):

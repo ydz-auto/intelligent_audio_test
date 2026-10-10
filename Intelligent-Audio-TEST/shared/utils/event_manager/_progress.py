@@ -25,7 +25,6 @@ from shared.schemas.socket_payloads import (
     RoundProgress,
     TaskProgressPayload,
 )
-from shared.utils.event_manager._common import get_socketio
 from shared.utils.status_constants import (
     ACTIVE_EXECUTION_STATUSES,
     ExecutionStatus,
@@ -52,6 +51,21 @@ EXPECTED_TOTAL_SMOOTHING_RATIO = 0.1
 
 # 时间预估兜底值（秒）
 DEFAULT_EXPECTED_TOTAL_SECONDS = 60
+
+
+def _emit_task_progress_event(task_id, payload: dict, worker_instance_id=None):
+    """经 EventBus TASK_EVENTS / task_progress 发布进度事件。
+
+    各服务进程（含 task_service 自身）统一走总线，由 api_gateway 订阅后
+    转发前端 Socket.IO；Redis 不可用时 EventBus.publish 内部降级不打断业务。
+    """
+    from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+    EventBus().publish(EventChannel.TASK_EVENTS, EventType.TASK_PROGRESS, {
+        'event': 'task_progress',
+        'task_id': str(task_id),
+        'data': payload,
+        'worker_instance_id': worker_instance_id,
+    })
 
 
 def _extract_task_id(task) -> str:
@@ -194,7 +208,7 @@ class _TaskProxy:
 class ProgressMixin:
     # ────────────────────────── 入口与编排 ──────────────────────────
 
-    def emit_progress(self, task, force=False):
+    def emit_progress(self, task, force=False, worker_instance_id=None):
         task_id = _extract_task_id(task)
 
         if not task_id:
@@ -234,6 +248,7 @@ class ProgressMixin:
                 min_interval=min_interval,
                 force=force,
                 current_time=current_time,
+                worker_instance_id=worker_instance_id,
             )
         except Exception as e:
             self._log(level='ERROR', content=f"emit_progress 异常: {str(e)}", task_id=task_id, category='error')
@@ -251,10 +266,9 @@ class ProgressMixin:
         cached_progress = self._progress_cache.get(task_id)
         if cached_progress and current_time - cached_progress['timestamp'] < 0.1:
             try:
-                _socketio = get_socketio()
-                if _socketio:
-                    _socketio.emit_sync('task_progress', cached_progress['data'])
-                    self._log(level='DEBUG', content=f"使用缓存发送进度更新，task_id={task_id}", task_id=task_id)
+                _emit_task_progress_event(task_id, cached_progress['data'],
+                                          worker_instance_id=cached_progress.get('worker_instance_id'))
+                self._log(level='DEBUG', content=f"使用缓存发送进度更新，task_id={task_id}", task_id=task_id)
             except Exception as emit_error:
                 self._log(level='WARNING', content=f"使用缓存发送进度更新失败: {str(emit_error)}", task_id=task_id)
             return True
@@ -517,7 +531,7 @@ class ProgressMixin:
 
     # ────────────────────────── 收尾：预估/变更检测/发射 ──────────────────────────
 
-    def _finalize_and_emit(self, task_id, db_task, progress, min_interval, force, current_time):
+    def _finalize_and_emit(self, task_id, db_task, progress, min_interval, force, current_time, worker_instance_id=None):
         """时间预估、防闪烁平滑、变更检测、缓存与最终发射。"""
         elapsed_seconds, expected_total_seconds, expected_complete_time_str = \
             self._compute_time_estimate(task_id, db_task)
@@ -529,8 +543,8 @@ class ProgressMixin:
         if self._should_skip_update(task_id, db_task, progress, min_interval, force, current_time):
             return
 
-        self._cache_progress(task_id, db_task, progress, current_time)
-        self._emit(task_id, progress)
+        self._cache_progress(task_id, db_task, progress, current_time, worker_instance_id=worker_instance_id)
+        self._emit(task_id, progress, worker_instance_id=worker_instance_id)
 
     def _compute_time_estimate(self, task_id, db_task):
         """计算已用时长与预计总时长（带防闪烁平滑）。"""
@@ -598,7 +612,7 @@ class ProgressMixin:
         self._log(level='DEBUG', content=f"{reasons[0]}，更新进度，task_id={task_id}", task_id=task_id)
         return False
 
-    def _cache_progress(self, task_id, db_task, progress, current_time):
+    def _cache_progress(self, task_id, db_task, progress, current_time, worker_instance_id=None):
         """记录上次发射状态与 payload 缓存。"""
         self._last_progress[task_id] = {
             'time': current_time,
@@ -609,18 +623,17 @@ class ProgressMixin:
         self._progress_cache[task_id] = {
             'data': progress.model_dump(),
             'timestamp': current_time,
+            'worker_instance_id': worker_instance_id,
         }
 
-    def _emit(self, task_id, progress):
-        """发射 task_progress 事件（snake_case payload）。"""
+    def _emit(self, task_id, progress, worker_instance_id=None):
+        """发射 task_progress 事件（snake_case payload，经 EventBus TASK_EVENTS 发布）。"""
         payload = progress.model_dump()
         try:
-            _socketio = get_socketio()
-            if _socketio:
-                _socketio.emit_sync('task_progress', payload)
-                self._log(level='DEBUG',
-                          content=f"成功发送 task_progress 事件，task_id={task_id}, progress={progress.total_progress}%",
-                          task_id=task_id)
+            _emit_task_progress_event(task_id, payload, worker_instance_id=worker_instance_id)
+            self._log(level='DEBUG',
+                      content=f"成功发送 task_progress 事件，task_id={task_id}, progress={progress.total_progress}%",
+                      task_id=task_id)
         except Exception as emit_error:
             self._log(level='ERROR', content=f"发送 task_progress 事件失败: {str(emit_error)}", task_id=task_id)
             raise

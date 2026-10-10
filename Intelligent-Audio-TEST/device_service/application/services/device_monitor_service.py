@@ -3,8 +3,7 @@
 
 职责：
 - 状态事件落库（device_status_events）+ DEVICE_EVENTS 真实发布方
-  （EventBus DEVICE_STATUS_CHANGED + redis publish_device_status，
-  此前两者仅有定义无生产方）
+  （EventBus DEVICE_STATUS_CHANGED，INT-69 起不再双发裸字符串频道）
 - 告警规则评估（离线时长/健康检查失败次数/CPU/内存/电池）→ 告警落库 →
   邮件通知（SMTP 配置化，未配置降级为仅落库）
 - 告警确认流（active → acknowledged）
@@ -74,7 +73,7 @@ class DeviceMonitorService:
 
     @staticmethod
     def _publish_device_events(device_id, event_type, to_status, source, success, detail):
-        """发布领域事件到 DEVICE_EVENTS 频道 + redis device_status 频道。"""
+        """发布领域事件到 DEVICE_EVENTS 频道。"""
         payload = {
             'device_id': device_id,
             'event_type': event_type,
@@ -89,14 +88,6 @@ class DeviceMonitorService:
             EventBus().publish(EventChannel.DEVICE_EVENTS, EventType.DEVICE_STATUS_CHANGED, payload)
         except Exception:
             logger.debug("发布 DEVICE_STATUS_CHANGED 事件失败（降级忽略）", exc_info=True)
-        try:
-            from shared.utils.redis_pubsub import RedisPubSub
-            RedisPubSub().publish_device_status(device_id, {
-                'event_type': event_type, 'status': to_status,
-                'source': source, 'success': success,
-            })
-        except Exception:
-            logger.debug("发布 device_status 消息失败（降级忽略）", exc_info=True)
 
     def list_status_history(self, device_ids=None, event_type=None,
                             start_time=None, end_time=None,

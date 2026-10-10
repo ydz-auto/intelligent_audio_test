@@ -37,6 +37,12 @@ class ExecutionServiceServicer(e2e_grpc.ExecutionServiceServicer):
     def StartE2ETask(self, request, context=None):
         """启动 E2E 任务（执行单个 E2E 用例）"""
         try:
+            from shared.infrastructure.worker_context import (
+                set_worker_instance_id, worker_instance_id_from_context,
+            )
+            # E2E 用例在本 gRPC 线程同步执行，绑定 worker_instance_id 后
+            # 聚合器发布事件时直接读取（UC-1001 执行链路贯通）
+            set_worker_instance_id(worker_instance_id_from_context(context))
             task_id = request.task_id
             tc_rel_id = request.tc_rel_id
             result = self.e2e_service.start_e2e_case(task_id, tc_rel_id)

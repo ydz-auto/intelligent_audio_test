@@ -9,4 +9,3 @@ LOG_AND_EMIT_CONSOLE_LOG = None
 _cached_socketio = None
 _cached_app = None
 _global_db_handler = None
-_ws_broadcast_callback = None  # FastAPI WebSocket 广播回调

@@ -288,7 +288,7 @@ class DeviceCommandService:
                 now_cst() if is_online else None
             )
 
-            # 状态历史事件落库 + DEVICE_EVENTS 发布（INT-80：publish_device_status 接上真实生产方）
+            # 状态历史事件落库 + DEVICE_EVENTS 发布（INT-80；INT-69 收敛至单一 EventBus 链路）
             device_monitor_service.record_status_event(
                 device_id=device_data['id'],
                 event_type='health_check',

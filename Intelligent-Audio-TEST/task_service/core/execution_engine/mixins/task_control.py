@@ -116,7 +116,11 @@ class TaskControlMixin:
                     local_db_session.close()
 
                 # 创建任务执行线程
-                thread = threading.Thread(target=self._run_task, args=(task_id, stop_event, pause_event))
+                thread = threading.Thread(
+                    target=self._task_thread_main,
+                    args=(task_id, stop_event, pause_event),
+                    name=f"task-worker-{task_id}",
+                )
                 self.workers[task_id] = thread
                 self.stop_flags[task_id] = stop_event
                 self.pause_flags[task_id] = pause_event
@@ -212,7 +216,11 @@ class TaskControlMixin:
                 # 创建任务完成事件（用于替代忙等待）
                 self.task_completion_events[task_id] = threading.Event()
 
-                thread = threading.Thread(target=self._run_task, args=(task_id, stop_event, pause_event))
+                thread = threading.Thread(
+                    target=self._task_thread_main,
+                    args=(task_id, stop_event, pause_event),
+                    name=f"task-worker-{task_id}",
+                )
                 self.workers[task_id] = thread
                 self.stop_flags[task_id] = stop_event
                 self.pause_flags[task_id] = pause_event

@@ -116,6 +116,7 @@ class APIResultProcessor:
 
             # 发布用例执行完成事件到事件总线（异步通知 task_service）
             from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+            from shared.infrastructure.worker_context import get_worker_instance_id
             EventBus().publish(
                 EventChannel.CASE_EVENTS,
                 EventType.CASE_EXECUTION_COMPLETED if success else EventType.CASE_FAILED,
@@ -124,6 +125,7 @@ class APIResultProcessor:
                     'test_case_id': str(test_case_id),
                     'result_id': str(result_id) if result_id else None,
                     'success': success,
+                    'worker_instance_id': get_worker_instance_id(),
                 }
             )
 

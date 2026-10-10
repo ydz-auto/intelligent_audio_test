@@ -175,6 +175,24 @@ class ClientDeadlineInterceptor(grpc.UnaryUnaryClientInterceptor):
         return continuation(new_details, request)
 
 
+class ClientWorkerContextInterceptor(grpc.UnaryUnaryClientInterceptor):
+    """客户端 worker 上下文拦截器：出站调用自动附加 worker-instance-id metadata。
+
+    task_service 任务工作线程入口 set_worker_instance_id() 后，本进程全部
+    出站 gRPC 调用携带归属实例标识；执行服务端从 invocation_metadata 读取，
+    写入事件 payload（UC-1001 worker_instance_id 贯通执行链路）。
+    """
+
+    def intercept_unary_unary(self, continuation, client_call_details, request):
+        from shared.infrastructure.worker_context import worker_instance_id_metadata
+        extra = worker_instance_id_metadata()
+        if not extra:
+            return continuation(client_call_details, request)
+        existing = client_call_details.metadata or ()
+        new_details = client_call_details._replace(metadata=tuple(existing) + tuple(extra))
+        return continuation(new_details, request)
+
+
 # ==================== DB scope 拦截器 ====================
 
 class ServerDbScopeInterceptor(grpc.ServerInterceptor):
@@ -208,6 +226,7 @@ class ServerDbScopeInterceptor(grpc.ServerInterceptor):
 
 # 单例
 client_log_interceptor = ClientLogInterceptor()
+client_worker_context_interceptor = ClientWorkerContextInterceptor()
 client_deadline_interceptor = ClientDeadlineInterceptor()
 server_log_interceptor = ServerLogInterceptor()
 server_db_scope_interceptor = ServerDbScopeInterceptor()

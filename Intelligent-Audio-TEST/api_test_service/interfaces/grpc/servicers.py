@@ -34,6 +34,18 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
         self._status_handler = None
         self._crud_service = None
 
+    @staticmethod
+    def _bind_worker_context(context):
+        """从入站 metadata 绑定 worker_instance_id（UC-1001 执行链路贯通）。
+
+        本线程内（含亲和转发出站调用）可读；线程池执行路径由
+        APITestService.start_task 以 copy_context 按用例传播。
+        """
+        from shared.infrastructure.worker_context import (
+            set_worker_instance_id, worker_instance_id_from_context,
+        )
+        set_worker_instance_id(worker_instance_id_from_context(context))
+
     @property
     def create_handler(self):
         """application 层 — 创建/启动 API 测试命令处理器"""
@@ -74,6 +86,7 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
     def CreateAPITest(self, request, context=None):
         """创建 API 测试任务（同时触发启动）"""
         try:
+            self._bind_worker_context(context)
             task_id = request.task_id
             test_config = _loads(request.test_config, {})
             command = CreateAPITestCommand(
@@ -97,6 +110,7 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
         不传 case_ids 时，由 api_test_service 自行从数据库按 pending 状态读取。
         """
         try:
+            self._bind_worker_context(context)
             task_id = request.task_id
             command = CreateAPITestCommand(task_id=task_id, case_ids=[], api_ids=[])
             result = self.create_handler.handle(command)

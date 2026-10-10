@@ -24,12 +24,6 @@ def set_socketio(socketio):
     if _state._global_db_handler:
         _state._global_db_handler.set_socketio(socketio)
 
-def set_ws_broadcast_callback(callback):
-    """设置 WebSocket 广播回调（FastAPI ConnectionManager.broadcast_log_sync）"""
-    _state._ws_broadcast_callback = callback
-    if _state._global_db_handler:
-        _state._global_db_handler._ws_broadcast_callback = callback
-
 def set_flask_app(app):
     """设置全局 App 实例（FastAPI 兼容，保留向后兼容）"""
     _state._cached_app = app

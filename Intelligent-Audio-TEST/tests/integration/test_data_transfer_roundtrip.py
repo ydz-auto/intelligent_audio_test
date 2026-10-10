@@ -118,23 +118,25 @@ def fake_redis(monkeypatch):
         def publish(self, *a, **k):
             pass
 
-    monkeypatch.setattr(batch_mod, 'RedisStore', lambda *a, **k: fake)
-    monkeypatch.setattr(pubsub_mod, 'RedisStore', lambda *a, **k: fake)
-    # 模块导入时已实例化的单例：替换其内部 store
-    monkeypatch.setattr(batch_mod.transfer_batch_registry, '_store', fake)
-    # 进度报告器：发布与快照全部走内存替身（避免真实 Redis 连接重试拖慢测试）
-    monkeypatch.setattr(reporter_mod, 'RedisPubSub', _FakePubSub)
-    monkeypatch.setattr(reporter_mod, 'RedisStore', lambda *a, **k: fake)
-    # 导入成功事件（EventBus.publish 内部吞异常，但仍会尝试真实连接）
-    import task_service.application.task.data_transfer_import_service as import_mod
-
     class _FakeEventBus:
+        """不联网的 EventBus 替身（publish 静默）"""
+
         def __init__(self, *a, **k):
             pass
 
         def publish(self, *a, **k):
             pass
 
+    monkeypatch.setattr(batch_mod, 'RedisStore', lambda *a, **k: fake)
+    monkeypatch.setattr(pubsub_mod, 'RedisStore', lambda *a, **k: fake)
+    # 模块导入时已实例化的单例：替换其内部 store
+    monkeypatch.setattr(batch_mod.transfer_batch_registry, '_store', fake)
+    # 进度报告器：发布与快照全部走内存替身（避免真实 Redis 连接重试拖慢测试）
+    # INT-69：进度发布改走 EventBus TASK_EVENTS/import_progress，替换 reporter 模块内绑定
+    monkeypatch.setattr(reporter_mod, 'EventBus', _FakeEventBus)
+    monkeypatch.setattr(reporter_mod, 'RedisStore', lambda *a, **k: fake)
+    # 导入成功事件（EventBus.publish 内部吞异常，但仍会尝试真实连接）
+    import task_service.application.task.data_transfer_import_service as import_mod
     monkeypatch.setattr(import_mod, 'EventBus', _FakeEventBus)
     return fake
 

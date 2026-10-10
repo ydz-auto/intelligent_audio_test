@@ -167,6 +167,7 @@ class E2EAggregator:
         def _publish_case_event(success):
             """发布用例执行完成事件到事件总线"""
             from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+            from shared.infrastructure.worker_context import get_worker_instance_id
             EventBus().publish(
                 EventChannel.CASE_EVENTS,
                 EventType.CASE_EXECUTION_COMPLETED if success else EventType.CASE_FAILED,
@@ -174,6 +175,7 @@ class E2EAggregator:
                     'task_id': str(task_id),
                     'test_case_id': str(test_case_id),
                     'success': success,
+                    'worker_instance_id': get_worker_instance_id(),
                 }
             )
 

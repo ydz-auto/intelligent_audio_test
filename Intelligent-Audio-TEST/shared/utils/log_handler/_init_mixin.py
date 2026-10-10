@@ -24,8 +24,6 @@ class _InitMixin:
         self.enable_console_log = False
         self.socketio_instance = None
         self.flask_app = None
-        self._ws_broadcast_callback = None  # FastAPI WebSocket 广播回调
-        self._redis_pubsub = None  # Redis PubSub 实例（子服务进程用）
 
         self._last_db_warning_time = 0
         self._last_ws_warning_time = 0

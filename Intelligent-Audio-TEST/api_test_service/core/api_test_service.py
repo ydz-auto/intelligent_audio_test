@@ -4,6 +4,7 @@ API Test Service - 服务接口层
 
 迁移后由 stub 改为真正驱动 APIExecutor。
 """
+import contextvars
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -160,10 +161,13 @@ class APITestService:
                 self._mark_task_idle(task_id)
                 return {'success': True, 'task_id': task_id, 'message': '无可执行的用例'}
 
-            # 提交到固定线程池，全部用例完成后在 _run_case 的 finally 中自动清理
+            # 提交到固定线程池，全部用例完成后在 _run_case 的 finally 中自动清理。
+            # 每用例独立 copy_context：把 servicer 绑定的 worker_instance_id
+            # 传播进池线程（UC-1001 事件 payload 贯通），各 Context 互不共享写。
             pending_count[0] = len(target_case_ids)
             for tc_rel_id in target_case_ids:
-                self._task_pool.submit(_run_case, tc_rel_id)
+                case_ctx = contextvars.copy_context()
+                self._task_pool.submit(case_ctx.run, _run_case, tc_rel_id)
 
             return {
                 'success': True,

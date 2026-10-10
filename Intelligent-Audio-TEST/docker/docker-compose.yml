@@ -428,9 +428,10 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.api_test_service
-    ports:
-      - "5003:5003"
-      - "50071:50071"
+    # 不发布宿主端口（UC-1001/INT-69）：服务间经容器网络互访
+    # （API_TEST_SERVICE_HOST=api_test_service，多副本由 Docker DNS 轮询），
+    # 会话亲和路由按注册表中各副本自解析的 host:grpc_port 精确寻址。
+    # 宿主机调试按需在 compose.override.yml 中对单副本追加 ports 映射。
     environment:
       - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
       - REDIS_URL=redis://redis:6379
@@ -456,9 +457,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    # 多实例扩容（--scale / deploy.replicas）前需先移除上方固定宿主端口映射，否则第二个副本端口冲突
     deploy:
-      replicas: 1
+      replicas: 2
 
 volumes:
   postgres_data:

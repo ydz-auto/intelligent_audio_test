@@ -37,12 +37,10 @@ async def lifespan(app: FastAPI):
     init_db(pool_size=3)
     app.state.audio_storage_path = Config.AUDIO_STORAGE_PATH
 
-    # 初始化 WebSocket 日志推送回调
-    # 使用 Socket.IO 服务端（兼容前端 socket.io-client），替代原生 WS
-    from api_gateway.websocket.socketio_server import ws_manager, sio
-    from shared.utils.log_handler import set_ws_broadcast_callback, get_db_handler
-    set_ws_broadcast_callback(ws_manager.broadcast_log_sync)
-    from shared.utils.log_handler import set_socketio
+    # 初始化 Socket.IO 管理器（UC-1001：日志统一经 EventBus 转发，
+    # 不再注入 log_handler 直发回调 set_ws_broadcast_callback）
+    from api_gateway.websocket.socketio_server import ws_manager
+    from shared.utils.log_handler import set_socketio, get_db_handler
     set_socketio(ws_manager)
 
     # 将 DatabaseLogHandler 挂到 root logger，使标准 logging.getLogger() 调用也走分流逻辑
@@ -50,7 +48,7 @@ async def lifespan(app: FastAPI):
     root_logger.addHandler(get_db_handler())
     root_logger.setLevel(logging.INFO)
 
-    # 保存主线程事件循环，供后台线程的 broadcast_log_sync 使用
+    # 保存主线程事件循环，供后台线程的事件转发使用
     import asyncio as _asyncio
     try:
         ws_manager._main_loop = _asyncio.get_running_loop()
@@ -61,60 +59,15 @@ async def lifespan(app: FastAPI):
     registry = RedisServiceRegistry()
     registry.register('api_gateway', Config.SERVICE_HOST, Config.PORT)
 
-    # 启动 Redis PubSub 订阅线程：转发 task_service / e2e_test_service 等子服务发来的日志和进度
-    _start_redis_subscriber(sio, ws_manager)
+    # 启动 EventBus 五通道转发线程：订阅 TASK/CASE/DEVICE/REPORT/CONFIG 事件，
+    # 把面向前端的实时事件（task_log/task_progress/import_progress/报告生成）转发给 Socket.IO
+    from api_gateway.infrastructure.event_bus_forwarder import start_event_forwarder
+    start_event_forwarder(ws_manager)
 
     # 软删除硬清理已下沉至各微服务（各自只清理 owned 表），api_gateway 不再负责
     logger.info("API Gateway (FastAPI + DDD) started on port %s", Config.PORT)
     yield
     logger.info("API Gateway shutting down")
-
-
-def _start_redis_subscriber(sio, ws_manager):
-    """启动后台线程订阅 Redis task_logs / task_progress 频道，转发给前端 Socket.IO"""
-    import threading
-    from shared.utils.redis_pubsub import RedisPubSub
-    from shared.infrastructure.config import BaseConfig
-
-    def _handle_message(channel, data):
-        """处理一条 Redis 消息，转发到前端 Socket.IO"""
-        import asyncio
-        loop = ws_manager._main_loop
-        if not (loop and loop.is_running()):
-            return
-
-        if channel == 'task_logs':
-            log_payload = data.get('log_payload', {})
-            task_id = data.get('task_id')
-            if task_id:
-                asyncio.run_coroutine_threadsafe(
-                    sio.emit('task_log', {'taskId': str(task_id), 'log': log_payload}, namespace='/ws/logs'),
-                    loop
-                )
-
-        elif channel == 'task_progress':
-            event_name = data.get('event', 'task_progress')
-            event_data = data.get('data', {})
-            asyncio.run_coroutine_threadsafe(
-                sio.emit(event_name, event_data, namespace='/'),
-                loop
-            )
-
-        elif channel == 'import_progress':
-            # 任务数据导入进度（INT-25）：payload 契约见
-            # shared/schemas/socket_payloads.ImportProgressPayload
-            event_data = data.get('data', data)
-            asyncio.run_coroutine_threadsafe(
-                sio.emit('import_progress', event_data, namespace='/'),
-                loop
-            )
-
-    def _subscriber_loop():
-        print(f"[RedisSubscriber] starting, subscribing to task_logs + task_progress + import_progress on {BaseConfig.REDIS_URL}", flush=True)
-        RedisPubSub().subscribe(['task_logs', 'task_progress', 'import_progress'], _handle_message)
-
-    t = threading.Thread(target=_subscriber_loop, daemon=True)
-    t.start()
 
 
 def create_app(config_name='default') -> FastAPI:

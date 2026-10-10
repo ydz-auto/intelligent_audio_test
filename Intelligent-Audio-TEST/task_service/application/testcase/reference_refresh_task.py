@@ -71,16 +71,21 @@ class ReferenceRefreshTask:
         _store().save_task(_task_key(self.task_id), fields, ttl_seconds=_TASK_TTL_SECONDS)
         # 推送进度到 WebSocket 通道（降级：Redis 不可用时只打日志，不影响刷新主流程）
         try:
-            from shared.utils.redis_pubsub import RedisPubSub
+            from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
             progress = 0
             if total and isinstance(total, int) and total > 0:
                 progress = int((self.updated_count + self.failed_count) / total * 100)
-            RedisPubSub().publish_progress(self.task_id, {
-                'status': self.status,
-                'total': total,
-                'updated': self.updated_count,
-                'failed': self.failed_count,
-                'progress': progress,
+            EventBus().publish(EventChannel.TASK_EVENTS, EventType.TASK_PROGRESS, {
+                'event': 'task_progress',
+                'task_id': self.task_id,
+                'data': {
+                    'task_id': self.task_id,
+                    'status': self.status,
+                    'total': total,
+                    'updated': self.updated_count,
+                    'failed': self.failed_count,
+                    'progress': progress,
+                },
             })
         except Exception as e:
             logger.warning(f"[ReferenceRefreshTask-{self.task_id}] 推送进度失败，降级忽略: {e}")

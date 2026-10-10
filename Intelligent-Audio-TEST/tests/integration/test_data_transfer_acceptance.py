@@ -409,23 +409,31 @@ class TestProgressPublishing:
 
         published = []
 
-        class _RecordingPubSub:
+        class _RecordingEventBus:
             def __init__(self, *a, **k):
                 pass
 
-            def publish(self, channel, message):
-                published.append((channel, message))
+            def publish(self, channel, event_type, payload):
+                published.append((
+                    channel.value if hasattr(channel, 'value') else channel,
+                    {
+                        'event_type': event_type.value if hasattr(event_type, 'value') else event_type,
+                        'payload': payload,
+                    },
+                ))
 
-        monkeypatch.setattr(reporter_mod, 'RedisPubSub', _RecordingPubSub)
+        monkeypatch.setattr(reporter_mod, 'EventBus', _RecordingEventBus)
 
         from task_service.application.task.data_transfer_import_service import (
             data_transfer_import_service)
         result = data_transfer_import_service.execute_import(data['zip_path'])
         assert result['success'], result.get('message')
 
-        from shared.constants.data_transfer import IMPORT_PROGRESS_CHANNEL
-        payloads = [msg['data'] for channel, msg in published
-                    if channel == IMPORT_PROGRESS_CHANNEL and isinstance(msg, dict)]
+        from shared.utils.redis_pubsub import EventChannel, EventType
+        payloads = [msg['payload']['data'] for channel, msg in published
+                    if channel == EventChannel.TASK_EVENTS.value
+                    and msg.get('event_type') == EventType.IMPORT_PROGRESS.value
+                    and isinstance(msg.get('payload'), dict)]
         steps = [p['step'] for p in payloads]
         assert steps[0] == 'parsing'
         assert steps[-1] == 'done'

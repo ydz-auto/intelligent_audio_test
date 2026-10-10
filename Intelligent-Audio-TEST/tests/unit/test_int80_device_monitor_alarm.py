@@ -369,10 +369,8 @@ class TestAcknowledgeFlow:
 class TestStatusEventPublishing:
     def test_record_status_event_publishes_device_events(self, monitor, monitor_repo):
         published = {}
-        with patch('shared.utils.redis_pubsub.EventBus') as bus_cls, \
-             patch('shared.utils.redis_pubsub.RedisPubSub') as pubsub_cls:
+        with patch('shared.utils.redis_pubsub.EventBus') as bus_cls:
             bus = bus_cls.return_value
-            pubsub = pubsub_cls.return_value
             event = monitor.record_status_event(
                 device_id=1, event_type='online', from_status='offline',
                 to_status='online', source='health_check', success=True)
@@ -382,9 +380,8 @@ class TestStatusEventPublishing:
             event_type_arg = bus.publish.call_args[0][1]
             assert channel_arg.value == 'device_events'
             assert event_type_arg.value == 'device_status_changed'
-            assert pubsub.publish_device_status.called
-            dev_arg = pubsub.publish_device_status.call_args[0][0]
-            assert dev_arg == 1
+            payload_arg = bus.publish.call_args[0][2]
+            assert payload_arg['device_id'] == 1
             published['channel'] = channel_arg
         assert published['channel'].value == 'device_events'
 

@@ -32,7 +32,7 @@ class ProgressMixin:
                     return
                 self.last_progress_update[task_id] = current_time
 
-        self.event_manager.emit_progress(task, force=force)
+        self.event_manager.emit_progress(task, force=force, worker_instance_id=getattr(self, 'instance_id', None))
 
     @staticmethod
     def refresh_task_counts_atomic(task_id):

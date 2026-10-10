@@ -1,10 +1,12 @@
 """
-SSE 事件流 —— 通过 Redis PubSub 订阅实时事件并推送给前端
+SSE 事件流 —— 订阅 EventBus 五通道，实时推送日志/进度/报告事件给前端
 
-频道映射：
-- task_logs      → event: task_log
-- task_progress  → event: task_progress
-- sse_events     → event: 由消息体 event 字段决定（如 report_generated）
+事件映射（UC-1001 五通道收敛）：
+- TASK_EVENTS / task_log      → event: task_log（payload 为日志信封）
+- TASK_EVENTS / task_progress → event: task_progress
+- TASK_EVENTS / import_progress → event: import_progress
+- REPORT_EVENTS / report_generated、secondary_compare_generated → event: 同名
+- REPORT_EVENTS / realtime_frame、realtime_summary → event: realtime_frame / realtime_summary
 """
 import json
 import logging
@@ -46,13 +48,43 @@ def format_sse(data, event=None, event_id=None):
     return "\n".join(messages) + "\n\n"
 
 
+# EventBus 消息 → (SSE 事件名, 下发数据) 的映射；返回 None 表示不推送给 SSE
+def _map_event(channel: str, data: dict):
+    from shared.utils.redis_pubsub import EventChannel
+
+    event_type = data.get('event_type', '')
+    payload = data.get('payload')
+    if not isinstance(payload, dict):
+        return None
+
+    if channel == EventChannel.TASK_EVENTS.value:
+        if event_type == 'task_log':
+            return 'task_log', payload
+        if event_type == 'task_progress':
+            return 'task_progress', payload.get('data') or {}
+        if event_type == 'import_progress':
+            return 'import_progress', payload.get('data') or {}
+        return None
+
+    if channel == EventChannel.REPORT_EVENTS.value:
+        if event_type in ('report_generated', 'secondary_compare_generated'):
+            return payload.get('event', event_type), payload.get('data') or {}
+        if event_type in ('realtime_frame', 'realtime_summary'):
+            return event_type, payload
+        return None
+
+    return None
+
+
 @router.get('/events')
 def stream_events(_: None = require_permission('sse:read')):
-    """SSE 事件流端点 — 订阅 Redis PubSub 频道，实时推送日志/进度/报告事件"""
+    """SSE 事件流端点 — 订阅 EventBus 五通道，实时推送日志/进度/报告事件"""
+    from shared.utils.redis_pubsub import EventChannel
+
     def generate():
         r = _get_redis()
         pubsub = r.pubsub()
-        pubsub.subscribe(['task_logs', 'task_progress', 'sse_events'])
+        pubsub.subscribe([c.value for c in EventChannel])
         try:
             while True:
                 message = pubsub.get_message(timeout=1.0)
@@ -69,13 +101,15 @@ def stream_events(_: None = require_permission('sse:read')):
                     data = json.loads(message['data'])
                 except (json.JSONDecodeError, TypeError):
                     continue
-                if channel == 'task_logs':
-                    yield format_sse(data, event='task_log')
-                elif channel == 'task_progress':
-                    yield format_sse(data, event='task_progress')
-                elif channel == 'sse_events':
-                    event_name = data.pop('event', 'report') if isinstance(data, dict) else 'report'
-                    yield format_sse(data.get('data', data) if isinstance(data, dict) else data, event=event_name)
+                try:
+                    mapped = _map_event(channel, data)
+                except Exception:
+                    logger.debug("SSE 事件映射失败 channel=%s", channel, exc_info=True)
+                    continue
+                if mapped is None:
+                    continue
+                event_name, out = mapped
+                yield format_sse(out, event=event_name)
         finally:
             try:
                 pubsub.close()

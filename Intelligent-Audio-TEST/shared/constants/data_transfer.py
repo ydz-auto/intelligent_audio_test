@@ -142,8 +142,7 @@ REDIS_BATCH_KEY_PREFIX = 'data_transfer:batch:'           # + batch_id：回滚�
 BATCH_TTL_SECONDS = 7 * 24 * 3600                         # 批次登记保留 7 天，供人工介入补偿
 PROGRESS_TTL_SECONDS = 24 * 3600
 
-# ===== Redis PubSub 频道（网关订阅后转 SocketIO emit）=====
-IMPORT_PROGRESS_CHANNEL = 'import_progress'
+# 导入进度经 EventBus TASK_EVENTS / import_progress 事件发布（五通道收敛，INT-69）
 
 # ===== 导出选项默认值 =====
 DEFAULT_INCLUDE_REF_PARAMS = True

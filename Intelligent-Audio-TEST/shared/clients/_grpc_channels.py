@@ -11,6 +11,7 @@ from shared.infrastructure.config import BaseConfig
 from shared.infrastructure.grpc_interceptors import (
     client_deadline_interceptor,
     client_log_interceptor,
+    client_worker_context_interceptor,
 )
 
 # ==================== 服务地址 ====================
@@ -29,7 +30,7 @@ ADAPTER_GRPC_ADDR = f"{BaseConfig.ADAPTER_SERVICE_HOST}:{BaseConfig.ADAPTER_SERV
 # 客户端拦截器列表：grpc.intercept_channel 按 reversed 顺序包裹（grpc/_interceptor.py），
 # 列表首位最外层（日志最先拦截、记录原始调用与总耗时），末位最内层（deadline
 # 拦截器紧邻真实 channel 注入默认超时）。
-_CLIENT_INTERCEPTORS = [client_log_interceptor, client_deadline_interceptor]
+_CLIENT_INTERCEPTORS = [client_log_interceptor, client_worker_context_interceptor, client_deadline_interceptor]
 
 
 # ==================== channel 复用工厂 ====================

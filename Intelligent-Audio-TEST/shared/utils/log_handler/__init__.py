@@ -14,7 +14,7 @@
 
 为保证向后兼容，本 __init__.py 重新导出原文件所有公开符号，
 并通过模块级 __getattr__ 透明转发可变全局状态（如 _cached_socketio、
-_cached_app、_global_db_handler、_ws_broadcast_callback、LOG_AND_EMIT_CONSOLE_LOG）。
+_cached_app、_global_db_handler、LOG_AND_EMIT_CONSOLE_LOG）。
 这意味着旧代码中 `from shared.utils.log_handler import _cached_socketio`
 仍然会返回当前最新的值（动态读取，不会因快照失效）。
 """
@@ -41,7 +41,6 @@ from shared.utils.log_handler._handler import DatabaseLogHandler
 # 模块级对外 API 函数
 from shared.utils.log_handler._api import (
     set_socketio,
-    set_ws_broadcast_callback,
     set_flask_app,
     get_db_handler,
     log_not_emit,
@@ -60,7 +59,6 @@ __all__ = [
     'DatabaseLogHandler',
     # 函数
     'set_socketio',
-    'set_ws_broadcast_callback',
     'set_flask_app',
     'get_db_handler',
     'log_not_emit',
@@ -70,7 +68,6 @@ __all__ = [
     '_cached_socketio',
     '_cached_app',
     '_global_db_handler',
-    '_ws_broadcast_callback',
 ]
 
 
@@ -88,7 +85,6 @@ _DYNAMIC_STATE_NAMES = (
     '_cached_socketio',
     '_cached_app',
     '_global_db_handler',
-    '_ws_broadcast_callback',
 )
 
 

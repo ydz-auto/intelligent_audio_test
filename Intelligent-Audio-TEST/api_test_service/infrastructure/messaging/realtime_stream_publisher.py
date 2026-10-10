@@ -17,7 +17,6 @@ from shared.utils.redis_pubsub import (
     EventBus,
     EventChannel,
     EventType,
-    RedisPubSub,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,7 +64,3 @@ class RealtimeStreamPublisher:
             self._event_bus.publish(EventChannel.REPORT_EVENTS, event_type, payload)
         except Exception as e:
             logger.warning(f"发布 Realtime 领域事件 {channel.value} 失败: {e}")
-        try:
-            RedisPubSub().publish('sse_events', {'event': channel.value, 'data': payload})
-        except Exception as e:
-            logger.warning(f"发布 Realtime SSE 事件 {channel.value} 失败: {e}")
