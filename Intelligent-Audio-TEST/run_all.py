@@ -291,6 +291,14 @@ def start_service(svc):
         cmd = [
             sys.executable, '-m', f"{svc['dir']}.interfaces.grpc.server",
         ]
+        # INT-108：OS 音频栈楔死时（Audiosrv 卡 StartPending，真实 Pa_Initialize 无限挂起，
+        # 服务卡死在 PyAudio 预初始化、50052 永不绑定），置 AUDIO_PYAUDIO_SHIM=1 以
+        # INT-95 影子夹具启动 audio_service（无真实设备 I/O，API 链可用；E2E 物理链
+        # 验收必须去掉该开关改用真实驱动）。
+        if svc['name'] == 'audio_service' and os.environ.get('AUDIO_PYAUDIO_SHIM') == '1':
+            shim_dir = os.path.join(BASE_DIR, 'tests', 'fixtures', 'pyaudio_shim')
+            env['PYTHONPATH'] = shim_dir + os.pathsep + env['PYTHONPATH']
+            print(f"[INFO] audio_service: AUDIO_PYAUDIO_SHIM=1, injecting shadow pyaudio fixture ({shim_dir})", flush=True)
 
     proc = subprocess.Popen(
         cmd,
@@ -307,7 +315,15 @@ def start_service(svc):
     if port:
         _wait_port('localhost', port, name)
     elif grpc_port:
-        _wait_port('localhost', grpc_port, name)
+        ready = _wait_port('localhost', grpc_port, name)
+        if not ready and name == 'audio_service':
+            # INT-108：audio_service 端口超时最常见的根因是 OS 音频栈楔死，
+            # 进程卡死在 PyAudio 预初始化（日志停在 soft_delete_cleaner 两行），
+            # 此后进程存活但不监听端口，HTTP 冒烟口径探测不到。
+            print("[HINT] audio_service 未在超时内就绪。若 logs/audio_service/ 最新日志"
+                  "停在「守护线程已启动」，即 OS 音频栈楔死（真实 Pa_Initialize 无限挂起）："
+                  "设 AUDIO_PYAUDIO_SHIM=1 重新 run_all 以 INT-95 影子夹具启动"
+                  "（tests/fixtures/pyaudio_shim/pyaudio.py，E2E 物理链验收除外）。", flush=True)
 
 
 def start_redis():

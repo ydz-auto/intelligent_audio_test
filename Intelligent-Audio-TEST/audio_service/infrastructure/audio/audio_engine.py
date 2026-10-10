@@ -38,7 +38,10 @@ class AudioService(EngineDeviceCommMixin,
         self._device_cache = None
         self._cache_time = 0
         self._cache_duration = 5.0 # 缓存5秒
-        self._lock = threading.Lock()
+        # INT-108：可重入锁——_get_cached_devices 持锁时会经 _get_driver 进入
+        # init_driver 再次 acquire 同一把锁；驱动初始化失败（如 INT-95 影子夹具）
+        # 后 driver 恒为 None，该嵌套路径必然触发，非重入 Lock 在此自死锁。
+        self._lock = threading.RLock()
         self._audio_pool = None
 
     def _get_audio_pool(self):
