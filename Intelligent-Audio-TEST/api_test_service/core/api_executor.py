@@ -5,6 +5,7 @@ import logging
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus
 from shared.utils.query_utils import now_cst
+from shared.models.common_enums import DeviceType
 from shared.models.database import get_db_session
 from shared.infrastructure.base_executor import BaseExecutor
 from api_test_service.infrastructure.acl import (
@@ -19,6 +20,7 @@ from api_test_service.core.api_concurrency_manager import APIConcurrencyManager
 from api_test_service.core.api_task_runner import APITaskRunner
 from api_test_service.core.api_result_processor import APIResultProcessor
 from api_test_service.core.api_session_executor import APISessionExecutor
+from api_test_service.core.realtime_session_executor import RealtimeSessionExecutor
 from shared.utils.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
@@ -37,6 +39,17 @@ class APIExecutor(BaseExecutor):
         self._task_runner = APITaskRunner(self)
         self._result_processor = APIResultProcessor(self)
         self._session_executor = APISessionExecutor(self)
+        self._realtime_executor = RealtimeSessionExecutor(self)
+        # 执行器注册表：device_type 运行时分发（INT-61）
+        # physical → e2e_test_service E2EExecutor（task_service 侧分发，不经本服务）
+        self._executor_registry = {
+            DeviceType.HTTP_API.value: self._session_executor,
+            DeviceType.WEBSOCKET_API.value: self._realtime_executor,
+        }
+
+    def route_executor(self, device_type):
+        """按被测设备类型取执行器；未知类型回退 APISessionExecutor（旧任务兼容）"""
+        return self._executor_registry.get(device_type, self._session_executor)
 
     def _get_result_mapper(self):
         """返回 DeviceResult ACL 仓储，供 ResultsMixin 使用"""
@@ -163,13 +176,25 @@ class APIExecutor(BaseExecutor):
             self.execution_engine._emit_progress(task_id, force=True)
 
     def _execute_single_or_multi(self, task_id, tc_rel_id, data):
-        """根据是否配置 rounds 分发到多轮会话或线性流程"""
+        """按用例级 device_type 分发执行器，再按 rounds 分流（INT-61）
+
+        websocket_api → RealtimeSessionExecutor（含单轮，流式会话语义统一）；
+        其余（http_api / 旧数据缺省）保持既有行为不变。
+        """
         test_case_id = data['test_case_id']
         case_name = data['case_name']
         algorithm_type = data.get('algorithm_type', 'translation')
         case_algorithm_params = data.get('case_algorithm_params')
 
         case_config = self._load_case_config(test_case_id)
+
+        device_type = data.get('device_type') or DeviceType.HTTP_API.value
+        executor = self.route_executor(device_type)
+        if executor is not self._session_executor:
+            self._log(level='INFO',
+                      content=f"用例 {case_name} device_type={device_type}，进入 Realtime 流式会话模式",
+                      task_id=task_id, test_case_id=test_case_id)
+            return executor.execute(task_id, tc_rel_id, data, case_config)
 
         rounds = case_config.get('rounds', [])
         if rounds and len(rounds) > 1:
@@ -478,6 +503,7 @@ class APIExecutor(BaseExecutor):
             'test_case_id': test_case_id,
             'case_name': case_name,
             'algorithm_type': algorithm_type,
+            'device_type': tc_rel.get('device_type') or '',
             'api_configs': processed_api_configs,
             'audio': audio_data,
             'api_specific_config': api_specific_config,

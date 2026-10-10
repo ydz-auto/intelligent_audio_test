@@ -81,6 +81,42 @@ class APIProtocol(str, Enum):
     WEBSOCKET = 'websocket'
 
 
+class RealtimeChannel(str, Enum):
+    """Realtime 流式双通道枚举 — frame 逐帧 / summary 会话汇总（INT-61 新增）
+
+    双通道经 REPORT_EVENTS 领域事件 + sse_events SSE 桥推前端，
+    通道名即 SSE event 名，前端按通道订阅渲染。
+    """
+    FRAME = 'realtime_frame'
+    SUMMARY = 'realtime_summary'
+
+
+class RealtimeFrameType(str, Enum):
+    """Realtime 归一化帧事件类型（INT-61 新增）
+
+    厂商原始事件经 ACL 归一化（默认 OpenAI Realtime 事件协议），
+    executor 与前端只消费本枚举类型，不接触厂商字段。
+    """
+    SESSION_CREATED = 'session_created'
+    SESSION_UPDATED = 'session_updated'
+    AI_AUDIO_DELTA = 'ai_audio_delta'
+    AI_AUDIO_DONE = 'ai_audio_done'
+    AI_TEXT_DELTA = 'ai_text_delta'
+    AI_TEXT_DONE = 'ai_text_done'
+    USER_SPEECH_STARTED = 'user_speech_started'
+    USER_SPEECH_STOPPED = 'user_speech_stopped'
+    RESPONSE_CANCELLED = 'response_cancelled'
+    ERROR = 'error'
+    CONNECTION_CLOSED = 'connection_closed'
+    INPUT_COMMITTED = 'input_committed'
+
+
+class RealtimeRoundMode(str, Enum):
+    """Realtime 轮次模式枚举 — 正常轮 / 打断轮（barge-in）（INT-61 新增）"""
+    NORMAL = 'normal'
+    INTERRUPTION = 'interruption'
+
+
 class OutputType(str, Enum):
     """API 输出类型枚举 — adapter 多模态输出采集（执行域 P0 新增）"""
     AUDIO = 'audio'

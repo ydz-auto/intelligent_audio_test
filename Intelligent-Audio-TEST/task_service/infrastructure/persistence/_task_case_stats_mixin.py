@@ -113,6 +113,9 @@ class TaskCaseStatsMixin:
                 'status': tc.status,
                 'execution_status': tc.execution_status,
                 'evaluation_status': tc.evaluation_status,
+                # INT-61：api_test_service 按 device_type 运行时分发执行器
+                # （websocket_api → RealtimeSessionExecutor），缺省回退 http_api 旧行为
+                'device_type': tc.device_type,
                 'started_at': tc.started_at.isoformat() if tc.started_at else None,
                 'completed_at': tc.completed_at.isoformat() if tc.completed_at else None,
                 'duration': tc.duration,

@@ -39,3 +39,29 @@ class API(Base):
     default_max_timeout = Column(Integer, nullable=False, default=30, comment='默认最大超时时间 (秒)')
     default_max_audio_duration = Column(Integer, nullable=False, default=60, comment='默认支持的最大音频时长 (秒)')
     api_endpoints = Column(JSON, nullable=False, default=list, comment='API接入点配置列表 (JSON格式)')
+    rms_spl_mapping_id = Column(Integer, nullable=True, comment='当前默认 RMS→SPL 映射 ID (api_rms_spl_mappings，INT-61)')
+
+
+class ApiRmsSplMappingPO(Base):
+    """被测 API RMS→SPL 映射 PO (INT-61)
+
+    与 E2E SPLMapping（物理设备）对称：挂在被测 API 上（1:N），
+    语义为被测 API 数字域 dB → gain（校准 API 输入灵敏度）。
+    """
+    __tablename__ = 'api_rms_spl_mappings'
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='映射唯一ID')
+    name = Column(String(255), comment='配置名称')
+    description = Column(Text, comment='配置描述')
+    api_id = Column(Integer, nullable=False, index=True, comment='关联被测API (1:N)')
+    vendor = Column(String(50), comment='API 供应商')
+    protocol = Column(String(20), default='websocket', comment='API 协议')
+    reference_spl = Column(Float, nullable=False, default=65.0, comment='参考声压级 (dB SPL)')
+    reference_gain_linear = Column(Float, nullable=False, default=1.0, comment='参考线性增益')
+    calibration_status = Column(String(20), nullable=False, default='uncalibrated', comment='校准状态 (calibrated/uncalibrated)')
+    calibration_data = Column(JSON, default=dict, comment='校准测量点 {"points": [{target_spl, gain_linear, rms_dbfs}]}')
+    min_gain_linear = Column(Float, nullable=False, default=0.001, comment='增益下限')
+    max_gain_linear = Column(Float, nullable=False, default=10.0, comment='增益上限')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
+    deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
+    deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间')

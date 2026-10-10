@@ -48,5 +48,20 @@
     "long_hdc_timeout": 300,
     "extra_long_hdc_timeout": 120,
     "reply_start_timeout": 30
+  },
+  "realtime_session": {
+    "chunk_duration_ms": 100,
+    "ai_start_timeout_seconds": 25,
+    "ai_complete_timeout_seconds": 60,
+    "barge_in_window_seconds": 5,
+    "bind_ttl_seconds": 3600
+  },
+  "audio_render": {
+    "chunk_duration_ms": 100,
+    "spl_linear_approx_base_db": 65.0,
+    "spl_interp_boundary": "clamp",
+    "target_rms_dbfs": -30.0,
+    "pcm_cache_ttl_seconds": 300,
+    "render_file_timeout_seconds": 600
   }
 }

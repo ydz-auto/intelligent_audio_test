@@ -96,6 +96,10 @@ class RedisServiceRegistry:
         instances = self.discover(service_name)
         return instances[0] if instances else None
 
+    def get_instance_id(self):
+        """返回本进程注册的实例 ID（未注册/降级时返回 None）"""
+        return getattr(self, '_instance_id', None)
+
     def get_alive_ids(self, service_name, ttl=None):
         """返回心跳新鲜（未过期）的实例 ID 集合。
 

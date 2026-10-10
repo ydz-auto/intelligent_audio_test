@@ -43,6 +43,9 @@ class EventType(str, Enum):
     DEVICE_STATUS_CHANGED = 'device_status_changed'
     # 报告级
     REPORT_GENERATED = 'report_generated'
+    # Realtime 流式双通道（INT-61 新增）
+    REALTIME_FRAME = 'realtime_frame'
+    REALTIME_SUMMARY = 'realtime_summary'
     # 配置级
     DIMENSION_CONFIG_CHANGED = 'dimension_config_changed'
 
