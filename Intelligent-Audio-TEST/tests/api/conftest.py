@@ -13,8 +13,10 @@ import pytest
 # ── 路径常量 ──────────────────────────────────────────────
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SAMPLE_DIR = os.path.join(PROJECT_ROOT, 'doc', 'voice_llm', '样例')
-API_BASE = os.environ.get('API_BASE_URL', 'http://localhost:5000/api/v1')
-HEALTH_URL = os.environ.get('HEALTH_URL', 'http://localhost:5000/health')
+# INT-102 验收发现：本机 httpx 走 localhost（解析出 ::1）偶发 30s+ 读超时，
+# 127.0.0.1 直连稳定；服务端 uvicorn 绑 0.0.0.0（仅 IPv4），::1 必属误连。
+API_BASE = os.environ.get('API_BASE_URL', 'http://127.0.0.1:5000/api/v1')
+HEALTH_URL = os.environ.get('HEALTH_URL', 'http://127.0.0.1:5000/health')
 
 # 样例音频文件（3 轮，每轮一个 WAV）
 SAMPLE_AUDIO_FILES = ['2026144010.wav', '2026144019.wav', '2026144026.wav']
