@@ -372,3 +372,20 @@ class ThirdPartyAdapterKind(str, Enum):
     MULTIPART = 'multipart'
     FEATURE_EXTRACT = 'feature_extract'
     PRESIGNED_URL = 'presigned_url'
+
+
+class PlaybackQueryCode(int, Enum):
+    """播放设备查询响应业务码枚举（INT-92）
+
+    device_service GetPlaybackDeviceResponse.code 按失败原因填充，
+    audio_service ACL 据此区分「设备不存在（合法降级返回 None）」与
+    「服务故障（上抛 PlaybackDeviceQueryError 传递真实错误）」：
+    - UNSPECIFIED(0)   旧版本 device_service 未透传 code——保持既有降级语义
+    - OK(200)          查询成功
+    - NOT_FOUND(404)   设备不存在/已删除——合法降级，返回 None
+    - INTERNAL_ERROR(500) 服务故障——调用方必须上抛，不得伪装成业务空结果
+    """
+    UNSPECIFIED = 0
+    OK = 200
+    NOT_FOUND = 404
+    INTERNAL_ERROR = 500

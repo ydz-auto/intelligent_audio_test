@@ -4,9 +4,11 @@
 封装 device_service 的播放设备查询，
 使 application 层不再直接 import shared.clients.grpc_clients。
 
-失败语义（INT-90 缺陷 C）：基础设施失败（gRPC 调用异常、列表类接口
+失败语义（INT-90 缺陷 C / INT-92）：基础设施失败（gRPC 调用异常、列表类接口
 success=False）抛 PlaybackDeviceQueryError 向上传递真实错误，不返回
 []/None 伪装成业务空结果；「正常应答但无匹配」仍返回 []/None。
+GetPlaybackDevice（INT-92）按响应 code 细分：NOT_FOUND(404)/未透传(0) 返回
+None 维持「设备未配置」降级语义，其余故障 code（如 500）上抛真实错误。
 """
 from __future__ import annotations
 
@@ -16,6 +18,14 @@ from audio_service.domain.repositories.acl.playback_acl_repository import (
     PlaybackConfigACLRepository,
     PlaybackDeviceQueryError,
 )
+from shared.models.common_enums import PlaybackQueryCode
+
+# success=False 时按响应 code 降级为 None 的取值集合（INT-92）：
+# 未找到 = 设备不存在/已删除的合法降级；未透传 = 旧版本 device_service 兼容
+_DEGRADE_TO_NONE_CODES = frozenset({
+    PlaybackQueryCode.NOT_FOUND.value,
+    PlaybackQueryCode.UNSPECIFIED.value,
+})
 
 
 class PlaybackConfigACLRepositoryImpl(PlaybackConfigACLRepository):
@@ -48,6 +58,10 @@ class PlaybackConfigACLRepositoryImpl(PlaybackConfigACLRepository):
     def get_playback_device(self, device_id) -> dict:
         """通过 gRPC 从 device_service 获取 PlaybackDevice 数据（返回 dict 或 None）。
 
+        失败语义（INT-92）：success=False 时按响应 code 区分——
+        NOT_FOUND(404)/UNSPECIFIED(0，旧版本未透传) 返回 None（设备不存在/未配置，
+        调用方按「设备未配置」降级）；其余故障 code（如 500）抛
+        PlaybackDeviceQueryError 传递真实错误，不再静默吞成 None。
         PlaybackDevice 归属 device_service，audio_service 不再直连 PO。
         """
         try:
@@ -65,7 +79,12 @@ class PlaybackConfigACLRepositoryImpl(PlaybackConfigACLRepository):
             )
             if resp.success:
                 return _grpc_loads(resp.data, {}) or {}
-            return None
+            if resp.code in _DEGRADE_TO_NONE_CODES:
+                return None
+            raise PlaybackDeviceQueryError(
+                f"GetPlaybackDevice({device_id}) 响应失败(code={resp.code}): {resp.message}")
+        except PlaybackDeviceQueryError:
+            raise
         except Exception as e:
             raise PlaybackDeviceQueryError(
                 f"GetPlaybackDevice({device_id}) gRPC 调用失败: {e}") from e

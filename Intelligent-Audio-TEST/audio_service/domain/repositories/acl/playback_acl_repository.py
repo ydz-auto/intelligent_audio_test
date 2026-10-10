@@ -36,9 +36,10 @@ class PlaybackConfigACLRepository(ABC):
     def get_playback_device(self, device_id) -> dict:
         """通过 gRPC 从 device_service 获取 PlaybackDevice 数据（返回 dict 或 None）。
 
-        None = device_service 正常应答但设备不存在（GetPlaybackDeviceResponse
-        未透传 code，success=False 的 404 与失败不可区分，维持既有「dict 或
-        None」契约）；gRPC 调用异常抛 PlaybackDeviceQueryError。
+        None = device_service 正常应答但设备不存在（响应 code=404，或旧版本
+        未透传 code=0，INT-92）；其余故障 code（如 500）抛
+        PlaybackDeviceQueryError 上抛真实错误；gRPC 调用异常亦抛
+        PlaybackDeviceQueryError。
         PlaybackDevice 归属 device_service，audio_service 不再直连 PO。
         """
         ...

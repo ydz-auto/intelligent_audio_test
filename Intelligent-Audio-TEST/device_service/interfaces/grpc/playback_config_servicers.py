@@ -3,6 +3,7 @@
 
 PlaybackConfigServiceServicer：委托给 PlaybackCommandService（写）/ PlaybackQueryService（读）
 """
+from shared.models.common_enums import PlaybackQueryCode
 from shared.proto import device_service_pb2 as e2e_pb
 from shared.proto import device_service_pb2_grpc as e2e_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
@@ -87,9 +88,14 @@ class PlaybackConfigServiceServicer(e2e_grpc.PlaybackConfigServiceServicer):
                 success=result.get('success', False),
                 message=result.get('message', ''),
                 data=_dumps(result.get('data')),
+                code=result.get('code', PlaybackQueryCode.UNSPECIFIED.value),
             )
         except Exception as e:
-            return e2e_pb.GetPlaybackDeviceResponse(success=False, message=str(e), data="")
+            # INT-92：服务故障必须携带 code=500 上报，不得让调用方误判为「设备未找到」
+            return e2e_pb.GetPlaybackDeviceResponse(
+                success=False, message=str(e), data="",
+                code=PlaybackQueryCode.INTERNAL_ERROR.value,
+            )
 
     def ScanPlaybackDevices(self, request, context=None):
         try:

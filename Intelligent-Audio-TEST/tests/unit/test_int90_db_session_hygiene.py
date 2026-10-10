@@ -199,10 +199,11 @@ def _install_stub(monkeypatch, behavior):
 
 
 class _Resp:
-    def __init__(self, success, data='', message=''):
+    def __init__(self, success, data='', message='', code=0):
         self.success = success
         self.data = data
         self.message = message
+        self.code = code
 
 
 @pytest.fixture()
@@ -261,7 +262,7 @@ def test_acl_empty_result_stays_business_empty(acl, monkeypatch):
 
 
 def test_acl_get_device_keeps_not_found_none(acl, monkeypatch):
-    """GetPlaybackDevice success=False（含 404 未找到）维持既有 None 契约。"""
+    """GetPlaybackDevice success=False 且未透传 code（旧版本服务，code=0）维持既有 None 契约（INT-92 兼容）。"""
     _install_stub(monkeypatch, lambda kind: _Resp(False, message='未找到播放设备'))
     assert acl.get_playback_device(999) is None
 

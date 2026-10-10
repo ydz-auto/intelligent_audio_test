@@ -601,6 +601,10 @@ message GetPlaybackDeviceResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+  // 业务码（INT-92），取值见 shared.models.common_enums.PlaybackQueryCode：
+  // 0=旧版本服务未透传（按未找到降级）；200=成功；404=设备不存在（合法降级）；
+  // 500=服务故障（调用方须上抛真实错误，不得静默吞成 None）
+  int32 code = 4;
 }
 
 message ScanPlaybackDevicesRequest {
