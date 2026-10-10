@@ -404,3 +404,33 @@ class SplConfigAclRepository(ABC):
 
     @abstractmethod
     def get_by_device(self, device_id) -> CommandResultDTO: ...
+
+
+class ApiRmsSplConfigAclRepository(ABC):
+    """api_test_service.ApiRmsSplConfigService 数字域 RMS→SPL 映射 ACL 接口（UC-0902）。"""
+
+    # ---- 写操作 ----
+    @abstractmethod
+    def create(self, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def update(self, mapping_id, data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def delete(self, mapping_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def calibrate(self, mapping_id, calibration_data) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def set_default(self, api_id, mapping_id) -> CommandResultDTO: ...
+
+    # ---- 读操作 ----
+    @abstractmethod
+    def get_all(self, **kwargs) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_one(self, mapping_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_by_api(self, api_id) -> CommandResultDTO: ...

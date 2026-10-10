@@ -41,6 +41,10 @@ class ApiItem(APIModel):
     health_score: Optional[int] = Field(None)
     endpoints: List[ApiEndpointItem] = Field(default_factory=list)
     output_types: List[str] = Field(default_factory=list)
+    device_type: Optional[str] = Field(None)
+    adapter_class: Optional[str] = Field(None)
+    audio_config: Optional[Dict[str, Any]] = Field(None)
+    rms_spl_mapping_id: Optional[int] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
 
@@ -85,6 +89,9 @@ class ApiCreateInput(APIModel):
     status: Optional[str] = Field(None)
     endpoints: List[ApiEndpointInput] = Field(default_factory=list)
     output_types: Optional[List[str]] = Field(None)
+    device_type: Optional[str] = Field(None)
+    adapter_class: Optional[str] = Field(None)
+    audio_config: Optional[Dict[str, Any]] = Field(None)
 
 
 class ApiUpdateInput(APIModel):
@@ -100,3 +107,7 @@ class ApiUpdateInput(APIModel):
     status: Optional[str] = Field(None)
     endpoints: Optional[List[ApiEndpointInput]] = Field(None)
     output_types: Optional[List[str]] = Field(None)
+    device_type: Optional[str] = Field(None)
+    adapter_class: Optional[str] = Field(None)
+    audio_config: Optional[Dict[str, Any]] = Field(None)
+    rms_spl_mapping_id: Optional[int] = Field(None)

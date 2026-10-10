@@ -75,6 +75,7 @@ from shared.clients._grpc_stubs import (
     get_evaluation_config_service_stub,
     get_evaluation_data_service_stub,
     get_api_test_service_stub,
+    get_api_rms_spl_config_service_stub,
     get_adapter_service_stub,
     get_algorithm_group_service_stub,
     get_algorithm_definition_service_stub,

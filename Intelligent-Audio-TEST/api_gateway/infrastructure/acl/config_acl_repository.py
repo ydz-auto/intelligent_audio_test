@@ -10,6 +10,7 @@ from api_gateway.domain.dto import CommandResultDTO
 from api_gateway.domain.repositories.acl.config_acl_repository import (
     AlgorithmConfigAclRepository,
     ApiConfigAclRepository,
+    ApiRmsSplConfigAclRepository,
     EvaluationConfigAclRepository,
     SplConfigAclRepository,
     TagConfigAclRepository,
@@ -525,3 +526,39 @@ class SplConfigAclRepositoryImpl(SplConfigAclRepository):
     def get_by_device(self, device_id) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import spl_config_service
         return _wrap(spl_config_service.get_by_device(device_id))
+
+
+class ApiRmsSplConfigAclRepositoryImpl(ApiRmsSplConfigAclRepository):
+    """api_test_service.ApiRmsSplConfigService 数字域 RMS→SPL 映射 ACL 实现（UC-0902）。"""
+
+    def create(self, data) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service
+        return _wrap(api_rms_spl_config_service.create(data))
+
+    def update(self, mapping_id, data) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service
+        return _wrap(api_rms_spl_config_service.update(mapping_id, data))
+
+    def delete(self, mapping_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service
+        return _wrap(api_rms_spl_config_service.delete(mapping_id))
+
+    def calibrate(self, mapping_id, calibration_data) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service
+        return _wrap(api_rms_spl_config_service.calibrate(mapping_id, calibration_data))
+
+    def set_default(self, api_id, mapping_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service
+        return _wrap(api_rms_spl_config_service.set_default(api_id, mapping_id))
+
+    def get_all(self, **kwargs) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service
+        return _wrap(api_rms_spl_config_service.get_all(**kwargs))
+
+    def get_one(self, mapping_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service
+        return _wrap(api_rms_spl_config_service.get_one(mapping_id))
+
+    def get_by_api(self, api_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import api_rms_spl_config_service
+        return _wrap(api_rms_spl_config_service.get_by_api(api_id))

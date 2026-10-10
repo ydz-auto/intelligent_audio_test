@@ -205,6 +205,13 @@ def get_api_test_service_stub():
     return api_test_service_pb2_grpc.APITestServiceStub(_get_api_test_channel())
 
 
+@lru_cache(maxsize=1)
+def get_api_rms_spl_config_service_stub():
+    """ApiRmsSplConfigService stub：被测 API RMS→SPL 映射 CRUD/校准/默认项（UC-0902）"""
+    from shared.proto import api_test_service_pb2_grpc
+    return api_test_service_pb2_grpc.ApiRmsSplConfigServiceStub(_get_api_test_channel())
+
+
 # ==================== adapter_service stubs ====================
 
 @lru_cache(maxsize=1)

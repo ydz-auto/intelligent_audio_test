@@ -60,6 +60,9 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         status=po.status or "active",
         deleted=po.deleted or False,
         output_types=normalize_output_types(po.output_types),
+        device_type=po.device_type or "http_api",
+        adapter_class=po.adapter_class,
+        audio_config=po.audio_config,
     )
 
 
@@ -196,6 +199,9 @@ class APITestRepository(APITestRepositoryABC):
                 health_score=100,
                 api_endpoints=data.get('api_endpoints', []),
                 output_types=data.get('output_types', []),
+                device_type=data.get('device_type') or 'http_api',
+                adapter_class=data.get('adapter_class'),
+                audio_config=data.get('audio_config'),
             )
             session.add(new_api)
             session.commit()

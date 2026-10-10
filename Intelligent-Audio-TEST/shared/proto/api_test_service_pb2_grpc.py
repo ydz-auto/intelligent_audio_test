@@ -540,3 +540,387 @@ class APITestService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class ApiRmsSplConfigServiceStub:
+    """===== API RMS→SPL 映射配置服务（UC-0902 数字域灵敏度校准，与设备域 SPLConfigService 对称）=====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateRmsSplMapping = channel.unary_unary(
+                '/api_test_service.ApiRmsSplConfigService/CreateRmsSplMapping',
+                request_serializer=api__test__service__pb2.CreateRmsSplMappingRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.CreateRmsSplMappingResponse.FromString,
+                _registered_method=True)
+        self.UpdateRmsSplMapping = channel.unary_unary(
+                '/api_test_service.ApiRmsSplConfigService/UpdateRmsSplMapping',
+                request_serializer=api__test__service__pb2.UpdateRmsSplMappingRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.UpdateRmsSplMappingResponse.FromString,
+                _registered_method=True)
+        self.DeleteRmsSplMapping = channel.unary_unary(
+                '/api_test_service.ApiRmsSplConfigService/DeleteRmsSplMapping',
+                request_serializer=api__test__service__pb2.DeleteRmsSplMappingRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.DeleteRmsSplMappingResponse.FromString,
+                _registered_method=True)
+        self.ListRmsSplMappings = channel.unary_unary(
+                '/api_test_service.ApiRmsSplConfigService/ListRmsSplMappings',
+                request_serializer=api__test__service__pb2.ListRmsSplMappingsRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.ListRmsSplMappingsResponse.FromString,
+                _registered_method=True)
+        self.GetRmsSplMapping = channel.unary_unary(
+                '/api_test_service.ApiRmsSplConfigService/GetRmsSplMapping',
+                request_serializer=api__test__service__pb2.GetRmsSplMappingRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.GetRmsSplMappingResponse.FromString,
+                _registered_method=True)
+        self.GetRmsSplMappingsByApi = channel.unary_unary(
+                '/api_test_service.ApiRmsSplConfigService/GetRmsSplMappingsByApi',
+                request_serializer=api__test__service__pb2.GetRmsSplMappingsByApiRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.GetRmsSplMappingsByApiResponse.FromString,
+                _registered_method=True)
+        self.CalibrateRmsSplMapping = channel.unary_unary(
+                '/api_test_service.ApiRmsSplConfigService/CalibrateRmsSplMapping',
+                request_serializer=api__test__service__pb2.CalibrateRmsSplMappingRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.CalibrateRmsSplMappingResponse.FromString,
+                _registered_method=True)
+        self.SetDefaultRmsSplMapping = channel.unary_unary(
+                '/api_test_service.ApiRmsSplConfigService/SetDefaultRmsSplMapping',
+                request_serializer=api__test__service__pb2.SetDefaultRmsSplMappingRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.SetDefaultRmsSplMappingResponse.FromString,
+                _registered_method=True)
+
+
+class ApiRmsSplConfigServiceServicer:
+    """===== API RMS→SPL 映射配置服务（UC-0902 数字域灵敏度校准，与设备域 SPLConfigService 对称）=====
+    """
+
+    def CreateRmsSplMapping(self, request, context):
+        """创建映射
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateRmsSplMapping(self, request, context):
+        """更新映射
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteRmsSplMapping(self, request, context):
+        """删除映射（软删除）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListRmsSplMappings(self, request, context):
+        """分页查询映射列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetRmsSplMapping(self, request, context):
+        """查询单个映射详情
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetRmsSplMappingsByApi(self, request, context):
+        """按 API 查映射列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CalibrateRmsSplMapping(self, request, context):
+        """执行校准（并发互斥：DistributedLock lock:spl:calibration:{api_id}）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetDefaultRmsSplMapping(self, request, context):
+        """设为 API 当前默认映射（apis.rms_spl_mapping_id）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ApiRmsSplConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateRmsSplMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateRmsSplMapping,
+                    request_deserializer=api__test__service__pb2.CreateRmsSplMappingRequest.FromString,
+                    response_serializer=api__test__service__pb2.CreateRmsSplMappingResponse.SerializeToString,
+            ),
+            'UpdateRmsSplMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateRmsSplMapping,
+                    request_deserializer=api__test__service__pb2.UpdateRmsSplMappingRequest.FromString,
+                    response_serializer=api__test__service__pb2.UpdateRmsSplMappingResponse.SerializeToString,
+            ),
+            'DeleteRmsSplMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteRmsSplMapping,
+                    request_deserializer=api__test__service__pb2.DeleteRmsSplMappingRequest.FromString,
+                    response_serializer=api__test__service__pb2.DeleteRmsSplMappingResponse.SerializeToString,
+            ),
+            'ListRmsSplMappings': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListRmsSplMappings,
+                    request_deserializer=api__test__service__pb2.ListRmsSplMappingsRequest.FromString,
+                    response_serializer=api__test__service__pb2.ListRmsSplMappingsResponse.SerializeToString,
+            ),
+            'GetRmsSplMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRmsSplMapping,
+                    request_deserializer=api__test__service__pb2.GetRmsSplMappingRequest.FromString,
+                    response_serializer=api__test__service__pb2.GetRmsSplMappingResponse.SerializeToString,
+            ),
+            'GetRmsSplMappingsByApi': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRmsSplMappingsByApi,
+                    request_deserializer=api__test__service__pb2.GetRmsSplMappingsByApiRequest.FromString,
+                    response_serializer=api__test__service__pb2.GetRmsSplMappingsByApiResponse.SerializeToString,
+            ),
+            'CalibrateRmsSplMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.CalibrateRmsSplMapping,
+                    request_deserializer=api__test__service__pb2.CalibrateRmsSplMappingRequest.FromString,
+                    response_serializer=api__test__service__pb2.CalibrateRmsSplMappingResponse.SerializeToString,
+            ),
+            'SetDefaultRmsSplMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetDefaultRmsSplMapping,
+                    request_deserializer=api__test__service__pb2.SetDefaultRmsSplMappingRequest.FromString,
+                    response_serializer=api__test__service__pb2.SetDefaultRmsSplMappingResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'api_test_service.ApiRmsSplConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('api_test_service.ApiRmsSplConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ApiRmsSplConfigService:
+    """===== API RMS→SPL 映射配置服务（UC-0902 数字域灵敏度校准，与设备域 SPLConfigService 对称）=====
+    """
+
+    @staticmethod
+    def CreateRmsSplMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.ApiRmsSplConfigService/CreateRmsSplMapping',
+            api__test__service__pb2.CreateRmsSplMappingRequest.SerializeToString,
+            api__test__service__pb2.CreateRmsSplMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateRmsSplMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.ApiRmsSplConfigService/UpdateRmsSplMapping',
+            api__test__service__pb2.UpdateRmsSplMappingRequest.SerializeToString,
+            api__test__service__pb2.UpdateRmsSplMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteRmsSplMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.ApiRmsSplConfigService/DeleteRmsSplMapping',
+            api__test__service__pb2.DeleteRmsSplMappingRequest.SerializeToString,
+            api__test__service__pb2.DeleteRmsSplMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListRmsSplMappings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.ApiRmsSplConfigService/ListRmsSplMappings',
+            api__test__service__pb2.ListRmsSplMappingsRequest.SerializeToString,
+            api__test__service__pb2.ListRmsSplMappingsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRmsSplMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.ApiRmsSplConfigService/GetRmsSplMapping',
+            api__test__service__pb2.GetRmsSplMappingRequest.SerializeToString,
+            api__test__service__pb2.GetRmsSplMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRmsSplMappingsByApi(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.ApiRmsSplConfigService/GetRmsSplMappingsByApi',
+            api__test__service__pb2.GetRmsSplMappingsByApiRequest.SerializeToString,
+            api__test__service__pb2.GetRmsSplMappingsByApiResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CalibrateRmsSplMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.ApiRmsSplConfigService/CalibrateRmsSplMapping',
+            api__test__service__pb2.CalibrateRmsSplMappingRequest.SerializeToString,
+            api__test__service__pb2.CalibrateRmsSplMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetDefaultRmsSplMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.ApiRmsSplConfigService/SetDefaultRmsSplMapping',
+            api__test__service__pb2.SetDefaultRmsSplMappingRequest.SerializeToString,
+            api__test__service__pb2.SetDefaultRmsSplMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)

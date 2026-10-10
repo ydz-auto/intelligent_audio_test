@@ -30,6 +30,11 @@ export interface APIConfigDto {
   default_max_audio_duration?: number
   health_score?: number
   endpoints?: ApiEndpointDto[]
+  output_types?: string[]
+  device_type?: string
+  adapter_class?: string
+  audio_config?: Record<string, any>
+  rms_spl_mapping_id?: number | null
   created_at?: string
   updated_at?: string
   // 运行时指标（列表页附加）
@@ -52,6 +57,11 @@ export interface ApiUpsertDto {
   default_max_timeout?: number
   default_max_audio_duration?: number
   endpoints?: ApiEndpointDto[]
+  output_types?: string[]
+  device_type?: string
+  adapter_class?: string
+  audio_config?: Record<string, any>
+  rms_spl_mapping_id?: number | null
 }
 
 /** 对应后端 ApiHealthCheckData（POST /apis/{id}/health 返回） */

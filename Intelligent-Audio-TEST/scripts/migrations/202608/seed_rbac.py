@@ -94,6 +94,11 @@ PERMISSIONS = [
     ('spl:update', '修改 SPL 校准'),
     ('spl:delete', '删除 SPL 校准'),
     ('spl:test_tone', 'SPL 测试音播放'),
+    # 数字域 RMS→SPL 校准 (4)（UC-0902 API 灵敏度域，区别于 spl:* 物理设备域）
+    ('digital_spl:read', '查看数字域 RMS→SPL 映射'),
+    ('digital_spl:create', '创建数字域 RMS→SPL 映射'),
+    ('digital_spl:update', '修改数字域 RMS→SPL 映射'),
+    ('digital_spl:delete', '删除数字域 RMS→SPL 映射'),
     # API 配置 (5)
     ('api_config:read', '查看 API 配置'),
     ('api_config:create', '创建 API 配置'),
@@ -233,6 +238,7 @@ DEVICE_ADMIN_PERMS = [
     'playback:read', 'playback:create', 'playback:update', 'playback:delete',
     'playback:control',
     'spl:read', 'spl:create', 'spl:update', 'spl:delete', 'spl:test_tone',
+    'digital_spl:read', 'digital_spl:create', 'digital_spl:update', 'digital_spl:delete',
     'home:read',
     'sse:read',
     'auth:login', 'auth:callback', 'auth:refresh', 'auth:logout', 'auth:me',

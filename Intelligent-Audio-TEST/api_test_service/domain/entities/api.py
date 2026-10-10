@@ -68,11 +68,28 @@ class APIAggregate:
     deleted: bool = False
     # API 输出类型列表（OutputType 枚举值子集，多模态输出采集口径，INT-74）
     output_types: List[str] = field(default_factory=list)
+    # 被测设备类型（DeviceType 枚举值，决定执行路由，UC-0901）
+    device_type: str = "http_api"
+    # 指定适配器类名（未指定时按 protocol+vendor 自动匹配，UC-0901）
+    adapter_class: Optional[str] = None
+    # 目标音频格式声明 {"sample_rate","bit_depth","channels","container"}，未配置回退默认（UC-0901）
+    audio_config: Optional[Dict] = None
 
     def set_output_types(self, raw) -> List[str]:
         """设置输出类型列表（经 OutputType 枚举归一化），返回归一化结果"""
         self.output_types = normalize_output_types(raw)
         return self.output_types
+
+    def set_audio_config(self, raw) -> Optional[Dict]:
+        """设置目标音频格式（仅保留已知键），返回规整后的 dict"""
+        if raw is None:
+            self.audio_config = None
+            return None
+        if not isinstance(raw, dict):
+            raise ValueError("audio_config 必须是 JSON 对象")
+        allowed = ('sample_rate', 'bit_depth', 'channels', 'container', 'format', 'chunk_duration_ms')
+        self.audio_config = {k: raw[k] for k in allowed if k in raw}
+        return self.audio_config
 
     def activate(self) -> None:
         """激活 API"""

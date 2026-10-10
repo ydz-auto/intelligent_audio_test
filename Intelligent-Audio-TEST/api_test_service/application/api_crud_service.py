@@ -14,12 +14,18 @@ from urllib.parse import urlparse
 
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
-from shared.models.common_enums import OutputType
+from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+from shared.models.common_enums import OutputType, DeviceType, AudioBitDepth, AudioContainer
 from api_test_service.domain.entities.api import normalize_output_types
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from api_test_service.infrastructure.persistence.api_test_repository import api_test_repository
 
 logger = logging.getLogger(__name__)
+
+# audio_config 目标采样率合法取值（01_UseCase总览.md §0.4）
+_AUDIO_SAMPLE_RATES = (8000, 16000, 24000, 48000)
+# 位深数字与枚举别名对应（UC-0901 用数字 16，08_混音与SPL映射.md §2.2 用 s16）
+_BIT_DEPTH_ALIASES = {16: AudioBitDepth.S16, 24: AudioBitDepth.S24, 32: AudioBitDepth.S32}
 
 
 class APICrudService:
@@ -57,6 +63,51 @@ class APICrudService:
             if invalid:
                 return (f"非法的输出类型 (output_types): {', '.join(map(str, invalid))}，"
                         f"仅支持: {', '.join(valid_values)}")
+
+        device_type = data.get('device_type')
+        if device_type is not None and device_type not in {item.value for item in DeviceType}:
+            return (f"非法的被测设备类型 (device_type): {device_type}，"
+                    f"仅支持: {', '.join(item.value for item in DeviceType)}")
+
+        adapter_class = data.get('adapter_class')
+        if adapter_class is not None:
+            if not isinstance(adapter_class, str) or len(adapter_class) > 100:
+                return "适配器类名 (adapter_class) 必须为不超过 100 字符的字符串"
+
+        audio_config = data.get('audio_config')
+        if audio_config is not None:
+            if not isinstance(audio_config, dict):
+                return "音频配置 (audio_config) 必须是一个 JSON 对象"
+            error = APICrudService._validate_audio_config(audio_config)
+            if error:
+                return error
+
+        return None
+
+    @staticmethod
+    def _validate_audio_config(audio_config: dict) -> str:
+        """校验 audio_config 目标格式声明（08_混音与SPL映射.md §2.2 / §0.4）"""
+        sample_rate = audio_config.get('sample_rate')
+        if sample_rate is not None and sample_rate not in _AUDIO_SAMPLE_RATES:
+            return (f"非法采样率 (audio_config.sample_rate): {sample_rate}，"
+                    f"仅支持: {', '.join(map(str, _AUDIO_SAMPLE_RATES))}")
+
+        bit_depth = audio_config.get('bit_depth')
+        if bit_depth is not None:
+            normalized = _BIT_DEPTH_ALIASES.get(bit_depth, bit_depth)
+            if normalized not in {item.value for item in AudioBitDepth}:
+                return (f"非法位深 (audio_config.bit_depth): {bit_depth}，"
+                        f"仅支持: s16/s24/s32（或 16/24/32）")
+
+        channels = audio_config.get('channels')
+        if channels is not None and channels not in (1, 2):
+            return f"非法通道数 (audio_config.channels): {channels}，仅支持: 1/2"
+
+        for key in ('container', 'format'):
+            container = audio_config.get(key)
+            if container is not None and container not in {item.value for item in AudioContainer}:
+                return (f"非法音频容器 (audio_config.{key}): {container}，"
+                        f"仅支持: {', '.join(item.value for item in AudioContainer)}")
 
         return None
 
@@ -172,6 +223,10 @@ class APICrudService:
             'default_max_audio_duration': getattr(api, 'default_max_audio_duration', None),
             'health_score': getattr(api, 'health_score', None),
             'output_types': normalize_output_types(getattr(api, 'output_types', None)),
+            'device_type': getattr(api, 'device_type', None) or 'http_api',
+            'adapter_class': getattr(api, 'adapter_class', None),
+            'audio_config': getattr(api, 'audio_config', None),
+            'rms_spl_mapping_id': getattr(api, 'rms_spl_mapping_id', None),
             'endpoints': endpoints,
             'created_at': created_at.isoformat() if created_at and hasattr(created_at, 'isoformat') else (created_at if isinstance(created_at, str) else None),
             'updated_at': updated_at.isoformat() if updated_at and hasattr(updated_at, 'isoformat') else (updated_at if isinstance(updated_at, str) else None),
@@ -193,6 +248,21 @@ class APICrudService:
             **kwargs
         )
 
+    @staticmethod
+    def _publish_config_changed(action: str, api_id=None) -> None:
+        """API 配置变更后发布事件（CQRS 命令侧，Redis 不可用时降级只打日志）"""
+        try:
+            payload = {'action': action}
+            if api_id is not None:
+                payload['api_id'] = api_id
+            EventBus().publish(
+                EventChannel.CONFIG_EVENTS,
+                EventType.API_CONFIG_CHANGED,
+                payload,
+            )
+        except Exception as e:
+            logger.warning(f"发布 API 配置变更事件失败，降级忽略: {e}")
+
     # ========== 写操作 ==========
 
     @classmethod
@@ -213,7 +283,10 @@ class APICrudService:
             'default_max_process': data.get('default_max_process'),
             'default_max_timeout': data.get('default_max_timeout'),
             'default_max_audio_duration': data.get('default_max_audio_duration'),
-            'output_types': data.get('output_types')
+            'output_types': data.get('output_types'),
+            'device_type': data.get('device_type'),
+            'adapter_class': data.get('adapter_class'),
+            'audio_config': data.get('audio_config'),
         })
         if error:
             return {'success': False, 'message': error, 'data': None, 'code': 400}
@@ -252,9 +325,14 @@ class APICrudService:
                 'status': data.get('status') or 'online',
                 'api_endpoints': api_endpoints,
                 'output_types': normalize_output_types(data.get('output_types')),
+                'device_type': data.get('device_type') or 'http_api',
+                'adapter_class': data.get('adapter_class'),
+                'audio_config': data.get('audio_config'),
             }
 
             new_api = api_test_repository.create_api(create_data)
+
+            cls._publish_config_changed('created', api_id=new_api.id)
 
             try:
                 refresh_stats_cache()
@@ -316,6 +394,16 @@ class APICrudService:
                 update_fields['status'] = data['status']
             if data.get('output_types') is not None:
                 update_fields['output_types'] = normalize_output_types(data['output_types'])
+            if data.get('device_type') is not None:
+                update_fields['device_type'] = data['device_type']
+            if data.get('adapter_class') is not None:
+                update_fields['adapter_class'] = data['adapter_class']
+            if data.get('audio_config') is not None:
+                update_fields['audio_config'] = data['audio_config']
+            if 'rms_spl_mapping_id' in data:
+                update_fields['rms_spl_mapping_id'] = (
+                    int(data['rms_spl_mapping_id']) if data['rms_spl_mapping_id'] else None
+                )
 
             if data.get('endpoints') is not None:
                 for ep in data['endpoints']:
@@ -340,6 +428,8 @@ class APICrudService:
             updated_api = api_test_repository.update_api(api_id, update_fields)
             if not updated_api:
                 return {'success': False, 'message': '未找到API配置', 'data': None, 'code': 404}
+
+            cls._publish_config_changed('updated', api_id=api_id)
 
             return {
                 'success': True,
@@ -380,6 +470,8 @@ class APICrudService:
             success = api_test_repository.delete_api(api_id)
             if not success:
                 return {'success': False, 'message': '未找到API配置', 'data': None, 'code': 404}
+
+            cls._publish_config_changed('deleted', api_id=api_id)
 
             try:
                 refresh_stats_cache()

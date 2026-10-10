@@ -234,3 +234,119 @@ class APITestServiceServicer(api_grpc.APITestServiceServicer):
             )
         except Exception as e:
             return api_pb.StopAPITestConfigResponse(success=False, message=str(e), data="")
+
+
+class ApiRmsSplConfigServiceServicer(api_grpc.ApiRmsSplConfigServiceServicer):
+    """API RMS→SPL 映射配置 gRPC servicer（UC-0902），委托给 application 层"""
+
+    def __init__(self):
+        self._config_service = None
+
+    @property
+    def config_service(self):
+        """application 层 — RMS→SPL 映射配置服务（写侧发事件 / 校准分布式锁互斥）"""
+        if self._config_service is None:
+            from api_test_service.application.api_rms_spl_config_service import (
+                api_rms_spl_config_service,
+            )
+            self._config_service = api_rms_spl_config_service
+        return self._config_service
+
+    def CreateRmsSplMapping(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.config_service.create(data)
+            return api_pb.CreateRmsSplMappingResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return api_pb.CreateRmsSplMappingResponse(success=False, message=str(e), data="")
+
+    def UpdateRmsSplMapping(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            result = self.config_service.update(request.mapping_id, data)
+            return api_pb.UpdateRmsSplMappingResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return api_pb.UpdateRmsSplMappingResponse(success=False, message=str(e), data="")
+
+    def DeleteRmsSplMapping(self, request, context=None):
+        try:
+            result = self.config_service.delete(request.mapping_id)
+            return api_pb.DeleteRmsSplMappingResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return api_pb.DeleteRmsSplMappingResponse(success=False, message=str(e), data="")
+
+    def ListRmsSplMappings(self, request, context=None):
+        try:
+            result = self.config_service.get_all(
+                page=request.page or 1,
+                per_page=request.per_page or 10,
+                api_id=request.api_id or None,
+                calibration_status=request.calibration_status or None,
+            )
+            return api_pb.ListRmsSplMappingsResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return api_pb.ListRmsSplMappingsResponse(success=False, message=str(e), data="")
+
+    def GetRmsSplMapping(self, request, context=None):
+        try:
+            result = self.config_service.get_one(request.mapping_id)
+            return api_pb.GetRmsSplMappingResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return api_pb.GetRmsSplMappingResponse(success=False, message=str(e), data="")
+
+    def GetRmsSplMappingsByApi(self, request, context=None):
+        try:
+            result = self.config_service.get_by_api(request.api_id)
+            return api_pb.GetRmsSplMappingsByApiResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return api_pb.GetRmsSplMappingsByApiResponse(success=False, message=str(e), data="")
+
+    def CalibrateRmsSplMapping(self, request, context=None):
+        try:
+            calibration_data = _loads(request.calibration_data, {})
+            result = self.config_service.calibrate(request.mapping_id, calibration_data)
+            return api_pb.CalibrateRmsSplMappingResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return api_pb.CalibrateRmsSplMappingResponse(success=False, message=str(e), data="")
+
+    def SetDefaultRmsSplMapping(self, request, context=None):
+        try:
+            result = self.config_service.set_default(
+                request.api_id,
+                request.mapping_id or None,
+            )
+            return api_pb.SetDefaultRmsSplMappingResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result.get('data')),
+            )
+        except Exception as e:
+            return api_pb.SetDefaultRmsSplMappingResponse(success=False, message=str(e), data="")

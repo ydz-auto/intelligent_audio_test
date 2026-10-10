@@ -37,6 +37,18 @@ export interface ApiMeta {
   timeout?: number
 }
 
+/** 目标音频格式声明（后端 apis.audio_config JSON；未配置回退 24000/s16/mono/pcm） */
+export interface ApiAudioConfig {
+  sampleRate?: number
+  /** s16/s24/s32（或数字 16/24/32） */
+  bitDepth?: string | number
+  channels?: 1 | 2
+  /** pcm/wav（UC-0901 键名 format 与 §2.2 键名 container 同义，后端双兼容） */
+  container?: 'pcm' | 'wav' | (string & {})
+  format?: 'pcm' | 'wav' | (string & {})
+  chunkDurationMs?: number
+}
+
 /** API 配置（对应后端 ApiItem） */
 export interface APIConfig {
   id: string | number
@@ -53,6 +65,16 @@ export interface APIConfig {
   defaultMaxTimeout?: number
   defaultMaxAudioDuration?: number
   endpoints?: ApiEndpoint[]
+  /** API 输出类型（值 = OutputType 枚举原值） */
+  outputTypes?: string[]
+  /** 被测设备类型（值 = DeviceType 枚举原值，决定执行路由） */
+  deviceType?: string
+  /** 指定适配器类名（未指定时按 protocol+vendor 自动匹配） */
+  adapterClass?: string
+  /** 目标音频格式声明 {sampleRate, bitDepth, channels, container} */
+  audioConfig?: ApiAudioConfig
+  /** 当前默认 RMS→SPL 映射 ID（api_rms_spl_mappings） */
+  rmsSplMappingId?: number | null
   createdAt?: string
   updatedAt?: string
   // ===== 运行时指标（进度/列表页附加字段） =====

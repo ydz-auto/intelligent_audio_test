@@ -12,6 +12,7 @@ from api_gateway.infrastructure.acl.audio_acl_repository import (
 from api_gateway.infrastructure.acl.config_acl_repository import (
     AlgorithmConfigAclRepositoryImpl,
     ApiConfigAclRepositoryImpl,
+    ApiRmsSplConfigAclRepositoryImpl,
     EvaluationConfigAclRepositoryImpl,
     SplConfigAclRepositoryImpl,
     TagConfigAclRepositoryImpl,
@@ -40,6 +41,7 @@ from api_gateway.infrastructure.acl.reevaluation_acl_repository import (
 __all__ = [
     'AlgorithmConfigAclRepositoryImpl',
     'ApiConfigAclRepositoryImpl',
+    'ApiRmsSplConfigAclRepositoryImpl',
     'AudioAclRepositoryImpl',
     'DataTransferAclRepositoryImpl',
     'DeviceAclRepositoryImpl',

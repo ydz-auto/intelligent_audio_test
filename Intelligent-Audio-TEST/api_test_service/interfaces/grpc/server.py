@@ -16,7 +16,10 @@ from shared.proto import api_test_service_pb2_grpc as api_grpc
 from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import API_TEST_SERVICE_GRPC_PORT
-from api_test_service.interfaces.grpc.servicers import APITestServiceServicer
+from api_test_service.interfaces.grpc.servicers import (
+    APITestServiceServicer,
+    ApiRmsSplConfigServiceServicer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,7 @@ def start_grpc_server(port=API_TEST_SERVICE_GRPC_PORT):
         interceptors=[server_db_scope_interceptor, server_log_interceptor],
     )
     api_grpc.add_APITestServiceServicer_to_server(APITestServiceServicer(), server)
+    api_grpc.add_ApiRmsSplConfigServiceServicer_to_server(ApiRmsSplConfigServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')
     server.start()
     logger.info("api_test_service gRPC server started on port %s", port)

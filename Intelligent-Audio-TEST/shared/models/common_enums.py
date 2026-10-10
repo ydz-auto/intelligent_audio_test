@@ -125,6 +125,19 @@ class OutputType(str, Enum):
     IMAGE = 'image'
 
 
+class AudioBitDepth(str, Enum):
+    """音频位深枚举 — api.audio_config 目标格式声明（08_混音与SPL映射.md §2.2）"""
+    S16 = 's16'
+    S24 = 's24'
+    S32 = 's32'
+
+
+class AudioContainer(str, Enum):
+    """音频容器枚举 — api.audio_config 目标格式声明（08_混音与SPL映射.md §2.2）"""
+    PCM = 'pcm'
+    WAV = 'wav'
+
+
 class CalibrationStatus(str, Enum):
     """SPL 校准状态枚举（执行域 P0 新增）"""
     CALIBRATED = 'calibrated'
@@ -144,6 +157,8 @@ class RedisKeyPrefix(str, Enum):
     EVAL_RESULT = 'eval:result'
     # physical 设备互斥锁前缀: lock:task:physical:{device_id}
     TASK_PHYSICAL_LOCK = 'lock:task:physical'
+    # API 数字 SPL 校准互斥锁前缀: lock:spl:calibration:{api_id}（UC-0902）
+    SPL_CALIBRATION_LOCK = 'lock:spl:calibration'
     # 同 endpoint 并发信号量前缀: sem:api:endpoint:{host}
     API_ENDPOINT_SEMAPHORE = 'sem:api:endpoint'
     # Realtime 会话实例绑定前缀: session:bind:{task_id}

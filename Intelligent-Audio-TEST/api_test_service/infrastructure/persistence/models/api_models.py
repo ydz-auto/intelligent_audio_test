@@ -42,6 +42,9 @@ class API(Base):
     api_endpoints = Column(JSON, nullable=False, default=list, comment='API接入点配置列表 (JSON格式)')
     output_types = Column(JSON, nullable=False, default=list, comment='API输出类型列表 (OutputType 枚举值, INT-74)')
     rms_spl_mapping_id = Column(Integer, nullable=True, comment='当前默认 RMS→SPL 映射 ID (api_rms_spl_mappings，INT-61)')
+    device_type = Column(String(20), nullable=False, default='http_api', comment='被测设备类型 (DeviceType 枚举: physical/http_api/websocket_api，UC-0901)')
+    adapter_class = Column(String(100), nullable=True, comment='指定适配器类名 (如 OpenAIRealtimeAdapter，未指定时按 protocol+vendor 自动匹配，UC-0901)')
+    audio_config = Column(JSON, nullable=True, comment='目标音频格式声明 {"sample_rate","bit_depth","channels","container"} (AudioBitDepth/AudioContainer 枚举，未配置回退 24000/s16/mono/pcm，UC-0901)')
 
 
 class ApiRmsSplMappingPO(Base):

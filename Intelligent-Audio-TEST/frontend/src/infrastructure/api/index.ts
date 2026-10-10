@@ -21,6 +21,7 @@ export { testcasesApi } from './testcasesApi';
 export { evaluationApi } from './evaluationApi';
 export { reportsApi } from './reportsApi';
 export { splApi } from './splApi';
+export { apiRmsSplApi } from './apiRmsSplApi';
 export { statsApi } from './statsApi';
 export { algorithmApi } from './algorithmApi';
 export { tagsApi } from './tagsApi';
@@ -50,6 +51,7 @@ import { testcasesApi } from './testcasesApi';
 import { evaluationApi } from './evaluationApi';
 import { reportsApi } from './reportsApi';
 import { splApi } from './splApi';
+import { apiRmsSplApi } from './apiRmsSplApi';
 import { statsApi } from './statsApi';
 import { algorithmApi } from './algorithmApi';
 import { tagsApi } from './tagsApi';
@@ -66,6 +68,7 @@ export default {
   testcases: testcasesApi,
   reports: reportsApi,
   spl: splApi,
+  apiRmsSpl: apiRmsSplApi,
   evaluation: evaluationApi,
   stats: statsApi,
   algorithm: algorithmApi,

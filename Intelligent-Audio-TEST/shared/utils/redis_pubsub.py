@@ -35,6 +35,11 @@ class EventType(str, Enum):
     TASK_FAILED = 'task_failed'
     TASK_STOPPED = 'task_stopped'
     TASK_IMPORTED = 'task_imported'
+    # 任务级实时推送（api_gateway 订阅 TASK_EVENTS 转发前端 Socket.IO/SSE）
+    TASK_LOG = 'task_log'                # 日志推送（log_handler 统一经 EventBus 发布）
+    TASK_PROGRESS = 'task_progress'      # 任务进度推送（event_manager）
+    IMPORT_PROGRESS = 'import_progress'  # 数据导入进度推送（INT-25）
+    TASK_ALERT = 'task_alert'            # 任务告警推送（error_alert 事件）
     # 用例级
     CASE_EXECUTION_COMPLETED = 'case_execution_completed'
     CASE_EVALUATION_COMPLETED = 'case_evaluation_completed'
@@ -44,11 +49,14 @@ class EventType(str, Enum):
     DEVICE_STATUS_CHANGED = 'device_status_changed'
     # 报告级
     REPORT_GENERATED = 'report_generated'
+    SECONDARY_COMPARE_GENERATED = 'secondary_compare_generated'  # 二次对比报告生成
     # Realtime 流式双通道（INT-61 新增）
     REALTIME_FRAME = 'realtime_frame'
     REALTIME_SUMMARY = 'realtime_summary'
     # 配置级
     DIMENSION_CONFIG_CHANGED = 'dimension_config_changed'
+    API_CONFIG_CHANGED = 'api_config_changed'          # 被测 API 配置变更（UC-0901）
+    SPL_MAPPING_CONFIG_CHANGED = 'spl_mapping_config_changed'  # API RMS→SPL 映射变更（UC-0902）
 
 
 # ========== Redis Pub/Sub 封装 ==========
@@ -65,15 +73,6 @@ class RedisPubSub:
 
     def publish(self, channel, message):
         self.redis_client.publish(channel, json.dumps(message, ensure_ascii=False))
-
-    def publish_progress(self, task_id, progress_data):
-        self.publish('task_progress', {'task_id': task_id, **progress_data})
-
-    def publish_log(self, task_id, log_data):
-        self.publish('task_logs', {'task_id': task_id, **log_data})
-
-    def publish_device_status(self, device_id, status_data):
-        self.publish('device_status', {'device_id': device_id, **status_data})
 
     def subscribe(self, channels, callback):
         """订阅 Redis 频道，监听消息并回调。带自动重连。

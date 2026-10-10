@@ -38,6 +38,11 @@ export function toAPIConfig(dto: APIConfigDto): APIConfig {
     defaultMaxTimeout: dto.default_max_timeout,
     defaultMaxAudioDuration: dto.default_max_audio_duration,
     endpoints: dto.endpoints?.map(toEndpoint),
+    outputTypes: dto.output_types,
+    deviceType: dto.device_type,
+    adapterClass: dto.adapter_class,
+    audioConfig: dto.audio_config as import('../../domain/model/apiConfig').ApiAudioConfig,
+    rmsSplMappingId: dto.rms_spl_mapping_id ?? undefined,
     createdAt: dto.created_at,
     updatedAt: dto.updated_at,
     currentConcurrent: dto.current_concurrent,
@@ -95,5 +100,18 @@ export function toApiUpsertDto(config: Partial<APIConfig>): ApiUpsertDto {
     default_max_timeout: config.defaultMaxTimeout,
     default_max_audio_duration: config.defaultMaxAudioDuration,
     endpoints: config.endpoints?.map(toEndpointDto),
+    output_types: config.outputTypes,
+    device_type: config.deviceType,
+    adapter_class: config.adapterClass,
+    audio_config: config.audioConfig
+      ? {
+          sample_rate: config.audioConfig.sampleRate,
+          bit_depth: config.audioConfig.bitDepth,
+          channels: config.audioConfig.channels,
+          container: config.audioConfig.container ?? config.audioConfig.format,
+          chunk_duration_ms: config.audioConfig.chunkDurationMs,
+        }
+      : undefined,
+    rms_spl_mapping_id: config.rmsSplMappingId ?? null,
   }
 }

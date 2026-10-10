@@ -31,6 +31,7 @@ from .audio import (
     audio_config_service,
 )
 from .api_config_proxies import api_config_service
+from .api_rms_spl_proxies import api_rms_spl_config_service
 from .task_config_proxies import (
     task_config_service,
     testcase_config_service,
@@ -70,6 +71,7 @@ __all__ = [
     'spl_config_service',
     'audio_config_service',
     'api_config_service',
+    'api_rms_spl_config_service',
     'task_config_service',
     'testcase_config_service',
     'tag_config_service',

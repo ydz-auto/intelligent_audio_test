@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """命令对象 — 应用层用例输入，纯数据载体。"""
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -53,3 +53,53 @@ class DeleteAPICommand:
     """
 
     api_id: int
+
+
+# ==================== UC-0902 API RMS→SPL 映射命令 ====================
+
+@dataclass(frozen=True)
+class CreateRmsSplMappingCommand:
+    """创建被测 API RMS→SPL 映射命令
+
+    data 为已按服务契约裁剪的参数字典（api_id/name/reference_spl/...）。
+    """
+
+    data: Dict
+
+
+@dataclass(frozen=True)
+class UpdateRmsSplMappingCommand:
+    """更新被测 API RMS→SPL 映射命令"""
+
+    mapping_id: int
+    data: Dict
+
+
+@dataclass(frozen=True)
+class DeleteRmsSplMappingCommand:
+    """删除（软删除）被测 API RMS→SPL 映射命令"""
+
+    mapping_id: int
+
+
+@dataclass(frozen=True)
+class CalibrateRmsSplMappingCommand:
+    """执行校准命令（UC-0902 步骤4）
+
+    同一 API 的并发校准经分布式锁 lock:spl:calibration:{api_id} 互斥。
+    calibration_data 为 {"points": [{target_spl, gain_linear, rms_dbfs}, ...]}。
+    """
+
+    mapping_id: int
+    calibration_data: Dict
+
+
+@dataclass(frozen=True)
+class SetDefaultRmsSplMappingCommand:
+    """设置 API 当前默认映射命令（apis.rms_spl_mapping_id，UC-0901 步骤7 / UC-0902 步骤6）
+
+    mapping_id=None 表示清除默认映射（执行期回退最新映射 → 线性近似）。
+    """
+
+    api_id: int
+    mapping_id: Optional[int]
