@@ -47,6 +47,12 @@ def _make_executor(monkeypatch):
     processor.create_test_result.return_value = 'result-1'
     executor._result_processor = processor
 
+    # INT-98 线性流接线：渲染桩返回产物引用（本文件只验证评估参数绑定）
+    render_service = MagicMock(name='render_service')
+    render_service.render_round_file_to_storage.return_value = {
+        'path': 'local://audios/task-1/api-1/rendered/linear_0.wav'}
+    executor._render_service = render_service
+
     algo_acl = MagicMock(name='algo_acl')
     algo_acl.extract_case_all_params.return_value = {'evaluation': {}}
     task_acl = MagicMock(name='task_data_acl')
@@ -65,7 +71,8 @@ def _run_single_api(executor, case_config):
         task_id='task-1', tc_rel_id='tc-rel-1', test_case_id='case-1',
         case_name='单测用例', algorithm_type='translation',
         api_config=SimpleNamespace(id='api-1'), api_specific_config={},
-        audio=SimpleNamespace(id='audio-1'), total_audio_duration=1.0,
+        audio={'id': 'audio-1', 'file_path': 'local://audios/raw/a.wav'},
+        total_audio_duration=1.0,
         case_config=case_config, case_algorithm_params={'k': 'v'},
     )
 

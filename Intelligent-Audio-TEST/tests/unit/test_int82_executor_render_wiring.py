@@ -417,14 +417,18 @@ class TestNoDirectStubAccess:
     _MODULES = [
         'api_test_service.core.realtime_session_executor',
         'api_test_service.core.api_session_executor',
+        'api_test_service.core.api_executor',
+        'api_test_service.core.api_task_runner',
         'api_test_service.application.round_render_service',
     ]
 
     def test_executors_and_service_never_touch_stub_layer(self):
         import api_test_service.core.api_session_executor as api_exec
         import api_test_service.core.realtime_session_executor as rt_exec
+        import api_test_service.core.api_executor as linear_exec
+        import api_test_service.core.api_task_runner as task_runner
         import api_test_service.application.round_render_service as render_svc
-        for module in (rt_exec, api_exec, render_svc):
+        for module in (rt_exec, api_exec, linear_exec, task_runner, render_svc):
             source = inspect.getsource(module)
             assert 'get_render_service_stub' not in source, \
                 f"{module.__name__} 直调了 gRPC stub 工厂"

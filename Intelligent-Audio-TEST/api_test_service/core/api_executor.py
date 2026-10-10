@@ -14,7 +14,12 @@ from api_test_service.infrastructure.acl import (
     AudioConfigAclRepositoryImpl,
     AlgorithmQueryAclRepositoryImpl,
     DeviceResultAclRepositoryImpl,
+    AudioRenderACLRepositoryImpl,
 )
+from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
+    ApiRmsSplRepositoryImpl,
+)
+from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.infrastructure.persistence.models import API
 from api_test_service.core.api_concurrency_manager import APIConcurrencyManager
 from api_test_service.core.api_task_runner import APITaskRunner
@@ -40,6 +45,9 @@ class APIExecutor(BaseExecutor):
         self._result_processor = APIResultProcessor(self)
         self._session_executor = APISessionExecutor(self)
         self._realtime_executor = RealtimeSessionExecutor(self)
+        # 线性流混音渲染经 ACL 端口出站（RenderService 消费链路，INT-98 接线）
+        self._render_service = RoundRenderService(
+            AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl())
         # 执行器注册表：device_type 运行时分发（INT-61）
         # physical → e2e_test_service E2EExecutor（task_service 侧分发，不经本服务）
         self._executor_registry = {
@@ -298,6 +306,23 @@ class APIExecutor(BaseExecutor):
         if not api_paths:
             return
 
+        # INT-98 线性流音频交付契约（裁定：混音产物落存储后按引用交付）：
+        # 混音/格式适配经 RenderAudioFile 消费链路（RoundRenderService 组装 +
+        # AudioRenderAclRepository 端口出站），产物引用替换 file_path 后走既有
+        # health_check / create_task 链路——厂商契约「交付一个可读文件」由统一
+        # 存储层解析满足（DUT 侧 audio_input.py 按 scheme 解析，与原始 oss://
+        # 引用同构）。渲染失败定用例失败，不静默回退原始路径。
+        rendered = self._render_service.render_round_file_to_storage(
+            api_config, self._resolve_linear_round_config(case_config), case_config,
+            task_id, name_hint='linear')
+        if not rendered or not rendered.get('path'):
+            raise Exception(f"线性流混音渲染失败（RenderAudioFile 无产物）: 用例 {case_name}")
+        audio = {**audio, 'file_path': rendered['path']}
+        self._log(level='INFO',
+                  content=f"线性流混音产物已落存储并按引用交付: {rendered['path']} "
+                          f"(duration_ms={rendered.get('duration_ms', 0)})",
+                  task_id=task_id, api_id=api_config.id)
+
         self._task_runner.health_check(
             task_id, case_name, audio, api_config, api_specific_config,
             api_paths, select_base_url, release_base_url
@@ -367,6 +392,21 @@ class APIExecutor(BaseExecutor):
         self._log_single_api_result(task_id, case_name, success, algo_result_dict,
                                      case_config, case_algorithm_params,
                                      algorithm_type, test_case_id, api_config.id)
+
+    @staticmethod
+    def _resolve_linear_round_config(case_config):
+        """线性流轮次渲染配置（INT-98）：镜像 _get_audio_data 的音频源语义——
+        顶层 audios 优先（多源全量进入混音时间轴），为空回退唯一 rounds[0]
+        （其 audios / background_noise 随轮次级配置生效）。"""
+        case_cfg = case_config if isinstance(case_config, dict) else {}
+        top_audios = [a for a in (case_cfg.get('audios') or [])
+                      if isinstance(a, dict) and a.get('audio_id')]
+        if top_audios:
+            return {'audios': top_audios}
+        rounds = case_cfg.get('rounds') or []
+        if len(rounds) == 1 and isinstance(rounds[0], dict):
+            return rounds[0]
+        return {'audios': []}
 
     def _log_single_api_result(self, task_id, case_name, success, algo_result_dict,
                                 case_config, case_algorithm_params,
