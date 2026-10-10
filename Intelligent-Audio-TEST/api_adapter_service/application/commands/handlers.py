@@ -4,7 +4,7 @@
 应用层只做用例编排，不实现具体 IO 逻辑：
 - 会话状态 → services.session_store
 - 任务/结果 → services.task_manager
-- 适配器选择/调用 → adapters.factory.select_adapter
+- 适配器选择/调用 → adapters.factory.APIAdapterFactory 注册表
 - 配置 → utils.config
 """
 
@@ -16,7 +16,7 @@ from api_adapter_service.application.commands.dialog_commands import (
 )
 from api_adapter_service.services.session_store import session_store
 from api_adapter_service.services.task_manager import task_manager
-from api_adapter_service.adapters.factory import select_adapter
+from api_adapter_service.adapters.factory import api_adapter_factory
 from api_adapter_service.utils.config import config
 from api_adapter_service.utils.logger import logger
 
@@ -43,6 +43,8 @@ class CreateDialogTaskHandler:
                 merged_config['headers'] = override['headers']
             if override.get('timeout'):
                 merged_config['timeout'] = override['timeout']
+            if override.get('adapter_class'):
+                merged_config['adapter_class'] = override['adapter_class']
 
         # 2) 确保会话存在（委托 session_store）
         session_config = base_vendor_config.get('session', {})
@@ -69,8 +71,9 @@ class CreateDialogTaskHandler:
         task_manager.update_task_status(task_id, 'processing')
 
         try:
-            # 4) 选择适配器（委托 adapters.factory）
-            adapter = select_adapter(cmd.vendor, merged_config, is_dialog=True)
+            # 4) 选择适配器（委托 adapters.factory 注册表）
+            adapter = api_adapter_factory.get_adapter(
+                cmd.vendor, merged_config, is_dialog=True)
 
             # 5) 发送请求
             result = adapter.send_request(

@@ -373,6 +373,11 @@ class APISessionExecutor:
             'headers': rendered_headers,
             'timeout': session.session_timeout,
         }
+        # adapter_class 通道（UC-0901/UC-1003）：apis.adapter_class 显式指定
+        # 适配器类名，adapter 服务注册表优先按此创建，未指定按 protocol+vendor
+        adapter_class = getattr(api_config, 'adapter_class', None)
+        if adapter_class:
+            vendor_config['adapter_class'] = adapter_class
 
         # 音频轮次必须携带混音产物引用（SendRoundRequest.input_data 约定：
         # text 内容 或 audio_path，adapter 侧经统一存储层读取）。

@@ -2,10 +2,9 @@
 """值对象：不可变领域对象。
 
 追加导出 adapter_config 模块的 DialogContext。
-adapter_config.VendorConfig 字段偏向 HTTP 适配场景，与下方 frozen
-VendorConfig（供 AdapterSelector 使用）语义不同，故不在此顶层 re-export，
+adapter_config.VendorConfig 字段偏向 HTTP 适配场景，不在此顶层 re-export，
 需通过 ``from api_adapter_service.domain.value_objects.adapter_config import VendorConfig``
-显式访问，避免遮蔽既有符号。
+显式访问，避免与常见命名字段冲突。
 """
 
 from dataclasses import dataclass, field
@@ -30,17 +29,6 @@ class TranslationDirection:
             source_lang=self.target_lang,
             target_lang=self.source_lang,
         )
-
-
-@dataclass(frozen=True)
-class VendorConfig:
-    """Vendor 配置值对象（不可变）。"""
-    vendor: str
-    protocol: str
-    config: Dict[str, Any] = field(default_factory=dict)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self.config.get(key, default)
 
 
 @dataclass(frozen=True)

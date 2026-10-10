@@ -100,3 +100,11 @@ class SseAdapter(BaseAdapter):
                 'latency': round(time.time() - start_time, 3),
                 'raw_response': {'error': str(e)},
             }
+
+
+# —— 注册表自注册（UC-1003）：导入即注册，新增厂商无需改动工厂 ——
+from api_adapter_service.adapters.factory import api_adapter_factory
+from api_adapter_service.domain.enums import AdapterProtocol, DEFAULT_REGISTRY_VENDOR
+
+api_adapter_factory.register(
+    AdapterProtocol.SSE, DEFAULT_REGISTRY_VENDOR, SseAdapter)

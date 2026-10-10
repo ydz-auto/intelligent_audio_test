@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 
 from api_adapter_service.services.session_store import session_store
 from api_adapter_service.services.task_manager import task_manager
-from api_adapter_service.adapters.factory import select_adapter
+from api_adapter_service.adapters.factory import api_adapter_factory
 from api_adapter_service.utils.config import config
 from api_adapter_service.utils.logger import logger
 
@@ -94,6 +94,8 @@ async def api_v1_create_task(request: Request):
             merged_config['headers'] = vendor_config_override['headers']
         if vendor_config_override.get('timeout'):
             merged_config['timeout'] = vendor_config_override['timeout']
+        if vendor_config_override.get('adapter_class'):
+            merged_config['adapter_class'] = vendor_config_override['adapter_class']
 
     # Ensure session exists in session_store
     session_config = base_vendor_config.get('session', {})
@@ -116,8 +118,9 @@ async def api_v1_create_task(request: Request):
     task_manager.update_task_status(task_id, 'processing')
 
     try:
-        # Select adapter
-        adapter = select_adapter(vendor, merged_config, is_dialog=True)
+        # Select adapter（注册表：adapter_class 优先，未指定按 protocol+vendor）
+        adapter = api_adapter_factory.get_adapter(
+            vendor, merged_config, is_dialog=True)
 
         # Send request
         result = adapter.send_request(
@@ -231,7 +234,8 @@ def _process_dialog_task(task):
 
         vendor = task['vendor']
         vendor_config = config.get_vendor_config(vendor)
-        adapter = select_adapter(vendor, vendor_config, is_dialog=True)
+        adapter = api_adapter_factory.get_adapter(
+            vendor, vendor_config, is_dialog=True)
 
         result = adapter.send_request(
             task_id=task_id,

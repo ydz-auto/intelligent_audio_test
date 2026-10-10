@@ -3,7 +3,7 @@
 api_adapter_service gRPC servicer 实现。
 
 将 gRPC RPC 方法委托给已有业务类：
-- AdapterServiceServicer -> session_store / task_manager / select_adapter
+- AdapterServiceServicer -> session_store / task_manager / APIAdapterFactory 注册表
 
 约定：
 - 复杂参数通过 JSON string 传递，方法内 json.loads 解析
@@ -19,7 +19,7 @@ from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
 from api_adapter_service.services.session_store import session_store
 from api_adapter_service.services.task_manager import task_manager
-from api_adapter_service.adapters.factory import select_adapter
+from api_adapter_service.adapters.factory import api_adapter_factory
 from api_adapter_service.utils.config import config
 from api_adapter_service.utils.logger import logger
 
@@ -77,6 +77,8 @@ class AdapterServiceServicer(adapter_grpc.AdapterServiceServicer):
                     merged_config['headers'] = vendor_config_override['headers']
                 if vendor_config_override.get('timeout'):
                     merged_config['timeout'] = vendor_config_override['timeout']
+                if vendor_config_override.get('adapter_class'):
+                    merged_config['adapter_class'] = vendor_config_override['adapter_class']
 
             # Ensure session exists in session_store
             session_config = base_vendor_config.get('session', {})
@@ -98,8 +100,9 @@ class AdapterServiceServicer(adapter_grpc.AdapterServiceServicer):
             )
             task_manager.update_task_status(task_id, 'processing')
 
-            # Select adapter
-            adapter = select_adapter(vendor, merged_config, is_dialog=True)
+            # Select adapter（注册表：adapter_class 优先，未指定按 protocol+vendor）
+            adapter = api_adapter_factory.get_adapter(
+                vendor, merged_config, is_dialog=True)
 
             # Send request
             result = adapter.send_request(
