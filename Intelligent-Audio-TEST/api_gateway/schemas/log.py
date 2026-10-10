@@ -99,6 +99,9 @@ class LogListQuery(APIModel):
     test_case_id: Optional[str] = Field(None)
     thread_id: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
+    # INT-81：业务日志按轮次/评估ID检索（对应文件路径第三段）
+    evaluation_id: Optional[str] = Field(None)
+    round: Optional[str] = Field(None)
 
 
 class LogStatsQuery(APIModel):
@@ -114,6 +117,9 @@ class LogStatsQuery(APIModel):
     content_include: Optional[str] = Field(None)
     content_exclude: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
+    # INT-81：任务维度统计覆盖业务日志文件
+    evaluation_id: Optional[str] = Field(None)
+    round: Optional[str] = Field(None)
 
 
 class LogArchiveQuery(APIModel):

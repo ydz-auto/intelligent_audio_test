@@ -26,6 +26,54 @@ def _parse_query_params(model_cls):
     return model_cls.model_validate(params)
 
 
+def _to_log_item(log: dict) -> LogItem:
+    """dict（DB 行或业务文件条目）→ LogItem。"""
+    return LogItem(
+        id=log.get('id'),
+        time=log.get('time') or '',
+        level=log.get('level') or '',
+        category=log.get('category') or '',
+        module=log.get('module') or '',
+        source=log.get('source') or '',
+        content=log.get('content') or '',
+        mark=log.get('mark'),
+        device_id=log.get('device_id'),
+        task_id=log.get('task_id'),
+        api_id=log.get('api_id'),
+        test_case_id=log.get('test_case_id'),
+        thread_id=log.get('thread_id'),
+        algorithm_type=log.get('algorithm_type'),
+    )
+
+
+def _match_db_log(query, log: dict) -> bool:
+    """DB 日志行客户端过滤（gRPC ListLogs 仅支持 task_id/level/日期）。"""
+    if query.module and (log.get('module') or '').lower() != query.module.lower():
+        return False
+    if query.category and query.category != 'all' and (log.get('category') or '').lower() != query.category.lower():
+        return False
+    if query.mark and log.get('mark') != query.mark:
+        return False
+    if query.device_id and log.get('device_id') != query.device_id:
+        return False
+    if query.api_id and log.get('api_id') != query.api_id:
+        return False
+    if query.test_case_id and log.get('test_case_id') != query.test_case_id:
+        return False
+    if query.thread_id and query.thread_id not in (log.get('thread_id') or ''):
+        return False
+    content = log.get('content') or ''
+    if query.keyword and query.keyword not in content:
+        return False
+    if query.content_include and query.content_include not in content:
+        return False
+    if query.content_exclude and query.content_exclude in content:
+        return False
+    if query.algorithm_type and query.algorithm_type != 'all' and log.get('algorithm_type') != query.algorithm_type:
+        return False
+    return True
+
+
 class LogQueryService:
     """日志查询读侧 Service（CQRS Query Side）。
 
@@ -37,6 +85,12 @@ class LogQueryService:
     def get_logs():
         try:
             query = _parse_query_params(LogListQuery)
+
+            # INT-81：带任务条件的查询走「业务日志文件 + DB 历史行」合并视图。
+            # 业务日志已去库化落文件（logs/business/{task}/...），历史 logs 表
+            # 数据保留只读，两侧按时间倒序合并后内存分页。
+            if query.task_id:
+                return LogQueryService._get_task_logs_merged(query)
 
             # 通过 gRPC 查询 Log 列表（task_id/level/日期由服务端过滤，其余条件客户端过滤）
             from api_gateway.infrastructure.grpc_proxies import task_data_service
@@ -52,54 +106,9 @@ class LogQueryService:
             total = resp.get('total', 0)
 
             # 客户端过滤：gRPC ListLogs 仅支持 task_id/level/日期，其余条件在此过滤
-            def _match(log):
-                if query.module and (log.get('module') or '').lower() != query.module.lower():
-                    return False
-                if query.category and query.category != 'all' and (log.get('category') or '').lower() != query.category.lower():
-                    return False
-                if query.mark and log.get('mark') != query.mark:
-                    return False
-                if query.device_id and log.get('device_id') != query.device_id:
-                    return False
-                if query.api_id and log.get('api_id') != query.api_id:
-                    return False
-                if query.test_case_id and log.get('test_case_id') != query.test_case_id:
-                    return False
-                if query.thread_id and query.thread_id not in (log.get('thread_id') or ''):
-                    return False
-                content = log.get('content') or ''
-                if query.keyword and query.keyword not in content:
-                    return False
-                if query.content_include and query.content_include not in content:
-                    return False
-                if query.content_exclude and query.content_exclude in content:
-                    return False
-                if query.algorithm_type and query.algorithm_type != 'all' and log.get('algorithm_type') != query.algorithm_type:
-                    return False
-                return True
+            logs = [log for log in logs if _match_db_log(query, log)]
 
-            logs = [log for log in logs if _match(log)]
-
-            data = []
-            for log in logs:
-                data.append(
-                    LogItem(
-                        id=log.get('id'),
-                        time=log.get('time') or '',
-                        level=log.get('level') or '',
-                        category=log.get('category') or '',
-                        module=log.get('module') or '',
-                        source=log.get('source') or '',
-                        content=log.get('content') or '',
-                        mark=log.get('mark'),
-                        device_id=log.get('device_id'),
-                        task_id=log.get('task_id'),
-                        api_id=log.get('api_id'),
-                        test_case_id=log.get('test_case_id'),
-                        thread_id=log.get('thread_id'),
-                        algorithm_type=log.get('algorithm_type'),
-                    )
-                )
+            data = [_to_log_item(log) for log in logs]
 
             return success_response(
                 LogListData(
@@ -115,6 +124,66 @@ class LogQueryService:
             import traceback
             traceback.print_exc()
             return error_response(f"获取日志失败: {str(e)}", code=500)
+
+    # ------------------------------------------------------------------
+    # 任务维度日志（INT-81）：业务文件 + DB 历史行合并
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_task_logs_merged(query):
+        from shared.logging import BusinessLogReader
+
+        reader = BusinessLogReader()
+        file_entries = reader.read_entries(
+            task_id=query.task_id,
+            device_id=query.device_id,
+            api_id=query.api_id,
+            evaluation_id=query.evaluation_id,
+            round_value=query.round,
+            level=query.level,
+            category=query.category if query.category and query.category != 'all' else None,
+            module=query.module,
+            keyword=query.keyword,
+            content_include=query.content_include,
+            content_exclude=query.content_exclude,
+            algorithm_type=query.algorithm_type,
+            test_case_id=query.test_case_id,
+            start_time=query.start_time,
+            end_time=query.end_time,
+        )
+        file_items = [_to_log_item(entry) for entry in file_entries]
+
+        # DB 历史行（审计事件与改造前任务日志，保留只读不迁移）
+        from api_gateway.infrastructure.grpc_proxies import task_data_service
+        resp = task_data_service.list_logs(
+            task_id=query.task_id,
+            level=query.level.split(',')[0].strip() if query.level else None,
+            page=1,
+            per_page=100000,
+            start_date=query.start_time,
+            end_date=query.end_time,
+        )
+        db_logs = [log for log in (resp.get('items') or []) if _match_db_log(query, log)]
+        db_items = [_to_log_item(log) for log in db_logs]
+
+        merged = sorted(
+            file_items + db_items,
+            key=lambda item: item.time or '',
+            reverse=True,
+        )
+        total = len(merged)
+        start = (query.page - 1) * query.per_page
+        page_items = merged[start:start + query.per_page]
+
+        return success_response(
+            LogListData(
+                items=page_items,
+                total=total,
+                page=query.page,
+                per_page=query.per_page,
+                pages=(total + query.per_page - 1) // query.per_page if query.per_page else 1,
+            )
+        )
 
     # 获取日志统计
     @staticmethod
@@ -140,6 +209,10 @@ class LogQueryService:
                 algorithm_type=query.algorithm_type if query.algorithm_type != 'all' else None,
             )
 
+            # INT-81：任务维度统计叠加业务日志文件行（DB 侧只含审计/历史行）
+            if query.task_id:
+                stats_dict = LogQueryService._merge_file_stats(query, stats_dict)
+
             log_stats = LogStatsData(
                 total=stats_dict.get('total', 0),
                 debug=stats_dict.get('debug', 0),
@@ -155,6 +228,34 @@ class LogQueryService:
             import traceback
             traceback.print_exc()
             return error_response(f"获取日志统计失败: {str(e)}", code=500)
+
+    @staticmethod
+    def _merge_file_stats(query, stats_dict):
+        """按级别统计业务日志文件行，叠加到 DB 统计结果上。"""
+        from shared.logging import BusinessLogReader
+
+        reader = BusinessLogReader()
+        entries = reader.read_entries(
+            task_id=query.task_id,
+            device_id=query.device_id,
+            evaluation_id=query.evaluation_id,
+            round_value=query.round,
+            level=query.level,
+            category=query.category if query.category and query.category != 'all' else None,
+            module=query.module if query.module != 'all' else None,
+            keyword=query.keyword,
+            content_include=query.content_include,
+            content_exclude=query.content_exclude,
+            algorithm_type=query.algorithm_type if query.algorithm_type != 'all' else None,
+            start_time=query.start_time,
+            end_time=query.end_time,
+        )
+        merged = dict(stats_dict or {})
+        for entry in entries:
+            level_key = (entry.get('level') or 'info').lower()
+            merged[level_key] = merged.get(level_key, 0) + 1
+            merged['total'] = merged.get('total', 0) + 1
+        return merged
 
     # 刷新日志 (手动同步新日志)
     @staticmethod

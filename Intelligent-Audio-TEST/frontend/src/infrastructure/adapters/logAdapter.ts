@@ -108,6 +108,7 @@ export function toLogQueryDto(query: LogQuery): Record<string, string | number |
   if (query.endTime) params.end_time = query.endTime
   if (query.deviceId !== undefined && query.deviceId !== '') params.device_id = String(query.deviceId)
   if (query.taskId !== undefined && query.taskId !== '') params.task_id = String(query.taskId)
+  if (query.evaluationId !== undefined && query.evaluationId !== '') params.evaluation_id = String(query.evaluationId)
   if (query.threadId) params.thread_id = String(query.threadId)
   if (query.testCaseId) params.test_case_id = String(query.testCaseId)
   if (query.contentInclude) params.content_include = query.contentInclude

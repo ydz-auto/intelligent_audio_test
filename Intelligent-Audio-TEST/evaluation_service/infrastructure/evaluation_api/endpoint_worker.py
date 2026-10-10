@@ -134,49 +134,52 @@ class EndpointWorker(EvaluationLoggerMixin):
                 task_data = self.get_task(timeout=1.0)
                 task_id = task_data.get('task_id')
 
-                try:
-                    self._log(
-                        level='INFO',
-                        content=f"端点Worker开始处理任务: TaskID={task_id}, ResultID={task_data['result_id']}, TestCaseID={task_data.get('test_case_id')}",
-                        task_id=task_id,
-                        test_case_id=task_data.get('test_case_id')
-                    )
-                    # 从 queued 改为 running，反映真实执行状态（P1.4: 通过 gRPC）
+                # INT-81：评估判定日志按轮次目录归档（无轮次的整体评估归 shared）
+                from shared.logging import log_round
+                with log_round(task_data.get('round_number')):
                     try:
-                        tc_rels = task_acl_repository.get_task_case_by_ids(
-                            task_id=task_id, case_ids=[str(task_data.get('test_case_id'))]
+                        self._log(
+                            level='INFO',
+                            content=f"端点Worker开始处理任务: TaskID={task_id}, ResultID={task_data['result_id']}, TestCaseID={task_data.get('test_case_id')}",
+                            task_id=task_id,
+                            test_case_id=task_data.get('test_case_id')
                         )
-                        if tc_rels and tc_rels[0].evaluation_status == EvaluationStatus.QUEUED:
-                            task_acl_repository.update_task_case_status(
-                                task_id=task_id,
-                                case_id=str(task_data.get('test_case_id')),
-                                evaluation_status=EvaluationStatus.RUNNING,
+                        # 从 queued 改为 running，反映真实执行状态（P1.4: 通过 gRPC）
+                        try:
+                            tc_rels = task_acl_repository.get_task_case_by_ids(
+                                task_id=task_id, case_ids=[str(task_data.get('test_case_id'))]
                             )
+                            if tc_rels and tc_rels[0].evaluation_status == EvaluationStatus.QUEUED:
+                                task_acl_repository.update_task_case_status(
+                                    task_id=task_id,
+                                    case_id=str(task_data.get('test_case_id')),
+                                    evaluation_status=EvaluationStatus.RUNNING,
+                                )
+                        except Exception as e:
+                            self._log(level='WARNING', content=f"更新评估状态为running失败: {str(e)}", task_id=task_id)
+                        self._execute_evaluation(**task_data)
+
+                        self._log(
+                            level='INFO',
+                            content=f"端点Worker完成任务: TaskID={task_id}, ResultID={task_data['result_id']}, TestCaseID={task_data.get('test_case_id')}",
+                            task_id=task_id,
+                            test_case_id=task_data.get('test_case_id')
+                        )
                     except Exception as e:
-                        self._log(level='WARNING', content=f"更新评估状态为running失败: {str(e)}", task_id=task_id)
-                    self._execute_evaluation(**task_data)
+                        self._log(
+                            level='ERROR',
+                            content=f"端点Worker处理任务异常: {str(e)}\n{traceback.format_exc()}",
+                            task_id=task_data.get('task_id'),
+                            test_case_id=task_data.get('test_case_id')
+                        )
+                    finally:
+                        self.task_done()
 
-                    self._log(
-                        level='INFO',
-                        content=f"端点Worker完成任务: TaskID={task_id}, ResultID={task_data['result_id']}, TestCaseID={task_data.get('test_case_id')}",
-                        task_id=task_id,
-                        test_case_id=task_data.get('test_case_id')
-                    )
-                except Exception as e:
-                    self._log(
-                        level='ERROR',
-                        content=f"端点Worker处理任务异常: {str(e)}\n{traceback.format_exc()}",
-                        task_id=task_data.get('task_id'),
-                        test_case_id=task_data.get('test_case_id')
-                    )
-                finally:
-                    self.task_done()
-
-                    # 标记任务完成
-                    with self.completion_events_lock:
-                        if task_id in self.completion_events:
-                            self.completion_events[task_id].set()
-                            del self.completion_events[task_id]
+                        # 标记任务完成
+                        with self.completion_events_lock:
+                            if task_id in self.completion_events:
+                                self.completion_events[task_id].set()
+                                del self.completion_events[task_id]
 
             except queue.Empty:
                 continue

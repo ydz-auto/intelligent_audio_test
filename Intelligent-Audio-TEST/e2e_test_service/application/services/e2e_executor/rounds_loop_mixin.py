@@ -1,6 +1,7 @@
 import time
 
 from shared.infrastructure.base_executor import TaskStopSignal
+from shared.logging import log_round
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import (
     AlgorithmAclRepositoryImpl,
@@ -48,28 +49,30 @@ class RoundsLoopMixin:
             self.execution_engine.update_case_round_progress(task_id, tc_rel_id, round_idx, len(rounds))
             self._log(level='INFO', content=f"执行第 {round_number} 轮", task_id=task_id, test_case_id=test_case_id)
 
-            round_result = self._execute_single_round(
-                task_id, tc_rel_id, data, case_config, case_name,
-                algorithm_type, test_case_id, rounds,
-                device_info_list, result_id, case_reference_params,
-                round_idx, round_config, round_number, rounds_data
-            )
+            # INT-81：本轮范围内业务日志（执行/设备交互/评估）落到对应轮次目录
+            with log_round(round_number):
+                round_result = self._execute_single_round(
+                    task_id, tc_rel_id, data, case_config, case_name,
+                    algorithm_type, test_case_id, rounds,
+                    device_info_list, result_id, case_reference_params,
+                    round_idx, round_config, round_number, rounds_data
+                )
 
-            # 累积结果
-            tagged_results = round_result.get('tagged_results', [])
-            all_round_results.extend(tagged_results)
-            if round_result.get('round_data'):
-                rounds_data.append(round_result['round_data'])
-            if round_result.get('adjusted_ref_params'):
-                last_adjusted_ref_params = round_result['adjusted_ref_params']
+                # 累积结果
+                tagged_results = round_result.get('tagged_results', [])
+                all_round_results.extend(tagged_results)
+                if round_result.get('round_data'):
+                    rounds_data.append(round_result['round_data'])
+                if round_result.get('adjusted_ref_params'):
+                    last_adjusted_ref_params = round_result['adjusted_ref_params']
 
-            # 本轮失败：设备状态已损坏，后续轮次无法正常执行，直接结束
-            if not round_result.get('success', True):
-                execution_success = False
-                self._log(level='ERROR',
-                          content=f"第 {round_number} 轮失败，跳过剩余 {len(rounds) - round_idx - 1} 轮",
-                          task_id=task_id, test_case_id=test_case_id)
-                break
+                # 本轮失败：设备状态已损坏，后续轮次无法正常执行，直接结束
+                if not round_result.get('success', True):
+                    execution_success = False
+                    self._log(level='ERROR',
+                              content=f"第 {round_number} 轮失败，跳过剩余 {len(rounds) - round_idx - 1} 轮",
+                              task_id=task_id, test_case_id=test_case_id)
+                    break
 
         return all_round_results, rounds_data, execution_success, last_adjusted_ref_params
 

@@ -80,6 +80,9 @@ def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
+    # INT-81：挂统一日志基座，运行日志落 logs/{service_name}/（去库化前系统日志仅本地文件）
+    from shared.utils.log_handler import get_db_handler
+    logging.getLogger().addHandler(get_db_handler())
     _server = start_grpc_server()
     try:
         _server.wait_for_termination()

@@ -247,6 +247,8 @@ def start_service(svc):
     if svc.get('http', True):
         print(f"[START] {name} (HTTP) on port {port}...", flush=True)
         env['PORT'] = str(port)
+        # INT-81：服务运行日志按 logs/{service_name}/ 分目录，需显式传入服务名
+        env['SERVICE_NAME'] = name
         if grpc_port:
             env['GRPC_PORT'] = str(grpc_port)
         cmd = [
@@ -259,6 +261,8 @@ def start_service(svc):
         ]
     else:
         print(f"[START] {name} (gRPC-only) on port {grpc_port}...", flush=True)
+        # INT-81：gRPC-only 服务同样按服务名分目录落运行日志
+        env['SERVICE_NAME'] = name
         if grpc_port:
             env['GRPC_PORT'] = str(grpc_port)
         cmd = [

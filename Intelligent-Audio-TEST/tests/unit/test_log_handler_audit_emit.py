@@ -10,9 +10,11 @@ monkeypatch 掉，只验证了调用发生、验证不了落库发生，故自�
 - 审计类日志（auth/benchmark）无 task_id/test_case_id 也入 DB 队列，
   经 worker 批量发往 gRPC batch_create_logs（真实 write_*_audit 全链路）
 - 审计日志不参与 TTL 去重（相同负载连续两条都必须落库）
-- 审计日志保持本地文件双写（修复前审计只进文件，行为不回退）
+- 审计日志保持本地文件双写（修复前审计只进文件，行为不回退；
+  INT-81 后文件路径为 logs/{service_name}/app.log）
 - 非审计系统日志（无任务上下文）保持只写文件、不入库
-- 任务日志（有 task_id）分流行为不变
+- 业务日志（有 task_id）去库化：落业务文件（INT-81），
+  LOG_BUSINESS_DB_ENABLED=True 时兼容性双写入库（回滚开关）
 
 gRPC 边界以 fake batch_create_logs 承接；task_service 侧真实落库由
 test_auth_servicer_sqlite_e2e.py 用真实仓储验证。
@@ -140,11 +142,13 @@ class TestAuditEmitRouting:
 
     def test_auth_audit_also_written_to_local_file(self, audit_env, tmp_path):
         from auth_service.application.services.auth_audit import write_auth_audit
+        from shared.logging import resolve_service_name
         _, _ = audit_env
         write_auth_audit(AuditEvent.AUTH_ROLE_DELETED, 'role_management', {
             'operator_id': 3, 'target_id': 4,
         })
-        log_file = tmp_path / 'logs' / 'app.log'
+        # INT-81：服务文件日志按 logs/{service_name}/app.log 分目录
+        log_file = tmp_path / 'logs' / resolve_service_name() / 'app.log'
         assert log_file.exists(), '审计日志本地文件双写丢失'
         assert 'AUTH_ROLE_DELETED' in log_file.read_text(encoding='utf-8')
 
@@ -156,10 +160,25 @@ class TestAuditEmitRouting:
         assert not _wait_for(lambda: len(captured) >= 1, timeout=1.5), \
             '非审计系统日志不应入 DB 队列'
 
-    def test_task_log_with_task_id_still_enqueued(self, audit_env):
+    def test_task_log_goes_to_business_file_not_db(self, audit_env, tmp_path):
+        """INT-81：业务日志去库化 —— 有 task_id 的日志落业务文件，不入 DB 队列。"""
         from shared.utils.log_handler import log_not_emit
         _, captured = audit_env
-        log_not_emit('INFO', 'task_engine', 'step done', category='system',
-                     task_id=55)
-        assert _wait_for(lambda: len(captured) >= 1), '任务日志未进入 DB 队列'
-        assert captured[0]['task_id'] == 55
+        log_not_emit('INFO', 'task_engine', 'business step done', category='execution',
+                     task_id=55, test_case_id='TC-9', device_id=3, round=2)
+        # 不入库（审计除外）
+        assert not _wait_for(lambda: len(captured) >= 1, timeout=1.5), \
+            '业务日志不应再写 logs 表'
+        # 落业务文件：logs/business/{task}/{device}/{round}/execution.{service}.log
+        from shared.logging import resolve_service_name
+        biz_file = (tmp_path / 'logs' / 'business' / '55' / '3' / '2'
+                    / f'execution.{resolve_service_name()}.log')
+        assert biz_file.exists(), '业务日志未按路径模板落文件'
+        import json as _json
+        line = biz_file.read_text(encoding='utf-8').strip().splitlines()[0]
+        entry = _json.loads(line)
+        assert entry['task_id'] == 55
+        assert entry['device_id'] == 3
+        assert entry['round'] == 2
+        assert entry['log_type'] == 'execution'
+        assert 'business step done' in entry['content']

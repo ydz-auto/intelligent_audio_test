@@ -67,9 +67,15 @@ export function useLogView(refs?: LogViewRefs) {
     taskId: '',
     userId: '',
     threadId: '',
+    evaluationId: '',
     contentInclude: '',
     contentExclude: ''
   });
+
+  // INT-81：任务/评估维度检索走业务日志文件路径，实时轮询直接重查列表
+  const hasTaskScopeFilters = computed(() =>
+    !!(advancedFilters.value.taskId || advancedFilters.value.evaluationId)
+  );
 
   const searchTerm = ref('');
 
@@ -300,6 +306,7 @@ export function useLogView(refs?: LogViewRefs) {
       taskId: '',
       userId: '',
       threadId: '',
+      evaluationId: '',
       contentInclude: '',
       contentExclude: ''
     });
@@ -417,9 +424,18 @@ export function useLogView(refs?: LogViewRefs) {
 
     realTimeLogInterval.value = window.setInterval(async () => {
       if (autoScrollEnabled.value && currentPage.value === 1) {
-        const lastId = logs.value.length > 0 ? Math.max(...logs.value.map(l => l.id)) : 0;
         const pollStartTime = performance.now();
         try {
+          // INT-81：任务/评估维度的业务日志在文件中，DB 增量接口感知不到，
+          // 直接重查列表（服务端分页 + 时间倒序，首页即最新）
+          if (hasTaskScopeFilters.value) {
+            await fetchLogs();
+            logRate.value = 0;
+            logDelay.value = Math.round(performance.now() - pollStartTime);
+            connectionStatus.value = CONNECTION_STATUS.CONNECTED;
+            return;
+          }
+          const lastId = logs.value.length > 0 ? Math.max(...logs.value.map(l => l.id)) : 0;
           const response = await logsPort.refresh(lastId);
           const newCount = response.newCount;
           // 基于真实增量计算日志速率（条/秒）与响应延迟（毫秒）

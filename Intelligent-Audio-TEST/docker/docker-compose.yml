@@ -70,6 +70,7 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=api_gateway
+      - SERVICE_NAME=api_gateway
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=50061
       - E2E_TEST_SERVICE_HOST=e2e_test_service
@@ -96,6 +97,8 @@ services:
     volumes:
       # 与 task_service 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
       - data_transfer_tmp:/app/storage/data_transfer
+      # INT-81：服务运行日志/业务日志统一卷（api_gateway 读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,6 +135,7 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=task_service
+      - SERVICE_NAME=task_service
       - GRPC_PORT=50061
       - E2E_TEST_SERVICE_HOST=e2e_test_service
       - E2E_TEST_SERVICE_GRPC_PORT=50051
@@ -148,6 +152,8 @@ services:
     volumes:
       # 与 api_gateway 共享：数据导入/导出 ZIP 中转（INT-25），两容器必须挂同一卷
       - data_transfer_tmp:/app/storage/data_transfer
+      # INT-81：服务运行日志/业务日志统一卷（api_gateway 读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -178,11 +184,15 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=evaluation_service
+      - SERVICE_NAME=evaluation_service
       - GRPC_PORT=50091
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=50061
       - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -215,6 +225,7 @@ services:
       - GRPC_PORT=50051
       - LAB_NAME=lab-a
       - SERVICE_HOST=e2e_test_service
+      - SERVICE_NAME=e2e_test_service
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=50061
       - EVALUATION_SERVICE_HOST=evaluation_service
@@ -223,6 +234,9 @@ services:
       - AUDIO_SERVICE_GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=device_service
       - DEVICE_SERVICE_GRPC_PORT=50053
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -254,9 +268,13 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=audio_service
+      - SERVICE_NAME=audio_service
       - GRPC_PORT=50052
       - DEVICE_SERVICE_HOST=device_service
       - DEVICE_SERVICE_GRPC_PORT=50053
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -286,9 +304,13 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=device_service
+      - SERVICE_NAME=device_service
       - GRPC_PORT=50053
       - AUDIO_SERVICE_HOST=audio_service
       - AUDIO_SERVICE_GRPC_PORT=50052
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -321,9 +343,13 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=report_service
+      - SERVICE_NAME=report_service
       - GRPC_PORT=50068
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=50061
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -354,7 +380,11 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=algorithm_service
+      - SERVICE_NAME=algorithm_service
       - GRPC_PORT=50067
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -385,7 +415,11 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=auth_service
+      - SERVICE_NAME=auth_service
       - GRPC_PORT=50069
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -414,6 +448,10 @@ services:
       - VOICE_LLM_API_KEY=${VOICE_LLM_API_KEY:-}
       - VOLC_WS_URL=${VOLC_WS_URL:-}
       - VOLC_API_KEY=${VOLC_API_KEY:-}
+      - SERVICE_NAME=api_adapter_service
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       - postgres
       - redis
@@ -441,11 +479,15 @@ services:
       - OSS_BUCKET_NAME=intelligent-audio-test
       - OSS_KEY_PREFIX=intelligent_audio_test
       - SERVICE_HOST=api_test_service
+      - SERVICE_NAME=api_test_service
       - GRPC_PORT=50071
       - ADAPTER_SERVICE_HOST=api_adapter_service
       - ADAPTER_SERVICE_HTTP_PORT=5008
       - EVALUATION_SERVICE_HOST=evaluation_service
       - EVALUATION_SERVICE_GRPC_PORT=50091
+    volumes:
+      # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
+      - service_logs:/app/logs
     depends_on:
       - postgres
       - redis
@@ -461,6 +503,8 @@ services:
       replicas: 2
 
 volumes:
+  # INT-81：服务运行日志/业务日志统一卷
+  service_logs:
   postgres_data:
   rustfs_data_0:
   rustfs_data_1:

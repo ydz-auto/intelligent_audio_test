@@ -30,6 +30,10 @@ class _WorkerMixin:
                     if data is None:
                         print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Worker thread received exit signal.")
                         break
+                    if data.get('kind') == 'business':
+                        # 业务日志（INT-81）：即时落业务文件 + 推 WS，不入 DB 批次
+                        self._process_business_entry(data)
+                        continue
                     batch.append(data)
                 except queue.Empty:
                     pass
@@ -71,6 +75,17 @@ class _WorkerMixin:
                                 name='log-archive-check',
                             )
                             self._archive_thread.start()
+
+                    if current_time - self._last_sweep_check >= self._sweep_check_interval:
+                        # 日志保留清扫（INT-81）：服务日志/业务日志按保留天数清理
+                        self._last_sweep_check = current_time
+                        if self._sweep_thread is None or not self._sweep_thread.is_alive():
+                            self._sweep_thread = threading.Thread(
+                                target=self._sweep_expired_logs,
+                                daemon=True,
+                                name='log-retention-sweep',
+                            )
+                            self._sweep_thread.start()
                 else:
                     # batch 未满且未超时：暂不推送，等入库后再推（保证前端拿到合法 id）
                     pass
@@ -78,6 +93,42 @@ class _WorkerMixin:
             except Exception as e:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - CRITICAL ERROR - {str(e)}")
                 time.sleep(0.5)
+
+    def _process_business_entry(self, data):
+        """业务日志：写业务文件 + 推 WebSocket（合成负数 id，非 DB id）。"""
+        try:
+            writer = self._get_business_writer()
+            if writer is not None:
+                writer.write(data)
+            else:
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WARN - Business writer unavailable, business log dropped: {str(data.get('content'))[:200]}")
+            if data.get('push_to_websocket'):
+                # 合成负数 id：与 DB id 空间区分，仅用于前端 key/详情展开
+                self._business_seq += 1
+                ws_data = dict(data)
+                ws_data['id'] = -self._business_seq
+                ws_data['content'] = data.get('ws_content') or data.get('content')
+                self._emit_websocket(ws_data)
+        except Exception as e:
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - ERROR - business log write failed: {str(e)}")
+
+    def _get_business_writer(self):
+        """惰性获取进程级业务日志写入器（单例）。"""
+        if self._business_writer is None:
+            try:
+                from shared.logging import BusinessLogFileWriter
+                self._business_writer = BusinessLogFileWriter()
+            except Exception as e:
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - ERROR - business writer init failed: {str(e)}")
+        return self._business_writer
+
+    def _sweep_expired_logs(self):
+        """按保留天数清扫过期日志文件（服务日志 + 业务日志）。"""
+        try:
+            from shared.logging import sweep_log_root
+            sweep_log_root()
+        except Exception as e:
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - SWEEP ERROR - {str(e)}")
 
     def _process_batch(self, batch):
         """通过 gRPC 批量写入日志（P0-3: 替代直连 DB session）"""

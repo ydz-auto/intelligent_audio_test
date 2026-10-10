@@ -120,6 +120,13 @@
                 <input type="text" class="form-input" v-model="advancedFilters.taskId" placeholder="输入任务ID" @input="filterLogs">
               </div>
             </div>
+
+            <div class="filter-group">
+              <label class="filter-label">评估ID/轮次:</label>
+              <div class="filter-select">
+                <input type="text" class="form-input" v-model="advancedFilters.evaluationId" placeholder="输入评估ID或轮次号" @input="filterLogs">
+              </div>
+            </div>
           </div>
 
           <div class="filter-row filter-grid">

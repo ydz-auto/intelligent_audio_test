@@ -431,19 +431,22 @@ class ReevaluationExecutor:
                 if algorithm_params_col is not None:
                     eval_params['algorithm_params_col'] = algorithm_params_col
 
-                evaluation_service.evaluate_case(
-                    task_id=task_id,
-                    result_id=result,
-                    test_case_id=test_case_id,
-                    algorithm_result=algorithm_result,
-                    round_number=round_idx,
-                    **eval_params,
-                )
-                any_submitted = True
+                # INT-81：重评提交线程内的评估日志按轮次目录归档
+                from shared.logging import log_round
+                with log_round(round_idx):
+                    evaluation_service.evaluate_case(
+                        task_id=task_id,
+                        result_id=result,
+                        test_case_id=test_case_id,
+                        algorithm_result=algorithm_result,
+                        round_number=round_idx,
+                        **eval_params,
+                    )
+                    any_submitted = True
 
-                log_and_emit('INFO', 'reevaluator',
-                            f"已提交 E2E 轮次评估: test_case_id={test_case_id}, round={round_idx}",
-                            task_id=task_id, test_case_id=test_case_id)
+                    log_and_emit('INFO', 'reevaluator',
+                                f"已提交 E2E 轮次评估: test_case_id={test_case_id}, round={round_idx}",
+                                task_id=task_id, test_case_id=test_case_id)
             except Exception as e:
                 import traceback
                 log_and_emit('ERROR', 'reevaluator',
@@ -564,9 +567,15 @@ class ReevaluationExecutor:
                     **eval_params,
                 )
 
-                log_and_emit('INFO', 'reevaluator',
-                            f"已提交轮次评估: test_case_id={test_case_id}, round={round_number}",
-                            task_id=task_id, test_case_id=test_case_id)
+                # INT-81：轮次上下文仅影响本线程日志的落盘目录
+                from shared.logging import set_current_round
+                set_current_round(round_number)
+                try:
+                    log_and_emit('INFO', 'reevaluator',
+                                f"已提交轮次评估: test_case_id={test_case_id}, round={round_number}",
+                                task_id=task_id, test_case_id=test_case_id)
+                finally:
+                    set_current_round(None)
             except Exception as e:
                 import traceback
                 log_and_emit('ERROR', 'reevaluator',

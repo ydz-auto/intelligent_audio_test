@@ -87,6 +87,20 @@ class BaseConfig:
     LOG_LEVEL: str = _get_env('LOG_LEVEL', 'INFO').upper()
     CONSOLE_LOG_ENABLED: bool = _get_bool('CONSOLE_LOG_ENABLED', True)
 
+    # --- 日志体系（INT-81）：服务运行日志与业务日志全部落文件 ---
+    LOG_ROOT_DIR: str = _get_env('LOG_ROOT_DIR', './logs')
+    # 环境标识（dev/prod）：prod 下 DEBUG 级日志不落业务文件
+    LOG_ENVIRONMENT: str = _get_env('LOG_ENVIRONMENT', 'dev').lower()
+    # 服务运行日志：logs/{service_name}/ 单文件上限与保留天数（按天+按大小双条件轮转）
+    LOG_SERVICE_MAX_MB: int = _get_int('LOG_SERVICE_MAX_MB', 50)
+    LOG_SERVICE_RETENTION_DAYS: int = _get_int('LOG_SERVICE_RETENTION_DAYS', 30)
+    # 业务日志（执行/评估/设备）：去库化落文件开关与阈值
+    LOG_BUSINESS_ENABLED: bool = _get_bool('LOG_BUSINESS_ENABLED', True)
+    # 回滚开关：True 时业务日志同时保留入库（历史行为），默认仅落文件
+    LOG_BUSINESS_DB_ENABLED: bool = _get_bool('LOG_BUSINESS_DB_ENABLED', False)
+    LOG_BUSINESS_MAX_MB: int = _get_int('LOG_BUSINESS_MAX_MB', 50)
+    LOG_BUSINESS_RETENTION_DAYS: int = _get_int('LOG_BUSINESS_RETENTION_DAYS', 30)
+
     # --- gRPC 服务发现 ---
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')
     E2E_TEST_SERVICE_GRPC_PORT: int = _get_int('E2E_TEST_SERVICE_GRPC_PORT', 50051)

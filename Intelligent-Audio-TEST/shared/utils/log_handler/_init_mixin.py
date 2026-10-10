@@ -3,14 +3,10 @@
 从原 log_handler.py 拆分而来，保持行为不变。
 """
 
-import os
 import sys
-import logging
 import threading
 import queue
 from datetime import datetime, timezone, timedelta
-
-from shared.utils.log_handler._file_handler import SizeTimeRotatingFileHandler
 
 
 class _InitMixin:
@@ -37,6 +33,15 @@ class _InitMixin:
         self._archive_check_interval = 300
         self._archive_thread = None  # 归档巡检后台线程（进行中不重叠）
 
+        # INT-81 日志体系：业务日志写入器（惰性单例）、保留清扫状态、配置快照
+        self._business_writer = None
+        self._business_seq = 0
+        self._last_sweep_check = 0
+        self._sweep_check_interval = 600
+        self._sweep_thread = None
+        from shared.logging.config import get_log_settings
+        self._settings = get_log_settings()
+
         # 非任务/用例日志的文件处理器
         self._file_handler = self._init_file_handler()
 
@@ -44,28 +49,15 @@ class _InitMixin:
         self.worker_thread.start()
 
     def _init_file_handler(self):
-        """初始化 SizeTimeRotatingFileHandler，用于写入非任务/用例相关的系统日志
+        """初始化服务运行日志文件处理器（INT-81：统一由 shared/logging 基座提供）
 
-        同时按时间（每天午夜）和大小（10MB）轮转，保留 30 个历史文件。
+        写入 logs/{service_name}/app.log，按天 + 按大小（LOG_SERVICE_MAX_MB，默认 50MB）
+        双条件轮转，保留 LOG_SERVICE_RETENTION_DAYS 天（默认 30，由后台清扫器执行）。
         Windows 下文件被占用时轮转失败不中断日志。
         """
         try:
-            log_dir = os.path.join(os.getcwd(), 'logs')
-            os.makedirs(log_dir, exist_ok=True)
-            file_formatter = logging.Formatter(
-                '[%(asctime)s] %(levelname)-8s %(module)s - %(message)s',
-                datefmt='%Y-%m-%d %H:%M:%S'
-            )
-            handler = SizeTimeRotatingFileHandler(
-                os.path.join(log_dir, 'app.log'),
-                maxBytes=10 * 1024 * 1024,  # 10MB
-                backupCount=30,
-                when='midnight',
-                interval=1,
-                encoding='utf-8'
-            )
-            handler.setFormatter(file_formatter)
-            return handler
+            from shared.logging import setup_service_file_logging
+            return setup_service_file_logging()
         except Exception as e:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - WARN - File handler init failed: {e}")
             return None

@@ -142,16 +142,26 @@ class ReportStatsQueryMixin:
         import json as _json
         import os as _os
         import zipfile as _zipfile
-        from shared.infrastructure.storage import storage
         from shared.utils.result_data_store import load_full_result_data
 
         zip_filename = f"case_{case_id}_logs.zip"
+
+        # INT-81：用例日志下载含业务日志文件（logs/business/{task}/{device}/...），
+        # 按结果的被测设备收敛范围（结果无设备信息时取任务全量）
+        device_id = None
+        if test_result:
+            device_id = (test_result.get('device_id') if isinstance(test_result, dict)
+                         else getattr(test_result, 'device_id', None))
 
         zip_buffer = _io.BytesIO()
         found_any = False
         with _zipfile.ZipFile(zip_buffer, 'w', _zipfile.ZIP_DEFLATED) as zf:
             found_any = ReportStatsQueryMixin._write_case_log_files(
                 zf, task_ids_to_search, case_id, found_any)
+
+            if ReportStatsQueryMixin._write_business_log_files(
+                    zf, task_ids_to_search, device_id):
+                found_any = True
 
             full_data = {}
             if test_result:
@@ -176,6 +186,24 @@ class ReportStatsQueryMixin:
             'content_base64': base64.b64encode(zip_data).decode('utf-8'),
             'size': total_size,
         }
+
+    @staticmethod
+    def _write_business_log_files(zf, task_ids_to_search: list, device_id) -> bool:
+        """将任务的业务日志文件（INT-81 路径体系）写入 ZIP，返回是否写入文件。"""
+        from shared.logging import BusinessLogReader
+
+        reader = BusinessLogReader()
+        wrote_any = False
+        for task_id in task_ids_to_search:
+            try:
+                files = reader.load_file_bytes(task_id=task_id, device_id=device_id)
+            except Exception:
+                logger.debug("收集业务日志文件失败 task_id=%s", task_id, exc_info=True)
+                continue
+            for rel_path, content in files:
+                zf.writestr(f"business_logs/{rel_path}", content)
+                wrote_any = True
+        return wrote_any
 
     @staticmethod
     def _write_case_log_files(zf, task_ids_to_search: list, case_id: str, found_any: bool) -> bool:

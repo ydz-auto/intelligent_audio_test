@@ -34,6 +34,8 @@ export interface AdvancedLogFilters {
   taskId?: string
   userId?: string
   threadId?: string
+  /** 评估ID/轮次（INT-81：业务日志文件路径第三段检索键） */
+  evaluationId?: string
   contentInclude?: string
   contentExclude?: string
 }

@@ -18,13 +18,21 @@ from shared.utils.log_handler._constants import (
 
 
 class _EmitMixin:
-    """日志分流：任务/用例日志走 DB+WS，其余写本地文件。"""
+    """日志三分流（INT-81）：
+
+    - 业务日志（有 task_id）→ 业务日志文件（logs/business/...，去库化），
+      可经 LOG_BUSINESS_DB_ENABLED 回退开关恢复入库；需实时查看的推 WebSocket
+    - 审计类日志（auth/benchmark/device 审计）→ 本地服务文件 + DB 队列
+    - 其余系统日志（无任务上下文）→ 只写本地服务文件
+    """
 
     def emit(self, record):
         """
         分流处理日志：
-        - 有 task_id 或 test_case_id → 入 DB 队列 + 推 WebSocket（任务/用例日志）
-        - 无 task_id/test_case_id → 只写本地文件（系统/模块日志，不入库不推 WS）
+        - 有 task_id → 业务日志文件（+ WebSocket）；
+          LOG_BUSINESS_DB_ENABLED=True 时兼容性双写入库队列
+        - 无 task_id 且审计类 → 本地服务文件 + DB 队列
+        - 其余 → 只写本地服务文件
         """
         try:
             # 跳过内部模块日志
@@ -44,7 +52,7 @@ class _EmitMixin:
             if 'WebSocket' in log_message or 'socketio' in log_message or 'emitting event' in log_message:
                 return
 
-            # === 分流判断：是否为任务/用例相关日志 ===
+            # === 分流判断 ===
             task_id = getattr(record, 'task_id', None)
             test_case_id = getattr(record, 'test_case_id', None)
             category = str(getattr(record, 'category', '') or '').lower()
@@ -54,7 +62,16 @@ class _EmitMixin:
             is_audit_log = category in AUDIT_LOG_CATEGORIES
             is_task_related = task_id is not None or test_case_id is not None
 
-            # 非任务/用例日志：默认只写文件不入库不推 WS；审计类双写文件 + 入库队列
+            # === 业务日志（INT-81）：有 task_id 落业务文件，停止写 logs 表 ===
+            if task_id is not None:
+                self._enqueue_business_log(record, task_id, test_case_id,
+                                           category, log_message)
+                if self._settings.business_db_enabled:
+                    self._enqueue_db_log(record, task_id, test_case_id,
+                                         category, log_message, is_audit_log)
+                return
+
+            # 非任务日志：默认只写文件不入库不推 WS；审计类双写文件 + 入库队列
             if not is_task_related:
                 if self._file_handler:
                     try:
@@ -65,24 +82,7 @@ class _EmitMixin:
                 if not is_audit_log:
                     return
 
-            # === 以下为入库路径（任务/用例日志 或 审计日志）===
-
-            # 去重检查：指纹带上 task_id/test_case_id/category，避免同结构不同用例日志被误吞
-            # 审计日志例外：每笔管理事件都必须落库，不参与 TTL 去重
-            if not is_audit_log:
-                ctx_key = f"{record.levelno}-{record.module}-{task_id}-{test_case_id}-{category}-{log_message}"
-                log_fingerprint = hashlib.md5(ctx_key.encode('utf-8')).hexdigest()
-                current_time = datetime.now().timestamp()
-
-                if log_fingerprint in self.recent_logs:
-                    if current_time - self.recent_logs[log_fingerprint] < self.log_ttl:
-                        return
-
-                self.recent_logs[log_fingerprint] = current_time
-
-                # 清理过期指纹
-                if len(self.recent_logs) > self.max_recent_logs:
-                    self.recent_logs = {fp: ts for fp, ts in self.recent_logs.items() if current_time - ts < self.log_ttl}
+            # === 以下为入库路径（无 task_id 的用例日志 或 审计日志）===
 
             # 准备异步写入的数据
             # 超长日志截断：超过 LOG_CONTENT_MAX_LENGTH 字符时截断并追加标记，避免大日志长驻队列/DB 导致内存膨胀
@@ -123,3 +123,96 @@ class _EmitMixin:
         except Exception as e:
             # emit 自身异常总是打印，避免静默失败
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - emit failed: {str(e)}", file=sys.stderr)
+
+    def _enqueue_db_log(self, record, task_id, test_case_id, category, log_message, is_audit_log):
+        """业务日志兼容性入库路径（LOG_BUSINESS_DB_ENABLED=True 回滚开关）。
+
+        与历史入库行为一致：TTL 去重（审计除外）+ 截断 + 入 DB 队列。
+        """
+        if not is_audit_log:
+            ctx_key = f"{record.levelno}-{record.module}-{task_id}-{test_case_id}-{category}-{log_message}"
+            log_fingerprint = hashlib.md5(ctx_key.encode('utf-8')).hexdigest()
+            current_time = datetime.now().timestamp()
+
+            if log_fingerprint in self.recent_logs:
+                if current_time - self.recent_logs[log_fingerprint] < self.log_ttl:
+                    return
+
+            self.recent_logs[log_fingerprint] = current_time
+
+            # 清理过期指纹
+            if len(self.recent_logs) > self.max_recent_logs:
+                self.recent_logs = {fp: ts for fp, ts in self.recent_logs.items() if current_time - ts < self.log_ttl}
+
+        _content = log_message
+        if len(_content) > LOG_CONTENT_MAX_LENGTH:
+            _content = _content[:LOG_CONTENT_MAX_LENGTH] + '... [truncated]'
+        log_data = {
+            'time': datetime.now(timezone(timedelta(hours=8))),
+            'level': record.levelname.upper(),
+            'module': record.module if hasattr(record, 'module') else 'unknown',
+            'category': category or 'system',
+            'source': getattr(record, 'source', 'backend').lower(),
+            'content': _content,
+            'task_id': task_id,
+            'device_id': getattr(record, 'device_id', None),
+            'api_id': getattr(record, 'api_id', None),
+            'test_case_id': test_case_id,
+            'thread_id': getattr(record, 'thread_id', None) or str(threading.get_ident()),
+            'algorithm_type': getattr(record, 'algorithm_type', None),
+            'push_to_websocket': getattr(record, 'push_to_websocket', True)
+        }
+        try:
+            self.queue.put_nowait(log_data)
+        except queue.Full:
+            try:
+                self.queue.get_nowait()
+                self.queue.put_nowait(log_data)
+            except (queue.Empty, queue.Full):
+                self._dropped_log_count = getattr(self, '_dropped_log_count', 0) + 1
+
+    def _enqueue_business_log(self, record, task_id, test_case_id, category, log_message):
+        """业务日志入文件队列：worker 线程落业务文件并按需推 WebSocket。
+
+        文件内容不截断（去库化的意义在于保留完整日志）；WebSocket 推送
+        载荷沿用 LOG_CONTENT_MAX_LENGTH 截断。轮次/评估ID 上下文来源：
+        显式 record 属性优先，回退线程上下文（E2E 轮次循环 / 评估 Worker 设置）。
+        """
+        from shared.logging.context import get_current_evaluation_id, get_current_round
+        from shared.logging.enums import log_type_for_category
+
+        # prod 环境不落 DEBUG 级业务日志（dev/prod 环境区分，配置 LOG_ENVIRONMENT）
+        if self._settings.is_prod and record.levelname.upper() == 'DEBUG':
+            return
+
+        _ws_content = log_message
+        if len(_ws_content) > LOG_CONTENT_MAX_LENGTH:
+            _ws_content = _ws_content[:LOG_CONTENT_MAX_LENGTH] + '... [truncated]'
+        entry = {
+            'kind': 'business',
+            'time': datetime.now(timezone(timedelta(hours=8))),
+            'level': record.levelname.upper(),
+            'category': category or 'execution',
+            'module': record.module if hasattr(record, 'module') else 'unknown',
+            'source': getattr(record, 'source', 'backend').lower(),
+            'content': log_message,
+            'ws_content': _ws_content,
+            'task_id': task_id,
+            'device_id': getattr(record, 'device_id', None),
+            'api_id': getattr(record, 'api_id', None),
+            'test_case_id': test_case_id,
+            'thread_id': getattr(record, 'thread_id', None) or str(threading.get_ident()),
+            'algorithm_type': getattr(record, 'algorithm_type', None),
+            'round': getattr(record, 'round', None) or get_current_round(),
+            'evaluation_id': getattr(record, 'evaluation_id', None) or get_current_evaluation_id(),
+            'log_type': log_type_for_category(category).value,
+            'push_to_websocket': getattr(record, 'push_to_websocket', True),
+        }
+        try:
+            self.queue.put_nowait(entry)
+        except queue.Full:
+            try:
+                self.queue.get_nowait()
+                self.queue.put_nowait(entry)
+            except (queue.Empty, queue.Full):
+                self._dropped_log_count = getattr(self, '_dropped_log_count', 0) + 1
