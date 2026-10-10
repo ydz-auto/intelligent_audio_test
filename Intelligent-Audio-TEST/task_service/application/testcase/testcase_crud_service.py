@@ -332,9 +332,16 @@ class TestCaseCrudService:
                         noise_cfg['device_ids'] = bg_noise_device_ids
                     first_round['backgroundNoise'] = noise_cfg
 
+            # INT-105 rounds 注入完整性：客户端携带 rounds 结构的 config 时，rounds
+            # 即为唯一权威。GET 详情响应会把全部轮次音频拍平（附合成 id）、全部轮次
+            # 维度去重后放在顶层 audios/dimensions 供展示；若原样回传详情，这两份
+            # 聚合数据会被注入 round1，造成 round1 音频逐次累积膨胀并覆盖 round1
+            # 单轮维度。故仅旧平面格式请求（未携带 rounds 结构）才把顶层字段注入 round1。
+            legacy_flat_input = not (incoming_config is not None and common.has_rounds(incoming_config))
+
             # 更新音频关联
             audios_data = data.get('audios')
-            if audios_data is not None:
+            if legacy_flat_input and audios_data is not None:
                 for i, audio_item in enumerate(audios_data):
                     aid = audio_item.get('audio_id')
                     spl = audio_item.get('spl')
@@ -357,7 +364,7 @@ class TestCaseCrudService:
 
             # 处理 dimensions
             dimensions_data = data.get('dimensions')
-            if dimensions_data is not None:
+            if legacy_flat_input and dimensions_data is not None:
                 first_round = merged_config.get('rounds', [{}])[0]
                 if isinstance(first_round, dict):
                     if 'evaluation' not in first_round:
