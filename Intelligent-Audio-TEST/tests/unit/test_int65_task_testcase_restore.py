@@ -174,3 +174,26 @@ class TestTestcaseBatchRestore:
         assert result['success'] is False
         assert result['code'] == 400
         repo.commit.assert_not_called()
+
+    def test_restore_publishes_case_event(self, monkeypatch):
+        """restore 经主链路发布 CASE_EVENTS / case_batch_action_completed（status=completed）。"""
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+
+        svc, repo = self._service(3)
+        published = []
+
+        def fake_publish(_self, channel, event_type, payload):
+            published.append({'channel': channel, 'event_type': event_type, 'payload': payload})
+
+        monkeypatch.setattr(EventBus, 'publish', fake_publish)
+
+        result = svc.batch_action({'action': 'restore', 'ids': ['a', 'b', 'c']})
+
+        assert result['success'] is True
+        assert len(published) == 1
+        ev = published[0]
+        assert ev['channel'] == EventChannel.CASE_EVENTS
+        assert ev['event_type'] == EventType.CASE_BATCH_ACTION_COMPLETED
+        assert ev['payload']['action'] == 'restore'
+        assert ev['payload']['ids'] == ['a', 'b', 'c']
+        assert ev['payload']['status'] == 'completed'
