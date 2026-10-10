@@ -44,8 +44,29 @@ async def lifespan(app: FastAPI):
     cleanup_thread = threading.Thread(target=_cleanup_loop, daemon=True)
     cleanup_thread.start()
 
+    # INT-114：run_all 用 uvicorn 起 {dir}.app:app，不执行 run.py，多轮 SendRound
+    # 依赖的 gRPC 50081 无人监听。随 lifespan 自启 gRPC server（与 task_service 等
+    # 其余 HTTP+gRPC 服务同款）；端口走 ADAPTER_SERVICE_GRPC_PORT 环境变量，
+    # 缺省取端口注册表 API_ADAPTER_SERVICE_GRPC_PORT，禁止魔法端口。
+    from api_adapter_service.interfaces.grpc.server import start_grpc_server
+    from shared.config.service_ports import API_ADAPTER_SERVICE_GRPC_PORT
+    grpc_port = int(os.environ.get('ADAPTER_SERVICE_GRPC_PORT', API_ADAPTER_SERVICE_GRPC_PORT))
+    _grpc_server = None
+    try:
+        _grpc_server = start_grpc_server(port=grpc_port)
+        logger.info(f'api_adapter_service gRPC server started on port {grpc_port}')
+    except Exception as e:
+        logger.warning(f'gRPC server failed to start: {e}')
+
     logger.info('api_adapter_service FastAPI app started')
     yield
+
+    if _grpc_server is not None:
+        try:
+            _grpc_server.stop(0)
+            logger.info('api_adapter_service gRPC server stopped')
+        except Exception as e:
+            logger.warning(f'gRPC server stop error: {e}')
     logger.info('api_adapter_service shutting down')
 
 

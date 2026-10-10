@@ -3,13 +3,13 @@
 
 Starts both:
 - FastAPI HTTP server (port 5008)
-- gRPC server (port 50081)
+- gRPC server (port 50081) —— 由 app lifespan 启动（INT-114），
+  本入口只负责 uvicorn，不再手动拉起 gRPC（避免同端口双重绑定）。
 """
 
 import logging
-import sys
 import os
-import threading
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,21 +19,9 @@ try:
 except ImportError:
     logging.getLogger(__name__).debug("python-dotenv 未安装，跳过 .env 加载")
 
-from api_adapter_service.utils.logger import logger
-from api_adapter_service.interfaces.grpc.server import start_grpc_server
-
 
 def main():
-    # 启动 gRPC server
-    grpc_port = int(os.environ.get('ADAPTER_SERVICE_GRPC_PORT', '50081'))
-    try:
-        server = start_grpc_server(port=grpc_port)
-        logger.info(f'api_adapter_service gRPC server started on port {grpc_port}')
-    except Exception as e:
-        logger.error(f'gRPC server failed to start: {e}')
-        server = None
-
-    # 启动 FastAPI
+    # 启动 FastAPI（lifespan 内自启 gRPC server）
     import uvicorn
     http_port = int(os.environ.get('ADAPTER_SERVICE_HTTP_PORT', '5008'))
     uvicorn.run(
@@ -43,9 +31,6 @@ def main():
         workers=1,
         log_level="info",
     )
-
-    if server:
-        server.wait_for_termination()
 
 
 if __name__ == '__main__':

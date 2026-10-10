@@ -28,7 +28,7 @@ sys.path.insert(0, str(BASE_DIR))
 
 from shared.config.service_ports import (  # noqa: E402
     ALGORITHM_SERVICE_GRPC_PORT, ALGORITHM_SERVICE_HTTP_PORT,
-    API_ADAPTER_SERVICE_HTTP_PORT,
+    API_ADAPTER_SERVICE_GRPC_PORT, API_ADAPTER_SERVICE_HTTP_PORT,
     API_GATEWAY_PORT, API_TEST_SERVICE_GRPC_PORT, API_TEST_HTTP_PORT,
     AUDIO_SERVICE_GRPC_PORT, AUTH_SERVICE_GRPC_PORT, AUTH_SERVICE_HTTP_PORT,
     DEVICE_SERVICE_GRPC_PORT, E2E_TEST_GRPC_PORT, E2E_TEST_HTTP_PORT,
@@ -56,8 +56,8 @@ HTTP_SERVICES = [
 
 # gRPC 服务端口：INT-108 口径新增（TCP 可连即健康；audio/device 为 gRPC-only，
 # 此前不在 HTTP 冒烟口径内，漏检即本卡故障模式）。
-# 注：api_adapter_service 的 gRPC(50081) 仅其独立入口 run.py 会启动，run_all 的
-# uvicorn 模式下 lifespan 不拉起 gRPC，故不纳入默认口径。
+# INT-114：api_adapter_service gRPC(50081) 已随 app lifespan 自启（run_all 的
+# uvicorn 模式同样生效），纳入默认口径。
 GRPC_SERVICES = [
     ('e2e_test_service gRPC', E2E_TEST_GRPC_PORT),
     ('audio_service gRPC', AUDIO_SERVICE_GRPC_PORT),
@@ -68,6 +68,7 @@ GRPC_SERVICES = [
     ('auth_service gRPC', AUTH_SERVICE_GRPC_PORT),
     ('api_test_service gRPC', API_TEST_SERVICE_GRPC_PORT),
     ('evaluation_service gRPC', EVALUATION_SERVICE_GRPC_PORT),
+    ('api_adapter_service gRPC', API_ADAPTER_SERVICE_GRPC_PORT),
     ('transfer_agent gRPC', TRANSFER_AGENT_GRPC_PORT),
 ]
 
