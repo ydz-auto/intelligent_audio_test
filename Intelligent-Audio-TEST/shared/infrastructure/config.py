@@ -111,6 +111,10 @@ class BaseConfig:
     # list 与 stats 共享一次文件扫描，消除任务维度轮询双遍扫描；只缓存查询
     # 结果（CQRS 查询侧只读），新写入行在 TTL 内不可见（有界展示时延）
     LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS: int = _get_int('LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS', 3)
+    # TTL 缓存单条条目物化上限（0 = 不限，INT-128）：单条缓存最多物化该条数
+    # （与扫描上限取小生效），超限结果不缓存（命中/未命中结果一致，仅失去
+    # TTL 内复扫豁免）；防大任务单条缓存数十 MB、32 条最坏 GB 级驻留
+    LOG_BUSINESS_SCAN_CACHE_ENTRY_MAX_ENTRIES: int = _get_int('LOG_BUSINESS_SCAN_CACHE_ENTRY_MAX_ENTRIES', 10000)
     # 任务维度合并视图 DB 侧单次拉取行数上限（0 = 不限，INT-100）：替代
     # per_page=100000 全量拉取，与文件侧 MAX_SCAN_ENTRIES 同为下界语义兜底
     LOG_DB_MERGE_MAX_ROWS: int = _get_int('LOG_DB_MERGE_MAX_ROWS', 100000)

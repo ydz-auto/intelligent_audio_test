@@ -33,6 +33,10 @@ class LogSettings:
     # 读取侧同参数查询结果短 TTL 缓存秒数（0 = 关闭，INT-100）：TTL 窗口内
     # list 与 stats 共享一次文件扫描；只缓存查询结果，不引入写副作用
     business_scan_cache_ttl_seconds: int = 3
+    # TTL 缓存单条条目物化上限（0 = 不限，INT-128）：单条缓存最多物化
+    # min(扫描上限, 本上限) 条，超限查询结果不缓存（结果语义不变）；与
+    # 条目数上限 _SCAN_CACHE_MAX 共同约束缓存驻留内存上界
+    business_scan_cache_entry_max_entries: int = 10_000
 
     @property
     def is_prod(self) -> bool:
@@ -51,6 +55,8 @@ def _build_settings() -> LogSettings:
         business_retention_days=max(1, BaseConfig.LOG_BUSINESS_RETENTION_DAYS),
         business_max_scan_entries=max(0, BaseConfig.LOG_BUSINESS_MAX_SCAN_ENTRIES),
         business_scan_cache_ttl_seconds=max(0, BaseConfig.LOG_BUSINESS_SCAN_CACHE_TTL_SECONDS),
+        business_scan_cache_entry_max_entries=max(
+            0, BaseConfig.LOG_BUSINESS_SCAN_CACHE_ENTRY_MAX_ENTRIES),
     )
 
 

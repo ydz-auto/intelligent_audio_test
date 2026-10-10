@@ -14,6 +14,11 @@ JSON Lines 并过滤、排序、分页。历史 logs 表数据保留只读不迁
 默认 3s，0 = 关闭）窗口内相同过滤参数的查询共享一次文件扫描，消除任务
 维度轮询 list + stats 的双遍扫描。只缓存查询结果、不引入写副作用（CQRS
 查询侧只读纪律）；TTL 内新写入的行不可见（有界展示时延，前端展示处注明）。
+
+缓存内存上界（INT-128）：单条条目最多物化 min(扫描上限,
+LOG_BUSINESS_SCAN_CACHE_ENTRY_MAX_ENTRIES，默认 1 万，0 = 不限) 条，超限
+结果不缓存（命中/未命中结果一致，仅失去 TTL 内免复扫）；过期条目在任意
+get/put 时惰性全表清扫，驻留内存只含 TTL 内活跃查询。
 """
 import json
 import os
@@ -231,35 +236,53 @@ class BusinessLogReader:
             return 0
 
     @staticmethod
+    def _scan_cache_entry_cap() -> int:
+        """单条缓存条目物化上限（0 = 不限）；配置缺失/非法时按不限降级。"""
+        try:
+            return max(0, int(get_log_settings().business_scan_cache_entry_max_entries or 0))
+        except (AttributeError, TypeError, ValueError):
+            return 0
+
+    @staticmethod
     def _scan_cache_get(key: tuple):
-        """TTL 内命中返回条目列表快照（浅拷贝，条目只读共享），否则 None。"""
+        """TTL 内命中返回条目列表快照（浅拷贝，条目只读共享），否则 None。
+
+        访问时惰性全表过期清扫（INT-128）：过期条目不等缓存满即释放，
+        驻留内存只含 TTL 内活跃查询。
+        """
         ttl = BusinessLogReader._scan_cache_ttl()
         if not ttl:
             return None
         now = time.monotonic()
         with _SCAN_CACHE_LOCK:
+            expired = [k for k, (stored_at, _v) in _SCAN_CACHE.items()
+                       if now - stored_at > ttl]
+            for k in expired:
+                _SCAN_CACHE.pop(k, None)
             entry = _SCAN_CACHE.get(key)
             if entry is None:
                 return None
-            stored_at, items = entry
-            if now - stored_at > ttl:
-                _SCAN_CACHE.pop(key, None)
-                return None
-            return list(items)
+            return list(entry[1])
 
     @staticmethod
     def _scan_cache_put(key: tuple, items: List[dict]) -> None:
         ttl = BusinessLogReader._scan_cache_ttl()
         if not ttl:
             return
+        entry_cap = BusinessLogReader._scan_cache_entry_cap()
+        if entry_cap and len(items) > entry_cap:
+            # 单条条目物化上限（INT-128）：超限结果不缓存——缓存只服务
+            # 结果不超限的查询，命中/未命中结果一致，仅大任务失去 TTL 内
+            # 免复扫（扫描本身仍受扫描上限约束）
+            return
         now = time.monotonic()
         with _SCAN_CACHE_LOCK:
-            if len(_SCAN_CACHE) >= _SCAN_CACHE_MAX:
-                expired = [k for k, (ts, _v) in _SCAN_CACHE.items() if now - ts > ttl]
-                for k in expired:
-                    _SCAN_CACHE.pop(k, None)
-                while len(_SCAN_CACHE) >= _SCAN_CACHE_MAX:
-                    _SCAN_CACHE.pop(min(_SCAN_CACHE, key=lambda k: _SCAN_CACHE[k][0]))
+            expired = [k for k, (stored_at, _v) in _SCAN_CACHE.items()
+                       if now - stored_at > ttl]
+            for k in expired:
+                _SCAN_CACHE.pop(k, None)
+            while len(_SCAN_CACHE) >= _SCAN_CACHE_MAX:
+                _SCAN_CACHE.pop(min(_SCAN_CACHE, key=lambda k: _SCAN_CACHE[k][0]))
             _SCAN_CACHE[key] = (now, list(items))
 
     # ---- 公开查询 ----
@@ -279,7 +302,9 @@ class BusinessLogReader:
 
         同参数短 TTL 结果缓存（business_scan_cache_ttl_seconds，0 = 关闭）：
         TTL 窗口内相同过滤参数直接复用上次扫描结果（list 与 stats 共享一次
-        文件扫描）；命中返回列表浅拷贝，条目为共享只读 dict。
+        文件扫描）；命中返回列表浅拷贝，条目为共享只读 dict。结果条数超过
+        单条条目物化上限（business_scan_cache_entry_max_entries，0 = 不限）
+        时不缓存，每次真实扫描（结果语义不变）。
         """
         levels = None
         if level:
