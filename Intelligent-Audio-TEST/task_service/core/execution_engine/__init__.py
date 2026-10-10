@@ -1,3 +1,4 @@
+import logging
 import threading
 from datetime import timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +27,9 @@ from task_service.core.execution_engine.mixins import (
 
 # 执行引擎类，负责管理和执行测试任务
 # 实现单例模式，确保全局只有一个执行引擎实例
+logger = logging.getLogger(__name__)
+
+
 class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecutionMixin, TaskRunnerMixin):
     # 单例模式相关变量
     _instance = None
@@ -123,7 +127,10 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
             try:
                 task_id = int(task_id)
             except (ValueError, TypeError):
-                pass
+                # INT-133：非整型任务键（如遗留/外部发布的 'task-1'）不是本引擎
+                # 的任务，一次性 DEBUG 丢弃，不进入进度推送链（防周期性刷屏）
+                logger.debug(f"用例事件 task_id 非整型，丢弃: {task_id!r}")
+                return
 
             # 唤醒等待该任务完成的线程
             completion_event = self.task_completion_events.get(task_id)
@@ -136,8 +143,7 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
             # 触发调度器检查（可能有 pending 任务需要继续）
             self.trigger_scheduler_check()
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"处理用例事件失败: {e}")
+            logger.warning(f"处理用例事件失败: {e}")
 
     def _on_task_event(self, payload):
         """处理任务级事件（任务完成/失败）
@@ -151,7 +157,9 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
             try:
                 task_id = int(task_id)
             except (ValueError, TypeError):
-                pass
+                # INT-133：同 _on_case_event，非整型任务键一次性丢弃
+                logger.debug(f"任务事件 task_id 非整型，丢弃: {task_id!r}")
+                return
 
             # 唤醒等待该任务完成的线程
             completion_event = self.task_completion_events.get(task_id)
@@ -161,8 +169,7 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
             # 触发进度更新
             self._emit_progress(task_id, force=True)
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(f"处理任务事件失败: {e}")
+            logger.warning(f"处理任务事件失败: {e}")
 
     def start_event_subscribers(self):
         """启动事件总线订阅线程（在 _log 方法定义后调用）"""

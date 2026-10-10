@@ -51,3 +51,6 @@ class BaseEventManagerMixin:
         self._progress_throttle_interval = 0.05
         self._last_progress_time = {}
         self._progress_cache = {}  # 进度缓存，减少数据库查询
+        # INT-133：不存在任务的抑制登记 {task_id: first_seen_ts}，
+        # 抑制窗口内静默跳过重复推送，防止空闲期对遗留键周期性刷屏
+        self._missing_tasks = {}

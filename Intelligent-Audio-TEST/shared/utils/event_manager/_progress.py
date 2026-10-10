@@ -9,6 +9,7 @@
 payload 契约见 shared/schemas/socket_payloads.py（snake_case，
 前端由 infrastructure/adapters/taskProgressAdapter.ts 统一转 camelCase）。
 """
+import os
 import re
 import time
 import logging
@@ -51,6 +52,16 @@ EXPECTED_TOTAL_SMOOTHING_RATIO = 0.1
 
 # 时间预估兜底值（秒）
 DEFAULT_EXPECTED_TOTAL_SECONDS = 60
+
+# INT-133：不存在任务的进度推送抑制窗口（秒）。窗口内对同一 task_id 的
+# 重复推送静默跳过（不查库、不打日志），过期后放行一轮重新核实；
+# 仍在则再记一次 WARNING 并续期。经环境变量可覆盖。
+MISSING_TASK_SUPPRESS_SECONDS = float(
+    os.environ.get('PROGRESS_MISSING_TASK_SUPPRESS_SECONDS', '300'))
+
+# 抑制登记内存上界（条目数）：事件 task_id 来自总线，属外部输入，
+# 防遗留异常键堆积（同 INT-128 扫描缓存上界思路），超限淘汰最早登记。
+MISSING_TASK_MAX_ENTRIES = 256
 
 
 def _emit_task_progress_event(task_id, payload: dict, worker_instance_id=None):
@@ -217,6 +228,14 @@ class ProgressMixin:
 
         current_time = time.time()
 
+        # INT-133：不存在任务抑制窗口内的重复推送静默跳过（不查库不记日志），
+        # 窗口过期放行一轮重新核实，仍不存在则由 _note_missing_task 续期
+        missing_since = self._missing_tasks.get(task_id)
+        if missing_since is not None:
+            if current_time - missing_since < MISSING_TASK_SUPPRESS_SECONDS:
+                return
+            self._missing_tasks.pop(task_id, None)
+
         if not force and self._throttled(task_id, current_time):
             return
 
@@ -226,10 +245,19 @@ class ProgressMixin:
         local_db_session = None
 
         try:
-            task_id_int = int(task_id) if isinstance(task_id, str) else task_id
+            try:
+                task_id_int = int(task_id) if isinstance(task_id, str) else task_id
+            except (ValueError, TypeError):
+                # INT-133：非整型任务键（如遗留/外部发布的 'task-1'）一次性
+                # DEBUG 丢弃，不触发后续 gRPC/DB 查询，也不再向上抛断调用方
+                self._log(level='DEBUG',
+                          content=f"任务ID非整型，丢弃进度更新，task_id={task_id}",
+                          task_id=task_id)
+                return
             grpc_progress = get_task_progress_via_grpc(task_id_int)
 
             if grpc_progress is not None:
+                self._missing_tasks.pop(task_id, None)
                 self._log(level='DEBUG', content=f"使用 gRPC 进度数据，task_id={task_id}, force={force}", task_id=task_id)
                 db_task, progress = self._build_progress_from_grpc(task_id, task_id_int, grpc_progress)
             else:
@@ -237,8 +265,9 @@ class ProgressMixin:
                 local_db_session = get_db_session()
                 db_task, progress = self._build_progress_from_po(local_db_session, task_id, task_id_int)
                 if db_task is None:
-                    self._log(level='WARNING', content=f"找不到任务，跳过进度更新，task_id={task_id}", task_id=task_id)
+                    self._note_missing_task(task_id)
                     return
+                self._missing_tasks.pop(task_id, None)
                 self._log(level='DEBUG', content=f"使用 PO 回退路径生成进度数据，task_id={task_id}, force={force}", task_id=task_id)
 
             self._finalize_and_emit(
@@ -256,6 +285,24 @@ class ProgressMixin:
         finally:
             if local_db_session is not None:
                 local_db_session.close()
+
+    def _note_missing_task(self, task_id):
+        """登记不存在任务：首个周期 WARNING 留痕一次，之后在抑制窗口内静默。
+
+        INT-133：事件源（订阅/循环）对已消失任务键的周期性推送只限流不收敛，
+        此处以抑制窗口替代无限重试；任务重新出现时由 emit_progress 成功路径摘除登记。
+        """
+        if task_id in self._missing_tasks:
+            return
+        if len(self._missing_tasks) >= MISSING_TASK_MAX_ENTRIES:
+            oldest = min(self._missing_tasks, key=self._missing_tasks.get)
+            self._missing_tasks.pop(oldest, None)
+        self._missing_tasks[task_id] = time.time()
+        self._log(
+            level='WARNING',
+            content=(f"找不到任务，跳过进度更新，task_id={task_id}"
+                     f"（{int(MISSING_TASK_SUPPRESS_SECONDS)}s 内抑制重复推送）"),
+            task_id=task_id)
 
     def _throttled(self, task_id: str, current_time: float) -> bool:
         """初步节流：间隔不足直接跳过；缓存新鲜则直接重发缓存数据。"""
