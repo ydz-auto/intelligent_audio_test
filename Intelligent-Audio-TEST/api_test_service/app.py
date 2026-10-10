@@ -40,6 +40,27 @@ logging.getLogger().addHandler(get_db_handler())
 
 _grpc_server = None
 
+# 多副本注册地址覆盖键：部署侧显式指定本副本对外可达地址时使用
+_ADVERTISE_HOST_ENV = 'API_TEST_ADVERTISE_HOST'
+
+
+def _self_advertise_host():
+    """本实例在服务注册表中的对外地址：环境变量覆盖 > 本机解析 > SERVICE_HOST 兜底
+
+    多副本下 host 必须逐实例可直达（亲和路由按 host:grpc_port 精确寻址），
+    容器内解析自身 hostname 得到独立 IP；解析失败回退 SERVICE_HOST 保持旧行为。
+    """
+    import os
+    import socket
+    override = os.environ.get(_ADVERTISE_HOST_ENV)
+    if override:
+        return override
+    try:
+        return socket.gethostbyname(socket.gethostname())
+    except Exception as e:
+        logger.warning("解析本机注册地址失败，回退 SERVICE_HOST: %s", e)
+        return Config.SERVICE_HOST
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,10 +74,13 @@ async def lifespan(app: FastAPI):
     init_db(pool_size=5)
     api_test_service.init_app()  # 不再传 app
 
-    # 服务注册
+    # 服务注册。多副本（--scale / deploy.replicas）下每个副本必须以可直达的
+    # 唯一地址在册——会话亲和路由（§5.2）按注册表的 host:grpc_port 精确寻址
+    # 持有实例；SERVICE_HOST 形如服务名（DNS 负载均衡）时双副本注册出相同
+    # host，亲和路由退化为轮询。故缺省解析本机地址，部署侧可用环境变量覆盖。
     registry = RedisServiceRegistry()
     registry.register('api_test_service',
-                      Config.SERVICE_HOST, Config.PORT,
+                      _self_advertise_host(), Config.PORT,
                       grpc_port=Config.GRPC_PORT)
 
     # 启动 gRPC server

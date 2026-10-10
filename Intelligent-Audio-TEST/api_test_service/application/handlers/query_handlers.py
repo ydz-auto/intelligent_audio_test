@@ -18,9 +18,18 @@ class GetAPITestStatusQueryHandler:
     """处理 GetAPITestStatusQuery — 查询 API 测试任务状态
 
     委托给 APITestService.get_task_status(task_id)。
+    会话亲和（§5.2）：任务绑定在其它存活实例时转发到持有实例查询，
+    避免双副本下轮询打到无会话副本误报 idle。
     """
 
     def handle(self, query: GetAPITestStatusQuery) -> dict:
+        from api_test_service.infrastructure.peer_rpc import forward_get_api_test_status
+        from api_test_service.application.handlers.command_handlers import (
+            _forward_if_bound_elsewhere,
+        )
+        forwarded = _forward_if_bound_elsewhere(query.task_id, forward_get_api_test_status)
+        if forwarded is not None:
+            return forwarded
         return _service.get_task_status(task_id=query.task_id)
 
 

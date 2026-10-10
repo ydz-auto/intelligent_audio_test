@@ -19,6 +19,31 @@ from api_test_service.core.api_test_service import api_test_service as _service
 from api_test_service.infrastructure.persistence.api_test_repository import api_test_repository
 
 
+def _forward_if_bound_elsewhere(task_id, forward_func):
+    """会话亲和路由（架构设计 §5.2）：任务绑定在其它存活实例时转发请求。
+
+    Args:
+        forward_func: peer_rpc 的转发函数（forward_stop_api_test /
+            forward_get_api_test_status），签名 (task_id, instance_id) -> dict | None
+
+    Returns:
+        dict = 持有实例响应（已转发）；None = 本地处理
+        （resolve 降级 / 绑定本实例 / 持有实例不可达——降级本地由既有语义兜底）
+    """
+    try:
+        from shared.utils.realtime_session_registry import RealtimeSessionRegistry
+        affinity = RealtimeSessionRegistry().resolve(task_id)
+    except Exception:
+        return None
+    if affinity.get('degraded') or affinity.get('is_local') or not affinity.get('instance_id'):
+        return None
+    forwarded = forward_func(task_id, affinity['instance_id'])
+    if forwarded is None:
+        return None
+    forwarded.setdefault('task_id', task_id)
+    return forwarded
+
+
 def _normalize_case_ids(case_ids):
     """跨服务 gRPC JSON 边界不保类型：数值字符串规范化为 int（INT-41）。
 
@@ -54,9 +79,15 @@ class StopAPITestCommandHandler:
     """处理 StopAPITestCommand — 停止一个正在运行的 API 测试任务
 
     委托给 APITestService.stop_task(task_id)。
+    会话亲和（§5.2）：任务绑定在其它存活实例时转发到持有实例执行，
+    避免停止信号落在无会话副本上丢失。
     """
 
     def handle(self, command: StopAPITestCommand) -> dict:
+        from api_test_service.infrastructure.peer_rpc import forward_stop_api_test
+        forwarded = _forward_if_bound_elsewhere(command.task_id, forward_stop_api_test)
+        if forwarded is not None:
+            return forwarded
         return _service.stop_task(task_id=command.task_id)
 
 

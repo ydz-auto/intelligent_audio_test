@@ -308,6 +308,10 @@ class TestRealtimeEndToEnd:
         assert aggregated['ai_output_rms_dbfs'] is not None
         assert -60 < aggregated['ai_output_rms_dbfs'] < 0
         assert aggregated['ai_output_spl_db'] is not None
+        # 实测口径并入 algorithm_result：落库与评估入参同源可见（打回修复 P3-2）
+        assert algo['ai_output_rms_dbfs'] == aggregated['ai_output_rms_dbfs']
+        assert algo['ai_output_spl_db'] == aggregated['ai_output_spl_db']
+        assert 'ai_wav' in algo
 
         # 打断轮轮次明细
         interrupt_round = algo['rounds'][1]
@@ -327,6 +331,7 @@ class TestRealtimeEndToEnd:
         eval_call = harness['eval_acl'].calls[0]
         assert eval_call['result_id'] == 555
         assert eval_call['algorithm_result']['round_count'] == 2
+        assert eval_call['algorithm_result']['ai_output_rms_dbfs'] is not None
         assert eval_call['eval_params']['test_type'] == 'api'
 
     def test_frame_channel_payloads_are_lightweight(self, harness):

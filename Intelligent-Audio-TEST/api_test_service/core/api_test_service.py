@@ -75,6 +75,12 @@ class APITestService:
         self._executor_lock = threading.Lock()
         self._running_tasks = set()
         self._running_tasks_lock = threading.Lock()
+        # 会话亲和注册表（双副本同会话粘同实例，§5.2）：TTL 与执行器同源配置
+        from shared.utils.config_manager import config_manager
+        from shared.utils.realtime_session_registry import RealtimeSessionRegistry
+        self._session_registry = RealtimeSessionRegistry(
+            bind_ttl_seconds=int(config_manager.get_value(
+                'realtime_session', 'bind_ttl_seconds', 3600)))
         # 固定线程池：所有 API 任务共享，避免频繁创建/销毁
         # 1U4G 服务器建议 8 个线程（详见线程预算分析）
         self._task_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix='api_test_')
@@ -103,6 +109,12 @@ class APITestService:
         """
         if not self._initialized:
             return {'success': False, 'task_id': task_id, 'message': '服务未初始化'}
+
+        # 会话亲和门禁（§5.2）：绑定在其它存活实例的会话不在本地执行，
+        # 转发到持有实例；Redis 降级/本地绑定/持有实例不可达时本地执行
+        forwarded = self._affinity_forward_start(task_id, case_ids, api_ids)
+        if forwarded is not None:
+            return forwarded
 
         # 标记任务运行中
         with self._running_tasks_lock:
@@ -162,6 +174,29 @@ class APITestService:
         except Exception as e:
             self._mark_task_idle(task_id)
             return {'success': False, 'task_id': task_id, 'message': f'启动失败: {str(e)}'}
+
+    def _affinity_forward_start(self, task_id, case_ids, api_ids):
+        """启动请求的会话亲和门禁（§5.2 亲和路由）
+
+        Returns:
+            dict = 已转发，持有实例响应；None = 本地执行
+            （resolve 降级/绑定本实例；绑定实例路由信息缺失或转发不可达时
+            降级本地，由 resolve 的失联重路由语义收敛绑定）
+        """
+        try:
+            affinity = self._session_registry.resolve(task_id)
+        except Exception as e:
+            self._log(task_id, 'WARNING', f"会话亲和门禁解析异常，本地执行: {e}")
+            return None
+        if affinity.get('degraded') or affinity.get('is_local') or not affinity.get('instance_id'):
+            return None
+        from api_test_service.infrastructure.peer_rpc import forward_create_api_test
+        result = forward_create_api_test(task_id, case_ids, api_ids,
+                                         affinity['instance_id'])
+        if result is not None:
+            self._log(task_id, 'INFO',
+                      f"会话亲和转发启动请求到持有实例 {affinity['instance_id']}")
+        return result
 
     def stop_task(self, task_id):
         """停止 API 测试任务"""

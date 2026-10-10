@@ -178,6 +178,8 @@ class RealtimeSessionExecutor:
             aggregated['ai_wav'] = self._save_ai_audio(
                 bytes(session_ai_audio), task_id, api_id,
                 sample_rate=dst_sample_rate)
+            # AI 输出音频归档路径并入 algorithm_result，随结果落库与评估入参下发
+            aggregated['algorithm_result']['ai_wav'] = aggregated['ai_wav']
             result_id = self._executor._result_processor.create_multi_round_test_result(
                 task_id=task_id, test_case_id=test_case_id, api_config_id=api_id,
                 algorithm_type=algorithm_type, aggregated=aggregated,
@@ -420,6 +422,10 @@ class RealtimeSessionExecutor:
             'rounds': round_results,
             'first_frame_latency_ms': first_frame_latencies[0] if first_frame_latencies else None,
         }
+        # 实测口径并入 algorithm_result：落库（TestResult）与评估入参均只消费
+        # algorithm_result，顶层同名字段仅供 SSE summary 通道（对称可比，§AC3）
+        algorithm_result['ai_output_rms_dbfs'] = ai_rms_dbfs
+        algorithm_result['ai_output_spl_db'] = ai_spl
         return {
             'success': success_count == total_count,
             'algorithm_result': algorithm_result,

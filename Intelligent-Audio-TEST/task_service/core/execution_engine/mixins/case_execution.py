@@ -36,7 +36,7 @@ class CaseExecutionMixin:
                 self._log(level='WARNING' if not available else 'INFO', 
                          content=f"API入口状态变更: {endpoint_url} -> {status_str}")
 
-    def _execute_api_case(self, task_id, tc_rel_id):
+    def _execute_api_case(self, task_id, tc_rel_id, dispatch_target=None):
         """执行API测试用例
 
         微服务化迁移后，不再直接调用本地 self.api_executor，
@@ -45,6 +45,8 @@ class CaseExecutionMixin:
         Args:
             task_id: 任务ID
             tc_rel_id: 任务用例关联ID
+            dispatch_target: 会话亲和路由目标（websocket_api 用例经
+                route_or_bind 解析）；None 走默认负载均衡通道
 
         Returns:
             执行结果
@@ -54,9 +56,16 @@ class CaseExecutionMixin:
             # test_config 携带 case_ids，由 api_test_service 内部驱动 APIExecutor 执行
             import json as _json
             from shared.proto import api_test_service_pb2 as api_pb
-            from shared.clients.grpc_clients import get_api_test_service_stub
+            if dispatch_target and dispatch_target.get('grpc_port'):
+                from shared.clients.grpc_instance_client import (
+                    get_api_test_service_stub_for_instance,
+                )
+                stub = get_api_test_service_stub_for_instance(
+                    dispatch_target['host'], dispatch_target['grpc_port'])
+            else:
+                from shared.clients.grpc_clients import get_api_test_service_stub
+                stub = get_api_test_service_stub()
 
-            stub = get_api_test_service_stub()
             req = api_pb.CreateAPITestRequest(
                 task_id=str(task_id),
                 test_config=_json.dumps({'case_ids': [str(tc_rel_id)]}),

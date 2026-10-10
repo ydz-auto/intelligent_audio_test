@@ -117,24 +117,51 @@ class TaskDispatchMixin:
             DeviceType.HTTP_API.value if task.type == 'api' else DeviceType.PHYSICAL.value
         )
         if device_type in (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value):
-            self._dispatch_api_case(task_id, tc_rel, session)
+            self._dispatch_api_case(task_id, tc_rel, session, device_type)
         else:
             self._dispatch_e2e_case(task_id, task, tc_rel, session)
 
-    def _dispatch_api_case(self, task_id, tc_rel, session):
-        """API 任务用例执行"""
+    def _dispatch_api_case(self, task_id, tc_rel, session, device_type=None):
+        """API 任务用例执行
+
+        会话亲和（架构设计 §5.2 认领即绑定）：Realtime（websocket_api）用例
+        派发前经 RealtimeSessionRegistry.route_or_bind 解析 task → 实例绑定
+        （无健康绑定则选最闲在册实例写入），CreateAPITest 直连该实例派发，
+        保证同任务的 Realtime 会话粘同实例；解析降级时回退默认负载均衡通道。
+        """
+        from shared.models.common_enums import DeviceType
         try:
             claimed = self._claim_case(task_id, tc_rel.id, session)
             if claimed != 1:
                 session.rollback()
                 return
             session.commit()
-            self._execute_api_case(task_id, tc_rel.id)
+            dispatch_target = None
+            if device_type == DeviceType.WEBSOCKET_API.value:
+                dispatch_target = self._route_realtime_dispatch(task_id)
+            self._execute_api_case(task_id, tc_rel.id, dispatch_target=dispatch_target)
         except Exception as e:
             self._log(level='ERROR', content=f"API任务执行异常: {str(e)}", task_id=task_id)
             self._finalize_dispatch_failure(tc_rel)
             tc_rel.error_message = f"API任务执行异常: {str(e)}"
             session.commit()
+
+    def _route_realtime_dispatch(self, task_id):
+        """Realtime 用例的亲和路由目标（认领即绑定）；降级/不可用时返回 None"""
+        try:
+            from shared.utils.realtime_session_registry import RealtimeSessionRegistry
+            target = RealtimeSessionRegistry().route_or_bind(task_id)
+            if target is not None:
+                self._log(level='INFO',
+                          content=f"Realtime 会话亲和路由: task={task_id} -> "
+                                  f"{target['instance_id']} (bound={target.get('bound')})",
+                          task_id=task_id)
+            return target
+        except Exception as e:
+            self._log(level='WARNING',
+                      content=f"Realtime 会话亲和路由失败，回退默认通道: {e}",
+                      task_id=task_id)
+            return None
 
     def _dispatch_e2e_case(self, task_id, task, tc_rel, session):
         """E2E 任务用例执行"""
