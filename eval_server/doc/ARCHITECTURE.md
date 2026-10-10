@@ -208,6 +208,7 @@ tor / false_takeover / takeover_latency 共用**双路 ASR**方案：
 - 时延字段（毫秒；行为失败/unknown 轮 list 记 -1，avg/min/max 排除 -1、全 -1 → None）：
   - **响应时延** `response_latency_avg/min/max_ms` + `round_response_latencies`：用户开始打断 → 模型当前段停口
   - **回复时延** `reply_latency_avg/min/max_ms` + `round_reply_latencies`：用户说完 → 模型重新开口
+  - **LLM 语义打断点精修**：模型回复快、无停顿时，被打断内容与回应连读成同一语音段，段级时序算不出回复时延（None→-1）、响应时延错取整段尾部。裁判 prompt 附本轮**词级时间线**，LLM 语义判断是否成功打断并输出打断点 `interrupt_index`（模型开始回应本轮用户话语的词序号），`refine_timing_with_interrupt_point` 据词级时间戳重算两时延（打断点前词尾−u_s / 打断点词首−u_e，barge-in 负值合法）；round_details 以 `latency_source=llm_interrupt_point` 标记精修轮。行为判定同口径只看语义不看停顿：无停顿连读但语义切换到回应 → 仍判「回复」
   - **恢复首轮内容时延** `resume_first_reply_latency_ms`：最后一个恢复轮的回复时延；无恢复轮（普通用例）→ null 显示 -（与恢复内容评分口径一致，不回退打断轮时延）
   - **恢复原话题判定** `topic_resumed`：恢复轮（输入标记 `is_return_to_topic`）由 LLM 判模型**实际**是否回到原话题（true/false；降级 null），配套 `resume_content_score`（未回到原话题时三维 ≤2）
   - 用户段锚定：优先 `played_audios` FFT 对齐精修 → 回退驱动轮窗口（start_ms/end_ms）→ 再回退重叠启发式（message 标降级）

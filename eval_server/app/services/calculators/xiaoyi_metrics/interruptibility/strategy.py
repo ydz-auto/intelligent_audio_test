@@ -272,6 +272,19 @@ class InterruptionMetricsCalculator(BaseCalculator):
                 resume_timing['score_overall'] = rb.get('score_overall')
                 resume_timing['topic_resumed'] = rb.get('topic_resumed')
         if behaviors is not None:
+            # LLM 语义打断点 → 词级时间戳重算响应/回复时延（就地更新 timing 条目；
+            # 模型回复快、无停顿导致被打断内容与回应连读成一段时，段级时序算不出
+            # 回复时延、响应时延也会错取整段尾部，必须以语义打断点为准）
+            from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+                refine_timing_with_interrupt_point,
+            )
+
+            refine_entries = [t for t in (timing or []) if isinstance(t, dict)]
+            if resume_timing is not None:
+                refine_entries.append(resume_timing)
+            n_refined = refine_timing_with_interrupt_point(refine_entries, behaviors, blocks)
+            if n_refined:
+                logger.info(f'[interruption] LLM 语义打断点精修时延: {n_refined} 轮')
             spec = derive_round_metrics(timing, behaviors, case_info, resume_timing)
             if preserve_resume:
                 # 单轮路径的恢复时延门控（仅恢复轮本身产出）在 __init__ 已定，不覆盖

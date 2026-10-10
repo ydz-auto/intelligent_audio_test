@@ -178,6 +178,84 @@ def test_single_round_direct_path_flat_output(fake_llm):
     assert result['resume_first_reply_latency_ms'] is None
 
 
+def test_fast_reply_no_pause_semantic_interrupt_point(fake_llm):
+    """模型回复快、无停顿：被打断内容与回应连读成同一语音段 [2.5,5.4]。
+
+    段级时序：response 错取整段尾 (5.4−3.6=1800ms)、reply 算不出 (None→-1)。
+    修复后：prompt 给 LLM 词级时间线并展示"连读"提示，LLM 语义定位打断点
+    idx=1('好的') → 词级时间戳重算 response=200ms、reply=-150ms(barge-in 负值合法)。
+    """
+    user = [
+        {'text': '初始问题', 'timestamp': [1.0, 1.8]},
+        {'text': '等等', 'timestamp': [3.6, 4.0]},
+    ]
+    model = [
+        {'text': '回答', 'timestamp': [2.5, 3.0]},
+        {'text': '中', 'timestamp': [3.0, 3.8]},
+        {'text': '好的', 'timestamp': [3.85, 4.1]},
+        {'text': '新回复内容', 'timestamp': [4.1, 5.4]},
+    ]
+    _set_rounds(fake_llm, [
+        {'round': 1, 'behavior': '回复', 'behavior_reason': '语义切换回应打断',
+         'interrupt_index': 1, 'score': {'overall': 4.0}},
+    ])
+    from app.services.calculators.xiaoyi_metrics.interruptibility.strategy import (
+        InterruptionMetricsCalculator,
+    )
+    wrapped = InterruptionMetricsCalculator().run({'rounds': [
+        {'is_interruption': True, 'user_asr': user, 'model_asr': model},
+        {'user_asr': user, 'model_asr': model},
+    ]})
+    result = wrapped['interruption']
+
+    prompt = fake_llm.calls[0]
+    # 词级时间线 + 连读提示 + 打断点任务说明都要在 prompt 里
+    assert '词级时间线' in prompt and 'idx0' in prompt and 'idx2' in prompt
+    assert '本地未切出独立回应段' in prompt
+    assert 'interrupt_index' in prompt and '打断点定位' in prompt
+    assert '无停顿' in prompt and '「恢复」' in prompt
+
+    assert result['case_type'] == 'single'
+    assert result['success_count'] == 1 and result['failure_count'] == 0
+    # 语义打断点重算的时延（而非段级的 1800/None→-1）
+    assert result['round_response_latencies'] == [200.0]
+    assert result['round_reply_latencies'] == [-150.0]
+    assert result['response_latency_avg_ms'] == 200.0
+    assert result['reply_latency_avg_ms'] == -150.0
+    d = result['round_details'][0]
+    assert d['latency_source'] == 'llm_interrupt_point'
+    t = result['round_timing'][0]
+    assert t['interrupt_index'] == 1 and t['response_latency_ms'] == 200.0
+    # per_round 投影同源（提升到响应顶层）
+    pr = wrapped['per_round']
+    assert pr[1]['interruption']['response_latency_avg_ms'] == 200.0
+    assert pr[1]['interruption']['reply_latency_avg_ms'] == -150.0
+
+
+def test_speak_through_null_interrupt_point_keeps_local_timing(fake_llm):
+    """说穿不停（LLM 给 null 打断点）→ 不覆盖本地时序，list 照旧 -1。"""
+    user = [
+        {'text': '初始问题', 'timestamp': [1.0, 1.8]},
+        {'text': '等等', 'timestamp': [3.6, 4.0]},
+    ]
+    model = [
+        {'text': '回答', 'timestamp': [2.5, 3.0]},
+        {'text': '中', 'timestamp': [3.0, 3.8]},
+        {'text': '继续说完', 'timestamp': [3.85, 5.4]},
+    ]
+    _set_rounds(fake_llm, [
+        {'round': 1, 'behavior': '恢复', 'behavior_reason': '说穿原内容',
+         'interrupt_index': None, 'score': {'overall': 1.0}},
+    ])
+    result = _run({'rounds': [
+        {'is_interruption': True, 'user_asr': user, 'model_asr': model},
+        {'user_asr': user, 'model_asr': model},
+    ]})
+    assert result['failure_count'] == 1 and result['recover_behavior_count'] == 1
+    assert result['round_response_latencies'] == [-1]
+    assert result['round_details'][0]['latency_source'] == 'timing'
+
+
 def test_behaviors_from_judge_mapping():
     """裁判输出 → round_behaviors 的确定性映射（纯函数）。"""
     from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import (
@@ -190,17 +268,21 @@ def test_behaviors_from_judge_mapping():
     out = behaviors_from_judge({'enabled': True, 'rounds': [
         {'round': '2', 'behavior': '静默', 'reason': '无输出',  # reason 键兼容、round 字符串强转
          'score': {'coherence': 4, 'relevance': 5, 'adaptability': 3},  # overall 缺省=三维均值
-         'stop_complied': 'no', 'topic_resumed': 'yes'},
-        {'round': 'x', 'behavior': '乱码'},
+         'stop_complied': 'no', 'topic_resumed': 'yes', 'interrupt_index': '3'},
+        {'round': 'x', 'behavior': '乱码', 'interrupt_index': -1},
+        {'round': 3, 'behavior': '', 'interrupt_index': 0},  # 恢复轮：行为空但打断点透传
     ]})
     assert out[0]['round'] == 2 and out[0]['behavior'] == '静默'
     assert out[0]['behavior_reason'] == '无输出'
     assert out[0]['score_overall'] == 4.0
     assert out[0]['stop_complied'] is False
     assert out[0]['topic_resumed'] is True  # 字符串归一同 stop_complied
+    assert out[0]['interrupt_index'] == 3   # 字符串序号强转 int
     assert out[1]['round'] is None and out[1]['behavior'] is None
     assert out[1]['score'] is None and out[1]['score_overall'] is None
     assert out[1]['topic_resumed'] is None
+    assert out[1]['interrupt_index'] is None  # 负数 → None
+    assert out[2]['behavior'] is None and out[2]['interrupt_index'] == 0  # 0 合法
 
 
 def test_stop_round_prompt_rules():

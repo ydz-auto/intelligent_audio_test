@@ -112,6 +112,91 @@ def test_barge_in_reply_negative_latency():
     assert block['model_interrupted_text'] == ''
 
 
+# ─────────── LLM 语义打断点 → 词级时延精修（快回复无停顿场景） ───────────
+
+def _fast_reply_segs():
+    """模型回复快、无停顿：被打断内容与回应连读成同一语音段 [2.5, 5.4]。"""
+    return [{'start': 2.5, 'end': 5.4, 'text': '回答中好的新回复内容', 'words': [
+        {'text': '回答', 'timestamp': [2.5, 3.0]},
+        {'text': '中', 'timestamp': [3.0, 3.8]},
+        {'text': '好的', 'timestamp': [3.85, 4.1]},
+        {'text': '新回复内容', 'timestamp': [4.1, 5.4]},
+    ]}]
+
+
+def test_round_model_words_window():
+    from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+        round_model_words,
+    )
+
+    words = round_model_words(3.6, _fast_reply_segs())
+    # end > u_s 的词：'回答'(end=3.0) 被挡；跨越 u_s 的 '中' 保留（属被打断尾巴）
+    assert [w['text'] for w in words] == ['中', '好的', '新回复内容']
+    # u_next 截断跨轮串扰：'好的' start=3.85 < 4.0 保留（跨边界词），'新回复内容' start=4.1 被挡
+    assert [w['text'] for w in round_model_words(3.6, _fast_reply_segs(), u_next=4.0)] \
+        == ['中', '好的']
+    assert round_model_words(None, _fast_reply_segs()) == []
+
+
+def test_refine_timing_with_interrupt_point():
+    """段级时序在快回复无停顿时 response 错取整段尾(1800ms)、reply 算不出(None)；
+    LLM 打断点 idx=1('好的') → 词级时间戳重算 200ms / -150ms(barge-in 负值合法)。"""
+    from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+        refine_timing_with_interrupt_point, round_model_words,
+    )
+
+    words = round_model_words(3.6, _fast_reply_segs())
+    t = {'round': 1, 'role': 'interruption', 'u_s': 3.6, 'u_e': 4.0,
+         'response_latency_ms': 1800.0, 'reply_latency_ms': None}
+    blocks = [{'round': 1, 'model_words': words}]
+    behaviors = [{'round': 1, 'behavior': '回复', 'interrupt_index': 1}]
+    assert refine_timing_with_interrupt_point([t], behaviors, blocks) == 1
+    assert t['response_latency_ms'] == 200.0    # words[0].end(3.8) − u_s(3.6)
+    assert t['reply_latency_ms'] == -150.0      # words[1].start(3.85) − u_e(4.0)
+    assert t['latency_source'] == 'llm_interrupt_point' and t['interrupt_index'] == 1
+
+
+def test_refine_timing_guards():
+    """无效打断点不覆盖本地时序：null/越界/词早于 u_s/idx=0 钳 0。"""
+    from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
+        refine_timing_with_interrupt_point, round_model_words,
+    )
+
+    words = round_model_words(3.6, _fast_reply_segs())
+    blocks = [{'round': 1, 'model_words': words}]
+
+    def _t():
+        return {'round': 1, 'u_s': 3.6, 'u_e': 4.0,
+                'response_latency_ms': 1800.0, 'reply_latency_ms': None}
+
+    # interrupt_index 缺失/null → 不覆盖
+    t = _t()
+    assert refine_timing_with_interrupt_point([t], [{'round': 1, 'behavior': '回复'}], blocks) == 0
+    assert t['response_latency_ms'] == 1800.0 and t['reply_latency_ms'] is None
+    # 说穿轮 LLM 给 null → 不覆盖（list 照旧 -1）
+    t = _t()
+    assert refine_timing_with_interrupt_point(
+        [t], [{'round': 1, 'behavior': '恢复', 'interrupt_index': None}], blocks) == 0
+    # 越界索引 → 不覆盖
+    t = _t()
+    assert refine_timing_with_interrupt_point(
+        [t], [{'round': 1, 'interrupt_index': 99}], blocks) == 0
+    # 打断点词 start < u_s（回应早于打断，索引不可信）→ 不覆盖
+    t = {'round': 1, 'u_s': 3.9, 'u_e': 4.0,
+         'response_latency_ms': None, 'reply_latency_ms': None}
+    assert refine_timing_with_interrupt_point(
+        [t], [{'round': 1, 'interrupt_index': 0}], blocks) == 0  # words[0].start=3.0 < 3.9
+    # idx=0：窗口首词即新回应（原内容在打断前已停）→ 响应时延从首词起算、不为负
+    t = {'round': 1, 'u_s': 2.9, 'u_e': 4.0,
+         'response_latency_ms': None, 'reply_latency_ms': None}
+    assert refine_timing_with_interrupt_point(
+        [t], [{'round': 1, 'interrupt_index': 0}], blocks) == 1
+    assert t['response_latency_ms'] == 100.0    # words[0].start(3.0) − u_s(2.9)
+    assert t['reply_latency_ms'] == -1000.0     # words[0].start(3.0) − u_e(4.0)，barge-in 负值
+    # 无 timing/无 words 的轮次安全跳过
+    assert refine_timing_with_interrupt_point(None, None, None) == 0
+
+
 def test_extract_prefers_fft_window():
     from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
         extract_round_timing,

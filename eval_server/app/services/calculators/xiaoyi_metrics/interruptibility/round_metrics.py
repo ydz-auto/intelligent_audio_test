@@ -4,6 +4,9 @@
 对应《打断指标重构规划》(04-工作安排/打断指标重构.md) §3.1/§3.2/§3.4：
   - derive_case_type       : 7 类用例类型由轮次标记推导（is_actual_interruption + stop_intent + is_return_to_topic）
   - extract_round_timing   : 单轮时序锚定（FFT 窗口 → 驱动轮窗口 → 最大重叠启发式），出响应/回复时延(ms)
+  - refine_timing_with_interrupt_point : LLM 语义打断点(interrupt_index) → 词级时间戳重算
+                             响应/回复时延（模型回复快、无停顿导致被打断内容与回应连读成
+                             同一语音段时，段级时序算不出回复时延、响应时延错取整段尾部）
   - derive_round_metrics   : 时序 × 行为(LLM，可缺省) → spec 全部字段（数量/时延 list(-1)/avg/min/max/评分/停止遵从）
 
 口径（规划 §0 默认口径）：
@@ -156,6 +159,90 @@ def round_latency_from_window(u_s: float, u_e: float,
     return response_ms, reply_ms
 
 
+def round_model_words(u_s: Optional[float], model_segments: List[Dict[str, Any]],
+                      u_next: Optional[float] = None) -> List[Dict[str, Any]]:
+    """轮窗口内（用户打断开始后）的模型词级时间线，供 LLM 语义定位打断点。
+
+    取所有 end > u_s 且 start < u_next 的词（含跨越 u_s 的被打断尾巴词），按时间排序。
+    模型回复快、无停顿时，被打断内容与新回复合并在同一连续语音段里，段级时序
+    切不出边界；词级时间线 + LLM 语义打断点(interrupt_index) 才能算出响应/回复时延。
+    """
+    if u_s is None:
+        return []
+    words: List[Dict[str, Any]] = []
+    for seg in model_segments or []:
+        if not isinstance(seg, dict):
+            continue
+        for w in seg.get('words') or []:
+            if not isinstance(w, dict):
+                continue
+            ts = w.get('timestamp')
+            if not isinstance(ts, (list, tuple)) or len(ts) < 2 \
+                    or ts[0] is None or ts[1] is None:
+                continue
+            try:
+                w_s, w_e = float(ts[0]), float(ts[1])
+            except (TypeError, ValueError):
+                continue
+            if w_e > u_s and (u_next is None or w_s < u_next):
+                words.append({'start': w_s, 'end': w_e, 'text': str(w.get('text', ''))})
+    words.sort(key=lambda w: (w['start'], w['end']))
+    return words
+
+
+def refine_timing_with_interrupt_point(timing_entries: Optional[List[Dict[str, Any]]],
+                                       behaviors: Optional[List[Dict[str, Any]]],
+                                       blocks: Optional[List[Dict[str, Any]]]) -> int:
+    """用 LLM 语义打断点(interrupt_index)重算响应/回复时延（就地更新 timing 条目）。
+
+    背景：模型回复快、无停顿时，被打断内容与对新内容的回应连读成同一语音段，
+    段级时序算不出回复时延（None → list 记 -1）、响应时延也会错取整段尾部；
+    由 LLM 在词级时间线上语义定位"模型开始回应本轮用户话语"的词序号后：
+
+        响应时延 = 打断点前一词结束时刻 − u_s（模型说完原内容尾部的时刻；idx=0 → 0）
+        回复时延 = 打断点词开始时刻 − u_e（barge-in 抢答可为负，与本地口径一致）
+
+    仅当 LLM 给出**有效**打断点时覆盖：0 ≤ idx < 词数、打断点词 start ≥ u_s
+    （回应不可能早于打断开始；跨越 u_s 的词属于被打断内容）。
+    失败行为轮（恢复/无关/静默）LLM 应给 null → 不覆盖，派生层照旧记 -1。
+
+    Returns:
+        int: 成功精修的轮数
+    """
+    bmap = {b.get('round'): b for b in (behaviors or []) if isinstance(b, dict)}
+    wmap = {b.get('round'): (b.get('model_words') or [])
+            for b in (blocks or []) if isinstance(b, dict)}
+    refined = 0
+    for t in timing_entries or []:
+        if not isinstance(t, dict) or t.get('u_s') is None or t.get('u_e') is None:
+            continue
+        b = bmap.get(t.get('round'))
+        if not b:
+            continue
+        idx = b.get('interrupt_index')
+        words = wmap.get(t.get('round')) or []
+        if not isinstance(idx, int) or isinstance(idx, bool) or not (0 <= idx < len(words)):
+            continue
+        u_s, u_e = float(t['u_s']), float(t['u_e'])
+        w_new = words[idx]
+        if w_new.get('start') is None or w_new['start'] < u_s:
+            continue  # 回应不可能早于打断开始，索引不可信 → 保留本地时序
+        if idx > 0:
+            response_ms = round(max(0.0, float(words[idx - 1]['end']) - u_s) * 1000, 1)
+        else:
+            response_ms = round(max(0.0, float(w_new['start']) - u_s) * 1000, 1)
+        reply_ms = round((float(w_new['start']) - u_e) * 1000, 1)
+        old = (t.get('response_latency_ms'), t.get('reply_latency_ms'))
+        t['response_latency_ms'] = response_ms
+        t['reply_latency_ms'] = reply_ms
+        t['latency_source'] = 'llm_interrupt_point'
+        t['interrupt_index'] = idx
+        refined += 1
+        logger.info(f"[round_metrics] 第{t.get('round')}轮 LLM 打断点 idx={idx} "
+                    f"精修时延: {old} → ({response_ms}, {reply_ms})ms")
+    return refined
+
+
 def _driver_window_overlap(rd: Dict[str, Any],
                            user_segments: List[Dict[str, Any]]) -> Optional[Tuple[float, float]]:
     """驱动轮窗口 start_ms/end_ms ∩ 用户段，取最大重叠段边界（共用录音 case 模式的次级锚定）。"""
@@ -268,6 +355,11 @@ def build_round_block(t: Dict[str, Any], round_result: Optional[Dict[str, Any]] 
 
     三段文本按锚定窗口从段取（与计时同源）：用户窗口内语音、u_s 时刻模型活跃段、
     u_e 后首个模型段。u_next 同 round_latency_from_window（全局时间线跨轮边界）。
+
+    另附本轮词级时间线 model_words（round_model_words，与 prompt 渲染和
+    refine_timing_with_interrupt_point 用同一份，保证 interrupt_index 对得上）；
+    模型回复快、无停顿导致被打断内容与回应连读成一段时置 merged_speech=True，
+    prompt 据此提示 LLM 按语义判断回应而非误判"无语音输出"。
     """
     round_result = round_result or {}
     rd = rd if isinstance(rd, dict) else {}
@@ -284,6 +376,10 @@ def build_round_block(t: Dict[str, Any], round_result: Optional[Dict[str, Any]] 
     m_next = next((m for m in m_segs
                    if u_e is not None and m['end'] > u_e and m is not m_active
                    and (u_next is None or m['start'] < u_next)), None)
+    words = round_model_words(u_s, m_segs, u_next)
+    # 无独立回应段、但用户说完后模型仍在连续输出 → 被打断内容与回应连读（快回复无停顿）
+    merged_speech = bool(m_next is None and u_e is not None
+                         and any(w['start'] >= u_e for w in words))
     role = '恢复' if t.get('role') == 'resume' else ('停止' if t.get('stop_intent') else '打断')
     return {
         'round': t.get('round'),
@@ -293,6 +389,8 @@ def build_round_block(t: Dict[str, Any], round_result: Optional[Dict[str, Any]] 
         'user_text': user_text,
         'model_interrupted_text': (m_active or {}).get('text', ''),
         'model_recovery_text': (m_next or {}).get('text', ''),
+        'model_words': words,
+        'merged_speech': merged_speech,
     }
 
 
@@ -364,6 +462,7 @@ def derive_round_metrics(round_timing: Optional[List[Dict[str, Any]]],
             'anchor_method': t.get('anchor_method'),
             'response_latency_ms': resp,
             'reply_latency_ms': reply,
+            'latency_source': t.get('latency_source', 'timing'),
             'stop_intent': bool(t.get('stop_intent')),
             'behavior': behavior if known else None,
             'behavior_reason': (b or {}).get('behavior_reason'),

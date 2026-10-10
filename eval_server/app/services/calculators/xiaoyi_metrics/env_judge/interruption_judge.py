@@ -119,6 +119,22 @@ def _tri_state(value: Any) -> Optional[bool]:
     return None
 
 
+def _word_index(value: Any) -> Optional[int]:
+    """解析 LLM 输出的 interrupt_index 词序号：非负整数才有效，其余（null/-1/非法）→ None。"""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        idx = int(value)
+    elif isinstance(value, str):
+        try:
+            idx = int(float(value.strip()))
+        except (TypeError, ValueError):
+            return None
+    else:
+        return None
+    return idx if idx >= 0 else None
+
+
 # ─────────── prompt 构建 ───────────
 def _build_model_timeline_text(model_chunks: Optional[List[Dict[str, Any]]]) -> str:
     """构建模型回复 ASR 时间线文本（与用户侧时间线格式一致）。"""
@@ -587,8 +603,12 @@ def evaluate_interruption_judge(
 
 # ─────────── v2：逐轮五分类裁判（统一计算器进程内直调，一次 LLM 出全轮） ───────────
 # 五分类定义写死 prompt（spec：回复/恢复/无关/静默/询问；成败映射由派生层本地确定性完成）
-_BEHAVIOR_DEFS_V2 = """- 回复：模型正常响应了打断内容，针对用户打断时说的话作了回答/回应。
-- 恢复：模型说穿不停，或停顿后仍继续/说完被打断前的原内容（无视打断）。
+# 同时逐轮语义定位打断点 interrupt_index（模型开始回应本轮用户话语的词序号）：
+# 模型回复快、无停顿时被打断内容与回应连读成同一语音段，段级时序算不出回复时延、
+# 响应时延也会错取整段尾部；派生层 refine_timing_with_interrupt_point 据打断点
+# 在词级时间戳上重算响应/回复时延。
+_BEHAVIOR_DEFS_V2 = """- 回复：模型正常响应了打断内容，针对用户打断时说的话作了回答/回应（语义上切换到了回应打断，无论中间有无停顿）。
+- 恢复：模型语义上无视打断——说穿不停，或停顿后仍继续/说完被打断前的原内容，从未切换到回应打断内容。
 - 无关：模型的回应与打断内容及打断前上下文均无关（答非所问、模板噪音等）。
 - 静默：用户打断后模型不再有任何语音回应。
 - 询问：模型对打断内容或用户意图进行反问/确认/澄清（如"你是说…吗""能再说一遍吗"）。"""
@@ -596,7 +616,7 @@ _BEHAVIOR_DEFS_V2 = """- 回复：模型正常响应了打断内容，针对用�
 
 def build_rounds_judge_prompt(interaction_text: str,
                               round_blocks: List[Dict[str, Any]]) -> str:
-    """v2 逐轮裁判 prompt：全局交互时间线 + 每轮独立标注块（轮号/角色/窗口/台词/三段文本）。"""
+    """v2 逐轮裁判 prompt：全局交互时间线 + 每轮独立标注块（轮号/角色/窗口/台词/三段文本/词级时间线）。"""
     blocks = []
     for b in round_blocks:
         w = b.get('window') or [None, None]
@@ -610,18 +630,34 @@ def build_rounds_judge_prompt(interaction_text: str,
         lines.append(f'【用户实际语音】{b.get("user_text") or "(未识别到)"}')
         if b.get('role') != '恢复':
             lines.append(f'【被打断时模型正在说】{b.get("model_interrupted_text") or "(无)"}')
-        lines.append(f'【模型随后的回应】{b.get("model_recovery_text") or "(无语音输出)"}')
+        recovery_text = b.get('model_recovery_text')
+        if not recovery_text:
+            recovery_text = ('(本地未切出独立回应段——模型输出可能与被打断内容连读为'
+                             '同一连续语音段，请结合下方词级时间线按语义判断模型是否回应了本轮用户话语)'
+                             if b.get('merged_speech') else '(无语音输出)')
+        lines.append(f'【模型随后的回应】{recovery_text}')
+        words = b.get('model_words') or []
+        if words:
+            lines.append('【本轮模型输出·词级时间线】(idx=词序号，供 interrupt_index 定位打断点；'
+                         '被打断内容与对新内容的回应可能连读、中间无停顿)')
+            for i, wd in enumerate(words):
+                try:
+                    lines.append(f'  idx{i} [{float(wd["start"]):.2f}s→{float(wd["end"]):.2f}s] '
+                                 f'{wd.get("text", "")}')
+                except (KeyError, TypeError, ValueError):
+                    continue
         if b.get('role') == '停止':
             lines.append('本轮为停止指令轮：请同时判定 stop_complied；若模型直接静默、'
                          '或仅回复"好的"等简短确认语后静默，属打断成功，behavior 判为「回复」。')
         if b.get('role') == '恢复':
             lines.append('本轮为恢复原话题轮：请判定 topic_resumed——模型是否回到打断前的'
-                         '原话题并继续输出（true/false），并对回到原话题后的回应内容评分。')
+                         '原话题并继续输出（true/false），并对回到原话题后的回应内容评分；'
+                         'interrupt_index=模型开始回到原话题续讲的词序号。')
         blocks.append('\n'.join(lines))
     rounds_text = '\n\n'.join(blocks)
 
     return f"""你是语音对话能力的裁判专家。下面给出一段语音对话用例的【完整交互时间线】与若干【待判定轮次】。
-请对每个待判定轮次，结合时间线与轮内标注文本，判定模型行为类别（五选一）、对模型回应内容三维评分；停止指令轮还需判定是否遵从。
+请对每个待判定轮次，结合时间线与轮内标注文本，判定模型行为类别（五选一）、语义定位打断点（interrupt_index）、对模型回应内容三维评分；停止指令轮还需判定是否遵从。
 
 ═══════════════════════════════════════
 【完整交互时间线】（词级 ASR 合并，query=用户 / answer=模型，可能有识别误差）
@@ -632,6 +668,19 @@ def build_rounds_judge_prompt(interaction_text: str,
 【行为类别定义】（打断/停止轮五选一，仅可选其一）
 ═══════════════════════════════════════
 {_BEHAVIOR_DEFS_V2}
+
+**行为判定只看语义内容，不看是否有停顿**：模型回复很快时，被打断内容与对新内容的回应之间可能没有任何停顿、连读成同一句语音（此时【模型随后的回应】会显示"本地未切出独立回应段"）。这种情况下必须在【本轮模型输出·词级时间线】里按语义区分哪些词属于被打断的原内容、哪些词开始是在回应本轮用户话语：只要模型语义上切换到了回应打断内容，就判「回复」，不得因"无停顿/回应文本为空"误判为「恢复」或「静默」；反之模型把原内容说穿、语义上从未回应打断内容，才判「恢复」。
+
+═══════════════════════════════════════
+【打断点定位】（语义判断是否成功打断、打断点在哪里；用于计算响应时延与回复时延）
+═══════════════════════════════════════
+每轮输出 interrupt_index = 该轮【词级时间线】中，模型**开始输出针对本轮用户话语的新回应**的那个词的序号(idx)：
+- interrupt_index 之前的词属于被打断的原内容，interrupt_index 起（含）属于新回应
+- 模型第一个词就已经是新回应（原内容在用户打断前已停）→ interrupt_index = 0
+- 模型说穿原内容、语义上从未切换到回应（恢复/无关），或本轮无模型语音输出（静默）→ interrupt_index = null
+- behavior 为「回复」或「询问」且模型有语音输出时，必须给出 interrupt_index，不得为 null
+- 恢复原话题轮：interrupt_index = 模型开始回到原话题续讲的词序号（未回到原话题 → null）
+- 停止指令轮：模型停止原输出即遵从；若停止前有确认语（"好的"等），interrupt_index = 确认语首词序号；直接静默 → null
 
 ═══════════════════════════════════════
 【评分标准】（对该轮模型回应内容打 0-5 整数分，overall=三维平均保留一位小数）
@@ -650,11 +699,12 @@ def build_rounds_judge_prompt(interaction_text: str,
 ═══════════════════════════════════════
 【输出格式】输出严格 JSON，不要输出 JSON 以外的任何内容：
 ═══════════════════════════════════════
-{{"rounds": [{{"round": 轮号整数, "behavior": "五类之一(恢复轮留空)", "behavior_reason": "简短理由", "score": {{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0.0}}, "stop_complied": true, "stop_compliance_reason": "仅停止指令轮填写", "topic_resumed": true, "topic_resume_reason": "仅恢复原话题轮填写"}}]}}
+{{"rounds": [{{"round": 轮号整数, "behavior": "五类之一(恢复轮留空)", "behavior_reason": "简短理由", "interrupt_index": null, "score": {{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0.0}}, "stop_complied": true, "stop_compliance_reason": "仅停止指令轮填写", "topic_resumed": true, "topic_resume_reason": "仅恢复原话题轮填写"}}]}}
 
 其中：
 - rounds 必须与【待判定轮次】一一对应（round 相同），不得缺轮或加轮
-- 恢复轮不判行为（behavior 留空），判定 topic_resumed 并对模型回到原话题后的回应评分
+- interrupt_index 为该轮词级时间线中模型开始回应本轮用户话语的词序号(整数，从 0 起)，语义上从未切换/无语音输出时为 null；判定依据见【打断点定位】
+- 恢复轮不判行为（behavior 留空），判定 topic_resumed、给出回到原话题的 interrupt_index，并对模型回到原话题后的回应评分
 - topic_resumed 仅恢复原话题轮填写，其他轮省略
 - 模型无任何语音输出时：behavior=静默，score 三维均给 0（停止指令轮除外——直接静默属遵从，判「回复」）
 - stop_complied 仅停止指令轮有意义，其他轮省略
@@ -784,6 +834,10 @@ def behaviors_from_judge(judge_result: Optional[Dict[str, Any]]) -> Optional[Lis
             'score_overall': overall,
             'stop_complied': _tri_state(item.get('stop_complied')),
             'topic_resumed': _tri_state(item.get('topic_resumed')),
+            # LLM 语义打断点（词序号）：refine_timing_with_interrupt_point 据此在词级
+            # 时间戳上重算响应/回复时延（快回复无停顿时段级时序切不出边界）。
+            # 恢复轮 behavior 为空但打断点仍有意义，照常透传。
+            'interrupt_index': _word_index(item.get('interrupt_index')),
         })
     return out or None
 
