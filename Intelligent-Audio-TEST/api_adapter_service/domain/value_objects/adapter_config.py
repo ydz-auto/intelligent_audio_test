@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 """API 适配配置值对象
 
-说明：本模块的 VendorConfig 面向 HTTP API 适配场景，字段更贴合外部请求
+说明：本模块的 VendorConfig 与同包 ``__init__`` 内已有的
+``VendorConfig``（frozen，被 ``domain/services/AdapterSelector`` 使用）
+并存。本模块面向 HTTP API 适配场景，字段更贴合外部请求
 （api_key/base_url/model/temperature/max_tokens）。
+如需纯领域层选择适配器，请继续使用 ``domain.value_objects.VendorConfig``。
 """
 
 from dataclasses import dataclass, field

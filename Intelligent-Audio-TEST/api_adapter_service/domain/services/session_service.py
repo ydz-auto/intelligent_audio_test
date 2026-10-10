@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """API 适配领域服务
 
+说明：与同包 ``__init__`` 内已有的 ``AdapterSelector`` 并存。
 本模块提供会话状态校验等无状态纯函数，供 application / interfaces 层复用。
 """
 

@@ -78,6 +78,7 @@ class TestBusyConvergence:
     def _busy_engine(self):
         engine = _engine(device_id=5)
         engine._count_cases_by_status = MagicMock(return_value=0)
+        engine.refresh_task_counts_atomic = MagicMock()
         engine._emit_alert = MagicMock()
         engine._emit_progress = MagicMock()
         return engine
@@ -93,11 +94,10 @@ class TestBusyConvergence:
     def test_busy_marks_case_failed(self):
         engine = self._busy_engine()
         row = SimpleNamespace(id=101, execution_status='queued', evaluation_status='pending',
-                              started_at=None, completed_at=None, error_message=None)
+                              started_at=None, completed_at=None, duration=None,
+                              error_message=None)
         session = self._session_with_rows(row, SimpleNamespace(id=9))
-        with patch('shared.models.database.create_db_session', return_value=session), \
-             patch('shared.utils.status_utils.derive_task_case_status',
-                   side_effect=lambda exec_status, eval_status: 'failed'):
+        with patch('shared.models.database.create_db_session', return_value=session):
             engine._handle_physical_lock_busy(9, engine.tc_rel)
         assert row.execution_status == 'failed'
         assert '占用' in row.error_message

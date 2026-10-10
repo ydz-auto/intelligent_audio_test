@@ -15,6 +15,7 @@
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -25,7 +26,6 @@ os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
 import task_service.core.execution_engine.mixins.task_dispatch as _td  # noqa: F401
 from task_service.core.execution_engine.mixins.task_dispatch import TaskDispatchMixin
-from shared.utils.status_constants import TaskCaseStatus
 
 
 # --------------------------------------------------------------------------- #
@@ -143,6 +143,8 @@ def _engine(device_id=5, tc_rel_id=101):
     engine._emit_alert = MagicMock()
     engine._emit_progress = MagicMock()
     engine._count_cases_by_status = MagicMock(return_value=0)
+    engine.refresh_task_counts_atomic = MagicMock()
+    engine.utc_plus_8 = timezone(timedelta(hours=8))
     engine.tc_rel = SimpleNamespace(
         id=tc_rel_id, device_id=device_id, execution_status='queued',
         evaluation_status='pending', error_message=None,
@@ -157,23 +159,33 @@ class TestBusyObservableConvergence:
         session.get.side_effect = lambda model, pk: (
             row if model.__name__ == 'TaskCase' else task_row
         )
-        with patch('shared.models.database.create_db_session', return_value=session), \
-             patch('shared.utils.status_utils.derive_task_case_status',
-                   side_effect=lambda exec_status, eval_status: 'failed'):
+        with patch('shared.models.database.create_db_session', return_value=session):
             engine._handle_physical_lock_busy(9, engine.tc_rel)
         return session
 
-    def test_busy_syncs_task_stats_and_emits_alert_progress(self):
+    def test_busy_converges_terminal_and_emits(self):
+        # 终态收敛完整口径（审计 INT-78 #1/#3）：execution FAILED + 评估态
+        # 收敛 completed（防混合 device_type 任务死等）+ duration=0（对齐
+        # _handle_device_check_failed 前端时长口径）+ status 推导 failed
         engine = _engine(device_id=5)
         row = SimpleNamespace(id=101, execution_status='queued', evaluation_status='pending',
-                              started_at=None, completed_at=None, error_message=None)
+                              status='running', started_at=None, completed_at=None,
+                              duration=None, error_message=None)
         task_row = SimpleNamespace(id=9, completed_cases=0, failed_cases=0)
         session = self._run_busy(engine, row, task_row)
 
-        engine._count_cases_by_status.assert_any_call(9, session, TaskCaseStatus.COMPLETED)
-        engine._count_cases_by_status.assert_any_call(9, session, TaskCaseStatus.FAILED, use_filter_by=True)
-        assert task_row.completed_cases == 0
-        assert task_row.failed_cases == 0
+        assert row.execution_status == 'failed'
+        assert row.evaluation_status == 'completed'
+        assert row.status == 'failed'
+        assert row.duration == 0
+        assert row.started_at is not None
+        assert row.completed_at is not None
+        assert '占用' in row.error_message
+
+        # 统计经 refresh_task_counts_atomic 原子刷新（progress.py 约定），
+        # 不再直接赋值；告警/进度事件各一次且进度携带任务行
+        engine.refresh_task_counts_atomic.assert_called_once_with(9)
+        engine._count_cases_by_status.assert_not_called()
         assert engine._emit_alert.call_count == 1
         alert_args = engine._emit_alert.call_args[0]
         assert alert_args[0] == 9 and '占用' in alert_args[1]
@@ -185,22 +197,63 @@ class TestBusyObservableConvergence:
         # task_service 侧从不置 RUNNING（RUNNING 仅由 e2e 拿锁执行后置位）
         engine = _engine(device_id=5)
         row = SimpleNamespace(id=101, execution_status='queued', evaluation_status='pending',
-                              started_at=None, completed_at=None, error_message=None)
+                              status='running', started_at=None, completed_at=None,
+                              duration=None, error_message=None)
         self._run_busy(engine, row, SimpleNamespace(id=9))
         assert row.execution_status == 'failed'
         assert row.started_at is not None
         assert row.completed_at is not None
 
+    def test_busy_keeps_active_evaluation_untouched(self):
+        # 守卫收敛：评估已启动（running）不被覆写为 completed，
+        # 执行态照常失败收敛（失败由 execution_status 承载）
+        engine = _engine(device_id=5)
+        row = SimpleNamespace(id=101, execution_status='running', evaluation_status='running',
+                              status='running', started_at=123, completed_at=None,
+                              duration=5, error_message=None)
+        self._run_busy(engine, row, SimpleNamespace(id=9))
+        assert row.execution_status == 'failed'
+        assert row.evaluation_status == 'running'
+        assert row.duration == 0
+
     def test_busy_without_task_row_still_converges_case(self):
         # 任务行缺失（异常清理后）不阻塞用例收敛，也不误发任务级事件
         engine = _engine(device_id=5)
         row = SimpleNamespace(id=101, execution_status='queued', evaluation_status='pending',
-                              started_at=None, completed_at=None, error_message=None)
+                              status='running', started_at=None, completed_at=None,
+                              duration=None, error_message=None)
         session = self._run_busy(engine, row, None)
         assert row.execution_status == 'failed'
+        assert row.evaluation_status == 'completed'
         session.commit.assert_called()
         engine._emit_alert.assert_not_called()
         engine._emit_progress.assert_not_called()
+
+
+class TestDeviceCheckFailedEvaluationConvergence:
+    def test_converges_evaluation_to_terminal(self):
+        # 审计 INT-78 #1 存量同缺口：设备检查失败同样收敛评估态，
+        # 复用 _finalize_dispatch_failure 兜底口径，防混合任务死等
+        engine = TaskDispatchMixin.__new__(TaskDispatchMixin)
+        engine.utc_plus_8 = timezone(timedelta(hours=8))
+        engine._emit_alert = MagicMock()
+        engine._emit_progress = MagicMock()
+        engine._count_cases_by_status = MagicMock(return_value=0)
+        tc_rel = SimpleNamespace(id=201, execution_status='pending', evaluation_status='pending',
+                                 status='pending', completed_at=None, duration=None,
+                                 error_message=None, test_case_id='tc-1')
+        task = SimpleNamespace(id=9, completed_cases=0, failed_cases=0)
+        session = MagicMock()
+        engine._handle_device_check_failed(9, task, tc_rel, '设备不在线', session)
+        assert tc_rel.execution_status == 'failed'
+        assert tc_rel.evaluation_status == 'completed'
+        assert tc_rel.status == 'failed'
+        assert tc_rel.duration == 0
+        assert tc_rel.completed_at is not None
+        assert tc_rel.error_message == '设备不在线'
+        session.commit.assert_called()
+        engine._emit_alert.assert_called_once()
+        engine._emit_progress.assert_called_once()
 
 
 class TestDeviceMutexSingleEntryPoint:

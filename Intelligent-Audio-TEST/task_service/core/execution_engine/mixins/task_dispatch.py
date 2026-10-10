@@ -80,9 +80,12 @@ class TaskDispatchMixin:
         ).count()
 
     def _handle_device_check_failed(self, task_id, task, tc_rel, error_msg, session):
-        """设备检查失败时的用例标记和统计更新"""
-        tc_rel.execution_status = ExecutionStatus.FAILED
-        tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
+        """设备检查失败时的用例标记和统计更新
+
+        终态收敛复用 _finalize_dispatch_failure 口径：evaluation_status 停留
+        pending 会被主循环计入活跃评估集合，混合 device_type 任务死等不收敛。
+        """
+        self._finalize_dispatch_failure(tc_rel)
         tc_rel.completed_at = datetime.now(self.utc_plus_8)
         tc_rel.duration = 0
         tc_rel.error_message = error_msg
@@ -234,6 +237,11 @@ class TaskDispatchMixin:
         RUNNING 由 e2e_test_service 拿锁开始执行后才置位，无"假运行中"）；
         抢占失败收敛为失败终态时同步任务统计并发布告警/进度事件，
         保证"排队→失败"收敛对前端可观测（对齐 _handle_device_check_failed）。
+
+        终态收敛复用 _finalize_dispatch_failure：evaluation_status 停留 pending
+        会被 _count_evaluating_cases 计入活跃评估集合，混合 device_type 任务
+        主循环死等不收敛；任务统计走 refresh_task_counts_atomic（progress.py
+        约定：统计更新一律原子刷新，不直接赋值）。
         """
         error_msg = f'物理设备 {tc_rel.device_id} 正被其他任务/用例占用'
         self._log(level='WARNING',
@@ -241,7 +249,6 @@ class TaskDispatchMixin:
                           f"用例 {tc_rel.id} 派发失败",
                   task_id=task_id, device_id=tc_rel.device_id)
         from task_service.infrastructure.persistence.models import Task, TaskCase
-        from shared.utils.status_utils import derive_task_case_status
         from shared.models.database import create_db_session
         from datetime import datetime as _dt
         session = create_db_session()
@@ -252,16 +259,14 @@ class TaskDispatchMixin:
                 if not row.started_at:
                     row.started_at = now
                 row.completed_at = now
-                row.execution_status = ExecutionStatus.FAILED
-                row.status = derive_task_case_status(ExecutionStatus.FAILED, row.evaluation_status)
+                row.duration = 0
+                self._finalize_dispatch_failure(row)
                 row.error_message = error_msg
                 session.commit()
 
+                self.refresh_task_counts_atomic(task_id)
                 task = session.get(Task, task_id)
                 if task is not None:
-                    task.completed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.COMPLETED)
-                    task.failed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.FAILED, use_filter_by=True)
-                    session.commit()
                     self._emit_alert(task_id, error_msg)
                     self._emit_progress(task)
         finally:
