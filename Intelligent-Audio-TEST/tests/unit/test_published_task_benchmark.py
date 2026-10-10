@@ -54,7 +54,6 @@ def make_pt(**overrides):
     pt.source_task_id = 123
     pt.name = '已发布任务'
     pt.description = None
-    pt.type = 'e2e'
     pt.status = 'published'
     pt.benchmark = False
     pt.version = 1
