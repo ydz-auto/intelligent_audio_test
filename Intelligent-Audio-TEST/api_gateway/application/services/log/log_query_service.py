@@ -131,6 +131,10 @@ class LogQueryService:
 
     @staticmethod
     def _get_task_logs_merged(query):
+        # INT-132：module 'all' 在应用层归一为不过滤后统一下发文件侧与 DB
+        # 侧，两侧语义一致且与 stats 调用点缓存键统一
+        module_filter = query.module if query.module and query.module != 'all' else None
+
         from shared.logging import BusinessLogReader
 
         reader = BusinessLogReader()
@@ -142,7 +146,7 @@ class LogQueryService:
             round_value=query.round,
             level=query.level,
             category=query.category if query.category and query.category != 'all' else None,
-            module=query.module,
+            module=module_filter,
             keyword=query.keyword,
             content_include=query.content_include,
             content_exclude=query.content_exclude,
@@ -165,7 +169,7 @@ class LogQueryService:
             per_page=page_size if page_size > 0 else _DB_PAGE_UNBOUNDED,
             start_date=query.start_time,
             end_date=query.end_time,
-            module=query.module,
+            module=module_filter,
             category=query.category,
             mark=query.mark,
             device_id=query.device_id,

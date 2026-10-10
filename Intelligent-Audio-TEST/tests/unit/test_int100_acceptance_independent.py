@@ -16,11 +16,10 @@
   servicer 行为不变；proto3 默认空值不引入新过滤；单级别大小写修复为超集
   语义（旧行为精确匹配 ERROR，新行为大小写不敏感，ERROR 精确值不变）。
 
-已知边界（非本卡缺陷，验收备注）：文件侧 _match 对 module 参数未处理 'all'
-（category/algorithm_type 均处理），api_gateway 合并视图 list 侧 module 原样
-透传、stats 侧 'all'→None——显式传 module=all 的 API 调用方在文件侧会按
-字面 'all' 过滤且两调用点缓存键不一致；前端 'all' 时不传该参数，默认轮询
-不受影响。该形态系 INT-81 既有代码，INT-100 未触碰。
+已知边界处置备注：文件侧 _match 原对 module 参数未处理 'all'（INT-81 既有
+形态，本文件验收时记录为备查），已由 INT-132 归一——'all' 统一为不过滤，
+list/stats 两侧与 DB/文件侧语义一致、两调用点缓存键统一；前端 'all' 时不传
+该参数，默认轮询不受影响。
 """
 import os
 import sys
@@ -423,13 +422,13 @@ class TestOldCallerBackwardCompat:
             assert json.loads(resp.data)['total'] == expected, lv
 
 
-# ========== 备查：module='all' 文件侧边界（既有形态，非本卡引入） ==========
+# ========== 备查：module='all' 文件侧语义（INT-132 归一后与 category 一致） ==========
 
-class TestKnownEdgeModuleAll:
-    def test_module_all_file_side_preexisting_shape(self, log_root, monkeypatch):
-        """记录既有边界：文件侧 _match 不处理 module='all'（category/
-        algorithm_type 均处理）。前端 'all' 时不传参，默认轮询不受影响；
-        显式传 module=all 的 API 调用方文件行为 0（INT-81 起既有形态）。"""
+class TestModuleAllSemantics:
+    def test_module_all_file_side_no_filter(self, log_root, monkeypatch):
+        """INT-132 归一后语义：文件侧 _match 对 module='all' 不过滤，与
+        category/algorithm_type 既有 'all' 语义一致（原 INT-81 既有形态为
+        按字面过滤返回 0 行；真实模块名过滤行为不变）。"""
         path = Path(log_root) / 'business' / str(_TASK_ID) / 'dev-1' / 'act.log'
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, 'w', encoding='utf-8') as fh:
@@ -439,5 +438,8 @@ class TestKnownEdgeModuleAll:
         # category/algorithm_type 'all' = 不过滤（既有且正确）
         assert len(reader.read_entries(task_id=_TASK_ID, category='all')) == 1
         assert len(reader.read_entries(task_id=_TASK_ID, algorithm_type='all')) == 1
-        # module='all' 按字面过滤（既有形态，记录用；非 INT-100 引入）
-        assert len(reader.read_entries(task_id=_TASK_ID, module='all')) == 0
+        # module='all' 同为不过滤（INT-132 归一）
+        assert len(reader.read_entries(task_id=_TASK_ID, module='all')) == 1
+        # 真实模块名过滤行为不变
+        assert len(reader.read_entries(task_id=_TASK_ID, module='exec')) == 1
+        assert len(reader.read_entries(task_id=_TASK_ID, module='gateway')) == 0

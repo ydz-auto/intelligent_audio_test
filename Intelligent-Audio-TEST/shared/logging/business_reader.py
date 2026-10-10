@@ -151,7 +151,8 @@ class BusinessLogReader:
         if category and category != 'all' and \
                 (record.get('category') or '').lower() != category.lower():
             return False
-        if module and (record.get('module') or '').lower() != module.lower():
+        if module and module != 'all' and \
+                (record.get('module') or '').lower() != module.lower():
             return False
         content = record.get('content') or ''
         if keyword and keyword not in content:
