@@ -8,7 +8,7 @@ Domain 层不应在编译期依赖 infrastructure 层。
 class CaseLoaderMixin:
     """加载测试用例、算法类型、参考文本和维度配置"""
 
-    def _load_test_case_and_refs(self, test_case_id, field_mapper, kwargs, task_id):
+    def _load_test_case_and_refs(self, test_case_id, field_mapper, kwargs, task_id, round_number=None):
         """加载测试用例、算法类型、参考文本和维度配置"""
         # P0-1: 通过依赖注入的 ABC 访问 ACL，domain 层不 import infrastructure
         test_case = self._task_acl_repo.get_test_case_detail(str(test_case_id))
@@ -28,9 +28,9 @@ class CaseLoaderMixin:
             test_case_id=test_case_id
         )
 
-        # 从 test_case.config 合并单轮与多轮聚合维度配置
+        # 从 test_case.config 按 round_number 过滤维度配置（单轮取该轮维度，整体取顶层维度）
         test_case_config = test_case.config or {}
-        dimensions_config = self._merge_dimensions_config(test_case_config)
+        dimensions_config = self._merge_dimensions_config(test_case_config, round_number=round_number)
 
         return {
             'test_case': test_case,  # P1.4: 现在是 TestCaseDetailDTO
@@ -39,16 +39,20 @@ class CaseLoaderMixin:
             'dimensions_config': dimensions_config,
         }
 
-    def _merge_dimensions_config(self, test_case_config):
-        """合并维度配置：从 rounds[].evaluation.dimensions 读取单轮维度，
-        从 config.dimensions 读取多轮聚合维度，去重合并两者。
+    def _merge_dimensions_config(self, test_case_config, round_number=None):
+        """按 round_number 过滤维度配置（评估维度隔离，对齐 V9.7.10 设计文档）：
+
+        - round_number=<int>（单轮评估）：只取 rounds[round_number].evaluation.dimensions
+        - round_number=None（整体评估）：只取顶层 config.dimensions，不合并任何轮次维度
+          （轮次维度需在整体评估中使用时显式配置到顶层）
         """
         dimensions_config = []
         seen_dim_ids = set()
-        # 从 rounds[].evaluation.dimensions 读取单轮维度
         rounds = test_case_config.get('rounds', [])
-        if rounds and isinstance(rounds, list):
-            for round_item in rounds:
+        if round_number is not None:
+            # 单轮评估：只取指定轮的 dimensions
+            if rounds and isinstance(rounds, list) and round_number < len(rounds):
+                round_item = rounds[round_number]
                 if isinstance(round_item, dict):
                     evaluation = round_item.get('evaluation', {})
                     if isinstance(evaluation, dict):
@@ -58,7 +62,8 @@ class CaseLoaderMixin:
                             if dim_id and dim_id not in seen_dim_ids:
                                 seen_dim_ids.add(dim_id)
                                 dimensions_config.append(d)
-        # 合并顶层 config.dimensions（多轮聚合维度）
+            return dimensions_config
+        # 整体评估：只取顶层 config.dimensions
         top_dims = test_case_config.get('dimensions', [])
         for d in top_dims:
             dim_id = d.get('id') if isinstance(d, dict) else d

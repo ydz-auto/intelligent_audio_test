@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
 from shared.models.common_enums import TaskStatus
+from report_service.domain.services.round_caliber import (
+    collect_dim_items,
+    get_round_value_samples,
+)
 from report_service.infrastructure.clients.grpc_clients import (
-    _grpc_get_dimension_results_by_result_ids,
-    _grpc_list_dimensions_all,
     _grpc_get_dimension_params,
     _grpc_list_testcases_by_ids,
     _grpc_get_tag_category,
     _grpc_get_device,
     _grpc_get_api,
     _dim_agg_denominator,
+    _dim_exclude_rounds,
 )
 
 
@@ -61,81 +64,17 @@ def _dim_decimal_places(dim):
     return getattr(dim, 'decimal_places', None)
 
 
-def _dim_result_dim_id(dr):
-    """从维度结果对象读取 dimension_id。"""
-    if isinstance(dr, dict):
-        return dr.get('dimension_id') or dr.get('id')
-    return getattr(dr, 'dimension_id', None) or getattr(dr, 'id', None)
-
-
-def _dim_result_value(dr):
-    """从维度结果对象读取 dimension_value。"""
-    if isinstance(dr, dict):
-        return dr.get('dimension_value') or dr.get('value')
-    return getattr(dr, 'dimension_value', None)
-
-
-def _dim_result_raw_response(dr):
-    """从维度结果对象读取 api_raw_response。"""
-    if isinstance(dr, dict):
-        return dr.get('api_raw_response')
-    return getattr(dr, 'api_raw_response', None)
-
-
 class MetricsMixin:
     @staticmethod
     def extract_dimension_values(result_id, all_dimensions, dim_results_map=None):
+        """提取测试结果的维度得分。
+
+        与查询链（ReportHelpers.extract_dimension_values / report_aggregation.stats_mixin）
+        共用同一实现（多轮场景取值优先级：有 overall 取 overall，无 overall 取各轮算术平均），
+        保证报告主生成链与查询链口径一致。
         """
-        提取测试结果的维度得分。
-        """
-        values = {}
-
-        # 创建维度ID到名称的映射（兼容 dict 与 ORM）
-        dim_id_to_name = {_dim_id(d): _dim_name(d) for d in all_dimensions}
-
-        if dim_results_map and result_id in dim_results_map:
-            # 使用预加载的映射
-            dim_results = dim_results_map[result_id]
-            for dr in dim_results:
-                dim_id = None
-                dim_val = None
-
-                # 情况1: dr 是字典
-                # dimension_id 优先：gRPC 返回行的 id 是 TestResultDimension 主键，
-                # 不能用于匹配维度表 id 映射
-                if isinstance(dr, dict):
-                    dim_id = dr.get('dimension_id') or dr.get('id')
-                    dim_val = dr.get('dimension_value') if dr.get('dimension_value') is not None else dr.get('value')
-
-                # 情况2: dr 是 TestResultDimension 对象
-                elif hasattr(dr, 'dimension_id'):
-                    dim_id = dr.dimension_id
-                    dim_val = dr.dimension_value
-
-                # 情况3: dr 是 SQLAlchemy Row 或 namedtuple
-                elif hasattr(dr, '_fields') or isinstance(dr, tuple):
-                    if isinstance(dr, tuple) or hasattr(dr, '_fields'):
-                        if hasattr(dr, 'dimension_id'):
-                            dim_id = dr.dimension_id
-                            dim_val = dr.dimension_value
-                        elif hasattr(dr, 'id'):
-                            dim_id = dr.id
-                            dim_val = dr.value
-
-                # 使用维度ID对应的名称作为键
-                if dim_id and dim_id in dim_id_to_name:
-                    values[dim_id_to_name[dim_id]] = dim_val
-        else:
-            # gRPC 兜底：通过 evaluation_service 查询单个 result 的维度结果
-            dim_map = _grpc_get_dimension_results_by_result_ids([result_id])
-            dim_results = dim_map.get(result_id, [])
-            for dr in dim_results:
-                dim_id = _dim_result_dim_id(dr)
-                dim_val = _dim_result_value(dr)
-                if dim_id and dim_id in dim_id_to_name:
-                    values[dim_id_to_name[dim_id]] = dim_val
-
-        return values
+        from report_service.application.services.report_helpers import ReportHelpers
+        return ReportHelpers.extract_dimension_values(result_id, all_dimensions, dim_results_map)
 
     @staticmethod
     def calculate_core_metrics(results, all_dimensions, resources, dim_results_map=None, tasks_map=None, use_time_prefix=False):
@@ -157,8 +96,21 @@ class MetricsMixin:
         dim_statistic_method = {_dim_name(dim): (_dim_statistic_method(dim) or 'average') for dim in all_dimensions}
         # 需要特殊聚合的维度（非 average 的）
         custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
-        # dim_id -> name 反向映射，用于从 dim_results_map 查 api_raw_response
-        dim_id_to_name_inv = {_dim_id(dim): _dim_name(dim) for dim in all_dimensions}
+
+        # 维度口径信息（对齐查询链 stats_mixin 的 dim_strategy_info）：
+        # 非 average 维度 → 策略聚合 item 收集参数；average 且 agg_denominator='round' → 按轮次取样
+        custom_agg_info = {}
+        dim_round_mode_info = {}
+        for dim in all_dimensions:
+            _name = _dim_name(dim)
+            _id = _dim_id(dim)
+            if _name is None or _id is None:
+                continue
+            _info = {'dim_id': _id, 'exclude_rounds': _dim_exclude_rounds(dim)}
+            if _name in custom_agg_dims:
+                custom_agg_info[_name] = _info
+            elif (_dim_statistic_method(dim) or 'average') == 'average' and _dim_agg_denominator(dim) == 'round':
+                dim_round_mode_info[_name] = _info
 
         # 预加载维度的 output 参数（field_path 配置），用于聚合策略提取结果字段
         dim_output_params = {}
@@ -235,7 +187,8 @@ class MetricsMixin:
             results_by_group[category].append(result)
 
             # 6. 提取维度值
-            dim_values = ReportUtils.extract_dimension_values(_r_get(result, 'id'), all_dimensions, dim_results_map)
+            result_id = _r_get(result, 'id')
+            dim_values = ReportUtils.extract_dimension_values(result_id, all_dimensions, dim_results_map)
 
             # 7. 更新累加器 (Category & Tags & Resource)
             # 初始化累加器结构
@@ -281,44 +234,54 @@ class MetricsMixin:
 
             # 累加维度分
             for dim_name, score in dim_values.items():
-                if score is not None:
+                if score is None:
+                    continue
+                # 按轮次口径（agg_denominator='round'）的 average 维度：取各轮独立样本
+                # （跳过排除轮次，无轮次记录回退整体值），与查询链 _get_round_value_samples 共用口径源
+                round_info = dim_round_mode_info.get(dim_name)
+                if round_info is not None:
+                    sample_values = get_round_value_samples(
+                        result_id, round_info['dim_id'], dim_results_map,
+                        round_info['exclude_rounds'], score)
+                else:
+                    sample_values = [score]
+
+                for sample_val in sample_values:
                     # Category
                     if dim_name in category_accumulator[category][resource]:
-                        category_accumulator[category][resource][dim_name]['sum'] += score
+                        category_accumulator[category][resource][dim_name]['sum'] += sample_val
                         category_accumulator[category][resource][dim_name]['count'] += 1
 
                     # Resource（全局，不按 category 分组）
                     if dim_name in resource_accumulator[resource]:
-                        resource_accumulator[resource][dim_name]['sum'] += score
+                        resource_accumulator[resource][dim_name]['sum'] += sample_val
                         resource_accumulator[resource][dim_name]['count'] += 1
 
                     # Tag
                     for tag in tags:
                         if dim_name in tag_accumulator[tag][resource]:
-                            tag_accumulator[tag][resource][dim_name]['sum'] += score
+                            tag_accumulator[tag][resource][dim_name]['sum'] += sample_val
                             tag_accumulator[tag][resource][dim_name]['count'] += 1
 
-                    # Raw Data
-                    if dim_name in raw_data[resource]:
-                        raw_data[resource][dim_name].append(score)
+                # Raw Data（用例级值，与查询链 raw_data 口径一致）
+                if dim_name in raw_data[resource]:
+                    raw_data[resource][dim_name].append(score)
 
-                    # 对非 average 维度收集完整 item，用于后续策略聚合
-                    if dim_name in custom_agg_dims:
-                        # 从 dim_results_map 拿 api_raw_response
-                        raw_resp = None
-                        result_id = _r_get(result, 'id')
-                        if dim_results_map and result_id in dim_results_map:
-                            for dr in dim_results_map[result_id]:
-                                dr_dim_id = _dim_result_dim_id(dr)
-                                if dr_dim_id and dim_name in dim_id_to_name_inv and dr_dim_id == dim_id_to_name_inv[dim_name]:
-                                    raw_resp = _dim_result_raw_response(dr)
-                                    break
-
-                        agg_item = {'dimension_value': score, 'api_raw_response': raw_resp, 'test_result_id': result_id}
-                        category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
-                        resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(agg_item)
-                        for tag in tags:
-                            tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(agg_item)
+                # 对非 average 维度收集独立 item（整体/每轮优先级 + exclude_rounds 过滤 + round_count），
+                # 与查询链 _collect_dim_items 共用口径源
+                if dim_name in custom_agg_dims:
+                    agg_info = custom_agg_info.get(dim_name)
+                    items = collect_dim_items(
+                        result_id, agg_info['dim_id'], dim_results_map, agg_info['exclude_rounds']
+                    ) if agg_info else []
+                    if not items and (not dim_results_map or result_id not in dim_results_map):
+                        # 无维度结果映射（如对比报告 dim_results_map=None）时回退用例级值 1 个 item
+                        items = [{'dimension_value': score, 'api_raw_response': None,
+                                  'test_result_id': result_id, 'round_count': 0}]
+                    category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).extend(items)
+                    resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).extend(items)
+                    for tag in tags:
+                        tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).extend(items)
 
         # 9. 计算平均值 (Metric Data & Tag Metric Data)
         # metric_data 改为 resource 级别全局平均（不按 category 分组，与 device_stats 口径一致）

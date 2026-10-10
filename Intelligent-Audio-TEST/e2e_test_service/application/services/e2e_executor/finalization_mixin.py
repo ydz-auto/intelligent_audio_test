@@ -57,10 +57,11 @@ class FinalizationMixin:
             task_id=task_id, test_case_id=test_case_id,
         )
 
-        # 整体评估
-        # 检查是否有评估维度（从 rounds[].evaluation.dimensions 读单轮维度，从 config.dimensions 读多轮维度）
-        # 同时检查 evaluation.enabled 开关：enabled 为 False 时不提交评估
-        _has_dims = False
+        # 整体评估 / 聚合触发条件（对齐评估维度隔离设计文档与 V9.7.10 e2e_executor）：
+        # _has_round_dims: 任一轮配置了 evaluation.dimensions（enabled 非 False）→ 需要聚合各轮分数
+        # _has_overall_dims: 顶层 config.dimensions 非空 → 才提交 round_number=None 的整体评估
+        #   （整体评估只取顶层维度；仅有轮次维度时提交整体评估会在评估入口因无维度被跳过）
+        _has_round_dims = False
         if case_config:
             rounds = case_config.get('rounds', [])
             if rounds and isinstance(rounds, list):
@@ -71,10 +72,9 @@ class FinalizationMixin:
                             if evaluation.get('enabled', True) is False:
                                 continue
                             if evaluation.get('dimensions'):
-                                _has_dims = True
+                                _has_round_dims = True
                                 break
-            if not _has_dims and case_config.get('dimensions'):
-                _has_dims = True
+        _has_overall_dims = bool(case_config.get('dimensions')) if case_config else False
 
         # 停止/暂停检查：任务已停则跳过整体评估提交（评估耗时较长），仅完成结果落库与状态收尾
         _stopped = False
@@ -85,11 +85,8 @@ class FinalizationMixin:
             self._log(level='INFO', content='任务已停止，跳过整体评估提交，仅完成结果落库',
                       task_id=task_id, test_case_id=test_case_id)
 
-        if execution_success and _has_dims and not _stopped:
-            _dims_log = json.dumps(
-                case_config.get('rounds', [{}])[0].get('evaluation', {}).get('dimensions', []),
-                ensure_ascii=False
-            )[:200] if case_config.get('rounds') else json.dumps(case_config.get('dimensions', []), ensure_ascii=False)[:200]
+        if execution_success and _has_overall_dims and not _stopped:
+            _dims_log = json.dumps(case_config.get('dimensions', []), ensure_ascii=False)[:200]
             self._log(
                 level='INFO',
                 content=f"提交整体评估: result_id={result_id}, dimensions={_dims_log}",
@@ -105,8 +102,8 @@ class FinalizationMixin:
                 reference_params_col=data.get('reference_params_col')
             )
 
-        # 聚合各轮评估分数到 algo_result（仅当有评估维度且未停止时才执行）
-        if _has_dims and not _stopped:
+        # 聚合各轮评估分数到 algo_result（仅当有单轮评估维度且未停止时才执行）
+        if _has_round_dims and not _stopped:
             self._aggregator.update_algorithm_result_evaluation(task_id, result_id)
 
         # 更新 TaskCase 状态

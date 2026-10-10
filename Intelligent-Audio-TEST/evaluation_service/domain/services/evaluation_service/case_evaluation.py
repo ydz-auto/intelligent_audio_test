@@ -47,7 +47,7 @@ class CaseEvaluationMixin:
         # 准备评估数据(加载用例/参考文本/维度配置/维度数据)
         prepared = self._prepare_evaluation_data(
             task_id, result_id, test_case_id, algorithm_result,
-            field_mapper, kwargs, test_type
+            field_mapper, kwargs, test_type, round_number
         )
         if prepared is None or prepared is False:
             return prepared if prepared is False else False
@@ -58,8 +58,10 @@ class CaseEvaluationMixin:
         )
 
     def _prepare_evaluation_data(self, task_id, result_id, test_case_id, algorithm_result,
-                                  field_mapper, kwargs, test_type):
+                                  field_mapper, kwargs, test_type, round_number=None):
         """准备评估数据：加载测试用例、参考文本、维度配置、维度数据
+
+        round_number 传导到维度配置加载：单轮评估只取该轮维度，整体评估只取顶层维度。
 
         Returns:
             dict: 评估所需数据 (test_case, algorithm_type, ref_texts, dimension_data_list)
@@ -67,7 +69,7 @@ class CaseEvaluationMixin:
         """
         # 加载测试用例和参考文本
         case_data = self._load_test_case_and_refs(
-            test_case_id, field_mapper, kwargs, task_id
+            test_case_id, field_mapper, kwargs, task_id, round_number
         )
         if case_data is None:
             return False

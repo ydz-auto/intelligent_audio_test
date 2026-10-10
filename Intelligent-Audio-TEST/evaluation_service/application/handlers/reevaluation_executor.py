@@ -374,58 +374,141 @@ class ReevaluationExecutor:
 
     def _reevaluate_e2e_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
                                      reference_params_col, rounds, test_case):
-        """E2E多轮评估
+        """E2E多轮逐轮 + 整体评估
+
+        对齐正常执行链（e2e_executor：逐轮 round_number=round_idx + 整体 round_number=None）
+        与评估维度隔离设计文档 §3.3：
+        - 逐轮：config.rounds[n].evaluation.enabled 非 False 且 dimensions 非空才提交，
+          算法参数按轮取（algorithm_params_col 第 n 轮 / config.rounds[n].algorithm_params）
+        - 整体：仅当顶层 config.dimensions 非空时提交（整体评估只取顶层维度），
+          算法参数取第 1 轮
 
         P1.4: test_case 为 TestCaseDetailDTO（来自 gRPC）
         """
         from evaluation_service.infrastructure.acl import algorithm_acl_repository
 
-        # E2E: 一次性评估所有轮（不传 round_number，evaluate_case 构建完整 rounds_list）
-        algo_params = {}
+        case_config = (getattr(test_case, 'config', None) or {}) if test_case else {}
+        config_rounds = case_config.get('rounds', []) if isinstance(case_config, dict) else []
         algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
-        if algorithm_params_col:
-            from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
-            algo_params = ParamNormalizerService.normalize_algorithm_params(
-                ParamNormalizerService.get_round_algo_params(algorithm_params_col, 1))
-        elif test_case and test_case.config:
-            config = test_case.config
-            config_rounds = config.get('rounds', [])
-            if config_rounds and isinstance(config_rounds[0], dict):
+        any_submitted = False
+
+        # 逐轮评估：每轮各自的 dimensions
+        for round_idx in range(len(rounds)):
+            _round_eval_enabled = True
+            if config_rounds and round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
+                _round_eval = config_rounds[round_idx].get('evaluation', {})
+                if isinstance(_round_eval, dict):
+                    if _round_eval.get('enabled', True) is False:
+                        _round_eval_enabled = False
+                    elif not _round_eval.get('dimensions'):
+                        _round_eval_enabled = False
+
+            if not _round_eval_enabled:
+                continue
+
+            algo_params = {}
+            if algorithm_params_col:
+                from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
+                algo_params = ParamNormalizerService.normalize_algorithm_params(
+                    ParamNormalizerService.get_round_algo_params(algorithm_params_col, round_idx + 1))
+            elif round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
+                algo_params = config_rounds[round_idx].get('algorithm_params', {})
+
+            full_case_params = {
+                'algorithm_type': algorithm_type,
+                'algorithm_params': algo_params,
+                'reference_params': rounds[round_idx].get('reference_params', []),
+                'reference_params_col': reference_params_col,
+            }
+
+            try:
+                all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
+                eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
+                eval_params['algorithm_type'] = algorithm_type
+                eval_params['test_type'] = test_type
+                if reference_params_col is not None:
+                    eval_params['reference_params_col'] = reference_params_col
+                if algorithm_params_col is not None:
+                    eval_params['algorithm_params_col'] = algorithm_params_col
+
+                evaluation_service.evaluate_case(
+                    task_id=task_id,
+                    result_id=result,
+                    test_case_id=test_case_id,
+                    algorithm_result=algorithm_result,
+                    round_number=round_idx,
+                    **eval_params,
+                )
+                any_submitted = True
+
+                log_and_emit('INFO', 'reevaluator',
+                            f"已提交 E2E 轮次评估: test_case_id={test_case_id}, round={round_idx}",
+                            task_id=task_id, test_case_id=test_case_id)
+            except Exception as e:
+                import traceback
+                log_and_emit('ERROR', 'reevaluator',
+                            f"E2E 轮次重新评估失败: round={round_idx}, error={str(e)}, traceback={traceback.format_exc()}",
+                            task_id=task_id, test_case_id=test_case_id)
+
+        # 整体评估：仅当顶层 config.dimensions 非空时提交
+        _has_overall_dims = bool(case_config.get('dimensions')) if isinstance(case_config, dict) else False
+        if _has_overall_dims:
+            algo_params = {}
+            if algorithm_params_col:
+                from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
+                algo_params = ParamNormalizerService.normalize_algorithm_params(
+                    ParamNormalizerService.get_round_algo_params(algorithm_params_col, 1))
+            elif config_rounds and isinstance(config_rounds[0], dict):
                 algo_params = config_rounds[0].get('algorithm_params', {})
 
-        full_case_params = {
-            'algorithm_type': algorithm_type,
-            'algorithm_params': algo_params,
-            'reference_params': rounds[0].get('reference_params', []) if rounds else [],
-            'reference_params_col': reference_params_col,
-        }
+            full_case_params = {
+                'algorithm_type': algorithm_type,
+                'algorithm_params': algo_params,
+                'reference_params': rounds[0].get('reference_params', []) if rounds else [],
+                'reference_params_col': reference_params_col,
+            }
 
-        try:
-            all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
-            eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
-            eval_params['algorithm_type'] = algorithm_type
-            eval_params['test_type'] = test_type
-            if reference_params_col is not None:
-                eval_params['reference_params_col'] = reference_params_col
-            if algorithm_params_col is not None:
-                eval_params['algorithm_params_col'] = algorithm_params_col
+            try:
+                all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
+                eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
+                eval_params['algorithm_type'] = algorithm_type
+                eval_params['test_type'] = test_type
+                if reference_params_col is not None:
+                    eval_params['reference_params_col'] = reference_params_col
+                if algorithm_params_col is not None:
+                    eval_params['algorithm_params_col'] = algorithm_params_col
 
-            evaluation_service.evaluate_case(
-                task_id=task_id,
-                result_id=result,
-                test_case_id=test_case_id,
-                algorithm_result=algorithm_result,
-                **eval_params,
-            )
+                evaluation_service.evaluate_case(
+                    task_id=task_id,
+                    result_id=result,
+                    test_case_id=test_case_id,
+                    algorithm_result=algorithm_result,
+                    **eval_params,
+                )
+                any_submitted = True
 
-            log_and_emit('INFO', 'reevaluator',
-                        f"已提交 E2E 多轮评估: test_case_id={test_case_id}, rounds={len(rounds)}",
-                        task_id=task_id, test_case_id=test_case_id)
-        except Exception as e:
-            import traceback
-            log_and_emit('ERROR', 'reevaluator',
-                        f"E2E 多轮重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
-                        task_id=task_id, test_case_id=test_case_id)
+                log_and_emit('INFO', 'reevaluator',
+                            f"已提交 E2E 整体评估: test_case_id={test_case_id}, rounds={len(rounds)}",
+                            task_id=task_id, test_case_id=test_case_id)
+            except Exception as e:
+                import traceback
+                log_and_emit('ERROR', 'reevaluator',
+                            f"E2E 整体重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
+                            task_id=task_id, test_case_id=test_case_id)
+
+        if not any_submitted:
+            # 无任何可评估维度：对齐旧行为收尾——标记结果完成并推进用例评估状态，
+            # 避免 TaskCase 在重评后悬挂在 queued（旧整体单次调用会经评估入口无维度跳过路径收尾）
+            try:
+                evaluation_service.result_processor.mark_test_result_completed(result)
+                evaluation_service._post_evaluate_updates(task_id, test_case_id)
+                log_and_emit('INFO', 'reevaluator',
+                            f"E2E 重评无维度可评估，已收尾: test_case_id={test_case_id}",
+                            task_id=task_id, test_case_id=test_case_id)
+            except Exception as e:
+                log_and_emit('WARNING', 'reevaluator',
+                            f"E2E 重评无维度收尾失败: test_case_id={test_case_id}, error={e}",
+                            task_id=task_id, test_case_id=test_case_id)
 
     def _reevaluate_api_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
                                      reference_params_col, rounds, test_case):
