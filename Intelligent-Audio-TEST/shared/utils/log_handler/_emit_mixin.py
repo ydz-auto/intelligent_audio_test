@@ -63,6 +63,17 @@ class _EmitMixin:
             is_task_related = task_id is not None or test_case_id is not None
 
             # === 业务日志（INT-81）：有 task_id 落业务文件，停止写 logs 表 ===
+            # 分流顺序约束（INT-81 审计问题 4 固化，不得改为「审计类别优先」）：
+            # - 审计事件写入器（write_auth_audit / write_benchmark_audit /
+            #   write_device_audit）按约定永不携带 task_id/test_case_id，
+            #   走下方「无任务上下文」分支保证落库；
+            # - AUDIT_LOG_CATEGORIES 中的 'device' 与业务日志类型 DEVICE 共用
+            #   同一 category 名：任务执行期的设备交互/音频链路日志
+            #   （category='device'/'audio' 且带 task_id）是业务日志，
+            #   必须走业务文件路径（去库化），若按审计类别优先改道会把整个
+            #   设备/音频业务日志流灌回 logs 表，违反本卡验收标准 3；
+            # - 回滚开关 LOG_BUSINESS_DB_ENABLED=True 时带 task_id 的审计类别
+            #   日志经 _enqueue_db_log 入库（审计不参与 TTL 去重），双保险。
             if task_id is not None:
                 self._enqueue_business_log(record, task_id, test_case_id,
                                            category, log_message)

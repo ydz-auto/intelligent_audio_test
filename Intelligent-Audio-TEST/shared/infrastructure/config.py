@@ -100,6 +100,8 @@ class BaseConfig:
     LOG_BUSINESS_DB_ENABLED: bool = _get_bool('LOG_BUSINESS_DB_ENABLED', False)
     LOG_BUSINESS_MAX_MB: int = _get_int('LOG_BUSINESS_MAX_MB', 50)
     LOG_BUSINESS_RETENTION_DAYS: int = _get_int('LOG_BUSINESS_RETENTION_DAYS', 30)
+    # 读取侧单次查询最大物化条数（0 = 不限）：大任务轮询兜底，total 变下界语义
+    LOG_BUSINESS_MAX_SCAN_ENTRIES: int = _get_int('LOG_BUSINESS_MAX_SCAN_ENTRIES', 100000)
 
     # --- gRPC 服务发现 ---
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')

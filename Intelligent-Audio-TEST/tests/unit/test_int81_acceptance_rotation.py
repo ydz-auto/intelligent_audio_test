@@ -68,7 +68,8 @@ class TestDayRollover:
 
     def test_day_change_rotates_before_write(self, tmp_path, log_root):
         """跨天：日期变化后下一条日志先轮转再写入，旧文件保留昨日内容。"""
-        handler = ServiceRotatingFileHandler(str(tmp_path / 'svc'), max_bytes=0)
+        handler = ServiceRotatingFileHandler(str(tmp_path / 'svc'),
+                                             base_name='app.log', max_bytes=0)
         logger = _attach(handler, 'int81_day_test')
         try:
             logger.info('yesterday line')
@@ -91,7 +92,8 @@ class TestDayRollover:
 
     def test_day_rollover_after_size_split_no_overwrite(self, tmp_path, log_root):
         """跨天与超限切分叠加：轮转名按天前缀命名，同日切分文件不被覆盖。"""
-        handler = ServiceRotatingFileHandler(str(tmp_path / 'svc'), max_bytes=50)
+        handler = ServiceRotatingFileHandler(str(tmp_path / 'svc'),
+                                             base_name='app.log', max_bytes=50)
         logger = _attach(handler, 'int81_day_size_test')
         try:
             today = datetime.now().strftime('%Y%m%d')
@@ -169,7 +171,7 @@ class TestThreadRoundContext:
                      category='execution', task_id=88, device_id=4)
 
         svc = resolve_service_name()
-        round_file = logs_root / 'business' / '88' / '4' / '5' / f'execution.{svc}.log'
+        round_file = logs_root / 'business' / '88' / '4' / '5' / f'execution.{svc}.{os.getpid()}.log'
         deadline = time.time() + 3
         while time.time() < deadline and not round_file.exists():
             time.sleep(0.05)
@@ -178,7 +180,7 @@ class TestThreadRoundContext:
         assert 'thread-scoped round line' in content
 
         # 上下文退出后（round=None）落 shared 目录
-        shared_file = logs_root / 'business' / '88' / '4' / 'shared' / f'execution.{svc}.log'
+        shared_file = logs_root / 'business' / '88' / '4' / 'shared' / f'execution.{svc}.{os.getpid()}.log'
         deadline = time.time() + 3
         while time.time() < deadline and not shared_file.exists():
             time.sleep(0.05)
@@ -220,7 +222,7 @@ class TestThreadRoundContext:
 
         # 双写：文件侧同样落盘
         svc = resolve_service_name()
-        biz_file = logs_root / 'business' / '99' / '2' / 'shared' / f'execution.{svc}.log'
+        biz_file = logs_root / 'business' / '99' / '2' / 'shared' / f'execution.{svc}.{os.getpid()}.log'
         deadline = time.time() + 3
         while time.time() < deadline and not biz_file.exists():
             time.sleep(0.05)

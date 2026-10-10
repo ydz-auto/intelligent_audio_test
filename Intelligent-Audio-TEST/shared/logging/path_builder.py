@@ -2,13 +2,16 @@
 """业务日志路径模板（INT-81）。
 
 路径规则（唯一权威实现，写入/读取两侧共用）：
-    business/{task_id}/{device_id|api_id|common}/{evaluation_id|round|shared}/{log_type}.{service_name}[-NNN].log
+    business/{task_id}/{device_id|api_id|common}/{evaluation_id|round|shared}/{log_type}.{service_name}[.{pid}][-NNN].log
 
 - 第二段：被测设备ID（E2E/设备日志）或 API 定义ID（API 用例日志），缺省 common
 - 第三段：评估ID或轮次号，缺省 shared（任务级日志不区分轮次）
-- 文件名：{log_type}.{service_name}.log 为活跃文件；超限切分为
-  {log_type}.{service_name}-001.log（序号递增），实现进程独立文件名，
-  多进程/多副本写同一任务目录互不冲突
+- 文件名：写入侧带进程标识 {log_type}.{service_name}.{pid}.log —— service_name
+  只区分服务不区分副本，多副本（compose deploy.replicas）共享日志卷时同名
+  活跃文件会共写互踩；PID 保证同一服务的每个写入进程持有独立活跃文件，
+  轮转改名只触碰本进程文件（多副本/多 worker 安全，审计问题 1 修复）
+- 超限切分 {log_type}.{service_name}.{pid}-001.log：切分序号扫描以活跃文件
+  stem 为前缀，天然按进程隔离，不跨进程合并序号
 
 所有段取值经 sanitize 校验（拒绝路径分隔符/..），路径模板本身不可配置拼接。
 """
@@ -18,7 +21,7 @@ from typing import Optional
 
 from shared.logging.enums import BusinessLogType
 
-_BUSINESS_DIR = 'business'
+BUSINESS_DIR = 'business'
 # 缺省段常量（枚举化，拒绝魔法字符串）
 COMMON_SEGMENT = 'common'    # 无设备且无 API 上下文
 SHARED_SEGMENT = 'shared'    # 无评估ID且无轮次上下文
@@ -32,17 +35,20 @@ class BusinessLogPathBuilder:
 
     def build_rel_path(self, *, task_id, log_type: BusinessLogType, service_name: str,
                        device_id=None, api_id=None,
-                       evaluation_id=None, round_value=None) -> str:
+                       evaluation_id=None, round_value=None,
+                       process_id=None) -> str:
         """构建业务日志相对路径。
 
         Args:
             task_id: 任务ID（必填，业务日志的根键）
             log_type: 业务日志类型枚举
-            service_name: 写入方服务名（进程独立文件名）
+            service_name: 写入方服务名
             device_id: 被测设备ID（优先于 api_id）
             api_id: API 定义ID（无设备上下文的 API 用例日志）
             evaluation_id: 评估ID（优先于 round_value）
             round_value: 轮次号
+            process_id: 写入进程标识（写入侧必须传，文件名含 PID 实现多副本
+                互不冲突；读取侧按目录通配枚举，不依赖具体文件名）
         """
         if task_id is None or str(task_id).strip() == '':
             raise ValueError('business log path requires task_id')
@@ -53,8 +59,11 @@ class BusinessLogPathBuilder:
         scope_seg = (self.sanitize_segment(evaluation_id) if evaluation_id not in (None, '')
                      else self.sanitize_segment(round_value) if round_value not in (None, '')
                      else SHARED_SEGMENT)
-        filename = f'{log_type.value}.{self.sanitize_segment(service_name)}.log'
-        return os.path.join(_BUSINESS_DIR, task_seg, target_seg, scope_seg, filename)
+        stem = f'{log_type.value}.{self.sanitize_segment(service_name)}'
+        if process_id is not None:
+            stem = f'{stem}.{self.sanitize_segment(process_id)}'
+        filename = f'{stem}.log'
+        return os.path.join(BUSINESS_DIR, task_seg, target_seg, scope_seg, filename)
 
     def build_log_type_scope_dir(self, *, task_id, device_id=None, api_id=None,
                                  evaluation_id=None, round_value=None) -> Optional[str]:
@@ -71,11 +80,11 @@ class BusinessLogPathBuilder:
         scope_seg = (self.sanitize_segment(evaluation_id) if evaluation_id not in (None, '')
                      else self.sanitize_segment(round_value) if round_value not in (None, '')
                      else SHARED_SEGMENT)
-        return os.path.join(_BUSINESS_DIR, task_seg, target_seg, scope_seg)
+        return os.path.join(BUSINESS_DIR, task_seg, target_seg, scope_seg)
 
     def build_task_dir(self, task_id) -> str:
         """任务根目录（全量检索入口）。"""
-        return os.path.join(_BUSINESS_DIR, self.sanitize_segment(task_id))
+        return os.path.join(BUSINESS_DIR, self.sanitize_segment(task_id))
 
     @staticmethod
     def sanitize_segment(value) -> str:
@@ -93,7 +102,11 @@ class BusinessLogPathBuilder:
 
     @staticmethod
     def next_split_path(dir_path: str, active_filename: str) -> str:
-        """返回活跃文件的下一个切分目标路径（-NNN 序号取现存最大值+1）。"""
+        """返回活跃文件的下一个切分目标路径（-NNN 序号取现存最大值+1）。
+
+        序号扫描以活跃文件 stem 为前缀：写入侧文件名含 PID，切分序号天然
+        按进程隔离，多副本各自递增互不覆盖（os.replace 只触碰本进程文件）。
+        """
         stem = active_filename[:-len('.log')]
         max_index = 0
         if os.path.isdir(dir_path):

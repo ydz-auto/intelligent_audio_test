@@ -67,29 +67,43 @@ class TestPathBuilder:
     def test_device_round_path(self):
         path = self.builder.build_rel_path(
             task_id=101, log_type=BusinessLogType.EXECUTION,
-            service_name='e2e_test_service', device_id=7, round_value=2)
+            service_name='e2e_test_service', device_id=7, round_value=2,
+            process_id=4321)
         normalized = path.replace(os.sep, '/')
-        assert normalized == 'business/101/7/2/execution.e2e_test_service.log'
+        assert normalized == 'business/101/7/2/execution.e2e_test_service.4321.log'
 
     def test_api_path_fallback_shared_scope(self):
         path = self.builder.build_rel_path(
             task_id=5, log_type=BusinessLogType.EXECUTION,
-            service_name='api_test_service', api_id=33)
+            service_name='api_test_service', api_id=33, process_id=4321)
         normalized = path.replace(os.sep, '/')
-        assert normalized == 'business/5/33/shared/execution.api_test_service.log'
+        assert normalized == 'business/5/33/shared/execution.api_test_service.4321.log'
 
     def test_common_segment_when_no_device_no_api(self):
         path = self.builder.build_rel_path(
-            task_id=9, log_type=BusinessLogType.EVALUATION, service_name='evaluation_service')
+            task_id=9, log_type=BusinessLogType.EVALUATION, service_name='evaluation_service',
+            process_id=4321)
         normalized = path.replace(os.sep, '/')
-        assert normalized == 'business/9/common/shared/evaluation.evaluation_service.log'
+        assert normalized == 'business/9/common/shared/evaluation.evaluation_service.4321.log'
 
     def test_evaluation_id_precedes_round(self):
         path = self.builder.build_rel_path(
             task_id=9, log_type=BusinessLogType.EVALUATION, service_name='s',
-            device_id=1, evaluation_id=77, round_value=2)
+            device_id=1, evaluation_id=77, round_value=2, process_id=4321)
         normalized = path.replace(os.sep, '/')
-        assert normalized == 'business/9/1/77/evaluation.s.log'
+        assert normalized == 'business/9/1/77/evaluation.s.4321.log'
+
+    def test_process_id_makes_filenames_replica_unique(self):
+        """同一服务两个写入进程（不同 PID）路径不同：多副本共享卷互不冲突。"""
+        first = self.builder.build_rel_path(
+            task_id=9, log_type=BusinessLogType.EXECUTION, service_name='svc',
+            device_id=1, round_value=2, process_id=111)
+        second = self.builder.build_rel_path(
+            task_id=9, log_type=BusinessLogType.EXECUTION, service_name='svc',
+            device_id=1, round_value=2, process_id=222)
+        assert first != second
+        assert first.endswith('execution.svc.111.log')
+        assert second.endswith('execution.svc.222.log')
 
     def test_sanitize_rejects_traversal(self):
         assert self.builder.sanitize_segment('../../etc') != '../../etc'
@@ -132,19 +146,34 @@ class TestBusinessWriter:
         return entry
 
     def test_write_lands_at_expected_path(self, log_root):
-        writer = BusinessLogFileWriter(settings=_make_settings(log_root), service_name='e2e_test_service')
+        writer = BusinessLogFileWriter(settings=_make_settings(log_root),
+                                       service_name='e2e_test_service', process_id=4321)
         rel = writer.write(self._entry())
-        assert rel.replace(os.sep, '/') == 'business/101/7/2/execution.e2e_test_service.log'
+        assert rel.replace(os.sep, '/') == 'business/101/7/2/execution.e2e_test_service.4321.log'
         import json
         line = json.loads(open(os.path.join(log_root, rel), 'rb').read().decode('utf-8'))
         assert line['task_id'] == 101 and line['round'] == 2
         assert line['service'] == 'e2e_test_service'
         assert line['log_type'] == 'execution'
 
+    def test_datetime_time_unified_strftime_format(self, log_root):
+        """datetime 时间统一固定 strftime 格式（拒绝 str(datetime) 时区后缀）。"""
+        from datetime import datetime, timezone, timedelta
+        from shared.logging.enums import LOG_TIME_FORMAT
+        writer = BusinessLogFileWriter(settings=_make_settings(log_root),
+                                       service_name='svc', process_id=4321)
+        stamp = datetime(2026, 10, 10, 12, 30, 5, 123456, tzinfo=timezone(timedelta(hours=8)))
+        rel = writer.write(self._entry(time=stamp))
+        import json
+        line = json.loads(open(os.path.join(log_root, rel), 'rb').read().decode('utf-8'))
+        assert line['time'] == stamp.strftime(LOG_TIME_FORMAT)
+        assert line['time'] == '2026-10-10 12:30:05.123456'
+        assert '+' not in line['time'] and 'T' not in line['time']
+
     def test_oversize_split_with_sequential_suffix(self, log_root):
         writer = BusinessLogFileWriter(
             settings=_make_settings(log_root, business_max_bytes=200),
-            service_name='svc')
+            service_name='svc', process_id=4321)
         total_lines = 6
         for i in range(total_lines):
             writer.write(self._entry(content=f'line {i} with some padding text here'))
@@ -162,7 +191,8 @@ class TestBusinessWriter:
         assert written_lines == total_lines
 
     def test_no_task_id_skipped(self, log_root):
-        writer = BusinessLogFileWriter(settings=_make_settings(log_root), service_name='svc')
+        writer = BusinessLogFileWriter(settings=_make_settings(log_root), service_name='svc',
+                                       process_id=4321)
         assert writer.write(self._entry(task_id=None)) is None
 
     def test_disabled_by_settings(self, log_root):
@@ -175,15 +205,16 @@ class TestBusinessWriter:
             business_max_bytes=settings.business_max_bytes,
             business_retention_days=settings.business_retention_days,
         )
-        writer = BusinessLogFileWriter(settings=disabled, service_name='svc')
+        writer = BusinessLogFileWriter(settings=disabled, service_name='svc', process_id=4321)
         assert writer.write(self._entry()) is None
 
     def test_category_maps_to_log_type(self, log_root):
-        writer = BusinessLogFileWriter(settings=_make_settings(log_root), service_name='svc')
+        writer = BusinessLogFileWriter(settings=_make_settings(log_root), service_name='svc',
+                                       process_id=4321)
         writer.write(self._entry(category='evaluation'))
         rel = writer.write(self._entry(category='audio', content='device line'))
-        assert rel.replace(os.sep, '/').endswith('device.svc.log')
-        eval_file = os.path.join(log_root, 'business', '101', '7', '2', 'evaluation.svc.log')
+        assert rel.replace(os.sep, '/').endswith('device.svc.4321.log')
+        eval_file = os.path.join(log_root, 'business', '101', '7', '2', 'evaluation.svc.4321.log')
         assert os.path.exists(eval_file)
 
     def test_prod_env_drops_debug_entries(self, log_root, monkeypatch):
@@ -223,7 +254,7 @@ class TestBusinessWriter:
             from shared.logging import resolve_service_name
             deadline = time.time() + 3
             biz_file = os.path.join(log_root, 'business', '701', '1', '1',
-                                    f'execution.{resolve_service_name()}.log')
+                                    f'execution.{resolve_service_name()}.{os.getpid()}.log')
             while time.time() < deadline and not os.path.exists(biz_file):
                 time.sleep(0.05)
             assert os.path.exists(biz_file), 'INFO 日志未落文件'
@@ -239,7 +270,8 @@ class TestBusinessWriter:
 class TestBusinessReader:
 
     def _seed(self, log_root):
-        writer = BusinessLogFileWriter(settings=_make_settings(log_root), service_name='svc')
+        writer = BusinessLogFileWriter(settings=_make_settings(log_root), service_name='svc',
+                                       process_id=4321)
         rows = [
             dict(task_id=101, device_id=7, round=2, category='execution', content='e2e r2',
                  level='INFO', time='2026-10-10T12:00:01+08:00'),
@@ -308,7 +340,7 @@ class TestBusinessReader:
         files = reader.load_file_bytes(task_id=101, device_id=7)
         rels = sorted(rel for rel, _ in files)
         # 设备 7 只有轮次 2 的执行/评估日志（设备 8 的设备日志不在此范围）
-        assert rels == ['7/2/evaluation.svc.log', '7/2/execution.svc.log']
+        assert rels == ['7/2/evaluation.svc.4321.log', '7/2/execution.svc.4321.log']
         for _rel, content in files:
             assert b'task_id' in content
 
@@ -325,7 +357,9 @@ class TestBusinessReader:
 class TestServiceRotation:
 
     def test_writes_to_service_dir(self, tmp_path, log_root):
-        handler = ServiceRotatingFileHandler(str(tmp_path / 'svc_logs'), max_bytes=10 * 1024 * 1024)
+        handler = ServiceRotatingFileHandler(str(tmp_path / 'svc_logs'),
+                                             base_name='app.log',
+                                             max_bytes=10 * 1024 * 1024)
         handler.setFormatter(logging.Formatter('%(message)s'))
         logger = logging.getLogger('int81_rotation_test')
         logger.addHandler(handler)
@@ -339,8 +373,15 @@ class TestServiceRotation:
         assert log_file.exists()
         assert 'hello service log' in log_file.read_text(encoding='utf-8')
 
+    def test_default_base_name_contains_pid(self):
+        """默认活跃文件名含进程 PID：多副本共享日志卷互不冲突（审计问题 1）。"""
+        from shared.logging.service_handler import default_service_base_name
+        name = default_service_base_name()
+        assert name == f'app-{os.getpid()}.log'
+
     def test_size_rollover_names_with_day_and_seq(self, tmp_path, log_root):
-        handler = ServiceRotatingFileHandler(str(tmp_path / 'svc_logs'), max_bytes=50)
+        handler = ServiceRotatingFileHandler(str(tmp_path / 'svc_logs'),
+                                             base_name='app.log', max_bytes=50)
         handler.setFormatter(logging.Formatter('%(message)s'))
         logger = logging.getLogger('int81_size_test')
         logger.propagate = False

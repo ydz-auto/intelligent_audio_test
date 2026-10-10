@@ -27,6 +27,9 @@ class LogSettings:
     business_db_enabled: bool
     business_max_bytes: int
     business_retention_days: int
+    # 读取侧单次查询最大物化条数（0 = 不限）；默认远高于常规任务量，
+    # 仅在大任务轮询场景兜底（total 变下界语义）
+    business_max_scan_entries: int = 100_000
 
     @property
     def is_prod(self) -> bool:
@@ -43,6 +46,7 @@ def _build_settings() -> LogSettings:
         business_db_enabled=BaseConfig.LOG_BUSINESS_DB_ENABLED,
         business_max_bytes=max(1, BaseConfig.LOG_BUSINESS_MAX_MB) * 1024 * 1024,
         business_retention_days=max(1, BaseConfig.LOG_BUSINESS_RETENTION_DAYS),
+        business_max_scan_entries=max(0, BaseConfig.LOG_BUSINESS_MAX_SCAN_ENTRIES),
     )
 
 

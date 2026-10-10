@@ -36,6 +36,12 @@ CATEGORY_TO_LOG_TYPE = {
 DEFAULT_LOG_TYPE = BusinessLogType.EXECUTION
 
 
+# 业务日志文件条目的统一时间格式（INT-81 审计修复：写入侧固定 strftime，
+# 拒绝 str(datetime) 的微秒+时区后缀形态——固定宽度保证字符串排序与
+# DB/WS 侧时间可比，前端统一按可解析时间渲染）。
+LOG_TIME_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
+
+
 def log_type_for_category(category: str) -> BusinessLogType:
     """按日志 category 解析业务日志类型（未知名回退 EXECUTION）。"""
     return CATEGORY_TO_LOG_TYPE.get((category or '').lower(), DEFAULT_LOG_TYPE)

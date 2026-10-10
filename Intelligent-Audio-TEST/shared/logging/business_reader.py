@@ -4,9 +4,15 @@
 按 任务ID/设备ID/API ID/评估ID(轮次) 路径检索业务日志文件，逐行解析
 JSON Lines 并过滤、排序、分页。历史 logs 表数据保留只读不迁移，读取
 侧由 api_gateway / report_service 的应用服务组合本读取器与 DB 历史行。
+
+读取条数上限（审计问题 2 修复）：单次查询最多物化 business_max_scan_entries
+条（LOG_BUSINESS_MAX_SCAN_ENTRIES，0 = 不限）。文件按活跃（最新）在前
+枚举，超限时停止扫描更旧文件、溢出文件保留最新部分——total 为下界语义，
+防止大任务轮询把读取侧拖垮；常规任务远低于上限无感知。
 """
 import json
 import os
+from datetime import datetime
 from typing import List, Optional
 
 from shared.logging.config import get_log_settings
@@ -21,6 +27,18 @@ def _stable_int_id(text: str) -> int:
     """相对路径+行号 → 稳定 int id（前端 key/详情展开用，非 DB id）。"""
     import hashlib
     return int(hashlib.md5(text.encode('utf-8')).hexdigest()[:12], 16)
+
+
+def _parse_log_time(value) -> Optional[datetime]:
+    """宽容解析日志时间（'T'/空格分隔、带/不带微秒与时区均可）。"""
+    if isinstance(value, datetime):
+        return value
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except (ValueError, TypeError):
+        return None
 
 
 class BusinessLogReader:
@@ -130,10 +148,28 @@ class BusinessLogReader:
         if test_case_id and str(record.get('test_case_id') or '') != str(test_case_id):
             return False
         log_time = record.get('time') or ''
-        if start_time and log_time and log_time < start_time:
-            return False
-        if end_time and log_time and log_time > end_time:
-            return False
+        if start_time or end_time:
+            parsed = _parse_log_time(log_time)
+            start_dt = _parse_log_time(start_time)
+            end_dt = _parse_log_time(end_time)
+            if parsed is not None and (start_dt is not None or end_dt is not None):
+                # 双方可解析为 datetime：按时间比较（兼容 'T'/空格/微秒/时区差异）
+                try:
+                    if start_dt is not None and parsed < start_dt:
+                        return False
+                    if end_dt is not None and parsed > end_dt:
+                        return False
+                except TypeError:
+                    # 一侧带时区一侧 naive 无法比较：回退字符串比较
+                    if start_time and log_time and log_time < start_time:
+                        return False
+                    if end_time and log_time and log_time > end_time:
+                        return False
+            else:
+                if start_time and log_time and log_time < start_time:
+                    return False
+                if end_time and log_time and log_time > end_time:
+                    return False
         return True
 
     def _to_item(self, record: dict) -> dict:
@@ -167,15 +203,27 @@ class BusinessLogReader:
                      content_include=None, content_exclude=None,
                      algorithm_type=None, test_case_id=None,
                      start_time=None, end_time=None) -> List[dict]:
-        """读取命中条件的全部日志条目（按时间倒序），不分页。"""
+        """读取命中条件的日志条目（按时间倒序），不分页。
+
+        条数上限 business_max_scan_entries（0 = 不限）：文件按活跃（最新）
+        在前枚举，达上限即停止扫描更旧文件；溢出文件保留最新部分，
+        total 为下界语义（防止大任务轮询全量物化拖垮读取侧）。
+        """
         levels = None
         if level:
             levels = {lv.strip().lower() for lv in str(level).split(',') if lv.strip()}
-        items = []
+        try:
+            cap = max(0, int(get_log_settings().business_max_scan_entries))
+        except (AttributeError, TypeError, ValueError):
+            cap = 0
+        items: List[dict] = []
         for file_path in self.list_log_files(
                 task_id=task_id, device_id=device_id, api_id=api_id,
                 evaluation_id=evaluation_id, round_value=round_value,
                 log_type=log_type):
+            if cap and len(items) >= cap:
+                break
+            file_items = []
             for record in self._parse_file(file_path):
                 if self._match(record, levels=levels, category=category,
                                module=module, keyword=keyword,
@@ -184,7 +232,11 @@ class BusinessLogReader:
                                algorithm_type=algorithm_type,
                                test_case_id=test_case_id,
                                start_time=start_time, end_time=end_time):
-                    items.append(self._to_item(record))
+                    file_items.append(self._to_item(record))
+            if cap and len(items) + len(file_items) > cap:
+                # 溢出文件保留最新部分（文件内按行追加升序，取尾部）
+                file_items = file_items[-(cap - len(items)):]
+            items.extend(file_items)
         items.sort(key=lambda item: item['time'] or '', reverse=True)
         return items
 

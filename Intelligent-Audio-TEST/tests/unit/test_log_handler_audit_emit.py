@@ -147,8 +147,8 @@ class TestAuditEmitRouting:
         write_auth_audit(AuditEvent.AUTH_ROLE_DELETED, 'role_management', {
             'operator_id': 3, 'target_id': 4,
         })
-        # INT-81：服务文件日志按 logs/{service_name}/app.log 分目录
-        log_file = tmp_path / 'logs' / resolve_service_name() / 'app.log'
+        # INT-81：服务文件日志按 logs/{service_name}/app-{pid}.log 分目录（PID 进程独立）
+        log_file = tmp_path / 'logs' / resolve_service_name() / f'app-{os.getpid()}.log'
         assert log_file.exists(), '审计日志本地文件双写丢失'
         assert 'AUTH_ROLE_DELETED' in log_file.read_text(encoding='utf-8')
 
@@ -169,10 +169,10 @@ class TestAuditEmitRouting:
         # 不入库（审计除外）
         assert not _wait_for(lambda: len(captured) >= 1, timeout=1.5), \
             '业务日志不应再写 logs 表'
-        # 落业务文件：logs/business/{task}/{device}/{round}/execution.{service}.log
+        # 落业务文件：logs/business/{task}/{device}/{round}/execution.{service}.{pid}.log
         from shared.logging import resolve_service_name
         biz_file = (tmp_path / 'logs' / 'business' / '55' / '3' / '2'
-                    / f'execution.{resolve_service_name()}.log')
+                    / f'execution.{resolve_service_name()}.{os.getpid()}.log')
         assert biz_file.exists(), '业务日志未按路径模板落文件'
         import json as _json
         line = biz_file.read_text(encoding='utf-8').strip().splitlines()[0]

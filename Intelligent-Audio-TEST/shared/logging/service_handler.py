@@ -4,12 +4,15 @@
 各微服务运行日志统一落 logs/{service_name}/，按天 + 按大小双条件轮转：
 - 每天午夜轮转一次
 - 单文件超过 max_bytes 即刻轮转
-- 轮转文件命名 app-{YYYYMMDD}-{NNN}.log（同日多次超限切分序号递增，
+- 轮转文件命名 {base_name}-{YYYYMMDD}-{NNN}.log（同日多次超限切分序号递增，
   不再复用 TimedRotatingFileHandler 默认的纯日期后缀，避免同日覆盖）
 - 保留 N 天由 retention 清扫器按 mtime 清理（backupCount 仅作兜底）
 
-多进程安全：每服务进程独立目录（logs/{service_name}/），进程内 handler
-仅由 DatabaseLogHandler 单实例持有，无跨进程争抢。
+多进程/多副本安全（审计问题 1 修复）：活跃文件名含进程 PID
+（app-{pid}.log）——compose 共享日志卷 + deploy.replicas 场景下同一服务的
+多个副本进程各有独立活跃文件，轮转 os.replace 只触碰本进程文件：跨天/
+超限同时轮转也不会 rename 他副本正写入的文件、不会以同序号互相覆盖。
+PID 复用（容器重启）时同名活跃文件追加续写，切分序号扫描接续不丢行。
 """
 import logging
 import os
@@ -23,6 +26,11 @@ _DATE_SUFFIX_LEN = len('YYYYMMDD') + len('-')
 _SEQ_SUFFIX_LEN = len('-001')
 
 
+def default_service_base_name() -> str:
+    """默认活跃文件名：app-{pid}.log（进程独立，多副本共享卷互不冲突）。"""
+    return f'app-{os.getpid()}.log'
+
+
 class ServiceRotatingFileHandler(logging.Handler):
     """按天 + 按大小双条件轮转的服务日志处理器。
 
@@ -31,12 +39,12 @@ class ServiceRotatingFileHandler(logging.Handler):
     - Windows 下目标文件被占用时重试后放弃本条轮转（不中断日志写入）
     """
 
-    def __init__(self, dir_path: str, base_name: str = 'app.log',
+    def __init__(self, dir_path: str, base_name: str = None,
                  max_bytes: int = 50 * 1024 * 1024,
                  settings: LogSettings = None):
         super().__init__()
         self._dir_path = dir_path
-        self._base_name = base_name
+        self._base_name = base_name or default_service_base_name()
         self._max_bytes = max_bytes
         self._settings = settings or get_log_settings()
         self._stream = None
@@ -134,10 +142,12 @@ class ServiceRotatingFileHandler(logging.Handler):
 
 def setup_service_file_logging(settings: LogSettings = None,
                                service_name: str = None,
-                               base_name: str = 'app.log') -> logging.Handler:
-    """构建当前服务的运行日志文件处理器（logs/{service_name}/app.log）。
+                               base_name: str = None) -> logging.Handler:
+    """构建当前服务的运行日志文件处理器（logs/{service_name}/app-{pid}.log）。
 
-    由 shared.utils.log_handler 统一调用，各服务禁止自造文件 handler。
+    活跃文件名默认含进程 PID（多副本共享日志卷互不冲突）；base_name 显式
+    传入时按传入名轮转（仅测试/单进程场景使用）。由 shared.utils.log_handler
+    统一调用，各服务禁止自造文件 handler。
     """
     resolved_settings = settings or get_log_settings()
     name = service_name or resolve_service_name()
@@ -147,7 +157,7 @@ def setup_service_file_logging(settings: LogSettings = None,
         datefmt='%Y-%m-%d %H:%M:%S',
     )
     handler = ServiceRotatingFileHandler(
-        dir_path, base_name=base_name,
+        dir_path, base_name=base_name or default_service_base_name(),
         max_bytes=resolved_settings.service_max_bytes,
         settings=resolved_settings,
     )

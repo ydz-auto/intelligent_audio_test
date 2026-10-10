@@ -3,8 +3,8 @@
 拆分后的结构：
     _constants.py       常量
     _state.py           模块级可变全局状态
-    _file_handler.py    SizeTimeRotatingFileHandler
     _init_mixin.py      DatabaseLogHandler 初始化 / 设置方法
+                        （文件处理器由 shared/logging 基座提供）
     _worker_mixin.py    后台工作线程 / 批次写入
     _websocket_mixin.py WebSocket 推送 / Redis PubSub 转发
     _archive_mixin.py   冷热数据分离 / OSS 归档
@@ -32,9 +32,6 @@ from shared.utils.log_handler._constants import (
     CONSOLE_LOG_MAX_LENGTH,
 )
 
-# 文件处理器类
-from shared.utils.log_handler._file_handler import SizeTimeRotatingFileHandler
-
 # 最终组合类
 from shared.utils.log_handler._handler import DatabaseLogHandler
 
@@ -55,7 +52,6 @@ __all__ = [
     'LOG_ARCHIVE_RETENTION_DAYS',
     'CONSOLE_LOG_MAX_LENGTH',
     # 类
-    'SizeTimeRotatingFileHandler',
     'DatabaseLogHandler',
     # 函数
     'set_socketio',
