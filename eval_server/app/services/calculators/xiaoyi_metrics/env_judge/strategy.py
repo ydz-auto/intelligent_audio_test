@@ -178,6 +178,35 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             temperature=params.get('temperature', LLM_DEFAULT_TEMPERATURE),
         )
 
+    def _is_reject_round(self, task_params, rd=None):
+        """归一化判断目标轮是否参与拒识评估（is_reject）
+
+        rd 为轮次字典；缺省时按 round_number 定位目标轮。
+        缺失默认 True（兼容旧请求），字符串 'true'/'1'/'yes' 视为 True。
+        """
+        if rd is None:
+            idx = self._get_target_round_index(task_params)
+            rd = self._get_round_safe(task_params, idx)
+        is_reject = (rd or {}).get('is_reject', (task_params or {}).get('is_reject', True))
+        if isinstance(is_reject, str):
+            is_reject = is_reject.strip().lower() in ('true', '1', 'yes')
+        return bool(is_reject)
+
+    def run(self, task_params):
+        """覆写：目标轮 is_reject=false 时直接跳过评估（不调 LLM、不产出任何拒识指标）
+
+        基础 run() 只做 prepare_params → calculate，不感知 is_reject；
+        逐轮评估（round_number 有值）与整体评估全为非拒识轮时，
+        若不在此拦截，非拒识轮仍会被当作拒识轮评估，指标泄漏给平台侧。
+        """
+        if not self._is_reject_round(task_params):
+            return {
+                'enabled': True,
+                'message': '跳过: 非拒识轮(is_reject=false)',
+                'rate': None,
+            }
+        return super().run(task_params)
+
     def _calculate_per_round(self, task_params):
         """逐轮切片计算 + 多轮聚合
 
@@ -203,10 +232,7 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             rd = rounds[i] if isinstance(rounds[i], dict) else {}
 
             # 跳过 is_reject=false 的轮次（非拒识轮不参与统计，per_round 保留跳过项）
-            is_reject = rd.get('is_reject', task_params.get('is_reject', True))
-            if isinstance(is_reject, str):
-                is_reject = is_reject.strip().lower() in ('true', '1', 'yes')
-            if not is_reject:
+            if not self._is_reject_round(task_params, rd):
                 # 非拒识轮：填充占位项，保证 per_round 数组长度与 rounds 一致
                 per_round.append({
                     'round_number': rd.get('round', i),

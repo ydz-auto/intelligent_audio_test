@@ -1,0 +1,4686 @@
+{
+  "interruption": {
+    "ask_behavior_count": 0,
+    "avg_overlap_s": 567.0,
+    "avg_recovery_latency_s": 3002.0,
+    "avg_silence_gap_s": 1140.0,
+    "avg_stop_latency_s": 3854.5,
+    "case_type": "single",
+    "case_type_label": "一次打断",
+    "client_out_end_ms": 21410.9,
+    "client_out_ncc": 0.29582147675303627,
+    "client_out_refined_seg": 2,
+    "client_out_start_ms": 17770.9,
+    "dangling_interruption_rounds": [],
+    "failure_count": 0,
+    "first_recovery_latency_s": -1711.0,
+    "inquiry_count": 0,
+    "interaction_text": "【第 1 轮】\nquery [0:06; 0:08]一句话概括今天教育领域有什么新闻\nanswer [0:09; 0:10]我整理一下思路\nquery [0:12; 0:12]好\nanswer [0:12; 0:19]近期多所高校开始推行无手机课堂制度倡导学生们上课时将手机集中存放\nquery [0:18; 0:20]等等说说科技圈的新闻吧\nanswer [0:20; 0:20]呃\nanswer [0:22; 0:52]最近我国科技界有不少振奋人心的进展平路运河正式通航创下四项世界之最比如能让五千吨级大船畅通无阻华为刚发布了全新的porm计算架构能把百万级处理器整合成一台超级计算机据说能大幅提升AI算力效率另外智普公司被曝AI编程工具偷偷上传用户数据这事挺受关注的你想聊聊哪个具体\n",
+    "interruption_failure_rate": 0.0,
+    "interruption_rounds": [
+      1
+    ],
+    "interruption_success_rate": 1,
+    "irrelevant_behavior_count": 0,
+    "is_actual_interruption": true,
+    "llm_judge_model": "gpt-5.6-sol",
+    "llm_round_evaluations": [
+      {
+        "behavior": "回复",
+        "behavior_reason": "模型在用户打断后停止继续教育新闻，转而回应“科技圈的新闻”这一新话题，列举了科技领域相关事件并询问用户想具体聊哪一项。",
+        "round": 1,
+        "score": {
+          "adaptability": 5,
+          "coherence": 4,
+          "overall": 4.3,
+          "relevance": 4
+        }
+      }
+    ],
+    "message": "OK",
+    "model_segments": [
+      {
+        "end": 10.38,
+        "start": 9.28,
+        "text": "我整理一下思路",
+        "words": [
+          {
+            "text": "我",
+            "timestamp": [
+              9.28,
+              9.5
+            ]
+          },
+          {
+            "text": "整",
+            "timestamp": [
+              9.5,
+              9.66
+            ]
+          },
+          {
+            "text": "理",
+            "timestamp": [
+              9.66,
+              9.78
+            ]
+          },
+          {
+            "text": "一",
+            "timestamp": [
+              9.78,
+              9.86
+            ]
+          },
+          {
+            "text": "下",
+            "timestamp": [
+              9.86,
+              9.96
+            ]
+          },
+          {
+            "text": "思",
+            "timestamp": [
+              9.96,
+              10.14
+            ]
+          },
+          {
+            "text": "路",
+            "timestamp": [
+              10.14,
+              10.38
+            ]
+          }
+        ]
+      },
+      {
+        "end": 18.56,
+        "start": 11.64,
+        "text": "近期多所高校开始推行无手机课堂制度倡导学生们上课时将手机集中存放",
+        "words": [
+          {
+            "text": "近",
+            "timestamp": [
+              11.64,
+              11.86
+            ]
+          },
+          {
+            "text": "期",
+            "timestamp": [
+              11.86,
+              12.1
+            ]
+          },
+          {
+            "text": "多",
+            "timestamp": [
+              12.34,
+              12.52
+            ]
+          },
+          {
+            "text": "所",
+            "timestamp": [
+              12.52,
+              12.76
+            ]
+          },
+          {
+            "text": "高",
+            "timestamp": [
+              12.78,
+              12.94
+            ]
+          },
+          {
+            "text": "校",
+            "timestamp": [
+              12.94,
+              13.18
+            ]
+          },
+          {
+            "text": "开",
+            "timestamp": [
+              13.2,
+              13.3
+            ]
+          },
+          {
+            "text": "始",
+            "timestamp": [
+              13.3,
+              13.5
+            ]
+          },
+          {
+            "text": "推",
+            "timestamp": [
+              13.5,
+              13.66
+            ]
+          },
+          {
+            "text": "行",
+            "timestamp": [
+              13.66,
+              13.9
+            ]
+          },
+          {
+            "text": "无",
+            "timestamp": [
+              13.98,
+              14.16
+            ]
+          },
+          {
+            "text": "手",
+            "timestamp": [
+              14.16,
+              14.32
+            ]
+          },
+          {
+            "text": "机",
+            "timestamp": [
+              14.32,
+              14.52
+            ]
+          },
+          {
+            "text": "课",
+            "timestamp": [
+              14.52,
+              14.68
+            ]
+          },
+          {
+            "text": "堂",
+            "timestamp": [
+              14.68,
+              14.88
+            ]
+          },
+          {
+            "text": "制",
+            "timestamp": [
+              14.88,
+              15.04
+            ]
+          },
+          {
+            "text": "度",
+            "timestamp": [
+              15.04,
+              15.28
+            ]
+          },
+          {
+            "text": "倡",
+            "timestamp": [
+              15.6,
+              15.76
+            ]
+          },
+          {
+            "text": "导",
+            "timestamp": [
+              15.76,
+              15.96
+            ]
+          },
+          {
+            "text": "学",
+            "timestamp": [
+              15.96,
+              16.12
+            ]
+          },
+          {
+            "text": "生",
+            "timestamp": [
+              16.12,
+              16.24
+            ]
+          },
+          {
+            "text": "们",
+            "timestamp": [
+              16.24,
+              16.44
+            ]
+          },
+          {
+            "text": "上",
+            "timestamp": [
+              16.44,
+              16.58
+            ]
+          },
+          {
+            "text": "课",
+            "timestamp": [
+              16.58,
+              16.76
+            ]
+          },
+          {
+            "text": "时",
+            "timestamp": [
+              16.76,
+              16.999
+            ]
+          },
+          {
+            "text": "将",
+            "timestamp": [
+              17.22,
+              17.44
+            ]
+          },
+          {
+            "text": "手",
+            "timestamp": [
+              17.44,
+              17.6
+            ]
+          },
+          {
+            "text": "机",
+            "timestamp": [
+              17.6,
+              17.84
+            ]
+          },
+          {
+            "text": "集",
+            "timestamp": [
+              17.86,
+              17.96
+            ]
+          },
+          {
+            "text": "中",
+            "timestamp": [
+              17.96,
+              18.16
+            ]
+          },
+          {
+            "text": "存",
+            "timestamp": [
+              18.16,
+              18.32
+            ]
+          },
+          {
+            "text": "放",
+            "timestamp": [
+              18.32,
+              18.56
+            ]
+          }
+        ]
+      },
+      {
+        "end": 19.94,
+        "start": 19.7,
+        "text": "呃",
+        "words": [
+          {
+            "text": "呃",
+            "timestamp": [
+              19.7,
+              19.94
+            ]
+          }
+        ]
+      },
+      {
+        "end": 51.545,
+        "start": 22.38,
+        "text": "最近我国科技界有不少振奋人心的进展平路运河正式通航创下四项世界之最比如能让五千吨级大船畅通无阻华为刚发布了全新的porm计算架构能把百万级处理器整合成一台超级计算机据说能大幅提升AI算力效率另外智普公司被曝AI编程工具偷偷上传用户数据这事挺受关注的你想聊聊哪个具体",
+        "words": [
+          {
+            "text": "最",
+            "timestamp": [
+              22.38,
+              22.58
+            ]
+          },
+          {
+            "text": "近",
+            "timestamp": [
+              22.58,
+              22.78
+            ]
+          },
+          {
+            "text": "我",
+            "timestamp": [
+              22.78,
+              22.94
+            ]
+          },
+          {
+            "text": "国",
+            "timestamp": [
+              22.94,
+              23.08
+            ]
+          },
+          {
+            "text": "科",
+            "timestamp": [
+              23.08,
+              23.24
+            ]
+          },
+          {
+            "text": "技",
+            "timestamp": [
+              23.24,
+              23.42
+            ]
+          },
+          {
+            "text": "界",
+            "timestamp": [
+              23.42,
+              23.66
+            ]
+          },
+          {
+            "text": "有",
+            "timestamp": [
+              23.74,
+              23.96
+            ]
+          },
+          {
+            "text": "不",
+            "timestamp": [
+              23.96,
+              24.08
+            ]
+          },
+          {
+            "text": "少",
+            "timestamp": [
+              24.08,
+              24.28
+            ]
+          },
+          {
+            "text": "振",
+            "timestamp": [
+              24.28,
+              24.44
+            ]
+          },
+          {
+            "text": "奋",
+            "timestamp": [
+              24.44,
+              24.62
+            ]
+          },
+          {
+            "text": "人",
+            "timestamp": [
+              24.62,
+              24.72
+            ]
+          },
+          {
+            "text": "心",
+            "timestamp": [
+              24.72,
+              24.9
+            ]
+          },
+          {
+            "text": "的",
+            "timestamp": [
+              24.9,
+              25.039
+            ]
+          },
+          {
+            "text": "进",
+            "timestamp": [
+              25.039,
+              25.199
+            ]
+          },
+          {
+            "text": "展",
+            "timestamp": [
+              25.199,
+              25.44
+            ]
+          },
+          {
+            "text": "平",
+            "timestamp": [
+              25.76,
+              25.98
+            ]
+          },
+          {
+            "text": "路",
+            "timestamp": [
+              25.98,
+              26.16
+            ]
+          },
+          {
+            "text": "运",
+            "timestamp": [
+              26.16,
+              26.34
+            ]
+          },
+          {
+            "text": "河",
+            "timestamp": [
+              26.34,
+              26.54
+            ]
+          },
+          {
+            "text": "正",
+            "timestamp": [
+              26.54,
+              26.64
+            ]
+          },
+          {
+            "text": "式",
+            "timestamp": [
+              26.64,
+              26.82
+            ]
+          },
+          {
+            "text": "通",
+            "timestamp": [
+              26.82,
+              27.0
+            ]
+          },
+          {
+            "text": "航",
+            "timestamp": [
+              27.0,
+              27.24
+            ]
+          },
+          {
+            "text": "创",
+            "timestamp": [
+              27.44,
+              27.66
+            ]
+          },
+          {
+            "text": "下",
+            "timestamp": [
+              27.66,
+              27.88
+            ]
+          },
+          {
+            "text": "四",
+            "timestamp": [
+              27.88,
+              28.08
+            ]
+          },
+          {
+            "text": "项",
+            "timestamp": [
+              28.08,
+              28.28
+            ]
+          },
+          {
+            "text": "世",
+            "timestamp": [
+              28.28,
+              28.44
+            ]
+          },
+          {
+            "text": "界",
+            "timestamp": [
+              28.44,
+              28.62
+            ]
+          },
+          {
+            "text": "之",
+            "timestamp": [
+              28.62,
+              28.74
+            ]
+          },
+          {
+            "text": "最",
+            "timestamp": [
+              28.74,
+              28.98
+            ]
+          },
+          {
+            "text": "比",
+            "timestamp": [
+              29.52,
+              29.7
+            ]
+          },
+          {
+            "text": "如",
+            "timestamp": [
+              29.7,
+              29.94
+            ]
+          },
+          {
+            "text": "能",
+            "timestamp": [
+              30.06,
+              30.22
+            ]
+          },
+          {
+            "text": "让",
+            "timestamp": [
+              30.22,
+              30.44
+            ]
+          },
+          {
+            "text": "五",
+            "timestamp": [
+              30.44,
+              30.58
+            ]
+          },
+          {
+            "text": "千",
+            "timestamp": [
+              30.58,
+              30.76
+            ]
+          },
+          {
+            "text": "吨",
+            "timestamp": [
+              30.76,
+              31.0
+            ]
+          },
+          {
+            "text": "级",
+            "timestamp": [
+              31.0,
+              31.18
+            ]
+          },
+          {
+            "text": "大",
+            "timestamp": [
+              31.18,
+              31.3
+            ]
+          },
+          {
+            "text": "船",
+            "timestamp": [
+              31.3,
+              31.54
+            ]
+          },
+          {
+            "text": "畅",
+            "timestamp": [
+              31.64,
+              31.84
+            ]
+          },
+          {
+            "text": "通",
+            "timestamp": [
+              31.84,
+              32.04
+            ]
+          },
+          {
+            "text": "无",
+            "timestamp": [
+              32.04,
+              32.2
+            ]
+          },
+          {
+            "text": "阻",
+            "timestamp": [
+              32.2,
+              32.44
+            ]
+          },
+          {
+            "text": "华",
+            "timestamp": [
+              33.04,
+              33.28
+            ]
+          },
+          {
+            "text": "为",
+            "timestamp": [
+              33.28,
+              33.52
+            ]
+          },
+          {
+            "text": "刚",
+            "timestamp": [
+              33.52,
+              33.66
+            ]
+          },
+          {
+            "text": "发",
+            "timestamp": [
+              33.66,
+              33.82
+            ]
+          },
+          {
+            "text": "布",
+            "timestamp": [
+              33.82,
+              34.0
+            ]
+          },
+          {
+            "text": "了",
+            "timestamp": [
+              34.0,
+              34.14
+            ]
+          },
+          {
+            "text": "全",
+            "timestamp": [
+              34.14,
+              34.3
+            ]
+          },
+          {
+            "text": "新",
+            "timestamp": [
+              34.3,
+              34.54
+            ]
+          },
+          {
+            "text": "的",
+            "timestamp": [
+              34.54,
+              34.72
+            ]
+          },
+          {
+            "text": "p",
+            "timestamp": [
+              34.72,
+              34.82
+            ]
+          },
+          {
+            "text": "o",
+            "timestamp": [
+              34.82,
+              35.2
+            ]
+          },
+          {
+            "text": "r",
+            "timestamp": [
+              35.2,
+              35.42
+            ]
+          },
+          {
+            "text": "m",
+            "timestamp": [
+              35.42,
+              35.56
+            ]
+          },
+          {
+            "text": "计",
+            "timestamp": [
+              35.56,
+              35.76
+            ]
+          },
+          {
+            "text": "算",
+            "timestamp": [
+              35.76,
+              35.92
+            ]
+          },
+          {
+            "text": "架",
+            "timestamp": [
+              35.92,
+              36.16
+            ]
+          },
+          {
+            "text": "构",
+            "timestamp": [
+              36.52,
+              36.7
+            ]
+          },
+          {
+            "text": "能",
+            "timestamp": [
+              36.7,
+              36.92
+            ]
+          },
+          {
+            "text": "把",
+            "timestamp": [
+              36.92,
+              37.06
+            ]
+          },
+          {
+            "text": "百",
+            "timestamp": [
+              37.06,
+              37.22
+            ]
+          },
+          {
+            "text": "万",
+            "timestamp": [
+              37.22,
+              37.42
+            ]
+          },
+          {
+            "text": "级",
+            "timestamp": [
+              37.42,
+              37.58
+            ]
+          },
+          {
+            "text": "处",
+            "timestamp": [
+              37.58,
+              37.76
+            ]
+          },
+          {
+            "text": "理",
+            "timestamp": [
+              37.76,
+              38.0
+            ]
+          },
+          {
+            "text": "器",
+            "timestamp": [
+              38.12,
+              38.3
+            ]
+          },
+          {
+            "text": "整",
+            "timestamp": [
+              38.3,
+              38.48
+            ]
+          },
+          {
+            "text": "合",
+            "timestamp": [
+              38.48,
+              38.66
+            ]
+          },
+          {
+            "text": "成",
+            "timestamp": [
+              38.66,
+              38.78
+            ]
+          },
+          {
+            "text": "一",
+            "timestamp": [
+              38.78,
+              39.02
+            ]
+          },
+          {
+            "text": "台",
+            "timestamp": [
+              39.06,
+              39.26
+            ]
+          },
+          {
+            "text": "超",
+            "timestamp": [
+              39.26,
+              39.46
+            ]
+          },
+          {
+            "text": "级",
+            "timestamp": [
+              39.46,
+              39.56
+            ]
+          },
+          {
+            "text": "计",
+            "timestamp": [
+              39.56,
+              39.74
+            ]
+          },
+          {
+            "text": "算",
+            "timestamp": [
+              39.74,
+              39.98
+            ]
+          },
+          {
+            "text": "机",
+            "timestamp": [
+              40.4,
+              40.64
+            ]
+          },
+          {
+            "text": "据",
+            "timestamp": [
+              40.64,
+              40.88
+            ]
+          },
+          {
+            "text": "说",
+            "timestamp": [
+              40.88,
+              41.079
+            ]
+          },
+          {
+            "text": "能",
+            "timestamp": [
+              41.079,
+              41.24
+            ]
+          },
+          {
+            "text": "大",
+            "timestamp": [
+              41.24,
+              41.439
+            ]
+          },
+          {
+            "text": "幅",
+            "timestamp": [
+              41.439,
+              41.6
+            ]
+          },
+          {
+            "text": "提",
+            "timestamp": [
+              41.6,
+              41.84
+            ]
+          },
+          {
+            "text": "升",
+            "timestamp": [
+              41.84,
+              42.12
+            ]
+          },
+          {
+            "text": "A",
+            "timestamp": [
+              42.12,
+              42.24
+            ]
+          },
+          {
+            "text": "I",
+            "timestamp": [
+              42.24,
+              42.44
+            ]
+          },
+          {
+            "text": "算",
+            "timestamp": [
+              42.44,
+              42.6
+            ]
+          },
+          {
+            "text": "力",
+            "timestamp": [
+              42.6,
+              42.84
+            ]
+          },
+          {
+            "text": "效",
+            "timestamp": [
+              43.32,
+              43.44
+            ]
+          },
+          {
+            "text": "率",
+            "timestamp": [
+              43.44,
+              43.68
+            ]
+          },
+          {
+            "text": "另",
+            "timestamp": [
+              43.86,
+              44.04
+            ]
+          },
+          {
+            "text": "外",
+            "timestamp": [
+              44.04,
+              44.24
+            ]
+          },
+          {
+            "text": "智",
+            "timestamp": [
+              44.24,
+              44.4
+            ]
+          },
+          {
+            "text": "普",
+            "timestamp": [
+              44.4,
+              44.64
+            ]
+          },
+          {
+            "text": "公",
+            "timestamp": [
+              44.66,
+              44.76
+            ]
+          },
+          {
+            "text": "司",
+            "timestamp": [
+              44.76,
+              44.96
+            ]
+          },
+          {
+            "text": "被",
+            "timestamp": [
+              44.96,
+              45.26
+            ]
+          },
+          {
+            "text": "曝",
+            "timestamp": [
+              45.26,
+              45.42
+            ]
+          },
+          {
+            "text": "A",
+            "timestamp": [
+              45.42,
+              45.62
+            ]
+          },
+          {
+            "text": "I",
+            "timestamp": [
+              45.62,
+              45.78
+            ]
+          },
+          {
+            "text": "编",
+            "timestamp": [
+              45.78,
+              46.02
+            ]
+          },
+          {
+            "text": "程",
+            "timestamp": [
+              46.18,
+              46.38
+            ]
+          },
+          {
+            "text": "工",
+            "timestamp": [
+              46.38,
+              46.54
+            ]
+          },
+          {
+            "text": "具",
+            "timestamp": [
+              46.54,
+              46.74
+            ]
+          },
+          {
+            "text": "偷",
+            "timestamp": [
+              46.74,
+              46.98
+            ]
+          },
+          {
+            "text": "偷",
+            "timestamp": [
+              47.0,
+              47.14
+            ]
+          },
+          {
+            "text": "上",
+            "timestamp": [
+              47.14,
+              47.28
+            ]
+          },
+          {
+            "text": "传",
+            "timestamp": [
+              47.28,
+              47.44
+            ]
+          },
+          {
+            "text": "用",
+            "timestamp": [
+              47.44,
+              47.68
+            ]
+          },
+          {
+            "text": "户",
+            "timestamp": [
+              48.28,
+              48.46
+            ]
+          },
+          {
+            "text": "数",
+            "timestamp": [
+              48.46,
+              48.66
+            ]
+          },
+          {
+            "text": "据",
+            "timestamp": [
+              48.66,
+              48.76
+            ]
+          },
+          {
+            "text": "这",
+            "timestamp": [
+              48.76,
+              48.98
+            ]
+          },
+          {
+            "text": "事",
+            "timestamp": [
+              48.98,
+              49.12
+            ]
+          },
+          {
+            "text": "挺",
+            "timestamp": [
+              49.12,
+              49.3
+            ]
+          },
+          {
+            "text": "受",
+            "timestamp": [
+              49.3,
+              49.54
+            ]
+          },
+          {
+            "text": "关",
+            "timestamp": [
+              49.78,
+              49.96
+            ]
+          },
+          {
+            "text": "注",
+            "timestamp": [
+              49.96,
+              50.12
+            ]
+          },
+          {
+            "text": "的",
+            "timestamp": [
+              50.12,
+              50.26
+            ]
+          },
+          {
+            "text": "你",
+            "timestamp": [
+              50.26,
+              50.44
+            ]
+          },
+          {
+            "text": "想",
+            "timestamp": [
+              50.44,
+              50.56
+            ]
+          },
+          {
+            "text": "聊",
+            "timestamp": [
+              50.56,
+              50.64
+            ]
+          },
+          {
+            "text": "聊",
+            "timestamp": [
+              50.64,
+              50.74
+            ]
+          },
+          {
+            "text": "哪",
+            "timestamp": [
+              50.74,
+              50.92
+            ]
+          },
+          {
+            "text": "个",
+            "timestamp": [
+              50.92,
+              51.04
+            ]
+          },
+          {
+            "text": "具",
+            "timestamp": [
+              51.04,
+              51.12
+            ]
+          },
+          {
+            "text": "体",
+            "timestamp": [
+              51.12,
+              51.545
+            ]
+          }
+        ]
+      }
+    ],
+    "n_events": 2,
+    "n_no_model_speech": 0,
+    "n_recovery_only": 1,
+    "n_user_segments": 3,
+    "per_event": [
+      {
+        "event_type": "recovery_only",
+        "model_interrupted_text": "",
+        "model_interrupted_words": [],
+        "model_recovery_text": "我整理一下思路",
+        "model_recovery_words": [
+          {
+            "text": "我",
+            "timestamp": [
+              9.28,
+              9.5
+            ]
+          },
+          {
+            "text": "整",
+            "timestamp": [
+              9.5,
+              9.66
+            ]
+          },
+          {
+            "text": "理",
+            "timestamp": [
+              9.66,
+              9.78
+            ]
+          },
+          {
+            "text": "一",
+            "timestamp": [
+              9.78,
+              9.86
+            ]
+          },
+          {
+            "text": "下",
+            "timestamp": [
+              9.86,
+              9.96
+            ]
+          },
+          {
+            "text": "思",
+            "timestamp": [
+              9.96,
+              10.14
+            ]
+          },
+          {
+            "text": "路",
+            "timestamp": [
+              10.14,
+              10.38
+            ]
+          }
+        ],
+        "overlap_s": null,
+        "recovery_latency_s": 885.0,
+        "resumed": true,
+        "silence_gap_s": null,
+        "stop_intent": false,
+        "stop_latency_s": null,
+        "stopped": null,
+        "success": null,
+        "user_segment": [
+          5.89,
+          8.395
+        ],
+        "user_text": "一句话概括今天教育领域有什么新闻",
+        "user_words": [
+          {
+            "text": "一",
+            "timestamp": [
+              5.89,
+              6.03
+            ]
+          },
+          {
+            "text": "句",
+            "timestamp": [
+              6.03,
+              6.21
+            ]
+          },
+          {
+            "text": "话",
+            "timestamp": [
+              6.21,
+              6.41
+            ]
+          },
+          {
+            "text": "概",
+            "timestamp": [
+              6.41,
+              6.55
+            ]
+          },
+          {
+            "text": "括",
+            "timestamp": [
+              6.55,
+              6.79
+            ]
+          },
+          {
+            "text": "今",
+            "timestamp": [
+              6.81,
+              6.97
+            ]
+          },
+          {
+            "text": "天",
+            "timestamp": [
+              6.97,
+              7.17
+            ]
+          },
+          {
+            "text": "教",
+            "timestamp": [
+              7.17,
+              7.31
+            ]
+          },
+          {
+            "text": "育",
+            "timestamp": [
+              7.31,
+              7.45
+            ]
+          },
+          {
+            "text": "领",
+            "timestamp": [
+              7.45,
+              7.55
+            ]
+          },
+          {
+            "text": "域",
+            "timestamp": [
+              7.55,
+              7.67
+            ]
+          },
+          {
+            "text": "有",
+            "timestamp": [
+              7.67,
+              7.77
+            ]
+          },
+          {
+            "text": "什",
+            "timestamp": [
+              7.77,
+              7.87
+            ]
+          },
+          {
+            "text": "么",
+            "timestamp": [
+              7.87,
+              7.97
+            ]
+          },
+          {
+            "text": "新",
+            "timestamp": [
+              7.97,
+              8.07
+            ]
+          },
+          {
+            "text": "闻",
+            "timestamp": [
+              8.07,
+              8.395
+            ]
+          }
+        ]
+      },
+      {
+        "event_type": "interruption",
+        "model_interrupted_text": "近期多所高校开始推行无手机课堂制度倡导学生们上课时将手机集中存放",
+        "model_interrupted_words": [
+          {
+            "text": "近",
+            "timestamp": [
+              11.64,
+              11.86
+            ]
+          },
+          {
+            "text": "期",
+            "timestamp": [
+              11.86,
+              12.1
+            ]
+          },
+          {
+            "text": "多",
+            "timestamp": [
+              12.34,
+              12.52
+            ]
+          },
+          {
+            "text": "所",
+            "timestamp": [
+              12.52,
+              12.76
+            ]
+          },
+          {
+            "text": "高",
+            "timestamp": [
+              12.78,
+              12.94
+            ]
+          },
+          {
+            "text": "校",
+            "timestamp": [
+              12.94,
+              13.18
+            ]
+          },
+          {
+            "text": "开",
+            "timestamp": [
+              13.2,
+              13.3
+            ]
+          },
+          {
+            "text": "始",
+            "timestamp": [
+              13.3,
+              13.5
+            ]
+          },
+          {
+            "text": "推",
+            "timestamp": [
+              13.5,
+              13.66
+            ]
+          },
+          {
+            "text": "行",
+            "timestamp": [
+              13.66,
+              13.9
+            ]
+          },
+          {
+            "text": "无",
+            "timestamp": [
+              13.98,
+              14.16
+            ]
+          },
+          {
+            "text": "手",
+            "timestamp": [
+              14.16,
+              14.32
+            ]
+          },
+          {
+            "text": "机",
+            "timestamp": [
+              14.32,
+              14.52
+            ]
+          },
+          {
+            "text": "课",
+            "timestamp": [
+              14.52,
+              14.68
+            ]
+          },
+          {
+            "text": "堂",
+            "timestamp": [
+              14.68,
+              14.88
+            ]
+          },
+          {
+            "text": "制",
+            "timestamp": [
+              14.88,
+              15.04
+            ]
+          },
+          {
+            "text": "度",
+            "timestamp": [
+              15.04,
+              15.28
+            ]
+          },
+          {
+            "text": "倡",
+            "timestamp": [
+              15.6,
+              15.76
+            ]
+          },
+          {
+            "text": "导",
+            "timestamp": [
+              15.76,
+              15.96
+            ]
+          },
+          {
+            "text": "学",
+            "timestamp": [
+              15.96,
+              16.12
+            ]
+          },
+          {
+            "text": "生",
+            "timestamp": [
+              16.12,
+              16.24
+            ]
+          },
+          {
+            "text": "们",
+            "timestamp": [
+              16.24,
+              16.44
+            ]
+          },
+          {
+            "text": "上",
+            "timestamp": [
+              16.44,
+              16.58
+            ]
+          },
+          {
+            "text": "课",
+            "timestamp": [
+              16.58,
+              16.76
+            ]
+          },
+          {
+            "text": "时",
+            "timestamp": [
+              16.76,
+              16.999
+            ]
+          },
+          {
+            "text": "将",
+            "timestamp": [
+              17.22,
+              17.44
+            ]
+          },
+          {
+            "text": "手",
+            "timestamp": [
+              17.44,
+              17.6
+            ]
+          },
+          {
+            "text": "机",
+            "timestamp": [
+              17.6,
+              17.84
+            ]
+          },
+          {
+            "text": "集",
+            "timestamp": [
+              17.86,
+              17.96
+            ]
+          },
+          {
+            "text": "中",
+            "timestamp": [
+              17.96,
+              18.16
+            ]
+          },
+          {
+            "text": "存",
+            "timestamp": [
+              18.16,
+              18.32
+            ]
+          },
+          {
+            "text": "放",
+            "timestamp": [
+              18.32,
+              18.56
+            ]
+          }
+        ],
+        "model_recovery_text": "呃",
+        "model_recovery_words": [
+          {
+            "text": "呃",
+            "timestamp": [
+              19.7,
+              19.94
+            ]
+          }
+        ],
+        "overlap_s": 345.0,
+        "recovery_latency_s": 7715.0,
+        "resumed": true,
+        "silence_gap_s": 1140.0,
+        "stop_intent": false,
+        "stop_latency_s": 6920.0,
+        "stopped": true,
+        "success": true,
+        "user_segment": [
+          11.64,
+          11.985
+        ],
+        "user_text": "好",
+        "user_words": [
+          {
+            "text": "好",
+            "timestamp": [
+              11.64,
+              11.985
+            ]
+          }
+        ]
+      },
+      {
+        "event_type": "interruption",
+        "model_interrupted_text": "近期多所高校开始推行无手机课堂制度倡导学生们上课时将手机集中存放",
+        "model_interrupted_words": [
+          {
+            "text": "近",
+            "timestamp": [
+              11.64,
+              11.86
+            ]
+          },
+          {
+            "text": "期",
+            "timestamp": [
+              11.86,
+              12.1
+            ]
+          },
+          {
+            "text": "多",
+            "timestamp": [
+              12.34,
+              12.52
+            ]
+          },
+          {
+            "text": "所",
+            "timestamp": [
+              12.52,
+              12.76
+            ]
+          },
+          {
+            "text": "高",
+            "timestamp": [
+              12.78,
+              12.94
+            ]
+          },
+          {
+            "text": "校",
+            "timestamp": [
+              12.94,
+              13.18
+            ]
+          },
+          {
+            "text": "开",
+            "timestamp": [
+              13.2,
+              13.3
+            ]
+          },
+          {
+            "text": "始",
+            "timestamp": [
+              13.3,
+              13.5
+            ]
+          },
+          {
+            "text": "推",
+            "timestamp": [
+              13.5,
+              13.66
+            ]
+          },
+          {
+            "text": "行",
+            "timestamp": [
+              13.66,
+              13.9
+            ]
+          },
+          {
+            "text": "无",
+            "timestamp": [
+              13.98,
+              14.16
+            ]
+          },
+          {
+            "text": "手",
+            "timestamp": [
+              14.16,
+              14.32
+            ]
+          },
+          {
+            "text": "机",
+            "timestamp": [
+              14.32,
+              14.52
+            ]
+          },
+          {
+            "text": "课",
+            "timestamp": [
+              14.52,
+              14.68
+            ]
+          },
+          {
+            "text": "堂",
+            "timestamp": [
+              14.68,
+              14.88
+            ]
+          },
+          {
+            "text": "制",
+            "timestamp": [
+              14.88,
+              15.04
+            ]
+          },
+          {
+            "text": "度",
+            "timestamp": [
+              15.04,
+              15.28
+            ]
+          },
+          {
+            "text": "倡",
+            "timestamp": [
+              15.6,
+              15.76
+            ]
+          },
+          {
+            "text": "导",
+            "timestamp": [
+              15.76,
+              15.96
+            ]
+          },
+          {
+            "text": "学",
+            "timestamp": [
+              15.96,
+              16.12
+            ]
+          },
+          {
+            "text": "生",
+            "timestamp": [
+              16.12,
+              16.24
+            ]
+          },
+          {
+            "text": "们",
+            "timestamp": [
+              16.24,
+              16.44
+            ]
+          },
+          {
+            "text": "上",
+            "timestamp": [
+              16.44,
+              16.58
+            ]
+          },
+          {
+            "text": "课",
+            "timestamp": [
+              16.58,
+              16.76
+            ]
+          },
+          {
+            "text": "时",
+            "timestamp": [
+              16.76,
+              16.999
+            ]
+          },
+          {
+            "text": "将",
+            "timestamp": [
+              17.22,
+              17.44
+            ]
+          },
+          {
+            "text": "手",
+            "timestamp": [
+              17.44,
+              17.6
+            ]
+          },
+          {
+            "text": "机",
+            "timestamp": [
+              17.6,
+              17.84
+            ]
+          },
+          {
+            "text": "集",
+            "timestamp": [
+              17.86,
+              17.96
+            ]
+          },
+          {
+            "text": "中",
+            "timestamp": [
+              17.96,
+              18.16
+            ]
+          },
+          {
+            "text": "存",
+            "timestamp": [
+              18.16,
+              18.32
+            ]
+          },
+          {
+            "text": "放",
+            "timestamp": [
+              18.32,
+              18.56
+            ]
+          }
+        ],
+        "model_recovery_text": "呃",
+        "model_recovery_words": [
+          {
+            "text": "呃",
+            "timestamp": [
+              19.7,
+              19.94
+            ]
+          }
+        ],
+        "overlap_s": 789.0,
+        "recovery_latency_s": -1711.0,
+        "resumed": true,
+        "silence_gap_s": 1140.0,
+        "stop_intent": false,
+        "stop_latency_s": 789.0,
+        "stopped": true,
+        "success": true,
+        "user_segment": [
+          17.771,
+          21.411
+        ],
+        "user_text": "等等说说科技圈的新闻吧",
+        "user_words": [
+          {
+            "text": "等",
+            "timestamp": [
+              18.05,
+              18.23
+            ]
+          },
+          {
+            "text": "等",
+            "timestamp": [
+              18.23,
+              18.47
+            ]
+          },
+          {
+            "text": "说",
+            "timestamp": [
+              18.71,
+              18.87
+            ]
+          },
+          {
+            "text": "说",
+            "timestamp": [
+              18.87,
+              19.07
+            ]
+          },
+          {
+            "text": "科",
+            "timestamp": [
+              19.07,
+              19.23
+            ]
+          },
+          {
+            "text": "技",
+            "timestamp": [
+              19.23,
+              19.33
+            ]
+          },
+          {
+            "text": "圈",
+            "timestamp": [
+              19.33,
+              19.51
+            ]
+          },
+          {
+            "text": "的",
+            "timestamp": [
+              19.51,
+              19.63
+            ]
+          },
+          {
+            "text": "新",
+            "timestamp": [
+              19.63,
+              19.73
+            ]
+          },
+          {
+            "text": "闻",
+            "timestamp": [
+              19.73,
+              19.91
+            ]
+          },
+          {
+            "text": "吧",
+            "timestamp": [
+              19.91,
+              20.265
+            ]
+          }
+        ]
+      }
+    ],
+    "recover_behavior_count": 0,
+    "reply_behavior_count": 1,
+    "reply_content_score": 4.3,
+    "reply_latency_avg_ms": 969.1,
+    "reply_latency_max_ms": 969.1,
+    "reply_latency_min_ms": 969.1,
+    "response_latency_avg_ms": 789.1,
+    "response_latency_max_ms": 789.1,
+    "response_latency_min_ms": 789.1,
+    "resume_content_score": null,
+    "resume_first_reply_latency_ms": 969.1,
+    "resume_rate": 1,
+    "round_details": [
+      {
+        "anchor_method": "fft",
+        "behavior": "回复",
+        "behavior_reason": "模型在用户打断后停止继续教育新闻，转而回应“科技圈的新闻”这一新话题，列举了科技领域相关事件并询问用户想具体聊哪一项。",
+        "reply_latency_ms": 969.1,
+        "response_latency_ms": 789.1,
+        "role": "interruption",
+        "round": 1,
+        "score_overall": 4.3,
+        "stop_complied": null,
+        "stop_intent": false
+      }
+    ],
+    "round_latencies": [
+      {
+        "first_recovery_latency_s": -1711.0,
+        "recovery_latency_s": 3002.0,
+        "round": 1,
+        "stop_latency_s": 3854.5,
+        "target_recovery_latency_s": -1711.0,
+        "target_stop_latency_s": 789.0
+      }
+    ],
+    "round_reply_latencies": [
+      969.1
+    ],
+    "round_response_latencies": [
+      789.1
+    ],
+    "round_results": [
+      {
+        "ask_behavior_count": null,
+        "avg_overlap_s": 567.0,
+        "avg_recovery_latency_s": 3002.0,
+        "avg_silence_gap_s": 1140.0,
+        "avg_stop_latency_s": 3854.5,
+        "case_type": "single",
+        "case_type_label": "一次打断",
+        "client_out_end_ms": 21410.9,
+        "client_out_ncc": 0.29582147675303627,
+        "client_out_refined_seg": 2,
+        "client_out_start_ms": 17770.9,
+        "dangling_interruption_rounds": [],
+        "failure_count": null,
+        "first_recovery_latency_s": -1711.0,
+        "inquiry_count": null,
+        "interruption_failure_rate": 0.0,
+        "interruption_rounds": [
+          1
+        ],
+        "interruption_success_rate": 1,
+        "irrelevant_behavior_count": null,
+        "is_actual_interruption": true,
+        "message": "OK",
+        "model_segments": [
+          {
+            "end": 10.38,
+            "start": 9.28,
+            "text": "我整理一下思路",
+            "words": [
+              {
+                "text": "我",
+                "timestamp": [
+                  9.28,
+                  9.5
+                ]
+              },
+              {
+                "text": "整",
+                "timestamp": [
+                  9.5,
+                  9.66
+                ]
+              },
+              {
+                "text": "理",
+                "timestamp": [
+                  9.66,
+                  9.78
+                ]
+              },
+              {
+                "text": "一",
+                "timestamp": [
+                  9.78,
+                  9.86
+                ]
+              },
+              {
+                "text": "下",
+                "timestamp": [
+                  9.86,
+                  9.96
+                ]
+              },
+              {
+                "text": "思",
+                "timestamp": [
+                  9.96,
+                  10.14
+                ]
+              },
+              {
+                "text": "路",
+                "timestamp": [
+                  10.14,
+                  10.38
+                ]
+              }
+            ]
+          },
+          {
+            "end": 18.56,
+            "start": 11.64,
+            "text": "近期多所高校开始推行无手机课堂制度倡导学生们上课时将手机集中存放",
+            "words": [
+              {
+                "text": "近",
+                "timestamp": [
+                  11.64,
+                  11.86
+                ]
+              },
+              {
+                "text": "期",
+                "timestamp": [
+                  11.86,
+                  12.1
+                ]
+              },
+              {
+                "text": "多",
+                "timestamp": [
+                  12.34,
+                  12.52
+                ]
+              },
+              {
+                "text": "所",
+                "timestamp": [
+                  12.52,
+                  12.76
+                ]
+              },
+              {
+                "text": "高",
+                "timestamp": [
+                  12.78,
+                  12.94
+                ]
+              },
+              {
+                "text": "校",
+                "timestamp": [
+                  12.94,
+                  13.18
+                ]
+              },
+              {
+                "text": "开",
+                "timestamp": [
+                  13.2,
+                  13.3
+                ]
+              },
+              {
+                "text": "始",
+                "timestamp": [
+                  13.3,
+                  13.5
+                ]
+              },
+              {
+                "text": "推",
+                "timestamp": [
+                  13.5,
+                  13.66
+                ]
+              },
+              {
+                "text": "行",
+                "timestamp": [
+                  13.66,
+                  13.9
+                ]
+              },
+              {
+                "text": "无",
+                "timestamp": [
+                  13.98,
+                  14.16
+                ]
+              },
+              {
+                "text": "手",
+                "timestamp": [
+                  14.16,
+                  14.32
+                ]
+              },
+              {
+                "text": "机",
+                "timestamp": [
+                  14.32,
+                  14.52
+                ]
+              },
+              {
+                "text": "课",
+                "timestamp": [
+                  14.52,
+                  14.68
+                ]
+              },
+              {
+                "text": "堂",
+                "timestamp": [
+                  14.68,
+                  14.88
+                ]
+              },
+              {
+                "text": "制",
+                "timestamp": [
+                  14.88,
+                  15.04
+                ]
+              },
+              {
+                "text": "度",
+                "timestamp": [
+                  15.04,
+                  15.28
+                ]
+              },
+              {
+                "text": "倡",
+                "timestamp": [
+                  15.6,
+                  15.76
+                ]
+              },
+              {
+                "text": "导",
+                "timestamp": [
+                  15.76,
+                  15.96
+                ]
+              },
+              {
+                "text": "学",
+                "timestamp": [
+                  15.96,
+                  16.12
+                ]
+              },
+              {
+                "text": "生",
+                "timestamp": [
+                  16.12,
+                  16.24
+                ]
+              },
+              {
+                "text": "们",
+                "timestamp": [
+                  16.24,
+                  16.44
+                ]
+              },
+              {
+                "text": "上",
+                "timestamp": [
+                  16.44,
+                  16.58
+                ]
+              },
+              {
+                "text": "课",
+                "timestamp": [
+                  16.58,
+                  16.76
+                ]
+              },
+              {
+                "text": "时",
+                "timestamp": [
+                  16.76,
+                  16.999
+                ]
+              },
+              {
+                "text": "将",
+                "timestamp": [
+                  17.22,
+                  17.44
+                ]
+              },
+              {
+                "text": "手",
+                "timestamp": [
+                  17.44,
+                  17.6
+                ]
+              },
+              {
+                "text": "机",
+                "timestamp": [
+                  17.6,
+                  17.84
+                ]
+              },
+              {
+                "text": "集",
+                "timestamp": [
+                  17.86,
+                  17.96
+                ]
+              },
+              {
+                "text": "中",
+                "timestamp": [
+                  17.96,
+                  18.16
+                ]
+              },
+              {
+                "text": "存",
+                "timestamp": [
+                  18.16,
+                  18.32
+                ]
+              },
+              {
+                "text": "放",
+                "timestamp": [
+                  18.32,
+                  18.56
+                ]
+              }
+            ]
+          },
+          {
+            "end": 19.94,
+            "start": 19.7,
+            "text": "呃",
+            "words": [
+              {
+                "text": "呃",
+                "timestamp": [
+                  19.7,
+                  19.94
+                ]
+              }
+            ]
+          },
+          {
+            "end": 51.545,
+            "start": 22.38,
+            "text": "最近我国科技界有不少振奋人心的进展平路运河正式通航创下四项世界之最比如能让五千吨级大船畅通无阻华为刚发布了全新的porm计算架构能把百万级处理器整合成一台超级计算机据说能大幅提升AI算力效率另外智普公司被曝AI编程工具偷偷上传用户数据这事挺受关注的你想聊聊哪个具体",
+            "words": [
+              {
+                "text": "最",
+                "timestamp": [
+                  22.38,
+                  22.58
+                ]
+              },
+              {
+                "text": "近",
+                "timestamp": [
+                  22.58,
+                  22.78
+                ]
+              },
+              {
+                "text": "我",
+                "timestamp": [
+                  22.78,
+                  22.94
+                ]
+              },
+              {
+                "text": "国",
+                "timestamp": [
+                  22.94,
+                  23.08
+                ]
+              },
+              {
+                "text": "科",
+                "timestamp": [
+                  23.08,
+                  23.24
+                ]
+              },
+              {
+                "text": "技",
+                "timestamp": [
+                  23.24,
+                  23.42
+                ]
+              },
+              {
+                "text": "界",
+                "timestamp": [
+                  23.42,
+                  23.66
+                ]
+              },
+              {
+                "text": "有",
+                "timestamp": [
+                  23.74,
+                  23.96
+                ]
+              },
+              {
+                "text": "不",
+                "timestamp": [
+                  23.96,
+                  24.08
+                ]
+              },
+              {
+                "text": "少",
+                "timestamp": [
+                  24.08,
+                  24.28
+                ]
+              },
+              {
+                "text": "振",
+                "timestamp": [
+                  24.28,
+                  24.44
+                ]
+              },
+              {
+                "text": "奋",
+                "timestamp": [
+                  24.44,
+                  24.62
+                ]
+              },
+              {
+                "text": "人",
+                "timestamp": [
+                  24.62,
+                  24.72
+                ]
+              },
+              {
+                "text": "心",
+                "timestamp": [
+                  24.72,
+                  24.9
+                ]
+              },
+              {
+                "text": "的",
+                "timestamp": [
+                  24.9,
+                  25.039
+                ]
+              },
+              {
+                "text": "进",
+                "timestamp": [
+                  25.039,
+                  25.199
+                ]
+              },
+              {
+                "text": "展",
+                "timestamp": [
+                  25.199,
+                  25.44
+                ]
+              },
+              {
+                "text": "平",
+                "timestamp": [
+                  25.76,
+                  25.98
+                ]
+              },
+              {
+                "text": "路",
+                "timestamp": [
+                  25.98,
+                  26.16
+                ]
+              },
+              {
+                "text": "运",
+                "timestamp": [
+                  26.16,
+                  26.34
+                ]
+              },
+              {
+                "text": "河",
+                "timestamp": [
+                  26.34,
+                  26.54
+                ]
+              },
+              {
+                "text": "正",
+                "timestamp": [
+                  26.54,
+                  26.64
+                ]
+              },
+              {
+                "text": "式",
+                "timestamp": [
+                  26.64,
+                  26.82
+                ]
+              },
+              {
+                "text": "通",
+                "timestamp": [
+                  26.82,
+                  27.0
+                ]
+              },
+              {
+                "text": "航",
+                "timestamp": [
+                  27.0,
+                  27.24
+                ]
+              },
+              {
+                "text": "创",
+                "timestamp": [
+                  27.44,
+                  27.66
+                ]
+              },
+              {
+                "text": "下",
+                "timestamp": [
+                  27.66,
+                  27.88
+                ]
+              },
+              {
+                "text": "四",
+                "timestamp": [
+                  27.88,
+                  28.08
+                ]
+              },
+              {
+                "text": "项",
+                "timestamp": [
+                  28.08,
+                  28.28
+                ]
+              },
+              {
+                "text": "世",
+                "timestamp": [
+                  28.28,
+                  28.44
+                ]
+              },
+              {
+                "text": "界",
+                "timestamp": [
+                  28.44,
+                  28.62
+                ]
+              },
+              {
+                "text": "之",
+                "timestamp": [
+                  28.62,
+                  28.74
+                ]
+              },
+              {
+                "text": "最",
+                "timestamp": [
+                  28.74,
+                  28.98
+                ]
+              },
+              {
+                "text": "比",
+                "timestamp": [
+                  29.52,
+                  29.7
+                ]
+              },
+              {
+                "text": "如",
+                "timestamp": [
+                  29.7,
+                  29.94
+                ]
+              },
+              {
+                "text": "能",
+                "timestamp": [
+                  30.06,
+                  30.22
+                ]
+              },
+              {
+                "text": "让",
+                "timestamp": [
+                  30.22,
+                  30.44
+                ]
+              },
+              {
+                "text": "五",
+                "timestamp": [
+                  30.44,
+                  30.58
+                ]
+              },
+              {
+                "text": "千",
+                "timestamp": [
+                  30.58,
+                  30.76
+                ]
+              },
+              {
+                "text": "吨",
+                "timestamp": [
+                  30.76,
+                  31.0
+                ]
+              },
+              {
+                "text": "级",
+                "timestamp": [
+                  31.0,
+                  31.18
+                ]
+              },
+              {
+                "text": "大",
+                "timestamp": [
+                  31.18,
+                  31.3
+                ]
+              },
+              {
+                "text": "船",
+                "timestamp": [
+                  31.3,
+                  31.54
+                ]
+              },
+              {
+                "text": "畅",
+                "timestamp": [
+                  31.64,
+                  31.84
+                ]
+              },
+              {
+                "text": "通",
+                "timestamp": [
+                  31.84,
+                  32.04
+                ]
+              },
+              {
+                "text": "无",
+                "timestamp": [
+                  32.04,
+                  32.2
+                ]
+              },
+              {
+                "text": "阻",
+                "timestamp": [
+                  32.2,
+                  32.44
+                ]
+              },
+              {
+                "text": "华",
+                "timestamp": [
+                  33.04,
+                  33.28
+                ]
+              },
+              {
+                "text": "为",
+                "timestamp": [
+                  33.28,
+                  33.52
+                ]
+              },
+              {
+                "text": "刚",
+                "timestamp": [
+                  33.52,
+                  33.66
+                ]
+              },
+              {
+                "text": "发",
+                "timestamp": [
+                  33.66,
+                  33.82
+                ]
+              },
+              {
+                "text": "布",
+                "timestamp": [
+                  33.82,
+                  34.0
+                ]
+              },
+              {
+                "text": "了",
+                "timestamp": [
+                  34.0,
+                  34.14
+                ]
+              },
+              {
+                "text": "全",
+                "timestamp": [
+                  34.14,
+                  34.3
+                ]
+              },
+              {
+                "text": "新",
+                "timestamp": [
+                  34.3,
+                  34.54
+                ]
+              },
+              {
+                "text": "的",
+                "timestamp": [
+                  34.54,
+                  34.72
+                ]
+              },
+              {
+                "text": "p",
+                "timestamp": [
+                  34.72,
+                  34.82
+                ]
+              },
+              {
+                "text": "o",
+                "timestamp": [
+                  34.82,
+                  35.2
+                ]
+              },
+              {
+                "text": "r",
+                "timestamp": [
+                  35.2,
+                  35.42
+                ]
+              },
+              {
+                "text": "m",
+                "timestamp": [
+                  35.42,
+                  35.56
+                ]
+              },
+              {
+                "text": "计",
+                "timestamp": [
+                  35.56,
+                  35.76
+                ]
+              },
+              {
+                "text": "算",
+                "timestamp": [
+                  35.76,
+                  35.92
+                ]
+              },
+              {
+                "text": "架",
+                "timestamp": [
+                  35.92,
+                  36.16
+                ]
+              },
+              {
+                "text": "构",
+                "timestamp": [
+                  36.52,
+                  36.7
+                ]
+              },
+              {
+                "text": "能",
+                "timestamp": [
+                  36.7,
+                  36.92
+                ]
+              },
+              {
+                "text": "把",
+                "timestamp": [
+                  36.92,
+                  37.06
+                ]
+              },
+              {
+                "text": "百",
+                "timestamp": [
+                  37.06,
+                  37.22
+                ]
+              },
+              {
+                "text": "万",
+                "timestamp": [
+                  37.22,
+                  37.42
+                ]
+              },
+              {
+                "text": "级",
+                "timestamp": [
+                  37.42,
+                  37.58
+                ]
+              },
+              {
+                "text": "处",
+                "timestamp": [
+                  37.58,
+                  37.76
+                ]
+              },
+              {
+                "text": "理",
+                "timestamp": [
+                  37.76,
+                  38.0
+                ]
+              },
+              {
+                "text": "器",
+                "timestamp": [
+                  38.12,
+                  38.3
+                ]
+              },
+              {
+                "text": "整",
+                "timestamp": [
+                  38.3,
+                  38.48
+                ]
+              },
+              {
+                "text": "合",
+                "timestamp": [
+                  38.48,
+                  38.66
+                ]
+              },
+              {
+                "text": "成",
+                "timestamp": [
+                  38.66,
+                  38.78
+                ]
+              },
+              {
+                "text": "一",
+                "timestamp": [
+                  38.78,
+                  39.02
+                ]
+              },
+              {
+                "text": "台",
+                "timestamp": [
+                  39.06,
+                  39.26
+                ]
+              },
+              {
+                "text": "超",
+                "timestamp": [
+                  39.26,
+                  39.46
+                ]
+              },
+              {
+                "text": "级",
+                "timestamp": [
+                  39.46,
+                  39.56
+                ]
+              },
+              {
+                "text": "计",
+                "timestamp": [
+                  39.56,
+                  39.74
+                ]
+              },
+              {
+                "text": "算",
+                "timestamp": [
+                  39.74,
+                  39.98
+                ]
+              },
+              {
+                "text": "机",
+                "timestamp": [
+                  40.4,
+                  40.64
+                ]
+              },
+              {
+                "text": "据",
+                "timestamp": [
+                  40.64,
+                  40.88
+                ]
+              },
+              {
+                "text": "说",
+                "timestamp": [
+                  40.88,
+                  41.079
+                ]
+              },
+              {
+                "text": "能",
+                "timestamp": [
+                  41.079,
+                  41.24
+                ]
+              },
+              {
+                "text": "大",
+                "timestamp": [
+                  41.24,
+                  41.439
+                ]
+              },
+              {
+                "text": "幅",
+                "timestamp": [
+                  41.439,
+                  41.6
+                ]
+              },
+              {
+                "text": "提",
+                "timestamp": [
+                  41.6,
+                  41.84
+                ]
+              },
+              {
+                "text": "升",
+                "timestamp": [
+                  41.84,
+                  42.12
+                ]
+              },
+              {
+                "text": "A",
+                "timestamp": [
+                  42.12,
+                  42.24
+                ]
+              },
+              {
+                "text": "I",
+                "timestamp": [
+                  42.24,
+                  42.44
+                ]
+              },
+              {
+                "text": "算",
+                "timestamp": [
+                  42.44,
+                  42.6
+                ]
+              },
+              {
+                "text": "力",
+                "timestamp": [
+                  42.6,
+                  42.84
+                ]
+              },
+              {
+                "text": "效",
+                "timestamp": [
+                  43.32,
+                  43.44
+                ]
+              },
+              {
+                "text": "率",
+                "timestamp": [
+                  43.44,
+                  43.68
+                ]
+              },
+              {
+                "text": "另",
+                "timestamp": [
+                  43.86,
+                  44.04
+                ]
+              },
+              {
+                "text": "外",
+                "timestamp": [
+                  44.04,
+                  44.24
+                ]
+              },
+              {
+                "text": "智",
+                "timestamp": [
+                  44.24,
+                  44.4
+                ]
+              },
+              {
+                "text": "普",
+                "timestamp": [
+                  44.4,
+                  44.64
+                ]
+              },
+              {
+                "text": "公",
+                "timestamp": [
+                  44.66,
+                  44.76
+                ]
+              },
+              {
+                "text": "司",
+                "timestamp": [
+                  44.76,
+                  44.96
+                ]
+              },
+              {
+                "text": "被",
+                "timestamp": [
+                  44.96,
+                  45.26
+                ]
+              },
+              {
+                "text": "曝",
+                "timestamp": [
+                  45.26,
+                  45.42
+                ]
+              },
+              {
+                "text": "A",
+                "timestamp": [
+                  45.42,
+                  45.62
+                ]
+              },
+              {
+                "text": "I",
+                "timestamp": [
+                  45.62,
+                  45.78
+                ]
+              },
+              {
+                "text": "编",
+                "timestamp": [
+                  45.78,
+                  46.02
+                ]
+              },
+              {
+                "text": "程",
+                "timestamp": [
+                  46.18,
+                  46.38
+                ]
+              },
+              {
+                "text": "工",
+                "timestamp": [
+                  46.38,
+                  46.54
+                ]
+              },
+              {
+                "text": "具",
+                "timestamp": [
+                  46.54,
+                  46.74
+                ]
+              },
+              {
+                "text": "偷",
+                "timestamp": [
+                  46.74,
+                  46.98
+                ]
+              },
+              {
+                "text": "偷",
+                "timestamp": [
+                  47.0,
+                  47.14
+                ]
+              },
+              {
+                "text": "上",
+                "timestamp": [
+                  47.14,
+                  47.28
+                ]
+              },
+              {
+                "text": "传",
+                "timestamp": [
+                  47.28,
+                  47.44
+                ]
+              },
+              {
+                "text": "用",
+                "timestamp": [
+                  47.44,
+                  47.68
+                ]
+              },
+              {
+                "text": "户",
+                "timestamp": [
+                  48.28,
+                  48.46
+                ]
+              },
+              {
+                "text": "数",
+                "timestamp": [
+                  48.46,
+                  48.66
+                ]
+              },
+              {
+                "text": "据",
+                "timestamp": [
+                  48.66,
+                  48.76
+                ]
+              },
+              {
+                "text": "这",
+                "timestamp": [
+                  48.76,
+                  48.98
+                ]
+              },
+              {
+                "text": "事",
+                "timestamp": [
+                  48.98,
+                  49.12
+                ]
+              },
+              {
+                "text": "挺",
+                "timestamp": [
+                  49.12,
+                  49.3
+                ]
+              },
+              {
+                "text": "受",
+                "timestamp": [
+                  49.3,
+                  49.54
+                ]
+              },
+              {
+                "text": "关",
+                "timestamp": [
+                  49.78,
+                  49.96
+                ]
+              },
+              {
+                "text": "注",
+                "timestamp": [
+                  49.96,
+                  50.12
+                ]
+              },
+              {
+                "text": "的",
+                "timestamp": [
+                  50.12,
+                  50.26
+                ]
+              },
+              {
+                "text": "你",
+                "timestamp": [
+                  50.26,
+                  50.44
+                ]
+              },
+              {
+                "text": "想",
+                "timestamp": [
+                  50.44,
+                  50.56
+                ]
+              },
+              {
+                "text": "聊",
+                "timestamp": [
+                  50.56,
+                  50.64
+                ]
+              },
+              {
+                "text": "聊",
+                "timestamp": [
+                  50.64,
+                  50.74
+                ]
+              },
+              {
+                "text": "哪",
+                "timestamp": [
+                  50.74,
+                  50.92
+                ]
+              },
+              {
+                "text": "个",
+                "timestamp": [
+                  50.92,
+                  51.04
+                ]
+              },
+              {
+                "text": "具",
+                "timestamp": [
+                  51.04,
+                  51.12
+                ]
+              },
+              {
+                "text": "体",
+                "timestamp": [
+                  51.12,
+                  51.545
+                ]
+              }
+            ]
+          }
+        ],
+        "n_events": 2,
+        "n_no_model_speech": 0,
+        "n_recovery_only": 1,
+        "n_user_segments": 3,
+        "per_event": [
+          {
+            "event_type": "recovery_only",
+            "model_interrupted_text": "",
+            "model_interrupted_words": [],
+            "model_recovery_text": "我整理一下思路",
+            "model_recovery_words": [
+              {
+                "text": "我",
+                "timestamp": [
+                  9.28,
+                  9.5
+                ]
+              },
+              {
+                "text": "整",
+                "timestamp": [
+                  9.5,
+                  9.66
+                ]
+              },
+              {
+                "text": "理",
+                "timestamp": [
+                  9.66,
+                  9.78
+                ]
+              },
+              {
+                "text": "一",
+                "timestamp": [
+                  9.78,
+                  9.86
+                ]
+              },
+              {
+                "text": "下",
+                "timestamp": [
+                  9.86,
+                  9.96
+                ]
+              },
+              {
+                "text": "思",
+                "timestamp": [
+                  9.96,
+                  10.14
+                ]
+              },
+              {
+                "text": "路",
+                "timestamp": [
+                  10.14,
+                  10.38
+                ]
+              }
+            ],
+            "overlap_s": null,
+            "recovery_latency_s": 885.0,
+            "resumed": true,
+            "silence_gap_s": null,
+            "stop_intent": false,
+            "stop_latency_s": null,
+            "stopped": null,
+            "success": null,
+            "user_segment": [
+              5.89,
+              8.395
+            ],
+            "user_text": "一句话概括今天教育领域有什么新闻",
+            "user_words": [
+              {
+                "text": "一",
+                "timestamp": [
+                  5.89,
+                  6.03
+                ]
+              },
+              {
+                "text": "句",
+                "timestamp": [
+                  6.03,
+                  6.21
+                ]
+              },
+              {
+                "text": "话",
+                "timestamp": [
+                  6.21,
+                  6.41
+                ]
+              },
+              {
+                "text": "概",
+                "timestamp": [
+                  6.41,
+                  6.55
+                ]
+              },
+              {
+                "text": "括",
+                "timestamp": [
+                  6.55,
+                  6.79
+                ]
+              },
+              {
+                "text": "今",
+                "timestamp": [
+                  6.81,
+                  6.97
+                ]
+              },
+              {
+                "text": "天",
+                "timestamp": [
+                  6.97,
+                  7.17
+                ]
+              },
+              {
+                "text": "教",
+                "timestamp": [
+                  7.17,
+                  7.31
+                ]
+              },
+              {
+                "text": "育",
+                "timestamp": [
+                  7.31,
+                  7.45
+                ]
+              },
+              {
+                "text": "领",
+                "timestamp": [
+                  7.45,
+                  7.55
+                ]
+              },
+              {
+                "text": "域",
+                "timestamp": [
+                  7.55,
+                  7.67
+                ]
+              },
+              {
+                "text": "有",
+                "timestamp": [
+                  7.67,
+                  7.77
+                ]
+              },
+              {
+                "text": "什",
+                "timestamp": [
+                  7.77,
+                  7.87
+                ]
+              },
+              {
+                "text": "么",
+                "timestamp": [
+                  7.87,
+                  7.97
+                ]
+              },
+              {
+                "text": "新",
+                "timestamp": [
+                  7.97,
+                  8.07
+                ]
+              },
+              {
+                "text": "闻",
+                "timestamp": [
+                  8.07,
+                  8.395
+                ]
+              }
+            ]
+          },
+          {
+            "event_type": "interruption",
+            "model_interrupted_text": "近期多所高校开始推行无手机课堂制度倡导学生们上课时将手机集中存放",
+            "model_interrupted_words": [
+              {
+                "text": "近",
+                "timestamp": [
+                  11.64,
+                  11.86
+                ]
+              },
+              {
+                "text": "期",
+                "timestamp": [
+                  11.86,
+                  12.1
+                ]
+              },
+              {
+                "text": "多",
+                "timestamp": [
+                  12.34,
+                  12.52
+                ]
+              },
+              {
+                "text": "所",
+                "timestamp": [
+                  12.52,
+                  12.76
+                ]
+              },
+              {
+                "text": "高",
+                "timestamp": [
+                  12.78,
+                  12.94
+                ]
+              },
+              {
+                "text": "校",
+                "timestamp": [
+                  12.94,
+                  13.18
+                ]
+              },
+              {
+                "text": "开",
+                "timestamp": [
+                  13.2,
+                  13.3
+                ]
+              },
+              {
+                "text": "始",
+                "timestamp": [
+                  13.3,
+                  13.5
+                ]
+              },
+              {
+                "text": "推",
+                "timestamp": [
+                  13.5,
+                  13.66
+                ]
+              },
+              {
+                "text": "行",
+                "timestamp": [
+                  13.66,
+                  13.9
+                ]
+              },
+              {
+                "text": "无",
+                "timestamp": [
+                  13.98,
+                  14.16
+                ]
+              },
+              {
+                "text": "手",
+                "timestamp": [
+                  14.16,
+                  14.32
+                ]
+              },
+              {
+                "text": "机",
+                "timestamp": [
+                  14.32,
+                  14.52
+                ]
+              },
+              {
+                "text": "课",
+                "timestamp": [
+                  14.52,
+                  14.68
+                ]
+              },
+              {
+                "text": "堂",
+                "timestamp": [
+                  14.68,
+                  14.88
+                ]
+              },
+              {
+                "text": "制",
+                "timestamp": [
+                  14.88,
+                  15.04
+                ]
+              },
+              {
+                "text": "度",
+                "timestamp": [
+                  15.04,
+                  15.28
+                ]
+              },
+              {
+                "text": "倡",
+                "timestamp": [
+                  15.6,
+                  15.76
+                ]
+              },
+              {
+                "text": "导",
+                "timestamp": [
+                  15.76,
+                  15.96
+                ]
+              },
+              {
+                "text": "学",
+                "timestamp": [
+                  15.96,
+                  16.12
+                ]
+              },
+              {
+                "text": "生",
+                "timestamp": [
+                  16.12,
+                  16.24
+                ]
+              },
+              {
+                "text": "们",
+                "timestamp": [
+                  16.24,
+                  16.44
+                ]
+              },
+              {
+                "text": "上",
+                "timestamp": [
+                  16.44,
+                  16.58
+                ]
+              },
+              {
+                "text": "课",
+                "timestamp": [
+                  16.58,
+                  16.76
+                ]
+              },
+              {
+                "text": "时",
+                "timestamp": [
+                  16.76,
+                  16.999
+                ]
+              },
+              {
+                "text": "将",
+                "timestamp": [
+                  17.22,
+                  17.44
+                ]
+              },
+              {
+                "text": "手",
+                "timestamp": [
+                  17.44,
+                  17.6
+                ]
+              },
+              {
+                "text": "机",
+                "timestamp": [
+                  17.6,
+                  17.84
+                ]
+              },
+              {
+                "text": "集",
+                "timestamp": [
+                  17.86,
+                  17.96
+                ]
+              },
+              {
+                "text": "中",
+                "timestamp": [
+                  17.96,
+                  18.16
+                ]
+              },
+              {
+                "text": "存",
+                "timestamp": [
+                  18.16,
+                  18.32
+                ]
+              },
+              {
+                "text": "放",
+                "timestamp": [
+                  18.32,
+                  18.56
+                ]
+              }
+            ],
+            "model_recovery_text": "呃",
+            "model_recovery_words": [
+              {
+                "text": "呃",
+                "timestamp": [
+                  19.7,
+                  19.94
+                ]
+              }
+            ],
+            "overlap_s": 345.0,
+            "recovery_latency_s": 7715.0,
+            "resumed": true,
+            "silence_gap_s": 1140.0,
+            "stop_intent": false,
+            "stop_latency_s": 6920.0,
+            "stopped": true,
+            "success": true,
+            "user_segment": [
+              11.64,
+              11.985
+            ],
+            "user_text": "好",
+            "user_words": [
+              {
+                "text": "好",
+                "timestamp": [
+                  11.64,
+                  11.985
+                ]
+              }
+            ]
+          },
+          {
+            "event_type": "interruption",
+            "model_interrupted_text": "近期多所高校开始推行无手机课堂制度倡导学生们上课时将手机集中存放",
+            "model_interrupted_words": [
+              {
+                "text": "近",
+                "timestamp": [
+                  11.64,
+                  11.86
+                ]
+              },
+              {
+                "text": "期",
+                "timestamp": [
+                  11.86,
+                  12.1
+                ]
+              },
+              {
+                "text": "多",
+                "timestamp": [
+                  12.34,
+                  12.52
+                ]
+              },
+              {
+                "text": "所",
+                "timestamp": [
+                  12.52,
+                  12.76
+                ]
+              },
+              {
+                "text": "高",
+                "timestamp": [
+                  12.78,
+                  12.94
+                ]
+              },
+              {
+                "text": "校",
+                "timestamp": [
+                  12.94,
+                  13.18
+                ]
+              },
+              {
+                "text": "开",
+                "timestamp": [
+                  13.2,
+                  13.3
+                ]
+              },
+              {
+                "text": "始",
+                "timestamp": [
+                  13.3,
+                  13.5
+                ]
+              },
+              {
+                "text": "推",
+                "timestamp": [
+                  13.5,
+                  13.66
+                ]
+              },
+              {
+                "text": "行",
+                "timestamp": [
+                  13.66,
+                  13.9
+                ]
+              },
+              {
+                "text": "无",
+                "timestamp": [
+                  13.98,
+                  14.16
+                ]
+              },
+              {
+                "text": "手",
+                "timestamp": [
+                  14.16,
+                  14.32
+                ]
+              },
+              {
+                "text": "机",
+                "timestamp": [
+                  14.32,
+                  14.52
+                ]
+              },
+              {
+                "text": "课",
+                "timestamp": [
+                  14.52,
+                  14.68
+                ]
+              },
+              {
+                "text": "堂",
+                "timestamp": [
+                  14.68,
+                  14.88
+                ]
+              },
+              {
+                "text": "制",
+                "timestamp": [
+                  14.88,
+                  15.04
+                ]
+              },
+              {
+                "text": "度",
+                "timestamp": [
+                  15.04,
+                  15.28
+                ]
+              },
+              {
+                "text": "倡",
+                "timestamp": [
+                  15.6,
+                  15.76
+                ]
+              },
+              {
+                "text": "导",
+                "timestamp": [
+                  15.76,
+                  15.96
+                ]
+              },
+              {
+                "text": "学",
+                "timestamp": [
+                  15.96,
+                  16.12
+                ]
+              },
+              {
+                "text": "生",
+                "timestamp": [
+                  16.12,
+                  16.24
+                ]
+              },
+              {
+                "text": "们",
+                "timestamp": [
+                  16.24,
+                  16.44
+                ]
+              },
+              {
+                "text": "上",
+                "timestamp": [
+                  16.44,
+                  16.58
+                ]
+              },
+              {
+                "text": "课",
+                "timestamp": [
+                  16.58,
+                  16.76
+                ]
+              },
+              {
+                "text": "时",
+                "timestamp": [
+                  16.76,
+                  16.999
+                ]
+              },
+              {
+                "text": "将",
+                "timestamp": [
+                  17.22,
+                  17.44
+                ]
+              },
+              {
+                "text": "手",
+                "timestamp": [
+                  17.44,
+                  17.6
+                ]
+              },
+              {
+                "text": "机",
+                "timestamp": [
+                  17.6,
+                  17.84
+                ]
+              },
+              {
+                "text": "集",
+                "timestamp": [
+                  17.86,
+                  17.96
+                ]
+              },
+              {
+                "text": "中",
+                "timestamp": [
+                  17.96,
+                  18.16
+                ]
+              },
+              {
+                "text": "存",
+                "timestamp": [
+                  18.16,
+                  18.32
+                ]
+              },
+              {
+                "text": "放",
+                "timestamp": [
+                  18.32,
+                  18.56
+                ]
+              }
+            ],
+            "model_recovery_text": "呃",
+            "model_recovery_words": [
+              {
+                "text": "呃",
+                "timestamp": [
+                  19.7,
+                  19.94
+                ]
+              }
+            ],
+            "overlap_s": 789.0,
+            "recovery_latency_s": -1711.0,
+            "resumed": true,
+            "silence_gap_s": 1140.0,
+            "stop_intent": false,
+            "stop_latency_s": 789.0,
+            "stopped": true,
+            "success": true,
+            "user_segment": [
+              17.771,
+              21.411
+            ],
+            "user_text": "等等说说科技圈的新闻吧",
+            "user_words": [
+              {
+                "text": "等",
+                "timestamp": [
+                  18.05,
+                  18.23
+                ]
+              },
+              {
+                "text": "等",
+                "timestamp": [
+                  18.23,
+                  18.47
+                ]
+              },
+              {
+                "text": "说",
+                "timestamp": [
+                  18.71,
+                  18.87
+                ]
+              },
+              {
+                "text": "说",
+                "timestamp": [
+                  18.87,
+                  19.07
+                ]
+              },
+              {
+                "text": "科",
+                "timestamp": [
+                  19.07,
+                  19.23
+                ]
+              },
+              {
+                "text": "技",
+                "timestamp": [
+                  19.23,
+                  19.33
+                ]
+              },
+              {
+                "text": "圈",
+                "timestamp": [
+                  19.33,
+                  19.51
+                ]
+              },
+              {
+                "text": "的",
+                "timestamp": [
+                  19.51,
+                  19.63
+                ]
+              },
+              {
+                "text": "新",
+                "timestamp": [
+                  19.63,
+                  19.73
+                ]
+              },
+              {
+                "text": "闻",
+                "timestamp": [
+                  19.73,
+                  19.91
+                ]
+              },
+              {
+                "text": "吧",
+                "timestamp": [
+                  19.91,
+                  20.265
+                ]
+              }
+            ]
+          }
+        ],
+        "recover_behavior_count": null,
+        "reply_behavior_count": null,
+        "reply_content_score": null,
+        "reply_latency_avg_ms": null,
+        "reply_latency_max_ms": null,
+        "reply_latency_min_ms": null,
+        "response_latency_avg_ms": null,
+        "response_latency_max_ms": null,
+        "response_latency_min_ms": null,
+        "resume_content_score": null,
+        "resume_first_reply_latency_ms": 969.1,
+        "resume_rate": 1,
+        "round_details": [
+          {
+            "anchor_method": "fft",
+            "behavior": null,
+            "behavior_reason": null,
+            "reply_latency_ms": 969.1,
+            "response_latency_ms": 789.1,
+            "role": "interruption",
+            "round": 1,
+            "score_overall": null,
+            "stop_complied": null,
+            "stop_intent": false
+          }
+        ],
+        "round_latencies": [
+          {
+            "first_recovery_latency_s": -1711.0,
+            "recovery_latency_s": 3002.0,
+            "round": 1,
+            "stop_latency_s": 3854.5,
+            "target_recovery_latency_s": -1711.0,
+            "target_stop_latency_s": 789.0
+          }
+        ],
+        "round_number": 1,
+        "round_reply_latencies": [
+          -1
+        ],
+        "round_response_latencies": [
+          -1
+        ],
+        "round_timing": [
+          {
+            "anchor_method": "fft",
+            "reply_latency_ms": 969.1,
+            "response_latency_ms": 789.1,
+            "role": "interruption",
+            "round": 1,
+            "stop_intent": false,
+            "u_e": 21.411,
+            "u_s": 17.771
+          }
+        ],
+        "silence_behavior_count": null,
+        "stop_compliance_rate": null,
+        "stop_intent": false,
+        "stop_rate": 1,
+        "success_count": null,
+        "target_recovery_latency_s": -1711.0,
+        "target_stop_latency_s": 789.0,
+        "timing_success_rate": 1,
+        "user_segments": [
+          {
+            "end": 8.395,
+            "start": 5.89,
+            "text": "一句话概括今天教育领域有什么新闻",
+            "words": [
+              {
+                "text": "一",
+                "timestamp": [
+                  5.89,
+                  6.03
+                ]
+              },
+              {
+                "text": "句",
+                "timestamp": [
+                  6.03,
+                  6.21
+                ]
+              },
+              {
+                "text": "话",
+                "timestamp": [
+                  6.21,
+                  6.41
+                ]
+              },
+              {
+                "text": "概",
+                "timestamp": [
+                  6.41,
+                  6.55
+                ]
+              },
+              {
+                "text": "括",
+                "timestamp": [
+                  6.55,
+                  6.79
+                ]
+              },
+              {
+                "text": "今",
+                "timestamp": [
+                  6.81,
+                  6.97
+                ]
+              },
+              {
+                "text": "天",
+                "timestamp": [
+                  6.97,
+                  7.17
+                ]
+              },
+              {
+                "text": "教",
+                "timestamp": [
+                  7.17,
+                  7.31
+                ]
+              },
+              {
+                "text": "育",
+                "timestamp": [
+                  7.31,
+                  7.45
+                ]
+              },
+              {
+                "text": "领",
+                "timestamp": [
+                  7.45,
+                  7.55
+                ]
+              },
+              {
+                "text": "域",
+                "timestamp": [
+                  7.55,
+                  7.67
+                ]
+              },
+              {
+                "text": "有",
+                "timestamp": [
+                  7.67,
+                  7.77
+                ]
+              },
+              {
+                "text": "什",
+                "timestamp": [
+                  7.77,
+                  7.87
+                ]
+              },
+              {
+                "text": "么",
+                "timestamp": [
+                  7.87,
+                  7.97
+                ]
+              },
+              {
+                "text": "新",
+                "timestamp": [
+                  7.97,
+                  8.07
+                ]
+              },
+              {
+                "text": "闻",
+                "timestamp": [
+                  8.07,
+                  8.395
+                ]
+              }
+            ]
+          },
+          {
+            "end": 11.985,
+            "start": 11.64,
+            "text": "好",
+            "words": [
+              {
+                "text": "好",
+                "timestamp": [
+                  11.64,
+                  11.985
+                ]
+              }
+            ]
+          },
+          {
+            "end": 21.411,
+            "start": 17.771,
+            "text": "等等说说科技圈的新闻吧",
+            "words": [
+              {
+                "text": "等",
+                "timestamp": [
+                  18.05,
+                  18.23
+                ]
+              },
+              {
+                "text": "等",
+                "timestamp": [
+                  18.23,
+                  18.47
+                ]
+              },
+              {
+                "text": "说",
+                "timestamp": [
+                  18.71,
+                  18.87
+                ]
+              },
+              {
+                "text": "说",
+                "timestamp": [
+                  18.87,
+                  19.07
+                ]
+              },
+              {
+                "text": "科",
+                "timestamp": [
+                  19.07,
+                  19.23
+                ]
+              },
+              {
+                "text": "技",
+                "timestamp": [
+                  19.23,
+                  19.33
+                ]
+              },
+              {
+                "text": "圈",
+                "timestamp": [
+                  19.33,
+                  19.51
+                ]
+              },
+              {
+                "text": "的",
+                "timestamp": [
+                  19.51,
+                  19.63
+                ]
+              },
+              {
+                "text": "新",
+                "timestamp": [
+                  19.63,
+                  19.73
+                ]
+              },
+              {
+                "text": "闻",
+                "timestamp": [
+                  19.73,
+                  19.91
+                ]
+              },
+              {
+                "text": "吧",
+                "timestamp": [
+                  19.91,
+                  20.265
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "round_timing": [
+      {
+        "anchor_method": "fft",
+        "reply_latency_ms": 969.1,
+        "response_latency_ms": 789.1,
+        "role": "interruption",
+        "round": 1,
+        "stop_intent": false,
+        "u_e": 21.411,
+        "u_s": 17.771
+      }
+    ],
+    "silence_behavior_count": 0,
+    "stop_compliance_rate": null,
+    "stop_intent": false,
+    "stop_rate": 1,
+    "success_count": 1,
+    "target_recovery_latency_s": -1711.0,
+    "target_stop_latency_s": 789.0,
+    "timing_success_rate": 1,
+    "tokens_used": 1590,
+    "user_segments": [
+      {
+        "end": 8.395,
+        "start": 5.89,
+        "text": "一句话概括今天教育领域有什么新闻",
+        "words": [
+          {
+            "text": "一",
+            "timestamp": [
+              5.89,
+              6.03
+            ]
+          },
+          {
+            "text": "句",
+            "timestamp": [
+              6.03,
+              6.21
+            ]
+          },
+          {
+            "text": "话",
+            "timestamp": [
+              6.21,
+              6.41
+            ]
+          },
+          {
+            "text": "概",
+            "timestamp": [
+              6.41,
+              6.55
+            ]
+          },
+          {
+            "text": "括",
+            "timestamp": [
+              6.55,
+              6.79
+            ]
+          },
+          {
+            "text": "今",
+            "timestamp": [
+              6.81,
+              6.97
+            ]
+          },
+          {
+            "text": "天",
+            "timestamp": [
+              6.97,
+              7.17
+            ]
+          },
+          {
+            "text": "教",
+            "timestamp": [
+              7.17,
+              7.31
+            ]
+          },
+          {
+            "text": "育",
+            "timestamp": [
+              7.31,
+              7.45
+            ]
+          },
+          {
+            "text": "领",
+            "timestamp": [
+              7.45,
+              7.55
+            ]
+          },
+          {
+            "text": "域",
+            "timestamp": [
+              7.55,
+              7.67
+            ]
+          },
+          {
+            "text": "有",
+            "timestamp": [
+              7.67,
+              7.77
+            ]
+          },
+          {
+            "text": "什",
+            "timestamp": [
+              7.77,
+              7.87
+            ]
+          },
+          {
+            "text": "么",
+            "timestamp": [
+              7.87,
+              7.97
+            ]
+          },
+          {
+            "text": "新",
+            "timestamp": [
+              7.97,
+              8.07
+            ]
+          },
+          {
+            "text": "闻",
+            "timestamp": [
+              8.07,
+              8.395
+            ]
+          }
+        ]
+      },
+      {
+        "end": 11.985,
+        "start": 11.64,
+        "text": "好",
+        "words": [
+          {
+            "text": "好",
+            "timestamp": [
+              11.64,
+              11.985
+            ]
+          }
+        ]
+      },
+      {
+        "end": 21.411,
+        "start": 17.771,
+        "text": "等等说说科技圈的新闻吧",
+        "words": [
+          {
+            "text": "等",
+            "timestamp": [
+              18.05,
+              18.23
+            ]
+          },
+          {
+            "text": "等",
+            "timestamp": [
+              18.23,
+              18.47
+            ]
+          },
+          {
+            "text": "说",
+            "timestamp": [
+              18.71,
+              18.87
+            ]
+          },
+          {
+            "text": "说",
+            "timestamp": [
+              18.87,
+              19.07
+            ]
+          },
+          {
+            "text": "科",
+            "timestamp": [
+              19.07,
+              19.23
+            ]
+          },
+          {
+            "text": "技",
+            "timestamp": [
+              19.23,
+              19.33
+            ]
+          },
+          {
+            "text": "圈",
+            "timestamp": [
+              19.33,
+              19.51
+            ]
+          },
+          {
+            "text": "的",
+            "timestamp": [
+              19.51,
+              19.63
+            ]
+          },
+          {
+            "text": "新",
+            "timestamp": [
+              19.63,
+              19.73
+            ]
+          },
+          {
+            "text": "闻",
+            "timestamp": [
+              19.73,
+              19.91
+            ]
+          },
+          {
+            "text": "吧",
+            "timestamp": [
+              19.91,
+              20.265
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "per_round": [
+    {
+      "round_number": 0,
+      "message": "跳过: 非计时轮(无打断时序)"
+    },
+    {
+      "round_number": 1,
+      "interruption": {
+        "success_count": 1,
+        "failure_count": 0,
+        "inquiry_count": 0,
+        "response_latency_avg_ms": 789.1,
+        "reply_latency_avg_ms": 969.1,
+        "reply_content_score": 4.3
+      }
+    }
+  ]
+}
