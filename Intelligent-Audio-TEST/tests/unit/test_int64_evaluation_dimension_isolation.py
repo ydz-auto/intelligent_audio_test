@@ -160,8 +160,11 @@ class TestLoadTestCaseAndRefsRoundPropagation:
 class _EvalHost(CaseEvaluationMixin, CaseLoaderMixin):
     """evaluate_case 级最小宿主：捕获分发入参。"""
 
-    def _build_rounds_list(self, *args, **kwargs):
-        return []  # rounds 构建非本卡范围，stub 为空列表
+    def _build_rounds_list(self, algorithm_result, *args, **kwargs):
+        # rounds 构建非本卡范围，stub 为与输入轮数等长的非空列表。
+        # （INT-115 口径：_build_rounds_list 返回空列表 = 无 evaluation param
+        #   mappings，evaluate_case 会走 skipped 终态提前收尾，不再进入维度分发）
+        return [dict(item.get('output', {})) for item in algorithm_result.get('rounds', [])]
 
     def __init__(self, config):
         self._task_acl_repo = MagicMock()

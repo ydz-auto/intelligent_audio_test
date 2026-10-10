@@ -9,6 +9,7 @@ from evaluation_service.infrastructure.evaluation_service_host import evaluation
 from evaluation_service.domain.services.reevaluation_service import reevaluation_service
 from shared.utils.result_data_store import load_full_result_data
 from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, ACTIVE_EVALUATION_STATUSES
+from shared.utils.id_normalizer import to_int_id
 from shared.models.common_enums import TestType
 from sqlalchemy import and_
 
@@ -46,6 +47,9 @@ class ReevaluationExecutor:
 
         P1.4: Task 读写通过 gRPC 调 task_service。
         """
+        # 各调用方（gRPC servicer / HTTP routes）的 ID 形态不一（proto string 契约），
+        # 队列统一存 int；归一失败抛 ValueError 由调用方返回明确失败
+        task_id = to_int_id('task_id', task_id)
         with self.reevaluation_lock:
             if task_id == self.running_task_id:
                 return False, "任务正在重新评估中"
@@ -125,6 +129,14 @@ class ReevaluationExecutor:
                 cases_to_reevaluate = []
 
             if not cases_to_reevaluate:
+                if not test_results and task_acl_repository.get_task_by_id(task_id) is None:
+                    # 无任何测试结果且查询不到任务：task_id 无效或 task_service 查询失败，
+                    # 按失败收口，避免伪装成“没有需要重新评估的用例”被 success=True 掩盖
+                    log_and_emit('ERROR', 'reevaluator',
+                                 f"重新评估失败: task_id={task_id} 查询不到任务且无测试结果，无法重新评估",
+                                 task_id=task_id)
+                    success = False
+                    return
                 log_and_emit('WARNING', 'reevaluator',
                              f"没有需要重新评估的用例: task_id={task_id}, test_results_count={len(test_results)}",
                              task_id=task_id)
@@ -687,10 +699,11 @@ class ReevaluationExecutor:
 
         # P1.4: 通过 gRPC 更新 Task 状态
         new_status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
-        task_acl_repository.update_task_status(task_id, new_status)
+        status_updated = task_acl_repository.update_task_status(task_id, new_status)
 
-        log_and_emit('INFO', 'reevaluator',
-                     f"重新评估完成: task_id={task_id}, success={success}",
+        log_and_emit('INFO' if status_updated else 'ERROR', 'reevaluator',
+                     f"重新评估完成: task_id={task_id}, success={success}, "
+                     f"任务状态更新为 {new_status}: {'成功' if status_updated else '失败'}",
                      task_id=task_id)
 
         self._check_queue()

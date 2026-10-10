@@ -7,6 +7,7 @@
 from shared.proto import evaluation_service_pb2 as eval_pb
 from shared.proto import evaluation_service_pb2_grpc as eval_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.id_normalizer import to_int_id
 
 
 class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
@@ -36,7 +37,8 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
     def Reevaluate(self, request, context=None):
         """重新评估（任务级批量重新评估）"""
         try:
-            task_id = request.task_id
+            # proto 契约 task_id 为 string，下游 executor/task_service 均按 int 处理，边界归一
+            task_id = to_int_id('task_id', request.task_id)
             reextract_device_output = request.reextract_device_output
             reevaluate_type = request.reevaluate_type or 'all'
 
@@ -62,7 +64,7 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
     def ReevaluateMultiRound(self, request, context=None):
         """多轮用例重新评估"""
         try:
-            task_id = request.task_id
+            task_id = to_int_id('task_id', request.task_id)
             result = _loads(request.result_json, {})
             test_case_id = request.test_case_id
             algorithm_result = _loads(request.algorithm_result, {})
@@ -89,8 +91,8 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
     def ReevaluateSingle(self, request, context=None):
         """单轮用例重新评估"""
         try:
-            task_id = request.task_id
-            result_id = request.result_id
+            task_id = to_int_id('task_id', request.task_id)
+            result_id = to_int_id('result_id', request.result_id)
             test_case_id = request.test_case_id
             algorithm_result = _loads(request.algorithm_result, {})
             reference_params = _loads(request.reference_params, {})

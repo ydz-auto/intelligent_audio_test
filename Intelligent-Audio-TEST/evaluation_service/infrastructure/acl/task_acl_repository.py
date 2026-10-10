@@ -24,8 +24,22 @@ from shared.clients.grpc_clients import get_task_data_service_stub
 from shared.proto import task_service_pb2 as task_pb
 from shared.utils.dto_utils import dict_to_dto, dict_list_to_dto
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.id_normalizer import to_int_id
 
 logger = logging.getLogger(__name__)
+
+
+def _norm_task_id(task_id) -> int:
+    """task_service protobuf 的 task_id 为 int 字段，构造前统一归一。
+
+    归一失败（空/非数字）在 try 块外抛 ValueError，由调用方 except 分支
+    透出失败，避免被本仓储的兜底返回（[]/None/False）掩盖成“无数据”。
+    """
+    return to_int_id('task_id', task_id)
+
+
+def _norm_result_id(result_id) -> int:
+    return to_int_id('result_id', result_id)
 
 
 class TaskAclRepository(_TaskAclRepositoryABC):
@@ -39,6 +53,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
 
     def get_test_result_by_id(self, result_id: int) -> Optional[TestResultDTO]:
         """按 ID 读取单个 TestResult。返回 TestResultDTO 或 None。"""
+        result_id = _norm_result_id(result_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.GetTestResultById(task_pb.GetTestResultByIdRequest(result_id=result_id))
@@ -54,6 +69,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
         self, task_id: int, case_ids: Optional[List[str]] = None
     ) -> List[TaskCaseDTO]:
         """批量读取 TaskCase。case_ids 为空时返回该 task 下所有 TaskCase。"""
+        task_id = _norm_task_id(task_id)
         try:
             stub = get_task_data_service_stub()
             req = task_pb.GetTaskCaseByIdsRequest(task_id=task_id)
@@ -70,6 +86,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
 
     def get_task_by_id(self, task_id: int) -> Optional[TaskDTO]:
         """按 task_id 读取 Task 详情。"""
+        task_id = _norm_task_id(task_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.GetTaskById(task_pb.GetTaskByIdRequest(task_id=task_id))
@@ -83,6 +100,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
 
     def get_task_devices(self, task_id: int) -> List[TaskDeviceDTO]:
         """按 task_id 读取关联设备。"""
+        task_id = _norm_task_id(task_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.GetTaskDevices(task_pb.GetTaskDevicesRequest(task_id=task_id))
@@ -96,6 +114,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
 
     def get_task_apis(self, task_id: int) -> List[TaskApiDTO]:
         """按 task_id 读取关联 API。"""
+        task_id = _norm_task_id(task_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.GetTaskApis(task_pb.GetTaskApisRequest(task_id=task_id))
@@ -125,6 +144,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
     def get_dimension_params(self, dimension_id: int) -> List[DimensionParamDTO]:
         """获取评估维度的参数列表（含 output/input 完整字段）。
         调 task_service.AlgorithmConfigService.GetDimensionParams。"""
+        dimension_id = to_int_id('dimension_id', dimension_id)
         try:
             from shared.clients.grpc_clients import get_algorithm_config_service_stub
             stub = get_algorithm_config_service_stub()
@@ -142,6 +162,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
 
     def submit_result(self, task_id: int, result_data: Dict) -> Optional[int]:
         """写入测试结果。返回新 result_id 或 None。"""
+        task_id = _norm_task_id(task_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.SubmitResult(task_pb.SubmitResultRequest(
@@ -167,6 +188,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
         error_message: str = '',
     ) -> bool:
         """更新 TaskCase 状态。返回是否成功。"""
+        task_id = _norm_task_id(task_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.UpdateTaskCaseStatus(task_pb.UpdateTaskCaseStatusRequest(
@@ -189,6 +211,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
         self, result_id: int, algorithm_result: Dict
     ) -> bool:
         """更新 TestResult.algorithm_result（多轮聚合后调用）。返回是否成功。"""
+        result_id = _norm_result_id(result_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.UpdateTestResultAlgorithmResult(task_pb.UpdateTestResultAlgorithmResultRequest(
@@ -207,6 +230,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
         self, result_id: int, result_data: Any, result_data_path: str = None
     ) -> bool:
         """更新 TestResult.result_data 和 result_data_path（预提取 algorithm_results 快照后写回）。"""
+        result_id = _norm_result_id(result_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.UpdateTestResultData(task_pb.UpdateTestResultDataRequest(
@@ -226,6 +250,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
         self, task_id: int, test_case_id: Optional[str] = None
     ) -> List[TestResultDTO]:
         """按 task_id + test_case_id 批量读取 TestResult。"""
+        task_id = _norm_task_id(task_id)
         try:
             stub = get_task_data_service_stub()
             req = task_pb.GetTestResultsByTaskAndCaseRequest(task_id=task_id)
@@ -244,6 +269,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
         self, result_id: int, execution_status: str
     ) -> bool:
         """更新 TestResult.execution_status。返回是否成功。"""
+        result_id = _norm_result_id(result_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.UpdateTestResultStatus(task_pb.UpdateTestResultStatusRequest(
@@ -260,6 +286,7 @@ class TaskAclRepository(_TaskAclRepositoryABC):
 
     def update_task_status(self, task_id: int, status: str) -> bool:
         """更新 Task.status。返回是否成功。"""
+        task_id = _norm_task_id(task_id)
         try:
             stub = get_task_data_service_stub()
             resp = stub.UpdateTaskStatus(task_pb.UpdateTaskStatusRequest(

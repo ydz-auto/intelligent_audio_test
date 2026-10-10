@@ -57,9 +57,12 @@ class RoundDataBuilderMixin:
         mappings = algorithm_acl_repository.get_param_mapping(algorithm_type, 'evaluation')
 
         if not mappings:
+            # INT-118 评估侧尾巴：无 evaluation param mappings = 该算法类型无法评估，
+            # 显式告警 + 由调用方落入 skipped 终态（不再 WARNING 后整链静默跳过）
             self._log(
-                level='WARNING',
-                content=f"[_build_rounds_list] 未找到 {algorithm_type} 的 evaluation param mappings",
+                level='ERROR',
+                content=f"[_build_rounds_list] 算法类型 {algorithm_type} 未配置 evaluation param mappings，"
+                        f"无法构建评估轮次数据，用例评估将标记为跳过(skipped)",
                 task_id=task_id, test_case_id=test_case_id
             )
             return []

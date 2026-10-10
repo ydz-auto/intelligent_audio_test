@@ -1,6 +1,8 @@
 """用例评估编排混入：evaluate_case 入口及准备/分发编排"""
 import json
 
+from shared.utils.status_constants import EvaluationStatus, TaskCaseStatus
+
 # domain 层通过 ACL 仓储获取字段映射数据（延迟 import 避免循环依赖）
 
 
@@ -27,8 +29,16 @@ class CaseEvaluationMixin:
             if round_number is not None:
                 # 指定轮次：只取对应轮
                 rounds_list = [rounds_list[round_number]] if round_number < len(rounds_list) else []
-            if rounds_list:
-                kwargs['rounds'] = rounds_list
+            if not rounds_list:
+                # INT-118 评估侧尾巴：多轮结果无法构建任何评估轮次数据
+                #（如算法类型缺 evaluation param mappings / 指定轮次不存在），
+                # 明确 skipped 终态，不再静默进入维度分发
+                self._mark_rounds_evaluation_skipped(
+                    task_id, result_id, test_case_id,
+                    kwargs.get('algorithm_type', 'translation')
+                )
+                return False
+            kwargs['rounds'] = rounds_list
 
         self._log(
             level='DEBUG',
@@ -56,6 +66,35 @@ class CaseEvaluationMixin:
             task_id, result_id, test_case_id, algorithm_result,
             prepared, field_mapper, test_type, round_number, kwargs
         )
+
+    def _mark_rounds_evaluation_skipped(self, task_id, result_id, test_case_id, algorithm_type):
+        """多轮结果无法构建评估数据时的显式跳过收尾。
+
+        TestResult 照常收口 completed（执行已发生），TaskCase 终态标 skipped
+        并留痕原因，评估流程状态推进到 completed 避免悬挂在 queued。
+        """
+        reason = f"算法类型 {algorithm_type} 无 evaluation param mappings 或评估轮次数据为空，评估跳过(skipped)"
+        self._log(
+            level='WARNING',
+            content=f"用例评估跳过(skipped): test_case_id={test_case_id}, {reason}",
+            task_id=task_id, test_case_id=test_case_id
+        )
+        try:
+            self.result_processor.mark_test_result_completed(result_id)
+            self._task_acl_repo.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                status=TaskCaseStatus.SKIPPED,
+                evaluation_status=EvaluationStatus.COMPLETED,
+                error_message=reason,
+            )
+            self._post_evaluate_updates(task_id, test_case_id)
+        except Exception as e:
+            self._log(
+                level='ERROR',
+                content=f"用例评估跳过(skipped)收尾失败: test_case_id={test_case_id}, error={e}",
+                task_id=task_id, test_case_id=test_case_id
+            )
 
     def _prepare_evaluation_data(self, task_id, result_id, test_case_id, algorithm_result,
                                   field_mapper, kwargs, test_type, round_number=None):
