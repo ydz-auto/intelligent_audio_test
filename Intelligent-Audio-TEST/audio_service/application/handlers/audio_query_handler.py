@@ -23,6 +23,7 @@ from audio_service.application.queries.audio_queries import (
     StreamAudioByPathQuery,
     GetAudioAlgorithmsQuery,
     GetAudioFolderTreeQuery,
+    GetAudioSpeakersQuery,
 )
 
 logger = logging.getLogger(__name__)
@@ -189,6 +190,36 @@ class AudioQueryHandler:
     def handle_get_all_ids(self, query: GetAllAudioIdsQuery) -> Dict[str, Any]:
         ids = self.repo.get_all_audio_ids(query.params)
         return _ok(data={'ids': ids, 'total': len(ids)})
+
+    def handle_get_audio_speakers(self, query: GetAudioSpeakersQuery) -> Dict[str, Any]:
+        """批量提取音频 diarization 标注 speaker 集合（INT-99 混音 speakers_map 源）
+
+        提取口径与 E2E `build_speakers_map_from_dry_audios` 同源
+        （audio_timeline.speakers_from_annotation_data 纯函数复用）；
+        无标注音频返回空集合，键统一字符串化（JSON 往返对齐）。
+        """
+        from audio_service.infrastructure.audio.audio_timeline import (
+            speakers_from_annotation_data,
+        )
+
+        audio_ids = []
+        for aid in (query.audio_ids or []):
+            try:
+                audio_ids.append(int(aid))
+            except (TypeError, ValueError):
+                continue
+        audio_ids = sorted(set(audio_ids))
+        if not audio_ids:
+            return _ok(data={'speakers_map': {}})
+
+        annotations_map = self.repo.get_annotations_map(audio_ids)
+        speakers_map = {}
+        for audio_id in audio_ids:
+            speakers: set = set()
+            for ann in annotations_map.get(audio_id, []):
+                speakers |= speakers_from_annotation_data(ann.get('data'))
+            speakers_map[str(audio_id)] = sorted(speakers)
+        return _ok(data={'speakers_map': speakers_map})
 
     def handle_stream_audio(self, query: StreamAudioQuery) -> Dict[str, Any]:
         audio = self.repo.get_audio_with_deleted(query.audio_id)

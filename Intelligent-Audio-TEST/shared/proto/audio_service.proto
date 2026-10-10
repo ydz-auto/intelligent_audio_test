@@ -79,6 +79,8 @@ service AudioConfigService {
   rpc ConvertAudio(ConvertAudioRequest) returns (AudioConfigResponse);
   rpc PreviewAudio(PreviewAudioRequest) returns (AudioConfigResponse);
   rpc StopPreviewAudio(StopPreviewAudioRequest) returns (AudioConfigResponse);
+  // 批量查询音频 diarization 标注 speaker 集合（INT-99：API 侧混音 speakers_map 透传）
+  rpc GetAudioSpeakers(GetAudioSpeakersRequest) returns (AudioConfigResponse);
 }
 
 // ==================== AudioService Messages ====================
@@ -369,4 +371,8 @@ message PreviewAudioRequest {
 
 message StopPreviewAudioRequest {
   int32 audio_id = 1;
+}
+
+message GetAudioSpeakersRequest {
+  string data = 1;  // JSON: {"audio_ids": [int]}
 }

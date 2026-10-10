@@ -14,6 +14,7 @@ from shared.utils.api_key_provider import resolver_from_config
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
+    AudioConfigAclRepositoryImpl,
     AudioRenderACLRepositoryImpl,
     AlgorithmQueryAclRepositoryImpl,
     AdapterAclRepositoryImpl,
@@ -46,7 +47,8 @@ class APISessionExecutor:
         self._executor = executor
         # 混音渲染经 ACL 端口出站（RenderService 消费链路，INT-82 接线）
         self._render_service = RoundRenderService(
-            AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl())
+            AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl(),
+            audio_acl=AudioConfigAclRepositoryImpl())
 
     @property
     def _log(self):

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Iterator, List, Optional
+from typing import Dict, Iterator, List, Optional
 
 from api_test_service.domain.repositories.acl.audio_render_acl_repository import (
     AudioRenderAclRepository,
@@ -30,10 +30,11 @@ class RoundRenderService:
     """执行器混音渲染消费：组装 render_config → 经 ACL 出站 → 消费产物"""
 
     def __init__(self, render_acl: AudioRenderAclRepository, spl_repo=None,
-                 storage_client=None):
+                 storage_client=None, audio_acl=None):
         self._render_acl = render_acl
         self._spl_repo = spl_repo
         self._storage = storage_client
+        self._audio_acl = audio_acl
 
     # ── Realtime / 流式：逐 chunk 消费 ──
 
@@ -95,6 +96,7 @@ class RoundRenderService:
             target_format=self._resolve_target_format(api_config, stream=stream),
             api_id=api_id,
             spl_mapping=self._load_spl_mapping_dict(api_id),
+            speakers_map=self._load_speakers_map(audios),
             overlap_rate=self._extract_param(round_cfg, case_cfg, 'overlap_rate',
                                              clamp_max=1.0),
             overlap_time=self._extract_param(round_cfg, case_cfg, 'overlap_time'),
@@ -119,6 +121,46 @@ class RoundRenderService:
             if entry.get('spl') is None:
                 entry['spl'] = float(default_spl)
         return audios
+
+    # ── speakers_map 组装（INT-99：与 E2E build_speakers_map_from_dry_audios 同语义）──
+
+    @staticmethod
+    def _speaker_audio_ids(audios: List[dict]) -> List:
+        """提取参与 speaker 感知时间轴的干声 audio_id（去重保序）。
+
+        与 audio_service 时间轴口径一致：仅 speaker 源参与共同 speaker 判定
+        （interferer 按 delay、噪声不参与）。
+        """
+        seen = set()
+        ordered = []
+        for entry in audios:
+            if str(entry.get('type') or 'speaker') != 'speaker':
+                continue
+            audio_id = entry.get('audio_id')
+            if audio_id is None or audio_id in seen:
+                continue
+            seen.add(audio_id)
+            ordered.append(audio_id)
+        return ordered
+
+    def _load_speakers_map(self, audios: List[dict]) -> Optional[Dict[str, list]]:
+        """查询干声 diarization 标注构建 speakers_map（{str(audio_id): [speaker]}）。
+
+        仅在存在非空标注时携带：无标注 / 查询失败 / 未注入 audio_acl 时返回 None，
+        render_config 与 INT-82 现状一致（时间轴回退 play_order 链式口径）。
+        """
+        audio_ids = self._speaker_audio_ids(audios)
+        if not audio_ids or self._audio_acl is None:
+            return None
+        try:
+            speakers_map = self._audio_acl.get_audio_speakers(audio_ids)
+        except Exception:
+            logger.warning("查询音频标注 speaker 集合失败，时间轴回退 play_order 口径",
+                           exc_info=True)
+            return None
+        if not any(speakers_map.values()):
+            return None
+        return speakers_map
 
     # ── 目标格式（api.audio_config；未配置回退 24kHz/s16/mono）──
 

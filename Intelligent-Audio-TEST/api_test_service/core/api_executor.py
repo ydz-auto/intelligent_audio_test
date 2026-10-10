@@ -47,7 +47,8 @@ class APIExecutor(BaseExecutor):
         self._realtime_executor = RealtimeSessionExecutor(self)
         # 线性流混音渲染经 ACL 端口出站（RenderService 消费链路，INT-98 接线）
         self._render_service = RoundRenderService(
-            AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl())
+            AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl(),
+            audio_acl=AudioConfigAclRepositoryImpl())
         # 执行器注册表：device_type 运行时分发（INT-61）
         # physical → e2e_test_service E2EExecutor（task_service 侧分发，不经本服务）
         self._executor_registry = {

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Dict, List, Optional
 
 from api_test_service.domain.dto import AudioDTO
 from api_test_service.domain.repositories.acl.audio_acl_repository import (
@@ -40,3 +40,28 @@ class AudioConfigAclRepositoryImpl(AudioConfigAclRepository):
         except Exception as e:
             logger.warning("get_audio gRPC failed: %s", e)
             return None
+
+    def get_audio_speakers(self, audio_ids: List) -> Dict[str, List[str]]:
+        """批量查询 diarization 标注 speaker 集合（GetAudioSpeakers 经 ACL 出站）。
+
+        查询失败收敛为空映射：混音时间轴退回 play_order 链式口径（INT-82 现状），
+        不因标注查询失败阻断渲染。
+        """
+        if not audio_ids:
+            return {}
+        from shared.clients.grpc_clients import get_audio_config_service_stub
+        from shared.proto import audio_service_pb2 as e2e_pb
+        from shared.utils.grpc_json import loads as _loads
+        import json
+        try:
+            stub = get_audio_config_service_stub()
+            resp = stub.GetAudioSpeakers(e2e_pb.GetAudioSpeakersRequest(
+                data=json.dumps({'audio_ids': list(audio_ids)}, ensure_ascii=False)))
+            if not resp.success:
+                logger.warning("get_audio_speakers failed: %s", resp.message)
+                return {}
+            data = _loads(resp.data, {}) or {}
+            return data.get('speakers_map') or {}
+        except Exception as e:
+            logger.warning("get_audio_speakers gRPC failed: %s", e)
+            return {}

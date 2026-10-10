@@ -58,3 +58,8 @@ class GetAudioAlgorithmsQuery:
 @dataclass(frozen=True)
 class GetAudioFolderTreeQuery:
     data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class GetAudioSpeakersQuery:
+    audio_ids: List[int] = field(default_factory=list)

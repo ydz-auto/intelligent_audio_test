@@ -32,6 +32,7 @@ from shared.utils.api_key_provider import resolver_from_config
 from api_test_service.application.round_render_service import RoundRenderService
 from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.infrastructure.acl import (
+    AudioConfigAclRepositoryImpl,
     AudioRenderACLRepositoryImpl,
     EvaluationAclRepositoryImpl,
 )
@@ -61,7 +62,8 @@ class RealtimeSessionExecutor:
         self._spl_service = ApiRmsSplService(self._spl_repo)
         # 混音渲染经 ACL 端口出站（RenderService 消费链路，INT-82 接线）
         self._render_service = RoundRenderService(
-            AudioRenderACLRepositoryImpl(), spl_repo=self._spl_repo)
+            AudioRenderACLRepositoryImpl(), spl_repo=self._spl_repo,
+            audio_acl=AudioConfigAclRepositoryImpl())
         self._publisher = RealtimeStreamPublisher()
         self._session_registry = RealtimeSessionRegistry(
             bind_ttl_seconds=int(config_manager.get_value(

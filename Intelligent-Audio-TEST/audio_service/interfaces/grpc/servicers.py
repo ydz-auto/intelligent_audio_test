@@ -500,6 +500,17 @@ class AudioConfigServiceServicer(e2e_grpc.AudioConfigServiceServicer):
         except Exception as e:
             return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
 
+    def GetAudioSpeakers(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from audio_service.application.queries import GetAudioSpeakersQuery
+            result = self.query_handler.handle_get_audio_speakers(
+                GetAudioSpeakersQuery(audio_ids=data.get('audio_ids', []))
+            )
+            return self._wrap(result)
+        except Exception as e:
+            return e2e_pb.AudioConfigResponse(success=False, message=str(e), data="")
+
     # ---------- 上传操作 ----------
 
     def PresignUpload(self, request, context=None):

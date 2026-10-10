@@ -82,14 +82,37 @@ def calculate_sequential_delay(device_index, device_dry_duration, overlap_rate):
     return max(0, delay)
 
 
+def speakers_from_annotation_data(data):
+    """
+    从单条标注 data 中提取 speaker 集合（纯函数，E2E 与 API 混音共用同一提取口径）
+
+    Args:
+        data: 标注数据，dict（含 segments）或 segment 列表
+
+    Returns:
+        set: speaker标签集合，如 {'spk9', 'spk8'}
+    """
+    speakers = set()
+    if isinstance(data, dict):
+        segments = data.get('segments', [])
+        for seg in segments:
+            if isinstance(seg, dict) and seg.get('speaker'):
+                speakers.add(seg['speaker'])
+    elif isinstance(data, list):
+        for seg in data:
+            if isinstance(seg, dict) and seg.get('speaker'):
+                speakers.add(seg['speaker'])
+    return speakers
+
+
 def extract_speakers_from_annotations(audio_id, app=None):
     """
     从音频的diarization标注中提取所有speaker集合
-    
+
     Args:
         audio_id: 音频ID
         app: Flask应用实例
-        
+
     Returns:
         set: speaker标签集合，如 {'spk9', 'spk8'}
     """
@@ -100,20 +123,9 @@ def extract_speakers_from_annotations(audio_id, app=None):
 
     from audio_service.infrastructure.persistence.audio_repository import AudioRepository
     annotations = AudioRepository().get_annotations_by_audio(audio_id)
-    
+
     for ann in annotations:
-        if not ann.data:
-            continue
-        
-        if isinstance(ann.data, dict):
-            segments = ann.data.get('segments', [])
-            for seg in segments:
-                if 'speaker' in seg and seg['speaker']:
-                    speakers.add(seg['speaker'])
-        elif isinstance(ann.data, list):
-            for seg in ann.data:
-                if isinstance(seg, dict) and 'speaker' in seg and seg['speaker']:
-                    speakers.add(seg['speaker'])
+        speakers |= speakers_from_annotation_data(ann.data)
     
     log_and_emit('DEBUG', 'audio_engine', 
         f'[extract_speakers_from_annotations] audio_id={audio_id}, speakers={speakers}', 
