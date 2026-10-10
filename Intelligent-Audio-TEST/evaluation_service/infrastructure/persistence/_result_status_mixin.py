@@ -37,7 +37,7 @@ class ResultStatusMixin:
                 return
 
             # 2. 获取预期结果数量（P1.4: gRPC）
-            expected_count = self._get_expected_result_count(task_id, task)
+            expected_count = self._get_expected_result_count(task_id, task, test_case_id)
 
             # 3. 获取该用例目前已生成的所有测试结果（P1.4: gRPC）
             all_results = task_acl_repository.get_test_results_by_task_and_case(
@@ -68,14 +68,23 @@ class ResultStatusMixin:
                 test_case_id=test_case_id
             )
 
-    def _get_expected_result_count(self, task_id, task):
-        """获取预期结果数量（P1.4: gRPC）"""
+    def _get_expected_result_count(self, task_id, task, test_case_id=None):
+        """获取预期结果数量（P1.4: gRPC）
+
+        差异#2 收尾：由用例级 device_type 判定（task.type 已废弃）——
+        物理用例按被测设备数、API 用例按关联 API 数预期。
+        """
+        from shared.models.common_enums import DeviceType
         expected_count = 0
-        if task.type == TestType.E2E.value:
+        device_type = None
+        if test_case_id:
+            tc_dtos = task_acl_repository.get_task_case_by_ids(task_id, [str(test_case_id)])
+            device_type = tc_dtos[0].device_type if tc_dtos else None
+        if (device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value:
             devices = task_acl_repository.get_task_devices(task_id=task_id)
             expected_count = len(devices)
         else:
-            # API 任务通常按选中的 API 数量执行
+            # API 用例通常按选中的 API 数量执行
             apis = task_acl_repository.get_task_apis(task_id=task_id)
             expected_count = len(apis)
 

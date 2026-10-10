@@ -20,7 +20,6 @@ def make_aggregate(status='pending', total=0, completed=0, failed=0,
     return TaskAggregate(
         id=1,
         name='test-task',
-        type='voice',
         status=status,
         total_cases=total,
         completed_cases=completed,

@@ -18,7 +18,6 @@ from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.status_constants import (
     ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EXECUTION_STATUSES,
 )
-from shared.models.common_enums import TestType
 
 
 class TaskProgressStatsMixin:
@@ -70,7 +69,7 @@ class TaskProgressStatsMixin:
         - actual_total_cases: TaskCase 表实际总数
         - actual_completed_cases: 执行和评估均完成的用例数
         - started_at / completed_at / updated_at: 任务时间戳
-        - type: 任务类型（api/e2e）
+        - device_types: 用例级被测设备类型集合（差异#2 收尾，取代 task.type）
         - api_resource_status: API 任务的资源状态
         """
         from task_service.infrastructure.persistence.models import TestCase
@@ -87,10 +86,16 @@ class TaskProgressStatsMixin:
             current_case_data = None
             if current_case:
                 case_info = session.get(TestCase, current_case.test_case_id)
+                # 差异#2 收尾：物理用例执行阶段展示 playing，其余展示 evaluating
+                # （判定依据用例级 device_type，task.type 已废弃）
+                from shared.models.common_enums import DeviceType
+                step = ("playing"
+                        if (current_case.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
+                        else "evaluating")
                 current_case_data = {
                     'case_id': str(current_case.test_case_id),
                     'name': case_info.name if case_info else "未知用例",
-                    'step': "playing" if task.type == 'e2e' else "evaluating",
+                    'step': step,
                     'started_at': current_case.started_at.isoformat() if current_case.started_at else None,
                 }
 
@@ -158,7 +163,9 @@ class TaskProgressStatsMixin:
             return {
                 'task_id': str(task.id),
                 'status': task.status,
-                'type': task.type,
+                'device_types': [dt for (dt,) in session.query(TaskCase.device_type)
+                                 .filter(TaskCase.task_id == task.id, TaskCase.device_type.isnot(None))
+                                 .distinct().all()],
                 'total_cases': total,
                 'completed_cases': completed,
                 'failed_cases': task.failed_cases or 0,
@@ -180,9 +187,18 @@ class TaskProgressStatsMixin:
             session.close()
 
     def _collect_api_resource_status(self, session, task, task_id: int) -> list:
-        """收集 API 任务的资源状态（待处理/已完成用例数、平均响应时间）。"""
+        """收集 API 任务的资源状态（待处理/已完成用例数、平均响应时间）。
+
+        差异#2 收尾：仅含 API 类被测设备用例的任务收集（task.type 已废弃）。
+        """
         api_resource_status = []
-        if task.type != TestType.API.value:
+        from shared.models.common_enums import DeviceType
+        api_types = (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value)
+        has_api_case = session.query(TaskCase.id).filter(
+            TaskCase.task_id == task_id,
+            TaskCase.device_type.in_(api_types),
+        ).first() is not None
+        if not has_api_case:
             return api_resource_status
 
         from task_service.infrastructure.persistence.models import TaskAPI, TestResult

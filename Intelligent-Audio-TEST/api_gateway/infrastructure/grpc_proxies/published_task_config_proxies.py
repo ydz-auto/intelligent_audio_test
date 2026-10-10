@@ -115,7 +115,7 @@ class _PublishedTaskConfigProxy:
     # ---- 读操作 ----
 
     def get_list(self, page=1, per_page=10, status='', keyword='',
-                 task_type='', benchmark='', start_date='', end_date=''):
+                 benchmark='', start_date='', end_date=''):
         """当前版本列表（分页 + 筛选；benchmark 三态字符串筛选）"""
         def _call():
             stub = get_published_task_config_service_stub()
@@ -124,7 +124,6 @@ class _PublishedTaskConfigProxy:
                 per_page=int(per_page),
                 status=status or '',
                 keyword=keyword or '',
-                type=task_type or '',
                 benchmark=benchmark or '',
                 start_date=start_date or '',
                 end_date=end_date or '',

@@ -13,27 +13,29 @@ import { TestType, TaskStatus } from '@/domain/enums';
  */
 export function createTaskTypeChart(ctx: HTMLCanvasElement | CanvasRenderingContext2D, tasks: any[], options: any = {})
 {
-  // 从实际任务数据计算任务类型分布
-  const taskTypeCounts = {
-    [TestType.API]: 0,
-    [TestType.E2E]: 0
-  };
-  
+  // 从实际任务数据计算被测设备类型分布（差异#2 收尾：取代 task.type 统计；
+  // deviceTypes 含 physical 计入端到端，含 http_api/websocket_api 计入 API，
+  // 两者兼有为混合任务）
+  const deviceTypeCounts = { api: 0, e2e: 0, mixed: 0 };
+
   tasks.forEach(task => {
     if (!task.deleted) {
-      const type = task.type as keyof typeof taskTypeCounts;
-      if (type in taskTypeCounts) {
-        taskTypeCounts[type]++;
-      }
+      const dts: string[] = task.deviceTypes || [];
+      const hasPhysical = dts.includes('physical');
+      const hasApi = dts.includes('http_api') || dts.includes('websocket_api');
+      if (hasPhysical && hasApi) deviceTypeCounts.mixed++;
+      else if (hasPhysical) deviceTypeCounts.e2e++;
+      else if (hasApi) deviceTypeCounts.api++;
+      else deviceTypeCounts.api++;
     }
   });
-  
+
   // 转换为图表数据格式
   const chartData = {
-    labels: ['API测试', '端到端测试'],
+    labels: ['API测试', '端到端测试', '混合任务'],
     datasets: [{
-      data: [taskTypeCounts[TestType.API], taskTypeCounts[TestType.E2E]],
-      backgroundColor: ['#FF6A00', '#1976D2'],
+      data: [deviceTypeCounts.api, deviceTypeCounts.e2e, deviceTypeCounts.mixed],
+      backgroundColor: ['#FF6A00', '#1976D2', '#9C27B0'],
       borderColor: '#ffffff',
       borderWidth: 2,
       hoverOffset: 4

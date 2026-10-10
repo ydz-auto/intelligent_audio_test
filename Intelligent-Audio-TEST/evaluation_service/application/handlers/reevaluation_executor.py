@@ -289,9 +289,16 @@ class ReevaluationExecutor:
             device_id = case_info['device_id']
 
             try:
-                # P1.4: 通过 gRPC 读 Task
-                task = task_acl_repository.get_task_by_id(task_id)
-                test_type = task.type if task and task.type else TestType.API.value
+                # 差异#2 收尾：评估口径值由用例级 device_type 派生
+                # （task.type 已废弃；gRPC 契约字段 test_type 保留）
+                from shared.models.common_enums import DeviceType
+                tc_dtos = task_acl_repository.get_task_case_by_ids(task_id, [str(test_case_id)])
+                device_type = tc_dtos[0].device_type if tc_dtos else None
+                test_type = (
+                    TestType.E2E.value
+                    if (device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
+                    else TestType.API.value
+                )
 
                 # P1.4: 通过 gRPC 读 TestCase
                 test_case = task_acl_repository.get_test_case_detail(str(test_case_id))

@@ -87,7 +87,6 @@ class PublishedTaskService:
         per_page = min(max(int(params.get('perPage', params.get('per_page', 10))), 1), 100)
         status = params.get('status', '')
         keyword = params.get('keyword', '').strip()
-        task_type = params.get('type', '')
         benchmark = (params.get('benchmark') or '').strip().lower()
         if benchmark not in _BENCHMARK_FILTER_VALUES:
             return error_response(
@@ -98,7 +97,7 @@ class PublishedTaskService:
 
         result = _pt_acl.get_list(
             page=page, per_page=per_page, status=status, keyword=keyword,
-            task_type=task_type, benchmark=benchmark,
+            benchmark=benchmark,
             start_date=start_date or '', end_date=end_date or '',
         )
 
@@ -112,7 +111,6 @@ class PublishedTaskService:
                 source_task_id=item.get('source_task_id'),
                 name=item.get('name'),
                 description=item.get('description'),
-                type=item.get('type'),
                 status=item.get('status'),
                 benchmark=bool(item.get('benchmark', False)),
                 version=item.get('version'),
@@ -152,7 +150,6 @@ class PublishedTaskService:
                 source_task_id=v.get('source_task_id'),
                 name=v.get('name'),
                 description=v.get('description'),
-                type=v.get('type'),
                 status=v.get('status'),
                 benchmark=bool(v.get('benchmark', False)),
                 version=v.get('version'),
@@ -185,7 +182,6 @@ class PublishedTaskService:
                 source_task_id=d.get('source_task_id'),
                 name=d.get('name'),
                 description=d.get('description'),
-                type=d.get('type'),
                 status=d.get('status'),
                 benchmark=bool(d.get('benchmark', False)),
                 version=d.get('version'),

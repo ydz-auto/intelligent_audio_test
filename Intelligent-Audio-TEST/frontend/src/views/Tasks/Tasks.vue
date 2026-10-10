@@ -114,15 +114,6 @@
           <input type="text" class="search-input" placeholder="搜索任务名称、标签..." v-model="searchTerm" @input="handleSearch">
           
           <div class="filter-item">
-            <label for="type-filter">任务类型：</label>
-            <select class="filter-select" id="type-filter" v-model="filters.type" @change="applyFilters">
-              <option value="all">全部类型</option>
-              <option :value="TestType.E2E">端到端测试</option>
-              <option :value="TestType.API">API测试</option>
-            </select>
-          </div>
-          
-          <div class="filter-item">
             <label for="algorithm-filter">算法类型：</label>
             <select class="filter-select" id="algorithm-filter" v-model="filters.algorithmType" @change="applyFilters">
               <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
@@ -243,7 +234,6 @@
               name: task.name,
               title: task.name,
               description: task.description,
-              type: task.type,
               status: task.status,
               createdAt: formatDate(task.createdAt),
               tags: task.tags,
@@ -334,7 +324,7 @@
 
 <script setup lang="ts">
 import { useTasks } from './tasks';
-import { TaskStatus, FINISHED_STATUSES, TestType, ViewMode } from '@/domain/enums';
+import { TaskStatus, FINISHED_STATUSES, ViewMode } from '@/domain/enums';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';

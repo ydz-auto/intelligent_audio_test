@@ -130,7 +130,6 @@ class MergeChunksRequest(APIModel):
     oss_key: Optional[str] = Field(None)
     oss_parts: Optional[List[Dict]] = Field(None)
     is_direct_oss: Optional[bool] = Field(False)
-    test_types: Optional[List[str]] = Field(default_factory=lambda: ['api'])
     # dimensions 接受 dict 或 list，由 _create_test_case_from_audio 统一处理
     dimensions: Optional[Any] = Field(default_factory=dict)
     default_playback_device_id: Optional[int] = Field(None)

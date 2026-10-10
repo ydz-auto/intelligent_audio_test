@@ -169,8 +169,7 @@ def _seed_many_results(db, storage_env, task_id=900, count=120):
     now = datetime.now()
     session = get_db_session()
     try:
-        session.add(Task(id=task_id, name='大任务-性能', description='perf', type='api',
-                         status='completed', config={}, algorithm_type='translation',
+        session.add(Task(id=task_id, name='大任务-性能', description='perf', status='completed', config={}, algorithm_type='translation',
                          algorithm_params={}, total_cases=count, completed_cases=count,
                          failed_cases=0, created_by_user_id=None, created_at=now,
                          updated_at=now, deleted=False, reevaluation_count=0,
@@ -269,8 +268,7 @@ class TestImportIdStrategy:
         now = datetime.now()
         session = get_db_session()
         try:
-            session.add(Task(id=1, name='占位-已存在', description='x', type='api',
-                             status='completed', config={}, algorithm_type='translation',
+            session.add(Task(id=1, name='占位-已存在', description='x', status='completed', config={}, algorithm_type='translation',
                              algorithm_params={}, total_cases=0, completed_cases=0,
                              failed_cases=0, created_by_user_id=None, created_at=now,
                              updated_at=now, deleted=False, reevaluation_count=0,

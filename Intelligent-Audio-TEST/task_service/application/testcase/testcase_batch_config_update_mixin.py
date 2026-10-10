@@ -364,6 +364,12 @@ class TestCaseConfigUpdateMixin:
         self.repo.flush()
         return f"已成功更新 {updated_count} 个用例的专属参数"
 
+    @staticmethod
+    def _is_e2e_shaped(tc) -> bool:
+        """用例是否为 E2E（物理执行）形态（差异#2 收尾：取代 test_type 列判定）"""
+        from shared.utils.testcase_helpers import has_playback_audio
+        return has_playback_audio(tc.config or {})
+
     def _batch_update_playback_devices(self, data, common=None):
         """批量更新播放设备（目标人音频/segment 级/case 级背景噪声，支持逐轮设置 per_round）。"""
         ids = data.get('ids', [])
@@ -385,7 +391,8 @@ class TestCaseConfigUpdateMixin:
         test_cases = self.repo.list_testcases_by_ids(ids)
         updated_count = 0
         for tc in test_cases:
-            if (tc.test_type or 'api') != 'e2e':
+            # 差异#2 收尾：E2E（物理执行）形态由配置承载 —— 含播放设备音频才适用
+            if not self._is_e2e_shaped(tc):
                 continue
             if tc.config:
                 config = tc.config.copy()
@@ -440,7 +447,8 @@ class TestCaseConfigUpdateMixin:
         test_cases = self.repo.list_testcases_by_ids(ids)
         updated_count = 0
         for tc in test_cases:
-            if (tc.test_type or 'api') != 'e2e':
+            # 差异#2 收尾：E2E（物理执行）形态由配置承载 —— 含播放设备音频才适用
+            if not self._is_e2e_shaped(tc):
                 continue
             if tc.config:
                 config = tc.config.copy()
@@ -603,7 +611,8 @@ class TestCaseConfigUpdateMixin:
         test_cases = self.repo.list_testcases_by_ids(ids)
         updated_count = 0
         for tc in test_cases:
-            if (tc.test_type or 'api') != 'e2e':
+            # 差异#2 收尾：E2E（物理执行）形态由配置承载 —— 含播放设备音频才适用
+            if not self._is_e2e_shaped(tc):
                 continue
             config = (tc.config or {}).copy()
             rounds = config.get('rounds', [])

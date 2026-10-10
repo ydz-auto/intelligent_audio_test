@@ -112,12 +112,17 @@ class TaskDetailReadModelMixin:
         apis = self._fetch_api_list(task_api_ids)
         tag_names = [tag.name for tag in task.tags]
 
+        # 用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
+        device_types = [dt for (dt,) in session.query(TaskCase.device_type)
+                        .filter(TaskCase.task_id == task.id, TaskCase.device_type.isnot(None))
+                        .distinct().all()]
+
         return {
             'id': task.id,
             'name': task.name,
             'description': task.description,
             'status': task.status,
-            'type': task.type,
+            'device_types': device_types,
             'config': task.config or {},
             'algorithm_type': task.algorithm_type,
             'algorithm_params': task.algorithm_params,

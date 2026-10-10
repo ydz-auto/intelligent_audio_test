@@ -12,7 +12,7 @@
           <ul class="dt-task-list">
             <li v-for="task in tasks" :key="task.id">
               <span class="dt-task-name">{{ task.name }}</span>
-              <span class="dt-task-meta">{{ task.type }} · {{ task.status }}</span>
+              <span class="dt-task-meta">{{ task.status }}</span>
             </li>
           </ul>
         </section>
@@ -51,7 +51,7 @@ import { dataTransferPort } from '../../composables/task/dataTransferPort';
 import { downloadBlob } from '../../utils/utils';
 
 const props = defineProps<{
-  tasks: Array<{ id: number | string; name: string; type: string; status: string }>;
+  tasks: Array<{ id: number | string; name: string; status: string }>;
 }>();
 
 const emit = defineEmits(['close', 'exported']);

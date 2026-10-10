@@ -141,8 +141,9 @@ class _TaskConfigProxy:
 
     # ---- 读操作 ----
 
-    def list_tasks(self, page=1, per_page=10, status=None, task_type=None,
+    def list_tasks(self, page=1, per_page=10, status=None, device_type=None,
                    algorithm_type=None, search=None, start_date=None, end_date=None):
+        """任务列表（device_type 经 proto type 字段承载：按用例级被测设备类型过滤）"""
         from shared.proto import task_service_pb2 as task_pb
 
         def _call():
@@ -151,7 +152,7 @@ class _TaskConfigProxy:
                 page=int(page),
                 per_page=int(per_page),
                 status=status or '',
-                type=task_type or '',
+                type=device_type or '',
                 algorithm_type=algorithm_type or '',
                 search=search or '',
                 start_date=start_date or '',
@@ -463,7 +464,7 @@ class _TestCaseConfigProxy:
     # ---- 读操作 ----
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
-                       group_id=None, test_type=None, algorithm_type=None,
+                       group_id=None, algorithm_type=None,
                        view=None, include_deleted=False):
         from shared.proto import task_service_pb2 as task_pb
 
@@ -475,7 +476,6 @@ class _TestCaseConfigProxy:
                 keyword=keyword or '',
                 tag=tag or '',
                 group_id=group_id or '',
-                type=test_type or '',
                 algorithm_type=algorithm_type or '',
                 view=view or '',
                 include_deleted=bool(include_deleted),

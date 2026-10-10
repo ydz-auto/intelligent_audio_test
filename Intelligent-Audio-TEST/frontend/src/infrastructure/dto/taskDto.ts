@@ -52,7 +52,7 @@ export interface TaskDto {
   name: string
   description?: string | null
   status: string
-  type: string
+  device_types?: string[]
   progress?: number | null
   config?: Record<string, any>
   algorithm_type?: string | null
@@ -105,7 +105,6 @@ export interface TaskDetailDto extends TaskDto {
 /** 任务创建请求体（TaskCreateRequest） */
 export interface TaskCreateDto {
   name: string
-  type: string
   description?: string | null
   config?: Record<string, any>
   created_by?: string | null
@@ -171,7 +170,6 @@ export interface TaskListQueryDto {
   page: number
   per_page: number
   status?: string
-  type?: string
   algorithm_type?: string
   search?: string
   start_date?: string

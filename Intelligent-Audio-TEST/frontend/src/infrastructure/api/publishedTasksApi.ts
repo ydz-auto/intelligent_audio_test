@@ -18,7 +18,6 @@ interface PublishedTaskItemDto {
   source_task_id?: number | null;
   name: string;
   description?: string | null;
-  type: string;
   status: PublishedTaskStatus;
   benchmark?: boolean;
   version: number;
@@ -71,7 +70,6 @@ function toPublishedTaskItem(raw: PublishedTaskItemDto): PublishedTaskItem {
     sourceTaskId: raw.source_task_id ?? undefined,
     name: raw.name,
     description: raw.description ?? undefined,
-    type: raw.type,
     status: raw.status,
     benchmark: raw.benchmark ?? false,
     version: raw.version,
@@ -125,7 +123,6 @@ export const publishedTasksApi = {
       sourceTaskId: dto.source_task_id ?? undefined,
       name: dto.name,
       description: dto.description ?? undefined,
-      type: dto.type,
       status: dto.status,
       benchmark: dto.benchmark ?? false,
       version: dto.version,

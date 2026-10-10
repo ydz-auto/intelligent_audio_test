@@ -44,9 +44,9 @@
           </div>
           <div class="task-description">{{ task.description || '' }}</div>
           <div class="task-meta">
-            <span class="task-meta-item task-type" :class="`${task.type}`">
+            <span class="task-meta-item task-type" :class="getDeviceTypeClass(task.deviceTypes)">
               <i class="fas fa-tag"></i>
-              {{ getTaskTypeText(task.type) }}
+              {{ getDeviceTypesText(task.deviceTypes) }}
             </span>
             <span class="task-meta-item algorithm-type" v-if="task.algorithmType">
               <i class="fas fa-microchip"></i>
@@ -108,9 +108,9 @@
         </div>
         <div class="task-description">{{ task.description || '' }}</div>
         <div class="task-meta">
-            <span class="task-meta-item task-type" :class="`${task.type}`">
+            <span class="task-meta-item task-type" :class="getDeviceTypeClass(task.deviceTypes)">
               <i class="fas fa-tag"></i>
-              {{ getTaskTypeText(task.type) }}
+              {{ getDeviceTypesText(task.deviceTypes) }}
             </span>
             <span class="task-meta-item algorithm-type" v-if="task.algorithmType">
               <i class="fas fa-microchip"></i>
@@ -199,7 +199,8 @@ const {
   handleKeydown,
   toggleSelection,
   handleAction,
-  getTaskTypeText,
+  getDeviceTypesText,
+  getDeviceTypeClass,
   getAlgorithmTypeText,
   getStatusText,
   getStepStatusText,

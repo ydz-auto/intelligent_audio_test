@@ -37,7 +37,6 @@ router = APIRouter(prefix='/admin/tasks', tags=['task-admin'])
 
 class CreateTaskRequest(BaseModel):
     name: str
-    type: str = 'api'
     description: str = ''
     config: dict = Field(default_factory=dict)
     algorithm_type: Optional[str] = None
@@ -51,7 +50,6 @@ class CreateTaskRequest(BaseModel):
 class MergeTasksRequest(BaseModel):
     source_task_ids: List[int]
     merged_task_name: str
-    merged_task_type: str = 'api'
     description: str = ''
     created_by: Optional[int] = None
 
@@ -68,7 +66,6 @@ def create_task(req: CreateTaskRequest):
     """创建任务（不自动启动）。"""
     cmd = CreateTaskCommand(
         name=req.name,
-        task_type=req.type,
         description=req.description,
         config=req.config,
         algorithm_type=req.algorithm_type,
@@ -135,7 +132,6 @@ def merge_tasks(req: MergeTasksRequest):
     cmd = MergeTasksCommand(
         source_task_ids=req.source_task_ids,
         merged_task_name=req.merged_task_name,
-        merged_task_type=req.merged_task_type,
         description=req.description,
         created_by=req.created_by,
     )
@@ -150,7 +146,6 @@ def merge_tasks(req: MergeTasksRequest):
 @router.get('', summary='任务列表')
 def list_tasks(
     status: Optional[str] = Query(None),
-    type: Optional[str] = Query(None),
     algorithm_type: Optional[str] = Query(None),
     created_by: Optional[int] = Query(None),
     page: int = Query(1, ge=1),
@@ -159,7 +154,6 @@ def list_tasks(
 ):
     query = ListTasksQuery(
         status=status,
-        task_type=type,
         algorithm_type=algorithm_type,
         created_by=created_by,
         page=page,

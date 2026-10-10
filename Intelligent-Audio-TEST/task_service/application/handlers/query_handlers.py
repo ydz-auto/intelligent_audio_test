@@ -125,7 +125,6 @@ class TaskQueryHandler:
         """
         return task_read_model.search(
             status=query.status,
-            task_type=query.task_type,
             algorithm_type=query.algorithm_type,
             created_by=query.created_by,
             include_deleted=query.include_deleted,
@@ -160,7 +159,7 @@ class TaskQueryHandler:
             page=query.page,
             per_page=query.per_page,
             status=query.status,
-            task_type=query.task_type,
+            device_type=query.device_type,
             algorithm_type=query.algorithm_type,
             search=query.search,
             start_date=query.start_date,
@@ -200,7 +199,6 @@ class TaskQueryHandler:
             keyword=query.keyword,
             tag=query.tag,
             group_id=query.group_id,
-            test_type=query.test_type,
             algorithm_type=query.algorithm_type,
             view=query.view,
             include_deleted=query.include_deleted,

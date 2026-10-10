@@ -18,7 +18,7 @@
       <!-- 合并任务：源任务列表（默认收起） -->
       <template v-for="taskItem in paginatedTasks" :key="`merged-${taskItem.id}`">
         <div
-          v-if="taskItem.type === 'merged' && (taskItem.sourceTasks?.length ?? 0) > 0"
+          v-if="(taskItem.sourceTasks?.length ?? 0) > 0"
           class="merged-source-list"
         >
           <div class="merged-source-list-title" @click="toggleMergedSources(taskItem.id)">
@@ -35,14 +35,6 @@
               </div>
             </div>
           </template>
-        </div>
-        <div
-          v-else-if="taskItem.type === 'merged' && (taskItem.sourceTasks?.length ?? 0) === 0"
-          class="merged-source-list empty-source-hint"
-        >
-          <div class="merged-source-row">
-            <span class="merged-source-row-cases">该合并任务暂无来源任务记录</span>
-          </div>
         </div>
       </template>
 

@@ -19,6 +19,8 @@ const QUERY_PARAM_MAP: Record<string, string> = {
   dimensionId: 'dimension_id',
   groupId: 'group_id',
   includeDeleted: 'include_deleted',
+  // 仅 /testcases/ids（FetchCaseIds）消费：E2E/API 起跑流程按执行口径圈定用例，
+  // 服务端按配置形态派生过滤（差异#2 收尾）；列表接口忽略该参数
   testType: 'type',
 };
 
@@ -48,7 +50,6 @@ const BATCH_ACTION_KEY_MAP: Record<string, string> = {
   multiDimensions: 'multi_dimensions',
   oldTagName: 'old_tag_name',
   newTagName: 'new_tag_name',
-  testType: 'test_type',
   groupName: 'group_name',
   tagName: 'tag_name',
   copyToNewGroup: 'copy_to_new_group',

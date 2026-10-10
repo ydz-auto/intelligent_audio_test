@@ -44,7 +44,6 @@ export function createApiTestReportModule(deps: ApiTestReportDeps) {
     associatedCases,
     apiResources,
   } = useTaskProgress({
-    testType: 'API',
     currentTaskId: currentTaskId,
     onCompleted: async () => {
       console.log('[API测试] 任务完成，加载报告数据并跳转')

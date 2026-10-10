@@ -194,7 +194,6 @@ class TestCaseImportService:
             'description': str(row.get('DESCRIPTION', '')) if pd.notna(row.get('DESCRIPTION')) else '',
             'group': str(row.get('GROUP_NAME', '')).strip() if pd.notna(row.get('GROUP_NAME')) else '未分类',
             'group_id': TestCaseImportService._normalize_cell(row.get('GROUP_ID')),
-            'test_type': str(row.get('TEST_TYPE', '')) if pd.notna(row.get('TEST_TYPE')) else 'api',
             'noise_audio_name': str(row.get('NOISE_AUDIO_NAME', '')) if pd.notna(row.get('NOISE_AUDIO_NAME')) else '',
             'noise_audio_id': TestCaseImportService._normalize_cell(row.get('NOISE_AUDIO_ID')),
             'noise_spl': row.get('NOISE_SPL', 0) if pd.notna(row.get('NOISE_SPL')) else 0,
@@ -406,7 +405,6 @@ class TestCaseImportService:
             'name': case_data['name'],
             'description': case_data.get('description'),
             'group_id': group.get('id') if group else None,
-            'test_type': case_data.get('test_type', 'api'),
             'config': merged_config,
         }
 

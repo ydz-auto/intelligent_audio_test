@@ -52,8 +52,10 @@ class TaskDispatchMixin:
     def _task_uses_api_async(self, task_id, task, session):
         """任务是否需要 API 异步等待流程
 
-        执行域 P0：路由判定迁至用例级 device_type（http_api / websocket_api 为异步 API 流程）；
-        旧数据 device_type 为空时回退任务级 task.type（api → 异步等待），保证旧任务行为不变。
+        差异#2 收尾：路由判定完全由用例级 device_type 承载
+        （http_api / websocket_api 为异步 API 流程）。
+        历史 NULL 行已由 202610 迁移回填（api→http_api / e2e→physical），
+        仍为 NULL 的行按物理流程处理（同步执行，不进入异步等待）。
         """
         from shared.models.common_enums import DeviceType
         api_types = (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value)
@@ -61,13 +63,7 @@ class TaskDispatchMixin:
             TaskCase.task_id == task_id,
             TaskCase.device_type.in_(api_types),
         ).first()
-        if api_case:
-            return True
-        legacy_case = session.query(TaskCase).filter(
-            TaskCase.task_id == task_id,
-            TaskCase.device_type.is_(None),
-        ).first()
-        return bool(legacy_case) and task.type == 'api'
+        return api_case is not None
 
     def _count_in_progress_cases(self, task_id, session):
         """统计执行中/排队中的用例数"""
@@ -109,13 +105,12 @@ class TaskDispatchMixin:
     def _dispatch_case_by_type(self, task_id, task, tc_rel, session):
         """根据用例级 device_type 分发用例执行
 
-        执行域 P0：路由判定由 task.type 迁至 task_case_relations.device_type；
-        旧数据 device_type 为空时回退 task.type（api → http_api / 其他 → physical），保证兼容。
+        差异#2 收尾：路由判定完全由 task_case_relations.device_type 承载
+        （task.type 已废弃）。历史 NULL 行已由 202610 迁移回填，
+        仍为 NULL 的行兜底按物理设备流程处理。
         """
         from shared.models.common_enums import DeviceType
-        device_type = tc_rel.device_type or (
-            DeviceType.HTTP_API.value if task.type == 'api' else DeviceType.PHYSICAL.value
-        )
+        device_type = tc_rel.device_type or DeviceType.PHYSICAL.value
         if device_type in (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value):
             self._dispatch_api_case(task_id, tc_rel, session, device_type)
         else:

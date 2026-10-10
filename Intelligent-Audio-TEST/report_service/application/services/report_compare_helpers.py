@@ -485,10 +485,15 @@ class ReportCompareHelpers:
 
     @staticmethod
     def _get_task_type(tasks):
-        included_task_types = {(t.get('type') if isinstance(t, dict) else getattr(t, "type", None)) for t in tasks if (t.get('type') if isinstance(t, dict) else getattr(t, "type", None))}
-        if included_task_types == {TestType.API.value}:
+        # 差异#2 收尾：task.type 已废弃，对比报告口径由任务关联用例配置形态派生
+        from shared.utils.testcase_helpers import derive_case_test_type
+        included = set()
+        for t in tasks:
+            config = (t.get('config') if isinstance(t, dict) else getattr(t, 'config', None)) or {}
+            included.add(derive_case_test_type(config))
+        if included == {TestType.API.value}:
             return TestType.API.value
-        elif included_task_types == {TestType.E2E.value}:
+        elif included == {TestType.E2E.value}:
             return TestType.E2E.value
         return "all"
 

@@ -32,7 +32,6 @@ class TaskCaseStatsMixin:
                 'id': task.id,
                 'name': task.name,
                 'description': task.description,
-                'type': task.type,
                 'status': task.status,
                 'config': task.config,
                 'algorithm_type': task.algorithm_type,

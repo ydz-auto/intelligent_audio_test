@@ -64,7 +64,7 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
                 # 任务队列管理
                 cls._instance.task_queue = deque()  # 任务队列，使用deque提高效率
                 cls._instance.queue_lock = threading.Lock()  # 队列锁，确保线程安全
-                cls._instance.running_tasks = {}  # 运行中任务，{task_id: task_type}
+                cls._instance.running_tasks = {}  # 运行中任务，{task_id: 执行画像 dict(has_physical/api_ids)}
                 cls._instance.running_apis = set()  # 运行中API集合，存储正在使用的API ID
                 cls._instance.running_e2e = False  # E2E任务运行状态
                 cls._instance.scheduler_event = threading.Event()  # 调度器事件，用于事件驱动

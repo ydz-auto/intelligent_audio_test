@@ -56,7 +56,6 @@ class TestCaseQueryService:
         keyword = query.keyword
         tag_name = query.tag
         group_id = query.group_id
-        test_type = query.test_type
         algorithm_type = query.algorithm_type
         view = query.view
         include_deleted = query.include_deleted
@@ -67,7 +66,6 @@ class TestCaseQueryService:
             keyword=keyword,
             tag=tag_name,
             group_id=group_id,
-            test_type=test_type,
             algorithm_type=algorithm_type,
             view=view,
             include_deleted=include_deleted,
@@ -220,8 +218,7 @@ class TestCaseQueryService:
         if not audios_config:
             return error_response("用例未配置任何音频资源，无法预览")
 
-        # 新双记录架构：记录已是单类型，直接使用所有音频
-        # preview_type 保留用于向后兼容，但优先使用记录的 test_type
+        # 用例纯数据（差异#2 收尾）：直接使用全部音频
         preview_audios = audios_config
 
         if not preview_audios:
@@ -305,11 +302,12 @@ class TestCaseQueryService:
             )
 
         # 后端播放模式：检查E2E任务并执行播放
-        # 通过 gRPC 检查是否有运行中的 E2E 任务（替代直连 task_service PO）
+        # 通过 gRPC 检查是否有运行中的含物理设备用例任务（差异#2 收尾：
+        # device_type='physical' 经 proto ListTasksRequest.type 字段承载）
         def _has_running_e2e_tasks():
             for st in (TaskStatus.QUEUED, TaskStatus.PENDING, TaskStatus.RUNNING):
                 try:
-                    r = _task_acl.list_tasks(page=1, per_page=1, status=st, task_type='e2e')
+                    r = _task_acl.list_tasks(page=1, per_page=1, status=st, device_type='physical')
                     if r.get('success'):
                         raw = r.get('data') or {}
                         if raw.get('total', 0) > 0:

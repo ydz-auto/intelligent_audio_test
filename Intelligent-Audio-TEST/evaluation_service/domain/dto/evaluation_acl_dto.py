@@ -38,6 +38,7 @@ class TaskCaseDTO:
     execution_status: Optional[str] = None
     evaluation_status: Optional[str] = None
     error_message: Optional[str] = None
+    device_type: Optional[str] = None
 
 
 @dataclass
@@ -46,7 +47,6 @@ class TaskDTO:
     id: Optional[int] = None
     name: Optional[str] = None
     status: Optional[str] = None
-    type: Optional[str] = None
     config: Any = None
 
 

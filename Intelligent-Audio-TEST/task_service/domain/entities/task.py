@@ -50,7 +50,6 @@ class TaskSnapshot:
     """
     id: int
     name: str
-    type: str
     status: str = TaskStatus.PENDING.value
     config: Optional[Dict[str, Any]] = None
     algorithm_type: Optional[str] = None
@@ -77,7 +76,6 @@ class TaskAggregate:
     """
     id: int
     name: str
-    type: str
     status: str = TaskStatus.PENDING.value
     config: Optional[Dict[str, Any]] = None
     algorithm_type: Optional[str] = None

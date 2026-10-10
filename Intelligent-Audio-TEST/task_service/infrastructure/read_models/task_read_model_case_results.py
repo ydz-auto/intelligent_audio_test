@@ -63,8 +63,14 @@ class TaskCaseResultsMixin:
                 return None
 
             case_info = session.get(TestCase, case_id)
-            task = session.get(Task, task_id)
-            test_type = task.type if task else TestType.API.value
+            # 评估/报告兼容口径值：由用例级 device_type 派生
+            # （差异#2 收尾：task.type 已废弃；gRPC 契约字段 test_type 保留）
+            from shared.models.common_enums import DeviceType
+            test_type = (
+                TestType.E2E.value
+                if (tc.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
+                else TestType.API.value
+            )
 
             results = session.query(TestResult).filter_by(
                 task_id=task_id, test_case_id=case_id

@@ -29,7 +29,6 @@ export interface PublishedTaskItem {
   sourceTaskId?: number | null;
   name: string;
   description?: string | null;
-  type: string;
   status: PublishedTaskStatus;
   /** 是否参与 Benchmark 排行（published_tasks.benchmark 行级布尔列） */
   benchmark: boolean;
@@ -63,7 +62,6 @@ export interface PublishedTaskExecutionItem {
 export interface ReportSnapshot {
   reportId: number;
   name: string;
-  type: string;
   status: string;
   description?: string | null;
   analysis?: string | null;
@@ -113,7 +111,6 @@ export interface PublishedTaskDetail {
   sourceTaskId?: number | null;
   name: string;
   description?: string | null;
-  type: string;
   status: PublishedTaskStatus;
   /** 是否参与 Benchmark 排行（published_tasks.benchmark 行级布尔列） */
   benchmark: boolean;

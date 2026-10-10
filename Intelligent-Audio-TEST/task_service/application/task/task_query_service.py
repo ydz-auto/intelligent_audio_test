@@ -19,7 +19,6 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from shared.infrastructure.storage import storage
-from shared.models.common_enums import TestType
 from shared.utils.status_constants import TaskStatus
 from shared.utils.audio_path_utils import normalize_audio_path
 from shared.domain.algorithm_result_builder import build_algorithm_results_for_result
@@ -35,13 +34,15 @@ _UTC_PLUS_8 = timezone(timedelta(hours=8))
 class TaskQueryService:
     """任务查询应用服务（读侧）。"""
 
-    def list_tasks(self, page=1, per_page=10, status=None, task_type=None,
-                   algorithm_type=None, search=None, start_date=None, end_date=None) -> dict:
-        """获取任务列表。"""
+    def list_tasks(self, page=1, per_page=10, status=None,
+                   device_type=None, algorithm_type=None,
+                   search=None, start_date=None, end_date=None) -> dict:
+        """获取任务列表（device_type 按用例级被测设备类型过滤，可选）。"""
         try:
             result = task_read_model.search_tasks(
                 page=page, per_page=per_page, status=status,
-                task_type=task_type, algorithm_type=algorithm_type,
+                device_type=device_type,
+                algorithm_type=algorithm_type,
                 search=search, start_date=start_date, end_date=end_date,
             )
             return {'success': True, 'message': '', 'data': result}
@@ -144,7 +145,6 @@ class TaskQueryService:
                 return {'success': False, 'message': '未找到该任务关联的用例', 'data': None, 'code': 404}
 
             case_info = raw.get('case_info')
-            test_type = raw.get('test_type', TestType.API.value)
             results = raw.get('results', [])
             tc_dto = raw.get('tc', {})
 

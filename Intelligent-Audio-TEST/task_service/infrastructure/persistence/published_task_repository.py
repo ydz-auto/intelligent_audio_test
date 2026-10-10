@@ -73,7 +73,6 @@ class PublishedTaskRepository:
         source_task_id=None,
         name: str,
         description=None,
-        task_type: str,
         status: str = 'published',
         version: int = 1,
         is_current: bool = True,
@@ -96,7 +95,6 @@ class PublishedTaskRepository:
                 source_task_id=source_task_id,
                 name=name,
                 description=description,
-                type=task_type,
                 status=status,
                 version=version,
                 is_current=is_current,
@@ -147,7 +145,6 @@ class PublishedTaskRepository:
         per_page: int = 10,
         status: str = '',
         keyword: str = '',
-        task_type: str = '',
         benchmark=None,
         start_date: str = '',
         end_date: str = '',
@@ -164,8 +161,6 @@ class PublishedTaskRepository:
             )
             if status:
                 query = query.filter(PublishedTask.status == status)
-            if task_type:
-                query = query.filter(PublishedTask.type == task_type)
             benchmark_flag = parse_benchmark_filter(benchmark)
             if benchmark_flag is not None:
                 query = query.filter(PublishedTask.benchmark.is_(benchmark_flag))
@@ -296,7 +291,6 @@ class PublishedTaskRepository:
         source_task_id=None,
         name: str,
         description=None,
-        task_type: str,
         version: int,
         benchmark: bool = False,
         snapshot_config=None,
@@ -325,7 +319,6 @@ class PublishedTaskRepository:
                 source_task_id=source_task_id,
                 name=name,
                 description=description,
-                type=task_type,
                 status='published',
                 version=version,
                 is_current=True,
@@ -403,6 +396,32 @@ class PublishedTaskRepository:
                 .all()
             )
             return [row[0] for row in rows if row[0]]
+        finally:
+            session.close()
+
+    def get_task_case_devices(self, task_id: int):
+        """读取用例级被测设备选择（快照 caseDevices 数据源，执行路由还原依据）。"""
+        session = get_db_session()
+        try:
+            rows = (
+                session.query(
+                    TaskCase.test_case_id, TaskCase.device_type,
+                    TaskCase.device_id, TaskCase.lab_id,
+                )
+                .filter(TaskCase.task_id == task_id)
+                .order_by(TaskCase.id.asc())
+                .all()
+            )
+            return [
+                {
+                    'case_id': test_case_id,
+                    'device_type': device_type,
+                    'device_id': device_id,
+                    'lab_id': lab_id,
+                }
+                for test_case_id, device_type, device_id, lab_id in rows
+                if test_case_id
+            ]
         finally:
             session.close()
 
@@ -603,11 +622,13 @@ class PublishedTaskRepository:
         *,
         name: str,
         description=None,
-        task_type: str,
         snapshot_config: dict,
         case_ids,
     ) -> int:
         """按快照创建新的日常任务（执行已发布任务的复用链路）。
+
+        用例级 device_type/device_id 从快照 caseDevices 还原
+        （差异#2 收尾：执行路由唯一依据，task.type 已废弃）。
 
         Returns:
             新任务 ID。
@@ -618,7 +639,6 @@ class PublishedTaskRepository:
             new_task = Task(
                 name=name,
                 description=description,
-                type=task_type,
                 status=TaskStatus.PENDING,
                 config=snapshot_config.get('config') or None,
                 algorithm_type=snapshot_config.get('algorithmType'),
@@ -633,13 +653,22 @@ class PublishedTaskRepository:
             session.flush()
             task_id = new_task.id
 
+            device_map = {
+                str(item.get('case_id')): item
+                for item in (snapshot_config.get('caseDevices') or [])
+                if item.get('case_id') is not None
+            }
             for case_id in case_ids:
+                dev = device_map.get(str(case_id), {})
                 session.add(TaskCase(
                     task_id=task_id,
                     test_case_id=case_id,
                     status=TaskCaseStatus.PENDING,
                     execution_status=ExecutionStatus.PENDING,
                     evaluation_status=EvaluationStatus.PENDING,
+                    device_type=dev.get('device_type') or None,
+                    device_id=str(dev['device_id']) if dev.get('device_id') is not None else None,
+                    lab_id=dev.get('lab_id') or None,
                     created_at=now,
                 ))
             for device_id in (snapshot_config.get('deviceIds') or []):

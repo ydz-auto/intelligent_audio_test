@@ -102,7 +102,6 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     elapsedTime, estimatedTime, expectedCompleteTime, logs, associatedCases,
     apiResources, resetProgress, addLog,
   } = useTaskProgress({
-    testType: testType === TestType.E2E ? 'E2E' : 'API',
     currentTaskId: currentTaskId as any,
     onCompleted: async () => { await progressCallbacks.onCompleted?.() },
     onFailed: async () => { await progressCallbacks.onFailed?.() },

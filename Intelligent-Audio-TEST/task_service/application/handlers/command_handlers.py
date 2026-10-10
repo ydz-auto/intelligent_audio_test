@@ -52,7 +52,6 @@ from task_service.application.commands.task_commands import (
     RollbackImportCommand,
 )
 from task_service.domain.entities import TaskStatus
-from task_service.domain.events import TaskCreated
 from task_service.infrastructure.persistence.task_repository import task_repository
 
 logger = logging.getLogger(__name__)
@@ -133,7 +132,6 @@ class TaskCommandHandler:
             now = datetime.now(_UTC_PLUS_8)
             task_id = self.task_repository.create_task_with_relations(
                 name=cmd.name,
-                task_type=cmd.task_type,
                 description=cmd.description,
                 config=cmd.config or None,
                 algorithm_type=cmd.algorithm_type,
@@ -146,14 +144,6 @@ class TaskCommandHandler:
                 case_devices=cmd.case_devices,
             )
 
-            # 发布领域事件
-            event = TaskCreated(
-                task_id=task_id,
-                task_name=cmd.name,
-                task_type=cmd.task_type,
-                total_cases=len(cmd.case_ids),
-                created_by=cmd.created_by,
-            )
             log_and_emit(
                 level='INFO',
                 module='TaskCommandHandler',
@@ -283,7 +273,6 @@ class TaskCommandHandler:
             merged_task_id, total_results = self.task_repository.merge_tasks(
                 source_task_ids=cmd.source_task_ids,
                 merged_task_name=cmd.merged_task_name,
-                merged_task_type=cmd.merged_task_type,
                 description=cmd.description,
                 created_by=cmd.created_by,
                 now=now,

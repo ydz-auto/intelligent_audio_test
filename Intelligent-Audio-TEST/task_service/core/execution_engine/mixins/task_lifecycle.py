@@ -59,7 +59,7 @@ class TaskLifecycleMixin:
                 # 记录任务开始日志
                 self._log(
                     level='INFO',
-                    content=f"开始执行任务 {task_id}, 类型: {task.type}",
+                    content=f"开始执行任务 {task_id}",
                     task_id=task_id
                 )
 
@@ -122,8 +122,9 @@ class TaskLifecycleMixin:
                 )
                 return False
 
-            # API任务初始化
-            if task.type == 'api':
+            # API任务初始化（差异#2 收尾：由 task.type 分支改为按用例级
+            # device_type 判定 —— 任务含 http_api/websocket_api 用例才初始化 TaskAPI 配置）
+            if self._task_has_api_cases(task.id, local_db_session):
                 try:
                     from task_service.infrastructure.persistence.models import TaskAPI
                     # 获取API配置
@@ -192,6 +193,16 @@ class TaskLifecycleMixin:
             local_db_session.close()
 
         return True
+
+    @staticmethod
+    def _task_has_api_cases(task_id, session):
+        """任务是否包含 API 类被测设备用例（http_api / websocket_api）"""
+        from shared.models.common_enums import DeviceType
+        api_types = (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value)
+        return session.query(TaskCase.id).filter(
+            TaskCase.task_id == task_id,
+            TaskCase.device_type.in_(api_types),
+        ).first() is not None
 
     def _process_task_main_loop(self, task_id, stop_event, pause_event):
         """主循环：处理测试用例 — 编排入口"""

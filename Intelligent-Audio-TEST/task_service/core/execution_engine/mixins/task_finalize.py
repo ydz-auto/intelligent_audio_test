@@ -95,8 +95,12 @@ class TaskFinalizeMixin:
         return task
 
     def _wait_for_cases_completion(self, task_id, task, stop_event):
-        """等待所有测试用例执行完成 — 编排入口"""
-        if task.type not in ('api', 'e2e'):
+        """等待所有测试用例执行完成 — 编排入口
+
+        差异#2 收尾：原 task.type in ('api','e2e') 门槛改为按用例数判定
+        （无用例任务无需等待；task.type 字段已废弃）。
+        """
+        if not self._get_total_case_count(task_id):
             return
 
         max_wait_time = self.test_case_wait_time
@@ -506,25 +510,8 @@ class TaskFinalizeMixin:
             local_db_session.close()
 
         if should_cleanup:
-            # 清理运行状态
-            with self.queue_lock:
-                if task_id in self.running_tasks:
-                    task_type = self.running_tasks[task_id]
-                    del self.running_tasks[task_id]
-
-                    if task_type == 'e2e':
-                        self.running_e2e = False
-                    else:
-                        # 释放占用的 API ID
-                        local_db_session = get_db_session()
-                        try:
-                            from task_service.infrastructure.persistence.models import TaskAPI
-                            task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
-                            for api_rel in task_apis:
-                                if api_rel.api_id in self.running_apis:
-                                    self.running_apis.remove(api_rel.api_id)
-                        finally:
-                            local_db_session.close()
+            # 清理运行状态（按执行画像释放 e2e 单飞槽位与 API 并发占用）
+            self._release_running_slot(task_id)
 
             # 清理线程和标志位
             self.workers.pop(task_id, None)

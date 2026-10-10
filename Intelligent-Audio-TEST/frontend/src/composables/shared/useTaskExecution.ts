@@ -73,7 +73,6 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
 
       const payload = {
         name: taskName.value || `E2E测试任务_${new Date().toLocaleString()}`,
-        type: TestType.E2E,
         deviceIds: selectedDeviceIds.value,
         caseIds: selectedCaseIds,
         config: { parallel: true, concurrentTasks: concurrentTasks.value },
@@ -156,7 +155,6 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       const taskData = {
         name: taskName.value || 'API测试任务',
         description: '通过API测试任务',
-        type: TestType.API,
         caseIds: selectedTestCaseIds.value,
         apiIds: selectedAPIIds.value,
         tags: [],

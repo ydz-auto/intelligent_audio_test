@@ -72,10 +72,20 @@ export function useTaskCard(props: any, emit: (event: string, ...args: any[]) =>
     emit('action', { action, task: props.task })
   }
 
-  // 任务类型 → 显示文本映射（enum 化常量，消除魔法字符串散落）
-  const TASK_TYPE_TEXT: Record<string, string> = {api: 'API测试', e2e: '端到端测试', playback: '回放任务', evaluation: '评估任务', report: '报告任务', task: '通用任务', execution: '执行任务', comparison: '对比任务', performance: '性能测试', stress: '压力测试', audioImport: '语音导入'}
-  const getTaskTypeText = (type: string): string => {
-    return TASK_TYPE_TEXT[type] || type
+  // 用例级被测设备类型 → 显示文本（差异#2 收尾：取代 task.type 徽标）
+  const DEVICE_TYPE_TEXT: Record<string, string> = {
+    physical: '物理设备',
+    http_api: 'HTTP API',
+    websocket_api: 'WebSocket API',
+  }
+  const getDeviceTypesText = (deviceTypes?: string[]): string => {
+    if (!deviceTypes || deviceTypes.length === 0) return '测试任务'
+    return deviceTypes.map(dt => DEVICE_TYPE_TEXT[dt] || dt).join(' / ')
+  }
+  const getDeviceTypeClass = (deviceTypes?: string[]): string => {
+    if (!deviceTypes || deviceTypes.length === 0) return 'mixed'
+    if (deviceTypes.length > 1) return 'mixed'
+    return deviceTypes[0]
   }
 
   const getAlgorithmTypeText = (type: string): string => {
@@ -115,7 +125,8 @@ export function useTaskCard(props: any, emit: (event: string, ...args: any[]) =>
     handleKeydown,
     toggleSelection,
     handleAction,
-    getTaskTypeText,
+    getDeviceTypesText,
+    getDeviceTypeClass,
     getAlgorithmTypeText,
     getStatusText,
     getStepStatusText,

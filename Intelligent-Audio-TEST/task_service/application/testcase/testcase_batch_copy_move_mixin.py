@@ -55,7 +55,6 @@ class TestCaseCopyMoveMixin:
             'group_id': group_id,
             'config': tc.config.copy() if tc.config else {},
             'algorithm_type': tc.algorithm_type,
-            'test_type': tc.test_type or 'api',
         })
         # 复制标签关联
         for tag in tc.tags:

@@ -19,7 +19,7 @@ import type {
   CaseDimensionResult,
   CaseResultAudio,
 } from '../../domain/model/taskCaseDetail'
-import type { TaskStatusType, TaskType } from '../../domain/enums'
+import type { TaskStatusType } from '../../domain/enums'
 import type { ReportMetricConfig } from '../../domain/model/report'
 import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto, TaskSourceBriefDto } from '../dto/taskDto'
 import { s } from './report.utils'
@@ -72,7 +72,7 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
     id: d.id,
     name: d.name,
     description: d.description ?? undefined,
-    type: d.type as TaskType,
+    deviceTypes: d.device_types ?? [],
     status: d.status as TaskStatusType,
     progress: d.progress ?? undefined,
     config: d.config,
@@ -124,7 +124,6 @@ export function toTaskList(dtos: (TaskDto | TaskDetailDto)[] | null | undefined)
 export function toTaskCreateDto(draft: TaskCreateDraft): TaskCreateDto {
   return {
     name: draft.name,
-    type: draft.type,
     description: draft.description,
     config: draft.config,
     case_ids: draft.caseIds,

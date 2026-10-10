@@ -26,7 +26,6 @@ export interface TaskListQuery {
   page?: number
   perPage?: number
   status?: string
-  type?: string
   algorithmType?: string
   search?: string
   startTime?: string
@@ -37,7 +36,6 @@ export interface TaskListQuery {
 function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   const dto: TaskListQueryDto = { page: query.page ?? 1, per_page: query.perPage ?? 10 }
   if (query.status !== undefined) dto.status = query.status
-  if (query.type !== undefined) dto.type = query.type
   if (query.algorithmType !== undefined) dto.algorithm_type = query.algorithmType
   if (query.search !== undefined) dto.search = query.search
   if (query.startTime !== undefined) dto.start_date = query.startTime

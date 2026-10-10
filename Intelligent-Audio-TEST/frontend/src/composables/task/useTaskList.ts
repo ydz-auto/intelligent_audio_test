@@ -18,7 +18,6 @@ import { usePagination } from '../usePagination';
 
 export interface TaskFilters {
   status: string;
-  type: string;
   algorithmType: string;
   timeRange: string;
   dateRange: [Date | null, Date | null];
@@ -44,7 +43,6 @@ export function useTaskList(options?: UseTaskListOptions) {
   const searchTerm = ref('');
   const filters = ref<TaskFilters>({
     status: '',
-    type: '',
     algorithmType: '',
     timeRange: 'all',
     dateRange: [null, null] as [Date | null, Date | null]
@@ -122,9 +120,6 @@ export function useTaskList(options?: UseTaskListOptions) {
 
       if (filters.value.status && filters.value.status !== 'all') {
         params.status = filters.value.status;
-      }
-      if (filters.value.type && filters.value.type !== 'all') {
-        params.type = filters.value.type;
       }
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
         params.algorithmType = filters.value.algorithmType;
@@ -279,7 +274,7 @@ export function useTaskList(options?: UseTaskListOptions) {
   const resetAllStates = () => {
     searchTerm.value = '';
     selectedTags.value = [];
-    filters.value = { status: '', type: '', algorithmType: '', timeRange: 'all', dateRange: [null, null] };
+    filters.value = { status: '', algorithmType: '', timeRange: 'all', dateRange: [null, null] };
     customDateRange.value = { start: '', end: '' };
     currentPage.value = 1;
     applyFilters();

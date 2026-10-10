@@ -55,13 +55,12 @@ class TaskReadModel(
             task = session.get(Task, task_id)
             if task is None:
                 return None
-            return self._to_dto(task)
+            return self._to_dto(task, session)
         finally:
             session.close()
 
     def search(self,
                status: Optional[str] = None,
-               task_type: Optional[str] = None,
                algorithm_type: Optional[str] = None,
                created_by: Optional[int] = None,
                include_deleted: bool = False,
@@ -75,8 +74,6 @@ class TaskReadModel(
                 q = q.filter(Task.deleted == False)  # noqa: E712
             if status:
                 q = q.filter(Task.status == status)
-            if task_type:
-                q = q.filter(Task.type == task_type)
             if algorithm_type:
                 q = q.filter(Task.algorithm_type == algorithm_type)
             if created_by is not None:
@@ -90,7 +87,7 @@ class TaskReadModel(
                      .all())
 
             return {
-                'items': [self._to_dto(t) for t in items],
+                'items': [self._to_dto(t, session) for t in items],
                 'total': total,
                 'page': page,
                 'page_size': page_size,
@@ -100,12 +97,15 @@ class TaskReadModel(
 
     def search_tasks(self, page: int = 1, per_page: int = 10,
                      status: Optional[str] = None,
-                     task_type: Optional[str] = None,
+                     device_type: Optional[str] = None,
                      algorithm_type: Optional[str] = None,
                      search: Optional[str] = None,
                      start_date: Optional[str] = None,
                      end_date: Optional[str] = None) -> Dict[str, Any]:
-        """网关 get_all 使用的查询逻辑：含 Report 关联。"""
+        """网关 get_all 使用的查询逻辑：含 Report 关联。
+
+        device_type（可选）：按用例级被测设备类型过滤（任务下存在该类型用例）。
+        """
         from datetime import datetime
 
         session = get_db_session()
@@ -113,8 +113,14 @@ class TaskReadModel(
             query = session.query(Task).filter(Task.deleted == False)  # noqa: E712
             if status:
                 query = query.filter(Task.status == status)
-            if task_type:
-                query = query.filter(Task.type == task_type)
+            if device_type:
+                from sqlalchemy import exists as _sa_exists
+                from task_service.infrastructure.persistence.models import TaskCase
+                query = query.filter(_sa_exists(
+                    session.query(TaskCase.id)
+                    .filter(TaskCase.task_id == Task.id, TaskCase.device_type == device_type)
+                    .correlate(Task)
+                ))
             if algorithm_type:
                 query = query.filter(Task.algorithm_type == algorithm_type)
             if search:
@@ -142,13 +148,15 @@ class TaskReadModel(
             tasks = pagination.items
 
             items = []
-            from task_service.infrastructure.persistence.models import TaskDevice, TaskAPI, TaskMergeRelation
-            # 批量获取合并任务来源（仅 type == 'merged' 的任务需要，避免 N+1）
-            merged_task_ids = [task.id for task in tasks if task.type == 'merged']
+            from task_service.infrastructure.persistence.models import TaskDevice, TaskAPI, TaskMergeRelation, TaskCase
+            # 批量获取合并任务来源（按 TaskMergeRelation 存在性判定合并容器，
+            # task.type 已废弃），避免 N+1
+            page_task_ids = [task.id for task in tasks]
             source_tasks_map = {}
-            if merged_task_ids:
+            if page_task_ids:
                 relations = (session.query(TaskMergeRelation)
-                             .filter(TaskMergeRelation.merged_task_id.in_(merged_task_ids)).all())
+                             .filter(TaskMergeRelation.merged_task_id.in_(page_task_ids)).all())
+                merged_task_ids = sorted({r.merged_task_id for r in relations})
                 source_ids = sorted({r.source_task_id for r in relations})
                 source_map = {t.id: t for t in session.query(Task).filter(Task.id.in_(source_ids)).all()} if source_ids else {}
                 for mid in merged_task_ids:
@@ -166,6 +174,16 @@ class TaskReadModel(
                                 'created_at': st.created_at.isoformat() if st.created_at else None,
                             })
                     source_tasks_map[mid] = briefs
+            # 批量取页面任务的用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
+            device_types_map = {}
+            if page_task_ids:
+                dt_rows = (session.query(TaskCase.task_id, TaskCase.device_type)
+                           .filter(TaskCase.task_id.in_(page_task_ids)).all())
+                for tid, dt in dt_rows:
+                    if dt:
+                        device_types_map.setdefault(tid, [])
+                        if dt not in device_types_map[tid]:
+                            device_types_map[tid].append(dt)
             for task in tasks:
                 # 通过 gRPC 查询任务的报告（替代直连 report_service PO）
                 reports = []
@@ -204,7 +222,7 @@ class TaskReadModel(
                     'name': task.name,
                     'description': task.description,
                     'status': task.status,
-                    'type': task.type,
+                    'device_types': device_types_map.get(task.id, []),
                     'config': task.config or {},
                     'algorithm_type': task.algorithm_type,
                     'algorithm_params': task.algorithm_params,
@@ -237,17 +255,25 @@ class TaskReadModel(
     # ---- 内部序列化 ----
 
     @staticmethod
-    def _to_dto(task: Task) -> Dict[str, Any]:
+    def _to_dto(task: Task, session=None) -> Dict[str, Any]:
         total = task.total_cases or 0
         completed = task.completed_cases or 0
         failed = task.failed_cases or 0
         processed = completed + failed
         percent = round(processed / total * 100, 2) if total > 0 else 0.0
+        # 用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
+        device_types = []
+        if session is not None:
+            from task_service.infrastructure.persistence.models import TaskCase
+            dt_rows = (session.query(TaskCase.device_type)
+                       .filter(TaskCase.task_id == task.id, TaskCase.device_type.isnot(None))
+                       .distinct().all())
+            device_types = [dt for (dt,) in dt_rows]
         return {
             'task_id': task.id,
             'name': task.name,
             'description': task.description,
-            'type': task.type,
+            'device_types': device_types,
             'status': task.status,
             'config': task.config,
             'algorithm_type': task.algorithm_type,

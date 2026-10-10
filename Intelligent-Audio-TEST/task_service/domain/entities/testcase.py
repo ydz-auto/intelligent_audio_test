@@ -5,14 +5,7 @@ TestCase 是测试用例上下文的聚合根，管理用例的配置信息、�
 参考参数和标签关联。TestCase 是 Task 的输入数据，Task 通过 ID 引用 TestCase。
 """
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Dict, List, Optional
-
-
-class TestCaseType(str, Enum):
-    """测试类型"""
-    API = "api"
-    E2E = "e2e"
 
 
 @dataclass
@@ -53,7 +46,6 @@ class TestCaseSnapshot:
     case_id: str
     name: str
     algorithm_type: str
-    test_type: str
     config: Optional[CaseConfig] = None
     algorithm_params: Optional[List[AlgorithmParam]] = None
     reference_params: Optional[List[ReferenceParam]] = None
@@ -66,7 +58,6 @@ class TestCaseEntity:
     name: str
     description: Optional[str] = None
     algorithm_type: Optional[str] = None
-    test_type: TestCaseType = TestCaseType.API
     group_id: Optional[str] = None
 
 
@@ -122,12 +113,11 @@ class TestCaseAggregate:
     reference_params: List[ReferenceParam] = field(default_factory=list)
     group_id: Optional[str] = None
     algorithm_type: Optional[str] = None
-    test_type: TestCaseType = TestCaseType.API
     tags: List[TagEntity] = field(default_factory=list)
 
     @classmethod
     def create(cls, case_id: str, name: str, algorithm_type: str = "",
-               test_type: str = "api", config: Optional[dict] = None,
+               config: Optional[dict] = None,
                algorithm_params: Optional[list] = None,
                reference_params: Optional[list] = None,
                group_id: Optional[str] = None,
@@ -148,7 +138,6 @@ class TestCaseAggregate:
             ],
             group_id=group_id,
             algorithm_type=algorithm_type,
-            test_type=TestCaseType(test_type) if test_type else TestCaseType.API,
         )
 
     def to_snapshot(self) -> TestCaseSnapshot:
@@ -157,7 +146,6 @@ class TestCaseAggregate:
             case_id=self.id,
             name=self.name,
             algorithm_type=self.algorithm_type or "",
-            test_type=self.test_type.value,
             config=self.config,
             algorithm_params=self.algorithm_params,
             reference_params=self.reference_params,

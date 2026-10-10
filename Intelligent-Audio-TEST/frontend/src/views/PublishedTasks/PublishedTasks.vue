@@ -32,14 +32,6 @@
         </select>
       </div>
       <div class="filter-item">
-        <label>类型：</label>
-        <select v-model="pt.filters.type" @change="handleFilterChange">
-          <option value="all">全部类型</option>
-          <option value="e2e">端到端测试</option>
-          <option value="api">API测试</option>
-        </select>
-      </div>
-      <div class="filter-item">
         <label>时间：</label>
         <select v-model="pt.filters.timeRange" @change="handleFilterChange">
           <option value="all">全部时间</option>
@@ -82,7 +74,6 @@
             </div>
             <div class="pt-card-desc" v-if="ptItem.description">{{ ptItem.description }}</div>
             <div class="pt-card-meta">
-              <span>类型：{{ typeText(ptItem.type) }}</span>
               <span v-if="ptItem.sourceTaskId">来源任务 #{{ ptItem.sourceTaskId }}</span>
               <span v-if="ptItem.publishedAt">发布于 {{ formatDate(ptItem.publishedAt) }}</span>
               <span v-if="ptItem.publishedBy">发布人 {{ ptItem.publishedBy }}</span>
@@ -249,11 +240,6 @@ function statusText(status: string): string {
     running: '执行中',
   };
   return map[status] || status;
-}
-
-function typeText(type: string): string {
-  const map: Record<string, string> = { api: 'API 测试', e2e: 'E2E 测试' };
-  return map[type] || type;
 }
 
 function formatDate(val?: string | null): string {

@@ -259,15 +259,6 @@ class TaskLifecycleMixin:
         """重新提取前检查：返回 Task PO。"""
         return self.get_task_orm(task_id)
 
-    def get_task_type(self, task_id: int):
-        """获取任务类型。"""
-        session = get_db_session()
-        try:
-            task = session.get(Task, task_id)
-            return task.type if task else None
-        finally:
-            session.close()
-
     def get_test_result_for_reevaluate(self, task_id: int, test_case_id: str):
         """获取测试结果 PO（用于重新评估）。"""
         session = get_db_session()

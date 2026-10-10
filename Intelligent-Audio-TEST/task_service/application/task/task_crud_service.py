@@ -59,7 +59,6 @@ class TaskCrudService:
 
             task_id = task_repository.create_task_with_relations(
                 name=data.get('name'),
-                task_type=data.get('type'),
                 description=data.get('description'),
                 config=data.get('config'),
                 algorithm_type=data.get('algorithm_type'),
@@ -225,7 +224,6 @@ class TaskCrudService:
             merged_task_id, total_results = task_repository.merge_tasks(
                 source_task_ids=task_ids,
                 merged_task_name=data.get('merged_task_name') or f"合并任务_{datetime.now(_utc8).strftime('%Y%m%d%H%M%S')}",
-                merged_task_type=data.get('merged_task_type') or data.get('type') or 'api',
                 description=data.get('description') or '',
                 created_by=data.get('created_by'),
                 now=datetime.now(_utc8),
@@ -247,11 +245,11 @@ class TaskCrudService:
 
     # ==================== 读操作（委托 task_query_service） ====================
 
-    def list_tasks(self, page=1, per_page=10, status=None, task_type=None,
+    def list_tasks(self, page=1, per_page=10, status=None,
                    algorithm_type=None, search=None, start_date=None, end_date=None) -> dict:
         """获取任务列表。"""
         return self.query.list_tasks(
-            page=page, per_page=per_page, status=status, task_type=task_type,
+            page=page, per_page=per_page, status=status,
             algorithm_type=algorithm_type, search=search, start_date=start_date, end_date=end_date,
         )
 

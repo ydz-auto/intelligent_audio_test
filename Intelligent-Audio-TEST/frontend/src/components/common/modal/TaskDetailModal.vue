@@ -75,7 +75,15 @@ const showTestCaseDetails = (caseId: string | number) => {
     });
 };
 
-const taskType = computed<'API' | 'E2E'>(() => (task.value?.type === 'api' ? 'API' : 'E2E'));
+// 展示口径由用例级被测设备类型派生（差异#2 收尾：取代 task.type）
+const taskType = computed<'API' | 'E2E' | '混合'>(() => {
+  const dts: string[] = task.value?.deviceTypes || [];
+  const hasPhysical = dts.includes('physical');
+  const hasApi = dts.includes('http_api') || dts.includes('websocket_api');
+  if (hasPhysical && hasApi) return '混合';
+  if (hasPhysical) return 'E2E';
+  return 'API';
+});
 
 const {
   progressPercentage,
@@ -91,7 +99,6 @@ const {
   expectedCompleteTime,
   associatedCases
 } = useTaskProgress({
-  testType: taskType.value,
   currentTaskId: computed(() => props.taskId as string | number | null),
   onCompleted: (_data) => {
     console.log('任务已完成');
@@ -226,8 +233,8 @@ const taskInfoData = computed(() => {
     expectedTotalTime: estimatedTime.value,
     usedTime: elapsedTime.value,
     expectedCompleteTime: expectedCompleteTime.value,
-    apiCount: t?.type === 'api' ? (t?.apiIds?.length || t?.apis?.length || 0) : 0,
-    deviceCount: t?.type === 'e2e' ? (t?.deviceIds?.length || t?.devices?.length || 0) : 0,
+    apiCount: t?.apis?.length || 0,
+    deviceCount: t?.devices?.length || 0,
     totalTestCases: totalTestCases.value,
     concurrentTasks: t?.concurrentTasks || 1,
     testDate: t?.createdAt ? new Date(t.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
@@ -250,10 +257,8 @@ const computedAssociatedDevices = computed(() => {
   if (associatedDevices.value && associatedDevices.value.length > 0) {
     return associatedDevices.value
   }
-  if (task.value?.type === 'e2e') {
-    return task.value?.devices || []
-  }
-  return task.value?.apis || []
+  // 混合任务同时展示被测设备与被测 API
+  return [...(task.value?.devices || []), ...(task.value?.apis || [])]
 });
 
 async function fetchTaskDetails() {
@@ -298,11 +303,7 @@ async function fetchTaskDetails() {
     });
   }
     
-    if (taskData.type === 'e2e') {
-      associatedDevices.value = taskData.devices || [];
-    } else {
-      associatedDevices.value = taskData.apis || [];
-    }
+    associatedDevices.value = [...(taskData.devices || []), ...(taskData.apis || [])];
     
     totalTestCases.value = associatedCases.value.length;
     

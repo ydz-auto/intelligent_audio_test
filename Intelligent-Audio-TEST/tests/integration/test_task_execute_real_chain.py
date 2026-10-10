@@ -700,8 +700,7 @@ def _seed_execute_scenario(api_double, eval_double):
         algorithm_type='translation', test_type='api')
     s.add(case)
 
-    task = Task(name=f'int35-execute-{uuid.uuid4().hex[:8]}', type='api',
-                status='pending', total_cases=1, algorithm_type='translation')
+    task = Task(name=f'int35-execute-{uuid.uuid4().hex[:8]}', status='pending', total_cases=1, algorithm_type='translation')
     s.add(task)
     s.flush()
     s.add(TaskCase(task_id=task.id, test_case_id=case_id, status='pending',
@@ -1057,8 +1056,7 @@ class TestInt44MultiRoundWritePath:
                 pass
 
         s = get_db_session()
-        task = Task(name=f'int44-multi-{uuid.uuid4().hex[:8]}', type='api',
-                    status='pending', total_cases=1, algorithm_type='translation')
+        task = Task(name=f'int44-multi-{uuid.uuid4().hex[:8]}', status='pending', total_cases=1, algorithm_type='translation')
         s.add(task)
         s.commit()
         task_id = task.id

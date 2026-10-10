@@ -28,7 +28,6 @@ from task_service.domain.entities.testcase import (
     TestCaseGroupEntity,
     TestCaseSnapshot,
     TestCaseTagEntity,
-    TestCaseType,
 )
 
 __all__ = [
@@ -42,7 +41,6 @@ __all__ = [
     'TestCaseAggregate',
     'TestCaseEntity',
     'TestCaseSnapshot',
-    'TestCaseType',
     'TestCaseTagEntity',
     'TestCaseGroupEntity',
     'TagEntity',

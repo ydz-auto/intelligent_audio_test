@@ -43,36 +43,34 @@ class TaskControlMixin:
             if any(t['id'] == task_id for t in self.task_queue):
                 return False, "任务已在队列中"
 
-        # 获取任务类型和关联的API
+        # 获取任务执行画像与关联的API（差异#2 收尾：调度互斥依据由
+        # task.type 迁至用例级 device_type —— 含物理用例占 e2e 单飞槽位，
+        # API 用例按 api_ids 并发互斥）
+        from task_service.infrastructure.persistence.task_repository import task_repository
         local_db_session = get_db_session()
         try:
             task = local_db_session.get(Task, task_id)
             if not task:
                 return False, "任务不存在"
-            
-            task_type = task.type
-            
-            # 获取任务关联的API ID
-            from task_service.infrastructure.persistence.models import TaskAPI
-            task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
-            api_ids = [task_api.api_id for task_api in task_apis]
+
+            profile = task_repository.get_execution_profile(task_id)
+            has_physical = profile['has_physical']
+            api_ids = profile['api_ids']
         finally:
             local_db_session.close()
-        
+
         # 检查是否可以立即执行
         with self.queue_lock:
             can_run = False
-            
-            if task_type == 'e2e':
-                # E2E任务：同时只允许一个E2E任务运行
-                if not self.running_e2e:
-                    can_run = True
+
+            # 物理用例占 e2e 单飞槽位；API 用例要求同 API 不重叠
+            if has_physical and self.running_e2e:
+                can_run = False
+            elif set(api_ids) & self.running_apis:
+                can_run = False
             else:
-                # API任务：检查是否有相同API在运行
-                overlapping_apis = set(api_ids) & self.running_apis
-                if not overlapping_apis:
-                    can_run = True
-            
+                can_run = True
+
             if can_run:
                 # 可以立即执行，创建停止和暂停事件
                 stop_event = threading.Event()
@@ -86,10 +84,10 @@ class TaskControlMixin:
                 _register_task_events_via_grpc(task_id, stop_event, pause_event)
 
                 # 更新运行状态
-                self.running_tasks[task_id] = task_type
-                if task_type == 'e2e':
+                self.running_tasks[task_id] = profile
+                if has_physical:
                     self.running_e2e = True
-                else:
+                if api_ids:
                     self.running_apis.update(api_ids)
 
                 # 更新任务状态为running
@@ -106,9 +104,9 @@ class TaskControlMixin:
                         local_db_session.rollback()
                         with self.queue_lock:
                             self.running_tasks.pop(task_id, None)
-                            if task_type == 'e2e':
+                            if has_physical:
                                 self.running_e2e = False
-                            else:
+                            if api_ids:
                                 self.running_apis.difference_update(api_ids)
                         return False, "任务已被其它实例启动"
                     local_db_session.commit()
@@ -133,7 +131,7 @@ class TaskControlMixin:
                     return False, f"任务队列已满 ({self.max_queue_size})"
                 self.task_queue.append({
                     'id': task_id,
-                    'type': task_type,
+                    'has_physical': has_physical,
                     'api_ids': api_ids,
                 })
             
@@ -167,30 +165,32 @@ class TaskControlMixin:
                 while self.task_queue:
                     queued_task = self.task_queue.popleft()
                     task_id = queued_task['id']
-                    task_type = queued_task['type']
-                    api_ids = queued_task['api_ids']
+                    has_physical = queued_task.get('has_physical', False)
+                    api_ids = queued_task.get('api_ids', [])
 
                     task = local_db_session.get(Task, task_id)
                     task_status = task.status if task else None
-                    
+
                     if task_status == TaskStatus.STOPPED:
                         continue
-                    
+
                     can_run = False
-                    
-                    if task_type == 'e2e':
-                        if not self.running_e2e:
-                            can_run = True
+
+                    if has_physical and self.running_e2e:
+                        can_run = False
+                    elif set(api_ids) & self.running_apis:
+                        can_run = False
                     else:
-                        overlapping_apis = set(api_ids) & self.running_apis
-                        if not overlapping_apis:
-                            can_run = True
-                    
+                        can_run = True
+
                     if can_run:
-                        self.running_tasks[task_id] = task_type
-                        if task_type == 'e2e':
+                        self.running_tasks[task_id] = {
+                            'has_physical': has_physical,
+                            'api_ids': api_ids,
+                        }
+                        if has_physical:
                             self.running_e2e = True
-                        else:
+                        if api_ids:
                             self.running_apis.update(api_ids)
                         
                         if task:
@@ -232,7 +232,7 @@ class TaskControlMixin:
     def remove_from_queue(self, task_id):
         """
         从任务队列中移除指定任务
-        
+
         Args:
             task_id: 任务ID
         """
@@ -246,6 +246,22 @@ class TaskControlMixin:
                     new_queue.append(queued_task)
             self.task_queue = new_queue
         return removed
+
+    def _release_running_slot(self, task_id):
+        """释放任务占用的调度槽位（e2e 单飞 + API 并发互斥）。
+
+        差异#2 收尾：取代原 task.type=='e2e' 分支清理 —— 依据 start_task
+        时写入 running_tasks 的执行画像（has_physical / api_ids）释放。
+        """
+        with self.queue_lock:
+            profile = self.running_tasks.pop(task_id, None)
+            if profile is None:
+                return
+            if profile.get('has_physical'):
+                self.running_e2e = False
+            api_ids = profile.get('api_ids') or []
+            if api_ids:
+                self.running_apis.difference_update(api_ids)
 
     def control_task(self, task_id, action):
         """
@@ -336,23 +352,7 @@ class TaskControlMixin:
                                   task_id=task_id)
                 
                 # 立即清理运行状态，避免新任务进入排队
-                with self.queue_lock:
-                    if task_id in self.running_tasks:
-                        task_type = self.running_tasks[task_id]
-                        del self.running_tasks[task_id]
-                        
-                        if task_type == 'e2e':
-                            self.running_e2e = False
-                        else:
-                            # 释放占用的 API ID
-                            try:
-                                from task_service.infrastructure.persistence.models import TaskAPI
-                                task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
-                                for api_rel in task_apis:
-                                    if api_rel.api_id in self.running_apis:
-                                        self.running_apis.remove(api_rel.api_id)
-                            except Exception as e:
-                                self._log(level='WARNING', content=f"清理API资源时发生错误: {str(e)}", task_id=task_id)
+                self._release_running_slot(task_id)
                 
                 # 清理线程和标志位
                 self.workers.pop(task_id, None)
@@ -391,14 +391,17 @@ class TaskControlMixin:
                     return True, "任务已暂停"
 
                 if action == 'resume' and task_id not in self.workers:
-                    if task.type == 'api':
-                        from task_service.infrastructure.persistence.models import TaskAPI
-                        api_ids = [
-                            rel.api_id
-                            for rel in local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
-                        ]
+                    # 恢复时任务不在运行集合：含 API 用例的任务重新入队，
+                    # 重建 API 异步等待流程；纯物理任务无法恢复
+                    from task_service.infrastructure.persistence.task_repository import task_repository
+                    profile = task_repository.get_execution_profile(task_id)
+                    if profile['api_ids']:
                         with self.queue_lock:
-                            self.task_queue.append({"id": task.id, "type": "api", "api_ids": api_ids})
+                            self.task_queue.append({
+                                'id': task.id,
+                                'has_physical': profile['has_physical'],
+                                'api_ids': profile['api_ids'],
+                            })
                         task.status = TaskStatus.QUEUED
                         local_db_session.commit()
                         self._emit_progress(task)
@@ -420,18 +423,18 @@ class TaskControlMixin:
                     )
                     task.status = TaskStatus.PAUSED  # 更新任务状态
                     
-                    # 对于 API 任务，不重置执行中的用例状态为 pending
+                    # 对于 API 用例，不重置执行中的用例状态为 pending
                     # 因为 API 线程是在 pause_event 上阻塞，恢复时会自动继续执行
                     # 如果重置为 pending，会导致调度器重新启动新线程，造成重复执行
-                    if task.type == 'e2e':
-                        # E2E 任务是同步顺序执行的，暂停时可以将当前正在执行的用例重置
-                        # 但为了统一和简单，建议也不重置，让 E2E 执行器内部处理暂停
+                    # 差异#2 收尾：判定依据由 task.type 改为执行画像 has_physical
+                    if self.running_tasks.get(task_id, {}).get('has_physical'):
+                        # 物理用例（E2E）是同步顺序执行的，暂停时可以将当前正在执行的用例重置
                         running_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, execution_status=ExecutionStatus.RUNNING).all()
                         for tc in running_cases:
                             tc.execution_status = ExecutionStatus.PENDING
                             tc.completed_at = None
                             tc.duration = None
-                    
+
                     local_db_session.commit()
                     # 暂停时停止所有音频播放（通过 gRPC AudioService）
                     _stop_task_audio_via_grpc(task_id)

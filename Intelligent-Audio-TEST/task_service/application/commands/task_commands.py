@@ -25,7 +25,6 @@ class CreateTaskCommand(Command):
     本命令用于在应用层显式建立任务记录。
     """
     name: str
-    task_type: str = 'api'  # api / e2e
     description: str = ''
     config: Dict[str, Any] = field(default_factory=dict)
     algorithm_type: Optional[str] = None
@@ -34,7 +33,8 @@ class CreateTaskCommand(Command):
     device_ids: List[int] = field(default_factory=list)
     api_ids: List[int] = field(default_factory=list)
     created_by: Optional[int] = None
-    # 执行域 P0 新增：用例级设备选择 [{"case_id", "device_type", "device_id", "lab_id"}]，为空回退 task_type 路由
+    # 执行域 P0：用例级设备选择 [{"case_id", "device_type", "device_id", "lab_id"}]，
+    # device_type 为执行路由唯一依据（差异#2 收尾，task.type 已废弃）
     case_devices: List[Dict[str, Any]] = field(default_factory=list)
 
 
@@ -85,7 +85,6 @@ class MergeTasksCommand(Command):
     """
     source_task_ids: List[int]
     merged_task_name: str
-    merged_task_type: str = 'api'
     description: str = ''
     created_by: Optional[int] = None
 

@@ -44,11 +44,15 @@ class PublishedTaskService:
         if not case_ids:
             # 历史数据兜底：task_case_relations 缺失时，从该任务的报告用例取
             case_ids = repo.get_task_report_case_ids(task.id)
+        case_devices = repo.get_task_case_devices(task.id)
         device_ids = repo.get_task_device_ids(task.id)
         api_ids = repo.get_task_api_ids(task.id)
         tag_names = repo.get_task_tag_names(task.id)
         return {
             'caseIds': list(dict.fromkeys(case_ids)),  # 去重保序
+            # 用例级被测设备选择（差异#2 收尾：执行时按此还原 device_type 路由，
+            # 取代已废弃的 task.type 快照语义）
+            'caseDevices': case_devices,
             'deviceIds': list(dict.fromkeys(device_ids)),
             'apiIds': list(dict.fromkeys(api_ids)),
             'config': task.config or {},
@@ -179,7 +183,6 @@ class PublishedTaskService:
                 name=name,
                 description=data.get('description'),
                 source_task_id=source_task_id,
-                task_type=task.type,
                 status='published',
                 version=1,
                 is_current=True,
@@ -213,7 +216,6 @@ class PublishedTaskService:
             'source_task_id': pt.source_task_id,
             'name': pt.name,
             'description': pt.description,
-            'type': pt.type,
             'status': pt.status,
             'benchmark': bool(pt.benchmark),
             'version': pt.version,
@@ -227,14 +229,14 @@ class PublishedTaskService:
 
     @staticmethod
     def get_list(page: int = 1, per_page: int = 10, status: str = '',
-                 keyword: str = '', task_type: str = '',
+                 keyword: str = '',
                  benchmark=None,
                  start_date: str = '', end_date: str = '') -> dict:
-        """当前版本列表（分页 + status/keyword/type/benchmark/时间筛选 + 版本数统计）。"""
+        """当前版本列表（分页 + status/keyword/benchmark/时间筛选 + 版本数统计）。"""
         try:
             rows, total = repo.get_list(
                 page=page, per_page=per_page, status=status, keyword=keyword,
-                task_type=task_type, benchmark=benchmark,
+                benchmark=benchmark,
                 start_date=start_date, end_date=end_date,
             )
             group_ids = [r.task_group_id or r.id for r in rows]
@@ -293,7 +295,6 @@ class PublishedTaskService:
                     'source_task_id': pt.source_task_id,
                     'name': pt.name,
                     'description': pt.description,
-                    'type': pt.type,
                     'status': pt.status,
                     'benchmark': bool(pt.benchmark),
                     'version': pt.version,
@@ -339,7 +340,6 @@ class PublishedTaskService:
             new_task_id = repo.create_daily_task(
                 name=f"{pt.name} (v{pt.version})",
                 description=pt.description,
-                task_type=pt.type,
                 snapshot_config=snapshot,
                 case_ids=case_ids,
             )
@@ -418,7 +418,6 @@ class PublishedTaskService:
                 name=(data.get('name') or '').strip() or current.name,
                 description=data.get('description')
                 if data.get('description') is not None else current.description,
-                task_type=current.type,
                 version=current.version + 1,
                 benchmark=benchmark,
                 snapshot_config=snapshot,

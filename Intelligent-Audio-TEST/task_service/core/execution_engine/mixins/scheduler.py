@@ -179,8 +179,9 @@ class SchedulerMixin:
     def _schedule_pending_tasks(self):
         """DB 兜底：检查并自动启动 pending 状态的任务
 
-        调度规则：
-        - E2E 任务：同时只能运行一个
+        调度规则（差异#2 收尾：互斥依据由 task.type 迁至执行画像 ——
+        含物理用例的任务占 e2e 单飞槽位，API 用例按 api_ids 并发互斥）：
+        - 物理任务：同时只能运行一个
         - API 任务：可以并发运行，但不能使用相同的 API
         """
         local_db_session = get_db_session()
@@ -207,9 +208,12 @@ class SchedulerMixin:
             # 循环若跨该调用持有 ORM 对象，对象被 expunge（且已被本方法/
             # start_task 的 commit 过期）后访问属性即抛 DetachedInstanceError，
             # 整轮兜底调度中止。先抽取纯数据，循环内不持有 ORM 对象。
-            candidates = [(t.id, t.type) for t in pending_tasks]
+            from task_service.infrastructure.persistence.task_repository import task_repository
+            profiles = task_repository.get_execution_profiles([t.id for t in pending_tasks])
+            candidates = [(t.id, profiles.get(t.id, {'has_physical': False, 'api_ids': []}))
+                          for t in pending_tasks]
 
-            for task_id, task_type in candidates:
+            for task_id, profile in candidates:
                 if self.scheduler_stop_event.is_set():
                     break
 
@@ -220,25 +224,23 @@ class SchedulerMixin:
                     if any(t['id'] == task_id for t in self.task_queue):
                         continue
 
-                from task_service.infrastructure.persistence.models import TaskAPI
-                task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
-                api_ids = [task_api.api_id for task_api in task_apis]
+                has_physical = profile['has_physical']
+                api_ids = profile['api_ids']
 
                 can_run = False
 
-                if task_type == 'e2e':
-                    if not self.running_e2e:
-                        can_run = True
+                if has_physical and self.running_e2e:
+                    can_run = False
+                elif set(api_ids) & self.running_apis:
+                    can_run = False
                 else:
-                    overlapping_apis = set(api_ids) & self.running_apis
-                    if not overlapping_apis:
-                        can_run = True
+                    can_run = True
 
                 if can_run:
                     try:
                         success, message = self.start_task(task_id)
                         if success:
-                            self._log(level='INFO', content=f"任务 {task_id} ({task_type}) DB兜底调度启动成功")
+                            self._log(level='INFO', content=f"任务 {task_id} DB兜底调度启动成功")
                     except Exception as e:
                         logger.error(f"[Scheduler] DB兜底自动启动任务 {task_id} 失败: {e}")
 

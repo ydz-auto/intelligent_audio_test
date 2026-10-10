@@ -101,7 +101,8 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
                 page=request.page,
                 per_page=request.per_page,
                 status=request.status or None,
-                task_type=request.type or None,
+                # 差异#2 收尾：proto ListTasksRequest.type 字段改承载 device_type 过滤值
+                device_type=request.type or None,
                 algorithm_type=request.algorithm_type or None,
                 search=request.search or None,
                 start_date=request.start_date or None,

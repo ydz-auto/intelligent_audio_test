@@ -45,7 +45,6 @@ class TaskQueryService:
         page = query.page
         per_page = query.per_page
         status = query.status
-        type_ = query.type
         algorithm_type = query.algorithm_type
         search = query.search
         start_date = query.start_date
@@ -55,7 +54,6 @@ class TaskQueryService:
             page=page,
             per_page=per_page,
             status=status,
-            task_type=type_,
             algorithm_type=algorithm_type,
             search=search,
             start_date=start_date,
@@ -84,7 +82,7 @@ class TaskQueryService:
                     name=item.get('name'),
                     description=item.get('description'),
                     status=item.get('status'),
-                    type=item.get('type'),
+                    device_types=item.get('device_types', []),
                     config=item.get('config') if item.get('config') else {},
                     algorithm_type=item.get('algorithm_type'),
                     algorithm_params=item.get('algorithm_params') if item.get('algorithm_params') else None,
@@ -168,7 +166,7 @@ class TaskQueryService:
                 name=item.get('name'),
                 description=item.get('description'),
                 status=item.get('status'),
-                type=item.get('type'),
+                device_types=item.get('device_types', []),
                 config=item.get('config') if item.get('config') else {},
                 algorithm_type=item.get('algorithm_type'),
                 algorithm_params=item.get('algorithm_params') if item.get('algorithm_params') else None,

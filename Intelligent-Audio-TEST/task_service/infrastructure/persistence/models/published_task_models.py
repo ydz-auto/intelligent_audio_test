@@ -33,7 +33,6 @@ class PublishedTask(Base):
     source_task_id = Column(Integer, comment='来源日常任务 ID，可为空')
     name = Column(String(255), nullable=False, comment='已发布任务名称')
     description = Column(Text, comment='说明')
-    type = Column(String(50), nullable=False, comment='任务类型 (api/e2e)')
     status = Column(String(20), nullable=False, default='published', comment='状态 (published/archived)')
     benchmark = Column(Boolean, nullable=False, default=False, comment='是否参与 Benchmark 排行（实测轨数据源标记）')
     version = Column(Integer, nullable=False, default=1, comment='版本号，从 1 开始')

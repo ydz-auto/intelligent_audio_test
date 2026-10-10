@@ -104,7 +104,6 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
                 keyword=request.keyword or None,
                 tag=request.tag or None,
                 group_id=request.group_id or None,
-                test_type=request.type or None,
                 algorithm_type=request.algorithm_type or None,
                 view=request.view or None,
                 include_deleted=request.include_deleted,

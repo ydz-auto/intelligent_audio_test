@@ -26,7 +26,7 @@
           <ul class="dt-task-list">
             <li v-for="task in preview.tasks" :key="task.id">
               <span class="dt-task-name">{{ task.name }}</span>
-              <span class="dt-task-meta">{{ task.type }} · {{ task.status }} · {{ task.resultCount }} 条结果</span>
+              <span class="dt-task-meta">{{ task.status }} · {{ task.resultCount }} 条结果</span>
             </li>
           </ul>
           <div class="dt-stats">

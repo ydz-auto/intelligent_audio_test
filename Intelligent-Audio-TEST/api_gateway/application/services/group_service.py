@@ -34,7 +34,6 @@ class GroupService:
         page = query.page
         per_page = query.per_page if query.per_page is not None else 100
         algorithm_type = query.algorithm_type
-        test_type = query.test_type
 
         # 通过 gRPC 查询 TestCaseGroup 列表（替代直连 PO）
         try:
@@ -48,10 +47,10 @@ class GroupService:
         from api_gateway.infrastructure.grpc_proxies import task_data_service as _tds
 
         case_counts = {}
-        if algorithm_type or test_type:
-            # gRPC GetTestCaseStats 支持 algorithm_type / test_type 过滤 + group_by='group_id'
+        if algorithm_type:
+            # gRPC GetTestCaseStats 支持 algorithm_type 过滤 + group_by='group_id'
             stats = _tds.get_testcase_stats(
-                algorithm_type=algorithm_type, test_type=test_type, group_by='group_id'
+                algorithm_type=algorithm_type, group_by='group_id'
             )
             items = stats.get('items') or []
             case_counts = {item.get('key', ''): item.get('count', 0) for item in items}
@@ -64,7 +63,7 @@ class GroupService:
         end = start + per_page
         page_groups = all_groups[start:end]
 
-        if not algorithm_type and not test_type:
+        if not algorithm_type:
             group_ids = [str(g.get('id')) for g in page_groups]
             if group_ids:
                 stats = _tds.get_testcase_stats(group_by='group_id')

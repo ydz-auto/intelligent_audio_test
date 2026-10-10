@@ -34,16 +34,15 @@ class ReportDataTaskMixin:
         if not task:
             return None, None, error_response("未找到指定任务")
 
-        task_type = task.get('type') if isinstance(task, dict) else task.type
+        # 差异#2 收尾：合并容器任务由 TaskMergeRelation(merged_task_id) 存在性判定（task.type 已废弃）
         task_status = task.get('status') if isinstance(task, dict) else task.status
 
         source_task_ids = []
 
-        if task_type == 'merged':
+        merge_relations = _grpc_get_task_merge_relations(task_id)
+        if merge_relations:
             # 合并任务：结果取自其源任务（含合并任务重新生成的场景）
-            merge_relations = _grpc_get_task_merge_relations(task_id)
-            if merge_relations:
-                source_task_ids = [r.get('source_task_id') for r in merge_relations]
+            source_task_ids = [r.get('source_task_id') for r in merge_relations]
 
         elif task_status == TaskStatus.MERGED.value:
             # 源任务被合并后重新生成报告：取最新的合并任务，结果取自其全部原始源任务

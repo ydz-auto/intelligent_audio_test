@@ -61,14 +61,12 @@ export function usePublishedTasks() {
   const filters = ref<{
     status: string;
     keyword: string;
-    type: string;
     timeRange: string;
     customRange: { start: string; end: string };
     sort: { field: string; order: 'asc' | 'desc' };
   }>({
     status: 'all',
     keyword: '',
-    type: 'all',
     timeRange: 'all',
     customRange: { start: '', end: '' },
     sort: { field: 'publishedAt', order: 'desc' },
@@ -107,7 +105,6 @@ export function usePublishedTasks() {
       };
       if (filters.value.status && filters.value.status !== 'all') params.status = filters.value.status;
       if (filters.value.keyword) params.keyword = filters.value.keyword;
-      if (filters.value.type && filters.value.type !== 'all') params.type = filters.value.type;
       Object.assign(params, buildTimeRangeParams(filters.value.timeRange, filters.value.customRange));
       const list: PublishedTaskPage = await publishedTasksApi.getAll(params);
       items.value = list.items;

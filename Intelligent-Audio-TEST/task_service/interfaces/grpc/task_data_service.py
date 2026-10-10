@@ -384,7 +384,6 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 algorithm_type=request.algorithm_type or '',
                 group_id=request.group_id or '',
                 group_by=request.group_by or '',
-                test_type=request.test_type or '',
             )
             if 'error' in result:
                 return self._resp(False, result['error'])

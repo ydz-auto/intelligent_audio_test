@@ -84,7 +84,6 @@ class TestCase(Base):
     reference_params = Column(JSON, comment='参考参数路径（按轮分组 [{round_number, reference_params_path}]，内容存文件）')
     group_id = Column(String(50), ForeignKey('test_case_groups.id'), comment='所属分组ID')
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
-    test_type = Column(String(10), nullable=False, default='api', index=True, comment='测试类型 (api/e2e)')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')

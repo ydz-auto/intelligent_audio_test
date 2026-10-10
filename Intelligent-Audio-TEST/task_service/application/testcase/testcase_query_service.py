@@ -28,7 +28,7 @@ class TestCaseQueryService:
     # ==================== 读操作 ====================
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
-                       group_id=None, test_type=None, algorithm_type=None,
+                       group_id=None, algorithm_type=None,
                        view=None, include_deleted=False, dimension_id=None) -> dict:
         """查询测试用例列表。"""
         from shared.utils import testcase_helpers as common
@@ -37,12 +37,12 @@ class TestCaseQueryService:
             # 标签视图
             if view == 'tag':
                 return self._get_tag_view(page, per_page, keyword,
-                                          test_type, algorithm_type, include_deleted, common,
+                                          algorithm_type, include_deleted, common,
                                           dimension_id=dimension_id)
 
             pagination = self.repo.query_testcases(
                 page=page, per_page=per_page, keyword=keyword, tag=tag,
-                group_id=group_id, test_type=test_type,
+                group_id=group_id,
                 algorithm_type=algorithm_type, include_deleted=include_deleted,
                 dimension_id=dimension_id,
             )
@@ -62,7 +62,8 @@ class TestCaseQueryService:
             data = []
             for tc in test_cases:
                 config = tc.config or {}
-                tc_test_type = tc.test_type or 'api'
+                # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生
+                tc_test_type = common.derive_case_test_type(config)
                 total_duration = 0.0
                 for audio_item in common.collect_audios(config):
                     audio_id = audio_item.get('audio_id')
@@ -103,7 +104,7 @@ class TestCaseQueryService:
             logger.error(f"查询测试用例列表失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
-    def _get_tag_view(self, page, per_page, keyword, test_type,
+    def _get_tag_view(self, page, per_page, keyword,
                       algorithm_type, include_deleted, common, dimension_id=None):
         """标签视图：按标签聚合用例。"""
         tag_pagination = self.repo.list_tags_paginated(page=page, per_page=per_page)
@@ -125,7 +126,7 @@ class TestCaseQueryService:
 
         tag_ids = [t.id for t in page_tags]
         test_cases = self.repo.query_testcases_by_tag_ids(
-            tag_ids, keyword=keyword, test_type=test_type,
+            tag_ids, keyword=keyword,
             algorithm_type=algorithm_type, include_deleted=include_deleted,
             dimension_id=dimension_id,
         )
@@ -164,7 +165,8 @@ class TestCaseQueryService:
                     "description": tc.description,
                     "groupId": tc.group_id,
                     "groupName": tc.group.name if tc.group else None,
-                    "type": tc.test_type or 'api',
+                    # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生
+                    "type": common.derive_case_test_type(tc.config or {}),
                     "tags": [t.name for t in tc.tags],
                     "config": tc.config.copy() if tc.config else {},
                     "algorithmParams": tc.algorithm_params,
@@ -202,7 +204,8 @@ class TestCaseQueryService:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
             config = tc.config or {}
-            tc_test_type = tc.test_type or 'api'
+            # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生
+            tc_test_type = common.derive_case_test_type(config)
 
             audios = []
             for i, audio_item in enumerate(common.collect_audios(config)):
@@ -306,13 +309,14 @@ class TestCaseQueryService:
         """按筛选条件返回全量用例ID（不分页）。
 
         Args:
-            data: {group, test_type, search, tag}
+            data: {group, search, tag}
         Returns:
             {success, message, data: {'ids': [...]}}
         """
         try:
             group = data.get('group')
-            test_type = data.get('test_type')
+            # 兼容 'test_type' / 'type' 两种键（前端批量圈定传 type）
+            test_type = data.get('test_type') or data.get('type')
             search = data.get('search')
             tag = data.get('tag')
 

@@ -64,7 +64,6 @@ class TaskAggregateMixin:
         session = get_db_session()
         po = Task(
             name=aggregate.name,
-            type=aggregate.type,
             status=aggregate.status,
             config=aggregate.config,
             algorithm_type=aggregate.algorithm_type,
@@ -153,5 +152,52 @@ class TaskAggregateMixin:
         try:
             rows = session.query(TaskDevice).filter_by(task_id=task_id).all()
             return [r.device_id for r in rows]
+        finally:
+            session.close()
+
+    def get_execution_profile(self, task_id: int) -> dict:
+        """任务执行画像（调度互斥依据，取代已废弃的 task.type 分支）。
+
+        Returns:
+            {'has_physical': bool, 'api_ids': List[int]}
+            has_physical 表示任务含物理设备用例（占 e2e 单飞槽位）；
+            api_ids 用于 API 并发互斥（同 API 不重叠）。
+        """
+        from shared.models.common_enums import DeviceType
+        session = get_db_session()
+        try:
+            has_physical = session.query(TaskCase.id).filter(
+                TaskCase.task_id == task_id,
+                TaskCase.device_type == DeviceType.PHYSICAL.value,
+            ).first() is not None
+            api_ids = [r.api_id for r in session.query(TaskAPI).filter_by(task_id=task_id).all()]
+            return {'has_physical': has_physical, 'api_ids': api_ids}
+        finally:
+            session.close()
+
+    def get_execution_profiles(self, task_ids: List[int]) -> dict:
+        """批量任务执行画像（DB 兜底调度用，避免逐任务 N+1）。
+
+        Returns:
+            {task_id: {'has_physical': bool, 'api_ids': List[int]}}
+        """
+        from shared.models.common_enums import DeviceType
+        task_ids = list(task_ids)
+        profiles = {tid: {'has_physical': False, 'api_ids': []} for tid in task_ids}
+        if not task_ids:
+            return profiles
+        session = get_db_session()
+        try:
+            physical_rows = session.query(TaskCase.task_id).filter(
+                TaskCase.task_id.in_(task_ids),
+                TaskCase.device_type == DeviceType.PHYSICAL.value,
+            ).distinct().all()
+            for (tid,) in physical_rows:
+                profiles[tid]['has_physical'] = True
+            api_rows = session.query(TaskAPI.task_id, TaskAPI.api_id).filter(
+                TaskAPI.task_id.in_(task_ids)).all()
+            for tid, api_id in api_rows:
+                profiles[tid]['api_ids'].append(api_id)
+            return profiles
         finally:
             session.close()

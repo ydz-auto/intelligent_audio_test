@@ -92,7 +92,6 @@ export function useE2eExecution(context: E2eExecutionContext) {
     resetProgress,
     addLog
   } = useTaskProgress({
-    testType: 'E2E',
     currentTaskId,
     onCompleted: async () => {
       isExecuting.value = false

@@ -30,7 +30,6 @@ class TaskEvent:
 class TaskCreated(TaskEvent):
     """任务创建事件。"""
     task_name: str = ''
-    task_type: str = 'api'
     total_cases: int = 0
     created_by: Optional[int] = None
     event_type: str = field(default='TaskCreated', init=False)
@@ -39,7 +38,6 @@ class TaskCreated(TaskEvent):
 @dataclass(frozen=True)
 class TaskStarted(TaskEvent):
     """任务启动事件。"""
-    task_type: str = 'api'
     event_type: str = field(default='TaskStarted', init=False)
 
 

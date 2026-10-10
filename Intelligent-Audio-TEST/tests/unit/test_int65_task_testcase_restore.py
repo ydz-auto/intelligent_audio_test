@@ -106,9 +106,9 @@ class TestTaskRepositoryBatchRestore:
 
         session = get_db_session()
         try:
-            t1 = Task(name='INT65_restore_已删除', type='api', status='stopped',
+            t1 = Task(name='INT65_restore_已删除', status='stopped',
                       deleted=True, deleted_at=datetime.now(_UTC8), total_cases=0)
-            t2 = Task(name='INT65_restore_存活', type='api', status='completed',
+            t2 = Task(name='INT65_restore_存活', status='completed',
                       deleted=False, total_cases=0)
             session.add_all([t1, t2])
             session.commit()

@@ -38,7 +38,6 @@ def make_task(**overrides):
     task.id = 123
     task.deleted = False
     task.status = 'completed'
-    task.type = 'e2e'
     task.config = {}
     task.algorithm_type = None
     task.algorithm_params = {}
@@ -84,6 +83,9 @@ class FakeRepo:
     # ---- publish 链路 ----
     def get_task(self, task_id):
         return self.source_task
+
+    def get_task_case_devices(self, task_id):
+        return []
 
     def get_task_case_ids(self, task_id):
         return [1, 2]

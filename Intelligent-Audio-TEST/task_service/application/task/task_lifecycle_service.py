@@ -22,6 +22,7 @@ from datetime import datetime
 from shared.utils.result_data_store import load_full_result_data
 from shared.utils.json_utils import deserialize_algorithm_result
 from shared.utils.status_utils import derive_task_case_status
+from shared.models.common_enums import TestType
 from shared.utils.status_constants import (
     TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EXECUTION_STATUSES,
 )
@@ -303,12 +304,20 @@ class TaskLifecycleService:
         """
         try:
             from task_service.infrastructure.acl.evaluation_acl_repository import evaluation_acl_repository
+            from shared.models.common_enums import DeviceType
             _eval_repo = evaluation_acl_repository
-            test_type = task_repository.get_task_type(task_id)
 
             for tc in completed_cases:
                 test_case_id = tc.test_case_id
                 try:
+                    # 评估口径值由用例级 device_type 派生（差异#2 收尾：
+                    # task.type 已废弃；gRPC 契约字段 test_type 保留）
+                    test_type = (
+                        TestType.E2E.value
+                        if (tc.device_type or DeviceType.PHYSICAL.value) == DeviceType.PHYSICAL.value
+                        else TestType.API.value
+                    )
+
                     # 跨域查询 TestResult（后续 gRPC 改造）
                     result = task_repository.get_test_result_for_reevaluate(task_id, test_case_id)
 

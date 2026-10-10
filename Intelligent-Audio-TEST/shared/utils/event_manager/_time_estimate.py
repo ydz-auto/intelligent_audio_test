@@ -1,10 +1,19 @@
 from datetime import datetime, timezone, timedelta
 import logging
 from shared.models.database import get_db_session
-from shared.models.common_enums import TestType
 from shared.utils.status_constants import TaskStatus
 
 logger = logging.getLogger(__name__)
+
+
+def _session_query_exists(session, TaskCase, TaskModel, device_types):
+    """按用例级 device_type 过滤历史任务的 EXISTS 条件（差异#2 收尾：取代 TaskModel.type 过滤）"""
+    from sqlalchemy import exists
+    return exists(
+        session.query(TaskCase.id)
+        .filter(TaskCase.task_id == TaskModel.id, TaskCase.device_type.in_(list(device_types)))
+        .correlate(TaskModel)
+    )
 # TODO(gRPC): _time_estimate 属于 event_manager 实时进度估算模块，
 # 在任务执行过程中高频调用以推算预计完成时间。
 # 已迁移到 gRPC 的查询：
@@ -13,7 +22,7 @@ logger = logging.getLogger(__name__)
 #   - TaskDevice count → get_task_devices（gRPC GetTaskDevices）
 #   - 音频时长 → _fetch_audio_durations_via_grpc（gRPC GetAudiosByIds）
 # 仍保留 PO 直连的查询（gRPC 不支持）：
-#   - Task 历史过滤 + 排序 + limit(3)（type/status/total_cases>0/actual_duration>0 过滤，
+#   - Task 历史过滤 + 排序 + limit(3)（device_type EXISTS/status/total_cases>0/actual_duration>0 过滤，
 #     completed_at desc 排序）— ListTasks 无 actual_duration>0 过滤且无法排序
 #   - TaskCase.duration 读取（历史任务的每条用例执行时长）— 需逐条获取 duration 字段
 #   - TestCase.config 读取（获取 audios[].audio_id）— 需按 id 批量查 config 字段
@@ -67,7 +76,7 @@ class TimeEstimateMixin:
         utc_plus_8 = timezone(timedelta(hours=8))
         now = datetime.now(utc_plus_8)
 
-        self._log(level='DEBUG', content=f"开始计算任务 {task.id} 的时间预估，任务类型: {task.type}", task_id=str(task.id))
+        self._log(level='DEBUG', content=f"开始计算任务 {task.id} 的时间预估", task_id=str(task.id))
 
         # 计算预计总时长（秒）
         estimated_total_seconds = 0
@@ -86,12 +95,22 @@ class TimeEstimateMixin:
                 actual_total_cases = len(tc_resp.get('items', [])) if tc_resp else 0
             self._log(level='DEBUG', content=f"任务 {task.id}: 总用例数={actual_total_cases}", task_id=str(task.id))
 
-            if task.type == TestType.API.value:
+            # 差异#2 收尾：物理/API 预估分支由用例级 device_type 画像决定（取代 task.type）
+            from shared.models.common_enums import DeviceType
+            from task_service.infrastructure.persistence.models import TaskCase
+            has_physical = local_db_session.query(TaskCase.id).filter(
+                TaskCase.task_id == task.id,
+                TaskCase.device_type == DeviceType.PHYSICAL.value,
+            ).first() is not None
+
+            if not has_physical:
                 # API测试任务：优先基于历史用例执行时间
                 from task_service.infrastructure.persistence.models import Task as TaskModel
-                # 查询最近完成的API测试任务
+                # 查询最近完成的含 API 用例的任务（差异#2 收尾：device_type EXISTS 取代 task.type 过滤）
+                api_types = (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value)
+                _api_case_exists = session_query_exists(local_db_session, TaskCase, TaskModel, api_types)
                 recent_api_tasks = local_db_session.query(TaskModel).filter(
-                    TaskModel.type == TestType.API.value,
+                    _api_case_exists,
                     TaskModel.status == TaskStatus.COMPLETED,
                     TaskModel.total_cases > 0,
                     TaskModel.actual_duration > 0,
@@ -182,9 +201,11 @@ class TimeEstimateMixin:
             else:
                 # E2E测试任务：优先基于历史用例执行时间
                 from task_service.infrastructure.persistence.models import Task as TaskModel
-                # 查询最近完成的E2E测试任务
+                # 查询最近完成的含物理设备用例的任务（差异#2 收尾：device_type EXISTS 取代 task.type 过滤）
+                _physical_case_exists = session_query_exists(
+                    local_db_session, TaskCase, TaskModel, (DeviceType.PHYSICAL.value,))
                 recent_e2e_tasks = local_db_session.query(TaskModel).filter(
-                    TaskModel.type == TestType.E2E.value,
+                    _physical_case_exists,
                     TaskModel.status == TaskStatus.COMPLETED,
                     TaskModel.total_cases > 0,
                     TaskModel.actual_duration > 0,

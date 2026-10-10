@@ -227,7 +227,7 @@ def _seed(db, storage_env):
     now = datetime.now()
 
     def _task(tid, name):
-        return Task(id=tid, name=name, description='seed', type='api', status='completed',
+        return Task(id=tid, name=name, description='seed', status='completed',
                     config={}, algorithm_type='translation', algorithm_params={},
                     total_cases=2, completed_cases=2, failed_cases=0,
                     created_by_user_id=None, created_at=now, updated_at=now,
@@ -257,7 +257,7 @@ def _seed(db, storage_env):
             TestCase(id='tc_001', name='用例一', config={
                 'rounds': [{'roundNumber': 1, 'audios': [{'audio_id': 'a1'}]}]},
                 reference_params=[{'round_number': 1, 'reference_params_path': ref_stored}],
-                test_type='api', created_at=now, updated_at=now, deleted=False),
+                created_at=now, updated_at=now, deleted=False),
             TestResult(id=100, task_id=1, test_case_id='tc_001', device_id=77, api_id=88,
                        algorithm_type='translation', execution_status='completed',
                        result_data={'score': 1}, result_data_path=stored, created_at=now),

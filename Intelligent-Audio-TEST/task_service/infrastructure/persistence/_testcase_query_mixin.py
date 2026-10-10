@@ -12,9 +12,6 @@ from task_service.infrastructure.persistence._testcase_repo_common import (
     build_dim_id_filter,
 )
 
-# test_type 合法值（用于过滤分支判断）
-_VALID_TEST_TYPES = [TestType.API.value, TestType.E2E.value]
-
 
 class TestCaseQueryMixin:
     """TestCase 查询与统计"""
@@ -33,7 +30,6 @@ class TestCaseQueryMixin:
         keyword: str = None,
         tag: str = None,
         group_id: str = None,
-        test_type: str = None,
         algorithm_type: str = None,
         include_deleted: bool = False,
         dimension_id: int = None,
@@ -63,9 +59,6 @@ class TestCaseQueryMixin:
         if algorithm_type:
             query = query.filter(TestCase.algorithm_type == algorithm_type)
 
-        if test_type and test_type in _VALID_TEST_TYPES:
-            query = query.filter(TestCase.test_type == test_type)
-
         # 按评估维度过滤：搜索 config JSON 中包含该 dimension_id 的用例
         if dimension_id:
             query = query.filter(build_dim_id_filter(str(dimension_id)))
@@ -76,7 +69,6 @@ class TestCaseQueryMixin:
         self,
         tag_ids: List[str],
         keyword: str = None,
-        test_type: str = None,
         algorithm_type: str = None,
         include_deleted: bool = False,
         dimension_id: int = None,
@@ -95,8 +87,6 @@ class TestCaseQueryMixin:
                 (TestCase.name.like(f'%{keyword}%')) |
                 (TestCase.description.like(f'%{keyword}%'))
             )
-        if test_type and test_type in _VALID_TEST_TYPES:
-            tc_query = tc_query.filter(TestCase.test_type == test_type)
         if algorithm_type:
             tc_query = tc_query.filter(TestCase.algorithm_type == algorithm_type)
 
@@ -113,7 +103,8 @@ class TestCaseQueryMixin:
 
         Args:
             group: 分组名（通过 group_name 查 group_id）
-            test_type: 用例类型（api/e2e）
+            test_type: 执行口径（api/e2e）——差异#2 收尾后用例不存储类型，
+                按配置形态派生过滤（E2E 起跑流程圈定含播放设备音频的可物理执行用例）
             search: 名称/ID 模糊搜索
             tag: 标签名
             algorithm_type: 算法类型
@@ -122,7 +113,7 @@ class TestCaseQueryMixin:
             用例 ID 列表
         """
         session = get_db_session()
-        query = session.query(TestCase.id).filter(TestCase.deleted == False)  # noqa: E712
+        query = session.query(TestCase.id, TestCase.config).filter(TestCase.deleted == False)  # noqa: E712
 
         if group:
             group_obj = session.query(TestCaseGroup).filter_by(name=group).first()
@@ -131,9 +122,6 @@ class TestCaseQueryMixin:
             else:
                 # 未找到分组则返回空
                 return []
-
-        if test_type:
-            query = query.filter(TestCase.test_type == test_type)
 
         if algorithm_type:
             query = query.filter(TestCase.algorithm_type == algorithm_type)
@@ -154,7 +142,12 @@ class TestCaseQueryMixin:
             # 按标签筛选
             query = query.join(TestCase.tags).filter(Tag.name == tag)
 
-        return [row[0] for row in query.all()]
+        rows = query.all()
+        if test_type in (TestType.API.value, TestType.E2E.value):
+            from shared.utils.testcase_helpers import derive_case_test_type
+            return [cid for cid, config in rows
+                    if derive_case_test_type(config) == test_type]
+        return [cid for cid, _config in rows]
 
     def count_testcases(self) -> int:
         """统计未删除测试用例总数。"""
@@ -180,43 +173,41 @@ class TestCaseQueryMixin:
             .limit(limit).all()
 
     def get_testcase_stats(self, algorithm_type: str = '', group_id: str = '',
-                           group_by: str = '', test_type: str = None,
+                           group_by: str = '',
                            dimension_id: int = None) -> dict:
         """聚合统计 TestCase — count / group_by。
 
-        多维筛选：algorithm_type / test_type / dimension_id / group_id
+        多维筛选：algorithm_type / dimension_id / group_id
         """
         from sqlalchemy import func as _func
 
         session = get_db_session()
         try:
             return self._get_testcase_stats_impl(
-                session, _func, algorithm_type, group_id, group_by, test_type, dimension_id)
+                session, _func, algorithm_type, group_id, group_by, dimension_id)
         finally:
             session.close()
 
     def _get_testcase_stats_impl(self, session, _func, algorithm_type, group_id,
-                                 group_by, test_type, dimension_id) -> dict:
+                                 group_by, dimension_id) -> dict:
         """get_testcase_stats 的实现（拆分大函数）。"""
         query = session.query(TestCase).filter(TestCase.deleted == False)  # noqa: E712
         if algorithm_type:
             query = query.filter(TestCase.algorithm_type == algorithm_type)
         if group_id:
             query = query.filter(TestCase.group_id == group_id)
-        if test_type and test_type in _VALID_TEST_TYPES:
-            query = query.filter(TestCase.test_type == test_type)
         if dimension_id:
             query = query.filter(build_dim_id_filter(str(dimension_id)))
 
         if group_by:
             return self._get_testcase_stats_grouped(
-                session, _func, algorithm_type, group_id, group_by, test_type, dimension_id)
+                session, _func, algorithm_type, group_id, group_by, dimension_id)
 
         total = query.count()
         return {'total': int(total)}
 
     def _get_testcase_stats_grouped(self, session, _func, algorithm_type, group_id,
-                                    group_by, test_type, dimension_id) -> dict:
+                                    group_by, dimension_id) -> dict:
         """按字段分组统计分支。"""
         allowed = {'algorithm_type': TestCase.algorithm_type,
                    'group_id': TestCase.group_id}
@@ -230,8 +221,6 @@ class TestCaseQueryMixin:
             rows = rows.filter(TestCase.algorithm_type == algorithm_type)
         if group_id:
             rows = rows.filter(TestCase.group_id == group_id)
-        if test_type and test_type in _VALID_TEST_TYPES:
-            rows = rows.filter(TestCase.test_type == test_type)
         if dimension_id:
             rows = rows.filter(build_dim_id_filter(str(dimension_id)))
         rows = rows.group_by(col).all()

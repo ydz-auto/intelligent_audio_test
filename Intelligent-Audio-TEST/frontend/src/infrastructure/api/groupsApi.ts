@@ -20,8 +20,6 @@ export interface GroupListQuery {
   page?: number
   perPage?: number
   algorithmType?: string
-  /** 测试类型过滤（后端 test_type，兼容 type 别名） */
-  testType?: string
   keyword?: string
 }
 

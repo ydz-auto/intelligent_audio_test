@@ -18,7 +18,6 @@ def make_aggregate(status='pending') -> TaskAggregate:
     return TaskAggregate(
         id=1,
         name='test-task',
-        type='voice',
         status=status,
     )
 

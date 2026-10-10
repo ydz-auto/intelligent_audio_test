@@ -436,10 +436,14 @@ class ProgressMixin:
             self._log(level='DEBUG', content=f"没有正在执行的用例", task_id=task_id)
             return None
         case_info = session.get(TestCase, current_tc.test_case_id)
+        # 差异#2 收尾：物理用例执行展示 playing，其余 evaluating（device_type 取代 task.type）
+        step = (STEP_PLAYING
+                if (current_tc.device_type or 'physical') == 'physical'
+                else STEP_EVALUATING)
         current_case = ProgressCurrentCase(
             case_id=str(current_tc.test_case_id),
             name=case_info.name if case_info else "未知用例",
-            step=STEP_PLAYING if db_task.type == TestType.E2E.value else STEP_EVALUATING,
+            step=step,
             start_time=_ts_ms(current_tc.started_at),
         )
         self._log(level='DEBUG',
@@ -474,8 +478,18 @@ class ProgressMixin:
         return int((completed_at - started_at).total_seconds())
 
     def _build_api_resources_from_po(self, session, db_task) -> list:
-        """构造 API 资源状态（PO 回退：按 load_balancer 每个 URL 一条）。"""
-        if db_task.type != TestType.API.value:
+        """构造 API 资源状态（PO 回退：按 load_balancer 每个 URL 一条）。
+
+        差异#2 收尾：仅含 API 类被测设备用例的任务收集（device_type 取代 task.type）。
+        """
+        from shared.models.common_enums import DeviceType
+        from task_service.infrastructure.persistence.models import TaskCase
+        api_types = (DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value)
+        has_api_case = session.query(TaskCase.id).filter(
+            TaskCase.task_id == db_task.id,
+            TaskCase.device_type.in_(api_types),
+        ).first() is not None
+        if not has_api_case:
             return []
 
         from task_service.infrastructure.persistence.models import TaskAPI, TestResult

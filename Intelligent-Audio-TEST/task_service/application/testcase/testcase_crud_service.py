@@ -27,6 +27,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 
 from shared.utils.query_utils import now_cst
+from shared.utils.testcase_helpers import derive_case_test_type as common_derive_case_test_type
 from task_service.infrastructure.persistence.testcase_repository import testcase_repository
 from task_service.application.testcase.testcase_batch_service import TestCaseBatchService
 from task_service.application.testcase.testcase_query_service import TestCaseQueryService
@@ -66,11 +67,12 @@ def _apply_reference_params_to_config(test_case) -> None:
 
     case_id = getattr(test_case, 'id', '') or str(id(test_case))
 
-    # 构建传入 gRPC 的 test_case_config（algorithm_type / config / test_type）
+    # 构建传入 gRPC 的 test_case_config（algorithm_type / config / test_type，
+    # test_type 为算法服务参考值口径契约值，由配置形态派生）
     test_case_config = {
         'algorithm_type': getattr(test_case, 'algorithm_type', None),
         'config': config,
-        'test_type': getattr(test_case, 'test_type', 'api') or 'api',
+        'test_type': common_derive_case_test_type(config),
     }
 
     ref_params_list = []
@@ -122,7 +124,7 @@ class TestCaseCrudService:
         Args:
             data: 已通过网关 Pydantic 校验的请求体 dict，包含：
                 name, description, group_id/group, config, algorithm_type,
-                test_type, tags, audios, dimensions, background_noise_*,
+                tags, audios, dimensions, background_noise_*,
                 algorithm_params 等
 
         Returns:
@@ -150,9 +152,9 @@ class TestCaseCrudService:
             if group_id is None:
                 return {'success': False, 'message': '缺少必要字段: group_id 或 group', 'data': None, 'code': 400}
 
-            test_type_val = data.get('test_type', 'api')
-            if test_type_val not in ['api', 'e2e']:
-                return {'success': False, 'message': f"test_type 无效: {test_type_val}，必须为 api 或 e2e", 'data': None, 'code': 400}
+            # 差异#2 收尾：用例是纯数据载体，不再接收/校验/存储 test_type；
+            # 执行方式由任务侧被测设备类型（device_type）决定
+            data.pop('test_type', None)
 
             # 构建 config
             config = data.get('config') or {}
@@ -165,7 +167,7 @@ class TestCaseCrudService:
                         round_item.pop('referenceParamsPath', None)
                         round_item.pop('reference_params_path', None)
                         round_item.pop('interferers', None)
-                device_error = self._process_case_devices(merged_config, test_type_val, from_rounds=True, common=common)
+                device_error = self._process_case_devices(merged_config, from_rounds=True, common=common)
                 if device_error is not None:
                     return {'success': False, 'message': device_error, 'data': None, 'code': 400}
             else:
@@ -182,7 +184,7 @@ class TestCaseCrudService:
                         if bg_noise_device_ids:
                             merged_config['background_noise']['device_ids'] = bg_noise_device_ids
 
-                audios_result = self._process_case_audios(data, test_type_val, common)
+                audios_result = self._process_case_audios(data, common)
                 if audios_result is not None and isinstance(audios_result, str):
                     return {'success': False, 'message': audios_result, 'data': None, 'code': 400}
                 if audios_result is not None:
@@ -214,7 +216,6 @@ class TestCaseCrudService:
                     'config': merged_config,
                     'algorithm_params': algo_params_col,
                     'algorithm_type': data.get('algorithm_type'),
-                    'test_type': test_type_val,
                 })
 
                 # 处理标签
@@ -262,7 +263,6 @@ class TestCaseCrudService:
                 return {'success': False, 'message': '未找到测试用例', 'data': None, 'code': 404}
 
             current_config = tc.config or {}
-            tc_test_type = tc.test_type or 'api'
 
             # 更新基本字段
             group_id = data.get('group_id')
@@ -342,8 +342,7 @@ class TestCaseCrudService:
                     pdid = common.normalize_optional_int(audio_item.get('playback_device_id'))
                     if aid is None or spl is None or porder is None:
                         return {'success': False, 'message': f"第 {i+1} 个音频配置缺少必要字段: audio_id, spl, play_order", 'data': None, 'code': 400}
-                    if tc_test_type == 'e2e' and not pdid:
-                        return {'success': False, 'message': f"第 {i+1} 个音频配置为 E2E 类型用例，必须指定 playback_device_id", 'data': None, 'code': 400}
+
                 standard_audios = []
                 for audio_item in audios_data:
                     standard_audios.append({
@@ -460,7 +459,6 @@ class TestCaseCrudService:
                     'algorithm_params': copy.deepcopy(tc.algorithm_params) if tc.algorithm_params else None,
                     'reference_params': copy.deepcopy(tc.reference_params) if tc.reference_params else None,
                     'algorithm_type': tc.algorithm_type,
-                    'test_type': tc.test_type or 'api',
                 })
 
                 for tag in tc.tags:
@@ -543,12 +541,12 @@ class TestCaseCrudService:
     # ==================== 委托：读操作 ====================
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
-                       group_id=None, test_type=None, algorithm_type=None,
+                       group_id=None, algorithm_type=None,
                        view=None, include_deleted=False) -> dict:
         """查询测试用例列表（委托 TestCaseQueryService）。"""
         return self._query_service.list_testcases(
             page=page, per_page=per_page, keyword=keyword, tag=tag,
-            group_id=group_id, test_type=test_type,
+            group_id=group_id,
             algorithm_type=algorithm_type, view=view,
             include_deleted=include_deleted,
         )
@@ -576,20 +574,28 @@ class TestCaseCrudService:
     # ==================== 内部辅助 ====================
 
     @staticmethod
-    def _process_case_audios(data, test_type_val, common):
-        """处理音频关联，返回标准音频列表或 error message string 或 None"""
+    def _process_case_audios(data, common):
+        """处理音频关联，返回标准音频列表或 error message string 或 None
+
+        差异#2 收尾：E2E 一致性校验由配置形态承载 —— 任一音频指定了
+        playback_device_id（物理执行形态）时，全部音频必须指定。
+        """
         audios_data = data.get('audios')
         if not audios_data:
             return None
-        for i, audio_item in enumerate(audios_data):
+        normalized = [
+            (item, common.normalize_optional_int(item.get('playback_device_id')))
+            for item in audios_data
+        ]
+        has_playback = any(pdid for _, pdid in normalized)
+        for i, (audio_item, pdid) in enumerate(normalized):
             aid = audio_item.get('audio_id')
             spl = audio_item.get('spl')
             porder = audio_item.get('play_order')
-            pdid = common.normalize_optional_int(audio_item.get('playback_device_id'))
             if aid is None or spl is None or porder is None:
                 return f"第 {i+1} 个音频配置缺少必要字段: audio_id, spl, play_order"
-            if test_type_val == 'e2e' and not pdid:
-                return f"第 {i+1} 个音频配置为 E2E 类型用例，必须指定 playback_device_id"
+            if has_playback and not pdid:
+                return f"第 {i+1} 个音频配置为 E2E（物理执行）形态用例，必须指定 playback_device_id"
         standard_audios = []
         for audio_item in audios_data:
             standard_audios.append({
@@ -601,15 +607,25 @@ class TestCaseCrudService:
         return standard_audios
 
     @staticmethod
-    def _process_case_devices(merged_config, test_type_val, from_rounds=False, common=None):
-        """处理设备关联验证，返回 error message 或 None"""
-        if test_type_val != 'e2e':
+    def _process_case_devices(merged_config, from_rounds=False, common=None):
+        """处理设备关联验证，返回 error message 或 None
+
+        差异#2 收尾：由配置形态承载 —— rounds 中任一音频携带
+        playback_device_id（物理执行形态）时，全部音频必须指定。
+        """
+        if not from_rounds:
             return None
-        if from_rounds:
-            for rn, round_item in enumerate(merged_config.get('rounds', []), 1):
-                for ai, audio_item in enumerate(round_item.get('audios', []), 1):
-                    if not audio_item.get('playback_device_id'):
-                        return f"第{rn}轮第{ai}个音频配置为 E2E 类型用例，必须指定 playback_device_id"
+        all_audios = [
+            (rn, ai, audio_item)
+            for rn, round_item in enumerate(merged_config.get('rounds', []), 1)
+            if isinstance(round_item, dict)
+            for ai, audio_item in enumerate(round_item.get('audios', []), 1)
+            if isinstance(audio_item, dict)
+        ]
+        if any(audio_item.get('playback_device_id') for _, _, audio_item in all_audios):
+            for rn, ai, audio_item in all_audios:
+                if not audio_item.get('playback_device_id'):
+                    return f"第{rn}轮第{ai}个音频配置为 E2E（物理执行）形态用例，必须指定 playback_device_id"
         return None
 
 

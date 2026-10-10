@@ -80,7 +80,6 @@ export function useTasks() {
       .map(t => ({
         id: t.id,
         name: t.name,
-        type: String(t.type ?? ''),
         status: String(t.status ?? ''),
       }));
   });

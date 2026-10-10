@@ -118,9 +118,9 @@ def _seed_publishable_task_with_report(wer_value=7.2):
 
     s = get_db_session()
     case = TestCase(id=f'BENCH-{uuid.uuid4().hex[:12]}', name='基准用例',
-                    config={}, test_type='e2e')
+                    config={})
     s.add(case)
-    task = Task(name='双轨排行基准任务', description=None, type='e2e',
+    task = Task(name='双轨排行基准任务', description=None,
                 status=TaskStatus.COMPLETED, total_cases=1, completed_cases=1)
     s.add(task)
     s.flush()

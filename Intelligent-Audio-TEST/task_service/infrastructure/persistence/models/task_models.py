@@ -32,7 +32,6 @@ class Task(Base):
     id = Column(Integer, primary_key=True, autoincrement=True, comment='任务唯一ID')
     name = Column(String(255), nullable=False, comment='任务名称')
     description = Column(Text, comment='任务描述')
-    type = Column(String(50), nullable=False, comment='任务类型 (api/e2e)')
     status = Column(String(20), nullable=False, default='pending', comment='任务状态 (pending/queued/running/evaluating/reevaluate_queued/reevaluating/completed/failed/stopped/paused/skipped)')
     config = Column(JSON, comment='任务执行时的特定配置')
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
@@ -103,8 +102,8 @@ class TaskCase(Base):
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
-    # 执行域 P0 新增：用例级被测设备路由（取代 task.type 语义）
-    device_type = Column(String(20), nullable=True, comment='被测设备类型 (physical/http_api/websocket_api，用例级决定执行路由，为空时回退 task.type)')
+    # 执行域 P0 新增：用例级被测设备路由（取代已废弃的 task.type 语义）
+    device_type = Column(String(20), nullable=True, comment='被测设备类型 (physical/http_api/websocket_api，用例级决定执行路由；历史 NULL 行已由 202610 迁移回填)')
     device_id = Column(String(50), nullable=True, comment='被测设备ID (physical=设备ID / http_api|websocket_api=api.id)')
     # 实验室扩展：用例级实验室归属（可空=通用任务，随设备选择按实验室过滤）
     lab_id = Column(Integer, nullable=True, index=True, comment='关联实验室ID (实验室扩展)')

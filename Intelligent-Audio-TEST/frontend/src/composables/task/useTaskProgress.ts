@@ -11,14 +11,13 @@ import type {
 import type { Log } from '../../domain'
 
 interface TaskProgressOptions {
-  testType?: 'API' | 'E2E';
   currentTaskId: Ref<string | number | null>;
   onCompleted?: (data: TaskProgress) => void;
   onFailed?: (data: TaskProgress) => void;
 }
 
 export function useTaskProgress(options: TaskProgressOptions) {
-  const { testType = 'API', currentTaskId, onCompleted, onFailed } = options
+  const { currentTaskId, onCompleted, onFailed } = options
 
   const progressPercentage = ref(0)
   const completedTests = ref(0)

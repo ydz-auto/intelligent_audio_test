@@ -18,7 +18,6 @@ def _task_po_to_entity(po: Task) -> TaskAggregate:
     return TaskAggregate(
         id=po.id,
         name=po.name,
-        type=po.type,
         status=po.status,
         config=po.config,
         algorithm_type=po.algorithm_type,

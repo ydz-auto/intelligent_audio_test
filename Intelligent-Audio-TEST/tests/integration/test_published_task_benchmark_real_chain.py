@@ -110,7 +110,7 @@ def _seed_publishable_task():
     s.add(case)
     s.flush()
     now = datetime.now()
-    task = Task(name='PT-BENCH-src', type='e2e', status=TaskStatus.COMPLETED,
+    task = Task(name='PT-BENCH-src', status=TaskStatus.COMPLETED,
                 total_cases=1, completed_cases=1, failed_cases=0,
                 created_at=now, updated_at=now)
     s.add(task)

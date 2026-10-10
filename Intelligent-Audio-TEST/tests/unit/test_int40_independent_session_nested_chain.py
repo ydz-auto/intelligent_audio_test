@@ -132,8 +132,7 @@ def _seed_task_with_case():
     """播种一个 running 任务 + 一条 queued 用例，返回 (task_id, tc_rel_id)。"""
     s = database.get_db_session()
     try:
-        task = Task(id=1, name='INT-40 守卫任务', type='api',
-                    status=TaskStatus.RUNNING, deleted=False)
+        task = Task(id=1, name='INT-40 守卫任务', status=TaskStatus.RUNNING, deleted=False)
         tc_rel = TaskCase(id=11, task_id=1, test_case_id='case-1',
                           execution_status='queued', evaluation_status='pending',
                           status='running')
@@ -261,8 +260,7 @@ class TestSchedulerSurvivesSharedSessionCloseInStartTask:
         s = database.get_db_session()
         try:
             for tid in (1, 2):
-                s.add(Task(id=tid, name=f'INT-40 任务{tid}', type='api',
-                           status=TaskStatus.PENDING, deleted=False))
+                s.add(Task(id=tid, name=f'INT-40 任务{tid}', status=TaskStatus.PENDING, deleted=False))
             s.commit()
         finally:
             s.close()

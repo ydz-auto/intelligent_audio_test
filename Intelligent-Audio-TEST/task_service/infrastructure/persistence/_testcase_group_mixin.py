@@ -6,7 +6,6 @@ TestCaseGroup 查询 / 创建 / 更新 / 软删除（含级联）/ 多维筛选�
 from typing import Any, Dict, List, Optional
 
 from shared.models.database import get_db_session
-from shared.models.common_enums import TestType
 from task_service.infrastructure.persistence.models import TestCase, TestCaseGroup
 from task_service.infrastructure.persistence._testcase_repo_common import (
     _now,
@@ -40,12 +39,12 @@ class TestCaseGroupMixin:
         return group
 
     def list_groups(self, algorithm_type: str = '', search: str = '',
-                    test_type: str = None, dimension_id: int = None,
+                    dimension_id: int = None,
                     keyword: str = None) -> list:
         """查询 TestCaseGroup 列表（过滤逻辑删除，返回 dict 列表）。
 
-        多维筛选：algorithm_type / test_type / dimension_id / keyword
-        其中 test_type / dimension_id / keyword 按用例级条件统计各分组下匹配的用例数，
+        多维筛选：algorithm_type / dimension_id / keyword
+        其中 dimension_id / keyword 按用例级条件统计各分组下匹配的用例数，
         只返回含匹配用例的分组。
         """
         session = get_db_session()
@@ -55,9 +54,9 @@ class TestCaseGroupMixin:
                 query = query.filter(TestCaseGroup.algorithm_type == algorithm_type)
 
             # 多维筛选：按用例级条件过滤分组
-            if test_type or dimension_id or keyword:
+            if dimension_id or keyword:
                 case_counts = self._count_group_matched_cases(
-                    session, test_type, dimension_id, keyword)
+                    session, dimension_id, keyword)
                 query = query.filter(TestCaseGroup.id.in_(list(case_counts.keys())))
             else:
                 case_counts = {}
@@ -73,11 +72,9 @@ class TestCaseGroupMixin:
         finally:
             session.close()
 
-    def _count_group_matched_cases(self, session, test_type, dimension_id, keyword) -> Dict[str, int]:
+    def _count_group_matched_cases(self, session, dimension_id, keyword) -> Dict[str, int]:
         """按用例级筛选条件统计各分组下匹配用例数 {group_id: count}。"""
         case_filters = [TestCase.deleted == False]  # noqa: E712
-        if test_type and test_type in [TestType.API.value, TestType.E2E.value]:
-            case_filters.append(TestCase.test_type == test_type)
         if dimension_id:
             case_filters.append(build_dim_id_filter(str(dimension_id)))
         if keyword:

@@ -45,16 +45,12 @@ export function toGroupQueryDto(params: {
   page?: number
   perPage?: number
   algorithmType?: string
-  testType?: string
-  type?: string
   keyword?: string
 }): Record<string, string | number> {
   const query: Record<string, string | number> = {}
   if (params.page !== undefined) query.page = params.page
   if (params.perPage !== undefined) query.per_page = params.perPage
   if (params.algorithmType) query.algorithm_type = params.algorithmType
-  if (params.testType) query.test_type = params.testType
-  else if (params.type) query.type = params.type
   if (params.keyword) query.keyword = params.keyword
   return query
 }

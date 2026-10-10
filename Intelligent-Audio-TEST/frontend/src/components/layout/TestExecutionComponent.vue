@@ -131,7 +131,7 @@
     </div>
 
     <!-- API资源管理（仅API测试时显示） -->
-    <div v-if="testType === 'API' && apiResources && apiResources.length > 0" class="api-resources-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border-color);">
+    <div v-if="testType !== 'E2E' && apiResources && apiResources.length > 0" class="api-resources-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 24px; border: 1px solid var(--border-color);">
       <h4 style="margin: 0 0 16px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
         <i class="fas fa-server" style="color: var(--primary-color);"></i>
         API资源管理
@@ -373,7 +373,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus } from '@/domain/enums';
 
 const props = defineProps({
-  testType: {type: String, required: true, validator: (value) => ['API', 'E2E'].includes(value)},
+  testType: {type: String, default: 'API', validator: (value) => ['API', 'E2E', '混合'].includes(value)},
   taskInfo: {type: Object, default: () => ({})},
   progressInfo: {type: Object, default: () => ({
       totalProgress: 0, completed: 0, inProgress: 0, pending: 0, executionFailed: 0, evaluationFailed: 0})

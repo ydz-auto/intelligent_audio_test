@@ -19,7 +19,7 @@ export {
   HttpStatus,
   FINISHED_STATUSES,
 } from '../enums'
-export type { TaskStatusType, TaskType } from '../enums'
+export type { TaskStatusType } from '../enums'
 
 // ===== 通用 =====
 

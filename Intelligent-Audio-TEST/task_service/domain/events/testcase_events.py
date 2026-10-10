@@ -11,7 +11,6 @@ class TestCaseCreated:
     case_id: str
     name: str
     algorithm_type: str
-    test_type: str = "api"
 
 
 @dataclass

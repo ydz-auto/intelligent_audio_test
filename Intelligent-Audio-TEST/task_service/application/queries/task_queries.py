@@ -27,7 +27,6 @@ class GetTaskQuery(Query):
 class ListTasksQuery(Query):
     """任务列表查询（支持过滤和分页）。"""
     status: Optional[str] = None
-    task_type: Optional[str] = None
     algorithm_type: Optional[str] = None
     created_by: Optional[int] = None
     page: int = 1
@@ -57,11 +56,15 @@ class GetTaskCasesQuery(Query):
 
 @dataclass(frozen=True)
 class ListTasksConfigQuery(Query):
-    """任务列表查询（gRPC servicer 用，参数与 task_query_service.list_tasks 对齐）。"""
+    """任务列表查询（gRPC servicer 用，参数与 task_query_service.list_tasks 对齐）。
+
+    device_type（可选）：按用例级被测设备类型过滤任务（差异#2 收尾，
+    承载于 proto ListTasksRequest.type 字段的取值，如 'physical'）。
+    """
     page: int = 1
     per_page: int = 10
     status: Optional[str] = None
-    task_type: Optional[str] = None
+    device_type: Optional[str] = None
     algorithm_type: Optional[str] = None
     search: Optional[str] = None
     start_date: Optional[str] = None
@@ -111,7 +114,6 @@ class ListTestCasesQuery(Query):
     keyword: Optional[str] = None
     tag: Optional[str] = None
     group_id: Optional[str] = None
-    test_type: Optional[str] = None
     algorithm_type: Optional[str] = None
     view: Optional[str] = None
     include_deleted: bool = False

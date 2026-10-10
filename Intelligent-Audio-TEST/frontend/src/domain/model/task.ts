@@ -2,7 +2,7 @@
  * Task 领域模型 —— camelCase
  * 对应后端 api_gateway/schemas/task.py::TaskListItem / TaskDetailData
  */
-import type { TaskStatusType, TaskType } from '../enums'
+import type { TaskStatusType } from '../enums'
 
 /** 任务关联设备简报 */
 export interface TaskDeviceBrief {
@@ -49,7 +49,8 @@ export interface Task {
   id: number | string
   name: string
   description?: string
-  type: TaskType
+  /** 用例级被测设备类型集合（physical/http_api/websocket_api，差异#2 收尾取代 task.type） */
+  deviceTypes?: string[]
   status: TaskStatusType
   progress?: number
   config?: Record<string, any>
@@ -81,7 +82,7 @@ export interface Task {
   }
   devices?: TaskDeviceBrief[]
   apis?: TaskApiBrief[]
-  /** 合并任务来源任务列表（type='merged' 时由后端填充） */
+  /** 合并任务来源任务列表（由 TaskMergeRelation 填充，存在即合并容器任务） */
   sourceTasks?: TaskSourceBrief[]
   /** 任务详情接口返回的关联测试用例列表（TaskDetailData.cases） */
   cases?: TaskCaseBrief[]
@@ -90,7 +91,6 @@ export interface Task {
 /** 任务创建表单/请求（前端 Domain → adapter 转 DTO；对齐 TaskCreateRequest 契约） */
 export interface TaskCreateDraft {
   name: string
-  type: TaskType
   description?: string
   /** 对应 case_ids: List[str]（后端用例 ID 为字符串） */
   caseIds: string[]

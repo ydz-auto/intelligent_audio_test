@@ -42,7 +42,6 @@ def build_manifest(task_rows: List[dict],
             {
                 'id': row.get('id'),
                 'name': row.get('name'),
-                'type': row.get('type'),
                 'status': row.get('status'),
                 'resultCount': sum(1 for r in result_rows if r.get('task_id') == row.get('id')),
             }

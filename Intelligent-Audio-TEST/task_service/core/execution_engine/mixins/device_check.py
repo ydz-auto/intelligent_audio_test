@@ -17,8 +17,14 @@ class DeviceCheckMixin:
     """E2E 设备状态检查：被测设备 / 播放设备在线性校验"""
 
     def _check_e2e_devices(self, task_id, task, tc_rel, local_db_session):
-        """检查E2E设备状态 — 编排入口，分委托给子方法"""
-        if task.type != 'e2e':
+        """检查E2E设备状态 — 编排入口，分委托给子方法
+
+        差异#2 收尾：分支条件由 task.type 统一为用例级 device_type，
+        仅物理设备（physical）用例需要设备在线检查。
+        """
+        from shared.models.common_enums import DeviceType
+        device_type = tc_rel.device_type or DeviceType.PHYSICAL.value
+        if device_type != DeviceType.PHYSICAL.value:
             return True, ""
 
         self._log(level='DEBUG', content=f"开始检查设备状态: 任务ID={task_id}, 用例ID={tc_rel.id}", task_id=task_id)

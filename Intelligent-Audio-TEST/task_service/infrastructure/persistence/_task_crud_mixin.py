@@ -29,7 +29,6 @@ class TaskCrudMixin:
     def create_task_with_relations(
         self,
         name: str,
-        task_type: str,
         description: str,
         config: Optional[Dict[str, Any]],
         algorithm_type: Optional[str],
@@ -45,7 +44,6 @@ class TaskCrudMixin:
 
         Args:
             name: 任务名称
-            task_type: 任务类型（api / e2e）
             description: 任务描述
             config: 任务配置
             algorithm_type: 算法类型
@@ -55,9 +53,8 @@ class TaskCrudMixin:
             api_ids: 关联 API ID 列表
             created_by: 创建人
             now: 创建时间（调用方传入，保证时区一致）
-            case_devices: 用例级设备选择（执行域 P0 新增）：
-                [{"case_id": str, "device_type": str, "device_id": str, "lab_id": int|None}, ...]，
-                为空时保持旧语义（按 task_type 路由）。
+            case_devices: 用例级设备选择（执行域 P0）：
+                [{"case_id": str, "device_type": str, "device_id": str, "lab_id": int|None}, ...]
 
         Returns:
             新任务 ID。
@@ -71,7 +68,7 @@ class TaskCrudMixin:
         session = get_db_session()
         try:
             task = self._build_new_task(
-                name=name, description=description, task_type=task_type,
+                name=name, description=description,
                 config=config, algorithm_type=algorithm_type,
                 algorithm_params=algorithm_params,
                 total_cases=len(case_ids), created_by=created_by, now=now,
@@ -91,7 +88,7 @@ class TaskCrudMixin:
             session.close()
 
     @staticmethod
-    def _build_new_task(name: str, description: str, task_type: str,
+    def _build_new_task(name: str, description: str,
                         config: Optional[Dict[str, Any]],
                         algorithm_type: Optional[str],
                         algorithm_params: Optional[Dict[str, Any]],
@@ -101,7 +98,6 @@ class TaskCrudMixin:
         return Task(
             name=name,
             description=description,
-            type=task_type,
             status=SharedTaskStatus.PENDING,
             config=config or None,
             algorithm_type=algorithm_type,
@@ -160,7 +156,6 @@ class TaskCrudMixin:
         self,
         source_task_ids: List[int],
         merged_task_name: str,
-        merged_task_type: str,
         description: str,
         created_by: Optional[int],
         now: Optional[datetime] = None,
@@ -170,7 +165,6 @@ class TaskCrudMixin:
         Args:
             source_task_ids: 源任务 ID 列表
             merged_task_name: 合并后任务名称
-            merged_task_type: 合并后任务类型
             description: 任务描述
             created_by: 创建人
             now: 创建时间
@@ -181,6 +175,8 @@ class TaskCrudMixin:
         说明（迁移自 V9.7.10 task_controller.merge 增强）:
         - 允许合并已完成/合并任务/已合并任务（后两者会展开为原始源任务，
           使"合并任务再次被合并"时不会丢失其历史源任务）
+        - 合并容器任务由 TaskMergeRelation(merged_task_id) 存在性标识
+          （task.type 已废弃，差异#2 收尾）
         - 用例集合以源任务 TaskCase 为准（TestResult 可能包含已删除用例的执行记录，
           否则会导致合并任务 TaskCase 数量与 total_cases 不一致）
         - 新建 TaskCase 继承源任务的执行/评估状态，避免合并任务详情中所有用例显示为待执行
@@ -204,10 +200,15 @@ class TaskCrudMixin:
                     raise ValueError(f"任务 '{t.name}' 未完成，无法合并")
 
             # 展开合并任务/已合并任务：找到合并之前的原始源任务
+            candidate_ids = [t.id for t in tasks]
+            merge_container_ids = {
+                r.merged_task_id for r in session.query(TaskMergeRelation.merged_task_id)
+                .filter(TaskMergeRelation.merged_task_id.in_(candidate_ids)).all()
+            }
             final_source_ids = set()
             remerged_task_ids = set()
             for t in tasks:
-                if t.type == 'merged':
+                if t.id in merge_container_ids:
                     relations = session.query(TaskMergeRelation).filter_by(merged_task_id=t.id).all()
                     if relations:
                         final_source_ids.update(r.source_task_id for r in relations)
@@ -259,7 +260,7 @@ class TaskCrudMixin:
             total_cases = len(case_ids_set)
 
             merged_task = self._build_new_task(
-                name=merged_task_name, description=description, task_type='merged',
+                name=merged_task_name, description=description,
                 config=None, algorithm_type=None, algorithm_params=None,
                 total_cases=total_cases, created_by=created_by, now=now,
             )
@@ -309,6 +310,8 @@ class TaskCrudMixin:
                         status=(src_tc.status if src_tc else TaskCaseStatus.COMPLETED),
                         execution_status=(src_tc.execution_status if src_tc else ExecutionStatus.COMPLETED),
                         evaluation_status=(src_tc.evaluation_status if src_tc else EvaluationStatus.COMPLETED),
+                        device_type=(src_tc.device_type if src_tc else None),
+                        device_id=(src_tc.device_id if src_tc else None),
                         started_at=getattr(src_tc, 'started_at', None) if src_tc else None,
                         completed_at=getattr(src_tc, 'completed_at', None) if src_tc else None,
                         duration=getattr(src_tc, 'duration', None) if src_tc else None,
@@ -431,18 +434,25 @@ class TaskCrudMixin:
                            case_ids: List[str], now: datetime) -> Optional[Dict[str, Any]]:
         """执行用例动态增/删动作。返回错误 dict 或 None。"""
         if action == 'add':
+            from shared.utils.testcase_helpers import derive_case_test_type
+            from task_service.infrastructure.persistence.models import TestCase
             for case_id in case_ids:
                 existing = session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
                     TaskCase.test_case_id == case_id,
                 ).first()
                 if existing is None:
+                    # 差异#2 收尾：用例级 device_type 为执行路由唯一依据，
+                    # 动态加入的用例由配置形态派生（含播放设备音频 → physical）
+                    case = session.get(TestCase, case_id)
+                    derived = derive_case_test_type(case.config if case else None)
                     session.add(TaskCase(
                         task_id=task_id,
                         test_case_id=case_id,
                         status=TaskCaseStatus.PENDING,
                         execution_status=ExecutionStatus.PENDING,
                         evaluation_status=EvaluationStatus.PENDING,
+                        device_type='physical' if derived == 'e2e' else 'http_api',
                         created_at=now,
                     ))
         elif action == 'remove':
@@ -518,7 +528,6 @@ class TaskCrudMixin:
                 'id': t.id,
                 'name': t.name,
                 'description': t.description,
-                'type': t.type,
                 'status': t.status,
                 'config': t.config,
                 'algorithm_type': t.algorithm_type,
@@ -531,28 +540,5 @@ class TaskCrudMixin:
                 'started_at': t.started_at.isoformat() if t.started_at else None,
                 'completed_at': t.completed_at.isoformat() if t.completed_at else None,
             } for t in tasks]
-        finally:
-            session.close()
-
-    def count_running_by_type(self, task_type: str) -> int:
-        """统计指定类型的运行中任务数量。
-
-        Args:
-            task_type: 任务类型（如 'e2e'）
-
-        Returns:
-            处于 queued/pending/running 状态且未删除的任务数
-        """
-        session = get_db_session()
-        try:
-            return (
-                session.query(Task)
-                .filter(
-                    Task.type == task_type,
-                    Task.status.in_([SharedTaskStatus.QUEUED, SharedTaskStatus.PENDING, SharedTaskStatus.RUNNING]),
-                    Task.deleted == False,  # noqa: E712
-                )
-                .count()
-            )
         finally:
             session.close()

@@ -59,9 +59,9 @@ class ReportDataResourceMixin:
 
     @staticmethod
     def _get_source_task_ids(task):
-        task_type = task.get('type') if isinstance(task, dict) else task.type
+        # 差异#2 收尾：合并容器任务由 TaskMergeRelation(merged_task_id) 存在性判定（task.type 已废弃）
         task_status = task.get('status') if isinstance(task, dict) else task.status
-        if task_type == 'merged' and task_status == TaskStatus.COMPLETED.value:
+        if task_status == TaskStatus.COMPLETED.value:
             task_id = task.get('id') if isinstance(task, dict) else task.id
             merge_relations = _grpc_get_task_merge_relations(task_id)
             return [r.get('source_task_id') for r in merge_relations]

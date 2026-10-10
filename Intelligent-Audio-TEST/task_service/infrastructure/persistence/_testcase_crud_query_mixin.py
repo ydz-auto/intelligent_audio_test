@@ -20,7 +20,8 @@ class TestCaseCrudMixin:
     def create_testcase(self, data: dict) -> TestCase:
         """创建测试用例记录（含 flush，未 commit）。
 
-        data 需含 id/name/group_id/config/algorithm_params/algorithm_type/test_type。
+        data 需含 id/name/group_id/config/algorithm_params/algorithm_type。
+        用例是纯数据载体（差异#2 收尾）：不再存储 test_type。
         """
         session = get_db_session()
         tc = TestCase(
@@ -31,7 +32,6 @@ class TestCaseCrudMixin:
             config=data.get('config'),
             algorithm_params=data.get('algorithm_params'),
             algorithm_type=data.get('algorithm_type'),
-            test_type=data.get('test_type'),
         )
         session.add(tc)
         session.flush()

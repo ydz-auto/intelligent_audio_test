@@ -20,9 +20,6 @@ export const TaskStatus = {
 /** 任务状态类型（由 TaskStatus 派生的字符串联合，供响应式状态标注使用） */
 export type TaskStatusType = typeof TaskStatus[keyof typeof TaskStatus]
 
-/** 任务类型（值 = 后端原值） */
-export type TaskType = 'api' | 'e2e' | 'playback' | 'evaluation' | 'report' | 'task' | 'execution' | 'comparison' | 'performance' | 'stress' | 'audio_import'
-
 /** 已结束的任务状态集合 */
 export const FINISHED_STATUSES = [
   TaskStatus.COMPLETED,

@@ -51,7 +51,7 @@ class TaskListItem(APIModel):
     name: str = Field(...)
     description: Optional[str] = Field(None)
     status: str = Field(...)
-    type: str = Field(...)
+    device_types: List[str] = Field(default_factory=list)
     config: Dict[str, Any] = Field(default_factory=dict)
     algorithm_type: Optional[str] = Field(None)
     algorithm_params: Optional[Dict[str, Any]] = Field(None)
@@ -94,7 +94,7 @@ class TaskDetailData(APIModel):
     name: str = Field(...)
     description: Optional[str] = Field(None)
     status: str = Field(...)
-    type: str = Field(...)
+    device_types: List[str] = Field(default_factory=list)
     config: Dict[str, Any] = Field(default_factory=dict)
     algorithm_type: Optional[str] = Field(None)
     algorithm_params: Optional[Dict[str, Any]] = Field(None)
@@ -179,7 +179,6 @@ class TaskCreateParameters(APIModel):
 
 class TaskCreateRequest(APIModel):
     name: str = Field(...)
-    type: str = Field(...)
     description: Optional[str] = Field(None)
     config: Optional[Dict[str, Any]] = Field(None)
     created_by: Optional[str] = Field(None)
@@ -215,7 +214,6 @@ class TaskListQuery(APIModel):
     page: int = Field(1)
     per_page: int = Field(10)
     status: Optional[str] = Field(None)
-    type: Optional[str] = Field(None)
     algorithm_type: Optional[str] = Field(None)
     search: Optional[str] = Field(None)
     start_date: Optional[str] = Field(None)

@@ -167,6 +167,29 @@ def collect_audios(config: dict) -> list:
     return all_audios
 
 
+def has_playback_audio(config: dict) -> bool:
+    """用例配置中是否存在携带播放设备的音频（E2E 形态标记）"""
+    for audio_item in collect_audios(config):
+        if isinstance(audio_item, dict) and audio_item.get('playback_device_id'):
+            return True
+    # 兼容未轮次化的平面 audios 配置
+    for audio_item in (config or {}).get('audios', []) or []:
+        if isinstance(audio_item, dict) and audio_item.get('playback_device_id'):
+            return True
+    return False
+
+
+def derive_case_test_type(config: dict) -> str:
+    """由用例配置形态推导 e2e/api 口径（用例纯数据化过渡）。
+
+    test_type 列已废弃（差异#2 收尾）：用例不再存储类型，执行方式由
+    任务侧 task_case_relations.device_type 决定。评估/报告/算法服务的
+    参考值口径契约仍需 'e2e'/'api' 取值，此处由配置形态派生：
+    任一音频携带 playback_device_id 即 E2E 口径（物理执行），否则 API 口径。
+    """
+    return 'e2e' if has_playback_audio(config) else 'api'
+
+
 def collect_dimensions(config: dict) -> list:
     """从 config 中提取评测维度
     合并 rounds[].evaluation.dimensions（单轮维度）和 config.dimensions（多轮维度）
