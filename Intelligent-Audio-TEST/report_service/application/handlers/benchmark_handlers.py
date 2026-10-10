@@ -12,6 +12,7 @@ import logging
 
 from report_service.application.commands.benchmark_commands import (
     ComputeBenchmarkRankingCommand,
+    CreateBenchmarkMetricMappingCommand,
     CreateBenchmarkSourceCommand,
     ImportBenchmarkBaselinesCommand,
     UpdateBenchmarkMetricMappingCommand,
@@ -62,6 +63,9 @@ class BenchmarkCommandHandler:
 
     def handle_update_metric_mapping(self, command: UpdateBenchmarkMetricMappingCommand) -> dict:
         return self._baseline_service.update_metric_mapping(command)
+
+    def handle_create_metric_mapping(self, command: CreateBenchmarkMetricMappingCommand) -> dict:
+        return self._baseline_service.create_metric_mapping(command)
 
 
 class BenchmarkQueryHandler:

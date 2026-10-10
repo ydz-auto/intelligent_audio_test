@@ -16,6 +16,7 @@
     POST /api/benchmarks/baselines              批量导入基线（导入即不可变快照，幂等）
     POST /api/benchmarks/baselines/version      发布新基线版本（同导入语义，兼容设计文档路由）
     GET  /api/benchmarks/metric-mappings        指标映射列表
+    POST /api/benchmarks/metric-mappings        创建指标映射（dimension_name 唯一）
     PUT  /api/benchmarks/metric-mappings/{id}   更新指标映射
 """
 from __future__ import annotations
@@ -28,6 +29,7 @@ from pydantic import BaseModel, Field
 
 from report_service.application.commands.benchmark_commands import (
     ComputeBenchmarkRankingCommand,
+    CreateBenchmarkMetricMappingCommand,
     CreateBenchmarkSourceCommand,
     ImportBenchmarkBaselinesCommand,
     UpdateBenchmarkMetricMappingCommand,
@@ -91,6 +93,18 @@ class BenchmarkBaselineImportRequest(BaseModel):
     category: str
     entries: List[BenchmarkBaselineEntryRequest]
     published_by: str = Field('', alias='publishedBy')
+
+    model_config = {'populate_by_name': True}
+
+
+class BenchmarkMetricMappingCreateRequest(BaseModel):
+    dimension_name: str = Field(..., alias='dimensionName')
+    metric_code: str = Field(..., alias='metricCode')
+    metric_name: str = Field('', alias='metricName')
+    unit: str = ''
+    direction: str
+    scenario_tags: List[str] = Field(default_factory=list, alias='scenarioTags')
+    active: bool = True
 
     model_config = {'populate_by_name': True}
 
@@ -213,6 +227,16 @@ def publish_baseline_version(req: BenchmarkBaselineImportRequest):
 def list_metric_mappings(active_only: bool = Query(False, alias='activeOnly')):
     return _query_handler.handle_list_metric_mappings(
         ListBenchmarkMetricMappingsQuery(active_only=active_only))
+
+
+@router.post('/metric-mappings')
+def create_metric_mapping(req: BenchmarkMetricMappingCreateRequest):
+    command = CreateBenchmarkMetricMappingCommand(
+        dimension_name=req.dimension_name, metric_code=req.metric_code,
+        metric_name=req.metric_name, unit=req.unit, direction=req.direction,
+        scenario_tags=req.scenario_tags, active=req.active,
+    )
+    return _command_handler.handle_create_metric_mapping(command)
 
 
 @router.put('/metric-mappings/{mapping_id}')

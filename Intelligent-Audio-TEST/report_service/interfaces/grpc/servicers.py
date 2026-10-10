@@ -25,6 +25,7 @@ from report_service.application.commands.report_commands import (
 )
 from report_service.application.commands.benchmark_commands import (
     ComputeBenchmarkRankingCommand,
+    CreateBenchmarkMetricMappingCommand,
     CreateBenchmarkSourceCommand,
     ImportBenchmarkBaselinesCommand,
     UpdateBenchmarkMetricMappingCommand,
@@ -699,6 +700,26 @@ class BenchmarkServicer:
                               result.get('data'), result.get('code', 0))
         except Exception as e:
             logger.exception("ImportBenchmarkBaselines failed")
+            return self._resp(False, str(e), {}, 500)
+
+    def CreateBenchmarkMetricMapping(self, request, context=None):
+        """创建指标映射（写侧 + 审计；dimension_name 唯一）。"""
+        try:
+            params = _loads(request.data, {}) or {}
+            command = CreateBenchmarkMetricMappingCommand(
+                dimension_name=params.get('dimension_name') or params.get('dimensionName') or '',
+                metric_code=params.get('metric_code') or params.get('metricCode') or '',
+                metric_name=params.get('metric_name', params.get('metricName')) or '',
+                unit=params.get('unit') or '',
+                direction=params.get('direction') or '',
+                scenario_tags=params.get('scenario_tags', params.get('scenarioTags')) or [],
+                active=bool(params.get('active', True)),
+            )
+            result = self.command_handler.handle_create_metric_mapping(command)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'), result.get('code', 0))
+        except Exception as e:
+            logger.exception("CreateBenchmarkMetricMapping failed")
             return self._resp(False, str(e), {}, 500)
 
     def UpdateBenchmarkMetricMapping(self, request, context=None):

@@ -159,6 +159,8 @@ service BenchmarkConfigService {
   rpc ImportBenchmarkBaselines(BenchmarkCommandRequest) returns (BenchmarkResponse);
   // 指标映射列表（读侧）
   rpc ListBenchmarkMetricMappings(BenchmarkQueryRequest) returns (BenchmarkResponse);
+  // 创建指标映射（写侧命令 + 审计；dimension_name 唯一）
+  rpc CreateBenchmarkMetricMapping(BenchmarkCommandRequest) returns (BenchmarkResponse);
   // 更新指标映射（写侧命令 + 审计）
   rpc UpdateBenchmarkMetricMapping(BenchmarkCommandRequest) returns (BenchmarkResponse);
 }

@@ -61,6 +61,11 @@ class BenchmarkRepository(ABC):
         ...
 
     @abstractmethod
+    def create_metric_mapping(self, data: Dict[str, Any]) -> MetricMapping:
+        """创建指标映射（dimension_name/metric_code/direction 必填，返回含 ID 的实体）。"""
+        ...
+
+    @abstractmethod
     def update_metric_mapping(self, mapping_id: int, updates: Dict[str, Any]) -> Optional[MetricMapping]:
         """更新指标映射（unit/direction/scenario_tags/active/metric_name）。"""
         ...

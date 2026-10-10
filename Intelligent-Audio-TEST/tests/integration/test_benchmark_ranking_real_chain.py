@@ -290,3 +290,113 @@ class TestBenchmarkRealChain:
         # ---- 8. 被测主体列表（v2 快照后 Whisper 已退出当前排行）----
         subjects = client.get('/api/v1/benchmarks/ranking/subjects').json()['data']
         assert set(subjects['items']) == {'Moshi'}
+
+
+def _seed_voice_llm_task_with_report(dim_name='逐轮话轮评估', value=0.85):
+    """写入 voice_llm 主链形态的源任务 + 报告（API 被测 + LLM 裁判维度值）。"""
+    from shared.models.database import get_db_session
+    from shared.utils.status_constants import TaskStatus
+    from task_service.infrastructure.persistence.models import Task, TaskCase
+    from task_service.infrastructure.persistence.models.testcase_models import TestCase
+    from report_service.infrastructure.persistence.models import (
+        Report, ReportSummary, ReportSummaryMeta,
+    )
+
+    s = get_db_session()
+    case = TestCase(id=f'VLLM-{uuid.uuid4().hex[:12]}', name='voice_llm 基准用例',
+                    config={})
+    s.add(case)
+    task = Task(name='voice_llm 双轨排行基准任务', description=None,
+                status=TaskStatus.COMPLETED, total_cases=1, completed_cases=1)
+    s.add(task)
+    s.flush()
+    s.add(TaskCase(task_id=task.id, test_case_id=case.id, status='completed'))
+    report = Report(name='voice_llm 基准报告', type='task', task_id=task.id,
+                    status='completed')
+    s.add(report)
+    s.flush()
+    s.add(ReportSummary(report_id=report.id, total_cases=1, completed_cases=1))
+    s.add(ReportSummaryMeta(
+        report_id=report.id,
+        dimension_values=json.dumps([{'name': dim_name, 'average_value': value}]),
+        devices=json.dumps([]),
+        apis=json.dumps([{'id': 19, 'name': 'INT95验收API(mock DUT)', 'type': 'http'}]),
+    ))
+    s.commit()
+    return task.id
+
+
+class TestMappingCreateRealChain:
+    """映射创建 API 真实链路（实机 no_mapping 空转缺陷的回归锚点）：
+
+    LLM 裁判维度名由用户运行期定义，种子无法预置时须能经 API 运行期补映射，
+    重算后实测数据进榜（主链验收第 7 步：发布 → 排行 ReadModel 出现实测数据）。
+    """
+
+    def test_runtime_mapping_create_unblocks_platform_ranking(self, benchmark_gateway):
+        client = benchmark_gateway
+        dim_name = '逐轮话轮评估'
+
+        task_id = _seed_voice_llm_task_with_report(dim_name=dim_name, value=0.85)
+        resp = client.post('/api/v1/published-tasks', json={
+            'sourceTaskId': task_id, 'name': 'voice_llm 基准任务',
+            'benchmark': True, 'benchmarkCategory': 'voice_llm',
+        })
+        assert resp.status_code == 201, resp.text
+
+        # 缺陷形态：维度无映射 → no_mapping 跳过，ReadModel 0 行
+        before = client.post('/api/v1/benchmarks/ranking/compute', json={})
+        assert before.status_code == 200, before.text
+        assert before.json()['data']['rows_written'] == 0
+        assert {'subject': 'INT95验收API(mock DUT)', 'metric': dim_name,
+                'reason': 'no_mapping'} in before.json()['data']['skipped']
+        assert 'no_mapping' in before.json()['message']
+
+        # 运行期经创建 API 补映射（camelCase 请求体）
+        created = client.post('/api/v1/benchmarks/metric-mappings', json={
+            'dimensionName': dim_name, 'metricCode': 'TURN_EVAL',
+            'metricName': '逐轮话轮评估', 'direction': 'higher_is_better',
+            'scenarioTags': ['通用'],
+        })
+        assert created.status_code == 201, created.text
+        assert created.json()['data']['dimension_name'] == dim_name
+
+        # 同维度重复创建 → 409 冲突（同一维度仅一条映射）
+        dup = client.post('/api/v1/benchmarks/metric-mappings', json={
+            'dimensionName': dim_name, 'metricCode': 'TURN_EVAL',
+            'direction': 'higher_is_better',
+        })
+        assert dup.status_code == 409, dup.text
+
+        # 参数校验：缺 metric_code / 方向非法 → 400
+        assert client.post('/api/v1/benchmarks/metric-mappings', json={
+            'dimensionName': '拒识场景裁判', 'direction': 'higher_is_better',
+        }).status_code == 400
+        assert client.post('/api/v1/benchmarks/metric-mappings', json={
+            'dimensionName': '拒识场景裁判', 'metricCode': 'REFUSAL_JUDGE',
+            'direction': '任意',
+        }).status_code == 400
+
+        # 补映射后重算：实测数据进榜（主链验收标准达成）
+        after = client.post('/api/v1/benchmarks/ranking/compute', json={
+            'source': 'platform_test'})
+        assert after.status_code == 200, after.text
+        assert after.json()['data']['rows_written'] == 1
+
+        rows = client.get('/api/v1/benchmarks/ranking', params={
+            'category': 'voice_llm', 'metricCode': 'TURN_EVAL',
+        }).json()['data']['items']
+        assert len(rows) == 1
+        row = rows[0]
+        assert row['source'] == 'platform_test'
+        assert row['subject_name'] == 'INT95验收API(mock DUT)'
+        assert row['metric_value'] == pytest.approx(0.85)
+        assert row['direction'] == 'higher_is_better'
+        assert row['device_type'] == 'http_api'
+        assert row['scenario_key'] == '通用'
+        assert row['rank'] == 1 and row['total'] == 1
+
+        # 映射列表可查到新映射
+        mappings = client.get('/api/v1/benchmarks/metric-mappings').json()['data']
+        assert any(m['metric_code'] == 'TURN_EVAL' and m['dimension_name'] == dim_name
+                   for m in mappings['items'])

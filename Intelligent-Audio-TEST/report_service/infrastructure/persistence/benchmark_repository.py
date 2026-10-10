@@ -174,6 +174,28 @@ class BenchmarkRepositoryImpl(BenchmarkRepository):
         finally:
             session.close()
 
+    def create_metric_mapping(self, data: Dict[str, Any]) -> MetricMapping:
+        session = get_db_session()
+        try:
+            po = BenchmarkMetricMapping(
+                dimension_name=data['dimension_name'],
+                metric_code=data['metric_code'],
+                metric_name=data.get('metric_name') or data['dimension_name'],
+                unit=data.get('unit') or '',
+                direction=data['direction'],
+                scenario_tags=data.get('scenario_tags') or [],
+                active=bool(data.get('active', True)),
+            )
+            session.add(po)
+            session.commit()
+            session.refresh(po)
+            return _mapping_to_entity(po)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def update_metric_mapping(self, mapping_id: int, updates: Dict[str, Any]) -> Optional[MetricMapping]:
         session = get_db_session()
         try:

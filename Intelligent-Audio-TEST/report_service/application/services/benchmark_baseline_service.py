@@ -17,6 +17,7 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 
 from report_service.application.commands.benchmark_commands import (
+    CreateBenchmarkMetricMappingCommand,
     CreateBenchmarkSourceCommand,
     ImportBenchmarkBaselinesCommand,
     UpdateBenchmarkMetricMappingCommand,
@@ -268,6 +269,51 @@ class BenchmarkBaselineService:
         }
 
     # ---------- 指标映射 ----------
+
+    def create_metric_mapping(self, command: CreateBenchmarkMetricMappingCommand) -> Dict[str, Any]:
+        try:
+            dimension_name = (command.dimension_name or '').strip()
+            if not dimension_name:
+                return {'success': False, 'message': '系统维度名不能为空', 'data': None, 'code': 100}
+            metric_code = (command.metric_code or '').strip()
+            if not metric_code:
+                return {'success': False, 'message': '排行指标代码不能为空', 'data': None, 'code': 100}
+            direction = normalize_direction(command.direction or '')
+            if direction is None:
+                return {'success': False,
+                        'message': '方向非法，仅支持 lower_is_better / higher_is_better',
+                        'data': None, 'code': 100}
+            existing = self.repo.list_metric_mappings(active_only=False)
+            if any(m.dimension_name == dimension_name for m in existing):
+                return {'success': False,
+                        'message': f'系统维度 {dimension_name} 已存在映射配置（同一维度仅一条映射）',
+                        'data': None, 'code': 409}
+            mapping = self.repo.create_metric_mapping({
+                'dimension_name': dimension_name,
+                'metric_code': metric_code,
+                'metric_name': (command.metric_name or '').strip(),
+                'unit': (command.unit or '').strip(),
+                'direction': direction.value,
+                'scenario_tags': [str(t).strip() for t in (command.scenario_tags or []) if str(t).strip()],
+                'active': bool(command.active),
+            })
+            write_benchmark_audit(AuditEvent.BENCHMARK_MAPPING_CREATED, 'benchmark_mapping', {
+                'mapping_id': mapping.id,
+                'dimension_name': mapping.dimension_name,
+                'metric_code': mapping.metric_code,
+                'direction': mapping.direction.value,
+                'unit': mapping.unit,
+            })
+            return {'success': True, 'message': '指标映射已创建',
+                    'data': {'id': mapping.id, 'dimension_name': mapping.dimension_name,
+                             'metric_code': mapping.metric_code, 'metric_name': mapping.metric_name,
+                             'direction': mapping.direction.value, 'unit': mapping.unit,
+                             'scenario_tags': mapping.scenario_tags, 'active': mapping.active},
+                    'code': 201}
+        except Exception:
+            logger.exception('创建指标映射失败')
+            return {'success': False, 'message': '创建指标映射失败，请稍后重试',
+                    'data': None, 'code': 301}
 
     def update_metric_mapping(self, command: UpdateBenchmarkMetricMappingCommand) -> Dict[str, Any]:
         try:

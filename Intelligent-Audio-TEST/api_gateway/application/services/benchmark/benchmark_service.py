@@ -12,6 +12,7 @@ from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.infrastructure.grpc_proxies import benchmark_config_service
 from api_gateway.schemas.benchmark import (
     BenchmarkBaselineImportRequest,
+    BenchmarkMetricMappingCreateRequest,
     BenchmarkMetricMappingUpdateRequest,
     BenchmarkRankingComputeRequest,
     BenchmarkSourceCreateRequest,
@@ -91,6 +92,23 @@ class BenchmarkService:
     def publish_baseline_version():
         """发布新基线版本（与导入同语义，兼容设计文档 §7.2 路由）。"""
         return BenchmarkService._import_baselines()
+
+    @staticmethod
+    def create_metric_mapping():
+        try:
+            req = BenchmarkMetricMappingCreateRequest.model_validate(request.get_json())
+        except Exception as e:
+            return error_response(f"请求数据验证失败: {str(e)}", code=ErrorCode.INVALID_PARAMS, http_code=400)
+        result = _benchmark_acl.create_metric_mapping(req.model_dump(by_alias=False, exclude_none=True))
+        if not result.get('success'):
+            # 业务码映射：409 维度重复冲突（同一维度仅一条映射），其余按参数错误
+            code = result.get('code') or ErrorCode.OPERATION_FAILED
+            if code == 409:
+                return error_response(result.get('message', '创建指标映射失败'),
+                                      code=ErrorCode.CONFLICT, http_code=409)
+            return error_response(result.get('message', '创建指标映射失败'),
+                                  code=code, http_code=400)
+        return success_response(result.get('data'), result.get('message', '指标映射已创建'), http_code=201)
 
     @staticmethod
     def update_metric_mapping(mapping_id: int):

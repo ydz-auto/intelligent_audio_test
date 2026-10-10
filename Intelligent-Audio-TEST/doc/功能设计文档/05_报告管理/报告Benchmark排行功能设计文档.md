@@ -395,8 +395,13 @@ GET  /api/v1/benchmarks/reports/{reportId}        # Benchmark 报告详情
 
 ```http
 GET /api/v1/benchmarks/metric-mappings
+POST /api/v1/benchmarks/metric-mappings
 PUT /api/v1/benchmarks/metric-mappings/{id}
 ```
+
+POST 创建映射（INT-130 补充）：系统评估维度名由用户运行期定义（如 voice_llm LLM 裁判维度），
+映射无法全部预置种子，运行期经创建接口补充后重算排行即可进榜；dimension_name 唯一，
+重复创建返回 409。
 
 ### 7.5 正式任务标记 Benchmark
 

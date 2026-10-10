@@ -301,7 +301,8 @@ def get_benchmark_config_service_stub():
     RPC（与 report_service/interfaces/grpc/servicers.BenchmarkServicer 对齐）：
     ComputeBenchmarkRanking / GetBenchmarkRanking / GetBenchmarkRankingSubjects /
     ListBenchmarkSources / CreateBenchmarkSource / ListBenchmarkBaselines /
-    ImportBenchmarkBaselines / ListBenchmarkMetricMappings / UpdateBenchmarkMetricMapping
+    ImportBenchmarkBaselines / ListBenchmarkMetricMappings /
+    CreateBenchmarkMetricMapping / UpdateBenchmarkMetricMapping
     """
     from shared.proto import report_service_pb2_grpc
     return report_service_pb2_grpc.BenchmarkConfigServiceStub(_get_report_channel())

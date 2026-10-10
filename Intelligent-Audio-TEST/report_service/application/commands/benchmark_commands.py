@@ -61,6 +61,22 @@ class ImportBenchmarkBaselinesCommand:
 
 
 @dataclass(frozen=True)
+class CreateBenchmarkMetricMappingCommand:
+    """创建指标映射命令（写侧 + 审计；dimension_name 唯一，重复创建冲突拦截）。
+
+    系统评估维度名由用户运行期定义（如 LLM 裁判维度），映射无法全部预置种子，
+    运行期经此命令补充映射后重算排行即可进榜。
+    """
+    dimension_name: str
+    metric_code: str
+    metric_name: str = ''
+    unit: str = ''
+    direction: str = ''
+    scenario_tags: List[str] = field(default_factory=list)
+    active: bool = True
+
+
+@dataclass(frozen=True)
 class UpdateBenchmarkMetricMappingCommand:
     """更新指标映射命令（写侧 + 审计）。"""
     mapping_id: int

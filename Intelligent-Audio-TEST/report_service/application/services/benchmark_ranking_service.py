@@ -373,9 +373,27 @@ class BenchmarkRankingService:
                 'source': command.source or '',
                 'operator': command.operator or '',
             })
+            # no_mapping 告警：跳过若仅随响应静默返回，"发布了但不进榜"会长期无感——
+            # 计算完成消息显式携带跳过摘要 + 日志告警，提示补映射后重算
+            no_mapping = [s for s in skipped if s.get('reason') == 'no_mapping']
+            if no_mapping:
+                details = '；'.join(
+                    f"{s.get('subject', '')}/{s.get('metric', '')}" for s in no_mapping[:20])
+                logger.warning(
+                    '[benchmark_ranking] %s 项指标无映射配置未进榜，请在指标映射中补充后重算: %s',
+                    len(no_mapping), details)
+            message = f'排行计算完成：{len(unique_keys)} 组 / {written} 行'
+            if skipped:
+                reason_counts: Dict[str, int] = {}
+                for item in skipped:
+                    reason = str(item.get('reason') or 'unknown')
+                    reason_counts[reason] = reason_counts.get(reason, 0) + 1
+                skip_summary = '，'.join(
+                    f'{reason} {count} 项' for reason, count in reason_counts.items())
+                message += f'（跳过 {len(skipped)} 项：{skip_summary}）'
             return {
                 'success': True,
-                'message': f'排行计算完成：{len(unique_keys)} 组 / {written} 行',
+                'message': message,
                 'data': {
                     'rows_written': written,
                     'group_count': len(unique_keys),

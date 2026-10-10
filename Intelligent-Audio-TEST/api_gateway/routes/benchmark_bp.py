@@ -76,6 +76,11 @@ def list_metric_mappings(_: None = require_permission('benchmark:ranking:read'))
     return _handle(BenchmarkService.list_metric_mappings())
 
 
+@router.post('/metric-mappings')
+def create_metric_mapping(_: None = require_permission('benchmark:mapping:manage')):
+    return _handle(BenchmarkService.create_metric_mapping())
+
+
 @router.put('/metric-mappings/{mapping_id}')
 def update_metric_mapping(mapping_id: int,
                           _: None = require_permission('benchmark:mapping:manage')):

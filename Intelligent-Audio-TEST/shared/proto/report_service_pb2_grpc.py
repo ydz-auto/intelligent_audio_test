@@ -1076,6 +1076,11 @@ class BenchmarkConfigServiceStub:
                 request_serializer=report__service__pb2.BenchmarkQueryRequest.SerializeToString,
                 response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
                 _registered_method=True)
+        self.CreateBenchmarkMetricMapping = channel.unary_unary(
+                '/report.BenchmarkConfigService/CreateBenchmarkMetricMapping',
+                request_serializer=report__service__pb2.BenchmarkCommandRequest.SerializeToString,
+                response_deserializer=report__service__pb2.BenchmarkResponse.FromString,
+                _registered_method=True)
         self.UpdateBenchmarkMetricMapping = channel.unary_unary(
                 '/report.BenchmarkConfigService/UpdateBenchmarkMetricMapping',
                 request_serializer=report__service__pb2.BenchmarkCommandRequest.SerializeToString,
@@ -1143,6 +1148,13 @@ class BenchmarkConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateBenchmarkMetricMapping(self, request, context):
+        """创建指标映射（写侧命令 + 审计；dimension_name 唯一）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def UpdateBenchmarkMetricMapping(self, request, context):
         """更新指标映射（写侧命令 + 审计）
         """
@@ -1191,6 +1203,11 @@ def add_BenchmarkConfigServiceServicer_to_server(servicer, server):
             'ListBenchmarkMetricMappings': grpc.unary_unary_rpc_method_handler(
                     servicer.ListBenchmarkMetricMappings,
                     request_deserializer=report__service__pb2.BenchmarkQueryRequest.FromString,
+                    response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
+            ),
+            'CreateBenchmarkMetricMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateBenchmarkMetricMapping,
+                    request_deserializer=report__service__pb2.BenchmarkCommandRequest.FromString,
                     response_serializer=report__service__pb2.BenchmarkResponse.SerializeToString,
             ),
             'UpdateBenchmarkMetricMapping': grpc.unary_unary_rpc_method_handler(
@@ -1415,6 +1432,33 @@ class BenchmarkConfigService:
             target,
             '/report.BenchmarkConfigService/ListBenchmarkMetricMappings',
             report__service__pb2.BenchmarkQueryRequest.SerializeToString,
+            report__service__pb2.BenchmarkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateBenchmarkMetricMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.BenchmarkConfigService/CreateBenchmarkMetricMapping',
+            report__service__pb2.BenchmarkCommandRequest.SerializeToString,
             report__service__pb2.BenchmarkResponse.FromString,
             options,
             channel_credentials,

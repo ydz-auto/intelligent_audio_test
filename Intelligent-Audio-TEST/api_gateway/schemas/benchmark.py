@@ -52,6 +52,17 @@ class BenchmarkSourceCreateRequest(APIModel):
     created_by: str = Field('')
 
 
+class BenchmarkMetricMappingCreateRequest(APIModel):
+    """指标映射创建请求（系统维度名由运行期定义，映射无法全部预置种子）"""
+    dimension_name: str = Field(..., description='系统维度名（报告 dimensionValues[].name）')
+    metric_code: str = Field(..., description='排行指标代码')
+    metric_name: str = Field('')
+    unit: str = Field('')
+    direction: str = Field(..., description='lower_is_better / higher_is_better')
+    scenario_tags: List[str] = Field(default_factory=list)
+    active: bool = Field(True)
+
+
 class BenchmarkMetricMappingUpdateRequest(APIModel):
     """指标映射更新请求（仅提交需更新的字段）"""
     metric_name: Optional[str] = Field(None)

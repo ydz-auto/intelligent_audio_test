@@ -63,6 +63,10 @@ DEFAULT_MAPPINGS = [
     ('BLEU', 'BLEU', 'BLEU', '分', 'higher_is_better', ['翻译']),
     ('COMET', 'COMET', 'COMET', '分', 'higher_is_better', ['翻译']),
     ('MOS', 'MOS', 'MOS', '分', 'higher_is_better', ['TTS']),
+    # 主链 voice_llm LLM 裁判维度（实机验收主链实测轨）：评估维度名由用户运行期定义，
+    # 单位口径跟随维度自身 score_unit（空=无量纲得分），裁判得分默认越高越好
+    ('逐轮话轮评估', 'TURN_EVAL', '逐轮话轮评估', '', 'higher_is_better', ['通用']),
+    ('拒识场景裁判', 'REFUSAL_JUDGE', '拒识场景裁判', '', 'higher_is_better', ['通用']),
 ]
 
 TABLE_DDL = {

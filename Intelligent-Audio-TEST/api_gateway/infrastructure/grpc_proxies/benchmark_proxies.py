@@ -73,6 +73,21 @@ class _BenchmarkConfigProxy:
             error_msg_prefix='基线导入失败',
         )
 
+    def create_metric_mapping(self, params):
+        """创建指标映射"""
+        def _call():
+            stub = get_benchmark_config_service_stub()
+            resp = stub.CreateBenchmarkMetricMapping(report_pb.BenchmarkCommandRequest(
+                data=json.dumps(params or {}, ensure_ascii=False, default=str),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'创建指标映射失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='创建指标映射失败',
+        )
+
     def update_metric_mapping(self, mapping_id, params):
         """更新指标映射"""
         def _call():
