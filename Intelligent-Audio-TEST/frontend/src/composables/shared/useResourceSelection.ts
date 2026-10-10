@@ -4,7 +4,7 @@ import { generateDeviceFields } from '../../utils/utils'
 import { useDeviceManagement } from '../device/useDeviceManagement'
 import { useModalControl, MODAL_TYPES } from '../modal/useModal'
 import type { APIConfig } from '../../domain'
-import { ViewMode, DeviceStatus, ApiEndpointStatus } from '@/domain/enums'
+import { ViewMode, DeviceStatus, ApiEndpointStatus, TestType, DeviceTabType } from '@/domain/enums'
 
 interface UseResourceSelectionOptions {
   testType: 'e2e' | 'api'
@@ -20,8 +20,8 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
   const { testType, selectedAlgorithmType, addLog } = options
   const modalManager = useModalControl()
 
-  // 共用一个 deviceManagement 实例（e2e -> 'test', api -> 'api'）
-  const deviceManagement = useDeviceManagement(testType === 'e2e' ? 'test' : 'api')
+  // 共用一个 deviceManagement 实例（e2e -> 物理设备页签, api -> API页签）
+  const deviceManagement = useDeviceManagement(testType === TestType.E2E ? DeviceTabType.TEST : DeviceTabType.API)
 
   // ============ api 模式独立状态 ============
   const apis = ref<APIConfig[]>([])

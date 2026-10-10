@@ -6,6 +6,7 @@
 
 P5 改造：从 shared/models/models/api_models.py 真正下沉到本服务。
 """
+from shared.models.common_enums import CalibrationStatus
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
@@ -39,6 +40,7 @@ class API(Base):
     default_max_timeout = Column(Integer, nullable=False, default=30, comment='默认最大超时时间 (秒)')
     default_max_audio_duration = Column(Integer, nullable=False, default=60, comment='默认支持的最大音频时长 (秒)')
     api_endpoints = Column(JSON, nullable=False, default=list, comment='API接入点配置列表 (JSON格式)')
+    output_types = Column(JSON, nullable=False, default=list, comment='API输出类型列表 (OutputType 枚举值, INT-74)')
     rms_spl_mapping_id = Column(Integer, nullable=True, comment='当前默认 RMS→SPL 映射 ID (api_rms_spl_mappings，INT-61)')
 
 
@@ -57,7 +59,7 @@ class ApiRmsSplMappingPO(Base):
     protocol = Column(String(20), default='websocket', comment='API 协议')
     reference_spl = Column(Float, nullable=False, default=65.0, comment='参考声压级 (dB SPL)')
     reference_gain_linear = Column(Float, nullable=False, default=1.0, comment='参考线性增益')
-    calibration_status = Column(String(20), nullable=False, default='uncalibrated', comment='校准状态 (calibrated/uncalibrated)')
+    calibration_status = Column(String(20), nullable=False, default=CalibrationStatus.UNCALIBRATED.value, comment='校准状态 (CalibrationStatus 枚举: calibrated/uncalibrated)')
     calibration_data = Column(JSON, default=dict, comment='校准测量点 {"points": [{target_spl, gain_linear, rms_dbfs}]}')
     min_gain_linear = Column(Float, nullable=False, default=0.001, comment='增益下限')
     max_gain_linear = Column(Float, nullable=False, default=10.0, comment='增益上限')

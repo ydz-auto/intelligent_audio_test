@@ -42,7 +42,7 @@ from report_service.domain.services.benchmark_metric_mapper import (
 from report_service.domain.services.benchmark_ranking_calculator import (
     calculate_ranking_metrics,
 )
-from shared.models.common_enums import AuditEvent
+from shared.models.common_enums import AuditEvent, DeviceType
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +78,13 @@ def _resolve_subject(summary: Dict[str, Any], fallback_name: str) -> Tuple[str, 
     if apis:
         api = apis[0]
         raw_type = (api.get('type') or api.get('protocol') or 'http').lower()
-        device_type = 'websocket_api' if 'websocket' in raw_type else 'http_api'
+        device_type = (DeviceType.WEBSOCKET_API.value if 'websocket' in raw_type
+                       else DeviceType.HTTP_API.value)
         return (api.get('name') or fallback_name, device_type, SubjectType.CLOSED_SOURCE.value)
     if devices:
         device = devices[0]
         name = device.get('app_name') or device.get('name') or fallback_name
-        return (name, 'physical', SubjectType.APP.value)
+        return (name, DeviceType.PHYSICAL.value, SubjectType.APP.value)
     return (fallback_name, '', SubjectType.CLOSED_SOURCE.value)
 
 

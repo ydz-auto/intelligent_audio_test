@@ -25,6 +25,7 @@ from api_test_service.infrastructure.acl import TaskDataAclRepositoryImpl
 from api_test_service.infrastructure.persistence.models import API
 # 领域聚合根
 from api_test_service.domain.entities import APIAggregate
+from api_test_service.domain.entities.api import normalize_output_types
 from api_test_service.domain.repositories.api_test_repository_abc import (
     APITestRepositoryABC,
 )
@@ -58,6 +59,7 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         timeout_seconds=po.max_timeout or 30,
         status=po.status or "active",
         deleted=po.deleted or False,
+        output_types=normalize_output_types(po.output_types),
     )
 
 
@@ -193,6 +195,7 @@ class APITestRepository(APITestRepositoryABC):
                 status=data.get('status', 'online'),
                 health_score=100,
                 api_endpoints=data.get('api_endpoints', []),
+                output_types=data.get('output_types', []),
             )
             session.add(new_api)
             session.commit()

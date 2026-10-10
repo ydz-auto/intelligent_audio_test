@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Optional
+from typing import Dict, List, Optional
+
+from shared.models.common_enums import OutputType
 
 
 class HTTPMethod(str, Enum):
@@ -23,6 +25,17 @@ class APIStatus(str, Enum):
     active = "active"
     inactive = "inactive"
     deleted = "deleted"
+
+
+def normalize_output_types(raw) -> List[str]:
+    """output_types 归一化（OutputType 枚举消费，INT-74）
+
+    去重 + 剔除非法值，按 OutputType 枚举定义序输出，保证落库与读侧口径一致。
+    """
+    if not isinstance(raw, (list, tuple, set)):
+        return []
+    present = {str(v) for v in raw}
+    return [item.value for item in OutputType if item.value in present]
 
 
 @dataclass(frozen=True)
@@ -53,6 +66,13 @@ class APIAggregate:
     retry_count: int = 0
     status: str = "active"
     deleted: bool = False
+    # API 输出类型列表（OutputType 枚举值子集，多模态输出采集口径，INT-74）
+    output_types: List[str] = field(default_factory=list)
+
+    def set_output_types(self, raw) -> List[str]:
+        """设置输出类型列表（经 OutputType 枚举归一化），返回归一化结果"""
+        self.output_types = normalize_output_types(raw)
+        return self.output_types
 
     def activate(self) -> None:
         """激活 API"""

@@ -9,6 +9,7 @@ P5 改造：从 shared/models/models/system_models.py 拆出（system_models 中
 shared 只保留 Log 的 re-export（从 task_service），SPLMapping/CalibrationHistory
 改为从这里 re-export。
 """
+from shared.models.common_enums import CalibrationStatus
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
@@ -29,7 +30,7 @@ class SPLMapping(Base):
     target_spl = Column(Float, comment='目标声压级 (dB SPL)')
     digital_gain = Column(Float, comment='对应的数字增益值 (dB)')
 
-    calibration_status = Column(String(20), default='uncalibrated', comment='校准状态 (calibrated/uncalibrated)')
+    calibration_status = Column(String(20), default=CalibrationStatus.UNCALIBRATED.value, comment='校准状态 (CalibrationStatus 枚举: calibrated/uncalibrated)')
     test_frequency = Column(Integer, default=1000, comment='校准时使用的测试频率 (Hz)')
     calibration_data = Column(JSON)  # 详细校准测量点数据 (JSON)
 

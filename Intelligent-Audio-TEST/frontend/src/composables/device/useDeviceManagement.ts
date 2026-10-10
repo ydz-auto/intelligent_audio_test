@@ -4,7 +4,8 @@ import { playbackPort } from './playbackPort';
 import { apisPort } from '../apiTest/apisPort';
 import { useModalControl } from '../modal/useModal';
 import { useNotification } from '../modal/useNotification';
-import { HttpStatus, ViewMode, DeviceStatus } from '../../domain/enums';
+import { HttpStatus, ViewMode, DeviceStatus, DeviceTabType } from '../../domain/enums';
+import type { DeviceTabTypeType } from '../../domain/enums';
 import type { PlaybackDevice, TestDeviceView, ApiDeviceView, DeviceUnion, APIResponse } from '@/domain';
 import { MODAL_TYPES } from '../modal/constants';
 import { usePagination } from '../usePagination';
@@ -15,7 +16,7 @@ import { generateDeviceFields } from '../../utils/utils';
 import { APP_CONFIG } from '../../utils/config';
 
 // 设备管理组合式函数
-export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 'test', onDevicesChanged?: () => Promise<void>) {
+export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabType.TEST, onDevicesChanged?: () => Promise<void>) {
   // 状态定义
   const devices = ref<DeviceUnion[]>([]);
   const deviceSearchQuery = ref('');
@@ -47,17 +48,17 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
     try {
       // 只获取当前设备类型的设备ID
       let deviceIds: string[] = [];
-      if (activeDeviceType.value === 'api') {
+      if (activeDeviceType.value === DeviceTabType.API) {
         // 只获取API设备（category/vendor 仅存在于 TestDeviceView/ApiDeviceView，用 in 收窄访问）
         deviceIds = devices.value
           .filter((d: DeviceUnion) => ('category' in d && d.category === 'API设备') || ('vendor' in d && d.vendor)) // 简单判断是否是API设备
           .map((d: DeviceUnion) => String(d.id));
-      } else if (activeDeviceType.value === 'test') {
+      } else if (activeDeviceType.value === DeviceTabType.TEST) {
         // 只获取测试设备
         deviceIds = devices.value
           .filter((d: DeviceUnion) => ('category' in d && d.category === '测试设备')) // 简单判断是否是测试设备
           .map((d: DeviceUnion) => String(d.id));
-      } else if (activeDeviceType.value === 'playback') {
+      } else if (activeDeviceType.value === DeviceTabType.PLAYBACK) {
         // 只获取播放设备
         deviceIds = devices.value
           .filter((d: DeviceUnion) => d.type === 'dry' || d.type === 'noise') // 简单判断是否是播放设备
@@ -67,7 +68,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
       if (deviceIds.length > 0) {
         console.log(`执行${activeDeviceType.value}设备健康检查，设备ID:`, deviceIds);
 
-        if (activeDeviceType.value === 'test') {
+        if (activeDeviceType.value === DeviceTabType.TEST) {
           const result = await devicesPort.healthCheck(deviceIds);
           result.forEach((item) => {
             const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === String(item.id));
@@ -79,7 +80,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
               }
             }
           });
-        } else if (activeDeviceType.value === 'playback') {
+        } else if (activeDeviceType.value === DeviceTabType.PLAYBACK) {
           const result = await playbackPort.checkStatus();
           result.forEach((item: { id: string | number; status: string }) => {
             const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === String(item.id));
@@ -87,7 +88,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
               devices.value[deviceIndex].status = (item.status || DeviceStatus.OFFLINE) as any;
             }
           });
-        } else if (activeDeviceType.value === 'api') {
+        } else if (activeDeviceType.value === DeviceTabType.API) {
           for (const deviceId of deviceIds) {
             try {
               await apisPort.testConnection(deviceId);
@@ -166,13 +167,13 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
     try {
       isLoading.value = true;
       let data: DeviceUnion[] = [];
-      if (activeDeviceType.value === 'test') {
+      if (activeDeviceType.value === DeviceTabType.TEST) {
         const response = await devicesPort.getAll();
         data = (response.items || response) as TestDeviceView[];
-      } else if (activeDeviceType.value === 'playback') {
+      } else if (activeDeviceType.value === DeviceTabType.PLAYBACK) {
         // playbackPort.getAll 已展平为 Domain 数组
         data = await playbackPort.getAll() as PlaybackDevice[];
-      } else if (activeDeviceType.value === 'api') {
+      } else if (activeDeviceType.value === DeviceTabType.API) {
         const response = await apisPort.getAll();
         // apisPort.getAll 已通过 adapter 展平为 Domain 数组（camelCase），无需再取 items
         data = response as ApiDeviceView[];
@@ -199,11 +200,11 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
         cancelText: '取消'
       });
       if (confirmed) {
-        if (targetType === 'test') {
+        if (targetType === DeviceTabType.TEST) {
           await devicesPort.delete(id);
-        } else if (targetType === 'playback') {
+        } else if (targetType === DeviceTabType.PLAYBACK) {
           await playbackPort.delete(id);
-        } else if (targetType === 'api') {
+        } else if (targetType === DeviceTabType.API) {
           await apisPort.delete(id);
         }
         await fetchDevices();
@@ -221,18 +222,18 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
     const targetType = type || activeDeviceType.value;
     console.log(`[useDeviceManagement] Opening add device modal for type: ${targetType}`, initialData);
     modalManager.open(MODAL_TYPES.ADD_DEVICE, {
-      title: targetType === 'api' ? '添加 API' : '添加设备',
+      title: targetType === DeviceTabType.API ? '添加 API' : '添加设备',
       mode: 'create',
       fields: generateDeviceFields(targetType),
       formData: initialData || {},
       onConfirm: async (result: any) => {
         try {
           const { data } = result;
-          if (targetType === 'test') {
+          if (targetType === DeviceTabType.TEST) {
             await devicesPort.create(data);
-          } else if (targetType === 'playback') {
+          } else if (targetType === DeviceTabType.PLAYBACK) {
             await playbackPort.create(data);
-          } else if (targetType === 'api') {
+          } else if (targetType === DeviceTabType.API) {
             await apisPort.create(data);
           }
           await fetchDevices();
@@ -252,27 +253,27 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
     console.log(`[useDeviceManagement] Opening edit device modal for id: ${id}, type: ${targetType}`);
     try {
       let deviceData: any;
-      if (targetType === 'test') {
+      if (targetType === DeviceTabType.TEST) {
         deviceData = await devicesPort.getOne(id);
-      } else if (targetType === 'playback') {
+      } else if (targetType === DeviceTabType.PLAYBACK) {
         deviceData = await playbackPort.getOne(id);
-      } else if (targetType === 'api') {
+      } else if (targetType === DeviceTabType.API) {
         deviceData = await apisPort.getOne(id);
       }
 
       modalManager.open(MODAL_TYPES.EDIT_DEVICE, {
-        title: targetType === 'api' ? '编辑 API' : '编辑设备',
+        title: targetType === DeviceTabType.API ? '编辑 API' : '编辑设备',
         mode: 'edit',
         fields: generateDeviceFields(targetType),
         formData: deviceData,
         onConfirm: async (result: any) => {
           try {
           const { data } = result;
-          if (targetType === 'test') {
+          if (targetType === DeviceTabType.TEST) {
             await devicesPort.update(id, data);
-          } else if (targetType === 'playback') {
+          } else if (targetType === DeviceTabType.PLAYBACK) {
             await playbackPort.update(id, data);
-          } else if (targetType === 'api') {
+          } else if (targetType === DeviceTabType.API) {
             await apisPort.update(id, data);
           }
           await fetchDevices();
@@ -305,11 +306,11 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
         isLoading.value = true;
         // 串行删除，确保稳定性（如果后端支持批量接口，应优先使用批量接口）
         for (const id of ids) {
-          if (targetType === 'test') {
+          if (targetType === DeviceTabType.TEST) {
             await devicesPort.delete(id);
-          } else if (targetType === 'playback') {
+          } else if (targetType === DeviceTabType.PLAYBACK) {
             await playbackPort.delete(id);
-          } else if (targetType === 'api') {
+          } else if (targetType === DeviceTabType.API) {
             await apisPort.delete(id);
           }
         }
@@ -349,11 +350,11 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
   const testDeviceConnection = async (id: number | string, type?: string) => {
     const targetType = type || activeDeviceType.value;
     try {
-      if (targetType === 'test') {
+      if (targetType === DeviceTabType.TEST) {
         await healthCheckDevice(id);
-      } else if (targetType === 'playback') {
+      } else if (targetType === DeviceTabType.PLAYBACK) {
         await playbackPort.test(id);
-      } else if (targetType === 'api') {
+      } else if (targetType === DeviceTabType.API) {
         await apisPort.testConnection(id);
       }
     } catch (error) {
@@ -369,7 +370,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
     console.log(`[useDeviceManagement] Opening scan devices modal for type: ${targetType}`);
 
     modalManager.open(MODAL_TYPES.SCAN_DEVICES, {
-      title: `扫描${targetType === 'test' ? '测试' : targetType === 'playback' ? '播放' : 'API'}设备`,
+      title: `扫描${targetType === DeviceTabType.TEST ? '测试' : targetType === DeviceTabType.PLAYBACK ? '播放' : 'API'}设备`,
       deviceType: targetType,
       autoStartScan: true,
       onConfirm: (scannedDevice: any) => {
@@ -377,7 +378,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
 
         // 将扫描到的数据转换为表单数据格式
         let formData: any = {};
-        if (targetType === 'test') {
+        if (targetType === DeviceTabType.TEST) {
           // 归一化系统类型
           let system = (scannedDevice.system || 'android').toLowerCase();
           if (system.includes('harmony')) system = 'harmony';
@@ -395,7 +396,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
             appVersion: scannedDevice.appVersion || '1.0.0',
             status: DeviceStatus.ONLINE
           };
-        } else if (targetType === 'playback') {
+        } else if (targetType === DeviceTabType.PLAYBACK) {
           formData = {
             name: scannedDevice.name,
             model: scannedDevice.model,
@@ -405,7 +406,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
             deviceType: scannedDevice.deviceType || scannedDevice.type || 'dry',
             status: DeviceStatus.ONLINE
           };
-        } else if (targetType === 'api') {
+        } else if (targetType === DeviceTabType.API) {
           formData = {
             name: scannedDevice.name,
             endpoint: scannedDevice.endpoint,
@@ -436,7 +437,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
   // 单个设备健康检查
   async function healthCheckDevice(id: string | number) {
     try {
-      if (activeDeviceType.value === 'test') {
+      if (activeDeviceType.value === DeviceTabType.TEST) {
         const result = await devicesPort.healthCheck([String(id)]);
         if (result && result.length > 0) {
           const item = result[0];
@@ -445,7 +446,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
             devices.value.splice(deviceIndex, 1, { ...devices.value[deviceIndex], status: item.status });
           }
         }
-      } else if (activeDeviceType.value === 'api') {
+      } else if (activeDeviceType.value === DeviceTabType.API) {
         await apisPort.testConnection(String(id));
         const deviceIndex = devices.value.findIndex((d: DeviceUnion) => String(d.id) === String(id));
         if (deviceIndex > -1) {

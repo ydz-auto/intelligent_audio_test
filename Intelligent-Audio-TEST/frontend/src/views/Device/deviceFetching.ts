@@ -4,7 +4,8 @@ import { apisPort } from '../../composables/apiTest/apisPort';
 import { audiosPort } from '../../composables/audio/audiosPort';
 import type { PlaybackDevice } from '../../domain';
 import type { TestDeviceView, ApiDeviceView, DeviceUnion, ListResponse } from '@/domain';
-import { HttpStatus, DeviceStatus } from '../../domain/enums';
+import { HttpStatus, DeviceStatus, DeviceType, DeviceTabType } from '../../domain/enums';
+import { resolveApiDeviceType } from '../../domain/model/device';
 import {
   activeTab,
   loading,
@@ -35,7 +36,8 @@ export async function fetchAllDevices() {
         const deviceId = d.id;
         const existingDevice = currentTestDevices.find(existing => existing.id === deviceId);
         const currentStatus = existingDevice && existingDevice.status === DeviceStatus.TESTING ? DeviceStatus.TESTING : d.status;
-        return { ...d, category: d.category || '测试设备', status: currentStatus } as TestDeviceView;
+        // 物理被测设备执行路由恒为 physical（DeviceType 枚举消费，INT-74）
+        return { ...d, category: d.category || '测试设备', status: currentStatus, deviceType: DeviceType.PHYSICAL } as TestDeviceView;
       });
     } else {
       console.error('Failed to fetch test devices:', basicResults[0].reason);
@@ -59,7 +61,10 @@ export async function fetchAllDevices() {
           }));
         }
 
-        return { ...d, category: d.category || 'API设备', status: currentStatus, endpoints: processedEndpoints } as ApiDeviceView;
+        // 被测设备类型按端点协议推导（DeviceType 枚举消费，执行路由依据，INT-74）
+        const routingType = resolveApiDeviceType(processedEndpoints[0]?.endpoint);
+
+        return { ...d, category: d.category || 'API设备', status: currentStatus, endpoints: processedEndpoints, deviceType: routingType } as ApiDeviceView;
       });
     } else {
       console.error('Failed to fetch API devices:', basicResults[1].reason);
@@ -116,18 +121,18 @@ export async function autoHealthCheck() {
 
   try {
     let deviceIds: (string | number)[] = [];
-    if (activeTab.value === 'playback') {
+    if (activeTab.value === DeviceTabType.PLAYBACK) {
       deviceIds = playbackDevices.value.map(d => d.id);
-    } else if (activeTab.value === 'test') {
+    } else if (activeTab.value === DeviceTabType.TEST) {
       deviceIds = testDevices.value.map(d => d.id);
-    } else if (activeTab.value === 'api') {
+    } else if (activeTab.value === DeviceTabType.API) {
       deviceIds = apiDevices.value.map(d => d.id);
     }
 
     if (deviceIds.length > 0) {
       console.log(`自动运行健康检查，设备ID: ${deviceIds}`);
 
-      if (activeTab.value === 'test') {
+      if (activeTab.value === DeviceTabType.TEST) {
         const results = await devicesPort.healthCheck(deviceIds) as any[];
         results.forEach((item: any) => {
           const device = testDevices.value.find(d => String(d.id) === String(item.id));
@@ -138,7 +143,7 @@ export async function autoHealthCheck() {
             }
           }
         });
-      } else if (activeTab.value === 'playback') {
+      } else if (activeTab.value === DeviceTabType.PLAYBACK) {
         const results = await playbackPort.checkStatus() as any[];
         results.forEach((item: any) => {
           const device = playbackDevices.value.find(d => String(d.id) === String(item.id));
@@ -146,7 +151,7 @@ export async function autoHealthCheck() {
             device.status = item.status || DeviceStatus.OFFLINE;
           }
         });
-      } else if (activeTab.value === 'api') {
+      } else if (activeTab.value === DeviceTabType.API) {
         for (const deviceId of deviceIds) {
           try {
             const result = await apisPort.testConnection(deviceId as string | number);

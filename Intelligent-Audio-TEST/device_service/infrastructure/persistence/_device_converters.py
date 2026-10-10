@@ -12,6 +12,7 @@ PO 字段映射约定：
 """
 from typing import Any, Dict, List, Optional
 
+from shared.models.common_enums import CalibrationStatus
 from device_service.infrastructure.persistence.models import (
     Device,
     DeviceTag,
@@ -218,7 +219,7 @@ def _spl_mapping_po_to_entity(po: SPLMapping) -> SPLMappingEntity:
         target_spl=po.target_spl,
         digital_gain=po.digital_gain,
         test_frequency=po.test_frequency or 1000,
-        calibration_status=po.calibration_status or "uncalibrated",
+        calibration_status=po.calibration_status or CalibrationStatus.UNCALIBRATED.value,
         calibration_data=po.calibration_data,
         deleted=po.deleted or False,
         created_at=po.created_at,

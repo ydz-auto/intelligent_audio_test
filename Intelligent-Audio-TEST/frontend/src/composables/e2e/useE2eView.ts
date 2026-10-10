@@ -11,7 +11,7 @@ import { useTestReport } from '../shared/useTestReport'
 import { normalizeSelectedCaseIds } from '../shared/useTestFlow'
 import { useTestCaseStore } from '../../store/testCaseStore'
 import type { TestCase, TestCaseFormData } from '../../domain'
-import { TestType } from '../../domain/enums'
+import { TestType, DeviceTabType } from '../../domain/enums'
 import { useE2eExecution } from './useE2eExecution'
 
 export function useE2eView() {
@@ -37,7 +37,7 @@ export function useE2eView() {
     handlePageSizeChange,
     handlePrevPage,
     handleNextPage
-  } = useDeviceManagement('test')
+  } = useDeviceManagement(DeviceTabType.TEST)
 
   const { 
     formData, 

@@ -2,10 +2,11 @@ import { ref, computed } from 'vue';
 import { useModalControl } from '../../composables/modal/useModal';
 import type { PlaybackDevice, Audio } from '../../domain';
 import type { TestDeviceView, ApiDeviceView, DeviceUnion } from '@/domain';
-// 引入视图模式枚举，消除魔法字符串
-import { ViewMode } from '@/domain/enums';
+// 引入视图模式/页签枚举，消除魔法字符串
+import { ViewMode, DeviceTabType } from '@/domain/enums';
+import type { DeviceTabTypeType } from '@/domain/enums';
 
-export const activeTab = ref('test');
+export const activeTab = ref<DeviceTabTypeType>(DeviceTabType.TEST);
 export const loading = ref(false);
 export const isHealthChecking = ref(false);
 export const error = ref<string | null>(null);
@@ -48,7 +49,7 @@ export const apiTotalPages = computed(() => Math.ceil(apiTotalItems.value / apiP
 
 export type DeviceManagementType = {
   devices: ReturnType<typeof ref<DeviceUnion[]>>;
-  activeDeviceType: ReturnType<typeof ref<'test' | 'playback' | 'api'>>;
+  activeDeviceType: ReturnType<typeof ref<DeviceTabTypeType>>;
   modalManager: ReturnType<typeof useModalControl>;
   addDevice: (type?: string, initialData?: any) => void;
   editDevice: (id: number | string, type?: string) => Promise<void>;

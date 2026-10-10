@@ -10,6 +10,7 @@ import os
 import wave
 import logging
 
+from shared.models.common_enums import CalibrationStatus
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit, log_and_emit
 from device_service.infrastructure.acl.task_acl_repository import task_acl_repository
@@ -82,7 +83,7 @@ class SPLCommandService:
                     return {'success': False, 'message': '; '.join(validation_errors), 'data': None, 'code': 400}
                 calibration_data['points'] = valid_points
                 if len(valid_points) > 0:
-                    calibration_status = 'calibrated'
+                    calibration_status = CalibrationStatus.CALIBRATED.value
             else:
                 calibration_data = {'points': []}
 
@@ -99,7 +100,7 @@ class SPLCommandService:
                 'target_spl': target_spl,
                 'digital_gain': None,
                 'test_frequency': data.get('test_frequency') or 1000,
-                'calibration_status': calibration_status or 'uncalibrated',
+                'calibration_status': calibration_status or CalibrationStatus.UNCALIBRATED.value,
                 'calibration_data': calibration_data,
             }
 
@@ -165,13 +166,13 @@ class SPLCommandService:
                         return {'success': False, 'message': '; '.join(validation_errors), 'data': None, 'code': 400}
                     calibration_data['points'] = valid_points
                     if len(valid_points) > 0:
-                        update_fields['calibration_status'] = 'calibrated'
+                        update_fields['calibration_status'] = CalibrationStatus.CALIBRATED.value
                     update_fields['calibration_data'] = calibration_data
                 else:
                     update_fields['calibration_data'] = {'points': []}
 
             if env_params_changed:
-                update_fields['calibration_status'] = 'uncalibrated'
+                update_fields['calibration_status'] = CalibrationStatus.UNCALIBRATED.value
                 update_fields['calibration_data'] = None
 
             is_current = data.get('is_current')
@@ -243,7 +244,7 @@ class SPLCommandService:
             calibration_data = {"points": scan_points}
             self.repo.update_spl_mapping(mapping_id, {
                 'calibration_data': calibration_data,
-                'calibration_status': 'calibrated',
+                'calibration_status': CalibrationStatus.CALIBRATED.value,
             })
 
             self.repo.create_calibration_history(
@@ -257,7 +258,7 @@ class SPLCommandService:
             return {
                 'success': True,
                 'message': '校准成功',
-                'data': {'id': mapping_id, 'calibration_status': 'calibrated'},
+                'data': {'id': mapping_id, 'calibration_status': CalibrationStatus.CALIBRATED.value},
                 'code': 200,
             }
         except Exception as e:

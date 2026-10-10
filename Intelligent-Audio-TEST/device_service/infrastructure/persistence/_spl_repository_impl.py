@@ -8,6 +8,7 @@ P5+DOMAIN: 通过 PO ↔ Entity 显式转换，仓储方法返回 domain entitie
 """
 from typing import List, Optional
 
+from shared.models.common_enums import CalibrationStatus
 from shared.models.database import get_db_session
 from device_service.infrastructure.persistence.models import (
     PlaybackDevice,
@@ -49,7 +50,7 @@ class SPLRepository(SPLRepositoryInterface):
             target_spl=data.get('target_spl'),
             digital_gain=data.get('digital_gain'),
             test_frequency=data.get('test_frequency') or 1000,
-            calibration_status=data.get('calibration_status') or 'uncalibrated',
+            calibration_status=data.get('calibration_status') or CalibrationStatus.UNCALIBRATED.value,
             calibration_data=data.get('calibration_data'),
         )
         session.add(new_mapping)
@@ -160,7 +161,7 @@ class SPLRepository(SPLRepositoryInterface):
         session = get_db_session()
         total = session.query(SPLMapping).filter(SPLMapping.deleted == False).count()  # noqa: E712
         calibrated = session.query(SPLMapping).filter_by(
-            calibration_status='calibrated', deleted=False
+            calibration_status=CalibrationStatus.CALIBRATED.value, deleted=False
         ).count()
         uncalibrated = total - calibrated
         associated_devices = session.query(SPLMapping.device_id).filter(

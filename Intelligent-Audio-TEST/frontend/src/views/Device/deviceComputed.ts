@@ -22,14 +22,14 @@ import {
   apiTotalItems,
   apiTotalPages
 } from './deviceState';
-// 引入视图模式枚举，消除魔法字符串
-import { ViewMode, DeviceStatus } from '@/domain/enums';
+// 引入视图模式/页签枚举，消除魔法字符串
+import { ViewMode, DeviceStatus, DeviceTabType } from '@/domain/enums';
 
 export const addButtonText = computed(() => {
   switch (activeTab.value) {
-    case 'playback':
+    case DeviceTabType.PLAYBACK:
       return '添加播放设备';
-    case 'api':
+    case DeviceTabType.API:
       return '添加测试API';
     default:
       return '添加测试设备';
@@ -37,14 +37,14 @@ export const addButtonText = computed(() => {
 });
 
 export const stats = computed(() => {
-  if (activeTab.value === 'playback') {
+  if (activeTab.value === DeviceTabType.PLAYBACK) {
     return [
       { value: playbackDevices.value.filter(d => d && d.name).length, label: '总设备数', icon: 'fas fa-headphones', iconClass: 'device-icon' },
       { value: playbackDevices.value.filter(d => d && d.name && d.status === DeviceStatus.ONLINE).length, label: '在线设备', icon: 'fas fa-check-circle', iconClass: 'active-icon' },
       { value: playbackDevices.value.filter(d => d && d.name && d.status === DeviceStatus.OFFLINE).length, label: '离线设备', icon: 'fas fa-times-circle', iconClass: 'inactive-icon' },
       { value: playbackDevices.value.filter(d => d && d.name && d.status === DeviceStatus.TESTING).length, label: '测试中设备', icon: 'fas fa-play-circle', iconClass: 'test-icon' }
     ];
-  } else if (activeTab.value === 'api') {
+  } else if (activeTab.value === DeviceTabType.API) {
     return [
       { value: apiDevices.value.filter(d => d && d.name).length, label: '总测试API数', icon: 'fas fa-exchange-alt', iconClass: 'device-icon' },
       { value: apiDevices.value.filter(d => d && d.name && d.status === DeviceStatus.ONLINE).length, label: '可用API', icon: 'fas fa-check-circle', iconClass: 'active-icon' },

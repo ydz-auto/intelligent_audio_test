@@ -176,6 +176,20 @@ export const DeviceType = {
 /** 被测设备类型（由 DeviceType 派生的字符串联合） */
 export type DeviceTypeType = typeof DeviceType[keyof typeof DeviceType]
 
+/**
+ * 设备管理页页签类型枚举（Device 页 UI 页签语义，INT-74）
+ * 区别于后端 DeviceType（被测设备类型，决定执行路由）：
+ * TEST/PLAYBACK 为物理设备分组页签，API 为被测 API 页签
+ */
+export const DeviceTabType = {
+  TEST: 'test',
+  API: 'api',
+  PLAYBACK: 'playback',
+} as const
+
+/** 设备管理页页签类型（由 DeviceTabType 派生的字符串联合） */
+export type DeviceTabTypeType = typeof DeviceTabType[keyof typeof DeviceTabType]
+
 /** API 传输协议枚举（值 = 后端 shared.models.common_enums.APIProtocol 原值，Adapter 分型依据） */
 export const APIProtocol = {
   HTTP: 'http',

@@ -22,7 +22,7 @@ import { useTestCaseCard } from '../../composables/testCase/useTestCaseCard'
 import { useDeviceManagement } from '../../composables/device/useDeviceManagement'
 import { useAlgorithmSelection } from '../../composables/algorithm/useAlgorithmSelection'
 import { useTestReport } from '../../composables/shared/useTestReport'
-import { TestType } from '@/domain/enums'
+import { DeviceTabType } from '@/domain/enums'
 import { createApiTestState } from './apiTest.state'
 import { createApiListModule } from './apiTest.apiList'
 import { createApiManageModule } from './apiTest.apiManage'
@@ -174,7 +174,7 @@ export function useApiTest() {
     apiTotalPages
   })
 
-  const deviceManagement = useDeviceManagement(TestType.API)
+  const deviceManagement = useDeviceManagement(DeviceTabType.API)
 
   // ===== API 管理与选择 =====
   const {

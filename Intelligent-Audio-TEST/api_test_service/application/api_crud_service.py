@@ -14,6 +14,8 @@ from urllib.parse import urlparse
 
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
+from shared.models.common_enums import OutputType
+from api_test_service.domain.entities.api import normalize_output_types
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from api_test_service.infrastructure.persistence.api_test_repository import api_test_repository
 
@@ -46,6 +48,15 @@ class APICrudService:
             val = data['default_max_audio_duration']
             if not isinstance(val, int) or val < 1 or val > 36000:
                 return "默认最大音频时长 (default_max_audio_duration) 必须在 1-36000 之间"
+
+        if data.get('output_types') is not None:
+            if not isinstance(data['output_types'], list):
+                return "输出类型列表 (output_types) 必须是一个数组"
+            valid_values = {item.value for item in OutputType}
+            invalid = [v for v in data['output_types'] if v not in valid_values]
+            if invalid:
+                return (f"非法的输出类型 (output_types): {', '.join(map(str, invalid))}，"
+                        f"仅支持: {', '.join(valid_values)}")
 
         return None
 
@@ -160,6 +171,7 @@ class APICrudService:
             'default_max_timeout': getattr(api, 'default_max_timeout', None),
             'default_max_audio_duration': getattr(api, 'default_max_audio_duration', None),
             'health_score': getattr(api, 'health_score', None),
+            'output_types': normalize_output_types(getattr(api, 'output_types', None)),
             'endpoints': endpoints,
             'created_at': created_at.isoformat() if created_at and hasattr(created_at, 'isoformat') else (created_at if isinstance(created_at, str) else None),
             'updated_at': updated_at.isoformat() if updated_at and hasattr(updated_at, 'isoformat') else (updated_at if isinstance(updated_at, str) else None),
@@ -238,6 +250,7 @@ class APICrudService:
                 'max_audio_duration': default_max_audio_duration,
                 'status': data.get('status') or 'online',
                 'api_endpoints': api_endpoints,
+                'output_types': normalize_output_types(data.get('output_types')),
             }
 
             new_api = api_test_repository.create_api(create_data)
@@ -300,6 +313,8 @@ class APICrudService:
                 update_fields['default_max_audio_duration'] = data['default_max_audio_duration']
             if data.get('status') is not None:
                 update_fields['status'] = data['status']
+            if data.get('output_types') is not None:
+                update_fields['output_types'] = normalize_output_types(data['output_types'])
 
             if data.get('endpoints') is not None:
                 for ep in data['endpoints']:

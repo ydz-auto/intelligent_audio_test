@@ -40,6 +40,7 @@ class ApiItem(APIModel):
     default_max_audio_duration: Optional[int] = Field(None)
     health_score: Optional[int] = Field(None)
     endpoints: List[ApiEndpointItem] = Field(default_factory=list)
+    output_types: List[str] = Field(default_factory=list)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
 
@@ -83,6 +84,7 @@ class ApiCreateInput(APIModel):
     default_max_audio_duration: Optional[int] = Field(None)
     status: Optional[str] = Field(None)
     endpoints: List[ApiEndpointInput] = Field(default_factory=list)
+    output_types: Optional[List[str]] = Field(None)
 
 
 class ApiUpdateInput(APIModel):
@@ -97,3 +99,4 @@ class ApiUpdateInput(APIModel):
     default_max_audio_duration: Optional[int] = Field(None)
     status: Optional[str] = Field(None)
     endpoints: Optional[List[ApiEndpointInput]] = Field(None)
+    output_types: Optional[List[str]] = Field(None)
