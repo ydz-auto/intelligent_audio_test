@@ -67,8 +67,10 @@ class DeviceQueryService:
     # 批量获取设备状态 (用于 HTTP 轮询降级)
     @staticmethod
     def get_statuses():
-        query_params_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
-        query_params = DeviceStatusQuery.model_validate(query_params_dict)
+        try:
+            query_params = DeviceQueryService._parse_query(DeviceStatusQuery)
+        except Exception as e:
+            return error_response(f"请求参数错误: {str(e)}", 400)
         device_ids = query_params.ids
 
         result = _device_acl.get_statuses(device_ids)

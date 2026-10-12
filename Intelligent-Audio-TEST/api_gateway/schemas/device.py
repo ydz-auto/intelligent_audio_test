@@ -17,6 +17,15 @@ class DeviceListQuery(APIModel):
 class DeviceStatusQuery(APIModel):
     ids: Optional[List[int]] = Field(None)
 
+    @field_validator('ids', mode='before')
+    @classmethod
+    def _split_comma_ids(cls, value):
+        """query 形态兼容：ids=1,2（前端 CSV 轮询序列化）拆分为列表"""
+        if isinstance(value, str):
+            parts = [p.strip() for p in value.split(',') if p.strip()]
+            return [int(p) for p in parts] if parts else None
+        return value
+
 
 class DeviceCreateSchema(APIModel):
     name: str = Field(..., validation_alias='deviceName')
