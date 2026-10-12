@@ -83,8 +83,15 @@ class PublishedTaskService:
     @staticmethod
     def get_all():
         params = _parse_query_params()
-        page = max(int(params.get('page', 1)), 1)
-        per_page = min(max(int(params.get('perPage', params.get('per_page', 10))), 1), 100)
+        # INT-233：page/perPage 手动 int() 解析对非整数输入抛 ValueError
+        # 曾以 500 漏出，与全局 ValidationError→422 口径对齐
+        try:
+            page = max(int(params.get('page', 1)), 1)
+            per_page = min(max(int(params.get('perPage', params.get('per_page', 10))), 1), 100)
+        except (TypeError, ValueError):
+            return error_response(
+                '分页参数 page/per_page 需为整数', code=ErrorCode.INVALID_PARAMS, http_code=422,
+            )
         status = params.get('status', '')
         keyword = params.get('keyword', '').strip()
         task_type = (params.get('type') or '').strip().lower()

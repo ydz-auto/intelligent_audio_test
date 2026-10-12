@@ -84,6 +84,11 @@ def create_app(config_name='default') -> FastAPI:
         allow_headers=["*"],
     )
 
+    # INT-233：统一异常处理器——service 层 model_validate（查询参数/请求体）
+    # 抛出的 ValidationError 统一转 422 结构化错误，不再以 500 裸错误漏出
+    from api_gateway.utils.error_handlers import register_error_handlers
+    register_error_handlers(app)
+
     # 注册 request_adapter 中间件（将 FastAPI 请求注入 ContextVar）
     from api_gateway.middleware import RequestAdapterMiddleware, AuthMiddleware
     from shared.utils.naming_middleware import NamingAliasMiddleware
