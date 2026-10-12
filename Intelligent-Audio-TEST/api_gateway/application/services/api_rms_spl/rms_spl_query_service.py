@@ -5,12 +5,25 @@
 保留对路由层的签名约定（静态方法 + success_response/error_response 包装）。
 """
 from api_gateway.infrastructure.request_adapter import request
+from api_gateway.infrastructure.query_validator import (
+    IntParamRule,
+    QueryParamValidationError,
+    parse_int_args,
+)
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.infrastructure.acl import ApiRmsSplConfigAclRepositoryImpl
 
 
 _rms_spl_acl = ApiRmsSplConfigAclRepositoryImpl()
+
+# 列表端点 query 参数清洗规则（INT-165）：缺省值与钳制区间集中声明
+_LIST_INT_RULES = (
+    IntParamRule('page', default=1, min_value=1),
+    # per_page 钳制 [1,100]，防止超大分页拖垮列表查询
+    IntParamRule('per_page', default=10, min_value=1, max_value=100),
+    IntParamRule('api_id', default=None),
+)
 
 
 class RmsSplQueryService:
@@ -19,13 +32,17 @@ class RmsSplQueryService:
     @staticmethod
     def get_all():
         params = request.args
-        # per_page 钳制 [1,100]，防止超大分页拖垮列表查询
-        per_page = min(max(int(params.get('per_page', 10) or 10), 1), 100)
+        try:
+            parsed = parse_int_args(params, _LIST_INT_RULES)
+        except QueryParamValidationError as exc:
+            return error_response(
+                str(exc), code=ErrorCode.INVALID_TYPE,
+                detail={'param': exc.param, 'value': exc.value},
+            )
         result = _rms_spl_acl.get_all(
-            page=int(params.get('page', 1) or 1),
-            per_page=per_page,
-            # query 参数恒为 str，须与 page/per_page 同层 int() 后再进 proto int32 边界
-            api_id=int(params['api_id']) if params.get('api_id') else None,
+            page=parsed['page'],
+            per_page=parsed['per_page'],
+            api_id=parsed['api_id'],
             calibration_status=params.get('calibration_status') or None,
         )
         if not result.success:
