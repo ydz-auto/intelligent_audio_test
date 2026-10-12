@@ -175,11 +175,18 @@ class _ApiHarness:
         ]
 
     def __enter__(self):
+        # 记录原值，退出时恢复：setattr 直接覆盖模块全局，泄漏会污染同进程
+        # 后续测试（INT-169 验收回归发现：int64 → int174 同跑时重评链读到
+        # 泄漏的 MagicMock 导致 4 例假失败）
+        self._originals = [(target, name, getattr(target, name))
+                           for target, name, _ in self._patches]
         for target, name, value in self._patches:
             setattr(target, name, value)
         return self
 
     def __exit__(self, *exc):
+        for target, name, original in self._originals:
+            setattr(target, name, original)
         return False
 
     def run(self, rounds, config=None):
