@@ -698,6 +698,7 @@ class EvaluationService(EvaluationLoggerMixin):
                         'dimension_type': getattr(dim, 'dimension_type', 'main'),
                         'parent_dimension_id': getattr(dim, 'parent_dimension_id', None),
                         'task_type_code': getattr(dim, 'task_type_code', None),
+                        'category_id': getattr(dim, 'category_id', None),
                         'output_field_path': output_field_path,
                         'output_params': dim_outputs,
                         'input_params': input_param_map.get(dim.id, [])
@@ -967,9 +968,29 @@ class EvaluationService(EvaluationLoggerMixin):
             # 更新任务统计并唤醒等待线程，让执行引擎继续推进
             self._post_evaluate_updates(task_id, test_case_id)
 
+        # 组间自动合并：无 group_key 的多个 parent 分组，若满足
+        # 同 endpoint + 同 category_id + 组内所有维度 (task_type_code, body_template) 完全一致，
+        # 则并入一组只发一次请求（如拒识族 3 主维度同族同 task_type 同 body → 一次判定三率一致）。
+        # 组内只要含 task_type 不同的维度（如 turn_eval 主子 task_type 不同的族，靠 sub_tasks 工作）
+        # 或 body_template 不一致，则保持原 parent 分组不合并。
+        merged_groups = {}
+        for group_key, group_items in endpoint_groups.items():
+            endpoint_key = group_key[0]
+            sigs = set()
+            cats = set()
+            for dim_data, _ in group_items:
+                tc = dim_data.get('parent_task_type_code') or dim_data.get('task_type_code')
+                body = (dim_data.get('api_settings') or {}).get('body_template')
+                body_key = json.dumps(body, sort_keys=True, ensure_ascii=False) if isinstance(body, dict) else str(body)
+                sigs.add((tc, body_key))
+                cats.add(dim_data.get('category_id'))
+            merge_key = (endpoint_key, frozenset(sigs), frozenset(cats))
+            merged_groups.setdefault(merge_key, []).extend(group_items)
+        endpoint_groups = merged_groups
+
         # 异步提交评估任务，不等待完成
         for group_key, group_items in endpoint_groups.items():
-            endpoint_url, _ = group_key
+            endpoint_url = group_key[0]
             representative_dim_data = group_items[0][0]
             group_dim_names = [item[0]['name'] for item in group_items]
             group_dim_ids = [item[0]['id'] for item in group_items]

@@ -342,7 +342,8 @@ export function useEvaluation() {
 
   // ===== 分组视图状态 =====
   // 'list' 列表视图（现有表格） | 'group' 分组视图（按分类分组）
-  const viewMode = ref<'list' | 'group'>('list');
+  // 默认分组视图：按分类聚合展示，便于按族查看自动合并评估的维度
+  const viewMode = ref<'list' | 'group'>('group');
   // 分组折叠状态：key 为分类 id（'uncategorized' 表示未分类组），缺省默认展开
   const collapsedGroups = ref<Record<string, boolean>>({});
 
@@ -423,7 +424,6 @@ export function useEvaluation() {
       { value: 'manual', label: '人工评估' }
     ], group: '基本信息' },
     { key: 'categoryId', label: '所属分类', type: 'select', required: false, options: [
-      { value: '', label: '请选择分类' },
       { value: '__new__', label: '+ 新建分类' },
       ...categories.value.map(c => ({ value: c.id, label: c.name }))
     ], group: '基本信息' },
@@ -1358,7 +1358,7 @@ export function useEvaluation() {
       name: '',
       description: '',
       type: 'auto',
-      categoryId: categoryId ?? undefined,
+      categoryId: categoryId ?? (categories.value[0]?.id ?? undefined),
       dimensionType: parentDimensionId ? 'sub' : 'main',
       parentDimensionId: parentDimensionId || '',
       apiUrl: '',
@@ -1632,6 +1632,26 @@ export function useEvaluation() {
     }
   }
 
+  const categoryFields = [
+    { key: 'name', label: '分类名称', type: 'text', required: true, placeholder: '请输入分类名称', group: '基本信息' },
+    { key: 'description', label: '描述', type: 'textarea', rows: 2, placeholder: '请输入分类描述', group: '基本信息' },
+    { key: 'icon', label: '图标', type: 'text', placeholder: '如 fas fa-folder', defaultValue: 'fas fa-folder', group: '基本信息' }
+  ];
+
+  function openAddCategoryModal() {
+    modalManager.open(MODAL_TYPES.CRUD_FORM, {
+      mode: 'add',
+      entityName: '评估分类',
+      width: '600px',
+      fields: categoryFields,
+      formData: { name: '', description: '', icon: 'fas fa-folder' },
+      onSave: async (result: any) => {
+        const payload = result.data || result;
+        await saveCategory(payload, 'add');
+      }
+    });
+  }
+
   function resetAllStates() {
     resetFilters();
     currentPage.value = 1;
@@ -1704,6 +1724,7 @@ export function useEvaluation() {
     exportData, 
     exportDimensions, 
     openAddModal, 
+    openAddCategoryModal,
     openAPISettingsModal, 
     openRuleEditorModal, 
     previewImportData, 

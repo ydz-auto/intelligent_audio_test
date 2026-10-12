@@ -15,6 +15,10 @@
             <i class="fas fa-plus btn-icon"></i>
             新增维度
           </button>
+          <button class="btn btn-text btn-link" @click="openAddCategoryModal">
+            <i class="fas fa-folder-plus btn-icon"></i>
+            新增分类
+          </button>
           <div class="btn-group" ref="batchMenuRef">
             <button class="btn btn-text btn-link dropdown-toggle" @click="toggleBatchMenu">
               <i class="fas fa-cogs btn-icon"></i>
@@ -92,6 +96,10 @@
             </div>
           </div>
           <div class="card-body">
+            <div class="auto-merge-hint">
+              <i class="fas fa-info-circle"></i>
+              同一分类下、评估服务与请求模板一致的维度，评估时会自动合并为一次请求，共用一次判定结果。
+            </div>
             <!-- 列表视图 -->
             <InfiniteScrollList
               v-if="viewMode === 'list'"
@@ -274,6 +282,7 @@ const {
   getAlgorithmLabel,
   // 模态框操作函数
   openAddModal,
+  openAddCategoryModal,
   openEditModal,
   closeModal,
   importDimensions,
@@ -915,6 +924,26 @@ select.form-input.filter-select:focus {
   border-radius: 8px;
   width: 100%;
   margin: 0 auto;
+}
+
+/* 自动合并评估说明提示条 */
+.auto-merge-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #ff6a00;
+  background: linear-gradient(135deg, rgba(255, 106, 0, 0.08), rgba(255, 106, 0, 0.04));
+  border: 1px solid rgba(255, 106, 0, 0.35);
+  border-radius: 6px;
+}
+
+.auto-merge-hint i {
+  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .empty-dimensions i {

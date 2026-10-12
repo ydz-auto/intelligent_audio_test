@@ -53,6 +53,11 @@ API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
 # 参数定义
 # ============================================================
 
+# 说明：不再配置 group_key。拒识族（3 主 + 9 子，同 category_id、同 task_type_code=reject_judge、
+# 同 body_template）由 evaluation_service._dispatch_evaluation_tasks 的组间自动合并逻辑
+# 合并为一组只发一次请求、一次 LLM 判定，三个主维度从同一份 result 按各自 field_path 提取，
+# 保证三率一致（100%）。
+
 # ── 输入参数（所有主维度共享） ──
 _INPUT_PARAMS = [
     ('ai_wav', '模型回复音频', '模型回复音频路径(被判定对象)', 'audio', 'input',
