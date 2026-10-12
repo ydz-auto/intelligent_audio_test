@@ -434,13 +434,22 @@ def create_task(request: Request):
 
 ### 6.3 白名单路由（无需鉴权）
 
+以现行 [api_gateway/middleware.py](../api_gateway/middleware.py) `AuthMiddleware.PUBLIC_PATHS` 为准（2026-10-13 对齐，含 INT-51 / INT-147 / INT-179 / INT-180 演进）：
+
 | 路由前缀 | 说明 |
 |---|---|
-| `/api/v1/auth/login` | 登录入口 |
+| `/api/v1/auth/login` | 登录入口（前缀覆盖 `/auth/login/encryption-key` 公钥下发，INT-147） |
 | `/api/v1/auth/callback` | OAuth 回调 |
 | `/api/v1/auth/register` | 注册（仅 dev 模式） |
+| `/api/v1/auth/encryption-key` | 登录密码 RSA 公钥下发旧库路径别名（INT-179，与 `/login/encryption-key` 同源——公钥用于加密登录密码，拿公钥本身不得先登录） |
+| `/api/v1/auth/refresh` | token 刷新（路由自解析 Bearer 并自验签，过期 token 由路由返回刷新失败语义而非被网关先行拦截；INT-179） |
+| `/api/v1/auth/mode` | 当前生效认证模式（INT-180 前端启动自检——登录前前端比对 `VITE_AUTH_MODE` 与后端 `AUTH_MODE`，错位即页面告警） |
+| `/api/v1/auth/oauth` | OAuth 公开端点：提供方列表 / 授权跳转 / 授权回调（INT-51；绑定端点位于此前缀内、路由内自校验 Bearer） |
 | `/docs`、`/openapi.json`、`/redoc` | API 文档 |
-| `/api/v1/home/stats/summary` | 首页公开统计（可选） |
+| `/health`、`/socket.io` | 健康检查 / WebSocket |
+| `/api/v1/home/stats/summary` | 首页公开统计——**未启用**：现行 `PUBLIC_PATHS` 未放行，该端点仍需 `home:read` 权限（home_bp 路由级 `require_permission` 校验） |
+
+匹配按**路径段边界**（`_is_public_path`：`path == p or path.startswith(p.rstrip('/') + '/')`），非裸 `startswith`——防止 `/api/v1/auth/oauth` 误伤 `/api/v1/auth/oauth-providers` 这类共享字符串前缀的管理端路径（oauth_bp 的 `/oauth-providers` 管理端点须鉴权）。
 
 ### 6.4 实施优先级
 

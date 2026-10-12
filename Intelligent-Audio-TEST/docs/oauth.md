@@ -260,6 +260,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 ```
 
+> **设计期快照注记（2026-10-13 对齐，INT-189）**：上图 §2.5 为设计期草图，现行实现已演进——① 白名单扩展：`/auth/encryption-key`（INT-147/179 公钥下发）、`/auth/refresh`（INT-179 白名单化，路由自解析 Bearer）、`/auth/mode`（INT-180 启动自检）、`/auth/oauth`（INT-51）、`/health`、`/socket.io`；② 匹配语义：按**路径段边界**（`_is_public_path`：`path == p or path.startswith(p.rstrip('/') + '/')`）而非裸 `startswith`——防止 `/auth/oauth` 误伤 `/auth/oauth-providers` 这类共享字符串前缀的管理端路径。现行清单以 [RBAC权限划分.md](./RBAC权限划分.md) 6.3 节与 `api_gateway/middleware.py` 为准。
+
 #### 2.6 认证服务设计
 
 ```python
@@ -518,6 +520,8 @@ def me(request: Request):
         'permissions': request.state.permissions,
     }
 ```
+
+> **设计期快照注记（2026-10-13 对齐，INT-189）**：上图 §2.7 路由草图为设计期快照，`POST /auth/login`（login_submit）现行契约已演进——① 请求体**双格式兼容**（INT-179）：表单编码 `application/x-www-form-urlencoded` 为前端契约（`frontend/src/infrastructure/api/authApi.ts` 以 URLSearchParams 提交），JSON body 亦可（经 RequestAdapterMiddleware 预解析进 `request.state._json_body` 兜底）；② INT-147：密码 RSA 加密传输——加密开关开启时仅接受 `password_encrypted` / `encryption_key_id`（明文 `password` 被忽略，无明文回退），公钥经 `/auth/encryption-key`（或 `/auth/login/encryption-key`）登录前下发；③ 401 以 error code 区分语义（INT-188：加密载荷无效 `AUTH_ENCRYPTION_INVALID` / 凭证错误 `AUTH_CREDENTIALS_INVALID`）。白名单现状：`/auth/login`、`/auth/callback`、`/auth/register`（仅 dev）、`/auth/encryption-key`、`/auth/refresh`、`/auth/mode`、`/auth/oauth` 在 `AuthMiddleware.PUBLIC_PATHS` 内（见 [RBAC权限划分.md](./RBAC权限划分.md) 6.3 节），`/auth/logout`、`/auth/me` 须鉴权。现行实现以 `api_gateway/routes/auth_bp.py` 为准。
 
 ### 3. auth_service 微服务化
 

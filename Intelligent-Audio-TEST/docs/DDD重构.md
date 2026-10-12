@@ -1240,6 +1240,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 ```
 
+> **设计期快照注记（2026-10-13 对齐，INT-189）**：上方 `PUBLIC_PATHS` 草图为设计期快照。现行白名单已扩展（`/auth/encryption-key`、`/auth/refresh`、`/auth/mode`、`/auth/oauth`、`/health`、`/socket.io`），且匹配按**路径段边界**（`path == p or path.startswith(p.rstrip('/') + '/')`）而非裸 `startswith`，防止 `/auth/oauth` 误伤 `/auth/oauth-providers` 管理端路径。现行清单以 `api_gateway/middleware.py` `AuthMiddleware.PUBLIC_PATHS` 与 RBAC权限划分.md 6.3 节为准。
+
 ### 7. 认证路由
 
 ```python
