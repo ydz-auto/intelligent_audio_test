@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router'
 import type { ComputedRef, Ref } from 'vue'
 import { tasksPort } from '../task/tasksPort'
 import { reportsPort } from '../report/reportsPort'
+import { formatDurationSeconds } from '../../utils/durationFormat'
 import { viewTaskReport } from '../report/useReportComparison'
 import { useTestCaseStore } from '../../store/testCaseStore'
 import { MODAL_TYPES } from '../modal/useModal'
@@ -198,17 +199,10 @@ export function createE2eViewTestRunModule(deps: E2eViewTestRunDeps) {
       taskStartTime.value = new Date()
       startTimeUpdateTimer()
 
-      // 更新时间估计数据
+      // 更新时间估计数据（start 契约：秒）
       if (startResponse.expectedTotalTime !== undefined && startResponse.expectedTotalTime !== null) {
-        // 后端返回的是秒数（数字），格式化为可读文本
         const seconds = Number(startResponse.expectedTotalTime)
-        if (seconds > 0) {
-          if (seconds < 60) estimatedTime.value = `${Math.floor(seconds)}秒`
-          else if (seconds < 3600) estimatedTime.value = `${Math.floor(seconds / 60)}分钟`
-          else estimatedTime.value = `${Math.floor(seconds / 3600)}小时${Math.floor((seconds % 3600) / 60)}分钟`
-        } else {
-          estimatedTime.value = '--'
-        }
+        estimatedTime.value = seconds > 0 ? formatDurationSeconds(seconds) : '--'
       }
       if (startResponse.expectedCompleteTime !== undefined && startResponse.expectedCompleteTime !== null && String(startResponse.expectedCompleteTime).trim() !== '') {
         expectedCompleteTime.value = String(startResponse.expectedCompleteTime)

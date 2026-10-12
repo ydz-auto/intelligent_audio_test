@@ -1,5 +1,6 @@
 import { ref, computed, type Ref } from 'vue'
 import { tasksPort } from '../task/tasksPort'
+import { formatDurationSeconds, formatDurationText } from '../../utils/durationFormat'
 import type { APIConfig, TestCase } from '../../domain'
 import { TestType, TaskStatus, ApiEndpointStatus } from '../../domain/enums'
 
@@ -98,16 +99,10 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
 
       onE2eStart?.(startResponse)
 
-      // 时间估计
+      // 时间估计（start 契约：秒）
       if (startResponse.expectedTotalTime !== undefined && startResponse.expectedTotalTime !== null) {
         const seconds = Number(startResponse.expectedTotalTime)
-        if (seconds > 0) {
-          if (seconds < 60) estimatedTime.value = `${Math.floor(seconds)}秒`
-          else if (seconds < 3600) estimatedTime.value = `${Math.floor(seconds / 60)}分钟`
-          else estimatedTime.value = `${Math.floor(seconds / 3600)}小时${Math.floor((seconds % 3600) / 60)}分钟`
-        } else {
-          estimatedTime.value = '--'
-        }
+        estimatedTime.value = seconds > 0 ? formatDurationSeconds(seconds) : '--'
       }
       if (startResponse.expectedCompleteTime !== undefined && startResponse.expectedCompleteTime !== null && String(startResponse.expectedCompleteTime).trim() !== '') {
         expectedCompleteTime.value = String(startResponse.expectedCompleteTime)
@@ -186,7 +181,7 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       const startResponse = await tasksPort.start(taskResponse.id)
 
       if (startResponse.expectedTotalTime) {
-        estimatedTime.value = String(startResponse.expectedTotalTime)
+        estimatedTime.value = formatDurationText(startResponse.expectedTotalTime)
       }
       if (startResponse.expectedCompleteTime) {
         expectedCompleteTime.value = String(startResponse.expectedCompleteTime)

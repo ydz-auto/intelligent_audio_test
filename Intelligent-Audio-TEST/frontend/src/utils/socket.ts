@@ -11,9 +11,35 @@ class SocketService {
   private sockets: Record<string, Socket> = {};
   public isConnected: boolean = false;
   private eventHandlers: Record<string, SocketHandler[]> = {};
+  /** 连接状态监听（INT-203：进度通道降级轮询依据；参数为 namespace 与该命名空间是否已连接） */
+  private connectionListeners: Array<(namespace: string, connected: boolean) => void> = [];
   private logLevel: 'debug' | 'info' | 'warn' | 'error' = 'debug';
 
   constructor() {}
+
+  private notifyConnectionState(namespace: string, connected: boolean) {
+    this.connectionListeners.forEach(listener => {
+      try {
+        listener(namespace, connected);
+      } catch (error) {
+        this.log('error', '连接状态监听器执行失败', error);
+      }
+    });
+  }
+
+  /** 订阅连接状态变化（任意命名空间），返回退订函数 */
+  public onConnectionChange(listener: (namespace: string, connected: boolean) => void): () => void {
+    this.connectionListeners.push(listener);
+    return () => {
+      const index = this.connectionListeners.indexOf(listener);
+      if (index >= 0) this.connectionListeners.splice(index, 1);
+    };
+  }
+
+  /** 指定命名空间当前是否已连接（未创建时视为未连接） */
+  public isNamespaceConnected(namespace: string = '/'): boolean {
+    return this.sockets[namespace]?.connected ?? false;
+  }
 
   private log(level: 'debug' | 'info' | 'warn' | 'error', message: string, data: any = null) {
     const levels = ['debug', 'info', 'warn', 'error'] as const;
@@ -46,16 +72,19 @@ class SocketService {
       this.sockets['/'].on('connect', () => {
         this.log('info', 'Socket已连接到默认命名空间');
         this.isConnected = true;
+        this.notifyConnectionState('/', true);
       });
 
       this.sockets['/'].on('disconnect', () => {
         this.log('info', 'Socket与默认命名空间断开连接');
         this.isConnected = false;
+        this.notifyConnectionState('/', false);
       });
 
       this.sockets['/'].on('connect_error', (error) => {
         this.log('error', 'Socket连接错误', error);
         this.isConnected = false;
+        this.notifyConnectionState('/', false);
       });
 
       this.sockets['/'].on('reconnect_attempt', (attemptNumber) => {
@@ -109,18 +138,21 @@ class SocketService {
       this.sockets[namespace].on('connect', () => {
         this.log('info', `Socket已连接到命名空间: ${namespace}`);
         this.isConnected = true;
+        this.notifyConnectionState(namespace, true);
       });
-      
+
       this.sockets[namespace].on('disconnect', () => {
         this.log('info', `Socket与命名空间 ${namespace} 断开连接`);
         const allDisconnected = Object.values(this.sockets).every(s => !s.connected);
         if (allDisconnected) {
           this.isConnected = false;
         }
+        this.notifyConnectionState(namespace, false);
       });
-      
+
       this.sockets[namespace].on('connect_error', (error) => {
         this.log('error', `命名空间 ${namespace} Socket连接错误`, error);
+        this.notifyConnectionState(namespace, false);
       });
     }
     

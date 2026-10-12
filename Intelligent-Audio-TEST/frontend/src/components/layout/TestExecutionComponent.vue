@@ -1,7 +1,14 @@
 <template>
   <div class="test-execution-component">
     <h3 class="step-title">测试执行中</h3>
-    
+
+    <!-- INT-203：实时链路降级提示（WS 断开，HTTP 轮询兜底中） -->
+    <div v-if="connectionFallback" class="conn-fallback-alert" role="alert"
+      style="display: flex; align-items: center; gap: 8px; padding: 10px 16px; margin-bottom: 16px; background-color: var(--warning-light); border: 1px solid var(--warning-color); border-radius: var(--border-radius-md); color: var(--warning-color); font-size: 14px;">
+      <i class="fas fa-plug-circle-exclamation"></i>
+      <span>实时连接已断开，进度已切换为 HTTP 轮询刷新（日志暂不可用），正在自动重连...</span>
+    </div>
+
     <!-- 任务信息和进度概览 -->
     <div class="test-progress-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 24px;">
       <!-- 任务信息卡片 -->
@@ -388,7 +395,8 @@ const props = defineProps({
   isPaused: {type: Boolean, default: false},
   isControlling: {type: Boolean, default: false},
   taskStatus: {type: String, default: ''},
-  isExecuting: {type: Boolean, default: false}
+  isExecuting: {type: Boolean, default: false},
+  connectionFallback: {type: Boolean, default: false}
 });
 
 const emit = defineEmits([

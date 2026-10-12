@@ -69,7 +69,8 @@ function fromHttpToFullProgress(raw: TaskProgressHttpDto): TaskProgress {
     apiResources: [],
     expectedTotalTime: null,
     expectedCompleteTime: null,
-    usedTime: '0分钟',
+    // HTTP 轮询通道无已用时长字段；置空避免覆盖本地计时/最近一次 Socket 值
+    usedTime: '',
   };
 }
 

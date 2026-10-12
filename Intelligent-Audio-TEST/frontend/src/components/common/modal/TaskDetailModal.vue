@@ -19,6 +19,7 @@
         :show-logs="true"
         :is-paused="isPaused"
         :active-tab="activeTab"
+        :connection-fallback="isProgressPolling"
         @update:active-tab="newTab => activeTab = newTab"
         @test-case-click="showTestCaseDetails"
         @pause-test="pauseTest"
@@ -97,7 +98,8 @@ const {
   elapsedTime,
   estimatedTime,
   expectedCompleteTime,
-  associatedCases
+  associatedCases,
+  isProgressPolling
 } = useTaskProgress({
   currentTaskId: computed(() => props.taskId as string | number | null),
   onCompleted: (_data) => {

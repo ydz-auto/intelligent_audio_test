@@ -1,7 +1,9 @@
-import { ref, onMounted, onUnmounted, type Ref } from 'vue'
+import { ref, watch, onMounted, onUnmounted, type Ref } from 'vue'
 import { transformTestCaseStatus } from '../../utils/statusUtils'
-import { TaskStatus, ExecutionStatus, EvaluationStatus, type TaskStatusType } from '../../domain/enums'
+import { formatDurationText } from '../../utils/durationFormat'
+import { TaskStatus, ExecutionStatus, EvaluationStatus, FINISHED_STATUSES, type TaskStatusType } from '../../domain/enums'
 import { taskChannelPort } from './taskChannelPort'
+import { tasksPort } from './tasksPort'
 import type {
   TaskProgress,
   TaskProgressCaseItem,
@@ -9,6 +11,13 @@ import type {
   APIResource,
 } from '../../domain/model/taskProgress'
 import type { Log } from '../../domain'
+
+/** HTTP 兜底轮询间隔（INT-203：WS 断开降级轮询；VITE_TASK_PROGRESS_POLL_INTERVAL_MS 可配，默认 5s） */
+const parsePositiveInt = (raw: unknown, fallback: number): number => {
+  const n = Number(raw)
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback
+}
+const FALLBACK_POLL_INTERVAL_MS = parsePositiveInt(import.meta.env.VITE_TASK_PROGRESS_POLL_INTERVAL_MS, 5000)
 
 interface TaskProgressOptions {
   currentTaskId: Ref<string | number | null>;
@@ -35,13 +44,8 @@ export function useTaskProgress(options: TaskProgressOptions) {
   const apiResources = ref<APIResource[]>([])
   const hasCalledCompletedCallback = ref(false)
   const hasCalledFailedCallback = ref(false)
-
-  const normalizeMinutesText = (value: any) => {
-    if (value === null || value === undefined) return ''
-    if (typeof value === 'number' && Number.isFinite(value)) return `${Math.max(0, Math.floor(value))}分钟`
-    const str = String(value).trim()
-    return str
-  }
+  /** WS 断开降级轮询进行中（供视图展示降级提示） */
+  const isProgressPolling = ref(false)
 
   const addLog = (logData: any) => {
     const logId = typeof logData.id === 'number' ? logData.id : (Number(logData.id) || 0)
@@ -167,7 +171,7 @@ export function useTaskProgress(options: TaskProgressOptions) {
     associatedCases.value = updatedCases
   }
 
-  const handleTaskProgress = async (progressData: TaskProgress) => {
+  const handleTaskProgress = async (progressData: TaskProgress, source: 'socket' | 'http' = 'socket') => {
     // Socket 通道 payload 已由 taskChannel 转 camelCase Domain
     if (progressData.taskId !== String(currentTaskId.value ?? '')) {
       return
@@ -201,20 +205,21 @@ export function useTaskProgress(options: TaskProgressOptions) {
     }
 
     if (progressData.usedTime && progressData.usedTime !== elapsedTime.value) {
-      elapsedTime.value = normalizeMinutesText(progressData.usedTime) || '0分钟'
+      elapsedTime.value = formatDurationText(progressData.usedTime) || '0分钟'
     }
     if (progressData.usedTime === '0') {
       elapsedTime.value = '0分钟'
     }
 
-    if (progressData.expectedTotalTime !== undefined) {
-      const nextEstimated = normalizeMinutesText(progressData.expectedTotalTime)
+    // null 表示该通道无此字段（如 HTTP 轮询），保持现值不清空
+    if (progressData.expectedTotalTime !== undefined && progressData.expectedTotalTime !== null) {
+      const nextEstimated = formatDurationText(progressData.expectedTotalTime)
       if (nextEstimated !== estimatedTime.value) {
         estimatedTime.value = nextEstimated
       }
     }
 
-    if (progressData.expectedCompleteTime !== undefined) {
+    if (progressData.expectedCompleteTime !== undefined && progressData.expectedCompleteTime !== null) {
       const nextExpectedCompleteTime =
         progressData.expectedCompleteTime === null || String(progressData.expectedCompleteTime).trim() === ''
           ? '--'
@@ -230,8 +235,9 @@ export function useTaskProgress(options: TaskProgressOptions) {
 
     if (progressData.apiResources.length > 0) {
       apiResources.value = progressData.apiResources.map(resource => ({ ...resource }))
-    } else {
-      // adapter 已把 null/undefined 归一为空数组，此处不再感知原始 payload
+    } else if (source === 'socket') {
+      // adapter 已把 null/undefined 归一为空数组，此处不再感知原始 payload；
+      // HTTP 兜底通道无资源数据，不清空最近一次 Socket 快照
       apiResources.value = []
     }
   }
@@ -264,19 +270,115 @@ export function useTaskProgress(options: TaskProgressOptions) {
 
   let unsubscribeProgress: (() => void) | undefined
   let unsubscribeLog: (() => void) | undefined
+  let unsubscribeConnection: (() => void) | undefined
+
+  // ── INT-203：WS 断开 → HTTP 进度接口兜底轮询 ─────────────────────
+  // 世代号防僵尸轮询（同 INT-100 审计修复）：tick 为 async，await 期间
+  // 重连/卸载/终态停止后恢复，不得再调度下一次轮询。
+  let fallbackPollGeneration = 0
+  let fallbackPollTimer: ReturnType<typeof setTimeout> | null = null
+  let fallbackPollInFlight = false
+
+  const stopFallbackPolling = () => {
+    fallbackPollGeneration++
+    if (fallbackPollTimer !== null) {
+      clearTimeout(fallbackPollTimer)
+      fallbackPollTimer = null
+    }
+    if (isProgressPolling.value) {
+      isProgressPolling.value = false
+    }
+  }
+
+  const scheduleFallbackTick = (generation: number) => {
+    if (generation !== fallbackPollGeneration) return
+    fallbackPollTimer = setTimeout(() => {
+      fallbackPollTimer = null
+      void runFallbackTick(generation)
+    }, FALLBACK_POLL_INTERVAL_MS)
+  }
+
+  const runFallbackTick = async (generation: number) => {
+    if (generation !== fallbackPollGeneration) return
+    if (fallbackPollInFlight) {
+      scheduleFallbackTick(generation)
+      return
+    }
+    fallbackPollInFlight = true
+    let reachedTerminal = false
+    try {
+      const taskId = currentTaskId.value
+      if (taskId) {
+        const progress = await tasksPort.getProgress(taskId)
+        if (generation === fallbackPollGeneration) {
+          await handleTaskProgress(progress, 'http')
+          reachedTerminal = (FINISHED_STATUSES as readonly string[]).includes(progress.status)
+        }
+      }
+    } catch (error) {
+      // 单次轮询失败不终止降级（服务重启窗口），下个周期重试
+      console.warn('[useTaskProgress] HTTP 进度轮询失败，将在下个周期重试:', error)
+    } finally {
+      fallbackPollInFlight = false
+    }
+    if (reachedTerminal) {
+      stopFallbackPolling()
+      return
+    }
+    scheduleFallbackTick(generation)
+  }
+
+  const startFallbackPolling = () => {
+    if (!currentTaskId.value) return
+    // isProgressPolling 为当前活跃标志；generation 仅作在途 tick 失效令牌（单调递增）
+    if (isProgressPolling.value || fallbackPollTimer !== null) return
+    fallbackPollGeneration++
+    isProgressPolling.value = true
+    addLog({ content: '实时连接已断开，进度已切换为 HTTP 轮询刷新，正在自动重连...', level: 'warn' })
+    void runFallbackTick(fallbackPollGeneration)
+  }
+
+  const handleConnectionChange = (connected: boolean) => {
+    if (connected) {
+      stopFallbackPolling()
+      // task_log 走房间投递，重连后房间成员关系已随断连清空，须重新订阅
+      if (currentTaskId.value) {
+        taskChannelPort.subscribeTask(currentTaskId.value)
+      }
+    } else if (currentTaskId.value) {
+      startFallbackPolling()
+    }
+  }
 
   onMounted(() => {
     unsubscribeProgress = taskChannelPort.onTaskProgress(handleTaskProgress)
     unsubscribeLog = taskChannelPort.onTaskLog(taskLogHandler)
+    unsubscribeConnection = taskChannelPort.onConnectionChange(handleConnectionChange)
 
     if (currentTaskId.value) {
       taskChannelPort.subscribeTask(currentTaskId.value)
+      if (!taskChannelPort.isConnected()) {
+        startFallbackPolling()
+      }
+    }
+  })
+
+  // 任务创建晚于挂载（执行页）或挂载时已带任务（详情模态窗）：断连状态下建任务须立即降级
+  watch(currentTaskId, (taskId) => {
+    if (!taskId) {
+      stopFallbackPolling()
+      return
+    }
+    if (!taskChannelPort.isConnected()) {
+      startFallbackPolling()
     }
   })
 
   onUnmounted(() => {
     if (unsubscribeProgress) unsubscribeProgress()
     if (unsubscribeLog) unsubscribeLog()
+    if (unsubscribeConnection) unsubscribeConnection()
+    stopFallbackPolling()
 
     if (currentTaskId.value) {
       taskChannelPort.unsubscribeTask(currentTaskId.value)
@@ -298,6 +400,7 @@ export function useTaskProgress(options: TaskProgressOptions) {
     logs,
     associatedCases,
     apiResources,
+    isProgressPolling,
     resetProgress,
     addLog
   }

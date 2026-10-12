@@ -100,7 +100,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     progressPercentage, completedTests, inProgressTests, pendingTests,
     executionFailedTests, evaluationFailedTests, totalTestCases, taskStatus,
     elapsedTime, estimatedTime, expectedCompleteTime, logs, associatedCases,
-    apiResources, resetProgress, addLog,
+    apiResources, resetProgress, addLog, isProgressPolling,
   } = useTaskProgress({
     currentTaskId: currentTaskId as any,
     onCompleted: async () => { await progressCallbacks.onCompleted?.() },
@@ -345,7 +345,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     progressPercentage, completedTests, inProgressTests, pendingTests,
     executionFailedTests, evaluationFailedTests, totalTestCases, taskStatus,
     elapsedTime, estimatedTime, expectedCompleteTime, logs, associatedCases,
-    apiResources, testProgress: [] as any[],
+    apiResources, isProgressPolling, testProgress: [] as any[],
     report, isEditingReport, isEditingConclusion, analysisContent, reportTables,
     deviceApiComparisonData, caseExecutionData, deviceApiColumns, caseExecutionColumns,
     toggleEditReport, saveReport, cancelEditReport, toggleEditConclusion,

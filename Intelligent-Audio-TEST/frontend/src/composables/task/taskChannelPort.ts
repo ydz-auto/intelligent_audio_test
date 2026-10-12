@@ -10,6 +10,8 @@ import {
   onTaskLog,
   subscribeTask,
   unsubscribeTask,
+  isConnected,
+  onConnectionChange,
 } from '../../infrastructure/socket/taskChannel'
 
 export const taskChannelPort = {
@@ -17,4 +19,6 @@ export const taskChannelPort = {
   onTaskLog,
   subscribeTask,
   unsubscribeTask,
+  isConnected,
+  onConnectionChange,
 }

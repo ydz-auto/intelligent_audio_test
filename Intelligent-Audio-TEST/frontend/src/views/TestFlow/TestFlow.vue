@@ -181,6 +181,7 @@
           :is-paused="isPaused"
           :is-controlling="isControlling"
           :is-executing="isExecuting"
+          :connection-fallback="isProgressPolling"
           @prev-step="prevStep"
           @pause-test="pauseTest"
           @resume-test="resumeTest"
@@ -304,6 +305,7 @@ const {
   progressPercentage, completedTests, inProgressTests, pendingTests,
   executionFailedTests, evaluationFailedTests, totalTestCases,
   elapsedTime, estimatedTime, expectedCompleteTime, logs, associatedCases, apiResources,
+  isProgressPolling,
   report, isEditingReport, isEditingConclusion, analysisContent, reportTables,
   algorithmFilteredDevices, voiceLlmHint, stepHints,
   filteredDevices, deviceSearchQuery, selectedDeviceStatus,

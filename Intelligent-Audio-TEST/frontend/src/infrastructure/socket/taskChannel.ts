@@ -20,6 +20,28 @@ const TASK_SOCKET_EVENTS = {
 /** 日志命名空间（task_log / 订阅事件走此通道） */
 const LOG_NAMESPACE = '/ws/logs'
 
+/** 通道依赖的两个命名空间：进度走默认 '/'，日志走 '/ws/logs' */
+const CHANNEL_NAMESPACES = ['/', LOG_NAMESPACE] as const
+
+/**
+ * 通道整体是否可用：两个命名空间均已连接。
+ * 任一命名空间断开即视为通道不可用（进度或日志至少一路失联）。
+ */
+export function isConnected(): boolean {
+  return CHANNEL_NAMESPACES.every(namespace => socketService.isNamespaceConnected(namespace))
+}
+
+/** 订阅通道整体连接变化（边沿触发：仅在 / 与 /ws/logs 的聚合状态翻转时回调） */
+export function onConnectionChange(handler: (connected: boolean) => void): () => void {
+  let lastConnected = isConnected()
+  return socketService.onConnectionChange(() => {
+    const connected = isConnected()
+    if (connected === lastConnected) return
+    lastConnected = connected
+    handler(connected)
+  })
+}
+
 /** 监听任务进度推送（payload 已转 camelCase Domain） */
 export function onTaskProgress(handler: (progress: TaskProgress) => void): () => void {
   const wrapped = (raw: any) => handler(toTaskProgress(raw))

@@ -6,6 +6,7 @@
  */
 import { computed } from 'vue'
 import { tasksPort } from '@/composables/task/tasksPort'
+import { formatDurationText } from '../../utils/durationFormat'
 import { useTestControl } from '../../composables/shared/useTestControl'
 import { useNotification } from '../../composables/modal/useNotification'
 import { TaskStatus, ExecutionStatus, EvaluationStatus, TestType, ApiEndpointStatus, type TaskStatusType } from '@/domain/enums'
@@ -150,9 +151,9 @@ export function createApiTestStepsModule(deps: ApiTestStepsDeps) {
         const startResponse = await tasksPort.start(taskId)
         console.log('API测试任务已创建并启动:', taskId, startResponse)
 
-        // 更新时间估计数据
+        // 更新时间估计数据（start 契约：秒）
         if (startResponse.expectedTotalTime) {
-          estimatedTime.value = String(startResponse.expectedTotalTime)
+          estimatedTime.value = formatDurationText(startResponse.expectedTotalTime)
         }
         if (startResponse.expectedCompleteTime) {
           expectedCompleteTime.value = startResponse.expectedCompleteTime
