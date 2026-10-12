@@ -236,7 +236,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
         driver = self._get_driver(device_sn)
         if not driver:
             self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}", task_id=task_id, test_case_id=test_case_id)
-            return {'success': False, 'message': 'False', 'asr': 'asr中文', 'translation': 'translation中文'}
+            return {'success': False, 'message': f'Failed to get driver for device {device_sn}', 'asr': '', 'translation': ''}
         try:
             driver.touch((974, 271))
             driver.touch(By.text('同传'))
@@ -288,3 +288,4 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
             return {'success': True, 'message': 'Success', 'asr': asr_final_result, 'translation': transl_final_result}
         except Exception as e:
             self._log(level='ERROR', content=f"Failed to get results for 小艺同传 {device_sn}，{e}", task_id=task_id, test_case_id=test_case_id)
+            return {'success': False, 'message': f'Failed to get results for 小艺同传 {device_sn}: {e}', 'asr': '', 'translation': ''}

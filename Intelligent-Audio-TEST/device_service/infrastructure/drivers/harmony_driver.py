@@ -3,6 +3,7 @@ import subprocess
 import os
 import logging
 from .base_driver import BaseDeviceDriver
+from .harmony_collection_mixin import HarmonyCollectionMixin
 from .device_config import get_device_config
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
@@ -13,8 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 @register_driver
-class HarmonyDriver(BaseDeviceDriver):
-    """HarmonyOS设备驱动实现 — HarmonyOS 平台基础驱动"""
+class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
+    """HarmonyOS设备驱动实现 — HarmonyOS 平台基础驱动
+
+    结果采集为真实链路：每轮录屏（round 模式）+ 小艺聊天页问题/回答文本，
+    get_results 按 voice_llm 设备输出字段（wav_path/input_text/question/answer）
+    组织返回；采集不到任何真实内容时 success=False（不再返回固定串）。
+    采集能力由 HarmonyCollectionMixin 提供。
+    """
 
     # —— 驱动元数据 ——
     app_type = AppType.HARMONY_BASE
@@ -35,6 +42,14 @@ class HarmonyDriver(BaseDeviceDriver):
         self._popup_keywords = self._config.get('popup_keywords', [])
         self._exclude_list = self._config.get('exclude_list', [])
         self._abnormal_keywords = self._config.get('abnormal_keywords', [])
+        # 采集状态（每轮由 pre/post_process 维护）
+        self._recording = False
+        self._record_file_name = None
+        self._record_device_path = None
+        self._recorder_first_frame_ms = None
+        self._round_number = 0
+        self.question_text = None
+        self.answer_text = None
 
     def _get_driver(self, device_sn):
         if not UiDriver:
@@ -271,15 +286,119 @@ class HarmonyDriver(BaseDeviceDriver):
 
     @check_stop("pre_process")
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """开始处理：进入前台等准备动作"""
-        self._log(level='INFO', content=f"--- Starting pre-process for {device_sn} ---")
+        """开始处理：按轮启动录屏（round 模式，每轮一段 mp4）"""
+        self._log(level='INFO', content=f"--- Starting pre-process for {device_sn} ---",
+                  task_id=task_id, test_case_id=test_case_id)
+        round_number = kwargs.get('round_number', 0)
+        self._round_number = round_number
+        self._record_file_name = f"{test_case_id or task_id or 'case'}_r{round_number}.mp4"
+        self._record_device_path = None
+        self._recorder_first_frame_ms = None
+        started, self._record_device_path, self._recorder_first_frame_ms = \
+            self._start_recorder(device_sn, file_name=self._record_file_name)
+        self._recording = started
+        if not started:
+            self._log(level='ERROR', content=f"启动录屏失败: {self._record_file_name}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return False
+        if self._record_device_path:
+            self._log(level='INFO',
+                      content=f"启动录屏成功: {self._record_file_name} ({self._record_device_path})",
+                      task_id=task_id, test_case_id=test_case_id)
+        else:
+            self._log(level='WARNING',
+                      content=f"录屏已启动但未发现新 mp4 文件（get_results 将回退 mediatool 查询）: {self._record_file_name}",
+                      task_id=task_id, test_case_id=test_case_id)
         return True
 
     @check_stop("post_process")
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """结束处理：清理或日志记录"""
-        self._log(level='INFO', content=f"--- Finished post-process for {device_sn} ---")
+        """结束处理：等待小艺回复完成 → 抓取问题/回答文本 → 停止录屏"""
+        self._log(level='INFO', content=f"--- Finished post-process for {device_sn} ---",
+                  task_id=task_id, test_case_id=test_case_id)
+        ts = self._extract_playback_timestamps(kwargs)
+        self._log(level='INFO',
+                  content=f"[post_process] 播放时间戳 start_ms={ts['start_ms']} end_ms={ts['end_ms']}",
+                  task_id=task_id, test_case_id=test_case_id)
+        driver = self._get_driver(device_sn)
+        replied, self.question_text, self.answer_text = self._wait_reply_settled(
+            driver, device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+        self._log(level='INFO',
+                  content=f"[post_process] replied={replied} question={self.question_text!r} answer={self.answer_text!r}",
+                  task_id=task_id, test_case_id=test_case_id)
+        if self._recording:
+            if self._stop_recorder(device_sn):
+                self._log(level='INFO', content="停止录屏成功",
+                          task_id=task_id, test_case_id=test_case_id)
+            else:
+                self._log(level='WARNING', content="停止录屏失败",
+                          task_id=task_id, test_case_id=test_case_id)
+            self._recording = False
+            time.sleep(EXTRA_LONG_WAIT)
         return True
+
+    @check_stop("get_results")
+    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
+        """获取设备输出结果 - 录屏文件上 OSS + 小艺问题/回答文本
+
+        按 voice_llm 设备输出字段（wav_path=录音文件/input_text=录屏文件/
+        question/answer）组织；附 asr 键兼容非 voice_llm 算法类型的透传映射。
+        所有值为真实采集结果，采集不到任何内容时 success=False。
+        """
+        ts = self._extract_playback_timestamps(kwargs)
+        pull_error = None
+        try:
+            record_oss, wav_oss, pull_error = self._pull_record_to_oss(
+                device_sn, task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            record_oss = wav_oss = None
+            pull_error = f'录屏拉取异常: {e}'
+            self._log(level='ERROR', content=pull_error,
+                      task_id=task_id, test_case_id=test_case_id)
+        question_text = getattr(self, 'question_text', None) or ''
+        answer_text = getattr(self, 'answer_text', None) or ''
+        has_content = bool(record_oss or wav_oss or question_text or answer_text)
+        message = 'Success'
+        if not has_content:
+            message = pull_error or '未采集到任何设备结果（无录屏文件、无回复文本）'
+        elif pull_error:
+            message = f'Success (录屏拉取失败: {pull_error})'
+        result = {
+            'success': has_content,
+            'message': message,
+            'record_path': record_oss or '',
+            'record_device_path': getattr(self, '_record_device_path', '') or '',
+            # wav 转换失败时回退 mp4，保证评估侧仍有音频可取
+            'wav_path': wav_oss or record_oss or '',
+            'input_text': record_oss or '',
+            'start_ms': ts['start_ms'],
+            'end_ms': ts['end_ms'],
+            'first_frame_ms': getattr(self, '_recorder_first_frame_ms', None),
+            'question': question_text,
+            'answer': answer_text,
+            'asr': question_text,
+        }
+        self._log(level='INFO',
+                  content=(f"[get_results] success={result['success']} wav_path={result['wav_path']} "
+                           f"question={question_text!r} answer={answer_text!r} message={message}"),
+                  task_id=task_id, test_case_id=test_case_id)
+        return result
+
+    def teardown(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+        """用例结束后清理：兜底停止残留录屏（仅仍在录屏时），再走基类关 APP 清理"""
+        if getattr(self, '_recording', False):
+            try:
+                if self._stop_recorder(device_sn):
+                    self._log(level='INFO', content="teardown: 兜底停止录屏成功",
+                              task_id=task_id, test_case_id=test_case_id)
+                else:
+                    self._log(level='WARNING', content="teardown: 兜底停止录屏失败",
+                              task_id=task_id, test_case_id=test_case_id)
+                self._recording = False
+            except Exception as e:
+                self._log(level='WARNING', content=f"teardown: 停止录屏失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+        return super().teardown(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
 
     @check_stop("close_popups")
     def close_popups(self, device_sn) -> bool:
@@ -423,7 +542,3 @@ class HarmonyDriver(BaseDeviceDriver):
             self._log(level='WARNING', content=f"HarmonyOS 设备 {device_sn} 音量获取失败: {e}")
             return -1
 
-    @check_stop("get_results")
-    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
-        """获取设备输出结果 - 返回原始文本列表"""
-        return {'success': True, 'message': 'Success', 'asr': 'asr中文', 'translation': 'translation中文'}

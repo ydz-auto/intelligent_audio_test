@@ -49,5 +49,15 @@ CASE_BARGE_IN_DELAY_SECONDS = config_manager.get_value('device_timing', 'case_ba
 # 停止检查轮询间隔（秒）：长延迟分片 sleep，每片检查一次任务是否被停止/暂停（可随时打断）
 CHECK_STOP_POLL_INTERVAL = config_manager.get_value('device_timing', 'check_stop_poll_interval', 0.5)
 
+# —— 基础驱动采集参数（harmony_collection_mixin，harmony_base 平台驱动）——
+# 录屏启动后轮询发现新 mp4 文件的超时（秒）
+BASE_RECORDER_START_TIMEOUT = config_manager.get_value('device_timing', 'base_recorder_start_timeout', 30)
+# 回答文本稳定采样总超时（秒）：超过即按当前采样收口
+BASE_REPLY_END_TIMEOUT = config_manager.get_value('device_timing', 'base_reply_end_timeout', 60)
+# 回答文本采样间隔（秒）
+BASE_REPLY_SETTLE_INTERVAL = config_manager.get_value('device_timing', 'base_reply_settle_interval', 2)
+# 回答文本视为稳定所需的连续相同采样次数
+BASE_REPLY_STABLE_ROUNDS = config_manager.get_value('device_timing', 'base_reply_stable_rounds', 3)
+
 # 设备路径
 DEVICE_TMP_DIR = '/data/local/tmp'

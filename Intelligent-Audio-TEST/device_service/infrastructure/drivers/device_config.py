@@ -49,7 +49,10 @@ DEVICE_CONFIGS = {
             'en2zh': '面对面翻译'
         },
         'start_buttons': ['开启同传', '开始翻译'],
-        'confirm_buttons': ['确定', '完成', 'OK', '解锁']
+        'confirm_buttons': ['确定', '完成', 'OK', '解锁'],
+        # 小艺聊天页问题/回答气泡抓取 xpath（基础驱动结果采集用，UI 改版时在此调整）
+        'chat_question_xpaths': ['//ListItem//GridRow/GridCol/Row/__Common__/__Common__/Row/Text'],
+        'chat_answer_xpaths': ['//ListItem//GridRow/GridCol/Row/__Common__/__Common__/Column//Stack/Text']
     }
 }
 

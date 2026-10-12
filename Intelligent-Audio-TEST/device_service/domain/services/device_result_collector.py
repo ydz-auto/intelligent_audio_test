@@ -299,7 +299,11 @@ class DeviceResultCollector:
 
             res.update(mapped_results)
 
-            has_values = any(mapped_results.values())
+            # has_values 只看真实业务字段；message 是失败分支注入的诊断文本，
+            # 计入会把"采集失败但带 message"的结果误判为成功（INT-158）
+            has_values = any(
+                value for key, value in mapped_results.items() if key != 'message'
+            )
             res['success'] = has_values
 
         return all_results

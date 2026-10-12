@@ -43,6 +43,36 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         """返回 task_service ACL 仓储，供 DbMixin 使用"""
         return self._task_data_repo
 
+    def _close_failed_test_result(self, result_id, algorithm_type, total_rounds,
+                                  rounds_data, error_message, task_id):
+        """失败早退路径收口预创建的 TestResult 行（execution_status=FAILED）
+
+        与 _finalize_rounds 的正常收口对称：失败路径不提交评估，但结果行
+        必须离开 running，否则报告/查询侧该行永远停留 running（INT-158）。
+        rounds_data 为 None（异常路径拿不到已累积轮次数据）时仅收口状态，
+        避免用空轮次覆盖已写入的 algorithm_result。
+        """
+        if not result_id:
+            return
+        try:
+            if rounds_data is not None:
+                algo_result = {
+                    'test_type': 'e2e',
+                    'algorithm_type': algorithm_type,
+                    'total_rounds': total_rounds,
+                    'rounds': rounds_data,
+                    'aggregated': {},
+                }
+                self._aggregator.update_test_result(
+                    result_id=result_id, algo_result=algo_result,
+                    execution_status=ExecutionStatus.FAILED,
+                    error_message=error_message, task_id=task_id,
+                )
+            else:
+                self._task_data_repo.update_test_result_status(result_id, ExecutionStatus.FAILED)
+        except Exception as close_err:
+            self._log(level='ERROR', content=f"收口失败轮 TestResult 异常: {close_err}", task_id=task_id)
+
     def execute_e2e_case(self, task_id, tc_rel_id):
         """执行E2E测试用例"""
         self._log(
@@ -86,6 +116,7 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         rounds = case_config.get('rounds', [])
 
         device_info_list = None
+        result_id = None
         try:
             self._log(
                 level='INFO',
@@ -126,11 +157,15 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
 
             if not execution_success:
                 error_msg = "执行失败，跳过评估" if not all_round_results else "执行过程中部分轮次失败"
+                self._close_failed_test_result(result_id, algorithm_type, len(rounds),
+                                               rounds_data, error_msg, task_id)
                 self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
                 return False
 
             if not all_round_results:
                 error_msg = "所有轮次均未产生有效结果"
+                self._close_failed_test_result(result_id, algorithm_type, len(rounds),
+                                               rounds_data, error_msg, task_id)
                 self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
                 return False
 
@@ -157,6 +192,8 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             error_msg = f"用例执行异常: {str(e)}"
             self._log(level='ERROR', content=f"用例 {case_name} 执行异常: {str(e)}\n{traceback.format_exc()}",
                       task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None))
+            self._close_failed_test_result(result_id, algorithm_type, len(rounds),
+                                           None, error_msg, task_id)
             self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
             return False
         finally:

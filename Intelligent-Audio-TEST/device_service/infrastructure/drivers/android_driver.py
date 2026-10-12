@@ -376,7 +376,85 @@ class AndroidDriver(BaseDeviceDriver):
             self._log(level='WARNING', content=f"Android 设备 {device_sn} 音量获取失败: {e}")
             return -1
 
+    # —— 结果采集参数（豆包会话 UI 契约，与 DouBaoAndroidAsrDriver 对齐）——
+    MESSAGE_LIST_RES_ID = "com.larus.nova:id/message_list"   # 消息列表容器
+    # 用户消息（右侧气泡）left 值大，回复（左侧气泡）left 值小
+    USER_MESSAGE_LEFT_THRESHOLD = 40
+    RESULT_MAX_WAIT = 10        # 采集轮询总超时（秒）
+    RESULT_WAIT_INTERVAL = 1    # 采集轮询间隔（秒）
+    RESULT_STABLE_ROUNDS = 2    # 文本视为稳定所需的连续相同采样次数
+
     @check_stop("get_results")
-    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
-        """获取设备输出结果 - 返回原始文本列表"""
-        return {'success': True, 'message': 'Success', 'asr': 'asr中文', 'translation': 'translation中文'}
+    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> list:
+        """获取设备输出结果 - 读取会话 UI 的用户消息与最新回复
+
+        基础安卓驱动的目标 app 为豆包(com.larus.nova)，沿用豆包 ASR 驱动的
+        UI 契约：message_list 容器内 TextView，用户消息 resourceId 为空且
+        left 值大于阈值。无录音链（仓库无安卓录屏采集先例），仅返回真实
+        抓取的文本；未抓到文本时 success=False（不返回固定串）。
+        返回 [result_dict]，question/answer 键对齐 voice_llm 设备输出字段，
+        asr 键兼容透传映射。
+        """
+        driver = self._get_driver(device_sn)
+        if not driver:
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return [{'result_type': 'real-time', 'success': False,
+                     'message': 'Driver not available', 'asr': '', 'question': '', 'answer': ''}]
+
+        def read_texts():
+            user_messages = []
+            reply_texts = []
+            elements = driver.xpath(
+                f'//*[@resource-id="{self.MESSAGE_LIST_RES_ID}"]//android.widget.TextView').all()
+            for elem in elements:
+                try:
+                    text = elem.text
+                    info = elem.info
+                    res_id = info.get('resourceId', '')
+                    left = info.get('bounds', {}).get('left', 0)
+                    if text and text.strip():
+                        if res_id == '' and left >= self.USER_MESSAGE_LEFT_THRESHOLD:
+                            user_messages.append(text.strip())
+                        else:
+                            reply_texts.append(text.strip())
+                except Exception:
+                    logger.debug("读取豆包会话文本元素失败", exc_info=True)
+            return user_messages, reply_texts
+
+        try:
+            last_user = last_reply = None
+            stable_count = 0
+            waited = 0
+            while waited < self.RESULT_MAX_WAIT:
+                user_messages, reply_texts = read_texts()
+                current_user = user_messages[-1] if user_messages else None
+                current_reply = reply_texts[-1] if reply_texts else None
+                if current_user and current_user == last_user:
+                    stable_count += 1
+                    if stable_count >= self.RESULT_STABLE_ROUNDS:
+                        break
+                else:
+                    stable_count = 0
+                    last_user = current_user
+                    last_reply = current_reply
+                time.sleep(self.RESULT_WAIT_INTERVAL)
+                waited += self.RESULT_WAIT_INTERVAL
+
+            has_content = bool(last_user or last_reply)
+            self._log(level='INFO',
+                      content=f"[get_results] success={has_content} question={last_user!r} answer={last_reply!r}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return [{
+                'result_type': 'real-time',
+                'success': has_content,
+                'message': 'Success' if has_content else '未采集到会话文本（消息列表为空或 UI 契约不匹配）',
+                'asr': last_user or '',
+                'question': last_user or '',
+                'answer': last_reply or '',
+            }]
+        except Exception as e:
+            self._log(level='ERROR', content=f"获取设备结果失败: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return [{'result_type': 'real-time', 'success': False,
+                     'message': str(e), 'asr': '', 'question': '', 'answer': ''}]
