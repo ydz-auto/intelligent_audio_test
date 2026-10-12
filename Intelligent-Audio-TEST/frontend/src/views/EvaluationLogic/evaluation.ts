@@ -342,7 +342,8 @@ export function useEvaluation() {
 
   // ===== 分组视图状态 =====
   // 'list' 列表视图（现有表格） | 'group' 分组视图（按分类分组）
-  const viewMode = ref<'list' | 'group'>('list');
+  // 默认分组视图：按分类聚合展示，便于按族查看自动合并评估的维度
+  const viewMode = ref<'list' | 'group'>('group');
   // 分组折叠状态：key 为分类 id（'uncategorized' 表示未分类组），缺省默认展开
   const collapsedGroups = ref<Record<string, boolean>>({});
 
