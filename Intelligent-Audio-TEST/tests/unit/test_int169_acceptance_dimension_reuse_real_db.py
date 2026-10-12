@@ -11,7 +11,10 @@
    （completed）→ 对 round-1 重复提交 EvaluateCase → 幂等复用 + 按主键重置
    pending，不再崩，且只重置目标行；
 3. 整体评估（round_number=None）重复提交：IS NULL 匹配 + 复用真实生效；
-4. 无已有记录时真实 create_score_with_commit 落库返回真实主键。
+4. 无已有记录时真实 create_score_with_commit 落库返回真实主键；
+5. （审计修复 54d20eb6 补验）评估提交失败收口的服务端推导跳：真实
+   TaskRepository 收到 E2E ACL 缺省化形状（status='' + evaluation_status=
+   failed）后复合 status 收敛 failed、execution_status 不被污染。
 
 数据卫生：全部写入进程内 sqlite://（StaticPool 内存库），不触共享库，
 无 teardown 残留面。
@@ -232,3 +235,111 @@ class TestFreshCreateRealPath:
         assert row.round_number == 1
         assert row.algorithm_type == 'voice_llm'
         assert row.evaluation_status == EvaluationStatus.PENDING
+
+
+class TestServerSideCompositeStatusDerivation:
+    """评估提交失败收口的服务端推导跳（INT-169 审计 P1 链路补全）。
+
+    审计 P1 修复后的完整链路：executor 收口（仅 evaluation_status/
+    error_message，status 不传）→ E2E ACL impl 按 status='' 组包
+    （test_int169_dimension_score_id_and_eval_submit.py::TestRealAclContract
+    锁定）→ task_service 服务端按 derive_task_case_status 推导复合终态。
+    本类以真实 ORM + 内存 SQLite 锁定最后一跳：收口请求到达后复合 status
+    收敛 failed，execution_status 保持 completed（执行成功事实不被污染），
+    error_message 留痕。
+    """
+
+    _TASK_ID = 501
+    _CASE_ID = 'case-e2e-1'
+
+    @pytest.fixture()
+    def task_case_db(self, monkeypatch):
+        from sqlalchemy import create_engine, text
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from sqlalchemy.schema import CreateTable
+        from shared.models.database import Base
+        import task_service.infrastructure.persistence._task_case_stats_mixin as stats_mod
+        from task_service.infrastructure.persistence.models import TaskCase
+
+        engine = create_engine(
+            'sqlite://',
+            connect_args={'check_same_thread': False},
+            poolclass=StaticPool,
+        )
+        ddl = str(CreateTable(TaskCase.__table__).compile(engine))
+        with engine.connect() as conn:
+            conn.execute(text(ddl))
+            conn.commit()
+        factory = sessionmaker(bind=engine)
+        monkeypatch.setattr(stats_mod, 'get_db_session', factory)
+        return factory
+
+    def _seed_case(self, factory):
+        """多轮执行成功后 e2e_aggregator 落库的收口前置状态（复合 evaluating）。"""
+        from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus
+        from task_service.infrastructure.persistence.models import TaskCase
+        session = factory()
+        try:
+            po = TaskCase(
+                task_id=self._TASK_ID, test_case_id=self._CASE_ID,
+                status=TaskCaseStatus.EVALUATING,
+                execution_status=ExecutionStatus.COMPLETED,
+                evaluation_status=EvaluationStatus.PENDING,
+            )
+            session.add(po)
+            session.commit()
+            return po.id
+        finally:
+            session.close()
+
+    def _get_case(self, factory, row_id):
+        from task_service.infrastructure.persistence.models import TaskCase
+        session = factory()
+        try:
+            po = session.get(TaskCase, row_id)
+            session.expunge(po)
+            return po
+        finally:
+            session.close()
+
+    def test_eval_submit_failure_closure_converges_failed(self, task_case_db):
+        """收口请求形状（status='' + evaluation_status=failed）→ 复合终态 failed。"""
+        from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus
+        from task_service.infrastructure.persistence.task_repository import TaskRepository
+
+        row_id = self._seed_case(task_case_db)
+        repo = TaskRepository()
+
+        ok = repo.update_task_case_status(
+            task_id=self._TASK_ID, case_id=self._CASE_ID,
+            status='',  # E2E ACL 缺省化组包后服务端可见的形状
+            evaluation_status=EvaluationStatus.FAILED,
+            error_message='整体评估提交失败: judge grpc unavailable',
+        )
+
+        assert ok is True
+        row = self._get_case(task_case_db, row_id)
+        assert row.status == TaskCaseStatus.FAILED
+        assert row.execution_status == ExecutionStatus.COMPLETED
+        assert row.evaluation_status == EvaluationStatus.FAILED
+        assert row.error_message == '整体评估提交失败: judge grpc unavailable'
+
+    def test_eval_submit_failure_closure_retries_after_pending(self, task_case_db):
+        """重复收口幂等：evaluation_status 已 failed 再收口仍收敛 failed。"""
+        from shared.utils.status_constants import TaskCaseStatus
+        from task_service.infrastructure.persistence.task_repository import TaskRepository
+
+        row_id = self._seed_case(task_case_db)
+        repo = TaskRepository()
+        repo.update_task_case_status(
+            task_id=self._TASK_ID, case_id=self._CASE_ID, status='',
+            evaluation_status=EvaluationStatus.FAILED, error_message='first')
+        ok = repo.update_task_case_status(
+            task_id=self._TASK_ID, case_id=self._CASE_ID, status='',
+            evaluation_status=EvaluationStatus.FAILED, error_message='second')
+
+        assert ok is True
+        row = self._get_case(task_case_db, row_id)
+        assert row.status == TaskCaseStatus.FAILED
+        assert row.error_message == 'second'
