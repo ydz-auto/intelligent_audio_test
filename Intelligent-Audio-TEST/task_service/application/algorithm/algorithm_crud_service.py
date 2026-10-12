@@ -50,24 +50,16 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
         if not algo_type:
             return {'success': False, 'message': 'type is required', 'code': 400}
 
+        applied_steps: List[str] = []
         try:
             if self.repo.find_algorithm_by_type(algo_type):
                 return {'success': False, 'message': f"Algorithm '{algo_type}' already exists"}
 
+            self._preflight_row_refs(algo_type, data)
+
             algo_def = self.repo.create_algorithm_definition(data)
 
-            if data.get('device_params') is not None:
-                self._update_params(algo_type, data.get('device_params'), 'device')
-            if data.get('api_params') is not None:
-                self._update_params(algo_type, data.get('api_params'), 'api')
-            if data.get('case_params') is not None:
-                self._update_case_params(algo_type, data.get('case_params'))
-            if data.get('mappings') is not None:
-                self._update_mappings(algo_type, data.get('mappings'))
-            if data.get('associated_dimensions') is not None:
-                self._update_associated_dimensions(
-                    algo_type, data.get('associated_dimensions')
-                )
+            self._apply_definition_lists(algo_type, data, applied_steps)
 
             self.repo.commit()
 
@@ -79,29 +71,25 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
         except Exception as e:
             self.repo.rollback()
             logger.error(f"创建算法定义失败: {e}")
-            return {'success': False, 'message': f'创建失败: {e}', 'code': 500}
+            return {
+                'success': False,
+                'message': self._partial_write_notice(f'创建失败: {e}', applied_steps),
+                'code': 500,
+            }
 
     def update_algorithm(self, algo_type: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """更新算法定义"""
+        applied_steps: List[str] = []
         try:
             algo_def = self.repo.find_algorithm_by_type(algo_type)
             if not algo_def:
                 return {'success': False, 'message': 'Algorithm not found', 'code': 404}
 
+            self._preflight_row_refs(algo_type, data)
+
             self.repo.update_algorithm_definition_attrs(algo_def, data)
 
-            if data.get('device_params') is not None:
-                self._update_params(algo_type, data['device_params'], 'device')
-            if data.get('api_params') is not None:
-                self._update_params(algo_type, data['api_params'], 'api')
-            if data.get('case_params') is not None:
-                self._update_case_params(algo_type, data['case_params'])
-            if data.get('mappings') is not None:
-                self._update_mappings(algo_type, data['mappings'])
-            if data.get('associated_dimensions') is not None:
-                self._update_associated_dimensions(
-                    algo_type, data['associated_dimensions']
-                )
+            self._apply_definition_lists(algo_type, data, applied_steps)
 
             self.repo.commit()
 
@@ -113,7 +101,11 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
         except Exception as e:
             self.repo.rollback()
             logger.error(f"更新算法定义失败: {e}")
-            return {'success': False, 'message': f'更新失败: {e}', 'code': 500}
+            return {
+                'success': False,
+                'message': self._partial_write_notice(f'更新失败: {e}', applied_steps),
+                'code': 500,
+            }
 
     def delete_algorithm(self, algo_type: str) -> Dict[str, Any]:
         """删除算法定义（软删除）"""
@@ -150,6 +142,89 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
             raise ValueError(
                 f"{kind} id={row_id} 属于算法 '{row_type}'，不属于 '{algo_type}'，拒绝跨算法更新"
             )
+
+    def _preflight_row_refs(self, algo_type: str, data: Dict[str, Any]) -> None:
+        """整体保存写前预检：所有 id 对账行只读解析并校验归属（INT-218）。
+
+        gRPC 写每条自动提交、rollback 为 no-op，写循环中段失败会留下部分写。
+        将最常见失败类（id 行跨算法归属校验失败）提前到首条写之前整体拒绝，
+        使该类失败全成或全败；行 id 不存在沿用写循环的静默跳过语义，不新增失败类。
+        既有 id 分支内的归属校验保留（防御纵深，INT-211），此处仅复用不修改。
+        """
+        for param_type, get_param in (
+            ('device', self.repo.get_device_param),
+            ('api', self.repo.get_api_param),
+        ):
+            params = data.get(f'{param_type}_params')
+            if params is None:
+                continue
+            for param_data in params:
+                param_id = param_data.get('id')
+                if param_id:
+                    param = get_param(param_id)
+                    if param:
+                        self._assert_row_owner(param, algo_type, '参数', param_id)
+
+        params = data.get('case_params')
+        if params is not None:
+            for param_data in params:
+                param_id = param_data.get('id')
+                if param_id:
+                    param = self.repo.get_case_param(param_id)
+                    if param:
+                        self._assert_row_owner(param, algo_type, '用例参数', param_id)
+
+        mappings = data.get('mappings')
+        if mappings:
+            for source_type, mapping_list in mappings.items():
+                if source_type not in ('device', 'api', 'evaluation'):
+                    continue
+                for mapping_data in mapping_list:
+                    mapping_id = mapping_data.get('id')
+                    if mapping_id:
+                        mapping = self.repo.get_mapping(mapping_id)
+                        if mapping:
+                            self._assert_row_owner(mapping, algo_type, '映射', mapping_id)
+
+    @staticmethod
+    def _partial_write_notice(base_message: str, applied_steps: List[str]) -> str:
+        """失败响应的已生效项披露（INT-218）。
+
+        gRPC 写逐条自动提交、rollback 为 no-op，保存链中段失败时已执行的写
+        无法回滚；失败信息必须明确列出已生效步骤，杜绝「看到失败但部分改动
+        已静默生效」的次生风险。无已生效项时保持原报错文案（全败）。
+        """
+        if not applied_steps:
+            return base_message
+        return (
+            f"{base_message}。注意：以下改动已落库生效、无法自动回滚："
+            f"{'、'.join(applied_steps)}；其余改动未生效，请修正问题后重试并核对已生效项"
+        )
+
+    def _apply_definition_lists(
+        self, algo_type: str, data: Dict[str, Any], applied_steps: List[str]
+    ) -> None:
+        """按固定顺序应用整体保存的四列表与维度关联（create/update 共用）。
+
+        每完成一步向 applied_steps 追加步骤名，供失败时披露已生效项。
+        """
+        if data.get('device_params') is not None:
+            self._update_params(algo_type, data['device_params'], 'device')
+            applied_steps.append('device_params(设备参数)')
+        if data.get('api_params') is not None:
+            self._update_params(algo_type, data['api_params'], 'api')
+            applied_steps.append('api_params(API参数)')
+        if data.get('case_params') is not None:
+            self._update_case_params(algo_type, data['case_params'])
+            applied_steps.append('case_params(用例参数)')
+        if data.get('mappings') is not None:
+            self._update_mappings(algo_type, data['mappings'])
+            applied_steps.append('mappings(参数映射)')
+        if data.get('associated_dimensions') is not None:
+            self._update_associated_dimensions(
+                algo_type, data['associated_dimensions']
+            )
+            applied_steps.append('associated_dimensions(维度关联)')
 
     def _update_associated_dimensions(
         self, algo_type: str, dimensions_data: List[Dict]
@@ -331,7 +406,7 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
         for old_id in existing_ids - submitted_ids:
             param = self.repo.get_case_param(old_id)
             if param:
-                self.repo.soft_delete_param(param)
+                self.repo.soft_delete_case_param(param)
 
     def _update_mappings(
         self, algo_type: str, mappings: Dict
