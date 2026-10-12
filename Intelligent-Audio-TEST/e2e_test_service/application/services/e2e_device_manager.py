@@ -98,6 +98,8 @@ class E2EDeviceManager:
             ok = False
             err = None
             try:
+                # ACL 契约：True 或上抛（携带 device_service 真因，INT-206），
+                # 不再套用固定的 hypium 缺失提示误导排障方向
                 ok = self._device_repo.create_driver(task_id, [{
                 'action': 'initialize',
                 'system': info.get('system'),
@@ -106,10 +108,10 @@ class E2EDeviceManager:
                 'test_case_id': test_case_id,
                 'kwargs': extra_params,
                 }])
-                if not ok:
-                    err = "Initialize returned False（常见根因：hypium/devicetest 包未安装 → UiDriver=None → 无法获取驱动，详见驱动层日志）"
             except Exception as e:
                 err = str(e)
+            if not ok and err is None:
+                err = "CreateDriver 返回失败（未提供失败原因）"
             with results_lock:
                 results.append({'success': ok, 'error': err, 'device_name': info["device_name"]})
 

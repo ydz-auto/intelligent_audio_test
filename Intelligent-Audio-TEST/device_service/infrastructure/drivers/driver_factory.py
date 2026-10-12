@@ -4,6 +4,14 @@ from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .utils import log_and_emit
 from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import driver_registry
+from shared.models.common_enums import DeviceSystem
+
+# 共享 DeviceSystem 成员 → 驱动层 DevicePlatform（成员名对齐，INT-206 归一入口）
+_PLATFORM_BY_SYSTEM_NAME = {
+    DeviceSystem.ANDROID.name: DevicePlatform.ANDROID,
+    DeviceSystem.HARMONYOS.name: DevicePlatform.HARMONYOS,
+    DeviceSystem.IOS.name: DevicePlatform.IOS,
+}
 
 _LEGACY_KEYWORDS = {
     AppType.PLAUD: ['plaud', 'ai录音', 'ai record'],
@@ -309,12 +317,6 @@ class DeviceDriverFactory:
         'input_method': AppType.XIAOYI_INPUT_METHOD,
     }
 
-    _SYSTEM_TO_PLATFORM: dict[str, DevicePlatform] = {
-        'android': DevicePlatform.ANDROID,
-        'harmonyos': DevicePlatform.HARMONYOS,
-        'ios': DevicePlatform.IOS,
-    }
-
     def get_driver_typed(
         self,
         app_type: AppType,
@@ -349,15 +351,14 @@ class DeviceDriverFactory:
         return None
 
     def get_driver_for_device(self, system, keywords=None, device_sn=None):
-        """按设备字段解析新版驱动元数据并返回驱动实例。"""
-        system_key = (system or '').lower()
-        platform = {
-            'android': DevicePlatform.ANDROID,
-            'harmonyos': DevicePlatform.HARMONYOS,
-            'ios': DevicePlatform.IOS,
-        }.get(system_key)
-        if platform is None:
-            return None
+        """按设备字段解析新版驱动元数据并返回驱动实例。
+
+        system 经共享 DeviceSystem 归一（大小写不敏感，harmony 别名 → HarmonyOS，INT-206）；
+        system 非法/keywords 缺失/keywords 未注册/平台不匹配一律抛 ValueError（消息即真因），
+        由 CreateDriver 等调用方透传，不再静默返回 None 掩盖原因。
+        """
+        device_system = DeviceSystem.normalize(system)
+        platform = _PLATFORM_BY_SYSTEM_NAME[device_system.name]
 
         if not isinstance(keywords, str) or not keywords.strip():
             raise ValueError("设备必须提供明确的驱动 keywords 标识")

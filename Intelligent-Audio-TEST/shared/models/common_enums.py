@@ -92,6 +92,43 @@ class APIProtocol(str, Enum):
     WEBSOCKET = 'websocket'
 
 
+# 设备系统输入别名 → 规范成员（小写键）。harmony 为前端注册/扫描表单实际写入的别名（INT-206）
+_DEVICE_SYSTEM_ALIASES = {
+    'android': 'ANDROID',
+    'ios': 'IOS',
+    'harmonyos': 'HARMONYOS',
+    'harmony': 'HARMONYOS',
+}
+
+
+class DeviceSystem(str, Enum):
+    """设备操作系统枚举 — device.system 落库规范值（INT-206）
+
+    成员值与驱动注册表基础驱动键（'Android'/'HarmonyOS'）及扫描产出一致；
+    写入侧必须经 normalize() 归一后落库，杜绝 'harmony' 等别名脏数据；
+    查询/驱动侧匹配一律大小写不敏感。
+    """
+    ANDROID = 'Android'
+    HARMONYOS = 'HarmonyOS'
+    IOS = 'iOS'
+
+    @classmethod
+    def normalize(cls, value) -> 'DeviceSystem':
+        """归一设备系统输入：大小写不敏感，接受 harmony 等别名。
+
+        空/未知值抛 ValueError（消息含合法值清单）：写入侧转 400，
+        驱动解析侧转 CreateDriver 真因失败信息。
+        """
+        legal = '/'.join(item.value for item in cls)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"设备系统 system 不能为空，合法值: {legal}（别名: harmony）")
+        member_name = _DEVICE_SYSTEM_ALIASES.get(value.strip().lower())
+        if member_name is None:
+            raise ValueError(
+                f"未知设备系统 system: {value!r}，合法值: {legal}（别名: harmony）")
+        return cls[member_name]
+
+
 class VendorAdapterType(str, Enum):
     """厂商适配器类型枚举 — api_test_service infrastructure/adapters 注册表 key（INT-62 新增）
 

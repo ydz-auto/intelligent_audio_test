@@ -295,9 +295,9 @@ class DeviceCommandService:
                 'data': {'id': device.id, 'status': device.status, 'wakeup_command': wakeup_cmd},
                 'code': 200,
             }
-        except Exception:
+        except Exception as e:
             logger.exception("唤醒设备测试失败 device_id=%s", device_id)
-            return {'success': False, 'message': '唤醒测试失败，请稍后重试', 'data': None, 'code': 400}
+            return {'success': False, 'message': f'唤醒测试失败: {e}', 'data': None, 'code': 400}
 
     def stop_test(self, device_id: int) -> dict:
         """停止测试"""

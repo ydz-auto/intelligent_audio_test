@@ -233,7 +233,14 @@ class DeviceResultReextractor:
         device_map = {d.id: d for d in devices}
         reextractable = {}
         for d_id, d in device_map.items():
-            driver = device_driver_factory.get_driver_for_device(d.system or '', keywords=d.keywords)
+            try:
+                driver = device_driver_factory.get_driver_for_device(d.system or '', keywords=d.keywords)
+            except ValueError as e:
+                # system 非法/keywords 缺失等按真因跳过，不中断整任务重提取（INT-206）
+                log_and_emit('INFO', 'reextractor',
+                             f"跳过设备 {d.name}(id={d_id}): {e}",
+                             task_id=task_id)
+                continue
             if driver and hasattr(driver, 'extract_results_from_archive'):
                 reextractable[d_id] = d
             else:

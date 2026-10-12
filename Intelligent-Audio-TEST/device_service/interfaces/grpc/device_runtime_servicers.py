@@ -81,7 +81,13 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                 if not device_sn and device_info_list_raw:
                     device_sn = device_info_list_raw[0].get('device_sn')
 
-                driver = self.factory.get_driver_for_device(system, keywords=keywords, device_sn=device_sn)
+                driver = None
+                resolve_error = None
+                try:
+                    driver = self.factory.get_driver_for_device(system, keywords=keywords, device_sn=device_sn)
+                except ValueError as e:
+                    # system 值非法 / keywords 未注册 / 平台不匹配：真因透传给 e2e 侧（INT-206）
+                    resolve_error = str(e)
                 init_ok = None
                 if driver and hasattr(driver, 'initialize'):
                     init_ok = driver.initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
@@ -95,10 +101,17 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                     "driver_found": driver is not None,
                     "driver_name": driver.__class__.__name__ if driver else None,
                     "initialize_result": init_ok,
+                    "resolve_error": resolve_error,
                 }
+                if passed:
+                    message = "ok"
+                elif resolve_error:
+                    message = f"驱动解析失败 on {device_sn}: {resolve_error}"
+                else:
+                    message = f"initialize failed on {device_sn} (result={init_ok!r})"
                 return e2e_pb.CreateDriverResponse(
                     success=passed,
-                    message="ok" if passed else f"initialize failed on {device_sn} (result={init_ok!r})",
+                    message=message,
                     data=_dumps(driver_info))
 
             # 根据设备 SN 查找已注册的 driver

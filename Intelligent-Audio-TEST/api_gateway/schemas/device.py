@@ -3,6 +3,14 @@ from pydantic import Field, field_validator
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
+from shared.models.common_enums import DeviceSystem
+
+
+def _normalize_device_system(value):
+    """system 写入归一：harmony 等别名 → 规范值；空/未知值 ValidationError → 400（INT-206）"""
+    if value is None:
+        return None
+    return DeviceSystem.normalize(value).value
 
 
 class DeviceListQuery(APIModel):
@@ -47,6 +55,11 @@ class DeviceCreateSchema(APIModel):
     status: Optional[str] = Field('offline')
     supported_algorithms: Optional[List[str]] = Field(None)
 
+    @field_validator('system', mode='before')
+    @classmethod
+    def _normalize_system(cls, value):
+        return _normalize_device_system(value)
+
 
 class DeviceUpdateSchema(APIModel):
     name: Optional[str] = Field(None)
@@ -67,6 +80,11 @@ class DeviceUpdateSchema(APIModel):
     ip: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     supported_algorithms: Optional[List[str]] = Field(None)
+
+    @field_validator('system', mode='before')
+    @classmethod
+    def _normalize_system(cls, value):
+        return _normalize_device_system(value)
 
 
 class DeviceItem(APIModel):

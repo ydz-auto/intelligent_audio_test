@@ -29,7 +29,10 @@ class DeviceAclRepository(ABC):
 
     @abstractmethod
     def create_driver(self, task_id: str, device_config: List[Dict]) -> bool:
-        """创建设备驱动（含 action: initialize/pre_process/post_process/teardown）"""
+        """创建设备驱动（含 action: initialize/pre_process/post_process/teardown）
+
+        失败时上抛异常（携带 device_service 真因消息），不吞成 False（INT-206）。
+        """
 
     @abstractmethod
     def extract_archive_results(self, task_id: str, device_config: Dict) -> Optional[List]:

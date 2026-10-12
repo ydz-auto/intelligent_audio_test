@@ -119,7 +119,12 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
             return False
 
     def create_driver(self, task_id: str, device_config: List[Dict]) -> bool:
-        """创建设备驱动"""
+        """创建设备驱动
+
+        成功返回 True；失败（gRPC 异常或 resp.success=False）上抛异常，
+        携带 device_service 返回的真因消息（INT-206：驱动解析失败 /
+        initialize False 等原因必须可达调用方，不得吞成 bool 掩盖）。
+        """
         from shared.clients.grpc_clients import get_device_service_stub
         from shared.proto import device_service_pb2 as device_pb
         try:
@@ -128,10 +133,13 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
                 task_id=str(task_id),
                 device_config=json.dumps(device_config),
             ))
-            return resp.success
         except Exception as e:
             logger.error("create_driver 失败: %s", e)
-            return False
+            raise
+        if not resp.success:
+            logger.error("create_driver 失败: %s", resp.message)
+            raise RuntimeError(resp.message or 'CreateDriver failed')
+        return True
 
     def extract_archive_results(self, task_id: str, device_config: Dict) -> List[CollectedResultDTO]:
         """提取存档结果
