@@ -606,7 +606,9 @@ class TestCaseUpdateSchema(APIModel):
 
 
 class TestCaseListQuery(APIModel):
-    page: int = Field(1)
+    # INT-228：page 必须 >=1——page=0 时 task_service 派生路径负切片返回移位内容、
+    # SQL 路径口径漂移，边界统一 422
+    page: int = Field(1, ge=1)
     per_page: int = Field(10)
     keyword: Optional[str] = Field(None)
     tag: Optional[str] = Field(None)

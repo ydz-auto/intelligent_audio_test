@@ -5,6 +5,8 @@
 """
 import logging
 
+from pydantic import ValidationError
+
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
@@ -50,7 +52,12 @@ class TestCaseQueryService:
 
     @staticmethod
     def get_all():
-        query = _parse_query_params(TestCaseListQuery)
+        # INT-228：schema 校验失败（如 page=0）转 422 结构化错误，不再 500
+        try:
+            query = _parse_query_params(TestCaseListQuery)
+        except ValidationError as e:
+            return error_response(
+                f"参数验证失败: {e}", code=ErrorCode.INVALID_PARAMS, http_code=422)
         page = query.page
         per_page = query.per_page
         keyword = query.keyword

@@ -76,8 +76,11 @@ class TestCaseQueryMixin:
         test_type（INT-193）：执行口径 api/e2e，配置形态派生过滤（Python 侧）。
         """
         session = get_db_session()
+        # INT-228：同事务批量创建的用例 created_at 全同（Postgres now() 为事务级
+        # 时间戳），仅按 created_at 排序平局序不确定，跨页边界会重复/漏行，
+        # 追加 id 次级键强定序
         query = self._query_testcases_with_preload(session) \
-            .order_by(TestCase.created_at.desc())
+            .order_by(TestCase.created_at.desc(), TestCase.id.asc())
 
         # INT-141：回收站模式查软删除项，否则按 include_deleted 语义
         if only_deleted:
@@ -140,7 +143,7 @@ class TestCaseQueryMixin:
 
         rows = query.with_entities(
             TestCase.id, TestCase.name, TestCase.config,
-        ).order_by(TestCase.created_at.desc()).all()
+        ).order_by(TestCase.created_at.desc(), TestCase.id.asc()).all()
         matched_ids = [rid for rid, name, config in rows
                        if derive_case_test_type(config, name) == test_type]
 
