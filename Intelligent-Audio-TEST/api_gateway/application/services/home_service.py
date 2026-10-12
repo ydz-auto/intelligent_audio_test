@@ -59,7 +59,9 @@ class HomeService:
     def refresh_stats():
         try:
             req = HomeStatsRefreshRequest.model_validate(request.get_json() or {})
-            refresh_stats_cache()
+            if not refresh_stats_cache():
+                # 全部统计域不可用，本轮未写缓存（INT-204：不得谎报刷新成功）
+                return error_response(message="统计缓存刷新失败：上游统计服务暂不可用，请稍后重试")
             return success_response(message="统计缓存已刷新")
         except Exception as e:
             return error_response(message=f"刷新统计缓存失败: {str(e)}")
