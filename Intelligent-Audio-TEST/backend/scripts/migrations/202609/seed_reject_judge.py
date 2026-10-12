@@ -53,6 +53,12 @@ API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
 # 参数定义
 # ============================================================
 
+# 全族共用 group_key：evaluation_service 按 (endpoint_url, group_key) 把
+# 3 主 + 9 子维度合并为一组，只发一次 eval_server 请求、只做一次 LLM 判定，
+# 三个主维度从同一份 result 按各自 field_path 提取，保证三率一致（100%）。
+# 与打断族 'interruption_v2' 同一通用机制（见 evaluation_service._dispatch_evaluation_tasks）。
+GROUP_KEY = 'reject_judge'
+
 # ── 输入参数（所有主维度共享） ──
 _INPUT_PARAMS = [
     ('ai_wav', '模型回复音频', '模型回复音频路径(被判定对象)', 'audio', 'input',
@@ -312,7 +318,9 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
         'method': 'POST',
         'headers': {},
         'body_template': dim_def.get('body_template', _BODY_TEMPLATE),
-        'timeout': 30000
+        'timeout': 30000,
+        # 全族跨主维度合并一组：3 主 + 9 子只发一次请求、一次 LLM 判定（与打断族同机制）
+        'group_key': GROUP_KEY,
     }, ensure_ascii=False)
     rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
 
