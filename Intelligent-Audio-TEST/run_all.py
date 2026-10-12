@@ -47,6 +47,8 @@ from shared.config.service_ports import (
     RUSTFS_PORT,
     RUSTFS_CONSOLE_PORT,
     FRONTEND_DEV_PORT,
+    MOCK_THIRD_PARTY_EVAL_HTTP_PORT,
+    MOCK_REALTIME_API_WS_PORT,
 )
 
 logger = logging.getLogger(__name__)
@@ -105,6 +107,18 @@ services = [
     # gRPC-only 服务：无 app.py，仅启动 gRPC server
     {'name': 'audio_service',       'port': None,                       'grpc_port': AUDIO_SERVICE_GRPC_PORT,        'dir': 'audio_service',      'http': False},
     {'name': 'device_service',      'port': None,                       'grpc_port': DEVICE_SERVICE_GRPC_PORT,       'dir': 'device_service',      'http': False},
+]
+
+# Mock 替身服务（INT-137，仅联调/验收/回归用）：MOCK_SERVICES_ENABLED=true 才启动，
+# 默认关闭 —— 生产路径零依赖，mock 服务独立可运行（mock_services/ 下脚本）。
+MOCK_SERVICES_ENABLED = str(CHILD_ENV.get('MOCK_SERVICES_ENABLED', '')).strip().lower() \
+    in ('1', 'true', 'yes', 'on')
+
+mock_services = [
+    {'name': 'mock_third_party_eval', 'port': MOCK_THIRD_PARTY_EVAL_HTTP_PORT,
+     'script': os.path.join('mock_services', 'mock_third_party_eval.py')},
+    {'name': 'mock_realtime_api', 'port': MOCK_REALTIME_API_WS_PORT,
+     'script': os.path.join('mock_services', 'mock_realtime_api.py')},
 ]
 
 # 前端 Vite dev server
@@ -219,13 +233,15 @@ def _kill_pid(pid):
 
 
 def cleanup_occupied_ports():
-    """启动前检查并清理被占用的服务端口（HTTP + gRPC + 前端，不含 infra）。"""
+    """启动前检查并清理被占用的服务端口（HTTP + gRPC + 前端 + 可选 mock，不含 infra）。"""
     ports_to_check = {FRONTEND_PORT}
     for svc in services:
         if svc.get('port'):
             ports_to_check.add(svc['port'])
         if svc.get('grpc_port'):
             ports_to_check.add(svc['grpc_port'])
+    if MOCK_SERVICES_ENABLED:
+        ports_to_check.update(svc['port'] for svc in mock_services)
 
     killed_any = False
     for port in sorted(ports_to_check):
@@ -518,6 +534,33 @@ def check_oss_connectivity():
               " 时将直接影响文件读写", flush=True)
 
 
+def start_mock_services():
+    """可选启动 mock 替身服务（MOCK_SERVICES_ENABLED=true，INT-137）。
+
+    mock 服务独立可运行（脚本内自带 CLI/配置加载），此处仅负责拉起与就绪探测；
+    端口取 service_ports 注册值，不进生产编排。
+    """
+    if not MOCK_SERVICES_ENABLED:
+        return
+    for svc in mock_services:
+        if _is_port_open('localhost', svc['port']):
+            print(f"[INFO] {svc['name']} already running on :{svc['port']}", flush=True)
+            continue
+        print(f"[START] {svc['name']} on port {svc['port']}...", flush=True)
+        proc = subprocess.Popen(
+            [sys.executable, svc['script'], '--port', str(svc['port'])],
+            cwd=BASE_DIR,
+            env=CHILD_ENV,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=0,
+        )
+        t = threading.Thread(target=_stream, args=(proc, svc['name']), daemon=True)
+        t.start()
+        processes.append({'name': svc['name'], 'proc': proc, 'thread': t})
+        _wait_port('localhost', svc['port'], svc['name'])
+
+
 def start_all():
     cleanup_occupied_ports()
     start_redis()
@@ -526,8 +569,11 @@ def start_all():
     check_oss_connectivity()
     for svc in services:
         start_service(svc)
+    start_mock_services()
     start_frontend()
-    print(f"\n[OK] Started {len(processes)} processes (3 infra + 11 backend + 1 frontend).", flush=True)
+    print(f"\n[OK] Started {len(processes)} processes (3 infra + 11 backend"
+          f"{' + ' + str(len(mock_services)) + ' mock' if MOCK_SERVICES_ENABLED else ''}"
+          f" + 1 frontend).", flush=True)
     print(f"[INFO] Frontend:            http://localhost:{FRONTEND_DEV_PORT}", flush=True)
     print(f"[INFO] API Gateway:        http://localhost:{API_GATEWAY_PORT}", flush=True)
     print(f"[INFO] Task Service:       http://localhost:{TASK_SERVICE_HTTP_PORT}", flush=True)
@@ -541,6 +587,10 @@ def start_all():
     print(f"[INFO] Audio Service:      gRPC :{AUDIO_SERVICE_GRPC_PORT}", flush=True)
     print(f"[INFO] Device Service:     gRPC :{DEVICE_SERVICE_GRPC_PORT}", flush=True)
     print(f"[INFO] RustFS Console:     http://localhost:{RUSTFS_CONSOLE_PORT}", flush=True)
+    if MOCK_SERVICES_ENABLED:
+        print(f"[INFO] Mock ThirdPartyEval: http://localhost:{MOCK_THIRD_PARTY_EVAL_HTTP_PORT}"
+              f" (/health, /__control)", flush=True)
+        print(f"[INFO] Mock Realtime API:   ws://localhost:{MOCK_REALTIME_API_WS_PORT}", flush=True)
     print("[INFO] Ctrl+C to stop all.", flush=True)
 
 
