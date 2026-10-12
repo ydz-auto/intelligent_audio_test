@@ -87,8 +87,9 @@ export function useTestCaseCard() {
     editingTestCase.value = testCase;
     
     const normalized = normalizeTestCaseConfig(testCase.config || {});
-    // TestCase Domain 已是 camelCase：testType / groupName / groupId / algorithmType / algorithmParams
-    const testCaseType = testCase.testType || TestType.E2E;
+    // 编辑回填只信任域模型 testType（adapter 已从列表项 type 派生，INT-196）；
+    // 不再 || TestType.E2E 兜底——API 用例曾被恒锁成 E2E 表单
+    const testCaseType = testCase.testType;
 
     formData.value = {
       id: testCase.id,
@@ -100,7 +101,7 @@ export function useTestCaseCard() {
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
       config: normalized as TestCaseFormData['config'],
       algorithmType: testCase.algorithmType || '',
-      testType: testCaseType as 'api' | 'e2e',
+      testType: testCaseType,
       // 新设计：algorithm_params 独立列（Domain 侧为 algorithmParams）
       algorithmParams: Array.isArray(testCase.algorithmParams)
         ? testCase.algorithmParams

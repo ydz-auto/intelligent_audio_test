@@ -8,9 +8,23 @@
  */
 import type { TestCase, TestCaseDraft, TagViewItem } from '../../domain/model/testCase'
 import type { TagViewCaseDto, TagViewItemDto, TestCaseDto, TestCaseUpsertDto } from '../dto/testCaseDto'
+import { TestType } from '../../domain/enums'
 import { camelizeKeys, snakifyKeys } from '../../utils/keyTransform'
 
 // ===== DTO → Domain =====
+
+/**
+ * 列表项 type → Domain testType。
+ * 后端用例纯数据化后不存类型列，type 由 derive_case_test_type 从 config
+ * 形态派生，取值恒为 'api'/'e2e'；非法/缺省值不映射，避免编辑模态窗
+ * 被兜底锁成 E2E 形态（INT-196）。
+ */
+function toTestType(type?: string | null): TestCase['testType'] {
+  if (type === TestType.API || type === TestType.E2E) {
+    return type
+  }
+  return undefined
+}
 
 export function toTestCase(dto: TestCaseDto): TestCase {
   return {
@@ -18,6 +32,7 @@ export function toTestCase(dto: TestCaseDto): TestCase {
     name: dto.name,
     description: dto.description ?? undefined,
     type: dto.type ?? undefined,
+    testType: toTestType(dto.type),
     // config 深度 camelize：field_code→fieldCode, round_number→roundNumber 等
     config: dto.config ? camelizeKeys(dto.config) as TestCase['config'] : undefined,
     // algorithm_params/reference_params 深度 camelize
@@ -49,6 +64,7 @@ export function toTagViewCase(dto: TagViewCaseDto): TestCase {
     name: dto.name,
     description: dto.description ?? undefined,
     type: dto.type ?? undefined,
+    testType: toTestType(dto.type),
     config: dto.config ? camelizeKeys(dto.config) as TestCase['config'] : undefined,
     algorithmParams: dto.algorithmParams ? camelizeKeys(dto.algorithmParams) as TestCase['algorithmParams'] : undefined,
     referenceParams: dto.referenceParams ? camelizeKeys(dto.referenceParams) as TestCase['referenceParams'] : undefined,
