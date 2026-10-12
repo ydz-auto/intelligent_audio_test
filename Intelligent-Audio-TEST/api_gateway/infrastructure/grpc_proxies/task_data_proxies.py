@@ -158,7 +158,7 @@ class _TaskDataProxy:
         return _grpc_call(_call, default_return={}, error_msg_prefix='UpdateTestCaseGroup gRPC 失败')
 
     def delete_testcase_group(self, group_id, cascade=False):
-        """通过 gRPC 软删除 TestCaseGroup"""
+        """通过 gRPC 软删除 TestCaseGroup（写操作失败时抛出，禁止吞错假成功）"""
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.DeleteTestCaseGroup(task_pb.DeleteTestCaseGroupRequest(
@@ -168,7 +168,8 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"DeleteTestCaseGroup gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='DeleteTestCaseGroup gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='DeleteTestCaseGroup gRPC 失败',
+                          reraise=True)
 
     # ---- 日志查询 ----
 

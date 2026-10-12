@@ -10,6 +10,7 @@ def _grpc_call(
     default_return: Any = None,
     error_msg_prefix: str = "操作失败",
     log_error: bool = True,
+    reraise: bool = False,
 ) -> Any:
     """通用的 gRPC 调用包装，统一异常处理。
 
@@ -18,12 +19,16 @@ def _grpc_call(
         default_return: 异常时的默认返回值；若为 callable，则以异常对象为参数调用
         error_msg_prefix: 错误消息前缀，用于日志
         log_error: 是否记录异常日志
+        reraise: True 时记录日志后重新抛出异常（写操作失败必须让调用方感知，
+            不得吞成默认值造成假成功）
     """
     try:
         return call_func()
     except Exception as e:
         if log_error:
             _logger.error(f"{error_msg_prefix}: {e}", exc_info=True)
+        if reraise:
+            raise
         if callable(default_return):
             return default_return(e)
         return default_return

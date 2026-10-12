@@ -168,7 +168,9 @@ class GroupService:
 
         try:
             from api_gateway.schemas.common import StringIdData
-            task_data_service.delete_testcase_group(group_id, cascade=cascade)
+            result = task_data_service.delete_testcase_group(group_id, cascade=cascade)
+            if not result or not result.get('id'):
+                return error_response("删除分组失败：服务未确认删除结果")
             return success_response(StringIdData(id=group_id), "分组已删除")
         except Exception as e:
             return error_response(str(e))

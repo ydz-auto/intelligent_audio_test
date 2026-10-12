@@ -248,7 +248,7 @@ class TestCaseGroupMixin:
                     'deleted': True,
                     'deleted_at': now,
                     'updated_at': now,
-                }, synchronize=False)
+                }, synchronize_session=False)
 
             session.commit()
             return {'id': str(group_id), 'cascade': cascade}
