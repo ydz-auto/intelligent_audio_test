@@ -408,6 +408,71 @@ export function toCaseParamItemDto(param: Partial<AlgorithmCaseParam>): Record<s
   return result
 }
 
+/** AlgorithmDeviceParam（camelCase）→ 算法定义内嵌 device_params/api_params 列表项（snake_case）。
+ *  device/api 两列表共用：后端 _update_params 以同一套字段消费。
+ *  保留 id：后端以 id 对账既有参数（existing_ids - submitted_ids 软删除），丢 id 会误删既有行；
+ *  无 id 且 param_code 为空的新行为不完整行（blur 自动保存同样拒绝保存空码行），提交后
+ *  按码 upsert 无从对账、只会写成空码脏行，故跳过。tempId/optionsSource 等非后端字段不提交。 */
+export function toDeviceParamItemDto(param: Partial<AlgorithmDeviceParam>): Record<string, any> | null {
+  if (!param.id && !param.paramCode) return null
+  const result: Record<string, any> = {}
+  if (param.id !== undefined) result.id = param.id
+  if (param.paramCode !== undefined) result.param_code = param.paramCode
+  if (param.paramName !== undefined) result.param_name = param.paramName
+  if (param.label !== undefined) result.label = param.label
+  if (param.paramType !== undefined) result.param_type = param.paramType
+  if (param.direction !== undefined) result.direction = param.direction
+  if (param.required !== undefined) result.required = param.required
+  if (param.defaultValue !== undefined) result.default_value = param.defaultValue
+  if (param.helpText !== undefined) result.help_text = param.helpText
+  if (param.uiOrder !== undefined) result.ui_order = param.uiOrder
+  if (param.hidden !== undefined) result.hidden = param.hidden
+  return result
+}
+
+/** ParamMapping（camelCase）→ 算法定义内嵌 mappings 列表项（snake_case）。
+ *  保留 id：后端 _update_mappings 以 id 对账既有映射（未提交 id 会被软删除）；
+ *  dimensionName/paramName 为前端展示字段不提交。
+ *  无 id 且 sourceParam/targetParam 未填齐的新行为不完整行（blur 自动保存同样拒绝），
+ *  提交会被后端原样建为空键值脏行，故跳过。 */
+export function toParamMappingItemDto(mapping: Partial<ParamMapping>): Record<string, any> | null {
+  if (!mapping.id && (!mapping.sourceParam || !mapping.targetParam)) return null
+  const result: Record<string, any> = {}
+  if (mapping.id !== undefined) result.id = mapping.id
+  if (mapping.source !== undefined) result.source = mapping.source
+  if (mapping.sourceParam !== undefined) result.source_param = mapping.sourceParam
+  if (mapping.sourceDirection !== undefined) result.source_direction = mapping.sourceDirection
+  if (mapping.dimensionId !== undefined) result.dimension_id = mapping.dimensionId
+  if (mapping.targetParam !== undefined) result.target_param = mapping.targetParam
+  if (mapping.transformType !== undefined) result.transform_type = mapping.transformType
+  return result
+}
+
+/** Record<source_type, ParamMapping[]> → snake_case mappings 请求体（组键原样透传，逐项深度转换） */
+function toMappingsDto(mappings: Record<string, ParamMapping[]>): Record<string, any> {
+  const result: Record<string, any> = {}
+  for (const [sourceType, list] of Object.entries(mappings ?? {})) {
+    result[sourceType] = (list ?? [])
+      .map(toParamMappingItemDto)
+      .filter((item): item is Record<string, any> => item !== null)
+  }
+  return result
+}
+
+/** AlgorithmAssociatedDimension（camelCase）→ 算法定义内嵌 associated_dimensions 列表项（snake_case）。
+ *  对账键是 dimension_id：后端 _update_associated_dimensions 以 dimension_id 对账既有关联
+ *  （未提交的 dimension_id 会被软删除）。其 ``or dim_data.get('id')`` 回退仅供历史调用方兼容，
+ *  本适配恒传 dimension_id、绝不透传关系行 id（Domain 的 id 是关联行主键，不是维度 id，
+ *  透传会被回退分支误当维度 id 对账——错位更新或建脏关联）。
+ *  name/type/description 为展示字段不提交；未选维度的新行 dimension_id 为空，后端按空跳过。 */
+export function toAssociatedDimensionItemDto(dim: Partial<AlgorithmAssociatedDimension>): Record<string, any> {
+  const result: Record<string, any> = {}
+  if (dim.dimensionId !== undefined) result.dimension_id = dim.dimensionId
+  if (dim.weight !== undefined) result.weight = dim.weight
+  if (dim.isDefault !== undefined) result.is_default = dim.isDefault
+  return result
+}
+
 /** AlgorithmDefinition（camelCase）→ snake_case 请求体 DTO */
 export function toAlgorithmDefinitionDto(data: Partial<AlgorithmDefinition>): Record<string, any> {
   const result: Record<string, any> = {}
@@ -420,12 +485,22 @@ export function toAlgorithmDefinitionDto(data: Partial<AlgorithmDefinition>): Re
   if (data.status !== undefined) result.status = data.status
   if (data.icon !== undefined) result.icon = data.icon
   if (data.displayOrder !== undefined) result.display_order = data.displayOrder
-  if (data.deviceParams !== undefined) result.device_params = data.deviceParams
-  if (data.apiParams !== undefined) result.api_params = data.apiParams
+  if (data.deviceParams !== undefined) {
+    result.device_params = data.deviceParams
+      .map(toDeviceParamItemDto)
+      .filter((item): item is Record<string, any> => item !== null)
+  }
+  if (data.apiParams !== undefined) {
+    result.api_params = data.apiParams
+      .map(toDeviceParamItemDto)
+      .filter((item): item is Record<string, any> => item !== null)
+  }
   if (data.caseParams !== undefined) result.case_params = data.caseParams.map(toCaseParamItemDto)
   if (data.params !== undefined) result.params = data.params
-  if (data.mappings !== undefined) result.mappings = data.mappings
-  if (data.associatedDimensions !== undefined) result.associated_dimensions = data.associatedDimensions
+  if (data.mappings !== undefined) result.mappings = toMappingsDto(data.mappings)
+  if (data.associatedDimensions !== undefined) {
+    result.associated_dimensions = data.associatedDimensions.map(toAssociatedDimensionItemDto)
+  }
   if (data.dimensionRelations !== undefined) result.dimension_relations = data.dimensionRelations
   if (data.referenceParams !== undefined) result.reference_params = data.referenceParams
   return result
