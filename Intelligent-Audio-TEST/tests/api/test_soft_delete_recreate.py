@@ -4,10 +4,70 @@
 核心场景：删除记录（软删除）后，用相同的唯一键值重新创建记录，应成功。
 迁移前旧 UniqueConstraint 会导致重新创建失败（唯一约束冲突）；
 迁移后部分唯一索引 WHERE deleted = false 使软删除记录不参与唯一性检查。
+
+数据卫生（INT-229）：写入型用例数据统一携带进程级唯一前缀 `_test_{_RUN}_`，
+模块级 teardown 按前缀硬删全部残留行（用例内的 API DELETE 仅软删，会留
+残留），库中不留本文件测试数据（口径同 INT-218）。
 """
+import os
+import secrets
 import time
+
 import pytest
-from tests.api.conftest import API_BASE
+from tests.api.conftest import API_BASE, PROJECT_ROOT
+
+# 进程级唯一前缀段：xdist 负载调度同文件拆 worker 时各进程独立取值，
+# teardown 按前缀硬删不会误删并发运行的其它数据。
+_RUN = secrets.token_hex(4)
+
+
+# ── 数据卫生 teardown（INT-229，口径同 INT-218）──────────
+_PURGE_TABLES = [
+    ('algorithm_device_params', 'algorithm_type'),
+    ('algorithm_api_params', 'algorithm_type'),
+    ('algorithm_reference_params', 'algorithm_type'),
+    ('param_mappings', 'algorithm_type'),
+    ('algorithm_dimension_relations', 'algorithm_type'),
+    ('case_algorithm_params', 'algorithm_type'),
+    ('algorithm_groups', 'name'),
+    ('playback_devices', 'name'),
+    ('audio_algorithm_relations', 'algorithm_type'),
+    ('audios', 'name'),
+]
+
+
+def _database_url() -> str:
+    """实机栈 .env 的 DATABASE_URL（与 run_all 同源解析；缺省回退本地默认值）。"""
+    try:
+        with open(os.path.join(PROJECT_ROOT, '.env'), encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('DATABASE_URL='):
+                    return line.split('=', 1)[1].strip().strip('"\'')
+    except OSError:
+        pass
+    return ('postgresql://intelligent_audio_test:intelligent_audio_test666'
+            '@localhost:5432/intelligent_audio_test')
+
+
+def _purge_run_rows() -> None:
+    """按进程级唯一前缀硬删本文件全部残留行，库中不留本文件测试数据。"""
+    import sqlalchemy
+    from sqlalchemy import text
+    eng = sqlalchemy.create_engine(_database_url(),
+                                   connect_args={'connect_timeout': 5})
+    pattern = rf'\_test\_{_RUN}\_%'
+    with eng.begin() as conn:
+        for table, col in _PURGE_TABLES:
+            conn.execute(text(f'DELETE FROM {table} WHERE {col} LIKE :p'),
+                         {'p': pattern})
+
+
+@pytest.fixture(scope='module', autouse=True)
+def _purge_after_module():
+    """模块结束（含用例中途失败）按唯一前缀硬删本文件全部测试数据。"""
+    yield
+    _purge_run_rows()
 
 
 # ── 辅助 ──────────────────────────────────────────────────
@@ -27,7 +87,7 @@ class TestSoftDeleteRecreateAlgorithmGroups:
     """algorithm_groups: name 有部分唯一索引 WHERE deleted = false。"""
 
     def test_delete_then_recreate_same_name(self, api_client):
-        name = f'_test_sd_group_{_ts()}'
+        name = f'_test_{_RUN}_sd_group_{_ts()}'
         # 1. Create
         resp = api_client.post('/algorithm/groups', json={'name': name})
         data = _unwrap(resp)
@@ -54,8 +114,8 @@ class TestSoftDeleteRecreateAlgorithmDeviceParams:
     """algorithm_device_params: (algorithm_type, param_code, direction) 部分唯一索引。"""
 
     def test_delete_then_recreate_same_key(self, api_client):
-        algo_type = f'_test_sd_devparam_{_ts()}'
-        param_code = '_test_param_sd'
+        algo_type = f'_test_{_RUN}_sd_devparam_{_ts()}'
+        param_code = f'_test_{_RUN}_param_sd'
         payload = {
             'algorithmType': algo_type,
             'paramCode': param_code,
@@ -89,8 +149,8 @@ class TestSoftDeleteRecreateAlgorithmApiParams:
     """algorithm_api_params: (algorithm_type, param_code, direction) 部分唯一索引。"""
 
     def test_delete_then_recreate_same_key(self, api_client):
-        algo_type = f'_test_sd_apiparam_{_ts()}'
-        param_code = '_test_api_param_sd'
+        algo_type = f'_test_{_RUN}_sd_apiparam_{_ts()}'
+        param_code = f'_test_{_RUN}_api_param_sd'
         payload = {
             'algorithmType': algo_type,
             'paramCode': param_code,
@@ -121,8 +181,8 @@ class TestSoftDeleteRecreateReferenceParams:
     """algorithm_reference_params: (algorithm_type, code) 部分唯一索引。"""
 
     def test_delete_then_recreate_same_key(self, api_client):
-        algo_type = f'_test_sd_ref_{_ts()}'
-        code = '_test_ref_code_sd'
+        algo_type = f'_test_{_RUN}_sd_ref_{_ts()}'
+        code = f'_test_{_RUN}_ref_code_sd'
         payload = {
             'algorithmType': algo_type,
             'code': code,
@@ -150,7 +210,7 @@ class TestSoftDeleteRecreateDimensionRelations:
     """algorithm_dimension_relations: (algorithm_type, dimension_id) 部分唯一索引。"""
 
     def test_delete_then_recreate_same_key(self, api_client):
-        algo_type = f'_test_sd_dimrel_{_ts()}'
+        algo_type = f'_test_{_RUN}_sd_dimrel_{_ts()}'
         payload = {
             'algorithmType': algo_type,
             'dimensionId': 999,
@@ -178,8 +238,8 @@ class TestSoftDeleteRecreateCaseParams:
     """case_algorithm_params: (algorithm_type, param_code) 部分唯一索引。"""
 
     def test_delete_then_recreate_same_key(self, api_client):
-        algo_type = f'_test_sd_case_{_ts()}'
-        param_code = '_test_case_param_sd'
+        algo_type = f'_test_{_RUN}_sd_case_{_ts()}'
+        param_code = f'_test_{_RUN}_case_param_sd'
         payload = {
             'algorithmType': algo_type,
             'paramCode': param_code,
@@ -209,14 +269,14 @@ class TestSoftDeleteRecreateMappings:
     """param_mappings: (algorithm_type, source, source_param, dimension_id) 部分唯一索引。"""
 
     def test_delete_then_recreate_same_key(self, api_client):
-        algo_type = f'_test_sd_mapping_{_ts()}'
+        algo_type = f'_test_{_RUN}_sd_mapping_{_ts()}'
         payload = {
             'algorithmType': algo_type,
             'sourceType': 'device',
-            'sourceParam': '_test_source_sd',
+            'sourceParam': f'_test_{_RUN}_source_sd',
             'sourceDirection': 'output',
             'dimensionId': 888,
-            'targetParam': '_test_target_sd',
+            'targetParam': f'_test_{_RUN}_target_sd',
             'transformType': 'none',
         }
         resp = api_client.post('/algorithm/mappings', json=payload)
@@ -243,9 +303,9 @@ class TestSoftDeleteRecreatePlaybackDevices:
     """
 
     def test_delete_then_recreate_same_key(self, api_client):
-        unique_id = f'_test_sd_pb_{_ts()}'
+        unique_id = f'_test_{_RUN}_sd_pb_{_ts()}'
         payload = {
-            'name': '_test_sd_playback',
+            'name': f'_test_{_RUN}_sd_playback',
             'model': 'TestSpeaker',
             'deviceType': 'speaker',
             'sampleRate': 48000,
@@ -284,7 +344,7 @@ class TestSoftDeleteRecreateAudioAlgorithmRelations:
     def test_repeated_set_algorithms_no_conflict(self, api_client):
         import psycopg2
         ts = _ts()
-        algo_type = f'_test_sd_algo_{ts}'
+        algo_type = f'_test_{_RUN}_sd_algo_{ts}'
 
         # 1. 直接在数据库插入 audio 记录（绕过 upload/register 的 taskId 依赖）
         conn = psycopg2.connect(
@@ -299,7 +359,7 @@ class TestSoftDeleteRecreateAudioAlgorithmRelations:
                     "INSERT INTO audios (name, file_path, size, duration, format, md5, "
                     "deleted, created_at, updated_at) "
                     "VALUES (%s, %s, %s, %s, %s, %s, false, now(), now()) RETURNING id",
-                    (f'_test_sd_audio_{ts}', f'/tmp/test_sd_{ts}.wav',
+                    (f'_test_{_RUN}_sd_audio_{ts}', f'/tmp/test_sd_{ts}.wav',
                      1000, 1.0, 'wav', f'test_md5_{ts}')
                 )
                 audio_id = cur.fetchone()[0]

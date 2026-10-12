@@ -6,10 +6,21 @@
 - 覆盖 Create → Read → Update → Delete 完整链路
 - 响应体使用 camelCase（serialize_by_alias=True）
 - 后端未运行时自动 skip
+
+数据卫生（INT-229）：写入型用例数据统一携带进程级唯一前缀 `_test_{_RUN}_`，
+模块级 teardown 按前缀硬删全部残留行（各 API DELETE 仅软删，直接跑会留
+软删残留），库中不留本文件测试数据（口径同 INT-218）。
 """
+import os
+import secrets
 import time
+
 import pytest
-from tests.api.conftest import API_BASE
+from tests.api.conftest import API_BASE, PROJECT_ROOT
+
+# 进程级唯一前缀段：xdist 负载调度同文件拆 worker 时各进程独立取值，
+# teardown 按前缀硬删不会误删并发运行的其它数据。
+_RUN = secrets.token_hex(4)
 
 
 # ── 辅助 ──────────────────────────────────────────────────
@@ -37,13 +48,71 @@ def _get(data, key):
     return data.get(camel)
 
 
+# ── 数据卫生 teardown（INT-229，口径同 INT-218）──────────
+# 本文件写入型用例触达的全部表（子表在前，便于未来加 FK 时也不挂）。
+_PURGE_TABLES = [
+    ('algorithm_device_params', 'algorithm_type'),
+    ('algorithm_api_params', 'algorithm_type'),
+    ('algorithm_reference_params', 'algorithm_type'),
+    ('param_mappings', 'algorithm_type'),
+    ('algorithm_dimension_relations', 'algorithm_type'),
+    ('case_algorithm_params', 'algorithm_type'),
+    ('algorithm_definitions', 'type'),
+    ('algorithm_groups', 'name'),
+    ('categories', 'name'),
+    ('dimensions', 'name'),
+    ('apis', 'name'),
+    ('tags', 'name'),
+    ('test_case_groups', 'name'),
+    ('devices', 'name'),
+    ('playback_devices', 'name'),
+    ('spl_mappings', 'name'),
+    ('test_tasks', 'name'),
+]
+
+
+def _database_url() -> str:
+    """实机栈 .env 的 DATABASE_URL（与 run_all 同源解析；缺省回退本地默认值）。"""
+    try:
+        with open(os.path.join(PROJECT_ROOT, '.env'), encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('DATABASE_URL='):
+                    return line.split('=', 1)[1].strip().strip('"\'')
+    except OSError:
+        pass
+    return ('postgresql://intelligent_audio_test:intelligent_audio_test666'
+            '@localhost:5432/intelligent_audio_test')
+
+
+def _purge_run_rows() -> None:
+    """按进程级唯一前缀硬删本文件全部残留行（API DELETE 仅软删、
+    软删行 60 天后才被清理，会留残留），库中不留本文件测试数据。"""
+    import sqlalchemy
+    from sqlalchemy import text
+    eng = sqlalchemy.create_engine(_database_url(),
+                                   connect_args={'connect_timeout': 5})
+    pattern = rf'\_test\_{_RUN}\_%'
+    with eng.begin() as conn:
+        for table, col in _PURGE_TABLES:
+            conn.execute(text(f'DELETE FROM {table} WHERE {col} LIKE :p'),
+                         {'p': pattern})
+
+
+@pytest.fixture(scope='module', autouse=True)
+def _purge_after_module():
+    """模块结束（含用例中途失败）按唯一前缀硬删本文件全部测试数据。"""
+    yield
+    _purge_run_rows()
+
+
 # ── Algorithm Definitions CRUD ─────────────────────────
 class TestAlgorithmDefinitions:
     """算法定义 CRUD：验证 camelCase / snake_case 请求体都能正确解析。"""
 
     def test_definition_crud_camel_case(self, api_client):
         """camelCase 请求体 → APIModel(alias_generator=to_camel) 解析。"""
-        algo_type = f'_test_algo_camel_{int(time.time()*1000)}'
+        algo_type = f'_test_{_RUN}_algo_camel_{int(time.time()*1000)}'
         # Create (camelCase)
         resp = api_client.post('/algorithm/definitions', json={
             'type': algo_type,
@@ -77,7 +146,7 @@ class TestAlgorithmDefinitions:
 
     def test_definition_crud_snake_case(self, api_client):
         """snake_case 请求体 → APIModel(populate_by_name=True) 解析。"""
-        algo_type = f'_test_algo_snake_{int(time.time()*1000)}'
+        algo_type = f'_test_{_RUN}_algo_snake_{int(time.time()*1000)}'
         # Create (snake_case)
         resp = api_client.post('/algorithm/definitions', json={
             'type': algo_type,
@@ -116,7 +185,7 @@ class TestAlgorithmGroups:
     def test_group_crud(self, api_client):
         # Create
         resp = api_client.post('/algorithm/groups', json={
-            'name': f'_test_algo_group_{int(time.time()*1000)}',
+            'name': f'_test_{_RUN}_algo_group_{int(time.time()*1000)}',
             'description': 'test group',
             'displayOrder': 1,
         })
@@ -131,7 +200,7 @@ class TestAlgorithmGroups:
         assert _get(data, 'name') == created_name
 
         # Update
-        updated_name = f'_test_algo_group_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_algo_group_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/algorithm/groups/{group_id}', json={
             'name': updated_name,
         })
@@ -150,8 +219,8 @@ class TestAlgorithmParams:
 
     def test_param_crud(self, api_client):
         # Create
-        algo_type = f'_test_algo_param_{int(time.time()*1000)}'
-        param_code = f'_test_param_code_{int(time.time()*1000)}'
+        algo_type = f'_test_{_RUN}_algo_param_{int(time.time()*1000)}'
+        param_code = f'_test_{_RUN}_param_code_{int(time.time()*1000)}'
         resp = api_client.post('/algorithm/params', json={
             'algorithmType': algo_type,
             'paramCode': param_code,
@@ -189,9 +258,9 @@ class TestAlgorithmMappings:
 
     def test_mapping_crud(self, api_client):
         # Create
-        algo_type = f'_test_mapping_algo_{int(time.time()*1000)}'
-        source_param = f'_test_source_{int(time.time()*1000)}'
-        target_param = f'_test_target_{int(time.time()*1000)}'
+        algo_type = f'_test_{_RUN}_mapping_algo_{int(time.time()*1000)}'
+        source_param = f'_test_{_RUN}_source_{int(time.time()*1000)}'
+        target_param = f'_test_{_RUN}_target_{int(time.time()*1000)}'
         resp = api_client.post('/algorithm/mappings', json={
             'algorithmType': algo_type,
             'sourceType': 'device',
@@ -223,9 +292,9 @@ class TestAlgorithmCaseParams:
 
     def test_case_param_crud(self, api_client):
         # Create
-        param_code = f'_test_case_param_{int(time.time()*1000)}'
+        param_code = f'_test_{_RUN}_case_param_{int(time.time()*1000)}'
         resp = api_client.post('/algorithm/case-params', json={
-            'algorithmType': f'_test_case_param_algo_{int(time.time()*1000)}',
+            'algorithmType': f'_test_{_RUN}_case_param_algo_{int(time.time()*1000)}',
             'paramCode': param_code,
             'paramName': 'Test Case Param',
             'paramType': 'text',
@@ -261,8 +330,8 @@ class TestAlgorithmReferenceParams:
 
     def test_reference_param_crud(self, api_client):
         # Create
-        algo_type = f'_test_ref_param_algo_{int(time.time()*1000)}'
-        ref_code = f'_test_ref_code_{int(time.time()*1000)}'
+        algo_type = f'_test_{_RUN}_ref_param_algo_{int(time.time()*1000)}'
+        ref_code = f'_test_{_RUN}_ref_code_{int(time.time()*1000)}'
         resp = api_client.post('/algorithm/reference-params', json={
             'algorithmType': algo_type,
             'code': ref_code,
@@ -291,7 +360,7 @@ class TestAlgorithmDimensionRelations:
 
     def test_dimension_relation_crud(self, api_client):
         # Create
-        algo_type = f'_test_dim_rel_algo_{int(time.time()*1000)}'
+        algo_type = f'_test_{_RUN}_dim_rel_algo_{int(time.time()*1000)}'
         resp = api_client.post('/algorithm/dimension-relations', json={
             'algorithmType': algo_type,
             'dimensionId': 1,
@@ -320,7 +389,7 @@ class TestDeviceCRUD:
 
     def test_device_crud_camel_case(self, api_client):
         # Create (camelCase — device.py 的 name/type 用 validation_alias 接受 deviceName/deviceType)
-        device_name = f'_test_device_camel_{int(time.time()*1000)}'
+        device_name = f'_test_{_RUN}_device_camel_{int(time.time()*1000)}'
         resp = api_client.post('/test-devices', json={
             'deviceName': device_name,
             'model': 'TestModel',
@@ -340,7 +409,7 @@ class TestDeviceCRUD:
         assert _get(data, 'name') == device_name
 
         # Update
-        updated_name = f'_test_device_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_device_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/test-devices/{device_id}', json={
             'name': updated_name,
         })
@@ -354,7 +423,7 @@ class TestDeviceCRUD:
 
     def test_device_crud_snake_case(self, api_client):
         # Create (snake_case)
-        device_name = f'_test_device_snake_{int(time.time()*1000)}'
+        device_name = f'_test_{_RUN}_device_snake_{int(time.time()*1000)}'
         resp = api_client.post('/test-devices', json={
             'name': device_name,
             'model': 'TestModel',
@@ -384,7 +453,7 @@ class TestPlaybackDeviceCRUD:
 
     def test_playback_device_crud(self, api_client):
         # Create
-        device_name = f'_test_playback_device_{int(time.time()*1000)}'
+        device_name = f'_test_{_RUN}_playback_device_{int(time.time()*1000)}'
         try:
             resp = api_client.post('/playback-devices', json={
                 'name': device_name,
@@ -408,7 +477,7 @@ class TestPlaybackDeviceCRUD:
         assert _get(data, 'name') == device_name
 
         # Update
-        updated_name = f'_test_playback_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_playback_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/playback-devices/{device_id}', json={
             'name': updated_name,
             'sampleRate': 44100,
@@ -428,7 +497,7 @@ class TestSPLMappingCRUD:
 
     def test_spl_mapping_crud(self, api_client):
         # Create
-        spl_name = f'_test_spl_mapping_{int(time.time()*1000)}'
+        spl_name = f'_test_{_RUN}_spl_mapping_{int(time.time()*1000)}'
         resp = api_client.post('/spl', json={
             'name': spl_name,
             'description': 'test spl',
@@ -447,7 +516,7 @@ class TestSPLMappingCRUD:
         assert _get(data, 'name') == spl_name
 
         # Update
-        updated_name = f'_test_spl_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_spl_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/spl/{mapping_id}', json={
             'name': updated_name,
             'targetSpl': 70.0,
@@ -467,7 +536,7 @@ class TestTaskCRUD:
 
     def test_task_crud(self, api_client):
         # Create
-        task_name = f'_test_task_crud_{int(time.time()*1000)}'
+        task_name = f'_test_{_RUN}_task_crud_{int(time.time()*1000)}'
         resp = api_client.post('/tasks', json={
             'name': task_name,
             'type': 'api_test',
@@ -483,7 +552,7 @@ class TestTaskCRUD:
         assert _get(data, 'name') == task_name
 
         # Update
-        updated_name = f'_test_task_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_task_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/tasks/{task_id}', json={
             'name': updated_name,
             'description': 'updated task',
@@ -502,7 +571,7 @@ class TestGroupCRUD:
 
     def test_group_crud_camel_case(self, api_client):
         # Create (camelCase — 通过 AliasChoices('groupName', 'group_name') 接受)
-        group_name = f'_test_group_camel_{int(time.time()*1000)}'
+        group_name = f'_test_{_RUN}_group_camel_{int(time.time()*1000)}'
         resp = api_client.post('/groups', json={
             'groupName': group_name,
             'groupDescription': 'test group camel',
@@ -513,7 +582,7 @@ class TestGroupCRUD:
         assert group_id is not None
 
         # Update (camelCase — name is already camelCase, no alias needed)
-        updated_name = f'_test_group_camel_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_group_camel_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/groups/{group_id}', json={
             'name': updated_name,
         })
@@ -526,7 +595,7 @@ class TestGroupCRUD:
 
     def test_group_crud_snake_case(self, api_client):
         # Create (snake_case — 通过 AliasChoices)
-        group_name = f'_test_group_snake_{int(time.time()*1000)}'
+        group_name = f'_test_{_RUN}_group_snake_{int(time.time()*1000)}'
         resp = api_client.post('/groups', json={
             'group_name': group_name,
             'group_description': 'test group snake',
@@ -537,7 +606,7 @@ class TestGroupCRUD:
         assert group_id is not None
 
         # Update (snake_case — populate_by_name=True accepts snake_case)
-        updated_name = f'_test_group_snake_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_group_snake_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/groups/{group_id}', json={
             'name': updated_name,
         })
@@ -556,7 +625,7 @@ class TestEvaluationCategoryCRUD:
     def test_category_crud(self, api_client):
         # Create
         resp = api_client.post('/evaluation/categories', json={
-            'name': f'_test_eval_category_{int(time.time()*1000)}',
+            'name': f'_test_{_RUN}_eval_category_{int(time.time()*1000)}',
             'description': 'test category',
         })
         data = _unwrap(resp)
@@ -565,7 +634,7 @@ class TestEvaluationCategoryCRUD:
 
         # Update
         resp = api_client.put(f'/evaluation/categories/{cat_id}', json={
-            'name': f'_test_eval_cat_updated_{int(time.time()*1000)}',
+            'name': f'_test_{_RUN}_eval_cat_updated_{int(time.time()*1000)}',
         })
         data = _unwrap(resp)
         if data is not None:
@@ -582,8 +651,8 @@ class TestEvaluationDimensionCRUD:
 
     def test_dimension_crud(self, api_client):
         # Create
-        dim_name = f'_test_dimension_{int(time.time()*1000)}'
-        dim_code = f'_test_dim_code_{int(time.time()*1000)}'
+        dim_name = f'_test_{_RUN}_dimension_{int(time.time()*1000)}'
+        dim_code = f'_test_{_RUN}_dim_code_{int(time.time()*1000)}'
         resp = api_client.post('/evaluation/dimensions', json={
             'name': dim_name,
             'code': dim_code,
@@ -595,7 +664,7 @@ class TestEvaluationDimensionCRUD:
         assert dim_id is not None
 
         # Update
-        updated_name = f'_test_dim_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_dim_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/evaluation/dimensions/{dim_id}', json={
             'name': updated_name,
         })
@@ -614,7 +683,7 @@ class TestApiConfigCRUD:
 
     def test_api_config_crud(self, api_client):
         # Create — 需要包含 name 和 meta 字段
-        api_name = f'_test_api_config_{int(time.time()*1000)}'
+        api_name = f'_test_{_RUN}_api_config_{int(time.time()*1000)}'
         resp = api_client.post('/apis', json={
             'name': api_name,
             'apiUrl': 'http://test.example.com',
@@ -630,7 +699,7 @@ class TestApiConfigCRUD:
         assert _get(data, 'name') == api_name
 
         # Update
-        updated_name = f'_test_api_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_api_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/apis/{api_id}', json={
             'name': updated_name,
         })
@@ -648,7 +717,7 @@ class TestTagCRUD:
 
     def test_tag_crud(self, api_client):
         # Create
-        tag_name = f'_test_tag_{int(time.time()*1000)}'
+        tag_name = f'_test_{_RUN}_tag_{int(time.time()*1000)}'
         resp = api_client.post('/tags', json={
             'name': tag_name,
             'category': 'test',
@@ -663,7 +732,7 @@ class TestTagCRUD:
         assert _get(data, 'name') == tag_name
 
         # Update
-        updated_name = f'_test_tag_updated_{int(time.time()*1000)}'
+        updated_name = f'_test_{_RUN}_tag_updated_{int(time.time()*1000)}'
         resp = api_client.put(f'/tags/{tag_id}', json={
             'name': updated_name,
         })
