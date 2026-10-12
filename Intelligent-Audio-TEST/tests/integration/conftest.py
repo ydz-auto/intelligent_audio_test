@@ -13,47 +13,13 @@ best-effort gRPC 调用（如引擎 _register_task_events_via_grpc → device_se
 会话级 autouse：仅覆盖 tests/integration/；与各模块 grpc_mesh 的重定向
 （不同属性集）无冲突；channel/stub 缓存在夹具建立与拆除时各清一次。
 
-INT-234 追加会话级 autouse isolated_log_root：业务日志写入/读取两侧均从
-get_log_settings() 快照取根目录，本夹具在进程内任何业务写入发生前把
-LOG_ROOT_DIR 重定向到本次 pytest 进程独占的空临时目录，读取域即本次运行
-产物，跨运行磁盘残留不再进入断言域。
+INT-234 曾在此追加会话级 autouse isolated_log_root（业务日志根按 pytest
+进程隔离）；INT-238 发现会话级 teardown 晚于组合运行中的 tests/unit 全部
+用例，绝对 LOG_ROOT_DIR 泄漏进 unit 阶段致 audit_emit 文件落点断言确定性
+转红，已将该机制迁移至 tests/conftest.py 的 pytest_runtest_setup 按用例
+边界重定向/恢复（隔离性质不变，见该处说明）。
 """
 import pytest
-
-
-@pytest.fixture(scope='session', autouse=True)
-def isolated_log_root(tmp_path_factory):
-    """业务日志根目录按 pytest 进程隔离（INT-234）。
-
-    缺陷机制：pg_db 每次运行新建临时库（任务 id 从 1 重编号），业务日志却
-    落磁盘固定目录 {root}/business/{task_id}/（默认根 ./logs）跨运行持久
-    累积；BusinessLogReader 扫描该目录全部历史 PID 文件，前次运行残留
-    （如 2026-10-11 含「评估参数提取为空」WARNING 的旧文件）进入本次读取
-    域，日志断言类用例被环境性打红（INT-118 链路确定性假红实测确证，
-    空日志根重跑即绿）。同族风险覆盖所有对 read_entries 断言的集成用例。
-
-    实现口径：直接覆盖 BaseConfig.LOG_ROOT_DIR 类属性（env 已晚于 import，
-    与 storage_env 同款）+ reset_log_settings() 重建快照；写入侧
-    BusinessLogFileWriter 惰性单例（首次业务写入时构造）与读取侧
-    BusinessLogReader（用例内构造）均在重定向后取根，两侧同根。
-    会话级（而非模块级）的原因：日志 worker 的业务写入器是进程级单例，
-    先序模块一旦触发业务写入即持有旧根快照，后续模块级重定向对其不可见；
-    会话级在进程内任何业务写入发生前完成重定向，单例只建一次、恒取新根。
-
-    teardown 恢复原配置并清快照；临时日志目录随 pytest tmp 保留策略留存
-    （最近几次运行可查），不再向仓库 logs/ 增量写入。
-    """
-    from shared.infrastructure.config import BaseConfig
-    from shared.logging.config import reset_log_settings
-
-    original = BaseConfig.LOG_ROOT_DIR
-    BaseConfig.LOG_ROOT_DIR = str(tmp_path_factory.mktemp('log_root'))
-    reset_log_settings()
-    try:
-        yield
-    finally:
-        BaseConfig.LOG_ROOT_DIR = original
-        reset_log_settings()
 
 
 @pytest.fixture(scope='session', autouse=True)

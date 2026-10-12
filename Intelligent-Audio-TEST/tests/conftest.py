@@ -95,3 +95,43 @@ def pytest_collection_modifyitems(session, config, items):
         else:
             # INT-163 默认隔离单元 = 文件：同名组内保持收集序，等价单文件运行
             item.add_marker(pytest.mark.xdist_group('file:' + rel))
+
+
+# ── INT-238：integration 域业务日志根隔离，按用例边界重定向/恢复 ──
+# INT-234 原实现为 tests/integration/conftest.py 会话级 autouse 夹具，但
+# 会话级 teardown 发生在整个 pytest session 结束时——组合运行下晚于
+# tests/unit 全部用例，绝对 LOG_ROOT_DIR 泄漏进 unit 阶段，audit_emit 类
+# 「chdir 用例 tmp_path + 相对根 ./logs」的文件落点断言确定性转红
+# （文件实际落 INT-234 夹具的 log_root0）。
+# 改为 pytest_runtest_setup（先于该 item 全部夹具 setup，含模块/会话级）
+# 按 item 路径切换：首见 integration 用例时重定向到本 pytest 进程独占的空
+# 临时目录 + 重建日志快照（保持 INT-234「进程内任何业务写入发生前完成
+# 重定向」性质，且时点不晚于原会话级夹具）；首见非 integration 用例时恢复
+# 原值 + 重建快照。快照 root_dir 以字符串参与写入期 os.path.join（按当时
+# cwd 解析），恢复后 unit 用例的相对根语义与基线一致。
+_LOG_ROOT_STATE = {'redirected': False, 'original': None, 'iso_root': None}
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    in_integration = '/tests/integration/' in str(item.fspath).replace('\\', '/')
+    state = _LOG_ROOT_STATE
+    if in_integration == state['redirected']:
+        return
+    from shared.infrastructure.config import BaseConfig
+    from shared.logging.config import reset_log_settings
+
+    if in_integration:
+        if state['iso_root'] is None:
+            # 每 pytest 进程一个隔离根（xdist 每 worker 独立进程各得其一）；
+            # 域内反复进出复用同一根——业务写入器为进程级惰性单例，其根
+            # 快照绑定于构造时刻，换根会令再入域的读/写两侧异根
+            factory = item.session.config._tmp_path_factory
+            state['iso_root'] = str(factory.mktemp('log_root'))
+        state['original'] = BaseConfig.LOG_ROOT_DIR
+        BaseConfig.LOG_ROOT_DIR = state['iso_root']
+        state['redirected'] = True
+    else:
+        BaseConfig.LOG_ROOT_DIR = state['original']
+        state['redirected'] = False
+    reset_log_settings()
