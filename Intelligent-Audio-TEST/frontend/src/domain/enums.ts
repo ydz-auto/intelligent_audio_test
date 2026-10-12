@@ -131,6 +131,14 @@ export const HttpStatus = {
   GATEWAY_TIMEOUT: 504,
 } as const
 
+/** 认证域业务错误码（值 = 后端 api_gateway ErrorCode.AUTH_*，禁止改动值） */
+export const AuthErrorCode = {
+  /** 登录加密校验失败（加密开启时载荷无效/明文提交），应引导刷新重试而非提示密码错误 */
+  ENCRYPTION_INVALID: 105,
+  /** 用户名或密码错误 */
+  CREDENTIALS_INVALID: 106,
+} as const
+
 /** 设备状态枚举（值 = 后端 status 字段原值，禁止改动值） */
 export const DeviceStatus = {
   ONLINE: 'online',

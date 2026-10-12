@@ -37,6 +37,8 @@ from sqlalchemy.ext.compiler import compiles
 
 from shared.models.database import init_db, get_db_session, get_engine, remove_db_session
 
+from api_gateway.utils.error_codes import ErrorCode
+
 
 @compiles(BigInteger, 'sqlite')
 def _render_bigint_as_integer_sqlite(type_, compiler, **kw):
@@ -325,12 +327,41 @@ class TestPasswordEncryptionLogin:
         resp = _login(client, username=username,
                       password_encrypted=good, encryption_key_id='f' * 32)
         assert resp.status_code == 401
-        assert resp.json()['detail'] == '用户名或密码错误'  # 防枚举统一话术
+        body = resp.json()
+        # INT-188：加密载荷无效与凭证错误 401 语义区分（引导刷新，非
+        # 「用户名或密码错误」误导文案）；仍为 401 保持防枚举基线
+        assert body['detail'] == '登录加密校验失败，请刷新页面重试'
+        assert body['code'] == ErrorCode.AUTH_ENCRYPTION_INVALID
         tampered = good[:-4] + ('AAAA' if good[-4:] != 'AAAA' else 'BBBB')
         resp = _login(client, username=username,
                       password_encrypted=tampered,
                       encryption_key_id=_fetch_key(client)[0])
         assert resp.status_code == 401
+
+    def test_login_401_semantics_distinguished(self, client):
+        """INT-188：加密载荷无效 vs 凭证错误 401 以 code 区分语义。
+
+        - 密文合法但密码错 → AUTH_CREDENTIALS_INVALID「用户名或密码错误」
+        - 明文提交（旧缓存包/明文回退请求）→ 落入加密载荷无效分支
+          AUTH_ENCRYPTION_INVALID「请刷新页面重试」
+        """
+        username = f'int188_semantic_{_RUN}'
+        _register_encrypted(client, username, 'Secret-147!')
+        kid, public_pem = _fetch_key(client)
+        resp = _login(client, username=username,
+                      password_encrypted=_encrypt_password(public_pem,
+                                                           'Wrong-188!'),
+                      encryption_key_id=kid)
+        assert resp.status_code == 401
+        body = resp.json()
+        assert body['code'] == ErrorCode.AUTH_CREDENTIALS_INVALID
+        assert body['detail'] == '用户名或密码错误'
+        # 明文字段在加密开启时同样落入加密载荷无效分支
+        resp = _login(client, username=username, password='Secret-147!')
+        assert resp.status_code == 401
+        body = resp.json()
+        assert body['code'] == ErrorCode.AUTH_ENCRYPTION_INVALID
+        assert '刷新' in body['detail']
 
     def test_encryption_disabled_falls_back_to_plaintext(self, client):
         from api_gateway.config.config import Config

@@ -9,6 +9,9 @@ class ErrorCode(IntEnum):
     INVALID_TYPE = 102
     UNAUTHORIZED = 103
     FORBIDDEN = 104
+    # 登录 401 语义区分（INT-188）：加密载荷无效 vs 凭证错误
+    AUTH_ENCRYPTION_INVALID = 105
+    AUTH_CREDENTIALS_INVALID = 106
 
     # 2xx: Business Errors
     BUSINESS_ERROR = 200

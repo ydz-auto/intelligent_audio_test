@@ -122,6 +122,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
 import { authPort } from '../../composables/auth/authPort'
+import { AuthErrorCode } from '../../domain/enums'
 import type { OAuthProvider } from '../../domain/model/auth'
 
 const router = useRouter()
@@ -154,8 +155,13 @@ async function handleLogin() {
     const redirect = (route.query.redirect as string) || '/'
     router.push(redirect)
   } catch (e: any) {
-    // 后端 401 返回 {detail: "..."}，client.ts 构造的 error 含 detail 字段
-    error.value = e?.detail || e?.message || '登录失败'
+    // INT-188：加密校验失败 ≠ 凭证错误——引导刷新重试，不误导为密码错误；
+    // 加密初始化失败（前端抛错）由 message 直接呈现
+    if (e?.code === AuthErrorCode.ENCRYPTION_INVALID) {
+      error.value = e?.detail || '登录加密校验失败，请刷新页面重试'
+    } else {
+      error.value = e?.detail || e?.message || '登录失败'
+    }
   } finally {
     loading.value = false
   }

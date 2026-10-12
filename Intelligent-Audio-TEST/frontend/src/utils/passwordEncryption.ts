@@ -13,6 +13,25 @@ export interface EncryptedPassword {
   encryptionKeyId: string
 }
 
+/** 加密初始化/加密失败时的统一用户文案（INT-188：不回退明文，引导刷新重试） */
+const PASSWORD_ENCRYPTION_UNAVAILABLE_MESSAGE = '登录加密初始化失败，请刷新页面重试'
+
+/** 加密未启用（encryption-key 返回 enabled=false）→ 允许走明文字段路径 */
+export class PasswordEncryptionDisabledError extends Error {
+  constructor() {
+    super('密码加密未启用')
+    this.name = 'PasswordEncryptionDisabledError'
+  }
+}
+
+/** 加密已启用但公钥获取/加密失败（网络抖动、环境不支持等）→ 禁止回退明文 */
+export class PasswordEncryptionUnavailableError extends Error {
+  constructor() {
+    super(PASSWORD_ENCRYPTION_UNAVAILABLE_MESSAGE)
+    this.name = 'PasswordEncryptionUnavailableError'
+  }
+}
+
 const KEY_CACHE_TTL_MS = 5 * 60_000
 
 let cachedKey: PasswordEncryptionKey | null = null
@@ -36,16 +55,35 @@ export function cacheEncryptionKey(key: PasswordEncryptionKey): void {
   cachedAt = Date.now()
 }
 
-/** 加密密码（先取公钥——调用方注入取钥函数；公钥 5 分钟缓存） */
+/**
+ * 加密密码（先取公钥——调用方注入取钥函数；公钥 5 分钟缓存）。
+ * INT-188：公钥获取失败先重试一次（网络抖动容错），仍失败才收敛为
+ * PasswordEncryptionUnavailableError；加密未启用抛
+ * PasswordEncryptionDisabledError（由调用方决定是否走明文路径）。
+ */
 export async function encryptPassword(
   password: string,
   fetchKey: () => Promise<PasswordEncryptionKey>,
 ): Promise<EncryptedPassword> {
-  const key = await fetchKey()
-  const ciphertext = await rsaOaepEncrypt(password, key.publicKey)
-  return {
-    passwordEncrypted: ciphertext,
-    encryptionKeyId: key.kid,
+  let key: PasswordEncryptionKey
+  try {
+    key = await fetchKey()
+  } catch (e) {
+    if (e instanceof PasswordEncryptionDisabledError) throw e
+    try {
+      key = await fetchKey()
+    } catch {
+      throw new PasswordEncryptionUnavailableError()
+    }
+  }
+  try {
+    const ciphertext = await rsaOaepEncrypt(password, key.publicKey)
+    return {
+      passwordEncrypted: ciphertext,
+      encryptionKeyId: key.kid,
+    }
+  } catch {
+    throw new PasswordEncryptionUnavailableError()
   }
 }
 

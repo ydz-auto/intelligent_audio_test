@@ -12,10 +12,14 @@
  *   请求体须为 application/x-www-form-urlencoded，不能走默认 JSON 通道
  * - /auth/me 需要 JWT，token 由 http/client.ts 认证拦截器自动注入
  * - 密码加密：登录前取公钥（5 分钟缓存），WebCrypto RSA-OAEP/SHA-256；
- *   公钥不可用时回退明文字段（后端开启加密时将以 401 拒绝，与旧库一致）
+ *   INT-188 加密启用时不再回退明文——加密初始化失败直接报错引导刷新，
+ *   仅后端返回 enabled=false 时走明文字段路径
  */
 import { request, type RequestOptions } from '../http/client';
-import { encryptPassword, getCachedEncryptionKey, cacheEncryptionKey } from '../../utils/passwordEncryption';
+import {
+  encryptPassword, getCachedEncryptionKey, cacheEncryptionKey,
+  PasswordEncryptionDisabledError, PasswordEncryptionUnavailableError,
+} from '../../utils/passwordEncryption';
 import type { AuthLoginResultDto, AuthMeResultDto } from '../dto/authDto';
 import type { OAuthProviderDto, OAuthProviderPublicDto } from '../dto/authDto';
 import type { PasswordEncryptionKeyDto, OAuthBindingDto, OAuthDiscoveryResultDto } from '../dto/authDto';
@@ -27,7 +31,7 @@ import {
   toOAuthBinding, toOAuthBindingList, toOAuthDiscoveryResult,
 } from '../adapters/authAdapter';
 
-/** 登录/注册共用的 RSA 公钥获取（enabled=false 时抛错回退明文） */
+/** 登录/注册共用的 RSA 公钥获取（enabled=false 抛 DisabledError 走明文路径） */
 async function fetchEncryptionKey(options: RequestOptions = {}): Promise<{ kid: string; publicKey: string }> {
   const cached = getCachedEncryptionKey();
   if (cached) return cached;
@@ -36,8 +40,11 @@ async function fetchEncryptionKey(options: RequestOptions = {}): Promise<{ kid: 
       ...options,
       skipAuthRedirect: true,
     });
-  if (!dto?.enabled || !dto.kid || !dto.public_key) {
-    throw new Error('密码加密未启用');
+  if (!dto?.enabled) {
+    throw new PasswordEncryptionDisabledError();
+  }
+  if (!dto.kid || !dto.public_key) {
+    throw new PasswordEncryptionUnavailableError();
   }
   const key = { kid: dto.kid, publicKey: dto.public_key };
   cacheEncryptionKey(key);
@@ -56,9 +63,13 @@ export const authApi = {
       const enc = await encryptPassword(credentials.password, () => fetchEncryptionKey(options));
       body.append('password_encrypted', enc.passwordEncrypted);
       body.append('encryption_key_id', enc.encryptionKeyId);
-    } catch {
-      // 加密不可用（未启用/环境不支持）→ 明文字段兜底；后端开启加密时
-      // 会以 401 拒绝明文，与旧库「无明文回退」基线一致
+    } catch (e) {
+      // INT-188：加密已启用时禁止明文兜底（后端开启加密时明文必被拒，
+      // 形成"必然失败且无解释"陷阱）——初始化失败直接抛错引导刷新，
+      // 不发起登录请求；仅加密未启用（enabled=false）走明文字段路径
+      if (!(e instanceof PasswordEncryptionDisabledError)) {
+        throw e;
+      }
       body.append('password', credentials.password);
     }
     const dto = await request<AuthLoginResultDto>('POST', '/auth/login', body, {
@@ -97,7 +108,12 @@ export const authApi = {
       const enc = await encryptPassword(payload.password, () => fetchEncryptionKey(options));
       body.password_encrypted = enc.passwordEncrypted;
       body.encryption_key_id = enc.encryptionKeyId;
-    } catch {
+    } catch (e) {
+      // INT-188：与 login 同语义——加密启用时不回退明文（后端注册端点
+      // 加密开启时也只接受密文字段）
+      if (!(e instanceof PasswordEncryptionDisabledError)) {
+        throw e;
+      }
       body.password = payload.password;
     }
     const dto = await request<{ user_id: number }>(

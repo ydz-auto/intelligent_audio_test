@@ -75,8 +75,10 @@ def login_submit(request: Request,
     request.state._json_body 兜底），消除 Content-Type 契约不匹配的 422。
 
     加密开关开启时仅接受 password_encrypted/encryption_key_id（明文
-    password 字段被忽略，对齐旧库无明文回退）；解密失败与凭证错误
-    统一 401「用户名或密码错误」（防用户名枚举）。
+    password 字段被忽略，对齐旧库无明文回退）。401 保持统一状态码防
+    用户名枚举，但以 error code 区分语义（INT-188）：加密载荷无效
+    （旧缓存包/明文回退/公钥轮换）回 AUTH_ENCRYPTION_INVALID 并引导
+    刷新页面，凭证错误回 AUTH_CREDENTIALS_INVALID。
     """
     if not any((username, password, password_encrypted, encryption_key_id)):
         body = getattr(request.state, '_json_body', None)
@@ -85,6 +87,7 @@ def login_submit(request: Request,
             password = str(body.get('password') or '')
             password_encrypted = str(body.get('password_encrypted') or '')
             encryption_key_id = str(body.get('encryption_key_id') or '')
+    from api_gateway.utils.error_codes import ErrorCode
     from api_gateway.application.services.auth.password_encryption import (
         PasswordEncryptionError, PasswordEncryptionService,
     )
@@ -96,7 +99,8 @@ def login_submit(request: Request,
         except PasswordEncryptionError:
             return JSONResponse(
                 status_code=401,
-                content={'detail': '用户名或密码错误'},
+                content={'detail': '登录加密校验失败，请刷新页面重试',
+                         'code': ErrorCode.AUTH_ENCRYPTION_INVALID},
             )
     try:
         result = AuthService.login_with_password(username, password)
@@ -109,7 +113,8 @@ def login_submit(request: Request,
     except ValueError as e:
         return JSONResponse(
             status_code=401,
-            content={'detail': str(e)},
+            content={'detail': str(e),
+                     'code': ErrorCode.AUTH_CREDENTIALS_INVALID},
         )
 
 
