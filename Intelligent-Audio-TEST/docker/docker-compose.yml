@@ -417,6 +417,8 @@ services:
       - SERVICE_HOST=auth_service
       - SERVICE_NAME=auth_service
       - GRPC_PORT=50069
+      # INT-180：/api/auth/mode 自检端点数据源，与 api_gateway 注入同一变量
+      - AUTH_MODE=${AUTH_MODE:-off}
     volumes:
       # INT-81：服务运行日志/业务日志统一卷（读取侧与写入侧必须同卷）
       - service_logs:/app/logs

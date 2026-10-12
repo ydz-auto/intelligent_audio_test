@@ -23,6 +23,7 @@ from auth_service.application.handlers.auth_handlers import (
     AuthQueryHandler,
 )
 from auth_service.application.queries.auth_queries import (
+    GetAuthModeQuery,
     GetUserByOAuthQuery,
     GetUserByUsernameQuery,
     GetUserPermissionsQuery,
@@ -214,6 +215,18 @@ def list_roles():
 
 
 # ---- 认证校验 ----
+
+@router.get('/mode')
+def get_auth_mode():
+    """当前生效认证模式（INT-180 启动自检，公开只读）。
+
+    仅回枚举 mode 值（off|dev|prod），无其他配置项；前端侧实际消费
+    网关 /api/v1/auth/mode（认证强制点在网关），本端点服务 auth_service
+    边界自身的可观测性。
+    """
+    mode = _query_handler.handle_get_auth_mode(GetAuthModeQuery())
+    return {'success': True, 'message': 'ok', 'data': {'auth_mode': mode}}
+
 
 @router.post('/validate-token')
 def validate_token(req: ValidateTokenRequest):

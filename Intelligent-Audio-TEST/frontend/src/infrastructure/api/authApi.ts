@@ -22,11 +22,11 @@ import {
 } from '../../utils/passwordEncryption';
 import type { AuthLoginResultDto, AuthMeResultDto } from '../dto/authDto';
 import type { OAuthProviderDto, OAuthProviderPublicDto } from '../dto/authDto';
-import type { PasswordEncryptionKeyDto, OAuthBindingDto, OAuthDiscoveryResultDto } from '../dto/authDto';
+import type { PasswordEncryptionKeyDto, OAuthBindingDto, OAuthDiscoveryResultDto, AuthModeResultDto } from '../dto/authDto';
 import type { AuthLoginResult, CurrentUserInfo } from '../../domain/model/auth';
 import type { OAuthProvider, OAuthProviderDetail, OAuthBinding, OAuthDiscoveryResult } from '../../domain/model/auth';
 import {
-  toAuthLoginResult, toCurrentUserInfo,
+  toAuthLoginResult, toCurrentUserInfo, toAuthMode,
   toOAuthProviderPublicList, toOAuthProvider, toOAuthProviderList,
   toOAuthBinding, toOAuthBindingList, toOAuthDiscoveryResult,
 } from '../adapters/authAdapter';
@@ -132,6 +132,15 @@ export const authApi = {
         skipAuthRedirect: true,
       });
     return toOAuthProviderPublicList(dto?.providers ?? []);
+  },
+
+  /** 当前生效认证模式（INT-180 启动自检，公开端点；仅回枚举 mode 值） */
+  async getAuthMode(options: RequestOptions = {}): Promise<string> {
+    const dto = await request<AuthModeResultDto>('GET', '/auth/mode', undefined, {
+      ...options,
+      skipAuthRedirect: true,
+    });
+    return toAuthMode(dto ?? {});
   },
 
   /** OAuth 授权跳转地址（整页跳转由调用方 window.location.href 拼接；intent=bind 走绑定流程） */

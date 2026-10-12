@@ -55,6 +55,18 @@ def _encryption_key_payload():
     return to_response({'enabled': True, 'kid': kid, 'public_key': public_key_pem})
 
 
+@router.get('/mode')
+def auth_mode():
+    """当前生效认证模式（INT-180 前端启动自检数据源，未认证可读）。
+
+    仅回枚举 mode 值（off|dev|prod），无其他配置项；前端启动时与
+    本地 VITE_AUTH_MODE 比对，错位即页面告警——杜绝"后端改 AUTH_MODE、
+    前端构建期变量无感知"的静默失配。值取网关自身 AUTH_MODE（认证
+    强制点，见 AuthService.get_auth_mode）。
+    """
+    return to_response({'auth_mode': AuthService.get_auth_mode()})
+
+
 @router.get('/login')
 def login_page():
     """登录入口：dev 重定向到前端登录页，prod 重定向到华为云"""

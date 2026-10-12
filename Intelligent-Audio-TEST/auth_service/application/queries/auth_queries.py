@@ -105,3 +105,9 @@ class VerifyCredentialsQuery:
 class ListUserOAuthBindingsQuery:
     """列出用户第三方账号绑定（INT-147，读侧无副作用）。"""
     user_id: int
+
+
+@dataclass(frozen=True)
+class GetAuthModeQuery:
+    """当前生效认证模式（INT-180 启动自检，公开只读无副作用）。"""
+    pass

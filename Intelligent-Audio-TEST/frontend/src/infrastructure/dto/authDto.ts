@@ -81,3 +81,10 @@ export interface OAuthDiscoveryResultDto {
   well_known_url: string
   discovery: Record<string, unknown>
 }
+
+// ===== 认证模式启动自检（INT-180）=====
+
+/** 当前生效认证模式（GET /auth/mode；仅回枚举 mode 值） */
+export interface AuthModeResultDto {
+  auth_mode?: string
+}

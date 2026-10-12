@@ -80,6 +80,18 @@ class Config(BaseConfig):
         'HW_OAUTH_USERINFO_URL', 'https://oauth.huaweicloud.com/oauth2/userinfo'
     )
 
+    @classmethod
+    def validate(cls):
+        """启动校验必填项 + AUTH_MODE 枚举合法性（INT-180：非法取值启动即自曝，
+        杜绝拼错的模式静默落入 JWT 强制态）"""
+        super().validate()
+        from shared.constants.auth_mode import normalize_auth_mode
+        from shared.infrastructure.config import ConfigValidationError
+        try:
+            normalize_auth_mode(cls.AUTH_MODE)
+        except ValueError as exc:
+            raise ConfigValidationError(str(exc)) from exc
+
 
 # 兼容旧代码中的 GatewayConfig 引用
 GatewayConfig = Config

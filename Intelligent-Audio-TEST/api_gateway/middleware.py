@@ -107,6 +107,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # INT-179：refresh 路由自解析 Bearer 并自验签（过期 token 须由路由
         # 返回刷新失败语义，而非被网关在路由前拦死）
         '/api/v1/auth/refresh',
+        # INT-180：当前生效认证模式（启动自检）——登录前前端就要比对
+        # VITE_AUTH_MODE 与后端 AUTH_MODE，拿 mode 本身不得先登录
+        '/api/v1/auth/mode',
         '/api/v1/auth/oauth',  # INT-51：提供方列表 / 授权跳转 / 授权回调
         '/docs',
         '/openapi.json',

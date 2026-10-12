@@ -65,6 +65,7 @@ from auth_service.application.queries.auth_queries import (
     GetUserQuery,
     GetUserByUsernameQuery,
     GetUserByOAuthQuery,
+    GetAuthModeQuery,
     ListUsersQuery,
     GetUserPermissionsQuery,
     ListRolesQuery,
@@ -785,3 +786,13 @@ class AuthQueryHandler:
                 'provider_user_id': binding.provider_user_id,
             })
         return result
+
+    def handle_get_auth_mode(self, query: GetAuthModeQuery) -> str:
+        """当前生效认证模式（INT-180 启动自检；仅回枚举值，无其他配置）。
+
+        读 auth_service 自身 AUTH_MODE 环境注入；compose 与 api_gateway
+        注入同一变量保持两侧一致。非法取值经枚举归一抛错（启动即自曝）。
+        """
+        from auth_service.config.config import Config
+        from shared.constants.auth_mode import normalize_auth_mode
+        return normalize_auth_mode(Config.AUTH_MODE)

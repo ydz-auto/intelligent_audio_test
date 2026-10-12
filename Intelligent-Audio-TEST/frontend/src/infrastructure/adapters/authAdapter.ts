@@ -6,7 +6,7 @@
  */
 import type { AuthLoginResult, AuthUser, CurrentUserInfo, OAuthProvider, OAuthProviderDetail, OAuthBinding, OAuthDiscoveryResult } from '../../domain/model/auth'
 import type { AuthLoginResultDto, AuthMeResultDto, AuthUserDto } from '../dto/authDto'
-import type { OAuthProviderDto, OAuthProviderPublicDto, OAuthBindingDto, OAuthDiscoveryResultDto } from '../dto/authDto'
+import type { OAuthProviderDto, OAuthProviderPublicDto, OAuthBindingDto, OAuthDiscoveryResultDto, AuthModeResultDto } from '../dto/authDto'
 
 /** 登录响应内嵌用户 → AuthUser（Domain） */
 export function toAuthUser(raw: AuthUserDto): AuthUser {
@@ -105,4 +105,9 @@ export function toOAuthDiscoveryResult(raw: OAuthDiscoveryResultDto): OAuthDisco
     wellKnownUrl: raw.well_known_url ?? '',
     discovery: raw.discovery ?? {},
   }
+}
+
+/** 认证模式报告 → Domain（trim；缺省回空串，空值由自检侧判"不可用"静默） */
+export function toAuthMode(raw: AuthModeResultDto): string {
+  return (raw?.auth_mode ?? '').trim()
 }

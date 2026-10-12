@@ -262,3 +262,21 @@ export const AUTH_MODE_VALUES: readonly AuthModeType[] = [
   AuthMode.DEV,
   AuthMode.PROD,
 ]
+
+/**
+ * 前端本地生效认证模式（INT-180 启动自检比对基准）。
+ * 与 router/client 401 判定同源（未注入回退 off，向后兼容语义不变），
+ * 启动自检用它和后端 /auth/mode 报告值比对，两侧读法必须一致。
+ * readEnv 仅供测试注入；vitest 下各模块 import.meta.env 为独立快照，
+ * 直接改写无法被本函数读到。
+ */
+type AuthModeEnvReader = () => unknown
+
+const defaultAuthModeEnvReader: AuthModeEnvReader = () =>
+  (import.meta as any).env?.VITE_AUTH_MODE
+
+export function getEffectiveAuthMode(
+  readEnv: AuthModeEnvReader = defaultAuthModeEnvReader,
+): AuthModeType {
+  return (readEnv() || AuthMode.OFF) as AuthModeType
+}

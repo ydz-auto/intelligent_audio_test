@@ -22,6 +22,16 @@ class AuthService:
     # ---- 登录入口 ----
 
     @staticmethod
+    def get_auth_mode() -> str:
+        """当前生效认证模式（INT-180 启动自检：公开端点 /auth/mode 数据源）。
+
+        取 AuthMiddleware 实际执行的网关自身 AUTH_MODE——认证强制点在
+        网关，值必须与强制点同源，不得转手他服务环境再转述。
+        """
+        from shared.constants.auth_mode import normalize_auth_mode
+        return normalize_auth_mode(Config.AUTH_MODE)
+
+    @staticmethod
     def get_login_entry() -> str:
         """返回登录入口 URL（dev: 前端登录页; prod: 预置提供方授权 URL）"""
         if Config.AUTH_MODE == 'dev':
