@@ -52,12 +52,18 @@ CHECK_STOP_POLL_INTERVAL = config_manager.get_value('device_timing', 'check_stop
 # —— 基础驱动采集参数（harmony_collection_mixin，harmony_base 平台驱动）——
 # 录屏启动后轮询发现新 mp4 文件的超时（秒）
 BASE_RECORDER_START_TIMEOUT = config_manager.get_value('device_timing', 'base_recorder_start_timeout', 30)
+# 启动无产物时的恢复 toggle 后二次轮询超时（秒）：首 toggle 可能停掉残留录制而非开新录制
+BASE_RECORDER_START_RECOVERY_TIMEOUT = config_manager.get_value('device_timing', 'base_recorder_start_recovery_timeout', 10)
 # 回答文本稳定采样总超时（秒）：超过即按当前采样收口
 BASE_REPLY_END_TIMEOUT = config_manager.get_value('device_timing', 'base_reply_end_timeout', 60)
 # 回答文本采样间隔（秒）
 BASE_REPLY_SETTLE_INTERVAL = config_manager.get_value('device_timing', 'base_reply_settle_interval', 2)
 # 回答文本视为稳定所需的连续相同采样次数
 BASE_REPLY_STABLE_ROUNDS = config_manager.get_value('device_timing', 'base_reply_stable_rounds', 3)
+# 停止录屏后的收尾校验：mp4 size 稳定（连续两次读数相同）判定录屏确已停止，
+# 超时上限与轮询间隔（秒）。进程常驻（ps 可见）不可用作停止依据，size 稳定才可靠。
+BASE_RECORDER_STOP_VERIFY_TIMEOUT = config_manager.get_value('device_timing', 'base_recorder_stop_verify_timeout', 10)
+BASE_RECORDER_STOP_VERIFY_INTERVAL = config_manager.get_value('device_timing', 'base_recorder_stop_verify_interval', 1)
 
 # 设备路径
 DEVICE_TMP_DIR = '/data/local/tmp'

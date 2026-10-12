@@ -286,9 +286,22 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
 
     @check_stop("pre_process")
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """开始处理：按轮启动录屏（round 模式，每轮一段 mp4）"""
+        """开始处理：唤醒/解锁 → 按轮启动录屏（round 模式，每轮一段 mp4）
+
+        每轮唤醒+解锁：多轮间隔可能超屏灭时间，屏幕熄灭状态下录屏收尾
+        （moov 写入）与 UI 抓取都不可靠——这是实机验收发现 moov 缺失 mp4 的
+        关联因素（INT-158 验收问题 1）。
+        """
         self._log(level='INFO', content=f"--- Starting pre-process for {device_sn} ---",
                   task_id=task_id, test_case_id=test_case_id)
+        try:
+            subprocess.run(['hdc', '-t', device_sn, 'shell', 'power-shell', 'wakeup'],
+                           check=False, capture_output=True, timeout=HDC_TIMEOUT)
+            if self.is_locked(device_sn):
+                self.unlock(device_sn)
+        except Exception as e:
+            self._log(level='WARNING', content=f"轮首唤醒/解锁失败(继续): {e}",
+                      task_id=task_id, test_case_id=test_case_id)
         round_number = kwargs.get('round_number', 0)
         self._round_number = round_number
         self._record_file_name = f"{test_case_id or task_id or 'case'}_r{round_number}.mp4"
@@ -307,7 +320,7 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
                       task_id=task_id, test_case_id=test_case_id)
         else:
             self._log(level='WARNING',
-                      content=f"录屏已启动但未发现新 mp4 文件（get_results 将回退 mediatool 查询）: {self._record_file_name}",
+                      content=f"录屏已启动但轮询未发现新 mp4 文件（get_results 将按新增文件 diff/mediatool 兜底发现）: {self._record_file_name}",
                       task_id=task_id, test_case_id=test_case_id)
         return True
 

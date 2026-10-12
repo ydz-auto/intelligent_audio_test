@@ -20,9 +20,10 @@ import tempfile
 import time
 
 from .driver_constants import (
-    SHORT_WAIT, HDC_TIMEOUT, EXTRA_LONG_HDC_TIMEOUT, DEVICE_TMP_DIR,
-    BASE_RECORDER_START_TIMEOUT, BASE_REPLY_END_TIMEOUT,
-    BASE_REPLY_SETTLE_INTERVAL, BASE_REPLY_STABLE_ROUNDS,
+    SHORT_WAIT, NORMAL_WAIT, HDC_TIMEOUT, EXTRA_LONG_HDC_TIMEOUT, DEVICE_TMP_DIR,
+    BASE_RECORDER_START_TIMEOUT, BASE_RECORDER_START_RECOVERY_TIMEOUT,
+    BASE_REPLY_END_TIMEOUT, BASE_REPLY_SETTLE_INTERVAL, BASE_REPLY_STABLE_ROUNDS,
+    BASE_RECORDER_STOP_VERIFY_TIMEOUT, BASE_RECORDER_STOP_VERIFY_INTERVAL,
 )
 from .device_config import get_device_config
 from .utils import By
@@ -91,8 +92,13 @@ class HarmonyCollectionMixin:
         以 aa start 命令返回码为准（aa dump -l 与真实运行状态不严格对应，
         会把已成功启动的录屏误判为未运行）；录屏是否生效由轮询发现新 mp4
         文件（size 从 0 变非 0）验证，该时刻即录屏首帧 first_frame_ms。
+
+        快照启动前已存在的 mp4 集合（self._preexisting_mp4_set）：部分机型
+        忽略 --ps CustomizedFileName（产物为 VID_* 名称），mediatool 按名兜底
+        查询永不命中，拉取失败时用该集合 diff 找本轮实际产物。
         """
-        existing_paths = self._list_device_mp4_set(device_sn)
+        self._preexisting_mp4_set = self._list_device_mp4_set(device_sn)
+        existing_paths = self._preexisting_mp4_set
 
         args = ['aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY]
         if file_name:
@@ -114,14 +120,60 @@ class HarmonyCollectionMixin:
             if device_path:
                 break
             time.sleep(SHORT_WAIT)
+        if device_path is None:
+            # toggle 语义兜底：上一轮停止失败时服务仍处于录制态，第一次 aa start
+            # 停掉了残留录制而非开启新录制（INT-158 验收问题 3）。再 toggle 一次
+            # 并短轮询兜底。
+            self._hdc_shell(device_sn, *args)
+            recovery_deadline = time.time() + BASE_RECORDER_START_RECOVERY_TIMEOUT
+            while time.time() < recovery_deadline:
+                new_paths = self._list_device_mp4_set(device_sn) - existing_paths
+                for new_path in new_paths:
+                    if self._get_device_file_size(device_sn, new_path) > 0:
+                        first_frame_ms = int(time.time() * 1000)
+                        device_path = new_path
+                        break
+                if device_path:
+                    break
+                time.sleep(SHORT_WAIT)
         return True, device_path, first_frame_ms
 
     def _stop_recorder(self, device_sn):
-        """停止录屏服务（toggle 语义，执行成功即视为已停止）"""
+        """停止录屏服务并校验收尾，返回 bool
+
+        toggle 成功不等于录制已停止（screenrecorder 进程常驻，ps 可见不可作为
+        停止依据；进程存活时下一轮 aa start 打在存活服务上不触发新录制）。
+        以本轮录屏文件 size 连续两次读数稳定为停止判据；仍增长则再 toggle 一次。
+        """
         result = self._hdc_shell(device_sn, 'aa', 'start',
                                  '-b', self.RECORDER_BUNDLE,
                                  '-a', self.RECORDER_ABILITY)
-        return result.returncode == 0
+        if result.returncode != 0:
+            return False
+        if not self._wait_recorder_stopped(device_sn):
+            # size 仍增长 → 第一次 toggle 可能有效但收尾慢，或未生效；再 toggle 一次并复验
+            self._hdc_shell(device_sn, 'aa', 'start',
+                            '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
+            if not self._wait_recorder_stopped(device_sn):
+                return False
+        return True
+
+    def _wait_recorder_stopped(self, device_sn):
+        """轮询本轮录屏文件 size 稳定（连续两次读数相同）作为录制停止判据"""
+        device_path = getattr(self, '_record_device_path', None)
+        if not device_path:
+            # 未发现本轮文件（start 轮询超时）时无法观测 size，退固定收尾等待
+            time.sleep(NORMAL_WAIT * 3)
+            return True
+        last_size = -1
+        deadline = time.time() + BASE_RECORDER_STOP_VERIFY_TIMEOUT
+        while time.time() < deadline:
+            size = self._get_device_file_size(device_sn, device_path)
+            if size > 0 and size == last_size:
+                return True
+            last_size = size
+            time.sleep(BASE_RECORDER_STOP_VERIFY_INTERVAL)
+        return False
 
     def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
         """mp4 无损转 wav（pcm_s16le 44.1kHz 双声道），失败返回 None
@@ -175,26 +227,62 @@ class HarmonyCollectionMixin:
                       task_id=task_id, test_case_id=test_case_id)
             return None
 
-    def _pull_record_to_oss(self, device_sn, task_id=None, test_case_id=None):
-        """拉取本轮录屏 mp4 → 转 wav → mp4+wav 上传存储，返回 (record_path, wav_path, error, wav_note)
+    def _validate_mp4(self, local_path, task_id=None, test_case_id=None):
+        """ffprobe 校验本地 mp4 可解析（moov 完整、非半截文件）
 
-        record_path/wav_path 为存储真实落点（oss:// 或本地降级 local://）。
-        error 非 None 表示拉取失败（record_path/wav_path 为 None）。
-        wav_note 非 None 表示 wav 产物缺失的降级原因（转换失败/上传失败），
-        供 get_results 在 message 中标注回退口径。本地临时目录即传即清。
+        录屏未收尾即拉取会产出 moov atom 缺失的不可播放文件——这类文件不得
+        上传或回退为 wav_path（INT-158 验收问题 1）。以 ffprobe 退出码为准
+        （损坏文件非零退出）；ffprobe 不可用时跳过校验（仅告警）。
+        返回 True=可解析或未校验，False=确认损坏。
         """
-        record_file_name = getattr(self, '_record_file_name', None)
-        if not record_file_name:
-            return None, None, '本轮未启动录屏（pre_process 未记录文件名）', None
+        ffprobe = getattr(Config, 'FFPROBE_PATH', 'ffprobe')
+        try:
+            r = subprocess.run([ffprobe, '-v', 'error', '-show_entries',
+                                'format=format_name', '-of', 'csv=p=0', local_path],
+                               check=False, capture_output=True, text=True,
+                               timeout=HDC_TIMEOUT)
+        except FileNotFoundError:
+            self._log(level='WARNING', content=f"ffprobe 不可用({ffprobe})，跳过 mp4 校验",
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
+        except Exception as e:
+            self._log(level='WARNING', content=f"mp4 校验异常({e})，按损坏处理",
+                      task_id=task_id, test_case_id=test_case_id)
+            return False
+        if r.returncode != 0:
+            self._log(level='ERROR',
+                      content=f"mp4 校验失败(不可播放): {r.stderr[-300:] if r.stderr else 'no stderr'}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return False
+        return True
 
-        task_id_path = str(task_id) if task_id else 'default_task_id'
-        test_case_id_path = str(test_case_id) if test_case_id else 'default_id'
-        oss_key_prefix = f'{task_id_path}/{test_case_id_path}/{device_sn}'
+    def _discover_round_record_file(self, device_sn, task_id=None, test_case_id=None):
+        """确定本轮录屏文件设备路径，返回 (device_path, actual_name)
 
-        # 优先用 _start_recorder 发现的真实路径直接 recv（稳定，绕开 mediatool 按
-        # CustomizedFileName 查询——后者对部分文件名报 displayName format 错误）
+        优先用 _start_recorder 发现的真实路径；缺失时按"本轮新增 mp4"diff
+        （当前集合 - 启动前快照）取 size 最大者——兼容忽略 --ps CustomizedFileName
+        的机型（产物为 VID_* 名称，mediatool 按名查询永不命中，INT-158 验收问题 3）。
+        """
         device_path = getattr(self, '_record_device_path', None) or ''
-        if not device_path:
+        if device_path:
+            return device_path, os.path.basename(device_path)
+
+        # 兜底 1：本轮新增 mp4 diff（晚于启动轮询才发现的文件会落在这里）
+        preexisting = getattr(self, '_preexisting_mp4_set', None)
+        if preexisting is not None:
+            new_paths = self._list_device_mp4_set(device_sn) - preexisting
+            sized = [(p, self._get_device_file_size(device_sn, p)) for p in new_paths]
+            sized = [(p, s) for p, s in sized if s > 0]
+            if sized:
+                device_path = max(sized, key=lambda x: x[1])[0]
+                self._log(level='INFO',
+                          content=f"通过新增文件 diff 发现本轮录屏: {device_path}",
+                          task_id=task_id, test_case_id=test_case_id)
+                return device_path, os.path.basename(device_path)
+
+        # 兜底 2：mediatool 按名查询（对尊重 CustomizedFileName 的机型有效）
+        record_file_name = getattr(self, '_record_file_name', None)
+        if record_file_name:
             try:
                 query = self._hdc_shell(device_sn, 'mediatool', 'query',
                                         record_file_name, '-u')
@@ -209,12 +297,40 @@ class HarmonyCollectionMixin:
                 self._log(level='WARNING', content=f"mediatool 查询录屏路径异常: {e}",
                           task_id=task_id, test_case_id=test_case_id)
                 device_path = ''
+            if device_path:
+                return device_path, record_file_name
+        return '', ''
+
+    def _pull_record_to_oss(self, device_sn, task_id=None, test_case_id=None):
+        """拉取本轮录屏 mp4 → 校验可解析 → 转 wav → mp4+wav 上传存储
+
+        返回 (record_path, wav_path, error, wav_note)：record_path/wav_path 为
+        存储真实落点（oss:// 或本地降级 local://）。error 非 None 表示拉取失败
+        或 mp4 不可解析（record_path/wav_path 为 None，不回退坏文件）。
+        wav_note 非 None 表示 wav 产物缺失的降级原因（转换失败/上传失败），
+        供 get_results 在 message 中标注回退口径。本地临时目录即传即清。
+        """
+        record_file_name = getattr(self, '_record_file_name', None)
+        if not record_file_name:
+            return None, None, '本轮未启动录屏（pre_process 未记录文件名）', None
+
+        task_id_path = str(task_id) if task_id else 'default_task_id'
+        test_case_id_path = str(test_case_id) if test_case_id else 'default_id'
+        oss_key_prefix = f'{task_id_path}/{test_case_id_path}/{device_sn}'
+
+        device_path, actual_name = self._discover_round_record_file(
+            device_sn, task_id=task_id, test_case_id=test_case_id)
         if not device_path:
-            return None, None, f'录屏文件设备路径为空: {record_file_name}', None
+            return None, None, (f'录屏文件设备路径为空: '
+                                f'expected={getattr(self, "_record_file_name", None)}'), None
+        if actual_name != getattr(self, '_record_file_name', None):
+            self._log(level='INFO',
+                      content=f"录屏产物实际文件名(设备忽略 CustomizedFileName): {actual_name}",
+                      task_id=task_id, test_case_id=test_case_id)
 
         local_dir = tempfile.mkdtemp(prefix=f'case_record_{task_id_path}_{test_case_id_path}_')
         try:
-            local_path = os.path.join(local_dir, record_file_name)
+            local_path = os.path.join(local_dir, actual_name)
             recv_result = subprocess.run(
                 ['hdc', '-t', device_sn, 'file', 'recv', device_path, local_path],
                 check=False, capture_output=True, text=True,
@@ -222,6 +338,10 @@ class HarmonyCollectionMixin:
             if not os.path.exists(local_path):
                 return None, None, (f'录屏文件拉取失败: device_path={device_path} '
                                     f'stderr={recv_result.stderr}'), None
+            # 收尾校验：moov 缺失等不可播放文件直接按失败处理，不上传不回退
+            if not self._validate_mp4(local_path, task_id=task_id, test_case_id=test_case_id):
+                return None, None, (f'录屏 mp4 不可播放(moov 缺失/未收尾): '
+                                    f'{actual_name} @ {device_path}'), None
             wav_note = None
             wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
             if wav_path is None:

@@ -82,31 +82,51 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                     device_sn = device_info_list_raw[0].get('device_sn')
 
                 driver = self.factory.get_driver_for_device(system, keywords=keywords, device_sn=device_sn)
+                init_ok = None
                 if driver and hasattr(driver, 'initialize'):
-                    driver.initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+                    init_ok = driver.initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+                # 透传初始化结果：None/True 视为成功，False（如 hypium 缺失 UiDriver=None）
+                # 明确失败，避免 e2e 侧拿到 success=True 带病跑完采集（INT-158 验收问题 2）
+                passed = driver is not None and init_ok is not False
                 driver_info = {
                     "system": system,
                     "keywords": keywords,
                     "device_sn": device_sn,
                     "driver_found": driver is not None,
                     "driver_name": driver.__class__.__name__ if driver else None,
+                    "initialize_result": init_ok,
                 }
-                return e2e_pb.CreateDriverResponse(success=True, message="ok", data=_dumps(driver_info))
+                return e2e_pb.CreateDriverResponse(
+                    success=passed,
+                    message="ok" if passed else f"initialize failed on {device_sn} (result={init_ok!r})",
+                    data=_dumps(driver_info))
 
             # 根据设备 SN 查找已注册的 driver
             driver = self.factory.get_driver_by_sn(device_sn, task_id)
 
             if action == 'pre_process':
+                result = None
                 if driver and hasattr(driver, 'pre_process'):
-                    driver.pre_process(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
-                return e2e_pb.CreateDriverResponse(success=True, message="ok",
-                    data=_dumps({"device_sn": device_sn, "action": "pre_process", "executed": driver is not None}))
+                    result = driver.pre_process(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+                # 透传预处理结果（None/True 成功，False 失败）；driver 未注册同样视为失败，
+                # 使 e2e 侧轮次 fail-fast 而非带病继续（INT-158 验收问题 2）
+                passed = driver is not None and result is not False
+                return e2e_pb.CreateDriverResponse(
+                    success=passed,
+                    message="ok" if passed else f"pre_process failed on {device_sn} (driver={driver is not None}, result={result!r})",
+                    data=_dumps({"device_sn": device_sn, "action": "pre_process",
+                                 "executed": driver is not None, "result": result}))
 
             if action == 'post_process':
+                result = None
                 if driver and hasattr(driver, 'post_process'):
-                    driver.post_process(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
-                return e2e_pb.CreateDriverResponse(success=True, message="ok",
-                    data=_dumps({"device_sn": device_sn, "action": "post_process", "executed": driver is not None}))
+                    result = driver.post_process(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+                passed = driver is not None and result is not False
+                return e2e_pb.CreateDriverResponse(
+                    success=passed,
+                    message="ok" if passed else f"post_process failed on {device_sn} (driver={driver is not None}, result={result!r})",
+                    data=_dumps({"device_sn": device_sn, "action": "post_process",
+                                 "executed": driver is not None, "result": result}))
 
             if action == 'get_results':
                 if driver and hasattr(driver, 'get_results'):
