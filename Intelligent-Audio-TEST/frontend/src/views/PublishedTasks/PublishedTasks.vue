@@ -32,6 +32,19 @@
         title="状态"
         @update:model-value="handleStatusBadgeChange"
       />
+      <!-- INT-148：任务类型 / 算法筛选（对齐 V9.7.10，服务端按发布冻结列过滤） -->
+      <BadgeFilter
+        :options="pt.typeOptions"
+        :model-value="pt.filters.type"
+        all-label="全部类型"
+        title="任务类型"
+        @update:model-value="handleTypeBadgeChange"
+      />
+      <AlgorithmFilter
+        :model-value="pt.filters.algorithmType"
+        title="算法筛选"
+        @update:model-value="handleAlgorithmBadgeChange"
+      />
       <BadgeFilter
         :options="TIME_RANGE_OPTIONS"
         :model-value="pt.filters.timeRange"
@@ -211,6 +224,7 @@ import PublishTaskModal from '../../components/published-task/PublishTaskModal.v
 import ReportSnapshotModal from '../../components/published-task/ReportSnapshotModal.vue';
 import PublishedTaskNameModal from '../../components/published-task/PublishedTaskNameModal.vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 
 const router = useRouter();
 const pt = usePublishedTasks();
@@ -290,6 +304,16 @@ async function handleNameModalConfirm({ name }: { name: string }) {
 
 function handleStatusBadgeChange(value: string | number) {
   pt.filters.status = String(value);
+  handleFilterChange();
+}
+
+function handleTypeBadgeChange(value: string | number) {
+  pt.filters.type = String(value);
+  handleFilterChange();
+}
+
+function handleAlgorithmBadgeChange(value: string | number) {
+  pt.filters.algorithmType = String(value);
   handleFilterChange();
 }
 

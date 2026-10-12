@@ -309,6 +309,8 @@ message ListPublishedTasksRequest {
   string end_date = 7;
   // benchmark 筛选（三态字符串）：""=不过滤，"true"/"false"=按 Benchmark 标记过滤
   string benchmark = 8;
+  // 算法类型筛选（发布时冻结的冗余列，对齐 V9.7.10）
+  string algorithm_type = 9;
 }
 message GetPublishedTaskDetailRequest {
   int32 published_task_id = 1;

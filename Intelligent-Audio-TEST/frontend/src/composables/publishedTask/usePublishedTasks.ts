@@ -61,12 +61,16 @@ export function usePublishedTasks() {
   const filters = ref<{
     status: string;
     keyword: string;
+    type: string;
+    algorithmType: string;
     timeRange: string;
     customRange: { start: string; end: string };
     sort: { field: string; order: 'asc' | 'desc' };
   }>({
     status: 'all',
     keyword: '',
+    type: 'all',
+    algorithmType: 'all',
     timeRange: 'all',
     customRange: { start: '', end: '' },
     sort: { field: 'publishedAt', order: 'desc' },
@@ -105,6 +109,9 @@ export function usePublishedTasks() {
       };
       if (filters.value.status && filters.value.status !== 'all') params.status = filters.value.status;
       if (filters.value.keyword) params.keyword = filters.value.keyword;
+      // INT-148：任务类型 / 算法筛选（对齐 V9.7.10，服务端按发布冻结列过滤）
+      if (filters.value.type && filters.value.type !== 'all') params.type = filters.value.type;
+      if (filters.value.algorithmType && filters.value.algorithmType !== 'all') params.algorithmType = filters.value.algorithmType;
       Object.assign(params, buildTimeRangeParams(filters.value.timeRange, filters.value.customRange));
       const list: PublishedTaskPage = await publishedTasksApi.getAll(params);
       items.value = list.items;
@@ -230,6 +237,11 @@ export function usePublishedTasks() {
       { value: 'all', label: '全部状态' },
       { value: PublishedTaskStatusEnum.PUBLISHED, label: '已发布' },
       { value: PublishedTaskStatusEnum.ARCHIVED, label: '已归档' },
+    ],
+    typeOptions: [
+      { value: 'all', label: '全部类型' },
+      { value: 'e2e', label: '端到端测试' },
+      { value: 'api', label: 'API测试' },
     ],
     fetchList,
     fetchDetail,

@@ -23,6 +23,10 @@ class Config(BaseConfig):
     # 异步刷新任务状态记录的 Redis TTL（秒）：过期后前端查询返回 not_found
     REFERENCE_REFRESH_TASK_TTL_SECONDS = int(os.environ.get('REFERENCE_REFRESH_TASK_TTL_SECONDS', 86400))
 
+    # --- 任务删除同步 stop 容错（INT-148 缺陷#4）---
+    # 删除任务前同步停止运行中任务的耗时告警阈值（秒）：超时仅告警不阻断删除
+    TASK_DELETE_STOP_WARN_SECONDS = int(os.environ.get('TASK_DELETE_STOP_WARN_SECONDS', 10))
+
 
 # 兼容旧代码中的 TaskServiceConfig 引用
 TaskServiceConfig = Config

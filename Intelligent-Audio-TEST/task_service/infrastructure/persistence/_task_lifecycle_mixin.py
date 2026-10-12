@@ -36,7 +36,13 @@ class TaskLifecycleMixin:
         return self.get_task_orm(task_id)
 
     def reset_task_for_start(self, task_id: int) -> bool:
-        """重置失败/停止任务为 pending，清零计数。"""
+        """重置失败/停止任务为 pending，清零计数。
+
+        INT-148 缺陷#2：重启路径同步清理关联 TestResult（含 case_pcm 文件）。
+        全部 TaskCase 重置为 pending 后将被重新执行，执行/评估提交侧为
+        无条件 INSERT（SubmitResult），残留旧行会产生重复/脏结果——与 retry
+        路径未完成用例的清理语义（preserve_test_result=False 删除）对齐。
+        """
         session = get_db_session()
         try:
             task = session.get(Task, task_id)
@@ -60,7 +66,18 @@ class TaskLifecycleMixin:
                 TaskCase.duration: None,
                 TaskCase.error_message: None,
             }, synchronize_session=False)
+            # 删除旧 TestResult（重跑将 INSERT 新行，残留旧行导致重复/脏结果）
+            case_ids = [
+                row[0] for row in session.query(TaskCase.test_case_id).filter(
+                    TaskCase.task_id == task_id,
+                    TaskCase.test_case_id.isnot(None),
+                ).all()
+            ]
+            self._delete_test_results(session, task_id, case_ids, preserve_test_result=False)
             session.commit()
+            # 提交后清理 case_pcm 旧文件（失败降级忽略，防旧残留干扰新一轮采集）
+            if case_ids:
+                self._cleanup_case_pcm_dirs(task_id, case_ids)
             return True
         except Exception:
             session.rollback()
@@ -69,7 +86,7 @@ class TaskLifecycleMixin:
             session.close()
 
     def check_environment_for_start(self, task_id: int):
-        """环境预检：检查关联设备和播放设备是否在线。
+        """环境预检：检查关联设备和播放设备是否在线 + API 用例目标 API 在线预检。
 
         Returns:
             (can_start: bool, error_msg: str)
@@ -82,13 +99,71 @@ class TaskLifecycleMixin:
             ).all()
 
             if not device_rows:
-                return True, ''  # 无设备关联，跳过检查
-            device_ids = [td.device_id for td in device_rows]
+                device_ids = []
+            else:
+                device_ids = [td.device_id for td in device_rows]
         finally:
             session.close()
 
         # 通过 gRPC 检查设备状态（gRPC 调用不占用 DB session）
-        return self._check_devices_online(device_ids)
+        if device_ids:
+            can_start, err_msg = self._check_devices_online(device_ids)
+            if not can_start:
+                return False, err_msg
+
+        # INT-148 缺陷#1：API 任务对目标 API 做在线预检（对齐 V9.7.10）
+        return self._check_apis_online(task_id)
+
+    @staticmethod
+    def _get_task_api_case_ids(task_id: int):
+        """收集任务中 http_api/websocket_api 用例的目标 API ID（去重保序）。"""
+        from shared.models.common_enums import DeviceType
+        session = get_db_session()
+        try:
+            rows = session.query(TaskCase.device_id).filter(
+                TaskCase.task_id == task_id,
+                TaskCase.device_type.in_(
+                    [DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value]),
+                TaskCase.device_id.isnot(None),
+            ).all()
+            seen, api_ids = set(), []
+            for (device_id,) in rows:
+                if device_id is None:
+                    continue
+                key = str(device_id)
+                if key not in seen:
+                    seen.add(key)
+                    api_ids.append(int(device_id))
+            return api_ids
+        finally:
+            session.close()
+
+    @staticmethod
+    def _check_apis_online(task_id: int):
+        """API 用例目标 API 在线预检：逐个调用 api_test_service 健康检查。
+
+        明确 offline → 阻断启动并给出报错；gRPC 异常（api_test_service 不可达）
+        不阻塞启动（与设备检查降级策略一致，执行期失败由用例错误路径收敛）。
+        """
+        try:
+            api_ids = TaskLifecycleMixin._get_task_api_case_ids(task_id)
+        except Exception as e:
+            logger.warning(f"API 用例查询异常（跳过 API 预检）: task_id={task_id}, {e}")
+            return True, ''
+        if not api_ids:
+            return True, ''
+
+        from task_service.infrastructure.acl.api_acl_repository import api_acl_repository
+        for api_id in api_ids:
+            info = api_acl_repository.test_api_connection(api_id)
+            if info is None:
+                # gRPC 失败：健康检查不可用，不阻塞启动
+                logger.warning(f"API 预检不可用（跳过）: task_id={task_id}, api_id={api_id}")
+                continue
+            if info.get('status') != 'online':
+                error_detail = info.get('error') or '健康检查未通过'
+                return False, f"被测 API (id={api_id}) 离线，无法启动: {error_detail}"
+        return True, ''
 
     @staticmethod
     def _check_devices_online(device_ids: List[int]):

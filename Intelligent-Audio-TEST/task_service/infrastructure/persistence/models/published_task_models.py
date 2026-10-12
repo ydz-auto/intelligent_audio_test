@@ -14,6 +14,11 @@ from sqlalchemy import (
     func, Column, Integer, String, Text, DateTime, Boolean, JSON, Index,
 )
 
+# 已发布任务类型取值（对齐 V9.7.10 published_tasks.type：api/e2e）
+# 新架构 task.type 已废弃，发布时由快照用例级 device_type 派生
+PUBLISHED_TASK_TYPE_API = 'api'
+PUBLISHED_TASK_TYPE_E2E = 'e2e'
+
 
 class PublishedTask(Base):
     """已发布任务模型 (Published Task Model)
@@ -27,12 +32,15 @@ class PublishedTask(Base):
         Index('idx_published_task_source', 'source_task_id'),
         Index('idx_published_task_is_current', 'is_current'),
         Index('idx_published_task_benchmark_status', 'benchmark', 'status'),
+        Index('idx_published_task_algorithm_type', 'algorithm_type'),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='已发布任务 ID')
     task_group_id = Column(Integer, comment='已发布任务逻辑分组 ID（首个版本 ID，版本链锚点）')
     source_task_id = Column(Integer, comment='来源日常任务 ID，可为空')
     name = Column(String(255), nullable=False, comment='已发布任务名称')
     description = Column(Text, comment='说明')
+    type = Column(String(50), comment='任务类型 (api/e2e)，发布时由快照用例级 device_type 派生（对齐 V9.7.10）')
+    algorithm_type = Column(String(50), comment='关联算法类型（冗余：发布时从快照冻结，列表筛选直查本列，对齐 V9.7.10）')
     status = Column(String(20), nullable=False, default='published', comment='状态 (published/archived)')
     benchmark = Column(Boolean, nullable=False, default=False, comment='是否参与 Benchmark 排行（实测轨数据源标记）')
     version = Column(Integer, nullable=False, default=1, comment='版本号，从 1 开始')

@@ -237,12 +237,14 @@ class APICrudService:
     def _log(level, content, task_id=None, test_case_id=None, api_id=None,
              category='execution', module='API', **kwargs):
         """统一日志记录方法"""
+        # INT-148：允许调用方覆盖 source（test_connection 传 source='System'），
+        # 修复 kwargs 重复传参导致 log_not_emit TypeError、TestAPIConnection 恒失败
         log_not_emit(
             level=level,
             module=module,
             content=content,
             category=category,
-            source='backend',
+            source=kwargs.pop('source', 'backend'),
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,
@@ -570,13 +572,17 @@ class APICrudService:
         if not api:
             return {'success': False, 'message': '未找到API配置', 'data': None, 'code': 404}
 
+        # INT-148：仓储返回 APIAggregate（无 api_url/health_score/api_endpoints 属性），
+        # 统一经 _api_to_dict（PO/聚合根双兼容）取字段，修复健康检查恒 AttributeError
+        info = cls._api_to_dict(api)
+
         start_time = time.time()
         try:
             # 1. 测试 api_url 本身
             api_url_status = False
             api_url_error = None
-            if api.api_url:
-                test_api_url = api.api_url
+            if info.get('api_url'):
+                test_api_url = info['api_url']
                 parsed_api_url = urlparse(test_api_url)
                 api_scheme = parsed_api_url.scheme.lower()
 
@@ -615,11 +621,11 @@ class APICrudService:
             endpoint_response = None
             endpoint_duration = 0
 
-            if not api.api_endpoints:
+            if not info.get('endpoints'):
                 endpoint_error = "没有配置任何端点"
                 endpoints_status = True
             else:
-                endpoint = api.api_endpoints[0]
+                endpoint = info['endpoints'][0]
                 test_url = endpoint.get('endpoint', '')
 
                 if not test_url:
@@ -666,14 +672,14 @@ class APICrudService:
 
             # 4. 记录日志
             if overall_status:
-                log_content = f"API [{api.name}] 连接测试成功: 主URL在线"
+                log_content = f"API [{info['name']}] 连接测试成功: 主URL在线"
                 if not endpoints_status:
                     log_content += f" (端点测试状态: {endpoint_error})"
                 elif endpoint_duration > 0:
                     log_content += f", 端点响应耗时: {endpoint_duration:.2f}ms"
                 log_level = 'INFO'
             else:
-                log_content = f"API [{api.name}] 连接测试失败: {api_url_error}"
+                log_content = f"API [{info['name']}] 连接测试失败: {api_url_error}"
                 log_level = 'ERROR'
 
             cls._log(
@@ -681,13 +687,13 @@ class APICrudService:
                 category='HealthCheck',
                 source='System',
                 content=log_content,
-                api_id=api.id
+                api_id=info['id']
             )
 
             # 5. 更新 API 状态
             new_status = 'online' if overall_status else 'offline'
-            if api.status != new_status:
-                api_test_repository.update_api(api.id, {
+            if info.get('status') != new_status:
+                api_test_repository.update_api(info['id'], {
                     'status': new_status,
                     'updated_at': now_cst(),
                 })
@@ -697,9 +703,9 @@ class APICrudService:
                 'success': True,
                 'message': '连接测试完成' if overall_status else '连接测试失败',
                 'data': {
-                    'id': api.id,
+                    'id': info['id'],
                     'status': new_status,
-                    'health_score': api.health_score,
+                    'health_score': info.get('health_score'),
                     'api_url_status': str(api_url_status),
                     'endpoints_status': str(endpoints_status),
                     'error': api_url_error if not overall_status else None,
@@ -715,12 +721,12 @@ class APICrudService:
                 level='ERROR',
                 category='HealthCheck',
                 source='System',
-                content=f"API [{api.name}] 连接测试异常: {str(e)}",
-                api_id=api.id
+                content=f"API [{info.get('name')}] 连接测试异常: {str(e)}",
+                api_id=info.get('id')
             )
 
-            if api.status != 'offline':
-                api_test_repository.update_api(api.id, {
+            if info.get('status') != 'offline':
+                api_test_repository.update_api(info['id'], {
                     'status': 'offline',
                     'updated_at': now_cst(),
                 })
@@ -729,10 +735,10 @@ class APICrudService:
                 'success': True,
                 'message': '连接测试失败',
                 'data': {
-                    'id': api.id,
+                    'id': info['id'],
                     'status': 'offline',
                     'error': str(e),
-                    'health_score': api.health_score,
+                    'health_score': info.get('health_score'),
                     'api_url_status': str(False),
                     'endpoints_status': str(False),
                 },

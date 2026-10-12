@@ -29,6 +29,10 @@ export interface PublishedTaskItem {
   sourceTaskId?: number | null;
   name: string;
   description?: string | null;
+  /** 任务类型 api/e2e（发布时由快照用例级 device_type 派生，对齐 V9.7.10） */
+  type?: string | null;
+  /** 关联算法类型（发布时从快照冻结） */
+  algorithmType?: string | null;
   status: PublishedTaskStatus;
   /** 是否参与 Benchmark 排行（published_tasks.benchmark 行级布尔列） */
   benchmark: boolean;

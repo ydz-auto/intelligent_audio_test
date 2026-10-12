@@ -18,6 +18,8 @@ interface PublishedTaskItemDto {
   source_task_id?: number | null;
   name: string;
   description?: string | null;
+  type?: string | null;
+  algorithm_type?: string | null;
   status: PublishedTaskStatus;
   benchmark?: boolean;
   version: number;
@@ -70,6 +72,8 @@ function toPublishedTaskItem(raw: PublishedTaskItemDto): PublishedTaskItem {
     sourceTaskId: raw.source_task_id ?? undefined,
     name: raw.name,
     description: raw.description ?? undefined,
+    type: raw.type ?? undefined,
+    algorithmType: raw.algorithm_type ?? undefined,
     status: raw.status,
     benchmark: raw.benchmark ?? false,
     version: raw.version,
@@ -90,6 +94,7 @@ function toQueryParams(params: Record<string, any>): Record<string, any> {
       key === 'perPage' ? 'per_page'
       : key === 'startDate' ? 'start_date'
       : key === 'endDate' ? 'end_date'
+      : key === 'algorithmType' ? 'algorithm_type'
       : key;
     if (value !== undefined && value !== null && value !== '') {
       result[snakeKey] = value;

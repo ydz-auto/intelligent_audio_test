@@ -108,6 +108,10 @@ class TaskCrudService:
 
             status = (task.get('data') or {}).get('status')
             if status in [TaskStatus.RUNNING, TaskStatus.PAUSED]:
+                # INT-148 缺陷#4：删除前同步 stop（保留现同步实现）；gRPC 链路
+                # 卡慢导致耗时报警仅记录容错日志，不阻断删除
+                import time as _time
+                _stop_started = _time.monotonic()
                 try:
                     from task_service.core.execution_engine import execution_engine
                     execution_engine.control_task(task_id, 'stop')
@@ -118,6 +122,17 @@ class TaskCrudService:
                     execution_engine.remove_from_queue(task_id)
                 except Exception:
                     logger.warning("删除任务时从队列移除任务失败 task_id=%s", task_id, exc_info=True)
+                try:
+                    from task_service.config.config import Config
+                    _elapsed = _time.monotonic() - _stop_started
+                    if _elapsed > Config.TASK_DELETE_STOP_WARN_SECONDS:
+                        logger.warning(
+                            "删除任务前同步停止耗时超阈值（任务线程可能仍在收尾）"
+                            " task_id=%s elapsed=%.1fs threshold=%ss",
+                            task_id, _elapsed, Config.TASK_DELETE_STOP_WARN_SECONDS,
+                        )
+                except Exception:
+                    logger.debug("删除任务 stop 耗时统计失败 task_id=%s", task_id, exc_info=True)
 
             ok = task_repository.soft_delete(
                 task_id, deleted_by=get_current_user_id())

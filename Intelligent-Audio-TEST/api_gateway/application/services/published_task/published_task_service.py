@@ -87,6 +87,12 @@ class PublishedTaskService:
         per_page = min(max(int(params.get('perPage', params.get('per_page', 10))), 1), 100)
         status = params.get('status', '')
         keyword = params.get('keyword', '').strip()
+        task_type = (params.get('type') or '').strip().lower()
+        if task_type not in ('', 'all', 'api', 'e2e'):
+            return error_response(
+                'type 筛选参数仅支持 api/e2e', code=ErrorCode.INVALID_PARAMS, http_code=400,
+            )
+        algorithm_type = (params.get('algorithm_type', params.get('algorithmType', '')) or '').strip()
         benchmark = (params.get('benchmark') or '').strip().lower()
         if benchmark not in _BENCHMARK_FILTER_VALUES:
             return error_response(
@@ -97,6 +103,7 @@ class PublishedTaskService:
 
         result = _pt_acl.get_list(
             page=page, per_page=per_page, status=status, keyword=keyword,
+            task_type=task_type, algorithm_type=algorithm_type,
             benchmark=benchmark,
             start_date=start_date or '', end_date=end_date or '',
         )
@@ -111,6 +118,8 @@ class PublishedTaskService:
                 source_task_id=item.get('source_task_id'),
                 name=item.get('name'),
                 description=item.get('description'),
+                type=item.get('type'),
+                algorithm_type=item.get('algorithm_type'),
                 status=item.get('status'),
                 benchmark=bool(item.get('benchmark', False)),
                 version=item.get('version'),
@@ -150,6 +159,8 @@ class PublishedTaskService:
                 source_task_id=v.get('source_task_id'),
                 name=v.get('name'),
                 description=v.get('description'),
+                type=v.get('type'),
+                algorithm_type=v.get('algorithm_type'),
                 status=v.get('status'),
                 benchmark=bool(v.get('benchmark', False)),
                 version=v.get('version'),

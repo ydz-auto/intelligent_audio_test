@@ -48,6 +48,8 @@ class PublishedTaskItem(APIModel):
     source_task_id: Optional[int] = Field(None)
     name: str = Field(...)
     description: Optional[str] = Field(None)
+    type: Optional[str] = Field(None, description='任务类型 api/e2e（发布时由快照用例级 device_type 派生）')
+    algorithm_type: Optional[str] = Field(None, description='关联算法类型（发布时从快照冻结）')
     status: str = Field(...)
     benchmark: bool = Field(False, description='是否参与 Benchmark 排行')
     version: int = Field(...)

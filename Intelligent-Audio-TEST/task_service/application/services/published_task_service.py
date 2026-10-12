@@ -23,6 +23,10 @@ from task_service.infrastructure.persistence.published_task_repository import (
     published_task_repository as repo,
     PUBLISHABLE_STATUSES,
 )
+from task_service.infrastructure.persistence.models.published_task_models import (
+    PUBLISHED_TASK_TYPE_API,
+    PUBLISHED_TASK_TYPE_E2E,
+)
 from task_service.infrastructure.persistence.log_repository import log_repository
 
 logger = logging.getLogger(__name__)
@@ -98,6 +102,24 @@ class PublishedTaskService:
         if isinstance(value, str):
             return value.strip().lower() == 'true'
         return bool(value)
+
+    @staticmethod
+    def _derive_task_type(case_devices, api_ids=None) -> str:
+        """快照用例级被测设备 → 任务类型 api/e2e（对齐 V9.7.10 published_tasks.type）。
+
+        任一用例 device_type 为 http_api/websocket_api → api；否则 e2e。
+        历史快照无 caseDevices 时回退 apiIds 判断。
+        """
+        from shared.models.common_enums import DeviceType
+        api_device_types = {DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value}
+        for item in case_devices or []:
+            if (item.get('device_type') or '') in api_device_types:
+                return PUBLISHED_TASK_TYPE_API
+        if case_devices:
+            return PUBLISHED_TASK_TYPE_E2E
+        if api_ids:
+            return PUBLISHED_TASK_TYPE_API
+        return PUBLISHED_TASK_TYPE_E2E
 
     @staticmethod
     def _merge_benchmark_snapshot_fields(snapshot: dict, data: dict) -> dict:
@@ -183,6 +205,9 @@ class PublishedTaskService:
                 name=name,
                 description=data.get('description'),
                 source_task_id=source_task_id,
+                task_type=PublishedTaskService._derive_task_type(
+                    snapshot.get('caseDevices'), snapshot.get('apiIds')),
+                algorithm_type=snapshot.get('algorithmType'),
                 status='published',
                 version=1,
                 is_current=True,
@@ -216,6 +241,8 @@ class PublishedTaskService:
             'source_task_id': pt.source_task_id,
             'name': pt.name,
             'description': pt.description,
+            'type': getattr(pt, 'type', None),
+            'algorithm_type': getattr(pt, 'algorithm_type', None),
             'status': pt.status,
             'benchmark': bool(pt.benchmark),
             'version': pt.version,
@@ -230,12 +257,15 @@ class PublishedTaskService:
     @staticmethod
     def get_list(page: int = 1, per_page: int = 10, status: str = '',
                  keyword: str = '',
+                 task_type: str = '',
+                 algorithm_type: str = '',
                  benchmark=None,
                  start_date: str = '', end_date: str = '') -> dict:
-        """当前版本列表（分页 + status/keyword/benchmark/时间筛选 + 版本数统计）。"""
+        """当前版本列表（分页 + status/keyword/type/algorithm_type/benchmark/时间筛选 + 版本数统计）。"""
         try:
             rows, total = repo.get_list(
                 page=page, per_page=per_page, status=status, keyword=keyword,
+                task_type=task_type, algorithm_type=algorithm_type,
                 benchmark=benchmark,
                 start_date=start_date, end_date=end_date,
             )
@@ -391,9 +421,13 @@ class PublishedTaskService:
                     return {'success': False, 'message': err, 'data': None, 'code': code}
                 snapshot = PublishedTaskService._build_snapshot(task)
                 new_source_task_id = task.id
+                new_task_type = PublishedTaskService._derive_task_type(
+                    snapshot.get('caseDevices'), snapshot.get('apiIds'))
             else:
                 snapshot = dict(current.snapshot_config or {})
                 new_source_task_id = current.source_task_id
+                # 对齐 V9.7.10 create_version：沿用当前版本冻结值
+                new_task_type = getattr(current, 'type', None)
             # Benchmark 分组字段：请求未显式指定时继承当前版本快照（版本链语义延续）
             request_snapshot = PublishedTaskService._merge_benchmark_snapshot_fields({}, data)
             if not request_snapshot.get('benchmarkSuite'):
@@ -419,6 +453,8 @@ class PublishedTaskService:
                 description=data.get('description')
                 if data.get('description') is not None else current.description,
                 version=current.version + 1,
+                task_type=new_task_type,
+                algorithm_type=snapshot.get('algorithmType'),
                 benchmark=benchmark,
                 snapshot_config=snapshot,
                 publish_reason=data.get('publish_reason') or data.get('publishReason'),

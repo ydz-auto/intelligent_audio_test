@@ -73,6 +73,8 @@ class PublishedTaskRepository:
         source_task_id=None,
         name: str,
         description=None,
+        task_type: str = None,
+        algorithm_type: str = None,
         status: str = 'published',
         version: int = 1,
         is_current: bool = True,
@@ -95,6 +97,8 @@ class PublishedTaskRepository:
                 source_task_id=source_task_id,
                 name=name,
                 description=description,
+                type=task_type,
+                algorithm_type=algorithm_type,
                 status=status,
                 version=version,
                 is_current=is_current,
@@ -145,6 +149,8 @@ class PublishedTaskRepository:
         per_page: int = 10,
         status: str = '',
         keyword: str = '',
+        task_type: str = '',
+        algorithm_type: str = '',
         benchmark=None,
         start_date: str = '',
         end_date: str = '',
@@ -153,6 +159,8 @@ class PublishedTaskRepository:
 
         benchmark: True/False 精确过滤（供 Benchmark 排行实测轨消费），
         None/'' 表示不过滤。
+        task_type / algorithm_type: 精确过滤发布时冻结的冗余列
+        （type/algorithm_type，对齐 V9.7.10；'' 或 'all' 表示不过滤）。
         """
         session = get_db_session()
         try:
@@ -161,6 +169,10 @@ class PublishedTaskRepository:
             )
             if status:
                 query = query.filter(PublishedTask.status == status)
+            if task_type and task_type != 'all':
+                query = query.filter(PublishedTask.type == task_type)
+            if algorithm_type and algorithm_type != 'all':
+                query = query.filter(PublishedTask.algorithm_type == algorithm_type)
             benchmark_flag = parse_benchmark_filter(benchmark)
             if benchmark_flag is not None:
                 query = query.filter(PublishedTask.benchmark.is_(benchmark_flag))
@@ -292,6 +304,8 @@ class PublishedTaskRepository:
         name: str,
         description=None,
         version: int,
+        task_type: str = None,
+        algorithm_type: str = None,
         benchmark: bool = False,
         snapshot_config=None,
         publish_reason=None,
@@ -302,6 +316,7 @@ class PublishedTaskRepository:
 
         Args:
             benchmark: 新版本 Benchmark 标记（默认 False，由应用服务继承当前版本）
+            task_type / algorithm_type: 发布时冻结的冗余列（应用服务派生/继承）
             published_by: 新版本发布操作人（应用服务从请求上下文回填）
             demote_id: 旧当前版本 ID；同事务内置为 is_current=False
                 （与 V9.7.10 create_version 原子语义一致：旧版本 vN 置 False + 新版本 vN+1）。
@@ -319,6 +334,8 @@ class PublishedTaskRepository:
                 source_task_id=source_task_id,
                 name=name,
                 description=description,
+                type=task_type,
+                algorithm_type=algorithm_type,
                 status='published',
                 version=version,
                 is_current=True,
