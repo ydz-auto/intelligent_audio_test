@@ -34,6 +34,9 @@ from auth_service.infrastructure.persistence.user_repository import (
 from auth_service.infrastructure.persistence.oauth_provider_repository import (
     oauth_provider_repository,
 )
+from auth_service.infrastructure.persistence.oauth_binding_repository import (
+    oauth_binding_repository,
+)
 from auth_service.domain.entities.oauth_provider import OAuthProviderEntity
 from auth_service.domain.services.oauth_provider_service import (
     validate_provider_config,
@@ -55,6 +58,8 @@ from auth_service.application.commands.auth_commands import (
     CreateOAuthProviderCommand,
     UpdateOAuthProviderCommand,
     DeleteOAuthProviderCommand,
+    BindOAuthIdentityCommand,
+    UnbindOAuthIdentityCommand,
 )
 from auth_service.application.queries.auth_queries import (
     GetUserQuery,
@@ -69,12 +74,18 @@ from auth_service.application.queries.auth_queries import (
     ListOAuthProvidersQuery,
     GetOAuthProviderQuery,
     GetOAuthProviderBySlugQuery,
+    ListUserOAuthBindingsQuery,
 )
 from shared.models.common_enums import AuditEvent, AuthErrorCode
 
 _AUDIT_MODULE_USER = 'user_management'
 _AUDIT_MODULE_ROLE = 'role_management'
 _AUDIT_MODULE_OAUTH = 'oauth_provider_management'
+
+# 首个注册用户角色策略（INT-147 对齐旧库 New API 初始化语义）：
+# 空库时首个自助注册 / OAuth 引导用户自动获得 admin，保证新部署
+# 必有初始管理账号；后续用户走注册默认角色 guest。
+_FIRST_USER_ROLE_NAME = 'admin'
 
 
 def _raise_if(condition: bool, message: str,
@@ -121,6 +132,11 @@ class AuthCommandHandler:
             f'用户名已存在: {cmd.username}', AuthErrorCode.USERNAME_DUPLICATED,
         )
         role_id = self._resolve_role_id(cmd.role_name, cmd.role_id)
+        if ((cmd.registered or (not cmd.role_name and not cmd.role_id))
+                and user_repository.count_all() == 0):
+            first_role = role_repository.get_by_name(_FIRST_USER_ROLE_NAME)
+            if first_role is not None:
+                role_id = first_role.id
         aggregate = UserAggregate(
             username=cmd.username,
             email=cmd.email,
@@ -579,6 +595,50 @@ class AuthCommandHandler:
                                        'slug': entity.slug},
                          })
 
+    # ---- 第三方账号绑定（INT-147 对齐旧库 intent=bind 流程）----
+
+    def handle_bind_oauth_identity(self, cmd: BindOAuthIdentityCommand) -> dict:
+        """当前登录用户绑定第三方身份，返回绑定视图 dict。
+
+        冲突语义对齐旧库 bind_current_user：
+        - 身份 (provider_id, provider_user_id) 已绑定其他用户 → 异常；
+        - 身份被 users 表 OAuth 字段占用（预置 huawei 历史行）且属主非
+          当前用户 → 同样视为已绑定冲突；
+        - 当前用户重复绑定同一身份 → 幂等成功（no-op）。
+        """
+        _raise_if(
+            user_repository.get_by_id(cmd.user_id) is None,
+            f'用户不存在: id={cmd.user_id}', AuthErrorCode.USER_NOT_FOUND,
+        )
+        provider = oauth_provider_repository.get_by_id(cmd.provider_id)
+        _raise_if(provider is None,
+                  f'提供方不存在: id={cmd.provider_id}',
+                  AuthErrorCode.OAUTH_PROVIDER_NOT_FOUND)
+        existing = oauth_binding_repository.get_by_provider_identity(
+            cmd.provider_id, cmd.provider_user_id)
+        if existing is not None and existing.user_id != cmd.user_id:
+            # 身份冲突未归类 AuthErrorCode（泛化错误 → 网关 400）
+            raise AuthDomainError('该第三方账号已被其他用户绑定')
+        holder = user_repository.get_by_oauth(
+            provider.slug, cmd.provider_user_id)
+        if holder is not None and holder.id != cmd.user_id:
+            raise AuthDomainError('该第三方账号已被其他用户绑定')
+        if existing is None:
+            oauth_binding_repository.add(
+                cmd.user_id, cmd.provider_id, cmd.provider_user_id)
+        return {
+            'provider_id': provider.id,
+            'provider_name': provider.name,
+            'provider_slug': provider.slug,
+            'provider_icon': provider.icon,
+            'provider_user_id': cmd.provider_user_id,
+        }
+
+    def handle_unbind_oauth_identity(self, cmd: UnbindOAuthIdentityCommand) -> None:
+        """解绑指定提供方（幂等：无绑定行也视为成功，对齐旧库）。"""
+        oauth_binding_repository.delete_by_user_and_provider(
+            cmd.user_id, cmd.provider_id)
+
 
 class AuthQueryHandler:
     """认证查询处理器 —— 处理所有用户与权限相关读操作。
@@ -681,5 +741,24 @@ class AuthQueryHandler:
     def handle_verify_credentials(
         self, query: VerifyCredentialsQuery
     ) -> Optional[UserAggregate]:
-        """用户名+密码凭证校验（登录链路，只读；失败返回 None 不抛错）。"""
+        """账号(用户名或邮箱)+密码凭证校验（登录链路，只读；失败返回 None 不抛错）。"""
         return user_repository.verify_password(query.username, query.password)
+
+    def handle_list_user_oauth_bindings(
+        self, query: ListUserOAuthBindingsQuery
+    ) -> List[dict]:
+        """列出用户第三方账号绑定视图（提供方已删除的行静默跳过，对齐旧库）。"""
+        bindings = oauth_binding_repository.list_by_user(query.user_id)
+        result = []
+        for binding in bindings:
+            provider = oauth_provider_repository.get_by_id(binding.provider_id)
+            if provider is None:
+                continue
+            result.append({
+                'provider_id': provider.id,
+                'provider_name': provider.name,
+                'provider_slug': provider.slug,
+                'provider_icon': provider.icon,
+                'provider_user_id': binding.provider_user_id,
+            })
+        return result

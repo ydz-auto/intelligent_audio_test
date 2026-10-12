@@ -58,3 +58,20 @@ export interface OAuthProviderDetail extends OAuthProvider {
   createdAt: string
   updatedAt: string
 }
+
+// ===== 第三方账号绑定 / OIDC Discovery（INT-147）=====
+
+/** 第三方账号绑定（账号设置页展示，无凭证字段） */
+export interface OAuthBinding {
+  providerId: number
+  providerName: string
+  providerSlug: string
+  providerIcon: string
+  providerUserId: string
+}
+
+/** OIDC Discovery 拉取结果（discovery 为原文，端点提取由表单完成） */
+export interface OAuthDiscoveryResult {
+  wellKnownUrl: string
+  discovery: Record<string, unknown>
+}

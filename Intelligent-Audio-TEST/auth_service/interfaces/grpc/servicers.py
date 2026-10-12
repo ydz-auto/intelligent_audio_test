@@ -523,7 +523,7 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
     # ---- 登录体系改造（INT-51）----
 
     def LoginWithPassword(self, request, context=None) -> auth_pb.AuthResponse:
-        """用户名+密码登录校验（bcrypt 在 auth_service 内完成）"""
+        """账号(用户名或邮箱)+密码登录校验（bcrypt 在 auth_service 内完成）"""
         try:
             from auth_service.application.queries.auth_queries import (
                 VerifyCredentialsQuery,
@@ -687,3 +687,57 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
         except Exception as e:
             self._rollback()
             return self._error_response(e, 'DeleteOAuthProvider')
+
+    # ---- 第三方账号绑定（INT-147 对齐旧库 user_oauth_bindings）----
+
+    def ListUserOAuthBindings(self, request,
+                              context=None) -> auth_pb.AuthResponse:
+        """列出用户第三方账号绑定（含提供方展示信息）"""
+        try:
+            from auth_service.application.queries.auth_queries import (
+                ListUserOAuthBindingsQuery,
+            )
+            bindings = self.query_handler.handle_list_user_oauth_bindings(
+                ListUserOAuthBindingsQuery(
+                    user_id=getattr(request, 'user_id', 0)))
+            return _ok({'bindings': bindings})
+        except Exception as e:
+            logger.error("ListUserOAuthBindings 失败: %s", e, exc_info=True)
+            return _fail(str(e))
+
+    def BindUserOAuthIdentity(self, request,
+                              context=None) -> auth_pb.AuthResponse:
+        """当前用户绑定第三方身份（幂等；冲突返回失败）"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                BindOAuthIdentityCommand,
+            )
+            cmd = BindOAuthIdentityCommand(
+                user_id=getattr(request, 'user_id', 0),
+                provider_id=getattr(request, 'provider_id', 0),
+                provider_user_id=getattr(request, 'provider_user_id', ''),
+            )
+            binding = self.command_handler.handle_bind_oauth_identity(cmd)
+            self._commit()
+            return _ok(binding, '绑定成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'BindUserOAuthIdentity')
+
+    def UnbindUserOAuthIdentity(self, request,
+                                context=None) -> auth_pb.AuthResponse:
+        """当前用户解绑指定提供方（幂等，无绑定亦成功）"""
+        try:
+            from auth_service.application.commands.auth_commands import (
+                UnbindOAuthIdentityCommand,
+            )
+            cmd = UnbindOAuthIdentityCommand(
+                user_id=getattr(request, 'user_id', 0),
+                provider_id=getattr(request, 'provider_id', 0),
+            )
+            self.command_handler.handle_unbind_oauth_identity(cmd)
+            self._commit()
+            return _ok({}, '解绑成功')
+        except Exception as e:
+            self._rollback()
+            return self._error_response(e, 'UnbindUserOAuthIdentity')

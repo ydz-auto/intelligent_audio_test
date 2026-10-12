@@ -173,3 +173,23 @@ class DeleteOAuthProviderCommand:
     """删除 OAuth 提供方。"""
     provider_id: int
     operator_id: int = 0
+
+
+@dataclass(frozen=True)
+class BindOAuthIdentityCommand:
+    """当前登录用户绑定第三方身份（INT-147 对齐旧库 intent=bind 流程）。
+
+    幂等语义对齐旧库 bind_current_user：同一用户重复绑定同一身份 =
+    成功 no-op；身份已被其他用户绑定 → 领域异常（含 users 表 OAuth
+    字段占用的身份一并判定冲突）。
+    """
+    user_id: int
+    provider_id: int
+    provider_user_id: str
+
+
+@dataclass(frozen=True)
+class UnbindOAuthIdentityCommand:
+    """当前登录用户解绑指定提供方（幂等：无绑定也视为成功，对齐旧库）。"""
+    user_id: int
+    provider_id: int

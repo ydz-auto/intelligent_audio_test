@@ -57,3 +57,27 @@ export interface OAuthProviderDto {
   created_at: string
   updated_at: string
 }
+
+// ===== 登录密码加密传输 / 第三方账号绑定（INT-147）=====
+
+/** 登录密码加密公钥（GET /auth/login/encryption-key） */
+export interface PasswordEncryptionKeyDto {
+  enabled: boolean
+  kid?: string
+  public_key?: string
+}
+
+/** 第三方账号绑定（GET/POST /auth/oauth/bindings） */
+export interface OAuthBindingDto {
+  provider_id: number
+  provider_name: string
+  provider_slug: string
+  provider_icon: string
+  provider_user_id: string
+}
+
+/** OIDC Discovery 拉取结果（POST /auth/oauth/admin/discovery；原文整体返回） */
+export interface OAuthDiscoveryResultDto {
+  well_known_url: string
+  discovery: Record<string, unknown>
+}

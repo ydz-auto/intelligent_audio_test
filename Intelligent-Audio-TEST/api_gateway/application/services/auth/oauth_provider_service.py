@@ -195,13 +195,14 @@ class OAuthProviderService:
         return None
 
     @staticmethod
-    def build_authorize_url(config: Dict, redirect_uri: str) -> str:
-        """构造授权页跳转 URL（state 为短时效签名 token）。
+    def build_authorize_url(config: Dict, redirect_uri: str,
+                            intent: str = 'login') -> str:
+        """构造授权页跳转 URL（state 为短时效签名 token，携带 intent）。
 
         ACL 内联实现（不跨服务 import auth_service 领域模块）：
         scopes 为空时不携带 scope 参数。
         """
-        state = OAuthProviderService._sign_state(config['slug'])
+        state = OAuthProviderService._sign_state(config['slug'], intent=intent)
         params = {
             'client_id': config.get('client_id', ''),
             'redirect_uri': redirect_uri,
@@ -214,15 +215,17 @@ class OAuthProviderService:
 
     @staticmethod
     def handle_callback(slug: str, code: str, state: str,
-                        redirect_uri: str) -> UserInfo:
+                        redirect_uri: str,
+                        intent: str = 'login') -> UserInfo:
         """回调编排：state 校验 → 换 token → 拉 userinfo → 字段映射。
 
+        intent 须与 authorize 时签入 state 的意图一致（INT-147 绑定流程），
         失败抛 OAuthProviderError（路由层映射 401）。
         """
         config = OAuthProviderService.get_provider_config(slug)
         if config is None:
             raise OAuthProviderError(f'OAuth 提供方不存在或未启用: {slug}')
-        OAuthProviderService._verify_state(state, slug)
+        OAuthProviderService._verify_state(state, slug, intent=intent)
 
         token = OAuthProviderService._exchange_token(config, code, redirect_uri)
         userinfo = OAuthProviderService._fetch_userinfo(config, token)
@@ -235,15 +238,126 @@ class OAuthProviderService:
             display_name=display_name or None,
         )
 
+    # ---- intent=bind 绑定票据（INT-147）----
+
+    @staticmethod
+    def verify_state_intent(state: str, slug: str) -> str:
+        """校验 state 并返回其携带的 intent（'login'/'bind'）。
+
+        供回调路由在登录/绑定分支前判定流程意图；无效 state 抛
+        OAuthProviderError。历史 state（无 intent 声明）按 login 处理。
+        """
+        payload = jwt.decode(state, Config.JWT_SECRET,
+                             algorithms=[Config.JWT_ALGORITHM])
+        if payload.get('purpose') != 'oauth_state':
+            raise OAuthProviderError('state 用途不符')
+        if payload.get('slug') != slug:
+            raise OAuthProviderError('state 与提供方不匹配')
+        intent = payload.get('intent') or 'login'
+        return intent if intent in ('login', 'bind') else 'login'
+
+    @staticmethod
+    def sign_bind_ticket(provider_id: int, slug: str, provider_user_id: str,
+                         display_name: str = '') -> str:
+        """签发绑定票据（JWT，purpose=oauth_bind，短时效）。
+
+        intent=bind 回调不落库，仅把「已验真的第三方身份」以签名票据
+        回传前端，由前端携票据 + 登录态调 POST /oauth/bindings 完成绑定
+        （回调跳转无 Authorization 头，绑定完成必须回到已认证 API 通道）。
+        """
+        now = jwt_ts()
+        payload = {
+            'purpose': 'oauth_bind',
+            'provider_id': int(provider_id),
+            'slug': slug,
+            'provider_user_id': provider_user_id,
+            'display_name': display_name or '',
+            'iat': now,
+            'exp': now + Config.OAUTH_BIND_TICKET_TTL_SECONDS,
+        }
+        return jwt.encode(payload, Config.JWT_SECRET,
+                          algorithm=Config.JWT_ALGORITHM)
+
+    @staticmethod
+    def verify_bind_ticket(bind_ticket: str) -> Dict:
+        """校验绑定票据，返回 {provider_id, slug, provider_user_id, display_name}。
+
+        过期/篡改/用途不符抛 OAuthProviderError。
+        """
+        try:
+            payload = jwt.decode(bind_ticket or '', Config.JWT_SECRET,
+                                 algorithms=[Config.JWT_ALGORITHM])
+        except Exception as e:
+            raise OAuthProviderError(f'绑定票据校验失败: {e}') from e
+        if payload.get('purpose') != 'oauth_bind':
+            raise OAuthProviderError('绑定票据用途不符')
+        provider_id = int(payload.get('provider_id', 0) or 0)
+        provider_user_id = str(payload.get('provider_user_id', '') or '')
+        if not provider_id or not provider_user_id:
+            raise OAuthProviderError('绑定票据缺少身份字段')
+        return {
+            'provider_id': provider_id,
+            'slug': payload.get('slug', ''),
+            'provider_user_id': provider_user_id,
+            'display_name': payload.get('display_name', ''),
+        }
+
+    # ---- OIDC Discovery（INT-147 对齐旧库 POST /oauth/admin/discovery）----
+
+    @staticmethod
+    def fetch_discovery(body: Dict) -> Tuple[Dict, int]:
+        """拉取 OIDC Discovery 文档供提供方表单自动填充端点。
+
+        body: {well_known_url} 或 {issuer_url}（二选一，兼容 camelCase
+        wellKnownUrl/issuerUrl）；仅 issuer_url 时自动拼接
+        /.well-known/openid-configuration。discovery 原文整体返回，
+        字段提取由前端表单完成（对齐旧库语义）。
+        """
+        import httpx
+        from api_gateway.utils.error_codes import ErrorCode
+        from api_gateway.utils.response import error_response
+        well_known_url = ((body.get('well_known_url')
+                           or body.get('wellKnownUrl')) or '').strip()
+        issuer_url = ((body.get('issuer_url')
+                       or body.get('issuerUrl')) or '').strip()
+        if not well_known_url and not issuer_url:
+            return error_response('请填写 Discovery URL 或 Issuer URL',
+                                  code=ErrorCode.INVALID_PARAMS, http_code=400)
+        target_url = well_known_url or (
+            issuer_url.rstrip('/') + '/.well-known/openid-configuration')
+        try:
+            resp = httpx.get(target_url, headers={'Accept': 'application/json'},
+                             timeout=20)
+        except Exception as exc:
+            return error_response(f'获取 Discovery 配置失败: {exc}',
+                                  code=ErrorCode.OPERATION_FAILED,
+                                  http_code=400)
+        if resp.status_code != 200:
+            return error_response(
+                f'获取 Discovery 配置失败: HTTP {resp.status_code}',
+                code=ErrorCode.OPERATION_FAILED, http_code=400)
+        try:
+            discovery = resp.json()
+        except ValueError:
+            return error_response('解析 Discovery 配置失败',
+                                  code=ErrorCode.OPERATION_FAILED,
+                                  http_code=400)
+        return success_response({'well_known_url': target_url,
+                                 'discovery': discovery})
+
     # ---- 内部方法 ----
 
     @staticmethod
-    def _sign_state(slug: str) -> str:
-        """签发 OAuth state（JWT，purpose=oauth_state，短时效防 CSRF/重放）。"""
+    def _sign_state(slug: str, intent: str = 'login') -> str:
+        """签发 OAuth state（JWT，purpose=oauth_state，短时效防 CSRF/重放）。
+
+        intent（login/bind）签入 payload，回调按同意图校验（INT-147）。
+        """
         now = jwt_ts()
         payload = {
             'purpose': 'oauth_state',
             'slug': slug,
+            'intent': intent,
             'nonce': secrets.token_urlsafe(16),
             'iat': now,
             'exp': now + Config.OAUTH_STATE_TTL_SECONDS,
@@ -252,8 +366,8 @@ class OAuthProviderService:
                           algorithm=Config.JWT_ALGORITHM)
 
     @staticmethod
-    def _verify_state(state: str, slug: str) -> None:
-        """校验 state 签名/时效/slug 一致性，失败抛 OAuthProviderError。"""
+    def _verify_state(state: str, slug: str, intent: str = 'login') -> None:
+        """校验 state 签名/时效/slug/intent 一致性，失败抛 OAuthProviderError。"""
         try:
             payload = jwt.decode(state, Config.JWT_SECRET,
                                  algorithms=[Config.JWT_ALGORITHM])
@@ -263,6 +377,9 @@ class OAuthProviderService:
             raise OAuthProviderError('state 用途不符')
         if payload.get('slug') != slug:
             raise OAuthProviderError('state 与提供方不匹配')
+        state_intent = payload.get('intent') or 'login'
+        if state_intent != intent:
+            raise OAuthProviderError('state 流程意图与请求不符')
 
     @staticmethod
     def _exchange_token(config: Dict, code: str, redirect_uri: str) -> str:

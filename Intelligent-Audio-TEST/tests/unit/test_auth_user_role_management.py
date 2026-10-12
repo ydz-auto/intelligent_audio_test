@@ -219,6 +219,11 @@ class FakeUserRepository:
     def get_by_username(self, username):
         return self.by_name.get(username)
 
+    def count_all(self):
+        # INT-147 首个用户 admin 策略判定用：Fake 视为库非空，
+        # 不触发策略覆盖（本文件用例显式指定角色语义保持不变）
+        return len(self.users)
+
     def add(self, aggregate, password=None):
         aggregate.id = self.next_id
         self.next_id += 1

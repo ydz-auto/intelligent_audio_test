@@ -175,6 +175,21 @@ class AuthServiceStub:
                 request_serializer=auth__service__pb2.DeleteOAuthProviderRequest.SerializeToString,
                 response_deserializer=auth__service__pb2.AuthResponse.FromString,
                 _registered_method=True)
+        self.ListUserOAuthBindings = channel.unary_unary(
+                '/auth.AuthService/ListUserOAuthBindings',
+                request_serializer=auth__service__pb2.ListUserOAuthBindingsRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.BindUserOAuthIdentity = channel.unary_unary(
+                '/auth.AuthService/BindUserOAuthIdentity',
+                request_serializer=auth__service__pb2.BindUserOAuthIdentityRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
+        self.UnbindUserOAuthIdentity = channel.unary_unary(
+                '/auth.AuthService/UnbindUserOAuthIdentity',
+                request_serializer=auth__service__pb2.UnbindUserOAuthIdentityRequest.SerializeToString,
+                response_deserializer=auth__service__pb2.AuthResponse.FromString,
+                _registered_method=True)
 
 
 class AuthServiceServicer:
@@ -324,7 +339,7 @@ class AuthServiceServicer:
 
     def LoginWithPassword(self, request, context):
         """===== 登录体系改造（INT-51）=====
-        用户名+密码登录校验（服务端 bcrypt 校验 password_hash，成功返回用户数据）
+        用户名/邮箱+密码登录校验（服务端 bcrypt 校验 password_hash，成功返回用户数据）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -374,6 +389,28 @@ class AuthServiceServicer:
 
     def DeleteOAuthProvider(self, request, context):
         """删除提供方
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListUserOAuthBindings(self, request, context):
+        """===== 第三方账号绑定（INT-147 对齐旧库 user_oauth_bindings）=====
+        列出用户第三方账号绑定（含提供方展示信息）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BindUserOAuthIdentity(self, request, context):
+        """当前用户绑定第三方身份（幂等；已被其他用户绑定则失败）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UnbindUserOAuthIdentity(self, request, context):
+        """当前用户解绑指定提供方（幂等，无绑定亦成功）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -520,6 +557,21 @@ def add_AuthServiceServicer_to_server(servicer, server):
             'DeleteOAuthProvider': grpc.unary_unary_rpc_method_handler(
                     servicer.DeleteOAuthProvider,
                     request_deserializer=auth__service__pb2.DeleteOAuthProviderRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'ListUserOAuthBindings': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListUserOAuthBindings,
+                    request_deserializer=auth__service__pb2.ListUserOAuthBindingsRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'BindUserOAuthIdentity': grpc.unary_unary_rpc_method_handler(
+                    servicer.BindUserOAuthIdentity,
+                    request_deserializer=auth__service__pb2.BindUserOAuthIdentityRequest.FromString,
+                    response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
+            ),
+            'UnbindUserOAuthIdentity': grpc.unary_unary_rpc_method_handler(
+                    servicer.UnbindUserOAuthIdentity,
+                    request_deserializer=auth__service__pb2.UnbindUserOAuthIdentityRequest.FromString,
                     response_serializer=auth__service__pb2.AuthResponse.SerializeToString,
             ),
     }
@@ -1279,6 +1331,87 @@ class AuthService:
             target,
             '/auth.AuthService/DeleteOAuthProvider',
             auth__service__pb2.DeleteOAuthProviderRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListUserOAuthBindings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/ListUserOAuthBindings',
+            auth__service__pb2.ListUserOAuthBindingsRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BindUserOAuthIdentity(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/BindUserOAuthIdentity',
+            auth__service__pb2.BindUserOAuthIdentityRequest.SerializeToString,
+            auth__service__pb2.AuthResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UnbindUserOAuthIdentity(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/auth.AuthService/UnbindUserOAuthIdentity',
+            auth__service__pb2.UnbindUserOAuthIdentityRequest.SerializeToString,
             auth__service__pb2.AuthResponse.FromString,
             options,
             channel_credentials,

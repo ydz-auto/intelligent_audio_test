@@ -55,6 +55,10 @@ _XDIST_GROUP_RULES = (
     ('tests/unit/test_local_oauth_dev_bootstrap', 'auth_e2e'),
     # G3 HTTP e2e 族：注册默认角色 guest 的种子方，与 auth 族共享进程级库
     ('tests/unit/test_g3_', 'g3_e2e'),
+    # INT-147 认证对齐族：与 G3 同款进程级库 + 真实 servicer 模式；
+    # 首个用户 admin 用例会清空/快照恢复 users 表，按收集序排在
+    # 同组 test_g3_* 之后执行（g < int147），避免插入他例之间
+    ('tests/unit/test_int147_', 'g3_e2e'),
     # INT-72 适配器族：UC-1003 验收演练 fixture 以固定仓库内路径向 adapters
     # 包写入新厂商模块并 reload（跨 worker 共享文件，非进程安全），同文件
     # 用例被拆分并发执行会在 fixture 前置断言撞车；同族 adapter_class_channel

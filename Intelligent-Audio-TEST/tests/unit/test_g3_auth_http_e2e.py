@@ -120,10 +120,14 @@ def seeded(svc):
 def client(seeded, svc):
     """最小网关应用：真实路由 + 真实中间件；gRPC 代理直连真实 servicer。"""
     from auth_service.interfaces.grpc.servicers import AuthServicer
+    from api_gateway.config.config import Config
     proxy = type('P', (), {'stub': AuthServicer()})()
     import api_gateway.infrastructure.grpc_proxies as proxies_pkg
     import api_gateway.application.services.auth.management_common as mc
     mp = pytest.MonkeyPatch()
+    # INT-147：登录/注册密码默认走 RSA 加密传输；本文件验证注册/登录
+    # 基础契约，关闭加密开关保持明文契约（加密链路由 test_int147_* 覆盖）
+    mp.setattr(Config, 'AUTH_PASSWORD_ENCRYPTION_ENABLED', False)
     mp.setattr(proxies_pkg, 'auth_config_service', proxy)
     # management_common 在模块导入期绑定代理对象，需同步替换模块绑定
     mp.setattr(mc, 'auth_config_service', proxy)

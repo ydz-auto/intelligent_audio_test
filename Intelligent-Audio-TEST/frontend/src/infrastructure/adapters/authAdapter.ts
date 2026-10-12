@@ -4,9 +4,9 @@
  * 唯一允许出现 role_id → roleId 这类键名转换的地方。
  * 显式逐字段映射，禁止 ...raw/...dto 透传（分层架构对齐 W1-A）。
  */
-import type { AuthLoginResult, AuthUser, CurrentUserInfo, OAuthProvider, OAuthProviderDetail } from '../../domain/model/auth'
+import type { AuthLoginResult, AuthUser, CurrentUserInfo, OAuthProvider, OAuthProviderDetail, OAuthBinding, OAuthDiscoveryResult } from '../../domain/model/auth'
 import type { AuthLoginResultDto, AuthMeResultDto, AuthUserDto } from '../dto/authDto'
-import type { OAuthProviderDto, OAuthProviderPublicDto } from '../dto/authDto'
+import type { OAuthProviderDto, OAuthProviderPublicDto, OAuthBindingDto, OAuthDiscoveryResultDto } from '../dto/authDto'
 
 /** 登录响应内嵌用户 → AuthUser（Domain） */
 export function toAuthUser(raw: AuthUserDto): AuthUser {
@@ -80,4 +80,29 @@ export function toOAuthProvider(raw: OAuthProviderDto): OAuthProviderDetail {
 
 export function toOAuthProviderList(raw: OAuthProviderDto[]): OAuthProviderDetail[] {
   return (raw ?? []).map(toOAuthProvider)
+}
+
+// ===== 第三方账号绑定 / OIDC Discovery（INT-147）=====
+
+/** 绑定视图 → Domain（无凭证字段） */
+export function toOAuthBinding(raw: OAuthBindingDto): OAuthBinding {
+  return {
+    providerId: raw.provider_id,
+    providerName: raw.provider_name ?? '',
+    providerSlug: raw.provider_slug ?? '',
+    providerIcon: raw.provider_icon ?? '',
+    providerUserId: raw.provider_user_id ?? '',
+  }
+}
+
+export function toOAuthBindingList(raw: OAuthBindingDto[]): OAuthBinding[] {
+  return (raw ?? []).map(toOAuthBinding)
+}
+
+/** Discovery 拉取结果 → Domain（discovery 原文透传，不做字段裁剪） */
+export function toOAuthDiscoveryResult(raw: OAuthDiscoveryResultDto): OAuthDiscoveryResult {
+  return {
+    wellKnownUrl: raw.well_known_url ?? '',
+    discovery: raw.discovery ?? {},
+  }
 }

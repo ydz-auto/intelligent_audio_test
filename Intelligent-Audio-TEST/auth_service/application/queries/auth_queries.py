@@ -96,6 +96,12 @@ class GetOAuthProviderBySlugQuery:
 
 @dataclass(frozen=True)
 class VerifyCredentialsQuery:
-    """用户名+密码凭证校验（登录链路，只读无副作用）。"""
-    username: str
+    """账号(用户名或邮箱)+密码凭证校验（登录链路，只读无副作用）。"""
+    username: str  # 登录账号：用户名或邮箱（proto 字段名保持 username）
     password: str
+
+
+@dataclass(frozen=True)
+class ListUserOAuthBindingsQuery:
+    """列出用户第三方账号绑定（INT-147，读侧无副作用）。"""
+    user_id: int

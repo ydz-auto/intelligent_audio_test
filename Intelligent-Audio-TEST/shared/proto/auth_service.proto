@@ -48,7 +48,7 @@ service AuthService {
   rpc ListPermissions(ListPermissionsRequest) returns (AuthResponse);
 
   // ===== 登录体系改造（INT-51）=====
-  // 用户名+密码登录校验（服务端 bcrypt 校验 password_hash，成功返回用户数据）
+  // 用户名/邮箱+密码登录校验（服务端 bcrypt 校验 password_hash，成功返回用户数据）
   rpc LoginWithPassword(LoginWithPasswordRequest) returns (AuthResponse);
   // 自定义 OAuth 提供方管理：全部（管理端，含禁用）
   rpc ListOAuthProviders(ListOAuthProvidersRequest) returns (AuthResponse);
@@ -64,6 +64,14 @@ service AuthService {
   rpc UpdateOAuthProvider(UpdateOAuthProviderRequest) returns (AuthResponse);
   // 删除提供方
   rpc DeleteOAuthProvider(DeleteOAuthProviderRequest) returns (AuthResponse);
+
+  // ===== 第三方账号绑定（INT-147 对齐旧库 user_oauth_bindings）=====
+  // 列出用户第三方账号绑定（含提供方展示信息）
+  rpc ListUserOAuthBindings(ListUserOAuthBindingsRequest) returns (AuthResponse);
+  // 当前用户绑定第三方身份（幂等；已被其他用户绑定则失败）
+  rpc BindUserOAuthIdentity(BindUserOAuthIdentityRequest) returns (AuthResponse);
+  // 当前用户解绑指定提供方（幂等，无绑定亦成功）
+  rpc UnbindUserOAuthIdentity(UnbindUserOAuthIdentityRequest) returns (AuthResponse);
 }
 
 message GetUserRequest {
@@ -163,7 +171,7 @@ message ListPermissionsRequest {}
 
 // ===== 登录体系改造（INT-51）=====
 message LoginWithPasswordRequest {
-  string username = 1;
+  string username = 1;  // 登录账号：用户名或邮箱（INT-147 起支持邮箱登录）
   string password = 2;
 }
 message ListOAuthProvidersRequest {
@@ -215,6 +223,20 @@ message UpdateOAuthProviderRequest {
 message DeleteOAuthProviderRequest {
   int32 provider_id = 1;
   int32 operator_id = 2; // 操作者用户 ID（审计归因）
+}
+
+// ===== 第三方账号绑定（INT-147）=====
+message ListUserOAuthBindingsRequest {
+  int32 user_id = 1;
+}
+message BindUserOAuthIdentityRequest {
+  int32 user_id = 1;          // 当前登录用户 ID（网关从 JWT 注入）
+  int32 provider_id = 2;      // 提供方 ID (custom_oauth_providers.id)
+  string provider_user_id = 3; // 提供方侧用户 ID（bind 票据携带）
+}
+message UnbindUserOAuthIdentityRequest {
+  int32 user_id = 1;     // 当前登录用户 ID
+  int32 provider_id = 2; // 提供方 ID
 }
 message AuthResponse {
   bool success = 1;

@@ -68,6 +68,9 @@ class TestRegistrationSwitch:
 
     def _register(self, monkeypatch, enabled, create_ok=True):
         monkeypatch.setattr(Config, 'AUTH_REGISTRATION_ENABLED', enabled)
+        # INT-147：登录密码默认走 RSA 加密传输；本用例验证注册开关语义，
+        # 关闭加密开关保持明文注册契约（加密链路由 test_int147_* 覆盖）
+        monkeypatch.setattr(Config, 'AUTH_PASSWORD_ENCRYPTION_ENABLED', False)
         resp = auth_pb.AuthResponse(
             success=create_ok, message='创建成功',
             data=json.dumps({'user_id': 9}))

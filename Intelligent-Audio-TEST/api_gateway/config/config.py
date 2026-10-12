@@ -28,6 +28,23 @@ class Config(BaseConfig):
     # OAuth state 防伪签名有效期（秒）：授权跳转到回调的最长间隔
     OAUTH_STATE_TTL_SECONDS = int(os.environ.get('OAUTH_STATE_TTL_SECONDS', '600'))
 
+    # OAuth 绑定票据有效期（秒）：intent=bind 回调回前端票据的完成窗口（INT-147）
+    OAUTH_BIND_TICKET_TTL_SECONDS = int(
+        os.environ.get('OAUTH_BIND_TICKET_TTL_SECONDS', '300'))
+
+    # ===== 登录密码 RSA 加密传输（INT-147 对齐旧库安全基线）=====
+    # false 时 /auth/login、/auth/register 接受明文 password 字段（灰度回退）
+    AUTH_PASSWORD_ENCRYPTION_ENABLED = os.environ.get(
+        'AUTH_PASSWORD_ENCRYPTION_ENABLED', 'true').strip().lower() in (
+        '1', 'true', 'yes', 'on')
+    # RSA 私钥 PEM 持久化路径（不存在时自动生成；务必纳入备份）
+    AUTH_RSA_KEY_PATH = os.environ.get(
+        'AUTH_RSA_KEY_PATH',
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            'data', 'auth_key.pem'))
+
     # 自定义 OAuth 提供方回调基址（authorize redirect_uri 由它 + slug 拼接）
     OAUTH_REDIRECT_BASE = os.environ.get(
         'OAUTH_REDIRECT_BASE', 'http://localhost:8000')

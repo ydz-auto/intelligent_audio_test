@@ -36,6 +36,8 @@ class UserManagementService:
 
         INT-51：注册开关 AUTH_REGISTRATION_ENABLED 配置化，
         关闭后端点 403；任意 AUTH_MODE 可用（prod 密码登录同步放开）。
+        INT-147：密码 RSA 加密传输对齐旧库（password_encrypted +
+        encryption_key_id；解密失败 400「注册参数无效」）。
         """
         from api_gateway.config.config import Config
         if not Config.AUTH_REGISTRATION_ENABLED:
@@ -44,6 +46,24 @@ class UserManagementService:
         body = _json_body()
         username = (body.get('username') or '').strip()
         password = body.get('password') or ''
+        if Config.AUTH_PASSWORD_ENCRYPTION_ENABLED:
+            from api_gateway.application.services.auth.password_encryption import (
+                PasswordEncryptionError, PasswordEncryptionService,
+            )
+            password_encrypted = body.get('password_encrypted') or ''
+            encryption_key_id = body.get('encryption_key_id') or ''
+            if not password_encrypted or not encryption_key_id:
+                return error_response('请输入用户名、邮箱和密码',
+                                      code=ErrorCode.INVALID_PARAMS,
+                                      http_code=400)
+            try:
+                password = PasswordEncryptionService.decrypt_password(
+                    password_encrypted, encryption_key_id,
+                    Config.AUTH_RSA_KEY_PATH)
+            except PasswordEncryptionError:
+                return error_response('注册参数无效',
+                                      code=ErrorCode.INVALID_PARAMS,
+                                      http_code=400)
         if not username or not password:
             return error_response('username 与 password 为必填项',
                                   code=ErrorCode.INVALID_PARAMS, http_code=400)

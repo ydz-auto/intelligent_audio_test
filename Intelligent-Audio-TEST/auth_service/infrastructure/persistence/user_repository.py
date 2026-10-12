@@ -315,15 +315,19 @@ class UserRepository(UserRepositoryABC):
         session.flush()
         return True
 
-    def verify_password(self, username: str, password: str) -> Optional[UserAggregate]:
-        """校验用户名+密码（bcrypt），成功返回用户聚合，失败返回 None。
+    def verify_password(self, account: str, password: str) -> Optional[UserAggregate]:
+        """校验 账号(用户名或邮箱)+密码（bcrypt），成功返回用户聚合，失败返回 None。
 
+        INT-147 对齐旧库：username 或 email 任一匹配即可登录
+        （单查询 OR 匹配，email 按注册时原值精确比较）。
         用户不存在 / 无密码（OAuth 用户）/ 哈希不匹配 一律返回 None
         （不区分失败原因，避免用户名枚举）。
         """
         import bcrypt
         session = get_db_session()
-        po = session.query(User).filter_by(username=username).first()
+        po = session.query(User).filter(
+            or_(User.username == account, User.email == account),
+        ).first()
         if not po or not po.password_hash:
             return None
         try:
@@ -334,6 +338,19 @@ class UserRepository(UserRepositoryABC):
         except ValueError:
             return None
         return _user_po_to_entity(po)
+
+    def count_all(self) -> int:
+        """统计非软删除用户总数（首个注册用户 admin 策略判定，INT-147）。
+
+        排除 status='deleted'：全部用户被软删除后，下一次注册允许
+        重新引导出 admin（避免系统失去最后一个管理员后无法恢复）。
+        """
+        session = get_db_session()
+        return (
+            session.query(User)
+            .filter(User.status != UserStatus.DELETED.value)
+            .count()
+        )
 
     def update_last_login(self, user_id: int, ip: Optional[str] = None) -> None:
         """更新最后登录时间/IP（仅 flush，用户不存在则静默无操作）。"""

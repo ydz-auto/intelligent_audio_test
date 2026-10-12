@@ -13,7 +13,7 @@ P5 改造：从 shared/models/models/user_models.py 真正下沉到本服务。
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
     func, Column, Integer, BigInteger, String, Text, DateTime, Boolean, JSON,
-    ForeignKey,
+    ForeignKey, UniqueConstraint, Index,
 )
 from sqlalchemy.orm import relationship
 
@@ -124,6 +124,26 @@ class OAuthClient(Base):
     status = Column(String(20), nullable=False, default='active', comment='状态 (active/disabled)')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, server_default=func.now(), onupdate=utc8now, nullable=False, comment='更新时间')
+
+
+class UserOAuthBinding(Base):
+    """第三方账号绑定模型 (User OAuth Binding) — INT-147 对齐 V9.7.10。
+
+    一个第三方身份 (provider_id, provider_user_id) 至多绑定一个本地用户；
+    同一用户可绑定多个提供方（同一提供方多个账号不禁止，对齐旧库约束）。
+    """
+    __tablename__ = 'user_oauth_bindings'
+    __table_args__ = (
+        UniqueConstraint('provider_id', 'provider_user_id', name='uq_provider_user'),
+        Index('ix_binding_user', 'user_id'),
+    )
+    id = Column(Integer, primary_key=True, autoincrement=True, comment='绑定唯一ID')
+    user_id = Column(BigInteger, nullable=False, comment='关联用户ID')
+    provider_id = Column(Integer, nullable=False, index=True,
+                         comment='关联提供方ID (custom_oauth_providers.id)')
+    provider_user_id = Column(String(255), nullable=False, comment='提供方侧用户ID')
+    created_at = Column(DateTime, default=utc8now, server_default=func.now(),
+                        nullable=False, comment='绑定时间')
 
 
 class OAuthRefreshToken(Base):

@@ -2,15 +2,37 @@
 认证路由 — interfaces 层
 
 对齐 DDD 重构方案第八章「auth_bp 路由」。
-登录/回调/登出/刷新/获取当前用户信息。
+登录/回调/登出/刷新/获取当前用户信息/登录密码加密公钥（INT-147）。
 """
 from fastapi import APIRouter, Request, Form, Query
 from fastapi.responses import RedirectResponse, JSONResponse
 
 from api_gateway.application.services.auth.auth_service import AuthService
+from api_gateway.config.config import Config
 from api_gateway.routes._response import to_response
 
 router = APIRouter()
+
+
+@router.get('/login/encryption-key')
+def encryption_key():
+    """登录密码加密公钥下发（INT-147 对齐旧库 GET /auth/encryption-key）。
+
+    挂 /login 前缀下以复用 AuthMiddleware 登录白名单（登录/注册前无
+    token，须免认证可达）。加密开关关闭时返回 {enabled: false}，前端
+    回退明文提交。
+    """
+    from api_gateway.application.services.auth.password_encryption import (
+        PasswordEncryptionService,
+    )
+    if not Config.AUTH_PASSWORD_ENCRYPTION_ENABLED:
+        return to_response({'enabled': False})
+    try:
+        public_key_pem, kid = PasswordEncryptionService.get_public_key_info(
+            Config.AUTH_RSA_KEY_PATH)
+    except Exception as e:  # noqa: BLE001 — 密钥不可用收敛为 500，不暴露细节
+        return JSONResponse(status_code=500, content={'detail': str(e)})
+    return to_response({'enabled': True, 'kid': kid, 'public_key': public_key_pem})
 
 
 @router.get('/login')
@@ -21,8 +43,29 @@ def login_page():
 
 
 @router.post('/login')
-def login_submit(username: str = Form(...), password: str = Form(...)):
-    """开发模式：用户名/密码登录"""
+def login_submit(username: str = Form(...),
+                 password: str = Form(''),
+                 password_encrypted: str = Form(''),
+                 encryption_key_id: str = Form('')):
+    """账号(用户名/邮箱)+密码登录（INT-147：密码 RSA 加密传输 + 邮箱登录）。
+
+    加密开关开启时仅接受 password_encrypted/encryption_key_id（明文
+    password 字段被忽略，对齐旧库无明文回退）；解密失败与凭证错误
+    统一 401「用户名或密码错误」（防用户名枚举）。
+    """
+    from api_gateway.application.services.auth.password_encryption import (
+        PasswordEncryptionError, PasswordEncryptionService,
+    )
+    if Config.AUTH_PASSWORD_ENCRYPTION_ENABLED:
+        try:
+            password = PasswordEncryptionService.decrypt_password(
+                password_encrypted, encryption_key_id,
+                Config.AUTH_RSA_KEY_PATH)
+        except PasswordEncryptionError:
+            return JSONResponse(
+                status_code=401,
+                content={'detail': '用户名或密码错误'},
+            )
     try:
         result = AuthService.login_with_password(username, password)
         return to_response(result)

@@ -21,6 +21,20 @@
 
     <div v-if="formVisible" class="form-panel">
       <h3>{{ editingId ? '编辑提供方' : '新建提供方' }}</h3>
+      <div class="discovery-row">
+        <input
+          v-model="discoveryUrl"
+          type="text"
+          placeholder="Issuer URL 或 Discovery URL（如 https://idp.example.com）"
+          @keyup.enter="runDiscovery"
+        />
+        <button class="btn" :disabled="discovering" @click="runDiscovery">
+          {{ discovering ? '发现中...' : '自动发现端点' }}
+        </button>
+      </div>
+      <p class="discovery-hint">
+        填写 Issuer URL 自动拉取 OIDC Discovery 并填充授权/Token/用户信息端点（可手动覆盖）
+      </p>
       <div class="form-grid">
         <div class="form-group">
           <label>名称 *</label>
@@ -135,6 +149,8 @@ const error = ref('')
 const notice = ref('')
 const loading = ref(false)
 const saving = ref(false)
+const discovering = ref(false)
+const discoveryUrl = ref('')
 
 const formVisible = ref(false)
 const editingId = ref<number | null>(null)
@@ -175,6 +191,7 @@ function resetForm() {
     scopes: '', user_id_field: '', username_field: '',
     display_name_field: '', email_field: '',
   })
+  discoveryUrl.value = ''
 }
 
 function openCreate() {
@@ -203,12 +220,42 @@ function openEdit(p: OAuthProviderDetail) {
     email_field: p.emailField,
   })
   error.value = ''
+  discoveryUrl.value = ''
   formVisible.value = true
 }
 
 function closeForm() {
   formVisible.value = false
   editingId.value = null
+  discoveryUrl.value = ''
+}
+
+/** OIDC Discovery 自动填充（INT-147）：仅覆盖三个端点字段，其余不动 */
+async function runDiscovery() {
+  error.value = ''
+  const url = discoveryUrl.value.trim()
+  if (!url) {
+    error.value = '请先填写 Issuer URL 或 Discovery URL'
+    return
+  }
+  discovering.value = true
+  try {
+    const isWellKnown = url.includes('/.well-known/')
+    const result = await authPort.fetchOAuthDiscovery(
+      isWellKnown ? { well_known_url: url } : { issuer_url: url })
+    const d = result.discovery as Record<string, any>
+    if (d.authorization_endpoint) form.authorize_url = String(d.authorization_endpoint)
+    if (d.token_endpoint) form.token_url = String(d.token_endpoint)
+    if (d.userinfo_endpoint) form.userinfo_url = String(d.userinfo_endpoint)
+    if (d.scopes_supported && !form.scopes) {
+      form.scopes = (d.scopes_supported as string[]).join(' ')
+    }
+    notice.value = `Discovery 完成（${result.wellKnownUrl}），已填充端点配置`
+  } catch (e: any) {
+    error.value = e?.detail || e?.message || 'Discovery 拉取失败'
+  } finally {
+    discovering.value = false
+  }
 }
 
 async function save() {
@@ -317,6 +364,24 @@ onMounted(load)
 .form-panel h3 {
   margin: 0 0 16px;
   font-size: 16px;
+}
+.discovery-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.discovery-row input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--color-gray-300);
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.discovery-hint {
+  font-size: 12px;
+  color: var(--color-gray-400);
+  margin: 0 0 16px;
 }
 .form-grid {
   display: grid;

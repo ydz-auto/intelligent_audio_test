@@ -26,8 +26,10 @@
 
       <!-- 用户信息 + 登出 -->
       <div v-if="authStore.isLoggedIn && !sidebarCollapsed" class="sidebar-footer">
-        <span class="user-name">{{ authStore.username }}</span>
-        <span class="user-role" v-if="authStore.roleName">{{ authStore.roleName }}</span>
+        <button class="user-entry" @click="goAccountSettings" title="账号设置">
+          <span class="user-name">{{ authStore.username }}</span>
+          <span class="user-role" v-if="authStore.roleName">{{ authStore.roleName }}</span>
+        </button>
         <button class="logout-btn" @click="handleLogout">登出</button>
       </div>
     </aside>
@@ -148,6 +150,11 @@ function handleLogout() {
   router.push('/')
 }
 
+function goAccountSettings() {
+  // 账号设置入口（INT-147：第三方账号绑定管理）
+  router.push('/AccountSettings')
+}
+
 // 路由切换：重置滚动 + 侧边栏自动折叠
 watch(() => route.fullPath, () => {
   if (mainContentRef.value) {
@@ -224,6 +231,23 @@ onUnmounted(() => {
   align-items: center;
   gap: var(--spacing-sm);
   font-size: 13px;
+}
+
+.user-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  min-width: 0;
+}
+
+.user-entry:hover .user-name {
+  color: var(--primary-color);
+  text-decoration: underline;
 }
 
 .user-name {
