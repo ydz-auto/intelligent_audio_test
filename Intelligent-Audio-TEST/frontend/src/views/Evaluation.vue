@@ -15,6 +15,10 @@
             <i class="fas fa-plus btn-icon"></i>
             新增维度
           </button>
+          <button class="btn btn-text btn-link" @click="openAddCategoryModal">
+            <i class="fas fa-folder-plus btn-icon"></i>
+            新增分类
+          </button>
           <div class="btn-group" ref="batchMenuRef">
             <button class="btn btn-text btn-link dropdown-toggle" @click="toggleBatchMenu">
               <i class="fas fa-cogs btn-icon"></i>
@@ -278,6 +282,7 @@ const {
   getAlgorithmLabel,
   // 模态框操作函数
   openAddModal,
+  openAddCategoryModal,
   openEditModal,
   closeModal,
   importDimensions,
