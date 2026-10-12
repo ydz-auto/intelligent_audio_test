@@ -111,11 +111,16 @@ class GroupResultMixin:
             # 整体评估的 per_round 结果覆盖逐轮 TRD 记录（按 round_number 字段定位，不依赖数组下标）
             per_round = resp_data.get('per_round', []) if isinstance(resp_data, dict) else []
             if per_round:
+                # INT-176：仅原生 per_round（子服务守卫早返回路径打 per_round_native 标记）
+                # 落库后才允许清理旧逐轮行；切片 fallback / 旧版子服务无标记
+                # → is_native=False → 只覆盖不清理（子服务升级前绝对安全）
+                is_native = self._per_round_is_native(resp_data)
                 self._overwrite_round_results(
                     result_id=result_id, per_round=per_round,
                     group_items=group_items, session=local_db_session,
                     task_id=task_id, test_case_id=test_case_id,
                     api_request_body=api_request_body,
+                    is_native=is_native,
                 )
 
             # 循环结束后统一提交
@@ -135,6 +140,33 @@ class GroupResultMixin:
                 if self.is_multi_round_result(result_id):
                     self.aggregate_round_results(result_id, task_id, test_case_id)
                 self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
+
+    @staticmethod
+    def _unwrap_calc_result(resp_data):
+        """剥掉 code/data 与 result 包装，返回子服务的 calc result dict。
+
+        兼容两种到达形态：
+        - 同步 HTTP：{'code':..,'data':{'result':{...}}}
+        - 异步轮询取数后 / 事件回调：直接是裸 calc result {...}
+        非 dict 或剥完为空 → 返回 {}。
+        """
+        if not isinstance(resp_data, dict):
+            return {}
+        data = resp_data
+        if 'code' in data and 'data' in data:
+            data = data.get('data') or {}
+        if isinstance(data, dict) and 'result' in data:
+            data = data.get('result') or {}
+        return data if isinstance(data, dict) else {}
+
+    @classmethod
+    def _per_round_is_native(cls, resp_data):
+        """判定 per_round 是否为子服务原生投影（守卫早返回路径所打 per_round_native 标记）。
+
+        与 per_round 读取同款剥包装导航后读 calc result 顶层 per_round_native。
+        标记缺失（旧版子服务 / 切片重跑 fallback）→ False，保证绝不误触发清理。
+        """
+        return cls._unwrap_calc_result(resp_data).get('per_round_native') is True
 
     def _build_and_store_algorithm_results(self, result_id, task_id, test_case_id, test_type=TestType.API.value):
         """预提取 algorithm_results 扁平列表并存入 result_data['algorithm_results']。

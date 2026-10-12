@@ -100,22 +100,34 @@ class DimensionResultMixin:
         )
 
     def _overwrite_round_results(self, result_id, per_round, group_items, session,
-                                 task_id=None, test_case_id=None, api_request_body=None):
+                                 task_id=None, test_case_id=None, api_request_body=None,
+                                 is_native=False):
         """整体评估返回的 per_round 结果覆盖/创建逐轮 TRD 记录
 
         逐轮评估与整体评估异步并发：若同维度在同轮次已有逐轮评估记录，
         此处用整体评估 per_round 的值覆盖（口径一致）；逐轮未配置的维度则创建新记录。
+
+        is_native=True（子服务原生 per_round 投影，守卫路径打 per_round_native 标记）
+        且本次确有落库（upserted>0）时，覆盖完成后清理本 result × 打断族下
+        本次未产出的旧逐轮行（INT-176 自愈），使重评残留的幽灵行/孤儿切片行
+        不再永久残留。切片 fallback（is_native=False）只覆盖不清理。
 
         Args:
             result_id: TestResult 主键
             per_round: 整体评估响应中的 per_round[] 列表
             group_items: [(dim_data, dimension_result_id), ...] 整体评估的维度组
             session: 复用的数据库会话
+            is_native: per_round 是否为子服务原生投影（决定落库后是否清理旧行）
+
+        Returns:
+            int: 实际写入/覆盖的轮级记录数
         """
         from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
         if not result_id or not per_round:
-            return
+            return 0
         upserted = 0
+        # 本次真实产出的 (dim_id, round_idx) 对：native 清理的保留白名单（按维度精确）
+        produced_pairs = set()
         for per_round_item in per_round:
             if not isinstance(per_round_item, dict):
                 continue
@@ -123,7 +135,9 @@ class DimensionResultMixin:
             if round_idx is None:
                 continue
             for dim_data, _ in group_items:
-                raw_value, score = self.parse_dimension_result(per_round_item, dim_data)
+                # strict=True：per_round 条目按 field_path/mapping 严格投影，
+                # 无有效值（未投影维度/跳过项/缺音频）不产出、不覆盖
+                raw_value, score = self.parse_dimension_result(per_round_item, dim_data, strict=True)
                 if raw_value is None:
                     continue  # 该轮该维度无有效值（如缺少音频），不覆盖
 
@@ -149,6 +163,7 @@ class DimensionResultMixin:
                 trd.api_raw_response = per_round_item
                 trd.api_request_body = api_request_body
                 upserted += 1
+                produced_pairs.add((dim_id, round_idx))
 
                 self._log(
                     level='INFO',
@@ -161,6 +176,78 @@ class DimensionResultMixin:
                 )
         if upserted:
             session.flush()
+            # INT-176：仅原生投影落库成功后清理旧逐轮行（与 upsert 同 session/事务，
+            # 随外层统一 commit 原子生效）；upserted=0（judge 降级全跳过项）/
+            # 切片路径 / 空 per_round 均不进入清理
+            if is_native:
+                self._cleanup_stale_round_rows(
+                    result_id=result_id, group_items=group_items,
+                    produced_pairs=produced_pairs, session=session,
+                    task_id=task_id, test_case_id=test_case_id,
+                )
+        return upserted
+
+    def _cleanup_stale_round_rows(self, result_id, group_items, produced_pairs, session,
+                                  task_id=None, test_case_id=None):
+        """原生 per_round 落库后，删除本 result × 打断族下本次未产出的旧逐轮行（INT-176 自愈）。
+
+        重评 upsert 按 (result_id, dim_id, round_number) 只覆盖有值轮，本身无删除
+        逻辑；历史切片重跑遗留的 round-0 幽灵行、超出本次产出轮的孤儿切片行会
+        永久残留。本方法在原生投影成功落库后补齐「清旧」。
+
+        删除范围严格限定（误删是最大风险，逐条锁死）：
+        - 仅打断族维度（task_type_code 枚举集合取值，不硬编码维度 id、无魔法字符串）；
+          接管族(turn_taking)/裁判族(rejection_judge/interruption_judge)等其他
+          维度族即便同走本处理器也一律不动；
+        - 仅本 result（test_result_id == result_id），不跨 result；
+        - 仅逐轮行（round_number IS NOT NULL）；overall 整体行（round_number IS NULL）
+          天然豁免；
+        - 逐维度删除 round_number 不在「本次该维度产出轮集合」中的行；某维度本次
+          0 产出（如无 stop_intent 轮的子维度）→ 其逐轮行全为孤儿，全删。
+
+        调用门控（由 _overwrite_round_results 保证）：upserted=0 / 切片路径
+        （is_native=False）/ 空 per_round 一律不进入本方法——切片轮失败产生的
+        空 entry 按其产出集清理会误删该轮既有好行；原生为整例一次判定 + 纯函数
+        投影（全有或全无），产出集权威稳定。
+
+        Returns:
+            int: 删除的旧逐轮行数
+        """
+        from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
+        from evaluation_service.domain.value_objects.dimension_families import (
+            interruption_family_dim_ids,
+        )
+        # 打断族维度 id（以 task_type_code 枚举取值，不硬编码维度 id）
+        family_dim_ids = interruption_family_dim_ids(group_items)
+        if not family_dim_ids:
+            return 0
+
+        deleted_total = 0
+        for dim_id in family_dim_ids:
+            produced_rounds = sorted({r for (d, r) in produced_pairs if d == dim_id})
+            q = session.query(TestResultDimension).filter(
+                TestResultDimension.test_result_id == result_id,
+                TestResultDimension.dimension_id == dim_id,
+                TestResultDimension.round_number.isnot(None),
+            )
+            if produced_rounds:
+                # 保留本次产出轮，删除其余（幽灵行/孤儿切片行）
+                q = q.filter(~TestResultDimension.round_number.in_(produced_rounds))
+            # produced_rounds 为空 → 不加 in_ 过滤 → 该维度全部逐轮行皆孤儿，全删
+            deleted = q.delete(synchronize_session='fetch')
+            deleted_total += deleted
+
+        if deleted_total:
+            session.flush()
+            self._log(
+                level='INFO',
+                category='execution',
+                content=f"per_round 原生清旧: 用例ID: {test_case_id}, result_id={result_id}, "
+                        f"打断族维度={family_dim_ids}, 删除旧逐轮行={deleted_total}",
+                task_id=task_id,
+                test_case_id=test_case_id,
+            )
+        return deleted_total
 
     def update_all_dimensions_in_group_failed(self, group_items, error_message, task_id, test_case_id=None, api_raw_response=None, api_request_body=None):
         """

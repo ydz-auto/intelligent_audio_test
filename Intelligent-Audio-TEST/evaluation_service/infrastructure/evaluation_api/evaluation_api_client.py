@@ -51,15 +51,24 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 for endpoint_item in all_endpoints:
                     endpoint_url = get_endpoint_url(endpoint_item)
                     if endpoint_url:
-                        # 如果端点已经存在配置，不覆盖，确保配置的一致性
-                        if endpoint_url not in self.endpoint_configs:
-                            # 并发参数配置化：端点未配置并发数时用 config_manager 默认值
-                            max_process = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', self.default_max_concurrent)
+                        # 同一端点可能被多个维度引用且各维度 max_process 不同
+                        # （音频维度=5 限流、非音频维度=30 放开），取最大值作为
+                        # 端点消费能力，维度级并发由 eval_server 按 task_type 控制。
+                        max_process = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', self.default_max_concurrent)
+                        existing = self.endpoint_configs.get(endpoint_url)
+                        if existing is None:
                             self.endpoint_configs[endpoint_url] = max_process
                             self._log(
                                 level='debug',
                                 category='system',
                                 content=f'加载端点配置: {endpoint_url} | 最大并发数: {max_process}'
+                            )
+                        elif max_process > existing:
+                            self.endpoint_configs[endpoint_url] = max_process
+                            self._log(
+                                level='debug',
+                                category='system',
+                                content=f'更新端点配置(取最大并发): {endpoint_url} | 最大并发数: {max_process}'
                             )
         except Exception as e:
             stack_trace = traceback.format_exc()

@@ -11,7 +11,7 @@ from evaluation_service.domain.services.evaluation_utils import calculate_score
 class ParseDimensionMixin:
     """维度评估结果解析方法"""
 
-    def parse_dimension_result(self, resp_data, dim_data):
+    def parse_dimension_result(self, resp_data, dim_data, strict=False):
         """
         解析单个维度的评估结果。
 
@@ -19,7 +19,14 @@ class ParseDimensionMixin:
         1. EvaluationDimensionParam 表中 output_role=main 的 field_path
         2. output 参数中第一个有 field_path 的字段
         3. api_settings.response_mapping
-        4. 维度名兜底
+        4. 维度名兜底（strict=True 时跳过——per_round 投影用）
+
+        Args:
+            strict: 严格投影模式（per_round 逐轮条目解析专用）。per_round 条目
+                结构固定为 round_number + 指标键，通用兜底（维度名/首值提取）
+                会把 round_number 或首值误当维度值产出，使 0 产出维度误判
+                有产出、跳过项误产出——native 清理的保留集必须与投影语义
+                严格一致（V9.7.10 同口径），故逐轮解析跳过兜底。
         """
         dim_name = dim_data['name']
         dim_settings = dim_data['api_settings'] or {}
@@ -54,8 +61,8 @@ class ParseDimensionMixin:
         if raw_value is None and mapping:
             raw_value = extract_by_path(resp_data, mapping)
 
-        # 兜底逻辑：用维度名匹配
-        if raw_value is None:
+        # 兜底逻辑：用维度名匹配（strict 模式跳过，见方法 docstring）
+        if raw_value is None and not strict:
             raw_value = self._fallback_extract(resp_data, dim_name)
 
         # 2. 计算得分
