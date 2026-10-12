@@ -18,6 +18,8 @@ import os
 os.environ.setdefault('OSS_ACCESS_KEY', 'test')
 os.environ.setdefault('OSS_SECRET_KEY', 'test')
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from shared.models.database import (
@@ -76,8 +78,13 @@ def _add_cases(*cases):
     from task_service.infrastructure.persistence.models import TestCase
     session = get_db_session()
     try:
-        for tc_id, name, config in cases:
-            session.add(TestCase(id=tc_id, name=name, config=config))
+        # 显式单调 created_at（东八区对齐 utc8now 形态）：默认 utc8now() 同 flush
+        # 批量插入在 Windows 毫秒时钟粒度下会全同，created_at DESC 平局序由
+        # SQLite 插入序兜底、跨时钟 tick 即漂移，页切片精确顺序断言会假红
+        base = datetime(2026, 1, 1, tzinfo=timezone(timedelta(hours=8)))
+        for i, (tc_id, name, config) in enumerate(cases):
+            session.add(TestCase(id=tc_id, name=name, config=config,
+                                 created_at=base + timedelta(minutes=i)))
         session.commit()
     finally:
         remove_db_session()
@@ -130,10 +137,11 @@ class TestRepoTypeFilter:
         page1 = testcase_repository.query_testcases(test_type='e2e', page=1, per_page=2)
         assert page1.total == 3
         assert page1.pages == 2
-        assert [tc.id for tc in page1.items] == ['INT193_P1', 'INT193_P2']
+        # created_at 单调递增（P1→P3），列表 created_at DESC = 新者在前
+        assert [tc.id for tc in page1.items] == ['INT193_P3', 'INT193_P2']
 
         page2 = testcase_repository.query_testcases(test_type='e2e', page=2, per_page=2)
-        assert [tc.id for tc in page2.items] == ['INT193_P3']
+        assert [tc.id for tc in page2.items] == ['INT193_P1']
         # api 用例任何页都不出现
         for page in (page1, page2):
             assert all(tc.id.startswith('INT193_P') and tc.id not in ('INT193_P4', 'INT193_P5')
