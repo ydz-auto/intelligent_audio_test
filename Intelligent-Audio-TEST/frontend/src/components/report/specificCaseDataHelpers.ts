@@ -119,6 +119,7 @@ export function createCaseDataHelpers(deps: {
   selectedMetrics: any
   sortDimension: any
   selectedSortMetric: any
+  selectedSortResource: any
   sortOrder: any
   processTags: (tags: any) => any[]
 }) {
@@ -126,7 +127,7 @@ export function createCaseDataHelpers(deps: {
     props, cases, totalCases, currentPage, pageSize,
     casesLoading, casesLoadError,
     searchKeyword, selectedCategories, selectedTags, selectedMetrics,
-    sortDimension, selectedSortMetric, sortOrder,
+    sortDimension, selectedSortMetric, selectedSortResource, sortOrder,
     processTags
   } = deps
 
@@ -304,6 +305,7 @@ export function createCaseDataHelpers(deps: {
       if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
         params.sortBy = 'metric'
         params.sortMetric = selectedSortMetric.value
+        params.sortResource = selectedSortResource.value || undefined
         params.sortOrder = sortOrder.value
       } else {
         params.sortBy = sortDimension.value
@@ -334,6 +336,7 @@ export function createCaseDataHelpers(deps: {
       if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
         params.sortBy = 'metric'
         params.sortMetric = selectedSortMetric.value
+        params.sortResource = selectedSortResource.value || undefined
         params.sortOrder = sortOrder.value
       } else {
         params.sortBy = sortDimension.value

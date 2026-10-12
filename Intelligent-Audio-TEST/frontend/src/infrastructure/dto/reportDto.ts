@@ -409,6 +409,7 @@ export interface ReportSearchCasesDto {
   metrics?: string[]
   sort_by?: string
   sort_metric?: string | null
+  sort_resource?: string | null
   sort_order?: string
   page: number
   per_page: number

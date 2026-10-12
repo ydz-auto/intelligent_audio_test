@@ -61,11 +61,10 @@
             title="测试类型"
             @update:model-value="setTestTypeFilter"
           />
-          <BadgeFilter
+          <AlgorithmFilter
             :options="algorithmOptions"
             :model-value="algorithmTypeFilter"
-            all-label="所有算法"
-            title="算法类型"
+            title="算法筛选"
             @update:model-value="value => algorithmTypeFilter = String(value)"
           />
           <BadgeFilter
@@ -346,6 +345,7 @@
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
 import BadgeFilter from '../BadgeFilter.vue';
+import AlgorithmFilter from '../../algorithm/AlgorithmFilter.vue';
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../domain';

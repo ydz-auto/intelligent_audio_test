@@ -94,6 +94,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
   const selectedMetrics = ref<any[]>([])
   const sortDimension = ref('name')
   const selectedSortMetric = ref('')
+  const selectedSortResource = ref('')
   const sortOrder = ref('asc')
   const expandedCases = ref<any[]>([])
   const pinnedCases = ref<any[]>([])
@@ -136,6 +137,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     selectedMetrics,
     sortDimension,
     selectedSortMetric,
+    selectedSortResource,
     sortOrder,
     processTags
   })
@@ -175,6 +177,20 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     }
     return resourceKey;
   }
+
+  // 排序时可选资源对象列表：优先用 resourceHeaders（带展示名），否则回退到 allDevices 键（对齐 V9.7.10）
+  const sortResourceOptions = computed(() => {
+    const headers = resourceHeaders.value || []
+    const opts: { key: string; label: string }[] = []
+    headers.forEach((h: any) => {
+      if (!h) return
+      const key = h.key || h.resource
+      if (!key) return
+      opts.push({ key: String(key), label: String(h.label || h.name || key) })
+    })
+    if (opts.length > 0) return opts
+    return (allDevices.value || []).map((k: any) => ({ key: String(k), label: getResourceLabel(String(k)) || String(k) }))
+  })
 
   const { filteredCases } = createFilteredCases({
     cases, searchKeyword, selectedCategories, allTags, selectedTags,
@@ -265,7 +281,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     }
   }, 300)
 
-  watch([searchKeyword, selectedCategories, selectedTags, selectedMetrics, sortDimension, selectedSortMetric, sortOrder], () => {
+  watch([searchKeyword, selectedCategories, selectedTags, selectedMetrics, sortDimension, selectedSortMetric, selectedSortResource, sortOrder], () => {
     debouncedReload()
   }, { deep: true })
 
@@ -401,6 +417,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     selectedMetrics.value = []
     sortDimension.value = 'name'
     selectedSortMetric.value = ''
+    selectedSortResource.value = ''
     sortOrder.value = 'asc'
     tagSearchQuery.value = ''
     tagPage.value = 1
@@ -496,7 +513,7 @@ export function useSpecificCaseComparison(props: SpecificCaseComparisonProps) {
     tagPage, tagPageSize, totalTagPages,
     selectedMetrics, metricSearchQuery, paginatedMetrics, toggleMetric,
     filteredMetricsForDisplay, metricPage, metricPageSize, totalMetricPages,
-    sortDimension, selectedSortMetric, sortOrder, actualAllMetrics,
+    sortDimension, selectedSortMetric, selectedSortResource, sortResourceOptions, sortOrder, actualAllMetrics,
     resetFilters, applyFilters,
     pinnedCases, togglePin,
     getResourceLabel, resourceHeaders,

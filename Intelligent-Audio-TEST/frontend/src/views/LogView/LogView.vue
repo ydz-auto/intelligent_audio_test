@@ -41,6 +41,7 @@
       :filters="filters"
       :advancedFilters="advancedFilters"
       :searchTerm="searchTerm"
+      @update:searchTerm="searchTerm = $event"
       :logLevels="logLevels"
       :selectedLevels="selectedLevels"
       :showAdvancedFilter="showAdvancedFilter"

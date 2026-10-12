@@ -55,6 +55,7 @@
       <div class="algorithm-filter-row">
         <AlgorithmFilter
           v-model="filters.algorithmType"
+          :options="algorithmFilterOptions"
           title="算法筛选"
           @update:model-value="applyFilters"
         />
@@ -277,7 +278,9 @@ const {
   pathBasename: pathBasename,
   testCaseGeneratedCount,
   showTestCaseGeneratedTip,
-  goToTestCaseManager
+  goToTestCaseManager,
+  algorithmOptions,
+  fetchAlgorithmOptions
 } = useAudioImport();
 
 const { pendingAction, consumeAction } = useUploadState();
@@ -360,7 +363,14 @@ const handleExpandFolder = async (folderPath: string) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeyDown);
+  // 算法徽章筛选选项来源对齐 V9.7.10：复用页面算法列表（上传用），而非组件内置全局清单
+  fetchAlgorithmOptions();
 });
+
+// 算法徽章筛选选项（{value,name} → {value,label}，对齐 V9.7.10 algorithmFilterOptions）
+const algorithmFilterOptions = computed(() =>
+  (algorithmOptions.value || []).map(a => ({ value: a.value, label: a.name }))
+);
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKeyDown);

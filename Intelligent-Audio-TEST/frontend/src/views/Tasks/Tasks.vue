@@ -108,34 +108,20 @@
         </section>
       </div>
 
-      <!-- 筛选和排序栏 -->
+      <!-- 筛选和排序栏（对齐 V9.7.10：徽章筛选行） -->
       <section class="filter-sort-section" v-if="!showComparisonReport">
         <div class="filter-row">
           <input type="text" class="search-input" placeholder="搜索任务名称、标签..." v-model="searchTerm" @input="handleSearch">
-          
-          <div class="filter-item">
-            <label for="algorithm-filter">算法类型：</label>
-            <select class="filter-select" id="algorithm-filter" v-model="filters.algorithmType" @change="applyFilters">
-              <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-            </select>
-          </div>
-          
-          <div class="filter-item">
-            <label for="status-filter">任务状态：</label>
-            <select class="filter-select" id="status-filter" v-model="filters.status" @change="applyFilters">
-              <option :value="ViewMode.ALL">全部状态</option>
-              <option :value="TaskStatus.PENDING">待执行</option>
-              <option :value="TaskStatus.QUEUED">排队中</option>
-              <option :value="TaskStatus.RUNNING">执行中</option>
-              <option :value="TaskStatus.EVALUATING">评估中</option>
-              <option :value="TaskStatus.REEVALUATE_QUEUED">重新评估排队中</option>
-              <option :value="TaskStatus.REEVALUATING">重新评估中</option>
-              <option :value="TaskStatus.COMPLETED">已完成</option>
-              <option :value="TaskStatus.FAILED">执行失败</option>
-              <option value="deleted">已删除（回收站）</option>
-              <option :value="TaskStatus.MERGED">已合并</option>
-            </select>
-          </div>
+
+          <BadgeFilter
+            :options="STATUS_FILTER_OPTIONS"
+            :model-value="filters.status"
+            all-label="全部状态"
+            title="任务状态"
+            collapsible
+            :collapsed-count="8"
+            @update:model-value="handleStatusBadgeChange"
+          />
 
           <!-- INT-141：收藏筛选 -->
           <div class="filter-item">
@@ -145,33 +131,29 @@
             </label>
           </div>
         </div>
-        
+
         <div class="filter-row">
-          <div class="filter-item">
-            <label for="time-filter">时间范围：</label>
-            <select class="filter-select" id="time-filter" v-model="filters.timeRange" @change="applyFilters">
-              <option value="all">全部时间</option>
-              <option value="today">今日</option>
-              <option value="yesterday">昨日</option>
-              <option value="week">近7天</option>
-              <option value="month">近30天</option>
-              <option value="custom">自定义</option>
-            </select>
-          </div>
-          
+          <BadgeFilter
+            :options="TIME_RANGE_OPTIONS"
+            :model-value="filters.timeRange"
+            all-label="全部时间"
+            title="时间范围"
+            @update:model-value="handleTimeRangeBadgeChange"
+          />
+
           <!-- 自定义时间范围 -->
           <div class="filter-item custom-time-range" v-if="filters.timeRange === 'custom'">
             <div>
               <label for="start-date">开始:</label>
-              <input type="date" id="task-start-date" class="date-input" v-model="customDateRange.start">
+              <input type="date" id="task-start-date" class="date-input" v-model="customDateRange.start" @change="applyFilters">
             </div>
             <span>至</span>
             <div>
               <label for="end-date">结束:</label>
-              <input type="date" id="task-end-date" class="date-input" v-model="customDateRange.end">
+              <input type="date" id="task-end-date" class="date-input" v-model="customDateRange.end" @change="applyFilters">
             </div>
           </div>
-          
+
           <div class="sort-options">
             <span>排序：</span>
             <div class="sort-item" :class="{ active: sortConfig.field === 'createdAt' }" @click="toggleSort('createdAt')">
@@ -184,6 +166,16 @@
               名称 <i class="fas" :class="sortConfig.field === 'title' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
             </div>
           </div>
+        </div>
+
+        <!-- 算法筛选（徽章单选） -->
+        <div class="filter-row">
+          <AlgorithmFilter
+            :options="algorithmOptions"
+            :model-value="filters.algorithmType"
+            title="算法筛选"
+            @update:model-value="handleAlgorithmBadgeChange"
+          />
         </div>
       </section>
       
@@ -338,12 +330,36 @@
 
 <script setup lang="ts">
 import { useTasks } from './tasks';
-import { TaskStatus, FINISHED_STATUSES, ViewMode } from '@/domain/enums';
+import { TaskStatus, FINISHED_STATUSES } from '@/domain/enums';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
 import TaskDataExportDialog from '../../components/task/TaskDataExportDialog.vue';
 import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue';
+import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
+
+// ===== 筛选选项（组件级 UI 常量，对齐 V9.7.10 徽章筛选行）=====
+const STATUS_FILTER_OPTIONS = [
+  { value: TaskStatus.PENDING, label: '待执行' },
+  { value: TaskStatus.QUEUED, label: '排队中' },
+  { value: TaskStatus.RUNNING, label: '执行中' },
+  { value: TaskStatus.EVALUATING, label: '评估中' },
+  { value: TaskStatus.REEVALUATE_QUEUED, label: '重新评估排队中' },
+  { value: TaskStatus.REEVALUATING, label: '重新评估中' },
+  { value: TaskStatus.COMPLETED, label: '已完成' },
+  { value: TaskStatus.FAILED, label: '执行失败' },
+  { value: 'deleted', label: '已删除（回收站）' },
+  { value: TaskStatus.MERGED, label: '已合并' },
+];
+
+const TIME_RANGE_OPTIONS = [
+  { value: 'today', label: '今日' },
+  { value: 'yesterday', label: '昨日' },
+  { value: 'week', label: '近7天' },
+  { value: 'month', label: '近30天' },
+  { value: 'custom', label: '自定义' },
+];
 
 const {
   tasks,
@@ -402,6 +418,22 @@ const {
   isFavorite,
   batchPurge
 } = useTasks();
+
+// ===== 徽章筛选变更（写入 ReadModel 筛选状态后统一走 applyFilters）=====
+function handleStatusBadgeChange(value: string | number) {
+  filters.value.status = String(value);
+  applyFilters();
+}
+
+function handleTimeRangeBadgeChange(value: string | number) {
+  filters.value.timeRange = String(value);
+  applyFilters();
+}
+
+function handleAlgorithmBadgeChange(value: string | number) {
+  filters.value.algorithmType = String(value);
+  applyFilters();
+}
 </script>
 
 <style scoped>@import './Tasks.css';

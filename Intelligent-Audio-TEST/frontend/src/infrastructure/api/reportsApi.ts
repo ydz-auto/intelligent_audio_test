@@ -162,6 +162,7 @@ export const reportsApi = {
       metrics: b.metrics,
       sortBy: b.sortBy ?? b.sort_by,
       sortMetric: b.sortMetric ?? b.sort_metric,
+      sortResource: b.sortResource ?? b.sort_resource,
       sortOrder: b.sortOrder ?? b.sort_order,
       page: b.page,
       perPage: b.perPage ?? b.per_page,

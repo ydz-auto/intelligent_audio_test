@@ -55,42 +55,31 @@
           title="报告类型"
           @update:model-value="handleReportTypeFilterChange"
         />
-        
-        <div class="filter-item">
-          <label for="report-status-filter">报告状态：</label>
-          <select class="filter-select" 
-                  id="report-status-filter"
-                  v-model="filters.reportStatus"
-                  @change="handleFilterChange">
-            <option value="all">全部状态</option>
-            <option :value="ReportStatus.DRAFT">草稿</option>
-            <option :value="ReportStatus.PUBLISHED">已发布</option>
-          </select>
-        </div>
-        
-        <div class="filter-item">
-          <label for="time-filter">时间范围：</label>
-          <select class="filter-select" 
-                  id="time-filter"
-                  v-model="filters.timeRange"
-                  @change="handleFilterChange">
-            <option value="all">全部时间</option>
-            <option value="today">今日</option>
-            <option value="yesterday">昨日</option>
-            <option value="week">近7天</option>
-            <option value="month">近30天</option>
-            <option value="custom">自定义</option>
-          </select>
-        </div>
+
+        <BadgeFilter
+          :options="REPORT_STATUS_OPTIONS"
+          :model-value="filters.reportStatus"
+          all-label="全部状态"
+          title="报告状态"
+          @update:model-value="handleReportStatusFilterChange"
+        />
+
+        <BadgeFilter
+          :options="TIME_RANGE_OPTIONS"
+          :model-value="filters.timeRange"
+          all-label="全部时间"
+          title="时间范围"
+          @update:model-value="handleTimeRangeFilterChange"
+        />
       </div>
-      
+
       <div class="filter-row">
         <!-- 自定义时间范围 -->
         <div class="filter-item custom-time-range" v-if="filters.timeRange === 'custom'">
           <div>
             <label for="start-date">开始:</label>
-            <input type="date" 
-                   id="report-start-date" 
+            <input type="date"
+                   id="report-start-date"
                    class="date-input"
                    v-model="filters.startDate"
                    @change="handleFilterChange">
@@ -98,8 +87,8 @@
           <span>至</span>
           <div>
             <label for="end-date">结束:</label>
-            <input type="date" 
-                   id="report-end-date" 
+            <input type="date"
+                   id="report-end-date"
                    class="date-input"
                    v-model="filters.endDate"
                    @change="handleFilterChange">
@@ -108,19 +97,13 @@
             <i class="fas fa-times"></i> 清除
           </button>
         </div>
-        
-        <div class="filter-item">
-          <label for="algorithm-type-filter">算法类型：</label>
-          <select class="filter-select" 
-                  id="algorithm-type-filter"
-                  v-model="filters.algorithmType"
-                  @change="handleFilterChange">
-            <option value="all">全部类型</option>
-            <option v-for="option in algorithmOptions" :key="option.value" :value="option.value">
-              {{ option.label }}
-            </option>
-          </select>
-        </div>
+
+        <AlgorithmFilter
+          :options="algorithmOptions"
+          :model-value="filters.algorithmType"
+          title="算法筛选"
+          @update:model-value="handleAlgorithmFilterChange"
+        />
         
         <div class="sort-options">
           <span>排序：</span>
@@ -253,7 +236,7 @@
               <i class="fas fa-calendar-alt"></i>
               {{ formatDate(report.createdAt) }}
             </span>
-            <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison'">
+            <template v-if="report.type === 'comparison' || report.type === 'secondary_comparison'">
               <span class="report-card-meta-item">
                 <i class="fas fa-cubes"></i>
                 {{ report.summary?.taskCount || 0 }} 个任务对比
@@ -299,6 +282,7 @@ import { ReportStatus } from '@/domain/enums';
 import type { Report } from '../../domain';
 import { useHistoryReports, REPORT_TABS } from './historyReports';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 
 const {
@@ -384,15 +368,43 @@ const reportSections = computed<ReportViewSection[]>(() => {
   }].filter(section => section.reports.length > 0);
 });
 
-// 报告类型选项（原下拉框硬编码迁移为常量）
+// 报告类型选项（domain ReportType 后端原值，与 historyReports.ts COMPARISON_REPORT_TYPES 对齐）
 const REPORT_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: 'comparison', label: '对比报告' },
-  { value: 'secondaryComparison', label: '二次对比报告' },
+  { value: 'secondary_comparison', label: '二次对比报告' },
   { value: 'task', label: '任务报告' },
+];
+
+const REPORT_STATUS_OPTIONS = [
+  { value: ReportStatus.DRAFT, label: '草稿' },
+  { value: ReportStatus.PUBLISHED, label: '已发布' },
+];
+
+const TIME_RANGE_OPTIONS = [
+  { value: 'today', label: '今日' },
+  { value: 'yesterday', label: '昨日' },
+  { value: 'week', label: '近7天' },
+  { value: 'month', label: '近30天' },
+  { value: 'custom', label: '自定义' },
 ];
 
 function handleReportTypeFilterChange(value: string | number) {
   filters.value.reportType = String(value) as any;
+  handleFilterChange();
+}
+
+function handleReportStatusFilterChange(value: string | number) {
+  filters.value.reportStatus = String(value) as any;
+  handleFilterChange();
+}
+
+function handleTimeRangeFilterChange(value: string | number) {
+  filters.value.timeRange = String(value) as any;
+  handleFilterChange();
+}
+
+function handleAlgorithmFilterChange(value: string | number) {
+  filters.value.algorithmType = String(value);
   handleFilterChange();
 }
 </script>
@@ -425,7 +437,6 @@ function handleReportTypeFilterChange(value: string | number) {
 }
 .bar-toggle i { color: #f5a623; }
 .bar-toggle i.fa-trash-restore { color: inherit; }
-</style>
 
 
 

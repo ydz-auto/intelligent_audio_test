@@ -16,7 +16,7 @@
       </div>
     </section>
 
-    <!-- 筛选栏 -->
+    <!-- 筛选栏（徽章筛选，对齐全局筛选交互） -->
     <section class="filter-section">
       <input
         type="text"
@@ -25,23 +25,20 @@
         v-model="pt.filters.keyword"
         @input="handleFilterChange"
       />
-      <div class="filter-item">
-        <label>状态：</label>
-        <select v-model="pt.filters.status" @change="handleFilterChange">
-          <option v-for="opt in pt.statusOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-        </select>
-      </div>
-      <div class="filter-item">
-        <label>时间：</label>
-        <select v-model="pt.filters.timeRange" @change="handleFilterChange">
-          <option value="all">全部时间</option>
-          <option value="today">今日</option>
-          <option value="yesterday">昨日</option>
-          <option value="week">近7天</option>
-          <option value="month">近30天</option>
-          <option value="custom">自定义</option>
-        </select>
-      </div>
+      <BadgeFilter
+        :options="pt.statusOptions"
+        :model-value="pt.filters.status"
+        all-label="全部状态"
+        title="状态"
+        @update:model-value="handleStatusBadgeChange"
+      />
+      <BadgeFilter
+        :options="TIME_RANGE_OPTIONS"
+        :model-value="pt.filters.timeRange"
+        all-label="全部时间"
+        title="时间"
+        @update:model-value="handleTimeRangeBadgeChange"
+      />
       <div class="filter-item custom-range" v-if="pt.filters.timeRange === 'custom'">
         <input type="date" v-model="pt.filters.customRange.start" @change="handleFilterChange" />
         <span>至</span>
@@ -135,7 +132,7 @@
               <span class="pt-detail-name">{{ pt.detail.reportSnapshot.name }}</span>
               <span class="pt-detail-time">用例 {{ pt.detail.reportSnapshot.summary.completedCases }}/{{ pt.detail.reportSnapshot.summary.totalCases }}</span>
               <span class="pt-detail-time">通过率 {{ formatPassRate(pt.detail.reportSnapshot.summary.passRate) }}</span>
-              <button class="btn btn-primary btn-sm" @click="openReportSnapshot(pt.detail.reportSnapshot)">
+              <button class="btn btn-primary btn-sm" @click="openReportSnapshot">
                 <i class="fas fa-eye"></i> 查看冻结报告
               </button>
             </div>
@@ -183,26 +180,123 @@
       :snapshot="pt.detail.reportSnapshot"
       @close="reportSnapshotOpen = false"
     />
+
+    <!-- 命名弹窗（重命名 / 新版本命名） -->
+    <PublishedTaskNameModal
+      v-if="nameModal.visible"
+      :title="nameModal.title"
+      :label="nameModal.label"
+      :hint="nameModal.hint"
+      :initial-value="nameModal.initialValue"
+      :placeholder="nameModal.placeholder"
+      confirm-text="确定"
+      @close="nameModal.visible = false"
+      @confirm="handleNameModalConfirm"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, reactive, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { usePublishedTasks, PublishedTaskStatusEnum } from '../../composables/publishedTask/usePublishedTasks';
 import { tasksPort } from '../../composables/task/tasksPort';
+import { useNotification } from '../../composables/modal/useNotification';
+import { useModalControl } from '../../composables/modal/useModal';
+import { MODAL_TYPES } from '../../composables/modal/constants';
 import { BenchmarkCategoryLabels, type BenchmarkCategoryType } from '../../domain/enums';
 import type { Task } from '../../domain/model/task';
 import type { PublishedTaskItem } from '../../domain/model/publishedTask';
 import PublishTaskModal from '../../components/published-task/PublishTaskModal.vue';
 import ReportSnapshotModal from '../../components/published-task/ReportSnapshotModal.vue';
+import PublishedTaskNameModal from '../../components/published-task/PublishedTaskNameModal.vue';
+import BadgeFilter from '../../components/common/BadgeFilter.vue';
 
+const router = useRouter();
 const pt = usePublishedTasks();
+const notification = useNotification();
+const modal = useModalControl();
 
 const expandedId = ref<number | null>(null);
 const publishModalVisible = ref(false);
 const presetSourceTaskId = ref<number | null>(null);
 const reportSnapshotOpen = ref(false);
 const dailyTasks = ref<Task[]>([]);
+
+// ===== 筛选选项（组件级 UI 常量）=====
+const TIME_RANGE_OPTIONS = [
+  { value: 'today', label: '今日' },
+  { value: 'yesterday', label: '昨日' },
+  { value: 'week', label: '近7天' },
+  { value: 'month', label: '近30天' },
+  { value: 'custom', label: '自定义' },
+];
+
+// ===== 命名弹窗状态（重命名 / 新版本共用）=====
+const nameModal = reactive({
+  visible: false,
+  mode: 'rename' as 'rename' | 'createVersion',
+  title: '',
+  label: '',
+  hint: '',
+  placeholder: '',
+  initialValue: '',
+  ptItem: null as PublishedTaskItem | null,
+});
+
+function openNameModal(payload: {
+  mode: 'rename' | 'createVersion';
+  ptItem: PublishedTaskItem;
+  title: string;
+  label: string;
+  hint?: string;
+  placeholder?: string;
+  initialValue?: string;
+}) {
+  nameModal.mode = payload.mode;
+  nameModal.ptItem = payload.ptItem;
+  nameModal.title = payload.title;
+  nameModal.label = payload.label;
+  nameModal.hint = payload.hint || '';
+  nameModal.placeholder = payload.placeholder || '';
+  nameModal.initialValue = payload.initialValue || '';
+  nameModal.visible = true;
+}
+
+async function handleNameModalConfirm({ name }: { name: string }) {
+  const item = nameModal.ptItem;
+  if (!item) return;
+  nameModal.visible = false;
+  if (nameModal.mode === 'rename') {
+    try {
+      await pt.rename(item.id, name);
+      notification.success('任务名称已更新');
+    } catch (error: any) {
+      notification.error(error?.message || '重命名失败');
+    }
+    return;
+  }
+  try {
+    await pt.createVersion(item.id, undefined, name || undefined);
+    await pt.fetchList();
+    if (expandedId.value === item.id) {
+      pt.detail = await pt.fetchDetail(item.id);
+    }
+    notification.success('新版本创建成功');
+  } catch (error: any) {
+    notification.error(error?.message || '创建新版本失败');
+  }
+}
+
+function handleStatusBadgeChange(value: string | number) {
+  pt.filters.status = String(value);
+  handleFilterChange();
+}
+
+function handleTimeRangeBadgeChange(value: string | number) {
+  pt.filters.timeRange = String(value);
+  handleFilterChange();
+}
 
 const sourceTaskId = computed(() =>
   pt.detail?.sourceTaskId ?? (pt.detail?.snapshotConfig as any)?.sourceTaskId ?? null
@@ -295,9 +389,9 @@ async function handlePublishConfirm(payload: {
     );
     closePublishModal();
     await pt.fetchList();
-    alert('已发布任务创建成功');
+    notification.success('已发布任务创建成功');
   } catch (error: any) {
-    alert(error?.message || '发布失败，请稍后重试');
+    notification.error(error?.message || '发布失败，请稍后重试');
   }
 }
 
@@ -310,74 +404,100 @@ async function toggleDetail(ptItem: PublishedTaskItem) {
     return;
   }
   expandedId.value = ptItem.id;
-  pt.detail = await pt.fetchDetail(ptItem.id);
+  const detail = await pt.fetchDetail(ptItem.id);
+  // 竞态防护：等待期间已切换到其它卡片或收起时，丢弃本次结果
+  if (expandedId.value !== ptItem.id) return;
+  if (!detail) {
+    expandedId.value = null;
+    pt.detail = null;
+    notification.error('加载版本详情失败，请稍后重试');
+    return;
+  }
+  pt.detail = detail;
 }
 
-function openReportSnapshot(snapshot: any) {
-  if (snapshot) {
-    pt.detail = { ...(pt.detail as any), reportSnapshot: snapshot };
-    reportSnapshotOpen.value = true;
-  }
+function openReportSnapshot() {
+  reportSnapshotOpen.value = true;
 }
 
 // ---------- 执行 ----------
 
 async function handleExecute(ptItem: PublishedTaskItem) {
   if (ptItem.status === 'archived') {
-    alert('已归档任务禁止执行，请先创建新版本');
+    notification.warning('已归档任务禁止执行，请先创建新版本');
     return;
   }
-  if (!confirm(`将按版本 v${ptItem.version} 的快照创建新的日常任务「${ptItem.name}」，创建后到任务列表启动执行。是否继续？`)) return;
+  let confirmed = false;
+  try {
+    await modal.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '执行确认',
+      content: `将按版本 v${ptItem.version} 的快照创建新的日常任务「${ptItem.name}」，创建后到任务列表启动执行。是否继续？`,
+      confirmText: '创建日常任务',
+    });
+    confirmed = true;
+  } catch {
+    confirmed = false;
+  }
+  if (!confirmed) return;
   try {
     const result = await pt.execute(ptItem.id);
     if (result?.taskId) {
-      alert(`日常任务已创建（ID: ${result.taskId}），请到任务列表启动执行`);
+      notification.success(`日常任务已创建（ID: ${result.taskId}），即将前往任务列表`);
+      router.push('/tasks');
     }
   } catch (error: any) {
-    alert(error?.message || '创建日常任务失败');
+    notification.error(error?.message || '创建日常任务失败');
   }
 }
 
 // ---------- 新版本 ----------
 
-async function handleCreateVersion(ptItem: PublishedTaskItem) {
-  const name = prompt('新版本名称（留空沿用当前版本名称）：', ptItem.name);
-  if (name === null) return;
-  try {
-    await pt.createVersion(ptItem.id, undefined, name.trim() || undefined);
-    await pt.fetchList();
-    if (expandedId.value === ptItem.id) {
-      pt.detail = await pt.fetchDetail(ptItem.id);
-    }
-    alert('新版本创建成功');
-  } catch (error: any) {
-    alert(error?.message || '创建新版本失败');
-  }
+function handleCreateVersion(ptItem: PublishedTaskItem) {
+  openNameModal({
+    mode: 'createVersion',
+    ptItem,
+    title: '创建新版本',
+    label: '新版本名称',
+    hint: '留空沿用当前版本名称',
+    placeholder: ptItem.name,
+    initialValue: '',
+  });
 }
 
 // ---------- 归档 ----------
 
 async function handleArchive(ptItem: PublishedTaskItem) {
-  if (!confirm(`确定归档「${ptItem.name}」v${ptItem.version} 吗？归档后不可直接执行。`)) return;
+  let confirmed = false;
+  try {
+    await modal.open(MODAL_TYPES.DELETE_CONFIRM, {
+      title: '归档确认',
+      content: `确定归档「${ptItem.name}」v${ptItem.version} 吗？归档后不可直接执行。`,
+      confirmText: '归档',
+    });
+    confirmed = true;
+  } catch {
+    confirmed = false;
+  }
+  if (!confirmed) return;
   try {
     await pt.archive(ptItem.id);
-    alert('任务已归档');
+    notification.success('任务已归档');
   } catch (error: any) {
-    alert(error?.message || '归档失败');
+    notification.error(error?.message || '归档失败');
   }
 }
 
 // ---------- 重命名 ----------
 
-async function handleRename(ptItem: PublishedTaskItem) {
-  const name = prompt('新的任务名称（作用于整个版本链）：', ptItem.name);
-  if (name === null) return;
-  try {
-    await pt.rename(ptItem.id, name.trim());
-    alert('任务名称已更新');
-  } catch (error: any) {
-    alert(error?.message || '重命名失败');
-  }
+function handleRename(ptItem: PublishedTaskItem) {
+  openNameModal({
+    mode: 'rename',
+    ptItem,
+    title: '重命名',
+    label: '新的任务名称',
+    hint: '作用于整个版本链',
+    initialValue: ptItem.name,
+  });
 }
 
 onMounted(() => {
@@ -483,14 +603,6 @@ onMounted(() => {
   gap: 6px;
   font-size: 13px;
   color: #4b5563;
-}
-
-.filter-item select {
-  padding: 6px 8px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-  background: #fff;
 }
 
 .custom-range input {

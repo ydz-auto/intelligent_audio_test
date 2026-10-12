@@ -107,6 +107,10 @@
                     @update:model-value="setPlaybackTypeFilter"
                   />
                 </div>
+                <!-- 算法筛选（徽章单选，对齐 V9.7.10） -->
+                <div class="algorithm-filter-row">
+                  <AlgorithmFilter :options="algorithmTypeOptions" v-model="algorithmFilter" title="支持算法" />
+                </div>
               </div>
             </div>
             <div class="card-body">
@@ -182,12 +186,8 @@
                     title="状态"
                     @update:model-value="setStatusFilter"
                   />
-                  <div class="filter-select">
-                    <select class="form-input" v-model="algorithmFilter" @change="filterDevices" id="algorithmFilter">
-                      <option value="all">支持算法: 全部</option>
-                      <option v-for="algo in algorithmTypeOptions" :key="algo.value" :value="algo.value">{{ algo.label }}</option>
-                    </select>
-                  </div>
+                  <!-- 算法筛选（徽章单选，对齐 V9.7.10） -->
+                  <AlgorithmFilter :options="algorithmTypeOptions" v-model="algorithmFilter" title="支持算法" />
                 </div>
               </div>
             </div>
@@ -268,12 +268,8 @@
                     title="状态"
                     @update:model-value="setStatusFilter"
                   />
-                  <div class="filter-select">
-                    <select class="form-input" v-model="algorithmTypeFilter" @change="filterDevices" id="apiAlgorithmTypeFilter">
-                      <option value="all">所有算法类型</option>
-                      <option v-for="algo in algorithmTypeOptions" :key="algo.value" :value="algo.value">{{ algo.label }}</option>
-                    </select>
-                  </div>
+                  <!-- 算法筛选（徽章单选，对齐 V9.7.10） -->
+                  <AlgorithmFilter :options="algorithmTypeOptions" v-model="algorithmTypeFilter" title="算法类型" />
                 </div>
               </div>
             </div>
@@ -343,6 +339,7 @@
 import { useDevice } from './Device';
 import { DeviceStatus, DeviceTabType } from '../../domain/enums';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import DeviceCard from './DeviceCard.vue';
 import DeviceGroupManager from './DeviceGroupManager.vue';

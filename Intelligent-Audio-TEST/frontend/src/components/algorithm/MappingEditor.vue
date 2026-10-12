@@ -24,22 +24,31 @@
             v-model="filters.keyword"
           >
         </div>
-        <select v-if="componentType === 'evaluation'" class="form-input mapping-filter-select" v-model="filters.source">
-          <option value="all">全部来源</option>
-          <option value="case">用例参数</option>
-          <option value="reference">参考参数</option>
-          <option value="device">设备输出</option>
-          <option value="api">API输出</option>
-        </select>
-        <select class="form-input mapping-filter-select" v-model="filters.transformType">
-          <option value="all">全部转换</option>
-          <option value="none">无转换</option>
-          <option value="uppercase">转大写</option>
-          <option value="lowercase">转小写</option>
-          <option value="json_parse">JSON解析</option>
-          <option value="rttm_to_obj">RTTM转对象</option>
-          <option value="stm_to_obj">STM转对象</option>
-        </select>
+        <BadgeFilter
+          v-if="componentType === 'evaluation'"
+          :options="sourceOptions"
+          :model-value="filters.source"
+          all-label="全部来源"
+          title="来源"
+          @update:model-value="v => (filters.source = String(v))"
+        />
+        <BadgeFilter
+          v-if="componentType === 'evaluation'"
+          :options="dimensionFilterOptions"
+          :model-value="filters.dimensionId"
+          all-label="全部维度"
+          title="评估维度"
+          collapsible
+          :collapsed-count="6"
+          @update:model-value="v => (filters.dimensionId = String(v))"
+        />
+        <BadgeFilter
+          :options="transformOptions"
+          :model-value="filters.transformType"
+          all-label="全部转换"
+          title="转换"
+          @update:model-value="v => (filters.transformType = String(v))"
+        />
       </div>
     </div>
 
@@ -48,19 +57,83 @@
         <thead>
           <tr>
             <template v-if="componentType === 'evaluation'">
-              <th style="width: 100px;">来源</th>
-              <th style="width: 120px;">源参数代码</th>
+              <th style="width: 100px;">
+                来源
+                <ColumnFilter
+                  v-model="filters.source"
+                  label="来源"
+                  :options="sourceOptions"
+                  :active="filters.source !== 'all'"
+                />
+              </th>
+              <th style="width: 120px;">
+                源参数代码
+                <ColumnFilter
+                  v-model="filters.sourceParam"
+                  label="源参数代码"
+                  :options="distinctValues(props.mappings, 'sourceParam')"
+                  :active="filters.sourceParam !== 'all'"
+                />
+              </th>
               <th style="width: 120px;">源参数名称</th>
-              <th>目标评估维度</th>
-              <th>目标参数</th>
-              <th style="width: 100px;">转换</th>
+              <th>
+                目标评估维度
+                <ColumnFilter
+                  v-model="filters.dimensionId"
+                  label="目标评估维度"
+                  :options="dimensionFilterOptions"
+                  :active="filters.dimensionId !== 'all'"
+                />
+              </th>
+              <th>
+                目标参数
+                <ColumnFilter
+                  v-model="filters.targetParam"
+                  label="目标参数"
+                  :options="distinctValues(props.mappings, 'targetParam')"
+                  :active="filters.targetParam !== 'all'"
+                />
+              </th>
+              <th style="width: 100px;">
+                转换
+                <ColumnFilter
+                  v-model="filters.transformType"
+                  label="转换"
+                  :options="transformOptions"
+                  :active="filters.transformType !== 'all'"
+                />
+              </th>
             </template>
             <template v-else>
-              <th style="width: 120px;">源参数代码</th>
+              <th style="width: 120px;">
+                源参数代码
+                <ColumnFilter
+                  v-model="filters.sourceParam"
+                  label="源参数代码"
+                  :options="distinctValues(props.mappings, 'sourceParam')"
+                  :active="filters.sourceParam !== 'all'"
+                />
+              </th>
               <th style="width: 120px;">源参数名称</th>
-              <th style="width: 120px;">目标参数代码</th>
+              <th style="width: 120px;">
+                目标参数代码
+                <ColumnFilter
+                  v-model="filters.targetParam"
+                  label="目标参数代码"
+                  :options="distinctValues(props.mappings, 'targetParam')"
+                  :active="filters.targetParam !== 'all'"
+                />
+              </th>
               <th style="width: 120px;">目标参数名称</th>
-              <th style="width: 100px;">转换</th>
+              <th style="width: 100px;">
+                转换
+                <ColumnFilter
+                  v-model="filters.transformType"
+                  label="转换"
+                  :options="transformOptions"
+                  :active="filters.transformType !== 'all'"
+                />
+              </th>
             </template>
             <th style="width: 60px;">操作</th>
           </tr>
@@ -95,6 +168,7 @@
                 <td>
                   <select v-model="record.source" class="form-input form-input-sm" @blur="handleSourceTypeChange(record)">
                     <option value="case">用例参数</option>
+                    <option value="case_config">用例配置</option>
                     <option value="reference">参考参数</option>
                     <option value="device">设备输出</option>
                     <option value="api">API输出</option>
@@ -199,6 +273,8 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { algorithmPort } from '../../composables/algorithm/algorithmPort'
 import { useNotification } from '../../composables/modal/useNotification'
+import ColumnFilter from '../common/ColumnFilter.vue'
+import BadgeFilter from '../common/BadgeFilter.vue'
 import PaginationComponent from '../common/data/PaginationComponent.vue'
 
 const { warning, error } = useNotification()
@@ -207,7 +283,7 @@ interface Mapping {
   id?: number
   /** 前端新增行的临时 ID（未入库前供列表 :key 使用，不入后端） */
   tempId?: string
-  source?: 'case' | 'reference' | 'device' | 'api'
+  source?: 'case' | 'case_config' | 'reference' | 'device' | 'api'
   sourceParam: string
   paramName?: string
   dimensionId?: number | null
@@ -392,6 +468,44 @@ function isTargetParamKnown(record: any): boolean {
   return options.some((p: any) => p.code === record.targetParam)
 }
 
+// 用例配置(config.rounds)可映射的结构性字段：评估时从 test_case.config.rounds 按轮读取
+const CASE_CONFIG_FIELD_PRESETS = [
+  { code: 'audios', name: '被播放音频' }
+]
+
+// 列头过滤/徽章筛选的可选值（后端 VALID_SOURCES 含 case_config，对齐 V9.7.10）
+const sourceOptions = [
+  { value: 'case', label: '用例参数' },
+  { value: 'case_config', label: '用例配置' },
+  { value: 'reference', label: '参考参数' },
+  { value: 'device', label: '设备输出' },
+  { value: 'api', label: 'API输出' }
+]
+const transformOptions = [
+  { value: 'none', label: '无转换' },
+  { value: 'uppercase', label: '转大写' },
+  { value: 'lowercase', label: '转小写' },
+  { value: 'json_parse', label: 'JSON解析' },
+  { value: 'rttm_to_obj', label: 'RTTM转对象' },
+  { value: 'stm_to_obj', label: 'STM转对象' }
+]
+const dimensionFilterOptions = computed(() =>
+  (props.mainDimensions && props.mainDimensions.length > 0 ? props.mainDimensions : availableDimensions.value)
+    .map(d => ({ value: String(d.id), label: d.name }))
+)
+
+// 列头下拉过滤选项：返回某列的非空去重取值
+function distinctValues(list: any[], key: string): string[] {
+  const set = new Set<string>()
+  for (const item of list) {
+    const v = item?.[key]
+    if (v !== undefined && v !== null && String(v).trim() !== '') {
+      set.add(String(v))
+    }
+  }
+  return Array.from(set)
+}
+
 async function loadDimensions() {
   availableDimensions.value = []
 
@@ -465,6 +579,7 @@ function getSourceParams(source: string, currentParam?: string): any[] {
   let params: any[]
   switch (source) {
     case 'case': params = props.caseParams || []; break
+    case 'case_config': params = [...CASE_CONFIG_FIELD_PRESETS]; break
     case 'reference': params = props.referenceParams || []; break
     case 'device': params = props.deviceParams || []; break
     case 'api': params = props.apiParams || []; break
@@ -479,6 +594,7 @@ function getSourceParams(source: string, currentParam?: string): any[] {
 function getAllSourceParams(): any[] {
   const allParams = [
     ...(props.caseParams || []),
+    ...CASE_CONFIG_FIELD_PRESETS,
     ...(props.referenceParams || []),
     ...(props.deviceParams || []),
     ...(props.apiParams || [])
@@ -545,7 +661,7 @@ function handleSourceTypeChange(record: any) {
   if (record) {
     record.sourceParam = ''
     record.paramName = ''
-    if (record.source === 'case') {
+    if (record.source === 'case' || record.source === 'case_config') {
       record.dimensionId = null
       record.dimensionName = ''
     }
@@ -648,7 +764,7 @@ async function autoSaveMapping(record: any, index: number) {
     transformType: record.transformType || 'none'
   }
 
-  // source 必须是合法值（case/reference/device/api），为空时不保存
+  // source 必须是合法值（case/case_config/reference/device/api），为空时不保存
   if (!source || !mappingData.sourceParam || !mappingData.targetParam) {
     return
   }

@@ -76,7 +76,7 @@
                       @update:model-value="setStatusFilter"
                     />
                     <BadgeFilter
-                      :options="CATEGORY_FILTER_OPTIONS"
+                      :options="categoryFilterOptions"
                       :model-value="filterCategory"
                       all-label="全部分类"
                       title="分类"
@@ -201,6 +201,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 // 导入分页组件
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
@@ -216,6 +217,7 @@ const {
   batchMenuRef,
   importExportMenuRef,
   searchKeyword,
+  categories,
   filterStatus,
   filterCategory,
   filterAlgorithm,
@@ -296,12 +298,10 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'inactive', label: '禁用' },
 ];
 
-const CATEGORY_FILTER_OPTIONS = [
-  { value: '性能指标', label: '性能指标' },
-  { value: '功能指标', label: '功能指标' },
-  { value: '质量指标', label: '质量指标' },
-  { value: '环境适应性', label: '环境适应性' },
-];
+// 分类筛选选项：由接口加载的分类动态生成（对齐 V9.7.10），value 为分类 ID（后端 categoryId 过滤）
+const categoryFilterOptions = computed(() =>
+  (categories.value || []).map(cat => ({ value: cat.id, label: cat.name }))
+);
 
 function setStatusFilter(value) {
   filterStatus.value = String(value);

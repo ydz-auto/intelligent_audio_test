@@ -74,7 +74,10 @@ export const allFilteredPlaybackDevices = computed(() => {
     const actualFilterType = playbackTypeFilter.value === ViewMode.ALL ? ViewMode.ALL : typeMapping[playbackTypeFilter.value] || playbackTypeFilter.value;
     const matchesPlaybackType = actualFilterType === ViewMode.ALL || device.type === actualFilterType;
 
-    return matchesSearch && matchesStatus && matchesPlaybackType;
+    const matchesAlgorithm = algorithmFilter.value === ViewMode.ALL ||
+      ((device as any).supportedAlgorithms && (device as any).supportedAlgorithms.includes(algorithmFilter.value));
+
+    return matchesSearch && matchesStatus && matchesPlaybackType && matchesAlgorithm;
   });
 });
 

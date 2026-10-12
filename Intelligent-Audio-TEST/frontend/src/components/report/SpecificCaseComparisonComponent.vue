@@ -176,6 +176,10 @@
                     <option value="createdAt">按创建时间</option>
                     <option value="评估维度">按评估维度</option>
                   </select>
+                  <select class="filter-select" v-model="selectedSortResource" v-if="sortDimension === '评估维度'">
+                    <option value="">全部资源(平均)</option>
+                    <option v-for="res in sortResourceOptions" :key="res.key" :value="res.key">{{ res.label }}</option>
+                  </select>
                   <select class="filter-select" v-model="selectedSortMetric" v-if="sortDimension === '评估维度'">
                     <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
                   </select>
@@ -445,6 +449,8 @@ const {
   totalMetricPages,
   sortDimension,
   selectedSortMetric,
+  selectedSortResource,
+  sortResourceOptions,
   sortOrder,
   actualAllMetrics,
   resetFilters,

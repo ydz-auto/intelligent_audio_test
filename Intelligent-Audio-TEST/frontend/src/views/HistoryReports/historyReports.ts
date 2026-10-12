@@ -43,7 +43,7 @@ export const REPORT_TAB_OPTIONS: ReadonlyArray<ReportTabOption> = [
 /** 归类为「对比报告」视图的报告类型集合（domain ReportType 后端原值：task/comparison/secondary_comparison/standard） */
 const COMPARISON_REPORT_TYPES: readonly string[] = ['comparison', 'secondary_comparison'];
 
-type ReportTypeFilter = 'all' | 'comparison' | 'secondaryComparison' | 'task';
+type ReportTypeFilter = 'all' | 'comparison' | 'secondary_comparison' | 'task';
 type ReportStatusFilter = 'all' | 'draft' | 'published';
 type TimeRangeFilter = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 

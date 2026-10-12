@@ -206,6 +206,7 @@ export function toReportSearchCasesDto(body: {
   metrics?: string[]
   sortBy?: string
   sortMetric?: string | null
+  sortResource?: string | null
   sortOrder?: string
   page?: number
   perPage?: number
@@ -219,6 +220,7 @@ export function toReportSearchCasesDto(body: {
     ...(body.metrics !== undefined ? { metrics: body.metrics } : {}),
     ...(body.sortBy !== undefined ? { sort_by: body.sortBy } : {}),
     ...(body.sortMetric !== undefined ? { sort_metric: body.sortMetric } : {}),
+    ...(body.sortResource !== undefined ? { sort_resource: body.sortResource } : {}),
     ...(body.sortOrder !== undefined ? { sort_order: body.sortOrder } : {}),
     page: body.page ?? 1,
     per_page: body.perPage ?? 20,
