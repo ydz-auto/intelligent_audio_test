@@ -397,12 +397,8 @@ export function useTestCaseModal(props: any, emit: any) {
       saveData.group = newGroupName;
       saveData.createNewGroup = true;
     }
-    if (caseFormRef.value) {
-      const formAlgParams = (caseFormRef.value as any).algorithmParams;
-      if (formAlgParams && Object.keys(formAlgParams).length > 0) {
-        saveData.algorithmParams = formAlgParams;
-      }
-    }
+    // algorithmParams 为按轮分组独立列，caseFormData 已由 CaseForm 经 RoundConfigEditor 按轮同步；
+    // 不能用 CaseForm 暴露的单轮扁平对象覆写，否则后端整体替换会清空第 2+ 轮参数
     emit('save', {
       mode: 'case',
       isEdit: isEditMode.value,
