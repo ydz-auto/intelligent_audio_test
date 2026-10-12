@@ -183,6 +183,29 @@ class TestExportParentChildColumns:
 
 # ==================== 缺陷4：导入父子列 ====================
 
+class TestExportRouteOrder:
+    """F2 回归守卫：GET 静态路径必须注册在 GET 动态路径之前——FastAPI 按
+    注册顺序匹配，/dimensions/export、/reports/export 若落在 /{id} 之后，
+    'export' 解析 int 失败恒 422（生产不可达）。"""
+
+    @staticmethod
+    def _get_paths(router):
+        return [r.path for r in router.routes
+                if 'GET' in (getattr(r, 'methods', None) or set())]
+
+    def test_evaluation_export_before_dynamic_get(self):
+        from api_gateway.routes import evaluation_bp
+
+        paths = self._get_paths(evaluation_bp.router)
+        assert paths.index('/dimensions/export') < paths.index('/dimensions/{dim_id}')
+
+    def test_report_export_before_dynamic_get(self):
+        from api_gateway.routes import report_bp
+
+        paths = self._get_paths(report_bp.router)
+        assert paths.index('/export') < paths.index('/{report_id}')
+
+
 class TestImportParentChild:
     def _xlsx(self, rows, columns):
         df = pd.DataFrame(rows, columns=columns)

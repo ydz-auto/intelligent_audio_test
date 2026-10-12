@@ -403,7 +403,8 @@ class EvaluationCommandService:
 
         try:
             if file.filename.endswith('.xlsx') or file.filename.endswith('.xls'):
-                df = pd.read_excel(file)
+                # 上传包装器仅代理 read、不可 seek，pandas/openpyxl 需可 seek 缓冲
+                df = pd.read_excel(io.BytesIO(file.read()))
             elif file.filename.endswith('.json'):
                 df = pd.read_json(file)
             else:
@@ -483,8 +484,9 @@ class EvaluationCommandService:
                         data["task_type_code"] = (
                             _row_str(row, ['任务关键字', 'task_type_code', 'taskTypeCode'])
                             or parent.get('task_type_code') or '')
-                    elif is_sub_type:
-                        # 标记为子维度但解析不到父维度：按主维度兜底落库（对齐旧库语义）
+                    elif not is_sub_type or dim_type_raw:
+                        # 显式「主」行 / 子标记但解析不到父维度的兜底：均按主维度落库
+                        # （对齐旧库语义与 update 路径的层级同步）
                         data["dimension_type"] = 'main'
                     data = {k: v for k, v in data.items() if v is not None}
                     create_result = _evaluation_acl.create_dimension(data)

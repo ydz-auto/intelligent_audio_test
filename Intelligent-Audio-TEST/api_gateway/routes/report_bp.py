@@ -31,6 +31,11 @@ def get_all(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_all())
 
 
+@router.get('/export')
+def export_get(_: None = require_permission('report:read')):
+    return _handle(ReportQueryService.export())
+
+
 @router.get('/{report_id}')
 def get_one(report_id: int, _: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_one(report_id))
@@ -83,11 +88,6 @@ def regenerate_report(report_id: int, _: None = require_permission('report:creat
 
 @router.post('/export')
 def export(_: None = require_permission('report:read')):
-    return _handle(ReportQueryService.export())
-
-
-@router.get('/export')
-def export_get(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.export())
 
 
