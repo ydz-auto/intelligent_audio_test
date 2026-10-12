@@ -22,6 +22,7 @@ B. 接线（INT-107 终态口径入口）：
 """
 import os
 import tempfile
+from types import SimpleNamespace
 
 os.environ.setdefault('DATABASE_URL',
                       'sqlite:///' + tempfile.mkdtemp(prefix='int116_t_') + '/guard.db')
@@ -65,15 +66,16 @@ class _FakeQuery:
 class _FakeSession:
     """只记录生命周期事件的假会话，供窗口断言使用。"""
 
-    def __init__(self, events, commit_error=None):
+    def __init__(self, events, commit_error=None, trd=None):
         self._events = events
         self._commit_error = commit_error
+        self._trd = trd
 
     def query(self, *a, **k):
         return _FakeQuery()
 
     def get(self, *a, **k):
-        return None
+        return self._trd
 
     def add(self, *a, **k):
         pass
@@ -101,10 +103,10 @@ def _bare(mixin_cls):
     return object.__new__(mixin_cls)
 
 
-def _patch_session_factory(monkeypatch, module, events, commit_error=None):
+def _patch_session_factory(monkeypatch, module, events, commit_error=None, trd=None):
     def _factory():
         events.add('session_open')
-        return _FakeSession(events, commit_error=commit_error)
+        return _FakeSession(events, commit_error=commit_error, trd=trd)
     monkeypatch.setattr(module, 'get_db_session', _factory)
 
 
@@ -191,19 +193,23 @@ def test_aggregate_round_results_grpc_writeback_after_session_close(monkeypatch)
 # ==================== A3. update_all_dimensions_in_group_failed 容错与收窄 ====================
 
 def test_group_case_failed_not_blocked_by_local_commit_failure(monkeypatch):
-    """本地 TRD 落库失败（连接池耗尽）不得跳过 TaskCase failed 终态推进。
+    """本地 TRD 落库失败（连接池耗尽）不得跳过 TaskCase 终态推进。
 
-    事故形态：原实现 commit 抛异常直接冒泡，_mark_group_case_failed 被跳过，
+    事故形态：原实现 commit 抛异常直接冒泡，TaskCase 终态推进被跳过，
     用例永久停留 evaluating。
+    INT-174 口径更新：组失败不再无条件把 TaskCase 置 failed，改为交给
+    update_task_case_status 统一收尾（检查所有维度到终态后判定）；守卫点
+    不变——统一收尾仍须在会话释放后执行，且不被本地 commit 失败阻断。
     """
     events = _EventLog()
     _patch_session_factory(monkeypatch, dim_mod, events,
-                           commit_error=RuntimeError('QueuePool exhausted'))
+                           commit_error=RuntimeError('QueuePool exhausted'),
+                           trd=SimpleNamespace(test_result_id=77))
 
     obj = _bare(DimensionResultMixin)
     obj._log = lambda *a, **k: None
     obj.update_dimension_result_failed = lambda *a, **k: events.add('trd_fail_write')
-    obj._mark_group_case_failed = lambda *a, **k: events.add('grpc_case_failed')
+    obj.update_task_case_status = lambda *a, **k: events.add('grpc_case_failed')
 
     obj.update_all_dimensions_in_group_failed(
         group_items=[({'id': 1, 'name': 'a'}, 11)],
@@ -216,20 +222,26 @@ def test_group_case_failed_not_blocked_by_local_commit_failure(monkeypatch):
 
 
 def test_group_case_failed_after_clean_commit(monkeypatch):
+    """干净提交后同样走统一收尾：TRD 失败标记先落库（供统一收尾读取），
+    会话释放后推进 TaskCase 终态（INT-174：update_task_case_status 统一判定）。"""
     events = _EventLog()
-    _patch_session_factory(monkeypatch, dim_mod, events)
+    _patch_session_factory(monkeypatch, dim_mod, events,
+                           trd=SimpleNamespace(test_result_id=77))
 
     obj = _bare(DimensionResultMixin)
     obj._log = lambda *a, **k: None
     obj.update_dimension_result_failed = lambda *a, **k: events.add('trd_fail_write')
-    obj._mark_group_case_failed = lambda *a, **k: events.add('grpc_case_failed')
+    obj.update_task_case_status = lambda *a, **k: events.add('grpc_case_failed')
 
     obj.update_all_dimensions_in_group_failed(
         group_items=[({'id': 1, 'name': 'a'}, 11)],
         error_message='endpoint unreachable', task_id=9, test_case_id='C-9')
 
     assert events == ['session_open', 'trd_fail_write', 'session_commit',
-                      'session_close', 'grpc_case_failed']
+                      'session_close',
+                      # 统一收尾：读取首个 TRD 定位 result_id（第二次短会话），
+                      # 随后在会话外推进 TaskCase 终态
+                      'session_open', 'session_close', 'grpc_case_failed']
 
 
 # ==================== B4. update_task_case_status_in_db 终态入口接线 ====================

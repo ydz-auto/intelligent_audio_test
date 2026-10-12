@@ -63,12 +63,15 @@ class TaskCaseStatsMixin:
             if old_status == SharedTaskStatus.REEVALUATING and status in (SharedTaskStatus.COMPLETED, SharedTaskStatus.FAILED):
                 task.reevaluation_count = (task.reevaluation_count or 0) + 1
                 task.reevaluated_at = utc8now()
-            session.flush()
+            session.commit()
             return {
                 'task_id': task.id,
                 'old_status': old_status,
                 'new_status': task.status,
             }
+        except Exception:
+            session.rollback()
+            raise
         finally:
             session.close()
 

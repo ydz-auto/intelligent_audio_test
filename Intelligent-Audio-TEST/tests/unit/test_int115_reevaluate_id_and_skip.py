@@ -261,7 +261,12 @@ class TestExecutorSubmitNormalization:
 
 
 class TestRunReevaluationFailureTransparency:
-    """空结果 + 查询不到任务：按失败收口，不再伪装 success=True。"""
+    """空结果 + 查询不到任务：按失败收口，不再伪装 success=True。
+
+    INT-174 口径更新：提交成功 ≠ 完成 —— _on_complete 成功路径任务置 RUNNING
+    （终态由 maybe_finalize 按评估收敛判定），失败路径仍置 FAILED；状态写统一
+    走 update_task_status_with_retry（内联重试 + 延迟队列，INT-116 加固）。
+    """
 
     def _run(self, get_task_by_id_ret):
         from evaluation_service.application.handlers.reevaluation_executor import (
@@ -270,20 +275,20 @@ class TestRunReevaluationFailureTransparency:
         ex = ReevaluationExecutor()
         with patch(_ACL) as acl, patch(
             'evaluation_service.application.handlers.reevaluation_executor.log_and_emit', _noop_log
-        ):
+        ), patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd:
             acl.get_test_results_by_task_and_case.return_value = []
             acl.get_task_case_by_ids.return_value = []
             acl.get_task_by_id.return_value = get_task_by_id_ret
             ex._run_reevaluation(task_id=491, reextract_device_output=False, reevaluate_type='all')
-        return acl
+        return upd
 
     def test_task_missing_fails(self):
-        acl = self._run(get_task_by_id_ret=None)
-        acl.update_task_status.assert_called_once_with(491, TaskStatus.FAILED)
+        upd = self._run(get_task_by_id_ret=None)
+        upd.assert_called_once_with(491, TaskStatus.FAILED)
 
     def test_task_exists_with_no_results_succeeds(self):
-        acl = self._run(get_task_by_id_ret=SimpleNamespace(id=491))
-        acl.update_task_status.assert_called_once_with(491, TaskStatus.COMPLETED)
+        upd = self._run(get_task_by_id_ret=SimpleNamespace(id=491))
+        upd.assert_called_once_with(491, TaskStatus.RUNNING)
 
     def test_status_write_failure_logged_as_error(self):
         """任务状态写失败（返回 False）必须以 ERROR 级别可见。"""
@@ -296,10 +301,10 @@ class TestRunReevaluationFailureTransparency:
         def _capture(level, category, content, **kw):
             logs.append((level, content))
 
-        with patch(_ACL) as acl, patch(
+        with patch(_ACL), patch(
             'evaluation_service.application.handlers.reevaluation_executor.log_and_emit', _capture
-        ):
-            acl.update_task_status.return_value = False
+        ), patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry',
+                 return_value=False):
             ex._on_complete(491, True)
         assert any(lv == 'ERROR' for lv, _ in logs)
 

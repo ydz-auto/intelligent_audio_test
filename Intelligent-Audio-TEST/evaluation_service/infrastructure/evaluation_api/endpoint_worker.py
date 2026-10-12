@@ -181,6 +181,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                                 task_data.get('test_case_id'),
                                 f"端点Worker处理任务异常: {str(e)}",
                             )
+                            self._maybe_finalize_reeval(task_data.get('task_id'))
                         except Exception as mark_err:
                             self._log(
                                 level='ERROR',
@@ -451,6 +452,17 @@ class EndpointWorker(EvaluationLoggerMixin):
 
     def _process_evaluation_result(self, resp_data, group_items, task_id, test_case_id, result_id, payload, test_type):
         """处理评估结果（成功/失败）"""
+        # INT-174：评估任务已被重新评估提交摘除（方案A）——结果按取消隔离，
+        # 不写库、不推进用例状态，避免旧评估结果覆盖新评估
+        if isinstance(resp_data, dict) and resp_data.get('__cancelled__'):
+            self._log(
+                level='INFO',
+                content=f"评估任务已被重新评估取消，忽略本组评估结果: test_case_id={test_case_id}",
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
+            return
+
         if resp_data and '__error__' not in resp_data:
             try:
                 self.eval_service.result_processor.process_group_dimension_results(
@@ -462,6 +474,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                     api_request_body=payload,
                     test_type=test_type
                 )
+                self._maybe_finalize_reeval(task_id)
             except Exception as e:
                 # INT-116: 结果处理链路异常（本地 DB 写失败/状态推进失败等）原先
                 # 只向外抛由 worker_loop 记日志，用例永久停留 evaluating；
@@ -475,6 +488,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                 self.eval_service.result_processor.mark_case_failed_if_active(
                     task_id, test_case_id, f"评估结果处理异常: {str(e)}"
                 )
+                self._maybe_finalize_reeval(task_id)
         else:
             error_msg = resp_data.get('__error__', '未知错误') if isinstance(resp_data, dict) else 'API 调用失败'
             self.eval_service.result_processor.update_all_dimensions_in_group_failed(
@@ -485,3 +499,18 @@ class EndpointWorker(EvaluationLoggerMixin):
                 api_raw_response=resp_data,
                 api_request_body=payload
             )
+            self._maybe_finalize_reeval(task_id)
+
+    @staticmethod
+    def _maybe_finalize_reeval(task_id):
+        """INT-174：重新评估场景，用例评估到终态后检查任务是否可收敛为 completed。
+
+        提交成功 ≠ 完成——任务终态由真实评估收敛驱动（提交成功置 running，
+        所有用例评估到终态后由 ReevaluationExecutor.maybe_finalize 置 completed
+        并释放重评队列）。普通执行链评估任务（running_task_id 不匹配）不受影响。
+        """
+        try:
+            from evaluation_service.application.handlers.reevaluation_executor import ReevaluationExecutor
+            ReevaluationExecutor.get_instance().maybe_finalize(task_id)
+        except Exception:
+            pass

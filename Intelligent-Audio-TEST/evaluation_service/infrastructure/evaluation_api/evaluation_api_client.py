@@ -248,85 +248,113 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
     def _process_async_result(self, create_response, selected_url, task_id, test_case_id, api_id):
         """处理创建任务后的轮询和结果提取"""
         resp_data = None
+        eval_task_id = None
 
-        if isinstance(create_response, dict) and create_response.get('code') == 0:
-            eval_task_id = create_response.get('data', {}).get('eval_task_id')
-            if eval_task_id:
-                self._log(
-                    level='INFO',
-                    category='execution',
-                    content=f"成功创建异步任务: {eval_task_id}",
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    api_id=api_id
-                )
+        try:
+            if isinstance(create_response, dict) and create_response.get('code') == 0:
+                eval_task_id = create_response.get('data', {}).get('eval_task_id')
+                if eval_task_id:
+                    self._log(
+                        level='INFO',
+                        category='execution',
+                        content=f"成功创建异步任务: {eval_task_id}",
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
+                    )
 
-                # 2. 等待任务完成
-                result_response = self.wait_for_task_completion(
-                    selected_url,
-                    eval_task_id,
-                    test_case_id=test_case_id,
-                    api_id=api_id,
-                    task_id=task_id
-                )
+                    # INT-174：登记在途评估任务（方案A 依据——重新评估提交前按
+                    # task_id 摘除并取消旧评估）
+                    from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
+                    eval_task_registry.register(eval_task_id, task_id, selected_url)
 
-                if isinstance(result_response, dict):
-                    if result_response.get('code') == 0:
-                        # 任务成功完成，提取结果数据
-                        resp_data = result_response.get('data', {}).get('result', {})
+                    # 2. 等待任务完成
+                    result_response = self.wait_for_task_completion(
+                        selected_url,
+                        eval_task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id,
+                        task_id=task_id
+                    )
+
+                    # INT-174：任务在等待期间被重新评估提交摘除（方案A）——
+                    # 结果按取消隔离，不再解释为成功/失败，消费方据此跳过写库
+                    if eval_task_registry.is_cancelled(eval_task_id):
                         self._log(
                             level='INFO',
                             category='execution',
-                            content=f"异步任务 {eval_task_id} 完成，结果: {str(resp_data)}",
+                            content=f"异步任务 {eval_task_id} 已被重新评估取消，结果隔离不写库",
                             task_id=task_id,
                             test_case_id=test_case_id,
                             api_id=api_id
                         )
+                        return {'__cancelled__': True, '__error__': '评估任务已被重新评估取消'}
+
+                    if isinstance(result_response, dict):
+                        if result_response.get('code') == 0:
+                            # 任务成功完成，提取结果数据
+                            resp_data = result_response.get('data', {}).get('result', {})
+                            self._log(
+                                level='INFO',
+                                category='execution',
+                                content=f"异步任务 {eval_task_id} 完成，结果: {str(resp_data)}",
+                                task_id=task_id,
+                                test_case_id=test_case_id,
+                                api_id=api_id
+                            )
+                        else:
+                            # 任务失败
+                            error_msg = result_response.get('msg', 'Unknown error')
+                            self._log(
+                                level='ERROR',
+                                category='execution',
+                                content=f"异步任务执行失败: {error_msg}",
+                                task_id=task_id,
+                                test_case_id=test_case_id,
+                                api_id=api_id
+                            )
+                            resp_data = {'__error__': error_msg}
                     else:
-                        # 任务失败
-                        error_msg = result_response.get('msg', 'Unknown error')
-                        self._log(
-                            level='ERROR',
-                            category='execution',
-                            content=f"异步任务执行失败: {error_msg}",
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            api_id=api_id
-                        )
-                        resp_data = {'__error__': error_msg}
+                        resp_data = {'__error__': f"Invalid response format: {str(result_response)}"}
                 else:
-                    resp_data = {'__error__': f"Invalid response format: {str(result_response)}"}
+                    error_msg = "创建任务失败: 未返回task_id"
+                    self._log(
+                        level='ERROR',
+                        category='execution',
+                        content=error_msg,
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
+                    )
+                    resp_data = {'__error__': error_msg}
             else:
-                error_msg = "创建任务失败: 未返回task_id"
+                if isinstance(create_response, dict):
+                    # 优先取 __error__（网络异常等场景），其次取 msg，最后兜底
+                    error_msg = create_response.get('__error__') or create_response.get('msg', '创建任务失败')
+                else:
+                    error_msg = str(create_response)
                 self._log(
                     level='ERROR',
                     category='execution',
-                    content=error_msg,
+                    content=f"创建异步任务失败: {error_msg}",
                     task_id=task_id,
                     test_case_id=test_case_id,
                     api_id=api_id
                 )
                 resp_data = {'__error__': error_msg}
-        else:
-            if isinstance(create_response, dict):
-                # 优先取 __error__（网络异常等场景），其次取 msg，最后兜底
-                error_msg = create_response.get('__error__') or create_response.get('msg', '创建任务失败')
-            else:
-                error_msg = str(create_response)
-            self._log(
-                level='ERROR',
-                category='execution',
-                content=f"创建异步任务失败: {error_msg}",
-                task_id=task_id,
-                test_case_id=test_case_id,
-                api_id=api_id
-            )
-            resp_data = {'__error__': error_msg}
-            # INT-107: 透传错误类别标记（connection/business），供兜底端点降级判定
-            if isinstance(create_response, dict) and create_response.get('__error_kind__'):
-                resp_data['__error_kind__'] = create_response['__error_kind__']
+                # INT-107: 透传错误类别标记（connection/business），供兜底端点降级判定
+                if isinstance(create_response, dict) and create_response.get('__error_kind__'):
+                    resp_data['__error_kind__'] = create_response['__error_kind__']
 
-        return resp_data
+            return resp_data
+        finally:
+            # INT-174：结果消费完毕注销在途登记（已被摘除的为 no-op）
+            if eval_task_id:
+                try:
+                    from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
+                    eval_task_registry.unregister(eval_task_id)
+                except Exception:
+                    pass
 
     def _execute_async_api_flow(self, selected_url, payload, dim_info, endpoints, api_url,
                                 task_id, test_case_id, api_id, dim_names, audio_field_names=None):

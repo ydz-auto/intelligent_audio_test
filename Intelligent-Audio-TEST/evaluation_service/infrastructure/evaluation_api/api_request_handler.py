@@ -13,6 +13,73 @@ from shared.utils.config_manager import config_manager
 logger = logging.getLogger(__name__)
 
 
+class EvalTaskRegistry:
+    """在途评估任务注册表（V9.7.10 eval_callback_registry 的本服务等价物）
+
+    V9.7.31 评估链为进程内同步消费（create_task → Redis 回调/HTTP 轮询 → 写结果），
+    无独立回调端点；本注册表承担等价职责（INT-174）：
+    - 登记 create_task 成功的在途评估任务（eval_task_id → task_id/endpoint_url），
+      结果消费完毕即注销；
+    - pop_by_task(task_id)：重新评估提交前按应用任务 ID 摘除全部在途条目并标记
+      取消 —— 被摘除的旧评估任务，其结果到达后被消费方幂等忽略，不污染新评估
+      结果（方案A），并携带 endpoint_url 供调用方通知子服务真正取消（方案B）。
+    """
+
+    _lock = threading.Lock()
+    _entries = {}      # eval_task_id -> {'task_id': int, 'endpoint_url': str}
+    _cancelled = {}    # 已被 pop_by_task 摘除的 eval_task_id（有序，FIFO 淘汰）
+    _CANCELLED_CAP = 4096
+
+    @staticmethod
+    def _norm_task_id(task_id):
+        try:
+            return int(task_id)
+        except (TypeError, ValueError):
+            return task_id
+
+    @classmethod
+    def register(cls, eval_task_id, task_id, endpoint_url):
+        """登记在途评估任务（同 eval_task_id 重复登记幂等覆盖）"""
+        with cls._lock:
+            cls._entries[eval_task_id] = {
+                'task_id': cls._norm_task_id(task_id),
+                'endpoint_url': endpoint_url,
+            }
+
+    @classmethod
+    def unregister(cls, eval_task_id):
+        """结果消费完毕后注销（已被 pop_by_task 摘除的为 no-op）"""
+        with cls._lock:
+            cls._entries.pop(eval_task_id, None)
+
+    @classmethod
+    def pop_by_task(cls, task_id):
+        """按应用任务 ID 摘除并返回全部在途评估任务，返回 [(eval_task_id, endpoint_url), ...]
+
+        摘除即标记取消：旧评估任务的结果到达时被消费方幂等忽略（方案A）。
+        """
+        task_id = cls._norm_task_id(task_id)
+        removed = []
+        with cls._lock:
+            for eval_task_id, ctx in list(cls._entries.items()):
+                if ctx.get('task_id') == task_id:
+                    removed.append((eval_task_id, ctx.get('endpoint_url')))
+                    cls._entries.pop(eval_task_id, None)
+                    cls._cancelled[eval_task_id] = True
+            while len(cls._cancelled) > cls._CANCELLED_CAP:
+                cls._cancelled.pop(next(iter(cls._cancelled)))
+        return removed
+
+    @classmethod
+    def is_cancelled(cls, eval_task_id):
+        """该评估任务是否已被重新评估提交摘除（幂等读取，不消费标记）"""
+        with cls._lock:
+            return eval_task_id in cls._cancelled
+
+
+eval_task_registry = EvalTaskRegistry()
+
+
 class ApiRequestHandler(EvaluationLoggerMixin):
     """
     负责发起HTTP请求、管理异步任务流程（创建、轮询、获取结果）
@@ -490,6 +557,14 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         while time.time() - start_time < effective_max_wait:
             poll_count += 1
+
+            # INT-174：该评估任务已被重新评估提交摘除（方案A）——立即退出等待，
+            # 结果由消费方按取消隔离，不再继续轮询
+            if eval_task_registry.is_cancelled(eval_task_id):
+                self._log('info', f'评估任务已被重新评估取消，停止等待: eval_task_id={eval_task_id}',
+                          task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                return {'__cancelled__': True, '__error__': '评估任务已被重新评估取消'}
+
             status_response = self.get_task_status(url, eval_task_id)
 
             if isinstance(status_response, dict) and status_response.get('code') == 0:
@@ -507,6 +582,11 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     self._log('error', f'评估任务失败: eval_task_id={eval_task_id}, error={error_msg}',
                               task_id=task_id, test_case_id=test_case_id, api_id=api_id)
                     return {'__error__': error_msg}
+                elif status == 'canceled':
+                    # INT-174：子服务 cancel_task（方案B）已生效，任务不会产生结果与回调
+                    self._log('info', f'评估任务已被子服务取消: eval_task_id={eval_task_id}',
+                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                    return {'__cancelled__': True, '__error__': '评估任务已被取消'}
                 else:
                     self._log('info', f'等待评估任务: eval_task_id={eval_task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询',
                               task_id=task_id, test_case_id=test_case_id, api_id=api_id)

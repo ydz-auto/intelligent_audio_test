@@ -8,7 +8,9 @@ from shared.utils.log_handler import log_and_emit
 from evaluation_service.infrastructure.evaluation_service_host import evaluation_service
 from evaluation_service.domain.services.reevaluation_service import reevaluation_service
 from shared.utils.result_data_store import load_full_result_data
-from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, ACTIVE_EVALUATION_STATUSES
+from shared.utils.status_constants import (
+    TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EVALUATION_STATUSES,
+)
 from shared.utils.id_normalizer import to_int_id
 from shared.models.common_enums import TestType
 from sqlalchemy import and_
@@ -33,6 +35,9 @@ class ReevaluationExecutor:
         self.reevaluation_lock = threading.Lock()
         self.is_reevaluating = False
         self.running_task_id = None
+        # 提交阶段进行中的任务集合：提交窗口内各用例尚未逐个置 queued，
+        # "全部终态"是提交前旧状态的假象，maybe_finalize 据此不提前收敛
+        self._submitting_tasks = set()
 
     @classmethod
     def get_instance(cls):
@@ -67,6 +72,12 @@ class ReevaluationExecutor:
             # P1.4: 通过 gRPC 更新 Task 状态为 reevaluate_queued
             task_acl_repository.update_task_status(task_id, TaskStatus.REEVALUATE_QUEUED)
 
+        # 重新评估前清理旧评估任务（方案A+B，INT-174）：
+        # A. 从在途评估注册表按 task_id 摘除旧条目 —— 旧评估结果到达时被幂等忽略，
+        #    不污染新结果；
+        # B. 逐个通知子服务 cancel_task —— 真正停止/抑制旧任务的计算结果与回调。
+        self._cancel_previous_evaluations(task_id)
+
         log_and_emit('INFO', 'reevaluator',
                      f"重新评估任务已提交: task_id={task_id}, type={reevaluate_type}",
                      task_id=task_id)
@@ -74,6 +85,45 @@ class ReevaluationExecutor:
         self._check_queue()
 
         return True, "重新评估任务已提交"
+
+    def _cancel_previous_evaluations(self, task_id):
+        """取消该任务此前已提交、仍在途的评估任务（方案A+B）。
+
+        方案A：从在途评估注册表（eval_task_registry）按 task_id 摘除旧条目并标记
+        取消，旧评估结果到达时被消费方幂等忽略；
+        方案B：逐个 DELETE {endpoint}/api/cancel_task/{eval_task_id} 通知子服务
+        真正取消。子服务无该接口/不可达 → 记 WARNING 继续，不失败（契约兼容项，
+        子服务能力由负责人整体复制后到位）。
+        """
+        try:
+            from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
+
+            old_tasks = eval_task_registry.pop_by_task(task_id)
+            if not old_tasks:
+                return
+
+            canceled = 0
+            for eval_task_id, endpoint_url in old_tasks:
+                if not endpoint_url:
+                    continue
+                try:
+                    import requests
+                    cancel_url = f"{endpoint_url.rstrip('/')}/api/cancel_task/{eval_task_id}"
+                    resp = requests.delete(cancel_url, timeout=5)
+                    if resp.status_code < 300:
+                        canceled += 1
+                except Exception as e:
+                    log_and_emit('WARNING', 'reevaluator',
+                                 f"通知子服务取消评估任务失败: eval_task_id={eval_task_id}, err={e}",
+                                 task_id=task_id)
+
+            log_and_emit('INFO', 'reevaluator',
+                         f"重新评估前清理旧评估任务: task_id={task_id}, "
+                         f"移除注册={len(old_tasks)}, 子服务取消={canceled}",
+                         task_id=task_id)
+        except Exception as e:
+            log_and_emit('WARNING', 'reevaluator',
+                         f"清理旧评估任务异常: err={e}", task_id=task_id)
 
     def _check_queue(self):
         """检查重新评估队列，启动下一个任务"""
@@ -84,6 +134,7 @@ class ReevaluationExecutor:
             task_info = self.reevaluation_queue.pop(0)
             self.is_reevaluating = True
             self.running_task_id = task_info['task_id']
+            self._submitting_tasks.add(task_info['task_id'])
             task_id = task_info['task_id']
             reextract_device_output = task_info['reextract_device_output']
             reevaluate_type = task_info['reevaluate_type']
@@ -159,7 +210,7 @@ class ReevaluationExecutor:
                     )
 
             # 3. 提交用例进行重新评估
-            self._submit_cases_for_reevaluation(task_id, cases_to_reevaluate)
+            self._submit_cases_for_reevaluation(task_id, cases_to_reevaluate, reevaluate_type)
 
             success = True
             log_and_emit('INFO', 'reevaluator',
@@ -288,7 +339,7 @@ class ReevaluationExecutor:
                 algorithm_result=algo_result if isinstance(algo_result, dict) else {},
             )
 
-    def _submit_cases_for_reevaluation(self, task_id, cases_to_reevaluate):
+    def _submit_cases_for_reevaluation(self, task_id, cases_to_reevaluate, reevaluate_type=REEVALUATE_TYPE_ALL):
         """提交用例进行重新评估
 
         P1.4: Task/TestCase 通过 gRPC 读
@@ -319,7 +370,7 @@ class ReevaluationExecutor:
 
                 # P0-2: 多轮/单轮分发决策委托 Domain Service
                 if reevaluation_service.is_multi_round(algorithm_result):
-                    self._reevaluate_multi_round(
+                    submitted = self._reevaluate_multi_round(
                         task_id=task_id,
                         result=result_id,
                         test_case_id=test_case_id,
@@ -327,9 +378,10 @@ class ReevaluationExecutor:
                         test_type=test_type,
                         algorithm_type=algorithm_type,
                         reference_params_col=reference_params_col,
+                        reevaluate_type=reevaluate_type,
                     )
                 else:
-                    self._reevaluate_single(
+                    submitted = self._reevaluate_single(
                         task_id=task_id,
                         result_id=result_id,
                         test_case_id=test_case_id,
@@ -338,11 +390,17 @@ class ReevaluationExecutor:
                         test_type=test_type,
                         algorithm_type=algorithm_type,
                         reference_params_col=reference_params_col,
+                        reevaluate_type=reevaluate_type,
                     )
 
-                log_and_emit('INFO', 'reevaluator',
-                             f"已提交评估: test_case_id={test_case_id}, device_id={device_id}",
-                             task_id=task_id, test_case_id=test_case_id)
+                if submitted is not False:
+                    log_and_emit('INFO', 'reevaluator',
+                                 f"已提交评估: test_case_id={test_case_id}, device_id={device_id}",
+                                 task_id=task_id, test_case_id=test_case_id)
+                else:
+                    log_and_emit('INFO', 'reevaluator',
+                                 f"用例无需重新评估（无失败维度或无评估维度）: test_case_id={test_case_id}",
+                                 task_id=task_id, test_case_id=test_case_id)
 
             except Exception as e:
                 import traceback
@@ -351,17 +409,41 @@ class ReevaluationExecutor:
                              task_id=task_id, test_case_id=test_case_id)
 
     def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
-                               reference_params_col=None):
+                               reference_params_col=None, reevaluate_type=None):
         """重新评估多轮结果 — Application 层编排。
 
         P0-2 DDD: 反序列化委托 Domain Service。
+
+        reevaluate_type='failed' 时只重评失败的维度：按 TRD（evaluation_status='failed'）
+        收集 round_number → {dim_id} 映射，已完成维度的 TRD 保留不动
+        （评估入口 _create_dimension_results 会按 (result, dim, round) 复用并重置
+        pending）；整体维度（round_number=None）按 None 键过滤。
+        其余类型全量重评（清空 TRD）。
+
+        Returns:
+            True=已提交评估, False=跳过评估（无失败维度）
         """
         algorithm_result = reevaluation_service.deserialize_algorithm_result(algorithm_result)
         rounds = algorithm_result.get('rounds', [])
         is_e2e = test_type == TestType.E2E.value
 
-        # 清理旧的维度评估记录（通过 Repository，不直连 DB）
-        evaluation_dimension_repository.delete_scores_by_result_id(result)
+        # 只重评失败维度：按 (round_number -> {dim_id}) 收集失败维度
+        failed_dims_by_round = None
+        if reevaluate_type == REEVALUATE_TYPE_FAILED:
+            failed_dims_by_round = {}
+            for score in evaluation_dimension_repository.list_scores_by_result_id(result):
+                if score.evaluation_status == EvaluationStatus.FAILED:
+                    failed_dims_by_round.setdefault(score.round_number, set()).add(score.dimension_id)
+            if not failed_dims_by_round:
+                # 没有失败的维度，无需重新评估；用例保持既有评估终态，
+                # 不置 queued（防悬挂）
+                log_and_emit('INFO', 'reevaluator',
+                             f"用例无失败维度，跳过重新评估: test_case_id={test_case_id}, result_id={result}",
+                             task_id=task_id, test_case_id=test_case_id)
+                return False
+        else:
+            # 全量重评：清理旧的维度评估记录（通过 Repository，不直连 DB）
+            evaluation_dimension_repository.delete_scores_by_result_id(result)
 
         # P1.4: 通过 gRPC 更新 TaskCase 状态
         tc_rels = task_acl_repository.get_task_case_by_ids(
@@ -383,16 +465,19 @@ class ReevaluationExecutor:
         if is_e2e:
             self._reevaluate_e2e_multi_round(
                 task_id, result, test_case_id, algorithm_result,
-                test_type, algorithm_type, reference_params_col, rounds, test_case
+                test_type, algorithm_type, reference_params_col, rounds, test_case,
+                failed_dims_by_round=failed_dims_by_round,
             )
         else:
             self._reevaluate_api_multi_round(
                 task_id, result, test_case_id, algorithm_result,
-                test_type, algorithm_type, reference_params_col, rounds, test_case
+                test_type, algorithm_type, reference_params_col, rounds, test_case,
+                failed_dims_by_round=failed_dims_by_round,
             )
+        return True
 
     def _reevaluate_e2e_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
-                                     reference_params_col, rounds, test_case):
+                                     reference_params_col, rounds, test_case, failed_dims_by_round=None):
         """E2E多轮逐轮 + 整体评估
 
         对齐正常执行链（e2e_executor：逐轮 round_number=round_idx + 整体 round_number=None）
@@ -401,6 +486,10 @@ class ReevaluationExecutor:
           算法参数按轮取（algorithm_params_col 第 n 轮 / config.rounds[n].algorithm_params）
         - 整体：仅当顶层 config.dimensions 非空时提交（整体评估只取顶层维度），
           算法参数取第 1 轮
+
+        INT-174：failed_dims_by_round 非 None（只重评失败维度）时，逐轮无失败维度的
+        轮跳过、整体无失败维度跳过，并将失败维度作为 dimension_filter_ids 传入评估
+        入口；全部被跳过时走到统一收尾（防 TaskCase 悬挂 queued）。
 
         P1.4: test_case 为 TestCaseDetailDTO（来自 gRPC）
         """
@@ -424,6 +513,14 @@ class ReevaluationExecutor:
 
             if not _round_eval_enabled:
                 continue
+
+            # 只重评失败维度：本轮无失败维度则跳过
+            dimension_filter = None
+            if failed_dims_by_round is not None:
+                round_failed = failed_dims_by_round.get(round_idx)
+                if not round_failed:
+                    continue
+                dimension_filter = list(round_failed)
 
             algo_params = {}
             if algorithm_params_col:
@@ -449,11 +546,13 @@ class ReevaluationExecutor:
                     eval_params['reference_params_col'] = reference_params_col
                 if algorithm_params_col is not None:
                     eval_params['algorithm_params_col'] = algorithm_params_col
+                if dimension_filter is not None:
+                    eval_params['dimension_filter_ids'] = dimension_filter
 
                 # INT-81：重评提交线程内的评估日志按轮次目录归档
                 from shared.logging import log_round
                 with log_round(round_idx):
-                    evaluation_service.evaluate_case(
+                    round_submitted = evaluation_service.evaluate_case(
                         task_id=task_id,
                         result_id=result,
                         test_case_id=test_case_id,
@@ -461,7 +560,8 @@ class ReevaluationExecutor:
                         round_number=round_idx,
                         **eval_params,
                     )
-                    any_submitted = True
+                    if round_submitted is not False:
+                        any_submitted = True
 
                     log_and_emit('INFO', 'reevaluator',
                                 f"已提交 E2E 轮次评估: test_case_id={test_case_id}, round={round_idx}",
@@ -475,70 +575,127 @@ class ReevaluationExecutor:
         # 整体评估：仅当顶层 config.dimensions 非空时提交
         _has_overall_dims = bool(case_config.get('dimensions')) if isinstance(case_config, dict) else False
         if _has_overall_dims:
-            algo_params = {}
-            if algorithm_params_col:
-                from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
-                algo_params = ParamNormalizerService.normalize_algorithm_params(
-                    ParamNormalizerService.get_round_algo_params(algorithm_params_col, 1))
-            elif config_rounds and isinstance(config_rounds[0], dict):
-                algo_params = config_rounds[0].get('algorithm_params', {})
+            # 只重评失败维度：整体（round_number=None）无失败维度则跳过整体提交
+            dimension_filter = None
+            if failed_dims_by_round is not None:
+                overall_failed = failed_dims_by_round.get(None)
+                if not overall_failed:
+                    dimension_filter = []  # 明确跳过整体提交
+                else:
+                    dimension_filter = list(overall_failed)
 
-            full_case_params = {
-                'algorithm_type': algorithm_type,
-                'algorithm_params': algo_params,
-                'reference_params': rounds[0].get('reference_params', []) if rounds else [],
-                'reference_params_col': reference_params_col,
-            }
+            if dimension_filter == []:
+                pass  # 无整体口径失败维度，跳过
+            else:
+                algo_params = {}
+                if algorithm_params_col:
+                    from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
+                    algo_params = ParamNormalizerService.normalize_algorithm_params(
+                        ParamNormalizerService.get_round_algo_params(algorithm_params_col, 1))
+                elif config_rounds and isinstance(config_rounds[0], dict):
+                    algo_params = config_rounds[0].get('algorithm_params', {})
 
-            try:
-                all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
-                eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
-                eval_params['algorithm_type'] = algorithm_type
-                eval_params['test_type'] = test_type
-                if reference_params_col is not None:
-                    eval_params['reference_params_col'] = reference_params_col
-                if algorithm_params_col is not None:
-                    eval_params['algorithm_params_col'] = algorithm_params_col
+                full_case_params = {
+                    'algorithm_type': algorithm_type,
+                    'algorithm_params': algo_params,
+                    'reference_params': rounds[0].get('reference_params', []) if rounds else [],
+                    'reference_params_col': reference_params_col,
+                }
 
-                evaluation_service.evaluate_case(
-                    task_id=task_id,
-                    result_id=result,
-                    test_case_id=test_case_id,
-                    algorithm_result=algorithm_result,
-                    **eval_params,
-                )
-                any_submitted = True
+                try:
+                    all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
+                    eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
+                    eval_params['algorithm_type'] = algorithm_type
+                    eval_params['test_type'] = test_type
+                    if reference_params_col is not None:
+                        eval_params['reference_params_col'] = reference_params_col
+                    if algorithm_params_col is not None:
+                        eval_params['algorithm_params_col'] = algorithm_params_col
+                    if dimension_filter is not None:
+                        eval_params['dimension_filter_ids'] = dimension_filter
 
-                log_and_emit('INFO', 'reevaluator',
-                            f"已提交 E2E 整体评估: test_case_id={test_case_id}, rounds={len(rounds)}",
-                            task_id=task_id, test_case_id=test_case_id)
-            except Exception as e:
-                import traceback
-                log_and_emit('ERROR', 'reevaluator',
-                            f"E2E 整体重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
-                            task_id=task_id, test_case_id=test_case_id)
+                    overall_submitted = evaluation_service.evaluate_case(
+                        task_id=task_id,
+                        result_id=result,
+                        test_case_id=test_case_id,
+                        algorithm_result=algorithm_result,
+                        **eval_params,
+                    )
+                    if overall_submitted is not False:
+                        any_submitted = True
+
+                    log_and_emit('INFO', 'reevaluator',
+                                f"已提交 E2E 整体评估: test_case_id={test_case_id}, rounds={len(rounds)}",
+                                task_id=task_id, test_case_id=test_case_id)
+                except Exception as e:
+                    import traceback
+                    log_and_emit('ERROR', 'reevaluator',
+                                f"E2E 整体重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
+                                task_id=task_id, test_case_id=test_case_id)
 
         if not any_submitted:
-            # 无任何可评估维度：对齐旧行为收尾——标记结果完成并推进用例评估状态，
-            # 避免 TaskCase 在重评后悬挂在 queued（旧整体单次调用会经评估入口无维度跳过路径收尾）
+            self._finalize_skipped_reevaluation(
+                task_id, result, test_case_id, failed_dims_by_round)
+
+    def _finalize_skipped_reevaluation(self, task_id, result, test_case_id, failed_dims_by_round):
+        """全部轮次被跳过、无任何评估提交时的用例收尾（防 TaskCase 悬挂 queued）。
+
+        - 只重评失败维度（failed_dims_by_round 非空）：失败 TRD 保留为 failed 终态，
+          用例按评估失败收口（失败原因聚合自失败 TRD）；
+        - 全量重评但无任何可评估维度（INT-64 口径，保留）：标记结果完成并推进
+          用例评估状态。
+        """
+        if failed_dims_by_round:
             try:
-                evaluation_service.result_processor.mark_test_result_completed(result)
-                evaluation_service._post_evaluate_updates(task_id, test_case_id)
+                from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
+                from evaluation_service.domain.services.evaluation_utils import compose_case_error_message
+                reasons = [
+                    score.error_message
+                    for score in evaluation_dimension_repository.list_scores_by_result_id(result)
+                    if score.evaluation_status == EvaluationStatus.FAILED and score.error_message
+                ]
+                if not reasons:
+                    reasons = ['重新评估（失败维度）无可用评估配置，失败维度保留失败终态']
+                update_task_case_status_in_db(
+                    None, task_id, str(test_case_id),
+                    TaskCaseStatus.FAILED, EvaluationStatus.FAILED,
+                    error_message=compose_case_error_message(reasons),
+                )
                 log_and_emit('INFO', 'reevaluator',
-                            f"E2E 重评无维度可评估，已收尾: test_case_id={test_case_id}",
+                            f"E2E/API 重评全部轮次被跳过，用例按评估失败收口: test_case_id={test_case_id}",
                             task_id=task_id, test_case_id=test_case_id)
             except Exception as e:
                 log_and_emit('WARNING', 'reevaluator',
-                            f"E2E 重评无维度收尾失败: test_case_id={test_case_id}, error={e}",
+                            f"E2E/API 重评跳过收尾失败: test_case_id={test_case_id}, error={e}",
                             task_id=task_id, test_case_id=test_case_id)
+            return
+
+        # 无任何可评估维度：对齐旧行为收尾——标记结果完成并推进用例评估状态，
+        # 避免 TaskCase 在重评后悬挂在 queued（旧整体单次调用会经评估入口无维度跳过路径收尾）
+        try:
+            evaluation_service.result_processor.mark_test_result_completed(result)
+            evaluation_service._post_evaluate_updates(task_id, test_case_id)
+            log_and_emit('INFO', 'reevaluator',
+                        f"E2E 重评无维度可评估，已收尾: test_case_id={test_case_id}",
+                        task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            log_and_emit('WARNING', 'reevaluator',
+                        f"E2E 重评无维度收尾失败: test_case_id={test_case_id}, error={e}",
+                        task_id=task_id, test_case_id=test_case_id)
 
     def _reevaluate_api_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
-                                     reference_params_col, rounds, test_case):
+                                     reference_params_col, rounds, test_case, failed_dims_by_round=None):
         """API多轮逐轮评估
+
+        INT-174：failed_dims_by_round 非 None（只重评失败维度）时，本轮无失败维度
+        则跳过，并按失败维度过滤评估；全部轮次被跳过时走到统一收尾
+        （防 TaskCase 悬挂 queued）。
 
         P1.4: test_case 为 TestCaseDetailDTO（来自 gRPC）
         """
         from evaluation_service.infrastructure.acl import algorithm_acl_repository
+
+        any_submitted = False
 
         # API: 逐轮评估
         for round_idx, round_data in enumerate(rounds):
@@ -547,6 +704,14 @@ class ReevaluationExecutor:
 
             if not evaluation:
                 continue
+
+            # 只重评失败维度：本轮无失败维度则跳过
+            dimension_filter = None
+            if failed_dims_by_round is not None:
+                round_failed = failed_dims_by_round.get(round_number)
+                if not round_failed:
+                    continue
+                dimension_filter = list(round_failed)
 
             algo_params = {}
             algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
@@ -576,8 +741,10 @@ class ReevaluationExecutor:
                     eval_params['reference_params_col'] = reference_params_col
                 if algorithm_params_col is not None:
                     eval_params['algorithm_params_col'] = algorithm_params_col
+                if dimension_filter is not None:
+                    eval_params['dimension_filter_ids'] = dimension_filter
 
-                evaluation_service.evaluate_case(
+                round_submitted = evaluation_service.evaluate_case(
                     task_id=task_id,
                     result_id=result,
                     test_case_id=test_case_id,
@@ -585,6 +752,8 @@ class ReevaluationExecutor:
                     round_number=round_number,
                     **eval_params,
                 )
+                if round_submitted is not False:
+                    any_submitted = True
 
                 # INT-81：轮次上下文仅影响本线程日志的落盘目录
                 from shared.logging import set_current_round
@@ -605,16 +774,41 @@ class ReevaluationExecutor:
         if not algorithm_result.get('aggregated'):
             self._compute_and_store_api_aggregated(result, algorithm_result)
 
+        if not any_submitted:
+            self._finalize_skipped_reevaluation(
+                task_id, result, test_case_id, failed_dims_by_round)
+
     def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, test_type, algorithm_type,
-                           reference_params_col=None):
+                           reference_params_col=None, reevaluate_type=None):
         """重新评估单轮结果 — Application 层编排。
 
         P0-2 DDD: 反序列化委托 Domain Service。
+
+        reevaluate_type='failed' 时只重评失败的维度，已完成维度的 TRD 保留不动；
+        无失败维度 → 跳过（用例保持既有评估终态，不置 queued）。
+
+        Returns:
+            True=已提交评估, False=跳过评估（无失败维度）
         """
         algorithm_result = reevaluation_service.deserialize_algorithm_result(algorithm_result)
 
-        # 清理旧的维度评估记录（通过 Repository，不直连 DB）
-        evaluation_dimension_repository.delete_scores_by_result_id(result_id)
+        # 只重评失败维度：收集失败的维度，已完成维度的 TRD 保留不动
+        failed_dim_ids = None
+        if reevaluate_type == REEVALUATE_TYPE_FAILED:
+            failed_dim_ids = {
+                score.dimension_id
+                for score in evaluation_dimension_repository.list_scores_by_result_id(result_id)
+                if score.evaluation_status == EvaluationStatus.FAILED
+            }
+            if not failed_dim_ids:
+                # 没有失败的维度，无需重新评估
+                log_and_emit('INFO', 'reevaluator',
+                             f"用例无失败维度，跳过重新评估: test_case_id={test_case_id}, result_id={result_id}",
+                             task_id=task_id, test_case_id=test_case_id)
+                return False
+        else:
+            # 全量重评：清理旧的维度评估记录（通过 Repository，不直连 DB）
+            evaluation_dimension_repository.delete_scores_by_result_id(result_id)
 
         # P1.4: 通过 gRPC 更新 TaskCase 状态
         tc_rels = task_acl_repository.get_task_case_by_ids(
@@ -661,8 +855,10 @@ class ReevaluationExecutor:
             eval_params['reference_params_col'] = reference_params_col
         if algorithm_params_col is not None:
             eval_params['algorithm_params_col'] = algorithm_params_col
+        if failed_dim_ids is not None:
+            eval_params['dimension_filter_ids'] = list(failed_dim_ids)
 
-        evaluation_service.evaluate_case(
+        return evaluation_service.evaluate_case(
             task_id=task_id,
             result_id=result_id,
             test_case_id=test_case_id,
@@ -689,21 +885,100 @@ class ReevaluationExecutor:
             )
 
     def _on_complete(self, task_id, success):
-        """重新评估完成回调
+        """重新评估提交阶段完成回调（INT-174）。
+
+        这里只代表"评估任务已全部提交"，评估本身仍在后台计算：
+        - 提交成功：任务置 running（不再直接置 completed），终态由 maybe_finalize
+          （所有已执行用例评估到终态后触发）收敛，重评队列同步保持占用直至收敛；
+        - 提交失败：任务置 failed 并立即释放重评队列。
 
         P1.4: 通过 gRPC 更新 Task 状态
         """
         with self.reevaluation_lock:
-            self.is_reevaluating = False
-            self.running_task_id = None
+            self._submitting_tasks.discard(task_id)
+            if not success:
+                self.is_reevaluating = False
+                self.running_task_id = None
 
-        # P1.4: 通过 gRPC 更新 Task 状态
-        new_status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
-        status_updated = task_acl_repository.update_task_status(task_id, new_status)
+        from evaluation_service.infrastructure.evaluation_mixin import update_task_status_with_retry
+        new_status = TaskStatus.RUNNING if success else TaskStatus.FAILED
+        status_updated = update_task_status_with_retry(task_id, new_status)
 
         log_and_emit('INFO' if status_updated else 'ERROR', 'reevaluator',
-                     f"重新评估完成: task_id={task_id}, success={success}, "
-                     f"任务状态更新为 {new_status}: {'成功' if status_updated else '失败'}",
+                     f"重新评估任务提交完成: task_id={task_id}, success={success}, 任务状态={new_status}"
+                     + ("（评估仍在后台计算，任务终态由评估收敛驱动）" if success else ""),
                      task_id=task_id)
 
+        if not success:
+            # 提交失败：释放重新评估队列，启动下一个排队任务
+            self._check_queue()
+
+    def maybe_finalize(self, task_id):
+        """检查重新评估是否真正完成（所有已执行用例的评估都到终态）。
+
+        由评估结果回调（写完结果/终态后）调用；仅当该任务确实是当前重新评估
+        处理中的任务、或确系服务重启后被恢复逻辑误标过的重新评估任务时才收尾，
+        普通执行链评估任务不受影响。
+
+        服务重启兼容：启动恢复会把"重新评估中/排队中"的任务及其中间态用例
+        置为 failed，而端点队列（Redis）中残留的评估任务会在重启后被重新消费、
+        写回结果并把用例逐个置回 completed。这里在用例全部到达终态后统一收尾
+        为 completed；当前进程不再跟踪该任务（如重启后 running_task_id 清空）时，
+        仅当全部用例执行均已完成且带「服务重启」标记（重启恢复写入
+        task_case_relations.error_message）才兜底收尾——重新评估不重跑执行，
+        其用例执行应全部完成；普通执行任务被重启中断时会有执行失败的用例，
+        不会被误收尾。
+
+        Returns:
+            bool: 是否完成了本次收尾
+        """
+        all_tcs = task_acl_repository.get_task_case_by_ids(task_id=task_id)
+        if not all_tcs:
+            return False
+
+        # 只检查已执行完成的用例（未执行用例不参与重新评估）
+        executed_tcs = [tc for tc in all_tcs if tc.execution_status == ExecutionStatus.COMPLETED]
+        if not executed_tcs:
+            return False
+
+        # 仍有用例在评估，继续等待
+        if any(tc.evaluation_status in ACTIVE_EVALUATION_STATUSES for tc in executed_tcs):
+            return False
+
+        task = task_acl_repository.get_task_by_id(task_id)
+        if not task:
+            return False
+        if task.status not in (TaskStatus.RUNNING, TaskStatus.FAILED,
+                               TaskStatus.REEVALUATING, TaskStatus.REEVALUATE_QUEUED):
+            return False
+
+        with self.reevaluation_lock:
+            is_current_task = (self.running_task_id == task_id)
+            still_submitting = task_id in self._submitting_tasks
+
+        if not is_current_task:
+            # 服务重启后进程态丢失：仅当该任务确为被重启恢复误标的重新评估任务时才兜底收尾
+            if not all(tc.execution_status == ExecutionStatus.COMPLETED for tc in all_tcs):
+                return False
+            if not any((tc.error_message or '').startswith('服务重启') for tc in executed_tcs):
+                return False
+        elif still_submitting:
+            # 提交阶段尚未结束（部分用例尚未置 queued/提交评估），此刻"全部终态"
+            # 是提交前旧状态的假象，不能据此提前收敛
+            return False
+
+        if task.status != TaskStatus.COMPLETED:
+            from evaluation_service.infrastructure.evaluation_mixin import update_task_status_with_retry
+            update_task_status_with_retry(task_id, TaskStatus.COMPLETED)
+
+        log_and_emit('INFO', 'reevaluator',
+                     f"重新评估完成: task_id={task_id}，任务状态更新为 completed",
+                     task_id=task_id)
+
+        # 释放重新评估队列，启动下一个排队任务（仅当自己仍是当前处理任务时）
+        with self.reevaluation_lock:
+            if self.running_task_id == task_id:
+                self.is_reevaluating = False
+                self.running_task_id = None
         self._check_queue()
+        return True

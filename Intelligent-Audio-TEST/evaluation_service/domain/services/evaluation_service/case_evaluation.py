@@ -278,6 +278,30 @@ class CaseEvaluationMixin:
             self._post_evaluate_updates(task_id, test_case_id)
             return False
 
+        # 维度过滤（INT-174，重新评估只重评失败维度）：
+        # None=不过滤（全量评估）；非空列表=仅评估其中存在的维度。
+        # config 里维度 id 是字符串（"121"），TRD.dimension_id 是整数（121），
+        # 比较前统一转 int，避免类型不匹配导致全部被误过滤。
+        dimension_filter_ids = kwargs.get('dimension_filter_ids')
+        if dimension_filter_ids is not None:
+            filter_set = set()
+            for _d in dimension_filter_ids:
+                try:
+                    filter_set.add(int(_d))
+                except (TypeError, ValueError):
+                    continue
+            unique_dimension_ids = [d for d in unique_dimension_ids if int(d) in filter_set]
+            if not unique_dimension_ids:
+                self._log(
+                    level='INFO',
+                    content=f"用例 {case_name} 过滤后无待评估维度（filter={sorted(filter_set)}），跳过本轮评估并收尾",
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                )
+                self.result_processor.mark_test_result_completed(result_id)
+                self._post_evaluate_updates(task_id, test_case_id)
+                return False
+
         # 加载维度数据
         dimension_data_list = self._load_dimension_data(
             unique_dimension_ids, task_id, test_case_id, test_case
@@ -319,7 +343,7 @@ class CaseEvaluationMixin:
         if isinstance(algorithm_result, dict) and algorithm_result.get('rounds'):
             for k, v in kwargs.items():
                 if k not in ('test_type', 'round_number', 'algorithm_type',
-                             'reference_params_col', 'rounds'):
+                             'reference_params_col', 'rounds', 'dimension_filter_ids'):
                     flat_eval_fields[k] = v
         self._dispatch_evaluation_tasks(
             dimension_data_list, dimension_result_map, result_id, task_id, test_case_id,

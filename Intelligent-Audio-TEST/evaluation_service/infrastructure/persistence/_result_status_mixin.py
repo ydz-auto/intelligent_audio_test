@@ -268,7 +268,10 @@ class ResultStatusMixin:
         )
 
         # P1.4: 通过 gRPC 更新 Task 状态（同步路径，保留兼容）
-        if task and task.status in (TaskStatus.EVALUATING, TaskStatus.REEVALUATING):
+        # INT-174（对齐 V9.7.10 c30d1b24）：重新评估（reevaluating）期间任务终态
+        # 由 ReevaluationExecutor.maybe_finalize 统一收敛（提交成功 ≠ 完成），
+        # 用例级收尾只在普通执行链的 evaluating 态翻转任务状态
+        if task and task.status == TaskStatus.EVALUATING:
             self._update_task_status_and_notify(task_id, test_case_id, new_status, task)
 
     def _update_task_status_and_notify(self, task_id, test_case_id, new_status, task):

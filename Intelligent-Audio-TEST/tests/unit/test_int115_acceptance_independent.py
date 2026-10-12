@@ -273,7 +273,11 @@ class TestServicerInvalidIdAllEntries:
 # ============================================================
 
 class TestFailureTransparencyNoDisguise:
-    """原缺陷掩盖话术"没有需要重新评估的用例"在任务缺失时不得出现。"""
+    """原缺陷掩盖话术"没有需要重新评估的用例"在任务缺失时不得出现。
+
+    INT-174 口径更新：提交成功任务置 RUNNING（终态由 maybe_finalize 收敛），
+    失败置 FAILED；状态写走 update_task_status_with_retry。
+    """
 
     def _run(self, get_task_by_id_ret):
         from evaluation_service.application.handlers.reevaluation_executor import (
@@ -285,26 +289,28 @@ class TestFailureTransparencyNoDisguise:
         def _log(level, category, content, **kw):
             logs.append((level, content))
 
-        with patch(_ACL) as acl, patch(_LOG, _log):
+        with patch(_ACL) as acl, patch(_LOG, _log), patch(
+            'evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry'
+        ) as upd:
             acl.get_test_results_by_task_and_case.return_value = []
             acl.get_task_case_by_ids.return_value = []
             acl.get_task_by_id.return_value = get_task_by_id_ret
             ex._run_reevaluation(task_id=491, reextract_device_output=False, reevaluate_type='all')
-        return acl, logs
+        return upd, logs
 
     def test_task_missing_no_disguise_warning(self):
-        acl, logs = self._run(get_task_by_id_ret=None)
+        upd, logs = self._run(get_task_by_id_ret=None)
         assert not any('没有需要重新评估的用例' in c for _, c in logs), \
             '任务缺失时不得发出原掩盖话术 WARNING'
         assert any(lv == 'ERROR' and '重新评估失败' in c for lv, c in logs)
-        acl.update_task_status.assert_called_once_with(491, TaskStatus.FAILED)
+        upd.assert_called_once_with(491, TaskStatus.FAILED)
 
     def test_task_exists_noop_semantics_preserved(self):
-        """任务存在但无结果：合法 no-op 语义保留（WARNING + COMPLETED）。"""
-        acl, logs = self._run(get_task_by_id_ret=SimpleNamespace(id=491))
+        """任务存在但无结果：合法 no-op 语义保留（WARNING + 提交成功置 RUNNING）。"""
+        upd, logs = self._run(get_task_by_id_ret=SimpleNamespace(id=491))
         assert any('没有需要重新评估的用例' in c for _, c in logs)
         assert not any(lv == 'ERROR' and '重新评估失败' in c for lv, c in logs)
-        acl.update_task_status.assert_called_once_with(491, TaskStatus.COMPLETED)
+        upd.assert_called_once_with(491, TaskStatus.RUNNING)
 
 
 # ============================================================

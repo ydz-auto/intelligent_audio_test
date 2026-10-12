@@ -199,11 +199,40 @@ class DimensionResultMixin:
         finally:
             local_db_session.close()
 
-        # 更新 TaskCase 的 evaluation_status 和 status 都为 failed（P1.4: 通过 gRPC）
-        # INT-107: 失败原因同步写入 task_case_relations.error_message，不再整例静默失败
-        # INT-116: 在会话释放后执行（gRPC 失败有内联重试+延迟队列兜底）
+        # 更新 TaskCase 的评估状态（P1.4: 通过 gRPC）
+        # INT-174（对齐 V9.7.10 c30d1b24）：一个维度组失败不代表用例评估结束
+        # （其他主维度组可能仍在计算），不再无条件把整个 TaskCase 置为 failed，
+        # 统一交给 update_task_case_status 收尾——它检查所有维度都到终态后才
+        # 判定最终状态，避免"还在评估中的用例被提前判失败"。
         if test_case_id:
-            self._mark_group_case_failed(task_id, test_case_id, error_message)
+            try:
+                result_id = None
+                if group_items:
+                    first_trd_id = group_items[0][1]
+                    from evaluation_service.infrastructure.persistence.orm_models import TestResultDimension
+                    lookup_session = get_db_session()
+                    try:
+                        first_trd = lookup_session.get(TestResultDimension, first_trd_id)
+                        if first_trd:
+                            result_id = first_trd.test_result_id
+                    finally:
+                        lookup_session.close()
+                if result_id:
+                    self.update_task_case_status(
+                        result_id=result_id,
+                        current_result_all_completed=False,
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        test_type=None
+                    )
+            except Exception as e:
+                self._log(
+                    level='ERROR',
+                    category='database',
+                    content=f"维度组失败统一收尾更新TaskCase状态失败: test_case_id={test_case_id}, error={e}",
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                )
 
     def _mark_group_case_failed(self, task_id, test_case_id, error_message=''):
         """组内维度评估失败时，将 TaskCase 状态置为失败（P1.4: 通过 gRPC）"""

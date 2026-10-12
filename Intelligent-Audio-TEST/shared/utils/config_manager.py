@@ -58,7 +58,7 @@ class ConfigManager:
                     "max_wait_time": 300,
                     "default_max_concurrent": 10,
                     "poll_interval": 5,
-                    "eval_max_wait_time": 600,
+                    "eval_max_wait_time": 72000,
                     "redis_queue_brpop_timeout": 1,
                     "redis_result_callback_timeout": 5,
                     "eval_fallback_urls": []
@@ -110,7 +110,7 @@ class ConfigManager:
                     "max_wait_time": 300,
                     "default_max_concurrent": 10,
                     "poll_interval": 5,
-                    "eval_max_wait_time": 600,
+                    "eval_max_wait_time": 72000,
                     "redis_queue_brpop_timeout": 1,
                     "redis_result_callback_timeout": 5,
                     "eval_fallback_urls": []
