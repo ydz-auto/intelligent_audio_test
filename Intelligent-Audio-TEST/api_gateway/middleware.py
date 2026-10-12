@@ -101,6 +101,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         '/api/v1/auth/login',
         '/api/v1/auth/callback',
         '/api/v1/auth/register',
+        # INT-179：登录前 RSA 公钥下发（旧库路径别名，与 /login/encryption-key
+        # 同源）——公钥用于加密登录密码，拿公钥本身不得先登录
+        '/api/v1/auth/encryption-key',
+        # INT-179：refresh 路由自解析 Bearer 并自验签（过期 token 须由路由
+        # 返回刷新失败语义，而非被网关在路由前拦死）
+        '/api/v1/auth/refresh',
         '/api/v1/auth/oauth',  # INT-51：提供方列表 / 授权跳转 / 授权回调
         '/docs',
         '/openapi.json',

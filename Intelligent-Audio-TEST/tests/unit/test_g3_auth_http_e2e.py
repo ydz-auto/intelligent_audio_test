@@ -58,6 +58,15 @@ from shared.models.database import init_db, get_db_session, get_engine, remove_d
 _RUN = uuid.uuid4().hex[:8]
 
 
+@pytest.fixture(scope='module', autouse=True)
+def _purge_oauth_fixtures():
+    """模块 teardown 按 run tag 清夹具：共享库（DATABASE_URL 已显式设置
+    时 setdefault 失效）下不留验收残留（INT-179）。"""
+    yield
+    from tests.unit.oauth_fixture_cleanup import purge_oauth_test_fixtures
+    purge_oauth_test_fixtures(_RUN)
+
+
 @compiles(BigInteger, 'sqlite')
 def _render_bigint_as_integer_sqlite(type_, compiler, **kw):
     """SQLite 不支持 BigInteger 主键自增，建表时渲染为 INTEGER。"""

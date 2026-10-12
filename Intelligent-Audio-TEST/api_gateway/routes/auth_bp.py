@@ -26,6 +26,20 @@ def encryption_key():
     token，须免认证可达）。加密开关关闭时返回 {enabled: false}，前端
     回退明文提交。
     """
+    return _encryption_key_payload()
+
+
+@router.get('/encryption-key')
+def encryption_key_alias():
+    """旧库路径别名 GET /auth/encryption-key（INT-179）。
+
+    对齐旧库公开端点路径：白名单含 /api/v1/auth/encryption-key，与
+    /login/encryption-key 同源同响应，旧脚本/人工联调不因路径断代 401。
+    """
+    return _encryption_key_payload()
+
+
+def _encryption_key_payload():
     from api_gateway.application.services.auth.password_encryption import (
         PasswordEncryptionService,
     )
@@ -49,16 +63,28 @@ def login_page():
 
 
 @router.post('/login')
-def login_submit(username: str = Form(...),
+def login_submit(request: Request,
+                 username: str = Form(''),
                  password: str = Form(''),
                  password_encrypted: str = Form(''),
                  encryption_key_id: str = Form('')):
     """账号(用户名/邮箱)+密码登录（INT-147：密码 RSA 加密传输 + 邮箱登录）。
 
+    INT-179：请求体双格式兼容——表单编码（application/x-www-form-urlencoded，
+    前端契约）与 JSON body 均可（JSON 经 RequestAdapterMiddleware 预解析进
+    request.state._json_body 兜底），消除 Content-Type 契约不匹配的 422。
+
     加密开关开启时仅接受 password_encrypted/encryption_key_id（明文
     password 字段被忽略，对齐旧库无明文回退）；解密失败与凭证错误
     统一 401「用户名或密码错误」（防用户名枚举）。
     """
+    if not any((username, password, password_encrypted, encryption_key_id)):
+        body = getattr(request.state, '_json_body', None)
+        if isinstance(body, dict):
+            username = str(body.get('username') or '')
+            password = str(body.get('password') or '')
+            password_encrypted = str(body.get('password_encrypted') or '')
+            encryption_key_id = str(body.get('encryption_key_id') or '')
     from api_gateway.application.services.auth.password_encryption import (
         PasswordEncryptionError, PasswordEncryptionService,
     )

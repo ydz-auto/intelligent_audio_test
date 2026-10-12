@@ -156,6 +156,15 @@ def client(seeded, svc, rsa_key_path):
 _RUN = uuid.uuid4().hex[:8]
 
 
+@pytest.fixture(scope='module', autouse=True)
+def _purge_oauth_fixtures():
+    """模块 teardown 按 run tag 清夹具：共享库（DATABASE_URL 已显式设置
+    时 setdefault 失效）下不留验收残留（INT-179）。"""
+    yield
+    from tests.unit.oauth_fixture_cleanup import purge_oauth_test_fixtures
+    purge_oauth_test_fixtures(_RUN)
+
+
 def _fetch_key(client):
     resp = client.get('/api/v1/auth/login/encryption-key')
     assert resp.status_code == 200, resp.text
