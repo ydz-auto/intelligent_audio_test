@@ -298,6 +298,52 @@ class TestFavoriteFilter:
         active_page = testcase_repository.query_testcases()
         assert 'INT141_F1' not in {tc.id for tc in active_page.items}
 
+    def test_testcase_list_grpc_handler_chain_accepts_favorite(self):
+        """回归：gRPC servicer → handler → 门面 → 查询服务全链透传 favorite。
+
+        servicer ListTestCases 无条件传 favorite/only_deleted/user_id，门面
+        TestCaseCrudService.list_testcases 签名曾缺参导致全量用例列表 500
+        （'unexpected keyword argument favorite'）。本用例按 servicer 同款
+        形态走 handler 链，签名回归即在此失败。
+        """
+        from task_service.application.queries.task_queries import ListTestCasesQuery
+        from task_service.application.handlers import task_query_handler
+        from task_service.infrastructure.persistence.models import TestCase, Favorite
+
+        session = get_db_session()
+        try:
+            session.add_all([
+                TestCase(id='INT141_CHAIN1', name='链路收藏命中', config={}),
+                TestCase(id='INT141_CHAIN2', name='链路未收藏', config={}),
+            ])
+            session.add(Favorite(user_id=311, entity_type='testcase',
+                                 entity_id='INT141_CHAIN1'))
+            session.commit()
+        finally:
+            remove_db_session()
+
+        # 与 servicer ListTestCases 相同的构造与委托形态（含无条件传参）
+        result = task_query_handler.handle_list_testcases(ListTestCasesQuery(
+            page=1, per_page=10, keyword=None, tag=None, group_id=None,
+            algorithm_type=None, view=None, include_deleted=False,
+            favorite=True, only_deleted=False, user_id=311))
+        assert result.get('success') is True
+        items = result.get('data', {}).get('items') or []
+        assert [tc['id'] for tc in items] == ['INT141_CHAIN1']
+
+        # 不带 favorite 的普通列表同样走通（历史上该路径也因签名 500）
+        plain = task_query_handler.handle_list_testcases(ListTestCasesQuery(
+            page=1, per_page=10, favorite=False, only_deleted=False, user_id=311))
+        assert plain.get('success') is True
+        plain_ids = {tc['id'] for tc in (plain.get('data', {}).get('items') or [])}
+        assert {'INT141_CHAIN1', 'INT141_CHAIN2'} <= plain_ids
+
+        # view=tag 聚合视图（成员实测口径）走通
+        tagged = task_query_handler.handle_list_testcases(ListTestCasesQuery(
+            page=1, per_page=10, view='tag', favorite=False,
+            only_deleted=False, user_id=311))
+        assert tagged.get('success') is True
+
 
 # ---------------- 回收站（任务/用例） ----------------
 
