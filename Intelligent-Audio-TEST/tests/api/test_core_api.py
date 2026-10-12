@@ -4,9 +4,59 @@
 使用 pytest + httpx 对 api_gateway 路由做接口测试。
 后端未运行时自动 skip（通过 conftest.require_backend fixture）。
 每个资源至少覆盖 happy path 和一个异常路径。
+
+数据卫生（INT-229 验收补漏）：写入型用例数据携带进程级唯一前缀
+`_test_{_RUN}_`，模块级 teardown 按前缀硬删残留（tag_categories 的
+DELETE 为软删，直接跑会留残留），口径同 INT-218 / INT-229。
 """
+import os
+import secrets
+
 import pytest
-from tests.api.conftest import API_BASE
+from tests.api.conftest import API_BASE, PROJECT_ROOT
+
+# 进程级唯一前缀段：xdist 各进程独立取值，teardown 按前缀硬删不会误删
+# 并发运行的其它数据。
+_RUN = secrets.token_hex(4)
+
+# 本文件写入型用例触达的表（tag_categories 的 DELETE 为软删）。
+_PURGE_TABLES = [
+    ('tag_categories', 'name'),
+]
+
+
+def _database_url() -> str:
+    """实机栈 .env 的 DATABASE_URL（缺省回退本地默认值）。"""
+    try:
+        with open(os.path.join(PROJECT_ROOT, '.env'), encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('DATABASE_URL='):
+                    return line.split('=', 1)[1].strip().strip('"\'')
+    except OSError:
+        pass
+    return ('postgresql://intelligent_audio_test:intelligent_audio_test666'
+            '@localhost:5432/intelligent_audio_test')
+
+
+def _purge_run_rows() -> None:
+    """按进程级唯一前缀硬删本文件全部残留行，库中不留本文件测试数据。"""
+    import sqlalchemy
+    from sqlalchemy import text
+    eng = sqlalchemy.create_engine(_database_url(),
+                                   connect_args={'connect_timeout': 5})
+    pattern = rf'\_test\_{_RUN}\_%'
+    with eng.begin() as conn:
+        for table, col in _PURGE_TABLES:
+            conn.execute(text(f'DELETE FROM {table} WHERE {col} LIKE :p'),
+                         {'p': pattern})
+
+
+@pytest.fixture(scope='module', autouse=True)
+def _purge_after_module():
+    """模块结束（含用例中途失败）按唯一前缀硬删本文件全部测试数据。"""
+    yield
+    _purge_run_rows()
 
 
 # ── 辅助 ──────────────────────────────────────────────────
@@ -24,7 +74,7 @@ class TestTags:
 
     def test_tag_category_crud(self, api_client):
         # Create
-        resp = api_client.post('/tags/categories', json={'name': '_test_category', 'description': 'test'})
+        resp = api_client.post('/tags/categories', json={'name': f'_test_{_RUN}_category', 'description': 'test'})
         data = _unwrap(resp)
         cat_id = data.get('id')
         assert cat_id is not None
@@ -32,7 +82,7 @@ class TestTags:
         # Read
         resp = api_client.get(f'/tags/categories/{cat_id}')
         data = _unwrap(resp)
-        assert data.get('name') == '_test_category'
+        assert data.get('name') == f'_test_{_RUN}_category'
 
         # List
         resp = api_client.get('/tags/categories')
@@ -40,9 +90,9 @@ class TestTags:
         assert isinstance(data.get('items'), list)
 
         # Update
-        resp = api_client.put(f'/tags/categories/{cat_id}', json={'name': '_test_cat_updated'})
+        resp = api_client.put(f'/tags/categories/{cat_id}', json={'name': f'_test_{_RUN}_cat_updated'})
         data = _unwrap(resp)
-        assert data.get('name') == '_test_cat_updated'
+        assert data.get('name') == f'_test_{_RUN}_cat_updated'
 
         # Delete
         resp = api_client.delete(f'/tags/categories/{cat_id}')
