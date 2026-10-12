@@ -38,6 +38,9 @@ python scripts/migrations/202610/add_api_device_adapter_columns.py       # ⑲ a
 python scripts/migrations/202610/cleanup_compare_report_audios_dup.py --apply  # ⑳ 存量对比报告 audios 重复对象清洗（INT-135；默认 dry-run，本环境 2026-10-11 dry-run 0 受影响、无需执行）
 python scripts/migrations/202610/fix_users_schema_drift.py --apply      # ㉑ users 表旧 schema 漂移收敛 + dev 引导用户种子（INT-156；默认 dry-run）
 python scripts/migrations/202610/add_user_oauth_bindings.py             # ㉒ 建 user_oauth_bindings 第三方账号绑定表（INT-147 打回 F1；全新库 create_all 已含，执行为全 SKIP）
+python scripts/migrations/202610/seed_turn_eval.py                      # ㉓ 逐轮话轮评估维度种子（INT-192，1 主 + 6 子；依赖 ⑪ seed_voice_llm）
+python scripts/migrations/202610/seed_env_judge.py                      # ㉔ 环境理解维度种子（INT-192，3 主；依赖 ⑪ seed_voice_llm）
+python scripts/migrations/202610/seed_interruption_v2.py                # ㉕ 打断指标 v2 维度种子（INT-192，11 主 + 时延容器 + 3 子；依赖 ⑪ seed_voice_llm）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -47,6 +50,10 @@ python scripts/migrations/202610/add_user_oauth_bindings.py             # ㉒ �
 > ✅ **2026-10-12 修复记录（INT-156）**：快照恢复库 users 表为旧 schema（`password_hash`/`email` NOT NULL + legacy `role` NOT NULL，表 0 行），dev 登录引导建号必败（NotNullViolation，阻塞 INT-144 推送）。已对运行库执行 ㉑ `--apply`：password_hash/email 置 nullable、legacy role 列删除（表空无数据，0 行需回填）、种子 dev_user（role_id=1 admin，bcrypt 哈希）。验收实测 12:49：加密登录 200 + access_token、带 token `GET /api/v1/published-tasks` 200、重复登录幂等（users 保持 1 行）。同批在临时库完成红-绿自测（迁移前真实 handler 复现 NotNullViolation / 迁移后 OAuth 建号、bcrypt 校验、三遍幂等全过）。
 
 > ✅ **2026-10-12 修复记录（INT-147 打回 F1）**：UserOAuthBinding PO 新增后存量部署缺 `user_oauth_bindings` 表，`GET/DELETE /oauth/bindings` 直接 500（UndefinedTable）。已补执行 ㉒：运行库执行为全 [SKIP]（验收方当日已按 PO 模型补建该表，脚本回读确认 5 列 + `uq_provider_user` + 双索引与 ORM 一致）；另在临时库完成建表路径验证（dry-run 不落 DDL / 首次执行建表 / 重复执行全 SKIP / 结构与 ORM 逐列比对一致）。
+
+> ✅ **2026-10-13 移植记录（INT-192）**：补齐三族维度 seed（㉓ turn_eval / ㉔ env_judge / ㉕ interruption_v2，V9.7.10 蓝本金标对齐后移植）。运行库执行实测零插入（全原地更新/SKIP，仅 updated_at 移动，逐字段前后比对无差）；临时库（create_all + seed_voice_llm）fresh 路径实测：首轮 25 维/322 参数/110 映射全插入、重跑全 SKIP/更新零插入，临时库终态与运行库金标逐字段等价（含 api_settings deep-equal）后销毁。UPDATE 不写 status：运行库「逐轮三分类评估」status=FALSE 为现状保留（fresh 库该维为启用态，验收方如判定需对齐可手工关闭）。三个脚本依赖 ⑪ seed_voice_llm 先行（param_mappings/关联外键引用 algorithm_definitions）。
+
+
 
 ## ⚠️ 执行须知
 
@@ -103,6 +110,9 @@ python scripts/migrations/202610/add_user_oauth_bindings.py             # ㉒ �
 | [add_trash_operator_and_favorites.py](202610/add_trash_operator_and_favorites.py) | CUD 操作人列 + 收藏表（INT-141） | `test_tasks`/`test_cases`/`test_reports` 补 `deleted_by_user_id`（幂等兜底补 `created_by_user_id`/`updated_by_user_id` 及索引）；建 `favorites`（task_service 管 task\|testcase）与 `report_favorites`（report_service 管 report；单库部署下 Base.metadata 表名全局唯一，不能同名复用），(user_id, entity_type, entity_id) 唯一；幂等，支持 `--dry-run` |
 | [fix_users_schema_drift.py](202610/fix_users_schema_drift.py) | users 表旧 schema 漂移收敛 + dev 引导用户种子（INT-156） | 快照恢复/旧库升级场景 users 表与 ORM 模型漂移导致任何建号必败：① `password_hash` ② `email` 置 nullable（对齐 user_models.py）；③ legacy 列 `role` 按 `roles.name` 回填 `role_id` 后 **DROP COLUMN**（⚠️ 破坏性：原值删除，代码与 202608 后数据均以 role_id 为准）；④ users 表为空时种子 dev 引导用户（`DEV_DEFAULT_USERNAME`/`DEV_DEFAULT_ROLE`/`DEV_DEFAULT_PASSWORD` 环境变量可覆盖，默认 dev_user/admin/dev_password，bcrypt 哈希）。幂等（默认 dry-run，`--apply` 执行），全新库 ①②③ 为 no-op |
 | [add_user_oauth_bindings.py](202610/add_user_oauth_bindings.py) | 建 `user_oauth_bindings` 第三方账号绑定表（INT-147 打回 F1） | 第三方身份绑定（user_id BIGINT / provider_id INTEGER / provider_user_id VARCHAR(255) / created_at）；`uq_provider_user (provider_id, provider_user_id)` 唯一约束——一个第三方身份至多绑定一个本地用户；索引 `ix_binding_user(user_id)` / `ix_user_oauth_bindings_provider_id(provider_id)`；无外键（应用层管理引用完整性）；幂等（缺约束自愈），支持 `--dry-run`；DDL 与 auth_service `UserOAuthBinding` ORM 元数据逐列对齐 |
+| [seed_turn_eval.py](202610/seed_turn_eval.py) | 逐轮话轮评估维度种子（INT-192，移植 V9.7.10 202606） | turn_eval 主维度（仅 input+映射，无 output）+ turn_evaluation 6 子维度（三分类/接管率/未接管率/误接管率/时延均值/内容均分）；param_mappings 仅挂主维度；分类→话轮接管；INSERT 显式补 sort_order/api_status/estimated_exec_time/agg_denominator/exclude_rounds（fresh create_all 库无 DB 级默认）；UPDATE 不写 status（保留运行库现状）；幂等（运行库执行零插入） |
+| [seed_env_judge.py](202610/seed_env_judge.py) | 环境理解维度种子（INT-192，移植 V9.7.10 202609） | env_judge 3 主维度（准确率 pass_rate / 平均回复时延 average / 评分 average）；case_config 轮次音频映射 3 条共享，LLM 判定维度另挂 case→correctAnswer；分类→环境理解；api_settings.group_key 仅作 V9.7.10 金标对齐保留（V9.7.31 由 task_dispatcher 运行时签名合并，不消费）；同上幂等口径 |
+| [seed_interruption_v2.py](202610/seed_interruption_v2.py) | 打断指标 v2 维度种子（INT-192，移植 V9.7.10 202609） | 11 主维度（8 数量类 COUNT 模板 + 3 评分类 SCORE 模板）+「打断时延」容器 + 3 时延子维度；Step 0 物理清理旧代 interruption_metrics 树（interruption_judge 属 seed_env_sound_judge 另一族不动）；分类→打断；同上幂等口径 |
 
 ## 新增迁移脚本约定
 
