@@ -11,7 +11,7 @@ import logging
 import pandas as pd
 from datetime import datetime
 
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.infrastructure.acl import (
     AudioAclRepositoryImpl,
@@ -611,11 +611,12 @@ class TestCaseImportService:
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 TestCaseImportService._write_template_sheets(writer)
             output.seek(0)
-            return FileResponse(
-                output,
-                mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                as_attachment=True,
-                download_name=f'testcase_template_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx',
+            # 内存字节流下载用 Response（FileResponse 仅接受磁盘路径，
+            # 且其参数名为 media_type/filename 而非 Flask 的 mimetype/download_name）
+            return Response(
+                content=output.getvalue(),
+                media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                headers={"Content-Disposition": f"attachment; filename=testcase_template_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"},
             )
         except Exception as e:
             return error_response(f"生成模板失败: {str(e)}")

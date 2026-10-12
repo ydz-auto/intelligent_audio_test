@@ -11,7 +11,7 @@ import logging
 import pandas as pd
 from datetime import datetime
 
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from api_gateway.infrastructure.request_adapter import request
 from shared.utils.testcase_helpers import derive_case_test_type
 from api_gateway.infrastructure.acl import (
@@ -540,11 +540,12 @@ class TestCaseExportService:
 
         download_name = f"testcases_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         output.seek(0)
-        return FileResponse(
-            output,
-            mimetype='text/csv',
-            as_attachment=True,
-            download_name=download_name,
+        # 内存字节流下载用 Response（FileResponse 仅接受磁盘路径，
+        # 且其参数名为 media_type/filename 而非 Flask 的 mimetype/download_name）
+        return Response(
+            content=output.getvalue(),
+            media_type='text/csv',
+            headers={"Content-Disposition": f"attachment; filename={download_name}"},
         )
 
     # ------------------------------------------------------------------
@@ -569,11 +570,10 @@ class TestCaseExportService:
 
         output.seek(0)
         download_name = f"testcases_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        return FileResponse(
-            output,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=download_name,
+        return Response(
+            content=output.getvalue(),
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition": f"attachment; filename={download_name}"},
         )
 
     # ------------------------------------------------------------------
