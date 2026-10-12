@@ -11,7 +11,7 @@
       </div>
       <div class="header-right">
         <div class="header-actions">
-          <button class="btn btn-text btn-link" @click="openAddModal">
+          <button class="btn btn-text btn-link" @click="openAddModal()">
             <i class="fas fa-plus btn-icon"></i>
             新增维度
           </button>
