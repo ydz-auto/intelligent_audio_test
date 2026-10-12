@@ -41,8 +41,11 @@ def _engine_stub():
     stub = SimpleNamespace(task_completion_events={})
     stub.emitted = []
     stub.scheduler_checks = []
+    stub.refreshed = []
     stub._emit_progress = lambda task, force=False: stub.emitted.append((task, force))
     stub.trigger_scheduler_check = lambda: stub.scheduler_checks.append(True)
+    # INT-161：_on_case_event 在用例事件侧原子刷新任务行计数
+    stub.refresh_task_counts_atomic = lambda task_id: stub.refreshed.append(task_id)
     return stub
 
 

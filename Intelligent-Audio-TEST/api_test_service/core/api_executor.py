@@ -705,10 +705,16 @@ class APIExecutor(BaseExecutor):
         return audio_data, total_audio_duration, None
 
     def _fail_tc_rel(self, tc_rel_id, error_msg, task_id=None):
-        """将 TaskCase 标记为失败
+        """将 TaskCase 标记为失败（终态收敛）
 
         通过 ACL 仓储查询 TaskCase（需要 task_id）后更新状态。
         若 task_id 未提供，则仅记录日志。
+
+        INT-161：失败即用例终态、评估不会再提交——评估停留 pending 会被
+        task_service 主循环计入活跃评估集合（ACTIVE_EVALUATION_STATUSES 含
+        PENDING），API 任务死等不收敛、直至进程重启被启动恢复改写失败原因，
+        故补写评估终态（对齐 _finalize_dispatch_failure 逃生门口径），并在
+        更新成功后发布 CASE_FAILED 事件，task_service 事件侧聚合任务计数。
         """
         if not task_id:
             self._log(level='WARNING', content=f"无法更新 TaskCase {tc_rel_id} 失败状态: 缺少 task_id")
@@ -726,14 +732,35 @@ class APIExecutor(BaseExecutor):
                 self._log(level='WARNING', content=f"TaskCase {tc_rel_id} 无 test_case_id", task_id=task_id)
                 return
 
+            eval_status = tc_rel.get('evaluation_status')
             _task_data_acl.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
                 status=TaskCaseStatus.FAILED,
                 execution_status=ExecutionStatus.FAILED,
+                evaluation_status=(EvaluationStatus.COMPLETED
+                                   if eval_status in (None, '',
+                                                      EvaluationStatus.PENDING,
+                                                      EvaluationStatus.QUEUED)
+                                   else ''),
                 error_message=error_msg,
                 started_at=now_cst().isoformat(),
                 completed_at=now_cst().isoformat(),
+            )
+
+            # 发布用例失败事件：唤醒 task_service 主循环并聚合任务级计数
+            from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+            from shared.infrastructure.worker_context import get_worker_instance_id
+            EventBus().publish(
+                EventChannel.CASE_EVENTS,
+                EventType.CASE_FAILED,
+                {
+                    'task_id': str(task_id),
+                    'test_case_id': str(test_case_id),
+                    'result_id': None,
+                    'success': False,
+                    'worker_instance_id': get_worker_instance_id(),
+                }
             )
         except Exception as e:
             self._log(level='WARNING', content=f"更新 TaskCase {tc_rel_id} 失败状态失败: {e}", task_id=task_id)

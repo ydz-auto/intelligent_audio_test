@@ -7,7 +7,7 @@ task_lifecycle_service 兼容方法：启动前重置、环境预检、重试用
 import logging
 from typing import List, Optional
 
-from sqlalchemy import or_
+from sqlalchemy import case, or_
 
 from shared.models.database import get_db_session
 from shared.utils.status_utils import derive_task_case_status
@@ -372,14 +372,24 @@ class TaskLifecycleMixin:
             }, synchronize_session=False)
 
             # 4. 用例评估中断 → evaluation_status failed（execution 保持 completed，status 推导为 failed）
+            # INT-161：已带真实失败原因/完成时间的用例（如执行已失败落库）不覆盖
+            # error_message / completed_at，仅补评估终态——启动恢复不得改写
+            # 非中间态用例的既有失败原因。
             case_eval_count = session.query(TaskCase).filter(
                 TaskCase.task_id.in_(task_ids),
                 TaskCase.evaluation_status.in_(ACTIVE_EVALUATION_STATUSES),
             ).update({
                 TaskCase.evaluation_status: EvaluationStatus.FAILED,
                 TaskCase.status: TaskCaseStatus.FAILED,
-                TaskCase.error_message: _INTERRUPTED_ERROR_MESSAGE,
-                TaskCase.completed_at: now,
+                TaskCase.error_message: case(
+                    (or_(TaskCase.error_message.is_(None), TaskCase.error_message == ''),
+                     _INTERRUPTED_ERROR_MESSAGE),
+                    else_=TaskCase.error_message,
+                ),
+                TaskCase.completed_at: case(
+                    (TaskCase.completed_at.is_(None), now),
+                    else_=TaskCase.completed_at,
+                ),
             }, synchronize_session=False)
 
             # 5. 测试结果执行中断 → execution_status failed

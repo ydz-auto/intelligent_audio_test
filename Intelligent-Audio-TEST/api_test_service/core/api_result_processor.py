@@ -101,11 +101,25 @@ class APIResultProcessor:
                       task_id=task_id, test_case_id=test_case_id)
         else:
             try:
-                _task_data_acl.update_task_case_status(
-                    task_id=task_id,
-                    case_id=test_case_id,
-                    execution_status=ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
-                )
+                if success:
+                    _task_data_acl.update_task_case_status(
+                        task_id=task_id,
+                        case_id=test_case_id,
+                        execution_status=ExecutionStatus.COMPLETED,
+                    )
+                else:
+                    # INT-161：失败即用例终态、评估不会再提交——补写评估终态与
+                    # 失败原因（对齐 _finalize_task_case_status 失败分支口径），
+                    # 避免 evaluation_status 停留 pending 被主循环计入活跃评估
+                    # 集合导致任务死等不收敛
+                    _task_data_acl.update_task_case_status(
+                        task_id=task_id,
+                        case_id=test_case_id,
+                        execution_status=ExecutionStatus.FAILED,
+                        evaluation_status=EvaluationStatus.COMPLETED,
+                        error_message=error_msg,
+                        completed_at=now_cst().isoformat(),
+                    )
                 if self._executor.execution_engine:
                     self._executor.execution_engine._emit_progress(task_id, force=True)
                     self._executor.execution_engine.notify_case_completed(task_id)

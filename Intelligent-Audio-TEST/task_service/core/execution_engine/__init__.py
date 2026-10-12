@@ -137,6 +137,11 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
             if completion_event:
                 completion_event.set()
 
+            # INT-161：用例终态 → 任务行计数原子聚合（幂等、多实例安全）。
+            # 各执行/评估服务只写用例行，任务行 completed/failed 计数由本引擎
+            # 在用例事件侧统一刷新，避免用例已终态而任务行计数停留 0/0/0。
+            self.refresh_task_counts_atomic(task_id)
+
             # 触发进度更新
             self._emit_progress(task_id, force=True)
 
