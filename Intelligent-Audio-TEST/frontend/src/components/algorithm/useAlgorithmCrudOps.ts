@@ -5,8 +5,8 @@ import { useNotification } from '../../composables/modal/useNotification'
 import type { AlgorithmDefinition, AlgorithmGroup, Dimension } from '@/domain'
 import { ApiEndpointStatus, ApiEndpointStatusType } from '@/domain/enums'
 
-// source 合法值校验：仅允许 case/reference/device/api
-const VALID_SOURCES = ['case', 'reference', 'device', 'api']
+// source 合法值校验：与后端 VALID_SOURCES 对齐（含 case_config；缺了会把存量评估映射改写为 case，评估取数分支失配）
+const VALID_SOURCES = ['case', 'reference', 'device', 'api', 'case_config']
 
 export function normalizeMappings(raw: any): { device: any[]; api: any[]; evaluation: any[] } {
   const empty = { device: [], api: [], evaluation: [] }
