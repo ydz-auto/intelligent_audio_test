@@ -4,7 +4,7 @@ import { useNotification } from '../../../../composables/modal/useNotification';
 import { useAudioConfig } from './useAudioConfig';
 import { useDimensionConfig } from './useDimensionConfig';
 import { readCamel } from '@/utils/keyTransform';
-import type { GroupFormData, ExportFormData, AudioInfo, TestCaseFormData } from '@/domain';
+import type { GroupFormData, ExportFormData, AudioInfo, TestCaseFormData, TestCaseGroup } from '@/domain';
 
 export function useTestCaseModal(props: any, emit: any) {
   const notification = useNotification();
@@ -18,6 +18,8 @@ export function useTestCaseModal(props: any, emit: any) {
   provide('availableDimensions', dimensionConfig.availableDimensions);
 
   const testCaseGroups = ref<string[]>([]);
+  // INT-195：分组名→ID 对照（保存边界把 groupId 收敛到当前所选分组名，杜绝编辑回填的旧 groupId 胜出）
+  const testCaseGroupItems = ref<TestCaseGroup[]>([]);
   const caseFormData = ref<Partial<TestCaseFormData>>({});
   const groupFormData = ref<GroupFormData>({ name: '', description: '', algorithmType: '' });
   const caseFormRef = ref<any>(null);
@@ -72,11 +74,13 @@ export function useTestCaseModal(props: any, emit: any) {
     try {
       const groupsRes = await testcasesPort.getGroups();
       const groups = groupsRes?.items || [];
-      testCaseGroups.value = Array.isArray(groups)
-        ? groups.map((group: any) => group.name || group.group || group.id || String(group)).filter(Boolean)
+      testCaseGroupItems.value = Array.isArray(groups)
+        ? groups.filter((g: any) => g && g.name && g.id != null).map((g: any) => ({ id: g.id, name: g.name }))
         : [];
+      testCaseGroups.value = testCaseGroupItems.value.map((g: any) => g.name);
     } catch (err) {
       console.error('加载测试用例组失败:', err);
+      testCaseGroupItems.value = [];
       testCaseGroups.value = [];
     }
   }
@@ -396,6 +400,17 @@ export function useTestCaseModal(props: any, emit: any) {
       }
       saveData.group = newGroupName;
       saveData.createNewGroup = true;
+      // 新建分组：清掉编辑回填的旧 groupId，交由后端按 group 名称解析/自动建组（INT-195）
+      delete saveData.groupId;
+    } else {
+      // INT-195：提交前把 groupId 收敛到当前所选分组名，后端 group_id 优先级最高，
+      // 不收敛则编辑回填的旧 groupId 会压住用户新选的分组（静默失效）
+      const selected = testCaseGroupItems.value.find(g => g.name === caseFormData.value.group);
+      if (!selected) {
+        notification.warning(`所选分组「${caseFormData.value.group}」不存在，请重新选择`);
+        return;
+      }
+      saveData.groupId = selected.id;
     }
     // algorithmParams 为按轮分组独立列，caseFormData 已由 CaseForm 经 RoundConfigEditor 按轮同步；
     // 不能用 CaseForm 暴露的单轮扁平对象覆写，否则后端整体替换会清空第 2+ 轮参数

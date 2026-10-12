@@ -210,7 +210,7 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
         id: testCase.id,
         name: testCase.name || '',
         group: testCase.groupName || '',
-        groupId: testCase.groupId || '',
+        // INT-195：不回填 groupId——同 useTestCaseCard，groupId 由保存边界按所选分组名收敛
         description: testCase.description || '',
         tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
         tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),

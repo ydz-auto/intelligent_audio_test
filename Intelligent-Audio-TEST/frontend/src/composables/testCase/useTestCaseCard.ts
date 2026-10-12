@@ -95,7 +95,8 @@ export function useTestCaseCard() {
       id: testCase.id,
       name: testCase.name || '',
       group: testCase.groupName || '',
-      groupId: testCase.groupId || '',
+      // INT-195：不回填 groupId——表单只绑分组名，groupId 由保存边界按所选分组名收敛
+      // （残留编辑前旧值会在后端 group_id 优先语义下压住用户新选分组）
       description: testCase.description || '',
       tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
