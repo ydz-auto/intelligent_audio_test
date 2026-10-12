@@ -432,6 +432,10 @@ export interface ReportListQuery {
   startTime?: string
   endTime?: string
   algorithmType?: string
+  /** INT-141：仅当前用户收藏 */
+  favorite?: boolean
+  /** INT-141：仅回收站（软删除项，含删除人/删除时间） */
+  deleted?: boolean
 }
 
 // ===== 对比报告展示模型 =====

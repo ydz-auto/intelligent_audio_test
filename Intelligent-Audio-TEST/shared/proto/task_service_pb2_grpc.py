@@ -569,6 +569,36 @@ class TaskConfigServiceStub:
                 request_serializer=task__service__pb2.GetCaseResultsRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.FavoriteTask = channel.unary_unary(
+                '/task_service.TaskConfigService/FavoriteTask',
+                request_serializer=task__service__pb2.FavoriteEntityRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.UnfavoriteTask = channel.unary_unary(
+                '/task_service.TaskConfigService/UnfavoriteTask',
+                request_serializer=task__service__pb2.FavoriteEntityRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListFavoriteIds = channel.unary_unary(
+                '/task_service.TaskConfigService/ListFavoriteIds',
+                request_serializer=task__service__pb2.ListFavoriteIdsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListDeletedTasks = channel.unary_unary(
+                '/task_service.TaskConfigService/ListDeletedTasks',
+                request_serializer=task__service__pb2.ListDeletedTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.RestoreTasks = channel.unary_unary(
+                '/task_service.TaskConfigService/RestoreTasks',
+                request_serializer=task__service__pb2.RestoreTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.PurgeTasks = channel.unary_unary(
+                '/task_service.TaskConfigService/PurgeTasks',
+                request_serializer=task__service__pb2.PurgeTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
         self.StartTaskLifecycle = channel.unary_unary(
                 '/task_service.TaskConfigService/StartTaskLifecycle',
                 request_serializer=task__service__pb2.StartTaskLifecycleRequest.SerializeToString,
@@ -674,6 +704,44 @@ class TaskConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def FavoriteTask(self, request, context):
+        """---- 收藏（INT-141：task|testcase 归 task_service，per-user，user_id 走 x-user-id metadata）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UnfavoriteTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListFavoriteIds(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDeletedTasks(self, request, context):
+        """---- 回收站（INT-141：软删列表 / 恢复单个+批量 / 彻底删除 purge）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RestoreTasks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PurgeTasks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def StartTaskLifecycle(self, request, context):
         """---- 生命周期操作（内部调用 execution_engine）----
         """
@@ -766,6 +834,36 @@ def add_TaskConfigServiceServicer_to_server(servicer, server):
             'GetCaseResults': grpc.unary_unary_rpc_method_handler(
                     servicer.GetCaseResults,
                     request_deserializer=task__service__pb2.GetCaseResultsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'FavoriteTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.FavoriteTask,
+                    request_deserializer=task__service__pb2.FavoriteEntityRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'UnfavoriteTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.UnfavoriteTask,
+                    request_deserializer=task__service__pb2.FavoriteEntityRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListFavoriteIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListFavoriteIds,
+                    request_deserializer=task__service__pb2.ListFavoriteIdsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListDeletedTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDeletedTasks,
+                    request_deserializer=task__service__pb2.ListDeletedTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RestoreTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestoreTasks,
+                    request_deserializer=task__service__pb2.RestoreTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'PurgeTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.PurgeTasks,
+                    request_deserializer=task__service__pb2.PurgeTasksRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
             'StartTaskLifecycle': grpc.unary_unary_rpc_method_handler(
@@ -1118,6 +1216,168 @@ class TaskConfigService:
             target,
             '/task_service.TaskConfigService/GetCaseResults',
             task__service__pb2.GetCaseResultsRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FavoriteTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/FavoriteTask',
+            task__service__pb2.FavoriteEntityRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UnfavoriteTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/UnfavoriteTask',
+            task__service__pb2.FavoriteEntityRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListFavoriteIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/ListFavoriteIds',
+            task__service__pb2.ListFavoriteIdsRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDeletedTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/ListDeletedTasks',
+            task__service__pb2.ListDeletedTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RestoreTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/RestoreTasks',
+            task__service__pb2.RestoreTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PurgeTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/PurgeTasks',
+            task__service__pb2.PurgeTasksRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,
@@ -1670,6 +1930,31 @@ class TestCaseConfigServiceStub:
                 request_serializer=task__service__pb2.FetchCaseIdsRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
                 _registered_method=True)
+        self.FavoriteTestCase = channel.unary_unary(
+                '/task_service.TestCaseConfigService/FavoriteTestCase',
+                request_serializer=task__service__pb2.FavoriteEntityRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.UnfavoriteTestCase = channel.unary_unary(
+                '/task_service.TestCaseConfigService/UnfavoriteTestCase',
+                request_serializer=task__service__pb2.FavoriteEntityRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.ListDeletedTestCases = channel.unary_unary(
+                '/task_service.TestCaseConfigService/ListDeletedTestCases',
+                request_serializer=task__service__pb2.ListDeletedTestCasesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.RestoreTestCases = channel.unary_unary(
+                '/task_service.TestCaseConfigService/RestoreTestCases',
+                request_serializer=task__service__pb2.RestoreTestCasesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.PurgeTestCases = channel.unary_unary(
+                '/task_service.TestCaseConfigService/PurgeTestCases',
+                request_serializer=task__service__pb2.PurgeTestCasesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
 
 
 class TestCaseConfigServiceServicer:
@@ -1751,6 +2036,37 @@ class TestCaseConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def FavoriteTestCase(self, request, context):
+        """---- 收藏 / 回收站（INT-141）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UnfavoriteTestCase(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDeletedTestCases(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RestoreTestCases(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PurgeTestCases(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TestCaseConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -1812,6 +2128,31 @@ def add_TestCaseConfigServiceServicer_to_server(servicer, server):
             'FetchCaseIds': grpc.unary_unary_rpc_method_handler(
                     servicer.FetchCaseIds,
                     request_deserializer=task__service__pb2.FetchCaseIdsRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'FavoriteTestCase': grpc.unary_unary_rpc_method_handler(
+                    servicer.FavoriteTestCase,
+                    request_deserializer=task__service__pb2.FavoriteEntityRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'UnfavoriteTestCase': grpc.unary_unary_rpc_method_handler(
+                    servicer.UnfavoriteTestCase,
+                    request_deserializer=task__service__pb2.FavoriteEntityRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'ListDeletedTestCases': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDeletedTestCases,
+                    request_deserializer=task__service__pb2.ListDeletedTestCasesRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'RestoreTestCases': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestoreTestCases,
+                    request_deserializer=task__service__pb2.RestoreTestCasesRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'PurgeTestCases': grpc.unary_unary_rpc_method_handler(
+                    servicer.PurgeTestCases,
+                    request_deserializer=task__service__pb2.PurgeTestCasesRequest.FromString,
                     response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
             ),
     }
@@ -2139,6 +2480,141 @@ class TestCaseConfigService:
             target,
             '/task_service.TestCaseConfigService/FetchCaseIds',
             task__service__pb2.FetchCaseIdsRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FavoriteTestCase(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/FavoriteTestCase',
+            task__service__pb2.FavoriteEntityRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UnfavoriteTestCase(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/UnfavoriteTestCase',
+            task__service__pb2.FavoriteEntityRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDeletedTestCases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/ListDeletedTestCases',
+            task__service__pb2.ListDeletedTestCasesRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RestoreTestCases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/RestoreTestCases',
+            task__service__pb2.RestoreTestCasesRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PurgeTestCases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/PurgeTestCases',
+            task__service__pb2.PurgeTestCasesRequest.SerializeToString,
             task__service__pb2.TestCaseConfigResponse.FromString,
             options,
             channel_credentials,

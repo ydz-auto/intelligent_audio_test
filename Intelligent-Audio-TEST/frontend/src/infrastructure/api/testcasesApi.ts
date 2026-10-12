@@ -19,6 +19,8 @@ const QUERY_PARAM_MAP: Record<string, string> = {
   dimensionId: 'dimension_id',
   groupId: 'group_id',
   includeDeleted: 'include_deleted',
+  // INT-141：收藏 / 回收站过滤
+  onlyDeleted: 'only_deleted',
   // 仅 /testcases/ids（FetchCaseIds）消费：E2E/API 起跑流程按执行口径圈定用例，
   // 服务端按配置形态派生过滤（差异#2 收尾）；列表接口忽略该参数
   testType: 'type',

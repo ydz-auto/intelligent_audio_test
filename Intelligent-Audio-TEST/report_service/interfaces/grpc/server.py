@@ -16,7 +16,9 @@ from concurrent import futures
 import grpc
 
 from shared.proto import report_service_pb2_grpc as report_grpc
-from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
+from shared.infrastructure.grpc_interceptors import (
+    server_db_scope_interceptor, server_log_interceptor, server_user_context_interceptor,
+)
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import REPORT_SERVICE_GRPC_PORT
 from report_service.interfaces.grpc.servicers import ReportServicer, BenchmarkServicer
@@ -41,7 +43,8 @@ def start_grpc_server(port: int = REPORT_SERVICE_GRPC_PORT) -> grpc.Server:
     _max_workers = config_manager.get_value('grpc', 'report_service_workers', 10)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
-        interceptors=[server_db_scope_interceptor, server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                     server_user_context_interceptor],
     )
 
     report_grpc.add_ReportConfigServiceServicer_to_server(ReportServicer(), server)

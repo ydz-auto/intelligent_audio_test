@@ -27,10 +27,13 @@ from .benchmark_models import (
     BenchmarkSource,
     BenchmarkBaseline,
 )
+from .favorite_models import ReportFavorite
 
 __all__ = [
     'Report', 'ReportSummary', 'ReportSummaryMeta', 'ReportRawData',
     'ReportCase', 'ReportMetricStats', 'ReportComparisonMatrix',
     'BenchmarkRanking', 'BenchmarkMetricMapping', 'BenchmarkSource',
     'BenchmarkBaseline',
+    # 收藏（report，INT-141）
+    'ReportFavorite',
 ]

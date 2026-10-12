@@ -414,6 +414,45 @@ class TaskCommandHandler:
         )
 
     # ==================================================================
+    # 收藏 / 回收站命令（INT-141）
+    # 委托 favorite_trash_service；user_id 从 x-user-id 上下文取（网关透传）
+    # ==================================================================
+
+    def handle_favorite_entity(self, cmd) -> Dict:
+        """处理收藏命令（task|testcase）。委托 favorite_trash_service.favorite。"""
+        from shared.infrastructure.user_context import get_current_user_id
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.favorite(
+            get_current_user_id(), cmd.entity_type, cmd.entity_id)
+
+    def handle_unfavorite_entity(self, cmd) -> Dict:
+        """处理取消收藏命令。委托 favorite_trash_service.unfavorite。"""
+        from shared.infrastructure.user_context import get_current_user_id
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.unfavorite(
+            get_current_user_id(), cmd.entity_type, cmd.entity_id)
+
+    def handle_restore_tasks(self, cmd) -> Dict:
+        """处理恢复任务命令（单个+批量）。委托 favorite_trash_service.restore_tasks。"""
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.restore_tasks(cmd.task_ids)
+
+    def handle_purge_tasks(self, cmd) -> Dict:
+        """处理彻底删除任务命令。委托 favorite_trash_service.purge_tasks。"""
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.purge_tasks(cmd.task_ids)
+
+    def handle_restore_testcases(self, cmd) -> Dict:
+        """处理恢复用例命令（单个+批量）。委托 favorite_trash_service.restore_testcases。"""
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.restore_testcases(cmd.case_ids)
+
+    def handle_purge_testcases(self, cmd) -> Dict:
+        """处理彻底删除用例命令。委托 favorite_trash_service.purge_testcases。"""
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.purge_testcases(cmd.case_ids)
+
+    # ==================================================================
     # tag 域命令（gRPC servicer 入口）
     # 委托 tag_crud_service 旧服务作为过渡
     # ==================================================================

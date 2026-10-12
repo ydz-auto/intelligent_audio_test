@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 
+from shared.infrastructure.user_context import get_current_user_id
 from shared.utils.status_constants import TaskStatus
 
 from task_service.infrastructure.persistence.task_repository import task_repository
@@ -118,7 +119,8 @@ class TaskCrudService:
                 except Exception:
                     logger.warning("删除任务时从队列移除任务失败 task_id=%s", task_id, exc_info=True)
 
-            ok = task_repository.soft_delete(task_id)
+            ok = task_repository.soft_delete(
+                task_id, deleted_by=get_current_user_id())
             if not ok:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
 

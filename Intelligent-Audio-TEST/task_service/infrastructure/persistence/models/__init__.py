@@ -22,6 +22,7 @@ from .result_models import TestResult
 from .testcase_models import (
     TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
 )
+from .favorite_models import Favorite
 from .system_models import Log
 
 __all__ = [
@@ -33,6 +34,8 @@ __all__ = [
     'TestResult',
     # 标签与用例
     'TagCategory', 'Tag', 'TestCaseGroup', 'TestCase', 'TestCaseTag',
+    # 收藏（task|testcase，INT-141）
+    'Favorite',
     # 系统日志
     'Log',
 ]

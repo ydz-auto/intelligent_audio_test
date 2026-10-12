@@ -167,7 +167,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
           testType: params.testType,
           algorithmType: params.algorithmType,
           dimensionId: params.dimensionId,
-          includeDeleted: params.includeDeleted || false
+          includeDeleted: params.includeDeleted || false,
+          // INT-141：收藏 / 回收站过滤
+          favorite: params.favorite || false,
+          onlyDeleted: params.onlyDeleted || false
         })
       ]);
 

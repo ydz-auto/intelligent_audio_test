@@ -401,6 +401,8 @@ class TestCaseCrudService:
                     need_refresh_reference = True
 
             tc.updated_at = now_cst()
+            from shared.infrastructure.user_context import get_current_user_id
+            tc.updated_by_user_id = get_current_user_id()
 
             if need_refresh_reference:
                 try:

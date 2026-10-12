@@ -16,10 +16,12 @@ from functools import lru_cache
 from shared.infrastructure.grpc_interceptors import (
     client_deadline_interceptor,
     client_log_interceptor,
+    client_user_context_interceptor,
     client_worker_context_interceptor,
 )
 
-_INSTANCE_INTERCEPTORS = [client_log_interceptor, client_worker_context_interceptor, client_deadline_interceptor]
+_INSTANCE_INTERCEPTORS = [client_log_interceptor, client_worker_context_interceptor,
+                          client_user_context_interceptor, client_deadline_interceptor]
 
 
 @lru_cache(maxsize=16)

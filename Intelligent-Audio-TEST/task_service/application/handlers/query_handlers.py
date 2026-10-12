@@ -164,6 +164,9 @@ class TaskQueryHandler:
             search=query.search,
             start_date=query.start_date,
             end_date=query.end_date,
+            favorite=query.favorite,
+            deleted=query.deleted,
+            user_id=query.user_id,
         )
 
     def handle_get_task_detail(self, query: GetTaskDetailQuery) -> Dict[str, Any]:
@@ -202,7 +205,31 @@ class TaskQueryHandler:
             algorithm_type=query.algorithm_type,
             view=query.view,
             include_deleted=query.include_deleted,
+            favorite=query.favorite,
+            only_deleted=query.only_deleted,
+            user_id=query.user_id,
         )
+
+    # ==================================================================
+    # 收藏 / 回收站查询（INT-141）
+    # ==================================================================
+
+    def handle_list_favorite_ids(self, query) -> Dict[str, Any]:
+        """处理收藏实体 ID 列表查询。委托 favorite_trash_service.list_favorite_ids。"""
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.list_favorite_ids(query.user_id, query.entity_type)
+
+    def handle_list_deleted_tasks(self, query) -> Dict[str, Any]:
+        """处理回收站任务列表查询。委托 favorite_trash_service.list_deleted_tasks。"""
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.list_deleted_tasks(
+            query.page, query.per_page, query.search)
+
+    def handle_list_deleted_testcases(self, query) -> Dict[str, Any]:
+        """处理回收站用例列表查询。委托 favorite_trash_service.list_deleted_testcases。"""
+        from task_service.application.favorite_trash_service import favorite_trash_service
+        return favorite_trash_service.list_deleted_testcases(
+            query.page, query.per_page, query.keyword)
 
     def handle_get_testcase_detail(self, query: GetTestCaseDetailQuery) -> Dict[str, Any]:
         """处理测试用例详情查询。委托 testcase_crud_service.get_testcase_detail。"""

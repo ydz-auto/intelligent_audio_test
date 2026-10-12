@@ -9,7 +9,7 @@ Handler 接收命令后通过 repository 操作聚合根完成写操作。
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from report_service.domain.entities import ReportStatus, ReportType
 
@@ -47,6 +47,29 @@ class GenerateReportCommand:
 
 
 @dataclass(frozen=True)
+class UpdateReportCommand:
+    """更新报告命令。
+
+    对齐旧库 PUT /reports/{id} 语义：主表字段（name/description/analysis/status）
+    + 摘要快照（summary）一并落库。None 字段表示"不更新"（部分更新）。
+
+    Attributes:
+        report_id: 报告 ID
+        name: 报告名称（含 title 别名，由 Handler 归一）
+        description: 报告描述
+        analysis: 分析/结论文本（含 conclusion 别名，由 Handler 归一）
+        status: 目标状态
+        summary: 摘要快照 dict（键已归一为 snake_case）
+    """
+    report_id: int
+    name: Optional[str] = None
+    description: Optional[str] = None
+    analysis: Optional[str] = None
+    status: Optional[str] = None
+    summary: Optional[Dict[str, Any]] = None
+
+
+@dataclass(frozen=True)
 class UpdateReportStatusCommand:
     """更新报告状态命令。
 
@@ -62,9 +85,11 @@ class UpdateReportStatusCommand:
 
 @dataclass(frozen=True)
 class DeleteReportCommand:
-    """删除报告命令（软删除）。
+    """删除报告命令。
 
     Attributes:
         report_id: 报告 ID
+        hard: True 硬删除（含子表级联），False 软删除
     """
     report_id: int
+    hard: bool = False

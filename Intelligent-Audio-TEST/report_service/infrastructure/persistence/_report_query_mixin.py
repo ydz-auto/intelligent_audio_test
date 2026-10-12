@@ -59,21 +59,41 @@ class ReportQueryMixin:
         status: Optional[str] = None,
         page: int = 1,
         page_size: int = 20,
+        favorite: bool = False,
+        deleted: bool = False,
+        user_id: Optional[int] = None,
     ) -> List[object]:
-        """分页列出报告聚合根（未删除）。
+        """分页列出报告聚合根。
 
         Args:
             status: 可选状态过滤（pending/generating/completed/failed）
             page: 页码（从 1 开始）
             page_size: 每页数量
+            favorite: 可选（INT-141）仅当前用户收藏
+            deleted: 可选（INT-141）仅回收站软删除项
+            user_id: 可选，收藏过滤/标记用当前用户
 
         Returns:
             聚合根列表（不含子实体集合）。
         """
+        from sqlalchemy import select as sa_select, cast as sa_cast, String
+        from shared.models.common_enums import EntityType
+
         session = get_db_session()
-        query = session.query(self.PO_CLASS).filter(self.PO_CLASS.deleted == False)  # noqa: E712
+        query = session.query(self.PO_CLASS).filter(
+            self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
         if status:
             query = query.filter(self.PO_CLASS.status == status)
+        if favorite:
+            from report_service.infrastructure.persistence.models import ReportFavorite
+            if not user_id:
+                return []
+            query = query.filter(sa_select(ReportFavorite.id)
+                                 .where(ReportFavorite.user_id == user_id,
+                                        ReportFavorite.entity_type == EntityType.REPORT.value,
+                                        ReportFavorite.entity_id == sa_cast(self.PO_CLASS.id, String))
+                                 .correlate(self.PO_CLASS)
+                                 .exists())
         query = query.order_by(self.PO_CLASS.created_at.desc())
         # 分页：limit/offset（避免依赖 Flask-SQLAlchemy paginate）
         page = max(page, 1)

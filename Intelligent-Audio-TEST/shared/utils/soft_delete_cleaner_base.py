@@ -27,6 +27,7 @@ from datetime import timedelta
 
 from sqlalchemy import text, bindparam
 
+from shared.infrastructure.config import BaseConfig
 from shared.models.database import get_db_session, remove_db_session
 from shared.utils.query_utils import now_cst
 
@@ -50,10 +51,13 @@ class SoftDeleteCleanerBase:
         scan_interval: 扫描间隔秒数，默认 24 小时
     """
 
-    def __init__(self, service_name: str, retention_days: int = RETENTION_DAYS,
+    def __init__(self, service_name: str, retention_days: int | None = None,
                  scan_interval: int = SCAN_INTERVAL_SECONDS):
         self.service_name = service_name
-        self.retention_days = retention_days
+        # 保留期配置化（INT-141）：TRASH_RETENTION_DAYS 环境变量，默认 60 天；
+        # 子类未显式传参时统一取配置，定时调度走本守护线程（既有执行引擎挂点）
+        self.retention_days = (retention_days if retention_days is not None
+                               else BaseConfig.TRASH_RETENTION_DAYS)
         self.scan_interval = scan_interval
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()

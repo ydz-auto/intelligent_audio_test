@@ -21,6 +21,7 @@ from report_service.application.commands.report_commands import (
     CreateReportCommand,
     DeleteReportCommand,
     GenerateReportCommand,
+    UpdateReportCommand,
     UpdateReportStatusCommand,
 )
 from report_service.application.commands.benchmark_commands import (
@@ -53,6 +54,9 @@ from report_service.domain.entities.benchmark import BaselineDraftEntry
 
 logger = logging.getLogger(__name__)
 
+# 批量删除单次上限（对齐旧库 ReportBatchDeleteRequest max_length=100）
+MAX_BATCH_DELETE = 100
+
 
 def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[str, Any]]:
     """将 ReportAggregate 聚合根序列化为字典。
@@ -78,6 +82,9 @@ def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[st
         'report_type': aggregate.report_type,
         'status': aggregate.status,
         'config': config,
+        # 文本结论（update 落 config，读取时回传，供前端编辑回显）
+        'analysis': config.get('analysis') or '',
+        'conclusion': config.get('conclusion') or config.get('analysis') or '',
         'created_at': str(aggregate.created_at) if aggregate.created_at is not None else None,
         # 详情接口输出完整摘要（all_metrics/case_categories/all_case_tags/...），
         # 列表等场景无 full_summary 时回退为扁平统计（对齐 api_gateway ReportListItem.summary）
@@ -194,22 +201,28 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
 
         请求字段（proto UpdateReportRequest）：
             report_id: int  报告 ID
-            data: str      JSON：更新字段
+            data: str      JSON：更新字段（name/title/description/
+                           analysis/conclusion/status/summary）
+
+        对齐旧库 PUT /reports/{id}：主表字段 + 摘要快照一并落库。
         """
         try:
             data = _loads(getattr(request, 'data', ''), {}) or {}
-            # application 层无独立 update 命令，通过 update_status 间接处理。
-            # 若 data 含 status 则更新状态，否则返回 ok。
-            status = data.get('status')
-            if status:
-                command = UpdateReportStatusCommand(
-                    report_id=getattr(request, 'report_id'),
-                    status=status,
-                )
-                self.command_handler.handle_update_status(command)
-            return self._resp(True, 'ok', {
+            # name/title、analysis/conclusion 分别取先提供者（对齐旧库 pick 语义）
+            name = data['name'] if 'name' in data else data.get('title')
+            analysis = data['analysis'] if 'analysis' in data else data.get('conclusion')
+            command = UpdateReportCommand(
+                report_id=getattr(request, 'report_id'),
+                name=name,
+                description=data.get('description'),
+                analysis=analysis,
+                status=data.get('status'),
+                summary=data.get('summary'),
+            )
+            updated = self.command_handler.handle_update(command)
+            return self._resp(updated, 'ok' if updated else 'report not found', {
                 'report_id': getattr(request, 'report_id'),
-                'updated': True,
+                'updated': updated,
             })
         except Exception as e:
             logger.exception("UpdateReport failed")
@@ -246,21 +259,47 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             return self._resp(False, str(e), {})
 
     def BatchActionReports(self, request, context=None):
-        """批量操作报告。
+        """批量删除报告。
 
         请求字段（proto BatchActionReportsRequest）：
-            data: str  JSON：批量操作参数
+            data: str  JSON：{ids: [int]（兼容历史 report_ids 键）,
+                              action: 'delete', hard_delete: bool}
+
+        对齐旧库 POST /reports/batch-delete：
+        - ids 字段与网关对齐（历史 report_ids 键兼容读取）
+        - hard_delete=True 硬删除（含子表级联），否则软删除
+        - 单次上限 100 条
+        - 删 0 条不得返回成功（守卫：字段不匹配/ID 不存在时不得假成功）
         """
         try:
             data = _loads(getattr(request, 'data', ''), {}) or {}
+            report_ids = data.get('ids')
+            if report_ids is None:
+                report_ids = data.get('report_ids') or []
             action = data.get('action') or 'delete'
-            report_ids = data.get('report_ids') or []
+            if action != 'delete':
+                return self._resp(False, f'不支持的操作: {action}', {})
+            if not report_ids or not isinstance(report_ids, list):
+                return self._resp(False, 'ids 列表不能为空', {})
+            if len(report_ids) > MAX_BATCH_DELETE:
+                return self._resp(False, '单次最多删除100个报告', {})
+
+            hard = bool(data.get('hard_delete', False))
             results = []
             for rid in report_ids:
-                command = DeleteReportCommand(report_id=rid)
+                command = DeleteReportCommand(report_id=rid, hard=hard)
                 ok = self.command_handler.handle_delete(command)
                 results.append({'report_id': rid, 'deleted': ok})
-            return self._resp(True, 'ok', {'items': results})
+            deleted_count = sum(1 for r in results if r['deleted'])
+            if deleted_count == 0:
+                return self._resp(False, '未找到指定的测试报告，无需删除', {
+                    'deleted_count': 0,
+                    'items': results,
+                })
+            return self._resp(True, f'成功删除 {deleted_count} 个测试报告', {
+                'deleted_count': deleted_count,
+                'items': results,
+            })
         except Exception as e:
             logger.exception("BatchActionReports failed")
             return self._resp(False, str(e), {})
@@ -436,12 +475,18 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             search: str         可选搜索关键字
             start_date: str     可选开始日期
             end_date: str       可选结束日期
+            favorite: bool      INT-141 仅当前用户收藏（x-user-id metadata）
+            deleted: bool       INT-141 仅回收站软删除项
         """
         try:
+            from shared.infrastructure.user_context import user_id_from_context
             query = ListReportsQuery(
                 status=getattr(request, 'status', None) or None,
                 page=getattr(request, 'page', None) or 1,
                 page_size=getattr(request, 'per_page', None) or 20,
+                favorite=getattr(request, 'favorite', False),
+                deleted=getattr(request, 'deleted', False),
+                user_id=user_id_from_context(context),
             )
             aggregates: List[ReportAggregate] = self.query_handler.handle_list(query)
             return self._resp(True, 'ok', {
@@ -452,6 +497,82 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         except Exception as e:
             logger.exception("ListReports failed")
             return self._resp(False, str(e), {'items': []})
+
+    # ---- 收藏 / 回收站（INT-141）----
+
+    def FavoriteReport(self, request, context=None):
+        """收藏报告（幂等；user_id 从 x-user-id metadata 取）。"""
+        try:
+            from shared.infrastructure.user_context import get_current_user_id
+            result = self.command_handler.handle_favorite_report(
+                getattr(request, 'report_id'), user_id=get_current_user_id())
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("FavoriteReport failed")
+            return self._resp(False, str(e), {})
+
+    def UnfavoriteReport(self, request, context=None):
+        """取消收藏报告（幂等）。"""
+        try:
+            from shared.infrastructure.user_context import get_current_user_id
+            result = self.command_handler.handle_unfavorite_report(
+                getattr(request, 'report_id'), user_id=get_current_user_id())
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("UnfavoriteReport failed")
+            return self._resp(False, str(e), {})
+
+    def ListFavoriteReportIds(self, request, context=None):
+        """当前用户收藏的报告 ID 列表。"""
+        try:
+            from shared.infrastructure.user_context import (
+                get_current_user_id, normalize_user_id,
+            )
+            user_id = normalize_user_id(getattr(request, 'user_id', 0)) or get_current_user_id()
+            result = self.query_handler.handle_list_favorite_report_ids(user_id)
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("ListFavoriteReportIds failed")
+            return self._resp(False, str(e), {})
+
+    def ListDeletedReports(self, request, context=None):
+        """回收站报告列表（含删除人/删除时间）。"""
+        try:
+            result = self.query_handler.handle_list_deleted_reports(
+                page=getattr(request, 'page', 1) or 1,
+                per_page=getattr(request, 'per_page', 20) or 20,
+                search=getattr(request, 'search', None) or None,
+            )
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("ListDeletedReports failed")
+            return self._resp(False, str(e), {})
+
+    def RestoreReports(self, request, context=None):
+        """恢复报告（单个+批量统一入口）。"""
+        try:
+            result = self.command_handler.handle_restore_reports(
+                list(getattr(request, 'report_ids', [])))
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("RestoreReports failed")
+            return self._resp(False, str(e), {})
+
+    def PurgeReports(self, request, context=None):
+        """彻底删除报告（物理删除；权限收敛在网关 admin/owner）。"""
+        try:
+            result = self.command_handler.handle_purge_reports(
+                list(getattr(request, 'report_ids', [])))
+            return self._resp(result.get('success', False), result.get('message', ''),
+                              result.get('data'))
+        except Exception as e:
+            logger.exception("PurgeReports failed")
+            return self._resp(False, str(e), {})
 
     # ---- 报告用例查询 / 搜索 / 导出 / 平均值 / 日志下载 ----
 

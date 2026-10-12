@@ -193,6 +193,56 @@ class ClientWorkerContextInterceptor(grpc.UnaryUnaryClientInterceptor):
         return continuation(new_details, request)
 
 
+class ClientUserContextInterceptor(grpc.UnaryUnaryClientInterceptor):
+    """客户端操作人上下文拦截器：出站调用自动附加 x-user-id metadata（INT-141）。
+
+    api_gateway 请求入口 set_current_user_id()（JWT 解析结果，AUTH_MODE=off
+    为 None 不附加），本进程全部出站 gRPC 调用携带操作人标识；下游服务
+    servicer 从 invocation_metadata 读取，写入 CUD 操作人列（方案 A）。
+    """
+
+    def intercept_unary_unary(self, continuation, client_call_details, request):
+        from shared.infrastructure.user_context import user_id_metadata, user_admin_metadata
+        extra = user_id_metadata() + user_admin_metadata()
+        if not extra:
+            return continuation(client_call_details, request)
+        existing = client_call_details.metadata or ()
+        new_details = client_call_details._replace(metadata=tuple(existing) + tuple(extra))
+        return continuation(new_details, request)
+
+
+class ServerUserContextInterceptor(grpc.ServerInterceptor):
+    """服务端操作人上下文拦截器（INT-141）：RPC 入口从 x-user-id metadata
+    读取操作人并写入 contextvar，RPC 结束清理（线程池线程复用防串号）。
+
+    服务内代码用 get_current_user_id() 填充 CUD 操作人列；执行引擎工作
+    线程入口显式透传（contextvars 不跨线程传播）。
+    """
+
+    def intercept_service(self, continuation, handler_call_details):
+        def wrapper(behavior, request, context):
+            from shared.infrastructure.user_context import (
+                set_current_user_id, user_id_from_context,
+                set_current_user_is_admin, user_is_admin_from_context,
+            )
+            set_current_user_id(user_id_from_context(context))
+            set_current_user_is_admin(user_is_admin_from_context(context))
+            try:
+                return behavior(request, context)
+            finally:
+                set_current_user_id(None)
+                set_current_user_is_admin(False)
+
+        if hasattr(handler_call_details, 'unary_unary'):
+            inner = handler_call_details.unary_unary
+            return grpc.unary_unary_rpc_method_handler(
+                functools.partial(wrapper, inner) if inner else inner,
+                request_deserializer=handler_call_details.request_deserializer,
+                response_serializer=handler_call_details.response_serializer,
+            )
+        return continuation(handler_call_details)
+
+
 # ==================== DB scope 拦截器 ====================
 
 class ServerDbScopeInterceptor(grpc.ServerInterceptor):
@@ -227,6 +277,8 @@ class ServerDbScopeInterceptor(grpc.ServerInterceptor):
 # 单例
 client_log_interceptor = ClientLogInterceptor()
 client_worker_context_interceptor = ClientWorkerContextInterceptor()
+client_user_context_interceptor = ClientUserContextInterceptor()
 client_deadline_interceptor = ClientDeadlineInterceptor()
 server_log_interceptor = ServerLogInterceptor()
+server_user_context_interceptor = ServerUserContextInterceptor()
 server_db_scope_interceptor = ServerDbScopeInterceptor()

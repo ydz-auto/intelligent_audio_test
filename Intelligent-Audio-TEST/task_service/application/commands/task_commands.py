@@ -141,6 +141,40 @@ class MergeTasksConfigCommand(Command):
     data: Dict[str, Any] = field(default_factory=dict)
 
 
+# ==================== 收藏 / 回收站命令（INT-141） ====================
+
+
+@dataclass(frozen=True)
+class FavoriteEntityCommand(Command):
+    """收藏/取消收藏命令（task|testcase；user_id 从 x-user-id 上下文取）。"""
+    entity_type: str
+    entity_id: str
+
+
+@dataclass(frozen=True)
+class RestoreTasksCommand(Command):
+    """恢复任务命令（单个+批量统一入口）。"""
+    task_ids: List[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PurgeTasksCommand(Command):
+    """彻底删除任务命令（物理删除，权限收敛在网关 admin/owner）。"""
+    task_ids: List[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RestoreTestCasesCommand(Command):
+    """恢复用例命令（单个+批量统一入口）。"""
+    case_ids: List[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PurgeTestCasesCommand(Command):
+    """彻底删除用例命令（物理删除，权限收敛在网关 admin/owner）。"""
+    case_ids: List[str] = field(default_factory=list)
+
+
 # ==================== task 域生命周期命令（gRPC servicer 用） ====================
 # 委托 task_lifecycle_service 旧服务作为过渡，保留完整生命周期逻辑（状态校验等）。
 

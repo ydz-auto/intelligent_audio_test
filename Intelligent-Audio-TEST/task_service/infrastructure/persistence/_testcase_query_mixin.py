@@ -33,13 +33,22 @@ class TestCaseQueryMixin:
         algorithm_type: str = None,
         include_deleted: bool = False,
         dimension_id: int = None,
+        favorite: bool = False,
+        only_deleted: bool = False,
+        user_id: int = None,
     ):
-        """分页查询测试用例（带 group/tags 预加载）。"""
+        """分页查询测试用例（带 group/tags 预加载）。
+
+        favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
+        """
         session = get_db_session()
         query = self._query_testcases_with_preload(session) \
             .order_by(TestCase.created_at.desc())
 
-        if not include_deleted:
+        # INT-141：回收站模式查软删除项，否则按 include_deleted 语义
+        if only_deleted:
+            query = query.filter(TestCase.deleted == True)  # noqa: E712
+        elif not include_deleted:
             query = query.filter(TestCase.deleted == False)  # noqa: E712
 
         if keyword:
@@ -62,6 +71,21 @@ class TestCaseQueryMixin:
         # 按评估维度过滤：搜索 config JSON 中包含该 dimension_id 的用例
         if dimension_id:
             query = query.filter(build_dim_id_filter(str(dimension_id)))
+
+        # INT-141：仅当前用户收藏（user_id 来自 x-user-id metadata）
+        if favorite:
+            from shared.models.common_enums import EntityType
+            from task_service.infrastructure.persistence.models import Favorite
+            if not user_id:
+                return query.filter(TestCase.id.is_(None)).paginate(
+                    page=page, per_page=per_page, error_out=False)
+            from sqlalchemy import select as sa_select
+            query = query.filter(sa_select(Favorite.id)
+                                 .where(Favorite.user_id == user_id,
+                                        Favorite.entity_type == EntityType.TESTCASE.value,
+                                        Favorite.entity_id == TestCase.id)
+                                 .correlate(TestCase)
+                                 .exists())
 
         return query.paginate(page=page, per_page=per_page, error_out=False)
 

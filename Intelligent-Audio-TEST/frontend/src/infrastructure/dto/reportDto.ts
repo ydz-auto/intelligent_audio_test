@@ -345,6 +345,10 @@ export interface ReportListQueryDto {
   start_time?: string
   end_time?: string
   algorithm_type?: string
+  /** INT-141：仅当前用户收藏 */
+  favorite?: boolean
+  /** INT-141：仅回收站（软删除项，含删除人/删除时间） */
+  deleted?: boolean
 }
 
 /** 报告更新请求体（ReportUpdateRequest） */

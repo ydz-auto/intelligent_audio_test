@@ -145,6 +145,36 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.RollbackReportImportRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.FavoriteReport = channel.unary_unary(
+                '/report.ReportConfigService/FavoriteReport',
+                request_serializer=report__service__pb2.FavoriteReportRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.UnfavoriteReport = channel.unary_unary(
+                '/report.ReportConfigService/UnfavoriteReport',
+                request_serializer=report__service__pb2.FavoriteReportRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.ListFavoriteReportIds = channel.unary_unary(
+                '/report.ReportConfigService/ListFavoriteReportIds',
+                request_serializer=report__service__pb2.ListFavoriteReportIdsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.ListDeletedReports = channel.unary_unary(
+                '/report.ReportConfigService/ListDeletedReports',
+                request_serializer=report__service__pb2.ListDeletedReportsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.RestoreReports = channel.unary_unary(
+                '/report.ReportConfigService/RestoreReports',
+                request_serializer=report__service__pb2.RestoreReportsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
+        self.PurgeReports = channel.unary_unary(
+                '/report.ReportConfigService/PurgeReports',
+                request_serializer=report__service__pb2.PurgeReportsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
 
 
 class ReportConfigServiceServicer:
@@ -306,6 +336,48 @@ class ReportConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def FavoriteReport(self, request, context):
+        """---- 收藏 / 回收站（INT-141：report 归 report_service，user_id 走 x-user-id metadata）----
+        收藏 / 取消收藏（幂等：重复收藏返回成功 + already_favorited；未收藏的取消同样成功）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UnfavoriteReport(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListFavoriteReportIds(self, request, context):
+        """当前用户收藏的报告 ID 列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDeletedReports(self, request, context):
+        """回收站列表（软删除项，含删除人/删除时间）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RestoreReports(self, request, context):
+        """恢复（单个+批量统一入口，ids 传一个即单个恢复）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PurgeReports(self, request, context):
+        """彻底删除（物理删除子表+主表；权限收敛在网关 admin/owner）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ReportConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -417,6 +489,36 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             'RollbackReportImport': grpc.unary_unary_rpc_method_handler(
                     servicer.RollbackReportImport,
                     request_deserializer=report__service__pb2.RollbackReportImportRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'FavoriteReport': grpc.unary_unary_rpc_method_handler(
+                    servicer.FavoriteReport,
+                    request_deserializer=report__service__pb2.FavoriteReportRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'UnfavoriteReport': grpc.unary_unary_rpc_method_handler(
+                    servicer.UnfavoriteReport,
+                    request_deserializer=report__service__pb2.FavoriteReportRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ListFavoriteReportIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListFavoriteReportIds,
+                    request_deserializer=report__service__pb2.ListFavoriteReportIdsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'ListDeletedReports': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDeletedReports,
+                    request_deserializer=report__service__pb2.ListDeletedReportsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'RestoreReports': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestoreReports,
+                    request_deserializer=report__service__pb2.RestoreReportsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'PurgeReports': grpc.unary_unary_rpc_method_handler(
+                    servicer.PurgeReports,
+                    request_deserializer=report__service__pb2.PurgeReportsRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
     }
@@ -1014,6 +1116,168 @@ class ReportConfigService:
             target,
             '/report.ReportConfigService/RollbackReportImport',
             report__service__pb2.RollbackReportImportRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FavoriteReport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/FavoriteReport',
+            report__service__pb2.FavoriteReportRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UnfavoriteReport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/UnfavoriteReport',
+            report__service__pb2.FavoriteReportRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListFavoriteReportIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ListFavoriteReportIds',
+            report__service__pb2.ListFavoriteReportIdsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDeletedReports(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/ListDeletedReports',
+            report__service__pb2.ListDeletedReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RestoreReports(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/RestoreReports',
+            report__service__pb2.RestoreReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PurgeReports(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/PurgeReports',
+            report__service__pb2.PurgeReportsRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,
             channel_credentials,

@@ -20,7 +20,9 @@ from concurrent import futures
 import grpc
 
 from shared.proto import task_service_pb2_grpc as task_grpc
-from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
+from shared.infrastructure.grpc_interceptors import (
+    server_db_scope_interceptor, server_log_interceptor, server_user_context_interceptor,
+)
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import TASK_SERVICE_GRPC_PORT
 from task_service.interfaces.grpc import (
@@ -50,7 +52,8 @@ def start_grpc_server(port=TASK_SERVICE_GRPC_PORT):
     _max_workers = config_manager.get_value('grpc', 'task_service_workers', 10)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
-        interceptors=[server_db_scope_interceptor, server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                      server_user_context_interceptor],
     )
     task_grpc.add_ExecutionServiceServicer_to_server(ExecutionServiceServicer(), server)
     task_grpc.add_TaskConfigServiceServicer_to_server(TaskConfigServiceServicer(), server)

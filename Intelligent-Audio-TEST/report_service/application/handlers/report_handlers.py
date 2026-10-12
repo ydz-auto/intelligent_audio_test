@@ -28,6 +28,7 @@ from report_service.application.commands.report_commands import (
     CreateReportCommand,
     DeleteReportCommand,
     GenerateReportCommand,
+    UpdateReportCommand,
     UpdateReportStatusCommand,
 )
 from report_service.application.queries.report_queries import (
@@ -46,6 +47,46 @@ from report_service.application.handlers._report_stats_query_mixin import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 对外 summary 契约的 camelCase 键 → 库内 snake_case 键（对齐旧库 normalize_summary_keys，
+# 并补齐全量编辑路径（toReportUpdateDto）的统计字段 camelCase 键）
+_SUMMARY_KEY_MAPPING = {
+    'totalCases': 'total_cases',
+    'completedCases': 'completed_cases',
+    'failedCases': 'failed_cases',
+    'passRate': 'pass_rate',
+    'caseCategories': 'case_categories',
+    'allCaseTags': 'all_case_tags',
+    'allTags': 'all_tags',
+    'resourceHeaders': 'resource_headers',
+    'allMetrics': 'all_metrics',
+    'metricData': 'metric_data',
+    'tagMetricData': 'tag_metric_data',
+    'rawData': 'raw_data',
+    'deviceStats': 'device_stats',
+    'apiStats': 'api_stats',
+    'caseTypeStats': 'case_type_stats',
+}
+
+# all_tags 为 all_case_tags 的历史别名（旧前端双写同值），落库归一到 all_case_tags
+_SUMMARY_KEY_ALIASES = {
+    'all_tags': 'all_case_tags',
+}
+
+
+def _normalize_summary_keys(summary_dict):
+    """归一 summary 快照键：camelCase → snake_case + 历史别名收敛。
+
+    非dict输入返回 None（调用方转为参数错误）；未识别的键原样保留。
+    """
+    if not isinstance(summary_dict, dict):
+        return None
+    normalized = {}
+    for k, v in summary_dict.items():
+        key = _SUMMARY_KEY_MAPPING.get(k, k)
+        key = _SUMMARY_KEY_ALIASES.get(key, key)
+        normalized[key] = v
+    return normalized
 
 
 class ReportCommandHandler:
@@ -138,16 +179,77 @@ class ReportCommandHandler:
         """
         self.repository.update_status(command.report_id, command.status)
 
-    def handle_delete(self, command: DeleteReportCommand) -> bool:
-        """处理删除报告命令（软删除）。
+    def handle_update(self, command: UpdateReportCommand) -> bool:
+        """处理更新报告命令（对齐旧库 PUT /reports/{id}）。
+
+        字段归一：
+        - name/title 取先提供者 → name
+        - analysis/conclusion 取先提供者 → analysis（文本结论）
+        - summary 键归一为 snake_case
 
         Args:
-            command: DeleteReportCommand
+            command: UpdateReportCommand
+
+        Returns:
+            True 表示更新成功，False 表示报告不存在或无可更新字段
+        """
+        fields = {
+            'name': command.name,
+            'description': command.description,
+            'analysis': command.analysis,
+            'status': command.status,
+        }
+        fields = {k: v for k, v in fields.items() if v is not None}
+        if command.summary is not None:
+            normalized = _normalize_summary_keys(command.summary)
+            if normalized is None:
+                raise ValueError('summary 字段格式错误，应为对象')
+            fields['summary'] = normalized
+        if not fields:
+            return False
+        return self.repository.update_report_fields(command.report_id, fields)
+
+    def handle_delete(self, command: DeleteReportCommand) -> bool:
+        """处理删除报告命令。
+
+        软删除统一盖 deleted_at / deleted_by_user_id（INT-141，操作人取
+        x-user-id 上下文；AUTH_MODE=off 时为 NULL）。
+
+        Args:
+            command: DeleteReportCommand（hard=True 硬删除含子表级联）
 
         Returns:
             True 表示删除成功，False 表示报告不存在
         """
-        return self.repository.soft_delete(command.report_id)
+        from shared.infrastructure.user_context import get_current_user_id
+        if command.hard:
+            return self.repository.hard_delete(command.report_id)
+        return self.repository.soft_delete(
+            command.report_id, deleted_by=get_current_user_id())
+
+    # ==================================================================
+    # 收藏 / 回收站（INT-141）
+    # ==================================================================
+
+    def handle_favorite_report(self, report_id: int, user_id=None) -> dict:
+        """处理收藏报告命令。委托 report_favorite_trash_service.favorite。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.favorite(user_id, report_id)
+
+    def handle_unfavorite_report(self, report_id: int, user_id=None) -> dict:
+        """处理取消收藏报告命令。委托 report_favorite_trash_service.unfavorite。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.unfavorite(user_id, report_id)
+
+    def handle_restore_reports(self, report_ids: list) -> dict:
+        """处理恢复报告命令（单个+批量）。委托 report_favorite_trash_service.restore_reports。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.restore_reports(report_ids)
+
+    def handle_purge_reports(self, report_ids: list) -> dict:
+        """处理彻底删除报告命令。委托 report_favorite_trash_service.purge_reports。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.purge_reports(report_ids)
 
 
 class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
@@ -260,7 +362,7 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         """处理分页列出报告（各条附摘要统计）。
 
         Args:
-            query: ListReportsQuery
+            query: ListReportsQuery（favorite/deleted/user_id 见 INT-141）
 
         Returns:
             聚合根列表（不含 cases 等大体积子实体）
@@ -269,6 +371,9 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
             status=query.status,
             page=query.page,
             page_size=query.page_size,
+            favorite=query.favorite,
+            deleted=query.deleted,
+            user_id=query.user_id,
         )
         # 逐条加载摘要统计（列表场景每页数据量小，避免默认空 summary）
         for aggregate in aggregates:
@@ -276,6 +381,17 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
                 continue
             aggregate.summaries = self.repository.load_summaries(aggregate.id)
         return aggregates
+
+    def handle_list_favorite_report_ids(self, user_id) -> dict:
+        """处理收藏报告 ID 列表查询。委托 report_favorite_trash_service。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.list_favorite_ids(user_id)
+
+    def handle_list_deleted_reports(self, page: int = 1, per_page: int = 20,
+                                    search: str = None) -> dict:
+        """处理回收站报告列表查询。委托 report_favorite_trash_service。"""
+        from report_service.application.favorite_trash_service import report_favorite_trash_service
+        return report_favorite_trash_service.list_deleted_reports(page, per_page, search)
 
     def handle_get_summary(self, query: GetReportSummaryQuery) -> Optional[ReportAggregate]:
         """处理查询报告摘要（含子实体集合）。

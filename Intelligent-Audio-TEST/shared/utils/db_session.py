@@ -31,7 +31,7 @@ from typing import Any, Type
 
 from sqlalchemy.orm import Query
 
-from shared.models.database import get_db_session
+from shared.models.database import get_db_session, utc8now
 
 logger = logging.getLogger(__name__)
 
@@ -161,36 +161,57 @@ class SoftDeleteMixin:
     PO_CLASS: Type = None
 
     @with_session(auto_commit=True)
-    def soft_delete(self, entity_id: int) -> bool:
+    def soft_delete(self, entity_id: int, deleted_by: int | None = None) -> bool:
         """软删除指定 ID 的记录。
+
+        统一盖 deleted_at（回收站/保留期清理依赖该时间戳；INT-141 起所有
+        软删路径必须盖时间与操作人，单一删除不再裸置 deleted=True）。
+        deleted_by 未显式传入时从 x-user-id 上下文取当前操作人。
 
         Args:
             entity_id: 记录 ID
+            deleted_by: 操作人用户 ID（JWT；未认证/AUTH_MODE=off 为 None）
 
         Returns:
             True 如果记录存在且已标记删除；False 如果记录不存在。
         """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         po = session.get(self.PO_CLASS, entity_id)
         if po is None:
             return False
         po.deleted = True
+        if getattr(self.PO_CLASS, 'deleted_at', None) is not None:
+            po.deleted_at = utc8now()
+        if deleted_by is None:
+            deleted_by = get_current_user_id()
+        if deleted_by is not None and getattr(self.PO_CLASS, 'deleted_by_user_id', None) is not None:
+            po.deleted_by_user_id = deleted_by
         return True
 
     @with_session(auto_commit=True)
-    def bulk_soft_delete(self, ids: list) -> int:
-        """批量软删除。
+    def bulk_soft_delete(self, ids: list, deleted_by: int | None = None) -> int:
+        """批量软删除（时间戳/操作人语义与 soft_delete 一致）。
 
         Args:
             ids: 待删除的 ID 列表
+            deleted_by: 操作人用户 ID（JWT；未认证/AUTH_MODE=off 为 None）
 
         Returns:
             实际删除的条数
         """
+        from shared.infrastructure.user_context import get_current_user_id
         if not ids:
             return 0
         session = get_db_session()
+        updates = {self.PO_CLASS.deleted: True}
+        if getattr(self.PO_CLASS, 'deleted_at', None) is not None:
+            updates[self.PO_CLASS.deleted_at] = utc8now()
+        if deleted_by is None:
+            deleted_by = get_current_user_id()
+        if deleted_by is not None and getattr(self.PO_CLASS, 'deleted_by_user_id', None) is not None:
+            updates[self.PO_CLASS.deleted_by_user_id] = deleted_by
         count = session.query(self.PO_CLASS).filter(
             self.PO_CLASS.id.in_(ids)
-        ).update({self.PO_CLASS.deleted: True}, synchronize_session=False)
+        ).update(updates, synchronize_session=False)
         return count

@@ -32,9 +32,17 @@ export function createSelectionModule(props: any, emit: any, state: ContainerSta
 
   // ===== 用例卡片操作 =====
   const getTestCaseActions = () => {
+    // INT-141：回收站模式下卡片操作切换为 恢复/彻底删除
+    if ((props as any).trashMode) {
+      return [
+        { id: 'restore', icon: 'fa-undo', title: '恢复用例' },
+        { id: 'purge', icon: 'fa-fire', title: '彻底删除（不可恢复）' }
+      ];
+    }
     return [
       { id: 'preview', icon: 'fa-play', title: '预览音频' },
       { id: 'copy', icon: 'fa-copy', title: '复制用例' },
+      { id: 'favorite', icon: 'fa-star', title: '收藏/取消收藏' },
       { id: 'edit', icon: 'fa-edit', title: '编辑用例' },
       { id: 'delete', icon: 'fa-trash', title: '删除用例' }
     ];

@@ -171,6 +171,11 @@ class BaseConfig:
     # 即 session_timeout，默认 60s）+ 本余量；余量覆盖适配器渲染/序列化/网络开销。
     GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS: int = _get_int('GRPC_SENDROUND_DEADLINE_MARGIN_SECONDS', 30)
 
+    # --- 回收站保留期（INT-141）：软删除记录保留天数，过期由各服务
+    # SoftDeleteCleaner 守护线程硬清理（定时调度走既有执行引擎/守护线程，
+    # 不走五通道事件）；环境变量可覆盖默认 60 天 ---
+    TRASH_RETENTION_DAYS: int = _get_int('TRASH_RETENTION_DAYS', 60)
+
     # --- 工具 ---
     FFMPEG_PATH: str = _get_env('FFMPEG_PATH', 'ffmpeg')
     FFPROBE_PATH: str = _get_env('FFPROBE_PATH', 'ffprobe')

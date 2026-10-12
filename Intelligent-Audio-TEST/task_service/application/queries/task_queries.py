@@ -60,6 +60,8 @@ class ListTasksConfigQuery(Query):
 
     device_type（可选）：按用例级被测设备类型过滤任务（差异#2 收尾，
     承载于 proto ListTasksRequest.type 字段的取值，如 'physical'）。
+    favorite（可选，INT-141）：仅当前用户收藏（user_id 来自 x-user-id metadata）。
+    deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
     """
     page: int = 1
     per_page: int = 10
@@ -69,6 +71,32 @@ class ListTasksConfigQuery(Query):
     search: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    favorite: bool = False
+    deleted: bool = False
+    user_id: Optional[int] = None
+
+
+@dataclass(frozen=True)
+class ListFavoriteIdsQuery(Query):
+    """收藏实体 ID 列表查询（INT-141，task|testcase）。"""
+    user_id: int
+    entity_type: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ListDeletedTasksQuery(Query):
+    """回收站任务列表查询（INT-141）。"""
+    page: int = 1
+    per_page: int = 20
+    search: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ListDeletedTestCasesQuery(Query):
+    """回收站用例列表查询（INT-141）。"""
+    page: int = 1
+    per_page: int = 20
+    keyword: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -108,7 +136,11 @@ class GetCaseResultsQuery(Query):
 
 @dataclass(frozen=True)
 class ListTestCasesQuery(Query):
-    """测试用例列表查询。委托 testcase_query_service.list_testcases。"""
+    """测试用例列表查询。委托 testcase_query_service.list_testcases。
+
+    favorite（可选，INT-141）：仅当前用户收藏（user_id 来自 x-user-id metadata）。
+    only_deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
+    """
     page: int = 1
     per_page: int = 10
     keyword: Optional[str] = None
@@ -117,6 +149,10 @@ class ListTestCasesQuery(Query):
     algorithm_type: Optional[str] = None
     view: Optional[str] = None
     include_deleted: bool = False
+    dimension_id: Optional[int] = None
+    favorite: bool = False
+    only_deleted: bool = False
+    user_id: Optional[int] = None
 
 
 @dataclass(frozen=True)

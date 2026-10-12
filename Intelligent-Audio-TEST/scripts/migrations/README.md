@@ -94,6 +94,7 @@ python scripts/migrations/202610/cleanup_compare_report_audios_dup.py --apply  #
 | [add_api_output_types.py](202610/add_api_output_types.py) | `apis` 加 `output_types` 列（INT-74） | 多模态输出类型 JSON 数组（OutputType 枚举值子集）；幂等，支持 `--dry-run` |
 | [add_api_device_adapter_columns.py](202610/add_api_device_adapter_columns.py) | `apis` 加 `device_type` / `adapter_class` / `audio_config` 列（INT-68，UC-0901） | 被测设备类型（默认 http_api）/ 指定适配器类名 / 目标音频格式 JSON（未配置回退默认）；幂等，支持 `--dry-run`。**提测/上线窗口需人工执行**（INT-68 验收遗留提示：本环境已于 2026-10-10 随 ⑯ 修复批次补执行） |
 | [cleanup_compare_report_audios_dup.py](202610/cleanup_compare_report_audios_dup.py) | 存量对比报告 `report_cases.audios` 重复对象清洗（INT-135） | INT-134 修复前落库的 comparison / secondary_comparison 报告 audios 内同一 dict 重复入列；对象级去重（保首见、保顺序，与修复后生成侧口径一致），只写 audios 字段，幂等；`--apply` 前自动备份受影响行并留档执行记录。**本环境 2026-10-11 dry-run 核查 0 受影响**（2 个存量对比报告由旧生成路径产出，不含缺陷形态数据），无需执行 |
+| [add_trash_operator_and_favorites.py](202610/add_trash_operator_and_favorites.py) | CUD 操作人列 + 收藏表（INT-141） | `test_tasks`/`test_cases`/`test_reports` 补 `deleted_by_user_id`（幂等兜底补 `created_by_user_id`/`updated_by_user_id` 及索引）；建 `favorites`（task_service 管 task\|testcase）与 `report_favorites`（report_service 管 report；单库部署下 Base.metadata 表名全局唯一，不能同名复用），(user_id, entity_type, entity_id) 唯一；幂等，支持 `--dry-run` |
 
 ## 新增迁移脚本约定
 

@@ -50,6 +50,7 @@ class Task(Base):
     actual_duration = Column(Integer, comment='实际执行耗时 (秒)')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
+    deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-141）')
     reevaluated_at = Column(DateTime, nullable=True, comment='最后一次重新评估完成时间')
     reevaluation_count = Column(Integer, nullable=False, default=0, comment='重新评估次数')
     worker_instance_id = Column(String(100), nullable=True, index=True, comment='归属执行实例ID (task_service:{host}:{port}:{hex})，NULL 表示未绑定，任意实例可接管')

@@ -101,26 +101,48 @@ class TaskReadModel(
                      algorithm_type: Optional[str] = None,
                      search: Optional[str] = None,
                      start_date: Optional[str] = None,
-                     end_date: Optional[str] = None) -> Dict[str, Any]:
+                     end_date: Optional[str] = None,
+                     favorite: bool = False,
+                     deleted: bool = False,
+                     user_id: Optional[int] = None) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
         device_type（可选）：按用例级被测设备类型过滤（任务下存在该类型用例）。
+        favorite（可选，INT-141）：仅当前用户收藏（user_id 来自 x-user-id metadata）。
+        deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
         """
         from datetime import datetime
+        from sqlalchemy import select as sa_select
 
         session = get_db_session()
         try:
-            query = session.query(Task).filter(Task.deleted == False)  # noqa: E712
+            # INT-141：回收站模式查软删除项，正常模式查活跃项（互斥）
+            query = session.query(Task).filter(
+                Task.deleted == (True if deleted else False))  # noqa: E712
             if status:
                 query = query.filter(Task.status == status)
             if device_type:
-                from sqlalchemy import exists as _sa_exists
                 from task_service.infrastructure.persistence.models import TaskCase
-                query = query.filter(_sa_exists(
-                    session.query(TaskCase.id)
-                    .filter(TaskCase.task_id == Task.id, TaskCase.device_type == device_type)
-                    .correlate(Task)
-                ))
+                # SQLAlchemy 2.0：exists() 不再接受 Query，改用 select().exists()
+                query = query.filter(sa_select(TaskCase.id)
+                                     .where(TaskCase.task_id == Task.id,
+                                            TaskCase.device_type == device_type)
+                                     .correlate(Task)
+                                     .exists())
+            if favorite:
+                from shared.models.common_enums import EntityType
+                from task_service.infrastructure.persistence.models import Favorite
+                if not user_id:
+                    return {'items': [], 'total': 0, 'page': page,
+                            'per_page': per_page, 'pages': 0}
+                # per-user 收藏量小，两段查询（先取收藏 ID 再 IN 过滤）跨库兼容
+                fav_rows = (session.query(Favorite.entity_id)
+                            .filter(Favorite.user_id == user_id,
+                                    Favorite.entity_type == EntityType.TASK.value)
+                            .all())
+                fav_task_ids = [int(r[0]) for r in fav_rows
+                                if str(r[0]).isdigit()]
+                query = query.filter(Task.id.in_(fav_task_ids))
             if algorithm_type:
                 query = query.filter(Task.algorithm_type == algorithm_type)
             if search:
@@ -184,7 +206,33 @@ class TaskReadModel(
                         device_types_map.setdefault(tid, [])
                         if dt not in device_types_map[tid]:
                             device_types_map[tid].append(dt)
+            # INT-141：当前用户对本页任务的收藏集合（is_favorite 标记）
+            favorite_ids = set()
+            if user_id and page_task_ids:
+                from shared.models.common_enums import EntityType
+                from task_service.infrastructure.persistence.models import Favorite
+                fav_rows = (session.query(Favorite.entity_id)
+                            .filter(Favorite.user_id == user_id,
+                                    Favorite.entity_type == EntityType.TASK.value,
+                                    Favorite.entity_id.in_([str(i) for i in page_task_ids]))
+                            .all())
+                favorite_ids = {r[0] for r in fav_rows}
             for task in tasks:
+                # 回收站模式：仅返回轻量字段（删除人/删除时间），不查报告/设备/API
+                if deleted:
+                    items.append({
+                        'id': task.id,
+                        'name': task.name,
+                        'description': task.description,
+                        'status': task.status,
+                        'algorithm_type': task.algorithm_type,
+                        'total_cases': task.total_cases,
+                        'deleted': True,
+                        'deleted_at': task.deleted_at.isoformat() if task.deleted_at else None,
+                        'deleted_by_user_id': task.deleted_by_user_id,
+                        'created_at': task.created_at.isoformat() if task.created_at else None,
+                    })
+                    continue
                 # 通过 gRPC 查询任务的报告（替代直连 report_service PO）
                 reports = []
                 try:
@@ -236,6 +284,7 @@ class TaskReadModel(
                     'tags': [tag.name for tag in task.tags],
                     'created_at': task.created_at.isoformat() if task.created_at else None,
                     'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+                    'is_favorite': str(task.id) in favorite_ids,
                     'reports': report_info,
                     'devices': devices,
                     'apis': apis,

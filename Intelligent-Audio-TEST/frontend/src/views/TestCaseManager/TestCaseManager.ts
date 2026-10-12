@@ -4,6 +4,7 @@ import { useTestCaseCard } from '../../composables/testCase/useTestCaseCard';
 import { useTestCaseStore } from '../../store/testCaseStore';
 import { useDeleteConfirm } from '../../composables/modal/useDeleteConfirm';
 import { useNotification } from '../../composables/modal/useNotification';
+import { useFavorites } from '../../composables/favorite/useFavorites';
 import type { TestCase } from '../../domain';
 import type { ModalSaveData } from '../../composables/modal/types';
 // 引入视图模式枚举，消除魔法字符串
@@ -36,6 +37,72 @@ export function useTestCaseManager() {
   const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination, tagViewLoading } = storeToRefs(store);
   const { fetchTestCases, fetchTagView, loadMoreTagView, deleteGroup: deleteGroupFromStore, deleteTestCase, resetGroupCache } = store;
 
+  // ===== 收藏 / 回收站（INT-141）=====
+  const favoritesModule = useFavorites('testcase');
+  /** 仅看收藏 */
+  const favoriteOnly = favoritesModule.favoriteOnly;
+  /** 回收站模式（onlyDeleted 拉取 + 卡片操作切换为恢复/彻底删除） */
+  const trashMode = ref(false);
+
+  const currentFetchExtra = () => ({
+    favorite: favoriteOnly.value && !trashMode.value,
+    onlyDeleted: trashMode.value,
+  });
+
+  const handleFavoriteToggle = async (testCase: any) => {
+    try {
+      await favoritesModule.toggleFavorite(testCase.id);
+      notification.success(favoritesModule.isFavorite(testCase.id) ? '已收藏' : '已取消收藏');
+    } catch (error) {
+      notification.error('收藏操作失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  };
+
+  const handleRestoreCase = async (testCase: any) => {
+    try {
+      await favoritesModule.restore([testCase.id]);
+      notification.success(`用例「${testCase.name}」已恢复`);
+      await refreshCurrentView();
+    } catch (error) {
+      notification.error('恢复用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  };
+
+  const handlePurgeCase = async (testCase: any) => {
+    const confirmed = window.confirm(`彻底删除用例「${testCase.name}」？该操作不可恢复（仅管理员/所有者可执行）。`);
+    if (!confirmed) return;
+    try {
+      await favoritesModule.purge([testCase.id]);
+      notification.success(`用例「${testCase.name}」已彻底删除`);
+      await refreshCurrentView();
+    } catch (error) {
+      notification.error('彻底删除用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  };
+
+  const restoreAllTrash = async () => {
+    const ids = Object.values(testCaseGroups.value)
+      .flat()
+      .map((c: any) => c.id);
+    if (ids.length === 0) {
+      notification.info('回收站为空');
+      return;
+    }
+    if (!window.confirm(`恢复回收站中的全部 ${ids.length} 个用例？`)) return;
+    try {
+      await favoritesModule.restore(ids);
+      notification.success('回收站用例已全部恢复');
+      await refreshCurrentView();
+    } catch (error) {
+      notification.error('恢复失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  };
+
+  const toggleTrashMode = async () => {
+    trashMode.value = !trashMode.value;
+    await refreshCurrentView();
+  };
+
   // 视图模式：ViewMode.GROUP 分组视图 | ViewMode.TAG 标签视图
   const viewMode = ref<TestCaseViewMode>(ViewMode.GROUP);
 
@@ -56,6 +123,7 @@ export function useTestCaseManager() {
         testType: currentFilters.value.testType,
         algorithmType: currentFilters.value.algorithmType,
         dimensionId: currentFilters.value.dimensionId,
+        ...currentFetchExtra(),
       });
     }
   };
@@ -89,6 +157,7 @@ export function useTestCaseManager() {
         testType: filters.testType,
         algorithmType: filters.algorithmType,
         dimensionId: filters.dimensionId,
+        ...currentFetchExtra(),
       });
     }
   };
@@ -148,7 +217,7 @@ export function useTestCaseManager() {
 
   onMounted(async () => {
     console.log('[TestCaseManager] 初始加载测试用例');
-    await fetchTestCases();
+    await Promise.all([fetchTestCases(), favoritesModule.loadFavorites()]);
   });
 
   return {
@@ -174,6 +243,14 @@ export function useTestCaseManager() {
     refreshCurrentView,
     handleTagFilterChange,
     handleGroupFilterChange,
-    loadMoreTagView
+    loadMoreTagView,
+    // 收藏 / 回收站（INT-141）
+    favoriteOnly,
+    trashMode,
+    toggleTrashMode,
+    restoreAllTrash,
+    handleFavoriteToggle,
+    handleRestoreCase,
+    handlePurgeCase,
   };
 }

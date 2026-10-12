@@ -86,6 +86,8 @@ class TaskFinalizeMixin:
                     # 更新任务的已完成用例数和失败用例数
                     task.completed_cases = completed_cases
                     task.failed_cases = failed_cases
+                    from shared.infrastructure.user_context import get_current_user_id
+                    task.updated_by_user_id = get_current_user_id()
                     local_db_session.commit()
                     # 发送最终进度更新
                     self._emit_progress(task)
@@ -406,6 +408,8 @@ class TaskFinalizeMixin:
                 ).count()
                 task.completed_cases = success_count
                 task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
+                from shared.infrastructure.user_context import get_current_user_id
+                task.updated_by_user_id = get_current_user_id()
 
                 local_db_session.commit()
                 # 在关闭会话前发送任务完成进度更新
@@ -477,6 +481,9 @@ class TaskFinalizeMixin:
                 TaskCase.status == TaskCaseStatus.COMPLETED
             ).count()
             task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
+
+            from shared.infrastructure.user_context import get_current_user_id
+            task.updated_by_user_id = get_current_user_id()
 
             local_db_session.commit()
 

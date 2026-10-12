@@ -14,6 +14,17 @@ P5 改造：从 shared/models/models/user_models.py 中拆出（原 user_models
 from enum import Enum
 
 
+class EntityType(str, Enum):
+    """可收藏实体类型枚举 — 收藏/回收站按实体分治路由（INT-141）
+
+    task_service 管辖 task|testcase，report_service 管辖 report；
+    收藏表 (user_id, entity_type, entity_id) 唯一。
+    """
+    TASK = 'task'
+    REPORT = 'report'
+    TESTCASE = 'testcase'
+
+
 class ReportStatus(str, Enum):
     """报告状态枚举"""
     DRAFT = 'draft'

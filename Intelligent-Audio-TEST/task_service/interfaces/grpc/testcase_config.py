@@ -97,6 +97,7 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
 
     def ListTestCases(self, request, context=None):
         try:
+            from shared.infrastructure.user_context import user_id_from_context
             from task_service.application.queries.task_queries import ListTestCasesQuery
             query = ListTestCasesQuery(
                 page=request.page,
@@ -107,6 +108,10 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
                 algorithm_type=request.algorithm_type or None,
                 view=request.view or None,
                 include_deleted=request.include_deleted,
+                # INT-141：收藏/回收站过滤（user_id 从 x-user-id metadata 取）
+                favorite=request.favorite,
+                only_deleted=request.only_deleted,
+                user_id=user_id_from_context(context),
             )
             return self._resp(self.qry.handle_list_testcases(query))
         except Exception as e:
@@ -147,5 +152,50 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
             data = _loads(request.data, {})
             from task_service.application.queries.task_queries import FetchCaseIdsQuery
             return self._resp(self.qry.handle_fetch_case_ids(FetchCaseIdsQuery(data=data)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    # ---- 收藏 / 回收站（INT-141）----
+
+    def FavoriteTestCase(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import FavoriteEntityCommand
+            return self._resp(self.cmd.handle_favorite_entity(
+                FavoriteEntityCommand(entity_type=request.entity_type,
+                                      entity_id=request.entity_id)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def UnfavoriteTestCase(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import FavoriteEntityCommand
+            return self._resp(self.cmd.handle_unfavorite_entity(
+                FavoriteEntityCommand(entity_type=request.entity_type,
+                                      entity_id=request.entity_id)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def ListDeletedTestCases(self, request, context=None):
+        try:
+            from task_service.application.queries.task_queries import ListDeletedTestCasesQuery
+            return self._resp(self.qry.handle_list_deleted_testcases(
+                ListDeletedTestCasesQuery(page=request.page, per_page=request.per_page,
+                                          keyword=request.keyword or None)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def RestoreTestCases(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import RestoreTestCasesCommand
+            return self._resp(self.cmd.handle_restore_testcases(
+                RestoreTestCasesCommand(case_ids=list(request.case_ids))))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def PurgeTestCases(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import PurgeTestCasesCommand
+            return self._resp(self.cmd.handle_purge_testcases(
+                PurgeTestCasesCommand(case_ids=list(request.case_ids))))
         except Exception as e:
             return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")

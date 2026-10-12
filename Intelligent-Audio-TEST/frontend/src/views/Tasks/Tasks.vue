@@ -132,9 +132,17 @@
               <option :value="TaskStatus.REEVALUATING">重新评估中</option>
               <option :value="TaskStatus.COMPLETED">已完成</option>
               <option :value="TaskStatus.FAILED">执行失败</option>
-              <option value="deleted">已删除</option>
+              <option value="deleted">已删除（回收站）</option>
               <option :value="TaskStatus.MERGED">已合并</option>
             </select>
+          </div>
+
+          <!-- INT-141：收藏筛选 -->
+          <div class="filter-item">
+            <label class="favorite-filter-label">
+              <input type="checkbox" v-model="favoriteOnly" @change="applyFilters">
+              <i class="fas fa-star"></i> 仅看收藏
+            </label>
           </div>
         </div>
         
@@ -197,6 +205,9 @@
           </button>
           <button class="btn-primary" @click="batchRestore" :style="{ display: filters.status === 'deleted' ? 'inline-block' : 'none' }">
             <i class="fas fa-undo"></i> 批量恢复
+          </button>
+          <button class="btn-danger" @click="batchPurge" :style="{ display: filters.status === 'deleted' ? 'inline-block' : 'none' }">
+            <i class="fas fa-fire"></i> 批量彻底删除
           </button>
           <button class="btn-secondary" @click="cancelSelect">
             <i class="fas fa-times"></i> 取消选择
@@ -261,6 +272,9 @@
               { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => [TaskStatus.RUNNING, TaskStatus.PAUSED, TaskStatus.QUEUED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'retry', label: '重新执行', icon: 'fa-redo', type: 'success', show: (task: any) => [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.STOPPED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => [...FINISHED_STATUSES].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'favorite', label: '收藏', icon: 'fa-star', type: 'secondary', show: (task: any) => !isFavorite(task.id) && filters.status !== 'deleted' },
+              { id: 'unfavorite', label: '取消收藏', icon: 'fa-star', type: 'secondary', show: (task: any) => isFavorite(task.id) && filters.status !== 'deleted' },
+              { id: 'purge', label: '彻底删除', icon: 'fa-fire', type: 'danger', show: (task: any) => filters.status === 'deleted' },
               { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.has(task.id) }
             ]"
             :search-query="searchTerm"
@@ -382,11 +396,24 @@ const {
   openDataExport,
   openDataImport,
   selectedTasksForExport,
-  handleDataImported
+  handleDataImported,
+  // 收藏 / 回收站（INT-141）
+  favoriteOnly,
+  isFavorite,
+  batchPurge
 } = useTasks();
 </script>
 
 <style scoped>@import './Tasks.css';
+
+.favorite-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.favorite-filter-label i { color: #f5a623; }
 
 
 

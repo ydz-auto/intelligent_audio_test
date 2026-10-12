@@ -12,6 +12,7 @@ import { readCamel } from '../../utils/keyTransform';
 import { usePagination } from '../../composables/usePagination';
 import { ReportStatus } from '@/domain/enums';
 import { formatDate } from '@/utils/utils';
+import { useFavorites } from '../../composables/favorite/useFavorites';
 
 /**
  * 历史报告页视图 Tab 常量（全部/草稿/已发布/对比）。
@@ -98,23 +99,33 @@ export function useHistoryReports() {
     order: 'desc'
   });
 
+  // ===== 收藏 / 回收站（INT-141）=====
+  const favoritesModule = useFavorites('report');
+  /** 仅看收藏 */
+  const favoriteOnly = favoritesModule.favoriteOnly;
+  /** 回收站模式（deleted=true 拉取 + 卡片操作切换为恢复/彻底删除） */
+  const trashMode = ref(false);
+
   const loadReports = async () => {
     loading.value = true;
     try {
       const params : ReportListParams = {
-        page: currentPage.value, 
-        perPage: pageSize.value, 
-        sortBy: sort.value.sortBy as string, 
+        page: currentPage.value,
+        perPage: pageSize.value,
+        sortBy: sort.value.sortBy as string,
         order: sort.value.order
       };
-      
+
       if (filters.value.search) params.keyword = filters.value.search;
       if (filters.value.reportType && filters.value.reportType !== 'all') params.type = filters.value.reportType;
       if (filters.value.reportStatus && filters.value.reportStatus !== 'all') params.status = filters.value.reportStatus;
       if (filters.value.startDate) params.startTime = filters.value.startDate;
       if (filters.value.endDate) params.endTime = filters.value.endDate;
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') params.algorithmType = filters.value.algorithmType;
-      
+      // INT-141：收藏 / 回收站过滤
+      if (favoriteOnly.value && !trashMode.value) params.favorite = true;
+      if (trashMode.value) params.deleted = true;
+
       const data = await reportsPort.getAll(params);
       allReports.value = data?.items || [];
       totalItems.value = data?.total || 0;
@@ -126,6 +137,43 @@ export function useHistoryReports() {
     } finally {
       loading.value = false;
     }
+  };
+
+  /** 收藏 / 取消收藏（星标切换） */
+  const handleToggleFavorite = async (report: Report) => {
+    try {
+      await favoritesModule.toggleFavorite(report.id);
+      showToast('success', favoritesModule.isFavorite(report.id) ? '已收藏' : '已取消收藏');
+    } catch (error) {
+      showToast('error', '收藏操作失败');
+    }
+  };
+
+  const handleRestoreReport = async (report: Report) => {
+    try {
+      await favoritesModule.restore([report.id]);
+      showToast('success', `报告「${report.name}」已恢复`);
+      await loadReports();
+    } catch (error) {
+      showToast('error', '恢复报告失败');
+    }
+  };
+
+  const handlePurgeReport = async (report: Report) => {
+    if (!window.confirm(`彻底删除报告「${report.name}」？该操作不可恢复（仅管理员/所有者可执行）。`)) return;
+    try {
+      await favoritesModule.purge([report.id]);
+      showToast('success', `报告「${report.name}」已彻底删除`);
+      await loadReports();
+    } catch (error) {
+      showToast('error', '彻底删除报告失败');
+    }
+  };
+
+  const toggleTrashMode = async () => {
+    trashMode.value = !trashMode.value;
+    currentPage.value = 1;
+    await loadReports();
   };
 
   const calculateDateRange = () => {
@@ -444,6 +492,8 @@ export function useHistoryReports() {
   onMounted(() => {
     loadReports();
     loadAlgorithmOptions();
+    // INT-141：加载当前用户收藏集合
+    favoritesModule.loadFavorites();
   });
 
   onBeforeUnmount(() => {
@@ -490,6 +540,15 @@ export function useHistoryReports() {
     viewReport,
     editReport,
     deleteReport,
-    publishReport
+    publishReport,
+    // 收藏 / 回收站（INT-141）
+    favoriteOnly,
+    trashMode,
+    toggleTrashMode,
+    loadReports,
+    isFavorite: favoritesModule.isFavorite,
+    handleToggleFavorite,
+    handleRestoreReport,
+    handlePurgeReport
   };
 }

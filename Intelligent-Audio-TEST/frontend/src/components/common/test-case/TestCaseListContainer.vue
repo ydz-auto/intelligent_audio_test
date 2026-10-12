@@ -367,6 +367,8 @@ const props = defineProps<{
   algorithmTypeFilter?: string;
   testTypeFilter?: string;
   viewMode?: 'group' | 'tag';
+  // INT-141：回收站模式（卡片操作切换为 恢复/彻底删除）
+  trashMode?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -383,6 +385,10 @@ const emit = defineEmits<{
   (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
   (e: 'groupFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
   (e: 'loadMoreTags'): void;
+  // INT-141：收藏 / 回收站
+  (e: 'favoriteToggle', testCase: TestCase): void;
+  (e: 'restoreCase', testCase: TestCase): void;
+  (e: 'purgeCase', testCase: TestCase): void;
 }>();
 
 const {

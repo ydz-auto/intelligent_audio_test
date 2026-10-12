@@ -8,6 +8,7 @@ import { useTaskBatchOps } from '../../composables/task/useTaskBatchOps';
 import { useTaskLogs } from '../../composables/task/useTaskLogs';
 import { useTaskCharts } from '../../composables/task/useTaskCharts';
 import { useTaskReport } from '../../composables/task/useTaskReport';
+import { useFavorites } from '../../composables/favorite/useFavorites';
 
 /**
  * useTasks - 轻量级协调层
@@ -56,6 +57,37 @@ export function useTasks() {
     listModule.tasks,
     listModule.selectedTasks
   );
+
+  // 收藏 / 回收站模块（INT-141）
+  const favoritesModule = useFavorites('task');
+
+  const handleTaskAction = async (payload: { action: string; task: any }) => {
+    if (payload.action === 'favorite' || payload.action === 'unfavorite') {
+      await favoritesModule.toggleFavorite(payload.task.id);
+      return;
+    }
+    if (payload.action === 'purge') {
+      const name = payload.task?.name ?? payload.task?.id;
+      if (!window.confirm(`彻底删除任务「${name}」？该操作不可恢复（仅管理员/所有者可执行）。`)) {
+        return;
+      }
+      await favoritesModule.purge([payload.task.id]);
+      await listModule.fetchTasks();
+      return;
+    }
+    await controlModule.handleTaskAction(payload);
+  };
+
+  const batchPurge = async () => {
+    const ids = Array.from(listModule.selectedTasks.value);
+    if (ids.length === 0) return;
+    if (!window.confirm(`彻底删除选中的 ${ids.length} 个任务？该操作不可恢复（仅管理员/所有者可执行）。`)) {
+      return;
+    }
+    await favoritesModule.purge(ids);
+    listModule.selectedTasks.value.clear();
+    await listModule.fetchTasks();
+  };
 
   // ========== 协调逻辑 ==========
 
@@ -150,6 +182,8 @@ export function useTasks() {
   onMounted(async () => {
     await listModule.fetchTasks();
     listModule.applyFilters();
+    // INT-141：加载当前用户收藏集合
+    await favoritesModule.loadFavorites();
     // 初始化时获取日志
     await logsModule.refreshTaskLogs();
 
@@ -181,6 +215,7 @@ export function useTasks() {
     searchTerm: listModule.searchTerm,
     filters: listModule.filters,
     customDateRange: listModule.customDateRange,
+    favoriteOnly: listModule.favoriteOnly,
     tagCurrentPage: listModule.tagCurrentPage,
     tagPageSize: listModule.tagPageSize,
     allTags: listModule.allTags,
@@ -225,7 +260,12 @@ export function useTasks() {
     retryTask: controlModule.retryTask,
     reevaluateTask: controlModule.reevaluateTask,
     deleteTask: controlModule.deleteTask,
-    handleTaskAction: controlModule.handleTaskAction,
+    handleTaskAction,
+    // 收藏 / 回收站（INT-141）
+    isFavorite: favoritesModule.isFavorite,
+    toggleFavorite: favoritesModule.toggleFavorite,
+    favoriteIds: favoritesModule.favoriteIds,
+    batchPurge,
     getStatusText: controlModule.getStatusText,
     getStatusIcon: controlModule.getStatusIcon,
     getStepStatusText: controlModule.getStepStatusText,

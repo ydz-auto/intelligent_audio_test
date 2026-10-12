@@ -22,7 +22,9 @@ class TestCaseCrudMixin:
 
         data 需含 id/name/group_id/config/algorithm_params/algorithm_type。
         用例是纯数据载体（差异#2 收尾）：不再存储 test_type。
+        created_by_user_id（INT-141）：从 x-user-id 上下文取 JWT 操作人。
         """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         tc = TestCase(
             id=data.get('id'),
@@ -32,6 +34,7 @@ class TestCaseCrudMixin:
             config=data.get('config'),
             algorithm_params=data.get('algorithm_params'),
             algorithm_type=data.get('algorithm_type'),
+            created_by_user_id=get_current_user_id(),
         )
         session.add(tc)
         session.flush()
@@ -73,7 +76,8 @@ class TestCaseCrudMixin:
         return session.no_autoflush
 
     def soft_delete_testcase(self, tc_id: str) -> bool:
-        """软删除单个测试用例（未 commit）。"""
+        """软删除单个测试用例（未 commit；记录删除人，INT-141）。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         tc = session.query(TestCase).filter_by(id=tc_id, deleted=False).first()
         if not tc:
@@ -81,18 +85,21 @@ class TestCaseCrudMixin:
         now = _now()
         tc.deleted = True
         tc.deleted_at = now
+        tc.deleted_by_user_id = get_current_user_id()
         tc.updated_at = now
         session.flush()
         return True
 
     def soft_delete_testcases_by_ids(self, ids: List[str]) -> int:
-        """批量软删除测试用例（未 commit）。"""
+        """批量软删除测试用例（未 commit；记录删除人，INT-141）。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         if not ids:
             return 0
         now = _now()
         count = session.query(TestCase).filter(TestCase.id.in_(ids)).update(
-            {"deleted": True, "deleted_at": now, "updated_at": now},
+            {"deleted": True, "deleted_at": now, "updated_at": now,
+             "deleted_by_user_id": get_current_user_id()},
             synchronize_session=False,
         )
         session.flush()

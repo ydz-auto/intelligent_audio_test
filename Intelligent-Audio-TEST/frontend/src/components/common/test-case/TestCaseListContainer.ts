@@ -199,7 +199,11 @@ export function useTestCaseListContainer(props: any, emit: any) {
     (testCase) => emit('deleteTestCase', testCase),
     selectedCases,
     // 复制成功后按当前视图刷新（标签视图下需重新拉取 tagViewData）
-    () => testCaseStore.refreshView(innerViewMode.value)
+    () => testCaseStore.refreshView(innerViewMode.value),
+    // INT-141：收藏 / 回收站动作上抛
+    (testCase) => emit('favoriteToggle', testCase),
+    (testCase) => emit('restoreCase', testCase),
+    (testCase) => emit('purgeCase', testCase)
   );
 
   // 4. 用例选择与批量菜单

@@ -153,6 +153,9 @@ export function toReportListQueryDto(query: Partial<ReportListQuery>): ReportLis
     ...(query.startTime !== undefined ? { start_time: query.startTime } : {}),
     ...(query.endTime !== undefined ? { end_time: query.endTime } : {}),
     ...(query.algorithmType !== undefined ? { algorithm_type: query.algorithmType } : {}),
+    // INT-141：收藏 / 回收站过滤
+    ...(query.favorite !== undefined ? { favorite: query.favorite } : {}),
+    ...(query.deleted !== undefined ? { deleted: query.deleted } : {}),
   }
 }
 

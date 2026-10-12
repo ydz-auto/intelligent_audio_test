@@ -39,7 +39,15 @@ class PublishedTaskConfigServiceServicer(task_grpc.PublishedTaskConfigServiceSer
     def ExecutePublishedTask(self, request, context=None):
         try:
             operator = request.operator_user_id or None
-            return self._resp(published_task_service.execute(request.published_task_id, operator_user_id=operator))
+            # INT-141：显式 operator_user_id 同步到用户上下文，
+            # 使发布执行创建的日常任务回填 created_by_user_id / updated_by_user_id
+            from shared.infrastructure.user_context import set_current_user_id
+            set_current_user_id(operator)
+            try:
+                return self._resp(published_task_service.execute(
+                    request.published_task_id, operator_user_id=operator))
+            finally:
+                set_current_user_id(None)
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 

@@ -49,6 +49,19 @@ service ReportConfigService {
   rpc ImportReports(ImportReportsRequest) returns (ReportConfigResponse);
   // 回滚一次报告导入批次：按批次登记主键删除（补偿失败时人工介入的兜底入口）
   rpc RollbackReportImport(RollbackReportImportRequest) returns (ReportConfigResponse);
+
+  // ---- 收藏 / 回收站（INT-141：report 归 report_service，user_id 走 x-user-id metadata）----
+  // 收藏 / 取消收藏（幂等：重复收藏返回成功 + already_favorited；未收藏的取消同样成功）
+  rpc FavoriteReport(FavoriteReportRequest) returns (ReportConfigResponse);
+  rpc UnfavoriteReport(FavoriteReportRequest) returns (ReportConfigResponse);
+  // 当前用户收藏的报告 ID 列表
+  rpc ListFavoriteReportIds(ListFavoriteReportIdsRequest) returns (ReportConfigResponse);
+  // 回收站列表（软删除项，含删除人/删除时间）
+  rpc ListDeletedReports(ListDeletedReportsRequest) returns (ReportConfigResponse);
+  // 恢复（单个+批量统一入口，ids 传一个即单个恢复）
+  rpc RestoreReports(RestoreReportsRequest) returns (ReportConfigResponse);
+  // 彻底删除（物理删除子表+主表；权限收敛在网关 admin/owner）
+  rpc PurgeReports(PurgeReportsRequest) returns (ReportConfigResponse);
 }
 
 message CreateReportRequest {
@@ -75,6 +88,8 @@ message ListReportsRequest {
   string search = 7;
   string start_date = 8;
   string end_date = 9;
+  bool favorite = 10;         // INT-141：仅当前用户收藏（x-user-id metadata）
+  bool deleted = 11;          // INT-141：仅回收站（软删除项，含删除人/删除时间）
 }
 message GetReportDetailRequest {
   int32 report_id = 1;
@@ -139,6 +154,25 @@ message ImportReportsRequest {
 }
 message RollbackReportImportRequest {
   string batch_id = 1;
+}
+
+// ===== 收藏 / 回收站（INT-141）=====
+message FavoriteReportRequest {
+  int32 report_id = 1;
+}
+message ListFavoriteReportIdsRequest {
+  int64 user_id = 1;  // 可选：显式指定用户（0 = 取 x-user-id metadata 当前用户）
+}
+message ListDeletedReportsRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string search = 3;
+}
+message RestoreReportsRequest {
+  repeated int32 report_ids = 1;
+}
+message PurgeReportsRequest {
+  repeated int32 report_ids = 1;
 }
 
 // ===== Benchmark 排行服务（D1 双轨排行：实测轨 + 外部基线导入 + 6 算法 + 指标映射）=====

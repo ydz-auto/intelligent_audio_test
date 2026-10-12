@@ -94,7 +94,12 @@ class TaskCrudMixin:
                         algorithm_params: Optional[Dict[str, Any]],
                         total_cases: int, created_by: Optional[int],
                         now: datetime) -> Task:
-        """构造新 Task PO（统一字段初始化，消除重复）。"""
+        """构造新 Task PO（统一字段初始化，消除重复）。
+
+        created_by_user_id（INT-141）：统一从 x-user-id 上下文取 JWT 操作人，
+        不信任客户端自报 user_id（红线：0/None 不充当真实用户，保持 NULL）。
+        """
+        from shared.infrastructure.user_context import get_current_user_id
         return Task(
             name=name,
             description=description,
@@ -106,6 +111,7 @@ class TaskCrudMixin:
             completed_cases=0,
             failed_cases=0,
             created_by=created_by,
+            created_by_user_id=get_current_user_id(),
             created_at=now,
             updated_at=now,
         )
@@ -397,11 +403,12 @@ class TaskCrudMixin:
 
     def update_task(self, task_id: int, name: str = None,
                     description: str = None) -> bool:
-        """更新任务名称/描述。
+        """更新任务名称/描述（updated_by_user_id 记录操作人，INT-141）。
 
         Returns:
             True 如果任务存在且已更新；False 如果任务不存在。
         """
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         try:
             task = session.get(Task, task_id)
@@ -411,6 +418,7 @@ class TaskCrudMixin:
                 task.name = name
             if description is not None:
                 task.description = description
+            task.updated_by_user_id = get_current_user_id()
             task.updated_at = datetime.now(_UTC_PLUS_8)
             session.commit()
             return True
@@ -502,18 +510,25 @@ class TaskCrudMixin:
         """批量停止并软删除任务。
 
         调用方应先停止运行中的任务（通过执行引擎），
-        此方法仅做软删除。
+        此方法仅做软删除。统一盖 deleted_at / deleted_by_user_id
+        （INT-141：回收站可见性与操作人记录）。
 
         Returns:
             实际删除的条数
         """
         if not task_ids:
             return 0
+        from shared.infrastructure.user_context import get_current_user_id
+        from shared.models.database import utc8now
         session = get_db_session()
         try:
             count = session.query(Task).filter(
                 Task.id.in_(task_ids)
-            ).update({Task.deleted: True}, synchronize_session=False)
+            ).update({
+                Task.deleted: True,
+                Task.deleted_at: utc8now(),
+                Task.deleted_by_user_id: get_current_user_id(),
+            }, synchronize_session=False)
             session.commit()
             return count
         except Exception:

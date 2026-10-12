@@ -27,11 +27,11 @@ def _import_all_models():
 
     每个服务 infrastructure/persistence/models/__init__.py 导入即注册。
     """
-    # task_service: 13 张表
+    # task_service: 14 张表
     from task_service.infrastructure.persistence.models import (  # noqa: F401
         Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
         TestResult, TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
-        Log,
+        Log, Favorite,
     )
     # evaluation_service: 3 张表
     from evaluation_service.infrastructure.persistence.models import (  # noqa: F401
@@ -47,6 +47,7 @@ def _import_all_models():
     from report_service.infrastructure.persistence.models import (  # noqa: F401
         Report, ReportSummary, ReportSummaryMeta, ReportRawData,
         ReportCase, ReportMetricStats, ReportComparisonMatrix,
+        ReportFavorite,
     )
     # report_service: Benchmark 排行 4 张表（D1）
     from report_service.infrastructure.persistence.models import (  # noqa: F401
@@ -94,8 +95,8 @@ def create_all_tables(dry_run=False):
     for name in table_names:
         print(f"  - {name}")
 
-    if len(table_names) != 64:
-        print(f"\n⚠️ 警告: 预期 64 张表，实际注册 {len(table_names)} 张")
+    if len(table_names) != 66:
+        print(f"\n⚠️ 警告: 预期 66 张表，实际注册 {len(table_names)} 张")
 
     if dry_run:
         print("\n--dry-run 模式，未执行 DDL")

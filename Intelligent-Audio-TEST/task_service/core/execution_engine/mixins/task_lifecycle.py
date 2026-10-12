@@ -21,14 +21,18 @@ logger = logging.getLogger(__name__)
 class TaskLifecycleMixin:
     """任务生命周期编排：启动 / 初始化 / 主循环"""
 
-    def _task_thread_main(self, task_id, stop_event, pause_event):
+    def _task_thread_main(self, task_id, stop_event, pause_event, user_id=None):
         """任务工作线程入口：绑定 worker_instance_id 执行上下文后进入主循环。
 
         出站 gRPC 拦截器据此为全部任务派发调用附加 worker-instance-id
         metadata（UC-1001：调度归属 → 执行 → 事件 payload 全链路贯通）。
+        user_id（INT-141）：操作人跨线程透传（contextvars 不跨线程传播，
+        启动入口捕获后显式传入），引擎内任务状态写回填 updated_by_user_id。
         """
         from shared.infrastructure.worker_context import set_worker_instance_id
+        from shared.infrastructure.user_context import set_current_user_id
         set_worker_instance_id(getattr(self, 'instance_id', None))
+        set_current_user_id(user_id)
         self._run_task(task_id, stop_event, pause_event)
 
     def _run_task(self, task_id, stop_event, pause_event):
@@ -66,6 +70,8 @@ class TaskLifecycleMixin:
                 # 更新任务状态为运行中，并记录开始时间
                 task.status = TaskStatus.RUNNING
                 task.started_at = datetime.now(self.utc_plus_8)
+                from shared.infrastructure.user_context import get_current_user_id
+                task.updated_by_user_id = get_current_user_id()
                 local_db_session.commit()
                 # 发送进度更新，传递task对象以便触发强制更新逻辑
                 self._emit_progress(task)

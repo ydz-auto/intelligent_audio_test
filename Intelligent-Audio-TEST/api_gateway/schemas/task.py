@@ -65,6 +65,11 @@ class TaskListItem(APIModel):
     tags: List[str] = Field(default_factory=list)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+    # INT-141：收藏标记 / 回收站字段
+    is_favorite: Optional[bool] = Field(None)
+    deleted: Optional[bool] = Field(None)
+    deleted_at: Optional[str] = Field(None)
+    deleted_by_user_id: Optional[int] = Field(None)
     reports: Optional[TaskReportsData] = Field(None)
     devices: List[TaskDeviceBrief] = Field(default_factory=list)
     apis: List[TaskApiBrief] = Field(default_factory=list)
@@ -218,6 +223,9 @@ class TaskListQuery(APIModel):
     search: Optional[str] = Field(None)
     start_date: Optional[str] = Field(None)
     end_date: Optional[str] = Field(None)
+    # INT-141：favorite=true 仅当前用户收藏；deleted=true 仅回收站软删除项
+    favorite: bool = Field(False)
+    deleted: bool = Field(False)
 
 
 class TaskBatchExportQuery(APIModel):

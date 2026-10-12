@@ -142,8 +142,13 @@ class _TaskConfigProxy:
     # ---- 读操作 ----
 
     def list_tasks(self, page=1, per_page=10, status=None, device_type=None,
-                   algorithm_type=None, search=None, start_date=None, end_date=None):
-        """任务列表（device_type 经 proto type 字段承载：按用例级被测设备类型过滤）"""
+                   algorithm_type=None, search=None, start_date=None, end_date=None,
+                   favorite=False, deleted=False):
+        """任务列表（device_type 经 proto type 字段承载：按用例级被测设备类型过滤）
+
+        favorite/deleted（INT-141）：收藏/回收站过滤；操作人 user_id 经
+        x-user-id metadata 自动透传（ClientUserContextInterceptor）。
+        """
         from shared.proto import task_service_pb2 as task_pb
 
         def _call():
@@ -157,6 +162,8 @@ class _TaskConfigProxy:
                 search=search or '',
                 start_date=start_date or '',
                 end_date=end_date or '',
+                favorite=bool(favorite),
+                deleted=bool(deleted),
             ))
             return self._resp(resp)
 
@@ -164,6 +171,106 @@ class _TaskConfigProxy:
             _call,
             default_return=lambda e: {'success': False, 'message': f'查询任务列表失败: {e}', 'data': None, 'code': 500},
             error_msg_prefix='查询任务列表失败',
+        )
+
+    # ---- 收藏 / 回收站（INT-141）----
+
+    def favorite(self, entity_type, entity_id):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_task_config_service_stub()
+            resp = stub.FavoriteTask(task_pb.FavoriteEntityRequest(
+                entity_type=str(entity_type),
+                entity_id=str(entity_id),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'收藏失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='收藏失败',
+        )
+
+    def unfavorite(self, entity_type, entity_id):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_task_config_service_stub()
+            resp = stub.UnfavoriteTask(task_pb.FavoriteEntityRequest(
+                entity_type=str(entity_type),
+                entity_id=str(entity_id),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'取消收藏失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='取消收藏失败',
+        )
+
+    def list_favorite_ids(self, entity_type=None):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_task_config_service_stub()
+            resp = stub.ListFavoriteIds(task_pb.ListFavoriteIdsRequest(
+                entity_type=entity_type or '',
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询收藏列表失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='查询收藏列表失败',
+        )
+
+    def list_deleted_tasks(self, page=1, per_page=20, search=None):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_task_config_service_stub()
+            resp = stub.ListDeletedTasks(task_pb.ListDeletedTasksRequest(
+                page=int(page), per_page=int(per_page), search=search or '',
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询任务回收站失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='查询任务回收站失败',
+        )
+
+    def restore_tasks(self, task_ids):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_task_config_service_stub()
+            resp = stub.RestoreTasks(task_pb.RestoreTasksRequest(
+                task_ids=[int(i) for i in (task_ids or [])],
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'恢复任务失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='恢复任务失败',
+        )
+
+    def purge_tasks(self, task_ids):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_task_config_service_stub()
+            resp = stub.PurgeTasks(task_pb.PurgeTasksRequest(
+                task_ids=[int(i) for i in (task_ids or [])],
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'彻底删除任务失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='彻底删除任务失败',
         )
 
     def get_task_detail(self, task_id):
@@ -465,7 +572,8 @@ class _TestCaseConfigProxy:
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
                        group_id=None, algorithm_type=None,
-                       view=None, include_deleted=False):
+                       view=None, include_deleted=False,
+                       favorite=False, only_deleted=False):
         from shared.proto import task_service_pb2 as task_pb
 
         def _call():
@@ -479,6 +587,8 @@ class _TestCaseConfigProxy:
                 algorithm_type=algorithm_type or '',
                 view=view or '',
                 include_deleted=bool(include_deleted),
+                favorite=bool(favorite),
+                only_deleted=bool(only_deleted),
             ))
             return self._resp(resp)
 
@@ -486,6 +596,90 @@ class _TestCaseConfigProxy:
             _call,
             default_return=lambda e: {'success': False, 'message': f'查询测试用例列表失败: {e}', 'data': None, 'code': 500},
             error_msg_prefix='查询测试用例列表失败',
+        )
+
+    # ---- 收藏 / 回收站（INT-141）----
+
+    def favorite(self, entity_type, entity_id):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_testcase_config_service_stub()
+            resp = stub.FavoriteTestCase(task_pb.FavoriteEntityRequest(
+                entity_type=str(entity_type),
+                entity_id=str(entity_id),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'收藏失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='收藏失败',
+        )
+
+    def unfavorite(self, entity_type, entity_id):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_testcase_config_service_stub()
+            resp = stub.UnfavoriteTestCase(task_pb.FavoriteEntityRequest(
+                entity_type=str(entity_type),
+                entity_id=str(entity_id),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'取消收藏失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='取消收藏失败',
+        )
+
+    def list_deleted_testcases(self, page=1, per_page=20, keyword=None):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_testcase_config_service_stub()
+            resp = stub.ListDeletedTestCases(task_pb.ListDeletedTestCasesRequest(
+                page=int(page), per_page=int(per_page), keyword=keyword or '',
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询用例回收站失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='查询用例回收站失败',
+        )
+
+    def restore_testcases(self, case_ids):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_testcase_config_service_stub()
+            resp = stub.RestoreTestCases(task_pb.RestoreTestCasesRequest(
+                case_ids=[str(i) for i in (case_ids or [])],
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'恢复用例失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='恢复用例失败',
+        )
+
+    def purge_testcases(self, case_ids):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_testcase_config_service_stub()
+            resp = stub.PurgeTestCases(task_pb.PurgeTestCasesRequest(
+                case_ids=[str(i) for i in (case_ids or [])],
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'彻底删除用例失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='彻底删除用例失败',
         )
 
     def get_testcase_detail(self, tc_id):

@@ -47,6 +47,8 @@ export function useTaskList(options?: UseTaskListOptions) {
     timeRange: 'all',
     dateRange: [null, null] as [Date | null, Date | null]
   });
+  // INT-141：仅收藏筛选（后端 favorite=true）
+  const favoriteOnly = ref(false);
   const customDateRange = ref({ start: '', end: '' });
   const algorithmOptions = ref<{ value: string; label: string }[]>([]);
 
@@ -119,7 +121,16 @@ export function useTaskList(options?: UseTaskListOptions) {
       }
 
       if (filters.value.status && filters.value.status !== 'all') {
-        params.status = filters.value.status;
+        // INT-141：回收站模式（已删除）走专用 deleted 参数，其余按任务状态过滤
+        if (filters.value.status === 'deleted') {
+          params.deleted = true;
+        } else {
+          params.status = filters.value.status;
+        }
+      }
+      // INT-141：仅收藏过滤（favorite=true，服务端按当前用户 JWT 过滤）
+      if (favoriteOnly.value) {
+        params.favorite = true;
       }
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
         params.algorithmType = filters.value.algorithmType;
@@ -292,6 +303,7 @@ export function useTaskList(options?: UseTaskListOptions) {
     searchTerm,
     filters,
     customDateRange,
+    favoriteOnly,
     algorithmOptions,
     tagCurrentPage,
     tagPageSize,

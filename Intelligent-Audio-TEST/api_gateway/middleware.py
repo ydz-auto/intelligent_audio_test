@@ -121,13 +121,25 @@ class AuthMiddleware(BaseHTTPMiddleware):
         )
 
     async def dispatch(self, request, call_next):
+        from shared.infrastructure.user_context import (
+            set_current_user_id, set_current_user_is_admin,
+        )
+
         # off 模式：完全跳过认证，注入默认开发用户
         if self.auth_mode == 'off':
             request.state.user_id = 0
             request.state.username = 'dev_user'
             request.state.role_id = 1
             request.state.permissions = ['*']
-            return await call_next(request)
+            # INT-141：user_id=0 归一化为 None（未认证），不充当真实操作人；
+            # dev 身份 permissions=['*'] → admin，出站 gRPC 自动透传
+            set_current_user_id(None)
+            set_current_user_is_admin(True)
+            try:
+                return await call_next(request)
+            finally:
+                set_current_user_id(None)
+                set_current_user_is_admin(False)
 
         # 白名单路由：跳过认证
         if self._is_public_path(request.url.path):
@@ -153,7 +165,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
         request.state.role_id = payload.get('role_id', 0)
         request.state.permissions = payload.get('permissions', [])
 
-        return await call_next(request)
+        # INT-141：操作人上下文（出站 gRPC 拦截器自动附加 x-user-id /
+        # x-user-is-admin metadata，下游服务据此填 CUD 操作人列与 purge 鉴权）
+        set_current_user_id(request.state.user_id)
+        set_current_user_is_admin('*' in (request.state.permissions or []))
+        try:
+            return await call_next(request)
+        finally:
+            set_current_user_id(None)
+            set_current_user_is_admin(False)
 
     @staticmethod
     def _unauthorized(detail: str) -> JSONResponse:

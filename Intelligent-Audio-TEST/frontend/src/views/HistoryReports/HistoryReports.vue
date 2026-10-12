@@ -144,11 +144,22 @@
       </div>
     </section>
     
+    <!-- INT-141：收藏 / 回收站工具栏 -->
+    <div class="favorite-trash-bar">
+      <label class="bar-toggle" :class="{ active: favoriteOnly }" title="仅显示我收藏的报告">
+        <input type="checkbox" v-model="favoriteOnly" @change="loadReports">
+        <i class="fas fa-star"></i> 仅看收藏
+      </label>
+      <button class="bar-toggle" :class="{ active: trashMode }" @click="toggleTrashMode" title="回收站：已删除报告，可恢复或彻底删除">
+        <i class="fas fa-trash-restore"></i> 回收站
+      </button>
+    </div>
+
     <!-- 批量操作栏 -->
     <div class="batch-actions" v-if="allReports.length > 0">
       <div class="batch-select-all">
-        <input type="checkbox" 
-               id="select-all-reports" 
+        <input type="checkbox"
+               id="select-all-reports"
                class="task-checkbox"
                v-model="isAllSelected"
                @change="toggleSelectAll">
@@ -205,18 +216,34 @@
             </div>
           </div>
           <div class="card-actions">
-            <button class="btn btn-primary" @click.stop="viewReport(report.id, report.type)">
-              <i class="fas fa-eye"></i> 查看
-            </button>
-            <button class="btn btn-secondary" @click.stop="editReport(report.id)">
-              <i class="fas fa-edit"></i> 编辑
-            </button>
-            <button class="btn btn-danger" @click.stop="deleteReport(report.id)">
-              <i class="fas fa-trash"></i> 删除
-            </button>
-            <button v-if="report.status === ReportStatus.DRAFT" class="btn btn-success" @click.stop="publishReport(report.id)">
-              <i class="fas fa-paper-plane"></i> 发布
-            </button>
+            <!-- INT-141：回收站模式（恢复/彻底删除） -->
+            <template v-if="trashMode">
+              <button class="btn btn-success" @click.stop="handleRestoreReport(report)">
+                <i class="fas fa-undo"></i> 恢复
+              </button>
+              <button class="btn btn-danger" @click.stop="handlePurgeReport(report)">
+                <i class="fas fa-fire"></i> 彻底删除
+              </button>
+            </template>
+            <template v-else>
+              <button class="btn btn-secondary" :title="isFavorite(report.id) ? '取消收藏' : '收藏'"
+                      :style="isFavorite(report.id) ? 'color:#f5a623' : ''"
+                      @click.stop="handleToggleFavorite(report)">
+                <i :class="isFavorite(report.id) ? 'fas fa-star' : 'far fa-star'"></i>
+              </button>
+              <button class="btn btn-primary" @click.stop="viewReport(report.id, report.type)">
+                <i class="fas fa-eye"></i> 查看
+              </button>
+              <button class="btn btn-secondary" @click.stop="editReport(report.id)">
+                <i class="fas fa-edit"></i> 编辑
+              </button>
+              <button class="btn btn-danger" @click.stop="deleteReport(report.id)">
+                <i class="fas fa-trash"></i> 删除
+              </button>
+              <button v-if="report.status === ReportStatus.DRAFT" class="btn btn-success" @click.stop="publishReport(report.id)">
+                <i class="fas fa-paper-plane"></i> 发布
+              </button>
+            </template>
           </div>
         </div>
         <div class="card-body">
@@ -313,7 +340,16 @@ const {
   viewReport,
   editReport,
   deleteReport,
-  publishReport
+  publishReport,
+  // 收藏 / 回收站（INT-141）
+  favoriteOnly,
+  trashMode,
+  toggleTrashMode,
+  loadReports,
+  isFavorite,
+  handleToggleFavorite,
+  handleRestoreReport,
+  handlePurgeReport
 } = useHistoryReports();
 
 /** 当前激活 Tab 的元信息（用于统一列表的标题/图标） */
@@ -362,6 +398,34 @@ function handleReportTypeFilterChange(value: string | number) {
 </script>
 
 <style scoped>@import './HistoryReports.css';
+
+/* INT-141：收藏 / 回收站工具栏 */
+.favorite-trash-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.bar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--background-primary);
+  cursor: pointer;
+  user-select: none;
+  font-size: 13px;
+  color: inherit;
+}
+.bar-toggle.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.bar-toggle i { color: #f5a623; }
+.bar-toggle i.fa-trash-restore { color: inherit; }
+</style>
 
 
 

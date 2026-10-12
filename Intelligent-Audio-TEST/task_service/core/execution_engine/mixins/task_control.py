@@ -113,10 +113,11 @@ class TaskControlMixin:
                 finally:
                     local_db_session.close()
 
-                # 创建任务执行线程
+                # 创建任务执行线程（user_id 跨线程透传，INT-141）
+                from shared.infrastructure.user_context import get_current_user_id
                 thread = threading.Thread(
                     target=self._task_thread_main,
-                    args=(task_id, stop_event, pause_event),
+                    args=(task_id, stop_event, pause_event, get_current_user_id()),
                     name=f"task-worker-{task_id}",
                 )
                 self.workers[task_id] = thread
@@ -129,10 +130,12 @@ class TaskControlMixin:
             else:
                 if len(self.task_queue) >= self.max_queue_size:
                     return False, f"任务队列已满 ({self.max_queue_size})"
+                from shared.infrastructure.user_context import get_current_user_id
                 self.task_queue.append({
                     'id': task_id,
                     'has_physical': has_physical,
                     'api_ids': api_ids,
+                    'user_id': get_current_user_id(),
                 })
             
             # 更新任务状态为queued
@@ -192,14 +195,15 @@ class TaskControlMixin:
                             self.running_e2e = True
                         if api_ids:
                             self.running_apis.update(api_ids)
-                        
+
                         if task:
                             task.status = TaskStatus.RUNNING
                             local_db_session.commit()
-                        
+
                         tasks_to_start.append({
                             'task_id': task_id,
-                            'task': task
+                            'task': task,
+                            'user_id': queued_task.get('user_id'),
                         })
                     else:
                         remaining_tasks.append(queued_task)
@@ -216,9 +220,10 @@ class TaskControlMixin:
                 # 创建任务完成事件（用于替代忙等待）
                 self.task_completion_events[task_id] = threading.Event()
 
+                # user_id 跨线程透传（INT-141；排队任务取入队时快照）
                 thread = threading.Thread(
                     target=self._task_thread_main,
-                    args=(task_id, stop_event, pause_event),
+                    args=(task_id, stop_event, pause_event, task_info.get('user_id')),
                     name=f"task-worker-{task_id}",
                 )
                 self.workers[task_id] = thread

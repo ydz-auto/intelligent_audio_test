@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from shared.infrastructure.user_context import get_current_user_id
 from shared.models.database import get_db_session
 from shared.utils.db_session import SoftDeleteMixin, with_session
 
@@ -13,6 +14,7 @@ from report_service.domain.entities import ReportAggregate
 from report_service.infrastructure.persistence._report_converters import (
     _apply_report_to_po,
     _safe_json_dumps,
+    _safe_json_loads,
 )
 
 
@@ -54,6 +56,7 @@ class ReportPersistMixin:
             status=aggregate.status,
             analysis=_safe_json_dumps(aggregate.config) or '',
             deleted=aggregate.deleted,
+            created_by_user_id=get_current_user_id(),
         )
         session.add(po)
         session.flush()
@@ -74,7 +77,105 @@ class ReportPersistMixin:
             raise ValueError(f"Report id={report_id} 不存在，无法 update_status")
         po.status = status
 
-    @with_session
+    @with_session(auto_commit=True)
+    def update_report_fields(self, report_id: int, fields: dict) -> bool:
+        """更新报告主表字段 + 摘要快照（单事务，对齐旧库 PUT /reports/{id} 语义）。
+
+        fields 键约定（由 Handler 归一后传入，均为"提供才更新"语义）：
+        - name: str              → PO.name，并同步 config['name']（详情读取兜底路径）
+        - description: str       → PO.description，并同步 config['description']
+        - analysis: str          → config['analysis'] / config['conclusion']
+          （新库 analysis 列复用为 config JSON，文本结论入 config，避免破坏 JSON 结构）
+        - status: str            → PO.status
+        - summary: dict          → 4 张快照子表（键已归一为 snake_case）：
+            report_summaries:    total_cases/completed_cases/failed_cases/pass_rate
+            report_raw_data:     raw_data
+            report_metric_stats: metric_data/tag_metric_data/case_type_stats
+            report_summary_meta: case_categories/all_case_tags/resource_headers/all_metrics
+
+        Returns:
+            True 表示更新成功，False 表示报告不存在。
+        """
+        session = get_db_session()
+        po = session.get(self.PO_CLASS, report_id)
+        if po is None or po.deleted:
+            return False
+
+        summary = fields.get('summary')
+        config = _safe_json_loads(po.analysis, {})
+        if not isinstance(config, dict):
+            config = {}
+
+        if fields.get('name') is not None:
+            po.name = str(fields['name'])
+            config['name'] = fields['name']
+        if fields.get('description') is not None:
+            po.description = str(fields['description'])
+            config['description'] = fields['description']
+        if fields.get('analysis') is not None:
+            config['analysis'] = fields['analysis']
+            config['conclusion'] = fields['analysis']
+        if fields.get('status') is not None:
+            po.status = str(fields['status'])
+        po.updated_by_user_id = get_current_user_id()
+        po.analysis = _safe_json_dumps(config) or ''
+
+        if summary is not None:
+            self._apply_summary_snapshot(session, report_id, summary)
+
+        session.flush()
+        return True
+
+    @staticmethod
+    def _apply_summary_snapshot(session, report_id: int, summary: dict) -> None:
+        """将归一化后的 summary 快照写入 4 张子表（存在才更新，不新建）。"""
+        from report_service.infrastructure.persistence.models import (
+            ReportSummary,
+            ReportSummaryMeta,
+            ReportRawData,
+            ReportMetricStats,
+        )
+
+        summary_po = session.query(ReportSummary).filter(
+            ReportSummary.report_id == report_id).first()
+        if summary_po is not None:
+            if 'total_cases' in summary:
+                summary_po.total_cases = summary['total_cases']
+            if 'completed_cases' in summary:
+                summary_po.completed_cases = summary['completed_cases']
+            if 'failed_cases' in summary:
+                summary_po.failed_cases = summary['failed_cases']
+            if 'pass_rate' in summary:
+                summary_po.pass_rate = summary['pass_rate']
+
+        meta_po = session.query(ReportSummaryMeta).filter(
+            ReportSummaryMeta.report_id == report_id).first()
+        if meta_po is not None:
+            if 'case_categories' in summary:
+                meta_po.case_categories = _safe_json_dumps(summary['case_categories'])
+            if 'all_case_tags' in summary:
+                meta_po.all_case_tags = _safe_json_dumps(summary['all_case_tags'])
+            if 'resource_headers' in summary:
+                meta_po.resource_headers = _safe_json_dumps(summary['resource_headers'])
+            if 'all_metrics' in summary:
+                meta_po.all_metrics = _safe_json_dumps(summary['all_metrics'])
+
+        raw_po = session.query(ReportRawData).filter(
+            ReportRawData.report_id == report_id).first()
+        if raw_po is not None and 'raw_data' in summary:
+            raw_po.raw_data = _safe_json_dumps(summary['raw_data'])
+
+        stats_po = session.query(ReportMetricStats).filter(
+            ReportMetricStats.report_id == report_id).first()
+        if stats_po is not None:
+            if 'metric_data' in summary:
+                stats_po.metric_data = _safe_json_dumps(summary['metric_data'])
+            if 'tag_metric_data' in summary:
+                stats_po.tag_metric_data = _safe_json_dumps(summary['tag_metric_data'])
+            if 'case_type_stats' in summary:
+                stats_po.case_type_stats = _safe_json_dumps(summary['case_type_stats'])
+
+    @with_session(auto_commit=True)
     def hard_delete(self, report_id: int) -> bool:
         """硬删除报告及其所有子表记录。
 

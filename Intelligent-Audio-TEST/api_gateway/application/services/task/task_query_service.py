@@ -49,6 +49,9 @@ class TaskQueryService:
         search = query.search
         start_date = query.start_date
         end_date = query.end_date
+        # INT-141：收藏 / 回收站过滤
+        favorite = query.favorite
+        deleted = query.deleted
 
         result = _task_acl.list_tasks(
             page=page,
@@ -58,6 +61,8 @@ class TaskQueryService:
             search=search,
             start_date=start_date,
             end_date=end_date,
+            favorite=favorite,
+            deleted=deleted,
         )
 
         if not result.get('success'):

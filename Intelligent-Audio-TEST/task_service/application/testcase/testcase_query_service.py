@@ -29,12 +29,16 @@ class TestCaseQueryService:
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
                        group_id=None, algorithm_type=None,
-                       view=None, include_deleted=False, dimension_id=None) -> dict:
-        """查询测试用例列表。"""
+                       view=None, include_deleted=False, dimension_id=None,
+                       favorite=False, only_deleted=False, user_id=None) -> dict:
+        """查询测试用例列表。
+
+        favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
+        """
         from shared.utils import testcase_helpers as common
 
         try:
-            # 标签视图
+            # 标签视图（收藏/回收站过滤不适用于标签聚合视图，忽略）
             if view == 'tag':
                 return self._get_tag_view(page, per_page, keyword,
                                           algorithm_type, include_deleted, common,
@@ -45,6 +49,7 @@ class TestCaseQueryService:
                 group_id=group_id,
                 algorithm_type=algorithm_type, include_deleted=include_deleted,
                 dimension_id=dimension_id,
+                favorite=favorite, only_deleted=only_deleted, user_id=user_id,
             )
             test_cases = pagination.items
 
@@ -58,6 +63,23 @@ class TestCaseQueryService:
 
             # 跨域查询：Audio（后续 gRPC 改造）
             audio_map = self.repo.list_audios_by_ids(audio_ids) if audio_ids else {}
+
+            # INT-141：当前用户对本页用例的收藏集合（is_favorite 标记）
+            favorite_ids = set()
+            if user_id and test_cases:
+                from shared.models.common_enums import EntityType
+                from task_service.infrastructure.persistence.models import Favorite
+                from shared.models.database import get_db_session
+                fav_session = get_db_session()
+                try:
+                    fav_rows = (fav_session.query(Favorite.entity_id)
+                                .filter(Favorite.user_id == user_id,
+                                        Favorite.entity_type == EntityType.TESTCASE.value,
+                                        Favorite.entity_id.in_([tc.id for tc in test_cases]))
+                                .all())
+                    favorite_ids = {r[0] for r in fav_rows}
+                finally:
+                    fav_session.close()
 
             data = []
             for tc in test_cases:
@@ -86,6 +108,10 @@ class TestCaseQueryService:
                     'algorithm_type': tc.algorithm_type,
                     'created_at': tc.created_at.isoformat() if tc.created_at else None,
                     'updated_at': tc.updated_at.isoformat() if tc.updated_at else None,
+                    'is_favorite': tc.id in favorite_ids,
+                    'deleted': bool(getattr(tc, 'deleted', False)),
+                    'deleted_at': tc.deleted_at.isoformat() if getattr(tc, 'deleted_at', None) else None,
+                    'deleted_by_user_id': getattr(tc, 'deleted_by_user_id', None),
                     'total_duration': round(total_duration, 2) if total_duration > 0 else None,
                 })
 

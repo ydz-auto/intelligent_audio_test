@@ -133,6 +133,11 @@ class TestCaseListItem(APIModel):
     algorithm_type: Optional[str] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+    # INT-141：收藏标记 / 回收站字段
+    is_favorite: Optional[bool] = Field(None)
+    deleted: Optional[bool] = Field(None)
+    deleted_at: Optional[str] = Field(None)
+    deleted_by_user_id: Optional[int] = Field(None)
     total_duration: Optional[float] = Field(None)
 
 
@@ -609,3 +614,6 @@ class TestCaseListQuery(APIModel):
     algorithm_type: Optional[str] = Field(None)
     view: Optional[str] = Field(None)
     include_deleted: bool = Field(False)
+    # INT-141：favorite=true 仅当前用户收藏；only_deleted=true 仅回收站软删除项
+    favorite: bool = Field(False)
+    only_deleted: bool = Field(False)

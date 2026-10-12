@@ -96,6 +96,7 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
 
     def ListTasks(self, request, context=None):
         try:
+            from shared.infrastructure.user_context import user_id_from_context
             from task_service.application.queries.task_queries import ListTasksConfigQuery
             query = ListTasksConfigQuery(
                 page=request.page,
@@ -107,6 +108,10 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
                 search=request.search or None,
                 start_date=request.start_date or None,
                 end_date=request.end_date or None,
+                # INT-141：收藏/回收站过滤（user_id 从 x-user-id metadata 取）
+                favorite=request.favorite,
+                deleted=request.deleted,
+                user_id=user_id_from_context(context),
             )
             return self._resp(self.qry.handle_list_tasks_config(query))
         except Exception as e:
@@ -197,5 +202,63 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
             return self._resp(self.cmd.handle_reextract_task(
                 RextractTaskCommand(task_id=request.task_id, data=data)
             ))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    # ---- 收藏 / 回收站（INT-141）----
+
+    def FavoriteTask(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import FavoriteEntityCommand
+            return self._resp(self.cmd.handle_favorite_entity(
+                FavoriteEntityCommand(entity_type=request.entity_type,
+                                      entity_id=request.entity_id)))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def UnfavoriteTask(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import FavoriteEntityCommand
+            return self._resp(self.cmd.handle_unfavorite_entity(
+                FavoriteEntityCommand(entity_type=request.entity_type,
+                                      entity_id=request.entity_id)))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def ListFavoriteIds(self, request, context=None):
+        try:
+            from shared.infrastructure.user_context import user_id_from_context, normalize_user_id
+            from task_service.application.queries.task_queries import ListFavoriteIdsQuery
+            user_id = normalize_user_id(request.user_id) or user_id_from_context(context)
+            if not user_id:
+                return task_pb.TaskConfigResponse(success=False, message='未认证用户', data="")
+            return self._resp(self.qry.handle_list_favorite_ids(
+                ListFavoriteIdsQuery(user_id=user_id,
+                                     entity_type=request.entity_type or None)))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def ListDeletedTasks(self, request, context=None):
+        try:
+            from task_service.application.queries.task_queries import ListDeletedTasksQuery
+            return self._resp(self.qry.handle_list_deleted_tasks(
+                ListDeletedTasksQuery(page=request.page, per_page=request.per_page,
+                                      search=request.search or None)))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def RestoreTasks(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import RestoreTasksCommand
+            return self._resp(self.cmd.handle_restore_tasks(
+                RestoreTasksCommand(task_ids=list(request.task_ids))))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
+    def PurgeTasks(self, request, context=None):
+        try:
+            from task_service.application.commands.task_commands import PurgeTasksCommand
+            return self._resp(self.cmd.handle_purge_tasks(
+                PurgeTasksCommand(task_ids=list(request.task_ids))))
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")

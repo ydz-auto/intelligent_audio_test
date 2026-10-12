@@ -18,7 +18,11 @@ export function useTestCaseAudioPreview(
   onEditTestCase: (testCase: TestCase) => void,
   onDeleteTestCase: (testCase: TestCase) => void,
   selectedCases: Ref<(string | number)[]>,
-  onCopyDone?: () => void
+  onCopyDone?: () => void,
+  // INT-141：收藏 / 回收站动作回调（可选，向后兼容）
+  onFavoriteToggle?: (testCase: TestCase) => void,
+  onRestoreCase?: (testCase: TestCase) => void,
+  onPurgeCase?: (testCase: TestCase) => void
 ) {
   const showAudioPlayer = ref(false);
   const currentTestCaseCaseId = ref<string | number | null>(null);
@@ -151,6 +155,16 @@ export function useTestCaseAudioPreview(
         break;
       case 'delete':
         onDeleteTestCase(testCase);
+        break;
+      // INT-141：收藏 / 回收站
+      case 'favorite':
+        onFavoriteToggle?.(testCase);
+        break;
+      case 'restore':
+        onRestoreCase?.(testCase);
+        break;
+      case 'purge':
+        onPurgeCase?.(testCase);
         break;
     }
   };

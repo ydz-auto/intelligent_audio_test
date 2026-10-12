@@ -55,6 +55,9 @@ class ReportQueryService:
                 search=query.keyword or '',
                 start_date=query.start_time or '',
                 end_date=query.end_time or '',
+                # INT-141：收藏 / 回收站过滤
+                favorite=getattr(query, 'favorite', False),
+                deleted=getattr(query, 'deleted', False),
             ))
             if not resp.success:
                 return error_response(resp.message or '查询失败')

@@ -147,6 +147,10 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(data_transfer_router, prefix='/api/v1/data-transfer', tags=['data-transfer'])
     app.include_router(benchmark_router, prefix='/api/v1/benchmarks', tags=['benchmarks'])
 
+    # 收藏 / 回收站（INT-141）：favorite/restore/purge 动作路由与 GET /favorites
+    from api_gateway.routes.favorite_trash_bp import router as favorite_trash_router
+    app.include_router(favorite_trash_router, prefix='/api/v1', tags=['favorites-trash'])
+
     # 挂载 Socket.IO ASGI 子应用（前端 socket.io-client 连 /socket.io/）
     from api_gateway.websocket.socketio_server import sio_app
     app.mount('/socket.io', sio_app)

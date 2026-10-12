@@ -59,6 +59,9 @@ class TestCaseQueryService:
         algorithm_type = query.algorithm_type
         view = query.view
         include_deleted = query.include_deleted
+        # INT-141：收藏 / 回收站过滤
+        favorite = getattr(query, 'favorite', False)
+        only_deleted = getattr(query, 'only_deleted', False)
 
         result = _testcase_acl.list_testcases(
             page=page,
@@ -69,6 +72,8 @@ class TestCaseQueryService:
             algorithm_type=algorithm_type,
             view=view,
             include_deleted=include_deleted,
+            favorite=favorite,
+            only_deleted=only_deleted,
         )
 
         if not result.get('success'):
@@ -99,6 +104,10 @@ class TestCaseQueryService:
                     algorithm_type=item.get('algorithm_type'),
                     created_at=item.get('created_at'),
                     updated_at=item.get('updated_at'),
+                    is_favorite=item.get('is_favorite'),
+                    deleted=item.get('deleted'),
+                    deleted_at=item.get('deleted_at'),
+                    deleted_by_user_id=item.get('deleted_by_user_id'),
                     total_duration=item.get('total_duration'),
                 )
             )

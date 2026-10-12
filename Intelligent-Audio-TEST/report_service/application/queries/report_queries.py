@@ -52,10 +52,16 @@ class ListReportsQuery:
         status: 可选状态过滤（pending/generating/completed/failed）
         page: 页码（从 1 开始）
         page_size: 每页数量
+        favorite: 可选（INT-141）仅当前用户收藏（user_id 来自 x-user-id metadata）
+        deleted: 可选（INT-141）仅回收站软删除项（含删除人/删除时间）
+        user_id: 可选，收藏过滤/标记用当前用户
     """
     status: Optional[str] = None
     page: int = 1
     page_size: int = 20
+    favorite: bool = False
+    deleted: bool = False
+    user_id: Optional[int] = None
 
 
 @dataclass(frozen=True)

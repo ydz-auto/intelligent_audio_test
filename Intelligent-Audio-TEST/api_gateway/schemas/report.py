@@ -281,6 +281,9 @@ class ReportListQuery(APIModel):
     algorithm_type: Optional[str] = Field(None)
     sort_by: str = Field('created_at')
     order: str = Field('desc')
+    # INT-141：favorite=true 仅当前用户收藏；deleted=true 仅回收站软删除项
+    favorite: bool = Field(False)
+    deleted: bool = Field(False)
 
 
 class ReportCaseListQuery(APIModel):
