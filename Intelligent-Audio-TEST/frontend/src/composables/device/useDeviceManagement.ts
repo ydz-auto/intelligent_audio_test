@@ -352,6 +352,9 @@ export function useDeviceManagement(deviceType: DeviceTabTypeType = DeviceTabTyp
     try {
       if (targetType === DeviceTabType.TEST) {
         await healthCheckDevice(id);
+        // INT-164: 唤醒测试走设备 test 命令，离线设备由后端返回业务性失败（设备离线，无法发送唤醒指令），此处透传提示
+        await devicesPort.test(id);
+        notification.success('唤醒指令已发送，正在测试');
       } else if (targetType === DeviceTabType.PLAYBACK) {
         await playbackPort.test(id);
       } else if (targetType === DeviceTabType.API) {

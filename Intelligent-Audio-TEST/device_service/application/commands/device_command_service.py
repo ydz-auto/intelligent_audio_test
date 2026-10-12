@@ -10,6 +10,8 @@
 import time
 import random
 import logging
+import threading
+from typing import Optional
 
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit, log_and_emit
@@ -19,6 +21,9 @@ from shared.config.query_constants import QueryConstants
 from shared.models.common_enums import DeviceStatusEventType
 
 logger = logging.getLogger(__name__)
+
+# 唤醒前在线探测超时（秒）；驱动扫描底层 adb/hdc 子进程无内建超时，超时按读取失败降级
+_WAKEUP_ONLINE_PROBE_TIMEOUT_SECONDS = 5
 
 
 class DeviceCommandService:
@@ -192,11 +197,81 @@ class DeviceCommandService:
             'code': 200,
         }
 
+    @staticmethod
+    def _probe_device_online(device) -> Optional[bool]:
+        """发送唤醒指令前探测设备在线状态（INT-164，驱动实时扫描判定）。
+
+        Returns:
+            True/False: 扫描结果判定在线/离线
+            None: 探测不可用（无驱动/无可探测标识/异常/超时），
+                  调用方降级为原 fire-and-forget 行为照发指令，
+                  不因在线状态读取故障阻塞唤醒主流程
+        """
+        try:
+            from device_service.infrastructure.drivers.device_driver import device_driver_factory
+            driver = device_driver_factory.get_driver_by_system(device.system)
+            if not driver:
+                return None
+            target = str(device.serial_number or device.ip or '').strip()
+            if not target:
+                return None
+
+            scan_results: list = []
+            scan_errors: list = []
+
+            def _scan():
+                try:
+                    scan_results.append(driver.scan())
+                except Exception as exc:
+                    scan_errors.append(exc)
+
+            # 驱动扫描底层 adb/hdc 子进程无内建超时，守护线程 + join 超时兜底：
+            # 卡死的扫描不阻塞唤醒主流程，超时按读取失败降级
+            probe_thread = threading.Thread(target=_scan, name='wakeup-online-probe', daemon=True)
+            probe_thread.start()
+            probe_thread.join(timeout=_WAKEUP_ONLINE_PROBE_TIMEOUT_SECONDS)
+            if probe_thread.is_alive():
+                logger.warning(
+                    "唤醒前在线探测超时(%ss) device_id=%s system=%s",
+                    _WAKEUP_ONLINE_PROBE_TIMEOUT_SECONDS, device.id, device.system,
+                )
+                return None
+            if scan_errors:
+                # 扫描异常须显式上抛交由外层降级，否则空结果会被误判为离线
+                raise scan_errors[0]
+
+            for online_device in (scan_results[0] if scan_results else []):
+                if str(online_device.get('serial') or '').strip() == target:
+                    return True
+            return False
+        except Exception:
+            logger.warning(
+                "唤醒前在线探测失败，降级为照发指令 device_id=%s", device.id, exc_info=True,
+            )
+            return None
+
     def test(self, device_id: int) -> dict:
         """测试设备（唤醒）"""
         device = self.repo.get_device(device_id)
         if not device:
             return {'success': False, 'message': '未找到设备', 'data': None, 'code': 404}
+
+        # INT-164 口径（方案1）：发送前查在线状态，离线直接返回业务性失败、不发指令；
+        # 探测不可用（无驱动/无标识/异常/超时）降级为原 fire-and-forget 行为照发
+        if self._probe_device_online(device) is False:
+            self._log(
+                level='WARNING',
+                category='DeviceTest',
+                source=f'Device:{device.name}',
+                content=f"设备离线，拒绝发送唤醒指令: {device.name}",
+                device_id=device.id,
+            )
+            return {
+                'success': False,
+                'message': '设备离线，无法发送唤醒指令',
+                'data': {'id': device.id, 'status': device.status},
+                'code': 400,
+            }
 
         try:
             from device_service.infrastructure.drivers.device_driver import device_driver_factory
