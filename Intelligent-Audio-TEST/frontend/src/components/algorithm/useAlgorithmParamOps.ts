@@ -238,13 +238,21 @@ export function useAlgorithmParamOps(
     }
   }
 
-  async function savePendingReferenceParams() {
-    // 新建模式下，参考参数此前被跳过（算法定义未创建）；算法创建成功后统一补存
+  async function saveReferenceParams() {
+    // 「确定」逐条补存参考参数（INT-199）：整体保存被后端忽略（definitions 的
+    // create/update schema 均不收 reference_params），blur 防抖只覆盖已失焦行且
+    // 新建模式整体禁用。有 id 更新、无 id 有 code 新建，经行 id 与 blur 自动保存
+    // 去重（blur 已建行 p.id 存在，本循环转更新分支），幂等可重入
     for (const p of formState.referenceParams as any[]) {
-      if (p.id || !p.code) continue
+      if (!p.code) continue
       try {
-        const res = await algorithmPort.createReferenceParam({ ...buildReferenceParamData(p), algorithmType: formState.type })
-        p.id = res.id
+        const bodyData = buildReferenceParamData(p)
+        if (p.id) {
+          await algorithmPort.updateReferenceParam(p.id, formState.type, bodyData)
+        } else {
+          const res = await algorithmPort.createReferenceParam({ ...bodyData, algorithmType: formState.type })
+          p.id = res.id
+        }
       } catch (e) {
         console.error('保存参考参数失败:', e)
       }
@@ -279,7 +287,7 @@ export function useAlgorithmParamOps(
     autoSaveCaseParams,
     handleReferenceParamBlur,
     autoSaveReferenceParams,
-    savePendingReferenceParams,
+    saveReferenceParams,
     handleRemoveParam,
   }
 }

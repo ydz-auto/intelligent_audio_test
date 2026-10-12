@@ -604,7 +604,7 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
     handleCaseParamBlur,
     autoSaveCaseParams,
     handleReferenceParamBlur,
-    savePendingReferenceParams,
+    saveReferenceParams,
     handleRemoveParam,
   } = useAlgorithmParamOps(formState, paramConfigType, effectiveMode, paramIdCounter)
 
@@ -654,7 +654,7 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
     availableDimensions,
     fetchAllDimensions,
     clearFormSchemaCache,
-    savePendingReferenceParams,
+    saveReferenceParams,
     creatingNewGroup,
     newGroupName,
     activeTab,

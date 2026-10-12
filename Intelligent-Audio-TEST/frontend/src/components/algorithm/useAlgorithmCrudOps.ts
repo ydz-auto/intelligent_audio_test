@@ -44,7 +44,7 @@ export function useAlgorithmCrudOps(
   availableDimensions: any,
   fetchAllDimensions: () => Promise<any>,
   clearFormSchemaCache: () => void,
-  savePendingReferenceParams: () => Promise<void>,
+  saveReferenceParams: () => Promise<void>,
   creatingNewGroup: any,
   newGroupName: any,
   activeTab: any,
@@ -166,10 +166,12 @@ export function useAlgorithmCrudOps(
 
       if (effectiveMode.value === 'edit') {
         await algorithmPort.updateDefinition(formState.type, bodyData)
+        // 后端 Update schema 不收 reference_params（INT-199），「确定」时逐条补存确保落库
+        await saveReferenceParams()
       } else {
         await algorithmPort.createDefinition(bodyData)
         // 新建模式下参考参数无法随 createDefinition 保存，算法创建成功后统一补存
-        await savePendingReferenceParams()
+        await saveReferenceParams()
       }
       // 清除算法参数缓存，确保用例页面能获取最新参数定义
       clearFormSchemaCache()
