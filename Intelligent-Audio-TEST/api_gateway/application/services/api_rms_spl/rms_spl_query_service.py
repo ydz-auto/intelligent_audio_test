@@ -24,7 +24,8 @@ class RmsSplQueryService:
         result = _rms_spl_acl.get_all(
             page=int(params.get('page', 1) or 1),
             per_page=per_page,
-            api_id=params.get('api_id') or None,
+            # query 参数恒为 str，须与 page/per_page 同层 int() 后再进 proto int32 边界
+            api_id=int(params['api_id']) if params.get('api_id') else None,
             calibration_status=params.get('calibration_status') or None,
         )
         if not result.success:
