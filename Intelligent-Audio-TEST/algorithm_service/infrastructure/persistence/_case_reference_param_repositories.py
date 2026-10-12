@@ -83,6 +83,7 @@ class CaseParamRepository(ICaseParamRepository):
         - param_code / param_name / label / param_type / required
         - default_value / help_text / ui_order / hidden / scope
         - min_value / max_value / step / unit
+        - annotation_code / field_path
         """
         session = get_db_session()
         try:
@@ -102,6 +103,8 @@ class CaseParamRepository(ICaseParamRepository):
                 max_value=data.get("max_value"),
                 step=data.get("step"),
                 unit=data.get("unit"),
+                annotation_code=data.get("annotation_code"),
+                field_path=data.get("field_path"),
             )
             session.add(po)
             session.flush()

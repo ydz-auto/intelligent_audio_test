@@ -308,7 +308,8 @@ class AlgorithmParamCrudService(
             updatable_fields = [
                 'param_name', 'label', 'param_type', 'required', 'default_value',
                 'help_text', 'ui_order', 'hidden', 'scope',
-                'min_value', 'max_value', 'step', 'unit'
+                'min_value', 'max_value', 'step', 'unit',
+                'annotation_code', 'field_path'
             ]
             update_fields = {}
             for field in updatable_fields:

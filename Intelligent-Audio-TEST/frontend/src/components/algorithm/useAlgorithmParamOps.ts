@@ -193,8 +193,8 @@ export function useAlgorithmParamOps(
         maxValue: param.maxValue,
         step: param.step,
         unit: param.unit,
-        annotationCode: param.annotationCode || null,
-        fieldPath: param.fieldPath || null
+        annotationCode: param.annotationCode ?? null,
+        fieldPath: param.fieldPath ?? null
       }
       let result
       if (param.id) {

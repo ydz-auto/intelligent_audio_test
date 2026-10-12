@@ -78,6 +78,8 @@ export interface AlgorithmCaseParamDto {
   max_value?: number
   step?: number
   unit?: string
+  annotation_code?: string | null
+  field_path?: string | null
 }
 
 /** 对应 list_params / list_case_params 返回 { parameters, total } */

@@ -275,7 +275,8 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
         case_param_fields = ['param_name', 'label', 'param_type', 'required',
                              'default_value',
                              'help_text', 'ui_order', 'hidden', 'scope',
-                             'min_value', 'max_value', 'step', 'unit']
+                             'min_value', 'max_value', 'step', 'unit',
+                             'annotation_code', 'field_path']
 
         for param_data in params:
             param_id = param_data.get('id')
@@ -290,7 +291,7 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
                             if field == 'scope' and param_data[field] not in valid_scopes:
                                 continue
                             update_fields[field] = param_data[field]
-                    self.repo.update_param_attrs(param, update_fields)
+                    self.repo.update_case_param_attrs(param, update_fields)
             else:
                 raw_scope = param_data.get('scope', 'common')
                 scope_value = raw_scope if raw_scope in valid_scopes else 'common'
@@ -305,7 +306,7 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
                             if field == 'scope' and param_data[field] not in valid_scopes:
                                 continue
                             update_fields[field] = param_data[field]
-                    self.repo.update_param_attrs(dup, update_fields)
+                    self.repo.update_case_param_attrs(dup, update_fields)
                     continue
                 self.repo.create_case_param({
                     'algorithm_type': algo_type,
@@ -323,6 +324,8 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
                     'max_value': param_data.get('max_value'),
                     'step': param_data.get('step'),
                     'unit': param_data.get('unit'),
+                    'annotation_code': param_data.get('annotation_code'),
+                    'field_path': param_data.get('field_path'),
                 })
 
         for old_id in existing_ids - submitted_ids:

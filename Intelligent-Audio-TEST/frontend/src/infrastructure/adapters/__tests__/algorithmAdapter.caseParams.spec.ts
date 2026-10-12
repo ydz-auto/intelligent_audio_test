@@ -13,7 +13,7 @@ vi.mock('../../http/client', () => ({
 
 import { request } from '../../http/client';
 import { algorithmApi } from '../../api/algorithmApi';
-import { toAlgorithmDefinitionDto } from '../algorithmAdapter';
+import { toAlgorithmDefinitionDto, toCaseParamUpsertDto, toAlgorithmCaseParam } from '../algorithmAdapter';
 
 const mockedRequest = vi.mocked(request);
 
@@ -71,6 +71,8 @@ describe('toAlgorithmDefinitionDto case_params 深度转换', () => {
       max_value: 2,
       step: 0.1,
       unit: 'x',
+      annotation_code: 'x',
+      field_path: 'y',
     });
     expect(body.case_params[0].tempId).toBeUndefined();
     expect(body.case_params[0].component).toBeUndefined();
@@ -97,6 +99,38 @@ describe('toAlgorithmDefinitionDto case_params 深度转换', () => {
     } as any);
     expect(body.case_params[0].required).toBe(false);
     expect(body.case_params[0].hidden).toBe(false);
+  });
+});
+
+describe('toCaseParamUpsertDto / toAlgorithmCaseParam annotation_code·field_path 契约（INT-198）', () => {
+  it('upsert 请求体携带 annotation_code/field_path（/algorithm/case-params 写路径）', () => {
+    const dto = toCaseParamUpsertDto({
+      algorithmType: 'int138r3tmp',
+      paramCode: 'ann138',
+      annotationCode: 'ann138',
+      fieldPath: 'fp138',
+    } as any);
+    expect(dto.annotation_code).toBe('ann138');
+    expect(dto.field_path).toBe('fp138');
+  });
+
+  it('upsert 缺省字段时键值为 undefined（JSON 序列化剔除，后端取默认）', () => {
+    const dto = toCaseParamUpsertDto({ paramCode: 'p' } as any);
+    expect('annotation_code' in dto).toBe(true);
+    expect(dto.annotation_code).toBeUndefined();
+    expect(dto.field_path).toBeUndefined();
+  });
+
+  it('toAlgorithmCaseParam 回读 annotation_code/field_path（刷新后回填）', () => {
+    const domain = toAlgorithmCaseParam({
+      id: 1,
+      algorithm_type: 'int138r3tmp',
+      param_code: 'ann138',
+      annotation_code: 'ann138',
+      field_path: 'fp138',
+    } as any);
+    expect(domain.annotationCode).toBe('ann138');
+    expect(domain.fieldPath).toBe('fp138');
   });
 });
 

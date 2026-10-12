@@ -113,6 +113,9 @@ class FakeAlgorithmRepo:
     def update_param_attrs(self, param, fields):
         row_id = param.get('id') if isinstance(param, dict) else getattr(param, 'id', None)
         self.updated.append((row_id, fields))
+    def update_case_param_attrs(self, param, fields):
+        row_id = param.get('id') if isinstance(param, dict) else getattr(param, 'id', None)
+        self.updated.append((row_id, fields))
     def update_mapping_attrs(self, mapping, data):
         self.updated.append((getattr(mapping, 'id', None), data))
 

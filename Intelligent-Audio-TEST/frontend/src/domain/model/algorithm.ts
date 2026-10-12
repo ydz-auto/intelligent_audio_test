@@ -46,6 +46,10 @@ export interface AlgorithmCaseParam {
   maxValue?: number
   step?: number
   unit?: string
+  /** 关联的音频标注代码（为空时后端按算法类型回退匹配） */
+  annotationCode?: string | null
+  /** 标注数据字段路径（为空时默认同参数代码） */
+  fieldPath?: string | null
 }
 
 /** 参数列表（list_params / list_case_params 返回） */

@@ -96,6 +96,8 @@ class CaseAlgorithmParamCreate(APIModel):
     max_value: Optional[float] = Field(None, description='最大值 (slider/number)')
     step: Optional[float] = Field(None, description='步长 (slider/number)')
     unit: Optional[str] = Field(None, max_length=20, description='单位显示 (如 cm, dB, s)')
+    annotation_code: Optional[str] = Field(None, max_length=100, description='关联的音频标注代码（为空时默认同算法类型）')
+    field_path: Optional[str] = Field(None, max_length=255, description='标注数据字段路径（为空时默认同参数代码）')
 
 
 class CaseAlgorithmParamUpdate(APIModel):
@@ -113,6 +115,8 @@ class CaseAlgorithmParamUpdate(APIModel):
     max_value: Optional[float] = Field(None, description='最大值 (slider/number)')
     step: Optional[float] = Field(None, description='步长 (slider/number)')
     unit: Optional[str] = Field(None, max_length=20, description='单位显示 (如 cm, dB, s)')
+    annotation_code: Optional[str] = Field(None, max_length=100, description='关联的音频标注代码（为空时默认同算法类型）')
+    field_path: Optional[str] = Field(None, max_length=255, description='标注数据字段路径（为空时默认同参数代码）')
 
 
 # ========== 用例参数请求（统一入口） ==========

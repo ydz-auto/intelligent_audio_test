@@ -154,6 +154,8 @@ export function toAlgorithmCaseParam(dto: AlgorithmCaseParamDto): AlgorithmCaseP
     maxValue: dto?.max_value,
     step: dto?.step,
     unit: dto?.unit,
+    annotationCode: dto?.annotation_code,
+    fieldPath: dto?.field_path,
   }
 }
 
@@ -405,6 +407,8 @@ export function toCaseParamItemDto(param: Partial<AlgorithmCaseParam>): Record<s
   if (param.maxValue !== undefined) result.max_value = param.maxValue
   if (param.step !== undefined) result.step = param.step
   if (param.unit !== undefined) result.unit = param.unit
+  if (param.annotationCode !== undefined) result.annotation_code = param.annotationCode
+  if (param.fieldPath !== undefined) result.field_path = param.fieldPath
   return result
 }
 
@@ -539,6 +543,8 @@ export interface CaseParamUpsertDto {
   max_value?: number
   step?: number
   unit?: string
+  annotation_code?: string | null
+  field_path?: string | null
 }
 
 /** AlgorithmCaseParam（Domain）→ 请求体 DTO */
@@ -559,5 +565,7 @@ export function toCaseParamUpsertDto(param: Partial<AlgorithmCaseParam>): CasePa
     max_value: param.maxValue,
     step: param.step,
     unit: param.unit,
+    annotation_code: param.annotationCode,
+    field_path: param.fieldPath,
   }
 }
