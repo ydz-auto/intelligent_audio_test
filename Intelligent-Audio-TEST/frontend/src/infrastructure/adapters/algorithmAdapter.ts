@@ -385,6 +385,29 @@ export function toReferenceParamDto(param: Partial<ReferenceParam> & { code: str
 
 // ===== 提交方向转换：Domain → snake_case 请求体 =====
 
+/** AlgorithmCaseParam（camelCase）→ 算法定义内嵌 case_params 列表项（snake_case）。
+ *  保留 id：后端 _update_case_params 以 id 对账既有参数（未提交 id 会被软删除）；
+ *  tempId/component 等前端态字段不提交。 */
+export function toCaseParamItemDto(param: Partial<AlgorithmCaseParam>): Record<string, any> {
+  const result: Record<string, any> = {}
+  if (param.id !== undefined) result.id = param.id
+  if (param.paramCode !== undefined) result.param_code = param.paramCode
+  if (param.paramName !== undefined) result.param_name = param.paramName
+  if (param.label !== undefined) result.label = param.label
+  if (param.paramType !== undefined) result.param_type = param.paramType
+  if (param.required !== undefined) result.required = param.required
+  if (param.defaultValue !== undefined) result.default_value = param.defaultValue
+  if (param.helpText !== undefined) result.help_text = param.helpText
+  if (param.uiOrder !== undefined) result.ui_order = param.uiOrder
+  if (param.hidden !== undefined) result.hidden = param.hidden
+  if (param.scope !== undefined) result.scope = param.scope
+  if (param.minValue !== undefined) result.min_value = param.minValue
+  if (param.maxValue !== undefined) result.max_value = param.maxValue
+  if (param.step !== undefined) result.step = param.step
+  if (param.unit !== undefined) result.unit = param.unit
+  return result
+}
+
 /** AlgorithmDefinition（camelCase）→ snake_case 请求体 DTO */
 export function toAlgorithmDefinitionDto(data: Partial<AlgorithmDefinition>): Record<string, any> {
   const result: Record<string, any> = {}
@@ -399,7 +422,7 @@ export function toAlgorithmDefinitionDto(data: Partial<AlgorithmDefinition>): Re
   if (data.displayOrder !== undefined) result.display_order = data.displayOrder
   if (data.deviceParams !== undefined) result.device_params = data.deviceParams
   if (data.apiParams !== undefined) result.api_params = data.apiParams
-  if (data.caseParams !== undefined) result.case_params = data.caseParams
+  if (data.caseParams !== undefined) result.case_params = data.caseParams.map(toCaseParamItemDto)
   if (data.params !== undefined) result.params = data.params
   if (data.mappings !== undefined) result.mappings = data.mappings
   if (data.associatedDimensions !== undefined) result.associated_dimensions = data.associatedDimensions
