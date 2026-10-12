@@ -101,6 +101,37 @@ describe('authApi login 加密回退语义（INT-188）', () => {
       authApi.login({ username: 'u1', password: 'p1' }),
     ).rejects.toBeInstanceOf(PasswordEncryptionUnavailableError);
   });
+
+  itIfSubtle('公钥获取首发失败、重试成功：正常登录且提交密文（网络抖动容错）', async () => {
+    const pair = await globalThis.crypto.subtle.generateKey(
+      { name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' },
+      true,
+      ['encrypt', 'decrypt'],
+    );
+    const der = await globalThis.crypto.subtle.exportKey('spki', pair.publicKey);
+    const b64 = btoa(String.fromCharCode(...new Uint8Array(der)));
+    const pem = `-----BEGIN PUBLIC KEY-----\n${b64}\n-----END PUBLIC KEY-----`;
+    let keyFetchCalls = 0;
+    mockedRequest.mockImplementation(async (method: string) => {
+      if (method === 'GET') {
+        keyFetchCalls += 1;
+        if (keyFetchCalls === 1) {
+          throw new Error('transient blip');
+        }
+        return { enabled: true, kid: 'kid-188', public_key: pem };
+      }
+      return { user: { username: 'u1' }, access_token: 'tk' };
+    });
+    const result = await authApi.login({ username: 'u1', password: 'p1' });
+    expect(result.accessToken).toBe('tk');
+    expect(keyFetchCalls).toBe(2);
+    const posts = callsByMethod('POST');
+    expect(posts).toHaveLength(1);
+    const [, , body] = posts[0] as [string, string, URLSearchParams];
+    expect(body.get('encryption_key_id')).toBe('kid-188');
+    expect(body.get('password_encrypted')).toBeTruthy();
+    expect(body.get('password')).toBeNull();
+  });
 });
 
 describe('authApi register 加密回退语义（INT-188）', () => {
