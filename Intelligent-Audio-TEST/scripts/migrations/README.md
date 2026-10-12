@@ -36,11 +36,14 @@ python scripts/migrations/202610/add_api_rms_spl_mappings.py             # ⑰ �
 python scripts/migrations/202610/add_api_output_types.py                 # ⑱ apis 加 output_types 列（INT-74 多模态输出类型）
 python scripts/migrations/202610/add_api_device_adapter_columns.py       # ⑲ apis 加 device_type/adapter_class/audio_config 列（INT-68 UC-0901，audio_config 未配置回退默认格式）
 python scripts/migrations/202610/cleanup_compare_report_audios_dup.py --apply  # ⑳ 存量对比报告 audios 重复对象清洗（INT-135；默认 dry-run，本环境 2026-10-11 dry-run 0 受影响、无需执行）
+python scripts/migrations/202610/fix_users_schema_drift.py --apply      # ㉑ users 表旧 schema 漂移收敛 + dev 引导用户种子（INT-156；默认 dry-run）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
 
 > ✅ **2026-10-10 修复记录（INT-88）**：运行库（疑似晚于迁移重建，`create_all` 按 ORM 重新带出约束）残留 56 个外键、`test_case_groups.name` 唯一约束，且 202608 ① 的 Step 11 / Step 12 索引缺失——软删除重建类用例（tests/api）违反 FK。已执行 ⑯ 补删全部残留 FK（应用层管理引用完整性，202608 既定设计）、补建缺失索引；例外保留 `algorithm_definitions_type_key`（algorithm_definitions.type 完整唯一约束，fix_partial_unique_indexes.py 注明有意保留）。同批补执行 ⑯ 之外发现的未生效迁移 `202610/add_api_device_adapter_columns.py`（INT-68 三列）。同批核对确认 202608 ① 的 Step 2/3/6/7/8/9/10 在运行库均已生效；Step 4 为数据修复类语句，不在本次结构修复范围。
+
+> ✅ **2026-10-12 修复记录（INT-156）**：快照恢复库 users 表为旧 schema（`password_hash`/`email` NOT NULL + legacy `role` NOT NULL，表 0 行），dev 登录引导建号必败（NotNullViolation，阻塞 INT-144 推送）。已对运行库执行 ㉑ `--apply`：password_hash/email 置 nullable、legacy role 列删除（表空无数据，0 行需回填）、种子 dev_user（role_id=1 admin，bcrypt 哈希）。验收实测 12:49：加密登录 200 + access_token、带 token `GET /api/v1/published-tasks` 200、重复登录幂等（users 保持 1 行）。同批在临时库完成红-绿自测（迁移前真实 handler 复现 NotNullViolation / 迁移后 OAuth 建号、bcrypt 校验、三遍幂等全过）。
 
 ## ⚠️ 执行须知
 
@@ -95,6 +98,7 @@ python scripts/migrations/202610/cleanup_compare_report_audios_dup.py --apply  #
 | [add_api_device_adapter_columns.py](202610/add_api_device_adapter_columns.py) | `apis` 加 `device_type` / `adapter_class` / `audio_config` 列（INT-68，UC-0901） | 被测设备类型（默认 http_api）/ 指定适配器类名 / 目标音频格式 JSON（未配置回退默认）；幂等，支持 `--dry-run`。**提测/上线窗口需人工执行**（INT-68 验收遗留提示：本环境已于 2026-10-10 随 ⑯ 修复批次补执行） |
 | [cleanup_compare_report_audios_dup.py](202610/cleanup_compare_report_audios_dup.py) | 存量对比报告 `report_cases.audios` 重复对象清洗（INT-135） | INT-134 修复前落库的 comparison / secondary_comparison 报告 audios 内同一 dict 重复入列；对象级去重（保首见、保顺序，与修复后生成侧口径一致），只写 audios 字段，幂等；`--apply` 前自动备份受影响行并留档执行记录。**本环境 2026-10-11 dry-run 核查 0 受影响**（2 个存量对比报告由旧生成路径产出，不含缺陷形态数据），无需执行 |
 | [add_trash_operator_and_favorites.py](202610/add_trash_operator_and_favorites.py) | CUD 操作人列 + 收藏表（INT-141） | `test_tasks`/`test_cases`/`test_reports` 补 `deleted_by_user_id`（幂等兜底补 `created_by_user_id`/`updated_by_user_id` 及索引）；建 `favorites`（task_service 管 task\|testcase）与 `report_favorites`（report_service 管 report；单库部署下 Base.metadata 表名全局唯一，不能同名复用），(user_id, entity_type, entity_id) 唯一；幂等，支持 `--dry-run` |
+| [fix_users_schema_drift.py](202610/fix_users_schema_drift.py) | users 表旧 schema 漂移收敛 + dev 引导用户种子（INT-156） | 快照恢复/旧库升级场景 users 表与 ORM 模型漂移导致任何建号必败：① `password_hash` ② `email` 置 nullable（对齐 user_models.py）；③ legacy 列 `role` 按 `roles.name` 回填 `role_id` 后 **DROP COLUMN**（⚠️ 破坏性：原值删除，代码与 202608 后数据均以 role_id 为准）；④ users 表为空时种子 dev 引导用户（`DEV_DEFAULT_USERNAME`/`DEV_DEFAULT_ROLE`/`DEV_DEFAULT_PASSWORD` 环境变量可覆盖，默认 dev_user/admin/dev_password，bcrypt 哈希）。幂等（默认 dry-run，`--apply` 执行），全新库 ①②③ 为 no-op |
 
 ## 新增迁移脚本约定
 
