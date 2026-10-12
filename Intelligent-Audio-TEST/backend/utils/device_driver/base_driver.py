@@ -314,13 +314,15 @@ class BaseDeviceDriver:
         if pause_event and not pause_event.is_set():
             self._log(level='INFO', content=f"Task paused during {operation_name} operation")
             import time
-            while pause_event.is_set():
+            # pause_event 置位=运行中、未置位=已暂停（与 utils.check_stop 装饰器语义一致），
+            # 暂停期间阻塞等待恢复；旧实现循环条件写反（while is_set），导致暂停实际不等待
+            while not pause_event.is_set():
                 time.sleep(0.1)
                 # 检查是否同时被停止
                 if stop_event and stop_event.is_set():
                     self._log(level='INFO', content=f"Task stopped during {operation_name} operation")
                     return True
-        
+
         return False
 
     def _wait_for_condition(self, condition_fn, timeout=30, interval=1.0, operation_name=""):

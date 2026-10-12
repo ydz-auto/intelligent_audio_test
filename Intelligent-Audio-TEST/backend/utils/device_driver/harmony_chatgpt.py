@@ -68,20 +68,9 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         # PCM 抓取目标固定为 chatgpt（cap_client 写 /data/local/tmp）
         self._pcm_app = 'chatgpt'
 
-    @staticmethod
-    def _as_bool(value):
-        """兼容配置中 snake/camel 的布尔值（与 e2e_aggregator._as_bool 一致）。
-
-        algorithm_params 的 field_value 可能为 int(1/0)/bool/str('true'/'True'/'1')，
-        统一解析，避免聚合层识别为打断轮而驱动层未走 barge-in 分支。
-        """
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return value != 0
-        if isinstance(value, str):
-            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
-        return False
+    # _as_bool 继承自 Xiaoyilivechat（与 e2e_aggregator._as_bool 一致）：
+    # 统一解析 is_interruption 等标记的 int/bool/str 形态，
+    # 避免聚合层识别为打断轮而驱动层未走 barge-in 分支。
 
     # ------------------------------------------------------------------
     # 辅助

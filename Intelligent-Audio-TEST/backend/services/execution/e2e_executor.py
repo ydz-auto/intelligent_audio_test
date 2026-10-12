@@ -313,13 +313,18 @@ class E2EExecutor(BaseExecutor):
         """执行单轮：环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
         from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
         round_algo_params = _normalize_algorithm_params(round_config.get('algorithm_params', []))
+        # 打断标记统一推导：兼容 is_interruption 配置在轮次直接字段（前端标准落点）
+        # 或 algorithm_params（独立列/轮内）两种形态，归一化为 bool 后注入驱动 kwargs，
+        # 保证聚合层推导（build_interruption_round_metadata）与驱动打断分支（barge-in）看到同一标记
+        round_is_interruption = self._aggregator._round_is_interruption(round_config)
         # DEBUG: 排查 per_round 参数透传
         self._log(
             level='INFO',
             content=f"[_execute_single_round] round_number={round_number}, "
                     f"round_config keys={list(round_config.keys()) if isinstance(round_config, dict) else round_config}, "
                     f"algorithm_params_in_config={round_config.get('algorithm_params')}, "
-                    f"round_algo_params={round_algo_params}",
+                    f"round_algo_params={round_algo_params}, "
+                    f"is_interruption={round_is_interruption}",
             task_id=task_id, test_case_id=test_case_id,
         )
 
@@ -329,7 +334,8 @@ class E2EExecutor(BaseExecutor):
             device_info_list, task_id, test_case_id=test_case_id,
             extra_params={'round_number': round_idx,
                           'total_rounds': len(rounds),
-                          **round_algo_params},
+                          **round_algo_params,
+                          'is_interruption': round_is_interruption},
         )
         if not pre_ok:
             self._log(level='ERROR', content=f"第 {round_number} 轮设备预处理失败，跳过本轮",
@@ -368,6 +374,8 @@ class E2EExecutor(BaseExecutor):
         post_extra_params = {'round_number': round_idx,
                              'total_rounds': len(rounds),
                              **round_algo_params}
+        # 归一化打断标记覆盖 algorithm_params 原始值（可能是 1/'true'/'isInterruption' 等形态）
+        post_extra_params['is_interruption'] = round_is_interruption
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms
             post_extra_params['playback_end_time_ms'] = round_end_ms

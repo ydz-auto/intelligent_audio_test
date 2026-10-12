@@ -427,7 +427,7 @@ class DoubaoChat(Xiaoyilivechat):
         # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
         # 会破坏连续通话已积累的音频)。打断轮不清(pcm 可能仍在写入/尚未拉取)。
         # 必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
-        is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        is_interruption = self._as_bool(kwargs.get('is_interruption'))
         if (record_mode != 'case' or is_first) and not is_interruption:
             self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'doubao'),
                             task_id=task_id, test_case_id=test_case_id)
@@ -530,7 +530,7 @@ class DoubaoChat(Xiaoyilivechat):
         # 打断轮(is_interruption=True): 只等 AI 开始回复(phase A, RMS 能量>阈值)即放下一轮,
         # 让打断发生在 AI 回复期间(真 barge-in)。不再用 size 增长判断——PCM 文件全程匀速
         # 增长,size 增长只代表"文件在写",不代表"AI 在说话"。
-        if kwargs.get('is_interruption') in (True, 'true', '1', 1):
+        if self._as_bool(kwargs.get('is_interruption')):
             _status, _ = self._wait_ai_reply_start_via_pcm(
                 device_sn, task_id=task_id, test_case_id=test_case_id,
                 start_timeout=kwargs.get('ai_start_timeout', None))
@@ -558,7 +558,7 @@ class DoubaoChat(Xiaoyilivechat):
 
         # case 模式打断轮非末轮：检测到 AI 开始回复后延迟 1s 再进下一轮播放（可被停止/暂停打断）
         # 让 AI 先说 1s 再被打断（真 barge-in 落在回复中段）
-        if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        if (self._as_bool(kwargs.get('is_interruption'))
                 and replied and record_mode == 'case' and not is_last):
             self._log(level='INFO',
                       content=f"[post_process] 检测到AI开始回复,等1s后进入下一轮播放: r{round_number}/{total_rounds}",

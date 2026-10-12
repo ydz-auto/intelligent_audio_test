@@ -41,6 +41,22 @@ class Xiaoyilivechat(HarmonyDriver):
         # ai PCM 首帧时间戳(替代录屏 first_frame 作为模型回复起始基准) + 本轮基线快照
         self._ai_first_frame_ms = None
         self._ai_pcm_size_base = None
+
+    @staticmethod
+    def _as_bool(value):
+        """兼容配置中 snake/camel 的布尔值（与 e2e_aggregator._as_bool 一致）。
+
+        is_interruption 等标记经 kwargs 传入时可能为 int(1/0)/bool/str('true'/'True'/'1')，
+        统一解析，避免聚合层识别为打断轮而驱动层未走打断分支。
+        """
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in ('true', '1', 'yes', 'y', '是')
+        return False
+
     # 是否启用录屏(小艺=True 保留录屏 wav 作为评估音频源)。
     # Doubao/ChatGPT 在各自子类置 False:无录屏,get_results 跳过录屏拉取,
     # 改把 ai_wav 塞进 wav_path 复用 wav_path→record_file 映射喂评估。
@@ -1251,7 +1267,7 @@ class Xiaoyilivechat(HarmonyDriver):
         # "写入中清空"。
         # 残留风险: 若系统音频 dump(sys.audio.dump.write*)跨轮保持文件句柄常开,仍可能清坏——
         # 真机验证若再拉不到,改为清前 param set ...enable n 关 dump→rm→enable w 重开。
-        is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        is_interruption = self._as_bool(kwargs.get('is_interruption'))
         if (record_mode != 'case' or is_first) and not is_interruption:
             self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
                             task_id=task_id, test_case_id=test_case_id)
@@ -1314,7 +1330,7 @@ class Xiaoyilivechat(HarmonyDriver):
                   task_id=task_id, test_case_id=test_case_id)
 
         # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
-        if kwargs.get('is_interruption') in (True, 'true', '1', 1):
+        if self._as_bool(kwargs.get('is_interruption')):
             self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
                       task_id=task_id, test_case_id=test_case_id)
             replied = True
@@ -1362,7 +1378,7 @@ class Xiaoyilivechat(HarmonyDriver):
         is_last = (total_rounds and round_number == total_rounds - 1)
 
         # case 模式打断轮非末轮：延迟 5s 再进下一轮播放（可被停止/暂停打断）
-        if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        if (self._as_bool(kwargs.get('is_interruption'))
                 and record_mode == 'case' and not is_last):
             self._log(level='INFO',
                       content=f"打断轮结束,等待5s后进入下一轮播放: r{round_number}/{total_rounds}",
