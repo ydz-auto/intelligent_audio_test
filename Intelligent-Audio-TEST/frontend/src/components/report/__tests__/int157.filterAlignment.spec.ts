@@ -123,3 +123,41 @@ describe('INT-157 HistoryReports 报告类型值域对齐（后端原值）', ()
     });
   });
 });
+
+describe('INT-157 打回修复 F1/F3：对比报告类型判定收敛 domain', () => {
+  it('isComparisonReportType：后端原值 secondary_comparison 命中（F1 主场景：二次对比报告走对比面板与对比保存分支）', async () => {
+    const { isComparisonReportType } = await import('../../../domain/model/report');
+    expect(isComparisonReportType('secondary_comparison')).toBe(true);
+  });
+
+  it('isComparisonReportType：comparison 与历史遗留值兼容命中；task/standard/空值不命中（既有行为不回归）', async () => {
+    const { isComparisonReportType } = await import('../../../domain/model/report');
+    expect(isComparisonReportType('comparison')).toBe(true);
+    expect(isComparisonReportType('secondaryComparison')).toBe(true);
+    expect(isComparisonReportType('secondary')).toBe(true);
+    expect(isComparisonReportType('task')).toBe(false);
+    expect(isComparisonReportType('standard')).toBe(false);
+    expect(isComparisonReportType(undefined)).toBe(false);
+    expect(isComparisonReportType(null)).toBe(false);
+    expect(isComparisonReportType('')).toBe(false);
+  });
+
+  it('isSecondaryComparisonReportType：secondary_comparison 命中二次家族（F3：标题「二次对比报告」）；comparison 不命中（标题「任务对比报告」）', async () => {
+    const { isSecondaryComparisonReportType } = await import('../../../domain/model/report');
+    expect(isSecondaryComparisonReportType('secondary_comparison')).toBe(true);
+    expect(isSecondaryComparisonReportType('secondaryComparison')).toBe(true);
+    expect(isSecondaryComparisonReportType('secondary')).toBe(true);
+    expect(isSecondaryComparisonReportType('comparison')).toBe(false);
+    expect(isSecondaryComparisonReportType('task')).toBe(false);
+    expect(isSecondaryComparisonReportType(undefined)).toBe(false);
+  });
+
+  it('REPORT_TYPE_MAP 后端原值键与历史遗留键并存（卡片类型徽章新旧数据都显示中文）', async () => {
+    const { REPORT_TYPE_MAP } = await import('../../../domain/constants/reportLabels');
+    expect(REPORT_TYPE_MAP['secondary_comparison']).toBe('二次对比报告');
+    expect(REPORT_TYPE_MAP['secondaryComparison']).toBe('二次对比报告');
+    expect(REPORT_TYPE_MAP['secondary']).toBe('二次对比报告');
+    expect(REPORT_TYPE_MAP['comparison']).toBe('对比报告');
+    expect(REPORT_TYPE_MAP['task']).toBe('任务报告');
+  });
+});
