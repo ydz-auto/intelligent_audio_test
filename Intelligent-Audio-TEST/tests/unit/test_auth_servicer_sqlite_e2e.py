@@ -28,6 +28,66 @@ from sqlalchemy import BigInteger
 from sqlalchemy.ext.compiler import compiles
 
 
+# 本模块固定名夹具（无运行标记，历史直打共享库时留下 busy_role 等 6 角色
+# 与多用户残留，INT-185 清理）。teardown 按名清除；共享库下同名行只可能
+# 是本测试当年/本次运行所建，删除前先解除删除集之外用户对角色的引用。
+_PURGE_USERS = [
+    'busy_user', 'perm_user_1', 'perm_user_2', 'perm_user_3',
+    'perm_user_4', 'perm_user_5', 'managed_user', 'deleted_role_user',
+    'self_registered', 'audit_status_user',
+]
+_PURGE_ROLES = [
+    'busy_role', 'dup_role', 'baseline_role', 'wildcard_role',
+    'assigned_role', 'doomed_role', 'builtin_guard',
+    'audit_role_x', 'audit_landing_role', 'qa_custom2',
+]
+
+
+@pytest.fixture(scope='module', autouse=True)
+def _purge_int30_fixtures():
+    """模块 teardown 清固定名夹具：共享库（DATABASE_URL 已显式设置时
+    setdefault 失效）下不留测试残留（INT-185 防再污染补齐）。"""
+    yield
+    from sqlalchemy import inspect
+
+    session = get_db_session()
+    try:
+        present = set(inspect(session.get_bind()).get_table_names())
+        user_ids = [r[0] for r in session.query(User.id).filter(
+            User.username.in_(_PURGE_USERS)).all()]
+        role_ids = [r[0] for r in session.query(Role.id).filter(
+            Role.name.in_(_PURGE_ROLES), Role.is_system == False).all()]  # noqa: E712
+        if user_ids and 'user_permissions' in present:
+            session.query(UserPermission).filter(
+                UserPermission.user_id.in_(user_ids)).delete(
+                synchronize_session=False)
+        if user_ids and 'user_oauth_bindings' in present:
+            from auth_service.infrastructure.persistence.models import (
+                UserOAuthBinding,
+            )
+            session.query(UserOAuthBinding).filter(
+                UserOAuthBinding.user_id.in_(user_ids)).delete(
+                synchronize_session=False)
+        if 'role_permissions' in present:
+            session.query(RolePermission).filter(
+                RolePermission.role_id.in_(role_ids)).delete(
+                synchronize_session=False)
+        if user_ids:
+            session.query(User).filter(User.id.in_(user_ids)).delete(
+                synchronize_session=False)
+        if role_ids:
+            session.query(User).filter(User.role_id.in_(role_ids)).update(
+                {User.role_id: None}, synchronize_session=False)
+            session.query(Role).filter(Role.id.in_(role_ids)).delete(
+                synchronize_session=False)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        remove_db_session()
+
+
 @compiles(BigInteger, 'sqlite')
 def _render_bigint_as_integer_sqlite(type_, compiler, **kw):
     """SQLite 不支持 BigInteger 主键自增，建表时渲染为 INTEGER。"""

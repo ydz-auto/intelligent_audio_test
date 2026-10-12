@@ -27,9 +27,11 @@ def purge_oauth_test_fixtures(tag: str) -> dict:
     deleted = {}
     try:
         present = set(inspect(session.get_bind()).get_table_names())
-        provider_ids = [
-            row[0] for row in session.query(CustomOAuthProvider.id)
-            .filter(CustomOAuthProvider.slug.like(f'%{tag}')).all()]
+        provider_ids = []
+        if 'custom_oauth_providers' in present:
+            provider_ids = [
+                row[0] for row in session.query(CustomOAuthProvider.id)
+                .filter(CustomOAuthProvider.slug.like(f'%{tag}')).all()]
         user_ids = [
             row[0] for row in session.query(User.id)
             .filter(or_(User.username.like(f'%{tag}'),
