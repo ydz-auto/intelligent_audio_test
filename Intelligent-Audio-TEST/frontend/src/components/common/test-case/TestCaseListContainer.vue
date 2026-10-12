@@ -136,7 +136,9 @@
               <span class="duration-tag">{{ formatGroupDuration(getGroupDurationStats(group).totalDuration) }}</span>
             </span>
           </div>
-          <TestCaseGroupActions 
+          <!-- INT-215/S3：回收站态分组头操作（新增用例/编辑分组/复制等）收敛隐藏——已删集合上均为无效操作 -->
+          <TestCaseGroupActions
+            v-if="!trashMode"
                 @click.stop
                 @edit="() => emit('openEditGroupModal', group)"
                 @delete="() => handleGroupDelete(group)"
@@ -226,7 +228,9 @@
                 <span class="duration-tag">{{ formatGroupDuration(getTagDurationStats(tagName).totalDuration) }}</span>
               </span>
             </div>
+            <!-- INT-215/S3：同上，标签视图分组头操作回收站态收敛隐藏 -->
             <TestCaseGroupActions
+              v-if="!trashMode"
               @click.stop
               @edit="() => handleTagEdit(tagName)"
               @delete="() => handleTagDelete(tagName)"

@@ -77,13 +77,17 @@ export function createSelectionModule(props: any, emit: any, state: ContainerSta
     const testType = testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined;
     const dimensionId = dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
 
-    // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例
+    // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例；
+    // INT-215/S3：回收站态圈定口径与可见数据集一致（仅已删项），避免勾选活跃集合
     const allIds = await store.fetchCaseIdsByFilter({
       group,
       testType,
       search: keyword,
       algorithmType,
       dimensionId,
+      // INT-215/S3：回收站态圈定口径与可见数据集一致（仅已删项）；
+      // 普通态传 undefined 保持既有 wire 契约（不发送 only_deleted，见 trashView spec）
+      onlyDeleted: (props as any).trashMode ? true : undefined,
     });
 
     if (allSelected) {
@@ -131,13 +135,16 @@ export function createSelectionModule(props: any, emit: any, state: ContainerSta
     const testType = testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined;
     const dimensionId = dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
 
-    // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例
+    // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例；
+    // INT-215/S3：同上，标签全选圈定口径回收站态仅已删项
     const allIds = await store.fetchCaseIdsByFilter({
       tag: tagName,
       testType,
       search: keyword,
       algorithmType,
       dimensionId,
+      // INT-215/S3：同上，标签全选圈定口径回收站态仅已删项
+      onlyDeleted: (props as any).trashMode ? true : undefined,
     });
 
     if (allSelected) {

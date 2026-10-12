@@ -113,6 +113,13 @@ export function createGroupExpandModule(props: any, emit: any, state: ContainerS
     }
   });
 
+  // INT-215/S3：回收站模式进出时重置前端分组分页（对照报告侧 currentPage=1 口径），
+  // 数据集整体切换（活跃↔已删）同时清空陈旧选中集
+  watch(() => props.trashMode, () => {
+    currentPage.value = 1;
+    selectedCases.value = [];
+  });
+
   // ===== 选中用例上报 =====
   watch(selectedCases, (newValue) => {
     emit('updateSelectedCases', newValue);

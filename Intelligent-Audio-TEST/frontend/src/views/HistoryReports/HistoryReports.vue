@@ -148,12 +148,24 @@
         <span class="select-all-label">全选</span>
       </div>
       <div v-if="selectedReports.size > 0" class="batch-action-buttons">
-        <button class="btn btn-success" @click="handleBatchCompare">
-          <i class="fas fa-exchange-alt"></i> 批量对比
-        </button>
-        <button class="btn btn-danger" @click="handleBatchDelete">
-          <i class="fas fa-trash"></i> 批量删除 ({{ selectedReports.size }})
-        </button>
+        <!-- INT-215/S4：回收站态批量栏适配——对比/删除对已删报告为 no-op，屏蔽之；
+             补批量恢复/批量彻底删除（对齐任务侧已有能力） -->
+        <template v-if="!trashMode">
+          <button class="btn btn-success" @click="handleBatchCompare">
+            <i class="fas fa-exchange-alt"></i> 批量对比
+          </button>
+          <button class="btn btn-danger" @click="handleBatchDelete">
+            <i class="fas fa-trash"></i> 批量删除 ({{ selectedReports.size }})
+          </button>
+        </template>
+        <template v-else>
+          <button class="btn btn-success" @click="handleBatchRestore">
+            <i class="fas fa-undo"></i> 批量恢复 ({{ selectedReports.size }})
+          </button>
+          <button class="btn btn-danger" @click="handleBatchPurge">
+            <i class="fas fa-fire"></i> 批量彻底删除 ({{ selectedReports.size }})
+          </button>
+        </template>
         <button class="btn btn-secondary" @click="handleBatchCancel">
           <i class="fas fa-times"></i> 取消选择
         </button>
@@ -208,7 +220,7 @@
             </template>
             <template v-else>
               <button class="btn btn-secondary" :title="isFavorite(report.id) ? '取消收藏' : '收藏'"
-                      :style="isFavorite(report.id) ? 'color:#f5a623' : ''"
+                      :style="isFavorite(report.id) ? 'color: var(--favorite-star)' : ''"
                       @click.stop="handleToggleFavorite(report)">
                 <i :class="isFavorite(report.id) ? 'fas fa-star' : 'far fa-star'"></i>
               </button>
@@ -331,6 +343,9 @@ const {
   handleBatchDelete,
   handleBatchCancel,
   handleBatchCompare,
+  // INT-215/S4：回收站态批量恢复/彻底删除
+  handleBatchRestore,
+  handleBatchPurge,
   viewReport,
   editReport,
   deleteReport,

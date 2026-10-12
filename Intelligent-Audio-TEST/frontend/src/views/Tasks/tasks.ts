@@ -80,6 +80,9 @@ export function useTasks() {
     if (next && listModule.favoriteOnly.value) {
       listModule.favoriteOnly.value = false;
     }
+    // INT-215/S4 同口径：数据集切换清空选中集，防止普通态勾选的活跃任务
+    // 流入回收站态批量彻底删除（误删活跃项）
+    listModule.selectedTasks.value.clear();
     await listModule.applyFilters();
   };
 

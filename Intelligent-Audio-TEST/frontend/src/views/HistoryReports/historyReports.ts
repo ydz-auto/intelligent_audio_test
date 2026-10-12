@@ -200,6 +200,9 @@ export function useHistoryReports() {
     if (trashMode.value && favoriteOnly.value) {
       favoriteOnly.value = false;
     }
+    // INT-215/S4：数据集切换（活跃↔已删）清空选中集，防止普通态勾选的活跃报告
+    // 流入回收站态批量彻底删除（误删活跃项）；对照 handleTabChange 同口径
+    selectedReports.value.clear();
     currentPage.value = 1;
     await loadReports();
   };
@@ -427,6 +430,55 @@ export function useHistoryReports() {
     selectedReports.value.clear();
   };
 
+  // ===== INT-215/S4：回收站态批量栏适配（对齐任务侧批量恢复/彻底删除能力）=====
+
+  /** 批量恢复（恢复为可逆操作，与任务侧一致不设确认；按 restored_count 反馈真实结果） */
+  const handleBatchRestore = async () => {
+    if (selectedReports.value.size === 0) return;
+    try {
+      const ids = Array.from(selectedReports.value);
+      const result = await favoritesModule.restore(ids);
+      const restored = result?.restored_count ?? 0;
+      if (restored > 0) {
+        showToast('success', `已恢复 ${restored} 个报告`);
+      } else {
+        showToast('info', '无可恢复项（报告可能已被恢复）');
+      }
+      selectedReports.value.clear();
+      await loadReports();
+    } catch (error: any) {
+      showToast('error', '批量恢复失败: ' + (error?.message || '未知错误'));
+    }
+  };
+
+  /** 批量彻底删除（BASIC_CONFIRM 模态 + 不可恢复警示；按 purged_count 反馈真实结果） */
+  const handleBatchPurge = () => {
+    if (selectedReports.value.size === 0) return;
+    modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '批量彻底删除报告',
+      content: `彻底删除选中的 ${selectedReports.value.size} 个报告？该操作不可恢复（仅管理员/所有者可执行）。`,
+      confirmText: '彻底删除',
+      cancelText: '取消',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const ids = Array.from(selectedReports.value);
+          const result = await favoritesModule.purge(ids);
+          const purged = result?.purged_count ?? 0;
+          if (purged > 0) {
+            showToast('success', `已彻底删除 ${purged} 个报告`);
+          } else {
+            showToast('info', '无可删除项（报告可能已被删除或不满足权限）');
+          }
+          selectedReports.value.clear();
+          await loadReports();
+        } catch (error: any) {
+          showToast('error', '批量彻底删除失败: ' + (error?.message || '未知错误'));
+        }
+      }
+    }).catch(() => {});
+  };
+
   const pendingSecondaryCompareReports = ref<Map<string, { reportIds: (string | number)[]; resolve: (id: string | number) => void; reject: (err: Error) => void }>>(new Map());
 
   const handleBatchCompare = async () => {
@@ -572,6 +624,9 @@ export function useHistoryReports() {
     handleBatchDelete,
     handleBatchCancel,
     handleBatchCompare,
+    // INT-215/S4：回收站态批量恢复/彻底删除
+    handleBatchRestore,
+    handleBatchPurge,
     viewReport,
     editReport,
     deleteReport,
