@@ -179,11 +179,11 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
             return []
 
     def update_task_case_status(self, task_id: str, case_id: str,
-                                status: str, execution_status: str = '',
+                                status: str = '', execution_status: str = '',
                                 evaluation_status: str = '',
                                 error_message: str = '',
                                 started_at=None, completed_at=None) -> bool:
-        """更新 TaskCase 状态"""
+        """更新 TaskCase 状态（status 为空由 task_service 推导复合状态，对齐服务端契约）"""
         from shared.clients.grpc_clients import get_task_data_service_stub
         from shared.proto import task_service_pb2 as task_pb
         try:
