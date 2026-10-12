@@ -377,7 +377,7 @@ class TestEncryptionKeyErrorMasking:
 @pytest.fixture(scope='module')
 def binding_env(client):
     """admin token + 提供方 + 两个已注册用户 + 绑定票据。"""
-    run = uuid.uuid4().hex[:8]
+    run = _RUN  # 复用模块级 tag：模块 teardown 按 _RUN 清夹具（INT-179）
     admin_headers = {'Authorization': _token_for(999999, 'int147_admin')}
 
     username1 = f'int147_bind_{run}'

@@ -203,8 +203,10 @@ def _create_provider_http(client, headers, slug, token_url='https://t/x',
 
 class _MockIdPHandler(BaseHTTPRequestHandler):
     """本地 mock OAuth IdP：/token 发 token，/userinfo 校验 Bearer 后回用户信息。"""
-    userinfo = {'sub': 'ext-1001', 'preferred_username': 'zhangsan',
-                'name': '张三', 'email': 'zhangsan@example.com'}
+    # username/email 带 run tag：回调建号的行须落在模块 teardown 的
+    # 清理范围内，且共享库（显式 DATABASE_URL）复跑不撞历史残留（INT-179）
+    userinfo = {'sub': 'ext-1001', 'preferred_username': f'zhangsan_{_RUN}',
+                'name': '张三', 'email': f'zhangsan_{_RUN}@example.com'}
 
     def do_POST(self):
         length = int(self.headers.get('Content-Length', 0))
@@ -338,17 +340,17 @@ class TestCustomOAuthCallbackHttp:
         import jwt as pyjwt
         claims = pyjwt.decode(token, Config.JWT_SECRET,
                               algorithms=[Config.JWT_ALGORITHM])
-        assert claims['username'] == 'zhangsan'
+        assert claims['username'] == f'zhangsan_{_RUN}'
         resp = client.get('/api/v1/auth/me',
                           headers={'Authorization': f'Bearer {token}'})
         assert resp.status_code == 200, resp.text
-        assert resp.json()['username'] == 'zhangsan'
+        assert resp.json()['username'] == f'zhangsan_{_RUN}'
 
         # OAuth 用户落库：oauth_provider=slug、oauth_id=外部标识
         from auth_service.infrastructure.persistence.models import User
         session = get_db_session()
         row = (session.query(User)
-               .filter(User.username == 'zhangsan').one_or_none())
+               .filter(User.username == f'zhangsan_{_RUN}').one_or_none())
         assert row is not None
         assert row.oauth_provider == slug
         assert row.oauth_id == 'ext-1001'
@@ -458,7 +460,7 @@ class TestOAuthTakeoverGuardHttp:
         original_userinfo = _MockIdPHandler.userinfo
         _MockIdPHandler.userinfo = {
             'sub': f'ext-hijack-{_RUN}', 'preferred_username': existing,
-            'name': '攻击者', 'email': 'evil@example.com'}
+            'name': '攻击者', 'email': f'evil_{_RUN}@example.com'}
         slug = f'takeover-idp-{_RUN}'
         try:
             resp = svc.CreateOAuthProvider(auth_pb.CreateOAuthProviderRequest(
