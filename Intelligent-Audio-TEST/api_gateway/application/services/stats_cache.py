@@ -12,6 +12,9 @@
 - 全部域失败：不写缓存（既有快照原样保留或保持缺失），下一轮请求重试；
 - 部分域失败：失败域沿用既有快照旧值（stale-while-error），以降级短 TTL
   写入，上游恢复后最迟一个短 TTL 周期自动回正。
+- task 域（tasks/test_cases/groups）失败必须在 ACL proxy 层透传：
+  _grpc_call 默认吞异常返回 {}，掉线会被误读为合法 0 值按正常 TTL 落缓存
+  （INT-204 审计问题 1），故三个 proxy 调用固定/显式 reraise 上抛。
 """
 # Task / TestCase 聚合统计已改用 gRPC（task_service.TaskDataService.GetTaskStats /
 # GetTestCaseStats）。audio_service / device_service / api_test_service /
@@ -61,7 +64,8 @@ def _fetch_task_stats_via_grpc():
     """通过 gRPC 拉取 Task 聚合统计（一次 group_by=status 拿到全部状态计数）
 
     返回 (total, completed, running, failed)。
-    失败时抛出异常，由 refresh_stats_cache 统一走 stale-while-error 降级。
+    失败时抛出异常（proxy 层 get_task_stats 固定 reraise，传输异常与
+    success=False 均上抛），由 refresh_stats_cache 统一走 stale-while-error 降级。
     """
     from api_gateway.infrastructure.grpc_proxies import task_data_service
     grouped = task_data_service.get_task_stats(group_by='status')
@@ -79,10 +83,10 @@ def _fetch_task_stats_via_grpc():
 def _fetch_testcase_stats_via_grpc():
     """通过 gRPC 拉取 TestCase 聚合统计（total 计数）
 
-    返回 total。失败时抛出异常。
+    返回 total。失败时抛出异常（reraise=True 上抛，同 task 域口径）。
     """
     from api_gateway.infrastructure.grpc_proxies import task_data_service
-    result = task_data_service.get_testcase_stats()
+    result = task_data_service.get_testcase_stats(reraise=True)
     if not isinstance(result, dict):
         raise StatsFetchError('get_testcase_stats 返回非 dict 载荷')
     return int(result.get('total', 0))
@@ -91,10 +95,10 @@ def _fetch_testcase_stats_via_grpc():
 def _fetch_testcase_group_count_via_grpc():
     """通过 gRPC 拉取 TestCaseGroup 总数（list_testcase_groups 返回 items 长度）
 
-    返回 count。失败时抛出异常。
+    返回 count。失败时抛出异常（reraise=True 上抛，同 task 域口径）。
     """
     from api_gateway.infrastructure.grpc_proxies import task_data_service
-    result = task_data_service.list_testcase_groups()
+    result = task_data_service.list_testcase_groups(reraise=True)
     if not isinstance(result, dict):
         raise StatsFetchError('list_testcase_groups 返回非 dict 载荷')
     items = result.get('items', [])

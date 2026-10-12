@@ -29,7 +29,12 @@ class _TaskDataProxy:
     # ---- 聚合统计 ----
 
     def get_task_stats(self, status=None, algorithm_type=None, group_by=None):
-        """通过 gRPC 聚合统计 Task（group_by 可选 status/algorithm_type；task.type 已废弃删除，'type' 不再支持）"""
+        """通过 gRPC 聚合统计 Task（group_by 可选 status/algorithm_type；task.type 已废弃删除，'type' 不再支持）
+
+        失败固定上抛（reraise）：唯一调用方为 stats_cache 首页统计链路（INT-204），
+        失败语义必须传到 refresh_stats_cache 走 stale-while-error 降级，
+        不得吞成 {} 让掉线被误读为合法 0 值按正常 TTL 落缓存。
+        """
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.GetTaskStats(task_pb.TaskAggStatsRequest(
@@ -40,14 +45,18 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"GetTaskStats gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='GetTaskStats gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='GetTaskStats gRPC 失败',
+                          reraise=True)
 
     def get_testcase_stats(self, algorithm_type=None, group_id=None, group_by=None,
-                           test_type=None, keyword=None, dimension_id=None):
+                           test_type=None, keyword=None, dimension_id=None,
+                           reraise=False):
         """通过 gRPC 聚合统计 TestCase（group_by 可选 algorithm_type/group_id）
 
         test_type 为执行口径（api/e2e，task_service 侧按配置形态派生）；
         keyword/dimension_id 供分组列表筛选（INT-146）。
+        reraise=True 时失败上抛（首页统计链路 INT-204，同 get_task_stats）；
+        默认 False 维持吞异常返回 {} 的既有失败语义（分组列表/删除前计数等）。
         """
         def _call():
             stub = get_task_data_service_stub()
@@ -62,12 +71,17 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"GetTestCaseStats gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='GetTestCaseStats gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='GetTestCaseStats gRPC 失败',
+                          reraise=reraise)
 
     # ---- TestCaseGroup 查询/创建 ----
 
-    def list_testcase_groups(self, algorithm_type=None, search=None):
-        """通过 gRPC 查询 TestCaseGroup 列表"""
+    def list_testcase_groups(self, algorithm_type=None, search=None, reraise=False):
+        """通过 gRPC 查询 TestCaseGroup 列表
+
+        reraise=True 时失败上抛（首页统计链路 INT-204，同 get_task_stats）；
+        默认 False 维持吞异常返回 {} 的既有失败语义（分组列表页等）。
+        """
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.ListTestCaseGroups(task_pb.ListTestCaseGroupsRequest(
@@ -77,7 +91,8 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"ListTestCaseGroups gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='ListTestCaseGroups gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='ListTestCaseGroups gRPC 失败',
+                          reraise=reraise)
 
     def get_testcase_groups_by_ids(self, group_ids):
         """通过 gRPC 按 ID 列表批量查询 TestCaseGroup"""

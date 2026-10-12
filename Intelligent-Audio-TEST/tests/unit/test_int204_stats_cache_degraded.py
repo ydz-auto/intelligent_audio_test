@@ -222,11 +222,11 @@ class TestFetchFailureContract:
                 raise ConnectionError('task_service 不可达')
 
             @staticmethod
-            def get_testcase_stats():
+            def get_testcase_stats(reraise=False):
                 return {'total': 40}
 
             @staticmethod
-            def list_testcase_groups():
+            def list_testcase_groups(reraise=False):
                 return {'items': [{'id': 1, 'name': 'g1'}]}
 
         monkeypatch.setattr(grpc_proxies, 'task_data_service', _StubTaskDataService())
