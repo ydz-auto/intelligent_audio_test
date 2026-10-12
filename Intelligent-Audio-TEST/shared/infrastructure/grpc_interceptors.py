@@ -65,43 +65,89 @@ def _truncate_long_values(d, max_len):
 
 # ==================== 服务端拦截器 ====================
 
+def _wrap_rpc_handler(handler, wrap_unary, wrap_stream):
+    """按 continuation() 返回的 RpcMethodHandler 实际 RPC 形态包装 behavior。
+
+    grpcio>=1.32 的 HandlerCallDetails 仅含 method/invocation_metadata，
+    服务端拦截器必须先 continuation(handler_call_details) 取 handler，再按
+    其 unary_unary/stream_unary/unary_stream/stream_stream 属性包装——不得
+    依赖 handler_call_details 携带方法属性（INT-141 验收 F1/F3：hasattr
+    恒 False 曾致三个服务端拦截器全部 no-op）。
+    """
+    if handler is None:
+        return None
+    kwargs = dict(request_deserializer=handler.request_deserializer,
+                  response_serializer=handler.response_serializer)
+    if handler.unary_unary is not None:
+        return grpc.unary_unary_rpc_method_handler(wrap_unary(handler.unary_unary), **kwargs)
+    if handler.stream_unary is not None:
+        return grpc.stream_unary_rpc_method_handler(wrap_unary(handler.stream_unary), **kwargs)
+    if handler.unary_stream is not None:
+        return grpc.unary_stream_rpc_method_handler(wrap_stream(handler.unary_stream), **kwargs)
+    if handler.stream_stream is not None:
+        return grpc.stream_stream_rpc_method_handler(wrap_stream(handler.stream_stream), **kwargs)
+    return handler
+
+
 class ServerLogInterceptor(grpc.ServerInterceptor):
     """服务端日志拦截器：记录每个 RPC 调用的方法、耗时、请求/响应 payload"""
 
     def intercept_service(self, continuation, handler_call_details):
         method = handler_call_details.method
 
-        def wrapper(behavior, request, context):
-            start = time.monotonic()
-            if _LOG_PAYLOAD:
-                try:
-                    _logger.info("[gRPC-recv] %s  request: %s", method, _format_payload(request))
-                except Exception as log_e:
-                    _logger.debug("[gRPC-recv] %s  (payload log failed: %s)", method, log_e)
-            try:
-                resp = behavior(request, context)
-                elapsed_ms = (time.monotonic() - start) * 1000
+        def _log_unary(behavior):
+            @functools.wraps(behavior)
+            def wrapper(request, context):
+                start = time.monotonic()
                 if _LOG_PAYLOAD:
                     try:
-                        _logger.info("[gRPC-recv] %s  response in %.1fms: %s", method, elapsed_ms, _format_payload(resp))
-                    except Exception:
+                        _logger.info("[gRPC-recv] %s  request: %s", method, _format_payload(request))
+                    except Exception as log_e:
+                        _logger.debug("[gRPC-recv] %s  (payload log failed: %s)", method, log_e)
+                try:
+                    resp = behavior(request, context)
+                    elapsed_ms = (time.monotonic() - start) * 1000
+                    if _LOG_PAYLOAD:
+                        try:
+                            _logger.info("[gRPC-recv] %s  response in %.1fms: %s", method, elapsed_ms, _format_payload(resp))
+                        except Exception:
+                            _logger.info("[gRPC-recv] %s  ok in %.1fms", method, elapsed_ms)
+                    else:
                         _logger.info("[gRPC-recv] %s  ok in %.1fms", method, elapsed_ms)
-                else:
-                    _logger.info("[gRPC-recv] %s  ok in %.1fms", method, elapsed_ms)
-                return resp
-            except Exception as e:
-                elapsed_ms = (time.monotonic() - start) * 1000
-                _logger.error("[gRPC-recv] %s  failed in %.1fms: %s", method, elapsed_ms, e)
-                raise
+                    return resp
+                except Exception as e:
+                    elapsed_ms = (time.monotonic() - start) * 1000
+                    _logger.error("[gRPC-recv] %s  failed in %.1fms: %s", method, elapsed_ms, e)
+                    raise
+            return wrapper
 
-        if hasattr(handler_call_details, 'unary_unary'):
-            inner = handler_call_details.unary_unary
-            return grpc.unary_unary_rpc_method_handler(
-                functools.partial(wrapper, inner) if inner else inner,
-                request_deserializer=handler_call_details.request_deserializer,
-                response_serializer=handler_call_details.response_serializer,
-            )
-        return continuation(handler_call_details)
+        def _log_stream(behavior):
+            @functools.wraps(behavior)
+            def wrapper(request_or_iterator, context):
+                start = time.monotonic()
+                if _LOG_PAYLOAD:
+                    try:
+                        _logger.info("[gRPC-recv] %s  stream request: %s",
+                                     method, _format_payload(request_or_iterator))
+                    except Exception as log_e:
+                        _logger.debug("[gRPC-recv] %s  (payload log failed: %s)", method, log_e)
+                chunks = 0
+                try:
+                    for resp in behavior(request_or_iterator, context):
+                        chunks += 1
+                        yield resp
+                    elapsed_ms = (time.monotonic() - start) * 1000
+                    _logger.info("[gRPC-recv] %s  stream done in %.1fms (%d chunks)",
+                                 method, elapsed_ms, chunks)
+                except Exception as e:
+                    elapsed_ms = (time.monotonic() - start) * 1000
+                    _logger.error("[gRPC-recv] %s  stream failed in %.1fms after %d chunks: %s",
+                                  method, elapsed_ms, chunks, e)
+                    raise
+            return wrapper
+
+        return _wrap_rpc_handler(continuation(handler_call_details),
+                                 _log_unary, _log_stream)
 
 
 # ==================== 客户端拦截器 ====================
@@ -220,27 +266,43 @@ class ServerUserContextInterceptor(grpc.ServerInterceptor):
     """
 
     def intercept_service(self, continuation, handler_call_details):
-        def wrapper(behavior, request, context):
+        def _setup(context):
             from shared.infrastructure.user_context import (
                 set_current_user_id, user_id_from_context,
                 set_current_user_is_admin, user_is_admin_from_context,
             )
             set_current_user_id(user_id_from_context(context))
             set_current_user_is_admin(user_is_admin_from_context(context))
-            try:
-                return behavior(request, context)
-            finally:
-                set_current_user_id(None)
-                set_current_user_is_admin(False)
 
-        if hasattr(handler_call_details, 'unary_unary'):
-            inner = handler_call_details.unary_unary
-            return grpc.unary_unary_rpc_method_handler(
-                functools.partial(wrapper, inner) if inner else inner,
-                request_deserializer=handler_call_details.request_deserializer,
-                response_serializer=handler_call_details.response_serializer,
+        def _cleanup():
+            from shared.infrastructure.user_context import (
+                set_current_user_id, set_current_user_is_admin,
             )
-        return continuation(handler_call_details)
+            set_current_user_id(None)
+            set_current_user_is_admin(False)
+
+        def _wrap_unary(behavior):
+            @functools.wraps(behavior)
+            def wrapper(request, context):
+                _setup(context)
+                try:
+                    return behavior(request, context)
+                finally:
+                    _cleanup()
+            return wrapper
+
+        def _wrap_stream(behavior):
+            @functools.wraps(behavior)
+            def wrapper(request_or_iterator, context):
+                _setup(context)
+                try:
+                    yield from behavior(request_or_iterator, context)
+                finally:
+                    _cleanup()
+            return wrapper
+
+        return _wrap_rpc_handler(continuation(handler_call_details),
+                                 _wrap_unary, _wrap_stream)
 
 
 # ==================== DB scope 拦截器 ====================
@@ -253,25 +315,33 @@ class ServerDbScopeInterceptor(grpc.ServerInterceptor):
     """
 
     def intercept_service(self, continuation, handler_call_details):
-        def wrapper(behavior, request, context):
+        def _cleanup():
             try:
-                resp = behavior(request, context)
-                return resp
-            finally:
-                try:
-                    from shared.models.database import remove_db_session
-                    remove_db_session()
-                except Exception:
-                    _logger.debug("gRPC 拦截器清理 DB session 失败", exc_info=True)
+                from shared.models.database import remove_db_session
+                remove_db_session()
+            except Exception:
+                _logger.debug("gRPC 拦截器清理 DB session 失败", exc_info=True)
 
-        if hasattr(handler_call_details, 'unary_unary'):
-            inner = handler_call_details.unary_unary
-            return grpc.unary_unary_rpc_method_handler(
-                functools.partial(wrapper, inner) if inner else inner,
-                request_deserializer=handler_call_details.request_deserializer,
-                response_serializer=handler_call_details.response_serializer,
-            )
-        return continuation(handler_call_details)
+        def _wrap_unary(behavior):
+            @functools.wraps(behavior)
+            def wrapper(request, context):
+                try:
+                    return behavior(request, context)
+                finally:
+                    _cleanup()
+            return wrapper
+
+        def _wrap_stream(behavior):
+            @functools.wraps(behavior)
+            def wrapper(request_or_iterator, context):
+                try:
+                    yield from behavior(request_or_iterator, context)
+                finally:
+                    _cleanup()
+            return wrapper
+
+        return _wrap_rpc_handler(continuation(handler_call_details),
+                                 _wrap_unary, _wrap_stream)
 
 
 # 单例

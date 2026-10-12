@@ -25,11 +25,12 @@ class ReportFavoriteTrashService:
         try:
             if not user_id:
                 return {'success': False, 'message': '未认证用户禁止收藏',
-                        'data': None, 'code': 401}
+                        'data': {'code': 401}, 'code': 401}
             result = self.repository.add(user_id, report_id)
             if not result.get('success'):
+                code = result.get('code', 404)
                 return {'success': False, 'message': result.get('message', '报告不存在'),
-                        'data': None, 'code': result.get('code', 404)}
+                        'data': {'code': code}, 'code': code}
             return {'success': True, 'message': result.get('message', '收藏成功'),
                     'data': {'entity_type': 'report', 'report_id': int(report_id),
                              'already_favorited': result.get('already_favorited', False)}}
@@ -55,7 +56,7 @@ class ReportFavoriteTrashService:
         """当前用户收藏的报告 ID 列表。"""
         try:
             if not user_id:
-                return {'success': False, 'message': '未认证用户', 'data': None, 'code': 401}
+                return {'success': False, 'message': '未认证用户', 'data': {'code': 401}, 'code': 401}
             ids = self.repository.list_ids(user_id)
             return {'success': True, 'message': 'ok',
                     'data': {'entity_type': 'report', 'ids': [str(i) for i in ids]}}
@@ -78,7 +79,7 @@ class ReportFavoriteTrashService:
         """恢复报告（单个+批量统一入口）。"""
         try:
             if not report_ids:
-                return {'success': False, 'message': '缺少 report_ids', 'data': None, 'code': 400}
+                return {'success': False, 'message': '缺少 report_ids', 'data': {'code': 400}, 'code': 400}
             restored = self.repository.restore_reports(report_ids)
             return {'success': True, 'message': f'成功恢复 {restored} 个报告',
                     'data': {'restored_count': restored}}
@@ -90,7 +91,7 @@ class ReportFavoriteTrashService:
         """彻底删除报告（物理删除；权限：admin 或 owner，INT-141）。"""
         try:
             if not report_ids:
-                return {'success': False, 'message': '缺少 report_ids', 'data': None, 'code': 400}
+                return {'success': False, 'message': '缺少 report_ids', 'data': {'code': 400}, 'code': 400}
             from shared.infrastructure.user_context import (
                 get_current_user_id, get_current_user_is_admin,
             )

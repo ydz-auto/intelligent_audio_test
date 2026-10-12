@@ -103,7 +103,8 @@ class ReportFavoriteTrashRepository:
             return 0
         session = get_db_session()
         count = session.execute(
-            text("UPDATE test_reports SET deleted = FALSE, deleted_at = NULL "
+            text("UPDATE test_reports SET deleted = FALSE, deleted_at = NULL, "
+                 "deleted_by_user_id = NULL "
                  "WHERE id IN :ids AND deleted = TRUE").bindparams(
                 bindparam('ids', expanding=True)),
             {"ids": [int(i) for i in report_ids]}).rowcount

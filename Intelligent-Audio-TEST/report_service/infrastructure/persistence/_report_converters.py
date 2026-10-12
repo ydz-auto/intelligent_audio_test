@@ -226,6 +226,8 @@ def _report_po_to_entity(po: Report) -> ReportAggregate:
         metric_stats=[],
         raw_data=[],
         deleted=po.deleted or False,
+        deleted_at=getattr(po, 'deleted_at', None),
+        deleted_by_user_id=getattr(po, 'deleted_by_user_id', None),
     )
 
 

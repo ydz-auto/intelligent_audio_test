@@ -162,6 +162,9 @@ class ReportAggregate:
     metric_stats: List[ReportMetricStatsEntity] = field(default_factory=list)
     raw_data: List[ReportRawDataEntity] = field(default_factory=list)
     deleted: bool = False
+    # INT-141：回收站展示字段（软删除时间/操作人，deleted=True 时有意义）
+    deleted_at: Optional[Any] = None
+    deleted_by_user_id: Optional[int] = None
     # 完整摘要视图（详情接口使用）：含 all_metrics/case_categories/all_case_tags/
     # metric_data/tag_metric_data 等，由仓储 load_full_summary 填充，序列化层优先使用。
     full_summary: Optional[Dict[str, Any]] = None

@@ -738,6 +738,137 @@ class TestReportFavoriteTrash:
             set_current_user_id(None)
 
 
+# ---------------- 真实 gRPC server 拦截器链（验收 F1/F3 回归） ----------------
+
+class TestGrpcInterceptorChain:
+    """起真实 gRPC server（挂全量服务端拦截器）断言 metadata → contextvar。
+
+    验收 F1/F3：服务端拦截器曾依赖 `hasattr(handler_call_details,
+    'unary_unary')` 判断包装时机，grpcio 1.83 的 HandlerCallDetails 仅含
+    method/invocation_metadata，判断恒 False → 三个服务端拦截器整体 no-op
+    （metadata 到达 servicer 但 contextvar 恒空、DB session 从不清理）。
+    本类用真实 server + 真实 metadata 走完整链路，拦截器回归 no-op 即在此失败。
+    """
+
+    def test_user_context_and_db_scope_via_real_grpc_server(self, monkeypatch):
+        import json as _json
+        from concurrent import futures
+
+        import grpc
+
+        import shared.models.database as db_mod
+        from shared.proto import task_service_pb2 as task_pb
+        from shared.proto import task_service_pb2_grpc as task_grpc
+        from shared.infrastructure.grpc_interceptors import (
+            server_log_interceptor, server_db_scope_interceptor,
+            server_user_context_interceptor,
+        )
+        from shared.infrastructure.user_context import (
+            get_current_user_id, get_current_user_is_admin,
+        )
+
+        captured = []
+        cleanup_calls = []
+        real_remove = db_mod.remove_db_session
+
+        def fake_remove():
+            cleanup_calls.append(True)
+            return real_remove()
+
+        monkeypatch.setattr(db_mod, 'remove_db_session', fake_remove)
+
+        class _CaptureServicer(task_grpc.TestCaseConfigServiceServicer):
+            def GetTestCaseStats(self, request, context=None):
+                captured.append((get_current_user_id(), get_current_user_is_admin()))
+                return task_pb.TestCaseConfigResponse(success=True, message='ok')
+
+        server = grpc.server(
+            futures.ThreadPoolExecutor(max_workers=2),
+            interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                          server_user_context_interceptor])
+        task_grpc.add_TestCaseConfigServiceServicer_to_server(_CaptureServicer(), server)
+        port = server.add_insecure_port('127.0.0.1:0')
+        server.start()
+        try:
+            with grpc.insecure_channel(f'127.0.0.1:{port}') as channel:
+                stub = task_grpc.TestCaseConfigServiceStub(channel)
+                # 带 metadata：拦截器应把 x-user-id/x-user-is-admin 写入 contextvar（F1）
+                resp = stub.GetTestCaseStats(
+                    task_pb.GetTestCaseStatsRequest(), timeout=10,
+                    metadata=(('x-user-id', '8'), ('x-user-is-admin', 'true')))
+                assert resp.success is True
+                assert captured[-1] == (8, True)
+                # 不带 metadata：RPC 结束清理生效，不得串号
+                stub.GetTestCaseStats(task_pb.GetTestCaseStatsRequest(), timeout=10)
+                assert captured[-1] == (None, False)
+        finally:
+            server.stop(0)
+        # DB scope 清理曾被同款 no-op 吞掉（F3）：每次 RPC 结束必须 remove_db_session
+        assert len(cleanup_calls) >= 2
+
+
+# ---------------- 网关业务码映射（验收 F2 回归） ----------------
+
+class TestGatewayBusinessCodeMapping:
+    """服务层业务码经 gRPC data JSON 透传后在网关提升到顶层（F2）。
+
+    链路：服务失败响应 data={'code': X} → servicer _resp（proto 仅
+    success/message/data 三字段）→ 网关代理 _resp / _report_resp 提升
+    data['code'] 到顶层 → BFF resp.get('code') → 路由映射 400/401/403/404。
+    """
+
+    @staticmethod
+    def _fake_stub_resp(success, message, data):
+        from types import SimpleNamespace
+        import json as _json
+        return SimpleNamespace(success=success, message=message,
+                               data=_json.dumps(data) if data is not None else '')
+
+    def test_task_proxy_resp_lifts_code_on_failure_only(self):
+        from api_gateway.infrastructure.grpc_proxies.task_testcase_config_proxies import (
+            _TaskConfigProxy,
+        )
+        proxy = _TaskConfigProxy()
+        fail = proxy._resp(self._fake_stub_resp(False, '权限不足', {'code': 403}))
+        assert fail['code'] == 403 and fail['success'] is False
+        # 成功响应不提升：data 内业务字段 code 不受影响
+        ok = proxy._resp(self._fake_stub_resp(True, 'ok', {'code': 'ABC'}))
+        assert 'code' not in ok and ok['data']['code'] == 'ABC'
+        # 失败但 data 无码：保持默认（无 code 键）
+        noc = proxy._resp(self._fake_stub_resp(False, '失败', {'other': 1}))
+        assert 'code' not in noc
+
+    def test_testcase_proxy_resp_lifts_code_on_failure(self):
+        from api_gateway.infrastructure.grpc_proxies.task_testcase_config_proxies import (
+            _TestCaseConfigProxy,
+        )
+        out = _TestCaseConfigProxy()._resp(self._fake_stub_resp(False, '未认证', {'code': 401}))
+        assert out['code'] == 401 and out['success'] is False
+
+    def test_report_resp_helper_lifts_code_on_failure(self):
+        from api_gateway.application.services.favorite_trash_service import _report_resp
+        fail = _report_resp(self._fake_stub_resp(False, '彻底删除仅限管理员', {'code': 403}))
+        assert fail['code'] == 403 and fail['success'] is False
+        ok = _report_resp(self._fake_stub_resp(True, 'ok', {'ids': ['1']}))
+        assert 'code' not in ok and ok['data'] == {'ids': ['1']}
+
+    def test_service_4xx_failures_carry_code_in_data(self):
+        """服务侧 4xx 失败必须把码放进 data JSON（否则网关无法取码）。"""
+        from task_service.application.favorite_trash_service import favorite_trash_service as task_svc
+        r1 = task_svc.purge_tasks([])
+        assert r1['code'] == 400 and r1['data'] == {'code': 400}
+        r2 = task_svc.restore_testcases([])
+        assert r2['code'] == 400 and r2['data'] == {'code': 400}
+
+        from report_service.application.favorite_trash_service import (
+            report_favorite_trash_service as report_svc,
+        )
+        r3 = report_svc.favorite(None, 1)
+        assert r3['code'] == 401 and r3['data'] == {'code': 401}
+        r4 = report_svc.restore_reports([])
+        assert r4['code'] == 400 and r4['data'] == {'code': 400}
+
+
 def report_repository_soft_delete(rid):
     from report_service.infrastructure.persistence.report_repository import report_repository
     report_repository.soft_delete(rid)

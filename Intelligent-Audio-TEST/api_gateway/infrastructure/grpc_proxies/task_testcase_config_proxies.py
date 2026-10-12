@@ -28,11 +28,13 @@ class _TaskConfigProxy:
 
     def _resp(self, resp):
         """统一解析 TaskConfigResponse 为 dict"""
-        return {
-            'success': resp.success,
-            'message': resp.message,
-            'data': json.loads(resp.data) if resp.data else None,
-        }
+        data = json.loads(resp.data) if resp.data else None
+        result = {'success': resp.success, 'message': resp.message, 'data': data}
+        # 失败响应的业务码经 data JSON 透传（proto 仅 success/message/data 三字段），
+        # 提升到顶层供 BFF/路由映射 HTTP 状态码（INT-141 F2）
+        if not resp.success and isinstance(data, dict) and isinstance(data.get('code'), int):
+            result['code'] = data['code']
+        return result
 
     @property
     def stub(self):
@@ -456,11 +458,12 @@ class _TestCaseConfigProxy:
 
     def _resp(self, resp):
         """统一解析 TestCaseConfigResponse 为 dict"""
-        return {
-            'success': resp.success,
-            'message': resp.message,
-            'data': json.loads(resp.data) if resp.data else None,
-        }
+        data = json.loads(resp.data) if resp.data else None
+        result = {'success': resp.success, 'message': resp.message, 'data': data}
+        # 失败响应的业务码经 data JSON 透传，提升到顶层（同 Task 侧，INT-141 F2）
+        if not resp.success and isinstance(data, dict) and isinstance(data.get('code'), int):
+            result['code'] = data['code']
+        return result
 
     @property
     def stub(self):

@@ -22,6 +22,19 @@ logger = logging.getLogger(__name__)
 _ENTITY_TYPES = frozenset({'task', 'report', 'testcase'})
 
 
+def _report_resp(stub_resp) -> dict:
+    """report 域 stub 响应统一解析为 dict（与 task/testcase 代理 _resp 同口径）。
+
+    失败响应的业务码经 data JSON 透传（proto 仅 success/message/data 三字段），
+    提升到顶层供路由映射 HTTP 状态码（INT-141 F2）。
+    """
+    data = _loads(stub_resp.data, None) if stub_resp.data else None
+    result = {'success': stub_resp.success, 'message': stub_resp.message, 'data': data}
+    if not stub_resp.success and isinstance(data, dict) and isinstance(data.get('code'), int):
+        result['code'] = data['code']
+    return result
+
+
 class FavoriteTrashService:
     """收藏 / 回收站 BFF Service：参数校验 → gRPC 分治路由 → 响应组装"""
 
@@ -37,20 +50,17 @@ class FavoriteTrashService:
             return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
         try:
             if entity_type == 'report':
-                resp = report_config_service.stub.FavoriteReport(
-                    report_pb.FavoriteReportRequest(report_id=int(entity_id)))
-                data = _loads(resp.data, {}) or {}
+                resp = _report_resp(report_config_service.stub.FavoriteReport(
+                    report_pb.FavoriteReportRequest(report_id=int(entity_id))))
+                data = resp.get('data') or {}
             elif entity_type == 'task':
                 resp = task_config_service.favorite('task', entity_id)
                 data = resp.get('data') or {}
             else:  # testcase
                 resp = testcase_config_service.favorite('testcase', entity_id)
                 data = resp.get('data') or {}
-            if isinstance(resp, dict):
-                if not resp.get('success'):
-                    return {'code': resp.get('code', 500), 'message': resp.get('message', '收藏失败')}
-            elif not resp.success:
-                return {'code': 500, 'message': resp.message or '收藏失败'}
+            if not resp.get('success'):
+                return {'code': resp.get('code', 500), 'message': resp.get('message', '收藏失败')}
             return {'data': {'entity_type': entity_type,
                              'entity_id': str(entity_id), **(data if isinstance(data, dict) else {})}}
         except ValueError:
@@ -67,11 +77,11 @@ class FavoriteTrashService:
             return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
         try:
             if entity_type == 'report':
-                resp = report_config_service.stub.UnfavoriteReport(
-                    report_pb.FavoriteReportRequest(report_id=int(entity_id)))
-                if not resp.success:
-                    return {'code': 500, 'message': resp.message or '取消收藏失败'}
-                data = _loads(resp.data, {}) or {}
+                resp = _report_resp(report_config_service.stub.UnfavoriteReport(
+                    report_pb.FavoriteReportRequest(report_id=int(entity_id))))
+                if not resp.get('success'):
+                    return {'code': resp.get('code', 500), 'message': resp.get('message', '取消收藏失败')}
+                data = resp.get('data') or {}
             elif entity_type == 'task':
                 resp = task_config_service.unfavorite('task', entity_id)
                 if not resp.get('success'):
@@ -127,12 +137,9 @@ class FavoriteTrashService:
             elif entity_type == 'testcase':
                 resp = testcase_config_service.list_deleted_testcases(page, per_page, search)
             elif entity_type == 'report':
-                stub_resp = report_config_service.stub.ListDeletedReports(
+                resp = _report_resp(report_config_service.stub.ListDeletedReports(
                     report_pb.ListDeletedReportsRequest(
-                        page=int(page), per_page=int(per_page), search=search or ''))
-                resp = {'success': stub_resp.success, 'message': stub_resp.message,
-                        'data': _loads(stub_resp.data, None) if stub_resp.data else None,
-                        'code': 500 if not stub_resp.success else 200}
+                        page=int(page), per_page=int(per_page), search=search or '')))
             else:
                 return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
             if not resp.get('success'):
@@ -154,11 +161,8 @@ class FavoriteTrashService:
             elif entity_type == 'testcase':
                 resp = testcase_config_service.restore_testcases(ids)
             elif entity_type == 'report':
-                stub_resp = report_config_service.stub.RestoreReports(
-                    report_pb.RestoreReportsRequest(report_ids=[int(i) for i in ids]))
-                resp = {'success': stub_resp.success, 'message': stub_resp.message,
-                        'data': _loads(stub_resp.data, None) if stub_resp.data else None,
-                        'code': 500 if not stub_resp.success else 200}
+                resp = _report_resp(report_config_service.stub.RestoreReports(
+                    report_pb.RestoreReportsRequest(report_ids=[int(i) for i in ids])))
             else:
                 return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
             if not resp.get('success'):
@@ -182,11 +186,8 @@ class FavoriteTrashService:
             elif entity_type == 'testcase':
                 resp = testcase_config_service.purge_testcases(ids)
             elif entity_type == 'report':
-                stub_resp = report_config_service.stub.PurgeReports(
-                    report_pb.PurgeReportsRequest(report_ids=[int(i) for i in ids]))
-                resp = {'success': stub_resp.success, 'message': stub_resp.message,
-                        'data': _loads(stub_resp.data, None) if stub_resp.data else None,
-                        'code': 500 if not stub_resp.success else 200}
+                resp = _report_resp(report_config_service.stub.PurgeReports(
+                    report_pb.PurgeReportsRequest(report_ids=[int(i) for i in ids])))
             else:
                 return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
             if not resp.get('success'):

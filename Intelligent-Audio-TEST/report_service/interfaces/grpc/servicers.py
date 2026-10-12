@@ -86,6 +86,10 @@ def _aggregate_to_dict(aggregate: Optional[ReportAggregate]) -> Optional[Dict[st
         'analysis': config.get('analysis') or '',
         'conclusion': config.get('conclusion') or config.get('analysis') or '',
         'created_at': str(aggregate.created_at) if aggregate.created_at is not None else None,
+        # INT-141：回收站展示字段
+        'deleted': bool(getattr(aggregate, 'deleted', False)),
+        'deleted_at': str(aggregate.deleted_at) if getattr(aggregate, 'deleted_at', None) else None,
+        'deleted_by_user_id': getattr(aggregate, 'deleted_by_user_id', None),
         # 详情接口输出完整摘要（all_metrics/case_categories/all_case_tags/...），
         # 列表等场景无 full_summary 时回退为扁平统计（对齐 api_gateway ReportListItem.summary）
         'summary': aggregate.full_summary if aggregate.full_summary else aggregate.flat_summary(),
@@ -489,8 +493,23 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 user_id=user_id_from_context(context),
             )
             aggregates: List[ReportAggregate] = self.query_handler.handle_list(query)
+            # INT-141：当前用户收藏标记（user_id 已随 query 从 metadata 读取）
+            fav_ids = set()
+            if query.user_id:
+                from report_service.application.favorite_trash_service import (
+                    report_favorite_trash_service,
+                )
+                fav = report_favorite_trash_service.list_favorite_ids(query.user_id)
+                if fav.get('success'):
+                    fav_ids = {str(i) for i in (fav.get('data') or {}).get('ids', [])}
+            items = []
+            for aggregate in aggregates:
+                item = _aggregate_to_dict(aggregate)
+                if item is not None:
+                    item['is_favorite'] = str(item.get('id')) in fav_ids
+                    items.append(item)
             return self._resp(True, 'ok', {
-                'items': [_aggregate_to_dict(a) for a in aggregates],
+                'items': items,
                 'page': query.page,
                 'page_size': query.page_size,
             })

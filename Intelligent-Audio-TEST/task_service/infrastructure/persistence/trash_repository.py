@@ -50,7 +50,8 @@ class TrashRepository:
             return 0
         session = get_db_session()
         count = session.execute(
-            text("UPDATE test_tasks SET deleted = FALSE, deleted_at = NULL "
+            text("UPDATE test_tasks SET deleted = FALSE, deleted_at = NULL, "
+                 "deleted_by_user_id = NULL "
                  "WHERE id IN :ids AND deleted = TRUE").bindparams(
                 bindparam('ids', expanding=True)),
             {"ids": [int(i) for i in task_ids]}).rowcount
@@ -124,7 +125,8 @@ class TrashRepository:
             return 0
         session = get_db_session()
         count = session.execute(
-            text("UPDATE test_cases SET deleted = FALSE, deleted_at = NULL, updated_at = :now "
+            text("UPDATE test_cases SET deleted = FALSE, deleted_at = NULL, "
+                 "deleted_by_user_id = NULL, updated_at = :now "
                  "WHERE id IN :ids AND deleted = TRUE").bindparams(
                 bindparam('ids', expanding=True)),
             {"ids": [str(i) for i in case_ids], 'now': utc8now()}).rowcount

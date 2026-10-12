@@ -101,6 +101,11 @@ class TaskQueryService:
                     tags=item.get('tags', []),
                     created_at=item.get('created_at'),
                     updated_at=item.get('updated_at'),
+                    # INT-141：收藏标记 / 回收站字段（read model 已计算，此处透传）
+                    is_favorite=item.get('is_favorite'),
+                    deleted=item.get('deleted'),
+                    deleted_at=item.get('deleted_at'),
+                    deleted_by_user_id=item.get('deleted_by_user_id'),
                     reports=TaskReportsData(
                         count=report_info.get('count', 0),
                         reports=[

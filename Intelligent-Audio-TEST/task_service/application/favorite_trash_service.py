@@ -55,10 +55,10 @@ class FavoriteTrashService:
                     'data': {'entity_type': entity_type, 'entity_id': str(entity_id),
                              'removed': result.get('removed', 0)}}
         except ValueError as e:
-            return {'success': False, 'message': str(e), 'data': None, 'code': 400}
+            return {'success': False, 'message': str(e), 'data': {'code': 400}, 'code': 400}
         except Exception as e:
             logger.error(f"取消收藏失败: {e}", exc_info=True)
-            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+            return {'success': False, 'message': str(e), 'data': {'code': 500}, 'code': 500}
 
     def list_favorite_ids(self, user_id, entity_type: str | None = None) -> dict:
         """当前用户收藏的实体 ID 列表（字符串化）。"""
@@ -87,7 +87,7 @@ class FavoriteTrashService:
         """恢复任务（单个+批量统一入口）。"""
         try:
             if not task_ids:
-                return {'success': False, 'message': '缺少 task_ids', 'data': None, 'code': 400}
+                return {'success': False, 'message': '缺少 task_ids', 'data': {'code': 400}, 'code': 400}
             restored = trash_repository.restore_tasks(task_ids)
             self._refresh_stats_cache()
             return {'success': True, 'message': f'成功恢复 {restored} 个任务',
@@ -100,7 +100,7 @@ class FavoriteTrashService:
         """彻底删除任务（物理删除；权限：admin 或 owner，INT-141）。"""
         try:
             if not task_ids:
-                return {'success': False, 'message': '缺少 task_ids', 'data': None, 'code': 400}
+                return {'success': False, 'message': '缺少 task_ids', 'data': {'code': 400}, 'code': 400}
             from shared.infrastructure.user_context import (
                 get_current_user_id, get_current_user_is_admin,
             )
@@ -131,7 +131,7 @@ class FavoriteTrashService:
         """恢复用例（单个+批量统一入口）。"""
         try:
             if not case_ids:
-                return {'success': False, 'message': '缺少 case_ids', 'data': None, 'code': 400}
+                return {'success': False, 'message': '缺少 case_ids', 'data': {'code': 400}, 'code': 400}
             restored = trash_repository.restore_testcases(case_ids)
             self._refresh_stats_cache()
             return {'success': True, 'message': f'成功恢复 {restored} 个用例',
@@ -144,7 +144,7 @@ class FavoriteTrashService:
         """彻底删除用例（物理删除；权限：admin 或 owner，INT-141）。"""
         try:
             if not case_ids:
-                return {'success': False, 'message': '缺少 case_ids', 'data': None, 'code': 400}
+                return {'success': False, 'message': '缺少 case_ids', 'data': {'code': 400}, 'code': 400}
             from shared.infrastructure.user_context import (
                 get_current_user_id, get_current_user_is_admin,
             )
