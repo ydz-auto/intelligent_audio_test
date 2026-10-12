@@ -159,6 +159,11 @@ class ReportListItem(APIModel):
     status: str = Field(...)
     created_at: str = Field(...)
     updated_at: Optional[str] = Field(None)
+    # INT-141：收藏标记 / 回收站字段（INT-219：report 侧补齐，口径与 TaskListItem 一致）
+    is_favorite: Optional[bool] = Field(None)
+    deleted: Optional[bool] = Field(None)
+    deleted_at: Optional[str] = Field(None)
+    deleted_by_user_id: Optional[int] = Field(None)
 
 
 class ReportListData(APIModel):
@@ -202,6 +207,10 @@ class ReportDetailData(APIModel):
     analysis: Optional[str] = Field(None)
     created_at: str = Field(...)
     updated_at: Optional[str] = Field(None)
+    # INT-219：回收站字段（详情序列化 _aggregate_to_dict 已输出，schema 口径对齐）
+    deleted: Optional[bool] = Field(None)
+    deleted_at: Optional[str] = Field(None)
+    deleted_by_user_id: Optional[int] = Field(None)
 
 
 class ReportIdData(APIModel):
