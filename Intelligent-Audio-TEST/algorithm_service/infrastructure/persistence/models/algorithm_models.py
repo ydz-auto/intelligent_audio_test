@@ -16,6 +16,7 @@ shared/models/algorithm_models.py 改为从这里 re-export。
 - 跨域查询 Dimension 改通过 evaluation_service.EvaluationConfigService.GetDimensionByIds gRPC 调用
 - 保留 AlgorithmDefinition 的同域 relationship（device_params/api_params/mappings/dimension_relations）
 """
+import json
 from datetime import datetime
 
 from shared.models.database import Base
@@ -24,6 +25,21 @@ from sqlalchemy import (
     DateTime, JSON, ForeignKey, Index, text,
 )
 from sqlalchemy.orm import relationship
+
+
+def parse_json_or_raw(value):
+    """JSON 文本字段宽松读取（INT-222 统一语义）。
+
+    - 空值（None / ''）返回 None
+    - 合法 JSON 形态（'{"k":1}' / '[1,2]' / '42'）解析为对象
+    - 解析失败（非 JSON 纯文本如 'zh'、截断 JSON）返回原始字符串，不吞成 None
+    """
+    if not value:
+        return None
+    try:
+        return json.loads(value)
+    except (ValueError, TypeError):
+        return value
 
 
 class AlgorithmGroup(Base):
@@ -109,7 +125,7 @@ class AlgorithmDeviceParam(Base):
     param_type = Column(String(30), nullable=False, comment='参数类型：text, audio_stream, audio_file, text_file, rttm, stm, json')
     direction = Column(String(10), default='input', comment='方向：input, output')
     required = Column(Boolean, default=False, comment='是否必填')
-    default_value = Column(Text, comment='默认值（JSON格式）')
+    default_value = Column(Text, comment='默认值（JSON 或纯文本）')
     validation_rules = Column(Text, comment='验证规则（JSON格式）')
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
@@ -130,21 +146,12 @@ class AlgorithmDeviceParam(Base):
             'param_type': self.param_type,
             'direction': self.direction,
             'required': self.required,
-            'default_value': self._parse_json(self.default_value),
-            'validation': self._parse_json(self.validation_rules),
+            'default_value': parse_json_or_raw(self.default_value),
+            'validation': parse_json_or_raw(self.validation_rules),
             'help_text': self.help_text,
             'ui_order': self.ui_order,
             'hidden': self.hidden
         }
-
-    def _parse_json(self, json_str):
-        if not json_str:
-            return None
-        try:
-            import json
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            return None
 
 
 class AlgorithmApiParam(Base):
@@ -162,7 +169,7 @@ class AlgorithmApiParam(Base):
     param_type = Column(String(30), nullable=False, comment='参数类型：text, audio_stream, audio_file, text_file, rttm, stm, json')
     direction = Column(String(10), default='input', comment='方向：input, output')
     required = Column(Boolean, default=False, comment='是否必填')
-    default_value = Column(Text, comment='默认值（JSON格式）')
+    default_value = Column(Text, comment='默认值（JSON 或纯文本）')
     validation_rules = Column(Text, comment='验证规则（JSON格式）')
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
@@ -183,21 +190,12 @@ class AlgorithmApiParam(Base):
             'param_type': self.param_type,
             'direction': self.direction,
             'required': self.required,
-            'default_value': self._parse_json(self.default_value),
-            'validation': self._parse_json(self.validation_rules),
+            'default_value': parse_json_or_raw(self.default_value),
+            'validation': parse_json_or_raw(self.validation_rules),
             'help_text': self.help_text,
             'ui_order': self.ui_order,
             'hidden': self.hidden
         }
-
-    def _parse_json(self, json_str):
-        if not json_str:
-            return None
-        try:
-            import json
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            return None
 
 
 class AlgorithmReferenceParam(Base):
@@ -257,7 +255,7 @@ class EvaluationDimensionParam(Base):
     output_role = Column(String(10), nullable=True, comment='输出字段角色（output专用）：main(主结果), aux(辅助字段)')
     visible_in_report = Column(Boolean, default=True, comment='是否在报告中显示该字段')
     required = Column(Boolean, default=True, comment='是否必填')
-    default_value = Column(Text, comment='默认值（JSON格式）')
+    default_value = Column(Text, comment='默认值（JSON 或纯文本）')
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
     pass_threshold = Column(Float, nullable=True, comment='评估通过阈值（agg_role=pass_le/pass_ge/pass_eq 时使用）')
@@ -282,20 +280,11 @@ class EvaluationDimensionParam(Base):
             'output_role': self.output_role,
             'visible_in_report': self.visible_in_report if self.visible_in_report is not None else True,
             'required': self.required,
-            'default_value': self._parse_json(self.default_value),
+            'default_value': parse_json_or_raw(self.default_value),
             'help_text': self.help_text,
             'ui_order': self.ui_order,
             'pass_threshold': self.pass_threshold
         }
-
-    def _parse_json(self, json_str):
-        if not json_str:
-            return None
-        try:
-            import json
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            return None
 
 
 class ParamMapping(Base):
@@ -376,7 +365,7 @@ class CaseAlgorithmParam(Base):
     label = Column(String(100), comment='字段显示名称')
     param_type = Column(String(20), nullable=False, comment='参数类型：text, number, textarea, slider, switch, audio_select, device_select, json')
     required = Column(Boolean, default=False, comment='是否必填')
-    default_value = Column(Text, comment='默认值（JSON格式）')
+    default_value = Column(Text, comment='默认值（JSON 或纯文本）')
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
@@ -402,7 +391,7 @@ class CaseAlgorithmParam(Base):
             'label': self.label,
             'param_type': self.param_type,
             'required': self.required,
-            'default_value': self._parse_json(self.default_value),
+            'default_value': parse_json_or_raw(self.default_value),
             'help_text': self.help_text,
             'ui_order': self.ui_order,
             'hidden': self.hidden,
@@ -414,12 +403,3 @@ class CaseAlgorithmParam(Base):
             'annotation_code': self.annotation_code,
             'field_path': self.field_path
         }
-
-    def _parse_json(self, json_str):
-        if not json_str:
-            return None
-        try:
-            import json
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            return None

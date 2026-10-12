@@ -2,7 +2,8 @@
 """算法仓储 PO ↔ Entity 转换层。
 
 从 algorithm_repository.py 拆分而来（原文件过大，按职责拆分为多个实现模块）：
-- _parse_json_value / _status_from_po / _status_to_po_str: 基础转换辅助
+- _status_from_po / _status_to_po_str: 基础转换辅助
+  （JSON 文本字段宽松读取统一走 models.parse_json_or_raw，INT-222）
 - _group_po_to_entity / _definition_po_to_entity: PO → Entity 聚合根转换
 - _param_po_to_entity: 参数 PO → 参数实体转换（通过 param_kind 区分类别）
 - _apply_group_to_po / _apply_definition_to_po: Entity → PO 可写字段写回
@@ -11,7 +12,6 @@
 """
 from __future__ import annotations
 
-import json
 from datetime import datetime
 from typing import Optional
 
@@ -20,6 +20,9 @@ from algorithm_service.infrastructure.persistence.models import (
     AlgorithmDefinition as AlgorithmDefinitionPO,
     AlgorithmApiParam as AlgorithmApiParamPO,
     AlgorithmReferenceParam as AlgorithmReferenceParamPO,
+)
+from algorithm_service.infrastructure.persistence.models.algorithm_models import (
+    parse_json_or_raw,
 )
 from algorithm_service.domain.entities.algorithm_group import AlgorithmGroupAggregate
 from algorithm_service.domain.entities.algorithm_definition import (
@@ -33,16 +36,6 @@ from algorithm_service.domain.entities.algorithm_param import (
 
 
 # ========== 基础转换辅助 ==========
-
-def _parse_json_value(raw):
-    """解析 PO 中 JSON 文本字段为 Python 对象（空值返回 None）。"""
-    if not raw:
-        return None
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return None
-
 
 def _status_from_po(po_status: Optional[str]) -> AlgorithmStatus:
     """PO status 字符串 → AlgorithmStatus 枚举。
@@ -102,7 +95,7 @@ def _param_po_to_entity(po, definition_id: int = 0) -> AlgorithmParamEntity:
         param_name = po.param_code
         is_required = po.required or False
         sort_order = po.ui_order or 0
-        default_value = _parse_json_value(po.default_value)
+        default_value = parse_json_or_raw(po.default_value)
     elif isinstance(po, AlgorithmReferenceParamPO):
         # 参考参数（字段结构与 device/api 不同）
         param_kind = 'reference'
@@ -116,7 +109,7 @@ def _param_po_to_entity(po, definition_id: int = 0) -> AlgorithmParamEntity:
         param_name = po.param_code
         is_required = po.required or False
         sort_order = po.ui_order or 0
-        default_value = _parse_json_value(po.default_value)
+        default_value = parse_json_or_raw(po.default_value)
 
     return AlgorithmParamEntity(
         id=po.id,
