@@ -253,15 +253,18 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             return e2e_pb.GetTaskEventsResponse(success=False, message=str(e), data="")
 
     def DriverScan(self, request, context=None):
-        """扫描设备"""
+        """扫描设备
+
+        扫描/在线检测语义一律走基础驱动（get_driver_by_system / scan_devices），
+        不解析 keywords 专用驱动（INT-172）；request.keywords 字段保留兼容但忽略。
+        """
         try:
             system = request.system
-            keywords = request.keywords or None
             if system:
-                driver = self.factory.get_driver_for_device(system, keywords=keywords)
+                driver = self.factory.get_driver_by_system(system)
                 result = driver.scan() if driver else []
             else:
-                # system 为空时扫描所有已注册驱动
+                # system 为空时扫描所有基础驱动
                 result = self.factory.scan_devices()
             return e2e_pb.DriverScanResponse(success=True, message="ok", data=_dumps(result))
         except Exception as e:
