@@ -128,7 +128,7 @@ class _TaskDataProxy:
         return _grpc_call(_call, default_return=None, error_msg_prefix='GetTestCaseGroupByName gRPC 失败')
 
     def create_testcase_group(self, name, description='', algorithm_type='', group_id=None):
-        """通过 gRPC 创建 TestCaseGroup"""
+        """通过 gRPC 创建 TestCaseGroup（写操作失败时抛出，禁止吞错假成功）"""
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.CreateTestCaseGroup(task_pb.CreateTestCaseGroupRequest(
@@ -140,10 +140,11 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"CreateTestCaseGroup gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='CreateTestCaseGroup gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='CreateTestCaseGroup gRPC 失败',
+                          reraise=True)
 
     def update_testcase_group(self, group_id, name='', description='', algorithm_type=''):
-        """通过 gRPC 更新 TestCaseGroup"""
+        """通过 gRPC 更新 TestCaseGroup（写操作失败时抛出，禁止吞错假成功）"""
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.UpdateTestCaseGroup(task_pb.UpdateTestCaseGroupRequest(
@@ -155,7 +156,8 @@ class _TaskDataProxy:
             if not resp.success:
                 raise RuntimeError(f"UpdateTestCaseGroup gRPC 失败: {resp.message}")
             return json.loads(resp.data) if resp.data else {}
-        return _grpc_call(_call, default_return={}, error_msg_prefix='UpdateTestCaseGroup gRPC 失败')
+        return _grpc_call(_call, default_return={}, error_msg_prefix='UpdateTestCaseGroup gRPC 失败',
+                          reraise=True)
 
     def delete_testcase_group(self, group_id, cascade=False):
         """通过 gRPC 软删除 TestCaseGroup（写操作失败时抛出，禁止吞错假成功）"""

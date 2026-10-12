@@ -125,7 +125,9 @@ class GroupService:
                 algorithm_type=validated_data.algorithm_type or '',
                 group_id=group_id,
             )
-            return success_response(StringIdData(id=new_group.get('id', group_id)), "分组创建成功", 0, 201)
+            if not new_group or not new_group.get('id'):
+                return error_response("创建分组失败：服务未确认创建结果")
+            return success_response(StringIdData(id=new_group['id']), "分组创建成功", 0, 201)
         except Exception as e:
             return error_response(str(e))
 
@@ -147,7 +149,9 @@ class GroupService:
                 description=validated_data.description or '',
                 algorithm_type=validated_data.algorithm_type or '',
             )
-            return success_response(StringIdData(id=updated.get('id', group_id)), "分组信息更新成功")
+            if not updated or not updated.get('id'):
+                return error_response("更新分组失败：服务未确认更新结果")
+            return success_response(StringIdData(id=updated['id']), "分组信息更新成功")
         except Exception as e:
             return error_response(str(e))
 
