@@ -38,7 +38,6 @@ export function createEvalDimensionForm(state: EvalDimensionState) {
       { value: 'manual', label: '人工评估' }
     ], group: '基本信息' },
     { key: 'categoryId', label: '所属分类', type: 'select', required: false, options: [
-      { value: '', label: '请选择分类' },
       { value: NEW_CATEGORY_FLAG, label: '+ 新建分类' },
       ...categories.value.map(c => ({ value: c.id, label: c.name }))
     ], group: '基本信息' },

@@ -2,6 +2,7 @@ import { useModalControl } from '../modal/useModal';
 import { MODAL_TYPES } from '../modal/constants';
 import { evaluationPort } from './evaluationPort';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
+import type { UseEvaluationCategoriesReturn } from './useEvaluationCategories';
 
 /**
  * 评估模态框管理组合式函数
@@ -9,24 +10,29 @@ import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
  * 职责：
  * - 打开新增维度模态框（openAddModal）
  * - 打开编辑维度模态框（openEditModal）
+ * - 打开新增分类模态框（openAddCategoryModal）
  * - 打开 API 设置 / 规则编辑器模态框（openAPISettingsModal / openRuleEditorModal）
  * - 保存 API 设置（saveAPISettings）
  * - 关闭模态框（closeModal）
  *
- * 依赖维度模块：dimensions、evaluationFields、dimensionTemplate、saveDimension、apiSettings、loading
+ * 依赖维度模块：dimensions、categories、evaluationFields、dimensionTemplate、saveDimension、apiSettings、loading
+ * 依赖分类模块：saveCategory
  */
 
-export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsReturn) {
+export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsReturn, categoriesModule: UseEvaluationCategoriesReturn) {
   const modalManager = useModalControl();
 
   const {
     loading,
     dimensions,
+    categories,
     dimensionTemplate,
     evaluationFields,
     saveDimension,
     apiSettings,
   } = dimensionsModule;
+
+  const { saveCategory } = categoriesModule;
 
   // ========== 编辑维度模态框 ==========
   async function openEditModal(id: number | string) {
@@ -193,8 +199,8 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
       name: '',
       description: '',
       type: 'auto',
-      // 预填参数：分组视图「添加维度」带入分类，主维度行「添加子维度」带入父维度
-      categoryId: categoryId ?? undefined,
+      // 预填参数：分组视图「添加维度」带入分类，主维度行「添加子维度」带入父维度；未预填时默认选中第一个分类
+      categoryId: categoryId ?? (categories.value[0]?.id ?? undefined),
       dimensionType: parentDimensionId ? 'sub' : 'main',
       parentDimensionId: parentDimensionId || '',
       apiUrl: '',
@@ -251,6 +257,27 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
         console.log('[Evaluation] Extracted payload:', JSON.stringify(payload, null, 2));
         const saveType = result.mode === 'create' ? 'add' : result.mode;
         await saveDimension(payload, saveType);
+      }
+    });
+  }
+
+  // ========== 新增分类模态框 ==========
+  const categoryFields = [
+    { key: 'name', label: '分类名称', type: 'text', required: true, placeholder: '请输入分类名称', group: '基本信息' },
+    { key: 'description', label: '描述', type: 'textarea', rows: 2, placeholder: '请输入分类描述', group: '基本信息' },
+    { key: 'icon', label: '图标', type: 'text', placeholder: '如 fas fa-folder', defaultValue: 'fas fa-folder', group: '基本信息' }
+  ];
+
+  function openAddCategoryModal() {
+    modalManager.open(MODAL_TYPES.CRUD_FORM, {
+      mode: 'add',
+      entityName: '评估分类',
+      width: '600px',
+      fields: categoryFields,
+      formData: { name: '', description: '', icon: 'fas fa-folder' },
+      onSave: async (result: any) => {
+        const payload = result.data || result;
+        await saveCategory(payload, 'add');
       }
     });
   }
@@ -316,6 +343,7 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
   return {
     openEditModal,
     openAddModal,
+    openAddCategoryModal,
     openAPISettingsModal,
     openRuleEditorModal,
     saveAPISettings,

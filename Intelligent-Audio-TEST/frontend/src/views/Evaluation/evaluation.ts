@@ -35,8 +35,8 @@ export function useEvaluation() {
   // 4. 导入导出模块（依赖维度模块的 loading/fetchData）
   const importModule = useEvaluationImport(dimensionsModule);
 
-  // 5. 模态框模块（依赖维度模块的 dimensions/evaluationFields/dimensionTemplate/saveDimension/apiSettings/loading）
-  const modalsModule = useEvaluationModals(dimensionsModule);
+  // 5. 模态框模块（依赖维度模块的 dimensions/categories/evaluationFields/dimensionTemplate/saveDimension/apiSettings/loading，分类模块的 saveCategory）
+  const modalsModule = useEvaluationModals(dimensionsModule, categoriesModule);
 
   // ========== 协调逻辑 ==========
 
@@ -127,6 +127,7 @@ export function useEvaluation() {
     // 模态框操作（来自模态框模块）
     openEditModal: modalsModule.openEditModal,
     openAddModal: modalsModule.openAddModal,
+    openAddCategoryModal: modalsModule.openAddCategoryModal,
     openAPISettingsModal: modalsModule.openAPISettingsModal,
     openRuleEditorModal: modalsModule.openRuleEditorModal,
     saveAPISettings: modalsModule.saveAPISettings,
