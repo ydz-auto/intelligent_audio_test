@@ -403,6 +403,101 @@ class TestEncryptionKeyErrorMasking:
             mp.undo()
 
 
+# ---- INT-186：注册缺密文字段 400 文案按实际缺失字段区分 ----
+
+class TestRegisterErrorMessages:
+    """加密开启时注册缺密文字段的错误语义（INT-186）。
+
+    旧行为回「请输入用户名、邮箱和密码」，username/email/password 实际
+    都已填写，缺的是 RSA 密文字段，排障误导；修复后逐字段点名密文缺失，
+    明文模式原有文案不回退（INT-156：明文提交仍拒绝，无明文回退）。
+    夹具用户名带模块级 run tag，模块 teardown 统一清理（不落共享库）。
+    """
+
+    def test_missing_ciphertext_names_fields_not_basic(self, client):
+        """加密开启 + 仅明文 password（无密文字段）→ 400 密文缺失文案，
+        指向 password_encrypted/encryption_key_id，不再误导用户名/邮箱/密码。"""
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_MISSING_CIPHERTEXT,
+        )
+        resp = client.post('/api/v1/auth/register', json={
+            'username': f'int186_enc_{_RUN}',
+            'email': f'int186_enc_{_RUN}@example.com',
+            'password': 'Secret-186!'})
+        assert resp.status_code == 400, resp.text
+        body = resp.json()
+        assert body['message'] == REGISTER_ERR_MISSING_CIPHERTEXT.format(
+            fields='password_encrypted、encryption_key_id')
+        assert body['code'] == ErrorCode.INVALID_PARAMS
+        assert '请输入用户名' not in body['message']
+
+    def test_missing_key_id_only_names_key_id(self, client):
+        """仅缺 encryption_key_id（密文已在）→ 文案逐字段只点名 key id。"""
+        _, public_pem = _fetch_key(client)
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_MISSING_CIPHERTEXT,
+        )
+        resp = client.post('/api/v1/auth/register', json={
+            'username': f'int186_kid_{_RUN}',
+            'password_encrypted': _encrypt_password(public_pem,
+                                                    'Secret-186!')})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_MISSING_CIPHERTEXT.format(
+            fields='encryption_key_id')
+
+    def test_missing_ciphertext_only_names_ciphertext(self, client):
+        """仅缺 password_encrypted（key id 已在）→ 文案逐字段只点名密文。"""
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_MISSING_CIPHERTEXT,
+        )
+        resp = client.post('/api/v1/auth/register', json={
+            'username': f'int186_ct_{_RUN}',
+            'encryption_key_id': 'x' * 32})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_MISSING_CIPHERTEXT.format(
+            fields='password_encrypted')
+
+    def test_missing_username_with_valid_ciphertext(self, client):
+        """加密开启 + 缺 username（密文合法）→ 基础必填文案，非密文文案。"""
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_MISSING_BASIC_FIELDS,
+        )
+        kid, public_pem = _fetch_key(client)
+        resp = client.post('/api/v1/auth/register', json={
+            'password_encrypted': _encrypt_password(public_pem, 'Secret-186!'),
+            'encryption_key_id': kid})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_MISSING_BASIC_FIELDS
+
+    def test_plaintext_mode_missing_fields_keeps_original_message(self, client):
+        """明文模式（开关关闭）缺字段 → 原有文案不回退（验收 AC3）。"""
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_MISSING_BASIC_FIELDS,
+        )
+        from api_gateway.config.config import Config
+        mp = pytest.MonkeyPatch()
+        mp.setattr(Config, 'AUTH_PASSWORD_ENCRYPTION_ENABLED', False)
+        try:
+            resp = client.post('/api/v1/auth/register',
+                               json={'username': f'int186_plain_{_RUN}'})
+            assert resp.status_code == 400, resp.text
+            assert resp.json()['message'] == REGISTER_ERR_MISSING_BASIC_FIELDS
+        finally:
+            mp.undo()
+
+    def test_plaintext_password_still_rejected_when_encryption_on(self, client):
+        """INT-156 语义不回退：加密开启时明文 password 不被接受（AC4）。"""
+        resp = client.post('/api/v1/auth/register', json={
+            'username': f'int156_plain_{_RUN}',
+            'password': 'Secret-186!'})
+        assert resp.status_code == 400, resp.text
+        assert 'password_encrypted' in resp.json()['message']
+
+    def test_encrypted_register_happy_path_unchanged(self, client):
+        """修复不动注册流程：密文齐全仍 201 注册成功（对照基线）。"""
+        _register_encrypted(client, f'int186_ok_{_RUN}', 'Secret-186!')
+
+
 # ---- AC2：第三方账号绑定 ----
 
 @pytest.fixture(scope='module')

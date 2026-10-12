@@ -24,6 +24,14 @@ logger = logging.getLogger(__name__)
 # 注册默认角色（按角色名解析，角色由 seed_rbac 管理）
 _REGISTER_DEFAULT_ROLE = 'guest'
 
+# 注册参数缺失文案（INT-186 单一来源：按实际缺失字段区分，替换对缺
+# 密文场景误导的「请输入用户名、邮箱和密码」；测试引用同源断言）
+REGISTER_ERR_MISSING_CIPHERTEXT = (
+    '密码需加密提交：缺少加密后的密码密文字段（{fields}）；'
+    '请先经 /auth/login/encryption-key 获取公钥，对密码 RSA 加密后提交'
+)
+REGISTER_ERR_MISSING_BASIC_FIELDS = 'username 与 password 为必填项'
+
 
 class UserManagementService:
     """用户管理服务：注册 / 查询 / 建改删 / 角色分配 / 附加权限授予撤销"""
@@ -38,6 +46,8 @@ class UserManagementService:
         关闭后端点 403；任意 AUTH_MODE 可用（prod 密码登录同步放开）。
         INT-147：密码 RSA 加密传输对齐旧库（password_encrypted +
         encryption_key_id；解密失败 400「注册参数无效」）。
+        INT-186：缺密文字段 400 文案按实际缺失字段区分（指向密码密文
+        缺失，不再误导 username/email/password）；密文缺失逐字段点名。
         """
         from api_gateway.config.config import Config
         if not Config.AUTH_REGISTRATION_ENABLED:
@@ -52,10 +62,15 @@ class UserManagementService:
             )
             password_encrypted = body.get('password_encrypted') or ''
             encryption_key_id = body.get('encryption_key_id') or ''
-            if not password_encrypted or not encryption_key_id:
-                return error_response('请输入用户名、邮箱和密码',
-                                      code=ErrorCode.INVALID_PARAMS,
-                                      http_code=400)
+            missing_cipher = [name for name, value in (
+                ('password_encrypted', password_encrypted),
+                ('encryption_key_id', encryption_key_id),
+            ) if not value]
+            if missing_cipher:
+                return error_response(
+                    REGISTER_ERR_MISSING_CIPHERTEXT.format(
+                        fields='、'.join(missing_cipher)),
+                    code=ErrorCode.INVALID_PARAMS, http_code=400)
             try:
                 password = PasswordEncryptionService.decrypt_password(
                     password_encrypted, encryption_key_id,
@@ -65,7 +80,7 @@ class UserManagementService:
                                       code=ErrorCode.INVALID_PARAMS,
                                       http_code=400)
         if not username or not password:
-            return error_response('username 与 password 为必填项',
+            return error_response(REGISTER_ERR_MISSING_BASIC_FIELDS,
                                   code=ErrorCode.INVALID_PARAMS, http_code=400)
         data, fail = call_auth_rpc('CreateUser', auth_pb.CreateUserRequest(
             username=username,
