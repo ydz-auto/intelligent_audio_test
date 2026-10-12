@@ -41,10 +41,12 @@ def test_rejection_judge_returns_interaction_text(monkeypatch):
     )
 
     result = rj_mod.evaluate_rejection_judge(ai_wav='ai.wav', user_wav='user.wav',
-                                             model='test-model')
+                                             model='test-model', timing='静默')
     assert result['message'] == 'OK'
-    # 拒识五分类（回应/恢复/不确定询问/无关回复/静默）无「未知」标签，命中静默 → behavior_silent
     assert result['behavior_silent'] == 1
+    assert result['timing'] == '静默'
+    assert result['rate'] == 0
+    assert result['rate_success'] == 1
     assert result['interaction_text'] == (
         'query [0:01; 0:02]今天天气\nanswer [0:03; 0:04]明天小雨\n'
     )
