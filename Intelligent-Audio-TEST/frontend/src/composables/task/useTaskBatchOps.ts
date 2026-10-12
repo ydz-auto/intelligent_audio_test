@@ -1,6 +1,7 @@
 import { type Ref } from 'vue';
 import { tasksPort } from './tasksPort';
-import { exportReport as exportReportApi, batchCompare as batchCompareApi } from '../report/useReportComparison';
+import { dataTransferPort } from './dataTransferPort';
+import { batchCompare as batchCompareApi } from '../report/useReportComparison';
 import type { Task } from '../../domain';
 import { TaskStatus } from '../../domain/enums';
 import { useModalControl, MODAL_TYPES } from '../modal/useModal';
@@ -53,45 +54,34 @@ export function useTaskBatchOps(
       const result = await modalControl.open(MODAL_TYPES.IMPORT_EXPORT, {
         mode: 'export',
         title: '批量导出任务',
-        supportedFormats: ['excel', 'json'],
-        exportFields: [
-          { key: 'id', label: '任务ID', defaultChecked: true },
-          { key: 'name', label: '任务名称', defaultChecked: true },
-          { key: 'description', label: '任务描述', defaultChecked: false },
-          { key: 'type', label: '任务类型', defaultChecked: true },
-          { key: 'status', label: '任务状态', defaultChecked: true },
-          { key: 'createdAt', label: '创建时间', defaultChecked: true },
-          { key: 'tags', label: '任务标签', defaultChecked: false },
-          { key: 'deviceCount', label: '设备数量', defaultChecked: true },
-          { key: 'caseCount', label: '用例数量', defaultChecked: true }
-        ],
+        supportedFormats: ['zip'],
         advancedOptions: [
           {
-            key: 'includeDetails',
-            label: '包含详细信息',
+            key: 'includeRefParams',
+            label: '包含参考参数文件',
             type: 'boolean',
-            defaultValue: false
+            defaultValue: true
           },
           {
-            key: 'format',
-            label: '导出格式',
-            type: 'select',
-            defaultValue: 'excel',
-            options: [
-              { value: 'excel', label: 'Excel' },
-              { value: 'json', label: 'JSON' }
-            ]
+            key: 'includeAudios',
+            label: '包含音频文件（体积较大）',
+            type: 'boolean',
+            defaultValue: false
           }
         ]
       });
 
       if (result) {
-        const format = result.config.format || 'excel';
-        const blob = await exportReportApi(ids[0], format);
-        downloadBlob(blob, `tasks_export_${new Date().getTime()}.${format === 'excel' ? 'xlsx' : format}`);
+        const blob = await dataTransferPort.exportTasks(ids, {
+          includeRefParams: !!result.config.includeRefParams,
+          includeAudios: !!result.config.includeAudios
+        });
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+        downloadBlob(blob, `task_export_${stamp}.zip`);
       }
     } catch (error) {
       console.error('Failed to batch export tasks:', error);
+      notification.error('批量导出任务失败，请稍后重试');
     }
   };
 
