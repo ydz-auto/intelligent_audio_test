@@ -4,6 +4,8 @@
 P0-1 DDD 改造：从 domain/services/ 移至 infrastructure/。
 线程池提交、端点 Worker 调度是基础设施逻辑，不属于 Domain 层。
 """
+import json
+
 from evaluation_service.domain.services.endpoint_helpers import get_endpoint_url
 from shared.utils.round_data_utils import normalize_round_output
 
@@ -44,6 +46,27 @@ class TaskDispatcherMixin:
                 test_case_id=test_case_id
             )
             self._post_evaluate_updates(task_id, test_case_id)
+
+        # 组间自动合并：无显式分组键的多个 parent 分组，若满足
+        # 同 endpoint + 同 category_id + 组内所有维度的
+        # (task_type_code, body_template) 签名完全一致，
+        # 则并入一组只发一次请求（如拒识族 3 主维度同族同 task_type 同 body
+        # → 一次判定，三率同源一致）。
+        # 组内只要含 task_type 不同的维度（如 turn_eval 主子异构、靠 sub_tasks 工作）
+        # 或 body_template 不一致，则保持原 parent 分组不合并。
+        group_count_before = len(endpoint_groups)
+        endpoint_groups = self._merge_dimension_groups(endpoint_groups)
+        if len(endpoint_groups) < group_count_before:
+            merged_names = [{'endpoint': group_key[0], 'dims': [item[0]['name'] for item in items]}
+                            for group_key, items in endpoint_groups.items()]
+            self._log(
+                level='INFO',
+                content=f"维度组间自动合并: {group_count_before} 组 → {len(endpoint_groups)} 组"
+                        f"（同 endpoint + 同 category + 同 task_type/body 签名合并为一次请求一次判定）"
+                        f": {merged_names}",
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
 
         self._submit_to_workers(
             endpoint_groups, result_id, task_id, test_case_id, algorithm_result,
@@ -102,12 +125,39 @@ class TaskDispatcherMixin:
 
         return endpoint_groups, no_endpoint_groups
 
+    @staticmethod
+    def _merge_dimension_groups(endpoint_groups):
+        """组间自动合并：合并键 (endpoint, (task_type_code, body_template) 签名集, category_id 集)
+        相同的 parent 分组并为一组。
+
+        - 签名取每个维度的 parent_task_type_code（无则 task_type_code）与
+          api_settings.body_template（dict 归一化为排序 JSON 串比较）；
+        - 组内含不同 task_type（主子异构族，靠 sub_tasks 工作）或 body_template
+          不一致 → 签名集不同，保持原分组不合并；
+        - endpoint 或 category_id 不同 → 合并键不同，不合并。
+        """
+        merged_groups = {}
+        for group_key, group_items in endpoint_groups.items():
+            endpoint_key = group_key[0]
+            sigs = set()
+            cats = set()
+            for dim_data, _ in group_items:
+                tc = dim_data.get('parent_task_type_code') or dim_data.get('task_type_code')
+                body = (dim_data.get('api_settings') or {}).get('body_template')
+                body_key = json.dumps(body, sort_keys=True, ensure_ascii=False) if isinstance(body, dict) else str(body)
+                sigs.add((tc, body_key))
+                cats.add(dim_data.get('category_id'))
+            merge_key = (endpoint_key, frozenset(sigs), frozenset(cats))
+            merged_groups.setdefault(merge_key, []).extend(group_items)
+        return merged_groups
+
     def _submit_to_workers(self, endpoint_groups, result_id, task_id, test_case_id,
                             algorithm_result, algorithm_type, test_type, round_number,
                             field_mapper, ref_texts, rounds_list, flat_eval_fields):
         """遍历端点分组，为每组创建 worker 并提交评估任务"""
         for group_key, group_items in endpoint_groups.items():
-            endpoint_url, _ = group_key
+            # 合并后键为 (endpoint, 签名集, category 集) 三元组，endpoint 恒在首位
+            endpoint_url = group_key[0]
             representative_dim_data = group_items[0][0]
             # task_type 用主维度的 task_type_code（parent_task_type_code），
             # 子维度各自的 task_type_code 提取为 sub_tasks 注入 payload

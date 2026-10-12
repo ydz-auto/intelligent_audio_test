@@ -92,6 +92,10 @@
             </div>
           </div>
           <div class="card-body">
+            <div class="auto-merge-hint">
+              <i class="fas fa-info-circle"></i>
+              同一分类下、评估服务与请求模板一致的维度，评估时会自动合并为一次请求，共用一次判定结果。
+            </div>
             <!-- 列表视图 -->
             <template v-if="viewMode === 'list'">
               <EvaluationDimensionTable

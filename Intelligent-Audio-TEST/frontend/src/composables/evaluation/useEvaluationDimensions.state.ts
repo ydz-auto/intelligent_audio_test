@@ -175,7 +175,8 @@ export function createEvalDimensionState() {
 
   // ========== 视图模式（列表/分组） ==========
   // 'list' 列表视图（平铺表格） | 'group' 分组视图（按分类聚合）
-  const viewMode = ref<'list' | 'group'>('list');
+  // 默认分组视图：按分类聚合展示，便于按族查看自动合并评估的维度
+  const viewMode = ref<'list' | 'group'>('group');
   // 分组折叠状态：key 为分类 id（'uncategorized' 表示未分类组），缺省默认展开
   const collapsedGroups = ref<Record<string, boolean>>({});
 

@@ -8,11 +8,16 @@
    source=case_config 取这些字段，注入到评估维度 input 参数。
 
 功能（幂等，可重复执行）：
-1. 给所有启用中的主维度（dimension_type='main'，deleted=FALSE）
-   - 注册/更新 input 参数 played_audios / background_noise / interferers
-     （field_type='json'，required=FALSE）
-   - 注册/更新参数映射 case_config → audios/background_noise/interferers
-     → 对应 input 参数（挂主维度 id）
+1. 按族（task_type_code）给启用中的主维度注册/更新轮次结构化音频参数与映射，
+   范围与运行时真实状态一致（对齐数据库金标）：
+   - interruption_metrics（打断族）：played_audios / background_noise / interferers
+     三个 input 参数 + case_config → audios/background_noise/interferers 映射
+     （help_text/ui_order 为打断族金标：played_audios 承载 FFT 互相关精修定位窗口说明）
+   - turn_eval（话轮评估族）：仅 played_audios input 参数（话轮版 help_text），
+     映射挂 3 条 case_config → audios/background_noise/interferers（与库一致）
+   - 其他族（reject_judge/env_judge 等）的音频参数与映射由各族 seed 脚本注册
+     （seed_reject_judge.py 等），本脚本跳过避免重复定义冲突
+   （参数 field_type='json'，required=FALSE，映射挂主维度 id）
 2. 将历史 stimulus_audios 参数与映射目标归一化为 played_audios
 3. 不清理、不删除任何已有参数/映射（区别于维度 seed 的 _cleanup_stale_params）
 4. 不做维度创建/删除，仅扩展主维度参数与映射
@@ -50,7 +55,7 @@ POSTGRES_URI = os.environ.get(
 ALGORITHM_TYPE = os.environ.get('ALGO_TYPE', 'voice_llm')
 
 # ============================================================
-# 轮次结构化音频参数定义
+# 轮次结构化音频参数定义（打断族版本，与库一致）
 # (param_code, param_name, label, field_type, param_direction,
 #  field_path, agg_role, output_role, visible_in_report,
 #  required, default_value, help_text, ui_order)
@@ -60,22 +65,19 @@ AUDIO_PARAMS = (
         'played_audios', '被播放音频', '被播放音频', 'json', 'input',
         None, None, None, True,
         False, None,
-        '本轮被播放音频（用例配置 rounds[].audios，含 audio_id/spl/play_order，'
-        'audio_path 由评估链路运行时补全上传），评估时经 case_config→audios 映射取用', 3,
+        '本轮被播放音频（用例配置 rounds[].audios）；FFT 互相关精修打断轮定位窗口用', 3,
     ),
     (
         'background_noise', '背景噪声', '背景噪声', 'json', 'input',
         None, None, None, True,
         False, None,
-        '本轮背景噪声配置（轮次级 background_noise，缺省时取用例级全局 background_noise），'
-        '评估时经 case_config→background_noise 映射取用', 4,
+        '本轮背景噪声配置（轮次级 background_noise，缺省取用例级全局）', 4,
     ),
     (
         'interferers', '干扰人', '干扰人', 'json', 'input',
         None, None, None, True,
         False, None,
-        '本轮干扰人音频列表（algorithm_params.interferers，评估前提升为轮级字段），'
-        '评估时经 case_config→interferers 映射取用', 5,
+        '本轮干扰人音频列表（algorithm_params.interferers，评估前提升为轮级字段）', 21,
     ),
 )
 
@@ -86,6 +88,27 @@ AUDIO_MAPPINGS = (
     ('case_config', 'output', 'background_noise', 'background_noise', 'none'),
     ('case_config', 'output', 'interferers', 'interferers', 'none'),
 )
+
+# 话轮评估族（turn_eval）：参数仅 played_audios（库真实状态，help_text 为话轮版），
+# 映射与运行时一致挂 3 条 case_config → audios/background_noise/interferers
+# （voice_llm 全量注册 + dim72 body_template 均含）
+TURN_EVAL_AUDIO_PARAMS = (
+    (
+        'played_audios', '被播放音频', '被播放音频', 'json', 'input',
+        None, None, None, True,
+        False, None,
+        '本轮被播放音频列表（用例配置 rounds[].audios），运行时补全上传', 3,
+    ),
+)
+TURN_EVAL_AUDIO_MAPPINGS = AUDIO_MAPPINGS
+
+# task_type_code → (params, mappings) 金标音频配置
+# 其他族（reject_judge/env_judge）的音频参数与映射由各族 seed 脚本注册
+# （seed_reject_judge.py 等），此处跳过避免重复定义冲突
+AUDIO_CONFIG = {
+    'interruption_metrics': (AUDIO_PARAMS, AUDIO_MAPPINGS),
+    'turn_eval': (TURN_EVAL_AUDIO_PARAMS, TURN_EVAL_AUDIO_MAPPINGS),
+}
 
 
 def _find_main_dimensions(conn):
@@ -211,15 +234,22 @@ def seed_audio_params():
         if not dims:
             print("  未找到启用中的主维度，跳过")
             return
-        print(f"  将处理 {len(dims)} 个主维度:")
-        for dim_id, name, tc in dims:
+        handled = [(d[0], d[1], d[2]) for d in dims if d[2] in AUDIO_CONFIG]
+        skipped = [(d[0], d[1], d[2]) for d in dims if d[2] not in AUDIO_CONFIG]
+        print(f"  将处理 {len(handled)} 个主维度（金标音频族）:")
+        for dim_id, name, tc in handled:
             print(f"    - id={dim_id}, name={name}, task_type_code={tc}")
+        if skipped:
+            print(f"  跳过 {len(skipped)} 个主维度（金标无本脚本音频参数，由各族 seed 注册）:")
+            for dim_id, name, tc in skipped:
+                print(f"    - id={dim_id}, name={name}, task_type_code={tc}")
 
-        for dim_id, name, tc in dims:
-            print(f"\n  -- 维度 id={dim_id} ({name}) --")
-            for param_def in AUDIO_PARAMS:
+        for dim_id, name, tc in handled:
+            params, mappings = AUDIO_CONFIG[tc]
+            print(f"\n  -- 维度 id={dim_id} ({name}, {tc}) --")
+            for param_def in params:
                 _upsert_param(conn, dim_id, param_def)
-            for mapping_def in AUDIO_MAPPINGS:
+            for mapping_def in mappings:
                 _upsert_mapping(conn, dim_id, mapping_def)
 
 
@@ -233,8 +263,10 @@ if __name__ == '__main__':
     print(f"算法类型: {ALGORITHM_TYPE}")
     print()
     print("此脚本将：")
-    print("1. 给所有启用中的主维度注册 input 参数 played_audios / background_noise / interferers")
-    print("   （field_type=json, required=False）")
+    print("1. 按族（task_type_code）给启用中的主维度注册 input 参数与映射：")
+    print("   - interruption_metrics：played_audios / background_noise / interferers（打断族金标）")
+    print("   - turn_eval：仅 played_audios（话轮版，映射仍挂 3 条，与库一致）")
+    print("   - 其他族跳过（音频参数由各族 seed 注册）")
     print("2. 注册参数映射 case_config → audios / background_noise / interferers")
     print("3. 将历史 stimulus_audios 参数与映射目标归一化为 played_audios")
     print("4. 不创建/删除维度，不清理其他参数/映射（幂等）")

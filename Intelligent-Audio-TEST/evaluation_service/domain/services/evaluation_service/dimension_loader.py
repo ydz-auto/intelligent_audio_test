@@ -107,6 +107,7 @@ class DimensionLoaderMixin:
                 'dimension_type': snap.dimension_type or 'main',
                 'parent_dimension_id': snap.parent_dimension_id,
                 'task_type_code': snap.task_type_code,
+                'category_id': snap.category_id,
                 'output_field_path': output_field_path,
                 'output_params': dim_outputs,
                 'input_params': input_param_map.get(dim_id, [])
