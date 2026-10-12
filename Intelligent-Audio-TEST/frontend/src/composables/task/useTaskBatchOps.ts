@@ -147,7 +147,7 @@ export function useTaskBatchOps(
       const result = await tasksPort.mergeTasks(ids as any) as any;
       selectedTasks.value.clear();
       await fetchTasks();
-      notification.success(`合并成功！新任务: ${result.merged_task_name || result.name || '合并任务'}`);
+      notification.success(`合并成功！新任务: ${result.merged_task_name || '合并任务'}`);
     } catch (error: any) {
       console.error('Failed to merge tasks:', error);
       notification.error(error.message || '合并失败，请稍后重试');

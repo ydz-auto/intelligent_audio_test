@@ -157,7 +157,10 @@ class TaskLifecycleService:
 
         data = result.get('data') or {}
         return success_response(
-            {"mergedTaskId": data.get('merged_task_id'), "mergedTaskName": data.get('merged_task_name', '')},
+            {
+                'merged_task_id': data.get('merged_task_id'),
+                'merged_task_name': data.get('merged_task_name', ''),
+            },
             result.get('message', '合并成功'),
             http_code=201,
         )

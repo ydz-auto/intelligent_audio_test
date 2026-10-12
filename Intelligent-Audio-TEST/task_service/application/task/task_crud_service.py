@@ -238,9 +238,11 @@ class TaskCrudService:
             from datetime import datetime, timezone, timedelta
             _utc8 = timezone(timedelta(hours=8))
 
+            merged_task_name = data.get('merged_task_name') or f"合并任务_{datetime.now(_utc8).strftime('%Y%m%d%H%M%S')}"
+
             merged_task_id, total_results = task_repository.merge_tasks(
                 source_task_ids=task_ids,
-                merged_task_name=data.get('merged_task_name') or f"合并任务_{datetime.now(_utc8).strftime('%Y%m%d%H%M%S')}",
+                merged_task_name=merged_task_name,
                 description=data.get('description') or '',
                 created_by=data.get('created_by'),
                 now=datetime.now(_utc8),
@@ -251,6 +253,7 @@ class TaskCrudService:
                 'message': f"成功合并 {len(task_ids)} 个任务",
                 'data': {
                     'merged_task_id': merged_task_id,
+                    'merged_task_name': merged_task_name,
                     'source_task_ids': task_ids,
                     'total_results': total_results,
                 },
