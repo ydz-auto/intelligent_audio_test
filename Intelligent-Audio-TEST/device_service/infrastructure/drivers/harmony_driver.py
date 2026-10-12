@@ -347,8 +347,9 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
         """
         ts = self._extract_playback_timestamps(kwargs)
         pull_error = None
+        wav_note = None
         try:
-            record_oss, wav_oss, pull_error = self._pull_record_to_oss(
+            record_oss, wav_oss, pull_error, wav_note = self._pull_record_to_oss(
                 device_sn, task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
             record_oss = wav_oss = None
@@ -358,17 +359,24 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
         question_text = getattr(self, 'question_text', None) or ''
         answer_text = getattr(self, 'answer_text', None) or ''
         has_content = bool(record_oss or wav_oss or question_text or answer_text)
-        message = 'Success'
+        # 降级口径显式外溢：拉取失败 / wav 缺失回退 / OSS 不可用本地降级，均在 message 标注
+        notes = []
+        if pull_error:
+            notes.append(f'录屏拉取失败: {pull_error}')
+        if wav_note:
+            notes.append(wav_note)
+        if any(p and p.startswith('local://') for p in (record_oss, wav_oss)):
+            notes.append('OSS 不可用，产物本地降级存储（local://）')
         if not has_content:
             message = pull_error or '未采集到任何设备结果（无录屏文件、无回复文本）'
-        elif pull_error:
-            message = f'Success (录屏拉取失败: {pull_error})'
+        else:
+            message = 'Success' if not notes else f'Success ({"; ".join(notes)})'
         result = {
             'success': has_content,
             'message': message,
             'record_path': record_oss or '',
             'record_device_path': getattr(self, '_record_device_path', '') or '',
-            # wav 转换失败时回退 mp4，保证评估侧仍有音频可取
+            # wav 转换失败时回退 mp4，保证评估侧仍有音频可取（降级原因见 message）
             'wav_path': wav_oss or record_oss or '',
             'input_text': record_oss or '',
             'start_ms': ts['start_ms'],

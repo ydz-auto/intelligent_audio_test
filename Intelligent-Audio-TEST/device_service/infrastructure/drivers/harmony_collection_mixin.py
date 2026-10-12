@@ -124,11 +124,22 @@ class HarmonyCollectionMixin:
         return result.returncode == 0
 
     def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
-        """mp4 无损转 wav（pcm_s16le 44.1kHz 双声道），失败返回 None"""
+        """mp4 无损转 wav（pcm_s16le 44.1kHz 双声道），失败返回 None
+
+        ffmpeg 不可用（FFMPEG_PATH 配置无效或不在 PATH）时跳过转换并显式
+        告警，降级口径由调用方在结果 message 中标注。
+        """
         if not mp4_path or not os.path.exists(mp4_path):
             return None
+        ffmpeg_path = Config.FFMPEG_PATH
+        if not shutil.which(ffmpeg_path):
+            self._log(level='WARNING',
+                      content=(f"ffmpeg 不可用（FFMPEG_PATH={ffmpeg_path!r} 无效或不在 PATH），"
+                               f"mp4→wav 转换跳过，wav_path 将回退使用 mp4"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
         wav_path = os.path.splitext(mp4_path)[0] + '.wav'
-        cmd = [Config.FFMPEG_PATH, '-y', '-i', mp4_path,
+        cmd = [ffmpeg_path, '-y', '-i', mp4_path,
                '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', wav_path]
         try:
             r = subprocess.run(cmd, check=False, capture_output=True, text=True,
@@ -146,30 +157,35 @@ class HarmonyCollectionMixin:
 
     def _upload_file_to_oss(self, local_path, oss_key_prefix,
                             task_id=None, test_case_id=None, category='case_result'):
-        """上传本地文件到 OSS 并返回访问路径；本地路径无效或上传失败返回 None"""
+        """上传本地文件到存储，返回真实落点路径（oss:// 或本地降级 local://）
+
+        路径取 storage.save_file 的实际返回值，不做构造性拼接——OSS 不可用
+        降级本地时返回 local:// 路径，上传彻底失败返回 None。
+        """
         if not local_path or not os.path.exists(local_path):
             return None
         try:
             key = f'{oss_key_prefix}/{os.path.basename(local_path)}'
-            storage.save_file(local_path, category, key)
-            url = storage.build_path(category, key)
-            self._log(level='DEBUG', content=f"OSS上传成功: {url}",
+            url = storage.save_file(local_path, category, key)
+            self._log(level='DEBUG', content=f"存储上传完成: {url}",
                       task_id=task_id, test_case_id=test_case_id)
             return url
         except Exception as e:
-            self._log(level='WARNING', content=f"OSS上传失败: {local_path}: {e}",
+            self._log(level='WARNING', content=f"存储上传失败: {local_path}: {e}",
                       task_id=task_id, test_case_id=test_case_id)
             return None
 
     def _pull_record_to_oss(self, device_sn, task_id=None, test_case_id=None):
-        """拉取本轮录屏 mp4 → 转 wav → mp4+wav 上传 OSS，返回 (record_oss, wav_oss, error)
+        """拉取本轮录屏 mp4 → 转 wav → mp4+wav 上传存储，返回 (record_path, wav_path, error, wav_note)
 
-        error 非 None 表示拉取失败（record_oss/wav_oss 为 None）。
-        本地临时目录即传即清。
+        record_path/wav_path 为存储真实落点（oss:// 或本地降级 local://）。
+        error 非 None 表示拉取失败（record_path/wav_path 为 None）。
+        wav_note 非 None 表示 wav 产物缺失的降级原因（转换失败/上传失败），
+        供 get_results 在 message 中标注回退口径。本地临时目录即传即清。
         """
         record_file_name = getattr(self, '_record_file_name', None)
         if not record_file_name:
-            return None, None, '本轮未启动录屏（pre_process 未记录文件名）'
+            return None, None, '本轮未启动录屏（pre_process 未记录文件名）', None
 
         task_id_path = str(task_id) if task_id else 'default_task_id'
         test_case_id_path = str(test_case_id) if test_case_id else 'default_id'
@@ -194,7 +210,7 @@ class HarmonyCollectionMixin:
                           task_id=task_id, test_case_id=test_case_id)
                 device_path = ''
         if not device_path:
-            return None, None, f'录屏文件设备路径为空: {record_file_name}'
+            return None, None, f'录屏文件设备路径为空: {record_file_name}', None
 
         local_dir = tempfile.mkdtemp(prefix=f'case_record_{task_id_path}_{test_case_id_path}_')
         try:
@@ -205,15 +221,20 @@ class HarmonyCollectionMixin:
                 timeout=EXTRA_LONG_HDC_TIMEOUT)
             if not os.path.exists(local_path):
                 return None, None, (f'录屏文件拉取失败: device_path={device_path} '
-                                    f'stderr={recv_result.stderr}')
+                                    f'stderr={recv_result.stderr}'), None
+            wav_note = None
             wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
+            if wav_path is None:
+                wav_note = 'wav 转换失败（ffmpeg 不可用或转换出错），wav_path 回退使用 mp4'
             record_oss = self._upload_file_to_oss(local_path, oss_key_prefix,
                                                   task_id=task_id, test_case_id=test_case_id)
             wav_oss = self._upload_file_to_oss(wav_path, oss_key_prefix,
                                                task_id=task_id, test_case_id=test_case_id)
+            if wav_path and not wav_oss:
+                wav_note = 'wav 上传存储失败，wav_path 回退使用 mp4'
             if not record_oss and not wav_oss:
-                return None, None, f'录屏文件 OSS 上传失败: {local_path}'
-            return record_oss, wav_oss, None
+                return None, None, f'录屏文件上传存储失败: {local_path}', None
+            return record_oss, wav_oss, None, wav_note
         finally:
             shutil.rmtree(local_dir, ignore_errors=True)
 
