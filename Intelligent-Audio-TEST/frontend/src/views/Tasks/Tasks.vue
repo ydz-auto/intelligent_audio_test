@@ -247,9 +247,9 @@
               algorithmType: task.algorithmType,
               algorithmParams: task.algorithmParams,
               sourceTasks: task.sourceTasks,
-              // INT-215：回收站字段（已删除徽章 + 删除人/删除时间展示）
+              // INT-215：回收站字段（已删除徽章 + 删除人/删除时间展示）；INT-239：删除时间改由 TaskCard 卡内 formatDate，视图层直通
               deleted: task.deleted,
-              deletedAt: task.deletedAt ? formatDate(task.deletedAt) : '',
+              deletedAt: task.deletedAt,
               deletedByUserId: task.deletedByUserId
             }))"
             :is-selected="(task: any) => selectedTasks.has(task.id)"

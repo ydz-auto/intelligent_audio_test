@@ -64,7 +64,7 @@
             <!-- INT-215：回收站条目展示删除人/删除时间（AUTH_MODE=off 时 NULL 显示「—」） -->
             <span v-if="task.deleted" class="task-meta-item">
               <i class="fas fa-calendar-times"></i>
-              删除时间{{ task.deletedAt || '—' }}
+              删除时间{{ task.deletedAt ? formatDate(task.deletedAt) : '—' }}
             </span>
             <span v-if="task.deleted" class="task-meta-item">
               <i class="fas fa-user-times"></i>
@@ -142,7 +142,7 @@
             <!-- INT-215：回收站条目展示删除人/删除时间（AUTH_MODE=off 时 NULL 显示「—」） -->
             <span v-if="task.deleted" class="task-meta-item">
               <i class="fas fa-calendar-times"></i>
-              删除时间{{ task.deletedAt || '—' }}
+              删除时间{{ task.deletedAt ? formatDate(task.deletedAt) : '—' }}
             </span>
             <span v-if="task.deleted" class="task-meta-item">
               <i class="fas fa-user-times"></i>
@@ -208,6 +208,8 @@
 import { computed } from 'vue';
 import { useTaskCard } from './TaskCard'
 import { TaskStatus } from '@/domain/enums'
+// INT-239：删除时间格式化收敛在卡片内（对齐 TestCaseCard 口径），不依赖上游预格式化
+import { formatDate } from '@/utils/utils'
 
 const props = defineProps({
   task: {type: Object, required: true},
