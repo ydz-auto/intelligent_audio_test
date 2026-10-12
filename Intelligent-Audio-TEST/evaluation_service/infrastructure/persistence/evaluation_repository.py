@@ -29,6 +29,13 @@ def _now():
     return now_cst()
 
 
+# 主/子维度分段排序步长（对齐旧库 SORT_STEP）：主维度 sort_order 占独立段
+# （SORT_STEP 的整数倍：0, 1000, 2000...），子维度 sort_order = 父主维度段值 +
+# 组内序号（1 起：1001, 1002...）。order_by(sort_order, id) 天然得到
+# 「主维度在前、组内子维度紧随」的层级顺序。
+DIMENSION_SORT_STEP = 1000
+
+
 class EvaluationRepository(EvaluationRepositoryABC):
     """评估维度仓储
 
@@ -168,9 +175,12 @@ class EvaluationRepository(EvaluationRepositoryABC):
     def reorder_dimensions(self, ordered_ids: List[int]) -> Optional[List[int]]:
         """按数组顺序重排维度 sort_order（含 flush，未 commit）。
 
-        一次 DB 会话完成查询与写回；只处理未删除的维度。
+        主/子分段编码（对齐旧库）：ids 为前端按层级重组后的全量顺序，
+        主维度先于其子维度出现——主维度占独立段（main_index * SORT_STEP），
+        子维度挂到父维度段内（父段值 + 组内序号，1 起）。
+
         Args:
-            ordered_ids: 维度 ID 数组，顺序即新展示顺序（下标即 sort_order）
+            ordered_ids: 维度 ID 数组，顺序即新展示顺序
         Returns:
             缺失的维度 ID 列表（存在不存在的 id 时），成功返回 None
         """
@@ -186,10 +196,68 @@ class EvaluationRepository(EvaluationRepositoryABC):
         missing = [i for i in id_list if i not in dim_map]
         if missing:
             return missing
-        for idx, dim_id in enumerate(id_list):
-            dim_map[dim_id].sort_order = idx
+        main_index = 0
+        sub_counters: Dict[int, int] = {}
+        for dim_id in id_list:
+            dim = dim_map[dim_id]
+            if dim.parent_dimension_id:
+                parent = dim_map.get(dim.parent_dimension_id)
+                if parent is None:
+                    # 防御：父维度不在本次列表（如筛选态），取库中当前段值
+                    parent = session.get(Dimension, dim.parent_dimension_id)
+                base = parent.sort_order if parent else 0
+                sub_counters[dim.parent_dimension_id] = (
+                    sub_counters.get(dim.parent_dimension_id, 0) + 1)
+                dim.sort_order = base + sub_counters[dim.parent_dimension_id]
+            else:
+                dim.sort_order = main_index * DIMENSION_SORT_STEP
+                main_index += 1
         session.flush()
         return None
+
+    def max_main_sort_order(self) -> int:
+        """查询主维度当前最大 sort_order（无主维度返回 0）。"""
+        session = get_db_session()
+        max_sort = session.query(func.max(Dimension.sort_order)).filter(
+            Dimension.deleted == False,  # noqa: E712
+            (Dimension.parent_dimension_id.is_(None))
+            | (Dimension.parent_dimension_id == 0),
+        ).scalar()
+        return max_sort if max_sort is not None else 0
+
+    def max_sub_sort_order(self, parent_id: int) -> int:
+        """查询某父维度下子维度当前最大 sort_order（无子维度返回父维度段基值）。
+
+        父维度不存在时返回 0。
+        """
+        session = get_db_session()
+        parent = session.get(Dimension, parent_id)
+        if parent is None:
+            return 0
+        base = parent.sort_order if parent.sort_order is not None else 0
+        max_sort = session.query(func.max(Dimension.sort_order)).filter(
+            Dimension.parent_dimension_id == parent_id,
+            Dimension.deleted == False,  # noqa: E712
+        ).scalar()
+        return max(max_sort, base) if max_sort is not None else base
+
+    def list_descendant_ids(self, dim_ids: List[int]) -> List[int]:
+        """收集维度 ID 及其全部未删除后代 ID（BFS 逐层查询，主/子联动）。
+
+        对齐旧库 _collect_descendant_ids：仅按 parent_dimension_id 归属判定，
+        不要求子维度 dimension_type 标记正确。
+        """
+        session = get_db_session()
+        result = set(dim_ids)
+        frontier = [int(i) for i in dim_ids]
+        while frontier:
+            rows = session.query(Dimension.id).filter(
+                Dimension.parent_dimension_id.in_(frontier),
+                Dimension.deleted == False,  # noqa: E712
+            ).all()
+            frontier = [sub_id for (sub_id,) in rows if sub_id not in result]
+            result.update(frontier)
+        return list(result)
 
     def max_sort_order(self) -> int:
         """查询当前最大 sort_order（含已删除，无数据返回 0）。"""

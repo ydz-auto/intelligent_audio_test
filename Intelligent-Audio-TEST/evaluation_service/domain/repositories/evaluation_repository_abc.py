@@ -105,11 +105,26 @@ class EvaluationRepositoryABC(ABC):
 
     @abstractmethod
     def reorder_dimensions(self, ordered_ids: List[int]) -> Optional[List[int]]:
-        """按数组顺序重排维度 sort_order（含 flush，未 commit）。
+        """按数组顺序重排维度 sort_order（主/子分段编码，含 flush，未 commit）。
 
         Returns:
             缺失的维度 ID 列表（存在不存在的 id 时），成功返回 None
         """
+        ...
+
+    @abstractmethod
+    def max_main_sort_order(self) -> int:
+        """查询主维度当前最大 sort_order（无主维度返回 0）。"""
+        ...
+
+    @abstractmethod
+    def max_sub_sort_order(self, parent_id: int) -> int:
+        """查询某父维度下子维度当前最大 sort_order（无子维度返回父段基值）。"""
+        ...
+
+    @abstractmethod
+    def list_descendant_ids(self, dim_ids: List[int]) -> List[int]:
+        """收集维度 ID 及其全部未删除后代 ID（主/子联动）。"""
         ...
 
     @abstractmethod

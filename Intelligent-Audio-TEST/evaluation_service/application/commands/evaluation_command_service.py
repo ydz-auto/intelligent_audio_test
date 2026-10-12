@@ -30,6 +30,7 @@ from evaluation_service.domain.repositories.evaluation_repository_abc import (
     EvaluationRepositoryABC,
 )
 from evaluation_service.infrastructure.persistence.evaluation_repository import (
+    DIMENSION_SORT_STEP,
     evaluation_repository,
 )
 from evaluation_service.application.commands._command_utils import (
@@ -91,9 +92,15 @@ class EvaluationCommandService(CategoryCommandsMixin, DimensionOpsMixin):
         try:
             create_data = self._extract_model_fields(data)
 
-            # 未指定排序时，新维度默认追加到末尾（当前最大 sort_order + 1）
+            # 未指定排序时，按层级追加到末尾（主/子分段编码，对齐旧库）：
+            # 有父维度 → 挂到父维度段内末尾；否则主维度新开一段（段末 + SORT_STEP）
             if 'sort_order' not in create_data or create_data.get('sort_order') is None:
-                create_data['sort_order'] = self.repo.max_sort_order() + 1
+                parent_id = create_data.get('parent_dimension_id')
+                if parent_id:
+                    create_data['sort_order'] = self.repo.max_sub_sort_order(parent_id) + 1
+                else:
+                    create_data['sort_order'] = (
+                        self.repo.max_main_sort_order() + DIMENSION_SORT_STEP)
 
             new_dim = self.repo.create_dimension(create_data)
 

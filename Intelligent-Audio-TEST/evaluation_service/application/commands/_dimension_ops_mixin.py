@@ -199,7 +199,11 @@ class DimensionOpsMixin(DimensionParamsMixin):
             logger.warning(f"级联软删维度 {dim_id} 的算法关联失败或无可删数据")
 
     def batch_action(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """批量操作维度。"""
+        """批量操作维度（delete/enable/disable 主/子级联，对齐旧库）。
+
+        - delete: 逐个树形级联软删（子维度及参数/关联一并删除）
+        - enable/disable: 目标集合扩展为选中维度及其全部后代
+        """
         ids = data.get('ids')
         action = data.get('action')
 
@@ -208,11 +212,12 @@ class DimensionOpsMixin(DimensionParamsMixin):
 
         try:
             if action == 'delete':
-                self.repo.batch_update_dimensions(ids, {'deleted': True})
-            elif action == 'enable':
-                self.repo.batch_update_dimensions(ids, {'status': True})
-            elif action == 'disable':
-                self.repo.batch_update_dimensions(ids, {'status': False})
+                for dim_id in ids:
+                    self._soft_delete_tree(dim_id)
+            elif action in ('enable', 'disable'):
+                # 主/子联动：选中主维度时，其全部子维度一并启用/禁用
+                target_ids = self.repo.list_descendant_ids(ids)
+                self.repo.batch_update_dimensions(target_ids, {'status': action == 'enable'})
             elif action == 'reorder':
                 if not ids or not isinstance(ids, list):
                     return command_error('缺少必要参数: ids (维度ID数组，顺序即新排序)', code=400)

@@ -201,24 +201,35 @@ class ReportCommandService:
 
     @staticmethod
     def regenerate_report(report_id):
-        """重新生成报告：先删除旧报告（级联删除子表），再异步重新生成。"""
+        """重新生成报告（对齐旧库语义）。
+
+        流程：查询报告 → 校验"仅任务报告" → 捕获原名称/描述 →
+        软删除旧报告（保留历史快照）→ 携带原名称/描述异步重新生成。
+        """
         try:
             stub = report_config_service.stub
-            # 复用 GenerateTaskReport RPC，通过 report_id 查找关联的 task_id
-            # 先删除旧报告
+            # 先查询报告：类型校验 + task_id / 原名称 / 原描述捕获（删前读，避免元数据丢失）
+            detail_resp = stub.GetReportDetail(report_pb.GetReportDetailRequest(
+                report_id=int(report_id)))
+            if not detail_resp.success:
+                return error_response('未找到测试报告', code=404, http_code=404)
+            report = _loads(detail_resp.data, {}) or {}
+            if report.get('report_type') != 'task':
+                return error_response('仅支持任务报告重新生成')
+            task_id = report.get('task_id')
+            if not task_id:
+                return error_response('报告未关联任务，无法重新生成', 400)
+            name = report.get('name') or ''
+            description = report.get('description') or ''
+
             del_resp = stub.DeleteReport(report_pb.DeleteReportRequest(
                 report_id=int(report_id)))
             if not del_resp.success:
                 return error_response(del_resp.message or '删除旧报告失败')
-            # 通过 gRPC 获取报告关联的 task_id 并重新生成
-            data = _loads(del_resp.data, {}) or {}
-            task_id = data.get('task_id')
-            if not task_id:
-                return error_response('无法确定报告关联的任务ID', 400)
             resp = stub.GenerateTaskReport(report_pb.GenerateTaskReportRequest(
                 task_id=int(task_id),
-                name='',
-                description=''))
+                name=name,
+                description=description))
             if not resp.success:
                 return error_response(resp.message or '重新生成报告失败')
             result = _loads(resp.data, {}) or {}

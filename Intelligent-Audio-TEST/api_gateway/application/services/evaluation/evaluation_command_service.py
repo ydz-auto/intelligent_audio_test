@@ -10,7 +10,7 @@ from datetime import datetime
 
 from shared.utils.status_constants import TaskStatus
 from api_gateway.infrastructure.request_adapter import request
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from api_gateway.utils.response import success_response, error_response
 # 跨服务调用：通过 ACL 仓储调用各微服务
 from api_gateway.infrastructure.acl import (
@@ -40,9 +40,29 @@ def _parse_query_params(model_cls):
     return model_cls.model_validate(params)
 
 
+def _row_str(row, keys, default=''):
+    """安全读取 pandas 行中的字符串列：兼容中英文列名，None/NaN 视为缺失。"""
+    for key in keys:
+        if key not in row:
+            continue
+        value = row[key]
+        if value is None:
+            continue
+        try:
+            if pd.isna(value):
+                continue
+        except (TypeError, ValueError):
+            pass
+        return str(value).strip()
+    return default
+
+
 _evaluation_acl = EvaluationConfigAclRepositoryImpl()
 _task_acl = TaskConfigAclRepositoryImpl()
 _reevaluation_acl = ReevaluationAclRepositoryImpl()
+
+# 文件导出取全量维度的分页大小（对齐旧库"导出全部"语义）
+_EXPORT_ALL_PER_PAGE = 100000
 
 
 class EvaluationCommandService:
@@ -258,7 +278,8 @@ class EvaluationCommandService:
         ids = query.ids
 
         # 通过 gRPC 代理获取维度数据，避免直接访问 DB
-        result = _evaluation_acl.list_dimensions()
+        # （per_page 放大为全量：旧库导出为全量列表，分页默认值会截断）
+        result = _evaluation_acl.list_dimensions(page=1, per_page=_EXPORT_ALL_PER_PAGE)
         if not result.get('success'):
             return error_response(result.get('message', '获取维度列表失败'))
 
@@ -269,14 +290,23 @@ class EvaluationCommandService:
             id_list = [int(i) for i in ids.split(',')]
             dimensions = [d for d in dimensions if d.get('id') in id_list]
 
+        # 所属主维度名称映射（对齐旧库：在同批维度集内解析父维度名）
+        parent_name_map = {
+            d.get('id'): d.get('name') for d in dimensions if d.get('id') is not None
+        }
+
         data = []
         for d in dimensions:
             rule = d.get('rule')
             api_settings = d.get('api_settings') or d.get('apiSettings')
+            dim_type = d.get('dimension_type') or ('sub' if d.get('parent_dimension_id') else 'main')
+            parent_name = parent_name_map.get(d.get('parent_dimension_id'), '') if d.get('parent_dimension_id') else ''
             if format_type == 'excel':
                 data.append({
                     "名称": d.get('name'),
                     "描述": d.get('description'),
+                    "维度类型": "子" if dim_type == 'sub' else "主",
+                    "所属主维度": parent_name,
                     "分类ID": d.get('category_id', d.get('categoryId')),
                     "类型": d.get('type'),
                     "Master入口URL": d.get('api_url', d.get('apiUrl')),
@@ -291,6 +321,8 @@ class EvaluationCommandService:
                 data.append({
                     "name": d.get('name'),
                     "description": d.get('description'),
+                    "dimension_type": dim_type,
+                    "parent_name": parent_name,
                     "category_id": d.get('category_id', d.get('categoryId')),
                     "type": d.get('type'),
                     "api_url": d.get('api_url', d.get('apiUrl')),
@@ -308,14 +340,47 @@ class EvaluationCommandService:
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='评估维度')
             output.seek(0)
-            return FileResponse(
-                output,
+            # 内存字节流下载用 Response（FileResponse 仅接受磁盘路径，
+            # 传 BytesIO 会在 os.stat 阶段 500）
+            return Response(
+                content=output.getvalue(),
                 media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 headers={"Content-Disposition": f"attachment; filename=evaluation_dimensions_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"}
             )
         else:
             # 默认导出 JSON
             return success_response(data)
+
+    @staticmethod
+    def _find_dimension_by_name(name):
+        """按名称精确查找未删除维度（导入查重/父维度解析共用），未找到返回 None。"""
+        search_result = _evaluation_acl.list_dimensions(search=name, page=1, per_page=50)
+        if not search_result.get('success'):
+            return None
+        raw = search_result.get('data') or {}
+        items = raw.get('items', []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
+        for item in items:
+            if item.get('name') == name:
+                return item
+        return None
+
+    @staticmethod
+    def _resolve_import_parent(row):
+        """根据导入行的「父维度ID/所属主维度」列解析父维度；解析不到返回 None。"""
+        parent_id_raw = _row_str(row, ['父维度ID', 'parent_dimension_id', 'parentDimensionId'])
+        if parent_id_raw:
+            try:
+                result = _evaluation_acl.get_dimension(int(parent_id_raw))
+                if result.get('success'):
+                    parent = result.get('data') or {}
+                    if parent and not parent.get('deleted'):
+                        return parent
+            except (TypeError, ValueError):
+                pass
+        parent_name = _row_str(row, ['所属主维度', 'parent_name', 'parentName'])
+        if parent_name:
+            return EvaluationCommandService._find_dimension_by_name(parent_name)
+        return None
 
     # 从文件导入
     @staticmethod
@@ -352,6 +417,11 @@ class EvaluationCommandService:
                 if not name:
                     continue
 
+                # 主/子层级信息（导出的 Excel/JSON 文件均带这两列；旧文件无此列时按主维度处理）
+                dim_type_raw = _row_str(row, ['维度类型', 'dimension_type', 'dimensionType']).lower()
+                is_sub_type = dim_type_raw in ('sub', '子', '子维度')
+                parent = EvaluationCommandService._resolve_import_parent(row)
+
                 rule_str = row.get('规则') or row.get('rule', '{}')
                 if isinstance(rule_str, str):
                     rule = json.loads(rule_str)
@@ -366,17 +436,9 @@ class EvaluationCommandService:
 
                 api_url_value = row.get('API链接') or row.get('api_url') or row.get('api_url')
                 api_endpoints = [{'url': api_url_value}] if api_url_value else []
-
                 # 通过代理查找现有维度
-                existing_dim_id = None
-                search_result = _evaluation_acl.list_dimensions(search=name, page=1, per_page=1)
-                if search_result.get('success'):
-                    raw = search_result.get('data') or {}
-                    items = raw.get('items', []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
-                    for item in items:
-                        if item.get('name') == name:
-                            existing_dim_id = item.get('id')
-                            break
+                existing = EvaluationCommandService._find_dimension_by_name(name)
+                existing_dim_id = existing.get('id') if existing else None
 
                 if existing_dim_id and update_existing:
                     data = {
@@ -390,6 +452,11 @@ class EvaluationCommandService:
                         "rule": rule,
                         "api_settings": api_settings,
                     }
+                    # 层级联动：文件带层级列时同步更新维度类型与父维度
+                    if dim_type_raw:
+                        data["dimension_type"] = 'sub' if is_sub_type else 'main'
+                    if parent is not None:
+                        data["parent_dimension_id"] = parent.get('id')
                     data = {k: v for k, v in data.items() if v is not None}
                     update_result = _evaluation_acl.update_dimension(existing_dim_id, data)
                     if update_result.get('success'):
@@ -398,15 +465,27 @@ class EvaluationCommandService:
                     data = {
                         "name": name,
                         "description": row.get('描述') or row.get('description'),
-                        "category_id": int(row.get('分类ID') or row.get('category_id') or row.get('category_id', 1)),
+                        "category_id": int(row.get('分类ID') or row.get('category_id') or row.get('category_id',
+                                                                                                   (parent or {}).get('category_id') or 1)),
                         "type": row.get('类型') or row.get('type', '性能指标'),
-                        "api_endpoints": api_endpoints,
+                        # 子维度 API 配置置空，由父维度继承（对齐旧库）
+                        "api_endpoints": [] if parent is not None else api_endpoints,
                         "result_type": int(row.get('结果类型') or row.get('result_type') or row.get('result_type', 1)),
                         "score_unit": row.get('分数单位') or row.get('score_unit') or row.get('scoreUnit'),
                         "rule": rule,
-                        "api_settings": api_settings,
+                        "api_settings": {} if parent is not None else api_settings,
                         "status": True
                     }
+                    if parent is not None:
+                        # 子维度：挂到父维度（继承任务关键字），排序由服务端按父段编码
+                        data["dimension_type"] = 'sub'
+                        data["parent_dimension_id"] = parent.get('id')
+                        data["task_type_code"] = (
+                            _row_str(row, ['任务关键字', 'task_type_code', 'taskTypeCode'])
+                            or parent.get('task_type_code') or '')
+                    elif is_sub_type:
+                        # 标记为子维度但解析不到父维度：按主维度兜底落库（对齐旧库语义）
+                        data["dimension_type"] = 'main'
                     data = {k: v for k, v in data.items() if v is not None}
                     create_result = _evaluation_acl.create_dimension(data)
                     if create_result.get('success'):
@@ -452,8 +531,8 @@ class EvaluationCommandService:
         message = reeval_result.message
 
         if success:
-            # 实际的重新评估用例数由执行服务处理，网关侧无法直接查询 TestResult
-            queued_count = 0
+            # 展示口径（对齐旧库"实际用例数"）：任务详情携带的用例总数即重新评估队列规模
+            queued_count = int(task_data.get('total_cases') or 0)
             return success_response(
                 TaskReevaluateResult(
                     total_cases=queued_count,
