@@ -242,3 +242,23 @@ export const BenchmarkCategoryLabels: Record<BenchmarkCategoryType, string> = {
   [BenchmarkCategory.TTS]: '语音合成（TTS）',
   [BenchmarkCategory.TRANSLATION]: '翻译（Translation）',
 }
+
+/** 认证模式枚举（值 = 后端 Config.AUTH_MODE 原值，禁止改动值；前端构建期同名变量 VITE_AUTH_MODE） */
+export const AuthMode = {
+  /** 关闭认证（向后兼容）：后端注入 permissions=['*']，前端无 token 放行 */
+  OFF: 'off',
+  /** 本地 OAuth（开发态） */
+  DEV: 'dev',
+  /** 华为云 OAuth（生产态） */
+  PROD: 'prod',
+} as const
+
+/** 认证模式类型（由 AuthMode 派生的字符串联合） */
+export type AuthModeType = typeof AuthMode[keyof typeof AuthMode]
+
+/** 认证模式全部合法取值（生产构建注入校验单一来源，vite.config 构建守卫引用） */
+export const AUTH_MODE_VALUES: readonly AuthModeType[] = [
+  AuthMode.OFF,
+  AuthMode.DEV,
+  AuthMode.PROD,
+]

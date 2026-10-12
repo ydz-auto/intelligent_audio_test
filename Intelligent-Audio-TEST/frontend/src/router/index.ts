@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../store/authStore'
+import { AuthMode } from '../domain/enums'
 
 /**
  * 路由表 + meta 权限配置
@@ -67,8 +68,8 @@ router.beforeEach((to, _from, next) => {
   if (!auth.isLoggedIn) {
     // 尝试判断后端是否开启了认证：通过环境变量 VITE_AUTH_MODE
     // 未配置或 off 时，放行（向后兼容）
-    const authMode = (import.meta as any).env?.VITE_AUTH_MODE || 'off'
-    if (authMode === 'off') {
+    const authMode = (import.meta as any).env?.VITE_AUTH_MODE || AuthMode.OFF
+    if (authMode === AuthMode.OFF) {
       return next()
     }
     // 认证开启但未登录 → 跳登录页

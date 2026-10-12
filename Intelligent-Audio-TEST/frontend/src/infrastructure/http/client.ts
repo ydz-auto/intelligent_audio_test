@@ -4,7 +4,7 @@
  */
 
 import { API_CONFIG } from '../../utils/config';
-import { HttpStatus } from '@/domain/enums';
+import { AuthMode, HttpStatus } from '@/domain/enums';
 
 const apiBaseUrl = API_CONFIG.baseUrl;
 
@@ -251,8 +251,8 @@ async function handleResponse(response: Response, responseType: string = 'json',
   if (!response.ok) {
     // 401 未授权：清除登录态并跳转登录页（仅当后端开启认证模式且未显式跳过时）
     if (response.status === HttpStatus.UNAUTHORIZED && !skipAuthRedirect) {
-      const authMode = (import.meta as any).env?.VITE_AUTH_MODE || 'off'
-      if (authMode !== 'off') {
+      const authMode = (import.meta as any).env?.VITE_AUTH_MODE || AuthMode.OFF
+      if (authMode !== AuthMode.OFF) {
         import('../../store/authStore').then(({ useAuthStore }) => {
           const auth = useAuthStore()
           auth.logout()

@@ -502,6 +502,20 @@ services:
     deploy:
       replicas: 2
 
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        # INT-181：必填——认证模式（off|dev|prod），须与 api_gateway 的 AUTH_MODE 一致；
+        # 未显式设置时 compose 直接报错退出，禁止静默默认 off
+        VITE_AUTH_MODE: ${VITE_AUTH_MODE:?VITE_AUTH_MODE must be set explicitly (off|dev|prod), see docs/oauth.md}
+    ports:
+      - "8080:80"
+    depends_on:
+      api_gateway:
+        condition: service_healthy
+
 volumes:
   # INT-81：服务运行日志/业务日志统一卷
   service_logs:

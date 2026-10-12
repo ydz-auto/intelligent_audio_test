@@ -587,3 +587,31 @@ def require_permission(request: Request, perm: str):
 | d11 | 华为云 OAuth Provider（授权码模式） | d10 之后 | ✅ **已实现** |
 | d12 | RBAC 权限校验（路由层 require_permission） | d11 之后 | ✅ **已实现** |
 | d13 | auth_service 微服务化（独立部署） | 视团队需要 | ⚠️ DDD 四层已建 + run_all.py 已纳入启动；docker-compose 未含，需按需补充 |
+
+### 6. 前端构建期注入（VITE_AUTH_MODE，INT-181）
+
+前端登录跳转行为压在构建期变量 `VITE_AUTH_MODE` 上（Vite 构建时把 `import.meta.env.VITE_AUTH_MODE` 静态替换进产物，运行期不可改）。生产构建**必须显式注入**，未注入时构建期守卫（`frontend/vite.config.ts`）显式报错退出——不存在静默默认 `off`。
+
+取值（与后端 `AUTH_MODE` 保持一致，合法值单一来源：`frontend/src/domain/enums.ts` 的 `AuthMode`）：
+
+| VITE_AUTH_MODE | 行为 | 适用场景 |
+|---|---|---|
+| `off` | 无 token 直接放行（向后兼容，后端须同置 `AUTH_MODE=off`） | 临时调试、过渡期 |
+| `dev` | 本地 OAuth 登录跳转 | 联调环境 |
+| `prod` | 正式 OAuth 登录跳转（未登录访问受保护路由跳登录页） | 生产部署 |
+
+注入方式（按构建通道二选一）：
+
+```bash
+# 宿主机 / CI 直构（dist 由外部 nginx 托管）
+VITE_AUTH_MODE=prod npm run build
+
+# Docker 镜像构建（docker/Dockerfile.frontend，compose 服务 frontend 已强制校验）
+docker compose build frontend                     # 须先 export VITE_AUTH_MODE=prod
+docker build -f docker/Dockerfile.frontend --build-arg VITE_AUTH_MODE=prod ..
+```
+
+注意：
+- 仅「显式注入」被认可——`frontend/.env*` 文件值不作为生产构建依据（`.env.production` 已不提供默认值）。
+- 注入值必须与后端 `api_gateway` 的 `AUTH_MODE` 一致，两者不一致会出现前端跳登录而后端不放 token（或反向）的错配。
+- 取值非法（不在 `off|dev|prod` 内）同样构建失败。
