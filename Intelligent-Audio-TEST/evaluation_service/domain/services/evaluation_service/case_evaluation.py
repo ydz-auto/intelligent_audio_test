@@ -1,7 +1,8 @@
 """用例评估编排混入：evaluate_case 入口及准备/分发编排"""
 import json
 
-from shared.utils.status_constants import EvaluationStatus, TaskCaseStatus
+from shared.utils.status_constants import EvaluationStatus, ExecutionStatus, TaskCaseStatus
+from shared.utils.status_utils import derive_task_case_status
 
 # domain 层通过 ACL 仓储获取字段映射数据（延迟 import 避免循环依赖）
 
@@ -113,6 +114,37 @@ class CaseEvaluationMixin:
                 task_id=task_id, test_case_id=test_case_id
             )
 
+    def _mark_case_evaluation_failed(self, task_id, result_id, test_case_id):
+        """用例详情加载失败时的显式失败收尾（INT-159）。
+
+        TestResult 照常收口 completed（执行已发生），TaskCase 终态标 failed
+        并留痕原因（FAILED 不在 ACTIVE_EVALUATION_STATUSES，任务统计与
+        引擎等待均以终态收敛），不再静默悬挂。
+        """
+        reason = f"测试用例 {test_case_id} 详情读取失败（task_service gRPC 调用异常或用例不存在），评估失败收口"
+        self._log(
+            level='ERROR',
+            content=f"用例评估失败收口(failed): test_case_id={test_case_id}, {reason}",
+            task_id=task_id, test_case_id=test_case_id
+        )
+        try:
+            if result_id:
+                self.result_processor.mark_test_result_completed(result_id)
+            self._task_acl_repo.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                status=derive_task_case_status(ExecutionStatus.COMPLETED, EvaluationStatus.FAILED),
+                evaluation_status=EvaluationStatus.FAILED,
+                error_message=reason,
+            )
+            self._post_evaluate_updates(task_id, test_case_id)
+        except Exception as e:
+            self._log(
+                level='ERROR',
+                content=f"用例评估失败收口写状态失败: test_case_id={test_case_id}, error={e}",
+                task_id=task_id, test_case_id=test_case_id
+            )
+
     def _fan_out_per_round_evaluations(self, task_id, result_id, test_case_id,
                                         algorithm_result, field_mapper, test_type,
                                         rounds_list, kwargs):
@@ -215,6 +247,10 @@ class CaseEvaluationMixin:
             test_case_id, field_mapper, kwargs, task_id, round_number
         )
         if case_data is None:
+            # INT-159：用例详情读取失败（ACL 仓储异常兜底返回 None）时显式失败收口，
+            # 不再静默 return False——否则零派发零 TRD 行无失败标记，API 链 TaskCase
+            # 永挂 evaluating、E2E 链 0 维度行空转完成。
+            self._mark_case_evaluation_failed(task_id, result_id, test_case_id)
             return False
 
         test_case = case_data['test_case']
