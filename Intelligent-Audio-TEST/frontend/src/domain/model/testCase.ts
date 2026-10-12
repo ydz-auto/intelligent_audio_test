@@ -147,6 +147,10 @@ export interface TestCase {
   createdAt?: string
   updatedAt?: string
   deleted?: boolean
+  /** INT-215：当前用户收藏标记 / 回收站字段（删除人为 user_id，AUTH_MODE=off 时 NULL） */
+  isFavorite?: boolean
+  deletedAt?: string
+  deletedByUserId?: number | null
   totalDuration?: number
 }
 

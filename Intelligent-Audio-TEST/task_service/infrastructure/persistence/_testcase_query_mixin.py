@@ -96,13 +96,23 @@ class TestCaseQueryMixin:
         algorithm_type: str = None,
         include_deleted: bool = False,
         dimension_id: int = None,
+        favorite: bool = False,
+        only_deleted: bool = False,
+        user_id: int = None,
     ) -> List[TestCase]:
-        """按标签 ID 列表查询关联的测试用例（带 group/tags 预加载）。"""
+        """按标签 ID 列表查询关联的测试用例（带 group/tags 预加载）。
+
+        favorite/only_deleted（INT-215）：标签视图回收站/收藏过滤，
+        口径与 query_testcases 一致（user_id 来自 x-user-id metadata）。
+        """
         session = get_db_session()
         tc_query = self._query_testcases_with_preload(session) \
             .join(TestCase.tags).filter(Tag.id.in_(tag_ids))
 
-        if not include_deleted:
+        # INT-215：回收站模式查软删除项，否则按 include_deleted 语义
+        if only_deleted:
+            tc_query = tc_query.filter(TestCase.deleted == True)  # noqa: E712
+        elif not include_deleted:
             tc_query = tc_query.filter(TestCase.deleted == False)  # noqa: E712
         if keyword:
             # 关键字搜索：除名称/描述外，也按用例 ID 模糊匹配
@@ -118,11 +128,25 @@ class TestCaseQueryMixin:
         if dimension_id:
             tc_query = tc_query.filter(build_dim_id_filter(str(dimension_id)))
 
+        # INT-215：仅当前用户收藏（与 query_testcases 同口径）
+        if favorite:
+            from shared.models.common_enums import EntityType
+            from task_service.infrastructure.persistence.models import Favorite
+            if not user_id:
+                return []
+            from sqlalchemy import select as sa_select
+            tc_query = tc_query.filter(sa_select(Favorite.id)
+                                       .where(Favorite.user_id == user_id,
+                                              Favorite.entity_type == EntityType.TESTCASE.value,
+                                              Favorite.entity_id == TestCase.id)
+                                       .correlate(TestCase)
+                                       .exists())
+
         return tc_query.all()
 
     def fetch_case_ids(self, group=None, test_type=None, search=None, tag=None,
                        include_deleted: bool = False, algorithm_type: str = None,
-                       dimension_id: int = None) -> List[str]:
+                       dimension_id: int = None, only_deleted: bool = False) -> List[str]:
         """按筛选条件查询全量用例ID（不分页）。
 
         Args:
@@ -133,11 +157,16 @@ class TestCaseQueryMixin:
             tag: 标签名
             algorithm_type: 算法类型
             dimension_id: 评估维度ID（按 config JSON 模糊匹配）
+            only_deleted: 仅回收站软删除项（INT-215：回收站全部恢复按已删集合圈定）
         Returns:
             用例 ID 列表
         """
         session = get_db_session()
-        query = session.query(TestCase.id, TestCase.config).filter(TestCase.deleted == False)  # noqa: E712
+        # INT-215：回收站口径查软删除项，否则仅活跃用例
+        if only_deleted:
+            query = session.query(TestCase.id, TestCase.config).filter(TestCase.deleted == True)  # noqa: E712
+        else:
+            query = session.query(TestCase.id, TestCase.config).filter(TestCase.deleted == False)  # noqa: E712
 
         if group:
             group_obj = session.query(TestCaseGroup).filter_by(name=group).first()

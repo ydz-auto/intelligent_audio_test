@@ -54,6 +54,10 @@ export interface ReportListItemDomain {
   status: ReportState
   createdAt: string
   updatedAt?: string
+  /** INT-215：回收站字段（删除人为 user_id，AUTH_MODE=off / 后端未补齐时显示「—」空态） */
+  deleted?: boolean
+  deletedAt?: string
+  deletedByUserId?: number | null
 }
 
 /** 报告列表响应（ReportListData → camelCase） */
@@ -400,6 +404,10 @@ export interface Report {
   title?: string
   /** 聚合根 config JSON（_aggregate_to_dict 输出，键为数据 key 非字段名） */
   config?: Record<string, unknown>
+  /** INT-215：回收站字段（列表项展示删除人/删除时间；report_service 补齐前显示「—」空态） */
+  deleted?: boolean
+  deletedAt?: string
+  deletedByUserId?: number | null
   /** 详情聚合根 summaries[]（摘要元数据行） */
   summaries?: Array<{
     id: number

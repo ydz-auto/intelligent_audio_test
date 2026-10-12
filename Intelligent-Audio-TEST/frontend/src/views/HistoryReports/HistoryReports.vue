@@ -127,16 +127,14 @@
       </div>
     </section>
     
-    <!-- INT-141：收藏 / 回收站工具栏 -->
-    <div class="favorite-trash-bar">
-      <label class="bar-toggle" :class="{ active: favoriteOnly }" title="仅显示我收藏的报告">
-        <input type="checkbox" v-model="favoriteOnly" @change="loadReports">
-        <i class="fas fa-star"></i> 仅看收藏
-      </label>
-      <button class="bar-toggle" :class="{ active: trashMode }" @click="toggleTrashMode" title="回收站：已删除报告，可恢复或彻底删除">
-        <i class="fas fa-trash-restore"></i> 回收站
-      </button>
-    </div>
+    <!-- INT-141：收藏 / 回收站工具栏（INT-215：收敛至 common 组件，三视图统一口径） -->
+    <FavoriteTrashBar
+      :favorite-only="favoriteOnly"
+      :trash-mode="trashMode"
+      :favorite-disabled="trashMode"
+      @update:favorite-only="handleReportFavoriteFilterChange"
+      @update:trash-mode="toggleTrashMode"
+    />
 
     <!-- 批量操作栏 -->
     <div class="batch-actions" v-if="allReports.length > 0">
@@ -236,6 +234,17 @@
               <i class="fas fa-calendar-alt"></i>
               {{ formatDate(report.createdAt) }}
             </span>
+            <!-- INT-215：回收站条目展示删除人/删除时间（后端字段补齐前 NULL 显示「—」） -->
+            <template v-if="trashMode">
+              <span class="report-card-meta-item">
+                <i class="fas fa-calendar-times"></i>
+                删除时间{{ report.deletedAt ? formatDate(report.deletedAt) : '—' }}
+              </span>
+              <span class="report-card-meta-item">
+                <i class="fas fa-user-times"></i>
+                删除人{{ report.deletedByUserId !== undefined && report.deletedByUserId !== null ? `用户 #${report.deletedByUserId}` : '—' }}
+              </span>
+            </template>
             <template v-if="report.type === 'comparison' || report.type === 'secondary_comparison'">
               <span class="report-card-meta-item">
                 <i class="fas fa-cubes"></i>
@@ -282,6 +291,7 @@ import { ReportStatus } from '@/domain/enums';
 import type { Report } from '../../domain';
 import { useHistoryReports, REPORT_TABS } from './historyReports';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 
@@ -329,6 +339,8 @@ const {
   favoriteOnly,
   trashMode,
   toggleTrashMode,
+  // INT-215：收藏筛选切换（FavoriteTrashBar）
+  handleReportFavoriteFilterChange,
   loadReports,
   isFavorite,
   handleToggleFavorite,
@@ -410,35 +422,6 @@ function handleAlgorithmFilterChange(value: string | number) {
 </script>
 
 <style scoped>@import './HistoryReports.css';
-
-/* INT-141：收藏 / 回收站工具栏 */
-.favorite-trash-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.bar-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--background-primary);
-  cursor: pointer;
-  user-select: none;
-  font-size: 13px;
-  color: inherit;
-}
-.bar-toggle.active {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-.bar-toggle i { color: #f5a623; }
-.bar-toggle i.fa-trash-restore { color: inherit; }
-
-
 
 .no-data{
 display: flex;

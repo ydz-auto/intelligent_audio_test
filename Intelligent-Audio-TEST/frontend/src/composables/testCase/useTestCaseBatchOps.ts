@@ -478,6 +478,8 @@ export function useTestCaseBatchOps(store: {
     tag?: string
     algorithmType?: string
     dimensionId?: number
+    /** INT-215：仅回收站软删除项（全部恢复按已删集合圈定；getIdsByFilter 映射 only_deleted） */
+    onlyDeleted?: boolean
   }): Promise<(string | number)[]> => {
     try {
       const result: any = await testcasesPort.getIdsByFilter(filters)

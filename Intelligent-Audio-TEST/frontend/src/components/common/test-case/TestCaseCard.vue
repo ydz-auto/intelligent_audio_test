@@ -52,6 +52,11 @@
             <div v-if="testCase.lastEditTime || testCase.createdAt || testCase.updatedAt" style="margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">
               <span class="meta-label">最后编辑时间:</span> {{ testCase.lastEditTime || testCase.updatedAt || testCase.createdAt || '未知' }}
             </div>
+            <!-- INT-215：回收站条目展示删除人/删除时间（AUTH_MODE=off 时 NULL 显示「—」） -->
+            <div v-if="testCase.deleted" class="case-deleted-meta">
+              <span><span class="meta-label">删除时间:</span> {{ testCase.deletedAt ? formatDate(testCase.deletedAt) : '—' }}</span>
+              <span><span class="meta-label">删除人:</span> {{ deletedByLabel }}</span>
+            </div>
             <div v-if="testCase.totalDuration" class="case-duration-info">
               <span class="duration-tag">{{ formatDurationLong(testCase.totalDuration) }}</span>
             </div>
@@ -89,16 +94,16 @@
             </div>
           </div>
         </div>
-          <div class="case-actions" v-if="actions && actions.length > 0">
-            <button 
-              v-for="action in actions" 
+          <div class="case-actions" v-if="cardActions && cardActions.length > 0">
+            <button
+              v-for="action in cardActions"
               :key="action.id"
               class="btn-icon-only"
               @click.stop="() => { console.log('[TestCaseManager] 点击测试用例操作按钮: ' + (action.title || action.label) + ' - 测试用例 ' + testCase.name + ' (ID: ' + testCase.id + '), 时间:', new Date().toISOString()); handleAction(action); }"
               :disabled="action.disabled"
               :title="action.title || action.label"
             >
-              <i v-if="action.icon" :class="`fas ${action.icon}`"></i>
+              <i v-if="action.iconClass || action.icon" :class="action.iconClass || `fas ${action.icon}`" :style="action.iconStyle"></i>
             </button>
           </div>
       </div>
@@ -140,6 +145,7 @@ import { useAlgorithmLabels } from '../../../composables/algorithm/useAlgorithmL
 import CaseIdBadge from '../CaseIdBadge.vue';
 import { TestType } from '@/domain/enums';
 import { getStatusText } from '../../../utils/statusUtils';
+import { formatDate } from '../../../utils/utils';
 
 const { loadAlgorithms, getAlgorithmLabel } = useAlgorithmLabels();
 
@@ -152,10 +158,26 @@ const props = defineProps({
   isSelected: { type: Boolean, default: false },
   showCheckbox: { type: Boolean, default: true },
   showConfig: { type: Boolean, default: true },
-  actions: { type: Array, default: () => [] }
+  // INT-215：可为静态数组或 (testCase) => actions 工厂函数（按卡片用例动态生成，如收藏星标态）
+  actions: { type: [Array, Function], default: () => [] }
 });
 
 const emit = defineEmits(['toggle-selection', 'action']);
+
+/**
+ * INT-215：actions 为工厂函数时按当前卡片用例求值（收藏星标按 isFavorite 动态生成），
+ * 静态数组原样透传。
+ */
+const cardActions = computed(() => {
+  if (typeof props.actions === 'function') return props.actions(props.testCase);
+  return props.actions;
+});
+
+/** 删除人展示：后端返回 deletedByUserId；AUTH_MODE=off 时为 NULL 显示「—」 */
+const deletedByLabel = computed(() => {
+  const uid = props.testCase?.deletedByUserId;
+  return uid !== undefined && uid !== null ? `用户 #${uid}` : '—';
+});
 
 const isTagsExpanded = ref(false);
 const isConfigExpanded = ref(true);
@@ -373,6 +395,20 @@ input[type="checkbox"].test-case-checkbox:hover{
   max-width: 100%;
   min-width: 0;
   gap: 8px;
+}
+
+/* INT-215：回收站删除人/删除时间行（列宽溢出与既有 meta 行口径一致） */
+.case-deleted-meta{
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.case-deleted-meta .meta-label{
+  margin-right: 4px;
 }
 
 .case-name{

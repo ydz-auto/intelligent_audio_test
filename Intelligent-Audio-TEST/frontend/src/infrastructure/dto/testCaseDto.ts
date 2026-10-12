@@ -27,6 +27,11 @@ export interface TestCaseDto {
   algorithm_type?: string | null
   created_at?: string | null
   updated_at?: string | null
+  /** INT-215：收藏标记 / 回收站字段（与后端 TestCaseListItem 对齐） */
+  is_favorite?: boolean | null
+  deleted?: boolean | null
+  deleted_at?: string | null
+  deleted_by_user_id?: number | null
   total_duration?: number | null
 }
 
@@ -71,6 +76,11 @@ export interface TagViewCaseDto {
   algorithmType?: string | null
   createdAt?: string | null
   updatedAt?: string | null
+  /** INT-215：收藏标记 / 回收站字段（标签视图顶层 camelCase 输出） */
+  isFavorite?: boolean | null
+  deleted?: boolean | null
+  deletedAt?: string | null
+  deletedByUserId?: number | null
   totalDuration?: number | null
 }
 

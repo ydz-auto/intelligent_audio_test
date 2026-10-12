@@ -9,6 +9,8 @@ import { useTaskLogs } from '../../composables/task/useTaskLogs';
 import { useTaskCharts } from '../../composables/task/useTaskCharts';
 import { useTaskReport } from '../../composables/task/useTaskReport';
 import { useFavorites } from '../../composables/favorite/useFavorites';
+import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
+import { useNotification } from '../../composables/modal/useNotification';
 
 /**
  * useTasks - 轻量级协调层
@@ -60,19 +62,85 @@ export function useTasks() {
 
   // 收藏 / 回收站模块（INT-141）
   const favoritesModule = useFavorites('task');
+  // INT-215：确认弹窗统一 BASIC_CONFIRM 模态 + 操作反馈（原先 favorite/purge 零反馈）
+  const modalControl = useModalControl();
+  const notification = useNotification();
+
+  /** 回收站态（任务侧以状态筛选 deleted 承载，供工具栏/卡片动作可见性判定） */
+  const taskTrashMode = computed(() => listModule.filters.value.status === 'deleted');
+
+  /**
+   * INT-215：回收站开关（对齐报告/用例的「工具栏回收站按钮」心智模型）。
+   * 仍以 filters.status='deleted' 承载（批量恢复/彻底删除按钮可见性等既有逻辑不变），
+   * 同时与收藏筛选互斥联动（回收站下 favorite 静默失效 → 进入时清空勾选态）。
+   */
+  const toggleTaskTrashMode = async () => {
+    const next = !taskTrashMode.value;
+    listModule.filters.value.status = next ? 'deleted' : '';
+    if (next && listModule.favoriteOnly.value) {
+      listModule.favoriteOnly.value = false;
+    }
+    await listModule.applyFilters();
+  };
+
+  /** INT-215：收藏筛选切换（FavoriteTrashBar bar-toggle 口径，含刷新） */
+  const handleTaskFavoriteFilterChange = async (value: boolean) => {
+    listModule.favoriteOnly.value = value;
+    await listModule.applyFilters();
+  };
 
   const handleTaskAction = async (payload: { action: string; task: any }) => {
     if (payload.action === 'favorite' || payload.action === 'unfavorite') {
-      await favoritesModule.toggleFavorite(payload.task.id);
+      try {
+        await favoritesModule.toggleFavorite(payload.task.id);
+        notification.success(favoritesModule.isFavorite(payload.task.id) ? '已收藏' : '已取消收藏');
+      } catch (error) {
+        notification.error('收藏操作失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      }
+      return;
+    }
+    if (payload.action === 'restore') {
+      try {
+        const result = await favoritesModule.restore([payload.task.id]);
+        const restored = result?.restored_count ?? 0;
+        if (restored > 0) {
+          notification.success(`任务「${payload.task?.name ?? payload.task?.id}」已恢复`);
+        } else {
+          notification.info('无可恢复项（任务可能已被恢复）');
+        }
+        await listModule.fetchTasks();
+      } catch (error) {
+        notification.error('恢复任务失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      }
       return;
     }
     if (payload.action === 'purge') {
       const name = payload.task?.name ?? payload.task?.id;
-      if (!window.confirm(`彻底删除任务「${name}」？该操作不可恢复（仅管理员/所有者可执行）。`)) {
-        return;
+      let confirmed = false;
+      try {
+        confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+          title: '彻底删除任务',
+          content: `彻底删除任务「${name}」？该操作不可恢复（仅管理员/所有者可执行）。`,
+          confirmText: '彻底删除',
+          cancelText: '取消',
+          danger: true,
+        });
+      } catch {
+        return; // 用户取消
       }
-      await favoritesModule.purge([payload.task.id]);
-      await listModule.fetchTasks();
+      if (!confirmed) return;
+      try {
+        const result = await favoritesModule.purge([payload.task.id]);
+        const purged = result?.purged_count ?? 0;
+        if (purged > 0) {
+          notification.success(`任务「${name}」已彻底删除`);
+        } else {
+          notification.info('无可删除项（任务可能已被删除或不满足权限）');
+        }
+        await listModule.fetchTasks();
+      } catch (error) {
+        notification.error('彻底删除任务失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      }
       return;
     }
     await controlModule.handleTaskAction(payload);
@@ -81,12 +149,32 @@ export function useTasks() {
   const batchPurge = async () => {
     const ids = Array.from(listModule.selectedTasks.value);
     if (ids.length === 0) return;
-    if (!window.confirm(`彻底删除选中的 ${ids.length} 个任务？该操作不可恢复（仅管理员/所有者可执行）。`)) {
-      return;
+    let confirmed = false;
+    try {
+      confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '批量彻底删除任务',
+        content: `彻底删除选中的 ${ids.length} 个任务？该操作不可恢复（仅管理员/所有者可执行）。`,
+        confirmText: '彻底删除',
+        cancelText: '取消',
+        danger: true,
+      });
+    } catch {
+      return; // 用户取消
     }
-    await favoritesModule.purge(ids);
-    listModule.selectedTasks.value.clear();
-    await listModule.fetchTasks();
+    if (!confirmed) return;
+    try {
+      const result = await favoritesModule.purge(ids);
+      const purged = result?.purged_count ?? 0;
+      if (purged > 0) {
+        notification.success(`已彻底删除 ${purged} 个任务`);
+      } else {
+        notification.info('无可删除项（任务可能已被删除或不满足权限）');
+      }
+      listModule.selectedTasks.value.clear();
+      await listModule.fetchTasks();
+    } catch (error) {
+      notification.error('批量彻底删除失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
   };
 
   // ========== 协调逻辑 ==========
@@ -266,6 +354,10 @@ export function useTasks() {
     toggleFavorite: favoritesModule.toggleFavorite,
     favoriteIds: favoritesModule.favoriteIds,
     batchPurge,
+    // INT-215：回收站工具栏（对齐报告/用例交互口径）
+    taskTrashMode,
+    toggleTaskTrashMode,
+    handleTaskFavoriteFilterChange,
     getStatusText: controlModule.getStatusText,
     getStatusIcon: controlModule.getStatusIcon,
     getStepStatusText: controlModule.getStepStatusText,

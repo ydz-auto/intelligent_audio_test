@@ -151,8 +151,14 @@ export function useHistoryReports() {
 
   const handleRestoreReport = async (report: Report) => {
     try {
-      await favoritesModule.restore([report.id]);
-      showToast('success', `报告「${report.name}」已恢复`);
+      const result = await favoritesModule.restore([report.id]);
+      // INT-215：按后端 restored_count 判定真实结果，count=0 提示无可操作项而非假成功
+      const restored = result?.restored_count ?? 0;
+      if (restored > 0) {
+        showToast('success', `报告「${report.name}」已恢复`);
+      } else {
+        showToast('info', '无可恢复项（报告可能已被恢复）');
+      }
       await loadReports();
     } catch (error) {
       showToast('error', '恢复报告失败');
@@ -160,10 +166,28 @@ export function useHistoryReports() {
   };
 
   const handlePurgeReport = async (report: Report) => {
-    if (!window.confirm(`彻底删除报告「${report.name}」？该操作不可恢复（仅管理员/所有者可执行）。`)) return;
+    // INT-215：确认弹窗统一收敛到 BASIC_CONFIRM 模态（对齐全站危险操作范式）
+    let confirmed = false;
     try {
-      await favoritesModule.purge([report.id]);
-      showToast('success', `报告「${report.name}」已彻底删除`);
+      confirmed = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '彻底删除报告',
+        content: `彻底删除报告「${report.name}」？该操作不可恢复（仅管理员/所有者可执行）。`,
+        confirmText: '彻底删除',
+        cancelText: '取消',
+        danger: true,
+      });
+    } catch {
+      return; // 用户取消
+    }
+    if (!confirmed) return;
+    try {
+      const result = await favoritesModule.purge([report.id]);
+      const purged = result?.purged_count ?? 0;
+      if (purged > 0) {
+        showToast('success', `报告「${report.name}」已彻底删除`);
+      } else {
+        showToast('info', '无可删除项（报告可能已被删除或不满足权限）');
+      }
       await loadReports();
     } catch (error) {
       showToast('error', '彻底删除报告失败');
@@ -172,6 +196,17 @@ export function useHistoryReports() {
 
   const toggleTrashMode = async () => {
     trashMode.value = !trashMode.value;
+    // INT-215：回收站模式下收藏筛选不可用——联动清空勾选态，避免静默失效
+    if (trashMode.value && favoriteOnly.value) {
+      favoriteOnly.value = false;
+    }
+    currentPage.value = 1;
+    await loadReports();
+  };
+
+  /** INT-215：收藏筛选切换（FavoriteTrashBar bar-toggle 口径，含刷新与分页重置） */
+  const handleReportFavoriteFilterChange = async (value: boolean) => {
+    favoriteOnly.value = value;
     currentPage.value = 1;
     await loadReports();
   };
@@ -545,6 +580,8 @@ export function useHistoryReports() {
     favoriteOnly,
     trashMode,
     toggleTrashMode,
+    // INT-215：收藏筛选切换（FavoriteTrashBar）
+    handleReportFavoriteFilterChange,
     loadReports,
     isFavorite: favoritesModule.isFavorite,
     handleToggleFavorite,

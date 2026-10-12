@@ -73,6 +73,9 @@ export interface TaskDto {
   finished_at?: string | null
   error?: string | null
   deleted?: boolean
+  /** INT-215：回收站字段（与后端 TaskListItem 对齐） */
+  deleted_at?: string | null
+  deleted_by_user_id?: number | null
   result?: any
   reports?: TaskReportsDataDto | null
   devices: TaskDeviceBriefDto[]

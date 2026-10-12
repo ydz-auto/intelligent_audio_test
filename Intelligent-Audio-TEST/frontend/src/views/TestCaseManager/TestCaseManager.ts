@@ -5,6 +5,7 @@ import { useTestCaseStore } from '../../store/testCaseStore';
 import { useDeleteConfirm } from '../../composables/modal/useDeleteConfirm';
 import { useNotification } from '../../composables/modal/useNotification';
 import { useFavorites } from '../../composables/favorite/useFavorites';
+import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal';
 import type { TestCase } from '../../domain';
 import type { ModalSaveData } from '../../composables/modal/types';
 // 引入视图模式枚举，消除魔法字符串
@@ -34,6 +35,7 @@ export function useTestCaseManager() {
   } = useTestCaseCard();
 
   const store = useTestCaseStore();
+  const modalControl = useModalControl();
   const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination, tagViewLoading } = storeToRefs(store);
   const { fetchTestCases, fetchTagView, loadMoreTagView, deleteGroup: deleteGroupFromStore, deleteTestCase, resetGroupCache } = store;
 
@@ -52,7 +54,10 @@ export function useTestCaseManager() {
   const handleFavoriteToggle = async (testCase: any) => {
     try {
       await favoritesModule.toggleFavorite(testCase.id);
-      notification.success(favoritesModule.isFavorite(testCase.id) ? '已收藏' : '已取消收藏');
+      const fav = favoritesModule.isFavorite(testCase.id);
+      // INT-215：就地回写行数据 isFavorite，星标态即时可见（无需整表重拉）
+      store.patchTestCaseFavorite(testCase.id, fav);
+      notification.success(fav ? '已收藏' : '已取消收藏');
     } catch (error) {
       notification.error('收藏操作失败: ' + (error instanceof Error ? error.message : '未知错误'));
     }
@@ -60,8 +65,14 @@ export function useTestCaseManager() {
 
   const handleRestoreCase = async (testCase: any) => {
     try {
-      await favoritesModule.restore([testCase.id]);
-      notification.success(`用例「${testCase.name}」已恢复`);
+      const result = await favoritesModule.restore([testCase.id]);
+      // INT-215：按后端 restored_count 判定真实结果，count=0 提示无可操作项而非假成功
+      const restored = result?.restored_count ?? 0;
+      if (restored > 0) {
+        notification.success(`用例「${testCase.name}」已恢复`);
+      } else {
+        notification.info('无可恢复项（用例可能已被恢复）');
+      }
       await refreshCurrentView();
     } catch (error) {
       notification.error('恢复用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
@@ -69,11 +80,29 @@ export function useTestCaseManager() {
   };
 
   const handlePurgeCase = async (testCase: any) => {
-    const confirmed = window.confirm(`彻底删除用例「${testCase.name}」？该操作不可恢复（仅管理员/所有者可执行）。`);
+    // INT-215：确认弹窗统一收敛到 BASIC_CONFIRM 模态（对齐全站危险操作范式）
+    let confirmed = false;
+    try {
+      confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '彻底删除用例',
+        content: `彻底删除用例「${testCase.name}」？该操作不可恢复（仅管理员/所有者可执行）。`,
+        confirmText: '彻底删除',
+        cancelText: '取消',
+        danger: true,
+      });
+    } catch {
+      return; // 用户取消
+    }
     if (!confirmed) return;
     try {
-      await favoritesModule.purge([testCase.id]);
-      notification.success(`用例「${testCase.name}」已彻底删除`);
+      const result = await favoritesModule.purge([testCase.id]);
+      // INT-215：按后端 purged_count 判定真实结果，count=0 提示无可操作项而非假成功
+      const purged = result?.purged_count ?? 0;
+      if (purged > 0) {
+        notification.success(`用例「${testCase.name}」已彻底删除`);
+      } else {
+        notification.info('无可删除项（用例可能已被删除或不满足权限）');
+      }
       await refreshCurrentView();
     } catch (error) {
       notification.error('彻底删除用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
@@ -81,17 +110,45 @@ export function useTestCaseManager() {
   };
 
   const restoreAllTrash = async () => {
-    const ids = Object.values(testCaseGroups.value)
-      .flat()
-      .map((c: any) => c.id);
+    // INT-215：按当前过滤条件从后端取全量已删集合（原实现取分组视图缓存，
+    // 标签视图下恢复错误集合或误报回收站为空）
+    let ids: (string | number)[] = [];
+    try {
+      ids = await store.fetchCaseIdsByFilter({
+        search: currentFilters.value.keyword,
+        testType: currentFilters.value.testType,
+        algorithmType: currentFilters.value.algorithmType,
+        dimensionId: currentFilters.value.dimensionId,
+        onlyDeleted: true,
+      });
+    } catch (error) {
+      notification.error('获取回收站用例失败: ' + (error instanceof Error ? error.message : '未知错误'));
+      return;
+    }
     if (ids.length === 0) {
       notification.info('回收站为空');
       return;
     }
-    if (!window.confirm(`恢复回收站中的全部 ${ids.length} 个用例？`)) return;
+    let confirmed = false;
     try {
-      await favoritesModule.restore(ids);
-      notification.success('回收站用例已全部恢复');
+      confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '全部恢复',
+        content: `恢复回收站中的全部 ${ids.length} 个用例？`,
+        confirmText: '全部恢复',
+        cancelText: '取消',
+      });
+    } catch {
+      return; // 用户取消
+    }
+    if (!confirmed) return;
+    try {
+      const result = await favoritesModule.restore(ids);
+      const restored = result?.restored_count ?? 0;
+      if (restored > 0) {
+        notification.success(`已恢复 ${restored} 个用例`);
+      } else {
+        notification.info('无可恢复项（用例可能已被恢复）');
+      }
       await refreshCurrentView();
     } catch (error) {
       notification.error('恢复失败: ' + (error instanceof Error ? error.message : '未知错误'));
@@ -100,6 +157,10 @@ export function useTestCaseManager() {
 
   const toggleTrashMode = async () => {
     trashMode.value = !trashMode.value;
+    // INT-215：回收站模式下收藏筛选不可用——联动清空勾选态，避免静默失效
+    if (trashMode.value && favoriteOnly.value) {
+      favoriteOnly.value = false;
+    }
     await refreshCurrentView();
   };
 
@@ -116,6 +177,8 @@ export function useTestCaseManager() {
         testType: currentFilters.value.testType,
         algorithmType: currentFilters.value.algorithmType,
         dimensionId: currentFilters.value.dimensionId,
+        // INT-215：收藏 / 回收站过滤贯通标签视图（原先漏传导致标签视图回收站断链）
+        ...currentFetchExtra(),
       });
     } else {
       await fetchTestCases({
@@ -142,6 +205,8 @@ export function useTestCaseManager() {
         testType: filters.testType,
         algorithmType: filters.algorithmType,
         dimensionId: filters.dimensionId,
+        // INT-215：收藏 / 回收站过滤贯通标签视图
+        ...currentFetchExtra(),
       });
     }
   };

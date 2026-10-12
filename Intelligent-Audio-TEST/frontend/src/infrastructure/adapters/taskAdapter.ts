@@ -94,6 +94,8 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
     finishedAt: d.finished_at ?? undefined,
     error: d.error ?? undefined,
     deleted: d.deleted,
+    deletedAt: d.deleted_at ?? undefined,
+    deletedByUserId: d.deleted_by_user_id ?? undefined,
     result: d.result,
     reports: d.reports
       ? {

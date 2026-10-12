@@ -122,14 +122,6 @@
             :collapsed-count="8"
             @update:model-value="handleStatusBadgeChange"
           />
-
-          <!-- INT-141：收藏筛选 -->
-          <div class="filter-item">
-            <label class="favorite-filter-label">
-              <input type="checkbox" v-model="favoriteOnly" @change="applyFilters">
-              <i class="fas fa-star"></i> 仅看收藏
-            </label>
-          </div>
         </div>
 
         <div class="filter-row">
@@ -177,8 +169,16 @@
             @update:model-value="handleAlgorithmBadgeChange"
           />
         </div>
+        <!-- INT-215：收藏 / 回收站工具栏（对齐报告/用例交互口径；回收站不再作为状态徽章筛选项） -->
+        <FavoriteTrashBar
+          :favorite-only="favoriteOnly"
+          :trash-mode="taskTrashMode"
+          :favorite-disabled="taskTrashMode"
+          @update:favorite-only="handleTaskFavoriteFilterChange"
+          @update:trash-mode="toggleTaskTrashMode"
+        />
       </section>
-      
+
       <!-- 任务列表 -->
       <section class="tasks-container" v-if="!showComparisonReport">
         <!-- 批量操作栏 -->
@@ -231,7 +231,7 @@
         
         <!-- 任务列表容器 -->
         <div id="tasks-container">
-          <TaskListWithPagination 
+          <TaskListWithPagination
             :tasks="filteredTasks.map(task => ({
               id: task.id,
               name: task.name,
@@ -246,7 +246,11 @@
               totalCases: task.totalCases,
               algorithmType: task.algorithmType,
               algorithmParams: task.algorithmParams,
-              sourceTasks: task.sourceTasks
+              sourceTasks: task.sourceTasks,
+              // INT-215：回收站字段（已删除徽章 + 删除人/删除时间展示）
+              deleted: task.deleted,
+              deletedAt: task.deletedAt ? formatDate(task.deletedAt) : '',
+              deletedByUserId: task.deletedByUserId
             }))"
             :is-selected="(task: any) => selectedTasks.has(task.id)"
             :show-checkbox="true"
@@ -258,14 +262,16 @@
             :actions="[
               { id: 'view-details', label: '查看详情', icon: 'fa-eye', type: 'secondary' },
               { id: 'view-report', label: '查看报告', icon: 'fa-file-alt', type: 'primary' },
+              // INT-215：收藏星标按收藏态动态生成 fas/far + 着色（对齐报告/用例行内星标口径）
+              { id: 'favorite', label: '收藏', type: 'secondary', show: (task: any) => !isFavorite(task.id) && filters.status !== 'deleted', iconClass: (task: any) => isFavorite(task.id) ? 'fas fa-star' : 'far fa-star', iconStyle: (task: any) => isFavorite(task.id) ? 'color: var(--favorite-star)' : '' },
+              { id: 'unfavorite', label: '取消收藏', type: 'secondary', show: (task: any) => isFavorite(task.id) && filters.status !== 'deleted', iconClass: (task: any) => isFavorite(task.id) ? 'fas fa-star' : 'far fa-star', iconStyle: (task: any) => isFavorite(task.id) ? 'color: var(--favorite-star)' : '' },
               { id: 'regenerate-report', label: '重新生成报告', icon: 'fa-sync', type: 'warning', show: (task: any) => [...FINISHED_STATUSES].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'pause', label: '暂停', icon: 'fa-pause', type: 'secondary', show: (task: any) => task.status === TaskStatus.RUNNING, disabled: (task: any) => isControlling.has(task.id) },
               { id: 'resume', label: '继续', icon: 'fa-play', type: 'secondary', show: (task: any) => [TaskStatus.PAUSED, TaskStatus.STOPPED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => [TaskStatus.RUNNING, TaskStatus.PAUSED, TaskStatus.QUEUED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'retry', label: '重新执行', icon: 'fa-redo', type: 'success', show: (task: any) => [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.STOPPED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => [...FINISHED_STATUSES].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'favorite', label: '收藏', icon: 'fa-star', type: 'secondary', show: (task: any) => !isFavorite(task.id) && filters.status !== 'deleted' },
-              { id: 'unfavorite', label: '取消收藏', icon: 'fa-star', type: 'secondary', show: (task: any) => isFavorite(task.id) && filters.status !== 'deleted' },
+              { id: 'restore', label: '恢复', icon: 'fa-undo', type: 'success', show: (task: any) => filters.status === 'deleted' },
               { id: 'purge', label: '彻底删除', icon: 'fa-fire', type: 'danger', show: (task: any) => filters.status === 'deleted' },
               { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.has(task.id) }
             ]"
@@ -337,9 +343,11 @@ import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
 import TaskDataExportDialog from '../../components/task/TaskDataExportDialog.vue';
 import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 
 // ===== 筛选选项（组件级 UI 常量，对齐 V9.7.10 徽章筛选行）=====
+// INT-215：「已删除（回收站）」自状态徽章移除——回收站入口统一为工具栏按钮（toggleTaskTrashMode）
 const STATUS_FILTER_OPTIONS = [
   { value: TaskStatus.PENDING, label: '待执行' },
   { value: TaskStatus.QUEUED, label: '排队中' },
@@ -349,7 +357,6 @@ const STATUS_FILTER_OPTIONS = [
   { value: TaskStatus.REEVALUATING, label: '重新评估中' },
   { value: TaskStatus.COMPLETED, label: '已完成' },
   { value: TaskStatus.FAILED, label: '执行失败' },
-  { value: 'deleted', label: '已删除（回收站）' },
   { value: TaskStatus.MERGED, label: '已合并' },
 ];
 
@@ -416,7 +423,11 @@ const {
   // 收藏 / 回收站（INT-141）
   favoriteOnly,
   isFavorite,
-  batchPurge
+  batchPurge,
+  // INT-215：回收站工具栏（对齐报告/用例交互口径）
+  taskTrashMode,
+  toggleTaskTrashMode,
+  handleTaskFavoriteFilterChange
 } = useTasks();
 
 // ===== 徽章筛选变更（写入 ReadModel 筛选状态后统一走 applyFilters）=====
@@ -437,17 +448,6 @@ function handleAlgorithmBadgeChange(value: string | number) {
 </script>
 
 <style scoped>@import './Tasks.css';
-
-.favorite-filter-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  user-select: none;
-}
-.favorite-filter-label i { color: #f5a623; }
-
-
 
 .chart-card{
     transition: all 0.3s ease;

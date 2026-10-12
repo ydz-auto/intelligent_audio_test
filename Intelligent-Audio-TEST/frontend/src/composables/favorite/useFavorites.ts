@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import * as favoritesApi from '../../infrastructure/api/favoritesApi';
 import type { FavoriteEntityType } from '../../infrastructure/api/favoritesApi';
+import { useNotification } from '../modal/useNotification';
 
 /**
  * useFavorites - 收藏 / 回收站组合式函数（INT-141）
@@ -9,6 +10,7 @@ import type { FavoriteEntityType } from '../../infrastructure/api/favoritesApi';
  * user_id 由后端从 JWT 解析（AUTH_MODE=off 时为未收藏语义），前端不传。
  */
 export function useFavorites(entityType: FavoriteEntityType) {
+  const notification = useNotification();
   /** 当前用户在该实体类型下已收藏的 ID 集合（字符串化 key） */
   const favoriteIds = ref<Set<string>>(new Set());
   /** 列表“仅收藏”筛选开关 */
@@ -23,7 +25,9 @@ export function useFavorites(entityType: FavoriteEntityType) {
       const ids = await favoritesApi.listFavoriteIds(entityType);
       favoriteIds.value = new Set((ids[entityType] ?? []).map(keyOf));
     } catch (e) {
+      // INT-215：失败不再静默降级——提示星标态可能失真（接口不可用时全错且无感知）
       console.warn('[useFavorites] 收藏列表加载失败', e);
+      notification.warning('收藏状态加载失败，星标状态可能不准确');
     }
   }
 

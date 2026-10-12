@@ -256,7 +256,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
         testType: params.testType,
         algorithmType: params.algorithmType,
         dimensionId: params.dimensionId,
-        includeDeleted: params.includeDeleted || false
+        includeDeleted: params.includeDeleted || false,
+        // INT-215：收藏 / 回收站过滤贯通标签视图
+        favorite: params.favorite || false,
+        onlyDeleted: params.onlyDeleted || false
       });
 
       const items = response?.items ?? [];
@@ -311,7 +314,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
         testType: params.testType,
         algorithmType: params.algorithmType,
         dimensionId: params.dimensionId,
-        includeDeleted: params.includeDeleted || false
+        includeDeleted: params.includeDeleted || false,
+        // INT-215：沿用首拉参数的收藏 / 回收站过滤
+        favorite: params.favorite || false,
+        onlyDeleted: params.onlyDeleted || false
       });
 
       const items = response?.items ?? [];
@@ -396,6 +402,24 @@ export const useTestCaseStore = defineStore('testCase', () => {
     }
     organizeTestCasesByGroup();
     extractTags();
+  };
+
+  /**
+   * INT-215：收藏切换后就地回写 isFavorite（分组/标签视图共享同一行对象引用），
+   * 星标态即时可见，无需整表重拉；下次列表刷新以后端返回为准。
+   */
+  const patchTestCaseFavorite = (id: string | number, isFavorite: boolean) => {
+    const inList = testCases.value.find(tc => tc.id === id);
+    if (inList) {
+      inList.isFavorite = isFavorite;
+    }
+    for (const tagName of Object.keys(tagViewData.value)) {
+      const hit = tagViewData.value[tagName]?.find(c => c.id === id);
+      if (hit) {
+        hit.isFavorite = isFavorite;
+        break;
+      }
+    }
   };
 
   // ----------------------------------------------------------------
@@ -633,6 +657,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     deleteTagCases,
     upsertTestCaseLocal,
     removeTestCaseLocal,
+    patchTestCaseFavorite,
     organizeTestCasesByGroup,
     extractTags,
     resetGroupCache,

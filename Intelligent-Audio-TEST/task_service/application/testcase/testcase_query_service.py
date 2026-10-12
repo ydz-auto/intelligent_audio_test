@@ -38,11 +38,13 @@ class TestCaseQueryService:
         from shared.utils import testcase_helpers as common
 
         try:
-            # 标签视图（收藏/回收站过滤不适用于标签聚合视图，忽略）
+            # 标签视图（INT-215：收藏/回收站过滤贯通标签聚合视图）
             if view == 'tag':
                 return self._get_tag_view(page, per_page, keyword,
                                           algorithm_type, include_deleted, common,
-                                          dimension_id=dimension_id)
+                                          dimension_id=dimension_id,
+                                          favorite=favorite, only_deleted=only_deleted,
+                                          user_id=user_id)
 
             pagination = self.repo.query_testcases(
                 page=page, per_page=per_page, keyword=keyword, tag=tag,
@@ -131,7 +133,8 @@ class TestCaseQueryService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def _get_tag_view(self, page, per_page, keyword,
-                      algorithm_type, include_deleted, common, dimension_id=None):
+                      algorithm_type, include_deleted, common, dimension_id=None,
+                      favorite=False, only_deleted=False, user_id=None):
         """标签视图：按标签聚合用例。"""
         tag_pagination = self.repo.list_tags_paginated(page=page, per_page=per_page)
         page_tags = tag_pagination.items
@@ -155,6 +158,7 @@ class TestCaseQueryService:
             tag_ids, keyword=keyword,
             algorithm_type=algorithm_type, include_deleted=include_deleted,
             dimension_id=dimension_id,
+            favorite=favorite, only_deleted=only_deleted, user_id=user_id,
         )
 
         audio_ids = set()
@@ -167,6 +171,23 @@ class TestCaseQueryService:
 
         # 跨域查询：Audio（后续 gRPC 改造）
         audio_map = self.repo.list_audios_by_ids(audio_ids) if audio_ids else {}
+
+        # INT-215：当前用户对本批用例的收藏集合（isFavorite 标记）
+        favorite_ids = set()
+        if user_id and test_cases:
+            from shared.models.common_enums import EntityType
+            from task_service.infrastructure.persistence.models import Favorite
+            from shared.models.database import get_db_session
+            fav_session = get_db_session()
+            try:
+                fav_rows = (fav_session.query(Favorite.entity_id)
+                            .filter(Favorite.user_id == user_id,
+                                    Favorite.entity_type == EntityType.TESTCASE.value,
+                                    Favorite.entity_id.in_([tc.id for tc in test_cases]))
+                            .all())
+                favorite_ids = {r[0] for r in fav_rows}
+            finally:
+                fav_session.close()
 
         cases_by_tag = {t.id: [] for t in page_tags}
         for tc in test_cases:
@@ -200,6 +221,11 @@ class TestCaseQueryService:
                     "algorithmType": tc.algorithm_type,
                     "createdAt": tc.created_at.isoformat() if tc.created_at else None,
                     "updatedAt": tc.updated_at.isoformat() if tc.updated_at else None,
+                    # INT-215：收藏标记 / 回收站字段（与普通列表对齐）
+                    "isFavorite": tc.id in favorite_ids,
+                    "deleted": bool(getattr(tc, 'deleted', False)),
+                    "deletedAt": tc.deleted_at.isoformat() if getattr(tc, 'deleted_at', None) else None,
+                    "deletedByUserId": getattr(tc, 'deleted_by_user_id', None),
                     "totalDuration": round(total_duration, 2) if total_duration > 0 else None,
                 })
 
@@ -345,9 +371,12 @@ class TestCaseQueryService:
             test_type = data.get('test_type') or data.get('type')
             search = data.get('search')
             tag = data.get('tag')
+            # INT-215：回收站全部恢复按已删集合圈定（snake_case 由前端 QUERY_PARAM_MAP 转换）
+            only_deleted = bool(data.get('only_deleted'))
 
             ids = self.repo.fetch_case_ids(
                 group=group, test_type=test_type, search=search, tag=tag,
+                only_deleted=only_deleted,
             )
             return {'success': True, 'message': '', 'data': {'ids': ids}}
         except Exception as e:

@@ -151,6 +151,10 @@ export function toReportListItem(dto: ReportListItemDto): ReportListItemDomain {
     status: dto.status as ReportListItemDomain['status'],
     createdAt: s(dto.created_at),
     updatedAt: dto.updated_at ?? undefined,
+    // INT-215：回收站字段（report_service 补齐后生效；缺失时前端显示「—」空态）
+    deleted: dto.deleted ?? undefined,
+    deletedAt: dto.deleted_at ?? undefined,
+    deletedByUserId: dto.deleted_by_user_id ?? undefined,
   }
 }
 

@@ -185,6 +185,11 @@ export interface ReportListItemDto {
   status: string
   created_at: string
   updated_at?: string | null
+  /** INT-215：回收站字段（report_service 侧补齐后生效，缺失时前端显示「—」空态） */
+  is_favorite?: boolean | null
+  deleted?: boolean | null
+  deleted_at?: string | null
+  deleted_by_user_id?: number | null
 }
 
 /** 列表响应（ReportListData） */

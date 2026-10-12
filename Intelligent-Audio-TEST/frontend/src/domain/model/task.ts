@@ -75,6 +75,9 @@ export interface Task {
   finishedAt?: string
   error?: string
   deleted?: boolean
+  /** INT-215：回收站字段（删除人为 user_id，AUTH_MODE=off 时 NULL） */
+  deletedAt?: string
+  deletedByUserId?: number | null
   result?: any
   reports?: {
     count: number

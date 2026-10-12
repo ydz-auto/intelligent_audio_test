@@ -12,7 +12,12 @@
         >
         <div class="task-title-section">
           <div class="task-title-with-status">
-            <span class="task-status" :class="task.status">
+            <!-- INT-215：回收站态以「已删除」徽章替代原状态 -->
+            <span v-if="task.deleted" class="task-status deleted-badge">
+              <i class="fas fa-trash"></i>
+              已删除
+            </span>
+            <span v-else class="task-status" :class="task.status">
               <i class="fas task-indicator" :class="{
                 'fa-clock': task.status === TaskStatus.PENDING,
                 'fa-hourglass': task.status === TaskStatus.QUEUED,
@@ -31,9 +36,9 @@
             </span>
             <div class="task-title" v-if="!isEditingName" @click.stop="startEditName" title="点击修改任务名称">{{ task.name || task.title || '未命名任务' }}</div>
             <div class="task-title-edit" v-else @click.stop>
-              <input 
-                type="text" 
-                v-model="editedName" 
+              <input
+                type="text"
+                v-model="editedName"
                 @keydown="handleKeydown"
                 @blur="handleBlur"
                 ref="nameInput"
@@ -56,6 +61,15 @@
               <i class="fas fa-calendar-alt"></i>
               {{ task.createdAt }}
             </span>
+            <!-- INT-215：回收站条目展示删除人/删除时间（AUTH_MODE=off 时 NULL 显示「—」） -->
+            <span v-if="task.deleted" class="task-meta-item">
+              <i class="fas fa-calendar-times"></i>
+              删除时间{{ task.deletedAt || '—' }}
+            </span>
+            <span v-if="task.deleted" class="task-meta-item">
+              <i class="fas fa-user-times"></i>
+              删除人{{ deletedByLabel }}
+            </span>
             <span class="task-meta-item">
               <i class="fas fa-tasks"></i>
               用例数{{ task.caseCount }}
@@ -76,7 +90,12 @@
       </div>
       <div class="task-title-section" v-else>
         <div class="task-title-with-status">
-          <span class="task-status" :class="task.status">
+          <!-- INT-215：回收站态以「已删除」徽章替代原状态 -->
+          <span v-if="task.deleted" class="task-status deleted-badge">
+            <i class="fas fa-trash"></i>
+            已删除
+          </span>
+          <span v-else class="task-status" :class="task.status">
             <i class="fas task-indicator" :class="{
               'fa-clock': task.status === TaskStatus.PENDING,
               'fa-hourglass': task.status === TaskStatus.QUEUED,
@@ -120,6 +139,15 @@
               <i class="fas fa-calendar-alt"></i>
               {{ task.createdAt }}
             </span>
+            <!-- INT-215：回收站条目展示删除人/删除时间（AUTH_MODE=off 时 NULL 显示「—」） -->
+            <span v-if="task.deleted" class="task-meta-item">
+              <i class="fas fa-calendar-times"></i>
+              删除时间{{ task.deletedAt || '—' }}
+            </span>
+            <span v-if="task.deleted" class="task-meta-item">
+              <i class="fas fa-user-times"></i>
+              删除人{{ deletedByLabel }}
+            </span>
             <span class="task-meta-item">
               <i class="fas fa-tasks"></i>
               用例数{{ task.caseCount }}
@@ -140,14 +168,15 @@
       <div class="task-status-actions">
         <div class="task-actions" v-if="actions && actions.length > 0">
           <template v-for="action in actions" :key="action.id">
-            <button 
+            <button
               v-if="!action.show || action.show(task)"
               class="btn" :class="`btn-${action.type}`"
               @click.stop="handleAction(action)"
               :disabled="typeof action.disabled === 'function' ? action.disabled(task) : action.disabled"
               :title="action.title || action.label"
             >
-              <i v-if="action.icon" :class="`fas ${action.icon}`"></i>
+              <!-- INT-215：iconClass/iconStyle 支持静态串或按行求值函数（收藏星标态可见） -->
+              <i v-if="resolveActionIconClass(action)" :class="resolveActionIconClass(action)" :style="resolveActionIconStyle(action)"></i>
               {{ action.label }}
             </button>
           </template>
@@ -176,6 +205,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { useTaskCard } from './TaskCard'
 import { TaskStatus } from '@/domain/enums'
 
@@ -206,6 +236,23 @@ const {
   getStepStatusText,
   calculateCompletionRate
 } = useTaskCard(props, emit)
+
+/** INT-215：删除人展示（后端 deletedByUserId；AUTH_MODE=off 时 NULL 显示「—」） */
+const deletedByLabel = computed(() => {
+  const uid = props.task?.deletedByUserId
+  return uid !== undefined && uid !== null ? `用户 #${uid}` : '—'
+})
+
+/** INT-215：动作图标类支持 iconClass（静态串/按行函数）回退 icon；用于收藏星标 fas/far 区分 */
+const resolveActionIconClass = (action) => {
+  if (typeof action.iconClass === 'function') return action.iconClass(props.task)
+  if (action.iconClass) return action.iconClass
+  return action.icon ? `fas ${action.icon}` : ''
+}
+
+const resolveActionIconStyle = (action) => {
+  return typeof action.iconStyle === 'function' ? action.iconStyle(props.task) : (action.iconStyle || '')
+}
 </script>
 
 <style scoped>@import './TaskCard.css';
@@ -244,6 +291,13 @@ const {
     border: 1px solid var(--primary-color);
     padding: 4px 12px;
     border-radius: 16px;
+}
+
+/* INT-215：回收站「已删除」徽章（替代原状态徽章展示） */
+.deleted-badge{
+    background: var(--destructive-light, rgba(245, 34, 45, 0.1));
+    color: var(--destructive);
+    font-weight: 600;
 }
 
 .task-card:hover .task-description{

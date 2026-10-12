@@ -31,7 +31,13 @@ export function createSelectionModule(props: any, emit: any, state: ContainerSta
   const { debouncedSearchQuery, groupSelectionStates, filteredTagCases } = deps;
 
   // ===== 用例卡片操作 =====
-  const getTestCaseActions = () => {
+  /**
+   * 用例卡片操作项。
+   * INT-215：普通模式返回「按卡片用例生成 actions」的工厂函数（TestCaseCard 内按行求值），
+   * 收藏星标按 isFavorite 动态生成 fas/far + 着色，收藏态在列表可见；
+   * 回收站模式为静态 恢复/彻底删除 两项。
+   */
+  const getTestCaseActions = (): any[] | ((testCase: TestCase | null | undefined) => any[]) => {
     // INT-141：回收站模式下卡片操作切换为 恢复/彻底删除
     if ((props as any).trashMode) {
       return [
@@ -39,10 +45,15 @@ export function createSelectionModule(props: any, emit: any, state: ContainerSta
         { id: 'purge', icon: 'fa-fire', title: '彻底删除（不可恢复）' }
       ];
     }
-    return [
+    return (testCase: TestCase | null | undefined) => [
       { id: 'preview', icon: 'fa-play', title: '预览音频' },
       { id: 'copy', icon: 'fa-copy', title: '复制用例' },
-      { id: 'favorite', icon: 'fa-star', title: '收藏/取消收藏' },
+      {
+        id: 'favorite',
+        iconClass: testCase?.isFavorite ? 'fas fa-star' : 'far fa-star',
+        iconStyle: testCase?.isFavorite ? 'color: var(--favorite-star)' : '',
+        title: testCase?.isFavorite ? '取消收藏' : '收藏'
+      },
       { id: 'edit', icon: 'fa-edit', title: '编辑用例' },
       { id: 'delete', icon: 'fa-trash', title: '删除用例' }
     ];

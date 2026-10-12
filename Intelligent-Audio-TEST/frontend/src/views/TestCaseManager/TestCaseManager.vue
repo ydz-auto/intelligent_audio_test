@@ -10,19 +10,17 @@
       </div>
     </div>
     
-    <!-- INT-141：收藏 / 回收站工具栏 -->
-    <div class="favorite-trash-bar">
-      <label class="bar-toggle" :class="{ active: favoriteOnly }" title="仅显示我收藏的用例">
-        <input type="checkbox" v-model="favoriteOnly" @change="refreshCurrentView">
-        <i class="fas fa-star"></i> 仅看收藏
-      </label>
-      <button class="bar-toggle" :class="{ active: trashMode }" @click="toggleTrashMode" title="回收站：已删除用例，可恢复或彻底删除">
-        <i class="fas fa-trash-restore"></i> 回收站
-      </button>
-      <button v-if="trashMode" class="bar-toggle" @click="restoreAllTrash" title="恢复回收站中的全部用例">
-        <i class="fas fa-undo"></i> 全部恢复
-      </button>
-    </div>
+    <!-- INT-141：收藏 / 回收站工具栏（INT-215：收敛至 common 组件，三视图统一口径） -->
+    <FavoriteTrashBar
+      :favorite-only="favoriteOnly"
+      :trash-mode="trashMode"
+      :favorite-disabled="trashMode"
+      show-restore-all
+      restore-all-title="恢复回收站中的全部用例"
+      @update:favorite-only="onFavoriteFilterChange"
+      @update:trash-mode="toggleTrashMode"
+      @restore-all="restoreAllTrash"
+    />
 
     <TestCaseListContainer
       :test-case-groups="testCaseGroups"
@@ -54,6 +52,7 @@
 
 <script setup lang="ts">
 import TestCaseListContainer from '../../components/common/test-case/TestCaseListContainer.vue';
+import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import { useTestCaseManager } from './TestCaseManager';
 
 const {
@@ -87,38 +86,16 @@ const {
   handleRestoreCase,
   handlePurgeCase
 } = useTestCaseManager();
+
+/** INT-215：收藏筛选切换后按当前视图刷新（与回收站模式互斥联动由 toggleTrashMode 收敛） */
+const onFavoriteFilterChange = (value: boolean) => {
+  favoriteOnly.value = value;
+  refreshCurrentView();
+};
 </script>
 
 <style scoped>
 .test-case-manager{
     padding: 24px;
 }
-
-/* INT-141：收藏 / 回收站工具栏 */
-.favorite-trash-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.bar-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--background-primary);
-  cursor: pointer;
-  user-select: none;
-  font-size: 13px;
-  color: inherit;
-}
-.bar-toggle.active {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-.bar-toggle i { color: #f5a623; }
-.bar-toggle i.fa-trash-restore,
-.bar-toggle i.fa-undo { color: inherit; }
 </style>

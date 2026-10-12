@@ -44,6 +44,10 @@ export function toTestCase(dto: TestCaseDto): TestCase {
     algorithmType: dto.algorithm_type ?? undefined,
     createdAt: dto.created_at ?? undefined,
     updatedAt: dto.updated_at ?? undefined,
+    isFavorite: dto.is_favorite ?? undefined,
+    deleted: dto.deleted ?? false,
+    deletedAt: dto.deleted_at ?? undefined,
+    deletedByUserId: dto.deleted_by_user_id ?? undefined,
     totalDuration: dto.total_duration ?? undefined,
   }
 }
@@ -74,6 +78,10 @@ export function toTagViewCase(dto: TagViewCaseDto): TestCase {
     algorithmType: dto.algorithmType ?? undefined,
     createdAt: dto.createdAt ?? undefined,
     updatedAt: dto.updatedAt ?? undefined,
+    isFavorite: dto.isFavorite ?? undefined,
+    deleted: dto.deleted ?? false,
+    deletedAt: dto.deletedAt ?? undefined,
+    deletedByUserId: dto.deletedByUserId ?? undefined,
     totalDuration: dto.totalDuration ?? undefined,
   }
 }

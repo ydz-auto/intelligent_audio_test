@@ -66,7 +66,8 @@ const props = defineProps({
   testCases: { type: Array, default: () => [] },
   showCheckbox: { type: Boolean, default: true },
   showConfig: { type: Boolean, default: true },
-  actions: { type: Array, default: () => [] },
+  // INT-215：可为静态数组或 (testCase) => actions 工厂函数（按卡片用例动态生成，如收藏星标态）
+  actions: { type: [Array, Function], default: () => [] },
   filter: { type: Object, default: () => ({}) },
   searchQuery: { type: String, default: '' },
   isLoading: { type: Boolean, default: false }

@@ -113,6 +113,8 @@
   --warning-light: rgba(255, 169, 64, 0.1);
   --warning-dark: #d48806;
   --destructive-light: rgba(245, 34, 45, 0.1);
+  /* 收藏星标色（INT-215：收敛三视图魔法色 #f5a623，取 amber 标度） */
+  --favorite-star: var(--color-amber-500);
 
   /* ── 布局 ── */
   --radius: 8px;
