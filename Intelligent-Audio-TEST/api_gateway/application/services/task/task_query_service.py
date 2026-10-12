@@ -12,6 +12,8 @@ from api_gateway.schemas.task import (
     TaskProgressData,
     TaskProgressCurrentCase,
     TaskStatsData,
+    TaskDomainStatsData,
+    TaskDomainStatsQuery,
     TaskCaseBrief,
     TaskDeviceBrief,
     TaskApiBrief,
@@ -327,3 +329,40 @@ class TaskQueryService:
             return error_response(result.get('message', '查询失败'))
 
         return success_response(TaskStatsData(**(result.get('data') or {})))
+
+    # 任务域全量聚合统计（INT-200）：统计卡与图表数据源，与列表筛选/分页无关；
+    # 任一聚合 RPC 失败即整体 400，不以 0 兜底（对齐 stats_cache INT-204 降级语义）
+    @staticmethod
+    def domain_stats():
+        query = _parse_query_params(TaskDomainStatsQuery)
+        granularity = query.granularity
+
+        from api_gateway.infrastructure.grpc_proxies import task_data_service
+        try:
+            status_grouped = task_data_service.get_task_stats(group_by='status')
+            type_grouped = task_data_service.get_task_stats(group_by='type')
+            trend_grouped = task_data_service.get_task_stats(
+                group_by='trend', granularity=granularity)
+            deleted_total = task_data_service.get_task_stats(deleted=True)
+        except Exception as e:
+            logger.exception('任务域聚合统计失败')
+            return error_response(f'任务聚合统计失败: {e}')
+
+        def _counts(grouped):
+            return {
+                str(item.get('key', '')): int(item.get('count', 0))
+                for item in (grouped.get('items') or [])
+            }
+
+        status_counts = _counts(status_grouped)
+        return success_response(TaskDomainStatsData(
+            total=sum(status_counts.values()),
+            deleted_total=int(deleted_total.get('total', 0)),
+            status_counts=status_counts,
+            type_counts=_counts(type_grouped),
+            trend=[
+                {'key': str(item.get('key', '')), 'count': int(item.get('count', 0))}
+                for item in (trend_grouped.get('items') or [])
+            ],
+            granularity=granularity,
+        ))

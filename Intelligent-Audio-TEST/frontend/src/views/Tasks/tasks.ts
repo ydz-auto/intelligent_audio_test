@@ -29,14 +29,15 @@ export function useTasks() {
   // 创建共享的 tasks ref，供图表模块和列表模块共同引用
   const sharedTasks = ref<Task[]>([]);
 
-  // 图表模块（引用 sharedTasks）
-  const chartsModule = useTaskCharts(sharedTasks);
-
-  // 任务列表模块（注入共享的 tasks ref 和图表更新回调）
+  // 任务列表模块（注入共享的 tasks ref 和图表更新回调；
+  // onTasksUpdated 由 fetchTasks 完成后异步触发，此时 chartsModule 已完成初始化）
   const listModule = useTaskList({
     tasks: sharedTasks,
     onTasksUpdated: () => chartsModule.updateCharts()
   });
+
+  // 图表模块（INT-200：数据源为任务域全量聚合统计 taskStats，非当前页 tasks）
+  const chartsModule = useTaskCharts(listModule.taskStats);
 
   // 任务控制模块
   const controlModule = useTaskControl(
@@ -238,6 +239,14 @@ export function useTasks() {
 
   // ========== 图表与生命周期协调（从 .vue 迁入） ==========
 
+  /** INT-200：粒度切换 → 全量统计按新粒度重取趋势分桶后再重建图表 */
+  const changeTimeGranularity = async (granularity: string) => {
+    chartsModule.timeGranularity.value = granularity;
+    listModule.statsGranularity.value = granularity;
+    await listModule.fetchTaskStats();
+    chartsModule.updateCharts();
+  };
+
   const handleNameUpdated = ({ taskId, newName }: { taskId: string | number; newName: string }) => {
     console.log('[DEBUG] handleUpdateTaskName called:', { taskId, newName });
     controlModule.updateTaskName(taskId, newName);
@@ -313,6 +322,8 @@ export function useTasks() {
     totalTagPages: listModule.totalTagPages,
     currentTags: listModule.currentTags,
     totalTasks: listModule.totalTasks,
+    domainTotal: listModule.domainTotal,
+    taskStats: listModule.taskStats,
     pendingTasks: listModule.pendingTasks,
     queuedTasks: listModule.queuedTasks,
     inProgressTasks: listModule.inProgressTasks,
@@ -391,7 +402,7 @@ export function useTasks() {
     createTaskTrendChart: chartsModule.createTaskTrendChart,
     createTaskStatusChart: chartsModule.createTaskStatusChart,
     updateCharts: chartsModule.updateCharts,
-    changeTimeGranularity: chartsModule.changeTimeGranularity,
+    changeTimeGranularity,
     isActive: chartsModule.isActive,
 
     // 报告相关

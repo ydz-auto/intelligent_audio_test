@@ -599,7 +599,8 @@ def create_testcase_group(name, description='', algorithm_type='', group_id=None
     return _json.loads(resp.data) if resp.data else {}
 
 
-def get_task_stats(status=None, algorithm_type=None, group_by=None):
+def get_task_stats(status=None, algorithm_type=None, group_by=None,
+                   deleted=None, granularity=None):
     """通过 gRPC 调用 task_service.TaskDataService.GetTaskStats 聚合统计 Task
 
     供 stats_cache / home_service 跨服务聚合统计 task_service 的 Task，替代直连 DB
@@ -608,8 +609,10 @@ def get_task_stats(status=None, algorithm_type=None, group_by=None):
     Args:
         status: 可选，按任务状态过滤（pending/queued/running/evaluating/completed/...）
         algorithm_type: 可选，按算法类型过滤
-        group_by: 可选，分组字段（status / algorithm_type；task.type 已废弃删除，
-                  'type' 不再支持）；为空返回 total
+        group_by: 可选，分组字段（status / algorithm_type / type 派生分布 /
+                  trend 完成趋势分桶）；为空返回 total
+        deleted: 可选，True 统计回收站（软删除）任务，默认未删除（INT-200）
+        granularity: 可选，group_by='trend' 时分桶粒度 day/week/month/year（INT-200）
 
     Returns:
         dict: {'total': N} 或 {'items': [{'key': str, 'count': int}, ...]}
@@ -621,6 +624,8 @@ def get_task_stats(status=None, algorithm_type=None, group_by=None):
         status=status or '',
         algorithm_type=algorithm_type or '',
         group_by=group_by or '',
+        deleted=bool(deleted) if deleted is not None else False,
+        granularity=granularity or '',
     )
     resp = stub.GetTaskStats(req)
     if not resp.success:

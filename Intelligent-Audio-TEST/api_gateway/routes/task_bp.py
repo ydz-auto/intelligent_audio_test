@@ -15,6 +15,12 @@ def get_all(_: None = require_permission('task:read')):
         return to_response(result)
     return result
 
+# INT-200：任务域全量聚合统计（须先于 /{task_id} 注册，避免 int 路径参数抢先匹配）
+@router.get('/stats')
+def domain_stats(_: None = require_permission('task:read')):
+    return to_response(TaskQueryService.domain_stats())
+
+
 @router.get('/{task_id}')
 def get_one(task_id: int, _: None = require_permission('task:read')):
     result = TaskQueryService.get_one(task_id)

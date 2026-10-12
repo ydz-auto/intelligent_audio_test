@@ -7,6 +7,7 @@ TaskCaseRepositoryABC 接口适配。
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+from shared.models.common_enums import DeviceType
 from shared.models.database import get_db_session, utc8now
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import (
@@ -202,12 +203,16 @@ class TaskCaseStatsMixin:
         return derive_task_case_status(cur_exec, cur_eval)
 
     def get_task_stats(self, status: str = '', algorithm_type: str = '',
-                       group_by: str = '') -> dict:
-        """聚合统计 Task — count / group_by。"""
+                       group_by: str = '', deleted: bool = False,
+                       granularity: str = '') -> dict:
+        """聚合统计 Task — count / group_by。
+
+        deleted 指定统计范围（False=未删除，True=回收站软删除，INT-200）。
+        """
         from sqlalchemy import func as _func
         session = get_db_session()
         try:
-            query = session.query(Task).filter(Task.deleted == False)  # noqa: E712
+            query = session.query(Task).filter(Task.deleted == bool(deleted))
             if status:
                 query = query.filter(Task.status == status)
             if algorithm_type:
@@ -215,7 +220,8 @@ class TaskCaseStatsMixin:
 
             if group_by:
                 return self._get_task_stats_grouped(
-                    session, _func, status, algorithm_type, group_by)
+                    session, _func, status, algorithm_type, group_by,
+                    deleted=deleted, granularity=granularity)
 
             total = query.count()
             return {'total': int(total)}
@@ -224,18 +230,29 @@ class TaskCaseStatsMixin:
 
     @staticmethod
     def _get_task_stats_grouped(session, _func, status: str,
-                                algorithm_type: str, group_by: str) -> dict:
+                                algorithm_type: str, group_by: str,
+                                deleted: bool = False,
+                                granularity: str = '') -> dict:
         """按字段分组统计分支。
 
-        差异#2 收尾：task.type 列已废弃删除，group_by='type' 不再支持
-        （历史调用方 e2e_test_service 门禁已改 ListTasks + device_type='physical'）。
+        差异#2 收尾：task.type 列已废弃删除，group_by='type' 改为按用例级
+        device_type 派生分布（physical→e2e；http_api/websocket_api→api；兼有
+        →mixed，INT-200）。group_by='trend' 返回已完成任务按 created_at 的
+        时间分桶计数（granularity=day/week/month/year，INT-200）。
         """
+        if group_by == 'type':
+            return TaskCaseStatsMixin._get_task_type_distribution(
+                session, status, algorithm_type, deleted)
+        if group_by == 'trend':
+            return TaskCaseStatsMixin._get_task_trend_buckets(
+                session, status, algorithm_type, granularity)
+
         allowed = {'status': Task.status, 'algorithm_type': Task.algorithm_type}
         col = allowed.get(group_by)
         if col is None:
             return {'error': f'unsupported group_by field: {group_by}'}
         rows = session.query(col, _func.count(Task.id)).filter(
-            Task.deleted == False  # noqa: E712
+            Task.deleted == bool(deleted)
         )
         if status:
             rows = rows.filter(Task.status == status)
@@ -244,6 +261,93 @@ class TaskCaseStatsMixin:
         rows = rows.group_by(col).all()
         items = [{'key': str(k) if k is not None else '', 'count': int(c)} for k, c in rows]
         return {'items': items}
+
+    # 派生类型桶（与前端 chartUtils 口径一致：无 device_type 行回退 api）
+    _TYPE_API_DEVICE_TYPES = frozenset({
+        DeviceType.HTTP_API.value, DeviceType.WEBSOCKET_API.value,
+    })
+    _TREND_GRANULARITIES = frozenset({'day', 'week', 'month', 'year'})
+
+    @staticmethod
+    def _get_task_type_distribution(session, status: str,
+                                    algorithm_type: str, deleted: bool) -> dict:
+        """任务类型分布（派生）：按任务的去重 device_type 集合分桶 api/e2e/mixed。
+
+        无任何 device_type 的任务与前端既有派生口径一致计入 api（INT-200）。
+        """
+        task_q = session.query(Task.id).filter(Task.deleted == bool(deleted))
+        if status:
+            task_q = task_q.filter(Task.status == status)
+        if algorithm_type:
+            task_q = task_q.filter(Task.algorithm_type == algorithm_type)
+        rows = (session.query(TaskCase.task_id, TaskCase.device_type)
+                .filter(TaskCase.task_id.in_(task_q.statement))
+                .filter(TaskCase.device_type.isnot(None),
+                        TaskCase.device_type != '')
+                .distinct().all())
+        per_task: dict = {}
+        for tid, dt in rows:
+            per_task.setdefault(tid, set()).add(dt)
+        counts = {'api': 0, 'e2e': 0, 'mixed': 0}
+        for dts in per_task.values():
+            has_physical = DeviceType.PHYSICAL.value in dts
+            has_api = bool(dts & TaskCaseStatsMixin._TYPE_API_DEVICE_TYPES)
+            if has_physical and has_api:
+                counts['mixed'] += 1
+            elif has_physical:
+                counts['e2e'] += 1
+            else:
+                counts['api'] += 1
+        # 无用例（无 device_type 行）的任务按前端口径计入 api
+        no_case = task_q.count() - len(per_task)
+        counts['api'] += int(no_case) if no_case > 0 else 0
+        return {'items': [{'key': k, 'count': int(v)} for k, v in counts.items()]}
+
+    @staticmethod
+    def _get_task_trend_buckets(session, status: str,
+                                algorithm_type: str, granularity: str) -> dict:
+        """完成任务按 created_at 的时间分桶（key 与前端 chartUtils 键格式一致）。"""
+        granularity = granularity or 'day'
+        if granularity not in TaskCaseStatsMixin._TREND_GRANULARITIES:
+            return {'error': f'unsupported granularity: {granularity}'}
+        q = session.query(Task.created_at).filter(
+            Task.deleted == False,  # noqa: E712
+            Task.status == SharedTaskStatus.COMPLETED,
+        )
+        # status 过滤与固定 completed 条件取交集（不同值时自然空集）
+        if status and status != SharedTaskStatus.COMPLETED:
+            q = q.filter(Task.status == status)
+        if algorithm_type:
+            q = q.filter(Task.algorithm_type == algorithm_type)
+        buckets: dict = {}
+        for (created_at,) in q.all():
+            if created_at is None:
+                continue
+            key = TaskCaseStatsMixin._trend_bucket_key(created_at, granularity)
+            buckets[key] = buckets.get(key, 0) + 1
+        items = sorted(
+            ({'key': k, 'count': int(c)} for k, c in buckets.items()),
+            key=lambda item: TaskCaseStatsMixin._trend_sort_key(item['key']),
+        )
+        return {'items': items}
+
+    @staticmethod
+    def _trend_bucket_key(dt: datetime, granularity: str) -> str:
+        if granularity == 'day':
+            return dt.strftime('%Y-%m-%d')
+        if granularity == 'week':
+            # 前端键为「日历年-W ISO 周数」，不补零（chartUtils.getWeekNumber 口径）
+            return f'{dt.year}-W{dt.isocalendar().week}'
+        if granularity == 'month':
+            return f'{dt.year}-{dt.month:02d}'
+        return str(dt.year)
+
+    @staticmethod
+    def _trend_sort_key(key: str):
+        if '-W' in key:
+            year, week = key.split('-W', 1)
+            return (int(year), int(week))
+        return (key,)
 
     # ========== ABC 接口适配（TaskCaseRepositoryABC） ==========
 

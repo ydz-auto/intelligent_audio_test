@@ -3,7 +3,7 @@
  * 出口契约：Domain（camelCase）；DTO 转换全部收敛在 adapters。
  */
 import { request, type RequestOptions } from '../http/client';
-import { toTask, toTaskList, toTaskCreateDto, toCaseDetail, toCaseResults } from '../adapters/taskAdapter';
+import { toTask, toTaskList, toTaskCreateDto, toCaseDetail, toCaseResults, toTaskDomainStats } from '../adapters/taskAdapter';
 import { toTaskProgressHttp, toTaskStartResult } from '../adapters/taskProgressAdapter';
 import { toPaginated } from '../adapters/commonAdapter';
 import type {
@@ -15,9 +15,10 @@ import type {
   TaskMergeDto,
   TaskUpdateCasesRequestDto,
   TaskListQueryDto,
+  TaskDomainStatsDto,
 } from '../dto';
 import type { TaskProgressHttpDto } from '../dto/taskProgressDto';
-import type { Task, TaskCreateDraft } from '../../domain/model/task';
+import type { Task, TaskCreateDraft, TaskDomainStats } from '../../domain/model/task';
 import type { CaseDetail, CaseResults } from '../../domain/model/taskCaseDetail';
 import type { TaskProgress } from '../../domain/model/taskProgress';
 
@@ -141,6 +142,12 @@ export const tasksApi = {
 
   async getStats(id: string | number) {
     return request('GET', `/tasks/${id}/stats`);
+  },
+
+  /** 任务域全量聚合统计（INT-200：统计卡与图表数据源，与列表筛选/分页无关） */
+  async getDomainStats(granularity: string = 'day'): Promise<TaskDomainStats> {
+    const dto = await request<TaskDomainStatsDto>('GET', '/tasks/stats', null, { params: { granularity } });
+    return toTaskDomainStats(dto);
   },
 
   /** 批量操作：显式 task_ids（TaskBatchActionRequest） */

@@ -228,5 +228,21 @@ class TaskListQuery(APIModel):
     deleted: bool = Field(False)
 
 
+class TaskDomainStatsQuery(APIModel):
+    """任务域全量聚合统计查询（GET /tasks/stats，INT-200）"""
+    # 趋势分桶粒度（仅影响 trend）；非法值由 task_service 返回 error 透传为 400
+    granularity: str = Field('day')
+
+
+class TaskDomainStatsData(APIModel):
+    """任务域全量聚合统计（统计卡 + 图表数据源，与列表筛选/分页无关）"""
+    total: int = Field(..., description='未删除任务总数')
+    deleted_total: int = Field(..., description='回收站（软删除）任务总数')
+    status_counts: Dict[str, int] = Field(default_factory=dict, description='未删除任务按状态计数')
+    type_counts: Dict[str, int] = Field(default_factory=dict, description='类型派生分布 api/e2e/mixed')
+    trend: List[Dict[str, Any]] = Field(default_factory=list, description='完成任务按 created_at 分桶 [{key, count}]')
+    granularity: str = Field('day', description='trend 分桶粒度 day/week/month/year')
+
+
 class TaskBatchExportQuery(APIModel):
     format: str = Field('json')

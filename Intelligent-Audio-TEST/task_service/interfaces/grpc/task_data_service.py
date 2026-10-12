@@ -365,18 +365,23 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
     def GetTaskStats(self, request, context=None):
         """聚合统计 Task — count / group_by
 
-        支持按 status / algorithm_type 过滤，可选 group_by 字段返回分组计数。
+        支持按 status / algorithm_type 过滤、deleted 统计范围（回收站），
+        可选 group_by 字段返回分组计数：status / algorithm_type（列分组）、
+        type（用例级 device_type 派生分布）、trend（完成任务按 created_at
+        分桶，granularity=day/week/month/year）。
         不指定 group_by 时返回 {'total': N}；指定 group_by 时返回
         {'items': [{key, count}, ...]}。
 
         用于替代 stats_cache / home_service 中 `func.count(Task.id).filter(...)`
-        的直连聚合查询。
+        的直连聚合查询，并供任务管理页全量统计（INT-200）。
         """
         try:
             result = task_repository.get_task_stats(
                 status=request.status or '',
                 algorithm_type=request.algorithm_type or '',
                 group_by=request.group_by or '',
+                deleted=bool(request.deleted),
+                granularity=request.granularity or '',
             )
             if 'error' in result:
                 return self._resp(False, result['error'])

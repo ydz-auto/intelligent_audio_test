@@ -22,7 +22,7 @@
           <!-- 任务数量统计 -->
             <div class="stats-cards">
               <div class="stat-card">
-                <div class="stat-value">{{ totalTasks }}</div>
+                <div class="stat-value">{{ domainTotal }}</div>
                 <div class="stat-label">总任务数</div>
               </div>
               <div class="stat-card">
@@ -374,7 +374,7 @@ const {
   currentPage, pageSize, totalPages,
   searchTerm, filters, customDateRange, tagCurrentPage, tagPageSize,
   showComparisonReport, isEditingConclusion,
-  totalTagPages, currentTags, totalTasks, pendingTasks, queuedTasks,
+  totalTagPages, currentTags, totalTasks, domainTotal, pendingTasks, queuedTasks,
   inProgressTasks, completedTasks, failedTasks, deletedTasks,
   isAllSelected, formatDate, applyFilters, handleSearch, toggleSort,
   toggleTag, toggleTaskSelection, toggleSelectAll, cancelSelect, createNewTask, handleCreateTask,

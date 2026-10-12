@@ -905,7 +905,9 @@ message DeleteTestCaseGroupRequest {
 message TaskAggStatsRequest {
   string status = 1;          // 可选，按状态过滤
   string algorithm_type = 2;  // 可选
-  string group_by = 3;        // 可选，分组字段（如 status / algorithm_type）
+  string group_by = 3;        // 可选，分组字段（status / algorithm_type / type 派生分布 / trend 完成趋势）
+  bool deleted = 4;           // 可选，true 统计回收站（软删除）任务；默认统计未删除任务（INT-200）
+  string granularity = 5;     // group_by='trend' 时分桶粒度：day/week/month/year（INT-200）
 }
 message TestCaseAggStatsRequest {
   string algorithm_type = 1;  // 可选

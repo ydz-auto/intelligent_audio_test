@@ -36,6 +36,7 @@ class TaskRepositoryABC(ABC):
 
     @abstractmethod
     def get_task_stats(self, status: str = '', algorithm_type: str = '',
-                       group_by: str = '') -> Dict[str, Any]:
-        """聚合统计 Task — count / group_by。"""
+                       group_by: str = '', deleted: bool = False,
+                       granularity: str = '') -> Dict[str, Any]:
+        """聚合统计 Task — count / group_by（deleted=统计范围，granularity=trend 分桶粒度）。"""
         ...

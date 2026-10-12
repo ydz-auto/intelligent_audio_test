@@ -1,5 +1,5 @@
 import { Chart, ChartConfiguration } from 'chart.js/auto';
-import { TestType, TaskStatus } from '@/domain/enums';
+import { TaskStatus } from '@/domain/enums';
 
 /**
  * 图表工具函数
@@ -8,33 +8,16 @@ import { TestType, TaskStatus } from '@/domain/enums';
 /**
  * 创建任务类型分布图表
  * @param ctx - Canvas上下文
- * @param tasks - 任务数据
+ * @param typeCounts - 任务域全量类型派生分布 {api, e2e, mixed}（INT-200，后端 /tasks/stats 聚合）
  * @param options - 图表配置选项
  */
-export function createTaskTypeChart(ctx: HTMLCanvasElement | CanvasRenderingContext2D, tasks: any[], options: any = {})
+export function createTaskTypeChart(ctx: HTMLCanvasElement | CanvasRenderingContext2D, typeCounts: { api: number; e2e: number; mixed: number }, options: any = {})
 {
-  // 从实际任务数据计算被测设备类型分布（差异#2 收尾：取代 task.type 统计；
-  // deviceTypes 含 physical 计入端到端，含 http_api/websocket_api 计入 API，
-  // 两者兼有为混合任务）
-  const deviceTypeCounts = { api: 0, e2e: 0, mixed: 0 };
-
-  tasks.forEach(task => {
-    if (!task.deleted) {
-      const dts: string[] = task.deviceTypes || [];
-      const hasPhysical = dts.includes('physical');
-      const hasApi = dts.includes('http_api') || dts.includes('websocket_api');
-      if (hasPhysical && hasApi) deviceTypeCounts.mixed++;
-      else if (hasPhysical) deviceTypeCounts.e2e++;
-      else if (hasApi) deviceTypeCounts.api++;
-      else deviceTypeCounts.api++;
-    }
-  });
-
   // 转换为图表数据格式
   const chartData = {
     labels: ['API测试', '端到端测试', '混合任务'],
     datasets: [{
-      data: [deviceTypeCounts.api, deviceTypeCounts.e2e, deviceTypeCounts.mixed],
+      data: [typeCounts.api, typeCounts.e2e, typeCounts.mixed],
       backgroundColor: ['#FF6A00', '#1976D2', '#9C27B0'],
       borderColor: '#ffffff',
       borderWidth: 2,
@@ -170,44 +153,17 @@ function getDateRange(granularity: string): Date[] {
 /**
  * 创建任务完成趋势图表
  * @param ctx - Canvas上下文
- * @param tasks - 任务数据
- * @param granularity - 时间粒度
- * @param options - 图表配置选项
+ * @param trendBuckets - 完成任务按 createdAt 的分桶序列 [{key, count}]（INT-200，后端聚合）
+ * @param options - 图表配置选项（granularity 需与后端分桶粒度一致）
  */
-export function createTaskTrendChart(ctx: HTMLCanvasElement | CanvasRenderingContext2D, tasks: any[], options: any = {})
+export function createTaskTrendChart(ctx: HTMLCanvasElement | CanvasRenderingContext2D, trendBuckets: { key: string; count: number }[], options: any = {})
 {
   const granularity = options.granularity || 'day';
-  
-  // 从实际任务数据中获取已完成任务
-  const completedTasks = tasks.filter(task => task.status === TaskStatus.COMPLETED && !task.deleted);
-  
-  // 按时间粒度分组统计已完成任务
+
+  // 后端分桶为稀疏序列（仅有数据的桶），按 key 索引后对时间轴补零
   const tasksByTime: Record<string, number> = {};
-  
-  completedTasks.forEach(task => {
-    const date = new Date(task.createdAt);
-    let key;
-    
-    switch (granularity) {
-      case 'day':
-        key = date.toISOString().split('T')[0];
-        break;
-      case 'week':
-        const year = date.getFullYear();
-        const weekNumber = getWeekNumber(date);
-        key = `${year}-W${weekNumber}`;
-        break;
-      case 'month':
-        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        break;
-      case 'year':
-        key = `${date.getFullYear()}`;
-        break;
-      default:
-        key = date.toISOString().split('T')[0];
-    }
-    
-    tasksByTime[key] = (tasksByTime[key] || 0) + 1;
+  trendBuckets.forEach(bucket => {
+    tasksByTime[bucket.key] = bucket.count;
   });
   
   // 获取时间范围
@@ -220,10 +176,12 @@ export function createTaskTrendChart(ctx: HTMLCanvasElement | CanvasRenderingCon
   dateRange.forEach(date => {
     let key;
     let label;
-    
+
     switch (granularity) {
       case 'day':
-        key = date.toISOString().split('T')[0];
+        // INT-200：轴键改为本地日期（与后端 trend 分桶键一致）；
+        // 原实现 toISOString 生成 UTC 日期键，与标签（本地日期）错位一天
+        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         label = formatDateByGranularity(date, 'day');
         break;
       case 'week':
@@ -241,7 +199,7 @@ export function createTaskTrendChart(ctx: HTMLCanvasElement | CanvasRenderingCon
         label = formatDateByGranularity(date, 'year');
         break;
       default:
-        key = date.toISOString().split('T')[0];
+        key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         label = formatDateByGranularity(date, 'day');
     }
     
@@ -329,35 +287,19 @@ export function createTaskTrendChart(ctx: HTMLCanvasElement | CanvasRenderingCon
 /**
  * 创建任务状态分布图表
  * @param ctx - Canvas上下文
- * @param tasks - 任务数据
+ * @param statusCounts - 任务域全量状态计数（status → count，INT-200，后端 /tasks/stats 聚合）
  * @param options - 图表配置选项
  */
-export function createTaskStatusChart(ctx: HTMLCanvasElement | CanvasRenderingContext2D, tasks: any[], options: any = {})
+export function createTaskStatusChart(ctx: HTMLCanvasElement | CanvasRenderingContext2D, statusCounts: Record<string, number>, options: any = {})
 {
-  // 从实际任务数据计算任务状态分布
-  const taskStatusCounts = {
-    [TaskStatus.PENDING]: 0,
-    [TaskStatus.QUEUED]: 0,
-    [TaskStatus.RUNNING]: 0,
-    [TaskStatus.COMPLETED]: 0,
-    [TaskStatus.FAILED]: 0
-  };
-  
-  tasks.forEach(task => {
-    if (!task.deleted) {
-      const status = task.status as keyof typeof taskStatusCounts;
-      if (status in taskStatusCounts) {
-        taskStatusCounts[status]++;
-      }
-    }
-  });
-  
+  const countOf = (status: string) => statusCounts[status] ?? 0;
+
   // 转换为图表数据格式
   const chartData = {
     labels: ['待执行', '排队中', '执行中', '已完成', '执行失败'],
     datasets: [{
       label: '任务数量',
-      data: [taskStatusCounts.pending, taskStatusCounts.queued, taskStatusCounts.running, taskStatusCounts.completed, taskStatusCounts.failed],
+      data: [countOf(TaskStatus.PENDING), countOf(TaskStatus.QUEUED), countOf(TaskStatus.RUNNING), countOf(TaskStatus.COMPLETED), countOf(TaskStatus.FAILED)],
       backgroundColor: ['#1976D2', '#1976D2', '#FF6A00', '#52C41A', '#F5222D'], // 使用多种颜色
       borderColor: ['#1976D2', '#1976D2', '#FF6A00', '#52C41A', '#F5222D'],
       borderWidth: 2,

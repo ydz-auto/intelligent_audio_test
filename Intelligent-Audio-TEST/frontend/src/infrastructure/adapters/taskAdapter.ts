@@ -11,6 +11,7 @@ import type {
   TaskApiBrief,
   TaskCaseBrief,
   TaskSourceBrief,
+  TaskDomainStats,
 } from '../../domain/model/task'
 import type {
   CaseDetail,
@@ -21,7 +22,7 @@ import type {
 } from '../../domain/model/taskCaseDetail'
 import type { TaskStatusType } from '../../domain/enums'
 import type { ReportMetricConfig } from '../../domain/model/report'
-import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto, TaskSourceBriefDto } from '../dto/taskDto'
+import type { TaskDto, TaskDetailDto, TaskCaseBriefDto, TaskCreateDto, TaskSourceBriefDto, TaskDomainStatsDto } from '../dto/taskDto'
 import { s } from './report.utils'
 import { toSafeNumber as n } from './commonAdapter'
 import { toAlgorithmResultItem, toReferenceParamsDict, toFieldMappingItem } from './report.mapping'
@@ -118,6 +119,23 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
 
 export function toTaskList(dtos: (TaskDto | TaskDetailDto)[] | null | undefined): Task[] {
   return (dtos ?? []).map(toTask)
+}
+
+/** 任务域全量聚合统计 DTO → TaskDomainStats（INT-200） */
+export function toTaskDomainStats(dto: TaskDomainStatsDto | null | undefined): TaskDomainStats {
+  const typeCounts = dto?.type_counts ?? { api: 0, e2e: 0, mixed: 0 }
+  return {
+    total: n(dto?.total),
+    deletedTotal: n(dto?.deleted_total),
+    statusCounts: dto?.status_counts ?? {},
+    typeCounts: {
+      api: n(typeCounts.api),
+      e2e: n(typeCounts.e2e),
+      mixed: n(typeCounts.mixed),
+    },
+    trend: (dto?.trend ?? []).map(b => ({ key: b.key, count: n(b.count) })),
+    granularity: dto?.granularity ?? 'day',
+  }
 }
 
 // ===== Domain → DTO（请求体） =====

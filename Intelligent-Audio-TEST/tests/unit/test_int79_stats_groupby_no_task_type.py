@@ -7,7 +7,7 @@
 28 条/分钟失败刷屏（INT-95 实机验收发现）。
 
 - group_by='status' 正常返回分组计数（stats_cache 主路径）
-- group_by='type' 返回 unsupported error dict（不再支持，不抛异常）
+- group_by='type' 不触碰已删除的 Task.type 列（INT-200 起为 device_type 派生分布）
 - 无 group_by 返回 total
 """
 import os
@@ -47,19 +47,24 @@ def db():
     assert ':memory:' not in str(engine.url), \
         f'stats sqlite 需要文件型 sqlite，实际绑定 {engine.url}'
     remove_db_session()
-    Base.metadata.create_all(bind=engine, tables=[Task.__table__])
+    # INT-200：group_by='type' 改为用例级 device_type 派生分布，需 task_case 表
+    from task_service.infrastructure.persistence.models import TaskCase
+    Base.metadata.create_all(bind=engine, tables=[Task.__table__, TaskCase.__table__])
 
     repo = _repo()
     baseline_total = int(repo.get_task_stats().get('total', 0) or 0)
     baseline_status = {item['key']: int(item['count'])
                        for item in repo.get_task_stats(group_by='status').get('items', [])}
+    baseline_type = {item['key']: int(item['count'])
+                     for item in repo.get_task_stats(group_by='type').get('items', [])}
 
     session = get_db_session()
     session.add(Task(name='t-running', status='running', total_cases=0))
     session.add(Task(name='t-completed', status='completed', total_cases=0))
     session.commit()
     session.close()
-    yield {'baseline_total': baseline_total, 'baseline_status': baseline_status}
+    yield {'baseline_total': baseline_total, 'baseline_status': baseline_status,
+           'baseline_type': baseline_type}
     remove_db_session()
 
 
@@ -76,11 +81,14 @@ def test_group_by_status_works(db):
     assert items.get('completed') == db['baseline_status'].get('completed', 0) + 1
 
 
-def test_group_by_type_returns_error_dict(db):
-    """group_by='type' 不再支持（列已删），返回 error dict 而非抛异常。"""
+def test_group_by_type_derived_distribution(db):
+    """INT-200 后 group_by='type' 改为用例级 device_type 派生分布（不触碰已删除的
+    Task.type 列）；本模块种子任务无用例行，按前端口径计入 api。"""
     result = _repo().get_task_stats(group_by='type')
-    assert 'error' in result
-    assert 'type' in result['error']
+    assert 'error' not in result
+    counts = {item['key']: int(item['count']) for item in result.get('items', [])}
+    assert counts.get('api', 0) - db['baseline_type'].get('api', 0) == 2
+    assert set(counts) <= {'api', 'e2e', 'mixed'}
 
 
 def test_total_without_group_by(db):

@@ -178,3 +178,21 @@ export interface TaskListQueryDto {
   start_date?: string
   end_date?: string
 }
+
+// ===== 任务域全量聚合统计（GET /tasks/stats，INT-200）=====
+
+/** 趋势分桶项（{key, count} 序列） */
+export interface TaskTrendBucketDto {
+  key: string
+  count: number
+}
+
+/** 任务域全量聚合统计（TaskDomainStatsData，snake_case 契约） */
+export interface TaskDomainStatsDto {
+  total: number
+  deleted_total: number
+  status_counts: Record<string, number>
+  type_counts: { api: number; e2e: number; mixed: number }
+  trend: TaskTrendBucketDto[]
+  granularity: string
+}

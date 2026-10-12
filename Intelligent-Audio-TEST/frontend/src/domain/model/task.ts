@@ -106,3 +106,19 @@ export interface TaskCreateDraft {
   algorithmParams?: Record<string, any>
   config?: Record<string, any>
 }
+
+/** 任务域全量聚合统计（INT-200：统计卡与图表数据源，与列表分页无关） */
+export interface TaskDomainStats {
+  /** 未删除任务总数 */
+  total: number
+  /** 回收站（软删除）任务总数 */
+  deletedTotal: number
+  /** 未删除任务按状态计数（status → count，含评估/合并等全部状态） */
+  statusCounts: Record<string, number>
+  /** 类型派生分布（用例级 device_type 派生：api/e2e/mixed） */
+  typeCounts: { api: number; e2e: number; mixed: number }
+  /** 完成任务按 createdAt 分桶（键格式与图表粒度对应：日 YYYY-M-D / 周 YYYY-Wn / 月 YYYY-MM / 年 YYYY） */
+  trend: { key: string; count: number }[]
+  /** trend 分桶粒度 day/week/month/year */
+  granularity: string
+}

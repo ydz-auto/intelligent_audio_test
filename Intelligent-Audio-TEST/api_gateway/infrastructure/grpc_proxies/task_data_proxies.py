@@ -28,8 +28,13 @@ class _TaskDataProxy:
 
     # ---- 聚合统计 ----
 
-    def get_task_stats(self, status=None, algorithm_type=None, group_by=None):
-        """通过 gRPC 聚合统计 Task（group_by 可选 status/algorithm_type；task.type 已废弃删除，'type' 不再支持）
+    def get_task_stats(self, status=None, algorithm_type=None, group_by=None,
+                       deleted=None, granularity=None):
+        """通过 gRPC 聚合统计 Task
+
+        group_by 可选 status/algorithm_type/type（用例级 device_type 派生分布）/
+        trend（完成任务按 created_at 分桶，granularity=day/week/month/year）；
+        deleted=True 统计回收站（软删除）任务，默认未删除（INT-200）。
 
         失败固定上抛（reraise）：唯一调用方为 stats_cache 首页统计链路（INT-204），
         失败语义必须传到 refresh_stats_cache 走 stale-while-error 降级，
@@ -41,6 +46,8 @@ class _TaskDataProxy:
                 status=status or '',
                 algorithm_type=algorithm_type or '',
                 group_by=group_by or '',
+                deleted=bool(deleted) if deleted is not None else False,
+                granularity=granularity or '',
             ))
             if not resp.success:
                 raise RuntimeError(f"GetTaskStats gRPC 失败: {resp.message}")

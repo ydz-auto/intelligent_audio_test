@@ -1,7 +1,7 @@
 import { ref, computed, type Ref } from 'vue';
 import { tasksPort } from './tasksPort';
 import { algorithmPort } from '../algorithm/algorithmPort';
-import type { Task } from '../../domain';
+import type { Task, TaskDomainStats } from '../../domain';
 import { TaskStatus } from '../../domain/enums';
 import { usePagination } from '../usePagination';
 
@@ -13,7 +13,7 @@ import { usePagination } from '../usePagination';
  * - 标签管理（分页展示）
  * - 选择管理（单选、全选、取消选择）
  * - 算法选项加载
- * - 任务统计计算
+ * - 任务统计（INT-200：走 /tasks/stats 全量聚合，与列表筛选/分页无关）
  */
 
 export interface TaskFilters {
@@ -68,13 +68,29 @@ export function useTaskList(options?: UseTaskListOptions) {
   // 标签分页：使用通用分页 composable
   const { totalPages: totalTagPages, paginatedItems: currentTags } = usePagination(allTags, tagPageSize, { currentPage: tagCurrentPage });
 
+  // INT-200：统计卡/图表数据源改为任务域全量聚合（/tasks/stats），
+  // 不再由当前页 tasks 过滤得出（分页下当前页统计与真实总量不符）
+  const statsGranularity = ref('day');
+  const taskStats = ref<TaskDomainStats | null>(null);
+
+  const fetchTaskStats = async () => {
+    try {
+      taskStats.value = await tasksPort.getDomainStats(statsGranularity.value);
+    } catch (error) {
+      console.error('Failed to fetch task stats:', error);
+    }
+  };
+
   const totalTasks = computed(() => totalItems.value);
-  const pendingTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.PENDING || t.status === TaskStatus.QUEUED).length);
-  const inProgressTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.RUNNING).length);
-  const completedTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.COMPLETED).length);
-  const failedTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.FAILED).length);
-  const deletedTasks = computed(() => tasks.value.filter(t => t.deleted).length);
-  const queuedTasks = computed(() => tasks.value.filter(t => t.status === TaskStatus.QUEUED).length);
+  // 统计卡（全量口径；total 为列表分页 total，与统计卡「总任务数」解耦）
+  const domainTotal = computed(() => taskStats.value?.total ?? 0);
+  const pendingTasks = computed(() =>
+    (taskStats.value?.statusCounts[TaskStatus.PENDING] ?? 0) + (taskStats.value?.statusCounts[TaskStatus.QUEUED] ?? 0));
+  const inProgressTasks = computed(() => taskStats.value?.statusCounts[TaskStatus.RUNNING] ?? 0);
+  const completedTasks = computed(() => taskStats.value?.statusCounts[TaskStatus.COMPLETED] ?? 0);
+  const failedTasks = computed(() => taskStats.value?.statusCounts[TaskStatus.FAILED] ?? 0);
+  const deletedTasks = computed(() => taskStats.value?.deletedTotal ?? 0);
+  const queuedTasks = computed(() => taskStats.value?.statusCounts[TaskStatus.QUEUED] ?? 0);
 
   // 任务分页为服务端分页，totalItems 由 API 返回
   // 此处用 totalItems 长度的占位数组驱动 totalPages 计算
@@ -190,6 +206,10 @@ export function useTaskList(options?: UseTaskListOptions) {
       tasks.value = taskList;
       totalItems.value = total;
       filteredTasks.value = taskList;
+
+      // INT-200：列表数据变化（增删/状态流转）后同步刷新全量统计，
+      // 先于 onTasksUpdated（图表据此重建），保证图表读到新统计
+      await fetchTaskStats();
 
       if (onTasksUpdated) {
         setTimeout(() => {
@@ -311,6 +331,10 @@ export function useTaskList(options?: UseTaskListOptions) {
     totalTagPages,
     currentTags,
     totalTasks,
+    domainTotal,
+    taskStats,
+    statsGranularity,
+    fetchTaskStats,
     pendingTasks,
     inProgressTasks,
     completedTasks,
