@@ -337,6 +337,97 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
         session.commit()
         return count
 
+    def mark_active_scores_failed_excluding_rounds(
+        self, result_id: int, keep_round_numbers, error_message: str
+    ) -> int:
+        """将某 TestResult 中「不在本次重评提交范围」的非终态维度评分收口为 failed。
+
+        INT-174：failed 型重评只重评失败/未完成 TRD，但被配置排除的轮次
+        （evaluation.enabled=false、无整体口径维度）或过滤后无可评估维度的轮次，
+        其遗留的非终态 TRD（重启崩溃残留等）永远不会被任何评估触达——统一收尾
+        的全维终态门控因此拒绝收敛，用例/任务永久卡死。提交阶段收尾时把这些
+        维度收口为 failed 终态（失败 TRD 本就是终态，不受影响）。
+
+        Args:
+            result_id: TestResult 主键
+            keep_round_numbers: 保持不动的轮次集合（int 轮次 / None=整体口径）；
+                None 表示不排除任何轮次（全部收口）
+            error_message: 收口原因
+        Returns:
+            受影响行数
+        """
+        session = get_db_session()
+        try:
+            from sqlalchemy import or_
+            from shared.utils.status_constants import ACTIVE_EVALUATION_STATUSES
+
+            q = session.query(TestResultDimensionPO).filter(
+                TestResultDimensionPO.test_result_id == result_id,
+                TestResultDimensionPO.evaluation_status.in_(ACTIVE_EVALUATION_STATUSES),
+            )
+            if keep_round_numbers is not None:
+                keep = set(keep_round_numbers)
+                int_rounds = [r for r in keep if r is not None]
+                in_scope_conds = []
+                if int_rounds:
+                    in_scope_conds.append(
+                        TestResultDimensionPO.round_number.in_(int_rounds))
+                if None in keep:
+                    in_scope_conds.append(
+                        TestResultDimensionPO.round_number.is_(None))
+                if in_scope_conds:
+                    q = q.filter(~or_(*in_scope_conds))
+            count = q.update({
+                'evaluation_status': EvaluationStatus.FAILED,
+                'error_message': error_message,
+            }, synchronize_session=False)
+            session.commit()
+            return count
+        except Exception:
+            session.rollback()
+            raise
+
+    def mark_round_active_scores_failed(
+        self, result_id: int, round_number, dimension_ids=None, error_message: str = ''
+    ) -> int:
+        """将某 TestResult 指定轮次（可限定维度）的非终态评分收口为 failed。
+
+        INT-174：评估入口请求的维度中被配置/启用状态排除（如维度已软删）或
+        过滤后无可评估维度时，其遗留的非终态 TRD 不会被本次评估触达——统一
+        收尾的全维终态门控因此拒绝收敛。提交/准备阶段就地收口。
+
+        Args:
+            result_id: TestResult 主键
+            round_number: 轮次（None=整体口径，匹配 round_number IS NULL）
+            dimension_ids: 限定维度 id 集合；None=该轮全部非终态 TRD
+            error_message: 收口原因
+        Returns:
+            受影响行数
+        """
+        session = get_db_session()
+        try:
+            from shared.utils.status_constants import ACTIVE_EVALUATION_STATUSES
+
+            q = session.query(TestResultDimensionPO).filter(
+                TestResultDimensionPO.test_result_id == result_id,
+                TestResultDimensionPO.evaluation_status.in_(ACTIVE_EVALUATION_STATUSES),
+            )
+            if round_number is None:
+                q = q.filter(TestResultDimensionPO.round_number.is_(None))
+            else:
+                q = q.filter(TestResultDimensionPO.round_number == round_number)
+            if dimension_ids is not None:
+                q = q.filter(TestResultDimensionPO.dimension_id.in_(set(dimension_ids)))
+            count = q.update({
+                'evaluation_status': EvaluationStatus.FAILED,
+                'error_message': error_message,
+            }, synchronize_session=False)
+            session.commit()
+            return count
+        except Exception:
+            session.rollback()
+            raise
+
     def get_dimension_results_with_names_by_result_ids(
         self, result_ids: List[int]
     ) -> List[dict]:

@@ -463,6 +463,22 @@ class EndpointWorker(EvaluationLoggerMixin):
             )
             return
 
+        # INT-174（m1 硬化）：写库前二次核销取消标记——提交链路在「核销检查→返回
+        # 结果→本方法落库」之间存在窄竞态窗口，取消晚于核销检查时旧结果仍可能
+        # 落库覆盖新评估结果。携带 __eval_task_id__ 的成功结果在此复核一次。
+        if isinstance(resp_data, dict):
+            _consumed_eval_task_id = resp_data.pop('__eval_task_id__', None)
+            if _consumed_eval_task_id:
+                from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
+                if eval_task_registry.is_cancelled(_consumed_eval_task_id):
+                    self._log(
+                        level='INFO',
+                        content=f"评估任务在结果落库前被重新评估取消，忽略本组评估结果: test_case_id={test_case_id}",
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
+                    return
+
         if resp_data and '__error__' not in resp_data:
             try:
                 self.eval_service.result_processor.process_group_dimension_results(

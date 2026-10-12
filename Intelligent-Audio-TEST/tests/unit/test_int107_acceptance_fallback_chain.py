@@ -166,7 +166,9 @@ class TestFallbackProducesScore:
         selected_url, resp = _call_with_fallback(client, primary)
 
         assert selected_url == stub.url
-        assert resp == {'score': 88.5, 'wer': 0.115}
+        # __eval_task_id__ 为 INT-174 消费方二次核销标记（_process_evaluation_result 落库前消费）
+        assert {k: v for k, v in resp.items() if k != '__eval_task_id__'} == {'score': 88.5, 'wer': 0.115}
+        assert resp.get('__eval_task_id__')
         assert '__error__' not in resp
         # 兜底动作可观察（提测要求：日志出现「兜底端点 … 评估成功」）
         assert logs.has('兜底端点', '评估成功'), logs.entries

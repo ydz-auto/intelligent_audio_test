@@ -200,16 +200,21 @@ def test_group_case_failed_not_blocked_by_local_commit_failure(monkeypatch):
     INT-174 口径更新：组失败不再无条件把 TaskCase 置 failed，改为交给
     update_task_case_status 统一收尾（检查所有维度到终态后判定）；守卫点
     不变——统一收尾仍须在会话释放后执行，且不被本地 commit 失败阻断。
+    INT-174 缺陷3：本地写库带 3 次有界重试，重试耗尽后经 gRPC 侧兜底
+    （mark_case_failed_if_active）落用例 failed 终态，保证可达终态。
     """
     events = _EventLog()
     _patch_session_factory(monkeypatch, dim_mod, events,
                            commit_error=RuntimeError('QueuePool exhausted'),
                            trd=SimpleNamespace(test_result_id=77))
+    # 重试退避在单测里跳过
+    monkeypatch.setattr(dim_mod.time, 'sleep', lambda s: None)
 
     obj = _bare(DimensionResultMixin)
     obj._log = lambda *a, **k: None
     obj.update_dimension_result_failed = lambda *a, **k: events.add('trd_fail_write')
     obj.update_task_case_status = lambda *a, **k: events.add('grpc_case_failed')
+    obj.mark_case_failed_if_active = lambda *a, **k: events.add('grpc_fallback_case_failed')
 
     obj.update_all_dimensions_in_group_failed(
         group_items=[({'id': 1, 'name': 'a'}, 11)],
@@ -217,8 +222,44 @@ def test_group_case_failed_not_blocked_by_local_commit_failure(monkeypatch):
         api_raw_response={}, api_request_body={})
 
     assert 'grpc_case_failed' in events
-    assert _window_between(events, 'session_open', 'session_close') == ['trd_fail_write']
+    # 重试耗尽（3 次写尝试）后 gRPC 兜底收口
+    assert events.count('trd_fail_write') == 3
+    assert events.index('grpc_fallback_case_failed') < events.index('grpc_case_failed')
     assert events.index('session_close') < events.index('grpc_case_failed')
+
+
+def test_group_failed_local_write_retry_then_success_no_fallback(monkeypatch):
+    """本地写库首次失败、重试成功：不触发 gRPC 兜底（常规路径语义不变）。"""
+    events = _EventLog()
+    attempts = {'n': 0}
+
+    class _FlakySession(_FakeSession):
+        def commit(self):
+            attempts['n'] += 1
+            if attempts['n'] == 1:
+                raise RuntimeError('QueuePool exhausted')
+            self._events.add('session_commit')
+
+    def _factory():
+        events.add('session_open')
+        return _FlakySession(events, trd=SimpleNamespace(test_result_id=77))
+
+    monkeypatch.setattr(dim_mod, 'get_db_session', _factory)
+    monkeypatch.setattr(dim_mod.time, 'sleep', lambda s: None)
+
+    obj = _bare(DimensionResultMixin)
+    obj._log = lambda *a, **k: None
+    obj.update_dimension_result_failed = lambda *a, **k: events.add('trd_fail_write')
+    obj.update_task_case_status = lambda *a, **k: events.add('grpc_case_failed')
+    obj.mark_case_failed_if_active = lambda *a, **k: events.add('grpc_fallback_case_failed')
+
+    obj.update_all_dimensions_in_group_failed(
+        group_items=[({'id': 1, 'name': 'a'}, 11)],
+        error_message='endpoint unreachable', task_id=9, test_case_id='C-9')
+
+    assert events.count('trd_fail_write') == 2
+    assert 'grpc_fallback_case_failed' not in events
+    assert 'grpc_case_failed' in events
 
 
 def test_group_case_failed_after_clean_commit(monkeypatch):

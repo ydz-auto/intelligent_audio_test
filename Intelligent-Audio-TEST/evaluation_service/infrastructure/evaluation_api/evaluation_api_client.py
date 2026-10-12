@@ -302,6 +302,11 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                                 test_case_id=test_case_id,
                                 api_id=api_id
                             )
+                            # INT-174：携带 eval_task_id 供消费方（endpoint_worker）
+                            # 在真正写库前二次核销取消标记，收窄「核销→落库」之间的
+                            # 竞态窗口（旧结果晚到不覆盖新评估结果）
+                            if isinstance(resp_data, dict):
+                                resp_data['__eval_task_id__'] = eval_task_id
                         else:
                             # 任务失败
                             error_msg = result_response.get('msg', 'Unknown error')

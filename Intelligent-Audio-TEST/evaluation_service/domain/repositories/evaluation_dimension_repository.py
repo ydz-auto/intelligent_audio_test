@@ -123,6 +123,28 @@ class EvaluationDimensionRepository(ABC):
         ...
 
     @abstractmethod
+    def mark_active_scores_failed_excluding_rounds(
+        self, result_id: int, keep_round_numbers, error_message: str
+    ) -> int:
+        """将「不在重评提交范围」的非终态维度评分收口为 failed（INT-174）。
+
+        keep_round_numbers: 保持不动的轮次集合（int 轮次 / None=整体口径）；
+        None 表示不排除任何轮次。返回受影响行数。
+        """
+        ...
+
+    @abstractmethod
+    def mark_round_active_scores_failed(
+        self, result_id: int, round_number, dimension_ids=None, error_message: str = ''
+    ) -> int:
+        """将某 TestResult 指定轮次（可限定维度）的非终态评分收口为 failed（INT-174）。
+
+        round_number 为 None 表示整体口径（round_number IS NULL）；
+        dimension_ids 为 None 表示该轮全部非终态记录。返回受影响行数。
+        """
+        ...
+
+    @abstractmethod
     def get_dimension_results_with_names_by_result_ids(
         self, result_ids: List[int]
     ) -> List[dict]:

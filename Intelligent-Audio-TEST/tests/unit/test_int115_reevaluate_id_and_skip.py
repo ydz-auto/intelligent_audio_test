@@ -266,6 +266,9 @@ class TestRunReevaluationFailureTransparency:
     INT-174 口径更新：提交成功 ≠ 完成 —— _on_complete 成功路径任务置 RUNNING
     （终态由 maybe_finalize 按评估收敛判定），失败路径仍置 FAILED；状态写统一
     走 update_task_status_with_retry（内联重试 + 延迟队列，INT-116 加固）。
+    INT-174 缺陷2 口径：零提交（submitted_cases=0）主动尝试 maybe_finalize
+    收敛，收敛不了（此处无用例元数据）才兜底置 RUNNING 并释放重评队列——
+    无用例可评估时无在途评估、回调永不到达，队列不得占死。
     """
 
     def _run(self, get_task_by_id_ret):
@@ -287,6 +290,7 @@ class TestRunReevaluationFailureTransparency:
         upd.assert_called_once_with(491, TaskStatus.FAILED)
 
     def test_task_exists_with_no_results_succeeds(self):
+        """任务存在但无结果：零提交收敛不了（无用例）→ 兜底置 RUNNING，队列不占死"""
         upd = self._run(get_task_by_id_ret=SimpleNamespace(id=491))
         upd.assert_called_once_with(491, TaskStatus.RUNNING)
 

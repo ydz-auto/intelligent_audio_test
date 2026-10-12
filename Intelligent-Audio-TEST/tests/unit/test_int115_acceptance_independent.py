@@ -306,7 +306,8 @@ class TestFailureTransparencyNoDisguise:
         upd.assert_called_once_with(491, TaskStatus.FAILED)
 
     def test_task_exists_noop_semantics_preserved(self):
-        """任务存在但无结果：合法 no-op 语义保留（WARNING + 提交成功置 RUNNING）。"""
+        """任务存在但无结果：合法 no-op 语义保留（WARNING；零提交先试 maybe_finalize
+        收敛，无用例元数据收敛不了 → 兜底置 RUNNING 并释放重评队列，INT-174 缺陷2）。"""
         upd, logs = self._run(get_task_by_id_ret=SimpleNamespace(id=491))
         assert any('没有需要重新评估的用例' in c for _, c in logs)
         assert not any(lv == 'ERROR' and '重新评估失败' in c for lv, c in logs)

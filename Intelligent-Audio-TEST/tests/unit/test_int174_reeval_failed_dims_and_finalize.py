@@ -13,7 +13,10 @@
 4. maybe_finalize：终态判定（提交成功 ≠ 完成）+ 提交窗口防提前收敛 +
    重启兜底分支（全用例执行完成 + 「服务重启」标记才兜底收尾）；
 5. eval_task_registry（回调注册表等价物）：pop_by_task 摘除 + 结果按
-   __cancelled__ 隔离，不污染新评估。
+   __cancelled__ 隔离，不污染新评估；
+6. 打回修复：pending 维度纳入 failed 收集范围、重评范围外遗留非终态 TRD
+   收口、零提交重评主动收敛任务终态并释放队列、m2 非数字维度 id 容错、
+   m1 结果落库前二次核销取消标记。
 """
 import os
 from types import SimpleNamespace
@@ -145,7 +148,9 @@ class TestProcessAsyncResultCancelIsolation:
             'http://ep-a', 5, 'c1', None,
         )
 
-        assert resp == {'wer': 0.1}
+        # 成功结果携带 __eval_task_id__（m1 硬化：消费方写库前二次核销取消标记）
+        assert resp.get('wer') == 0.1
+        assert resp.get('__eval_task_id__') == 'e1'
         assert EvalTaskRegistry.is_cancelled('e1') is False
         assert 'e1' not in EvalTaskRegistry._entries
 
@@ -178,6 +183,7 @@ class _FilterHost(CaseEvaluationMixin):
         self.result_processor = MagicMock()
         self.posted = []
         self.logs = []
+        self._evaluation_dimension_repo = MagicMock()
 
     def _log(self, **kwargs):
         self.logs.append(kwargs)
@@ -246,11 +252,43 @@ class TestDimensionFilterMatrix:
         assert prepared is False
         host.result_processor.mark_test_result_completed.assert_called_once_with(11)
         assert host.posted == ['c1']
+        # 本轮不可触达的遗留非终态 TRD 就地收口（全轮次）
+        host._evaluation_dimension_repo.mark_round_active_scores_failed.assert_called_once_with(
+            11, None, None,
+            '重新评估未覆盖该维度（重启遗留/维度停用或移除），收口为失败',
+        )
 
     def test_filter_ignores_invalid_entries(self):
         host, prepared = self._prepare({'dimension_filter_ids': ['abc', None, 121]})
         assert prepared is not False
         assert prepared['dimension_data_list'] == [{'id': 121}]
+
+    def test_disabled_dim_dropped_by_loader_swept(self):
+        """m2/缺陷1 补口：过滤命中的维度已被软删（加载不到）→ 其遗留非终态 TRD 收口，
+        其余维度照常提交（种子任务 529 dim177 场景）"""
+        host = _FilterHost()
+        host._load_test_case_and_refs = lambda *a, **k: {
+            'test_case': SimpleNamespace(name='case-a'),
+            'algorithm_type': 'translation',
+            'ref_texts': {},
+            'dimensions_config': [{'id': '121'}, {'id': '177'}],
+        }
+        host._load_dimension_data = lambda ids, *a, **k: (
+            [{'id': d} for d in (121,) if int(d) in {int(x) for x in ids}])
+
+        prepared = host._prepare_evaluation_data(
+            task_id=1, result_id=11, test_case_id='c1', algorithm_result={},
+            field_mapper=None, kwargs={'dimension_filter_ids': [121, 177]},
+            test_type='api', round_number=None,
+        )
+
+        assert prepared is not False
+        assert prepared['dimension_data_list'] == [{'id': 121}]
+        # 仅收口被排除的 177，不影响正常提交的 121
+        host._evaluation_dimension_repo.mark_round_active_scores_failed.assert_called_once_with(
+            11, None, {177},
+            '重新评估未覆盖该维度（重启遗留/维度停用或移除），收口为失败',
+        )
 
 
 # ==================== 3. 重评执行器：failed 维度收集与逐轮过滤 ====================
@@ -279,11 +317,15 @@ def patched_acl():
                  MagicMock(return_value=[])) as list_scores, \
     patch.object(reexec_module.evaluation_dimension_repository, 'delete_scores_by_result_id',
                  MagicMock(return_value=0)) as del_scores, \
+    patch.object(reexec_module.evaluation_dimension_repository,
+                 'mark_active_scores_failed_excluding_rounds',
+                 MagicMock(return_value=0)) as sweep, \
     patch('evaluation_service.infrastructure.acl.algorithm_acl_repository.algorithm_acl_repository',
           **{'extract_case_all_params.return_value': {'evaluation': {}}}) as algo_acl:
         yield SimpleNamespace(
             get_tc=get_tc, upd_tc=upd_tc, get_detail=get_detail,
             list_scores=list_scores, del_scores=del_scores, algo_acl=algo_acl,
+            sweep=sweep,
         )
 
 
@@ -718,3 +760,334 @@ class TestCancelPreviousEvaluations:
 
         assert ok is True
         cleanup.assert_called_once_with(5)
+
+
+# ==================== 8. 打回修复①：pending 维度纳入 failed 收集范围 ====================
+
+class TestPendingDimCollection:
+    """缺陷1：failed 型重评收集范围纳入非终态（pending）TRD——重启崩溃遗留的
+    进行中维度可被重评触达，不再因「仅收集 failed」而永久无人收尾。"""
+
+    def test_failed_type_collects_pending_dims(self, patched_acl):
+        patched_acl.list_scores.return_value = [
+            _trd(7, 0, EvaluationStatus.FAILED, 'mock fail'),
+            _trd(9, 0, EvaluationStatus.COMPLETED),   # 已完成维度不重评
+            _trd(8, 1, EvaluationStatus.PENDING),     # 重启遗留 pending 维度
+        ]
+        ex = _mk_executor()
+        with patch.object(reexec_module, 'evaluation_service') as eval_svc:
+            eval_svc.evaluate_case.return_value = True
+
+            ok = ex._reevaluate_multi_round(
+                task_id=1, result=11, test_case_id='c1',
+                algorithm_result={'rounds': [{'output': {}}, {'output': {}}]},
+                test_type='e2e', algorithm_type='translation',
+                reevaluate_type='failed',
+            )
+
+        assert ok is True
+        round_calls = [c for c in eval_svc.evaluate_case.call_args_list if 'round_number' in c.kwargs]
+        assert [c.kwargs['dimension_filter_ids'] for c in round_calls] == [[7], [8]]
+
+    def test_single_collects_pending_dims(self, patched_acl):
+        patched_acl.list_scores.return_value = [
+            _trd(7, None, EvaluationStatus.PENDING),
+        ]
+        ex = _mk_executor()
+        with patch.object(reexec_module, 'evaluation_service') as eval_svc:
+            eval_svc.evaluate_case.return_value = True
+
+            ok = ex._reevaluate_single(
+                task_id=1, result_id=11, test_case_id='c1',
+                algorithm_result={'output': {}}, reference_params=[],
+                test_type='api', algorithm_type='translation',
+                reevaluate_type='failed',
+            )
+
+        assert ok is True
+        assert eval_svc.evaluate_case.call_args.kwargs['dimension_filter_ids'] == [7]
+
+
+# ==================== 9. 打回修复①：重评范围外遗留非终态 TRD 收口 ====================
+
+class TestSweepOutOfScopeActiveScores:
+    """被配置排除的轮次（evaluation.enabled=false / 无整体口径维度）里遗留的
+    非终态 TRD 永远不会被评估触达，统一收尾的全维终态门控会拒绝收敛——
+    提交阶段结束后按「已提交轮次」排除收口为 failed。"""
+
+    def test_pending_trd_on_disabled_round_swept(self, patched_acl):
+        patched_acl.list_scores.return_value = [
+            _trd(7, 0, EvaluationStatus.FAILED, 'mock fail'),
+            _trd(8, 1, EvaluationStatus.PENDING),     # round 1 评估停用 → 收口
+        ]
+        with patch.object(task_acl_repository, 'get_test_case_detail', MagicMock(return_value=SimpleNamespace(
+                config={'rounds': [
+                    {'evaluation': {'dimensions': [{'id': 7}]}},
+                    {'evaluation': {'enabled': False, 'dimensions': [{'id': 8}]}},
+                ], 'dimensions': []},
+                algorithm_params=None, reference_params=None, algorithm_type='translation'))):
+            ex = _mk_executor()
+            with patch.object(reexec_module, 'evaluation_service') as eval_svc:
+                eval_svc.evaluate_case.return_value = True
+
+                ex._reevaluate_multi_round(
+                    task_id=1, result=11, test_case_id='c1',
+                    algorithm_result={'rounds': [{'output': {}}, {'output': {}}]},
+                    test_type='e2e', algorithm_type='translation',
+                    reevaluate_type='failed',
+                )
+
+        patched_acl.sweep.assert_called_once()
+        args = patched_acl.sweep.call_args.args
+        assert args[0] == 11
+        assert args[1] == {0}   # 保留已提交的 round 0，round 1 收口
+
+    def test_pending_trd_on_submitted_round_not_swept(self, patched_acl):
+        """已提交轮次的 TRD 被复用重置（评估在途），不得收口"""
+        patched_acl.list_scores.return_value = [
+            _trd(7, 0, EvaluationStatus.PENDING),
+        ]
+        ex = _mk_executor()
+        with patch.object(reexec_module, 'evaluation_service') as eval_svc:
+            eval_svc.evaluate_case.return_value = True
+
+            ex._reevaluate_multi_round(
+                task_id=1, result=11, test_case_id='c1',
+                algorithm_result={'rounds': [{'output': {}}]},
+                test_type='e2e', algorithm_type='translation',
+                reevaluate_type='failed',
+            )
+
+        patched_acl.sweep.assert_called_once()
+        assert patched_acl.sweep.call_args.args[1] == {0}
+
+    def test_overall_pending_swept_when_no_overall_dims(self, patched_acl):
+        """config 无整体口径维度：None 键 pending TRD 收口"""
+        patched_acl.list_scores.return_value = [
+            _trd(7, 0, EvaluationStatus.PENDING),
+            _trd(12, None, EvaluationStatus.PENDING),  # 整体口径无处提交 → 收口
+        ]
+        with patch.object(task_acl_repository, 'get_test_case_detail', MagicMock(return_value=SimpleNamespace(
+                config={'rounds': [{'evaluation': {'dimensions': [{'id': 7}]}}],
+                        'dimensions': []},
+                algorithm_params=None, reference_params=None, algorithm_type='translation'))):
+            ex = _mk_executor()
+            with patch.object(reexec_module, 'evaluation_service') as eval_svc:
+                eval_svc.evaluate_case.return_value = True
+
+                ex._reevaluate_multi_round(
+                    task_id=1, result=11, test_case_id='c1',
+                    algorithm_result={'rounds': [{'output': {}}]},
+                    test_type='e2e', algorithm_type='translation',
+                    reevaluate_type='failed',
+                )
+
+        patched_acl.sweep.assert_called_once()
+        assert patched_acl.sweep.call_args.args[1] == {0}
+
+    def test_single_not_submitted_sweeps_all(self, patched_acl):
+        """单轮结果未提交评估（过滤后无可评估维度）：全部非终态 TRD 收口"""
+        patched_acl.list_scores.return_value = [
+            _trd(7, None, EvaluationStatus.PENDING),
+        ]
+        ex = _mk_executor()
+        with patch.object(reexec_module, 'evaluation_service') as eval_svc:
+            eval_svc.evaluate_case.return_value = False
+
+            ex._reevaluate_single(
+                task_id=1, result_id=11, test_case_id='c1',
+                algorithm_result={'output': {}}, reference_params=[],
+                test_type='api', algorithm_type='translation',
+                reevaluate_type='failed',
+            )
+
+        patched_acl.sweep.assert_called_once()
+        assert patched_acl.sweep.call_args.args[0] == 11
+        assert patched_acl.sweep.call_args.args[1] is None  # 不排除任何轮次
+
+    def test_all_type_never_sweeps(self, patched_acl):
+        """全量重评（all）TRD 已清空重建，无需收口"""
+        ex = _mk_executor()
+        with patch.object(reexec_module, 'evaluation_service') as eval_svc:
+            eval_svc.evaluate_case.return_value = True
+
+            ex._reevaluate_multi_round(
+                task_id=1, result=11, test_case_id='c1',
+                algorithm_result={'rounds': [{'output': {}}]},
+                test_type='e2e', algorithm_type='translation',
+                reevaluate_type='all',
+            )
+
+        patched_acl.sweep.assert_not_called()
+
+
+# ==================== 10. 打回修复②：零提交重评主动收敛 ====================
+
+class TestZeroSubmissionConvergence:
+    """缺陷2：零提交（无待重评用例 / 全部轮次被跳过）时无任何评估在途，
+    端点 Worker 回调（maybe_finalize 唯一触发源）永远不会到达——必须主动
+    收敛任务终态并释放重评队列，否则任务永久卡 running、队列被占死。"""
+
+    @staticmethod
+    def _running_executor(task_id=491):
+        ex = ReevaluationExecutor()
+        ex.running_task_id = task_id
+        ex.is_reevaluating = True
+        ex._submitting_tasks = set()
+        ex._check_queue = MagicMock()
+        return ex
+
+    def test_zero_submission_converges_and_releases_queue(self):
+        """全部用例评估已到终态：直接置 completed 并释放队列"""
+        ex = self._running_executor()
+        cases = [_tc(), _tc(eval_st=EvaluationStatus.FAILED)]
+        task = SimpleNamespace(id=491, status=TaskStatus.REEVALUATING)
+
+        with patch.object(task_acl_repository, 'get_task_case_by_ids', MagicMock(return_value=cases)), \
+             patch.object(task_acl_repository, 'get_task_by_id', MagicMock(return_value=task)), \
+             patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd:
+            ex._on_complete(491, True, submitted_cases=0)
+
+        upd.assert_called_once_with(491, TaskStatus.COMPLETED)
+        assert ex.running_task_id is None
+        assert ex.is_reevaluating is False
+        # maybe_finalize 收敛释放时一次 + 零提交分支兜底释放时一次
+        assert ex._check_queue.call_count == 2
+
+    def test_zero_submission_fallback_releases_queue_when_cannot_converge(self):
+        """无用例元数据可判定收敛：置 running 兜底，但队列必须释放（不占死）"""
+        ex = self._running_executor()
+
+        with patch.object(task_acl_repository, 'get_task_case_by_ids', MagicMock(return_value=[])), \
+             patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd:
+            ex._on_complete(491, True, submitted_cases=0)
+
+        upd.assert_called_once_with(491, TaskStatus.RUNNING)
+        assert ex.running_task_id is None
+        assert ex.is_reevaluating is False
+        ex._check_queue.assert_called_once()
+
+    def test_zero_submission_converge_check_error_still_releases_queue(self):
+        """收敛判定本身异常（如 task_service 不可达）：置 running 兜底且队列释放，不占死"""
+        ex = self._running_executor()
+
+        with patch.object(task_acl_repository, 'get_task_case_by_ids',
+                          MagicMock(side_effect=RuntimeError('grpc unavailable'))), \
+             patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd:
+            ex._on_complete(491, True, submitted_cases=0)  # 不抛异常
+
+        upd.assert_called_once_with(491, TaskStatus.RUNNING)
+        assert ex.running_task_id is None
+        assert ex.is_reevaluating is False
+        ex._check_queue.assert_called_once()
+
+    def test_some_submitted_still_holds_queue(self):
+        """确有评估在途：维持 running + 队列占用，由 maybe_finalize 收敛（既有语义）"""
+        ex = self._running_executor()
+
+        with patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd:
+            ex._on_complete(491, True, submitted_cases=2)
+
+        upd.assert_called_once_with(491, TaskStatus.RUNNING)
+        assert ex.running_task_id == 491
+        assert ex.is_reevaluating is True
+        ex._check_queue.assert_not_called()
+
+    def test_form_b_zero_cases_converges_end_to_end(self):
+        """形态B（收集到 0 个用例）：_run_reevaluation 全链收敛为 completed"""
+        ex = ReevaluationExecutor()
+        ex.running_task_id = 491
+        ex.is_reevaluating = True
+        ex._check_queue = MagicMock()
+        cases = [_tc(), _tc(eval_st=EvaluationStatus.FAILED)]
+        task = SimpleNamespace(id=491, status=TaskStatus.REEVALUATING)
+
+        with patch.object(task_acl_repository, 'get_test_results_by_task_and_case',
+                          MagicMock(return_value=[])), \
+             patch.object(task_acl_repository, 'get_task_case_by_ids', MagicMock(return_value=cases)), \
+             patch.object(task_acl_repository, 'get_task_by_id', MagicMock(return_value=task)), \
+             patch('evaluation_service.application.handlers.reevaluation_executor.log_and_emit'), \
+             patch('evaluation_service.infrastructure.evaluation_mixin.update_task_status_with_retry') as upd:
+            ex._run_reevaluation(task_id=491, reextract_device_output=False, reevaluate_type='failed')
+
+        upd.assert_called_once_with(491, TaskStatus.COMPLETED)
+        assert ex.running_task_id is None
+        assert ex.is_reevaluating is False
+        # maybe_finalize 收敛释放时一次 + 零提交分支兜底释放时一次
+        assert ex._check_queue.call_count == 2
+
+
+# ==================== 11. 打回修复③：m2 / m1 顺手项 ====================
+
+class TestFilterNonNumericConfigDimId:
+    """m2：config 出现非数字维度 id 且带 filter → 跳过该维度，而非 ValueError 中断评估入口"""
+
+    def test_non_numeric_config_dim_id_skipped(self):
+        host = _FilterHost()
+        host._load_test_case_and_refs = lambda *a, **k: {
+            'test_case': SimpleNamespace(name='case-a'),
+            'algorithm_type': 'translation',
+            'ref_texts': {},
+            'dimensions_config': [{'id': '121'}, {'id': 'abc'}],
+        }
+
+        prepared = host._prepare_evaluation_data(
+            task_id=1, result_id=11, test_case_id='c1', algorithm_result={},
+            field_mapper=None, kwargs={'dimension_filter_ids': [121]},
+            test_type='api', round_number=None,
+        )
+
+        assert prepared is not False
+        assert prepared['dimension_data_list'] == [{'id': 121}]
+
+
+class TestProcessEvaluationResultSecondCancelCheck:
+    """m1 硬化：结果写库前二次核销取消标记，收窄「核销→落库」竞态窗口"""
+
+    @staticmethod
+    def _worker():
+        from evaluation_service.infrastructure.evaluation_api.endpoint_worker import EndpointWorker
+        w = object.__new__(EndpointWorker)
+        w._log = MagicMock()
+        w.eval_service = SimpleNamespace(result_processor=MagicMock())
+        return w
+
+    def test_cancelled_before_persist_is_isolated(self):
+        """核销后、落库前被取消：结果隔离，不写库"""
+        EvalTaskRegistry.register('e1', 5, 'http://ep-a')
+        EvalTaskRegistry.pop_by_task(5)
+        w = self._worker()
+        resp_data = {'wer': 0.1, '__eval_task_id__': 'e1'}
+
+        with patch.object(task_acl_repository, 'get_task_case_by_ids', MagicMock(return_value=[])):
+            w._process_evaluation_result(resp_data, [({'id': 7, 'name': 'd'}, 1)],
+                                         5, 'c1', 11, {}, 'api')
+
+        w.eval_service.result_processor.process_group_dimension_results.assert_not_called()
+        # 标记已消费，不落库泄漏
+        assert '__eval_task_id__' not in resp_data
+
+    def test_not_cancelled_processed_without_marker_leak(self):
+        """未取消：正常写库，__eval_task_id__ 不随 api_raw_response 落库"""
+        EvalTaskRegistry.register('e1', 5, 'http://ep-a')
+        w = self._worker()
+        resp_data = {'wer': 0.1, '__eval_task_id__': 'e1'}
+
+        with patch.object(task_acl_repository, 'get_task_case_by_ids', MagicMock(return_value=[])):
+            w._process_evaluation_result(resp_data, [({'id': 7, 'name': 'd'}, 1)],
+                                         5, 'c1', 11, {}, 'api')
+
+        call = w.eval_service.result_processor.process_group_dimension_results
+        call.assert_called_once()
+        assert call.call_args.kwargs['resp_data'] == {'wer': 0.1}
+
+    def test_result_without_marker_processed_normally(self):
+        """无标记（同步链路等）：行为不变"""
+        w = self._worker()
+        resp_data = {'wer': 0.1}
+
+        with patch.object(task_acl_repository, 'get_task_case_by_ids', MagicMock(return_value=[])):
+            w._process_evaluation_result(resp_data, [({'id': 7, 'name': 'd'}, 1)],
+                                         5, 'c1', 11, {}, 'api')
+
+        w.eval_service.result_processor.process_group_dimension_results.assert_called_once()

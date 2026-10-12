@@ -290,7 +290,16 @@ class CaseEvaluationMixin:
                     filter_set.add(int(_d))
                 except (TypeError, ValueError):
                     continue
-            unique_dimension_ids = [d for d in unique_dimension_ids if int(d) in filter_set]
+            kept_dimension_ids = []
+            for d in unique_dimension_ids:
+                try:
+                    if int(d) in filter_set:
+                        kept_dimension_ids.append(d)
+                except (TypeError, ValueError):
+                    # config 出现非数字维度 id：无法与过滤器（int 集合）匹配，
+                    # 跳过该维度而非中断整个评估入口（m2）
+                    continue
+            unique_dimension_ids = kept_dimension_ids
             if not unique_dimension_ids:
                 self._log(
                     level='INFO',
@@ -298,6 +307,10 @@ class CaseEvaluationMixin:
                     task_id=task_id,
                     test_case_id=test_case_id
                 )
+                # INT-174：本轮不再有任何评估触达其非终态 TRD，就地收口，
+                # 否则统一收尾的全维终态门控拒绝收敛
+                self._sweep_unreachable_round_scores(
+                    result_id, round_number, None, task_id, test_case_id)
                 self.result_processor.mark_test_result_completed(result_id)
                 self._post_evaluate_updates(task_id, test_case_id)
                 return False
@@ -307,9 +320,34 @@ class CaseEvaluationMixin:
             unique_dimension_ids, task_id, test_case_id, test_case
         )
         if not dimension_data_list:
+            if dimension_filter_ids is not None:
+                # INT-174：带过滤的重评请求无可用维度 → 本轮非终态 TRD 就地收口
+                self._sweep_unreachable_round_scores(
+                    result_id, round_number, None, task_id, test_case_id)
             self.result_processor.mark_test_result_completed(result_id)
             self._post_evaluate_updates(task_id, test_case_id)
             return False
+
+        if dimension_filter_ids is not None:
+            # INT-174：请求维度中被启用状态排除的（如维度已软删，config 仍带 id）
+            # 不会被本次评估触达，其遗留非终态 TRD 就地收口，防统一收尾拒绝收敛
+            loaded_ids = set()
+            for _dd in dimension_data_list:
+                if isinstance(_dd, dict) and _dd.get('id') is not None:
+                    try:
+                        loaded_ids.add(int(_dd['id']))
+                    except (TypeError, ValueError):
+                        continue
+            dropped_dim_ids = set()
+            for _d in unique_dimension_ids:
+                try:
+                    if int(_d) not in loaded_ids:
+                        dropped_dim_ids.add(int(_d))
+                except (TypeError, ValueError):
+                    continue
+            if dropped_dim_ids:
+                self._sweep_unreachable_round_scores(
+                    result_id, round_number, dropped_dim_ids, task_id, test_case_id)
 
         self._log(level='INFO', content=f"开始评估 {len(dimension_data_list)} 个维度，分发到端点队列", task_id=task_id, test_case_id=test_case_id)
 
@@ -322,6 +360,35 @@ class CaseEvaluationMixin:
             'ref_texts': ref_texts,
             'dimension_data_list': dimension_data_list,
         }
+
+    def _sweep_unreachable_round_scores(self, result_id, round_number, dimension_ids,
+                                        task_id, test_case_id):
+        """收口本轮不会被评估触达的遗留非终态 TRD（INT-174，仅重评过滤链调用）。
+
+        范围：本 result + 本轮次（round_number=None 表示整体口径）；dimension_ids
+        为 None 表示整轮。收口失败仅记日志（收口是收敛保障，不阻断评估入口）。
+        """
+        if result_id is None:
+            return
+        try:
+            swept = self._evaluation_dimension_repo.mark_round_active_scores_failed(
+                result_id, round_number, dimension_ids,
+                '重新评估未覆盖该维度（重启遗留/维度停用或移除），收口为失败',
+            )
+            if swept:
+                self._log(
+                    level='WARNING',
+                    content=f"已收口本轮不可触达的遗留非终态维度 {swept} 个: "
+                            f"result_id={result_id}, round={round_number}, dims={dimension_ids}",
+                    task_id=task_id, test_case_id=test_case_id
+                )
+        except Exception as e:
+            self._log(
+                level='ERROR',
+                content=f"收口本轮不可触达的遗留非终态维度失败: result_id={result_id}, "
+                        f"round={round_number}, error={e}",
+                task_id=task_id, test_case_id=test_case_id
+            )
 
     def _dispatch_to_workers(self, task_id, result_id, test_case_id, algorithm_result,
                               prepared, field_mapper, test_type, round_number, kwargs):

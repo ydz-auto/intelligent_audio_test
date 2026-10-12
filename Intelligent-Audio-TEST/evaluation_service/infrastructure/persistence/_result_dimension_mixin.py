@@ -4,6 +4,7 @@
 负责 TestResultDimension 的本地 DB 写入（本服务自有 PO）：
 单维度结果更新、成功/失败状态快捷方法、组内批量失败更新。
 """
+import time
 import traceback
 
 from shared.models.database import get_db_session
@@ -169,35 +170,37 @@ class DimensionResultMixin:
         INT-116: 本地事务先提交并释放连接，再做 gRPC 终态写库——
         本地 commit 失败也不得跳过 TaskCase failed 终态（杜绝永久 evaluating）
         """
-        # 使用单个会话写 TestResultDimension
-        local_db_session = get_db_session()
-        try:
-            for dim_data, dimension_result_id in group_items:
-                dim_id = dim_data['id']
-                dim_name = dim_data['name']
-
-                self._log(
-                    level='ERROR',
-                    content=f"维度 {dim_name} 评估失败: {error_message}",
-                    category='execution',
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    push_to_websocket=True
-                )
-
-                self.update_dimension_result_failed(dimension_result_id, error_message, task_id=task_id, test_case_id=test_case_id, api_raw_response=api_raw_response, api_request_body=api_request_body, session=local_db_session)
-
-            local_db_session.commit()
-        except Exception as e:
-            # TRD 失败记录落库失败（如连接池耗尽）不能阻断 TaskCase 终态推进
+        for dim_data, _dimension_result_id in group_items:
             self._log(
                 level='ERROR',
-                content=f"维度评估失败记录(TestResultDimension)落库失败: {str(e)}",
+                content=f"维度 {dim_data['name']} 评估失败: {error_message}",
+                category='execution',
+                task_id=task_id,
+                test_case_id=test_case_id,
+                push_to_websocket=True
+            )
+
+        local_write_ok = self._write_group_trd_failed_with_retry(
+            group_items, error_message, task_id, test_case_id,
+            api_raw_response=api_raw_response, api_request_body=api_request_body,
+        )
+        if not local_write_ok and test_case_id:
+            # INT-174 缺陷3：本地 TRD 失败写库有界重试仍失败（连接池耗尽等）——
+            # 组内 TRD 永久停留非终态会让统一收尾的全维终态门控拒绝收敛
+            # （用例/任务永久 evaluating，重评场景连带队列占死）。经 gRPC 侧兜底
+            # 落用例 failed 终态（仅当用例评估仍活跃，带 INT-116 重试+延迟队列），
+            # 保证用例可达终态；不影响常规路径「组失败不误判用例失败」语义。
+            self._log(
+                level='ERROR',
+                content=f"维度组失败记录(TestResultDimension)落库失败（重试耗尽），"
+                        f"经 gRPC 兜底收口用例终态: test_case_id={test_case_id}",
                 task_id=task_id,
                 test_case_id=test_case_id
             )
-        finally:
-            local_db_session.close()
+            self.mark_case_failed_if_active(
+                task_id, test_case_id,
+                f"维度评估失败且失败记录落库失败，兜底收口: {error_message}",
+            )
 
         # 更新 TaskCase 的评估状态（P1.4: 通过 gRPC）
         # INT-174（对齐 V9.7.10 c30d1b24）：一个维度组失败不代表用例评估结束
@@ -233,6 +236,43 @@ class DimensionResultMixin:
                     task_id=task_id,
                     test_case_id=test_case_id
                 )
+
+    def _write_group_trd_failed_with_retry(self, group_items, error_message, task_id, test_case_id,
+                                           api_raw_response=None, api_request_body=None,
+                                           max_attempts=3):
+        """组内 TRD 失败状态落库（有界重试）。返回是否确认提交成功。
+
+        INT-116/INT-174：本地 commit 失败（连接池耗尽等）原先仅记日志吞掉，组内
+        TRD 永久停留非终态 → 统一收尾的全维终态门控拒绝收敛。此处对整组写库做
+        有界重试（连接池释通常在秒级）；仍失败由调用方经 gRPC 侧兜底保证用例
+        可达终态。
+        """
+        for attempt in range(1, max_attempts + 1):
+            local_db_session = get_db_session()
+            try:
+                for _dim_data, dimension_result_id in group_items:
+                    self.update_dimension_result_failed(
+                        dimension_result_id, error_message,
+                        task_id=task_id, test_case_id=test_case_id,
+                        api_raw_response=api_raw_response,
+                        api_request_body=api_request_body,
+                        session=local_db_session,
+                    )
+                local_db_session.commit()
+                return True
+            except Exception as e:
+                self._log(
+                    level='ERROR',
+                    content=f"维度评估失败记录(TestResultDimension)落库失败"
+                            f"（第{attempt}/{max_attempts}次）: {str(e)}",
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                )
+                if attempt < max_attempts:
+                    time.sleep(1.0 * attempt)
+            finally:
+                local_db_session.close()
+        return False
 
     def _mark_group_case_failed(self, task_id, test_case_id, error_message=''):
         """组内维度评估失败时，将 TaskCase 状态置为失败（P1.4: 通过 gRPC）"""
