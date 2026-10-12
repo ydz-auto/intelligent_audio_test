@@ -160,7 +160,7 @@ class AudioUploadService:
                 'chunk_index': chunk_index,
                 'total_chunks': total_chunks,
                 'task_id': task_id,
-                'chunk_data': chunk_b64,
+                'chunk_content': chunk_b64,
             }
 
             result = _audio_acl.upload_chunk(data)

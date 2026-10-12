@@ -6,6 +6,7 @@
 """
 import os
 import uuid
+import base64
 import logging
 from datetime import timedelta
 
@@ -79,20 +80,37 @@ class AudioUploadTaskMixin:
             return {'success': False, 'message': f'音频注册失败: {str(e)}', 'data': None, 'code': 400}
 
     def _register_files_batch(self, task, files, task_id):
-        """批量注册文件，返回 registered_files 列表"""
+        """批量注册文件，返回 registered_files 列表。
+
+        task 为脱离会话的实体副本，任务级进度必须经仓储回写 PO 才能持久化。
+        """
         registered_files = []
+        total_files_delta = total_size_delta = 0
+        completed_files_delta = uploaded_size_delta = 0
+
         with self.repo.no_autoflush:
             for file_info in files:
                 record = self._create_upload_file_record(file_info, task_id)
                 if record is None:
                     continue
                 registered_files.append(self._format_registered_file(record))
-                self._accumulate_task_stats(task, record)
+                total_files_delta += 1
+                total_size_delta += record['file_size']
+                if record['status'] == UploadStatus.completed.value:
+                    completed_files_delta += 1
+                    uploaded_size_delta += record['file_size']
 
-            if task.completed_files >= task.total_files and task.total_files > 0:
-                task.status = 'completed'
-            else:
-                task.status = 'uploading'
+        new_completed_files = task.completed_files + completed_files_delta
+        new_total_files = task.total_files + total_files_delta
+        self.repo.update_upload_task_progress(
+            task_id,
+            total_files=new_total_files,
+            total_size=task.total_size + total_size_delta,
+            completed_files=new_completed_files,
+            uploaded_size=task.uploaded_size + uploaded_size_delta,
+            status='completed' if new_total_files > 0 and new_completed_files >= new_total_files
+            else 'uploading',
+        )
         return registered_files
 
     def _format_registered_file(self, record):
@@ -104,14 +122,6 @@ class AudioUploadTaskMixin:
             'chunk_size': record['chunk_size'],
             'status': record['status'],
         }
-
-    def _accumulate_task_stats(self, task, record):
-        """累加任务统计（文件数/大小/已完成）"""
-        task.total_files += 1
-        task.total_size += record['file_size']
-        if record['status'] == UploadStatus.completed.value:
-            task.completed_files += 1
-            task.uploaded_size += record['file_size']
 
     def _create_upload_file_record(self, file_info, task_id):
         """创建 UploadFile 记录"""
@@ -154,12 +164,15 @@ class AudioUploadTaskMixin:
     def upload_chunk(self, data: dict) -> dict:
         """上传分片"""
         try:
-            file_id, chunk_index, total_chunks, task_id, chunk_content_b64, chunk_size = (
+            file_id, chunk_index, total_chunks, task_id, chunk_content_b64 = (
                 self._extract_chunk_params(data)
             )
 
             if not file_id or chunk_index is None or not total_chunks or not task_id:
                 return {'success': False, 'message': '缺少分片信息', 'data': None, 'code': 400}
+
+            if chunk_content_b64 is None:
+                return {'success': False, 'message': '缺少分片内容', 'data': None, 'code': 400}
 
             upload_file = self.repo.get_upload_file(file_id)
             if not upload_file:
@@ -171,17 +184,19 @@ class AudioUploadTaskMixin:
 
             # 保存分片到磁盘
             chunk_path, actual_chunk_size = self._save_chunk_to_disk(
-                file_id, chunk_index, chunk_content_b64, chunk_size
+                file_id, chunk_index, chunk_content_b64
             )
 
-            # 更新分片与任务进度
+            # 更新分片与任务进度（get_* 返回的实体是脱离会话的副本，
+            # 进度必须经仓储回写 PO，否则不会持久化）
             self._update_chunk_progress(
                 upload_file, task, file_id, chunk_index, actual_chunk_size, total_chunks, chunk_path
             )
 
             self.repo.commit()
             return self._build_chunk_upload_response(
-                file_id, chunk_index, total_chunks, upload_file, task
+                file_id, chunk_index, total_chunks,
+                self.repo.get_upload_file(file_id), self.repo.get_upload_task(task_id),
             )
         except Exception as e:
             self.repo.rollback()
@@ -199,8 +214,7 @@ class AudioUploadTaskMixin:
         total_chunks = data.get('total_chunks', data.get('totalChunks'))
         task_id = data.get('task_id') or data.get('taskId')
         chunk_content_b64 = data.get('chunk_content', data.get('chunkContent'))
-        chunk_size = data.get('chunk_size', data.get('chunkSize', 0))
-        return file_id, chunk_index, total_chunks, task_id, chunk_content_b64, chunk_size
+        return file_id, chunk_index, total_chunks, task_id, chunk_content_b64
 
     def _build_chunk_upload_response(self, file_id, chunk_index, total_chunks, upload_file, task):
         """构建分片上传成功响应"""
@@ -228,42 +242,50 @@ class AudioUploadTaskMixin:
             'status': task.status,
         }
 
-    def _save_chunk_to_disk(self, file_id, chunk_index, chunk_content_b64, chunk_size):
+    def _save_chunk_to_disk(self, file_id, chunk_index, chunk_content_b64):
         """保存分片到磁盘，返回 (chunk_path, 实际分片大小)"""
         base_upload_dir = self._get_base_upload_dir()
         chunk_dir = os.path.join(base_upload_dir, 'chunks', file_id)
         _safe_makedirs(chunk_dir)
         chunk_path = os.path.join(chunk_dir, f"chunk_{chunk_index}")
 
-        if chunk_content_b64:
-            import base64
-            chunk_data = base64.b64decode(chunk_content_b64)
-            with open(chunk_path, 'wb') as f:
-                f.write(chunk_data)
-            return chunk_path, os.path.getsize(chunk_path)
-        return chunk_path, chunk_size
+        chunk_data = base64.b64decode(chunk_content_b64)
+        with open(chunk_path, 'wb') as f:
+            f.write(chunk_data)
+        return chunk_path, os.path.getsize(chunk_path)
 
     def _update_chunk_progress(self, upload_file, task, file_id, chunk_index, actual_chunk_size, total_chunks, chunk_path):
-        """更新分片与任务进度"""
-        with self.repo.no_autoflush:
-            existing_chunk = self.repo.get_upload_chunk(file_id, chunk_index)
-            if existing_chunk:
-                self.repo.update_upload_file(existing_chunk, chunk_size=actual_chunk_size, status='completed')
-            else:
-                self.repo.create_upload_chunk(file_id, chunk_index, actual_chunk_size, chunk_path)
+        """更新分片与任务进度（经仓储回写 PO，重传同序号分片不重复计数）"""
+        existing_chunk = self.repo.get_upload_chunk(file_id, chunk_index)
+        if existing_chunk:
+            self.repo.update_upload_chunk(
+                existing_chunk.id, chunk_size=actual_chunk_size, status='completed'
+            )
+            completed_delta = 0
+            size_delta = actual_chunk_size - existing_chunk.chunk_size
+        else:
+            self.repo.create_upload_chunk(file_id, chunk_index, actual_chunk_size, chunk_path)
+            completed_delta, size_delta = 1, actual_chunk_size
 
-            upload_file.completed_chunks += 1
-            upload_file.uploaded_size += actual_chunk_size
+        completed_chunks = upload_file.completed_chunks + completed_delta
+        file_completed = completed_chunks >= total_chunks
+        self.repo.update_upload_file_progress(
+            file_id,
+            completed_chunks=completed_chunks,
+            uploaded_size=upload_file.uploaded_size + size_delta,
+            status=(UploadStatus.completed.value if file_completed
+                    else UploadStatus.uploading.value),
+        )
 
-            if upload_file.completed_chunks >= total_chunks:
-                upload_file.status = 'completed'
-                task.completed_files += 1
-
-            task.uploaded_size += actual_chunk_size
-            task.status = 'uploading'
-
-            if task.completed_files >= task.total_files:
-                task.status = 'completed'
+        completed_files = task.completed_files + (1 if file_completed else 0)
+        task_status = UploadStatus.completed.value if completed_files >= task.total_files \
+            else UploadStatus.uploading.value
+        self.repo.update_upload_task_progress(
+            task.id,
+            completed_files=completed_files,
+            uploaded_size=task.uploaded_size + size_delta,
+            status=task_status,
+        )
 
     def _get_base_upload_dir(self):
         """获取音频存储根目录"""

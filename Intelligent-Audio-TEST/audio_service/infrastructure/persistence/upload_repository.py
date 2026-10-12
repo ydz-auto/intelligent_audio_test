@@ -147,6 +147,17 @@ class UploadRepository(UploadRepositoryInterface):
             return None
         return _upload_chunk_po_to_entity(po)
 
+    def update_upload_chunk(self, chunk_id: int, **fields) -> Optional[UploadChunkEntity]:
+        """更新上传分片字段（重传同序号分片时回写大小/状态），返回 UploadChunkEntity。"""
+        session = get_db_session()
+        po = session.get(UploadChunk, chunk_id)
+        if po is None:
+            return None
+        for key, value in fields.items():
+            setattr(po, key, value)
+        session.flush()
+        return _upload_chunk_po_to_entity(po)
+
     # ========== Upload 进度更新（通过 PO 回写）==========
 
     def update_upload_task_progress(self, task_id: str, **fields) -> Optional[UploadTaskAggregate]:

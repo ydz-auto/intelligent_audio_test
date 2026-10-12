@@ -177,6 +177,9 @@ class UploadRepositoryInterface(ABC):
     def get_upload_chunk(self, file_id: str, chunk_index: int) -> Optional[UploadChunkEntity]: ...
 
     @abstractmethod
+    def update_upload_chunk(self, chunk_id: int, **fields) -> Optional[UploadChunkEntity]: ...
+
+    @abstractmethod
     def update_upload_task_progress(self, task_id: str, **fields) -> Optional[UploadTaskAggregate]: ...
 
     @abstractmethod
