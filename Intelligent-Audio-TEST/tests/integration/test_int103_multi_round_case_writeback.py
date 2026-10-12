@@ -150,6 +150,40 @@ def _wait_eval_terminal(task_id, timeout=60):
     return False, status
 
 
+def _wait_case_field(task_id, attr, expected, timeout=15):
+    """轮询 TaskCase 单字段至期望值，超时返回最后读取的行。
+
+    回写经进程内 gRPC servicer 线程异步落库（INT-163）：并行回归 -n 8 下
+    单发读可能先于写入可见窗口（负载放大线程调度/提交间隔），与文件内
+    既有 _wait_eval_terminal 同款轮询口径，仅在窗口内等待、不改变断言语义。
+    """
+    from task_service.infrastructure.persistence.models import TaskCase
+
+    deadline = time.time() + timeout
+    row = None
+    while True:
+        tcs = _query(TaskCase, task_id=task_id)
+        row = tcs[0] if tcs else None
+        if row is not None and getattr(row, attr, None) == expected:
+            return row
+        if time.time() >= deadline:
+            return row
+        time.sleep(0.2)
+
+
+def _wait_engine_counts_zero(task_id, timeout=15):
+    """轮询引擎活跃集合双归零，超时返回最后计数。"""
+    deadline = time.time() + timeout
+    in_progress = evaluating = None
+    while True:
+        in_progress, evaluating = _engine_counts(task_id)
+        if (in_progress, evaluating) == (0, 0):
+            return in_progress, evaluating
+        if time.time() >= deadline:
+            return in_progress, evaluating
+        time.sleep(0.2)
+
+
 class TestInt103WriteBackRealChain:
     """多轮回写经真实 ACL → gRPC UpdateTaskCaseStatus → 仓储 → Postgres 落库。"""
 
@@ -162,9 +196,10 @@ class TestInt103WriteBackRealChain:
         from task_service.infrastructure.persistence.models import (
             TaskCase, TestResult,
         )
-        tc = _query(TaskCase, task_id=task_id)[0]
-        assert tc.execution_status == 'completed', \
-            f'INT-103 核心：回写后 exec 应 completed，实际 {tc.execution_status}'
+        tc = _wait_case_field(task_id, 'execution_status', 'completed')
+        assert tc is not None and tc.execution_status == 'completed', \
+            f'INT-103 核心：回写后 exec 应 completed，实际 ' \
+            f'{tc.execution_status if tc else "行不存在"}'
         # completed_at 由引擎任务收尾 _fix_stale_case_statuses 补写（与单轮路径
         # 同职责划分），回写时不写；失败路径由回写直接落（见下条用例）
         # 评估腿尚未运行（执行器随后才提交评估）：evaluation_status 保持 pending，
@@ -190,7 +225,7 @@ class TestInt103WriteBackRealChain:
         task_id, case_id = _seed_multi_round_task()
         _run_multi_round_writeback(task_id, case_id, success=True)
 
-        in_progress, _ = _engine_counts(task_id)
+        in_progress, _ = _wait_engine_counts_zero(task_id)
         assert in_progress == 0, \
             f'回写后执行中用例计数应归零（原缺陷此处恒为 1 死等），实际 {in_progress}'
 
@@ -206,9 +241,9 @@ class TestInt103WriteBackRealChain:
         _run_multi_round_writeback(task_id, case_id, success=False)
 
         from task_service.infrastructure.persistence.models import TaskCase
-        tc = _query(TaskCase, task_id=task_id)[0]
-        assert tc.execution_status == 'failed', \
-            f'exec 应 failed，实际 {tc.execution_status}'
+        tc = _wait_case_field(task_id, 'execution_status', 'failed')
+        assert tc is not None and tc.execution_status == 'failed', \
+            f'exec 应 failed，实际 {tc.execution_status if tc else "行不存在"}'
         assert tc.evaluation_status == 'completed', \
             f'INT-103 核心断言：失败用例必须补写 evaluation_status=completed，' \
             f'实际 {tc.evaluation_status}（pending 将被引擎计入活跃评估集合死等）'
@@ -256,8 +291,8 @@ class TestInt103FullConvergence:
         assert result_id, '多轮结果应落库'
 
         from task_service.infrastructure.persistence.models import TaskCase
-        tc = _query(TaskCase, task_id=task_id)[0]
-        assert tc.execution_status == 'completed', '回写后用例应 completed'
+        tc = _wait_case_field(task_id, 'execution_status', 'completed')
+        assert tc is not None and tc.execution_status == 'completed', '回写后用例应 completed'
 
         # 执行器在回写成功后立即以同款调用提交评估（result_id 且全轮成功）
         _submit_evaluation_like_executor(
@@ -274,6 +309,6 @@ class TestInt103FullConvergence:
         assert tc.status in ('completed', 'skipped'), \
             f'复合状态应为终态 completed/skipped，实际 {tc.status}'
 
-        in_progress, evaluating = _engine_counts(task_id)
+        in_progress, evaluating = _wait_engine_counts_zero(task_id)
         assert (in_progress, evaluating) == (0, 0), \
             f'收敛终态：引擎活跃集合必须双归零，实际 exec={in_progress} eval={evaluating}'

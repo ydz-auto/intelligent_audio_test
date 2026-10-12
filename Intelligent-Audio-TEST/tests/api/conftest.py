@@ -40,6 +40,20 @@ def _backend_alive() -> bool:
         return False
 
 
+@pytest.fixture(scope='session', autouse=True)
+def _live_stack_gate():
+    """实机栈用例默认退出回归（INT-163 隔离规范）。
+
+    本目录全部用例直击运行中的 V9.7.31 实机栈：栈在跑时它们被偶然纳入
+    并行回归，与栈的既有业务数据/其它在途验收互相污染，产生大批非确定性
+    失败（INT-163 当轮 60+ 假失败）；栈不在跑时又整体 skip——同一命令两
+    种结果，回归口径不稳。故默认一律 skip，实机验收显式
+    `RUN_LIVE_STACK=1` 纳入（届时仍受 require_backend 版本标记约束）。
+    """
+    if os.environ.get('RUN_LIVE_STACK', '') != '1':
+        pytest.skip('RUN_LIVE_STACK!=1：实机栈用例不参与默认回归（tests/README.md 隔离规范）')
+
+
 @pytest.fixture(scope='session')
 def require_backend():
     """V9.7.31 后端未运行（或端口被其他版本进程占用）时跳过全部 API 测试。"""

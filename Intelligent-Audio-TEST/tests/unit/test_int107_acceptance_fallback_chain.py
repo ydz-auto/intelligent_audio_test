@@ -98,12 +98,27 @@ class _StubEvalServer:
         return [r for r in self.requests if r == ('POST', '/api/create_task')]
 
 
+_HELD_DEAD_SOCKETS = []
+
+
 def _unreachable_url():
-    """取一个当前无监听的 127.0.0.1 端口（连接立即被拒，不超时）。"""
+    """取一个当前无监听的 127.0.0.1 端口（连接立即被拒，不超时）。
+
+    INT-163：探测端口必须保持 bind 占用、不能 close——先 close 再用存在
+    竞态窗口，并行回归下该端口会被其它进程重新绑定，「不可达主端点」
+    意外应答 → 兜底不触发假失败（实证 selected=primary）。
+    Windows 语义：仅 bind 不 listen 的端口仍会被 bind(0) 分配器再发给
+    其它进程（实测复现），必须显式 SO_EXCLUSIVEADDRUSE（须在 bind 之前
+    设置）独占端口；连接到达时无 LISTEN 端点仍立即 RST 拒绝，语义不变。
+    socket 由模块级列表持有至 worker 进程退出（worker 生命周期内无端口
+    复用需求）。
+    """
     s = socket.socket()
+    if hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
     s.bind(('127.0.0.1', 0))
+    _HELD_DEAD_SOCKETS.append(s)
     port = s.getsockname()[1]
-    s.close()
     return f'http://127.0.0.1:{port}'
 
 

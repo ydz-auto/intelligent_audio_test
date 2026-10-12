@@ -238,11 +238,15 @@ class TestMockJudgeInjection:
 
     def test_delay_injection(self, judge_clean):
         base = judge_clean.base_url
-        requests.post(f'{base}/__control', json={'delay_ms': 300}, timeout=5)
+        r = requests.post(f'{base}/__control', json={'delay_ms': 300}, timeout=5)
+        assert r.status_code == 200, f'行为注入失败: {r.text}'
         started = time.monotonic()
         requests.post(f'{base}/api/create_task', json={}, timeout=10)
         elapsed = time.monotonic() - started
-        assert elapsed >= 0.3, f'延迟注入未生效（耗时 {elapsed:.2f}s）'
+        # 服务端 time.sleep(0.3) 在 Windows 定时器粒度下可能提前毫秒级返回
+        # （INT-163 实测 client 侧 0.297s），断言留容忍带：验证「延迟确实生效」
+        # 而非计时精度；负载只会使 elapsed 变大，无需上界。
+        assert elapsed >= 0.25, f'延迟注入未生效（耗时 {elapsed:.2f}s）'
 
     def test_control_snapshot_and_reset(self, judge_clean):
         base = judge_clean.base_url

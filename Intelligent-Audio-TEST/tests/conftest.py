@@ -46,9 +46,16 @@ if os.path.isdir(PROTO_DIR) and PROTO_DIR not in sys.path:
 
 # ── INT-96 xdist loadgroup 分组 ─────────────────────────────
 # 配合 `--dist loadgroup` 使用：同组用例固定调度到同一 worker 并保持相对
-# 顺序，禁止被拆分。仅收敛 INT-55 修过的顺序污染夹具族（进程级共享
-# sqlite 库 + 种子顺序耦合）；未列入的文件视为自包含（自带独立临时库或
-# 显式引擎绑定），交给 load 策略自由并行。组内顺序 = 收集序，与串行一致。
+# 顺序，禁止被拆分。
+#
+# INT-163 起默认分组 = 文件：load 调度会把同文件用例拆到不同 worker（每个
+# worker 重跑 module fixture → 全新种子库），凡测试间存在序依赖（前例播种/
+# 前例软删、共享 magic id）的文件即「单文件全绿、并行红」（实证：int107
+# 第二例单独运行即复现 AttributeError、int152 同名可重建例单独运行即复现
+# 断言失败）。默认按文件成组后，每个文件获得与单文件运行完全一致的执行
+# 环境；未列入下方规则的文件无需登记即被收敛。
+# 显式跨文件组（_XDIST_GROUP_RULES）仍优先：多个文件共享同一进程级库并
+# 依赖播种顺序的族，必须跨文件同组。规范详见 tests/README.md。
 _XDIST_GROUP_RULES = (
     # auth sqlite e2e 族：guest/admin 种子在进程级共享库内按收集序幂等播种
     ('tests/unit/test_auth_', 'auth_e2e'),
@@ -67,8 +74,8 @@ _XDIST_GROUP_RULES = (
 )
 # 注：transfer gRPC e2e（tests/integration/test_data_transfer_*）同为进程级
 # 共享库消费者，但三个文件均按「可单文件独立运行」设计（模块级 setdefault
-# 各自带独立临时库、init_db/create_all 幂等），实测拆分并行与同组结果一致；
-# 同组会把三个文件（串行约 20s）压进单 worker 成为关键路径，故不分组。
+# 各自带独立临时库、init_db/create_all 幂等），默认文件分组下三个文件各占
+# 一组、可分赴不同 worker 并行，同文件内保持收集序，行为与单文件一致。
 
 
 # tryfirst：xdist 在 worker 侧的 pytest_collection_modifyitems 会把
@@ -85,3 +92,6 @@ def pytest_collection_modifyitems(session, config, items):
             if rel.startswith(prefix):
                 item.add_marker(pytest.mark.xdist_group(group))
                 break
+        else:
+            # INT-163 默认隔离单元 = 文件：同名组内保持收集序，等价单文件运行
+            item.add_marker(pytest.mark.xdist_group('file:' + rel))

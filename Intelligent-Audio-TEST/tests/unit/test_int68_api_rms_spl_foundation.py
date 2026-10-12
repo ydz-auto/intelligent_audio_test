@@ -45,6 +45,31 @@ class _NeverCalledRepo:
         raise AssertionError(f'非法入参不应触达仓储方法: {name}')
 
 
+class _AlwaysAcquireLock:
+    """进程内假锁：acquire 恒成功。
+
+    真实 DistributedLock 落共享 Redis（lock:spl:calibration:{api_id}，键空间
+    全局），而本文件校准用例固定 api_id=5：并行回归下多 worker 并发校准、
+    或与实机栈的 api_test_service 争锁时 acquire(blocking=False) 抢锁失败，
+    calibrate 以 409 假失败（INT-163 实证）。锁语义专项用例（互斥 409 /
+    释放断言）已各自 monkeypatch 覆盖本桩，不受影响。
+    """
+
+    def __init__(self, key, **kwargs):
+        pass
+
+    def acquire(self, blocking=True):
+        return True
+
+    def release(self):
+        pass
+
+
+@pytest.fixture(autouse=True)
+def _stub_calibration_redis_lock(monkeypatch):
+    monkeypatch.setattr(rms_spl_module, 'DistributedLock', _AlwaysAcquireLock)
+
+
 # ========== 1. UC-0901：apis 扩展列 ==========
 
 class TestAPIAggregateNewColumns:

@@ -83,6 +83,7 @@ def pg_db(storage_env):
 
     _import_all_models()
 
+    prev_engine = database._engine
     engine = create_engine(
         f'postgresql+psycopg2://{PG_USER}:{PG_PASSWORD}@{PG_HOST}:{PG_PORT}/{dbname}',
         pool_pre_ping=True)
@@ -92,10 +93,27 @@ def pg_db(storage_env):
     yield database
     database.remove_db_session()
     engine.dispose()
-    cur = admin.cursor()
-    cur.execute(f"DROP DATABASE IF EXISTS {dbname} WITH (FORCE)")
-    cur.close()
-    admin.close()
+    # INT-163：恢复 worker 进程级 engine / session 工厂绑定——本 fixture 替换
+    # 的是全局单例，不恢复则同 worker 后续文件的 get_db_session() 会指向
+    # 已删除的临时库（跨文件序污染源）。
+    database._engine = prev_engine
+    database._SessionFactory.configure(bind=prev_engine)
+    try:
+        cur = admin.cursor()
+        # 逐个终止库内残留后端后普通 DROP。不再用 WITH (FORCE)：其内置终止
+        # 撞上外来角色后端时直接 InsufficientPrivilege 使 teardown 炸掉
+        # （INT-163 实证）且临时库名残留；同角色后端 pg_terminate_backend
+        # 可终止，外来角色终止失败（返回 false）则 DROP 失败、登记残留库名
+        # 后继续，不因环境权限差异炸掉整个模块的收尾。
+        cur.execute(
+            'SELECT pid, pg_terminate_backend(pid) FROM pg_stat_activity '
+            'WHERE datname = %s AND pid <> pg_backend_pid()', (dbname,))
+        cur.execute(f'DROP DATABASE IF EXISTS {dbname}')
+        cur.close()
+    except psycopg2.Error as e:
+        print(f'[int148] 临时库 {dbname} 清理失败，残留待手工清理: {e!r}')
+    finally:
+        admin.close()
 
 
 class _JsonHandler(BaseHTTPRequestHandler):
