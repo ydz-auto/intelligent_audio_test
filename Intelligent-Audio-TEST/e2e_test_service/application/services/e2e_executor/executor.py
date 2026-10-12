@@ -1,5 +1,5 @@
 from shared.infrastructure.base_executor import BaseExecutor, TaskStopSignal
-from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus
+from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus, EvaluationStatus
 from e2e_test_service.application.services.e2e_device_manager import E2EDeviceManager
 from e2e_test_service.application.services.e2e_collector import E2ECollector
 from e2e_test_service.application.services.e2e_aggregator import E2EAggregator
@@ -42,6 +42,36 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
     def _get_task_data_acl(self):
         """返回 task_service ACL 仓储，供 DbMixin 使用"""
         return self._task_data_repo
+
+    def _record_eval_submit_failure(self, message, task_id=None, test_case_id=None):
+        """记录评估提交失败（INT-169）：不中止执行链，仅留痕供收口"""
+        self._eval_submit_failures.append(message)
+        self._log(level='ERROR', content=f"{message}（执行链不判失败，执行口径保持）",
+                  task_id=task_id, test_case_id=test_case_id)
+
+    def _finalize_eval_submit_failures(self, task_id, test_case_id):
+        """评估提交失败终态收口（INT-169，对齐 INT-123 API 链口径）
+
+        execution_status 不动（执行完成事实已由 process_results 落库），仅补
+        evaluation_status=FAILED 并留痕原因，复合 status 由 task_service 按
+        derive_task_case_status(completed, failed) 推导，保留
+        「执行成功、评估失败」的事实边界，避免 TaskCase 永挂 evaluating。
+        """
+        failures = getattr(self, '_eval_submit_failures', None)
+        if not failures:
+            return
+        error_msg = '；'.join(failures)
+        try:
+            self._task_data_repo.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                evaluation_status=EvaluationStatus.FAILED,
+                error_message=error_msg,
+            )
+        except Exception as status_err:
+            self._log(level='WARNING',
+                      content=f"评估提交失败终态回写失败（忽略）: {status_err}",
+                      task_id=task_id, test_case_id=test_case_id)
 
     def _close_failed_test_result(self, result_id, algorithm_type, total_rounds,
                                   rounds_data, error_message, task_id):
@@ -117,6 +147,8 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
 
         device_info_list = None
         result_id = None
+        # INT-169: 评估提交失败留痕（每用例重置），收尾时统一收口
+        self._eval_submit_failures = []
         try:
             self._log(
                 level='INFO',
@@ -177,6 +209,9 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
                 case_reference_params, last_adjusted_ref_params,
                 device_info_list
             )
+
+            # INT-169: 评估提交失败以 evaluation_status 终态收口，不动执行口径
+            self._finalize_eval_submit_failures(task_id, test_case_id)
 
             return success
         except TaskStopSignal:

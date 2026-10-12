@@ -69,8 +69,9 @@ def _dimension_po_to_entity(po: DimensionPO) -> EvaluationDimension:
 
 
 def _trd_po_to_entity(po: TestResultDimensionPO) -> DimensionScore:
-    """TestResultDimension PO → DimensionScore 实体"""
+    """TestResultDimension PO → DimensionScore 实体（含持久化主键 id）"""
     return DimensionScore(
+        id=po.id,
         test_result_id=po.test_result_id,
         dimension_id=po.dimension_id,
         algorithm_type=po.algorithm_type or '',

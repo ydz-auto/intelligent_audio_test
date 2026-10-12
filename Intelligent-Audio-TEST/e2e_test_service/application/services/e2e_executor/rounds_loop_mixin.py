@@ -1,6 +1,6 @@
 import time
 
-from shared.infrastructure.base_executor import TaskStopSignal
+from shared.infrastructure.base_executor import TaskStopSignal, EvaluationSubmitError
 from shared.logging import log_round
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import (
@@ -308,15 +308,21 @@ class RoundsLoopMixin:
                         _round_eval_enabled = False
 
         if _round_eval_enabled:
-            self._evaluate_result(
-                task_id=task_id, result_id=result_id, test_case_id=test_case_id,
-                algo_result=current_algo_result, case_config=case_config or {},
-                case_reference_params=case_reference_params,
-                algorithm_type=algorithm_type, test_type='e2e',
-                case_algorithm_params=data.get('case_algorithm_params'),
-                round_number=round_idx,
-                reference_params_col=data.get('reference_params_col')
-            )
+            # INT-169: 单轮评估提交失败不中止执行链——设备状态无恙，剩余轮次照常执行
+            try:
+                self._evaluate_result(
+                    task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+                    algo_result=current_algo_result, case_config=case_config or {},
+                    case_reference_params=case_reference_params,
+                    algorithm_type=algorithm_type, test_type='e2e',
+                    case_algorithm_params=data.get('case_algorithm_params'),
+                    round_number=round_idx,
+                    reference_params_col=data.get('reference_params_col')
+                )
+            except EvaluationSubmitError as e:
+                self._record_eval_submit_failure(
+                    f"第 {round_cfg.get('round_number', round_idx + 1)} 轮评估提交失败: {e}",
+                    task_id=task_id, test_case_id=test_case_id)
 
         return round_data
 

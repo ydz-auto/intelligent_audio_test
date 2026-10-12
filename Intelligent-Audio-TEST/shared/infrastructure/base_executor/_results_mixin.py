@@ -4,6 +4,15 @@ import json
 import copy
 
 
+class EvaluationSubmitError(Exception):
+    """评估提交失败（EvaluateCase gRPC 调用异常）
+
+    INT-169：与执行失败区分口径——评估提交失败不改变执行终态，由各
+    executor 捕获后按「执行结果保持 + evaluation_status=FAILED 终态」收口
+    （对齐 INT-123 API 链 _finalize_evaluation_submit_failure 约定）。
+    """
+
+
 class ResultsMixin:
     """执行器基类结果处理与评估方法"""
 
@@ -65,13 +74,17 @@ class ResultsMixin:
         )
 
         # 通过 ACL 仓储调用 evaluation_service 的 EvaluateCase
-        self._get_task_data_acl().submit_evaluate_case(
-            task_id=task_id,
-            result_id=result_id,
-            test_case_id=test_case_id,
-            algorithm_result=algo_result,
-            **eval_params,
-        )
+        # INT-169: 提交失败以专用异常上抛，executor 侧区分评估失败/执行失败口径
+        try:
+            self._get_task_data_acl().submit_evaluate_case(
+                task_id=task_id,
+                result_id=result_id,
+                test_case_id=test_case_id,
+                algorithm_result=algo_result,
+                **eval_params,
+            )
+        except Exception as e:
+            raise EvaluationSubmitError(str(e)) from e
 
         self._log(
             level='INFO',

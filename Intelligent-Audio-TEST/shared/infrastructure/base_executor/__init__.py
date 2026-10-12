@@ -18,5 +18,6 @@ infrastructure/acl/ 下的 DeviceResultAclRepositoryImpl 实现 _get_result_mapp
 """
 from shared.infrastructure.base_executor._base import BaseExecutor
 from shared.infrastructure.base_executor._control_mixin import TaskStopSignal
+from shared.infrastructure.base_executor._results_mixin import EvaluationSubmitError
 
-__all__ = ['BaseExecutor', 'TaskStopSignal']
+__all__ = ['BaseExecutor', 'TaskStopSignal', 'EvaluationSubmitError']

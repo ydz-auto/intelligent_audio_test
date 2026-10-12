@@ -174,11 +174,14 @@ class DimensionScore:
     """维度评分结果（实体）
 
     归属 EvaluationDimension 聚合，表示某次评估中某个维度的得分。
-    对应 PO TestResultDimension，但不含持久化字段（id/created_at 等）。
+    对应 PO TestResultDimension。id 为持久化主键，仅由 Repository 从 PO
+    加载时填充，新建未落库的实体为 None
+    （INT-169：幂等复用路径需按主键复用/重置已有记录）。
     """
     test_result_id: int
     dimension_id: int
     algorithm_type: str
+    id: Optional[int] = None
     round_number: Optional[int] = None
     dimension_value: Optional[float] = None
     score: Optional[float] = None

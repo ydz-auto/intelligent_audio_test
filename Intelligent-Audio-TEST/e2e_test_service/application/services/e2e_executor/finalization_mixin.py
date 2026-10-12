@@ -1,7 +1,7 @@
 import json
 import copy
 
-from shared.infrastructure.base_executor import TaskStopSignal
+from shared.infrastructure.base_executor import TaskStopSignal, EvaluationSubmitError
 from shared.utils.result_data_store import write_result_data_file
 from shared.utils.status_constants import ExecutionStatus
 from e2e_test_service.domain.services import E2ECalculationService
@@ -92,15 +92,21 @@ class FinalizationMixin:
                 content=f"提交整体评估: result_id={result_id}, dimensions={_dims_log}",
                 task_id=task_id, test_case_id=test_case_id,
             )
-            self._evaluate_result(
-                task_id=task_id, result_id=result_id, test_case_id=test_case_id,
-                algo_result=final_algo_result, case_config=case_config or {},
-                case_reference_params=case_reference_params,
-                algorithm_type=algorithm_type, test_type='e2e',
-                case_algorithm_params=data.get('case_algorithm_params'),
-                round_number=None,
-                reference_params_col=data.get('reference_params_col')
-            )
+            # INT-169: 整体评估提交失败不中止收尾链（聚合/TaskCase 状态照常）
+            try:
+                self._evaluate_result(
+                    task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+                    algo_result=final_algo_result, case_config=case_config or {},
+                    case_reference_params=case_reference_params,
+                    algorithm_type=algorithm_type, test_type='e2e',
+                    case_algorithm_params=data.get('case_algorithm_params'),
+                    round_number=None,
+                    reference_params_col=data.get('reference_params_col')
+                )
+            except EvaluationSubmitError as e:
+                self._record_eval_submit_failure(
+                    f"整体评估提交失败: {e}",
+                    task_id=task_id, test_case_id=test_case_id)
 
         # 聚合各轮评估分数到 algo_result（仅当有单轮评估维度且未停止时才执行）
         if _has_round_dims and not _stopped:
