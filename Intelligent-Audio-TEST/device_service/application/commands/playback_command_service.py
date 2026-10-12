@@ -36,13 +36,13 @@ class PlaybackCommandService:
 
     @staticmethod
     def _log(level, content, task_id=None, test_case_id=None, api_id=None,
-             category='execution', module='Playback', **kwargs):
+             category='execution', module='Playback', source='backend', **kwargs):
         log_not_emit(
             level=level,
             module=module,
             content=content,
             category=category,
-            source='backend',
+            source=source,
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,

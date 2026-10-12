@@ -32,13 +32,13 @@ class DeviceCommandService:
 
     @staticmethod
     def _log(level, content, task_id=None, test_case_id=None, api_id=None,
-             category='execution', module='TestDevice', **kwargs):
+             category='execution', module='TestDevice', source='backend', **kwargs):
         log_not_emit(
             level=level,
             module=module,
             content=content,
             category=category,
-            source='backend',
+            source=source,
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,
@@ -220,8 +220,9 @@ class DeviceCommandService:
                 'data': {'id': device.id, 'status': device.status, 'wakeup_command': wakeup_cmd},
                 'code': 200,
             }
-        except Exception as e:
-            return {'success': False, 'message': str(e), 'data': None, 'code': 400}
+        except Exception:
+            logger.exception("唤醒设备测试失败 device_id=%s", device_id)
+            return {'success': False, 'message': '唤醒测试失败，请稍后重试', 'data': None, 'code': 400}
 
     def stop_test(self, device_id: int) -> dict:
         """停止测试"""
