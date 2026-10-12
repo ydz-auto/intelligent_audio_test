@@ -126,49 +126,32 @@ class FavoriteTrashService:
     # ------------------------------------------------------------------
     # 回收站
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def trash_list(entity_type: str, page: int = 1, per_page: int = 20, search=None):
-        """回收站列表（已删项 + 删除人/删除时间）。"""
-        entity_type = (entity_type or '').lower()
-        try:
-            if entity_type == 'task':
-                resp = task_config_service.list_deleted_tasks(page, per_page, search)
-            elif entity_type == 'testcase':
-                resp = testcase_config_service.list_deleted_testcases(page, per_page, search)
-            elif entity_type == 'report':
-                resp = _report_resp(report_config_service.stub.ListDeletedReports(
-                    report_pb.ListDeletedReportsRequest(
-                        page=int(page), per_page=int(per_page), search=search or '')))
-            else:
-                return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
-            if not resp.get('success'):
-                return {'code': resp.get('code', 500), 'message': resp.get('message', '查询回收站失败')}
-            return {'data': resp.get('data')}
-        except Exception as e:
-            logger.error(f"查询回收站失败: {e}", exc_info=True)
-            return {'code': 500, 'message': f'查询回收站失败: {e}'}
+    # 回收站列表不设独立端点：走各实体列表接口的 deleted/only_deleted 参数。
+    # purge 语义（INT-141 审计 P2-1）：admin 放行整批；非 admin 逐行校验
+    # owner（创建人/删除人），非 owned 行跳过（体现在 purged/restored 计数），
+    # 全部不可 purge 时 HTTP 403。
 
     @staticmethod
     def restore(entity_type: str, ids: list):
-        """恢复（单个+批量统一入口）。"""
+        """恢复（单个+批量统一入口；ID 统一在此转换，非法 ID 返回 400）。"""
         entity_type = (entity_type or '').lower()
         if not ids:
             return {'code': 400, 'message': '缺少 ids'}
         try:
+            ids = [int(i) for i in ids]
             if entity_type == 'task':
                 resp = task_config_service.restore_tasks(ids)
             elif entity_type == 'testcase':
                 resp = testcase_config_service.restore_testcases(ids)
             elif entity_type == 'report':
                 resp = _report_resp(report_config_service.stub.RestoreReports(
-                    report_pb.RestoreReportsRequest(report_ids=[int(i) for i in ids])))
+                    report_pb.RestoreReportsRequest(report_ids=ids)))
             else:
                 return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
             if not resp.get('success'):
                 return {'code': resp.get('code', 500), 'message': resp.get('message', '恢复失败')}
             return {'data': resp.get('data')}
-        except ValueError:
+        except (TypeError, ValueError):
             return {'code': 400, 'message': 'ID 格式错误'}
         except Exception as e:
             logger.error(f"恢复失败: {e}", exc_info=True)
@@ -176,24 +159,29 @@ class FavoriteTrashService:
 
     @staticmethod
     def purge(entity_type: str, ids: list):
-        """彻底删除（物理删除；权限 admin/owner 由服务端按 metadata 校验）。"""
+        """彻底删除（物理删除；ID 统一在此转换，非法 ID 返回 400）。
+
+        权限：admin 放行整批；非 admin 逐行 owner 校验，非 owned 行跳过
+        （purged_count 体现），全部不可 purge 返回 403。
+        """
         entity_type = (entity_type or '').lower()
         if not ids:
             return {'code': 400, 'message': '缺少 ids'}
         try:
+            ids = [int(i) for i in ids]
             if entity_type == 'task':
                 resp = task_config_service.purge_tasks(ids)
             elif entity_type == 'testcase':
                 resp = testcase_config_service.purge_testcases(ids)
             elif entity_type == 'report':
                 resp = _report_resp(report_config_service.stub.PurgeReports(
-                    report_pb.PurgeReportsRequest(report_ids=[int(i) for i in ids])))
+                    report_pb.PurgeReportsRequest(report_ids=ids)))
             else:
                 return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
             if not resp.get('success'):
                 return {'code': resp.get('code', 500), 'message': resp.get('message', '彻底删除失败')}
             return {'data': resp.get('data')}
-        except ValueError:
+        except (TypeError, ValueError):
             return {'code': 400, 'message': 'ID 格式错误'}
         except Exception as e:
             logger.error(f"彻底删除失败: {e}", exc_info=True)

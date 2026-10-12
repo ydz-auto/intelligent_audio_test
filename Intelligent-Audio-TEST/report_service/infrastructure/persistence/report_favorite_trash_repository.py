@@ -7,8 +7,10 @@
   （purge 复用 ReportPersistMixin.hard_delete 的子→父顺序）
 """
 from sqlalchemy import text, bindparam
+from sqlalchemy.exc import IntegrityError
 
-from shared.infrastructure.purge_permission import check_purge_permission
+from shared.infrastructure.purge_permission import filter_purgeable_owners
+from shared.infrastructure.user_context import get_current_user_id
 from shared.models.common_enums import EntityType
 from shared.models.database import get_db_session, utc8now
 from shared.utils.db_session import with_session
@@ -47,7 +49,9 @@ class ReportFavoriteTrashRepository:
                 entity_type=EntityType.REPORT.value,
                 entity_id=str(report_id)))
             session.flush()
-        except Exception:
+        except IntegrityError:
+            # 唯一约束竞态兜底（并发重复收藏），对齐 task 侧精确捕获口径；
+            # 连接类故障不在此吞掉
             session.rollback()
             return {'success': True, 'already_favorited': True, 'message': '已收藏'}
         return {'success': True, 'already_favorited': False, 'message': '收藏成功'}
@@ -98,23 +102,26 @@ class ReportFavoriteTrashRepository:
 
     @with_session(auto_commit=True)
     def restore_reports(self, report_ids: list) -> int:
-        """恢复报告（仅恢复当前处于软删除状态的行）"""
+        """恢复报告（仅恢复软删行；回填 updated_by 记录恢复人）"""
         if not report_ids:
             return 0
         session = get_db_session()
         count = session.execute(
             text("UPDATE test_reports SET deleted = FALSE, deleted_at = NULL, "
-                 "deleted_by_user_id = NULL "
+                 "deleted_by_user_id = NULL, updated_by_user_id = :uid "
                  "WHERE id IN :ids AND deleted = TRUE").bindparams(
                 bindparam('ids', expanding=True)),
-            {"ids": [int(i) for i in report_ids]}).rowcount
+            {"ids": [int(i) for i in report_ids],
+             'uid': get_current_user_id()}).rowcount
         return int(count or 0)
 
     @with_session(auto_commit=True)
     def purge_reports(self, report_ids: list, user_id=None, is_admin: bool = False) -> int:
         """彻底删除报告及子表（子→父，仅针对软删除行；复用 hard_delete 顺序）。
 
-        权限收敛（INT-141）：仅 admin 或 owner（创建人/删除人）。
+        权限收敛（INT-141，审计 P2-1）：admin 放行整批；非 admin 逐行校验
+        owner（创建人/删除人）——非 owned 行跳过不删，全非 owned 抛
+        PurgePermissionDenied（HTTP 403）。
         """
         if not report_ids:
             return 0
@@ -129,10 +136,8 @@ class ReportFavoriteTrashRepository:
         ).filter(Report.id.in_(ids), Report.deleted == True).all()  # noqa: E712
         if not rows:
             return 0
-        check_purge_permission(
-            user_id, is_admin,
-            [r[1] for r in rows] + [r[2] for r in rows])
-        purgeable = [r[0] for r in rows]
+        # 逐行 owner 过滤（审计 P2-1），同 task 侧
+        purgeable = filter_purgeable_owners(rows, user_id, is_admin)
         for model in (ReportSummary, ReportSummaryMeta, ReportRawData,
                       ReportCase, ReportMetricStats, ReportComparisonMatrix):
             session.query(model).filter(model.report_id.in_(purgeable)).delete(

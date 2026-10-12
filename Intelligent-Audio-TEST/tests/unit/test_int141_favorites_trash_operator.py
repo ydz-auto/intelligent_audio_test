@@ -869,6 +869,230 @@ class TestGatewayBusinessCodeMapping:
         assert r4['code'] == 400 and r4['data'] == {'code': 400}
 
 
+# ---------------- 批量 purge 逐行 owner 校验（审计 P2-1） ----------------
+
+class TestBatchPurgeOwnerScoping:
+    """混合 owner 批量 purge：非 admin 仅删除自己 created_by/deleted_by 命中的行。
+
+    回归：曾为"整批任一 owner 即放行整批"——B 混入他人行可越权物理删除。
+    口径：admin 放行整批；非 admin 逐行过滤，非 owned 行跳过（计数体现），
+    全非 owned 抛 PurgePermissionDenied（403）。
+    """
+
+    def setup_method(self):
+        _ensure_task_tables()
+
+    def teardown_method(self):
+        _cleanup_tables(_TASK_TABLES)
+
+    def _make_task(self, name, owner):
+        from task_service.infrastructure.persistence.models import Task
+        session = get_db_session()
+        try:
+            t = Task(name=name, status='completed', total_cases=0,
+                     created_by_user_id=owner)
+            session.add(t)
+            session.commit()
+            return t.id
+        finally:
+            remove_db_session()
+
+    def _soft_delete_task(self, tid, deleter):
+        from task_service.infrastructure.persistence.task_repository import task_repository
+        set_current_user_id(deleter)
+        try:
+            task_repository.soft_delete(tid)
+        finally:
+            set_current_user_id(None)
+
+    def test_mixed_owner_batch_purge_skips_non_owned(self):
+        from task_service.infrastructure.persistence.trash_repository import trash_repository
+        from task_service.infrastructure.persistence.models import Task
+
+        mine = self._make_task('P2A_我的', owner=301)
+        others = self._make_task('P2A_他人', owner=302)
+        self._soft_delete_task(mine, deleter=301)
+        self._soft_delete_task(others, deleter=302)
+
+        # B（301）混合批量：只删自己的，他人行跳过（计数=1）
+        assert trash_repository.purge_tasks(
+            [mine, others], user_id=301, is_admin=False) == 1
+        assert session_get(Task, mine) is None
+        assert session_get(Task, others) is not None
+
+    def test_purge_all_non_owned_rejected(self):
+        from task_service.infrastructure.persistence.trash_repository import trash_repository
+
+        others = self._make_task('P2A_他人2', owner=302)
+        self._soft_delete_task(others, deleter=302)
+        with pytest.raises(PurgePermissionDenied):
+            trash_repository.purge_tasks([others], user_id=301, is_admin=False)
+
+    def test_admin_mixed_batch_purges_all(self):
+        from task_service.infrastructure.persistence.trash_repository import trash_repository
+        from task_service.infrastructure.persistence.models import Task
+
+        a = self._make_task('P2A_混1', owner=301)
+        b = self._make_task('P2A_混2', owner=302)
+        self._soft_delete_task(a, deleter=301)
+        self._soft_delete_task(b, deleter=302)
+        assert trash_repository.purge_tasks([a, b], user_id=1, is_admin=True) == 2
+        assert session_get(Task, a) is None and session_get(Task, b) is None
+
+    def test_deleter_counts_as_owner(self):
+        from task_service.infrastructure.persistence.trash_repository import trash_repository
+
+        tid = self._make_task('P2A_删除人owner', owner=302)
+        self._soft_delete_task(tid, deleter=301)
+        assert trash_repository.purge_tasks([tid], user_id=301, is_admin=False) == 1
+
+    def test_mixed_owner_batch_purge_testcases(self):
+        from task_service.infrastructure.persistence.trash_repository import trash_repository
+        from task_service.infrastructure.persistence.models import TestCase
+        from task_service.infrastructure.persistence.testcase_repository import testcase_repository
+
+        session = get_db_session()
+        try:
+            session.add_all([
+                TestCase(id='P2A_CASE_MINE', name='P2A我的用例', config={},
+                         created_by_user_id=301),
+                TestCase(id='P2A_CASE_OTHER', name='P2A他人用例', config={},
+                         created_by_user_id=302),
+            ])
+            session.commit()
+        finally:
+            remove_db_session()
+        set_current_user_id(301)
+        try:
+            testcase_repository.soft_delete_testcases_by_ids(['P2A_CASE_MINE'])
+            testcase_repository.commit()
+        finally:
+            set_current_user_id(None)
+        set_current_user_id(302)
+        try:
+            testcase_repository.soft_delete_testcases_by_ids(['P2A_CASE_OTHER'])
+            testcase_repository.commit()
+        finally:
+            set_current_user_id(None)
+
+        # 301 混合批量：只删自己的（创建人+删除人），他人行跳过
+        assert trash_repository.purge_testcases(
+            ['P2A_CASE_MINE', 'P2A_CASE_OTHER'], user_id=301, is_admin=False) == 1
+        assert session_get(TestCase, 'P2A_CASE_MINE') is None
+        assert session_get(TestCase, 'P2A_CASE_OTHER') is not None
+        # 无关用户整批拒绝
+        with pytest.raises(PurgePermissionDenied):
+            trash_repository.purge_testcases(['P2A_CASE_OTHER'], user_id=303, is_admin=False)
+
+    def test_mixed_owner_batch_purge_reports(self):
+        _ensure_report_tables()
+        from report_service.infrastructure.persistence.report_favorite_trash_repository import (
+            report_favorite_trash_repository,
+        )
+        from report_service.infrastructure.persistence.models import Report
+        from report_service.infrastructure.persistence.report_repository import report_repository
+
+        def make_report(name, owner):
+            session = get_db_session()
+            try:
+                po = Report(name=name, type='task', status='completed',
+                            created_by_user_id=owner)
+                session.add(po)
+                session.commit()
+                return po.id
+            finally:
+                remove_db_session()
+
+        mine = make_report('P2A_报告_我的', owner=401)
+        others = make_report('P2A_报告_他人', owner=402)
+        set_current_user_id(401)
+        try:
+            assert report_repository.soft_delete(mine) is True
+        finally:
+            set_current_user_id(None)
+        set_current_user_id(402)
+        try:
+            assert report_repository.soft_delete(others) is True
+        finally:
+            set_current_user_id(None)
+
+        # 401 混合批量：只删自己的
+        assert report_favorite_trash_repository.purge_reports(
+            [mine, others], user_id=401, is_admin=False) == 1
+        assert session_get(Report, mine) is None
+        assert session_get(Report, others) is not None
+
+    def test_restore_backfills_updated_by(self):
+        """恢复人可追溯：三域恢复回填 updated_by_user_id（off 语义 NULL 不报错）。"""
+        from task_service.infrastructure.persistence.trash_repository import trash_repository
+        from task_service.infrastructure.persistence.models import Task, TestCase
+        from task_service.infrastructure.persistence.testcase_repository import (
+            testcase_repository,
+        )
+
+        tid = self._make_task('P2A_恢复回填', owner=501)
+        self._soft_delete_task(tid, deleter=501)
+        set_current_user_id(502)
+        try:
+            assert trash_repository.restore_tasks([tid]) == 1
+            po = session_get(Task, tid)
+            assert po.deleted is False and po.deleted_by_user_id is None
+            assert po.updated_by_user_id == 502
+        finally:
+            set_current_user_id(None)
+
+        session = get_db_session()
+        try:
+            session.add(TestCase(id='P2A_CASE_RESTORE', name='P2A恢复用例', config={}))
+            session.commit()
+        finally:
+            remove_db_session()
+        set_current_user_id(501)
+        try:
+            testcase_repository.soft_delete_testcases_by_ids(['P2A_CASE_RESTORE'])
+            testcase_repository.commit()
+        finally:
+            set_current_user_id(None)
+        set_current_user_id(503)
+        try:
+            assert trash_repository.restore_testcases(['P2A_CASE_RESTORE']) == 1
+            po = session_get(TestCase, 'P2A_CASE_RESTORE')
+            assert po.deleted is False and po.deleted_by_user_id is None
+            assert po.updated_by_user_id == 503
+        finally:
+            set_current_user_id(None)
+
+    def test_restore_without_context_keeps_null(self):
+        """无上下文（off 等价）恢复：updated_by 保持 NULL，不报错。"""
+        from task_service.infrastructure.persistence.trash_repository import trash_repository
+        from task_service.infrastructure.persistence.models import Task
+
+        tid = self._make_task('P2A_恢复无上下文', owner=501)
+        self._soft_delete_task(tid, deleter=501)
+        assert trash_repository.restore_tasks([tid]) == 1
+        po = session_get(Task, tid)
+        assert po.deleted is False and po.updated_by_user_id is None
+
+
+class TestBffIdValidation:
+    """审计 P3-1：批量 ID 统一在 BFF 转换，非法 ID 返回 400（不再被代理吞成 500）。"""
+
+    def test_restore_bad_id_returns_400(self):
+        from api_gateway.application.services.favorite_trash_service import FavoriteTrashService
+        r = FavoriteTrashService.restore('task', ['abc'])
+        assert r['code'] == 400 and '格式' in r['message']
+
+    def test_purge_bad_id_returns_400(self):
+        from api_gateway.application.services.favorite_trash_service import FavoriteTrashService
+        r = FavoriteTrashService.purge('report', [None])
+        assert r['code'] == 400
+
+    def test_restore_report_bad_id_returns_400(self):
+        from api_gateway.application.services.favorite_trash_service import FavoriteTrashService
+        r = FavoriteTrashService.restore('report', ['xyz'])
+        assert r['code'] == 400
+
+
 def report_repository_soft_delete(rid):
     from report_service.infrastructure.persistence.report_repository import report_repository
     report_repository.soft_delete(rid)
