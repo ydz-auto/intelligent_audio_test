@@ -369,7 +369,8 @@ class TestCaseQueryService:
         """按筛选条件返回全量用例ID（不分页）。
 
         Args:
-            data: {group, search, tag}
+            data: {group, search, tag, algorithm_type, dimension_id,
+                   test_type/type, only_deleted}
         Returns:
             {success, message, data: {'ids': [...]}}
         """
@@ -381,10 +382,16 @@ class TestCaseQueryService:
             tag = data.get('tag')
             # INT-215：回收站全部恢复按已删集合圈定（snake_case 由前端 QUERY_PARAM_MAP 转换）
             only_deleted = bool(data.get('only_deleted'))
+            # INT-215/P2-R1：算法/维度过滤透传——原被本层丢弃（仓储已支持），
+            # 回收站「全部恢复」在算法/维度筛选下恢复超集、确认数与可见列表不符；
+            # E2E/API 起跑圈定同链路传 algorithmType 亦被静默忽略
+            algorithm_type = data.get('algorithm_type')
+            dimension_id = data.get('dimension_id')
 
             ids = self.repo.fetch_case_ids(
                 group=group, test_type=test_type, search=search, tag=tag,
                 only_deleted=only_deleted,
+                algorithm_type=algorithm_type, dimension_id=dimension_id,
             )
             return {'success': True, 'message': '', 'data': {'ids': ids}}
         except Exception as e:

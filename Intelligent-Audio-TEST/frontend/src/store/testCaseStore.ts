@@ -596,31 +596,8 @@ export const useTestCaseStore = defineStore('testCase', () => {
     groupPagination.value = {};
   };
 
-  // 按筛选条件拉取全量用例ID（用于分组/标签全选）
-  const fetchCaseIdsByFilter = async (filters: {
-    group?: string;
-    testType?: string;
-    search?: string;
-    tag?: string;
-    algorithmType?: string;
-    dimensionId?: number;
-  }): Promise<(string | number)[]> => {
-    try {
-      // Infrastructure 层（testcasesPort.getIdsByFilter）内部做 camelCase→snake_case 转换
-      const payload: Record<string, any> = {};
-      if (filters.group) payload.group = filters.group;
-      if (filters.testType) payload.testType = filters.testType;
-      if (filters.search) payload.search = filters.search;
-      if (filters.tag) payload.tag = filters.tag;
-      if (filters.algorithmType) payload.algorithmType = filters.algorithmType;
-      if (filters.dimensionId) payload.dimensionId = filters.dimensionId;
-      const result: any = await testcasesPort.getIdsByFilter(payload);
-      return result?.ids || [];
-    } catch (error) {
-      console.error('获取用例ID列表失败:', error);
-      return [];
-    }
-  };
+  // fetchCaseIdsByFilter 由 batchOps 委托提供（本文件旧本地实现已删——
+  // 返回对象中被 ...batchOps 覆盖，从未生效且缺 onlyDeleted 参数）
 
   return {
     // 核心状态
