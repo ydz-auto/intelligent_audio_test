@@ -144,6 +144,15 @@ class AlgorithmQueryService:
             return success_response(result.get('data'))
         return wrap_grpc_response(result, default_error_msg='查询失败')
 
+    @staticmethod
+    def get_reference_param(param_id: int):
+        """获取单个参考参数"""
+        result = _algorithm_acl.get_reference_param(param_id)
+
+        if result.get('success'):
+            return success_response(result.get('data'))
+        return wrap_grpc_response(result, default_error_msg='查询失败')
+
     # ========== 表单 Schema ==========
 
     @staticmethod

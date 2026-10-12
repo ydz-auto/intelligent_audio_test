@@ -314,6 +314,12 @@ class AlgorithmConfigServiceServicer(task_grpc.AlgorithmConfigServiceServicer):
         except Exception as e:
             return task_pb.AlgorithmConfigResponse(success=False, message=str(e), data="")
 
+    def GetReferenceParam(self, request, context=None):
+        try:
+            return self._resp(self.svc.get_reference_param(request.param_id))
+        except Exception as e:
+            return task_pb.AlgorithmConfigResponse(success=False, message=str(e), data="")
+
     def ListMappings(self, request, context=None):
         try:
             return self._resp(self.svc.list_mappings(

@@ -140,6 +140,17 @@ class AlgorithmParamQueryService:
             logger.error(f"查询参考参数列表失败: {e}")
             return {'success': False, 'message': str(e), 'code': 500}
 
+    def get_reference_param(self, param_id: int) -> Dict[str, Any]:
+        """获取单个参考参数"""
+        try:
+            param = self.repo.get_reference_param(param_id)
+            if not param:
+                return {'success': False, 'message': 'Reference parameter not found', 'code': 404}
+            return {'success': True, 'message': '', 'data': param if isinstance(param, dict) else asdict(param)}
+        except Exception as e:
+            logger.error(f"获取参考参数失败: {e}")
+            return {'success': False, 'message': str(e), 'code': 500}
+
     # ==================== 参数映射读 ====================
 
     def list_mappings(

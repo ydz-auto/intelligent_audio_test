@@ -2935,6 +2935,11 @@ class AlgorithmConfigServiceStub:
                 request_serializer=task__service__pb2.ListReferenceParamsRequest.SerializeToString,
                 response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
                 _registered_method=True)
+        self.GetReferenceParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetReferenceParam',
+                request_serializer=task__service__pb2.GetReferenceParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
         self.ListMappings = channel.unary_unary(
                 '/task_service.AlgorithmConfigService/ListMappings',
                 request_serializer=task__service__pb2.ListMappingsRequest.SerializeToString,
@@ -3186,6 +3191,12 @@ class AlgorithmConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetReferenceParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def ListMappings(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -3391,6 +3402,11 @@ def add_AlgorithmConfigServiceServicer_to_server(servicer, server):
             'ListReferenceParams': grpc.unary_unary_rpc_method_handler(
                     servicer.ListReferenceParams,
                     request_deserializer=task__service__pb2.ListReferenceParamsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetReferenceParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetReferenceParam,
+                    request_deserializer=task__service__pb2.GetReferenceParamRequest.FromString,
                     response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
             ),
             'ListMappings': grpc.unary_unary_rpc_method_handler(
@@ -4386,6 +4402,33 @@ class AlgorithmConfigService:
             target,
             '/task_service.AlgorithmConfigService/ListReferenceParams',
             task__service__pb2.ListReferenceParamsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetReferenceParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetReferenceParam',
+            task__service__pb2.GetReferenceParamRequest.SerializeToString,
             task__service__pb2.AlgorithmConfigResponse.FromString,
             options,
             channel_credentials,

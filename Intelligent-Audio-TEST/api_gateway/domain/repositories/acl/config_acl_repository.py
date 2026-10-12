@@ -300,6 +300,9 @@ class AlgorithmConfigAclRepository(ABC):
     def list_reference_params(self, **kwargs) -> CommandResultDTO: ...
 
     @abstractmethod
+    def get_reference_param(self, param_id) -> CommandResultDTO: ...
+
+    @abstractmethod
     def get_form_schema(self, algo_type) -> CommandResultDTO: ...
 
     @abstractmethod

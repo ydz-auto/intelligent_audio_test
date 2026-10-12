@@ -120,6 +120,11 @@ def get_reference_params(_: None = require_permission('algorithm:read')):
     return to_response(AlgorithmQueryService.list_reference_params())
 
 
+@router.get('/reference-params/{param_id}')
+def get_reference_param_by_id(param_id: int, _: None = require_permission('algorithm:read')):
+    return to_response(AlgorithmQueryService.get_reference_param(param_id))
+
+
 @router.post('/reference-params')
 def post_reference_param(_: None = require_permission('algorithm:param_manage')):
     return to_response(AlgorithmCommandService.create_reference_param())

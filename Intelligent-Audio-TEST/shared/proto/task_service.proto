@@ -485,6 +485,7 @@ service AlgorithmConfigService {
   rpc ListCaseParams(ListCaseParamsRequest) returns (AlgorithmConfigResponse);
   rpc GetCaseParam(GetCaseParamRequest) returns (AlgorithmConfigResponse);
   rpc ListReferenceParams(ListReferenceParamsRequest) returns (AlgorithmConfigResponse);
+  rpc GetReferenceParam(GetReferenceParamRequest) returns (AlgorithmConfigResponse);
   rpc ListMappings(ListMappingsRequest) returns (AlgorithmConfigResponse);
   rpc GetFormSchema(GetFormSchemaRequest) returns (AlgorithmConfigResponse);
   rpc GetAlgorithmDimensions(GetAlgorithmDimensionsRequest) returns (AlgorithmConfigResponse);
@@ -622,6 +623,9 @@ message GetCaseParamRequest {
 }
 message ListReferenceParamsRequest {
   string algorithm_type = 1;
+}
+message GetReferenceParamRequest {
+  int32 param_id = 1;
 }
 message ListMappingsRequest {
   string algorithm_type = 1;

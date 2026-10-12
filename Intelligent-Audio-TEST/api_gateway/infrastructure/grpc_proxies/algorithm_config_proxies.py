@@ -406,6 +406,16 @@ class _AlgorithmConfigProxy:
             error_msg_prefix='获取参考参数列表失败',
         )
 
+    def get_reference_param(self, param_id):
+        def _call():
+            stub = get_algorithm_config_service_stub()
+            return self._resp(stub.GetReferenceParam(task_pb.GetReferenceParamRequest(param_id=param_id)))
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'获取参考参数详情失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='获取参考参数详情失败',
+        )
+
     def list_mappings(self, algorithm_type=None, source_type=None, dimension_id=None):
         def _call():
             stub = get_algorithm_config_service_stub()
