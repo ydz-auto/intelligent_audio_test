@@ -27,6 +27,9 @@
 - 4xx 不重试   behavior.fail_mode=always_4xx
 - 幂等去重     behavior.idempotent_dedup=true 时同 transfer_id 重复请求回放同结果
 - 分数模式     behavior.score_mode=fixed|random（fixed_score）
+- presigned 两步失败注入（INT-182 补齐 INT-137 注 B 缺口）：fail_mode 同样作用于
+  POST /upload-url（计数键 __upload_url__{transfer_id}）与 PUT /upload/{seq}
+  （计数键 __upload__{path}），与 /evaluate（按 transfer_id 计数）相互独立
 
 独立可运行（仅标准库，不依赖仓库其余代码；端口取 shared/config/service_ports.py 注册值）：
     python mock_services/mock_third_party_eval.py [--port 5099] [行为参数...]
@@ -240,6 +243,16 @@ class MockEvalService:
             self.state.hits[transfer_id] = self.state.hits.get(transfer_id, 0) + 1
             return self.state.hits[transfer_id]
 
+    def fail_response(self) -> dict:
+        """失败注入响应体（{'__status__', '__body__'} 由 Handler 落为原始 HTTP 响应）。"""
+        fail_mode = MockFailMode(self.behavior.fail_mode)
+        if fail_mode == MockFailMode.ALWAYS_4XX:
+            return {'__status__': 400,
+                    '__body__': {'code': 400, 'msg': 'mock 注入：持续 4xx（不重试语义）'}}
+        return {'__status__': int(self.behavior.fail_status),
+                '__body__': {'code': int(self.behavior.fail_status),
+                             'msg': 'mock 注入：5xx（重试退避语义）'}}
+
     def evaluate(self, form: MockEvalForm, transfer_id: str, fields: dict,
                  files: dict, features=None, objects=None) -> dict:
         """评估主流程（三契约统一入口）：注入判定 → 幂等去重 → 生成结果。"""
@@ -256,13 +269,7 @@ class MockEvalService:
                 'hit': hit,
             }
         if self._maybe_inject(transfer_id):
-            fail_mode = MockFailMode(self.behavior.fail_mode)
-            if fail_mode == MockFailMode.ALWAYS_4XX:
-                return {'__status__': 400,
-                        '__body__': {'code': 400, 'msg': 'mock 注入：持续 4xx（不重试语义）'}}
-            return {'__status__': int(self.behavior.fail_status),
-                    '__body__': {'code': int(self.behavior.fail_status),
-                                 'msg': 'mock 注入：5xx（重试退避语义）'}}
+            return self.fail_response()
         with self.state.lock:
             cached = self.state.results.get(transfer_id) \
                 if self.behavior.idempotent_dedup else None
@@ -365,6 +372,13 @@ class MockEvalRequestHandler(BaseHTTPRequestHandler):
         self._apply_delay()
         payload = json.loads(self._read_body() or b'{}')
         transfer_id = str(payload.get('transfer_id') or '')
+        # 失败注入（INT-182 补齐注 B 缺口）：upload-url 步按 transfer_id 独立计数
+        hit_key = f'__upload_url__{transfer_id}'
+        self.service.record_hit(hit_key)
+        if self.service._maybe_inject(hit_key):
+            injected = self.service.fail_response()
+            self._reply(injected.pop('__status__'), injected.get('__body__'))
+            return
         with self.service.state.lock:
             self.service.state.upload_seq += 1
             seq = self.service.state.upload_seq
@@ -409,7 +423,13 @@ class MockEvalRequestHandler(BaseHTTPRequestHandler):
             content = self._read_body()
             with self.service.state.lock:
                 self.service.state.uploads[path] = content
-            self.service.record_hit(f'__upload__{path}')
+            # 失败注入（INT-182 补齐注 B 缺口）：PUT 步按上传路径独立计数
+            hit_key = f'__upload__{path}'
+            self.service.record_hit(hit_key)
+            if self.service._maybe_inject(hit_key):
+                injected = self.service.fail_response()
+                self._reply(injected.pop('__status__'), injected.get('__body__'))
+                return
             self._reply(200, {'code': 0, 'msg': OK_MSG})
         else:
             self._reply(404, {'code': 404, 'msg': 'not found'})

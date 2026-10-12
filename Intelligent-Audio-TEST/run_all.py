@@ -49,6 +49,7 @@ from shared.config.service_ports import (
     FRONTEND_DEV_PORT,
     MOCK_THIRD_PARTY_EVAL_HTTP_PORT,
     MOCK_REALTIME_API_WS_PORT,
+    MOCK_EVAL_SERVER_HTTP_PORT,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,8 @@ mock_services = [
      'script': os.path.join('mock_services', 'mock_third_party_eval.py')},
     {'name': 'mock_realtime_api', 'port': MOCK_REALTIME_API_WS_PORT,
      'script': os.path.join('mock_services', 'mock_realtime_api.py')},
+    {'name': 'mock_eval_server_judge', 'port': MOCK_EVAL_SERVER_HTTP_PORT,
+     'script': os.path.join('mock_services', 'mock_eval_server_judge.py')},
 ]
 
 # 前端 Vite dev server
@@ -591,6 +594,8 @@ def start_all():
         print(f"[INFO] Mock ThirdPartyEval: http://localhost:{MOCK_THIRD_PARTY_EVAL_HTTP_PORT}"
               f" (/health, /__control)", flush=True)
         print(f"[INFO] Mock Realtime API:   ws://localhost:{MOCK_REALTIME_API_WS_PORT}", flush=True)
+        print(f"[INFO] Mock EvalServerJudge: http://localhost:{MOCK_EVAL_SERVER_HTTP_PORT}"
+              f" (/health, /__control)", flush=True)
     print("[INFO] Ctrl+C to stop all.", flush=True)
 
 
