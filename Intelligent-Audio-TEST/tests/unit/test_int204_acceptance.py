@@ -13,6 +13,10 @@
    - 全部域失败时既有快照 TTL 不被重置；
    - 降级短 TTL 真实自然过期，恢复后下一次刷新按正常 TTL 回正（核心验收点：
      「恢复后自动回正」）。
+4. task 域真实 proxy 链路 × 真 Redis（审计打回补充）：TestRealRedisTtlBehavior
+   的 task 域失败 mock 在 _fetch_* 函数层，而审计致命缺陷（proxy 层吞异常）
+   正是在真实 proxy 链路上才暴露——本组用例在 stub 层注入故障，经真实
+   _TaskDataProxy → _grpc_call → stats_cache 全链路后落真 Redis。
 
 隔离与卫生：两类测试均通过 monkeypatch 将 _CACHE_KEY（stats_cache 与
 home_service 两处）改为本卡专属 scratch key，真库中不触碰线上 home_stats 键；
@@ -268,3 +272,115 @@ class TestRealRedisTtlBehavior:
         # 恢复后的快照经读侧 Schema 校验不破坏首页接口
         from api_gateway.schemas.home import HomeStatsDetails
         HomeStatsDetails(**parsed)
+
+
+# task 域以外的六个域（真实链路用例中 mock 在 _fetch_* 函数层，非本组被测对象）
+_NON_TASK_FETCH_NAMES = (
+    '_fetch_audio_stats_via_grpc',
+    '_fetch_device_stats_via_grpc',
+    '_fetch_playback_device_stats_via_grpc',
+    '_fetch_api_stats_via_grpc',
+    '_fetch_dimension_stats_via_grpc',
+    '_fetch_reports_count_via_grpc',
+)
+
+
+def _patch_non_task_fetches(monkeypatch):
+    for name in _NON_TASK_FETCH_NAMES:
+        monkeypatch.setattr(stats_cache_module, name, _OK_FETCHES[name])
+
+
+def _patch_task_stub(monkeypatch, stub):
+    import api_gateway.infrastructure.grpc_proxies.task_data_proxies as task_data_proxies_module
+    monkeypatch.setattr(
+        task_data_proxies_module, 'get_task_data_service_stub', lambda: stub)
+
+
+class TestRealProxyChainRealRedis:
+    """审计问题 2 闭环：task 域真实 _TaskDataProxy 链路 × 真 Redis
+
+    其余四象限各有覆盖（假 proxy×FakeRedis=degraded 套件、真 proxy×FakeRedis=
+    test_int204_real_proxy_chain、假 proxy 层×真 Redis=TestRealRedisTtlBehavior），
+    本组补最后一象限：stub 层注入故障，经真实 proxy → _grpc_call →
+    stats_cache 全链路后落真 Redis。
+    """
+
+    @staticmethod
+    def _down_stub():
+        import grpc
+        error = grpc.RpcError('UNAVAILABLE: failed to connect to task_service')
+
+        class _DownStub:
+            def GetTaskStats(self, request):
+                raise error
+
+            def GetTestCaseStats(self, request):
+                raise error
+
+            def ListTestCaseGroups(self, request):
+                raise error
+
+        return _DownStub()
+
+    @staticmethod
+    def _healthy_stub():
+        import types
+
+        return types.SimpleNamespace(
+            GetTaskStats=lambda req: types.SimpleNamespace(
+                success=True, message='',
+                data=json.dumps({'items': [
+                    {'key': 'completed', 'count': 2},
+                    {'key': 'running', 'count': 1},
+                ]})),
+            GetTestCaseStats=lambda req: types.SimpleNamespace(
+                success=True, message='', data=json.dumps({'total': 40})),
+            ListTestCaseGroups=lambda req: types.SimpleNamespace(
+                success=True, message='',
+                data=json.dumps({'items': [{'id': 'g1'}, {'id': 'g2'}, {'id': 'g3'}]})),
+        )
+
+    def test_task_service_down_real_proxy_stale_values_degraded_ttl(self, monkeypatch, scratch_redis):
+        """主诉场景端到端（真实链路）：task_service 掉线窗口刷新首页统计 →
+        真 Redis 中 tasks/test_cases/groups 为旧值（非 0）且按降级短 TTL 落缓存
+        （修复前：proxy 吞异常 → {} → 0 值按 3600s 正常 TTL 落缓存）"""
+        scratch_redis.setex(_SCRATCH_KEY, 900, json.dumps(_OLD_SNAPSHOT))
+        _patch_task_stub(monkeypatch, self._down_stub())
+        _patch_non_task_fetches(monkeypatch)
+
+        assert refresh_stats_cache() is True
+
+        ttl = scratch_redis.ttl(_SCRATCH_KEY)
+        assert 0 < ttl <= stats_cache_module._CACHE_TTL_DEGRADED
+        parsed = json.loads(scratch_redis.get(_SCRATCH_KEY))
+        assert parsed['tasks'] == _OLD_SNAPSHOT['tasks']
+        assert parsed['tasks']['total'] == 5
+        assert parsed['test_cases'] == _OLD_SNAPSHOT['test_cases']
+        assert parsed['test_cases'] == {'total': 4, 'groups': 3}
+        assert parsed['audio_files']['total'] == 19800  # 在线域新值
+
+    def test_task_service_recovery_real_proxy_back_to_normal_ttl(self, monkeypatch, scratch_redis):
+        """恢复端到端（真实链路）：掉线窗口降级快照（TTL 调短为 1s）真实自然过期 →
+        stub 恢复健康后下一次刷新经真实 proxy 写入全新值 + 正常 TTL"""
+        scratch_redis.setex(_SCRATCH_KEY, 900, json.dumps(_OLD_SNAPSHOT))
+        _patch_task_stub(monkeypatch, self._down_stub())
+        _patch_non_task_fetches(monkeypatch)
+        monkeypatch.setattr(stats_cache_module, '_CACHE_TTL_DEGRADED', 1)
+
+        assert refresh_stats_cache() is True
+        assert json.loads(scratch_redis.get(_SCRATCH_KEY))['tasks']['total'] == 5
+
+        # 真实等待降级快照自然过期
+        deadline = time.time() + 5
+        while time.time() < deadline and scratch_redis.get(_SCRATCH_KEY) is not None:
+            time.sleep(0.1)
+        assert scratch_redis.get(_SCRATCH_KEY) is None, '降级快照未在短 TTL 内自然过期'
+
+        # 上游恢复：真实 proxy 正常载荷 → 全新值 + 正常 TTL
+        _patch_task_stub(monkeypatch, self._healthy_stub())
+        assert refresh_stats_cache() is True
+        parsed = json.loads(scratch_redis.get(_SCRATCH_KEY))
+        assert parsed['tasks'] == {'total': 3, 'completed': 2, 'running': 1, 'failed': 0}
+        assert parsed['test_cases'] == {'total': 40, 'groups': 3}
+        ttl = scratch_redis.ttl(_SCRATCH_KEY)
+        assert stats_cache_module._CACHE_TTL - 5 < ttl <= stats_cache_module._CACHE_TTL
