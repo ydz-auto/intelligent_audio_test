@@ -177,6 +177,9 @@ export interface TaskListQueryDto {
   search?: string
   start_date?: string
   end_date?: string
+  // INT-216：收藏 / 回收站过滤（后端 TaskListQuery.favorite/deleted）
+  favorite?: boolean
+  deleted?: boolean
 }
 
 // ===== 任务域全量聚合统计（GET /tasks/stats，INT-200）=====

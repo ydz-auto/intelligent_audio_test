@@ -31,6 +31,9 @@ export interface TaskListQuery {
   search?: string
   startTime?: string
   endTime?: string
+  // INT-216 补接线：useTaskList（INT-141）已传参但此处映射缺失导致静默丢弃
+  favorite?: boolean
+  deleted?: boolean
 }
 
 /** camelCase 任务查询 → snake_case HTTP query（后端 TaskListQueryDto 契约） */
@@ -41,6 +44,9 @@ function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   if (query.search !== undefined) dto.search = query.search
   if (query.startTime !== undefined) dto.start_date = query.startTime
   if (query.endTime !== undefined) dto.end_date = query.endTime
+  // INT-216：收藏 / 回收站过滤（同名透传；后端 TaskListQuery.favorite/deleted）
+  if (query.favorite !== undefined) dto.favorite = query.favorite
+  if (query.deleted !== undefined) dto.deleted = query.deleted
   return dto
 }
 
