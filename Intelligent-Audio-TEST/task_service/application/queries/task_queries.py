@@ -140,6 +140,8 @@ class ListTestCasesQuery(Query):
 
     favorite（可选，INT-141）：仅当前用户收藏（user_id 来自 x-user-id metadata）。
     only_deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
+    test_type（可选，INT-193）：执行口径 api/e2e（proto ListTestCasesRequest.type，
+    task_service 侧按配置形态派生过滤）；dimension_id：评估维度过滤。
     """
     page: int = 1
     per_page: int = 10
@@ -147,6 +149,7 @@ class ListTestCasesQuery(Query):
     tag: Optional[str] = None
     group_id: Optional[str] = None
     algorithm_type: Optional[str] = None
+    test_type: Optional[str] = None
     view: Optional[str] = None
     include_deleted: bool = False
     dimension_id: Optional[int] = None

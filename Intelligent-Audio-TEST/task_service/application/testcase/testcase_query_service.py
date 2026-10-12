@@ -28,12 +28,13 @@ class TestCaseQueryService:
     # ==================== 读操作 ====================
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
-                       group_id=None, algorithm_type=None,
+                       group_id=None, algorithm_type=None, test_type=None,
                        view=None, include_deleted=False, dimension_id=None,
                        favorite=False, only_deleted=False, user_id=None) -> dict:
         """查询测试用例列表。
 
         favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
+        test_type（INT-193）：执行口径 api/e2e，按配置形态派生过滤。
         """
         from shared.utils import testcase_helpers as common
 
@@ -42,6 +43,7 @@ class TestCaseQueryService:
             if view == 'tag':
                 return self._get_tag_view(page, per_page, keyword,
                                           algorithm_type, include_deleted, common,
+                                          test_type=test_type,
                                           dimension_id=dimension_id,
                                           favorite=favorite, only_deleted=only_deleted,
                                           user_id=user_id)
@@ -49,7 +51,8 @@ class TestCaseQueryService:
             pagination = self.repo.query_testcases(
                 page=page, per_page=per_page, keyword=keyword, tag=tag,
                 group_id=group_id,
-                algorithm_type=algorithm_type, include_deleted=include_deleted,
+                algorithm_type=algorithm_type, test_type=test_type,
+                include_deleted=include_deleted,
                 dimension_id=dimension_id,
                 favorite=favorite, only_deleted=only_deleted, user_id=user_id,
             )
@@ -86,8 +89,10 @@ class TestCaseQueryService:
             data = []
             for tc in test_cases:
                 config = tc.config or {}
-                # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生
-                tc_test_type = common.derive_case_test_type(config)
+                # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生；
+                # 传用例名与 INT-129 执行路由口径一致（双变体 _api/_e2e 后缀优先，
+                # 并与 INT-193 的 test_type 过滤口径保持一致）
+                tc_test_type = common.derive_case_test_type(config, tc.name)
                 total_duration = 0.0
                 for audio_item in common.collect_audios(config):
                     audio_id = audio_item.get('audio_id')
@@ -133,7 +138,8 @@ class TestCaseQueryService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def _get_tag_view(self, page, per_page, keyword,
-                      algorithm_type, include_deleted, common, dimension_id=None,
+                      algorithm_type, include_deleted, common, test_type=None,
+                      dimension_id=None,
                       favorite=False, only_deleted=False, user_id=None):
         """标签视图：按标签聚合用例。"""
         tag_pagination = self.repo.list_tags_paginated(page=page, per_page=per_page)
@@ -156,7 +162,8 @@ class TestCaseQueryService:
         tag_ids = [t.id for t in page_tags]
         test_cases = self.repo.query_testcases_by_tag_ids(
             tag_ids, keyword=keyword,
-            algorithm_type=algorithm_type, include_deleted=include_deleted,
+            algorithm_type=algorithm_type, test_type=test_type,
+            include_deleted=include_deleted,
             dimension_id=dimension_id,
             favorite=favorite, only_deleted=only_deleted, user_id=user_id,
         )
@@ -212,8 +219,9 @@ class TestCaseQueryService:
                     "description": tc.description,
                     "groupId": tc.group_id,
                     "groupName": tc.group.name if tc.group else None,
-                    # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生
-                    "type": common.derive_case_test_type(tc.config or {}),
+                    # 用例不再存储 test_type（差异#2 收尾），展示口径由配置形态派生；
+                    # 传用例名与 INT-129 执行路由口径一致（并匹配 INT-193 过滤口径）
+                    "type": common.derive_case_test_type(tc.config or {}, tc.name),
                     "tags": [t.name for t in tc.tags],
                     "config": tc.config.copy() if tc.config else {},
                     "algorithmParams": tc.algorithm_params,

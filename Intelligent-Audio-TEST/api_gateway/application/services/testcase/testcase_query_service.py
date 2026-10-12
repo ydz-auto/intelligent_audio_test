@@ -62,6 +62,9 @@ class TestCaseQueryService:
         # INT-141：收藏 / 回收站过滤
         favorite = getattr(query, 'favorite', False)
         only_deleted = getattr(query, 'only_deleted', False)
+        # INT-193：执行口径（api/e2e）与评估维度过滤，下推 task_service 查询
+        test_type = query.type
+        dimension_id = query.dimension_id
 
         result = _testcase_acl.list_testcases(
             page=page,
@@ -70,8 +73,10 @@ class TestCaseQueryService:
             tag=tag_name,
             group_id=group_id,
             algorithm_type=algorithm_type,
+            test_type=test_type,
             view=view,
             include_deleted=include_deleted,
+            dimension_id=dimension_id,
             favorite=favorite,
             only_deleted=only_deleted,
         )

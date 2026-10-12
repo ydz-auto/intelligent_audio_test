@@ -13,6 +13,38 @@ from task_service.infrastructure.persistence._testcase_repo_common import (
 )
 
 
+class _DerivedTypePagination:
+    """test_type 派生口径过滤后的内存分页结果（接口与 _Pagination 对齐）。"""
+
+    def __init__(self, items, total, page, per_page):
+        self.items = items
+        self.total = total
+        self.page = page
+        self.per_page = per_page
+
+    @property
+    def pages(self):
+        if self.per_page == 0:
+            return 0
+        return (self.total + self.per_page - 1) // self.per_page
+
+    @property
+    def has_prev(self):
+        return self.page > 1
+
+    @property
+    def has_next(self):
+        return self.page < self.pages
+
+    @property
+    def prev_num(self):
+        return self.page - 1 if self.has_prev else None
+
+    @property
+    def next_num(self):
+        return self.page + 1 if self.has_next else None
+
+
 class TestCaseQueryMixin:
     """TestCase 查询与统计"""
 
@@ -31,6 +63,7 @@ class TestCaseQueryMixin:
         tag: str = None,
         group_id: str = None,
         algorithm_type: str = None,
+        test_type: str = None,
         include_deleted: bool = False,
         dimension_id: int = None,
         favorite: bool = False,
@@ -40,6 +73,7 @@ class TestCaseQueryMixin:
         """分页查询测试用例（带 group/tags 预加载）。
 
         favorite（INT-141）：仅当前用户收藏；only_deleted（INT-141）：仅回收站。
+        test_type（INT-193）：执行口径 api/e2e，配置形态派生过滤（Python 侧）。
         """
         session = get_db_session()
         query = self._query_testcases_with_preload(session) \
@@ -87,13 +121,48 @@ class TestCaseQueryMixin:
                                  .correlate(TestCase)
                                  .exists())
 
+        # INT-193：test_type 执行口径过滤（api/e2e）。差异#2 收尾后用例不存储类型，
+        # 双变体两形态 config 相同（INT-129），SQL 无法区分——物化候选行后
+        # Python 侧按 derive_case_test_type（config+用例名）过滤再分页，
+        # 与 fetch_case_ids / get_testcase_stats 派生口径一致
+        if test_type in (TestType.API.value, TestType.E2E.value):
+            return self._paginate_derived_test_type(
+                session, query, page, per_page, test_type)
+
         return query.paginate(page=page, per_page=per_page, error_out=False)
+
+    def _paginate_derived_test_type(self, session, query, page, per_page, test_type):
+        """test_type 派生口径分页：物化候选行 → Python 过滤 → 内存分页。
+
+        过滤必须发生在分页之前，否则页内条目数与 total 口径不一致。
+        """
+        from shared.utils.testcase_helpers import derive_case_test_type
+
+        rows = query.with_entities(
+            TestCase.id, TestCase.name, TestCase.config,
+        ).order_by(TestCase.created_at.desc()).all()
+        matched_ids = [rid for rid, name, config in rows
+                       if derive_case_test_type(config, name) == test_type]
+
+        total = len(matched_ids)
+        start = (page - 1) * per_page
+        page_ids = matched_ids[start:start + per_page]
+
+        items_map = {}
+        if page_ids:
+            items_map = {
+                tc.id: tc for tc in self._query_testcases_with_preload(session)
+                .filter(TestCase.id.in_(page_ids)).all()
+            }
+        ordered_items = [items_map[rid] for rid in page_ids if rid in items_map]
+        return _DerivedTypePagination(ordered_items, total, page, per_page)
 
     def query_testcases_by_tag_ids(
         self,
         tag_ids: List[str],
         keyword: str = None,
         algorithm_type: str = None,
+        test_type: str = None,
         include_deleted: bool = False,
         dimension_id: int = None,
         favorite: bool = False,
@@ -104,6 +173,8 @@ class TestCaseQueryMixin:
 
         favorite/only_deleted（INT-215）：标签视图回收站/收藏过滤，
         口径与 query_testcases 一致（user_id 来自 x-user-id metadata）。
+        test_type（INT-193）：执行口径 api/e2e，Python 侧派生过滤（无分页诉求，
+        标签视图分页在标签维度）。
         """
         session = get_db_session()
         tc_query = self._query_testcases_with_preload(session) \
@@ -142,7 +213,16 @@ class TestCaseQueryMixin:
                                        .correlate(TestCase)
                                        .exists())
 
-        return tc_query.all()
+        items = tc_query.all()
+
+        # INT-193：test_type 派生口径过滤（与 query_testcases 同口径，
+        # 传用例名使双变体 _api/_e2e 后缀生效）
+        if test_type in (TestType.API.value, TestType.E2E.value):
+            from shared.utils.testcase_helpers import derive_case_test_type
+            items = [tc for tc in items
+                     if derive_case_test_type(tc.config, tc.name) == test_type]
+
+        return items
 
     def fetch_case_ids(self, group=None, test_type=None, search=None, tag=None,
                        include_deleted: bool = False, algorithm_type: str = None,

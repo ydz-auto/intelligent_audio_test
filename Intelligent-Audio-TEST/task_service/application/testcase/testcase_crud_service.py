@@ -542,19 +542,20 @@ class TestCaseCrudService:
     # ==================== 委托：读操作 ====================
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
-                       group_id=None, algorithm_type=None,
-                       view=None, include_deleted=False,
+                       group_id=None, algorithm_type=None, test_type=None,
+                       view=None, include_deleted=False, dimension_id=None,
                        favorite=False, only_deleted=False, user_id=None) -> dict:
         """查询测试用例列表（委托 TestCaseQueryService）。
 
         favorite/only_deleted/user_id（INT-141）：收藏/回收站过滤，
         user_id 为当前操作人（x-user-id metadata），必须透传给查询服务。
+        test_type/dimension_id（INT-193）：执行口径与评估维度过滤。
         """
         return self._query_service.list_testcases(
             page=page, per_page=per_page, keyword=keyword, tag=tag,
             group_id=group_id,
-            algorithm_type=algorithm_type, view=view,
-            include_deleted=include_deleted,
+            algorithm_type=algorithm_type, test_type=test_type, view=view,
+            include_deleted=include_deleted, dimension_id=dimension_id,
             favorite=favorite, only_deleted=only_deleted, user_id=user_id,
         )
 

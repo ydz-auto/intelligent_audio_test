@@ -617,3 +617,7 @@ class TestCaseListQuery(APIModel):
     # INT-141：favorite=true 仅当前用户收藏；only_deleted=true 仅回收站软删除项
     favorite: bool = Field(False)
     only_deleted: bool = Field(False)
+    # INT-193：执行口径过滤（api/e2e，task_service 按配置形态派生）与评估维度过滤，
+    # 前端 QUERY_PARAM_MAP 将 testType 映射为 type，另兼容 test_type/testType 键
+    type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'test_type', 'testType'))
+    dimension_id: Optional[int] = Field(None, validation_alias=AliasChoices('dimension_id', 'dimensionId'))

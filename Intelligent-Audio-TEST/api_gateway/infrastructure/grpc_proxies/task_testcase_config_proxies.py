@@ -574,8 +574,8 @@ class _TestCaseConfigProxy:
     # ---- 读操作 ----
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
-                       group_id=None, algorithm_type=None,
-                       view=None, include_deleted=False,
+                       group_id=None, algorithm_type=None, test_type=None,
+                       view=None, include_deleted=False, dimension_id=None,
                        favorite=False, only_deleted=False):
         from shared.proto import task_service_pb2 as task_pb
 
@@ -587,9 +587,13 @@ class _TestCaseConfigProxy:
                 keyword=keyword or '',
                 tag=tag or '',
                 group_id=group_id or '',
+                # INT-193：type/dimension_id proto 字段此前未接线（extra="ignore"
+                # 在网关 schema 层静默丢弃），现贯通下推 task_service 过滤
+                type=test_type or '',
                 algorithm_type=algorithm_type or '',
                 view=view or '',
                 include_deleted=bool(include_deleted),
+                dimension_id=int(dimension_id) if dimension_id else 0,
                 favorite=bool(favorite),
                 only_deleted=bool(only_deleted),
             ))
