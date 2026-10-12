@@ -384,8 +384,8 @@ export async function processMergeForExistingFile(
     testTypes: options.testTypes,
     playbackDeviceId: options.playbackDeviceId,
     spl: options.spl,
-    groupNameType: options.groupNameType,
-    customGroupName: fileTask.folderGroupName || options.customGroupName,
+    // 分组命名仅走 testCaseConfig.group_name（服务端消费口径，INT-146 缺陷5）：
+    // groupNameType/customGroupName 服务端已不消费，不再发送
     inheritTags: options.inheritTags,
     dimensions: options.createTestCase ? options.dimensions : undefined,
     noiseAudioId: options.noiseAudioId,
@@ -552,8 +552,8 @@ export async function uploadFileChunks(
       testTypes: options.testTypes,
       playbackDeviceId: options.playbackDeviceId,
       spl: options.spl,
-      groupNameType: options.groupNameType,
-      customGroupName: fileTask.folderGroupName || options.customGroupName,
+      // 分组命名仅走 testCaseConfig.group_name（服务端消费口径，INT-146 缺陷5）：
+      // groupNameType/customGroupName 服务端已不消费，不再发送
       inheritTags: options.inheritTags,
       dimensions: options.createTestCase ? options.dimensions : undefined,
       noiseAudioId: options.noiseAudioId,

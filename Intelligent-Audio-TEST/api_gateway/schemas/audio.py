@@ -258,6 +258,7 @@ class AudioListQuery(APIModel):
     duration: Optional[str] = Field(None)
     tags: Optional[List[str]] = Field(default_factory=list)
     direction: Optional[str] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
 
 
 class AudioIdQuery(APIModel):
@@ -268,6 +269,7 @@ class AudioIdQuery(APIModel):
     duration: Optional[str] = Field(None)
     tags: Optional[List[str]] = Field(default_factory=list)
     direction: Optional[str] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
 
 
 class AudioStreamQuery(APIModel):
@@ -276,6 +278,12 @@ class AudioStreamQuery(APIModel):
 
 class AudioStreamByPathQuery(APIModel):
     path: str = Field(...)
+
+
+class AudioDownloadQuery(APIModel):
+    """本地存储降级模式的音频下载参数（stream 预签名回退地址）"""
+    # path 缺失时由 service 手动返回 400（避免 schema 直接抛 500）
+    path: Optional[str] = Field('')
 
 
 class AudioUploadProgressQuery(APIModel):

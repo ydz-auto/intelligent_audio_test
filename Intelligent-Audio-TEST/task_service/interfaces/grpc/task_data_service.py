@@ -388,7 +388,8 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
     def GetTestCaseStats(self, request, context=None):
         """聚合统计 TestCase — count / group_by
 
-        支持按 algorithm_type / group_id 过滤，可选 group_by 字段返回分组计数。
+        支持按 algorithm_type / group_id / test_type（配置形态派生）/
+        keyword / dimension_id 过滤，可选 group_by 字段返回分组计数。
         不指定 group_by 时返回 {'total': N}；指定 group_by 时返回
         {'items': [{key, count}, ...]}。
         """
@@ -397,6 +398,9 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
                 algorithm_type=request.algorithm_type or '',
                 group_id=request.group_id or '',
                 group_by=request.group_by or '',
+                test_type=request.test_type or '',
+                keyword=request.keyword or '',
+                dimension_id=request.dimension_id or None,
             )
             if 'error' in result:
                 return self._resp(False, result['error'])

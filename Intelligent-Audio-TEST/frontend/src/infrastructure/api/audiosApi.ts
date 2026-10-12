@@ -146,6 +146,31 @@ export const audiosApi = {
     return request('GET', '/audios/stream-by-path', null, { ...options, params: { path } });
   },
 
+  /**
+   * 下载音频（INT-146 缺陷1）：stream 已改为返回 JSON 预签名 URL，
+   * 下载需二次请求取字节流，不能再按 blob 消费 stream 响应。
+   * - OSS 预签名 URL（绝对 http/https）：URL 自带签名，直接 fetch（无需 JWT）
+   * - 网关回退路径（/api/v1/audios/download?path=...）：走 HTTP 客户端注入 JWT
+   */
+  async download(id: string | number, options: RequestOptions = {}): Promise<Blob> {
+    const result = await request<any>('GET', `/audios/${id}/stream`, null, options);
+    const url: string | undefined = result?.url ?? result?.data?.url;
+    if (!url) {
+      throw new Error(result?.message || '获取音频下载地址失败');
+    }
+    if (/^https?:\/\//i.test(url)) {
+      const resp = await fetch(url, { signal: options.signal });
+      if (!resp.ok) {
+        throw new Error(`下载音频失败: ${resp.status} ${resp.statusText}`);
+      }
+      return await resp.blob();
+    }
+    // 网关相对路径：剥掉 baseUrl 前缀后经 request 注入 JWT（request 会重新拼接 baseUrl）
+    const relative = url.replace(/^\/api\/v1\//i, '');
+    const data = await request<Blob>('GET', relative, null, { ...options, responseType: 'blob' });
+    return data instanceof Blob ? data : new Blob([data as unknown as BlobPart]);
+  },
+
   async delete(id: string | number, options: RequestOptions = {}) {
     return request('DELETE', `/audios/${id}`, null, options);
   },

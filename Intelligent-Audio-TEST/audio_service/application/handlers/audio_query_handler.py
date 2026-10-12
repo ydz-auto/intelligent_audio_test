@@ -254,7 +254,8 @@ class AudioQueryHandler:
         )
         if presigned_url:
             return _ok(data={'url': presigned_url})
-        return _ok(data={'url': f'/api/audio/download?path={file_path}'})
+        # 本地降级模式：网关 /download 路由承载字节流回退（INT-146 缺陷4）
+        return _ok(data={'url': f'/api/v1/audios/download?path={file_path}'})
 
     def handle_stream_audio_by_path(self, query: StreamAudioByPathQuery) -> Dict[str, Any]:
         oss_key = query.data.get('path')
@@ -289,7 +290,10 @@ class AudioQueryHandler:
                 else storage.build_path('audios', oss_key),
                 expires=3600,
             )
-            return _ok(data={'url': presigned_url})
+            if presigned_url:
+                return _ok(data={'url': presigned_url})
+            # 本地降级模式（get_url 返回 None）：与 handle_stream_audio 同一回退口径
+            return _ok(data={'url': f'/api/v1/audios/download?path={oss_key}'})
         except Exception as e:
             logger.error(f"stream_by_path 获取存储 URL 失败: {e}, key={oss_key}")
             return _fail(f'获取音频失败: {e}', 404)

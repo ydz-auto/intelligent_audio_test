@@ -51,6 +51,14 @@
 
     <!-- 音频列表内容 -->
     <div class="audio-content-card">
+      <!-- 算法筛选（徽章单选，按音频-算法关联过滤列表） -->
+      <div class="algorithm-filter-row">
+        <AlgorithmFilter
+          v-model="filters.algorithmType"
+          title="算法筛选"
+          @update:model-value="applyFilters"
+        />
+      </div>
       <AudioListComponent
           :audios="formattedAudios"
           :loading="loading"
@@ -174,6 +182,7 @@ import UploadProgressCard from '../../components/common/misc/UploadProgressCard.
 import AudioPlayerModal from '../../components/common/audio/AudioPlayerModal.vue';
 import BatchAnnotationModal from '../../components/common/modal/BatchAnnotationModal.vue';
 import ConvertModal from './ConvertModal.vue';
+import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import { useAudioImport } from './audioImport';
 import type { AudioUploadTask } from '@/domain/model/audio';
 import { useUploadState } from '../../composables/upload/useUploadState';
@@ -386,6 +395,15 @@ const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: n
 
 <style scoped>
 @import './audioImport.css';
+
+/* 算法徽章筛选行 */
+.algorithm-filter-row {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--background-secondary, #f8fafc);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: var(--border-radius-lg);
+}
 
 .test-case-generated-tip {
   position: fixed;

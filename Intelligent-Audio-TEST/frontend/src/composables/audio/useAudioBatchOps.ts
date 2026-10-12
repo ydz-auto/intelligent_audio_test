@@ -152,8 +152,10 @@ export function useAudioBatchOps(
     }
 
     try {
-      const response = await audiosPort.stream(id, { responseType: 'blob' }) as any;
-      downloadBlob(new Blob([response]), name);
+      // 后端 stream 返回 JSON 预签名 URL（或网关回退路径），下载需二次取字节流；
+      // 按 blob 消费 stream 响应会下载到 .json 文件（INT-146 缺陷1）
+      const blob = await audiosPort.download(id);
+      downloadBlob(blob, name);
     } catch (e) {
       console.error('Download audio failed:', e);
     }

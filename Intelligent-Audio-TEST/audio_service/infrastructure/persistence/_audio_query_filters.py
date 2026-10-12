@@ -97,12 +97,23 @@ def _apply_tag_filter(query, session, or_tags, and_tags, get_tag_name_to_id_map:
     return query
 
 
+def _apply_algorithm_type_filter(query, session, algorithm_type: str):
+    """按音频-算法关联表过滤（list 与 folder_tree 共用口径，V9.7.10 对齐）"""
+    audio_ids_with_algo = (
+        session.query(AudioAlgorithmRelation.audio_id)
+        .filter(AudioAlgorithmRelation.algorithm_type == algorithm_type,
+                AudioAlgorithmRelation.deleted == False)
+        .distinct()
+    )
+    return query.filter(Audio.id.in_(audio_ids_with_algo))
+
+
 def apply_audio_list_filters(query, session, params: dict,
                              get_tag_name_to_id_map: Callable):
     """list_audios / get_all_audio_ids 的通用过滤逻辑。
 
     支持：keyword / format_ / audio_type / sample_rate / duration /
-    direction（语向）/ tags_data（标签 or/and 组合）。
+    direction（语向）/ tags_data（标签 or/and 组合）/ algorithm_type。
     """
     keyword = params.get('keyword')
     format_ = params.get('format_')
@@ -141,6 +152,9 @@ def apply_audio_list_filters(query, session, params: dict,
     if params.get('tags_data'):
         or_tags, and_tags = _parse_tag_filters(params.get('tags_data'))
         query = _apply_tag_filter(query, session, or_tags, and_tags, get_tag_name_to_id_map)
+
+    if params.get('algorithm_type'):
+        query = _apply_algorithm_type_filter(query, session, params['algorithm_type'])
 
     return query
 
@@ -190,13 +204,7 @@ def apply_folder_tree_filters(query, session, params: dict,
         query = _apply_tag_filter(query, session, or_tags, and_tags, get_tag_name_to_id_map)
 
     if algorithm_type:
-        audio_ids_with_algo = (
-            session.query(AudioAlgorithmRelation.audio_id)
-            .filter(AudioAlgorithmRelation.algorithm_type == algorithm_type,
-                    AudioAlgorithmRelation.deleted == False)
-            .distinct()
-        )
-        query = query.filter(Audio.id.in_(audio_ids_with_algo))
+        query = _apply_algorithm_type_filter(query, session, algorithm_type)
 
     if parent_path:
         query = _apply_parent_path_filter(query, parent_path)

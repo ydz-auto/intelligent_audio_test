@@ -1,4 +1,7 @@
 import logging
+import os
+from fastapi.responses import Response
+
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response, wrap_grpc_response
 from api_gateway.schemas.audio import (
@@ -11,12 +14,26 @@ from api_gateway.schemas.audio import (
     AudioIdQuery,
     AudioStreamQuery,
     AudioStreamByPathQuery,
+    AudioDownloadQuery,
 )
 from api_gateway.infrastructure.acl import AudioAclRepositoryImpl
 
 logger = logging.getLogger(__name__)
 
 _audio_acl = AudioAclRepositoryImpl()
+
+# 音频扩展名 → Content-Type（下载/回退字节流共用白名单，与 audio_service
+# stream-by-path 校验口径一致，拒绝魔法字符串）
+_AUDIO_EXT_CONTENT_TYPES = {
+    'wav': 'audio/wav',
+    'mp3': 'audio/mpeg',
+    'flac': 'audio/flac',
+    'aac': 'audio/aac',
+    'ogg': 'audio/ogg',
+    'm4a': 'audio/mp4',
+    'wma': 'audio/x-ms-wma',
+    'opus': 'audio/opus',
+}
 
 
 def _parse_query_params(model_cls):
@@ -68,6 +85,7 @@ class AudioQueryService:
             'duration': query.duration,
             'tags_data': tags_data,
             'direction': query.direction,
+            'algorithm_type': query.algorithm_type,
         }
 
     @staticmethod
@@ -184,6 +202,7 @@ class AudioQueryService:
             'duration': query.duration,
             'tags_data': tags_data,
             'direction': query.direction,
+            'algorithm_type': query.algorithm_type,
         }
 
     @staticmethod
@@ -217,7 +236,7 @@ class AudioQueryService:
     @staticmethod
     def stream_by_path():
         """通过 OSS key 获取预签名 URL 播放音频"""
-        
+
         query = _parse_query_params(AudioStreamByPathQuery)
         if not query.path:
             return error_response("未提供路径", 400)
@@ -233,6 +252,62 @@ class AudioQueryService:
             default_error_msg='获取音频失败',
             error_code_mapping={404: ('获取音频失败', 404)},
         )
+
+    # 本地存储降级模式的音频字节流下载（stream 预签名 URL 的回退地址，
+    # INT-146 缺陷4：本地模式 get_url 返回 None，网关须补此路由承载回退）
+    @staticmethod
+    def download():
+        query = _parse_query_params(AudioDownloadQuery)
+        if not query.path:
+            return error_response("未提供路径", 400)
+
+        from shared.infrastructure.config import BaseConfig
+        from api_gateway.config.config import Config
+
+        oss_key = query.path
+        # 扩展名白名单校验（与 stream-by-path 口径一致）
+        ext = os.path.splitext(oss_key)[1].lower().lstrip('.')
+        if ext not in _AUDIO_EXT_CONTENT_TYPES:
+            return error_response("不支持的文件类型", code=403, http_code=403)
+
+        # 路径安全：拒绝目录穿越段
+        if '..' in oss_key.replace(chr(92), '/').split('/'):
+            return error_response("路径不合法", code=403, http_code=403)
+
+        if os.path.isabs(oss_key):
+            # 绝对路径仅允许音频存储目录（上传合并输出）与本地降级存储根目录
+            allowed_bases = []
+            for base in (
+                getattr(Config, 'AUDIO_STORAGE_PATH', ''),
+                BaseConfig.STORAGE_LOCAL_ROOT,
+            ):
+                if base:
+                    allowed_bases.append(os.path.realpath(base))
+            normalized_path = os.path.realpath(oss_key)
+            if not any(
+                normalized_path == base or normalized_path.startswith(base + os.sep)
+                for base in allowed_bases
+            ):
+                return error_response("路径不在允许的目录范围内", code=403, http_code=403)
+            if not os.path.isfile(normalized_path):
+                return error_response("音频文件不存在", code=404, http_code=404)
+            with open(normalized_path, 'rb') as f:
+                content = f.read()
+        else:
+            # 逻辑 key（local:// 或 oss:// 或裸 key）：走统一存储抽象，
+            # OSS 失败自动回退本地降级副本
+            from shared.infrastructure.storage import storage
+            try:
+                content = storage.load_bytes(
+                    oss_key if oss_key.startswith(('oss://', 'local://'))
+                    else storage.build_path('audios', oss_key))
+            except FileNotFoundError:
+                return error_response("音频文件不存在", code=404, http_code=404)
+            except Exception as e:
+                logger.error("audio download 读取存储失败: %s, key=%s", e, oss_key)
+                return error_response("读取音频失败", code=500, http_code=500)
+
+        return Response(content=content, media_type=_AUDIO_EXT_CONTENT_TYPES[ext])
 
     # 获取音频关联的算法
     @staticmethod

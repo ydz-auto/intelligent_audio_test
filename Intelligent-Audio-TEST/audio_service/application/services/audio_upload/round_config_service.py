@@ -53,7 +53,11 @@ class AudioRoundConfigService:
         rounds_config = None
         if tc_config and isinstance(tc_config, dict):
             rounds_config = tc_config.get('rounds')
-        tc_group_name = tc_config.get('group_name') if tc_config else None
+        # 前端 tcConfig 为 camelCase（groupName），双口径读取（INT-146 缺陷5 对齐）
+        tc_group_name = (
+            (tc_config.get('group_name') or tc_config.get('groupName'))
+            if tc_config else None
+        )
         tc_inherit_tags = tc_config.get('inherit_tags', True) if tc_config else True
         # case 级背景噪声（rounds 外层），优先级高于轮次级
         tc_case_background_noise = tc_config.get('background_noise') if tc_config else None

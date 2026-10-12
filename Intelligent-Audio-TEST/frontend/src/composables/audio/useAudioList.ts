@@ -27,6 +27,7 @@ export interface AudioListFilters {
   duration: string;
   audioType: string;
   direction: string;
+  algorithmType: string;
   dateRange: [Date, Date] | null;
   tagMatchMode: 'or' | 'and';
 }
@@ -48,6 +49,7 @@ export function useAudioList() {
     duration: 'all',
     audioType: 'all',
     direction: 'all',
+    algorithmType: 'all',
     dateRange: null as [Date, Date] | null,
     tagMatchMode: 'and' as 'or' | 'and'
   });
@@ -154,6 +156,7 @@ export function useAudioList() {
       sampleRate: normalizedSampleRate,
       duration: filters.value.duration === 'all' ? undefined : filters.value.duration,
       direction: filters.value.direction === 'all' ? undefined : filters.value.direction,
+      algorithmType: filters.value.algorithmType === 'all' ? undefined : filters.value.algorithmType,
       ...overrides
     };
   }
@@ -313,6 +316,7 @@ export function useAudioList() {
     filters.value.duration = 'all';
     filters.value.sampleRate = 'all';
     filters.value.direction = 'all';
+    filters.value.algorithmType = 'all';
     filters.value.dateRange = null;
     searchQuery.value = '';
     selectedTags.value = tagsLoaded.value && allTags.value.length > 0 ? [...allTags.value] : [];

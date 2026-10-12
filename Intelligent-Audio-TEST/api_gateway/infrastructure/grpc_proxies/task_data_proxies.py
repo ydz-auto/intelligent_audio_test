@@ -42,14 +42,22 @@ class _TaskDataProxy:
             return json.loads(resp.data) if resp.data else {}
         return _grpc_call(_call, default_return={}, error_msg_prefix='GetTaskStats gRPC 失败')
 
-    def get_testcase_stats(self, algorithm_type=None, group_id=None, group_by=None):
-        """通过 gRPC 聚合统计 TestCase（group_by 可选 algorithm_type/group_id）"""
+    def get_testcase_stats(self, algorithm_type=None, group_id=None, group_by=None,
+                           test_type=None, keyword=None, dimension_id=None):
+        """通过 gRPC 聚合统计 TestCase（group_by 可选 algorithm_type/group_id）
+
+        test_type 为执行口径（api/e2e，task_service 侧按配置形态派生）；
+        keyword/dimension_id 供分组列表筛选（INT-146）。
+        """
         def _call():
             stub = get_task_data_service_stub()
             resp = stub.GetTestCaseStats(task_pb.TestCaseAggStatsRequest(
                 algorithm_type=algorithm_type or '',
                 group_id=int(group_id) if group_id else 0,
                 group_by=group_by or '',
+                test_type=test_type or '',
+                keyword=keyword or '',
+                dimension_id=int(dimension_id) if dimension_id else 0,
             ))
             if not resp.success:
                 raise RuntimeError(f"GetTestCaseStats gRPC 失败: {resp.message}")

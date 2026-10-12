@@ -41,6 +41,11 @@ class GroupListQuery(APIModel):
     page: int = Field(1)
     per_page: Optional[int] = Field(None, validation_alias=AliasChoices('per_page', 'perPage', 'page_size', 'pageSize'))
     algorithm_type: Optional[str] = Field(None)
+    # 分组下用例计数筛选（V9.7.10 对齐）：keyword 模糊匹配用例 id/name/description；
+    # type 为用例执行口径（api/e2e，按配置形态派生）；dimension_id 按评估维度 config 匹配
+    keyword: Optional[str] = Field(None)
+    type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'test_type', 'testType'))
+    dimension_id: Optional[int] = Field(None, validation_alias=AliasChoices('dimension_id', 'dimensionId'))
 
 
 class GroupDeleteQuery(APIModel):

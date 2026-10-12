@@ -270,7 +270,8 @@ class TestCaseQueryService:
             def _make_presigned_url(file_path):
                 path = file_path if file_path.startswith(('oss://', 'local://')) else storage.build_path('audios', file_path)
                 url = storage.get_url(path, expires=3600)
-                return url or f'/api/audio/download?path={file_path}'
+                # 本地降级模式回退：网关 /audios/download 字节流路由（INT-146 缺陷4）
+                return url or f'/api/v1/audios/download?path={file_path}'
 
             audio_stream_urls = []
             for aid in audio_ids:

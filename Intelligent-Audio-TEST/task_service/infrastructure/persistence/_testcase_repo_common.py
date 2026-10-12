@@ -19,13 +19,15 @@ def build_dim_id_filter(dim_str: str):
     """构建按维度 ID 过滤的 OR 条件（匹配 config JSON 中的 dimension id）。
 
     兼容 JSON 序列化时 id 与引号/空格的多种排列组合。
+    INT-146 修正：LIKE 需 % 通配符才是"包含"语义（无通配符为全串等值，
+    恒不命中——与旧库同源缺陷，旧库注释意图即包含匹配）。
     """
     cast_text = TestCase.config.cast(Text)
     return (
-        cast_text.like(f'"id": {dim_str}') |
-        cast_text.like(f'"id":{dim_str}') |
-        cast_text.like(f'"id": "{dim_str}"') |
-        cast_text.like(f'"id":"{dim_str}"')
+        cast_text.like(f'%"id": {dim_str}%') |
+        cast_text.like(f'%"id":{dim_str}%') |
+        cast_text.like(f'%"id": "{dim_str}"%') |
+        cast_text.like(f'%"id":"{dim_str}"%')
     )
 
 

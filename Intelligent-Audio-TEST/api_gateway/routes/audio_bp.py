@@ -43,6 +43,12 @@ def stream_by_path(_: None = require_permission('audio:read')):
     return to_response(AudioQueryService.stream_by_path())
 
 
+# 本地存储降级模式的音频字节流下载（stream 预签名回退地址，INT-146 缺陷4）
+@router.get('/download')
+def download(_: None = require_permission('audio:read')):
+    return to_response(AudioQueryService.download())
+
+
 @router.get('/upload/progress')
 def get_upload_progress(_: None = require_permission('audio:read')):
     return to_response(AudioUploadService.get_upload_progress())

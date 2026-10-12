@@ -34,6 +34,12 @@ class GroupService:
         page = query.page
         per_page = query.per_page if query.per_page is not None else 100
         algorithm_type = query.algorithm_type
+        keyword = query.keyword
+        test_type = query.type
+        dimension_id = query.dimension_id
+        # 分组列表按"分组下匹配用例数"筛选（V9.7.10 对齐，INT-146）：
+        # 任一用例级筛选存在时，仅返回有匹配用例的分组，计数为匹配用例数
+        has_case_filters = bool(algorithm_type or test_type or keyword or dimension_id)
 
         # 通过 gRPC 查询 TestCaseGroup 列表（替代直连 PO）
         try:
@@ -47,10 +53,11 @@ class GroupService:
         from api_gateway.infrastructure.grpc_proxies import task_data_service as _tds
 
         case_counts = {}
-        if algorithm_type:
-            # gRPC GetTestCaseStats 支持 algorithm_type 过滤 + group_by='group_id'
+        if has_case_filters:
+            # gRPC GetTestCaseStats 支持用例级筛选 + group_by='group_id'
             stats = _tds.get_testcase_stats(
-                algorithm_type=algorithm_type, group_by='group_id'
+                algorithm_type=algorithm_type, group_by='group_id',
+                test_type=test_type, keyword=keyword, dimension_id=dimension_id,
             )
             items = stats.get('items') or []
             case_counts = {item.get('key', ''): item.get('count', 0) for item in items}
@@ -63,7 +70,7 @@ class GroupService:
         end = start + per_page
         page_groups = all_groups[start:end]
 
-        if not algorithm_type:
+        if not has_case_filters:
             group_ids = [str(g.get('id')) for g in page_groups]
             if group_ids:
                 stats = _tds.get_testcase_stats(group_by='group_id')

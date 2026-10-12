@@ -241,6 +241,8 @@ export interface AudioQueryParams {
   sampleRate?: string
   duration?: string
   direction?: string
+  /** 算法类型过滤（按音频-算法关联匹配；'all' 视为不过滤） */
+  algorithmType?: string
 }
 
 /** 文件夹树节点（前端通用视图模型：服务端目录树 / 客户端构建树共用） */
