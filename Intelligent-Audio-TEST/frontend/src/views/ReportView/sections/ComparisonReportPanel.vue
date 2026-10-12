@@ -1,9 +1,9 @@
 <template>
   <section class="comparison-report-container">
     <div class="comparison-header">
-      <h3 class="comparison-title">{{ report.type === 'secondaryComparison' ? '二次对比报告' : '任务对比报告' }}</h3>
+      <h3 class="comparison-title">{{ isSecondaryType ? '二次对比报告' : '任务对比报告' }}</h3>
       <p class="comparison-subtitle">
-        {{ report.type === 'secondaryComparison'
+        {{ isSecondaryType
           ? '深度分析对比报告的二次对比，帮助您更深入地了解性能变化趋势和关键差异点。'
           : '对比分析所选任务的执行情况和结果，帮助您识别系统性能瓶颈和质量问题，为后续优化提供依据。' }}
       </p>
@@ -166,8 +166,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { ReportStatus } from '@/domain/enums'
+import { isSecondaryComparisonReportType } from '@/domain/model/report'
 import ComparisonTableComponent from '../../../components/report/ComparisonTableComponent.vue'
 import CaseCategoryComparisonComponent from '../../../components/report/CaseCategoryComparisonComponent.vue'
 import CaseTagComparisonComponent from '../../../components/report/CaseTagComparisonComponent.vue'
@@ -189,6 +190,8 @@ const props = defineProps<{
   isEditingReport: boolean
   isEditingConclusion: boolean
 }>()
+
+const isSecondaryType = computed(() => isSecondaryComparisonReportType(props.report?.type))
 
 const emit = defineEmits<{
   (e: 'toggle-edit'): void

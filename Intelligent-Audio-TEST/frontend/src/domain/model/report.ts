@@ -17,6 +17,18 @@ import { ReportStatus } from '@/domain/enums'
 /** 报告类型（后端原值；reports 表 type 列：task/comparison/secondary_comparison/standard） */
 export type ReportType = 'task' | 'comparison' | 'secondary_comparison' | 'standard'
 
+/** 对比类报告判定值域（comparison 家族：后端原值 + 历史遗留 camelCase/short 值，兼容历史数据） */
+const COMPARISON_FAMILY_TYPES: readonly string[] = ['comparison', 'secondary_comparison', 'secondaryComparison', 'secondary']
+const SECONDARY_FAMILY_TYPES: readonly string[] = ['secondary_comparison', 'secondaryComparison', 'secondary']
+
+export function isComparisonReportType(type?: string | null): boolean {
+  return !!type && COMPARISON_FAMILY_TYPES.includes(type)
+}
+
+export function isSecondaryComparisonReportType(type?: string | null): boolean {
+  return !!type && SECONDARY_FAMILY_TYPES.includes(type)
+}
+
 /** 报告状态（后端原值） */
 export type ReportState = typeof ReportStatus[keyof typeof ReportStatus] | (string & {})
 

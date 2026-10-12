@@ -2,6 +2,7 @@ import { ref, onMounted } from 'vue';
 import { reportsPort } from '@/composables/report/reportsPort';
 import type { Report } from '../../domain';
 import type { PaginatedResult } from '../../domain';
+import { getReportTypeLabel } from '../../domain/constants/reportLabels';
 
 export function useTestReports() {
   const reports = ref<Report[]>([]);
@@ -21,15 +22,6 @@ export function useTestReports() {
     }
   };
 
-  const getReportTypeLabel = (type: string): string => {
-    const types: Record<string, string> = {
-      'task': '任务报告',
-      'comparison': '对比报告',
-      'secondaryComparison': '二次对比报告'
-    };
-    return types[type] || type;
-  };
-  
   onMounted(() => {
     fetchReports();
   });

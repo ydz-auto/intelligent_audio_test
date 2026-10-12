@@ -36,7 +36,7 @@
       />
     </div>
 
-    <!-- 对比报告类型 (comparison / secondaryComparison) -->
+    <!-- 对比报告类型 (comparison 家族：comparison / secondary_comparison 及历史遗留值) -->
     <ComparisonReportPanel
       v-else-if="report && isComparisonType"
       :report="report"
@@ -112,6 +112,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { sanitizeConclusion } from '../../utils/sanitize'
 import { ReportStatus } from '@/domain/enums'
 import type { ToastMessage } from '@/domain/model/ui'
+import { isComparisonReportType } from '@/domain/model/report'
 import TaskReportPanel from '../../components/report/TaskReportPanel.vue'
 import ComparisonReportPanel from './sections/ComparisonReportPanel.vue'
 import { reportsPort } from '@/composables/report/reportsPort'
@@ -145,7 +146,7 @@ function showToast(type: ToastMessage['type'], message: string): void {
 }
 
 const isComparisonType = computed(() => {
-  return report.value?.type === 'comparison' || report.value?.type === 'secondaryComparison'
+  return isComparisonReportType(report.value?.type)
 })
 
 const analysisContent = computed(() => {
@@ -188,7 +189,7 @@ const loadReport = async (reportId: string) => {
       }
       reportName.value = report.value.name
 
-      if (report.value.type === 'comparison' || report.value.type === 'secondaryComparison') {
+      if (isComparisonReportType(report.value.type)) {
         comparisonReport.value = report.value
         extractDevicesFromTasks([], report.value)
       }
