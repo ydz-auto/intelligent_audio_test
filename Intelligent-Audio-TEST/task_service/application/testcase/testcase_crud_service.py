@@ -196,10 +196,6 @@ class TestCaseCrudService:
 
                 merged_config = common.convert_flat_config_to_rounds(merged_config)
 
-            audio_dim_error = common.validate_multi_round_audio_dimensions(merged_config)
-            if audio_dim_error:
-                return {'success': False, 'message': audio_dim_error, 'data': None, 'code': 400}
-
             algo_params_col = data.get('algorithm_params')
             if algo_params_col:
                 first = algo_params_col[0] if isinstance(algo_params_col[0], dict) else {}
@@ -375,10 +371,6 @@ class TestCaseCrudService:
             tags_data = data.get('tags')
             if tags_data is not None:
                 self.repo.set_testcase_tags(tc, tags_data)
-
-            audio_dim_error = common.validate_multi_round_audio_dimensions(merged_config)
-            if audio_dim_error:
-                return {'success': False, 'message': audio_dim_error, 'data': None, 'code': 400}
 
             tc.config = merged_config
 

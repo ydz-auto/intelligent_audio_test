@@ -4,12 +4,9 @@
 为消除 api_gateway 对 task_service 的跨服务 Python 直导，现迁至 shared/utils，
 供所有服务（api_gateway/task_service 等）共享引用。
 """
-import logging
 import re
 
 from shared.utils.log_handler import log_not_emit
-
-logger = logging.getLogger(__name__)
 
 # 预览停止标志：跨服务共享（原 TestCaseController 模块级全局变量）
 preview_stop_flags = {}
@@ -233,88 +230,6 @@ def collect_dimensions(config: dict) -> list:
             seen_ids.add(dim_id)
             result.append(d)
     return result
-
-
-def validate_multi_round_audio_dimensions(config: dict):
-    """校验整体评估(config.dimensions)不能配置需要音频文件的维度
-
-    整体评估在所有轮次执行完成后触发，无法传递音频文件。
-    只检查 config.dimensions（整体评估维度），不检查 rounds[].evaluation.dimensions（单轮维度）。
-    多轮时，rounds[].evaluation.dimensions（单轮评估）允许配置音频维度。
-    """
-    if not config:
-        return None
-    rounds = config.get('rounds', [])
-    if not isinstance(rounds, list) or len(rounds) <= 1:
-        return None  # 单轮不限制
-
-    # 只收集 config.dimensions（整体评估维度），不收集 rounds[].evaluation.dimensions
-    overall_dims = config.get('dimensions', [])
-    dim_ids = set()
-    for d in overall_dims:
-        dim_id = d.get('id') if isinstance(d, dict) else d
-        if dim_id:
-            dim_ids.add(dim_id)
-    if not dim_ids:
-        return None
-
-    # 查询这些维度是否有 field_type='audio' 的输入参数
-    # algorithm_service proto 已接入：通过 gRPC 调用
-    # get_algorithm_definition_service_stub().GetDimensionParams 按维度逐个查询，
-    # 再本地过滤 audio/input 字段；gRPC 不可用时回退直连 EvaluationDimensionParam PO。
-    audio_dims = []
-    try:
-        from shared.clients.grpc_clients import get_algorithm_definition_service_stub
-        from shared.proto import algorithm_service_pb2 as _algo_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-        stub = get_algorithm_definition_service_stub()
-        for dim_id in dim_ids:
-            req = _algo_pb.GetDimensionParamsRequest(dimension_id=int(dim_id))
-            resp = stub.GetDimensionParams(req)
-            if not resp.success:
-                continue
-            params = (_grpc_loads(resp.data, {}) or {}).get('params', []) or []
-            for p in params:
-                if (p.get('field_type') == 'audio'
-                        and p.get('param_direction') == 'input'):
-                    audio_dims.append((p.get('dimension_id', dim_id), p.get('param_code')))
-    except Exception:
-        # gRPC 不可用时返回空（不再跨服务直连 PO）
-        pass
-
-    if audio_dims:
-        # 通过 gRPC 查维度名（evaluation_service）
-        import json as _json
-        from shared.clients.grpc_clients import get_evaluation_config_service_stub
-        from shared.proto import evaluation_service_pb2 as eval_pb
-        from shared.utils.grpc_json import loads as _eval_loads
-        dim_map = {}
-        audio_dim_ids = [ad[0] for ad in audio_dims]
-        try:
-            stub = get_evaluation_config_service_stub()
-            resp = stub.GetDimensionByIds(eval_pb.GetDimensionByIdsRequest(
-                dim_ids=_json.dumps([int(d) for d in audio_dim_ids if d is not None],
-                                    ensure_ascii=False, default=str),
-            ))
-            if resp.success and resp.data:
-                items = _eval_loads(resp.data, {}) or {}
-                if isinstance(items, dict):
-                    raw_items = items.get('items', items)
-                else:
-                    raw_items = items
-                if isinstance(raw_items, list):
-                    dim_map = {str(d.get('id')): d for d in raw_items
-                               if isinstance(d, dict) and d.get('id') is not None}
-                elif isinstance(raw_items, dict):
-                    dim_map = raw_items
-        except Exception:
-            logger.debug("查询评估维度列表失败，回退到 ID 占位", exc_info=True)
-        dim_names = [dim_map.get(str(ad[0]), {}).get('name', f"ID:{ad[0]}") for ad in audio_dims]
-        param_codes = [ad[1] for ad in audio_dims]
-        return (f"整体评估维度不支持需要传递音频文件的维度。"
-                f"维度 {', '.join(dim_names)} 包含音频参数({', '.join(param_codes)})，"
-                f"请在单轮评估中配置该维度，或从整体评估中移除。")
-    return None
 
 
 def audios_changed(old_config: dict, new_config: dict) -> bool:
