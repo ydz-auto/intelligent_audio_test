@@ -496,6 +496,21 @@ class TestDigitalSplRoutes:
         assert fake.calls[-1] == ('get_all', {'page': 2, 'per_page': 5,
                                               'api_id': None, 'calibration_status': None})
 
+    def test_get_all_api_id_filter_passes_int_to_acl(self, digital_spl_client):
+        """GET 列表：api_id 过滤参数须以 int 传至 ACL（INT-150 验收发现的类型缺陷回归锁）
+
+        query 参数恒为 str，原样透传 '3' 会在代理层构造 proto int32 字段时
+        TypeError('str' object cannot be interpreted as an integer) → 网关 400。
+        与同函数 page/per_page 的 int() 转换保持同层契约：ACL 边界收到 int。
+        """
+        client, fake = digital_spl_client
+        resp = client.get('/api/v1/digital-spl',
+                          params={'api_id': 3},
+                          headers={'x-test-perms': 'digital_spl:read'})
+        assert resp.status_code == 200, resp.text
+        assert fake.calls[-1] == ('get_all', {'page': 1, 'per_page': 10,
+                                              'api_id': 3, 'calibration_status': None})
+
     def test_calibrate_conflict_maps_to_409(self, digital_spl_client):
         """并发校准互斥：微服务 409 → 网关 HTTP 409 + ErrorCode.CONFLICT(204)"""
         client, fake = digital_spl_client
