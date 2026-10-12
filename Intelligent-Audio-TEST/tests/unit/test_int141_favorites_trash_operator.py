@@ -535,6 +535,14 @@ class TestTrashTestcases:
             ['INT141_TRASH_CASE'], user_id=1, is_admin=True) == 1
         assert session_get(TestCase, 'INT141_TRASH_CASE') is None
 
+    def test_restore_purge_nonexistent_string_id_returns_zero(self):
+        """R1 ②：testcase 非法/不存在 ID 在服务层按计数口径表达（0 行恢复/删除），不报错不 400。"""
+        from task_service.infrastructure.persistence.trash_repository import trash_repository
+
+        assert trash_repository.restore_testcases(['nonexistent-case-id']) == 0
+        assert trash_repository.purge_testcases(
+            ['nonexistent-case-id'], user_id=1, is_admin=True) == 0
+
 
 # ---------------- 操作人填充 ----------------
 
@@ -1075,7 +1083,9 @@ class TestBatchPurgeOwnerScoping:
 
 
 class TestBffIdValidation:
-    """审计 P3-1：批量 ID 统一在 BFF 转换，非法 ID 返回 400（不再被代理吞成 500）。"""
+    """审计 P3-1：task/report 批量 ID 统一在 BFF 转换，非法 ID 返回 400
+    （不再被代理吞成 500）。R1 回归修复：testcase 主键为 String(50) UUID，
+    BFF 不做 int 化，字符串原样透传（非法 ID 语义交服务层）。"""
 
     def test_restore_bad_id_returns_400(self):
         from api_gateway.application.services.favorite_trash_service import FavoriteTrashService
@@ -1091,6 +1101,32 @@ class TestBffIdValidation:
         from api_gateway.application.services.favorite_trash_service import FavoriteTrashService
         r = FavoriteTrashService.restore('report', ['xyz'])
         assert r['code'] == 400
+
+    def test_testcase_uuid_ids_pass_through_bff(self):
+        """R1 回归锁定：合法 UUID（及任意字符串形态）testcase ID 经 BFF
+        restore/purge 原样到达代理，不被 int 化拦截。"""
+        from api_gateway.application.services import favorite_trash_service as bff_mod
+
+        captured = {}
+
+        class _FakeTestcaseProxy:
+            def restore_testcases(self, case_ids):
+                captured['restore'] = case_ids
+                return {'success': True, 'message': 'ok', 'data': {'restored_count': 1}}
+
+            def purge_testcases(self, case_ids):
+                captured['purge'] = case_ids
+                return {'success': True, 'message': 'ok', 'data': {'purged_count': 1}}
+
+        uuid_id = '3f2b9c1e-7a4d-4e8f-9b2c-1d5e6f7a8b9c'
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(bff_mod, 'testcase_config_service', _FakeTestcaseProxy())
+            r1 = bff_mod.FavoriteTrashService.restore('testcase', [uuid_id, 'not-even-a-uuid'])
+            r2 = bff_mod.FavoriteTrashService.purge('testcase', [uuid_id])
+        assert r1['data'] == {'restored_count': 1}
+        assert r2['data'] == {'purged_count': 1}
+        assert captured['restore'] == [uuid_id, 'not-even-a-uuid']
+        assert captured['purge'] == [uuid_id]
 
 
 def report_repository_soft_delete(rid):

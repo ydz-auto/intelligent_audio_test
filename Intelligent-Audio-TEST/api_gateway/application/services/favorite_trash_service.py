@@ -133,19 +133,23 @@ class FavoriteTrashService:
 
     @staticmethod
     def restore(entity_type: str, ids: list):
-        """恢复（单个+批量统一入口；ID 统一在此转换，非法 ID 返回 400）。"""
+        """恢复（单个+批量统一入口）。
+
+        ID 转换按域区分：task/report 主键为 int，BFF 统一 int 化（非法 ID
+        返回 400）；testcase 主键为 String(50) UUID，原样字符串透传，
+        非法/不存在 ID 语义由服务层按恢复计数表达。
+        """
         entity_type = (entity_type or '').lower()
         if not ids:
             return {'code': 400, 'message': '缺少 ids'}
         try:
-            ids = [int(i) for i in ids]
             if entity_type == 'task':
-                resp = task_config_service.restore_tasks(ids)
+                resp = task_config_service.restore_tasks([int(i) for i in ids])
             elif entity_type == 'testcase':
                 resp = testcase_config_service.restore_testcases(ids)
             elif entity_type == 'report':
                 resp = _report_resp(report_config_service.stub.RestoreReports(
-                    report_pb.RestoreReportsRequest(report_ids=ids)))
+                    report_pb.RestoreReportsRequest(report_ids=[int(i) for i in ids])))
             else:
                 return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
             if not resp.get('success'):
@@ -159,23 +163,24 @@ class FavoriteTrashService:
 
     @staticmethod
     def purge(entity_type: str, ids: list):
-        """彻底删除（物理删除；ID 统一在此转换，非法 ID 返回 400）。
+        """彻底删除（物理删除）。
 
         权限：admin 放行整批；非 admin 逐行 owner 校验，非 owned 行跳过
         （purged_count 体现），全部不可 purge 返回 403。
+        ID 转换按域区分，同 restore：task/report int 化非法 400；
+        testcase 字符串透传（UUID 主键），非法 ID 语义交服务层。
         """
         entity_type = (entity_type or '').lower()
         if not ids:
             return {'code': 400, 'message': '缺少 ids'}
         try:
-            ids = [int(i) for i in ids]
             if entity_type == 'task':
-                resp = task_config_service.purge_tasks(ids)
+                resp = task_config_service.purge_tasks([int(i) for i in ids])
             elif entity_type == 'testcase':
                 resp = testcase_config_service.purge_testcases(ids)
             elif entity_type == 'report':
                 resp = _report_resp(report_config_service.stub.PurgeReports(
-                    report_pb.PurgeReportsRequest(report_ids=ids)))
+                    report_pb.PurgeReportsRequest(report_ids=[int(i) for i in ids])))
             else:
                 return {'code': 400, 'message': f'非法实体类型: {entity_type}'}
             if not resp.get('success'):
