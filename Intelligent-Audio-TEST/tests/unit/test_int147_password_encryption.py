@@ -105,3 +105,19 @@ class TestDecryptRoundTrip:
     def test_invalid_inputs_rejected(self, key_pair, key_path, ciphertext, kid):
         with pytest.raises(PasswordEncryptionError):
             PasswordEncryptionService.decrypt_password(ciphertext, kid, key_path)
+
+    def test_non_utf8_plaintext_rejected_as_encryption_error(
+            self, key_pair, key_path):
+        """审计 P4：OAEP 合法但明文为非 UTF-8 字节 → 收敛为
+        PasswordEncryptionError，不逃逸 UnicodeDecodeError（网关 500）。"""
+        public_pem, kid = key_pair
+        public_key = serialization.load_pem_public_key(public_pem.encode('utf-8'))
+        ciphertext = public_key.encrypt(
+            b'\xff\xfe\x00\x9c not-utf8 \x80',
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(), label=None),
+        )
+        with pytest.raises(PasswordEncryptionError):
+            PasswordEncryptionService.decrypt_password(
+                base64.b64encode(ciphertext).decode(), kid, key_path)

@@ -4,12 +4,16 @@
 对齐 DDD 重构方案第八章「auth_bp 路由」。
 登录/回调/登出/刷新/获取当前用户信息/登录密码加密公钥（INT-147）。
 """
+import logging
+
 from fastapi import APIRouter, Request, Form, Query
 from fastapi.responses import RedirectResponse, JSONResponse
 
 from api_gateway.application.services.auth.auth_service import AuthService
 from api_gateway.config.config import Config
 from api_gateway.routes._response import to_response
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,8 +34,10 @@ def encryption_key():
     try:
         public_key_pem, kid = PasswordEncryptionService.get_public_key_info(
             Config.AUTH_RSA_KEY_PATH)
-    except Exception as e:  # noqa: BLE001 — 密钥不可用收敛为 500，不暴露细节
-        return JSONResponse(status_code=500, content={'detail': str(e)})
+    except Exception:  # noqa: BLE001 — 密钥不可用收敛为 500，固定文案不暴露细节
+        logger.warning('登录加密公钥加载失败', exc_info=True)
+        return JSONResponse(status_code=500,
+                            content={'detail': '登录加密公钥不可用'})
     return to_response({'enabled': True, 'kid': kid, 'public_key': public_key_pem})
 
 

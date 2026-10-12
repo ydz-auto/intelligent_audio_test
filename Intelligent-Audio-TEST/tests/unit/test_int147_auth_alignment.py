@@ -203,6 +203,17 @@ def _token_for(user_id, username, role_id=1, permissions=None):
     return f'Bearer {token}'
 
 
+def _oauth_token_from_redirect(location: str) -> str:
+    """从回调成功跳转 {base}/#/login?oauth_token=... 提取 JWT。
+
+    注意 query 位于 # fragment 内（前端路由），urlparse().query 取不到。
+    """
+    from urllib.parse import parse_qs, urlparse
+    fragment = urlparse(location).fragment
+    qs = fragment.split('?', 1)[1] if '?' in fragment else ''
+    return parse_qs(qs)['oauth_token'][0]
+
+
 def _create_provider(client, headers, slug):
     resp = client.post('/api/v1/auth/oauth-providers', headers=headers,
                        json={'name': 'INT-147 绑定验收', 'slug': slug,
@@ -331,6 +342,27 @@ class TestPasswordEncryptionLogin:
             mp.undo()
 
 
+# ---- 审计 P3：公钥端点异常不回传 str(e) ----
+
+class TestEncryptionKeyErrorMasking:
+
+    def test_key_load_failure_returns_fixed_message(self, client):
+        """密钥路径不可加载 → 500 固定文案，异常细节只进日志。"""
+        from api_gateway.config.config import Config
+        # 以同名目录占位密钥文件路径，使加载必败（open(dir) 必抛）
+        block_dir = os.path.join(
+            tempfile.mkdtemp(prefix='int147_keyblk_'), 'auth_key.pem')
+        os.makedirs(block_dir)
+        mp = pytest.MonkeyPatch()
+        mp.setattr(Config, 'AUTH_RSA_KEY_PATH', block_dir)
+        try:
+            resp = client.get('/api/v1/auth/login/encryption-key')
+            assert resp.status_code == 500
+            assert resp.json() == {'detail': '登录加密公钥不可用'}
+        finally:
+            mp.undo()
+
+
 # ---- AC2：第三方账号绑定 ----
 
 @pytest.fixture(scope='module')
@@ -356,16 +388,21 @@ def binding_env(client):
     from api_gateway.application.services.auth.oauth_provider_service import (
         OAuthProviderService,
     )
+    slug = f'int147-bind-{run}'
     ticket = OAuthProviderService.sign_bind_ticket(
-        provider_id=provider_id, slug=f'int147-bind-{run}',
+        provider_id=provider_id, slug=slug,
         provider_user_id='ext-user-147', display_name='绑定验收')
     return {
         'admin_headers': admin_headers,
         'user1_headers': {'Authorization': _token_for(user1_id, username1)},
         'user2_headers': {'Authorization': _token_for(user2_id, username2)},
         'provider_id': provider_id,
+        'slug': slug,
         'ticket': ticket,
         'username1': username1,
+        'username2': username2,
+        'user1_id': user1_id,
+        'user2_id': user2_id,
     }
 
 
@@ -559,4 +596,154 @@ class TestFirstUserAdminPolicy:
             ).delete(synchronize_session=False)
             for row in snapshot:
                 session.add(User(**row))
+            session.commit()
+
+
+# ---- 审计 P1：绑定身份参与 OAuth 登录（绑定→登出→OAuth 登录回原账号）----
+
+class TestOAuthLoginRespectsBinding:
+    """绑定过的第三方身份 OAuth 登录必须命中原账号（INT-147 审计 P1）。
+
+    回归锁定：修复前 GetUserByOAuth 只查 users.oauth 字段，绑定表不参与
+    登录 → 第三方登录稳定建孤儿号、占用身份后自锁绑定。
+    """
+
+    def test_bound_identity_logs_back_into_original_account(
+            self, client, binding_env, monkeypatch):
+        from api_gateway.application.services.auth.oauth_provider_service import (
+            OAuthProviderService,
+        )
+        from api_gateway.application.services.auth.token_service import (
+            TokenService,
+        )
+        from api_gateway.domain.value_objects.auth_value_objects import UserInfo
+
+        # 前序解绑用例已移除绑定：重新绑定（bind 幂等，票据仍有效）
+        resp = client.post('/api/v1/auth/oauth/bindings',
+                           headers=binding_env['user1_headers'],
+                           json={'bind_ticket': binding_env['ticket']})
+        assert resp.status_code == 200, resp.text
+
+        slug = binding_env['slug']
+
+        def _fake_handle_callback(s, code, state, redirect_uri):
+            # 打桩免真实 IdP 往返；回传第三方身份 = 绑定身份 ext-user-147
+            assert s == slug
+            return UserInfo(username=binding_env['username1'],
+                            external_id='ext-user-147')
+
+        monkeypatch.setattr(OAuthProviderService, 'handle_callback',
+                            _fake_handle_callback)
+        # 「登出后」= 无登录态直调 IdP 回调（/oauth 前缀在免认证白名单内）
+        resp = client.get(
+            f'/api/v1/auth/oauth/{slug}/callback',
+            params={'code': 'auth-code-x',
+                    'state': OAuthProviderService._sign_state(slug)},
+            follow_redirects=False)
+        assert resp.status_code in (302, 307), resp.text
+        location = resp.headers['location']
+        assert 'oauth_error' not in location, location
+        payload = TokenService.verify(_oauth_token_from_redirect(location))
+        assert payload['user_id'] == binding_env['user1_id']
+        assert payload['username'] == binding_env['username1']
+
+    def test_unbound_identity_still_creates_own_account(
+            self, client, binding_env, monkeypatch):
+        """对照：未绑定身份走原路径（自定义提供方不合并、建独立账号）。"""
+        from api_gateway.application.services.auth.oauth_provider_service import (
+            OAuthProviderService,
+        )
+        from api_gateway.domain.value_objects.auth_value_objects import UserInfo
+
+        slug = binding_env['slug']
+        fresh_name = f"fresh-idp-{uuid.uuid4().hex[:8]}"
+
+        def _fake_handle_callback(s, code, state, redirect_uri):
+            return UserInfo(username=fresh_name,
+                            external_id='ext-brand-new')
+
+        monkeypatch.setattr(OAuthProviderService, 'handle_callback',
+                            _fake_handle_callback)
+        try:
+            resp = client.get(
+                f'/api/v1/auth/oauth/{slug}/callback',
+                params={'code': 'auth-code-y',
+                        'state': OAuthProviderService._sign_state(slug)},
+                follow_redirects=False)
+            assert resp.status_code in (302, 307), resp.text
+            assert 'oauth_error' not in resp.headers['location'], \
+                resp.headers['location']
+            from shared.models.database import get_db_session
+            from auth_service.infrastructure.persistence.models import User
+            session = get_db_session()
+            po = session.query(User).filter_by(oauth_id='ext-brand-new').first()
+            assert po is not None, '未绑定身份应新建独立账号'
+            assert po.oauth_provider == slug
+            assert po.username.startswith(fresh_name)
+        finally:
+            session = get_db_session()
+            session.query(User).filter_by(oauth_id='ext-brand-new').delete(
+                synchronize_session=False)
+            session.commit()
+
+
+class TestOAuthLookupServicerSemantics:
+    """servicer 直驱：绑定命中/字段回退语义与数据不一致收口。"""
+
+    def test_oauth_field_user_without_binding_still_found(self, svc):
+        """未绑定身份：users.oauth 字段查找保持可用（huawei 存量兼容）。"""
+        from shared.proto import auth_service_pb2 as auth_pb
+        from shared.utils.grpc_json import loads as grpc_loads
+        from shared.models.database import get_db_session
+        from auth_service.infrastructure.persistence.models import User
+        session = get_db_session()
+        marker = uuid.uuid4().hex[:8]
+        po = User(username=f'int147_legacy_{marker}', role_id=1,
+                  status='active', oauth_provider='huawei',
+                  oauth_id=f'legacy-ext-{marker}')
+        session.add(po)
+        session.commit()
+        try:
+            resp = svc.GetUserByOAuth(auth_pb.GetUserByOAuthRequest(
+                provider='huawei', subject=f'legacy-ext-{marker}'))
+            assert resp.success, resp.message
+            data = grpc_loads(resp.data, {}) or {}
+            assert data['username'] == f'int147_legacy_{marker}'
+        finally:
+            session.query(User).filter_by(id=po.id).delete(
+                synchronize_session=False)
+            session.commit()
+
+    def test_dangling_binding_rejected_not_silently_orphaned(self, svc):
+        """绑定行存在而用户缺失 → 显式失败（不得放行使网关另建孤儿号）。"""
+        from shared.proto import auth_service_pb2 as auth_pb
+        from shared.models.database import get_db_session
+        from auth_service.infrastructure.persistence.models import (
+            CustomOAuthProvider, UserOAuthBinding,
+        )
+        session = get_db_session()
+        marker = uuid.uuid4().hex[:8]
+        prov = CustomOAuthProvider(
+            name=f'ghost-{marker}', slug=f'ghost-{marker}',
+            client_id='cid', client_secret='sec',
+            authorize_url='https://x/authorize',
+            token_url='https://x/token',
+            userinfo_url='https://x/userinfo', enabled=True)
+        session.add(prov)
+        session.flush()
+        binding = UserOAuthBinding(user_id=2147483000,
+                                   provider_id=prov.id,
+                                   provider_user_id='ghost-subject')
+        session.add(binding)
+        session.commit()
+        try:
+            resp = svc.GetUserByOAuth(auth_pb.GetUserByOAuthRequest(
+                provider=f'ghost-{marker}', subject='ghost-subject'))
+            assert not resp.success
+            assert '绑定用户不存在' in resp.message
+        finally:
+            session.query(UserOAuthBinding).filter_by(id=binding.id).delete(
+                synchronize_session=False)
+            session.query(CustomOAuthProvider).filter_by(id=prov.id).delete(
+                synchronize_session=False)
             session.commit()

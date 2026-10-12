@@ -59,7 +59,8 @@ class PasswordEncryptionService:
         """解密前端提交的 RSA 密文（base64），返回明文密码。
 
         校验顺序：kid 一致 → base64 → 密文长度 = 密钥字节数 → OAEP 解密
-        → 非空。任一失败抛 PasswordEncryptionError。
+        → 非空 → UTF-8。任一失败抛 PasswordEncryptionError（INT-147 审计
+        P4：OAEP 合法但明文非 UTF-8 字节时不得逃逸 UnicodeDecodeError）。
         """
         if not ciphertext_b64 or not key_id:
             raise PasswordEncryptionError(
@@ -91,7 +92,11 @@ class PasswordEncryptionService:
         if not plaintext:
             raise PasswordEncryptionError(
                 'password encryption payload is invalid')
-        return plaintext.decode('utf-8')
+        try:
+            return plaintext.decode('utf-8')
+        except UnicodeDecodeError as exc:
+            raise PasswordEncryptionError(
+                'password encryption payload is invalid') from exc
 
     # ---- 内部方法 ----
 

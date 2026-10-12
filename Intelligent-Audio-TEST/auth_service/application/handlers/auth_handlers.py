@@ -665,7 +665,30 @@ class AuthQueryHandler:
     def handle_get_user_by_oauth(
         self, query: GetUserByOAuthQuery
     ) -> Optional[UserAggregate]:
-        """按 OAuth 提供商与外部主体 ID 查询用户聚合。"""
+        """按 OAuth 提供商与外部主体 ID 查询用户聚合。
+
+        查找顺序对齐旧库 OAuthService.find_or_create_user「首查绑定」
+        （INT-147 审计 P1：绑定的第三方身份必须参与 OAuth 登录，否则绑定
+        后登录稳定进孤儿账号且自锁）：
+        ① user_oauth_bindings (provider_id, provider_user_id)——slug 经
+           提供方仓储解析得 provider_id，命中即登录绑定账号；
+        ② 回退 users.oauth 字段查找（预置 huawei 存量兼容，未绑定身份照常命中）。
+        """
+        provider = oauth_provider_repository.get_by_slug(query.provider)
+        if provider is not None:
+            binding = oauth_binding_repository.get_by_provider_identity(
+                provider.id, query.subject)
+            if binding is not None:
+                bound_user = user_repository.get_by_id(binding.user_id)
+                if bound_user is None:
+                    # 绑定行存在而用户缺失属数据不一致（对齐旧库
+                    # 「绑定用户不存在」显式报错），不得静默放行使网关
+                    # 另建孤儿账号
+                    raise AuthDomainError(
+                        f'绑定用户不存在: binding_id={binding.id}',
+                        AuthErrorCode.USER_NOT_FOUND,
+                    )
+                return bound_user
         return user_repository.get_by_oauth(query.provider, query.subject)
 
     def handle_list_users(

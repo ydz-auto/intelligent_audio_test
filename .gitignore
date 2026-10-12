@@ -112,6 +112,10 @@ eval_server/app/database/tasks/
 eval_server/app/database/uploads/
 eval_server/app/database/endpoints.json
 
+# Runtime data - 登录密码加密 RSA 私钥（INT-147 审计 P2：任何 git add -A
+# 都不得把无加密 PKCS#8 私钥提交入库）
+Intelligent-Audio-TEST/data/
+
 # Runtime data - test results & ref params
 Intelligent-Audio-TEST/static/ref_params/
 Intelligent-Audio-TEST/static/case_result/
