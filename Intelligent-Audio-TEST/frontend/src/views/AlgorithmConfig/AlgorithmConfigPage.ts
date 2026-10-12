@@ -116,6 +116,18 @@ export function useAlgorithmConfigPage() {
     activeTab.value = 'detail'
   }
 
+  /** 复制=纯新建：剔除行级 id。副本载荷若携带源算法行 id，后端 _update_params/_update_case_params/
+   *  _update_mappings 的 id 对账分支按全局 id 取行且不校验归属，会改写源算法参数行而副本不产生
+   *  自己的行（INT-211）。维度关联不用行 id 对账（adapter 恒传 dimension_id），无需处理。 */
+  function stripRowIds(items: any[] | undefined | null): any[] | undefined | null {
+    if (!items) return items
+    return items.map((item: any) => {
+      const next = { ...item }
+      delete next.id
+      return next
+    })
+  }
+
   async function handleClone(record: AlgorithmDefinition) {
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '确认复制',
@@ -131,6 +143,17 @@ export function useAlgorithmConfigPage() {
       const cloneData: any = detail ? { ...detail } : { ...record }
       cloneData.type = `${record.type}_copy`
       cloneData.name = `${record.name} (副本)`
+      cloneData.deviceParams = stripRowIds(cloneData.deviceParams)
+      cloneData.apiParams = stripRowIds(cloneData.apiParams)
+      cloneData.caseParams = stripRowIds(cloneData.caseParams)
+      if (cloneData.mappings) {
+        cloneData.mappings = Object.fromEntries(
+          Object.entries(cloneData.mappings).map(([sourceType, list]) => [
+            sourceType,
+            stripRowIds(list as any[]),
+          ])
+        )
+      }
       await algorithmPort.createDefinition(cloneData)
       loadAlgorithms()
     } catch (error) {

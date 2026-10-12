@@ -133,6 +133,24 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
 
     # ========== 算法定义私有辅助 ==========
 
+    @staticmethod
+    def _assert_row_owner(row, algo_type: str, kind: str, row_id) -> None:
+        """id 对账分支的行归属校验：取到的行必须属于目标算法，跨算法 id 直接拒绝（INT-211）。
+
+        get_*_param / get_mapping 按全局 id 查行，不校验 algorithm_type 归属；
+        若调用方提交了其他算法的行 id（历史复制链路曾原样透传源算法行 id），
+        会静默改写他算法的行。此处硬失败使请求整体报错回滚，而非静默改写。
+        """
+        row_type = (
+            row.get('algorithm_type')
+            if isinstance(row, dict)
+            else getattr(row, 'algorithm_type', None)
+        )
+        if row_type != algo_type:
+            raise ValueError(
+                f"{kind} id={row_id} 属于算法 '{row_type}'，不属于 '{algo_type}'，拒绝跨算法更新"
+            )
+
     def _update_associated_dimensions(
         self, algo_type: str, dimensions_data: List[Dict]
     ) -> None:
@@ -197,6 +215,7 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
             if param_id:
                 param = get_param(param_id)
                 if param:
+                    self._assert_row_owner(param, algo_type, '参数', param_id)
                     submitted_ids.add(param_id)
                     update_fields = {
                         field: param_data[field]
@@ -263,6 +282,7 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
             if param_id:
                 param = self.repo.get_case_param(param_id)
                 if param:
+                    self._assert_row_owner(param, algo_type, '用例参数', param_id)
                     submitted_ids.add(param_id)
                     update_fields = {}
                     for field in case_param_fields:
@@ -326,6 +346,7 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
                 if mapping_id:
                     mapping = self.repo.get_mapping(mapping_id)
                     if mapping:
+                        self._assert_row_owner(mapping, algo_type, '映射', mapping_id)
                         submitted_ids.add(mapping_id)
                         update_data = {
                             field: mapping_data[field]
