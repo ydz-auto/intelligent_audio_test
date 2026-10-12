@@ -486,6 +486,16 @@ class TestDigitalSplRoutes:
         assert resp.status_code == 200
         assert fake.calls[-1] == ('delete', 3)
 
+    def test_get_all_list_passes_query_params(self, digital_spl_client):
+        """GET 列表：query 参数经 RequestAdapter(request.args) 正确传入 ACL（INT-150 回归）"""
+        client, fake = digital_spl_client
+        resp = client.get('/api/v1/digital-spl',
+                          params={'page': 2, 'per_page': 5},
+                          headers={'x-test-perms': 'digital_spl:read'})
+        assert resp.status_code == 200, resp.text
+        assert fake.calls[-1] == ('get_all', {'page': 2, 'per_page': 5,
+                                              'api_id': None, 'calibration_status': None})
+
     def test_calibrate_conflict_maps_to_409(self, digital_spl_client):
         """并发校准互斥：微服务 409 → 网关 HTTP 409 + ErrorCode.CONFLICT(204)"""
         client, fake = digital_spl_client
