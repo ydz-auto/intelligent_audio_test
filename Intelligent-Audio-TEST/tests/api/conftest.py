@@ -49,9 +49,40 @@ def _live_stack_gate():
     失败（INT-163 当轮 60+ 假失败）；栈不在跑时又整体 skip——同一命令两
     种结果，回归口径不稳。故默认一律 skip，实机验收显式
     `RUN_LIVE_STACK=1` 纳入（届时仍受 require_backend 版本标记约束）。
+
+    INT-246 测试/业务库隔离门禁：RUN_LIVE_STACK=1 时栈必须已切隔离测试库
+    （/health 的 database == intelligent_audio_test_test）。指向共享业务库
+    的栈一律 fail（写入型用例会把验收数据写进负责人业务库——本门禁与
+    tests/conftest.py 的会话守卫共同构成双保险）；栈未运行时维持既有 skip
+    语义。
     """
     if os.environ.get('RUN_LIVE_STACK', '') != '1':
         pytest.skip('RUN_LIVE_STACK!=1：实机栈用例不参与默认回归（tests/README.md 隔离规范）')
+
+    from shared.constants.database import (
+        ISOLATED_TEST_DB_NAME, SHARED_BUSINESS_DB_NAME,
+    )
+
+    try:
+        # trust_env=False: 忽略系统代理（Windows 注册表代理会劫持 localhost 请求）
+        r = httpx.get(HEALTH_URL, timeout=3, trust_env=False)
+    except Exception:
+        pytest.skip('实机栈未运行（/health 不可达），跳过 API 集成测试。')
+    body = {}
+    if r.status_code == 200 and r.headers.get('content-type', '').startswith('application/json'):
+        body = r.json()
+    db_name = body.get('database')
+    if db_name == SHARED_BUSINESS_DB_NAME:
+        pytest.fail(
+            'INT-246 测试隔离门禁：实机栈 /health 显示 database='
+            f"'{db_name}'（共享业务库），写入型验收禁止执行。请用 "
+            '`python run_all.py --test-db` 把整栈切到隔离测试库后重跑。')
+    if db_name != ISOLATED_TEST_DB_NAME:
+        pytest.fail(
+            'INT-246 测试隔离门禁：实机栈 /health 未报告隔离测试库 '
+            f"'{ISOLATED_TEST_DB_NAME}'（实际 database={db_name!r}；字段缺失"
+            '多为旧版栈），拒绝执行。请以本仓库代码经 '
+            '`python run_all.py --test-db` 重启栈。')
 
 
 @pytest.fixture(scope='session')

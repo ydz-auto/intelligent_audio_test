@@ -37,6 +37,24 @@ os.environ.setdefault(
         prefix='int55_proc_%s_' % (_XDIST_WORKER or 'main')
     ) + '/pytest.db')
 
+# ── INT-246 测试/业务库隔离守卫（会话级，控制器与每个 worker 各自生效）──
+# 生效 DATABASE_URL 指向共享业务库时拒绝整个 pytest 会话启动：宁可拒绝，
+# 绝不静默把测试行写进负责人业务库（INT-147 曾实证 shell 预置 DATABASE_URL
+# 后 setdefault 全失效、92 测试用户 + 27 测试提供方直写 dev 库；INT-246
+# 整改将此从「跑法约定」升级为「会话守卫」）。隔离测试库
+# intelligent_audio_test_test 与进程级 sqlite 兜底均不受影响；README 的
+# 「勿在 shell 预置 DATABASE_URL」由此获得机器强制兜底。
+from shared.constants.database import (  # noqa: E402
+    SHARED_BUSINESS_DB_NAME, database_name_of,
+)
+_EFFECTIVE_DB_NAME = database_name_of(os.environ['DATABASE_URL'])
+if _EFFECTIVE_DB_NAME == SHARED_BUSINESS_DB_NAME:
+    raise RuntimeError(
+        "INT-246 测试隔离守卫：当前 DATABASE_URL 指向共享业务库 "
+        f"'{_EFFECTIVE_DB_NAME}'，pytest 会话拒绝启动（测试禁止写入业务库）。"
+        "请清空 shell 中的 DATABASE_URL 后裸跑 pytest（conftest 兜底进程级"
+        "临时库），或显式指向隔离库 intelligent_audio_test_test。")
+
 # shared/proto 目录：*_pb2_grpc.py 使用裸导入 `import xxx_pb2`，
 # 需将 proto 目录加入 sys.path 才能解析。
 PROTO_DIR = os.path.join(PROJECT_ROOT, 'shared', 'proto')

@@ -164,8 +164,12 @@ def create_app(config_name='default') -> FastAPI:
     def health():
         # PLATFORM_VERSION 标记：tests/api 健康检查据此区分 V9.7.31 与同端口
         # 的 V9.7.10 单体版，避免跨版本误连产生假失败
+        # database 字段（INT-246）：tests/api 实机门禁据此校验栈已切隔离
+        # 测试库，禁止对共享业务库执行写入型验收
+        from shared.constants.database import database_name_of
         return {'status': 'ok', 'service': 'api_gateway',
-                'version': Config.PLATFORM_VERSION}
+                'version': Config.PLATFORM_VERSION,
+                'database': database_name_of(Config.DATABASE_URL)}
 
     return app
 

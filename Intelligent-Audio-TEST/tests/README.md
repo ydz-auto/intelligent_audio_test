@@ -62,11 +62,38 @@ worker 各自重跑 module fixture（全新种子库），凡测试间存在序�
 正常裸跑即可：`python -m pytest tests/unit/...`。conftest 会自行兜底进程
 级临时 sqlite 文件库，xdist worker 各得独立库。
 
+## 测试/业务库隔离（INT-246）
+
+共享业务库 `intelligent_audio_test` 是负责人数据所在库，**pytest 与 agent
+冒烟一律禁写**；集群另有隔离测试库 `intelligent_audio_test_test` 专供
+实机链路回归 / 集成冒烟 / 验收。库名常量唯一来源：
+`shared/constants/database.py`。
+
+- **pytest 会话守卫**（tests/conftest.py）：生效 DATABASE_URL 指向共享
+  业务库时整个会话拒绝启动（宁可拒绝，绝不静默写业务库）——上节「勿在
+  shell 预置」由此获得机器强制兜底。裸跑（sqlite 兜底）与显式指向隔离
+  测试库均放行。
+- **实机门禁**（tests/api/conftest.py + api_gateway /health 的 database
+  字段）：`RUN_LIVE_STACK=1` 时栈必须已切隔离测试库（database ==
+  intelligent_audio_test_test），指向共享库或缺字段（旧栈）一律 fail。
+- **实机冒烟标准流程**：
+  1. `python run_all.py --test-db` —— 整栈切隔离库起栈（库不存在自动建）
+  2. 需要种子时以 `DATABASE_URI` 指向隔离库重播 `scripts/migrations` 下
+     seed_*.py
+  3. `RUN_LIVE_STACK=1 python -m pytest tests/api -q`（或手动冒烟）
+  4. `python scripts/reset_test_db.py` —— 冒烟后清库（TRUNCATE 全表，
+     硬拒共享库名）
+- 共享库仅允许冒烟验收的**只读探测**与负责人手动操作；历史残留清理走
+  `scripts/migrations/202610/cleanup_int246_smoke_residue.py`（软删 =
+  回收站语义）。
+
 ## 实机栈用例（tests/api）
 
 - 默认全部 skip（`_live_stack_gate`），回归信号与栈启停解耦。
-- 实机验收：`RUN_LIVE_STACK=1 python -m pytest tests/api -q`（可叠加
-  `-n 8`，但注意用例间共享栈内业务数据，写入型用例以唯一后缀命名）。
+- 实机验收：`python run_all.py --test-db` 起栈后
+  `RUN_LIVE_STACK=1 python -m pytest tests/api -q`（可叠加 `-n 8`，但注意
+  用例间共享栈内业务数据，写入型用例以唯一后缀命名）；栈指向共享业务库
+  时门禁直接 fail（INT-246）。
 
 ## 新增用例 checklist
 

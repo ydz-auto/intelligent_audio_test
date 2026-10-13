@@ -599,6 +599,52 @@ def start_all():
     print("[INFO] Ctrl+C to stop all.", flush=True)
 
 
+def _apply_test_db_override():
+    """INT-246：--test-db 把整栈 DATABASE_URL 切到隔离测试库（幂等）。
+
+    共享业务库只允许负责人手动操作与冒烟只读探测；实机链路回归 / 集成
+    冒烟 / 验收一律 --test-db 起栈，冒烟后 scripts/reset_test_db.py 清库。
+    凭据/主机取自当前 DATABASE_URL（.env），仅替换库名；隔离库不存在时
+    自动创建（连接 postgres 管理库，幂等）。
+    """
+    from urllib.parse import urlsplit, urlunsplit
+    from shared.constants.database import (
+        ISOLATED_TEST_DB_NAME, database_name_of,
+    )
+
+    current = CHILD_ENV.get('DATABASE_URL', '')
+    if database_name_of(current) == ISOLATED_TEST_DB_NAME:
+        print("[TEST-DB] DATABASE_URL 已指向隔离测试库，无需切换。", flush=True)
+        return
+
+    parts = urlsplit(current)
+    if not parts.scheme.startswith('postgres'):
+        raise SystemExit(
+            "[TEST-DB] 当前 DATABASE_URL 非 Postgres（无法安全推导隔离库连接串），"
+            "请检查 .env。")
+    isolated_url = urlunsplit((parts.scheme, parts.netloc, '/' + ISOLATED_TEST_DB_NAME, '', ''))
+    admin_url = urlunsplit((parts.scheme, parts.netloc, '/postgres', '', ''))
+
+    import psycopg2
+    from psycopg2 import sql
+    conn = psycopg2.connect(admin_url, connect_timeout=5)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                sql.SQL('CREATE DATABASE {}').format(sql.Identifier(ISOLATED_TEST_DB_NAME)))
+            print(f"[TEST-DB] 已创建隔离测试库 {ISOLATED_TEST_DB_NAME}。", flush=True)
+    except psycopg2.errors.DuplicateDatabase:
+        print(f"[TEST-DB] 隔离测试库 {ISOLATED_TEST_DB_NAME} 已存在。", flush=True)
+    finally:
+        conn.close()
+
+    CHILD_ENV['DATABASE_URL'] = isolated_url
+    print(f"[TEST-DB] 整栈已切隔离测试库：{ISOLATED_TEST_DB_NAME}"
+          "（共享业务库本栈不可见；冒烟后请运行 scripts/reset_test_db.py 清库）",
+          flush=True)
+
+
 def stop_all():
     for p in reversed(processes):
         print(f"[STOP] {p['name']}...", flush=True)
@@ -613,6 +659,15 @@ def stop_all():
 
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='一键启动所有微服务（FastAPI + DDD 版）')
+    parser.add_argument(
+        '--test-db', action='store_true',
+        help='整栈切到隔离测试库（INT-246）：实机链路回归/集成冒烟/验收专用，'
+             '共享业务库本栈不可见；冒烟后用 scripts/reset_test_db.py 清库')
+    args = parser.parse_args()
+    if args.test_db:
+        _apply_test_db_override()
     try:
         start_all()
         while True:
