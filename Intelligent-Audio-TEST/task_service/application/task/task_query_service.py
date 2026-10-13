@@ -38,11 +38,12 @@ class TaskQueryService:
                    device_type=None, algorithm_type=None,
                    search=None, start_date=None, end_date=None,
                    favorite=False, deleted=False, user_id=None,
-                   evaluation_status=None) -> dict:
+                   evaluation_status=None, merged=False) -> dict:
         """获取任务列表（device_type 按用例级被测设备类型过滤，可选）。
 
         favorite（INT-141）：仅当前用户收藏；deleted（INT-141）：仅回收站。
         evaluation_status（INT-301）：按任务级评估状态过滤（与执行状态并列）。
+        merged（INT-298）：仅合并容器任务（对齐 V9.7.10 合并页签数据源）。
         """
         try:
             result = task_read_model.search_tasks(
@@ -51,7 +52,7 @@ class TaskQueryService:
                 algorithm_type=algorithm_type,
                 search=search, start_date=start_date, end_date=end_date,
                 favorite=favorite, deleted=deleted, user_id=user_id,
-                evaluation_status=evaluation_status,
+                evaluation_status=evaluation_status, merged=merged,
             )
             return {'success': True, 'message': '', 'data': result}
         except Exception as e:

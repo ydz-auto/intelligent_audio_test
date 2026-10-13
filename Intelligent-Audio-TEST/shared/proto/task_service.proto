@@ -204,6 +204,7 @@ message ListTasksRequest {
   bool favorite = 9;   // INT-141：仅当前用户收藏（x-user-id metadata）
   bool deleted = 10;   // INT-141：仅回收站（软删除项，含删除人/删除时间）
   string evaluation_status = 11;  // INT-301：按任务级评估状态过滤（pending/evaluating/completed/failed/skipped）
+  bool merged = 12;   // INT-298：仅合并容器任务（存在 TaskMergeRelation 的任务；对齐 V9.7.10 合并页签数据源）
 }
 message GetTaskDetailRequest {
   int32 task_id = 1;

@@ -16,7 +16,8 @@ const routes: Array<RouteRecordRaw> = [
   { path: '/APITest', name: 'apiTest', component: () => import('../views/APITest/APITest.vue'), meta: { permission: 'task:execute', title: 'API测试' } },
   { path: '/tasks', name: 'tasks', component: () => import('../views/Tasks/Tasks.vue'), meta: { permission: 'task:read', title: '测试任务记录' } },
   { path: '/tasks/:id(\\d+)', name: 'taskDetail', component: () => import('../views/Tasks/TaskDetailView.vue'), meta: { permission: 'task:read', title: '任务详情' } },
-  { path: '/published-tasks', name: 'publishedTasks', component: () => import('../views/PublishedTasks/PublishedTasks.vue'), meta: { permission: 'published_task:read', title: '已发布任务' } },
+  // INT-298：已发布任务并入任务页「已发布任务」页签；独立路由重定向保留旧链接/收藏夹兼容
+  { path: '/published-tasks', name: 'publishedTasks', redirect: { name: 'tasks', query: { tab: 'published' } } },
   { path: '/history-reports', name: 'historyReports', component: () => import('../views/HistoryReports/HistoryReports.vue'), meta: { permission: 'report:read', title: '历史报告' } },
   { path: '/test-reports', name: 'testReports', component: () => import('../views/TestReports/TestReports.vue'), meta: { permission: 'report:read', title: '测试报告' } },
   { path: '/report/:id', name: 'reportView', component: () => import('../views/ReportView/ReportView.vue'), meta: { permission: 'report:read', title: '报告查看' } },

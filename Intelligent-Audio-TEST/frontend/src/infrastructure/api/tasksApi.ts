@@ -36,6 +36,8 @@ export interface TaskListQuery {
   deleted?: boolean
   // INT-301：评估状态过滤（与执行状态并列）
   evaluationStatus?: string
+  // INT-298：merged=true 仅合并容器任务（对齐 V9.7.10 合并页签数据源）
+  merged?: boolean
 }
 
 /** camelCase 任务查询 → snake_case HTTP query（后端 TaskListQueryDto 契约） */
@@ -51,6 +53,8 @@ function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   if (query.deleted !== undefined) dto.deleted = query.deleted
   // INT-301：评估状态过滤
   if (query.evaluationStatus !== undefined) dto.evaluation_status = query.evaluationStatus
+  // INT-298：合并容器任务过滤
+  if (query.merged !== undefined) dto.merged = query.merged
   return dto
 }
 

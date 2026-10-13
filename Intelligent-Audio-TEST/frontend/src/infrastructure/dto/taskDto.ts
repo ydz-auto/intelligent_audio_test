@@ -186,6 +186,8 @@ export interface TaskListQueryDto {
   deleted?: boolean
   // INT-301：评估状态过滤（与执行状态并列）
   evaluation_status?: string
+  // INT-298：merged=true 仅合并容器任务（后端 TaskListQuery.merged）
+  merged?: boolean
 }
 
 // ===== 任务域全量聚合统计（GET /tasks/stats，INT-200）=====

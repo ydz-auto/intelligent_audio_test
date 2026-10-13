@@ -1,68 +1,6 @@
 <template>
-  <div class="published-tasks-view">
-    <!-- 页面标题 -->
-    <section class="page-header">
-      <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
-          <i class="fas fa-bookmark"></i>
-          已发布任务
-        </h2>
-        <p class="page-description">从日常任务发布、管理不可变版本快照，支持执行/归档/重命名</p>
-      </div>
-      <div class="header-right">
-        <button class="btn btn-primary" :disabled="pt.actionLoading" @click="openPublishModal">
-          <i class="fas fa-bookmark"></i> 发布任务
-        </button>
-      </div>
-    </section>
-
-    <!-- 筛选栏（徽章筛选，对齐全局筛选交互） -->
-    <section class="pt-filter-section">
-      <input
-        type="text"
-        class="pt-search-input"
-        placeholder="搜索任务名称、说明..."
-        v-model="pt.filters.keyword"
-        @input="handleFilterChange"
-      />
-      <BadgeFilter
-        :options="pt.statusOptions"
-        :model-value="pt.filters.status"
-        all-label="全部状态"
-        title="状态"
-        @update:model-value="handleStatusBadgeChange"
-      />
-      <!-- INT-148：任务类型 / 算法筛选（对齐 V9.7.10，服务端按发布冻结列过滤） -->
-      <BadgeFilter
-        :options="pt.typeOptions"
-        :model-value="pt.filters.type"
-        all-label="全部类型"
-        title="任务类型"
-        @update:model-value="handleTypeBadgeChange"
-      />
-      <AlgorithmFilter
-        :model-value="pt.filters.algorithmType"
-        title="算法筛选"
-        @update:model-value="handleAlgorithmBadgeChange"
-      />
-      <BadgeFilter
-        :options="TIME_RANGE_OPTIONS"
-        :model-value="pt.filters.timeRange"
-        all-label="全部时间"
-        title="时间"
-        @update:model-value="handleTimeRangeBadgeChange"
-      />
-      <div class="pt-filter-item pt-custom-range" v-if="pt.filters.timeRange === 'custom'">
-        <input type="date" v-model="pt.filters.customRange.start" @change="handleFilterChange" />
-        <span>至</span>
-        <input type="date" v-model="pt.filters.customRange.end" @change="handleFilterChange" />
-      </div>
-      <div class="pt-filter-item pt-sort-item" @click="pt.toggleSort('publishedAt')">
-        发布时间 <i class="fas" :class="sortIcon('publishedAt')"></i>
-      </div>
-    </section>
-
-    <!-- 列表 -->
+  <div class="published-task-panel">
+    <!-- 列表（筛选排序由 Tasks 页共享筛选栏承载，绑定同一 usePublishedTasks 实例） -->
     <section class="pt-list">
       <div v-if="pt.loading" class="pt-empty">加载中...</div>
       <div v-else-if="pt.items.length === 0" class="pt-empty">
@@ -90,19 +28,19 @@
             </div>
           </div>
           <div class="pt-card-actions">
-            <button class="btn btn-primary btn-sm" :disabled="ptItem.status === 'archived' || pt.actionLoading" @click="handleExecute(ptItem)">
+            <button v-if="can(PermissionPoint.PUBLISHED_TASK_EXECUTE)" class="btn btn-primary btn-sm" :disabled="ptItem.status === 'archived' || pt.actionLoading" @click="handleExecute(ptItem)">
               <i class="fas fa-play"></i> 执行
             </button>
             <button class="btn btn-secondary btn-sm" :disabled="pt.actionLoading" @click="toggleDetail(ptItem)">
               <i class="fas fa-history"></i> {{ expandedId === ptItem.id ? '收起' : '版本' }}
             </button>
-            <button class="btn btn-secondary btn-sm" :disabled="ptItem.status === 'archived' || pt.actionLoading" @click="handleCreateVersion(ptItem)">
+            <button v-if="can(PermissionPoint.PUBLISHED_TASK_VERSION)" class="btn btn-secondary btn-sm" :disabled="ptItem.status === 'archived' || pt.actionLoading" @click="handleCreateVersion(ptItem)">
               <i class="fas fa-plus-circle"></i> 新版本
             </button>
             <button class="btn btn-secondary btn-sm" :disabled="pt.actionLoading" @click="handleRename(ptItem)">
               <i class="fas fa-edit"></i> 重命名
             </button>
-            <button class="btn btn-danger btn-sm" :disabled="ptItem.status === 'archived' || pt.actionLoading" @click="handleArchive(ptItem)">
+            <button v-if="can(PermissionPoint.PUBLISHED_TASK_ARCHIVE)" class="btn btn-danger btn-sm" :disabled="ptItem.status === 'archived' || pt.actionLoading" @click="handleArchive(ptItem)">
               <i class="fas fa-archive"></i> 归档
             </button>
           </div>
@@ -239,6 +177,14 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * PublishedTaskPanel —— 已发布任务面板（INT-298：迁入 Tasks 页「已发布任务」页签）。
+ *
+ * 能力与原独立页 PublishedTasks.vue 完全一致（发布弹窗 / 版本链 / 冻结报告快照
+ * ReportSnapshotModal / 冻结任务详情 TaskSnapshotModal / benchmark 勾选 / 执行跳转），
+ * 视图内功能不降级；筛选状态由宿主（Tasks 页共享筛选栏）注入的 usePublishedTasks
+ * 实例承载。操作按钮按权限点显隐（对齐 V9.7.10）。
+ */
 import { ref, computed, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { usePublishedTasks, PublishedTaskStatusEnum } from '../../composables/publishedTask/usePublishedTasks';
@@ -246,20 +192,25 @@ import { tasksPort } from '../../composables/task/tasksPort';
 import { useNotification } from '../../composables/modal/useNotification';
 import { useModalControl } from '../../composables/modal/useModal';
 import { MODAL_TYPES } from '../../composables/modal/constants';
-import { BenchmarkCategoryLabels, type BenchmarkCategoryType } from '../../domain/enums';
+import { useAuthStore } from '../../store/authStore';
+import { BenchmarkCategoryLabels, type BenchmarkCategoryType, PermissionPoint } from '../../domain/enums';
 import type { Task } from '../../domain/model/task';
 import type { PublishedTaskItem } from '../../domain/model/publishedTask';
 import PublishTaskModal from '../../components/published-task/PublishTaskModal.vue';
 import ReportSnapshotModal from '../../components/published-task/ReportSnapshotModal.vue';
 import TaskSnapshotModal from '../../components/published-task/TaskSnapshotModal.vue';
 import PublishedTaskNameModal from '../../components/published-task/PublishedTaskNameModal.vue';
-import BadgeFilter from '../../components/common/BadgeFilter.vue';
-import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
+
+const props = defineProps<{
+  /** 宿主注入的已发布任务 Application 状态（Tasks 页共享筛选栏与面板同源） */
+  pt: ReturnType<typeof usePublishedTasks>;
+}>();
 
 const router = useRouter();
-const pt = usePublishedTasks();
+const pt = props.pt;
 const notification = useNotification();
 const modal = useModalControl();
+const { hasPermission: can } = useAuthStore();
 
 const expandedId = ref<number | null>(null);
 const publishModalVisible = ref(false);
@@ -267,15 +218,6 @@ const presetSourceTaskId = ref<number | null>(null);
 const reportSnapshotOpen = ref(false);
 const taskSnapshotOpen = ref(false);
 const dailyTasks = ref<Task[]>([]);
-
-// ===== 筛选选项（组件级 UI 常量）=====
-const TIME_RANGE_OPTIONS = [
-  { value: 'today', label: '今日' },
-  { value: 'yesterday', label: '昨日' },
-  { value: 'week', label: '近7天' },
-  { value: 'month', label: '近30天' },
-  { value: 'custom', label: '自定义' },
-];
 
 // ===== 命名弹窗状态（重命名 / 新版本共用）=====
 const nameModal = reactive({
@@ -333,26 +275,6 @@ async function handleNameModalConfirm({ name }: { name: string }) {
   }
 }
 
-function handleStatusBadgeChange(value: string | number) {
-  pt.filters.status = String(value);
-  handleFilterChange();
-}
-
-function handleTypeBadgeChange(value: string | number) {
-  pt.filters.type = String(value);
-  handleFilterChange();
-}
-
-function handleAlgorithmBadgeChange(value: string | number) {
-  pt.filters.algorithmType = String(value);
-  handleFilterChange();
-}
-
-function handleTimeRangeBadgeChange(value: string | number) {
-  pt.filters.timeRange = String(value);
-  handleFilterChange();
-}
-
 const sourceTaskId = computed(() =>
   pt.detail?.sourceTaskId ?? (pt.detail?.snapshotConfig as any)?.sourceTaskId ?? null
 );
@@ -372,16 +294,6 @@ const benchmarkInfo = computed(() => {
     categoryLabel: category ? (BenchmarkCategoryLabels[category as BenchmarkCategoryType] ?? category) : '',
   };
 });
-
-function handleFilterChange() {
-  pt.page = 1;
-  pt.fetchList();
-}
-
-function sortIcon(field: string): string {
-  if (pt.filters.sort.field !== field) return 'fa-sort';
-  return pt.filters.sort.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down';
-}
 
 function statusText(status: string): string {
   const map: Record<string, string> = {
@@ -412,6 +324,7 @@ function formatPassRate(val?: number | null): string {
 
 // ---------- 发布 ----------
 
+/** 打开发布弹窗（INT-298：由 Tasks 页头部/工具栏入口调用，expose 供宿主触发） */
 async function openPublishModal() {
   presetSourceTaskId.value = null;
   // 拉取日常任务作为来源候选（可发布状态由弹窗过滤）
@@ -564,30 +477,13 @@ function handleRename(ptItem: PublishedTaskItem) {
 onMounted(() => {
   pt.fetchList();
 });
+
+defineExpose({ openPublishModal });
 </script>
 
 <style scoped>
-.published-tasks-view {
-  padding: 4px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-}
-
-.page-description {
-  margin: 4px 0 0;
-  color: var(--foreground-muted, #6b7280);
-  font-size: 13px;
+.published-task-panel {
+  padding: 0;
 }
 
 .btn {
@@ -635,53 +531,6 @@ onMounted(() => {
 
 .btn-danger:hover {
   background-color: #fecaca;
-}
-
-/* 筛选栏类名统一 pt- 前缀：规避全局 .filter-section{height:40px}/.search-input/.filter-item{width:100%}
-   （main.css 全局注入的 test-case-manager/comparison-common/common 样式）对页面布局的串扰 */
-.pt-filter-section {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--background-primary, #fff);
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 8px;
-  margin-bottom: 16px;
-}
-
-.pt-search-input {
-  flex: 1;
-  min-width: 200px;
-  padding: 7px 10px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.pt-filter-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #4b5563;
-}
-
-.pt-custom-range input {
-  padding: 5px 8px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 12px;
-}
-
-.pt-sort-item {
-  cursor: pointer;
-  user-select: none;
-}
-
-.pt-sort-item:hover {
-  color: var(--primary-color, #ff6a00);
 }
 
 .pt-list {

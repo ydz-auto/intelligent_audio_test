@@ -93,8 +93,17 @@ export function useTasks() {
     await listModule.applyFilters();
   };
 
-  const handleTaskAction = async (payload: { action: string; task: any }) => {
-    if (payload.action === 'favorite' || payload.action === 'unfavorite') {
+  /**
+   * INT-298：action 归一化——TaskCard/TaskListWithPagination 事件载荷的 action 为
+   * 操作对象（{id,...}），协调层直调（单测/合并面板源行）传 id 字符串，统一取 id 判定。
+   * 修复 INT-215 起行内 favorite/restore/purge 因对象≠字符串恒假而落入无分支的回归。
+   */
+  const actionIdOf = (action: any): string =>
+    typeof action === 'string' ? action : (action?.id ?? '');
+
+  const handleTaskAction = async (payload: { action: any; task: any }) => {
+    const actionId = actionIdOf(payload.action);
+    if (actionId === 'favorite' || actionId === 'unfavorite') {
       try {
         await favoritesModule.toggleFavorite(payload.task.id);
         notification.success(favoritesModule.isFavorite(payload.task.id) ? '已收藏' : '已取消收藏');
@@ -103,7 +112,7 @@ export function useTasks() {
       }
       return;
     }
-    if (payload.action === 'restore') {
+    if (actionId === 'restore') {
       try {
         const result = await favoritesModule.restore([payload.task.id]);
         const restored = result?.restored_count ?? 0;
@@ -118,7 +127,7 @@ export function useTasks() {
       }
       return;
     }
-    if (payload.action === 'purge') {
+    if (actionId === 'purge') {
       const name = payload.task?.name ?? payload.task?.id;
       let confirmed = false;
       try {

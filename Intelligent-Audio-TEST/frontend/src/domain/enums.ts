@@ -296,3 +296,20 @@ export function getEffectiveAuthMode(
 ): AuthModeType {
   return (readEnv() || AuthMode.OFF) as AuthModeType
 }
+
+/** 权限点（INT-298，对齐 V9.7.10 / 后端 RBAC seed「资源:操作」命名；值 = 后端 PermissionPoints 原值，禁止改动值） */
+export const PermissionPoint = {
+  /** 发布已发布任务（POST /published-tasks） */
+  TASK_PUBLISH: 'task:publish',
+  /** 查看已发布任务 */
+  PUBLISHED_TASK_READ: 'published_task:read',
+  /** 执行已发布任务 */
+  PUBLISHED_TASK_EXECUTE: 'published_task:execute',
+  /** 创建已发布任务新版本 */
+  PUBLISHED_TASK_VERSION: 'published_task:version',
+  /** 归档已发布任务 */
+  PUBLISHED_TASK_ARCHIVE: 'published_task:archive',
+} as const
+
+/** 权限点类型（由 PermissionPoint 派生） */
+export type PermissionPointValue = typeof PermissionPoint[keyof typeof PermissionPoint]

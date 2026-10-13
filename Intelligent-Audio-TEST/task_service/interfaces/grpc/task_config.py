@@ -114,6 +114,8 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
                 user_id=user_id_from_context(context),
                 # INT-301：评估状态过滤（与执行状态并列）
                 evaluation_status=request.evaluation_status or None,
+                # INT-298：仅合并容器任务（对齐 V9.7.10 合并页签数据源）
+                merged=request.merged,
             )
             return self._resp(self.qry.handle_list_tasks_config(query))
         except Exception as e:

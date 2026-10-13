@@ -145,12 +145,13 @@ class _TaskConfigProxy:
 
     def list_tasks(self, page=1, per_page=10, status=None, device_type=None,
                    algorithm_type=None, search=None, start_date=None, end_date=None,
-                   favorite=False, deleted=False, evaluation_status=None):
+                   favorite=False, deleted=False, evaluation_status=None, merged=False):
         """任务列表（device_type 经 proto type 字段承载：按用例级被测设备类型过滤）
 
         favorite/deleted（INT-141）：收藏/回收站过滤；操作人 user_id 经
         x-user-id metadata 自动透传（ClientUserContextInterceptor）。
         evaluation_status（INT-301）：按任务级评估状态过滤（与执行状态并列）。
+        merged（INT-298）：仅合并容器任务（对齐 V9.7.10 合并页签数据源）。
         """
         from shared.proto import task_service_pb2 as task_pb
 
@@ -168,6 +169,7 @@ class _TaskConfigProxy:
                 favorite=bool(favorite),
                 deleted=bool(deleted),
                 evaluation_status=evaluation_status or '',
+                merged=bool(merged),
             ))
             return self._resp(resp)
 

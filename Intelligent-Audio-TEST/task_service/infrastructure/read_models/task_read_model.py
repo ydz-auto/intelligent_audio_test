@@ -109,7 +109,8 @@ class TaskReadModel(
                      favorite: bool = False,
                      deleted: bool = False,
                      user_id: Optional[int] = None,
-                     evaluation_status: Optional[str] = None) -> Dict[str, Any]:
+                     evaluation_status: Optional[str] = None,
+                     merged: bool = False) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
         device_type（可选）：按用例级被测设备类型过滤（任务下存在该类型用例）。
@@ -117,6 +118,8 @@ class TaskReadModel(
         deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
         evaluation_status（可选，INT-301）：按任务级评估状态过滤（与执行状态
             过滤并列；复用派生表达式，展示与筛选口径一致）。
+        merged（可选，INT-298）：仅合并容器任务（存在 TaskMergeRelation 的任务；
+            task.type 已废弃，合并容器以关系表存在性判定，对齐 V9.7.10 合并页签）。
         """
         from datetime import datetime
         from sqlalchemy import select as sa_select
@@ -131,6 +134,13 @@ class TaskReadModel(
                 Task.deleted == (True if deleted else False))  # noqa: E712
             if status:
                 query = query.filter(Task.status == status)
+            if merged:
+                # INT-298：合并容器任务（TaskMergeRelation.merged_task_id 命中即容器）
+                from task_service.infrastructure.persistence.models import TaskMergeRelation
+                query = query.filter(sa_select(TaskMergeRelation.id)
+                                     .where(TaskMergeRelation.merged_task_id == Task.id)
+                                     .correlate(Task)
+                                     .exists())
             if device_type:
                 from task_service.infrastructure.persistence.models import TaskCase
                 # SQLAlchemy 2.0：exists() 不再接受 Query，改用 select().exists()
