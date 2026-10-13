@@ -1,22 +1,22 @@
 <template>
-  <div class="report-view-page">
+  <div class="rv-report-view-page">
     <!-- Toast 提示 -->
     <teleport to="#global-fixed-elements">
-      <div v-if="toast" class="toast-container" :class="`toast-${toast.type}`">
+      <div v-if="toast" class="rv-toast-container" :class="`rv-toast-${toast.type}`">
         <i :class="toast.type === 'success' ? 'fas fa-check-circle' : toast.type === 'error' ? 'fas fa-exclamation-circle' : toast.type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'"></i>
         <span>{{ toast.message }}</span>
       </div>
     </teleport>
 
-    <div v-if="loading" class="loading-state">
-      <div class="loading-spinner"></div>
+    <div v-if="loading" class="rv-loading-state">
+      <div class="rv-loading-spinner"></div>
       <p>正在加载报告...</p>
     </div>
 
-    <div v-else-if="error" class="error-state">
+    <div v-else-if="error" class="rv-error-state">
       <h2>加载失败</h2>
       <p>{{ error }}</p>
-      <button class="btn-primary" @click="goBack">返回</button>
+      <button class="rv-btn-primary" @click="goBack">返回</button>
     </div>
 
     <!-- 任务报告类型 -->
@@ -56,22 +56,22 @@
       @update:report-conclusion="report.conclusion = $event"
     />
 
-    <div v-else class="empty-state">
+    <div v-else class="rv-empty-state">
       <h2>未找到报告</h2>
       <p>请提供有效的报告ID</p>
-      <button class="btn-primary" @click="goToHistoryReports">查看历史报告</button>
+      <button class="rv-btn-primary" @click="goToHistoryReports">查看历史报告</button>
     </div>
 
     <!-- 底部浮动操作按钮 -->
     <teleport to="#global-fixed-elements" v-if="report">
       <div id="floating-report-actions" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; gap: 16px; z-index: 9999; padding: 16px 24px; background: rgba(255, 255, 255, 0.95); border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8);">
-        <button class="btn btn-primary" @click="saveReport">
+        <button class="rv-btn rv-btn-primary" @click="saveReport">
           <i class="fas fa-save"></i> 保存
         </button>
-        <button class="btn btn-success" @click="publishReport" v-if="report.status === ReportStatus.DRAFT">
+        <button class="rv-btn rv-btn-success" @click="publishReport" v-if="report.status === ReportStatus.DRAFT">
           <i class="fas fa-paper-plane"></i> 发布
         </button>
-        <button class="btn btn-secondary" @click="goBack">
+        <button class="rv-btn rv-btn-secondary" @click="goBack">
           <i class="fas fa-times"></i> 关闭
         </button>
       </div>
@@ -79,27 +79,27 @@
 
     <!-- 右侧浮动操作按钮 -->
     <teleport to="#global-fixed-elements">
-      <div class="floating-actions" v-if="report">
-        <button class="action-btn" @click="copyLink" title="分享链接">
+      <div class="rv-floating-actions" v-if="report">
+        <button class="rv-action-btn" @click="copyLink" title="分享链接">
           <i class="fas fa-share-alt"></i>
         </button>
-        <div class="export-dropdown-wrapper">
-          <button class="action-btn" @click="toggleExportMenu" title="导出">
+        <div class="rv-export-dropdown-wrapper">
+          <button class="rv-action-btn" @click="toggleExportMenu" title="导出">
             <i class="fas fa-download"></i>
           </button>
-          <div class="export-dropdown" v-if="showExportMenu">
-            <button class="export-menu-item" @click="exportHtml">
+          <div class="rv-export-dropdown" v-if="showExportMenu">
+            <button class="rv-export-menu-item" @click="exportHtml">
               <i class="fas fa-file-code"></i>
               <span>导出 HTML</span>
             </button>
-            <button class="export-menu-item" @click="exportReport">
+            <button class="rv-export-menu-item" @click="exportReport">
               <i class="fas fa-file-export"></i>
               <span>导出 JSON</span>
             </button>
           </div>
         </div>
       </div>
-      <div v-if="copySuccess" class="copy-toast">
+      <div v-if="copySuccess" class="rv-copy-toast">
         <i class="fas fa-check"></i> 链接已复制
       </div>
     </teleport>
@@ -374,10 +374,11 @@ onUnmounted(() => {
 
 const closeExportMenuOnOutsideClick = (e: MouseEvent) => {
   const target = e.target as HTMLElement
-  if (showExportMenu.value && !target.closest('.export-dropdown-wrapper')) {
+  if (showExportMenu.value && !target.closest('.rv-export-dropdown-wrapper')) {
     showExportMenu.value = false
   }
 }
 </script>
 
+<!-- INT-278：页面样式走 rv- 前缀命名空间隔离（同 INT-250 pt-/INT-277 tg- 方案），禁止裸 .btn/.loading-state/.empty-state 等全站通用类名全局注入污染其他页面 -->
 <style src="./reportView.css"></style>

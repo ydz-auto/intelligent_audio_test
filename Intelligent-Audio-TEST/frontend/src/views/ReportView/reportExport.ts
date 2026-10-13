@@ -11,12 +11,12 @@ const EXPORT_CSS_RESET = `/* Reset */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { background: #fff; }
 @media print {
-  .floating-actions, .export-dropdown-wrapper { display: none !important; }
+  .rv-floating-actions, .rv-export-dropdown-wrapper { display: none !important; }
   .report-section, .task-report-panel { break-inside: avoid; }
 }
 body { padding: 0; }
-.report-view-page { margin: 0; padding: 0; width: 100% !important; }
-.task-report-panel, .comparison-report-container { max-width: 100% !important; }
+.rv-report-view-page { margin: 0; padding: 0; width: 100% !important; }
+.task-report-panel, .rv-comparison-report-container { max-width: 100% !important; }
 .report-layout { max-width: 1200px; margin: 0 auto; }
 canvas, svg { max-width: 100%; }
 .collapse-btn, .case-header, .section-header { cursor: pointer; }
@@ -39,13 +39,13 @@ export const generateExportZip = async (reportTitle: string): Promise<Blob> => {
   const zip = new JSZip()
 
   // ---------- 1. 捕获 DOM ----------
-  const reportEl = document.querySelector('.task-report-panel') || document.querySelector('.comparison-report-container') || document.querySelector('.report-view-page')
+  const reportEl = document.querySelector('.task-report-panel') || document.querySelector('.rv-comparison-report-container') || document.querySelector('.rv-report-view-page')
   if (!reportEl) throw new Error('未找到报告内容')
 
   const clone = reportEl.cloneNode(true) as HTMLElement
 
   // 移除不需要的元素
-  clone.querySelectorAll('.floating-actions, .export-dropdown-wrapper, .analysis-actions .btn, .edit-btn, .save-btn, .cancel-btn, .publish-btn, .download-log-btn, .unpin-btn').forEach(el => el.remove())
+  clone.querySelectorAll('.rv-floating-actions, .rv-export-dropdown-wrapper, .rv-analysis-actions .rv-btn, .edit-btn, .save-btn, .cancel-btn, .publish-btn, .download-log-btn, .unpin-btn').forEach(el => el.remove())
   clone.querySelectorAll('.modal-overlay, .download-loading-overlay').forEach(el => el.remove())
 
   // 用例详情默认折叠（移除 details 内容，保留 header 可点击展开）
