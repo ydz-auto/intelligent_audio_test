@@ -273,9 +273,11 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                     )
 
                     # INT-174：登记在途评估任务（方案A 依据——重新评估提交前按
-                    # task_id 摘除并取消旧评估）
+                    # task_id 摘除并取消旧评估）；INT-308：携带 test_case_id
+                    # 支持执行中删除用例/任务停止的 case 级取消
                     from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
-                    eval_task_registry.register(eval_task_id, task_id, selected_url)
+                    eval_task_registry.register(eval_task_id, task_id, selected_url,
+                                                test_case_id=test_case_id)
 
                     # 2. 等待任务完成
                     result_response = self.wait_for_task_completion(

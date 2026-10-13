@@ -43,6 +43,7 @@ class EventType(str, Enum):
     # 用例级
     CASE_EXECUTION_COMPLETED = 'case_execution_completed'
     CASE_EVALUATION_COMPLETED = 'case_evaluation_completed'
+    CASE_EVALUATION_CANCELLED = 'case_evaluation_cancelled'  # 评估取消审计（INT-308：执行中删除用例/任务停止联动取消评估）
     CASE_FAILED = 'case_failed'
     CASE_BATCH_ACTION_COMPLETED = 'case_batch_action_completed'  # 用例批量操作完成/异步提交（INT-75）
     # 设备级

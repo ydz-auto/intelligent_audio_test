@@ -280,10 +280,10 @@ class WsClientStub:
     def mark_commit(self):
         pass
 
-    def wait_ai_complete(self, start_timeout=None, end_timeout=None):
+    def wait_ai_complete(self, start_timeout=None, end_timeout=None, stop_check=None):
         return True
 
-    def wait_ai_speaking(self, start_timeout=None):
+    def wait_ai_speaking(self, start_timeout=None, stop_check=None):
         return True
 
     def recv(self, timeout=None):

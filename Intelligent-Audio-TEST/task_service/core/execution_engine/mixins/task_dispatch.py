@@ -30,7 +30,7 @@ class TaskDispatchMixin:
             task_id=task_id, execution_status=ExecutionStatus.PENDING
         ).order_by(TaskCase.created_at.asc()).first()
 
-    def _handle_no_pending_case(self, task_id, task, session):
+    def _handle_no_pending_case(self, task_id, task, session, stop_event=None):
         """没有待执行用例时的处理，返回 True 表示需要继续循环"""
         if not self._task_uses_api_async(task_id, task, session):
             self._log(level='INFO', content=f"任务 {task_id} 所有用例执行完成，退出主循环", task_id=task_id)
@@ -42,7 +42,8 @@ class TaskDispatchMixin:
         if in_progress > 0 or evaluating > 0:
             session.close()
             # INT-120：退避等待 + 评估挂起超时仲裁（日志节流与任务收敛防御）
-            self._wait_active_cases_with_backoff(task_id)
+            # INT-308：stop_event 透传，等待可被停止中断
+            self._wait_active_cases_with_backoff(task_id, stop_event=stop_event)
             return True
 
         self._log(level='INFO', content=f"任务 {task_id} 所有用例执行完成，退出主循环", task_id=task_id)

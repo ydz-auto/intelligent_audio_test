@@ -77,9 +77,11 @@ def _reset_registry():
     """隔离 EvalTaskRegistry 类级状态（注册表为进程级单例）"""
     EvalTaskRegistry._entries = {}
     EvalTaskRegistry._cancelled = {}
+    EvalTaskRegistry._cancelled_cases = {}
     yield
     EvalTaskRegistry._entries = {}
     EvalTaskRegistry._cancelled = {}
+    EvalTaskRegistry._cancelled_cases = {}
 
 
 # ==================== 1. eval_task_registry：方案A 摘除与隔离 ====================

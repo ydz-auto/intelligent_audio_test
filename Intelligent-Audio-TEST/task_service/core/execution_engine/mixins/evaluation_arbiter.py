@@ -112,12 +112,13 @@ class EvaluationArbiterMixin:
 
     # ---- 主循环等待路径（task_dispatch._handle_no_pending_case 调用） ----
 
-    def _wait_active_cases_with_backoff(self, task_id):
+    def _wait_active_cases_with_backoff(self, task_id, stop_event=None):
         """主循环等待执行中/评估中用例：退避轮询 + 挂起仲裁（INT-120）。
 
         替代原先每轮固定日志 + 固定间隔的忙等：日志跟随 wait_max_interval
         节流（挂起场景同 logger 5 分钟 < 20 条），间隔倍增封顶；事件通知
         到达时等待提前返回，正常路径不受影响。
+        INT-308：stop_event 透传给等待点，任务停止时等待立即中断。
         """
         state = self._get_wait_state(task_id)
         snapshot = self._active_cases_snapshot(task_id)
@@ -133,7 +134,7 @@ class EvaluationArbiterMixin:
             return
 
         self._log_active_wait(task_id, exec_active, eval_active, silent_seconds, state)
-        self._wait_completion_event(task_id, timeout=state['interval'])
+        self._wait_completion_event(task_id, timeout=state['interval'], stop_event=stop_event)
         state['interval'] = min(state['interval'] * 2, self.wait_max_interval)
 
     def _arbitrate_on_hang(self, task_id, exec_active, eval_active, silent_seconds):

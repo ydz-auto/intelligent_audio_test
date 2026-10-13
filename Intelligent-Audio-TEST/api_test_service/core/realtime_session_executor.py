@@ -267,8 +267,10 @@ class RealtimeSessionExecutor:
             time.sleep(chunk_ms / 1000.0)
 
         client.commit_input()
+        # INT-308 停止传播：等 AI 回复期间检查任务停止，停止时立即中断等待
         complete = client.wait_ai_complete(start_timeout=ai_start_timeout,
-                                           end_timeout=ai_complete_timeout)
+                                           end_timeout=ai_complete_timeout,
+                                           stop_check=lambda: self._executor._is_task_stopped(task_id))
         latency = round(time.time() - start_time, 3)
         output = client.output
 
@@ -299,8 +301,10 @@ class RealtimeSessionExecutor:
             round_config.get('interruption_delay_ms')
             or self._cfg('interruption_delay_ms', 1000))
 
-        # ① 等 AI 开始说话
-        ai_started = client.wait_ai_speaking(start_timeout=ai_start_timeout)
+        # ① 等 AI 开始说话（INT-308：等待期间检查任务停止）
+        ai_started = client.wait_ai_speaking(
+            start_timeout=ai_start_timeout,
+            stop_check=lambda: self._executor._is_task_stopped(task_id))
         before_size = len(client.output['audio'])
         if not ai_started:
             return {'round_number': round_number,
@@ -340,11 +344,13 @@ class RealtimeSessionExecutor:
         at_window_end_size = len(client.output['audio'])
         barge_in_detected = client.output['barge_in_detected']
 
-        # ⑤ 打断成功则等 AI 重新回复
+        # ⑤ 打断成功则等 AI 重新回复（INT-308：等待期间检查任务停止）
         renewed = False
         if barge_in_detected:
-            renewed = client.wait_ai_complete(start_timeout=ai_start_timeout,
-                                              end_timeout=ai_complete_timeout)
+            renewed = client.wait_ai_complete(
+                start_timeout=ai_start_timeout,
+                end_timeout=ai_complete_timeout,
+                stop_check=lambda: self._executor._is_task_stopped(task_id))
 
         # 打断后音频量 = 重新回复部分（整轮累计扣除打断窗口结束时已有量）
         after_size = max(len(client.output['audio']) - at_window_end_size, 0)

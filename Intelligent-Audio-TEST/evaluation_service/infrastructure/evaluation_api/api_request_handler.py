@@ -23,12 +23,21 @@ class EvalTaskRegistry:
     - pop_by_task(task_id)：重新评估提交前按应用任务 ID 摘除全部在途条目并标记
       取消 —— 被摘除的旧评估任务，其结果到达后被消费方幂等忽略，不污染新评估
       结果（方案A），并携带 endpoint_url 供调用方通知子服务真正取消（方案B）。
+
+    INT-308 新增 case 级取消：
+    - register 增加 test_case_id 登记；
+    - cancel_by_case(task_id, test_case_id)：执行中删除用例/任务停止时按
+      (task_id, test_case_id) 摘除在途评估任务并标记 case 级取消；
+    - is_case_cancelled：worker 消费与结果落库前核销——已取消用例的评估
+      任务丢弃不执行、结果不落库（防"已删用例出评估结果"的幽灵数据）。
     """
 
     _lock = threading.Lock()
-    _entries = {}      # eval_task_id -> {'task_id': int, 'endpoint_url': str}
-    _cancelled = {}    # 已被 pop_by_task 摘除的 eval_task_id（有序，FIFO 淘汰）
+    _entries = {}      # eval_task_id -> {'task_id': int, 'endpoint_url': str, 'test_case_id': str}
+    _cancelled = {}    # 已被 pop_by_task / cancel_by_case 摘除的 eval_task_id（有序，FIFO 淘汰）
     _CANCELLED_CAP = 4096
+    _cancelled_cases = {}  # 'task_id:test_case_id' -> reason（case 级取消标记，有序，FIFO 淘汰）
+    _CANCELLED_CASES_CAP = 4096
 
     @staticmethod
     def _norm_task_id(task_id):
@@ -38,19 +47,33 @@ class EvalTaskRegistry:
             return task_id
 
     @classmethod
-    def register(cls, eval_task_id, task_id, endpoint_url):
+    def register(cls, eval_task_id, task_id, endpoint_url, test_case_id=None):
         """登记在途评估任务（同 eval_task_id 重复登记幂等覆盖）"""
         with cls._lock:
             cls._entries[eval_task_id] = {
                 'task_id': cls._norm_task_id(task_id),
                 'endpoint_url': endpoint_url,
+                'test_case_id': str(test_case_id) if test_case_id else None,
             }
 
     @classmethod
     def unregister(cls, eval_task_id):
-        """结果消费完毕后注销（已被 pop_by_task 摘除的为 no-op）"""
+        """结果消费完毕后注销（已被 pop_by_task / cancel_by_case 摘除的为 no-op）"""
         with cls._lock:
             cls._entries.pop(eval_task_id, None)
+
+    @classmethod
+    def _pop_entries_locked(cls, predicate):
+        """按谓词摘除在途条目并标记取消（须持锁调用），返回 [(eval_task_id, endpoint_url), ...]"""
+        removed = []
+        for eval_task_id, ctx in list(cls._entries.items()):
+            if predicate(ctx):
+                removed.append((eval_task_id, ctx.get('endpoint_url')))
+                cls._entries.pop(eval_task_id, None)
+                cls._cancelled[eval_task_id] = True
+        while len(cls._cancelled) > cls._CANCELLED_CAP:
+            cls._cancelled.pop(next(iter(cls._cancelled)))
+        return removed
 
     @classmethod
     def pop_by_task(cls, task_id):
@@ -59,20 +82,38 @@ class EvalTaskRegistry:
         摘除即标记取消：旧评估任务的结果到达时被消费方幂等忽略（方案A）。
         """
         task_id = cls._norm_task_id(task_id)
-        removed = []
         with cls._lock:
-            for eval_task_id, ctx in list(cls._entries.items()):
-                if ctx.get('task_id') == task_id:
-                    removed.append((eval_task_id, ctx.get('endpoint_url')))
-                    cls._entries.pop(eval_task_id, None)
-                    cls._cancelled[eval_task_id] = True
-            while len(cls._cancelled) > cls._CANCELLED_CAP:
-                cls._cancelled.pop(next(iter(cls._cancelled)))
+            return cls._pop_entries_locked(lambda ctx: ctx.get('task_id') == task_id)
+
+    @classmethod
+    def cancel_by_case(cls, task_id, test_case_id, reason=''):
+        """按 (task_id, test_case_id) 摘除在途评估任务并标记 case 级取消（INT-308）。
+
+        返回 [(eval_task_id, endpoint_url), ...] 供调用方通知子服务真正取消（方案B）；
+        case 级取消标记供 worker 消费/结果落库前核销（丢弃不执行、不落库）。
+        幂等：重复取消返回空列表，标记不覆盖既有 reason。
+        """
+        task_id = cls._norm_task_id(task_id)
+        case_key = f'{task_id}:{test_case_id}'
+        with cls._lock:
+            removed = cls._pop_entries_locked(
+                lambda ctx: ctx.get('task_id') == task_id
+                and str(ctx.get('test_case_id') or '') == str(test_case_id))
+            cls._cancelled_cases.setdefault(case_key, reason or 'case_cancelled')
+            while len(cls._cancelled_cases) > cls._CANCELLED_CASES_CAP:
+                cls._cancelled_cases.pop(next(iter(cls._cancelled_cases)))
         return removed
 
     @classmethod
+    def is_case_cancelled(cls, task_id, test_case_id):
+        """该 (task_id, test_case_id) 的评估是否已被取消（幂等读取，不消费标记）"""
+        task_id = cls._norm_task_id(task_id)
+        with cls._lock:
+            return f'{task_id}:{test_case_id}' in cls._cancelled_cases
+
+    @classmethod
     def is_cancelled(cls, eval_task_id):
-        """该评估任务是否已被重新评估提交摘除（幂等读取，不消费标记）"""
+        """该评估任务是否已被摘除取消（幂等读取，不消费标记）"""
         with cls._lock:
             return eval_task_id in cls._cancelled
 
@@ -475,6 +516,12 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             # 消费已有的订阅消息，带超时
             deadline = time.time() + max_wait_time
             while time.time() < deadline:
+                # INT-308：等待期间检查 case 级取消标记（用例删除/任务停止）
+                if task_id is not None and test_case_id and \
+                        eval_task_registry.is_case_cancelled(task_id, str(test_case_id)):
+                    self._log('info', f'评估任务已随用例删除/任务停止取消，停止回调等待: eval_task_id={eval_task_id}',
+                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                    return {'__cancelled__': True, '__error__': '评估任务已随用例删除/任务停止取消'}
                 message = pubsub.get_message(timeout=1.0)
                 if message and message.get('type') == 'message':
                     data = message.get('data')
@@ -594,7 +641,16 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 self._log('warning', f'查询评估任务状态失败: eval_task_id={eval_task_id}, response={status_response}',
                           task_id=task_id, test_case_id=test_case_id, api_id=api_id)
 
-            time.sleep(effective_poll_interval)
+            # INT-308 停止传播：轮询间隔 sleep 拆片，片间检查 case 级取消标记——
+            # 用例删除/任务停止取消评估时 ≤1s 退出等待，不再睡满整个 poll_interval
+            sleep_remaining = effective_poll_interval
+            while sleep_remaining > 0:
+                if isinstance(task_id, (int, str)) and test_case_id and \
+                        eval_task_registry.is_case_cancelled(task_id, str(test_case_id)):
+                    return {'__cancelled__': True, '__error__': '评估任务已随用例删除/任务停止取消'}
+                slice_wait = min(1.0, sleep_remaining)
+                time.sleep(slice_wait)
+                sleep_remaining -= slice_wait
 
         timeout_msg = f"评估任务超时: eval_task_id={eval_task_id}, 等待时间超过{effective_max_wait}秒"
         self._log('error', timeout_msg, task_id=task_id, test_case_id=test_case_id, api_id=api_id)

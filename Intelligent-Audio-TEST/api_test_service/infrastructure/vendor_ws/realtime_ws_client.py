@@ -186,8 +186,12 @@ class RealtimeWSClient:
             return {'type': 'recv_timeout', 'ts': time.time()}
         return self._parse_event(raw_event)
 
-    def wait_ai_speaking(self, start_timeout: float = 25.0) -> bool:
-        """等 AI 开始说话（首个 ai_audio_delta）"""
+    def wait_ai_speaking(self, start_timeout: float = 25.0,
+                         stop_check: Optional[Callable[[], bool]] = None) -> bool:
+        """等 AI 开始说话（首个 ai_audio_delta）
+
+        stop_check（INT-308）：任务停止检测回调，返回 True 时立即中断等待（返回 False）。
+        """
         deadline = time.time() + start_timeout
         while time.time() < deadline:
             event = self.recv(timeout=1.0)
@@ -197,13 +201,19 @@ class RealtimeWSClient:
             if etype in (RealtimeFrameType.CONNECTION_CLOSED.value,
                          RealtimeFrameType.ERROR.value):
                 return False
+            if stop_check is not None and stop_check():
+                return False
         return False
 
     def wait_ai_complete(self, start_timeout: float = 25.0,
-                         end_timeout: float = 60.0) -> bool:
-        """等 AI 完整回复：等开始（ai_audio_delta）→ 等结束（ai_audio_done）"""
+                         end_timeout: float = 60.0,
+                         stop_check: Optional[Callable[[], bool]] = None) -> bool:
+        """等 AI 完整回复：等开始（ai_audio_delta）→ 等结束（ai_audio_done）
+
+        stop_check（INT-308）：任务停止检测回调，等待期间命中即中断（返回 False）。
+        """
         if not self._ai_complete:
-            if not self.wait_ai_speaking(start_timeout):
+            if not self.wait_ai_speaking(start_timeout, stop_check=stop_check):
                 return False
         deadline = time.time() + end_timeout
         while time.time() < deadline:
@@ -214,6 +224,8 @@ class RealtimeWSClient:
             if etype == RealtimeFrameType.AI_AUDIO_DONE.value:
                 return True
             if etype == RealtimeFrameType.CONNECTION_CLOSED.value:
+                return False
+            if stop_check is not None and stop_check():
                 return False
         return False
 

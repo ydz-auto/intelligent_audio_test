@@ -41,6 +41,37 @@ def submit_evaluate_case(task_id, result_id, test_case_id, algorithm_result, eva
     return _json.loads(resp.data) if resp.data else {}
 
 
+def cancel_case_evaluations(task_id, test_case_ids, reason='case_deleted'):
+    """通过 gRPC 调用 evaluation_service 的 EvaluationService.CancelEvaluation（INT-308）
+
+    供 task_service 在执行中删除用例 / 任务停止时联动取消评估侧产出
+    （幂等；已完成的评估返回 completed=true 由调用方标记 excluded）。
+
+    Args:
+        task_id: 任务ID
+        test_case_ids: TaskCase.test_case_id 列表
+        reason: 取消原因（case_deleted / task_stopped）
+
+    Returns:
+        dict: {success, message, data}；data 为
+            {results: [...], cancelled_inflight, subservice_notified}
+    """
+    import json as _json
+    from shared.proto import evaluation_service_pb2 as eval_pb
+    stub = get_evaluation_service_stub()
+    req = eval_pb.CancelEvaluationRequest(
+        task_id=str(task_id),
+        test_case_ids=_json.dumps([str(c) for c in (test_case_ids or [])]),
+        reason=reason or 'case_deleted',
+    )
+    resp = stub.CancelEvaluation(req)
+    return {
+        'success': resp.success,
+        'message': resp.message,
+        'data': _json.loads(resp.data) if resp.data else {},
+    }
+
+
 def submit_reevaluate(task_id, reextract_device_output=True, reevaluate_type='all'):
     """通过 gRPC 调用 evaluation_service 的 EvaluationService.Reevaluate
 

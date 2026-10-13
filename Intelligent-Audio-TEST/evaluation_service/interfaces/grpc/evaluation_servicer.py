@@ -116,3 +116,22 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
             )
         except Exception as e:
             return eval_pb.ReevaluateSingleResponse(success=False, message=str(e), data="")
+
+    def CancelEvaluation(self, request, context=None):
+        """取消评估（INT-308）：执行中删除用例/任务停止时联动取消评估侧产出
+
+        幂等：重复取消返回成功（cancelled_inflight=0）；
+        评估已完成的用例"已完成不可取消"，返回 completed=true 由删除方标记 excluded。
+        """
+        try:
+            task_id = to_int_id('task_id', request.task_id)
+            test_case_ids = _loads(request.test_case_ids, [])
+            reason = request.reason or 'case_deleted'
+
+            from evaluation_service.application.handlers.evaluation_cancel_handler import cancel_case_evaluations
+            result = cancel_case_evaluations(task_id, test_case_ids, reason=reason)
+            return eval_pb.CancelEvaluationResponse(
+                success=True, message="ok", data=_dumps(result),
+            )
+        except Exception as e:
+            return eval_pb.CancelEvaluationResponse(success=False, message=str(e), data="")

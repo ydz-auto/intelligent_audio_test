@@ -222,7 +222,8 @@ class TaskLifecycleMixin:
 
                 tc_rel = self._get_next_pending_case(task_id, local_db_session)
                 if not tc_rel:
-                    if self._handle_no_pending_case(task_id, task, local_db_session):
+                    if self._handle_no_pending_case(task_id, task, local_db_session,
+                                                    stop_event=stop_event):
                         continue
                     break
 

@@ -15,6 +15,8 @@ service EvaluationService {
   rpc ReevaluateMultiRound(ReevaluateMultiRoundRequest) returns (ReevaluateMultiRoundResponse);
   // 单轮用例重新评估
   rpc ReevaluateSingle(ReevaluateSingleRequest) returns (ReevaluateSingleResponse);
+  // 取消评估（INT-308）：执行中删除用例/任务停止时联动取消评估侧产出（幂等）
+  rpc CancelEvaluation(CancelEvaluationRequest) returns (CancelEvaluationResponse);
 }
 
 // ==================== EvaluationService Messages ====================
@@ -82,6 +84,18 @@ message ReevaluateSingleResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+}
+
+message CancelEvaluationRequest {
+  string task_id = 1;
+  string test_case_ids = 2;  // JSON: list[str]，TaskCase.test_case_id 列表
+  string reason = 3;         // case_deleted / task_stopped
+}
+
+message CancelEvaluationResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {results: [{test_case_id, cancelled, completed, inflight_removed, subservice_notified}], cancelled_inflight, subservice_notified}
 }
 
 // ===== 评估维度配置 CRUD 服务 =====

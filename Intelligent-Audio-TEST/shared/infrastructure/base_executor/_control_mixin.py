@@ -49,6 +49,18 @@ class ControlMixin:
                 pause_event.wait(timeout=0.5)
             self._log(level='INFO', content="任务已恢复执行", task_id=task_id)
 
+    def _is_task_stopped(self, task_id):
+        """非抛出版停止检测（INT-308）：Redis 分布式标志位 + 本进程 stop_event。
+
+        供轮次内的长等待循环（如 Realtime 等 AI 回复）做可中断等待的
+        stop_check 回调，命中后由调用方决定收敛方式。
+        """
+        from shared.utils import distributed_coordinator as dc
+        if dc.is_task_stopped(task_id):
+            return True
+        stop_event, _ = self._get_control_events(task_id)
+        return stop_event is not None and stop_event.is_set()
+
     def _get_control_events(self, task_id):
         """获取控制事件
 

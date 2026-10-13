@@ -148,7 +148,8 @@ class TaskFinalizeMixin:
                     if self._has_evaluating_cases(task_id, local_db_session):
                         self._log_evaluating_wait(task_id, all_cases, counts, task_status)
                         local_db_session.close()
-                        self._wait_completion_event(task_id, timeout=state['interval'])
+                        self._wait_completion_event(task_id, timeout=state['interval'],
+                                                    stop_event=stop_event)
                         state['interval'] = min(state['interval'] * 2, self.wait_max_interval)
                         continue
                     self._update_final_case_counts(local_db_session, task_id, counts)
@@ -169,9 +170,10 @@ class TaskFinalizeMixin:
                     self._log_wait_timeout(task_id, counts['running'])
                     break
 
-                # 事件驱动等待（INT-120：退避间隔，事件到达提前返回）
+                # 事件驱动等待（INT-120：退避间隔，事件到达提前返回；INT-308：stop 可中断）
                 local_db_session.close()
-                self._wait_completion_event(task_id, timeout=state['interval'])
+                self._wait_completion_event(task_id, timeout=state['interval'],
+                                            stop_event=stop_event)
                 state['interval'] = min(state['interval'] * 2, self.wait_max_interval)
             finally:
                 try:
@@ -333,15 +335,29 @@ class TaskFinalizeMixin:
         """记录超时日志"""
         self._log(level='WARNING', content=f"等待测试用例执行完成超时，还有 {running_count} 个用例状态为running或queued", task_id=task_id)
 
-    def _wait_completion_event(self, task_id, timeout=None):
-        """事件驱动等待用例完成通知（timeout 缺省保持既有 5s 兜底轮询节奏）"""
+    def _wait_completion_event(self, task_id, timeout=None, stop_event=None):
+        """事件驱动等待用例完成通知（timeout 缺省保持既有 5s 兜底轮询节奏）
+
+        INT-308 停止传播：等待拆片（0.5s），每片后检查 stop_event——
+        任务停止时 ≤0.5s 提前返回，不再睡满退避间隔（最长 wait_max_interval）
+        才感知停止。事件通知语义不变：set+clear 瞬间未捕获时由下一片兜底，
+        兜底节奏仍为 timeout 到期后的 DB 轮询。
+        """
         if timeout is None:
             timeout = 5
         completion_event = self.task_completion_events.get(task_id)
-        if completion_event:
-            completion_event.wait(timeout=timeout)
-        else:
-            time.sleep(timeout)
+        deadline = time.time() + timeout
+        while True:
+            if completion_event is not None:
+                # 事件到达立即返回；set+clear 瞬间未捕获时由下一片/DB 轮询兜底
+                if completion_event.wait(timeout=0.5):
+                    return
+            else:
+                time.sleep(0.5)
+            if stop_event is not None and stop_event.is_set():
+                return
+            if time.time() >= deadline:
+                return
 
     def _finalize_task_status(self, task_id, task, stop_event):
         """最终状态更新"""

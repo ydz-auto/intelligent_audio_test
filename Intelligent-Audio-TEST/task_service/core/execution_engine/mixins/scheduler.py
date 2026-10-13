@@ -98,8 +98,24 @@ class SchedulerMixin:
                     logger.debug("调度器循环结束清理 DB session 失败", exc_info=True)
 
             # 等待下一轮（DB 兜底间隔较长，Redis 队列靠 BRPOP 阻塞实现低延迟）
-            self.scheduler_event.wait(timeout=db_check_interval)
-            self.scheduler_event.clear()
+            # INT-308 停止传播：固定 db_check_interval 拆成 ≤1s 的片轮询停止标志，
+            # 调度器停止时 ≤1s 内退出，不再最长等一个 db_check_interval（默认 30s）；
+            # 被事件显式唤醒（trigger_scheduler_check / _stop_scheduler）立即进入下一轮。
+            self._wait_scheduler_interval(db_check_interval)
+
+    def _wait_scheduler_interval(self, db_check_interval):
+        """按拆片等待下一轮调度间隔（INT-308 停止传播）。
+
+        语义与原 scheduler_event.wait(timeout=db_check_interval) + clear() 等价：
+        事件到达提前返回并清位；差异仅在等待期间每片检查停止标志。
+        """
+        remaining = db_check_interval
+        while remaining > 0 and not self.scheduler_stop_event.is_set():
+            slice_wait = min(1.0, remaining)
+            if self.scheduler_event.wait(timeout=slice_wait):
+                self.scheduler_event.clear()
+                return
+            remaining -= slice_wait
 
     def _consume_redis_queue(self, brpop_timeout):
         """从 Redis 队列 BRPOP 消费任务 ID，立即尝试启动"""

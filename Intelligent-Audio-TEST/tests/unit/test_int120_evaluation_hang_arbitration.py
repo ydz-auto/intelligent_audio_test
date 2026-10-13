@@ -36,6 +36,7 @@ task_case_relations 永久停留 evaluating 时，执行引擎忙等循环暴露
 覆盖，不在本文件范围。
 """
 import os
+import threading
 import time as _time
 from datetime import timezone, timedelta
 
@@ -91,7 +92,7 @@ class _Engine(EvaluationArbiterMixin):
     def refresh_task_counts_atomic(self, task_id):
         self.counts_refreshed.append(task_id)
 
-    def _wait_completion_event(self, task_id, timeout=None):
+    def _wait_completion_event(self, task_id, timeout=None, stop_event=None):
         self.wait_calls.append((task_id, timeout))
 
 
@@ -499,32 +500,56 @@ class TestInt120WaitStateLifecycle:
         eng._reset_wait_state('task-1')
         assert 'task-1' not in eng.task_wait_states
 
-    def test_wait_completion_event_passes_timeout_to_event(self):
+    def test_wait_completion_event_waits_in_slices_until_timeout(self):
+        """INT-308：等待拆片（0.5s），总等待时长收敛到 timeout；事件对象被持续轮询"""
         class _WaitEvent:
             def __init__(self):
                 self.timeouts = []
 
             def wait(self, timeout=None):
                 self.timeouts.append(timeout)
+                return False  # 从不置位
 
         eng = _RealWaitEngine()
         event = _WaitEvent()
         eng.task_completion_events['task-1'] = event
 
+        start = _time.time()
         eng._wait_completion_event('task-1', timeout=17)
-        assert event.timeouts == [17]
+        elapsed = _time.time() - start
 
-    def test_wait_completion_event_default_sleeps_5s(self, monkeypatch):
+        # 每片 0.5s，总计 ≥17s（timeout 到期）；事件对象被反复轮询
+        assert elapsed >= 17
+        assert event.timeouts and all(t == 0.5 for t in event.timeouts)
+        assert len(event.timeouts) >= int(17 / 0.5)
+
+    def test_wait_completion_event_event_arrives_early(self, monkeypatch):
+        """INT-308：完成事件到达立即返回，不再睡满 timeout（既有语义保留）"""
         import task_service.core.execution_engine.mixins.task_finalize as finalize_mod
         eng = _RealWaitEngine()
-        sleeps = []
-        monkeypatch.setattr(finalize_mod.time, 'sleep', lambda s: sleeps.append(s))
+        event = threading.Event()
+        eng.task_completion_events['task-1'] = event
 
-        eng._wait_completion_event('task-1')  # 无事件 → sleep 兜底
-        assert sleeps == [5]
-
+        threading.Timer(0.3, event.set).start()
+        start = _time.time()
         eng._wait_completion_event('task-1', timeout=30)
-        assert sleeps == [5, 30]
+        elapsed = _time.time() - start
+
+        assert elapsed < 2.0
+
+    def test_wait_completion_event_default_sleeps_5s(self):
+        """无事件时 sleep 兜底：INT-308 拆片后总等待仍收敛到缺省 5s"""
+        eng = _RealWaitEngine()
+
+        start = _time.time()
+        eng._wait_completion_event('task-1')  # 无事件 → sleep 兜底
+        elapsed = _time.time() - start
+        assert 4.5 <= elapsed <= 6.5
+
+        start = _time.time()
+        eng._wait_completion_event('task-1', timeout=1)
+        elapsed = _time.time() - start
+        assert 0.8 <= elapsed <= 2.5
 
 
 # ── 配置化（禁魔法数字） ─────────────────────────────────────────────────

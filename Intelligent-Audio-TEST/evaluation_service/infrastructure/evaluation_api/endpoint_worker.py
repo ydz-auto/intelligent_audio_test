@@ -7,6 +7,7 @@ import logging
 # P1.4: TaskCase 改为通过 gRPC 调 task_service
 from evaluation_service.infrastructure.acl import task_acl_repository
 from evaluation_service.infrastructure.acl import algorithm_acl_repository
+from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin
 from shared.models.common_enums import FieldType, RedisKeyPrefix
 from shared.utils.status_constants import EvaluationStatus
@@ -134,6 +135,21 @@ class EndpointWorker(EvaluationLoggerMixin):
             try:
                 task_data = self.get_task(timeout=1.0)
                 task_id = task_data.get('task_id')
+
+                # INT-308：消费前核销 case 级取消标记——用例删除/任务停止取消的
+                # 评估任务（含已入 Redis 持久化队列未消费的）丢弃不执行，结果不落库；
+                # TaskCase 评估终态由取消方（删除/停止链路）统一处置，此处只丢任务
+                _tc_id = str(task_data.get('test_case_id') or '')
+                if _tc_id and eval_task_registry.is_case_cancelled(task_id, _tc_id):
+                    self._log(
+                        level='INFO',
+                        content=f"评估任务已被取消（用例删除/任务停止），丢弃不执行: "
+                                f"TaskID={task_id}, TestCaseID={_tc_id}",
+                        task_id=task_id,
+                        test_case_id=_tc_id
+                    )
+                    self.task_done()
+                    continue
 
                 # INT-81：评估判定日志按轮次目录归档（无轮次的整体评估归 shared）
                 from shared.logging import log_round
@@ -469,7 +485,6 @@ class EndpointWorker(EvaluationLoggerMixin):
         if isinstance(resp_data, dict):
             _consumed_eval_task_id = resp_data.pop('__eval_task_id__', None)
             if _consumed_eval_task_id:
-                from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
                 if eval_task_registry.is_cancelled(_consumed_eval_task_id):
                     self._log(
                         level='INFO',
@@ -478,6 +493,18 @@ class EndpointWorker(EvaluationLoggerMixin):
                         test_case_id=test_case_id
                     )
                     return
+
+        # INT-308（m1 硬化，对齐 INT-174 口径）：落库前核销 case 级取消标记——
+        # 用例删除/任务停止与「核销检查→结果落库」之间的窄竞态窗口，
+        # 结果到达时用例已取消则丢弃，防"已删用例出评估结果"的幽灵数据
+        if test_case_id and eval_task_registry.is_case_cancelled(task_id, str(test_case_id)):
+            self._log(
+                level='INFO',
+                content=f"评估任务在结果落库前被取消（用例删除/任务停止），忽略本组评估结果: test_case_id={test_case_id}",
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
+            return
 
         if resp_data and '__error__' not in resp_data:
             try:

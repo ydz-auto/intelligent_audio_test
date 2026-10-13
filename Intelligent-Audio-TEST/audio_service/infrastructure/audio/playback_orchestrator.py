@@ -208,7 +208,10 @@ class PlaybackOrchestrator:
                     f'[play_round {round_tag}] waiting {total_duration}s for dry audio to finish',
                     task_id=task_id,
                 )
-                time.sleep(total_duration)
+                # INT-308 停止传播：等待拆片可中断——任务停止（stop_task_audio 置位
+                # 各设备 stop_event，驱动流关闭 → future 提前 done）时立即收口，
+                # 不再睡满理论时长（整轮音频时长为 E2E 链路最长同步阻塞点）
+                self._wait_playback_completion(task_id, total_duration)
                 self.audio_service.stop_task_audio(task_id, player_type='device_*')
                 # 等待所有设备流真正关闭
                 for evt in playback_finished_events:
@@ -672,7 +675,8 @@ class PlaybackOrchestrator:
             self._log('INFO',
                       f'声纹注册等待 {wait_time_sec}s',
                       task_id=task_id)
-            time.sleep(wait_time_sec)
+            # INT-308 停止传播：等待拆片可中断——任务停止时声纹注册不再睡满 wait_time
+            self._wait_registration_settle(task_id, wait_time_sec)
 
             self._log('INFO', '声纹注册完成', task_id=task_id)
             return True
@@ -684,6 +688,57 @@ class PlaybackOrchestrator:
     # ------------------------------------------------------------------ #
     #                        内部：工具方法                                 #
     # ------------------------------------------------------------------ #
+
+    def _wait_playback_completion(self, task_id, total_duration, poll_interval=0.5):
+        """等待轮次播放完成，可被任务停止中断（INT-308 停止传播）。
+
+        每 poll_interval 检查一次该任务 device_* 播放是否已全部提前结束：
+        stop_task_audio 置位设备 stop_event 后驱动流关闭 → future done，
+        据此判定播放被停止，立即返回（不再睡满理论时长）。
+        播放自然结束时 future 同样全部 done，直接提前返回，行为等价。
+        轮次级噪声为循环播放（future 在 stop_task_audio('device_*') 前不 done），
+        此时退化为睡满理论时长，与原行为一致。
+        """
+        task_key = str(task_id)
+        deadline = time.time() + total_duration
+        while time.time() < deadline:
+            if self._is_task_stopped(task_id):
+                self._log('DEBUG', f'[playback interrupted by task stop] task={task_key}',
+                          task_id=task_id)
+                return
+            players = self.audio_service.active_players.get(task_key) or {}
+            device_futures = [
+                v.get('future') for k, v in players.items()
+                if k.startswith('device_') and v.get('future') is not None
+            ]
+            if device_futures and all(f.done() for f in device_futures):
+                self._log('DEBUG', f'[playback finished early] task={task_key}',
+                          task_id=task_id)
+                return
+            time.sleep(poll_interval)
+
+    def _wait_registration_settle(self, task_id, wait_time_sec, poll_interval=0.5):
+        """声纹注册等待：拆片可中断（INT-308）。
+
+        与 _wait_playback_completion 不同：声纹 wait_time 是注册窗口（设计上
+        长于音频时长），不能以「播放提前结束」为中断依据，只认任务停止信号。
+        """
+        deadline = time.time() + wait_time_sec
+        while time.time() < deadline:
+            if self._is_task_stopped(task_id):
+                self._log('DEBUG', f'[voiceprint wait interrupted by task stop] task={task_id}',
+                          task_id=task_id)
+                return
+            time.sleep(poll_interval)
+
+    @staticmethod
+    def _is_task_stopped(task_id):
+        """查询分布式任务停止标志（Redis 不可用时返回 False，不阻塞播放主链）"""
+        try:
+            from shared.utils import distributed_coordinator as dc
+            return dc.is_task_stopped(task_id)
+        except Exception:
+            return False
 
     def _get_flask_app(self):
         return None

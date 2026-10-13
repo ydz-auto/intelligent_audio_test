@@ -154,7 +154,20 @@ class TaskDispatcherMixin:
     def _submit_to_workers(self, endpoint_groups, result_id, task_id, test_case_id,
                             algorithm_result, algorithm_type, test_type, round_number,
                             field_mapper, ref_texts, rounds_list, flat_eval_fields):
-        """遍历端点分组，为每组创建 worker 并提交评估任务"""
+        """遍历端点分组，为每组创建 worker 并提交评估任务
+
+        INT-308：提交前核销 case 级取消标记——用例删除/任务停止已取消的
+        评估不再入队（无产出、无子服务计算开销）。
+        """
+        from evaluation_service.infrastructure.evaluation_api.api_request_handler import eval_task_registry
+        if test_case_id and eval_task_registry.is_case_cancelled(task_id, str(test_case_id)):
+            self._log(
+                level='INFO',
+                content=f"评估任务已被取消（用例删除/任务停止），跳过提交: test_case_id={test_case_id}",
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
+            return
         for group_key, group_items in endpoint_groups.items():
             # 合并后键为 (endpoint, 签名集, category 集) 三元组，endpoint 恒在首位
             endpoint_url = group_key[0]
