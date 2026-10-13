@@ -31,7 +31,7 @@ from task_service.infrastructure.persistence.models import (
 )
 from task_service.infrastructure.persistence.models.testcase_models import TestCase
 from report_service.infrastructure.persistence.models import (
-    Report, ReportSummary, ReportSummaryMeta, ReportMetricStats, ReportCase,
+    Report, ReportSummary, ReportSummaryMeta, ReportMetricStats, ReportCase, ReportRawData,
 )
 
 logger = logging.getLogger(__name__)
@@ -308,6 +308,7 @@ class PublishedTaskRepository:
         algorithm_type: str = None,
         benchmark: bool = False,
         snapshot_config=None,
+        report_snapshot=None,
         publish_reason=None,
         published_by=None,
         demote_id: int = None,
@@ -317,6 +318,7 @@ class PublishedTaskRepository:
         Args:
             benchmark: 新版本 Benchmark 标记（默认 False，由应用服务继承当前版本）
             task_type / algorithm_type: 发布时冻结的冗余列（应用服务派生/继承）
+            report_snapshot: 冻结报告快照（应用服务冻结/继承，INT-258 快照语义）
             published_by: 新版本发布操作人（应用服务从请求上下文回填）
             demote_id: 旧当前版本 ID；同事务内置为 is_current=False
                 （与 V9.7.10 create_version 原子语义一致：旧版本 vN 置 False + 新版本 vN+1）。
@@ -341,6 +343,7 @@ class PublishedTaskRepository:
                 is_current=True,
                 benchmark=bool(benchmark),
                 snapshot_config=snapshot_config,
+                report_snapshot=report_snapshot,
                 publish_reason=publish_reason,
                 published_by=published_by,
                 published_at=now,
@@ -448,7 +451,11 @@ class PublishedTaskRepository:
         try:
             report = (
                 session.query(Report)
-                .filter(Report.task_id == task_id, Report.type == 'task')
+                .filter(
+                    Report.task_id == task_id,
+                    Report.type == 'task',
+                    Report.deleted.is_(False),
+                )
                 .order_by(Report.id.desc())
                 .first()
             )
@@ -551,9 +558,15 @@ class PublishedTaskRepository:
         return {}
 
     def freeze_report_snapshot(self, source_task_id):
-        """冻结来源任务当时的执行产物（报告/用例结果/评估数据/用例日志）为不可变快照。
+        """冻结来源任务关联的真实报告（报告管理/历史页面产物）为不可变快照。
 
-        无报告时返回 None；发布后即使源任务被改/删/重生成报告，冻结快照保持不变。
+        INT-258 快照语义：引用 + 冻结双轨——
+        - sourceReportId 引用 test_reports（提供跳转报告页入口）；
+        - 冻结体覆盖报告 7 表（test_reports / report_summaries / report_summary_meta /
+          report_raw_data / report_cases / report_metric_stats / report_comparison_matrix）
+          中报告页渲染所需字段，发布后不受源报告修改/删除影响。
+
+        无报告（含已软删除报告）时返回 None；快照结构为 camelCase 契约（schemaVersion=2）。
         """
         if not source_task_id:
             return None
@@ -561,7 +574,11 @@ class PublishedTaskRepository:
         try:
             report = (
                 session.query(Report)
-                .filter(Report.task_id == source_task_id, Report.type == 'task')
+                .filter(
+                    Report.task_id == source_task_id,
+                    Report.type == 'task',
+                    Report.deleted.is_(False),
+                )
                 .order_by(Report.id.desc())
                 .first()
             )
@@ -577,6 +594,9 @@ class PublishedTaskRepository:
             metric_stats = (
                 session.query(ReportMetricStats).filter_by(report_id=report.id).first()
             )
+            raw_data = (
+                session.query(ReportRawData).filter_by(report_id=report.id).first()
+            )
             cases = (
                 session.query(ReportCase)
                 .filter(ReportCase.report_id == report.id)
@@ -584,13 +604,37 @@ class PublishedTaskRepository:
                 .all()
             )
 
+            # Report.analysis 兼容双形态：纯文本结论 或 JSON config 序列化串
+            # （name/description/conclusion 存于 config，报告页 _aggregate_to_dict
+            # 按此解析；冻结口径与报告页展示口径对齐，INT-258）
+            config = {}
+            if isinstance(report.analysis, dict):
+                config = report.analysis
+            elif isinstance(report.analysis, str):
+                try:
+                    loaded = json.loads(report.analysis)
+                    config = loaded if isinstance(loaded, dict) else {}
+                except Exception:
+                    config = {}
+            conclusion_text = ''
+            if config:
+                conclusion_text = str(config.get('conclusion') or config.get('analysis') or '')
+            else:
+                conclusion_text = report.analysis or ''
+            config_name = config.get('name') if isinstance(config, dict) else None
+            config_description = config.get('description') if isinstance(config, dict) else None
+
             return {
+                'schemaVersion': 2,
+                # 引用轨：关联 test_reports（版本详情提供跳转报告页入口）
+                'sourceReportId': report.id,
+                # 兼容字段（V9.7.10 冻结契约遗留，语义同 sourceReportId）
                 'reportId': report.id,
-                'name': report.name,
+                'name': report.name or config_name or '',
                 'type': report.type,
                 'status': report.status,
-                'description': report.description,
-                'analysis': report.analysis,
+                'description': config_description or report.description or '',
+                'analysis': conclusion_text,
                 'createdAt': report.created_at.isoformat() if report.created_at else None,
                 'updatedAt': report.updated_at.isoformat() if report.updated_at else None,
                 'summary': {
@@ -602,17 +646,26 @@ class PublishedTaskRepository:
                     'startedAt': summary_info.started_at.isoformat() if summary_info and summary_info.started_at else None,
                     'completedAt': summary_info.completed_at.isoformat() if summary_info and summary_info.completed_at else None,
                     'caseCategories': self._to_json(summary_meta.case_categories) if summary_meta else [],
+                    'allCaseTags': self._to_json(summary_meta.all_case_tags) if summary_meta else [],
                     'allMetrics': self._to_json(summary_meta.all_metrics) if summary_meta else [],
                     'dimensionValues': self._to_json(summary_meta.dimension_values) if summary_meta else [],
                     'devices': self._to_json(summary_meta.devices) if summary_meta else [],
                     'apis': self._to_json(summary_meta.apis) if summary_meta else [],
+                    'resources': self._to_json(summary_meta.resources) if summary_meta else [],
+                    'resourceHeaders': self._to_json(summary_meta.resource_headers) if summary_meta else [],
+                    'fieldMappings': self._to_json_obj(summary_meta.field_mappings) if summary_meta else {},
                     'deviceStats': self._to_json(metric_stats.device_stats) if metric_stats else [],
                     'apiStats': self._to_json(metric_stats.api_stats) if metric_stats else [],
-                    'metricData': self._to_json_obj(metric_stats.metric_data) if metric_stats else {},
-                    'tagMetricData': self._to_json_obj(metric_stats.tag_metric_data) if metric_stats else {},
+                    # _to_json 保留原类型（历史版本为 dict / 新版本为 JSON 数组）
+                    'metricData': self._to_json(metric_stats.metric_data) if metric_stats else [],
+                    'tagMetricData': self._to_json(metric_stats.tag_metric_data) if metric_stats else [],
+                    'tagCategoryMetricData': self._to_json(metric_stats.tag_category_metric_data) if metric_stats else [],
+                    'caseTypeStats': self._to_json(metric_stats.case_type_stats) if metric_stats else [],
+                    'rawData': self._to_json(raw_data.raw_data) if raw_data else [],
                 },
                 'cases': [
                     {
+                        'id': c.id,
                         'testCaseId': c.test_case_id,
                         'name': c.name,
                         'description': c.description,

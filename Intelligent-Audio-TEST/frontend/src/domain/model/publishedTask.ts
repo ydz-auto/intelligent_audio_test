@@ -62,10 +62,20 @@ export interface PublishedTaskExecutionItem {
   completedAt?: string | null;
 }
 
-/** 报告快照（发布时冻结的执行产物：报告/用例结果/评估数据/用例日志，不可变） */
+/**
+ * 报告快照（发布时冻结的真实报告：引用 sourceReportId + 报告 7 表冻结数据，不可变）。
+ * INT-258 快照语义：版本详情按冻结数据渲染成报告样（对齐报告页），
+ * 不受后续源报告修改/删除影响；schemaVersion=2 起为 7 表完整冻结。
+ */
 export interface ReportSnapshot {
+  /** 冻结契约版本（2 = 7 表完整冻结；存量 v1 快照缺省） */
+  schemaVersion?: number;
+  /** 引用轨：源报告 ID（关联 test_reports，提供跳转报告页入口） */
+  sourceReportId?: number | null;
+  /** 兼容字段（V9.7.10 冻结契约遗留，语义同 sourceReportId） */
   reportId: number;
   name: string;
+  type?: string | null;
   status: string;
   description?: string | null;
   analysis?: string | null;
@@ -80,20 +90,29 @@ export interface ReportSnapshot {
     startedAt?: string | null;
     completedAt?: string | null;
     caseCategories: unknown[];
+    allCaseTags?: unknown[];
     allMetrics: unknown[];
     dimensionValues: unknown[];
     devices: unknown[];
     apis: unknown[];
+    resources?: unknown[];
+    resourceHeaders?: unknown[];
+    fieldMappings?: Record<string, unknown>;
     deviceStats: unknown[];
     apiStats: unknown[];
-    metricData: Record<string, unknown>;
-    tagMetricData: Record<string, unknown>;
+    metricData: Record<string, unknown> | unknown[];
+    tagMetricData: Record<string, unknown> | unknown[];
+    tagCategoryMetricData?: unknown[];
+    caseTypeStats?: unknown[];
+    rawData?: unknown[];
   };
   cases: ReportSnapshotCase[];
 }
 
-/** 冻结报告中的单个用例 */
+/** 冻结报告中的单个用例（逐轮结果/评估数据/日志） */
 export interface ReportSnapshotCase {
+  /** 报告用例行 ID（schemaVersion=2 起冻结；旧快照缺省由前端合成兜底） */
+  id?: number | null;
   testCaseId?: string | null;
   name?: string | null;
   description?: string | null;

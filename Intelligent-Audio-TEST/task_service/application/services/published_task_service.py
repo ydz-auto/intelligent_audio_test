@@ -423,11 +423,15 @@ class PublishedTaskService:
                 new_source_task_id = task.id
                 new_task_type = PublishedTaskService._derive_task_type(
                     snapshot.get('caseDevices'), snapshot.get('apiIds'))
+                # INT-258：新版本指定新来源任务时，冻结该任务当前的真实报告（引用+冻结双轨）
+                new_report_snapshot = repo.freeze_report_snapshot(new_source_task_id)
             else:
                 snapshot = dict(current.snapshot_config or {})
                 new_source_task_id = current.source_task_id
                 # 对齐 V9.7.10 create_version：沿用当前版本冻结值
                 new_task_type = getattr(current, 'type', None)
+                # 来源任务未变化，沿用当前版本冻结报告（版本链语义延续）
+                new_report_snapshot = current.report_snapshot
             # Benchmark 分组字段：请求未显式指定时继承当前版本快照（版本链语义延续）
             request_snapshot = PublishedTaskService._merge_benchmark_snapshot_fields({}, data)
             if not request_snapshot.get('benchmarkSuite'):
@@ -457,6 +461,7 @@ class PublishedTaskService:
                 algorithm_type=snapshot.get('algorithmType'),
                 benchmark=benchmark,
                 snapshot_config=snapshot,
+                report_snapshot=new_report_snapshot,
                 publish_reason=data.get('publish_reason') or data.get('publishReason'),
                 published_by=PublishedTaskService._resolve_operator(data),
                 demote_id=current.id,  # 同事务：旧版本 is_current=False

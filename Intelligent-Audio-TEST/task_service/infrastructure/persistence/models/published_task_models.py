@@ -46,7 +46,7 @@ class PublishedTask(Base):
     version = Column(Integer, nullable=False, default=1, comment='版本号，从 1 开始')
     is_current = Column(Boolean, nullable=False, default=True, comment='是否当前版本')
     snapshot_config = Column(JSON, comment='发布时的完整配置快照（camelCase 结构）')
-    report_snapshot = Column(JSON, comment='发布时源任务报告快照（冻结报告/执行数据/评估数据/用例日志）')
+    report_snapshot = Column(JSON, comment='发布时冻结的源任务真实报告快照（引用 sourceReportId + 报告 7 表冻结数据，INT-258 双轨语义）')
     publish_reason = Column(Text, comment='发布说明')
     published_by = Column(String(50), comment='发布人')
     published_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='发布时间')

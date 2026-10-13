@@ -59,6 +59,7 @@ def make_pt(**overrides):
     pt.version = 1
     pt.is_current = True
     pt.snapshot_config = {'caseIds': [1], 'deviceIds': [], 'apiIds': [], 'tags': []}
+    pt.report_snapshot = None
     pt.published_by = None
     pt.published_at = None
     pt.archived_by = None

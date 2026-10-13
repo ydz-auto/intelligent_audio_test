@@ -136,7 +136,7 @@
                 class="analysis-textarea"
               ></textarea>
             </div>
-            <div class="analysis-actions">
+            <div class="analysis-actions" v-if="!readonly">
               <button v-if="!localIsEditing" class="btn-link" @click="startEdit">
                 <i class="fas fa-edit"></i> 编辑
               </button>
@@ -205,7 +205,9 @@ const props = defineProps({
   isEditingReport: { type: Boolean, default: false },
   isEditingConclusion: { type: Boolean, default: false },
   analysisContent: { type: String, default: '' },
-  tables: { type: Array, default: () => [] }
+  tables: { type: Array, default: () => [] },
+  /** 只读模式（冻结报告快照视图）：隐藏分析结论编辑入口 */
+  readonly: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['toggle-edit', 'save-report', 'cancel-edit', 'toggle-conclusion-edit', 'save-conclusion', 'cancel-conclusion'])

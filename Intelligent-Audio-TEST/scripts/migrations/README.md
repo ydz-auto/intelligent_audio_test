@@ -41,6 +41,7 @@ python scripts/migrations/202610/add_user_oauth_bindings.py             # ㉒ �
 python scripts/migrations/202610/seed_turn_eval.py                      # ㉓ 逐轮话轮评估维度种子（INT-192，1 主 + 6 子；依赖 ⑪ seed_voice_llm）
 python scripts/migrations/202610/seed_env_judge.py                      # ㉔ 环境理解维度种子（INT-192，3 主；依赖 ⑪ seed_voice_llm）
 python scripts/migrations/202610/seed_interruption_v2.py                # ㉕ 打断指标 v2 维度种子（INT-192，11 主 + 时延容器 + 3 子；依赖 ⑪ seed_voice_llm）
+python scripts/migrations/202610/backfill_report_snapshot_freeze.py --apply  # ㉖ 存量已发布任务 report_snapshot 补冻结（INT-258；默认 dry-run）
 ```
 
 > ✅ **2026-09-07 全量迁移记录**：当前环境已执行 ①③④⑧（`remove_foreign_keys_and_soft_delete` 12 步 + `add_audit_columns` 补 24 处 + `add_reevaluated_at` + `add_pass_threshold_to_eval_params`），执行后 `UndefinedColumn` 类报错全部消除。②⑤⑥⑦⑨ 视功能需要执行。
@@ -113,6 +114,7 @@ python scripts/migrations/202610/seed_interruption_v2.py                # ㉕ �
 | [seed_turn_eval.py](202610/seed_turn_eval.py) | 逐轮话轮评估维度种子（INT-192，移植 V9.7.10 202606） | turn_eval 主维度（仅 input+映射，无 output）+ turn_evaluation 6 子维度（三分类/接管率/未接管率/误接管率/时延均值/内容均分）；param_mappings 仅挂主维度；分类→话轮接管；INSERT 显式补 sort_order/api_status/estimated_exec_time/agg_denominator/exclude_rounds（fresh create_all 库无 DB 级默认）；UPDATE 不写 status（保留运行库现状）；幂等（运行库执行零插入） |
 | [seed_env_judge.py](202610/seed_env_judge.py) | 环境理解维度种子（INT-192，移植 V9.7.10 202609） | env_judge 3 主维度（准确率 pass_rate / 平均回复时延 average / 评分 average）；case_config 轮次音频映射 3 条共享，LLM 判定维度另挂 case→correctAnswer；分类→环境理解；api_settings.group_key 仅作 V9.7.10 金标对齐保留（V9.7.31 由 task_dispatcher 运行时签名合并，不消费）；同上幂等口径 |
 | [seed_interruption_v2.py](202610/seed_interruption_v2.py) | 打断指标 v2 维度种子（INT-192，移植 V9.7.10 202609） | 11 主维度（8 数量类 COUNT 模板 + 3 评分类 SCORE 模板）+「打断时延」容器 + 3 时延子维度；Step 0 物理清理旧代 interruption_metrics 树（interruption_judge 属 seed_env_sound_judge 另一族不动）；分类→打断；同上幂等口径 |
+| [backfill_report_snapshot_freeze.py](202610/backfill_report_snapshot_freeze.py) | 存量已发布任务 `report_snapshot` 补冻结（INT-258） | 发布快照语义修正为「引用 + 冻结双轨」（冻结报告管理生成的真实报告 7 表渲染数据 + sourceReportId 引用）：report_snapshot 为空且源任务有未删报告 → 补冻结；存量 v1 旧结构且源报告仍在 → 升级 v2；无报告/无源任务 → 保持空态（v1 快照且报告已不在的保留原数据）；复用 task_service `freeze_report_snapshot` 单一事实源；幂等（schemaVersion=2 一律 SKIP）；默认 dry-run，`--apply` 执行 |
 
 ## 新增迁移脚本约定
 
