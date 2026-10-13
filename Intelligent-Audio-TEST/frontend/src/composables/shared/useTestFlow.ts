@@ -310,7 +310,8 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
   const initTest = async () => {
     await loadAlgorithms()
     const algorithmType = selectedAlgorithmType.value || undefined
-    await initializeTestCases(algorithmType)
+    // INT-249：默认视图为标签视图，挂载时须同时预取标签视图数据源，否则首屏空列表
+    await Promise.all([initializeTestCases(algorithmType), fetchTagView({ testType })])
     if (testType === TestType.API) {
       await loadAPIs()
     }
@@ -318,7 +319,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
 
   onMounted(async () => {
     if (testType === TestType.E2E) {
-      await Promise.all([initializeTestCases(), loadAlgorithms()])
+      await Promise.all([initializeTestCases(), loadAlgorithms(), fetchTagView({ testType })])
     } else {
       await initTest()
     }

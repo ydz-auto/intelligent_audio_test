@@ -15,7 +15,10 @@ export function createContainerState(props: any) {
   const algorithmOptions = ref<{ value: string; label: string }[]>([]);
 
   // 视图模式：'group' 分组视图 | 'tag' 标签视图
-  const innerViewMode = ref<typeof ViewMode[keyof typeof ViewMode]>(props.viewMode || ViewMode.GROUP);
+  // INT-249：默认标签视图（用户数据以标签组织为主，对齐 V9.7.10 口径）；
+  // 分组视图保留为可切换；未显式传 viewMode 的页面（E2E/API 测试流）吃到默认值，
+  // TestCaseManager 显式传 GROUP 不受影响；切换态不持久化，刷新回到默认
+  const innerViewMode = ref<typeof ViewMode[keyof typeof ViewMode]>(props.viewMode || ViewMode.TAG);
 
   // 筛选状态在组件级声明，供 groupExpand / filters / batchActions 共享同一份响应式状态
   const searchQuery = ref('');

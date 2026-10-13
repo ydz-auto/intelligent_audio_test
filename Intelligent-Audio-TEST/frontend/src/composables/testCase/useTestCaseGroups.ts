@@ -3,6 +3,7 @@ import { groupsPort } from './groupsPort'
 import { useNotification } from '../modal/useNotification'
 import type { TestCase, TestCaseGroup, GroupFormData } from '../../domain'
 import { TestType } from '@/domain/enums'
+import { UNGROUPED_GROUP_ID, UNGROUPED_GROUP_NAME, UNGROUPED_GROUP_FETCH_SIZE } from '../../domain'
 // 分组视图类型统一从 testCaseStore 导出（GroupWithCount = TestCaseGroup 展示子集，
 // GroupPaginationInfo = PaginationInfo + 筛选字段），消除两处重复定义
 import type { GroupWithCount, GroupPaginationInfo } from '../../store/testCaseStore'
@@ -121,11 +122,16 @@ export function useTestCaseGroups(store: {
       const page = params.page || 1
       const perPage = params.perPage || DEFAULT_GROUP_PAGE_SIZE
 
+      // INT-249：未分组虚拟分组 —— 后端 query_testcases 无 group_id IS NULL 口径，
+      // 无法服务端分页查询无分组用例；去掉 groupId 过滤单次大页拉取后前端过滤，
+      // 分页回写 pages=1 封口（规模上限见 UNGROUPED_GROUP_FETCH_SIZE 注释）
+      const isUngroupedFetch = groupKey === UNGROUPED_GROUP_ID
+
       // TODO: testcasesPort.getAll 尚未做 camelCase→snake_case 查询参数转换，adapter 补齐后此处保持 camelCase
       const response = await testcasesPort.getAll({
-        page,
-        perPage,
-        groupId: groupId,
+        page: isUngroupedFetch ? 1 : page,
+        perPage: isUngroupedFetch ? UNGROUPED_GROUP_FETCH_SIZE : perPage,
+        groupId: isUngroupedFetch ? undefined : groupId,
         keyword: params.keyword,
         tag: params.tag,
         algorithmType: params.algorithmType,
@@ -144,6 +150,15 @@ export function useTestCaseGroups(store: {
           } as TestCase
         })
       }
+      if (isUngroupedFetch) {
+        // 过滤口径与 organizeTestCasesByGroup 的未分组归桶规则一致：
+        // 无 groupName 且 groupId 解析不到已知分组（含分组行已删的孤儿用例）
+        casesData = casesData.filter(tc => {
+          if (tc.groupName) return false
+          const gid = tc.groupId?.toString()
+          return !gid || !fullGroupsMap.value[gid]
+        })
+      }
 
       if (page === 1) {
         loadedGroupCases.value[groupKey] = casesData
@@ -156,9 +171,9 @@ export function useTestCaseGroups(store: {
 
       groupPagination.value[groupKey] = {
         page: response?.page || page,
-        pages: response?.pages || 1,
+        pages: isUngroupedFetch ? 1 : (response?.pages || 1),
         perPage: response?.perPage || perPage,
-        total: response?.total || 0,
+        total: isUngroupedFetch ? casesData.length : (response?.total || 0),
         algorithmType: params.algorithmType,
         testType: params.testType,
         keyword: params.keyword,
@@ -166,7 +181,8 @@ export function useTestCaseGroups(store: {
       }
 
       const group = fullGroupsMap.value[groupKey]
-      const groupName = group?.name || `分组-${groupKey}`
+      const groupName = group?.name
+        || (isUngroupedFetch ? UNGROUPED_GROUP_NAME : `分组-${groupKey}`)
       testCaseGroups.value[groupName] = [...(loadedGroupCases.value[groupKey] || [])]
 
       casesData.forEach(tc => {

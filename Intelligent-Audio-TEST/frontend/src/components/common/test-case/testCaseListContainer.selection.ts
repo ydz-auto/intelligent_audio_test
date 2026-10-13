@@ -7,6 +7,7 @@ import { ref, computed } from 'vue';
 import { useTestCaseStore } from '../../../store/testCaseStore';
 import type { ComputedRef, Ref } from 'vue';
 import type { TestCase } from '../../../domain';
+import { UNGROUPED_GROUP_ID, UNGROUPED_GROUP_NAME } from '../../../domain';
 import type { ContainerState } from './testCaseListContainer.state';
 
 /** 选择模块依赖（来自筛选/视图计算属性模块） */
@@ -76,6 +77,25 @@ export function createSelectionModule(props: any, emit: any, state: ContainerSta
     const keyword = debouncedSearchQuery.value || undefined;
     const testType = testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined;
     const dimensionId = dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
+
+    // INT-249：未分组虚拟分组无后端 group 口径（按名查询会落空），按当前筛选拉全量无分组用例后取 ID
+    if (group === UNGROUPED_GROUP_NAME) {
+      await store.fetchCasesByGroup(UNGROUPED_GROUP_ID, { algorithmType, testType, keyword, dimensionId });
+      const ungroupedCases = store.loadedGroupCases[UNGROUPED_GROUP_ID] || [];
+      const allIds = ungroupedCases.map(tc => tc.id);
+
+      if (allSelected) {
+        const idSet = new Set(allIds);
+        selectedCases.value = selectedCases.value.filter(id => !idSet.has(id));
+      } else {
+        allIds.forEach((id: string | number) => {
+          if (!selectedCases.value.includes(id)) {
+            selectedCases.value.push(id);
+          }
+        });
+      }
+      return;
+    }
 
     // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例；
     // INT-215/S3：回收站态圈定口径与可见数据集一致（仅已删项），避免勾选活跃集合

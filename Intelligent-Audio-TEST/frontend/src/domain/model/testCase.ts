@@ -165,6 +165,21 @@ export interface TestCaseGroup {
   testCaseCount?: number
 }
 
+// ===== 未分组虚拟分组（INT-249：分组视图不得静默吞掉无分组绑定的用例） =====
+
+/** 未分组虚拟分组 ID：非后端实体，仅用于 groupsList / fullGroupsMap 占位与懒加载分支路由 */
+export const UNGROUPED_GROUP_ID = '__ungrouped__'
+
+/** 未分组虚拟分组展示名（organizeTestCasesByGroup 的无分组用例归桶名） */
+export const UNGROUPED_GROUP_NAME = '未分组'
+
+/**
+ * 未分组虚拟分组展开时的单次拉取上限。
+ * 后端 query_testcases 的 group_id 过滤无 IS NULL 口径，无法服务端分页查询无分组用例，
+ * 故取一大页后前端按无 groupId 过滤；上限与 groups 列表 perPage=1000 的既有口径一致。
+ */
+export const UNGROUPED_GROUP_FETCH_SIZE = 1000
+
 /** 标签视图项 —— 单个标签及其下用例（GET /testcases?view=tag 的 item 结构） */
 export interface TagViewItem {
   tag: string

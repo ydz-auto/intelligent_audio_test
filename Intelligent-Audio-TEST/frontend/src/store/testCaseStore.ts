@@ -15,6 +15,8 @@ import type {
 } from '../domain'
 // 引入测试类型/视图模式枚举，消除魔法字符串
 import { TestType, ViewMode } from '../domain/enums'
+// INT-249：未分组虚拟分组常量（分组视图收纳无分组绑定的用例）
+import { UNGROUPED_GROUP_ID, UNGROUPED_GROUP_NAME } from '../domain'
 
 // 分组带用例数：TestCaseGroup 的展示子集（id/name/description/testCaseCount）
 export type GroupWithCount = Pick<TestCaseGroup, 'id' | 'name' | 'description' | 'testCaseCount'>
@@ -105,10 +107,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
     testCases.value.forEach(caseItem => {
       if (caseItem.deleted) return;
 
-      // testcasesPort.getAll() 已返回 camelCase Domain 对象（TestCase）
+      // 无分组绑定的用例归入「未分组」虚拟桶（INT-249：不得静默吞掉）
       const groupId = caseItem.groupId || 'default';
       const group = fullGroupsMap.value[groupId.toString()];
-      const groupName = group?.name || caseItem.groupName || '默认分组';
+      const groupName = group?.name || caseItem.groupName || UNGROUPED_GROUP_NAME;
 
       if (!groups[groupName]) {
         groups[groupName] = [];
@@ -198,6 +200,32 @@ export const useTestCaseStore = defineStore('testCase', () => {
           testCaseCount: group.testCaseCount ?? 0,
         };
       });
+
+      // INT-249：无分组绑定的用例不属于任何后端分组，分组视图以「未分组」虚拟分组收纳
+      // （仅当存在无分组用例时挂载，计数 = 用例总数 − Σ分组计数，两侧同筛选口径）。
+      // 回收站/收藏/includeDeleted 下 groups 计数为活跃集合口径，与列表 total 不可比，跳过；
+      // 分组数超出单页上限时 Σ 不完整，同样跳过避免虚高。
+      const groupsTotal = typeof groupsResponse?.total === 'number' ? groupsResponse.total : groupsData.length;
+      const canComputeUngrouped = !params.favorite && !params.onlyDeleted && !params.includeDeleted
+        && !groupsData.some(g => g.name === UNGROUPED_GROUP_NAME)
+        && groupsData.length >= groupsTotal;
+      if (canComputeUngrouped) {
+        const groupCountSum = groupsData.reduce((sum, g) => sum + (g.testCaseCount ?? 0), 0);
+        const totalCount = typeof testCasesResponse?.total === 'number' ? testCasesResponse.total : 0;
+        const ungroupedCount = Math.max(0, totalCount - groupCountSum);
+        if (ungroupedCount > 0) {
+          const virtualGroup: GroupWithCount = {
+            id: UNGROUPED_GROUP_ID,
+            name: UNGROUPED_GROUP_NAME,
+            testCaseCount: ungroupedCount,
+          };
+          groupsList.value = [...groupsList.value, virtualGroup];
+          fullGroupsMap.value = {
+            ...fullGroupsMap.value,
+            [UNGROUPED_GROUP_ID]: virtualGroup,
+          };
+        }
+      }
 
       let testCasesData: TestCase[] = [];
 
