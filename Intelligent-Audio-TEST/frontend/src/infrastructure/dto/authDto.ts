@@ -65,6 +65,11 @@ export interface PasswordEncryptionKeyDto {
   enabled: boolean
   kid?: string
   public_key?: string
+  /** INT-245 降级公钥（PKCS1v15/jsencrypt，http+IP 非安全上下文用） */
+  fallback?: {
+    kid?: string
+    public_key?: string
+  }
 }
 
 /** 第三方账号绑定（GET/POST /auth/oauth/bindings） */

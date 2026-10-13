@@ -46,7 +46,18 @@ async function fetchEncryptionKey(options: RequestOptions = {}): Promise<{ kid: 
   if (!dto.kid || !dto.public_key) {
     throw new PasswordEncryptionUnavailableError();
   }
-  const key = { kid: dto.kid, publicKey: dto.public_key };
+  const key: {
+    kid: string; publicKey: string;
+    fallback?: { kid: string; publicKey: string };
+  } = { kid: dto.kid, publicKey: dto.public_key };
+  // INT-245：降级公钥随响应透传（非安全上下文 jsencrypt 用；未下发时
+  // insecure context 加密在 encryptPassword 内明确失败，不回退明文）
+  if (dto.fallback?.kid && dto.fallback?.public_key) {
+    key.fallback = {
+      kid: dto.fallback.kid,
+      publicKey: dto.fallback.public_key,
+    };
+  }
   cacheEncryptionKey(key);
   return key;
 }

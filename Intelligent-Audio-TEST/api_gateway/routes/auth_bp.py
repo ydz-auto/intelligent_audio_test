@@ -52,7 +52,18 @@ def _encryption_key_payload():
         logger.warning('登录加密公钥加载失败', exc_info=True)
         return JSONResponse(status_code=500,
                             content={'detail': '登录加密公钥不可用'})
-    return to_response({'enabled': True, 'kid': kid, 'public_key': public_key_pem})
+    payload = {'enabled': True, 'kid': kid, 'public_key': public_key_pem}
+    # INT-245：降级公钥一并下发——前端非安全上下文（http+IP）WebCrypto
+    # 不可用时走 jsencrypt PKCS1v15 + 降级 kid。加载失败仅缺降级能力
+    # （主路径不受影响），不阻塞安全上下文登录。
+    try:
+        fb_pem, fb_kid = (
+            PasswordEncryptionService.get_fallback_public_key_info(
+                Config.AUTH_RSA_FALLBACK_KEY_PATH))
+        payload['fallback'] = {'kid': fb_kid, 'public_key': fb_pem}
+    except Exception:  # noqa: BLE001
+        logger.warning('登录加密降级公钥加载失败', exc_info=True)
+    return to_response(payload)
 
 
 @router.get('/mode')
@@ -107,7 +118,7 @@ def login_submit(request: Request,
         try:
             password = PasswordEncryptionService.decrypt_password(
                 password_encrypted, encryption_key_id,
-                Config.AUTH_RSA_KEY_PATH)
+                Config.AUTH_RSA_KEY_PATH, Config.AUTH_RSA_FALLBACK_KEY_PATH)
         except PasswordEncryptionError:
             return JSONResponse(
                 status_code=401,

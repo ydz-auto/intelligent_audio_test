@@ -441,7 +441,7 @@ def create_task(request: Request):
 | `/api/v1/auth/login` | 登录入口（前缀覆盖 `/auth/login/encryption-key` 公钥下发，INT-147） |
 | `/api/v1/auth/callback` | OAuth 回调 |
 | `/api/v1/auth/register` | 注册（仅 dev 模式） |
-| `/api/v1/auth/encryption-key` | 登录密码 RSA 公钥下发旧库路径别名（INT-179，与 `/login/encryption-key` 同源——公钥用于加密登录密码，拿公钥本身不得先登录） |
+| `/api/v1/auth/encryption-key` | 登录密码 RSA 公钥下发旧库路径别名（INT-179，与 `/login/encryption-key` 同源——公钥用于加密登录密码，拿公钥本身不得先登录；INT-245 起响应含主/降级两套公钥，降级公钥供 http+IP 非安全上下文 jsencrypt PKCS1v15 用） |
 | `/api/v1/auth/refresh` | token 刷新（路由自解析 Bearer 并自验签，过期 token 由路由返回刷新失败语义而非被网关先行拦截；INT-179） |
 | `/api/v1/auth/mode` | 当前生效认证模式（INT-180 前端启动自检——登录前前端比对 `VITE_AUTH_MODE` 与后端 `AUTH_MODE`，错位即页面告警） |
 | `/api/v1/auth/oauth` | OAuth 公开端点：提供方列表 / 授权跳转 / 授权回调（INT-51；绑定端点位于此前缀内、路由内自校验 Bearer） |

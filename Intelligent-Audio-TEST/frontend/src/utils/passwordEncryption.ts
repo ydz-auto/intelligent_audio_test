@@ -2,10 +2,22 @@
  * 密码加密传输工具（INT-147 对齐旧库 V9.7.10 src/utils/passwordEncryption.ts）
  * 用 WebCrypto RSA-OAEP/SHA-256 加密密码，服务端 RSA 私钥解密。
  * 仅供 infrastructure 层（authApi）调用，不进 Domain 契约。
+ *
+ * INT-245 双 padding 降级：WebCrypto subtle 仅存在于安全上下文（https/
+ * localhost）；http+LAN-IP 访问时 subtle 为 undefined → 动态 import
+ * jsencrypt（纯 JS，不依赖 secure context）走 RSA-PKCS1v15 + 降级公钥
+ * （服务端 /auth/login/encryption-key 下发 fallback 字段）。安全上下文
+ * 恒走 OAEP 主路径不回退；降级路径失败收敛为 UnavailableError，明文
+ * 兜底保持禁止（INT-188）。
  */
-interface PasswordEncryptionKey {
+interface PasswordEncryptionKeyMaterial {
   kid: string
   publicKey: string
+}
+
+interface PasswordEncryptionKey extends PasswordEncryptionKeyMaterial {
+  /** 降级密钥（PKCS1v15/jsencrypt 专用；服务端未下发时不可降级） */
+  fallback?: PasswordEncryptionKeyMaterial
 }
 
 export interface EncryptedPassword {
@@ -60,6 +72,9 @@ export function cacheEncryptionKey(key: PasswordEncryptionKey): void {
  * INT-188：公钥获取失败先重试一次（网络抖动容错），仍失败才收敛为
  * PasswordEncryptionUnavailableError；加密未启用抛
  * PasswordEncryptionDisabledError（由调用方决定是否走明文路径）。
+ * INT-245：路径按上下文二选一——subtle 可用 → WebCrypto OAEP（主
+ * kid）；不可用（http+IP 等非安全上下文）→ jsencrypt PKCS1v15（降级
+ * kid，须服务端下发 fallback），两者失败均不回退明文。
  */
 export async function encryptPassword(
   password: string,
@@ -77,37 +92,58 @@ export async function encryptPassword(
     }
   }
   try {
-    const ciphertext = await rsaOaepEncrypt(password, key.publicKey)
+    if (hasWebCryptoSubtle()) {
+      const ciphertext = await rsaOaepEncrypt(password, key.publicKey)
+      return {
+        passwordEncrypted: ciphertext,
+        encryptionKeyId: key.kid,
+      }
+    }
+    const fallback = key.fallback
+    if (!fallback?.kid || !fallback.publicKey) {
+      throw new Error('服务端未下发降级加密公钥')
+    }
+    const ciphertext = await rsaPkcs1v15Encrypt(password, fallback.publicKey)
     return {
       passwordEncrypted: ciphertext,
-      encryptionKeyId: key.kid,
+      encryptionKeyId: fallback.kid,
     }
   } catch {
     throw new PasswordEncryptionUnavailableError()
   }
 }
 
+/** WebCrypto subtle 仅存在于安全上下文（https / localhost），据此选路径 */
+function hasWebCryptoSubtle(): boolean {
+  return typeof globalThis.crypto?.subtle !== 'undefined'
+}
+
 async function rsaOaepEncrypt(password: string, publicKeyPEM: string): Promise<string> {
-  if (typeof globalThis.crypto?.subtle !== 'undefined') {
-    try {
-      const publicKey = await globalThis.crypto.subtle.importKey(
-        'spki',
-        pemToDER(publicKeyPEM),
-        { name: 'RSA-OAEP', hash: 'SHA-256' },
-        false,
-        ['encrypt']
-      )
-      const ciphertext = await globalThis.crypto.subtle.encrypt(
-        { name: 'RSA-OAEP' },
-        publicKey,
-        new TextEncoder().encode(password)
-      )
-      return arrayBufferToBase64(ciphertext)
-    } catch {
-      // 继续尝试 fallback
-    }
+  const publicKey = await globalThis.crypto.subtle.importKey(
+    'spki',
+    pemToDER(publicKeyPEM),
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    false,
+    ['encrypt']
+  )
+  const ciphertext = await globalThis.crypto.subtle.encrypt(
+    { name: 'RSA-OAEP' },
+    publicKey,
+    new TextEncoder().encode(password)
+  )
+  return arrayBufferToBase64(ciphertext)
+}
+
+async function rsaPkcs1v15Encrypt(password: string, publicKeyPEM: string): Promise<string> {
+  // 动态 import：jsencrypt 仅在非安全上下文降级路径加载（独立 chunk）
+  const { JSEncrypt } = await import('jsencrypt')
+  const jsencrypt = new JSEncrypt()
+  jsencrypt.setPublicKey(publicKeyPEM)
+  const ciphertext = jsencrypt.encrypt(password)
+  if (!ciphertext) {
+    throw new Error('jsencrypt 加密失败')
   }
-  throw new Error('当前环境不支持密码加密，请关闭加密传输后重试')
+  return ciphertext
 }
 
 function pemToDER(pem: string): ArrayBuffer {

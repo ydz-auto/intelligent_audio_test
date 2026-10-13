@@ -74,7 +74,8 @@ class UserManagementService:
             try:
                 password = PasswordEncryptionService.decrypt_password(
                     password_encrypted, encryption_key_id,
-                    Config.AUTH_RSA_KEY_PATH)
+                    Config.AUTH_RSA_KEY_PATH,
+                    Config.AUTH_RSA_FALLBACK_KEY_PATH)
             except PasswordEncryptionError:
                 return error_response('注册参数无效',
                                       code=ErrorCode.INVALID_PARAMS,

@@ -44,6 +44,14 @@ class Config(BaseConfig):
             os.path.dirname(os.path.dirname(os.path.dirname(
                 os.path.abspath(__file__)))),
             'data', 'auth_key.pem'))
+    # 降级 RSA 私钥路径（INT-245：非安全上下文 http+IP 前端 WebCrypto
+    # 不可用 → jsencrypt PKCS1v15；与主密钥成对独立，kid 即算法绑定）
+    AUTH_RSA_FALLBACK_KEY_PATH = os.environ.get(
+        'AUTH_RSA_FALLBACK_KEY_PATH',
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__)))),
+            'data', 'auth_key_fallback.pem'))
 
     # 自定义 OAuth 提供方回调基址（authorize redirect_uri 由它 + slug 拼接）
     OAUTH_REDIRECT_BASE = os.environ.get(
