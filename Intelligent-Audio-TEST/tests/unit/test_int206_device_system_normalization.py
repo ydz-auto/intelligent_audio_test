@@ -236,7 +236,7 @@ class TestE2eManagerRealCausePropagation:
             execution_engine=SimpleNamespace(device_control_pool=ThreadPoolExecutor(max_workers=1)),
         )
         mgr._device_repo = MagicMock()
-        mgr._device_repo.create_driver.side_effect = side_effect
+        mgr._device_repo.initialize_driver.side_effect = side_effect
         return mgr
 
     def test_initialize_failure_carries_real_cause(self):

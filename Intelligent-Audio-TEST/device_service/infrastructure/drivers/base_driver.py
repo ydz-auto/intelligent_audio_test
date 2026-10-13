@@ -1,5 +1,6 @@
 from .utils import get_task_events, log_and_emit
 from shared.utils import distributed_coordinator as dc
+from shared.constants.ui_capture import UiCaptureDegradeReason
 
 class BaseDeviceDriver:
     """基础设备驱动类"""
@@ -10,6 +11,10 @@ class BaseDeviceDriver:
         self._test_case_id = None
         self._device_id = None
         self._mock_mode = False
+        # UI 抓取层能力标记（INT-296）：默认可用；降级必须由驱动 initialize 显式标记，
+        # 严禁隐式默认降级（审计红线）。initialize 入口先重置，防单例跨用例残留。
+        self.ui_capture_available = True
+        self.ui_degrade_reason = None
         # 弹窗处理相关配置
         self._close_buttons = ['确定', '取消', '关闭', 'Done', 'Cancel', 'Close']
         self._popup_keywords = ['权限', 'permission', '授权', 'authorize']
@@ -74,17 +79,38 @@ class BaseDeviceDriver:
 
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化设备
-        
+
         Args:
             device_sn: 设备序列号
             task_id: 任务ID
             test_case_id: 测试用例ID
             **kwargs: 其他参数
-            
+
         Returns:
             bool: 是否初始化成功
         """
         return True
+
+    def reset_ui_capture_state(self):
+        """重置 UI 抓取层能力标记（initialize 入口调用，防单例跨用例残留）"""
+        self.ui_capture_available = True
+        self.ui_degrade_reason = None
+
+    def mark_ui_capture_degraded(self, reason: UiCaptureDegradeReason):
+        """标记 UI 抓取层降级（仅 explicit_degrade 模式下由 initialize 判定后调用）
+
+        Args:
+            reason: 结构化降级原因（UiCaptureDegradeReason 枚举）
+        """
+        self.ui_capture_available = False
+        self.ui_degrade_reason = reason.value if isinstance(reason, UiCaptureDegradeReason) else reason
+
+    def get_ui_capabilities(self) -> dict:
+        """返回 UI 抓取层能力标记（servicer 透传给 e2e 侧，e2e 据此分流 UI 抓取步骤）"""
+        return {
+            'ui_capture_available': self.ui_capture_available,
+            'degrade_reason': self.ui_degrade_reason,
+        }
 
     def unlock(self, device_sn, **kwargs) -> None:
         """解锁设备

@@ -5,12 +5,15 @@
 - DeviceResultServiceServicer：设备结果采集，委托给 device_result_collector
 - EnvDeviceServiceServicer：环境设备控制，委托给 EnvDeviceFactory
 """
+import logging
 import threading
 
 from shared.proto import device_service_pb2 as e2e_pb
 from shared.proto import device_service_pb2_grpc as e2e_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 from shared.utils.status_constants import ExecutionStatus
+
+logger = logging.getLogger(__name__)
 
 
 # ==================== DeviceServiceServicer ====================
@@ -94,6 +97,14 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                 # 透传初始化结果：None/True 视为成功，False（如 hypium 缺失 UiDriver=None）
                 # 明确失败，避免 e2e 侧拿到 success=True 带病跑完采集（INT-158 验收问题 2）
                 passed = driver is not None and init_ok is not False
+                # UI 抓取层能力标记（INT-296）：explicit_degrade 模式下 initialize 成功
+                # 但 ui_capture_available=false，e2e 侧据此把 UI 抓取步骤显式标记 skipped
+                ui_capabilities = None
+                if driver is not None and hasattr(driver, 'get_ui_capabilities'):
+                    try:
+                        ui_capabilities = driver.get_ui_capabilities()
+                    except Exception as cap_err:
+                        logger.warning("读取 ui_capabilities 失败（忽略）: %s", cap_err)
                 driver_info = {
                     "system": system,
                     "keywords": keywords,
@@ -102,6 +113,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                     "driver_name": driver.__class__.__name__ if driver else None,
                     "initialize_result": init_ok,
                     "resolve_error": resolve_error,
+                    "ui_capabilities": ui_capabilities,
                 }
                 if passed:
                     message = "ok"

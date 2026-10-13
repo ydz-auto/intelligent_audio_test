@@ -273,6 +273,13 @@ class RoundsLoopMixin:
             audio_name, audio_path,
         )
 
+        # INT-296：UI 抓取层降级（explicit_degrade）时本轮 UI 抓取步骤显式标记
+        # skipped（环境排除）并留痕（note 由 initialize 阶段 set_ui_capture_degraded
+        # 构建），严禁无痕跳过；其余步骤口径不变
+        ui_capture_note = getattr(self, '_ui_capture_degraded_note', None)
+        if ui_capture_note:
+            round_data['ui_capture'] = ui_capture_note
+
         # 构建含已执行轮次 + 本轮的 algo_result，使 _extract_round_eval_data(rounds[round_idx]) 能正确索引
         accumulated_rounds = list(rounds_data) + [round_data]
         current_algo_result = {

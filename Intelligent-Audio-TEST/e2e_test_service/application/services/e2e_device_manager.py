@@ -5,6 +5,7 @@
 import time
 import threading
 
+from shared.constants.ui_capture import UiCaptureDegradeReason
 from e2e_test_service.infrastructure.acl import (
     AudioAclRepositoryImpl,
     DeviceAclRepositoryImpl,
@@ -80,7 +81,12 @@ class E2EDeviceManager:
         return None, None
 
     def initialize_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
-        """并行初始化所有设备（通过 gRPC DeviceService.CreateDriver action=initialize）"""
+        """并行初始化所有设备（通过 gRPC DeviceService.CreateDriver action=initialize）
+
+        INT-296：成功时从 device_service 结构化响应读取 ui_capabilities，
+        有设备 UI 抓取层降级（ui_capture_available=false）时通过
+        executor.set_ui_capture_degraded 留痕到用例/任务记录。
+        """
         extra_params = {}
         round_algo_params = kwargs.pop('round_algo_params', None)
         if round_algo_params:
@@ -97,10 +103,12 @@ class E2EDeviceManager:
         def init_device(info):
             ok = False
             err = None
+            data = {}
             try:
-                # ACL 契约：True 或上抛（携带 device_service 真因，INT-206），
-                # 不再套用固定的 hypium 缺失提示误导排障方向
-                ok = self._device_repo.create_driver(task_id, [{
+                # ACL 契约：成功返回结构化响应（含 ui_capabilities）或上抛
+                #（携带 device_service 真因，INT-206），不套用固定的 hypium
+                # 缺失提示误导排障方向
+                data = self._device_repo.initialize_driver(task_id, [{
                 'action': 'initialize',
                 'system': info.get('system'),
                 'keywords': info.get('keywords'),
@@ -108,12 +116,14 @@ class E2EDeviceManager:
                 'test_case_id': test_case_id,
                 'kwargs': extra_params,
                 }])
+                ok = True
             except Exception as e:
                 err = str(e)
             if not ok and err is None:
                 err = "CreateDriver 返回失败（未提供失败原因）"
             with results_lock:
-                results.append({'success': ok, 'error': err, 'device_name': info["device_name"]})
+                results.append({'success': ok, 'error': err, 'device_name': info["device_name"],
+                                'data': data if isinstance(data, dict) else {}})
 
         for info in device_info_list:
             future = pool.submit(init_device, info)
@@ -128,6 +138,29 @@ class E2EDeviceManager:
         failed = [r for r in results if not r['success']]
         if failed:
             raise RuntimeError(f"设备初始化失败: {'; '.join([f'{r.get('device_name')}: {r.get('error')}' for r in failed])}")
+
+        # INT-296：UI 抓取层降级留痕（explicit_degrade 模式下 initialize 成功但
+        # ui_capture_available=false）。结构化字段透传到任务/轮次记录，严禁无痕跳过。
+        degraded = []
+        for r in results:
+            caps = (r.get('data') or {}).get('ui_capabilities')
+            if isinstance(caps, dict) and caps.get('ui_capture_available') is False:
+                degraded.append({
+                    'device_name': r.get('device_name'),
+                    'degrade_reason': caps.get('degrade_reason') or UiCaptureDegradeReason.UITEST_DAEMON_UNAVAILABLE.value,
+                })
+        if degraded:
+            setter = getattr(self._executor, 'set_ui_capture_degraded', None)
+            if callable(setter):
+                setter(degraded, task_id=task_id, test_case_id=test_case_id)
+            else:
+                self._log(level='WARNING',
+                          content=f"设备 UI 抓取层已降级但 executor 不支持降级留痕: {degraded}",
+                          task_id=task_id, test_case_id=test_case_id)
+
+    def get_ui_capture_degraded(self):
+        """用例级 UI 抓取层降级状态（executor.set_ui_capture_degraded 写入）"""
+        return getattr(self._executor, '_ui_capture_degraded', None)
 
     def pre_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
         """并行预处理设备（通过 gRPC DeviceService.CreateDriver action=pre_process）

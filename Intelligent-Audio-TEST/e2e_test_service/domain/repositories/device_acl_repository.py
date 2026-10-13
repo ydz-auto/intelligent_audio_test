@@ -35,6 +35,14 @@ class DeviceAclRepository(ABC):
         """
 
     @abstractmethod
+    def initialize_driver(self, task_id: str, device_config: List[Dict]) -> Dict:
+        """创建设备驱动（initialize 专用）：返回 device_service 结构化响应
+
+        成功时含 ui_capabilities（INT-296：ui_capture_available / degrade_reason）；
+        失败语义与 create_driver 一致（上抛异常携带真因）。
+        """
+
+    @abstractmethod
     def extract_archive_results(self, task_id: str, device_config: Dict) -> Optional[List]:
         """提取存档结果"""
 

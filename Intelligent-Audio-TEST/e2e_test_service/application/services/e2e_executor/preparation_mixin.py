@@ -59,10 +59,15 @@ class PreparationMixin:
 
         # 预创建 TestResult
         first_device_id = device_info_list[0].get('device_id') if device_info_list else None
+        # INT-296：任务级 UI 抓取层降级留痕（explicit_degrade 模式，initialize 阶段写入）
+        result_data = {'multi_round': True, 'total_rounds': len(rounds)}
+        degraded = self._device_manager.get_ui_capture_degraded()
+        if degraded:
+            result_data['ui_capture_degraded'] = degraded
         result_id = self._save_result(
             task_id=task_id,
             test_case_id=test_case_id,
-            result_data={'multi_round': True, 'total_rounds': len(rounds)},
+            result_data=result_data,
             algo_result={'test_type': 'e2e', 'algorithm_type': algorithm_type, 'total_rounds': len(rounds), 'rounds': [], 'aggregated': {}},
             algorithm_type=algorithm_type,
             device_id=first_device_id,

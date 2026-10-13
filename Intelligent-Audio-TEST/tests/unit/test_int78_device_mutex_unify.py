@@ -109,7 +109,7 @@ class TestInitializeDevicesResultsLock:
             execution_engine=SimpleNamespace(device_control_pool=ThreadPoolExecutor(max_workers=2)),
         )
         mgr._device_repo = MagicMock()
-        mgr._device_repo.create_driver.return_value = True
+        mgr._device_repo.initialize_driver.return_value = {'ui_capabilities': None}
         return mgr
 
     def test_parallel_results_fully_collected(self):
@@ -119,7 +119,7 @@ class TestInitializeDevicesResultsLock:
             for i in range(4)
         ]
         mgr.initialize_devices(infos, task_id=9, test_case_id='c1')
-        assert mgr._device_repo.create_driver.call_count == 4
+        assert mgr._device_repo.initialize_driver.call_count == 4
 
     def test_failed_init_raises_with_all_results(self):
         mgr = self._manager()
@@ -127,7 +127,8 @@ class TestInitializeDevicesResultsLock:
             {'device_name': 'd_ok', 'system': 'android', 'keywords': [], 'device_sn': 'sn_ok'},
             {'device_name': 'd_bad', 'system': 'android', 'keywords': [], 'device_sn': 'sn_bad'},
         ]
-        mgr._device_repo.create_driver.side_effect = [True, False]
+        mgr._device_repo.initialize_driver.side_effect = [
+            {'ui_capabilities': None}, RuntimeError('initialize failed on sn_bad')]
         with pytest.raises(RuntimeError, match='d_bad'):
             mgr.initialize_devices(infos, task_id=9, test_case_id='c1')
 

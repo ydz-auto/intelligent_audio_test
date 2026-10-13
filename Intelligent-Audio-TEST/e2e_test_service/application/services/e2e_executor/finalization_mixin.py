@@ -27,6 +27,13 @@ class FinalizationMixin:
         # 构建最终 algo_result
         final_algo_result = self._aggregator.build_algorithm_result(task_id, all_round_results, case_config, algorithm_type)
 
+        # INT-296：UI 抓取层降级（explicit_degrade）留痕合并到最终记录各轮
+        #（build_algorithm_result 从原始结果重建，不含 round_data 上的标记），严禁无痕跳过
+        _ui_note = getattr(self, '_ui_capture_degraded_note', None)
+        if _ui_note:
+            for _round_entry in final_algo_result.get('rounds', []):
+                _round_entry.setdefault('ui_capture', _ui_note)
+
         # 持久化 raw_results 到文件，供重新评估时重新映射字段
         result_data_to_save = {
             'multi_round': True,

@@ -9,6 +9,9 @@ from .driver_types import AppType, AppVersion, DevicePlatform
 from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, with_rpc_retry
 from .driver_constants import *
+from shared.constants.ui_capture import (
+    UiCaptureDegradeReason, UiCaptureMode, normalize_ui_capture_mode,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,13 +54,14 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
         self.question_text = None
         self.answer_text = None
 
-    def _get_driver(self, device_sn):
+    def _ui_unavailable_reason(self):
+        """判定 UI 自动化层不可用的结构化原因（None = 可用）"""
         if not UiDriver:
-            # hypium 导入失败 → UiDriver 为 None，无法连接鸿蒙设备
-            # 根因请见 utils.py 中 "Failed to import hypium" 的 ERROR 日志
-            self._log(level='ERROR',
-                      content=f"UiDriver is None (hypium 未成功导入)，无法获取设备 {device_sn} 的驱动")
-            return None
+            return UiCaptureDegradeReason.HYPIUM_MISSING
+        return None
+
+    def _connect_ui_driver(self, device_sn):
+        """建立 UiDriver 连接并缓存；失败返回 None（不判断降级模式，由调用方分流）"""
         if device_sn not in self._drivers:
             try:
                 self._drivers[device_sn] = UiDriver.connect(device_sn=device_sn)
@@ -65,6 +69,15 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
                 self._log(level='ERROR', content=f"Failed to connect to Harmony device {device_sn}: {e}")
                 return None
         return self._drivers[device_sn]
+
+    def _get_driver(self, device_sn):
+        if not UiDriver:
+            # hypium 导入失败 → UiDriver 为 None，无法连接鸿蒙设备
+            # 根因请见 utils.py 中 "Failed to import hypium" 的 ERROR 日志
+            self._log(level='ERROR',
+                      content=f"UiDriver is None (hypium 未成功导入)，无法获取设备 {device_sn} 的驱动")
+            return None
+        return self._connect_ui_driver(device_sn)
 
     def _reconnect_driver(self, device_sn):
         """RPC 服务重启后重新建立 UiDriver 连接"""
@@ -231,58 +244,112 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
     @check_stop("initialize")
     @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """初始化鸿蒙设备"""
+        """初始化鸿蒙设备
+
+        UI 抓取层不可用时的行为由 UI_CAPTURE_MODE 配置分流（INT-296）：
+        - strict（默认）：显式失败（INT-158 语义，错误透传真因）
+        - explicit_degrade：跳过 UI 抓取层初始化，返回成功 + ui_capture_available=false
+          + degrade_reason 结构化标记；录屏/采集链自检不降级（失败仍失败）
+        """
+        self.reset_ui_capture_state()
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...")
-        driver = self._get_driver(device_sn)
-        if not driver:
-            self._log(level='ERROR',
-                      content=f"Failed to get driver for device {device_sn}（原因：hypium/devicetest 未安装导致 UiDriver=None）")
-            return False
+
+        driver, unavailable_reason = self._get_driver_for_initialize(device_sn)
+        if driver is None:
+            if self._degrade_ui_capture(unavailable_reason):
+                # explicit_degrade：UI 抓取层不可用 → 留痕跳过，录屏链照常初始化
+                self._log(level='WARNING',
+                          content=(f"UI 抓取层降级（explicit_degrade）: device {device_sn} "
+                                   f"reason={self.ui_degrade_reason}，"
+                                   f"UI 步骤将按环境排除显式跳过；录屏/采集链不受影响"),
+                          task_id=task_id, test_case_id=test_case_id)
+            else:
+                reason = unavailable_reason
+                if isinstance(reason, UiCaptureDegradeReason):
+                    reason = reason.value
+                self._log(level='ERROR',
+                          content=(f"Failed to get driver for device {device_sn} "
+                                   f"（UI 抓取层不可用: {reason}；"
+                                   f"hypium/devicetest 未安装或设备端 uitest 守护不可达）"))
+                return False
 
         try:
 
             if self._check_stop("initialize"):
                 return False
-            self.unlock(device_sn)
-            if self._check_stop("initialize"):
-                return False
+            if driver is not None:
+                self.unlock(device_sn)
+                if self._check_stop("initialize"):
+                    return False
 
-            # 检测并关闭弹窗
-            self.close_popups(device_sn)
-            if self._check_stop("initialize"):
-                return False
-            try:
-                driver.swipe_to_home()
-            except:
-                driver.press_home()
-            time.sleep(LONG_WAIT)
-
-            driver.stop_app(self.app_name)
-
-            if self._check_stop("initialize"):
-                return False
-            # 从配置获取应用图标Key
-            app_icon_key = self.app_icon_key
-            icon = driver.find_component(By.key(app_icon_key))
-            if icon:
-                self._log(level='DEBUG', content=f"Clicking app icon...")
-                icon.click()
-                time.sleep(APP_LAUNCH_WAIT)
-                # 启动应用后再次检查弹窗
+                # 检测并关闭弹窗
                 self.close_popups(device_sn)
-            else:
-                self._log(level='WARNING', content="App icon not found, trying aa start...")
-                subprocess.run(['hdc', '-t', device_sn, 'shell', 'aa', 'start', '-b', self.app_name], check=False)
-                time.sleep(APP_LAUNCH_WAIT)
-                # 启动应用后再次检查弹窗
-                self.close_popups(device_sn)
+                if self._check_stop("initialize"):
+                    return False
+                try:
+                    driver.swipe_to_home()
+                except:
+                    driver.press_home()
+                time.sleep(LONG_WAIT)
 
-            if self._check_stop("initialize"):
-                return False
+                driver.stop_app(self.app_name)
+
+                if self._check_stop("initialize"):
+                    return False
+                # 从配置获取应用图标Key
+                app_icon_key = self.app_icon_key
+                icon = driver.find_component(By.key(app_icon_key))
+                if icon:
+                    self._log(level='DEBUG', content=f"Clicking app icon...")
+                    icon.click()
+                    time.sleep(APP_LAUNCH_WAIT)
+                    # 启动应用后再次检查弹窗
+                    self.close_popups(device_sn)
+                else:
+                    self._log(level='WARNING', content="App icon not found, trying aa start...")
+                    subprocess.run(['hdc', '-t', device_sn, 'shell', 'aa', 'start', '-b', self.app_name], check=False)
+                    time.sleep(APP_LAUNCH_WAIT)
+                    # 启动应用后再次检查弹窗
+                    self.close_popups(device_sn)
+
+                if self._check_stop("initialize"):
+                    return False
             return True
         except Exception as e:
             self._log(level='ERROR', content=f"Failed to initialize via settings path: {e}")
             return False
+
+    def _get_driver_for_initialize(self, device_sn):
+        """initialize 专用取驱动：区分「环境缺 hypium」与「连接失败」两种不可用形态
+
+        Returns:
+            (UiDriver 实例, None)（可用）；
+            (None, 结构化不可用原因)（不可用，原因仅由调用方决定是否落状态）
+        """
+        reason = self._ui_unavailable_reason()
+        if reason is not None:
+            return None, reason.value
+        driver = self._connect_ui_driver(device_sn)
+        if driver is None:
+            return None, UiCaptureDegradeReason.UITEST_DAEMON_UNAVAILABLE.value
+        return driver, None
+
+    def _degrade_ui_capture(self, unavailable_reason):
+        """按 UI_CAPTURE_MODE 分流 UI 层不可用（INT-296）
+
+        Args:
+            unavailable_reason: _get_driver_for_initialize 返回的结构化不可用原因
+
+        Returns:
+            True: explicit_degrade 模式，已标记降级，调用方继续非 UI 初始化并返回成功
+            False: strict 模式（默认），调用方按现状显式失败（状态保持无降级）
+        """
+        from device_service.config.config import Config
+        mode = normalize_ui_capture_mode(getattr(Config, 'UI_CAPTURE_MODE', None))
+        if mode == UiCaptureMode.EXPLICIT_DEGRADE.value:
+            self.mark_ui_capture_degraded(UiCaptureDegradeReason(unavailable_reason))
+            return True
+        return False
 
     @check_stop("pre_process")
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:

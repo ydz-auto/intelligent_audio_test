@@ -141,6 +141,34 @@ class DeviceAclRepositoryImpl(DeviceAclRepository):
             raise RuntimeError(resp.message or 'CreateDriver failed')
         return True
 
+    def initialize_driver(self, task_id: str, device_config: List[Dict]) -> Dict:
+        """创建设备驱动（initialize 专用）：返回 device_service 结构化响应
+
+        与 create_driver 的差异：成功时除 True 外还返回 resp.data 中的
+        ui_capabilities（INT-296：ui_capture_available / degrade_reason），
+        e2e 侧据此把 UI 抓取步骤显式标记 skipped（环境排除）。
+        失败语义与 create_driver 一致（上抛异常携带真因）。
+        """
+        from shared.clients.grpc_clients import get_device_service_stub
+        from shared.proto import device_service_pb2 as device_pb
+        try:
+            stub = get_device_service_stub()
+            resp = stub.CreateDriver(device_pb.CreateDriverRequest(
+                task_id=str(task_id),
+                device_config=json.dumps(device_config),
+            ))
+        except Exception as e:
+            logger.error("initialize_driver 失败: %s", e)
+            raise
+        if not resp.success:
+            logger.error("initialize_driver 失败: %s", resp.message)
+            raise RuntimeError(resp.message or 'CreateDriver failed')
+        try:
+            data = json.loads(resp.data) if resp.data else {}
+        except (ValueError, TypeError):
+            data = {}
+        return data if isinstance(data, dict) else {}
+
     def extract_archive_results(self, task_id: str, device_config: Dict) -> List[CollectedResultDTO]:
         """提取存档结果
 

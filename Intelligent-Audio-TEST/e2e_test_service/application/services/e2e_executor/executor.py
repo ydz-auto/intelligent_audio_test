@@ -1,5 +1,6 @@
 from shared.infrastructure.base_executor import BaseExecutor, TaskStopSignal
 from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus, EvaluationStatus
+from shared.constants.ui_capture import UiCaptureSkipReason, UiCaptureStepStatus
 from e2e_test_service.application.services.e2e_device_manager import E2EDeviceManager
 from e2e_test_service.application.services.e2e_collector import E2ECollector
 from e2e_test_service.application.services.e2e_aggregator import E2EAggregator
@@ -21,6 +22,10 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         super().__init__(execution_engine)
         self._playback_timestamps = {}
         self._audio_local_paths = {}  # {audio_id: {target_rate: local_path, "original": local_path}}（准备阶段预下载+重采样）
+        # INT-296：用例级 UI 抓取层降级标记（explicit_degrade 模式下由
+        # E2EDeviceManager.initialize_devices 写入；None = 无降级）
+        self._ui_capture_degraded = None
+        self._ui_capture_degraded_note = None
         # 委托组件
         self._device_manager = E2EDeviceManager(self)
         self._collector = E2ECollector(self)
@@ -30,6 +35,37 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         self._playback_repo = PlaybackAclRepositoryImpl()
         self._device_result_repo = DeviceResultAclRepositoryImpl()
         self._task_data_repo = TaskDataAclRepositoryImpl()
+
+    def set_ui_capture_degraded(self, degraded, task_id=None, test_case_id=None):
+        """记录用例级 UI 抓取层降级并构建轮次留痕结构（INT-296，仅 explicit_degrade 模式可达）
+
+        Args:
+            degraded: [{device_name, degrade_reason}] 列表（来自 device_service
+                ui_capabilities 结构化透传）
+        """
+        self._ui_capture_degraded = list(degraded or [])
+        reasons = sorted({d.get('degrade_reason') for d in self._ui_capture_degraded
+                          if d.get('degrade_reason')})
+        note = {
+            'status': UiCaptureStepStatus.SKIPPED.value,
+            'skip_reason': UiCaptureSkipReason.ENVIRONMENT_EXCLUDED.value,
+        }
+        if reasons:
+            note['degrade_reason'] = reasons[0] if len(reasons) == 1 else reasons
+        devices = [d.get('device_name') for d in self._ui_capture_degraded if d.get('device_name')]
+        if devices:
+            note['devices'] = devices
+        self._ui_capture_degraded_note = note
+        self._log(level='WARNING',
+                  content=(f"UI 抓取层显式降级（环境排除）: reason={'|'.join(reasons) or 'unknown'}，"
+                           f"用例内的 UI 抓取步骤将标记 skipped 并留痕；"
+                           f"采集/放音/录屏/回传/评估/报告链不受影响"),
+                  task_id=task_id, test_case_id=test_case_id)
+
+    def reset_ui_capture_degraded(self):
+        """用例开始前清空降级标记（防执行线程跨用例残留）"""
+        self._ui_capture_degraded = None
+        self._ui_capture_degraded_note = None
 
     def _get_result_mapper(self):
         """返回 DeviceResult ACL 仓储，供 ResultsMixin 使用"""
@@ -144,6 +180,9 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         self._thread_ctx.current_test_case_id = test_case_id
 
         rounds = case_config.get('rounds', [])
+
+        # INT-296：用例开始前清空 UI 抓取层降级标记（executor 为单例，防跨用例残留）
+        self.reset_ui_capture_degraded()
 
         device_info_list = None
         result_id = None
