@@ -149,7 +149,7 @@
                 <i class="fas fa-eye"></i> 查看冻结报告
               </button>
             </div>
-            <div class="pt-detail-row" v-else>该版本发布时未冻结执行数据（无报告）</div>
+            <div class="pt-detail-row" v-else>该版本无冻结报告（发布时源任务无已完成报告）</div>
           </div>
 
           <div class="pt-detail-section" v-if="(pt.detail?.executionHistory || []).length > 0">
@@ -455,7 +455,7 @@ async function handleExecute(ptItem: PublishedTaskItem) {
   try {
     await modal.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '执行确认',
-      content: `将按版本 v${ptItem.version} 的快照创建新的日常任务「${ptItem.name}」，创建后到任务列表启动执行。是否继续？`,
+      content: `将按版本 v${ptItem.version} 的快照创建新的日常任务「${ptItem.name}」，创建后前往任务详情页。是否继续？`,
       confirmText: '创建日常任务',
     });
     confirmed = true;
@@ -466,8 +466,9 @@ async function handleExecute(ptItem: PublishedTaskItem) {
   try {
     const result = await pt.execute(ptItem.id);
     if (result?.taskId) {
-      notification.success(`日常任务已创建（ID: ${result.taskId}），即将前往任务列表`);
-      router.push('/tasks');
+      // INT-208 裁定：执行成功后跳转新日常任务详情页（对齐设计文档 §12.2）
+      notification.success(`日常任务已创建（ID: ${result.taskId}），即将前往任务详情`);
+      router.push({ name: 'taskDetail', params: { id: String(result.taskId) } });
     }
   } catch (error: any) {
     notification.error(error?.message || '创建日常任务失败');
