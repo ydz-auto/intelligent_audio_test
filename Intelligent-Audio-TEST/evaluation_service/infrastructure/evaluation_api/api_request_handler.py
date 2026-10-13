@@ -38,6 +38,9 @@ class EvalTaskRegistry:
     _CANCELLED_CAP = 4096
     _cancelled_cases = {}  # 'task_id:test_case_id' -> reason（case 级取消标记，有序，FIFO 淘汰）
     _CANCELLED_CASES_CAP = 4096
+    # case 取消标记 Redis TTL：覆盖 Redis 持久化队列的消费周期（远长于最长评估
+    # 等待 eval_max_wait_time=600s，重启+队列重放场景后自然过期，不留永久垃圾）
+    _CASE_CANCELLED_TTL = 86400
 
     @staticmethod
     def _norm_task_id(task_id):
@@ -92,6 +95,12 @@ class EvalTaskRegistry:
         返回 [(eval_task_id, endpoint_url), ...] 供调用方通知子服务真正取消（方案B）；
         case 级取消标记供 worker 消费/结果落库前核销（丢弃不执行、不落库）。
         幂等：重复取消返回空列表，标记不覆盖既有 reason。
+
+        取消标记同步落 Redis（eval:case_cancelled:{task_id}:{case_id} + TTL，
+        INT-308 审计#2）：eval_service 重启后已入 Redis 持久化队列的已取消
+        评估任务仍会被核销（is_case_cancelled 先查内存后查 Redis），
+        不与"Redis 队列为跨重启持久化而设计"的语义矛盾。Redis 不可用时
+        降级仅内存标记（与队列降级内存模式的语义边界一致）。
         """
         task_id = cls._norm_task_id(task_id)
         case_key = f'{task_id}:{test_case_id}'
@@ -102,14 +111,46 @@ class EvalTaskRegistry:
             cls._cancelled_cases.setdefault(case_key, reason or 'case_cancelled')
             while len(cls._cancelled_cases) > cls._CANCELLED_CASES_CAP:
                 cls._cancelled_cases.pop(next(iter(cls._cancelled_cases)))
+        cls._persist_case_cancelled(task_id, test_case_id)
         return removed
 
     @classmethod
+    def _persist_case_cancelled(cls, task_id, test_case_id):
+        """case 取消标记写 Redis（best effort，失败降级内存标记仍生效）"""
+        try:
+            from shared.models.common_enums import RedisKeyPrefix
+            from shared.utils import distributed_coordinator as dc
+            key = (f'{RedisKeyPrefix.EVAL_CASE_CANCELLED.value}:'
+                   f'{task_id}:{test_case_id}')
+            dc.set_flag(key, value=1, ttl=cls._CASE_CANCELLED_TTL)
+        except Exception as e:
+            logger.warning("case 取消标记写 Redis 失败（降级内存标记）: task_id=%s, case_id=%s: %s",
+                           task_id, test_case_id, e)
+
+    @classmethod
+    def _check_redis_case_cancelled(cls, task_id, test_case_id):
+        """读 Redis case 取消标记（Redis 不可用时返回 False，由内存标记兜底）"""
+        try:
+            from shared.models.common_enums import RedisKeyPrefix
+            from shared.utils import distributed_coordinator as dc
+            key = (f'{RedisKeyPrefix.EVAL_CASE_CANCELLED.value}:'
+                   f'{task_id}:{test_case_id}')
+            return dc.is_flag_set(key)
+        except Exception:
+            return False
+
+    @classmethod
     def is_case_cancelled(cls, task_id, test_case_id):
-        """该 (task_id, test_case_id) 的评估是否已被取消（幂等读取，不消费标记）"""
+        """该 (task_id, test_case_id) 的评估是否已被取消（幂等读取，不消费标记）
+
+        先查进程内存标记（本进程取消），未命中再查 Redis（其他实例取消 /
+        eval_service 重启后），双通道覆盖多实例与重启场景（审计#2）。
+        """
         task_id = cls._norm_task_id(task_id)
         with cls._lock:
-            return f'{task_id}:{test_case_id}' in cls._cancelled_cases
+            if f'{task_id}:{test_case_id}' in cls._cancelled_cases:
+                return True
+        return cls._check_redis_case_cancelled(task_id, test_case_id)
 
     @classmethod
     def is_cancelled(cls, eval_task_id):

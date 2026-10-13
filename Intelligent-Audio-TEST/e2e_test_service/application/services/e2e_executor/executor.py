@@ -254,12 +254,15 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
 
             return success
         except TaskStopSignal:
-            # 任务停止信号：用例标记为 STOPPED（与 task_service 停止分支的用例状态推导一致）
+            # 任务停止信号：执行状态 STOPPED、最终状态按 task_service 停止分支
+            # 同款推导（derive_task_case_status(stopped, stopped) → failed，
+            # TaskCaseStatus 无 STOPPED 成员，2e919c18 引用的枚举成员不存在，
+            # 此处必抛 AttributeError 走异常路径——INT-308 审计#6 修复）
             self._log(level='INFO', content=f"用例 {case_name} 因任务停止而中断",
                       task_id=task_id, test_case_id=test_case_id)
             self._update_tc_rel_status(tc_rel_id, task_id=task_id,
                                        execution_status=ExecutionStatus.STOPPED,
-                                       status=TaskCaseStatus.STOPPED)
+                                       error_message='任务被手动停止')
             return False
         except Exception as e:
             import traceback

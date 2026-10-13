@@ -58,14 +58,33 @@ _remove_db_session()
 
 @pytest.fixture(autouse=True)
 def _reset_registry():
-    """隔离 EvalTaskRegistry 类级状态（注册表为进程级单例）"""
+    """隔离 EvalTaskRegistry 类级状态（注册表为进程级单例）+ Redis case 取消标记
+
+    INT-308 审计#2 修复后取消标记双通道（内存 + Redis eval:case_cancelled:*），
+    测试间需同时清理，否则跨用例的 Redis 残留键会被 is_case_cancelled 的
+    Redis 通道命中。
+    """
     EvalTaskRegistry._entries = {}
     EvalTaskRegistry._cancelled = {}
     EvalTaskRegistry._cancelled_cases = {}
+    _flush_redis_case_cancelled()
     yield
     EvalTaskRegistry._entries = {}
     EvalTaskRegistry._cancelled = {}
     EvalTaskRegistry._cancelled_cases = {}
+    _flush_redis_case_cancelled()
+
+
+def _flush_redis_case_cancelled():
+    """清理 Redis 中 case 取消标记（Redis 不可用时静默跳过，测试退化为纯内存语义）"""
+    try:
+        from shared.utils.redis_pubsub import RedisPubSub
+        from shared.models.common_enums import RedisKeyPrefix
+        client = RedisPubSub().redis_client
+        for key in client.scan_iter(f'{RedisKeyPrefix.EVAL_CASE_CANCELLED.value}:*'):
+            client.delete(key)
+    except Exception:
+        pass
 
 
 # ==================== 问题1：停止传播 ====================
@@ -410,6 +429,166 @@ class TestCancelCaseEvaluationsHandler:
         result = cancel_case_evaluations(5, [])
         assert result == {'results': [], 'cancelled_inflight': 0, 'subservice_notified': 0}
 
+    def test_task_stopped_trusts_requester_despite_flipped_status(self):
+        """审计#1 修复（核心回归）：task_service 停止链先翻转 evaluation_status=stopped
+        再调用取消——命令语义下信任请求方，stopped 不误判为已完成，照常摘除"""
+        tc_rels = [
+            self._tc('case-1', 'stopped'),   # 停止链已翻转（此前 running/calculating）
+            self._tc('case-2', 'stopped'),
+        ]
+
+        with patch.object(evaluation_cancel_handler.task_acl_repository,
+                          'get_task_case_by_ids', return_value=tc_rels), \
+             patch.object(evaluation_cancel_handler.eval_task_registry,
+                          'cancel_by_case',
+                          return_value=[('e1', 'http://ep-a')]) as mock_cancel, \
+             patch.object(evaluation_cancel_handler, '_notify_subservices_cancel',
+                          return_value=1), \
+             patch.object(evaluation_cancel_handler, '_publish_cancel_audit'):
+
+            result = cancel_case_evaluations(5, ['case-1', 'case-2'],
+                                             reason='task_stopped')
+
+        # 关键断言：翻转后状态不被误判为"已完成不可取消"
+        assert mock_cancel.call_count == 2
+        assert all(r['cancelled'] is True for r in result['results'])
+        assert result['cancelled_inflight'] == 2
+
+    def test_task_stopped_completed_case_still_excluded(self):
+        """命令语义下已完成（completed/failed/skipped，有实际产出）的用例
+        仍不可取消（返回 completed=true 供删除方标记 excluded）"""
+        tc_rels = [
+            self._tc('case-1', 'stopped'),                  # 停止链翻转 → 照常取消
+            self._tc('case-2', EvaluationStatus.COMPLETED),  # 评估已产出 → excluded
+            self._tc('case-3', EvaluationStatus.FAILED),     # 评估已产出 → excluded
+        ]
+
+        with patch.object(evaluation_cancel_handler.task_acl_repository,
+                          'get_task_case_by_ids', return_value=tc_rels), \
+             patch.object(evaluation_cancel_handler.eval_task_registry,
+                          'cancel_by_case',
+                          return_value=[('e1', 'http://ep-a')]) as mock_cancel, \
+             patch.object(evaluation_cancel_handler, '_notify_subservices_cancel',
+                          return_value=0), \
+             patch.object(evaluation_cancel_handler, '_publish_cancel_audit'):
+
+            result = cancel_case_evaluations(5, ['case-1', 'case-2', 'case-3'],
+                                             reason='task_stopped')
+
+        assert mock_cancel.call_count == 1  # 仅 case-1
+        by_id = {r['test_case_id']: r for r in result['results']}
+        assert by_id['case-1']['cancelled'] is True
+        assert by_id['case-2']['completed'] is True and by_id['case-2']['cancelled'] is False
+        assert by_id['case-3']['completed'] is True
+
+    def test_adhoc_reason_keeps_conservative_semantics(self):
+        """adhoc（外部临时调用）保持既有保守语义：回读非活跃即跳过（含 stopped）"""
+        tc_rels = [
+            self._tc('case-1', 'stopped'),
+            self._tc('case-2', EvaluationStatus.RUNNING),
+        ]
+
+        with patch.object(evaluation_cancel_handler.task_acl_repository,
+                          'get_task_case_by_ids', return_value=tc_rels), \
+             patch.object(evaluation_cancel_handler.eval_task_registry,
+                          'cancel_by_case',
+                          return_value=[('e1', 'http://ep-a')]) as mock_cancel, \
+             patch.object(evaluation_cancel_handler, '_notify_subservices_cancel',
+                          return_value=0), \
+             patch.object(evaluation_cancel_handler, '_publish_cancel_audit'):
+
+            result = cancel_case_evaluations(5, ['case-1', 'case-2'],
+                                             reason='adhoc')
+
+        assert mock_cancel.call_count == 1  # 仅 case-2；stopped 被保守跳过
+        by_id = {r['test_case_id']: r for r in result['results']}
+        assert by_id['case-1']['cancelled'] is False
+        assert by_id['case-2']['cancelled'] is True
+
+    def test_unknown_reason_normalized_to_adhoc(self):
+        """未知 reason 归一为 adhoc（保守语义），拒绝魔法字符串外溢"""
+        assert evaluation_cancel_handler.EvaluationCancelReason.normalize(
+            'whatever') == evaluation_cancel_handler.EvaluationCancelReason.ADHOC
+        assert evaluation_cancel_handler.EvaluationCancelReason.is_command_semantic('whatever') is False
+        assert evaluation_cancel_handler.EvaluationCancelReason.is_command_semantic('task_stopped') is True
+        assert evaluation_cancel_handler.EvaluationCancelReason.is_command_semantic('case_deleted') is True
+
+    def test_completed_case_no_cancel_event_published(self):
+        """审计#4：已完成不可取消的用例不发布 case_evaluation_cancelled 事件"""
+        events = []
+        from shared.utils.redis_pubsub import EventBus
+        with patch.object(EventBus, 'publish',
+                          side_effect=lambda ch, et, payload: events.append((ch, et, payload))):
+            evaluation_cancel_handler._publish_cancel_audit(
+                5, [
+                    {'test_case_id': 'case-1', 'cancelled': True, 'completed': False},
+                    {'test_case_id': 'case-2', 'cancelled': False, 'completed': True},
+                ],
+                'task_stopped')
+
+        # 仅实际取消的用例发布；completed 用例无事件（语义一致）
+        assert len(events) == 1
+        assert events[0][2]['test_case_id'] == 'case-1'
+
+    def test_subservice_notify_parallel_with_timeout(self):
+        """审计#3：子服务通知并行化 + 总耗时上限——单个端点挂死不拖垮停止主链"""
+        import time as _time
+        targets = [(f'e{i}', 'http://slow-endpoint') for i in range(4)]
+
+        def _slow_delete(eval_task_id, endpoint_url):
+            _time.sleep(30)  # 模拟端点挂死（timeout=5 也覆盖不到的场景）
+            return True
+
+        import requests as _requests
+        with patch.object(_requests, 'delete', side_effect=_slow_delete):
+            start = _time.time()
+            notified = evaluation_cancel_handler._notify_subservices_cancel(
+                targets, 5)
+            elapsed = _time.time() - start
+
+        # 4 个挂死通知在 join 上限内放弃，总耗时远小于串行 4×5s
+        assert elapsed < 10
+        assert notified == 0
+
+    def test_subservice_notify_parallel_success(self):
+        """并行通知成功路径：4 个端点并行，均成功计数"""
+        targets = [(f'e{i}', f'http://ep-{i}') for i in range(4)]
+        import requests as _requests
+        with patch.object(_requests, 'delete',
+                          side_effect=lambda url, timeout: SimpleNamespace(status_code=200)):
+            notified = evaluation_cancel_handler._notify_subservices_cancel(targets, 5)
+        assert notified == 4
+
+    def test_cross_layer_timing_flip_then_cancel(self):
+        """审计#1/#5 跨层时序贯通：task_service 翻转 commit → handler 回读
+        stopped 状态 → 仍照常摘除在途任务（fake session 模拟翻转后的 DB 状态）"""
+        # 模拟 task_service 停止链：采集时状态活跃，commit 后 DB 中已翻转
+        collected_while_active = ['case-1']
+        flipped_after_commit = self._tc('case-1', 'stopped')  # commit 后回读到的状态
+
+        cancel_calls = []
+
+        def fake_cancel(tid, ids, reason='case_deleted'):
+            cancel_calls.append((tid, list(ids), reason))
+            return {'success': True, 'message': 'ok',
+                    'data': {'results': [{'test_case_id': c, 'cancelled': True,
+                                          'completed': False, 'inflight_removed': 1,
+                                          'subservice_notified': 0} for c in ids],
+                             'cancelled_inflight': len(ids), 'subservice_notified': 0}}
+
+        with patch.object(evaluation_cancel_handler.task_acl_repository,
+                          'get_task_case_by_ids',
+                          return_value=[flipped_after_commit]), \
+             patch('shared.clients.grpc_clients.cancel_case_evaluations',
+                   side_effect=fake_cancel):
+            # 模拟 task_service 侧调用链：翻转 commit 后带着翻转前采集的 ID 调用
+            from shared.clients.grpc_clients import cancel_case_evaluations as _cancel
+            resp = _cancel('5', collected_while_active, reason='task_stopped')
+
+        # 取消未被跳过：在途摘除 > 0（修复前此处为 0，幽灵数据）
+        assert cancel_calls == [('5', ['case-1'], 'task_stopped')]
+        assert resp['data']['cancelled_inflight'] == 1
+
 
 class TestWorkerConsumesCancelMark:
     """端点 worker 消费前核销：case 取消的任务丢弃不执行"""
@@ -629,3 +808,122 @@ class TestControlTaskStopCancelsEvaluation:
         # 停止流程不被联动取消失败阻塞
         assert success is True
         assert message == '任务已停止'
+
+    def test_cancel_invoked_before_status_flip_commit(self):
+        """审计#1 修复（纵深）：取消调用必须发生在状态翻转 commit 之前——
+        任何回读 TaskCase.evaluation_status 的调用路径看到的都是活跃状态"""
+        eng = self._engine_with_task()
+
+        tc_evaluating = SimpleNamespace(
+            id='rel-1', test_case_id='case-1', task_id='task-5',
+            execution_status=ExecutionStatus.COMPLETED,
+            evaluation_status=EvaluationStatus.RUNNING)
+        fake_session = MagicMock()
+        fake_task = SimpleNamespace(
+            id='task-5', status=ExecutionStatus.RUNNING, completed_at=None)
+        fake_session.get.side_effect = lambda cls, tid: (
+            fake_task if cls.__name__ == 'Task' else None)
+        fake_session.query.return_value.filter.return_value.all.return_value = [
+            tc_evaluating]
+
+        call_order = []
+        fake_session.commit.side_effect = lambda: call_order.append('commit')
+
+        with patch('task_service.core.execution_engine.mixins.task_control.get_db_session',
+                   return_value=fake_session),              patch('task_service.core.execution_engine.mixins.task_control.'
+                   '_dc.set_task_stop'),              patch('task_service.core.execution_engine.mixins.task_control.'
+                   '_dc.clear_task_pause'),              patch('task_service.core.execution_engine.mixins.task_control.'
+                   '_stop_task_audio_via_grpc'),              patch('task_service.core.execution_engine.mixins.task_control.'
+                   '_cleanup_devices_via_grpc'),              patch('task_service.core.execution_engine.mixins.task_control.'
+                   '_unregister_task_events_via_grpc'),              patch('task_service.core.execution_engine.mixins.task_control.'
+                   '_register_task_events_via_grpc'),              patch('shared.clients.grpc_clients.cancel_case_evaluations',
+                   side_effect=lambda tid, ids, reason: call_order.append('cancel') or {
+                       'success': True,
+                       'data': {'cancelled_inflight': 1, 'results': []}}):
+
+            eng.control_task('task-5', 'stop')
+
+        assert call_order == ['cancel', 'commit']
+
+class TestCaseCancelledRedisFallback:
+    """审计#2：case 取消标记双通道——eval_service 重启（内存标记丢失）后，
+    is_case_cancelled 仍能经 Redis 通道命中（Redis 持久化队列重放场景）"""
+
+    def test_redis_channel_hits_when_memory_lost(self):
+        """模拟重启：清空内存标记后，Redis 中预置的取消标记仍命中"""
+        EvalTaskRegistry.cancel_by_case(5, 'case-1')  # 写内存 + Redis
+        # 模拟 eval_service 重启：内存全部丢失
+        EvalTaskRegistry._entries = {}
+        EvalTaskRegistry._cancelled = {}
+        EvalTaskRegistry._cancelled_cases = {}
+
+        assert EvalTaskRegistry.is_case_cancelled(5, 'case-1') is True
+
+        # 清理 Redis 标记后不再命中（autouse fixture 亦会清理）
+        try:
+            from shared.utils.redis_pubsub import RedisPubSub
+            from shared.models.common_enums import RedisKeyPrefix
+            client = RedisPubSub().redis_client
+            client.delete(f'{RedisKeyPrefix.EVAL_CASE_CANCELLED.value}:5:case-1')
+        except Exception:
+            pass
+        assert EvalTaskRegistry.is_case_cancelled(5, 'case-1') is False
+
+    def test_redis_unavailable_falls_back_to_memory(self):
+        """Redis 不可用（分布协调器禁用）：cancel 照常成功，内存标记兜底"""
+        with patch('shared.utils.distributed_coordinator.set_flag',
+                   side_effect=RuntimeError('redis down')),              patch('shared.utils.distributed_coordinator.is_flag_set',
+                   return_value=False):
+            removed = EvalTaskRegistry.cancel_by_case(5, 'case-1')
+
+        assert removed == []  # 无在途条目，但标记已设
+        assert EvalTaskRegistry.is_case_cancelled(5, 'case-1') is True  # 内存通道
+
+
+class TestE2EExecutorStopBranchTerminalStatus:
+    """审计#6：E2E 执行器 TaskStopSignal 分支此前引用不存在的
+    TaskCaseStatus.STOPPED（2e919c18 引入）必抛 AttributeError 走异常路径；
+    修复后按 task_service 停止分支同款口径收敛（exec=STOPPED，status 由
+    _update_tc_rel_status 按推导规则落 failed），并留痕停止原因。"""
+
+    @staticmethod
+    def _executor_with_stop_signal():
+        from e2e_test_service.application.services.e2e_executor.executor import E2EExecutor
+        from shared.infrastructure.base_executor import TaskStopSignal
+
+        ex = E2EExecutor.__new__(E2EExecutor)
+        ex._aggregator = MagicMock()
+        ex._task_data_repo = MagicMock()
+        ex._device_repo = MagicMock()
+        ex._playback_repo = MagicMock()
+        ex._playback_repo.start_background_noise.return_value = None
+        ex._playback_repo.stop_background_noise.return_value = None
+        ex.current_test_case_id = 'c1'
+        ex._thread_ctx = SimpleNamespace()
+        ex._log = MagicMock()
+        ex._handle_control = MagicMock(side_effect=TaskStopSignal('任务已停止'))
+        ex._update_tc_rel_status = MagicMock()
+        ex._get_control_events = MagicMock(return_value=(None, None))
+        ex._prepare_rounds = MagicMock(return_value=([{'device_id': 1}], 99))
+        ex._run_rounds_loop = MagicMock(return_value=([], [], True, None))
+        return ex
+
+    def test_stop_branch_writes_terminal_without_attributeerror(self):
+        from shared.utils.status_constants import ExecutionStatus
+
+        ex = self._executor_with_stop_signal()
+
+        # 修复前此处抛 AttributeError（TaskCaseStatus.STOPPED 不存在），
+        # 异常被外层 except Exception 吞掉后误标 FAILED——修复后正常收敛
+        result = ex._execute_e2e_with_rounds(
+            task_id=5, tc_rel_id='rel-1',
+            data={'case_name': 'n', 'case_config': {'rounds': []},
+                  'test_case_id': 'case-1', 'algorithm_type': 'translation'})
+
+        assert result is False
+        kwargs = ex._update_tc_rel_status.call_args.kwargs
+        assert kwargs['execution_status'] == ExecutionStatus.STOPPED
+        # 不再引用不存在的 TaskCaseStatus.STOPPED（status 交由推导，无显式 status 覆盖）
+        assert 'status' not in kwargs or kwargs.get('status') != 'stopped'
+        assert kwargs.get('error_message') == '任务被手动停止'
+

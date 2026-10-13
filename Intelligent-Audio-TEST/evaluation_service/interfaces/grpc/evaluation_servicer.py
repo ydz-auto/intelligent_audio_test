@@ -126,7 +126,9 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
         """取消评估（INT-308）：执行中删除用例/任务停止时联动取消评估侧产出
 
         幂等：重复取消返回成功（cancelled_inflight=0）；
-        评估已完成的用例"已完成不可取消"，返回 completed=true 由删除方标记 excluded。
+        命令语义 reason（task_stopped/case_deleted）信任请求方直接摘除（审计#1）；
+        评估已实际产出的用例返回 completed=true 由删除方标记 excluded；
+        未知 reason 归一为 adhoc（保守语义：回读非活跃即跳过）。
         """
         try:
             task_id = to_int_id('task_id', request.task_id)

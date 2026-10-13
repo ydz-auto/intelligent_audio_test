@@ -225,6 +225,8 @@ class RedisKeyPrefix(str, Enum):
     EVAL_SEMAPHORE = 'eval:sem'
     # 评估结果回调频道前缀: eval:result:{eval_task_id}
     EVAL_RESULT = 'eval:result'
+    # case 级评估取消标记前缀（INT-308，重启后核销仍生效）: eval:case_cancelled:{task_id}:{test_case_id}
+    EVAL_CASE_CANCELLED = 'eval:case_cancelled'
     # physical 设备互斥锁前缀: lock:task:physical:{device_id}
     TASK_PHYSICAL_LOCK = 'lock:task:physical'
     # API 数字 SPL 校准互斥锁前缀: lock:spl:calibration:{api_id}（UC-0902）

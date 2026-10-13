@@ -320,6 +320,24 @@ class TaskControlMixin:
                     str(tc.test_case_id) for tc in cases
                     if (tc.evaluation_status or '') in ACTIVE_EVALUATION_STATUSES
                 ]
+                # INT-308 审计#1：联动取消评估必须在状态翻转 commit 之前发起——
+                # evaluation_service 的 CancelEvaluation 在命令语义（task_stopped）
+                # 下信任请求方直接摘除（不回读状态判定），但 adhoc 语义与未来
+                # 调用方可能依赖回读状态；commit 前发起保证任何回读路径看到的
+                # 都是翻转前的活跃状态，两层修复互为纵深
+                if eval_inflight_ids:
+                    try:
+                        from shared.clients.grpc_clients import cancel_case_evaluations
+                        cancel_result = cancel_case_evaluations(
+                            task_id, eval_inflight_ids, reason='task_stopped')
+                        self._log(level='INFO',
+                                  content=(f"任务停止联动取消评估: 用例数={len(eval_inflight_ids)}, "
+                                           f"在途摘除={cancel_result.get('data', {}).get('cancelled_inflight', 0)}"),
+                                  task_id=task_id)
+                    except Exception as e:
+                        self._log(level='WARNING',
+                                  content=f"联动取消评估 gRPC 调用失败(不阻塞停止流程): {e}",
+                                  task_id=task_id)
                 for tc in cases:
                     tc.execution_status = ExecutionStatus.STOPPED
                     tc.evaluation_status = EvaluationStatus.STOPPED
@@ -350,25 +368,6 @@ class TaskControlMixin:
                 except Exception as e:
                     self._log(level='WARNING',
                               content=f"停止音频播放 gRPC 调用失败(不阻塞停止流程): {e}",
-                              task_id=task_id)
-
-                # INT-308：联动取消评估侧产出——停止前已提交评估（翻转前采集的
-                # pending/queued/running/calculating）的用例，取消在途评估任务并
-                # 核销 case 级取消标记，防"已停任务出评估结果"的幽灵数据
-                # （幂等；已完成的不可取消，不标记）。gRPC 失败不阻塞停止流程
-                # （评估侧结果落库前核销为兜底防线）。
-                try:
-                    if eval_inflight_ids:
-                        from shared.clients.grpc_clients import cancel_case_evaluations
-                        cancel_result = cancel_case_evaluations(
-                            task_id, eval_inflight_ids, reason='task_stopped')
-                        self._log(level='INFO',
-                                  content=(f"任务停止联动取消评估: 用例数={len(eval_inflight_ids)}, "
-                                           f"在途摘除={cancel_result.get('data', {}).get('cancelled_inflight', 0)}"),
-                                  task_id=task_id)
-                except Exception as e:
-                    self._log(level='WARNING',
-                              content=f"联动取消评估 gRPC 调用失败(不阻塞停止流程): {e}",
                               task_id=task_id)
 
                 self._emit_progress(task)  # 发送进度更新
