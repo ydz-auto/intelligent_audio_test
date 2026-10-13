@@ -8,6 +8,7 @@ import { useNotification } from '../modal/useNotification';
 import { MODAL_TYPES } from '../modal/constants';
 import { downloadBlob, normalizeTestCaseConfig } from '../../utils/utils';
 import { ViewMode, TestType } from '@/domain/enums';
+import { AUDIO_IMPORT_QUERY, AUDIO_IMPORT_AUTO_OPEN_VALUE } from '@/domain';
 import type {
   TestCase,
   TestCaseFormData,
@@ -199,9 +200,9 @@ export function useTestCaseCard() {
     router.push({
       path: '/AudioImport',
       query: {
-        autoOpen: '1',
-        createTestCase: 'true',
-        ...(algorithmType ? { algorithmType } : {})
+        [AUDIO_IMPORT_QUERY.autoOpen]: AUDIO_IMPORT_AUTO_OPEN_VALUE,
+        [AUDIO_IMPORT_QUERY.createTestCase]: 'true',
+        ...(algorithmType ? { [AUDIO_IMPORT_QUERY.algorithmType]: algorithmType } : {})
       }
     });
   };

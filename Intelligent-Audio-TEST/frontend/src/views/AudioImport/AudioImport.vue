@@ -187,6 +187,7 @@ import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import { useAudioImport } from './audioImport';
 import type { AudioUploadTask } from '@/domain/model/audio';
 import { useUploadState } from '../../composables/upload/useUploadState';
+import { AUDIO_IMPORT_QUERY, AUDIO_IMPORT_AUTO_OPEN_VALUE } from '@/domain';
 
 const {
   audioList: audioList,
@@ -365,6 +366,20 @@ onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeyDown);
   // 算法徽章筛选选项来源对齐 V9.7.10：复用页面算法列表（上传用），而非组件内置全局清单
   fetchAlgorithmOptions();
+
+  // 处理来自测试用例页面的跳转（E2E/API 测试页「导入用例」）：自动打开上传模态窗并预设选项
+  // 对齐 V9.7.10 基线行为（INT-275）：query 参数定义见 domain/constants/audioImportQuery.ts
+  if (route.query[AUDIO_IMPORT_QUERY.autoOpen] === AUDIO_IMPORT_AUTO_OPEN_VALUE) {
+    if (route.query[AUDIO_IMPORT_QUERY.createTestCase] === 'true') {
+      uploadOptions.createTestCase = true;
+    }
+    const algorithmType = route.query[AUDIO_IMPORT_QUERY.algorithmType];
+    if (algorithmType && typeof algorithmType === 'string') {
+      uploadOptions.algorithmType = algorithmType;
+    }
+    // 延迟调用确保设备和算法选项已加载
+    nextTick(() => openUploadModal());
+  }
 });
 
 // 算法徽章筛选选项（{value,name} → {value,label}，对齐 V9.7.10 algorithmFilterOptions）
