@@ -128,6 +128,11 @@ class ExecutorStub:
     def _handle_control(self, task_id):
         pass
 
+    def _is_task_stopped(self, task_id):
+        # INT-308 停止检测契约（ControlMixin 同名方法）：替身恒为未停止，
+        # 供 wait_ai_complete/wait_ai_speaking 的 stop_check 消费（INT-316）
+        return False
+
     def _log(self, level='INFO', content='', **kwargs):
         pass
 

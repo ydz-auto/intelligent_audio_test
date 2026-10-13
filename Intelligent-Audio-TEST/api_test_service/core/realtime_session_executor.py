@@ -78,6 +78,15 @@ class RealtimeSessionExecutor:
     def _cfg(self, key, default):
         return config_manager.get_value('realtime_session', key, default)
 
+    def _stop_check(self, task_id):
+        """INT-308 停止检测回调工厂（INT-316 向后兼容）：执行器带 ControlMixin
+        （生产 APIExecutor）才有 _is_task_stopped；鸭子类型替身缺失时不启用
+        停止检测（stop_check=None），等待行为退回 INT-308 之前的纯超时语义。"""
+        stopped = getattr(self._executor, '_is_task_stopped', None)
+        if stopped is None:
+            return None
+        return lambda: stopped(task_id)
+
     # ── 执行入口 ──
     def execute(self, task_id, tc_rel_id, data, case_config) -> bool:
         case_name = data['case_name']
@@ -270,7 +279,7 @@ class RealtimeSessionExecutor:
         # INT-308 停止传播：等 AI 回复期间检查任务停止，停止时立即中断等待
         complete = client.wait_ai_complete(start_timeout=ai_start_timeout,
                                            end_timeout=ai_complete_timeout,
-                                           stop_check=lambda: self._executor._is_task_stopped(task_id))
+                                           stop_check=self._stop_check(task_id))
         latency = round(time.time() - start_time, 3)
         output = client.output
 
@@ -304,7 +313,7 @@ class RealtimeSessionExecutor:
         # ① 等 AI 开始说话（INT-308：等待期间检查任务停止）
         ai_started = client.wait_ai_speaking(
             start_timeout=ai_start_timeout,
-            stop_check=lambda: self._executor._is_task_stopped(task_id))
+            stop_check=self._stop_check(task_id))
         before_size = len(client.output['audio'])
         if not ai_started:
             return {'round_number': round_number,
@@ -350,7 +359,7 @@ class RealtimeSessionExecutor:
             renewed = client.wait_ai_complete(
                 start_timeout=ai_start_timeout,
                 end_timeout=ai_complete_timeout,
-                stop_check=lambda: self._executor._is_task_stopped(task_id))
+                stop_check=self._stop_check(task_id))
 
         # 打断后音频量 = 重新回复部分（整轮累计扣除打断窗口结束时已有量）
         after_size = max(len(client.output['audio']) - at_window_end_size, 0)
