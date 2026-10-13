@@ -23,19 +23,16 @@
 </template>
 
 <script setup>
-import { useModalControl } from '../../../composables/modal/useModal'
-
 const props = defineProps({
   modalId: {type: String, required: true}
 })
 
 const emit = defineEmits(['close', 'confirm', 'cancel'])
 
-const modalManager = useModalControl()
-
 const selectTestType = (type) => {
-  emit('confirm', { testTestType: type })
-  modalManager.confirm(props.modalId, { testTestType: type })
+  // INT-309：载荷键统一为 testType（与 Tasks.vue handleCreateTask 读取一致；
+  // 原 testTestType 为拼写断点，任务页创建入口静默失效）
+  emit('confirm', { testType: type })
 }
 </script>
 

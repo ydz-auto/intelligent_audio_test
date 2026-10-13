@@ -225,12 +225,14 @@ export function useTasks() {
     isTaskTypeModalVisible.value = true;
   };
 
+  // INT-309：跳转目标为已注册的测试页五步向导（/APITest、/E2ETest），
+  // 原 /create-api-task、/create-e2e-task 路由未注册，落 404 兜底
   const handleCreateTask = (data: { testType: string }) => {
     isTaskTypeModalVisible.value = false;
     if (data.testType === 'APITest') {
-      router.push('/create-api-task');
+      router.push('/APITest');
     } else if (data.testType === 'E2ETest') {
-      router.push('/create-e2e-task');
+      router.push('/E2ETest');
     }
   };
 
