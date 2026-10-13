@@ -18,7 +18,9 @@ from concurrent import futures
 import grpc
 
 from shared.proto import device_service_pb2_grpc as device_grpc
-from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
+from shared.infrastructure.grpc_interceptors import (
+    server_log_interceptor, server_db_scope_interceptor, server_user_context_interceptor,
+)
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import DEVICE_SERVICE_GRPC_PORT
 from device_service.interfaces.grpc.servicers import (
@@ -64,7 +66,8 @@ def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
     _max_workers = config_manager.get_value('grpc', 'device_service_workers', 5)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
-        interceptors=[server_db_scope_interceptor, server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                      server_user_context_interceptor],
     )
     device_grpc.add_DeviceServiceServicer_to_server(DeviceServiceServicer(), server)
     device_grpc.add_DeviceResultServiceServicer_to_server(DeviceResultServiceServicer(), server)

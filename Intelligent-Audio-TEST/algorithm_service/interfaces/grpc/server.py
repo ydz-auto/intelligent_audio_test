@@ -20,6 +20,7 @@ import grpc
 from shared.infrastructure.grpc_interceptors import (
     server_log_interceptor,
     server_db_scope_interceptor,
+    server_user_context_interceptor,
 )
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import ALGORITHM_SERVICE_GRPC_PORT
@@ -53,7 +54,8 @@ def start_grpc_server(port: int = ALGORITHM_SERVICE_GRPC_PORT):
     _max_workers = config_manager.get_value('grpc', 'algorithm_service_workers', 10)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
-        interceptors=[server_db_scope_interceptor, server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                      server_user_context_interceptor],
     )
     _pb_grpc.add_AlgorithmGroupServiceServicer_to_server(
         AlgorithmGroupServicer(), server

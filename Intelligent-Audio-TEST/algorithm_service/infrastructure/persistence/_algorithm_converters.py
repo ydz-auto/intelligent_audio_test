@@ -182,10 +182,12 @@ def _apply_group_to_po(aggregate: AlgorithmGroupAggregate, po: AlgorithmGroupPO)
     说明：PO 表无 algorithm_type 列，不写回该字段。
     只更新可变字段，不覆盖 id / created_at 等不可变元数据。
     """
+    from shared.infrastructure.user_context import get_current_user_id
     po.name = aggregate.name
     po.description = aggregate.description
     po.deleted = aggregate.deleted
     po.updated_at = datetime.now()
+    po.updated_by_user_id = get_current_user_id()
 
 
 def _apply_definition_to_po(aggregate: AlgorithmDefinitionAggregate, po: AlgorithmDefinitionPO) -> None:
@@ -198,6 +200,7 @@ def _apply_definition_to_po(aggregate: AlgorithmDefinitionAggregate, po: Algorit
     - 子实体（device_params / api_params / dimension_relations）的变更
       由调用方通过相应子仓储维护，本方法只同步聚合根自身字段
     """
+    from shared.infrastructure.user_context import get_current_user_id
     po.type = aggregate.algorithm_type
     po.name = aggregate.name
     po.group_id = aggregate.group_id
@@ -208,3 +211,4 @@ def _apply_definition_to_po(aggregate: AlgorithmDefinitionAggregate, po: Algorit
     po.display_order = aggregate.display_order
     po.deleted = aggregate.deleted
     po.updated_at = datetime.now()
+    po.updated_by_user_id = get_current_user_id()

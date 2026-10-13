@@ -43,6 +43,7 @@ class Audio(Base):
     md5 = Column(String(32), comment='音频文件MD5值')
     deleted = Column(Boolean, default=False, nullable=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
+    deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-299）')
     source_language = Column(String(32), comment='源语言')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')

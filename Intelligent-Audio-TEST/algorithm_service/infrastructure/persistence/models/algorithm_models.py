@@ -26,6 +26,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
+# 自增主键：SQLite（测试库）仅 INTEGER PRIMARY KEY 自增，PG 用 BIGINT
+# （对齐 task_service favorite_models 的 _PK_BIGINT 口径，INT-299）
+_PK_BIGINT = BigInteger().with_variant(Integer, 'sqlite')
+
 
 def parse_json_or_raw(value):
     """JSON 文本字段宽松读取（INT-222 统一语义）。
@@ -55,6 +59,9 @@ class AlgorithmGroup(Base):
     icon = Column(String(200), comment='图标URL')
     display_order = Column(Integer, default=0, comment='排序权重')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID（INT-299）')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID（INT-299）')
+    deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-299）')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 
@@ -76,7 +83,7 @@ class AlgorithmGroup(Base):
 class AlgorithmDefinition(Base):
     """算法定义表"""
     __tablename__ = 'algorithm_definitions'
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(_PK_BIGINT, primary_key=True, autoincrement=True)
     type = Column(String(50), unique=True, nullable=False, comment='算法类型代码')
     name = Column(String(100), nullable=False, comment='算法显示名称')
     group_id = Column(BigInteger, ForeignKey('algorithm_groups.id'), comment='关联分组ID')
@@ -85,6 +92,9 @@ class AlgorithmDefinition(Base):
     icon = Column(String(200), comment='图标URL')
     display_order = Column(Integer, default=0, comment='排序权重')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+    created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID（INT-299）')
+    updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID（INT-299）')
+    deleted_by_user_id = Column(BigInteger, nullable=True, comment='执行删除操作的用户ID（JWT，INT-299）')
     created_at = Column(DateTime, default=datetime.now, server_default=func.now(), comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, server_default=func.now(), onupdate=datetime.now, comment='更新时间')
 

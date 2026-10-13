@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from shared.models.database import get_db_session
+from shared.infrastructure.user_context import get_current_user_id
 from algorithm_service.infrastructure.persistence.models import (
     AlgorithmGroup as AlgorithmGroupPO,
     AlgorithmDefinition as AlgorithmDefinitionPO,
@@ -87,6 +88,7 @@ class AlgorithmGroupRepository(IAlgorithmGroupRepository):
                 name=aggregate.name,
                 description=aggregate.description,
                 deleted=aggregate.deleted,
+                created_by_user_id=get_current_user_id(),
             )
             session.add(po)
             session.flush()
@@ -107,6 +109,7 @@ class AlgorithmGroupRepository(IAlgorithmGroupRepository):
             if po is None:
                 return False
             po.deleted = True
+            po.deleted_by_user_id = get_current_user_id()
             po.updated_at = datetime.now()
             session.commit()
             return True
@@ -196,6 +199,7 @@ class AlgorithmDefinitionRepository(IAlgorithmDefinitionRepository):
                 icon=aggregate.icon,
                 display_order=aggregate.display_order,
                 deleted=aggregate.deleted,
+                created_by_user_id=get_current_user_id(),
             )
             session.add(po)
             session.flush()
@@ -216,6 +220,7 @@ class AlgorithmDefinitionRepository(IAlgorithmDefinitionRepository):
             if po is None:
                 return False
             po.deleted = True
+            po.deleted_by_user_id = get_current_user_id()
             po.updated_at = datetime.now()
             session.commit()
             return True

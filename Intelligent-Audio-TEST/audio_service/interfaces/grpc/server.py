@@ -17,7 +17,9 @@ from concurrent import futures
 import grpc
 
 from shared.proto import audio_service_pb2_grpc as audio_grpc
-from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
+from shared.infrastructure.grpc_interceptors import (
+    server_log_interceptor, server_db_scope_interceptor, server_user_context_interceptor,
+)
 from audio_service.config.config import Config
 from shared.utils.config_manager import config_manager
 from shared.config.service_ports import AUDIO_SERVICE_GRPC_PORT
@@ -79,7 +81,8 @@ def start_grpc_server(port=AUDIO_SERVICE_GRPC_PORT):
     _max_workers = config_manager.get_value('grpc', 'audio_service_workers', 5)
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=_max_workers),
-        interceptors=[server_db_scope_interceptor, server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor,
+                      server_user_context_interceptor],
     )
     audio_grpc.add_AudioServiceServicer_to_server(AudioServiceServicer(), server)
     audio_grpc.add_PlaybackServiceServicer_to_server(PlaybackServiceServicer(), server)

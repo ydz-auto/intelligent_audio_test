@@ -28,6 +28,7 @@ class PlaybackRepository(PlaybackRepositoryInterface):
 
     def create_playback_device(self, data: dict) -> PlaybackDeviceAggregate:
         """创建播放设备，返回 PlaybackDeviceAggregate 聚合根。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         new_device = PlaybackDevice(
             name=data['name'],
@@ -38,6 +39,7 @@ class PlaybackRepository(PlaybackRepositoryInterface):
             device_unique_id=data['device_unique_id'],
             description=data.get('description'),
             status=data.get('status', 'online'),
+            created_by_user_id=get_current_user_id(),
         )
         session.add(new_device)
         session.commit()
@@ -57,6 +59,7 @@ class PlaybackRepository(PlaybackRepositoryInterface):
 
     def update_playback_device(self, device_id: int, update_fields: dict) -> Optional[PlaybackDeviceAggregate]:
         """更新播放设备字段，返回更新后的 PlaybackDeviceAggregate。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         device = session.get(PlaybackDevice, device_id)
         if not device:
@@ -64,6 +67,7 @@ class PlaybackRepository(PlaybackRepositoryInterface):
         for key, value in update_fields.items():
             setattr(device, key, value)
         device.updated_at = _now()
+        device.updated_by_user_id = get_current_user_id()
         session.commit()
         return _playback_po_to_entity(device)
 
@@ -77,11 +81,13 @@ class PlaybackRepository(PlaybackRepositoryInterface):
 
     def delete_playback_device(self, device_id: int) -> bool:
         """软删除播放设备"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         device = session.query(PlaybackDevice).filter_by(id=device_id, is_deleted=0).first()
         if not device:
             return False
         device.is_deleted = 1
+        device.deleted_by_user_id = get_current_user_id()
         device.updated_at = _now()
         session.commit()
         return True

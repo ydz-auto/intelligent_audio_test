@@ -59,6 +59,7 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
 
     def create_audio(self, data: dict) -> AudioAggregate:
         """创建音频记录，返回 AudioAggregate 聚合根。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         audio = Audio(
             name=data.get('name'),
@@ -75,6 +76,7 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
             description=data.get('description'),
             md5=data.get('md5'),
             source_language=data.get('source_language'),
+            created_by_user_id=get_current_user_id(),
         )
         session.add(audio)
         session.flush()
@@ -82,6 +84,7 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
 
     def update_audio(self, audio_id: int, update_fields: dict) -> Optional[AudioAggregate]:
         """更新音频字段，返回更新后的 AudioAggregate。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         audio = session.query(Audio).filter_by(id=audio_id, deleted=False).first()
         if not audio:
@@ -89,6 +92,7 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         for key, value in update_fields.items():
             setattr(audio, key, value)
         audio.updated_at = _now()
+        audio.updated_by_user_id = get_current_user_id()
         session.flush()
         return _audio_po_to_entity(audio)
 
@@ -110,6 +114,7 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
 
     def delete_audio(self, audio_id: int) -> bool:
         """软删除音频"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         audio = session.query(Audio).filter_by(id=audio_id, deleted=False).first()
         if not audio:
@@ -117,12 +122,14 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         now = _now()
         audio.deleted = True
         audio.deleted_at = now
+        audio.deleted_by_user_id = get_current_user_id()
         audio.updated_at = now
         session.flush()
         return True
 
     def batch_soft_delete_audios(self, audio_ids: List[int]) -> int:
         """批量软删除音频"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         if not audio_ids:
             return 0
@@ -130,7 +137,8 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
         count = session.query(Audio).filter(
             Audio.id.in_(audio_ids), Audio.deleted == False
         ).update(
-            {"deleted": True, "deleted_at": now, "updated_at": now},
+            {"deleted": True, "deleted_at": now, "updated_at": now,
+             "deleted_by_user_id": get_current_user_id()},
             synchronize_session=False,
         )
         session.flush()

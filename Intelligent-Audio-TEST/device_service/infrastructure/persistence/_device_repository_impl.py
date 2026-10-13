@@ -31,6 +31,7 @@ class DeviceRepository(DeviceRepositoryInterface):
 
     def create_device(self, data: dict) -> DeviceAggregate:
         """创建设备，返回 DeviceAggregate 聚合根。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         new_device = Device(
             name=data['name'],
@@ -51,6 +52,7 @@ class DeviceRepository(DeviceRepositoryInterface):
             ip=data.get('ip'),
             status=data.get('status') or 'offline',
             supported_algorithms=data.get('supported_algorithms') or [],
+            created_by_user_id=get_current_user_id(),
         )
         session.add(new_device)
         session.commit()
@@ -58,6 +60,7 @@ class DeviceRepository(DeviceRepositoryInterface):
 
     def update_device(self, device_id: int, update_fields: dict) -> Optional[DeviceAggregate]:
         """更新设备字段，返回更新后的 DeviceAggregate。"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         device = session.query(Device).filter_by(id=device_id, deleted=False).first()
         if not device:
@@ -65,6 +68,7 @@ class DeviceRepository(DeviceRepositoryInterface):
         for key, value in update_fields.items():
             setattr(device, key, value)
         device.updated_at = _now()
+        device.updated_by_user_id = get_current_user_id()
         session.commit()
         return _device_po_to_entity(device)
 
@@ -78,11 +82,14 @@ class DeviceRepository(DeviceRepositoryInterface):
 
     def delete_device(self, device_id: int) -> bool:
         """软删除设备"""
+        from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
         device = session.query(Device).filter_by(id=device_id, deleted=False).first()
         if not device:
             return False
         device.deleted = True
+        device.deleted_at = _now()
+        device.deleted_by_user_id = get_current_user_id()
         device.updated_at = _now()
         session.commit()
         return True
