@@ -74,9 +74,11 @@ class ApiClient:
         return data
 
     def register(self, username: str, password: str) -> int:
-        body = {'username': username, **self._encrypt(password, self._encryption_key())}
+        # INT-285：注册邮箱必填（网关 400 校验），引导注册派生占位邮箱
+        body = {'username': username, 'email': f'{username}@test.local',
+                **self._encrypt(password, self._encryption_key())}
         r = httpx.post(f'{self._root}/api/v1/auth/register', json=body, **_client_kwargs)
-        if r.status_code != 200:
+        if r.status_code not in (200, 201):
             raise ApiError(r.status_code, r.text)
         return (r.json().get('data') or {}).get('user_id', 0)
 

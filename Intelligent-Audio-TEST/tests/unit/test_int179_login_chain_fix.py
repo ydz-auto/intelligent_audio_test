@@ -160,9 +160,11 @@ def encryption_on(client):
     mp.undo()
 
 
-def _register(client, username, password='pass179'):
+def _register(client, username, password='pass179x'):
+    # INT-285：注册邮箱必填 + 密码最短 6 位（网关 400 校验），helper 统一携带
     resp = client.post('/api/v1/auth/register',
-                       json={'username': username, 'password': password})
+                       json={'username': username, 'password': password,
+                             'email': f'{username}@example.com'})
     assert resp.status_code == 201, resp.text
     return resp
 
@@ -221,7 +223,7 @@ class TestEncryptionKeyReachable:
         _register(client, f'int179_ref_{_RUN}')
         resp = client.post('/api/v1/auth/login',
                            data={'username': f'int179_ref_{_RUN}',
-                                 'password': 'pass179'})
+                                 'password': 'pass179x'})
         token = resp.json()['access_token']
         resp = client.post('/api/v1/auth/refresh',
                            headers={'Authorization': f'Bearer {token}'})
@@ -239,7 +241,7 @@ class TestLoginDualFormat:
         username = f'int179_json_{_RUN}'
         _register(client, username)
         resp = client.post('/api/v1/auth/login',
-                           json={'username': username, 'password': 'pass179'})
+                           json={'username': username, 'password': 'pass179x'})
         assert resp.status_code == 200, resp.text
         body = resp.json()
         assert body['user']['username'] == username
@@ -258,7 +260,7 @@ class TestLoginDualFormat:
         username = f'int179_form_{_RUN}'
         _register(client, username)
         resp = client.post('/api/v1/auth/login',
-                           data={'username': username, 'password': 'pass179'})
+                           data={'username': username, 'password': 'pass179x'})
         assert resp.status_code == 200, resp.text
 
     def test_json_encrypted_password_chain(self, client):
@@ -277,13 +279,13 @@ class TestLoginDualFormat:
             # JSON 明文在加密开启时必须拒绝（无明文回退）
             resp = client.post('/api/v1/auth/login',
                                json={'username': username,
-                                     'password': 'pass179'})
+                                     'password': 'pass179x'})
             assert resp.status_code == 401
             resp = client.post(
                 '/api/v1/auth/login',
                 json={'username': username,
                       'password_encrypted': _encrypt_password(public_pem,
-                                                              'pass179'),
+                                                              'pass179x'),
                       'encryption_key_id': kid})
             assert resp.status_code == 200, resp.text
             assert resp.json()['user']['username'] == username

@@ -67,9 +67,9 @@
           <input
             v-model="registerForm.password"
             type="password"
-            placeholder="请输入密码（至少 6 位）"
+            :placeholder="`请输入密码（至少 ${AUTH_PASSWORD_MIN_LENGTH} 位）`"
             required
-            minlength="6"
+            :minlength="AUTH_PASSWORD_MIN_LENGTH"
             :disabled="loading"
           />
         </div>
@@ -84,11 +84,12 @@
           />
         </div>
         <div class="form-group">
-          <label>邮箱（可选）</label>
+          <label>邮箱</label>
           <input
             v-model="registerForm.email"
             type="email"
             placeholder="请输入邮箱"
+            required
             :disabled="loading"
           />
         </div>
@@ -123,6 +124,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
 import { authPort } from '../../composables/auth/authPort'
 import { AuthErrorCode } from '../../domain/enums'
+import { AUTH_PASSWORD_MIN_LENGTH } from '../../domain/constants/auth'
 import type { OAuthProvider } from '../../domain/model/auth'
 
 const router = useRouter()
@@ -173,12 +175,17 @@ async function handleRegister() {
     error.value = '两次输入的密码不一致'
     return
   }
+  if (!registerForm.email.trim()) {
+    // INT-285 口径②：邮箱必填（对齐基线；后端网关同口径 400 兜底）
+    error.value = '请输入邮箱'
+    return
+  }
   loading.value = true
   try {
     await authStore.register({
       username: registerForm.username,
       password: registerForm.password,
-      email: registerForm.email || undefined,
+      email: registerForm.email.trim(),
     })
     // 注册成功：切回登录 Tab，预填用户名引导登录（注册→登录全流程）
     form.username = registerForm.username
@@ -196,7 +203,9 @@ async function handleRegister() {
 }
 
 function handleOAuth(slug: string) {
-  // 整页跳转到后端授权入口（302 → 提供方授权页 → 回调 → 携 token 回本页）
+  // 整页跳转到后端授权入口（302 → 提供方授权页 → 回调 → 携 token 回本页）。
+  // INT-285 口径③（成员裁定）：本页跳转（window.location.href），
+  // 不回退基线 window.open 新标签；表单未保存状态随跳转丢失为接受行为。
   window.location.href = authPort.getOAuthAuthorizeUrl(slug)
 }
 

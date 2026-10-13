@@ -83,7 +83,9 @@ class TestRegistrationSwitch:
         )
 
         class _FakeState:
-            _json_body = {'username': 'new_user', 'password': 'pass123456'}
+            # INT-285：注册邮箱必填，fake body 补 email 走通校验链
+            _json_body = {'username': 'new_user', 'password': 'pass123456',
+                          'email': 'new_user@example.com'}
 
         class _FakeRequest:
             state = _FakeState()

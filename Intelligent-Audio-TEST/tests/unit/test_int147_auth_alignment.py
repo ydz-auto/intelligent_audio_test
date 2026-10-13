@@ -190,13 +190,15 @@ def _encrypt_password(public_pem: str, password: str) -> str:
 
 
 def _register_encrypted(client, username, password, email=None):
-    """RSA 加密密码注册（复用服务端下发的公钥）。"""
+    """RSA 加密密码注册（复用服务端下发的公钥）。
+
+    INT-285：注册邮箱必填，email 缺省时按 run tag 派生（网关 400 校验）。
+    """
     kid, public_pem = _fetch_key(client)
     body = {'username': username,
             'password_encrypted': _encrypt_password(public_pem, password),
-            'encryption_key_id': kid}
-    if email:
-        body['email'] = email
+            'encryption_key_id': kid,
+            'email': email or f'{username}@example.com'}
     resp = client.post('/api/v1/auth/register', json=body)
     assert resp.status_code == 201, resp.text
     return resp
@@ -372,9 +374,11 @@ class TestPasswordEncryptionLogin:
             resp = client.get('/api/v1/auth/login/encryption-key')
             assert resp.status_code == 200
             assert resp.json() == {'enabled': False}
-            # 明文注册 + 明文登录（开关关闭语义）
+            # 明文注册 + 明文登录（开关关闭语义；INT-285 邮箱必填同适用）
             resp = client.post('/api/v1/auth/register',
-                               json={'username': username, 'password': 'Secret-147!'})
+                               json={'username': username,
+                                     'password': 'Secret-147!',
+                                     'email': f'{username}@example.com'})
             assert resp.status_code == 201, resp.text
             resp = _login(client, username=username, password='Secret-147!')
             assert resp.status_code == 200, resp.text

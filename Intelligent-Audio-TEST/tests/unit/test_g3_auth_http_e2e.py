@@ -180,8 +180,10 @@ def client(seeded, svc):
 
 
 def _register_and_login(client, username, password='pass123456'):
+    # INT-285：注册邮箱必填（网关 400 校验），helper 统一携带
     resp = client.post('/api/v1/auth/register',
-                       json={'username': username, 'password': password})
+                       json={'username': username, 'password': password,
+                             'email': f'{username}@example.com'})
     assert resp.status_code == 201, resp.text
     resp = client.post('/api/v1/auth/login',
                        data={'username': username, 'password': password})
@@ -260,16 +262,19 @@ class TestRegistrationLoginMeHttp:
     def test_register_duplicate_username_rejected(self, client, seeded):
         username = f'e2e_dup_{_RUN}'
         assert client.post('/api/v1/auth/register', json={
-            'username': username, 'password': 'pass123456'}).status_code == 201
+            'username': username, 'password': 'pass123456',
+            'email': f'{username}@example.com'}).status_code == 201
         assert client.post('/api/v1/auth/register', json={
-            'username': username, 'password': 'pass123456'}).status_code == 400
+            'username': username, 'password': 'pass123456',
+            'email': f'{username}_2@example.com'}).status_code == 400
 
     def test_register_disabled_returns_403(self, client, seeded,
                                            monkeypatch):
         from api_gateway.config.config import Config
         monkeypatch.setattr(Config, 'AUTH_REGISTRATION_ENABLED', False)
         resp = client.post('/api/v1/auth/register', json={
-            'username': f'e2e_closed_{_RUN}', 'password': 'pass123456'})
+            'username': f'e2e_closed_{_RUN}', 'password': 'pass123456',
+            'email': f'e2e_closed_{_RUN}@example.com'})
         assert resp.status_code == 403
 
     def test_login_wrong_password_rejected(self, client, seeded):
@@ -279,6 +284,81 @@ class TestRegistrationLoginMeHttp:
                            data={'username': username,
                                  'password': 'not-the-pass'})
         assert resp.status_code == 401
+
+
+class TestRegistrationPolicyHttp:
+    """INT-285 注册口径（成员裁定）：邮箱必填 + 密码最短长度网关校验。
+
+    口径①密码最短 6 位（AUTH_PASSWORD_MIN_LENGTH 配置化，默认 6，
+    与前端 LoginPage minlength 同源）；口径②邮箱必填。
+    """
+
+    def test_register_missing_email_rejected_400(self, client, seeded):
+        """邮箱缺失（含纯空白）→ 400，先于 auth_service 落库。"""
+        from api_gateway.application.services.auth.user_management_service import (
+            REGISTER_ERR_MISSING_EMAIL,
+        )
+        username = f'e2e_noemail_{_RUN}'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'pass123456'})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_MISSING_EMAIL
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'pass123456', 'email': '   '})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_MISSING_EMAIL
+
+    def test_register_password_below_min_rejected_400(self, client, seeded):
+        """密码 5 位（< 默认下限 6）→ 400，文案含配置下限值。"""
+        from api_gateway.application.services.auth.user_management_service import (
+            AUTH_PASSWORD_MIN_LENGTH, REGISTER_ERR_PASSWORD_TOO_SHORT,
+        )
+        username = f'e2e_shortpw_{_RUN}'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'a' * (AUTH_PASSWORD_MIN_LENGTH - 1),
+            'email': f'{username}@example.com'})
+        assert resp.status_code == 400, resp.text
+        assert resp.json()['message'] == REGISTER_ERR_PASSWORD_TOO_SHORT
+
+    def test_register_password_at_min_accepted(self, client, seeded):
+        """密码恰好 6 位（默认下限）→ 201 注册成功（口径①不误伤）。"""
+        from api_gateway.application.services.auth.user_management_service import (
+            AUTH_PASSWORD_MIN_LENGTH,
+        )
+        username = f'e2e_minpw_{_RUN}'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'a' * AUTH_PASSWORD_MIN_LENGTH,
+            'email': f'{username}@example.com'})
+        assert resp.status_code == 201, resp.text
+
+    def test_register_password_min_length_configurable(self, client, seeded,
+                                                       monkeypatch):
+        """下限经 .env 上调（AUTH_PASSWORD_MIN_LENGTH=8）：6 位被拒 8 位通过。"""
+        import api_gateway.application.services.auth.user_management_service as ums
+        from api_gateway.config.config import Config
+        monkeypatch.setattr(ums, 'AUTH_PASSWORD_MIN_LENGTH', 8)
+        monkeypatch.setattr(ums, 'REGISTER_ERR_PASSWORD_TOO_SHORT', '密码长度不能少于 8 位')
+        username = f'e2e_cfg8_{_RUN}'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': '123456',
+            'email': f'{username}@example.com'})
+        assert resp.status_code == 400, resp.text
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': '12345678',
+            'email': f'{username}@example.com'})
+        assert resp.status_code == 201, resp.text
+
+    def test_register_email_stored_and_login_by_email(self, client, seeded):
+        """邮箱落库并可用于登录（基线 AC：email 与 username 等价登录）。"""
+        username = f'e2e_mail_{_RUN}'
+        email = f'{username}@example.com'
+        resp = client.post('/api/v1/auth/register', json={
+            'username': username, 'password': 'pass123456', 'email': email})
+        assert resp.status_code == 201, resp.text
+        resp = client.post('/api/v1/auth/login',
+                           data={'username': email, 'password': 'pass123456'})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()['user']['username'] == username
 
 
 class TestCustomOAuthCallbackHttp:

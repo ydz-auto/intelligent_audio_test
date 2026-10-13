@@ -8,6 +8,7 @@ auth_service gRPC；管理写接口响应统一注入权限生效延迟 notice�
 from __future__ import annotations
 
 import logging
+import os
 from typing import Dict, Tuple
 
 from api_gateway.application.services.auth.management_common import (
@@ -32,6 +33,15 @@ REGISTER_ERR_MISSING_CIPHERTEXT = (
 )
 REGISTER_ERR_MISSING_BASIC_FIELDS = 'username 与 password 为必填项'
 
+# 注册口径（INT-285 成员裁定，对齐 V9.7.10 基线回归口径）：
+# ① 邮箱必填（注册后可按邮箱登录，旧库 New API 同语义）；
+# ② 密码最短长度配置化（默认 6 位，与前端 LoginPage minlength 一致；
+#    .env 可上调，如 AUTH_PASSWORD_MIN_LENGTH=8）。
+REGISTER_ERR_MISSING_EMAIL = 'email 为必填项'
+AUTH_PASSWORD_MIN_LENGTH = int(os.environ.get('AUTH_PASSWORD_MIN_LENGTH', '6'))
+REGISTER_ERR_PASSWORD_TOO_SHORT = (
+    f'密码长度不能少于 {AUTH_PASSWORD_MIN_LENGTH} 位')
+
 
 class UserManagementService:
     """用户管理服务：注册 / 查询 / 建改删 / 角色分配 / 附加权限授予撤销"""
@@ -40,7 +50,7 @@ class UserManagementService:
 
     @staticmethod
     def register() -> Tuple[Dict, int]:
-        """自助注册（无权限校验）：username/password 必填，默认角色 guest。
+        """自助注册（无权限校验）：username/password/email 必填，默认角色 guest。
 
         INT-51：注册开关 AUTH_REGISTRATION_ENABLED 配置化，
         关闭后端点 403；任意 AUTH_MODE 可用（prod 密码登录同步放开）。
@@ -48,6 +58,8 @@ class UserManagementService:
         encryption_key_id；解密失败 400「注册参数无效」）。
         INT-186：缺密文字段 400 文案按实际缺失字段区分（指向密码密文
         缺失，不再误导 username/email/password）；密文缺失逐字段点名。
+        INT-285：邮箱必填 + 密码最短长度（AUTH_PASSWORD_MIN_LENGTH，
+        默认 6 位与前端一致）在网关统一校验。
         """
         from api_gateway.config.config import Config
         if not Config.AUTH_REGISTRATION_ENABLED:
@@ -83,9 +95,18 @@ class UserManagementService:
         if not username or not password:
             return error_response(REGISTER_ERR_MISSING_BASIC_FIELDS,
                                   code=ErrorCode.INVALID_PARAMS, http_code=400)
+        email = (body.get('email') or '').strip()
+        if not email:
+            # INT-285 口径②：邮箱必填（对齐基线注册接口要求）
+            return error_response(REGISTER_ERR_MISSING_EMAIL,
+                                  code=ErrorCode.INVALID_PARAMS, http_code=400)
+        if len(password) < AUTH_PASSWORD_MIN_LENGTH:
+            # INT-285 口径①：密码最短长度（默认 6 位，与前端 minlength 一致）
+            return error_response(REGISTER_ERR_PASSWORD_TOO_SHORT,
+                                  code=ErrorCode.INVALID_PARAMS, http_code=400)
         data, fail = call_auth_rpc('CreateUser', auth_pb.CreateUserRequest(
             username=username,
-            email=(body.get('email') or '').strip(),
+            email=email,
             password=password,
             role_name=_REGISTER_DEFAULT_ROLE,
             registered=True,
