@@ -83,6 +83,10 @@ worker 各自重跑 module fixture（全新种子库），凡测试间存在序�
   3. `RUN_LIVE_STACK=1 python -m pytest tests/api -q`（或手动冒烟）
   4. `python scripts/reset_test_db.py` —— 冒烟后清库（TRUNCATE 全表，
      硬拒共享库名）
+- **集成推送门禁四步冒烟**（INT-314，登录→建用例→dry 执行→报告）：
+  `python scripts/smoke_gate.py` 一键执行——并行隔离栈（端口 +1000）上
+  自动完成前置引导与四步断言，数据自建自清，详见 `docs/回归测试指引.md`
+  「推送前冒烟门禁」节；与上列全栈口径互补（前者门禁用并行栈不重启共享栈）。
 - 共享库仅允许冒烟验收的**只读探测**与负责人手动操作；历史残留清理走
   `scripts/migrations/202610/cleanup_int246_smoke_residue.py`（软删 =
   回收站语义）。
