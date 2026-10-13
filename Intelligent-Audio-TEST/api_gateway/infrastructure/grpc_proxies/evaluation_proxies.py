@@ -16,7 +16,7 @@ class _ReevaluationExecutorProxy:
     def get_instance(cls):
         return cls()
 
-    def submit(self, task_id, reextract_device_output=True, reevaluate_type='all'):
+    def submit(self, task_id, reextract_device_output=True, reevaluate_type='all', options=None):
         from shared.proto import evaluation_service_pb2
 
         def _call():
@@ -25,6 +25,8 @@ class _ReevaluationExecutorProxy:
                 task_id=str(task_id),
                 reextract_device_output=reextract_device_output,
                 reevaluate_type=reevaluate_type,
+                # INT-302：data JSON 承载按用例+按维度选择，缺省空串整任务语义
+                data=json.dumps(options or {}, ensure_ascii=False, default=str) if options else '',
             ))
             return resp.success, resp.message
 

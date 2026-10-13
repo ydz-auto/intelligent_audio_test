@@ -20,13 +20,14 @@ class ReevaluationAclRepositoryImpl(ReevaluationAclRepository):
     """_ReevaluationExecutorProxy 跨域 ACL 实现。"""
 
     def submit(self, task_id, reextract_device_output=True,
-               reevaluate_type='all') -> ReevaluationResultDTO:
+               reevaluate_type='all', options=None) -> ReevaluationResultDTO:
         from api_gateway.infrastructure.grpc_proxies import _ReevaluationExecutorProxy
         executor = _ReevaluationExecutorProxy.get_instance()
         success, message = executor.submit(
             task_id,
             reextract_device_output=reextract_device_output,
             reevaluate_type=reevaluate_type,
+            options=options,
         )
         return ReevaluationResultDTO(
             success=success,

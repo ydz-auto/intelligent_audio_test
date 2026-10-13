@@ -45,6 +45,7 @@ export const MODAL_TYPES = {
   GROUP_MANAGE: 'groupManage',
   TASK_COMPLETE: 'taskComplete',
   REEVALUATE: 'reevaluate',
+  REEXECUTE_OPTIONS: 'reexecuteOptions',
   BATCH_ALGORITHM_PARAMS: 'batchAlgorithmParams',
   BATCH_SPL: 'batchSPL',
   BATCH_PLAYBACK_DEVICE: 'batchPlaybackDevice',

@@ -53,6 +53,18 @@ class TestType(str, Enum):
     E2E = 'e2e'
 
 
+class RetryScopeMode(str, Enum):
+    """重执行/重评估范围模式（INT-302：任务卡片按用例+按维度选择）
+
+    - selected: 仅选中集合（case_ids 指定用例）
+    - failed_only: 仅失败用例（执行失败或评估失败）
+    - all: 整任务（缺省，保持既有语义）
+    """
+    SELECTED = 'selected'
+    FAILED_ONLY = 'failed_only'
+    ALL = 'all'
+
+
 class FieldType(str, Enum):
     """字段类型枚举（用于参数/结果字段的类型标识）"""
     RTTM = 'rttm'

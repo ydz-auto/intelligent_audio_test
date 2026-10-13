@@ -367,8 +367,11 @@ class TaskCommandHandler:
         return self.task_lifecycle_service.start(cmd.task_id)
 
     def handle_retry_task(self, cmd: RetryTaskCommand) -> Dict:
-        """处理重试失败用例命令。委托 task_lifecycle_service.retry。"""
-        return self.task_lifecycle_service.retry(cmd.task_id)
+        """处理重试失败用例命令。委托 task_lifecycle_service.retry。
+
+        INT-302：cmd.options 携带按用例选择（case_ids/mode），透传生命周期服务。
+        """
+        return self.task_lifecycle_service.retry(cmd.task_id, options=cmd.options)
 
     def handle_control_task(self, cmd: ControlTaskCommand) -> Dict:
         """处理任务运行时控制命令。委托 task_lifecycle_service.control。"""

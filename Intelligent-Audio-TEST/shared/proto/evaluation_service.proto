@@ -47,6 +47,9 @@ message ReevaluateRequest {
   string task_id = 1;
   bool reextract_device_output = 2;
   string reevaluate_type = 3;  // all / failed / passed
+  // JSON: {case_ids: [str], dimension_ids: [int], mode: 'selected'|'failed_only'|'all'}
+  // （INT-302 按用例+按维度选择；缺省空对象保持整任务全量语义）
+  string data = 4;
 }
 
 message ReevaluateResponse {

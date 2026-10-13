@@ -23,6 +23,8 @@ from shared.utils.result_data_store import load_full_result_data
 from shared.utils.json_utils import deserialize_algorithm_result
 from shared.utils.status_utils import derive_task_case_status
 from shared.models.common_enums import TestType
+# INT-302 重执行范围模式（枚举化，拒绝魔法字符串）：缺省 all 保持整任务语义
+from shared.models.common_enums import RetryScopeMode
 from shared.utils.status_constants import (
     TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EXECUTION_STATUSES,
 )
@@ -88,8 +90,22 @@ class TaskLifecycleService:
             logger.error(f"启动任务失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
-    def retry(self, task_id: int) -> dict:
-        """重新执行失败或未完成的用例。"""
+    def retry(self, task_id: int, options: dict = None) -> dict:
+        """重新执行失败或未完成的用例。
+
+        INT-302：options 可选 {case_ids: [str], mode: 'selected'|'failed_only'|'all'}——
+        selected 时仅重执行指定用例（状态机对齐既有 retry 语义：结果重置、
+        队列重新入队）；failed_only 仅执行失败/评估失败用例；缺省 all 保持
+        整任务语义（既有调用方零改动）。
+        """
+        options = options or {}
+        mode = options.get('mode') or RetryScopeMode.ALL.value
+        selected_case_ids = [str(c) for c in (options.get('case_ids') or [])]
+        if mode == RetryScopeMode.SELECTED.value and not selected_case_ids:
+            return {'success': False, 'message': '选择用例重执行时 case_ids 不能为空', 'data': None, 'code': 400}
+        if mode not in (RetryScopeMode.ALL.value, RetryScopeMode.SELECTED.value, RetryScopeMode.FAILED_ONLY.value):
+            return {'success': False, 'message': f'非法的重执行范围: {mode}', 'data': None, 'code': 400}
+
         try:
             task = task_repository.get_task_orm(task_id)
             if task is None:
@@ -99,8 +115,11 @@ class TaskLifecycleService:
                 from task_service.core.execution_engine import execution_engine
                 execution_engine.control_task(task_id, 'stop')
 
-            # 查询需要重试的用例
-            retry_cases = task_repository.find_retry_cases(task_id)
+            # 查询需要重试的用例（整任务语义沿用 find_retry_cases；范围模式走 scoped 查询）
+            if mode == RetryScopeMode.ALL.value:
+                retry_cases = task_repository.find_retry_cases(task_id)
+            else:
+                retry_cases = task_repository.find_retry_cases_scoped(task_id, mode, selected_case_ids)
 
             if not retry_cases:
                 return {'success': True, 'message': '没有需要重试的用例', 'data': None}
@@ -152,7 +171,12 @@ class TaskLifecycleService:
             return {
                 'success': True,
                 'message': '重试任务已启动',
-                'data': {'task_id': str(task.id), 'status': TaskStatus.RUNNING},
+                'data': {
+                    'task_id': str(task.id),
+                    'status': TaskStatus.RUNNING,
+                    'retry_mode': mode,
+                    'retry_case_count': len(retry_cases),
+                },
             }
         except Exception as e:
             logger.error(f"重试任务失败: {e}", exc_info=True)

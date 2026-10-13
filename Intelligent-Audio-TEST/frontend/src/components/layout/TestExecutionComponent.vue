@@ -374,6 +374,13 @@
 
     <!-- 操作按钮区域 -->
     <div class="step-actions" style="margin-top: 32px; display: flex; gap: 12px; justify-content: flex-end;">
+      <!-- INT-302：执行详情模态窗入口——重新执行/重新评估（带范围选择模态窗，事件由 TaskDetailModal 处理） -->
+      <button v-if="shouldShowRetryButton" class="btn btn-success" :disabled="isControlling" @click="$emit('retryTask')">
+        <i class="fas fa-redo"></i> 重新执行
+      </button>
+      <button v-if="shouldShowReevaluateButton" class="btn btn-warning" :disabled="isControlling" @click="$emit('reevaluateTask')">
+        <i class="fas fa-sync-alt"></i> 重新评估
+      </button>
       <button v-if="shouldShowPauseResumeButton" class="btn btn-secondary" :disabled="isControlling" @click="handlePauseResumeClick">
         <i v-if="isPaused" class="fas fa-play"></i>
         <i v-else class="fas fa-pause"></i>
@@ -426,7 +433,10 @@ const emit = defineEmits([
   'skipTestCase',
   'addTestCase',
   'removeTestCase',
-  'loadMoreLogs'
+  'loadMoreLogs',
+  // INT-302：执行详情模态窗内的重执行/重评估入口（带范围选择模态窗）
+  'retryTask',
+  'reevaluateTask'
 ]);
 
 // 已结束的任务状态（finished/success 为后端历史遗留状态值，暂无对应枚举）
@@ -441,6 +451,13 @@ const finishedTaskStatuses = [
 const shouldShowPauseResumeButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
 
 const shouldShowStopButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
+
+// INT-302：重执行入口与任务卡片口径一致（pending/failed/completed/stopped 可见）
+const shouldShowRetryButton = computed(() =>
+  [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.STOPPED].includes(props.taskStatus));
+
+// INT-302：重评估入口与任务卡片口径一致（终态任务可见）
+const shouldShowReevaluateButton = computed(() => finishedTaskStatuses.includes(props.taskStatus));
 
 // ===== INT-301：详情头双状态徽章（与 TaskCard 徽章口径一致） =====
 

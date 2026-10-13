@@ -184,16 +184,30 @@ export const tasksApi = {
     return request('PATCH', `/tasks/${id}/cases`, body);
   },
 
-  async retry(id: string | number) {
-    return request('POST', `/tasks/${id}/retry`);
+  /** 重试任务：retryOptions 可选承载按用例选择（INT-302；缺省整任务语义） */
+  async retry(id: string | number, retryOptions?: {
+    caseIds?: (string | number)[]
+    mode?: 'selected' | 'failed_only' | 'all'
+  }) {
+    return request('POST', `/tasks/${id}/retry`, {
+      case_ids: retryOptions?.caseIds,
+      mode: retryOptions?.mode,
+    });
   },
 
-  /** 重新评估：显式 task_id（TaskReevaluateInput） */
-  async reevaluate(id: string | number, reevaluateType: string = 'all', reextractDeviceOutput: boolean = false) {
+  /** 重新评估：显式 task_id（TaskReevaluateInput）；selection 可选按用例+按维度（INT-302） */
+  async reevaluate(id: string | number, reevaluateType: string = 'all', reextractDeviceOutput: boolean = false, selection?: {
+    caseIds?: (string | number)[]
+    dimensionIds?: number[]
+    mode?: 'selected' | 'failed_only' | 'all'
+  }) {
     return request('POST', '/evaluation/task/reevaluate', {
       task_id: id,
       reevaluate_type: reevaluateType,
       reextract_device_output: reextractDeviceOutput,
+      case_ids: selection?.caseIds,
+      dimension_ids: selection?.dimensionIds,
+      mode: selection?.mode,
     });
   },
 

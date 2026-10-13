@@ -187,8 +187,14 @@ class StartTaskLifecycleCommand(Command):
 
 @dataclass(frozen=True)
 class RetryTaskCommand(Command):
-    """重试失败用例命令。委托 task_lifecycle_service.retry。"""
+    """重试失败用例命令。委托 task_lifecycle_service.retry。
+
+    INT-302：可选 options 承载按用例选择重执行——
+    - case_ids: List[str]，mode='selected' 时仅重执行这些用例；
+    - mode: 'selected'|'failed_only'|'all'，缺省 'all' 保持整任务语义。
+    """
     task_id: int
+    options: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

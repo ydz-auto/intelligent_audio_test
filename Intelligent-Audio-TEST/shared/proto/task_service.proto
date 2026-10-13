@@ -228,6 +228,9 @@ message StartTaskLifecycleRequest {
 }
 message RetryTaskLifecycleRequest {
   int32 task_id = 1;
+  // JSON: {case_ids: [str], mode: 'selected'|'failed_only'|'all'}（INT-302，
+  // 缺省空对象保持整任务重执行语义）
+  string data = 2;
 }
 message ControlTaskLifecycleRequest {
   int32 task_id = 1;

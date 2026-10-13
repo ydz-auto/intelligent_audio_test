@@ -175,8 +175,13 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
 
     def RetryTaskLifecycle(self, request, context=None):
         try:
+            # INT-302：data JSON 承载按用例选择（case_ids/mode），缺省空对象整任务语义
+            # （getattr 兼容旧测试替身无 data 属性）
+            raw_options = getattr(request, 'data', '') or ''
+            options = _loads(raw_options, {}) if raw_options else {}
             from task_service.application.commands.task_commands import RetryTaskCommand
-            return self._resp(self.cmd.handle_retry_task(RetryTaskCommand(task_id=request.task_id)))
+            return self._resp(self.cmd.handle_retry_task(
+                RetryTaskCommand(task_id=request.task_id, options=options)))
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 

@@ -208,6 +208,31 @@ class TaskLifecycleMixin:
         finally:
             session.close()
 
+    def find_retry_cases_scoped(self, task_id: int, mode: str, selected_case_ids: list):
+        """INT-302：按范围模式查找待重执行用例。
+
+        - selected: 仅命中 case_ids 的 task_cases（无论已完成/失败，交由
+          调用方按既有 retry 状态机分流处理）；
+        - failed_only: 执行失败或评估失败的用例。
+        其余用例一律不动（不重置、不清结果、不重新入队）。
+        """
+        from shared.models.common_enums import RetryScopeMode
+        session = get_db_session()
+        try:
+            q = session.query(TaskCase).filter(TaskCase.task_id == task_id)
+            if mode == RetryScopeMode.SELECTED.value:
+                q = q.filter(TaskCase.test_case_id.in_([str(c) for c in (selected_case_ids or [])]))
+            elif mode == RetryScopeMode.FAILED_ONLY.value:
+                q = q.filter(or_(
+                    TaskCase.execution_status == ExecutionStatus.FAILED,
+                    TaskCase.evaluation_status == EvaluationStatus.FAILED,
+                ))
+            cases = q.all()
+            session.expunge_all()
+            return cases
+        finally:
+            session.close()
+
     def cleanup_case_results(self, task_id: int, case_ids: list,
                              preserve_test_result: bool = False) -> None:
         """清理用例的执行结果。"""

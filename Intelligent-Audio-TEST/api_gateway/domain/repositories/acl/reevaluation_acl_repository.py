@@ -16,7 +16,7 @@ class ReevaluationAclRepository(ABC):
 
     @abstractmethod
     def submit(self, task_id, reextract_device_output=True,
-               reevaluate_type='all') -> ReevaluationResultDTO:
+               reevaluate_type='all', options=None) -> ReevaluationResultDTO:
         ...
 
     @abstractmethod

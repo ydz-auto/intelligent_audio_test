@@ -141,6 +141,8 @@ def reevaluate(body: dict):
             body.get('task_id'),
             reextract_device_output=body.get('reextract_device_output', False),
             reevaluate_type=body.get('reevaluate_type', 'all'),
+            # INT-302：可选按用例+按维度选择（缺省整任务语义）
+            options=body.get('options'),
         )
         return {'success': success, 'message': message}
     except Exception as e:

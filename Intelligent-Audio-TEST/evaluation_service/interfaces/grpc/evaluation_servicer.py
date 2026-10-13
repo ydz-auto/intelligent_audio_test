@@ -41,6 +41,10 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
             task_id = to_int_id('task_id', request.task_id)
             reextract_device_output = request.reextract_device_output
             reevaluate_type = request.reevaluate_type or 'all'
+            # INT-302：data JSON 承载按用例+按维度选择（case_ids/dimension_ids/mode），
+            # 缺省空对象保持整任务全量语义（getattr 兼容旧测试替身无 data 属性）
+            raw_options = getattr(request, 'data', '') or ''
+            options = _loads(raw_options, {}) if raw_options else {}
 
             from evaluation_service.application.handlers.reevaluation_executor import ReevaluationExecutor
             executor = ReevaluationExecutor.get_instance()
@@ -48,6 +52,7 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
                 task_id,
                 reextract_device_output=reextract_device_output,
                 reevaluate_type=reevaluate_type,
+                options=options,
             )
             return eval_pb.ReevaluateResponse(
                 success=success,

@@ -50,7 +50,19 @@ class TaskLifecycleService:
     # 重新执行失败或未完成的用例
     @staticmethod
     def retry(task_id):
-        result = _task_acl.retry(task_id)
+        # INT-302：可选 body {case_ids, mode} 承载按用例选择重执行；缺省整任务语义
+        retry_data = None
+        try:
+            body = request.get_json(silent=True) or {}
+        except Exception:
+            body = {}
+        if isinstance(body, dict) and (body.get('case_ids') or body.get('mode')):
+            retry_data = {
+                'case_ids': body.get('case_ids') or [],
+                'mode': body.get('mode') or 'all',
+            }
+
+        result = _task_acl.retry(task_id, retry_data)
 
         if not result.get('success'):
             code = result.get('code', 500)

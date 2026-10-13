@@ -379,13 +379,15 @@ class _TaskConfigProxy:
             error_msg_prefix='启动任务失败',
         )
 
-    def retry(self, task_id):
+    def retry(self, task_id, data=None):
         from shared.proto import task_service_pb2 as task_pb
 
         def _call():
             stub = get_task_config_service_stub()
             resp = stub.RetryTaskLifecycle(task_pb.RetryTaskLifecycleRequest(
                 task_id=int(task_id),
+                # INT-302：data JSON 承载按用例选择（case_ids/mode），缺省空串整任务语义
+                data=json.dumps(data or {}, ensure_ascii=False, default=str) if data else '',
             ))
             return self._resp(resp)
 

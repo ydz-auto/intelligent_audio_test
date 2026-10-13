@@ -512,6 +512,15 @@ class EvaluationCommandService:
         reevaluate_type = req.reevaluate_type
         reextract_device_output = req.reextract_device_output
 
+        # INT-302：按用例+按维度选择——仅显式携带时下发（缺省保持整任务语义）
+        reeval_options = {}
+        if req.mode:
+            reeval_options['mode'] = req.mode
+        if req.case_ids:
+            reeval_options['case_ids'] = [str(c) for c in req.case_ids]
+        if req.dimension_ids:
+            reeval_options['dimension_ids'] = [int(d) for d in req.dimension_ids]
+
         # 通过 task_config_service 获取任务信息（替代 get_db_session().get(Task, task_id)）
         task_result = _task_acl.get_task_detail(task_id)
         if not task_result.get('success'):
@@ -527,14 +536,19 @@ class EvaluationCommandService:
         reeval_result = _reevaluation_acl.submit(
             task_id=task_id,
             reextract_device_output=reextract_device_output,
-            reevaluate_type=reevaluate_type
+            reevaluate_type=reevaluate_type,
+            options=reeval_options or None,
         )
         success = reeval_result.success
         message = reeval_result.message
 
         if success:
-            # 展示口径（对齐旧库"实际用例数"）：任务详情携带的用例总数即重新评估队列规模
-            queued_count = int(task_data.get('total_cases') or 0)
+            # 展示口径（对齐旧库"实际用例数"）：任务详情携带的用例总数即重新评估队列规模；
+            # 按用例选择时以实际选中集合规模为准（INT-302）
+            if reeval_options.get('case_ids'):
+                queued_count = len(reeval_options['case_ids'])
+            else:
+                queued_count = int(task_data.get('total_cases') or 0)
             return success_response(
                 TaskReevaluateResult(
                     total_cases=queued_count,

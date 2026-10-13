@@ -118,9 +118,9 @@ class TaskConfigAclRepositoryImpl(TaskConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import task_config_service
         return _wrap(task_config_service.start(task_id))
 
-    def retry(self, task_id) -> CommandResultDTO:
+    def retry(self, task_id, data=None) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import task_config_service
-        return _wrap(task_config_service.retry(task_id))
+        return _wrap(task_config_service.retry(task_id, data))
 
     def control(self, task_id, data) -> CommandResultDTO:
         from api_gateway.infrastructure.grpc_proxies import task_config_service

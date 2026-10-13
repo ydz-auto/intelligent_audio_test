@@ -37,6 +37,7 @@ import AudioSelectModal from '../audio/AudioSelectModal.vue'
 import TaskTypeModal from './TaskTypeModal.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
 import ReevaluateSelectModal from './ReevaluateSelectModal.vue'
+import ReexecuteOptionsModal from './ReexecuteOptionsModal.vue'
 
 export function registerGlobalModals() {
   const manager = getModalManager();
@@ -209,6 +210,17 @@ export function registerGlobalModals() {
     component: ReevaluateSelectModal,
     defaultConfig: {
       content: '请选择重新评估类型'
+    }
+  });
+
+  // INT-302：重执行/重评估范围选择模态窗（按用例+按维度，actionType 区分两种语义）
+  manager.registerModal(MODAL_TYPES.REEXECUTE_OPTIONS, {
+    component: ReexecuteOptionsModal,
+    defaultConfig: {
+      title: '选择执行范围',
+      content: '请选择执行范围',
+      actionType: 'retry',
+      width: '640px'
     }
   });
 

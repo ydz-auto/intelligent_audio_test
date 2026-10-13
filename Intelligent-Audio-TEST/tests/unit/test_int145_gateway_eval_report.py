@@ -70,10 +70,11 @@ class _StubReevaluationAcl:
         self.success = success
         self.calls = []
 
-    def submit(self, task_id, reextract_device_output=True, reevaluate_type='all'):
+    def submit(self, task_id, reextract_device_output=True, reevaluate_type='all', options=None):
         self.calls.append({'task_id': task_id,
                            'reextract_device_output': reextract_device_output,
-                           'reevaluate_type': reevaluate_type})
+                           'reevaluate_type': reevaluate_type,
+                           'options': options})
         return SimpleNamespace(success=self.success, message='已提交重新评估',
                                result_data={})
 
@@ -395,7 +396,7 @@ class TestReevaluateQueuedCount:
         assert data['total_cases'] == 7
         assert data['queued_cases'] == 7
         assert reeval.calls == [{'task_id': 5, 'reextract_device_output': False,
-                                 'reevaluate_type': 'all'}]
+                                 'reevaluate_type': 'all', 'options': None}]
 
     def test_failed_submit_returns_error(self, monkeypatch):
         monkeypatch.setattr(

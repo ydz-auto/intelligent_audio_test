@@ -175,6 +175,10 @@ class TaskReevaluateInput(APIModel):
     task_id: int = Field(...)
     reevaluate_type: str = Field('all')
     reextract_device_output: bool = Field(False)
+    # INT-302：按用例+按维度选择（camelCase 直收；snake_case 由 APIModel 兼容）
+    case_ids: Optional[List[str]] = Field(None, validation_alias=AliasChoices('caseIds', 'case_ids'))
+    dimension_ids: Optional[List[int]] = Field(None, validation_alias=AliasChoices('dimensionIds', 'dimension_ids'))
+    mode: Optional[str] = Field(None, validation_alias=AliasChoices('mode'))
 
 
 class TaskReevaluateResult(APIModel):

@@ -215,87 +215,114 @@ export function useTaskControl(
     }
   };
 
+  // INT-302：重执行/重评估选择模态窗确认载荷（mode/caseIds/dimensionIds）
+  interface ReexecuteSelection {
+    mode: 'selected' | 'failed_only' | 'all'
+    caseIds: (string | number)[]
+    dimensionIds: number[]
+  }
+
   const retryTask = async (taskId: string | number) => {
     if (isControlling.value.has(taskId)) return;
 
-    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '重试任务',
-      content: '确定要重试该测试任务吗？',
-      confirmText: '重试',
-      cancelText: '取消'
+    // INT-302：先弹范围选择模态窗（默认勾选"全部"，点确认即旧语义不变）
+    const selection = await modalControl.open<ReexecuteSelection>(MODAL_TYPES.REEXECUTE_OPTIONS, {
+      title: '重新执行',
+      content: '请选择重新执行范围',
+      actionType: 'retry',
+      taskId,
     });
+    if (!selection?.mode) return;
 
-    if (confirmed) {
-      isControlling.value.add(taskId);
-      try {
-        await tasksPort.retry(taskId);
-        await fetchTasks();
-      } catch (error) {
-        console.error('Failed to retry task:', error);
-      } finally {
-        isControlling.value.delete(taskId);
-      }
+    isControlling.value.add(taskId);
+    try {
+      await tasksPort.retry(taskId, selection.mode === 'all' ? undefined : {
+        caseIds: selection.caseIds,
+        mode: selection.mode,
+      });
+      await fetchTasks();
+      notification.success(selection.mode === 'all' ? '重试任务已启动' : `重试任务已启动（${selection.caseIds.length} 个用例）`);
+    } catch (error) {
+      console.error('Failed to retry task:', error);
+      notification.error('重试任务失败，请稍后重试');
+    } finally {
+      isControlling.value.delete(taskId);
     }
   };
 
   const reevaluateTask = async (taskId: string | number) => {
     if (isControlling.value.has(taskId)) return;
 
-    const result = await modalControl.open(MODAL_TYPES.REEVALUATE, {
-      content: '请选择重新评估类型'
+    // INT-302：范围选择模态窗取代原 REEVALUATE 类型选择（默认"全部用例"+维度全选 = 旧语义）
+    const selection = await modalControl.open<ReexecuteSelection>(MODAL_TYPES.REEXECUTE_OPTIONS, {
+      title: '重新评估',
+      content: '请选择重新评估范围',
+      actionType: 'reevaluate',
+      taskId,
     });
+    if (!selection?.mode) return;
 
-    if (result?.reevaluateType) {
-      const reevaluateType = result.reevaluateType;
-      const reextractDeviceOutput = result.reextractDeviceOutput || false;
-      isControlling.value.add(taskId);
-      let pollInterval: any = null;
+    const reextractDeviceOutput = false;
+    isControlling.value.add(taskId);
+    let pollInterval: any = null;
 
-      try {
-        const apiResult = await tasksPort.reevaluate(taskId, reevaluateType, reextractDeviceOutput) as any;
-        console.log('reevaluate result:', apiResult);
+    try {
+      // INT-302 范围 → 既有 reevaluate_type 口径映射：
+      // failed_only → 'failed'（仅重评失败用例，维度选择与其取交集）；
+      // selected → 'all' + caseIds 显式用例集；all → 'all' 无 selection（旧语义）。
+      // dimensionIds 为空数组 = 维度全选（不过滤）。
+      const reevaluateType = selection.mode === 'failed_only' ? 'failed' : 'all';
+      const hasSelection = selection.mode === 'selected' || selection.dimensionIds.length > 0;
+      const apiResult = await tasksPort.reevaluate(
+        taskId, reevaluateType, reextractDeviceOutput,
+        hasSelection ? {
+          caseIds: selection.mode === 'selected' ? selection.caseIds : [],
+          dimensionIds: selection.dimensionIds,
+          mode: selection.mode,
+        } : undefined,
+      ) as any;
+      console.log('reevaluate result:', apiResult);
+      await fetchTasks();
+      console.log('tasks after reevaluate:', tasks.value.find((t: any) => t.id === taskId));
+
+      if (apiResult?.data?.message) {
+        notification.info(apiResult.data.message);
+      } else {
+        notification.success('重新评估任务已提交');
+      }
+
+      pollInterval = setInterval(async () => {
         await fetchTasks();
-        console.log('tasks after reevaluate:', tasks.value.find((t: any) => t.id === taskId));
-
-        if (apiResult?.data?.message) {
-          notification.info(apiResult.data.message);
-        } else {
-          notification.success('重新评估任务已提交');
+        const task = tasks.value.find((t: any) => t.id === taskId);
+        // INT-301：轮询判定收敛到评估侧（evaluationStatus）——重评全程只动评估
+        // 徽章；执行侧（executionStatus/status）纹丝不动，不再作为判定依据。
+        const evalStatus = task?.evaluationStatus;
+        if (evalStatus === 'completed') {
+          clearInterval(pollInterval);
+          pollInterval = null;
+          isControlling.value.delete(taskId);
+          notification.success('评估完成');
+        } else if (evalStatus && evalStatus !== 'evaluating') {
+          // failed/skipped 等评估终态：结束轮询（isControlling 释放）
+          clearInterval(pollInterval);
+          pollInterval = null;
+          isControlling.value.delete(taskId);
         }
+      }, 3000);
 
-        pollInterval = setInterval(async () => {
-          await fetchTasks();
-          const task = tasks.value.find((t: any) => t.id === taskId);
-          // INT-301：轮询判定收敛到评估侧（evaluationStatus）——重评全程只动评估
-          // 徽章；执行侧（executionStatus/status）纹丝不动，不再作为判定依据。
-          const evalStatus = task?.evaluationStatus;
-          if (evalStatus === 'completed') {
-            clearInterval(pollInterval);
-            pollInterval = null;
-            isControlling.value.delete(taskId);
-            notification.success('评估完成');
-          } else if (evalStatus && evalStatus !== 'evaluating') {
-            // failed/skipped 等评估终态：结束轮询（isControlling 释放）
-            clearInterval(pollInterval);
-            pollInterval = null;
-            isControlling.value.delete(taskId);
-          }
-        }, 3000);
-
-        setTimeout(() => {
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            isControlling.value.delete(taskId);
-          }
-        }, 120000);
-
-      } catch (error: any) {
-        console.error('Failed to reevaluate task:', error);
-        notification.error(error?.response?.data?.message || error?.message || '重新评估失败，请稍后重试');
+      setTimeout(() => {
         if (pollInterval) {
           clearInterval(pollInterval);
           isControlling.value.delete(taskId);
         }
+      }, 120000);
+
+    } catch (error: any) {
+      console.error('Failed to reevaluate task:', error);
+      notification.error(error?.response?.data?.message || error?.message || '重新评估失败，请稍后重试');
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        isControlling.value.delete(taskId);
       }
     }
   };

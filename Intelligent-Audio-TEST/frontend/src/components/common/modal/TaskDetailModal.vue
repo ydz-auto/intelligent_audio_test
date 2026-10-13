@@ -28,6 +28,8 @@
         @pause-test="pauseTest"
         @resume-test="resumeTest"
         @stop-test="stopTest"
+        @retry-task="retryTask"
+        @reevaluate-task="reevaluateTask"
         @load-more-logs="loadMoreLogs"
       />
     </div>
@@ -412,6 +414,58 @@ async function stopTest() {
     if (err !== 'canceled') {
       console.error('停止任务失败:', err);
     }
+  }
+}
+
+// ===== INT-302：执行详情模态窗内的重执行/重评估（带范围选择模态窗，语义与任务卡片入口一致） =====
+
+interface ReexecuteSelection {
+  mode: 'selected' | 'failed_only' | 'all'
+  caseIds: (string | number)[]
+  dimensionIds: number[]
+}
+
+async function retryTask() {
+  try {
+    const selection = await modalControl.open<ReexecuteSelection>(MODAL_TYPES.REEXECUTE_OPTIONS, {
+      title: '重新执行',
+      content: '请选择重新执行范围',
+      actionType: 'retry',
+      taskId: props.taskId,
+    });
+    if (!selection?.mode) return;
+    await tasksPort.retry(props.taskId, selection.mode === 'all' ? undefined : {
+      caseIds: selection.caseIds,
+      mode: selection.mode,
+    });
+    await fetchTaskDetails();
+  } catch (err) {
+    console.error('重新执行任务失败:', err);
+  }
+}
+
+async function reevaluateTask() {
+  try {
+    const selection = await modalControl.open<ReexecuteSelection>(MODAL_TYPES.REEXECUTE_OPTIONS, {
+      title: '重新评估',
+      content: '请选择重新评估范围',
+      actionType: 'reevaluate',
+      taskId: props.taskId,
+    });
+    if (!selection?.mode) return;
+    // INT-302 范围 → 既有 reevaluate_type 口径映射（同 useTaskControl.reevaluateTask）：
+    // failed_only → 'failed'；selected → 'all' + caseIds；all → 'all' 无 selection。
+    // dimensionIds 为空数组 = 维度全选（不过滤）。
+    const reevaluateType = selection.mode === 'failed_only' ? 'failed' : 'all';
+    const hasSelection = selection.mode === 'selected' || selection.dimensionIds.length > 0;
+    await tasksPort.reevaluate(props.taskId, reevaluateType, false, hasSelection ? {
+      caseIds: selection.mode === 'selected' ? selection.caseIds : [],
+      dimensionIds: selection.dimensionIds,
+      mode: selection.mode,
+    } : undefined);
+    await fetchTaskDetails();
+  } catch (err) {
+    console.error('重新评估任务失败:', err);
   }
 }
 
