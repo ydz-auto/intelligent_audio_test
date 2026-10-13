@@ -48,7 +48,8 @@ def compute_takeover_latency_from_raw(first_frame_ms, asr_hyp, start_ms, input_w
 
 
 def compute_takeover_latency_from_chunks(user_chunks, ai_chunks,
-                                          played_audios=None, user_wav=None):
+                                          played_audios=None, user_wav=None,
+                                          user_end_s=None):
     """计算小艺接管时延
 
     优先模式（played_audios + user_wav）：
@@ -64,12 +65,14 @@ def compute_takeover_latency_from_chunks(user_chunks, ai_chunks,
         ai_chunks (list): ai_wav ASR chunks
         played_audios (str|None): 干净音源路径（互相关对齐用）
         user_wav (str|None): 用户通道音频路径（=client_out，对齐目标）
+        user_end_s (float|None): 该轮用户话轮结束时间（FFT 定点，秒）。
+            多轮合并模式由每轮 played_audio 的对齐段给出；提供时优先作为
+            用户说话结束点，避免全双工串扰把 AI 播放声当成用户末词。
 
     Returns:
         dict: client_out 时延字段（新模式）或旧模式字段
     """
     # ── 优先：played_audios + user_wav → client_out 互相关对齐 ──
-    # FFT 互相关用于验证对齐质量(NCC)，时延计算改用 ASR 最后一字结束时间
     if played_audios and user_wav:
         from .false_takeover import compute_client_out_latency
         lat_res = compute_client_out_latency(played_audios, user_wav, ai_chunks)
@@ -78,9 +81,15 @@ def compute_takeover_latency_from_chunks(user_chunks, ai_chunks,
         fft_client_out_end_ms = lat_res.get('client_out_end_ms')
         ncc = lat_res.get('ncc')
 
-        # 用 ASR 最后一字结束时间作为用户说话结束点（更精确）
+        # 用户说话结束点：优先取 FFT 定点（user_end_s 由多轮合并的每轮对齐段给出，
+        # 或单轮 FFT 对齐的 client_out_end_ms），不受全双工录音用户通道串扰 AI 播放
+        # 音频的影响；两者缺失才回退 ASR 用户末词。
         user_last_end_ms = None
-        if user_chunks:
+        if user_end_s is not None:
+            user_last_end_ms = float(user_end_s) * 1000.0
+        elif fft_client_out_end_ms is not None:
+            user_last_end_ms = fft_client_out_end_ms
+        elif user_chunks:
             valid_user_ends = [
                 c['timestamp'][1] for c in user_chunks
                 if c.get('timestamp') and c['timestamp'][1] is not None
@@ -89,6 +98,19 @@ def compute_takeover_latency_from_chunks(user_chunks, ai_chunks,
                 user_last_end_ms = max(valid_user_ends) * 1000.0
 
         ai_first_start_ms = lat_res.get('model_first_word_start_ms')
+
+        # AI 首字取"用户话语结束之后"的首个 AI 词：多轮合并/全双工场景下 ai_chunks
+        # 可能混入会话开头或串扰的 AI 音频，直接取 min 会把远早于用户结束的 AI 首字
+        #（如 10.24s vs user_end 95.9s）当成该轮回复，产生荒谬负值。无匹配（真抢话）
+        # 时保持原 min 值，保留负时延语义。
+        if user_last_end_ms is not None and ai_first_start_ms is not None:
+            later_starts = [
+                c['timestamp'][0] for c in (ai_chunks or [])
+                if c.get('timestamp') and c['timestamp'][0] is not None
+                and c['timestamp'][0] * 1000.0 >= user_last_end_ms
+            ]
+            if later_starts:
+                ai_first_start_ms = min(later_starts) * 1000.0
 
         if user_last_end_ms is not None and ai_first_start_ms is not None:
             takeover_latency_ms = ai_first_start_ms - user_last_end_ms

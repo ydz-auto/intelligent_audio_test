@@ -160,6 +160,16 @@ class TurnEvalCalculator(BaseCalculator):
 
         turns, classifications = evaluate_all_turns(user_chunks, ai_chunks, task_params, one_turn=one_turn)
 
+        # 多轮合并模式：FFT 对齐段（每个 played_audio = 每轮的定点）→ 轮次归属查表，
+        # 并算出每轮用户话轮结束时间（offset + 干净语料时长），供接管时延取用户结束点。
+        align_segments = shared_asr.get('_align_segments') or []
+        round_of = shared_asr.get('_round_of_played_audio') or {}
+        round_user_end_s = {}
+        for seg in align_segments:
+            rn = round_of.get(seg.get('source'))
+            if rn is not None:
+                round_user_end_s[rn] = (seg.get('offset_s') or 0.0) + (seg.get('clean_duration_s') or 0.0)
+
         turn_results = []
         normal_count = 0
         no_takeover_count = 0
@@ -184,10 +194,17 @@ class TurnEvalCalculator(BaseCalculator):
 
             if cls.classification == TurnClassification.TAKEOVER:
                 # ── 接管时延（仅"接管"时计算）──
+                # 用 FFT 定点确定该 turn 所属轮次的用户话轮结束时间，
+                # 时延 = 用户说完之后的首个 AI 词 − FFT 定点用户结束
+                user_end_s = None
+                if align_segments and round_of:
+                    rn = self._match_turn_round(turn_detail, align_segments, round_of)
+                    user_end_s = round_user_end_s.get(rn)
                 latency_result = compute_takeover_latency_from_chunks(
                     turn.user_chunks, turn.ai_chunks or [],
                     played_audios=shared_asr.get('played_audios'),
                     user_wav=shared_asr.get('user_wav'),
+                    user_end_s=user_end_s,
                 )
                 turn_detail['takeover_latency'] = latency_result
 
@@ -224,8 +241,6 @@ class TurnEvalCalculator(BaseCalculator):
 
         # 多轮合并模式：把每条 turn 归属到其真实轮次
         # （对齐 segments 的 source=played_audio 文件名 → 轮次映射，按时间重叠匹配）
-        align_segments = shared_asr.get('_align_segments') or []
-        round_of = shared_asr.get('_round_of_played_audio') or {}
         if align_segments and round_of:
             for td in turn_results:
                 rn = self._match_turn_round(td, align_segments, round_of)
