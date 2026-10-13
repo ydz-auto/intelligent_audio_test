@@ -24,6 +24,10 @@ from app.services.calculators.xiaoyi_metrics.shared.constants import (
 
 logger = logging.getLogger(__name__)
 
+# 音频对齐 NCC 最低阈值：低于此值认为对齐位置不可信（FFT 互相关没找到真实位置，
+# 时间轴会被打乱，如把相隔几十秒的提问挤到一起），回退原始 user_wav 做 ASR/切轮
+ALIGN_NCC_MIN = 0.3
+
 
 class TurnEvalCalculator(BaseCalculator):
     """逐轮三分类主维度：轮次切分 → 三分类 → 接管时延 → 回复质量
@@ -86,6 +90,8 @@ class TurnEvalCalculator(BaseCalculator):
         shared_asr = {}
 
         # 音频对齐：played_audios（干净音源）→ user_wav（劣化）生成干净版音频
+        # 对齐位置由 FFT 互相关 argmax 决定：NCC 低于阈值说明没找到真实位置，
+        # 贴出来的时间轴不可信（会把提问挤到一起/错位），此时回退原始 user_wav 做 ASR/切轮。
         effective_user_wav = user_wav
         if played_audios and user_wav:
             from app.services.calculators.xiaoyi_metrics.shared.audio_alignment import (
@@ -93,14 +99,20 @@ class TurnEvalCalculator(BaseCalculator):
             )
             try:
                 align_result = generate_aligned_clean_audio(user_wav, played_audios)
-                if align_result.get('aligned_wav'):
+                ncc = align_result.get('ncc')
+                if align_result.get('aligned_wav') and ncc is not None and ncc >= ALIGN_NCC_MIN:
                     effective_user_wav = align_result['aligned_wav']
                     logger.info(
-                        f"[turn_eval] 音频对齐成功: "
-                        f"平均NCC={align_result.get('ncc', 0):.4f}"
+                        f"[turn_eval] 音频对齐成功(NCC={ncc:.4f}≥{ALIGN_NCC_MIN}): "
+                        f"使用对齐干净版做 ASR"
                     )
                     # 每段对齐信息（source=played_audio 文件名 → 轮次），供 turn 轮次归属
                     shared_asr['_align_segments'] = align_result.get('segments') or []
+                elif align_result.get('aligned_wav'):
+                    logger.warning(
+                        f"[turn_eval] 音频对齐 NCC={ncc if ncc is not None else 'N/A'} "
+                        f"低于阈值 {ALIGN_NCC_MIN}，时间轴不可信，回退原始 user_wav 做 ASR/切轮"
+                    )
                 else:
                     logger.warning(f"[turn_eval] 音频对齐失败: {align_result.get('message')}")
             except Exception as e:
@@ -122,8 +134,11 @@ class TurnEvalCalculator(BaseCalculator):
 
         return shared_asr
 
-    def _eval_one_round(self, shared_asr, task_params, round_idx, turn_idx_offset):
+    def _eval_one_round(self, shared_asr, task_params, round_idx, turn_idx_offset, one_turn=False):
         """对单轮 ASR 数据做轮次切分 + 三分类 + 接管时延 + 回复质量
+
+        one_turn=True：按配置轮次切分——整轮合并为 1 个话轮（用户连续多次提问、
+        模型最后一次性回复视为 1 轮），只做一次三分类。多轮合并模式保持逐话轮切分。
 
         Returns:
             (turn_results, normal_count, no_takeover_count, false_takeover_count,
@@ -143,7 +158,7 @@ class TurnEvalCalculator(BaseCalculator):
         ai_chunks = shared_asr.get('ai_chunks') or []
         ai_word_chunks = shared_asr.get('ai_word_chunks') or ai_chunks
 
-        turns, classifications = evaluate_all_turns(user_chunks, ai_chunks, task_params)
+        turns, classifications = evaluate_all_turns(user_chunks, ai_chunks, task_params, one_turn=one_turn)
 
         turn_results = []
         normal_count = 0
@@ -183,6 +198,11 @@ class TurnEvalCalculator(BaseCalculator):
                     classification=cls.classification,
                     task_params=task_params,
                 )
+                if quality_result.get('is_success') is False:
+                    # 回复质量评分 LLM 调用失败：评分不可信，整任务置为失败
+                    raise RuntimeError(
+                        f'回复质量评分LLM调用失败: {quality_result.get("message")}'
+                    )
                 turn_detail['reply_quality'] = quality_result
                 normal_count += 1
 
@@ -296,7 +316,8 @@ class TurnEvalCalculator(BaseCalculator):
         每条 turn 通过对齐段归属到其**真实轮次**，并按轮投影原生 per_round[]
         （零额外 ASR/LLM，参考打断 v2 build_per_round；TaskService 见原生 per_round 即跳过切片重跑）。
 
-        单轮模式 / 编排器注入 _shared_asr：只处理一轮（兼容旧路径）。
+        单轮模式 / 编排器注入 _shared_asr：按配置轮次切分——整轮合并为 1 个话轮，
+        轮内不再切分（用户连续多次提问、模型最后一次性回复视为 1 轮），只做一次三分类。
         """
         from app.services.calculators.xiaoyi_metrics.shared.llm_client import build_interaction_text
 
@@ -315,13 +336,15 @@ class TurnEvalCalculator(BaseCalculator):
 
         # 确定处理模式
         if is_multi and len(rounds) > 1 and not shared_asr_injected:
-            # 多轮合并模式：末轮音频 + 合并所有轮 played_audios，单次对齐/切轮
+            # 多轮合并模式：末轮音频 + 合并所有轮 played_audios，单次对齐/切轮（保留逐话轮切分）
             round_indices = [len(rounds) - 1]
             merge_played_audios = True
+            one_turn = False
         else:
-            # 单轮模式 / 编排器注入：只处理一轮
+            # 单轮模式 / 编排器注入：每配置轮次 = 1 话轮，轮内不再切分
             round_indices = [self._get_target_round_index(params)]
             merge_played_audios = False
+            one_turn = True
 
         for round_idx in round_indices:
             # ── 获取 ASR 数据 ──
@@ -356,7 +379,7 @@ class TurnEvalCalculator(BaseCalculator):
             # ── 单轮：切轮 + 三分类 + 时延 + 质量 ──
             (turn_results, normal_count, no_takeover_count,
              false_takeover_count, user_chunks, ai_word_chunks) = self._eval_one_round(
-                shared_asr, task_params, round_idx, turn_idx_offset
+                shared_asr, task_params, round_idx, turn_idx_offset, one_turn=one_turn
             )
 
             all_turn_results.extend(turn_results)
