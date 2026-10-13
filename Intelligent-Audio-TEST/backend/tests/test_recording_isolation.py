@@ -2,8 +2,9 @@
 """录音跨用例污染防护离线回归测试（VEGA-10）。
 
 覆盖「用例↔录音 1:1 对应」修复中可离线验证的部分：
-- 评估上传文件名唯一化：同任务共享上传目录内，同名录音（流槽位号批次重置导致
-  跨用例重名，如 r1_100016_..._client_in..wav）不再互相覆盖
+- 评估上传文件名契约（25bfd05d 演进后）：提取层保留原始可读名、不加随机前缀；
+  唯一化收敛至 eval_server 落盘层——按用例分目录 uploads/<task_id>/<case_id>/，
+  回退共享目录时加 12 位随机前缀（见 eval_server tests/test_api_storage_id.py）
 - _recv_pcm 落盘时序：先写 *.part 临时文件，用例纪元校验通过后才原子替换；
   纪元变化（拉取期间用例已切换）时丢弃写入
 - _pull_record_file / get_results 录屏名一致性校验：驱动状态属于别的用例时拒绝拉取
@@ -44,11 +45,16 @@ def _make_doubao_driver():
 
 
 # ──────────────────────────────────────────────
-#  评估上传文件名唯一化（跨用例覆盖的直接根因）
+#  评估上传文件名：提取层保留原始可读名（唯一化收敛至落盘层）
 # ──────────────────────────────────────────────
 
-def test_upload_filename_unique_for_same_basename(tmp_path):
-    """同任务内两个用例的同名录音上传时文件名必须不同，且保留原 basename"""
+def test_upload_filename_preserves_original_basename(tmp_path):
+    """提取层保留原始可读文件名（25bfd05d 契约）：同名录音提取名一致且为原名。
+
+    跨用例防覆盖不再由后端加随机前缀；唯一化由 eval_server create_task_upload
+    落盘时保证：按用例分目录 uploads/<task_id>/<case_id>/，回退共享目录时加
+    12 位随机前缀（见 eval_server tests/test_api_storage_id.py）。
+    """
     from backend.services.evaluation.api_request_handler import ApiRequestHandler
 
     # 模拟 4667/4721 两用例目录下的同名 wav（流槽位号批次重置导致重名）
@@ -66,29 +72,25 @@ def test_upload_filename_unique_for_same_basename(tmp_path):
 
     upload_name_a = files_a['rounds_1_ai_wav'][0]
     upload_name_b = files_b['rounds_1_ai_wav'][0]
-    # 上传名不同 → eval_server uploads/<task_id>/ 共享目录内不会互相覆盖
-    assert upload_name_a != upload_name_b
-    # 原名保留为子串 → 评估端派生缓存名/排查可读性不受影响
-    assert upload_name_a.endswith(name)
-    assert upload_name_b.endswith(name)
+    # 提取名 = 原始 basename，无任何随机前缀；同名输入提取名一致
+    assert upload_name_a == name
+    assert upload_name_b == name
     # 内容各归各（未串）
     assert files_a['rounds_1_ai_wav'][1] == b'AAAA'
     assert files_b['rounds_1_ai_wav'][1] == b'BBBB'
 
 
-def test_upload_filename_unique_for_data_uri():
-    """data URI 分支同样加唯一前缀（field_name 跨用例重复）"""
+def test_upload_filename_data_uri_uses_field_name():
+    """data URI 分支同样保留可读名：<field_name>.wav，后端不再加唯一前缀"""
     from backend.services.evaluation.api_request_handler import ApiRequestHandler
 
     payload = 'data:audio/wav;base64,' + base64.b64encode(b'RIFFxxxx').decode()
     files_a, files_b = {}, {}
     assert ApiRequestHandler._extract_single_file('rounds_0_ai_wav', payload, files_a)
     assert ApiRequestHandler._extract_single_file('rounds_0_ai_wav', payload, files_b)
-    name_a = files_a['rounds_0_ai_wav'][0]
-    name_b = files_b['rounds_0_ai_wav'][0]
-    assert name_a != name_b
-    assert name_a.endswith('rounds_0_ai_wav.wav')
-    assert name_b.endswith('rounds_0_ai_wav.wav')
+    # 相同输入提取名一致且为 <field_name>.wav；唯一化由落盘层负责
+    assert files_a['rounds_0_ai_wav'][0] == 'rounds_0_ai_wav.wav'
+    assert files_b['rounds_0_ai_wav'][0] == 'rounds_0_ai_wav.wav'
 
 
 # ──────────────────────────────────────────────
