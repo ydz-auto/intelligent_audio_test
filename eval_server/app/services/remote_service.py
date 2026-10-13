@@ -15,7 +15,8 @@ class RemoteService:
         self._lock = threading.Lock()
 
     def create_remote_task(self, task_type: str, task_params: dict = None,
-                          endpoints: Optional[List[Dict]] = None, caller_task_id: str = None) -> str:
+                          endpoints: Optional[List[Dict]] = None, caller_task_id: str = None,
+                          caller_test_case_id: str = None) -> str:
         """
         在合适的远程端点上创建任务，并返回任务ID
         支持多对多指标分配，每个端点可以配置处理多种指标及其并发限制
@@ -119,6 +120,8 @@ class RemoteService:
                 form_fields['task_type'] = task_type
                 if caller_task_id:
                     form_fields['task_id'] = caller_task_id
+                if caller_test_case_id:
+                    form_fields['test_case_id'] = caller_test_case_id
                 response = requests.post(
                     f"{selected_endpoint.rstrip('/')}/api/create_task_upload",
                     data=form_fields,
@@ -129,6 +132,8 @@ class RemoteService:
                 # 无文件，使用 JSON 端点
                 if caller_task_id:
                     payload['task_id'] = caller_task_id
+                if caller_test_case_id:
+                    payload['test_case_id'] = caller_test_case_id
                 response = requests.post(
                     f"{selected_endpoint.rstrip('/')}/api/create_task",
                     json=payload,
@@ -160,7 +165,8 @@ class RemoteService:
                 task_params=task_params,
                 endpoints=endpoints,
                 endpoint_url=selected_endpoint,
-                task_id=caller_task_id
+                task_id=caller_task_id,
+                test_case_id=caller_test_case_id
             )
             
             TaskModel.update_task_status(remote_eval_task_id, 'processing', started_at=datetime.now().isoformat())

@@ -1,6 +1,7 @@
 import os
 import time
 import json
+import secrets
 import requests
 import traceback
 from backend.services.evaluation.evaluation_mixin import EvaluationLoggerMixin
@@ -65,7 +66,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         return resp_data
 
-    def create_task(self, url, payload, timeout=300, task_id=None):
+    def create_task(self, url, payload, timeout=300, task_id=None, test_case_id=None):
         """
         创建WER/SER计算任务
         """
@@ -73,9 +74,11 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         create_task_url = f"{url}/api/create_task"
         if task_id:
             payload = {**payload, 'task_id': task_id}
+        if test_case_id:
+            payload = {**payload, 'test_case_id': test_case_id}
         return self.make_api_request(create_task_url, 'POST', headers, payload, timeout)
 
-    def _extract_files_from_payload(self, payload, audio_field_names=None):
+    def _extract_files_from_payload(self, payload, audio_field_names=None, unique_prefix=True):
         """
         从 payload 中提取文件（data URI 或文件路径），转为 multipart 上传字段。
 
@@ -98,6 +101,11 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             payload: 请求体字典
             audio_field_names: set/list，需要作为文件上传的字段名集合。
                                为 None 时默认使用 {'record_file'}。
+            unique_prefix: True 时给上传文件名加 12 位随机前缀防覆盖。
+                           已按 用例id 分目录存储（uploads/<task_id>/<case_id>/）时
+                           目录本身隔离，传 False 保留原始可读文件名便于排查；
+                           用例 id 缺失、回退到共享目录（uploads/<task_id>/）时
+                           必须为 True，否则同名录音互相覆盖（"串音"）。
 
         Returns:
             (form_fields, files) 元组
@@ -131,17 +139,19 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                                     field_name, field_value, files,
                                     form_fields_fallback=form_fields,
                                     fallback_key=field_name, fallback_value=field_value,
+                                    unique_prefix=unique_prefix,
                                 )
                                 rd[field_name] = f'__MULTIPART__:{field_name}' if extracted else field_value
                             else:
                                 upload_field_name = f'rounds_{idx}_{field_name}'
-                                extracted = self._extract_single_file(upload_field_name, field_value, files)
+                                extracted = self._extract_single_file(upload_field_name, field_value, files, unique_prefix=unique_prefix)
                                 if extracted:
                                     rd[field_name] = f'__MULTIPART__:{upload_field_name}'
                         elif isinstance(field_value, (dict, list)):
                             # 结构化音频字段（如被播放音频 audios 列表）：递归提取内部文件值
                             rd[field_name] = self._extract_nested_files(
-                                field_value, f'rounds_{idx}_{field_name}', files
+                                field_value, f'rounds_{idx}_{field_name}', files,
+                                unique_prefix=unique_prefix
                             )
                 # 结构化字段（dict/list，如 played_audios、background_noise、interferers）：
                 # 递归提取内部文件值，替换为 __MULTIPART__ 占位符
@@ -154,14 +164,15 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                         field_value = rd.get(field_name)
                         if isinstance(field_value, (dict, list)):
                             rd[field_name] = self._extract_nested_files(
-                                field_value, f'rounds_{idx}_{field_name}', files
+                                field_value, f'rounds_{idx}_{field_name}', files,
+                                unique_prefix=unique_prefix
                             )
                 form_fields[key] = json.dumps(rounds_copy)
             elif isinstance(value, str) and self._is_file_value(value):
-                self._extract_single_file(key, value, files, form_fields_fallback=form_fields, fallback_key=key, fallback_value=value)
+                self._extract_single_file(key, value, files, form_fields_fallback=form_fields, fallback_key=key, fallback_value=value, unique_prefix=unique_prefix)
             elif key in audio_field_names and isinstance(value, (dict, list)):
                 # 顶层结构化音频字段：递归提取内部文件值，替换为 __MULTIPART__ 占位符
-                form_fields[key] = json.dumps(self._extract_nested_files(value, key, files))
+                form_fields[key] = json.dumps(self._extract_nested_files(value, key, files, unique_prefix=unique_prefix))
             elif isinstance(value, (dict, list)):
                 form_fields[key] = json.dumps(value)
             elif isinstance(value, bool):
@@ -196,8 +207,13 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         return ApiRequestHandler._resolve_relative_path(value) is not None
 
     @classmethod
-    def _extract_single_file(cls, field_name, value, files, form_fields_fallback=None, fallback_key=None, fallback_value=None):
-        """提取单个文件到 files 字典。成功返回 True，失败时回退到 form_fields。"""
+    def _extract_single_file(cls, field_name, value, files, form_fields_fallback=None, fallback_key=None, fallback_value=None, unique_prefix=True):
+        """提取单个文件到 files 字典。成功返回 True，失败时回退到 form_fields。
+
+        unique_prefix=True 时给 multipart 文件名加 12 位随机前缀：
+        - 按用例 id 分目录存储（unique_prefix=False）时目录已隔离，保留原始可读文件名；
+        - 回退到共享目录（unique_prefix=True）时必须加前缀，否则同名录音互相覆盖。
+        """
         try:
             if isinstance(value, str) and value.startswith('data:') and ',' in value:
                 header, data = value.split(',', 1)
@@ -213,6 +229,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 }
                 ext = ext_map.get(mime, '.bin')
                 filename = f"{field_name}{ext}"
+                if unique_prefix:
+                    filename = cls._unique_upload_filename(filename)
                 files[field_name] = (filename, file_bytes, mime)
                 return True
             elif isinstance(value, str) and value.startswith('oss://') and len(value) < 4096:
@@ -224,6 +242,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                         file_bytes = f.read()
                     os.remove(local_path)
                     filename = os.path.basename(value)
+                    if unique_prefix:
+                        filename = cls._unique_upload_filename(filename)
                     files[field_name] = (filename, file_bytes, 'application/octet-stream')
                     return True
             elif isinstance(value, str) and len(value) < 4096:
@@ -233,6 +253,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     with open(resolved, 'rb') as f:
                         file_bytes = f.read()
                     filename = os.path.basename(resolved)
+                    if unique_prefix:
+                        filename = cls._unique_upload_filename(filename)
                     files[field_name] = (filename, file_bytes, 'application/octet-stream')
                     return True
         except Exception:
@@ -242,7 +264,18 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             form_fields_fallback[fallback_key] = fallback_value
         return False
 
-    def _extract_nested_files(self, value, prefix, files):
+    @staticmethod
+    def _unique_upload_filename(filename):
+        """为上传文件名加 12 位随机前缀，避免同一任务共享上传目录下同名录音互相覆盖。
+
+        设备音频槽位号每批次从头计数，不同用例会产出完全同名的录音
+        （如 r1_100016_..._client_in.wav）；用例 id 缺失时所有上传回退到共享目录
+        uploads/<task_id>/，裸文件名会被后上传的用例覆盖，评估时读到别人的音频
+        （即"串音"误判静默）。加随机前缀后文件名不撞名。
+        """
+        return f"{secrets.token_hex(6)}_{filename}"
+
+    def _extract_nested_files(self, value, prefix, files, unique_prefix=True):
         """递归提取嵌套结构（dict/list）中的文件值，替换为 __MULTIPART__ 占位符
 
         用于结构化音频字段（如被播放音频 audios 列表 [{audio_path, spl, ...}]）：
@@ -253,17 +286,18 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             value: dict/list/标量 嵌套结构
             prefix: 上传字段名前缀（如 rounds_0_played_audios）
             files: 已有的上传文件字典（避免重复 key）
+            unique_prefix: True 时给上传文件名加随机前缀（见 _extract_single_file）
         Returns:
             替换文件值后的同构结构
         """
         if isinstance(value, dict):
             return {
-                k: self._extract_nested_files(v, f'{prefix}_{k}', files)
+                k: self._extract_nested_files(v, f'{prefix}_{k}', files, unique_prefix=unique_prefix)
                 for k, v in value.items()
             }
         if isinstance(value, list):
             return [
-                self._extract_nested_files(item, f'{prefix}_{i}', files)
+                self._extract_nested_files(item, f'{prefix}_{i}', files, unique_prefix=unique_prefix)
                 for i, item in enumerate(value)
             ]
         if isinstance(value, str) and value and self._is_file_value(value):
@@ -272,7 +306,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             while upload_key in files:
                 seq += 1
                 upload_key = f'{prefix}_{seq}'
-            if self._extract_single_file(upload_key, value, files):
+            if self._extract_single_file(upload_key, value, files, unique_prefix=unique_prefix):
                 return f'__MULTIPART__:{upload_key}'
         return value
 
@@ -311,7 +345,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         return None
 
-    def create_task_upload(self, url, form_fields, files, timeout=300, task_id=None):
+    def create_task_upload(self, url, form_fields, files, timeout=300, task_id=None, test_case_id=None):
         """
         通过 multipart/form-data 创建评估任务（支持文件上传）
         """
@@ -319,6 +353,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         if task_id:
             form_fields['task_id'] = task_id
+        if test_case_id:
+            form_fields['test_case_id'] = test_case_id
 
         multipart_files = {}
         for field_name, (filename, file_bytes, content_type) in files.items():

@@ -256,11 +256,17 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             if formatted_endpoints:
                 create_task_payload["endpoints"] = formatted_endpoints
 
-        form_fields, files = self._extract_files_from_payload(create_task_payload, audio_field_names=audio_field_names)
+        # 已按用例 id 分目录存储（uploads/<task_id>/<case_id>/）时目录本身隔离，
+        # 保留原始可读文件名（unique_prefix=False）；用例 id 缺失回退共享目录时
+        # 加 12 位随机前缀防同名录音互相覆盖（"串音"）
+        form_fields, files = self._extract_files_from_payload(
+            create_task_payload, audio_field_names=audio_field_names,
+            unique_prefix=not test_case_id
+        )
         if files:
-            create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id)
+            create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id, test_case_id=test_case_id)
         else:
-            create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
+            create_response = self.create_task(selected_url, create_task_payload, task_id=task_id, test_case_id=test_case_id)
 
         self._log(
             level='DEBUG',
