@@ -2,17 +2,20 @@ import { onMounted, onUnmounted } from 'vue';
 import { useDeviceManagement } from '../../composables/device/useDeviceManagement';
 
 import { DEVICE_STATUS_TEXT } from '@/domain/constants/deviceLabels';
+import { DeviceTabType } from '@/domain/enums';
+import type { DeviceTabTypeType } from '@/domain/enums';
 
-// 设备管理页 Tab 配置（组件级 UI 常量）
-const tabs = [
-  { type: 'test', label: '测试设备管理', icon: 'fas fa-microphone' },
-  { type: 'api', label: '测试API管理', icon: 'fas fa-exchange-alt' },
-  { type: 'playback', label: '播放设备管理', icon: 'fas fa-headphones' }
+// 设备管理页 Tab 配置（组件级 UI 常量，页签类型走 DeviceTabType 枚举）
+const tabs: { type: DeviceTabTypeType; label: string; icon: string }[] = [
+  { type: DeviceTabType.TEST, label: '测试设备管理', icon: 'fas fa-microphone' },
+  { type: DeviceTabType.API, label: '测试API管理', icon: 'fas fa-exchange-alt' },
+  { type: DeviceTabType.PLAYBACK, label: '播放设备管理', icon: 'fas fa-headphones' }
 ];
 
 import {
   activeTab,
   dropdowns,
+  groupManagerVisible,
   searchQuery,
   statusFilter,
   playbackTypeFilter,
@@ -66,6 +69,7 @@ import {
   healthCheckDevice,
   batchEnableDevices,
   batchDisableDevices,
+  batchRebootDevices,
   batchDeleteDevices,
   batchHealthCheck,
   importDevices,
@@ -73,7 +77,9 @@ import {
   scanDevices,
   startScanDevices,
   loadAlgorithmTypeOptions,
-  getAlgorithmTypeName
+  getAlgorithmTypeName,
+  openGroupManager,
+  handleDeviceOperate
 } from './deviceActions';
 import {
   addButtonText,
@@ -100,7 +106,7 @@ import {
 export function useDevice() {
   // useDeviceManagement 已恢复完整能力：设备列表/弹窗/增删/扫描/健康轮询等。
   // 传入 fetchAllDevices 作为刷新回调，使增删改后同步合并设备列表。
-  setDeviceManagement(useDeviceManagement('test', fetchAllDevices) as any);
+  setDeviceManagement(useDeviceManagement(DeviceTabType.TEST, fetchAllDevices) as any);
 
   onMounted(() => {
     fetchAllDevices();
@@ -132,6 +138,7 @@ export function useDevice() {
     tabs,
     activeTab,
     dropdowns,
+    groupManagerVisible,
     searchQuery,
     statusFilter,
     playbackTypeFilter,
@@ -173,6 +180,7 @@ export function useDevice() {
     healthCheckDevice,
     batchEnableDevices,
     batchDisableDevices,
+    batchRebootDevices,
     batchDeleteDevices,
     batchHealthCheck,
     importDevices,
@@ -180,6 +188,8 @@ export function useDevice() {
     scanDevices,
     startScanDevices,
     availableSerials,
+    openGroupManager,
+    handleDeviceOperate,
 
     // 播放设备分页
     playbackCurrentPage,

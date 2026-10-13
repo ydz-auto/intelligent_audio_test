@@ -336,7 +336,7 @@
 </template>
 
 <script setup lang="ts">
-import { useDevice } from './Device';
+import { useDevice } from './device';
 import { DeviceStatus, DeviceTabType } from '../../domain/enums';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
