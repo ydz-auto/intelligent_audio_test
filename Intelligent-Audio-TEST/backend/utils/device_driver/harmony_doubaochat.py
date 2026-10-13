@@ -3,6 +3,7 @@ import time
 import struct
 import base64
 import subprocess
+import uuid
 
 from hypium import BY
 from .harmony_xiaoyichat import Xiaoyilivechat
@@ -75,14 +76,30 @@ class DoubaoChat(Xiaoyilivechat):
     # ------------------------------------------------------------------
     def _find_ai_pcm_remote(self, device_sn, task_id=None, test_case_id=None):
         """在 PCM_CACHE_DIR 找 AI 回复 PCM(client_in..pcm)。
-        多个匹配取最后一个(最新流)。无匹配返回 None。"""
+        多个匹配取最后一个(最新流)。无匹配返回 None。
+
+        VEGA-10: 先排除残留基线中 size 未变化的跨用例残留文件——流槽位号每批次
+        重置，残留文件与本用例新文件同名，按名排序取最后会命中残留，
+        导致 RMS 回复检测/拉取读到上个用例的录音。
+        """
         r = self._hdc_shell(device_sn, 'find', self.PCM_CACHE_DIR,
                             '-name', f'*{self.AI_PCM_SUFFIX}', '-type', 'f')
         files = [line.strip() for line in (r.stdout or '').splitlines() if line.strip()]
         if not files:
             return None
-        files.sort()
-        return files[-1]
+        baseline = getattr(self, '_pcm_baseline', None) or {}
+        fresh = []
+        for f in files:
+            base_sz = baseline.get(f)
+            if base_sz is None or self._get_device_file_size(device_sn, f) != base_sz:
+                fresh.append(f)
+        if not fresh:
+            self._log(level='WARNING',
+                      content=f"AI回复pcm候选全部为跨用例残留，放弃选取: {files}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+        fresh.sort()
+        return fresh[-1]
 
     def _read_tail_rms(self, device_sn, remote, tail_bytes=None,
                        task_id=None, test_case_id=None):
@@ -364,12 +381,19 @@ class DoubaoChat(Xiaoyilivechat):
         self.close_popups(device_sn)
 
         # 重置跨用例残留的录屏状态（驱动单例复用）
+        # VEGA-10: 推进用例纪元(滞留拉取任务落盘前校验) + 清空残留基线
+        self._case_epoch = uuid.uuid4().hex
+        self._pcm_baseline = {}
         self._recording = False
         self._record_mode = kwargs.get('record_mode', 'round')
         self._total_rounds = 1
         self._round_number = 0
         self._record_file_name = None
         self._record_pulled = False
+        # VEGA-10: 补齐父类 initialize 有而本覆写遗漏的复位——上个用例的录屏
+        # VID 路径/首帧时刻残留会让 teardown 兜底把旧录屏拉给本用例
+        self._record_device_path = None
+        self._recorder_first_frame_ms = None
         self._pcm_app = kwargs.get('pcm_app', 'doubao')
         self.question_text = None
         self.answer_text = None
@@ -378,6 +402,10 @@ class DoubaoChat(Xiaoyilivechat):
         driver.shell("param set sys.audio.dump.writehdi.enable w")
         driver.shell("param set sys.audio.dump.writeclient.enable a")
         driver.shell("chmod 777 /data/local/tmp")
+        # VEGA-10: 用例开局清理设备残留 pcm（docstring 声明的步骤，此前实现遗漏；
+        # 清理失败的文件会记入残留基线，选取时按 size 是否变化排除，防跨用例串音）
+        self._clear_pcm(device_sn, app=self._pcm_app,
+                        task_id=task_id, test_case_id=test_case_id)
 
         # 清除聊天记录以及上下文(开启新话题)
         # 豆包聊天首页右上角菜单按钮: 先尝试语义查找(SymbolGlyph), 找不到则回退坐标

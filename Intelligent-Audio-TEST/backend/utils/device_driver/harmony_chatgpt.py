@@ -1,5 +1,6 @@
 import time
 import subprocess
+import uuid
 
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .harmony_driver import HarmonyDriver
@@ -467,12 +468,18 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self.close_popups(device_sn)
 
         # 重置跨用例残留状态（驱动单例复用）
+        # VEGA-10: 推进用例纪元(滞留拉取任务落盘前校验) + 清空残留基线 +
+        # 补齐录屏设备路径/首帧复位，防止上个用例状态残留导致串音
+        self._case_epoch = uuid.uuid4().hex
+        self._pcm_baseline = {}
         self._recording = False
         self._record_mode = kwargs.get('record_mode', 'round')
         self._total_rounds = 1
         self._round_number = 0
         self._record_file_name = None
         self._record_pulled = False
+        self._record_device_path = None
+        self._recorder_first_frame_ms = None
         self._pcm_app = kwargs.get('pcm_app', 'chatgpt')
         self.question_text = None
         self.answer_text = None

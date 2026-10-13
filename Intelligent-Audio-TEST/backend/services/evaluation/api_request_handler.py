@@ -1,9 +1,25 @@
 import os
 import time
 import json
+import uuid
 import requests
 import traceback
 from backend.services.evaluation.evaluation_mixin import EvaluationLoggerMixin
+
+# 上传文件名唯一前缀长度（uuid4 hex 截取位数）
+# VEGA-10: eval_server 的上传目录按调用方 task_id 共享（uploads/<task_id>/），
+# 而设备录音落盘名 r{round}_{流槽位}_48000_2_1_*.wav 中的流槽位号在设备
+# audioserver 重启后按批次重置，跨用例重名（如 r1_100016_..._client_in..wav）。
+# 若上传时直接用原 basename，同任务内两个用例的同名音频会在评估端互相覆盖，
+# 异步计算读到的就是别人的录音（4667 评估听到 4721 对话的根因）。
+# 因此上传文件名统一加唯一前缀；原名保留为子串，评估端派生缓存名不受影响。
+UPLOAD_FILENAME_UNIQUE_PREFIX_LEN = 12
+
+
+def _unique_upload_name(base_name):
+    """给上传文件名加唯一前缀，保证同任务共享上传目录内不重名"""
+    prefix = uuid.uuid4().hex[:UPLOAD_FILENAME_UNIQUE_PREFIX_LEN]
+    return f"{prefix}_{base_name}"
 
 
 class ApiRequestHandler(EvaluationLoggerMixin):
@@ -212,7 +228,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     'audio/mp4': '.m4a', 'audio/aac': '.aac',
                 }
                 ext = ext_map.get(mime, '.bin')
-                filename = f"{field_name}{ext}"
+                # VEGA-10: 加唯一前缀，防同任务共享上传目录内跨用例同名覆盖
+                filename = _unique_upload_name(f"{field_name}{ext}")
                 files[field_name] = (filename, file_bytes, mime)
                 return True
             elif isinstance(value, str) and value.startswith('oss://') and len(value) < 4096:
@@ -223,7 +240,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     with open(local_path, 'rb') as f:
                         file_bytes = f.read()
                     os.remove(local_path)
-                    filename = os.path.basename(value)
+                    # VEGA-10: 加唯一前缀，防同任务共享上传目录内跨用例同名覆盖
+                    filename = _unique_upload_name(os.path.basename(value))
                     files[field_name] = (filename, file_bytes, 'application/octet-stream')
                     return True
             elif isinstance(value, str) and len(value) < 4096:
@@ -232,7 +250,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 if resolved and os.path.exists(resolved):
                     with open(resolved, 'rb') as f:
                         file_bytes = f.read()
-                    filename = os.path.basename(resolved)
+                    # VEGA-10: 加唯一前缀，防同任务共享上传目录内跨用例同名覆盖
+                    filename = _unique_upload_name(os.path.basename(resolved))
                     files[field_name] = (filename, file_bytes, 'application/octet-stream')
                     return True
         except Exception:
