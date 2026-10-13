@@ -2,6 +2,9 @@
 """
 打断指标 v2 维度种子（11 主维度 + 「打断时延」容器 1 主 3 子，全族合并一次请求）
 
+> 数据以数据库为金标对齐（2026-10-13）：维度/参数/映射/body_template/group_key 均与
+> intelligent_audio_test 库真实状态逐字段核对一致（含 pass_threshold 浮点字面量）。
+
 背景（重构规划见 Obsidian 04-工作安排/打断指标重构.md）：
    - 「打断成功率」(主+4子，纯本地时序) 与「打断场景裁判」(主+11子，独立 LLM 维度)
      合并为统一的 interruption_metrics v2：eval_server 本地时序 + 进程内直调
@@ -371,7 +374,7 @@ MAIN_DIMENSIONS = [
             _out('stop_compliance_rate', '停止指令遵循', 'interruption.stop_compliance_rate',
                  '遵从停止的轮占比(0-1)；模型停止原内容输出即遵从，只回复确认语同样算遵从。'
                  '非停止类用例或 LLM 降级为空。', 40,
-                 agg='pass_eq', pass_threshold=1),
+                 agg='pass_eq', pass_threshold=1.0),
         ],
         'param_mappings': _PARAM_MAPPINGS,
     },

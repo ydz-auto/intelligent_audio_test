@@ -2,6 +2,9 @@
 """
 turn_eval 维度种子数据（turn_eval 主维度 + turn_evaluation 子维度）
 
+> 数据以数据库为金标对齐（2026-10-13）：维度/参数/映射/body_template 均与
+> intelligent_audio_test 库真实状态逐字段核对一致（含 pass_threshold 浮点字面量）。
+
 功能：
 1. 注册/更新 turn_eval 主维度（dimension_type='main'）：
    - 配置 input params（user_wav, ai_wav, played_audios, query）
@@ -139,7 +142,7 @@ SUB_DIMENSIONS = [
             # ─── 主评分：误解管数（pass when 0，即无误解管时通过）───
             ('false_takeover_count', '误解管数', '误解管数', 'number', 'output',
              'turn_classification.false_takeover_count', 'pass_eq', 'main', True,
-             False, None, '误解管轮次数（0=无误解管=通过）', 10, 0),
+             False, None, '误解管轮次数（0=无误解管=通过）', 10, 0.0),
             # ─── 三分类汇总 ───
             ('tc_summary', '三分类汇总', '三分类汇总', 'text', 'output',
              'turn_classification.summary', None, 'aux', True,

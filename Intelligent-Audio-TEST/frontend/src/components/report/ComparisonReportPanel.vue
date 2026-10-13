@@ -349,18 +349,13 @@ const formatPercent = (value) => {
   return `${num.toFixed(1)}%`
 }
 
-const getMetricDecimalPlaces = (metricName) => {
-  const metric = allMetrics.value.find(m => m.name === metricName)
-  const dp = metric?.decimal_places ?? metric?.decimalPlaces ?? 2
-  return dp
-}
-
+// 设备/API 聚合指标统一保留 2 位小数（与聚合代码 round 精度一致），
+// 不读取维度 decimal_places；decimal_places 仅用于具体用例卡片（TestCaseReportDetail）。
 const formatMetricValue = (value, metricName) => {
   if (value === null || value === undefined) return '-'
   const num = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(num)) return String(value)
-  const dp = metricName != null ? getMetricDecimalPlaces(metricName) : 2
-  return num.toFixed(dp)
+  return num.toFixed(2)
 }
 
 const formatMetricWithUnit = (value, metricName) => {
