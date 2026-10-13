@@ -76,20 +76,30 @@ class CreateAlgorithmDefinitionCommand:
     name: str
     algorithm_type: str
     description: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: Optional[int] = None
 
 
 @dataclass(frozen=True)
 class UpdateAlgorithmDefinitionCommand:
-    """更新算法定义命令。
+    """更新算法定义命令（PATCH 语义：字段为 None 时不改动现值）。
 
     - id: 算法定义ID
-    - name: 算法名称
+    - name: 算法名称（None=不改；部分更新如仅切换状态时不携带）
     - description: 算法描述
+    - group_id: 分组ID
+    - status: 状态（PO 口径字符串 online/offline/draft）
+    - icon: 图标URL
+    - display_order: 排序权重
     """
 
     id: int
-    name: str
+    name: Optional[str] = None
     description: Optional[str] = None
+    group_id: Optional[int] = None
+    status: Optional[str] = None
+    icon: Optional[str] = None
+    display_order: Optional[int] = None
 
 
 @dataclass(frozen=True)

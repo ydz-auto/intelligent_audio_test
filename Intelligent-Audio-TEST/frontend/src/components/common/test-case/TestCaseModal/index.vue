@@ -27,7 +27,7 @@
         v-else-if="props.mode === 'import'"
         ref="importFormRef"
         @update="handleImportUpdate"
-        @submit="handleImportSubmit"
+        @submit="handleImportConfirm"
       />
       <ExportForm
         v-else-if="props.mode === 'export'"
@@ -35,7 +35,7 @@
         :test-case-groups="testCaseGroups"
         :test-type="props.testType"
         @update="handleExportUpdate"
-        @submit="handleExportSubmit"
+        @submit="handleExportConfirm"
       />
     </div>
     <div class="modal-footer-content">
@@ -186,7 +186,9 @@ const {
   handlePreviewAudio,
   handleAudioPreview,
   handleImportSubmit,
+  handleImportConfirm,
   handleExportSubmit,
+  handleExportConfirm,
   handleSubmit,
   handleGroupSave,
   handleCaseSave,

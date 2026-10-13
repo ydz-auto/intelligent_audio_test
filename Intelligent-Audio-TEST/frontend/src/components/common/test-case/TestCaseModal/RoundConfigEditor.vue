@@ -257,6 +257,18 @@ function copyCurrentRound() {
   const copy = JSON.parse(JSON.stringify(currentRound.value))
   copy.roundNumber = localRounds.value.length + 1
   // 新设计：referenceParamsPath 已移到独立列，round 里不再有此字段，无需删除
+  // INT-259：算法参数独立列同步复制——源轮参数（voiceprint/interferers 的 audioId
+  // 引用随轮内音频一同复制后仍指向相同音频）原样带到新轮，否则复制轮参数为空
+  const sourceRoundNumber = currentRound.value.roundNumber ?? 1
+  if (Array.isArray(props.algorithmParams)) {
+    const srcEntry = props.algorithmParams.find((e: any) => e.roundNumber === sourceRoundNumber)
+    if (srcEntry) {
+      emit('update:algorithmParams', [
+        ...props.algorithmParams,
+        { roundNumber: copy.roundNumber, params: JSON.parse(JSON.stringify(srcEntry.params || [])) }
+      ])
+    }
+  }
   localRounds.value = [...localRounds.value, copy]
   activeRoundIndex.value = localRounds.value.length - 1
   emitUpdate()
@@ -275,18 +287,26 @@ async function removeCurrentRound() {
     return // 用户取消
   }
   const idx = activeRoundIndex.value
-  const deletedRoundNumber = localRounds.value[idx]?.roundNumber
+
+  // 剩余轮的旧轮号顺序（删除后各轮按位置重编号为 1..n-1）
+  const remainingOldNumbers = localRounds.value
+    .filter((_, i) => i !== idx)
+    .map((r) => r.roundNumber ?? 1)
 
   // 重新编号 rounds
   localRounds.value = localRounds.value
     .filter((_, i) => i !== idx)
     .map((r, i) => ({ ...r, roundNumber: i + 1 }))
 
-  // 同步更新 algorithm_params 独立列：移除被删除轮次的参数，并重新编号 roundNumber
+  // 同步更新 algorithm_params 独立列：按「旧轮号→新轮号」映射重编号。
+  // INT-259：原实现按数组下标重编号，数组顺序与轮号顺序不一致时（先编辑后轮
+  // 再编辑前轮，条目为 push 追加序）会把不同轮的参数互相串写；此处同时清掉
+  // 已不存在轮的残留条目。
   if (Array.isArray(props.algorithmParams) && props.algorithmParams.length > 0) {
+    const remap = new Map(remainingOldNumbers.map((old, i) => [old, i + 1]))
     const updatedAlgParams = props.algorithmParams
-      .filter((e: any) => e.roundNumber !== deletedRoundNumber)
-      .map((e: any, i: number) => ({ ...e, roundNumber: i + 1 }))
+      .filter((e: any) => remap.has(e.roundNumber))
+      .map((e: any) => ({ ...e, roundNumber: remap.get(e.roundNumber) }))
     emit('update:algorithmParams', updatedAlgParams)
   }
 

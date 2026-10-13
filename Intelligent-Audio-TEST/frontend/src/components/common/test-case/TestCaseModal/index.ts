@@ -333,19 +333,43 @@ export function useTestCaseModal(props: any, emit: any) {
     }
   }
 
+  // 底部「导入」按钮只触发 ImportForm 校验；通过后由 @submit 回调（handleImportConfirm）
+  // 执行保存。此前 footer 与 @submit 绑定同一函数且二者互相调用 child.handleSubmit →
+  // emit('submit')，形成 emit 递归死循环，导入永远无法执行（INT-259）。
   function handleImportSubmit() {
     importFormRef.value?.handleSubmit();
-    if (importFormRef.value?.localFile) {
+  }
+
+  function handleImportConfirm() {
+    const file = importFormRef.value?.localFile;
+    if (file) {
       emit('save', {
         mode: 'import',
-        data: { file: importFormRef.value.localFile }
+        data: { file }
       });
       handleClose();
     }
   }
 
+  // 底部「导出」按钮只触发 ExportForm 校验；通过后由 @submit 回调（handleExportConfirm）
+  // 携带载荷 emit('save')，由 GlobalModalContainer resolve → useTestCaseCard.handleModalSave
+  // 执行导出下载。此前二者同调 child.handleSubmit 形成 emit 递归死循环（INT-259）。
   function handleExportSubmit() {
     exportFormRef.value?.handleSubmit();
+  }
+
+  function handleExportConfirm() {
+    const form = exportFormRef.value as any;
+    const ids: (string | number)[] = form?.exportCaseIds ?? [];
+    if (!ids.length) {
+      notification.warning('没有可导出的用例');
+      return;
+    }
+    emit('save', {
+      mode: 'export',
+      isEdit: false,
+      data: { ...(form?.localFormData ?? {}), ids }
+    });
   }
 
   function handleSubmit() {
@@ -521,7 +545,9 @@ export function useTestCaseModal(props: any, emit: any) {
     handlePreviewAudio,
     handleAudioPreview,
     handleImportSubmit,
+    handleImportConfirm,
     handleExportSubmit,
+    handleExportConfirm,
     handleSubmit,
     handleGroupSave,
     handleCaseSave,

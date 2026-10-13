@@ -193,6 +193,8 @@ class AlgorithmDefinitionRepository(IAlgorithmDefinitionRepository):
                 group_id=aggregate.group_id,
                 description=aggregate.description,
                 status=_status_to_po_str(aggregate.status),
+                icon=aggregate.icon,
+                display_order=aggregate.display_order,
                 deleted=aggregate.deleted,
             )
             session.add(po)

@@ -256,7 +256,7 @@ class AlgorithmDefinitionServicer(_ParamMethodsMixin, _pb_grpc.AlgorithmDefiniti
 
     @grpc_rpc_handler(response_cls=_pb.AlgorithmResponse)
     def UpdateAlgorithm(self, request, context=None):
-        """更新算法定义可变字段。
+        """更新算法定义可变字段（PATCH 语义：data 中未携带的字段不改动现值）。
 
         请求字段（UpdateAlgorithmRequest）：algorithm_id / data
         """
@@ -266,8 +266,12 @@ class AlgorithmDefinitionServicer(_ParamMethodsMixin, _pb_grpc.AlgorithmDefiniti
         data = parse_request_data(request)
         cmd = UpdateAlgorithmDefinitionCommand(
             id=int(request.algorithm_id),
-            name=data.get("name", ""),
+            name=data.get("name"),
             description=data.get("description"),
+            group_id=data.get("group_id"),
+            status=data.get("status"),
+            icon=data.get("icon"),
+            display_order=data.get("display_order"),
         )
         self.command_handler.handle_update_definition(cmd)
         return {"id": cmd.id, "updated": True}

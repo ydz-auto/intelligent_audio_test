@@ -164,6 +164,8 @@ def _definition_po_to_entity(po: AlgorithmDefinitionPO) -> AlgorithmDefinitionAg
         description=po.description,
         version='1.0.0',  # PO 无 version 列，使用实体默认值
         status=_status_from_po(po.status),
+        icon=getattr(po, 'icon', None),
+        display_order=getattr(po, 'display_order', 0) or 0,
         device_params=device_params,
         api_params=api_params,
         reference_params=[],  # PO 无直接关联关系，单独加载
@@ -201,5 +203,8 @@ def _apply_definition_to_po(aggregate: AlgorithmDefinitionAggregate, po: Algorit
     po.group_id = aggregate.group_id
     po.description = aggregate.description
     po.status = _status_to_po_str(aggregate.status)
+    if aggregate.icon is not None:
+        po.icon = aggregate.icon
+    po.display_order = aggregate.display_order
     po.deleted = aggregate.deleted
     po.updated_at = datetime.now()

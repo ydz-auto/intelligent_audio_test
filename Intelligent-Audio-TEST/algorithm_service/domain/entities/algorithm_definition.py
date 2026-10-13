@@ -47,6 +47,8 @@ class AlgorithmDefinitionAggregate:
     description: Optional[str] = None
     version: str = "1.0.0"
     status: AlgorithmStatus = AlgorithmStatus.DRAFT
+    icon: Optional[str] = None
+    display_order: int = 0
     device_params: List[AlgorithmParamEntity] = field(default_factory=list)
     api_params: List[AlgorithmParamEntity] = field(default_factory=list)
     reference_params: List[AlgorithmParamEntity] = field(default_factory=list)

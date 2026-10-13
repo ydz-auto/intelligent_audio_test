@@ -44,6 +44,18 @@ from algorithm_service.application.queries.algorithm_queries import (
 )
 
 
+# PO 口径状态字符串 → AlgorithmStatus（与持久层 _status_from_po 转换口径一致，未知值按 draft）
+_STATUS_STR_TO_ENUM = {
+    'online': AlgorithmStatus.ACTIVE,
+    'offline': AlgorithmStatus.DEPRECATED,
+    'draft': AlgorithmStatus.DRAFT,
+}
+
+
+def _status_str_to_enum(status: str) -> AlgorithmStatus:
+    return _STATUS_STR_TO_ENUM.get(status, AlgorithmStatus.DRAFT)
+
+
 class AlgorithmCommandHandler:
     """算法命令处理器。
 
@@ -102,21 +114,37 @@ class AlgorithmCommandHandler:
             algorithm_type=cmd.algorithm_type,
             description=cmd.description,
             status=AlgorithmStatus.DRAFT,
+            icon=cmd.icon,
+            display_order=cmd.display_order or 0,
         )
         return algorithm_definition_repository.add(aggregate)
 
     def handle_update_definition(self, cmd: UpdateAlgorithmDefinitionCommand) -> None:
-        """处理更新算法定义命令。
+        """处理更新算法定义命令（PATCH 语义：仅覆盖命令携带的非 None 字段）。
 
         - 加载已有聚合根
-        - 更新可写字段（name / description）
+        - 更新可写字段（name / description / group_id / status / icon / display_order）
         - 调用 repository.save 持久化
+
+        PATCH 语义的动机：部分更新（如算法列表启用/禁用仅携带 status）此前会
+        把 name 强制覆盖为 ""、description 覆盖为 None；分组/状态/图标/排序
+        亦被静默丢弃（模态窗假成功）。字段为 None 一律不改动现值。
         """
         aggregate = algorithm_definition_repository.get_by_id(cmd.id)
         if aggregate is None:
             raise ValueError(f"算法定义 id={cmd.id} 不存在，无法更新")
-        aggregate.name = cmd.name
-        aggregate.description = cmd.description
+        if cmd.name is not None:
+            aggregate.name = cmd.name
+        if cmd.description is not None:
+            aggregate.description = cmd.description
+        if cmd.group_id is not None:
+            aggregate.group_id = cmd.group_id
+        if cmd.status is not None:
+            aggregate.status = _status_str_to_enum(cmd.status)
+        if cmd.icon is not None:
+            aggregate.icon = cmd.icon
+        if cmd.display_order is not None:
+            aggregate.display_order = cmd.display_order
         algorithm_definition_repository.save(aggregate)
 
     def handle_delete_definition(self, cmd: DeleteAlgorithmDefinitionCommand) -> bool:

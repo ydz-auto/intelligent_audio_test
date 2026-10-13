@@ -180,6 +180,8 @@ export function useAlgorithmCrudOps(
       loadAlgorithms()
     } catch (error) {
       console.error('操作失败:', error)
+      // INT-259：失败必须可见——原先仅 console.error，弹窗停留但无任何提示（假成功观感）
+      notification.error('保存算法失败: ' + (error instanceof Error ? error.message : '未知错误'))
     }
   }
 
