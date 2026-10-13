@@ -203,6 +203,7 @@ message ListTasksRequest {
   string end_date = 8;
   bool favorite = 9;   // INT-141：仅当前用户收藏（x-user-id metadata）
   bool deleted = 10;   // INT-141：仅回收站（软删除项，含删除人/删除时间）
+  string evaluation_status = 11;  // INT-301：按任务级评估状态过滤（pending/evaluating/completed/failed/skipped）
 }
 message GetTaskDetailRequest {
   int32 task_id = 1;

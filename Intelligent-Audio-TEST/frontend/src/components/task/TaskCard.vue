@@ -17,23 +17,20 @@
               <i class="fas fa-trash"></i>
               已删除
             </span>
-            <span v-else class="task-status" :class="task.status">
-              <i class="fas task-indicator" :class="{
-                'fa-clock': task.status === TaskStatus.PENDING,
-                'fa-hourglass': task.status === TaskStatus.QUEUED,
-                'fa-spinner fa-spin': task.status === TaskStatus.RUNNING,
-                'fa-sync-alt fa-spin': task.status === TaskStatus.EVALUATING,
-                'fa-sync-alt fa-spin': task.status === TaskStatus.REEVALUATING,
-                'fa-hourglass-half': task.status === TaskStatus.REEVALUATE_QUEUED,
-                'fa-check-circle': task.status === TaskStatus.COMPLETED,
-                'fa-times-circle': task.status === TaskStatus.FAILED,
-                'fa-pause-circle': task.status === TaskStatus.PAUSED,
-                'fa-stop-circle': task.status === TaskStatus.STOPPED,
-                'fa-minus-circle': task.status === TaskStatus.SKIPPED,
-                'fa-object-group': task.status === TaskStatus.MERGED
-              }"></i>
-              {{ getStatusText(task.status) }}
-            </span>
+            <template v-else>
+              <!-- INT-301：双状态徽章——执行徽章（评估推进不落此侧） + 评估徽章（重评只动此侧） -->
+              <span class="task-status exec-status-badge" :class="getExecutionBadgeStatus(task)" :title="'执行状态'">
+                <i class="fas task-indicator" :class="getExecutionBadgeIcon(getExecutionBadgeStatus(task))"></i>
+                {{ getStatusText(getExecutionBadgeStatus(task)) }}
+              </span>
+              <span
+                v-if="task.evaluationStatus"
+                class="task-status eval-status-badge" :class="task.evaluationStatus" :title="'评估状态'"
+              >
+                <i class="fas task-indicator" :class="getEvaluationBadgeIcon(task.evaluationStatus)"></i>
+                {{ getEvaluationStatusText(task.evaluationStatus) }}
+              </span>
+            </template>
             <div class="task-title" v-if="!isEditingName" @click.stop="startEditName" title="点击修改任务名称">{{ task.name || task.title || '未命名任务' }}</div>
             <div class="task-title-edit" v-else @click.stop>
               <input
@@ -95,23 +92,20 @@
             <i class="fas fa-trash"></i>
             已删除
           </span>
-          <span v-else class="task-status" :class="task.status">
-            <i class="fas task-indicator" :class="{
-              'fa-clock': task.status === TaskStatus.PENDING,
-              'fa-hourglass': task.status === TaskStatus.QUEUED,
-              'fa-spinner fa-spin': task.status === TaskStatus.RUNNING,
-              'fa-sync-alt fa-spin': task.status === TaskStatus.EVALUATING,
-              'fa-sync-alt fa-spin': task.status === TaskStatus.REEVALUATING,
-              'fa-hourglass-half': task.status === TaskStatus.REEVALUATE_QUEUED,
-              'fa-check-circle': task.status === TaskStatus.COMPLETED,
-              'fa-times-circle': task.status === TaskStatus.FAILED,
-              'fa-pause-circle': task.status === TaskStatus.PAUSED,
-              'fa-stop-circle': task.status === TaskStatus.STOPPED,
-              'fa-minus-circle': task.status === TaskStatus.SKIPPED,
-              'fa-object-group': task.status === TaskStatus.MERGED
-            }"></i>
-            {{ getStatusText(task.status) }}
-          </span>
+          <template v-else>
+            <!-- INT-301：双状态徽章——执行徽章（评估推进不落此侧） + 评估徽章（重评只动此侧） -->
+            <span class="task-status exec-status-badge" :class="getExecutionBadgeStatus(task)" :title="'执行状态'">
+              <i class="fas task-indicator" :class="getExecutionBadgeIcon(getExecutionBadgeStatus(task))"></i>
+              {{ getStatusText(getExecutionBadgeStatus(task)) }}
+            </span>
+            <span
+              v-if="task.evaluationStatus"
+              class="task-status eval-status-badge" :class="task.evaluationStatus" :title="'评估状态'"
+            >
+              <i class="fas task-indicator" :class="getEvaluationBadgeIcon(task.evaluationStatus)"></i>
+              {{ getEvaluationStatusText(task.evaluationStatus) }}
+            </span>
+          </template>
           <div class="task-title" v-if="!isEditingName" @click.stop="startEditName" title="点击修改任务名称">{{ task.name || task.title || '未命名任务' }}</div>
           <div class="task-title-edit" v-else @click.stop>
             <input
@@ -207,7 +201,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useTaskCard } from './TaskCard'
-import { TaskStatus } from '@/domain/enums'
+// INT-301：双徽章后状态图标映射收敛于 TaskCard.ts，模板不再直引 TaskStatus
 // INT-239：删除时间格式化收敛在卡片内（对齐 TestCaseCard 口径），不依赖上游预格式化
 import { formatDate } from '@/utils/utils'
 
@@ -235,6 +229,10 @@ const {
   getDeviceTypeClass,
   getAlgorithmTypeText,
   getStatusText,
+  getExecutionBadgeStatus,
+  getExecutionBadgeIcon,
+  getEvaluationStatusText,
+  getEvaluationBadgeIcon,
   getStepStatusText,
   calculateCompletionRate
 } = useTaskCard(props, emit)

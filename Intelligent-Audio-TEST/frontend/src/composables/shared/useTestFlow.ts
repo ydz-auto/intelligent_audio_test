@@ -99,6 +99,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
   const {
     progressPercentage, completedTests, inProgressTests, pendingTests,
     executionFailedTests, evaluationFailedTests, totalTestCases, taskStatus,
+    taskExecutionStatus, taskEvaluationStatus,
     elapsedTime, estimatedTime, expectedCompleteTime, logs, associatedCases,
     apiResources, resetProgress, addLog, isProgressPolling,
   } = useTaskProgress({
@@ -345,6 +346,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     isExecuting, executionProgress, isPaused, isControlling, pauseTest, resumeTest, stopTest,
     progressPercentage, completedTests, inProgressTests, pendingTests,
     executionFailedTests, evaluationFailedTests, totalTestCases, taskStatus,
+    taskExecutionStatus, taskEvaluationStatus,
     elapsedTime, estimatedTime, expectedCompleteTime, logs, associatedCases,
     apiResources, isProgressPolling, testProgress: [] as any[],
     report, isEditingReport, isEditingConclusion, analysisContent, reportTables,

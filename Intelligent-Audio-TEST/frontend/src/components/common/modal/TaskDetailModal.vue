@@ -20,6 +20,9 @@
         :is-paused="isPaused"
         :active-tab="activeTab"
         :connection-fallback="isProgressPolling"
+        :task-status="taskStatus"
+        :execution-status="executionStatus"
+        :evaluation-status="evaluationStatus"
         @update:active-tab="newTab => activeTab = newTab"
         @test-case-click="showTestCaseDetails"
         @pause-test="pauseTest"
@@ -95,6 +98,8 @@ const {
   evaluationFailedTests,
   totalTestCases,
   taskStatus,
+  taskExecutionStatus: executionStatus,
+  taskEvaluationStatus: evaluationStatus,
   elapsedTime,
   estimatedTime,
   expectedCompleteTime,
@@ -275,6 +280,14 @@ async function fetchTaskDetails() {
     }
     
     task.value = taskData;
+
+    // INT-301：详情首屏即带双状态（进度事件到达前的初始徽章）
+    if (taskData.executionStatus) {
+      executionStatus.value = String(taskData.executionStatus);
+    }
+    if (taskData.evaluationStatus) {
+      evaluationStatus.value = String(taskData.evaluationStatus);
+    }
 
     // 用后端返回的时间字段更新显示
     if (taskData.expectedTotalTime) {

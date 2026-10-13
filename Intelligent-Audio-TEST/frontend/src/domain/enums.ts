@@ -20,6 +20,22 @@ export const TaskStatus = {
 /** 任务状态类型（由 TaskStatus 派生的字符串联合，供响应式状态标注使用） */
 export type TaskStatusType = typeof TaskStatus[keyof typeof TaskStatus]
 
+/**
+ * 任务级评估状态枚举（INT-301，值 = 后端任务级评估状态原值，禁止改动值）。
+ * 任务级双状态：执行状态（TaskStatus 执行域值）与评估状态完全分离，
+ * 重新评估推进只落评估侧（evaluating→completed），执行侧不变。
+ */
+export const TaskEvaluationStatus = {
+  PENDING: 'pending',
+  EVALUATING: 'evaluating',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  SKIPPED: 'skipped',
+} as const
+
+/** 任务级评估状态类型 */
+export type TaskEvaluationStatusType = typeof TaskEvaluationStatus[keyof typeof TaskEvaluationStatus]
+
 /** 已结束的任务状态集合 */
 export const FINISHED_STATUSES = [
   TaskStatus.COMPLETED,

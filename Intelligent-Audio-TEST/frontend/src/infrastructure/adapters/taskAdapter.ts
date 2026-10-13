@@ -75,6 +75,9 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
     description: d.description ?? undefined,
     deviceTypes: d.device_types ?? [],
     status: d.status as TaskStatusType,
+    // INT-301：任务级执行/评估双状态（评估推进只落评估侧）
+    executionStatus: d.execution_status ?? undefined,
+    evaluationStatus: d.evaluation_status ?? undefined,
     progress: d.progress ?? undefined,
     config: d.config,
     algorithmType: d.algorithm_type ?? undefined,

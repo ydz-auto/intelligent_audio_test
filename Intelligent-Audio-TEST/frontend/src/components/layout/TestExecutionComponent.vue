@@ -18,7 +18,7 @@
             <i class="fas fa-tasks" style="color: var(--primary-color);"></i>
             {{ testType }}测试任务
           </h4>
-          <div class="task-meta" style="display: flex; gap: 20px; flex-wrap: wrap;">
+          <div class="task-meta" style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
             <div class="meta-item flex items-center gap-2">
               <i class="fas fa-clock" style="color: var(--text-secondary); font-size: 14px;"></i>
               <span style="font-size: 14px; color: var(--text-secondary);">{{ taskInfo.testDate || new Date().toLocaleDateString() }}</span>
@@ -26,6 +26,17 @@
             <div class="meta-item flex items-center gap-2">
               <i class="fas fa-user" style="color: var(--text-secondary); font-size: 14px;"></i>
               <span style="font-size: 14px; color: var(--text-secondary);">{{ taskInfo.creator || '系统管理员' }}</span>
+            </div>
+            <!-- INT-301：任务详情头双状态徽章（执行/评估完全分离；taskStatus 兼容旧调用缺省回退） -->
+            <div v-if="taskStatus" class="meta-item flex items-center gap-2">
+              <span class="task-status exec-status-badge" :class="executionStatus || taskStatus" title="执行状态">
+                <i class="fas task-indicator" :class="getExecutionBadgeIcon(executionStatus || taskStatus)"></i>
+                {{ getExecutionStatusText(executionStatus || taskStatus) }}
+              </span>
+              <span v-if="evaluationStatus" class="task-status eval-status-badge" :class="evaluationStatus" title="评估状态">
+                <i class="fas task-indicator" :class="getEvaluationBadgeIcon(evaluationStatus)"></i>
+                {{ getEvaluationStatusText(evaluationStatus) }}
+              </span>
             </div>
           </div>
         </div>
@@ -378,6 +389,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus } from '@/domain/enums';
+// INT-301：双状态徽章展示口径（执行/评估文案与图标独立映射）
+import { getTaskStatusLabel, getTaskEvaluationStatusLabel } from '../../domain/constants/reportLabels';
 
 const props = defineProps({
   testType: {type: String, default: 'API', validator: (value) => ['API', 'E2E', '混合'].includes(value)},
@@ -395,6 +408,10 @@ const props = defineProps({
   isPaused: {type: Boolean, default: false},
   isControlling: {type: Boolean, default: false},
   taskStatus: {type: String, default: ''},
+  /** INT-301：任务级执行状态（评估推进不落此字段；缺省回退 taskStatus） */
+  executionStatus: {type: String, default: ''},
+  /** INT-301：任务级评估状态（pending/evaluating/completed/failed/skipped） */
+  evaluationStatus: {type: String, default: ''},
   isExecuting: {type: Boolean, default: false},
   connectionFallback: {type: Boolean, default: false}
 });
@@ -424,6 +441,42 @@ const finishedTaskStatuses = [
 const shouldShowPauseResumeButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
 
 const shouldShowStopButton = computed(() => !finishedTaskStatuses.includes(props.taskStatus));
+
+// ===== INT-301：详情头双状态徽章（与 TaskCard 徽章口径一致） =====
+
+/** 执行徽章图标（纯执行域） */
+const getExecutionBadgeIcon = (status) => {
+  const iconMap = {
+    [TaskStatus.PENDING]: 'fa-clock',
+    [TaskStatus.QUEUED]: 'fa-hourglass',
+    [TaskStatus.RUNNING]: 'fa-spinner fa-spin',
+    [ExecutionStatus.COMPLETED]: 'fa-check-circle',
+    [ExecutionStatus.FAILED]: 'fa-times-circle',
+    [TaskStatus.PAUSED]: 'fa-pause-circle',
+    [ExecutionStatus.STOPPED]: 'fa-stop-circle',
+    [TaskStatus.SKIPPED]: 'fa-minus-circle',
+    [TaskStatus.MERGED]: 'fa-object-group',
+  };
+  return iconMap[status] || 'fa-clock';
+};
+
+/** 评估徽章图标（评估域独立图标族） */
+const getEvaluationBadgeIcon = (status) => {
+  const iconMap = {
+    pending: 'fa-hourglass-half',
+    evaluating: 'fa-sync-alt fa-spin',
+    completed: 'fa-check-circle',
+    failed: 'fa-times-circle',
+    skipped: 'fa-forward',
+  };
+  return iconMap[status] || 'fa-hourglass-half';
+};
+
+/** 执行徽章文案（执行域值走任务状态映射；未知回退原文） */
+const getExecutionStatusText = (status) => getTaskStatusLabel(status);
+
+/** 评估徽章文案（独立口径；未知值回退原文容错） */
+const getEvaluationStatusText = (status) => getTaskEvaluationStatusLabel(status);
 
 const formatLogTime = (timeStr) => {
   try {
@@ -649,6 +702,43 @@ const scrollToBottom = () => {
 </script>
 
 <style scoped>
+
+/* ===== INT-301：详情头双状态徽章（与 TaskCard 徽章同配色族） ===== */
+.exec-status-badge,
+.eval-status-badge{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.eval-status-badge.evaluating{
+  background-color: var(--color-indigo-100);
+  color: var(--color-indigo-600);
+}
+
+.eval-status-badge.completed{
+  background-color: var(--color-emerald-100);
+  color: var(--color-emerald-600);
+}
+
+.eval-status-badge.failed{
+  background-color: var(--color-red-100);
+  color: var(--color-red-600);
+}
+
+.eval-status-badge.skipped{
+  background-color: var(--color-gray-100);
+  color: var(--color-gray-500);
+}
+
+.eval-status-badge.pending{
+  background-color: var(--color-amber-100);
+  color: var(--color-amber-600);
+}
 
 .association-content{
     padding: 24px;

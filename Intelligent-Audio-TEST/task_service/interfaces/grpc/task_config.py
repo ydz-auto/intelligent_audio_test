@@ -112,6 +112,8 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
                 favorite=request.favorite,
                 deleted=request.deleted,
                 user_id=user_id_from_context(context),
+                # INT-301：评估状态过滤（与执行状态并列）
+                evaluation_status=request.evaluation_status or None,
             )
             return self._resp(self.qry.handle_list_tasks_config(query))
         except Exception as e:

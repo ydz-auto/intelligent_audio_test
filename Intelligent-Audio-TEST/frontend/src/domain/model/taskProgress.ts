@@ -54,6 +54,10 @@ export interface TaskProgressLog {
 export interface TaskProgress {
   taskId: string
   status: TaskStatusType
+  /** INT-301：任务级执行状态（评估推进不落此字段；缺省回退 status） */
+  executionStatus?: TaskStatusType | string
+  /** INT-301：任务级评估状态（pending/evaluating/completed/failed/skipped） */
+  evaluationStatus?: string
   totalProgress: number
   completedCount: number
   inProgressCount: number
@@ -73,6 +77,10 @@ export interface TaskProgress {
 export interface TaskProgressHttp {
   taskId: string
   status: TaskStatusType
+  /** INT-301：任务级执行状态 */
+  executionStatus?: string
+  /** INT-301：任务级评估状态 */
+  evaluationStatus?: string
   totalCases: number
   completedCases: number
   failedCases: number

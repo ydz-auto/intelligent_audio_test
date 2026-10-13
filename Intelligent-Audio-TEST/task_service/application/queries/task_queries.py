@@ -62,6 +62,7 @@ class ListTasksConfigQuery(Query):
     承载于 proto ListTasksRequest.type 字段的取值，如 'physical'）。
     favorite（可选，INT-141）：仅当前用户收藏（user_id 来自 x-user-id metadata）。
     deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
+    evaluation_status（可选，INT-301）：按任务级评估状态过滤（与执行状态并列）。
     """
     page: int = 1
     per_page: int = 10
@@ -74,6 +75,7 @@ class ListTasksConfigQuery(Query):
     favorite: bool = False
     deleted: bool = False
     user_id: Optional[int] = None
+    evaluation_status: Optional[str] = None
 
 
 @dataclass(frozen=True)

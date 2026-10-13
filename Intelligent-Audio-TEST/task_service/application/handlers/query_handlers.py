@@ -167,6 +167,7 @@ class TaskQueryHandler:
             favorite=query.favorite,
             deleted=query.deleted,
             user_id=query.user_id,
+            evaluation_status=query.evaluation_status,
         )
 
     def handle_get_task_detail(self, query: GetTaskDetailQuery) -> Dict[str, Any]:

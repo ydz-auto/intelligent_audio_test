@@ -54,6 +54,8 @@ class TaskQueryService:
         # INT-141：收藏 / 回收站过滤
         favorite = query.favorite
         deleted = query.deleted
+        # INT-301：评估状态过滤（与执行状态并列）
+        evaluation_status = query.evaluation_status
 
         result = _task_acl.list_tasks(
             page=page,
@@ -65,6 +67,7 @@ class TaskQueryService:
             end_date=end_date,
             favorite=favorite,
             deleted=deleted,
+            evaluation_status=evaluation_status,
         )
 
         if not result.get('success'):
@@ -89,6 +92,8 @@ class TaskQueryService:
                     name=item.get('name'),
                     description=item.get('description'),
                     status=item.get('status'),
+                    execution_status=item.get('execution_status'),
+                    evaluation_status=item.get('evaluation_status'),
                     device_types=item.get('device_types', []),
                     config=item.get('config') if item.get('config') else {},
                     algorithm_type=item.get('algorithm_type'),
@@ -178,6 +183,8 @@ class TaskQueryService:
                 name=item.get('name'),
                 description=item.get('description'),
                 status=item.get('status'),
+                execution_status=item.get('execution_status'),
+                evaluation_status=item.get('evaluation_status'),
                 device_types=item.get('device_types', []),
                 config=item.get('config') if item.get('config') else {},
                 algorithm_type=item.get('algorithm_type'),
@@ -308,6 +315,8 @@ class TaskQueryService:
             TaskProgressData(
                 task_id=str(item.get('task_id', task_id)),
                 status=item.get('status'),
+                execution_status=item.get('execution_status'),
+                evaluation_status=item.get('evaluation_status'),
                 total_cases=item.get('total_cases'),
                 completed_cases=item.get('completed_cases'),
                 failed_cases=item.get('failed_cases'),

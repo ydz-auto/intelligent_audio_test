@@ -119,6 +119,36 @@
   color: var(--color-indigo-600);
 }
 
+/* ===== INT-301：任务级评估状态徽章（独立配色族，与执行徽章并排展示） ===== */
+.eval-status-badge {
+  margin-left: 4px;
+}
+
+.eval-status-badge.evaluating {
+  background-color: var(--color-indigo-100);
+  color: var(--color-indigo-600);
+}
+
+.eval-status-badge.completed {
+  background-color: var(--color-emerald-100);
+  color: var(--color-emerald-600);
+}
+
+.eval-status-badge.failed {
+  background-color: var(--color-red-100);
+  color: var(--color-red-600);
+}
+
+.eval-status-badge.skipped {
+  background-color: var(--color-gray-100);
+  color: var(--color-gray-500);
+}
+
+.eval-status-badge.pending {
+  background-color: var(--color-amber-100);
+  color: var(--color-amber-600);
+}
+
 .task-description {
   font-size: 14px;
   margin-bottom: 8px;

@@ -25,18 +25,23 @@ class TaskProgressStatsMixin:
 
     def get_progress(self, task_id: int) -> Optional[Dict[str, Any]]:
         """查询任务进度（轻量级，仅进度字段）。"""
+        from task_service.infrastructure.read_models.task_dual_status_expr import (
+            EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR,
+        )
         session = get_db_session()
         try:
             result = (session.query(
                 Task.id, Task.status, Task.total_cases,
                 Task.completed_cases, Task.failed_cases,
-                Task.started_at, Task.completed_at, Task.actual_duration
+                Task.started_at, Task.completed_at, Task.actual_duration,
+                EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR,
             ).filter(Task.id == task_id).first())
 
             if result is None:
                 return None
 
-            tid, status, total, completed, failed, started, completed_at, duration = result
+            (tid, status, total, completed, failed, started, completed_at, duration,
+             execution_status, evaluation_status) = result
             total = total or 0
             completed = completed or 0
             failed = failed or 0
@@ -46,6 +51,8 @@ class TaskProgressStatsMixin:
             return {
                 'task_id': tid,
                 'status': status,
+                'execution_status': execution_status,
+                'evaluation_status': evaluation_status,
                 'total_cases': total,
                 'completed_cases': completed,
                 'failed_cases': failed,
@@ -62,7 +69,8 @@ class TaskProgressStatsMixin:
         """网关 get_progress 使用的详细进度（含当前用例、用例列表、计数）。
 
         返回字段：
-        - task_id / status / total_cases / completed_cases / failed_cases / progress
+        - task_id / status / execution_status / evaluation_status（INT-301 双状态）
+        - total_cases / completed_cases / failed_cases / progress
         - current_case: 当前正在执行的用例
         - test_cases: 全部用例列表（id/status/execution_status/evaluation_status/duration/error_message）
         - in_progress_count: 正在执行/排队中的用例数
@@ -73,12 +81,17 @@ class TaskProgressStatsMixin:
         - api_resource_status: API 任务的资源状态
         """
         from task_service.infrastructure.persistence.models import TestCase
+        from task_service.infrastructure.read_models.task_dual_status_expr import (
+            EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR,
+        )
 
         session = get_db_session()
         try:
-            task = session.get(Task, task_id)
-            if task is None:
+            row = session.query(Task, EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR).filter(
+                Task.id == task_id).first()
+            if row is None:
                 return None
+            task, task_execution_status, task_evaluation_status = row
 
             current_case = session.query(TaskCase).filter_by(
                 task_id=task_id, execution_status=ExecutionStatus.RUNNING
@@ -163,6 +176,8 @@ class TaskProgressStatsMixin:
             return {
                 'task_id': str(task.id),
                 'status': task.status,
+                'execution_status': task_execution_status,
+                'evaluation_status': task_evaluation_status,
                 'device_types': [dt for (dt,) in session.query(TaskCase.device_type)
                                  .filter(TaskCase.task_id == task.id, TaskCase.device_type.isnot(None))
                                  .distinct().all()],

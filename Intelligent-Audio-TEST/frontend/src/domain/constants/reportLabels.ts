@@ -1,4 +1,4 @@
-import { TaskStatus, ReportStatus, ViewMode } from '@/domain/enums';
+import { TaskStatus, ReportStatus, ViewMode, TaskEvaluationStatus } from '@/domain/enums';
 
 export const TASK_STATUS_MAP: Record<string, string> = {
   [TaskStatus.PENDING]: '待执行',
@@ -13,6 +13,18 @@ export const TASK_STATUS_MAP: Record<string, string> = {
   [TaskStatus.EVALUATING]: '评估中',
   [TaskStatus.REEVALUATE_QUEUED]: '重新评估排队中',
   [TaskStatus.REEVALUATING]: '重新评估中'
+} as const;
+
+/**
+ * INT-301：任务级评估状态文案（独立于执行状态徽章的展示口径）。
+ * completed 在评估侧与执行侧均呈现「已完成」，以徽章分组/图标/配色区分。
+ */
+export const TASK_EVALUATION_STATUS_MAP: Record<string, string> = {
+  [TaskEvaluationStatus.PENDING]: '待评估',
+  [TaskEvaluationStatus.EVALUATING]: '评估中',
+  [TaskEvaluationStatus.COMPLETED]: '已完成',
+  [TaskEvaluationStatus.FAILED]: '评估失败',
+  [TaskEvaluationStatus.SKIPPED]: '评估跳过'
 } as const;
 
 export const REPORT_TYPE_MAP: Record<string, string> = {
@@ -35,6 +47,11 @@ export type ReportStatusKey = keyof typeof REPORT_STATUS_MAP;
 
 export function getTaskStatusLabel(status: string): string {
   return TASK_STATUS_MAP[status] || status;
+}
+
+/** INT-301：任务级评估状态文案（未知值回退原文，容错后端扩展） */
+export function getTaskEvaluationStatusLabel(status: string): string {
+  return TASK_EVALUATION_STATUS_MAP[status] || status;
 }
 
 export function getReportTypeLabel(type: string): string {

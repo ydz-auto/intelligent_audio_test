@@ -117,10 +117,21 @@
             :options="STATUS_FILTER_OPTIONS"
             :model-value="filters.status"
             all-label="全部状态"
-            title="任务状态"
+            title="执行状态"
             collapsible
             :collapsed-count="8"
             @update:model-value="handleStatusBadgeChange"
+          />
+        </div>
+
+        <!-- INT-301：评估状态筛选（与执行状态并列；复用 SQL 派生口径，展示与筛选一致） -->
+        <div class="filter-row">
+          <BadgeFilter
+            :options="EVALUATION_FILTER_OPTIONS"
+            :model-value="filters.evaluationStatus"
+            all-label="全部评估"
+            title="评估状态"
+            @update:model-value="handleEvaluationBadgeChange"
           />
         </div>
 
@@ -238,6 +249,9 @@
               title: task.name,
               description: task.description,
               status: task.status,
+              // INT-301：双状态徽章字段直通（执行状态 + 评估状态）
+              executionStatus: task.executionStatus,
+              evaluationStatus: task.evaluationStatus,
               createdAt: formatDate(task.createdAt),
               tags: task.tags,
               deviceCount: task.deviceCount,
@@ -336,7 +350,7 @@
 
 <script setup lang="ts">
 import { useTasks } from './tasks';
-import { TaskStatus, FINISHED_STATUSES } from '@/domain/enums';
+import { TaskStatus, TaskEvaluationStatus, FINISHED_STATUSES } from '@/domain/enums';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';
@@ -348,6 +362,9 @@ import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 
 // ===== 筛选选项（组件级 UI 常量，对齐 V9.7.10 徽章筛选行）=====
 // INT-215：「已删除（回收站）」自状态徽章移除——回收站入口统一为工具栏按钮（toggleTaskTrashMode）
+// INT-301：原「任务状态」行更名「执行状态」——评估过渡（evaluating/reevaluate_*）
+// 改由下方评估状态筛选行承载（后端按任务级评估状态过滤，与徽章口径一致）；
+// 原 status 值继续有效（历史入口/收藏的旧筛选值不受影响）。
 const STATUS_FILTER_OPTIONS = [
   { value: TaskStatus.PENDING, label: '待执行' },
   { value: TaskStatus.QUEUED, label: '排队中' },
@@ -358,6 +375,15 @@ const STATUS_FILTER_OPTIONS = [
   { value: TaskStatus.COMPLETED, label: '已完成' },
   { value: TaskStatus.FAILED, label: '执行失败' },
   { value: TaskStatus.MERGED, label: '已合并' },
+];
+
+/** INT-301：评估状态筛选（与执行状态并列；值 = 任务级评估状态原值） */
+const EVALUATION_FILTER_OPTIONS = [
+  { value: TaskEvaluationStatus.PENDING, label: '待评估' },
+  { value: TaskEvaluationStatus.EVALUATING, label: '评估中' },
+  { value: TaskEvaluationStatus.COMPLETED, label: '已评估完成' },
+  { value: TaskEvaluationStatus.FAILED, label: '评估失败' },
+  { value: TaskEvaluationStatus.SKIPPED, label: '评估跳过' },
 ];
 
 const TIME_RANGE_OPTIONS = [
@@ -433,6 +459,12 @@ const {
 // ===== 徽章筛选变更（写入 ReadModel 筛选状态后统一走 applyFilters）=====
 function handleStatusBadgeChange(value: string | number) {
   filters.value.status = String(value);
+  applyFilters();
+}
+
+/** INT-301：评估状态徽章筛选（与执行状态并列） */
+function handleEvaluationBadgeChange(value: string | number) {
+  filters.value.evaluationStatus = String(value);
   applyFilters();
 }
 

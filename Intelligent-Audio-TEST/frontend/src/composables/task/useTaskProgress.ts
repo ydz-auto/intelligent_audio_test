@@ -36,6 +36,9 @@ export function useTaskProgress(options: TaskProgressOptions) {
   const evaluationFailedTests = ref(0)
   const totalTestCases = ref(0)
   const taskStatus = ref<TaskStatusType>(TaskStatus.PENDING)
+  // INT-301：任务级执行/评估双状态（task_progress 携带，实时更新双徽章）
+  const taskExecutionStatus = ref<string>('')
+  const taskEvaluationStatus = ref<string>('')
   const elapsedTime = ref('0分钟')
   const estimatedTime = ref('')
   const expectedCompleteTime = ref('--')
@@ -188,6 +191,14 @@ export function useTaskProgress(options: TaskProgressOptions) {
       }
     }
 
+    // INT-301：双状态实时更新（评估推进只落评估侧；执行侧仅显式携带时覆盖）
+    if (progressData.evaluationStatus) {
+      taskEvaluationStatus.value = progressData.evaluationStatus
+    }
+    if (progressData.executionStatus) {
+      taskExecutionStatus.value = progressData.executionStatus
+    }
+
     const totalCount = progressData.totalCount || associatedCases.value.length
     progressData.totalCount = totalCount
 
@@ -249,6 +260,8 @@ export function useTaskProgress(options: TaskProgressOptions) {
     pendingTests.value = 0
     totalTestCases.value = 0
     taskStatus.value = TaskStatus.PENDING
+    taskExecutionStatus.value = ''
+    taskEvaluationStatus.value = ''
     elapsedTime.value = '0分钟'
     estimatedTime.value = ''
     expectedCompleteTime.value = '--'
@@ -394,6 +407,8 @@ export function useTaskProgress(options: TaskProgressOptions) {
     evaluationFailedTests,
     totalTestCases,
     taskStatus,
+    taskExecutionStatus,
+    taskEvaluationStatus,
     elapsedTime,
     estimatedTime,
     expectedCompleteTime,

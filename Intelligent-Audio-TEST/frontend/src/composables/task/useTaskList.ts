@@ -18,6 +18,8 @@ import { usePagination } from '../usePagination';
 
 export interface TaskFilters {
   status: string;
+  /** INT-301：评估状态过滤（与执行状态并列） */
+  evaluationStatus: string;
   algorithmType: string;
   timeRange: string;
   dateRange: [Date | null, Date | null];
@@ -43,6 +45,7 @@ export function useTaskList(options?: UseTaskListOptions) {
   const searchTerm = ref('');
   const filters = ref<TaskFilters>({
     status: '',
+    evaluationStatus: '',
     algorithmType: '',
     timeRange: 'all',
     dateRange: [null, null] as [Date | null, Date | null]
@@ -150,6 +153,10 @@ export function useTaskList(options?: UseTaskListOptions) {
       }
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
         params.algorithmType = filters.value.algorithmType;
+      }
+      // INT-301：评估状态过滤（与执行状态并列）
+      if (filters.value.evaluationStatus && filters.value.evaluationStatus !== 'all') {
+        params.evaluationStatus = filters.value.evaluationStatus;
       }
       if (filters.value.timeRange && filters.value.timeRange !== 'all') {
         const now = new Date();
@@ -305,7 +312,7 @@ export function useTaskList(options?: UseTaskListOptions) {
   const resetAllStates = () => {
     searchTerm.value = '';
     selectedTags.value = [];
-    filters.value = { status: '', algorithmType: '', timeRange: 'all', dateRange: [null, null] };
+    filters.value = { status: '', evaluationStatus: '', algorithmType: '', timeRange: 'all', dateRange: [null, null] };
     customDateRange.value = { start: '', end: '' };
     currentPage.value = 1;
     applyFilters();

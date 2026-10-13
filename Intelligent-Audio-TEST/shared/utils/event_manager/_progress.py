@@ -33,6 +33,7 @@ from shared.utils.status_constants import (
     TaskCaseStatus,
     TaskStatus,
 )
+from shared.utils.status_utils import derive_task_dual_status
 from shared.utils.time_utils import UTC8
 
 logger = logging.getLogger(__name__)
@@ -345,6 +346,9 @@ class ProgressMixin:
         progress = TaskProgressPayload(
             task_id=str(task_id_int),
             status=task_status,
+            # INT-301：任务级执行/评估双状态（评估推进只落评估侧，前端实时更新双徽章）
+            execution_status=grpc_progress.get('execution_status', '') or '',
+            evaluation_status=grpc_progress.get('evaluation_status', '') or '',
             total_progress=self._calc_progress_percentage(actual_completed_cases, actual_total_cases),
             completed_count=actual_completed_cases,
             in_progress_count=grpc_progress.get('in_progress_count', 0),
@@ -459,9 +463,25 @@ class ProgressMixin:
             1 for tc in test_cases if tc.evaluation_status == EvaluationStatus.FAILED
         )
 
+        # INT-301：PO 回退路径双状态（与 gRPC 路径同源——Task.status + 用例聚合）
+        task_execution_status, task_evaluation_status = derive_task_dual_status(
+            db_task.status,
+            has_exec_active=any(tc.execution_status in ACTIVE_EXECUTION_STATUSES for tc in test_cases),
+            has_exec_failed=execution_failed_count > 0,
+            has_exec_stopped=any(tc.execution_status == ExecutionStatus.STOPPED for tc in test_cases),
+            exec_all_terminal=bool(test_cases) and all(
+                tc.execution_status in ('completed', 'failed', 'stopped') for tc in test_cases),
+            has_eval_in_progress=any(tc.evaluation_status in ('queued', 'running', 'calculating')
+                                     for tc in test_cases),
+            has_eval_failed=evaluation_failed_count > 0,
+            has_eval_completed=any(tc.evaluation_status == EvaluationStatus.COMPLETED for tc in test_cases),
+        )
+
         progress = TaskProgressPayload(
             task_id=str(db_task.id),
             status=db_task.status,
+            execution_status=task_execution_status,
+            evaluation_status=task_evaluation_status,
             total_progress=self._calc_progress_percentage(actual_completed_cases, actual_total_cases),
             completed_count=actual_completed_cases,
             in_progress_count=in_progress_count,
@@ -643,12 +663,19 @@ class ProgressMixin:
         return expected_total_seconds
 
     def _should_skip_update(self, task_id, db_task, progress, min_interval, force, current_time) -> bool:
-        """变更检测：状态/完成数/当前用例/最小间隔均无变化时跳过发射。"""
+        """变更检测：状态/完成数/当前用例/最小间隔均无变化时跳过发射。
+
+        INT-301：评估状态（evaluation_status）变化独立触发发射——重新评估
+        提交/进行中 Task.status 会经 reevaluate_queued/reevaluating/running
+        流转本可触发，但评估收敛（用例级 evaluation_status → 终态而任务仍
+        running）仅体现在评估侧，必须单独检测防止双徽章评估侧滞后。
+        """
         last_progress_info = self._last_progress.get(task_id, {})
         last_time = last_progress_info.get('time', 0)
         last_completed = last_progress_info.get('completed', -1)
         last_status = last_progress_info.get('status', '')
         last_current_case = last_progress_info.get('current_case')
+        last_evaluation_status = last_progress_info.get('evaluation_status', '')
 
         reasons = []
         if force:
@@ -661,6 +688,8 @@ class ProgressMixin:
             reasons.append("任务完成")
         elif db_task.status == TaskStatus.FAILED and last_status != TaskStatus.FAILED:
             reasons.append("任务失败")
+        elif progress.evaluation_status and progress.evaluation_status != last_evaluation_status:
+            reasons.append(f"评估状态变化, last={last_evaluation_status}, current={progress.evaluation_status}")
         elif current_time - last_time >= min_interval:
             reasons.append(f"达到最小更新间隔, elapsed={current_time - last_time:.3f}s")
         elif db_task.completed_cases != last_completed:
@@ -684,6 +713,7 @@ class ProgressMixin:
             'completed': db_task.completed_cases,
             'status': db_task.status,
             'current_case': progress.current_case,
+            'evaluation_status': progress.evaluation_status,
         }
         self._progress_cache[task_id] = {
             'data': progress.model_dump(),

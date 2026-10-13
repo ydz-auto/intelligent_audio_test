@@ -64,6 +64,9 @@ export function toTaskProgress(raw: TaskProgressDto): TaskProgress {
   return {
     taskId: String(raw.task_id ?? ''),
     status: (raw.status ?? '') as TaskStatusType,
+    // INT-301：任务级执行/评估双状态（评估推进只落评估侧）
+    executionStatus: raw.execution_status ?? undefined,
+    evaluationStatus: raw.evaluation_status ?? undefined,
     totalProgress: num(raw.total_progress),
     completedCount: num(raw.completed_count),
     inProgressCount: num(raw.in_progress_count),
@@ -112,6 +115,9 @@ export function toTaskProgressHttp(raw: TaskProgressHttpDto): TaskProgressHttp {
   return {
     taskId: String(raw.task_id ?? ''),
     status: (raw.status ?? '') as TaskStatusType,
+    // INT-301：任务级执行/评估双状态
+    executionStatus: raw.execution_status ?? undefined,
+    evaluationStatus: raw.evaluation_status ?? undefined,
     totalCases: num(raw.total_cases),
     completedCases: num(raw.completed_cases),
     failedCases: num(raw.failed_cases),

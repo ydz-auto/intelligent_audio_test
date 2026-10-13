@@ -23,6 +23,11 @@ vi.mock('../TaskCard', () => ({
     getDeviceTypeClass: vi.fn(() => ''),
     getAlgorithmTypeText: vi.fn(() => ''),
     getStatusText: vi.fn(() => '已完成'),
+    // INT-301：双状态徽章 helper（mock 最小实现：透传状态值）
+    getExecutionBadgeStatus: vi.fn((task: any) => task?.executionStatus || task?.status || 'pending'),
+    getExecutionBadgeIcon: vi.fn(() => 'fa-check-circle'),
+    getEvaluationStatusText: vi.fn((s: string) => s),
+    getEvaluationBadgeIcon: vi.fn(() => 'fa-check-circle'),
     getStepStatusText: vi.fn(() => ''),
     calculateCompletionRate: vi.fn(() => 0),
   }),

@@ -51,6 +51,9 @@ class TaskListItem(APIModel):
     name: str = Field(...)
     description: Optional[str] = Field(None)
     status: str = Field(...)
+    # INT-301：任务级执行/评估双状态（评估推进只落评估侧，与执行完全分离）
+    execution_status: Optional[str] = Field(None)
+    evaluation_status: Optional[str] = Field(None)
     device_types: List[str] = Field(default_factory=list)
     config: Dict[str, Any] = Field(default_factory=dict)
     algorithm_type: Optional[str] = Field(None)
@@ -99,6 +102,9 @@ class TaskDetailData(APIModel):
     name: str = Field(...)
     description: Optional[str] = Field(None)
     status: str = Field(...)
+    # INT-301：任务级执行/评估双状态（评估推进只落评估侧，与执行完全分离）
+    execution_status: Optional[str] = Field(None)
+    evaluation_status: Optional[str] = Field(None)
     device_types: List[str] = Field(default_factory=list)
     config: Dict[str, Any] = Field(default_factory=dict)
     algorithm_type: Optional[str] = Field(None)
@@ -131,6 +137,9 @@ class TaskProgressCurrentCase(APIModel):
 class TaskProgressData(APIModel):
     task_id: str = Field(...)
     status: str = Field(...)
+    # INT-301：task_progress 携带双状态，前端实时更新执行/评估双徽章
+    execution_status: Optional[str] = Field(None)
+    evaluation_status: Optional[str] = Field(None)
     total_cases: int = Field(...)
     completed_cases: int = Field(...)
     failed_cases: int = Field(...)
@@ -226,6 +235,8 @@ class TaskListQuery(APIModel):
     # INT-141：favorite=true 仅当前用户收藏；deleted=true 仅回收站软删除项
     favorite: bool = Field(False)
     deleted: bool = Field(False)
+    # INT-301：评估状态过滤（pending/evaluating/completed/failed/skipped，与执行状态并列）
+    evaluation_status: Optional[str] = Field(None)
 
 
 class TaskDomainStatsQuery(APIModel):

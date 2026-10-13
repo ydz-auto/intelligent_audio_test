@@ -64,6 +64,9 @@ class TaskProgressPayload(SocketPayload):
     """task_progress 事件 payload（/ 命名空间）"""
     task_id: str
     status: str
+    # INT-301：任务级执行/评估双状态（评估推进只落评估侧，前端实时更新双徽章）
+    execution_status: str = ""
+    evaluation_status: str = ""
     total_progress: float = 0.0
     completed_count: int = 0
     in_progress_count: int = 0

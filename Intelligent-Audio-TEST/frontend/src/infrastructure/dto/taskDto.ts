@@ -52,6 +52,10 @@ export interface TaskDto {
   name: string
   description?: string | null
   status: string
+  /** INT-301：任务级执行状态（纯执行域，评估推进不落此字段） */
+  execution_status?: string | null
+  /** INT-301：任务级评估状态（pending/evaluating/completed/failed/skipped） */
+  evaluation_status?: string | null
   device_types?: string[]
   progress?: number | null
   config?: Record<string, any>
@@ -180,6 +184,8 @@ export interface TaskListQueryDto {
   // INT-216：收藏 / 回收站过滤（后端 TaskListQuery.favorite/deleted）
   favorite?: boolean
   deleted?: boolean
+  // INT-301：评估状态过滤（与执行状态并列）
+  evaluation_status?: string
 }
 
 // ===== 任务域全量聚合统计（GET /tasks/stats，INT-200）=====

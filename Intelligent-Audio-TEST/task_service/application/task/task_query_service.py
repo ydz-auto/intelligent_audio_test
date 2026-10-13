@@ -37,10 +37,12 @@ class TaskQueryService:
     def list_tasks(self, page=1, per_page=10, status=None,
                    device_type=None, algorithm_type=None,
                    search=None, start_date=None, end_date=None,
-                   favorite=False, deleted=False, user_id=None) -> dict:
+                   favorite=False, deleted=False, user_id=None,
+                   evaluation_status=None) -> dict:
         """获取任务列表（device_type 按用例级被测设备类型过滤，可选）。
 
         favorite（INT-141）：仅当前用户收藏；deleted（INT-141）：仅回收站。
+        evaluation_status（INT-301）：按任务级评估状态过滤（与执行状态并列）。
         """
         try:
             result = task_read_model.search_tasks(
@@ -49,6 +51,7 @@ class TaskQueryService:
                 algorithm_type=algorithm_type,
                 search=search, start_date=start_date, end_date=end_date,
                 favorite=favorite, deleted=deleted, user_id=user_id,
+                evaluation_status=evaluation_status,
             )
             return {'success': True, 'message': '', 'data': result}
         except Exception as e:

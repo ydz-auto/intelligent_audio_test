@@ -35,6 +35,10 @@ export interface TaskProgressDto {
   task_id: string
   total_progress: number
   status: string
+  /** INT-301：任务级执行状态（评估推进不落此字段） */
+  execution_status?: string
+  /** INT-301：任务级评估状态（pending/evaluating/completed/failed/skipped） */
+  evaluation_status?: string
   completed_count?: number
   in_progress_count?: number
   execution_failed_count?: number
@@ -56,6 +60,10 @@ export interface TaskProgressDto {
 export interface TaskProgressHttpDto {
   task_id: string
   status: string
+  /** INT-301：任务级执行状态 */
+  execution_status?: string | null
+  /** INT-301：任务级评估状态 */
+  evaluation_status?: string | null
   total_cases: number
   completed_cases: number
   failed_cases: number

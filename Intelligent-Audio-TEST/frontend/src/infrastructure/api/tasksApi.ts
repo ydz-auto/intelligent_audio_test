@@ -34,6 +34,8 @@ export interface TaskListQuery {
   // INT-216 补接线：useTaskList（INT-141）已传参但此处映射缺失导致静默丢弃
   favorite?: boolean
   deleted?: boolean
+  // INT-301：评估状态过滤（与执行状态并列）
+  evaluationStatus?: string
 }
 
 /** camelCase 任务查询 → snake_case HTTP query（后端 TaskListQueryDto 契约） */
@@ -47,6 +49,8 @@ function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   // INT-216：收藏 / 回收站过滤（同名透传；后端 TaskListQuery.favorite/deleted）
   if (query.favorite !== undefined) dto.favorite = query.favorite
   if (query.deleted !== undefined) dto.deleted = query.deleted
+  // INT-301：评估状态过滤
+  if (query.evaluationStatus !== undefined) dto.evaluation_status = query.evaluationStatus
   return dto
 }
 
@@ -64,6 +68,8 @@ function fromHttpToFullProgress(raw: TaskProgressHttpDto): TaskProgress {
   return {
     taskId: http.taskId,
     status: http.status,
+    executionStatus: http.executionStatus,
+    evaluationStatus: http.evaluationStatus,
     totalProgress: http.progress,
     completedCount: http.completedCases,
     inProgressCount: 0,

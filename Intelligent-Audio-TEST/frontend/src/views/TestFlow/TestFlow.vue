@@ -153,6 +153,9 @@
         <TestExecutionComponent
           :test-type="testTypeLabel"
           :active-tab="activeTab"
+          :task-status="taskStatus"
+          :execution-status="taskExecutionStatus"
+          :evaluation-status="taskEvaluationStatus"
           :task-info="{
             taskName: taskName,
             expectedTotalTime: estimatedTime,
@@ -304,6 +307,7 @@ const {
   associatedDevices, isExecuting, isPaused, isControlling,
   progressPercentage, completedTests, inProgressTests, pendingTests,
   executionFailedTests, evaluationFailedTests, totalTestCases,
+  taskStatus, taskExecutionStatus, taskEvaluationStatus,
   elapsedTime, estimatedTime, expectedCompleteTime, logs, associatedCases, apiResources,
   isProgressPolling,
   report, isEditingReport, isEditingConclusion, analysisContent, reportTables,

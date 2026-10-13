@@ -52,6 +52,10 @@ export interface Task {
   /** 用例级被测设备类型集合（physical/http_api/websocket_api，差异#2 收尾取代 task.type） */
   deviceTypes?: string[]
   status: TaskStatusType
+  /** INT-301：任务级执行状态（纯执行域，评估推进不落此字段；缺省回退 status） */
+  executionStatus?: TaskStatusType | string
+  /** INT-301：任务级评估状态（pending/evaluating/completed/failed/skipped） */
+  evaluationStatus?: string
   progress?: number
   config?: Record<string, any>
   algorithmType?: string

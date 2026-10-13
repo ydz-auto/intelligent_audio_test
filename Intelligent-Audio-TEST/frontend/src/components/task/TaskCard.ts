@@ -1,7 +1,8 @@
 import { ref, onMounted } from 'vue'
 import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabels'
-import { TaskStatus, ExecutionStatus } from '@/domain/enums'
+import { TaskStatus, TaskEvaluationStatus, ExecutionStatus } from '@/domain/enums'
 import { getStatusText } from '../../utils/statusUtils'
+import { getTaskEvaluationStatusLabel } from '../../domain/constants/reportLabels'
 
 /** 通用事件参数（DOM 事件） */
 type DomEvent = Event & { stopPropagation: () => void }
@@ -92,6 +93,49 @@ export function useTaskCard(props: any, emit: (event: string, ...args: any[]) =>
     return getAlgorithmLabel(type)
   }
 
+  // ===== INT-301：任务级执行/评估双徽章 =====
+
+  /**
+   * 执行徽章状态：优先取后端派生的 executionStatus（纯执行域，评估推进
+   * 不落此字段）；缺失（旧后端/回收站轻量行）时回退原始 task.status。
+   */
+  const getExecutionBadgeStatus = (task: { executionStatus?: string; status?: string }): string => {
+    return task.executionStatus || task.status || TaskStatus.PENDING
+  }
+
+  /** 执行徽章图标（纯执行域，无评估过渡图标） */
+  const getExecutionBadgeIcon = (status: string): string => {
+    const iconMap: Record<string, string> = {
+      [TaskStatus.PENDING]: 'fa-clock',
+      [TaskStatus.QUEUED]: 'fa-hourglass',
+      [TaskStatus.RUNNING]: 'fa-spinner fa-spin',
+      [ExecutionStatus.COMPLETED]: 'fa-check-circle',
+      [ExecutionStatus.FAILED]: 'fa-times-circle',
+      [TaskStatus.PAUSED]: 'fa-pause-circle',
+      [ExecutionStatus.STOPPED]: 'fa-stop-circle',
+      [TaskStatus.SKIPPED]: 'fa-minus-circle',
+      [TaskStatus.MERGED]: 'fa-object-group',
+    }
+    return iconMap[status] || 'fa-clock'
+  }
+
+  /** 评估徽章文案（INT-301 独立口径；未知值回退原文容错） */
+  const getEvaluationStatusText = (status: string): string => {
+    return getTaskEvaluationStatusLabel(status)
+  }
+
+  /** 评估徽章图标（评估域独立图标族，与执行侧区分） */
+  const getEvaluationBadgeIcon = (status: string): string => {
+    const iconMap: Record<string, string> = {
+      [TaskEvaluationStatus.PENDING]: 'fa-hourglass-half',
+      [TaskEvaluationStatus.EVALUATING]: 'fa-sync-alt fa-spin',
+      [TaskEvaluationStatus.COMPLETED]: 'fa-check-circle',
+      [TaskEvaluationStatus.FAILED]: 'fa-times-circle',
+      [TaskEvaluationStatus.SKIPPED]: 'fa-forward',
+    }
+    return iconMap[status] || 'fa-hourglass-half'
+  }
+
   const getStepStatusText = (status: string): string => {
     const statusMap: Record<string, string> = {
       [ExecutionStatus.PENDING]: '待执行',
@@ -129,6 +173,10 @@ export function useTaskCard(props: any, emit: (event: string, ...args: any[]) =>
     getDeviceTypeClass,
     getAlgorithmTypeText,
     getStatusText,
+    getExecutionBadgeStatus,
+    getExecutionBadgeIcon,
+    getEvaluationStatusText,
+    getEvaluationBadgeIcon,
     getStepStatusText,
     calculateCompletionRate
   }

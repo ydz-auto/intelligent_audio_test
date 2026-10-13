@@ -266,13 +266,16 @@ export function useTaskControl(
         pollInterval = setInterval(async () => {
           await fetchTasks();
           const task = tasks.value.find((t: any) => t.id === taskId);
-          console.log('poll task status:', task?.status);
-          if (task && task.status === TaskStatus.COMPLETED) {
+          // INT-301：轮询判定收敛到评估侧（evaluationStatus）——重评全程只动评估
+          // 徽章；执行侧（executionStatus/status）纹丝不动，不再作为判定依据。
+          const evalStatus = task?.evaluationStatus;
+          if (evalStatus === 'completed') {
             clearInterval(pollInterval);
             pollInterval = null;
             isControlling.value.delete(taskId);
             notification.success('评估完成');
-          } else if (task && task.status !== TaskStatus.EVALUATING) {
+          } else if (evalStatus && evalStatus !== 'evaluating') {
+            // failed/skipped 等评估终态：结束轮询（isControlling 释放）
             clearInterval(pollInterval);
             pollInterval = null;
             isControlling.value.delete(taskId);

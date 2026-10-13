@@ -20,14 +20,22 @@ class TaskDetailReadModelMixin:
 
     def find_by_id_with_relations(self, task_id: int) -> Optional[Dict[str, Any]]:
         """按 ID 查询单个任务，含关联用例/设备/API/标签详情。"""
+        from task_service.infrastructure.read_models.task_dual_status_expr import (
+            EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR,
+        )
         session = get_db_session()
         try:
-            task = session.query(Task).filter(
+            row = session.query(Task, EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR).filter(
                 Task.id == task_id, Task.deleted == False  # noqa: E712
             ).first()
-            if task is None:
+            if row is None:
                 return None
-            return self._to_detail_dto(task, session)
+            task, execution_status, evaluation_status = row
+            dto = self._to_detail_dto(task, session)
+            # INT-301：SQL 派生的任务级执行/评估双状态（与列表同口径）
+            dto['execution_status'] = execution_status
+            dto['evaluation_status'] = evaluation_status
+            return dto
         finally:
             session.close()
 

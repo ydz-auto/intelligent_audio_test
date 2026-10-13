@@ -108,20 +108,26 @@ class TaskReadModel(
                      end_date: Optional[str] = None,
                      favorite: bool = False,
                      deleted: bool = False,
-                     user_id: Optional[int] = None) -> Dict[str, Any]:
+                     user_id: Optional[int] = None,
+                     evaluation_status: Optional[str] = None) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
         device_type（可选）：按用例级被测设备类型过滤（任务下存在该类型用例）。
         favorite（可选，INT-141）：仅当前用户收藏（user_id 来自 x-user-id metadata）。
         deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
+        evaluation_status（可选，INT-301）：按任务级评估状态过滤（与执行状态
+            过滤并列；复用派生表达式，展示与筛选口径一致）。
         """
         from datetime import datetime
         from sqlalchemy import select as sa_select
+        from task_service.infrastructure.read_models.task_dual_status_expr import (
+            EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR, evaluation_filter_condition,
+        )
 
         session = get_db_session()
         try:
             # INT-141：回收站模式查软删除项，正常模式查活跃项（互斥）
-            query = session.query(Task).filter(
+            query = session.query(Task, EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR).filter(
                 Task.deleted == (True if deleted else False))  # noqa: E712
             if status:
                 query = query.filter(Task.status == status)
@@ -168,10 +174,14 @@ class TaskReadModel(
                     query = query.filter(Task.created_at <= dt_end)
                 except ValueError:
                     logger.debug("end_date 非法 ISO 格式已忽略: %r", end_date)
+            if evaluation_status:
+                # INT-301：评估状态过滤（复用派生 CASE 表达式，与徽章展示口径一致）
+                query = query.filter(evaluation_filter_condition(evaluation_status))
 
             query = query.order_by(Task.created_at.desc())
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-            tasks = pagination.items
+            tasks = [row[0] for row in pagination.items]
+            dual_status_map = {row[0].id: (row[1], row[2]) for row in pagination.items}
 
             items = []
             from task_service.infrastructure.persistence.models import TaskDevice, TaskAPI, TaskMergeRelation, TaskCase
@@ -222,6 +232,9 @@ class TaskReadModel(
                             .all())
                 favorite_ids = {r[0] for r in fav_rows}
             for task in tasks:
+                # INT-301：SQL 派生的执行/评估双状态（评估推进只落评估侧）
+                task_execution_status, task_evaluation_status = dual_status_map.get(
+                    task.id, (task.status, None))
                 # 回收站模式：仅返回轻量字段（删除人/删除时间），不查报告/设备/API
                 if deleted:
                     items.append({
@@ -229,6 +242,8 @@ class TaskReadModel(
                         'name': task.name,
                         'description': task.description,
                         'status': task.status,
+                        'execution_status': task_execution_status,
+                        'evaluation_status': task_evaluation_status,
                         'algorithm_type': task.algorithm_type,
                         'total_cases': task.total_cases,
                         'deleted': True,
@@ -274,6 +289,8 @@ class TaskReadModel(
                     'name': task.name,
                     'description': task.description,
                     'status': task.status,
+                    'execution_status': task_execution_status,
+                    'evaluation_status': task_evaluation_status,
                     'device_types': device_types_map.get(task.id, []),
                     'config': task.config or {},
                     'algorithm_type': task.algorithm_type,
