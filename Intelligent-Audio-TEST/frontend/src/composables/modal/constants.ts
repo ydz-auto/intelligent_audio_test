@@ -26,6 +26,7 @@ export const MODAL_TYPES = {
   EDIT_METADATA: 'editMetadata',
   SCAN_DEVICES: 'scanDevices',
   SPL_CALIBRATION: 'splCalibration',
+  API_RMS_SPL_CALIBRATION: 'apiRmsSplCalibration',
   GLOBAL_PLAYBACK_DEVICE: 'globalPlaybackDevice',
   ADD_DEVICE: 'addDevice',
   EDIT_DEVICE: 'editDevice',

@@ -124,6 +124,7 @@ import URLImportModal from './URLImportModal.vue'
 import FolderImportModal from './FolderImportModal.vue'
 import ScanDevicesModal from './ScanDevicesModal.vue'
 import SPLCalibrationModal from './SPLCalibrationModal.vue'
+import ApiRmsSplCalibrationModal from './ApiRmsSplCalibrationModal.vue'
 import GlobalPlaybackDeviceModal from './GlobalPlaybackDeviceModal.vue'
 import BatchAlgorithmParamsModal from './BatchAlgorithmParamsModal.vue'
 import BatchSPLModal from './BatchSPLModal.vue'
@@ -278,6 +279,7 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.TASK_DETAIL]: TaskDetailModal,
     [MODAL_TYPES.TEST_CASE_DETAIL]: TestCaseDetailModal,
     [MODAL_TYPES.SPL_CALIBRATION]: SPLCalibrationModal,
+    [MODAL_TYPES.API_RMS_SPL_CALIBRATION]: ApiRmsSplCalibrationModal,
     [MODAL_TYPES.AUDIO_IMPORT]: UploadFileModal,
     [MODAL_TYPES.ADD_DEVICE]: CRUDFormModal,
     [MODAL_TYPES.EDIT_DEVICE]: CRUDFormModal,
