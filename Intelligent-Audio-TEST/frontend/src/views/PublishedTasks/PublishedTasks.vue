@@ -17,10 +17,10 @@
     </section>
 
     <!-- 筛选栏（徽章筛选，对齐全局筛选交互） -->
-    <section class="filter-section">
+    <section class="pt-filter-section">
       <input
         type="text"
-        class="search-input"
+        class="pt-search-input"
         placeholder="搜索任务名称、说明..."
         v-model="pt.filters.keyword"
         @input="handleFilterChange"
@@ -52,12 +52,12 @@
         title="时间"
         @update:model-value="handleTimeRangeBadgeChange"
       />
-      <div class="filter-item custom-range" v-if="pt.filters.timeRange === 'custom'">
+      <div class="pt-filter-item pt-custom-range" v-if="pt.filters.timeRange === 'custom'">
         <input type="date" v-model="pt.filters.customRange.start" @change="handleFilterChange" />
         <span>至</span>
         <input type="date" v-model="pt.filters.customRange.end" @change="handleFilterChange" />
       </div>
-      <div class="filter-item sort-item" @click="pt.toggleSort('publishedAt')">
+      <div class="pt-filter-item pt-sort-item" @click="pt.toggleSort('publishedAt')">
         发布时间 <i class="fas" :class="sortIcon('publishedAt')"></i>
       </div>
     </section>
@@ -600,7 +600,9 @@ onMounted(() => {
   background-color: #fecaca;
 }
 
-.filter-section {
+/* 筛选栏类名统一 pt- 前缀：规避全局 .filter-section{height:40px}/.search-input/.filter-item{width:100%}
+   （main.css 全局注入的 test-case-manager/comparison-common/common 样式）对页面布局的串扰 */
+.pt-filter-section {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -612,7 +614,7 @@ onMounted(() => {
   margin-bottom: 16px;
 }
 
-.search-input {
+.pt-search-input {
   flex: 1;
   min-width: 200px;
   padding: 7px 10px;
@@ -621,7 +623,7 @@ onMounted(() => {
   font-size: 13px;
 }
 
-.filter-item {
+.pt-filter-item {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -629,19 +631,19 @@ onMounted(() => {
   color: #4b5563;
 }
 
-.custom-range input {
+.pt-custom-range input {
   padding: 5px 8px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 12px;
 }
 
-.sort-item {
+.pt-sort-item {
   cursor: pointer;
   user-select: none;
 }
 
-.sort-item:hover {
+.pt-sort-item:hover {
   color: var(--primary-color, #ff6a00);
 }
 

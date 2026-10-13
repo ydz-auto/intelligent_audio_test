@@ -200,7 +200,8 @@ function handleConfirm() {
 </script>
 
 <style scoped>
-/* 自包含弹窗样式：全局样式无 .modal-overlay，不能依赖其他组件的 scoped 样式 */
+/* 自包含弹窗样式：不能依赖其他组件的 scoped 样式；opacity/visibility 显式声明，
+   规避全局 .modal-overlay{visibility:hidden;opacity:0}（test-case-manager.css，仅 .active 才可见）串扰 */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -213,6 +214,8 @@ function handleConfirm() {
   align-items: center;
   z-index: 13000;
   overflow: hidden;
+  opacity: 1;
+  visibility: visible;
 }
 
 .modal {
@@ -223,6 +226,7 @@ function handleConfirm() {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transform: none;
 }
 
 .publish-task-modal {

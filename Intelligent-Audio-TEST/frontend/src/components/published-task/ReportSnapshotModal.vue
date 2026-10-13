@@ -233,6 +233,8 @@ function handleClose() {
 </script>
 
 <style scoped>
+/* opacity/visibility 显式声明，规避全局 .modal-overlay{visibility:hidden;opacity:0}
+   （test-case-manager.css，仅 .active 才可见）串扰；transform: none 对齐全局 .modal 位移 */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -245,6 +247,8 @@ function handleClose() {
   align-items: center;
   z-index: 13000;
   overflow: hidden;
+  opacity: 1;
+  visibility: visible;
 }
 
 .modal {
@@ -255,6 +259,7 @@ function handleClose() {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  transform: none;
 }
 
 .report-snapshot-modal {
