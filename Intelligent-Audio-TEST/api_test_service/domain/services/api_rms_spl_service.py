@@ -73,11 +73,38 @@ class ApiRmsSplService:
 
     # ── 输出侧：AI 音频实测口径 ──
     @staticmethod
-    def calculate_rms_dbfs(pcm_bytes: bytes) -> float:
-        """计算 PCM(s16) 的 RMS dBFS；静音返回 -120.0"""
-        if not pcm_bytes:
+    def unwrap_container_pcm(pcm_bytes: bytes) -> bytes:
+        """WAV 容器剥离头部取数据段；裸 PCM（Realtime WS 帧拼接）原样返回。
+
+        adapter 输出音频归档为 wav（raw_response.output_audio_path 契约），
+        头部 44 字节按 s16 解析会混入 22 个垃圾样本并使 RMS 被头部主导
+        （短/静音片段尤其严重）；Realtime 链路产出为裸 PCM，必须原样。
+        容器识别只做 RIFF 魔数 + wave 可解析双确认，避免误剥裸数据。
+        """
+        if not pcm_bytes or len(pcm_bytes) < 12:
+            return pcm_bytes
+        if pcm_bytes[0:4] != b'RIFF' or pcm_bytes[8:12] != b'WAVE':
+            return pcm_bytes
+        try:
+            import io as _io
+            import wave as _wave
+
+            with _wave.open(_io.BytesIO(pcm_bytes), 'rb') as w:
+                return w.readframes(w.getnframes())
+        except Exception:
+            return pcm_bytes
+
+    @classmethod
+    def calculate_rms_dbfs(cls, pcm_bytes: bytes) -> float:
+        """计算 PCM(s16) 的 RMS dBFS；静音返回 -120.0。
+
+        输入允许 wav 容器（adapter 归档引用）或裸 PCM（Realtime 帧），
+        容器头部先经 unwrap_container_pcm 剥离（INT-300）。
+        """
+        data = cls.unwrap_container_pcm(pcm_bytes)
+        if not data:
             return -120.0
-        samples = np.frombuffer(pcm_bytes[: len(pcm_bytes) // 2 * 2], dtype=np.int16)
+        samples = np.frombuffer(data[: len(data) // 2 * 2], dtype=np.int16)
         if samples.size == 0:
             return -120.0
         x = samples.astype(np.float64) / 32768.0

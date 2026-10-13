@@ -70,6 +70,34 @@ def _stub_calibration_redis_lock(monkeypatch):
     monkeypatch.setattr(rms_spl_module, 'DistributedLock', _AlwaysAcquireLock)
 
 
+@pytest.fixture()
+def db():
+    """SQLite 临时文件库（与 test_int68_api_rms_spl_persistence_db.db 同构）：
+    engine 直装全局 scoped_session，仅建 apis / api_rms_spl_mappings 两表。"""
+    import tempfile
+
+    from sqlalchemy import create_engine
+
+    import shared.models.database as database
+    from api_test_service.infrastructure.persistence.models.api_models import (
+        API,
+        ApiRmsSplMappingPO,
+    )
+
+    fd, path = tempfile.mkstemp(suffix='.db')
+    os.close(fd)
+    engine = create_engine(f'sqlite:///{path}',
+                           connect_args={'check_same_thread': False})
+    database._engine = engine
+    database._SessionFactory.configure(bind=engine)
+    database.Base.metadata.create_all(
+        engine, tables=[API.__table__, ApiRmsSplMappingPO.__table__])
+    yield database
+    database.remove_db_session()
+    engine.dispose()
+    os.remove(path)
+
+
 # ========== 1. UC-0901：apis 扩展列 ==========
 
 class TestAPIAggregateNewColumns:
@@ -197,6 +225,69 @@ class TestAPICrudServiceNewColumns:
         assert data['audio_config'] == {'sample_rate': 24000}
         assert data['rms_spl_mapping_id'] == 3
         assert data['output_types'] == ['audio', 'text']
+
+    def test_po_to_aggregate_to_dict_echoes_rms_spl_mapping_id(self, db):
+        """INT-300 打回修复回归：真实 PO → 聚合根 → _api_to_dict 读侧透出指针。
+
+        打回缺陷（测试工程师实机复现）：set-default 落库正确，但读侧恒 None
+        —— _api_to_dict 用 SimpleNamespace 直喂掩盖了 PO→聚合根转换丢弃
+        rms_spl_mapping_id 的断链。本用例走真实转换路径（SQLite 真库 +
+        _api_po_to_entity），锁定 set-default 后 GET 回传指针 id。
+        """
+        from api_test_service.infrastructure.persistence.api_test_repository import (
+            _api_po_to_entity,
+        )
+        from api_test_service.infrastructure.persistence.models.api_models import API
+        from shared.models.database import get_db_session
+
+        session = get_db_session()
+        try:
+            po = API(name='INT300 Regression', meta={}, rms_spl_mapping_id=5)
+            session.add(po)
+            session.commit()
+            po_id = po.id
+            session.expire_all()
+        finally:
+            pass
+
+        row = session.get(API, po_id)
+        try:
+            aggregate = _api_po_to_entity(row)
+            # 聚合根承载指针（读侧断链根因：原实现丢弃该字段）
+            assert aggregate.rms_spl_mapping_id == 5
+            data = APICrudService._api_to_dict(aggregate)
+            assert data['rms_spl_mapping_id'] == 5
+        finally:
+            session.rollback()
+
+    def test_aggregate_default_rms_spl_mapping_id_is_none(self):
+        """聚合根缺省 None（旧 PO 行 / 未设默认时 _api_to_dict 回传 None 而非 AttributeError）。"""
+        aggregate = APIAggregate(id=1, name='n', url='http://x')
+        data = APICrudService._api_to_dict(aggregate)
+        assert data['rms_spl_mapping_id'] is None
+
+    def test_apply_aggregate_to_po_writes_back_pointer(self, db):
+        """save 路径回写指针：聚合根 → PO 双向映射闭环（_apply_aggregate_to_po）。"""
+        from api_test_service.infrastructure.persistence.api_test_repository import (
+            _apply_aggregate_to_po,
+        )
+        from api_test_service.infrastructure.persistence.models.api_models import API
+        from shared.models.database import get_db_session
+
+        session = get_db_session()
+        try:
+            po = API(name='INT300 Save', meta={})
+            session.add(po)
+            session.commit()
+            po_id = po.id
+
+            aggregate = APIAggregate(
+                id=po_id, name='INT300 Save', url='http://x',
+                rms_spl_mapping_id=7)
+            _apply_aggregate_to_po(aggregate, po)
+            assert po.rms_spl_mapping_id == 7
+        finally:
+            session.rollback()
 
 
 class TestAPIConfigChangedEvent:

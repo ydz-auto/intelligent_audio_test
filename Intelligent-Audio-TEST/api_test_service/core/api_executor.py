@@ -20,6 +20,7 @@ from api_test_service.infrastructure.persistence.api_rms_spl_repository import (
     ApiRmsSplRepositoryImpl,
 )
 from api_test_service.application.round_render_service import RoundRenderService
+from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.infrastructure.persistence.models import API
 from api_test_service.core.api_concurrency_manager import APIConcurrencyManager
 from api_test_service.core.api_task_runner import APITaskRunner
@@ -49,6 +50,10 @@ class APIExecutor(BaseExecutor):
         self._render_service = RoundRenderService(
             AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl(),
             audio_acl=AudioConfigAclRepositoryImpl())
+        # 输出侧实测口径（INT-300 F3 三口径对称补齐）：线性单轮与多轮会话/
+        # Realtime 同源服务对（被测 API 数字域 RMS→SPL）
+        self._spl_repo = ApiRmsSplRepositoryImpl()
+        self._spl_service = ApiRmsSplService(self._spl_repo)
         # 执行器注册表：device_type 运行时分发（INT-61）
         # physical → e2e_test_service E2EExecutor（task_service 侧分发，不经本服务）
         self._executor_registry = {
@@ -361,6 +366,13 @@ class APIExecutor(BaseExecutor):
                 algo_result_dict, latency = self._task_runner.extract_final_result(
                     task_id, final_result_result, algorithm_type
                 )
+                # 输出侧实测口径（INT-300 F3 三口径对称补齐）：线性单轮
+                # 与多轮会话/Realtime 同源——单轮协议回传的输出音频引用
+                # （final_result data.output_audio_path）读档实测 RMS → SPL，
+                # 并入 algorithm_result 落库（缺引用时字段缺省，不阻塞落库）
+                self._attach_output_spl_evidence(
+                    algo_result_dict, api_config, task_id,
+                    final_result_result)
                 success = True
                 error_msg = None
                 self._log(level='INFO',
@@ -408,6 +420,39 @@ class APIExecutor(BaseExecutor):
         if len(rounds) == 1 and isinstance(rounds[0], dict):
             return rounds[0]
         return {'audios': []}
+
+    def _attach_output_spl_evidence(self, algo_result_dict, api_config, task_id,
+                                    final_result_result=None):
+        """线性单轮输出侧实测口径（INT-300 F3 对称补齐，原地并入 algo_result_dict）。
+
+        单轮协议最终结果 data.output_audio_path（adapter 归档的 AI 输出音频
+        存储引用）读档实测 RMS → SPL；无引用/读档失败字段缺省（None），
+        不阻塞结果落库。与多轮会话/Realtime 同源服务对（ApiRmsSplService）。
+        """
+        try:
+            ref = None
+            if isinstance(final_result_result, dict):
+                ref = (final_result_result.get('json', {}) or {}).get('data', {}) \
+                    .get('output_audio_path')
+            if not ref:
+                return
+            from shared.infrastructure.storage import storage
+            pcm = storage.load_bytes(ref)
+            if not pcm:
+                return
+            rms_dbfs = self._spl_service.calculate_rms_dbfs(pcm)
+            try:
+                mapping = self._spl_repo.get_default_mapping(
+                    getattr(api_config, 'id', None))
+            except Exception:
+                logger.debug("查询 SPL 映射失败，按基准口径计算", exc_info=True)
+                mapping = None
+            algo_result_dict['ai_output_rms_dbfs'] = rms_dbfs
+            algo_result_dict['ai_output_spl_db'] = \
+                self._spl_service.rms_dbfs_to_spl(rms_dbfs, mapping)
+        except Exception:
+            logger.warning("线性单轮输出侧 SPL 实测失败（证据缺省不阻塞）",
+                           exc_info=True, extra={'task_id': task_id})
 
     def _log_single_api_result(self, task_id, case_name, success, algo_result_dict,
                                 case_config, case_algorithm_params,

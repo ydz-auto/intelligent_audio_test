@@ -63,6 +63,7 @@ def _api_po_to_entity(po: API) -> APIAggregate:
         device_type=po.device_type or "http_api",
         adapter_class=po.adapter_class,
         audio_config=po.audio_config,
+        rms_spl_mapping_id=po.rms_spl_mapping_id,
     )
 
 
@@ -70,13 +71,15 @@ def _apply_aggregate_to_po(aggregate: APIAggregate, po: API) -> None:
     """将聚合根的可写字段映射回 PO（不含 id / created_at / deleted_at 等元数据）。
 
     聚合根中无 PO 对应列的字段（method / headers / body_template /
-    retry_count）不回写。
+    retry_count）不回写。rms_spl_mapping_id 回写保持与 set-default /
+    update_api 直改 PO 同源（聚合根承载后经 save 路径不丢指针）。
     """
     po.name = aggregate.name
     po.api_url = aggregate.url
     po.status = aggregate.status
     po.deleted = aggregate.deleted
     po.max_timeout = aggregate.timeout_seconds
+    po.rms_spl_mapping_id = aggregate.rms_spl_mapping_id
 
 
 class APITestRepository(APITestRepositoryABC):

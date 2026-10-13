@@ -12,6 +12,7 @@ from shared.utils.query_utils import now_cst
 from shared.utils.config_manager import config_manager
 from shared.utils.api_key_provider import resolver_from_config
 from api_test_service.application.round_render_service import RoundRenderService
+from api_test_service.domain.services.api_rms_spl_service import ApiRmsSplService
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
     AudioConfigAclRepositoryImpl,
@@ -49,6 +50,10 @@ class APISessionExecutor:
         self._render_service = RoundRenderService(
             AudioRenderACLRepositoryImpl(), spl_repo=ApiRmsSplRepositoryImpl(),
             audio_acl=AudioConfigAclRepositoryImpl())
+        # 输出侧实测口径（INT-300 F3 对称补齐）：与 RealtimeSessionExecutor
+        # 同源服务对（被测 API 数字域 RMS→SPL），AI 输出音频落库证据
+        self._spl_repo = ApiRmsSplRepositoryImpl()
+        self._spl_service = ApiRmsSplService(self._spl_repo)
 
     @property
     def _log(self):
@@ -106,7 +111,8 @@ class APISessionExecutor:
                     round_results, case_config
                 )
 
-                aggregated = self._aggregate_round_results(round_results, session)
+                aggregated = self._aggregate_round_results(
+                    round_results, session, api_config=api_config, task_id=task_id)
                 result_id = self._executor._result_processor.create_multi_round_test_result(
                     task_id=task_id, test_case_id=test_case_id, api_config_id=api_id,
                     algorithm_type=algorithm_type, aggregated=aggregated, success=all_rounds_success
@@ -538,7 +544,8 @@ class APISessionExecutor:
             'success': True, 'raw_response': task_result
         }
 
-    def _aggregate_round_results(self, round_results, session):
+    def _aggregate_round_results(self, round_results, session, api_config=None,
+                                 task_id=None):
         """汇总多轮会话结果"""
         total_latency = sum(r.get('latency', 0) for r in round_results)
         success_count = sum(1 for r in round_results if r.get('success', False))
@@ -557,10 +564,104 @@ class APISessionExecutor:
             'rounds': round_results
         }
 
-        return {
+        aggregated = {
             'success': success_count == total_count,
             'algorithm_result': algorithm_result,
             'total_latency': total_latency,
             'round_count': total_count,
             'session_summary': session.get_summary()
         }
+        # 输出侧实测口径（INT-300 F3 三口径对称补齐）：http_api 多轮会话与
+        # Realtime（realtime_session_executor._aggregate）同源——adapter 回传的
+        # 输出音频引用（raw_response.output_audio_path 契约）逐轮收集，按轮次
+        # 顺序拼接后实测 RMS → SPL；实测值并入 algorithm_result（落库与评估
+        # 入参消费 algorithm_result），顶层同名字段供 SSE/查询侧对称可比
+        rms_dbfs, spl_db, ai_wav = self._compute_output_spl_evidence(
+            round_results, api_config=api_config, task_id=task_id)
+        aggregated['ai_output_rms_dbfs'] = rms_dbfs
+        aggregated['ai_output_spl_db'] = spl_db
+        aggregated['ai_wav'] = ai_wav
+        algorithm_result['ai_output_rms_dbfs'] = rms_dbfs
+        algorithm_result['ai_output_spl_db'] = spl_db
+        algorithm_result['ai_wav'] = ai_wav
+        return aggregated
+
+    def _compute_output_spl_evidence(self, round_results, api_config=None,
+                                     task_id=None):
+        """AI 输出音频实测口径（与 Realtime 对称）：返回 (rms_dbfs, spl_db, ai_wav)。
+
+        数据源为 adapter 回传的轮次级输出音频存储引用（rounds[].output_audio_path，
+        契约见 api_adapter_service raw_response.output_audio_path）。任一轮缺引用
+        或读档失败时对应轮跳过；全缺时三项均为 None（无输出音频 = 无证据，
+        不阻塞结果落库）。读档经统一存储层（oss:// / local:// 同构解析）。
+        """
+        pcm_parts = []
+        for r in sorted(round_results,
+                        key=lambda x: self._round_sort_key(x.get('round_number'))):
+            ref = r.get('output_audio_path') if isinstance(r, dict) else None
+            if not ref:
+                continue
+            try:
+                from shared.infrastructure.storage import storage
+                pcm_parts.append(storage.load_bytes(ref))
+            except Exception:
+                logger.warning("读取 AI 输出音频失败（跳过该轮实测证据）: %s",
+                               ref, exc_info=True)
+
+        if not pcm_parts:
+            return None, None, None
+        pcm = b''.join(pcm_parts)
+        ai_rms = self._spl_service.calculate_rms_dbfs(pcm)
+        api_id = getattr(api_config, 'id', None)
+        try:
+            mapping = self._spl_repo.get_default_mapping(api_id)
+        except Exception:
+            logger.debug("查询 SPL 映射失败，按基准口径计算", exc_info=True)
+            mapping = None
+        ai_spl = self._spl_service.rms_dbfs_to_spl(ai_rms, mapping)
+        return ai_rms, ai_spl, self._save_ai_output_wav(
+            pcm, api_id=api_id, task_id=task_id,
+            sample_rate=self._resolve_output_sample_rate(api_config))
+
+    @staticmethod
+    def _round_sort_key(round_number):
+        """轮次排序键：宽松取整（gRPC JSON 往返后可能为 str），异常值按 0。"""
+        try:
+            return int(str(round_number))
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _resolve_output_sample_rate(api_config):
+        """AI 输出 wav 采样率：api.audio_config.sample_rate，缺省 24000（回退默认）。"""
+        cfg = (getattr(api_config, 'audio_config', None) or {}) \
+            if api_config is not None else {}
+        try:
+            return int(cfg.get('sample_rate') or 24000)
+        except (TypeError, ValueError):
+            return 24000
+
+    def _save_ai_output_wav(self, pcm: bytes, api_id=None, task_id=None,
+                            sample_rate: int = 24000) -> 'str | None':
+        """AI 输出音频归档（对齐 Realtime ai_wav 口径）：wav 容器落存储。"""
+        if not pcm:
+            return None
+        try:
+            import io
+            import time as _time
+            import wave
+
+            buf = io.BytesIO()
+            with wave.open(buf, 'wb') as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(int(sample_rate))
+                w.writeframes(pcm)
+            from shared.infrastructure.storage import storage
+            key = (f"{task_id or 'api'}/{api_id or 'api'}/api_session/"
+                   f"ai_output_{int(_time.time() * 1000)}.wav")
+            return storage.save_bytes(buf.getvalue(), 'audios', key,
+                                      content_type='audio/wav') or None
+        except Exception:
+            logger.debug("保存 AI 输出音频失败", exc_info=True)
+            return None

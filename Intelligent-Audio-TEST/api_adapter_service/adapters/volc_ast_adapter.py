@@ -21,6 +21,7 @@ if _proto_dir not in sys.path:
     sys.path.insert(0, _proto_dir)
 
 from api_adapter_service.adapters.audio_input import resolve_audio_bytes
+from api_adapter_service.adapters.audio_output import save_output_audio
 from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.utils.logger import logger
 
@@ -75,6 +76,8 @@ class VolcAstAdapter(BaseAdapter):
             result = asyncio.run(self._translate(
                 input_data,
                 source_lang, target_lang,
+                task_id=task_id, session_id=session_id,
+                round_number=kwargs.get('round_number', 0),
             ))
             latency = time.time() - start_time
             result['latency'] = round(latency, 3)
@@ -197,7 +200,8 @@ class VolcAstAdapter(BaseAdapter):
         return chunks
 
     async def _translate(self, audio_source, source_lang: str,
-                         target_lang: str) -> dict:
+                         target_lang: str, task_id=None, session_id: str = '',
+                         round_number: int = 0) -> dict:
         """核心翻译逻辑(从 ast_demo_zh2en.py translate_v4 移植)
 
         audio_source: 音频文件路径或音频字节
@@ -213,6 +217,9 @@ class VolcAstAdapter(BaseAdapter):
         }
         asr_text_list = []
         translated_text_list = []
+        # AI 输出音频收集（INT-300 输出侧实测口径）：请求已声明 target_audio
+        # wav/16k/16bit/mono，响应 data 字段携带翻译后音频字节
+        output_audio_chunks = []
 
         # 1. 读取音频分片
         audio_chunks = self._read_audio_chunks(audio_source, 3200)
@@ -295,6 +302,10 @@ class VolcAstAdapter(BaseAdapter):
                 ev, _sid, _seq, asr_seg, trans_seg, data_bytes, _msg = \
                     self._parse_response(raw)
 
+                # 输出音频收集（INT-300）：data 字段携带翻译后音频分片
+                if data_bytes:
+                    output_audio_chunks.append(data_bytes)
+
                 # 会话状态判断
                 if ev in (Type.SessionFailed, Type.SessionCanceled):
                     logger.error(f'VolcAstAdapter: 会话失败(event={ev})')
@@ -365,6 +376,13 @@ class VolcAstAdapter(BaseAdapter):
         full_asr = ' '.join(asr_text_list).strip()
         full_trans = ' '.join(translated_text_list).strip()
 
+        # 输出音频归档（INT-300，s2s 模式才有音频回传；归档失败仅证据缺失）
+        output_audio_path = None
+        if output_audio_chunks:
+            output_audio_path = save_output_audio(
+                b''.join(output_audio_chunks), task_id, session_id,
+                round_number=round_number, sample_rate=16000)
+
         return {
             'asr_text': full_asr,
             'trans_text': full_trans,
@@ -375,6 +393,7 @@ class VolcAstAdapter(BaseAdapter):
                 'mode': self.mode,
                 'source_lang': source_lang,
                 'target_lang': target_lang,
+                'output_audio_path': output_audio_path,
             },
         }
 

@@ -12,6 +12,7 @@ from typing import Optional
 import websockets
 
 from api_adapter_service.adapters.audio_input import resolve_audio_bytes
+from api_adapter_service.adapters.audio_output import save_output_audio
 from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.infrastructure.secrets.api_key_provider import (
     api_key_provider)
@@ -56,6 +57,8 @@ class QwenAdapter(BaseAdapter):
             result = asyncio.run(self._translate(
                 input_data,
                 target_lang or self.target_language,
+                task_id=task_id,
+                round_number=kwargs.get('round_number', 0),
             ))
             latency = time.time() - start_time
             result['latency'] = round(latency, 3)
@@ -117,7 +120,8 @@ class QwenAdapter(BaseAdapter):
         }
         await ws.send(json.dumps(event))
 
-    async def _translate(self, audio_source, target_language: str) -> dict:
+    async def _translate(self, audio_source, target_language: str,
+                         task_id=None, round_number: int = 0) -> dict:
         """核心翻译逻辑(从 qwen3_livetranslate_client.py 移植)
 
         audio_source: 音频文件路径或音频字节
@@ -136,6 +140,9 @@ class QwenAdapter(BaseAdapter):
 
         asr_text_list = []
         trans_text_list = []
+        # AI 输出音频收集（INT-300 输出侧实测口径）：会话已声明
+        # output_audio_format=pcm16，response.audio.delta 事件携带 base64 PCM
+        output_audio_chunks = []
         full_transcript = ''
         usage_info = {}
         ws = None
@@ -182,6 +189,17 @@ class QwenAdapter(BaseAdapter):
                         text = event.get('transcript', '')
                         if text:
                             asr_text_list.append(text)
+
+                    elif event_type == 'response.audio.delta':
+                        # AI 输出音频增量（base64 PCM16，INT-300 实测口径收集）
+                        audio_b64 = event.get('delta', '')
+                        if audio_b64:
+                            try:
+                                output_audio_chunks.append(
+                                    base64.b64decode(audio_b64))
+                            except Exception:
+                                logger.debug('QwenAdapter: 音频增量解码失败',
+                                             exc_info=True)
 
                     elif event_type == 'response.text.delta':
                         # 翻译增量文本
@@ -246,6 +264,14 @@ class QwenAdapter(BaseAdapter):
         full_asr = ''.join(asr_text_list).strip()
         full_trans = full_transcript or ''.join(trans_text_list).strip()
 
+        # 输出音频归档（INT-300）：会话声明了音频输出才可能有增量；
+        # 归档失败仅证据缺失，不影响翻译结果
+        output_audio_path = None
+        if self.audio_enabled and output_audio_chunks:
+            output_audio_path = save_output_audio(
+                b''.join(output_audio_chunks), task_id, session_id,
+                round_number=round_number)
+
         return {
             'asr_text': full_asr,
             'trans_text': full_trans,
@@ -254,6 +280,7 @@ class QwenAdapter(BaseAdapter):
                 'target_language': target_language,
                 'audio_enabled': self.audio_enabled,
                 'usage': usage_info,
+                'output_audio_path': output_audio_path,
             },
         }
 

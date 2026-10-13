@@ -233,6 +233,10 @@ class CreateSingleTurnTaskHandler:
                 'output': result.get('output', '') or result.get('asr_text', ''),
                 'latency': result.get('latency', 0),
                 'raw_response': result.get('raw_response', {}),
+                # 输出音频存储引用平铺到 data 顶层（执行侧 extract_final_result
+                # 字段映射可取；同时保留 raw_response 内副本，INT-300）
+                'output_audio_path': result.get('raw_response', {}).get(
+                    'output_audio_path'),
             })
             task_manager.update_task_status(task_id, 'completed')
             logger.info(
