@@ -288,6 +288,9 @@ class FakeRepo:
         self.freeze_calls.append(source_task_id)
         return self.frozen
 
+    def freeze_task_snapshot(self, task):
+        return {'schemaVersion': 2, 'task': {}, 'cases': []}
+
     def get_by_id(self, published_task_id):
         return self.current_pt
 

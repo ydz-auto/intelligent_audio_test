@@ -131,12 +131,34 @@
           </div>
 
           <div class="pt-detail-section" v-if="sourceTaskId">
-            <h4 class="pt-detail-title"><i class="fas fa-file-import"></i> 来源任务（发布时取自该日常任务）</h4>
-            <div class="pt-detail-row">
-              <span class="pt-detail-name">{{ pt.detail?.sourceTaskName }}</span>
-              <span class="pt-card-status" :class="pt.detail?.sourceTaskStatus">{{ statusText(pt.detail?.sourceTaskStatus || '') }}</span>
-              <span class="pt-detail-time" v-if="pt.detail?.sourceTaskTotalCases != null">用例 {{ pt.detail?.sourceTaskCompletedCases ?? 0 }}/{{ pt.detail?.sourceTaskTotalCases }}</span>
-            </div>
+            <h4 class="pt-detail-title">
+              <i class="fas fa-file-import"></i>
+              {{ pt.detail?.hasTaskSnapshot ? '任务详情（发布时冻结 · 不可变）' : '来源任务（发布时取自该日常任务）' }}
+            </h4>
+            <!-- INT-303：有 taskSnapshot 时按冻结数据渲染（源任务/源用例改动不再影响本版本） -->
+            <template v-if="pt.detail?.hasTaskSnapshot">
+              <div class="pt-detail-row" v-if="taskSnapshot">
+                <span class="pt-detail-name">{{ taskSnapshot.task?.name || pt.detail?.name }}</span>
+                <span class="pt-card-status" v-if="taskSnapshot.task?.algorithmType">{{ taskSnapshot.task.algorithmType }}</span>
+                <span class="pt-detail-time">用例 {{ taskSnapshot.cases?.length ?? 0 }}</span>
+                <span class="pt-detail-time" v-if="taskSnapshot.task?.tags?.length">标签 {{ taskSnapshot.task.tags.join('、') }}</span>
+                <button class="btn btn-primary btn-sm" @click="taskSnapshotOpen = true">
+                  <i class="fas fa-eye"></i> 查看冻结任务详情
+                </button>
+              </div>
+            </template>
+            <!-- 存量版本（发布时未冻结任务详情）：沿用来源任务摘要，并标注历史版本 -->
+            <template v-else>
+              <div class="pt-detail-row">
+                <span class="pt-detail-name">{{ pt.detail?.sourceTaskName }}</span>
+                <span class="pt-card-status" :class="pt.detail?.sourceTaskStatus">{{ statusText(pt.detail?.sourceTaskStatus || '') }}</span>
+                <span class="pt-detail-time" v-if="pt.detail?.sourceTaskTotalCases != null">用例 {{ pt.detail?.sourceTaskCompletedCases ?? 0 }}/{{ pt.detail?.sourceTaskTotalCases }}</span>
+              </div>
+              <div class="pt-legacy-banner">
+                <i class="fas fa-clock-rotate-left"></i>
+                历史版本（发布时未冻结任务详情）：任务详情按来源任务当前数据展示，源用例被编辑/删除后可能失真；执行按引用轨还原（源用例需存在）。
+              </div>
+            </template>
           </div>
 
           <div class="pt-detail-section">
@@ -194,6 +216,13 @@
       @close="reportSnapshotOpen = false"
     />
 
+    <!-- 冻结任务详情弹窗（INT-303：按冻结数据渲染，不 join 现库） -->
+    <TaskSnapshotModal
+      v-if="taskSnapshotOpen && taskSnapshot"
+      :snapshot="taskSnapshot"
+      @close="taskSnapshotOpen = false"
+    />
+
     <!-- 命名弹窗（重命名 / 新版本命名） -->
     <PublishedTaskNameModal
       v-if="nameModal.visible"
@@ -222,6 +251,7 @@ import type { Task } from '../../domain/model/task';
 import type { PublishedTaskItem } from '../../domain/model/publishedTask';
 import PublishTaskModal from '../../components/published-task/PublishTaskModal.vue';
 import ReportSnapshotModal from '../../components/published-task/ReportSnapshotModal.vue';
+import TaskSnapshotModal from '../../components/published-task/TaskSnapshotModal.vue';
 import PublishedTaskNameModal from '../../components/published-task/PublishedTaskNameModal.vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
@@ -235,6 +265,7 @@ const expandedId = ref<number | null>(null);
 const publishModalVisible = ref(false);
 const presetSourceTaskId = ref<number | null>(null);
 const reportSnapshotOpen = ref(false);
+const taskSnapshotOpen = ref(false);
 const dailyTasks = ref<Task[]>([]);
 
 // ===== 筛选选项（组件级 UI 常量）=====
@@ -324,6 +355,11 @@ function handleTimeRangeBadgeChange(value: string | number) {
 
 const sourceTaskId = computed(() =>
   pt.detail?.sourceTaskId ?? (pt.detail?.snapshotConfig as any)?.sourceTaskId ?? null
+);
+
+/** INT-303：任务详情冻结体（有 taskSnapshot 时版本详情按冻结数据渲染） */
+const taskSnapshot = computed(() =>
+  (pt.detail?.snapshotConfig as any)?.taskSnapshot ?? null
 );
 
 /** 详情的 Benchmark 展示信息（行级标记 + 快照冻结的测试集/类别） */
@@ -823,6 +859,23 @@ onMounted(() => {
 .pt-detail-source {
   color: #94a3b8;
   font-size: 12px;
+}
+
+/* INT-303：存量版本（发布时未冻结任务详情）历史标注 */
+.pt-legacy-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+.pt-legacy-banner i {
+  color: #f59e0b;
 }
 
 .pt-empty {

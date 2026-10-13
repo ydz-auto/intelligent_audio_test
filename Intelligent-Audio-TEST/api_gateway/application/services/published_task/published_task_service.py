@@ -205,6 +205,7 @@ class PublishedTaskService:
                 version=d.get('version'),
                 is_current=d.get('is_current'),
                 snapshot_config=d.get('snapshot_config') or {},
+                has_task_snapshot=d.get('has_task_snapshot', False),
                 publish_reason=d.get('publish_reason'),
                 published_by=d.get('published_by'),
                 published_at=d.get('published_at'),

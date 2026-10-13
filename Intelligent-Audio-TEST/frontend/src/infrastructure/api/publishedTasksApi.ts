@@ -44,6 +44,7 @@ interface PublishedTaskPageDto {
 interface PublishedTaskDetailDto extends Omit<PublishedTaskItemDto, 'version_count'> {
   task_group_id?: number | null;
   snapshot_config: Record<string, unknown>;
+  has_task_snapshot?: boolean;
   publish_reason?: string | null;
   archived_by?: string | null;
   source_task_name?: string | null;
@@ -133,6 +134,7 @@ export const publishedTasksApi = {
       version: dto.version,
       isCurrent: dto.is_current,
       snapshotConfig: (dto.snapshot_config ?? {}) as unknown as PublishedTaskDetail['snapshotConfig'],
+      hasTaskSnapshot: dto.has_task_snapshot ?? false,
       publishReason: dto.publish_reason ?? undefined,
       publishedBy: dto.published_by ?? undefined,
       publishedAt: dto.published_at ?? undefined,

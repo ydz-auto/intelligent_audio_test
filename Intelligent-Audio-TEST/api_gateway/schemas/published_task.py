@@ -89,6 +89,8 @@ class PublishedTaskDetailData(APIModel):
     version: int = Field(...)
     is_current: bool = Field(...)
     snapshot_config: Dict[str, Any] = Field(default_factory=dict)
+    has_task_snapshot: bool = Field(
+        False, description='任务详情冻结标记（存量快照无 taskSnapshot → 历史版本，INT-303）')
     publish_reason: Optional[str] = Field(None)
     published_by: Optional[str] = Field(None)
     published_at: Optional[str] = Field(None)

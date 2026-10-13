@@ -105,6 +105,9 @@ class FakeRepo:
     def freeze_report_snapshot(self, source_task_id):
         return None
 
+    def freeze_task_snapshot(self, task):
+        return {'schemaVersion': 2, 'task': {}, 'cases': []}
+
     def create(self, **kwargs):
         self.create_kwargs = kwargs
         return make_pt(**{

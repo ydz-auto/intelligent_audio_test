@@ -12,6 +12,7 @@
 约定：所有方法返回 dict: {success, message, data, code}（与 task_service 应用服务一致）。
 数据经 gRPC 序列化为 JSON，网关层负责转换 snake_case 契约。
 """
+import copy
 import json
 import logging
 from datetime import datetime
@@ -41,6 +42,11 @@ class PublishedTaskService:
     def _build_snapshot(task):
         """从日常任务生成不可变配置快照（camelCase 字段名契约）。
 
+        INT-303：快照内联冻结任务详情全量数据（taskSnapshot）——任务基本信息、
+        用例完整配置深拷贝（rounds/音频引用/标签/分组/评价维度/算法参数/参考
+        参数内容）、关联设备/API/播放设备引用快照。源任务/源用例后续被编辑/
+        删除不再影响已发布版本（与 INT-258 报告冻结同一语义）。
+
         Args:
             task: Task PO（必须已加载 config/algorithm_type/algorithm_params）
         """
@@ -64,6 +70,8 @@ class PublishedTaskService:
             'algorithmParams': task.algorithm_params or {},
             'tags': tag_names,
             'sourceTaskId': task.id,
+            # 任务详情冻结（INT-303）：发布时内联任务详情全量数据
+            'taskSnapshot': repo.freeze_task_snapshot(task),
         }
 
     @staticmethod
@@ -91,6 +99,24 @@ class PublishedTaskService:
         if not valid:
             return None, '用例不存在（已删除），无法发布', 100, 400
         return valid, None, 0, 0
+
+    @staticmethod
+    def _resolve_executable_cases(snapshot):
+        """执行/建新版本前的用例口径解析（INT-303 双轨）。
+
+        - 快照带 taskSnapshot.cases（冻结轨）→ 引用 caseIds 可已失效，以冻结
+          用例为准（跳过引用轨校验，源用例被删不阻塞版本执行）；
+        - 否则（存量引用轨）→ 校验源用例仍存在。
+
+        Returns:
+            (frozen_cases, case_ids, err, code)：冻结轨时 case_ids 为空占位
+            （执行链路由还原结果给出）；引用轨时 case_ids 为过滤后的存活子集。
+        """
+        frozen_cases = (snapshot.get('taskSnapshot') or {}).get('cases') or []
+        if frozen_cases:
+            return frozen_cases, [], None, 0
+        case_ids, err, code, _ = PublishedTaskService._validate_snapshot(snapshot)
+        return [], case_ids or [], err, code
 
     # ---------- 发布 ----------
 
@@ -330,6 +356,9 @@ class PublishedTaskService:
                     'version': pt.version,
                     'is_current': pt.is_current,
                     'snapshot_config': pt.snapshot_config or {},
+                    # INT-303：任务详情冻结标记（存量快照无 taskSnapshot → 历史版本）
+                    'has_task_snapshot': bool(
+                        (pt.snapshot_config or {}).get('taskSnapshot')),
                     'publish_reason': pt.publish_reason,
                     'published_by': pt.published_by,
                     'published_at': pt.published_at.isoformat() if pt.published_at else None,
@@ -354,7 +383,12 @@ class PublishedTaskService:
 
     @staticmethod
     def execute(published_task_id: int, operator_user_id=None) -> dict:
-        """执行：按快照创建新的日常任务（带追溯字段）。"""
+        """执行：按快照创建新的日常任务（带追溯字段）。
+
+        INT-303 版本执行语义：每次执行都是快照的复现——快照带 taskSnapshot
+        （冻结任务详情）时，用例按冻结数据还原（源用例被删/改后仍按发布时
+        配置执行）；存量快照无 taskSnapshot 时回退引用轨（源用例必须存在）。
+        """
         try:
             pt = repo.get_by_id(published_task_id)
             if not pt:
@@ -363,15 +397,23 @@ class PublishedTaskService:
                 return {'success': False, 'message': '已归档任务禁止执行，请选择可用版本', 'data': None, 'code': 203}
 
             snapshot = pt.snapshot_config or {}
-            case_ids, err, code, _ = PublishedTaskService._validate_snapshot(snapshot)
+            frozen_cases, case_ids, err, code = PublishedTaskService._resolve_executable_cases(snapshot)
             if err:
                 return {'success': False, 'message': err, 'data': None, 'code': code}
+
+            # INT-303：taskSnapshot 存在时按冻结数据还原用例（影子用例 + 路由重映射）
+            restored_cases = None
+            if frozen_cases:
+                restored_cases = repo.restore_frozen_cases(
+                    frozen_cases, snapshot.get('caseDevices'))
+                case_ids = [rc[0] for rc in restored_cases]
 
             new_task_id = repo.create_daily_task(
                 name=f"{pt.name} (v{pt.version})",
                 description=pt.description,
                 snapshot_config=snapshot,
                 case_ids=case_ids,
+                restored_cases=restored_cases,
             )
             repo.update_task_trace(
                 new_task_id,
@@ -426,7 +468,9 @@ class PublishedTaskService:
                 # INT-258：新版本指定新来源任务时，冻结该任务当前的真实报告（引用+冻结双轨）
                 new_report_snapshot = repo.freeze_report_snapshot(new_source_task_id)
             else:
-                snapshot = dict(current.snapshot_config or {})
+                # 深拷贝：沿用当前版本快照（含 taskSnapshot 冻结任务详情，INT-303
+                # 版本链语义延续——不重新冻结，版本 vN+1 的任务详情即 vN 冻结值）
+                snapshot = copy.deepcopy(current.snapshot_config or {})
                 new_source_task_id = current.source_task_id
                 # 对齐 V9.7.10 create_version：沿用当前版本冻结值
                 new_task_type = getattr(current, 'type', None)
@@ -440,9 +484,11 @@ class PublishedTaskService:
                 request_snapshot['benchmarkCategory'] = (current.snapshot_config or {}).get('benchmarkCategory')
             snapshot = PublishedTaskService._merge_benchmark_snapshot_fields(
                 snapshot, request_snapshot)
-            _, err, code, _ = PublishedTaskService._validate_snapshot(snapshot)
+            # INT-303 双轨校验：快照带冻结任务详情时以冻结用例为准（源用例可已失效）
+            _, valid_case_ids, err, code = PublishedTaskService._resolve_executable_cases(snapshot)
             if err:
                 return {'success': False, 'message': err, 'data': None, 'code': code}
+            _ = valid_case_ids
 
             # benchmark 标记：请求未显式指定时继承当前版本（版本链语义延续）
             if data.get('benchmark') is not None:

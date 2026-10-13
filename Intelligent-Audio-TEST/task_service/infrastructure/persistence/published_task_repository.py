@@ -13,8 +13,10 @@ report_metric_stats / report_cases）归属 report_service，为保持冻结快�
 V9.7.10 完全等价，本仓储直接读取 report_service 的 PO（同一 DB），
 后续如需严格跨服务隔离可改为 gRPC 调用 ReportConfigService。
 """
+import copy
 import json
 import logging
+import uuid
 from datetime import datetime
 
 from shared.models.database import get_db_session
@@ -29,7 +31,9 @@ from task_service.infrastructure.persistence._task_converters import _UTC_PLUS_8
 from task_service.infrastructure.persistence.models import (
     Task, TaskCase, TaskDevice, TaskAPI, TaskTag, Tag, PublishedTask,
 )
-from task_service.infrastructure.persistence.models.testcase_models import TestCase
+from task_service.infrastructure.persistence.models.testcase_models import (
+    Tag, TestCase, TestCaseGroup, TestCaseTag,
+)
 from report_service.infrastructure.persistence.models import (
     Report, ReportSummary, ReportSummaryMeta, ReportMetricStats, ReportCase, ReportRawData,
 )
@@ -510,6 +514,396 @@ class PublishedTaskRepository:
         finally:
             session.close()
 
+    # ==================== 任务详情冻结（INT-303）====================
+
+    def freeze_task_snapshot(self, task) -> dict:
+        """冻结来源日常任务的任务详情全量数据（INT-303 快照语义）。
+
+        与 report_snapshot（INT-258 冻结真实报告）同一语义：任务详情也要真冻结。
+        发布/新版本（指定新来源任务）时把任务详情内联冻结进快照，源任务/源用例
+        后续被编辑/删除不再影响已发布版本的详情展示与执行。
+
+        camelCase 契约（schemaVersion=2）：
+        - task 基本信息冻结（name/description/config/algorithmType/algorithmParams/tags）
+        - cases[]：每个用例完整配置深拷贝——rounds/音频引用/播放设备/标签/分组/
+          评价维度/算法参数/参考参数内容内联（对齐 B1 导入导出"可独立还原"口径，
+          参考参数从存储读出内容内联而非存路径）
+        - devices/apis/playbackDevices/splMappings：关联引用快照（含名称，渲染不再 join 现库）
+        """
+        session = get_db_session()
+        try:
+            # ---- 任务基本信息 ----
+            # task 由 repo.get_task 返回（session 已 close，列属性可用但
+            # relationship 惰性加载不可用）——任务标签经 task_tags 联表读取
+            task_tag_names = [row[0] for row in (
+                session.query(Tag.name)
+                .join(TaskTag, TaskTag.tag_id == Tag.id)
+                .filter(TaskTag.task_id == task.id)
+                .all()
+            ) if row[0]]
+            task_body = {
+                'name': task.name,
+                'description': task.description,
+                'config': copy.deepcopy(task.config) if task.config else {},
+                'algorithmType': task.algorithm_type,
+                'algorithmParams': copy.deepcopy(task.algorithm_params) if task.algorithm_params else {},
+                'tags': task_tag_names,
+            }
+
+            # ---- 用例完整配置深拷贝 ----
+            task_cases = (
+                session.query(TaskCase)
+                .filter(TaskCase.task_id == task.id)
+                .order_by(TaskCase.id.asc())
+                .all()
+            )
+            case_ids = [tc.test_case_id for tc in task_cases if tc.test_case_id]
+            case_rows = (
+                session.query(TestCase)
+                .filter(TestCase.id.in_(case_ids))
+                .all()
+                if case_ids else []
+            )
+            case_map = {c.id: c for c in case_rows}
+
+            # 用例关联标签批量预取（test_case_tags → tags）
+            tag_map = {}
+            if case_ids:
+                tag_rows = (
+                    session.query(TestCaseTag.test_case_id, Tag.name)
+                    .join(Tag, Tag.id == TestCaseTag.tag_id)
+                    .filter(TestCaseTag.test_case_id.in_(case_ids))
+                    .all()
+                )
+                for cid, name in tag_rows:
+                    tag_map.setdefault(cid, []).append(name)
+
+            # 分组批量预取
+            group_ids = {c.group_id for c in case_rows if c.group_id}
+            group_map = {}
+            if group_ids:
+                for g in session.query(TestCaseGroup).filter(TestCaseGroup.id.in_(list(group_ids))).all():
+                    group_map[g.id] = {
+                        'id': g.id,
+                        'name': g.name,
+                        'description': g.description,
+                        'algorithmType': g.algorithm_type,
+                    }
+
+            # 播放设备名称解析（音频 playback_device_id → playback_devices.name）
+            playback_ids = set()
+            for c in case_rows:
+                for audio_item in self._collect_case_audios(c.config):
+                    pdid = audio_item.get('playback_device_id')
+                    if pdid is not None:
+                        pdid = self._normalize_int(pdid)
+                        if pdid is not None:
+                            playback_ids.add(pdid)
+            playback_name_map = self._fetch_playback_names(list(playback_ids))
+
+            frozen_cases = []
+            for tc in task_cases:
+                case = case_map.get(tc.test_case_id)
+                if case is None:
+                    continue
+                # 参考参数内容内联（发布时从存储读出；路径仅留档 tracedFrom）
+                reference_params_inline = self._inline_reference_params(case.reference_params)
+                frozen_cases.append({
+                    'caseId': case.id,
+                    'name': case.name,
+                    'description': case.description,
+                    'config': copy.deepcopy(case.config) if case.config else {},
+                    'algorithmType': case.algorithm_type,
+                    'algorithmParams': copy.deepcopy(case.algorithm_params) if case.algorithm_params else None,
+                    'referenceParams': reference_params_inline,
+                    'referenceParamsSource': self._reference_params_paths(case.reference_params),
+                    'tags': tag_map.get(case.id, []),
+                    'group': group_map.get(case.group_id),
+                    # 用例级执行路由快照（差异#2 收尾：device_type/device_id/lab_id）
+                    'deviceType': tc.device_type,
+                    'deviceId': tc.device_id,
+                    'labId': tc.lab_id,
+                })
+
+            # ---- 设备/API 引用快照（含名称，详情渲染不再 join 现库） ----
+            device_ids = [row[0] for row in (
+                session.query(TaskDevice.device_id)
+                .filter(TaskDevice.task_id == task.id)
+                .all()
+            ) if row[0] is not None]
+            api_ids = [row[0] for row in (
+                session.query(TaskAPI.api_id)
+                .filter(TaskAPI.task_id == task.id)
+                .all()
+            ) if row[0] is not None]
+            devices_snapshot = self._fetch_device_snapshots(list(dict.fromkeys(device_ids)))
+            apis_snapshot = self._fetch_api_snapshots(list(dict.fromkeys(api_ids)))
+
+            return {
+                'schemaVersion': 2,
+                'task': task_body,
+                'cases': frozen_cases,
+                'devices': devices_snapshot,
+                'apis': apis_snapshot,
+                'playbackDevices': [
+                    {'id': pid, 'name': playback_name_map.get(pid)}
+                    for pid in sorted(playback_ids)
+                ],
+            }
+        finally:
+            session.close()
+
+    # ---- freeze_task_snapshot 辅助 ----
+
+    @staticmethod
+    def _normalize_int(value):
+        """宽松 int 归一（None/''/非数值 → None）。"""
+        if value in (None, ''):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _collect_case_audios(config):
+        """从用例 config 提取音频项（rounds[].audios，对齐 shared.utils.testcase_helpers.collect_audios）。"""
+        if not config:
+            return []
+        all_audios = []
+        for round_item in config.get('rounds', []) or []:
+            if isinstance(round_item, dict):
+                round_audios = round_item.get('audios', [])
+                if isinstance(round_audios, list):
+                    all_audios.extend(a for a in round_audios if isinstance(a, dict))
+        return all_audios
+
+    @staticmethod
+    def _case_matches_frozen(existing: TestCase, frozen: dict) -> bool:
+        """源用例是否与冻结数据一致（可复用判定：任一字段被编辑 → 走影子还原）。"""
+        # 冻结留档 [{roundNumber, path}]（camelCase）→ 列口径 [{round_number, reference_params_path}]
+        frozen_ref_col = [
+            {'round_number': entry.get('roundNumber'), 'reference_params_path': entry.get('path')}
+            for entry in (frozen.get('referenceParamsSource') or [])
+            if isinstance(entry, dict)
+        ] or None
+        return (
+            existing.config == frozen.get('config')
+            and (existing.algorithm_params or None) == (frozen.get('algorithmParams') or None)
+            and existing.algorithm_type == frozen.get('algorithmType')
+            and (existing.reference_params or None) == frozen_ref_col
+        )
+
+    @staticmethod
+    def _reference_params_paths(reference_params_col):
+        """reference_params 列 → 逐轮存储路径留档 [{roundNumber, path}]。"""
+        if not isinstance(reference_params_col, list):
+            return []
+        traced = []
+        for entry in reference_params_col:
+            if isinstance(entry, dict) and entry.get('reference_params_path'):
+                traced.append({
+                    'roundNumber': entry.get('round_number'),
+                    'path': entry.get('reference_params_path'),
+                })
+        return traced
+
+    def _inline_reference_params(self, reference_params_col):
+        """参考参数内容内联：按轮从存储读出（B1 导入导出口径：可独立还原）。
+
+        读取失败的轮次保留路径（content 为空列表），不中断冻结——
+        详情/执行回退路径留档仍在。
+        """
+        if not isinstance(reference_params_col, list):
+            return []
+        from shared.infrastructure.storage import storage_load_bytes
+        from shared.utils.data_transfer import parse_storage_path
+
+        inlined = []
+        for entry in reference_params_col or []:
+            if not isinstance(entry, dict):
+                continue
+            path = entry.get('reference_params_path')
+            round_number = entry.get('round_number')
+            content = []
+            if path:
+                try:
+                    raw = storage_load_bytes(path)
+                    loaded = json.loads(raw.decode('utf-8'))
+                    if isinstance(loaded, list):
+                        content = loaded
+                except Exception:
+                    logger.warning('参考参数文件读取失败（冻结保留路径）: %s', path, exc_info=True)
+            inlined.append({
+                'roundNumber': round_number,
+                'referenceParams': content,
+                'path': path,
+            })
+        return inlined
+
+    @staticmethod
+    def _fetch_playback_names(playback_ids):
+        """播放设备名称映射（gRPC PlaybackConfigService；失败返回空映射仅告警）。"""
+        if not playback_ids:
+            return {}
+        name_map = {}
+        try:
+            from shared.clients.grpc_clients import get_playback_config_service_stub
+            from shared.proto import device_service_pb2 as e2e_pb
+            from shared.utils.grpc_json import loads as _loads
+            stub = get_playback_config_service_stub()
+            for pid in playback_ids:
+                try:
+                    resp = stub.GetPlaybackDevice(e2e_pb.GetPlaybackDeviceRequest(device_id=pid))
+                    if resp.success and resp.data:
+                        item = _loads(resp.data, {}) or {}
+                        name_map[pid] = item.get('name')
+                except Exception:
+                    logger.warning('GetPlaybackDevice 查询失败 (id=%s)', pid, exc_info=True)
+        except Exception:
+            logger.warning('播放设备名称批量查询失败', exc_info=True)
+        return name_map
+
+    @staticmethod
+    def _fetch_device_snapshots(device_ids):
+        """被测设备引用快照（gRPC DeviceConfigService.GetDeviceStatuses；失败降级仅 ID）。"""
+        items = [{'id': did, 'name': None} for did in device_ids]
+        if not device_ids:
+            return items
+        try:
+            from task_service.infrastructure.acl.device_acl_repository import device_acl_repository
+            fetched = device_acl_repository.get_device_statuses(device_ids)
+            name_by_id = {item.get('id'): item.get('name') for item in fetched or []}
+            return [{'id': did, 'name': name_by_id.get(did)} for did in device_ids]
+        except Exception:
+            logger.warning('设备名称批量查询失败（快照降级仅 ID）', exc_info=True)
+            return items
+
+    @staticmethod
+    def _fetch_api_snapshots(api_ids):
+        """API 引用快照（gRPC APITestService.GetAPIConfig；失败降级仅 ID）。"""
+        items = [{'id': aid, 'name': None} for aid in api_ids]
+        if not api_ids:
+            return items
+        try:
+            from task_service.infrastructure.acl.report_acl_repository import api_test_acl_repository
+            name_map = api_test_acl_repository.fetch_api_names(api_ids)
+            return [{'id': aid, 'name': name_map.get(aid)} for aid in api_ids]
+        except Exception:
+            logger.warning('API 名称批量查询失败（快照降级仅 ID）', exc_info=True)
+            return items
+
+    # ==================== 冻结用例还原（执行链路，INT-303）====================
+
+    def restore_frozen_cases(self, frozen_cases, case_devices) -> list:
+        """按冻结数据还原真实 TestCase 行（执行入口用）。
+
+        已存在同 ID 行且（config/algorithm_params/algorithm_type/reference_params
+        路径）与冻结数据一致时直接复用；源用例缺失或任一不一致时以新 UUID
+        重建只读影子用例（不回写源用例，配置内容以冻结数据为准）。
+        设备路由按快照 caseDevices 重映射到新用例 ID。
+
+        Returns:
+            [(new_case_id, device_type, device_id, lab_id)]，顺序与 frozen_cases 一致。
+        """
+        session = get_db_session()
+        restored = []
+        try:
+            device_map = {
+                str(item.get('case_id')): item
+                for item in (case_devices or [])
+                if item.get('case_id') is not None
+            }
+            for frozen in frozen_cases or []:
+                old_id = frozen.get('caseId')
+                if old_id is None:
+                    continue
+                existing = session.get(TestCase, old_id)
+                if existing is not None and not existing.deleted and self._case_matches_frozen(existing, frozen):
+                    new_id = old_id
+                else:
+                    new_id = str(uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        f'int303-published-task-frozen-case:{old_id}:'
+                        f'{json.dumps(frozen.get("config") or {}, ensure_ascii=False, sort_keys=True, default=str)}'
+                        f':{frozen.get("name") or ""}',
+                    ))
+                    probe = session.get(TestCase, new_id)
+                    if probe is None:
+                        session.add(TestCase(
+                            id=new_id,
+                            name=frozen.get('name') or str(old_id),
+                            description=frozen.get('description'),
+                            config=copy.deepcopy(frozen.get('config') or {}),
+                            algorithm_params=copy.deepcopy(frozen.get('algorithmParams') or None),
+                            reference_params=self._frozen_reference_params_column(frozen),
+                            algorithm_type=frozen.get('algorithmType'),
+                        ))
+                        session.flush()
+                        for tag_name in frozen.get('tags') or []:
+                            tag = session.query(Tag).filter_by(name=tag_name).first()
+                            if not tag:
+                                tag = Tag(name=tag_name, created_at=datetime.now(_UTC_PLUS_8),
+                                          updated_at=datetime.now(_UTC_PLUS_8))
+                                session.add(tag)
+                                session.flush()
+                            session.add(TestCaseTag(
+                                test_case_id=new_id, tag_id=tag.id,
+                                created_at=datetime.now(_UTC_PLUS_8),
+                            ))
+                        session.flush()
+                dev = device_map.get(str(old_id), {})
+                restored.append((
+                    new_id,
+                    dev.get('device_type'),
+                    str(dev['device_id']) if dev.get('device_id') is not None else None,
+                    dev.get('lab_id'),
+                ))
+            session.commit()
+            return restored
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    @staticmethod
+    def _frozen_reference_params_column(frozen):
+        """冻结参考参数 → TestCase.reference_params 列形态（路径优先，内联内容兜底落文件）。
+
+        还原策略：优先沿用留档路径（源文件通常仍在）；路径不可用时把内联内容
+        写入新存储 key（影子用例自持），保证参考文本不因源用例删除而丢失。
+        """
+        from shared.infrastructure.storage import storage_save_bytes, storage_load_bytes
+        from shared.utils.data_transfer import parse_storage_path
+
+        col = []
+        for entry in frozen.get('referenceParams') or []:
+            if not isinstance(entry, dict):
+                continue
+            round_number = entry.get('roundNumber')
+            path = entry.get('path')
+            content = entry.get('referenceParams') or []
+            usable_path = None
+            if path:
+                try:
+                    storage_load_bytes(path)
+                    usable_path = path
+                except Exception:
+                    usable_path = None
+            if usable_path is None and content:
+                try:
+                    old_category, old_key = parse_storage_path(path or '')
+                    key = f"{frozen.get('caseId')}/int303_frozen_round_{round_number}.json"
+                    usable_path = storage_save_bytes(
+                        json.dumps(content, ensure_ascii=False, indent=2).encode('utf-8'),
+                        'ref_params', key, content_type='application/json')
+                except Exception:
+                    logger.warning('冻结参考参数内容落盘失败（round=%s）', round_number, exc_info=True)
+            if usable_path:
+                col.append({'round_number': round_number, 'reference_params_path': usable_path})
+        return col or None
+
     # ==================== 快照校验 ====================
 
     def get_existing_case_ids(self, case_ids):
@@ -694,11 +1088,16 @@ class PublishedTaskRepository:
         description=None,
         snapshot_config: dict,
         case_ids,
+        restored_cases=None,
     ) -> int:
         """按快照创建新的日常任务（执行已发布任务的复用链路）。
 
         用例级 device_type/device_id 从快照 caseDevices 还原
         （差异#2 收尾：执行路由唯一依据，task.type 已废弃）。
+
+        INT-303：restored_cases 非空时（冻结用例还原模式），用例路由按还原
+        结果 [(case_id, device_type, device_id, lab_id)] 写入——保证源用例
+        被删/改名后仍按冻结配置执行；case_ids 参数此时仅用于 total_cases 计数。
 
         Returns:
             新任务 ID。
@@ -723,24 +1122,38 @@ class PublishedTaskRepository:
             session.flush()
             task_id = new_task.id
 
-            device_map = {
-                str(item.get('case_id')): item
-                for item in (snapshot_config.get('caseDevices') or [])
-                if item.get('case_id') is not None
-            }
-            for case_id in case_ids:
-                dev = device_map.get(str(case_id), {})
-                session.add(TaskCase(
-                    task_id=task_id,
-                    test_case_id=case_id,
-                    status=TaskCaseStatus.PENDING,
-                    execution_status=ExecutionStatus.PENDING,
-                    evaluation_status=EvaluationStatus.PENDING,
-                    device_type=dev.get('device_type') or None,
-                    device_id=str(dev['device_id']) if dev.get('device_id') is not None else None,
-                    lab_id=dev.get('lab_id') or None,
-                    created_at=now,
-                ))
+            if restored_cases:
+                for case_id, device_type, device_id, lab_id in restored_cases:
+                    session.add(TaskCase(
+                        task_id=task_id,
+                        test_case_id=case_id,
+                        status=TaskCaseStatus.PENDING,
+                        execution_status=ExecutionStatus.PENDING,
+                        evaluation_status=EvaluationStatus.PENDING,
+                        device_type=device_type,
+                        device_id=device_id,
+                        lab_id=lab_id,
+                        created_at=now,
+                    ))
+            else:
+                device_map = {
+                    str(item.get('case_id')): item
+                    for item in (snapshot_config.get('caseDevices') or [])
+                    if item.get('case_id') is not None
+                }
+                for case_id in case_ids:
+                    dev = device_map.get(str(case_id), {})
+                    session.add(TaskCase(
+                        task_id=task_id,
+                        test_case_id=case_id,
+                        status=TaskCaseStatus.PENDING,
+                        execution_status=ExecutionStatus.PENDING,
+                        evaluation_status=EvaluationStatus.PENDING,
+                        device_type=dev.get('device_type') or None,
+                        device_id=str(dev['device_id']) if dev.get('device_id') is not None else None,
+                        lab_id=dev.get('lab_id') or None,
+                        created_at=now,
+                    ))
             for device_id in (snapshot_config.get('deviceIds') or []):
                 session.add(TaskDevice(task_id=task_id, device_id=device_id))
             for api_id in (snapshot_config.get('apiIds') or []):

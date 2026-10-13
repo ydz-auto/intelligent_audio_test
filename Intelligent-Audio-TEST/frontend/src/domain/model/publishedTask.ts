@@ -21,6 +21,63 @@ export interface PublishedTaskSnapshot {
   benchmarkSuite?: string | null;
   /** Benchmark 被测类别（asr/voice_llm/tts/translation，发布时显式指定则随快照冻结） */
   benchmarkCategory?: string | null;
+  /** 任务详情冻结体（INT-303：发布时内联冻结任务详情全量数据；存量快照缺省） */
+  taskSnapshot?: TaskSnapshot | null;
+}
+
+/** 任务详情冻结体（INT-303，schemaVersion=2）：任务详情真冻结，与 report_snapshot（INT-258）同一语义 */
+export interface TaskSnapshot {
+  /** 冻结契约版本（2 = 含参考参数内容内联的完整冻结） */
+  schemaVersion?: number;
+  task: {
+    name?: string | null;
+    description?: string | null;
+    config?: Record<string, unknown>;
+    algorithmType?: string | null;
+    algorithmParams?: Record<string, unknown> | null;
+    tags?: string[];
+  };
+  /** 用例完整配置深拷贝（rounds/音频引用/播放设备/标签/分组/评价维度/算法参数/参考参数内容内联） */
+  cases: TaskSnapshotCase[];
+  /** 关联被测设备引用快照（含名称，渲染不再 join 现库） */
+  devices?: TaskSnapshotRef[];
+  /** 关联 API 引用快照（含名称） */
+  apis?: TaskSnapshotRef[];
+  /** 关联播放设备引用快照（含名称） */
+  playbackDevices?: TaskSnapshotRef[];
+}
+
+/** 冻结体引用项（ID + 发布时冻结的名称；名称可能为 null——服务不可达降级仅 ID） */
+export interface TaskSnapshotRef {
+  id: number;
+  name?: string | null;
+}
+
+/** 冻结体中的单个用例（发布时完整配置快照） */
+export interface TaskSnapshotCase {
+  caseId: string;
+  name?: string | null;
+  description?: string | null;
+  config?: Record<string, unknown>;
+  algorithmType?: string | null;
+  algorithmParams?: Record<string, unknown> | null;
+  /** 参考参数内容内联（[{roundNumber, referenceParams, path}]，可独立还原） */
+  referenceParams?: TaskSnapshotRefParams[];
+  /** 参考参数源路径留档（[roundNumber, path]） */
+  referenceParamsSource?: { roundNumber?: number | null; path?: string | null }[];
+  tags?: string[];
+  group?: { id: string; name: string; description?: string | null; algorithmType?: string | null } | null;
+  /** 用例级执行路由快照（physical/http_api/websocket_api） */
+  deviceType?: string | null;
+  deviceId?: string | null;
+  labId?: number | null;
+}
+
+/** 冻结体中的单轮参考参数（内容内联） */
+export interface TaskSnapshotRefParams {
+  roundNumber?: number | null;
+  referenceParams: unknown[];
+  path?: string | null;
 }
 
 /** 已发布任务列表项 */
@@ -140,6 +197,8 @@ export interface PublishedTaskDetail {
   version: number;
   isCurrent: boolean;
   snapshotConfig: PublishedTaskSnapshot;
+  /** 任务详情冻结标记（INT-303：存量快照无 taskSnapshot → 历史版本） */
+  hasTaskSnapshot: boolean;
   publishReason?: string | null;
   publishedBy?: string | null;
   publishedAt?: string | null;

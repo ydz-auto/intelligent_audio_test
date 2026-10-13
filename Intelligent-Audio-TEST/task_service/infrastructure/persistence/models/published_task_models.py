@@ -45,7 +45,7 @@ class PublishedTask(Base):
     benchmark = Column(Boolean, nullable=False, default=False, comment='是否参与 Benchmark 排行（实测轨数据源标记）')
     version = Column(Integer, nullable=False, default=1, comment='版本号，从 1 开始')
     is_current = Column(Boolean, nullable=False, default=True, comment='是否当前版本')
-    snapshot_config = Column(JSON, comment='发布时的完整配置快照（camelCase 结构）')
+    snapshot_config = Column(JSON, comment='发布时的完整配置快照（camelCase 结构；含 taskSnapshot 任务详情冻结体，INT-303）')
     report_snapshot = Column(JSON, comment='发布时冻结的源任务真实报告快照（引用 sourceReportId + 报告 7 表冻结数据，INT-258 双轨语义）')
     publish_reason = Column(Text, comment='发布说明')
     published_by = Column(String(50), comment='发布人')

@@ -102,8 +102,11 @@ class TestCaseTag(Base):
     """测试用例标签关联模型 (Test Case-Tag Relation)
     维护测试用例与标签之间的多对多映射关系。
     """
+    # sqlite 变体（对齐 favorite_models/INT-299 口径；PG DDL 仍 BIGINT 不变）：
+    # BigInteger 主键在 sqlite 测试库不可自增，影子用例标签回填（INT-303）需插入本表
+    _PK_BIGINT = BigInteger().with_variant(Integer, 'sqlite')
     __tablename__ = 'test_case_tags'
-    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    id = Column(_PK_BIGINT, primary_key=True, autoincrement=True, comment='主键ID')
     test_case_id = Column(String(50), comment='关联测试用例ID')
     tag_id = Column(BigInteger, comment='关联标签ID')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
