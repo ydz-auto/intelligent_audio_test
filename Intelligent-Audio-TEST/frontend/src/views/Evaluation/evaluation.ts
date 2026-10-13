@@ -5,9 +5,6 @@ import { useEvaluationBatchOps } from '../../composables/evaluation/useEvaluatio
 import { useEvaluationImport } from '../../composables/evaluation/useEvaluationImport';
 import { useEvaluationModals } from '../../composables/evaluation/useEvaluationModals';
 
-// 重新导出类型以保持对外接口兼容
-export type { ExtendedAPISettings } from '../../composables/evaluation/useEvaluationDimensions';
-
 /**
  * useEvaluation - 轻量级协调层
  *
@@ -35,7 +32,7 @@ export function useEvaluation() {
   // 4. 导入导出模块（依赖维度模块的 loading/fetchData）
   const importModule = useEvaluationImport(dimensionsModule);
 
-  // 5. 模态框模块（依赖维度模块的 dimensions/categories/evaluationFields/dimensionTemplate/saveDimension/apiSettings/loading，分类模块的 saveCategory）
+  // 5. 模态框模块（依赖维度模块的 dimensions/categories/evaluationFields/dimensionTemplate/saveDimension/loading，分类模块的 saveCategory）
   const modalsModule = useEvaluationModals(dimensionsModule, categoriesModule);
 
   // ========== 协调逻辑 ==========
@@ -62,7 +59,6 @@ export function useEvaluation() {
     dimensionsModule.selectedDimensions.value = [];
     dimensionsModule.newDimension.value = { ...dimensionsModule.dimensionTemplate } as any;
     importModule.importSettings.value = { updateExisting: true, skipErrors: false };
-    importModule.showImportPreview.value = false;
     categoriesModule.newCategory.value = { name: '', description: '', icon: 'fas fa-tachometer-alt' };
   }
 
@@ -72,9 +68,6 @@ export function useEvaluation() {
     // 基础状态（来自维度模块）
     loading: dimensionsModule.loading,
     error: dimensionsModule.error,
-    apiHealthResult: dimensionsModule.apiHealthResult,
-    editingCategory: dimensionsModule.editingCategory,
-    editingDimension: dimensionsModule.editingDimension,
 
     // UI 引用（来自批量操作模块）
     batchMenuRef: batchOpsModule.batchMenuRef,
@@ -97,28 +90,16 @@ export function useEvaluation() {
     toggleGroupExpanded: dimensionsModule.toggleGroupExpanded,
 
     // 数据列表（来自维度模块）
-    dimensions: dimensionsModule.dimensions,
     categories: dimensionsModule.categories,
     algorithms: dimensionsModule.algorithms,
-    newDimension: dimensionsModule.newDimension,
-    apiSettings: dimensionsModule.apiSettings,
 
     // 导入导出状态（来自导入导出模块）
     importSettings: importModule.importSettings,
-    showImportPreview: importModule.showImportPreview,
-    importPreview: importModule.importPreview,
-
-    // 分类状态（来自分类模块）
-    newCategory: categoriesModule.newCategory,
 
     // 计算属性（来自维度模块）
-    filteredDimensions: dimensionsModule.filteredDimensions,
     hierarchicalDimensions: dimensionsModule.hierarchicalDimensions,
     groupedDimensions: dimensionsModule.groupedDimensions,
     isAllSelected: dimensionsModule.isAllSelected,
-
-    // 数据获取（来自维度模块）
-    fetchData: dimensionsModule.fetchData,
 
     // 生命周期（来自批量操作模块）
     initEvaluation: batchOpsModule.initEvaluation,
@@ -128,10 +109,6 @@ export function useEvaluation() {
     openEditModal: modalsModule.openEditModal,
     openAddModal: modalsModule.openAddModal,
     openAddCategoryModal: modalsModule.openAddCategoryModal,
-    openAPISettingsModal: modalsModule.openAPISettingsModal,
-    openRuleEditorModal: modalsModule.openRuleEditorModal,
-    saveAPISettings: modalsModule.saveAPISettings,
-    closeModal: modalsModule.closeModal,
 
     // 分页与过滤（来自维度模块）
     goToPage: dimensionsModule.goToPage,
@@ -143,7 +120,6 @@ export function useEvaluation() {
     resetFilters: dimensionsModule.resetFilters,
 
     // 维度 CRUD（来自维度模块）
-    saveDimension: dimensionsModule.saveDimension,
     deleteDimension: dimensionsModule.deleteDimension,
 
     // 维度排序（上移/下移，来自维度模块）
@@ -161,9 +137,6 @@ export function useEvaluation() {
     // 维度选择（来自维度模块）
     toggleSelectAll: dimensionsModule.toggleSelectAll,
     toggleDimensionSelection: dimensionsModule.toggleDimensionSelection,
-    toggleGroupSelection: dimensionsModule.toggleGroupSelection,
-    selectAllInGroup: dimensionsModule.selectAllInGroup,
-    toggleSelectAllInCategory: dimensionsModule.toggleSelectAllInCategory,
     groupAllSelected: dimensionsModule.groupAllSelected,
     toggleGroupSelectAll: dimensionsModule.toggleGroupSelectAll,
 
@@ -173,15 +146,7 @@ export function useEvaluation() {
 
     // 导入导出（来自导入导出模块）
     importDimensions: importModule.importDimensions,
-    exportData: importModule.exportData,
     exportDimensions: importModule.exportDimensions,
-    previewImportData: importModule.previewImportData,
-    handleImport: importModule.handleImport,
-
-    // 分类管理（来自分类模块）
-    toggleCategory: categoriesModule.toggleCategory,
-    deleteGroup: categoriesModule.deleteGroup,
-    saveCategory: categoriesModule.saveCategory,
 
     // 工具方法（来自维度模块）
     getAlgorithmLabel: dimensionsModule.getAlgorithmLabel,

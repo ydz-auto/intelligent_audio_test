@@ -29,10 +29,9 @@
     --danger-color: var(--destructive);
     --danger-light: rgba(245, 34, 45, 0.1);
 
-    /* 中性色 */
+    /* 中性色（--text-light 语义正源已收敛至 tokens.css） */
     --text-primary: var(--foreground);
     --text-secondary: var(--muted-foreground);
-    --text-light: #999999;
     --text-disabled: #cccccc;
     --gray-color: var(--gray);
     --gray-light-color: var(--gray-light);
@@ -118,7 +117,7 @@
     --btn-border-radius: var(--border-radius-md);
 
     /* ── 补齐历史迁移遗漏令牌（曾被引用但未定义，导致样式失效） ── */
-    --text-tertiary: var(--text-light);
+    /* --text-tertiary 语义正源已收敛至 tokens.css（:root --text-tertiary），此处仅保持旧名可用 */
     --text-muted: var(--muted-foreground);
     --input-bg: var(--background);
     --disabled-bg: var(--gray-light);

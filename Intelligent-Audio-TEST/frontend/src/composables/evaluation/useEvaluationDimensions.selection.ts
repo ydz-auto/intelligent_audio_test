@@ -1,7 +1,7 @@
 /**
  * useEvaluationDimensions —— 维度选择
  *
- * 负责列表的全选/单选切换与分组维度批量勾选逻辑。
+ * 负责列表的全选/单选切换与分组视图组内全选逻辑。
  */
 import type { EvalDimensionState } from './useEvaluationDimensions.state';
 
@@ -9,7 +9,6 @@ import type { EvalDimensionState } from './useEvaluationDimensions.state';
 export function createEvalDimensionSelection(state: EvalDimensionState) {
   const {
     selectedDimensions,
-    dimensions,
     filteredDimensions,
     isAllSelected,
   } = state;
@@ -29,49 +28,6 @@ export function createEvalDimensionSelection(state: EvalDimensionState) {
       selectedDimensions.value.splice(index, 1);
     } else {
       selectedDimensions.value.push(id);
-    }
-  }
-
-  function toggleGroupSelection(groupCheckbox: HTMLInputElement, category: string) {
-    const isChecked = groupCheckbox.checked;
-    const dimensionsInCategory = dimensions.value.filter(dim => dim.type === category);
-
-    if (isChecked) {
-      dimensionsInCategory.forEach(dim => {
-        if (!selectedDimensions.value.includes(dim.id)) {
-          selectedDimensions.value.push(dim.id);
-        }
-      });
-    } else {
-      selectedDimensions.value = selectedDimensions.value.filter(id => {
-        return !dimensionsInCategory.some(dim => dim.id === id);
-      });
-    }
-  }
-
-  function selectAllInGroup(category: string) {
-    const dimensionsInCategory = dimensions.value.filter(dim => dim.type === category);
-    dimensionsInCategory.forEach(dim => {
-      if (!selectedDimensions.value.includes(dim.id)) {
-        selectedDimensions.value.push(dim.id);
-      }
-    });
-  }
-
-  function toggleSelectAllInCategory(category: string) {
-    const dimensionsInCategory = dimensions.value.filter(dim => dim.type === category);
-    const allSelected = dimensionsInCategory.every(dim => selectedDimensions.value.includes(dim.id));
-
-    if (allSelected) {
-      selectedDimensions.value = selectedDimensions.value.filter(id => {
-        return !dimensionsInCategory.some(dim => dim.id === id);
-      });
-    } else {
-      dimensionsInCategory.forEach(dim => {
-        if (!selectedDimensions.value.includes(dim.id)) {
-          selectedDimensions.value.push(dim.id);
-        }
-      });
     }
   }
 
@@ -99,9 +55,6 @@ export function createEvalDimensionSelection(state: EvalDimensionState) {
   return {
     toggleSelectAll,
     toggleDimensionSelection,
-    toggleGroupSelection,
-    selectAllInGroup,
-    toggleSelectAllInCategory,
     groupAllSelected,
     toggleGroupSelectAll,
   };

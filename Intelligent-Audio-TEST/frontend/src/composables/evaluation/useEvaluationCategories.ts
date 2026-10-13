@@ -9,8 +9,8 @@ import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
  * 评估分类管理组合式函数
  *
  * 职责：
- * - 分类 CRUD（saveCategory / deleteGroup）
- * - 分类展开/折叠（toggleCategory）
+ * - 分类 CRUD（saveCategory；分类删除/展开折叠已随 V9.7.31 分组视图重构移除，
+ *   分组展示由 useEvaluationDimensions.groupedDimensions + isGroupExpanded 承载）
  *
  * 依赖维度模块：loading、categories、fetchData
  */
@@ -27,48 +27,7 @@ export function useEvaluationCategories(dimensionsModule: UseEvaluationDimension
     icon: 'fas fa-tachometer-alt'
   });
 
-  // ========== 分类展开/折叠 ==========
-  function toggleCategory(categoryHeader: HTMLElement, event: MouseEvent) {
-    event.stopPropagation();
-    const categoryContent = categoryHeader.querySelector('.category-content');
-    const toggleIcon = categoryHeader.querySelector('.category-toggle');
-    if (categoryContent) {
-      categoryContent.classList.toggle('collapsed');
-      if (toggleIcon) toggleIcon.classList.toggle('rotate');
-    }
-  }
-
   // ========== 分类 CRUD ==========
-  async function deleteGroup(id: number) {
-    modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
-      title: '删除分类',
-      content: `确定要删除该分类吗？此操作将同时删除该分类下的所有维度。`,
-      onConfirm: async () => {
-        loading.value = true;
-        try {
-          await evaluationPort.deleteCategory(id);
-          modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-            title: '成功',
-            content: '分类已删除',
-            onConfirm: () => {
-            }
-          });
-          await fetchData();
-        } catch (err: any) {
-          console.error('Failed to delete category:', err);
-          modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-            title: '错误',
-            content: err.message || '删除分类失败',
-            onConfirm: () => {
-            }
-          });
-        } finally {
-          loading.value = false;
-        }
-      }
-    });
-  }
-
   async function saveCategory(data: any, type: 'add' | 'edit' = 'add') {
     loading.value = true;
     try {
@@ -117,8 +76,6 @@ export function useEvaluationCategories(dimensionsModule: UseEvaluationDimension
 
   return {
     newCategory,
-    toggleCategory,
-    deleteGroup,
     saveCategory,
   };
 }

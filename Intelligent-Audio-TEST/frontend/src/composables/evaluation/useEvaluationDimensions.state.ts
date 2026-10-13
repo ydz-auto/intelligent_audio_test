@@ -9,7 +9,6 @@ import {
   EvaluationDimension,
   EvaluationCategory,
 } from '../../domain';
-import type { DimensionHealthCheckResult } from '../../domain/model/evaluationTypes';
 import { ViewMode, TestType } from '@/domain/enums';
 import {
   DEFAULT_PAGE_SIZE,
@@ -17,27 +16,10 @@ import {
   DEFAULT_MAX_TIMEOUT,
   DEFAULT_MAX_AUDIO_DURATION,
   DEFAULT_API_TIMEOUT,
-  DEFAULT_EDITOR_API_TIMEOUT,
   DEFAULT_LLM_MAX_TOKENS,
   DEFAULT_LLM_TEMPERATURE,
   DIMENSION_TYPE_SUB,
 } from './useEvaluationDimensions.constants';
-
-/**
- * 扩展的 API 设置（编辑模态框使用）
- *
- * 注：原 evaluation.ts 中定义的同名接口，此处为避免循环依赖在本地定义并导出，
- * evaluation.ts 会重新导出该类型以保持对外接口兼容。
- */
-export interface ExtendedAPISettings {
-  id: string;
-  url: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  timeout: number;
-  headers: string;
-  body: string;
-  responseMapping: string;
-}
 
 /** 创建评估维度管理共享状态（状态 / 模板 / 派生计算属性 / 工具方法） */
 export function createEvalDimensionState() {
@@ -60,10 +42,6 @@ export function createEvalDimensionState() {
   const dimensions = ref<EvaluationDimension[]>([]);
   const categories = ref<EvaluationCategory[]>([]);
   const algorithms = ref<{ value: string; label: string }[]>([]);
-  const apiHealthResult = ref<DimensionHealthCheckResult | null>(null);
-
-  const editingCategory = ref(false);
-  const editingDimension = ref(false);
 
   // ========== 维度模板 ==========
   const dimensionTemplate = {
@@ -162,16 +140,6 @@ export function createEvalDimensionState() {
       temperature: DEFAULT_LLM_TEMPERATURE
     }
   } as any);
-
-  const apiSettings = ref<ExtendedAPISettings>({
-    id: '',
-    url: '',
-    method: 'POST',
-    timeout: DEFAULT_EDITOR_API_TIMEOUT,
-    headers: '',
-    body: '',
-    responseMapping: ''
-  });
 
   // ========== 视图模式（列表/分组） ==========
   // 'list' 列表视图（平铺表格） | 'group' 分组视图（按分类聚合）
@@ -342,9 +310,6 @@ export function createEvalDimensionState() {
     dimensions,
     categories,
     algorithms,
-    apiHealthResult,
-    editingCategory,
-    editingDimension,
     // 过滤与分页状态
     searchKeyword,
     filterStatus,
@@ -363,7 +328,6 @@ export function createEvalDimensionState() {
     // 模板与表单数据
     dimensionTemplate,
     newDimension,
-    apiSettings,
     // 计算属性
     filteredDimensions,
     isAllSelected,

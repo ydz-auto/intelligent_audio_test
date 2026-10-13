@@ -108,9 +108,8 @@ export const evaluationApi = {
     return toScore(raw)
   },
 
-  /** 导入维度 */
-  async import(formData: FormData, updateExisting: boolean = false): Promise<{ imported: number; updated: number }> {
-    formData.append('update_existing', updateExisting.toString())
+  /** 导入维度：update_existing 由调用方（composable）写入 FormData，本方法不再追加默认值（避免双字段冲突遮蔽真实设置） */
+  async import(formData: FormData): Promise<{ imported: number; updated: number }> {
     const raw = await request<any>('POST', '/evaluation/dimensions/import', formData, { isMultipart: true })
     return toDimensionImportResult(raw)
   },

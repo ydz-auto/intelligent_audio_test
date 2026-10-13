@@ -83,6 +83,8 @@
   --foreground: #333333;
   --muted: #f5f5f5;
   --muted-foreground: #777777;
+  --text-light: #999999;
+  --text-tertiary: var(--text-light);
   --accent: rgba(255, 106, 0, 0.1);
   --accent-foreground: #333333;
   --border: #e5e7eb;

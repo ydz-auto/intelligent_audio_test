@@ -64,7 +64,7 @@
 
 .report-tab.active {
   background: var(--primary-color);
-  color: #fff;
+  color: var(--color-white);
   border-color: var(--primary-color);
   box-shadow: var(--shadow-sm);
 }
@@ -79,7 +79,7 @@
 
 .report-tab.active .report-tab-count {
   background: color-mix(in srgb, var(--color-white) 25%, transparent);
-  color: #fff;
+  color: var(--color-white);
 }
 
 /* 全选按钮样式 */

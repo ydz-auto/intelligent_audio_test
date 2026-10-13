@@ -108,9 +108,12 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
   }
 
   async function deleteDimension(id: number | string) {
+    // 确认文案用维度名（对齐 V9.7.10），找不到时回退 ID
+    const dimension = dimensions.value.find(dim => dim.id === id);
+    const displayName = dimension?.name || String(id);
     modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
       title: '删除维度',
-      content: `确定要删除维度 ${id} 吗？`,
+      content: `确定要删除维度「${displayName}」吗？`,
       onConfirm: async () => {
         loading.value = true;
         try {

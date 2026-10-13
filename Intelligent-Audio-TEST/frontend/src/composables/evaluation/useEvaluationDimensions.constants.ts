@@ -25,8 +25,6 @@ export const DEFAULT_MAX_TIMEOUT = 30;
 export const DEFAULT_MAX_AUDIO_DURATION = 60;
 /** 默认 API 超时（毫秒） */
 export const DEFAULT_API_TIMEOUT = 30000;
-/** 编辑模态框默认 API 超时（毫秒） */
-export const DEFAULT_EDITOR_API_TIMEOUT = 5000;
 /** 默认分页大小 */
 export const DEFAULT_PAGE_SIZE = 10;
 /** 保存操作类型：新增 */

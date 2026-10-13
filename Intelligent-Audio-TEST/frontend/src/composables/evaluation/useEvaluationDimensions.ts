@@ -20,9 +20,6 @@ import { createEvalDimensionSelection } from './useEvaluationDimensions.selectio
 import { createEvalDimensionNormalizers } from './useEvaluationDimensions.normalize';
 import { createEvalDimensionSave } from './useEvaluationDimensions.save';
 
-// 重新导出编辑模态框使用的扩展 API 设置类型，保持对外接口兼容
-export type { ExtendedAPISettings } from './useEvaluationDimensions.state';
-
 /**
  * 评估维度管理组合式函数
  *
@@ -48,9 +45,6 @@ export function useEvaluationDimensions() {
     dimensions,
     categories,
     algorithms,
-    apiHealthResult,
-    editingCategory,
-    editingDimension,
     searchKeyword,
     filterStatus,
     filterCategory,
@@ -65,7 +59,6 @@ export function useEvaluationDimensions() {
     toggleGroupExpanded,
     dimensionTemplate,
     newDimension,
-    apiSettings,
     filteredDimensions,
     isAllSelected,
     hierarchicalDimensions,
@@ -88,13 +81,10 @@ export function useEvaluationDimensions() {
     resetFilters,
   } = createEvalDimensionLoaders(state);
 
-  // 4. 维度选择（全选 / 单选 / 分组批量勾选）
+  // 4. 维度选择（全选 / 单选 / 分组视图组内全选）
   const {
     toggleSelectAll,
     toggleDimensionSelection,
-    toggleGroupSelection,
-    selectAllInGroup,
-    toggleSelectAllInCategory,
     groupAllSelected,
     toggleGroupSelectAll,
   } = createEvalDimensionSelection(state);
@@ -125,9 +115,6 @@ export function useEvaluationDimensions() {
     dimensions,
     categories,
     algorithms,
-    apiHealthResult,
-    editingCategory,
-    editingDimension,
     // 过滤与分页状态
     searchKeyword,
     filterStatus,
@@ -145,7 +132,6 @@ export function useEvaluationDimensions() {
     // 模板与表单数据
     dimensionTemplate,
     newDimension,
-    apiSettings,
     // 计算属性
     filteredDimensions,
     hierarchicalDimensions,
@@ -165,9 +151,6 @@ export function useEvaluationDimensions() {
     // 维度选择
     toggleSelectAll,
     toggleDimensionSelection,
-    toggleGroupSelection,
-    selectAllInGroup,
-    toggleSelectAllInCategory,
     groupAllSelected,
     toggleGroupSelectAll,
     // 维度 CRUD

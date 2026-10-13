@@ -315,7 +315,7 @@ select.form-input.filter-select:focus {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #eef1f5 100%);
+  background: linear-gradient(135deg, var(--color-gray-100) 0%, var(--color-slate-200) 100%);
   border-bottom: 1px solid var(--border-color);
   border-radius: var(--card-radius) var(--card-radius) 0 0;
   cursor: pointer;
@@ -324,7 +324,7 @@ select.form-input.filter-select:focus {
 }
 
 .group-header:hover {
-  background: linear-gradient(135deg, #eef1f5 0%, #e2e6ea 100%);
+  background: linear-gradient(135deg, var(--color-slate-200) 0%, var(--color-slate-300) 100%);
 }
 
 .group-header-left {
@@ -423,9 +423,9 @@ select.form-input.filter-select:focus {
   margin-bottom: 12px;
   font-size: 13px;
   line-height: 1.5;
-  color: #ff6a00;
-  background: linear-gradient(135deg, rgba(255, 106, 0, 0.08), rgba(255, 106, 0, 0.04));
-  border: 1px solid rgba(255, 106, 0, 0.35);
+  color: var(--primary);
+  background: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, transparent);
   border-radius: 6px;
 }
 
@@ -441,9 +441,9 @@ select.form-input.filter-select:focus {
   justify-content: center;
   padding: 60px 20px;
   text-align: center;
-  color: #64748b;
-  background-color: #f8fafc;
-  border: 1px dashed #cbd5e1;
+  color: var(--color-slate-500);
+  background-color: var(--color-slate-50);
+  border: 1px dashed var(--color-slate-300);
   border-radius: 8px;
   width: 100%;
   margin: 0 auto;
@@ -452,10 +452,15 @@ select.form-input.filter-select:focus {
 .empty-dimensions i {
   font-size: 32px;
   margin-bottom: 12px;
-  color: #94a3b8;
+  color: var(--color-slate-400);
 }
 
 .empty-dimensions p {
   margin: 0;
   font-size: 15px;
+}
+
+/* 页面标题品牌色（原内联 style 迁入） */
+.page-title-primary {
+  color: var(--primary-color);
 }

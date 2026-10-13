@@ -1,6 +1,6 @@
 import { ref } from 'vue';
-import * as favoritesApi from '../../infrastructure/api/favoritesApi';
-import type { FavoriteEntityType } from '../../infrastructure/api/favoritesApi';
+import { favoritesPort } from './favoritesPort';
+import type { FavoriteEntityType } from './favoritesPort';
 import { useNotification } from '../modal/useNotification';
 
 /**
@@ -22,7 +22,7 @@ export function useFavorites(entityType: FavoriteEntityType) {
 
   async function loadFavorites() {
     try {
-      const ids = await favoritesApi.listFavoriteIds(entityType);
+      const ids = await favoritesPort.listFavoriteIds(entityType);
       favoriteIds.value = new Set((ids[entityType] ?? []).map(keyOf));
     } catch (e) {
       // INT-215：失败不再静默降级——提示星标态可能失真（接口不可用时全错且无感知）
@@ -41,12 +41,12 @@ export function useFavorites(entityType: FavoriteEntityType) {
     pendingIds.value.add(key);
     try {
       if (favoriteIds.value.has(key)) {
-        await favoritesApi.unfavorite(entityType, id);
+        await favoritesPort.unfavorite(entityType, id);
         const next = new Set(favoriteIds.value);
         next.delete(key);
         favoriteIds.value = next;
       } else {
-        await favoritesApi.favorite(entityType, id);
+        await favoritesPort.favorite(entityType, id);
         favoriteIds.value = new Set(favoriteIds.value).add(key);
       }
     } catch (e) {
@@ -60,12 +60,12 @@ export function useFavorites(entityType: FavoriteEntityType) {
   }
 
   async function restore(ids: Array<string | number>) {
-    return favoritesApi.restore(entityType, ids);
+    return favoritesPort.restore(entityType, ids);
   }
 
   /** 彻底删除（前端二次确认由调用方完成；服务端校验 admin/owner） */
   async function purge(ids: Array<string | number>) {
-    return favoritesApi.purge(entityType, ids);
+    return favoritesPort.purge(entityType, ids);
   }
 
   return {

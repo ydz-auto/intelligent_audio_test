@@ -1,5 +1,5 @@
 import { reportsPort } from './reportsPort';
-import socketService from '../../utils/socket';
+import { reportChannelPort } from './reportChannelPort';
 import { MODAL_TYPES, useModalControl } from '../modal/useModal';
 import type { Report, Task, ComparisonDevice, DeviceAPIComparisonItem, CaseExecutionItem } from '../../domain/model';
 import { TaskStatus, ReportStatus, DeviceType } from '../../domain/enums';
@@ -31,14 +31,14 @@ import {
 // ===== 常量（消除魔法数字/魔法字符串） =====
 /** 报告异步生成超时时间（ms） */
 const REPORT_GENERATE_TIMEOUT_MS = 120_000;
-/** socket 报告生成完成事件名 */
-const REPORT_GENERATED_EVENT = 'report_generated';
 
 /** 后端 resultStatus 协议值「评估通过」（原始协议值，domain 枚举未收录；adapter 出口 executionStatus 已归一化，此处仅兜底旧数据来源） */
 const RESULT_STATUS_PASSED = 'passed';
 
 /** 模块级弹窗管理单例（报告失败提示用） */
 const modalManager = useModalControl();
+
+// ===== 内部工具：报告详情 → 对比 ReadModel =====
 
 // ===== 内部工具：报告详情 → 对比 ReadModel =====
 
@@ -82,17 +82,17 @@ function waitForReportGenerated(
   failureFallbackMessage: string
 ): Promise<string | number> {
   return new Promise((resolve, reject) => {
-    socketService.connect();
+    reportChannelPort.connect();
 
     const timeout = setTimeout(() => {
-      socketService.off(REPORT_GENERATED_EVENT, handleReportGenerated);
+      reportChannelPort.offReportGenerated(handleReportGenerated);
       reject(new Error(timeoutMessage));
     }, REPORT_GENERATE_TIMEOUT_MS);
 
     const handleReportGenerated = (data: any) => {
       if (data.taskId === taskId) {
         clearTimeout(timeout);
-        socketService.off(REPORT_GENERATED_EVENT, handleReportGenerated);
+        reportChannelPort.offReportGenerated(handleReportGenerated);
 
         if (!data.success) {
           reject(new Error(data.error || failureFallbackMessage));
@@ -102,7 +102,7 @@ function waitForReportGenerated(
       }
     };
 
-    socketService.on(REPORT_GENERATED_EVENT, handleReportGenerated);
+    reportChannelPort.onReportGenerated(handleReportGenerated);
   });
 }
 

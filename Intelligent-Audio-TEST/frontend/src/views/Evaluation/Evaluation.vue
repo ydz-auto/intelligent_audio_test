@@ -3,7 +3,7 @@
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+        <h2 class="page-title page-title-primary">
           <i class="fas fa-star"></i>
           评估维度管理
         </h2>
@@ -233,17 +233,6 @@ const {
   selectedDimensions,
   currentPage,
   pageSize,
-  dimensions,
-  newDimension,
-  apiHealthResult,
-  apiSettings,
-  importSettings,
-  showImportPreview,
-  importPreview,
-  newCategory,
-  editingCategory,
-  editingDimension,
-  filteredDimensions,
   hierarchicalDimensions,
   groupedDimensions,
   viewMode,
@@ -254,7 +243,6 @@ const {
   totalPages,
   totalItems,
   isAllSelected,
-  saveDimension,
   deleteDimension,
   moveDimension,
   canMoveUp,
@@ -272,31 +260,16 @@ const {
   filterDimensions,
   resetFilters,
   onPageSizeChange,
-  previewImportData,
-  handleImport,
-  saveAPISettings,
-  toggleCategory,
-  toggleGroupSelection,
-  selectAllInGroup,
-  toggleSelectAllInCategory,
-  deleteGroup,
-  saveCategory,
   prevPage,
   nextPage,
   goToPage,
-  fetchData,
   getAlgorithmLabel,
   // 模态框操作函数
   openAddModal,
   openAddCategoryModal,
   openEditModal,
-  closeModal,
   importDimensions,
   exportDimensions,
-  openAPISettingsModal,
-  openRuleEditorModal,
-  initEvaluation,
-  cleanupEvaluation,
   loading,
   isLlmJudge,
 } = useEvaluation();

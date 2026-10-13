@@ -306,7 +306,7 @@
   font-size: 16px;
   font-weight: 600;
   color: var(--color-slate-800);
-  margin: 0 0 20px 0;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -314,6 +314,38 @@
 
 .rv-selector-title i {
   color: var(--secondary);
+}
+
+/* 选择器折叠头（恢复基线 toggleDevicesCollapse：标题行点击折叠/展开选择区） */
+.rv-selector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 20px 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.rv-collapse-btn {
+  background: transparent;
+  border: none;
+  color: var(--color-slate-500);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.rv-collapse-btn:hover {
+  color: var(--color-slate-700);
+  background: var(--color-slate-100);
+  border-radius: 4px;
+}
+
+.rv-collapse-btn.collapsed {
+  transform: rotate(-90deg);
 }
 
 .rv-selector-content {
@@ -464,6 +496,24 @@
   flex-direction: column;
   gap: 10px;
   z-index: 14000;
+}
+
+/* 底部浮动保存/发布/关闭操作条（原 ReportView.vue 内联样式迁入；rgba 阴影/白底收编 tokens） */
+.rv-floating-report-actions {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  z-index: 14000;
+  padding: 16px 24px;
+  background: color-mix(in srgb, var(--color-white) 95%, transparent);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 15%, transparent);
+  backdrop-filter: blur(10px);
+  border: 1px solid color-mix(in srgb, var(--color-slate-200) 80%, transparent);
 }
 
 .rv-action-btn {

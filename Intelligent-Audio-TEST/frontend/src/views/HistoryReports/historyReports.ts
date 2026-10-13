@@ -7,7 +7,7 @@ import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabe
 import { getReportTypeLabel } from '../../domain/constants/reportLabels';
 import type { Report, ReportListQuery as ReportListParams } from '../../domain';
 import type { ToastMessage } from '../../domain/model/ui';
-import socketService from '../../utils/socket';
+import { reportChannelPort } from '@/composables/report/reportChannelPort';
 import { readCamel } from '../../utils/keyTransform';
 import { usePagination } from '../../composables/usePagination';
 import { ReportStatus } from '@/domain/enums';
@@ -409,7 +409,7 @@ export function useHistoryReports() {
     if (selectedReports.value.size === 0) return;
     modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
       title: '批量删除报告',
-      content: `确定要删除选中的 ${selectedReports.value.size} 个报告吗？删除后不可恢复。`,
+      content: `确定要删除选中的 ${selectedReports.value.size} 个报告吗？删除后将移入回收站，可在回收站恢复。`,
       confirmText: '删除',
       cancelText: '取消',
       onConfirm: async () => {
@@ -492,13 +492,13 @@ export function useHistoryReports() {
 
       if (result.status === 'generating') {
         showToast('info', '对比报告生成中，请稍后...');
-        socketService.connect();
+        reportChannelPort.connect();
 
         const reportKey = (result.reportKey ?? []).join(',');
         const reportId = await new Promise<string | number>((resolve, reject) => {
           const timeout = setTimeout(() => {
             pendingSecondaryCompareReports.value.delete(reportKey);
-            socketService.off('secondary_compare_generated', handleSecondaryCompareGenerated);
+            reportChannelPort.offSecondaryCompareGenerated(handleSecondaryCompareGenerated);
             reject(new Error('对比报告生成超时'));
           }, 180000);
 
@@ -506,7 +506,7 @@ export function useHistoryReports() {
             const dataKey = (data.reportIds || []).sort().join(',');
             if (dataKey === reportKey) {
               clearTimeout(timeout);
-              socketService.off('secondary_compare_generated', handleSecondaryCompareGenerated);
+              reportChannelPort.offSecondaryCompareGenerated(handleSecondaryCompareGenerated);
               pendingSecondaryCompareReports.value.delete(reportKey);
 
               if (!data.success) {
@@ -518,7 +518,7 @@ export function useHistoryReports() {
           };
 
           pendingSecondaryCompareReports.value.set(reportKey, { reportIds: ids, resolve, reject });
-          socketService.on('secondary_compare_generated', handleSecondaryCompareGenerated);
+          reportChannelPort.onSecondaryCompareGenerated(handleSecondaryCompareGenerated);
         });
 
         showToast('success', '对比报告生成成功');
@@ -542,7 +542,7 @@ export function useHistoryReports() {
   const deleteReport = (reportId: string | number) => {
     modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
       title: '删除报告',
-      content: '确定要删除这个报告吗？删除后不可恢复。',
+      content: '确定要删除这个报告吗？删除后将移入回收站，可在回收站恢复。',
       confirmText: '删除',
       cancelText: '取消',
       onConfirm: async () => {

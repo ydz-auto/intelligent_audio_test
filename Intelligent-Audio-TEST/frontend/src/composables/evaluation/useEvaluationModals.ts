@@ -11,11 +11,8 @@ import type { UseEvaluationCategoriesReturn } from './useEvaluationCategories';
  * - 打开新增维度模态框（openAddModal）
  * - 打开编辑维度模态框（openEditModal）
  * - 打开新增分类模态框（openAddCategoryModal）
- * - 打开 API 设置 / 规则编辑器模态框（openAPISettingsModal / openRuleEditorModal）
- * - 保存 API 设置（saveAPISettings）
- * - 关闭模态框（closeModal）
  *
- * 依赖维度模块：dimensions、categories、evaluationFields、dimensionTemplate、saveDimension、apiSettings、loading
+ * 依赖维度模块：dimensions、categories、evaluationFields、dimensionTemplate、saveDimension、loading
  * 依赖分类模块：saveCategory
  */
 
@@ -29,7 +26,6 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
     dimensionTemplate,
     evaluationFields,
     saveDimension,
-    apiSettings,
   } = dimensionsModule;
 
   const { saveCategory } = categoriesModule;
@@ -282,72 +278,12 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
     });
   }
 
-  // ========== API 设置模态框 ==========
-  function openAPISettingsModal(id: number | string) {
-    modalManager.open(MODAL_TYPES.API_OTHER_CONFIG, {
-      title: 'API设置',
-      dimensionId: id,
-      onSave: (settings: any) => {
-        saveAPISettings(settings);
-      }
-    });
-  }
-
-  // ========== 规则编辑器模态框 ==========
-  function openRuleEditorModal(fieldId: string) {
-    modalManager.open(MODAL_TYPES.CRUD_FORM, {
-      title: '规则编辑器',
-      fieldId: fieldId,
-      onSave: (rule: any) => {
-        console.log('保存规则:', rule);
-      }
-    });
-  }
-
-  // ========== 保存 API 设置 ==========
-  async function saveAPISettings(settings: any) {
-    loading.value = true;
-    try {
-      const apiSettingsData = { ...apiSettings.value, ...settings };
-
-      // Domain 为 camelCase（apiSettings），adapter 层负责转后端 api_settings
-      await evaluationPort.update(apiSettingsData.id, {
-        apiSettings: apiSettingsData
-      });
-
-      Object.assign(apiSettings.value, apiSettingsData);
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '成功',
-        content: 'API设置已保存',
-        onConfirm: () => {
-        }
-      });
-    } catch (err: any) {
-      console.error('Failed to save API settings:', err);
-      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '错误',
-        content: `保存API设置失败: ${err.message || '未知错误'}`,
-        onConfirm: () => {
-        }
-      });
-    } finally {
-      loading.value = false;
-    }
-  }
-
-  // ========== 关闭模态框 ==========
-  function closeModal(id: string) {
-    modalManager.close(id);
-  }
+  // ========== API 设置 / 规则编辑器（已随 CRUD_FORM 模态框统一化移除：API 配置编辑由维度表单页承载） ==========
 
   return {
     openEditModal,
     openAddModal,
     openAddCategoryModal,
-    openAPISettingsModal,
-    openRuleEditorModal,
-    saveAPISettings,
-    closeModal,
   };
 }
 

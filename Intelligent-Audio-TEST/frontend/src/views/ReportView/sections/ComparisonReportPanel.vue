@@ -60,12 +60,26 @@
       </div>
     </div>
 
-    <!-- 设备/API选择器 -->
+    <!-- 设备/API选择器（基线具备折叠头：标题行可点击折叠/展开选择区） -->
     <div class="rv-comparison-selectors">
-      <h4 class="rv-selector-title">
-        <i class="fas fa-list"></i> 选择要对比的设备和API
-      </h4>
-      <div class="rv-selector-content">
+      <div
+        class="rv-selector-header"
+        role="button"
+        tabindex="0"
+        :aria-expanded="!isDevicesCollapsed"
+        @click="toggleDevicesCollapse"
+        @keydown.enter.prevent="toggleDevicesCollapse"
+        @keydown.space.prevent="toggleDevicesCollapse"
+      >
+        <h4 class="rv-selector-title">
+          <i class="fas fa-list"></i> 选择要对比的设备和API
+        </h4>
+        <button class="rv-collapse-btn" :class="{ collapsed: isDevicesCollapsed }" title="折叠/展开" @click.stop="toggleDevicesCollapse">
+          <i class="fas fa-chevron-up" v-if="isDevicesCollapsed"></i>
+          <i class="fas fa-chevron-down" v-else></i>
+        </button>
+      </div>
+      <div class="rv-selector-content" v-show="!isDevicesCollapsed">
         <div id="rv-unified-selector">
           <div
             v-for="device in comparisonDevices"
@@ -166,7 +180,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, inject } from 'vue'
 import { ReportStatus } from '@/domain/enums'
 import { isSecondaryComparisonReportType } from '@/domain/model/report'
 import ComparisonTableComponent from '../../../components/report/ComparisonTableComponent.vue'
@@ -192,6 +206,16 @@ const props = defineProps<{
 }>()
 
 const isSecondaryType = computed(() => isSecondaryComparisonReportType(props.report?.type))
+
+// 设备选择区折叠态（恢复基线 toggleDevicesCollapse 能力；导出时经 isExporting 自动展开）
+const isDevicesCollapsed = ref(false)
+const toggleDevicesCollapse = () => {
+  isDevicesCollapsed.value = !isDevicesCollapsed.value
+}
+const isExporting = inject('isExporting', ref(false))
+watch(isExporting, (exporting) => {
+  if (exporting) isDevicesCollapsed.value = false
+}, { immediate: true })
 
 const emit = defineEmits<{
   (e: 'toggle-edit'): void
