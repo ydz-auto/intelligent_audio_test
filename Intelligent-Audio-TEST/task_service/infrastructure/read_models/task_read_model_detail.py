@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from shared.models.database import get_db_session
+from shared.utils.status_utils import task_case_not_removed
 from task_service.infrastructure.persistence.models import Task, TaskCase
 
 
@@ -85,7 +86,11 @@ class TaskDetailReadModelMixin:
         from task_service.infrastructure.persistence.models.testcase_models import TestCaseGroup
 
         cases = []
-        task_cases = session.query(TaskCase).filter_by(task_id=task.id).all()
+        # INT-305：移除留痕行（error_message = '用例已被移除'）从详情剔除
+        task_cases = session.query(TaskCase).filter(
+            TaskCase.task_id == task.id,
+            task_case_not_removed(TaskCase),
+        ).all()
         # 预取分组名映射，避免逐条查询
         group_ids = {tc.test_case_id for tc in task_cases}
         case_infos = {c.id: c for c in session.query(TestCase).filter(TestCase.id.in_(list(group_ids))).all()} if group_ids else {}

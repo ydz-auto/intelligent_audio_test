@@ -77,6 +77,14 @@ def control(task_id: int, _: None = require_permission('task:execute')):
         return to_response(result)
     return result
 
+# INT-305：执行详情模态窗删除用例（待执行/执行中/已完成/评估完成四阶段全允许）
+@router.delete('/{task_id}/cases/{case_id}')
+def remove_case(task_id: int, case_id: str, _: None = require_permission('task:execute')):
+    result = TaskLifecycleService.remove_case(task_id, case_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
+
 @router.patch('/{task_id}/cases')
 def update_cases(task_id: int, _: None = require_permission('task:update')):
     result = TaskCommandService.update_cases(task_id)

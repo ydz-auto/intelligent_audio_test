@@ -24,6 +24,7 @@ def _test_result_po_to_dict(po: TestResult) -> Dict[str, Any]:
     """TestResult PO → dict
 
     序列化所有业务字段，created_at 转为 isoformat 字符串。
+    INT-305：excluded 排除标记随行透出（报告/聚合按此剔除被删用例结果）。
     """
     return {
         'id': po.id,
@@ -39,6 +40,7 @@ def _test_result_po_to_dict(po: TestResult) -> Dict[str, Any]:
         'result_data': po.result_data,
         'result_data_path': po.result_data_path,
         'error_message': po.error_message,
+        'excluded': int(po.excluded or 0),
         'created_at': po.created_at.isoformat() if po.created_at else None,
     }
 
@@ -79,7 +81,11 @@ class TestResultRepository(TestResultRepositoryABC):
         """
         session = get_db_session()
         try:
-            q = session.query(TestResult).filter(TestResult.task_id == task_id)
+            q = session.query(TestResult).filter(
+                TestResult.task_id == task_id,
+                # INT-305：被删用例的 excluded 结果不计入下游（报告/聚合/重评）
+                TestResult.excluded == 0,
+            )
             if test_case_id:
                 q = q.filter(TestResult.test_case_id == test_case_id)
             pos = q.all()

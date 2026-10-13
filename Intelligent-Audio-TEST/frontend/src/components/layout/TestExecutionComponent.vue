@@ -267,6 +267,14 @@
                     <div class="progress-status flex items-center gap-2">
                       <i :class="getCaseStatusIcon(testCase.status).icon" :style="{ color: getCaseStatusIcon(testCase.status).color }"></i>
                     </div>
+                    <!-- INT-305：移除用例（执行详情模态窗四阶段全允许；点击不冒泡触发用例详情） -->
+                    <button v-if="canRemoveCase"
+                            class="case-remove-btn"
+                            :title="'移除用例'"
+                            style="border: none; background: transparent; cursor: pointer; padding: 4px 6px; color: var(--text-secondary); transition: color 0.2s;"
+                            @click.stop="handleRemoveCaseClick(testCase)">
+                      <i class="fas fa-trash-alt"></i>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -307,6 +315,14 @@
                   </div>
                   <div class="progress-status flex items-center gap-2">
                     <i :class="getCaseStatusIcon(testCase.status).icon" :style="{ color: getCaseStatusIcon(testCase.status).color }"></i>
+                    <!-- INT-305：标签/分组视图同款移除入口 -->
+                    <button v-if="canRemoveCase"
+                            class="case-remove-btn"
+                            :title="'移除用例'"
+                            style="border: none; background: transparent; cursor: pointer; padding: 4px 6px; color: var(--text-secondary); transition: color 0.2s;"
+                            @click.stop="handleRemoveCaseClick(testCase)">
+                      <i class="fas fa-trash-alt"></i>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -436,7 +452,9 @@ const emit = defineEmits([
   'loadMoreLogs',
   // INT-302：执行详情模态窗内的重执行/重评估入口（带范围选择模态窗）
   'retryTask',
-  'reevaluateTask'
+  'reevaluateTask',
+  // INT-305：执行详情模态窗内的移除用例入口（四阶段全允许，确认由 TaskDetailModal 承载）
+  'removeCase'
 ]);
 
 // 已结束的任务状态（finished/success 为后端历史遗留状态值，暂无对应枚举）
@@ -458,6 +476,15 @@ const shouldShowRetryButton = computed(() =>
 
 // INT-302：重评估入口与任务卡片口径一致（终态任务可见）
 const shouldShowReevaluateButton = computed(() => finishedTaskStatuses.includes(props.taskStatus));
+
+// ===== INT-305：移除用例（执行详情模态窗四阶段全允许） =====
+
+/** 移除入口始终可见（四阶段全允许：待执行/执行中/已完成/评估完成） */
+const canRemoveCase = computed(() => true);
+
+const handleRemoveCaseClick = (testCase) => {
+  emit('removeCase', { caseId: testCase.id, name: testCase.name });
+};
 
 // ===== INT-301：详情头双状态徽章（与 TaskCard 徽章口径一致） =====
 

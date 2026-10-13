@@ -219,6 +219,13 @@ class RextractTaskCommand(Command):
     data: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class RemoveTaskCaseCommand(Command):
+    """移除任务用例命令（INT-305）。委托 task_lifecycle_service.remove_case。"""
+    task_id: int
+    case_id: str
+
+
 # ==================== testcase 域命令（gRPC servicer 用） ====================
 
 

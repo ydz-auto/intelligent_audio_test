@@ -45,6 +45,16 @@ export interface TaskCaseBrief {
   tags?: string[]
 }
 
+/** 用例移除结果（INT-305：执行详情模态窗删除用例；DELETE /tasks/{id}/cases/{caseId}） */
+export interface TaskCaseRemoveResult {
+  taskId: string
+  caseId: string
+  /** true = 待执行阶段物理删除（purge）；false = 软删留痕 + 结果 excluded */
+  purged: boolean
+  /** 终态任务触发报告重算 */
+  reportRequeued: boolean
+}
+
 export interface Task {
   id: number | string
   name: string

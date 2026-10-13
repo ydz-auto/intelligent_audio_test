@@ -256,6 +256,14 @@ class APIExecutor(BaseExecutor):
 
         for api_config in api_configs:
             self._handle_control(task_id)
+
+            # INT-305：用例被移除（执行中删除）→ 本用例静默收敛，
+            # 不抛 TaskStopSignal 以免误伤任务内其它用例
+            if getattr(self, '_is_case_removed', None) and self._is_case_removed(task_id, test_case_id):
+                self._log(level='INFO', content=f"用例 {case_name} 已被移除，中断执行",
+                          task_id=task_id, test_case_id=test_case_id)
+                return False
+
             api_id = api_config.id
 
             # 并发参数配置化：api_config 未配置时回退到 config_manager 默认值

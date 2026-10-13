@@ -36,6 +36,10 @@ class TestResult(Base):
     result_data = Column(JSON, nullable=True, comment='轻量结果元数据 (JSON)，大字段存 result_data_path 文件')
     result_data_path = Column(String(500), nullable=True, comment='结果数据文件路径 (大字段存文件，DB仅存轻量元数据)')
     error_message = Column(Text, comment='错误信息描述')
+    # INT-305：用例删除排除标记（0=正常 1=excluded；被删用例的结果不物理删，标记剔除保审计）
+    excluded = Column(Integer, nullable=False, default=0, server_default='0', comment='结果排除标记 (0=正常 1=被删用例排除，报告/聚合剔除)')
+    excluded_by_user_id = Column(BigInteger, nullable=True, comment='标记排除的操作人（INT-305，JWT 透传）')
+    excluded_at = Column(DateTime, nullable=True, comment='排除标记时间')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, server_default=func.now(), nullable=False, comment='生成时间')

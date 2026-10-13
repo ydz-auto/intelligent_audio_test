@@ -33,7 +33,7 @@ from shared.utils.status_constants import (
     TaskCaseStatus,
     TaskStatus,
 )
-from shared.utils.status_utils import derive_task_dual_status
+from shared.utils.status_utils import derive_task_dual_status, task_case_not_removed
 from shared.utils.time_utils import UTC8
 
 logger = logging.getLogger(__name__)
@@ -440,18 +440,25 @@ class ProgressMixin:
         test_cases = self._build_test_cases_from_po(session, db_task, TaskCase)
         logs = _build_logs_via_grpc(db_task.id)
         api_resources = self._build_api_resources_from_po(session, db_task)
+        # INT-305：移除留痕行不计数（与列表/详情剔除口径一致）
+        not_removed = task_case_not_removed(TaskCase)
         in_progress_count = session.query(TaskCase).filter(
             TaskCase.task_id == db_task.id,
+            not_removed,
             (TaskCase.execution_status.in_(ACTIVE_EXECUTION_STATUSES)) | (TaskCase.evaluation_status == EvaluationStatus.RUNNING) |
             (TaskCase.evaluation_status == EvaluationStatus.CALCULATING)
         ).count()
 
-        actual_total_cases = session.query(TaskCase).filter_by(task_id=db_task.id).count()
+        actual_total_cases = session.query(TaskCase).filter(
+            TaskCase.task_id == db_task.id,
+            not_removed,
+        ).count()
         if actual_total_cases != db_task.total_cases:
             db_task.total_cases = actual_total_cases
             session.commit()
         actual_completed_cases = session.query(TaskCase).filter(
             TaskCase.task_id == db_task.id,
+            not_removed,
             TaskCase.execution_status == ExecutionStatus.COMPLETED,
             TaskCase.status == TaskCaseStatus.COMPLETED
         ).count()
@@ -525,7 +532,11 @@ class ProgressMixin:
     def _build_test_cases_from_po(self, session, db_task, TaskCase) -> list:
         """构造用例进度列表（含执行时长与内存态多轮进度）。"""
         rpc_cache = getattr(self.execution_engine, 'round_progress_cache', {}) if self.execution_engine is not None else {}
-        all_task_cases = session.query(TaskCase).filter_by(task_id=db_task.id).all()
+        # INT-305：移除留痕行（error_message = '用例已被移除'）剔除
+        all_task_cases = session.query(TaskCase).filter(
+            TaskCase.task_id == db_task.id,
+            task_case_not_removed(TaskCase),
+        ).all()
         items = []
         for tc in all_task_cases:
             items.append(ProgressCaseItem(

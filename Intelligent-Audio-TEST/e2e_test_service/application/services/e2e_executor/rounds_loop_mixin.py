@@ -45,6 +45,12 @@ class RoundsLoopMixin:
             # 每轮开头检查停止/暂停信号，避免停止后仍继续启动下一轮
             self._check_control_or_cleanup(task_id)
 
+            # INT-305：用例被移除（执行中删除）→ 本用例静默收敛，不抛任务级停止
+            if getattr(self, '_is_case_removed', None) and self._is_case_removed(task_id, test_case_id):
+                self._log(level='INFO', content=f"用例 {case_name} 已被移除，中断本轮执行",
+                          task_id=task_id, test_case_id=test_case_id)
+                return all_round_results, rounds_data, False, last_adjusted_ref_params
+
             round_number = round_config.get('round_number', round_idx + 1)
             self.execution_engine.update_case_round_progress(task_id, tc_rel_id, round_idx, len(rounds))
             self._log(level='INFO', content=f"执行第 {round_number} 轮", task_id=task_id, test_case_id=test_case_id)

@@ -447,6 +447,23 @@ class _TaskConfigProxy:
             error_msg_prefix='重新提取失败',
         )
 
+    def remove_case(self, task_id, case_id):
+        """移除任务用例（INT-305）：操作人经出站拦截器 x-user-id metadata 透传"""
+
+        def _call():
+            stub = get_task_config_service_stub()
+            resp = stub.RemoveTaskCaseLifecycle(task_pb.RemoveTaskCaseLifecycleRequest(
+                task_id=int(task_id),
+                case_id=str(case_id),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'移除用例失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='移除用例失败',
+        )
+
 
 # Task 配置 CRUD 模块级单例
 task_config_service = _TaskConfigProxy()

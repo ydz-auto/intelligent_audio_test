@@ -164,10 +164,16 @@ class RealtimeSessionExecutor:
             round_results = []
             all_success = True
             session_ai_audio = bytearray()
+            # INT-305：用例被移除（执行中删除）→ 本用例静默收敛
+            _is_case_removed = getattr(self._executor, '_is_case_removed', None)
             for round_idx, round_config in enumerate(rounds):
                 if not isinstance(round_config, dict):
                     continue
                 self._executor._handle_control(task_id)
+                if _is_case_removed and _is_case_removed(task_id, test_case_id):
+                    self._log(level='INFO', content=f"用例 {case_name} 已被移除，中断会话轮次",
+                              task_id=task_id, test_case_id=test_case_id)
+                    return False
                 round_number = round_config.get('round_number', round_idx + 1)
                 self._executor.execution_engine.update_case_round_progress(
                     task_id, tc_rel_id, round_idx, len(rounds))

@@ -93,6 +93,9 @@ class TaskConfigAclRepository(ABC):
     @abstractmethod
     def reextract(self, task_id, data) -> CommandResultDTO: ...
 
+    @abstractmethod
+    def remove_case(self, task_id, case_id) -> CommandResultDTO: ...
+
 
 class TestCaseConfigAclRepository(ABC):
     """task_service.TestCaseConfigService 实体 ACL 接口。"""

@@ -176,3 +176,26 @@ class TaskLifecycleService:
             result.get('message', '合并成功'),
             http_code=201,
         )
+
+    # 移除任务用例（INT-305：执行详情模态窗删除用例，四阶段全允许）
+    @staticmethod
+    def remove_case(task_id, case_id):
+        result = _task_acl.remove_case(task_id, case_id)
+
+        if not result.get('success'):
+            code = result.get('code', 500)
+            if code == 404:
+                return error_response(result.get('message', '未找到任务或用例'),
+                                      code=ErrorCode.NOT_FOUND, http_code=404)
+            return error_response(result.get('message', '移除失败'), code=code)
+
+        data = result.get('data') or {}
+        return success_response(
+            {
+                'taskId': str(data.get('task_id', task_id)),
+                'caseId': str(data.get('case_id', case_id)),
+                'purged': bool(data.get('purged', False)),
+                'reportRequeued': bool(data.get('report_requeued', False)),
+            },
+            result.get('message', '用例已移除'),
+        )

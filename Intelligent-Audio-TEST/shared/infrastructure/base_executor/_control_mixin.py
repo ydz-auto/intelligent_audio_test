@@ -61,6 +61,20 @@ class ControlMixin:
         stop_event, _ = self._get_control_events(task_id)
         return stop_event is not None and stop_event.is_set()
 
+    def _is_case_removed(self, task_id, case_id):
+        """非抛出版用例移除检测（INT-305）：Redis 用例级中断标志位。
+
+        task_service 删除执行中任务的用例时置位
+        task:case_stop:{task_id}:{case_id}；执行器在轮次边界 /
+        每轮长阻塞点读取，命中后按"用例被移除"收敛（本用例退出，
+        不抛 TaskStopSignal 以免误伤任务内其它用例）。
+        """
+        from shared.utils import distributed_coordinator as dc
+        try:
+            return dc.is_task_case_stopped(task_id, case_id)
+        except Exception:
+            return False
+
     def _get_control_events(self, task_id):
         """获取控制事件
 

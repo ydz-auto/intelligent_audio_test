@@ -134,6 +134,10 @@ class TaskConfigAclRepositoryImpl(TaskConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import task_config_service
         return _wrap(task_config_service.reextract(task_id, data))
 
+    def remove_case(self, task_id, case_id) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import task_config_service
+        return _wrap(task_config_service.remove_case(task_id, case_id))
+
 
 class TestCaseConfigAclRepositoryImpl(TestCaseConfigAclRepository):
     """task_service.TestCaseConfigService 实体 ACL 实现。"""

@@ -44,6 +44,7 @@ class EventType(str, Enum):
     CASE_EXECUTION_COMPLETED = 'case_execution_completed'
     CASE_EVALUATION_COMPLETED = 'case_evaluation_completed'
     CASE_EVALUATION_CANCELLED = 'case_evaluation_cancelled'  # 评估取消审计（INT-308：执行中删除用例/任务停止联动取消评估）
+    CASE_REMOVED = 'case_removed'  # 用例移除审计（INT-305：执行详情模态窗删除用例，操作人/阶段语义随 payload）
     CASE_FAILED = 'case_failed'
     CASE_BATCH_ACTION_COMPLETED = 'case_batch_action_completed'  # 用例批量操作完成/异步提交（INT-75）
     # 设备级

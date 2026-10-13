@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from shared.models.database import get_db_session
+from shared.utils.status_utils import task_case_not_removed
 from shared.utils.json_utils import deserialize_algorithm_result  # noqa: F401
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.common_enums import TestType
@@ -26,7 +27,11 @@ class TaskCaseResultsMixin:
         """分页查询任务下用例列表。"""
         session = get_db_session()
         try:
-            q = session.query(TaskCase).filter(TaskCase.task_id == task_id)
+            q = session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                # INT-305：移除留痕行剔除
+                task_case_not_removed(TaskCase),
+            )
             if status:
                 q = q.filter(TaskCase.status == status)
             total = q.count()

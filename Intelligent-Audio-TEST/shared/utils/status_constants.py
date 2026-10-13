@@ -60,6 +60,17 @@ class EvaluationStatus(str):
     FAILED = 'failed'
 
 
+class ResultExcludeStatus(str):
+    """测试结果排除语义（INT-305：终态任务删除用例，级联处置 TestResult）。
+
+    被删用例的 TestResult 不物理删除（保审计），execution_status 原值保留、
+    以 excluded 标记列盖写：报告/聚合按 excluded 过滤剔除，不计入总数/通过率
+    （对齐评估维度隔离的聚合口径）。
+    """
+    INCLUDED = 0
+    EXCLUDED = 1
+
+
 # ---- 状态集合常量（frozenset 不可变，杜绝魔法数组） ----
 
 # 任务终态状态集合（completed/failed/stopped）

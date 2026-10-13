@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Dict, Optional
 
 from shared.models.database import get_db_session
+from shared.utils.status_utils import task_case_not_removed
 from shared.utils.query_utils import now_cst
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.status_constants import (
@@ -112,8 +113,11 @@ class TaskProgressStatsMixin:
                     'started_at': current_case.started_at.isoformat() if current_case.started_at else None,
                 }
 
-            # 全部用例列表
-            all_task_cases = session.query(TaskCase).filter_by(task_id=task_id).all()
+            # 全部用例列表（INT-305：移除留痕行剔除）
+            all_task_cases = session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                task_case_not_removed(TaskCase),
+            ).all()
             test_cases_data = []
             pending_count = 0
             running_count = 0
@@ -152,6 +156,7 @@ class TaskProgressStatsMixin:
 
             in_progress_count = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
+                task_case_not_removed(TaskCase),
                 (TaskCase.execution_status.in_(ACTIVE_EXECUTION_STATUSES)) | (TaskCase.evaluation_status == EvaluationStatus.RUNNING) |
                 (TaskCase.evaluation_status == EvaluationStatus.CALCULATING)
             ).count()
@@ -159,6 +164,7 @@ class TaskProgressStatsMixin:
             actual_total_cases = len(all_task_cases)
             actual_completed_cases = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
+                task_case_not_removed(TaskCase),
                 TaskCase.execution_status == ExecutionStatus.COMPLETED,
                 TaskCase.status == TaskCaseStatus.COMPLETED,
             ).count()

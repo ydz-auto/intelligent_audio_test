@@ -624,6 +624,11 @@ class TaskConfigServiceStub:
                 request_serializer=task__service__pb2.RextractTaskLifecycleRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
                 _registered_method=True)
+        self.RemoveTaskCaseLifecycle = channel.unary_unary(
+                '/task_service.TaskConfigService/RemoveTaskCaseLifecycle',
+                request_serializer=task__service__pb2.RemoveTaskCaseLifecycleRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
 
 
 class TaskConfigServiceServicer:
@@ -773,6 +778,13 @@ class TaskConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RemoveTaskCaseLifecycle(self, request, context):
+        """---- 用例移除（INT-305：执行详情模态窗四阶段删除用例，操作人走 x-user-id metadata）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TaskConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -889,6 +901,11 @@ def add_TaskConfigServiceServicer_to_server(servicer, server):
             'RextractTaskLifecycle': grpc.unary_unary_rpc_method_handler(
                     servicer.RextractTaskLifecycle,
                     request_deserializer=task__service__pb2.RextractTaskLifecycleRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RemoveTaskCaseLifecycle': grpc.unary_unary_rpc_method_handler(
+                    servicer.RemoveTaskCaseLifecycle,
+                    request_deserializer=task__service__pb2.RemoveTaskCaseLifecycleRequest.FromString,
                     response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
             ),
     }
@@ -1513,6 +1530,33 @@ class TaskConfigService:
             target,
             '/task_service.TaskConfigService/RextractTaskLifecycle',
             task__service__pb2.RextractTaskLifecycleRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RemoveTaskCaseLifecycle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/RemoveTaskCaseLifecycle',
+            task__service__pb2.RemoveTaskCaseLifecycleRequest.SerializeToString,
             task__service__pb2.TaskConfigResponse.FromString,
             options,
             channel_credentials,

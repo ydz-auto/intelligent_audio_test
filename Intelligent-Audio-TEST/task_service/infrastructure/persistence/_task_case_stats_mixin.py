@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from shared.models.common_enums import DeviceType
 from shared.models.database import get_db_session, utc8now
-from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
 from shared.utils.status_constants import (
     ExecutionStatus,
     TaskStatus as SharedTaskStatus,
@@ -102,10 +102,15 @@ class TaskCaseStatsMixin:
         """按 task_id + case_ids 批量读取 TaskCase（返回 dict 列表）。
 
         case_ids 为空时返回该 task 下所有 TaskCase。
+        INT-305：移除留痕行（error_message = '用例已被移除'）剔除——报告/评估
+        等下游按本接口拉取现存用例，被删用例自动不再计入。
         """
         session = get_db_session()
         try:
-            q = session.query(TaskCase).filter(TaskCase.task_id == task_id)
+            q = session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                task_case_not_removed(TaskCase),
+            )
             if case_ids:
                 q = q.filter(TaskCase.test_case_id.in_(list(case_ids)))
             tcs = q.all()

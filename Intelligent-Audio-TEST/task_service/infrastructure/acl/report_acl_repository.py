@@ -56,6 +56,32 @@ class ReportAclRepository:
         from shared.clients.grpc_clients import get_report_config_service_stub
         return get_report_config_service_stub()
 
+    def recalculate_task_report(self, task_id: int) -> bool:
+        """触发任务报告重算（INT-305：终态任务删除用例后重建报告）。
+
+        封装 report_service.ReportConfigService.GenerateTaskReport：
+        - 报告不存在 → report_service 幂等成功（status=exists / no-op）；
+        - 报告存在 → report_service 内部去重锁承载排队语义（生成中返回
+          generating，不重复提交）。
+        失败返回 False 由调用方降级（报告可手动重新生成，不阻塞删除主链）。
+        """
+        from shared.clients.grpc_clients import get_report_config_service_stub
+        from shared.proto import report_service_pb2 as report_pb
+        try:
+            stub = get_report_config_service_stub()
+            resp = stub.GenerateTaskReport(report_pb.GenerateTaskReportRequest(
+                task_id=int(task_id),
+                name='',
+                description='',
+            ))
+            if not resp.success:
+                _logger.warning("GenerateTaskReport 返回失败 task_id=%s: %s", task_id, resp.message)
+                return False
+            return True
+        except Exception as e:
+            _logger.warning("GenerateTaskReport gRPC 异常 task_id=%s: %s", task_id, e)
+            return False
+
 
 # 模块级单例
 report_acl_repository = ReportAclRepository()

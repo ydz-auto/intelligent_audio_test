@@ -97,3 +97,24 @@ def derive_task_dual_status(task_status: str, *,
         evaluation = EvaluationStatus.PENDING
 
     return execution, evaluation
+
+
+# ---- INT-305：用例移除留痕 ----
+
+REMOVED_CASE_MESSAGE = '用例已被移除'
+
+
+def task_case_not_removed(TaskCase):
+    """构造"未移除"过滤条件（NULL 安全：NULL != 'x' 在 SQL 中为 NULL 而非 True）。
+
+    用法（传入 TaskCase PO 类，避免跨服务 import task_service）：
+        session.query(TaskCase).filter(
+            TaskCase.task_id == task_id,
+            task_case_not_removed(TaskCase),
+        )
+    """
+    from sqlalchemy import or_
+    return or_(
+        TaskCase.error_message.is_(None),
+        TaskCase.error_message != REMOVED_CASE_MESSAGE,
+    )

@@ -3,7 +3,7 @@
  * 出口契约：Domain（camelCase）；DTO 转换全部收敛在 adapters。
  */
 import { request, type RequestOptions } from '../http/client';
-import { toTask, toTaskList, toTaskCreateDto, toCaseDetail, toCaseResults, toTaskDomainStats } from '../adapters/taskAdapter';
+import { toTask, toTaskList, toTaskCreateDto, toCaseDetail, toCaseResults, toTaskDomainStats, toTaskCaseRemoveResult } from '../adapters/taskAdapter';
 import { toTaskProgressHttp, toTaskStartResult } from '../adapters/taskProgressAdapter';
 import { toPaginated } from '../adapters/commonAdapter';
 import type {
@@ -18,7 +18,7 @@ import type {
   TaskDomainStatsDto,
 } from '../dto';
 import type { TaskProgressHttpDto } from '../dto/taskProgressDto';
-import type { Task, TaskCreateDraft, TaskDomainStats } from '../../domain/model/task';
+import type { Task, TaskCreateDraft, TaskDomainStats, TaskCaseRemoveResult } from '../../domain/model/task';
 import type { CaseDetail, CaseResults } from '../../domain/model/taskCaseDetail';
 import type { TaskProgress } from '../../domain/model/taskProgress';
 
@@ -193,6 +193,12 @@ export const tasksApi = {
       case_ids: retryOptions?.caseIds,
       mode: retryOptions?.mode,
     });
+  },
+
+  /** 移除任务用例（INT-305：执行详情模态窗删除用例，四阶段全允许） */
+  async removeCase(taskId: string | number, caseId: string | number): Promise<TaskCaseRemoveResult> {
+    const raw = await request<Record<string, unknown>>('DELETE', `/tasks/${taskId}/cases/${caseId}`);
+    return toTaskCaseRemoveResult(raw);
   },
 
   /** 重新评估：显式 task_id（TaskReevaluateInput）；selection 可选按用例+按维度（INT-302） */

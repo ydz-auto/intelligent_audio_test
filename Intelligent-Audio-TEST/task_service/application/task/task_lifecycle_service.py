@@ -27,11 +27,15 @@ from shared.models.common_enums import TestType
 from shared.models.common_enums import RetryScopeMode
 from shared.utils.status_constants import (
     TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus, ACTIVE_EXECUTION_STATUSES,
+    FINISHED_TASK_STATUSES,
 )
 
 from task_service.infrastructure.persistence.task_repository import task_repository
 
 logger = logging.getLogger(__name__)
+
+# INT-305：用例移除留痕常量（与仓储层 _REMOVED_CASE_MESSAGE 同值，软删行判定依据）
+REMOVED_CASE_MESSAGE = '用例已被移除'
 
 
 class TaskLifecycleService:
@@ -278,6 +282,147 @@ class TaskLifecycleService:
         except Exception as e:
             logger.error(f"停止任务失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    def remove_case(self, task_id: int, case_id: str) -> dict:
+        """移除任务用例（INT-305：执行详情模态窗删除用例，四阶段全允许）。
+
+        按任务阶段分语义：
+        - 待执行（pending/queued）：物理删除 TaskCase 行 + 引擎队列/领取摘除，
+          计数重算；
+        - 执行中（running/evaluating/reevaluating/paused）：置用例级中断信号
+          （执行器轮次边界检测后收敛）→ 联动取消评估侧产出（复用 INT-308
+          CancelEvaluation reason=case_deleted）→ 软删留痕 + TestResult excluded
+          → 计数重算 → 中断事件推送；
+        - 已完成/评估完成（completed/failed/stopped）：软删留痕 + TestResult
+          excluded（保审计）→ 计数重算 → 触发报告重算。
+
+        全程审计事件（操作人经 x-user-id metadata 透传，get_current_user_id 读取）。
+
+        Returns:
+            dict: {success, message, data, code?}
+        """
+        try:
+            task = task_repository.get_task_orm(task_id)
+            if task is None:
+                return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
+
+            tc = task_repository.find_task_case(task_id, case_id)
+            if tc is None:
+                return {'success': False, 'message': '未找到该任务关联的用例', 'data': None, 'code': 404}
+
+            # 已移除留痕行幂等成功（重复删除不报错）
+            if (tc.error_message or '') == REMOVED_CASE_MESSAGE:
+                return {'success': True, 'message': '用例已被移除', 'data': {'removed': True, 'idempotent': True}}
+
+            from shared.infrastructure.user_context import get_current_user_id
+            operator_id = get_current_user_id()
+
+            # 阶段语义判定（enum 化，拒绝魔法字符串集合裸写——复用状态集合常量）
+            is_active_task = task.status in (TaskStatus.RUNNING, TaskStatus.QUEUED,
+                                             TaskStatus.EVALUATING, TaskStatus.REEVALUATE_QUEUED,
+                                             TaskStatus.REEVALUATING, TaskStatus.PAUSED)
+
+            # 1. 执行中：先置用例级中断信号（执行器轮次边界/长阻塞点检测收敛）
+            if is_active_task and tc.execution_status in ACTIVE_EXECUTION_STATUSES:
+                from shared.utils import distributed_coordinator as _dc
+                _dc.set_task_case_stop(task_id, case_id)
+
+            # 2. 联动取消评估侧产出（INT-308 复用：case_deleted 命令语义信任请求方，
+            #    评估已实际产出的用例返回 completed 由本侧标记 excluded）
+            cancel_result = None
+            if is_active_task:
+                try:
+                    from shared.clients.grpc_clients import cancel_case_evaluations
+                    cancel_result = cancel_case_evaluations(
+                        task_id, [case_id], reason='case_deleted')
+                except Exception as e:
+                    logger.warning("移除用例联动取消评估失败(不阻塞删除) task_id=%s case=%s: %s",
+                                   task_id, case_id, e)
+
+            # 3. 移除 TaskCase + 级联处置 TestResult（仓储内按有无结果分软删/物理删）
+            removal = task_repository.remove_task_case(task_id, case_id, deleted_by_user_id=operator_id)
+            if removal is None:
+                return {'success': False, 'message': '未找到该任务关联的用例', 'data': None, 'code': 404}
+
+            # 4. 计数重算（recount 按移除留痕行剔除口径）
+            task_repository.recount_task_cases(task_id)
+
+            # 5. 执行中：任务行 updated_by 留痕 + 唤醒等待线程推进收敛 + 进度推送
+            if is_active_task:
+                task_repository.touch_task_updated_by(task_id, operator_id)
+                try:
+                    from task_service.core.execution_engine import execution_engine
+                    execution_engine.notify_case_completed(task_id)
+                    task_repository.expire_progress_cache(task_id)
+                    execution_engine._emit_progress(task_id, force=True)
+                except Exception as e:
+                    logger.warning("移除用例后推送进度失败(不阻塞删除) task_id=%s: %s", task_id, e)
+
+            # 6. 终态任务：触发报告重算（report_service RegenerateTaskReport：
+            #    重建时 valid_case_ids 以 TaskCase 现存行为准，被删用例自动剔除）
+            report_requeued = False
+            if task.status in FINISHED_TASK_STATUSES:
+                report_requeued = self._trigger_report_recalculate(task_id)
+
+            # 7. 审计事件（CASE_EVENTS / case_removed，操作人透传）
+            self._publish_removal_audit(task_id, case_id, operator_id,
+                                        removed_semantics=removal.get('purged', False),
+                                        eval_cancel=cancel_result,
+                                        report_requeued=report_requeued)
+
+            logger.info("移除任务用例完成 task_id=%s case_id=%s operator=%s purged=%s report_requeued=%s",
+                        task_id, case_id, operator_id, removal.get('purged'), report_requeued)
+            return {
+                'success': True,
+                'message': '用例已移除',
+                'data': {
+                    'task_id': str(task_id),
+                    'case_id': str(case_id),
+                    'purged': removal.get('purged', False),
+                    'report_requeued': report_requeued,
+                    'operator_id': operator_id,
+                },
+            }
+        except Exception as e:
+            logger.error(f"移除任务用例失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    def _trigger_report_recalculate(self, task_id: int) -> bool:
+        """终态任务用例变更后触发报告重算（report_service 再生成）。
+
+        经 report_service.ReportConfigService.RegenerateTaskReport RPC：
+        报告不存在时幂等成功（no-op）；生成锁被持有时排队语义由
+        report_service 内部去重锁承载。失败降级 WARNING（不阻塞删除主链，
+        报告可手动重新生成）。
+        """
+        try:
+            from task_service.infrastructure.acl.report_acl_repository import report_acl_repository
+            return report_acl_repository.recalculate_task_report(task_id)
+        except Exception as e:
+            logger.warning("触发报告重算失败(降级跳过，可手动重生成) task_id=%s: %s", task_id, e)
+            return False
+
+    def _publish_removal_audit(self, task_id, case_id, operator_id,
+                               removed_semantics, eval_cancel, report_requeued):
+        """发布 case_removed 审计事件到 CASE_EVENTS（Redis 不可用时只打日志）。"""
+        try:
+            from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+            event_bus = EventBus()
+            event_bus.publish(
+                EventChannel.CASE_EVENTS,
+                EventType.CASE_REMOVED,
+                {
+                    'task_id': str(task_id),
+                    'test_case_id': str(case_id),
+                    'operator_id': operator_id,
+                    'purged': bool(removed_semantics),
+                    'eval_cancel': (eval_cancel or {}).get('data', {}),
+                    'report_requeued': bool(report_requeued),
+                    'removed_at': datetime.utcnow().isoformat() + 'Z',
+                },
+            )
+        except Exception as e:
+            logger.warning("发布用例移除审计事件失败 task_id=%s case=%s: %s", task_id, case_id, e)
 
     def rextract(self, task_id: int, data: dict) -> dict:
         """重新提取设备输出。"""

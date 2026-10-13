@@ -326,6 +326,11 @@ def release_task_claim(task_id):
 
 TASK_STOP_KEY_PREFIX = 'task:stop:'
 TASK_PAUSE_KEY_PREFIX = 'task:pause:'
+# INT-305：用例级中断信号（执行中删除用例 → 中断该用例当前轮次执行）。
+#   task:case_stop:{task_id}:{case_id} 存在 = 该用例被移除，执行侧在
+#   轮次边界 / 停止检测点（_handle_control / _is_task_stopped 同款查询）
+#   读到后收敛，不影响任务内其它用例。
+TASK_CASE_STOP_KEY_PREFIX = 'task:case_stop:'
 
 
 def task_stop_key(task_id):
@@ -336,6 +341,26 @@ def task_stop_key(task_id):
 def task_pause_key(task_id):
     """构造任务暂停信号 key"""
     return f'{TASK_PAUSE_KEY_PREFIX}{task_id}'
+
+
+def task_case_stop_key(task_id, case_id):
+    """构造用例级中断信号 key（INT-305）"""
+    return f'{TASK_CASE_STOP_KEY_PREFIX}{task_id}:{case_id}'
+
+
+def set_task_case_stop(task_id, case_id, ttl=86400):
+    """置位用例级中断信号（多实例可见）"""
+    set_flag(task_case_stop_key(task_id, case_id), value=1, ttl=ttl)
+
+
+def clear_task_case_stop(task_id, case_id):
+    """清除用例级中断信号"""
+    clear_flag(task_case_stop_key(task_id, case_id))
+
+
+def is_task_case_stopped(task_id, case_id):
+    """判断用例级中断信号是否已置位（Redis 不可用时返回 False，不阻塞）"""
+    return is_flag_set(task_case_stop_key(task_id, case_id))
 
 
 def set_task_stop(task_id, ttl=86400):

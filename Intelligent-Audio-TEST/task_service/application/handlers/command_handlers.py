@@ -33,6 +33,7 @@ from task_service.application.commands.task_commands import (
     ControlTaskCommand,
     StopTaskLifecycleCommand,
     RextractTaskCommand,
+    RemoveTaskCaseCommand,
     CreateTestCaseCommand,
     UpdateTestCaseCommand,
     DeleteTestCaseCommand,
@@ -384,6 +385,10 @@ class TaskCommandHandler:
     def handle_reextract_task(self, cmd: RextractTaskCommand) -> Dict:
         """处理重新提取设备输出命令。委托 task_lifecycle_service.reextract。"""
         return self.task_lifecycle_service.rextract(cmd.task_id, cmd.data)
+
+    def handle_remove_task_case(self, cmd: RemoveTaskCaseCommand) -> Dict:
+        """处理移除任务用例命令（INT-305）。委托 task_lifecycle_service.remove_case。"""
+        return self.task_lifecycle_service.remove_case(cmd.task_id, cmd.case_id)
 
     # ==================================================================
     # testcase 域命令（gRPC servicer 入口）

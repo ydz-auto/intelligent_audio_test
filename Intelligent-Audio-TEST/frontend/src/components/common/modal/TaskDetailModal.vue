@@ -30,6 +30,7 @@
         @stop-test="stopTest"
         @retry-task="retryTask"
         @reevaluate-task="reevaluateTask"
+        @remove-case="removeCase"
         @load-more-logs="loadMoreLogs"
       />
     </div>
@@ -42,6 +43,7 @@ import { tasksPort } from '@/composables/task/tasksPort';
 import { logsPort } from '@/composables/task/logsPort';
 import { useTaskProgress } from '../../../composables/task/useTaskProgress';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
+import { useNotification } from '../../../composables/modal/useNotification';
 import { transformTestCaseStatus } from '../../../utils/statusUtils';
 import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
 import type { Task, Log } from '../../../domain';
@@ -52,6 +54,7 @@ const props = defineProps({
 });
 
 const modalControl = useModalControl();
+const notification = useNotification();
 
 const loading = ref(true);
 const error = ref<string | null>(null);
@@ -467,6 +470,109 @@ async function reevaluateTask() {
   } catch (err) {
     console.error('重新评估任务失败:', err);
   }
+}
+
+// ===== INT-305：移除用例（四阶段全允许，按任务阶段说明删除后果） =====
+
+interface RemoveCaseEvent {
+  caseId: string | number
+  name?: string
+}
+
+/**
+ * 按任务阶段给出删除后果说明（对齐验收口径）：
+ * - 待执行（pending/queued）：直接消失（物理删除）；
+ * - 执行中（running/queued 活跃/评估中/暂停）：当前轮次中断 + 结果作废；
+ * - 已完成/评估完成（终态）：报告聚合重算剔除，结果 excluded 保审计；
+ * - 任务仅剩 1 个用例时二次确认（任务将空）。
+ */
+function buildRemoveCaseConsequence(): string {
+  const status = String(task.value?.status ?? '');
+  const activeStatuses = ['pending', 'queued', 'running', 'evaluating', 'reevaluate_queued', 'reevaluating', 'paused'];
+  if (activeStatuses.includes(status)) {
+    if (status === 'pending' || status === 'queued') {
+      return '该任务尚未开始执行，用例将被直接移除。';
+    }
+    return '该任务正在执行：若该用例正在执行，其当前轮次将被中断，已产出的执行/评估数据将作废（结果标记排除）。';
+  }
+  return '该任务已结束：用例将从本任务移除，其执行/评估结果将被标记为排除（保审计），报告聚合将重算剔除该用例。';
+}
+
+async function removeCase(evt: RemoveCaseEvent) {
+  const caseId = evt?.caseId;
+  if (caseId === undefined || caseId === null || caseId === '') return;
+
+  const caseName = evt.name || `用例 ${caseId}`;
+  let confirmed: { confirmed: boolean } | null;
+  try {
+    confirmed = await modalControl.open<{ confirmed: boolean }>(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '移除用例',
+      content: `确定从任务中移除「${caseName}」吗？${buildRemoveCaseConsequence()}`,
+      danger: true,
+      confirmText: '移除',
+      cancelText: '取消'
+    });
+  } catch {
+    return; // 用户取消
+  }
+  if (confirmed?.confirmed !== true) return;
+
+  // 边界：任务只剩 1 个用例时二次确认（任务将空，提示是否连任务一并停止）
+  if (associatedCases.value.length === 1) {
+    let stopConfirmed: { confirmed: boolean } | null;
+    try {
+      stopConfirmed = await modalControl.open<{ confirmed: boolean }>(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '任务将变空',
+        content: '这是任务中最后一个用例，移除后任务将不含任何用例。是否连任务一并停止（后续可在任务列表删除该任务）？',
+        danger: true,
+        confirmText: '移除并停止任务',
+        cancelText: '仅移除用例'
+      });
+    } catch {
+      return; // 用户取消
+    }
+    if (stopConfirmed?.confirmed === true) {
+      try {
+        await tasksPort.stop(props.taskId);
+      } catch (err) {
+        console.error('停止任务失败:', err);
+      }
+    }
+  }
+
+  try {
+    await tasksPort.removeCase(props.taskId, caseId);
+    // 本地即时剔除 + 计数联动（WS task_progress 推送会再次校正）
+    associatedCases.value = associatedCases.value.filter(tc => String(tc.id) !== String(caseId));
+    recountFromAssociatedCases();
+    await fetchTaskDetails();
+  } catch (err: any) {
+    console.error('移除用例失败:', err);
+    notification.error(err?.message || '移除用例失败');
+  }
+}
+
+/** 移除后基于现存用例重算本模态窗计数/进度（对齐 fetchTaskDetails 口径） */
+function recountFromAssociatedCases() {
+  const caseList = associatedCases.value;
+  totalTestCases.value = caseList.length;
+  completedTests.value = caseList.filter((tc) => tc.status === ExecutionStatus.COMPLETED && tc.executionStatus !== ExecutionStatus.FAILED && tc.evaluationStatus !== EvaluationStatus.FAILED).length;
+  inProgressTests.value = caseList.filter((tc) =>
+    tc.status === ExecutionStatus.IN_PROGRESS ||
+    tc.status === EvaluationStatus.CALCULATING ||
+    tc.status === ExecutionStatus.QUEUED
+  ).length;
+  executionFailedTests.value = caseList.filter((tc) => tc.executionStatus === ExecutionStatus.FAILED).length;
+  evaluationFailedTests.value = caseList.filter((tc) => tc.evaluationStatus === EvaluationStatus.FAILED && tc.executionStatus !== ExecutionStatus.FAILED).length;
+  pendingTests.value = caseList.filter((tc) =>
+    tc.executionStatus === ExecutionStatus.PENDING &&
+    tc.evaluationStatus === EvaluationStatus.PENDING &&
+    tc.status !== ExecutionStatus.COMPLETED &&
+    tc.status !== ExecutionStatus.FAILED
+  ).length;
+  progressPercentage.value = totalTestCases.value > 0
+    ? Math.round((completedTests.value / totalTestCases.value) * 100)
+    : 0;
 }
 
 // 加载更多日志（向上滚动加载更老的历史日志：page+1 = 更老的数据）

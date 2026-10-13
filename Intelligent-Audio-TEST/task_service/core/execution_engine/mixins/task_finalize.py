@@ -14,6 +14,7 @@ from datetime import datetime
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.database import get_db_session
 from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_utils import task_case_not_removed
 from shared.utils.status_constants import (
     TaskStatus, TaskCaseStatus, ExecutionStatus, EvaluationStatus,
     FINISHED_CASE_STATUSES, ACTIVE_EXECUTION_STATUSES, ACTIVE_EVALUATION_STATUSES,
@@ -37,16 +38,21 @@ class TaskFinalizeMixin:
         try:
             task = local_db_session.get(Task, task_id)
             if task:
+                # INT-305：移除留痕行不参与收敛判定/计数
+                not_removed = task_case_not_removed(TaskCase)
                 # 获取所有测试用例
-                all_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id).count()
+                all_cases = local_db_session.query(TaskCase).filter(
+                    TaskCase.task_id == task_id, not_removed).count()
                 # 获取已处理的测试用例（状态为completed/failed/skipped）
                 all_processed_cases = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
+                    not_removed,
                     TaskCase.status.in_(FINISHED_CASE_STATUSES)
                 ).count()
                 # 获取运行中的测试用例 (只包括执行中、排队中，不包括评估中/待评估)
                 running_cases = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
+                    not_removed,
                     TaskCase.execution_status.in_(ACTIVE_EXECUTION_STATUSES)
                 ).count()
                 failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
@@ -57,6 +63,7 @@ class TaskFinalizeMixin:
                     # 检查是否还有用例在评估中
                     evaluating_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task_id,
+                        not_removed,
                         TaskCase.evaluation_status.in_(ACTIVE_EVALUATION_STATUSES)
                     ).count()
 
@@ -182,10 +189,13 @@ class TaskFinalizeMixin:
                     logger.debug("等待用例完成时关闭 DB session 失败 task_id=%s", task_id, exc_info=True)
 
     def _get_total_case_count(self, task_id):
-        """获取任务用例总数"""
+        """获取任务用例总数（INT-305：移除留痕行不计数）"""
         session = get_db_session()
         try:
-            return session.query(TaskCase).filter_by(task_id=task_id).count()
+            return session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                task_case_not_removed(TaskCase),
+            ).count()
         finally:
             session.close()
 
@@ -195,11 +205,14 @@ class TaskFinalizeMixin:
         return task_obj.status if task_obj else 'unknown'
 
     def _query_status_counts(self, session, task_id):
-        """按 execution/evaluation/final status 分组统计"""
+        """按 execution/evaluation/final status 分组统计（INT-305：移除留痕行剔除）"""
         from sqlalchemy import func
         return session.query(
             TaskCase.execution_status, TaskCase.evaluation_status, TaskCase.status, func.count(TaskCase.id)
-        ).filter(TaskCase.task_id == task_id).group_by(
+        ).filter(
+            TaskCase.task_id == task_id,
+            task_case_not_removed(TaskCase),
+        ).group_by(
             TaskCase.execution_status, TaskCase.evaluation_status, TaskCase.status
         ).all()
 
@@ -376,11 +389,14 @@ class TaskFinalizeMixin:
                 if stop_event.is_set():
                     task.status = TaskStatus.STOPPED
                 else:
-                    # 检查是否所有测试用例都失败
-                    all_cases = local_db_session.query(TaskCase).filter_by(task_id=task.id).count()
+                    # 检查是否所有测试用例都失败（INT-305：移除留痕行不计数）
+                    not_removed = task_case_not_removed(TaskCase)
+                    all_cases = local_db_session.query(TaskCase).filter(
+                        TaskCase.task_id == task.id, not_removed).count()
                     failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task.id, status=TaskCaseStatus.FAILED).count()
                     all_processed_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task.id,
+                        not_removed,
                         TaskCase.status.in_(FINISHED_CASE_STATUSES)
                     ).count()
 
@@ -397,8 +413,10 @@ class TaskFinalizeMixin:
                         # 如果还有测试用例未完成，标记为失败
                         task.status = TaskStatus.FAILED
                         # 将所有未处理的测试用例标记为失败，避免任务被重新执行
+                        # （INT-305：移除留痕行不参与——保留移除留痕语义）
                         unprocessed_cases = local_db_session.query(TaskCase).filter(
                             TaskCase.task_id == task.id,
+                            not_removed,
                             TaskCase.status.notin_(FINISHED_CASE_STATUSES)
                         ).all()
                         for tc in unprocessed_cases:
@@ -417,13 +435,18 @@ class TaskFinalizeMixin:
                     # 计算实际执行时长（秒）
                     task.actual_duration = int((task.completed_at - task.started_at).total_seconds())
 
-                # 更新任务的已完成用例数和失败用例数
+                # 更新任务的已完成用例数和失败用例数（INT-305：移除留痕行不计数）
                 success_count = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
+                    not_removed,
                     TaskCase.status == TaskCaseStatus.COMPLETED
                 ).count()
                 task.completed_cases = success_count
-                task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
+                task.failed_cases = local_db_session.query(TaskCase).filter(
+                    TaskCase.task_id == task_id,
+                    not_removed,
+                    TaskCase.status == TaskCaseStatus.FAILED,
+                ).count()
                 from shared.infrastructure.user_context import get_current_user_id
                 task.updated_by_user_id = get_current_user_id()
 

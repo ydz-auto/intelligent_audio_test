@@ -12,6 +12,7 @@ import type {
   TaskCaseBrief,
   TaskSourceBrief,
   TaskDomainStats,
+  TaskCaseRemoveResult,
 } from '../../domain/model/task'
 import type {
   CaseDetail,
@@ -122,6 +123,16 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
 
 export function toTaskList(dtos: (TaskDto | TaskDetailDto)[] | null | undefined): Task[] {
   return (dtos ?? []).map(toTask)
+}
+
+/** 用例移除响应 DTO → TaskCaseRemoveResult（INT-305；snake_case → camelCase） */
+export function toTaskCaseRemoveResult(raw: Record<string, unknown>): TaskCaseRemoveResult {
+  return {
+    taskId: String(raw.taskId ?? raw.task_id ?? ''),
+    caseId: String(raw.caseId ?? raw.case_id ?? ''),
+    purged: Boolean(raw.purged ?? false),
+    reportRequeued: Boolean(raw.reportRequeued ?? raw.report_requeued ?? false),
+  }
 }
 
 /** 任务域全量聚合统计 DTO → TaskDomainStats（INT-200） */

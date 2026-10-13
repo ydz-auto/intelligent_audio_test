@@ -10,7 +10,7 @@ from typing import List, Optional
 from sqlalchemy import case, or_
 
 from shared.models.database import get_db_session
-from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
 from shared.utils.status_constants import (
     ExecutionStatus,
     EvaluationStatus,
@@ -21,11 +21,15 @@ from shared.utils.status_constants import (
     INTERRUPTED_EXECUTION_STATUSES,
 )
 from task_service.infrastructure.persistence.models import Task, TaskCase, TaskDevice
+from task_service.infrastructure.persistence.models import TestResult
 
 logger = logging.getLogger(__name__)
 
 # 服务重启导致任务中断的错误提示（对齐 V9.7.10 旧版文案）
 _INTERRUPTED_ERROR_MESSAGE = '服务重启导致任务中断'
+
+# INT-305：用例移除留痕（error_message 盖写；recount / 列表按此剔除软删行）
+_REMOVED_CASE_MESSAGE = '用例已被移除'
 
 
 class TaskLifecycleMixin:
@@ -55,8 +59,10 @@ class TaskLifecycleMixin:
             task.completed_at = None
             task.actual_duration = None
             # 重置所有 TaskCase 为 pending
+            # （INT-305：移除留痕行跳过——不复活被删用例、不清除移除留痕）
             session.query(TaskCase).filter(
-                TaskCase.task_id == task_id
+                TaskCase.task_id == task_id,
+                task_case_not_removed(TaskCase),
             ).update({
                 TaskCase.status: derive_task_case_status(ExecutionStatus.PENDING, EvaluationStatus.PENDING),
                 TaskCase.execution_status: ExecutionStatus.PENDING,
@@ -67,6 +73,7 @@ class TaskLifecycleMixin:
                 TaskCase.error_message: None,
             }, synchronize_session=False)
             # 删除旧 TestResult（重跑将 INSERT 新行，残留旧行导致重复/脏结果）
+            # （INT-305：被删用例的 excluded 行一并不留——重跑后用例不再属于本任务）
             case_ids = [
                 row[0] for row in session.query(TaskCase.test_case_id).filter(
                     TaskCase.task_id == task_id,
@@ -198,12 +205,16 @@ class TaskLifecycleMixin:
             session.close()
 
     def find_retry_cases(self, task_id: int):
-        """查找需要重试的用例（execution_status != completed 或 status == failed）。"""
+        """查找需要重试的用例（execution_status != completed 或 status == failed）。
+
+        INT-305：移除留痕行不参与重试。
+        """
         session = get_db_session()
         try:
             return session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
                 TaskCase.execution_status != ExecutionStatus.COMPLETED,
+                task_case_not_removed(TaskCase),
             ).all()
         finally:
             session.close()
@@ -219,7 +230,10 @@ class TaskLifecycleMixin:
         from shared.models.common_enums import RetryScopeMode
         session = get_db_session()
         try:
-            q = session.query(TaskCase).filter(TaskCase.task_id == task_id)
+            q = session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                task_case_not_removed(TaskCase),
+            )
             if mode == RetryScopeMode.SELECTED.value:
                 q = q.filter(TaskCase.test_case_id.in_([str(c) for c in (selected_case_ids or [])]))
             elif mode == RetryScopeMode.FAILED_ONLY.value:
@@ -299,20 +313,28 @@ class TaskLifecycleMixin:
             session.close()
 
     def recount_task_cases(self, task_id: int) -> None:
-        """重新统计任务的完成/失败用例数。"""
+        """重新统计任务的完成/失败用例数。
+
+        INT-305：移除留痕行（error_message = _REMOVED_CASE_MESSAGE 的软删行）
+        不计入总数/完成/失败——用例已从任务剔除，计数口径与列表/报告一致。
+        """
         session = get_db_session()
         try:
             from sqlalchemy import func as _func
+            not_removed = task_case_not_removed(TaskCase)
             total = session.query(_func.count(TaskCase.id)).filter(
-                TaskCase.task_id == task_id
+                TaskCase.task_id == task_id,
+                not_removed,
             ).scalar() or 0
             completed = session.query(_func.count(TaskCase.id)).filter(
                 TaskCase.task_id == task_id,
                 TaskCase.execution_status == ExecutionStatus.COMPLETED,
+                not_removed,
             ).scalar() or 0
             failed = session.query(_func.count(TaskCase.id)).filter(
                 TaskCase.task_id == task_id,
                 TaskCase.execution_status == ExecutionStatus.FAILED,
+                not_removed,
             ).scalar() or 0
             task = session.get(Task, task_id)
             if task:
@@ -350,6 +372,104 @@ class TaskLifecycleMixin:
             ).first()
         finally:
             session.close()
+
+    # ==================== INT-305：用例移除 ====================
+
+    def remove_task_case(self, task_id: int, case_id: str,
+                         deleted_by_user_id=None) -> dict:
+        """移除任务用例（INT-305）。
+
+        分阶段语义由调用方（task_lifecycle_service.remove_case）决定：
+        - pending/queued（无结果产出）：物理删除 TaskCase 行
+          （该行从未执行过，删除后重跑可重新关联）；
+        - 其余（已有执行/评估产出）：软删（error_message 盖写移除留痕）
+          + 级联处置 TestResult（excluded 标记，不物理删，保审计）。
+
+        Args:
+            task_id: 任务 ID
+            case_id: TaskCase.test_case_id
+            deleted_by_user_id: 操作人（x-user-id 透传；None 保持 NULL）
+
+        Returns:
+            {'removed': True, 'had_result': bool}；用例不存在返回 None
+        """
+        session = get_db_session()
+        try:
+            tc = session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                TaskCase.test_case_id == case_id,
+            ).first()
+            if tc is None:
+                return None
+
+            had_result = session.query(TestResult.id).filter(
+                TestResult.task_id == task_id,
+                TestResult.test_case_id == case_id,
+            ).first() is not None
+
+            if not had_result and tc.execution_status in (ExecutionStatus.PENDING, ExecutionStatus.QUEUED):
+                # 无结果产出且未开始执行：物理删除（重跑可重新关联）
+                session.query(TaskCase).filter(TaskCase.id == tc.id).delete(synchronize_session=False)
+                session.commit()
+                return {'removed': True, 'had_result': False, 'purged': True}
+
+            # 软删留痕：error_message 盖写移除语义（对齐 skip 的 error_message 用法）
+            tc.error_message = '用例已被移除'
+            tc.updated_by_user_id = deleted_by_user_id
+            # 级联处置 TestResult：excluded 标记（不物理删，保审计；
+            # 报告/聚合按 excluded=1 剔除被删用例）
+            session.query(TestResult).filter(
+                TestResult.task_id == task_id,
+                TestResult.test_case_id == case_id,
+            ).update({
+                TestResult.excluded: 1,
+                TestResult.excluded_by_user_id: deleted_by_user_id,
+            }, synchronize_session=False)
+            session.commit()
+            return {'removed': True, 'had_result': had_result, 'purged': False}
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def count_task_cases_excluding_removed(self, task_id: int) -> int:
+        """移除后的用例总数（软删留痕行剔除，供 recount 口径统一）。"""
+        session = get_db_session()
+        try:
+            return session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                task_case_not_removed(TaskCase),
+            ).count()
+        finally:
+            session.close()
+
+    def touch_task_updated_by(self, task_id: int, user_id=None) -> None:
+        """盖写任务行 updated_by_user_id（INT-305：移除用例操作人留痕）。"""
+        session = get_db_session()
+        try:
+            session.query(Task).filter(Task.id == task_id).update(
+                {Task.updated_by_user_id: user_id}, synchronize_session=False)
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    def expire_progress_cache(self, task_id: int) -> None:
+        """失效共享层进度缓存（INT-305：删除后立即拉新，不等 TTL）。
+
+        task_data_cache 为进程内 TTL 缓存；删除用例后 2s TTL 内的
+        task_progress 拉取会读到旧 test_cases 列表，此处主动清空本任务条目。
+        """
+        try:
+            from shared.utils.task_data_cache import _cache, _cache_lock
+            with _cache_lock:
+                for prefix in ('progress:', 'detail:'):
+                    _cache.pop(f'{prefix}{task_id}', None)
+        except Exception:
+            logger.debug("失效进度缓存失败 task_id=%s", task_id, exc_info=True)
 
     def find_task_for_stop(self, task_id: int):
         """停止前检查：返回 Task PO。"""

@@ -214,6 +214,16 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
         except Exception as e:
             return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
 
+    def RemoveTaskCaseLifecycle(self, request, context=None):
+        """移除任务用例（INT-305）：操作人经 x-user-id metadata 透传（命令 handler 内 get_current_user_id）"""
+        try:
+            from task_service.application.commands.task_commands import RemoveTaskCaseCommand
+            return self._resp(self.cmd.handle_remove_task_case(
+                RemoveTaskCaseCommand(task_id=request.task_id, case_id=request.case_id)
+            ))
+        except Exception as e:
+            return task_pb.TaskConfigResponse(success=False, message=str(e), data="")
+
     # ---- 收藏 / 回收站（INT-141）----
 
     def FavoriteTask(self, request, context=None):

@@ -20,6 +20,7 @@ import uuid
 from datetime import datetime
 
 from shared.models.database import get_db_session
+from shared.utils.status_utils import task_case_not_removed
 from shared.utils.status_constants import (
     ExecutionStatus,
     EvaluationStatus,
@@ -410,12 +411,19 @@ class PublishedTaskRepository:
     # ==================== 快照构建数据读取 ====================
 
     def get_task_case_ids(self, task_id: int):
-        """读取任务关联用例 ID（按 TaskCase.id 升序保序）。"""
+        """读取任务关联用例 ID（按 TaskCase.id 升序保序）。
+
+        INT-305：移除留痕行（error_message = '用例已被移除'）剔除——
+        发布快照以现存用例为准。
+        """
         session = get_db_session()
         try:
             rows = (
                 session.query(TaskCase.test_case_id)
-                .filter(TaskCase.task_id == task_id)
+                .filter(
+                    TaskCase.task_id == task_id,
+                    task_case_not_removed(TaskCase),
+                )
                 .order_by(TaskCase.id.asc())
                 .all()
             )

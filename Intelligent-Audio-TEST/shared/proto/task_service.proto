@@ -168,6 +168,8 @@ service TaskConfigService {
   rpc ControlTaskLifecycle(ControlTaskLifecycleRequest) returns (TaskConfigResponse);
   rpc StopTaskLifecycle(StopTaskLifecycleRequest) returns (TaskConfigResponse);
   rpc RextractTaskLifecycle(RextractTaskLifecycleRequest) returns (TaskConfigResponse);
+  // ---- 用例移除（INT-305：执行详情模态窗四阶段删除用例，操作人走 x-user-id metadata）----
+  rpc RemoveTaskCaseLifecycle(RemoveTaskCaseLifecycleRequest) returns (TaskConfigResponse);
 }
 
 // ==================== TaskConfigService Messages ====================
@@ -242,6 +244,11 @@ message StopTaskLifecycleRequest {
 message RextractTaskLifecycleRequest {
   int32 task_id = 1;
   string data = 2;  // JSON: {execution_status, evaluation_status}
+}
+// INT-305：执行详情模态窗移除用例（按任务阶段分语义：待执行摘除 / 执行中中断 / 终态软删+excluded）
+message RemoveTaskCaseLifecycleRequest {
+  int32 task_id = 1;
+  string case_id = 2;  // TaskCase.test_case_id（str）
 }
 message TaskConfigResponse {
   bool success = 1;

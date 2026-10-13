@@ -10,7 +10,7 @@
 from datetime import datetime
 
 from task_service.infrastructure.persistence.models import TaskCase
-from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
 from shared.utils.status_constants import (
     TaskCaseStatus, ExecutionStatus, EvaluationStatus,
     ACTIVE_EXECUTION_STATUSES, ACTIVE_EVALUATION_STATUSES,
@@ -25,9 +25,11 @@ class TaskDispatchMixin:
     """用例分发：领取 / 原子占用 / 按类型分发 / 失败处理"""
 
     def _get_next_pending_case(self, task_id, session):
-        """获取下一个待执行的测试用例"""
-        return session.query(TaskCase).filter_by(
-            task_id=task_id, execution_status=ExecutionStatus.PENDING
+        """获取下一个待执行的测试用例（INT-305：移除留痕行不参与领取）"""
+        return session.query(TaskCase).filter(
+            TaskCase.task_id == task_id,
+            TaskCase.execution_status == ExecutionStatus.PENDING,
+            task_case_not_removed(TaskCase),
         ).order_by(TaskCase.created_at.asc()).first()
 
     def _handle_no_pending_case(self, task_id, task, session, stop_event=None):
