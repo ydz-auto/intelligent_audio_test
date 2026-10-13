@@ -369,6 +369,7 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         """
         aggregates = self.repository.list_reports(
             status=query.status,
+            task_id=query.task_id,
             page=query.page,
             page_size=query.page_size,
             favorite=query.favorite,

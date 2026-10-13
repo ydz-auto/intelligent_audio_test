@@ -486,6 +486,7 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             from shared.infrastructure.user_context import user_id_from_context
             query = ListReportsQuery(
                 status=getattr(request, 'status', None) or None,
+                task_id=getattr(request, 'task_id', 0) or None,
                 page=getattr(request, 'page', None) or 1,
                 page_size=getattr(request, 'per_page', None) or 20,
                 favorite=getattr(request, 'favorite', False),

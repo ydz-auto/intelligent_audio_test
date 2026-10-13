@@ -36,6 +36,12 @@ def export_get(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.export())
 
 
+@router.get('/by_task/{task_id}')
+def get_by_task(task_id: int, _: None = require_permission('report:read')):
+    # INT-262：网关透出按任务查报告（V9.7.10 单体能力，微服务化后丢失）
+    return _handle(ReportQueryService.get_by_task(task_id))
+
+
 @router.get('/{report_id}')
 def get_one(report_id: int, _: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_one(report_id))

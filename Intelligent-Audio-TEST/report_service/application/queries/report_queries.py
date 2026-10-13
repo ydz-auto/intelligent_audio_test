@@ -50,6 +50,7 @@ class ListReportsQuery:
 
     Attributes:
         status: 可选状态过滤（pending/generating/completed/failed）
+        task_id: 可选任务 ID 精确过滤（INT-262：按任务查报告）
         page: 页码（从 1 开始）
         page_size: 每页数量
         favorite: 可选（INT-141）仅当前用户收藏（user_id 来自 x-user-id metadata）
@@ -57,6 +58,7 @@ class ListReportsQuery:
         user_id: 可选，收藏过滤/标记用当前用户
     """
     status: Optional[str] = None
+    task_id: Optional[int] = None
     page: int = 1
     page_size: int = 20
     favorite: bool = False

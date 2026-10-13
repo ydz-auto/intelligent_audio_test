@@ -216,17 +216,25 @@ def delete_report(report_id: int):
 # ---- 读操作 ----
 
 @router.get('')
-def list_reports(status: Optional[str] = Query(None), page: int = Query(1), page_size: int = Query(20)):
+def list_reports(
+    status: Optional[str] = Query(None),
+    task_id: Optional[int] = Query(None),
+    page: int = Query(1),
+    page_size: int = Query(20),
+):
     """分页列出报告。
 
     查询参数：
         status:     str  可选状态过滤
+        task_id:    int  可选任务 ID 精确过滤（INT-262：只返回该任务报告，
+                         任务无报告时返回空列表而非全量）
         page:       int  页码（默认 1）
         page_size:  int  每页数量（默认 20）
     """
     try:
         query = ListReportsQuery(
             status=status,
+            task_id=task_id,
             page=page,
             page_size=page_size,
         )

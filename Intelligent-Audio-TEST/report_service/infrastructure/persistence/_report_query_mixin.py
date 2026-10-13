@@ -57,6 +57,7 @@ class ReportQueryMixin:
     def list_reports(
         self,
         status: Optional[str] = None,
+        task_id: Optional[int] = None,
         page: int = 1,
         page_size: int = 20,
         favorite: bool = False,
@@ -67,6 +68,7 @@ class ReportQueryMixin:
 
         Args:
             status: 可选状态过滤（pending/generating/completed/failed）
+            task_id: 可选任务 ID 精确过滤（INT-262）
             page: 页码（从 1 开始）
             page_size: 每页数量
             favorite: 可选（INT-141）仅当前用户收藏
@@ -84,6 +86,8 @@ class ReportQueryMixin:
             self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
         if status:
             query = query.filter(self.PO_CLASS.status == status)
+        if task_id:
+            query = query.filter(self.PO_CLASS.task_id == task_id)
         if favorite:
             from report_service.infrastructure.persistence.models import ReportFavorite
             if not user_id:

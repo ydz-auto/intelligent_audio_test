@@ -49,6 +49,7 @@ class ReportQueryService:
             resp = stub.ListReports(report_pb.ListReportsRequest(
                 report_type=query.report_type or '',
                 status=query.status or '',
+                task_id=query.task_id or 0,
                 algorithm_type=query.algorithm_type or '',
                 page=query.page,
                 per_page=query.per_page or 20,
@@ -78,6 +79,24 @@ class ReportQueryService:
                 report_id=int(report_id)))
             if not resp.success:
                 return error_response(resp.message or '查询失败', 404)
+            data = _loads(resp.data, {}) or {}
+            return success_response(data)
+        except Exception as e:
+            return error_response(f'查询报告失败: {str(e)}')
+
+    @staticmethod
+    def get_by_task(task_id):
+        """按任务查询最新报告（INT-262：对齐 report_service 直连 /by_task 路由）。
+
+        任务无报告时 404，与 get_one 口径一致。
+        """
+        try:
+            stub = report_config_service.stub
+            resp = stub.GetReportByTask(report_pb.GetReportByTaskRequest(
+                task_id=int(task_id)))
+            if not resp.success:
+                return error_response(resp.message or '未找到测试报告',
+                                      code=404, http_code=404)
             data = _loads(resp.data, {}) or {}
             return success_response(data)
         except Exception as e:

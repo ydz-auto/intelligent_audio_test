@@ -284,6 +284,8 @@ class ReportListQuery(APIModel):
     per_page: Optional[int] = Field(None)
     report_type: Optional[str] = Field(None, alias='type')
     status: Optional[str] = Field(None)
+    # INT-262：按任务查报告（taskId/task_id 双拼写，经 NamingAliasMiddleware 补齐别名）
+    task_id: Optional[int] = Field(None)
     keyword: Optional[str] = Field(None)
     start_time: Optional[str] = Field(None)
     end_time: Optional[str] = Field(None)
