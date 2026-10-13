@@ -142,11 +142,16 @@ def _find_ai_segments_for_user(user_seg: Dict[str, Any],
                                ai_segments: List[Dict[str, Any]],
                                next_user_start: Optional[float],
                                ) -> List[Dict[str, Any]]:
-    """找到用户段之后、下一个用户段之前的 AI 回复段"""
-    user_end = user_seg['end']
+    """找到本轮用户发言期间及之后、下一个用户段之前的 AI 回复段
+
+    起点取 user_seg['start']（而非 user_end）：全双工下模型可能在本轮用户说话中途
+    插话（停顿词/短插入），这些正是误接管信号，必须并入本轮 ai_chunks 供 LLM 判定；
+    合并轮（用户多段连续发言）时轮内插话也在此窗口内。
+    """
+    user_start = user_seg['start']
     boundary = next_user_start if next_user_start is not None else float('inf')
     return [ai_seg for ai_seg in ai_segments
-            if ai_seg['start'] >= user_end and ai_seg['start'] < boundary]
+            if ai_seg['start'] >= user_start and ai_seg['start'] < boundary]
 
 
 def _pre_split_turns(user_chunks: List[Dict[str, Any]],
@@ -154,17 +159,43 @@ def _pre_split_turns(user_chunks: List[Dict[str, Any]],
                      user_gap: float = TURN_SPLIT_PRE_GAP_S,
                      ai_gap: float = ASR_MODEL_SEG_MERGE_GAP_S,
                      max_no_ai_gap: float = TURN_SPLIT_MAX_GAP_S,
+                     one_turn: bool = False,
                      ) -> List[TurnInfo]:
     """时间戳粗预切对话轮次
 
-    策略：
+    策略（轮次边界只由**用户语音停顿**决定，模型反馈不参与切轮）：
     1. 将 user_chunks 按 user_gap 聚类为用户语音段
-    2. 将 ai_chunks 按 ai_gap 聚类为 AI 回复段
-    3. AI 回复段的出现是轮次边界（强信号）
-    4. 无 AI 回复时，用户两段间隔 > max_no_ai_gap 判为不同轮次（弱信号）
+    2. 将 ai_chunks 按 ai_gap 聚类为 AI 回复段（仅用于并入各轮的 ai_chunks，不切轮）
+    3. 用户两段间隔 > max_no_ai_gap 判为不同轮次；否则合并为同一轮。
+       模型在两段之间说了什么（停顿词/实质性回复）都不改变轮次数，
+       中途插话作为误接管信号随本轮 ai_chunks 交给 LLM 判定。
+    4. 下一段用户是简短应答（如"啊"、"好的"、"嗯"）时并入当前轮，不单独成轮
+
+    one_turn=True：按配置轮次切分——整轮 user_chunks + ai_chunks 合并为 1 个话轮，
+    轮内不再切分（用户连续多次提问、模型最后一次性回复的场景视为 1 轮）。
     """
     if not user_chunks:
         return []
+
+    # 按配置轮次切分：1 配置轮次 = 1 话轮，轮内不做音频切分
+    if one_turn:
+        u_start, _ = valid_ts(user_chunks[0].get('timestamp'))
+        _, u_end = valid_ts(user_chunks[-1].get('timestamp'))
+        ai_all = ai_chunks or []
+        ai_start = None
+        ai_end = None
+        if ai_all:
+            ai_start, _ = valid_ts(ai_all[0].get('timestamp'))
+            _, ai_end = valid_ts(ai_all[-1].get('timestamp'))
+        return [TurnInfo(
+            turn_index=1,
+            user_chunks=user_chunks,
+            ai_chunks=ai_all,
+            user_start_s=u_start,
+            user_end_s=u_end,
+            ai_start_s=ai_start,
+            ai_end_s=ai_end,
+        )]
 
     user_segments = _cluster_chunks(user_chunks, user_gap)
     ai_segments = _cluster_chunks(ai_chunks, ai_gap) if ai_chunks else []
@@ -181,18 +212,15 @@ def _pre_split_turns(user_chunks: List[Dict[str, Any]],
             next_seg = user_segments[i + 1]
             gap = next_seg['start'] - user_seg['end']
 
-            has_ai_between = any(
-                ai_seg['start'] >= user_seg['end'] and ai_seg['start'] < next_seg['start']
-                for ai_seg in ai_segments
-            )
-
-            # 判断下一段用户是否只是简短应答（如"啊"、"好的"、"嗯"）
-            # 如果是，即使中间有 AI 回复，也合并到当前轮（属于同一轮交互）
+            # 下一段用户是否只是简短应答（如"啊"、"好的"、"嗯"）——并入当前轮。
+            # 只按字数（≤2 字）判断：不能用"时长<1s"（语速快的完整提问如"你会唱歌吗"
+            # 0.97s 说完也会被误判为简短应答而错误并入前一轮）
             next_text = next_seg['text']
-            next_dur = next_seg['end'] - next_seg['start']
-            is_brief_response = len(next_text) <= 2 or next_dur < 1.0
+            is_brief_response = len(next_text) <= 2
 
-            if (has_ai_between and not is_brief_response) or gap > max_no_ai_gap:
+            # 轮次边界只由用户停顿决定：间隔 > max_no_ai_gap 且非简短应答 → 不同轮次；
+            # 模型在两段之间说了什么都不参与切轮（中途插话作为误接管信号随本轮 ai_chunks 判定）
+            if gap > max_no_ai_gap and not is_brief_response:
                 next_user_start = next_seg['start']
             else:
                 merged_chunks = user_seg['chunks'] + next_seg['chunks']
@@ -207,11 +235,8 @@ def _pre_split_turns(user_chunks: List[Dict[str, Any]],
                 while i + 1 < len(user_segments):
                     nx = user_segments[i + 1]
                     g = nx['start'] - user_seg['end']
-                    has_ai = any(
-                        ai_seg['start'] >= user_seg['end'] and ai_seg['start'] < nx['start']
-                        for ai_seg in ai_segments
-                    )
-                    if has_ai or g > max_no_ai_gap:
+                    nx_text = nx['text']
+                    if g > max_no_ai_gap and len(nx_text) > 2:
                         next_user_start = nx['start']
                         break
                     else:
@@ -433,13 +458,21 @@ def _llm_confirm_turns(turns: List[TurnInfo],
 def split_turns(user_chunks: List[Dict[str, Any]],
                 ai_chunks: List[Dict[str, Any]],
                 task_params: Optional[Dict[str, Any]] = None,
+                one_turn: bool = False,
                 ) -> List[TurnInfo]:
-    """对话轮次切分主入口：粗预切 → LLM 确认"""
-    turns = _pre_split_turns(user_chunks, ai_chunks)
+    """对话轮次切分主入口：粗预切 → LLM 确认
+
+    one_turn=True：按配置轮次切分，整轮合并为 1 个话轮，跳过 LLM 确认（无合并对象）。
+    """
+    turns = _pre_split_turns(user_chunks, ai_chunks, one_turn=one_turn)
 
     if not turns:
         logger.info("[turn_evaluation] 粗预切结果为空，返回空列表")
         return []
+
+    if one_turn:
+        logger.info("[turn_evaluation] 按配置轮次切分: 整轮合并为 1 个话轮")
+        return turns
 
     turns = _llm_confirm_turns(turns, task_params)
 
@@ -589,9 +622,9 @@ def judge_false_takeover(user_chunks, ai_chunks, pause_intervals,
         return result
 
     except Exception as e:
-        logger.warning(f"[turn_evaluation] 误解管LLM调用失败: {e}，默认非误解管")
-        result['reason'] = f'LLM调用失败: {e}'
-        return result
+        # LLM 调用失败不再降级兜底：误解管判定不可信，整任务置为失败
+        logger.error(f"[turn_evaluation] 误解管LLM调用失败，任务置为失败: {e}")
+        raise
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -740,11 +773,9 @@ def judge_takeover(user_chunks, ai_chunks,
         return result
 
     except Exception as e:
-        logger.warning(f"[turn_evaluation] 接管LLM调用失败: {e}，回退到TOR客观逻辑")
-        took_over = (tor_duration >= 1.0) or (tor_n_words > 3)
-        result['takeover'] = 1 if took_over else 0
-        result['reason'] = f'LLM调用失败，回退TOR客观逻辑: {e}'
-        return result
+        # LLM 调用失败不再降级兜底：接管判定不可信，整任务置为失败
+        logger.error(f"[turn_evaluation] 接管LLM调用失败，任务置为失败: {e}")
+        raise
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -754,6 +785,7 @@ def judge_takeover(user_chunks, ai_chunks,
 def evaluate_all_turns(user_chunks: List[Dict[str, Any]],
                        ai_chunks: List[Dict[str, Any]],
                        task_params: Optional[Dict[str, Any]] = None,
+                       one_turn: bool = False,
                        ) -> Tuple[List[TurnInfo], List[TurnClassification]]:
     """逐轮三分类主入口
 
@@ -766,14 +798,15 @@ def evaluate_all_turns(user_chunks: List[Dict[str, Any]],
 
     Args:
         user_chunks: 用户侧 ASR chunks
-        ai_chunks: AI 侧 ASR chunks
+        ai_chunks:  AI 侧 ASR chunks
         task_params: 读取 llm_model 配置
+        one_turn:    按配置轮次切分（True=整轮合并为 1 话轮，轮内不切分）
 
     Returns:
         (turns, classifications): 轮次列表 + 每轮分类结果
     """
     # 1. 轮次切分
-    turns = split_turns(user_chunks, ai_chunks, task_params)
+    turns = split_turns(user_chunks, ai_chunks, task_params, one_turn=one_turn)
 
     classifications = []
 

@@ -263,6 +263,9 @@ class InterruptionMetricsCalculator(BaseCalculator):
             if msg and msg != '无可判定轮次':
                 base = result.get('message') or ''
                 result['message'] = f'{base}；LLM 行为判定降级: {msg}' if base else f'LLM 行为判定降级: {msg}'
+                # LLM 调用失败不再降级兜底：行为判定不可信，整任务置为失败
+                if 'LLM 调用失败' in msg:
+                    result['is_success'] = False
             return result
 
         behaviors = behaviors_from_judge(judge_result)

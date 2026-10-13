@@ -192,6 +192,22 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             is_reject = is_reject.strip().lower() in ('true', '1', 'yes')
         return bool(is_reject)
 
+    @staticmethod
+    def _is_round_failed(result):
+        """判定单个拒识轮评估是否失败（LLM 调用失败/输出解析失败/显式失败标记）。
+
+        失败轮仍计入 n_reject_rounds（拒识轮计数），但不会归入成功/询问/失败任何分子，
+        若放任不管会把占比分母撑大导致三率之和 < 100%，故整例判定评估失败。
+        """
+        if not isinstance(result, dict) or not result:
+            return True
+        msg = str(result.get('message') or '')
+        if 'LLM 调用失败' in msg or 'LLM 输出解析失败' in msg:
+            return True
+        if result.get('enabled') is False or result.get('is_success') is False:
+            return True
+        return False
+
     def run(self, task_params):
         """覆写：目标轮 is_reject=false 时直接跳过评估（不调 LLM、不产出任何拒识指标）
 
@@ -227,6 +243,7 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         per_round = []
         reject_results = []  # 仅有效拒识轮结果，用于聚合
         n_reject_rounds = 0
+        failed_rounds = []   # 评估失败的拒识轮（round_number），任一存在则整例判定评估失败
 
         for i in range(len(rounds)):
             rd = rounds[i] if isinstance(rounds[i], dict) else {}
@@ -263,6 +280,9 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
                 result.setdefault(f'n_{field}', 1 if result.get(field) else 0)
             per_round.append(result)
             reject_results.append(result)
+            # 检测该轮是否评估失败（LLM 调用失败/输出解析失败等）：任一失败 → 整例判定评估失败
+            if self._is_round_failed(result):
+                failed_rounds.append(i)
 
         # 聚合（仅统计有效拒识轮结果，跳过占位项）
         if not reject_results:
@@ -296,6 +316,28 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         agg['tokens_used'] = sum(r.get('tokens_used', 0) for r in reject_results)
         agg['input_token'] = sum(r.get('input_token', 0) for r in reject_results)
         agg['output_token'] = sum(r.get('output_token', 0) for r in reject_results)
+
+        # ═══ 整例失败判定 ═══
+        # 任一拒识轮评估失败（LLM 调用失败/输出解析失败等）→ 整例判定为评估失败。
+        # 失败轮已计入 n_reject_rounds 但不会归入任何分子，若照常输出会把占比分母撑大，
+        # 导致 成功/询问/失败 三率之和 < 100%；因此整体标记失败并清空统计字段，
+        # 平台侧见 message 含 'LLM 调用失败' 即整例剔除（不参与分子/分母）。
+        if failed_rounds:
+            agg['enabled'] = False
+            agg['is_success'] = False
+            agg['message'] = (
+                f'LLM 调用失败: 拒识轮评估失败，整例判定评估失败'
+                f'（失败轮次: {failed_rounds}）'
+            )
+            for field in _SUM_FIELDS:
+                agg.pop(f'n_{field}', None)
+            agg.pop('n_reject_rounds', None)
+            for dict_field in _COUNT_DICT_FIELDS:
+                agg.pop(dict_field, None)
+            logger.warning(
+                f'[reject_judge] 整例判定评估失败: 失败拒识轮 {failed_rounds}, '
+                f'n_reject_rounds={n_reject_rounds}（已清空占比统计）'
+            )
 
         logger.info(
             f'[reject_judge] 多轮聚合: n_reject_rounds={n_reject_rounds} '
