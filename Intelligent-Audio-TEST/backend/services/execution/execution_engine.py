@@ -1154,7 +1154,7 @@ class ExecutionEngine:
                             if task.status in ['completed', 'failed']:
                                 # 更新任务完成时间和实际执行时长
                                 task.completed_at = datetime.now(self.utc_plus_8)
-                            if task.started_at:
+                            if task.completed_at and task.started_at:
                                 # 确保 started_at 是带时区的 datetime 对象
                                 if task.started_at.tzinfo is None:
                                     task.started_at = task.started_at.replace(tzinfo=self.utc_plus_8)

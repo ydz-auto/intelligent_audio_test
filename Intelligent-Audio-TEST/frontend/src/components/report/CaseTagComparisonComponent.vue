@@ -393,24 +393,13 @@ const paginatedMetrics = computed(() => {
   return filteredMetricsForDisplay.value.slice(start, end)
 })
 
-const metricDecimalPlacesMap = computed(() => {
-  const map = {}
-  const list = Array.isArray(allMetrics.value) ? allMetrics.value : []
-  list.forEach(m => {
-    if (!m || !m.name) return
-    const dp = m.decimalPlaces ?? m.decimal_places
-    if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
-  })
-  return map
-})
-
+// 聚合展示精度由聚合代码（后端 round 2 位）决定，统一保留 2 位小数；
+// 不再读取维度 decimal_places，decimal_places 仅用于具体用例卡片（TestCaseReportDetail）。
 const formatMetricForDisplay = (metricName, value) => {
   if (value === '-' || value === null || value === undefined) return '-'
   const num = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(num)) return String(value)
-  const dp = metricDecimalPlacesMap.value?.[String(metricName)]
-  if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp)
-  return String(num)
+  return String(num.toFixed(2))
 }
 // 同时使用设备和API作为资源，API任务可能没有设备，设备任务可能没有API
 // 使用??替代||，并检查数组长度，确保空数组不会被当作有效值

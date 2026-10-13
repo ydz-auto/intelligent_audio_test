@@ -2,6 +2,9 @@
 """
 环境理解（env_judge）维度种子脚本
 
+> 数据以数据库为金标对齐（2026-10-13）：维度/参数/映射/body_template 均与
+> intelligent_audio_test 库真实状态逐字段核对一致。
+
 背景：
    环境理解族评估"模型对环境音内容的理解"：模型回复音频(ai_wav) + 用户通道音频(user_wav)
    + 被播放音频(played_audios) + 参考答案(correctAnswer)/环境类型(env_type)，

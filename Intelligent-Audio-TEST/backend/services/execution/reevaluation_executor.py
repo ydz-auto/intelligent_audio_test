@@ -466,6 +466,28 @@ class ReevaluationExecutor:
                 failed_dims_by_round.setdefault(trd.round_number, set()).add(trd.dimension_id)
             if not failed_dims_by_round:
                 return False  # 没有失败的维度，无需重新评估
+
+            # 清空待重评维度的历史失败逐轮行（幽灵行）：
+            # E2E 用例每轮未配置评估维度时，逐轮 TRD 行只是整体评估 per_round 投影的产物；
+            # 某轮无有效值（如无接管/打断事件）时投影不覆盖该轮，历史残留的 failed 逐轮行
+            # 会永久保留，update_task_case_status 统计到失败维度把用例永久判为 failed。
+            # 删除后由本次重新评估的 per_round 投影重新入库；整体行(round_number IS NULL)
+            # 由 _create_dimension_results 复用重置为 pending，不在此删除。
+            reeval_dim_ids = set()
+            for _dims in failed_dims_by_round.values():
+                reeval_dim_ids |= _dims
+            if reeval_dim_ids:
+                stale_count = db.session.query(TestResultDimension).filter(
+                    TestResultDimension.test_result_id == result,
+                    TestResultDimension.dimension_id.in_(list(reeval_dim_ids)),
+                    TestResultDimension.round_number.isnot(None),
+                    TestResultDimension.evaluation_status == 'failed',
+                ).delete(synchronize_session='fetch')
+                if stale_count:
+                    log_and_emit('INFO', 'reevaluator',
+                                 f"清空待重评维度的历史失败逐轮行: test_case_id={test_case_id}, "
+                                 f"dims={sorted(reeval_dim_ids)}, 删除 {stale_count} 条",
+                                 task_id=task_id, test_case_id=test_case_id)
         else:
             # 全量重评：清理旧的维度评估记录
             db.session.query(TestResultDimension).filter_by(
@@ -574,10 +596,20 @@ class ReevaluationExecutor:
                 dimension_filter = None
                 if reevaluate_type == 'failed':
                     overall_failed = failed_dims_by_round.get(None)
-                    if not overall_failed:
-                        dimension_filter = []  # 明确跳过整体提交
-                    else:
+                    if overall_failed:
                         dimension_filter = list(overall_failed)
+                    elif not any_submitted:
+                        # 兜底：逐轮评估未配置/未提交时，失败维度只存在于 per-round TRD
+                        # （整体评估写回逐轮记录所致）。此时整体(round_number=None)无失败维度，
+                        # 若直接跳过会导致用例已被置回 queued 却无人提交，永久卡死并阻塞后续重新评估。
+                        # 取所有轮次失败维度的并集，走整体重评。
+                        round_failed_dims = set()
+                        for _rn, _dims in failed_dims_by_round.items():
+                            if _rn is not None:
+                                round_failed_dims |= _dims
+                        dimension_filter = list(round_failed_dims) if round_failed_dims else []
+                    else:
+                        dimension_filter = []  # 明确跳过整体提交
 
                 if dimension_filter == []:
                     pass  # 无整体失败维度，跳过
@@ -629,6 +661,23 @@ class ReevaluationExecutor:
                         log_and_emit('ERROR', 'reevaluator',
                                     f"E2E 整体重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
                                     task_id=task_id, test_case_id=test_case_id)
+
+            if not any_submitted:
+                # 没有任何维度可提交：回滚刚才置为 queued/pending 的用例到终态，
+                # 避免用例卡在 queued（无回调、maybe_finalize 无法收尾），阻塞后续重新评估任务
+                tc_rel = db.session.query(TaskCase).filter_by(
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                ).first()
+                if tc_rel and tc_rel.evaluation_status in ('queued', 'pending'):
+                    tc_rel.evaluation_status = 'failed' if reevaluate_type == 'failed' else 'completed'
+                    if tc_rel.execution_status in ('completed', 'failed'):
+                        tc_rel.status = tc_rel.execution_status
+                    db.session.commit()
+                    log_and_emit('WARNING', 'reevaluator',
+                                 f"重新评估无维度可提交，回滚用例评估状态: test_case_id={test_case_id}, "
+                                 f"evaluation_status={tc_rel.evaluation_status}, status={tc_rel.status}",
+                                 task_id=task_id, test_case_id=test_case_id)
 
             return True if any_submitted else False
 
