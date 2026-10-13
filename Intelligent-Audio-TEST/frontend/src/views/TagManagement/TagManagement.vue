@@ -1,22 +1,22 @@
 <template>
-  <div class="tag-management-view">
-    <div class="page-header">
-      <div class="header-left">
-        <h2 class="page-title" style="color: var(--primary-color);">
+  <div class="tg-tag-management-view">
+    <div class="tg-page-header">
+      <div class="tg-header-left">
+        <h2 class="tg-page-title" style="color: var(--primary-color);">
           <i class="fas fa-tags"></i>
           标签管理
         </h2>
-        <p class="page-description">管理标签分类和标签，用于用例筛选和报告统计</p>
+        <p class="tg-page-description">管理标签分类和标签，用于用例筛选和报告统计</p>
       </div>
-      <div class="header-right">
-        <button class="btn btn-primary" @click="openTagModal()">
-          <i class="fas fa-plus btn-icon"></i>
+      <div class="tg-header-right">
+        <button class="tg-btn tg-btn-primary" @click="openTagModal()">
+          <i class="fas fa-plus tg-btn-icon"></i>
           新建标签
         </button>
       </div>
     </div>
 
-    <div class="tag-content-layout">
+    <div class="tg-tag-content-layout">
       <CategorySidebar
         :categories="categories"
         :selected-category-id="selectedCategoryId"
@@ -315,4 +315,5 @@ onMounted(() => {
 });
 </script>
 
+<!-- INT-277：页面样式走 tg- 前缀命名空间隔离（同 INT-250 pt- 方案），禁止裸 .btn/.card/.page-header 等全站通用类名全局注入污染其他页面 -->
 <style src="./tagManagement.css"></style>

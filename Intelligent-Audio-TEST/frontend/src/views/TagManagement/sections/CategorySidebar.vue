@@ -1,73 +1,73 @@
 <template>
-  <div class="category-sidebar">
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">
+  <div class="tg-category-sidebar">
+    <div class="tg-card">
+      <div class="tg-card-header">
+        <h3 class="tg-card-title">
           <i class="fas fa-folder"></i>
           标签分类
-          <span class="total-count">共 {{ categoryTotal }} 个</span>
+          <span class="tg-total-count">共 {{ categoryTotal }} 个</span>
         </h3>
-        <button class="btn btn-text btn-primary" @click="emit('open-category-modal')">
-          <i class="fas fa-plus btn-icon"></i>
+        <button class="tg-btn tg-btn-text tg-btn-primary" @click="emit('open-category-modal')">
+          <i class="fas fa-plus tg-btn-icon"></i>
           新建
         </button>
       </div>
-      <div class="card-search">
-        <div class="search-box">
-          <i class="fas fa-search search-icon"></i>
+      <div class="tg-card-search">
+        <div class="tg-search-box">
+          <i class="fas fa-search tg-search-icon"></i>
           <input
             type="text"
             v-model="categorySearchKeyword"
             placeholder="搜索分类..."
-            class="search-input"
+            class="tg-search-input"
             @input="handleCategorySearchInput"
           />
         </div>
       </div>
       <div
-        class="card-body category-scroll-container"
+        class="tg-card-body tg-category-scroll-container"
         ref="scrollContainer"
         @scroll="handleCategoryScroll"
       >
-        <div class="category-list">
+        <div class="tg-category-list">
           <div
             v-for="cat in categories"
             :key="cat.id"
-            :class="['category-item', { active: selectedCategoryId === cat.id }]"
+            :class="['tg-category-item', { 'tg-active': selectedCategoryId === cat.id }]"
             @click="emit('select-category', cat.id)"
           >
-            <div class="category-info">
-              <span class="category-color" :style="{ backgroundColor: cat.color || '#6366f1' }"></span>
-              <span class="category-name">{{ cat.name }}</span>
-              <span class="tag-count-badge">{{ cat.tagCount }}</span>
+            <div class="tg-category-info">
+              <span class="tg-category-color" :style="{ backgroundColor: cat.color || '#6366f1' }"></span>
+              <span class="tg-category-name">{{ cat.name }}</span>
+              <span class="tg-tag-count-badge">{{ cat.tagCount }}</span>
             </div>
-            <div class="category-actions" v-if="selectedCategoryId === cat.id">
-              <button class="btn btn-text btn-primary" @click.stop="emit('open-category-modal', cat)" title="编辑">
+            <div class="tg-category-actions" v-if="selectedCategoryId === cat.id">
+              <button class="tg-btn tg-btn-text tg-btn-primary" @click.stop="emit('open-category-modal', cat)" title="编辑">
                 <i class="fas fa-edit"></i>
               </button>
-              <button class="btn btn-text btn-danger" @click.stop="emit('confirm-delete-category', cat)" title="删除">
+              <button class="tg-btn tg-btn-text tg-btn-danger" @click.stop="emit('confirm-delete-category', cat)" title="删除">
                 <i class="fas fa-trash"></i>
               </button>
             </div>
           </div>
 
           <div
-            :class="['category-item', { active: selectedCategoryId === null }]"
+            :class="['tg-category-item', { 'tg-active': selectedCategoryId === null }]"
             @click="emit('select-category', null)"
           >
-            <div class="category-info">
-              <span class="category-color" :style="{ backgroundColor: '#94a3b8' }"></span>
-              <span class="category-name">未分类</span>
-              <span class="tag-count-badge">{{ uncategorizedCount }}</span>
+            <div class="tg-category-info">
+              <span class="tg-category-color" :style="{ backgroundColor: '#94a3b8' }"></span>
+              <span class="tg-category-name">未分类</span>
+              <span class="tg-tag-count-badge">{{ uncategorizedCount }}</span>
             </div>
           </div>
 
-          <div v-if="categoryLoading" class="loading-more-categories">
+          <div v-if="categoryLoading" class="tg-loading-more-categories">
             <i class="fas fa-spinner fa-spin"></i>
             <span>加载中...</span>
           </div>
 
-          <div v-if="!categoryHasMore && categories.length > 0 && !categoryLoading" class="no-more-categories">
+          <div v-if="!categoryHasMore && categories.length > 0 && !categoryLoading" class="tg-no-more-categories">
             <span>已加载全部</span>
           </div>
         </div>
@@ -77,18 +77,18 @@
 </template>
 <style scoped>
 
-/* category-actions - 自全局样式就近迁移 */
-.category-actions {
+/* tg-category-actions - 自全局样式就近迁移 */
+.tg-category-actions {
     display: flex;
     gap: var(--spacing-sm);
 }
 
-.category-actions {
+.tg-category-actions {
     display: flex ;
     gap: 8px ;
 }
 
-.category-actions {
+.tg-category-actions {
     display: flex;
     gap: 8px;
 }
