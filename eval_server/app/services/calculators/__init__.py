@@ -9,7 +9,7 @@ import 本包即自动完成所有内置 calculator 的注册。
       __init__.py   XiaoyiMetricsCalculator（全域编排：统一共享 ASR + 跨域子维度聚合）
       turn_taking/  TurnTakingCalculator（域内编排：tor / false_takeover /
                     takeover_latency / high_freq_turn_taking / high_freq_llm_judge）
-      turn_eval/    TurnEvalCalculator（逐轮三分类：误解管 / 接管 / 未接管 + 接管时延 + 回复质量）
+      turn_eval/    TurnEvalCalculator（逐轮三分类：误接管 / 接管 / 未接管 + 接管时延 + 回复质量）
       interruptibility/  interruption_metrics
       rejection_scene_awareness/  non_interactive_latency / noise_latency
       env_judge/     env_judge (环境理解裁判)
@@ -60,7 +60,7 @@ TaskService.register_calculator('takeover_latency', TakeoverLatencyCalculator())
 TaskService.register_calculator('high_freq_turn_taking', HighFreqTurnTakingCalculator())
 TaskService.register_calculator('high_freq_llm_judge', HighFreqLlmJudgeCalculator())
 TaskService.register_calculator('reply_quality', ReplyQualityCalculator())
-# turn_eval 域：逐轮三分类（误解管 / 接管 / 未接管）+ 接管时延 + 回复质量
+# turn_eval 域：逐轮三分类（误接管 / 接管 / 未接管）+ 接管时延 + 回复质量
 TaskService.register_calculator('turn_eval', TurnEvalCalculator())
 # interruptibility 域
 TaskService.register_calculator('interruption_metrics', InterruptionMetricsCalculator())

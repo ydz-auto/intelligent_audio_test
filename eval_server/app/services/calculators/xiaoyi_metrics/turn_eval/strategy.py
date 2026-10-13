@@ -2,7 +2,7 @@
 """turn_eval 策略类：逐轮三分类主维度
 
 从 turn_taking 拆出的独立主维度，专注：
-  1. 轮次切分 + 逐轮三分类（误解管 / 接管 / 未接管）
+  1. 轮次切分 + 逐轮三分类（误接管 / 接管 / 未接管）
   2. 仅对"接管"轮计算接管时延
   3. 仅对"接管"轮评分回复质量
 
@@ -39,7 +39,7 @@ class TurnEvalCalculator(BaseCalculator):
     输出结构：
         {
             'turn_classification': {
-                'summary': '正常接管N，未接管M，误解管K',
+                'summary': '正常接管N，未接管M，误接管K',
                 'normal_takeover_count': N,
                 'no_takeover_count': M,
                 'false_takeover_count': K,
@@ -413,7 +413,7 @@ class TurnEvalCalculator(BaseCalculator):
             logger.error(f"[turn_eval] {_msg}")
             return {'message': _msg}
         if total_normal == 0 and total_no_takeover == 0 and total_false_takeover == 0:
-            _msg = ('评估失败: 正常接管0，未接管0，误解管0，无有效轮次可评估'
+            _msg = ('评估失败: 正常接管0，未接管0，误接管0，无有效轮次可评估'
                     '（请检查音频内容与ASR识别结果）')
             logger.error(f"[turn_eval] {_msg}")
             return {'message': _msg}
@@ -424,7 +424,7 @@ class TurnEvalCalculator(BaseCalculator):
         results = {}
 
         results['turn_classification'] = {
-            'summary': f'正常接管{total_normal}，未接管{total_no_takeover}，误解管{total_false_takeover}',
+            'summary': f'正常接管{total_normal}，未接管{total_no_takeover}，误接管{total_false_takeover}',
             'normal_takeover_count': total_normal,
             'no_takeover_count': total_no_takeover,
             'false_takeover_count': total_false_takeover,
@@ -489,7 +489,7 @@ class TurnEvalCalculator(BaseCalculator):
 
         logger.info(
             f"[turn_eval] 三分类汇总: 正常接管{total_normal}，"
-            f"未接管{total_no_takeover}，误解管{total_false_takeover}，"
+            f"未接管{total_no_takeover}，误接管{total_false_takeover}，"
             f"共{len(all_turn_results)}轮"
         )
 
@@ -539,7 +539,7 @@ class TurnEvalCalculator(BaseCalculator):
             item = {
                 'round_number': i,
                 'turn_classification': {
-                    'summary': f'正常接管{normal}，未接管{no_takeover}，误解管{false_takeover}',
+                    'summary': f'正常接管{normal}，未接管{no_takeover}，误接管{false_takeover}',
                     'normal_takeover_count': normal,
                     'no_takeover_count': no_takeover,
                     'false_takeover_count': false_takeover,
