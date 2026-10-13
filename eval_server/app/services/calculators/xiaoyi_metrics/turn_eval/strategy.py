@@ -2,7 +2,7 @@
 """turn_eval 策略类：逐轮三分类主维度
 
 从 turn_taking 拆出的独立主维度，专注：
-  1. 轮次切分 + 逐轮三分类（误解管 / 接管 / 未接管）
+  1. 轮次切分 + 逐轮三分类（误接管 / 接管 / 未接管）
   2. 仅对"接管"轮计算接管时延
   3. 仅对"接管"轮评分回复质量
 
@@ -39,7 +39,7 @@ class TurnEvalCalculator(BaseCalculator):
     输出结构：
         {
             'turn_classification': {
-                'summary': '正常接管N，未接管M，误解管K',
+                'summary': '正常接管N，未接管M，误接管K',
                 'normal_takeover_count': N,
                 'no_takeover_count': M,
                 'false_takeover_count': K,
@@ -160,6 +160,16 @@ class TurnEvalCalculator(BaseCalculator):
 
         turns, classifications = evaluate_all_turns(user_chunks, ai_chunks, task_params, one_turn=one_turn)
 
+        # 多轮合并模式：FFT 对齐段（每个 played_audio = 每轮的定点）→ 轮次归属查表，
+        # 并算出每轮用户话轮结束时间（offset + 干净语料时长），供接管时延取用户结束点。
+        align_segments = shared_asr.get('_align_segments') or []
+        round_of = shared_asr.get('_round_of_played_audio') or {}
+        round_user_end_s = {}
+        for seg in align_segments:
+            rn = round_of.get(seg.get('source'))
+            if rn is not None:
+                round_user_end_s[rn] = (seg.get('offset_s') or 0.0) + (seg.get('clean_duration_s') or 0.0)
+
         turn_results = []
         normal_count = 0
         no_takeover_count = 0
@@ -184,10 +194,17 @@ class TurnEvalCalculator(BaseCalculator):
 
             if cls.classification == TurnClassification.TAKEOVER:
                 # ── 接管时延（仅"接管"时计算）──
+                # 用 FFT 定点确定该 turn 所属轮次的用户话轮结束时间，
+                # 时延 = 用户说完之后的首个 AI 词 − FFT 定点用户结束
+                user_end_s = None
+                if align_segments and round_of:
+                    rn = self._match_turn_round(turn_detail, align_segments, round_of)
+                    user_end_s = round_user_end_s.get(rn)
                 latency_result = compute_takeover_latency_from_chunks(
                     turn.user_chunks, turn.ai_chunks or [],
                     played_audios=shared_asr.get('played_audios'),
                     user_wav=shared_asr.get('user_wav'),
+                    user_end_s=user_end_s,
                 )
                 turn_detail['takeover_latency'] = latency_result
 
@@ -224,8 +241,6 @@ class TurnEvalCalculator(BaseCalculator):
 
         # 多轮合并模式：把每条 turn 归属到其真实轮次
         # （对齐 segments 的 source=played_audio 文件名 → 轮次映射，按时间重叠匹配）
-        align_segments = shared_asr.get('_align_segments') or []
-        round_of = shared_asr.get('_round_of_played_audio') or {}
         if align_segments and round_of:
             for td in turn_results:
                 rn = self._match_turn_round(td, align_segments, round_of)
@@ -398,7 +413,7 @@ class TurnEvalCalculator(BaseCalculator):
             logger.error(f"[turn_eval] {_msg}")
             return {'message': _msg}
         if total_normal == 0 and total_no_takeover == 0 and total_false_takeover == 0:
-            _msg = ('评估失败: 正常接管0，未接管0，误解管0，无有效轮次可评估'
+            _msg = ('评估失败: 正常接管0，未接管0，误接管0，无有效轮次可评估'
                     '（请检查音频内容与ASR识别结果）')
             logger.error(f"[turn_eval] {_msg}")
             return {'message': _msg}
@@ -409,7 +424,7 @@ class TurnEvalCalculator(BaseCalculator):
         results = {}
 
         results['turn_classification'] = {
-            'summary': f'正常接管{total_normal}，未接管{total_no_takeover}，误解管{total_false_takeover}',
+            'summary': f'正常接管{total_normal}，未接管{total_no_takeover}，误接管{total_false_takeover}',
             'normal_takeover_count': total_normal,
             'no_takeover_count': total_no_takeover,
             'false_takeover_count': total_false_takeover,
@@ -474,7 +489,7 @@ class TurnEvalCalculator(BaseCalculator):
 
         logger.info(
             f"[turn_eval] 三分类汇总: 正常接管{total_normal}，"
-            f"未接管{total_no_takeover}，误解管{total_false_takeover}，"
+            f"未接管{total_no_takeover}，误接管{total_false_takeover}，"
             f"共{len(all_turn_results)}轮"
         )
 
@@ -524,7 +539,7 @@ class TurnEvalCalculator(BaseCalculator):
             item = {
                 'round_number': i,
                 'turn_classification': {
-                    'summary': f'正常接管{normal}，未接管{no_takeover}，误解管{false_takeover}',
+                    'summary': f'正常接管{normal}，未接管{no_takeover}，误接管{false_takeover}',
                     'normal_takeover_count': normal,
                     'no_takeover_count': no_takeover,
                     'false_takeover_count': false_takeover,

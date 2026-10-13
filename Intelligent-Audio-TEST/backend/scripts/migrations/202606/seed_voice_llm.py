@@ -2,9 +2,6 @@
 """
 voice_llm 算法种子数据
 
-> 数据以数据库为金标对齐（2026-10-13）：用例参数/设备字段/参考参数/映射/关联均与
-> intelligent_audio_test 库真实状态逐字段核对一致。
-
 功能：
 1. 注册 voice_llm 算法定义（algorithm_definitions）
 2. 注册 voice_llm 用例专属参数（case_algorithm_params），含 scope 字段

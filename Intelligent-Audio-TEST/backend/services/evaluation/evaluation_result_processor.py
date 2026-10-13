@@ -486,52 +486,6 @@ class EvaluationResultProcessor(RoundAggregator):
                         device_id = test_result.device_id
                         test_case_id = test_case_id or test_result.test_case_id
 
-                # ── 拒识裁判整例失败判定 ──
-                # eval_server 拒识多轮聚合时，若任一拒识轮评估失败（LLM 调用失败/输出解析失败），
-                # 会把整体 result 标记为失败（message 含 'LLM 调用失败'，enabled=False）并清空统计字段，
-                # 平台侧据此把整组维度标记 failed，用例算作评估失败（不参与占比分子/分母，保证三率之和=100%）。
-                try:
-                    resp_result = resp_data
-                    if isinstance(resp_data, dict) and resp_data.get('code') == 0:
-                        resp_result = (resp_data.get('data') or {}).get('result') or {}
-                    resp_msg = str((resp_result or {}).get('message') or '')
-                    is_reject_group = any(
-                        d.get('task_type_code') == 'reject_judge'
-                        or d.get('parent_task_type_code') == 'reject_judge'
-                        for d, _ in group_items
-                    )
-                    if is_reject_group and (
-                        'LLM 调用失败' in resp_msg
-                        or (isinstance(resp_result, dict) and resp_result.get('enabled') is False)
-                    ):
-                        self._log(
-                            level='ERROR',
-                            category='execution',
-                            content=f"拒识裁判整例评估失败: {resp_msg or 'enabled=False'}，"
-                                    f"用例ID: {test_case_id}, 组内维度: "
-                                    f"{[item[0]['name'] for item in group_items]}",
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            api_id=api_id
-                        )
-                        self.update_all_dimensions_in_group_failed(
-                            group_items=group_items,
-                            error_message=resp_msg or '拒识裁判整例评估失败',
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            api_raw_response=resp_data,
-                            api_request_body=api_request_body
-                        )
-                        return
-                except Exception as e:
-                    self._log(
-                        level='WARNING',
-                        content=f"拒识裁判整例失败判定异常(忽略): {e}",
-                        task_id=task_id,
-                        test_case_id=test_case_id,
-                        api_id=api_id
-                    )
-
                 for dim_data, dimension_result_id in group_items:
                     dim_id = dim_data['id']
                     dim_name = dim_data['name']

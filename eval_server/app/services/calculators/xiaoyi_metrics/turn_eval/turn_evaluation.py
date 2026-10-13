@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""对话轮次切分 + 逐轮三分类评判（误解管 / 接管 / 未接管）
+"""对话轮次切分 + 逐轮三分类评判（误接管 / 接管 / 未接管）
 
 本模块聚合了三大功能：
 1. 对话轮次切分：时间戳粗预切 + LLM 语义确认
-2. 误解管判断：LLM 主判，复用 false_takeover 的 prompt
+2. 误接管判断：LLM 主判，复用 false_takeover 的 prompt
 3. 接管/未接管判断：TOR 客观数据 + LLM 确认
 
-输出每轮的分类结果，供 turn_eval/strategy.py 汇总为 "正常接管N，未接管M，误解管K"。
+输出每轮的分类结果，供 turn_eval/strategy.py 汇总为 "正常接管N，未接管M，误接管K"。
 """
 import logging
 from typing import Any, Dict, List, Optional, Tuple
@@ -76,7 +76,7 @@ class TurnInfo:
 class TurnClassification:
     """单轮三分类结果"""
 
-    MISUNDERSTAND = '误解管'
+    MISUNDERSTAND = '误接管'
     TAKEOVER = '接管'
     NO_TAKEOVER = '未接管'
 
@@ -487,7 +487,7 @@ def split_turns(user_chunks: List[Dict[str, Any]],
 
 
 # ═══════════════════════════════════════════════════════════════
-#  第二部分：误解管判断（LLM 主判）
+#  第二部分：误接管判断（LLM 主判）
 # ═══════════════════════════════════════════════════════════════
 
 def _build_false_takeover_llm_prompt(user_chunks, ai_chunks, pause_intervals):
@@ -548,7 +548,7 @@ judge_result 说明：true = 存在话轮误接管；false = 无话轮误接管"
 def judge_false_takeover(user_chunks, ai_chunks, pause_intervals,
                          task_params: Optional[Dict[str, Any]] = None,
                          ) -> Dict[str, Any]:
-    """逐轮误解管判断（LLM 主判）
+    """逐轮误接管判断（LLM 主判）
 
     Args:
         user_chunks: 该轮用户 ASR chunks
@@ -558,7 +558,7 @@ def judge_false_takeover(user_chunks, ai_chunks, pause_intervals,
 
     Returns:
         dict: {
-            'false_takeover': int,   1=误解管, 0=非误解管
+            'false_takeover': int,   1=误接管, 0=非误接管
             'reason': str,           判断理由
             'evidence': dict,        证据信息
         }
@@ -570,16 +570,16 @@ def judge_false_takeover(user_chunks, ai_chunks, pause_intervals,
     }
 
     if not ai_chunks:
-        result['reason'] = '无 AI 回复，不存在误解管'
+        result['reason'] = '无 AI 回复，不存在误接管'
         return result
 
     llm_config = get_llm_config()
     if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
-        result['reason'] = 'LLM未配置，默认非误解管'
+        result['reason'] = 'LLM未配置，默认非误接管'
         return result
 
     if not user_chunks:
-        result['reason'] = '无用户ASR数据，默认非误解管'
+        result['reason'] = '无用户ASR数据，默认非误接管'
         return result
 
     model = ''
@@ -616,14 +616,14 @@ def judge_false_takeover(user_chunks, ai_chunks, pause_intervals,
         result['evidence'] = parsed.get('evidence') or {}
 
         logger.info(
-            f"[turn_evaluation] 误解管LLM判定: false_takeover={ft_val} "
+            f"[turn_evaluation] 误接管LLM判定: false_takeover={ft_val} "
             f"reason={result['reason']!r}"
         )
         return result
 
     except Exception as e:
-        # LLM 调用失败不再降级兜底：误解管判定不可信，整任务置为失败
-        logger.error(f"[turn_evaluation] 误解管LLM调用失败，任务置为失败: {e}")
+        # LLM 调用失败不再降级兜底：误接管判定不可信，整任务置为失败
+        logger.error(f"[turn_evaluation] 误接管LLM调用失败，任务置为失败: {e}")
         raise
 
 
@@ -792,7 +792,7 @@ def evaluate_all_turns(user_chunks: List[Dict[str, Any]],
     流程：
     1. 对话轮次切分（split_turns）
     2. 逐轮：
-       a. 误解管判断（LLM）→ true → 误解管
+       a. 误接管判断（LLM）→ true → 误接管
        b. TOR 客观数据 + 接管/未接管 LLM 判断
        c. 接管 → 分类=接管；否则 → 分类=未接管
 
@@ -814,7 +814,7 @@ def evaluate_all_turns(user_chunks: List[Dict[str, Any]],
         # 该轮的 pause_intervals
         turn_pauses = compute_pause_intervals(turn.user_chunks) if turn.user_chunks else []
 
-        # 2a. 误解管判断
+        # 2a. 误接管判断
         ft_result = judge_false_takeover(
             turn.user_chunks, turn.ai_chunks, turn_pauses, task_params,
         )
@@ -861,7 +861,7 @@ def evaluate_all_turns(user_chunks: List[Dict[str, Any]],
     false_take = sum(1 for c in classifications if c.classification == TurnClassification.MISUNDERSTAND)
     logger.info(
         f"[turn_evaluation] 三分类汇总: 正常接管{normal}，"
-        f"未接管{no_take}，误解管{false_take}，共{len(turns)}轮"
+        f"未接管{no_take}，误接管{false_take}，共{len(turns)}轮"
     )
 
     return turns, classifications
