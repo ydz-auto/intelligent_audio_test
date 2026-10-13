@@ -141,12 +141,42 @@ def _refuse_if_busy():
             '请先排空端口或停掉占用者）。')
 
 
+def _ensure_postgres():
+    """Postgres 5432 不可达时经 WMI 脱离进程树拉起（绝不 kill 已有进程）。
+
+    postgres.exe 若从 agent run 内直接启动（Start-Process 等）会加入 run
+    进程树，run 退出被平台整树收割（2026-10-13 16:43:57 实证）；WMI 启动
+    parent=WmiPrvSE，run 退出不受影响（INT-125 同口径）。
+    """
+    if _port_busy('127.0.0.1', 5432):
+        return
+    print('[UI-STACK] Postgres 5432 未监听，经 WMI 脱离进程树拉起...', flush=True)
+    payload = os.path.join(BASE_DIR, 'tests', 'ui', '_pg_start.cmd')
+    ps = (
+        "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{"
+        f"CommandLine = 'cmd.exe /c \"{payload}\"';"
+        f"CurrentDirectory = '{BASE_DIR}'"
+        "}; $r.ReturnValue"
+    )
+    r = subprocess.run(['powershell', '-NoProfile', '-Command', ps],
+                       capture_output=True, text=True, timeout=30)
+    import time as _t
+    deadline = _t.time() + 60
+    while _t.time() < deadline:
+        if _port_busy('127.0.0.1', 5432):
+            print('[UI-STACK] Postgres 已就绪（5432）', flush=True)
+            return
+        _t.sleep(2)
+    raise SystemExit('[UI-STACK] Postgres 60s 内未就绪（见 pgsql\\log\\pg_wmi.log），中止起栈。')
+
+
 def start():
     """起栈并常驻监督（PID 文件恒为本 launcher 进程，stop 按树杀整栈）。
 
     必须经 WMI 脱离 agent 进程树启动（INT-125 同因：run 退出会收割进程树）；
     本函数永不返回，除非 Ctrl+C 或任一服务进程死亡（连带停整栈防半栈漂移）。
     """
+    _ensure_postgres()
     _refuse_if_busy()
     os.makedirs(LOG_DIR, exist_ok=True)
     base_env = _base_env()

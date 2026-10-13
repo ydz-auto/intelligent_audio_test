@@ -56,6 +56,9 @@ def test_unauthenticated_redirects_to_login(driver, page):
     driver.execute_script('window.localStorage.clear();')
     page.goto('/TestCaseManager')
     page.wait_visible('.login-card', timeout=15)
+    # 守卫重定向为异步 hash 跳转，等 URL 稳定到 /login（瞬时竞态下 login-card
+    # 已渲染而地址栏 hash 尚未切换）
+    page.wait.until(lambda d: '/login' in d.current_url.split('#')[-1])
     assert '/login' in page.current_route(), '未登录访问受保护路由未被弹回 /login'
     assert 'redirect' in page.current_route(), '重定向缺少 redirect 参数（登录后无法回跳原页）'
 

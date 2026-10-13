@@ -15,7 +15,9 @@ python tests/ui/run_gate.py          # 一键：WMI 起并行栈（端口+1000�
 ```
 
 并行栈端口表：网关 6000 / HTTP 6001-6010 / gRPC 51051-51101 / 前端 6273，
-Redis 用 db1，日志 `logs/ui_stack/`。栈常驻复用；显式清理：
+Redis 用 db1，日志 `logs/ui_stack/`。栈常驻复用；Postgres 未监听 5432 时
+启动器自动经 WMI 脱离进程树拉起（`_pg_start.cmd`，postgres.exe 从 run 内
+直启会被平台整树收割，2026-10-13 实证）；显式清理：
 
 ```
 python tests/ui/utils/parallel_stack.py stop
