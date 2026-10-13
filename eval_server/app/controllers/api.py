@@ -169,9 +169,8 @@ def _storage_id(task_id=None, case_id=None, fallback=None):
         if case_seg:
             return os.path.join(task_seg, case_seg)
         return task_seg
-    # 无有效 task_id：case_id 作为回退候选（兼容老调用方把备用值放第二参数），
-    # 仍无效再用 fallback / 随机段
-    fallback_seg = _seg(case_id) or _seg(fallback) or f'task_{uuid.uuid4().hex}'
+    # 无有效 task_id：直接用 fallback（如 eval_task_id），仍无效则随机段
+    fallback_seg = _seg(fallback) or f'task_{uuid.uuid4().hex}'
     return fallback_seg
 
 
@@ -511,6 +510,9 @@ def create_task_upload():
     storage_id = _storage_id(caller_task_id, caller_test_case_id, eval_task_id)
     upload_dir = os.path.join(config.UPLOAD_DIR, storage_id)
     os.makedirs(upload_dir, exist_ok=True)
+    # 共享目录（未按用例 id 分目录，storage_id 无层级分隔）下不同用例的同名录音会
+    # 互相覆盖（"串音"根因）；分目录（uploads/<task_id>/<case_id>/）已隔离无需前缀
+    shared_storage = os.sep not in storage_id
 
     # 解析 endpoints（JSON 字符串）
     endpoints = None
@@ -545,6 +547,10 @@ def create_task_upload():
             task_params[field_name] = content
         else:
             # 二进制文件：保存到上传子目录，使用文件路径
+            # 共享目录下加 12 位随机前缀防同名覆盖（设备音频槽位号每批次从头计数，
+            # 不同用例会产出完全同名的录音，如 r1_100016_..._client_in.wav）
+            if shared_storage:
+                filename = f"{uuid.uuid4().hex[:12]}_{filename}"
             file_path = os.path.join(upload_dir, filename)
             file_storage.save(file_path)
             task_params[field_name] = file_path
