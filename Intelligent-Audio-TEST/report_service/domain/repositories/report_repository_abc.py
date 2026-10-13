@@ -68,6 +68,21 @@ class ReportRepositoryABC(ABC):
             聚合根列表（不含子实体集合）。
         """
 
+    @abstractmethod
+    def count_reports(
+        self,
+        status: Optional[str] = None,
+        task_id: Optional[int] = None,
+        favorite: bool = False,
+        deleted: bool = False,
+        user_id: Optional[int] = None,
+    ) -> int:
+        """按 list_reports 同一套过滤条件计数（INT-297：分页信封补 total/pages）。
+
+        Returns:
+            满足过滤条件的报告总数。
+        """
+
     # ---- 子实体集合加载 ----
 
     @abstractmethod

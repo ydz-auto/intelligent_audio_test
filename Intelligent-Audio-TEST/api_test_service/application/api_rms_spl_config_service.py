@@ -319,10 +319,17 @@ class ApiRmsSplConfigService:
             mappings = self.repository.list_by_api(api_id)
         except Exception as e:
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
+        # INT-297：列表信封统一（无分页语义：单页全量）
         return {
             'success': True,
             'message': 'Success',
-            'data': {'items': [_mapping_to_dict(m) for m in mappings], 'total': len(mappings)},
+            'data': {
+                'items': [_mapping_to_dict(m) for m in mappings],
+                'total': len(mappings),
+                'page': 1,
+                'per_page': len(mappings) or 1,
+                'pages': 1,
+            },
             'code': 200,
         }
 

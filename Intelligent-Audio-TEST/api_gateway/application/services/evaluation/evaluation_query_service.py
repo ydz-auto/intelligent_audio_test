@@ -42,7 +42,14 @@ class EvaluationQueryService:
         items_raw = raw.get('items', []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
         items = [CategoryItem(**item) for item in items_raw]
 
-        return success_response(CategoryListData(items=items, total=len(items)))
+        # INT-297：分页信封统一为 {items, page, pages, per_page, total}
+        return success_response(CategoryListData(
+            items=items,
+            total=raw.get('total', len(items)) if isinstance(raw, dict) else len(items),
+            page=raw.get('page', 1) if isinstance(raw, dict) else 1,
+            per_page=raw.get('per_page', len(items) or 1) if isinstance(raw, dict) else (len(items) or 1),
+            pages=raw.get('pages', 1) if isinstance(raw, dict) else 1,
+        ))
 
     # --- 维度管理 (Dimension Management) ---
 

@@ -432,13 +432,14 @@ class TestUserManagementChain:
             page=1, page_size=100, keyword='self_registered'))
         data = json.loads(resp.data)
         assert data['total'] >= 1
-        assert any(u['username'] == 'self_registered' for u in data['users'])
-        assert all('managed_user' not in u['username'] for u in data['users'])
+        # INT-297 信封统一：用户列表键为 items（{items, page, pages, per_page, total}）
+        assert any(u['username'] == 'self_registered' for u in data['items'])
+        assert all('managed_user' not in u['username'] for u in data['items'])
         # role_id 过滤
         role_row = _role_id('baseline_role')
         resp = svc.ListUsers(pb.ListUsersRequest(page=1, page_size=100,
                                                  role_id=role_row))
-        users = json.loads(resp.data)['users']
+        users = json.loads(resp.data)['items']
         assert users and all(u['role_id'] == role_row for u in users)
 
 

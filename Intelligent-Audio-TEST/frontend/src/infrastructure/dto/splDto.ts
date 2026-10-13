@@ -39,10 +39,13 @@ export interface SplHistoryItemDto {
   created_at?: string | null
 }
 
-/** 对应后端 SplHistoryData */
+/** 对应后端 SplHistoryData（INT-297 统一列表信封） */
 export interface SplHistoryDto {
   items: SplHistoryItemDto[]
   total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
 /** 对应后端 SplStatsData */
@@ -67,10 +70,13 @@ export interface SplByDeviceItemDto {
   updated_at?: string | null
 }
 
-/** 对应后端 SplByDeviceData */
+/** 对应后端 SplByDeviceData（INT-297 统一列表信封） */
 export interface SplByDeviceDto {
   items: SplByDeviceItemDto[]
   total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
 // ===== 请求体/查询参数（snake_case） =====

@@ -45,8 +45,15 @@ class TagCategoryQueryService:
         raw = result.get('data') or {}
         items = [TagCategoryItem(**item) for item in raw.get('items', [])]
 
+        # INT-297：分页信封统一为 {items, page, pages, per_page, total}
         return success_response(
-            TagCategoryListData(items=items, total=raw.get('total', 0))
+            TagCategoryListData(
+                items=items,
+                total=raw.get('total', 0),
+                page=raw.get('page', query.page),
+                per_page=raw.get('per_page', query.per_page),
+                pages=raw.get('pages', 0),
+            )
         )
 
     @staticmethod
@@ -83,8 +90,15 @@ class TagQueryService:
         raw = result.get('data') or {}
         items = [TagItem(**item) for item in raw.get('items', [])]
 
+        # INT-297：分页信封统一为 {items, page, pages, per_page, total}
         return success_response(
-            TagDetailListData(items=items, total=raw.get('total', 0))
+            TagDetailListData(
+                items=items,
+                total=raw.get('total', 0),
+                page=raw.get('page', query.page),
+                per_page=raw.get('per_page', query.per_page),
+                pages=raw.get('pages', 0),
+            )
         )
 
     @staticmethod
@@ -103,7 +117,14 @@ class TagQueryService:
         raw = result.get('data') or {}
         tag_names = raw.get('items', [])
 
-        return success_response(TagListData(items=tag_names, total=raw.get('total', 0)))
+        # INT-297：分页信封统一为 {items, page, pages, per_page, total}
+        return success_response(TagListData(
+            items=tag_names,
+            total=raw.get('total', 0),
+            page=raw.get('page', query.page),
+            per_page=raw.get('per_page', query.per_page),
+            pages=raw.get('pages', 0),
+        ))
 
     @staticmethod
     def get_one(tag_id):

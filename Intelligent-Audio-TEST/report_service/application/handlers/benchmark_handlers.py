@@ -90,8 +90,10 @@ class BenchmarkQueryHandler:
                 'published_task_id': query.published_task_id,
                 'subject_name': query.subject_name or '',
             })
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {'success': True, 'message': 'ok',
-                    'data': {'items': rows, 'total': len(rows)}, 'code': 0}
+                    'data': {'items': rows, 'total': len(rows),
+                             'page': 1, 'per_page': len(rows) or 1, 'pages': 1}, 'code': 0}
         except Exception:
             logger.exception('查询 Benchmark 排行失败')
             return {'success': False, 'message': '查询排行失败，请稍后重试', 'data': None, 'code': 500}
@@ -99,8 +101,10 @@ class BenchmarkQueryHandler:
     def handle_get_ranking_subjects(self, query: GetBenchmarkRankingSubjectsQuery) -> dict:
         try:
             subjects = self.repo.list_ranking_subjects(suite=query.suite or '')
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {'success': True, 'message': 'ok',
-                    'data': {'items': subjects, 'total': len(subjects)}, 'code': 0}
+                    'data': {'items': subjects, 'total': len(subjects),
+                             'page': 1, 'per_page': len(subjects) or 1, 'pages': 1}, 'code': 0}
         except Exception:
             logger.exception('查询 Benchmark 被测主体失败')
             return {'success': False, 'message': '查询被测主体失败，请稍后重试', 'data': None, 'code': 500}
@@ -147,8 +151,10 @@ class BenchmarkQueryHandler:
                 }
                 for m in mappings
             ]
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {'success': True, 'message': 'ok',
-                    'data': {'items': items, 'total': len(items)}, 'code': 0}
+                    'data': {'items': items, 'total': len(items),
+                             'page': 1, 'per_page': len(items) or 1, 'pages': 1}, 'code': 0}
         except Exception:
             logger.exception('查询 Benchmark 指标映射失败')
             return {'success': False, 'message': '查询指标映射失败，请稍后重试', 'data': None, 'code': 500}

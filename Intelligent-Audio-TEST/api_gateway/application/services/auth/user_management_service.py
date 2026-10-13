@@ -142,9 +142,14 @@ class UserManagementService:
         ), default_error='查询用户列表失败')
         if fail:
             return fail
+        # INT-297：分页信封统一为 {items, page, pages, per_page, total}
+        total = data.get('total', 0)
         return success_response({
-            'total': data.get('total', 0),
-            'users': data.get('users', []),
+            'items': data.get('items', []),
+            'total': total,
+            'page': page,
+            'per_page': page_size,
+            'pages': data.get('pages', (total + page_size - 1) // page_size if page_size else 1),
         })
 
     @staticmethod

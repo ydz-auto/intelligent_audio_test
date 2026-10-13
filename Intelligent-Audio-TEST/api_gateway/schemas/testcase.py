@@ -196,8 +196,8 @@ class TestCaseStatsData(APIModel):
     recent_updates: List[Dict[str, Any]] = Field(default_factory=list)
 
 
-class TagListData(APIModel):
-    items: List[str] = Field(...)
+class TagListData(PaginatedData[str]):
+    """标签名分页列表（INT-297 信封统一；items 为名称字符串）"""
 
 
 class TagCategoryItem(APIModel):
@@ -211,9 +211,8 @@ class TagCategoryItem(APIModel):
     updated_at: Optional[str] = Field(None)
 
 
-class TagCategoryListData(APIModel):
-    items: List[TagCategoryItem] = Field(...)
-    total: int = Field(...)
+class TagCategoryListData(PaginatedData[TagCategoryItem]):
+    pass
 
 
 class TagCategoryCreateSchema(APIModel):
@@ -242,9 +241,8 @@ class TagItem(APIModel):
     updated_at: Optional[str] = Field(None)
 
 
-class TagDetailListData(APIModel):
-    items: List[TagItem] = Field(...)
-    total: int = Field(...)
+class TagDetailListData(PaginatedData[TagItem]):
+    pass
 
 
 class TagCreateSchema(APIModel):

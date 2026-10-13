@@ -50,10 +50,13 @@ export interface AudioIdsDto {
   total: number
 }
 
-/** 对应 TagListData（音频标签） */
+/** 对应 TagListData（音频标签，INT-297 统一分页信封） */
 export interface AudioTagListDto {
   items: string[]
   total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
 /** 对应 AudioAlgorithmRelationItem */

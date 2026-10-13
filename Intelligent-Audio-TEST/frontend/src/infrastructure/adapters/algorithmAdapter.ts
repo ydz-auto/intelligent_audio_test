@@ -78,9 +78,9 @@ export function toAlgorithmDefinition(dto: AlgorithmDefinitionDto): AlgorithmDef
   }
 }
 
-/** 算法定义列表（{ data, total }） */
-export function toAlgorithmDefinitionList(dto: AlgorithmListDto | null | undefined): AlgorithmDefinition[] {
-  return (dto?.data ?? []).map(toAlgorithmDefinition)
+/** 算法定义列表（INT-297 统一分页信封 {items, page, pages, per_page, total}） */
+export function toAlgorithmDefinitionList(dto: Partial<AlgorithmListDto> | null | undefined): AlgorithmDefinition[] {
+  return (dto?.items ?? []).map(toAlgorithmDefinition)
 }
 
 // ===== 参数 =====
@@ -159,10 +159,10 @@ export function toAlgorithmCaseParam(dto: AlgorithmCaseParamDto): AlgorithmCaseP
   }
 }
 
-/** 参数列表（{ parameters, total }）→ Domain */
-export function toAlgorithmParamList(dto: AlgorithmParamListDto | null | undefined): AlgorithmParamList {
+/** 参数列表（INT-297 统一分页信封）→ Domain */
+export function toAlgorithmParamList(dto: Partial<AlgorithmParamListDto> | null | undefined): AlgorithmParamList {
   return {
-    parameters: (dto?.parameters ?? []).map(toAlgorithmDeviceParamFromRaw),
+    parameters: (dto?.items ?? []).map(toAlgorithmDeviceParamFromRaw),
     total: dto?.total ?? 0,
   }
 }
@@ -184,9 +184,9 @@ export function toParamMapping(dto: ParamMappingDto): ParamMapping {
   }
 }
 
-/** 映射列表 */
-export function toParamMappingList(dto: ParamMappingListDto | null | undefined): ParamMapping[] {
-  return (dto?.mappings ?? []).map(toParamMapping)
+/** 映射列表（INT-297 统一分页信封） */
+export function toParamMappingList(dto: Partial<ParamMappingListDto> | null | undefined): ParamMapping[] {
+  return (dto?.items ?? []).map(toParamMapping)
 }
 
 // ===== 分组 =====
@@ -205,9 +205,9 @@ export function toAlgorithmGroup(dto: AlgorithmGroupDto): AlgorithmGroup {
   }
 }
 
-/** 分组列表 */
-export function toAlgorithmGroupList(dto: AlgorithmGroupListDto | null | undefined): AlgorithmGroup[] {
-  return (dto?.data ?? []).map(toAlgorithmGroup)
+/** 分组列表（INT-297 统一分页信封） */
+export function toAlgorithmGroupList(dto: Partial<AlgorithmGroupListDto> | null | undefined): AlgorithmGroup[] {
+  return (dto?.items ?? []).map(toAlgorithmGroup)
 }
 
 // ===== 选项 =====

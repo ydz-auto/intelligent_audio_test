@@ -383,6 +383,23 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
             aggregate.summaries = self.repository.load_summaries(aggregate.id)
         return aggregates
 
+    def handle_count_reports(self, query: ListReportsQuery) -> int:
+        """处理报告总数查询（与 handle_list 同一套过滤，INT-297 信封统一）。
+
+        Args:
+            query: ListReportsQuery（favorite/deleted/user_id 见 INT-141）
+
+        Returns:
+            满足过滤条件的报告总数。
+        """
+        return self.repository.count_reports(
+            status=query.status,
+            task_id=query.task_id,
+            favorite=query.favorite,
+            deleted=query.deleted,
+            user_id=query.user_id,
+        )
+
     def handle_list_favorite_report_ids(self, user_id) -> dict:
         """处理收藏报告 ID 列表查询。委托 report_favorite_trash_service。"""
         from report_service.application.favorite_trash_service import report_favorite_trash_service

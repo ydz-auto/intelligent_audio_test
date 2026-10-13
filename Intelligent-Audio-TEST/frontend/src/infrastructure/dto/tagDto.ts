@@ -16,10 +16,13 @@ export interface TagCategoryDto {
   updated_at?: string | null
 }
 
-/** 对应后端 TagCategoryListData */
+/** 对应后端 TagCategoryListData（INT-297 统一分页信封） */
 export interface TagCategoryListDto {
   items: TagCategoryDto[]
   total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
 /** 对应后端 TagItem */
@@ -34,16 +37,22 @@ export interface TagItemDto {
   updated_at?: string | null
 }
 
-/** 对应后端 TagDetailListData */
+/** 对应后端 TagDetailListData（INT-297 统一分页信封） */
 export interface TagListDto {
   items: TagItemDto[]
   total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
-/** 对应后端 TagListData（标签名列表） */
+/** 对应后端 TagListData（标签名列表，INT-297 统一分页信封） */
 export interface TagNameListDto {
   items: string[]
   total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
 /** 对应后端 /tags/by-category 的 items 元素（微服务返回 snake_case 字典） */

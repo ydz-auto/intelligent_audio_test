@@ -509,10 +509,14 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 if item is not None:
                     item['is_favorite'] = str(item.get('id')) in fav_ids
                     items.append(item)
+            # INT-297：分页信封统一为 {items, page, pages, per_page, total}
+            total = self.query_handler.handle_count_reports(query)
             return self._resp(True, 'ok', {
                 'items': items,
                 'page': query.page,
-                'page_size': query.page_size,
+                'per_page': query.page_size,
+                'total': total,
+                'pages': (total + query.page_size - 1) // query.page_size if query.page_size else 1,
             })
         except Exception as e:
             logger.exception("ListReports failed")

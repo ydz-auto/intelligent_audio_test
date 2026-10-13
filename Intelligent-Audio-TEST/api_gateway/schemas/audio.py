@@ -8,9 +8,8 @@ from api_gateway.schemas.common import PaginatedData
 from api_gateway.schemas.testcase import AlgorithmParamItem, RoundConfigItem
 
 
-class TagListData(APIModel):
-    items: List[str] = Field(...)
-    total: int = Field(...)
+class TagListData(PaginatedData[str]):
+    """音频标签名列表（INT-297 信封统一）"""
 
 
 class AudioItem(APIModel):

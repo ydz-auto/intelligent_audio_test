@@ -57,10 +57,17 @@ class EvaluationQueryService:
                     'updated_at': updated_at_iso,
                 })
 
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': '',
-                'data': {'items': data, 'total': len(data)},
+                'data': {
+                    'items': data,
+                    'total': len(data),
+                    'page': 1,
+                    'per_page': len(data) or 1,
+                    'pages': 1,
+                },
             }
         except Exception as e:
             logger.error(f"查询分类列表失败: {e}")

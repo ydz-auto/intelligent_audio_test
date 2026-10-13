@@ -51,12 +51,16 @@ class AlgorithmParamQueryService:
                 params = self.repo.list_device_params(algorithm_type)
             serialized = [p if isinstance(p, dict) else asdict(p) for p in params]
 
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': '',
                 'data': {
-                    'parameters': serialized,
+                    'items': serialized,
                     'total': len(serialized),
+                    'page': 1,
+                    'per_page': len(serialized) or 1,
+                    'pages': 1,
                 },
             }
         except Exception as e:
@@ -96,12 +100,16 @@ class AlgorithmParamQueryService:
 
         try:
             params = self.repo.list_case_params(algorithm_type, scope)
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': '',
                 'data': {
-                    'parameters': [p if isinstance(p, dict) else asdict(p) for p in params],
+                    'items': [p if isinstance(p, dict) else asdict(p) for p in params],
                     'total': len(params),
+                    'page': 1,
+                    'per_page': len(params) or 1,
+                    'pages': 1,
                 },
             }
         except Exception as e:
@@ -128,12 +136,16 @@ class AlgorithmParamQueryService:
 
         try:
             params = self.repo.list_reference_params(algorithm_type)
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': '',
                 'data': {
-                    'parameters': [p if isinstance(p, dict) else asdict(p) for p in params],
+                    'items': [p if isinstance(p, dict) else asdict(p) for p in params],
                     'total': len(params),
+                    'page': 1,
+                    'per_page': len(params) or 1,
+                    'pages': 1,
                 },
             }
         except Exception as e:
@@ -170,7 +182,8 @@ class AlgorithmParamQueryService:
             dim_map = self.repo.list_dimension_names_map_by_ids(list(dim_ids))
 
             result = {
-                'mappings': [
+                # INT-297：列表信封统一（无分页语义：单页全量）
+                'items': [
                     {
                         'id': m.id,
                         'algorithm_type': m.algorithm_type,
@@ -184,7 +197,10 @@ class AlgorithmParamQueryService:
                     }
                     for m in mappings
                 ],
-                'total': len(mappings)
+                'total': len(mappings),
+                'page': 1,
+                'per_page': len(mappings) or 1,
+                'pages': 1,
             }
             return {'success': True, 'message': '', 'data': result}
         except Exception as e:

@@ -160,8 +160,8 @@ export function toReportListItem(dto: ReportListItemDto): ReportListItemDomain {
 
 /**
  * 列表响应 → ReportListData（camelCase）。
- * 容忍 report_service ListReports 的精简形状 {items, page, page_size}：
- * total 回退 items 长度、pages 回退 1、per_page 回退 page_size。
+ * INT-297 起后端 /reports 返回统一分页信封 {items, page, pages, per_page, total}；
+ * 回退逻辑保留（total 回退 items 长度、pages 回退 1、per_page 回退 page_size）以容错旧栈。
  */
 export function toReportListData(dto: ReportListDataDto): ReportListData {
   const partial = dto as ReportListDataDto & { page_size?: number }

@@ -50,7 +50,7 @@ class ReportCasesQueryMixin:
             "items": items,
             "total": total,
             "page": page,
-            "perPage": per_page,
+            "per_page": per_page,
             "pages": pages
         }
 
@@ -97,14 +97,14 @@ class ReportCasesQueryMixin:
             "items": items,
             "total": total,
             "page": page,
-            "perPage": per_page,
+            "per_page": per_page,
             "pages": pages
         }
 
     @staticmethod
     def _empty_paged_response() -> dict:
         """空分页响应（统一契约）。"""
-        return {'items': [], 'total': 0, 'page': 1, 'perPage': 20, 'pages': 1}
+        return {'items': [], 'total': 0, 'page': 1, 'per_page': 20, 'pages': 1}
 
     # ---- 导出 ----
 

@@ -31,10 +31,13 @@ export interface AlgorithmDefinitionDto {
   updated_at?: string
 }
 
-/** 对应 list_algorithms 返回 { data, total } */
+/** 对应 list_algorithms 返回（INT-297 统一分页信封 {items, page, pages, per_page, total}） */
 export interface AlgorithmListDto {
-  data: AlgorithmDefinitionDto[]
+  items: AlgorithmDefinitionDto[]
   total: number
+  page: number
+  per_page: number
+  pages: number
 }
 
 /** 设备参数项（对应 AlgorithmDeviceParamItem 序列化） */
@@ -82,10 +85,13 @@ export interface AlgorithmCaseParamDto {
   field_path?: string | null
 }
 
-/** 对应 list_params / list_case_params 返回 { parameters, total } */
+/** 对应 list_params / list_case_params 返回（INT-297 统一分页信封） */
 export interface AlgorithmParamListDto {
-  parameters: Record<string, unknown>[]
+  items: Record<string, unknown>[]
   total: number
+  page: number
+  per_page: number
+  pages: number
 }
 
 /** 参数映射项（对应 list_mappings 返回的 mappings 列表项） */
@@ -101,10 +107,13 @@ export interface ParamMappingDto {
   transform_type: string
 }
 
-/** 对应 list_mappings 返回 { mappings, total } */
+/** 对应 list_mappings 返回（INT-297 统一分页信封） */
 export interface ParamMappingListDto {
-  mappings: ParamMappingDto[]
+  items: ParamMappingDto[]
   total: number
+  page: number
+  per_page: number
+  pages: number
 }
 
 /** 对应 AlgorithmGroupItem */
@@ -119,10 +128,13 @@ export interface AlgorithmGroupDto {
   updated_at?: string
 }
 
-/** 对应 list_groups 返回 { data, total } */
+/** 对应 list_groups 返回（INT-297 统一分页信封） */
 export interface AlgorithmGroupListDto {
-  data: AlgorithmGroupDto[]
+  items: AlgorithmGroupDto[]
   total: number
+  page: number
+  per_page: number
+  pages: number
 }
 
 /** 对应 get_algorithm_options 返回 { algorithms: [...] } */

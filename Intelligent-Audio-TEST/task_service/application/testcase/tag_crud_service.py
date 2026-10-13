@@ -309,12 +309,16 @@ class TagCrudService:
             pagination = self.repo.list_tag_categories_paginated(page=page, per_page=per_page, keyword=keyword)
             items = [self._category_to_dict(cat, tc) for cat, tc in pagination.items]
 
+            # INT-297：分页信封统一为 {items, page, pages, per_page, total}
             return {
                 'success': True,
                 'message': '',
                 'data': {
                     'items': items,
                     'total': pagination.total,
+                    'page': pagination.page,
+                    'per_page': pagination.per_page,
+                    'pages': pagination.pages,
                 },
             }
         except Exception as e:
@@ -350,12 +354,16 @@ class TagCrudService:
 
             items = [self._tag_to_dict(t, cat_map) for t in tags]
 
+            # INT-297：分页信封统一为 {items, page, pages, per_page, total}
             return {
                 'success': True,
                 'message': '',
                 'data': {
                     'items': items,
                     'total': pagination.total,
+                    'page': pagination.page,
+                    'per_page': pagination.per_page,
+                    'pages': pagination.pages,
                 },
             }
         except Exception as e:
@@ -368,12 +376,16 @@ class TagCrudService:
             pagination = self.repo.list_tag_names_paginated(page=page, per_page=per_page, keyword=keyword)
             tag_names = [t.name for t in pagination.items]
 
+            # INT-297：分页信封统一为 {items, page, pages, per_page, total}
             return {
                 'success': True,
                 'message': '',
                 'data': {
                     'items': tag_names,
                     'total': pagination.total,
+                    'page': pagination.page,
+                    'per_page': pagination.per_page,
+                    'pages': pagination.pages,
                 },
             }
         except Exception as e:
@@ -425,10 +437,17 @@ class TagCrudService:
                     'tags': tag_items,
                 })
 
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': '',
-                'data': {'items': result, 'total': len(result)},
+                'data': {
+                    'items': result,
+                    'total': len(result),
+                    'page': 1,
+                    'per_page': len(result) or 1,
+                    'pages': 1,
+                },
             }
         except Exception as e:
             logger.error(f"获取按分类分组的标签失败: {e}")

@@ -124,9 +124,8 @@ class DeviceStatusItem(APIModel):
     last_online_at: Optional[str] = Field(None)
 
 
-class DeviceStatusListData(APIModel):
-    items: List[DeviceStatusItem] = Field(...)
-    total: int = Field(...)
+class DeviceStatusListData(PaginatedData[DeviceStatusItem]):
+    pass
 
 
 class DeviceScanItem(APIModel):

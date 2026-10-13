@@ -19,6 +19,12 @@ import type {
   DimensionParam,
   ReferenceParam,
 } from '../../domain/model/algorithm';
+import type {
+  AlgorithmListDto,
+  AlgorithmGroupListDto,
+  AlgorithmParamListDto,
+  ParamMappingListDto,
+} from '../dto/algorithmDto';
 import { request, type RequestOptions } from '../http/client';
 import {
   toAlgorithmDefinition,
@@ -45,7 +51,7 @@ import {
 
 export const algorithmApi = {
   async getDefinitions(params: Record<string, any> = {}, options: RequestOptions = {}) {
-    const raw = await request<{ data: any[]; total: number }>('GET', '/algorithm/definitions', null, { ...options, params });
+    const raw = await request<Partial<AlgorithmListDto>>('GET', '/algorithm/definitions', null, { ...options, params });
     return { data: toAlgorithmDefinitionList(raw), total: raw?.total ?? 0 };
   },
 
@@ -69,7 +75,7 @@ export const algorithmApi = {
   },
 
   async getGroups(params: Record<string, any> = {}, options: RequestOptions = {}) {
-    const raw = await request<{ data: any[]; total: number }>('GET', '/algorithm/groups', null, { ...options, params });
+    const raw = await request<Partial<AlgorithmGroupListDto>>('GET', '/algorithm/groups', null, { ...options, params });
     return { data: toAlgorithmGroupList(raw), total: raw?.total ?? 0 };
   },
 
@@ -103,7 +109,7 @@ export const algorithmApi = {
   },
 
   async getParams(params: Record<string, any> = {}, options: RequestOptions = {}) {
-    const raw = await request<{ parameters: any[]; total: number }>('GET', '/algorithm/params', null, { ...options, params });
+    const raw = await request<Partial<AlgorithmParamListDto>>('GET', '/algorithm/params', null, { ...options, params });
     return toAlgorithmParamList(raw);
   },
 
@@ -127,7 +133,7 @@ export const algorithmApi = {
   },
 
   async getMappings(params: Record<string, any> = {}, options: RequestOptions = {}) {
-    const raw = await request<{ mappings: any[]; total: number }>('GET', '/algorithm/mappings', null, { ...options, params });
+    const raw = await request<Partial<ParamMappingListDto>>('GET', '/algorithm/mappings', null, { ...options, params });
     return { mappings: toParamMappingList(raw), total: raw?.total ?? 0 };
   },
 
@@ -233,9 +239,9 @@ export const algorithmApi = {
     const params: Record<string, any> = {};
     if (algorithmType) params.algorithm_type = algorithmType;
     if (scope) params.scope = scope;
-    const raw = await request<{ parameters: any[]; total: number }>('GET', '/algorithm/case-params', null, { ...options, params });
+    const raw = await request<{ items: any[]; total: number }>('GET', '/algorithm/case-params', null, { ...options, params });
     return {
-      parameters: (raw?.parameters ?? []).map((p: any) => toAlgorithmCaseParam(p)),
+      parameters: (raw?.items ?? []).map((p: any) => toAlgorithmCaseParam(p)),
       total: raw?.total ?? 0,
     };
   },
@@ -260,8 +266,8 @@ export const algorithmApi = {
   },
 
   async getReferenceParams(algoType: string, options: RequestOptions = {}) {
-    const raw = await request<{ data: any[]; total: number }>('GET', '/algorithm/reference-params', null, { ...options, params: { algorithm_type: algoType } });
-    return { data: toReferenceParamList(raw?.data), total: raw?.total ?? 0 };
+    const raw = await request<{ items: any[]; total: number }>('GET', '/algorithm/reference-params', null, { ...options, params: { algorithm_type: algoType } });
+    return { data: toReferenceParamList(raw?.items), total: raw?.total ?? 0 };
   },
 
   async getReferenceParam(paramId: number, algoType: string) {

@@ -63,6 +63,9 @@ export interface CategoryItemDto {
 export interface CategoryListDto {
   items: CategoryItemDto[]
   total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
 /** 对应 get_dimension_options 返回 { dimensions: [...] } */

@@ -45,10 +45,17 @@ class SPLQueryService:
         """获取校准历史"""
         try:
             data = self.repo.get_calibration_history(mapping_id)
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': 'Success',
-                'data': {'items': data, 'total': len(data)},
+                'data': {
+                    'items': data,
+                    'total': len(data),
+                    'page': 1,
+                    'per_page': len(data) or 1,
+                    'pages': 1,
+                },
                 'code': 200,
             }
         except Exception as e:
@@ -73,10 +80,17 @@ class SPLQueryService:
         """按设备查询"""
         try:
             data = self.repo.get_spl_by_device(device_id)
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': 'Success',
-                'data': {'items': data, 'total': len(data)},
+                'data': {
+                    'items': data,
+                    'total': len(data),
+                    'page': 1,
+                    'per_page': len(data) or 1,
+                    'pages': 1,
+                },
                 'code': 200,
             }
         except Exception as e:

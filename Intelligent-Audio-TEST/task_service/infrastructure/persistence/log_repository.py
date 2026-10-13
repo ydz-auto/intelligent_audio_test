@@ -137,11 +137,13 @@ class LogRepository(LogRepositoryABC):
                 .all()
             )
             items = [_log_po_to_dict(r) for r in rows]
+            # INT-297：分页信封统一为 {items, page, pages, per_page, total}
             return {
                 'items': items,
                 'total': total,
                 'page': page,
                 'per_page': per_page,
+                'pages': (total + per_page - 1) // per_page if per_page else 1,
             }
         finally:
             session.close()

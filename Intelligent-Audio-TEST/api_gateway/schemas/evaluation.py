@@ -14,9 +14,8 @@ class CategoryItem(APIModel):
     updated_at: Optional[str] = Field(None)
 
 
-class CategoryListData(APIModel):
-    items: List[CategoryItem] = Field(...)
-    total: int = Field(...)
+class CategoryListData(PaginatedData[CategoryItem]):
+    pass
 
 
 def parse_rule_field(v):

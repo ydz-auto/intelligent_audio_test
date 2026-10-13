@@ -478,12 +478,16 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
                 self._serialize_algorithm(a.type) for a in algorithms
             ]
 
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': '',
                 'data': {
-                    'data': data_list,
+                    'items': data_list,
                     'total': len(algorithms),
+                    'page': 1,
+                    'per_page': len(data_list) or 1,
+                    'pages': 1,
                 },
             }
         except Exception as e:

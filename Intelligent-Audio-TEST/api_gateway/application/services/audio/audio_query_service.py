@@ -46,12 +46,19 @@ class AudioQueryService:
     # 获取所有可用的音频标签
     @staticmethod
     def get_all_tags():
-        
+
         result = _audio_acl.get_all_tags()
         if result.get('success'):
             data = result.get('data') or {}
             items = data.get('items', [])
-            return success_response(AudioTagListData(items=items, total=len(items)))
+            # INT-297：列表信封统一（无分页语义：单页全量）
+            return success_response(AudioTagListData(
+                items=items,
+                total=len(items),
+                page=1,
+                per_page=len(items) or 1,
+                pages=1,
+            ))
         return wrap_grpc_response(result, default_error_msg='获取标签失败')
 
     # 获取所有音频文件列表

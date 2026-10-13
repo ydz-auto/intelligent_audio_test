@@ -105,6 +105,45 @@ class ReportQueryMixin:
         rows = query.limit(page_size).offset((page - 1) * page_size).all()
         return [_report_po_to_entity(po) for po in rows]
 
+    @with_session
+    def count_reports(
+        self,
+        status: Optional[str] = None,
+        task_id: Optional[int] = None,
+        favorite: bool = False,
+        deleted: bool = False,
+        user_id: Optional[int] = None,
+    ) -> int:
+        """按 list_reports 同一套过滤条件计数（INT-297：分页信封补 total/pages）。
+
+        Args:
+            status/task_id/favorite/deleted/user_id: 与 list_reports 口径一致。
+
+        Returns:
+            满足过滤条件的报告总数。
+        """
+        from sqlalchemy import select as sa_select, cast as sa_cast, String
+        from shared.models.common_enums import EntityType
+
+        session = get_db_session()
+        query = session.query(self.PO_CLASS).filter(
+            self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
+        if status:
+            query = query.filter(self.PO_CLASS.status == status)
+        if task_id:
+            query = query.filter(self.PO_CLASS.task_id == task_id)
+        if favorite:
+            from report_service.infrastructure.persistence.models import ReportFavorite
+            if not user_id:
+                return 0
+            query = query.filter(sa_select(ReportFavorite.id)
+                                 .where(ReportFavorite.user_id == user_id,
+                                        ReportFavorite.entity_type == EntityType.REPORT.value,
+                                        ReportFavorite.entity_id == sa_cast(self.PO_CLASS.id, String))
+                                 .correlate(self.PO_CLASS)
+                                 .exists())
+        return query.count()
+
     # ---- 原始 PO 查询（供报告生成引擎直接使用 PO） ----
 
     @with_session

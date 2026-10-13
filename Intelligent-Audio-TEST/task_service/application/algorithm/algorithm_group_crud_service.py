@@ -132,12 +132,16 @@ class AlgorithmGroupCrudService:
                 for g in groups
             ]
 
+            # INT-297：列表信封统一（无分页语义：单页全量）
             return {
                 'success': True,
                 'message': '',
                 'data': {
-                    'data': data_list,
+                    'items': data_list,
                     'total': len(data_list),
+                    'page': 1,
+                    'per_page': len(data_list) or 1,
+                    'pages': 1,
                 },
             }
         except Exception as e:

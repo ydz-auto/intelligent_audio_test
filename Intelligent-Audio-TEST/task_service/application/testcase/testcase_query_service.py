@@ -360,7 +360,14 @@ class TestCaseQueryService:
         try:
             tags = self.repo.list_tags_ordered_by_updated_at()
             tag_names = [tag.name for tag in tags]
-            return {'success': True, 'message': '', 'data': {'items': tag_names}}
+            # INT-297：列表信封统一（无分页语义：单页全量）
+            return {'success': True, 'message': '', 'data': {
+                'items': tag_names,
+                'total': len(tag_names),
+                'page': 1,
+                'per_page': len(tag_names) or 1,
+                'pages': 1,
+            }}
         except Exception as e:
             logger.error(f"获取标签列表失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}

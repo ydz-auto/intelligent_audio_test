@@ -97,13 +97,15 @@ class LogQueryService:
 
             data = [_to_log_item(log) for log in logs]
 
+            # INT-297：分页信封统一为 {items, page, pages, per_page, total}
             return success_response(
                 LogListData(
                     items=data,
                     total=total,
-                    page=query.page,
-                    per_page=query.per_page,
-                    pages=(total + query.per_page - 1) // query.per_page if query.per_page else 1,
+                    page=resp.get('page', query.page),
+                    per_page=resp.get('per_page', query.per_page),
+                    pages=resp.get('pages') or (
+                        (total + query.per_page - 1) // query.per_page if query.per_page else 1),
                 )
             )
         except Exception as e:

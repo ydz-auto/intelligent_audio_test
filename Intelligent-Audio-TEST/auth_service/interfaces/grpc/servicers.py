@@ -234,9 +234,14 @@ class AuthServicer(auth_grpc.AuthServiceServicer):
                 role_id=getattr(request, 'role_id', 0) or None,
             )
             total, users = self.query_handler.handle_list_users(q)
+            # INT-297：列表信封统一为 {items, page, pages, per_page, total}
+            page_size = q.page_size or 20
             return _ok({
+                'items': [_user_to_dict(u) for u in users],
                 'total': total,
-                'users': [_user_to_dict(u) for u in users],
+                'page': q.page,
+                'per_page': page_size,
+                'pages': (total + page_size - 1) // page_size if page_size else 1,
             })
         except Exception as e:
             logger.error("ListUsers 失败: %s", e, exc_info=True)

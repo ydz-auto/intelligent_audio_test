@@ -79,6 +79,9 @@ export interface DeviceStatusItemDto {
 export interface DeviceStatusListDto {
   items: DeviceStatusItemDto[]
   total: number
+  page?: number
+  per_page?: number
+  pages?: number
 }
 
 /** 对应 DeviceScanItem */

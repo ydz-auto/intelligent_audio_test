@@ -238,11 +238,16 @@ def list_reports(
             page=page,
             page_size=page_size,
         )
-        aggregates = ReportQueryHandler().handle_list(query)
+        handler = ReportQueryHandler()
+        aggregates = handler.handle_list(query)
+        # INT-297：分页信封统一为 {items, page, pages, per_page, total}
+        total = handler.handle_count_reports(query)
         return {'success': True, 'message': 'ok', 'data': {
             'items': [_aggregate_to_dict(a) for a in aggregates],
             'page': query.page,
-            'page_size': query.page_size,
+            'per_page': query.page_size,
+            'total': total,
+            'pages': (total + query.page_size - 1) // query.page_size if query.page_size else 1,
         }}
     except Exception as e:
         logger.exception("list_reports failed")

@@ -86,10 +86,14 @@ class TaskReadModel(
                      .limit(page_size)
                      .all())
 
+            # INT-297：分页信封统一为 {items, page, pages, per_page, total}
+            # （page_size 保留为兼容别名）
             return {
                 'items': [self._to_dto(t, session) for t in items],
                 'total': total,
                 'page': page,
+                'per_page': page_size,
+                'pages': (total + page_size - 1) // page_size if page_size else 1,
                 'page_size': page_size,
             }
         finally:

@@ -411,7 +411,14 @@ class TestCaseQueryService:
 
         data = result.get('data') or {}
         tag_names = data.get('items', [])
-        return success_response(TagListData(items=tag_names))
+        # INT-297：分页信封统一为 {items, page, pages, per_page, total}
+        return success_response(TagListData(
+            items=tag_names,
+            total=data.get('total', len(tag_names)),
+            page=data.get('page', 1),
+            per_page=data.get('per_page', len(tag_names) or 1),
+            pages=data.get('pages', 1),
+        ))
 
     @staticmethod
     def get_ref_params(tc_id, round_number):
