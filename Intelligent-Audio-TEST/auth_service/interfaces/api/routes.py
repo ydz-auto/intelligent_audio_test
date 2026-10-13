@@ -2,9 +2,15 @@
 """auth_service HTTP 路由（FastAPI APIRouter）
 
 定义认证服务的 HTTP API 端点，每个路由调用 application 层 handler。
+
+事务约定（INT-315，与 gRPC servicer 同口径）：仓储层按约定只 flush，
+interfaces 层为工作单元边界——写命令成功后由本路由 commit，失败 rollback
+（HTTP 请求级 session scope 由 DbSessionScopeMiddleware 负责清理，不经
+本中间件的进程回落线程级 scope）。
 """
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -32,10 +38,44 @@ from auth_service.application.queries.auth_queries import (
     ListUsersQuery,
 )
 
+from shared.models.common_enums import AuthErrorCode
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix='/api/auth', tags=['auth'])
 
 _command_handler = AuthCommandHandler()
 _query_handler = AuthQueryHandler()
+
+
+def _commit() -> None:
+    """提交当前 scope DB 会话（写命令成功后调用，与 gRPC servicer._commit 同口径）。"""
+    from shared.models.database import get_db_session
+    get_db_session().commit()
+
+
+def _rollback() -> None:
+    """回滚当前 scope DB 会话（写命令失败后调用，与 gRPC servicer._rollback 同口径）。"""
+    try:
+        from shared.models.database import get_db_session
+        get_db_session().rollback()
+    except Exception:
+        logger.debug('rollback 失败', exc_info=True)
+
+
+def _fail(e: Exception, op: str, status_by_code: Optional[dict] = None):
+    """写命令异常收尾：rollback 后转 HTTPException。
+
+    AuthDomainError 按调用方给定的 error_code → HTTP 状态码映射返回
+    （对齐 api_gateway AuthErrorCode 映射口径）；其余异常按 500 处理。
+    """
+    from auth_service.domain.exceptions import AuthDomainError
+    _rollback()
+    if isinstance(e, AuthDomainError):
+        status = (status_by_code or {}).get(e.error_code, 400)
+        raise HTTPException(status_code=status, detail=e.message) from e
+    logger.error('%s 失败: %s', op, e, exc_info=True)
+    raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # ---- 请求/响应模型 ----
@@ -74,6 +114,16 @@ class CheckPermissionRequest(BaseModel):
 
 # ---- 用户注册/创建 ----
 
+# AuthErrorCode → HTTP 状态码（对齐 api_gateway management_common._ERROR_HTTP_STATUS
+# 中用户域子集；其余/未归类错误码一律 400）
+_USER_ERR_STATUS = {
+    AuthErrorCode.USER_NOT_FOUND: 404,
+    AuthErrorCode.USERNAME_DUPLICATED: 400,
+    AuthErrorCode.PERMISSION_NOT_FOUND: 404,
+    AuthErrorCode.SELF_OPERATION_FORBIDDEN: 403,
+}
+
+
 @router.post('/register')
 def register_user(req: RegisterUserRequest):
     """注册用户"""
@@ -83,7 +133,11 @@ def register_user(req: RegisterUserRequest):
         password=req.password,
         role_id=req.role_id,
     )
-    user_id = _command_handler.handle_register_user(cmd)
+    try:
+        user_id = _command_handler.handle_register_user(cmd)
+        _commit()
+    except Exception as e:
+        _fail(e, 'register_user', _USER_ERR_STATUS)
     return {'success': True, 'message': 'ok', 'data': {'user_id': user_id}}
 
 
@@ -97,7 +151,11 @@ def create_user(req: CreateUserRequest):
         oauth_subject=req.oauth_subject,
         role_id=req.role_id,
     )
-    user_id = _command_handler.handle_create_user(cmd)
+    try:
+        user_id = _command_handler.handle_create_user(cmd)
+        _commit()
+    except Exception as e:
+        _fail(e, 'create_user', _USER_ERR_STATUS)
     return {'success': True, 'message': 'ok', 'data': {'user_id': user_id}}
 
 
@@ -160,7 +218,11 @@ def get_user_by_username(username: str):
 def update_user_status(user_id: int, req: UpdateUserStatusRequest):
     """更新用户状态"""
     cmd = UpdateUserStatusCommand(user_id=user_id, status=req.status)
-    _command_handler.handle_update_status(cmd)
+    try:
+        _command_handler.handle_update_status(cmd)
+        _commit()
+    except Exception as e:
+        _fail(e, 'update_user_status', _USER_ERR_STATUS)
     return {'success': True, 'message': 'ok'}
 
 
@@ -168,7 +230,11 @@ def update_user_status(user_id: int, req: UpdateUserStatusRequest):
 def delete_user(user_id: int):
     """删除用户（软删除）"""
     cmd = DeleteUserCommand(user_id=user_id)
-    _command_handler.handle_delete_user(cmd)
+    try:
+        _command_handler.handle_delete_user(cmd)
+        _commit()
+    except Exception as e:
+        _fail(e, 'delete_user', _USER_ERR_STATUS)
     return {'success': True, 'message': 'ok'}
 
 
@@ -178,7 +244,11 @@ def delete_user(user_id: int):
 def grant_permission(user_id: int, req: PermissionRequest):
     """授予权限"""
     cmd = GrantPermissionCommand(user_id=user_id, permission=req.permission)
-    _command_handler.handle_grant_permission(cmd)
+    try:
+        _command_handler.handle_grant_permission(cmd)
+        _commit()
+    except Exception as e:
+        _fail(e, 'grant_permission', _USER_ERR_STATUS)
     return {'success': True, 'message': 'ok'}
 
 
@@ -186,7 +256,11 @@ def grant_permission(user_id: int, req: PermissionRequest):
 def revoke_permission(user_id: int, req: PermissionRequest):
     """撤销权限"""
     cmd = RevokePermissionCommand(user_id=user_id, permission=req.permission)
-    _command_handler.handle_revoke_permission(cmd)
+    try:
+        _command_handler.handle_revoke_permission(cmd)
+        _commit()
+    except Exception as e:
+        _fail(e, 'revoke_permission', _USER_ERR_STATUS)
     return {'success': True, 'message': 'ok'}
 
 
