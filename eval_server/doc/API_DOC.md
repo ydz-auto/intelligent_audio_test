@@ -2,13 +2,13 @@
 
 ## 1. 服务概述
 
-音频评估维度计算服务，支持 WER、SER、CPWER、TCPWER、STM_WER、DER、LLM Judge、小艺指标（turn_taking / interruption_metrics / non_interactive_latency / noise_latency / env_judge）的计算。服务采用异步任务处理模式，支持并发控制、状态查询、分布式调度、文件上传和动态配置。
+音频评估维度计算服务，支持 WER、SER、CPWER、TCPWER、STM_WER、DER、LLM Judge、小艺指标（xiaoyi_metrics / turn_taking / turn_eval / interruption_metrics / non_interactive_latency / noise_latency / env_judge / reject_judge）的计算。服务采用异步任务处理模式，支持并发控制、排队执行、事件化回调、分布式调度、文件上传和动态配置。
 
 ### 1.1 基础信息
 
 - 服务名称：evaluation-dimension-service
 - 基础URL：`http://localhost:{port}`
-- 默认端口：5001
+- 默认端口：8888（config.yaml `port` 配置，启动可用 `--port` 覆盖）
 - 支持的请求格式：JSON / multipart/form-data
 - 认证方式：无（开发环境）
 
@@ -22,12 +22,23 @@
 | tcpwer | 时间约束词错误率 | ref_stm, hyp_stm | JSON |
 | stm_wer | 基于 STM 的 WER | ref_stm, hyp_stm | JSON |
 | der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_res, stm_res | JSON |
+| xiaoyi_metrics | 小艺全域编排（统一共享 ASR + 跨域聚合） | user_wav / ai_wav 至少一个 | JSON / multipart |
+| turn_taking | 话轮接管（tor + false_takeover + takeover_latency + reply_quality + high_freq_*） | user_wav / ai_wav | JSON / multipart |
+| tor | 接话率 | user_wav, ai_wav | JSON |
+| false_takeover | 误接管率 | ai_wav | JSON |
+| takeover_latency | 接管时延 | user_wav, ai_wav | JSON |
+| high_freq_turn_taking | 高频轮换每轮回复时延 | user_wav, ai_wav | JSON |
+| high_freq_llm_judge | 高频轮换 LLM 裁判 | ai_wav + rounds | JSON |
+| reply_quality | 单轮回复质量 LLM 评分 | ai_wav | JSON |
+| turn_eval | 逐轮三分类（误解管/接管/未接管）+ 接管时延 + 回复质量 | user_wav / ai_wav | JSON |
+| interruption_metrics | 打断指标 v2（用例类型 + 行为数量 + 响应/回复时延 + LLM 评分/停止遵从） | rounds[]（逐轮 user_asr/model_asr 或双路 wav） | JSON |
+| non_interactive_latency | 非交互意图时延 | user_wav, ai_wav | JSON |
+| noise_latency | 噪声打断时延 | ai_wav, start_ms, end_ms, pcm_first_ms | JSON |
+| env_judge | 环境理解裁判 | user_wav, ai_wav, played_audios, correctAnswer | JSON |
+| reject_judge | 拒识裁判（行为分类 + rate 评级） | ai_wav | JSON |
 | llm_judge | LLM 语义评分 | answer, correct_answer | JSON |
-| turn_taking | 话轮接管（tor + false_takeover + takeover_latency + input_asr） | 无必填（record_file 可为空） | JSON / multipart |
-| interruption_metrics | 打断指标 v2（用例类型 + 行为数量 + 响应/回复时延 + LLM 评分/停止遵从） | rounds[]（逐轮 user_asr/model_asr） | JSON |
-| non_interactive_latency | 非交互意图时延 | user_asr, model_asr | JSON |
-| noise_latency | 噪声打断时延 | model_asr, start_ms, end_ms, pcm_first_ms | JSON |
-| env_judge | 环境音/打断能力录屏裁判 | video_path / record_file | JSON |
+
+> `supported_task_types` 由注册表动态生成（`app/services/calculators/__init__.py`），新增 Calculator 自动出现在 `/health` 中。
 
 ---
 
@@ -45,11 +56,9 @@
   "status": "healthy",
   "service": "wer-ser-calculator",
   "role": "master",
-  "supported_task_types": ["wer", "ser", "cpwer", "tcpwer", "stm_wer", "der", "llm_judge", "turn_taking", "interruption_metrics", "non_interactive_latency", "noise_latency", "env_judge"],
-  "local": {
-    "max_concurrency": 10,
-    "current_concurrency": 2,
-    "available_concurrency": 8
+  "supported_task_types": ["wer", "ser", "cpwer", "tcpwer", "stm_wer", "der", "xiaoyi_metrics", "turn_taking", "tor", "false_takeover", "takeover_latency", "high_freq_turn_taking", "high_freq_llm_judge", "reply_quality", "turn_eval", "interruption_metrics", "non_interactive_latency", "noise_latency", "env_judge", "reject_judge", "llm_judge"],
+  "concurrency": {
+    "wer": {"max_concurrency": 100, "current_concurrency": 2, "available": 98}
   }
 }
 ```
@@ -68,6 +77,8 @@
 |--------|------|------|------|
 | task_type | string | 否 | 任务类型，默认 wer |
 | endpoints | array | 否 | 远程端点列表，不传则本地处理 |
+| task_id | string | 否 | 调用方任务 ID（回显用） |
+| callback_url | string | 否 | 完成/失败后事件化回调 URL（替代轮询） |
 | normalize | bool | 否 | 是否文本正则化，默认 false |
 
 **WER/SER 请求示例：**
@@ -107,8 +118,38 @@
   "answer": "北京是中国的首都",
   "correct_answer": "中国的首都是北京",
   "query": "中国的首都是哪个城市？",
-  "model": "deepseek-r1",
+  "model": "gemini-3.7-flash",
   "prompt": "评估回答的准确性和相关性"
+}
+```
+
+**turn_taking 请求示例（域内编排，双路音频路径或 rounds[]）：**
+```json
+{
+  "task_type": "turn_taking",
+  "user_wav": "/path/to/cap_client_process_out.wav",
+  "ai_wav": "/path/to/cap_client_ec_out.wav",
+  "sub_tasks": ["tor", "false_takeover", "takeover_latency", "reply_quality"]
+}
+```
+
+**turn_eval 请求示例（逐轮三分类）：**
+```json
+{
+  "task_type": "turn_eval",
+  "rounds": [
+    {
+      "query": "帮我订一张明天的机票",
+      "user_wav": "/path/to/round0_user.wav",
+      "ai_wav": "/path/to/round0_ai.wav",
+      "played_audios": [{"audio_path": "/path/to/round0_user_clean.wav"}]
+    },
+    {
+      "query": "那后天呢",
+      "user_wav": "/path/to/round1_user.wav",
+      "ai_wav": "/path/to/round1_ai.wav"
+    }
+  ]
 }
 ```
 
@@ -135,12 +176,38 @@
 }
 ```
 
+**reject_judge 请求示例（拒识裁判）：**
+```json
+{
+  "task_type": "reject_judge",
+  "ai_wav": "/path/to/model_reply.wav",
+  "user_wav": "/path/to/user_channel.wav",
+  "rounds": [
+    {"is_reject": true, "ai_wav": "/path/to/r0_ai.wav", "user_wav": "/path/to/r0_user.wav", "timing": "回复过程中"},
+    {"is_reject": false, "ai_wav": "/path/to/r1_ai.wav", "user_wav": "/path/to/r1_user.wav"}
+  ]
+}
+```
+
+**env_judge 请求示例（环境理解）：**
+```json
+{
+  "task_type": "env_judge",
+  "ai_wav": "/path/to/model_reply.wav",
+  "user_wav": "/path/to/user_channel.wav",
+  "played_audios": [{"audio_path": "/path/to/doorbell.wav"}],
+  "correctAnswer": "门铃",
+  "env_type": 0,
+  "model": "qwen-omni"
+}
+```
+
 **non_interactive_latency 请求示例：**
 ```json
 {
   "task_type": "non_interactive_latency",
-  "user_asr": [{"text": "你好", "start": 0.0, "end": 1.0}, {"text": "还有问题", "start": 3.0, "end": 4.0}],
-  "model_asr": [{"text": "你好有什么可以帮你", "start": 1.5, "end": 3.5}]
+  "user_wav": "/path/to/user.wav",
+  "ai_wav": "/path/to/model.wav"
 }
 ```
 
@@ -148,20 +215,10 @@
 ```json
 {
   "task_type": "noise_latency",
-  "model_asr": [{"text": "你好", "start": 1.0, "end": 2.0}],
+  "ai_wav": "/path/to/model.wav",
   "start_ms": 500,
   "end_ms": 1500,
   "pcm_first_ms": 100
-}
-```
-
-**env_judge 请求示例：**
-```json
-{
-  "task_type": "env_judge",
-  "video_path": "/path/to/record.mp4",
-  "env_type": "noise",
-  "model": "qwen-omni"
 }
 ```
 
@@ -173,22 +230,29 @@
 - **URL**：`/api/create_task_upload`
 - **Content-Type**：multipart/form-data
 
-用于需要上传音频/视频文件的任务（如 turn_taking、env_judge）。文件字段会被提取为 multipart 上传，payload 中对应路径替换为 `__MULTIPART__:field_name` 占位符，eval_server 收到后保存文件并替换为实际路径。
+用于需要上传音频/视频文件的任务。文件字段会被提取为 multipart 上传：
+
+- **文本文件**（.txt/.stm/.rttm/.json/.csv/.srt/.vtt/.xml/.tsv）：读取内容为字符串
+- **二进制文件**（.wav/.mp4 等）：保存到上传目录，task_params 中使用文件路径
+- `rounds` / `played_audios` 等 JSON 字符串字段中可用 `__MULTIPART__:field_name` 占位符，eval_server 收到后保存文件并**递归还原**占位符为实际路径（任意嵌套层级）
 
 **turn_taking 请求示例：**
 
 ```bash
-curl -X POST http://localhost:5001/api/create_task_upload \
+curl -X POST http://localhost:8888/api/create_task_upload \
   -F "task_type=turn_taking" \
-  -F "record_file=@audio.wav"
+  -F "user_wav=@cap_client_process_out.wav" \
+  -F "ai_wav=@cap_client_ec_out.wav"
 ```
 
 **turn_taking 参数说明：**
 
 | 参数名 | 类型 | 必填 | 描述 |
 |--------|------|------|------|
-| task_type | string | 是 | 固定为 `turn_taking` |
-| record_file | file | 否 | wav 录音文件（multipart 上传），可为空 |
+| task_type | string | 是 | 固定为 `turn_taking`（或其他支持文件的任务类型） |
+| user_wav | file | 否 | 用户通道 wav 录音（multipart 上传） |
+| ai_wav | file | 否 | AI 回复通道 wav 录音（multipart 上传） |
+| rounds | string | 否 | JSON 字符串形式的多轮数据（内部可含 `__MULTIPART__` 占位符） |
 
 ---
 
@@ -203,10 +267,28 @@ curl -X POST http://localhost:5001/api/create_task_upload \
   "data": {
     "eval_task_id": "task_abc123",
     "task_id": "caller_task_id",
-    "status_url": "http://localhost:5001/api/get_status/task_abc123",
-    "final_result_url": "http://localhost:5001/api/get_final_result/task_abc123",
+    "status_url": "http://localhost:8888/api/get_status/task_abc123",
+    "final_result_url": "http://localhost:8888/api/get_final_result/task_abc123",
     "task_type": "wer",
     "msg": "任务已创建，正在本地处理"
+  }
+}
+```
+
+**并发已满（排队）时**，响应多一个 `queued: true` 字段，任务进入 pending 队列由后台 worker 按限制排队执行：
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "eval_task_id": "task_abc123",
+    "task_id": "caller_task_id",
+    "status_url": "http://localhost:8888/api/get_status/task_abc123",
+    "final_result_url": "http://localhost:8888/api/get_final_result/task_abc123",
+    "task_type": "wer",
+    "queued": true,
+    "msg": "评估全局并发(100)已满，任务已进入排队等待"
   }
 }
 ```
@@ -216,7 +298,7 @@ curl -X POST http://localhost:5001/api/create_task_upload \
 ### 2.5 获取任务状态
 
 - **方法**：GET
-- **URL**：`/api/get_status/{task_id}`
+- **URL**：`/api/get_status/{eval_task_id}`
 
 **响应示例：**
 ```json
@@ -224,7 +306,8 @@ curl -X POST http://localhost:5001/api/create_task_upload \
   "code": 0,
   "msg": "success",
   "data": {
-    "task_id": "task_1234567890",
+    "eval_task_id": "task_1234567890",
+    "task_id": "caller_task_id",
     "status": "completed",
     "task_type": "wer",
     "created_at": "2026-07-22 10:00:00",
@@ -235,14 +318,14 @@ curl -X POST http://localhost:5001/api/create_task_upload \
 }
 ```
 
-**status 取值：** `pending` / `processing` / `completed` / `failed`
+**status 取值：** `pending`（排队中） / `processing` / `completed` / `failed` / `canceled`（已取消）
 
 ---
 
 ### 2.6 获取最终评估结果
 
 - **方法**：GET
-- **URL**：`/api/get_final_result/{task_id}`
+- **URL**：`/api/get_final_result/{eval_task_id}`
 
 **状态码：**
 - 200：成功获取结果
@@ -256,7 +339,8 @@ curl -X POST http://localhost:5001/api/create_task_upload \
   "code": 0,
   "msg": "success",
   "data": {
-    "task_id": "task_123",
+    "eval_task_id": "task_123",
+    "task_id": "caller_task_id",
     "status": "completed",
     "task_type": "wer",
     "result": {
@@ -278,14 +362,48 @@ curl -X POST http://localhost:5001/api/create_task_upload \
   "code": 0,
   "msg": "success",
   "data": {
-    "task_id": "task_456",
+    "eval_task_id": "task_456",
     "status": "completed",
     "task_type": "turn_taking",
     "result": {
-      "tor": {"tor": 1, "takeover_count": 1, "total_pauses": 1},
-      "false_takeover": {"tor": 0, "n_words": 0, "duration": 0.0},
-      "takeover_latency": {"takeover_latency_ms": 350, "message": "OK"},
-      "input_asr": {"match": true, "similarity": 0.95}
+      "tor": {"tor": 1, "n_words": 1, "duration": 1.0, "user_last_word_end_s": 3.2, "message": "OK"},
+      "false_takeover": {"tor": 0, "n_words": 0, "duration": 0.0, "llm_eval": {"false_takeover": 0, "reason": "..."}},
+      "takeover_latency": {"takeover_latency_ms": 350, "user_last_word_end_ms": 3200, "ai_first_word_start_ms": 3550, "message": "OK"},
+      "reply_quality": {"score": 4.5, "reason": "..."},
+      "interaction_text": "query [0:03; 0:03]...\nanswer [0:03; 0:04]...\n"
+    },
+    "completed_at": "2026-07-22 10:00:30"
+  }
+}
+```
+
+> 若 `false_takeover.tor == 1`（检测到抢话），`tor` 与 `takeover_latency` 置 null（不适用）。
+
+**turn_eval 响应示例：**
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "eval_task_id": "task_789",
+    "status": "completed",
+    "task_type": "turn_eval",
+    "result": {
+      "turn_classification": {
+        "summary": "正常接管2，未接管1，误解管0",
+        "normal_takeover_count": 2, "no_takeover_count": 1, "false_takeover_count": 0,
+        "total_turns": 3,
+        "takeover_rate": 0.6667, "no_takeover_rate": 0.3333, "false_takeover_rate": 0.0,
+        "turns": [
+          {"turn_index": 0, "round_number": 0, "classification": "TAKEOVER", "takeover_latency_ms": 320, "reply_quality": {"score": 4.5}, "user_start_s": 0.5, "user_end_s": 2.1, "ai_start_s": 2.5, "ai_end_s": 4.0}
+        ]
+      },
+      "tor": {"tor": 1, "message": "OK"},
+      "false_takeover": {"tor": 0, "reason": "..."},
+      "takeover_latency": {"takeover_latency_ms": 320, "takeover_latency_avg_ms": 340.5},
+      "reply_quality": {"score": 4.5, "reply_quality_avg_score": 4.3},
+      "interaction_text": "...",
+      "per_round": [{"round_number": 0, "turn_classification": {"summary": "...", "normal_takeover_count": 2, "..."}, "tor": {"..."}, "false_takeover": {"..."}, "takeover_latency": {"..."}, "reply_quality": {"..."}}]
     },
     "completed_at": "2026-07-22 10:00:30"
   }
@@ -298,6 +416,7 @@ curl -X POST http://localhost:5001/api/create_task_upload \
   "code": 0,
   "msg": "success",
   "data": {
+    "eval_task_id": "task_321",
     "task_type": "interruption_metrics",
     "result": {
       "interruption": {
@@ -318,6 +437,65 @@ curl -X POST http://localhost:5001/api/create_task_upload \
 
 `per_round[]` 位于 result 顶层（与维度包 `interruption` 同级，整体评估返回逐轮结果方案 §4.2），为逐轮投影（`build_per_round`，零额外 LLM 调用；TaskService 检测到原生产出即跳过默认逐轮切片重跑）：每轮元素带 `round_number`，字段名与整体 spec 同名，平台按维度 field_path（`interruption.*`）提取后覆盖逐轮 TestResultDimension；无时序/LLM 降级的轮为 `{round_number, message}` 跳过项，平台不覆盖。用例级字段（case_type/行为计数/聚合值）不投影。
 
+**reject_judge 响应示例：**
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "eval_task_id": "task_654",
+    "status": "completed",
+    "task_type": "reject_judge",
+    "result": {
+      "rate": "拒识成功",
+      "rate_success": 1, "rate_inquiry": 0, "rate_failure": 0,
+      "behavior_respond": 0, "behavior_recover": 1,
+      "behavior_uncertain": 0, "behavior_irrelevant": 0, "behavior_silent": 0,
+      "n_reject_rounds": 2,
+      "n_rate_success": 2, "n_rate_inquiry": 0, "n_rate_failure": 0,
+      "per_round": [
+        {"round_number": 0, "rate_success": 1, "n_rate_success": 1, "...": "..."},
+        {"round_number": 1, "rate_success": 1, "n_rate_success": 1, "...": "..."}
+      ],
+      "message": "OK"
+    }
+  }
+}
+```
+
+---
+
+### 2.7 删除任务
+
+- **方法**：DELETE
+- **URL**：`/api/delete_task/{eval_task_id}`
+- **说明**：删除任务及其结果文件
+
+### 2.8 取消任务
+
+- **方法**：DELETE
+- **URL**：`/api/cancel_task/{eval_task_id}`
+- **说明**：标记为 canceled（不删除文件）。排队中任务后台不再启动；计算中任务完成后跳过写结果与回调。幂等。
+
+### 2.9 并发状态查询
+
+- **方法**：GET
+- **URL**：`/api/status`
+
+返回本地全局并发、各维度并发、各远程端点并发：
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "local": {"max_concurrency": 100, "current_concurrency": 2, "available_concurrency": 98},
+    "dimension": {"wer": {"max": 100, "current": 2, "available": 98}},
+    "worker_concurrency": {"http://localhost:5002": {"current": 0, "max": 1, "available": 1, "by_task_type": {}}}
+  }
+}
+```
+
 ---
 
 ## 3. 分布式调度
@@ -325,7 +503,7 @@ curl -X POST http://localhost:5001/api/create_task_upload \
 ### 3.1 配置远程端点
 
 ```bash
-curl -X POST http://localhost:5001/api/endpoints \
+curl -X POST http://localhost:8888/api/endpoints \
   -H "Content-Type: application/json" \
   -d '{
     "url": "http://localhost:5002",
@@ -350,16 +528,20 @@ curl -X POST http://localhost:5001/api/endpoints \
 ### 3.3 动态调整并发
 
 ```bash
-curl -X PUT "http://localhost:5001/api/endpoints/http://localhost:5002/concurrency/wer" \
+curl -X PUT "http://localhost:8888/api/endpoints/http://localhost:5002/concurrency/wer" \
   -H "Content-Type: application/json" \
   -d '{"max_process": 10}'
 ```
 
-### 3.4 查看并发状态
+### 3.4 端点管理
 
-```bash
-curl http://localhost:5001/api/status
-```
+| 方法 | URL | 说明 |
+|------|-----|------|
+| GET | `/api/endpoints` | 列出所有端点 |
+| POST | `/api/endpoints` | 创建端点 |
+| GET | `/api/endpoints/{url}` | 获取端点详情 |
+| PUT | `/api/endpoints/{url}` | 更新端点 |
+| DELETE | `/api/endpoints/{url}` | 删除端点 |
 
 ---
 
@@ -373,17 +555,22 @@ curl http://localhost:5001/api/status
 | 4000 | 参数验证错误 | 400 |
 | 5000 | 服务器内部错误 | 500 |
 
+> 任务创建时并发满**不再返回 3001**，而是创建为 pending 排队任务（响应带 `queued: true`），由后台 worker 按限制排队执行。
+
 ---
 
 ## 5. 版本信息
 
-- **版本**：3.0.0
-- **更新日期**：2026-08-18
+- **版本**：3.1.0
+- **更新日期**：2026-10-14
 - **更新内容**：
   - 重构为策略模式 + 注册表架构，`calculate()` 和 `api.py` 不再需要 if-elif 链
-  - 新增 `BaseCalculator` 基类，统一 `validate → prepare_params → calculate` 模板方法
-  - 按域分子包：wer / der / xiaoyi_metrics（turn_taking / interruptibility / rejection_scene_awareness / env_judge / llm_judge）
-  - 参数校验逻辑内聚到各自 Calculator 的 `validate()` 方法
-  - 新增 task_type：`turn_taking`（原 `xiaoyi_metrics`）、`non_interactive_latency`、`noise_latency`、`env_judge`
-  - 新增 `/api/create_task_upload` 接口支持 multipart 文件上传
+  - 新增 `BaseCalculator` 基类，统一 `validate → prepare_params → calculate` 模板方法 + 单轮/多轮公共方法
+  - 按域分子包：wer / der / xiaoyi_metrics（shared / turn_taking / turn_eval / interruptibility / rejection_scene_awareness / env_judge / llm_judge）
+  - 新增 task_type：`xiaoyi_metrics`（全域编排）、`turn_eval`（逐轮三分类）、`reply_quality`（回复质量评分）、`high_freq_turn_taking` / `high_freq_llm_judge`（高频轮换）、`reject_judge`（拒识裁判）；`interruption_judge` 并入 interruption_metrics v2（进程内直调裁判）
+  - 新增 `/api/create_task_upload` 接口支持 multipart 文件上传 + `__MULTIPART__` 占位符递归还原
+  - 新增 `/api/delete_task` / `/api/cancel_task` / `/api/endpoints` 增删改查 / `callback_url` 事件化回调
+  - 并发满自动排队（后台 worker 消费），不再 429 拒绝
+  - LLM 统一入口 `shared/llm_client.py:call_llm` + JSONL 审计日志；OSS `oss://` 路径下载支持
+  - 配置迁移为 config.yaml（结构）+ .env（密钥/覆盖），默认端口 8888
   - ASR 结果通过返回值传递，不读写中间 JSON 文件

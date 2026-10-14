@@ -1,38 +1,35 @@
 # 打断逻辑入参/出参文档
 
-> 范围：`xiaoyi_metrics` 下与"打断"相关的两个子维度
-> - **`interruption_metrics`**（`interruptibility/`）—— **纯本地时序**指标（吃双路字词级 ASR，不调 LLM）
-> - **`interruption_judge`**（`env_judge/interruption_judge.py`）—— 打断场景 LLM 裁判，**一次带音频的调用**
->   产出全部打断 LLM 维度（行为分类 / 询问率 / 回复内容评分 / 停止指令遵从率）
+> 范围：`xiaoyi_metrics` 下与"打断"相关的维度
+> - **`interruption_metrics`**（`interruptibility/`）—— v2 统一计算器：本地时序指标 + **进程内直调逐轮 LLM 裁判**
+>   （`env_judge/interruption_judge.py` 的 `judge_interruption_rounds`，整例一次调用），一次出全部字段
+>   （用例类型 / 行为五分类 / 询问率 / 响应与回复时延 / 回复内容评分 / 停止指令遵从率 / LLM 语义打断点精修）
 >
-> 两者独立计算、互不依赖，可单独或同时由编排器 `XiaoyiMetricsCalculator` 调起。
-> LLM 相关维度全部归裁判，避免同一用例重复请求 LLM（历史上 metrics 会按事件逐个调用文本 LLM 再额外调一次裁判）。
+> 打断的全部 LLM 维度由 `interruption_metrics` 进程内直调裁判产出，不依赖平台跨维度回填，
+> 避免同一用例重复请求 LLM（历史上 metrics 会按事件逐个调用文本 LLM 再额外调一次裁判）。
 
 ---
 
 ## 0. 调用链路概览
 
-### interruption_metrics（无 LLM）
+### interruption_metrics（v2：本地时序 + 进程内直调 LLM 裁判）
 ```
 XiaoyiMetricsCalculator.calculate          # 编排器：统一共享 ASR，按 sub_tasks 遍历子维度
-  └─ InterruptionMetricsCalculator.calculate        # interruptibility/strategy.py：取参 + 逐实际轮计算 + 轮级聚合
-       └─ calculate_interruption_metrics(task_params)  # interruptibility/__init__.py：wav→ASR、轮次元数据、时延聚合
-            └─ compute_interruption_metrics(user_asr, model_asr, ...)  # interruption.py：本地时序指标
-```
-
-### interruption_judge（一次 LLM 调用）
-```
-XiaoyiMetricsCalculator.calculate          # 同上编排器（sub_tasks 含 'interruption_judge' 或任一 LLM 子维度 code）
-  └─ InterruptionJudgeCalculator.calculate           # env_judge/strategy.py：取参 + 透传 sub_tasks/轮次元数据
-       └─ evaluate_interruption_judge(ai_wav, user_wav, sub_tasks, rounds, ...)  # interruption_judge.py
-            ├─ get_asr_chunks(user_wav / ai_wav)                 # 两路 ASR（同时供 interaction_text 与本地时序复用）
-            ├─ compute_interruption_metrics(user_chunks, model_chunks)  # 本地时序定位"最后一个有效实际打断轮"的恢复段
-            └─ call_llm(prompt=按 sub_tasks 拼接的分块 prompt, file_paths=[ai_wav])  # 唯一一次 LLM 调用
+  └─ InterruptionMetricsCalculator.calculate        # interruptibility/strategy.py：取参 + 逐实际轮/整体全局计算 + 轮级聚合
+       ├─ calculate_interruption_metrics(task_params)  # interruptibility/__init__.py：wav→ASR、轮次元数据、时延聚合
+       │    └─ compute_interruption_metrics(user_asr, model_asr, ...)  # interruption.py：本地时序指标
+       └─ _judge_and_attach(...) → judge_interruption_rounds(blocks, interaction, ...)  # env_judge/interruption_judge.py
+            整例一次 LLM 调用 → derive_round_metrics 重派生覆盖 spec 字段
+            （行为五分类/询问率/内容评分/停止遵从/语义打断点精修 + per_round 逐轮投影）
 ```
 
 ---
 
-## 1. interruption_metrics —— 打断时序指标（纯本地）
+## 1. interruption_metrics —— 打断指标（本地时序部分）
+
+> 本节为本地时序计算（`interruption.py` / `calculate_interruption_metrics`）的入参出参。
+> v2 中本地时序是基础层，LLM 裁判（行为/评分/停止遵从）由 strategy 进程内直调后**重派生覆盖**顶层 spec 字段，
+> 见 §0 调用链路与 §2 裁判说明。
 
 ### 1.1 入参（`task_params`，由编排器透传）
 
@@ -92,9 +89,10 @@ XiaoyiMetricsCalculator.calculate          # 同上编排器（sub_tasks 含 'in
 | `stop_intent` | bool | 本轮是否显式停止指令轮（回显） |
 | `message` | str | 状态消息（`OK` / 退化提示 / 空数据提示 / 未闭合提示） |
 
-> 本维度**不再输出任何 LLM 或行为裁判字段**（`llm_*`、`behavior_*`、`interaction_text`、
-> `interruption_inquiry_rate`、`first_recovery_*` 内容评分、`stop_instruction_compliance_rate` 均已移除），
-> 这些全部由 `interruption_judge` 产出，见 §2。
+> v2：LLM 判定成功后，顶层 spec 字段（`case_type` / `success_count` / `response_latency_avg_ms` /
+> `reply_content_score` / `stop_compliance_rate` / `round_details` 等）由 `derive_round_metrics` 重派生覆盖；
+> LLM 缺失/失败时保持降级字段（数量与评分 None、message 标"行为判定降级"、时延走本地代理）。
+> 本地时序字段（`interruption_success_rate` / `timing_success_rate` / `avg_*_latency_s` 等）始终产出。
 
 ### 1.3 `per_event` 单事件结构
 

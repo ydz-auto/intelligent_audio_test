@@ -110,9 +110,14 @@ call_llm(...)
 |-------------|-------------|
 | `llm_judge/strategy.py` `_score_one` | `{'dimension': 'llm_judge'}` |
 | `llm_judge/llm_judge_calculator.py` `evaluate_with_llm` | `{'dimension': 'llm_judge'}` |
-| `env_judge/interruption_judge.py`（每用例一次，含行为分类/内容评分/停止遵从） | `{'dimension': 'interruption_judge'}` |
-| `env_judge/rejection_judge.py` | `{'dimension': 'rejection_judge'}` |
+| `env_judge/interruption_judge.py` `judge_interruption_rounds`（interruption_metrics v2 进程内直调，整例一次） | `{'dimension': 'interruption_metrics_rounds'}` |
+| `env_judge/interruption_judge.py` `evaluate_interruption_judge`（独立直调路径） | `{'dimension': 'interruption_judge'}` |
+| `env_judge/rejection_judge.py` | `{'dimension': 'reject_judge', 'timing': ...}` |
+| `env_judge/env_judge.py` | `{'dimension': 'env_judge', 'script_type': ...}` |
 | `turn_taking/high_freq_llm_judge.py` | `{'dimension': 'high_freq_llm_judge'}` |
+| `turn_taking/false_takeover.py` | `{'dimension': 'false_takeover'}` |
+| `turn_taking/reply_quality.py` | `{'dimension': 'reply_quality'}` |
+| `turn_eval/turn_evaluation.py` | `{'dimension': 'turn_split'}` / `'false_takeover_per_turn'` / `'takeover_judge'` |
 
 > `log_context` 为可选参数（默认 None），不传也不影响日志写入（只是 `context` 字段为空）。
 
@@ -120,7 +125,9 @@ call_llm(...)
 
 ## 5. 并发与线程安全
 
-- `call_llm` 在 eval_server 的 `ThreadPoolExecutor`（各维度并发 10）下被并发调用。
+- `call_llm` 在 eval_server 的 `ThreadPoolExecutor` 下被并发调用；并发受两层约束：
+  维度并发位（`config.concurrency_limits`，多数维度 100，env_judge/reject_judge 音频类限 5）
+  + LLM 调用共享并发池（`llm_text_max_concurrency`=100 / `llm_audio_max_concurrency`=5，按「中转站 × 品牌」两级分池）。
 - `llm_call_logger.py` 模块级 `threading.Lock` 保护文件追加写，单进程内并发安全。
 - 当前 eval_server 是单 waitress 进程 + 线程池，锁有效；若将来改多进程部署，需另加跨进程锁。
 
