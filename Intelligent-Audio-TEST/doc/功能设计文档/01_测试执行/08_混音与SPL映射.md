@@ -8,7 +8,7 @@
 | 上游索引 | 《Realtime_API_Adapter方案与UseCase文档.md》配套文档清单 · 第 8 篇 |
 | 服务落位 | audio_service（混音编排+格式适配+SPL 增益，gRPC:50052）/ api_test_service（执行器+映射数据归属，gRPC:50071）/ api_adapter_service（数据面 Adapter 消费）/ device_service（E2E 对照映射数据源，gRPC:50053） |
 
-> 【适配说明】V9.7.10 为单体架构，`AudioStreamOrchestrator` 与三种 executor 同进程直调；V9.7.31 拆分后，混音编排下沉到 audio_service，经新增 gRPC 双出口暴露——`RenderAudioStream`（server-streaming，逐 chunk）与 `RenderAudioFile`（unary，服务端聚合整文件），api_test_service 侧仅保留 gRPC 流消费客户端（ACL 仓储）。三种 API 模式的混音编排语义不变：噪声合并 → 格式适配 → RMS 补偿+SPL 增益 → 时间轴 → 混音 → 切片。SPL 映射数据归属 api_test_service（`api_rms_spl_mappings` 表新增），audio_service 经 ACL 只读+TTL 缓存。E2E 对照链路不变。不新建服务、不引入 MQ。`RenderAudioStream` 的 proto 字段口径与《07_流式推送与结果获取.md》草案完全一致。
+> 【适配说明】V9.7.10 为单体架构，`AudioStreamOrchestrator` 与三种 executor 同进程直调；V9.7.31 拆分后，混音编排下沉到 audio_service，经新增 gRPC 双出口暴露——`RenderAudioStream`（server-streaming，逐 chunk）与 `RenderAudioFile`（unary，服务端聚合整文件），api_test_service 侧仅保留 gRPC 流消费客户端（ACL 仓储）。三种 API 模式的混音编排语义不变：噪声合并 → 格式适配 → RMS 补偿+SPL 增益 → 时间轴 → 混音 → 切片。SPL 映射数据归属 api_test_service（`api_rms_spl_mappings` 表新增），audio_service 经 ACL 只读+TTL 缓存（**裁定注 2026-10-14，INT-323 代码核验**：该 ACL+TTL 取数路径未实现，实际由 api_test_service 预载映射 dict 随每轮 render_config 传入，详见 §6.2 读取路径处裁定注；计算落位 audio_service 不变）。E2E 对照链路不变。不新建服务、不引入 MQ。`RenderAudioStream` 的 proto 字段口径与《07_流式推送与结果获取.md》草案完全一致。
 
 **v1.1 变更（承袭自源文档，含 V9.7.31 落位调整）**：
 
@@ -573,6 +573,8 @@ class ApiRmsSplMapping(Base):
 ```
 
 【适配说明：读取路径】audio_service **不直连** api_test_service 的库，经 `ApiTestAclRepositoryImpl`（新增）→ `GetApiRmsSplMappings`（gRPC，新增）+ TTL 缓存只读获取；执行器（api_test_service）可在 `StartAPITestRequest` 处理时预加载映射并随请求字段 7-10 下发，命中 `spl_to_gain_by_mapping` 免二次查询。
+
+> **【实现演进裁定 2026-10-14，INT-323 代码核验】本段两条路径与实现的对应关系**：①ACL 取数路径（`ApiTestAclRepositoryImpl` + `GetApiRmsSplMappings` gRPC + TTL 缓存）**未实现**——audio_service 无 api_test ACL，`api_test_service.proto` 的 `ApiRmsSplConfigService` 仅 CRUD/校准 RPC；②预载随请求传入路径**已实现但载体不同**——api_test_service `round_render_service.py:_load_spl_mapping_dict` 预载映射 dict，随每轮 `RenderAudioStream/File` 的 `render_config` 传入（`shared/proto/audio_service.proto` 字段注释含「SPL 映射」），非 `StartAPITestRequest`（该请求仅 task_id/device_type/device_id/case_ids 四字段，无映射/增益字段）。计算落位 audio_service（§3.3）经核验正确：`audio_stream_orchestrator.py:167` 在混音管线内调 `ApiRmsSplService.compute_source_gain`，插值/限幅/RMS 补偿全在 audio_service 进程；写路径（校准/CRUD）仍在 api_test_service。
 
 ### 6.3 增益计算链路
 

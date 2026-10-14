@@ -235,6 +235,7 @@ message AudioChunk {
 - 表：`api_rms_spl_mappings`（**新增建表**，完整 DDL 以 `05_路由与废弃.md` 为准）；
 - 服务：`audio_service/infrastructure/audio/spl_service.py` —— L21 `SPLMappingService`、L34 `spl_to_gain(mapping_id, target_spl)` **多点插值**求增益；未配置映射时 gain = 1.0；
 - 数据获取：audio_service 经 ACL **只读拉取**映射数据并本地缓存，不直连业务库；
+- **【实现演进裁定 2026-10-14，INT-323 代码核验】上两行的落位/取数与实现不符**：API 侧增益计算实际在 `audio_service/domain/services/api_rms_spl_service.py`（`ApiRmsSplService.spl_to_gain/_by_mapping`，由 `audio_stream_orchestrator.py:167` 在混音 Step 3b 调用；上行的 `spl_service.py` `SPLMappingService` 是 E2E 物理侧服务，非本 UC）；映射数据不经 ACL 拉取，由 api_test_service `round_render_service.py` 预载 dict 随每轮 `RenderAudioStream/File` 的 `render_config` 传入（聚合/表/写路径仍在 api_test_service，本节其余内容不变）；
 - 路由：`/api/digital-spl`（**新增**，经 api_gateway 暴露）；
 - 校准互斥：`DistributedLock`（`shared/utils/distributed_coordinator.py` L67），
 
