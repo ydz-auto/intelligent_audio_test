@@ -50,10 +50,22 @@ def _bearer_header(client: httpx.Client) -> dict:
         b'dev_password',
         padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),
                      algorithm=hashes.SHA256(), label=None))).decode()
-    r = client.post('/auth/login', data={
-        'username': 'dev_user', 'password_encrypted': ct,
-        'encryption_key_id': info['kid']})
-    assert r.status_code == 200, f'dev 登录失败: {r.status_code} {r.text[:200]}'
+    def _login(username: str, password: str):
+        ct2 = base64.b64encode(pub.encrypt(
+            password.encode(),
+            padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                         algorithm=hashes.SHA256(), label=None))).decode()
+        return client.post('/auth/login', data={
+            'username': username, 'password_encrypted': ct2,
+            'encryption_key_id': info['kid']})
+
+    # 凭据与实机 .env DEV_DEFAULT_* 种子一致（INT-263 验收修正：隔离库仅播
+    # DEV_DEFAULT 用户，dev_user 不再保证存在），回退 dev_user/dev_password
+    r = _login(os.environ.get('DEV_DEFAULT_USERNAME', 'admin'),
+               os.environ.get('DEV_DEFAULT_PASSWORD', 'admin123'))
+    if r.status_code != 200:
+        r = _login('dev_user', 'dev_password')
+    assert r.status_code == 200, f'登录失败: {r.status_code} {r.text[:200]}'
     body = r.json()
     token = body.get('access_token') or (body.get('data') or {}).get('token')
     assert token, f'登录响应无 token: {json.dumps(body, ensure_ascii=False)[:200]}'

@@ -37,17 +37,42 @@ _PURGE_TABLES = [
 
 
 def _database_url() -> str:
-    """实机栈 .env 的 DATABASE_URL（与 run_all 同源解析；缺省回退本地默认值）。"""
+    """栈同源 DATABASE_URL（INT-263 验收修正——原先只读 .env，直连共享业务库，
+    断言查错库）：进程环境 postgres 变量优先；否则取 .env 连接串并把库名
+    换成隔离测试库（与 parallel_stack/门禁同口径——实机栈在哪个库，断言查
+    哪个库）；缺省回退本地隔离库默认值。"""
+    from urllib.parse import urlsplit, urlunsplit
+    from shared.constants.database import ISOLATED_TEST_DB_NAME
+    env_url = os.environ.get('DATABASE_URL')
+    if env_url and env_url.startswith('postgres'):
+        return env_url
     try:
         with open(os.path.join(PROJECT_ROOT, '.env'), encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line.startswith('DATABASE_URL='):
-                    return line.split('=', 1)[1].strip().strip('"\'')
+                    _raw = line.split('=', 1)[1].strip().strip('"').strip("'")
+                    _p = urlsplit(_raw)
+                    if _p.scheme.startswith('postgres'):
+                        return urlunsplit((_p.scheme, _p.netloc,
+                                           '/' + ISOLATED_TEST_DB_NAME, '', ''))
+                    return _raw
     except OSError:
         pass
     return ('postgresql://intelligent_audio_test:intelligent_audio_test666'
-            '@localhost:5432/intelligent_audio_test')
+            '@localhost:5432/' + ISOLATED_TEST_DB_NAME)
+
+
+def _ensure_definition(api_client, algo_type: str) -> None:
+    """为算法参数族预置 algorithm_definitions 父行（INT-263 验收修正：
+    隔离库 PO schema 含 algorithm_type→algorithm_definitions FK，共享业务库
+    历史上无此约束——本 helper 使用例在两种 schema 下均成立）。幂等。"""
+    r = api_client.get(f'/algorithm/definitions/{algo_type}')
+    if r.status_code == 200 and isinstance(r.json().get('data'), dict):
+        return
+    r = api_client.post('/algorithm/definitions', json={
+        'type': algo_type, 'name': algo_type})
+    assert r.status_code < 400, f'算法定义种子失败: {r.status_code} {r.text[:200]}'
 
 
 def _purge_run_rows() -> None:
@@ -115,6 +140,7 @@ class TestSoftDeleteRecreateAlgorithmDeviceParams:
 
     def test_delete_then_recreate_same_key(self, api_client):
         algo_type = f'_test_{_RUN}_sd_devparam_{_ts()}'
+        _ensure_definition(api_client, algo_type)
         param_code = f'_test_{_RUN}_param_sd'
         payload = {
             'algorithmType': algo_type,
@@ -150,6 +176,7 @@ class TestSoftDeleteRecreateAlgorithmApiParams:
 
     def test_delete_then_recreate_same_key(self, api_client):
         algo_type = f'_test_{_RUN}_sd_apiparam_{_ts()}'
+        _ensure_definition(api_client, algo_type)
         param_code = f'_test_{_RUN}_api_param_sd'
         payload = {
             'algorithmType': algo_type,
@@ -182,6 +209,7 @@ class TestSoftDeleteRecreateReferenceParams:
 
     def test_delete_then_recreate_same_key(self, api_client):
         algo_type = f'_test_{_RUN}_sd_ref_{_ts()}'
+        _ensure_definition(api_client, algo_type)
         code = f'_test_{_RUN}_ref_code_sd'
         payload = {
             'algorithmType': algo_type,
@@ -211,6 +239,7 @@ class TestSoftDeleteRecreateDimensionRelations:
 
     def test_delete_then_recreate_same_key(self, api_client):
         algo_type = f'_test_{_RUN}_sd_dimrel_{_ts()}'
+        _ensure_definition(api_client, algo_type)
         payload = {
             'algorithmType': algo_type,
             'dimensionId': 999,
@@ -239,6 +268,7 @@ class TestSoftDeleteRecreateCaseParams:
 
     def test_delete_then_recreate_same_key(self, api_client):
         algo_type = f'_test_{_RUN}_sd_case_{_ts()}'
+        _ensure_definition(api_client, algo_type)
         param_code = f'_test_{_RUN}_case_param_sd'
         payload = {
             'algorithmType': algo_type,
@@ -270,6 +300,7 @@ class TestSoftDeleteRecreateMappings:
 
     def test_delete_then_recreate_same_key(self, api_client):
         algo_type = f'_test_{_RUN}_sd_mapping_{_ts()}'
+        _ensure_definition(api_client, algo_type)
         payload = {
             'algorithmType': algo_type,
             'sourceType': 'device',
@@ -345,13 +376,17 @@ class TestSoftDeleteRecreateAudioAlgorithmRelations:
         import psycopg2
         ts = _ts()
         algo_type = f'_test_{_RUN}_sd_algo_{ts}'
+        _ensure_definition(api_client, algo_type)
 
-        # 1. 直接在数据库插入 audio 记录（绕过 upload/register 的 taskId 依赖）
+        # 1. 直接在数据库插入 audio 记录（绕过 upload/register 的 taskId 依赖；
+        # 库名跟随 _database_url()（栈隔离口径），不写死共享业务库）
+        from urllib.parse import urlsplit
+        _u = urlsplit(_database_url())
         conn = psycopg2.connect(
-            host='localhost', port=5432,
-            dbname='intelligent_audio_test',
-            user='intelligent_audio_test',
-            password='intelligent_audio_test666',
+            host=_u.hostname or 'localhost', port=_u.port or 5432,
+            dbname=(_u.path or '/intelligent_audio_test').lstrip('/'),
+            user=_u.username,
+            password=_u.password,
         )
         try:
             with conn.cursor() as cur:

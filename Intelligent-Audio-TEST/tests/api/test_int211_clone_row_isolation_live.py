@@ -40,17 +40,30 @@ _TYPE_LEGACY = f'{_PREFIX}_legacy'
 
 
 def _database_url() -> str:
-    """实机栈 .env 的 DATABASE_URL（与 run_all 同源解析；缺省回退本地默认值）。"""
+    """栈同源 DATABASE_URL（INT-263 验收修正——原先只读 .env，直连共享业务库，
+    断言查错库）：进程环境 postgres 变量优先；否则取 .env 连接串并把库名
+    换成隔离测试库（与 parallel_stack/门禁同口径——实机栈在哪个库，断言查
+    哪个库）；缺省回退本地隔离库默认值。"""
+    from urllib.parse import urlsplit, urlunsplit
+    from shared.constants.database import ISOLATED_TEST_DB_NAME
+    env_url = os.environ.get('DATABASE_URL')
+    if env_url and env_url.startswith('postgres'):
+        return env_url
     try:
         with open(os.path.join(PROJECT_ROOT, '.env'), encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line.startswith('DATABASE_URL='):
-                    return line.split('=', 1)[1].strip().strip('"\'')
+                    _raw = line.split('=', 1)[1].strip().strip('"').strip("'")
+                    _p = urlsplit(_raw)
+                    if _p.scheme.startswith('postgres'):
+                        return urlunsplit((_p.scheme, _p.netloc,
+                                           '/' + ISOLATED_TEST_DB_NAME, '', ''))
+                    return _raw
     except OSError:
         pass
     return ('postgresql://intelligent_audio_test:intelligent_audio_test666'
-            '@localhost:5432/intelligent_audio_test')
+            '@localhost:5432/' + ISOLATED_TEST_DB_NAME)
 
 
 def _purge_test_rows() -> None:

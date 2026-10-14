@@ -255,6 +255,20 @@ class TestE2EFullChain:
                 assert progress_data is not None, 'progress 返回空'
                 assert 'totalCases' in progress_data or 'total_cases' in progress_data, \
                     f'progress 缺少 totalCases: {progress_data}'
+            # INT-263 验收修正：无在线测试设备的隔离环境任务必然 failed
+            # （『设备信息获取失败: 没有可用的测试设备』），后续报告生成
+            # 无测试结果数据亦无法闭环——标注环境限制，skip 不 fail。
+            if final_status == 'failed':
+                _task_detail = _resp_data(api_client.get(f'/tasks/{task_id}')) or {}
+                _err = str(_task_detail.get('errorMessage')
+                           or _task_detail.get('error_message') or '')
+                _cases = _task_detail.get('cases') or []
+                _case_errs = ' '.join(str(c.get('errorMessage') or c.get('error_message') or '')
+                                      for c in _cases if isinstance(c, dict))
+                if '没有可用的测试设备' in (_err + _case_errs):
+                    pytest.skip(
+                        f'任务 {task_id} failed：环境无在线测试设备（E2E 物理链'
+                        '环境限制），报告段无法闭环。')
             else:
                 # 超时未到达终态 — 标注环境限制，不 fail
                 pytest.skip(
@@ -274,7 +288,20 @@ class TestE2EFullChain:
             })
             gen_data = _resp_data(r)
             report_id = gen_data.get('reportId') or gen_data.get('report_id') or gen_data.get('id')
-            assert report_id, f'报告生成未返回 reportId: {gen_data}'
+            # INT-263 验收修正：generate-task 为异步触发（返回 {taskId, status:
+            # generating}，不保证同步携带 reportId）。未携带时按任务轮询
+            # /reports/by_task/{taskId} 拿报告 id（INT-262 透出的检索口）。
+            poll_deadline = time.time() + REPORT_POLL_TIMEOUT
+            while not report_id and time.time() < poll_deadline:
+                r = api_client.get(f'/reports/by_task/{task_id}')
+                if r.status_code == 200:
+                    _rd = _resp_data(r)
+                    if isinstance(_rd, dict):
+                        report_id = (_rd.get('id') or _rd.get('reportId')
+                                     or _rd.get('report_id'))
+                if not report_id:
+                    time.sleep(REPORT_POLL_INTERVAL)
+            assert report_id, f'报告生成未返回/轮询不到 reportId: gen={gen_data}'
 
             # 4.2 轮询报告状态至 completed
             deadline = time.time() + REPORT_POLL_TIMEOUT

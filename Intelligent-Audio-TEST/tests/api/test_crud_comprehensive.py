@@ -72,17 +72,30 @@ _PURGE_TABLES = [
 
 
 def _database_url() -> str:
-    """实机栈 .env 的 DATABASE_URL（与 run_all 同源解析；缺省回退本地默认值）。"""
+    """栈同源 DATABASE_URL（INT-263 验收修正——原先只读 .env，直连共享业务库，
+    断言查错库）：进程环境 postgres 变量优先；否则取 .env 连接串并把库名
+    换成隔离测试库（与 parallel_stack/门禁同口径——实机栈在哪个库，断言查
+    哪个库）；缺省回退本地隔离库默认值。"""
+    from urllib.parse import urlsplit, urlunsplit
+    from shared.constants.database import ISOLATED_TEST_DB_NAME
+    env_url = os.environ.get('DATABASE_URL')
+    if env_url and env_url.startswith('postgres'):
+        return env_url
     try:
         with open(os.path.join(PROJECT_ROOT, '.env'), encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line.startswith('DATABASE_URL='):
-                    return line.split('=', 1)[1].strip().strip('"\'')
+                    _raw = line.split('=', 1)[1].strip().strip('"').strip("'")
+                    _p = urlsplit(_raw)
+                    if _p.scheme.startswith('postgres'):
+                        return urlunsplit((_p.scheme, _p.netloc,
+                                           '/' + ISOLATED_TEST_DB_NAME, '', ''))
+                    return _raw
     except OSError:
         pass
     return ('postgresql://intelligent_audio_test:intelligent_audio_test666'
-            '@localhost:5432/intelligent_audio_test')
+            '@localhost:5432/' + ISOLATED_TEST_DB_NAME)
 
 
 def _purge_run_rows() -> None:
@@ -97,6 +110,19 @@ def _purge_run_rows() -> None:
         for table, col in _PURGE_TABLES:
             conn.execute(text(f'DELETE FROM {table} WHERE {col} LIKE :p'),
                          {'p': pattern})
+
+
+def _ensure_definition(api_client, algo_type: str, name: str = None) -> None:
+    """为算法参数族 CRUD 预置 algorithm_definitions 父行（INT-263 验收修正：
+    隔离库 PO schema 含 algorithm_type→algorithm_definitions FK，共享业务库
+    历史上无此约束——本 helper 使用例在两种 schema 下均成立）。幂等。"""
+    r = api_client.get(f'/algorithm/definitions/{algo_type}')
+    if r.status_code == 200 and isinstance(r.json().get('data'), dict):
+        return
+    r = api_client.post('/algorithm/definitions', json={
+        'type': algo_type, 'name': name or algo_type,
+    })
+    assert r.status_code < 400, f'算法定义种子失败: {r.status_code} {r.text[:200]}'
 
 
 @pytest.fixture(scope='module', autouse=True)
@@ -221,6 +247,7 @@ class TestAlgorithmParams:
         # Create
         algo_type = f'_test_{_RUN}_algo_param_{int(time.time()*1000)}'
         param_code = f'_test_{_RUN}_param_code_{int(time.time()*1000)}'
+        _ensure_definition(api_client, algo_type)
         resp = api_client.post('/algorithm/params', json={
             'algorithmType': algo_type,
             'paramCode': param_code,
@@ -250,6 +277,7 @@ class TestAlgorithmParams:
         # Delete
         resp = api_client.delete(f'/algorithm/params/{param_id}')
         _unwrap(resp)
+        api_client.delete(f'/algorithm/definitions/{algo_type}')
 
 
 # ── Algorithm Mappings CRUD ─────────────────────────────
@@ -261,6 +289,7 @@ class TestAlgorithmMappings:
         algo_type = f'_test_{_RUN}_mapping_algo_{int(time.time()*1000)}'
         source_param = f'_test_{_RUN}_source_{int(time.time()*1000)}'
         target_param = f'_test_{_RUN}_target_{int(time.time()*1000)}'
+        _ensure_definition(api_client, algo_type)
         resp = api_client.post('/algorithm/mappings', json={
             'algorithmType': algo_type,
             'sourceType': 'device',
@@ -293,8 +322,10 @@ class TestAlgorithmCaseParams:
     def test_case_param_crud(self, api_client):
         # Create
         param_code = f'_test_{_RUN}_case_param_{int(time.time()*1000)}'
+        algo_type = f'_test_{_RUN}_case_param_algo_{int(time.time()*1000)}'
+        _ensure_definition(api_client, algo_type)
         resp = api_client.post('/algorithm/case-params', json={
-            'algorithmType': f'_test_{_RUN}_case_param_algo_{int(time.time()*1000)}',
+            'algorithmType': algo_type,
             'paramCode': param_code,
             'paramName': 'Test Case Param',
             'paramType': 'text',
@@ -322,6 +353,7 @@ class TestAlgorithmCaseParams:
         # Delete
         resp = api_client.delete(f'/algorithm/case-params/{param_id}')
         _unwrap(resp)
+        api_client.delete(f'/algorithm/definitions/{algo_type}')
 
 
 # ── Algorithm Reference Params CRUD ─────────────────────
@@ -361,6 +393,7 @@ class TestAlgorithmDimensionRelations:
     def test_dimension_relation_crud(self, api_client):
         # Create
         algo_type = f'_test_{_RUN}_dim_rel_algo_{int(time.time()*1000)}'
+        _ensure_definition(api_client, algo_type)
         resp = api_client.post('/algorithm/dimension-relations', json={
             'algorithmType': algo_type,
             'dimensionId': 1,
@@ -381,6 +414,7 @@ class TestAlgorithmDimensionRelations:
         # Delete
         resp = api_client.delete(f'/algorithm/dimension-relations/{relation_id}')
         _unwrap(resp)
+        api_client.delete(f'/algorithm/definitions/{algo_type}')
 
 
 # ── Test Devices CRUD ───────────────────────────────────
