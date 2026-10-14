@@ -44,7 +44,10 @@ export function runAuthModeSelfCheck(): void {
     console.warn(
       `[auth_mode 自检] 前后端认证模式错位：前端 VITE_AUTH_MODE="${result.frontendMode}"，` +
         `后端 AUTH_MODE="${result.backendMode}"。` +
-        '请使两侧一致（本地改 frontend/.env.local；生产构建显式注入 VITE_AUTH_MODE），详见 docs/oauth.md。',
+        '请使两侧一致（本地 dev server 以进程 env 注入 VITE_AUTH_MODE——' +
+        '.env.development 优先级高于 .env.local，只改 .env.local 会被静默覆盖，' +
+        '且 dev server 不热加载 env 需重启；生产构建显式注入 VITE_AUTH_MODE），' +
+        '详见 docs/oauth.md §6.1。',
     )
     showAuthModeMismatchBanner(result)
   })()

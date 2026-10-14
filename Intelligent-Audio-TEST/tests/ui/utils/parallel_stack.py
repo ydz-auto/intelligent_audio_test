@@ -43,15 +43,15 @@ SHIFT = 1000
 # name, dir, base_http_port(None=gRPC-only), base_grpc_port
 SERVICES = [
     ('api_gateway',        'api_gateway',        5000, None),
-    ('task_service',       'task_service',       5001, 50061),
+    ('task_service',       'task_service',       5001, 51061),
     ('e2e_test_service',   'e2e_test_service',   5002, 50051),
-    ('api_test_service',   'api_test_service',   5003, 50071),
-    ('evaluation_service', 'evaluation_service', 5004, 50091),
-    ('report_service',     'report_service',     5006, 50068),
-    ('algorithm_service',  'algorithm_service',  5007, 50067),
-    ('auth_service',       'auth_service',       5009, 50069),
-    ('api_adapter_service','api_adapter_service',5008, 50081),
-    ('transfer_agent',     'transfer_agent',     5010, 50101),
+    ('api_test_service',   'api_test_service',   5003, 51071),
+    ('evaluation_service', 'evaluation_service', 5004, 51091),
+    ('report_service',     'report_service',     5006, 51068),
+    ('algorithm_service',  'algorithm_service',  5007, 51067),
+    ('auth_service',       'auth_service',       5009, 51069),
+    ('api_adapter_service','api_adapter_service',5008, 51081),
+    ('transfer_agent',     'transfer_agent',     5010, 51101),
     ('audio_service',      'audio_service',      None, 50052),
     ('device_service',     'device_service',     None, 50053),
 ]
@@ -61,18 +61,25 @@ CLIENT_GRPC_ENVS = {
     'E2E_TEST_SERVICE_GRPC_PORT': 50051,
     'AUDIO_SERVICE_GRPC_PORT': 50052,
     'DEVICE_SERVICE_GRPC_PORT': 50053,
-    'TASK_SERVICE_GRPC_PORT': 50061,
-    'ALGORITHM_SERVICE_GRPC_PORT': 50067,
-    'REPORT_SERVICE_GRPC_PORT': 50068,
-    'AUTH_SERVICE_GRPC_PORT': 50069,
-    'API_TEST_SERVICE_GRPC_PORT': 50071,
-    'ADAPTER_SERVICE_GRPC_PORT': 50081,
-    'EVALUATION_SERVICE_GRPC_PORT': 50091,
-    'TRANSFER_AGENT_GRPC_PORT': 50101,
+    'TASK_SERVICE_GRPC_PORT': 51061,
+    'ALGORITHM_SERVICE_GRPC_PORT': 51067,
+    'REPORT_SERVICE_GRPC_PORT': 51068,
+    'AUTH_SERVICE_GRPC_PORT': 51069,
+    'API_TEST_SERVICE_GRPC_PORT': 51071,
+    'ADAPTER_SERVICE_GRPC_PORT': 51081,
+    'EVALUATION_SERVICE_GRPC_PORT': 51091,
+    'TRANSFER_AGENT_GRPC_PORT': 51101,
 }
 
 GATEWAY_HTTP = 5000 + SHIFT
 FRONTEND_PORT = 6273
+
+# INT-363：门禁默认认证模式。dev=本地 OAuth（表单登录），进程 env 是 vite
+# env 优先级最高层，显式注入使 served VITE_AUTH_MODE 不再随
+# frontend/.env.development（=off）与 .env.local（=dev）的文件级优先级
+# 冲突漂移；前后端必须同值（AUTH_MODE/VITE_AUTH_MODE），否则路由守卫
+# 弹登录页而后端不放 token（AuthModeMismatchBanner 会提示错位）。
+AUTH_MODE = os.environ.get('UI_GATE_AUTH_MODE', 'dev')
 
 
 def _shift(base: int) -> int:
@@ -83,6 +90,8 @@ def _base_env() -> dict:
     load_dotenv(os.path.join(BASE_DIR, '.env'))
     env = os.environ.copy()
     env['PYTHONUTF8'] = '1'
+    env['AUTH_MODE'] = AUTH_MODE
+    env['VITE_AUTH_MODE'] = AUTH_MODE
     # 隔离库（强制）：从 .env DATABASE_URL 推导仅换库名
     parts = urlsplit(env.get('DATABASE_URL', ''))
     if not parts.scheme.startswith('postgres'):
@@ -239,12 +248,49 @@ def wait_ready(timeout: int = 90):
                 if body.get('database') != ISOLATED_TEST_DB_NAME:
                     print('[UI-STACK][FATAL] 栈 database 字段非隔离库，立即停止', flush=True)
                     return stop()
+                _verify_auth_mode()
                 return True
         except Exception:
             pass
         time.sleep(2)
     print('[UI-STACK][WARN] 网关就绪探测超时（详见 logs/ui_stack/ui_stack.log）', flush=True)
     return False
+
+
+def _verify_auth_mode():
+    """INT-363：就绪后复核前后端认证模式一致（认证链路用例的前置条件自检）。
+
+    后端读 /api/v1/auth/mode（网关 AUTH_MODE）；前端读 vite 模块图里
+    实际注入的 served VITE_AUTH_MODE（与浏览器侧同源）。错位时守卫
+    行为与登录跳转必然互相矛盾，在栈层显式 FAIL 而非留给 pytest 报
+    模糊断言。
+    """
+    try:
+        r = httpx.get(f'http://127.0.0.1:{GATEWAY_HTTP}/api/v1/auth/mode',
+                      timeout=3, trust_env=False)
+        backend_mode = (r.json() or {}).get('auth_mode', '')
+    except Exception as exc:
+        print(f'[UI-STACK][WARN] auth mode 复核失败（后端不可达）: {exc}', flush=True)
+        return
+    served_mode = ''
+    try:
+        r = httpx.get(f'http://127.0.0.1:{FRONTEND_PORT}/src/domain/enums.ts',
+                      timeout=5, trust_env=False)
+        r.raise_for_status()
+        for line in r.text.splitlines():
+            if 'import.meta.env' in line and 'VITE_AUTH_MODE' in line:
+                served_mode = line.split('"VITE_AUTH_MODE":')[1].split('"')[1]
+                break
+    except Exception as exc:
+        print(f'[UI-STACK][WARN] served VITE_AUTH_MODE 读取失败: {exc}', flush=True)
+        return
+    if backend_mode != served_mode:
+        raise SystemExit(
+            f'[UI-STACK][FATAL] 前后端认证模式错位：后端 AUTH_MODE={backend_mode!r}，'
+            f'served VITE_AUTH_MODE={served_mode!r}。门禁环境由本启动器统一注入 '
+            f'AUTH_MODE/VITE_AUTH_MODE={AUTH_MODE!r}（进程 env 优先级最高，不受 '
+            'frontend/.env* 文件漂移影响）；出现此报错说明注入被绕过，请排查。')
+    print(f'[UI-STACK] 认证模式复核通过：两侧一致（{backend_mode!r}）', flush=True)
 
 
 def stop():

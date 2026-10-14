@@ -8,6 +8,15 @@
 3. 引导自举 —— 隔离库 RBAC 种子（seed_rbac.py 幂等重播）+ admin 账号
    （空库首注册即 admin 角色），全部用例共享。
 
+INT-363 served-mode 前置条件：认证链路用例（test_ui_01 表单登录跳转/
+登出、test_ui_02 未登录重定向）断言路由守卫弹回行为，仅在 served
+VITE_AUTH_MODE != off 时有意义——off 模式守卫对未登录全放行（向后
+兼容语义）。并行隔离栈（方式 A）由 launcher 进程 env 固定注入
+AUTH_MODE/VITE_AUTH_MODE=dev（vite 进程 env 优先级高于 .env* 文件，
+不受 .env.development=off / .env.local=dev 文件级优先级冲突影响），
+恒一致；served=off 时此类用例显式 skip 并标注前置条件，不静默失败
+污染回归判据。
+
 失败取证：call 阶段失败自动落 截图 + console 日志 + page source 到
 tests/ui/artifacts/<用例名>/（issue 验收口径：缺陷卡直接引用）。
 """
@@ -31,6 +40,9 @@ from tests.ui.utils import bootstrap  # noqa: E402
 # 127.0.0.1 直连（INT-102：localhost 解析 ::1 误连；服务端仅绑 IPv4）
 FRONTEND_BASE = os.environ.get('UI_FRONTEND_BASE', 'http://127.0.0.1:5173')
 API_ROOT = os.environ.get('UI_API_BASE', 'http://127.0.0.1:5000')
+
+# 认证链路用例模块（INT-363 served-mode 前置条件适用范围）
+AUTH_GATED_MODULES = ('test_ui_01_login.py', 'test_ui_02_navigation.py')
 
 # 账号口径：.env DEV_DEFAULT_*（本地开发默认 admin/admin123）；测试不改账号
 UI_USERNAME = os.environ.get('UI_TEST_USERNAME', 'admin')
@@ -123,6 +135,54 @@ def _isolated_db_guard(_live_stack_gate):
             'UI 用例含写操作，禁止对共享业务库执行；请以 '
             '`python run_all.py --test-db` 重启栈后再跑。', pytrace=False)
     return db_name
+
+
+# ── INT-363：served 认证模式探测与认证链路用例前置条件 ───────
+def _served_vite_auth_mode() -> str:
+    """读 vite dev server 模块图里实际注入的 VITE_AUTH_MODE（浏览器同源）。
+
+    vite dev 下 enums.ts 顶部被静态替换为 `import.meta.env = {...}` 单行，
+    其中 VITE_AUTH_MODE 即 served 值；读不到（前端未起/结构变更）回空串。
+    """
+    try:
+        r = httpx.get(f'{FRONTEND_BASE}/src/domain/enums.ts', **_HTTPOPTS)
+        r.raise_for_status()
+    except Exception:
+        return ''
+    for line in r.text.splitlines():
+        if 'import.meta.env' in line and 'VITE_AUTH_MODE' in line:
+            try:
+                return line.split('"VITE_AUTH_MODE":')[1].split('"')[1]
+            except IndexError:
+                return ''
+    return ''
+
+
+def pytest_collection_modifyitems(config, items):
+    """INT-363：served VITE_AUTH_MODE=off 时，认证链路用例显式 skip。
+
+    仅对 AUTH_GATED_MODULES 生效（session 级探测一次）；off 模式路由守卫
+    对未登录全放行，登录跳转/登出/未登录重定向断言无前提，属环境前置
+    不满足而非产品缺陷。并行隔离栈恒为 dev（launcher 注入），此分支
+    只在共享栈方式 B 且未注入 VITE_AUTH_MODE 时触发。
+    """
+    gated = [it for it in items
+             if os.path.basename(str(it.fspath)) in AUTH_GATED_MODULES]
+    if not gated:
+        return
+    served = _served_vite_auth_mode()
+    if served != 'off':
+        if served == '':
+            print(f'[UI-CONFTEST][WARN] {FRONTEND_BASE} 未起或读取不到 served '
+                  'VITE_AUTH_MODE；认证链路用例前置条件未验证，盲跑。')
+        return
+    skip = pytest.mark.skip(
+        reason='served VITE_AUTH_MODE=off：路由守卫对未登录全放行，认证链路'
+               '用例（登录跳转/登出/未登录重定向）无断言前提（INT-363 口径）。'
+               '请以并行隔离栈跑门禁（python tests/ui/run_gate.py，launcher '
+               '固定注入 dev/dev），或以 VITE_AUTH_MODE=dev 重启共享栈前端。')
+    for it in gated:
+        it.add_marker(skip)
 
 
 # ── 门禁 3：隔离库引导（RBAC 种子 + admin 账号）──────────────

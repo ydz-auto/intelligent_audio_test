@@ -41,6 +41,24 @@ python scripts/reset_test_db.py      # 冒烟后清库
    幂等重播）+ admin 账号（空库首注册即 admin 角色，与 .env `DEV_DEFAULT_*`
    同口径 admin/admin123）。
 
+## served 认证模式口径（INT-363）
+
+认证链路用例（test_ui_01 表单登录跳转/登出、test_ui_02 未登录重定向）
+断言路由守卫的弹回行为，**前置条件：served VITE_AUTH_MODE != off**——
+off 模式下守卫对未登录全放行（向后兼容语义），这些断言无前提。
+
+vite env 优先级：**进程 env > .env.[mode] > .env.local > .env**，且
+`.env.development`（tracked，=off）优先于 `.env.local`（untracked）——
+文件值互相冲突时 served mode 随文件漂移，门禁环境不可依赖文件。
+
+- **方式 A（并行隔离栈，默认口径）**：launcher 经进程 env 固定注入
+  `AUTH_MODE=VITE_AUTH_MODE=dev`（可用 `UI_GATE_AUTH_MODE` 覆盖），
+  就绪后自动复核两侧一致（错位 FATAL）；认证链路用例恒实跑。
+- **方式 B（共享栈）**：未注入时 served mode 取 frontend/.env* 文件值，
+  为 off 则 test_ui_01/ui_02 整文件显式 skip（conftest
+  `pytest_collection_modifyitems`，skip 原因标注本口径）；需实跑时以
+  `VITE_AUTH_MODE=dev` 重启共享栈前端（进程 env 方式，别只改 .env 文件）。
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
@@ -48,6 +66,7 @@ python scripts/reset_test_db.py      # 冒烟后清库
 | `RUN_LIVE_STACK` | （空=skip） | `1` 显式纳入 UI 实机用例 |
 | `UI_FRONTEND_BASE` | `http://127.0.0.1:5173` | 前端地址 |
 | `UI_API_BASE` | `http://127.0.0.1:5000` | 网关地址 |
+| `UI_GATE_AUTH_MODE` | `dev` | 并行栈认证模式（launcher 注入 AUTH_MODE/VITE_AUTH_MODE，INT-363） |
 | `UI_TEST_USERNAME` / `UI_TEST_PASSWORD` | `admin` / `admin123` | 引导账号（隔离库自建） |
 | `UI_CHROME_BINARY` | `C:\Program Files\...\chrome.exe` | Chrome 二进制 |
 | `UI_CHROMEDRIVER` | `e2e_tests/selenium/drivers/...` | chromedriver（沿用既有基建） |

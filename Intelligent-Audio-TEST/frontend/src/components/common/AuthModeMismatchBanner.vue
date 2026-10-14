@@ -10,9 +10,11 @@
         </span>
         <span v-if="!backendModeKnown">后端取值不在合法集合（off | dev | prod）内，请检查后端 AUTH_MODE 注入。</span>
         <span>
-          修正指引：使前端构建期注入与后端一致——本地开发改
-          <code>frontend/.env.local</code> 的 VITE_AUTH_MODE；生产构建用
-          <code>VITE_AUTH_MODE=&lt;off|dev|prod&gt;</code> 或 docker
+          修正指引：使前端注入与后端一致——本地 dev server 以进程 env 注入
+          （<code>VITE_AUTH_MODE=&lt;off|dev|prod&gt; npm run dev</code>，注意
+          tracked 的 <code>.env.development</code> 优先级高于
+          <code>.env.local</code>，只改 .env.local 会被静默覆盖且需重启进程）；
+          生产构建用 <code>VITE_AUTH_MODE=&lt;off|dev|prod&gt;</code> 或 docker
           <code>--build-arg VITE_AUTH_MODE=...</code> 重新构建。详见 docs/oauth.md。
         </span>
       </div>
