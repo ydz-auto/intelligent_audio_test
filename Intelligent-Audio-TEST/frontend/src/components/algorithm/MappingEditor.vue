@@ -871,11 +871,19 @@ function handleRemove(record: any) {
 }
 
 /* 评估维度分组头行 */
+/* V9.7.10 792b3de7 补差：分组头 td 是该行唯一单元格（即 :last-child），
+   会被全局 .data-table td:last-child 的 display:flex 压出表格布局导致 colspan 塌缩，
+   这里恢复 table-cell 布局让 colspan 生效（与组尾 .add-row td 同一修复口径） */
 .dimension-group-header-row td {
+  display: table-cell !important;
+  min-width: 0 !important;
   background: var(--primary-light) !important;
   font-weight: var(--font-weight-medium);
   color: var(--primary-color);
   padding: 6px 12px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
 }
 .dimension-group-icon {
   margin-right: 6px;

@@ -114,7 +114,7 @@
               >
             </div>
             <div class="form-group">
-              <label>所属分组 <span class="required">*</span></label>
+              <label>所属分组</label>
               <select class="form-input" v-model="groupSelectValue">
                 <option :value="null">请选择分组</option>
                 <option v-for="group in groups" :key="group.id" :value="group.id">

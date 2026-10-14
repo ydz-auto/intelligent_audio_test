@@ -126,10 +126,7 @@ export function useAlgorithmCrudOps(
       notification.warning('请填写新分组名称')
       return
     }
-    if (!creatingNewGroup.value && !formState.groupId) {
-      notification.warning('请填写必填字段')
-      return
-    }
+    // group_id 可空：与后端 PO 可空语义对齐（V9.7.10 792b3de7），不再拦截未选分组
 
     await saveAlgorithm()
   }
