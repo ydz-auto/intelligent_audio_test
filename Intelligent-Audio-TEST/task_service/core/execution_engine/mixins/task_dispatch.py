@@ -9,8 +9,12 @@
 """
 from datetime import datetime
 
+from sqlalchemy.exc import InvalidRequestError
+
 from task_service.infrastructure.persistence.models import TaskCase
-from shared.utils.status_utils import derive_task_case_status, task_case_not_removed
+from shared.utils.status_utils import (
+    derive_task_case_status, task_case_not_removed, REMOVED_CASE_MESSAGE,
+)
 from shared.utils.status_constants import (
     TaskCaseStatus, ExecutionStatus, EvaluationStatus,
     ACTIVE_EXECUTION_STATUSES, ACTIVE_EVALUATION_STATUSES,
@@ -188,9 +192,31 @@ class TaskDispatchMixin:
             self._handle_physical_lock_busy(task_id, tc_rel)
             return
 
+        # 先取设备号：执行期间用例行可能被删（INT-305），finally 日志不再触实例属性
+        e2e_device_id = tc_rel.device_id
         try:
             success = self._execute_e2e_case(task_id, tc_rel.id)
-            tc_rel = session.get(TaskCase, tc_rel.id)
+            # INT-308 复验打回：同步执行期间执行器可经 gRPC 写入 TaskCase 终态
+            # （停止分支 execution_status=stopped / error_message='任务被手动停止'），
+            # 而 tc_rel 仍持有派发/抢锁时的 identity map 快照——session.get 命中
+            # 未过期陈旧对象，失败收敛会把停止终态覆盖回兜底失败文案。
+            # 强制 refresh 重读，收敛一律以落库值为准。
+            # 先取主键：refresh 失败后实例过期，再访问属性会二次触发刷新抛错
+            tc_rel_id = tc_rel.id
+            try:
+                session.refresh(tc_rel)
+            except InvalidRequestError:
+                # refresh 对已删行抛 InvalidRequestError（ObjectDeletedError 子类）——
+                # 行确认不存在则跳过收敛（无终态可写），其余 refresh 异常照常上抛不吞；
+                # 探测须走 query 且用已捕获的主键值（不可再触 tc_rel 属性）
+                row_exists = session.query(TaskCase.id).filter(
+                    TaskCase.id == tc_rel_id).first() is not None
+                if row_exists:
+                    raise
+                self._log(level='INFO',
+                          content=f"用例 {tc_rel_id} 执行期间已被删除，跳过终态收敛",
+                          task_id=task_id)
+                return
 
             task.completed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.COMPLETED)
             task.failed_cases = self._count_cases_by_status(task_id, session, TaskCaseStatus.FAILED, use_filter_by=True)
@@ -202,7 +228,7 @@ class TaskDispatchMixin:
                 device_lock.release()
             except Exception:
                 self._log(level='WARNING',
-                          content=f"释放物理设备互斥锁失败 (device_id={tc_rel.device_id})",
+                          content=f"释放物理设备互斥锁失败 (device_id={e2e_device_id})",
                           task_id=task_id)
 
     def _acquire_physical_device_lock(self, task_id, tc_rel):
@@ -298,11 +324,21 @@ class TaskDispatchMixin:
         tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
 
     def _handle_e2e_failure(self, task_id, tc_rel):
-        """E2E 执行失败处理"""
-        if tc_rel.execution_status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
+        """E2E 执行失败收敛（调用前须 session.refresh 重读落库值，见 _dispatch_e2e_case）。
+
+        INT-308 复验打回：执行器经 gRPC 写入的终态不得被兜底覆盖——
+        - 停止分支已写 execution_status=stopped / error_message='任务被手动停止'
+          （取证点③契约），防护条件排除 STOPPED，用户停止不被改写为执行失败；
+        - INT-305 移除留痕行（error_message='用例已被移除'）不收敛，保留移除语义。
+        告警仅对执行失败终态发布（停止/移除/完成路径各有自己的事件）。
+        """
+        is_removed = (tc_rel.error_message or '') == REMOVED_CASE_MESSAGE
+        if not is_removed and tc_rel.execution_status not in (
+                ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.STOPPED):
             tc_rel.execution_status = ExecutionStatus.FAILED
             tc_rel.evaluation_status = EvaluationStatus.COMPLETED
             tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status)
             tc_rel.completed_at = datetime.now(self.utc_plus_8)
             tc_rel.error_message = tc_rel.error_message or 'E2E用例执行失败（gRPC返回失败或异常）'
-        self._emit_alert(task_id, f"用例执行失败: {tc_rel.test_case_id}")
+        if tc_rel.execution_status == ExecutionStatus.FAILED:
+            self._emit_alert(task_id, f"用例执行失败: {tc_rel.test_case_id}")

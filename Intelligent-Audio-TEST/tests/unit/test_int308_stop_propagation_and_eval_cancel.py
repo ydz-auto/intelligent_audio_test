@@ -927,3 +927,280 @@ class TestE2EExecutorStopBranchTerminalStatus:
         assert 'status' not in kwargs or kwargs.get('status') != 'stopped'
         assert kwargs.get('error_message') == '任务被手动停止'
 
+
+class _FakeLock:
+    def __init__(self):
+        self.released = False
+
+    def release(self):
+        self.released = True
+
+
+class TestDispatchE2EFailureTerminalPreservation:
+    """复验打回修复（终态覆盖）：_execute_e2e_case 同步执行期间执行器可经 gRPC
+    写入 TaskCase 终态（停止分支 execution_status=stopped / '任务被手动停止'），
+    而 tc_rel 持有派发时的 identity map 快照——session.get 命中未过期陈旧对象，
+    _handle_e2e_failure 把停止终态覆盖回兜底失败文案。
+
+    修复：执行返回后 session.refresh 强制重读；防护条件排除 STOPPED 与
+    INT-305 移除留痕行；告警仅对执行失败终态发布。
+
+    用真实 SQLite 会话（StaticPool 单连接）按生产时序复现：
+    派发快照载入 → claim commit 过期 → 抢锁内属性访问重读（执行前态）→
+    执行期间另一会话落库终态 → 返回后收敛。修复前本组用例必失败
+    （陈旧 RUNNING 对象被改写为 FAILED + 兜底文案，即复验实测的落库结果）。"""
+
+    @staticmethod
+    def _session_factory():
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import StaticPool
+        from sqlalchemy.orm import sessionmaker
+        from task_service.infrastructure.persistence.models import TaskCase
+
+        engine = create_engine(
+            'sqlite:///:memory:',
+            connect_args={'check_same_thread': False},
+            poolclass=StaticPool,
+        )
+        TaskCase.__table__.create(engine)
+        return sessionmaker(bind=engine)
+
+    @staticmethod
+    def _make_case(factory):
+        from task_service.infrastructure.persistence.models import TaskCase
+        s = factory()
+        row = TaskCase(task_id=9, test_case_id='case-1', status='running',
+                       execution_status=ExecutionStatus.RUNNING,
+                       evaluation_status='pending', error_message=None)
+        s.add(row)
+        s.commit()
+        row_id = row.id
+        s.close()
+        return row_id
+
+    @staticmethod
+    def _engine(during_execution=None):
+        """engine 桩：抢锁内属性访问（模拟生产 claim-commit 过期后重读快照）；
+        _execute_e2e_case 返回 False，可经 during_execution 在执行期间写库"""
+        from datetime import timedelta, timezone
+        from task_service.core.execution_engine.mixins.task_dispatch import TaskDispatchMixin
+
+        eng = TaskDispatchMixin.__new__(TaskDispatchMixin)
+        eng.utc_plus_8 = timezone(timedelta(hours=8))
+        eng._log = MagicMock()
+        eng._emit_alert = MagicMock()
+        eng._claim_case = MagicMock(return_value=1)
+        lock = _FakeLock()
+
+        def _acquire(task_id_, tc_rel_):
+            _ = tc_rel_.device_id  # 真实抢锁路径的属性访问：过期后重读执行前快照
+            return lock
+
+        eng._acquire_physical_device_lock = MagicMock(side_effect=_acquire)
+
+        def _execute(task_id_, tc_rel_id_):
+            if during_execution is not None:
+                during_execution()
+            return False
+
+        eng._execute_e2e_case = MagicMock(side_effect=_execute)
+        eng._count_cases_by_status = MagicMock(return_value=0)
+        return eng, lock
+
+    @staticmethod
+    def _run_dispatch(factory, row_id, during_execution=None):
+        eng, lock = TestDispatchE2EFailureTerminalPreservation._engine(during_execution)
+        from task_service.infrastructure.persistence.models import TaskCase
+        s1 = factory()
+        tc_rel = s1.get(TaskCase, row_id)  # identity map 快照（执行前态）
+        assert tc_rel.error_message is None and tc_rel.execution_status == ExecutionStatus.RUNNING
+        task = SimpleNamespace(completed_cases=0, failed_cases=0)
+        eng._dispatch_e2e_case(9, task, tc_rel, s1)
+        s1.commit()  # 主循环派发后提交（task_lifecycle.py:245 同语义）
+        s1.close()
+        return eng, lock
+
+    @staticmethod
+    def _fresh_read(factory, row_id):
+        from task_service.infrastructure.persistence.models import TaskCase
+        s3 = factory()
+        try:
+            return s3.get(TaskCase, row_id)
+        finally:
+            s3.close()
+
+    def test_stop_terminal_not_overwritten(self):
+        """复验打回主场景：执行期间执行器写入停止终态，success=False 返回后
+        兜底收敛不得覆盖（修复前：陈旧对象被改写为 FAILED+兜底文案）"""
+        from task_service.infrastructure.persistence.models import TaskCase
+        factory = self._session_factory()
+        row_id = self._make_case(factory)
+
+        def executor_writes():
+            s2 = factory()
+            s2.query(TaskCase).filter(TaskCase.id == row_id).update({
+                'execution_status': ExecutionStatus.STOPPED,
+                'status': 'failed',
+                'error_message': '任务被手动停止',
+            }, synchronize_session=False)
+            s2.commit()
+            s2.close()
+
+        eng, lock = self._run_dispatch(factory, row_id, executor_writes)
+
+        fresh = self._fresh_read(factory, row_id)
+        assert fresh.execution_status == ExecutionStatus.STOPPED
+        assert fresh.status == 'failed'
+        assert fresh.error_message == '任务被手动停止'
+        eng._emit_alert.assert_not_called()  # 停止路径不发"用例执行失败"告警
+        assert lock.released is True
+
+    def test_genuine_failure_still_converges(self):
+        """执行器未写终态（gRPC 失败等真失败）：兜底收敛照常写 FAILED+告警"""
+        factory = self._session_factory()
+        row_id = self._make_case(factory)
+
+        eng, _lock = self._run_dispatch(factory, row_id)
+
+        fresh = self._fresh_read(factory, row_id)
+        assert fresh.execution_status == ExecutionStatus.FAILED
+        assert fresh.error_message == 'E2E用例执行失败（gRPC返回失败或异常）'
+        eng._emit_alert.assert_called_once()
+
+    def test_removed_marker_not_stomped(self):
+        """INT-305 移除留痕行（error_message='用例已被移除'）不参与失败收敛：
+        执行器对移除用例静默退出不写终态（success=False 返回），行仍 active——
+        兜底不得盖写移除标记（移除语义收敛归 INT-305）"""
+        from task_service.infrastructure.persistence.models import TaskCase
+        factory = self._session_factory()
+        row_id = self._make_case(factory)
+
+        def removal_marks_row():
+            s2 = factory()
+            s2.query(TaskCase).filter(TaskCase.id == row_id).update({
+                'error_message': '用例已被移除',
+            }, synchronize_session=False)
+            s2.commit()
+            s2.close()
+
+        eng, _lock = self._run_dispatch(factory, row_id, removal_marks_row)
+
+        fresh = self._fresh_read(factory, row_id)
+        assert fresh.error_message == '用例已被移除'
+        assert fresh.execution_status == ExecutionStatus.RUNNING
+        eng._emit_alert.assert_not_called()
+
+    def test_row_deleted_mid_execution_skips_convergence(self):
+        """执行期间用例被物理删除（INT-305 待执行删除竞态）：refresh 抛
+        ObjectDeletedError → 记日志跳过收敛，锁照常释放，不抛异常"""
+        from task_service.infrastructure.persistence.models import TaskCase
+        factory = self._session_factory()
+        row_id = self._make_case(factory)
+
+        def executor_side_deletes_row():
+            s2 = factory()
+            s2.query(TaskCase).filter(TaskCase.id == row_id).delete(synchronize_session=False)
+            s2.commit()
+            s2.close()
+
+        eng, lock = self._run_dispatch(factory, row_id, executor_side_deletes_row)
+
+        assert self._fresh_read(factory, row_id) is None
+        assert lock.released is True
+        eng._emit_alert.assert_not_called()
+
+    def test_executor_failed_terminal_keeps_message_and_alert(self):
+        """执行器已写 FAILED 终态（自定义失败文案）：兜底不覆盖文案，
+        失败告警保留（既有可观测性）"""
+        from task_service.infrastructure.persistence.models import TaskCase
+        factory = self._session_factory()
+        row_id = self._make_case(factory)
+
+        def executor_writes_failed():
+            s2 = factory()
+            s2.query(TaskCase).filter(TaskCase.id == row_id).update({
+                'execution_status': ExecutionStatus.FAILED,
+                'status': 'failed',
+                'error_message': '设备连接超时',
+            }, synchronize_session=False)
+            s2.commit()
+            s2.close()
+
+        eng, _lock = self._run_dispatch(factory, row_id, executor_writes_failed)
+
+        fresh = self._fresh_read(factory, row_id)
+        assert fresh.execution_status == ExecutionStatus.FAILED
+        assert fresh.error_message == '设备连接超时'  # 执行器文案不被兜底覆盖
+        eng._emit_alert.assert_called_once()  # 失败终态告警保留
+
+
+class TestStopSweepAlignsStoppedContract:
+    """INT-332 核验偏差#2：停止兜底收敛与 task_control 停止分支同款标签
+    （stopped / '任务被手动停止'），移除留痕行不参与收敛（真实过滤条件）。"""
+
+    @staticmethod
+    def _engine():
+        from datetime import timedelta, timezone
+        from task_service.core.execution_engine.mixins.task_finalize import TaskFinalizeMixin
+
+        eng = TaskFinalizeMixin.__new__(TaskFinalizeMixin)
+        eng.utc_plus_8 = timezone(timedelta(hours=8))
+        eng._log = MagicMock()
+        return eng
+
+    @staticmethod
+    def _session_with_rows():
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import StaticPool
+        from sqlalchemy.orm import sessionmaker
+        from task_service.infrastructure.persistence.models import TaskCase
+
+        engine = create_engine(
+            'sqlite:///:memory:',
+            connect_args={'check_same_thread': False},
+            poolclass=StaticPool,
+        )
+        TaskCase.__table__.create(engine)
+        factory = sessionmaker(bind=engine)
+        s = factory()
+        active = TaskCase(task_id=9, test_case_id='case-a', status='running',
+                          execution_status=ExecutionStatus.RUNNING,
+                          evaluation_status='running', duration=12)
+        removed = TaskCase(task_id=9, test_case_id='case-b', status='running',
+                           execution_status=ExecutionStatus.RUNNING,
+                           evaluation_status='pending', error_message='用例已被移除')
+        done = TaskCase(task_id=9, test_case_id='case-c', status='completed',
+                        execution_status=ExecutionStatus.COMPLETED,
+                        evaluation_status='completed')
+        s.add_all([active, removed, done])
+        s.commit()
+        ids = (active.id, removed.id, done.id)
+        s.close()
+        return factory, ids
+
+    def test_sweep_writes_stopped_contract(self):
+        from task_service.infrastructure.persistence.models import TaskCase
+        factory, (active_id, removed_id, done_id) = self._session_with_rows()
+        eng = self._engine()
+        s = factory()
+        eng._mark_uncompleted_cases_failed(9, s)
+        s.close()
+
+        s = factory()
+        active = s.get(TaskCase, active_id)
+        assert active.execution_status == ExecutionStatus.STOPPED
+        assert active.evaluation_status == 'stopped'
+        assert active.status == 'failed'  # derive(stopped, stopped) = failed
+        assert active.error_message == '任务被手动停止'
+        assert active.duration is None
+        assert active.completed_at is not None
+
+        removed = s.get(TaskCase, removed_id)
+        assert removed.error_message == '用例已被移除'  # 移除留痕不被盖写
+        assert removed.execution_status == ExecutionStatus.RUNNING
+        done = s.get(TaskCase, done_id)
+        assert done.execution_status == ExecutionStatus.COMPLETED  # 终态不动
+        s.close()
+
+
+

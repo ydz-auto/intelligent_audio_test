@@ -261,19 +261,28 @@ class TaskFinalizeMixin:
             f"eval_failed={counts['eval_failed']}"), task_id=task_id)
 
     def _mark_uncompleted_cases_failed(self, task_id, session):
-        """任务停止时，将所有未完成用例标记为失败"""
+        """任务停止兜底：等待循环收尾时仍活跃的用例收敛到停止契约终态。
+
+        INT-308 口径对齐（INT-332 核验偏差#2）：与 task_control 停止分支同款
+        标签——execution_status=stopped / error_message='任务被手动停止'，
+        status 由 derive 推导落 failed（derive(stopped, stopped)=failed），
+        不再用 FAILED+'任务被停止，用例执行中断'造成同一停止语义两种标签。
+        移除留痕行（INT-305）不参与收敛，保留移除标记。
+        """
         uncompleted = session.query(TaskCase).filter(
             TaskCase.task_id == task_id,
-            TaskCase.execution_status.in_(ACTIVE_EXECUTION_STATUSES)
+            TaskCase.execution_status.in_(ACTIVE_EXECUTION_STATUSES),
+            task_case_not_removed(TaskCase),
         ).all()
         for tc in uncompleted:
-            tc.execution_status = ExecutionStatus.FAILED
-            tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status or EvaluationStatus.PENDING)
+            tc.execution_status = ExecutionStatus.STOPPED
+            tc.evaluation_status = EvaluationStatus.STOPPED
+            tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
             tc.completed_at = datetime.now(self.utc_plus_8)
-            tc.duration = 0
-            tc.error_message = '任务被停止，用例执行中断'
+            tc.duration = None
+            tc.error_message = '任务被手动停止'
         session.commit()
-        self._log(level='INFO', content=f"任务已停止，标记 {len(uncompleted)} 个未完成用例为失败", task_id=task_id)
+        self._log(level='INFO', content=f"任务已停止，收敛 {len(uncompleted)} 个未完成用例到停止终态", task_id=task_id)
 
     def _has_evaluating_cases(self, task_id, session):
         """检查是否还有用例在评估中"""

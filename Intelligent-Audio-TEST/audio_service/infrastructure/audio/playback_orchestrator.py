@@ -696,8 +696,11 @@ class PlaybackOrchestrator:
         stop_task_audio 置位设备 stop_event 后驱动流关闭 → future done，
         据此判定播放被停止，立即返回（不再睡满理论时长）。
         播放自然结束时 future 同样全部 done，直接提前返回，行为等价。
-        轮次级噪声为循环播放（future 在 stop_task_audio('device_*') 前不 done），
-        此时退化为睡满理论时长，与原行为一致。
+        任务停止中断对所有播放模式生效（含循环播放）——上方 _is_task_stopped
+        检查读 Redis 停止标志位，每拍感知，≤poll_interval 中断；
+        循环播放仅「播放提前结束」检测不可用（future 在
+        stop_task_audio('device_*') 前不 done），自然完成按理论时长收口，
+        与原行为一致（INT-332 核验偏差#1 口径澄清：退化仅指自然完成检测）。
         """
         task_key = str(task_id)
         deadline = time.time() + total_duration
