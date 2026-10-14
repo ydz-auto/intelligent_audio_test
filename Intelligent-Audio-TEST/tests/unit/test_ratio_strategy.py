@@ -31,7 +31,7 @@ def test_round_mode_with_overall():
         _overall_item(1, case_id=1, round_count=2),
         _overall_item(2, case_id=2, round_count=3),
     ]
-    assert RatioStrategy().aggregate(items, denominator_mode='round') == round((1 + 2) / (2 + 3) * 100, 2)  # 60.0
+    assert RatioStrategy().aggregate(items, denominator_mode='round') == round((1 + 2) / (2 + 3) * 100, 4)  # 60.0
 
 
 def test_round_mode_without_overall():
@@ -40,7 +40,7 @@ def test_round_mode_without_overall():
         _round_items([1, 0], case_id=1) +   # 该用例 2 轮
         _round_items([1, 1, 1], case_id=2)  # 该用例 3 轮
     )
-    assert RatioStrategy().aggregate(items, denominator_mode='round') == round((1 + 0 + 1 + 1 + 1) / (2 + 3) * 100, 2)  # 80.0
+    assert RatioStrategy().aggregate(items, denominator_mode='round') == round((1 + 0 + 1 + 1 + 1) / (2 + 3) * 100, 4)  # 80.0
 
 
 def test_round_mode_null_value_excluded():
@@ -49,7 +49,7 @@ def test_round_mode_null_value_excluded():
         _overall_item(None, case_id=1, round_count=3),
         _overall_item(1, case_id=2, round_count=2),
     ]
-    assert RatioStrategy().aggregate(items, denominator_mode='round') == round(1 / 2 * 100, 2)  # 50.0
+    assert RatioStrategy().aggregate(items, denominator_mode='round') == round(1 / 2 * 100, 4)  # 50.0
 
 
 def test_round_mode_pure_overall_no_round_records_fallback_to_cases():
@@ -58,7 +58,7 @@ def test_round_mode_pure_overall_no_round_records_fallback_to_cases():
         {'dimension_value': 1, 'api_raw_response': None, 'test_result_id': 1, 'round_count': 0},
         {'dimension_value': 2, 'api_raw_response': None, 'test_result_id': 2, 'round_count': 0},
     ]
-    assert RatioStrategy().aggregate(items, denominator_mode='round') == round((1 + 2) / 2 * 100, 2)  # 150.0
+    assert RatioStrategy().aggregate(items, denominator_mode='round') == round((1 + 2) / 2 * 100, 4)  # 150.0
 
 
 # ---------- 按用例（agg_denominator='case'） ----------
@@ -69,7 +69,7 @@ def test_case_mode_with_overall():
         _overall_item(0, case_id=1, round_count=2),
         _overall_item(2, case_id=2, round_count=3),
     ]
-    assert RatioStrategy().aggregate(items, denominator_mode='case') == round((0 + 2) / 2 * 100, 2)  # 100.0
+    assert RatioStrategy().aggregate(items, denominator_mode='case') == round((0 + 2) / 2 * 100, 4)  # 100.0
 
 
 def test_case_mode_without_overall_dedupe_by_case():
@@ -78,7 +78,7 @@ def test_case_mode_without_overall_dedupe_by_case():
         _round_items([1, 0], case_id=1) +
         _round_items([1], case_id=2)
     )
-    assert RatioStrategy().aggregate(items, denominator_mode='case') == round((1 + 0 + 1) / 2 * 100, 2)  # 100.0
+    assert RatioStrategy().aggregate(items, denominator_mode='case') == round((1 + 0 + 1) / 2 * 100, 4)  # 100.0
 
 
 def test_default_mode_is_case():
@@ -112,7 +112,7 @@ def test_pass_rate_case_mode():
         _overall_item(0, case_id=2, round_count=3),
         _overall_item(1, case_id=3, round_count=2),
     ]
-    assert PassRateStrategy().aggregate(items, denominator_mode='case') == round(2 / 3 * 100, 2)  # 66.67
+    assert PassRateStrategy().aggregate(items, denominator_mode='case') == round(2 / 3 * 100, 4)  # 66.6667
 
 
 def test_average_round_mode():

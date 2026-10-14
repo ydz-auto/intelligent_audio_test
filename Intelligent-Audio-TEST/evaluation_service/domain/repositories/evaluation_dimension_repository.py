@@ -123,6 +123,16 @@ class EvaluationDimensionRepository(ABC):
         ...
 
     @abstractmethod
+    def delete_failed_round_scores(self, result_id: int, dimension_ids, error_message: str = '') -> int:
+        """删除某 TestResult 中指定维度的历史失败逐轮行（幽灵行，INT-364 对齐 V9.7.10 f02ba75e）。
+
+        只删 round_number 非空且 evaluation_status='failed' 的行——整体行
+        （round_number IS NULL）由评估入口复用重置，已通过的逐轮投影行保留。
+        返回删除行数。
+        """
+        ...
+
+    @abstractmethod
     def mark_active_scores_failed_excluding_rounds(
         self, result_id: int, keep_round_numbers, error_message: str
     ) -> int:

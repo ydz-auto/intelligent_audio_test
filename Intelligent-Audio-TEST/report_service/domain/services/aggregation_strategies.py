@@ -229,7 +229,9 @@ class PassRateStrategy(AggregationStrategy):
             return None
 
         # 转为百分比制 (0~100)，配合 score_unit='%' 显示为 "75%"
-        return round(pass_count / total * 100, 2)
+        # 精度 4 位（INT-364 对齐 V9.7.10 f02ba75e）：前端聚合展示统一保留 2 位，
+        # 聚合值保留更高精度供对比报告/导出使用，展示层四舍五入即可
+        return round(pass_count / total * 100, 4)
 
 
 def _find_pass_condition(output_params: List[Dict[str, Any]]) -> tuple:
@@ -299,7 +301,8 @@ class RatioStrategy(AggregationStrategy):
             denominator = n_cases
         if denominator == 0:
             return None
-        return round(total_num / denominator * 100, 2)
+        # 精度 4 位（INT-364 对齐 V9.7.10 f02ba75e，与 WeightedSumRatioStrategy 一致）
+        return round(total_num / denominator * 100, 4)
 
 
 # ------------------------------------------------------------------

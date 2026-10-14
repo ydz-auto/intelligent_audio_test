@@ -2,6 +2,9 @@
 """
 轮次结构化音频（played_audios / background_noise / interferers）维度参数种子脚本
 
+> 数据以数据库为金标对齐（2026-10-14，INT-364）：音频参数/映射均与智能语音测试库
+> 真实状态逐字段核对一致。
+
 背景：
    用例配置承载本轮播放音频（激励音频 audios、背景噪声 background_noise、
    干扰人 algorithm_params.interferers）。评估服务通过参数映射

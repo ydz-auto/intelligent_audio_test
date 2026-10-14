@@ -4,6 +4,8 @@
 
 蓝本：V9.7.10 backend/scripts/migrations/202606/seed_turn_eval.py（金标对齐后）。
 结构金标：运行库实查（2026-10-12，逐项比对维度行/参数/映射/关联/分类）。
+> 数据以数据库为金标对齐（2026-10-14，INT-364）：含 pass_threshold 浮点字面量
+> （PG numeric 等值无差，仅形态统一为浮点）。
 
 层级结构：
   逐轮话轮评估 (main, task_type_code=turn_eval，只配 input + api_settings + param_mappings)
@@ -149,7 +151,7 @@ SUB_DIMENSIONS = [
             # ─── 主评分：误解管数（pass when 0，即无误解管时通过）───
             ('false_takeover_count', '误解管数', '误解管数', 'number', 'output',
              'turn_classification.false_takeover_count', 'pass_eq', 'main', True,
-             False, None, '误解管轮次数（0=无误解管=通过）', 10, 0),
+             False, None, '误解管轮次数（0=无误解管=通过）', 10, 0.0),
             # ─── 三分类汇总 ───
             ('tc_summary', '三分类汇总', '三分类汇总', 'text', 'output',
              'turn_classification.summary', None, 'aux', True,

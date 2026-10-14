@@ -4,6 +4,8 @@
 
 蓝本：V9.7.10 backend/scripts/migrations/202609/seed_interruption_v2.py（金标对齐后）。
 结构金标：运行库实查（2026-10-12，逐项比对维度行/参数/映射/关联/分类）。
+> 数据以数据库为金标对齐（2026-10-14，INT-364）：含 pass_threshold 浮点字面量
+> （PG numeric 等值无差，仅形态统一为浮点）。
 
 背景：
    「打断成功率」(主+4子，纯本地时序) 与「打断场景裁判」(主+11子，独立 LLM 维度)
@@ -382,7 +384,7 @@ MAIN_DIMENSIONS = [
             _out('stop_compliance_rate', '停止指令遵循', 'interruption.stop_compliance_rate',
                  '遵从停止的轮占比(0-1)；模型停止原内容输出即遵从，只回复确认语同样算遵从。'
                  '非停止类用例或 LLM 降级为空。', 40,
-                 agg='pass_eq', pass_threshold=1),
+                 agg='pass_eq', pass_threshold=1.0),
         ],
         'param_mappings': _PARAM_MAPPINGS,
         'api_settings': _api_settings(BODY_TEMPLATE_SCORE),

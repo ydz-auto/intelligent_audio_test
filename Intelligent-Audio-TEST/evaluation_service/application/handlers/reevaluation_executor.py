@@ -516,6 +516,25 @@ class ReevaluationExecutor:
                              f"用例无失败维度，跳过重新评估: test_case_id={test_case_id}, result_id={result}",
                              task_id=task_id, test_case_id=test_case_id)
                 return False
+
+            # 清空待重评维度的历史失败逐轮行（幽灵行，对齐 V9.7.10 f02ba75e）：
+            # E2E 用例每轮未配置评估维度时，逐轮 TRD 行只是整体评估 per_round 投影
+            # 的产物；某轮无有效值（如无接管/打断事件）时 per_round 投影不覆盖该轮，
+            # 历史残留的 failed 逐轮行会永久保留，update_task_case_status 统计到
+            # 失败维度把用例永久判为 failed。删除后由本次重新评估的 per_round 投影
+            # 重新入库；整体行（round_number IS NULL）由评估入口
+            # _create_dimension_results 复用重置为 pending，不在此删除。
+            reeval_dim_ids = set()
+            for _dims in failed_dims_by_round.values():
+                reeval_dim_ids |= _dims
+            if reeval_dim_ids:
+                stale_count = evaluation_dimension_repository.delete_failed_round_scores(
+                    result, reeval_dim_ids)
+                if stale_count:
+                    log_and_emit('INFO', 'reevaluator',
+                                 f"清空待重评维度的历史失败逐轮行: test_case_id={test_case_id}, "
+                                 f"dims={sorted(reeval_dim_ids)}, 删除 {stale_count} 条",
+                                 task_id=task_id, test_case_id=test_case_id)
         elif dimension_filter_ids:
             # INT-302：全量重评但指定了维度——逐轮/整体按选中集过滤；
             # 不清空 TRD（未选维度结果保留），选中维度由评估入口
@@ -675,10 +694,29 @@ class ReevaluationExecutor:
             dimension_filter = None
             if failed_dims_by_round is not None:
                 overall_failed = failed_dims_by_round.get(None)
-                if not overall_failed:
-                    dimension_filter = []  # 明确跳过整体提交
-                else:
+                if overall_failed:
                     dimension_filter = list(overall_failed)
+                elif not submitted_rounds:
+                    # 兜底（INT-364 对齐 V9.7.10 f02ba75e，仅 failed 型——
+                    # failed_dims_by_round 非 None 即 failed 型重评）：失败维度只
+                    # 存在于逐轮 TRD（整体评估 per_round 投影写回所致）、逐轮分支
+                    # 又全部未提交（每轮未配置逐轮维度 continue）时，整体
+                    # （round_number=None）无失败维度若直接跳过，用例已被置回
+                    # queued 却无人提交评估，永久卡 queued 并阻塞后续重新评估。
+                    # 取所有轮次失败维度的并集走整体重评（经 dimension_filter_ids
+                    # 传给评估入口过滤）。
+                    round_failed_dims = set()
+                    for _rn, _dims in failed_dims_by_round.items():
+                        if _rn is not None:
+                            round_failed_dims |= _dims
+                    dimension_filter = list(round_failed_dims) if round_failed_dims else []
+                    if dimension_filter:
+                        log_and_emit('INFO', 'reevaluator',
+                                     f"逐轮失败兜底走整体重评: test_case_id={test_case_id}, "
+                                     f"dims={sorted(round_failed_dims)}",
+                                     task_id=task_id, test_case_id=test_case_id)
+                else:
+                    dimension_filter = []  # 明确跳过整体提交
             elif selection_dims is not None:
                 dimension_filter = list(selection_dims)
 
@@ -1007,7 +1045,64 @@ class ReevaluationExecutor:
         if failed_dim_ids is not None and submitted is not True:
             # 单轮结果未提交评估（过滤后无可评估维度等）：收口全部遗留非终态 TRD
             self._sweep_out_of_scope_active_scores(result_id, None, task_id, test_case_id)
+        if submitted is not True:
+            # 无维度可提交：回滚刚才置为 queued 的用例到终态（INT-364 对齐
+            # V9.7.10 f02ba75e），避免用例卡 queued（无回调、maybe_finalize
+            # 无法收尾），阻塞后续重新评估。评估入口无维度跳过路径会先行
+            # 收尾（mark_test_result_completed + _post_evaluate_updates），
+            # 此处仅在收尾未生效（TaskCase 仍 queued）时兜底回滚。
+            self._rollback_case_if_stuck_queued(
+                task_id, test_case_id,
+                reevaluate_type=reevaluate_type)
         return submitted
+
+    def _rollback_case_if_stuck_queued(self, task_id, test_case_id, reevaluate_type=None):
+        """重评未提交任何评估时，回滚仍停留 queued/pending 的用例到终态（INT-364）。
+
+        - failed 型重评回滚为 evaluation_status=failed（失败原因写入 error_message）；
+        - 其余类型回滚为 evaluation_status=completed；
+        - status 由执行终态恢复（derive 推导已能正确落 completed/failed）。
+        幂等安全：仅当用例仍处 queued/pending 中间态才写，评估入口已收尾
+        （终态）的用例不再触碰。
+        """
+        try:
+            tc_rels = task_acl_repository.get_task_case_by_ids(
+                task_id=task_id, case_ids=[str(test_case_id)])
+            if not tc_rels:
+                return
+            tc_rel = tc_rels[0]
+            if tc_rel.evaluation_status not in (
+                    EvaluationStatus.QUEUED, EvaluationStatus.PENDING):
+                return  # 评估入口已收尾（终态）或评估在途，不动
+
+            rollback_eval = (
+                EvaluationStatus.FAILED
+                if reevaluate_type == REEVALUATE_TYPE_FAILED
+                else EvaluationStatus.COMPLETED
+            )
+            rollback_case = (
+                TaskCaseStatus.FAILED
+                if reevaluate_type == REEVALUATE_TYPE_FAILED
+                else TaskCaseStatus.COMPLETED
+            )
+            task_acl_repository.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                status=rollback_case,
+                evaluation_status=rollback_eval,
+                error_message=(
+                    f"重新评估无维度可提交，回滚用例评估状态为 {rollback_eval}"
+                    if reevaluate_type == REEVALUATE_TYPE_FAILED else ''
+                ),
+            )
+            log_and_emit('WARNING', 'reevaluator',
+                         f"重新评估无维度可提交，回滚用例评估状态: test_case_id={test_case_id}, "
+                         f"evaluation_status={rollback_eval}, status={rollback_case}",
+                         task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            log_and_emit('WARNING', 'reevaluator',
+                         f"重评无维度提交回滚用例状态失败: test_case_id={test_case_id}, error={e}",
+                         task_id=task_id, test_case_id=test_case_id)
 
     def _compute_and_store_api_aggregated(self, result_id, algorithm_result):
         """API 结果没有顶层 aggregated，从 rounds 计算 — Application 层编排。

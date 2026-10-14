@@ -4,6 +4,8 @@
 
 蓝本：V9.7.10 backend/scripts/migrations/202609/seed_env_judge.py（金标对齐后）。
 结构金标：运行库实查（2026-10-12，逐项比对维度行/参数/映射/关联/分类）。
+> 数据以数据库为金标对齐（2026-10-14，INT-364）：维度/参数/映射/body_template 均与
+> 智能语音测试库真实状态逐字段核对一致。
 
 环境理解族评估"模型对环境音内容的理解"：模型回复音频(ai_wav) + 用户通道音频(user_wav)
 + 被播放音频(played_audios) + 参考答案(correctAnswer)/环境类型(env_type)，

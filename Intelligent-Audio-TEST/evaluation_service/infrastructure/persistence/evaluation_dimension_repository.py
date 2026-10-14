@@ -337,6 +337,30 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
         session.commit()
         return count
 
+    def delete_failed_round_scores(self, result_id: int, dimension_ids, error_message: str = '') -> int:
+        """删除某 TestResult 中指定维度的历史失败逐轮行（幽灵行，INT-364 对齐 V9.7.10 f02ba75e）。
+
+        只删 round_number 非空且 evaluation_status='failed' 的行：
+        - 整体行（round_number IS NULL）不删——由评估入口按
+          (result, dim, round) 复用重置 pending；
+        - 已通过的逐轮投影行（completed）不删——保留有效投影结果；
+        - 仅限本次待重评维度（dimension_ids），其他维度的失败行不动。
+        返回删除行数。
+        """
+        session = get_db_session()
+        try:
+            count = session.query(TestResultDimensionPO).filter(
+                TestResultDimensionPO.test_result_id == result_id,
+                TestResultDimensionPO.dimension_id.in_(set(dimension_ids)),
+                TestResultDimensionPO.round_number.isnot(None),
+                TestResultDimensionPO.evaluation_status == EvaluationStatus.FAILED,
+            ).delete(synchronize_session=False)
+            session.commit()
+            return count
+        except Exception:
+            session.rollback()
+            raise
+
     def mark_active_scores_failed_excluding_rounds(
         self, result_id: int, keep_round_numbers, error_message: str
     ) -> int:

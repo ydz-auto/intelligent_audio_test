@@ -117,24 +117,14 @@ export function useCaseTagComparison(props: CaseTagComparisonProps) {
   // 维度分页：使用通用分页 composable
   const { totalPages: totalMetricPages, paginatedItems: paginatedMetrics } = usePagination<MetricConfigItem>(filteredMetricsForDisplay, metricPageSize, { currentPage: metricPage })
 
-  // 指标小数位映射（camelCase 字段 decimalPlaces）
-  const metricDecimalPlacesMap = computed<Record<string, number>>(() => {
-    const map: Record<string, number> = {}
-    allMetrics.value.forEach(m => {
-      if (!m || !m.name) return
-      const dp = m.decimalPlaces
-      if (dp !== undefined && dp !== null && Number.isInteger(dp) && dp >= 0) map[m.name] = dp
-    })
-    return map
-  })
-
+  // 聚合展示精度由聚合代码（后端 round 4 位）决定，统一保留 2 位小数展示；
+  // 不再读取维度 decimal_places（INT-364 对齐 V9.7.10 f02ba75e），
+  // decimal_places 仅用于具体用例卡片（TestCaseReportDetail）。
   const formatMetricForDisplay = (metricName: string, value: unknown) => {
     if (value === '-' || value === null || value === undefined) return '-'
     const num = typeof value === 'number' ? value : Number(value)
     if (!Number.isFinite(num)) return String(value)
-    const dp = metricDecimalPlacesMap.value[String(metricName)]
-    if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp)
-    return String(num)
+    return num.toFixed(2)
   }
 
   // 同时使用设备和API作为资源

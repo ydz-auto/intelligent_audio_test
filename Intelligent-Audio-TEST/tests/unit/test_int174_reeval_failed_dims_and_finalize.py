@@ -319,6 +319,8 @@ def patched_acl():
                  MagicMock(return_value=[])) as list_scores, \
     patch.object(reexec_module.evaluation_dimension_repository, 'delete_scores_by_result_id',
                  MagicMock(return_value=0)) as del_scores, \
+    patch.object(reexec_module.evaluation_dimension_repository, 'delete_failed_round_scores',
+                 MagicMock(return_value=0)) as del_ghost, \
     patch.object(reexec_module.evaluation_dimension_repository,
                  'mark_active_scores_failed_excluding_rounds',
                  MagicMock(return_value=0)) as sweep, \
@@ -327,7 +329,7 @@ def patched_acl():
         yield SimpleNamespace(
             get_tc=get_tc, upd_tc=upd_tc, get_detail=get_detail,
             list_scores=list_scores, del_scores=del_scores, algo_acl=algo_acl,
-            sweep=sweep,
+            sweep=sweep, del_ghost=del_ghost,
         )
 
 
