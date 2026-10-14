@@ -8,6 +8,7 @@
 功能（幂等，可重复执行）：
 - test_results 补 excluded（Integer NOT NULL DEFAULT 0）
 - test_results 补 excluded_by_user_id / excluded_at
+- 补三列注释（COMMENT ON COLUMN，PostgreSQL 无列内联 COMMENT 语法）
 - 补 excluded 索引（幂等）
 
 新建库由 PO 模型 create_all 直接带出（模型已同步补列）；
@@ -61,22 +62,27 @@ def migrate(dry_run=False):
 
     if not _col_exists(cur, 'test_results', 'excluded'):
         statements.append(
-            "ALTER TABLE test_results ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0, "
-            "COMMENT '结果排除标记 (0=正常 1=被删用例排除，报告/聚合剔除)'")
+            "ALTER TABLE test_results ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+        statements.append(
+            "COMMENT ON COLUMN test_results.excluded IS "
+            "'结果排除标记 (0=正常 1=被删用例排除，报告/聚合剔除)'")
     else:
         print("[SKIP] test_results.excluded 已存在")
 
     if not _col_exists(cur, 'test_results', 'excluded_by_user_id'):
         statements.append(
-            "ALTER TABLE test_results ADD COLUMN excluded_by_user_id BIGINT, "
-            "COMMENT '标记排除的操作人（INT-305，JWT 透传）'")
+            "ALTER TABLE test_results ADD COLUMN excluded_by_user_id BIGINT")
+        statements.append(
+            "COMMENT ON COLUMN test_results.excluded_by_user_id IS "
+            "'标记排除的操作人（INT-305，JWT 透传）'")
     else:
         print("[SKIP] test_results.excluded_by_user_id 已存在")
 
     if not _col_exists(cur, 'test_results', 'excluded_at'):
         statements.append(
-            "ALTER TABLE test_results ADD COLUMN excluded_at TIMESTAMP, "
-            "COMMENT '排除标记时间'")
+            "ALTER TABLE test_results ADD COLUMN excluded_at TIMESTAMP")
+        statements.append(
+            "COMMENT ON COLUMN test_results.excluded_at IS '排除标记时间'")
     else:
         print("[SKIP] test_results.excluded_at 已存在")
 
