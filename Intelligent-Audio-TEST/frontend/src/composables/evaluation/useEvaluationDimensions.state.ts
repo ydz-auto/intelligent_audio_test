@@ -3,6 +3,7 @@
  *
  * 集中声明维度管理模块的全部共享响应式状态（跨 loaders/form/selection/normalize/save 复用同一份引用）、
  * 维度模板与新建表单初值，以及列表过滤/全选/层级展示等派生计算属性和算法标签工具方法。
+ * 搜索/筛选为纯前端派生（INT-281：全量拉取保证主/子维度同屏聚合）。
  */
 import { ref, computed } from 'vue';
 import {
@@ -11,7 +12,6 @@ import {
 } from '../../domain';
 import { ViewMode, TestType } from '@/domain/enums';
 import {
-  DEFAULT_PAGE_SIZE,
   DEFAULT_MAX_PROCESS,
   DEFAULT_MAX_TIMEOUT,
   DEFAULT_MAX_AUDIO_DURATION,
@@ -33,11 +33,6 @@ export function createEvalDimensionState() {
   const filterAlgorithm = ref('all');
 
   const selectedDimensions = ref<(number | string)[]>([]);
-
-  const currentPage = ref(1);
-  const pageSize = ref(DEFAULT_PAGE_SIZE);
-  const totalItems = ref(0);
-  const totalPages = ref(0);
 
   const dimensions = ref<EvaluationDimension[]>([]);
   const categories = ref<EvaluationCategory[]>([]);
@@ -310,16 +305,12 @@ export function createEvalDimensionState() {
     dimensions,
     categories,
     algorithms,
-    // 过滤与分页状态
+    // 过滤状态
     searchKeyword,
     filterStatus,
     filterCategory,
     filterAlgorithm,
     selectedDimensions,
-    currentPage,
-    pageSize,
-    totalItems,
-    totalPages,
     // 视图模式（列表/分组）
     viewMode,
     collapsedGroups,

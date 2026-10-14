@@ -188,19 +188,6 @@
             </template>
           </div>
         </div>
-        <!-- 分页控件 - 显示在卡片下方 -->
-        <div class="pagination-container">
-          <pagination-component 
-            :current-page="currentPage"
-            :page-size="pageSize"
-            :total-items="totalItems"
-            :total-pages="totalPages"
-            @prev-page="prevPage"
-            @next-page="nextPage"
-            @go-to-page="goToPage"
-            @page-size-change="onPageSizeChange"
-          ></pagination-component>
-        </div>
       </section>
     </div>
 
@@ -210,8 +197,6 @@
 
 <script setup>
 import { computed } from 'vue';
-// 导入分页组件
-import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 // 关联算法筛选组件
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
@@ -231,8 +216,6 @@ const {
   filterAlgorithm,
   algorithms,
   selectedDimensions,
-  currentPage,
-  pageSize,
   hierarchicalDimensions,
   groupedDimensions,
   viewMode,
@@ -240,8 +223,6 @@ const {
   toggleGroupExpanded,
   groupAllSelected,
   toggleGroupSelectAll,
-  totalPages,
-  totalItems,
   isAllSelected,
   deleteDimension,
   moveDimension,
@@ -259,10 +240,6 @@ const {
   searchDimensions,
   filterDimensions,
   resetFilters,
-  onPageSizeChange,
-  prevPage,
-  nextPage,
-  goToPage,
   getAlgorithmLabel,
   // 模态框操作函数
   openAddModal,

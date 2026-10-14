@@ -1,13 +1,19 @@
 /**
- * useEvaluationDimensions —— 数据加载与分页过滤
+ * useEvaluationDimensions —— 数据加载与过滤
  *
- * 负责从后端拉取维度/分类/算法列表（fetchData），及由筛选/分页状态驱动的重新拉取函数。
+ * 负责从后端拉取维度/分类/算法列表（fetchData），及搜索/筛选状态的重置函数。
+ *
+ * INT-281：维度列表恢复全量拉取 + 前端过滤（对齐 V9.7.10 基线口径）。
+ * 主/子维度必须同屏聚合展示，服务端分页会把父子切到不同页；搜索/状态/分类/
+ * 算法筛选由 state.ts 的 filteredDimensions 计算属性在前端联动（含主/子联动整组展示）。
+ * 维度量级小（当前 10 条），评估维度超过千条前无需服务端分页。
  */
 import { evaluationPort } from './evaluationPort';
 import { algorithmPort } from '../algorithm/algorithmPort';
+import { DIMENSION_FETCH_ALL_PER_PAGE } from './useEvaluationDimensions.constants';
 import type { EvalDimensionState } from './useEvaluationDimensions.state';
 
-/** 创建数据加载与分页过滤模块 */
+/** 创建数据加载与过滤模块 */
 export function createEvalDimensionLoaders(state: EvalDimensionState) {
   const {
     loading,
@@ -16,13 +22,9 @@ export function createEvalDimensionLoaders(state: EvalDimensionState) {
     filterStatus,
     filterCategory,
     filterAlgorithm,
-    currentPage,
-    pageSize,
     dimensions,
     categories,
     algorithms,
-    totalItems,
-    totalPages,
   } = state;
 
   // ========== 数据获取 ==========
@@ -30,15 +32,8 @@ export function createEvalDimensionLoaders(state: EvalDimensionState) {
     loading.value = true;
     error.value = null;
     try {
-      const params: Record<string, any> = { page: currentPage.value, perPage: pageSize.value, search: searchKeyword.value };
-
-      if (filterStatus.value !== 'all') {
-        params.status = filterStatus.value === 'active';
-      }
-
-      if (filterCategory.value !== 'all') {
-        params.categoryId = filterCategory.value;
-      }
+      // 一次拉全量，搜索/筛选改为前端过滤，保证主/子维度始终同屏聚合展示（对齐 V9.7.10）
+      const params: Record<string, any> = { page: 1, perPage: DIMENSION_FETCH_ALL_PER_PAGE };
 
       const [dimsData, catsData, algosData] = await Promise.all([
         evaluationPort.getAll(params),
@@ -47,8 +42,6 @@ export function createEvalDimensionLoaders(state: EvalDimensionState) {
       ]);
 
       dimensions.value = dimsData?.items || [];
-      totalItems.value = dimsData?.total || 0;
-      totalPages.value = dimsData?.pages || 0;
       categories.value = catsData?.items || [];
       algorithms.value = (algosData?.algorithms || []).map((algo: any) => ({
         value: algo.value,
@@ -62,44 +55,13 @@ export function createEvalDimensionLoaders(state: EvalDimensionState) {
     }
   }
 
-  // ========== 分页与过滤 ==========
-  // 注：此处分页导航函数需在页码变更后触发 fetchData() 拉取服务端数据，
-  // 与 usePagination 的纯客户端导航语义不同，因此保留手写实现。
-  function goToPage(page: number) {
-    if (page >= 1 && page <= totalPages.value) {
-      currentPage.value = page;
-      fetchData();
-    }
-  }
-
-  function prevPage() {
-    if (currentPage.value > 1) {
-      currentPage.value--;
-      fetchData();
-    }
-  }
-
-  function nextPage() {
-    if (currentPage.value < totalPages.value) {
-      currentPage.value++;
-      fetchData();
-    }
-  }
-
-  function onPageSizeChange(size: number) {
-    pageSize.value = size;
-    currentPage.value = 1;
-    fetchData();
-  }
-
+  // ========== 过滤（全量已在前端，搜索/筛选由 filteredDimensions 计算属性联动） ==========
   function searchDimensions() {
-    currentPage.value = 1;
-    fetchData();
+    // 无需重新请求：过滤为纯前端派生
   }
 
   function filterDimensions() {
-    currentPage.value = 1;
-    fetchData();
+    // 无需重新请求：过滤为纯前端派生
   }
 
   function resetFilters() {
@@ -107,21 +69,15 @@ export function createEvalDimensionLoaders(state: EvalDimensionState) {
     filterStatus.value = 'all';
     filterCategory.value = 'all';
     filterAlgorithm.value = 'all';
-    currentPage.value = 1;
-    fetchData();
   }
 
   return {
     fetchData,
-    goToPage,
-    prevPage,
-    nextPage,
-    onPageSizeChange,
     searchDimensions,
     filterDimensions,
     resetFilters,
   };
 }
 
-/** 数据加载与分页过滤模块类型（由工厂推断） */
+/** 数据加载与过滤模块类型（由工厂推断） */
 export type EvalDimensionLoadersModule = ReturnType<typeof createEvalDimensionLoaders>;

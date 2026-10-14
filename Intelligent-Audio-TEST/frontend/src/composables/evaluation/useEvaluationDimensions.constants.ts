@@ -25,8 +25,8 @@ export const DEFAULT_MAX_TIMEOUT = 30;
 export const DEFAULT_MAX_AUDIO_DURATION = 60;
 /** 默认 API 超时（毫秒） */
 export const DEFAULT_API_TIMEOUT = 30000;
-/** 默认分页大小 */
-export const DEFAULT_PAGE_SIZE = 10;
+/** 维度列表全量拉取页大小（INT-281：主/子维度必须同屏聚合，服务端分页会把父子切到不同页） */
+export const DIMENSION_FETCH_ALL_PER_PAGE = 1000;
 /** 保存操作类型：新增 */
 export const SAVE_TYPE_ADD = 'add';
 /** 保存操作类型：编辑 */

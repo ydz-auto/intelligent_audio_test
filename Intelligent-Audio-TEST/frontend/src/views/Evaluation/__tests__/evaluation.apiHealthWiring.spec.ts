@@ -56,9 +56,6 @@ vi.mock('@/composables/modal/useNotification', () => ({
 }));
 
 // 子组件浅替身：页面级 wire 契约测试不渲染其内部（端口已 mock，无需网络隔离）
-vi.mock('../../components/common/data/PaginationComponent.vue', () => ({
-  default: { template: '<div class="pagination-stub" />' },
-}));
 vi.mock('../../components/common/BadgeFilter.vue', () => ({
   default: { template: '<div class="badge-filter-stub" />', props: ['options', 'modelValue', 'allLabel', 'title'] },
 }));

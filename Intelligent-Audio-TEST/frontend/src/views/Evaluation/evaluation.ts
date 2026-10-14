@@ -9,7 +9,7 @@ import { useEvaluationModals } from '../../composables/evaluation/useEvaluationM
  * useEvaluation - 轻量级协调层
  *
  * 组合以下子模块，暴露统一接口给 Evaluation.vue 使用：
- * - useEvaluationDimensions: 维度管理（CRUD、批量选择、分页/过滤、API健康检查、权重）
+ * - useEvaluationDimensions: 维度管理（CRUD、批量选择、搜索/过滤、API健康检查、权重）
  * - useEvaluationCategories: 分类管理（CRUD、展开/折叠）
  * - useEvaluationBatchOps: 批量操作（batchEnable/batchDisable/batchDelete）与菜单 UI
  * - useEvaluationImport: 导入导出（import/export/handleImport）
@@ -54,8 +54,6 @@ export function useEvaluation() {
   // 重置所有状态：跨模块重置
   function resetAllStates() {
     dimensionsModule.resetFilters();
-    dimensionsModule.currentPage.value = 1;
-    dimensionsModule.pageSize.value = 10;
     dimensionsModule.selectedDimensions.value = [];
     dimensionsModule.newDimension.value = { ...dimensionsModule.dimensionTemplate } as any;
     importModule.importSettings.value = { updateExisting: true, skipErrors: false };
@@ -73,16 +71,12 @@ export function useEvaluation() {
     batchMenuRef: batchOpsModule.batchMenuRef,
     importExportMenuRef: batchOpsModule.importExportMenuRef,
 
-    // 过滤与分页状态（来自维度模块）
+    // 过滤状态（来自维度模块）
     searchKeyword: dimensionsModule.searchKeyword,
     filterStatus: dimensionsModule.filterStatus,
     filterCategory: dimensionsModule.filterCategory,
     filterAlgorithm: dimensionsModule.filterAlgorithm,
     selectedDimensions: dimensionsModule.selectedDimensions,
-    currentPage: dimensionsModule.currentPage,
-    pageSize: dimensionsModule.pageSize,
-    totalItems: dimensionsModule.totalItems,
-    totalPages: dimensionsModule.totalPages,
 
     // 视图模式（列表/分组，来自维度模块）
     viewMode: dimensionsModule.viewMode,
@@ -110,11 +104,7 @@ export function useEvaluation() {
     openAddModal: modalsModule.openAddModal,
     openAddCategoryModal: modalsModule.openAddCategoryModal,
 
-    // 分页与过滤（来自维度模块）
-    goToPage: dimensionsModule.goToPage,
-    prevPage: dimensionsModule.prevPage,
-    nextPage: dimensionsModule.nextPage,
-    onPageSizeChange: dimensionsModule.onPageSizeChange,
+    // 搜索与过滤（来自维度模块）
     searchDimensions: dimensionsModule.searchDimensions,
     filterDimensions: dimensionsModule.filterDimensions,
     resetFilters: dimensionsModule.resetFilters,

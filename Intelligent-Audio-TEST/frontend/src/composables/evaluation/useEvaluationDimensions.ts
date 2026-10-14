@@ -2,9 +2,9 @@
  * useEvaluationDimensions —— 组合根（Composition Root）
  *
  * 原单一超大文件已按职责拆分为同目录 useEvaluationDimensions.*.ts 子模块：
- * - constants  常量定义（新建分类标识、维度类型、各类默认值、保存操作类型）
+ * - constants  常量定义（新建分类标识、维度类型、各类默认值、保存操作类型、全量拉取页大小）
  * - state      共享响应式状态（refs/模板/表单初值/派生计算属性/算法标签工具）
- * - loaders    数据加载与分页过滤（fetchData + 筛选/分页导航）
+ * - loaders    数据加载与过滤（fetchData + 筛选重置）
  * - form       表单字段动态定义（evaluationFields）与必填字段校验
  * - selection  维度选择（全选/单选/分组批量勾选）
  * - normalize  保存前字段规范化处理链（rule/requiredInputs/categoryId/层级继承等）
@@ -27,7 +27,7 @@ import { createEvalDimensionSave } from './useEvaluationDimensions.save';
  * - 维度列表数据获取（含分类、算法）
  * - 维度 CRUD（saveDimension / deleteDimension）
  * - 维度选择（toggleSelectAll / toggleDimensionSelection / 分组选择）
- * - 分页与过滤（goToPage / searchDimensions / resetFilters 等）
+ * - 搜索/筛选（searchDimensions / filterDimensions / resetFilters）
  * - 维度表单字段定义（evaluationFields）
  * - API 健康检查、权重更新、算法标签
  *
@@ -50,10 +50,6 @@ export function useEvaluationDimensions() {
     filterCategory,
     filterAlgorithm,
     selectedDimensions,
-    currentPage,
-    pageSize,
-    totalItems,
-    totalPages,
     viewMode,
     isGroupExpanded,
     toggleGroupExpanded,
@@ -69,13 +65,9 @@ export function useEvaluationDimensions() {
   // 2. 表单字段动态定义与必填字段校验
   const { evaluationFields, validateRequiredFields } = createEvalDimensionForm(state);
 
-  // 3. 数据加载与分页过滤
+  // 3. 数据加载与过滤
   const {
     fetchData,
-    goToPage,
-    prevPage,
-    nextPage,
-    onPageSizeChange,
     searchDimensions,
     filterDimensions,
     resetFilters,
@@ -115,16 +107,12 @@ export function useEvaluationDimensions() {
     dimensions,
     categories,
     algorithms,
-    // 过滤与分页状态
+    // 过滤状态
     searchKeyword,
     filterStatus,
     filterCategory,
     filterAlgorithm,
     selectedDimensions,
-    currentPage,
-    pageSize,
-    totalItems,
-    totalPages,
     // 视图模式（列表/分组）
     viewMode,
     isGroupExpanded,
@@ -140,11 +128,7 @@ export function useEvaluationDimensions() {
     evaluationFields,
     // 数据获取
     fetchData,
-    // 分页与过滤
-    goToPage,
-    prevPage,
-    nextPage,
-    onPageSizeChange,
+    // 搜索/筛选
     searchDimensions,
     filterDimensions,
     resetFilters,
