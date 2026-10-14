@@ -135,6 +135,8 @@ export function toTaskCaseRemoveResult(raw: Record<string, unknown>): TaskCaseRe
   return {
     taskId: String(raw.taskId ?? raw.task_id ?? ''),
     caseId: String(raw.caseId ?? raw.case_id ?? ''),
+    removed: Boolean(raw.removed ?? true),
+    idempotent: Boolean(raw.idempotent ?? false),
     purged: Boolean(raw.purged ?? false),
     reportRequeued: Boolean(raw.reportRequeued ?? raw.report_requeued ?? false),
   }

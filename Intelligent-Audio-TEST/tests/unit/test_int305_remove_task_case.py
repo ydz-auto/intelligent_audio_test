@@ -287,6 +287,7 @@ class TestRemoveTaskCaseRepository:
             assert tr is not None  # 结果不物理删（保审计）
             assert int(tr.excluded) == 1  # excluded 标记
             assert tr.excluded_by_user_id == 7
+            assert tr.excluded_at is not None  # 排除时间盖写（软删留痕的库内落点）
         finally:
             session.close()
 
@@ -335,7 +336,8 @@ class TestGatewayRemoveCase:
         monkeypatch.setattr(gw_task_lifecycle_mod, '_task_acl', SimpleNamespace(
             remove_case=lambda tid, cid: {
                 'success': True, 'message': '用例已移除',
-                'data': {'task_id': 5, 'case_id': 'c1', 'purged': False,
+                'data': {'task_id': 5, 'case_id': 'c1', 'removed': True,
+                         'idempotent': False, 'purged': False,
                          'report_requeued': True}}))
         set_current_request(_fake_request())
         try:
@@ -345,8 +347,27 @@ class TestGatewayRemoveCase:
         assert http_code == 200
         assert body['data']['taskId'] == '5'
         assert body['data']['caseId'] == 'c1'
+        assert body['data']['removed'] is True
+        assert body['data']['idempotent'] is False
         assert body['data']['purged'] is False
         assert body['data']['reportRequeued'] is True
+
+    def test_idempotent_marker_passthrough(self, monkeypatch):
+        """幂等重复删除：removed/idempotent 经 BFF 透传不丢失（INT-305 P4）"""
+        monkeypatch.setattr(gw_task_lifecycle_mod, '_task_acl', SimpleNamespace(
+            remove_case=lambda tid, cid: {
+                'success': True, 'message': '用例已被移除',
+                'data': {'removed': True, 'idempotent': True}}))
+        set_current_request(_fake_request())
+        try:
+            body, http_code = gw_task_lifecycle_mod.TaskLifecycleService.remove_case(5, 'c1')
+        finally:
+            set_current_request(None)
+        assert http_code == 200
+        assert body['data']['removed'] is True
+        assert body['data']['idempotent'] is True
+        assert body['data']['purged'] is False  # 幂等路径无 purge/report 语义
+        assert body['data']['reportRequeued'] is False
 
     def test_not_found_maps_404(self, monkeypatch):
         monkeypatch.setattr(gw_task_lifecycle_mod, '_task_acl', SimpleNamespace(

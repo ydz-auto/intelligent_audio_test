@@ -194,6 +194,9 @@ class TaskLifecycleService:
             {
                 'taskId': str(data.get('task_id', task_id)),
                 'caseId': str(data.get('case_id', case_id)),
+                # removed/idempotent 透传（INT-305 P4：幂等重复删除可与新删除区分）
+                'removed': bool(data.get('removed', True)),
+                'idempotent': bool(data.get('idempotent', False)),
                 'purged': bool(data.get('purged', False)),
                 'reportRequeued': bool(data.get('report_requeued', False)),
             },

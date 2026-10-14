@@ -378,6 +378,8 @@ class TaskLifecycleService:
                 'data': {
                     'task_id': str(task_id),
                     'case_id': str(case_id),
+                    'removed': True,
+                    'idempotent': False,
                     'purged': removal.get('purged', False),
                     'report_requeued': report_requeued,
                     'operator_id': operator_id,

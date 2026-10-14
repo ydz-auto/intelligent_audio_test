@@ -417,13 +417,16 @@ class TaskLifecycleMixin:
             tc.error_message = '用例已被移除'
             tc.updated_by_user_id = deleted_by_user_id
             # 级联处置 TestResult：excluded 标记（不物理删，保审计；
-            # 报告/聚合按 excluded=1 剔除被删用例）
+            # 报告/聚合按 excluded=1 剔除被删用例；
+            # excluded_at 盖写排除时间——软删行"何时被移除"的库内持久落点）
+            from shared.models.database import utc8now
             session.query(TestResult).filter(
                 TestResult.task_id == task_id,
                 TestResult.test_case_id == case_id,
             ).update({
                 TestResult.excluded: 1,
                 TestResult.excluded_by_user_id: deleted_by_user_id,
+                TestResult.excluded_at: utc8now(),
             }, synchronize_session=False)
             session.commit()
             return {'removed': True, 'had_result': had_result, 'purged': False}

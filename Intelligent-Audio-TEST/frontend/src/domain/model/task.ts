@@ -51,6 +51,10 @@ export interface TaskCaseBrief {
 export interface TaskCaseRemoveResult {
   taskId: string
   caseId: string
+  /** true = 移除成功（恒 true，与 HTTP 200 同义；保留语义字段便于区分幂等） */
+  removed: boolean
+  /** true = 幂等重复删除（该用例此前已被移除，无新副作用） */
+  idempotent: boolean
   /** true = 待执行阶段物理删除（purge）；false = 软删留痕 + 结果 excluded */
   purged: boolean
   /** 终态任务触发报告重算 */
