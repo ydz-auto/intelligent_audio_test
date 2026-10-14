@@ -265,6 +265,8 @@ def _verify_auth_mode():
     行为与登录跳转必然互相矛盾，在栈层显式 FAIL 而非留给 pytest 报
     模糊断言。
     """
+    import httpx  # 懒加载：wait_ready 同款（模块级未导入，遗漏会 NameError 降级 WARN）
+
     try:
         r = httpx.get(f'http://127.0.0.1:{GATEWAY_HTTP}/api/v1/auth/mode',
                       timeout=3, trust_env=False)
