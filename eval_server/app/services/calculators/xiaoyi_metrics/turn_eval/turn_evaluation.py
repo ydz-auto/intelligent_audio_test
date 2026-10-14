@@ -2,9 +2,12 @@
 """对话轮次切分 + 逐轮三分类评判（误接管 / 接管 / 未接管）
 
 本模块聚合了三大功能：
-1. 对话轮次切分：时间戳粗预切 + LLM 语义确认
-2. 误接管判断：LLM 主判，复用 false_takeover 的 prompt
-3. 接管/未接管判断：TOR 客观数据 + LLM 确认
+1. 对话轮次切分：
+   - 有 query 文本：用每轮 query 匹配 ASR chunks 到对应轮次（LLM 完成，保留时间戳）
+   - 无 query 文本：时间戳粗预切 + LLM 语义确认（回退）
+2. 逐轮三分类（综合 prompt 一次性判定误接管/接管/未接管）：
+   - classify_turn_comprehensive：单一 prompt 综合判定，不短路
+   - 回退：classify_turn（先误接管 → 再接管/未接管，短路逻辑）
 
 输出每轮的分类结果，供 turn_eval/strategy.py 汇总为 "正常接管N，未接管M，误接管K"。
 """
@@ -840,33 +843,597 @@ def classify_turn(turn: TurnInfo,
     )
 
 
+# ═══════════════════════════════════════════════════════════════
+#  新流程：query 匹配轮次 + 综合三分类 prompt
+# ═══════════════════════════════════════════════════════════════
+
+# 说话人前缀正则（参考打断 round_metrics._SPEAKER_PREFIX_RE）
+_SPEAKER_PREFIX_RE = __import__('re').compile(r'^\s*用户\d*\s*[:：]\s*')
+
+
+def _norm_text(text: str) -> str:
+    """文本归一化：剥说话人前缀 + 转小写 + 去标点 + 压空白
+
+    参考打断 round_metrics._anchor_norm_text → input_asr._normalize_text
+    """
+    if not text:
+        return ''
+    text = _SPEAKER_PREFIX_RE.sub('', str(text))
+    text = text.lower()
+    text = __import__('re').sub(r'[^\w\s\u4e00-\u9fff]', '', text)
+    text = __import__('re').sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def _match_turns_by_text_similarity(
+        round_queries: List[str],
+        user_chunks: List[Dict[str, Any]],
+        ai_chunks: List[Dict[str, Any]],
+        ) -> Tuple[List[TurnInfo], List[int]]:
+    """本地文本相似度匹配（LLM 失败时的回退，参考打断 locate_text_window）
+
+    用 difflib.SequenceMatcher 将每轮 query 与 ASR 用户段做模糊匹配，
+    命中窗口内的用户 chunks = 本轮用户发言，窗口后到下一轮窗口前的 AI chunks = 本轮回复。
+    单调时间约束：后续轮匹配起点不早于前轮锚点末端。
+
+    Returns:
+        (turns, round_numbers): 轮次列表 + 每轮真实轮次索引；无匹配返回空
+    """
+    import difflib
+    from app.services.calculators.xiaoyi_metrics.shared.asr_utils import to_segments_with_text
+    from app.services.calculators.xiaoyi_metrics.shared.constants import (
+        TEXT_ANCHOR_SIMILARITY_THRESHOLD,
+        TEXT_ANCHOR_MONOTONIC_TOLERANCE_S,
+        ASR_USER_SEG_MERGE_GAP_S,
+    )
+
+    user_segs = to_segments_with_text(user_chunks, ASR_USER_SEG_MERGE_GAP_S)
+    if not user_segs:
+        return [], []
+
+    turns = []
+    round_numbers = []
+    after = None  # 单调约束：后续轮起点不早于前轮末端 - 容差
+
+    for rn, query in enumerate(round_queries):
+        q = _norm_text(query)
+        if not q:
+            continue
+
+        best = None  # (sim, seg_start, seg_end)
+        for i, (s, e, text) in enumerate(user_segs):
+            if after is not None and s < after - TEXT_ANCHOR_MONOTONIC_TOLERANCE_S:
+                continue
+            acc = ''
+            for j in range(i, min(i + 3, len(user_segs))):
+                acc += _norm_text(user_segs[j][2])
+                if not acc:
+                    continue
+                sim = difflib.SequenceMatcher(None, q, acc).ratio()
+                if sim >= TEXT_ANCHOR_SIMILARITY_THRESHOLD and (best is None or sim > best[0]):
+                    best = (sim, user_segs[i][0], user_segs[j][1])
+
+        if best is None:
+            logger.warning(f"[turn_evaluation] 文本相似度匹配: 轮{rn} query 未命中")
+            continue
+
+        u_start, u_end = best[1], best[2]
+        # 下一轮窗口起点（用于界定本轮 AI 回复范围）
+        next_start = None
+        # 找下一个有 query 的轮的匹配窗口
+        for rn2 in range(rn + 1, len(round_queries)):
+            q2 = _norm_text(round_queries[rn2])
+            if not q2:
+                continue
+            best2 = None
+            for i, (s, e, text) in enumerate(user_segs):
+                if s <= u_end:
+                    continue
+                acc = ''
+                for j in range(i, min(i + 3, len(user_segs))):
+                    acc += _norm_text(user_segs[j][2])
+                    if not acc:
+                        continue
+                    sim = difflib.SequenceMatcher(None, q2, acc).ratio()
+                    if sim >= TEXT_ANCHOR_SIMILARITY_THRESHOLD and (best2 is None or sim > best2[0]):
+                        best2 = (sim, user_segs[i][0], user_segs[j][1])
+            if best2:
+                next_start = best2[1]
+                break
+
+        # 本轮用户 chunks：窗口内的 ASR 词
+        t_user_chunks = [
+            c for c in user_chunks
+            if valid_ts(c.get('timestamp'))[0] >= u_start - 0.1
+            and valid_ts(c.get('timestamp'))[1] <= u_end + 0.1
+        ]
+        # 本轮 AI chunks：用户说完后、下一轮用户之前
+        boundary = next_start if next_start is not None else float('inf')
+        t_ai_chunks = [
+            c for c in (ai_chunks or [])
+            if u_start <= valid_ts(c.get('timestamp'))[0] < boundary
+        ]
+
+        turn = TurnInfo(
+            turn_index=len(turns) + 1,
+            user_chunks=t_user_chunks,
+            ai_chunks=t_ai_chunks,
+            user_start_s=u_start,
+            user_end_s=u_end,
+            ai_start_s=min(valid_ts(c.get('timestamp'))[0] for c in t_ai_chunks) if t_ai_chunks else None,
+            ai_end_s=max(valid_ts(c.get('timestamp'))[1] for c in t_ai_chunks) if t_ai_chunks else None,
+        )
+        turns.append(turn)
+        round_numbers.append(rn)
+        after = u_end
+
+        logger.info(
+            f"[turn_evaluation] 文本匹配 轮{rn}: sim={best[0]:.2f} "
+            f"user[{u_start:.1f}-{u_end:.1f}s] "
+            f"u_chunks={len(t_user_chunks)} a_chunks={len(t_ai_chunks)}"
+        )
+
+    if not turns:
+        logger.warning("[turn_evaluation] 文本相似度匹配全部未命中")
+        return [], []
+
+    logger.info(f"[turn_evaluation] 文本相似度匹配完成: {len(turns)} 轮")
+    return turns, round_numbers
+
+
+def _extract_round_queries(task_params: Optional[Dict[str, Any]]) -> List[str]:
+    """从 task_params['rounds'] 提取每轮 query 文本列表
+
+    Returns:
+        list[str]: 每轮 query 文本，无 query 的轮返回空字符串
+    """
+    if not task_params:
+        return []
+    rounds = task_params.get('rounds') or []
+    if not (rounds and isinstance(rounds, list)):
+        return []
+    queries = []
+    for rd in rounds:
+        if isinstance(rd, dict):
+            q = rd.get('query') or rd.get('round_query') or ''
+            queries.append(str(q).strip() if q else '')
+        else:
+            queries.append('')
+    return queries
+
+
+def _build_query_match_prompt(round_queries: List[str],
+                              user_chunks: List[Dict[str, Any]],
+                              ai_chunks: List[Dict[str, Any]],
+                              ) -> str:
+    """构建 query 匹配轮次 LLM prompt
+
+    将每轮的 query 文本 + 完整 ASR 时间线（用户 + AI，带时间戳）交给 LLM，
+    让 LLM 把 ASR chunks 归属到对应轮次。
+    """
+    # 轮次 query 列表
+    round_lines = []
+    for i, q in enumerate(round_queries):
+        round_lines.append(f'  轮次{i}: query="{q}"')
+    rounds_text = '\n'.join(round_lines)
+
+    # 用户 ASR 时间线
+    user_lines = []
+    for idx, c in enumerate(user_chunks[:TIMELINE_MAX_ITEMS_CHUNKS]):
+        ts = c.get('timestamp')
+        text = c.get('text', '')
+        if ts and len(ts) >= 2:
+            user_lines.append(f'  [{ts[0]:.2f}-{ts[1]:.2f}] #{idx} {text}')
+        else:
+            user_lines.append(f'  #{idx} {text}')
+    if len(user_chunks) > TIMELINE_MAX_ITEMS_CHUNKS:
+        user_lines.append(f'  ...（共 {len(user_chunks)} 条，已截断）')
+    user_timeline = '\n'.join(user_lines) if user_lines else '  （无用户ASR数据）'
+
+    # AI ASR 时间线
+    ai_lines = []
+    for idx, c in enumerate((ai_chunks or [])[:TIMELINE_MAX_ITEMS_CHUNKS]):
+        ts = c.get('timestamp')
+        text = c.get('text', '')
+        if ts and len(ts) >= 2:
+            ai_lines.append(f'  [{ts[0]:.2f}-{ts[1]:.2f}] #{idx} {text}')
+        else:
+            ai_lines.append(f'  #{idx} {text}')
+    if len(ai_chunks or []) > TIMELINE_MAX_ITEMS_CHUNKS:
+        ai_lines.append(f'  ...（共 {len(ai_chunks)} 条，已截断）')
+    ai_timeline = '\n'.join(ai_lines) if ai_lines else '  （无AI回复ASR数据）'
+
+    return f"""# 角色：全双工语音交互轮次匹配裁判
+
+## 核心任务
+根据每轮的预期 query 文本，将 ASR 转写的用户语音片段和 AI 回复片段归属到对应的对话轮次。
+通过语义匹配（而非字面完全一致，ASR 可能有识别误差），判断每个 ASR 片段属于哪一轮。
+
+## 输入数据
+
+### 各轮预期 query（用户本轮应说的话）
+{rounds_text}
+
+### 用户侧 ASR 时间线（带序号 #N 和时间戳）
+{user_timeline}
+
+### AI 侧 ASR 时间线（带序号 #N 和时间戳）
+{ai_timeline}
+
+## 匹配规则
+1. 语义匹配：ASR 转写可能有误差，按语义相似度匹配，不要求字面完全一致
+2. 时间顺序：轮次按时间排列，轮次0的用户片段应在轮次1之前
+3. 每个 ASR 片段最多归属一个轮次，无匹配的片段可标记为 -1
+4. AI 回复片段归属到其回复的那个轮次（通常在该轮用户片段之后、下一轮用户片段之前）
+5. 用户对模型回复的简短应答（如"啊""好的""嗯"）归到前一轮
+
+## 强制输出格式（必须严格JSON，不要多余解释，不要markdown）
+{{"rounds": [
+  {{"round": 0, "user_chunks": [0, 1, 2], "ai_chunks": [0, 1], "user_text": "匹配到的用户文本", "ai_text": "匹配到的AI回复文本"}},
+  {{"round": 1, "user_chunks": [3, 4], "ai_chunks": [2, 3], "user_text": "...", "ai_text": "..."}}
+]}}
+round: 轮次序号（0-based，对应输入的轮次序号）
+user_chunks: 该轮用户 ASR 片段的序号列表（#N 中的 N）
+ai_chunks: 该轮 AI ASR 片段的序号列表（#N 中的 N）
+user_text: 该轮匹配到的用户文本拼接
+ai_text: 该轮匹配到的AI回复文本拼接"""
+
+
+def split_turns_by_query(user_chunks: List[Dict[str, Any]],
+                         ai_chunks: List[Dict[str, Any]],
+                         task_params: Optional[Dict[str, Any]] = None,
+                         ) -> Tuple[List[TurnInfo], List[int]]:
+    """用每轮 query 文本匹配 ASR chunks 到对应轮次（LLM 完成，保留时间戳）
+
+    匹配优先级：
+    1. LLM 语义匹配：将 query 文本 + 完整 ASR 时间线交给 LLM，LLM 返回每轮对应的 chunks 序号
+    2. 本地文本相似度匹配（回退）：difflib.SequenceMatcher 模糊匹配 query ↔ ASR 用户段
+       参考打断 round_metrics.locate_text_window
+
+    Args:
+        user_chunks: 用户侧 ASR chunks（来自 FFT 对齐后的干净音频）
+        ai_chunks:  AI 侧 ASR chunks
+        task_params: 读取 rounds[*].query 和 llm_model 配置
+
+    Returns:
+        (turns, round_numbers): 轮次列表 + 每轮真实轮次索引
+    """
+    round_queries = _extract_round_queries(task_params)
+    if not round_queries or not any(round_queries):
+        logger.info("[turn_evaluation] 无 query 文本，回退 ASR 切轮")
+        return [], []
+
+    llm_config = get_llm_config()
+    if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
+        # LLM 未配置 → 直接走本地文本相似度匹配
+        logger.info("[turn_evaluation] LLM 未配置，尝试本地文本相似度匹配")
+        return _match_turns_by_text_similarity(round_queries, user_chunks, ai_chunks)
+
+    model = ''
+    if task_params:
+        model = task_params.get('llm_model') or ''
+    if not model:
+        model = resolve_model(dimension='false_takeover')
+
+    max_tokens = int(task_params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS) or LLM_DEFAULT_MAX_TOKENS) if task_params else LLM_DEFAULT_MAX_TOKENS
+    temperature = float(task_params.get('temperature', LLM_DEFAULT_TEMPERATURE) or LLM_DEFAULT_TEMPERATURE) if task_params else LLM_DEFAULT_TEMPERATURE
+
+    prompt = _build_query_match_prompt(round_queries, user_chunks, ai_chunks)
+
+    try:
+        resp = call_llm(
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            log_context={'dimension': 'turn_split_by_query'},
+        )
+        parsed = parse_json(resp['content']) or {}
+
+        llm_rounds = parsed.get('rounds', [])
+        if not isinstance(llm_rounds, list) or not llm_rounds:
+            logger.warning("[turn_evaluation] LLM 返回空 rounds，回退 ASR 切轮")
+            return [], []
+
+        turns = []
+        round_numbers = []
+        for llm_round in llm_rounds:
+            if not isinstance(llm_round, dict):
+                continue
+            rn = llm_round.get('round')
+            if rn is None:
+                continue
+            rn = int(rn)
+
+            # 按 LLM 返回的序号取 chunks
+            user_indices = llm_round.get('user_chunks', [])
+            ai_indices = llm_round.get('ai_chunks', [])
+            if not isinstance(user_indices, list):
+                user_indices = []
+            if not isinstance(ai_indices, list):
+                ai_indices = []
+
+            t_user_chunks = [
+                user_chunks[idx] for idx in user_indices
+                if isinstance(idx, int) and 0 <= idx < len(user_chunks)
+            ]
+            t_ai_chunks = [
+                ai_chunks[idx] for idx in ai_indices
+                if isinstance(idx, int) and 0 <= idx < len(ai_chunks or [])
+            ]
+
+            if not t_user_chunks and not t_ai_chunks:
+                logger.warning(f"[turn_evaluation] 轮次{rn} 无匹配 chunks，跳过")
+                continue
+
+            # 计算时间戳范围
+            u_starts = [valid_ts(c.get('timestamp'))[0] for c in t_user_chunks] if t_user_chunks else []
+            u_ends = [valid_ts(c.get('timestamp'))[1] for c in t_user_chunks] if t_user_chunks else []
+            a_starts = [valid_ts(c.get('timestamp'))[0] for c in t_ai_chunks] if t_ai_chunks else []
+            a_ends = [valid_ts(c.get('timestamp'))[1] for c in t_ai_chunks] if t_ai_chunks else []
+
+            turn = TurnInfo(
+                turn_index=len(turns) + 1,
+                user_chunks=t_user_chunks,
+                ai_chunks=t_ai_chunks,
+                user_start_s=min(u_starts) if u_starts else 0.0,
+                user_end_s=max(u_ends) if u_ends else 0.0,
+                ai_start_s=min(a_starts) if a_starts else None,
+                ai_end_s=max(a_ends) if a_ends else None,
+            )
+            turns.append(turn)
+            round_numbers.append(rn)
+
+            logger.info(
+                f"[turn_evaluation] query匹配 轮{rn}: "
+                f"user_chunks={len(t_user_chunks)}, ai_chunks={len(t_ai_chunks)}, "
+                f"user[{turn.user_start_s:.1f}-{turn.user_end_s:.1f}s]"
+            )
+
+        if not turns:
+            logger.warning("[turn_evaluation] LLM 匹配结果为空，回退 ASR 切轮")
+            return [], []
+
+        logger.info(f"[turn_evaluation] query 匹配完成: {len(turns)} 轮")
+        return turns, round_numbers
+
+    except Exception as e:
+        logger.warning(f"[turn_evaluation] query 匹配 LLM 调用失败: {e}，尝试本地文本相似度匹配")
+        return _match_turns_by_text_similarity(round_queries, user_chunks, ai_chunks)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  综合三分类 prompt（一次性判定误接管/接管/未接管）
+# ═══════════════════════════════════════════════════════════════
+
+def _build_comprehensive_classify_prompt(user_chunks, ai_chunks, pause_intervals):
+    """构建综合三分类 LLM prompt（误接管/接管/未接管一次性判定）"""
+    user_timeline = _format_chunks_timeline(user_chunks)
+    pause_timeline = _format_pause_timeline(pause_intervals)
+    ai_timeline = _format_chunks_timeline(ai_chunks)
+
+    # TOR 客观参考数据（复用旧 prompt 格式，带阈值判定）
+    tor_result = compute_tor(user_chunks, ai_chunks or [])
+    tor_meets = (tor_result['duration'] >= 1.0) or (tor_result['n_words'] > 3)
+    tor_desc = (
+        f"AI回复词数(n_words)={tor_result['n_words']}，"
+        f"回复时长(duration)={tor_result['duration']:.3f}s，"
+        f"客观阈值判定: {'满足接管条件(≥1s或>3词)' if tor_meets else '不满足接管条件(<1s且≤3词)'}"
+    )
+
+    return f"""# 角色：全双工语音交互话轮接管综合裁判
+
+## 核心任务
+基于给定结构化时序数据，判定本轮交互的话轮接管分类，仅输出三者之一：
+- **误接管**：模型在用户本轮完整表达结束之前，提前截取用户中间不完整片段抢先生成回复
+- **接管**：模型在用户本轮完整表达结束后，给出实质性语音回复（构成对话行为）
+- **未接管**：模型完全沉默，或仅输出无意义的单字语气词（如"嗯""啊""哦"），不构成对话行为
+
+## 前置约定（必须牢记）
+本轮用户语音片段完整，承载用户本轮全部交互意图；用户不会中途放弃表达。
+因此：**用户侧最后一条有实质内容语句的结束时间 = 用户本轮语义终点 T_user**。
+
+## 关键判定锚点（先定这两个时间，再分类）
+1. **T_user**：用户侧最后一条有实质内容语句的结束时间（无意义填充词/语气词不计入）。
+2. **T_ai**：模型侧第一条"有语义内容"回复片段的开始时间（无意义单字语气词不计入；有语义内容的短回应必须计入）。
+
+## 判定流程（按步骤执行，不要跳步）
+
+**第1步：确定 T_user**
+通读用户全部语句，确定用户完整语义在哪条语句结束（忽略"嗯、啊、然后、就是"等填充词）。
+
+**第2步：判断模型是否提前回复**
+- 若 T_ai < T_user，且用户在此之后仍有实质语句（模型在用户表达中途插话）→ **误接管**
+- 特别强调"先短回应→停顿→完整回复"模式：只要模型先输出一句**有语义内容的短回应**（如"那得把这三个晚上分好工"），且该短回应发生在 T_user 之前，随后才给完整回复 → 属于先误接管再纠正，**误接管**（该短回应本身已构成提前截取）
+- 注意区分：模型在用户表达中途发出的**无意义单字语气词**（"嗯""哦"等确认式反馈）不构成提前回复，不判误接管
+
+**第3步：若 T_ai ≥ T_user（模型等用户说完才回复）**
+- 重要特例：若模型回复内容仅依据用户**中途不完整片段**生成，完全忽略用户后半补充/修正内容（内容只回应前半段）→ 仍判**误接管**
+- 否则判断是否有实质回复：
+  - 有实质性回复（有语义内容的语句，包括：回答、建议、询问澄清、表示未听清要求重复、表示需要思考等）→ **接管**（回复质量高低不影响判定）
+  - 完全沉默，或仅单字无意义语气词 → **未接管**
+
+## 客观参考数据（TOR）
+TOR 客观算法结果：{tor_desc}
+
+TOR 反映"模型词是否落在用户停顿区间内"。结合 T_user 使用：
+- **强证据**：模型词命中了用户停顿区间，且该停顿位于 T_user 之前（用户停顿后会继续说话）→ 应判**误接管**，除非有明确反证
+- **非误接管**：模型词命中的停顿是用户表达结束、把话轮让给模型之后的停顿 → 不属于误接管
+客观数据仅作参考，但"命中停顿 + 停顿在用户语义终点前"时应倾向误接管。
+
+## 输入数据
+
+【用户侧数据】（本轮完整用户语音，每条 = 用户文本 + 开始时间戳 + 结束时间戳）
+{user_timeline}
+
+【用户停顿区间】：
+{pause_timeline or '  （无检测到停顿）'}
+
+【模型侧数据】（模型本轮完整输出，每条 = 模型文本 + 开始时间戳 + 结束时间戳）
+{ai_timeline}
+
+## 输出要求（必须严格JSON，不要markdown，不要多余解释）
+{{"classification": "接管", "reason": "判定理由（必须包含 T_user=…s、T_ai=…s；判误接管须引用被截取的中间片段文本）", "evidence": {{"user_full_utterance": "用户本轮完整全部文本", "model_response_based_on": "模型所依据的用户片段文本（误接管时填写）"}}}}
+classification 必须为 "误接管" / "接管" / "未接管" 三者之一"""
+
+
+def classify_turn_comprehensive(turn: TurnInfo,
+                                 task_params: Optional[Dict[str, Any]] = None,
+                                 ) -> TurnClassification:
+    """综合三分类（单一 prompt 一次性判定误接管/接管/未接管）
+
+    与 classify_turn 的区别：
+    - classify_turn：先判误接管（短路），非误接管再判接管/未接管（两次 LLM 调用）
+    - classify_turn_comprehensive：单一 prompt 综合判定（一次 LLM 调用）
+
+    Args:
+        turn: 单轮对话（user_chunks + ai_chunks + 时间戳）
+        task_params: 读取 llm_model 配置
+
+    Returns:
+        TurnClassification: 误接管 / 接管 / 未接管 之一
+    """
+    # 该轮的 pause_intervals
+    turn_pauses = compute_pause_intervals(turn.user_chunks) if turn.user_chunks else []
+
+    # 无 AI 回复 → 直接判未接管（无需 LLM）
+    if not turn.ai_chunks:
+        return TurnClassification(
+            turn_index=turn.turn_index,
+            classification=TurnClassification.NO_TAKEOVER,
+            false_takeover={'false_takeover': 0, 'reason': '无 AI 回复，判为未接管'},
+            tor=compute_tor(turn.user_chunks, []),
+            takeover_judge={'takeover': 0, 'reason': '无 AI 回复，判为未接管'},
+        )
+
+    llm_config = get_llm_config()
+    if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
+        # LLM 未配置：回退客观逻辑
+        tor_result = compute_tor(turn.user_chunks, turn.ai_chunks or [])
+        took_over = (tor_result['duration'] >= 1.0) or (tor_result['n_words'] > 3)
+        cls = TurnClassification.TAKEOVER if took_over else TurnClassification.NO_TAKEOVER
+        return TurnClassification(
+            turn_index=turn.turn_index,
+            classification=cls,
+            false_takeover={'false_takeover': 0, 'reason': 'LLM未配置，默认非误接管'},
+            tor=tor_result,
+            takeover_judge={'takeover': 1 if took_over else 0, 'reason': 'LLM未配置，使用TOR客观逻辑'},
+        )
+
+    model = ''
+    if task_params:
+        model = task_params.get('llm_model') or ''
+    if not model:
+        model = resolve_model(dimension='false_takeover')
+
+    max_tokens = int(task_params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS) or LLM_DEFAULT_MAX_TOKENS) if task_params else LLM_DEFAULT_MAX_TOKENS
+    temperature = float(task_params.get('temperature', LLM_DEFAULT_TEMPERATURE) or LLM_DEFAULT_TEMPERATURE) if task_params else LLM_DEFAULT_TEMPERATURE
+
+    prompt = _build_comprehensive_classify_prompt(turn.user_chunks, turn.ai_chunks, turn_pauses)
+
+    try:
+        resp = call_llm(
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            log_context={'dimension': 'turn_classify_comprehensive'},
+        )
+        parsed = parse_json(resp['content']) or {}
+
+        classification_str = str(parsed.get('classification', '')).strip()
+        reason = str(parsed.get('reason', ''))
+        evidence = parsed.get('evidence') or {}
+
+        # 映射到三分类
+        if '误' in classification_str or 'false' in classification_str.lower():
+            cls = TurnClassification.MISUNDERSTAND
+            ft_val = 1
+            takeover_val = 0
+        elif '未' in classification_str or 'no' in classification_str.lower():
+            cls = TurnClassification.NO_TAKEOVER
+            ft_val = 0
+            takeover_val = 0
+        else:
+            cls = TurnClassification.TAKEOVER
+            ft_val = 0
+            takeover_val = 1
+
+        tor_result = compute_tor(turn.user_chunks, turn.ai_chunks or [])
+
+        logger.info(
+            f"[turn_evaluation] 综合分类 turn{turn.turn_index}: {cls} "
+            f"reason={reason!r}"
+        )
+
+        return TurnClassification(
+            turn_index=turn.turn_index,
+            classification=cls,
+            false_takeover={
+                'false_takeover': ft_val,
+                'reason': reason,
+                'evidence': evidence,
+            },
+            tor=tor_result,
+            takeover_judge={
+                'takeover': takeover_val,
+                'reason': reason,
+            },
+        )
+
+    except Exception as e:
+        logger.error(f"[turn_evaluation] 综合分类 LLM 调用失败，任务置为失败: {e}")
+        raise
+
+
+# ═══════════════════════════════════════════════════════════════
+#  主入口
+# ═══════════════════════════════════════════════════════════════
+
 def evaluate_all_turns(user_chunks: List[Dict[str, Any]],
                        ai_chunks: List[Dict[str, Any]],
                        task_params: Optional[Dict[str, Any]] = None,
                        one_turn: bool = False,
                        ) -> Tuple[List[TurnInfo], List[TurnClassification]]:
-    """逐轮三分类主入口（ASR 切轮路径）
+    """逐轮三分类主入口
 
-    流程：
-    1. 对话轮次切分（split_turns：时间戳粗预切 + LLM 确认）
-    2. 逐轮三分类（classify_turn：误接管 → 接管/未接管）
+    新流程（有 query 文本时）：
+    1. query 匹配轮次（split_turns_by_query：LLM 用每轮 query 匹配 ASR chunks，保留时间戳）
+    2. 逐轮综合三分类（classify_turn_comprehensive：单一 prompt 一次性判定）
+
+    回退流程（无 query 文本或 LLM 匹配失败时）：
+    1. ASR 切轮（split_turns：时间戳粗预切 + LLM 确认）
+    2. 逐轮三分类（classify_turn：误接管 → 接管/未接管，短路逻辑）
 
     Args:
         user_chunks: 用户侧 ASR chunks
         ai_chunks:  AI 侧 ASR chunks
-        task_params: 读取 llm_model 配置
+        task_params: 读取 rounds[*].query 和 llm_model 配置
         one_turn:    按配置轮次切分（True=整轮合并为 1 话轮，轮内不切分）
 
     Returns:
         (turns, classifications): 轮次列表 + 每轮分类结果
     """
-    # 1. 轮次切分
-    turns = split_turns(user_chunks, ai_chunks, task_params, one_turn=one_turn)
+    # ── 新流程：有 query 文本 → query 匹配 + 综合三分类 ──
+    if not one_turn:
+        query_turns, query_round_nums = split_turns_by_query(user_chunks, ai_chunks, task_params)
+        if query_turns:
+            turns = query_turns
+            classifications = [classify_turn_comprehensive(turn, task_params) for turn in turns]
 
-    # 2. 逐轮三分类
+            normal = sum(1 for c in classifications if c.classification == TurnClassification.TAKEOVER)
+            no_take = sum(1 for c in classifications if c.classification == TurnClassification.NO_TAKEOVER)
+            false_take = sum(1 for c in classifications if c.classification == TurnClassification.MISUNDERSTAND)
+            logger.info(
+                f"[turn_evaluation] query匹配+综合分类 汇总: 正常接管{normal}，"
+                f"未接管{no_take}，误接管{false_take}，共{len(turns)}轮"
+            )
+            return turns, classifications
+
+    # ── 回退：ASR 切轮 + 短路三分类 ──
+    turns = split_turns(user_chunks, ai_chunks, task_params, one_turn=one_turn)
     classifications = [classify_turn(turn, task_params) for turn in turns]
 
-    # 汇总日志
     normal = sum(1 for c in classifications if c.classification == TurnClassification.TAKEOVER)
     no_take = sum(1 for c in classifications if c.classification == TurnClassification.NO_TAKEOVER)
     false_take = sum(1 for c in classifications if c.classification == TurnClassification.MISUNDERSTAND)
