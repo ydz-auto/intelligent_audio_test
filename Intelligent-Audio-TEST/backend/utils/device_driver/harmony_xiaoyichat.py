@@ -15,13 +15,13 @@ from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry, is_rpc_not_running_error
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 
 @register_driver
 class Xiaoyilivechat(HarmonyDriver):
-    app_type = AppType.XIAOYI_LIVECHAT
-    version = AppVersion.V1
+    app_type = "xiaoyi_livechat"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_livechat.v1"
     display_name = "小艺通话聊天专用驱动"

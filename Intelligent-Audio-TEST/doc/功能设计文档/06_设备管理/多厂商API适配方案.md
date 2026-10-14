@@ -986,7 +986,7 @@ class LLMAdapter(BaseAdapter):
 
 ### 4.8 适配器工厂
 
-> ⚠️ **一致性修订（2026-09）**：本节的字符串 key（`f"{vendor}_{api_type}"`）注册方案不再采用。最新设计中，API 适配器的注册与创建由主服务内的 `APIAdapterFactory` 承接（按 `(protocol, vendor)` 组合键或显式 `adapter_class` 创建，见《01_测试执行/Realtime_API_Adapter方案与UseCase文档.md》）；设备驱动侧则由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry`（三元 key：`(AppType, AppVersion, DevicePlatform)`）承接，两套注册表相互独立。以下代码仅作历史方案存档。
+> ⚠️ **一致性修订（2026-09）**：本节的字符串 key（`f"{vendor}_{api_type}"`）注册方案不再采用。最新设计中，API 适配器的注册与创建由主服务内的 `APIAdapterFactory` 承接（按 `(protocol, vendor)` 组合键或显式 `adapter_class` 创建，见《01_测试执行/Realtime_API_Adapter方案与UseCase文档.md》）；设备驱动侧则由 `backend/utils/device_driver/registry.py` 的 `DriverRegistry`（三元 key：`(app_type, version, platform)`，`app_type` / `version` 为驱动自定义字符串）承接，两套注册表相互独立。以下代码仅作历史方案存档。
 
 ```python
 from typing import Dict, Type, Optional

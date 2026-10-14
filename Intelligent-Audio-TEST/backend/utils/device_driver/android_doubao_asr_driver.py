@@ -14,7 +14,7 @@ import subprocess
 import time
 from .android_driver import AndroidDriver
 from .utils import check_stop
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 
 
@@ -26,8 +26,8 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     通过UI自动化操作模拟用户交互，完成语音录制和结果获取。
     """
 
-    app_type = AppType.DOUBAO_ASR
-    version = AppVersion.V1
+    app_type = "doubao_asr"
+    version = "v1"
     platform = DevicePlatform.ANDROID
     keywords = "android.doubao_asr.v1"
     display_name = "豆包Android ASR专用驱动"

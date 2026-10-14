@@ -4,17 +4,18 @@ from .base_driver import BaseDeviceDriver
 from .device_config import get_device_config
 from .utils import check_stop, u2, log_and_emit
 import re
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 @register_driver
 class AndroidDriver(BaseDeviceDriver):
     """安卓设备驱动实现"""
     """安卓设备驱动实现"""
 
-    app_type = AppType.ANDROID_BASE
-    version = AppVersion.V1
+    app_type = "android_base"
+    version = "v1"
     platform = DevicePlatform.ANDROID
     keywords = "android.base.v1"
+    is_base_driver = True
 
     def __init__(self):
         super().__init__()

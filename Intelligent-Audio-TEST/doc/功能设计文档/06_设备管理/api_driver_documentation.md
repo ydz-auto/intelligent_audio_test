@@ -17,7 +17,8 @@
 >
 > 另请注意：本文档描述的 `APIDriver` 是 **API 被测服务的调用驱动**，与设备侧 App 驱动
 > （`backend/utils/device_driver/registry.py` 的 `DriverRegistry`：`@register_driver` 装饰器注册、
-> 三元 key `(AppType, AppVersion, DevicePlatform)`、依赖检测、版本降级 resolve、热更新）属于**两套不同机制**，
+> 三元 key `(app_type, version, platform)`、依赖检测、版本降级 resolve、热更新；
+> `app_type` / `version` 为驱动自定义字符串，`platform` 为 DevicePlatform 枚举）属于**两套不同机制**，
 > 后者请参见《设备管理功能设计文档》。
 
 ## 概述

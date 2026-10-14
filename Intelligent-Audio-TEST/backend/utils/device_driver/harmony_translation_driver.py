@@ -4,7 +4,7 @@ import os
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry, is_rpc_not_running_error
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 try:
     from hypium.model import UiParam
@@ -69,8 +69,8 @@ class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
 @register_driver
 class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
 
-    app_type = AppType.XIAOYI_FACE2FACE
-    version = AppVersion.V1
+    app_type = "xiaoyi_face2face"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_face2face.v1"
     display_name = "小艺面对面翻译专用驱动"
@@ -142,8 +142,8 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
 @register_driver
 class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
 
-    app_type = AppType.XIAOYI_SIMULTANEOUS
-    version = AppVersion.V1
+    app_type = "xiaoyi_simultaneous"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.xiaoyi_simultaneous.v1"
     display_name = "小艺同传专用驱动"

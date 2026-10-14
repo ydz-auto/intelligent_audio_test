@@ -1,6 +1,6 @@
 # 设备参数和API参数绑定方案
 
-> **实施状态**：本文档描述的 keywords/api_id 绑定方案为**设计提案，尚未实施**。经代码核对：`AlgorithmDeviceParam`、`AlgorithmApiParam`、`ParamMapping` 三个模型中均**不存在** keywords/api_id 字段。当前设备驱动的解析由 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组完成（AppType/DevicePlatform 枚举驱动），keywords 字符串匹配机制仍保留于 `driver_factory.py` 的专用驱动注册表（`_specialized_drivers`）。文中标注"现状核对"处为与代码库对齐的说明，其余保留原提案内容供后续实施参考。
+> **实施状态**：本文档描述的 keywords/api_id 绑定方案为**设计提案，尚未实施**。经代码核对：`AlgorithmDeviceParam`、`AlgorithmApiParam`、`ParamMapping` 三个模型中均**不存在** keywords/api_id 字段。当前设备驱动的解析由 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组完成（`app_type` / `version` 为驱动自定义字符串，`platform` 为 DevicePlatform 枚举），keywords 字符串匹配机制仍保留于 `driver_factory.py` 的专用驱动注册表（`_specialized_drivers`）。文中标注"现状核对"处为与代码库对齐的说明，其余保留原提案内容供后续实施参考。
 
 ## 一、需求背景
 
@@ -88,7 +88,7 @@ API参数 (api) - api_id=1
 - 数据来源：`GET /api/v1/test-devices/driver-keywords`（返回 `[{name, keywords, system}]`）
 - 存储到：AlgorithmDeviceParam.keywords
 
-> 现状核对：该接口已实现（`backend/blueprints/device_bp.py` 注册于 url_prefix `/api/v1/test-devices`，由 `device_controller.get_driver_keywords()` 调用 `device_driver_factory.get_registered_keywords()`）。当前用例执行时的驱动解析实际机制是 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组装饰器注册与 resolve（AppType 枚举：ANDROID_BASE/HARMONY_BASE/PLAUD/DOUBAO_ASR/DOUBAO/CHATGPT/XIAOYI_SIMULTANEOUS/XIAOYI_HUIJI/XIAOYI_LIVECHAT/XIAOYI_INPUT_METHOD；DevicePlatform：ANDROID/HARMONYOS/IOS，AppVersion 支持 V1→LATEST 降级）；keywords 字符串匹配作为并存机制保留于 `driver_factory.py` 的 `_specialized_drivers`（`get_driver_name_by_keywords` 要求所有 keywords 均命中）。若实施本方案，驱动选择下拉框的数据应与 registry.py 的 AppType 枚举对齐。
+> 现状核对：该接口已实现（`backend/blueprints/device_bp.py` 注册于 url_prefix `/api/v1/test-devices`，由 `device_controller.get_driver_keywords()` 调用 `device_driver_factory.get_registered_keywords()`）。当前用例执行时的驱动解析实际机制是 `backend/utils/device_driver/registry.py` 按 `(app_type, version, platform)` 三元组装饰器注册与 resolve（`app_type` / `version` 为驱动自定义字符串，如 `'plaud'` / `'v1'`、`'doubao'` / `'v1'`；`platform` 为 DevicePlatform 枚举 ANDROID/HARMONYOS/IOS，版本降级到 `'v1'`）；keywords 字符串匹配作为并存机制保留于 `driver_factory.py` 的 `_specialized_drivers`（`get_driver_name_by_keywords` 要求所有 keywords 均命中）。若实施本方案，驱动选择下拉框的数据应与 registry.py 的已注册 `app_type` 对齐。
 
 ### 2. 算法配置弹窗 - API参数配置
 

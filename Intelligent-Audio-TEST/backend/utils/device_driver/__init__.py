@@ -19,7 +19,6 @@ try:
     )
     from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
     from .harmony_xiaoyichat import Xiaoyilivechat
-    from .harmony_xiaoyilivechat import XiaoyilivechatV2
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
     _HYPium_AVAILABLE = True
 except ImportError:
@@ -29,13 +28,12 @@ except ImportError:
     XiaoyiSimultaneousInterpretationDriver = None
     HarmonyHardenXiaoyiHuiJiDriver = None
     Xiaoyilivechat = None
-    XiaoyilivechatV2 = None
     HarmonyHardenXiaoyi_Input_MethodDriver = None
     _HYPium_AVAILABLE = False
 
 from .driver_factory import DeviceDriverFactory
 from .device_driver import device_driver_factory
-from .driver_types import AppType, AppVersion, DevicePlatform, DriverStatus
+from .driver_types import DevicePlatform, DriverStatus
 from .registry import DriverRegistry, DriverNotFoundError, driver_registry, register_driver
 from .contracts import AppDriver, DriverContext
 
@@ -53,11 +51,10 @@ __all__ = [
     'XiaoyiSimultaneousInterpretationDriver',
     'HarmonyHardenXiaoyiHuiJiDriver',
     'Xiaoyilivechat',
-    'XiaoyilivechatV2',
     'HarmonyHardenXiaoyi_Input_MethodDriver',
     'DeviceDriverFactory',
     'device_driver_factory'
-    , 'AppType', 'AppVersion', 'DevicePlatform', 'DriverStatus'
+    , 'DevicePlatform', 'DriverStatus'
     , 'DriverRegistry', 'DriverNotFoundError', 'driver_registry', 'register_driver'
     , 'AppDriver', 'DriverContext'
 ]
