@@ -442,18 +442,8 @@ function switchTab(tab: TaskTab) {
 }
 
 // ===== 收藏视图（INT-298：与 C 域收藏语义一致，favorite=true 过滤任务）=====
-/** 进入收藏视图：favoriteOnly=true 下发 favorite=true（离开时还原，工具栏口径互不影响） */
-async function loadFavoriteView() {
-  favoriteOnly.value = true;
-  await applyFilters();
-}
-
-async function leaveFavoriteView() {
-  if (favoriteOnly.value) {
-    favoriteOnly.value = false;
-    await applyFilters();
-  }
-}
+// INT-320：进出逻辑迁协调层 tasks.ts（loadFavoriteView 含回收站态入口清空，
+// leaveFavoriteView 对称还原），本组件经 useTasks 解构调用
 // ===== 筛选选项（组件级 UI 常量，对齐 V9.7.10 徽章筛选行）=====
 // INT-215：「已删除（回收站）」自状态徽章移除——回收站入口统一为工具栏按钮（toggleTaskTrashMode）
 // INT-301：原「任务状态」行更名「执行状态」——评估过渡（evaluating/reevaluate_*）
@@ -556,7 +546,10 @@ const {
   // INT-215：回收站工具栏（对齐报告/用例交互口径）
   taskTrashMode,
   toggleTaskTrashMode,
-  handleTaskFavoriteFilterChange
+  handleTaskFavoriteFilterChange,
+  // INT-320：收藏页签进出（协调层承载，含回收站态入口清空）
+  loadFavoriteView,
+  leaveFavoriteView
 } = useTasks();
 
 // ========== 四视图统一筛选排序（日常 / 已发布 / 合并 / 收藏，对齐 V9.7.10）==========

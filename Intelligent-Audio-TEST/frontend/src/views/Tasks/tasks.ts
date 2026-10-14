@@ -93,6 +93,29 @@ export function useTasks() {
     await listModule.applyFilters();
   };
 
+  // ===== 收藏页签进出（INT-298 页签化，INT-320 修复：对齐「收藏筛选 × 回收站互斥」入口机制）=====
+
+  /**
+   * INT-320：进入收藏页签——favoriteOnly=true 下发 favorite=true；
+   * 若日常筛选处于回收站态（filters.status==='deleted'）则还原为 ''
+   * （对齐 toggleTaskTrashMode 的清空语义，文档 §3.3 互斥不变量在页签路径上成立）。
+   */
+  const loadFavoriteView = async () => {
+    if (listModule.filters.value.status === 'deleted') {
+      listModule.filters.value.status = '';
+    }
+    listModule.favoriteOnly.value = true;
+    await listModule.applyFilters();
+  };
+
+  /** INT-320：离开收藏页签对称还原——favoriteOnly 复位（回收站态经入口清空不会残留） */
+  const leaveFavoriteView = async () => {
+    if (listModule.favoriteOnly.value) {
+      listModule.favoriteOnly.value = false;
+      await listModule.applyFilters();
+    }
+  };
+
   /**
    * INT-298：action 归一化——TaskCard/TaskListWithPagination 事件载荷的 action 为
    * 操作对象（{id,...}），协调层直调（单测/合并面板源行）传 id 字符串，统一取 id 判定。
@@ -383,6 +406,9 @@ export function useTasks() {
     taskTrashMode,
     toggleTaskTrashMode,
     handleTaskFavoriteFilterChange,
+    // INT-320：收藏页签进出（回收站互斥入口清空 + 发送侧守卫双防线）
+    loadFavoriteView,
+    leaveFavoriteView,
     getStatusText: controlModule.getStatusText,
     getStatusIcon: controlModule.getStatusIcon,
     getStepStatusText: controlModule.getStepStatusText,

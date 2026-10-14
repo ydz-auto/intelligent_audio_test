@@ -147,8 +147,10 @@ export function useTaskList(options?: UseTaskListOptions) {
           params.status = filters.value.status;
         }
       }
-      // INT-141：仅收藏过滤（favorite=true，服务端按当前用户 JWT 过滤）
-      if (favoriteOnly.value) {
+      // INT-141：仅收藏过滤（favorite=true，服务端按当前用户 JWT 过滤）。
+      // INT-320：发送侧守卫对齐文档 §3.3 / 报告·用例侧口径——回收站态
+      // （filters.status==='deleted'）下收藏过滤不得生效，互斥不依赖入口清空顺序
+      if (favoriteOnly.value && filters.value.status !== 'deleted') {
         params.favorite = true;
       }
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
