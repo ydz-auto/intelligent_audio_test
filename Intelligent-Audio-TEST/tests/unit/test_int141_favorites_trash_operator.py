@@ -53,10 +53,15 @@ def _ensure_task_tables():
             TestResult, Tag, TagCategory, TestCaseGroup, TestCase, TestCaseTag,
             Favorite, Log,
         )
+        # INT-337：purge 级联下探孙代 TRD（test_result_dimensions 归属
+        # evaluation_service，与 test_results 同库；夹具须一并建表）
+        from evaluation_service.infrastructure.persistence.models import (
+            TestResultDimension,
+        )
         _TASK_TABLES = [t.__table__ for t in (
             Task, TaskTag, TaskCase, TaskDevice, TaskAPI, TaskMergeRelation,
-            TestResult, TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
-            Favorite, Log,
+            TestResult, TestResultDimension, TagCategory, Tag, TestCaseGroup,
+            TestCase, TestCaseTag, Favorite, Log,
         )]
         Base.metadata.create_all(bind=get_engine(), tables=_TASK_TABLES)
     return _TASK_TABLES

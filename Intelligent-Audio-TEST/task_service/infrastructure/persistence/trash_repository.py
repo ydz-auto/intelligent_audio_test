@@ -90,6 +90,12 @@ class TrashRepository:
             "DELETE FROM task_merge_relations "
             "WHERE merged_task_id IN :ids OR source_task_id IN :ids").bindparams(
             bindparam('ids', expanding=True)), {"ids": purgeable})
+        # INT-337：孙代下探——先删 TRD（test_result_dimensions，归属
+        # evaluation_service 的表但与 test_results 同库，purge 作为同步用户操作
+        # 须即时清理，不等评估侧 24h 周期的孤儿兜底扫描），再删 test_results
+        session.execute(_bind_in(
+            "DELETE FROM test_result_dimensions WHERE test_result_id IN "
+            "(SELECT id FROM test_results WHERE task_id IN :ids)"), {"ids": purgeable})
         session.execute(_bind_in("DELETE FROM test_results WHERE task_id IN :ids"), {"ids": purgeable})
         session.execute(_bind_in("DELETE FROM logs WHERE task_id IN :ids"), {"ids": purgeable})
         # 收藏悬挂引用清理
@@ -156,6 +162,10 @@ class TrashRepository:
         purgeable = filter_purgeable_owners(rows, user_id, is_admin)
         session.execute(_bind_in("DELETE FROM test_case_tags WHERE test_case_id IN :ids"), {"ids": purgeable})
         session.execute(_bind_in("DELETE FROM task_case_relations WHERE test_case_id IN :ids"), {"ids": purgeable})
+        # INT-337：孙代下探，同 purge_tasks（先 TRD 后 test_results）
+        session.execute(_bind_in(
+            "DELETE FROM test_result_dimensions WHERE test_result_id IN "
+            "(SELECT id FROM test_results WHERE test_case_id IN :ids)"), {"ids": purgeable})
         session.execute(_bind_in("DELETE FROM test_results WHERE test_case_id IN :ids"), {"ids": purgeable})
         session.execute(_bind_in("DELETE FROM logs WHERE test_case_id IN :ids"), {"ids": purgeable})
         session.execute(text(
