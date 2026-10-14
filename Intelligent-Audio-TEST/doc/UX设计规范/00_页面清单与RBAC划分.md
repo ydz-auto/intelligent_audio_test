@@ -12,7 +12,7 @@
 | --- | --- | --- | --- | --- |
 | 00 | `00_页面清单与RBAC划分.md`（本文件） | INT-353 | A | ✅ 本卡 |
 | 01 | `01_全局基座.md`（基准稿 v2.0） | INT-343 | A | ✅ done |
-| 02 | `02_导航栏.md` | INT-344 | A | ⏳ 待产出（A 线下一张） |
+| 02 | `02_导航栏.md` | INT-344 | A | ✅ 产出 |
 | 03 | `03_首页.md` | INT-345 | A | ✅ in_review |
 | 04 | `04_控制台.md` | INT-346 | A | ✅ 产出 |
 | 05 | `05_系统设置.md`（v1.1） | INT-347 | B | ✅ 产出 |
@@ -189,13 +189,13 @@
 
 ### 3.2 右上角功能区
 
-**登录壳（AuthenticatedLayout 的 AppHeader 右区，INT-344 出组件）**，从左到右：
+**登录壳（AuthenticatedLayout 的 AppHeader 右区，INT-344 出组件）**，从左到右（次序按 INT-344 §3.1 定稿——newAPI 实测 Search→Notification→Language→Config→Profile 相对次序保留，签到/充值摘除，算法切换器插首位）：
 
 1. **全局算法切换器**（本平台特有，负责人口径；主案 INT-344）——总口径 §3.5。
 2. 全局搜索（`bg-muted/25 h-8 rounded-md` + ⌘K CommandDialog，照 `search.tsx`；登录即可，命中范围按各域权限动态注册）。
 3. 通知（NotificationPopover 照搬；登录即可，数据流 `sse:read` 五角色全持）。
-4. 主题切换（ConfigDrawer：深浅色 + 多主题预设 lake-view/rose-garden/默认蓝…，照 `config-drawer.tsx` + 基座卡机制；全员）。
-5. 语言切换（LanguageSwitcher 照搬占位；默认中文，多语言包启用与否待负责人确认 §7）。
+4. 语言切换（LanguageSwitcher 照搬占位；默认中文，多语言包启用与否待负责人确认 §7）。
+5. 主题切换（ConfigDrawer：深浅色 + 多主题预设 lake-view/rose-garden/默认蓝…，照 `config-drawer.tsx` + 基座卡机制；全员）。
 6. 头像下拉（ProfileDropdown `w-56` 照搬：用户卡[头像+用户名+角色名] → 个人中心 `/profile` → 系统设置（入口判定同 §3.4，不满足隐藏）→ 登出 destructive）。
 
 **公共站头（PublicHeader）**：语言切换 → 主题切换 → 通知 → 分隔线 → 「登录」按钮（未登录）/ 头像下拉（已登录）——`public-header.tsx` 实测顺序（INT-345 §站头实测点）。**全局算法切换器不在公共站头出现**（仅登录壳，INT-359 同口径）。
@@ -272,7 +272,7 @@
 | `/rankings` 页面本体 | ✓ | ✓（数据待 seed，§1.4） | ✓（同左） | ✗（无码，导航隐藏；URL 直达同样 403 数据） | ✗（同左） | ✓ 页面可达（数据 403→登录引导空态；导航项隐藏） |
 | `/user-guide` `/about` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 错误页五件 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
-| 顶部导航项结果 | 六项全显 | 五项（无 Benchmark） | 五项（无 Benchmark） | 三项（主页/控制台/文档/关于减报告——实显 4：主页+控制台+文档+关于） | 四项（+报告，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
+| 顶部导航项结果 | 六项全显 | 五项（无 Benchmark） | 五项（无 Benchmark） | 四项（主页/控制台/文档/关于——无报告、无 Benchmark） | 五项（主页/控制台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
 | 侧栏树结果 | 全部 10 项 | 9 项（总览+执行 3+资产 4+日志；设置入口✓） | 7 项（无执行 2 项、无设备） | 2 项（工作台+设备管理；日志/其余隐藏） | 2 项（工作台+报告中心；「管理」组空→整组隐藏） | —（未登录不进壳） |
 
 > AUTH_MODE=off：一切页面全放行全显（permissions=['*']，`authStore.ts` + `router/index.ts` 守卫实测）；`/login` 渲染开放模式 Alert（INT-357 §3.1）。
@@ -380,3 +380,4 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 日期 | 版本 | 变更 |
 | --- | --- | --- |
 | 2026-10-15 | v1.0 | 初稿（INT-353）：§0 文档地图、§1 RBAC 事实基线（seed_rbac 100 权限点/五角色实测 + benchmark 权限缺口发现）、§2 新路由总表与 19 旧路由全量映射、§3 导航结构（顶部六项/右上角/侧栏四组十项/设置树/全局算法切换器总口径/渲染规则）、§4 RBAC 总表（页面可见性矩阵+按钮级指针+守卫口径）、§5 newAPI→本平台映射（页面/不引入/机制）、§6 DDD 落位+实施清单、§7 待确认六项 |
+| 2026-10-15 | v1.1 | INT-344 产出后勘误回写：§0 文档地图 02 卡置「✅ 产出」；§3.2 右上角功能区次序定稿（切换器→搜索→通知→语言→主题→头像——对齐 newAPI app-header 实测相对次序）；§4.1 顶部导航项结果行修正（device_admin 4 项、guest 5 项含报告——guest 持 report:read 实测） |
