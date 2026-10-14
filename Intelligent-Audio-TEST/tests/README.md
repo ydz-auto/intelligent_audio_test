@@ -51,6 +51,7 @@ worker 各自重跑 module fixture（全新种子库），凡测试间存在序�
 | 模块级单例 / 全局后台线程 | `get_db_handler()` 日志 worker 等跨文件存活，污染事件计数/捕获断言 | tests/unit/conftest.py 的 `_quiesce_global_log_worker` autouse 清理，勿删 |
 | **真实 Redis** | 键空间跨 worker、与实机栈全局共享：DistributedLock（lock:spl:calibration:{api_id}）并发抢锁 → 409 假失败（int68 实证）；stats 缓存键同理 | 业务测试内打桩（int68 的 `_stub_calibration_redis_lock`）；必须触真库的用例用专用 scratch 键 + 用例前后删除（int204 的 scratch_redis 范式），Redis 不可用 skip |
 | 环境变量残留 | 见下节 DATABASE_URL 陷阱 | 不在 shell 预置任何业务环境变量跑 pytest |
+| **.env 注入（INT-342）** | 单测 import 服务 app.py（app.py 顶部 load_dotenv('.env')）把本机 .env 全量键注入 pytest 进程；服务 Config 类属性首导入即冻结 → 后序用例的「默认配置」断言被先序文件的注入值污染（int342 实证：UI_CAPTURE_MODE 经 test_int114 的 api_adapter_service.app 导入泄漏，test_int296 单跑过全量挂） | tests/conftest.py 的 INT-342 守卫：会话启动快照业务键基线，收集期逐模块导入后 + 每用例 setup 前回退基线（shell 显式预置值不在清理范围）；测试用例严禁依赖 .env 注入值，改环境一律 monkeypatch |
 
 ## ⚠️ DATABASE_URL 陷阱（勿在 shell 预置）
 
