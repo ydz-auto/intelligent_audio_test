@@ -10,10 +10,15 @@
 | ----------------- | ----------- | ---- | ------------------------------------------------------------------------------ |
 | `user_wav`        | str         | 指标依赖 | 用户通道音频路径（`cap_client_process_out.wav`）                                         |
 | `ai_wav`          | str         | 指标依赖 | 模型回复音频路径（`cap_client_ec_out.wav`）                                              |
-| `rounds`          | list\[dict] | 否    | 多轮文本数据，每轮可含 `query`/`answer`/`question`/`correct_answer`/`ai_wav`/`user_wav` 等 |
+| `rounds`          | list\[dict] | 否    | 多轮文本数据，每轮可含 `query`/`answer`/`question`/`correct_answer`/`ai_wav`/`user_wav`/`played_audios` 等 |
 | `round_number`    | int         | 否    | 轮次索引（0-based）。有值→单轮评估；无值→多轮整体评估                                                |
-| `sub_tasks`       | list\[str]  | 否    | 仅 `turn_taking` 主维度：指定只计算部分子维度                                                 |
+| `sub_tasks`       | list\[str]  | 否    | 编排器：指定只计算部分子维度（`xiaoyi_metrics` / `turn_taking`）                                 |
+| `played_audios`   | list\[dict]\|str | 否 | 本轮被播放的干净音源（`[{"audio_path": "..."}]` / dict / 路径），FFT 互相关对齐精修用户段                 |
 | `enable_llm_eval` | bool/str    | 否    | 是否启用 LLM 语义评估，默认 True                                                          |
+
+> **played_audios 取值**：平台下发主流形态为 `list[dict]`（含 `audio_path`），也可为单个 dict 或纯字符串路径，
+> `_resolve_played_audio_path` 统一解析；multipart 上传时可用 `__MULTIPART__:field_name` 占位符递归还原。
+> 用途：takeover_latency/false_takeover 精修用户段、turn_eval 多轮 turn 轮次归属、interruption_metrics FFT 定位用户窗口、env_judge 定位环境声。
 
 ### ASR chunks 格式
 

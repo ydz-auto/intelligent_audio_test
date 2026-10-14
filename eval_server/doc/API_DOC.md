@@ -78,8 +78,16 @@
 | task_type | string | 否 | 任务类型，默认 wer |
 | endpoints | array | 否 | 远程端点列表，不传则本地处理 |
 | task_id | string | 否 | 调用方任务 ID（回显用） |
-| callback_url | string | 否 | 完成/失败后事件化回调 URL（替代轮询） |
+| callback_url | string | 否 | 完成/失败后事件化回调 URL（替代轮询），失败指数退避重试 3 次 |
 | normalize | bool | 否 | 是否文本正则化，默认 false |
+| source_lang | string | 否 | 源语言（wer/ser 文本归一化用） |
+| target_lang | string | 否 | 目标语言 |
+| translate_direct | string | 否 | 翻译方向（兼容 `translation_direction` 命名） |
+| collar | float | 否 | tcpwer 时间约束（秒），默认 0.0；der 默认 0.5 |
+| skip_overlap | bool | 否 | 是否跳过重叠区（der 用），默认 false |
+
+> 除 `task_type` / `endpoints` / `task_id` 外的其余字段全部透传为 `task_params`，
+> 各 Calculator 的 `validate()` 负责校验；`rounds[]` 多轮模式下 WER 系列会把同名扁平字段按轮拼接为单条文本。
 
 **WER/SER 请求示例：**
 ```json
@@ -222,6 +230,21 @@
 }
 ```
 
+#### played_audios（被播放音频）约定
+
+小艺类指标（turn_taking / turn_eval / interruption_metrics / env_judge / xiaoyi_metrics）的 `played_audios` 表示**本轮被设备播放的干净音源**（环境声 / 用户问题原音），用于 FFT 互相关对齐精修：
+
+- **取值形态**（三选一，`_resolve_played_audio_path` 统一解析）：
+  - `list[dict]`：`[{"audio_path": "/path/to/xxx.wav"}, ...]`（平台主服务下发的主流形态）
+  - 单个 dict / 纯字符串路径
+- **对齐链路**：`shared/audio_alignment.generate_aligned_clean_audio(user_wav, played_audios)` 把干净音源 FFT 互相关对齐到劣化录制的 user_wav，生成干净版音频 + 对齐段（`segments`，含 `source` / `offset_s` / `clean_duration_s`）
+- **用途**：
+  - `takeover_latency` / `false_takeover`：用对齐结果精修用户段边界，时延更准
+  - `turn_eval` 多轮合并：按对齐段 `source` 文件名归属 turn 到真实轮次
+  - `interruption_metrics`：FFT 定位每轮用户窗口（`locate_fft_window`）
+  - `env_judge`：定位环境声在 user_wav 中的起止时间戳
+- **multipart 上传**：`rounds[i].played_audios` 内部可用 `__MULTIPART__:field_name` 占位符，`create_task_upload` 递归还原为落盘路径
+
 ---
 
 ### 2.3 创建评估任务（文件上传）
@@ -234,7 +257,15 @@
 
 - **文本文件**（.txt/.stm/.rttm/.json/.csv/.srt/.vtt/.xml/.tsv）：读取内容为字符串
 - **二进制文件**（.wav/.mp4 等）：保存到上传目录，task_params 中使用文件路径
-- `rounds` / `played_audios` 等 JSON 字符串字段中可用 `__MULTIPART__:field_name` 占位符，eval_server 收到后保存文件并**递归还原**占位符为实际路径（任意嵌套层级）
+- `rounds` / `played_audios` 等 JSON 字符串字段中可用 `__MULTIPART__:field_name` 占位符，eval_server 收到后保存文件并**递归还原**占位符为实际路径（任意嵌套层级，如 `rounds_0_played_audios_0_audio_path`）
+
+**上传处理流程：**
+
+1. 表单字段（除 `task_type` / `endpoints` / `task_id`）全部写入 `task_params`（multipart 标量均为字符串）
+2. 文件字段按扩展名分类：文本 → 内容字符串；二进制 → 保存到 `UPLOAD_DIR/{storage_id}/`，路径写入 `task_params`
+3. `rounds` 字段若是 JSON 字符串则解析为 list，并递归还原内部 `__MULTIPART__` 占位符
+4. 顶层其他 JSON 字符串字段（如 `played_audios`）同样解析并还原占位符后回写
+5. **小艺类任务**（xiaoyi_metrics / turn_taking / takeover_latency / interruption_metrics / env_judge）：把 `rounds` 最后一轮的字段（`record_file` / `user_wav` / `ai_wav` / `played_audios` / `pause` / `first_frame_ms` / `start_ms` / `input` / `input_lastword` / `offset_ms` / `correctAnswer` / `env_type`）提升到顶层，供校验与计算取值
 
 **turn_taking 请求示例：**
 

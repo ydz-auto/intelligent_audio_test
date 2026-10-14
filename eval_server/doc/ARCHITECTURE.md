@@ -343,10 +343,31 @@ SEG_MERGE_GAP_S = 0.7   # 句内最大停顿适配
 ### 6.8 shared —— 共享工具
 
 - `asr_utils.py`：ASR chunks 工具（`compute_pause_intervals` / `is_punct_or_empty` / 段合并）
-- `audio_alignment.py`：played_audios（干净音源）→ user_wav（劣化）FFT 互相关对齐，生成干净版音频（`generate_aligned_clean_audio`）
+- `audio_alignment.py`：**played_audios（干净音源）→ user_wav（劣化）FFT 互相关对齐**，生成干净版音频（`generate_aligned_clean_audio`，输出对齐段 `segments` 含 `source` / `offset_s` / `clean_duration_s`）
 - `constants.py`：LLM/ASR/时序阈值/行为标签等魔法数字集中管理
-- `llm_client.py`：`call_llm` 统一 LLM 入口（OpenAI 兼容 / 多模态 base64 / 流式 / 重试）+ `resolve_model` / `get_llm_config` / `build_interaction_text`
+- `llm_client.py`：`call_llm` 统一 LLM 入口（OpenAI 兼容 / 多模态 base64 / 流式 / 重试 / 两级并发分池）+ `resolve_model` / `get_llm_config` / `build_interaction_text`
 - `llm_call_logger.py`：每次 LLM 调用写 JSONL 审计日志（剥离 base64，永不轮转）
+
+#### played_audios（被播放音频）处理链路
+
+`played_audios` 表示本轮被设备播放的干净音源（环境声 / 用户问题原音），取值形态三选一
+（`list[dict].audio_path` / 单个 dict / 纯字符串路径），由 `false_takeover.py::_resolve_played_audio_path` 统一解析。
+
+```
+输入：rounds[i].played_audios（list[dict]{audio_path}，multipart 时 __MULTIPART__ 占位符递归还原）
+  │
+  ▼
+shared/audio_alignment.generate_aligned_clean_audio(user_wav, played_audios)
+  │  FFT 互相关：把干净音源对齐到劣化录制的 user_wav
+  │  输出：aligned_wav（干净版音频）+ segments[]（对齐段，含 source 文件名 / offset_s / 时长）+ ncc
+  ▼
+子维度复用：
+  ├─ takeover_latency / false_takeover：精修用户段边界（时延更准）
+  ├─ turn_eval 多轮合并：按 segments[].source 文件名 → rounds 轮次映射，归属 turn 到真实轮次
+  ├─ interruption_metrics：FFT 定位每轮用户窗口（locate_fft_window），驱动窗口兜底
+  ├─ env_judge：定位环境声在 user_wav 中的起止时间戳（env_response_latency）
+  └─ xiaoyi_metrics 全域编排：对齐后生成 effective_user_wav 再统一 ASR
+```
 
 ## 7. ASR 服务调用链
 
@@ -384,7 +405,66 @@ asr_server (port 10095, 独立主机 100.70.20.135)
 9. **OSS 双模式**：`oss://` 路径计算前自动下载；未配置 OSS 时原样返回，不影响 multipart/本地路径传参
 10. **三机部署**：测试机（主服务+eval_server）→ ASR 主机（asr_server），网线直连
 
-## 9. 配置
+## 9. 并发控制与任务排队
+
+### 9.1 两层并发位
+
+| 层 | 实现 | 上限来源 | 语义 |
+|----|------|---------|------|
+| 全局并发位 | `controllers/api.py::LocalConcurrencyManager` | `config.LOCAL_MAX_CONCURRENCY`（默认 100） | 全服务同时在算的任务总数 |
+| 维度并发位 | `utils/concurrency.py::ConcurrencyManager` | `config.CONCURRENCY_LIMITS`（多数维度 100；env_judge / reject_judge 传音频给 LLM 限 5）+ `default_max_concurrency` | 同 task_type 同时在算的任务数 |
+
+两者均用 `try_start()` 原子抢占（先占维度位，再占全局位），完成后成对释放，避免 TOCTOU 竞态。
+
+### 9.2 并发满 → 排队（不拒绝）
+
+创建任务时任一并发位已满：**不再返回 429**，而是：
+
+1. 创建 `pending` 状态任务（响应带 `queued: true`），存 `tasks/{date}/task_{id}.json`
+2. 后台 worker 线程（`TaskService._process_tasks`）每秒扫描 pending 队列，按相同的「维度位 + 全局位」限制抢占并启动
+3. 完成后 `notify_callback(callback_url, ...)` 事件化通知主服务（指数退避重试 3 次；主服务侧有兜底结算线程补查）
+4. `cancel_task` 可取消排队任务（pending 不再启动；processing 计算完成后跳过写结果与回调）
+
+```
+create_task
+  ├─ 全局位 + 维度位都有空位 → 线程池直处理（ThreadPoolExecutor, max_workers=LOCAL_MAX_CONCURRENCY）
+  └─ 任一已满 → pending 入队（queued: true）
+        └─ TaskService._process_tasks（后台 worker，每秒扫描）
+              └─ 维度位 → 全局位 抢占成功 → _run_queued_task → 计算 → 释放 → notify_callback
+```
+
+### 9.3 远程端点并发
+
+`/api/endpoints` 管理远程 Worker；每端点按 `capabilities[task_type].max_process` 限制该类型并发，
+`PUT /api/endpoints/{url}/concurrency/{task_type}` 可动态调整。`/api/status` 返回本地全局 / 各维度 / 各端点并发一览。
+
+## 10. LLM 调用并发池与审计
+
+### 10.1 两级分池（中转站 × 模型品牌）
+
+所有 LLM 裁判调用汇聚 `shared/llm_client.py:call_llm()`，按「中转站(api_base) × 模型品牌」两级分池：
+
+```
+一级：中转站（api_base_url，如 az.gptplus5.com）
+二级：模型品牌（模型名小写 substring 匹配 config.llm_brand_keywords：
+      gemini* → gemini；gpt*/chatgpt/o1/o3/o4 → openai；claude* → anthropic；
+      qwen/qwq → qwen；doubao/seed → doubao；deepseek → deepseek；glm → glm；
+      moonshot/kimi → moonshot；ernie/wenxin → ernie；minimax/abab/mimo → minimax；
+      hunyuan → hunyuan；grok → grok；未命中按模型名单独分池）
+每个「站 × 品牌」两个信号量池：
+  - 文本（非音频）池  LLM_TEXT_MAX_CONCURRENCY  （默认 100）
+  - 多模态（传音频/视频）池 LLM_AUDIO_MAX_CONCURRENCY（默认 5）
+同一「站 × 品牌」的各维度共用所属池，池满新增调用排队等待空位，
+避免各维度独立计数叠加把该站/该品牌模型打满。
+```
+
+### 10.2 审计
+
+`shared/llm_call_logger.py` 在 `call_llm` 出口为每次调用（成功/失败）写一条 JSONL 审计日志：
+`LLM_CALL_LOG_DIR/llm_call_logs/<YYYY-MM-DD>.jsonl`，剥离 base64 音视频为占位符（保留字节数），
+永不轮转；`log_context` 标注来源维度（见 [llm_call_audit_log.md](../app/services/calculators/xiaoyi_metrics/doc/llm_call_audit_log.md)）。
+
+## 11. 配置
 
 配置加载顺序：`config.yaml`（默认值）→ `.env`（密钥与部署级覆盖）→ `config.LLM_JUDGE` 等单例暴露。修改后需重启 eval_server 生效。
 
@@ -422,7 +502,7 @@ OSS_ENDPOINT=...                           # 可选 OSS
 | ASR_VAD_MODEL | iic/speech_fsmn_vad_zh-cn-16k-common-pytorch | VAD 模型 |
 | ASR_PUNC_MODEL | iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch | 标点模型 |
 
-## 10. 网络部署
+## 12. 网络部署
 
 ```
 测试机 (100.70.20.136)                    ASR 主机 (100.70.20.135)

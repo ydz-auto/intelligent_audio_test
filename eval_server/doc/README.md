@@ -169,6 +169,9 @@ curl http://localhost:8888/api/get_final_result/{task_id}
 - **模板方法**：`BaseCalculator.run()` 调 `prepare_params → calculate`，子类可覆写 `prepare_params`
 - **单轮/多轮统一**：`round_number` 有值 → 单轮评估；缺省 → 多轮整体评估；`supports_per_round=True` 的 Calculator 在整体评估下自动产出 `per_round[]` 逐轮结果
 - **两级编排**：`XiaoyiMetricsCalculator` 调一次双路 ASR 注入 `_shared_asr` 供所有子维度复用（避免重复 ASR），再按 `sub_tasks` 遍历注册表子维度；`TurnTakingCalculator` 同域内编排
+- **played_audios 音频对齐**：干净音源经 FFT 互相关对齐到劣化录制的 user_wav，精修用户段 / 归属 turn 轮次 / 定位环境声
+- **并发满自动排队**：全局并发位 + 维度并发位双重限制，满则创建 pending 任务由后台 worker 消费（不再 429 拒绝），完成走 `callback_url` 事件化回调
+- **LLM 两级并发池**：所有 LLM 调用汇聚 `call_llm`，按「中转站 × 模型品牌」分池（文本池 100 / 音频池 5），每次调用写 JSONL 审计日志
 
 新增任务类型只需两步，无需改 `calculate()` 或 `api.py`：
 
