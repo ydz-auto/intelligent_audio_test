@@ -22,7 +22,7 @@
    - 深色近黑（该站暗色底）：`#0a0a0a / #0b0b0b / #191715 / #13110f`
 3. 设计规范落 doc/ 时附「newAPI 页面 → 本平台页面」映射表（首页/控制台/系统设置/关于/文档 → 本平台对应页）。
 4. **参照源码（负责人 2026-10-14 提供并克隆）**：`D:\00_code\new_api_xagents`（github ydz-auto/new-api fork）——主题预设 CSS 在 `web/src/styles/theme-presets.css`（lake-view 等预设，§1.2 实测色值即出自此）、主题定制逻辑在 `web/src/lib/theme-customization.ts`，页面布局/导航/控制台/系统设置/首页/关于/文档在 `web/src/routes|features|components`。**UX 设计 agent 直接读该仓库取材**，不依赖线上站点猜测。
-5. **技术栈（负责人 2026-10-14 追加裁定）**：直接在 V9.7.31 仓库开设计分支（独立 checkout `D:\00_code\V9.7.31\Intelligent-Audio-UX`，分支 `design/ux-redesign`）；**新前端用 React 重写、仍按 DDD 四层分层**；其余技术栈与 newAPI 前端一致——实测 `web/package.json`：React 19 + TypeScript + Rsbuild + Tailwind CSS 4 + shadcn 风格组件（@base-ui/react）+ TanStack Router/Query/Table + Zustand + react-hook-form/zod + next-themes + 字体 Public Sans/Lora + lucide 图标 + sonner/vaul + vitest。
+5. **技术栈（负责人 2026-10-14 追加裁定）**：直接在 V9.7.31 仓库开设计分支（独立 checkout `D:\00_code\V9.7.31-UX`，分支 `design/ux-redesign`）；**新前端用 React 重写、仍按 DDD 四层分层**；其余技术栈与 newAPI 前端一致——实测 `web/package.json`：React 19 + TypeScript + Rsbuild + Tailwind CSS 4 + shadcn 风格组件（@base-ui/react）+ TanStack Router/Query/Table + Zustand + react-hook-form/zod + next-themes + 字体 Public Sans/Lora + lucide 图标 + sonner/vaul + vitest。
 
 ## 2. 目标与基准
 
