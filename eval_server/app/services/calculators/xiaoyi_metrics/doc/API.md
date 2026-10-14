@@ -455,7 +455,7 @@
 ```json
 {
   "enabled": true,
-  "model": "gemini-3.7-flash",
+  "model": "gemini-3.8-flash",
   "original_topic": "推荐一部适合周末看的电影",  // 透传的原始话题
   "llm_recovery_per_round": [        // 每个 interruption 事件的复核+打分
     {

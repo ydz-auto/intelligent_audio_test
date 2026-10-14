@@ -83,13 +83,14 @@ class TaskModel:
     @staticmethod
     def create_task(eval_task_id, task_type='wer', source_lang=None, target_lang=None,
                     translate_direct=None, asr_ref=None, asr_hyp=None,
-                    task_params=None, endpoints=None, endpoint_url=None, task_id=None):
+                    task_params=None, endpoints=None, endpoint_url=None, task_id=None, test_case_id=None):
         """创建任务文件，状态固定为 pending"""
         today_dir = TaskModel._get_today_dir()
         task_path = os.path.join(today_dir, f'{eval_task_id}.json')
         task_data = {
             'eval_task_id': eval_task_id,
             'task_id': task_id,
+            'test_case_id': test_case_id,
             'task_type': task_type,
             'source_lang': source_lang,
             'target_lang': target_lang,

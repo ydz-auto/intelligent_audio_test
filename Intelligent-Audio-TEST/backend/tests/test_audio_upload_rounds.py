@@ -7,6 +7,13 @@
 - 标注 annotation.scope / roundNumber 字段
 - _build_rounds_from_files 构建多轮配置
 - _create_test_case_from_audio 接收 rounds 并生成参考参数
+
+契约口径（蛇形 key 统一后）：
+- API 边界：TestCaseUploadConfig.rounds 为 List[RoundConfigItem]（pydantic 模型，
+  AliasChoices 兼容驼峰入参），属性访问用蛇形（round_number）
+- controller 内部：rounds 一律为蛇形 key 的 dict 列表（round_number/audio_id/play_order）
+- algorithm_params / reference_params 不在 config.rounds[] 中，剥离到 test_cases 独立列
+  （按轮分组 [{round_number, params}]）
 """
 import pytest
 from unittest.mock import MagicMock, patch
@@ -50,8 +57,12 @@ class TestMergeChunksRequestRounds:
         tc = req.test_case_config
         assert tc is not None
         assert len(tc.rounds) == 2
-        assert tc.rounds[0]["roundNumber"] == 1
-        assert tc.rounds[1]["roundNumber"] == 2
+        # schema 演进后 rounds 由 List[Dict] 归一为 List[RoundConfigItem]（pydantic 模型），
+        # 断言改用蛇形属性访问；驼峰入参（roundNumber/audioId/playOrder）经 AliasChoices 归一
+        assert tc.rounds[0].round_number == 1
+        assert tc.rounds[1].round_number == 2
+        assert tc.rounds[0].audios[0].audio_id == 1
+        assert tc.rounds[0].audios[0].play_order == 0
         assert tc.group_name == "自定义分组"
         assert tc.inherit_tags is True
 
@@ -115,12 +126,13 @@ class TestBuildRoundsFromFiles:
             files, mode="multi_round"
         )
 
+        # 后端统一蛇形 key：round_number（不再是 roundNumber）
         assert len(rounds) == 3
-        assert rounds[0]["roundNumber"] == 1
+        assert rounds[0]["round_number"] == 1
         assert rounds[0]["audios"][0]["audio_id"] == 1
         assert rounds[0]["audios"][0]["play_order"] == 0
-        assert rounds[1]["roundNumber"] == 2
-        assert rounds[2]["roundNumber"] == 3
+        assert rounds[1]["round_number"] == 2
+        assert rounds[2]["round_number"] == 3
 
     def test_single_round_multi_audio_mode(self):
         """模式 B：一个文件夹 = 一轮，多音频同轮"""
@@ -137,7 +149,7 @@ class TestBuildRoundsFromFiles:
         )
 
         assert len(rounds) == 1
-        assert rounds[0]["roundNumber"] == 1
+        assert rounds[0]["round_number"] == 1
         assert len(rounds[0]["audios"]) == 3
         assert rounds[0]["audios"][0]["play_order"] == 0
         assert rounds[0]["audios"][1]["play_order"] == 1
@@ -160,7 +172,7 @@ class TestBuildRoundsFromFiles:
         )
 
         assert len(rounds) == 1
-        assert rounds[0]["roundNumber"] == 1
+        assert rounds[0]["round_number"] == 1
         assert len(rounds[0]["audios"]) == 1
 
 
@@ -180,11 +192,15 @@ class TestCreateTestCaseWithRounds:
         mock_audio.id = 1
         mock_audio.name = "test.wav"
 
+        # PlaybackDevice 需在源模块 patch：_create_test_case_from_audio 内部
+        # `from backend.models.models import PlaybackDevice` 做设备名→ID 预查询，
+        # 未 patch 时会触发真实查询（Working outside of application context）
         with patch("backend.controllers.audio_controller.db") as mock_db, \
              patch("backend.controllers.audio_controller.Audio") as mock_audio_cls, \
              patch("backend.controllers.audio_controller.TestCaseGroup") as mock_group_cls, \
              patch("backend.controllers.audio_controller.TestCase") as mock_tc_cls, \
              patch("backend.controllers.audio_controller.Tag") as mock_tag_cls, \
+             patch("backend.models.models.PlaybackDevice") as mock_dev_cls, \
              patch("backend.utils.algorithm.reference_params_generator.ReferenceParamsGenerator") as mock_gen:
 
             mock_db.session.no_autoflush = MagicMock(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock()))
@@ -200,14 +216,20 @@ class TestCreateTestCaseWithRounds:
             mock_tc.id = "tc1"
             mock_tc.config = {}
             mock_tc.algorithm_type = "asr"
+            # 测试中参考参数生成器为 MagicMock 不会回填独立列，
+            # 显式置 None，避免 controller 调试日志对 MagicMock 做 JSON 序列化报错
+            mock_tc.algorithm_params = None
+            mock_tc.reference_params = None
             mock_tc_cls.return_value = mock_tc
 
             # 执行
+            # 边界（mergeChunks）经 RoundConfigItem.model_dump(by_alias=False) 归一后
+            # 传给 controller 的是蛇形 key 的 dict 列表
             rounds_config = [
                 {
-                    "roundNumber": 1,
+                    "round_number": 1,
                     "audios": [{"audio_id": 1, "play_order": 0}],
-                    "algorithmParams": [{"field_code": "model", "field_value": "whisper"}],
+                    "algorithm_params": [{"field_code": "model", "field_value": "whisper"}],
                 }
             ]
 
@@ -225,7 +247,12 @@ class TestCreateTestCaseWithRounds:
             config = kwargs.get("config", {})
             assert "rounds" in config
             assert len(config["rounds"]) == 1
-            assert config["rounds"][0]["roundNumber"] == 1
+            assert config["rounds"][0]["round_number"] == 1
+            # schema 演进：algorithm_params 从 config.rounds[] 剥离到独立列（按轮分组）
+            assert "algorithm_params" not in config["rounds"][0]
+            assert kwargs.get("algorithm_params") == [
+                {"round_number": 1, "params": [{"field_code": "model", "field_value": "whisper"}]}
+            ]
 
             # 验证参考参数生成器被调用（同步生成）
             mock_gen.apply_to_config.assert_called_once_with(mock_tc)
@@ -239,6 +266,7 @@ class TestCreateTestCaseWithRounds:
              patch("backend.controllers.audio_controller.TestCaseGroup") as mock_group_cls, \
              patch("backend.controllers.audio_controller.TestCase") as mock_tc_cls, \
              patch("backend.controllers.audio_controller.Tag") as mock_tag_cls, \
+             patch("backend.models.models.PlaybackDevice") as mock_dev_cls, \
              patch("backend.utils.algorithm.reference_params_generator.ReferenceParamsGenerator") as mock_gen:
 
             mock_audio = MagicMock()
@@ -252,6 +280,10 @@ class TestCreateTestCaseWithRounds:
             mock_tc.id = "tc1"
             mock_tc.config = {}
             mock_tc.algorithm_type = "asr"
+            # 测试中参考参数生成器为 MagicMock 不会回填独立列，
+            # 显式置 None，避免 controller 调试日志对 MagicMock 做 JSON 序列化报错
+            mock_tc.algorithm_params = None
+            mock_tc.reference_params = None
             mock_tc_cls.return_value = mock_tc
 
             AudioController._create_test_case_from_audio(
@@ -270,13 +302,14 @@ class TestCreateTestCaseWithRounds:
             assert "audios" not in config  # 不再有顶层 audios
             rounds = config["rounds"]
             assert len(rounds) == 1
-            assert rounds[0]["roundNumber"] == 1
-            # audio_id 应该已填入
+            assert rounds[0]["round_number"] == 1
+            # audio_id / spl 应该已填入
             assert rounds[0]["audios"][0]["audio_id"] == 1
-            # inputAudio 不再自动填入（音频在 round.audios 里）
-            ap_list = rounds[0]["algorithmParams"]
-            input_audio_param = next((p for p in ap_list if p.get("field_code") == "inputAudio"), None)
-            assert input_audio_param is None
+            assert rounds[0]["audios"][0]["spl"] == 65.0
+            # 算法参数不再写入 rounds（存独立列），inputAudio 也不再自动填入
+            assert "algorithmParams" not in rounds[0]
+            assert "algorithm_params" not in rounds[0]
+            assert kwargs.get("algorithm_params") is None
 
     def test_create_test_case_resolves_audio_name_to_id(self):
         """前端用 audio_name 占位，后端 rounds 模式应替换为真实 audio_id"""
@@ -287,6 +320,7 @@ class TestCreateTestCaseWithRounds:
              patch("backend.controllers.audio_controller.TestCaseGroup") as mock_group_cls, \
              patch("backend.controllers.audio_controller.TestCase") as mock_tc_cls, \
              patch("backend.controllers.audio_controller.Tag") as mock_tag_cls, \
+             patch("backend.models.models.PlaybackDevice") as mock_dev_cls, \
              patch("backend.utils.algorithm.reference_params_generator.ReferenceParamsGenerator") as mock_gen:
 
             mock_audio = MagicMock()
@@ -300,14 +334,18 @@ class TestCreateTestCaseWithRounds:
             mock_tc.id = "tc1"
             mock_tc.config = {}
             mock_tc.algorithm_type = "voice_llm"
+            # 测试中参考参数生成器为 MagicMock 不会回填独立列，
+            # 显式置 None，避免 controller 调试日志对 MagicMock 做 JSON 序列化报错
+            mock_tc.algorithm_params = None
+            mock_tc.reference_params = None
             mock_tc_cls.return_value = mock_tc
 
-            # 前端构建的 rounds 用 audio_name 占位，无 audio_id
+            # 前端构建的 rounds 用 audio_name 占位，无 audio_id（边界归一后为蛇形 key）
             rounds_config = [
                 {
-                    "roundNumber": 1,
+                    "round_number": 1,
                     "audios": [{"audio_name": "test.wav", "play_order": 0}],
-                    "algorithmParams": [],
+                    "algorithm_params": [],
                 }
             ]
 
@@ -324,10 +362,9 @@ class TestCreateTestCaseWithRounds:
             rounds = config["rounds"]
             # audio_name 应被替换为 audio_id
             assert rounds[0]["audios"][0]["audio_id"] == 42
-            # inputAudio 不再自动填入（音频在 round.audios 里）
-            ap_list = rounds[0]["algorithmParams"]
-            input_audio_param = next((p for p in ap_list if p.get("field_code") == "inputAudio"), None)
-            assert input_audio_param is None
+            # 算法参数不再写入 rounds（存独立列），inputAudio 也不再自动填入
+            assert "algorithmParams" not in rounds[0]
+            assert "algorithm_params" not in rounds[0]
 
     def test_inherit_tags_false_skips_tag_inheritance(self):
         """inherit_tags=False 时不继承标签"""
@@ -338,6 +375,7 @@ class TestCreateTestCaseWithRounds:
              patch("backend.controllers.audio_controller.TestCaseGroup") as mock_group_cls, \
              patch("backend.controllers.audio_controller.TestCase") as mock_tc_cls, \
              patch("backend.controllers.audio_controller.Tag") as mock_tag_cls, \
+             patch("backend.models.models.PlaybackDevice") as mock_dev_cls, \
              patch("backend.utils.algorithm.reference_params_generator.ReferenceParamsGenerator") as mock_gen:
 
             mock_audio = MagicMock()
@@ -352,6 +390,10 @@ class TestCreateTestCaseWithRounds:
             mock_tc.config = {}
             mock_tc.algorithm_type = "asr"
             mock_tc.tags = MagicMock()  # MagicMock list-like
+            # 测试中参考参数生成器为 MagicMock 不会回填独立列，
+            # 显式置 None，避免 controller 调试日志对 MagicMock 做 JSON 序列化报错
+            mock_tc.algorithm_params = None
+            mock_tc.reference_params = None
             mock_tc_cls.return_value = mock_tc
 
             AudioController._create_test_case_from_audio(

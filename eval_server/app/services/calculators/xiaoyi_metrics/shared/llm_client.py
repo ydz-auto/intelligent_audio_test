@@ -346,6 +346,21 @@ def call_llm(model: str,
                     'choices': [{'message': {'content': content_text}}],
                     'usage': usage_data,
                 }
+                # HTTP 200 但 content 为空：视为失败并重试（代理/模型偶发空返回，
+                # 同一载荷重试后常可成功；最后一次仍为空则抛错走统一失败处理）
+                if not content_text.strip():
+                    if attempt >= max_retries:
+                        raise ValueError(
+                            f'LLM API 返回空 content（HTTP 200, completion_tokens='
+                            f'{usage_data.get("completion_tokens", 0)}）'
+                        )
+                    delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        f'LLM API 返回空 content（HTTP 200），{delay:.1f}s 后重试 '
+                        f'(attempt {attempt + 1}/{max_retries})'
+                    )
+                    time.sleep(delay)
+                    continue
                 break
             except httpx.HTTPStatusError as e:
                 last_exc = e
