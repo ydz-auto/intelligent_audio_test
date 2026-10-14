@@ -21,23 +21,31 @@
             v-model="filters.keyword"
           >
         </div>
-        <select v-if="componentType === 'evaluation'" class="form-input mapping-filter-select" v-model="filters.source">
-          <option value="all">全部来源</option>
-          <option value="case">用例参数</option>
-          <option value="case_config">用例配置</option>
-          <option value="reference">参考参数</option>
-          <option value="device">设备输出</option>
-          <option value="api">API输出</option>
-        </select>
-        <select class="form-input mapping-filter-select" v-model="filters.transform_type">
-          <option value="all">全部转换</option>
-          <option value="none">无转换</option>
-          <option value="uppercase">转大写</option>
-          <option value="lowercase">转小写</option>
-          <option value="json_parse">JSON解析</option>
-          <option value="rttm_to_obj">RTTM转对象</option>
-          <option value="stm_to_obj">STM转对象</option>
-        </select>
+        <BadgeFilter
+          v-if="componentType === 'evaluation'"
+          :options="sourceOptions"
+          :model-value="filters.source"
+          all-label="全部来源"
+          title="来源"
+          @update:model-value="v => (filters.source = String(v))"
+        />
+        <BadgeFilter
+          v-if="componentType === 'evaluation'"
+          :options="dimensionFilterOptions"
+          :model-value="filters.dimension_id"
+          all-label="全部维度"
+          title="评估维度"
+          collapsible
+          :collapsed-count="6"
+          @update:model-value="v => (filters.dimension_id = String(v))"
+        />
+        <BadgeFilter
+          :options="transformOptions"
+          :model-value="filters.transform_type"
+          all-label="全部转换"
+          title="转换"
+          @update:model-value="v => (filters.transform_type = String(v))"
+        />
       </div>
     </div>
 
@@ -135,13 +143,14 @@
             <td :colspan="colspanCount" class="empty-row">无匹配映射</td>
           </tr>
           <template v-else v-for="(record, index) in displayRows" :key="record.__isGroupHeader ? `group-${record.__dimensionKey}` : (record.__isGroupFooter ? `group-footer-${record.__dimensionKey}` : (record.id || `${record.source || ''}-${record.source_param}-${record.target_param}-${record.dimension_id || ''}`))">
-            <tr v-if="record.__isGroupHeader" class="dimension-group-header-row">
+            <tr v-if="record.__isGroupHeader" class="dimension-group-header-row" @click="toggleGroupCollapsed(record.__dimensionKey)">
               <td :colspan="colspanCount">
-                <span class="dimension-group-title">
-                  <i class="fas fa-layer-group dimension-group-icon"></i>
+                <div class="dimension-group-header-inner">
+                  <i class="fas fa-chevron-down dimension-group-toggle" :class="{ collapsed: isGroupCollapsed(record.__dimensionKey) }"></i>
+                  <i class="fas fa-folder dimension-group-icon"></i>
                   <span class="dimension-group-name">{{ record.__dimensionName }}</span>
-                  <span class="dimension-group-count">共 {{ record.__count }} 条</span>
-                </span>
+                  <span class="dimension-group-count">{{ record.__count }}</span>
+                </div>
               </td>
             </tr>
             <tr v-else-if="record.__isGroupFooter" class="add-row dimension-group-add-row" @click="handleAdd(record.__dimensionId)">
@@ -264,6 +273,7 @@ import { algorithmApi } from '../../utils/api'
 import { useNotification } from '../../composables/useNotification'
 import ColumnFilter from './ColumnFilter.vue'
 import PaginationComponent from '../common/PaginationComponent.vue'
+import BadgeFilter from '../common/BadgeFilter.vue'
 
 const { warning, error } = useNotification()
 
@@ -323,6 +333,8 @@ const viewMode = ref<'flat' | 'dimension'>('dimension')
 // 分页状态
 const currentPage = ref(1)
 const pageSize = ref(10)
+// 评估维度视图下被折叠的分组（dimensionKey 集合）
+const collapsedGroups = ref<Set<string>>(new Set())
 
 const colspanCount = computed(() => (props.componentType === 'evaluation' ? 7 : 6))
 
@@ -388,6 +400,8 @@ const displayRows = computed(() => {
         __dimensionName: dimensionNameForGroup(key),
         __count: mappings.length
       })
+      // 折叠的分组不展示其映射行与"添加映射"尾行
+      if (collapsedGroups.value.has(key)) continue
       rows.push(...mappings)
       // 分组末尾追加整行"添加映射"按钮
       rows.push({
@@ -419,6 +433,21 @@ function handlePageSizeChange(size: number) {
 function switchViewMode(mode: 'flat' | 'dimension') {
   viewMode.value = mode
   currentPage.value = 1
+}
+
+// 评估维度视图：折叠/展开分组
+function isGroupCollapsed(key: string): boolean {
+  return collapsedGroups.value.has(key)
+}
+
+function toggleGroupCollapsed(key: string) {
+  const next = new Set(collapsedGroups.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    next.add(key)
+  }
+  collapsedGroups.value = next
 }
 
 // 过滤条件/映射数据变化时回到第一页
@@ -803,8 +832,14 @@ function handleRemove(record: any) {
 .mapping-toolbar-actions {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
   flex-wrap: wrap;
+}
+.mapping-toolbar-actions .badge-filter {
+  flex-shrink: 0;
+}
+.mapping-toolbar-actions .search-box {
+  flex-shrink: 0;
 }
 
 /* 视图模式切换（平铺/评估维度） */
@@ -845,24 +880,62 @@ function handleRemove(record: any) {
   box-shadow: 0 2px 6px rgba(99, 102, 241, 0.35);
 }
 
-/* 评估维度分组头行 */
+/* 评估维度分组头行（参考 Evaluation 分组视图卡片头样式） */
 .dimension-group-header-row td {
-  background: var(--primary-light) !important;
-  font-weight: var(--font-weight-medium);
-  color: var(--primary-color);
-  padding: 6px 12px;
+  padding: 0 !important;
+  display: table-cell !important;
+  min-width: 0 !important;
+  border-bottom: 1px solid var(--border-color);
+  white-space: normal;
+  overflow: visible;
+  cursor: pointer;
+}
+.dimension-group-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #eef1f5 100%);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.3s ease;
+}
+.dimension-group-header-row:hover .dimension-group-header-inner {
+  background: linear-gradient(135deg, #eef1f5 0%, #e2e6ea 100%);
+}
+.dimension-group-toggle {
+  color: var(--text-light, #999);
+  font-size: 13px;
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+.dimension-group-toggle.collapsed {
+  transform: rotate(-90deg);
 }
 .dimension-group-icon {
-  margin-right: 6px;
-  font-size: 12px;
+  color: var(--primary-color);
+  font-size: 16px;
+  flex-shrink: 0;
 }
 .dimension-group-name {
-  font-size: var(--font-size-sm);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .dimension-group-count {
-  margin-left: 8px;
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
+  background-color: var(--primary-color);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 10px;
+  border-radius: 12px;
+  min-width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 /* 分组末尾整行添加按钮 */

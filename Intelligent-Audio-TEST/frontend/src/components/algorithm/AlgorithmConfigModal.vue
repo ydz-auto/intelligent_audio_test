@@ -114,7 +114,7 @@
               >
             </div>
             <div class="form-group">
-              <label>所属分组 <span class="required">*</span></label>
+              <label>所属分组</label>
               <select class="form-input" v-model="groupSelectValue">
                 <option :value="null">请选择分组</option>
                 <option v-for="group in groups" :key="group.id" :value="group.id">
@@ -1799,10 +1799,6 @@ async function handleOk() {
   }
   if (creatingNewGroup.value && !newGroupName.value.trim()) {
     alert('请填写新分组名称')
-    return
-  }
-  if (!creatingNewGroup.value && !formState.group_id) {
-    alert('请填写必填字段')
     return
   }
 
