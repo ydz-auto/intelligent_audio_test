@@ -180,9 +180,17 @@ class XiaoyilivechatV2(HarmonyDriver):
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         if not super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs):
             return False
-        driver = self._get_driver(device_sn)
-        if not driver:
+        # INT-312：读 super().initialize 的 explicit_degrade 分流结论；
+        # 降级时 driver 为 None，后续 UI 步骤显式跳过
+        driver, proceed = self._resume_driver_after_super_initialize(
+            device_sn, task_id=task_id, test_case_id=test_case_id)
+        if not proceed:
             return False
+        if driver is None:
+            self._log(level='WARNING',
+                      content="UI 抓取层降级（explicit_degrade）: 小艺聊天窗口/清上下文/删对话记录 UI 步骤跳过",
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
         # 点开小艺聊天窗口
         user_center = driver.find_component(By.text("小艺"))
         if user_center:

@@ -120,33 +120,40 @@ class DoubaoChat(Xiaoyilivechat):
         """打开豆包 app(纯命令行拉起，不调用父类 initialize，避免基类点小艺图标):
         解锁/关弹窗/回桌面 → 停豆包 → aa start 拉起豆包 → 重置录屏状态 →
         fwk 抓取权限 → 清聊天记录以及上下文(开启新话题)
+
+        INT-312：入口走 _initialize_ui_guard 统一 UI 分流——strict 下 UI 层不可用
+        显式失败；explicit_degrade 下标记降级，UI 步骤显式跳过，hdc 步骤
+        （force-stop/aa start/fwk 采集参数）照常执行。
         """
         self._log(level='INFO', content=f"Initializing Doubao on HarmonyOS device {device_sn}...",
                   task_id=task_id, test_case_id=test_case_id)
-        driver = self._get_driver(device_sn)
-        if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}",
-                      task_id=task_id, test_case_id=test_case_id)
+        driver, proceed = self._initialize_ui_guard(device_sn, task_id=task_id,
+                                                    test_case_id=test_case_id)
+        if not proceed:
             return False
 
-        # 解锁设备
-        self.unlock(device_sn)
-        if self._check_stop("initialize"):
-            return False
-        # 关闭弹窗 + 回桌面
-        self.close_popups(device_sn)
-        if self._check_stop("initialize"):
-            return False
-        try:
-            driver.swipe_to_home()
-        except Exception:
-            driver.press_home()
-        time.sleep(LONG_WAIT)
+        if driver is not None:
+            # 解锁设备
+            self.unlock(device_sn)
+            if self._check_stop("initialize"):
+                return False
+            # 关闭弹窗 + 回桌面
+            self.close_popups(device_sn)
+            if self._check_stop("initialize"):
+                return False
+            try:
+                driver.swipe_to_home()
+            except Exception:
+                driver.press_home()
+            time.sleep(LONG_WAIT)
 
-        # 停掉可能残留的豆包进程(不碰小艺)
-        driver.stop_app(self.DOUBAO_BUNDLE)
-        if self._check_stop("initialize"):
-            return False
+            # 停掉可能残留的豆包进程(不碰小艺)
+            driver.stop_app(self.DOUBAO_BUNDLE)
+            if self._check_stop("initialize"):
+                return False
+        else:
+            # explicit_degrade：UI 辅助步骤（解锁/弹窗/回桌面）显式跳过；残留豆包改走 hdc 强停
+            self._hdc_shell(device_sn, 'aa', 'force-stop', self.DOUBAO_BUNDLE)
 
         # 命令行拉起豆包 app(小艺用 UI 点击 find_component(By.text("小艺"))，豆包用 aa start)
         r = self._hdc_shell(device_sn, 'aa', 'start',
@@ -158,8 +165,9 @@ class DoubaoChat(Xiaoyilivechat):
         self._log(level='INFO', content="豆包 app 已启动",
                   task_id=task_id, test_case_id=test_case_id)
         time.sleep(APP_LAUNCH_WAIT)
-        # 启动后再次关闭弹窗
-        self.close_popups(device_sn)
+        if driver is not None:
+            # 启动后再次关闭弹窗
+            self.close_popups(device_sn)
 
         # 重置跨用例残留的录屏状态（驱动单例复用）
         self._recording = False
@@ -173,14 +181,21 @@ class DoubaoChat(Xiaoyilivechat):
         self.question_text = None
         self.answer_text = None
         # 开启抓取 pcm 权限(fwk 层,豆包/ChatGPT 共用;小艺走 DSP 层不在此列)
-        driver.shell("mount -o rw,remount /")
-        driver.shell("param set sys.audio.dump.writeserver.enable w")
-        driver.shell("param set sys.audio.dump.writehdi.enable w")
-        driver.shell("param set sys.audio.dump.writeclient.enable a")
-        driver.shell("chmod 777 /data/local/tmp")
+        # INT-312：采集链参数不随 UI 层降级——无驱动时 _device_shell 走 hdc 直连
+        self._device_shell(device_sn, driver, "mount -o rw,remount /")
+        self._device_shell(device_sn, driver, "param set sys.audio.dump.writeserver.enable w")
+        self._device_shell(device_sn, driver, "param set sys.audio.dump.writehdi.enable w")
+        self._device_shell(device_sn, driver, "param set sys.audio.dump.writeclient.enable a")
+        self._device_shell(device_sn, driver, "chmod 777 /data/local/tmp")
 
         # 清除聊天记录以及上下文(开启新话题)
         # 豆包聊天首页右上角菜单按钮: 先尝试语义查找(SymbolGlyph), 找不到则回退坐标
+        # INT-312：UI 步骤，explicit_degrade 无驱动时按环境排除显式跳过
+        if driver is None:
+            self._log(level='WARNING',
+                      content="UI 抓取层降级（explicit_degrade）: 清除聊天记录 UI 步骤跳过",
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
         driver.wait(APP_LAUNCH_WAIT)
         try:
             # 第1步:进入导航栏

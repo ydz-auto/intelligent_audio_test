@@ -215,33 +215,39 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         注意2：也不复用 HarmonyDriver.initialize 的图标点击路径——其 app_icon_key 默认是小艺
         图标 key，会在桌面误点小艺图标启动小艺而非 ChatGPT。这里直接 aa start 启动 ChatGPT，
         不依赖图标 key。
+        INT-312：入口走 _initialize_ui_guard 统一 UI 分流——strict 下 UI 层不可用
+        显式失败；explicit_degrade 下标记降级，UI 步骤显式跳过，hdc 步骤
+        （force-stop/aa start/fwk 采集参数）照常执行。
         """
-        driver = self._get_driver(device_sn)
-        if not driver:
-            self._log(level='ERROR', content=f"无法获取设备驱动: {device_sn}",
-                      task_id=task_id, test_case_id=test_case_id)
+        driver, proceed = self._initialize_ui_guard(device_sn, task_id=task_id,
+                                                    test_case_id=test_case_id)
+        if not proceed:
             return False
 
-        if self._check_stop("initialize"):
-            return False
-        self.unlock(device_sn)
-        if self._check_stop("initialize"):
-            return False
-        self.close_popups(device_sn)
-        if self._check_stop("initialize"):
-            return False
-        try:
-            driver.swipe_to_home()
-        except Exception:
-            driver.press_home()
-        time.sleep(LONG_WAIT)
+        if driver is not None:
+            if self._check_stop("initialize"):
+                return False
+            self.unlock(device_sn)
+            if self._check_stop("initialize"):
+                return False
+            self.close_popups(device_sn)
+            if self._check_stop("initialize"):
+                return False
+            try:
+                driver.swipe_to_home()
+            except Exception:
+                driver.press_home()
+            time.sleep(LONG_WAIT)
 
-        # 停掉残留 ChatGPT（避免上次实例残留）
-        try:
-            driver.stop_app(self.app_name)
-        except Exception as e:
-            self._log(level='DEBUG', content=f"stop_app ChatGPT 失败(忽略): {e}",
-                      task_id=task_id, test_case_id=test_case_id)
+            # 停掉残留 ChatGPT（避免上次实例残留）
+            try:
+                driver.stop_app(self.app_name)
+            except Exception as e:
+                self._log(level='DEBUG', content=f"stop_app ChatGPT 失败(忽略): {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+        else:
+            # explicit_degrade：UI 辅助步骤（解锁/弹窗/回桌面）显式跳过；残留 ChatGPT 改走 hdc 强停
+            self._hdc_shell(device_sn, 'aa', 'force-stop', self.app_name)
 
         # 直接 aa start 启动 ChatGPT（不依赖图标 key，避免误点小艺）
         # 指定 MainActivity：仅 -b 不带 -a 时 Android 兼容层应用会 "failed to start ability"
@@ -261,7 +267,8 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                       task_id=task_id, test_case_id=test_case_id)
             return False
         time.sleep(EXTRA_LONG_WAIT)
-        self.close_popups(device_sn)
+        if driver is not None:
+            self.close_popups(device_sn)
 
         # 重置跨用例残留状态（驱动单例复用）
         self._recording = False
@@ -275,11 +282,12 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self.question_text = None
         self.answer_text = None
         # 开启抓取 pcm 权限(fwk 层,豆包/ChatGPT 共用;小艺走 DSP 层不在此列)
-        driver.shell("mount -o rw,remount /")
-        driver.shell("param set sys.audio.dump.writeserver.enable w")
-        driver.shell("param set sys.audio.dump.writehdi.enable w")
-        driver.shell("param set sys.audio.dump.writeclient.enable a")
-        driver.shell("chmod 777 /data/local/tmp")
+        # INT-312：采集链参数不随 UI 层降级——无驱动时 _device_shell 走 hdc 直连
+        self._device_shell(device_sn, driver, "mount -o rw,remount /")
+        self._device_shell(device_sn, driver, "param set sys.audio.dump.writeserver.enable w")
+        self._device_shell(device_sn, driver, "param set sys.audio.dump.writehdi.enable w")
+        self._device_shell(device_sn, driver, "param set sys.audio.dump.writeclient.enable a")
+        self._device_shell(device_sn, driver, "chmod 777 /data/local/tmp")
         return True
 
     @with_rpc_retry()

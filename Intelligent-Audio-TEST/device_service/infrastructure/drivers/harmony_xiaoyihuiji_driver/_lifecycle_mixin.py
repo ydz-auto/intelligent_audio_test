@@ -12,13 +12,18 @@ class LifecycleMixin:
     @check_stop("initialize")
     @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """初始化小艺慧记设备"""
+        """初始化小艺慧记设备
+
+        INT-312：入口走 _initialize_ui_guard 统一 UI 分流——strict 下 UI 层不可用
+        显式失败；explicit_degrade 下标记降级，UI 导航步骤显式跳过，
+        hdc 步骤（清理设备日志）照常执行。
+        """
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...", task_id=task_id, test_case_id=test_case_id)
-        driver = self._get_driver(device_sn)
-        if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}", task_id=task_id, test_case_id=test_case_id)
+        driver, proceed = self._initialize_ui_guard(device_sn, task_id=task_id,
+                                                    test_case_id=test_case_id)
+        if not proceed:
             return False
-            
+
         try:
             # 步骤4：清理设备日志
             clean_result = subprocess.run(
@@ -28,22 +33,28 @@ class LifecycleMixin:
             self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}", task_id=task_id, test_case_id=test_case_id)
             if self._check_stop("initialize"):
                 return False
-            self.unlock(device_sn)
-            if self._check_stop("initialize"):
-                return False
-            self._log(level='DEBUG', content="Clicking User Center...", task_id=task_id, test_case_id=test_case_id)
-            # 检测并关闭弹窗
-            self.close_popups(device_sn)
-            # 点击菜单
-            driver.click(
-                By.key('SmartDock_AppIcon_Container_com.ohos.sceneboard_com.ohos.sceneboard.appcenter.MainAbility'))
-            # 点击小艺
-            driver.click(By.key('AppIcon_Image_com.huawei.hmos.vassistantVoicePcFreeAbilityvoice_pc0_AppCenterItem_2'))
-            # 点击工具栏
-            time.sleep(SHORT_WAIT)
-            driver.click(By.key('PluginRootComponent_Stack_status_bar_control_center'))
-            # 点击小艺慧记
-            driver.click(By.key('Ctrl.NewToggleBaseComponent_Image_meeting'))
+            if driver is not None:
+                self.unlock(device_sn)
+                if self._check_stop("initialize"):
+                    return False
+                self._log(level='DEBUG', content="Clicking User Center...", task_id=task_id, test_case_id=test_case_id)
+                # 检测并关闭弹窗
+                self.close_popups(device_sn)
+                # 点击菜单
+                driver.click(
+                    By.key('SmartDock_AppIcon_Container_com.ohos.sceneboard_com.ohos.sceneboard.appcenter.MainAbility'))
+                # 点击小艺
+                driver.click(By.key('AppIcon_Image_com.huawei.hmos.vassistantVoicePcFreeAbilityvoice_pc0_AppCenterItem_2'))
+                # 点击工具栏
+                time.sleep(SHORT_WAIT)
+                driver.click(By.key('PluginRootComponent_Stack_status_bar_control_center'))
+                # 点击小艺慧记
+                driver.click(By.key('Ctrl.NewToggleBaseComponent_Image_meeting'))
+            else:
+                # explicit_degrade：小艺慧记 UI 导航步骤按环境排除显式跳过
+                self._log(level='WARNING',
+                          content="UI 抓取层降级（explicit_degrade）: 小艺慧记 UI 导航步骤跳过（设备日志已清理）",
+                          task_id=task_id, test_case_id=test_case_id)
             return True
         except Exception as e:
             self._log(level='ERROR', content=f"打开{device_sn}小艺慧记失败：{e}", task_id=task_id, test_case_id=test_case_id)

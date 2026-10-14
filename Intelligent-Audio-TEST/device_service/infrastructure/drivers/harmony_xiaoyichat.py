@@ -1183,8 +1183,11 @@ class Xiaoyilivechat(HarmonyDriver):
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         if not super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs):
             return False
-        driver = self._get_driver(device_sn)
-        if not driver:
+        # INT-312：读 super().initialize 的 explicit_degrade 分流结论；
+        # 降级时 driver 为 None，后续 UI 步骤显式跳过，hdc 采集链步骤照常
+        driver, proceed = self._resume_driver_after_super_initialize(
+            device_sn, task_id=task_id, test_case_id=test_case_id)
+        if not proceed:
             return False
         # 重置跨用例残留的录屏状态（驱动为单例，跨用例复用，避免上个用例的标志位污染本次）
         self._recording = False
@@ -1202,11 +1205,12 @@ class Xiaoyilivechat(HarmonyDriver):
         if self._pcm_app == 'xiaoyi':
             self._enable_dsp_audio_dump(device_sn, task_id=task_id, test_case_id=test_case_id)
         else:
-            driver.shell("mount -o rw,remount /")
-            driver.shell("param set sys.audio.dump.writeserver.enable w")
-            driver.shell("param set sys.audio.dump.writehdi.enable w")
-            driver.shell("param set sys.audio.dump.writeclient.enable a")
-            driver.shell("chmod 777 /data/local/tmp")
+            # INT-312：fwk 采集参数不随 UI 层降级——无驱动时 _device_shell 走 hdc 直连
+            self._device_shell(device_sn, driver, "mount -o rw,remount /")
+            self._device_shell(device_sn, driver, "param set sys.audio.dump.writeserver.enable w")
+            self._device_shell(device_sn, driver, "param set sys.audio.dump.writehdi.enable w")
+            self._device_shell(device_sn, driver, "param set sys.audio.dump.writeclient.enable a")
+            self._device_shell(device_sn, driver, "chmod 777 /data/local/tmp")
         # 清空闹钟(ALARM_CLOCK 表),避免测试中途闹钟响铃打断用例
         self._clear_alarms(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 清理设备上残留的 pcm 缓存(防止上个用例 teardown 失败残留干扰本轮)
@@ -1215,37 +1219,44 @@ class Xiaoyilivechat(HarmonyDriver):
         if self._pcm_app == 'xiaoyi':
             # DSP 层 audio_hook 也要清(防止上轮残留干扰本轮基线)
             self._clear_dsp_audio_hook(device_sn, task_id=task_id, test_case_id=test_case_id)
-        # 点开小艺聊天窗口
-        # 注:08-17 fdb087a43 曾注掉此段(假设窗口已开只点通话按钮),
-        # 但实测窗口常不在前台→pre_process 通话 SymbolGlyph 找不到→小艺没打开,故解回。
-        user_center = driver.find_component(By.text("小艺"))
-        if user_center:
-            user_center.click()
-            time.sleep(LONG_WAIT)
-            self._log(level='DEBUG', content="initialize: 已点开小艺聊天窗口",
-                      task_id=task_id, test_case_id=test_case_id)
-        else:
-            self._log(level='WARNING', content="initialize: 未找到'小艺'入口,聊天窗口可能未打开(后续 pre_process 点通话按钮可能失败)",
-                      task_id=task_id, test_case_id=test_case_id)
-        # 清除上下文: 进入设置界面→点"清除上下文";再进设置→删除对话记录
-        driver.touch(self.SETTINGS_ENTRY_TOUCH)
-        driver.wait(LONG_WAIT)
-        clear_text = driver.find_component(By.text('清除上下文'))
-        if clear_text:
-            clear_text.click()
-            time.sleep(LONG_WAIT)
-        # 进入设置界面删除对话记录
-        driver.touch(self.SETTINGS_ENTRY_TOUCH)
-        driver.wait(LONG_WAIT)
-        clear_chat = driver.find_component(By.text("删除对话记录"))
-        if clear_chat:
-            clear_chat.click()
-            time.sleep(NORMAL_WAIT)
-            # 确认删除
-            delete_button = driver.find_component(By.text("删除"))
-            if delete_button:
-                delete_button.click()
+        # 点开小艺聊天窗口 + 清除上下文/删除对话记录（UI 步骤；
+        # INT-312：explicit_degrade 无驱动时按环境排除显式跳过）
+        if driver is not None:
+            # 点开小艺聊天窗口
+            # 注:08-17 fdb087a43 曾注掉此段(假设窗口已开只点通话按钮),
+            # 但实测窗口常不在前台→pre_process 通话 SymbolGlyph 找不到→小艺没打开,故解回。
+            user_center = driver.find_component(By.text("小艺"))
+            if user_center:
+                user_center.click()
+                time.sleep(LONG_WAIT)
+                self._log(level='DEBUG', content="initialize: 已点开小艺聊天窗口",
+                          task_id=task_id, test_case_id=test_case_id)
+            else:
+                self._log(level='WARNING', content="initialize: 未找到'小艺'入口,聊天窗口可能未打开(后续 pre_process 点通话按钮可能失败)",
+                          task_id=task_id, test_case_id=test_case_id)
+            # 清除上下文: 进入设置界面→点"清除上下文";再进设置→删除对话记录
+            driver.touch(self.SETTINGS_ENTRY_TOUCH)
+            driver.wait(LONG_WAIT)
+            clear_text = driver.find_component(By.text('清除上下文'))
+            if clear_text:
+                clear_text.click()
+                time.sleep(LONG_WAIT)
+            # 进入设置界面删除对话记录
+            driver.touch(self.SETTINGS_ENTRY_TOUCH)
+            driver.wait(LONG_WAIT)
+            clear_chat = driver.find_component(By.text("删除对话记录"))
+            if clear_chat:
+                clear_chat.click()
                 time.sleep(NORMAL_WAIT)
+                # 确认删除
+                delete_button = driver.find_component(By.text("删除"))
+                if delete_button:
+                    delete_button.click()
+                    time.sleep(NORMAL_WAIT)
+        else:
+            self._log(level='WARNING',
+                      content="UI 抓取层降级（explicit_degrade）: 小艺聊天窗口/清上下文/删对话记录 UI 步骤跳过",
+                      task_id=task_id, test_case_id=test_case_id)
 
         return True
 

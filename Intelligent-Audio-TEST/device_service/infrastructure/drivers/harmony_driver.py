@@ -250,28 +250,14 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
         - strict（默认）：显式失败（INT-158 语义，错误透传真因）
         - explicit_degrade：跳过 UI 抓取层初始化，返回成功 + ui_capture_available=false
           + degrade_reason 结构化标记；录屏/采集链自检不降级（失败仍失败）
+        分流统一收口在 _initialize_ui_guard（INT-312：子类自定义 initialize 复用同一模板）。
         """
-        self.reset_ui_capture_state()
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...")
 
-        driver, unavailable_reason = self._get_driver_for_initialize(device_sn)
-        if driver is None:
-            if self._degrade_ui_capture(unavailable_reason):
-                # explicit_degrade：UI 抓取层不可用 → 留痕跳过，录屏链照常初始化
-                self._log(level='WARNING',
-                          content=(f"UI 抓取层降级（explicit_degrade）: device {device_sn} "
-                                   f"reason={self.ui_degrade_reason}，"
-                                   f"UI 步骤将按环境排除显式跳过；录屏/采集链不受影响"),
-                          task_id=task_id, test_case_id=test_case_id)
-            else:
-                reason = unavailable_reason
-                if isinstance(reason, UiCaptureDegradeReason):
-                    reason = reason.value
-                self._log(level='ERROR',
-                          content=(f"Failed to get driver for device {device_sn} "
-                                   f"（UI 抓取层不可用: {reason}；"
-                                   f"hypium/devicetest 未安装或设备端 uitest 守护不可达）"))
-                return False
+        driver, proceed = self._initialize_ui_guard(device_sn, task_id=task_id,
+                                                    test_case_id=test_case_id)
+        if not proceed:
+            return False
 
         try:
 
@@ -350,6 +336,74 @@ class HarmonyDriver(HarmonyCollectionMixin, BaseDeviceDriver):
             self.mark_ui_capture_degraded(UiCaptureDegradeReason(unavailable_reason))
             return True
         return False
+
+    def _initialize_ui_guard(self, device_sn, task_id=None, test_case_id=None):
+        """initialize 入口统一 UI 分流模板（INT-296 降级逻辑唯一实现，INT-312 下沉复用）
+
+        自带 initialize 覆写的子类驱动（不调 super().initialize 的自定义入口）在
+        入口调用本方法替代裸 _get_driver，使 explicit_degrade 语义全驱动一致：
+        - UI 层可用 → (driver, True)，子类照常执行全部步骤
+        - explicit_degrade 且 UI 层不可用 → 已标记 ui_capture_available=false +
+          degrade_reason，返回 (None, True)；子类跳过依赖 driver 的 UI 步骤、
+          仅执行 hdc 等非 UI 步骤后返回成功
+        - strict（默认）且 UI 层不可用 → 已记 ERROR（错误透传真因），返回
+          (None, False)，子类显式失败（INT-158 语义）
+
+        Returns:
+            (driver, proceed) 元组，语义见上
+        """
+        self.reset_ui_capture_state()
+        driver, unavailable_reason = self._get_driver_for_initialize(device_sn)
+        if driver is not None:
+            return driver, True
+        if self._degrade_ui_capture(unavailable_reason):
+            # explicit_degrade：UI 抓取层不可用 → 留痕跳过，录屏链照常初始化
+            self._log(level='WARNING',
+                      content=(f"UI 抓取层降级（explicit_degrade）: device {device_sn} "
+                               f"reason={self.ui_degrade_reason}，"
+                               f"UI 步骤将按环境排除显式跳过；录屏/采集链不受影响"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return None, True
+        reason = unavailable_reason
+        if isinstance(reason, UiCaptureDegradeReason):
+            reason = reason.value
+        self._log(level='ERROR',
+                  content=(f"Failed to get driver for device {device_sn} "
+                           f"（UI 抓取层不可用: {reason}；"
+                           f"hypium/devicetest 未安装或设备端 uitest 守护不可达）"),
+                  task_id=task_id, test_case_id=test_case_id)
+        return None, False
+
+    def _resume_driver_after_super_initialize(self, device_sn, task_id=None, test_case_id=None):
+        """子类 initialize 在 super().initialize() 成功后的取驱动收尾（INT-312）
+
+        供链式调用 super().initialize() 的子类驱动使用：基类已通过
+        _initialize_ui_guard 完成分流（strict 失败时子类早已 return False），
+        本方法只读其结论，不重复分流、不重复记日志：
+        - UI 层可用 → (driver, True)
+        - explicit_degrade 已降级 → (None, True)，子类跳过依赖 driver 的 UI 步骤
+        - 防御分支：基类成功但驱动不可取（不应发生）→ 按 strict 语义显式失败
+
+        Returns:
+            (driver, proceed) 元组，语义见 _initialize_ui_guard
+        """
+        if not getattr(self, 'ui_capture_available', True):
+            return None, True
+        driver = self._get_driver(device_sn)
+        if driver is None:
+            self._log(level='ERROR',
+                      content=(f"Failed to get driver for device {device_sn} "
+                               f"（super().initialize 成功但驱动不可取，按 strict 语义显式失败）"),
+                      task_id=task_id, test_case_id=test_case_id)
+            return None, False
+        return driver, True
+
+    def _device_shell(self, device_sn, driver, cmd):
+        """设备 shell 命令：driver 可用走 UiDriver.shell；explicit_degrade 无驱动时
+        走 hdc 直连（INT-312：UI 抓取层降级不连带 fwk 采集参数设置降级）"""
+        if driver is not None:
+            return driver.shell(cmd)
+        return self._hdc_shell(device_sn, cmd)
 
     @check_stop("pre_process")
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:

@@ -24,10 +24,17 @@ class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
             return False
         # 2. 尝试通过桌面图标启动 (使用用户提供的 Key)
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...", task_id=task_id, test_case_id=test_case_id)
-        driver = self._get_driver(device_sn)
-        if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}", task_id=task_id, test_case_id=test_case_id)
+        # INT-312：读 super().initialize 的 explicit_degrade 分流结论；
+        # 降级时 driver 为 None，后续 UI 导航步骤显式跳过
+        driver, proceed = self._resume_driver_after_super_initialize(
+            device_sn, task_id=task_id, test_case_id=test_case_id)
+        if not proceed:
             return False
+        if driver is None:
+            self._log(level='WARNING',
+                      content="UI 抓取层降级（explicit_degrade）: 小艺翻译 UI 导航步骤（用户中心/设置/翻译页）跳过",
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
         # 3. 点击右上角"用户中心/头像"
         user_center = driver.find_component(By.description("用户中心")) or \
                       driver.find_component(By.type("Image"))
@@ -85,10 +92,17 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
         if not initialize_success:
             return False
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...", task_id=task_id, test_case_id=test_case_id)
-        driver = self._get_driver(device_sn)
-        if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}", task_id=task_id, test_case_id=test_case_id)
+        # INT-312：读 super().initialize 的 explicit_degrade 分流结论；
+        # 降级时 driver 为 None，后续 UI 导航步骤显式跳过
+        driver, proceed = self._resume_driver_after_super_initialize(
+            device_sn, task_id=task_id, test_case_id=test_case_id)
+        if not proceed:
             return False
+        if driver is None:
+            self._log(level='WARNING',
+                      content="UI 抓取层降级（explicit_degrade）: 面对面翻译 UI 导航步骤跳过",
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
         try:
             mode_text = '面对面翻译'
             mode_btn = driver.find_component(By.text(mode_text))
@@ -158,10 +172,17 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
         if not initialize_success:
             return False
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...", task_id=task_id, test_case_id=test_case_id)
-        driver = self._get_driver(device_sn)
-        if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}", task_id=task_id, test_case_id=test_case_id)
+        # INT-312：读 super().initialize 的 explicit_degrade 分流结论；
+        # 降级时 driver 为 None，后续 UI 导航步骤显式跳过
+        driver, proceed = self._resume_driver_after_super_initialize(
+            device_sn, task_id=task_id, test_case_id=test_case_id)
+        if not proceed:
             return False
+        if driver is None:
+            self._log(level='WARNING',
+                      content="UI 抓取层降级（explicit_degrade）: 同声传译 UI 导航步骤跳过",
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
         try:
             mode_text = '同声传译'
             mode_btn = driver.find_component(By.text(mode_text))
