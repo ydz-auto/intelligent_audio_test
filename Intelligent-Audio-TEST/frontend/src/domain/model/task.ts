@@ -109,6 +109,10 @@ export interface Task {
 export interface TaskCreateDraft {
   name: string
   description?: string
+  /** INT-282：执行口径（api/e2e，TestType 域枚举值）。基线契约显式携带；
+   * 注：V9.7.31 后端 task.type 已废弃（归类由用例级 device_type 派生），
+   * 网关 extra="ignore" 静默忽略，仅作契约兼容留痕 */
+  type?: string
   /** 对应 case_ids: List[str]（后端用例 ID 为字符串） */
   caseIds: string[]
   /** 对应 device_ids: List[int] */

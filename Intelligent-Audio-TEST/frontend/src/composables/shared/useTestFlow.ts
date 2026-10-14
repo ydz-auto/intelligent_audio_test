@@ -159,6 +159,8 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     currentTaskId,
     taskName,
     concurrentTasks,
+    // INT-282：未勾选用例按筛选拉全量回退需要算法筛选条件
+    selectedAlgorithmType,
     selectedTestCaseIds,
     selectedDeviceIds: selectedResourceIds as any,
     e2eTestCases,

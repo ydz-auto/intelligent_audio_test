@@ -3,11 +3,14 @@ import { tasksPort } from '../task/tasksPort'
 import { formatDurationSeconds, formatDurationText } from '../../utils/durationFormat'
 import type { APIConfig, TestCase } from '../../domain'
 import { TestType, TaskStatus, ApiEndpointStatus } from '../../domain/enums'
+import { useTestCaseStore } from '../../store/testCaseStore'
 
 interface UseTaskExecutionOptions {
   testType: typeof TestType[keyof typeof TestType]
   currentTaskId: Ref<string | number | null>
   taskName: Ref<string>
+  // INT-282：未勾选用例时按筛选拉全量回退需要算法筛选条件（对齐基线 apiTest.ts:413-422）
+  selectedAlgorithmType: Ref<string | null>
   concurrentTasks: Ref<number>
   selectedTestCaseIds: Ref<(string | number)[]>
   // e2e
@@ -36,6 +39,7 @@ interface UseTaskExecutionOptions {
 export function useTaskExecution(options: UseTaskExecutionOptions) {
   const {
     testType, currentTaskId, taskName, concurrentTasks,
+    selectedAlgorithmType,
     selectedTestCaseIds,
     selectedDeviceIds, e2eTestCases,
     selectedAPIIds, apis, testCaseGroups,
@@ -74,6 +78,9 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
 
       const payload = {
         name: taskName.value || `E2E测试任务_${new Date().toLocaleString()}`,
+        // INT-282：显式携带执行口径（对齐 useE2eExecution 基线契约 type:'e2e'；
+        // 后端 task.type 已废弃，网关忽略，归类由用例级 device_type 派生）
+        type: TestType.E2E,
         deviceIds: selectedDeviceIds.value,
         caseIds: selectedCaseIds,
         config: { parallel: true, concurrentTasks: concurrentTasks.value },
@@ -122,8 +129,20 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
   const startApiTask = async () => {
     if (testType !== TestType.API) return false
 
-    if (selectedTestCaseIds.value.length === 0) {
-      addLog({ content: '请至少选择一个测试用例', level: 'warn' })
+    // INT-282：未勾选用例 → 从后端按筛选条件拉取全量 ID（大批量测试免逐个勾选，
+    // 对齐基线 V9.7.10 apiTest.ts:413-422；/testcases/ids 后端按用例配置形态派生执行口径）
+    let caseIds: (string | number)[] = []
+    if (selectedTestCaseIds.value.length > 0) {
+      caseIds = selectedTestCaseIds.value
+    } else {
+      const testCaseStore = useTestCaseStore()
+      caseIds = await testCaseStore.fetchCaseIdsByFilter({
+        testType: TestType.API,
+        algorithmType: selectedAlgorithmType.value || undefined,
+      })
+    }
+    if (caseIds.length === 0) {
+      addLog({ content: '当前筛选条件下没有可用的测试用例，请选择用例或调整筛选条件', level: 'warn' })
       return false
     }
     if (selectedAPIIds.value.length === 0) {
@@ -150,7 +169,12 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       const taskData = {
         name: taskName.value || 'API测试任务',
         description: '通过API测试任务',
-        caseIds: selectedTestCaseIds.value,
+        // INT-282：显式携带执行口径（对齐基线契约 type:'api'）。
+        // 注：V9.7.31 后端 task.type 已废弃（差异#2 收尾），网关 TaskCreateRequest
+        // extra="ignore" 静默忽略该字段；任务归类由用例级 TaskCase.device_type 派生。
+        // 此处显式传递仅为兼容消费方与后端未来恢复 type 列的契约留痕。
+        type: TestType.API,
+        caseIds,
         apiIds: selectedAPIIds.value,
         tags: [],
       }
@@ -158,19 +182,21 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
       const taskResponse = await tasksPort.create(taskData)
       currentTaskId.value = taskResponse.id
 
-      associatedCases.value = selectedTestCaseIds.value
+      associatedCases.value = caseIds
         .map(id => {
           const allCases = Object.values(testCaseGroups.value as Record<string, TestCase[]>).flat()
           const testCase = allCases.find(tc => String(tc.id) === String(id))
-          return testCase ? {
-            ...testCase,
+          // INT-282：全量回退时用例列表为分页数据，未在本地命中的 ID 以占位名保底，
+          // 保证 totalTestCases 与任务实际用例数一致（对齐同文件 e2e 分支口径）
+          return {
+            id,
+            name: testCase?.name || `用例 ${id}`,
             status: TaskStatus.PENDING,
             duration: '0',
             executionStatus: TaskStatus.PENDING,
             evaluationStatus: TaskStatus.PENDING,
-          } as any : undefined
+          } as any
         })
-        .filter((item): item is any => item !== undefined)
 
       totalTestCases.value = associatedCases.value.length
       pendingTests.value = totalTestCases.value

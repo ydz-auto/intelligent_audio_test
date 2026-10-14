@@ -159,6 +159,8 @@ export function toTaskCreateDto(draft: TaskCreateDraft): TaskCreateDto {
   return {
     name: draft.name,
     description: draft.description,
+    // INT-282：执行口径显式透传（后端 task.type 已废弃会忽略，契约兼容留痕）
+    type: draft.type,
     config: draft.config,
     case_ids: draft.caseIds,
     device_ids: draft.deviceIds,

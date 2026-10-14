@@ -113,6 +113,9 @@ export interface TaskDetailDto extends TaskDto {
 export interface TaskCreateDto {
   name: string
   description?: string | null
+  /** INT-282：执行口径（api/e2e）。后端 task.type 已废弃（差异#2 收尾），
+   * TaskCreateRequest extra="ignore" 会静默忽略；显式携带以对齐基线契约 */
+  type?: string
   config?: Record<string, any>
   created_by?: string | null
   case_ids?: string[]
