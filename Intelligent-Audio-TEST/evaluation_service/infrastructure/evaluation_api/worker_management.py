@@ -48,7 +48,8 @@ class WorkerManagementMixin:
 
     def _get_timeout_from_dim_config(self, dim_data, default_timeout=30):
         dim_type = dim_data.get('dimension_type', 'main')
-        api_settings = dim_data.get('api_settings', {})
+        # 'or {}' 兜底显式 null（JSON null → None）：get(key, {}) 只能兜住键缺失
+        api_settings = dim_data.get('api_settings') or {}
 
         if dim_type == 'llm_judge':
             return api_settings.get('timeout', 120)

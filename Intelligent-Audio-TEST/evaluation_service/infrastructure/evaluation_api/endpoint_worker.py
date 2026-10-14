@@ -362,7 +362,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                     except (ValueError, TypeError):
                         context[param_code] = default_val
 
-        api_settings = representative_dim_data.get('api_settings', {})
+        api_settings = representative_dim_data.get('api_settings') or {}
         body_template = api_settings.get('body_template')
 
         self._log(
@@ -407,7 +407,7 @@ class EndpointWorker(EvaluationLoggerMixin):
         if not endpoints and representative_dim_data.get('api_url'):
             endpoints = [{"url": representative_dim_data.get('api_url'), "name": "Master"}]
 
-        api_settings = representative_dim_data.get('api_settings', {})
+        api_settings = representative_dim_data.get('api_settings') or {}
         method = api_settings.get('method', 'POST')
         headers = api_settings.get('headers', {})
 
