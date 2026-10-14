@@ -293,7 +293,7 @@
                       暂无 RMS-SPL 映射。点击右上角「添加 RMS-SPL 映射」为被测 API 配置数字域灵敏度。
                     </td>
                   </tr>
-                  <tr v-else v-for="mapping in apiRms.filteredMappings.value" :key="mapping.id">
+                  <tr v-else v-for="mapping in apiRms.paginatedMappings.value" :key="mapping.id">
                     <td class="cell-name">{{ mapping.name || `映射 #${mapping.id}` }}</td>
                     <td>{{ apiRms.apiName(mapping.apiId) }}</td>
                     <td><span class="protocol-tag">{{ mapping.protocol || '-' }}</span></td>
@@ -344,6 +344,20 @@
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- 分页控件（INT-330 缺陷3：API 分区对齐设备侧分页交互） -->
+      <div class="pagination-container" v-if="apiRms.totalItems.value > apiRms.pageSize.value">
+        <PaginationComponent
+          :current-page="apiRms.currentPage.value"
+          :page-size="apiRms.pageSize.value"
+          :total-items="apiRms.totalItems.value"
+          :total-pages="apiRms.totalPages.value"
+          @go-to-page="apiRms.goToPage"
+          @prev-page="apiRms.prevPage"
+          @next-page="apiRms.nextPage"
+          @page-size-change="apiRms.setPageSize"
+        />
       </div>
 
       <!-- 校准点明细（每条映射的校准历史对齐设备侧卡片） -->

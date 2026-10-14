@@ -54,19 +54,19 @@
 
         <div
           v-for="(point, index) in points"
-          :key="index"
+          :key="point.uid"
           class="point-row"
-          :class="{ 'has-error': pointErrors(index) }"
+          :class="{ 'has-error': pointErrors(point) }"
         >
           <div class="col-target">
             <input
               type="number"
               v-model.number="point.targetSpl"
-              :min="0"
-              :max="120"
+              :min="TARGET_SPL_MIN"
+              :max="TARGET_SPL_MAX"
               step="0.5"
               :placeholder="'30~120'"
-              @input="touchPoint(index)"
+              @input="touchPoint(point)"
             />
           </div>
           <div class="col-gain">
@@ -77,7 +77,7 @@
               :max="maxGainLinear"
               step="0.001"
               placeholder="> 0"
-              @input="touchPoint(index)"
+              @input="touchPoint(point)"
             />
           </div>
           <div class="col-db readonly-cell">
@@ -104,12 +104,20 @@
               <i class="fas fa-trash"></i>
             </button>
           </div>
-          <div v-if="pointErrors(index)" class="point-error">{{ pointErrors(index) }}</div>
+          <div v-if="pointErrors(point)" class="point-error">{{ pointErrors(point) }}</div>
         </div>
 
-        <div class="points-toolbar" v-if="points.length === 0 || regenerateVisible">
-          <button type="button" class="btn btn-secondary" @click="generateFromReference">
-            <i class="fas fa-magic"></i> 按参考生成（{{ referenceSpl }}dB 为中心 ±20dB / 每 10dB 一点）
+        <!-- INT-330 缺陷2：按参考生成入口恒显示（原实现已有点集时隐藏，重新校准场景不可见）；
+             已有非空点集时两步确认防误覆盖 -->
+        <div class="points-toolbar">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            :class="{ 'btn-regenerate--armed': regenerateArmed }"
+            @click="onGenerateClick"
+          >
+            <i class="fas fa-magic"></i>
+            {{ regenerateArmed ? `再点一次确认覆盖当前 ${points.length} 个校准点` : `按参考生成（${referenceSpl}dB 为中心 ±20dB / 每 10dB 一点）` }}
           </button>
         </div>
       </div>
@@ -175,7 +183,7 @@ const props = defineProps<{
   title?: string
 }>()
 
-const emit = defineEmits(['close', 'confirm'])
+const emit = defineEmits(['close'])
 
 const submitting = ref(false)
 
@@ -184,20 +192,42 @@ const referenceGainLinear = computed(() => props.data?.referenceGainLinear ?? 1.
 const minGainLinear = computed(() => props.data?.minGainLinear ?? 0.001)
 const maxGainLinear = computed(() => props.data?.maxGainLinear ?? 10.0)
 
-/** 编辑中的点集（本地可变副本；rmsDbfs 选填） */
-const points = ref<Array<{ targetSpl: number | null; gainLinear: number | null; rmsDbfs: number | null }>>(
-  (props.data?.calibrationPoints ?? []).map(p => ({
-    targetSpl: p.targetSpl ?? null,
-    gainLinear: p.gainLinear ?? null,
-    rmsDbfs: p.rmsDbfs ?? null,
-  }))
+/** 校准点合法域（dB）—— 与执行侧 spl_to_gain_by_mapping 的 0~120 dB 查询域一致（禁止魔法数字） */
+const TARGET_SPL_MIN = 0
+const TARGET_SPL_MAX = 120
+
+/** 编辑中的点集行（本地可变副本；rmsDbfs 选填）；uid 供 touched 按行对象记账，删行后标记不错位（INT-330） */
+interface EditableCalibrationPoint {
+  uid: number
+  targetSpl: number | null
+  gainLinear: number | null
+  rmsDbfs: number | null
+}
+
+let pointUidSeq = 0
+function toEditablePoint(p?: { targetSpl?: number | null; gainLinear?: number | null; rmsDbfs?: number | null }): EditableCalibrationPoint {
+  return {
+    uid: ++pointUidSeq,
+    targetSpl: p?.targetSpl ?? null,
+    gainLinear: p?.gainLinear ?? null,
+    rmsDbfs: p?.rmsDbfs ?? null,
+  }
+}
+
+const points = ref<EditableCalibrationPoint[]>(
+  (props.data?.calibrationPoints ?? []).map(p => toEditablePoint(p))
 )
 
-/** 已触碰（编辑过）的行才做完整性校验，避免空模板行报错 */
+/** 已触碰（编辑过）的行按行 uid 记账，避免空模板行报错（INT-330：弃用行索引，删行后不错位） */
 const touched = ref<Set<number>>(new Set())
 
-function touchPoint(index: number) {
-  touched.value.add(index)
+function touchPoint(point: EditableCalibrationPoint) {
+  touched.value.add(point.uid)
+}
+
+/** 有限数值守卫：v-model.number 清空输入会产生 ''（Number('') === 0），不能只判 null */
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
 }
 
 /** 线性增益 → dB（展示用） */
@@ -207,53 +237,75 @@ function gainToDb(gain: number | null | undefined): string {
 }
 
 function addPoint() {
-  points.value.push({ targetSpl: null, gainLinear: null, rmsDbfs: null })
-  regenerateVisible.value = true
+  points.value.push(toEditablePoint())
 }
 
 function removePoint(index: number) {
-  points.value.splice(index, 1)
-  touched.value.delete(index)
+  const [removed] = points.value.splice(index, 1)
+  if (removed) touched.value.delete(removed.uid)
+}
+
+// ===== 缺陷2：按参考生成入口恒显示；已有非空点集时两步确认防误覆盖 =====
+const regenerateArmed = ref(false)
+
+function onGenerateClick() {
+  const hasContent = points.value.some(p => p.targetSpl != null || p.gainLinear != null)
+  if (!hasContent) {
+    generateFromReference()
+    return
+  }
+  if (!regenerateArmed.value) {
+    regenerateArmed.value = true
+    return
+  }
+  generateFromReference()
 }
 
 /** 按参考基准生成默认点集：参考 SPL 为中心 ±20dB，每 10dB 一点（5 点） */
 function generateFromReference() {
   const center = referenceSpl.value
   const gains = [-20, -10, 0, 10, 20]
-  points.value = gains.map(offset => {
-    const targetSpl = center + offset
-    const gainLinear = referenceGainLinear.value * Math.pow(10, offset / 20)
-    return {
-      targetSpl: Math.round(targetSpl * 10) / 10,
-      gainLinear: Math.round(gainLinear * 1000) / 1000,
-      rmsDbfs: null,
-    }
-  })
-  touched.value = new Set(points.value.map((_, i) => i))
+  points.value = gains.map(offset => toEditablePoint({
+    targetSpl: Math.round((center + offset) * 10) / 10,
+    gainLinear: Math.round(referenceGainLinear.value * Math.pow(10, offset / 20) * 1000) / 1000,
+  }))
+  touched.value = new Set(points.value.map(p => p.uid))
+  regenerateArmed.value = false
 }
 
-const regenerateVisible = ref(false)
+// ===== 行级校验（缺陷1）：红字展示与提交门禁共用同一份口径 =====
 
-/** 单点校验错误消息（空串 = 无错） */
-function pointErrors(index: number): string {
-  if (!touched.value.has(index)) return ''
-  const p = points.value[index]
-  if (p.targetSpl == null || !Number.isFinite(p.targetSpl) || p.targetSpl < 0 || p.targetSpl > 120) {
-    return '目标 SPL 须为 0~120 的数值'
+/** 单点范围校验（空串 = 无错）：0~120 dB、正增益、限幅区间 */
+function validatePoint(p: EditableCalibrationPoint): string {
+  const spl = p.targetSpl
+  if (!isFiniteNumber(spl) || spl < TARGET_SPL_MIN || spl > TARGET_SPL_MAX) {
+    return `目标 SPL 须为 ${TARGET_SPL_MIN}~${TARGET_SPL_MAX} 的数值`
   }
-  if (p.gainLinear == null || !Number.isFinite(p.gainLinear) || p.gainLinear <= 0) {
+  const gain = p.gainLinear
+  if (!isFiniteNumber(gain) || gain <= 0) {
     return '线性增益须为正数'
   }
-  if (p.gainLinear < minGainLinear.value || p.gainLinear > maxGainLinear.value) {
+  if (gain < minGainLinear.value || gain > maxGainLinear.value) {
     return `增益超出限幅 ${minGainLinear.value}~${maxGainLinear.value}`
   }
   return ''
 }
 
-/** 有效点（提交用）：target_spl/gain_linear 齐备即收，未编辑行原样透传 */
+/** 参与校验的行：已触碰行，或已带值行（打开弹窗时既有的坏点未触碰也要亮红字并阻塞提交） */
+function rowNeedsValidation(p: EditableCalibrationPoint): boolean {
+  return touched.value.has(p.uid) || p.targetSpl != null || p.gainLinear != null
+}
+
+/** 行级红字展示（空串 = 无错；空模板行不报错） */
+function pointErrors(p: EditableCalibrationPoint): string {
+  if (!rowNeedsValidation(p)) return ''
+  return validatePoint(p)
+}
+
+/** 有效点（提交用）：仅收两值齐备且为有限正增益的行，未编辑行原样透传 */
 const validPoints = computed<ApiCalibrationPoint[]>(() => {
   return points.value
-    .filter(p => p.targetSpl != null && p.gainLinear != null)
+    .filter(p => isFiniteNumber(p.targetSpl) && isFiniteNumber(p.gainLinear) && p.gainLinear > 0)
     .map(p => ({
       targetSpl: Number(p.targetSpl),
       gainLinear: Number(p.gainLinear),
@@ -273,17 +325,38 @@ const duplicateTargets = computed(() => {
   return false
 })
 
-const isValid = computed(() => validPoints.value.length > 0 && !duplicateTargets.value)
+/** 行级校验错误存在（含未触碰的既有点）即阻塞提交（缺陷1） */
+const hasRowErrors = computed(() =>
+  points.value.some(p => rowNeedsValidation(p) && validatePoint(p) !== '')
+)
+
+const isValid = computed(() => validPoints.value.length > 0 && !duplicateTargets.value && !hasRowErrors.value)
+
+/** 落库点范围口径（与 validatePoint 同源常量/限幅）：提交前双保险重验 */
+function pointInRange(p: ApiCalibrationPoint): boolean {
+  return (
+    p.targetSpl >= TARGET_SPL_MIN &&
+    p.targetSpl <= TARGET_SPL_MAX &&
+    p.gainLinear > 0 &&
+    p.gainLinear >= minGainLinear.value &&
+    p.gainLinear <= maxGainLinear.value
+  )
+}
 
 async function handleSubmit() {
   if (!isValid.value || submitting.value) return
+  // 双保险：对最终落库点集重跑范围校验（防按钮禁用态之外的调用路径放行超范围点）
+  if (!validPoints.value.every(pointInRange)) return
   submitting.value = true
   try {
     const payload = { points: validPoints.value }
     if (props.onConfirm) {
       await props.onConfirm(payload)
     }
-    emit('confirm', payload)
+    // 成功后关弹窗（对齐设备域 SPLCalibrationModal：显式回调 + close 事件）。
+    // 不 emit('confirm')：onConfirm prop 本身就是 confirm 事件的监听器（GlobalModalContainer
+    // 经 v-bind 透传），emit 会二次触发 onConfirm → 校准接口重复提交（vitest 锁定）。
+    emit('close')
   } catch (error) {
     // onConfirm 内已通知错误；这里不关闭弹窗，用户可修正后重试
     console.error('[ApiRmsSplCalibration] 校准提交失败:', error)
@@ -454,6 +527,12 @@ async function handleSubmit() {
 
 .points-toolbar {
   margin-top: 10px;
+}
+
+/* 按参考生成两步确认态（INT-330 缺陷2）：警示色提示即将覆盖既有点集 */
+.points-toolbar .btn-regenerate--armed {
+  border-color: var(--warning-color, #faad14);
+  color: var(--warning-color, #faad14);
 }
 
 .preview-section {

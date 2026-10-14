@@ -9,6 +9,7 @@
 import { ref, computed } from 'vue';
 import { apiRmsSplPort } from './apiRmsSplPort';
 import { apisPort } from './apisPort';
+import { usePagination } from '../usePagination';
 import { getModalManager } from '../modal/useModal';
 import { MODAL_TYPES } from '../modal/constants';
 import { useNotification } from '../modal/useNotification';
@@ -21,6 +22,14 @@ export const CALIBRATION_STATUS_LABELS: Record<string, string> = {
   [CalibrationStatus.CALIBRATED]: '已校准',
   [CalibrationStatus.UNCALIBRATED]: '未校准',
 };
+
+// ===== 分页常量（INT-330 缺陷3，禁止魔法数字） =====
+/** 单页拉取条数：后端 per_page 钳制上限 100（rms_spl_query_service IntParamRule） */
+const FETCH_PER_PAGE = 100;
+/** 单次刷新最多翻页数（防异常 total 拖垮列表；上限 50 页 × 100 条） */
+const MAX_FETCH_PAGES = 50;
+/** 列表默认每页展示条数（对齐 PaginationComponent 档位） */
+const DEFAULT_PAGE_SIZE = 10;
 
 export function useApiRmsSpl() {
   const notification = useNotification();
@@ -41,17 +50,33 @@ export function useApiRmsSpl() {
     return { total, calibrated, uncalibrated: total - calibrated, associatedApis };
   });
 
-  /** 拉取映射全量（后端 list 支持 api_id/calibration_status 过滤；关键词前端过滤） */
+  /**
+   * 拉取映射全量：后端 per_page 钳制 [1,100]，按 total 循环翻页取全量，
+   * 避免 >100 条时静默截断（INT-330 缺陷3）；
+   * api_id/calibration_status 为服务端过滤，关键词仍为前端过滤（与设备侧口径一致）
+   */
   async function searchMappings() {
     loading.value = true;
     try {
-      const response = await apiRmsSplPort.getAll({
+      const filters = {
         apiId: apiFilter.value === 'all' ? undefined : apiFilter.value,
         calibrationStatus: calibrationFilter.value === 'all' ? undefined : calibrationFilter.value,
-        page: 1,
-        perPage: 100,
-      });
-      mappingData.value = response?.items ?? [];
+      };
+      const first = await apiRmsSplPort.getAll({ ...filters, page: 1, perPage: FETCH_PER_PAGE });
+      const items: ApiRmsSplMapping[] = [...(first?.items ?? [])];
+      const total = first?.total ?? items.length;
+      let page = 1;
+      while (items.length < total && page < MAX_FETCH_PAGES) {
+        page += 1;
+        const resp = await apiRmsSplPort.getAll({ ...filters, page, perPage: FETCH_PER_PAGE });
+        const batch = resp?.items ?? [];
+        if (batch.length === 0) break; // 防御：后端提前无数据时终止
+        items.push(...batch);
+      }
+      if (items.length < total) {
+        console.warn(`[useApiRmsSpl] 映射总数 ${total} 超过单次拉取上限 ${MAX_FETCH_PAGES * FETCH_PER_PAGE} 条，已截断`);
+      }
+      mappingData.value = items;
     } catch (error) {
       console.error('[useApiRmsSpl] 获取映射数据失败:', error);
       notification.error('获取 RMS-SPL 映射数据失败');
@@ -94,6 +119,19 @@ export function useApiRmsSpl() {
     }
     return result;
   });
+
+  // 客户端分页（INT-330 缺陷3）：对齐设备侧 usePagination + PaginationComponent 交互
+  const {
+    currentPage,
+    pageSize,
+    totalItems,
+    totalPages,
+    paginatedItems: paginatedMappings,
+    goToPage,
+    prevPage,
+    nextPage,
+    setPageSize,
+  } = usePagination(filteredMappings, ref(DEFAULT_PAGE_SIZE));
 
   // ===== 弹窗：新增/编辑映射 =====
   let isSubmitting = false;
@@ -322,6 +360,16 @@ export function useApiRmsSpl() {
   return {
     mappingData,
     filteredMappings,
+    // 分页（INT-330 缺陷3：API 分区对齐设备侧分页交互）
+    paginatedMappings,
+    currentPage,
+    pageSize,
+    totalItems,
+    totalPages,
+    goToPage,
+    prevPage,
+    nextPage,
+    setPageSize,
     apiList,
     apiFilter,
     calibrationFilter,
