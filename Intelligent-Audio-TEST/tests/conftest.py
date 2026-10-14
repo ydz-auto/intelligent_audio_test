@@ -86,6 +86,27 @@ def _int342_restore_env():
 
 _int342_restore_env()
 
+# ── INT-352：pytest 会话 OSS 断网守卫（禁止测试进程触达真实 rustfs）──
+# 单测普遍以 os.environ.setdefault('OSS_ACCESS_KEY', 'test') 伪造凭据，依赖
+# 「OSS 不可用 → 本地降级」的判定结论（storage_env / oss_fast_fail 等夹具的
+# 既有设计）。但 BaseConfig.OSS_ENDPOINT 的默认值 http://localhost:9000 恰为
+# 本机真实 rustfs：凭据是假、端点是真，每次存储操作都先探活（head_bucket /
+# _ensure_buckets_exist 逐桶），rustfs 侧按 403 InvalidAccessKeyId 记 ERROR
+# ——INT-220 rehome 把 rustfs 常驻 ：9000 后，共享机上每个 pytest 会话都是
+# 一台 InvalidAccessKeyId 洪泛机（实证：2026-10-14 全天 3800+ 条，峰值
+# 180 条/5min，均来自并行 pytest 的 oss 探测；rustfs 本体与凭据配置无恙）。
+# 处置：会话级强制 OSS_ENDPOINT 指向必拒端口（discard 段 :9，connection
+# refused 瞬时失败），探测快速失败后照常本地降级，判定结论不变；PYTEST_ALLOW_REAL_OSS=1
+# 可显式豁免（如未来出现真连对象存储的测试，需自行保证凭据隔离）。
+# 注意端点必须在本进程首次导入 shared.infrastructure.config 前就位（类属性
+# 冻结语义），conftest 位于一切测试模块导入之前，天然满足。
+if not os.environ.get('PYTEST_ALLOW_REAL_OSS'):
+    os.environ['OSS_ENDPOINT'] = 'http://127.0.0.1:9'
+    # OSS_ENDPOINT 在 _INT342_ENV_KEYS 内：后续 _int342_restore_env 的基线里
+    # 若无此键会把注入值删掉 → 回落 BaseConfig 默认 9000，守卫失效。把守卫值
+    # 补进基线，使回退后仍指向死端点。
+    _INT342_ENV_BASELINE['OSS_ENDPOINT'] = os.environ['OSS_ENDPOINT']
+
 # ── INT-246 测试/业务库隔离守卫（会话级，控制器与每个 worker 各自生效）──
 # 生效 DATABASE_URL 指向共享业务库时拒绝整个 pytest 会话启动：宁可拒绝，
 # 绝不静默把测试行写进负责人业务库（INT-147 曾实证 shell 预置 DATABASE_URL
