@@ -4,13 +4,18 @@ uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 websockets>=12.0
 
+# INT-272：api_gateway WebSocket 实时推送依赖（宿主环境手工装过但 requirements 缺记，容器构建暴露）
+python-socketio>=5.11.0
+
 # ===== gRPC =====
 grpcio>=1.83.0
 grpcio-tools>=1.83.0
 protobuf>=5.29.0
 
 # ===== Database =====
-SQLAlchemy>=2.0.0
+# INT-272：上限 <2.1 —— 2.1 起 postgresql:// 裸 URL 默认方言改挂 psycopg3
+# （宿主环境装的是 psycopg2，统一驱动为 psycopg2-binary，跨 2.1 升级另行评估）
+SQLAlchemy>=2.0.0,<2.1
 alembic>=1.13.0
 psycopg2-binary>=2.9.0
 
@@ -53,7 +58,8 @@ uiautomator2>=3.0.0
 playwright>=1.40.0
 pymodbus>=3.6.0
 pyserial>=3.5
-wda>=1.0.0
+# INT-272：PyPI 实际最高 0.3.0（宿主现装即 0.3.0），原 >=1.0.0 永远装不上（容器构建不可复现）
+wda>=0.3.0
 hypium>=6.0.0
 filelock>=3.12.0
 
@@ -78,3 +84,8 @@ Click>=8.0.0
 # ===== Testing =====
 pytest>=8.0.0
 pytest-xdist==3.8.0
+
+# INT-352 解释器级 pytest OSS 断网守卫（非 PyPI 包，不入依赖树；源码 tools/pytest_oss_flood_guard/）
+# 已装入：conda_envs\intelligent_audio_test（环境 site-packages）；miniconda 的 site-packages
+# 不可写，经 pip user-site 兜底（本机 Python312 解释器共享该目录）。重装命令：
+#   <解释器> -m pip install --no-deps --no-build-isolation --force-reinstall tools/pytest_oss_flood_guard
