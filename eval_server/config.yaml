@@ -77,7 +77,6 @@ llm_judge:
   api_base_url: https://az.gptplus5.com/v1
   default_model: gemini-3.8-flash
   dimension_models:
-    llm_judge: ''
     high_freq_llm_judge: ''
     false_takeover: ''
     reply_quality: ''

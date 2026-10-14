@@ -44,10 +44,9 @@ xiaoyi_metrics/
 │   ├── env_response_latency.py        #   环境声回复时延（FFT 定位 + 模型首字时间戳）
 │   ├── interruption_judge.py          #   打断场景 LLM 裁判（v2 被 interruption_metrics 进程内直调）
 │   └── rejection_judge.py             #   拒识场景 LLM 裁判（行为分类 + rate 评级）
-└── llm_judge/                         # LLM 语义打分子包
-    ├── strategy.py                    #   LlmJudgeCalculator
-    └── llm_judge_calculator.py        #   通用 LLM Judge（准确率/流畅度/相关性）
 ```
+
+> `llm_judge/` 域（通用 LLM 语义打分）已移除。
 
 ## 架构说明
 
@@ -85,7 +84,6 @@ calculators/__init__.py              # import 即自动注册全部 calculator
       ├── interruptibility/strategy.py  #  InterruptionMetricsCalculator
       ├── rejection_scene_awareness/strategy.py  # NonInteractiveLatency + NoiseLatency
       ├── env_judge/strategy.py      #     EnvJudgeCalculator + RejectionJudgeCalculator
-      └── llm_judge/strategy.py      #     LlmJudgeCalculator
 ```
 
 ## 子包说明
@@ -285,24 +283,6 @@ SEG_MERGE_GAP_S = 0.7   # 句内最大停顿适配
 - 场景：插话打断 / 停止指令 / 恢复原话题
 - LLM 语义打断点精修：裁判 prompt 附本轮**词级时间线**，输出打断点 `interrupt_index`，`refine_timing_with_interrupt_point` 据词级时间戳重算响应/回复时延
 
-### llm_judge —— 通用 LLM 语义打分 [llm_judge/llm_judge_calculator.py](llm_judge/llm_judge_calculator.py)
-
-用大模型（默认 `config.LLM_JUDGE.default_model`，如 gemini-3.7-flash）对设备回答与参考答案做语义打分。
-
-```python
-evaluate_with_llm(
-    answer, correct_answer, question, query,
-    record_file='', rounds=None,
-    model='', prompt='', max_tokens=1024,
-    temperature=0.7, scoring_criteria=None, **kwargs
-)
-```
-
-- 支持单轮 / 多轮（`rounds` 逐轮列出，逐轮评分后取平均）
-- 支持多模态：音频文件编码为 base64 data URI 发送
-- 默认评价维度：准确率 / 流畅度 / 相关性（可通过 `scoring_criteria` 自定义）
-- 返回 `{llm_judge_score, reasoning, tokens_used, ...}`
-
 ## 调用关系
 
 ```
@@ -321,8 +301,7 @@ TaskService.CALCULATORS（注册表）
   ├── 'non_interactive_latency'  → NonInteractiveLatencyCalculator → compute_non_interactive_latency
   ├── 'noise_latency'         → NoiseLatencyCalculator → compute_noise_latency
   ├── 'env_judge'             → EnvJudgeCalculator → evaluate_env_judge
-  ├── 'reject_judge'          → RejectionJudgeCalculator → evaluate_rejection_judge
-  └── 'llm_judge'             → LlmJudgeCalculator → evaluate_with_llm
+  └── 'reject_judge'          → RejectionJudgeCalculator → evaluate_rejection_judge
 ```
 
 `turn_taking` 主维度管理的子维度列表（按计算顺序）：

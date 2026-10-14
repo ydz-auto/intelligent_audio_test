@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-eval_server 是音频评估维度计算服务，接收主服务（Intelligent-Audio-TEST）提交的评估任务，计算 WER/SER/DER/LLM Judge/小艺指标等维度，返回评估结果。
+eval_server 是音频评估维度计算服务，接收主服务（Intelligent-Audio-TEST）提交的评估任务，计算 WER/SER/DER/小艺指标等维度，返回评估结果。
 
 ## 2. 项目结构
 
@@ -31,7 +31,7 @@ eval_server/
 │   │   │   ├── der/            #   DER 域
 │   │   │   │   ├── strategy.py         #     der 策略类
 │   │   │   │   └── der_calculator.py   #     DER 实现函数
-│   │   │   └── xiaoyi_metrics/ #   小艺指标域（含 llm_judge）
+│   │   │   └── xiaoyi_metrics/ #   小艺指标域（全域编排 + 按域分子包，含 turn_eval）
 │   │   │       ├── __init__.py         #     XiaoyiMetricsCalculator 全域编排器
 │   │   │       ├── doc/                #     指标文档（README / API / interruption_io / llm_call_audit_log 等）
 │   │   │       ├── shared/             #     共享工具
@@ -67,9 +67,7 @@ eval_server/
 │   │   │       │   ├── env_response_latency.py  #       环境声回复时延（FFT 定位 + 模型首字）
 │   │   │       │   ├── interruption_judge.py    #       打断场景 LLM 裁判（v2 被 interruption_metrics 进程内直调）
 │   │   │       │   └── rejection_judge.py       #       拒识场景 LLM 裁判（行为分类 + rate 评级）
-│   │   │       └── llm_judge/                  #     通用 LLM 语义打分
-│   │   │           ├── strategy.py              #       LlmJudgeCalculator
-│   │   │           └── llm_judge_calculator.py
+│   │   │       └── (llm_judge 域已移除)
 │   │   ├── remote_service.py   # 远程端点调用
 │   │   └── task_service.py     # 任务调度入口（注册表查找 + worker 线程 + 逐轮回填 + 事件化回调）
 │   └── utils/
@@ -118,7 +116,6 @@ eval_server/
 | noise_latency | 噪声打断时延 | NoiseLatencyCalculator | rejection_scene_awareness/ |
 | env_judge | 环境理解裁判 | EnvJudgeCalculator | env_judge/ |
 | reject_judge | 拒识裁判（行为分类 + rate 评级） | RejectionJudgeCalculator | env_judge/rejection_judge.py |
-| llm_judge | LLM 语义评分 | LlmJudgeCalculator | llm_judge/ |
 
 ## 4. 核心架构：策略模式 + 注册表
 
@@ -331,16 +328,7 @@ SEG_MERGE_GAP_S = 0.7   # 句内最大停顿适配
 
 打断场景 LLM 裁判（行为分类 / 内容评分 / 停止指令遵从），由 `interruption_metrics` 进程内直调 `judge_interruption_rounds` 复用，不再作为独立 task_type 注册。
 
-### 6.7 llm_judge —— 通用 LLM 语义打分
-
-用大模型（默认 `config.LLM_JUDGE.default_model`，如 gemini-3.7-flash）对设备回答与参考答案做语义打分。
-
-- 支持单轮 / 多轮（`rounds` 逐轮列出，逐轮评分后取平均）
-- 支持多模态：音频文件编码为 base64 data URI 发送
-- 默认评价维度：准确率 / 流畅度 / 相关性（可通过 `scoring_criteria` 自定义）
-- 每次调用写 LLM 审计日志（`shared/llm_call_logger.py`）
-
-### 6.8 shared —— 共享工具
+### 6.7 shared —— 共享工具
 
 - `asr_utils.py`：ASR chunks 工具（`compute_pause_intervals` / `is_punct_or_empty` / 段合并）
 - `audio_alignment.py`：**played_audios（干净音源）→ user_wav（劣化）FFT 互相关对齐**，生成干净版音频（`generate_aligned_clean_audio`，输出对齐段 `segments` 含 `source` / `offset_s` / `clean_duration_s`）
@@ -395,7 +383,7 @@ asr_server (port 10095, 独立主机 100.70.20.135)
 ## 8. 关键设计决策
 
 1. **策略模式 + 注册表**：每种 task_type 一个 Calculator 策略类，实现 `validate → prepare_params → calculate` 模板方法，由 `calculators/__init__.py` 自动注册。新增指标只需新建 strategy.py + 注册一行，无需改 `calculate()` 或 `api.py`
-2. **按域分子包**：策略类和实现函数放同一域子包，如 `wer/` 内含 `strategies.py` + `wer_calculator.py`；`xiaoyi_metrics/` 下按 turn_taking / turn_eval / interruptibility / rejection_scene_awareness / env_judge / llm_judge 分子包，公共逻辑收敛到 `shared/`
+2. **按域分子包**：策略类和实现函数放同一域子包，如 `wer/` 内含 `strategies.py` + `wer_calculator.py`；`xiaoyi_metrics/` 下按 turn_taking / turn_eval / interruptibility / rejection_scene_awareness / env_judge 分子包，公共逻辑收敛到 `shared/`
 3. **ASR 只调一次**：两级编排器统一调双路 ASR，`_shared_asr` 注入所有子维度复用
 4. **不读写中间 JSON 文件**：ASR 结果直接通过内存对象传递
 5. **multipart 文件上传**：主服务上传 wav 文件到 eval_server，eval_server 再上传到 asr_server；`__MULTIPART__` 占位符递归还原
@@ -489,7 +477,7 @@ OSS_ENDPOINT=...                           # 可选 OSS
 | `concurrency_limits` | 各维度 100 | 维度并发上限（env_judge / reject_judge 传音频给 LLM，限 5） |
 | `llm_text_max_concurrency` / `llm_audio_max_concurrency` | 100 / 5 | LLM 文本/音频调用并发池 |
 | `llm_brand_keywords` | — | 模型品牌识别规则（模型名小写 substring 匹配） |
-| `llm_judge` | api_base_url / default_model / dimension_models / max_tokens / temperature / timeout / prompt_template | LLM Judge 默认配置 |
+| `LLM_JUDGE`（共享 LLM 配置） | api_base_url / default_model / dimension_models / max_tokens / temperature / timeout / prompt_template | LLM 裁判默认配置（get_llm_config 读取） |
 | `static_base_path` | D:\00_static\static | 静态资源根目录 |
 
 ### asr_server 环境变量

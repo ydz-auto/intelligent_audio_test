@@ -2,7 +2,7 @@
 
 ## 1. 服务概述
 
-音频评估维度计算服务，支持 WER、SER、CPWER、TCPWER、STM_WER、DER、LLM Judge、小艺指标（xiaoyi_metrics / turn_taking / turn_eval / interruption_metrics / non_interactive_latency / noise_latency / env_judge / reject_judge）的计算。服务采用异步任务处理模式，支持并发控制、排队执行、事件化回调、分布式调度、文件上传和动态配置。
+音频评估维度计算服务，支持 WER、SER、CPWER、TCPWER、STM_WER、DER、小艺指标（xiaoyi_metrics / turn_taking / turn_eval / interruption_metrics / non_interactive_latency / noise_latency / env_judge / reject_judge）的计算。服务采用异步任务处理模式，支持并发控制、排队执行、事件化回调、分布式调度、文件上传和动态配置。
 
 ### 1.1 基础信息
 
@@ -36,7 +36,6 @@
 | noise_latency | 噪声打断时延 | ai_wav, start_ms, end_ms, pcm_first_ms | JSON |
 | env_judge | 环境理解裁判 | user_wav, ai_wav, played_audios, correctAnswer | JSON |
 | reject_judge | 拒识裁判（行为分类 + rate 评级） | ai_wav | JSON |
-| llm_judge | LLM 语义评分 | answer, correct_answer | JSON |
 
 > `supported_task_types` 由注册表动态生成（`app/services/calculators/__init__.py`），新增 Calculator 自动出现在 `/health` 中。
 
@@ -56,7 +55,7 @@
   "status": "healthy",
   "service": "wer-ser-calculator",
   "role": "master",
-  "supported_task_types": ["wer", "ser", "cpwer", "tcpwer", "stm_wer", "der", "xiaoyi_metrics", "turn_taking", "tor", "false_takeover", "takeover_latency", "high_freq_turn_taking", "high_freq_llm_judge", "reply_quality", "turn_eval", "interruption_metrics", "non_interactive_latency", "noise_latency", "env_judge", "reject_judge", "llm_judge"],
+  "supported_task_types": ["wer", "ser", "cpwer", "tcpwer", "stm_wer", "der", "xiaoyi_metrics", "turn_taking", "tor", "false_takeover", "takeover_latency", "high_freq_turn_taking", "high_freq_llm_judge", "reply_quality", "turn_eval", "interruption_metrics", "non_interactive_latency", "noise_latency", "env_judge", "reject_judge"],
   "concurrency": {
     "wer": {"max_concurrency": 100, "current_concurrency": 2, "available": 98}
   }
@@ -116,18 +115,6 @@
   "stm_ref": {"json": [{"file_id": "rec1", "channel": "1", "speaker": "spk1", "start": 0.0, "end": 1.0, "text": "hello"}]},
   "rttm_res": {"json": [{"speaker": "spk1", "start": 0.0, "duration": 1.0}]},
   "stm_res": {"json": [{"file_id": "rec1", "channel": "1", "speaker": "spk1", "start": 0.0, "end": 1.0, "text": "hello"}]}
-}
-```
-
-**LLM Judge 请求示例：**
-```json
-{
-  "task_type": "llm_judge",
-  "answer": "北京是中国的首都",
-  "correct_answer": "中国的首都是北京",
-  "query": "中国的首都是哪个城市？",
-  "model": "gemini-3.7-flash",
-  "prompt": "评估回答的准确性和相关性"
 }
 ```
 
@@ -597,7 +584,7 @@ curl -X PUT "http://localhost:8888/api/endpoints/http://localhost:5002/concurren
 - **更新内容**：
   - 重构为策略模式 + 注册表架构，`calculate()` 和 `api.py` 不再需要 if-elif 链
   - 新增 `BaseCalculator` 基类，统一 `validate → prepare_params → calculate` 模板方法 + 单轮/多轮公共方法
-  - 按域分子包：wer / der / xiaoyi_metrics（shared / turn_taking / turn_eval / interruptibility / rejection_scene_awareness / env_judge / llm_judge）
+  - 按域分子包：wer / der / xiaoyi_metrics（shared / turn_taking / turn_eval / interruptibility / rejection_scene_awareness / env_judge）
   - 新增 task_type：`xiaoyi_metrics`（全域编排）、`turn_eval`（逐轮三分类）、`reply_quality`（回复质量评分）、`high_freq_turn_taking` / `high_freq_llm_judge`（高频轮换）、`reject_judge`（拒识裁判）；`interruption_judge` 并入 interruption_metrics v2（进程内直调裁判）
   - 新增 `/api/create_task_upload` 接口支持 multipart 文件上传 + `__MULTIPART__` 占位符递归还原
   - 新增 `/api/delete_task` / `/api/cancel_task` / `/api/endpoints` 增删改查 / `callback_url` 事件化回调

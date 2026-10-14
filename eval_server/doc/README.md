@@ -1,10 +1,10 @@
 # eval_server 评估维度计算服务
 
-音频评估维度计算服务，接收主服务（Intelligent-Audio-TEST）提交的评估任务，支持 WER/SER/DER/LLM Judge/小艺指标等维度计算。
+音频评估维度计算服务，接收主服务（Intelligent-Audio-TEST）提交的评估任务，支持 WER/SER/DER/小艺指标等维度计算。
 
 ## 功能特性
 
-- **多维度评估**：WER、SER、CPWER、TCPWER、STM_WER、DER、LLM Judge、小艺指标（xiaoyi_metrics 全域 / turn_taking / turn_eval / interruption_metrics / non_interactive_latency / noise_latency / env_judge / reject_judge）
+- **多维度评估**：WER、SER、CPWER、TCPWER、STM_WER、DER、小艺指标（xiaoyi_metrics 全域 / turn_taking / turn_eval / interruption_metrics / non_interactive_latency / noise_latency / env_judge / reject_judge）
 - **策略模式架构**：每种任务类型一个 Calculator 策略类，`validate → prepare_params → calculate` 模板方法，注册表自动注册
 - **两级编排**：`XiaoyiMetricsCalculator` 全域编排（统一共享 ASR + 跨域聚合）→ `TurnTakingCalculator` 域内编排（tor / false_takeover / takeover_latency / reply_quality / high_freq_*）
 - **异步任务模式**：创建任务 → 轮询状态 → 获取结果，另支持事件化回调（`callback_url`）
@@ -66,8 +66,7 @@ eval_server/
 │       ├── turn_eval/          #   逐轮三分类（误解管 / 接管 / 未接管）+ 接管时延 + 回复质量
 │       ├── interruptibility/   #   打断指标 v2（本地时序 + 进程内直调逐轮 LLM 裁判）
 │       ├── rejection_scene_awareness/  # 非交互意图时延 / 噪声打断时延
-│       ├── env_judge/          #   环境理解裁判（env_judge / env_response_latency / interruption_judge / rejection_judge）
-│       └── llm_judge/          #   通用 LLM 语义打分
+│       └── env_judge/          #   环境理解裁判（env_judge / env_response_latency / interruption_judge / rejection_judge）
 ├── app.py                      # 主应用入口（waitress 启动）
 ├── start_multiple_servers.py   # 多实例启动
 ├── config.yaml                 # 结构配置（并发 / 品牌 / LLM 默认等）
@@ -121,7 +120,6 @@ python app.py            # 默认端口见 config.yaml（8888），可用 --port
 | noise_latency | 噪声打断时延 | ai_wav, start_ms, end_ms, pcm_first_ms | NoiseLatencyCalculator |
 | env_judge | 环境理解裁判 | user_wav, ai_wav, played_audios, correctAnswer | EnvJudgeCalculator |
 | reject_judge | 拒识裁判（行为分类 + rate 评级） | ai_wav | RejectionJudgeCalculator |
-| llm_judge | LLM 语义评分 | answer, correct_answer | LlmJudgeCalculator |
 
 > 完整注册列表以 `app/services/calculators/__init__.py` 为准（`/health` 的 `supported_task_types` 动态读取）。
 

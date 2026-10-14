@@ -57,8 +57,7 @@ class TaskService:
           - skip_overlap（默认 False）
           - 原始字段：asr_ref, asr_hyp, ref_stm, hyp_stm, rttm_ref/stm_ref, rttm_res/stm_res
         多轮场景（task_params['rounds'] 非空）会把每轮的同名字段按 \\n 拼接折叠成
-        单轮文本，calculator 无需感知多轮。llm_judge 的特殊参数由
-        _prepare_llm_judge_params 单独处理（不经过此折叠，需保留每轮结构）。
+        单轮文本，calculator 无需感知多轮。
         """
         task_params = task_params or {}
 
@@ -112,59 +111,6 @@ class TaskService:
         if isinstance(val, dict) and 'text' in val:
             return val['text']
         return val
-
-    @staticmethod
-    def _prepare_llm_judge_params(task_params):
-        """为 llm_judge 准备参数，收集透传的 extra_kwargs。
-
-        字段名与 param_mappings 的 target_param 一致：
-        - answer: 设备回答
-        - correct_answer: 参考答案
-        - question: 设备识别的问题
-        - query: 参考问题
-        - record_file: 音频文件路径
-
-        correct_answer / query 可能是 {'text': '...', 'json': []} 格式（reference_params 生成），
-        需要提取 text 字段转为纯字符串。
-        """
-        task_params = task_params or {}
-        reserved = ('answer', 'correct_answer', 'question', 'query',
-                    'record_file', 'model', 'prompt',
-                    'max_tokens', 'temperature', 'scoring_criteria',
-                    'rounds')
-        extra_kwargs = {
-            k: v for k, v in task_params.items()
-            if k not in reserved
-        }
-        from ..config import config
-        llm_config = getattr(config, 'LLM_JUDGE', {})
-        default_model = llm_config.get('default_model', 'gpt-4')
-        default_prompt = llm_config.get('prompt_template', '')
-
-        unwrap = TaskService._unwrap_value
-
-        # rounds 内的字段也需要解包
-        rounds = task_params.get('rounds')
-        if rounds and isinstance(rounds, list):
-            rounds = [
-                {k: unwrap(v) for k, v in rd.items()} if isinstance(rd, dict) else rd
-                for rd in rounds
-            ]
-
-        return {
-            'answer': unwrap(task_params.get('answer', '')),
-            'correct_answer': unwrap(task_params.get('correct_answer', '')),
-            'question': unwrap(task_params.get('question', '')),
-            'query': unwrap(task_params.get('query', '')),
-            'record_file': task_params.get('record_file', ''),
-            'rounds': rounds,
-            'model': task_params.get('model') or default_model,
-            'prompt': task_params.get('prompt') or default_prompt,
-            'max_tokens': task_params.get('max_tokens', 1024),
-            'temperature': task_params.get('temperature', 0.1),
-            'scoring_criteria': task_params.get('scoring_criteria'),
-            'extra_kwargs': extra_kwargs,
-        }
 
     @staticmethod
     def calculate(task_type, task_params):

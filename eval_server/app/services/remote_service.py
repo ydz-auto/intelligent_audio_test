@@ -93,8 +93,6 @@ class RemoteService:
                 payload.update(task_params)
 
             timeout = selected_endpoint_config.get('max_timeout', 30)
-            if task_type == 'llm_judge':
-                timeout = max(timeout, 180)
 
             # 检测 task_params 中是否有文件路径（来自 create_task_upload 的二进制文件）
             file_fields = {}
@@ -201,8 +199,8 @@ class RemoteService:
 
     def _poll_task_status(self, endpoint_url: str, eval_task_id: str, task_type: str):
         """轮询任务状态，完成后释放并发并同步结果"""
-        poll_interval = 5 if task_type == 'llm_judge' else 2
-        max_attempts = 60 if task_type == 'llm_judge' else 30
+        poll_interval = 2
+        max_attempts = 30
 
         try:
             status_url = f"{endpoint_url.rstrip('/')}/api/get_status/{eval_task_id}"

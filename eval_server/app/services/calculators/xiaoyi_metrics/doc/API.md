@@ -757,59 +757,6 @@
 
 ***
 
-## 13. llm\_judge —— 通用 LLM 语义打分
-
-### 入参（evaluate\_with\_llm）
-
-| 参数                 | 类型          | 必填 | 说明                       |
-| ------------------ | ----------- | -- | ------------------------ |
-| `answer`           | str         | 是  | 设备回答                     |
-| `correct_answer`   | str         | 否  | 参考答案                     |
-| `question`         | str         | 否  | 设备识别的问题                  |
-| `query`            | str         | 否  | 参考问题                     |
-| `record_file`      | str         | 否  | 音频文件路径（多模态评估）            |
-| `rounds`           | list\[dict] | 否  | 多轮数据，有则逐轮列出              |
-| `model`            | str         | 否  | LLM 模型名，默认 `deepseek-r1` |
-| `prompt`           | str         | 否  | 自定义 prompt 模板            |
-| `max_tokens`       | int         | 否  | 最大输出 token，默认 1024       |
-| `temperature`      | float       | 否  | 采样温度，默认 0.7              |
-| `scoring_criteria` | list        | 否  | 自定义评分维度                  |
-
-### 出参
-
-```json
-{
-  "enabled": true,
-  "llm_judge_score": 4,              // LLM 评分
-  "criteria_scores": null,           // 分维度评分（可选）
-  "reasoning": "回答准确，与参考答案一致", // 评分理由
-  "model": "deepseek-r1",
-  "query": "什么是人工智能",
-  "answer": "人工智能是...",
-  "correct_answer": "人工智能是..."
-}
-```
-
-**多轮模式**额外字段：
-
-```json
-{
-  "n_rounds": 3,                      // 轮数
-  "per_round": [                      // 每轮结果
-    {
-      "enabled": true,
-      "llm_judge_score": 4,
-      "reasoning": "...",
-      "model": "deepseek-r1",
-      "query": "...",
-      "answer": "...",
-      "correct_answer": "..."
-    },
-    ...
-  ]
-}
-```
-
 ***
 
 ## task\_type → 注册表映射
@@ -830,6 +777,5 @@
 | `noise_latency`           | `NoiseLatencyCalculator`          | `compute_noise_latency`                                 |
 | `env_judge`               | `EnvJudgeCalculator`              | `evaluate_env_judge`                                    |
 | `rejection_judge`         | `RejectionJudgeCalculator`        | `evaluate_rejection_judge`                              |
-| `llm_judge`               | `LlmJudgeCalculator`              | `evaluate_with_llm`                                     |
 | ~~`interruption_judge`~~  | —（v2 并入 interruption_metrics） | 进程内直调 `judge_interruption_rounds` / `evaluate_interruption_judge`（不再独立注册） |
 

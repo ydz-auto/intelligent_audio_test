@@ -108,8 +108,6 @@ call_llm(...)
 
 | caller 文件 | log_context |
 |-------------|-------------|
-| `llm_judge/strategy.py` `_score_one` | `{'dimension': 'llm_judge'}` |
-| `llm_judge/llm_judge_calculator.py` `evaluate_with_llm` | `{'dimension': 'llm_judge'}` |
 | `env_judge/interruption_judge.py` `judge_interruption_rounds`（interruption_metrics v2 进程内直调，整例一次） | `{'dimension': 'interruption_metrics_rounds'}` |
 | `env_judge/interruption_judge.py` `evaluate_interruption_judge`（独立直调路径） | `{'dimension': 'interruption_judge'}` |
 | `env_judge/rejection_judge.py` | `{'dimension': 'reject_judge', 'timing': ...}` |
