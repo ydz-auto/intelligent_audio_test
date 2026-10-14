@@ -275,6 +275,22 @@ DistributedLock(key=f"calibration:api_rms_spl:{api_id}:{mapping_id}", ttl=30)
 - OpenAI 密钥链（逐级回退）：`case_config`（用例配置）→ `meta`（`api_models.API.meta`）→ 环境变量 `OPENAI_API_KEY`；
 - 密钥不落日志、不进报告；密钥解析统一收敛在 Infrastructure 层密钥提供者，Domain 层只见解析结果。
 
+### 3.8 停止立即生效与执行中删除用例联动【负责人裁定口径】
+
+> 【负责人裁定 2026-10-13（INT-308 原话），2026-10-14 补录】API 会话链路（http_api / websocket_api）与 E2E 链路同口径：任务停止必须**立即生效**，全链路感知延迟目标 **< 5s**（实测值随 INT-308 验收回填）；执行中删除用例必须联动评估侧清理。
+
+**停止语义分层**（stop = 三步，不等待自然完成）：
+
+1. **中断当前轮次**：正在进行的 API 调用 / Realtime 会话轮次立即 abort，音频流推送立即停止，不等待当前轮次自然完成；
+2. **队列清空**：待执行用例全部不再分发，已领取未启动的用例直接落停止终态；
+3. **状态落 terminal**：任务状态立即落终态（stopped），不卡在 running。
+
+**全链路 stop_event 传播**：跨进程停止信号以 **Redis 标志位为权威通道**——task_service 停止时置 `task:stop:{task_id}`（`task_service/.../task_control.py` → `shared/utils/distributed_coordinator.py`），api_test_service 执行器（BaseExecutor `ControlMixin`，`shared/infrastructure/base_executor/_control_mixin.py`）经 `_handle_control` 先查 Redis 标志位再查本地 Event（本地 `stop_flags` 由 `StopAPITest` RPC 置位）；所有等待点拆片（0.5s 片）可中断。
+
+**轮次粒度检查点**：APISessionExecutor / RealtimeSessionExecutor 在每个会话轮次 / 每次 API 调用前后检查停止信号（检查点遍布 `api_executor.py` / `api_session_executor.py` / `api_result_processor.py`），Realtime 等待带 stop_check 回调（`realtime_session_executor.py`）；单轮次为最小中断单位，轮次内靠音频流停推与调用 abort 达成"立即"。
+
+**执行中删除用例联动评估侧**：同 E2E 口径（见 `端到端测试功能设计文档.md` §3.1.3）——已提交评估的用例删除时取消评估任务，评估中则中断 + 结果丢弃 + 审计事件，走 gRPC + 事件通道且幂等。
+
 ---
 
 ## 4. 核心流程图
