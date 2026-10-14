@@ -25,6 +25,11 @@
     python scripts/migrations/202610/cleanup_reeval_ghost_round_rows.py --task-id 407 --apply
 
 连接串经 DATABASE_URI / DATABASE_URL 环境变量覆盖（对齐迁移脚本惯例）。
+
+全库模式实现注记（INT-364 审计 P3 修复）：四条核心 SQL 的任务过滤统一写成
+`(%(task_id)s IS NULL OR <列> = %(task_id)s)`——psycopg2 把 Python None 绑定为
+SQL NULL，若直接写 `<列> = %(task_id)s`，缺省全库模式下 `task_id = NULL` 恒为
+假，脚本会静默命中 0 行、删除与状态恢复全部跳过（幂等形式掩盖真实失效）。
 """
 import argparse
 import os
@@ -41,12 +46,13 @@ POSTGRES_URI = os.environ.get(
 LOCK_TIMEOUT = '10s'
 
 # 幽灵行判定：逐轮失败行 + 同 (result, dimension) 存在 completed 整体行
+# task_id 过滤统一用「IS NULL OR =」形态：None（缺省全库）不过滤，传值按任务限定
 GHOST_SELECT_SQL = """
     SELECT trd.id, trd.test_result_id, tr.test_case_id, trd.dimension_id,
            trd.round_number, trd.score
     FROM test_result_dimensions trd
     JOIN test_results tr ON tr.id = trd.test_result_id
-    WHERE tr.task_id = %(task_id)s
+    WHERE (%(task_id)s IS NULL OR tr.task_id = %(task_id)s)
       AND trd.round_number IS NOT NULL
       AND trd.evaluation_status = 'failed'
       AND EXISTS (
@@ -62,7 +68,8 @@ GHOST_SELECT_SQL = """
 GHOST_DELETE_SQL = """
     DELETE FROM test_result_dimensions trd
     WHERE trd.test_result_id IN (
-        SELECT id FROM test_results WHERE task_id = %(task_id)s
+        SELECT id FROM test_results
+        WHERE (%(task_id)s IS NULL OR task_id = %(task_id)s)
     )
       AND trd.round_number IS NOT NULL
       AND trd.evaluation_status = 'failed'
@@ -80,7 +87,7 @@ CASE_RESTORE_SQL = """
     UPDATE task_case_relations tc
     SET evaluation_status = 'completed',
         status = 'completed'
-    WHERE tc.task_id = %(task_id)s
+    WHERE (%(task_id)s IS NULL OR tc.task_id = %(task_id)s)
       AND tc.execution_status = 'completed'
       AND tc.evaluation_status = 'failed'
       AND NOT EXISTS (
@@ -95,7 +102,8 @@ CASE_RESTORE_SQL = """
 REMAINING_CHECK_SQL = """
     SELECT count(*) FROM test_result_dimensions trd
     JOIN test_results tr ON tr.id = trd.test_result_id
-    WHERE tr.task_id = %(task_id)s AND trd.evaluation_status = 'failed'
+    WHERE (%(task_id)s IS NULL OR tr.task_id = %(task_id)s)
+      AND trd.evaluation_status = 'failed'
 """
 
 CASE_COUNTS_SQL = """
@@ -113,13 +121,13 @@ TASK_STATS_UPDATE_SQL = """
 """
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description='failed 重评幽灵逐轮行清理（INT-364）')
     parser.add_argument('--task-id', type=int, default=None,
                         help='限定任务 ID（缺省 = 全库扫描所有任务）')
     parser.add_argument('--apply', action='store_true',
                         help='执行删除/更新（缺省 dry-run，只打印不影响数据）')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     task_id = args.task_id
 
     conn = psycopg2.connect(POSTGRES_URI)
@@ -147,6 +155,7 @@ def main():
                 print(f"删除幽灵逐轮失败行: {cur.rowcount} 条")
 
                 # ── 3. 恢复不再有失败维度的用例状态 ───────────────────
+                # （全库模式同样恢复：恢复条件自带「已无任何失败维度行」守卫）
                 cur.execute(CASE_RESTORE_SQL, {'task_id': task_id})
                 print(f"恢复 TaskCase 状态为 completed: {cur.rowcount} 条")
 
