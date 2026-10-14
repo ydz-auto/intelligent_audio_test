@@ -412,8 +412,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { TaskStatus, ExecutionStatus, EvaluationStatus, ViewMode, DeviceStatus } from '@/domain/enums';
-// INT-301：双状态徽章展示口径（执行/评估文案与图标独立映射）
-import { getTaskStatusLabel, getTaskEvaluationStatusLabel } from '../../domain/constants/reportLabels';
+// INT-301 F3：双徽章图标/文案单一定义源 utils/taskStatusBadge.ts；配色单一定义源 TaskCard.css
 
 const props = defineProps({
   testType: {type: String, default: 'API', validator: (value) => ['API', 'E2E', '混合'].includes(value)},
@@ -486,41 +485,13 @@ const handleRemoveCaseClick = (testCase) => {
   emit('removeCase', { caseId: testCase.id, name: testCase.name });
 };
 
-// ===== INT-301：详情头双状态徽章（与 TaskCard 徽章口径一致） =====
-
-/** 执行徽章图标（纯执行域） */
-const getExecutionBadgeIcon = (status) => {
-  const iconMap = {
-    [TaskStatus.PENDING]: 'fa-clock',
-    [TaskStatus.QUEUED]: 'fa-hourglass',
-    [TaskStatus.RUNNING]: 'fa-spinner fa-spin',
-    [ExecutionStatus.COMPLETED]: 'fa-check-circle',
-    [ExecutionStatus.FAILED]: 'fa-times-circle',
-    [TaskStatus.PAUSED]: 'fa-pause-circle',
-    [ExecutionStatus.STOPPED]: 'fa-stop-circle',
-    [TaskStatus.SKIPPED]: 'fa-minus-circle',
-    [TaskStatus.MERGED]: 'fa-object-group',
-  };
-  return iconMap[status] || 'fa-clock';
-};
-
-/** 评估徽章图标（评估域独立图标族） */
-const getEvaluationBadgeIcon = (status) => {
-  const iconMap = {
-    pending: 'fa-hourglass-half',
-    evaluating: 'fa-sync-alt fa-spin',
-    completed: 'fa-check-circle',
-    failed: 'fa-times-circle',
-    skipped: 'fa-forward',
-  };
-  return iconMap[status] || 'fa-hourglass-half';
-};
-
-/** 执行徽章文案（执行域值走任务状态映射；未知回退原文） */
-const getExecutionStatusText = (status) => getTaskStatusLabel(status);
-
-/** 评估徽章文案（独立口径；未知值回退原文容错） */
-const getEvaluationStatusText = (status) => getTaskEvaluationStatusLabel(status);
+// ===== INT-301：详情头双状态徽章（F3 收敛：图标/文案单一定义源 utils/taskStatusBadge.ts） =====
+import {
+  getExecutionBadgeIcon,
+  getExecutionStatusText,
+  getEvaluationBadgeIcon,
+  getEvaluationStatusText,
+} from '../../utils/taskStatusBadge';
 
 const formatLogTime = (timeStr) => {
   try {
@@ -747,7 +718,9 @@ const scrollToBottom = () => {
 
 <style scoped>
 
-/* ===== INT-301：详情头双状态徽章（与 TaskCard 徽章同配色族） ===== */
+/* ===== INT-301：详情头双状态徽章（F3 收敛：配色/取值口径单一定义源
+   components/task/TaskCard.css —— 本处仅保留模态窗布局所需的尺寸基座，
+   取值配色与 TaskCard 同类名同值，避免两处漂移） ===== */
 .exec-status-badge,
 .eval-status-badge{
   display: inline-flex;
@@ -757,31 +730,51 @@ const scrollToBottom = () => {
   border-radius: 12px;
   font-size: 12px;
   font-weight: 500;
+  border: none;
 }
 
-.eval-status-badge.evaluating{
+/* 取值配色与 TaskCard.css 同源同值（int-301 F2/F3 统一 tokens 口径） */
+.eval-status-badge.evaluating,
+.exec-status-badge.running,
+.exec-status-badge.in-progress{
   background-color: var(--color-indigo-100);
   color: var(--color-indigo-600);
 }
 
-.eval-status-badge.completed{
+.eval-status-badge.completed,
+.exec-status-badge.completed{
   background-color: var(--color-emerald-100);
   color: var(--color-emerald-600);
 }
 
-.eval-status-badge.failed{
+.eval-status-badge.failed,
+.exec-status-badge.failed{
   background-color: var(--color-red-100);
   color: var(--color-red-600);
 }
 
-.eval-status-badge.skipped{
+.eval-status-badge.skipped,
+.exec-status-badge.stopped,
+.exec-status-badge.skipped{
   background-color: var(--color-gray-100);
   color: var(--color-gray-500);
 }
 
-.eval-status-badge.pending{
+.eval-status-badge.pending,
+.exec-status-badge.pending,
+.exec-status-badge.paused{
   background-color: var(--color-amber-100);
   color: var(--color-amber-600);
+}
+
+.exec-status-badge.queued{
+  background-color: var(--color-sky-100);
+  color: var(--color-sky-700);
+}
+
+.exec-status-badge.merged{
+  background-color: var(--color-indigo-100);
+  color: var(--color-indigo-600);
 }
 
 .association-content{

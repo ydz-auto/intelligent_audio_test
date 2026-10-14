@@ -110,7 +110,8 @@ class TaskReadModel(
                      deleted: bool = False,
                      user_id: Optional[int] = None,
                      evaluation_status: Optional[str] = None,
-                     merged: bool = False) -> Dict[str, Any]:
+                     merged: bool = False,
+                     execution_status: Optional[str] = None) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
         device_type（可选）：按用例级被测设备类型过滤（任务下存在该类型用例）。
@@ -120,11 +121,14 @@ class TaskReadModel(
             过滤并列；复用派生表达式，展示与筛选口径一致）。
         merged（可选，INT-298）：仅合并容器任务（存在 TaskMergeRelation 的任务；
             task.type 已废弃，合并容器以关系表存在性判定，对齐 V9.7.10 合并页签）。
+        execution_status（可选，INT-301 F1）：按任务级执行状态过滤（复用派生
+            表达式，徽章展示与筛选命中同口径）。
         """
         from datetime import datetime
         from sqlalchemy import select as sa_select
         from task_service.infrastructure.read_models.task_dual_status_expr import (
             EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR, evaluation_filter_condition,
+            execution_filter_condition,
         )
 
         session = get_db_session()
@@ -133,6 +137,9 @@ class TaskReadModel(
             query = session.query(Task, EXECUTION_STATUS_EXPR, EVALUATION_STATUS_EXPR).filter(
                 Task.deleted == (True if deleted else False))  # noqa: E712
             if status:
+                # INT-301 F1 兼容：历史入口的原始 Task.status 过滤保留原文匹配
+                # （evaluating 等过渡态值仍按原始态命中，行为不变；执行域筛选
+                # 已由 execution_status 参数以派生口径承载）
                 query = query.filter(Task.status == status)
             if merged:
                 # INT-298：合并容器任务（TaskMergeRelation.merged_task_id 命中即容器）
@@ -187,6 +194,10 @@ class TaskReadModel(
             if evaluation_status:
                 # INT-301：评估状态过滤（复用派生 CASE 表达式，与徽章展示口径一致）
                 query = query.filter(evaluation_filter_condition(evaluation_status))
+            if execution_status:
+                # INT-301 F1：执行状态过滤（复用派生 CASE 表达式，命中行执行徽章
+                # == 筛选值；与原始 status 过滤并存）
+                query = query.filter(execution_filter_condition(execution_status))
 
             query = query.order_by(Task.created_at.desc())
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)

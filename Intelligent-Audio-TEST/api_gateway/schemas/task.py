@@ -241,6 +241,9 @@ class TaskListQuery(APIModel):
     evaluation_status: Optional[str] = Field(None)
     # INT-298：merged=true 仅合并容器任务（对齐 V9.7.10 合并页签数据源）
     merged: bool = Field(False)
+    # INT-301 F1：执行状态过滤（pending/queued/running/paused/completed/failed/
+    # stopped/merged；复用派生表达式，徽章展示与筛选命中同口径）
+    execution_status: Optional[str] = Field(None)
 
 
 class TaskDomainStatsQuery(APIModel):

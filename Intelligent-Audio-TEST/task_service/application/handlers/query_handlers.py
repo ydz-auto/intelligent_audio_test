@@ -169,6 +169,7 @@ class TaskQueryHandler:
             user_id=query.user_id,
             evaluation_status=query.evaluation_status,
             merged=query.merged,
+            execution_status=query.execution_status,
         )
 
     def handle_get_task_detail(self, query: GetTaskDetailQuery) -> Dict[str, Any]:

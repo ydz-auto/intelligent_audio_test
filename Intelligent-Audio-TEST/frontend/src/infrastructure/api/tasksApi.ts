@@ -26,6 +26,7 @@ import type { TaskProgress } from '../../domain/model/taskProgress';
 export interface TaskListQuery {
   page?: number
   perPage?: number
+  /** 原始 Task.status 过滤（历史兼容；执行域筛选请用 executionStatus） */
   status?: string
   algorithmType?: string
   search?: string
@@ -38,6 +39,8 @@ export interface TaskListQuery {
   evaluationStatus?: string
   // INT-298：merged=true 仅合并容器任务（对齐 V9.7.10 合并页签数据源）
   merged?: boolean
+  // INT-301 F1：执行状态过滤（复用派生口径，命中行执行徽章 == 筛选值）
+  executionStatus?: string
 }
 
 /** camelCase 任务查询 → snake_case HTTP query（后端 TaskListQueryDto 契约） */
@@ -55,6 +58,8 @@ function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   if (query.evaluationStatus !== undefined) dto.evaluation_status = query.evaluationStatus
   // INT-298：合并容器任务过滤
   if (query.merged !== undefined) dto.merged = query.merged
+  // INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
+  if (query.executionStatus !== undefined) dto.execution_status = query.executionStatus
   return dto
 }
 

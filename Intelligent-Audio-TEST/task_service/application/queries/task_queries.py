@@ -78,6 +78,7 @@ class ListTasksConfigQuery(Query):
     user_id: Optional[int] = None
     evaluation_status: Optional[str] = None
     merged: bool = False
+    execution_status: Optional[str] = None
 
 
 @dataclass(frozen=True)

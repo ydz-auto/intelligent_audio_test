@@ -119,9 +119,66 @@
   color: var(--color-indigo-600);
 }
 
+/* ===== INT-301：任务级执行/评估双徽章（UX 审计 F2：执行徽章 9 值全 tokens
+   配色，filled 风格与评估徽章同一视觉语言；收敛 task-status.css 魔法色口径） ===== */
+
+/* 执行徽章基座（覆盖全局 task-status.css 的 outline 魔法色风格） */
+.exec-status-badge {
+  background-color: var(--color-amber-100);
+  color: var(--color-amber-600);
+  border: none;
+}
+
+.exec-status-badge.pending {
+  background-color: var(--color-amber-100);
+  color: var(--color-amber-600);
+}
+
+.exec-status-badge.queued {
+  background-color: var(--color-sky-100);
+  color: var(--color-sky-700);
+}
+
+.exec-status-badge.running,
+.exec-status-badge.in-progress {
+  background-color: var(--color-blue-100);
+  color: var(--color-blue-600);
+}
+
+.exec-status-badge.paused {
+  background-color: var(--color-amber-100);
+  color: var(--color-amber-600);
+}
+
+.exec-status-badge.completed {
+  background-color: var(--color-emerald-100);
+  color: var(--color-emerald-600);
+}
+
+.exec-status-badge.failed {
+  background-color: var(--color-red-100);
+  color: var(--color-red-600);
+}
+
+.exec-status-badge.stopped {
+  background-color: var(--color-gray-100);
+  color: var(--color-gray-500);
+}
+
+.exec-status-badge.skipped {
+  background-color: var(--color-gray-100);
+  color: var(--color-gray-500);
+}
+
+.exec-status-badge.merged {
+  background-color: var(--color-indigo-100);
+  color: var(--color-indigo-600);
+}
+
 /* ===== INT-301：任务级评估状态徽章（独立配色族，与执行徽章并排展示） ===== */
 .eval-status-badge {
   margin-left: 4px;
+  border: none;
 }
 
 .eval-status-badge.evaluating {

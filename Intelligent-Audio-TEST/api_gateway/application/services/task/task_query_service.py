@@ -58,6 +58,8 @@ class TaskQueryService:
         evaluation_status = query.evaluation_status
         # INT-298：合并容器任务过滤（对齐 V9.7.10 合并页签数据源）
         merged = query.merged
+        # INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
+        execution_status = query.execution_status
 
         result = _task_acl.list_tasks(
             page=page,
@@ -71,6 +73,7 @@ class TaskQueryService:
             deleted=deleted,
             evaluation_status=evaluation_status,
             merged=merged,
+            execution_status=execution_status,
         )
 
         if not result.get('success'):

@@ -193,6 +193,8 @@ export interface TaskListQueryDto {
   evaluation_status?: string
   // INT-298：merged=true 仅合并容器任务（后端 TaskListQuery.merged）
   merged?: boolean
+  // INT-301 F1：执行状态过滤（复用派生口径，命中行执行徽章 == 筛选值）
+  execution_status?: string
 }
 
 // ===== 任务域全量聚合统计（GET /tasks/stats，INT-200）=====

@@ -140,11 +140,13 @@ export function useTaskList(options?: UseTaskListOptions) {
       }
 
       if (filters.value.status && filters.value.status !== 'all') {
-        // INT-141：回收站模式（已删除）走专用 deleted 参数，其余按任务状态过滤
+        // INT-141：回收站模式（已删除）走专用 deleted 参数
         if (filters.value.status === 'deleted') {
           params.deleted = true;
         } else {
-          params.status = filters.value.status;
+          // INT-301 F1（UX 审计打回）：执行筛选改走 execution_status 派生参数
+          // （命中行执行徽章 == 筛选值）；不再按原始 Task.status 裸匹配。
+          params.executionStatus = filters.value.status;
         }
       }
       // INT-141：仅收藏过滤（favorite=true，服务端按当前用户 JWT 过滤）。

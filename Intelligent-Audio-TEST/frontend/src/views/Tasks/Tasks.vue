@@ -446,16 +446,15 @@ function switchTab(tab: TaskTab) {
 // leaveFavoriteView 对称还原），本组件经 useTasks 解构调用
 // ===== 筛选选项（组件级 UI 常量，对齐 V9.7.10 徽章筛选行）=====
 // INT-215：「已删除（回收站）」自状态徽章移除——回收站入口统一为工具栏按钮（toggleTaskTrashMode）
-// INT-301：原「任务状态」行更名「执行状态」——评估过渡（evaluating/reevaluate_*）
-// 改由下方评估状态筛选行承载（后端按任务级评估状态过滤，与徽章口径一致）；
-// 原 status 值继续有效（历史入口/收藏的旧筛选值不受影响）。
+// INT-301：原「任务状态」行更名「执行状态」——UX 审计 F1 打回修正：
+// ① 三个评估过渡 chip（evaluating/reevaluate_queued/reevaluating）移除，
+//    评估侧统一由下方评估状态筛选行承载（同口径 SQL 派生表达式）；
+// ② 执行筛选改走 execution_status 派生参数（命中行执行徽章 == 所选筛选值），
+//    不再按原始 Task.status 裸匹配（原始态口径与派生徽章双向错位）。
 const STATUS_FILTER_OPTIONS = [
   { value: TaskStatus.PENDING, label: '待执行' },
   { value: TaskStatus.QUEUED, label: '排队中' },
   { value: TaskStatus.RUNNING, label: '执行中' },
-  { value: TaskStatus.EVALUATING, label: '评估中' },
-  { value: TaskStatus.REEVALUATE_QUEUED, label: '重新评估排队中' },
-  { value: TaskStatus.REEVALUATING, label: '重新评估中' },
   { value: TaskStatus.COMPLETED, label: '已完成' },
   { value: TaskStatus.FAILED, label: '执行失败' },
   { value: TaskStatus.MERGED, label: '已合并' },

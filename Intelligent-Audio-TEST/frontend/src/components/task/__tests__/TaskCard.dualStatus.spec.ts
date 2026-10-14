@@ -102,4 +102,27 @@ describe('TaskCard 双状态徽章（INT-301）', () => {
     });
     expect(wrapper.find('.eval-status-badge').text()).toContain('待评估');
   });
+
+  it('F2：执行徽章渲染 exec-status-badge 类并带状态取值类（tokens 配色锚点）', () => {
+    // UX 审计 F2：执行徽章 9 值全 tokens 配色——组件锁定「徽章携带取值类」，
+    // 配色由 .exec-status-badge.<status> scoped CSS 承载（filled，同评估徽章视觉语言）
+    const wrapper = mountTask({
+      id: 9, name: 'I', status: 'running',
+      executionStatus: 'running', evaluationStatus: 'completed',
+    });
+    const exec = wrapper.find('.exec-status-badge');
+    expect(exec.classes()).toContain('exec-status-badge');
+    expect(exec.classes()).toContain('running');
+    expect(wrapper.find('.eval-status-badge').classes()).toContain('completed');
+  });
+
+  it('F3：双徽章图标映射来自共享模块（TaskCard 与详情头同源）', async () => {
+    // 图标映射单一定义源 utils/taskStatusBadge.ts——TaskCard.ts 与
+    // TestExecutionComponent.vue 均从该模块引用（F3 打回修复锁定）
+    const badge = await import('../../../utils/taskStatusBadge');
+    expect(badge.getExecutionBadgeIcon('running')).toContain('fa-spin');
+    expect(badge.getEvaluationBadgeIcon('evaluating')).toContain('fa-sync-alt');
+    expect(badge.getExecutionBadgeStatus({ status: 'completed' })).toBe('completed');
+    expect(badge.getExecutionBadgeStatus({ status: 'reevaluating', executionStatus: 'completed' })).toBe('completed');
+  });
 });

@@ -326,7 +326,9 @@ def test_search_tasks_evaluation_filter(db):
 
 
 def test_search_tasks_status_filter_still_works(db):
-    """回归：原 status（Task.status）过滤不受双状态改造影响。"""
+    """回归：原 status（Task.status）过滤行为不变（历史入口兼容；INT-301 F1
+    UX 审计裁定执行域筛选改走 execution_status 派生参数，status 参数保留原文
+    匹配语义，原始过渡态值仍按 Task.status 命中）。"""
     from task_service.infrastructure.persistence.models import Task
     from task_service.infrastructure.read_models.task_read_model import task_read_model
 
@@ -340,6 +342,74 @@ def test_search_tasks_status_filter_still_works(db):
     result = task_read_model.search_tasks(page=1, per_page=10, status='reevaluating')
     names = {i['name'] for i in result['items']}
     assert names == {'INT301回归-重评'}
+
+
+def test_search_tasks_execution_filter_matches_badge(db):
+    """INT-301 F1（UX 审计打回）：execution_status 过滤命中行执行徽章 == 筛选值。
+
+    锁定口径：原始 status=completed 但派生执行态=failed 的任务（评估失败拉低）
+    不得被 execution_status=completed 命中；原始态与派生态错位的行按派生口径
+    归类。执行域七值逐一核对「命中 == 展示」。
+    """
+    from task_service.infrastructure.persistence.models import Task
+    from task_service.infrastructure.read_models.task_read_model import task_read_model
+
+    _seed([
+        (Task(name='INT301执行筛选-全完成', status='completed', total_cases=1),
+         [('completed', 'completed')]),
+        (Task(name='INT301执行筛选-执行失败', status='completed', total_cases=1),
+         [('failed', 'completed')]),
+        (Task(name='INT301执行筛选-执行中', status='running', total_cases=2),
+         [('running', 'pending'), ('completed', 'running')]),
+        (Task(name='INT301执行筛选-停止', status='stopped', total_cases=1),
+         [('stopped', 'stopped')]),
+        (Task(name='INT301执行筛选-排队', status='queued', total_cases=1),
+         [('queued', 'pending')]),
+        (Task(name='INT301执行筛选-未启动', status='pending', total_cases=1),
+         [('pending', 'pending')]),
+    ])
+
+    all_rows = task_read_model.search_tasks(page=1, per_page=50)['items']
+
+    for value in ('pending', 'queued', 'running', 'completed', 'failed', 'stopped'):
+        filtered = task_read_model.search_tasks(page=1, per_page=50,
+                                                execution_status=value)['items']
+        names = {i['name'] for i in filtered}
+        # 过滤命中行的执行徽章值必须等于筛选值（展示与筛选同口径）
+        for item in filtered:
+            assert item['execution_status'] == value, \
+                f"执行筛选 {value} 命中了执行徽章为 {item['execution_status']} 的 {item['name']}"
+        expected_names = {i['name'] for i in all_rows if i['execution_status'] == value}
+        assert names == expected_names, \
+            f'执行筛选 {value}: 命中 {names} != 展示口径 {expected_names}'
+
+    # 关键错位场景：原始 status=completed 但执行徽章 failed 的任务不被
+    # execution_status=completed 命中（原始态裸匹配的历史缺陷锁定）
+    completed_hit = {i['name'] for i in task_read_model.search_tasks(
+        page=1, per_page=50, execution_status='completed')['items']}
+    assert 'INT301执行筛选-执行失败' not in completed_hit
+    assert 'INT301执行筛选-全完成' in completed_hit
+
+
+def test_execution_filter_legacy_status_param_unchanged(db):
+    """回归锁定：status 参数与 execution_status 参数语义并存不互染。
+
+    status='completed'（原始态）命中原始态行；execution_status='failed'
+    （派生态）命中派生执行失败行——两参数同传时取交集（AND）。
+    """
+    from task_service.infrastructure.persistence.models import Task
+    from task_service.infrastructure.read_models.task_read_model import task_read_model
+
+    _seed([
+        (Task(name='INT301并存-原始完成执行失败', status='completed', total_cases=1),
+         [('failed', 'completed')]),
+        (Task(name='INT301并存-全完成', status='completed', total_cases=1),
+         [('completed', 'completed')]),
+    ])
+
+    both = task_read_model.search_tasks(
+        page=1, per_page=10, status='completed', execution_status='failed')['items']
+    assert {i['name'] for i in both} == {'INT301并存-原始完成执行失败'}
 
 
 def test_detail_read_model_carries_dual_status(db):

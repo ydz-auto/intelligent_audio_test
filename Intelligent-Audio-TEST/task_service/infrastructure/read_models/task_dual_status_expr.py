@@ -22,7 +22,7 @@ from sqlalchemy import and_, case, exists, or_, select
 
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.status_constants import (
-    ExecutionStatus, EvaluationStatus, ACTIVE_EXECUTION_STATUSES,
+    ExecutionStatus, EvaluationStatus, TaskStatus, ACTIVE_EXECUTION_STATUSES,
 )
 
 # 用例级执行终态集合（failed/stopped 之外的执行终态为 completed）
@@ -89,7 +89,19 @@ EVALUATION_FILTER_VALUES = (
     EvaluationStatus.FAILED, 'skipped',
 )
 
+# 执行状态筛选合法取值（前端 BadgeFilter 选项，纯执行域；INT-301 F1 打回补齐）
+EXECUTION_FILTER_VALUES = (
+    ExecutionStatus.PENDING, TaskStatus.QUEUED, ExecutionStatus.RUNNING,
+    TaskStatus.PAUSED, ExecutionStatus.COMPLETED, ExecutionStatus.FAILED,
+    ExecutionStatus.STOPPED, TaskStatus.MERGED,
+)
+
 
 def evaluation_filter_condition(evaluation_status: str):
     """评估状态筛选条件：复用派生表达式（展示与筛选口径一致）。"""
     return EVALUATION_STATUS_EXPR == evaluation_status
+
+
+def execution_filter_condition(execution_status: str):
+    """执行状态筛选条件（INT-301 F1）：复用派生表达式，徽章展示与筛选命中同口径。"""
+    return EXECUTION_STATUS_EXPR == execution_status
