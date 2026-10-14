@@ -13,6 +13,30 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def strip_wav_container(data: bytes) -> bytes:
+    """剥除 RIFF/WAVE 容器头返回 PCM 载荷；非容器字节原样返回。
+
+    供应商输出音频的线上形态存在两种可能：裸 PCM 或 WAV 容器（如 volc_ast
+    请求声明 target_audio.format='wav'，响应 data 的实际格式未经实机确认）。
+    收集时逐块剥头，保证归档是单头 wav——二次包装会落档「WAV 套 WAV」，
+    读侧单次剥头后内层 44B 头按样本解析，短片段 RMS 严重失真（INT-300
+    审计缺陷 2 同款病根）。流式容器的 data chunk 声明长度可能未定
+    （0xFFFFFFFF），此时取声明头之后的全部字节为载荷。
+    """
+    if len(data) >= 12 and data[0:4] == b'RIFF' and data[8:12] == b'WAVE':
+        pos = 12
+        while pos + 8 <= len(data):
+            chunk_id = data[pos:pos + 4]
+            chunk_size = int.from_bytes(data[pos + 4:pos + 8], 'little')
+            if chunk_id == b'data':
+                end = pos + 8 + chunk_size
+                if end <= len(data):
+                    return data[pos + 8:end]
+                return data[pos + 8:]
+            pos += 8 + chunk_size + (chunk_size & 1)
+    return data
+
+
 def save_output_audio(pcm: bytes, task_id, session_id: str = '',
                       round_number: int = 0, sample_rate: int = 24000) -> 'str | None':
     """输出音频 PCM(s16) → wav → 存储归档，返回存储引用（失败返回 None）。

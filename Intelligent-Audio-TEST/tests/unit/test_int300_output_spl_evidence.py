@@ -16,10 +16,20 @@ APIExecutor 线性单轮）全仓无产出 —— F3 三口径对称验证在 ht
    final_result data.output_audio_path 读档实测，并入 algo_result_dict
 4. 全缺引用 / 读档失败 → 字段 None 缺省，不阻塞结果落库
 
+INT-300 审计打回修复（第二轮，commit 189f0ccc 审计不通过 2 高 1 中）追加回归：
+5. qwen _translate 归档分支真实执行（伪 WS）：session_id 透传 + audio_enabled
+   有音频增量时请求成功且 output_audio_path 非空（缺陷：session_id 未定义
+   NameError → 整请求标失败）
+6. 多轮 wav 容器逐轮剥头拼接（缺陷：各轮完整 wav 直接 join，第 2 轮起被
+   wave.readframes 静默丢弃，RMS 失真数十 dB）
+7. volc 输出容器防御性剥头（strip_wav_container：裸 PCM / WAV 容器 /
+   流式未定长 / 分块整文件全形态归档恒为单头 wav）
+
 纯单测：不触真实 DB / gRPC / OSS（存储层 monkeypatch 为内存桩）。
 """
 import base64
 import io
+import json
 import math
 import os
 import struct
@@ -158,19 +168,61 @@ class TestAdapterOutputAudioArchive:
         # 归档失败不抛异常（输出侧证据缺失不阻塞被测请求结果）
         assert audio_output.save_output_audio(b'\x00\x01', task_id=31) is None
 
-    def test_qwen_adapter_collects_audio_deltas_into_raw_response(self, monkeypatch):
-        """qwen：response.audio.delta 收集 → 归档 → raw_response.output_audio_path。"""
+    def test_qwen_archive_branch_real_execution(self, monkeypatch):
+        """qwen 归档分支真实执行（伪 WS，审计打回缺陷 1 回归）：
+
+        audio_enabled + 有音频增量 → 请求成功（无 error）、save_output_audio
+        收到 send_request 透传的 session_id、output_audio_path 非空。
+        缺陷：_translate 引用未定义 session_id → NameError 上抛 send_request
+        → 整个请求被标失败（output=''、raw_response.error），恰为 F3 验收
+        目标场景（audio_enabled=True 且有输出音频）。
+        """
         from api_adapter_service.adapters import qwen_adapter as qm
 
         captured = {}
 
-        def _fake_save(pcm, task_id, session_id, round_number=0, sample_rate=24000):
-            captured.update(pcm_len=len(pcm), task_id=task_id,
+        def _fake_save(pcm, task_id, session_id, round_number=0,
+                       sample_rate=24000):
+            captured.update(pcm=pcm, task_id=task_id, session_id=session_id,
                             round_number=round_number)
-            return f'local://audios/{task_id}/ai_output.wav'
+            return f'local://audios/{task_id}/{session_id}/x.wav'
+
+        class _FakeWS:
+            def __init__(self, messages):
+                self._messages = list(messages)
+                self.sent = []
+
+            async def send(self, message):
+                self.sent.append(message)
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self._messages:
+                    return self._messages.pop(0)
+                raise StopAsyncIteration
+
+            async def close(self):
+                pass
+
+        async def _fake_connect(url, additional_headers=None, **kwargs):
+            return _FakeWS([
+                json.dumps({'type': 'response.audio_transcript.done',
+                            'transcript': '你好世界'}),
+                json.dumps({'type': 'response.text.done',
+                            'text': 'hello world'}),
+                json.dumps({'type': 'response.audio.delta',
+                            'delta': base64.b64encode(b'\x11\x22' * 64).decode()}),
+                json.dumps({'type': 'response.audio.delta',
+                            'delta': base64.b64encode(b'\x33\x44' * 64).decode()}),
+                json.dumps({'type': 'response.done',
+                            'response': {'usage': {'input_tokens': 5}}}),
+            ])
 
         class _FakeQwen(qm.QwenAdapter):
             def __init__(self):
+                self.vendor_config = {}
                 self.audio_enabled = True
                 self.api_key = 'k'
                 self.api_url = 'ws://x'
@@ -178,16 +230,26 @@ class TestAdapterOutputAudioArchive:
                 self.timeout = 5
 
         monkeypatch.setattr(qm, 'save_output_audio', _fake_save)
-        monkeypatch.setattr(qm, 'resolve_audio_bytes', lambda src: b'\x00\x01' * 100)
+        monkeypatch.setattr(qm, 'resolve_audio_bytes', lambda src: b'\x00' * 1600)
+        monkeypatch.setattr(qm.websockets, 'connect', _fake_connect)
 
-        # _translate 内部走真实 websockets.connect——不可达，改为直接验证
-        # 事件收集分支：提取 _translate 的音频增量处理逻辑不可行（协程内联），
-        # 改为端到端验证 save_output_audio 被调用前 pcm 拼接正确性超出单测
-        # 范围（需伪 WS 服务，已有 INT-62/INT-61 客户端专项覆盖传输层）。
-        # 此处锁定：save_output_audio 模块级可替换（依赖注入点存在）。
-        assert callable(qm.save_output_audio)
-        _fake_save(b'\x01\x02' * 50, 31, 'sess', round_number=1)
-        assert captured['pcm_len'] == 100
+        result = _FakeQwen().send_request(
+            task_id=31, session_id='sess-int300-a', input_type='audio',
+            input_data=b'x', target_lang='en', round_number=3)
+
+        # 缺陷路径下 result['raw_response'] 是 {'error': NameError...}，
+        # 修复后请求成功且归档链路全通
+        assert 'error' not in result['raw_response']
+        assert result['asr_text'] == '你好世界'
+        assert result['trans_text'] == 'hello world'
+        assert result['session_id'] == 'sess-int300-a'
+        assert result['raw_response']['output_audio_path'] == \
+            'local://audios/31/sess-int300-a/x.wav'
+        # session_id 经 send_request 透传进归档（对齐 volc 写法）
+        assert captured['session_id'] == 'sess-int300-a'
+        assert captured['task_id'] == 31
+        assert captured['round_number'] == 3
+        assert captured['pcm'] == b'\x11\x22' * 64 + b'\x33\x44' * 64
 
     def test_single_turn_final_result_flattens_output_audio_path(self):
         """单轮协议 final_result 平铺 output_audio_path（执行侧字段映射可取）。"""
@@ -248,6 +310,63 @@ class TestAggregateOutputSplEvidence:
         assert aggregated['algorithm_result']['ai_output_rms_dbfs'] == \
             aggregated['ai_output_rms_dbfs']
         assert aggregated['ai_wav']  # 归档引用已产出
+
+    def test_multi_round_wav_containers_concat_rms_exact(self, monkeypatch):
+        """审计打回缺陷 2 回归：2 轮 wav 容器不同电平 → 逐轮剥头拼接。
+
+        缺陷实现把各轮完整 wav（含 44B RIFF 头）直接 join —— 读侧
+        wave.readframes 只停在第一个 data chunk，第 2 轮起被静默丢弃：
+        两轮 -60/-10dBFS 实测 -63dBFS（仅第 1 轮）而非全轮合成 -13dBFS，
+        偏差 47dB。修复后逐轮 unwrap 再拼接，RMS 为全轮合成值。
+        """
+        ex = self._make_executor()
+        fake = _FakeStorage({
+            'local://audios/r1.wav': _pcm_as_wav_bytes(
+                _sine_pcm(-60.0, seconds=0.1)),
+            'local://audios/r2.wav': _pcm_as_wav_bytes(
+                _sine_pcm(-10.0, seconds=0.1)),
+        })
+        import shared.infrastructure.storage as storage_mod
+        monkeypatch.setattr(storage_mod.storage, 'load_bytes', fake.load_bytes)
+        monkeypatch.setattr(storage_mod.storage, 'save_bytes',
+                            lambda data, cat, key, content_type=None:
+                            f'local://{cat}/{key}')
+
+        aggregated = ex._aggregate_round_results(
+            [{'round_number': 2, 'output': 'b', 'latency': 1.0, 'success': True,
+              'output_audio_path': 'local://audios/r2.wav'},
+             {'round_number': 1, 'output': 'a', 'latency': 1.0, 'success': True,
+              'output_audio_path': 'local://audios/r1.wav'}],
+            _FakeSession())
+        # 等长两段合成 RMS：sqrt((10^(-6)+10^(-1))/2) → -13.01 dBFS
+        expected = 20.0 * math.log10(math.sqrt(
+            (10.0 ** (-60.0 / 10.0) + 10.0 ** (-10.0 / 10.0)) / 2.0))
+        assert aggregated['ai_output_rms_dbfs'] == pytest.approx(expected, abs=0.5)
+        assert aggregated['ai_output_spl_db'] == pytest.approx(expected + 95.0, abs=0.5)
+        assert aggregated['ai_wav']
+
+    def test_mixed_wav_and_bare_pcm_rounds(self, monkeypatch):
+        """混合形态轮次：wav 归档轮剥头、裸 PCM 轮原样 —— 剥头不误伤裸数据。"""
+        ex = self._make_executor()
+        fake = _FakeStorage({
+            'local://audios/r1.wav': _pcm_as_wav_bytes(
+                _sine_pcm(-20.0, seconds=0.1)),
+            'local://audios/r2.raw': _sine_pcm(-20.0, seconds=0.1),
+        })
+        import shared.infrastructure.storage as storage_mod
+        monkeypatch.setattr(storage_mod.storage, 'load_bytes', fake.load_bytes)
+        monkeypatch.setattr(storage_mod.storage, 'save_bytes',
+                            lambda data, cat, key, content_type=None:
+                            f'local://{cat}/{key}')
+
+        aggregated = ex._aggregate_round_results(
+            [{'round_number': 1, 'output': 'a', 'latency': 1.0, 'success': True,
+              'output_audio_path': 'local://audios/r1.wav'},
+             {'round_number': 2, 'output': 'b', 'latency': 1.0, 'success': True,
+              'output_audio_path': 'local://audios/r2.raw'}],
+            _FakeSession())
+        # 等长同电平两段合成 RMS 与单段一致
+        assert aggregated['ai_output_rms_dbfs'] == pytest.approx(-20.0, abs=0.5)
 
     def test_mapping_reference_spl_shifts_conversion(self, monkeypatch):
         """映射参考基准参与换算：reference_spl=70 → spl = 70 + (rms + 30)。"""
@@ -404,3 +523,187 @@ class TestLinearSingleRoundSplEvidence:
             algo, SimpleNamespace(id=7), 31,
             {'json': {'data': {'output_audio_path': 'local://audios/x.wav'}}})
         assert algo['ai_output_spl_db'] == pytest.approx(80.0, abs=0.5)
+
+
+# ==================== 5. volc 输出容器防御性剥头（审计缺陷 3） ====================
+
+class TestStripWavContainer:
+    """strip_wav_container：归档恒为单头 wav，与供应商线上形态无关。"""
+
+    def test_raw_pcm_passthrough(self):
+        from api_adapter_service.adapters import audio_output
+
+        pcm = _sine_pcm(-20.0, seconds=0.01)
+        assert audio_output.strip_wav_container(pcm) == pcm
+
+    def test_complete_wav_stripped_to_payload(self):
+        from api_adapter_service.adapters import audio_output
+
+        pcm = _sine_pcm(-20.0, seconds=0.01)
+        assert audio_output.strip_wav_container(_pcm_as_wav_bytes(pcm)) == pcm
+
+    def test_streaming_wav_unknown_data_size(self):
+        """流式容器 data chunk 声明未定长（0xFFFFFFFF）：取头后全部字节。"""
+        from api_adapter_service.adapters import audio_output
+
+        pcm = _sine_pcm(-20.0, seconds=0.01)
+        mutated = bytearray(_pcm_as_wav_bytes(pcm))
+        mutated[4:8] = struct.pack('<I', 0xFFFFFFFF)    # RIFF 总长未定
+        mutated[40:44] = struct.pack('<I', 0xFFFFFFFF)  # data chunk 长度未定
+        assert audio_output.strip_wav_container(bytes(mutated)) == pcm
+
+    def test_header_only_message_yields_empty(self):
+        """首条消息仅 44B 头（纯 PCM 稍后到达）：剥头后为空，由调用方跳过。"""
+        from api_adapter_service.adapters import audio_output
+
+        assert audio_output.strip_wav_container(_pcm_as_wav_bytes(b'')) == b''
+
+    def test_exact_data_size_excludes_trailing_chunks(self):
+        """完整文件带尾随 LIST 元数据块：按声明长度精确切片，不含尾块。"""
+        from api_adapter_service.adapters import audio_output
+
+        pcm = _sine_pcm(-20.0, seconds=0.01)
+        blob = _pcm_as_wav_bytes(pcm) + b'LIST' + struct.pack('<I', 4) + b'INFO'
+        assert audio_output.strip_wav_container(blob) == pcm
+
+    def test_per_chunk_complete_wavs_all_stripped(self):
+        """每块都是完整 wav（部分供应商分块回传整文件）：逐块剥头后为纯 PCM。"""
+        from api_adapter_service.adapters import audio_output
+
+        p1 = _sine_pcm(-20.0, seconds=0.01)
+        p2 = _sine_pcm(-30.0, seconds=0.01)
+        joined = (audio_output.strip_wav_container(_pcm_as_wav_bytes(p1))
+                  + audio_output.strip_wav_container(_pcm_as_wav_bytes(p2)))
+        assert joined == p1 + p2
+
+
+class TestVolcAstOutputAudioCollection:
+    """volc_ast 收集循环真实执行（伪 WS + 真实 protobuf 编解码）：
+
+    审计缺陷 3——请求声明 target_audio.format='wav'，响应 data 实际线上
+    形态未经实机确认（本机无 VOLC 凭证）。收集循环逐块 strip_wav_container
+    后，无论 volc 回传裸 PCM 还是 WAV 容器（整文件分块 / 流式头），归档
+    恒为单头 wav，读侧 RMS 均正确。
+    """
+
+    @staticmethod
+    def _make_adapter():
+        from api_adapter_service.adapters import volc_ast_adapter as vm
+
+        class _FakeVolc(vm.VolcAstAdapter):
+            def __init__(self):
+                self.ws_url = 'ws://x'
+                self.app_key = 'a'
+                self.access_key = 'b'
+                self.resource_id = 'c'
+                self.mode = 's2s'
+                self.timeout = 5
+
+        return vm, _FakeVolc()
+
+    @staticmethod
+    def _volc_msg(Type, TranslateResponse, event, data=b'', text=''):
+        r = TranslateResponse()
+        r.event = event
+        if data:
+            r.data = data
+        if text:
+            r.text = text
+        return r.SerializeToString()
+
+    def _run(self, monkeypatch, data_messages):
+        """驱动 send_request → _translate 全链（伪 conn），返回 (result, captured)。"""
+        vm, adapter = self._make_adapter()
+        # 适配器模块导入时已把 proto 目录插入 sys.path
+        from products.understanding.ast.ast_service_pb2 import TranslateResponse
+        from common.events_pb2 import Type
+
+        captured = {}
+
+        def _fake_save(pcm, task_id, session_id, round_number=0,
+                       sample_rate=24000):
+            captured.update(pcm=pcm, task_id=task_id, session_id=session_id,
+                            round_number=round_number)
+            return f'local://audios/{task_id}/{session_id}/x.wav'
+
+        class _FakeConn:
+            def __init__(self, messages):
+                self._messages = list(messages)
+                self.sent = []
+                self.response = SimpleNamespace(headers={})
+
+            async def send(self, message):
+                self.sent.append(message)
+
+            async def recv(self):
+                return self._messages.pop(0)
+
+            async def close(self):
+                pass
+
+        async def _fake_connect(url, additional_headers=None, **kwargs):
+            messages = [self._volc_msg(Type, TranslateResponse,
+                                       Type.SessionStarted)]
+            messages += data_messages(Type, TranslateResponse)
+            messages.append(self._volc_msg(Type, TranslateResponse,
+                                           Type.SessionFinished))
+            return _FakeConn(messages)
+
+        monkeypatch.setattr(vm, 'save_output_audio', _fake_save)
+        monkeypatch.setattr(vm, 'resolve_audio_bytes',
+                            lambda src: b'\x00' * 3200)
+        monkeypatch.setattr(vm.websockets, 'connect', _fake_connect)
+
+        result = adapter.send_request(
+            task_id=32, session_id='sess-volc-b', input_type='audio',
+            input_data=b'x', target_lang='en', round_number=1)
+        return result, captured
+
+    def test_wav_container_data_normalized(self, monkeypatch):
+        """volc 回传完整 wav 容器分块（若按声明 format='wav'）→ 逐块剥头归档。"""
+        pcm_a = _sine_pcm(-20.0, seconds=0.01)
+        pcm_b = _sine_pcm(-30.0, seconds=0.01)
+
+        def _data_msgs(Type, TranslateResponse):
+            return [
+                self._volc_msg(Type, TranslateResponse, 654, text='hello',
+                               data=_pcm_as_wav_bytes(pcm_a)),
+                self._volc_msg(Type, TranslateResponse, 654, text=' world',
+                               data=_pcm_as_wav_bytes(pcm_b)),
+            ]
+
+        result, captured = self._run(monkeypatch, _data_msgs)
+        assert 'error' not in result['raw_response']
+        assert result['trans_text'] == 'hello world'
+        # 归档引用非空（volc _translate 内部以协议会话 uuid 作为存储键段）
+        ref = result['raw_response']['output_audio_path']
+        assert ref and ref.startswith('local://audios/32/') \
+            and ref.endswith('/x.wav')
+        assert captured['pcm'] == pcm_a + pcm_b  # 容器头已剥，纯 PCM 拼接
+
+    def test_raw_pcm_data_passthrough(self, monkeypatch):
+        """volc 回传裸 PCM（若服务端忽略 format 声明）→ 原样归档，行为不变。"""
+        pcm_a = _sine_pcm(-20.0, seconds=0.01)
+        pcm_b = _sine_pcm(-30.0, seconds=0.01)
+
+        def _data_msgs(Type, TranslateResponse):
+            return [
+                self._volc_msg(Type, TranslateResponse, 654, text='hello',
+                               data=pcm_a),
+                self._volc_msg(Type, TranslateResponse, 654, text=' world',
+                               data=pcm_b),
+            ]
+
+        result, captured = self._run(monkeypatch, _data_msgs)
+        assert 'error' not in result['raw_response']
+        assert captured['pcm'] == pcm_a + pcm_b
+
+    def test_no_data_events_yields_no_archive(self, monkeypatch):
+        """s2t 模式（无音频回传事件）→ output_audio_path 为 None，请求仍成功。"""
+        def _data_msgs(Type, TranslateResponse):
+            return [self._volc_msg(Type, TranslateResponse, 654, text='hello')]
+
+        result, captured = self._run(monkeypatch, _data_msgs)
+        assert 'error' not in result['raw_response']
+        assert result['raw_response']['output_audio_path'] is None
+        assert captured == {}

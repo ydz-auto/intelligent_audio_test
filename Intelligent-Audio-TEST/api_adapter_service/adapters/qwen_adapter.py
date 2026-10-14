@@ -58,6 +58,7 @@ class QwenAdapter(BaseAdapter):
                 input_data,
                 target_lang or self.target_language,
                 task_id=task_id,
+                session_id=session_id,
                 round_number=kwargs.get('round_number', 0),
             ))
             latency = time.time() - start_time
@@ -121,7 +122,8 @@ class QwenAdapter(BaseAdapter):
         await ws.send(json.dumps(event))
 
     async def _translate(self, audio_source, target_language: str,
-                         task_id=None, round_number: int = 0) -> dict:
+                         task_id=None, session_id: str = '',
+                         round_number: int = 0) -> dict:
         """核心翻译逻辑(从 qwen3_livetranslate_client.py 移植)
 
         audio_source: 音频文件路径或音频字节

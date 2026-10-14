@@ -21,7 +21,8 @@ if _proto_dir not in sys.path:
     sys.path.insert(0, _proto_dir)
 
 from api_adapter_service.adapters.audio_input import resolve_audio_bytes
-from api_adapter_service.adapters.audio_output import save_output_audio
+from api_adapter_service.adapters.audio_output import (
+    save_output_audio, strip_wav_container)
 from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.utils.logger import logger
 
@@ -302,9 +303,15 @@ class VolcAstAdapter(BaseAdapter):
                 ev, _sid, _seq, asr_seg, trans_seg, data_bytes, _msg = \
                     self._parse_response(raw)
 
-                # 输出音频收集（INT-300）：data 字段携带翻译后音频分片
+                # 输出音频收集（INT-300）：data 仅在音频回传事件携带（s2s
+                # 模式），文本/状态/用量事件 data 为空。请求声明 target_audio
+                # wav/16k/16bit/mono，响应 data 实际线上形态（裸 PCM 或 WAV
+                # 容器）未经实机确认——逐块剥容器头（非容器原样透传）保证
+                # 归档恒为单头 wav，两种形态下读侧 RMS 均正确。
                 if data_bytes:
-                    output_audio_chunks.append(data_bytes)
+                    pcm_chunk = strip_wav_container(data_bytes)
+                    if pcm_chunk:
+                        output_audio_chunks.append(pcm_chunk)
 
                 # 会话状态判断
                 if ev in (Type.SessionFailed, Type.SessionCanceled):

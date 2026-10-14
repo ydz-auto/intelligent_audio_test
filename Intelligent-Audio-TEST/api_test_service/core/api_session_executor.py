@@ -611,7 +611,13 @@ class APISessionExecutor:
                 continue
             try:
                 from shared.infrastructure.storage import storage
-                pcm_parts.append(storage.load_bytes(ref))
+                # 逐轮剥容器头（INT-300 审计修复）：轮次归档引用指向完整
+                # wav 文件，直接 join 会把各轮 RIFF 头拼进 PCM —— 读侧
+                # wave.readframes 只停在第一个 data chunk，第 2 轮起被静默
+                # 丢弃（实测 RMS 偏差数十 dB）。裸 PCM 引用（Realtime 风格
+                # 归档）经 unwrap 原样透传不受影响。
+                pcm_parts.append(self._spl_service.unwrap_container_pcm(
+                    storage.load_bytes(ref)))
             except Exception:
                 logger.warning("读取 AI 输出音频失败（跳过该轮实测证据）: %s",
                                ref, exc_info=True)
