@@ -65,6 +65,11 @@ class ReevaluationExecutor:
         # 队列统一存 int；归一失败抛 ValueError 由调用方返回明确失败
         task_id = to_int_id('task_id', task_id)
         options = options or {}
+        # INT-302/F2：selected 空集拒绝（与 task_service retry 400 语义对齐）——
+        # 静默退化为全量重评会把"选择用例重评"变成整任务全量重评
+        if (options.get('mode') == REEVALUATE_SCOPE_SELECTED
+                and not [str(c) for c in (options.get('case_ids') or [])]):
+            return False, "选择用例重评估时 case_ids 不能为空"
         with self.reevaluation_lock:
             if task_id == self.running_task_id:
                 return False, "任务正在重新评估中"

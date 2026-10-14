@@ -170,6 +170,7 @@ class TaskQueryService:
                 error_message=c.get('error_message'),
                 group_name=c.get('group_name'),
                 tags=c.get('tags', []),
+                evaluation_dimensions=c.get('evaluation_dimensions', []),
             )
             for c in item.get('cases', [])
         ]

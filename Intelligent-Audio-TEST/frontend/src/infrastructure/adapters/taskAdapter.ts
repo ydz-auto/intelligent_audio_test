@@ -64,6 +64,11 @@ export function toTaskCaseBrief(raw: TaskCaseBriefDto): TaskCaseBrief {
     errorMessage: raw.error_message ?? undefined,
     groupName: raw.group_name ?? undefined,
     tags: raw.tags ?? [],
+    // INT-302/F3：本任务用例聚合的评估维度（snake_case → camelCase）
+    evaluationDimensions: (raw.evaluation_dimensions ?? [])
+      .filter((d): d is { id: number | string; name?: string | null } =>
+        !!d && d.id !== undefined && d.id !== null)
+      .map(d => ({ id: Number(d.id), name: d.name ?? String(d.id) })),
   }
 }
 

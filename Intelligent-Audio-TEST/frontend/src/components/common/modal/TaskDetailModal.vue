@@ -426,6 +426,8 @@ interface ReexecuteSelection {
   mode: 'selected' | 'failed_only' | 'all'
   caseIds: (string | number)[]
   dimensionIds: number[]
+  /** F4：重新提取设备输出（仅重评估；缺省 false 与旧默认一致） */
+  reextractDeviceOutput?: boolean
 }
 
 async function retryTask() {
@@ -459,9 +461,10 @@ async function reevaluateTask() {
     // INT-302 范围 → 既有 reevaluate_type 口径映射（同 useTaskControl.reevaluateTask）：
     // failed_only → 'failed'；selected → 'all' + caseIds；all → 'all' 无 selection。
     // dimensionIds 为空数组 = 维度全选（不过滤）。
+    // F4：重新提取设备输出恢复为模态窗勾选项（默认 false 与旧默认一致）。
     const reevaluateType = selection.mode === 'failed_only' ? 'failed' : 'all';
     const hasSelection = selection.mode === 'selected' || selection.dimensionIds.length > 0;
-    await tasksPort.reevaluate(props.taskId, reevaluateType, false, hasSelection ? {
+    await tasksPort.reevaluate(props.taskId, reevaluateType, selection.reextractDeviceOutput === true, hasSelection ? {
       caseIds: selection.mode === 'selected' ? selection.caseIds : [],
       dimensionIds: selection.dimensionIds,
       mode: selection.mode,

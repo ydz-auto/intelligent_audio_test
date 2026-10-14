@@ -215,11 +215,13 @@ export function useTaskControl(
     }
   };
 
-  // INT-302：重执行/重评估选择模态窗确认载荷（mode/caseIds/dimensionIds）
+  // INT-302：重执行/重评估选择模态窗确认载荷（mode/caseIds/dimensionIds/reextractDeviceOutput）
   interface ReexecuteSelection {
     mode: 'selected' | 'failed_only' | 'all'
     caseIds: (string | number)[]
     dimensionIds: number[]
+    /** F4：重新提取设备输出（仅重评估；缺省 false 与旧默认一致） */
+    reextractDeviceOutput?: boolean
   }
 
   const retryTask = async (taskId: string | number) => {
@@ -262,7 +264,8 @@ export function useTaskControl(
     });
     if (!selection?.mode) return;
 
-    const reextractDeviceOutput = false;
+    // F4：重新提取设备输出恢复为模态窗勾选项（默认 false 与旧默认一致）
+    const reextractDeviceOutput = selection.reextractDeviceOutput === true;
     isControlling.value.add(taskId);
     let pollInterval: any = null;
 

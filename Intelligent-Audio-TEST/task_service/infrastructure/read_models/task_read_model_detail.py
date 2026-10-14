@@ -19,6 +19,36 @@ from task_service.infrastructure.persistence.models import Task, TaskCase
 class TaskDetailReadModelMixin:
     """任务详情读模型 Mixin：详情 DTO 组装 + 设备/API 列表查询。"""
 
+    @staticmethod
+    def extract_case_evaluation_dimensions(config) -> list:
+        """从用例 config 提取评估维度去重列表（INT-302/F3）。
+
+        覆盖整体口径（config.dimensions）与逐轮口径（config.rounds[n].
+        evaluation.dimensions），维度条目形如 {id, name, weight, threshold}；
+        只保留 id/name（重评估维度勾选的展示与过滤所需），按首次出现去重。
+
+        Returns:
+            list[dict]: [{'id': int, 'name': str}]，无维度配置返回空列表
+        """
+        if not isinstance(config, dict):
+            return []
+        seen: dict = {}
+
+        def _collect(entries):
+            for d in entries or []:
+                if isinstance(d, dict) and d.get('id') is not None:
+                    dim_id = d['id']
+                    if dim_id not in seen:
+                        seen[dim_id] = {'id': dim_id, 'name': d.get('name') or str(dim_id)}
+
+        _collect(config.get('dimensions'))
+        for rnd in (config.get('rounds') or []):
+            if isinstance(rnd, dict):
+                ev = rnd.get('evaluation')
+                if isinstance(ev, dict):
+                    _collect(ev.get('dimensions'))
+        return list(seen.values())
+
     def find_by_id_with_relations(self, task_id: int) -> Optional[Dict[str, Any]]:
         """按 ID 查询单个任务，含关联用例/设备/API/标签详情。"""
         from task_service.infrastructure.read_models.task_dual_status_expr import (
@@ -113,6 +143,9 @@ class TaskDetailReadModelMixin:
                 'error_message': tc.error_message,
                 'group_name': group_name_map.get(case_info.group_id) if case_info else None,
                 'tags': [t.name for t in case_info.tags] if case_info and case_info.tags else [],
+                # INT-302/F3：本任务用例聚合的评估维度（重评估维度勾选候选集）
+                'evaluation_dimensions': self.extract_case_evaluation_dimensions(
+                    case_info.config if case_info else None),
             })
 
         # P3 改造：task.devices / task.apis 关系已移除，

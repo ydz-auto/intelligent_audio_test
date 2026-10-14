@@ -44,7 +44,7 @@ export const MODAL_TYPES = {
   CASE_SELECT: 'caseSelect',
   GROUP_MANAGE: 'groupManage',
   TASK_COMPLETE: 'taskComplete',
-  REEVALUATE: 'reevaluate',
+  // INT-302/F4：REEVALUATE 类型选择模态窗由 REEXECUTE_OPTIONS 范围选择取代，常量一并移除
   REEXECUTE_OPTIONS: 'reexecuteOptions',
   BATCH_ALGORITHM_PARAMS: 'batchAlgorithmParams',
   BATCH_SPL: 'batchSPL',

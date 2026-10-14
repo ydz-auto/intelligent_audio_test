@@ -100,6 +100,8 @@ export interface TaskCaseBriefDto {
   error_message?: string | null
   group_name?: string | null
   tags: string[]
+  /** INT-302/F3：本任务用例聚合的评估维度 [{id, name}]（重评估维度勾选候选集） */
+  evaluation_dimensions?: Array<{ id: number | string; name?: string | null } | null> | null
 }
 
 /** 任务详情（TaskDetailData；在列表项字段之上新增 cases） */

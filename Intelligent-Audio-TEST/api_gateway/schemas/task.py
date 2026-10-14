@@ -95,6 +95,8 @@ class TaskCaseBrief(APIModel):
     error_message: Optional[str] = Field(None)
     group_name: Optional[str] = Field(None)
     tags: List[str] = Field(default_factory=list)
+    # INT-302/F3：本任务用例聚合的评估维度 [{id, name}]（重评估维度勾选候选集）
+    evaluation_dimensions: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class TaskDetailData(APIModel):

@@ -31,7 +31,6 @@ vi.mock('@/composables/modal/useModal', () => ({
   MODAL_TYPES: {
     BASIC_CONFIRM: 'basicConfirm',
     REEXECUTE_OPTIONS: 'reexecuteOptions',
-    REEVALUATE: 'reevaluate',
   },
 }))
 
@@ -177,5 +176,18 @@ describe('INT-302 reevaluateTask 按用例+按维度选择', () => {
       dimensionIds: [7],
       mode: 'failed_only',
     })
+  })
+
+  it('F4：勾选"重新提取设备输出"随载荷下发（reevaluate 第三参 true）；缺省 false', async () => {
+    mocks.openModal.mockResolvedValueOnce({
+      mode: 'all', caseIds: [], dimensionIds: [], reextractDeviceOutput: true,
+    })
+    mocks.reevaluate.mockResolvedValueOnce({})
+    const ctl = setup()
+
+    await ctl.reevaluateTask(9)
+    await vi.runAllTimersAsync()
+
+    expect(mocks.reevaluate).toHaveBeenCalledWith(9, 'all', true, undefined)
   })
 })

@@ -43,6 +43,8 @@ export interface TaskCaseBrief {
   errorMessage?: string
   groupName?: string
   tags?: string[]
+  /** INT-302/F3：本任务用例聚合的评估维度（重评估维度勾选候选集） */
+  evaluationDimensions?: Array<{ id: number; name: string }>
 }
 
 /** 用例移除结果（INT-305：执行详情模态窗删除用例；DELETE /tasks/{id}/cases/{caseId}） */

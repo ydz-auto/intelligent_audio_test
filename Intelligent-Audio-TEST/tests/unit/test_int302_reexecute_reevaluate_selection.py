@@ -12,12 +12,14 @@
    - all + 选中维度：按选中集过滤（TRD 保留不清空）；
    - failed + 选中维度：失败集 ∩ 选中集，交集为空跳过；
    - 单轮（_reevaluate_single）同口径；
-   - case_ids 结果集过滤（_run_reevaluation 内联过滤）。
+   - case_ids 结果集过滤（_run_reevaluation 内联过滤）；
+   - F2：submit selected 且空 case_ids → 拒绝（与 retry 400 语义对齐）。
 3. 网关 evaluation_command_service.reevaluate_task_results：
    camelCase caseIds/dimensionIds 解析 + options 透传 ACL；
    选中用例时 queued 按选中数计（非任务全量）。
 4. 网关 TaskLifecycleService.retry：body case_ids/mode 透传 ACL；
    缺省 body 不带 options（整任务语义零改动）。
+5. F3：任务详情读模型按用例聚合评估维度（extract_case_evaluation_dimensions）。
 """
 import os
 from types import SimpleNamespace
@@ -230,6 +232,42 @@ class TestFindRetryCasesScoped:
         assert RetryScopeMode.SELECTED.value == 'selected'
 
 
+class TestTaskDetailEvaluationDimensions:
+    """INT-302/F3：任务详情读模型按用例聚合评估维度（重评估维度候选集）"""
+
+    def test_extract_dedupes_overall_and_round_dims(self):
+        """整体口径 + 逐轮口径聚合去重，保留首次出现的 id/name"""
+        from task_service.infrastructure.read_models.task_read_model_detail import (
+            TaskDetailReadModelMixin,
+        )
+        config = {
+            'dimensions': [{'id': 7, 'name': 'WER', 'weight': 1}, {'id': 8, 'name': 'CER'}],
+            'rounds': [
+                {'evaluation': {'dimensions': [{'id': 7, 'name': 'WER'}, {'id': 9, 'name': '时延'}]}},
+                {'evaluation': {'dimensions': [{'id': 8, 'name': 'CER'}]}},
+                {'evaluation': {'enabled': False, 'dimensions': [{'id': 99, 'name': '仅配置'}]}},
+            ],
+        }
+        dims = TaskDetailReadModelMixin.extract_case_evaluation_dimensions(config)
+        assert dims == [
+            {'id': 7, 'name': 'WER'},
+            {'id': 8, 'name': 'CER'},
+            {'id': 9, 'name': '时延'},
+            {'id': 99, 'name': '仅配置'},
+        ]
+
+    def test_extract_handles_missing_or_malformed_config(self):
+        """缺省/畸形 config 与缺 name 条目的防御（id-only 回退字符串化）"""
+        from task_service.infrastructure.read_models.task_read_model_detail import (
+            TaskDetailReadModelMixin,
+        )
+        assert TaskDetailReadModelMixin.extract_case_evaluation_dimensions(None) == []
+        assert TaskDetailReadModelMixin.extract_case_evaluation_dimensions({}) == []
+        assert TaskDetailReadModelMixin.extract_case_evaluation_dimensions({'rounds': 'bogus'}) == []
+        assert TaskDetailReadModelMixin.extract_case_evaluation_dimensions(
+            {'dimensions': [{'name': '无id'}, 'junk', {'id': 7}]}) == [{'id': 7, 'name': '7'}]
+
+
 # ==================== 2. evaluation_service 维度过滤 ====================
 
 @pytest.fixture
@@ -365,6 +403,20 @@ class TestReevaluateDimensionSelection:
             'case_ids': ['c1', 'c2'], 'dimension_ids': [7], 'mode': 'selected'}
         assert ex.reevaluation_queue[1]['options'] == {
             'case_ids': [], 'dimension_ids': [], 'mode': 'all'}
+
+    def test_submit_selected_empty_case_ids_rejected(self):
+        """F2：selected 且空 case_ids → 拒绝（不入队、不动任务状态，与 retry 400 对齐）"""
+        ex = ReevaluationExecutor()
+        with patch.object(reexec_module.task_acl_repository, 'update_task_status',
+                          MagicMock()) as upd_status, \
+             patch.object(ex, '_cancel_previous_evaluations'), \
+             patch.object(ex, '_check_queue'):
+            ok, message = ex.submit(1, reextract_device_output=False, reevaluate_type='all',
+                                    options={'case_ids': [], 'dimension_ids': [], 'mode': 'selected'})
+        assert ok is False
+        assert 'case_ids 不能为空' in message
+        assert ex.reevaluation_queue == []
+        upd_status.assert_not_called()
 
     def test_run_reevaluation_filters_results_by_case_ids(self):
         """_run_reevaluation：case_ids 过滤结果集（仅选中用例进入重评）"""

@@ -141,7 +141,6 @@ import TaskDetailModal from './TaskDetailModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
 import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
 import AudioSelectModal from '../audio/AudioSelectModal.vue'
-import ReevaluateSelectModal from './ReevaluateSelectModal.vue'
 
 const notification = useNotification()
 
@@ -290,7 +289,6 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.GLOBAL_PLAYBACK_DEVICE]: GlobalPlaybackDeviceModal,
     [MODAL_TYPES.AUDIO_PLAYER]: AudioPlayerModal,
     [MODAL_TYPES.AUDIO_SELECT]: AudioSelectModal,
-    [MODAL_TYPES.REEVALUATE]: ReevaluateSelectModal,
     [MODAL_TYPES.BATCH_ALGORITHM_PARAMS]: BatchAlgorithmParamsModal,
     [MODAL_TYPES.BATCH_SPL]: BatchSPLModal,
     [MODAL_TYPES.BATCH_PLAYBACK_DEVICE]: BatchPlaybackDeviceModal,

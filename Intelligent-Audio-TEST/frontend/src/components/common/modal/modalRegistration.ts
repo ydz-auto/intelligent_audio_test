@@ -36,7 +36,8 @@ import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
 import AudioSelectModal from '../audio/AudioSelectModal.vue'
 import TaskTypeModal from './TaskTypeModal.vue'
 import TaskDetailModal from './TaskDetailModal.vue'
-import ReevaluateSelectModal from './ReevaluateSelectModal.vue'
+// INT-302/F4：ReevaluateSelectModal（旧重评估类型选择）由 ReexecuteOptionsModal
+// 范围选择取代（含"重新提取设备输出"勾选恢复），死注册与死组件一并清理
 import ReexecuteOptionsModal from './ReexecuteOptionsModal.vue'
 
 export function registerGlobalModals() {
@@ -203,13 +204,6 @@ export function registerGlobalModals() {
       confirmText: '确定',
       cancelText: '取消',
       danger: false
-    }
-  });
-
-  manager.registerModal(MODAL_TYPES.REEVALUATE, {
-    component: ReevaluateSelectModal,
-    defaultConfig: {
-      content: '请选择重新评估类型'
     }
   });
 
