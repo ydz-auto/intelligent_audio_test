@@ -1,6 +1,6 @@
 # 整站 UX 重设计功能设计文档
 
-> 版本：V9.7.31 v1.0（2026-10-14）｜负责人口头需求落文档初始稿
+> 版本：V9.7.31 v1.1（2026-10-14）｜负责人口头需求落文档初始稿
 
 ## 1. 需求来源
 
@@ -22,6 +22,7 @@
    - 深色近黑（该站暗色底）：`#0a0a0a / #0b0b0b / #191715 / #13110f`
 3. 设计规范落 doc/ 时附「newAPI 页面 → 本平台页面」映射表（首页/控制台/系统设置/关于/文档 → 本平台对应页）。
 4. **参照源码（负责人 2026-10-14 提供并克隆）**：`D:\00_code\new_api_xagents`（github ydz-auto/new-api fork）——主题预设 CSS 在 `web/src/styles/theme-presets.css`（lake-view 等预设，§1.2 实测色值即出自此）、主题定制逻辑在 `web/src/lib/theme-customization.ts`，页面布局/导航/控制台/系统设置/首页/关于/文档在 `web/src/routes|features|components`。**UX 设计 agent 直接读该仓库取材**，不依赖线上站点猜测。
+5. **技术栈（负责人 2026-10-14 追加裁定）**：直接在 V9.7.31 仓库开设计分支（独立 checkout `D:\00_code\V9.7.31\Intelligent-Audio-UX`，分支 `design/ux-redesign`）；**新前端用 React 重写、仍按 DDD 四层分层**；其余技术栈与 newAPI 前端一致——实测 `web/package.json`：React 19 + TypeScript + Rsbuild + Tailwind CSS 4 + shadcn 风格组件（@base-ui/react）+ TanStack Router/Query/Table + Zustand + react-hook-form/zod + next-themes + 字体 Public Sans/Lora + lucide 图标 + sonner/vaul + vitest。
 
 ## 2. 目标与基准
 
@@ -32,13 +33,14 @@
 
 - 全站页面：登录/注册、任务列表与详情、用例管理、设备管理、报告、正式任务、算法配置、系统设置等。
 - 视觉风格、布局、导航信息架构、组件样式、交互细节。
+- **实施形态（2026-10-14 裁定）**：设计分支上以 React 重写新前端（分支 design/ux-redesign，独立 checkout）；现 Vue 前端在主分支保留，切换时机负责人拍板。
 - 页面文案中文（负责人同日口径：站内不出现 "Cherry-Pick" 等英文字样，见 任务结果CherryPick挑选合并功能设计文档.md §9）。
 
 ## 4. 约束
 
 - 只改交互与视觉，**不改功能口径**：功能行为一律以各域设计文档为准。
-- 前端 DDD 四层不受影响（只动 views/components/样式层，不动 Domain/Infrastructure 契约）。
-- 分批交付：按页面域分批，不阻塞功能开发主线；与在办前端卡注意工作区冲突（同 agent 单线程纪律）。
+- **新前端仍按 DDD 四层分层**（domain/application/infrastructure/interfaces，组件树在 interfaces 层），与后端接口契约不变。
+- **工作区隔离**：重设计在独立 checkout（分支 design/ux-redesign）进行，主库 checkout（design/deepseek-harness-migration）不动；分批交付不阻塞功能开发主线。
 
 ## 5. 流程
 
@@ -61,3 +63,4 @@ UX 设计 agent 产出设计规范（配色/布局/组件/导航信息架构，�
 | 版本 | 日期 | 说明 |
 | --- | --- | --- |
 | v1.0 | 2026-10-14 | 初始稿：负责人口头需求落文档 |
+| v1.1 | 2026-10-14 | 负责人裁定：直接在 V9.7.31 仓库开设计分支（独立 checkout，分支 design/ux-redesign）；新前端 React 重写、保留 DDD 四层；其余技术栈对齐 newAPI 前端（web/package.json 实测：React 19/TS/Rsbuild/Tailwind 4/shadcn 风格/TanStack/Zustand/Public Sans+Lora） |
