@@ -258,9 +258,9 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
         form_fields, files = self._extract_files_from_payload(create_task_payload, audio_field_names=audio_field_names)
         if files:
-            create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id)
+            create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id, test_case_id=test_case_id)
         else:
-            create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
+            create_response = self.create_task(selected_url, create_task_payload, task_id=task_id, test_case_id=test_case_id)
 
         self._log(
             level='DEBUG',

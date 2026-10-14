@@ -110,7 +110,9 @@ class E2EDeviceManager:
             try:
                 future.result(timeout=60)
             except Exception as e:
-                self._log(level='ERROR', content=f"设备初始化超时或失败: {e}", task_id=task_id, test_case_id=test_case_id)
+                # VEGA-10: 超时仅放弃等待，池内任务仍在运行且驱动为单例——
+                # 滞留任务由驱动侧用例纪元校验兜底拦截跨用例落盘
+                self._log(level='ERROR', content=f"设备初始化超时或失败(任务被放弃但可能仍在池内运行): {e}", task_id=task_id, test_case_id=test_case_id)
 
         failed = [r for r in results if not r['success']]
         if failed:
@@ -148,7 +150,9 @@ class E2EDeviceManager:
                 future.result(timeout=60)
             except Exception as e:
                 success = False
-                self._log(level='ERROR', content=f"设备预处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
+                # VEGA-10: 超时仅放弃等待，池内任务仍在运行且驱动为单例——
+                # 滞留任务由驱动侧用例纪元校验兜底拦截跨用例落盘
+                self._log(level='ERROR', content=f"设备预处理失败(任务被放弃但可能仍在池内运行): {e}", task_id=task_id, test_case_id=test_case_id)
         return success
 
     def post_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
@@ -176,7 +180,9 @@ class E2EDeviceManager:
                 future.result(timeout=300)
             except Exception as e:
                 success = False
-                self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
+                # VEGA-10: 超时仅放弃等待，池内任务仍在运行且驱动为单例——
+                # 滞留任务由驱动侧用例纪元校验兜底拦截跨用例落盘
+                self._log(level='ERROR', content=f"设备后处理失败(任务被放弃但可能仍在池内运行): {e}", task_id=task_id, test_case_id=test_case_id)
         return success
 
     def teardown_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
@@ -206,7 +212,9 @@ class E2EDeviceManager:
                 future.result(timeout=60)
             except Exception as e:
                 success = False
-                self._log(level='ERROR', content=f"设备 teardown 失败: {e}", task_id=task_id, test_case_id=test_case_id)
+                # VEGA-10: teardown 被放弃后若在下个用例期间才执行，其录屏兜底拉取
+                # 由驱动侧文件名一致性+用例纪元双重校验拦截，不会污染新/旧用例路径
+                self._log(level='ERROR', content=f"设备 teardown 失败(任务被放弃但可能仍在池内运行): {e}", task_id=task_id, test_case_id=test_case_id)
         return success
 
     def play_prompt_audio(self, device_info_list, task_id, device_index, playback_dev, main_gain):

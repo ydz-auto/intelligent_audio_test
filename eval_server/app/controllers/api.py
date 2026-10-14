@@ -149,23 +149,37 @@ def _get_calc_pool():
     return _calc_pool
 
 
-def _storage_id(*candidates):
-    """Build a safe filesystem segment from the first usable task ID."""
-    for candidate in candidates:
+def _storage_id(task_id=None, case_id=None, fallback=None):
+    """生成上传文件存储的相对路径，按 任务id/用例id 组织（uploads/<task_id>/<case_id>/）。
+
+    同一任务不同用例的录音不再全部落共享目录；用例 id 缺失时回退到 uploads/<task_id>/。
+    所有候选值均做路径安全校验，非法时逐级回退到随机段。
+    """
+    def _seg(candidate):
         if candidate in (None, ''):
-            continue
+            return None
         value = str(candidate).strip()
         if not value or value in ('.', '..') or any(sep in value for sep in ('/', '\\')):
-            continue
-        return secure_filename(value) or f'task_{uuid.uuid4().hex}'
-    return f'task_{uuid.uuid4().hex}'
+            return None
+        return secure_filename(value) or None
+
+    task_seg = _seg(task_id)
+    if task_seg:
+        case_seg = _seg(case_id)
+        if case_seg:
+            return os.path.join(task_seg, case_seg)
+        return task_seg
+    # 无有效 task_id：直接用 fallback（如 eval_task_id），仍无效则随机段
+    fallback_seg = _seg(fallback) or f'task_{uuid.uuid4().hex}'
+    return fallback_seg
 
 
-def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=None, eval_task_id=None):
+def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=None, caller_test_case_id=None, eval_task_id=None):
     """
     验证任务参数并分发到本地或远程处理。
     被 create_task 和 create_task_upload 共用。
     caller_task_id 为调用方的任务 ID（可选）。
+    caller_test_case_id 为调用方的用例 ID（可选）。
     eval_task_id 可由调用方预先生成（如 create_task_upload 需要先存文件）。
     """
     # 支持的任务类型与 calculators 注册表保持一致（app/services/calculators/__init__.py），
@@ -268,7 +282,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 task_type=task_type,
                 task_params=task_params,
                 endpoints=endpoints,
-                caller_task_id=caller_task_id
+                caller_task_id=caller_task_id,
+                caller_test_case_id=caller_test_case_id
             )
             base_url = request.host_url.rstrip('/')
             return success_response({
@@ -287,7 +302,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         from ..utils.oss_client import resolve_oss_paths
         task_params = resolve_oss_paths(
             task_params,
-            local_dir=os.path.join(config.UPLOAD_DIR, _storage_id(caller_task_id, eval_task_id)),
+            local_dir=os.path.join(config.UPLOAD_DIR, _storage_id(caller_task_id, caller_test_case_id, eval_task_id)),
         )
 
         # 并发控制：全局并发位（LocalConcurrencyManager）与维度并发位（ConcurrencyManager）
@@ -312,11 +327,12 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 task_params=task_params,
                 endpoints=None,
                 endpoint_url=None,
-                task_id=caller_task_id
+                task_id=caller_task_id,
+                test_case_id=caller_test_case_id
             )
             logger.info(
                 f"[queue] 评估{reason}已满，任务进入排队: "
-                f"eval_task_id={eval_task_id}, task_type={task_type}, caller_task_id={caller_task_id}"
+                f"eval_task_id={eval_task_id}, task_type={task_type}, caller_task_id={caller_task_id}, caller_test_case_id={caller_test_case_id}"
             )
             base_url = request.host_url.rstrip('/')
             return success_response({
@@ -336,7 +352,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 task_params=task_params,
                 endpoints=None,
                 endpoint_url=None,
-                task_id=caller_task_id
+                task_id=caller_task_id,
+                test_case_id=caller_test_case_id
             )
             TaskModel.update_task_status(eval_task_id, 'processing', started_at=datetime.now().isoformat())
         except Exception:
@@ -469,9 +486,10 @@ def create_task():
     task_type = data.get('task_type', 'wer')
     endpoints = data.get('endpoints')
     caller_task_id = data.pop('task_id', None)
-    task_params = {k: v for k, v in data.items() if k not in ['task_type', 'endpoints', 'task_id']}
+    caller_test_case_id = data.pop('test_case_id', None)
+    task_params = {k: v for k, v in data.items() if k not in ['task_type', 'endpoints', 'task_id', 'test_case_id']}
 
-    return _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=caller_task_id)
+    return _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=caller_task_id, caller_test_case_id=caller_test_case_id)
 
 
 @api_bp.route('/create_task_upload', methods=['POST'])
@@ -487,10 +505,14 @@ def create_task_upload():
     """
     task_type = request.form.get('task_type', 'wer')
     caller_task_id = request.form.get('task_id')
+    caller_test_case_id = request.form.get('test_case_id')
     eval_task_id = f"task_{uuid.uuid4().hex}"
-    storage_id = _storage_id(caller_task_id, eval_task_id)
+    storage_id = _storage_id(caller_task_id, caller_test_case_id, eval_task_id)
     upload_dir = os.path.join(config.UPLOAD_DIR, storage_id)
     os.makedirs(upload_dir, exist_ok=True)
+    # 共享目录（未按用例 id 分目录，storage_id 无层级分隔）下不同用例的同名录音会
+    # 互相覆盖（"串音"根因）；分目录（uploads/<task_id>/<case_id>/）已隔离无需前缀
+    shared_storage = os.sep not in storage_id
 
     # 解析 endpoints（JSON 字符串）
     endpoints = None
@@ -501,10 +523,10 @@ def create_task_upload():
         except json.JSONDecodeError:
             return error_response("Invalid endpoints JSON format", code=CODE_VALIDATION_ERROR)
 
-    # 构建 task_params：从 form 字段中提取（排除 task_type、endpoints 和 task_id）
+    # 构建 task_params：从 form 字段中提取（排除 task_type、endpoints、task_id 和 test_case_id）
     task_params = {}
     for key in request.form:
-        if key not in ('task_type', 'endpoints', 'task_id'):
+        if key not in ('task_type', 'endpoints', 'task_id', 'test_case_id'):
             task_params[key] = request.form[key]
 
     # 处理文件字段
@@ -525,6 +547,10 @@ def create_task_upload():
             task_params[field_name] = content
         else:
             # 二进制文件：保存到上传子目录，使用文件路径
+            # 共享目录下加 12 位随机前缀防同名覆盖（设备音频槽位号每批次从头计数，
+            # 不同用例会产出完全同名的录音，如 r1_100016_..._client_in.wav）
+            if shared_storage:
+                filename = f"{uuid.uuid4().hex[:12]}_{filename}"
             file_path = os.path.join(upload_dir, filename)
             file_storage.save(file_path)
             task_params[field_name] = file_path
@@ -580,7 +606,7 @@ def create_task_upload():
                 if val is not None and val != '' and not task_params.get(fld):
                     task_params[fld] = val
 
-    return _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=caller_task_id, eval_task_id=eval_task_id)
+    return _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=caller_task_id, caller_test_case_id=caller_test_case_id, eval_task_id=eval_task_id)
 
 @api_bp.route('/status', methods=['GET'])
 def get_status_info():
@@ -643,6 +669,7 @@ def get_status(eval_task_id):
     return success_response({
         "eval_task_id": task['eval_task_id'],
         "task_id": task.get('task_id'),
+        "test_case_id": task.get('test_case_id'),
         "status": task['status'],
         "task_type": task['task_type'],
         "created_at": task['created_at'],
@@ -686,6 +713,7 @@ def get_final_result(eval_task_id):
     return success_response({
         "eval_task_id": task['eval_task_id'],
         "task_id": task.get('task_id'),
+        "test_case_id": task.get('test_case_id'),
         "status": task['status'],
         "result": result,
         "task_type": task['task_type'],

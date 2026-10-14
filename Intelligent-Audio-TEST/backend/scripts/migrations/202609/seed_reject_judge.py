@@ -2,6 +2,9 @@
 """
 拒识裁判 v2 维度种子数据（2 级层级：3 个主维度 + 9 个子维度）
 
+> 数据以数据库为金标对齐（2026-10-13）：维度/参数/映射/api_settings 均与
+> intelligent_audio_test 库真实状态逐字段核对一致（含 pass_threshold 浮点字面量）。
+
 层级结构：
   拒识成功数量 (main)
     ├── 静默时拒识恢复行为数量 (sub)
@@ -221,7 +224,7 @@ def _build_main_dim(name, field, help):
         (field, name, name,
          'number', 'output',
          field, 'numerator', 'main', True,
-         False, '0', help, 60, 1),
+         False, '0', help, 60, 1.0),
     ]
     # 拒识总轮次（is_reject=true 的轮次总数），多轮聚合由 eval_server 统计返回，作占比分母
     total_rounds_aux = [
@@ -278,7 +281,7 @@ def _build_sub_dim(name, field, help, ui_order, parent_field, parent_name):
             (field, name, name,
              'number', 'output',
              field, 'numerator', 'main', True,
-             False, '0', help, ui_order, 1),
+             False, '0', help, ui_order, 1.0),
             (parent_field, f'{parent_name}(主维度总数)', f'{parent_name}(主维度总数)',
              'number', 'output',
              parent_field, 'denominator', 'aux', True,

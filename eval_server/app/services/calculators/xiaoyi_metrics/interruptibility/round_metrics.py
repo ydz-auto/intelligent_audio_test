@@ -16,6 +16,7 @@
   - 恢复轮不入数量分母；停止指令遵循仅停止类用例计算，否则 None
 """
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
@@ -257,6 +258,63 @@ def _driver_window_overlap(rd: Dict[str, Any],
         if ov_e - ov_s > best_ov:
             best, best_ov = seg, ov_e - ov_s
     return (best['start'], best['end']) if best else None
+
+
+# 脚本台词说话人前缀（"用户1：" / "用户："），文本匹配锚定前剥离
+_SPEAKER_PREFIX_RE = re.compile(r'^\s*用户\d*\s*[:：]\s*')
+
+
+def _anchor_norm_text(text: str) -> str:
+    """文本匹配锚定归一化：剥说话人前缀 + 复用 input_asr 的归一化（小写/去标点/压空白）。"""
+    from ..turn_taking.input_asr import _normalize_text
+    return _normalize_text(_SPEAKER_PREFIX_RE.sub('', str(text or '')))
+
+
+def locate_text_window(query_text, user_segments,
+                       after: Optional[float] = None) -> Optional[Tuple[float, float, float]]:
+    """文本匹配锚定回退（VEGA-8）：轮脚本台词 ↔ 全局 ASR 用户段模糊匹配 → (u_s, u_e, sim)。
+
+    FFT（含 NCC 假锁定防护）与驱动窗口都失败、但 ASR 已转出该轮用户台词时，
+    按文本相似度直接定位轮窗口，避免轮块为空 → LLM 按「模型无语音输出=静默」
+    规则被迫把有回应的轮误判为静默。
+
+    - 支持 ASR 把一句台词切成多段：单段及 ≤3 连续段拼接都参与匹配，窗口取首段
+      start 至末段 end；
+    - after（秒）：单调时间约束，窗口起点不得早于 after - 容差，防止相似台词
+      错锚到更早轮次的话语上；
+    - 相似度 ≥ TEXT_ANCHOR_SIMILARITY_THRESHOLD 才命中；多个命中取相似度最高
+      （同分取时间最早），全部落空返回 None（保持 anchor='none' 降级）。
+    """
+    import difflib
+
+    from ..shared.constants import (
+        TEXT_ANCHOR_MONOTONIC_TOLERANCE_S, TEXT_ANCHOR_SIMILARITY_THRESHOLD,
+    )
+
+    q = _anchor_norm_text(query_text)
+    if not q or not user_segments:
+        return None
+    segs = [(s, _anchor_norm_text(s.get('text')))
+            for s in user_segments
+            if isinstance(s, dict) and s.get('start') is not None and s.get('end') is not None]
+    best = None  # (sim, u_s, u_e)；迭代按时间序，同分先命中者（更早）胜出
+    for i, (s_i, _) in enumerate(segs):
+        u_s = s_i['start']
+        if after is not None and u_s < after - TEXT_ANCHOR_MONOTONIC_TOLERANCE_S:
+            continue  # 单调约束：早于上一轮锚点末端（含容差）的段不候选
+        acc = ''
+        for j in range(i, min(i + 3, len(segs))):
+            acc += segs[j][1]
+            if not acc:
+                continue
+            sim = difflib.SequenceMatcher(None, q, acc).ratio()
+            if sim >= TEXT_ANCHOR_SIMILARITY_THRESHOLD and (best is None or sim > best[0]):
+                best = (sim, u_s, segs[j][0]['end'])
+    if best is None:
+        return None
+    logger.info(f"[round_metrics] 文本匹配锚定命中: sim={best[0]:.2f} "
+                f"窗口=({best[1]:.2f}s, {best[2]:.2f}s)")
+    return best[1], best[2], best[0]
 
 
 def locate_fft_window(played_audios, user_wav) -> Optional[Tuple[float, float, float]]:

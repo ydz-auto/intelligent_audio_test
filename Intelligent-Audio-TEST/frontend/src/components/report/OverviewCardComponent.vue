@@ -325,23 +325,12 @@ const tableData = computed(() => {
   return rows
 })
 
-const metricDecimalPlacesMap = computed(() => {
-  const map = {}
-  const list = Array.isArray(actualAllMetrics.value) ? actualAllMetrics.value : []
-  list.forEach(m => {
-    if (!m || !m.name) return
-    const dp = m.decimalPlaces ?? m.decimal_places
-    if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
-  })
-  return map
-})
-
+// 聚合展示精度由聚合代码（后端 round 2 位）决定，统一保留 2 位小数；
+// 不再读取维度 decimal_places，decimal_places 仅用于具体用例卡片（TestCaseReportDetail）。
 const formatMetricValue = (metricName, value) => {
   if (value === '-' || value === null || value === undefined) return '-'
   const num = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(num)) return String(value)
-  const dp = metricDecimalPlacesMap.value?.[String(metricName)]
-  if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp)
   return String(num.toFixed(2))
 }
 

@@ -2,7 +2,7 @@
 """逐轮模型回复质量评分。
 
 仅当该轮分类为"接管"时才进行回复质量评分；
-"未接管"和"误解管"时评分为 null。
+"未接管"和"误接管"时评分为 null。
 
 LLM 参数体系与 false_takeover 共用同一套 config.LLM_JUDGE，
 dimension 为 'reply_quality'，可通过 .env 中 LLM_JUDGE_MODEL_REPLY_QUALITY 单独指定模型。
@@ -87,17 +87,17 @@ def evaluate_reply_quality_per_turn(
     """对单轮模型回复质量进行 LLM 评分。
 
     仅当 classification == '接管' 时才调 LLM 评分；
-    '未接管' 和 '误解管' 直接返回 null。
+    '未接管' 和 '误接管' 直接返回 null。
 
     Args:
         user_chunks: 该轮用户侧 ASR chunks
         ai_chunks: 该轮模型侧 ASR chunks
-        classification: 该轮的三分类结果（'接管' / '未接管' / '误解管'）
+        classification: 该轮的三分类结果（'接管' / '未接管' / '误接管'）
         task_params: 读取 llm_model 配置
 
     Returns:
         dict: {
-            'score': int|None,      1-5 分，未接管/误解管时为 None
+            'score': int|None,      1-5 分，未接管/误接管时为 None
             'reason': str,           评分理由
             'analysis': dict,        准确性/完整性/流畅性分析
             'user_text': str,        用户文本

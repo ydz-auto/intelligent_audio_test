@@ -65,7 +65,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         return resp_data
 
-    def create_task(self, url, payload, timeout=300, task_id=None):
+    def create_task(self, url, payload, timeout=300, task_id=None, test_case_id=None):
         """
         创建WER/SER计算任务
         """
@@ -73,6 +73,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         create_task_url = f"{url}/api/create_task"
         if task_id:
             payload = {**payload, 'task_id': task_id}
+        if test_case_id:
+            payload = {**payload, 'test_case_id': test_case_id}
         return self.make_api_request(create_task_url, 'POST', headers, payload, timeout)
 
     def _extract_files_from_payload(self, payload, audio_field_names=None):
@@ -197,7 +199,11 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
     @classmethod
     def _extract_single_file(cls, field_name, value, files, form_fields_fallback=None, fallback_key=None, fallback_value=None):
-        """提取单个文件到 files 字典。成功返回 True，失败时回退到 form_fields。"""
+        """提取单个文件到 files 字典。成功返回 True，失败时回退到 form_fields。
+
+        上传文件名唯一化由 eval_server 落盘时负责（共享目录下加随机前缀），
+        这里始终保留原始可读文件名。
+        """
         try:
             if isinstance(value, str) and value.startswith('data:') and ',' in value:
                 header, data = value.split(',', 1)
@@ -311,7 +317,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         return None
 
-    def create_task_upload(self, url, form_fields, files, timeout=300, task_id=None):
+    def create_task_upload(self, url, form_fields, files, timeout=300, task_id=None, test_case_id=None):
         """
         通过 multipart/form-data 创建评估任务（支持文件上传）
         """
@@ -319,6 +325,8 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         if task_id:
             form_fields['task_id'] = task_id
+        if test_case_id:
+            form_fields['test_case_id'] = test_case_id
 
         multipart_files = {}
         for field_name, (filename, file_bytes, content_type) in files.items():

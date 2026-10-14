@@ -31,7 +31,7 @@ PAUSE_MAX_GAP = 3.0  # pause 区间最大间隙(秒)
 
 # ─────────── 轮次切分阈值 ───────────
 TURN_SPLIT_PRE_GAP_S = 1.5   # 预切用户语音段聚类间隙(秒)
-TURN_SPLIT_MAX_GAP_S = 6.0   # 无 AI 回复时用户段间最大间隙(秒)，超过则判为不同轮次
+TURN_SPLIT_MAX_GAP_S = 4.0   # 用户段间最大间隙(秒)，超过则判为不同轮次（轮次边界只由用户停顿决定）
 
 YIELD_GRACE_S = 0.5  # 让出宽限(秒)
 EPS_S = 1e-6          # 浮点容差(秒)
@@ -49,6 +49,13 @@ TIMELINE_MAX_ITEMS_PAUSES = 20  # LLM prompt 中 pause 时间线最大展示条�
 
 # ─────────── 相似度阈值 ───────────
 INPUT_ASR_SIMILARITY_THRESHOLD = 0.8  # 输入识别准确率匹配阈值
+# 文本匹配锚定阈值（VEGA-8）：FFT/驱动窗口都失败时，用轮脚本台词与 ASR 用户段
+# 文本相似度回退锚定轮窗口。实测误判轮(录音含该轮台词) sim≥0.57、串音轮(录音为
+# 其他用例对话) sim≤0.33，取 0.5 留双侧余量；低于 INPUT_ASR 阈值因 ASR 转写
+# 误差大于设备端识别文本。
+TEXT_ANCHOR_SIMILARITY_THRESHOLD = 0.5
+# 文本匹配锚定单调容差(秒)：本轮窗口起点允许早于上一轮锚点末端的最大量
+TEXT_ANCHOR_MONOTONIC_TOLERANCE_S = 1.0
 
 # ─────────── 文件扩展名 ───────────
 AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.aac', '.ogg', '.opus', '.m4a'}

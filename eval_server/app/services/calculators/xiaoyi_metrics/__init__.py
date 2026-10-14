@@ -10,7 +10,7 @@ XiaoyiMetricsCalculator 是小艺评估所有域的唯一编排入口：
     xiaoyi_metrics（本编排器）
     ├── turn_taking/      TurnTakingCalculator（tor / false_takeover / takeover_latency）
     │                     HighFreqTurnTakingCalculator / HighFreqLlmJudgeCalculator
-    ├── turn_eval/        TurnEvalCalculator（逐轮三分类：误解管 / 接管 / 未接管 + 接管时延 + 回复质量）
+    ├── turn_eval/        TurnEvalCalculator（逐轮三分类：误接管 / 接管 / 未接管 + 接管时延 + 回复质量）
     ├── interruptibility/ InterruptionMetricsCalculator
     └── rejection_scene_awareness/ NonInteractiveLatencyCalculator
 """

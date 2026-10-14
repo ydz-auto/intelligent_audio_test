@@ -64,8 +64,8 @@ _CATEGORY_TASK_CODES = ('turn_eval', 'turn_evaluation')
 MAIN_DIMENSION = {
     'task_type_code': 'turn_eval',
     'name': '逐轮话轮评估',
-    'keywords': 'turn_eval,逐轮,三分类,误解管,接管,未接管,turn_evaluation,接管时延,回复质量',
-    'description': '逐轮话轮评估主维度：调双路 ASR（user_wav + ai_wav）一次，切分轮次后逐轮三分类（误解管/接管/未接管），仅对"接管"轮计算接管时延和回复质量。主维度只配 input 和映射，不配 output。',
+    'keywords': 'turn_eval,逐轮,三分类,误接管,接管,未接管,turn_evaluation,接管时延,回复质量',
+    'description': '逐轮话轮评估主维度：调双路 ASR（user_wav + ai_wav）一次，切分轮次后逐轮三分类（误接管/接管/未接管），仅对"接管"轮计算接管时延和回复质量。主维度只配 input 和映射，不配 output。',
     'type': 'auto',
     'result_type': 0,
     'result_min': 0.0,
@@ -123,8 +123,8 @@ SUB_DIMENSIONS = [
     {
         'task_type_code': 'turn_evaluation',  # 子维度独立类型，平台提取后注入 sub_tasks
         'name': '逐轮三分类评估',
-        'keywords': 'turn_evaluation,三分类,误解管,接管,未接管,接管时延,回复质量',
-        'description': '子维度：逐轮三分类（误解管/接管/未接管）+ 接管时延 + 回复质量。output field_path 映射 turn_eval JSON 响应各字段。',
+        'keywords': 'turn_evaluation,三分类,误接管,接管,未接管,接管时延,回复质量',
+        'description': '子维度：逐轮三分类（误接管/接管/未接管）+ 接管时延 + 回复质量。output field_path 映射 turn_eval JSON 响应各字段。',
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
@@ -136,14 +136,14 @@ SUB_DIMENSIONS = [
         'statistic_method': 'pass_rate',
         'agg_denominator': 'round',
         'params': [
-            # ─── 主评分：误解管数（pass when 0，即无误解管时通过）───
-            ('false_takeover_count', '误解管数', '误解管数', 'number', 'output',
+            # ─── 主评分：误接管数（pass when 0，即无误接管时通过）───
+            ('false_takeover_count', '误接管数', '误接管数', 'number', 'output',
              'turn_classification.false_takeover_count', 'pass_eq', 'main', True,
-             False, None, '误解管轮次数（0=无误解管=通过）', 10, 0),
+             False, None, '误接管轮次数（0=无误接管=通过）', 10, 0),
             # ─── 三分类汇总 ───
             ('tc_summary', '三分类汇总', '三分类汇总', 'text', 'output',
              'turn_classification.summary', None, 'aux', True,
-             False, None, '三分类自然语言汇总（如：正常接管N，未接管M，误解管K）', 11),
+             False, None, '三分类自然语言汇总（如：正常接管N，未接管M，误接管K）', 11),
             ('normal_takeover_count', '正常接管数', '正常接管数', 'number', 'output',
              'turn_classification.normal_takeover_count', None, 'aux', True,
              False, None, '正常接管轮次数', 12),
@@ -239,8 +239,8 @@ SUB_DIMENSIONS = [
     {
         'task_type_code': 'turn_evaluation',
         'name': '误接管率占比',
-        'keywords': 'turn_evaluation,误接管率,false_takeover_rate,误解管占比',
-        'description': '子维度：误接管率占比 = Σ误解管轮次 / Σ总轮次（ratio 加权聚合，产出 %）。',
+        'keywords': 'turn_evaluation,误接管率,false_takeover_rate,误接管占比',
+        'description': '子维度：误接管率占比 = Σ误接管轮次 / Σ总轮次（ratio 加权聚合，产出 %）。',
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
@@ -255,9 +255,9 @@ SUB_DIMENSIONS = [
             ('false_takeover_rate', '误接管率占比', '误接管率占比', 'number', 'output',
              'turn_classification.false_takeover_rate', 'main', 'main', True,
              False, None, '误接管率占比(0~1)，取每用例整体结果', 1),
-            ('false_takeover_count', '误解管数(分子)', '误解管数', 'number', 'output',
+            ('false_takeover_count', '误接管数(分子)', '误接管数', 'number', 'output',
              'turn_classification.false_takeover_count', 'numerator', 'aux', False,
-             False, None, 'ratio 分子：误解管轮次数', 2),
+             False, None, 'ratio 分子：误接管轮次数', 2),
             ('total_turns', '总轮数(分母)', '总轮数', 'number', 'output',
              'turn_classification.total_turns', 'denominator', 'aux', False,
              False, None, 'ratio 分母：总轮次数', 3),
@@ -708,7 +708,7 @@ if __name__ == '__main__':
     print("1. 注册/更新 turn_eval 主维度（dimension_type=main，无 output）")
     print("   配置 input params + api_settings + param_mappings")
     print("2. 注册/更新 turn_evaluation 子维度（dimension_type=sub）：")
-    print("   - 主评分: 误解管数 → turn_classification.false_takeover_count (pass when 0)")
+    print("   - 主评分: 误接管数 → turn_classification.false_takeover_count (pass when 0)")
     print("   - 辅助: 三分类汇总/逐轮详情/兼容旧字段/交互内容")
     print("3. 注册 voice_llm → 主维度 + 子维度的关联")
     print()

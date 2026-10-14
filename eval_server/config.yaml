@@ -75,7 +75,7 @@ llm_brand_keywords:
 # LLM Judge 配置（OpenAI 兼容代理）；api_key 在 .env
 llm_judge:
   api_base_url: https://az.gptplus5.com/v1
-  default_model: gemini-3.7-flash
+  default_model: gemini-3.8-flash
   dimension_models:
     llm_judge: ''
     high_freq_llm_judge: ''

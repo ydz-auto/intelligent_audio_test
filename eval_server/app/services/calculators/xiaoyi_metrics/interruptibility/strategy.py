@@ -263,6 +263,9 @@ class InterruptionMetricsCalculator(BaseCalculator):
             if msg and msg != '无可判定轮次':
                 base = result.get('message') or ''
                 result['message'] = f'{base}；LLM 行为判定降级: {msg}' if base else f'LLM 行为判定降级: {msg}'
+                # LLM 调用失败不再降级兜底：行为判定不可信，整任务置为失败
+                if 'LLM 调用失败' in msg:
+                    result['is_success'] = False
             return result
 
         behaviors = behaviors_from_judge(judge_result)
@@ -390,8 +393,8 @@ class InterruptionMetricsCalculator(BaseCalculator):
         """整体评估全局路径：完整 pcm（顶层=最后一轮累积录音，含全部轮）单次评估。
 
         一次全局计算（≤2 次 ASR，替代旧路径 2n 次）得到单一时间线，
-        再对每个实际打断轮/恢复轮用 FFT(played_audios)→驱动窗口 锚定用户窗口，
-        在全局段上切出逐轮时延与 LLM 标注块；per_round + 整体同构返回。
+        再对每个实际打断轮/恢复轮用 FFT(played_audios)→驱动窗口→文本匹配(VEGA-8)
+        锚定用户窗口，在全局段上切出逐轮时延与 LLM 标注块；per_round + 整体同构返回。
         锚定失败的轮降级（anchor='none'，时延 None），不影响其余轮。
         """
         from app.services.calculators.xiaoyi_metrics.interruptibility import (
@@ -399,7 +402,8 @@ class InterruptionMetricsCalculator(BaseCalculator):
         )
         from app.services.calculators.xiaoyi_metrics.interruptibility.round_metrics import (
             _driver_window_overlap, build_per_round, build_round_block, chunks_from_segments,
-            derive_case_type, derive_round_metrics, locate_fft_window, round_latency_from_window,
+            derive_case_type, derive_round_metrics, locate_fft_window, locate_text_window,
+            round_latency_from_window,
         )
         from app.services.calculators.xiaoyi_metrics.shared.llm_client import build_interaction_text
 
@@ -432,19 +436,35 @@ class InterruptionMetricsCalculator(BaseCalculator):
         user_segs = base.get('user_segments') or []
         model_segs = base.get('model_segments') or []
 
+        # 文本匹配锚定的单调下界（VEGA-8）：按轮次升序锚定时记录已锚定窗口末端，
+        # 文本回退的候选段不得早于它（含容差），防止相似台词错锚到更早轮次
+        text_floor = {'end': None}
+
         def _anchor(i):
             rd = self._rd(rounds, i)
             # FFT 只用 rd 级 played_audios（不回退用例级，防顶层提升值错配到别的轮）
             win = locate_fft_window(rd.get('played_audios'), top_user)
             if win is not None:
+                text_floor['end'] = win[1]
                 return (win[0], win[1], 'fft')
             # ponytail: rd.start_ms/end_ms 是绝对 epoch 毫秒，此回退在全局时间线基本空转，FFT 是主锚
             seg = _driver_window_overlap(rd, user_segs)
             if seg:
+                text_floor['end'] = seg[1]
                 return (seg[0], seg[1], 'driver_window')
+            # VEGA-8 文本匹配回退：FFT/驱动窗口都失败、但 ASR 已转出该轮台词时按
+            # 文本相似度定位窗口，避免轮块为空 → LLM 按「无语音输出=静默」规则
+            # 把实际有回应的轮误判为静默（录音串音轮台词不在 ASR 里，仍保持降级）
+            query = rd.get('query')
+            q_text = query.get('text') if isinstance(query, dict) else query
+            win = locate_text_window(q_text, user_segs, after=text_floor['end'])
+            if win is not None:
+                text_floor['end'] = win[1]
+                return (win[0], win[1], 'text_match')
             return None
 
-        anchors = {i: _anchor(i) for i in timed_rounds}
+        # 按轮次升序锚定，保证文本匹配的单调下界按时间序生效
+        anchors = {i: _anchor(i) for i in sorted(timed_rounds)}
         resume_anchor = _anchor(resume_idx) if resume_idx is not None else None
         # u_next = 下一个已锚定轮窗口起点：全局时间线上第 i 轮静默时，
         # "end>u_e 首个模型段"会取到第 i+1 轮的回应 → 静默误判成有回应，必须挡住
@@ -511,7 +531,7 @@ class InterruptionMetricsCalculator(BaseCalculator):
         result['round_timing'] = round_timing + ([resume_timing] if resume_timing else [])
         result['message'] = 'OK' if result['interruption_success_rate'] else '至少一个实际打断轮失败'
         if any(t.get('anchor_method') == 'none' for t in round_timing):
-            result['message'] += '；部分轮时序锚定降级(无FFT/驱动窗口)'
+            result['message'] += '；部分轮时序锚定降级(FFT/驱动窗口/文本匹配均失败)'
 
         # ── 5) 整例一次 LLM：全局时间线交互文本 + 逐轮标注块（含恢复轮）──
         interaction = build_interaction_text(
