@@ -17,6 +17,7 @@ from api_gateway.schemas.report import (
     ReportExportQuery,
 )
 from api_gateway.infrastructure.grpc_proxies import report_config_service
+from shared.models.common_enums import ReportStatus, ReportType
 from shared.proto import report_service_pb2 as report_pb
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
@@ -66,6 +67,45 @@ class ReportQueryService:
             return success_response(data)
         except Exception as e:
             return error_response(f'查询报告列表失败: {str(e)}')
+
+    # ------------------------------------------------------------------
+    # Tab 计数聚合（INT-280：HistoryReports Tab 计数服务端化）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def get_tab_counts():
+        """四个视图 Tab 的全量计数（每 Tab 一次 CountReports RPC，page/per_page 忽略）。
+
+        Tab → 过滤映射与 report_service ReportStatus/ReportType 枚举一致：
+        - all:         无过滤
+        - draft:       status=draft
+        - published:   status=published
+        - comparison:  report_type=comparison,secondary_comparison
+        单 Tab 失败时该 Tab 计数 0 并降级继续（列表仍可用，计数不阻塞主视图）。
+        """
+        tab_filters = {
+            'all': {},
+            'draft': {'status': ReportStatus.DRAFT.value},
+            'published': {'status': ReportStatus.PUBLISHED.value},
+            'comparison': {'report_type': ','.join([
+                ReportType.COMPARISON.value,
+                ReportType.SECONDARY_COMPARISON.value,
+            ])},
+        }
+        counts = {}
+        try:
+            stub = report_config_service.stub
+            for tab, filters in tab_filters.items():
+                try:
+                    resp = stub.CountReports(report_pb.ListReportsRequest(**filters))
+                    data = _loads(resp.data, {}) or {}
+                    counts[tab] = int(data.get('total', 0)) if resp.success else 0
+                except Exception:
+                    logger.exception('报告 Tab 计数失败: %s', tab)
+                    counts[tab] = 0
+            return success_response(counts)
+        except Exception as e:
+            return error_response(f'查询报告 Tab 计数失败: {str(e)}')
 
     # ------------------------------------------------------------------
     # 报告详情

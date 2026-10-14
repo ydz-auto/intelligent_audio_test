@@ -48,6 +48,7 @@ from report_service.application.queries.report_queries import (
     GetReportQuery,
     GetReportSummaryQuery,
     ListReportsQuery,
+    split_report_types,
 )
 from report_service.domain.entities import ReportAggregate
 from report_service.domain.entities.benchmark import BaselineDraftEntry
@@ -470,7 +471,7 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         """分页列出报告。
 
         请求字段（proto ListReportsRequest）：
-            report_type: str    可选类型过滤
+            report_type: str    可选类型过滤（多类型逗号分隔，INT-280）
             status: str         可选状态过滤
             task_id: int        可选任务过滤
             algorithm_type: str 可选算法类型过滤
@@ -486,6 +487,7 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
             from shared.infrastructure.user_context import user_id_from_context
             query = ListReportsQuery(
                 status=getattr(request, 'status', None) or None,
+                report_types=split_report_types(getattr(request, 'report_type', '') or ''),
                 task_id=getattr(request, 'task_id', 0) or None,
                 page=getattr(request, 'page', None) or 1,
                 page_size=getattr(request, 'per_page', None) or 20,
@@ -521,6 +523,28 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
         except Exception as e:
             logger.exception("ListReports failed")
             return self._resp(False, str(e), {'items': []})
+
+    def CountReports(self, request, context=None):
+        """按 ListReports 同一套过滤条件计数（INT-280：HistoryReports Tab 计数服务端聚合）。
+
+        复用 ListReportsRequest：仅 report_type（可逗号分隔多类型）/status/
+        favorite/deleted 过滤生效，分页与搜索字段忽略。
+        响应 data: {'total': N}
+        """
+        try:
+            from shared.infrastructure.user_context import user_id_from_context
+            query = ListReportsQuery(
+                status=getattr(request, 'status', None) or None,
+                report_types=split_report_types(getattr(request, 'report_type', '') or ''),
+                favorite=getattr(request, 'favorite', False),
+                deleted=getattr(request, 'deleted', False),
+                user_id=user_id_from_context(context),
+            )
+            total = self.query_handler.handle_count_reports(query)
+            return self._resp(True, 'ok', {'total': total})
+        except Exception as e:
+            logger.exception("CountReports failed")
+            return self._resp(False, str(e), {'total': 0})
 
     # ---- 收藏 / 回收站（INT-141）----
 

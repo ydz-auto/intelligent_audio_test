@@ -9,7 +9,7 @@ Handler 接收查询后通过 repository 加载聚合根返回。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 
 @dataclass(frozen=True)
@@ -44,12 +44,27 @@ class GetReportByTaskQuery:
     task_id: int
 
 
+def split_report_types(report_type: Optional[str]) -> Optional[List[str]]:
+    """proto/HTTP report_type 单值字段 → 类型集合（INT-280 多类型 IN 过滤）。
+
+    多类型以逗号分隔下发（如 comparison,secondary_comparison）；
+    空串/纯逗号归一为 None（不过滤）。
+    gRPC servicer 与 HTTP 路由共用，避免两端口径漂移。
+    """
+    if not report_type:
+        return None
+    types = [t.strip() for t in report_type.split(',') if t.strip()]
+    return types or None
+
+
 @dataclass(frozen=True)
 class ListReportsQuery:
     """分页列出报告（未删除）。
 
     Attributes:
         status: 可选状态过滤（pending/generating/completed/failed）
+        report_types: 可选类型集合过滤（IN 口径；INT-280 对比视图多类型下发，
+            None/空集合不过滤）
         task_id: 可选任务 ID 精确过滤（INT-262：按任务查报告）
         page: 页码（从 1 开始）
         page_size: 每页数量
@@ -58,6 +73,7 @@ class ListReportsQuery:
         user_id: 可选，收藏过滤/标记用当前用户
     """
     status: Optional[str] = None
+    report_types: Optional[List[str]] = None
     task_id: Optional[int] = None
     page: int = 1
     page_size: int = 20

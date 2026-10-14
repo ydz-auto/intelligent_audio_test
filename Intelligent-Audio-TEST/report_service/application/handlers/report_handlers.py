@@ -369,6 +369,7 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         """
         aggregates = self.repository.list_reports(
             status=query.status,
+            report_types=query.report_types,
             task_id=query.task_id,
             page=query.page,
             page_size=query.page_size,
@@ -387,13 +388,15 @@ class ReportQueryHandler(ReportCasesQueryMixin, ReportStatsQueryMixin):
         """处理报告总数查询（与 handle_list 同一套过滤，INT-297 信封统一）。
 
         Args:
-            query: ListReportsQuery（favorite/deleted/user_id 见 INT-141）
+            query: ListReportsQuery（favorite/deleted/user_id 见 INT-141，
+                report_types 见 INT-280）
 
         Returns:
             满足过滤条件的报告总数。
         """
         return self.repository.count_reports(
             status=query.status,
+            report_types=query.report_types,
             task_id=query.task_id,
             favorite=query.favorite,
             deleted=query.deleted,

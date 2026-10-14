@@ -31,6 +31,12 @@ def get_all(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.get_all())
 
 
+@router.get('/tab-counts')
+def tab_counts(_: None = require_permission('report:read')):
+    # INT-280：HistoryReports Tab 全量计数（服务端聚合，客户端不再按当前页统计）
+    return _handle(ReportQueryService.get_tab_counts())
+
+
 @router.get('/export')
 def export_get(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.export())

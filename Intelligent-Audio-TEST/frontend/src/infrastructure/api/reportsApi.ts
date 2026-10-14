@@ -42,6 +42,14 @@ export const reportsApi = {
     return { items: list.items, total: list.total, page: list.page, perPage: list.perPage, pages: list.pages };
   },
 
+  /**
+   * 视图 Tab 全量计数（INT-280）→ { all, draft, published, comparison }
+   * 后端 /reports/tab-counts 逐 Tab CountReports 服务端聚合；键为 Tab 原值。
+   */
+  async getTabCounts(options: RequestOptions = {}): Promise<Record<string, number>> {
+    return request<Record<string, number>>('GET', '/reports/tab-counts', null, options);
+  },
+
   /** 单个报告 → Report（聚合根形状 + summary） */
   async getOne(id: string | number): Promise<Report> {
     const dto = await request<ReportDto>('GET', `/reports/${id}`);

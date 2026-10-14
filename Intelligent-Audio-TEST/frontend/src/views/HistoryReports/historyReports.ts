@@ -16,7 +16,7 @@ import { useFavorites } from '../../composables/favorite/useFavorites';
 
 /**
  * 历史报告页视图 Tab 常量（全部/草稿/已发布/对比）。
- * 值与后端列表接口的 type / status 过滤参数对应；对比视图为客户端归类。
+ * 值与后端列表接口的 type / status 过滤参数对应；对比视图为多类型服务端过滤。
  */
 export const REPORT_TABS = {
   ALL: 'all',
@@ -42,6 +42,21 @@ export const REPORT_TAB_OPTIONS: ReadonlyArray<ReportTabOption> = [
 
 /** 归类为「对比报告」视图的报告类型集合（domain ReportType 后端原值：task/comparison/secondary_comparison/standard） */
 const COMPARISON_REPORT_TYPES: readonly string[] = ['comparison', 'secondary_comparison'];
+
+/**
+ * Tab → 列表接口过滤参数映射（配置化，避免魔法字符串；恢复 V9.7.10 基线口径）。
+ * - 草稿/已发布 Tab 下发 status 服务端过滤；
+ * - 对比 Tab 下发逗号分隔多类型（report_service split_report_types IN 过滤）；
+ * - 「全部」Tab 无附加过滤。
+ * 注意：Tab 过滤与筛选栏 filters.reportType/reportStatus 相互独立（Tab 切换不回写筛选栏），
+ * 两者在 loadReports 合并下发。
+ */
+const TAB_TO_FILTER: Record<ReportTabValue, { status?: ReportStatusFilter; type?: ReportTypeFilter; types?: string[] }> = {
+  [REPORT_TABS.ALL]: {},
+  [REPORT_TABS.DRAFT]: { status: 'draft' },
+  [REPORT_TABS.PUBLISHED]: { status: 'published' },
+  [REPORT_TABS.COMPARISON]: { types: [...COMPARISON_REPORT_TYPES] },
+};
 
 type ReportTypeFilter = 'all' | 'comparison' | 'secondary_comparison' | 'task';
 type ReportStatusFilter = 'all' | 'draft' | 'published';
@@ -106,6 +121,35 @@ export function useHistoryReports() {
   /** 回收站模式（deleted=true 拉取 + 卡片操作切换为恢复/彻底删除） */
   const trashMode = ref(false);
 
+  // ===== Tab 计数（INT-280：服务端聚合，多页数据下不失真）=====
+  /** 四个 Tab 的全量计数（键 = ReportTabValue）；接口失败时回退空对象，计数隐藏为 0 */
+  const tabCounts = ref<Record<ReportTabValue, number>>({
+    [REPORT_TABS.ALL]: 0,
+    [REPORT_TABS.DRAFT]: 0,
+    [REPORT_TABS.PUBLISHED]: 0,
+    [REPORT_TABS.COMPARISON]: 0,
+  });
+
+  /** 拉取 Tab 全量计数（mounted / 列表数据变更动作后刷新；失败静默，不影响主列表） */
+  const loadTabCounts = async () => {
+    try {
+      const counts = await reportsPort.getTabCounts();
+      tabCounts.value = {
+        [REPORT_TABS.ALL]: counts[REPORT_TABS.ALL] ?? 0,
+        [REPORT_TABS.DRAFT]: counts[REPORT_TABS.DRAFT] ?? 0,
+        [REPORT_TABS.PUBLISHED]: counts[REPORT_TABS.PUBLISHED] ?? 0,
+        [REPORT_TABS.COMPARISON]: counts[REPORT_TABS.COMPARISON] ?? 0,
+      };
+    } catch (error) {
+      console.error('加载报告 Tab 计数失败:', error);
+    }
+  };
+
+  /** 数据变更动作后的统一刷新：列表重取 + Tab 计数重取（INT-280 计数不陈旧） */
+  const refreshAfterMutation = async () => {
+    await Promise.all([loadReports(), loadTabCounts()]);
+  };
+
   const loadReports = async () => {
     loading.value = true;
     try {
@@ -122,6 +166,18 @@ export function useHistoryReports() {
       if (filters.value.startDate) params.startTime = filters.value.startDate;
       if (filters.value.endDate) params.endTime = filters.value.endDate;
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') params.algorithmType = filters.value.algorithmType;
+      // INT-280：视图 Tab 附加过滤随请求下发（草稿/已发布按状态、对比按多类型），
+      // 与筛选栏条件并存（Tab 切换不回写筛选栏），分页/计数以服务端过滤为准
+      const tabMapping = TAB_TO_FILTER[activeTab.value];
+      if (tabMapping.status && tabMapping.status !== 'all') {
+        params.status = filters.value.reportStatus !== 'all' ? filters.value.reportStatus : tabMapping.status;
+      }
+      if (tabMapping.type && tabMapping.type !== 'all' && filters.value.reportType === 'all') {
+        params.type = tabMapping.type;
+      }
+      if (tabMapping.types) {
+        params.type = [...tabMapping.types].join(',');
+      }
       // INT-141：收藏 / 回收站过滤
       if (favoriteOnly.value && !trashMode.value) params.favorite = true;
       if (trashMode.value) params.deleted = true;
@@ -159,7 +215,7 @@ export function useHistoryReports() {
       } else {
         showToast('info', '无可恢复项（报告可能已被恢复）');
       }
-      await loadReports();
+      await refreshAfterMutation();
     } catch (error) {
       showToast('error', '恢复报告失败');
     }
@@ -188,7 +244,7 @@ export function useHistoryReports() {
       } else {
         showToast('info', '无可删除项（报告可能已被删除或不满足权限）');
       }
-      await loadReports();
+      await refreshAfterMutation();
     } catch (error) {
       showToast('error', '彻底删除报告失败');
     }
@@ -365,27 +421,20 @@ export function useHistoryReports() {
     }
   });
 
-  /** 各 Tab 的可见数量（当前页统计口径：全部=allReports；草稿/已发布/对比按类型统计） */
+  /** 各 Tab 的全量计数（INT-280：服务端聚合，不再按当前页统计） */
   const getTabCount = (tab: ReportTabValue): number => {
-    switch (tab) {
-      case REPORT_TABS.ALL:
-        return allReports.value.length;
-      case REPORT_TABS.DRAFT:
-        return draftReports.value.length;
-      case REPORT_TABS.PUBLISHED:
-        return publishedReports.value.length;
-      case REPORT_TABS.COMPARISON:
-        return comparisonReports.value.length;
-      default:
-        return 0;
-    }
+    return tabCounts.value[tab] ?? 0;
   };
 
-  /** 切换视图 Tab：更新 activeTab、清空已选、触发筛选（重置分页并重新加载） */
+  /**
+   * 切换视图 Tab：更新 activeTab、清空已选、重置分页并按 Tab 过滤重新加载
+   * （INT-280：恢复 V9.7.10 基线——Tab → 服务端 status/type 参数，非客户端过滤）
+   */
   const handleTabChange = (tab: ReportTabValue) => {
     activeTab.value = tab;
     selectedReports.value.clear();
-    handleFilterChange();
+    currentPage.value = 1;
+    loadReports();
   };
 
   const toggleSelectAll = () => {
@@ -418,7 +467,7 @@ export function useHistoryReports() {
           await reportsPort.batchDelete(ids);
           selectedReports.value.clear();
           showToast('success', `成功删除 ${ids.length} 个报告`);
-          loadReports();
+          refreshAfterMutation();
         } catch (error: any) {
           showToast('error', '批量删除失败: ' + (error.message || '未知错误'));
         }
@@ -445,7 +494,7 @@ export function useHistoryReports() {
         showToast('info', '无可恢复项（报告可能已被恢复）');
       }
       selectedReports.value.clear();
-      await loadReports();
+      await refreshAfterMutation();
     } catch (error: any) {
       showToast('error', '批量恢复失败: ' + (error?.message || '未知错误'));
     }
@@ -471,7 +520,7 @@ export function useHistoryReports() {
             showToast('info', '无可删除项（报告可能已被删除或不满足权限）');
           }
           selectedReports.value.clear();
-          await loadReports();
+          await refreshAfterMutation();
         } catch (error: any) {
           showToast('error', '批量彻底删除失败: ' + (error?.message || '未知错误'));
         }
@@ -550,7 +599,7 @@ export function useHistoryReports() {
           await reportsPort.delete(reportId);
           selectedReports.value.delete(reportId);
           showToast('success', '报告删除成功');
-          loadReports();
+          refreshAfterMutation();
         } catch (error: any) {
           showToast('error', '删除失败: ' + (error.message || '未知错误'));
         }
@@ -568,7 +617,7 @@ export function useHistoryReports() {
         try {
           await reportsPort.publish(reportId);
           showToast('success', '报告发布成功');
-          loadReports();
+          refreshAfterMutation();
         } catch (error: any) {
           showToast('error', '发布失败: ' + (error.message || '未知错误'));
         }
@@ -578,6 +627,8 @@ export function useHistoryReports() {
 
   onMounted(() => {
     loadReports();
+    // INT-280：Tab 全量计数服务端拉取
+    loadTabCounts();
     loadAlgorithmOptions();
     // INT-141：加载当前用户收藏集合
     favoritesModule.loadFavorites();
@@ -617,7 +668,9 @@ export function useHistoryReports() {
     publishedReports,
     draftReports,
     visibleReports,
+    tabCounts,
     getTabCount,
+    loadTabCounts,
     handleTabChange,
     toggleSelectAll,
     toggleReportSelection,

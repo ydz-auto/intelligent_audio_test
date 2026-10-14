@@ -445,7 +445,7 @@ export interface ReportListQuery {
   /** 排序字段（发往后端保持后端原值，如 created_at） */
   sortBy: string
   order: 'asc' | 'desc'
-  /** 报告类型过滤（后端 query 别名 type → report_type） */
+  /** 报告类型过滤（后端 query 别名 type → report_type；多类型逗号分隔，report_service IN 过滤） */
   type?: string
   status?: string
   keyword?: string

@@ -343,7 +343,7 @@ export interface ReportListQueryDto {
   per_page: number
   sort_by: string
   order: 'asc' | 'desc'
-  /** 报告类型过滤（后端 query 别名 type → report_type） */
+  /** 报告类型过滤（后端 query 别名 type → report_type；多类型逗号分隔，report_service IN 过滤） */
   report_type?: string
   status?: string
   keyword?: string

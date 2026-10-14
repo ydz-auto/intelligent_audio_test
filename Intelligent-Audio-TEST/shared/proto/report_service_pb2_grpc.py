@@ -60,6 +60,11 @@ class ReportConfigServiceStub:
                 request_serializer=report__service__pb2.ListReportsRequest.SerializeToString,
                 response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
                 _registered_method=True)
+        self.CountReports = channel.unary_unary(
+                '/report.ReportConfigService/CountReports',
+                request_serializer=report__service__pb2.ListReportsRequest.SerializeToString,
+                response_deserializer=report__service__pb2.ReportConfigResponse.FromString,
+                _registered_method=True)
         self.GetReportDetail = channel.unary_unary(
                 '/report.ReportConfigService/GetReportDetail',
                 request_serializer=report__service__pb2.GetReportDetailRequest.SerializeToString,
@@ -211,6 +216,14 @@ class ReportConfigServiceServicer:
 
     def ListReports(self, request, context):
         """查询报告列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CountReports(self, request, context):
+        """按同一套过滤条件计数（INT-280：HistoryReports Tab 计数服务端聚合；
+        复用 ListReportsRequest，仅 status/report_type/favorite/deleted 过滤生效，分页字段忽略）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -403,6 +416,11 @@ def add_ReportConfigServiceServicer_to_server(servicer, server):
             ),
             'ListReports': grpc.unary_unary_rpc_method_handler(
                     servicer.ListReports,
+                    request_deserializer=report__service__pb2.ListReportsRequest.FromString,
+                    response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
+            ),
+            'CountReports': grpc.unary_unary_rpc_method_handler(
+                    servicer.CountReports,
                     request_deserializer=report__service__pb2.ListReportsRequest.FromString,
                     response_serializer=report__service__pb2.ReportConfigResponse.SerializeToString,
             ),
@@ -656,6 +674,33 @@ class ReportConfigService:
             request,
             target,
             '/report.ReportConfigService/ListReports',
+            report__service__pb2.ListReportsRequest.SerializeToString,
+            report__service__pb2.ReportConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CountReports(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/report.ReportConfigService/CountReports',
             report__service__pb2.ListReportsRequest.SerializeToString,
             report__service__pb2.ReportConfigResponse.FromString,
             options,

@@ -14,6 +14,9 @@ service ReportConfigService {
   rpc BatchActionReports(BatchActionReportsRequest) returns (ReportConfigResponse);
   // 查询报告列表
   rpc ListReports(ListReportsRequest) returns (ReportConfigResponse);
+  // 按同一套过滤条件计数（INT-280：HistoryReports Tab 计数服务端聚合；
+  // 复用 ListReportsRequest，仅 status/report_type/favorite/deleted 过滤生效，分页字段忽略）
+  rpc CountReports(ListReportsRequest) returns (ReportConfigResponse);
   // 查询单个报告详情
   rpc GetReportDetail(GetReportDetailRequest) returns (ReportConfigResponse);
   // 查询报告生成进度（按报告 ID 推导任务/生成状态）
@@ -91,6 +94,7 @@ message ListReportsRequest {
   bool favorite = 10;         // INT-141：仅当前用户收藏（x-user-id metadata）
   bool deleted = 11;          // INT-141：仅回收站（软删除项，含删除人/删除时间）
 }
+
 message GetReportDetailRequest {
   int32 report_id = 1;
 }

@@ -41,6 +41,7 @@ from report_service.application.queries.report_queries import (
     GetReportSummaryQuery,
     GetTrendDataQuery,
     ListReportsQuery,
+    split_report_types,
 )
 from report_service.domain.entities import ReportAggregate
 
@@ -252,6 +253,29 @@ def list_reports(
     except Exception as e:
         logger.exception("list_reports failed")
         return {'success': False, 'message': str(e)}
+
+
+@router.get('/count')
+def count_reports(
+    status: Optional[str] = Query(None),
+    report_type: Optional[str] = Query(None),
+):
+    """按 ListReports 同一套过滤条件计数（INT-280：Tab 计数服务端聚合）。
+
+    查询参数：
+        status:       str  可选状态过滤
+        report_type:  str  可选类型过滤（多类型逗号分隔，如 comparison,secondary_comparison）
+    """
+    try:
+        query = ListReportsQuery(
+            status=status,
+            report_types=split_report_types(report_type or ''),
+        )
+        total = ReportQueryHandler().handle_count_reports(query)
+        return {'success': True, 'message': 'ok', 'data': {'total': total}}
+    except Exception as e:
+        logger.exception("count_reports failed")
+        return {'success': False, 'message': str(e), 'data': {'total': 0}}
 
 
 @router.get('/{report_id}')

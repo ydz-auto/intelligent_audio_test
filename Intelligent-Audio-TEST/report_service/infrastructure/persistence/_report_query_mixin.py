@@ -57,6 +57,7 @@ class ReportQueryMixin:
     def list_reports(
         self,
         status: Optional[str] = None,
+        report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
         page: int = 1,
         page_size: int = 20,
@@ -68,6 +69,8 @@ class ReportQueryMixin:
 
         Args:
             status: 可选状态过滤（pending/generating/completed/failed）
+            report_types: 可选类型集合过滤（IN 口径，INT-280 对比视图多类型；
+                空集合或 None 不过滤）
             task_id: 可选任务 ID 精确过滤（INT-262）
             page: 页码（从 1 开始）
             page_size: 每页数量
@@ -86,6 +89,8 @@ class ReportQueryMixin:
             self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
         if status:
             query = query.filter(self.PO_CLASS.status == status)
+        if report_types:
+            query = query.filter(self.PO_CLASS.type.in_(report_types))
         if task_id:
             query = query.filter(self.PO_CLASS.task_id == task_id)
         if favorite:
@@ -109,6 +114,7 @@ class ReportQueryMixin:
     def count_reports(
         self,
         status: Optional[str] = None,
+        report_types: Optional[List[str]] = None,
         task_id: Optional[int] = None,
         favorite: bool = False,
         deleted: bool = False,
@@ -117,7 +123,7 @@ class ReportQueryMixin:
         """按 list_reports 同一套过滤条件计数（INT-297：分页信封补 total/pages）。
 
         Args:
-            status/task_id/favorite/deleted/user_id: 与 list_reports 口径一致。
+            status/report_types/task_id/favorite/deleted/user_id: 与 list_reports 口径一致。
 
         Returns:
             满足过滤条件的报告总数。
@@ -130,6 +136,8 @@ class ReportQueryMixin:
             self.PO_CLASS.deleted == (True if deleted else False))  # noqa: E712
         if status:
             query = query.filter(self.PO_CLASS.status == status)
+        if report_types:
+            query = query.filter(self.PO_CLASS.type.in_(report_types))
         if task_id:
             query = query.filter(self.PO_CLASS.task_id == task_id)
         if favorite:
