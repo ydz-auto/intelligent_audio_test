@@ -138,7 +138,7 @@ describe('authApi register 加密回退语义（INT-188）', () => {
   it('加密启用且公钥获取失败：报错且不发明文注册请求', async () => {
     mockedRequest.mockRejectedValue(new Error('network down'));
     await expect(
-      authApi.register({ username: 'u1', password: 'p1' }),
+      authApi.register({ username: 'u1', password: 'p1', email: 'u1@test.local' }),
     ).rejects.toThrow('登录加密初始化失败，请刷新页面重试');
     expect(callsByMethod('POST')).toHaveLength(0);
   });
@@ -150,7 +150,7 @@ describe('authApi register 加密回退语义（INT-188）', () => {
       }
       return { user_id: 7 };
     });
-    const result = await authApi.register({ username: 'u1', password: 'p1' });
+    const result = await authApi.register({ username: 'u1', password: 'p1', email: 'u1@test.local' });
     expect(result.userId).toBe(7);
     const posts = callsByMethod('POST');
     expect(posts).toHaveLength(1);

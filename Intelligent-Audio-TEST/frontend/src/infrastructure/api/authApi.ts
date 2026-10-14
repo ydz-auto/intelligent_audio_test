@@ -106,14 +106,15 @@ export const authApi = {
    * 自助注册（POST /auth/register；后端注册开关关闭时 403）
    * INT-147：密码走 RSA 加密字段（password_encrypted/encryption_key_id）。
    * 成功后调用方引导用户走登录 Tab 完成登录。
+   * INT-285 口径②：邮箱必填（后端网关 400 兜底），payload 类型即约束。
    */
   async register(
-    payload: { username: string; password: string; email?: string },
+    payload: { username: string; password: string; email: string },
     options: RequestOptions = {},
   ): Promise<{ userId: number }> {
     const body: Record<string, unknown> = {
       username: payload.username,
-      email: payload.email,
+      email: payload.email.trim(),
     };
     try {
       const enc = await encryptPassword(payload.password, () => fetchEncryptionKey(options));

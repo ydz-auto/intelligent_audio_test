@@ -78,7 +78,9 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(payload: {
     username: string
     password: string
-    email?: string
+    // INT-285 口径②：邮箱必填（与 LoginPage 表单 required/提交校验、
+    // 后端网关 400 兜底同口径）
+    email: string
   }): Promise<number> {
     const result = await authPort.register(payload)
     return result.userId
