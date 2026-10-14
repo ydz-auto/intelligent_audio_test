@@ -194,6 +194,6 @@ describe('TaskDetailModal 移除流程（INT-305）', () => {
     await (w.vm as any).removeCase({ caseId: 'c1', name: '用例一' })
 
     expect(mocks.removeCase).not.toHaveBeenCalled()
-    expect(w.vm.associatedCases.length).toBe(2)
+    expect((w.vm as any).associatedCases.length).toBe(2)
   })
 })
