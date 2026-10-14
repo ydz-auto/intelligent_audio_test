@@ -782,19 +782,74 @@ def judge_takeover(user_chunks, ai_chunks,
 #  主入口：逐轮三分类
 # ═══════════════════════════════════════════════════════════════
 
+def classify_turn(turn: TurnInfo,
+                  task_params: Optional[Dict[str, Any]] = None,
+                  ) -> TurnClassification:
+    """单轮三分类（误接管 → TOR 客观 + 接管判断 → 接管/未接管）
+
+    evaluate_all_turns（ASR 切轮）与 turn_eval 锚点定轮次（_build_turns_from_anchors）
+    共用同一判定口径，保证不同轮次来源的分类结果可比。
+
+    Args:
+        turn: 单轮对话（user_chunks + ai_chunks + 时间戳）
+        task_params: 读取 llm_model 配置
+
+    Returns:
+        TurnClassification: 误接管 / 接管 / 未接管 之一
+    """
+    # 该轮的 pause_intervals
+    turn_pauses = compute_pause_intervals(turn.user_chunks) if turn.user_chunks else []
+
+    # 2a. 误接管判断
+    ft_result = judge_false_takeover(
+        turn.user_chunks, turn.ai_chunks, turn_pauses, task_params,
+    )
+
+    if ft_result['false_takeover'] == 1:
+        return TurnClassification(
+            turn_index=turn.turn_index,
+            classification=TurnClassification.MISUNDERSTAND,
+            false_takeover=ft_result,
+        )
+
+    # 2b. TOR 客观数据
+    tor_result = compute_tor(turn.user_chunks, turn.ai_chunks or [])
+
+    # 2c. 接管/未接管 LLM 判断
+    takeover_result = judge_takeover(
+        turn.user_chunks, turn.ai_chunks,
+        tor_n_words=tor_result['n_words'],
+        tor_duration=tor_result['duration'],
+        task_params=task_params,
+    )
+
+    if takeover_result['takeover'] == 1:
+        return TurnClassification(
+            turn_index=turn.turn_index,
+            classification=TurnClassification.TAKEOVER,
+            false_takeover=ft_result,
+            tor=tor_result,
+            takeover_judge=takeover_result,
+        )
+    return TurnClassification(
+        turn_index=turn.turn_index,
+        classification=TurnClassification.NO_TAKEOVER,
+        false_takeover=ft_result,
+        tor=tor_result,
+        takeover_judge=takeover_result,
+    )
+
+
 def evaluate_all_turns(user_chunks: List[Dict[str, Any]],
                        ai_chunks: List[Dict[str, Any]],
                        task_params: Optional[Dict[str, Any]] = None,
                        one_turn: bool = False,
                        ) -> Tuple[List[TurnInfo], List[TurnClassification]]:
-    """逐轮三分类主入口
+    """逐轮三分类主入口（ASR 切轮路径）
 
     流程：
-    1. 对话轮次切分（split_turns）
-    2. 逐轮：
-       a. 误接管判断（LLM）→ true → 误接管
-       b. TOR 客观数据 + 接管/未接管 LLM 判断
-       c. 接管 → 分类=接管；否则 → 分类=未接管
+    1. 对话轮次切分（split_turns：时间戳粗预切 + LLM 确认）
+    2. 逐轮三分类（classify_turn：误接管 → 接管/未接管）
 
     Args:
         user_chunks: 用户侧 ASR chunks
@@ -808,52 +863,8 @@ def evaluate_all_turns(user_chunks: List[Dict[str, Any]],
     # 1. 轮次切分
     turns = split_turns(user_chunks, ai_chunks, task_params, one_turn=one_turn)
 
-    classifications = []
-
-    for turn in turns:
-        # 该轮的 pause_intervals
-        turn_pauses = compute_pause_intervals(turn.user_chunks) if turn.user_chunks else []
-
-        # 2a. 误接管判断
-        ft_result = judge_false_takeover(
-            turn.user_chunks, turn.ai_chunks, turn_pauses, task_params,
-        )
-
-        if ft_result['false_takeover'] == 1:
-            classifications.append(TurnClassification(
-                turn_index=turn.turn_index,
-                classification=TurnClassification.MISUNDERSTAND,
-                false_takeover=ft_result,
-            ))
-            continue
-
-        # 2b. TOR 客观数据
-        tor_result = compute_tor(turn.user_chunks, turn.ai_chunks or [])
-
-        # 2c. 接管/未接管 LLM 判断
-        takeover_result = judge_takeover(
-            turn.user_chunks, turn.ai_chunks,
-            tor_n_words=tor_result['n_words'],
-            tor_duration=tor_result['duration'],
-            task_params=task_params,
-        )
-
-        if takeover_result['takeover'] == 1:
-            classifications.append(TurnClassification(
-                turn_index=turn.turn_index,
-                classification=TurnClassification.TAKEOVER,
-                false_takeover=ft_result,
-                tor=tor_result,
-                takeover_judge=takeover_result,
-            ))
-        else:
-            classifications.append(TurnClassification(
-                turn_index=turn.turn_index,
-                classification=TurnClassification.NO_TAKEOVER,
-                false_takeover=ft_result,
-                tor=tor_result,
-                takeover_judge=takeover_result,
-            ))
+    # 2. 逐轮三分类
+    classifications = [classify_turn(turn, task_params) for turn in turns]
 
     # 汇总日志
     normal = sum(1 for c in classifications if c.classification == TurnClassification.TAKEOVER)

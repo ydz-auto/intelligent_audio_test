@@ -10,13 +10,15 @@ ASR 共享：优先复用上层编排器（XiaoyiMetricsCalculator）注入的 _
 独立调用时自行调 ASR + 音频对齐。
 
 多轮模式：整体评估时以末轮（rounds[-1]）的 user_wav + ai_wav 为评估对象，
-合并所有轮次的 played_audios 一次性对齐 + ASR + 切轮 + 三分类，
-每条 turn 通过对齐段归属到其真实轮次，并按轮投影原生 per_round[]（零额外 ASR/LLM）。
+合并所有轮次的 played_audios 一次性对齐 + ASR。对齐成功后**锚点定轮次**：
+每个 FFT 对齐段（= 每轮播放的干净音频）即一轮的定点，轮窗口内取用户发言 +
+该轮 AI 回复逐轮三分类（有多少段音频就有多少轮）；对齐失败回退 ASR 切轮 +
+按重叠归属轮次，并按轮投影原生 per_round[]（零额外 ASR/LLM）。
 """
 import logging
 
 from app.services.calculators.base import BaseCalculator
-from app.services.calculators.xiaoyi_metrics.shared.asr_utils import compute_pause_intervals
+from app.services.calculators.xiaoyi_metrics.shared.asr_utils import compute_pause_intervals, valid_ts
 from app.services.calculators.xiaoyi_metrics.shared.constants import (
     LLM_DEFAULT_MAX_TOKENS,
     LLM_DEFAULT_TEMPERATURE,
@@ -145,7 +147,7 @@ class TurnEvalCalculator(BaseCalculator):
              user_chunks, ai_word_chunks)
         """
         from app.services.calculators.xiaoyi_metrics.turn_eval.turn_evaluation import (
-            evaluate_all_turns, TurnClassification,
+            evaluate_all_turns, TurnClassification, classify_turn, TurnInfo,
         )
         from app.services.calculators.xiaoyi_metrics.turn_taking.takeover_latency import (
             compute_takeover_latency_from_chunks,
@@ -158,8 +160,6 @@ class TurnEvalCalculator(BaseCalculator):
         ai_chunks = shared_asr.get('ai_chunks') or []
         ai_word_chunks = shared_asr.get('ai_word_chunks') or ai_chunks
 
-        turns, classifications = evaluate_all_turns(user_chunks, ai_chunks, task_params, one_turn=one_turn)
-
         # 多轮合并模式：FFT 对齐段（每个 played_audio = 每轮的定点）→ 轮次归属查表，
         # 并算出每轮用户话轮结束时间（offset + 干净语料时长），供接管时延取用户结束点。
         align_segments = shared_asr.get('_align_segments') or []
@@ -170,15 +170,34 @@ class TurnEvalCalculator(BaseCalculator):
             if rn is not None:
                 round_user_end_s[rn] = (seg.get('offset_s') or 0.0) + (seg.get('clean_duration_s') or 0.0)
 
+        # 多轮合并 + 对齐成功：锚点定轮次——每个 FFT 对齐段即一轮的定点，
+        # 轮窗口内取用户发言 + 该轮 AI 回复逐轮三分类（不依赖 ASR 停顿聚类/LLM 确认）。
+        # 对齐失败 / 单轮（无 round_of）走原 ASR 切轮逻辑兜底。
+        anchor_round_nums = None
+        if align_segments and round_of:
+            turns, classifications, anchor_round_nums = self._build_turns_from_anchors(
+                user_chunks, ai_chunks, align_segments, round_of, task_params,
+            )
+            if not turns:
+                # 所有对齐段都无法归属轮次（source 不在 round_of）：回退原切轮逻辑
+                anchor_round_nums = None
+                turns, classifications = evaluate_all_turns(
+                    user_chunks, ai_chunks, task_params, one_turn=one_turn,
+                )
+        else:
+            turns, classifications = evaluate_all_turns(
+                user_chunks, ai_chunks, task_params, one_turn=one_turn,
+            )
+
         turn_results = []
         normal_count = 0
         no_takeover_count = 0
         false_takeover_count = 0
 
-        for turn, cls in zip(turns, classifications):
+        for k, (turn, cls) in enumerate(zip(turns, classifications)):
             turn_detail = {
                 'turn_index': turn.turn_index + turn_idx_offset,
-                'round_number': round_idx,
+                'round_number': anchor_round_nums[k] if anchor_round_nums is not None else round_idx,
                 'classification': cls.classification,
                 'false_takeover': cls.false_takeover,
                 'tor': cls.tor,
@@ -198,8 +217,7 @@ class TurnEvalCalculator(BaseCalculator):
                 # 时延 = 用户说完之后的首个 AI 词 − FFT 定点用户结束
                 user_end_s = None
                 if align_segments and round_of:
-                    rn = self._match_turn_round(turn_detail, align_segments, round_of)
-                    user_end_s = round_user_end_s.get(rn)
+                    user_end_s = round_user_end_s.get(turn_detail['round_number'])
                 latency_result = compute_takeover_latency_from_chunks(
                     turn.user_chunks, turn.ai_chunks or [],
                     played_audios=shared_asr.get('played_audios'),
@@ -239,9 +257,10 @@ class TurnEvalCalculator(BaseCalculator):
             f"pause={len(shared_asr.get('pause_intervals') or [])}"
         )
 
-        # 多轮合并模式：把每条 turn 归属到其真实轮次
-        # （对齐 segments 的 source=played_audio 文件名 → 轮次映射，按时间重叠匹配）
-        if align_segments and round_of:
+        # 非锚点模式（ASR 切轮）才需要按时间重叠把每条 turn 归属到真实轮次
+        # （对齐 segments 的 source=played_audio 文件名 → 轮次映射）；
+        # 锚点模式轮次已由对齐段直接确定。
+        if align_segments and round_of and anchor_round_nums is None:
             for td in turn_results:
                 rn = self._match_turn_round(td, align_segments, round_of)
                 if rn is not None:
@@ -249,6 +268,79 @@ class TurnEvalCalculator(BaseCalculator):
 
         return (turn_results, normal_count, no_takeover_count,
                 false_takeover_count, user_chunks, ai_word_chunks)
+
+    @staticmethod
+    def _build_turns_from_anchors(user_chunks, ai_chunks, align_segments, round_of, task_params=None):
+        """锚点定轮次：每个 FFT 对齐段（= 每轮播放的干净音频）即一轮的定点。
+
+        轮窗口 = [本段 offset, 下一段 offset)；窗口内：
+          - 用户 chunks：与本窗口时间重叠的 ASR 词（用户本轮发言）
+          - AI 回复：开始时间落在本窗口内的 ASR 词（用户问题之后、下轮问题之前）
+        合并为该轮 1 个话轮，用 classify_turn 逐轮三分类。
+
+        仅多轮合并 + 对齐成功时使用（round_of 由 _merge_all_played_audios 提供，
+        对齐段 source 文件名查表得轮次）；对齐失败 / 无 played_audios 时由
+        _eval_one_round 回退到原 ASR 切轮逻辑。
+
+        Returns:
+            (turns, classifications, round_numbers): 按 offset 排序的轮次列表 +
+            逐轮分类结果 + 每个 turn 的真实轮次索引（rounds[i] 的下标）
+        """
+        from app.services.calculators.xiaoyi_metrics.turn_eval.turn_evaluation import (
+            classify_turn, TurnInfo,
+        )
+
+        segs = sorted(
+            (s for s in (align_segments or []) if s.get('source') in round_of),
+            key=lambda s: s.get('offset_s') or 0.0,
+        )
+        if not segs:
+            return [], [], []
+
+        def _window_hit(c, w0, w1):
+            s, e = valid_ts((c or {}).get('timestamp'))
+            if s <= 0.0 and e <= 0.0:
+                return False
+            return s < w1 and e > w0
+
+        turns = []
+        round_numbers = []
+        for i, seg in enumerate(segs):
+            rn = round_of.get(seg.get('source'))
+            win_start = seg.get('offset_s') or 0.0
+            win_end = (segs[i + 1].get('offset_s') or 0.0) if i + 1 < len(segs) else float('inf')
+            seg_end = win_start + (seg.get('clean_duration_s') or 0.0)
+
+            # 该轮用户 chunks：与本窗口重叠（含 AI 插话期间的用户词）
+            u_chunks = [c for c in user_chunks if _window_hit(c, win_start, win_end)]
+            # 该轮 AI 回复：开始时间落在本窗口内（下轮问题之前）
+            a_chunks = []
+            for c in ai_chunks:
+                ts = valid_ts((c or {}).get('timestamp'))
+                if ts[0] <= 0.0 and ts[1] <= 0.0:
+                    continue
+                if win_start <= ts[0] < win_end:
+                    a_chunks.append(c)
+
+            u_starts = [valid_ts(c.get('timestamp'))[0] for c in u_chunks]
+            u_ends = [valid_ts(c.get('timestamp'))[1] for c in u_chunks]
+            a_starts = [valid_ts(c.get('timestamp'))[0] for c in a_chunks]
+            a_ends = [valid_ts(c.get('timestamp'))[1] for c in a_chunks]
+
+            turn = TurnInfo(
+                turn_index=i + 1,
+                user_chunks=u_chunks,
+                ai_chunks=a_chunks,
+                user_start_s=min(u_starts) if u_starts else win_start,
+                user_end_s=max(u_ends) if u_ends else seg_end,
+                ai_start_s=min(a_starts) if a_starts else None,
+                ai_end_s=max(a_ends) if a_ends else None,
+            )
+            turns.append(turn)
+            round_numbers.append(rn)
+
+        classifications = [classify_turn(t, task_params) for t in turns]
+        return turns, classifications, round_numbers
 
     @staticmethod
     def _match_turn_round(turn_detail, segments, round_of):
@@ -327,8 +419,9 @@ class TurnEvalCalculator(BaseCalculator):
         """新流程：多轮合并 / 单轮处理，逐轮三分类 → 接管时延 → 回复质量 → 汇总输出
 
         多轮模式（整体评估）：以末轮（rounds[-1]）的 user_wav + ai_wav 为评估对象，
-        合并**所有轮次**的 played_audios 一次性对齐 + ASR + 切轮 + 三分类，
-        每条 turn 通过对齐段归属到其**真实轮次**，并按轮投影原生 per_round[]
+        合并**所有轮次**的 played_audios 一次性对齐 + ASR。对齐成功后**锚点定轮次**：
+        每个 FFT 对齐段即一轮定点，轮窗口内取用户发言 + 该轮 AI 回复逐轮三分类；
+        对齐失败回退 ASR 切轮 + 按重叠归属到**真实轮次**，并按轮投影原生 per_round[]
         （零额外 ASR/LLM，参考打断 v2 build_per_round；TaskService 见原生 per_round 即跳过切片重跑）。
 
         单轮模式 / 编排器注入 _shared_asr：按配置轮次切分——整轮合并为 1 个话轮，
@@ -351,7 +444,7 @@ class TurnEvalCalculator(BaseCalculator):
 
         # 确定处理模式
         if is_multi and len(rounds) > 1 and not shared_asr_injected:
-            # 多轮合并模式：末轮音频 + 合并所有轮 played_audios，单次对齐/切轮（保留逐话轮切分）
+            # 多轮合并模式：末轮音频 + 合并所有轮 played_audios，单次对齐（锚点定轮次，对齐失败回退 ASR 切轮）
             round_indices = [len(rounds) - 1]
             merge_played_audios = True
             one_turn = False
