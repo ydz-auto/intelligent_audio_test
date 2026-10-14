@@ -306,7 +306,8 @@ async function fetchTaskDetails() {
     }
 
   // Task 域类型为 camelCase，cases 为详情接口扩展字段（camelCase，无需转换）
-  if (taskData.cases && taskData.cases.length > 0) {
+  // INT-305：空数组也要覆盖（移除末例后刷新 cases=[]，length>0 守卫会把旧用例留在表里）
+  if (Array.isArray(taskData.cases)) {
     associatedCases.value = taskData.cases.map((tc: any) => {
       const transformed = transformTestCaseStatus(tc);
       return {
@@ -520,9 +521,11 @@ async function removeCase(evt: RemoveCaseEvent) {
   }
   if (confirmed?.confirmed !== true) return;
 
-  // 边界：任务只剩 1 个用例时二次确认（任务将空，提示是否连任务一并停止）
+  // 边界：任务只剩 1 个用例时二次确认（任务将空，提示是否连任务一并停止）。
+  // 语义：确认=移除并停止任务；取消按钮（仅移除用例）=继续移除但不停止；
+  // 仅关闭弹窗（X/ESC，promise 悬置不落 reject）视为放弃。
   if (associatedCases.value.length === 1) {
-    let stopConfirmed: { confirmed: boolean } | null;
+    let stopConfirmed: { confirmed: boolean } | null = null;
     try {
       stopConfirmed = await modalControl.open<{ confirmed: boolean }>(MODAL_TYPES.BASIC_CONFIRM, {
         title: '任务将变空',
@@ -532,7 +535,8 @@ async function removeCase(evt: RemoveCaseEvent) {
         cancelText: '仅移除用例'
       });
     } catch {
-      return; // 用户取消
+      // 「仅移除用例」按钮走 ModalConfirm cancel→reject 路径：按仅移除语义继续（不停止任务）
+      stopConfirmed = null;
     }
     if (stopConfirmed?.confirmed === true) {
       try {

@@ -172,7 +172,22 @@ describe('TaskDetailModal 移除流程（INT-305）', () => {
     expect(mocks.removeCase).toHaveBeenCalledWith(9, 'c2')
   })
 
-  it('最后一个用例：二次确认选仅移除 → 不停止任务', async () => {
+  it('最后一个用例：二次确认选仅移除（reject 路径）→ 不停止任务仍移除', async () => {
+    const single = { ...TASK_COMPLETED, cases: [CASES[1]] }
+    const w = await mountModal(single)
+    mocks.confirmOpen
+      .mockResolvedValueOnce({ confirmed: true })
+      .mockRejectedValueOnce(new Error('cancel')) // 「仅移除用例」走 ModalConfirm cancel→reject
+    mocks.removeCase.mockResolvedValue({ taskId: '9', caseId: 'c2', purged: false, reportRequeued: false })
+
+    await (w.vm as any).removeCase({ caseId: 'c2', name: '用例二' })
+    await flushPromises()
+
+    expect(mocks.stop).not.toHaveBeenCalled()
+    expect(mocks.removeCase).toHaveBeenCalled()
+  })
+
+  it('最后一个用例：二次确认 resolve confirmed=false → 不停止任务仍移除', async () => {
     const single = { ...TASK_COMPLETED, cases: [CASES[1]] }
     const w = await mountModal(single)
     mocks.confirmOpen
