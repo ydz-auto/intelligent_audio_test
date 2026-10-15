@@ -12,8 +12,7 @@ import 本包即自动完成所有内置 calculator 的注册。
       turn_eval/    TurnEvalCalculator（逐轮三分类：误接管 / 接管 / 未接管 + 接管时延 + 回复质量）
       interruptibility/  interruption_metrics
       rejection_scene_awareness/  non_interactive_latency / noise_latency
-      env_judge/     env_judge (环境理解裁判)
-      llm_judge/     llm_judge
+      env_judge/     env_judge (环境理解裁判) / reject_judge（拒识裁判）
 """
 from app.services.calculators.base import BaseCalculator
 from app.services.calculators.wer.strategies import (
@@ -36,7 +35,6 @@ from app.services.calculators.xiaoyi_metrics.env_judge.strategy import (
     EnvJudgeCalculator,
     RejectionJudgeCalculator,
 )
-from app.services.calculators.xiaoyi_metrics.llm_judge.strategy import LlmJudgeCalculator
 from app.services.calculators.xiaoyi_metrics.interruptibility.strategy import (
     InterruptionMetricsCalculator,
 )
@@ -71,5 +69,3 @@ TaskService.register_calculator('noise_latency', NoiseLatencyCalculator())
 TaskService.register_calculator('env_judge', EnvJudgeCalculator())
 # reject_judge 域（拒识裁判：评估模型在拒识场景下的行为表现）
 TaskService.register_calculator('reject_judge', RejectionJudgeCalculator())
-# llm_judge 域
-TaskService.register_calculator('llm_judge', LlmJudgeCalculator())

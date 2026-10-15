@@ -154,9 +154,19 @@ TaskCase.evaluation_status:
 | **评估计算** | 维度评估完成，开始计算指标 | `evaluation_status: running → calculating` |
 | **评估成功** | 所有维度评估完成且有有效结果 | `evaluation_status: calculating → completed` | 评估完成后，TaskCase.status 会在执行引擎的状态修复阶段自动更新为 completed |
 | **评估失败** | 任何维度评估无有效结果或发生错误 | `evaluation_status: running → failed`<br>`status: failed` |
-| **执行失败** | 用例执行过程中发生错误 | `execution_status: running → failed`<br>`evaluation_status: failed`<br>`status: failed` |
+| **执行失败** | 用例执行过程中发生错误 | `execution_status: running → failed`<br>`evaluation_status: failed`（实现演进：评估未启动时为 `completed`，见下方演进标注）<br>`status: failed` |
 | **执行失败（无评估维度）** | 用例执行失败，或执行成功但无评估维度 | `execution_status: completed/failed`<br>`evaluation_status: completed` (当无评估维度时自动更新)<br>`status: completed/failed` |
 | **执行停止** | 手动停止任务时 | `execution_status: running → stopped`<br>`evaluation_status: stopped`<br>`status: skipped` |
+
+> **实现演进标注**（2026-10-12，INT-221 方案一致性审计回写；该口径自分发失败兜底与共享层 `_db_mixin._update_tc_rel_status` 起既定，INT-161 修复对齐、INT-169 跨服务对齐）：
+>
+> 执行失败时 `evaluation_status` 的取值按「**评估是否已启动**」判别，而非一律 `failed`：
+>
+> 1. **评估未启动**（pending/queued/空）→ `evaluation_status = completed`：评估阶段无对象、随执行失败一并收口，失败由 `execution_status` 承载（`derive_task_case_status(failed, completed) = failed`，任务照常收敛，评估列不残留活跃态防主循环死等）。代码位置：`task_service` `task_dispatch._finalize_dispatch_failure` / `evaluation_arbiter._finalize_hung_case`、共享层 `base_executor/_db_mixin._update_tc_rel_status`（execution=failed 且未显式给 evaluation_status 时自动补 completed）、`api_test_service` `api_executor._fail_tc_rel`（INT-161）/ `api_result_processor.create_test_result` 失败分支 / `update_task_case_failure` / `_finalize_task_case_status` 失败分支、`task_dispatch._handle_e2e_failure`。
+> 2. **评估已提交/启动后失败** → `evaluation_status = failed`（`execution_status` 保持 completed）：保留「执行成功、评估失败」的事实边界（INT-123 `api_session_executor._finalize_evaluation_submit_failure`、INT-169 E2E 链 `EvaluationSubmitError` 收口 `_finalize_eval_submit_failures`）。
+> 3. **服务重启评估中断** → 启动恢复 `mark_interrupted_tasks_failed` 补 `evaluation_status = failed`；已带真实失败原因/完成时间的用例不覆盖 `error_message`/`completed_at`（INT-161 信息保全）。
+>
+> 「执行失败（无评估维度）」行的 `completed` 取值与本标注一致；差异仅在判别口径：实现按「评估是否已启动」判别，不按「有无评估维度」配置判别。前端展示不受影响（§8.5.1 执行失败优先：`execution_status=failed` → 展示 failed）。
 
 ## 5. 字段使用规范
 
@@ -200,7 +210,7 @@ TaskCase.evaluation_status:
 | **评估计算** | 维度评估完成，开始计算指标 | `calculating` | 标志所有维度评估完成，开始计算融合指标 |
 | **评估成功** | 所有维度评估完成且有有效结果 | `completed` | 标志所有维度评估成功完成 |
 | **评估失败** | 任何维度评估无有效结果或发生错误 | `failed` | 标志维度评估失败 |
-| **执行失败** | 用例执行过程中发生错误 | `failed` | 标志执行失败，评估终止 |
+| **执行失败** | 用例执行过程中发生错误 | `failed` | 标志执行失败，评估终止（实现演进：评估未启动时此处为 `completed`，见 §4 演进标注） |
 | **任务停止** | 手动停止任务时 | `stopped` | 标志评估被中断 |
 
 #### 5.3.3 status 更新时机
@@ -275,10 +285,12 @@ TaskCase.evaluation_status:
    db.session.commit()
    ```
 
-8. **用例执行失败**：
+8. **用例执行失败**（实现演进，见 §4 演进标注）：
    ```python
    tc.execution_status = 'failed'
-   tc.evaluation_status = 'failed'
+   # 评估未启动（pending/queued/空）→ completed：失败由 execution_status 承载；
+   # 评估已提交/启动后失败才置 'failed'（INT-123/INT-169 口径）
+   tc.evaluation_status = 'completed'
    tc.status = 'failed'
    tc.completed_at = datetime.now()
    db.session.commit()
@@ -342,9 +354,9 @@ db.session.commit()
 tc.evaluation_status = 'calculating'
 db.session.commit()
 
-# 执行失败
+# 执行失败（实现演进，见 §4 演进标注：评估未启动时为 completed，失败由 execution_status 承载）
 tc.execution_status = 'failed'
-tc.evaluation_status = 'failed'
+tc.evaluation_status = 'completed'
 tc.status = 'failed'
 tc.error_message = str(e)
 tc.completed_at = datetime.now()

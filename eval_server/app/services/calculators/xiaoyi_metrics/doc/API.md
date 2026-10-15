@@ -10,10 +10,15 @@
 | ----------------- | ----------- | ---- | ------------------------------------------------------------------------------ |
 | `user_wav`        | str         | 指标依赖 | 用户通道音频路径（`cap_client_process_out.wav`）                                         |
 | `ai_wav`          | str         | 指标依赖 | 模型回复音频路径（`cap_client_ec_out.wav`）                                              |
-| `rounds`          | list\[dict] | 否    | 多轮文本数据，每轮可含 `query`/`answer`/`question`/`correct_answer`/`ai_wav`/`user_wav` 等 |
+| `rounds`          | list\[dict] | 否    | 多轮文本数据，每轮可含 `query`/`answer`/`question`/`correct_answer`/`ai_wav`/`user_wav`/`played_audios` 等 |
 | `round_number`    | int         | 否    | 轮次索引（0-based）。有值→单轮评估；无值→多轮整体评估                                                |
-| `sub_tasks`       | list\[str]  | 否    | 仅 `turn_taking` 主维度：指定只计算部分子维度                                                 |
+| `sub_tasks`       | list\[str]  | 否    | 编排器：指定只计算部分子维度（`xiaoyi_metrics` / `turn_taking`）                                 |
+| `played_audios`   | list\[dict]\|str | 否 | 本轮被播放的干净音源（`[{"audio_path": "..."}]` / dict / 路径），FFT 互相关对齐精修用户段                 |
 | `enable_llm_eval` | bool/str    | 否    | 是否启用 LLM 语义评估，默认 True                                                          |
+
+> **played_audios 取值**：平台下发主流形态为 `list[dict]`（含 `audio_path`），也可为单个 dict 或纯字符串路径，
+> `_resolve_played_audio_path` 统一解析；multipart 上传时可用 `__MULTIPART__:field_name` 占位符递归还原。
+> 用途：takeover_latency/false_takeover 精修用户段、turn_eval 多轮 turn 轮次归属、interruption_metrics FFT 定位用户窗口、env_judge 定位环境声。
 
 ### ASR chunks 格式
 
@@ -51,14 +56,17 @@
   "tor": { /* 见 §2 */ },
   "false_takeover": { /* 见 §3 */ },
   "takeover_latency": { /* 见 §4 */ },
-  "interruption": { /* 见 §7 */ },
-  "non_interactive_latency": { /* 见 §9 */ },
+  "reply_quality": { /* 见 §6.1 */ },
   "high_freq_turn_taking": { /* 见 §5 */ },
-  "high_freq_llm_judge": { /* 见 §6 */ }
+  "high_freq_llm_judge": { /* 见 §6 */ },
+  "interaction_text": "..."
 }
 ```
 
-**后处理**：若 `false_takeover.tor == 1`（检测到抢话），则 `tor` 和 `takeover_latency` 置 null。
+**后处理**：若 `false_takeover.tor == 1`（检测到抢话），则 `tor` 和 `takeover_latency` 置 null（不适用）。
+
+> 打断（interruption）与非交互时延（non_interactive_latency）子维度已迁移至 `interruptibility/` / `rejection_scene_awareness/` 域，
+> `turn_taking` 域不再承载（见 [README.md](README.md)）。
 
 ***
 
@@ -247,7 +255,101 @@
 
 ***
 
+## 6.1 reply\_quality —— 单轮回复质量 LLM 评分
+
+### 入参（evaluate\_reply\_quality）
+
+| 参数               | 类型          | 必填 | 说明                                           |
+| ---------------- | ----------- | -- | -------------------------------------------- |
+| `ai_wav`         | str         | 是  | 模型回复音频路径（主输入，被判定对象）                          |
+| `user_wav`       | str         | 否  | 用户通道音频路径（辅助上下文）                              |
+| `played_audios`  | str/list    | 否  | 被播放音频（上下文）                                   |
+| `model`          | str         | 否  | LLM 模型名，缺省读 `config.LLM_JUDGE`（含维度专用模型）       |
+| `max_tokens`     | int         | 否  | 最大输出 token，默认 4096                           |
+| `temperature`    | float       | 否  | 采样温度，默认 0.1                                  |
+
+### 出参
+
+```json
+{
+  "enabled": true,
+  "model": "gpt-4o",
+  "score": 4.5,                    // 回复质量评分（0-5）
+  "reason": "回复内容准确、相关，表达自然流畅",
+  "tokens_used": 800,
+  "input_token": 500,
+  "output_token": 300,
+  "message": "OK"
+}
+```
+
+***
+
+## 6.2 turn\_eval —— 逐轮三分类（误解管 / 接管 / 未接管）
+
+从 turn_taking 拆出的独立主维度（`turn_eval/strategy.py`）：先切分轮次，逐轮统一判定三分类，再按分类结果补充接管时延与回复质量（仅「接管」轮）。
+
+### 入参
+
+| 字段                | 类型          | 必填 | 说明                                      |
+| ----------------- | ----------- | -- | --------------------------------------- |
+| `user_wav`        | str         | 二选一 | 用户通道音频路径                                |
+| `ai_wav`          | str         | 二选一 | 模型回复音频路径                                |
+| `rounds`          | list\[dict] | 否  | 多轮数据，每轮可含 `user_wav`/`ai_wav`/`played_audios`/`query` |
+| `round_number`    | int         | 否  | 单轮/多轮模式切换                               |
+| `played_audios`   | str/list    | 否  | 干净音源（FFT 对齐生成干净版音频 + turn 轮次归属）         |
+| `llm_model` / `model` | str     | 否  | LLM 模型名，缺省读 `config.LLM_JUDGE`            |
+
+### 出参
+
+```json
+{
+  "turn_classification": {
+    "summary": "正常接管2，未接管1，误解管0",
+    "normal_takeover_count": 2,
+    "no_takeover_count": 1,
+    "false_takeover_count": 0,
+    "total_turns": 3,
+    "takeover_rate": 0.6667,
+    "no_takeover_rate": 0.3333,
+    "false_takeover_rate": 0.0,
+    "turns": [
+      {
+        "turn_index": 0, "round_number": 0,
+        "classification": "TAKEOVER",        // TAKEOVER / NO_TAKEOVER / MISUNDERSTAND
+        "false_takeover": {"false_takeover": 0, "reason": "..."},
+        "tor": {"tor": 1, "n_words": 1, "duration": 1.0},
+        "takeover_latency": {"takeover_latency_ms": 320, "message": "OK"},   // 仅「接管」轮
+        "reply_quality": {"score": 4.5, "reason": "..."},                    // 仅「接管」轮
+        "user_start_s": 0.5, "user_end_s": 2.1,
+        "ai_start_s": 2.5, "ai_end_s": 4.0,
+        "has_ai_reply": true
+      }
+    ]
+  },
+  "tor": {...},                    // 兼容旧字段（取最后一轮）
+  "false_takeover": {...},
+  "takeover_latency": {"takeover_latency_ms": 320, "takeover_latency_avg_ms": 340.5},
+  "reply_quality": {"score": 4.5, "reply_quality_avg_score": 4.3},
+  "interaction_text": "...",
+  "per_round": [                   // 多轮合并模式的原生逐轮投影（零额外 ASR/LLM）
+    {"round_number": 0, "turn_classification": {...}, "tor": {...}, "false_takeover": {...}, "takeover_latency": {...}, "reply_quality": {...}},
+    {"round_number": 1, "message": "跳过: 该轮无切分轮次"}
+  ]
+}
+```
+
+**多轮合并模式**：以末轮（rounds[-1]）的 user_wav + ai_wav 为评估对象，合并所有轮次 played_audios 一次性对齐 + ASR + 切轮 + 三分类，每条 turn 通过对齐段归属到其真实轮次；TaskService 见顶层原生 `per_round[]` 即跳过默认逐轮切片重跑。
+
+***
+
 ## 7. interruption —— 打断指标
+
+> **v2 已重构**：`interruption_metrics` 由 `interruptibility/strategy.py` 统一计算器一次出全部字段——
+> 本地时序（停得下/恢复得来）+ **进程内直调逐轮 LLM 裁判**（`env_judge/interruption_judge.py` 的
+> `judge_interruption_rounds`，整例一次调用），不依赖平台跨维度回填，也不再单独调 `interruption_llm`。
+> 完整 v2 入参/出参（用例类型 / 行为五分类 / 响应与回复时延 / LLM 语义打断点精修 / 恢复原话题 / 停止遵从）见
+> [interruption_io.md](interruption_io.md)。本节省略旧 v1 口径，下方仅保留本地时序核心入参（字段仍向下兼容输出）。
 
 ### 入参（compute\_interruption\_metrics）
 
@@ -331,12 +433,14 @@
 
 ## 8. interruption\_llm —— 打断 LLM 评估
 
-> 数值指标（时延/让出率/恢复率等）**全部本地算**（用 user 1.5s / model 0.7s 两阈值合并段）；
-> LLM 先**语义判定 success（是否成功打断）**——覆盖本地时序启发式 `interruption_success_rate`，
-> 再给恢复回复的 连贯性/相关性/适应性 打分（0-5）+ 每维分项理由。
-> `is_real_interruption` 判"是否真打断"，`success` 判"是否成功处理打断"（成功率口径）。
-> **角色约束**：prompt 显式声明仅"用户打断"是人类输入，"模型被打断尾巴"与"模型恢复回复"都是 AI(语音助手)的话，
-> 防止 LLM 把 ai\_wav 也当成用户输入；输出严格 JSON，仅含约定键。
+> **已移除**：`interruptibility/interruption_llm.py`（逐事件文本 LLM 语义复核 + 回复打分）已删除。
+> 打断的全部 LLM 维度改由 `interruption_metrics` v2 进程内直调 `env_judge/interruption_judge.py` 的
+> `judge_interruption_rounds`（整例一次带音频调用）产出：行为五分类、询问率、回复内容评分、停止指令遵从率、
+> LLM 语义打断点精修。`interruption_metrics` 不再调用任何 LLM。
+> 字段与门控详见 [interruption_io.md](interruption_io.md) §2。
+
+> ~~旧 v1 说明（保留供追溯）：数值指标全部本地算；LLM 先语义判定 success（覆盖本地时序成功率），
+> 再给恢复回复三维打分；`is_real_interruption` 判"是否真打断"，`success` 判"是否成功处理打断"。~~
 
 ### 入参（evaluate\_interruption\_llm）
 
@@ -472,6 +576,37 @@
 
 ***
 
+## 10.1 env\_judge —— 环境理解裁判
+
+### 入参（evaluate\_env\_judge）
+
+| 参数                | 类型   | 必填 | 说明                                                          |
+| ----------------- | ---- | -- | ----------------------------------------------------------- |
+| `user_wav`        | str  | 是  | 用户通道音频路径（含环境声 + 用户询问）                                      |
+| `ai_wav`          | str  | 是  | 模型回复音频路径（被判定对象）                                             |
+| `played_audios`   | str/list | 是  | 本轮被播放的环境声音频（FFT 互相关定位起止时间戳）                              |
+| `correctAnswer`   | str  | 是  | 正确答案（参考内容文本）                                                 |
+| `env_type`        | bool/int | 否  | `false/0` → non_semantic（噪声：判断声音类型识别）；`true/1` → semantic（含语义：判断内容理解） |
+| `model`           | str  | 否  | LLM 模型名，缺省读 `config.LLM_JUDGE`                            |
+| `max_tokens`      | int  | 否  | 最大输出 token，默认 4096                                       |
+| `temperature`     | float | 否  | 采样温度，默认 0.1                                              |
+
+### 出参
+
+```json
+{
+  "understand_correct": true,       // 模型对环境音内容的理解是否正确
+  "response_latency_ms": 1200.0,    // 用户询问结束 → 模型首字开始（毫秒）
+  "score": 5,                        // LLM 内容评分（1-5）
+  "reason": "模型正确识别出门铃声并给出了准确回应",
+  "env_type": 0,                     // 回显
+  "interaction_text": "...",
+  "message": "OK"
+}
+```
+
+***
+
 ## 11. rejection\_judge —— 拒识场景 LLM 裁判
 
 ### 入参（evaluate\_rejection\_judge）
@@ -579,6 +714,11 @@
 
 ## 12. interruption\_judge —— 打断场景 LLM 裁判
 
+> **v2 起不再作为独立 task_type 注册**：打断裁判（行为分类 / 内容评分 / 停止指令遵从）由
+> `interruption_metrics` 进程内直调 `judge_interruption_rounds` 整例一次调用复用，
+> `interruption_metrics` 不再单独调 LLM（详见 [interruption_io.md](interruption_io.md) §2）。
+> 下方为裁判函数 `judge_interruption_rounds` / `evaluate_interruption_judge` 的入参出参（保留供直调与回溯）。
+
 ### 入参（evaluate\_interruption\_judge）
 
 | 参数            | 类型    | 必填 | 说明                                           |
@@ -617,75 +757,25 @@
 
 ***
 
-## 13. llm\_judge —— 通用 LLM 语义打分
-
-### 入参（evaluate\_with\_llm）
-
-| 参数                 | 类型          | 必填 | 说明                       |
-| ------------------ | ----------- | -- | ------------------------ |
-| `answer`           | str         | 是  | 设备回答                     |
-| `correct_answer`   | str         | 否  | 参考答案                     |
-| `question`         | str         | 否  | 设备识别的问题                  |
-| `query`            | str         | 否  | 参考问题                     |
-| `record_file`      | str         | 否  | 音频文件路径（多模态评估）            |
-| `rounds`           | list\[dict] | 否  | 多轮数据，有则逐轮列出              |
-| `model`            | str         | 否  | LLM 模型名，默认 `deepseek-r1` |
-| `prompt`           | str         | 否  | 自定义 prompt 模板            |
-| `max_tokens`       | int         | 否  | 最大输出 token，默认 1024       |
-| `temperature`      | float       | 否  | 采样温度，默认 0.7              |
-| `scoring_criteria` | list        | 否  | 自定义评分维度                  |
-
-### 出参
-
-```json
-{
-  "enabled": true,
-  "llm_judge_score": 4,              // LLM 评分
-  "criteria_scores": null,           // 分维度评分（可选）
-  "reasoning": "回答准确，与参考答案一致", // 评分理由
-  "model": "deepseek-r1",
-  "query": "什么是人工智能",
-  "answer": "人工智能是...",
-  "correct_answer": "人工智能是..."
-}
-```
-
-**多轮模式**额外字段：
-
-```json
-{
-  "n_rounds": 3,                      // 轮数
-  "per_round": [                      // 每轮结果
-    {
-      "enabled": true,
-      "llm_judge_score": 4,
-      "reasoning": "...",
-      "model": "deepseek-r1",
-      "query": "...",
-      "answer": "...",
-      "correct_answer": "..."
-    },
-    ...
-  ]
-}
-```
-
 ***
 
 ## task\_type → 注册表映射
 
 | task\_type                | Calculator 类                      | 入口函数                                                    |
 | ------------------------- | --------------------------------- | ------------------------------------------------------- |
-| `turn_taking`             | `TurnTakingCalculator`            | 遍历子维度各自 calculate                                       |
+| `xiaoyi_metrics`          | `XiaoyiMetricsCalculator`         | 全域编排（共享 ASR + 遍历子维度聚合）                              |
+| `turn_taking`             | `TurnTakingCalculator`            | 域内遍历子维度各自 calculate                                   |
 | `tor`                     | `TorCalculator`                   | `compute_tor`                                           |
 | `false_takeover`          | `FalseTakeoverCalculator`         | `compute_false_takeover` + `compute_false_takeover_llm` |
 | `takeover_latency`        | `TakeoverLatencyCalculator`       | `compute_takeover_latency_from_raw`                     |
 | `high_freq_turn_taking`   | `HighFreqTurnTakingCalculator`    | `compute_high_freq_turn_taking`                         |
 | `high_freq_llm_judge`     | `HighFreqLlmJudgeCalculator`      | `evaluate_high_freq_llm`                                |
-| `interruption_metrics`    | `InterruptionMetricsCalculator`   | `calculate_interruption_metrics`                        |
+| `reply_quality`           | `ReplyQualityCalculator`          | `evaluate_reply_quality`                                |
+| `turn_eval`               | `TurnEvalCalculator`              | `evaluate_all_turns`（turn_evaluation.py）               |
+| `interruption_metrics`    | `InterruptionMetricsCalculator`   | `calculate_interruption_metrics` + 进程内直调 `judge_interruption_rounds`（v2） |
 | `non_interactive_latency` | `NonInteractiveLatencyCalculator` | `compute_non_interactive_latency`                       |
 | `noise_latency`           | `NoiseLatencyCalculator`          | `compute_noise_latency`                                 |
+| `env_judge`               | `EnvJudgeCalculator`              | `evaluate_env_judge`                                    |
 | `rejection_judge`         | `RejectionJudgeCalculator`        | `evaluate_rejection_judge`                              |
-| `interruption_judge`      | `InterruptionJudgeCalculator`     | `evaluate_interruption_judge`                           |
-| `llm_judge`               | `LlmJudgeCalculator`              | `evaluate_with_llm`                                     |
+| ~~`interruption_judge`~~  | —（v2 并入 interruption_metrics） | 进程内直调 `judge_interruption_rounds` / `evaluate_interruption_judge`（不再独立注册） |
 

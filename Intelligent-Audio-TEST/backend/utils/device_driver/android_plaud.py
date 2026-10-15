@@ -13,8 +13,8 @@ from config.config import Config
 from .android_driver import AndroidDriver
 from .device_config import get_device_config
 from .utils import check_stop, u2, log_and_emit, By
-from .driver_types import AppType, AppVersion, DevicePlatform
-from .registry import register_driver
+from .driver_types import DevicePlatform
+from .registry import register_driver, DriverNotFoundError
 
 LOG_DEVICE_PATH = '/storage/media/100/local/files/Docs/Huawei Share'
 LOG_DEVICE_ID = '3QC0124C11000914'
@@ -24,8 +24,8 @@ LOG_DEVICE_ID = '3QC0124C11000914'
 class PlaudDriver(AndroidDriver):
     """Plaud AI 录音应用安卓设备驱动实现"""
 
-    app_type = AppType.PLAUD
-    version = AppVersion.V1
+    app_type = "plaud"
+    version = "v1"
     platform = DevicePlatform.ANDROID
     keywords = "android.plaud.v1"
     display_name = "Plaud AI 录音专用驱动"
@@ -220,10 +220,13 @@ class PlaudDriver(AndroidDriver):
         # driver.xpath('//*[@content-desc="SRT"]').click()
         driver.xpath('//*[@content-desc="导出"]').click(timeout=10)
 
-        #  解锁设备啥的
+        # 华为分享目标设备为鸿蒙设备：按类型取小艺慧记驱动（不再用旧别名 harden 匹配）
         from .driver_factory import DeviceDriverFactory
         driver_factory = DeviceDriverFactory()
-        share_device = driver_factory.get_driver_for_device("harmonyos", ["harden"], device_sn=LOG_DEVICE_ID)
+        try:
+            share_device = driver_factory.get_driver_typed("xiaoyi_huiji", DevicePlatform.HARMONYOS)
+        except DriverNotFoundError:
+            share_device = None
         if not share_device:
             self._log(level='INFO', content=f"分享日志设备未准备: {LOG_DEVICE_ID}", task_id=task_id, test_case_id=test_case_id)
             return False

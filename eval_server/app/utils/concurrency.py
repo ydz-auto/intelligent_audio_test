@@ -16,7 +16,6 @@ class ConcurrencyManager:
                 return
             all_types = [
                 'wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer',
-                'llm_judge',
                 'turn_taking', 'interruption_metrics', 'non_interactive_latency',
                 'noise_latency', 'env_judge',
                 'high_freq_turn_taking', 'high_freq_llm_judge',

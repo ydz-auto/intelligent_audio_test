@@ -199,14 +199,6 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         missing = [f for f in required_fields if not task_params.get(f)]
         if missing:
             return error_response(f"Missing required fields for der: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
-    elif task_type == 'llm_judge':
-        # llm_judge：answer/correct_answer 在有 rounds 时从 rounds 取，否则从顶层取
-        # model/prompt 有默认值，不是必填
-        if not task_params.get('rounds'):
-            required_fields = ['answer', 'correct_answer']
-            missing = [f for f in required_fields if not task_params.get(f)]
-            if missing:
-                return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
     # xiaoyi_metrics: record_file 可为空，无录音时跳过 ASR 相关指标
     elif task_type == 'interruption_metrics':
         # 走 wav：平台 driver 产 user_wav/ai_wav，由 calculate_interruption_metrics 内部调 asr_server 转 chunks

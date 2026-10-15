@@ -5,7 +5,7 @@ from .android_driver import AndroidDriver
 from .android_plaud import PlaudDriver
 from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .driver_factory import DeviceDriverFactory
-from .driver_types import AppType, AppVersion, DevicePlatform, DriverStatus
+from .driver_types import DevicePlatform, DriverStatus
 from .registry import DriverRegistry, DriverNotFoundError, driver_registry, register_driver
 
 try:
@@ -38,7 +38,7 @@ __all__ = [
     'XiaoyiSimultaneousInterpretationDriver', 'HarmonyHardenXiaoyiHuiJiDriver',
     'Xiaoyilivechat', 'ChatGptVoiceChat', 'DoubaoChat',
     'HarmonyHardenXiaoyi_Input_MethodDriver', 'DeviceDriverFactory',
-    'device_driver_factory', 'AppType', 'AppVersion', 'DevicePlatform',
+    'device_driver_factory', 'DevicePlatform',
     'DriverStatus', 'DriverRegistry', 'DriverNotFoundError', 'driver_registry',
     'register_driver'
 ]

@@ -109,7 +109,7 @@ class Config:
         'default_model': _env('LLM_JUDGE_DEFAULT_MODEL', _lj.get('default_model', 'gpt-4o-mini')),
         'dimension_models': {
             dim: _env(f'LLM_JUDGE_MODEL_{dim.upper()}', (_lj.get('dimension_models') or {}).get(dim, ''))
-            for dim in ('llm_judge', 'high_freq_llm_judge', 'false_takeover', 'reply_quality')
+            for dim in ('high_freq_llm_judge', 'false_takeover', 'reply_quality')
         },
         'max_tokens': _env_int('LLM_JUDGE_MAX_TOKENS', int(_lj.get('max_tokens', 4096))),
         'temperature': float(_env('LLM_JUDGE_TEMPERATURE', str(_lj.get('temperature', 0.1)))),

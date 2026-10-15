@@ -4,7 +4,7 @@ import os
 from .base_driver import BaseDeviceDriver
 from .device_config import get_device_config
 from .utils import check_stop, UiDriver, By, MatchPattern, with_rpc_retry, is_rpc_not_running_error
-from .driver_types import AppType, AppVersion, DevicePlatform
+from .driver_types import DevicePlatform
 from .registry import register_driver
 
 
@@ -12,10 +12,11 @@ from .registry import register_driver
 class HarmonyDriver(BaseDeviceDriver):
     """HarmonyOS设备驱动实现"""
 
-    app_type = AppType.HARMONY_BASE
-    version = AppVersion.V1
+    app_type = "harmony_base"
+    version = "v1"
     platform = DevicePlatform.HARMONYOS
     keywords = "harmony.base.v1"
+    is_base_driver = True
 
     def __init__(self):
         """初始化HarmonyOS驱动"""
