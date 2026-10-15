@@ -134,30 +134,45 @@ export async function handleDeviceOperate(deviceId: string | number, operation: 
   };
   const label = opLabels[operation] || operation;
 
+  // INT-286：装卸应用参数改 INPUT_CONFIRM 表单模态收集（原 window.prompt 无校验、不可样式化），
+  // 表单确认按钮即操作确认，不再二次弹 BASIC_CONFIRM
   let params: Record<string, unknown> | undefined;
   if (operation === 'install_app') {
-    const filePath = window.prompt('请输入服务器侧安装包路径（APK/HAP）:', '');
-    if (!filePath) return;
-    params = { file_path: filePath.trim() };
-  } else if (operation === 'uninstall_app') {
-    const pkg = window.prompt('请输入要卸载的应用包名:', '');
-    if (!pkg) return;
-    params = { package_name: pkg.trim() };
-  }
-
-  const confirmed = await new Promise<boolean>((resolve) => {
-    getDeviceManagement()!.modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: `确认${label}`,
-      message: `确定要对设备执行「${label}」吗？`,
-      confirmText: '确认执行',
-      cancelText: '取消',
-      options: { closable: true },
-      onConfirm: () => resolve(true),
-      onCancel: () => resolve(false),
-      onClose: () => resolve(false),
+    const filePath = await promptOperationValue({
+      title: '安装应用',
+      label: '服务器侧安装包路径（APK/HAP）',
+      placeholder: '例如：/opt/packages/demo.apk',
+      confirmText: '确认安装',
+      validate: (v) => (/\s/.test(v) ? '路径不能包含空白字符' : null),
     });
-  });
-  if (!confirmed) return;
+    if (filePath == null) return;
+    params = { file_path: filePath };
+  } else if (operation === 'uninstall_app') {
+    const pkg = await promptOperationValue({
+      title: '卸载应用',
+      label: '要卸载的应用包名',
+      placeholder: '例如：com.example.app',
+      confirmText: '确认卸载',
+      danger: true,
+      validate: (v) => (/\s/.test(v) ? '包名不能包含空白字符' : null),
+    });
+    if (pkg == null) return;
+    params = { package_name: pkg };
+  } else {
+    const confirmed = await new Promise<boolean>((resolve) => {
+      getDeviceManagement()!.modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: `确认${label}`,
+        message: `确定要对设备执行「${label}」吗？`,
+        confirmText: '确认执行',
+        cancelText: '取消',
+        options: { closable: true },
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+        onClose: () => resolve(false),
+      });
+    });
+    if (!confirmed) return;
+  }
 
   try {
     await devicesPort.control(deviceId, operation as DeviceBatchActionType, params);
@@ -166,6 +181,24 @@ export async function handleDeviceOperate(deviceId: string | number, operation: 
   } catch (error) {
     console.error(`${label}失败:`, error);
     notification.error(`${label}失败: ` + (error instanceof Error ? error.message : '未知错误'));
+  }
+}
+
+/** INT-286：INPUT_CONFIRM 表单模态通用封装；用户取消返回 null，确认返回 trim 后的值 */
+async function promptOperationValue(config: {
+  title: string;
+  label: string;
+  placeholder?: string;
+  confirmText?: string;
+  danger?: boolean;
+  validate?: (value: string) => string | null;
+}): Promise<string | null> {
+  try {
+    const result = await getDeviceManagement()!.modalManager.open(MODAL_TYPES.INPUT_CONFIRM, config);
+    const value = String(result?.value ?? '').trim();
+    return value || null; // 空值视同取消（INPUT_CONFIRM 的 required 校验兜底）
+  } catch {
+    return null; // 用户取消
   }
 }
 

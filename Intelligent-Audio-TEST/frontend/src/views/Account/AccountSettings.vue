@@ -78,10 +78,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../../store/authStore'
 import { authPort } from '../../composables/auth/authPort'
 import type { OAuthBinding, OAuthProvider } from '../../domain/model/auth'
+import { useModalControl } from '../../composables/modal/useModal'
+import { MODAL_TYPES } from '../../composables/modal/constants'
 
 const authStore = useAuthStore()
 const route = useRoute()
 const router = useRouter()
+const modalControl = useModalControl()
 
 const bindings = ref<OAuthBinding[]>([])
 const providers = ref<OAuthProvider[]>([])
@@ -130,8 +133,17 @@ async function completeBind(ticket: string) {
 }
 
 async function unbind(b: OAuthBinding) {
-  if (!window.confirm(`确认解绑「${b.providerName}」？解绑后将无法使用该第三方账号登录。`)) {
-    return
+  // INT-286：解绑改 BASIC_CONFIRM（danger）模态，替换原生 window.confirm
+  try {
+    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '解绑第三方账号',
+      content: `确认解绑「${b.providerName}」？解绑后将无法使用该第三方账号登录。`,
+      confirmText: '解绑',
+      cancelText: '取消',
+      danger: true,
+    })
+  } catch {
+    return // 用户取消
   }
   unbinding.value = true
   error.value = ''

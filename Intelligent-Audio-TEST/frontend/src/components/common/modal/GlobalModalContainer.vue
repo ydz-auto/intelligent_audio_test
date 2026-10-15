@@ -115,6 +115,7 @@ import { useNotification } from '@/composables/modal/useNotification'
 import TestCaseModal from '../test-case/TestCaseModal/index.vue'
 import AddTestCaseModal from '../test-case/AddTestCaseModal.vue'
 import ModalConfirm from './ModalConfirm.vue'
+import InputConfirmModal from './InputConfirmModal.vue'
 import APIEditModal from './APIEditModal.vue'
 import DetailViewModal from './DetailViewModal.vue'
 import ImportExportModal from './ImportExportModal.vue'
@@ -267,6 +268,7 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.SCAN_DEVICES]: ScanDevicesModal,
     [MODAL_TYPES.BASIC_CONFIRM]: ModalConfirm,
     [MODAL_TYPES.DELETE_CONFIRM]: ModalConfirm,
+    [MODAL_TYPES.INPUT_CONFIRM]: InputConfirmModal,
     [MODAL_TYPES.API_OTHER_CONFIG]: APIEditModal,
     [MODAL_TYPES.DETAIL_VIEW]: DetailViewModal,
     [MODAL_TYPES.IMPORT_EXPORT]: ImportExportModal,

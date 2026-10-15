@@ -10,6 +10,7 @@ import { MODAL_TYPES } from '../../../composables/modal/constants'
 import TestCaseModal from '../test-case/TestCaseModal/index.vue'
 import AddTestCaseModal from '../test-case/AddTestCaseModal.vue'
 import ModalConfirm from './ModalConfirm.vue'
+import InputConfirmModal from './InputConfirmModal.vue'
 import APIEditModal from './APIEditModal.vue'
 import DetailViewModal from './DetailViewModal.vue'
 import ImportExportModal from './ImportExportModal.vue'
@@ -80,6 +81,12 @@ export function registerGlobalModals() {
   manager.registerModal(MODAL_TYPES.DELETE_CONFIRM, {
     ...confirmConfig,
     defaultConfig: { ...confirmConfig.defaultConfig, title: '删除确认', danger: true }
+  });
+
+  // INT-286：单字段表单输入确认模态（替代业务侧 window.prompt）
+  manager.registerModal(MODAL_TYPES.INPUT_CONFIRM, {
+    component: InputConfirmModal,
+    defaultConfig: { title: '输入', required: true }
   });
 
   manager.registerModal(MODAL_TYPES.API_OTHER_CONFIG, {

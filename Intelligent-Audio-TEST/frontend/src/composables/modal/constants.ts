@@ -7,6 +7,8 @@
 export const MODAL_TYPES = {
   BASIC_CONFIRM: 'basicConfirm',
   DELETE_CONFIRM: 'deleteConfirm',
+  // INT-286：单字段表单输入确认模态（替代业务侧 window.prompt 收集输入）
+  INPUT_CONFIRM: 'inputConfirm',
   DETAIL_VIEW: 'detailView',
   IMPORT_EXPORT: 'importExport',
   CRUD_FORM: 'crudForm',

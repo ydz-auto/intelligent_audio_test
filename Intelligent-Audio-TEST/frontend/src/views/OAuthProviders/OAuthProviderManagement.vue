@@ -143,6 +143,8 @@
 import { onMounted, reactive, ref } from 'vue'
 import { authPort } from '@/composables/auth/authPort'
 import type { OAuthProviderDetail } from '@/domain/model/auth'
+import { useModalControl } from '@/composables/modal/useModal'
+import { MODAL_TYPES } from '@/composables/modal/constants'
 
 const providers = ref<OAuthProviderDetail[]>([])
 const error = ref('')
@@ -151,6 +153,7 @@ const loading = ref(false)
 const saving = ref(false)
 const discovering = ref(false)
 const discoveryUrl = ref('')
+const modalControl = useModalControl()
 
 const formVisible = ref(false)
 const editingId = ref<number | null>(null)
@@ -289,8 +292,17 @@ async function save() {
 async function remove(p: OAuthProviderDetail) {
   error.value = ''
   notice.value = ''
-  if (!window.confirm(`确认删除提供方「${p.name}」？该操作不可恢复。`)) {
-    return
+  // INT-286：删除提供方改 BASIC_CONFIRM（danger）模态，替换原生 window.confirm
+  try {
+    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '删除提供方',
+      content: `确认删除提供方「${p.name}」？该操作不可恢复。`,
+      confirmText: '删除',
+      cancelText: '取消',
+      danger: true,
+    })
+  } catch {
+    return // 用户取消
   }
   try {
     await authPort.deleteOAuthProvider(p.id)

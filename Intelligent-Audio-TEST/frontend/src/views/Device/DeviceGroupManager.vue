@@ -110,11 +110,14 @@ import { ref, computed, watch } from 'vue'
 import { devicesPort } from '../../composables/device/devicesPort'
 import type { DeviceGroup, TestDeviceView } from '../../domain/model/device'
 import { useNotification } from '../../composables/modal/useNotification'
+import { useModalControl } from '../../composables/modal/useModal'
+import { MODAL_TYPES } from '../../composables/modal/constants'
 
 const props = defineProps<{ visible: boolean; testDevices?: TestDeviceView[] }>()
 const emit = defineEmits<{ (e: 'update:visible', value: boolean): void; (e: 'changed'): void }>()
 
 const notification = useNotification()
+const modalControl = useModalControl()
 
 const groups = ref<DeviceGroup[]>([])
 const loading = ref(false)
@@ -204,7 +207,18 @@ async function deleteGroup(group: DeviceGroup) {
   const message = hasMembers
     ? `分组「${group.name}」包含 ${group.deviceCount} 个设备。删除分组会把设备移出分组（设备本身保留），确定删除吗？`
     : `确定删除分组「${group.name}」吗？`
-  if (!window.confirm(message)) return
+  // INT-286：删除分组改 BASIC_CONFIRM（danger）模态，替换原生 window.confirm
+  try {
+    await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '删除设备分组',
+      content: message,
+      confirmText: '删除',
+      cancelText: '取消',
+      danger: true,
+    })
+  } catch {
+    return // 用户取消
+  }
   try {
     await devicesPort.deleteGroup(group.id, true)
     notification.success('分组已删除')

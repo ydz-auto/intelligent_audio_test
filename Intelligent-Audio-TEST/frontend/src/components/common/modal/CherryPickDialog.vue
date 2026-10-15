@@ -204,6 +204,8 @@ import { cherryPickApi, tasksApi } from '../../../infrastructure/api';
 import type { PickCandidate, PickPreview, PickCheckoutAction } from '../../../infrastructure/api/cherryPickApi';
 import { usePickCart } from '../../../composables/task/usePickCart';
 import { useNotification } from '../../../composables/modal/useNotification';
+import { useModalControl } from '../../../composables/modal/useModal';
+import { MODAL_TYPES } from '../../../composables/modal/constants';
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -212,6 +214,7 @@ const emit = defineEmits<{
 }>();
 
 const notification = useNotification();
+const modalControl = useModalControl();
 const {
   cart, cartLoading, cartCount, invalidCount, sets,
   refreshCart, addToCart, removeItem, removeItems, clearCart,
@@ -394,7 +397,20 @@ async function clearAll() {
 }
 
 async function openSaveSet() {
-  const name = window.prompt('挑选集名称（同名允许重复保存）', `挑选集_${new Date().toISOString().slice(0, 10)}`);
+  // INT-286：另存挑选集改 INPUT_CONFIRM 表单模态，替换原生 window.prompt
+  let name = '';
+  try {
+    const result = await modalControl.open(MODAL_TYPES.INPUT_CONFIRM, {
+      title: '另存挑选集',
+      label: '挑选集名称',
+      initialValue: `挑选集_${new Date().toISOString().slice(0, 10)}`,
+      hint: '同名允许重复保存',
+      confirmText: '保存',
+    });
+    name = String(result?.value ?? '').trim();
+  } catch {
+    return; // 用户取消
+  }
   if (!name) return;
   try {
     const outcome = await saveAsSet(name);
