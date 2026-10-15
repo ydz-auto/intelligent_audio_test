@@ -238,11 +238,11 @@
 | 站点设置 | 站点信息/站点公告/导航模块 | admin（`user:read` 同级口径） | — |
 | 用户与权限 | 用户管理/角色权限管理 | `user:read`（或 role:read） | user:*/role:* 按钮级（user_bp/role_bp INT-30 端点实测） |
 | 认证设置 | 认证方式/OAuth 提供方 | `auth:manage_provider` 或 `user:read` | 提供方 CRUD：`auth:manage_provider` |
-| 配置运维 | 日志归档/API 健康等（INT-362 落定） | `log:manage`（或域内 read） | INT-362 |
+| 运维设置 | 日志归档/API 健康等（INT-362 落定） | `log:manage`（或域内 read） | INT-362 |
 
-> 「外观与主题」「安全设置」两域（INT-347 v1.1 新增，见 `05_系统设置.md` §3.2）不在本表展开。**INT-417 收敛**：原「算法配置」「测试配置」两域自设置树移除——算法配置/评估维度/SPL 映射/标签管理四页提升为侧栏「测试域」组（§3.3），页面唯一入口=侧栏，不留双入口；设置树余 站点/用户与权限/认证/配置运维 四域（本表口径）。
+> 「外观与主题」「安全设置」两域（INT-347 v1.1 新增，见 `05_系统设置.md` §3.2）不在本表展开。**INT-417 收敛**：原「算法配置」「测试配置」两域自设置树移除——算法配置/评估维度/SPL 映射/标签管理四页提升为侧栏「测试域」组（§3.3），页面唯一入口=侧栏，不留双入口；设置树余 站点/用户与权限/认证/运维设置 四域（本表口径）。
 
-工作区级守卫 = 入口可见性同一集合：`hasAnyPermission('user:read','role:read','auth:manage_provider','log:manage')`，不满足 redirect `/403`（对齐 newAPI `system-settings/route.tsx:29` 超管守卫模式）。**INT-417 收窄**：`algorithm:definition_manage`/`evaluation:dim_manage`/`tag:create`/`spl:create`/`digital_spl:create` 五码随两域移出守卫集合——algo_engineer（原凭算法/测试配置域码）与 device_admin（原凭 spl:create）不再可见设置工作区；tester 凭 `log:manage`（配置运维域）保持可见。
+工作区级守卫 = 入口可见性同一集合：`hasAnyPermission('user:read','role:read','auth:manage_provider','log:manage')`，不满足 redirect `/403`（对齐 newAPI `system-settings/route.tsx:29` 超管守卫模式）。**INT-417 收窄**：`algorithm:definition_manage`/`evaluation:dim_manage`/`tag:create`/`spl:create`/`digital_spl:create` 五码随两域移出守卫集合——algo_engineer（原凭算法/测试配置域码）与 device_admin（原凭 spl:create）不再可见设置工作区；tester 凭 `log:manage`（运维设置域）保持可见。
 
 ### 3.5 全局算法切换器总口径（负责人 2026-10-14 拍板；跨卡契约，本卡固化）
 
@@ -283,12 +283,12 @@
 | `/SPLMapping` SPL 映射 | ✓ | ✗ | ✗ | ✓（双域全链） | ✗ | ↗ /login |
 | `/TagManagement` 标签管理 | ✓ | ✓ | ✓（仅 read） | ✗ | ✗ | ↗ /login |
 | `/profile` 个人中心 | ✓ | ✓ | ✓ | ✓ | ✓ | ↗ /login |
-| `/system-settings/*` | ✓ 全域 | ✓（配置运维域——log:manage；算法配置/测试配置两域已移出） | ✗（守卫集合收窄后不满足，整树隐藏——原凭算法/测试配置域码） | ✗（原仅 SPL 分区——分区移出后整树隐藏） | ✗（不变，整树隐藏） | ↗ /login |
+| `/system-settings/*` | ✓ 全域 | ✓（运维设置域——log:manage；算法配置/测试配置两域已移出） | ✗（守卫集合收窄后不满足，整树隐藏——原凭算法/测试配置域码） | ✗（原仅 SPL 分区——分区移出后整树隐藏） | ✗（不变，整树隐藏） | ↗ /login |
 | `/rankings` 页面本体 | ✓ | ✓（数据待 seed，§1.4） | ✓（同左） | ✗（无码，导航隐藏；URL 直达同样 403 数据） | ✗（同左） | ✓ 页面可达（数据 403→登录引导空态；导航项隐藏） |
 | `/user-guide` `/about` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 错误页五件 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 顶部导航项结果 | 六项全显 | 五项（无 Benchmark） | 五项（无 Benchmark） | 四项（主页/工作台/文档/关于——无报告、无 Benchmark） | 五项（主页/工作台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
-| 侧栏树结果 | 全部 15 项（六组全显） | 14 项（总览+AI 对话+执行 3+资产 4+测试域 3〔算法配置/评估维度/标签管理〕+日志+设置〔log:manage 命中〕；SPL 映射隐藏） | 11 项（总览+AI 对话+任务管理（只读）+用例+音频+报告+测试域 3+日志；设置入口隐藏——守卫集合收窄后无剩余域权限；无执行 2 项、无设备、无 SPL） | 3 项（工作台+设备管理+SPL 映射；设置入口隐藏——spl:create 移出守卫集合） | 3 项（工作台+AI 对话+报告中心；「管理」「测试域」组空→整组隐藏） | —（未登录不进壳） |
+| 侧栏树结果 | 全部 15 项（六组全显） | 14 项（总览+AI 对话+执行 3+资产 4+测试域 3〔算法配置/评估维度/标签管理〕+日志+设置〔log:manage 命中〕；SPL 映射隐藏） | 10 项（总览+AI 对话+任务管理（只读）+用例+音频+报告+测试域 3+日志；设置入口隐藏——守卫集合收窄后无剩余域权限；无执行 2 项、无设备、无 SPL） | 3 项（工作台+设备管理+SPL 映射；设置入口隐藏——spl:create 移出守卫集合） | 3 项（工作台+AI 对话+报告中心；「管理」「测试域」组空→整组隐藏） | —（未登录不进壳） |
 
 > AUTH_MODE=off：一切页面全放行全显（permissions=['*']，`authStore.ts` + `router/index.ts` 守卫实测）；`/login` 渲染开放模式 Alert（INT-357 §3.1）。
 
@@ -399,7 +399,8 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 2026-10-15 | v1.1 | 负责人口径：**控制台更名工作台**——全表「控制台」字样逐处替换为「工作台」（§2.1 /dashboard 行、§3.2 顶部导航项、§3.3 侧栏树标题、§3.4 返回文案、§3.5 联动口径、§4 导航项结果行、§5 映射表、§6 实施清单）；路由 `/dashboard` 与侧栏结构不变，侧栏首项「工作台」与页面名并轨；02/03/04/05/08/09/10/11/12 各卡文档同步核改 |
 | 2026-10-15 | v1.1 | INT-344 产出后勘误回写：§0 文档地图 02 卡置「✅ 产出」；§3.2 右上角功能区次序定稿（切换器→搜索→通知→语言→主题→头像——对齐 newAPI app-header 实测相对次序）；§4.1 顶部导航项结果行修正（device_admin 4 项、guest 5 项含报告——guest 持 report:read 实测） |
 | 2026-10-15 | v1.2 | INT-415 产出后回写：§0 文档地图 08 行置「✅ 产出」；§2.1 新增 `/ai-chat` 路由行（`report:read`）；§3.3 侧栏树增「AI 工具」组「AI 对话」项→五组十一项；§4.1 新增 `/ai-chat` 可见性行（device_admin ✗、guest 只读）+ 侧栏树结果行更新（admin/tester/algo/device/guest = 11/10/8/2/3 项） |
-| 2026-10-15 | v1.3 | INT-417 负责人口径：**工作台侧栏新增「测试域」组**——§3.3 侧栏树增「测试域」组四项（算法配置 Box/评估维度 Gauge/SPL 映射 AudioWaveform/标签管理 Tags），终态**六组十五项**（组序=总览/AI 工具/测试执行/测试资产/测试域/管理；卡面「四组十项→五组」「七组十四项」计数系 INT-415 回补前口径，按总表现状收敛为六组十五项）；§2.1 增四路由行、§2.2 四行改「保留路由名+侧栏直达」（无需 redirect）、差异注记更新（11/16/17 卡落位收敛指引）；§3.4 设置树移除「算法配置」「测试配置」两域→四域、工作区守卫集合收窄为 user:read/role:read/auth:manage_provider/log:manage（algo_engineer/device_admin 不再可见设置工作区，tester 凭 log:manage 保持）；§4.1 增四页可见性行、`/system-settings/*` 行改写、侧栏树结果行重算（15/14/11/3/3——顺带修正原行 tester 记 10 实为 11 项、device_admin 记 2 实为 3 项的计数与括注不符）；§4.2 增四页指针行；§5.1 Models/System Settings 对位行同步；§6.2 实施清单、§7 #5 同步 |
+| 2026-10-15 | v1.3 | INT-417 负责人口径：**工作台侧栏新增「测试域」组**——§3.3 侧栏树增「测试域」组四项（算法配置 Box/评估维度 Gauge/SPL 映射 AudioWaveform/标签管理 Tags），终态**六组十五项**（组序=总览/AI 工具/测试执行/测试资产/测试域/管理；卡面「四组十项→五组」「七组十四项」计数系 INT-415 回补前口径，按总表现状收敛为六组十五项）；§2.1 增四路由行、§2.2 四行改「保留路由名+侧栏直达」（无需 redirect）、差异注记更新（11/16/17 卡落位收敛指引）；§3.4 设置树移除「算法配置」「测试配置」两域→四域、工作区守卫集合收窄为 user:read/role:read/auth:manage_provider/log:manage（algo_engineer/device_admin 不再可见设置工作区，tester 凭 log:manage 保持）；§4.1 增四页可见性行、`/system-settings/*` 行改写、侧栏树结果行重算（15/14/10/3/3——顺带修正原行 tester 记 10 实为 11 项、device_admin 记 2 实为 3 项的计数与括注不符）；§4.2 增四页指针行；§5.1 Models/System Settings 对位行同步；§6.2 实施清单、§7 #5 同步 |
 | 2026-10-15 | v1.4 | INT-361 产出后回写：§0 文档地图 16 卡置「✅ 产出」；§2.1 `/devices` `/audio-import` `/SPLMapping` 三行状态收敛（INT-361 ✅）；§4.2 设备管理行补 spl/digital_spl+监控告警族指针、SPL 指针行与音频管理行置 ✅（矩阵落点 16_设备域 §8）；`/SPLMapping` 落位=INT-417 保留现名独立页方案已由 16 卡 §4 按此出全量页面规范（原设置工作区分区口径未采用），`05_系统设置.md` §4.5 SPL 行与设置树「测试配置/SPL」残留待 INT-347 勘误 |
 | 2026-10-15 | v1.5 | INT-362 产出后回写：§0 文档地图 17 卡置「✅ 产出」；§2.1 `/logs` `/AlgorithmConfig` `/system-settings/*` 三行状态收敛（INT-362 ✅）；§4.2 日志查看行置 ✅（矩阵落点 17_配置运维 §9.2）、算法配置行置 ✅（矩阵落点 17_配置运维 §9.1）；三页落位=17 卡按 §2.2/§3.3 收敛（算法配置侧栏「测试域」组独立页、日志 `/logs` 改名 redirect、OAuth 收编认证设置域照 custom-oauth 母版 B 出全量规范）；§5.1 Models 对位行「页面版式与 CRUD 规范随 INT-362」已落地（算法编辑模态窗全数据 CRUD 重设计=17 卡 §6） |
 | 2026-10-15 | v1.6 | INT-360 产出后回写：§0 文档地图 15 卡置「✅ 产出」（卡负责人改记 D）；§2.1 `/reports` `/report/$reportId` 两行状态收敛（INT-360 ✅）；§4.2 报告中心行置 ✅（矩阵落点 15_报告域 §7）；§5.1 Model Pricing 对位行置 ✅（两页三入口照 pricing 版式已落：报告中心 `/reports` 双页签[测试报告/历史报告]+ 报告查看 `/report/$reportId` 阅读优先版式，LLM 定价内容不引入） |
+| 2026-10-15 | v1.7 | INT-424 前置审核打回修订：§4.1 侧栏树结果行 algo_engineer 可见项计数勘误 11→10（序列 15/14/10/3/3，与同格括注枚举、02 注 5「algo 10」一致——预 417 8 项 + 测试域 3 - 设置 1 = 10）；§3.4 设置树「配置运维」域统一为「运维设置」（§4.1 `/system-settings/*` 行、02 §5、04 §5、05 §4.5 并轨，对齐 05 系统设置 §3.2 树名；17_配置运维 卡名与文件不动） |
