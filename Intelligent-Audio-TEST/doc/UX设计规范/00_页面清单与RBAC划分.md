@@ -25,7 +25,7 @@
 | 12 | `12_登录与错误页.md` | INT-357 | A | ✅ 产出 |
 | 13 | `13_个人中心.md` | INT-358 | B | ⏳ 待产出 |
 | 14 | `14_benchmark排行.md` | INT-359 | B | ✅ 产出 |
-| 15 | `15_报告域.md` | INT-360 | B | ⏳ 待产出 |
+| 15 | `15_报告域.md` | INT-360 | D | ✅ 产出 |
 | 16 | `16_设备域.md` | INT-361 | B | ✅ 产出 |
 | 17 | `17_配置运维.md` | INT-362 | B | ✅ 产出 |
 
@@ -124,9 +124,9 @@
 | `/testcases` | 用例管理（双视图表格） | `testcase:read` | AuthenticatedLayout | INT-356 ✅ |
 | `/audio-import` | 音频管理（上传/列表/试听） | `audio:read` | AuthenticatedLayout | INT-361 ✅ |
 | `/devices` | 设备管理（被测/播放设备） | `device:read` | AuthenticatedLayout | INT-361 ✅ |
-| `/reports` | 报告中心（测试报告+历史报告页签） | `report:read` | AuthenticatedLayout | INT-360 ⏳ |
+| `/reports` | 报告中心（测试报告+历史报告页签） | `report:read` | AuthenticatedLayout | INT-360 ✅ |
 | `/ai-chat` | AI 对话（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
-| `/report/$reportId` | 报告查看（详情页） | `report:read` | AuthenticatedLayout | INT-360 ⏳ |
+| `/report/$reportId` | 报告查看（详情页） | `report:read` | AuthenticatedLayout | INT-360 ✅ |
 | `/logs` | 日志查看 | `log:read` | AuthenticatedLayout | INT-362 ✅ |
 | `/AlgorithmConfig` | 算法配置（侧栏「测试域」组） | `algorithm:read` | AuthenticatedLayout | INT-362 ✅（内容规范）；导航落位 INT-417 |
 | `/Evaluation` | 评估维度（侧栏「测试域」组） | `evaluation:read` | AuthenticatedLayout | INT-356 ✅（11_用例域 §4.1）；导航落位 INT-417 |
@@ -300,7 +300,7 @@
 | 任务管理 | 新建/批量/重试 `task:create/batch/execute`；导出 `task:export`；发布 `task:publish` | INT-354 §RBAC ✅ |
 | 用例管理 | 新建/编辑/复制/删除 `testcase:*`；导入导出 `testcase:import_export`；预览 `testcase:preview`；分组/标签写 `group:*/tag:*` | INT-356 §RBAC ✅ |
 | 设备管理 | device/playback/api_config 全链码 + spl/digital_spl（SPL 页）+ 监控告警族（INT-361 落定，16_设备域 §8） | INT-361 ✅ |
-| 报告中心 | 生成 `report:create`；发布 `report:publish`（tester ✗ / algo ✓）；删除 `report:delete`；对比 `report:compare` | INT-360 ⏳（沿用 §1.5 域矩阵） |
+| 报告中心 | 生成 `report:create`；发布 `report:publish`（tester ✗ / algo ✓）；删除 `report:delete`；对比 `report:compare` | INT-360 ✅（15_报告域 §7） |
 | 日志查看 | 标记/清空/归档 `log:manage`（tester ✓ / algo ✗） | INT-362 ✅（17_配置运维 §9.2） |
 | 设置工作区 | 各域写码见 §3.4 表 | INT-347 §RBAC ✅（全量矩阵已出） |
 | 算法配置/评估维度/SPL 映射/标签管理（侧栏「测试域」组四页） | 算法：definition_manage/group_manage/param_manage/case_param_manage；评估：dim_manage/category_manage/import_export（+execute）；SPL：spl:*/digital_spl:*；标签：tag:*（五角色可见性结论与收编前一致，仅入口层级变化） | INT-362 ✅（算法，17_配置运维 §9.1）/ INT-356 ✅（11_用例域 §RBAC）/ INT-361 ✅（SPL） |
@@ -329,7 +329,7 @@
 | Usage Logs `/usage-logs/*` | `features/usage-logs` | 任务管理 `/tasks`（四页签+详情） | 双视图表格版式（INT-354） |
 | Users `/users` | `features/users` | 用例管理 `/testcases`（用户管理本体→设置工作区） | 表格版式基准（INT-356 / INT-347） |
 | Models `/models/*` | `features/models` | 算法配置页 `/AlgorithmConfig`（侧栏「测试域」组，INT-417） | 分区注册器机制照搬；页面版式与 CRUD 规范随 INT-362（原设置工作区「算法配置」域方案废止） |
-| Model Pricing `/pricing` | `features/model-pricing` | 报告中心/报告查看 | **版式对位**（模型价格页版式，负责人拍板；LLM 定价内容不引入）（INT-360） |
+| Model Pricing `/pricing` | `features/model-pricing` | 报告中心/报告查看 | **版式对位**（模型价格页版式，负责人拍板；LLM 定价内容不引入）（INT-360 ✅） |
 | Rankings `/rankings` | `features/rankings` | Benchmark 排行 `/rankings` | 版式对位（官方排行榜页，负责人拍板）（INT-359） |
 | System Settings `/system-settings/*` | `features/system-settings` | 系统设置工作区 `/system-settings/*` | drill-in 机制+表单脏状态/离开守卫全套照搬；域树收敛为本平台四域（INT-347 拍板六域 → INT-417 移出「算法配置」「测试配置」两域→侧栏测试域组）（INT-347） |
 | Profile `/profile` | `features/profile` | 个人中心 `/profile` | 版式对位；并入现 `/AccountSettings`（INT-358） |
@@ -402,3 +402,4 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 2026-10-15 | v1.3 | INT-417 负责人口径：**工作台侧栏新增「测试域」组**——§3.3 侧栏树增「测试域」组四项（算法配置 Box/评估维度 Gauge/SPL 映射 AudioWaveform/标签管理 Tags），终态**六组十五项**（组序=总览/AI 工具/测试执行/测试资产/测试域/管理；卡面「四组十项→五组」「七组十四项」计数系 INT-415 回补前口径，按总表现状收敛为六组十五项）；§2.1 增四路由行、§2.2 四行改「保留路由名+侧栏直达」（无需 redirect）、差异注记更新（11/16/17 卡落位收敛指引）；§3.4 设置树移除「算法配置」「测试配置」两域→四域、工作区守卫集合收窄为 user:read/role:read/auth:manage_provider/log:manage（algo_engineer/device_admin 不再可见设置工作区，tester 凭 log:manage 保持）；§4.1 增四页可见性行、`/system-settings/*` 行改写、侧栏树结果行重算（15/14/11/3/3——顺带修正原行 tester 记 10 实为 11 项、device_admin 记 2 实为 3 项的计数与括注不符）；§4.2 增四页指针行；§5.1 Models/System Settings 对位行同步；§6.2 实施清单、§7 #5 同步 |
 | 2026-10-15 | v1.4 | INT-361 产出后回写：§0 文档地图 16 卡置「✅ 产出」；§2.1 `/devices` `/audio-import` `/SPLMapping` 三行状态收敛（INT-361 ✅）；§4.2 设备管理行补 spl/digital_spl+监控告警族指针、SPL 指针行与音频管理行置 ✅（矩阵落点 16_设备域 §8）；`/SPLMapping` 落位=INT-417 保留现名独立页方案已由 16 卡 §4 按此出全量页面规范（原设置工作区分区口径未采用），`05_系统设置.md` §4.5 SPL 行与设置树「测试配置/SPL」残留待 INT-347 勘误 |
 | 2026-10-15 | v1.5 | INT-362 产出后回写：§0 文档地图 17 卡置「✅ 产出」；§2.1 `/logs` `/AlgorithmConfig` `/system-settings/*` 三行状态收敛（INT-362 ✅）；§4.2 日志查看行置 ✅（矩阵落点 17_配置运维 §9.2）、算法配置行置 ✅（矩阵落点 17_配置运维 §9.1）；三页落位=17 卡按 §2.2/§3.3 收敛（算法配置侧栏「测试域」组独立页、日志 `/logs` 改名 redirect、OAuth 收编认证设置域照 custom-oauth 母版 B 出全量规范）；§5.1 Models 对位行「页面版式与 CRUD 规范随 INT-362」已落地（算法编辑模态窗全数据 CRUD 重设计=17 卡 §6） |
+| 2026-10-15 | v1.6 | INT-360 产出后回写：§0 文档地图 15 卡置「✅ 产出」（卡负责人改记 D）；§2.1 `/reports` `/report/$reportId` 两行状态收敛（INT-360 ✅）；§4.2 报告中心行置 ✅（矩阵落点 15_报告域 §7）；§5.1 Model Pricing 对位行置 ✅（两页三入口照 pricing 版式已落：报告中心 `/reports` 双页签[测试报告/历史报告]+ 报告查看 `/report/$reportId` 阅读优先版式，LLM 定价内容不引入） |
