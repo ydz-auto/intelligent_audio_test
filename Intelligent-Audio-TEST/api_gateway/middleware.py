@@ -190,3 +190,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             status_code=401,
             content={'detail': detail},
         )
+
+
+# INT-406：认证模式提示头中间件（共享组件，见 shared/utils/auth_mode_middleware.py）。
+# 在此 re-export，保持 api_gateway.middleware 为网关中间件统一入口
+from shared.utils.auth_mode_middleware import AuthModeHeaderMiddleware  # noqa: E402

@@ -110,6 +110,18 @@ class AuthService:
             permissions=user.permissions,
         )
 
+        # INT-406：登录成功落 AUTH_LOGIN 审计（旁路，失败不阻断；含操作人，
+        # 时间由审计通道自动打点）。password 登录 provider=''，归一为 'password'
+        # 便于审计查询区分登录通道。
+        from api_gateway.application.services.auth.auth_audit import write_auth_audit
+        from shared.models.common_enums import AuditEvent
+        write_auth_audit(AuditEvent.AUTH_LOGIN, 'auth_login', {
+            'operator_id': user.id,
+            'operator': user.username,
+            'target_id': user.id,
+            'provider': provider or 'password',
+        })
+
         return {
             'access_token': token,
             'token_type': 'Bearer',

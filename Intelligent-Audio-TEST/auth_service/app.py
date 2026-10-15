@@ -43,6 +43,9 @@ async def lifespan(app: FastAPI):
     global _grpc_server
 
     Config.validate()
+    # INT-406：AUTH_MODE=off 显式守卫——启动即打显式横幅（对偶前端 INT-181）
+    from shared.constants.auth_mode import log_auth_mode_banner
+    log_auth_mode_banner(logger, Config.AUTH_MODE)
     init_db(pool_size=5)
     logger.info("数据库连接池已初始化 (pool_size=5)")
 
@@ -79,6 +82,10 @@ def create_app(config_name='default') -> FastAPI:
             'status': 'ok',
             'service': 'auth_service',
         }
+
+    # INT-406：AUTH_MODE=off 显式守卫——API 响应携带认证模式提示头
+    from shared.utils.auth_mode_middleware import AuthModeHeaderMiddleware
+    app.add_middleware(AuthModeHeaderMiddleware, auth_mode=Config.AUTH_MODE)
 
     # 注册认证路由
     from auth_service.interfaces.api.routes import router as auth_router

@@ -34,6 +34,9 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """应用生命周期：启动时初始化，关闭时清理"""
     Config.validate()
+    # INT-406：AUTH_MODE=off 显式守卫——启动即打显式横幅（对偶前端 INT-181）
+    from shared.constants.auth_mode import log_auth_mode_banner
+    log_auth_mode_banner(logger, Config.AUTH_MODE)
     init_db(pool_size=3)
     app.state.audio_storage_path = Config.AUDIO_STORAGE_PATH
 
@@ -90,10 +93,16 @@ def create_app(config_name='default') -> FastAPI:
     register_error_handlers(app)
 
     # 注册 request_adapter 中间件（将 FastAPI 请求注入 ContextVar）
-    from api_gateway.middleware import RequestAdapterMiddleware, AuthMiddleware
+    from api_gateway.middleware import (
+        RequestAdapterMiddleware,
+        AuthMiddleware,
+        AuthModeHeaderMiddleware,
+    )
     from shared.utils.naming_middleware import NamingAliasMiddleware
     app.add_middleware(RequestAdapterMiddleware)
     app.add_middleware(AuthMiddleware, auth_mode=Config.AUTH_MODE)
+    # INT-406：认证模式提示头（包在 AuthMiddleware 外层，401 短接响应也带）
+    app.add_middleware(AuthModeHeaderMiddleware, auth_mode=Config.AUTH_MODE)
     app.add_middleware(NamingAliasMiddleware)
 
     # 请求级 DB session scope（INT-90 缺陷 A）：请求结束归还连接池，

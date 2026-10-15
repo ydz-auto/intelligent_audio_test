@@ -175,8 +175,18 @@ def refresh_token(request: Request):
 
 
 @router.post('/logout')
-def logout():
-    """登出（JWT 无状态，前端清除 token 即可）"""
+def logout(request: Request):
+    """登出（JWT 无状态，前端清除 token 即可）。
+
+    INT-406：登出落 AUTH_LOGOUT 审计（旁路，失败不阻断）。操作人取
+    AuthMiddleware 注入的 request.state（AUTH_MODE=off 时为 dev_user）。
+    """
+    from api_gateway.application.services.auth.auth_audit import write_auth_audit
+    from shared.models.common_enums import AuditEvent
+    write_auth_audit(AuditEvent.AUTH_LOGOUT, 'auth_logout', {
+        'operator_id': getattr(request.state, 'user_id', None),
+        'operator': getattr(request.state, 'username', '') or '',
+    })
     return to_response({'message': '已登出'})
 
 
