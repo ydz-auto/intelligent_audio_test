@@ -21,6 +21,7 @@ from app.services.calculators.xiaoyi_metrics.shared.constants import (
     LLM_DEFAULT_TEMPERATURE,
     TIMELINE_MAX_ITEMS_CHUNKS,
     TIMELINE_MAX_ITEMS_PAUSES,
+    QUERY_MATCH_MAX_SEGMENTS,
     ASR_USER_SEG_MERGE_GAP_S,
     ASR_MODEL_SEG_MERGE_GAP_S,
 )
@@ -1006,6 +1007,88 @@ def _extract_round_queries(task_params: Optional[Dict[str, Any]]) -> List[str]:
     return queries
 
 
+def _aggregate_chunks(chunks: List[Dict[str, Any]],
+                      gap_s: float,
+                      ) -> List[Dict[str, Any]]:
+    """将词级 chunks 按停顿聚类为时间段（供 query 匹配 prompt 全量展示）。
+
+    LLM 枚举单条词 chunk 的前提是时间线全部可见；多轮合并模式下一路 ASR
+    chunks 可达数百条，直接截断（TIMELINE_MAX_ITEMS_CHUNKS=30）会让 LLM
+    看不到后半段的 AI 回复而返回空 ai_chunks。这里按停顿聚成段：
+    - 相邻 chunk 间隙 ≤ gap_s 并入同一段（一轮语音/一段回复通常合为 1 段）
+    - 间隙 > gap_s 断开（轮与轮之间的长停顿自然分段）
+    - 无时间戳的 chunk 单独成段，保证仍可被 LLM 引用
+
+    Returns:
+        list[dict]: 每项 {start, end, text, indices}；indices 为该段内
+        chunk 在原始列表中的下标（供解析时展开还原），start/end 为 None 表示无时间戳。
+    """
+    segs: List[Dict[str, Any]] = []
+    cur = None
+    for idx, c in enumerate(chunks or []):
+        ts = c.get('timestamp')
+        if not ts or len(ts) < 2:
+            segs.append({'start': None, 'end': None,
+                         'text': c.get('text', ''), 'indices': [idx]})
+            cur = None
+            continue
+        s, e = float(ts[0]), float(ts[1])
+        if cur is None:
+            cur = {'start': s, 'end': e, 'text': c.get('text', ''), 'indices': [idx]}
+        elif s - cur['end'] <= gap_s:
+            cur['end'] = max(cur['end'], e)
+            cur['text'] += c.get('text', '')
+            cur['indices'].append(idx)
+        else:
+            segs.append(cur)
+            cur = {'start': s, 'end': e, 'text': c.get('text', ''), 'indices': [idx]}
+    if cur is not None:
+        segs.append(cur)
+    return segs
+
+
+def _expand_seg_range(seg_indices: Dict[int, List[int]],
+                      start_seg: Any,
+                      end_seg: Any,
+                      ) -> List[int]:
+    """按首末段号区间 [start, end]（含端点）展开为 chunk 下标列表。
+
+    参考打断评估 full_timeline 的"输出首末词ID而非枚举全部词"：LLM 只需给出
+    该轮用户发言/AI 回复在聚合时间线上的首末段号，代码把区间内所有段展开回 chunks。
+    start/end 缺失或非法时返回 []（视为该侧无匹配）。
+    """
+    if start_seg is None and end_seg is None:
+        return []
+    try:
+        lo = int(start_seg) if start_seg is not None else 0
+        hi = int(end_seg) if end_seg is not None else lo
+    except (TypeError, ValueError):
+        return []
+    out: List[int] = []
+    for i in range(max(lo, 0), max(hi, lo) + 1):
+        out.extend(seg_indices.get(i, []) or [])
+    return out
+
+
+def _format_agg_segments(segments: List[Dict[str, Any]],
+                         max_items: int,
+                         total_chunks: int,
+                         ) -> str:
+    """格式化聚合段落为 prompt 时间线文本（带 #N 序号，N 为段落下标）"""
+    lines = []
+    for i, seg in enumerate(segments[:max_items]):
+        text = seg.get('text', '')
+        start = seg.get('start')
+        end = seg.get('end')
+        if start is not None and end is not None:
+            lines.append(f'  [{start:.2f}-{end:.2f}] #{i} {text}')
+        else:
+            lines.append(f'  #{i} {text}')
+    if len(segments) > max_items:
+        lines.append(f'  ...（共 {len(segments)} 段 / {total_chunks} 条，已截断）')
+    return '\n'.join(lines) if lines else '  （无数据）'
+
+
 def _build_query_match_prompt(round_queries: List[str],
                               user_chunks: List[Dict[str, Any]],
                               ai_chunks: List[Dict[str, Any]],
@@ -1013,7 +1096,11 @@ def _build_query_match_prompt(round_queries: List[str],
     """构建 query 匹配轮次 LLM prompt
 
     将每轮的 query 文本 + 完整 ASR 时间线（用户 + AI，带时间戳）交给 LLM，
-    让 LLM 把 ASR chunks 归属到对应轮次。
+    让 LLM 把 ASR 片段归属到对应轮次。
+
+    时间线按停顿聚合成段后再全量展示（不再按词级 chunks 截断到 30 条）：
+    多轮合并模式下 ai_chunks 可达数百条，按词展示必然截断后半段 AI 回复，
+    导致 LLM 返回空 ai_chunks。聚合后每轮发言/回复通常只有 1~2 段，可全部展示。
     """
     # 轮次 query 列表
     round_lines = []
@@ -1021,31 +1108,13 @@ def _build_query_match_prompt(round_queries: List[str],
         round_lines.append(f'  轮次{i}: query="{q}"')
     rounds_text = '\n'.join(round_lines)
 
-    # 用户 ASR 时间线
-    user_lines = []
-    for idx, c in enumerate(user_chunks[:TIMELINE_MAX_ITEMS_CHUNKS]):
-        ts = c.get('timestamp')
-        text = c.get('text', '')
-        if ts and len(ts) >= 2:
-            user_lines.append(f'  [{ts[0]:.2f}-{ts[1]:.2f}] #{idx} {text}')
-        else:
-            user_lines.append(f'  #{idx} {text}')
-    if len(user_chunks) > TIMELINE_MAX_ITEMS_CHUNKS:
-        user_lines.append(f'  ...（共 {len(user_chunks)} 条，已截断）')
-    user_timeline = '\n'.join(user_lines) if user_lines else '  （无用户ASR数据）'
+    # 用户 ASR 时间线（聚合段落）
+    user_segs = _aggregate_chunks(user_chunks, ASR_USER_SEG_MERGE_GAP_S)
+    user_timeline = _format_agg_segments(user_segs, QUERY_MATCH_MAX_SEGMENTS, len(user_chunks))
 
-    # AI ASR 时间线
-    ai_lines = []
-    for idx, c in enumerate((ai_chunks or [])[:TIMELINE_MAX_ITEMS_CHUNKS]):
-        ts = c.get('timestamp')
-        text = c.get('text', '')
-        if ts and len(ts) >= 2:
-            ai_lines.append(f'  [{ts[0]:.2f}-{ts[1]:.2f}] #{idx} {text}')
-        else:
-            ai_lines.append(f'  #{idx} {text}')
-    if len(ai_chunks or []) > TIMELINE_MAX_ITEMS_CHUNKS:
-        ai_lines.append(f'  ...（共 {len(ai_chunks)} 条，已截断）')
-    ai_timeline = '\n'.join(ai_lines) if ai_lines else '  （无AI回复ASR数据）'
+    # AI ASR 时间线（聚合段落）
+    ai_segs = _aggregate_chunks(ai_chunks, ASR_MODEL_SEG_MERGE_GAP_S)
+    ai_timeline = _format_agg_segments(ai_segs, QUERY_MATCH_MAX_SEGMENTS, len(ai_chunks or []))
 
     return f"""# 角色：全双工语音交互轮次匹配裁判
 
@@ -1058,29 +1127,36 @@ def _build_query_match_prompt(round_queries: List[str],
 ### 各轮预期 query（用户本轮应说的话）
 {rounds_text}
 
-### 用户侧 ASR 时间线（带序号 #N 和时间戳）
+### 用户侧 ASR 时间线（带序号 #N 和时间戳，每行是一个语音段落，可能含多个词）
 {user_timeline}
 
-### AI 侧 ASR 时间线（带序号 #N 和时间戳）
+### AI 侧 ASR 时间线（带序号 #N 和时间戳，每行是一个语音段落，可能含多个词）
 {ai_timeline}
 
-## 匹配规则
-1. 语义匹配：ASR 转写可能有误差，按语义相似度匹配，不要求字面完全一致
-2. 时间顺序：轮次按时间排列，轮次0的用户片段应在轮次1之前
-3. 每个 ASR 片段最多归属一个轮次，无匹配的片段可标记为 -1
-4. AI 回复片段归属到其回复的那个轮次（通常在该轮用户片段之后、下一轮用户片段之前）
-5. 用户对模型回复的简短应答（如"啊""好的""嗯"）归到前一轮
+## 匹配规则（参考打断评估 full_timeline 全局对齐口径）
+1. 不需要本地预切轮窗口：根据实际文字、段落时间顺序、query 文本顺序及上下文自行对齐，
+   每轮输出用户发言和 AI 回复的首末段落号。
+2. 语义匹配：ASR 转写可能有误差，按语义相似度匹配，不要求字面完全一致。
+3. 时间顺序：轮次按时间排列，轮次0的用户段落应在轮次1之前。
+4. 双工重叠不切断用户话语：即使 AI 回复与用户发言时间重叠，该轮用户发言的连续段落
+   （含"儿""哈"等尾词段落）必须完整纳入，不能因为模型旧内容有输出就把用户后半句排除。
+5. 不把后续轮次的回复归给当前轮；用户对模型回复的简短应答（如"啊""好的""嗯"）归到前一轮。
+6. 时间线里的 #N 是段落序号（每行一个段落，可能含多个词），引用时填段落号；
+   未匹配的轮次相关字段填 null。ASR 缺失/未定位不是"匹配不上"的证据。
+7. reason 必须引用段落号、文字、时间戳说明匹配依据；匹配不上也必须给 reason 说明原因。
 
 ## 强制输出格式（必须严格JSON，不要多余解释，不要markdown）
 {{"rounds": [
-  {{"round": 0, "user_chunks": [0, 1, 2], "ai_chunks": [0, 1], "user_text": "匹配到的用户文本", "ai_text": "匹配到的AI回复文本"}},
-  {{"round": 1, "user_chunks": [3, 4], "ai_chunks": [2, 3], "user_text": "...", "ai_text": "..."}}
+  {{"round": 0, "alignment": {{"status": "matched", "user_start_seg": 0, "user_end_seg": 1, "actual_text": "匹配到的用户文本", "reason": "引用段号/文字/时间戳的依据"}}, "ai_start_seg": 2, "ai_end_seg": 4, "ai_text": "AI回复文本", "reason": "AI回复归属依据"}},
+  {{"round": 1, "alignment": {{"status": "not_found", "user_start_seg": null, "user_end_seg": null, "actual_text": "", "reason": "ASR中未找到该轮query对应语音的原因"}}, "ai_start_seg": null, "ai_end_seg": null, "ai_text": "", "reason": ""}}
 ]}}
 round: 轮次序号（0-based，对应输入的轮次序号）
-user_chunks: 该轮用户 ASR 片段的序号列表（#N 中的 N）
-ai_chunks: 该轮 AI ASR 片段的序号列表（#N 中的 N）
-user_text: 该轮匹配到的用户文本拼接
-ai_text: 该轮匹配到的AI回复文本拼接"""
+alignment.status: matched / partial / ambiguous / not_found（ASR 中未找到该轮 query 对应语音）
+alignment.user_start_seg / user_end_seg: 该轮用户发言在用户时间线的首末段落序号（#N 中的 N），未匹配为 null
+alignment.actual_text: 该轮匹配到的用户文本拼接
+ai_start_seg / ai_end_seg: 该轮 AI 回复在 AI 时间线的首末段落序号，无回复为 null
+ai_text: 该轮 AI 回复文本拼接
+reason: 引用段落号、文字、时间戳说明依据，缺值也必须给 reason"""
 
 
 def split_turns_by_query(user_chunks: List[Dict[str, Any]],
@@ -1090,7 +1166,9 @@ def split_turns_by_query(user_chunks: List[Dict[str, Any]],
     """用每轮 query 文本匹配 ASR chunks 到对应轮次（LLM 完成，保留时间戳）
 
     匹配优先级：
-    1. LLM 语义匹配：将 query 文本 + 完整 ASR 时间线交给 LLM，LLM 返回每轮对应的 chunks 序号
+    1. LLM 语义匹配：将 query 文本 + 完整 ASR 时间线（聚合段落）交给 LLM，
+       LLM 返回每轮用户发言/AI 回复的**首末段号 + alignment.status + reason**
+       （参考打断评估 full_timeline 全局对齐口径，非枚举全部段号）。
     2. 本地文本相似度匹配（回退）：difflib.SequenceMatcher 模糊匹配 query ↔ ASR 用户段
        参考打断 round_metrics.locate_text_window
 
@@ -1139,6 +1217,12 @@ def split_turns_by_query(user_chunks: List[Dict[str, Any]],
             logger.warning("[turn_evaluation] LLM 返回空 rounds，回退 ASR 切轮")
             return [], []
 
+        # LLM 返回的是聚合段落序号（与 prompt 展示的 #N 对应），解析时展开回词级 chunks
+        user_segs = _aggregate_chunks(user_chunks, ASR_USER_SEG_MERGE_GAP_S)
+        ai_segs = _aggregate_chunks(ai_chunks, ASR_MODEL_SEG_MERGE_GAP_S)
+        user_seg_indices = {i: seg.get('indices') or [] for i, seg in enumerate(user_segs)}
+        ai_seg_indices = {i: seg.get('indices') or [] for i, seg in enumerate(ai_segs)}
+
         turns = []
         round_numbers = []
         for llm_round in llm_rounds:
@@ -1149,25 +1233,38 @@ def split_turns_by_query(user_chunks: List[Dict[str, Any]],
                 continue
             rn = int(rn)
 
-            # 按 LLM 返回的序号取 chunks
-            user_indices = llm_round.get('user_chunks', [])
-            ai_indices = llm_round.get('ai_chunks', [])
-            if not isinstance(user_indices, list):
-                user_indices = []
-            if not isinstance(ai_indices, list):
-                ai_indices = []
+            # ── 解析 LLM 返回的段落引用 → 展开为 chunk 下标列表 ──
+            # 新格式：alignment.user_start_seg/user_end_seg + ai_start_seg/ai_end_seg（首末段号区间）
+            # 兼容旧格式：user_chunks/ai_chunks（段号列表）
+            align = llm_round.get('alignment')
+            align = align if isinstance(align, dict) else {}
+            align_status = align.get('status')
+            align_reason = align.get('reason') or ''
 
-            t_user_chunks = [
-                user_chunks[idx] for idx in user_indices
-                if isinstance(idx, int) and 0 <= idx < len(user_chunks)
-            ]
-            t_ai_chunks = [
-                ai_chunks[idx] for idx in ai_indices
-                if isinstance(idx, int) and 0 <= idx < len(ai_chunks or [])
-            ]
+            user_indices = llm_round.get('user_chunks')
+            if isinstance(user_indices, list):
+                user_idx = [i for idx in user_indices if isinstance(idx, int)
+                            for i in user_seg_indices.get(idx, [])]
+            else:
+                user_idx = _expand_seg_range(
+                    user_seg_indices, align.get('user_start_seg'), align.get('user_end_seg'))
+
+            ai_indices = llm_round.get('ai_chunks')
+            if isinstance(ai_indices, list):
+                ai_idx = [i for idx in ai_indices if isinstance(idx, int)
+                          for i in ai_seg_indices.get(idx, [])]
+            else:
+                ai_idx = _expand_seg_range(
+                    ai_seg_indices, llm_round.get('ai_start_seg'), llm_round.get('ai_end_seg'))
+
+            t_user_chunks = [user_chunks[i] for i in user_idx if 0 <= i < len(user_chunks)]
+            t_ai_chunks = [ai_chunks[i] for i in ai_idx if 0 <= i < len(ai_chunks or [])]
 
             if not t_user_chunks and not t_ai_chunks:
-                logger.warning(f"[turn_evaluation] 轮次{rn} 无匹配 chunks，跳过")
+                logger.warning(
+                    f"[turn_evaluation] 轮次{rn} 无匹配 chunks，跳过 "
+                    f"(alignment={align_status}, reason={align_reason or '无'})"
+                )
                 continue
 
             # 计算时间戳范围

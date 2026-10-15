@@ -178,37 +178,49 @@ class TurnEvalCalculator(BaseCalculator):
             if rn is not None:
                 round_user_end_s[rn] = (seg.get('offset_s') or 0.0) + (seg.get('clean_duration_s') or 0.0)
 
-        # 轮次切分优先级：
-        # 1. query 匹配（多轮模式 + 有 query 文本）→ 综合三分类
-        # 2. FFT 锚点定轮次（有对齐段 + 轮次归属）→ 短路三分类
+        # 轮次切分优先级（多轮合并模式）：
+        # 1. FFT 锚点定轮次（有对齐段 + 轮次归属，= 对齐成功）→ 短路三分类
+        #    每个对齐段即一轮定点，轮窗口 [offset, 下段 offset) 直接切出该轮 AI 回复，
+        #    不依赖 LLM 枚举，避免长 AI 时间线被 prompt 截断导致 ai_chunks 为空。
+        # 2. query 匹配（对齐失败 / 无锚点，多轮模式 + 有 query 文本）→ 综合三分类
         # 3. ASR 切轮（回退）→ 短路三分类
         anchor_round_nums = None
         if not one_turn:
-            # ── 优先：query 匹配轮次 + 综合三分类 ──
-            query_turns, query_round_nums = split_turns_by_query(
-                user_chunks, ai_chunks, task_params,
-            )
-            if query_turns:
-                turns = query_turns
-                classifications = [classify_turn_comprehensive(t, task_params) for t in turns]
-                anchor_round_nums = query_round_nums
-                logger.info(f"[turn_eval] query 匹配成功: {len(turns)} 轮")
-            else:
-                # ── 回退：FFT 锚点定轮次 ──
-                if align_segments and round_of:
-                    turns, classifications, anchor_round_nums = self._build_turns_from_anchors(
-                        user_chunks, ai_chunks, align_segments, round_of, task_params,
+            # ── 优先：FFT 锚点定轮次（仅对齐成功时有 _align_segments）──
+            if align_segments and round_of:
+                turns, classifications, anchor_round_nums = self._build_turns_from_anchors(
+                    user_chunks, ai_chunks, align_segments, round_of, task_params,
+                )
+                if not turns:
+                    # 锚点失败 → query 匹配轮次 + 综合三分类
+                    query_turns, query_round_nums = split_turns_by_query(
+                        user_chunks, ai_chunks, task_params,
                     )
-                    if not turns:
-                        # query 匹配 + FFT 锚点都失败 → ASR 切轮 + 短路三分类（直接调用，跳过 query 匹配）
+                    if query_turns:
+                        turns = query_turns
+                        classifications = [classify_turn_comprehensive(t, task_params) for t in turns]
+                        anchor_round_nums = query_round_nums
+                        logger.info(f"[turn_eval] query 匹配成功: {len(turns)} 轮")
+                    else:
+                        # 锚点 + query 匹配都失败 → ASR 切轮 + 短路三分类（直接调用，跳过 query 匹配）
                         from app.services.calculators.xiaoyi_metrics.turn_eval.turn_evaluation import (
                             split_turns as _split_turns,
                         )
                         anchor_round_nums = None
                         turns = _split_turns(user_chunks, ai_chunks, task_params, one_turn=False)
                         classifications = [classify_turn(t, task_params) for t in turns]
+            else:
+                # ── 无 FFT 锚点（对齐失败 / 无 played_audios）→ query 匹配轮次 + 综合三分类 ──
+                query_turns, query_round_nums = split_turns_by_query(
+                    user_chunks, ai_chunks, task_params,
+                )
+                if query_turns:
+                    turns = query_turns
+                    classifications = [classify_turn_comprehensive(t, task_params) for t in turns]
+                    anchor_round_nums = query_round_nums
+                    logger.info(f"[turn_eval] query 匹配成功: {len(turns)} 轮")
                 else:
-                    # query 匹配失败、无 FFT 锚点 → ASR 切轮 + 短路三分类（直接调用，跳过 query 匹配）
+                    # query 匹配失败 → ASR 切轮 + 短路三分类（直接调用，跳过 query 匹配）
                     from app.services.calculators.xiaoyi_metrics.turn_eval.turn_evaluation import (
                         split_turns as _split_turns,
                     )
