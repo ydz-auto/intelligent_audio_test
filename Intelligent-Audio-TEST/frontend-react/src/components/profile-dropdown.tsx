@@ -27,7 +27,6 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -72,7 +71,8 @@ export function ProfileDropdown() {
           </Avatar>
         </DropdownMenuTrigger>
         <DropdownMenuContent className='w-56' align='end' sideOffset={8}>
-          <DropdownMenuLabel className='flex items-center gap-2'>
+          {/* 用户卡照 newAPI 原版用普通 div（GroupLabel 必须包在 Group 内，直接挂 Content 会缺 MenuGroupContext 崩树） */}
+          <div className='flex items-center gap-2 px-1.5 py-1.5'>
             <Avatar className='size-8'>
               <AvatarFallback
                 style={user ? getUserAvatarStyle(user.username) : undefined}
@@ -82,14 +82,14 @@ export function ProfileDropdown() {
               </AvatarFallback>
             </Avatar>
             <div className='grid min-w-0 flex-1 text-start leading-tight'>
-              <span className='truncate text-sm font-medium'>
+              <span className='text-foreground truncate text-sm font-medium'>
                 {user?.displayName ?? user?.username ?? '未登录'}
               </span>
               <span className='text-muted-foreground truncate text-xs'>
                 {user?.roleName ?? '—'}
               </span>
             </div>
-          </DropdownMenuLabel>
+          </div>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuItem render={<Link to='/profile' />}>
