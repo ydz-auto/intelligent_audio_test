@@ -136,6 +136,11 @@ class PayloadBuilder(EvaluationLoggerMixin):
                                     rendered_rd[rk] = rd[rk]
                                 else:
                                     rendered_rd[rk] = rv
+                            # 透传原始轮次号 round：body_template 只声明可渲染字段，
+                            # 若不透传，评估端单轮请求的 per_round 结果只能按数组下标(0)标记轮次，
+                            # 导致第 N 轮的评估结果被 _overwrite_round_results 误覆盖到第 1 轮 TRD
+                            if isinstance(rd, dict) and rd.get('round') is not None:
+                                rendered_rd['round'] = rd['round']
                             rendered_rounds.append(rendered_rd)
                         result['rounds'] = rendered_rounds
                     elif k in processed_context and processed_context[k] not in (None, ''):
