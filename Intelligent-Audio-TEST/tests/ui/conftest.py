@@ -92,18 +92,53 @@ _HTTPOPTS = dict(timeout=5, trust_env=False)
 # 驱动注册表：会话内唯一 Chrome，供失败取证钩子取用
 _DRIVER_REF = {'driver': None, 'page': None}
 
+# ── 栈门禁豁免（INT-377）─────────────────────────────────────
+# React mock 稿走查（test_ui_06_int377_react_base.py）直接驱动
+# frontend-react/ dev server，无后端依赖——栈门禁三件套（RUN_LIVE_STACK/
+# 隔离库守卫/引导）不适用。豁免集合按模块文件名匹配；仍走真实栈的用例
+# 保持原口径不变。
+STACK_GATE_EXEMPT_MODULES = {'test_ui_06_int377_react_base'}
+
+
+def _module_of(item) -> str:
+    return getattr(getattr(item, 'module', None), '__name__', '') or ''
+
+
+def _item_is_exempt(item) -> bool:
+    name = _module_of(item).rsplit('.', 1)[-1]
+    return name in STACK_GATE_EXEMPT_MODULES
+
+
+def _session_all_exempt(session) -> bool:
+    """session 级 autouse 门禁的豁免判定：request.node 对 session fixture
+    是 Session 节点（非测试 item），按整个会话的收集结果判定——会话只含
+    豁免模块的用例时门禁整体放行（单跑 React 走查的口径）；混合会话仍走
+    原门禁（栈在跑，顺带覆盖 React 用例无副作用）。"""
+    items = getattr(session, 'items', None) or []
+    return bool(items) and all(_item_is_exempt(i) for i in items)
+
+
+# ── INT-377 React 走查失败取证标记（在既有 makereport 钩子里分流）────────
+def _int377_evidence(item):
+    mod = getattr(getattr(item, 'module', None), '__name__', '') or ''
+    return mod.rsplit('.', 1)[-1] == 'test_ui_06_int377_react_base'
+
 
 # ── 门禁 1：默认 skip，RUN_LIVE_STACK=1 显式纳入 ─────────────
 @pytest.fixture(scope='session', autouse=True)
-def _live_stack_gate():
+def _live_stack_gate(request):
+    if _session_all_exempt(request.session):
+        return
     if os.environ.get('RUN_LIVE_STACK', '') != '1':
         pytest.skip('RUN_LIVE_STACK!=1：UI 实机用例不参与默认回归（tests/ui/README.md）')
 
 
 # ── 门禁 2：隔离库守卫 ───────────────────────────────────────
 @pytest.fixture(scope='session', autouse=True)
-def _isolated_db_guard(_live_stack_gate):
+def _isolated_db_guard(request, _live_stack_gate):
     """栈必须在线且已切隔离测试库；指向共享业务库 → 整会话 FAIL。"""
+    if _session_all_exempt(request.session):
+        return
     try:
         r = httpx.get(f'{API_ROOT}/health', **_HTTPOPTS)
     except Exception as exc:
@@ -127,7 +162,9 @@ def _isolated_db_guard(_live_stack_gate):
 
 # ── 门禁 3：隔离库引导（RBAC 种子 + admin 账号）──────────────
 @pytest.fixture(scope='session', autouse=True)
-def _bootstrap_isolated_db(_isolated_db_guard):
+def _bootstrap_isolated_db(request, _isolated_db_guard):
+    if _session_all_exempt(request.session):
+        return
     url = bootstrap.isolated_db_url()
     if not bootstrap.roles_seeded(url):
         bootstrap.seed_rbac(url)
@@ -209,6 +246,14 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     rep = outcome.get_result()
     if rep.when != 'call' or not rep.failed:
+        return
+    if _int377_evidence(item):
+        try:
+            from tests.ui import test_ui_06_int377_react_base as _t06
+            if _t06._DRIVER is not None:
+                _t06._save_evidence(item.name, _t06._DRIVER)
+        except Exception:
+            pass
         return
     drv = _DRIVER_REF.get('driver')
     if drv is None:
