@@ -7,6 +7,7 @@
  */
 import { ChevronDown, ChevronRight, Package, Trophy } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
@@ -113,7 +114,12 @@ function PublishedExpandRow({ detail }: { detail: PublishedTaskDetail }) {
             <span className='text-muted-foreground'>
               用例 {detail.source_task_completed_cases ?? 0}/{detail.source_task_total_cases ?? 0}
             </span>
-            <Button size='sm' variant='outline' className='ml-auto h-7'>
+            <Button
+              size='sm'
+              variant='outline'
+              className='ml-auto h-7'
+              onClick={() => toast.success('冻结任务详情弹窗随 §5.13 冻结族落地')}
+            >
               查看冻结任务详情
             </Button>
           </div>
@@ -132,7 +138,12 @@ function PublishedExpandRow({ detail }: { detail: PublishedTaskDetail }) {
               用例 {String(detail.report_snapshot?.caseCount ?? '—')} · 通过率{' '}
               {String(detail.report_snapshot?.passRate ?? '—')}%
             </span>
-            <Button size='sm' variant='outline' className='ml-auto h-7'>
+            <Button
+              size='sm'
+              variant='outline'
+              className='ml-auto h-7'
+              onClick={() => toast.success('冻结报告弹窗随 §5.13 冻结族落地')}
+            >
               查看冻结报告
             </Button>
           </div>

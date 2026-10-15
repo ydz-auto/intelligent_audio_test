@@ -6,6 +6,7 @@
  */
 import { ClipboardList, Star, Trash2 } from 'lucide-react'
 import { useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { Badge } from '@/components/ui/badge'
@@ -147,13 +148,20 @@ export function DailyTaskTable({
   loading,
   trash,
   onQuickView,
+  onPublish,
+  onBatchPublish,
+  onCreate,
 }: {
   tasks: TaskListItem[]
   loading: boolean
   trash: boolean
   onQuickView: (task: TaskListItem) => void
+  onPublish: (task: TaskListItem) => void
+  onBatchPublish: (tasks: TaskListItem[]) => void
+  onCreate: () => void
 }) {
   const { hasPermission } = usePermissions()
+  const navigate = useNavigate()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [visible, setVisible] = useState<Set<ColumnKey>>(
     () => new Set(DEFAULT_VISIBLE)
@@ -203,7 +211,7 @@ export function DailyTaskTable({
           </EmptyHeader>
           {!trash && hasPermission('task:create') && (
             <EmptyContent>
-              <Button size='sm' onClick={() => {}}>
+              <Button size='sm' onClick={onCreate}>
                 + 创建新任务
               </Button>
             </EmptyContent>
@@ -303,7 +311,7 @@ export function DailyTaskTable({
                       <button
                         type='button'
                         className='block max-w-full text-left'
-                        onClick={() => onQuickView(task)}
+                        onClick={() => void navigate({ to: '/tasks/$tab', params: { tab: String(task.id) } })}
                         title='查看详情'
                       >
                         <span className='flex items-center gap-1.5 font-medium truncate'>
@@ -390,7 +398,7 @@ export function DailyTaskTable({
                     </td>
                   )}
                   <td className='px-3 py-2 text-right'>
-                    <TaskRowActions task={task} onQuickView={onQuickView} />
+                    <TaskRowActions task={task} onQuickView={onQuickView} onPublish={onPublish} />
                   </td>
                 </tr>
               )
@@ -404,6 +412,7 @@ export function DailyTaskTable({
         selected={selected}
         onClear={() => setSelected(new Set())}
         trash={trash}
+        onBatchPublish={onBatchPublish}
       />
     </div>
   )

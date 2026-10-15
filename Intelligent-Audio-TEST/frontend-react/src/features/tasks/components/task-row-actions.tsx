@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -36,7 +37,7 @@ const ACTIVE_STATES = new Set(['running', 'paused', 'queued'])
 function buildDailyItems(
   task: TaskListItem,
   has: (p: string) => boolean,
-  actions: { goDetail: () => void; onQuickView: () => void }
+  actions: { goDetail: () => void; onQuickView: () => void; onPublish: () => void }
 ): MenuItem[] {
   const items: MenuItem[] = []
 
@@ -116,7 +117,7 @@ function buildDailyItems(
       label: '发布',
       disabled: !['completed', 'failed', 'stopped', 'pending'].includes(task.execution_status ?? ''),
       disabledReason: '仅已完成/失败/停止/待执行状态可发布',
-      onSelect: () => toast.success('发布流程见发布任务弹窗'),
+      onSelect: actions.onPublish,
     })
   }
 
@@ -151,9 +152,11 @@ function buildDailyItems(
 export function TaskRowActions({
   task,
   onQuickView,
+  onPublish,
 }: {
   task: TaskListItem
   onQuickView: (task: TaskListItem) => void
+  onPublish?: (task: TaskListItem) => void
 }) {
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
@@ -162,6 +165,8 @@ export function TaskRowActions({
   const items = buildDailyItems(task, hasPermission, {
     goDetail: () => void navigate({ to: '/tasks/$tab', params: { tab: String(task.id) } }),
     onQuickView: () => onQuickView(task),
+    onPublish: () =>
+      onPublish ? onPublish(task) : toast.success('发布流程见发布任务弹窗'),
   })
 
   return (
@@ -179,7 +184,9 @@ export function TaskRowActions({
         <MoreHorizontal aria-hidden='true' />
       </DropdownMenuTrigger>
       <DropdownMenuContent align='end' className='w-44'>
-        <DropdownMenuLabel className='truncate'>{task.name}</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className='truncate'>{task.name}</DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         {items.map((item) => (
           <DropdownMenuItem

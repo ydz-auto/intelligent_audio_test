@@ -21,11 +21,13 @@ export function TaskBulkActions({
   selected,
   onClear,
   trash,
+  onBatchPublish,
 }: {
   tasks: TaskListItem[]
   selected: Set<number>
   onClear: () => void
   trash: boolean
+  onBatchPublish?: (tasks: TaskListItem[]) => void
 }) {
   const { hasPermission } = usePermissions()
   const count = selected.size
@@ -98,17 +100,17 @@ export function TaskBulkActions({
                       size='sm'
                       variant='outline'
                       disabled={!hasTerminal}
-                      onClick={() => toast.success('批量发布完成：成功 3 个')}
+                      onClick={() =>
+                        onBatchPublish
+                          ? onBatchPublish(selectedTasks)
+                          : toast.success('批量发布完成：成功 3 个')
+                      }
                     />
                   }
                 >
                   发布
                 </TooltipTrigger>
-                <TooltipContent>
-                  {hasTerminal
-                    ? '名称沿用源任务名，不可发布状态自动跳过'
-                    : '名称沿用源任务名，不可发布状态自动跳过'}
-                </TooltipContent>
+                <TooltipContent>名称沿用源任务名，不可发布状态自动跳过</TooltipContent>
               </Tooltip>
             )}
             {count >= 2 && hasPermission('report:compare') && (

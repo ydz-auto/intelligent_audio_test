@@ -38,17 +38,18 @@ const VIEW_OPTIONS: Array<{ value: ViewMode; label: string }> = [
   { value: 'group', label: '分组' },
 ]
 
-const CASE_STATUS_OPTIONS = [
-  '全部状态',
-  '等待中',
-  '排队中',
-  '执行中',
-  '计算指标中',
-  '已完成',
-  '已失败',
-  '已跳过',
-  '已停止',
-  '已删除',
+/** 选项 value 为英文枚举（对齐 case.execution_status / evaluation_status 实测值） */
+const CASE_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'all', label: '全部状态' },
+  { value: 'pending', label: '等待中' },
+  { value: 'queued', label: '排队中' },
+  { value: 'running', label: '执行中' },
+  { value: 'evaluating', label: '计算指标中' },
+  { value: 'completed', label: '已完成' },
+  { value: 'failed', label: '已失败' },
+  { value: 'skipped', label: '已跳过' },
+  { value: 'stopped', label: '已停止' },
+  { value: 'deleted', label: '已删除' },
 ]
 
 function CaseStatusBadge({ status }: { status: string | null }) {
@@ -56,6 +57,7 @@ function CaseStatusBadge({ status }: { status: string | null }) {
     pending: { label: '等待中', variant: 'neutral' },
     queued: { label: '排队中', variant: 'info' },
     running: { label: '执行中', variant: 'info' },
+    evaluating: { label: '计算指标中', variant: 'info' },
     completed: { label: '已完成', variant: 'success' },
     failed: { label: '已失败', variant: 'danger' },
     skipped: { label: '已跳过', variant: 'neutral' },
@@ -69,12 +71,16 @@ function CaseStatusBadge({ status }: { status: string | null }) {
 export function CaseAssociation({ detail }: { detail: TaskDetailData }) {
   const [tab, setTab] = useState('cases')
   const [view, setView] = useState<ViewMode>('flat')
-  const [status, setStatus] = useState('全部状态')
+  const [status, setStatus] = useState('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const cases = detail.cases ?? []
   const filtered = cases.filter(
-    (c) => status === '全部状态' || c.execution_status === status || c.status === status
+    (c) =>
+      status === 'all' ||
+      c.execution_status === status ||
+      c.status === status ||
+      c.evaluation_status === status
   )
 
   const resourceLabel = detail.device_types.includes('http_api') ? '关联API' : '关联设备'
@@ -118,14 +124,16 @@ export function CaseAssociation({ detail }: { detail: TaskDetailData }) {
                   ))}
                 </TabsList>
               </Tabs>
-              <Select value={status} onValueChange={(value) => setStatus(value ?? '全部状态')}>
+              <Select value={status} onValueChange={(value) => setStatus(value ?? 'all')}>
                 <SelectTrigger size='sm' className='h-8 gap-1.5 px-2.5' aria-label='状态筛选'>
-                  <SelectValue>{status}</SelectValue>
+                  <SelectValue>
+                    {CASE_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? '全部状态'}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent align='end'>
                   {CASE_STATUS_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
                     </SelectItem>
                   ))}
                 </SelectContent>

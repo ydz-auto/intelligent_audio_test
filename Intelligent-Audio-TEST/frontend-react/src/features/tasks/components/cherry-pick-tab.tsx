@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -238,7 +239,9 @@ export function CherryPickTab({
                             <MoreHorizontal aria-hidden='true' />
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align='end' className='w-40'>
-                            <DropdownMenuLabel className='truncate'>{task.name}</DropdownMenuLabel>
+                            <DropdownMenuGroup>
+                              <DropdownMenuLabel className='truncate'>{task.name}</DropdownMenuLabel>
+                            </DropdownMenuGroup>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onSelect={() =>

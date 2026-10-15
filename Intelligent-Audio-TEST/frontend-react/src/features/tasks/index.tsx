@@ -69,8 +69,18 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
     setQuickViewTask(task)
   }
 
+  const handlePublish = (task: TaskListItem) => {
+    setPublishTask(task)
+  }
+
+  const handleBatchPublish = (tasks: TaskListItem[]) => {
+    // 批量发布：接首个选中任务打开 §5.2 发布弹窗（完整 BatchPublish 确认留待接线）
+    setPublishTask(tasks[0] ?? null)
+  }
+
   return (
-    <SectionPageLayout fixedContent>
+    <>
+      <SectionPageLayout fixedContent>
       <SectionPageLayout.Breadcrumb>
         <nav aria-label='面包屑' className='text-sm'>
           <ol className='flex flex-wrap items-center gap-1.5'>
@@ -162,6 +172,7 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
                 tasks={items as TaskListItem[]}
                 loading={listQuery.isLoading}
                 onQuickView={handleQuickView}
+                onPublish={handlePublish}
               />
             ) : tab === 'cherry-picks' ? (
               <CherryPickTab
@@ -174,25 +185,30 @@ export function TasksPage({ tab }: { tab: TasksTabKey }) {
                 loading={listQuery.isLoading}
                 trash={filters.trash ?? false}
                 onQuickView={handleQuickView}
+                onPublish={handlePublish}
+                onBatchPublish={handleBatchPublish}
+                onCreate={() => setTypeDialogOpen(true)}
               />
             )}
           </div>
         </div>
+
+        <TasksPagination total={total} />
       </SectionPageLayout.Content>
+    </SectionPageLayout>
 
-      <TasksPagination total={total} />
-
-      <QuickViewDialog
+    <QuickViewDialog
         task={quickViewTask}
         open={quickViewTask != null}
         onOpenChange={(open) => !open && setQuickViewTask(null)}
       />
       <TaskTypeDialog open={typeDialogOpen} onOpenChange={setTypeDialogOpen} />
       <PublishTaskDialog
+        key={publishTask?.id ?? 'none'}
         open={publishTask != null}
         onOpenChange={(open) => !open && setPublishTask(null)}
         task={publishTask ?? undefined}
       />
-    </SectionPageLayout>
+    </>
   )
 }

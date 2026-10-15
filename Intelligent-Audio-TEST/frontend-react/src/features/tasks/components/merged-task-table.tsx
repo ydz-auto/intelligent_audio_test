@@ -5,6 +5,7 @@
  */
 import { ChevronRight, GitMerge } from 'lucide-react'
 import { Fragment, useState } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { Button } from '@/components/ui/button'
@@ -35,12 +36,15 @@ export function MergedTaskTable({
   tasks,
   loading,
   onQuickView,
+  onPublish,
 }: {
   tasks: TaskListItem[]
   loading: boolean
   onQuickView: (task: TaskListItem) => void
+  onPublish: (task: TaskListItem) => void
 }) {
   const { hasPermission } = usePermissions()
+  const navigate = useNavigate()
   const [expandedId, setExpandedId] = useState<number | null>(null)
 
   if (loading) {
@@ -119,7 +123,8 @@ export function MergedTaskTable({
                       <button
                         type='button'
                         className='block max-w-full text-left'
-                        onClick={() => onQuickView(task)}
+                        onClick={() => void navigate({ to: '/tasks/$tab', params: { tab: String(task.id) } })}
+                        title='查看详情'
                       >
                         <span className='block font-medium truncate'>{task.name}</span>
                         <span className='text-muted-foreground block truncate text-xs'>
@@ -144,7 +149,7 @@ export function MergedTaskTable({
                       {formatDateTime(task.created_at)}
                     </td>
                     <td className='px-3 py-2 text-right'>
-                      <TaskRowActions task={task} onQuickView={onQuickView} />
+                      <TaskRowActions task={task} onQuickView={onQuickView} onPublish={onPublish} />
                     </td>
                   </tr>
                   {expanded && (
@@ -186,7 +191,7 @@ export function MergedTaskTable({
                                             执行
                                           </Button>
                                         )}
-                                        {hasPermission('task:read') && (
+                                        {hasPermission('report:read') && (
                                           <Button size='sm' variant='outline' className='h-6 px-2 text-xs' onClick={() => {}}>
                                             查看报告
                                           </Button>
