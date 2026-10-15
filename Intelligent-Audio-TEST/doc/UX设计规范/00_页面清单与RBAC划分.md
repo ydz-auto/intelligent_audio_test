@@ -2,7 +2,7 @@
 
 > 卡 INT-353 ｜ UX设计师A ｜ 2026-10-15 ｜ 性质：**全部页面卡的输入**——其余页面卡的导航结构、路由映射、RBAC 门槛以本总表为准；页面内部细节（版式/组件/文案全量）以各卡产出为准。
 > 基准（全部实测，无杜撰）：newAPI 参照源码 `D:\00_code\new_api_xagents`（web/src/hooks/use-top-nav-links.ts + use-sidebar-data.ts + use-sidebar-view.ts、web/src/lib/nav-modules.ts + roles.ts、web/src/components/layout/components/{authenticated-layout,app-header,public-layout,public-header,public-navigation,top-nav,app-sidebar}.tsx、web/src/routes/_authenticated/*、web/src/routes/rankings/index.tsx）；本平台事实 `frontend/src/router/index.ts`（19 路由+守卫实测）、`frontend/src/store/authStore.ts`（hasPermission/'*' 通配实测）、`scripts/migrations/202608/seed_rbac.py`（RBAC 五角色+权限点全量实测）、`docs/RBAC权限划分.md`（角色定义文档）、`api_gateway/routes/benchmark_bp.py`（benchmark 权限码挂载实测）、`api_gateway/routes/{user_bp,role_bp}.py`（用户/角色管理端点实测，INT-30）。
-> 信息架构拍板（负责人 2026-10-14）：**首页（门户）与控制台是两个页**；现有业务页全部是控制台功能挂控制台侧栏体系下；顶部导航含 benchmark 排行、报告直达；另有系统设置、个人中心、关于、文档；**全局算法切换器放导航栏右上角、切换一次全局生效，控制台各业务页不再各自做算法筛选**。
+> 信息架构拍板（负责人 2026-10-14）：**首页（门户）与工作台是两个页**；现有业务页全部是工作台功能挂工作台侧栏体系下；顶部导航含 benchmark 排行、报告直达；另有系统设置、个人中心、关于、文档；**全局算法切换器放导航栏右上角、切换一次全局生效，工作台各业务页不再各自做算法筛选**。（2026-10-15 负责人口径：原「控制台」统一更名「工作台」，全表同步。）
 
 ---
 
@@ -14,7 +14,7 @@
 | 01 | `01_全局基座.md`（基准稿 v2.0） | INT-343 | A | ✅ done |
 | 02 | `02_导航栏.md` | INT-344 | A | ✅ 产出 |
 | 03 | `03_首页.md` | INT-345 | A | ✅ in_review |
-| 04 | `04_控制台.md` | INT-346 | A | ✅ 产出 |
+| 04 | `04_控制台.md`（页面名已更名「工作台」，文件名沿用） | INT-346 | A | ✅ 产出 |
 | 05 | `05_系统设置.md`（v1.1） | INT-347 | B | ✅ 产出 |
 | 06 | `06_关于.md` | INT-348 | B | ⏳ 待产出 |
 | 07 | `07_文档.md` | INT-349 | B | ✅ 产出 |
@@ -109,14 +109,14 @@
 
 ### 2.1 新路由总表（信息架构拍板落地）
 
-布局壳四种：**PublicLayout**（公共站头+页脚，INT-344 出壳）/ **AuthLayout**（登录壳，INT-357）/ **AuthenticatedLayout**（控制台壳：AppHeader+AppSidebar+SidebarInset，INT-346 出壳）/ **无壳错误版式**（ErrorState 居中，INT-357）。
+布局壳四种：**PublicLayout**（公共站头+页脚，INT-344 出壳）/ **AuthLayout**（登录壳，INT-357）/ **AuthenticatedLayout**（工作台壳：AppHeader+AppSidebar+SidebarInset，INT-346 出壳）/ **无壳错误版式**（ErrorState 居中，INT-357）。
 
 | 路由 | 页面 | 权限门槛 | 布局壳 | 归属卡 |
 | --- | --- | --- | --- | --- |
 | `/` | 首页（门户落地页） | 公开（全员含未登录） | PublicLayout | INT-345 ✅ |
 | `/login` | 登录页 | 公开；已登录 redirect `/dashboard`（sanitize） | AuthLayout | INT-357 ✅ |
 | `/register` | 注册页（自双 Tab 拆出） | 公开；同上；注册关闭→引导态 | AuthLayout | INT-357 ✅ |
-| `/dashboard` | 控制台（工作台+侧栏壳根） | 登录即可（`home:read`） | AuthenticatedLayout | INT-346 ✅ |
+| `/dashboard` | 工作台（侧栏壳根；页面名与侧栏首项并轨） | 登录即可（`home:read`） | AuthenticatedLayout | INT-346 ✅ |
 | `/E2ETest` | 端到端测试（五步向导） | `task:execute` | AuthenticatedLayout | INT-355 ✅ |
 | `/APITest` | API 测试（五步向导） | `task:execute` | AuthenticatedLayout | INT-355 ✅ |
 | `/tasks` | 任务管理（四页签：全部/运行中/已发布/回收站） | `task:read` | AuthenticatedLayout | INT-354 ✅ |
@@ -167,7 +167,7 @@
 
 ### 2.3 新增页（负责人 2026-10-14 拍板）
 
-`/dashboard`（控制台工作台）、`/system-settings/*`（系统设置工作区）、`/profile`（个人中心）、`/about`（关于）、`/user-guide`（文档）、`/rankings`（Benchmark 排行）、`/register`（注册页，自登录双 Tab 拆出）、`/401 /403 /404 /500 /503`（错误页五件）。
+`/dashboard`（工作台）、`/system-settings/*`（系统设置工作区）、`/profile`（个人中心）、`/about`（关于）、`/user-guide`（文档）、`/rankings`（Benchmark 排行）、`/register`（注册页，自登录双 Tab 拆出）、`/401 /403 /404 /500 /503`（错误页五件）。
 
 ---
 
@@ -180,7 +180,7 @@
 | 导航项 | 落点 | 可见性 | 说明 |
 | --- | --- | --- | --- |
 | 主页 | `/` | 全员 | 公开门户；当前页高亮（activeProps `bg-accent text-foreground`） |
-| 控制台 | `/dashboard` | 登录即可（home:read；未登录为受限项——点击弹「需要登录」Dialog，5 秒倒计时跳 `/login?redirect=`，`public-header.tsx:486-524` 机制照搬） | INT-345/346 同口径 |
+| 工作台 | `/dashboard` | 登录即可（home:read；未登录为受限项——点击弹「需要登录」Dialog，5 秒倒计时跳 `/login?redirect=`，`public-header.tsx:486-524` 机制照搬） | INT-345/346 同口径 |
 | 报告 | `/reports` | `report:read`（admin/tester/algo_engineer/guest；device_admin 隐藏） | **报告直达**（负责人口径）；INT-345 文案「报告」 |
 | Benchmark 排行 | `/rankings` | `benchmark:ranking:read`（现仅 admin，§1.4；未登录隐藏） | **benchmark 直达**；不进侧栏（公开数据页走 PublicLayout，对齐 newAPI rankings 不在侧栏） |
 | 文档 | `/user-guide` | 全员 | 公开 |
@@ -203,7 +203,7 @@
 
 **newAPI 右上角不引入项**：CheckinRewardsButton / WalletRechargeButton / SystemUpdateAction（签到/充值/系统更新——LLM 业务与部署形态特有）。
 
-### 3.3 控制台侧栏树（INT-346 §3.2 拍板，本卡汇总为总表口径；INT-415 产出后增「AI 工具」组→五组十一项，逐项权限过滤，空组整组隐藏）
+### 3.3 工作台侧栏树（INT-346 §3.2 拍板，本卡汇总为总表口径；INT-415 产出后增「AI 工具」组→五组十一项，逐项权限过滤，空组整组隐藏）
 
 | 组（SidebarGroupLabel） | 菜单项 | 路由 | 图标（lucide） | 可见性权限 |
 | --- | --- | --- | --- | --- |
@@ -223,7 +223,7 @@
 
 ### 3.4 系统设置工作区 drill-in 树（INT-347 v1.1 拍板，URL `/system-settings/<域>/<分区>` 路径式；本卡汇总域级门槛）
 
-命中 `/system-settings/*` 侧栏整树替换为设置树 + 头部「← 返回控制台」（→ `/dashboard`，`sidebar-view-registry.ts` 机制照搬）。
+命中 `/system-settings/*` 侧栏整树替换为设置树 + 头部「← 返回工作台」（→ `/dashboard`，`sidebar-view-registry.ts` 机制照搬）。
 
 | 设置域 | 分区 | 域级门槛（可见性） | 写操作另需 |
 | --- | --- | --- | --- |
@@ -239,7 +239,7 @@
 ### 3.5 全局算法切换器总口径（负责人 2026-10-14 拍板；跨卡契约，本卡固化）
 
 - **位置**：登录壳导航栏右上角（全局控制区首位，§3.2）；公共站头不出现。
-- **行为**：切换一次全局生效——写 Zustand 全局算法 store（INT-344 主案）；控制台各业务页**不再各自做算法筛选**，页面内算法筛选与全局切换联动。
+- **行为**：切换一次全局生效——写 Zustand 全局算法 store（INT-344 主案）；工作台各业务页**不再各自做算法筛选**，页面内算法筛选与全局切换联动。
 - **联动规则**（各卡已落地）：业务列表页（任务/用例/音频/设备/API/报告/日志）工具栏渲染**只读联动 chip**（Badge secondary + × 清空）；请求自动附 `algorithm_type`（store 非空时）。测试执行两页（INT-355）步骤0 算法选择**即写回全局**（「测试流程算法是业务步骤而非筛选器」）；页内不提供取消（清空唯一入口=导航栏切换器）；列表过滤空态给「更换算法」+「查看全部（临时解除，仅本页）」。
 - **可见性**：`algorithm:read`（切换器数据源=算法定义清单 `GET /algorithm/definitions`）——admin/tester/algo_engineer 显，device_admin/guest 隐藏（隐藏而非置灰）。**本卡拍板**，INT-344 落组件时对齐。
 - **不联动区**：工作台统计图表（`GET /tasks/stats` 无算法参数，全域视角，INT-346 口径注记）；设置工作区算法列表分区（展示全部算法并承担 CRUD 本体，切换器只读引用同一数据源）。
@@ -275,7 +275,7 @@
 | `/rankings` 页面本体 | ✓ | ✓（数据待 seed，§1.4） | ✓（同左） | ✗（无码，导航隐藏；URL 直达同样 403 数据） | ✗（同左） | ✓ 页面可达（数据 403→登录引导空态；导航项隐藏） |
 | `/user-guide` `/about` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 错误页五件 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
-| 顶部导航项结果 | 六项全显 | 五项（无 Benchmark） | 五项（无 Benchmark） | 四项（主页/控制台/文档/关于——无报告、无 Benchmark） | 五项（主页/控制台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
+| 顶部导航项结果 | 六项全显 | 五项（无 Benchmark） | 五项（无 Benchmark） | 四项（主页/工作台/文档/关于——无报告、无 Benchmark） | 五项（主页/工作台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
 | 侧栏树结果 | 全部 11 项 | 10 项（AI 对话+总览+执行 3+资产 4+日志；设置入口✓） | 8 项（AI 对话+总览+任务管理（只读）+用例+音频+报告+日志；设置入口✓；无执行 2 项、无设备） | 2 项（工作台+设备管理；日志/其余隐藏） | 3 项（工作台+AI 对话+报告中心；「管理」组空→整组隐藏） | —（未登录不进壳） |
 
 > AUTH_MODE=off：一切页面全放行全显（permissions=['*']，`authStore.ts` + `router/index.ts` 守卫实测）；`/login` 渲染开放模式 Alert（INT-357 §3.1）。
@@ -311,7 +311,7 @@
 | newAPI 页面 | newAPI 源码落点 | 本平台对位 | 处置/版式对位 |
 | --- | --- | --- | --- |
 | Home `/` | `features/home` + `routes/index.tsx` | 首页门户 `/` | 整版式照搬，内容换测试平台（INT-345） |
-| Console `/dashboard` | `features/dashboard` + `_authenticated/dashboard` | 控制台 `/dashboard` | 工作台四分区照搬（INT-346） |
+| Console `/dashboard` | `features/dashboard` + `_authenticated/dashboard` | 工作台 `/dashboard` | 工作台四分区照搬（INT-346） |
 | Playground `/playground` | `features/playground` | 端到端测试 `/E2ETest` + API 测试 `/APITest` | 三段式全高布局 + 五步向导（INT-355） |
 | Usage Logs `/usage-logs/*` | `features/usage-logs` | 任务管理 `/tasks`（四页签+详情） | 双视图表格版式（INT-354） |
 | Users `/users` | `features/users` | 用例管理 `/testcases`（用户管理本体→设置工作区） | 表格版式基准（INT-356 / INT-347） |
@@ -360,7 +360,7 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 2. `_authenticated` 组壳 beforeLoad（未登录→login / 权限不足→/403?from）+ 各路由 meta 权限码 + `/system-settings` 两级守卫。
 3. `usePermissions` + 权限码常量表（domain）落地，替换 Vue authStore.hasPermission（语义不变）。
 4. 全局算法 Zustand store + 导航栏切换器（INT-344）+ 各业务页联动 chip（各卡已注明消费点）。
-5. 侧栏树四组十项 + 设置树注册器 + drill-in 返回控制台。
+5. 侧栏树四组十项 + 设置树注册器 + drill-in 返回工作台。
 6. TopNav 六项 + 右上角功能区 + PublicHeader（INT-344 一卡落全）。
 
 ---
@@ -383,5 +383,6 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 日期 | 版本 | 变更 |
 | --- | --- | --- |
 | 2026-10-15 | v1.0 | 初稿（INT-353）：§0 文档地图、§1 RBAC 事实基线（seed_rbac 100 权限点/五角色实测 + benchmark 权限缺口发现）、§2 新路由总表与 19 旧路由全量映射、§3 导航结构（顶部六项/右上角/侧栏四组十项/设置树/全局算法切换器总口径/渲染规则）、§4 RBAC 总表（页面可见性矩阵+按钮级指针+守卫口径）、§5 newAPI→本平台映射（页面/不引入/机制）、§6 DDD 落位+实施清单、§7 待确认六项 |
+| 2026-10-15 | v1.1 | 负责人口径：**控制台更名工作台**——全表「控制台」字样逐处替换为「工作台」（§2.1 /dashboard 行、§3.2 顶部导航项、§3.3 侧栏树标题、§3.4 返回文案、§3.5 联动口径、§4 导航项结果行、§5 映射表、§6 实施清单）；路由 `/dashboard` 与侧栏结构不变，侧栏首项「工作台」与页面名并轨；02/03/04/05/08/09/10/11/12 各卡文档同步核改 |
 | 2026-10-15 | v1.1 | INT-344 产出后勘误回写：§0 文档地图 02 卡置「✅ 产出」；§3.2 右上角功能区次序定稿（切换器→搜索→通知→语言→主题→头像——对齐 newAPI app-header 实测相对次序）；§4.1 顶部导航项结果行修正（device_admin 4 项、guest 5 项含报告——guest 持 report:read 实测） |
 | 2026-10-15 | v1.2 | INT-415 产出后回写：§0 文档地图 08 行置「✅ 产出」；§2.1 新增 `/ai-chat` 路由行（`report:read`）；§3.3 侧栏树增「AI 工具」组「AI 对话」项→五组十一项；§4.1 新增 `/ai-chat` 可见性行（device_admin ✗、guest 只读）+ 侧栏树结果行更新（admin/tester/algo/device/guest = 11/10/8/2/3 项） |
