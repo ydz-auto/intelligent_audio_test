@@ -18,7 +18,7 @@
 | 05 | `05_系统设置.md`（v1.1） | INT-347 | B | ✅ 产出 |
 | 06 | `06_关于.md` | INT-348 | B | ⏳ 待产出 |
 | 07 | `07_文档.md` | INT-349 | B | ✅ 产出 |
-| 08 | —（序号预留，未分卡） | — | — | — |
+| 08 | `08_AI对话页.md` | INT-415 | A | ✅ 产出 |
 | 09 | `09_任务域.md` | INT-354 | A | ✅ 产出 |
 | 10 | `10_测试执行.md` | INT-355 | A | ✅ 产出 |
 | 11 | `11_用例域.md` | INT-356 | A | ✅ 产出 |
@@ -125,6 +125,7 @@
 | `/audio-import` | 音频管理（上传/列表/试听） | `audio:read` | AuthenticatedLayout | INT-361 🔨 |
 | `/devices` | 设备管理（被测/播放设备） | `device:read` | AuthenticatedLayout | INT-361 🔨 |
 | `/reports` | 报告中心（测试报告+历史报告页签） | `report:read` | AuthenticatedLayout | INT-360 ⏳ |
+| `/ai-chat` | AI 对话（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
 | `/report/$reportId` | 报告查看（详情页） | `report:read` | AuthenticatedLayout | INT-360 ⏳ |
 | `/logs` | 日志查看 | `log:read` | AuthenticatedLayout | INT-362 ⏳ |
 | `/profile` | 个人中心（用户自己的管理） | 登录即可（无权限码） | AuthenticatedLayout | INT-358 ⏳ |
@@ -202,11 +203,12 @@
 
 **newAPI 右上角不引入项**：CheckinRewardsButton / WalletRechargeButton / SystemUpdateAction（签到/充值/系统更新——LLM 业务与部署形态特有）。
 
-### 3.3 控制台侧栏树（INT-346 §3.2 拍板，本卡汇总为总表口径；四组十项，逐项权限过滤，空组整组隐藏）
+### 3.3 控制台侧栏树（INT-346 §3.2 拍板，本卡汇总为总表口径；INT-415 产出后增「AI 工具」组→五组十一项，逐项权限过滤，空组整组隐藏）
 
 | 组（SidebarGroupLabel） | 菜单项 | 路由 | 图标（lucide） | 可见性权限 |
 | --- | --- | --- | --- | --- |
 | 总览 | 工作台 | `/dashboard` | Activity | 登录即可（home:read） |
+| AI 工具 | AI 对话 | `/ai-chat` | MessagesSquare | `report:read` |
 | 测试执行 | 端到端测试 | `/E2ETest` | Smartphone | `task:execute` |
 | 测试执行 | API 测试 | `/APITest` | ArrowLeftRight | `task:execute` |
 | 测试执行 | 任务管理 | `/tasks` | ClipboardList | `task:read` |
@@ -266,6 +268,7 @@
 | `/audio-import` | ✓ | ✓ | ✓（只读） | ✗ | ✗ | ↗ /login |
 | `/devices` | ✓ | ✓ | ✗ | ✓ | ✗ | ↗ /login |
 | `/reports` `/report/$id` | ✓ | ✓ | ✓ | ✗ | ✓（只读+对比） | ↗ /login |
+| `/ai-chat` AI 对话 | ✓ | ✓ | ✓ | ✗（无 report:read） | ✓（只读对话+对比，生成卡隐藏） | ↗ /login |
 | `/logs` | ✓ | ✓ | ✓ | ✗ | ✗ | ↗ /login |
 | `/profile` 个人中心 | ✓ | ✓ | ✓ | ✓ | ✓ | ↗ /login |
 | `/system-settings/*` | ✓ 全域 | ✓（测试配置+算法只读/参数管理） | ✓（算法/测试配置域） | ✓（仅 SPL 分区） | ✗（入口集合不满足，整树隐藏） | ↗ /login |
@@ -273,7 +276,7 @@
 | `/user-guide` `/about` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 错误页五件 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 顶部导航项结果 | 六项全显 | 五项（无 Benchmark） | 五项（无 Benchmark） | 四项（主页/控制台/文档/关于——无报告、无 Benchmark） | 五项（主页/控制台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
-| 侧栏树结果 | 全部 10 项 | 9 项（总览+执行 3+资产 4+日志；设置入口✓） | 7 项（无执行 2 项、无设备） | 2 项（工作台+设备管理；日志/其余隐藏） | 2 项（工作台+报告中心；「管理」组空→整组隐藏） | —（未登录不进壳） |
+| 侧栏树结果 | 全部 11 项 | 10 项（AI 对话+总览+执行 3+资产 4+日志；设置入口✓） | 8 项（AI 对话+总览+任务管理（只读）+用例+音频+报告+日志；设置入口✓；无执行 2 项、无设备） | 2 项（工作台+设备管理；日志/其余隐藏） | 3 项（工作台+AI 对话+报告中心；「管理」组空→整组隐藏） | —（未登录不进壳） |
 
 > AUTH_MODE=off：一切页面全放行全显（permissions=['*']，`authStore.ts` + `router/index.ts` 守卫实测）；`/login` 渲染开放模式 Alert（INT-357 §3.1）。
 
@@ -381,3 +384,4 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | --- | --- | --- |
 | 2026-10-15 | v1.0 | 初稿（INT-353）：§0 文档地图、§1 RBAC 事实基线（seed_rbac 100 权限点/五角色实测 + benchmark 权限缺口发现）、§2 新路由总表与 19 旧路由全量映射、§3 导航结构（顶部六项/右上角/侧栏四组十项/设置树/全局算法切换器总口径/渲染规则）、§4 RBAC 总表（页面可见性矩阵+按钮级指针+守卫口径）、§5 newAPI→本平台映射（页面/不引入/机制）、§6 DDD 落位+实施清单、§7 待确认六项 |
 | 2026-10-15 | v1.1 | INT-344 产出后勘误回写：§0 文档地图 02 卡置「✅ 产出」；§3.2 右上角功能区次序定稿（切换器→搜索→通知→语言→主题→头像——对齐 newAPI app-header 实测相对次序）；§4.1 顶部导航项结果行修正（device_admin 4 项、guest 5 项含报告——guest 持 report:read 实测） |
+| 2026-10-15 | v1.2 | INT-415 产出后回写：§0 文档地图 08 行置「✅ 产出」；§2.1 新增 `/ai-chat` 路由行（`report:read`）；§3.3 侧栏树增「AI 工具」组「AI 对话」项→五组十一项；§4.1 新增 `/ai-chat` 可见性行（device_admin ✗、guest 只读）+ 侧栏树结果行更新（admin/tester/algo/device/guest = 11/10/8/2/3 项） |
