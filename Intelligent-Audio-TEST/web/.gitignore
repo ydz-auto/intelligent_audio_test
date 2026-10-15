@@ -1,0 +1,13 @@
+# Rsbuild
+dist
+rsbuild.config.*.bak
+
+# 依赖
+node_modules
+
+# TanStack Router 生成的路由树（构建期由 router-plugin 生成）
+src/routeTree.gen.ts
+
+# 日志与本地文件
+*.log
+.DS_Store

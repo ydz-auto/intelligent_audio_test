@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google" content="notranslate" />
+
+    <title>智能语音测试平台</title>
+    <meta name="title" content="智能语音测试平台" />
+    <meta
+      name="description"
+      content="智能语音测试平台：端到端测试 · API 测试 · 多维评估"
+    />
+
+    <meta name="theme-color" content="#fff" />
+    <script>
+      // 防闪脚本：首帧绘制前依据持久化主题恢复 html.light/dark（照 next-themes 同款机制，
+      // 键名 iatp:theme:v1:mode 见 src/lib/theme-storage.ts）
+      ;(function () {
+        try {
+          var mode = localStorage.getItem('iatp:theme:v1:mode')
+          var dark =
+            mode === 'dark' ||
+            ((!mode || mode === 'system') &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.remove('light', 'dark')
+          document.documentElement.classList.add(dark ? 'dark' : 'light')
+        } catch (e) {
+          /* storage 不可用时保持默认浅色 */
+        }
+      })()
+    </script>
+  </head>
+
+  <body>
+    <div id="root" translate="no" class="notranslate"></div>
+  </body>
+</html>
