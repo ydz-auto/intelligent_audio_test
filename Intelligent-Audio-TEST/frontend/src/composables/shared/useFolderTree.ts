@@ -1,5 +1,6 @@
 import { ref, computed, type Ref } from 'vue';
 import { audiosPort } from '../audio/audiosPort';
+import { useNotification } from '../modal/useNotification';
 import type { AudioInfo, AudioQueryParams, FolderNode, APIResponse } from '../../domain';
 
 /**
@@ -16,6 +17,7 @@ import type { AudioInfo, AudioQueryParams, FolderNode, APIResponse } from '../..
 export type { FolderNode };
 
 export function useFolderTree() {
+  const notification = useNotification();
   const serverFolderTree = ref<FolderNode>({
     name: '音频文件',
     path: '',
@@ -107,6 +109,8 @@ export function useFolderTree() {
       }
     } catch (error) {
       console.error('获取文件夹树失败:', error);
+      // INT-289：失败必须可见——原先仅 console.error，故障被误呈现为空树；失败不清空既有树
+      notification.error(`获取文件夹树失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       folderLoading.value = false;
     }
@@ -146,6 +150,8 @@ export function useFolderTree() {
       }
     } catch (error) {
       console.error('Load sub-tree failed:', error);
+      // INT-289：子树加载失败同走可见错误提示
+      notification.error(`加载子文件夹失败: ${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       folderLoading.value = false;
     }

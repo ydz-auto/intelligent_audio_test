@@ -148,6 +148,48 @@
     margin-top: 20px;
 }
 
+/* INT-289 加载/空态：首载 spinner 与空态引导文案 */
+.spl-mapping-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 40px 16px;
+    justify-content: center;
+    color: var(--text-light);
+    font-size: 14px;
+}
+
+.spl-mapping-loading .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.spl-mapping-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 48px 16px;
+    color: var(--text-light);
+    text-align: center;
+}
+
+.spl-mapping-empty i {
+    font-size: 40px;
+    opacity: 0.5;
+}
+
+.spl-mapping-empty p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
 .mapping-card {
     background: white;
     border-radius: 12px;

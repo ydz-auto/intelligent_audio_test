@@ -162,6 +162,20 @@
     
     <!-- 列表视图 -->
     <div v-if="viewMode === 'list'" class="card-body">
+      <!-- INT-289：loading prop 消费——首载骨架屏；刷新保留旧数据不闪 -->
+      <div v-if="props.loading && filteredAudios.length === 0" class="audio-list-skeleton">
+        <div v-for="n in SKELETON_ROWS" :key="n" class="skeleton-row">
+          <div v-if="enableSelection" class="skeleton-cell skeleton-checkbox"></div>
+          <div class="skeleton-cell skeleton-name"></div>
+          <div class="skeleton-cell skeleton-format"></div>
+          <div class="skeleton-cell skeleton-size"></div>
+          <div class="skeleton-cell skeleton-duration"></div>
+          <div class="skeleton-cell skeleton-type"></div>
+          <div class="skeleton-cell skeleton-tags"></div>
+          <div class="skeleton-cell skeleton-actions"></div>
+        </div>
+      </div>
+      <template v-else>
       <div class="table-container">
         <table class="data-table">
           <thead>
@@ -291,11 +305,16 @@
         <i class="fas fa-music"></i>
         <p>没有找到匹配的音频文件</p>
       </div>
+      </template>
     </div>
-    
+
     <!-- 文件夹视图 -->
     <div v-if="viewMode === 'folder'" class="card-body">
-      <div class="folder-view">
+      <!-- INT-289：folder-loading prop 消费——树首载 spinner -->
+      <div v-if="props.folderLoading && !activeFolderTree?.folders?.length && !activeFolderTree?.files?.length" class="folder-tree-loading">
+        <span class="loading-spinner"></span> 正在加载文件夹树...
+      </div>
+      <div v-else class="folder-view">
         <div class="folder-tree">
           <FolderNodeComponent
             :folder="activeFolderTree"
@@ -423,6 +442,9 @@ const emit = defineEmits<{
   (e: 'expand-folder', folderPath: string): void;
   (e: 'toggle-folder-selection', folder: any): void;
 }>();
+
+// INT-289：主数据首载骨架屏行数（loading prop 消费）
+const SKELETON_ROWS = 5;
 
 const {
   viewMode,

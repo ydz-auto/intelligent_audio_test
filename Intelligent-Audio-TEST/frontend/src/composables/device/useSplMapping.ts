@@ -18,6 +18,8 @@ export function useSplMapping() {
 
   // 响应式数据
   const mappingData = ref<SPLMapping[]>([]);
+  // INT-289：映射列表加载态（首载 spinner，刷新保留旧数据）
+  const loading = ref(false);
   const searchTerm = ref<string>('');
   const calibrationFilter = ref<'all' | 'calibrated' | 'uncalibrated'>('all');
   const deviceFilter = ref<string>('all');
@@ -145,6 +147,7 @@ export function useSplMapping() {
   };
 
   async function searchMappings() {
+    loading.value = true;
     try {
       // Domain 查询参数为 camelCase（SPLQuery），API 层负责转 snake_case
       const params : SPLQueryParams = {
@@ -160,6 +163,10 @@ export function useSplMapping() {
       }
     } catch (error) {
       console.error('获取映射数据失败:', error);
+      // INT-289：失败必须可见——原先仅 console.error，与空态不可区分；失败不清空既有映射
+      notification.error(`获取映射列表失败: ${error instanceof Error ? error.message : '未知错误'}`);
+    } finally {
+      loading.value = false;
     }
   }
 
@@ -174,6 +181,8 @@ export function useSplMapping() {
       }
     } catch (error) {
       console.error('获取统计数据失败:', error);
+      // INT-289：统计失败同走可见错误提示
+      notification.error(`获取统计数据失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
 
@@ -623,6 +632,8 @@ export function useSplMapping() {
       playbackDevices.value = await playbackPort.getAll({ perPage: 1000 });
     } catch (error) {
       console.error('获取设备列表失败:', error);
+      // INT-289：设备选项加载失败同走可见错误提示
+      notification.error(`获取设备列表失败: ${error instanceof Error ? error.message : '未知错误'}`);
     }
   }
 
@@ -633,6 +644,7 @@ export function useSplMapping() {
     deviceFilter,
     playbackDevices,
     stats,
+    loading,
     formData,
     showModal,
     showDetailsModal,

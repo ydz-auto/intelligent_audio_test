@@ -116,8 +116,17 @@
             </div>
           </div>
           <div class="card-body">
+            <!-- INT-289 加载态：首载无数据时展示 spinner（刷新保留旧数据不闪） -->
+            <div v-if="loading && paginatedMappings.length === 0" class="spl-mapping-loading">
+              <span class="loading-spinner"></span> 正在加载映射列表...
+            </div>
+            <!-- INT-289 空态：加载完成后无映射时给出引导文案，与错误态区分 -->
+            <div v-else-if="!loading && paginatedMappings.length === 0" class="spl-mapping-empty">
+              <i class="fas fa-info-circle"></i>
+              <p>暂无增益映射。点击右上角「添加增益映射」创建，或「导入映射数据」批量导入。</p>
+            </div>
             <!-- 映射卡片网格 -->
-            <div class="mapping-grid">
+            <div v-else class="mapping-grid">
               <!-- 增益映射卡片 -->
               <div class="mapping-card" v-for="(mapping, index) in paginatedMappings" :key="mapping.id">
                 <div class="mapping-card-header">
@@ -449,6 +458,7 @@ const {
   paginatedMappings,
   stats,
   playbackDevices,
+  loading,
   showModal,
   showDetailsModal,
   searchMappings,

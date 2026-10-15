@@ -21,6 +21,8 @@ import {
 export async function fetchAllDevices() {
   loading.value = true;
   error.value = null;
+  // INT-289：并行拉取失败项累计——失败不清空既有列表、保留旧数据并给出可见错误
+  const failedParts: string[] = [];
   try {
     const basicResults = await Promise.allSettled([
       devicesPort.getAll() as Promise<ListResponse<TestDeviceView> | TestDeviceView[]>,
@@ -41,7 +43,7 @@ export async function fetchAllDevices() {
       });
     } else {
       console.error('Failed to fetch test devices:', basicResults[0].reason);
-      testDevices.value = [];
+      failedParts.push('测试设备');
     }
 
     if (basicResults[1].status === 'fulfilled') {
@@ -68,7 +70,7 @@ export async function fetchAllDevices() {
       });
     } else {
       console.error('Failed to fetch API devices:', basicResults[1].reason);
-      apiDevices.value = [];
+      failedParts.push('API设备');
     }
 
     if (basicResults[2].status === 'fulfilled') {
@@ -77,26 +79,29 @@ export async function fetchAllDevices() {
       promptAudios.value = ((audioRes as any).items || (audioRes as any).data || []).filter((d: any) => d);
     } else {
       console.error('Failed to fetch prompt audios:', basicResults[2].reason);
-      promptAudios.value = [];
+      failedParts.push('提示词音频');
     }
 
     // playbackPort.getAll 已展平为 Domain 数组（大批量分页一次性拉取全部）
-    let allPlaybackDevices: PlaybackDevice[] = [];
+    let allPlaybackDevices: PlaybackDevice[] | null = null;
     try {
       allPlaybackDevices = await playbackPort.getAll(BATCH_LIST_PARAMS);
     } catch (err) {
       console.error('Failed to fetch playback devices:', err);
+      failedParts.push('播放设备');
     }
 
-    const currentPlaybackDevices = [...playbackDevices.value];
-    playbackDevices.value = allPlaybackDevices.map(d => {
-      const device = d || {} as PlaybackDevice;
-      const deviceId = device.id;
-      const existingDevice = currentPlaybackDevices.find(existing => existing.id === deviceId);
-      const currentStatus = existingDevice && existingDevice.status === DeviceStatus.TESTING ? DeviceStatus.TESTING :
-                         (device.status || DeviceStatus.OFFLINE);
-      return { ...device, status: currentStatus, name: device.name || '未命名设备', model: device.model || '未知型号', id: deviceId } as PlaybackDevice;
-    });
+    if (allPlaybackDevices) {
+      const currentPlaybackDevices = [...playbackDevices.value];
+      playbackDevices.value = allPlaybackDevices.map(d => {
+        const device = d || {} as PlaybackDevice;
+        const deviceId = device.id;
+        const existingDevice = currentPlaybackDevices.find(existing => existing.id === deviceId);
+        const currentStatus = existingDevice && existingDevice.status === DeviceStatus.TESTING ? DeviceStatus.TESTING :
+                           (device.status || DeviceStatus.OFFLINE);
+        return { ...device, status: currentStatus, name: device.name || '未命名设备', model: device.model || '未知型号', id: deviceId } as PlaybackDevice;
+      });
+    }
 
     autoHealthCheck();
 
@@ -107,6 +112,11 @@ export async function fetchAllDevices() {
       ...apiDevices.value
     ];
     console.log('设备数据已同步到deviceManagement.devices', deviceManagement.devices.value.length, '个设备');
+
+    // INT-289：任一分区拉取失败时给出可见错误条，旧数据已被保留
+    if (failedParts.length > 0) {
+      error.value = `获取设备列表失败（${failedParts.join('/')}），已保留现有数据`;
+    }
   } catch (err) {
     console.error('Failed to fetch devices:', err);
     error.value = '获取设备列表失败';

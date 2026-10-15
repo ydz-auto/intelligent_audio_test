@@ -2,6 +2,7 @@ import { ref, computed, type Ref } from 'vue';
 import { audiosPort } from './audiosPort';
 import { useTagFilter } from '../shared/useTagFilter';
 import { useFolderSelection } from '../shared/useFolderSelection';
+import { useNotification } from '../modal/useNotification';
 import { normalizeSampleRate } from '../shared/useFolderTree';
 import type { AudioInfo, AudioQueryParams, AudioStats, APIResponse } from '../../domain';
 import type { Paginated } from '../../domain/model/common';
@@ -33,6 +34,7 @@ export interface AudioListFilters {
 }
 
 export function useAudioList() {
+  const notification = useNotification();
   const audioList = ref<AudioInfo[]>([]);
   const totalAudios = ref(0);
   const loading = ref(false);
@@ -136,6 +138,8 @@ export function useAudioList() {
       }
     } catch (e) {
       console.error('Fetch all tags failed:', e);
+      // INT-289：标签加载失败同走可见错误提示（原先仅 console.error）
+      notification.error(`加载标签列表失败: ${e instanceof Error ? e.message : '未知错误'}`);
     }
   }
 
@@ -234,6 +238,8 @@ export function useAudioList() {
       }
     } catch (e) {
       console.error('Fetch audios failed:', e);
+      // INT-289：失败必须可见——原先仅 console.error，故障被空态文案误导；失败不清空列表现状
+      notification.error(`加载音频列表失败: ${e instanceof Error ? e.message : '未知错误'}`);
     } finally {
       loading.value = false;
     }

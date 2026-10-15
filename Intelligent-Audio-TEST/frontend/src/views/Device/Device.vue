@@ -66,6 +66,19 @@
       </button>
     </div>
 
+    <!-- 加载/错误态（INT-289）：加载指示 + 错误横幅；失败保留旧数据不清空 -->
+    <div v-if="loading" class="device-loading-bar">
+      <span class="loading-spinner"></span>
+      正在加载设备列表...
+    </div>
+    <div v-else-if="error" class="device-error-banner">
+      <i class="fas fa-exclamation-triangle"></i>
+      <span class="device-error-text">{{ error }}</span>
+      <button class="btn btn-primary btn-sm" @click="fetchAllDevices">
+        <i class="fas fa-sync-alt"></i> 重试
+      </button>
+    </div>
+
     <!-- 设备状态概览 -->
     <div class="stats-grid">
       <div v-for="stat in stats" :key="stat.label" class="stat-card">
@@ -349,6 +362,8 @@ const {
   activeTab,
   dropdowns,
   groupManagerVisible,
+  loading,
+  error,
   searchQuery,
   statusFilter,
   playbackTypeFilter,
@@ -481,6 +496,51 @@ function setPlaybackTypeFilter(value: string | number) {
     background-color: var(--background-secondary);
     padding: 4px;
     border-radius: var(--border-radius-lg);
+}
+
+/* INT-289 加载/错误态：spinner 与错误横幅 */
+.device-loading-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: var(--spacing-lg);
+    background: color-mix(in srgb, var(--primary-color) 5%, transparent);
+    border-radius: var(--border-radius-lg);
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.device-loading-bar .loading-spinner {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid color-mix(in srgb, var(--primary-color) 30%, transparent);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.device-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: var(--spacing-lg);
+    background: color-mix(in srgb, var(--danger-color, #f5222d) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger-color, #f5222d) 30%, transparent);
+    border-radius: var(--border-radius-lg);
+    color: var(--danger-color, #f5222d);
+    font-size: 14px;
+}
+
+.device-error-text {
+    flex: 1;
+}
+
+.device-error-banner .btn-sm {
+    padding: 4px 12px;
+    font-size: 12px;
 }
 
 @media (max-width: 768px){
