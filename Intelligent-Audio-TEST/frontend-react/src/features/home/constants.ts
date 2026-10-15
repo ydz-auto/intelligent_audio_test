@@ -396,6 +396,7 @@ export const DEPLOYMENT_TRUST = {
       { label: '接口版本', value: 'API v1' },
     ],
     action: '进入控制台',
+    anonymousAction: '立即体验',
     manualLink: '阅读使用手册',
   },
   compliance: {

@@ -88,7 +88,7 @@ export function DeploymentTrustSection({ className }: { className?: string }) {
             >
               {user
                 ? DEPLOYMENT_TRUST.card.action
-                : DEPLOYMENT_TRUST.card.manualLink}
+                : DEPLOYMENT_TRUST.card.anonymousAction}
               <ArrowUpRight aria-hidden='true' className='size-4' />
             </Button>
             {user && (
