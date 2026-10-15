@@ -348,6 +348,7 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
                 'user_wav': '{{user_wav}}',
                 'ai_wav': '{{ai_wav}}',
                 'played_audios': '{{played_audios}}',
+                'query': '{{query}}',
                 'background_noise': '{{background_noise}}',
                 'interferers': '{{interferers}}',
             }
