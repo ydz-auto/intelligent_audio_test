@@ -100,6 +100,7 @@ _DRIVER_REF = {'driver': None, 'page': None}
 STACK_GATE_EXEMPT_MODULES = {
     'test_ui_06_int377_react_base',
     'test_ui_07_int378_react_dashboard',
+    'test_ui_08_int379_react_login_home',
 }
 
 
