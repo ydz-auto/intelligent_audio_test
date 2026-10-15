@@ -185,3 +185,81 @@ Intelligent-Audio-TEST/frontend/snake-props.txt
 
 # Split/verify scratch scripts
 /_split_*.*
+
+# ===== 运行时数据目录（V9.7.31 主项目，2026-10-15 追加）=====
+Intelligent-Audio-TEST/storage/
+Intelligent-Audio-TEST/storage_local/
+/TEMP/
+TEMP/
+Intelligent-Audio-TEST/TEMP/
+
+# UI 测试取证产物（selenium 截图/证据）
+Intelligent-Audio-TEST/tests/ui/artifacts/
+Intelligent-Audio-TEST/tests/ui/_ui_stack.pid
+Intelligent-Audio-TEST/tests/ui/_pg_start.cmd
+
+# 进程 PID / 启动残留
+*.pid
+*_pid*.txt
+Intelligent-Audio-TEST/_stack.pid
+Intelligent-Audio-TEST/_int*_pid*.txt
+
+# docker 过渡残留
+Intelligent-Audio-TEST/docker/Dockerfile.service.new
+Intelligent-Audio-TEST/docker/Dockerfile.service.old-*
+
+# 历史审计散件（临时产物，非交付物）
+Intelligent-Audio-TEST/regression_*.txt
+Intelligent-Audio-TEST/build_int*.txt
+Intelligent-Audio-TEST/vitest_int*.txt
+Intelligent-Audio-TEST/_int9*_*.txt
+Intelligent-Audio-TEST/_start_stack*.cmd
+
+# ===== INT-426 解阻：任务工作区回放上限（未跟踪 >2000 文件 / 200MiB）清理，2026-10-15 =====
+# 一次性/历史集成遗留（INT-95/INT-373/INT-174/INT-112/INT-366 运行散件，非交付物）
+/_int95_r8_head/
+/_int95_r8_restore_head.ps1
+/_int95_r8_final_restore.ps1
+/_int112_accept_logs_r1.txt
+/_int112_accept_logs_r2.txt
+/_int112_prefix_log.txt
+/_int366_runs.json
+/_agents_tmp.json
+/_audit_int67_wt/
+/TEMP_int68_chunks_all.txt
+/TEMP_audit_int277_css.diff
+/audit_int50_acl.diff
+/fdiff.txt
+/int175_accept_regression.txt
+/int175_seed_run1.txt
+/int175_seed_run2.txt
+/log
+/multica_agents_export.md
+/.int220_consolidation.md
+
+# Agent 运行时目录（本机安装/缓存，不入库）
+/.claude/
+/.claude-loop-tmp/
+/int246_work/
+/_int94_accept_logs/
+
+# Intelligent-Audio-TEST 子项目内集成遗留散件（非交付物）
+Intelligent-Audio-TEST/_int246_acceptance/
+Intelligent-Audio-TEST/_int309_acceptance.py
+Intelligent-Audio-TEST/_int373_*
+Intelligent-Audio-TEST/_int95_*
+Intelligent-Audio-TEST/int174_*
+Intelligent-Audio-TEST/*.patch
+Intelligent-Audio-TEST/chain_test_out.txt
+Intelligent-Audio-TEST/nul
+Intelligent-Audio-TEST/pb2_head_tmp2.py
+Intelligent-Audio-TEST/report_service_pb2.py
+Intelligent-Audio-TEST/report_service_pb2_grpc.py
+Intelligent-Audio-TEST/pd_all.json
+Intelligent-Audio-TEST/r321.json
+Intelligent-Audio-TEST/dims72134.json
+Intelligent-Audio-TEST/smoke_gate_result.json
+Intelligent-Audio-TEST/handle_batch_action_task
+Intelligent-Audio-TEST/task_config.BatchActionTasks
+Intelligent-Audio-TEST/task_crud_service
+Intelligent-Audio-TEST/task_repository.batch_restore
