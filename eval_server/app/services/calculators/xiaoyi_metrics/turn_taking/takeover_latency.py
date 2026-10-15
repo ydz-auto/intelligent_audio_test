@@ -18,6 +18,19 @@ from ..shared.constants import TAKEOVER_OFFSET_MS, TAKEOVER_FIRST_FRAME_OFFSET_M
 logger = logging.getLogger(__name__)
 
 
+def _assert_latency_not_negative(latency_ms):
+    """接管时延为负值（模型在用户说完前开口/抢话，或双路时间轴错位）→ 抛异常使本次评估判失败。
+
+    负值时延属于异常数据：异常上抛后本次评估任务会被标记为 failed，
+    主后端据此把该用例评估状态置为 failed。
+    """
+    if isinstance(latency_ms, (int, float)) and not isinstance(latency_ms, bool) and latency_ms < 0:
+        raise ValueError(
+            f"接管时延为负值({latency_ms}ms)，数据异常（模型在用户说完前开口/抢话，"
+            f"或双路时间轴错位），评估失败"
+        )
+
+
 def compute_takeover_latency_from_raw(first_frame_ms, asr_hyp, start_ms, input_words,
                                       offset_ms=TAKEOVER_OFFSET_MS, **kwargs):
     """兼容旧调用入口，委托到 compute_takeover_latency_from_chunks
@@ -118,6 +131,9 @@ def compute_takeover_latency_from_chunks(user_chunks, ai_chunks,
         else:
             takeover_latency_ms = None
             msg = lat_res.get('message', '时延计算失败')
+
+        # 负值时延（模型在用户说完前开口/抢话，或时间轴错位）→ 判评估失败
+        _assert_latency_not_negative(takeover_latency_ms)
 
         result = {
             'client_out_start_ms': lat_res.get('client_out_start_ms'),
@@ -238,6 +254,8 @@ def compute_takeover_latency_from_chunks(user_chunks, ai_chunks,
 
     # 3. 接管时延 = AI 真正回复首字开始 - user 最后一字结束
     takeover_latency_ms = ai_first_word_start_ms - user_last_word_end_ms
+    # 负值时延（模型在用户说完前开口/抢话，或时间轴错位）→ 判评估失败
+    _assert_latency_not_negative(takeover_latency_ms)
     result['takeover_latency_ms'] = takeover_latency_ms
     result['message'] = 'OK'
 
@@ -307,6 +325,8 @@ def _compute_takeover_latency_legacy(first_frame_ms, asr_hyp, start_ms, input_wo
     result['audio_start_with_offset_ms'] = audio_start_with_offset_ms
 
     takeover_latency_ms = model_first_word_ms - audio_start_with_offset_ms
+    # 负值时延（模型在用户说完前开口/抢话，或时间轴错位）→ 判评估失败
+    _assert_latency_not_negative(takeover_latency_ms)
     result['takeover_latency_ms'] = takeover_latency_ms
     result['message'] = 'OK (legacy mode)'
 
