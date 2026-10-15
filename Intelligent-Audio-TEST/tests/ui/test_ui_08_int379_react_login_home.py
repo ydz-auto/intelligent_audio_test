@@ -514,29 +514,43 @@ def test_15_no_console_or_page_errors(drv):
     assert severe == [], f'浏览器 SEVERE 日志非零：{severe}'
 
 
-# ── 16.【缺陷确认】⑦ 部署卡匿名主钮文案与跳转不匹配 ────────────
+# ── 16.【缺陷复验】⑦ 部署卡主钮/小字文案与跳转（打回项修复确认）──
 def test_16_deploy_card_anon_button_label_href_mismatch(drv):
-    """已知缺陷（INT-379 打回项）：部署与数据边界右卡主按钮匿名态
-    文案「阅读使用手册」但 href 指向 /login（deployment-trust.tsx
-    render={<Link to={user ? '/dashboard' : '/login'}>} 与文案分支
-    {user ? card.action : card.manualLink} 不匹配）。规范 §3.8 主钮应为
-    「进入控制台」→ /dashboard（未登录按 §5/§6 口径「立即体验」→ /login）。
-    修复期望：文案与目标一致（阅读使用手册 → /user-guide，或动作文案 → /login）。
+    """INT-379 打回项复验（commit 660cfd2d）：部署与数据边界右卡主按钮
+    文案与跳转一致——匿名态「立即体验」→ /login、登录态「进入控制台」→
+    /dashboard，小字「阅读使用手册」仅登录态 → /user-guide。
     """
+    def _card_links():
+        # 仅取 ⑦ 部署与数据边界 section 内 anchors（避开 ③ 为什么选择尾部同文案 link）
+        return drv.execute_script(
+            "const h2s = Array.from(document.querySelectorAll('h2'));"
+            "const s = h2s.find(x => x.textContent.includes('数据留在本地'));"
+            "const sec = s ? s.closest('section') : null;"
+            "if (!sec) return [];"
+            "return Array.from(sec.querySelectorAll('a')).map(a => ({"
+            "text: a.textContent.trim(), href: a.getAttribute('href')}))")
+    # 匿名态：主钮「立即体验」→ /login；「阅读使用手册」小字不渲染
     _goto_anon(drv, '/', marker='智能语音测试平台')
     _scroll_through(drv)
-    # 仅取 ⑦ 部署与数据边界 section 内 anchors（避开 ③ 为什么选择尾部同文案 link）
-    btns = drv.execute_script(
-        "const h2s = Array.from(document.querySelectorAll('h2'));"
-        "const s = h2s.find(x => x.textContent.includes('数据留在本地'));"
-        "const sec = s ? s.closest('section') : null;"
-        "if (!sec) return [];"
-        "return Array.from(sec.querySelectorAll('a')).map(a => ({"
-        "text: a.textContent.trim(), href: a.getAttribute('href')}))")
+    btns = _card_links()
     assert btns, '⑦ 部署卡 section 未找到或无可点击锚点'
-    main = [b for b in btns if b['text'].startswith('阅读使用手册')]
-    assert main, f'部署卡主钮文案缺失：{btns}'
-    href = main[0]['href'] or ''
-    assert href.endswith('/login'), (
-        f'当前实现：主钮文案=「{main[0]["text"]}」但 href={href}'
-        '（文案/跳转不匹配，已知缺陷，修复后此断言应改为 href=/user-guide 或动作文案→/login）')
+    anon_main = [b for b in btns if b['text'].startswith('立即体验')]
+    assert anon_main, f'匿名态主钮「立即体验」缺失：{btns}'
+    assert (anon_main[0]['href'] or '').endswith('/login'), \
+        f'匿名态主钮未指向 /login：{anon_main[0]}'
+    assert not any(b['text'].startswith('阅读使用手册') for b in btns), \
+        f'匿名态不应渲染「阅读使用手册」小字：{btns}'
+    # 登录态：主钮「进入控制台」→ /dashboard；小字「阅读使用手册」→ /user-guide
+    _login(drv)
+    _goto(drv, '/', marker='智能语音测试平台')
+    _scroll_through(drv)
+    btns = _card_links()
+    assert btns, '登录态 ⑦ 部署卡 section 未找到'
+    auth_main = [b for b in btns if b['text'].startswith('进入控制台')]
+    assert auth_main, f'登录态主钮「进入控制台」缺失：{btns}'
+    assert (auth_main[0]['href'] or '').endswith('/dashboard'), \
+        f'登录态主钮未指向 /dashboard：{auth_main[0]}'
+    manual = [b for b in btns if b['text'].startswith('阅读使用手册')]
+    assert manual, f'登录态小字「阅读使用手册」缺失：{btns}'
+    assert (manual[0]['href'] or '').endswith('/user-guide'), \
+        f'小字未指向 /user-guide：{manual[0]}'
