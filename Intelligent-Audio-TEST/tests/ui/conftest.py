@@ -92,12 +92,15 @@ _HTTPOPTS = dict(timeout=5, trust_env=False)
 # 驱动注册表：会话内唯一 Chrome，供失败取证钩子取用
 _DRIVER_REF = {'driver': None, 'page': None}
 
-# ── 栈门禁豁免（INT-377）─────────────────────────────────────
-# React mock 稿走查（test_ui_06_int377_react_base.py）直接驱动
-# frontend-react/ dev server，无后端依赖——栈门禁三件套（RUN_LIVE_STACK/
+# ── 栈门禁豁免（INT-377 / INT-378）───────────────────────────
+# React mock 稿走查（test_ui_06_int377_react_base.py、test_ui_07_int378_react_dashboard.py）
+# 直接驱动 frontend-react/ dev server，无后端依赖——栈门禁三件套（RUN_LIVE_STACK/
 # 隔离库守卫/引导）不适用。豁免集合按模块文件名匹配；仍走真实栈的用例
 # 保持原口径不变。
-STACK_GATE_EXEMPT_MODULES = {'test_ui_06_int377_react_base'}
+STACK_GATE_EXEMPT_MODULES = {
+    'test_ui_06_int377_react_base',
+    'test_ui_07_int378_react_dashboard',
+}
 
 
 def _module_of(item) -> str:
