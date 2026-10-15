@@ -1,0 +1,37 @@
+/**
+ * 报告查看打印样式（规范 §4.9）：@media print 隐藏右导航/操作组/底部浮条，
+ * 展开全部 Collapsible 分区，纸张 A4、正文 12px、分节不跨页断裂（break-inside: avoid）。
+ * 深浅同源：打印强制浅色底（print:bg-white print:text-black 语义走 CSS）。
+ */
+@media print {
+  .report-view-container {
+    max-width: none;
+    padding: 0;
+  }
+
+  .report-view-container aside,
+  .report-view-container .print\:hidden,
+  .report-view-container [data-slot='dropdown-menu-content'] {
+    display: none !important;
+  }
+
+  /* 展开全部折叠分区 */
+  .report-view-container [data-slot='collapsible-panel'] {
+    display: block !important;
+  }
+
+  body {
+    font-size: 12px;
+  }
+
+  .report-view-container section,
+  .report-view-container [data-slot='card'] {
+    break-inside: avoid;
+  }
+
+  /* VChart 位图渲染后随容器缩放 */
+  .report-view-container canvas {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+}

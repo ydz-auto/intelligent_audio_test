@@ -1,0 +1,277 @@
+/**
+ * 报告域领域模型（domain 层）。
+ * 形态对照 api_gateway/schemas/report.py 实测 schema（ReportListItem/ReportListData/
+ * ReportSummarySimplified/ReportDetailData/ReportDeviceStat/ReportApiStat/ReportListQuery
+ * /ReportSearchCasesRequest），tab-counts 对照 report_query_sevice.get_tab_counts 返回
+ * （all/draft/published/comparison 四键）。mock 常量见 infrastructure/mock/reports-mock.ts，
+ * 后续接线仅替换 api 桩，页面与 hook 不返工（红线④）。
+ */
+
+export type ReportType = 'task' | 'comparison' | 'secondary_comparison'
+export type ReportStatus = 'draft' | 'published'
+
+export type ReportViewMode = 'table' | 'card'
+export type ReportSortBy = 'created_at' | 'name' | 'pass_rate' | 'total_cases'
+export type ReportSortOrder = 'asc' | 'desc'
+export type ReportTimeRange = 'today' | 'yesterday' | 'week' | 'month' | 'custom'
+
+export interface ReportListItemSummary {
+  total_cases: number
+  completed_cases: number
+  failed_cases: number
+  pass_rate: number
+  /** 对比报告：对比任务数 */
+  task_count?: number
+}
+
+/** GET /reports 列表项（report.py ReportListItem） */
+export interface ReportListItem {
+  id: number
+  name: string
+  type: ReportType
+  task_id?: number
+  task_name: string
+  algorithm_type?: string
+  summary: ReportListItemSummary
+  description?: string
+  status: ReportStatus
+  created_at: string
+  updated_at?: string
+  /** INT-141：收藏标记 / 回收站字段（INT-219 口径） */
+  is_favorite?: boolean
+  deleted?: boolean
+  deleted_at?: string
+  deleted_by_user_id?: number
+}
+
+/** GET /reports 响应（report.py ReportListData） */
+export interface ReportListData {
+  items: ReportListItem[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
+}
+
+/** GET /reports/tab-counts（report_query_sevice.get_tab_counts 返回） */
+export interface ReportTabCounts {
+  all: number
+  draft: number
+  published: number
+  comparison: number
+}
+
+/** GET /reports 查询（report.py ReportListQuery；favorite/deleted 直传） */
+export interface ReportListQuery {
+  page: number
+  per_page?: number
+  report_type?: string
+  status?: string
+  task_id?: number
+  keyword?: string
+  start_time?: string
+  end_time?: string
+  algorithm_type?: string
+  sort_by: string
+  order: string
+  favorite: boolean
+  deleted: boolean
+}
+
+export interface ReportMetricValue {
+  id?: number
+  metric: string
+  value: number
+}
+
+/** report.py ReportDeviceStat */
+export interface ReportDeviceStat {
+  id: number
+  name: string
+  model?: string
+  type?: string
+  system?: string
+  system_version?: string
+  status?: string
+  metrics?: Record<string, unknown>
+  total_cases: number
+  completed_cases: number
+  failed_cases: number
+  success_rate: number
+}
+
+/** report.py ReportApiStat */
+export interface ReportApiStat {
+  id: number
+  name: string
+  status?: string
+  max_process?: number
+  health_score?: number
+  metrics?: Record<string, unknown>
+  total_cases: number
+  completed_cases: number
+  failed_cases: number
+  success_rate: number
+  avg_response_time?: number
+  stability?: number
+}
+
+/** report.py ReportDeviceInfo（报告快照设备信息） */
+export interface ReportDeviceInfo {
+  id: number
+  name: string
+  model?: string
+  description?: string
+  type?: string
+  system?: string
+  system_version?: string
+  status?: string
+  last_online_at?: string
+}
+
+/** report.py ReportApiInfo（报告快照 API 信息） */
+export interface ReportApiInfo {
+  id: number
+  name: string
+  vendor?: string
+  api_url?: string
+  description?: string
+  status?: string
+  max_process?: number
+  health_score?: number
+}
+
+/** report.py ReportResourceHeader */
+export interface ReportResourceHeader {
+  key: string
+  label: string
+  type?: string
+  id?: number
+  name?: string
+  version?: string
+  editable?: boolean
+}
+
+/** metric_data 扁平格式（规范 §4.3：[{resource, metrics:[{id,metric,value}]}]） */
+export interface ReportMetricDataGroup {
+  resource: string
+  metrics: ReportMetricValue[]
+}
+
+export interface ReportCaseCategory {
+  id?: string
+  category_id?: string
+  category_name: string
+  metrics?: ReportMetricValue[]
+}
+
+export interface ReportTag {
+  id?: string
+  tag_id?: string
+  tag_name: string
+}
+
+/** GET /reports/{id} summary 子集（report.py ReportSummarySimplified） */
+export interface ReportSummary {
+  total_cases: number
+  completed_cases: number
+  failed_cases: number
+  resources: string[]
+  resource_headers: ReportResourceHeader[]
+  metric_data: ReportMetricDataGroup[]
+  case_categories: ReportCaseCategory[]
+  all_case_tags: ReportTag[]
+  all_metrics: string[]
+  device_stats: ReportDeviceStat[]
+  api_stats: ReportApiStat[]
+  devices: ReportDeviceInfo[]
+  apis: ReportApiInfo[]
+}
+
+/** GET /reports/{id}（report.py ReportDetailData） */
+export interface ReportDetailData {
+  id: number
+  name: string
+  type: ReportType
+  task_id?: number
+  task_type?: string
+  task_name: string
+  algorithm_type?: string
+  summary: ReportSummary
+  description?: string
+  status: ReportStatus
+  analysis?: string
+  created_at: string
+  updated_at?: string
+  deleted?: boolean
+  deleted_at?: string
+  deleted_by_user_id?: number
+}
+
+/** 具体用例（POST /reports/{id}/cases/search 返回项；字段照规范 §4.7 平移） */
+export interface ReportCaseAudio {
+  audio_id: number | string
+  audio_name?: string
+  audio_type?: string
+  spl?: number
+  play_order?: number
+  noise_spl?: number
+  device_name?: string
+}
+
+export interface ReportCaseMetric {
+  id?: number
+  metric: string
+  value: number
+  decimal_places?: number
+}
+
+export interface ReportCaseAsr {
+  reference?: string
+  /** 各设备/API 实际返回文本（key=resource，照 algorithm_type 区分结构） */
+  results?: Record<string, string>
+}
+
+export interface ReportCaseTranslation {
+  reference?: string
+  direction?: string
+  results?: Record<string, string>
+}
+
+export interface ReportCaseItem {
+  id: string
+  name: string
+  category?: string
+  tags: string[]
+  overall_status: 'pass' | 'fail' | 'skip' | 'unknown'
+  description?: string
+  metrics: ReportCaseMetric[]
+  audios: ReportCaseAudio[]
+  asr?: ReportCaseAsr
+  translation?: ReportCaseTranslation
+  logs?: string
+}
+
+export interface ReportCaseListData {
+  items: ReportCaseItem[]
+  total: number
+  page: number
+  per_page: number
+  pages: number
+}
+
+/** POST /reports/{id}/cases/search（report.py ReportSearchCasesRequest 全参） */
+export interface ReportSearchCasesRequest {
+  keyword?: string
+  category?: string
+  categories?: string[]
+  include_untagged?: boolean
+  tags?: string[]
+  metrics?: string[]
+  sort_by?: 'name' | 'category' | 'createdat' | 'metric'
+  sort_metric?: string
+  sort_resource?: string
+  sort_order?: 'asc' | 'desc'
+  page: number
+  per_page: number
+}
