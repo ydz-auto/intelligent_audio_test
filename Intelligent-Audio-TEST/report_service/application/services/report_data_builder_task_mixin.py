@@ -17,6 +17,8 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_dimension_params,
     _grpc_get_task_case_ids,
     _grpc_get_test_results_by_task_ids,
+    _grpc_get_test_results_by_ids,
+    _grpc_get_cherry_pick_relations,
     _grpc_get_task_merge_relations,
     _grpc_get_task_merge_relations_by_source,
     _grpc_get_tasks_by_ids,
@@ -38,6 +40,19 @@ class ReportDataTaskMixin:
         task_status = task.get('status') if isinstance(task, dict) else task.status
 
         source_task_ids = []
+
+        # INT-339：cherry-pick 容器任务按挑选关系引用源结果（引用方案 A），
+        # 优先于合并关系判定（两容器身份互斥：无 TaskMergeRelation 行）
+        cherry_relations = _grpc_get_cherry_pick_relations(task_id)
+        if cherry_relations:
+            cherry_result_ids = [r.get('result_id') for r in cherry_relations
+                                 if r.get('result_id') is not None]
+            if not cherry_result_ids:
+                return None, None, error_response("生成失败: 挑选合并任务没有引用的测试结果")
+            results = _grpc_get_test_results_by_ids(cherry_result_ids)
+            if not results:
+                return None, None, error_response("生成失败: 挑选合并任务的源结果已全部缺失")
+            return task, results, None
 
         merge_relations = _grpc_get_task_merge_relations(task_id)
         if merge_relations:

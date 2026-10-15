@@ -472,3 +472,26 @@ class PlaybackQueryCode(int, Enum):
     OK = 200
     NOT_FOUND = 404
     INTERNAL_ERROR = 500
+
+
+class CherryPickCheckoutAction(str, Enum):
+    """购物车下单出口枚举（INT-339 挑选合并，设计文档 §3）
+
+    - merge:       合并生成新任务（cherry-pick 容器任务）+ 手动生成报告（默认）
+    - reexecute:   对所选结果的用例×设备集合发起重新执行
+    - reevaluate:  对所选结果发起重新评估（逐源任务发起，评估域契约不动）
+    """
+    MERGE = 'merge'
+    REEXECUTE = 'reexecute'
+    REEVALUATE = 'reevaluate'
+
+
+class PickableTaskStatus(str, Enum):
+    """可挑选的源任务状态显式集合（INT-339 设计文档 §10）
+
+    默认仅终态任务可挑选（retry/cleanup 会重建执行中结果行，购物车引用会悬空）；
+    显式集合宽于合并容器的 completed/merged（挑选是结果级）。
+    """
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+    STOPPED = 'stopped'

@@ -169,6 +169,7 @@ class TaskQueryHandler:
             user_id=query.user_id,
             evaluation_status=query.evaluation_status,
             merged=query.merged,
+            cherry_pick=query.cherry_pick,
             execution_status=query.execution_status,
         )
 

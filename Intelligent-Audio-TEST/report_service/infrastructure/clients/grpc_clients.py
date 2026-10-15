@@ -86,6 +86,31 @@ def _grpc_get_test_results_by_task_ids(task_ids):
     return [_dto_to_dict(d) for d in _task_data.get_test_results_by_task_ids(task_ids)]
 
 
+def _grpc_get_cherry_pick_relations(cherry_pick_task_id):
+    """通过 gRPC (task_service.TaskDataService) 查询挑选合并关系（INT-339）。
+
+    返回 list[dict]（result_id + 溯源快照）；查询失败返回空列表（对齐 _grpc_*
+    容错约定，调用方按「非挑选合并容器」回落普通链路）。
+    """
+    from shared.clients.grpc_clients import get_cherry_pick_relations as _get_relations
+    try:
+        payload = _get_relations(cherry_pick_task_id)
+        return payload.get('items', []) or [] if isinstance(payload, dict) else []
+    except Exception as _e:
+        _logger.warning("_grpc_get_cherry_pick_relations failed: %s", _e)
+        return []
+
+
+def _grpc_get_test_results_by_ids(result_ids):
+    """通过 gRPC (task_service.TaskDataService) 按 result_id 批量查询 TestResult（INT-339）。"""
+    items = []
+    for rid in result_ids or []:
+        dto = _task_data.get_test_result_by_id(rid)
+        if dto is not None:
+            items.append(_dto_to_dict(dto))
+    return items
+
+
 def _grpc_get_test_result_by_id(result_id):
     """通过 gRPC (task_service.TaskDataService) 按 ID 查询单个 TestResult，返回 dict 或 None。"""
     return _dto_to_dict(_task_data.get_test_result_by_id(result_id))

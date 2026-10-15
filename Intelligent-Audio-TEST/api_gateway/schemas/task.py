@@ -70,6 +70,8 @@ class TaskListItem(APIModel):
     updated_at: Optional[str] = Field(None)
     # INT-141：收藏标记 / 回收站字段
     is_favorite: Optional[bool] = Field(None)
+    # INT-339：挑选合并容器标记（task_cherry_pick_relations 存在性判定）
+    is_cherry_pick: Optional[bool] = Field(None)
     deleted: Optional[bool] = Field(None)
     deleted_at: Optional[str] = Field(None)
     deleted_by_user_id: Optional[int] = Field(None)
@@ -241,6 +243,8 @@ class TaskListQuery(APIModel):
     evaluation_status: Optional[str] = Field(None)
     # INT-298：merged=true 仅合并容器任务（对齐 V9.7.10 合并页签数据源）
     merged: bool = Field(False)
+    # INT-339：cherry_pick=true 仅挑选合并容器任务（专有关系表存在性判定，§5.4）
+    cherry_pick: bool = Field(False)
     # INT-301 F1：执行状态过滤（pending/queued/running/paused/completed/failed/
     # stopped/merged；复用派生表达式，徽章展示与筛选命中同口径）
     execution_status: Optional[str] = Field(None)

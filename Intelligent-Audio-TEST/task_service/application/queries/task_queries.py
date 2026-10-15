@@ -64,6 +64,7 @@ class ListTasksConfigQuery(Query):
     deleted（可选，INT-141）：仅回收站软删除项（含删除人/删除时间）。
     evaluation_status（可选，INT-301）：按任务级评估状态过滤（与执行状态并列）。
     merged（可选，INT-298）：仅合并容器任务（对齐 V9.7.10 合并页签数据源）。
+    cherry_pick（可选，INT-339）：仅挑选合并容器任务（专有关系表存在性判定）。
     """
     page: int = 1
     per_page: int = 10
@@ -78,6 +79,7 @@ class ListTasksConfigQuery(Query):
     user_id: Optional[int] = None
     evaluation_status: Optional[str] = None
     merged: bool = False
+    cherry_pick: bool = False
     execution_status: Optional[str] = None
 
 

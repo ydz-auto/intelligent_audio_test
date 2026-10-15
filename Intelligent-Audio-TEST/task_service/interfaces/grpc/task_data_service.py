@@ -233,6 +233,20 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             logger.exception('GetTaskMergeRelations failed')
             return self._resp(False, str(e))
 
+    def GetCherryPickRelations(self, request, context=None):
+        """查询 TaskCherryPickRelation（INT-339，按 cherry_pick_task_id）
+
+        供报告链路/跨服务读链路解析 cherry-pick 容器任务的源结果引用
+        （引用方案 A，result_id + 溯源快照）。
+        """
+        try:
+            from task_service.infrastructure.persistence.cherry_pick_repository import cherry_pick_repository
+            items = cherry_pick_repository.relations_by_container(request.task_id)
+            return self._resp(True, '', {'items': items})
+        except Exception as e:
+            logger.exception('GetCherryPickRelations failed')
+            return self._resp(False, str(e))
+
     def ListLogs(self, request, context=None):
         """查询 Log 列表（分页 + 过滤）
 

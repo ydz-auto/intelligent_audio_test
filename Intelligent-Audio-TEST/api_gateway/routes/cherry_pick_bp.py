@@ -1,0 +1,92 @@
+# -*- coding: utf-8 -*-
+"""挑选合并路由（INT-339，设计文档 §8 接口草案）。
+
+前缀 /tasks/cherry-picks（设计文档 §8 契约路径；页面文案一律中文，
+路由路径为技术标识不受文案红线约束）。
+
+权限点（seed_rbac.py INT-339 新增）：task:cherry_pick 挑选合并全操作；
+查询侧对齐任务列表口径放行 task:read（挑选器数据源即任务结果只读）。
+
+挂载：app.py 中 include_router(cherry_pick_router, prefix='/api/v1/tasks/cherry-picks')。
+"""
+from fastapi import APIRouter
+
+from api_gateway.application.services.task.cherry_pick_service import CherryPickService
+from api_gateway.routes._response import to_response
+from api_gateway.application.services.auth.dependencies import require_permission
+
+router = APIRouter()
+
+# ---- 购物车（per-user，x-user-id metadata 透传）----
+
+@router.get('/cart')
+def get_cart(_: None = require_permission('task:read')):
+    return to_response(CherryPickService.get_cart())
+
+
+@router.post('/cart/items')
+def add_cart_items(_: None = require_permission('task:cherry_pick')):
+    return to_response(CherryPickService.add_cart_items())
+
+
+@router.post('/cart/items/remove')
+def remove_cart_items(_: None = require_permission('task:cherry_pick')):
+    return to_response(CherryPickService.remove_cart_items())
+
+
+@router.delete('/cart/items')
+def clear_cart(_: None = require_permission('task:cherry_pick')):
+    return to_response(CherryPickService.clear_cart())
+
+
+# ---- 挑选集 ----
+
+@router.post('/cart/save-as-set')
+def save_as_set(_: None = require_permission('task:cherry_pick')):
+    return to_response(CherryPickService.save_set())
+
+
+@router.get('/sets')
+def list_sets(_: None = require_permission('task:read')):
+    return to_response(CherryPickService.list_sets())
+
+
+@router.get('/sets/{set_id}')
+def get_set(set_id: int, _: None = require_permission('task:read')):
+    return to_response(CherryPickService.get_set(set_id))
+
+
+@router.delete('/sets/{set_id}')
+def delete_set(set_id: int, _: None = require_permission('task:cherry_pick')):
+    return to_response(CherryPickService.delete_set(set_id))
+
+
+@router.post('/sets/{set_id}/to-cart')
+def restore_set_to_cart(set_id: int, _: None = require_permission('task:cherry_pick')):
+    return to_response(CherryPickService.restore_set_to_cart(set_id))
+
+
+# ---- 挑选候选查询（S2 多条件 AND）----
+
+@router.get('/candidates')
+def list_candidates(_: None = require_permission('task:read')):
+    return to_response(CherryPickService.list_candidates())
+
+
+# ---- 下单（三出口 + 预览）----
+
+@router.post('/preview')
+def preview(_: None = require_permission('task:read')):
+    return to_response(CherryPickService.preview())
+
+
+@router.post('/cart/checkout')
+def checkout(_: None = require_permission('task:cherry_pick')):
+    return to_response(CherryPickService.checkout())
+
+
+# ---- 溯源（§8 GET /tasks/{taskId}/cherry-pick-source）----
+
+@router.get('/{task_id}/source')
+def get_source(task_id: int, _: None = require_permission('task:read')):
+    return to_response(CherryPickService.get_source(task_id))

@@ -10,13 +10,30 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from shared.models.database import get_db_session
 from shared.utils.status_utils import task_case_not_removed
 from shared.utils.json_utils import deserialize_algorithm_result  # noqa: F401
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.common_enums import TestType
+
+
+def resolve_container_result_ids(task_id: int) -> List[int]:
+    """cherry-pick 容器任务的结果引用解析（INT-339，引用方案 A）。
+
+    任务存在 task_cherry_pick_relations 行即容器任务（§5.4 存在性判定），
+    返回引用的源结果 ID 列表；普通任务返回空列表（读链路走原 task_id 直查）。
+    """
+    from task_service.infrastructure.persistence.cherry_pick_repository import cherry_pick_repository
+    relations = cherry_pick_repository.relations_by_container(task_id)
+    return [r['result_id'] for r in relations]
+
+
+def resolve_container_source_map(task_id: int) -> Dict[int, Dict[str, Any]]:
+    """cherry-pick 容器任务溯源映射 {result_id: 关系行}（详情溯源标注用）。"""
+    from task_service.infrastructure.persistence.cherry_pick_repository import cherry_pick_repository
+    return {r['result_id']: r for r in cherry_pick_repository.relations_by_container(task_id)}
 
 
 class TaskCaseResultsMixin:
@@ -55,6 +72,8 @@ class TaskCaseResultsMixin:
 
         P1.7 改造：TestResultDimension / Dimension 是 evaluation_service 自有 PO，
         改为通过 gRPC 调 evaluation_service.EvaluationDataService.GetDimensionResultsByResultIds。
+        INT-339：cherry-pick 容器任务按关系表解析源结果（引用方案 A），
+        task_id 直查仅作普通任务路径。
         """
         from task_service.infrastructure.persistence.models import TestCase, TestResult
         from shared.utils.result_data_store import load_full_result_data
@@ -77,9 +96,7 @@ class TaskCaseResultsMixin:
                 else TestType.API.value
             )
 
-            results = session.query(TestResult).filter_by(
-                task_id=task_id, test_case_id=case_id
-            ).all()
+            results = self._query_results(session, task_id, case_id)
 
             # P1.7: 一次性通过 gRPC 获取所有 result 的维度评估结果
             result_ids = [r.id for r in results]
@@ -88,6 +105,9 @@ class TaskCaseResultsMixin:
             # P3 改造：收集 device_id / api_id，通过 gRPC 批量查询名称，替代直连 PO
             device_name_map = self._fetch_device_names({r.device_id for r in results if r.device_id})
             api_name_map = self._fetch_api_names({r.api_id for r in results if r.api_id})
+
+            # INT-339：容器任务溯源映射（验收 §12.2——每条结果可溯源到来源任务）
+            source_map = resolve_container_source_map(task_id)
 
             processed_results = []
             for result in results:
@@ -102,6 +122,7 @@ class TaskCaseResultsMixin:
                 # 兼容历史双重序列化数据：algorithm_result 可能是 str
                 algo_result = result.algorithm_result
                 algo_result = deserialize_algorithm_result(algo_result)
+                trace = source_map.get(result.id)
                 processed_results.append({
                     "id": result.id,
                     "device_id": result.device_id,
@@ -116,7 +137,10 @@ class TaskCaseResultsMixin:
                     "result_data": full_result_data,
                     "error_message": result.error_message,
                     "dimensions": dim_data,
-                    "created_at": result.created_at.isoformat()
+                    "created_at": result.created_at.isoformat(),
+                    # INT-339：来源任务溯源（普通任务即自身 task_id）
+                    "source_task_id": (trace or {}).get('source_task_id', task_id),
+                    "source_task_name": (trace or {}).get('source_task_name'),
                 })
 
             return {
@@ -139,6 +163,7 @@ class TaskCaseResultsMixin:
         """网关 get_case_results 使用的查询。
 
         P1.7 改造：TestResultDimension / Dimension 改为 gRPC 调 evaluation_service。
+        INT-339：cherry-pick 容器任务按关系表解析源结果（引用方案 A）。
         """
         from task_service.infrastructure.persistence.models import TestCase, TestResult
         from shared.utils.result_data_store import load_full_result_data
@@ -152,9 +177,7 @@ class TaskCaseResultsMixin:
                 return None
 
             case_info = session.get(TestCase, case_id)
-            results = session.query(TestResult).filter_by(
-                task_id=task_id, test_case_id=case_id
-            ).all()
+            results = self._query_results(session, task_id, case_id)
 
             # P1.7: 一次性通过 gRPC 获取所有 result 的维度评估结果
             result_ids = [r.id for r in results]
@@ -163,6 +186,9 @@ class TaskCaseResultsMixin:
             # P3 改造：收集 device_id / api_id，通过 gRPC 批量查询名称，替代直连 PO
             device_name_map = self._fetch_device_names({r.device_id for r in results if r.device_id})
             api_name_map = self._fetch_api_names({r.api_id for r in results if r.api_id})
+
+            # INT-339：容器任务溯源映射（验收 §12.2——每条结果可溯源到来源任务）
+            source_map = resolve_container_source_map(task_id)
 
             processed_results = []
             for result in results:
@@ -174,6 +200,7 @@ class TaskCaseResultsMixin:
                 # 兼容历史双重序列化数据：algorithm_result 可能是 str
                 algo_result = result.algorithm_result
                 algo_result = deserialize_algorithm_result(algo_result)
+                trace = source_map.get(result.id)
                 processed_results.append({
                     "id": result.id,
                     "device_id": result.device_id,
@@ -188,7 +215,10 @@ class TaskCaseResultsMixin:
                     "result_data": load_full_result_data(result.result_data, getattr(result, 'result_data_path', None)),
                     "error_message": result.error_message,
                     "dimensions": dim_data,
-                    "created_at": result.created_at.isoformat()
+                    "created_at": result.created_at.isoformat(),
+                    # INT-339：来源任务溯源（普通任务即自身 task_id）
+                    "source_task_id": (trace or {}).get('source_task_id', task_id),
+                    "source_task_name": (trace or {}).get('source_task_name'),
                 })
 
             return {
@@ -199,6 +229,30 @@ class TaskCaseResultsMixin:
             }
         finally:
             session.close()
+
+    # ---- 结果查询（INT-339 引用解析） ----
+
+    @staticmethod
+    def _query_results(session, task_id: int, case_id: Optional[str] = None) -> List[Any]:
+        """任务的结果行查询（INT-339 cherry-pick 容器引用解析）。
+
+        - 普通任务：task_id 直查 test_results（原路径，行为不变）
+        - cherry-pick 容器任务：按关系表解析引用的源结果（引用方案 A，
+          §5.1——容器任务自身 test_results 行不存在，直查恒空）
+        case_id 提供时进一步限定用例。
+        """
+        from task_service.infrastructure.persistence.models import TestResult
+
+        container_result_ids = resolve_container_result_ids(task_id)
+        if container_result_ids:
+            q = session.query(TestResult).filter(TestResult.id.in_(container_result_ids))
+            if case_id is not None:
+                q = q.filter(TestResult.test_case_id == case_id)
+            return q.order_by(TestResult.id).all()
+        q = session.query(TestResult).filter(TestResult.task_id == task_id)
+        if case_id is not None:
+            q = q.filter(TestResult.test_case_id == case_id)
+        return q.order_by(TestResult.id).all()
 
     # ---- gRPC 批量查询辅助 ----
 

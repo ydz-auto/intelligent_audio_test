@@ -24,17 +24,23 @@ class EvaluationAclRepository:
 
     # ========== 重新评估（evaluation_service.EvaluationService）==========
 
-    def submit_reevaluate(self, task_id, reextract_device_output=True, reevaluate_type='all'):
+    def submit_reevaluate(self, task_id, reextract_device_output=True, reevaluate_type='all',
+                          options=None):
         """提交任务级重新评估。
 
         封装 shared.clients.grpc_clients.submit_reevaluate，
         通过 evaluation_service.EvaluationService.Reevaluate RPC。
+
+        options（INT-302 契约 data 字段承载）：可选范围选择 dict
+        {case_ids, dimension_ids, mode}——缺省 None 保持整任务全量语义；
+        INT-339 挑选合并逐源任务发起（mode=selected）复用。
         """
         from shared.clients.grpc_clients import submit_reevaluate
         return submit_reevaluate(
             task_id=task_id,
             reextract_device_output=reextract_device_output,
             reevaluate_type=reevaluate_type,
+            options=options,
         )
 
     def get_evaluation_service_stub(self):

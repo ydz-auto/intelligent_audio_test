@@ -106,6 +106,8 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
     deleted: d.deleted,
     deletedAt: d.deleted_at ?? undefined,
     deletedByUserId: d.deleted_by_user_id ?? undefined,
+    // INT-339：挑选合并容器标记
+    isCherryPick: d.is_cherry_pick,
     result: d.result,
     reports: d.reports
       ? {

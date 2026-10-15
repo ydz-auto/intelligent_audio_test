@@ -56,6 +56,7 @@ PERMISSIONS = [
     ('task:publish', '发布已发布任务'),
     ('task:export', '导出任务数据'),
     ('task:import', '导入任务数据'),
+    ('task:cherry_pick', '挑选合并（购物车/下单三出口，INT-339）'),
     # 已发布任务 (4)
     ('published_task:read', '查看已发布任务'),
     ('published_task:execute', '执行已发布任务'),
@@ -187,7 +188,7 @@ ROLES = [
 TESTER_PERMS = [
     'task:read', 'task:create', 'task:update', 'task:delete', 'task:execute',
     'task:merge', 'task:batch', 'task:reextract', 'task:publish',
-    'task:export', 'task:import',
+    'task:export', 'task:import', 'task:cherry_pick',
     'published_task:read', 'published_task:execute', 'published_task:version',
     'published_task:archive',
     'testcase:read', 'testcase:create', 'testcase:update', 'testcase:delete',

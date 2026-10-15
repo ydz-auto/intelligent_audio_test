@@ -30,8 +30,16 @@
         @stop-test="stopTest"
         @retry-task="retryTask"
         @reevaluate-task="reevaluateTask"
+        @pick-results="openCherryPick"
         @remove-case="removeCase"
         @load-more-logs="loadMoreLogs"
+      />
+
+      <!-- INT-339：挑选合并三步向导（挑选 → 购物车 → 下单三出口） -->
+      <CherryPickDialog
+        v-if="cherryPickVisible"
+        @close="cherryPickVisible = false"
+        @checked-out="handleCheckedOut"
       />
     </div>
   </div>
@@ -46,6 +54,7 @@ import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModa
 import { useNotification } from '../../../composables/modal/useNotification';
 import { transformTestCaseStatus } from '../../../utils/statusUtils';
 import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
+import CherryPickDialog from './CherryPickDialog.vue';
 import type { Task, Log } from '../../../domain';
 import { TaskStatus, ExecutionStatus, EvaluationStatus } from '@/domain/enums';
 
@@ -473,6 +482,41 @@ async function reevaluateTask() {
     await fetchTaskDetails();
   } catch (err) {
     console.error('重新评估任务失败:', err);
+  }
+}
+
+// ===== INT-339：挑选合并入口（加入购物车 → 下单三出口） =====
+
+const cherryPickVisible = ref(false);
+
+/** 终态任务才展示挑选入口（§10 默认仅终态任务可挑选） */
+const PICKABLE_STATUSES: readonly string[] = ['completed', 'failed', 'stopped'];
+const isPickableTask = computed(() =>
+  PICKABLE_STATUSES.includes(String(task.value?.status ?? '')));
+
+function openCherryPick() {
+  if (!isPickableTask.value) {
+    notification.warning('仅已完成/失败/停止的任务支持挑选执行结果');
+    return;
+  }
+  cherryPickVisible.value = true;
+}
+
+/** 下单成功后跳转（merge 出口跳新任务详情，其余刷新当前详情） */
+function handleCheckedOut(payload: { action: string; taskId?: number }) {
+  cherryPickVisible.value = false;
+  if (payload.action === 'merge' && payload.taskId) {
+    const routeData = routerResolveTaskDetail(Number(payload.taskId));
+    if (routeData) window.open(routeData, '_self');
+  }
+}
+
+function routerResolveTaskDetail(taskId: number): string | null {
+  try {
+    // 详情路由：/tasks/:id（router/index.ts meta taskDetail）；弹窗语境直接整页跳转
+    return `/tasks/${taskId}`;
+  } catch {
+    return null;
   }
 }
 

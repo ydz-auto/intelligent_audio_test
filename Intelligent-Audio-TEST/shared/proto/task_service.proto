@@ -208,6 +208,7 @@ message ListTasksRequest {
   string evaluation_status = 11;  // INT-301：按任务级评估状态过滤（pending/evaluating/completed/failed/skipped）
   bool merged = 12;   // INT-298：仅合并容器任务（存在 TaskMergeRelation 的任务；对齐 V9.7.10 合并页签数据源）
   string execution_status = 13;  // INT-301 F1：按任务级执行状态过滤（pending/queued/running/paused/completed/failed/stopped/merged）
+  bool cherry_pick = 14;  // INT-339：仅挑选合并容器任务（task_cherry_pick_relations 存在性判定，§5.4）
 }
 message GetTaskDetailRequest {
   int32 task_id = 1;
@@ -277,6 +278,56 @@ message RestoreTasksRequest {
 }
 message PurgeTasksRequest {
   repeated int32 task_ids = 1;  // 彻底删除（物理删除，权限收敛在网关 admin/owner）
+}
+
+// ===== 挑选合并（INT-339：购物车/挑选集/候选查询/下单三出口/溯源）=====
+// per-user 语义（购物车/挑选集）user_id 走 x-user-id metadata，与收藏同口径。
+service CherryPickService {
+  // ---- 购物车（per-user 持久化，跨会话保留）----
+  rpc GetCherryPickCart(CherryPickEmptyRequest) returns (TaskConfigResponse);
+  rpc AddCherryPickCartItems(CherryPickCartAddRequest) returns (TaskConfigResponse);
+  rpc RemoveCherryPickCartItems(CherryPickCartRemoveRequest) returns (TaskConfigResponse);
+  rpc ClearCherryPickCart(CherryPickEmptyRequest) returns (TaskConfigResponse);
+  // ---- 挑选集（另存/恢复两向，§3 购物车口径）----
+  rpc SaveCherryPickSet(CherryPickSaveSetRequest) returns (TaskConfigResponse);
+  rpc ListCherryPickSets(CherryPickEmptyRequest) returns (TaskConfigResponse);
+  rpc GetCherryPickSet(CherryPickSetIdRequest) returns (TaskConfigResponse);
+  rpc DeleteCherryPickSet(CherryPickSetIdRequest) returns (TaskConfigResponse);
+  rpc RestoreCherryPickSetToCart(CherryPickSetIdRequest) returns (TaskConfigResponse);
+  // ---- 挑选候选查询（S2 多条件 AND，设备+用例为点名必支持项）----
+  rpc ListCherryPickCandidates(CherryPickCandidatesRequest) returns (TaskConfigResponse);
+  // ---- 下单（三出口 action=merge/reexecute/reevaluate + 合并预览）----
+  rpc CherryPickPreview(CherryPickEmptyRequest) returns (TaskConfigResponse);
+  rpc CherryPickCheckout(CherryPickCheckoutRequest) returns (TaskConfigResponse);
+  // ---- 溯源（§8 GET /tasks/{taskId}/cherry-pick-source）----
+  rpc GetCherryPickSource(CherryPickSourceRequest) returns (TaskConfigResponse);
+}
+
+message CherryPickEmptyRequest {
+}
+
+message CherryPickCartAddRequest {
+  string data = 1;  // JSON: {result_ids: [int]}（溯源快照由 task_service 从源行提取）
+}
+message CherryPickCartRemoveRequest {
+  repeated int64 item_ids = 1;  // 购物车条目 ID（仅限本人条目）
+}
+message CherryPickSaveSetRequest {
+  string data = 1;  // JSON: {name, description}（内容取当前购物车）
+}
+message CherryPickSetIdRequest {
+  int64 set_id = 1;
+}
+message CherryPickCandidatesRequest {
+  string data = 1;  // JSON: {task_ids?, device_ids?, case_ids?, execution_status?,
+                    //       evaluation_status?, start_date?, end_date?, page, per_page}
+}
+message CherryPickCheckoutRequest {
+  string data = 1;  // JSON: {action: 'merge'|'reexecute'|'reevaluate'（缺省 merge）,
+                    //       name?, description?, algorithm_type?, algorithm_params?, config?}
+}
+message CherryPickSourceRequest {
+  int32 task_id = 1;
 }
 
 // ===== 已发布任务配置服务（任务发布功能）=====
@@ -750,6 +801,8 @@ service TaskDataService {
   rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (TaskDataResponse);
   // 查询 TaskMergeRelation（api_gateway 报告对比用）
   rpc GetTaskMergeRelations(GetTaskMergeRelationsRequest) returns (TaskDataResponse);
+  // 查询 TaskCherryPickRelation（INT-339：报告链路/读链路引用解析用）
+  rpc GetCherryPickRelations(GetCherryPickRelationsRequest) returns (TaskDataResponse);
   // 查询 Log 列表（api_gateway 日志用）
   rpc ListLogs(ListLogsRequest) returns (TaskDataResponse);
   // 批量写入日志（shared/utils/log_handler 后台 worker 用，替代直连 DB）
@@ -856,6 +909,9 @@ message TaskDataResponse {
 
 message GetTaskMergeRelationsRequest {
   int32 task_id = 1;  // 按 task_id 查询合并关系
+}
+message GetCherryPickRelationsRequest {
+  int32 task_id = 1;  // 按 cherry_pick_task_id 查询挑选合并关系（报告/读链路引用解析，INT-339）
 }
 message ListLogsRequest {
   int32 task_id = 1;          // 可选，按 task_id 过滤

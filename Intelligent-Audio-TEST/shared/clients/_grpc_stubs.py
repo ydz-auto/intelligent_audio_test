@@ -167,6 +167,13 @@ def get_task_data_service_stub():
 
 
 @lru_cache(maxsize=1)
+def get_cherry_pick_service_stub():
+    """CherryPickService stub（INT-339）：挑选合并（购物车/挑选集/候选查询/下单三出口/溯源）"""
+    from shared.proto import task_service_pb2_grpc
+    return task_service_pb2_grpc.CherryPickServiceStub(_get_task_channel())
+
+
+@lru_cache(maxsize=1)
 def get_evaluation_service_stub():
     """EvaluationService stub：评估单个用例（EvaluateCase）、重新评估（Reevaluate / ReevaluateMultiRound / ReevaluateSingle）
 

@@ -9,6 +9,9 @@ dict_list_to_dto 转换为 dataclass DTO。
 from api_gateway.infrastructure.acl.audio_acl_repository import (
     AudioAclRepositoryImpl,
 )
+from api_gateway.infrastructure.acl.cherry_pick_acl_repository import (
+    CherryPickAclRepositoryImpl,
+)
 from api_gateway.infrastructure.acl.config_acl_repository import (
     AlgorithmConfigAclRepositoryImpl,
     ApiConfigAclRepositoryImpl,
@@ -43,6 +46,7 @@ __all__ = [
     'ApiConfigAclRepositoryImpl',
     'ApiRmsSplConfigAclRepositoryImpl',
     'AudioAclRepositoryImpl',
+    'CherryPickAclRepositoryImpl',
     'DataTransferAclRepositoryImpl',
     'DeviceAclRepositoryImpl',
     'DeviceGroupAclRepositoryImpl',

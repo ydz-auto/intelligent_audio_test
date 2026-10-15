@@ -72,7 +72,7 @@ def cancel_case_evaluations(task_id, test_case_ids, reason='case_deleted'):
     }
 
 
-def submit_reevaluate(task_id, reextract_device_output=True, reevaluate_type='all'):
+def submit_reevaluate(task_id, reextract_device_output=True, reevaluate_type='all', options=None):
     """通过 gRPC 调用 evaluation_service 的 EvaluationService.Reevaluate
 
     供 task_service 提交任务级重新评估（已从 task_service.core.reevaluation_executor 迁移至
@@ -82,6 +82,9 @@ def submit_reevaluate(task_id, reextract_device_output=True, reevaluate_type='al
         task_id: 任务ID
         reextract_device_output: 是否重新提取设备输出
         reevaluate_type: 重新评估类型 ('all' / 'failed')
+        options: 可选范围选择 dict（INT-302 契约 data 字段承载：
+            {case_ids: [str], dimension_ids: [int], mode: 'selected'|'failed_only'|'all'}，
+            缺省 None 保持整任务全量语义——INT-339 挑选合并逐源任务发起复用）
 
     Returns:
         dict: {success, message, data}
@@ -93,6 +96,8 @@ def submit_reevaluate(task_id, reextract_device_output=True, reevaluate_type='al
         task_id=str(task_id),
         reextract_device_output=reextract_device_output,
         reevaluate_type=reevaluate_type or 'all',
+        # INT-302：data JSON 承载按用例+按维度选择，缺省空串整任务语义
+        data=_json.dumps(options, ensure_ascii=False, default=str) if options else '',
     )
     resp = stub.Reevaluate(req)
     return {
@@ -324,6 +329,29 @@ def get_task_merge_relations(task_id):
     resp = stub.GetTaskMergeRelations(req)
     if not resp.success:
         raise RuntimeError(f"GetTaskMergeRelations gRPC 失败: {resp.message}")
+    return _json.loads(resp.data) if resp.data else {}
+
+
+def get_cherry_pick_relations(task_id):
+    """通过 gRPC 查询 TaskCherryPickRelation（INT-339，按 cherry_pick_task_id）
+
+    供报告链路/跨服务读链路解析 cherry-pick 容器任务的源结果引用
+    （引用方案 A：result_id + 溯源快照）。
+
+    Args:
+        task_id: cherry-pick 容器任务ID
+
+    Returns:
+        dict: {'items': [{result_id, source_task_id, source_task_name,
+               source_case_id, source_device_id, source_api_id, ...}, ...]}
+    """
+    import json as _json
+    from shared.proto import task_service_pb2 as task_pb
+    stub = get_task_data_service_stub()
+    req = task_pb.GetCherryPickRelationsRequest(task_id=int(task_id))
+    resp = stub.GetCherryPickRelations(req)
+    if not resp.success:
+        raise RuntimeError(f"GetCherryPickRelations gRPC 失败: {resp.message}")
     return _json.loads(resp.data) if resp.data else {}
 
 

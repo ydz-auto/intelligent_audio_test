@@ -9,6 +9,10 @@ export { request, apiBaseUrl, addRequestInterceptor, addResponseInterceptor, typ
 // API domain modules
 export { authApi } from './authApi';
 export { tasksApi } from './tasksApi';
+export { cherryPickApi } from './cherryPickApi';
+export type {
+  PickCartItem, PickCart, PickCandidate, PickPreview, PickCheckoutAction,
+} from './cherryPickApi';
 export { publishedTasksApi } from './publishedTasksApi';
 export { logsApi } from './logsApi';
 export { devicesApi, BATCH_LIST_PARAMS } from './devicesApi';

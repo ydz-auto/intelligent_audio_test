@@ -98,6 +98,8 @@ export interface Task {
   /** INT-215：回收站字段（删除人为 user_id，AUTH_MODE=off 时 NULL） */
   deletedAt?: string
   deletedByUserId?: number | null
+  /** INT-339：挑选合并容器标记（专有关系表存在性判定） */
+  isCherryPick?: boolean
   result?: any
   reports?: {
     count: number

@@ -18,13 +18,13 @@ adapter_service / algorithm_service）只创建一个 channel，
 - e2e_test_service gRPC server（端口 50051）：ExecutionService
 - audio_service gRPC server（端口 50052）：AudioService / PlaybackService / AudioConfigService / RenderService（INT-67 混音双出口）
 - device_service gRPC server（端口 50053）：DeviceService / DeviceResultService / EnvDeviceService / DeviceConfigService / PlaybackConfigService / SPLConfigService
-- task_service gRPC server（端口 50061）：ExecutionService / TaskConfigService / TestCaseConfigService / TagConfigService / AlgorithmConfigService
-- api_test_service gRPC server（端口 50071）：APITestService
-- evaluation_service gRPC server（端口 50091）：EvaluationService / EvaluationConfigService
-- adapter_service gRPC server（端口 50081）：AdapterService
-- algorithm_service gRPC server（端口 50067）：AlgorithmGroupService / AlgorithmDefinitionService
-- report_service gRPC server（端口 50068）：ReportConfigService
-- auth_service gRPC server（端口 50069）：AuthService
+- task_service gRPC server（端口 51061）：ExecutionService / TaskConfigService / TestCaseConfigService / TagConfigService / AlgorithmConfigService
+- api_test_service gRPC server（端口 51071）：APITestService
+- evaluation_service gRPC server（端口 51091）：EvaluationService / EvaluationConfigService
+- adapter_service gRPC server（端口 51081）：AdapterService
+- algorithm_service gRPC server（端口 51067）：AlgorithmGroupService / AlgorithmDefinitionService
+- report_service gRPC server（端口 51068）：ReportConfigService
+- auth_service gRPC server（端口 51069）：AuthService
 """
 # ==================== channel 复用 ====================
 from shared.clients._grpc_channels import (
@@ -71,6 +71,7 @@ from shared.clients._grpc_stubs import (
     get_tag_config_service_stub,
     get_algorithm_config_service_stub,
     get_task_data_service_stub,
+    get_cherry_pick_service_stub,
     get_evaluation_service_stub,
     get_evaluation_config_service_stub,
     get_evaluation_data_service_stub,
@@ -100,6 +101,7 @@ from shared.clients._grpc_task_data import (
     cancel_case_evaluations,
     list_tasks_config,
     get_task_merge_relations,
+    get_cherry_pick_relations,
     list_logs,
     batch_create_logs,
     get_log_stats,

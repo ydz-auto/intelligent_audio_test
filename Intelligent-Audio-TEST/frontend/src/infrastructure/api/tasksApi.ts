@@ -39,6 +39,8 @@ export interface TaskListQuery {
   evaluationStatus?: string
   // INT-298：merged=true 仅合并容器任务（对齐 V9.7.10 合并页签数据源）
   merged?: boolean
+  // INT-339：cherry_pick=true 仅挑选合并容器任务（挑选合并页签数据源）
+  cherryPick?: boolean
   // INT-301 F1：执行状态过滤（复用派生口径，命中行执行徽章 == 筛选值）
   executionStatus?: string
 }
@@ -58,6 +60,8 @@ function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   if (query.evaluationStatus !== undefined) dto.evaluation_status = query.evaluationStatus
   // INT-298：合并容器任务过滤
   if (query.merged !== undefined) dto.merged = query.merged
+  // INT-339：挑选合并容器任务过滤
+  if (query.cherryPick !== undefined) dto.cherry_pick = query.cherryPick
   // INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
   if (query.executionStatus !== undefined) dto.execution_status = query.executionStatus
   return dto

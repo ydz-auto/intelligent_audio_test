@@ -15,6 +15,13 @@
           <i class="fas fa-bookmark"></i> 发布任务
         </button>
       </div>
+      <!-- INT-339：全局购物车入口（角标计数，任何页签可达；点击打开挑选合并向导） -->
+      <div class="header-right" v-if="can(PermissionPoint.TASK_CHERRY_PICK)">
+        <button class="btn btn-secondary pick-cart-entry" @click="pickDialogVisible = true">
+          <i class="fas fa-shopping-cart"></i> 挑选购物车
+          <span v-if="pickCartCount > 0" class="pick-cart-badge">{{ pickCartCount }}</span>
+        </button>
+      </div>
     </section>
 
     <!-- 内容区域：三栏布局 -->
@@ -133,6 +140,10 @@
             <i class="fas fa-object-group"></i> 合并任务
             <span v-if="mergedTasks.total > 0" class="task-tab-count">{{ mergedTasks.total }}</span>
           </button>
+          <button class="task-tab" :class="{ active: activeTab === 'cherryPick' }" @click="switchTab('cherryPick')">
+            <i class="fas fa-shopping-cart"></i> 挑选合并
+            <span v-if="cherryPickTasks.total > 0" class="task-tab-count">{{ cherryPickTasks.total }}</span>
+          </button>
           <button class="task-tab" :class="{ active: activeTab === 'favorite' }" @click="switchTab('favorite')">
             <i class="fas fa-star"></i> 收藏
             <span v-if="favoriteIds.size > 0" class="task-tab-count">{{ favoriteIds.size }}</span>
@@ -216,7 +227,7 @@
         <!-- 算法筛选（徽章单选） -->
         <div class="filter-row">
           <AlgorithmFilter
-            :options="activeTab === 'daily' || activeTab === 'favorite' || activeTab === 'merged' ? algorithmOptions : undefined"
+            :options="activeTab === 'daily' || activeTab === 'favorite' || activeTab === 'merged' || activeTab === 'cherryPick' ? algorithmOptions : undefined"
             :model-value="currentFilter.algorithmType"
             title="算法筛选"
             @update:model-value="handleAlgorithmBadgeChange"
@@ -346,6 +357,16 @@
             @task-action="handleTaskAction"
             @name-updated="handleMergedNameUpdated"
           />
+        </template>
+
+        <!-- 挑选合并面板（INT-339：第五页签） -->
+        <template v-else-if="activeTab === 'cherryPick'">
+          <CherryPickPanel
+            :cherry-pick="cherryPickTasks"
+            :task-actions="taskActions"
+            @task-action="handleTaskAction"
+            @name-updated="handleMergedNameUpdated"
+          />
         </template>      </section>
 
       <!-- 任务对比报告区域 -->
@@ -394,6 +415,13 @@
       @close="isDataImportDialogVisible = false"
       @imported="handleDataImported"
     />
+
+    <!-- INT-339：挑选合并三步向导（挑选 → 购物车 → 下单三出口） -->
+    <CherryPickDialog
+      v-if="pickDialogVisible"
+      @close="pickDialogVisible = false"
+      @checked-out="handlePickCheckedOut"
+    />
   </div>
 </template>
 
@@ -414,6 +442,10 @@ import TaskDataExportDialog from '../../components/task/TaskDataExportDialog.vue
 import TaskDataImportDialog from '../../components/task/TaskDataImportDialog.vue';
 import PublishedTaskPanel from './PublishedTaskPanel.vue';
 import MergedTaskPanel from './MergedTaskPanel.vue';
+import CherryPickPanel from './CherryPickPanel.vue';
+import CherryPickDialog from '../../components/common/modal/CherryPickDialog.vue';
+import { useCherryPickTasks } from '../../composables/task/useCherryPickTasks';
+import { usePickCart } from '../../composables/task/usePickCart';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
@@ -425,11 +457,17 @@ const notification = useNotification();
 const modalControl = useModalControl();
 
 // ===== 页签（INT-298：日常 / 已发布 / 合并 / 收藏，对齐 V9.7.10 页签组织）=====
-type TaskTab = 'daily' | 'published' | 'merged' | 'favorite';
-const TAB_QUERY_VALUES: TaskTab[] = ['daily', 'published', 'merged', 'favorite'];
+type TaskTab = 'daily' | 'published' | 'merged' | 'cherryPick' | 'favorite';
+const TAB_QUERY_VALUES: TaskTab[] = ['daily', 'published', 'merged', 'cherryPick', 'favorite'];
 const activeTab = ref<TaskTab>('daily');
 const published = usePublishedTasks();
 const mergedTasks = useMergedTasks();
+// INT-339：挑选合并页签（cherry_pick=true 服务端过滤）+ 全局购物车状态
+const cherryPickTasks = useCherryPickTasks();
+const pickCart = usePickCart();
+const pickDialogVisible = ref(false);
+/** 购物车条目数（ComputedRef 解包为 number 供模板比较） */
+const pickCartCount = computed(() => pickCart.cartCount.value ?? 0);
 const publishedPanelRef = ref<InstanceType<typeof PublishedTaskPanel> | null>(null);
 
 /** 页签切换：选中集清空 + URL query 同步（/tasks?tab=published 兼容旧链接）。
@@ -625,17 +663,41 @@ const mergedFilterState = reactive({
   set sort(v: { field: string; order: 'asc' | 'desc' }) { mergedTasks.filters.sort = v; },
 });
 
+const cherryPickFilterState = reactive({
+  get search() { return cherryPickTasks.filters.search; },
+  set search(v: string) { cherryPickTasks.filters.search = v; },
+  type: 'all',
+  get algorithmType() { return cherryPickTasks.filters.algorithmType; },
+  set algorithmType(v: string) { cherryPickTasks.filters.algorithmType = v; },
+  get status() { return cherryPickTasks.filters.status; },
+  set status(v: string) { cherryPickTasks.filters.status = v; },
+  get timeRange() { return cherryPickTasks.filters.timeRange; },
+  set timeRange(v: string) { cherryPickTasks.filters.timeRange = v; },
+  get customRange() { return cherryPickTasks.filters.customRange; },
+  set customRange(v: { start: string; end: string }) { cherryPickTasks.filters.customRange = v; },
+  get sort() { return cherryPickTasks.filters.sort; },
+  set sort(v: { field: string; order: 'asc' | 'desc' }) { cherryPickTasks.filters.sort = v; },
+});
+
 /** 当前视图的筛选状态（筛选排序栏统一绑定；收藏视图与日常视图共用日常列表数据源） */
 const currentFilter = computed(() => {
   if (activeTab.value === 'published') return publishedFilterState;
   if (activeTab.value === 'merged') return mergedFilterState;
+  if (activeTab.value === 'cherryPick') return cherryPickFilterState;
   return dailyFilterState;
 });
+
+/** INT-339：挑选合并视图状态选项（容器创建即 completed） */
+const CHERRY_PICK_STATUS_OPTIONS = [
+  { value: 'all', label: '全部状态' },
+  { value: TaskStatus.COMPLETED, label: '已完成' },
+];
 
 /** 当前视图的状态选项 */
 const currentStatusOptions = computed(() => {
   if (activeTab.value === 'published') return published.statusOptions;
   if (activeTab.value === 'merged') return MERGED_STATUS_OPTIONS;
+  if (activeTab.value === 'cherryPick') return CHERRY_PICK_STATUS_OPTIONS;
   return STATUS_FILTER_OPTIONS;
 });
 
@@ -649,6 +711,8 @@ function applyCurrentFilter() {
     published.fetchList();
   } else if (activeTab.value === 'merged') {
     mergedTasks.apply();
+  } else if (activeTab.value === 'cherryPick') {
+    cherryPickTasks.apply();
   } else {
     applyFilters();
   }
@@ -678,6 +742,8 @@ function toggleViewSort(field: string) {
     published.toggleSort(field);
   } else if (activeTab.value === 'merged') {
     mergedTasks.toggleSort(field);
+  } else if (activeTab.value === 'cherryPick') {
+    cherryPickTasks.toggleSort(field);
   } else {
     toggleSort(field);
   }
@@ -740,6 +806,21 @@ async function handleMergedNameUpdated({ taskId, newName }: { taskId: string | n
     mergedTasks.refresh();
   } catch (error: any) {
     notification.error(error?.message || '更新任务名称失败');
+  }
+}
+
+// ===== INT-339：挑选合并下单成功处理 =====
+
+/** 下单成功：merge 跳转新任务详情；其余出口刷新挑选合并列表与购物车角标 */
+async function handlePickCheckedOut(payload: { action: string; taskId?: number }) {
+  pickDialogVisible.value = false;
+  await pickCart.refreshCart();
+  if (payload.action === 'merge' && payload.taskId) {
+    router.push(`/tasks/${payload.taskId}`);
+    return;
+  }
+  if (activeTab.value === 'cherryPick') {
+    cherryPickTasks.refresh();
   }
 }
 
@@ -969,6 +1050,28 @@ align-items: center;
     align-items: center;
     margin-bottom: 16px;
     gap: 16px;
+}
+
+/* ===== INT-339：挑选购物车入口 ===== */
+.pick-cart-entry {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pick-cart-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--primary, #ff6a00);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 </style>

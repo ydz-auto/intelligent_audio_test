@@ -118,6 +118,8 @@ class TaskConfigServiceServicer(task_grpc.TaskConfigServiceServicer):
                 execution_status=request.execution_status or None,
                 # INT-298：仅合并容器任务（对齐 V9.7.10 合并页签数据源）
                 merged=request.merged,
+                # INT-339：仅挑选合并容器任务（专有关系表存在性判定，§5.4）
+                cherry_pick=getattr(request, 'cherry_pick', False),
             )
             return self._resp(self.qry.handle_list_tasks_config(query))
         except Exception as e:

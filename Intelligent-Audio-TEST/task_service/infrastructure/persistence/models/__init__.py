@@ -23,6 +23,9 @@ from .testcase_models import (
     TagCategory, Tag, TestCaseGroup, TestCase, TestCaseTag,
 )
 from .favorite_models import Favorite
+from .cherry_pick_models import (
+    CherryPickCartItem, TaskCherryPickRelation, CherryPickSet, CherryPickSetItem,
+)
 from .system_models import Log
 
 __all__ = [
@@ -36,6 +39,8 @@ __all__ = [
     'TagCategory', 'Tag', 'TestCaseGroup', 'TestCase', 'TestCaseTag',
     # 收藏（task|testcase，INT-141）
     'Favorite',
+    # 挑选合并（INT-339：购物车 / 容器关系 / 挑选集）
+    'CherryPickCartItem', 'TaskCherryPickRelation', 'CherryPickSet', 'CherryPickSetItem',
     # 系统日志
     'Log',
 ]

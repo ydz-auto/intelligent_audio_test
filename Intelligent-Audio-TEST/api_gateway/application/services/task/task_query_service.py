@@ -58,6 +58,8 @@ class TaskQueryService:
         evaluation_status = query.evaluation_status
         # INT-298：合并容器任务过滤（对齐 V9.7.10 合并页签数据源）
         merged = query.merged
+        # INT-339：挑选合并容器任务过滤（挑选合并页签数据源）
+        cherry_pick = query.cherry_pick
         # INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
         execution_status = query.execution_status
 
@@ -73,6 +75,7 @@ class TaskQueryService:
             deleted=deleted,
             evaluation_status=evaluation_status,
             merged=merged,
+            cherry_pick=cherry_pick,
             execution_status=execution_status,
         )
 
@@ -116,6 +119,8 @@ class TaskQueryService:
                     updated_at=item.get('updated_at'),
                     # INT-141：收藏标记 / 回收站字段（read model 已计算，此处透传）
                     is_favorite=item.get('is_favorite'),
+                    # INT-339：挑选合并容器标记（read model 批量判定，此处透传）
+                    is_cherry_pick=item.get('is_cherry_pick'),
                     deleted=item.get('deleted'),
                     deleted_at=item.get('deleted_at'),
                     deleted_by_user_id=item.get('deleted_by_user_id'),

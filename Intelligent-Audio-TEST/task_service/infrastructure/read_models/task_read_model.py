@@ -111,6 +111,7 @@ class TaskReadModel(
                      user_id: Optional[int] = None,
                      evaluation_status: Optional[str] = None,
                      merged: bool = False,
+                     cherry_pick: bool = False,
                      execution_status: Optional[str] = None) -> Dict[str, Any]:
         """网关 get_all 使用的查询逻辑：含 Report 关联。
 
@@ -121,6 +122,8 @@ class TaskReadModel(
             过滤并列；复用派生表达式，展示与筛选口径一致）。
         merged（可选，INT-298）：仅合并容器任务（存在 TaskMergeRelation 的任务；
             task.type 已废弃，合并容器以关系表存在性判定，对齐 V9.7.10 合并页签）。
+        cherry_pick（可选，INT-339）：仅挑选合并容器任务（task_cherry_pick_relations
+            存在性判定，§5.4 与 merged 容器判定同构）。
         execution_status（可选，INT-301 F1）：按任务级执行状态过滤（复用派生
             表达式，徽章展示与筛选命中同口径）。
         """
@@ -146,6 +149,14 @@ class TaskReadModel(
                 from task_service.infrastructure.persistence.models import TaskMergeRelation
                 query = query.filter(sa_select(TaskMergeRelation.id)
                                      .where(TaskMergeRelation.merged_task_id == Task.id)
+                                     .correlate(Task)
+                                     .exists())
+            if cherry_pick:
+                # INT-339：挑选合并容器任务（task_cherry_pick_relations 存在性判定，
+                # §5.4 与 merged 容器同构；不使用 task.type）
+                from task_service.infrastructure.persistence.models import TaskCherryPickRelation
+                query = query.filter(sa_select(TaskCherryPickRelation.id)
+                                     .where(TaskCherryPickRelation.cherry_pick_task_id == Task.id)
                                      .correlate(Task)
                                      .exists())
             if device_type:
@@ -231,6 +242,20 @@ class TaskReadModel(
                                 'created_at': st.created_at.isoformat() if st.created_at else None,
                             })
                     source_tasks_map[mid] = briefs
+            # INT-339：挑选合并容器判定（本页批量，避免 N+1；沿用外层 session，
+            # with_session 包装的仓储方法会 close 共享 scoped session，不得在
+            # 查询中途调用）。表缺失（旧测试夹具未建表）时降级为空集合，
+            # 仅影响 is_cherry_pick 输出，不影响主结果集。
+            from task_service.infrastructure.persistence.models import TaskCherryPickRelation
+            cherry_pick_container_ids = set()
+            if page_task_ids:
+                try:
+                    cp_rows = (session.query(TaskCherryPickRelation.cherry_pick_task_id)
+                               .filter(TaskCherryPickRelation.cherry_pick_task_id.in_(page_task_ids))
+                               .distinct().all())
+                    cherry_pick_container_ids = {r[0] for r in cp_rows}
+                except Exception as cp_err:
+                    logger.debug("挑选合并容器批量判定降级（表可能未建）: %s", cp_err)
             # 批量取页面任务的用例级被测设备类型集合（差异#2 收尾：取代 task.type 输出）
             device_types_map = {}
             if page_task_ids:
@@ -327,6 +352,7 @@ class TaskReadModel(
                     'created_at': task.created_at.isoformat() if task.created_at else None,
                     'updated_at': task.updated_at.isoformat() if task.updated_at else None,
                     'is_favorite': str(task.id) in favorite_ids,
+                    'is_cherry_pick': task.id in cherry_pick_container_ids,
                     'reports': report_info,
                     'devices': devices,
                     'apis': apis,

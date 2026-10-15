@@ -80,6 +80,8 @@ export interface TaskDto {
   /** INT-215：回收站字段（与后端 TaskListItem 对齐） */
   deleted_at?: string | null
   deleted_by_user_id?: number | null
+  /** INT-339：挑选合并容器标记（task_cherry_pick_relations 存在性判定） */
+  is_cherry_pick?: boolean
   result?: any
   reports?: TaskReportsDataDto | null
   devices: TaskDeviceBriefDto[]
@@ -193,6 +195,8 @@ export interface TaskListQueryDto {
   evaluation_status?: string
   // INT-298：merged=true 仅合并容器任务（后端 TaskListQuery.merged）
   merged?: boolean
+  // INT-339：cherry_pick=true 仅挑选合并容器任务（后端 TaskListQuery.cherry_pick）
+  cherry_pick?: boolean
   // INT-301 F1：执行状态过滤（复用派生口径，命中行执行徽章 == 筛选值）
   execution_status?: string
 }

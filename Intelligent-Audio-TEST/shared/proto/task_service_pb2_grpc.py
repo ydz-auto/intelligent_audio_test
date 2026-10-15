@@ -1569,6 +1569,605 @@ class TaskConfigService:
             _registered_method=True)
 
 
+class CherryPickServiceStub:
+    """===== 挑选合并（INT-339：购物车/挑选集/候选查询/下单三出口/溯源）=====
+    per-user 语义（购物车/挑选集）user_id 走 x-user-id metadata，与收藏同口径。
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetCherryPickCart = channel.unary_unary(
+                '/task_service.CherryPickService/GetCherryPickCart',
+                request_serializer=task__service__pb2.CherryPickEmptyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.AddCherryPickCartItems = channel.unary_unary(
+                '/task_service.CherryPickService/AddCherryPickCartItems',
+                request_serializer=task__service__pb2.CherryPickCartAddRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.RemoveCherryPickCartItems = channel.unary_unary(
+                '/task_service.CherryPickService/RemoveCherryPickCartItems',
+                request_serializer=task__service__pb2.CherryPickCartRemoveRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ClearCherryPickCart = channel.unary_unary(
+                '/task_service.CherryPickService/ClearCherryPickCart',
+                request_serializer=task__service__pb2.CherryPickEmptyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.SaveCherryPickSet = channel.unary_unary(
+                '/task_service.CherryPickService/SaveCherryPickSet',
+                request_serializer=task__service__pb2.CherryPickSaveSetRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListCherryPickSets = channel.unary_unary(
+                '/task_service.CherryPickService/ListCherryPickSets',
+                request_serializer=task__service__pb2.CherryPickEmptyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetCherryPickSet = channel.unary_unary(
+                '/task_service.CherryPickService/GetCherryPickSet',
+                request_serializer=task__service__pb2.CherryPickSetIdRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteCherryPickSet = channel.unary_unary(
+                '/task_service.CherryPickService/DeleteCherryPickSet',
+                request_serializer=task__service__pb2.CherryPickSetIdRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.RestoreCherryPickSetToCart = channel.unary_unary(
+                '/task_service.CherryPickService/RestoreCherryPickSetToCart',
+                request_serializer=task__service__pb2.CherryPickSetIdRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListCherryPickCandidates = channel.unary_unary(
+                '/task_service.CherryPickService/ListCherryPickCandidates',
+                request_serializer=task__service__pb2.CherryPickCandidatesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.CherryPickPreview = channel.unary_unary(
+                '/task_service.CherryPickService/CherryPickPreview',
+                request_serializer=task__service__pb2.CherryPickEmptyRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.CherryPickCheckout = channel.unary_unary(
+                '/task_service.CherryPickService/CherryPickCheckout',
+                request_serializer=task__service__pb2.CherryPickCheckoutRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetCherryPickSource = channel.unary_unary(
+                '/task_service.CherryPickService/GetCherryPickSource',
+                request_serializer=task__service__pb2.CherryPickSourceRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+
+
+class CherryPickServiceServicer:
+    """===== 挑选合并（INT-339：购物车/挑选集/候选查询/下单三出口/溯源）=====
+    per-user 语义（购物车/挑选集）user_id 走 x-user-id metadata，与收藏同口径。
+    """
+
+    def GetCherryPickCart(self, request, context):
+        """---- 购物车（per-user 持久化，跨会话保留）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AddCherryPickCartItems(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RemoveCherryPickCartItems(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ClearCherryPickCart(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SaveCherryPickSet(self, request, context):
+        """---- 挑选集（另存/恢复两向，§3 购物车口径）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListCherryPickSets(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCherryPickSet(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteCherryPickSet(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RestoreCherryPickSetToCart(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListCherryPickCandidates(self, request, context):
+        """---- 挑选候选查询（S2 多条件 AND，设备+用例为点名必支持项）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CherryPickPreview(self, request, context):
+        """---- 下单（三出口 action=merge/reexecute/reevaluate + 合并预览）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CherryPickCheckout(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCherryPickSource(self, request, context):
+        """---- 溯源（§8 GET /tasks/{taskId}/cherry-pick-source）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_CherryPickServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetCherryPickCart': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCherryPickCart,
+                    request_deserializer=task__service__pb2.CherryPickEmptyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'AddCherryPickCartItems': grpc.unary_unary_rpc_method_handler(
+                    servicer.AddCherryPickCartItems,
+                    request_deserializer=task__service__pb2.CherryPickCartAddRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RemoveCherryPickCartItems': grpc.unary_unary_rpc_method_handler(
+                    servicer.RemoveCherryPickCartItems,
+                    request_deserializer=task__service__pb2.CherryPickCartRemoveRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ClearCherryPickCart': grpc.unary_unary_rpc_method_handler(
+                    servicer.ClearCherryPickCart,
+                    request_deserializer=task__service__pb2.CherryPickEmptyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'SaveCherryPickSet': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveCherryPickSet,
+                    request_deserializer=task__service__pb2.CherryPickSaveSetRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListCherryPickSets': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCherryPickSets,
+                    request_deserializer=task__service__pb2.CherryPickEmptyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetCherryPickSet': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCherryPickSet,
+                    request_deserializer=task__service__pb2.CherryPickSetIdRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'DeleteCherryPickSet': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteCherryPickSet,
+                    request_deserializer=task__service__pb2.CherryPickSetIdRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RestoreCherryPickSetToCart': grpc.unary_unary_rpc_method_handler(
+                    servicer.RestoreCherryPickSetToCart,
+                    request_deserializer=task__service__pb2.CherryPickSetIdRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListCherryPickCandidates': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCherryPickCandidates,
+                    request_deserializer=task__service__pb2.CherryPickCandidatesRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'CherryPickPreview': grpc.unary_unary_rpc_method_handler(
+                    servicer.CherryPickPreview,
+                    request_deserializer=task__service__pb2.CherryPickEmptyRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'CherryPickCheckout': grpc.unary_unary_rpc_method_handler(
+                    servicer.CherryPickCheckout,
+                    request_deserializer=task__service__pb2.CherryPickCheckoutRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetCherryPickSource': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCherryPickSource,
+                    request_deserializer=task__service__pb2.CherryPickSourceRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.CherryPickService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.CherryPickService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class CherryPickService:
+    """===== 挑选合并（INT-339：购物车/挑选集/候选查询/下单三出口/溯源）=====
+    per-user 语义（购物车/挑选集）user_id 走 x-user-id metadata，与收藏同口径。
+    """
+
+    @staticmethod
+    def GetCherryPickCart(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/GetCherryPickCart',
+            task__service__pb2.CherryPickEmptyRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddCherryPickCartItems(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/AddCherryPickCartItems',
+            task__service__pb2.CherryPickCartAddRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RemoveCherryPickCartItems(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/RemoveCherryPickCartItems',
+            task__service__pb2.CherryPickCartRemoveRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ClearCherryPickCart(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/ClearCherryPickCart',
+            task__service__pb2.CherryPickEmptyRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SaveCherryPickSet(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/SaveCherryPickSet',
+            task__service__pb2.CherryPickSaveSetRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCherryPickSets(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/ListCherryPickSets',
+            task__service__pb2.CherryPickEmptyRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCherryPickSet(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/GetCherryPickSet',
+            task__service__pb2.CherryPickSetIdRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteCherryPickSet(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/DeleteCherryPickSet',
+            task__service__pb2.CherryPickSetIdRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RestoreCherryPickSetToCart(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/RestoreCherryPickSetToCart',
+            task__service__pb2.CherryPickSetIdRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCherryPickCandidates(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/ListCherryPickCandidates',
+            task__service__pb2.CherryPickCandidatesRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CherryPickPreview(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/CherryPickPreview',
+            task__service__pb2.CherryPickEmptyRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CherryPickCheckout(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/CherryPickCheckout',
+            task__service__pb2.CherryPickCheckoutRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCherryPickSource(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.CherryPickService/GetCherryPickSource',
+            task__service__pb2.CherryPickSourceRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
 class PublishedTaskConfigServiceStub:
     """===== 已发布任务配置服务（任务发布功能）=====
     """
@@ -5151,6 +5750,11 @@ class TaskDataServiceStub:
                 request_serializer=task__service__pb2.GetTaskMergeRelationsRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskDataResponse.FromString,
                 _registered_method=True)
+        self.GetCherryPickRelations = channel.unary_unary(
+                '/task_service.TaskDataService/GetCherryPickRelations',
+                request_serializer=task__service__pb2.GetCherryPickRelationsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
         self.ListLogs = channel.unary_unary(
                 '/task_service.TaskDataService/ListLogs',
                 request_serializer=task__service__pb2.ListLogsRequest.SerializeToString,
@@ -5347,6 +5951,13 @@ class TaskDataServiceServicer:
 
     def GetTaskMergeRelations(self, request, context):
         """查询 TaskMergeRelation（api_gateway 报告对比用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCherryPickRelations(self, request, context):
+        """查询 TaskCherryPickRelation（INT-339：报告链路/读链路引用解析用）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -5555,6 +6166,11 @@ def add_TaskDataServiceServicer_to_server(servicer, server):
             'GetTaskMergeRelations': grpc.unary_unary_rpc_method_handler(
                     servicer.GetTaskMergeRelations,
                     request_deserializer=task__service__pb2.GetTaskMergeRelationsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetCherryPickRelations': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCherryPickRelations,
+                    request_deserializer=task__service__pb2.GetCherryPickRelationsRequest.FromString,
                     response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
             ),
             'ListLogs': grpc.unary_unary_rpc_method_handler(
@@ -6033,6 +6649,33 @@ class TaskDataService:
             target,
             '/task_service.TaskDataService/GetTaskMergeRelations',
             task__service__pb2.GetTaskMergeRelationsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCherryPickRelations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetCherryPickRelations',
+            task__service__pb2.GetCherryPickRelationsRequest.SerializeToString,
             task__service__pb2.TaskDataResponse.FromString,
             options,
             channel_credentials,

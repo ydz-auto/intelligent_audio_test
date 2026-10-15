@@ -394,6 +394,9 @@
       <button v-if="shouldShowRetryButton" class="btn btn-success" :disabled="isControlling" @click="$emit('retryTask')">
         <i class="fas fa-redo"></i> 重新执行
       </button>
+      <button v-if="shouldShowPickButton" class="btn btn-info" :disabled="isControlling" @click="$emit('pickResults')">
+        <i class="fas fa-shopping-cart"></i> 加入购物车
+      </button>
       <button v-if="shouldShowReevaluateButton" class="btn btn-warning" :disabled="isControlling" @click="$emit('reevaluateTask')">
         <i class="fas fa-sync-alt"></i> 重新评估
       </button>
@@ -452,6 +455,8 @@ const emit = defineEmits([
   // INT-302：执行详情模态窗内的重执行/重评估入口（带范围选择模态窗）
   'retryTask',
   'reevaluateTask',
+  // INT-339：执行详情模态窗内的挑选加购入口（CherryPickDialog 由 TaskDetailModal 承载）
+  'pickResults',
   // INT-305：执行详情模态窗内的移除用例入口（四阶段全允许，确认由 TaskDetailModal 承载）
   'removeCase'
 ]);
@@ -475,6 +480,9 @@ const shouldShowRetryButton = computed(() =>
 
 // INT-302：重评估入口与任务卡片口径一致（终态任务可见）
 const shouldShowReevaluateButton = computed(() => finishedTaskStatuses.includes(props.taskStatus));
+
+// INT-339：挑选加购入口（终态任务可见——§10 默认仅终态任务可挑选）
+const shouldShowPickButton = computed(() => finishedTaskStatuses.includes(props.taskStatus));
 
 // ===== INT-305：移除用例（执行详情模态窗四阶段全允许） =====
 

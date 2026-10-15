@@ -7,6 +7,7 @@ from .tag_config import TagConfigServiceServicer
 from .algorithm_config import AlgorithmConfigServiceServicer
 from .task_data_service import TaskDataServiceServicer
 from .data_transfer import DataTransferServiceServicer
+from .cherry_pick import CherryPickServiceServicer
 # 注：EvaluationConfigServiceServicer 已迁移至 evaluation_service
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     'AlgorithmConfigServiceServicer',
     'TaskDataServiceServicer',
     'DataTransferServiceServicer',
+    'CherryPickServiceServicer',
 ]

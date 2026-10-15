@@ -54,6 +54,10 @@ from .data_transfer_proxies import (
     _DataTransferProxy,
     data_transfer_service,
 )
+from .cherry_pick_proxies import (
+    _CherryPickProxy,
+    cherry_pick_service,
+)
 
 __all__ = [
     'execution_engine',
@@ -84,4 +88,6 @@ __all__ = [
     'algorithm_query_service',
     '_DataTransferProxy',
     'data_transfer_service',
+    '_CherryPickProxy',
+    'cherry_pick_service',
 ]
