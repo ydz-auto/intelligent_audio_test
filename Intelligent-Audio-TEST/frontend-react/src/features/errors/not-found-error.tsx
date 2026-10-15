@@ -20,7 +20,7 @@ import { useNavigate, useRouter } from '@tanstack/react-router'
 
 import { Button } from '@/components/ui/button'
 
-/** 404 页面（newAPI 版式照搬：巨号数字 + 一句话 + 灰字两行 + 双按钮） */
+/** 404 页面（newAPI 版式照搬：巨号数字 + 一句话 + 灰字两行 + 双按钮，文案 §7） */
 export function NotFoundError() {
   const navigate = useNavigate()
   const { history } = useRouter()
@@ -28,18 +28,17 @@ export function NotFoundError() {
     <div className='h-svh'>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
         <h1 className='text-[7rem] leading-tight font-bold'>404</h1>
-        <span className='font-medium'>页面不存在</span>
+        <span className='font-medium'>糟糕！页面未找到！</span>
         <p className='text-muted-foreground text-center'>
-          您访问的页面可能已被移除，<br />
-          或输入的地址有误。
+          您要查找的页面似乎
+          <br />
+          不存在或可能已被移除。
         </p>
         <div className='mt-6 flex gap-4'>
           <Button variant='outline' onClick={() => history.go(-1)}>
             返回
           </Button>
-          <Button onClick={() => navigate({ to: '/' })}>
-            返回主页
-          </Button>
+          <Button onClick={() => navigate({ to: '/' })}>返回主页</Button>
         </div>
       </div>
     </div>

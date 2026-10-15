@@ -83,12 +83,8 @@ export function GeneralError({
     )
   }
   const isRateLimited = status === 429
-  const title = isRateLimited
-    ? '请求过于频繁'
-    : '哎呀！服务器出错了 :)'
-  const description = isRateLimited
-    ? '请稍候片刻再试。'
-    : '请稍后重试。'
+  const title = isRateLimited ? '请求过于频繁' : '糟糕！出错了'
+  const description = isRateLimited ? '请稍候再试。' : '请稍后再试。'
 
   return (
     <div className={cn('h-svh w-full', className)}>
@@ -100,16 +96,17 @@ export function GeneralError({
         )}
         <span className='font-medium'>{title}</span>
         <p className='text-muted-foreground text-center'>
-          抱歉给您带来不便。 <br /> {description}
+          对于由此造成的不便，我们深表歉意。 <br /> {description}
         </p>
         {!minimal && (
           <div className='mt-6 flex flex-wrap justify-center gap-4'>
             <Button variant='outline' onClick={() => history.go(-1)}>
               返回
             </Button>
-            <Button onClick={() => navigate({ to: '/' })}>
-              返回主页
+            <Button variant='outline' onClick={() => window.location.reload()}>
+              刷新页面
             </Button>
+            <Button onClick={() => navigate({ to: '/' })}>返回主页</Button>
           </div>
         )}
       </div>

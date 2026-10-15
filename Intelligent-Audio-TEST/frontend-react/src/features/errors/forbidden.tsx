@@ -19,26 +19,44 @@ For commercial licensing, please contact support@quantumnous.com
 import { useNavigate, useRouter } from '@tanstack/react-router'
 
 import { Button } from '@/components/ui/button'
+import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
-/** 403 页面（newAPI 版式照搬；路由守卫无权限时统一落此页） */
-export function ForbiddenError() {
+/**
+ * 403 页面（newAPI 版式照搬，文案 §7）：返回 / 返回主页 / 切换账号（登出→登录）；
+ * `from` 来源页面小字（守卫 redirect 携带，无则隐藏，§4.3）。
+ */
+export function ForbiddenError({ from }: { from?: string }) {
   const navigate = useNavigate()
   const { history } = useRouter()
+  const setAuth = useAuthStore((s) => s.setAuth)
+
+  function handleSwitchAccount() {
+    // 登出并跳登录页（服务角色变更/权限收紧场景，§4.3 第三钮）
+    // TODO(API 接线): 登出接口 + 会话清理随 API 接线卡落
+    setAuth(null)
+    void navigate({ to: '/login' })
+  }
+
   return (
     <div className='h-svh'>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
         <h1 className='text-[7rem] leading-tight font-bold'>403</h1>
-        <span className='font-medium'>无权访问</span>
+        <span className='font-medium'>禁止访问</span>
         <p className='text-muted-foreground text-center'>
-          您没有访问该资源的权限，<br />
-          请联系管理员开通。
+          您没有必要的权限，
+          <br />
+          无法查看此资源。
         </p>
-        <div className='mt-6 flex gap-4'>
+        {from && (
+          <p className='text-muted-foreground text-xs'>来源页面：{from}</p>
+        )}
+        <div className='mt-6 flex flex-wrap justify-center gap-4'>
           <Button variant='outline' onClick={() => history.go(-1)}>
             返回
           </Button>
-          <Button onClick={() => navigate({ to: '/' })}>
-            返回主页
+          <Button onClick={() => navigate({ to: '/' })}>返回主页</Button>
+          <Button variant='ghost' onClick={handleSwitchAccount}>
+            切换账号
           </Button>
         </div>
       </div>
