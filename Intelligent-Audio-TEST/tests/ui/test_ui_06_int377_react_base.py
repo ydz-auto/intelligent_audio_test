@@ -32,7 +32,9 @@ from selenium.webdriver.common.keys import Keys
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ARTIFACTS = os.path.join(PROJECT_ROOT, 'tests', 'ui', 'artifacts', 'int377_react_base')
 
-BASE = os.environ.get('REACT_DEV_BASE', 'http://localhost:3000')
+# 3000 被 newAPI 参照实例（new-api.exe --port 3000）常驻占用；React dev server 钉死 5273
+# （负责人 2026-10-15，rsbuild.config.ts server.port=5273 + strictPort:true），默认值对齐 5273。
+BASE = os.environ.get('REACT_DEV_BASE', 'http://localhost:5273')
 CHROME_BINARY = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
 
 
