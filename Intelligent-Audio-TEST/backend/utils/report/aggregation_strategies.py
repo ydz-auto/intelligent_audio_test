@@ -15,8 +15,20 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 import json
 import logging
+import math
 
 logger = logging.getLogger(__name__)
+
+
+def positive_average_values(values):
+    """Only finite numeric values > 0 contribute to an arithmetic mean."""
+    return [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)
+            and math.isfinite(v) and v > 0]
+
+
+def positive_average(values):
+    valid = positive_average_values(values)
+    return sum(valid) / len(valid) if valid else None
 
 
 def _extract_by_path(data: Dict[str, Any], path: str) -> Optional[Any]:
@@ -124,10 +136,11 @@ class SimpleAverageStrategy(AggregationStrategy):
 
     def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None,
                   denominator_mode: str = None) -> Optional[float]:
-        values = [item['dimension_value'] for item in items if item.get('dimension_value') is not None]
+        valid_items = [item for item in items if positive_average_values([item.get('dimension_value')])]
+        values = [item['dimension_value'] for item in valid_items]
         if not values:
             return None
-        n_cases, total_rounds = _count_items(items)
+        n_cases, total_rounds = _count_items(valid_items)
         mode = (denominator_mode or 'case').lower()
         if mode == 'round':
             denom = total_rounds if total_rounds > 0 else n_cases

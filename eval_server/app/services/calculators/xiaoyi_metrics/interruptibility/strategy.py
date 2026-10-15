@@ -244,6 +244,23 @@ class InterruptionMetricsCalculator(BaseCalculator):
             derive_round_metrics,
         )
 
+        result['interaction_text'] = interaction_text or result.get('interaction_text')
+
+        # Complete-case judging: one API request, full word ASR, script-only rounds.
+        # Explicit opt-out retains the legacy path for compatibility/debugging.
+        if task_params.get('round_number') is None and task_params.get('full_timeline_judge', True) \
+                and any(task_params.get(k) for k in ('user_wav', 'user_asr', 'user_chunks')):
+            from app.services.calculators.xiaoyi_metrics.interruptibility.full_timeline_judge import attach_full_timeline
+            try:
+                return attach_full_timeline(result, blocks, task_params, case_info)
+            except Exception as exc:
+                # Never silently replace invalid semantic evidence with old sliced-round judgments.
+                result.update(derive_round_metrics(timing, None, case_info, resume_timing))
+                result['is_success'] = False
+                result['message'] = f'完整时间线裁判失败: {type(exc).__name__}: {exc}'
+                logger.exception('[interruption] full timeline judge failed')
+                return result
+
         def _num(v):
             try:
                 return float(v) if v not in (None, '') else None

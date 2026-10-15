@@ -529,6 +529,9 @@ def derive_round_metrics(round_timing: Optional[List[Dict[str, Any]]],
         })
 
     resp_agg, reply_agg = _agg(resp_list), _agg(reply_list)
+    for values, stats in ((resp_list, resp_agg), (reply_list, reply_agg)):
+        positive = [v for v in values if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0]
+        stats['avg'] = round(sum(positive) / len(positive), 1) if positive else None
 
     # 恢复首轮内容时延：仅取恢复轮回复时延；无恢复轮 → None（普通用例显示 -，
     # 该指标对无"恢复前文"概念的用例无意义，不再回退末个打断轮的回复时延）

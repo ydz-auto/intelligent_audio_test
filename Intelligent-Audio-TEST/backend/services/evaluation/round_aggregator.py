@@ -1,3 +1,4 @@
+from backend.utils.report.aggregation_strategies import positive_average
 import json
 import traceback
 from backend.models.models import Dimension, TestResultDimension, TestResult
@@ -108,9 +109,9 @@ class RoundAggregator(EvaluationLoggerMixin):
                         if r['evaluation_status'] == 'completed' and r['score'] is not None
                     ]
                     if completed:
-                        avg_score = sum(r['score'] for r in completed) / len(completed)
-                        avg_raw = sum(r['raw_value'] for r in completed if r['raw_value'] is not None) / len([r for r in completed if r['raw_value'] is not None]) if any(r['raw_value'] is not None for r in completed) else None
-                        aggregated[f'avg_{dim_name}'] = round(avg_score, 4)
+                        avg_score = positive_average(r['score'] for r in completed)
+                        avg_raw = positive_average(r['raw_value'] for r in completed)
+                        aggregated[f'avg_{dim_name}'] = round(avg_score, 4) if avg_score is not None else None
 
                         # 创建/更新 round_number=NULL 的整体维度记录
                         info = dim_info.get(dim_name, {})
@@ -124,7 +125,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                             # 已有整体评估记录（由 round_number=None 评估产生），不覆盖其分数
                             # 仅在整体评估未产生分数时用算术平均兜底
                             if existing_overall.score is None:
-                                existing_overall.score = round(avg_score, 4)
+                                existing_overall.score = round(avg_score, 4) if avg_score is not None else None
                                 existing_overall.dimension_value = round(avg_raw, 4) if avg_raw is not None else None
                                 existing_overall.evaluation_status = 'completed'
                         else:
@@ -134,7 +135,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                                 dimension_id=info.get('dimension_id'),
                                 algorithm_type=info.get('algorithm_type'),
                                 round_number=None,
-                                score=round(avg_score, 4),
+                                score=round(avg_score, 4) if avg_score is not None else None,
                                 dimension_value=round(avg_raw, 4) if avg_raw is not None else None,
                                 status=None,
                                 evaluation_status='completed',

@@ -1,3 +1,4 @@
+from backend.utils.report.aggregation_strategies import positive_average, positive_average_values
 from backend.models.models import TestResultDimension, TestResult, TestCase, Device, API, Task, Dimension
 from backend.models.database import db
 from backend.utils.common.result_data_store import load_full_result_data
@@ -302,7 +303,7 @@ class ReportUtils:
                 values[dim_name] = dim_overall[dim_id]
             elif dim_id in dim_rounds and dim_rounds[dim_id]:
                 scores = dim_rounds[dim_id]
-                values[dim_name] = round(sum(scores) / len(scores), 4)
+                values[dim_name] = (round(mean, 4) if (mean := positive_average(scores)) is not None else None)
             else:
                 values[dim_name] = None
 
@@ -399,7 +400,7 @@ class ReportUtils:
                     pairs.append((dr_round, dr_val))
         exclude_set = ReportUtils._resolve_exclude_rounds(result, dim_name, dim_results_map, dim_name_to_id, exclude_rounds)
         vals = [v for r, v in pairs if r not in exclude_set]
-        return vals if vals else [fallback_score]
+        return positive_average_values(vals) if pairs else positive_average_values([fallback_score])
     
     @staticmethod
     def calculate_core_metrics(results, all_dimensions, resources, dim_results_map=None, tasks_map=None, use_time_prefix=False):
@@ -561,6 +562,8 @@ class ReportUtils:
                         acc_vals = ReportUtils._get_round_values(result, dim_name, score, dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim_name))
                     else:
                         acc_vals = [score]
+
+                    acc_vals = positive_average_values(acc_vals)
 
                     # Category
                     if dim_name in category_accumulator[category][resource]:
@@ -879,7 +882,7 @@ class ReportUtils:
                     if dim_values.get(dim.name) is not None:
                         dim_scores.append(dim_values[dim.name])
                 
-                type_metrics[dim.name] = (sum(dim_scores) / len(dim_scores)) if dim_scores else None
+                type_metrics[dim.name] = positive_average(dim_scores)
             stats[group_id] = type_metrics
         return stats
     
@@ -1043,7 +1046,7 @@ class ReportUtils:
                                                  denominator_mode=denominator_mode)
                     stats[group_id]['metrics'][dim_name] = agg_val
                 else:
-                    stats[group_id]['metrics'][dim_name] = (sum(scores) / len(scores)) if scores else None
+                    stats[group_id]['metrics'][dim_name] = positive_average(scores)
         return stats
     
     @staticmethod
@@ -2073,5 +2076,5 @@ class ReportUtils:
                             scores.extend(ReportUtils._get_round_values(result, dim.name, vals[dim.name], dim_results_map, dim_name_to_id, dim_exclude_rounds.get(dim.name)))
                         else:
                             scores.append(vals[dim.name])
-                metrics[dim.name] = (sum(scores) / len(scores)) if scores else None
+                metrics[dim.name] = positive_average(scores)
         return metrics

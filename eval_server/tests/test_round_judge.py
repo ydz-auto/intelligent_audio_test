@@ -221,7 +221,7 @@ def test_fast_reply_no_pause_semantic_interrupt_point(fake_llm):
     assert result['round_response_latencies'] == [200.0]
     assert result['round_reply_latencies'] == [-150.0]
     assert result['response_latency_avg_ms'] == 200.0
-    assert result['reply_latency_avg_ms'] == -150.0
+    assert result['reply_latency_avg_ms'] is None  # Nonpositive values remain in detail, excluded from average.
     d = result['round_details'][0]
     assert d['latency_source'] == 'llm_interrupt_point'
     t = result['round_timing'][0]
