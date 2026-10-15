@@ -1,7 +1,7 @@
 import { ref, watch, onMounted, onUnmounted, type Ref } from 'vue'
-import { transformTestCaseStatus } from '../../utils/statusUtils'
 import { formatDurationText } from '../../utils/durationFormat'
-import { TaskStatus, ExecutionStatus, EvaluationStatus, FINISHED_STATUSES, type TaskStatusType } from '../../domain/enums'
+import { summarizeCaseStatuses } from '../../utils/caseStatusSummary'
+import { TaskStatus, FINISHED_STATUSES, type TaskStatusType } from '../../domain/enums'
 import { taskChannelPort } from './taskChannelPort'
 import { tasksPort } from './tasksPort'
 import type {
@@ -97,47 +97,24 @@ export function useTaskProgress(options: TaskProgressOptions) {
     }
   }
 
+  /**
+   * INT-405：用例计数收敛到双状态分桶单一源（utils/caseStatusSummary），
+   * 与详情首屏（TaskDetailModal）同口径——读后端执行/评估两维原值 + 后端派生
+   * 复合 status，不再前端合成单值展示状态，HTTP/Socket 切换计数不跳变。
+   */
   const applyCaseCounts = (progress: TaskProgress) => {
-    // 重新计算各种状态的用例数量
-    let completedCount = 0
-    let inProgressCount = 0
-    let failedCount = 0
-    let pendingCount = 0
+    const summary = summarizeCaseStatuses(progress.testCases)
+    const total = progress.totalCount
 
-    progress.testCases.forEach((transformed) => {
-      // 只计算真正完成的用例
-      if (transformed.status === TaskStatus.COMPLETED && transformed.executionStatus !== ExecutionStatus.FAILED && transformed.evaluationStatus !== EvaluationStatus.FAILED) {
-        completedCount++
-      }
-      // 计算进行中的用例（真正执行中）
-      else if (transformed.status === ExecutionStatus.IN_PROGRESS || transformed.status === EvaluationStatus.CALCULATING) {
-        inProgressCount++
-      }
-      // 计算排队中的用例
-      else if (transformed.status === ExecutionStatus.QUEUED) {
-        inProgressCount++
-      }
-      // 计算失败的用例
-      else if (transformed.executionStatus === ExecutionStatus.FAILED || transformed.evaluationStatus === EvaluationStatus.FAILED) {
-        failedCount++
-      }
-      // 计算待执行的用例
-      else if (transformed.executionStatus === ExecutionStatus.PENDING && transformed.evaluationStatus === EvaluationStatus.PENDING) {
-        pendingCount++
-      }
-    })
-
-    completedTests.value = Math.min(progress.totalCount, Math.max(0, completedCount))
-    inProgressTests.value = Math.min(progress.totalCount, Math.max(0, inProgressCount))
-    executionFailedTests.value = Math.min(progress.totalCount, Math.max(0,
-      progress.testCases.reduce((sum, tc) => sum + (tc.executionStatus === ExecutionStatus.FAILED ? 1 : 0), 0)))
-    evaluationFailedTests.value = Math.min(progress.totalCount, Math.max(0,
-      progress.testCases.reduce((sum, tc) => sum + (tc.evaluationStatus === EvaluationStatus.FAILED && tc.executionStatus !== ExecutionStatus.FAILED ? 1 : 0), 0)))
-    pendingTests.value = Math.max(0, pendingCount)
+    completedTests.value = Math.min(total, Math.max(0, summary.completed))
+    inProgressTests.value = Math.min(total, Math.max(0, summary.inProgress))
+    executionFailedTests.value = Math.min(total, Math.max(0, summary.executionFailed))
+    evaluationFailedTests.value = Math.min(total, Math.max(0, summary.evaluationFailed))
+    pendingTests.value = Math.max(0, summary.pending)
 
     // 重新计算总进度，只基于真正完成的用例
-    progressPercentage.value = progress.totalCount > 0
-      ? Math.min(100, Math.max(0, Math.round((completedTests.value / progress.totalCount) * 100)))
+    progressPercentage.value = total > 0
+      ? Math.min(100, Math.max(0, Math.round((completedTests.value / total) * 100)))
       : 0
   }
 
@@ -203,11 +180,10 @@ export function useTaskProgress(options: TaskProgressOptions) {
     progressData.totalCount = totalCount
 
     if (progressData.testCases.length > 0) {
+      // INT-405：用例双状态原样透传，不再前端合成单值展示状态——
+      // executionStatus / evaluationStatus 分别落值（后端 §8.2/§8.3 口径），
+      // status 保留后端 derive_task_case_status 复合结果态，仅供筛选/行底色。
       progressData.testCases.forEach(tc => {
-        const transformed = transformTestCaseStatus(tc) as any
-        tc.status = transformed.status
-        tc.executionStatus = transformed.executionStatus
-        tc.evaluationStatus = transformed.evaluationStatus
         mergeAssociatedCase(tc)
       })
       applyCaseCounts(progressData)

@@ -216,20 +216,22 @@
                   <i class="fas fa-folder"></i> 分组
                 </button>
               </div>
-              <!-- 状态筛选 -->
+              <!-- INT-405 状态筛选：执行/评估两维独立（与双徽章同源取值，筛选值即徽章值；
+                   原单值合成筛选的 9 混合项随该合成口径一并废弃。
+                   「已删除」项去除：后端 TaskCaseStatus 无 deleted 值，INT-305 移除用例
+                   已从进度/详情 payload 剔除，该行不可能出现，属死选项） -->
               <div class="filter-select" style="display: flex; align-items: center; gap: 6px;">
-                <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">状态:</label>
-                <select v-model="caseFilterStatus" class="form-input" style="height: 32px; padding: 0 8px; font-size: 13px; min-width: 110px;">
-                  <option value="all">全部状态</option>
-                  <option :value="ExecutionStatus.PENDING">等待中</option>
-                  <option :value="ExecutionStatus.QUEUED">排队中</option>
-                  <option :value="ExecutionStatus.IN_PROGRESS">执行中</option>
-                  <option :value="EvaluationStatus.CALCULATING">计算指标中</option>
-                  <option :value="ExecutionStatus.COMPLETED">已完成</option>
-                  <option :value="ExecutionStatus.FAILED">已失败</option>
-                  <option :value="TaskStatus.SKIPPED">已跳过</option>
-                  <option :value="ExecutionStatus.STOPPED">已停止</option>
-                  <option value="deleted">已删除</option>
+                <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">执行:</label>
+                <select v-model="caseFilterExecution" class="form-input" style="height: 32px; padding: 0 8px; font-size: 13px; min-width: 100px;">
+                  <option value="all">全部执行</option>
+                  <option v-for="opt in CASE_EXECUTION_FILTER_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+                </select>
+              </div>
+              <div class="filter-select" style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">评估:</label>
+                <select v-model="caseFilterEvaluation" class="form-input" style="height: 32px; padding: 0 8px; font-size: 13px; min-width: 100px;">
+                  <option value="all">全部评估</option>
+                  <option v-for="opt in CASE_EVALUATION_FILTER_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
                 </select>
               </div>
             </div>
@@ -250,7 +252,7 @@
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
                     <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
-                      {{ getCaseStatusLabel(testCase.status) }} ({{ testCase.duration || '' }})
+                      <span v-if="testCase.duration">{{ testCase.duration }}s</span>
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
@@ -265,7 +267,15 @@
                   </div>
                   <div class="progress-actions flex items-center gap-2">
                     <div class="progress-status flex items-center gap-2">
-                      <i :class="getCaseStatusIcon(testCase.status).icon" :style="{ color: getCaseStatusIcon(testCase.status).color }"></i>
+                      <!-- INT-405：用例级执行/评估双徽章独立展示（替代原单值合成状态；图标/文案口径同 INT-301 taskStatusBadge 单一源） -->
+                      <span class="task-status exec-status-badge" :class="getCaseExecutionBadgeStatus(testCase)" :title="'执行状态'">
+                        <i class="fas task-indicator" :class="getExecutionBadgeIcon(getCaseExecutionBadgeStatus(testCase))"></i>
+                        {{ getExecutionStatusText(getCaseExecutionBadgeStatus(testCase)) }}
+                      </span>
+                      <span v-if="testCase.evaluationStatus" class="task-status eval-status-badge" :class="testCase.evaluationStatus" :title="'评估状态'">
+                        <i class="fas task-indicator" :class="getCaseEvaluationBadgeIcon(testCase.evaluationStatus)"></i>
+                        {{ getCaseEvaluationStatusText(testCase.evaluationStatus) }}
+                      </span>
                     </div>
                     <!-- INT-305：移除用例（执行详情模态窗四阶段全允许；点击不冒泡触发用例详情） -->
                     <button v-if="canRemoveCase"
@@ -300,7 +310,7 @@
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
                     <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
-                      {{ getCaseStatusLabel(testCase.status) }} ({{ testCase.duration || '' }})
+                      <span v-if="testCase.duration">{{ testCase.duration }}s</span>
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
@@ -314,7 +324,15 @@
                     </div>
                   </div>
                   <div class="progress-status flex items-center gap-2">
-                    <i :class="getCaseStatusIcon(testCase.status).icon" :style="{ color: getCaseStatusIcon(testCase.status).color }"></i>
+                    <!-- INT-405：用例级执行/评估双徽章独立展示（同平铺视图口径） -->
+                    <span class="task-status exec-status-badge" :class="getCaseExecutionBadgeStatus(testCase)" :title="'执行状态'">
+                      <i class="fas task-indicator" :class="getExecutionBadgeIcon(getCaseExecutionBadgeStatus(testCase))"></i>
+                      {{ getExecutionStatusText(getCaseExecutionBadgeStatus(testCase)) }}
+                    </span>
+                    <span v-if="testCase.evaluationStatus" class="task-status eval-status-badge" :class="testCase.evaluationStatus" :title="'评估状态'">
+                      <i class="fas task-indicator" :class="getCaseEvaluationBadgeIcon(testCase.evaluationStatus)"></i>
+                      {{ getCaseEvaluationStatusText(testCase.evaluationStatus) }}
+                    </span>
                     <!-- INT-305：标签/分组视图同款移除入口 -->
                     <button v-if="canRemoveCase"
                             class="case-remove-btn"
@@ -494,11 +512,15 @@ const handleRemoveCaseClick = (testCase) => {
 };
 
 // ===== INT-301：详情头双状态徽章（F3 收敛：图标/文案单一定义源 utils/taskStatusBadge.ts） =====
+// INT-405：用例行同源于该模块（getCase* 系列按用例执行/评估两维取值）
 import {
   getExecutionBadgeIcon,
   getExecutionStatusText,
   getEvaluationBadgeIcon,
   getEvaluationStatusText,
+  getCaseExecutionBadgeStatus,
+  getCaseEvaluationBadgeIcon,
+  getCaseEvaluationStatusText,
 } from '../../utils/taskStatusBadge';
 
 const formatLogTime = (timeStr) => {
@@ -540,8 +562,9 @@ const caseScrollContainer = ref(null);
 
 // 视图模式：'flat' 平铺 | 'tag' 标签视图 | 'group' 用例分组视图
 const caseViewMode = ref('flat');
-// 状态筛选：'all' 或具体状态
-const caseFilterStatus = ref('all');
+// INT-405：状态筛选按执行/评估两维独立（取值即徽章口径，见 statusOptions 单一源）
+const caseFilterExecution = ref('all');
+const caseFilterEvaluation = ref('all');
 // 分组展开状态
 const expandedCaseGroups = ref({});
 
@@ -552,34 +575,6 @@ const toggleCaseGroup = (key) => {
   };
 };
 
-// 状态 -> 图标 class
-const statusIconMap = {
-  completed: { icon: 'fas fa-check', color: 'var(--success-color)' },
-  in_progress: { icon: 'fas fa-spinner fa-spin', color: 'var(--warning-color)' },
-  calculating: { icon: 'fas fa-calculator', color: 'var(--info)' },
-  queued: { icon: 'fas fa-clock', color: 'var(--warning-color)' },
-  pending: { icon: 'fas fa-circle pending-dot', color: 'var(--text-disabled)' },
-  skipped: { icon: 'fas fa-forward', color: 'var(--warning-color)' },
-  deleted: { icon: 'fas fa-trash', color: 'var(--danger-color)' },
-  failed: { icon: 'fas fa-times', color: 'var(--danger-color)' },
-  stopped: { icon: 'fas fa-stop', color: 'var(--secondary-color)' }
-};
-
-const statusLabelMap = {
-  completed: '已完成',
-  failed: '已失败',
-  in_progress: '执行中',
-  calculating: '计算指标中',
-  queued: '排队中',
-  pending: '等待中',
-  skipped: '已跳过',
-  stopped: '已停止',
-  deleted: '已删除'
-};
-
-const getCaseStatusIcon = (status) => statusIconMap[status] || statusIconMap.pending;
-const getCaseStatusLabel = (status) => statusLabelMap[status] || '等待中';
-
 // 将 tags 归一为字符串数组
 const normalizeCaseTags = (tags) => {
   if (!tags) return [];
@@ -587,11 +582,38 @@ const normalizeCaseTags = (tags) => {
   return (tags || []).map((t) => t?.name || String(t || ''));
 };
 
-// 按状态筛选后的用例
+/**
+ * INT-405：用例执行/评估筛选选项（枚举驱动 + 徽章文案口径，对齐 INT-301 F1「展示即筛选」）。
+ * - value/matches = 后端 payload 原值（shared ExecutionStatus / EvaluationStatus 词汇）；
+ * - label = 行内双徽章文案（utils/taskStatusBadge 同源），保证「命中行的徽章文案 == 所选项」；
+ * - 评估侧 pending/queued 徽章文案同为「待评估」（§8.3），合并为一个选项（matches 承载多值）。
+ */
+const CASE_EXECUTION_FILTER_OPTIONS = [
+  { value: ExecutionStatus.PENDING, label: '待执行', matches: [ExecutionStatus.PENDING] },
+  { value: ExecutionStatus.QUEUED, label: '排队中', matches: [ExecutionStatus.QUEUED] },
+  { value: ExecutionStatus.RUNNING, label: '执行中', matches: [ExecutionStatus.RUNNING] },
+  { value: ExecutionStatus.COMPLETED, label: '已完成', matches: [ExecutionStatus.COMPLETED] },
+  { value: ExecutionStatus.STOPPED, label: '已停止', matches: [ExecutionStatus.STOPPED] },
+  { value: ExecutionStatus.FAILED, label: '执行失败', matches: [ExecutionStatus.FAILED] },
+]
+
+const CASE_EVALUATION_FILTER_OPTIONS = [
+  { value: EvaluationStatus.PENDING, label: '待评估', matches: [EvaluationStatus.PENDING, EvaluationStatus.QUEUED] },
+  { value: EvaluationStatus.RUNNING, label: '评估中', matches: [EvaluationStatus.RUNNING] },
+  { value: EvaluationStatus.CALCULATING, label: '计算中', matches: [EvaluationStatus.CALCULATING] },
+  { value: EvaluationStatus.COMPLETED, label: '已完成', matches: [EvaluationStatus.COMPLETED] },
+  { value: EvaluationStatus.STOPPED, label: '已停止', matches: [EvaluationStatus.STOPPED] },
+  { value: EvaluationStatus.FAILED, label: '评估失败', matches: [EvaluationStatus.FAILED] },
+]
+
+// 按执行/评估两维筛选后的用例（'all' 维度不参与过滤，两维取交集）
 const filteredAssociatedCases = computed(() => {
   const list = props.associatedCases || [];
-  if (caseFilterStatus.value === 'all') return list;
-  return list.filter((c) => c.status === caseFilterStatus.value);
+  const execOpt = CASE_EXECUTION_FILTER_OPTIONS.find(o => o.value === caseFilterExecution.value);
+  const evalOpt = CASE_EVALUATION_FILTER_OPTIONS.find(o => o.value === caseFilterEvaluation.value);
+  return list.filter((c) =>
+    (!execOpt || execOpt.matches.includes(c.executionStatus)) &&
+    (!evalOpt || evalOpt.matches.includes(c.evaluationStatus)));
 });
 
 // 按标签分组
@@ -637,8 +659,8 @@ const visibleCases = computed(() => {
 const caseTotalHeight = computed(() => filteredAssociatedCases.value.length * caseItemHeight);
 const caseOffset = computed(() => Math.max(0, caseStartIndex.value - 5) * caseItemHeight);
 
-// 视图或筛选变化时重置滚动位置
-watch([caseViewMode, caseFilterStatus], () => {
+// 视图或筛选变化时重置滚动位置（INT-405：筛选拆为执行/评估两维）
+watch([caseViewMode, caseFilterExecution, caseFilterEvaluation], () => {
   caseStartIndex.value = 0;
   if (caseScrollContainer.value) caseScrollContainer.value.scrollTop = 0;
 });
@@ -741,8 +763,14 @@ const scrollToBottom = () => {
   border: none;
 }
 
-/* 取值配色与 TaskCard.css 同源同值（int-301 F2/F3 统一 tokens 口径） */
+/* 取值配色与 TaskCard.css 同源同值（int-301 F2/F3 统一 tokens 口径）。
+   INT-405：用例评估域比任务评估域多 queued/running/calculating/stopped 四值
+   （shared EvaluationStatus），按语义并入既有色族——
+   进行中（evaluating/running/calculating）=indigo；待评估（pending/queued）=amber；
+   中断（stopped/skipped）=gray。 */
 .eval-status-badge.evaluating,
+.eval-status-badge.running,
+.eval-status-badge.calculating,
 .exec-status-badge.running,
 .exec-status-badge.in-progress{
   background-color: var(--color-indigo-100);
@@ -762,6 +790,7 @@ const scrollToBottom = () => {
 }
 
 .eval-status-badge.skipped,
+.eval-status-badge.stopped,
 .exec-status-badge.stopped,
 .exec-status-badge.skipped{
   background-color: var(--color-gray-100);
@@ -769,6 +798,7 @@ const scrollToBottom = () => {
 }
 
 .eval-status-badge.pending,
+.eval-status-badge.queued,
 .exec-status-badge.pending,
 .exec-status-badge.paused{
   background-color: var(--color-amber-100);

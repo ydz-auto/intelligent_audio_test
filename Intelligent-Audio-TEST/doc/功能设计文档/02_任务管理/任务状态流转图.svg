@@ -333,12 +333,12 @@
 
   <!-- 前端状态映射 -->
   <rect x="584" y="1334" width="608" height="232" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.2"/>
-  <text x="596" y="1356" class="lbl" fill="#991b1b">前端状态映射 — transformTestCaseStatus (statusUtils.ts)</text>
+  <text x="596" y="1356" class="lbl" fill="#991b1b">前端状态映射 — 执行/评估双徽章独立展示（原单值合成已废弃，下表仅历史参考）</text>
 
   <line x1="596" y1="1366" x2="1180" y2="1366" stroke="#e2e8f0" stroke-width="1"/>
   <text x="600" y="1384" class="lbl" fill="#475569">execution_status</text>
   <text x="800" y="1384" class="lbl" fill="#475569">evaluation_status</text>
-  <text x="1000" y="1384" class="lbl" fill="#475569">最终展示状态</text>
+  <text x="1000" y="1384" class="lbl" fill="#475569">（历史）合成展示状态</text>
   <line x1="596" y1="1392" x2="1180" y2="1392" stroke="#e2e8f0" stroke-width="1"/>
 
   <text x="600" y="1410" class="body">failed</text>

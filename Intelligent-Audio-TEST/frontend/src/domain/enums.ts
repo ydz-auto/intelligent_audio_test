@@ -57,14 +57,29 @@ export const ExecutionStatus = {
   STOPPED: 'stopped',
 } as const
 
-/** 用例评估状态枚举 */
+/** 用例评估状态枚举（值 = 后端 shared EvaluationStatus 原值，含停止中断评估 stopped） */
 export const EvaluationStatus = {
   PENDING: 'pending',
   QUEUED: 'queued',
   CALCULATING: 'calculating',
   RUNNING: 'running',
   COMPLETED: 'completed',
+  STOPPED: 'stopped',
   FAILED: 'failed',
+} as const
+
+/**
+ * 用例复合结果状态枚举（INT-405，值 = 后端 TaskCaseStatus 原值，禁止改动值）。
+ * 由后端 derive_task_case_status(execution_status, evaluation_status) 派生，
+ * 仅作筛选/行底色等数据口径，展示走执行/评估双徽章独立映射。
+ */
+export const TaskCaseStatus = {
+  PENDING: 'pending',
+  RUNNING: 'running',
+  EVALUATING: 'evaluating',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+  SKIPPED: 'skipped',
 } as const
 
 /** 测试类型枚举 */

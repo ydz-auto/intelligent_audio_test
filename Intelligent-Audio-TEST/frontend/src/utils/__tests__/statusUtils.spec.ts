@@ -1,110 +1,17 @@
 /**
- * statusUtils 单元测试 —— 用例状态/任务状态映射纯函数
+ * statusUtils 单元测试 —— 任务状态映射纯函数
  * 全部断言使用 domain/enums 枚举值，禁止魔法字符串（与实现一致）
+ *
+ * INT-405：用例级单值合成函数（执行+评估两维合成一个展示状态）已废弃删除
+ * （执行/评估双状态独立展示，见 utils/taskStatusBadge.ts + TaskCard.dualStatus.spec.ts）。
  */
 import { describe, it, expect } from 'vitest'
 import {
-  transformTestCaseStatus,
   transformTaskStatus,
   getStatusText,
   getStatusType,
 } from '../statusUtils'
 import { TaskStatus, ExecutionStatus, EvaluationStatus } from '@/domain/enums'
-
-describe('transformTestCaseStatus', () => {
-  it('全空输入 → 默认 pending 状态', () => {
-    const r = transformTestCaseStatus({})
-    expect(r.status).toBe(TaskStatus.PENDING)
-    expect(r.executionStatus).toBe(ExecutionStatus.PENDING)
-    expect(r.evaluationStatus).toBe(EvaluationStatus.PENDING)
-    expect(r.resultStatus).toBe(TaskStatus.PENDING)
-    expect(r.errorMessage).toBe('')
-  })
-
-  it('running 执行态映射为 in_progress', () => {
-    const r = transformTestCaseStatus({ executionStatus: TaskStatus.RUNNING })
-    expect(r.executionStatus).toBe(ExecutionStatus.IN_PROGRESS)
-    expect(r.status).toBe(ExecutionStatus.IN_PROGRESS)
-  })
-
-  it('queued 执行态保持 queued', () => {
-    const r = transformTestCaseStatus({ executionStatus: ExecutionStatus.QUEUED })
-    expect(r.status).toBe(ExecutionStatus.QUEUED)
-  })
-
-  it('failed 执行态优先级最高', () => {
-    const r = transformTestCaseStatus({
-      executionStatus: ExecutionStatus.FAILED,
-      evaluationStatus: EvaluationStatus.COMPLETED,
-    })
-    expect(r.status).toBe(ExecutionStatus.FAILED)
-  })
-
-  it('执行完成 + 评估完成 + 用例通过(passed) → completed', () => {
-    const r = transformTestCaseStatus({
-      executionStatus: ExecutionStatus.COMPLETED,
-      evaluationStatus: EvaluationStatus.COMPLETED,
-      status: 'passed',
-    })
-    // 'passed' 经 resultStatusMap 归一为 completed
-    expect(r.resultStatus).toBe(ExecutionStatus.COMPLETED)
-    expect(r.status).toBe(ExecutionStatus.COMPLETED)
-  })
-
-  it('执行完成 + 评估完成 + 结果失败 → failed', () => {
-    const r = transformTestCaseStatus({
-      executionStatus: ExecutionStatus.COMPLETED,
-      evaluationStatus: EvaluationStatus.COMPLETED,
-      resultStatus: ExecutionStatus.FAILED,
-    })
-    expect(r.status).toBe(ExecutionStatus.FAILED)
-  })
-
-  it('执行完成 + 评估排队中 → queued', () => {
-    const r = transformTestCaseStatus({
-      executionStatus: ExecutionStatus.COMPLETED,
-      evaluationStatus: EvaluationStatus.QUEUED,
-    })
-    expect(r.status).toBe(EvaluationStatus.QUEUED)
-  })
-
-  it('执行完成 + 评估计算中 → calculating', () => {
-    const r = transformTestCaseStatus({
-      executionStatus: ExecutionStatus.COMPLETED,
-      evaluationStatus: EvaluationStatus.CALCULATING,
-    })
-    expect(r.status).toBe(EvaluationStatus.CALCULATING)
-  })
-
-  it('执行完成 + 评估失败 → failed', () => {
-    const r = transformTestCaseStatus({
-      executionStatus: ExecutionStatus.COMPLETED,
-      evaluationStatus: EvaluationStatus.FAILED,
-    })
-    expect(r.status).toBe(EvaluationStatus.FAILED)
-  })
-
-  it('执行完成 + 评估 pending → evaluating（等待评估）', () => {
-    const r = transformTestCaseStatus({
-      executionStatus: ExecutionStatus.COMPLETED,
-    })
-    expect(r.status).toBe(TaskStatus.EVALUATING)
-  })
-
-  it('执行完成 + 评估 running → calculating', () => {
-    const r = transformTestCaseStatus({
-      executionStatus: ExecutionStatus.COMPLETED,
-      evaluationStatus: TaskStatus.RUNNING,
-    })
-    expect(r.evaluationStatus).toBe(EvaluationStatus.CALCULATING)
-    expect(r.status).toBe(EvaluationStatus.CALCULATING)
-  })
-
-  it('errorMessage 原样透传', () => {
-    const r = transformTestCaseStatus({ errorMessage: 'boom' })
-    expect(r.errorMessage).toBe('boom')
-  })
-})
 
 describe('transformTaskStatus', () => {
   it('running → in_progress', () => {

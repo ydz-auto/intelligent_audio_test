@@ -265,11 +265,10 @@ onUnmounted(() => {
 处理逻辑要点：
 - **taskId 过滤**：仅处理与当前任务匹配的进度消息，避免多任务串扰；
 - **终态回调**：`status === 'completed'` / `'failed'` 时各触发一次 `onCompleted` / `onFailed`；
-- **状态映射**：后端状态经 `frontend/src/utils/statusUtils.ts` 的 `transformTestCaseStatus` 转换为前端展示状态：
-  - `executionStatus`: `running → in_progress`（其余原样）；
-  - `evaluationStatus`: `running → calculating`（其余原样）；
-  - 复合展示状态优先级：执行失败 > 执行中 > 排队中 > 执行完成时按评估状态组合（`completed + pending → evaluating`、`completed + calculating → calculating`、`completed + completed → 取结果状态`）；
-- **计数重算**：存在 `testCases` 快照时，前端按映射后状态重算完成/进行中/失败/待执行计数与总进度（`completed / totalCount`）；无快照时才使用报文计数字段兜底；
+- **状态口径**（INT-405，负责人裁定 2026-10-15，INT-301 双徽章为准）：执行状态与评估状态两维**独立透传展示**，前端不再合成单值展示状态（原 `statusUtils.transformTestCaseStatus` 已废弃删除，见 `status_fields_relationship.md` §8.5 废弃注记）：
+  - `executionStatus` / `evaluationStatus`：取后端 payload 原值，徽章文案走 `utils/taskStatusBadge.ts` 单一源（§8.2 / §8.3 映射）；
+  - `status`：保留后端 `derive_task_case_status` 派生的复合结果态，仅供筛选/行底色等数据口径，不参与徽章展示；
+- **计数重算**：存在 `testCases` 快照时，前端按两维原值分桶（`utils/caseStatusSummary.ts` 单一源，completed=执行完成且评估完成）重算完成/进行中/失败/待执行计数与总进度（`completed / totalCount`）；无快照时才使用报文计数字段兜底；
 - **多轮进度**：消费 `roundProgress {current, total}` 更新用例轮次显示。
 
 ### 7.3 连接管理

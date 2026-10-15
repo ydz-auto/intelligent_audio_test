@@ -52,11 +52,11 @@ import { logsPort } from '@/composables/task/logsPort';
 import { useTaskProgress } from '../../../composables/task/useTaskProgress';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
 import { useNotification } from '../../../composables/modal/useNotification';
-import { transformTestCaseStatus } from '../../../utils/statusUtils';
+import { summarizeCaseStatuses } from '../../../utils/caseStatusSummary';
 import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
 import CherryPickDialog from './CherryPickDialog.vue';
 import type { Task, Log } from '../../../domain';
-import { TaskStatus, ExecutionStatus, EvaluationStatus } from '@/domain/enums';
+import { TaskStatus } from '@/domain/enums';
 
 const props = defineProps({
   taskId: {type: [String, Number], required: true}
@@ -316,16 +316,17 @@ async function fetchTaskDetails() {
 
   // Task 域类型为 camelCase，cases 为详情接口扩展字段（camelCase，无需转换）
   // INT-305：空数组也要覆盖（移除末例后刷新 cases=[]，length>0 守卫会把旧用例留在表里）
+  // INT-405：双状态独立透传（不再前端合成单值展示状态）；status 为后端
+  // derive_task_case_status 派生的复合结果态，仅供筛选/行底色等数据口径。
   if (Array.isArray(taskData.cases)) {
     associatedCases.value = taskData.cases.map((tc: any) => {
-      const transformed = transformTestCaseStatus(tc);
       return {
         id: tc.caseId || tc.id,
         name: tc.name,
-        status: transformed.status,
+        status: tc.status || '',
         duration: tc.duration || '',
-        executionStatus: transformed.executionStatus,
-        evaluationStatus: transformed.evaluationStatus,
+        executionStatus: tc.executionStatus || '',
+        evaluationStatus: tc.evaluationStatus || '',
         groupName: tc.groupName,
         tags: tc.tags,
         algorithmType: tc.algorithmType
@@ -337,26 +338,13 @@ async function fetchTaskDetails() {
     
     totalTestCases.value = associatedCases.value.length;
     
-    const caseList = associatedCases.value;
-    // 只计算真正完成的用例（status为completed且不是失败状态）
-    completedTests.value = caseList.filter((tc) => tc.status === ExecutionStatus.COMPLETED && tc.executionStatus !== ExecutionStatus.FAILED && tc.evaluationStatus !== EvaluationStatus.FAILED).length;
-    // 计算进行中的用例
-    inProgressTests.value = caseList.filter((tc) => 
-      tc.status === ExecutionStatus.IN_PROGRESS || 
-      tc.status === EvaluationStatus.CALCULATING ||
-      tc.status === ExecutionStatus.QUEUED
-    ).length;
-    // 计算执行失败的用例
-    executionFailedTests.value = caseList.filter((tc) => tc.executionStatus === ExecutionStatus.FAILED).length;
-    // 计算评估失败的用例
-    evaluationFailedTests.value = caseList.filter((tc) => tc.evaluationStatus === EvaluationStatus.FAILED && tc.executionStatus !== ExecutionStatus.FAILED).length;
-    // 计算待执行的用例
-    pendingTests.value = caseList.filter((tc) => 
-      tc.executionStatus === ExecutionStatus.PENDING && 
-      tc.evaluationStatus === EvaluationStatus.PENDING &&
-      tc.status !== ExecutionStatus.COMPLETED &&
-      tc.status !== ExecutionStatus.FAILED
-    ).length;
+    // INT-405：首屏计数收敛到双状态分桶单一源（与 useTaskProgress 同口径）
+    const summary = summarizeCaseStatuses(associatedCases.value);
+    completedTests.value = summary.completed;
+    inProgressTests.value = summary.inProgress;
+    executionFailedTests.value = summary.executionFailed;
+    evaluationFailedTests.value = summary.evaluationFailed;
+    pendingTests.value = summary.pending;
     // 重新计算总进度，只基于完成的用例
     if (totalTestCases.value > 0) {
       progressPercentage.value = Math.round((completedTests.value / totalTestCases.value) * 100);
@@ -603,24 +591,15 @@ async function removeCase(evt: RemoveCaseEvent) {
   }
 }
 
-/** 移除后基于现存用例重算本模态窗计数/进度（对齐 fetchTaskDetails 口径） */
+/** 移除后基于现存用例重算本模态窗计数/进度（INT-405：双状态分桶单一源，与 fetchTaskDetails 同口径） */
 function recountFromAssociatedCases() {
-  const caseList = associatedCases.value;
-  totalTestCases.value = caseList.length;
-  completedTests.value = caseList.filter((tc) => tc.status === ExecutionStatus.COMPLETED && tc.executionStatus !== ExecutionStatus.FAILED && tc.evaluationStatus !== EvaluationStatus.FAILED).length;
-  inProgressTests.value = caseList.filter((tc) =>
-    tc.status === ExecutionStatus.IN_PROGRESS ||
-    tc.status === EvaluationStatus.CALCULATING ||
-    tc.status === ExecutionStatus.QUEUED
-  ).length;
-  executionFailedTests.value = caseList.filter((tc) => tc.executionStatus === ExecutionStatus.FAILED).length;
-  evaluationFailedTests.value = caseList.filter((tc) => tc.evaluationStatus === EvaluationStatus.FAILED && tc.executionStatus !== ExecutionStatus.FAILED).length;
-  pendingTests.value = caseList.filter((tc) =>
-    tc.executionStatus === ExecutionStatus.PENDING &&
-    tc.evaluationStatus === EvaluationStatus.PENDING &&
-    tc.status !== ExecutionStatus.COMPLETED &&
-    tc.status !== ExecutionStatus.FAILED
-  ).length;
+  const summary = summarizeCaseStatuses(associatedCases.value);
+  totalTestCases.value = associatedCases.value.length;
+  completedTests.value = summary.completed;
+  inProgressTests.value = summary.inProgress;
+  executionFailedTests.value = summary.executionFailed;
+  evaluationFailedTests.value = summary.evaluationFailed;
+  pendingTests.value = summary.pending;
   progressPercentage.value = totalTestCases.value > 0
     ? Math.round((completedTests.value / totalTestCases.value) * 100)
     : 0;
