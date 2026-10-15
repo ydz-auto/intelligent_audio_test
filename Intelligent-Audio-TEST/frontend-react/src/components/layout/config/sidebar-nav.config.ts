@@ -6,6 +6,7 @@ import {
   FileText,
   Headphones,
   ListChecks,
+  MessagesSquare,
   Music,
   Settings,
   Smartphone,
@@ -14,7 +15,8 @@ import {
 import type { NavGroup } from '../types'
 
 /**
- * 控制台侧栏树（04_控制台.md §3.2 定稿：总览/测试执行/测试资产/管理 四组十项）。
+ * 控制台侧栏树（04_控制台.md §3.2 定稿：总览/测试执行/测试资产/管理 四组十项；
+ * 08_AI对话页.md §3.1 回写：新增「AI 工具」组 → 五组十一项）。
  * 权限码与图标均为规范定稿值；系统设置入口点击进入 drill-in 视图。
  */
 export const ROOT_SIDEBAR_NAV: NavGroup[] = [
@@ -82,6 +84,18 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
         title: '报告中心',
         url: '/reports',
         icon: FileBarChart,
+        requiredPermission: 'report:read',
+      },
+    ],
+  },
+  {
+    id: 'ai-tools',
+    title: 'AI 工具',
+    items: [
+      {
+        title: 'AI 对话',
+        url: '/ai-chat',
+        icon: MessagesSquare,
         requiredPermission: 'report:read',
       },
     ],
