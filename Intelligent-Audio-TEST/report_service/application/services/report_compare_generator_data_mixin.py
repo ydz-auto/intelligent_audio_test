@@ -39,6 +39,42 @@ class ReportCompareDataMixin:
         return tasks, None
 
     @staticmethod
+    def _collect_results_for_tasks(task_ids):
+        """按任务逐一解析结果来源并收集测试结果（INT-408）。
+
+        对比链路的任务结果收集：普通任务按自身 task_id 直查；cherry-pick 容器
+        按引用关系取源结果（result_id）；合并容器按 TaskMergeRelation 展开叶子
+        源任务。容器结果在内存中映射回请求任务列（只读解析，不改
+        test_results.task_id），保证对比矩阵容器列有数据、加权值非 0。
+        """
+        from report_service.application.services.task_result_resolver import (
+            resolve_cherry_pick_sources,
+            resolve_merge_source_task_ids,
+        )
+        from report_service.infrastructure.clients.grpc_clients import (
+            _grpc_get_test_results_by_ids,
+            _grpc_get_test_results_by_task_ids,
+        )
+
+        results = []
+        for tid in task_ids:
+            cherry = resolve_cherry_pick_sources(tid)
+            if cherry:
+                task_results = _grpc_get_test_results_by_ids(cherry['result_ids'])
+            else:
+                leaf_task_ids = resolve_merge_source_task_ids(tid, expand_leaves=True)
+                if leaf_task_ids:
+                    task_results = _grpc_get_test_results_by_task_ids(leaf_task_ids)
+                else:
+                    task_results = _grpc_get_test_results_by_task_ids([tid])
+            for r in task_results:
+                # 容器结果内存映射回请求任务列（引用方案 A 只读解析，不落库）
+                if isinstance(r, dict) and r.get('task_id') != tid:
+                    r = {**r, 'task_id': tid}
+                results.append(r)
+        return results
+
+    @staticmethod
     def _prepare_compare_data(tasks, task_ids, results):
         """准备对比数据。返回 (data_dict, None) 或 (None, error_message)。"""
         def _t_get(t, key, default=None):

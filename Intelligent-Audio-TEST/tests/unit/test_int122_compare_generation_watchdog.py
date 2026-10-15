@@ -450,8 +450,8 @@ class TestCompareSyncFlow:
             cmp_mod.ReportCompareGenerator, '_validate_and_get_tasks',
             staticmethod(lambda task_ids: ([{'id': 1}, {'id': 2}], None)))
         monkeypatch.setattr(
-            cmp_mod, '_grpc_get_test_results_by_task_ids',
-            lambda task_ids: [{'id': 11}])
+            cmp_mod.ReportCompareGenerator, '_collect_results_for_tasks',
+            staticmethod(lambda task_ids: [{'id': 11}]))
         monkeypatch.setattr(
             cmp_mod.ReportCompareGenerator, '_prepare_compare_data',
             staticmethod(lambda tasks, task_ids, results:
@@ -499,8 +499,8 @@ class TestCompareSyncFlow:
             cmp_mod.ReportCompareGenerator, '_validate_and_get_tasks',
             staticmethod(lambda task_ids: ([{'id': 1}], None)))
         monkeypatch.setattr(
-            cmp_mod, '_grpc_get_test_results_by_task_ids',
-            lambda task_ids: [{'id': 11}])
+            cmp_mod.ReportCompareGenerator, '_collect_results_for_tasks',
+            staticmethod(lambda task_ids: [{'id': 11}]))
         monkeypatch.setattr(
             cmp_mod.ReportCompareGenerator, '_prepare_compare_data',
             staticmethod(lambda tasks, task_ids, results: ({'source_cases': [], 'comparison_data': {}}, None)))

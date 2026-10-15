@@ -39,9 +39,6 @@ from report_service.application.services.report_compare_generator_data_mixin imp
 from report_service.application.services.report_compare_generator_secondary_mixin import ReportSecondaryDataMixin
 from report_service.application.services.report_compare_generator_persist_mixin import ReportComparePersistMixin
 from report_service.application.services.report_compare_helpers import ReportCompareHelpers
-from report_service.application.services.report_compare_helpers import (
-    _grpc_get_tasks_by_ids, _grpc_get_test_results_by_task_ids,
-)
 from report_service.application.services.report_task_generator import GenerationTracker, _thread_stack
 from report_service.application.services import report_task_generator as _gen_mod
 from report_service.config.config import Config
@@ -299,7 +296,9 @@ class ReportCompareGenerator(
             with _CompareStageSpan(track_id, GenerationStage.VALIDATE_TASK, '[compare]'):
                 tasks, error = ReportCompareGenerator._validate_and_get_tasks(task_ids)
                 if not error:
-                    results = _grpc_get_test_results_by_task_ids(task_ids)
+                    # INT-408：cherry-pick/合并容器任务按引用关系解析源结果
+                    # （容器自身无 test_results 行，直查按 task_id 恒空）
+                    results = ReportCompareGenerator._collect_results_for_tasks(task_ids)
             if error:
                 log_and_emit('ERROR', 'report',
                              f'[compare] 任务验证失败: {error}', task_id=track_id)

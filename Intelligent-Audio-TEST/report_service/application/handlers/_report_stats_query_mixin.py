@@ -98,7 +98,10 @@ class ReportStatsQueryMixin:
         Returns:
             tuple(task_ids_to_search, test_result) 或错误 dict
         """
-        from report_service.infrastructure.clients.grpc_clients import _grpc_get_test_results_by_task_ids
+        from report_service.infrastructure.clients.grpc_clients import (
+            _grpc_get_test_results_by_ids,
+            _grpc_get_test_results_by_task_ids,
+        )
 
         aggregate = self.repository.get_by_id(report_id)
         if aggregate is None:
@@ -108,18 +111,33 @@ class ReportStatsQueryMixin:
         if not task_id:
             return {'success': False, 'message': '该报告没有关联的任务ID'}
 
-        # 通过 gRPC 查询 TaskMergeRelation
+        # 通过 gRPC 查询 TaskMergeRelation / TaskCherryPickRelation（INT-408 接入挑选关系）：
+        # cherry-pick 容器日志目录在源任务前缀下，结果按引用 result_id 精确解析
         task_ids_to_search = [task_id]
+        cherry_result_ids = None
         try:
-            from report_service.infrastructure.clients.grpc_clients import _grpc_get_task_merge_relations
-            relations = _grpc_get_task_merge_relations(task_id)
-            if relations:
-                task_ids_to_search = [it.get('source_task_id') for it in relations]
+            from report_service.application.services.task_result_resolver import (
+                resolve_cherry_pick_sources,
+                resolve_merge_source_task_ids,
+            )
+            cherry = resolve_cherry_pick_sources(task_id)
+            if cherry:
+                task_ids_to_search = cherry['source_task_ids'] or [task_id]
+                cherry_result_ids = cherry['result_ids']
+            else:
+                source_task_ids = resolve_merge_source_task_ids(task_id)
+                if source_task_ids:
+                    task_ids_to_search = source_task_ids
         except Exception:
             logger.debug("gRPC 查询任务合并关系失败 task_id=%s", task_id, exc_info=True)
 
-        # 通过 gRPC 查询 TestResult（按 task_id 批量查询后客户端过滤 test_case_id）
-        all_test_results = _grpc_get_test_results_by_task_ids(task_ids_to_search)
+        # 通过 gRPC 查询 TestResult（容器按引用 result_id 直查；其余按 task_id 批量查询）
+        if cherry_result_ids:
+            all_test_results = _grpc_get_test_results_by_ids(cherry_result_ids)
+            if not all_test_results:
+                all_test_results = _grpc_get_test_results_by_task_ids(task_ids_to_search)
+        else:
+            all_test_results = _grpc_get_test_results_by_task_ids(task_ids_to_search)
         test_result = find_result_by_case_id(all_test_results, case_id)
 
         return task_ids_to_search, test_result
@@ -235,7 +253,7 @@ class ReportStatsQueryMixin:
     # ---- 平均值统计私有辅助 ----
 
     def _query_cases_for_averages(self, task_id: int, category, categories, tags, include_untagged):
-        """查询用例和结果（含任务解析、合并关系处理）。
+        """查询用例和结果（含任务解析、合并/挑选关系处理）。
 
         Args:
             task_id: 任务 ID
@@ -255,26 +273,37 @@ class ReportStatsQueryMixin:
             return {'success': False, 'message': '未找到指定任务'}
 
         # 差异#2 收尾：合并容器任务由 TaskMergeRelation(merged_task_id) 存在性判定（task.type 已废弃）
+        # INT-408：cherry-pick 容器任务 TaskCase 取自容器自身（下单已继承），
+        # 结果按引用关系直查 result_id（容器自身无 test_results 行）
         task_id_filter = task_id
         result_task_filter = task_id
+        cherry_result_ids = None
         try:
-            from report_service.infrastructure.clients.grpc_clients import _grpc_get_task_merge_relations
-            merge_relations = _grpc_get_task_merge_relations(task_id)
-            if merge_relations:
-                source_task_ids = [it.get('source_task_id') for it in merge_relations]
-                task_id_filter = source_task_ids
-                result_task_filter = source_task_ids
+            from report_service.application.services.task_result_resolver import (
+                resolve_cherry_pick_sources,
+                resolve_merge_source_task_ids,
+            )
+            cherry = resolve_cherry_pick_sources(task_id)
+            if cherry:
+                cherry_result_ids = cherry['result_ids']
+            else:
+                source_task_ids = resolve_merge_source_task_ids(task_id)
+                if source_task_ids:
+                    task_id_filter = source_task_ids
+                    result_task_filter = source_task_ids
         except Exception:
-            logger.debug("gRPC 查询合并任务关系失败 task_id=%s", task_id, exc_info=True)
+            logger.debug("gRPC 查询任务合并关系失败 task_id=%s", task_id, exc_info=True)
 
         filtered_case_ids, test_results = self._query_test_cases_and_results(
             task_id_filter, result_task_filter,
-            category, categories, tags, include_untagged
+            category, categories, tags, include_untagged,
+            cherry_result_ids=cherry_result_ids,
         )
         return task, filtered_case_ids, test_results
 
     def _query_test_cases_and_results(self, task_id_filter, result_task_filter,
-                                      category, categories, tags, include_untagged):
+                                      category, categories, tags, include_untagged,
+                                      cherry_result_ids=None):
         """查询测试用例和结果，返回 (filtered_case_ids, test_results)。
 
         Args:
@@ -284,6 +313,8 @@ class ReportStatsQueryMixin:
             categories: 分类列表
             tags: 标签列表
             include_untagged: 是否包含未标记用例
+            cherry_result_ids: cherry-pick 容器引用的源结果 id 列表
+                （INT-408；非空时结果按 result_id 直查，忽略 result_task_filter）
 
         Returns:
             tuple(filtered_case_ids, test_results)
@@ -293,18 +324,29 @@ class ReportStatsQueryMixin:
         )
         from report_service.infrastructure.clients.grpc_clients import (
             _grpc_list_testcases_by_ids,
+            _grpc_get_test_results_by_ids,
             _grpc_get_test_results_by_task_ids,
         )
 
         # 通过 gRPC 查询 TaskCase（获取 task 关联的 test_case_id 列表）
+        # 注意：TaskCase 载荷为 dict（含 test_case_id 等字段），须提取 id 再查
+        # TestCase（对齐 pre-DDD 版本 [tc.test_case_id for tc in task_cases]
+        # 与 report_data_builder_resource_mixin 同款口径；迁移回归曾直接透传 dict）
+        def _tc_ids(tc_rows):
+            out = []
+            for tc in tc_rows or []:
+                cid = tc.get('test_case_id') if isinstance(tc, dict) else getattr(tc, 'test_case_id', None)
+                if cid is not None:
+                    out.append(cid)
+            return out
+
         if isinstance(task_id_filter, list):
             all_tc_ids = set()
             for tid in task_id_filter:
-                tc_ids = _grpc_get_task_case_ids(tid)
-                all_tc_ids.update(tc_ids)
+                all_tc_ids.update(_tc_ids(_grpc_get_task_case_ids(tid)))
             test_case_ids = list(all_tc_ids)
         else:
-            test_case_ids = _grpc_get_task_case_ids(task_id_filter)
+            test_case_ids = _tc_ids(_grpc_get_task_case_ids(task_id_filter))
 
         # 通过 gRPC 批量查询 TestCase
         test_cases = _grpc_list_testcases_by_ids(test_case_ids) if test_case_ids else {}
@@ -314,8 +356,11 @@ class ReportStatsQueryMixin:
         filtered_case_ids = extract_case_ids(filtered_cases)
 
         # 通过 gRPC 查询 TestResult 并按 test_case_id 过滤
-        result_task_ids = result_task_filter if isinstance(result_task_filter, list) else [result_task_filter]
-        all_test_results = _grpc_get_test_results_by_task_ids(result_task_ids)
+        if cherry_result_ids:
+            all_test_results = _grpc_get_test_results_by_ids(cherry_result_ids)
+        else:
+            result_task_ids = result_task_filter if isinstance(result_task_filter, list) else [result_task_filter]
+            all_test_results = _grpc_get_test_results_by_task_ids(result_task_ids)
         test_results = filter_results_by_case_ids(all_test_results, filtered_case_ids)
 
         return filtered_case_ids, test_results
