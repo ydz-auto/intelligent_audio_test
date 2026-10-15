@@ -26,7 +26,7 @@
 | 13 | `13_个人中心.md` | INT-358 | B | ⏳ 待产出 |
 | 14 | `14_benchmark排行.md` | INT-359 | B | ✅ 产出 |
 | 15 | `15_报告域.md` | INT-360 | B | ⏳ 待产出 |
-| 16 | `16_设备域.md` | INT-361 | B | 🔨 进行中 |
+| 16 | `16_设备域.md` | INT-361 | B | ✅ 产出 |
 | 17 | `17_配置运维.md` | INT-362 | B | ⏳ 待产出 |
 
 > 待产出卡的导航/RBAC 口径先按本总表执行；卡产出后若与本总表冲突，以产出卡为细节源并回写本表勘误（变更记录见 §8）。
@@ -122,15 +122,15 @@
 | `/tasks` | 任务管理（四页签：全部/运行中/已发布/回收站） | `task:read` | AuthenticatedLayout | INT-354 ✅ |
 | `/tasks/$taskId` | 任务详情 | `task:read` | AuthenticatedLayout（drill 同项高亮） | INT-354 ✅ |
 | `/testcases` | 用例管理（双视图表格） | `testcase:read` | AuthenticatedLayout | INT-356 ✅ |
-| `/audio-import` | 音频管理（上传/列表/试听） | `audio:read` | AuthenticatedLayout | INT-361 🔨 |
-| `/devices` | 设备管理（被测/播放设备） | `device:read` | AuthenticatedLayout | INT-361 🔨 |
+| `/audio-import` | 音频管理（上传/列表/试听） | `audio:read` | AuthenticatedLayout | INT-361 ✅ |
+| `/devices` | 设备管理（被测/播放设备） | `device:read` | AuthenticatedLayout | INT-361 ✅ |
 | `/reports` | 报告中心（测试报告+历史报告页签） | `report:read` | AuthenticatedLayout | INT-360 ⏳ |
 | `/ai-chat` | AI 对话（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
 | `/report/$reportId` | 报告查看（详情页） | `report:read` | AuthenticatedLayout | INT-360 ⏳ |
 | `/logs` | 日志查看 | `log:read` | AuthenticatedLayout | INT-362 ⏳ |
 | `/AlgorithmConfig` | 算法配置（侧栏「测试域」组） | `algorithm:read` | AuthenticatedLayout | INT-362 ⏳（内容规范）；导航落位 INT-417 |
 | `/Evaluation` | 评估维度（侧栏「测试域」组） | `evaluation:read` | AuthenticatedLayout | INT-356 ✅（11_用例域 §4.1）；导航落位 INT-417 |
-| `/SPLMapping` | SPL 映射·物理+数字双口径（侧栏「测试域」组） | `spl:read`+`digital_spl:read` | AuthenticatedLayout | INT-361 🔨（内容规范）；导航落位 INT-417 |
+| `/SPLMapping` | SPL 映射·物理+数字双口径（侧栏「测试域」组） | `spl:read`+`digital_spl:read` | AuthenticatedLayout | INT-361 ✅（页面规范，16_设备域 §4）；导航落位 INT-417 |
 | `/TagManagement` | 标签管理（侧栏「测试域」组） | `tag:read` | AuthenticatedLayout | INT-356 ✅（11_用例域 §4.2）；导航落位 INT-417 |
 | `/profile` | 个人中心（用户自己的管理） | 登录即可（无权限码） | AuthenticatedLayout | INT-358 ⏳ |
 | `/system-settings/*` | 系统设置工作区（drill-in，§3.4 域树） | 入口：任一设置域权限（§3.4 集合）；域级再分域守卫 | AuthenticatedLayout（侧栏换树） | INT-347 ✅ / INT-362 ⏳ |
@@ -159,7 +159,7 @@
 | `/Evaluation` | evaluation:read | `/Evaluation` | **保留路由名**，INT-417 提升为侧栏「测试域」组一级直达项（原收编设置工作区方案废止，不留双入口）；内容规范=INT-356（11_用例域 §4.1 分区规范平移为页面规范）；路由不变无需 redirect |
 | `/Device` | device:read | `/devices` | 改名 redirect |
 | `/AudioImport` | audio:read | `/audio-import` | 改名 redirect |
-| `/SPLMapping` | spl:read | `/SPLMapping` | **保留路由名**，同上（含数字域 digital_spl 双口径）；内容规范=INT-361 |
+| `/SPLMapping` | spl:read | `/SPLMapping` | **保留路由名**，同上（含数字域 digital_spl 双口径）；内容规范=INT-361 ✅（16_设备域 §4） |
 | `/LogView` | log:read | `/logs` | 改名 redirect |
 | `/AlgorithmConfig` | algorithm:read | `/AlgorithmConfig` | **保留路由名**，同上；内容规范=INT-362（算法编辑模态窗全部数据 CRUD 重设计） |
 | `/TagManagement` | tag:read | `/TagManagement` | **保留路由名**，同上；内容规范=INT-356（11_用例域 §4.2） |
@@ -299,13 +299,13 @@
 | 端到端/API 测试 | 整页 `task:execute`；扫描设备 `device:control`；新增设备 `device:create`；API 连接测试 `api_config:test`；发布入口 `report:publish` | INT-355 §RBAC ✅ |
 | 任务管理 | 新建/批量/重试 `task:create/batch/execute`；导出 `task:export`；发布 `task:publish` | INT-354 §RBAC ✅ |
 | 用例管理 | 新建/编辑/复制/删除 `testcase:*`；导入导出 `testcase:import_export`；预览 `testcase:preview`；分组/标签写 `group:*/tag:*` | INT-356 §RBAC ✅ |
-| 设备管理 | device/playback 全链码（INT-361 落定） | INT-361 🔨（进行中） |
+| 设备管理 | device/playback/api_config 全链码 + spl/digital_spl（SPL 页）+ 监控告警族（INT-361 落定，16_设备域 §8） | INT-361 ✅ |
 | 报告中心 | 生成 `report:create`；发布 `report:publish`（tester ✗ / algo ✓）；删除 `report:delete`；对比 `report:compare` | INT-360 ⏳（沿用 §1.5 域矩阵） |
 | 日志查看 | 标记/清空/归档 `log:manage`（tester ✓ / algo ✗） | INT-362 ⏳（沿用 §1.5） |
 | 设置工作区 | 各域写码见 §3.4 表 | INT-347 §RBAC ✅（全量矩阵已出） |
-| 算法配置/评估维度/SPL 映射/标签管理（侧栏「测试域」组四页） | 算法：definition_manage/group_manage/param_manage/case_param_manage；评估：dim_manage/category_manage/import_export（+execute）；SPL：spl:*/digital_spl:*；标签：tag:*（五角色可见性结论与收编前一致，仅入口层级变化） | INT-362 ⏳（算法）/ INT-356 ✅（11_用例域 §RBAC）/ INT-361 🔨（SPL） |
+| 算法配置/评估维度/SPL 映射/标签管理（侧栏「测试域」组四页） | 算法：definition_manage/group_manage/param_manage/case_param_manage；评估：dim_manage/category_manage/import_export（+execute）；SPL：spl:*/digital_spl:*；标签：tag:*（五角色可见性结论与收编前一致，仅入口层级变化） | INT-362 ⏳（算法）/ INT-356 ✅（11_用例域 §RBAC）/ INT-361 ✅（SPL） |
 | Benchmark 排行 | 查询 `benchmark:ranking:read`；立即计算 `benchmark:ranking:compute`（现仅 admin） | INT-359 §RBAC ✅ |
-| 音频管理 | audio 全链码 | INT-361 🔨（进行中） |
+| 音频管理 | audio 全链码 | INT-361 ✅（16_设备域 §8.3） |
 
 ### 4.3 守卫行为统一口径（INT-357 拍板 + INT-346/347 落地）
 
@@ -400,3 +400,4 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 2026-10-15 | v1.1 | INT-344 产出后勘误回写：§0 文档地图 02 卡置「✅ 产出」；§3.2 右上角功能区次序定稿（切换器→搜索→通知→语言→主题→头像——对齐 newAPI app-header 实测相对次序）；§4.1 顶部导航项结果行修正（device_admin 4 项、guest 5 项含报告——guest 持 report:read 实测） |
 | 2026-10-15 | v1.2 | INT-415 产出后回写：§0 文档地图 08 行置「✅ 产出」；§2.1 新增 `/ai-chat` 路由行（`report:read`）；§3.3 侧栏树增「AI 工具」组「AI 对话」项→五组十一项；§4.1 新增 `/ai-chat` 可见性行（device_admin ✗、guest 只读）+ 侧栏树结果行更新（admin/tester/algo/device/guest = 11/10/8/2/3 项） |
 | 2026-10-15 | v1.3 | INT-417 负责人口径：**工作台侧栏新增「测试域」组**——§3.3 侧栏树增「测试域」组四项（算法配置 Box/评估维度 Gauge/SPL 映射 AudioWaveform/标签管理 Tags），终态**六组十五项**（组序=总览/AI 工具/测试执行/测试资产/测试域/管理；卡面「四组十项→五组」「七组十四项」计数系 INT-415 回补前口径，按总表现状收敛为六组十五项）；§2.1 增四路由行、§2.2 四行改「保留路由名+侧栏直达」（无需 redirect）、差异注记更新（11/16/17 卡落位收敛指引）；§3.4 设置树移除「算法配置」「测试配置」两域→四域、工作区守卫集合收窄为 user:read/role:read/auth:manage_provider/log:manage（algo_engineer/device_admin 不再可见设置工作区，tester 凭 log:manage 保持）；§4.1 增四页可见性行、`/system-settings/*` 行改写、侧栏树结果行重算（15/14/11/3/3——顺带修正原行 tester 记 10 实为 11 项、device_admin 记 2 实为 3 项的计数与括注不符）；§4.2 增四页指针行；§5.1 Models/System Settings 对位行同步；§6.2 实施清单、§7 #5 同步 |
+| 2026-10-15 | v1.4 | INT-361 产出后回写：§0 文档地图 16 卡置「✅ 产出」；§2.1 `/devices` `/audio-import` `/SPLMapping` 三行状态收敛（INT-361 ✅）；§4.2 设备管理行补 spl/digital_spl+监控告警族指针、SPL 指针行与音频管理行置 ✅（矩阵落点 16_设备域 §8）；`/SPLMapping` 落位=INT-417 保留现名独立页方案已由 16 卡 §4 按此出全量页面规范（原设置工作区分区口径未采用），`05_系统设置.md` §4.5 SPL 行与设置树「测试配置/SPL」残留待 INT-347 勘误 |
