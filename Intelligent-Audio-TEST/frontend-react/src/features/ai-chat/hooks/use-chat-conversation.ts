@@ -52,6 +52,18 @@ export function useChatConversation({
     []
   )
 
+  /** 错误消息「编辑后重发」：定位到上一条 user 消息进入编辑态（§3.4，照 playground error 操作语义） */
+  const handleEditPromptMessage = useCallback(
+    (message: ChatMessage) => {
+      const index = messages.findIndex((item) => item.key === message.key)
+      if (index < 0) return
+      const previousUser = getPreviousUserMessage(messages, index)
+      if (!previousUser) return
+      setEditingMessageKey(previousUser.key)
+    },
+    [messages]
+  )
+
   const handleEditOpenChange = useCallback((open: boolean) => {
     if (!open) setEditingMessageKey(null)
   }, [])
@@ -116,6 +128,7 @@ export function useChatConversation({
     handleSendMessage,
     handleRegenerateMessage,
     handleEditMessage,
+    handleEditPromptMessage,
     handleEditOpenChange,
     applyEdit,
     handleDeleteMessage,

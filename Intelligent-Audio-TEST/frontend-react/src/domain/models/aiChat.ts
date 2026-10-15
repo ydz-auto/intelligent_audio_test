@@ -65,12 +65,17 @@ export interface ChatMessage {
   sourceRefs?: ChatSourceRef[]
 }
 
-/** 报告上下文类型（对照 ReportListItem.type：test-report/compare-report/secondary-compare + 任务） */
+/**
+ * 报告上下文类型：
+ * - task/comparison/secondary_comparison 对照 ReportType 枚举（shared/models/common_enums.py 实测，
+ *   报告数据源 GET /reports 的 type 字段）；
+ * - task_context = GET /tasks 任务上下文（非报告，无 ReportType；「生成报告」入口语义）。
+ */
 export type ReportContextType =
-  | 'test-report'
-  | 'compare-report'
-  | 'secondary-compare'
   | 'task'
+  | 'comparison'
+  | 'secondary_comparison'
+  | 'task_context'
 
 export interface ReportContextOption {
   id: string

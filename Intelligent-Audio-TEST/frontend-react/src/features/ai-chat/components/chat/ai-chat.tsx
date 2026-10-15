@@ -33,7 +33,10 @@ type AiChatProps = {
   onEditMessage?: (message: ChatMessage) => void
   onDeleteMessage?: (message: ChatMessage) => void
   onUndoMessage?: (message: ChatMessage) => void
-  onSelectPrompt?: (prompt: string) => void
+  /** 空态 starter：回填输入框不自动发送（§3.3） */
+  onFillPrompt?: (prompt: string) => void
+  /** 错误消息操作组「编辑后重发」定位（§3.4） */
+  onEditPromptMessage?: (message: ChatMessage) => void
   isGenerating?: boolean
   editingKey?: string | null
   onCancelEdit?: (open: boolean) => void
@@ -48,7 +51,8 @@ export function AiChat({
   onEditMessage,
   onDeleteMessage,
   onUndoMessage,
-  onSelectPrompt,
+  onFillPrompt,
+  onEditPromptMessage,
   isGenerating = false,
   editingKey,
   onCancelEdit,
@@ -134,6 +138,9 @@ export function AiChat({
               errorActions={undefined}
               isSourceVisible={isSourceVisible}
               message={message}
+              onDeleteMessage={onDeleteMessage}
+              onEditPromptMessage={onEditPromptMessage}
+              onRetryMessage={onRegenerateMessage}
               versionContent={content}
             />
           )}
@@ -142,9 +149,9 @@ export function AiChat({
     )
   })
 
-  if (visibleMessages.length === 0 && onSelectPrompt) {
+  if (visibleMessages.length === 0 && onFillPrompt) {
     chatContent = [
-      <AiChatEmptyState key='empty' onSelectPrompt={onSelectPrompt} />,
+      <AiChatEmptyState key='empty' onFillPrompt={onFillPrompt} />,
     ]
   }
 

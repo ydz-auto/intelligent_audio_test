@@ -4,7 +4,7 @@
  * （工具行 / 报告上下文选择器 / 发送·停止）；移动端选择器独立行。
  */
 import { Send, Square } from 'lucide-react'
-import { type KeyboardEvent, useState } from 'react'
+import { type KeyboardEvent, type RefObject } from 'react'
 
 import {
   PromptInput,
@@ -37,6 +37,11 @@ type AiChatInputProps = {
   onClearMessages?: () => void
   onParameterEnabledChange: (key: ChatParameterKey, value: boolean) => void
   parameterEnabled: Record<ChatParameterKey, boolean>
+  /** 受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
+  value: string
+  onValueChange: (text: string) => void
+  /** 输入框聚焦句柄（starter 回填后聚焦） */
+  textareaRef?: RefObject<HTMLTextAreaElement | null>
 }
 
 export function AiChatInput({
@@ -53,31 +58,32 @@ export function AiChatInput({
   onClearMessages,
   onParameterEnabledChange,
   parameterEnabled,
+  value,
+  onValueChange,
+  textareaRef,
 }: AiChatInputProps) {
-  const [text, setText] = useState('')
-
   const { canSubmit, shouldShowStop } = getInputControlState({
     disabled,
     isGenerating,
     hasStopHandler: Boolean(onStop),
-    text,
+    text: value,
   })
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
-    const submittableText = getSubmittableInputText(text, disabled)
+    const submittableText = getSubmittableInputText(value, disabled)
     if (!submittableText) return
     onSubmit(submittableText)
-    setText('')
+    onValueChange('')
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
-      const submittableText = getSubmittableInputText(text, disabled)
+      const submittableText = getSubmittableInputText(value, disabled)
       if (!submittableText) return
       onSubmit(submittableText)
-      setText('')
+      onValueChange('')
     }
   }
 
@@ -126,11 +132,12 @@ export function AiChatInput({
           autoCorrect='off'
           className='min-h-20 px-5 pt-4 pb-3 leading-7 md:min-h-24 md:text-base'
           disabled={disabled}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => onValueChange(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder='描述你的报告需求，例如：帮我把任务 #320 的测试结果生成一份报告'
+          ref={textareaRef}
           spellCheck={false}
-          value={text}
+          value={value}
         />
 
         <PromptInputFooter className='border-border/60 bg-muted/20 dark:bg-muted/10 border-t px-3 py-2.5 backdrop-blur'>

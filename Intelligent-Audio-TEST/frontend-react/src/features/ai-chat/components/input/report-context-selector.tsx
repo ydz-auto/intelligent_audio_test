@@ -24,7 +24,10 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
 import type { ReportContextOption } from '@/domain/models/aiChat'
-import type { ReportContextGroup } from '@/features/ai-chat/hooks/use-report-context'
+import type {
+  ReportContextGroup,
+  ReportContextGroupType,
+} from '@/features/ai-chat/hooks/use-report-context'
 
 export type SelectedContext = {
   id: string
@@ -66,11 +69,16 @@ export function ReportContextSelector({
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  /** 左列类型钮过滤：点击过滤右列到该组；再点当前组回「全部」（§3.5 对位 ModelGroupSelector） */
+  const [activeGroup, setActiveGroup] = useState<ReportContextGroupType | null>(null)
 
   const filteredOptions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
-    if (!query) return groups
-    return groups
+    const base = activeGroup
+      ? groups.filter((group) => group.type === activeGroup)
+      : groups
+    if (!query) return base
+    return base
       .map((group) => ({
         ...group,
         options: group.options.filter((option) =>
@@ -80,7 +88,7 @@ export function ReportContextSelector({
         ),
       }))
       .filter((group) => group.options.length > 0)
-  }, [groups, searchQuery])
+  }, [groups, searchQuery, activeGroup])
 
   const handleSelect = (option: ReportContextOption) => {
     onSelect(option)
@@ -124,15 +132,22 @@ export function ReportContextSelector({
         <div className={cn('grid gap-1', LAYOUT.groupScroll)}>
           {groups.map((group) => {
             const isSelected = value?.type === group.type
+            const isActive = activeGroup === group.type
             return (
               <button
+                aria-pressed={isActive}
                 className={cn(
                   'flex min-w-0 items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-[12px] leading-4 transition-colors',
-                  isSelected
+                  isSelected || isActive
                     ? 'bg-primary/10 text-foreground'
                     : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                 )}
                 key={group.type}
+                onClick={() =>
+                  setActiveGroup((current) =>
+                    current === group.type ? null : group.type
+                  )
+                }
                 type='button'
               >
                 <span className='min-w-0 truncate font-medium'>

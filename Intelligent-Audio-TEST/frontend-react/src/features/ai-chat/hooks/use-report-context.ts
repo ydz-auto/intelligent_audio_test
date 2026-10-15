@@ -16,14 +16,16 @@ import {
 } from '@/infrastructure/mock/ai-chat-mock'
 
 const TYPE_BADGES: Record<ReportContextType, string> = {
-  'test-report': '测试报告',
-  'compare-report': '对比报告',
-  'secondary-compare': '二次对比',
-  task: '任务',
+  task: '测试报告',
+  comparison: '对比报告',
+  secondary_comparison: '二次对比',
+  task_context: '任务',
 }
 
+export type ReportContextGroupType = ReportContextType
+
 export type ReportContextGroup = {
-  type: ReportContextType
+  type: ReportContextGroupType
   label: string
   options: ReportContextOption[]
 }
@@ -36,8 +38,8 @@ export function useReportContext() {
     const reportOptions: ReportContextOption[] = MOCK_REPORTS.map((report) => ({
       id: String(report.id),
       label: report.name,
-      type: report.type as ReportContextType,
-      badge: TYPE_BADGES[report.type as ReportContextType] ?? '测试报告',
+      type: report.type,
+      badge: TYPE_BADGES[report.type] ?? '测试报告',
       description: report.description ?? undefined,
     }))
 
@@ -45,7 +47,7 @@ export function useReportContext() {
       ? MOCK_TASKS.map((task) => ({
           id: String(task.id),
           label: task.name,
-          type: 'task' as const,
+          type: 'task_context' as const,
           badge: '任务',
           description: `算法：${task.algorithm_type ?? '—'} · 状态：${task.status === 'completed' ? '已完成' : task.status}`,
         }))
@@ -53,24 +55,24 @@ export function useReportContext() {
 
     const groups: ReportContextGroup[] = [
       {
-        type: 'test-report',
+        type: 'task',
         label: '测试报告',
-        options: reportOptions.filter((item) => item.type === 'test-report'),
+        options: reportOptions.filter((item) => item.type === 'task'),
       },
       {
-        type: 'compare-report',
+        type: 'comparison',
         label: '对比报告',
-        options: reportOptions.filter((item) => item.type === 'compare-report'),
+        options: reportOptions.filter((item) => item.type === 'comparison'),
       },
       {
-        type: 'secondary-compare',
+        type: 'secondary_comparison',
         label: '二次对比',
         options: reportOptions.filter(
-          (item) => item.type === 'secondary-compare'
+          (item) => item.type === 'secondary_comparison'
         ),
       },
       {
-        type: 'task',
+        type: 'task_context',
         label: '任务',
         options: taskOptions,
       },

@@ -4,7 +4,7 @@
  * Agent 后端立项前整块隐藏（§3.6，入口钮不渲染）。
  */
 import { PanelRight } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 
@@ -50,12 +50,23 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     config,
     parameterEnabled,
     messages,
+    initialPrompt,
     isLoadingMessages,
     updateMessages,
     updateConfig,
     updateParameterEnabled,
     clearMessages,
   } = useChatState(initialContext)
+
+  /** 输入区受控文本（页面持有：starter 回填 / 任务 URL 预填 / 提交后清空） */
+  const [draftText, setDraftText] = useState(initialPrompt ?? '')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  /** 空态 starter：回填输入框并聚焦，不自动发送（§3.3） */
+  const handleFillPrompt = (prompt: string) => {
+    setDraftText(prompt)
+    textareaRef.current?.focus()
+  }
 
   const { sendChat, stopGeneration, isGenerating } = useChatHandler({
     config,
@@ -68,6 +79,7 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
     handleSendMessage,
     handleRegenerateMessage,
     handleEditMessage,
+    handleEditPromptMessage,
     handleEditOpenChange,
     applyEdit,
     handleDeleteMessage,
@@ -147,10 +159,11 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   onCancelEdit={handleEditOpenChange}
                   onDeleteMessage={handleDeleteMessage}
                   onEditMessage={handleEditMessage}
+                  onEditPromptMessage={handleEditPromptMessage}
+                  onFillPrompt={handleFillPrompt}
                   onRegenerateMessage={handleRegenerateMessage}
                   onSaveEdit={(content) => applyEdit(content, false)}
                   onSaveEditAndSubmit={(content) => applyEdit(content, true)}
-                  onSelectPrompt={handleSendMessage}
                   onUndoMessage={handleUndoMessage}
                 />
               </div>
@@ -167,8 +180,11 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
                   onSelectContext={handleSelectContext}
                   onStop={stopGeneration}
                   onSubmit={handleSendMessage}
+                  onValueChange={setDraftText}
                   parameterEnabled={parameterEnabled}
                   selectedContext={selectedContext}
+                  textareaRef={textareaRef}
+                  value={draftText}
                 />
               </div>
             </div>
@@ -193,10 +209,11 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               onCancelEdit={handleEditOpenChange}
               onDeleteMessage={handleDeleteMessage}
               onEditMessage={handleEditMessage}
+              onEditPromptMessage={handleEditPromptMessage}
+              onFillPrompt={handleFillPrompt}
               onRegenerateMessage={handleRegenerateMessage}
               onSaveEdit={(content) => applyEdit(content, false)}
               onSaveEditAndSubmit={(content) => applyEdit(content, true)}
-              onSelectPrompt={handleSendMessage}
               onUndoMessage={handleUndoMessage}
             />
           </div>
@@ -215,8 +232,11 @@ export function AiChatPage({ initialContext }: AiChatPageProps) {
               onSelectContext={handleSelectContext}
               onStop={stopGeneration}
               onSubmit={handleSendMessage}
+              onValueChange={setDraftText}
               parameterEnabled={parameterEnabled}
               selectedContext={selectedContext}
+              textareaRef={textareaRef}
+              value={draftText}
             />
           </div>
         </>

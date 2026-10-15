@@ -1,7 +1,8 @@
 /**
  * AI 对话会话状态（interfaces 层 hooks；照 newAPI use-playground-state 平移）。
  * config/messages/parameterEnabled 三态 + 500ms 防抖持久化（§3.7 本地三键）。
- * 首访无存档时播种演示会话（可视稿展示用）；「清空对话」后回规范空态。
+ * 首访无存档走规范空态（四 starter，§3.1/§3.3）；「清空对话」后同样回空态。
+ * URL 契约：/ai-chat?report={id} 绑定报告上下文、/ai-chat?task={id} 绑定任务上下文并预填指令（§3.7）。
  */
 import { useEffect, useRef, useState } from 'react'
 
@@ -15,7 +16,7 @@ import {
   DEFAULT_PARAMETER_ENABLED,
 } from '@/features/ai-chat/constants'
 import { aiChatPrefs } from '@/infrastructure/storage/aiChatPrefs'
-import { DEMO_MESSAGES, MOCK_REPORTS } from '@/infrastructure/mock/ai-chat-mock'
+import { MOCK_REPORTS } from '@/infrastructure/mock/ai-chat-mock'
 
 type InitialContext = {
   report?: string
@@ -39,7 +40,7 @@ function buildInitialConfig(context?: InitialContext): ChatConfig {
         ...DEFAULT_CONFIG,
         reportContextId: String(found.id),
         reportContextLabel: found.name,
-        reportContextType: 'test-report',
+        reportContextType: found.type,
       }
     }
   }
@@ -48,10 +49,20 @@ function buildInitialConfig(context?: InitialContext): ChatConfig {
       ...DEFAULT_CONFIG,
       reportContextId: String(taskId),
       reportContextLabel: `任务 #${taskId}`,
-      reportContextType: 'task',
+      reportContextType: 'task_context',
     }
   }
   return { ...DEFAULT_CONFIG }
+}
+
+/** URL 任务入口预填指令（§3.7：/ai-chat?task={id} 进入即预填「帮我把任务 #{id} 的测试结果生成一份报告」） */
+function buildInitialPrompt(context?: InitialContext): string | undefined {
+  const task = context?.task
+  const taskId = Number(task)
+  if (task && Number.isFinite(taskId)) {
+    return `帮我把任务 #${taskId} 的测试结果生成一份报告`
+  }
+  return undefined
 }
 
 export function useChatState(context?: InitialContext) {
@@ -63,8 +74,9 @@ export function useChatState(context?: InitialContext) {
   )
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     const saved = aiChatPrefs.loadMessages()
-    return saved && saved.length > 0 ? saved : DEMO_MESSAGES
+    return saved && saved.length > 0 ? saved : []
   })
+  const [initialPrompt] = useState(() => buildInitialPrompt(context))
   const [isLoadingMessages] = useState(false)
   const [isHydrated] = useState(true)
 
@@ -117,6 +129,7 @@ export function useChatState(context?: InitialContext) {
     config,
     parameterEnabled,
     messages,
+    initialPrompt,
     isLoadingMessages,
     updateMessages,
     updateConfig,

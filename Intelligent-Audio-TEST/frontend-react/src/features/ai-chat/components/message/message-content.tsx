@@ -37,6 +37,10 @@ type AiChatMessageContentProps = {
   isSourceVisible?: boolean
   message: ChatMessage
   versionContent: string
+  /** 错误消息操作组（§3.4：重试 / 编辑后重发 / 删除） */
+  onRetryMessage?: (message: ChatMessage) => void
+  onEditPromptMessage?: (message: ChatMessage) => void
+  onDeleteMessage?: (message: ChatMessage) => void
 }
 
 export function AiChatMessageContent({
@@ -46,6 +50,9 @@ export function AiChatMessageContent({
   isSourceVisible = false,
   message,
   versionContent,
+  onRetryMessage,
+  onEditPromptMessage,
+  onDeleteMessage,
 }: AiChatMessageContentProps) {
   const isUser = message.from === 'user'
   const isError = isErrorMessage(message)
@@ -126,9 +133,11 @@ export function AiChatMessageContent({
           <MessageError
             disabled={!isMessageFinal}
             errorCode={message.errorCode}
-            onDelete={undefined}
-            onEditPrompt={undefined}
-            onRetry={undefined}
+            onDelete={onDeleteMessage ? () => onDeleteMessage(message) : undefined}
+            onEditPrompt={
+              onEditPromptMessage ? () => onEditPromptMessage(message) : undefined
+            }
+            onRetry={onRetryMessage ? () => onRetryMessage(message) : undefined}
           />
           <MessageMetadata
             durationMs={message.durationMs}

@@ -13,11 +13,12 @@ import {
 import { useChatPermissions } from '@/application/ai-chat/useChatPermissions'
 
 type AiChatEmptyStateProps = {
-  onSelectPrompt: (prompt: string) => void
+  /** 点击 starter 只回填输入框并聚焦，不自动发送（§3.3） */
+  onFillPrompt: (prompt: string) => void
 }
 
 export function AiChatEmptyState({
-  onSelectPrompt,
+  onFillPrompt,
 }: AiChatEmptyStateProps) {
   const permissions = useChatPermissions()
   const permissionChecks: Record<string, boolean> = {
@@ -53,7 +54,7 @@ export function AiChatEmptyState({
             <Button
               className='h-auto min-h-11 justify-start gap-2 px-3 py-2.5 text-left whitespace-normal'
               key={key}
-              onClick={() => onSelectPrompt(prompt)}
+              onClick={() => onFillPrompt(prompt)}
               variant='outline'
             >
               <Icon className='text-muted-foreground size-4' />
