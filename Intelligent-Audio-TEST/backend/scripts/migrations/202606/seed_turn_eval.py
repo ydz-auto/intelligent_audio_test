@@ -107,6 +107,8 @@ MAIN_DIMENSION = {
         ('case_config', 'output', 'audios', 'played_audios', 'none'),
         ('case_config', 'output', 'background_noise', 'background_noise', 'none'),
         ('case_config', 'output', 'interferers', 'interferers', 'none'),
+        # 参考参数映射：每轮 query（用户提问文本），供轮次匹配 / 综合三分类使用
+        ('reference', 'output', 'query', 'query', 'none'),
     ],
 }
 

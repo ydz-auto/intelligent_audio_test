@@ -80,6 +80,9 @@ llm_judge:
     high_freq_llm_judge: ''
     false_takeover: ''
     reply_quality: ''
+    interruption_judge: ''
+    reject_judge: ''
+    env_judge: ''
   max_tokens: 4096
   temperature: 0.1
   timeout: 300
