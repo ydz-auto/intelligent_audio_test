@@ -430,6 +430,19 @@ class ReevaluationExecutor:
 
         finally:
             self._on_complete(task_id, success)
+            # 提交阶段收尾兜底：提交成功（评估在后台计算）但所有用例此刻已到终态
+            # （如无维度可提交、同步失败等）时，立即触发 maybe_finalize 收尾，
+            # 避免任务永久停留在 running
+            if success:
+                try:
+                    self.maybe_finalize(task_id)
+                except Exception as e:
+                    import traceback
+                    log_and_emit(
+                        'ERROR', 'reevaluator',
+                        f"重新评估提交后收尾检查异常: {e}\n{traceback.format_exc()}",
+                        task_id=task_id,
+                    )
 
     def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
                                reference_params_col=None, reevaluate_type=None):

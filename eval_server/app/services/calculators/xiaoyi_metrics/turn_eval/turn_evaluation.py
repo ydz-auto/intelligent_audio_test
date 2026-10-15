@@ -996,6 +996,10 @@ def _extract_round_queries(task_params: Optional[Dict[str, Any]]) -> List[str]:
     for rd in rounds:
         if isinstance(rd, dict):
             q = rd.get('query') or rd.get('round_query') or ''
+            # 兼容平台映射产物：reference 来源的 query 为 {'text': ..., 'json': []}
+            # （参考打断 interruptibility 的 unwrap 写法），先解包再取文本
+            if isinstance(q, dict) and 'text' in q:
+                q = q['text']
             queries.append(str(q).strip() if q else '')
         else:
             queries.append('')

@@ -26,9 +26,15 @@ class PayloadBuilder(EvaluationLoggerMixin):
             处理后的字段值
         """
         if isinstance(field_value, dict):
-            actual_value = field_value.get('value')
-            actual_type = field_value.get('field_type', field_type)
-            return self._process_field_by_type(actual_value, actual_type)
+            # {'value': ..., 'field_type': ...} 包装结构：解包后按实际类型递归处理
+            if 'value' in field_value:
+                actual_value = field_value.get('value')
+                actual_type = field_value.get('field_type', field_type)
+                return self._process_field_by_type(actual_value, actual_type)
+            # {'text': ..., 'json': ...} 查询/参考文本结构：直接取 text
+            if 'text' in field_value:
+                return field_value.get('text', '')
+            return field_value
 
         if field_type in ('audio', 'file'):
             if not field_value:

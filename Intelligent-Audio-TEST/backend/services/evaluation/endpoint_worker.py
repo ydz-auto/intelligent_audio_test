@@ -20,6 +20,26 @@ def get_app():
     return app
 
 
+def maybe_finalize_reevaluation(task_id):
+    """重新评估场景收尾兜底：用例评估到终态后，检查任务是否可收尾为 completed。
+
+    在评估结果处理的所有终态路径调用（含异步任务创建失败、无回调可注册的场景），
+    避免重新评估提交成功后因无回调触发而永久停留在 running。
+    普通执行引擎评估任务（running_task_id 不匹配）不受影响。
+    """
+    try:
+        from backend.services.execution.reevaluation_executor import ReevaluationExecutor
+        ReevaluationExecutor.get_instance().maybe_finalize(task_id)
+    except Exception as e:
+        import traceback
+        from backend.utils.web.log_handler import log_and_emit
+        log_and_emit(
+            'WARNING', 'reevaluator',
+            f"重新评估收尾检查异常: {e}\n{traceback.format_exc()}",
+            task_id=task_id,
+        )
+
+
 class EndpointWorker(EvaluationLoggerMixin):
     """
     端点Worker，负责消费端点任务队列并执行评估
@@ -364,6 +384,8 @@ class EndpointWorker(EvaluationLoggerMixin):
                     api_request_body=payload,
                     test_type=test_type
                 )
+                # 同步完成路径：用例可能已到终态，触发重新评估收尾（普通执行不受影响）
+                maybe_finalize_reevaluation(task_id)
             else:
                 error_msg = resp_data.get('__error__', '未知错误') if isinstance(resp_data, dict) else 'API 调用失败'
                 self.eval_service.result_processor.update_all_dimensions_in_group_failed(
@@ -374,6 +396,8 @@ class EndpointWorker(EvaluationLoggerMixin):
                     api_raw_response=resp_data,
                     api_request_body=payload
                 )
+                # 失败路径无回调可注册，直接触发收尾，避免任务永久停留在 running
+                maybe_finalize_reevaluation(task_id)
         except Exception as e:
             error_msg = f"评估维度组异常: {str(e)}\n{traceback.format_exc()}"
             self.eval_service.result_processor.update_all_dimensions_in_group_failed(
@@ -383,6 +407,7 @@ class EndpointWorker(EvaluationLoggerMixin):
                 test_case_id=test_case_id,
                 api_request_body=payload
             )
+            maybe_finalize_reevaluation(task_id)
 
     def _register_eval_callback(self, eval_task_id, selected_url, group_items, task_id,
                                 test_case_id, result_id, api_request_body, test_type):
@@ -392,15 +417,6 @@ class EndpointWorker(EvaluationLoggerMixin):
         复用与同步流程完全相同的处理器，保证结果口径一致。
         """
         processor = self.eval_service.result_processor
-
-        def _maybe_finalize_reeval():
-            """重新评估场景：用例评估到终态后，检查任务是否可收尾为 completed。
-            普通执行引擎评估任务（running_task_id 不匹配）不受影响。"""
-            try:
-                from backend.services.execution.reevaluation_executor import ReevaluationExecutor
-                ReevaluationExecutor.get_instance().maybe_finalize(task_id)
-            except Exception:
-                pass
 
         def on_complete(resp_data):
             processor.process_group_dimension_results(
@@ -412,7 +428,8 @@ class EndpointWorker(EvaluationLoggerMixin):
                 api_request_body=api_request_body,
                 test_type=test_type
             )
-            _maybe_finalize_reeval()
+            # 重新评估场景：用例评估到终态后，检查任务是否可收尾为 completed
+            maybe_finalize_reevaluation(task_id)
 
         def on_failed(error_message, api_raw_response=None):
             processor.update_all_dimensions_in_group_failed(
@@ -423,7 +440,8 @@ class EndpointWorker(EvaluationLoggerMixin):
                 api_raw_response=api_raw_response,
                 api_request_body=api_request_body
             )
-            _maybe_finalize_reeval()
+            # 重新评估场景：用例评估到终态后，检查任务是否可收尾为 completed
+            maybe_finalize_reevaluation(task_id)
 
         from backend.services.evaluation.eval_callback_registry import eval_callback_registry
         eval_callback_registry.register(eval_task_id, {

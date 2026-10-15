@@ -27,8 +27,10 @@ from app.services.calculators.xiaoyi_metrics.shared.constants import (
 logger = logging.getLogger(__name__)
 
 # 音频对齐 NCC 最低阈值：低于此值认为对齐位置不可信（FFT 互相关没找到真实位置，
-# 时间轴会被打乱，如把相隔几十秒的提问挤到一起），回退原始 user_wav 做 ASR/切轮
-ALIGN_NCC_MIN = 0.3
+# 时间轴会被打乱，如把相隔几十秒的提问挤到一起），回退原始 user_wav 做 ASR/切轮。
+# 注：NCC 略低于 0.3 时 FFT 仍能给出基本正确的定点（如 0.26~0.30），若不放行会导致
+# 多轮合并模式下话轮全部落到末轮（轮次归属失效）。取 0.2 作为兜底放行线。
+ALIGN_NCC_MIN = 0.2
 
 
 class TurnEvalCalculator(BaseCalculator):
