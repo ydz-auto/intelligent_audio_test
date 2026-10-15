@@ -128,6 +128,10 @@
 | `/ai-chat` | AI 对话（Agent 工作台：报告生成/对比/分析；单栏对话+报告工作模式双栏变体） | `report:read` | AuthenticatedLayout | INT-415 ✅ |
 | `/report/$reportId` | 报告查看（详情页） | `report:read` | AuthenticatedLayout | INT-360 ⏳ |
 | `/logs` | 日志查看 | `log:read` | AuthenticatedLayout | INT-362 ⏳ |
+| `/AlgorithmConfig` | 算法配置（侧栏「测试域」组） | `algorithm:read` | AuthenticatedLayout | INT-362 ⏳（内容规范）；导航落位 INT-417 |
+| `/Evaluation` | 评估维度（侧栏「测试域」组） | `evaluation:read` | AuthenticatedLayout | INT-356 ✅（11_用例域 §4.1）；导航落位 INT-417 |
+| `/SPLMapping` | SPL 映射·物理+数字双口径（侧栏「测试域」组） | `spl:read`+`digital_spl:read` | AuthenticatedLayout | INT-361 🔨（内容规范）；导航落位 INT-417 |
+| `/TagManagement` | 标签管理（侧栏「测试域」组） | `tag:read` | AuthenticatedLayout | INT-356 ✅（11_用例域 §4.2）；导航落位 INT-417 |
 | `/profile` | 个人中心（用户自己的管理） | 登录即可（无权限码） | AuthenticatedLayout | INT-358 ⏳ |
 | `/system-settings/*` | 系统设置工作区（drill-in，§3.4 域树） | 入口：任一设置域权限（§3.4 集合）；域级再分域守卫 | AuthenticatedLayout（侧栏换树） | INT-347 ✅ / INT-362 ⏳ |
 | `/rankings` | Benchmark 排行（公开数据页） | 页面公开；数据接口 `benchmark:ranking:read`；导航项按该码渲染 | PublicLayout | INT-359 ✅ |
@@ -152,18 +156,18 @@
 | `/report/:id` | report:read | `/report/$reportId` | 保留（benchmark 行内「查看报告」同落此页） |
 | `/report?id=` | report:read | `/report/$reportId` | query 入口 redirect 兼容 |
 | `/TestCaseManager` | testcase:read | `/testcases` | 改名 redirect |
-| `/Evaluation` | evaluation:read | `/system-settings/testing/evaluation`（URL 以 INT-347 落定为准） | 收编设置工作区「测试配置」域，旧链 redirect |
+| `/Evaluation` | evaluation:read | `/Evaluation` | **保留路由名**，INT-417 提升为侧栏「测试域」组一级直达项（原收编设置工作区方案废止，不留双入口）；内容规范=INT-356（11_用例域 §4.1 分区规范平移为页面规范）；路由不变无需 redirect |
 | `/Device` | device:read | `/devices` | 改名 redirect |
 | `/AudioImport` | audio:read | `/audio-import` | 改名 redirect |
-| `/SPLMapping` | spl:read | `/system-settings/testing/spl`（同上） | 收编设置工作区「测试配置」域 SPL 分区（含数字域 digital_spl），旧链 redirect |
+| `/SPLMapping` | spl:read | `/SPLMapping` | **保留路由名**，同上（含数字域 digital_spl 双口径）；内容规范=INT-361 |
 | `/LogView` | log:read | `/logs` | 改名 redirect |
-| `/AlgorithmConfig` | algorithm:read | `/system-settings/algorithm/…` | 收编设置工作区「算法配置」域，旧链 redirect |
-| `/TagManagement` | tag:read | `/system-settings/testing/tags` | 收编「测试配置」域标签分区，旧链 redirect |
+| `/AlgorithmConfig` | algorithm:read | `/AlgorithmConfig` | **保留路由名**，同上；内容规范=INT-362（算法编辑模态窗全部数据 CRUD 重设计） |
+| `/TagManagement` | tag:read | `/TagManagement` | **保留路由名**，同上；内容规范=INT-356（11_用例域 §4.2） |
 | `/OAuthProviders` | auth:manage_provider | `/system-settings/auth/oauth-providers` | 收编「认证设置」域，旧链 redirect |
 | `/AccountSettings` | （无权限码） | `/profile` | 并入个人中心，旧链 redirect |
 | `/:pathMatch(.*)*`（404） | 公开 | 根路由 `notFoundComponent` + `/404` | 五错误页全建（INT-357） |
 
-> 差异注记：INT-361 卡描述写于设置卡收编拍板前（含「声压级映射管理 /SPLMapping」独立页）；SPL 映射落位以已产出的 INT-346 §3.2（不进侧栏根导航）+ INT-347 §3.2（设置工作区「测试配置」域 SPL 分区，`spl:read`+`digital_spl:read`）为准，**INT-361 产出时按此收敛**——设备域卡出 SPL 分区内容规范、落设置工作区路由。
+> 差异注记（INT-417 后更新）：SPL 映射/评估维度/标签管理/算法配置四页自 INT-417 起为侧栏「测试域」组一级直达项（路由保留现名，INT-361 卡描述的「/SPLMapping 独立页」与此一致）；`11_用例域.md` 头注记与 §4 的 `/system-settings/testing/*` 路径、`16_设备域.md`/`17_配置运维.md` 两卡产出时的路由落位，均按本卡收敛（内容规范不变，仅落位改独立页、设置树对应分区移除）。
 
 ### 2.3 新增页（负责人 2026-10-14 拍板）
 
@@ -203,7 +207,7 @@
 
 **newAPI 右上角不引入项**：CheckinRewardsButton / WalletRechargeButton / SystemUpdateAction（签到/充值/系统更新——LLM 业务与部署形态特有）。
 
-### 3.3 工作台侧栏树（INT-346 §3.2 拍板，本卡汇总为总表口径；INT-415 产出后增「AI 工具」组→五组十一项，逐项权限过滤，空组整组隐藏）
+### 3.3 工作台侧栏树（INT-346 §3.2 拍板，本卡汇总为总表口径；INT-415 增「AI 工具」组、INT-417 增「测试域」组→**终态六组十五项**，逐项权限过滤，空组整组隐藏）
 
 | 组（SidebarGroupLabel） | 菜单项 | 路由 | 图标（lucide） | 可见性权限 |
 | --- | --- | --- | --- | --- |
@@ -216,10 +220,14 @@
 | 测试资产 | 音频管理 | `/audio-import` | Music | `audio:read` |
 | 测试资产 | 设备管理 | `/devices` | Headphones | `device:read` |
 | 测试资产 | 报告中心 | `/reports` | FileBarChart | `report:read` |
+| 测试域 | 算法配置 | `/AlgorithmConfig` | Box | `algorithm:read` |
+| 测试域 | 评估维度 | `/Evaluation` | Gauge | `evaluation:read` |
+| 测试域 | SPL 映射 | `/SPLMapping` | AudioWaveform | `spl:read`+`digital_spl:read`（与 INT-347 现口径一致；五角色中仅 device_admin 同时持有，与「任一」判定结果等价） |
+| 测试域 | 标签管理 | `/TagManagement` | Tags | `tag:read` |
 | 管理 | 日志查看 | `/logs` | FileText | `log:read` |
-| 管理 | 系统设置 | `/system-settings/site` | Settings | 任一设置域权限（§3.4 集合） |
+| 管理 | 系统设置 | `/system-settings/site` | Settings | 任一设置域权限（§3.4 集合，INT-417 收窄） |
 
-对位 newAPI `use-sidebar-data.ts` 四组（AI 工具/常规/个人/管理员）→ 本平台重排为总览/测试执行/测试资产/管理；算法配置/OAuth 提供方/评估维度/SPL 映射/标签管理五项**不进侧栏**（收编设置工作区，INT-347 拍板）；个人中心不走侧栏（头像下拉直达，对位 newAPI Profile 在「个人」组——本平台收进头像下拉，侧栏保持纯业务）。
+对位 newAPI `use-sidebar-data.ts` 四组（AI 工具/常规/个人/管理员）→ 本平台重排为**总览/AI 工具/测试执行/测试资产/测试域/管理**六组；**INT-417 拍板（负责人 2026-10-15 口径）**：算法配置/评估维度/SPL 映射/标签管理四项提升为侧栏「测试域」组一级直达项（组序居「测试资产」之后、「管理」之前；路由保留现名，设置树对应分区收敛移除，**不留双入口**）；OAuth 提供方仍收编设置工作区「认证设置」域（INT-347 口径不变）；个人中心不走侧栏（头像下拉直达，对位 newAPI Profile 在「个人」组——本平台收进头像下拉，侧栏保持纯业务）。
 
 ### 3.4 系统设置工作区 drill-in 树（INT-347 v1.1 拍板，URL `/system-settings/<域>/<分区>` 路径式；本卡汇总域级门槛）
 
@@ -230,11 +238,11 @@
 | 站点设置 | 站点信息/站点公告/导航模块 | admin（`user:read` 同级口径） | — |
 | 用户与权限 | 用户管理/角色权限管理 | `user:read`（或 role:read） | user:*/role:* 按钮级（user_bp/role_bp INT-30 端点实测） |
 | 认证设置 | 认证方式/OAuth 提供方 | `auth:manage_provider` 或 `user:read` | 提供方 CRUD：`auth:manage_provider` |
-| 算法配置 | 算法列表/分组管理 | `algorithm:read` | definition_manage / group_manage / param_manage（编辑模态窗全部数据 CRUD，INT-362） |
-| 测试配置 | 评估维度/SPL 映射（物理+数字）/标签管理 | `evaluation:read` / `spl:read`+`digital_spl:read` / `tag:read`（域入口=三者任一） | dim_manage / spl:create / tag:create 等 |
 | 配置运维 | 日志归档/API 健康等（INT-362 落定） | `log:manage`（或域内 read） | INT-362 |
 
-工作区级守卫 = 入口可见性同一集合：`hasAnyPermission('user:read','role:read','auth:manage_provider','algorithm:definition_manage','evaluation:dim_manage','tag:create','log:manage','spl:create','digital_spl:create')`，不满足 redirect `/403`（对齐 newAPI `system-settings/route.tsx:29` 超管守卫模式）。
+> 「外观与主题」「安全设置」两域（INT-347 v1.1 新增，见 `05_系统设置.md` §3.2）不在本表展开。**INT-417 收敛**：原「算法配置」「测试配置」两域自设置树移除——算法配置/评估维度/SPL 映射/标签管理四页提升为侧栏「测试域」组（§3.3），页面唯一入口=侧栏，不留双入口；设置树余 站点/用户与权限/认证/配置运维 四域（本表口径）。
+
+工作区级守卫 = 入口可见性同一集合：`hasAnyPermission('user:read','role:read','auth:manage_provider','log:manage')`，不满足 redirect `/403`（对齐 newAPI `system-settings/route.tsx:29` 超管守卫模式）。**INT-417 收窄**：`algorithm:definition_manage`/`evaluation:dim_manage`/`tag:create`/`spl:create`/`digital_spl:create` 五码随两域移出守卫集合——algo_engineer（原凭算法/测试配置域码）与 device_admin（原凭 spl:create）不再可见设置工作区；tester 凭 `log:manage`（配置运维域）保持可见。
 
 ### 3.5 全局算法切换器总口径（负责人 2026-10-14 拍板；跨卡契约，本卡固化）
 
@@ -242,7 +250,7 @@
 - **行为**：切换一次全局生效——写 Zustand 全局算法 store（INT-344 主案）；工作台各业务页**不再各自做算法筛选**，页面内算法筛选与全局切换联动。
 - **联动规则**（各卡已落地）：业务列表页（任务/用例/音频/设备/API/报告/日志）工具栏渲染**只读联动 chip**（Badge secondary + × 清空）；请求自动附 `algorithm_type`（store 非空时）。测试执行两页（INT-355）步骤0 算法选择**即写回全局**（「测试流程算法是业务步骤而非筛选器」）；页内不提供取消（清空唯一入口=导航栏切换器）；列表过滤空态给「更换算法」+「查看全部（临时解除，仅本页）」。
 - **可见性**：`algorithm:read`（切换器数据源=算法定义清单 `GET /algorithm/definitions`）——admin/tester/algo_engineer 显，device_admin/guest 隐藏（隐藏而非置灰）。**本卡拍板**，INT-344 落组件时对齐。
-- **不联动区**：工作台统计图表（`GET /tasks/stats` 无算法参数，全域视角，INT-346 口径注记）；设置工作区算法列表分区（展示全部算法并承担 CRUD 本体，切换器只读引用同一数据源）。
+- **不联动区**：工作台统计图表（`GET /tasks/stats` 无算法参数，全域视角，INT-346 口径注记）；算法配置页 `/AlgorithmConfig`（展示全部算法并承担 CRUD 本体，切换器只读引用同一数据源——INT-417 起为侧栏「测试域」组页面，原设置工作区算法列表分区已移出）。
 
 ### 3.6 导航渲染规则（全站统一）
 
@@ -270,13 +278,17 @@
 | `/reports` `/report/$id` | ✓ | ✓ | ✓ | ✗ | ✓（只读+对比） | ↗ /login |
 | `/ai-chat` AI 对话 | ✓ | ✓ | ✓ | ✗（无 report:read） | ✓（只读对话+对比，生成卡隐藏） | ↗ /login |
 | `/logs` | ✓ | ✓ | ✓ | ✗ | ✗ | ↗ /login |
+| `/AlgorithmConfig` 算法配置 | ✓ | ✓（read+case_param_manage） | ✓（全链） | ✗ | ✗ | ↗ /login |
+| `/Evaluation` 评估维度 | ✓ | ✓（全链含 execute） | ✓（无 execute，其余全链） | ✗ | ✗ | ↗ /login |
+| `/SPLMapping` SPL 映射 | ✓ | ✗ | ✗ | ✓（双域全链） | ✗ | ↗ /login |
+| `/TagManagement` 标签管理 | ✓ | ✓ | ✓（仅 read） | ✗ | ✗ | ↗ /login |
 | `/profile` 个人中心 | ✓ | ✓ | ✓ | ✓ | ✓ | ↗ /login |
-| `/system-settings/*` | ✓ 全域 | ✓（测试配置+算法只读/参数管理） | ✓（算法/测试配置域） | ✓（仅 SPL 分区） | ✗（入口集合不满足，整树隐藏） | ↗ /login |
+| `/system-settings/*` | ✓ 全域 | ✓（配置运维域——log:manage；算法配置/测试配置两域已移出） | ✗（守卫集合收窄后不满足，整树隐藏——原凭算法/测试配置域码） | ✗（原仅 SPL 分区——分区移出后整树隐藏） | ✗（不变，整树隐藏） | ↗ /login |
 | `/rankings` 页面本体 | ✓ | ✓（数据待 seed，§1.4） | ✓（同左） | ✗（无码，导航隐藏；URL 直达同样 403 数据） | ✗（同左） | ✓ 页面可达（数据 403→登录引导空态；导航项隐藏） |
 | `/user-guide` `/about` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 错误页五件 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 顶部导航项结果 | 六项全显 | 五项（无 Benchmark） | 五项（无 Benchmark） | 四项（主页/工作台/文档/关于——无报告、无 Benchmark） | 五项（主页/工作台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
-| 侧栏树结果 | 全部 11 项 | 10 项（AI 对话+总览+执行 3+资产 4+日志；设置入口✓） | 8 项（AI 对话+总览+任务管理（只读）+用例+音频+报告+日志；设置入口✓；无执行 2 项、无设备） | 2 项（工作台+设备管理；日志/其余隐藏） | 3 项（工作台+AI 对话+报告中心；「管理」组空→整组隐藏） | —（未登录不进壳） |
+| 侧栏树结果 | 全部 15 项（六组全显） | 14 项（总览+AI 对话+执行 3+资产 4+测试域 3〔算法配置/评估维度/标签管理〕+日志+设置〔log:manage 命中〕；SPL 映射隐藏） | 11 项（总览+AI 对话+任务管理（只读）+用例+音频+报告+测试域 3+日志；设置入口隐藏——守卫集合收窄后无剩余域权限；无执行 2 项、无设备、无 SPL） | 3 项（工作台+设备管理+SPL 映射；设置入口隐藏——spl:create 移出守卫集合） | 3 项（工作台+AI 对话+报告中心；「管理」「测试域」组空→整组隐藏） | —（未登录不进壳） |
 
 > AUTH_MODE=off：一切页面全放行全显（permissions=['*']，`authStore.ts` + `router/index.ts` 守卫实测）；`/login` 渲染开放模式 Alert（INT-357 §3.1）。
 
@@ -291,6 +303,7 @@
 | 报告中心 | 生成 `report:create`；发布 `report:publish`（tester ✗ / algo ✓）；删除 `report:delete`；对比 `report:compare` | INT-360 ⏳（沿用 §1.5 域矩阵） |
 | 日志查看 | 标记/清空/归档 `log:manage`（tester ✓ / algo ✗） | INT-362 ⏳（沿用 §1.5） |
 | 设置工作区 | 各域写码见 §3.4 表 | INT-347 §RBAC ✅（全量矩阵已出） |
+| 算法配置/评估维度/SPL 映射/标签管理（侧栏「测试域」组四页） | 算法：definition_manage/group_manage/param_manage/case_param_manage；评估：dim_manage/category_manage/import_export（+execute）；SPL：spl:*/digital_spl:*；标签：tag:*（五角色可见性结论与收编前一致，仅入口层级变化） | INT-362 ⏳（算法）/ INT-356 ✅（11_用例域 §RBAC）/ INT-361 🔨（SPL） |
 | Benchmark 排行 | 查询 `benchmark:ranking:read`；立即计算 `benchmark:ranking:compute`（现仅 admin） | INT-359 §RBAC ✅ |
 | 音频管理 | audio 全链码 | INT-361 🔨（进行中） |
 
@@ -315,10 +328,10 @@
 | Playground `/playground` | `features/playground` | 端到端测试 `/E2ETest` + API 测试 `/APITest` | 三段式全高布局 + 五步向导（INT-355） |
 | Usage Logs `/usage-logs/*` | `features/usage-logs` | 任务管理 `/tasks`（四页签+详情） | 双视图表格版式（INT-354） |
 | Users `/users` | `features/users` | 用例管理 `/testcases`（用户管理本体→设置工作区） | 表格版式基准（INT-356 / INT-347） |
-| Models `/models/*` | `features/models` | 算法配置域（设置工作区） | 分区注册器机制照搬（INT-347/362） |
+| Models `/models/*` | `features/models` | 算法配置页 `/AlgorithmConfig`（侧栏「测试域」组，INT-417） | 分区注册器机制照搬；页面版式与 CRUD 规范随 INT-362（原设置工作区「算法配置」域方案废止） |
 | Model Pricing `/pricing` | `features/model-pricing` | 报告中心/报告查看 | **版式对位**（模型价格页版式，负责人拍板；LLM 定价内容不引入）（INT-360） |
 | Rankings `/rankings` | `features/rankings` | Benchmark 排行 `/rankings` | 版式对位（官方排行榜页，负责人拍板）（INT-359） |
-| System Settings `/system-settings/*` | `features/system-settings` | 系统设置工作区 `/system-settings/*` | drill-in 机制+表单脏状态/离开守卫全套照搬；域树重排为本平台六域（INT-347） |
+| System Settings `/system-settings/*` | `features/system-settings` | 系统设置工作区 `/system-settings/*` | drill-in 机制+表单脏状态/离开守卫全套照搬；域树收敛为本平台四域（INT-347 拍板六域 → INT-417 移出「算法配置」「测试配置」两域→侧栏测试域组）（INT-347） |
 | Profile `/profile` | `features/profile` | 个人中心 `/profile` | 版式对位；并入现 `/AccountSettings`（INT-358） |
 | Security `/security` | `features/security` | 个人中心「账号安全」分区 | 并入 INT-358（待该卡确认） |
 | Auth（sign-in/sign-up/register/oauth） | `features/auth` | `/login` + `/register`（双页拆分） | auth-layout 版式；OAuth 回调契约保留（INT-357） |
@@ -360,7 +373,7 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 2. `_authenticated` 组壳 beforeLoad（未登录→login / 权限不足→/403?from）+ 各路由 meta 权限码 + `/system-settings` 两级守卫。
 3. `usePermissions` + 权限码常量表（domain）落地，替换 Vue authStore.hasPermission（语义不变）。
 4. 全局算法 Zustand store + 导航栏切换器（INT-344）+ 各业务页联动 chip（各卡已注明消费点）。
-5. 侧栏树四组十项 + 设置树注册器 + drill-in 返回工作台。
+5. 侧栏树六组十五项（INT-417 终态）+ 设置树注册器（四域）+ drill-in 返回工作台。
 6. TopNav 六项 + 右上角功能区 + PublicHeader（INT-344 一卡落全）。
 
 ---
@@ -373,7 +386,7 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 2 | 顶部导航「Benchmark 排行」文案统一（本表建议「排行榜」纯中文，红线④）vs INT-359 稿「Benchmark 排行」 | 待负责人/INT-344 定稿 | §3.1 |
 | 3 | 语言切换器保留交互位（默认中文），多语言包是否启用 | 待负责人确认 | §3.2 |
 | 4 | 顶部导航站点级模块开关（newAPI nav-modules enabled/requireAuth）是否纳入设置工作区 | 待后端立项 | §5.3 |
-| 5 | INT-361 卡描述含 `/SPLMapping` 独立页 vs INT-347/346 收编设置工作区拍板——产出时按后者收敛 | 流程对齐 | §2.2 注记 |
+| 5 | ~~INT-361 卡描述含 `/SPLMapping` 独立页 vs INT-347/346 收编设置工作区拍板~~ **已裁定（INT-417）**：算法配置/评估维度/SPL 映射/标签管理四项提升侧栏「测试域」组、路由保留现名——INT-361 卡描述与此一致；11/16/17 卡产出时按 §2.2 注记收敛落位 | 已裁定（INT-417） | §2.2 注记 |
 | 6 | 首页门槛从 `home:read` 改公开路由（数据接口仍持码），规模条未登录降级文案——负责人拍板过的口径复核 | 已拍板（INT-345），本表登记 | §2.2 |
 
 ---
@@ -386,3 +399,4 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 2026-10-15 | v1.1 | 负责人口径：**控制台更名工作台**——全表「控制台」字样逐处替换为「工作台」（§2.1 /dashboard 行、§3.2 顶部导航项、§3.3 侧栏树标题、§3.4 返回文案、§3.5 联动口径、§4 导航项结果行、§5 映射表、§6 实施清单）；路由 `/dashboard` 与侧栏结构不变，侧栏首项「工作台」与页面名并轨；02/03/04/05/08/09/10/11/12 各卡文档同步核改 |
 | 2026-10-15 | v1.1 | INT-344 产出后勘误回写：§0 文档地图 02 卡置「✅ 产出」；§3.2 右上角功能区次序定稿（切换器→搜索→通知→语言→主题→头像——对齐 newAPI app-header 实测相对次序）；§4.1 顶部导航项结果行修正（device_admin 4 项、guest 5 项含报告——guest 持 report:read 实测） |
 | 2026-10-15 | v1.2 | INT-415 产出后回写：§0 文档地图 08 行置「✅ 产出」；§2.1 新增 `/ai-chat` 路由行（`report:read`）；§3.3 侧栏树增「AI 工具」组「AI 对话」项→五组十一项；§4.1 新增 `/ai-chat` 可见性行（device_admin ✗、guest 只读）+ 侧栏树结果行更新（admin/tester/algo/device/guest = 11/10/8/2/3 项） |
+| 2026-10-15 | v1.3 | INT-417 负责人口径：**工作台侧栏新增「测试域」组**——§3.3 侧栏树增「测试域」组四项（算法配置 Box/评估维度 Gauge/SPL 映射 AudioWaveform/标签管理 Tags），终态**六组十五项**（组序=总览/AI 工具/测试执行/测试资产/测试域/管理；卡面「四组十项→五组」「七组十四项」计数系 INT-415 回补前口径，按总表现状收敛为六组十五项）；§2.1 增四路由行、§2.2 四行改「保留路由名+侧栏直达」（无需 redirect）、差异注记更新（11/16/17 卡落位收敛指引）；§3.4 设置树移除「算法配置」「测试配置」两域→四域、工作区守卫集合收窄为 user:read/role:read/auth:manage_provider/log:manage（algo_engineer/device_admin 不再可见设置工作区，tester 凭 log:manage 保持）；§4.1 增四页可见性行、`/system-settings/*` 行改写、侧栏树结果行重算（15/14/11/3/3——顺带修正原行 tester 记 10 实为 11 项、device_admin 记 2 实为 3 项的计数与括注不符）；§4.2 增四页指针行；§5.1 Models/System Settings 对位行同步；§6.2 实施清单、§7 #5 同步 |
