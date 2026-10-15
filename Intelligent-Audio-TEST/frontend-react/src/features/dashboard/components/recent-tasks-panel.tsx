@@ -77,7 +77,7 @@ export function RecentTasksPanel() {
           最近任务
         </span>
       }
-      description='最新创建的 5 个任务（视觉稿 mock 8 行，覆盖状态徽章五色）'
+      description='最新创建的 5 个任务'
       loading={loading}
       empty={empty}
       emptyMessage='发起第一次测试后，最近任务会显示在这里'

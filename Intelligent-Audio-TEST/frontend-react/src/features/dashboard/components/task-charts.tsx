@@ -1,18 +1,21 @@
 /**
- * ④ 任务统计图表区（#task-charts 锚点；04_控制台.md §3.7，自 /tasks 移交，本卡按视觉稿两图）：
- * 任务完成趋势（柱状/面积 + 粒度页签）+ 任务类型分布（饼图）。
+ * ④ 任务统计图表区（#task-charts 锚点；04_控制台.md §3.7，自 /tasks 移交三图卡）：
+ * 任务完成趋势（柱状/面积 + 粒度页签）+ 任务类型分布（饼图）+ 任务状态分布（饼图）。
  * 图表机制照 newAPI ModelCharts 全套：ThemeManager 门控 + key 整图重建 + 色板分档。
  */
 import { VChart } from '@visactor/react-vchart'
 import type { ISpec } from '@visactor/vchart'
-import { ChartNoAxesCombined, PieChart } from 'lucide-react'
+import { Activity, ChartNoAxesCombined, PieChart } from 'lucide-react'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import { useTaskDomainStats } from '@/application/dashboard/use-task-domain-stats'
 import type { TrendGranularity } from '@/application/dashboard/use-task-domain-stats'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getTaskTypeLabel } from '@/features/dashboard/constants'
+import {
+  getTaskStatusLabel,
+  getTaskTypeLabel,
+} from '@/features/dashboard/constants'
 import {
   buildDistributionPieSpec,
   buildTrendSpec,
@@ -61,7 +64,7 @@ function SegmentedButtonGroup<T extends string>(props: {
 }
 
 function ChartCardShell(props: {
-  tone: 'chart-1' | 'chart-4'
+  tone: 'chart-1' | 'chart-2' | 'chart-4'
   icon: ReactNode
   title: string
   actions?: ReactNode
@@ -136,6 +139,13 @@ export function TaskCharts() {
     return buildDistributionPieSpec(values, { chartRadius })
   }, [statsQuery.data?.type_counts, chartRadius])
 
+  const statusPieSpec = useMemo(() => {
+    const values = Object.entries(statsQuery.data?.status_counts ?? {}).map(
+      ([status, value]) => ({ type: getTaskStatusLabel(status), value })
+    )
+    return buildDistributionPieSpec(values, { chartRadius })
+  }, [statsQuery.data?.status_counts, chartRadius])
+
   return (
     <section className='flex flex-col gap-4'>
       <div id='task-charts' className='scroll-mt-20'>
@@ -180,6 +190,17 @@ export function TaskCharts() {
       >
         <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
           <ChartCanvas spec={typePieSpec} />
+        </div>
+      </ChartCardShell>
+
+      <ChartCardShell
+        tone='chart-2'
+        icon={<Activity />}
+        title='任务状态分布'
+        loading={statsQuery.isLoading}
+      >
+        <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
+          <ChartCanvas spec={statusPieSpec} />
         </div>
       </ChartCardShell>
     </section>

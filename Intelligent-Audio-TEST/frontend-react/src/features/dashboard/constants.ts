@@ -26,6 +26,11 @@ export function getTaskStatusMeta(status: string) {
   )
 }
 
+/** 状态键 → 中文名（图表/排行等仅需文案处复用；未知状态原样返回） */
+export function getTaskStatusLabel(status: string): string {
+  return TASK_STATUS_META[status]?.label ?? status
+}
+
 /** 任务类型派生分布 → 中文（04_控制台.md §3.7.2：e2e/api/mixed） */
 export const TASK_TYPE_LABELS: Record<string, string> = {
   e2e: '端到端测试',

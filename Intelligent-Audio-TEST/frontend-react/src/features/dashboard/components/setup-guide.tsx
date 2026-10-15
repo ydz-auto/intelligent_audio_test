@@ -313,9 +313,9 @@ const ALL_QUICK_ACTIONS: QuickAction[] = [
   {
     title: '评估维度',
     description: '维护评估维度与评分端点',
-    to: '/system-settings/testing/dimensions',
+    to: '/Evaluation',
     icon: Star,
-    requiredPermission: 'evaluation:dim_manage',
+    requiredPermission: 'evaluation:read',
   },
 ]
 

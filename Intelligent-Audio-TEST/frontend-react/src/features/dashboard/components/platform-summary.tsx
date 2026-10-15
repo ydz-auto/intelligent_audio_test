@@ -1,6 +1,7 @@
 /**
- * ② 平台概览卡（04_控制台.md §3.5，照 newAPI SummaryCards 双区版式）：
+ * ② 平台概览卡（04_控制台.md §3.6，照 newAPI SummaryCards 双区版式）：
  * 左区三枚 StatCard（任务总数/通过率/平均得分，mock + sparkline）+ 右区设备状态面板。
+ * sparkline mock 序列经 application hook 透出（useTaskQualityStats），feature 层不直触 infrastructure。
  */
 import { Link } from '@tanstack/react-router'
 import { ChartLine, ClipboardList, Music, Server, Star } from 'lucide-react'
@@ -16,10 +17,6 @@ import {
   CardStaggerItem as StaggerItem,
 } from '@/features/dashboard/components/page-transition'
 import { StatCard } from '@/features/dashboard/components/ui/stat-card'
-import {
-  MOCK_AVG_SCORE_TREND,
-  MOCK_PASS_RATE_TREND,
-} from '@/infrastructure/mock/dashboard-mock'
 import { cn } from '@/lib/utils'
 
 type HealthLevel = 'healthy' | 'caution' | 'critical' | 'none'
@@ -106,9 +103,7 @@ export function PlatformSummary() {
                 }
                 icon={ChartLine}
                 tone='accent-2'
-                sparkline={
-                  domainStatsQuery.isLoading ? undefined : MOCK_PASS_RATE_TREND
-                }
+                sparkline={qualityQuery.passRateTrend}
                 sparklineVariant='line'
                 loading={loading}
                 error={qualityQuery.isError}
@@ -124,9 +119,7 @@ export function PlatformSummary() {
                 }
                 icon={Star}
                 tone='accent-3'
-                sparkline={
-                  domainStatsQuery.isLoading ? undefined : MOCK_AVG_SCORE_TREND
-                }
+                sparkline={qualityQuery.averageScoreTrend}
                 sparklineVariant='line'
                 loading={loading}
                 error={qualityQuery.isError}
