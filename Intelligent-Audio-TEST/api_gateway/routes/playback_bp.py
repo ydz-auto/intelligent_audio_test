@@ -13,6 +13,12 @@ def get_all(_: None = require_permission('playback:read')):
     return to_response(PlaybackQueryService.get_all())
 
 
+# 字面路由必须先于动态路由 /{device_id} 注册，否则 /check-status 被捕获并解析 int 失败（INT-399）
+@router.get('/check-status')
+def check_status(_: None = require_permission('playback:read')):
+    return to_response(PlaybackQueryService.check_status())
+
+
 @router.get('/{device_id}')
 def get_one(device_id: int, _: None = require_permission('playback:read')):
     return to_response(PlaybackQueryService.get_one(device_id))
@@ -51,8 +57,3 @@ def test(device_id: int, _: None = require_permission('playback:control')):
 @router.post('/{device_id}/stop-test')
 def stop_test(device_id: int, _: None = require_permission('playback:control')):
     return to_response(PlaybackCommandService.stop_test(device_id))
-
-
-@router.get('/check-status')
-def check_status(_: None = require_permission('playback:read')):
-    return to_response(PlaybackQueryService.check_status())
