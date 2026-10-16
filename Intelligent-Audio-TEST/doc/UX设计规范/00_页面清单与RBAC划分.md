@@ -40,14 +40,14 @@
 | 角色 name | 中文名 | 对应业务角色 | 权限范围概要 | 权限点数 |
 | --- | --- | --- | --- | --- |
 | `admin` | 超级管理员 | — | `*` 超级通配（seed_rbac.py:341），含用户/角色/权限管理 | 全部 |
-| `tester` | 测试工程师（含测试主管） | 测试工程师+测试主管 | 任务全链（含 task:publish/export/import/cherry_pick）、已发布任务全链、用例/音频/分组/标签全链、api_config 全链、报告（read/create/update/delete/compare/download_log，**无 publish**）、评估全链、algorithm:read+case_param_manage、日志全链、device:read、home 全 | 67（实测） |
-| `algo_engineer` | 算法工程师（含质量负责人） | 算法工程师+质量负责人 | 报告（read/create/update/**publish**/compare/download_log）、评估（read/dim_manage/category_manage/import_export，**无 execute**）、算法全链（definition/group/param/case_param_manage）、**task:read + published_task:read**、testcase/audio/api_config/group/tag:read、log:read+websocket | 31（实测） |
+| `tester` | 测试工程师（含测试主管） | 测试工程师+测试主管 | 任务全链（含 task:publish/export/import/cherry_pick）、已发布任务全链、用例/音频/分组/标签全链、api_config 全链、报告（read/create/update/delete/compare/download_log，**无 publish**）、评估全链、algorithm:read+case_param_manage、日志全链、device:read、home 全、**benchmark 全 6 码（INT-429）** | 73（实测） |
+| `algo_engineer` | 算法工程师（含质量负责人） | 算法工程师+质量负责人 | 报告（read/create/update/**publish**/compare/download_log）、评估（read/dim_manage/category_manage/import_export，**无 execute**）、算法全链（definition/group/param/case_param_manage）、**task:read + published_task:read**、testcase/audio/api_config/group/tag:read、log:read+websocket、**benchmark 全 6 码（INT-429）** | 37（实测） |
 | `device_admin` | 设备管理员 | 设备管理员 | 被测设备/播放设备/SPL 物理/SPL 数字四域全链（read/create/update/delete/control）、home:read、sse:read；**无任务/用例/音频/报告/算法/日志** | 26（实测） |
 | `guest` | 游客 | — | report:read+report:compare、home:read、sse:read、认证五件；**不可看日志、无任何写操作** | 9（实测） |
 
 > 精确权限串以 `scripts/migrations/202608/seed_rbac.py:187-253`（TESTER_PERMS / ALGO_ENGINEER_PERMS / DEVICE_ADMIN_PERMS / GUEST_PERMS）为唯一事实源；`docs/RBAC权限划分.md` §4.1 矩阵为设计文档（seed 为落地源，两者不一致处以 seed 为准——如 task:publish/export/import、published_task:*\、digital_spl:*\ 仅见于 seed）。
 
-### 1.2 权限点结构（seed_rbac.py:46-168 实测，共 **101 个权限点 + `*` 通配，21 模块**）
+### 1.2 权限点结构（seed_rbac.py:46-168 实测，共 **107 个权限点 + `*` 通配，21 模块**）
 
 `资源:操作` 命名。本总表用到的页面门槛码全列：
 
@@ -60,6 +60,7 @@
 | device（5）/ playback（5）/ spl（5）/ digital_spl（4） | read/create/update/delete + control（playback 同构）/ test_tone（spl 专属） |
 | api_config（5） | read/create/update/delete/test |
 | report（7） | read/create/update/delete/publish/compare/download_log |
+| benchmark（6）（INT-429 补定义并授 tester+algo） | ranking:read/ranking:compute/baseline:read/baseline:write/baseline:publish/mapping:manage |
 | evaluation（5） | read/execute/dim_manage/category_manage/import_export |
 | algorithm（5） | read/definition_manage/group_manage/param_manage/case_param_manage |
 | group（4）/ tag（4） | read/create/update/delete |
@@ -76,12 +77,12 @@
 - 后端 `User.has_permission`：角色权限 → 用户附加权限（`user_permissions` granted=true 授予 / false 撤销）双层叠加；`*` 仅 admin。
 - AUTH_MODE 三态：`off`（后端注入 permissions=['*']，前端无 token 放行——开放模式）/ `dev`（可自助注册）/ `prod`。路由守卫、页面门槛、按钮显隐全部同一套权限函数（AUTH_MODE=off 时全显）。
 
-### 1.4 benchmark 权限码现状缺口（本卡实测发现，待后端立项）
+### 1.4 benchmark 权限码现状（INT-429 已落地）
 
-`api_gateway/routes/benchmark_bp.py` 全部端点已挂码：`benchmark:ranking:read`（排行/主体/指标映射查询）、`benchmark:ranking:compute`（立即计算）、`benchmark:baseline:read/write/publish`（数据源/基线）、`benchmark:mapping:manage`（映射写）。**但 `seed_rbac.py` 未定义任何 `benchmark:*` 权限点、未授任何角色**——现网仅 admin（`*` 通配）实际持有。影响与处置：
+`api_gateway/routes/benchmark_bp.py` 全部端点已挂码：`benchmark:ranking:read`（排行/主体/指标映射查询）、`benchmark:ranking:compute`（立即计算）、`benchmark:baseline:read/write/publish`（数据源/基线）、`benchmark:mapping:manage`（映射写）。**`seed_rbac.py` 已定义全部 6 码（INT-429，commit 8e5ab2e6）并授 tester 与 algo_engineer（全 6 码）**；guest / device_admin 未授；admin 经 `*` 通配持有。影响与处置：
 
-- 设计规范按「权限码存在」出（页面门槛 `benchmark:ranking:read`）；**seed 补授**（如 tester/algo_engineer/guest 是否授 ranking:read、谁授 compute）列**待后端立项**——补授前除 admin 外顶部导航「Benchmark 排行」项均隐藏（§4.1）。
-- 基线/映射管理写侧（baseline:write/publish、mapping:manage）归配置运维卡 INT-362 设置工作区分区，同样待 seed 立项。
+- 页面门槛 `benchmark:ranking:read` 对 admin/tester/algo_engineer 生效（顶部导航「Benchmark 排行」项按码渲染，§4.1）；guest/device_admin 无码 → 导航项隐藏、URL 直达数据 403 空态。
+- 基线/映射管理写侧（baseline:write/publish、mapping:manage）已授 tester/algo（INT-429）；其管理界面归配置运维卡 INT-362 设置工作区分区。原「seed 补授」待立项项已闭合（§7 #1 改注）。
 
 ### 1.5 角色权限速查（域 × 五角色，seed 实测压缩）
 
@@ -101,7 +102,7 @@
 | 首页 home | ✓ | read + refresh | 仅 read | 仅 read | 仅 read |
 | SSE | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 用户/角色/权限管理 | ✓（`*`） | — | — | — | — |
-| benchmark:* | ✓（`*`） | ⚠ 未 seed（§1.4） | ⚠ 未 seed | — | ⚠ 未 seed |
+| benchmark:* | ✓（`*`） | ✓ 全 6 码（INT-429） | ✓ 全 6 码 | — | — |
 
 ---
 
@@ -188,7 +189,7 @@
 | 主页 | `/` | 全员 | 公开门户；当前页高亮（activeProps `bg-accent text-foreground`） |
 | 工作台 | `/dashboard` | 登录即可（home:read；未登录为受限项——点击弹「需要登录」Dialog，5 秒倒计时跳 `/login?redirect=`，`public-header.tsx:486-524` 机制照搬） | INT-345/346 同口径 |
 | 报告 | `/reports`（展示页） | `report:read`（admin/tester/algo_engineer/guest；device_admin 隐藏） | **报告直达**（负责人口径）；INT-441 双入口：导航「报告」→ 展示页 `/reports`、侧栏「报告中心」→ 管理页 `/report-center`；INT-345 文案「报告」 |
-| Benchmark 排行 | `/rankings` | `benchmark:ranking:read`（现仅 admin，§1.4；未登录隐藏） | **benchmark 直达**；不进侧栏（公开数据页走 PublicLayout，对齐 newAPI rankings 不在侧栏） |
+| Benchmark 排行 | `/rankings` | `benchmark:ranking:read`（tester/algo_engineer 持码，INT-429；device_admin/guest/未登录隐藏） | **benchmark 直达**；不进侧栏（公开数据页走 PublicLayout，对齐 newAPI rankings 不在侧栏） |
 | 文档 | `/user-guide` | 全员 | 公开 |
 | 关于 | `/about` | 全员 | 公开 |
 
@@ -286,10 +287,10 @@
 | `/TagManagement` 标签管理 | ✓ | ✓ | ✓（仅 read） | ✗ | ✗ | ↗ /login |
 | `/profile` 个人中心 | ✓ | ✓ | ✓ | ✓ | ✓ | ↗ /login |
 | `/system-settings/*` | ✓ 全域 | ✓（运维设置域——log:manage；算法配置/测试配置两域已移出） | ✗（守卫集合收窄后不满足，整树隐藏——原凭算法/测试配置域码） | ✗（原仅 SPL 分区——分区移出后整树隐藏） | ✗（不变，整树隐藏） | ↗ /login |
-| `/rankings` 页面本体 | ✓ | ✓（数据待 seed，§1.4） | ✓（同左） | ✗（无码，导航隐藏；URL 直达同样 403 数据） | ✗（同左） | ✓ 页面可达（数据 403→登录引导空态；导航项隐藏） |
+| `/rankings` 页面本体 | ✓ | ✓（benchmark:ranking:read 已授，INT-429） | ✓（同左） | ✗（无码，导航隐藏；URL 直达同样 403 数据） | ✗（同左） | ✓ 页面可达（未登录数据 403→登录引导空态；导航项隐藏） |
 | `/user-guide` `/user-guide-api` `/about` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
 | 错误页五件 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓（公开） |
-| 顶部导航项结果 | 六项全显 | 五项（无 Benchmark） | 五项（无 Benchmark） | 四项（主页/工作台/文档/关于——无报告、无 Benchmark） | 五项（主页/工作台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
+| 顶部导航项结果 | 六项全显 | 六项全显（Benchmark 已授，INT-429） | 六项全显（同左） | 四项（主页/工作台/文档/关于——无报告、无 Benchmark） | 五项（主页/工作台/报告/文档/关于，无 Benchmark） | 主页/文档/关于 + 受限项弹登录 Dialog |
 | 侧栏树结果 | 全部 15 项（六组全显） | 14 项（总览+AI 对话+执行 3+资产 4+测试域 3〔算法配置/评估维度/标签管理〕+日志+设置〔log:manage 命中〕；SPL 映射隐藏） | 12 项（总览+AI 对话+任务管理（只读）+**执行 2（只读观察，INT-449）**+用例+音频+报告+测试域 3+日志；设置入口隐藏——守卫集合收窄后无剩余域权限；无设备、无 SPL） | 3 项（工作台+设备管理+SPL 映射；设置入口隐藏——spl:create 移出守卫集合） | 3 项（工作台+AI 对话+报告中心；「管理」「测试域」组空→整组隐藏） | —（未登录不进壳） |
 
 > AUTH_MODE=off：一切页面全放行全显（permissions=['*']，`authStore.ts` + `router/index.ts` 守卫实测）；`/login` 渲染开放模式 Alert（INT-357 §3.1）。
@@ -306,7 +307,7 @@
 | 日志查看 | 标记/清空/归档 `log:manage`（tester ✓ / algo ✗） | INT-362 ✅（17_配置运维 §9.2） |
 | 设置工作区 | 各域写码见 §3.4 表 | INT-347 §RBAC ✅（全量矩阵已出） |
 | 算法配置/评估维度/SPL 映射/标签管理（侧栏「测试域」组四页） | 算法：definition_manage/group_manage/param_manage/case_param_manage；评估：dim_manage/category_manage/import_export（+execute）；SPL：spl:*/digital_spl:*；标签：tag:*（五角色可见性结论与收编前一致，仅入口层级变化） | INT-362 ✅（算法，17_配置运维 §9.1）/ INT-356 ✅（11_用例域 §RBAC）/ INT-361 ✅（SPL） |
-| Benchmark 排行 | 查询 `benchmark:ranking:read`；立即计算 `benchmark:ranking:compute`（现仅 admin） | INT-359 §RBAC ✅ |
+| Benchmark 排行 | 查询 `benchmark:ranking:read`；立即计算 `benchmark:ranking:compute`（tester/algo_engineer 持码，INT-429） | INT-359 §RBAC ✅ |
 | 音频管理 | audio 全链码 | INT-361 ✅（16_设备域 §8.3） |
 
 ### 4.3 守卫行为统一口径（INT-357 拍板 + INT-346/347 落地）
@@ -367,7 +368,7 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 - **interfaces 层**：路由树（TanStack Router `routes/` 全目录——_public/_authenticated/_errors 组壳 + 页面路由）、四种布局壳组件、TopNav/AppSidebar/AppHeader、设置树注册器、导航项权限渲染组件。
 - **application 层**：`usePermissions`（hasPermission/hasAnyPermission 封装 + `/auth/me` 查询）、全局算法 store（Zustand，INT-344 契约：algorithm 全局态 + setAlgorithm/清除）、主题定制 hooks（基座卡）、侧栏视图解析 hook（use-sidebar-view 对位）、auth guards（useAuthGuards：登录/权限/反向守卫三分支）。
 - **infrastructure 层**：auth API client（login/register/oauth/me/refresh/encryption-key）、status/options API client、侧栏折叠 cookie 存取、主题 localStorage 存取、redirect 消毒纯函数（domain/lib）。
-- **domain 层**：权限码常量表（101 权限点 + `*` 枚举单一来源，对齐 seed）、角色枚举与中文名映射、路由 meta 权限契约（permission 码 ↔ 路由映射常量）。
+- **domain 层**：权限码常量表（107 权限点 + `*` 枚举单一来源，对齐 seed）、角色枚举与中文名映射、路由 meta 权限契约（permission 码 ↔ 路由映射常量）。
 
 ### 6.2 实施改造清单（供实施卡）
 
@@ -384,7 +385,7 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 
 | # | 事项 | 类型 | 出处 |
 | --- | --- | --- | --- |
-| 1 | benchmark 权限 seed 补授：tester/algo_engineer/guest 是否授 `benchmark:ranking:read`、谁授 `ranking:compute`、baseline/mapping 写码授谁 | 待后端立项 | §1.4 |
+| 1 | ~~benchmark 权限 seed 补授~~ **已落地（INT-429，commit 8e5ab2e6）**：6 码全定义并授 tester+algo_engineer（含 ranking:read/compute、baseline 三码、mapping:manage），guest/device_admin 未授 | 已落地（INT-429） | §1.4 |
 | 2 | 顶部导航「Benchmark 排行」文案统一（本表建议「排行榜」纯中文，红线④）vs INT-359 稿「Benchmark 排行」 | 待负责人/INT-344 定稿 | §3.1 |
 | 3 | 语言切换器保留交互位（默认中文），多语言包是否启用 | 待负责人确认 | §3.2 |
 | 4 | 顶部导航站点级模块开关（newAPI nav-modules enabled/requireAuth）是否纳入设置工作区 | 待后端立项 | §5.3 |
@@ -413,3 +414,4 @@ Channels（渠道）/ Keys（密钥）/ Redemption Codes（兑换码）/ Wallet�
 | 2026-10-16 | v1.10 | INT-430 前置审核观察项回写：报告域双入口 + 算法口径——§0 文档地图 15 卡归属标注 INT-360 产出 → INT-439 重做 v2.3（负责人 C）；§2.1 `/reports` 行改**展示页**（导航栏「报告」，弱管理，行操作仅查看/复制链接）+ 新增 `/report-center` 行（侧栏「报告中心」管理页，双页签+管理操作集中，INT-441）+ `/report/$reportId` 行归属改 INT-439；§2.2 `/test-reports` `/history-reports` redirect 目标改 `/report-center` 对应页签；§2.3 新增页补 `/report-center`；§3.1 顶部导航「报告」行补双入口口径；§3.2/§3.5 全局算法切换器补 INT-442 按路由显隐（`/reports` 展示页 `showGlobalAlgorithmSwitcher=false`、改「当前算法」大卡）；§3.3 侧栏「报告中心」路由改 `/report-center`；§4.1/§4.2/§5.1 报告相关行同步（展示/管理分工、指针改 15_报告域 §6/§2.1） |
 | 2026-10-16 | v1.11 | INT-388 前置审核（INT-349 文档页）放行条件 2 补登记：§2.1 新路由总表补 `/user-guide-api` 行（公开/RBAC/导航口径随 `/user-guide`，PublicLayout，INT-349 ✅）；§4.1 页面可见性矩阵 `/user-guide` `/about` 行并入 `/user-guide-api`——总控裁定保持 `/user-guide` + `/user-guide-api` 双公开路由（对齐 newAPI 两手册双路由实测）；§0 文档地图 07 行状态收敛 |
 | 2026-10-16 | v1.12 | INT-380 放行条件 6 勘误回写（algo_engineer 只读观察视图）：§4.1 `/E2ETest` `/APITest` 行 algo_engineer 由 ✗ 改 **✓（只读观察，INT-449）**——任务执行两页+任务详情对 algo_engineer 开放只读观察视图（URL 直达不再 /403，按钮/控制/提交隐藏，后端权限点 INT-449，口径=10_测试执行 §3.1.1/§7）；§4.1 侧栏树结果行 algo_engineer 10→**12** 项（补「执行 2（只读观察，INT-449）」）；§3.3 侧栏树「测试执行」两行可见性权限列补注（algo_engineer 只读观察，INT-449）；§4.2 端到端/API 测试指针行补注 |
+| 2026-10-16 | v1.13 | INT-429（8e5ab2e6）落地回写（总控放行条件 #1）：§1.1 tester 67→**73**、algo_engineer 31→**37**（均补 benchmark 全 6 码，INT-429 授）——device_admin 26/guest 9 已对；§1.2 权限点总数 101→**107**（107 实码 + `*`）、模块表补 benchmark（6）行；§1.4 重写为「benchmark 权限码现状（INT-429 已落地）」——原「缺口/待 seed 立项」撤销；§1.5 速查表 benchmark 行改「✓ 全 6 码（tester/algo）／—（device_admin/guest）」；§3.1/§4.1/§4.2 Benchmark 行改「tester/algo_engineer 持码」、顶部导航项结果行 tester/algo 五项→**六项全显**；§6.1 domain 权限点枚举 101→107；§7 #1 改注「已落地（INT-429）」 |
