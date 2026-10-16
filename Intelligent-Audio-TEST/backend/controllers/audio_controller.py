@@ -12,6 +12,7 @@ from sqlalchemy import cast, String, func
 from backend.models.models import Audio, Tag, AudioAnnotation, AudioTag, TestCase, TestCaseGroup, PlaybackDevice, UploadTask, UploadFile, UploadChunk
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
+from backend.utils.web.error_codes import ErrorCode
 from backend.utils.web.log_handler import log_not_emit
 from backend.utils.common.task_utils import has_running_e2e_tasks
 from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params_to_list
@@ -62,6 +63,12 @@ logger = logging.getLogger(__name__)
 
 # 上传建用例时，取不到目录/自定义分组上下文所落的默认分组名
 DEFAULT_UPLOAD_GROUP_NAME = '音频上传生成'
+
+# 分组名长度上限：与 TestCaseGroup.name（models.py 的 String(100)）对齐。
+# 分组名派生自用户上传时的目录名 / 自定义分组名，长度不受前端约束（Windows 单级
+# 目录名上限 255）；不在派生处拦住就会走到 DB 抛 StringDataRightTruncation，
+# 由 merge_chunks 的兜底 except 把原始 SQL 与参数回传客户端（VEGA-38 审计 P1）。
+GROUP_NAME_MAX_LENGTH = 100
 
 # 辅助函数：重试文件操作，解决 Windows 下的文件占用问题
 def retry_file_operation(func, *args, **kwargs):
@@ -1178,7 +1185,17 @@ class AudioController:
                         f'（group_name_type={group_name_type}, file_id={file_id}），'
                         f'落默认分组「{DEFAULT_UPLOAD_GROUP_NAME}」'
                     )
-            
+
+            # 分组名长度守卫：只在建用例时校验（不建用例时分组名用不上，不该因超长
+            # 目录名把音频上传本身也拦掉）。拦在派生处 = 五种来源一并覆盖，
+            # 不让超长名走到 TestCaseGroup 落库再抛 DB 截断错（VEGA-38 审计 P1）。
+            if create_test_case:
+                group_name_error = AudioController._check_group_name_length(effective_group_name)
+                if group_name_error:
+                    return error_response(
+                        group_name_error, code=ErrorCode.INVALID_PARAMS
+                    )
+
             prompt_device_id = validated.prompt_device_id
             prompt_source_language = validated.prompt_source_language
             prompt_target_language = validated.prompt_target_language
@@ -1844,6 +1861,35 @@ class AudioController:
         # NFKC 覆盖全角字母/数字/标点与全角空格 U+3000 → 半角
         normalized = unicodedata.normalize('NFKC', str(group_name))
         return re.sub(r'\s+', ' ', normalized).strip()
+
+    # 分组名长度守卫：超长返回明确的业务错误，不把 DB 的截断报错抛给客户端
+    @staticmethod
+    def _check_group_name_length(group_name):
+        """校验归一后的分组名长度是否超出 `TestCaseGroup.name` 的列长上限。
+
+        分组名可能直接来自用户目录名（前端 `folderGroupMappings` 默认取目录名本身），
+        长度不受任何约束。超长若放行，会在 `TestCaseGroup(name=...)` 落库时抛
+        `StringDataRightTruncation`，被 `merge_chunks` 的兜底 except 转成 400 并把
+        原始 SQL 语句与参数（含分组名）回传客户端；前端只看到「该文件失败」，用户
+        无从知道是目录名过长。
+
+        这里只做**拒绝**、不做截断：截断会让落库分组名与用户目录名不一致（正是
+        VEGA-38 要修的那类「界面上的名字 ≠ 落库的名字」），且两个长目录名可能被截
+        成同名而并组。
+
+        :param group_name: 归一后的分组名
+        :return: 合规返回 None；超长返回可直接用于 error_response 的中文提示
+        """
+        if not group_name or len(group_name) <= GROUP_NAME_MAX_LENGTH:
+            return None
+        logger.warning(
+            f'分组名超长被拒：长度 {len(group_name)} > {GROUP_NAME_MAX_LENGTH}，'
+            f'前 20 字符「{group_name[:20]}」'
+        )
+        return (
+            f'分组名过长（{len(group_name)} 字符，上限 {GROUP_NAME_MAX_LENGTH} 字符）：'
+            f'请缩短作为分组名的目录名或自定义分组名后重新上传'
+        )
 
     # 取一个分组内不冲突的用例名
     @staticmethod

@@ -149,8 +149,11 @@ class _UploadHarness:
         self.case_ids = []
         self.audio_ids = []
 
-    def upload(self, client, extra_payload, md5=None):
-        """构造秒传场景（total_chunks=0 + status=completed + 同 md5 音频已入库）"""
+    def upload(self, client, extra_payload, md5=None, expect_success=True):
+        """构造秒传场景（total_chunks=0 + status=completed + 同 md5 音频已入库）
+
+        :param expect_success: False 时不做 200 断言，原样返回响应对象（边界用例用）
+        """
         md5 = md5 or uuid.uuid4().hex
         audio = _make_audio(name=f'{RUN_TAG}_{md5[:6]}.wav', md5=md5)
         self.audio_ids.append(audio.id)
@@ -190,6 +193,8 @@ class _UploadHarness:
         with patch.object(audio_controller, 'db', _NoCommitDB(db)), patch(PATCH_REF_PARAMS):
             resp = client.post(self.ENDPOINT, json=payload)
 
+        if not expect_success:
+            return resp
         assert resp.status_code == 200, resp.get_json()
         data = resp.get_json()['data']
         assert data['instantUpload'] is True, data
@@ -433,5 +438,146 @@ class TestGroupNameFallbackChain:
                 {'groupNameType': 'root', 'customGroupName': ''},
             )
             assert harness.group_of(data) == ALGORITHM_TYPE
+        finally:
+            harness.cleanup()
+
+
+# ============================================================
+# 边界：分组名长度（审计 P1）
+# ============================================================
+
+# 与 TestCaseGroup.name 的 String(100) 对齐
+GROUP_NAME_MAX_LENGTH = 100
+# 超长分组名对应的请求体片段：DB 截断报错里会带上原始 SQL 与参数
+SQL_LEAK_MARKERS = (
+    'psycopg2',
+    'StringDataRightTruncation',
+    'INSERT INTO',
+    'UPDATE ',
+    'test_case_groups',
+)
+
+
+def _padded_name(total_length):
+    """构成长度恰为 total_length 的分组名（带本次运行 tag，避免撞历史残留）"""
+    prefix = f'VEGA38LEN_{RUN_TAG}_'
+    assert total_length >= len(prefix)
+    return prefix + 'G' * (total_length - len(prefix))
+
+
+class TestGroupNameLengthBoundary:
+    """分组名超出列长上限时必须给明确业务错误，而不是 DB 截断错裸奔
+
+    审计 P1：修复后 `effective_group_name` 可能是**用户目录名**
+    （前端 `folderGroupMappings` 默认取目录名本身，长度不受前端约束），
+    101 字符时原实现直接走到 `TestCaseGroup(name=...)` 抛
+    `StringDataRightTruncation`，被 `merge_chunks` 的兜底 except 转成 400 并把
+    原始 SQL 与参数（含分组名）回传客户端。
+
+    修法是**在派生处拒绝**（不截断——截断会让落库分组名与用户目录名不一致，
+    正是 VEGA-38 要修的那类问题，且两个长目录名可能被截成同名而并组）。
+    """
+
+    def test_group_name_at_limit_is_accepted(self, client, app):
+        """恰好 100 字符（列长上限）必须放行并落库"""
+        name = _padded_name(GROUP_NAME_MAX_LENGTH)
+        assert len(name) == GROUP_NAME_MAX_LENGTH
+        harness = _UploadHarness()
+        try:
+            data = harness.upload(
+                client,
+                {
+                    'groupNameType': 'root',
+                    'customGroupName': '',
+                    'testCaseConfig': {'groupName': name},
+                },
+            )
+            assert harness.group_of(data) == name
+        finally:
+            harness.cleanup()
+
+    def test_group_name_over_limit_rejected_with_business_error(self, client, app):
+        """101 字符（超 1）→ 明确业务错误，且不产生任何落库分组"""
+        name = _padded_name(GROUP_NAME_MAX_LENGTH + 1)
+        harness = _UploadHarness()
+        try:
+            resp = harness.upload(
+                client,
+                {
+                    'groupNameType': 'root',
+                    'customGroupName': '',
+                    'testCaseConfig': {'groupName': name},
+                },
+                expect_success=False,
+            )
+            assert resp.status_code == 400, resp.get_json()
+            body = resp.get_json()
+            assert body['code'] == 100, body          # ErrorCode.INVALID_PARAMS
+            assert body['success'] is False, body
+            assert '分组名过长' in body['message'], body
+            assert str(GROUP_NAME_MAX_LENGTH) in body['message'], body
+            # 被拦在建组之前：该分组名没有落库
+            assert not TestCaseGroup.query.filter_by(name=name).first()
+        finally:
+            harness.cleanup()
+
+    def test_overlong_group_name_does_not_leak_sql(self, client, app):
+        """超长被拦时响应体不得带原始 SQL / 驱动报错（审计 P1 的信息泄露面）"""
+        name = _padded_name(GROUP_NAME_MAX_LENGTH + 50)
+        harness = _UploadHarness()
+        try:
+            resp = harness.upload(
+                client,
+                {
+                    'groupNameType': 'root',
+                    'customGroupName': '',
+                    'testCaseConfig': {'groupName': name},
+                },
+                expect_success=False,
+            )
+            assert resp.status_code == 400, resp.get_json()
+            raw = resp.get_data(as_text=True)
+            for marker in SQL_LEAK_MARKERS:
+                assert marker not in raw, f'响应体泄露了 {marker!r}: {raw}'
+        finally:
+            harness.cleanup()
+
+    def test_overlong_custom_group_name_also_rejected(self, client, app):
+        """超长守卫覆盖全部来源：custom/folder 闸门打开的 customGroupName 同样被拦
+
+        （与分组级配置无关的独立来源；只守 tc_config 一条会留同一个洞）
+        """
+        name = _padded_name(GROUP_NAME_MAX_LENGTH + 1)
+        harness = _UploadHarness()
+        try:
+            resp = harness.upload(
+                client,
+                {'groupNameType': 'custom', 'customGroupName': name},
+                expect_success=False,
+            )
+            assert resp.status_code == 400, resp.get_json()
+            assert '分组名过长' in resp.get_json()['message']
+            assert not TestCaseGroup.query.filter_by(name=name).first()
+        finally:
+            harness.cleanup()
+
+    def test_overlong_group_name_without_create_test_case_still_uploads(self, client, app):
+        """不建用例时分组名用不上 → 超长目录名不得把音频上传本身也拦掉"""
+        name = _padded_name(GROUP_NAME_MAX_LENGTH + 1)
+        harness = _UploadHarness()
+        try:
+            resp = harness.upload(
+                client,
+                {
+                    'groupNameType': 'root',
+                    'customGroupName': '',
+                    'testCaseConfig': {'groupName': name},
+                    'createTestCase': False,
+                },
+                expect_success=False,
+            )
+            # createTestCase 在 extra_payload 之后展开，覆盖掉 upload() 里的默认 True
+            assert resp.status_code == 200, resp.get_json()
+            assert not resp.get_json()['data'].get('testCaseId')
         finally:
             harness.cleanup()
