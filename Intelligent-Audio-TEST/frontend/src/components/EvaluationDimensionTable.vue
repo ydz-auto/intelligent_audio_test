@@ -77,30 +77,43 @@
           <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
           <td class="dimension-actions-col">
             <div class="action-buttons">
-              <button class="btn btn-text btn-info" :disabled="!canMoveUp(dimension)" @click.stop="emit('move', { id: dimension.id, direction: -1 })" title="上移">
-                <i class="fas fa-arrow-up btn-icon"></i>
-                上移
-              </button>
-              <button class="btn btn-text btn-info" :disabled="!canMoveDown(dimension)" @click.stop="emit('move', { id: dimension.id, direction: 1 })" title="下移">
-                <i class="fas fa-arrow-down btn-icon"></i>
-                下移
-              </button>
-              <button class="btn btn-text btn-primary" @click.stop="emit('edit', dimension.id)">
-                <i class="fas fa-edit btn-icon"></i>
-                编辑
-              </button>
-              <button v-if="dimension._level === 0" class="btn btn-text btn-success" @click.stop="emit('add-sub', { id: dimension.id, categoryId: dimension.categoryId })" title="为当前主维度添加子维度">
-                <i class="fas fa-plus btn-icon"></i>
-                添加子维度
-              </button>
-              <button class="btn btn-text btn-info" @click.stop="emit('test-api', dimension.id)">
-                <i class="fas fa-heartbeat btn-icon"></i>
-                测试API
-              </button>
-              <button class="btn btn-text btn-danger" @click.stop="emit('delete', dimension.id)">
-                <i class="fas fa-trash btn-icon"></i>
-                删除
-              </button>
+              <!-- INT-536：私有维度非 owner（含 admin 豁免见 canEditResource）隐藏操作入口 -->
+              <template v-if="canEditResource(dimension)">
+                <button class="btn btn-text btn-info" :disabled="!canMoveUp(dimension)" @click.stop="emit('move', { id: dimension.id, direction: -1 })" title="上移">
+                  <i class="fas fa-arrow-up btn-icon"></i>
+                  上移
+                </button>
+                <button class="btn btn-text btn-info" :disabled="!canMoveDown(dimension)" @click.stop="emit('move', { id: dimension.id, direction: 1 })" title="下移">
+                  <i class="fas fa-arrow-down btn-icon"></i>
+                  下移
+                </button>
+                <button class="btn btn-text btn-primary" @click.stop="emit('edit', dimension.id)">
+                  <i class="fas fa-edit btn-icon"></i>
+                  编辑
+                </button>
+                <!-- INT-536（D4）：维度可见性切换——走 PATCH /evaluation/dimensions/{id}/visibility
+                     （需 evaluation:share + owner 校验），切换成功重取列表即时刷新徽标 -->
+                <button
+                  class="btn btn-text btn-info"
+                  :title="dimension.visibility === 'private' ? '将维度改为共享（所有有权限用户可见）' : '将维度设为私有（仅创建者和管理员可见）'"
+                  @click.stop="emit('toggle-visibility', dimension.id)"
+                >
+                  <i class="fas" :class="dimension.visibility === 'private' ? 'fa-users' : 'fa-lock'"></i>
+                  {{ dimension.visibility === 'private' ? '设为共享' : '设为私有' }}
+                </button>
+                <button v-if="dimension._level === 0" class="btn btn-text btn-success" @click.stop="emit('add-sub', { id: dimension.id, categoryId: dimension.categoryId })" title="为当前主维度添加子维度">
+                  <i class="fas fa-plus btn-icon"></i>
+                  添加子维度
+                </button>
+                <button class="btn btn-text btn-info" @click.stop="emit('test-api', dimension.id)">
+                  <i class="fas fa-heartbeat btn-icon"></i>
+                  测试API
+                </button>
+                <button class="btn btn-text btn-danger" @click.stop="emit('delete', dimension.id)">
+                  <i class="fas fa-trash btn-icon"></i>
+                  删除
+                </button>
+              </template>
             </div>
           </td>
         </tr>
@@ -113,6 +126,7 @@
 // 评估维度表格公共组件：列表视图与分组视图共用，避免表格模板重复
 import { ApiEndpointStatus } from '../domain/enums';
 import VisibilityBadge from './common/visibility/VisibilityBadge.vue';
+import { canEditResource } from '../composables/visibility/useVisibility';
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -133,7 +147,8 @@ const emit = defineEmits([
   'delete',
   'add-sub',
   'weight-change',
-  'move'
+  'move',
+  'toggle-visibility'
 ]);
 
 const isSelected = (id) => props.selectedDimensions.includes(id);

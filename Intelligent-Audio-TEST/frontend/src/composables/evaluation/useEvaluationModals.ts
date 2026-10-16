@@ -1,6 +1,7 @@
 import { useModalControl } from '../modal/useModal';
 import { MODAL_TYPES } from '../modal/constants';
 import { evaluationPort } from './evaluationPort';
+import { getVisibilityPref } from '../visibility/useVisibility';
 import type { UseEvaluationDimensionsReturn } from './useEvaluationDimensions';
 import type { UseEvaluationCategoriesReturn } from './useEvaluationCategories';
 
@@ -195,6 +196,9 @@ export function useEvaluationModals(dimensionsModule: UseEvaluationDimensionsRet
       name: '',
       description: '',
       type: 'auto',
+      // INT-536（D5）：新建默认取 localStorage 可见性偏好（visibility_pref，缺省 shared），
+      // 与任务/用例新建口径一致；不再回落到表单字段的 defaultValue:'shared'
+      visibility: getVisibilityPref(),
       // 预填参数：分组视图「添加维度」带入分类，主维度行「添加子维度」带入父维度；未预填时默认选中第一个分类
       categoryId: categoryId ?? (categories.value[0]?.id ?? undefined),
       dimensionType: parentDimensionId ? 'sub' : 'main',

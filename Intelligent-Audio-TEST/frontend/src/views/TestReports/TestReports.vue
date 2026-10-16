@@ -94,7 +94,8 @@
               <button class="btn btn-primary" @click.stop="viewReport(report.id)">
                 <i class="fas fa-eye"></i> 查看报告
               </button>
-              <button class="btn btn-danger" @click.stop="deleteReport(report.id)">
+              <!-- INT-536：私有报告非 owner（含 admin 豁免见 canEditResource）隐藏删除入口 -->
+              <button v-if="canEditResource(report)" class="btn btn-danger" @click.stop="deleteReport(report.id)">
                 <i class="fas fa-trash"></i> 删除
               </button>
             </div>
@@ -147,7 +148,7 @@ import { useTestReports } from './testReports';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue';
-import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
+import { VISIBILITY_FILTER_OPTIONS, canEditResource } from '../../composables/visibility/useVisibility';
 
 const {
   reports,

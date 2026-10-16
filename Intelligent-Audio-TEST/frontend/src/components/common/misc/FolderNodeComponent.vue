@@ -88,11 +88,12 @@
                   <i class="fas fa-play btn-icon"></i>
                   预览
                 </button>
-                <button class="btn btn-secondary" @click.stop="$emit('edit', file.id)">
+                <!-- INT-536：私有音频非 owner（含 admin 豁免见 canEditResource）隐藏编辑/删除入口 -->
+                <button v-if="canEditResource(file)" class="btn btn-secondary" @click.stop="$emit('edit', file.id)">
                   <i class="fas fa-edit btn-icon"></i>
                   详情
                 </button>
-                <button class="btn btn-danger" @click.stop="$emit('delete', file.id)">
+                <button v-if="canEditResource(file)" class="btn btn-danger" @click.stop="$emit('delete', file.id)">
                   <i class="fas fa-trash-alt btn-icon"></i>
                   删除
                 </button>
@@ -138,11 +139,12 @@
                 <i class="fas fa-play btn-icon"></i>
                 预览
               </button>
-              <button class="btn btn-secondary" @click.stop="$emit('edit', file.id)">
+              <!-- INT-536：私有音频非 owner（含 admin 豁免见 canEditResource）隐藏编辑/删除入口 -->
+              <button v-if="canEditResource(file)" class="btn btn-secondary" @click.stop="$emit('edit', file.id)">
                 <i class="fas fa-edit btn-icon"></i>
                 详情
               </button>
-              <button class="btn btn-danger" @click.stop="$emit('delete', file.id)">
+              <button v-if="canEditResource(file)" class="btn btn-danger" @click.stop="$emit('delete', file.id)">
                 <i class="fas fa-trash-alt btn-icon"></i>
                 删除
               </button>
@@ -164,6 +166,7 @@ import { computed, ref, watch } from 'vue';
 import type { FolderNode as BaseFolderNode } from '../../../domain/model/audio';
 import { readCamel } from '../../../utils/keyTransform';
 import VisibilityBadge from '../visibility/VisibilityBadge.vue';
+import { canEditResource } from '../../../composables/visibility/useVisibility';
 
 // 后端遗留 snake_case（file_count / has_children）经 readCamel 兜底读取，收敛于 utils 层；
 // files 保持 any[]：模板直接迭代渲染文件元素（无类型化操作），domain 版为 unknown[] 需放宽

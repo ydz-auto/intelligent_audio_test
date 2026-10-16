@@ -140,6 +140,7 @@
                 @add-sub="(payload) => openAddModal(payload.categoryId, payload.id)"
                 @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
                 @move="(payload) => moveDimension(payload.id, payload.direction)"
+                @toggle-visibility="toggleDimensionVisibility"
               />
               <div v-if="!loading && !error && hierarchicalDimensions.length === 0" class="empty-dimensions">
                 <i class="fas fa-inbox"></i>
@@ -193,6 +194,7 @@
                     @add-sub="(payload) => openAddModal(payload.categoryId, payload.id)"
                     @weight-change="(payload) => updateWeight(payload.id, payload.weight)"
                     @move="(payload) => moveDimension(payload.id, payload.direction)"
+                    @toggle-visibility="toggleDimensionVisibility"
                   />
                 </div>
               </div>
@@ -244,6 +246,7 @@ const {
   toggleGroupSelectAll,
   isAllSelected,
   deleteDimension,
+  toggleDimensionVisibility,
   moveDimension,
   canMoveUp,
   canMoveDown,

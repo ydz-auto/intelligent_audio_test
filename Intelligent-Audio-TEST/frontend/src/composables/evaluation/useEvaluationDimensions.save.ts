@@ -10,7 +10,7 @@ import {
   EvaluationDimension,
 } from '../../domain';
 import type { APIHealthResultModalData } from '../../domain/model/apiConfig';
-import { ApiEndpointStatus } from '../../domain/enums';
+import { ApiEndpointStatus, Visibility } from '../../domain/enums';
 import type { DimensionHealthCheckResult } from '../../domain/model/evaluationTypes';
 import type { ModalManager } from '../modal/useModal';
 import { SAVE_TYPE_ADD } from './useEvaluationDimensions.constants';
@@ -132,6 +132,29 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
         }
       }
     });
+  }
+
+  // ========== 维度可见性切换（INT-536 D4） ==========
+
+  /** 分享 / 设为私有：PATCH /evaluation/dimensions/{id}/visibility（需 evaluation:share + owner 校验），
+   *  成功重取列表使徽标即时刷新（对齐任务/报告详情切换口径） */
+  async function toggleDimensionVisibility(id: number | string) {
+    const dimension = dimensions.value.find(dim => dim.id === id);
+    if (!dimension) return;
+    const current = (dimension.visibility || Visibility.SHARED) as string;
+    const next = current === Visibility.PRIVATE ? Visibility.SHARED : Visibility.PRIVATE;
+    loading.value = true;
+    error.value = null;
+    try {
+      await evaluationPort.updateVisibility(id, next);
+      showResultModal('成功', next === Visibility.SHARED ? '已改为共享' : '已设为私有');
+      await fetchData();
+    } catch (err: any) {
+      console.error('Failed to toggle dimension visibility:', err);
+      showResultModal('错误', err.message || '切换可见性失败，请确认您有该维度的分享权限');
+    } finally {
+      loading.value = false;
+    }
   }
 
   // ========== API 健康检查 / 权重 ==========
@@ -265,6 +288,7 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
   return {
     saveDimension,
     deleteDimension,
+    toggleDimensionVisibility,
     testAPIHealth,
     updateWeight,
     moveDimension,

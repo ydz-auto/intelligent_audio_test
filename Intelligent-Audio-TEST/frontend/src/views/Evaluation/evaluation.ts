@@ -115,6 +115,7 @@ export function useEvaluation() {
 
     // 维度 CRUD（来自维度模块）
     deleteDimension: dimensionsModule.deleteDimension,
+    toggleDimensionVisibility: dimensionsModule.toggleDimensionVisibility,
 
     // 维度排序（上移/下移，来自维度模块）
     moveDimension: dimensionsModule.moveDimension,

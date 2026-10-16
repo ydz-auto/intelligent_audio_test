@@ -248,10 +248,11 @@
               <button class="btn btn-primary" @click.stop="viewReport(report.id, report.type)">
                 <i class="fas fa-eye"></i> 查看
               </button>
-              <button class="btn btn-secondary" @click.stop="editReport(report.id)">
+              <!-- INT-536：私有报告非 owner（含 admin 豁免见 canEditResource）隐藏编辑/删除入口 -->
+              <button v-if="canEditResource(report)" class="btn btn-secondary" @click.stop="editReport(report.id)">
                 <i class="fas fa-edit"></i> 编辑
               </button>
-              <button class="btn btn-danger" @click.stop="deleteReport(report.id)">
+              <button v-if="canEditResource(report)" class="btn btn-danger" @click.stop="deleteReport(report.id)">
                 <i class="fas fa-trash"></i> 删除
               </button>
               <button v-if="report.status === ReportStatus.DRAFT" class="btn btn-success" @click.stop="publishReport(report.id)">
@@ -344,7 +345,7 @@ import BenchmarkReportPublishModal from '../../components/benchmark-report/Bench
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue';
-import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
+import { VISIBILITY_FILTER_OPTIONS, canEditResource } from '../../composables/visibility/useVisibility';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 

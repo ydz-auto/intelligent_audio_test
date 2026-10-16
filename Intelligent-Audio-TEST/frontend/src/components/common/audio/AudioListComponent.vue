@@ -271,7 +271,8 @@
                     <i class="fas fa-play btn-icon"></i>
                     预览
                   </button>
-                  <button class="btn btn-secondary" @click.stop="editMetadata(audio.id)">
+                  <!-- INT-536：私有音频非 owner（含 admin 豁免见 canEditResource）隐藏编辑/删除入口 -->
+                  <button v-if="canEditResource(audio)" class="btn btn-secondary" @click.stop="editMetadata(audio.id)">
                     <i class="fas fa-edit btn-icon"></i>
                     详情
                   </button>
@@ -279,7 +280,7 @@
                     <i class="fas fa-download btn-icon"></i>
                     下载
                   </button>
-                  <button class="btn btn-danger" @click.stop="deleteAudio(audio.id)">
+                  <button v-if="canEditResource(audio)" class="btn btn-danger" @click.stop="deleteAudio(audio.id)">
                     <i class="fas fa-trash-alt btn-icon"></i>
                     删除
                   </button>
@@ -385,11 +386,12 @@
           </div>
           
           <div class="diagnostics-actions">
-            <button class="btn btn-secondary" @click.stop="editMetadata(audio.id)">
+            <!-- INT-536：私有音频非 owner 隐藏编辑（修复）/删除入口 -->
+            <button v-if="canEditResource(audio)" class="btn btn-secondary" @click.stop="editMetadata(audio.id)">
               <i class="fas fa-edit btn-icon"></i>
               修复
             </button>
-            <button class="btn btn-danger" @click.stop="deleteAudio(audio.id)">
+            <button v-if="canEditResource(audio)" class="btn btn-danger" @click.stop="deleteAudio(audio.id)">
               <i class="fas fa-trash-alt btn-icon"></i>
               删除
             </button>
@@ -417,6 +419,7 @@ import FolderNodeComponent from '../misc/FolderNodeComponent.vue';
 import PaginationComponent from '../data/PaginationComponent.vue';
 import BadgeFilter from '../BadgeFilter.vue';
 import VisibilityBadge from '../visibility/VisibilityBadge.vue';
+import { canEditResource } from '../../../composables/visibility/useVisibility';
 import { formatFileSize, formatDuration } from '../../../utils/audioUtils';
 import { useAudioListComponent } from './AudioListComponent';
 import type { AudioItem, AudioListProps } from './AudioListComponent';

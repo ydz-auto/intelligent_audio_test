@@ -4,6 +4,7 @@ import { getModalManager } from '../../utils/modalManager';
 import { downloadBlob } from '../../utils/utils';
 import { MODAL_TYPES } from '../modal/constants';
 import type { AudioInfo, APIResponse } from '../../domain';
+import { canEditResource } from '../visibility/useVisibility';
 
 /**
  * 音频批量操作和单文件操作组合式函数
@@ -103,6 +104,18 @@ export function useAudioBatchOps(
   // ========== 单文件操作 ==========
 
   async function deleteAudio(id: string | number) {
+    // INT-536：私有音频非 owner（admin 豁免见 canEditResource）前端守卫——
+    // 列表入口已按 canEditResource 隐藏，此处兜底拦截绕过 UI 直达的删除调用
+    const audio = audioList.value.find(a => a.id === id);
+    if (audio && !canEditResource(audio)) {
+      await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '无权限',
+        content: '该音频为私有资源，仅创建者和管理员可删除',
+        danger: true
+      });
+      return;
+    }
+
     const confirmed = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '删除音频',
       content: '确定要删除这个音频吗？',

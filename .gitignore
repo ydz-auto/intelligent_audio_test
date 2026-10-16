@@ -263,3 +263,10 @@ Intelligent-Audio-TEST/handle_batch_action_task
 Intelligent-Audio-TEST/task_config.BatchActionTasks
 Intelligent-Audio-TEST/task_crud_service
 Intelligent-Audio-TEST/task_repository.batch_restore
+
+# worktree 模式切换前快照：selenium driver 二进制 + 运行散件（非交付物）
+Intelligent-Audio-TEST/e2e_tests/selenium/drivers/
+/int32.json
+/int447_snapshot.json
+/int447_snapshot.py
+/int447_soft_delete.py

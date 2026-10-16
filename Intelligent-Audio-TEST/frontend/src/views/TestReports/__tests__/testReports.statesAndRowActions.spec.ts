@@ -15,6 +15,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
+import { useAuthStore } from '@/store/authStore';
 
 const ports = vi.hoisted(() => ({
   getAll: vi.fn(),
@@ -258,5 +260,75 @@ describe('分页', () => {
     pagination.vm.$emit('page-size-change', 20);
     await flushPromises();
     expect(ports.getAll).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, perPage: 20 }));
+  });
+});
+
+describe('INT-536：私有报告非 owner 隐藏删除入口（canEditResource 门控）', () => {
+  /** 设置认证用户并挂载页面（canEditResource 依赖 authStore） */
+  async function mountWithAuth(userId: number, permissions: string[] = []) {
+    setActivePinia(createPinia());
+    useAuthStore().setAuth('t', { id: userId, username: 'tester', roleId: null, roleName: '', permissions });
+    const wrapper = mount(TestReports, { global: { stubs: { teleport: true } } });
+    await flushPromises();
+    return wrapper;
+  }
+
+  const PRIVATE_REPORT = {
+    id: 5,
+    name: '私有报告',
+    type: 'task',
+    status: 'published',
+    visibility: 'private',
+    createdByUserId: 999,
+    createdAt: '2026-10-13T10:00:00Z',
+    summary: { totalCases: 1 },
+  };
+
+  it('非 owner 私有报告：不渲染删除按钮', async () => {
+    ports.getAll.mockResolvedValue({
+      items: [PRIVATE_REPORT],
+      total: 1, page: 1, perPage: 10, pages: 1,
+    });
+
+    const wrapper = await mountWithAuth(1);
+    const card = wrapper.findAll('.report-card').find((c: any) => c.text().includes('私有报告'));
+    const delBtn = card!.findAll('button').find((b: any) => b.text().includes('删除'));
+    expect(delBtn, '非 owner 私有报告应隐藏删除入口').toBeUndefined();
+  });
+
+  it('owner 私有报告：保留删除按钮', async () => {
+    ports.getAll.mockResolvedValue({
+      items: [{ ...PRIVATE_REPORT, createdByUserId: 1 }],
+      total: 1, page: 1, perPage: 10, pages: 1,
+    });
+
+    const wrapper = await mountWithAuth(1);
+    const card = wrapper.findAll('.report-card').find((c: any) => c.text().includes('私有报告'));
+    const delBtn = card!.findAll('button').find((b: any) => b.text().includes('删除'));
+    expect(delBtn, 'owner 私有报告应保留删除入口').toBeTruthy();
+  });
+
+  it('admin 豁免：非 owner 私有报告仍保留删除按钮', async () => {
+    ports.getAll.mockResolvedValue({
+      items: [PRIVATE_REPORT],
+      total: 1, page: 1, perPage: 10, pages: 1,
+    });
+
+    const wrapper = await mountWithAuth(1, ['*']);
+    const card = wrapper.findAll('.report-card').find((c: any) => c.text().includes('私有报告'));
+    const delBtn = card!.findAll('button').find((b: any) => b.text().includes('删除'));
+    expect(delBtn, 'admin 豁免下非 owner 私有报告应保留删除入口').toBeTruthy();
+  });
+
+  it('共享报告非 owner：保留删除按钮（回落既有权限点）', async () => {
+    ports.getAll.mockResolvedValue({
+      items: [{ ...PRIVATE_REPORT, visibility: 'shared' }],
+      total: 1, page: 1, perPage: 10, pages: 1,
+    });
+
+    const wrapper = await mountWithAuth(1);
+    const card = wrapper.findAll('.report-card').find((c: any) => c.text().includes('私有报告'));
+    const delBtn = card!.findAll('button').find((b: any) => b.text().includes('删除'));
+    expect(delBtn, '共享报告应保留删除入口').toBeTruthy();
   });
 });

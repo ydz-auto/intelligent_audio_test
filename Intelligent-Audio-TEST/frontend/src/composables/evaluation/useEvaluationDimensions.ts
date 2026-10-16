@@ -89,6 +89,7 @@ export function useEvaluationDimensions() {
   const {
     saveDimension,
     deleteDimension,
+    toggleDimensionVisibility,
     testAPIHealth,
     updateWeight,
     moveDimension,
@@ -142,6 +143,7 @@ export function useEvaluationDimensions() {
     // 维度 CRUD
     saveDimension,
     deleteDimension,
+    toggleDimensionVisibility,
     // 维度排序（上移/下移）
     moveDimension,
     canMoveUp,
