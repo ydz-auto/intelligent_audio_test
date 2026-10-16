@@ -1,6 +1,6 @@
 /**
- * features/reports/lib/search 纯函数测试（对位规范 §3.5：
- * type→report_type、keyword→search、时间范围→start_time/end_time、算法/排序透传）。
+ * features/reports/lib/search 纯函数测试（对位规范 §3.5 + 口径修正 2026-10-16：
+ * 取消双页签后 report_type 一律由 URL type 透传、默认 undefined=全部）。
  */
 import { describe, expect, it } from 'vitest'
 
@@ -11,7 +11,6 @@ import {
 import type { ReportsSearch } from '@/features/reports/types'
 
 const baseSearch: ReportsSearch = {
-  tab: 'test',
   view: 'card',
   page: 1,
   pageSize: 20,
@@ -46,29 +45,25 @@ describe('computeTimeRange', () => {
 })
 
 describe('buildReportListQuery', () => {
-  it('测试报告页签固定 report_type=task，忽略 URL type', () => {
-    const query = buildReportListQuery(
-      { ...baseSearch, type: 'comparison', search: '回归' },
-      'test'
-    )
-    expect(query.report_type).toBe('task')
+  it('report_type 默认 undefined（全部报告），keyword 透传', () => {
+    const query = buildReportListQuery({
+      ...baseSearch,
+      search: '回归',
+    })
+    expect(query.report_type).toBeUndefined()
     expect(query.keyword).toBe('回归')
     expect(query.status).toBeUndefined()
   })
 
-  it('历史报告页签透传 type/status 与分页默认值', () => {
-    const query = buildReportListQuery(
-      {
-        ...baseSearch,
-        tab: 'history',
-        type: 'task',
-        status: 'draft',
-        favorite: true,
-        trash: false,
-      },
-      'history'
-    )
-    expect(query.report_type).toBe('task')
+  it('type/status 作为筛选条件透传，与分页默认值', () => {
+    const query = buildReportListQuery({
+      ...baseSearch,
+      type: 'comparison',
+      status: 'draft',
+      favorite: true,
+      trash: false,
+    })
+    expect(query.report_type).toBe('comparison')
     expect(query.status).toBe('draft')
     expect(query.favorite).toBe(true)
     expect(query.deleted).toBe(false)
@@ -78,16 +73,12 @@ describe('buildReportListQuery', () => {
   })
 
   it('自定义时间范围进入 DTO', () => {
-    const query = buildReportListQuery(
-      {
-        ...baseSearch,
-        tab: 'history',
-        timeRange: 'custom',
-        startTime: '2026-10-01T09:00:00',
-        endTime: '2026-10-16T18:00:00',
-      },
-      'history'
-    )
+    const query = buildReportListQuery({
+      ...baseSearch,
+      timeRange: 'custom',
+      startTime: '2026-10-01T09:00:00',
+      endTime: '2026-10-16T18:00:00',
+    })
     expect(query.start_time).toBe('2026-10-01 09:00')
     expect(query.end_time).toBe('2026-10-16 18:00')
   })

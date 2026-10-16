@@ -2,7 +2,7 @@
  * 报告域 mock 常量（红线④：数据一律 mock，不接真实后端）。
  * 字段形态对照 api_gateway/schemas/report.py 实测 schema + INT-439 报告域 v2.2 层级
  * （见 domain/models/report.ts 与 doc/UX设计规范/15_报告域.md §1），数字口径与基座
- * 控制台 mock（任务 342/已完成 297、设备 8 在线/2 离线）互不打架。
+ * 工作台 mock（任务 342/已完成 297、设备 8 在线/2 离线）互不打架。
  * 列表与详情 id 联动：1201=任务报告、1190=对比报告、1188=二次对比报告，供详情页跳转核对。
  */
 import type {
@@ -12,6 +12,7 @@ import type {
   ReportCaseItem,
   ReportCaseListData,
   ReportComparisonTable,
+  ReportCounts,
   ReportDetailData,
   ReportDeviceInfo,
   ReportDeviceStat,
@@ -20,7 +21,6 @@ import type {
   ReportMetricConfig,
   ReportRawDataGroup,
   ReportSummary,
-  ReportTabCounts,
   ReportTag,
   ReportTagMetricGroup,
 } from '@/domain/models/report'
@@ -203,11 +203,11 @@ export const MOCK_REPORT_LIST_DATA: ReportListData = {
   pages: 1,
 }
 
-/** GET /reports/tab-counts（all/draft/published/comparison） */
-export const MOCK_REPORT_TAB_COUNTS: ReportTabCounts = {
-  all: 12,
+/** GET /reports/counts（全量非回收站项分类计数；口径修正 2026-10-16 取消页签后仍作筛选 chips/徽章行计数源） */
+export const MOCK_REPORT_COUNTS: ReportCounts = {
+  all: 10,
   draft: 3,
-  published: 9,
+  published: 7,
   comparison: 3,
 }
 

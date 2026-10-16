@@ -2,7 +2,7 @@
  * reports 域 API 桩（infrastructure 层；红线④：一律 mock，不接真实后端）。
  * TODO(API 接线): 替换为真实请求 —— 端点对照 api_gateway/routes/report_bp.py 实测：
  *   GET  /reports                        （report:read，ReportListQuery 全参，服务端分页）
- *   GET  /reports/tab-counts             （report:read，{all,draft,published,comparison}）
+ *   GET  /reports/tab-counts             （report:read，{all,draft,published,comparison}，页签取消后保留为全量分类计数）
  *   GET  /reports/{id}                   （report:read，ReportDetailData）
  *   GET  /reports/{id}/cases             （report:read，ReportCaseListQuery）
  *   POST /reports/{id}/cases/search      （report:read 语义，ReportSearchCasesRequest 全参）
@@ -13,21 +13,21 @@
 import type {
   ReportCaseListData,
   ReportCaseItem,
+  ReportCounts,
   ReportDetailData,
   ReportListData,
   ReportListItem,
   ReportListQuery,
   ReportSearchCasesRequest,
-  ReportTabCounts,
   ReportType,
 } from '@/domain/models/report'
 
 import {
   MOCK_COMPLETED_TASKS,
   MOCK_REPORT_CASE_LIST_DATA,
+  MOCK_REPORT_COUNTS,
   MOCK_REPORT_DETAILS,
   MOCK_REPORT_LIST_ITEMS,
-  MOCK_REPORT_TAB_COUNTS,
 } from '../mock/reports-mock'
 import { resolveReportUiFlags } from '../stores/reports-ui-store'
 
@@ -100,8 +100,9 @@ export async function fetchReportList(
   }
 }
 
-export async function fetchReportTabCounts(): Promise<ReportTabCounts> {
-  return MOCK_REPORT_TAB_COUNTS
+/** 全量报告分类计数（口径修正 2026-10-16：页签取消后保留为单一列表筛选 chips/徽章行计数源） */
+export async function fetchReportCounts(): Promise<ReportCounts> {
+  return MOCK_REPORT_COUNTS
 }
 
 /** GET /tasks 已完成子集（生成/对比 Dialog 任务选择器数据源；mock 只读） */

@@ -7,9 +7,9 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
 import { ReportStatsRow } from '@/features/reports/components/report-stats-row'
-import type { ReportTabCounts } from '@/domain/models/report'
+import type { ReportCounts } from '@/domain/models/report'
 
-const counts: ReportTabCounts = {
+const counts: ReportCounts = {
   all: 42,
   published: 30,
   draft: 10,

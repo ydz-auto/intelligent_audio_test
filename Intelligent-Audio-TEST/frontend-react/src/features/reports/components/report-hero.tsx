@@ -1,6 +1,7 @@
 /**
  * 报告中心 Hero 头（移植自 newAPI pricing-hero 版式，规范 §3.4/§3.5）：
  * Badge eyebrow + h1 + 说明 + SearchBar（右）+ 报告类型 chips + 状态/时间筛选组 + 清除筛选。
+ * 口径修正 2026-10-16：类型/状态均为筛选条件（chips 常驻、默认「全部」），非页面层级。
  */
 import { CalendarDays, SlidersHorizontal } from 'lucide-react'
 
@@ -29,7 +30,6 @@ import {
 import { SearchBar } from './search-bar'
 
 interface ReportHeroProps {
-  tab: 'test' | 'history'
   totalReports: number
   draftCount: number
   publishedCount: number
@@ -50,7 +50,6 @@ interface ReportHeroProps {
 }
 
 export function ReportHero({
-  tab,
   totalReports,
   draftCount,
   publishedCount,
@@ -96,35 +95,33 @@ export function ReportHero({
         </div>
       </div>
 
-      {tab === 'history' && (
-        <nav
-          aria-label='报告类型筛选'
-          className='mt-8 flex flex-wrap gap-2 border-t pt-6'
-        >
-          {REPORT_TYPE_OPTIONS.map((option) => {
-            const active = type === undefined
-              ? option.value === 'all'
-              : option.value === type
-            const count = typeCounts[option.value as ReportType | 'all'] ?? 0
-            return (
-              <Button
-                key={option.value}
-                variant={active ? 'default' : 'outline'}
-                aria-pressed={active}
-                className='h-11 gap-2 rounded-xl px-4'
-                onClick={() =>
-                  onTypeChange(
-                    option.value === 'all' ? undefined : (option.value as ReportType)
-                  )
-                }
-              >
-                {option.label}
-                <span className='opacity-70'>{count}</span>
-              </Button>
-            )
-          })}
-        </nav>
-      )}
+      <nav
+        aria-label='报告类型筛选'
+        className='mt-8 flex flex-wrap gap-2 border-t pt-6'
+      >
+        {REPORT_TYPE_OPTIONS.map((option) => {
+          const active = type === undefined
+            ? option.value === 'all'
+            : option.value === type
+          const count = typeCounts[option.value as ReportType | 'all'] ?? 0
+          return (
+            <Button
+              key={option.value}
+              variant={active ? 'default' : 'outline'}
+              aria-pressed={active}
+              className='h-11 gap-2 rounded-xl px-4'
+              onClick={() =>
+                onTypeChange(
+                  option.value === 'all' ? undefined : (option.value as ReportType)
+                )
+              }
+            >
+              {option.label}
+              <span className='opacity-70'>{count}</span>
+            </Button>
+          )
+        })}
+      </nav>
 
       <div className='mt-4 flex flex-wrap items-center gap-2'>
         <SlidersHorizontal className='text-muted-foreground size-4' aria-hidden='true' />

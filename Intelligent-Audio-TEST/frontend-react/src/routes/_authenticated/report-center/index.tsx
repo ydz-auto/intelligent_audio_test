@@ -7,15 +7,16 @@ import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 /**
  * 报告中心（管理页） /report-center（INT-434 重实施 / INT-441 双入口拆分落位）。
- * 由控制台侧栏「测试资产」组「报告中心」进入；生成/编辑/发布/删除/批量/导出/收藏/回收站等
- * 管理操作集中本页（15_报告域.md §2）。旧链 /test-reports、/history-reports redirect 见同层路由。
+ * 由工作台侧栏「测试资产」组「报告中心」进入；生成/编辑/发布/删除/批量/导出/收藏/回收站等
+ * 管理操作集中本页（15_报告域.md §2）。
+ * 口径修正 2026-10-16：取消「测试报告/历史报告」双页签——单一列表视图默认展示全部报告，
+ * 报告类型进筛选条件；旧链 /test-reports、/history-reports redirect 见同层路由（不带 tab 语义）。
  * beforeLoad：report:read 守卫 → 无码整页 /403。
- * validateSearch：URL 态全量（tab/page/pageSize/search/type/status/timeRange/startTime/endTime/
+ * validateSearch：URL 态全量（page/pageSize/search/type/status/timeRange/startTime/endTime/
  * algorithmType/favorite/trash/sortBy/sortOrder），zod .catch 兜底，URL 可分享。
  */
 export const reportCenterSearchSchema = z
   .object({
-    tab: z.enum(['test', 'history']).catch('test'),
     view: z.enum(['table', 'card']).catch('table'),
     page: z.coerce.number().int().min(1).catch(1),
     pageSize: z.coerce.number().int().min(1).catch(20),

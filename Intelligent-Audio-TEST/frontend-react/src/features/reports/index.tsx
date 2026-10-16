@@ -1,9 +1,12 @@
 /**
  * /report-center 报告中心·管理页（INT-434 重实施落位；15_报告域.md §2，INT-360 版式保留）。
- * 版式对位 newAPI 模型价格页：双页签 + Hero 头 + 统计徽章行 + 工具栏 + 数据表/卡片
+ * 版式对位 newAPI 模型价格页：Hero 头 + 统计徽章行 + 工具栏 + 数据表/卡片
  * + 收藏/回收站工具条 + 批量浮条 + 分页 + 弹窗群（生成/导出/发布/删除/对比/重命名/进度）。
  * 管理操作集中本页（INT-441 双入口拆分：展示页 /reports 见 features/reports-showcase/）。
- * URL 态全部经 TanStack validateSearch（features/reports/types.ts），页面以 navigate 回写。
+ * 口径修正 2026-10-16：取消「测试报告/历史报告」双页签——报告列表单一视图，默认展示全部报告
+ * （不限类型）；类型进筛选条件（chips 常驻、默认「全部」）；旧链 /test-reports、/history-reports
+ * redirect 到 /report-center 不再带 tab 语义。URL 态全部经 TanStack validateSearch
+ * （features/reports/types.ts），页面以 navigate 回写。
  */
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { FilePlus2, MoreHorizontal, RefreshCw } from 'lucide-react'
@@ -20,7 +23,7 @@ import {
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useReportList } from '@/application/reports/use-report-list'
-import { useReportTabCounts } from '@/application/reports/use-tab-counts'
+import { useReportCounts } from '@/application/reports/use-report-counts'
 import { useReportSummaryCounts } from '@/application/reports/use-report-summary-counts'
 import {
   useBatchReportActions,
@@ -32,7 +35,6 @@ import type { ReportsSearch } from '@/features/reports/types'
 import { getLinkedAlgorithmLabel, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
 import { buildReportListQuery } from '@/features/reports/lib/search'
 
-import { ReportTabs } from './components/report-tabs'
 import { ReportHero } from './components/report-hero'
 import { ReportStatsRow, type BadgeKind } from './components/report-stats-row'
 import { ReportFilterToolbar } from './components/report-filter-toolbar'
@@ -69,8 +71,16 @@ export function ReportCenterPage() {
   }
   const favoriteCount = summaryCountsQuery.data?.favoriteCount ?? 0
 
-  const tab: 'test' | 'history' = rawSearch.tab ?? 'test'
-  const search: ReportsSearch = { ...rawSearch, tab }
+  const search: ReportsSearch = {
+    ...rawSearch,
+    view: rawSearch.view ?? 'table',
+    page: rawSearch.page ?? 1,
+    pageSize: rawSearch.pageSize ?? 20,
+    favorite: rawSearch.favorite ?? false,
+    trash: rawSearch.trash ?? false,
+    sortBy: rawSearch.sortBy ?? 'created_at',
+    sortOrder: rawSearch.sortOrder ?? 'desc',
+  }
 
   // 全局算法联动（规范 §2.2）：URL 无 algorithmType 时自动附全局；'none' 为「本页临时解除」
   const linkedAlgorithmType = useMemo(
@@ -84,15 +94,15 @@ export function ReportCenterPage() {
 
   const query = useMemo(
     () => ({
-      ...buildReportListQuery(search, tab),
+      ...buildReportListQuery(search),
       algorithm_type: effectiveAlgorithmType,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(search), tab, effectiveAlgorithmType]
+    [JSON.stringify(search), effectiveAlgorithmType]
   )
 
   const listQuery = useReportList(query)
-  const tabCountsQuery = useReportTabCounts()
+  const countsQuery = useReportCounts()
   const items = listQuery.data?.items ?? []
   const total = listQuery.data?.total ?? 0
 
@@ -126,17 +136,13 @@ export function ReportCenterPage() {
     [setSearch]
   )
 
-  const handleTabChange = useCallback(
-    (next: 'test' | 'history') => setSearch({ tab: next, page: 1 }),
-    [setSearch]
-  )
-
   const handleQuickFilter = useCallback(
     (kind: BadgeKind) => {
-      if (kind === 'all') setSearch({ tab: 'history', status: undefined, type: undefined, page: 1 })
-      else if (kind === 'published') setSearch({ tab: 'history', status: 'published', type: undefined, page: 1 })
-      else if (kind === 'draft') setSearch({ tab: 'history', status: 'draft', type: undefined, page: 1 })
-      else setSearch({ tab: 'history', status: undefined, type: 'comparison', page: 1 })
+      // 口径修正 2026-10-16：快速筛选只写筛选条件（status/type），不切页签
+      if (kind === 'all') setSearch({ status: undefined, type: undefined, page: 1 })
+      else if (kind === 'published') setSearch({ status: 'published', type: undefined, page: 1 })
+      else if (kind === 'draft') setSearch({ status: 'draft', type: undefined, page: 1 })
+      else setSearch({ status: undefined, type: 'comparison', page: 1 })
     },
     [setSearch]
   )
@@ -192,11 +198,11 @@ export function ReportCenterPage() {
     })
   }, [setSearch])
 
-  // 勾选状态（查询变化/页签切换重置）
+  // 勾选状态（查询变化时重置）
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   useEffect(() => {
     setSelectedIds([])
-  }, [tab, search.page, search.pageSize, JSON.stringify(search.search), search.type, search.status, search.timeRange, effectiveAlgorithmType])
+  }, [search.page, search.pageSize, JSON.stringify(search.search), search.type, search.status, search.timeRange, effectiveAlgorithmType])
 
   const handleToggleRow = useCallback((id: number) => {
     setSelectedIds((prev) =>
@@ -286,7 +292,7 @@ export function ReportCenterPage() {
         <span className='inline-flex items-center gap-2'>
           报告中心
           <Badge variant='outline' className='font-mono tabular-nums'>
-            共 {tabCountsQuery.data?.all ?? 0} 个报告
+            共 {countsQuery.data?.all ?? 0} 个报告
           </Badge>
         </span>
       </SectionPageLayout.Title>
@@ -325,17 +331,14 @@ export function ReportCenterPage() {
 
       <SectionPageLayout.Content>
         <div className='flex h-full min-h-0 flex-col gap-4 overflow-y-auto pb-4'>
-          <ReportTabs value={tab} onChange={handleTabChange} />
-
           <ReportHero
-            tab={tab}
-            totalReports={tabCountsQuery.data?.all ?? 0}
-            draftCount={tabCountsQuery.data?.draft ?? 0}
-            publishedCount={tabCountsQuery.data?.published ?? 0}
+            totalReports={countsQuery.data?.all ?? 0}
+            draftCount={countsQuery.data?.draft ?? 0}
+            publishedCount={countsQuery.data?.published ?? 0}
             typeCounts={typeCounts}
             search={searchInput}
             onSearchChange={handleSearchChange}
-            type={tab === 'test' ? undefined : search.type}
+            type={search.type}
             onTypeChange={(value) => setSearch({ type: value, page: 1 })}
             status={search.status}
             onStatusChange={(value) => setSearch({ status: value, page: 1 })}
@@ -353,19 +356,15 @@ export function ReportCenterPage() {
           />
 
           <ReportStatsRow
-            counts={tabCountsQuery.data}
-            isLoading={tabCountsQuery.isLoading}
-            activeFilter={
-              tab === 'test'
-                ? undefined
-                : { status: search.status, type: search.type }
-            }
+            counts={countsQuery.data}
+            isLoading={countsQuery.isLoading}
+            activeFilter={{ status: search.status, type: search.type }}
             onQuickFilter={handleQuickFilter}
           />
 
           <ReportFilterToolbar
             filteredCount={total}
-            totalCount={tabCountsQuery.data?.all ?? 0}
+            totalCount={countsQuery.data?.all ?? 0}
             sortBy={search.sortBy ?? 'created_at'}
             sortOrder={search.sortOrder ?? 'desc'}
             onSortChange={handleSortChange}
@@ -380,15 +379,13 @@ export function ReportCenterPage() {
             onClearAlgorithm={handleClearAlgorithm}
           />
 
-          {tab === 'history' && (
-            <ReportFavoriteTrashBar
-              favoriteOnly={favoriteOnly}
-              trashMode={trashMode}
-              favoriteCount={favoriteCount}
-              onFavoriteOnlyChange={(value) => setSearch({ favorite: value, page: 1 })}
-              onTrashModeChange={(value) => setSearch({ trash: value, page: 1 })}
-            />
-          )}
+          <ReportFavoriteTrashBar
+            favoriteOnly={favoriteOnly}
+            trashMode={trashMode}
+            favoriteCount={favoriteCount}
+            onFavoriteOnlyChange={(value) => setSearch({ favorite: value, page: 1 })}
+            onTrashModeChange={(value) => setSearch({ trash: value, page: 1 })}
+          />
 
           {search.view === 'card' ? (
             <ReportCardGrid
@@ -448,7 +445,7 @@ export function ReportCenterPage() {
                 <span className='text-muted-foreground pr-1 text-sm'>
                   已选择 {selectedIds.length} 个报告
                 </span>
-                {tab === 'history' && !trashMode && hasPermission('report:compare') && (
+                {!trashMode && hasPermission('report:compare') && (
                   <Button variant='secondary' size='sm' onClick={() => setCompareOpen(true)}>
                     批量对比
                   </Button>

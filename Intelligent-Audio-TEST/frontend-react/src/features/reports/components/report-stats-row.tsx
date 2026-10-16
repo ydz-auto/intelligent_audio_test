@@ -1,10 +1,10 @@
 /**
  * 统计徽章行（移植自 newAPI usage-logs common-logs-stats StatBadge 形态，规范 §3.4）：
- * 全部/已发布/草稿/对比报告 ×4，数据 GET /reports/tab-counts，点击=快速筛选（仅历史页签生效）。
+ * 全部/已发布/草稿/对比报告 ×4，数据 GET /reports/tab-counts，点击=快速筛选（写状态/类型筛选，不切页签）。
  */
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
-import type { ReportTabCounts } from '@/domain/models/report'
+import type { ReportCounts } from '@/domain/models/report'
 
 type BadgeKind = 'all' | 'published' | 'draft' | 'comparison'
 
@@ -12,7 +12,7 @@ const STAT_BADGES: {
   kind: BadgeKind
   label: string
   accent: string
-  active?: (counts: ReportTabCounts) => boolean
+  active?: (counts: ReportCounts) => boolean
 }[] = [
   { kind: 'all', label: '全部报告', accent: 'bg-neutral' },
   { kind: 'published', label: '已发布', accent: 'bg-success' },
@@ -21,9 +21,9 @@ const STAT_BADGES: {
 ]
 
 interface ReportStatsRowProps {
-  counts?: ReportTabCounts
+  counts?: ReportCounts
   isLoading?: boolean
-  /** 当前生效的快速筛选（决定选中态；tab=test 时不选中任何徽章） */
+  /** 当前生效的快速筛选（决定选中态；无筛选时不选中任何徽章） */
   activeFilter?: Partial<{ status: string; type: string }>
   onQuickFilter: (kind: BadgeKind) => void
 }

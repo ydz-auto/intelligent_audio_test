@@ -26,7 +26,7 @@ export function useReportActions() {
 
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['reports'] })
-    void queryClient.invalidateQueries({ queryKey: ['reports', 'tab-counts'] })
+    void queryClient.invalidateQueries({ queryKey: ['reports', 'counts'] })
   }, [queryClient])
 
   const publish = useCallback(
@@ -142,7 +142,7 @@ export function useBatchReportActions() {
   const queryClient = useQueryClient()
   const refresh = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['reports'] })
-    void queryClient.invalidateQueries({ queryKey: ['reports', 'tab-counts'] })
+    void queryClient.invalidateQueries({ queryKey: ['reports', 'counts'] })
   }, [queryClient])
 
   const batchDelete = useCallback(

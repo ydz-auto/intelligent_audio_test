@@ -2,7 +2,7 @@
  * 报告域领域模型（domain 层）。
  * 形态对照 api_gateway/schemas/report.py 实测 schema（ReportListItem/ReportListData/
  * ReportSummarySimplified/ReportDetailData/ReportDeviceStat/ReportApiStat/ReportListQuery
- * /ReportSearchCasesRequest），tab-counts 对照 report_query_sevice.get_tab_counts 返回
+ * /ReportSearchCasesRequest），counts 对照 report_query_sevice.get_tab_counts 返回
  * （all/draft/published/comparison 四键）。
  * INT-434 重实施（v2.2）：按 15_报告域.md §1 实测层级补 raw_data / all_metrics 配置数组 /
  * tag_metric_data / case_type_stats / tables / field_mappings / detailed_results /
@@ -55,8 +55,8 @@ export interface ReportListData {
   pages: number
 }
 
-/** GET /reports/tab-counts（report_query_sevice.get_tab_counts 返回） */
-export interface ReportTabCounts {
+/** GET /reports/counts（report_query_sevice.get_tab_counts 返回；口径修正 2026-10-16 取消页签，改为单一列表全量分类计数） */
+export interface ReportCounts {
   all: number
   draft: number
   published: number
