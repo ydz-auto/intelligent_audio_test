@@ -48,16 +48,21 @@ export function EvaluationHeaderActions({
       <Tooltip>
         <TooltipTrigger
           render={
-            <Button
-              variant='outline'
-              size='sm'
-              className='h-7 gap-1.5'
-              disabled={!canManage}
-              onClick={onAddDimension}
+            <span
+              tabIndex={0}
+              className={cn('inline-flex', !canManage && 'cursor-not-allowed')}
             >
-              <Plus aria-hidden='true' className='size-3.5' />
-              新增维度
-            </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-7 gap-1.5'
+                disabled={!canManage}
+                onClick={onAddDimension}
+              >
+                <Plus aria-hidden='true' className='size-3.5' />
+                新增维度
+              </Button>
+            </span>
           }
         />
         <TooltipContent>
@@ -67,16 +72,21 @@ export function EvaluationHeaderActions({
       <Tooltip>
         <TooltipTrigger
           render={
-            <Button
-              variant='outline'
-              size='sm'
-              className='h-7 gap-1.5'
-              disabled={!canCategoryManage}
-              onClick={onAddCategory}
+            <span
+              tabIndex={0}
+              className={cn('inline-flex', !canCategoryManage && 'cursor-not-allowed')}
             >
-              <FolderPlus aria-hidden='true' className='size-3.5' />
-              新增分类
-            </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-7 gap-1.5'
+                disabled={!canCategoryManage}
+                onClick={onAddCategory}
+              >
+                <FolderPlus aria-hidden='true' className='size-3.5' />
+                新增分类
+              </Button>
+            </span>
           }
         />
         <TooltipContent>

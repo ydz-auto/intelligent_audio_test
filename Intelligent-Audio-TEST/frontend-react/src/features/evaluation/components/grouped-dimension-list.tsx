@@ -148,16 +148,21 @@ export function GroupedDimensionList({
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <Button
-                        variant='outline'
-                        size='sm'
-                        className='h-7 gap-1.5'
-                        disabled={!canManage}
-                        onClick={() => onAddDimension(group.category)}
+                      <span
+                        tabIndex={0}
+                        className={cn('inline-flex', !canManage && 'cursor-not-allowed')}
                       >
-                        <Plus aria-hidden='true' className='size-3.5' />
-                        添加维度
-                      </Button>
+                        <Button
+                          variant='outline'
+                          size='sm'
+                          className='h-7 gap-1.5'
+                          disabled={!canManage}
+                          onClick={() => onAddDimension(group.category)}
+                        >
+                          <Plus aria-hidden='true' className='size-3.5' />
+                          添加维度
+                        </Button>
+                      </span>
                     }
                   />
                   <TooltipContent>

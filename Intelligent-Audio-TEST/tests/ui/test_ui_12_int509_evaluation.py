@@ -37,6 +37,7 @@ import pytest
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
@@ -359,6 +360,10 @@ def test_10_rbac_readonly_state(drv):
     for b in new_btn:
         if b.is_displayed():
             assert b.get_attribute('disabled'), '只读态「新增维度」应禁用'
+    # 悬停可见写权限 Tooltip（§7 注 1「无 {权限码} 权限」口径，P3-1）
+    ActionChains(drv).move_to_element(new_btn[0]).perform()
+    WebDriverWait(drv, 10).until(
+        lambda d: '无 evaluation:dim_manage 权限' in _body_text(drv))
     # 行操作禁用（首个编辑钮）
     edit_btn = drv.find_elements(By.CSS_SELECTOR, "button[aria-label^='编辑维度 ']")
     assert edit_btn and edit_btn[0].get_attribute('disabled'), '只读态编辑维度应禁用'
@@ -542,7 +547,6 @@ def test_18_import_export(drv):
 
 # ── 19. 分类含维度删除拦截（分组视图）────────────────────
 def test_19_category_delete_interception(drv):
-    from selenium.webdriver.common.action_chains import ActionChains
     _login(drv)
     _goto(drv, '/Evaluation')
     drv.find_element(By.XPATH, "//button[contains(., '分组视图')]").click()
