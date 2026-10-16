@@ -379,6 +379,18 @@ export function getEffectiveAuthMode(
   return (readEnv() || AuthMode.OFF) as AuthModeType
 }
 
+/**
+ * 资源可见性枚举（INT-423/467，值 = 后端 Visibility 原值，禁止改动值）。
+ * 二值体系：private=仅 owner+admin 可见可操作；shared=回落 RBAC 权限点语义。
+ */
+export const Visibility = {
+  SHARED: 'shared',
+  PRIVATE: 'private',
+} as const
+
+/** 资源可见性类型（由 Visibility 派生；字符串兜底兼容后端扩展） */
+export type VisibilityType = typeof Visibility[keyof typeof Visibility] | (string & {})
+
 /** 权限点（INT-298，对齐 V9.7.10 / 后端 RBAC seed「资源:操作」命名；值 = 后端 PermissionPoints 原值，禁止改动值） */
 export const PermissionPoint = {
   /** 发布已发布任务（POST /published-tasks） */

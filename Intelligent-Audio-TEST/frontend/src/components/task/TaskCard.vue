@@ -31,7 +31,7 @@
                 {{ getEvaluationStatusText(task.evaluationStatus) }}
               </span>
             </template>
-            <div class="task-title" v-if="!isEditingName" @click.stop="startEditName" title="点击修改任务名称">{{ task.name || task.title || '未命名任务' }}</div>
+            <div class="task-title" v-if="!isEditingName" @click.stop="task.canEdit !== false && startEditName()" :title="task.canEdit !== false ? '点击修改任务名称' : ''">{{ task.name || task.title || '未命名任务' }}</div>
             <div class="task-title-edit" v-else @click.stop>
               <input
                 type="text"
@@ -43,6 +43,8 @@
                 autofocus
               />
             </div>
+            <!-- INT-423/467：可见性徽标（私有带锁图标，仅展示在用户可见的私有任务上） -->
+            <VisibilityBadge :visibility="task.visibility" />
           </div>
           <div class="task-description">{{ task.description || '' }}</div>
           <div class="task-meta">
@@ -201,6 +203,8 @@
 <script setup>
 import { computed } from 'vue';
 import { useTaskCard } from './TaskCard'
+// INT-423/467：可见性徽标（列表行私有标识）
+import VisibilityBadge from '../common/visibility/VisibilityBadge.vue'
 // INT-301：双徽章后状态图标映射收敛于 TaskCard.ts，模板不再直引 TaskStatus
 // INT-239：删除时间格式化收敛在卡片内（对齐 TestCaseCard 口径），不依赖上游预格式化
 import { formatDate } from '@/utils/utils'

@@ -31,6 +31,7 @@
       :pagination-info="paginationInfo"
       :is-loading="isLoading"
       :trash-mode="trashMode"
+      :visibility-filter="visibilityFilter"
       v-model:view-mode="viewMode"
       @delete-group="handleDeleteGroup"
       @delete-test-case="handleDeleteTestCase"
@@ -42,6 +43,7 @@
       @open-export-modal="openExportTestCaseModal"
       @tag-filter-change="handleTagFilterChange"
       @group-filter-change="handleGroupFilterChange"
+      @visibility-filter-change="handleVisibilityFilterChange"
       @load-more-tags="loadMoreTagView"
       @favorite-toggle="handleFavoriteToggle"
       @restore-case="handleRestoreCase"
@@ -84,7 +86,10 @@ const {
   restoreAllTrash,
   handleFavoriteToggle,
   handleRestoreCase,
-  handlePurgeCase
+  handlePurgeCase,
+  // INT-423/467：可见性筛选
+  visibilityFilter,
+  handleVisibilityFilterChange
 } = useTestCaseManager();
 
 /** INT-215：收藏筛选切换后按当前视图刷新（与回收站模式互斥联动由 toggleTrashMode 收敛） */

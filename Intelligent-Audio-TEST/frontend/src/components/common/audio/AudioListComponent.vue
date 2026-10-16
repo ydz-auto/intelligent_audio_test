@@ -224,6 +224,8 @@
                   </div>
                   <div class="audio-details">
                 <div class="audio-name">{{ audio.filename || audio.name }}</div>
+                <!-- INT-423/467：可见性徽标（私有带锁图标） -->
+                <VisibilityBadge :visibility="audio.visibility" />
               </div>
                 </div>
               </td>
@@ -414,6 +416,7 @@
 import FolderNodeComponent from '../misc/FolderNodeComponent.vue';
 import PaginationComponent from '../data/PaginationComponent.vue';
 import BadgeFilter from '../BadgeFilter.vue';
+import VisibilityBadge from '../visibility/VisibilityBadge.vue';
 import { formatFileSize, formatDuration } from '../../../utils/audioUtils';
 import { useAudioListComponent } from './AudioListComponent';
 import type { AudioItem, AudioListProps } from './AudioListComponent';

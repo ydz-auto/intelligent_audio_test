@@ -52,6 +52,8 @@ export function useTaskList(options?: UseTaskListOptions) {
   });
   // INT-141：仅收藏筛选（后端 favorite=true）
   const favoriteOnly = ref(false);
+  // INT-423/467：可见性筛选（'' | 'shared' | 'private'；服务端 ?visibility= 过滤）
+  const visibilityFilter = ref('');
   const customDateRange = ref({ start: '', end: '' });
   const algorithmOptions = ref<{ value: string; label: string }[]>([]);
 
@@ -154,6 +156,11 @@ export function useTaskList(options?: UseTaskListOptions) {
       // （filters.status==='deleted'）下收藏过滤不得生效，互斥不依赖入口清空顺序
       if (favoriteOnly.value && filters.value.status !== 'deleted') {
         params.favorite = true;
+      }
+      // INT-423/467：可见性过滤（visibility=private|shared，服务端行级过滤；
+      // 回收站态互斥——已删任务不参与可见性筛选）
+      if (visibilityFilter.value && filters.value.status !== 'deleted') {
+        params.visibility = visibilityFilter.value;
       }
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
         params.algorithmType = filters.value.algorithmType;
@@ -335,6 +342,7 @@ export function useTaskList(options?: UseTaskListOptions) {
     filters,
     customDateRange,
     favoriteOnly,
+    visibilityFilter,
     algorithmOptions,
     tagCurrentPage,
     tagPageSize,

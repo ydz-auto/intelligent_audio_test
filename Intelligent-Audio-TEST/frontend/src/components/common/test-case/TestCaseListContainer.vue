@@ -67,6 +67,14 @@
             title="算法筛选"
             @update:model-value="value => algorithmTypeFilter = String(value)"
           />
+          <!-- INT-423/467：可见性筛选（全部/共享/私有；服务端 ?visibility= 行级过滤） -->
+          <BadgeFilter
+            :options="VISIBILITY_FILTER_OPTIONS"
+            :model-value="visibilityFilter || 'all'"
+            all-label="全部"
+            title="可见性"
+            @update:model-value="value => emit('visibilityFilterChange', String(value))"
+          />
           <BadgeFilter
             :options="dimensionFilterOptions"
             :model-value="dimensionFilter"
@@ -346,6 +354,7 @@ import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../domain';
 import { TestType, ViewMode } from '@/domain/enums';
+import { VISIBILITY_FILTER_OPTIONS } from '../../../composables/visibility/useVisibility';
 import { useTestCaseStore } from '../../../store/testCaseStore';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
 import { useNotification } from '../../../composables/modal/useNotification';
@@ -365,6 +374,8 @@ const props = defineProps<{
   viewMode?: 'group' | 'tag';
   // INT-141：回收站模式（卡片操作切换为 恢复/彻底删除）
   trashMode?: boolean;
+  // INT-423/467：可见性筛选（'' | 'shared' | 'private'）
+  visibilityFilter?: string;
 }>();
 
 const emit = defineEmits<{
@@ -380,6 +391,8 @@ const emit = defineEmits<{
   (e: 'update:viewMode', mode: 'group' | 'tag'): void;
   (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
   (e: 'groupFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
+  // INT-423/467：可见性筛选切换
+  (e: 'visibilityFilterChange', value: string): void;
   (e: 'loadMoreTags'): void;
   // INT-141：收藏 / 回收站
   (e: 'favoriteToggle', testCase: TestCase): void;

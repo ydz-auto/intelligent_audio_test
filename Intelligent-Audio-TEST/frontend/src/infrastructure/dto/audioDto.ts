@@ -24,6 +24,10 @@ export interface AudioItemDto {
   annotations?: Record<string, unknown>[]
   created_at?: string
   updated_at?: string
+  /** INT-423/467：资源可见性（shared/private，跟随所属用例；后端 Visibility 原值） */
+  visibility?: string | null
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失按非私有处理） */
+  created_by_user_id?: number | null
 }
 
 /** 对应 AudioListStats */

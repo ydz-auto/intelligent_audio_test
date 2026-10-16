@@ -9,7 +9,8 @@ import { useTestCaseOps } from './useTestCaseOps'
 import { useResourceSelection } from './useResourceSelection'
 import { useTaskExecution } from './useTaskExecution'
 import { useTestCaseStore } from '../../store/testCaseStore'
-import { TestType, TaskStatus, DeviceStatus } from '../../domain/enums'
+import { TestType, TaskStatus, DeviceStatus, type VisibilityType } from '../../domain/enums'
+import { getVisibilityPref, setVisibilityPref } from '../visibility/useVisibility'
 
 export function normalizeSelectedCaseIds(ids: (string | number)[]) {
   const normalizedIds = ids.filter((id): id is string | number => {
@@ -35,10 +36,18 @@ export function normalizeSelectedCaseIds(ids: (string | number)[]) {
 export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
   // ============ 基础状态 ============
   const taskName = ref(testType === TestType.E2E ? '' : 'API测试任务')
+  // INT-423/467：新建任务可见性（默认共享；切换时落 localStorage 偏好）
+  const taskVisibility = ref<VisibilityType>(getVisibilityPref())
   const activeTab = ref('cases')
   const concurrentTasks = ref(testType === TestType.E2E ? 4 : 5)
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const currentTaskId = ref<number | string | null>(null)
+
+  /** INT-423/467：可见性选择器切换 → 记录偏好（各表单新建一致沿用） */
+  const handleVisibilityChange = (v: VisibilityType) => {
+    taskVisibility.value = v
+    setVisibilityPref(v)
+  }
 
   // ============ 步骤导航 ============
   const { currentStep, goToStep } = useTestSteps(4)
@@ -158,6 +167,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
     testType,
     currentTaskId,
     taskName,
+    taskVisibility,
     concurrentTasks,
     // INT-282：未勾选用例按筛选拉全量回退需要算法筛选条件
     selectedAlgorithmType,
@@ -335,6 +345,7 @@ export function useTestFlow(testType: typeof TestType[keyof typeof TestType]) {
   return {
     testType,
     currentStep, steps, selectedTestCaseIds, taskName, activeTab, concurrentTasks,
+    taskVisibility, handleVisibilityChange,
     currentTaskId, taskStartTime, taskElapsedTimeDisplay,
     testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading, casePaginationInfo,
     fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,

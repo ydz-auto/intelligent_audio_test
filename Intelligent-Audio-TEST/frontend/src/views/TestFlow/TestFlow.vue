@@ -261,6 +261,11 @@
       <div class="form-hint">
         <small>请输入一个描述性的任务名称，便于后续查看测试结果</small>
       </div>
+      <!-- INT-423/467：新建任务可见性选择器（默认共享；切换记录 localStorage 偏好） -->
+      <div class="form-group">
+        <label>可见性</label>
+        <VisibilitySelector :model-value="taskVisibility" @change="handleVisibilityChange" />
+      </div>
     </div>
   </BasicModal>
 
@@ -282,6 +287,7 @@ import TestExecutionComponent from '../../components/layout/TestExecutionCompone
 import TestStepContainer from '../../components/common/misc/TestStepContainer.vue'
 import ResourceSelectionGrid from '../../components/common/data/ResourceSelectionGrid.vue'
 import BasicModal from '../../components/common/modal/BasicModal.vue'
+import VisibilitySelector from '../../components/common/visibility/VisibilitySelector.vue'
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue'
 import AlgorithmConfigModal from '../../components/algorithm/AlgorithmConfigModal.vue'
 import AlgorithmSelectionPanel from '../../components/algorithm/AlgorithmSelectionPanel.vue'
@@ -299,6 +305,7 @@ const flow = useTestFlow(props.testType)
 // 解构所需状态/方法
 const {
   currentStep, taskName, activeTab, concurrentTasks,
+  taskVisibility, handleVisibilityChange,
   selectedAPIIds, selectedDeviceIdsList,
   testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading,
   algorithmList, selectedAlgorithmType, algorithmModalVisible, algorithmModalMode,

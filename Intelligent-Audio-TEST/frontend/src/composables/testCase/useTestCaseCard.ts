@@ -7,7 +7,8 @@ import { useModalControl } from '../modal/useModal';
 import { useNotification } from '../modal/useNotification';
 import { MODAL_TYPES } from '../modal/constants';
 import { downloadBlob, normalizeTestCaseConfig } from '../../utils/utils';
-import { ViewMode, TestType } from '@/domain/enums';
+import { ViewMode, TestType, Visibility } from '@/domain/enums';
+import { getVisibilityPref } from '../visibility/useVisibility';
 import { AUDIO_IMPORT_QUERY, AUDIO_IMPORT_AUTO_OPEN_VALUE } from '@/domain';
 import type {
   TestCase,
@@ -37,7 +38,9 @@ export function useTestCaseCard() {
     config: {
       rounds: [{ roundNumber: 1, audios: [] }],
       dimensions: [],
-    }
+    },
+    // INT-423/467：新建默认可见性（localStorage 偏好，缺省共享）
+    visibility: getVisibilityPref(),
   };
 
   const formData = ref<TestCaseFormData>({ ...initialFormData });
@@ -108,6 +111,9 @@ export function useTestCaseCard() {
       algorithmParams: Array.isArray(testCase.algorithmParams)
         ? testCase.algorithmParams
         : [],
+      // INT-423/467：编辑沿用资源现值；归属人用于非 owner 打开私有资源的 403 守卫
+      visibility: (testCase.visibility || Visibility.SHARED) as TestCaseFormData['visibility'],
+      createdByUserId: testCase.createdByUserId,
     } as TestCaseFormData;
     
     try {
@@ -309,6 +315,10 @@ export function useTestCaseCard() {
 
     try {
       if (mode === 'case') {
+        if ((data as any)?.visibilityOnly) {
+          // INT-423/467：分享/设为私有已由模态内 PATCH 完成，此处仅触发列表刷新
+          return { success: true, needRefresh: true };
+        }
         if (isEdit) {
           success = await store.updateTestCase(id!, data);
         } else {

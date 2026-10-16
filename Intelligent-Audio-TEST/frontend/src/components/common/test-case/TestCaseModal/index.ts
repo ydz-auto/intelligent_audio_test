@@ -4,6 +4,8 @@ import { useNotification } from '../../../../composables/modal/useNotification';
 import { useAudioConfig } from './useAudioConfig';
 import { useDimensionConfig } from './useDimensionConfig';
 import { readCamel } from '@/utils/keyTransform';
+import { Visibility } from '@/domain/enums';
+import { canEditResource } from '../../../../composables/visibility/useVisibility';
 import type { GroupFormData, ExportFormData, AudioInfo, TestCaseFormData, TestCaseGroup } from '@/domain';
 
 export function useTestCaseModal(props: any, emit: any) {
@@ -42,6 +44,59 @@ export function useTestCaseModal(props: any, emit: any) {
     }
     return false;
   });
+
+  // ===== INT-423/467：可见性守卫 + 分享/设为私有切换 =====
+
+  /** 编辑资源的可见性（新建无 id 时缺省 shared） */
+  const caseVisibility = computed(() =>
+    caseFormData.value.visibility || Visibility.SHARED);
+
+  /**
+   * 403 守卫：编辑私有资源且非 owner（如 admin 打开他人私有用例）。
+   * 私有资源对非 owner 隐藏保存/删除入口 + 提示（spec：详情/编辑非 owner 私有 → 403 提示）。
+   */
+  const visibilityDenied = computed(() => {
+    if (!isEditMode.value || props.mode !== 'case') return false;
+    if (caseVisibility.value !== Visibility.PRIVATE) return false;
+    return !canEditResource({
+      visibility: caseVisibility.value,
+      createdByUserId: caseFormData.value.createdByUserId,
+    });
+  });
+
+  /** 是否可切换可见性（owner 或共享资源；私有非 owner 无权限） */
+  const canToggleVisibility = computed(() => {
+    if (props.mode !== 'case' || !caseFormData.value.id) return false;
+    if (visibilityDenied.value) return false;
+    return canEditResource({
+      visibility: caseVisibility.value,
+      createdByUserId: caseFormData.value.createdByUserId,
+    });
+  });
+
+  /** 分享 / 设为私有：PATCH /testcases/{id}/visibility（需 testcase:share + owner 校验） */
+  const toggleVisibility = async () => {
+    const id = caseFormData.value.id;
+    if (id == null || !canToggleVisibility.value) return;
+    const next = caseVisibility.value === Visibility.SHARED
+      ? Visibility.PRIVATE
+      : Visibility.SHARED;
+    try {
+      await testcasesPort.updateVisibility(id, next);
+      caseFormData.value.visibility = next;
+      notification.success(next === Visibility.SHARED ? '已改为共享' : '已设为私有');
+      // 提示列表即时刷新徽标（携带 visibilityOnly 标记，handleModalSave 只刷新不重复写库）
+      emit('save', {
+        mode: 'case',
+        isEdit: isEditMode.value,
+        id: caseFormData.value.id,
+        data: { ...caseFormData.value, visibilityOnly: true },
+      });
+      handleClose();
+    } catch (error: any) {
+      notification.error(error?.message || '切换可见性失败，请确认您有该资源的分享权限');
+    }
+  };
 
   function getModalTitle() {
     if (props.title) return props.title;
@@ -523,6 +578,10 @@ export function useTestCaseModal(props: any, emit: any) {
     exportFormRef,
     isEditMode,
     isSubmitDisabled,
+    caseVisibility,
+    visibilityDenied,
+    canToggleVisibility,
+    toggleVisibility,
     getModalTitle,
     getSubmitButtonText,
     handleGroupUpdate,

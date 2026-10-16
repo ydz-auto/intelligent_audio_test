@@ -45,6 +45,8 @@
                 {{ dimension._isMain ? '主' : '子' }}
               </span>
               <span class="dimension-name-text">{{ dimension.name }}</span>
+              <!-- INT-423/467：可见性徽标（私有带锁图标） -->
+              <VisibilityBadge :visibility="dimension.visibility" />
               <span v-if="dimension._level === 1 && dimension._parentName" class="parent-name-hint">（{{ dimension._parentName }}）</span>
             </div>
           </td>
@@ -110,6 +112,7 @@
 <script setup>
 // 评估维度表格公共组件：列表视图与分组视图共用，避免表格模板重复
 import { ApiEndpointStatus } from '../domain/enums';
+import VisibilityBadge from './common/visibility/VisibilityBadge.vue';
 
 const props = defineProps({
   items: { type: Array, default: () => [] },

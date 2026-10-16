@@ -60,6 +60,11 @@ export const reportsApi = {
     return request<void>('DELETE', `/reports/${id}`);
   },
 
+  /** 切换报告可见性（INT-423/467：PATCH /{id}/visibility，需 report:share + owner 校验） */
+  async updateVisibility(id: string | number, visibility: string): Promise<void> {
+    return request<void>('PATCH', `/reports/${id}/visibility`, { visibility });
+  },
+
   /** 批量删除：后端 batch_delete 直接读 body.ids（非 schema） */
   async batchDelete(ids: (string | number)[], hardDelete = false): Promise<void> {
     return request<void>('POST', '/reports/batch-delete', toReportBatchDeleteDto(ids, hardDelete));

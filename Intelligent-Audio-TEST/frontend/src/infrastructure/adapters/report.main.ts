@@ -101,6 +101,9 @@ export function toReport(dto: Partial<ReportDto> | ReportListItemDto): Report {
     taskName: d.task_name ?? undefined,
     algorithmType: d.algorithm_type ?? undefined,
     description: d.description ?? undefined,
+    // INT-423/467：可见性 + 归属人（两端同名，显式映射）
+    visibility: d.visibility ?? undefined,
+    createdByUserId: d.created_by_user_id ?? undefined,
     summary: d.summary ? toReportSummary(d.summary as ReportSummaryDto) : undefined,
     detailedResults: Array.isArray(d.detailed_results)
       ? d.detailed_results.map(item => toDetailedResult(item as unknown as Record<string, unknown>))
@@ -155,6 +158,9 @@ export function toReportListItem(dto: ReportListItemDto): ReportListItemDomain {
     deleted: dto.deleted ?? undefined,
     deletedAt: dto.deleted_at ?? undefined,
     deletedByUserId: dto.deleted_by_user_id ?? undefined,
+    // INT-423/467：可见性 + 归属人（两端同名，显式映射）
+    visibility: dto.visibility ?? undefined,
+    createdByUserId: dto.created_by_user_id ?? undefined,
   }
 }
 

@@ -52,6 +52,7 @@ import { logsPort } from '@/composables/task/logsPort';
 import { useTaskProgress } from '../../../composables/task/useTaskProgress';
 import { useModalControl, MODAL_TYPES } from '../../../composables/modal/useModal';
 import { useNotification } from '../../../composables/modal/useNotification';
+import { isNotFoundOrForbidden } from '@/composables/visibility/useVisibility';
 import { summarizeCaseStatuses } from '../../../utils/caseStatusSummary';
 import TestExecutionComponent from '../../layout/TestExecutionComponent.vue';
 import CherryPickDialog from './CherryPickDialog.vue';
@@ -374,7 +375,8 @@ async function fetchTaskDetails() {
     
   } catch (err) {
     console.error('Failed to fetch task details:', err);
-    error.value = '加载任务详情失败';
+    // INT-423/467：私有任务非 owner 路由直达 → 后端 404；统一文案不泄露资源名
+    error.value = isNotFoundOrForbidden(err) ? '资源不存在或无权访问' : '加载任务详情失败';
   } finally {
     loading.value = false;
   }

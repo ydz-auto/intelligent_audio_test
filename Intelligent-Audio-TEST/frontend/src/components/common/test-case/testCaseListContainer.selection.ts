@@ -8,6 +8,7 @@ import { useTestCaseStore } from '../../../store/testCaseStore';
 import type { ComputedRef, Ref } from 'vue';
 import type { TestCase } from '../../../domain';
 import { UNGROUPED_GROUP_ID, UNGROUPED_GROUP_NAME } from '../../../domain';
+import { canEditResource } from '../../../composables/visibility/useVisibility';
 import type { ContainerState } from './testCaseListContainer.state';
 
 /** 选择模块依赖（来自筛选/视图计算属性模块） */
@@ -46,18 +47,26 @@ export function createSelectionModule(props: any, emit: any, state: ContainerSta
         { id: 'purge', icon: 'fa-fire', title: '彻底删除（不可恢复）' }
       ];
     }
-    return (testCase: TestCase | null | undefined) => [
-      { id: 'preview', icon: 'fa-play', title: '预览音频' },
-      { id: 'copy', icon: 'fa-copy', title: '复制用例' },
-      {
-        id: 'favorite',
-        iconClass: testCase?.isFavorite ? 'fas fa-star' : 'far fa-star',
-        iconStyle: testCase?.isFavorite ? 'color: var(--favorite-star)' : '',
-        title: testCase?.isFavorite ? '取消收藏' : '收藏'
-      },
-      { id: 'edit', icon: 'fa-edit', title: '编辑用例' },
-      { id: 'delete', icon: 'fa-trash', title: '删除用例' }
-    ];
+    return (testCase: TestCase | null | undefined) => {
+      const canEdit = canEditResource(testCase);
+      return [
+        { id: 'preview', icon: 'fa-play', title: '预览音频' },
+        { id: 'copy', icon: 'fa-copy', title: '复制用例' },
+        {
+          id: 'favorite',
+          iconClass: testCase?.isFavorite ? 'fas fa-star' : 'far fa-star',
+          iconStyle: testCase?.isFavorite ? 'color: var(--favorite-star)' : '',
+          title: testCase?.isFavorite ? '取消收藏' : '收藏'
+        },
+        // INT-423/467：私有用例非 owner（含 admin）隐藏编辑/删除入口
+        ...(canEdit
+          ? [
+              { id: 'edit', icon: 'fa-edit', title: '编辑用例' },
+              { id: 'delete', icon: 'fa-trash', title: '删除用例' },
+            ]
+          : []),
+      ];
+    };
   };
 
   const toggleTestCaseSelection = (caseId: string | number) => {

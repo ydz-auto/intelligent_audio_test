@@ -86,6 +86,14 @@
                       title="分类"
                       @update:model-value="setCategoryFilter"
                     />
+                    <!-- INT-423/467：可见性筛选（全部/共享/私有；纯前端派生） -->
+                    <BadgeFilter
+                      :options="VISIBILITY_FILTER_OPTIONS"
+                      :model-value="filterVisibility || 'all'"
+                      all-label="全部"
+                      title="可见性"
+                      @update:model-value="setVisibilityFilter"
+                    />
                     <AlgorithmFilter :options="algorithms" v-model="filterAlgorithm" title="关联算法" />
                     <div class="filter-item reset-filter-item">
                       <button class="btn btn-text btn-primary" @click="resetFilters">重置筛选</button>
@@ -206,6 +214,8 @@
 <script setup>
 import { computed } from 'vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue';
+import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
 // 关联算法筛选组件
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 // 评估维度表格公共组件（列表/分组视图共用）
@@ -220,6 +230,7 @@ const {
   searchKeyword,
   categories,
   filterStatus,
+  filterVisibility,
   filterCategory,
   filterAlgorithm,
   algorithms,
@@ -280,6 +291,12 @@ function setStatusFilter(value) {
 
 function setCategoryFilter(value) {
   filterCategory.value = String(value);
+  filterDimensions();
+}
+
+/** INT-423/467：可见性筛选切换（全部/共享/私有；纯前端派生） */
+function setVisibilityFilter(value) {
+  filterVisibility.value = String(value) === 'all' ? '' : String(value);
   filterDimensions();
 }
 </script>

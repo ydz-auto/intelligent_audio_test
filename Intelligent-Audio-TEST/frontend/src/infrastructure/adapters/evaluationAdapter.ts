@@ -164,6 +164,9 @@ export function toDimension(dto: DimensionItemDto): Dimension {
     status: dto?.status,
     createdAt: dto?.created_at,
     updatedAt: dto?.updated_at,
+    // INT-423/467：可见性 + 归属人（两端同名，显式映射）
+    visibility: dto?.visibility ?? undefined,
+    createdByUserId: dto?.created_by_user_id ?? undefined,
   }
 }
 
@@ -302,6 +305,8 @@ export function toDimensionDto(data: Partial<Dimension>): Record<string, any> {
   if (data.status !== undefined) result.status = data.status
   if (data.scoreUnit !== undefined) result.score_unit = data.scoreUnit
   if (data.llmJudgeConfig !== undefined) result.llm_judge_config = data.llmJudgeConfig
+  // INT-423/467：可见性（缺省不发，后端回落 shared）
+  if (data.visibility !== undefined) result.visibility = data.visibility
   return result
 }
 

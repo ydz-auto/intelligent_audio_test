@@ -120,6 +120,8 @@ export function useHistoryReports() {
   const favoriteOnly = favoritesModule.favoriteOnly;
   /** 回收站模式（deleted=true 拉取 + 卡片操作切换为恢复/彻底删除） */
   const trashMode = ref(false);
+  /** INT-423/467：可见性筛选（'' | 'shared' | 'private'；服务端行级过滤） */
+  const visibilityFilter = ref('');
 
   // ===== Tab 计数（INT-280：服务端聚合，多页数据下不失真）=====
   /** 四个 Tab 的全量计数（键 = ReportTabValue）；接口失败时回退空对象，计数隐藏为 0 */
@@ -181,6 +183,8 @@ export function useHistoryReports() {
       // INT-141：收藏 / 回收站过滤
       if (favoriteOnly.value && !trashMode.value) params.favorite = true;
       if (trashMode.value) params.deleted = true;
+      // INT-423/467：可见性过滤（服务端行级过滤；回收站态互斥）
+      if (visibilityFilter.value && !trashMode.value) params.visibility = visibilityFilter.value;
 
       const data = await reportsPort.getAll(params);
       allReports.value = data?.items || [];
@@ -266,6 +270,13 @@ export function useHistoryReports() {
   /** INT-215：收藏筛选切换（FavoriteTrashBar bar-toggle 口径，含刷新与分页重置） */
   const handleReportFavoriteFilterChange = async (value: boolean) => {
     favoriteOnly.value = value;
+    currentPage.value = 1;
+    await loadReports();
+  };
+
+  /** INT-423/467：可见性筛选切换（全部/共享/私有；含刷新与分页重置） */
+  const handleVisibilityFilterChange = async (value: string | number) => {
+    visibilityFilter.value = String(value) === 'all' ? '' : String(value);
     currentPage.value = 1;
     await loadReports();
   };
@@ -691,6 +702,9 @@ export function useHistoryReports() {
     // 收藏 / 回收站（INT-141）
     favoriteOnly,
     trashMode,
+    // INT-423/467：可见性筛选
+    visibilityFilter,
+    handleVisibilityFilterChange,
     toggleTrashMode,
     // INT-215：收藏筛选切换（FavoriteTrashBar）
     handleReportFavoriteFilterChange,

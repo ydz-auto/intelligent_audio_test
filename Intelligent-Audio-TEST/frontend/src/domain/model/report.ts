@@ -58,6 +58,10 @@ export interface ReportListItemDomain {
   deleted?: boolean
   deletedAt?: string
   deletedByUserId?: number | null
+  /** INT-423/467：资源可见性（shared/private；私有仅 owner+admin 可见） */
+  visibility?: string
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失按非私有处理） */
+  createdByUserId?: number | null
 }
 
 /** 报告列表响应（ReportListData → camelCase） */
@@ -402,6 +406,10 @@ export interface Report {
   conclusion?: string
   /** 报告编辑标题（ReportUpdateRequest.title） */
   title?: string
+  /** INT-423/467：资源可见性（详情聚合根，shared/private） */
+  visibility?: string
+  /** INT-423/467：资源归属人 user_id */
+  createdByUserId?: number | null
   /** 聚合根 config JSON（_aggregate_to_dict 输出，键为数据 key 非字段名） */
   config?: Record<string, unknown>
   /** INT-215：回收站字段（列表项展示删除人/删除时间；report_service 补齐前显示「—」空态） */
@@ -456,6 +464,8 @@ export interface ReportListQuery {
   favorite?: boolean
   /** INT-141：仅回收站（软删除项，含删除人/删除时间） */
   deleted?: boolean
+  /** INT-423/467：可见性过滤（private|shared；服务端行级过滤） */
+  visibility?: string
 }
 
 // ===== 对比报告展示模型 =====

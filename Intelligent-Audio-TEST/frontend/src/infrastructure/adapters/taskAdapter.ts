@@ -108,6 +108,9 @@ export function toTask(dto: TaskDto | TaskDetailDto): Task {
     deletedByUserId: d.deleted_by_user_id ?? undefined,
     // INT-339：挑选合并容器标记
     isCherryPick: d.is_cherry_pick,
+    // INT-423/467：可见性 + 归属人（两端同名，显式映射；缺省回落 undefined）
+    visibility: d.visibility ?? undefined,
+    createdByUserId: d.created_by_user_id ?? undefined,
     result: d.result,
     reports: d.reports
       ? {
@@ -177,6 +180,8 @@ export function toTaskCreateDto(draft: TaskCreateDraft): TaskCreateDto {
     tags: draft.tags,
     algorithm_type: draft.algorithmType,
     algorithm_params: draft.algorithmParams,
+    // INT-423/467：新建可见性（缺省不发，后端回落 shared）
+    visibility: draft.visibility,
   }
 }
 

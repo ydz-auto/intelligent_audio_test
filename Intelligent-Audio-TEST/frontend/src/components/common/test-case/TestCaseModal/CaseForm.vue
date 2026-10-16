@@ -82,6 +82,20 @@
           <textarea id="caseDescription" v-model="localFormData.description" class="form-control" rows="2" @input="emitFormData"></textarea>
         </div>
       </div>
+
+      <!-- INT-423/467：可见性选择器（默认共享；切换落 localStorage 偏好） -->
+      <div class="form-row">
+        <div class="form-group">
+          <label>可见性</label>
+          <VisibilitySelector
+            :model-value="(localFormData.visibility || 'shared')"
+            @change="handleVisibilityChange"
+          />
+          <div class="form-hint mt-2">
+            <small>共享：所有有权限的用户可见；私有：仅自己可见和操作</small>
+          </div>
+        </div>
+      </div>
     </div>
 
     <AlgorithmSelector
@@ -171,6 +185,7 @@ import AlgorithmSelector from '../../audio/AlgorithmSelector.vue';
 import RoundConfigEditor from './RoundConfigEditor.vue';
 import OverallEvaluationEditor from './OverallEvaluationEditor.vue';
 import GlobalNoiseEditor from './GlobalNoiseEditor.vue';
+import VisibilitySelector from '../../visibility/VisibilitySelector.vue';
 import { useCaseForm } from './CaseForm';
 import { TestType } from '@/domain/enums';
 import type { TestCaseFormData } from '@/domain';
@@ -218,6 +233,7 @@ const {
   handleAlgorithmParamsUpdate,
   handleAudioSelectRequest,
   handleOverallDimensionsUpdate,
+  handleVisibilityChange,
   availableDimensions,
   roundConfigRef,
   syncConfigFromParent,

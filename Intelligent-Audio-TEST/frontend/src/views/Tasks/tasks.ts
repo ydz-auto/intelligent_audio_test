@@ -93,6 +93,12 @@ export function useTasks() {
     await listModule.applyFilters();
   };
 
+  /** INT-423/467：可见性筛选切换（全部/共享/私有；'' | 'shared' | 'private'，含刷新） */
+  const handleTaskVisibilityFilterChange = async (value: string | number) => {
+    listModule.visibilityFilter.value = String(value) === 'all' ? '' : String(value);
+    await listModule.applyFilters();
+  };
+
   // ===== 收藏页签进出（INT-298 页签化，INT-320 修复：对齐「收藏筛选 × 回收站互斥」入口机制）=====
 
   /**
@@ -350,6 +356,7 @@ export function useTasks() {
     filters: listModule.filters,
     customDateRange: listModule.customDateRange,
     favoriteOnly: listModule.favoriteOnly,
+    visibilityFilter: listModule.visibilityFilter,
     tagCurrentPage: listModule.tagCurrentPage,
     tagPageSize: listModule.tagPageSize,
     allTags: listModule.allTags,
@@ -406,6 +413,7 @@ export function useTasks() {
     taskTrashMode,
     toggleTaskTrashMode,
     handleTaskFavoriteFilterChange,
+    handleTaskVisibilityFilterChange,
     // INT-320：收藏页签进出（回收站互斥入口清空 + 发送侧守卫双防线）
     loadFavoriteView,
     leaveFavoriteView,

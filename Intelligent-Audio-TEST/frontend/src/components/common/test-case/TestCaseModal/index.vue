@@ -38,12 +38,28 @@
         @submit="handleExportConfirm"
       />
     </div>
+    <!-- INT-423/467：私有资源非 owner（admin 打开他人私有资源）→ 403 提示，隐藏保存入口 -->
+    <div v-if="visibilityDenied" class="visibility-denied-bar">
+      <i class="fas fa-lock"></i>
+      <span>该资源为私有，仅创建者可编辑（无编辑/删除权限）</span>
+    </div>
     <div class="modal-footer-content">
+      <div class="visibility-footer-action" v-if="canToggleVisibility">
+        <button
+          type="button"
+          class="btn btn-secondary"
+          :title="caseVisibility === 'private' ? '将资源改为共享（所有有权限用户可见）' : '将资源设为私有（仅自己可见）'"
+          @click="toggleVisibility"
+        >
+          <i class="fas" :class="caseVisibility === 'private' ? 'fa-users' : 'fa-lock'"></i>
+          {{ caseVisibility === 'private' ? '设为共享' : '设为私有' }}
+        </button>
+      </div>
       <button type="button" class="btn btn-secondary" @click="handleClose">取消</button>
       <button
         type="button"
         class="btn btn-primary"
-        :disabled="isSubmitDisabled"
+        :disabled="isSubmitDisabled || visibilityDenied"
         @click="handleSubmit"
       >
         {{ getSubmitButtonText() }}
@@ -164,6 +180,10 @@ const {
   exportFormRef,
   isEditMode,
   isSubmitDisabled,
+  caseVisibility,
+  visibilityDenied,
+  canToggleVisibility,
+  toggleVisibility,
   getModalTitle,
   getSubmitButtonText,
   handleGroupUpdate,

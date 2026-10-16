@@ -24,6 +24,17 @@
       </div>
     </div>
 
+    <!-- INT-423/467：可见性筛选（全部/共享/私有；服务端 ?visibility= 行级过滤，空态亦可达） -->
+    <div class="filter-row" style="margin-bottom: 12px;">
+      <BadgeFilter
+        :options="VISIBILITY_FILTER_OPTIONS"
+        :model-value="visibilityFilter || 'all'"
+        all-label="全部"
+        title="可见性"
+        @update:model-value="handleVisibilityFilterChange"
+      />
+    </div>
+
     <!-- 加载态 -->
     <div v-if="loading && reports.length === 0" class="tr-loading-state">
       <div class="tr-loading-spinner"></div>
@@ -66,6 +77,8 @@
                 <span class="report-card-status" :class="report.status === ReportStatus.DRAFT ? 'draft' : 'published'">
                   {{ report.status === ReportStatus.DRAFT ? '草稿' : '已发布' }}
                 </span>
+                <!-- INT-423/467：可见性徽标（私有带锁图标） -->
+                <VisibilityBadge :visibility="report.visibility" />
                 <span v-if="report.taskName" class="report-card-test-type">{{ report.taskName }}</span>
               </div>
             </div>
@@ -132,6 +145,9 @@
 import { ReportStatus } from '@/domain/enums';
 import { useTestReports } from './testReports';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
+import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue';
+import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
 
 const {
   reports,
@@ -141,6 +157,8 @@ const {
   loading,
   error,
   toast,
+  visibilityFilter,
+  handleVisibilityFilterChange,
   loadReports,
   getReportTypeLabel,
   formatDate,

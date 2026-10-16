@@ -24,6 +24,8 @@ const QUERY_PARAM_MAP: Record<string, string> = {
   // E2E/API 起跑流程按执行口径圈定用例（/testcases/ids），
   // INT-193：列表接口同样消费该参数（服务端按配置形态派生过滤）
   testType: 'type',
+  // INT-423/467：可见性过滤（同名透传；后端 TestCaseListQuery.visibility）
+  visibility: 'visibility',
 };
 
 /** 将 camelCase 参数对象转为后端期望的 snake_case 查询参数 */
@@ -106,6 +108,11 @@ export const testcasesApi = {
 
   async delete(id: string | number) {
     return request<void>('DELETE', `/testcases/${id}`);
+  },
+
+  /** 切换用例可见性（INT-423/467：PATCH /{id}/visibility，需 testcase:share + owner 校验） */
+  async updateVisibility(id: string | number, visibility: string) {
+    return request<void>('PATCH', `/testcases/${id}/visibility`, { visibility });
   },
 
   /** 复制用例 → TestCase（camelCase） */

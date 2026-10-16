@@ -25,6 +25,8 @@ export function useTestReports() {
   const currentPage = ref<number>(1);
   const pageSize = ref<number>(10);
   const loading = ref<boolean>(false);
+  /** INT-423/467：可见性筛选（'' | 'shared' | 'private'；服务端行级过滤） */
+  const visibilityFilter = ref('');
   /** 拉取失败时的用户可见错误文案（三态之「错误态」） */
   const error = ref<string>('');
   /** 轻量行内反馈（收藏/删除结果），样式对齐 HistoryReports toast */
@@ -51,6 +53,8 @@ export function useTestReports() {
         sortBy: 'createdAt',
         order: 'desc',
       };
+      // INT-423/467：可见性过滤（服务端行级过滤）
+      if (visibilityFilter.value) params.visibility = visibilityFilter.value;
       const response = await reportsPort.getAll(params);
       reports.value = response.items || [];
       total.value = response.total || 0;
@@ -95,6 +99,13 @@ export function useTestReports() {
     pageSize.value = newSize;
     currentPage.value = 1;
     loadReports();
+  };
+
+  /** INT-423/467：可见性筛选切换（含刷新与分页重置） */
+  const handleVisibilityFilterChange = async (value: string | number) => {
+    visibilityFilter.value = String(value) === 'all' ? '' : String(value);
+    currentPage.value = 1;
+    await loadReports();
   };
 
   // ===== 行操作 =====
@@ -152,6 +163,8 @@ export function useTestReports() {
     loading,
     error,
     toast,
+    visibilityFilter,
+    handleVisibilityFilterChange,
     loadReports,
     getReportTypeLabel: getReportTypeLabelLocal,
     formatDate,

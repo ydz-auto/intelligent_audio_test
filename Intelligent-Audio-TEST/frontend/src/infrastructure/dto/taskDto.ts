@@ -82,6 +82,10 @@ export interface TaskDto {
   deleted_by_user_id?: number | null
   /** INT-339：挑选合并容器标记（task_cherry_pick_relations 存在性判定） */
   is_cherry_pick?: boolean
+  /** INT-423/467：资源可见性（shared/private，后端 Visibility 原值） */
+  visibility?: string | null
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失按非私有处理） */
+  created_by_user_id?: number | null
   result?: any
   reports?: TaskReportsDataDto | null
   devices: TaskDeviceBriefDto[]
@@ -122,6 +126,8 @@ export interface TaskCreateDto {
   type?: string
   config?: Record<string, any>
   created_by?: string | null
+  /** INT-423/467：新建可见性（默认 shared；后端缺省回落 shared） */
+  visibility?: string
   case_ids?: string[]
   device_ids?: number[]
   api_ids?: number[]
@@ -199,6 +205,8 @@ export interface TaskListQueryDto {
   cherry_pick?: boolean
   // INT-301 F1：执行状态过滤（复用派生口径，命中行执行徽章 == 筛选值）
   execution_status?: string
+  // INT-423/467：可见性过滤（private|shared；服务端行级过滤，私有仅当前用户可见）
+  visibility?: string
 }
 
 // ===== 任务域全量聚合统计（GET /tasks/stats，INT-200）=====

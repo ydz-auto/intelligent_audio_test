@@ -260,6 +260,7 @@ export function useAudioImport() {
     fetchAudios: audioListModule.fetchAudios,
     searchAudios,
     filterAudios: audioListModule.filterAudios,
+    handleVisibilityFilterChange: audioListModule.handleVisibilityFilterChange,
     switchView,
     applyFilters,
     resetFilters,

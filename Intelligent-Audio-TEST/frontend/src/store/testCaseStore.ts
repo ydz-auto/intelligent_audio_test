@@ -172,7 +172,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
           includeDeleted: params.includeDeleted || false,
           // INT-141：收藏 / 回收站过滤
           favorite: params.favorite || false,
-          onlyDeleted: params.onlyDeleted || false
+          onlyDeleted: params.onlyDeleted || false,
+          // INT-423/467：可见性过滤（private|shared，服务端行级过滤）
+          visibility: params.visibility || undefined
         })
       ]);
 
@@ -287,7 +289,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
         includeDeleted: params.includeDeleted || false,
         // INT-215：收藏 / 回收站过滤贯通标签视图
         favorite: params.favorite || false,
-        onlyDeleted: params.onlyDeleted || false
+        onlyDeleted: params.onlyDeleted || false,
+        // INT-423/467：可见性过滤贯通标签视图
+        visibility: params.visibility || undefined
       });
 
       const items = response?.items ?? [];

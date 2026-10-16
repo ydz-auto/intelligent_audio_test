@@ -33,6 +33,10 @@ export interface TestCaseDto {
   deleted_at?: string | null
   deleted_by_user_id?: number | null
   total_duration?: number | null
+  /** INT-423/467：资源可见性（shared/private，后端 Visibility 原值） */
+  visibility?: string | null
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失按非私有处理） */
+  created_by_user_id?: number | null
 }
 
 /** 用例分组（GroupListItem） */
@@ -55,6 +59,8 @@ export interface TestCaseUpsertDto {
   algorithm_params?: unknown
   reference_params?: unknown
   algorithm_type?: string
+  /** INT-423/467：可见性（shared/private；缺省回落 shared） */
+  visibility?: string
 }
 
 /**
@@ -82,6 +88,10 @@ export interface TagViewCaseDto {
   deletedAt?: string | null
   deletedByUserId?: number | null
   totalDuration?: number | null
+  /** INT-423/467：资源可见性（标签视图顶层 camelCase 输出） */
+  visibility?: string | null
+  /** INT-423/467：资源归属人 user_id（owner 判定） */
+  createdByUserId?: number | null
 }
 
 /** 标签视图 item（后端 view=tag：items 为 {tag, testCases} 聚合数组） */

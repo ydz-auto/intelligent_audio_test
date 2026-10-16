@@ -156,6 +156,8 @@ export function toReportListQueryDto(query: Partial<ReportListQuery>): ReportLis
     // INT-141：收藏 / 回收站过滤
     ...(query.favorite !== undefined ? { favorite: query.favorite } : {}),
     ...(query.deleted !== undefined ? { deleted: query.deleted } : {}),
+    // INT-423/467：可见性过滤
+    ...(query.visibility !== undefined ? { visibility: query.visibility } : {}),
   }
 }
 

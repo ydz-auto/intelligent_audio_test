@@ -20,6 +20,8 @@
               <div class="case-name" >
               {{ truncatedName }}
               <div class="case-name-tooltip">{{ testCase.name }}</div>
+              <!-- INT-423/467：可见性徽标（私有带锁图标，仅展示在用户可见的私有用例上） -->
+              <VisibilityBadge :visibility="testCase.visibility" />
               <!-- 根据type数组显示对应的标签 -->
               <div class="test-type-tags">
                 <span 
@@ -143,6 +145,8 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useAlgorithmLabels } from '../../../composables/algorithm/useAlgorithmLabels';
 import CaseIdBadge from '../CaseIdBadge.vue';
+// INT-423/467：可见性徽标（列表行私有标识）
+import VisibilityBadge from '../visibility/VisibilityBadge.vue';
 import { TestType } from '@/domain/enums';
 import { getStatusText } from '../../../utils/statusUtils';
 import { formatDate } from '../../../utils/utils';

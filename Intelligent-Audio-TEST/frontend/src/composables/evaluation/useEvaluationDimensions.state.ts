@@ -11,6 +11,7 @@ import {
   EvaluationCategory,
 } from '../../domain';
 import { ViewMode, TestType } from '@/domain/enums';
+import { getVisibilityPref, setVisibilityPref } from '../visibility/useVisibility';
 import {
   DEFAULT_MAX_PROCESS,
   DEFAULT_MAX_TIMEOUT,
@@ -31,6 +32,8 @@ export function createEvalDimensionState() {
   const filterStatus = ref<'all' | 'active' | 'inactive'>('all');
   const filterCategory = ref(ViewMode.ALL);
   const filterAlgorithm = ref('all');
+  /** INT-423/467：可见性筛选（'' | 'shared' | 'private'；纯前端派生） */
+  const filterVisibility = ref('');
 
   const selectedDimensions = ref<(number | string)[]>([]);
 
@@ -123,6 +126,8 @@ export function createEvalDimensionState() {
     estimatedExecTime: 5,
     rule: { ...dimensionTemplate.rule },
     status: true,
+    // INT-423/467：新建默认可见性（localStorage 偏好，缺省共享）
+    visibility: getVisibilityPref(),
     requiredInputs: [
       { key: 'asr_result', label: 'ASR识别结果', source: TestType.API, required: true, description: 'ASR算法识别出的文本' },
       { key: 'asr_ref', label: '参考文本', source: 'device', required: true, description: '标准参考文本' }
@@ -174,7 +179,10 @@ export function createEvalDimensionState() {
             ? algo === filterAlgorithm.value
             : algo?.algorithmType === filterAlgorithm.value
         );
-      return matchesSearch && matchesStatus && matchesCategory && matchesAlgorithm;
+      // INT-423/467：可见性匹配（缺省视为 shared）
+      const matchesVisibility = !filterVisibility.value ||
+        (dim.visibility || 'shared') === filterVisibility.value;
+      return matchesSearch && matchesStatus && matchesCategory && matchesAlgorithm && matchesVisibility;
     };
 
     const matchedIds = new Set<number | string>();
@@ -310,6 +318,7 @@ export function createEvalDimensionState() {
     filterStatus,
     filterCategory,
     filterAlgorithm,
+    filterVisibility,
     selectedDimensions,
     // 视图模式（列表/分组）
     viewMode,

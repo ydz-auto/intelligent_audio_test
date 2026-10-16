@@ -79,6 +79,7 @@ export function useEvaluation() {
     filterStatus: dimensionsModule.filterStatus,
     filterCategory: dimensionsModule.filterCategory,
     filterAlgorithm: dimensionsModule.filterAlgorithm,
+    filterVisibility: dimensionsModule.filterVisibility,
     selectedDimensions: dimensionsModule.selectedDimensions,
 
     // 视图模式（列表/分组，来自维度模块）

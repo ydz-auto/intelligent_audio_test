@@ -34,6 +34,8 @@ interface DimensionQueryParams {
   status?: boolean | string
   categoryId?: number | string
   algorithmType?: string
+  /** INT-423/467：可见性过滤（private|shared；服务端行级过滤） */
+  visibility?: string
 }
 
 /** 将 camelCase 查询参数转为 snake_case（仅供 evaluationApi 内部使用） */
@@ -45,6 +47,7 @@ function toDimensionQueryParams(params: DimensionQueryParams): Record<string, an
   if (params.status !== undefined) snakeParams.status = params.status
   if (params.categoryId !== undefined) snakeParams.category_id = params.categoryId
   if (params.algorithmType !== undefined) snakeParams.algorithm_type = params.algorithmType
+  if (params.visibility !== undefined) snakeParams.visibility = params.visibility
   return snakeParams
 }
 
@@ -84,6 +87,11 @@ export const evaluationApi = {
   /** 删除维度 */
   async delete(id: string | number): Promise<void> {
     await request<void>('DELETE', `/evaluation/dimensions/${id}`)
+  },
+
+  /** 切换维度可见性（INT-423/467：PATCH /{id}/visibility，需 evaluation:share + owner 校验） */
+  async updateVisibility(id: string | number, visibility: string): Promise<void> {
+    await request<void>('PATCH', `/evaluation/dimensions/${id}/visibility`, { visibility })
   },
 
   /** API 健康检查 */

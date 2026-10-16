@@ -29,6 +29,8 @@ export interface AudioListFilters {
   audioType: string;
   direction: string;
   algorithmType: string;
+  /** INT-423/467：可见性筛选（'' | 'shared' | 'private'） */
+  visibility: string;
   dateRange: [Date, Date] | null;
   tagMatchMode: 'or' | 'and';
 }
@@ -52,6 +54,7 @@ export function useAudioList() {
     audioType: 'all',
     direction: 'all',
     algorithmType: 'all',
+    visibility: '',
     dateRange: null as [Date, Date] | null,
     tagMatchMode: 'and' as 'or' | 'and'
   });
@@ -161,6 +164,8 @@ export function useAudioList() {
       duration: filters.value.duration === 'all' ? undefined : filters.value.duration,
       direction: filters.value.direction === 'all' ? undefined : filters.value.direction,
       algorithmType: filters.value.algorithmType === 'all' ? undefined : filters.value.algorithmType,
+      // INT-423/467：可见性过滤（POST /audios body，服务端行级过滤）
+      visibility: filters.value.visibility || undefined,
       ...overrides
     };
   }
@@ -323,6 +328,7 @@ export function useAudioList() {
     filters.value.sampleRate = 'all';
     filters.value.direction = 'all';
     filters.value.algorithmType = 'all';
+    filters.value.visibility = '';
     filters.value.dateRange = null;
     searchQuery.value = '';
     selectedTags.value = tagsLoaded.value && allTags.value.length > 0 ? [...allTags.value] : [];
@@ -356,6 +362,13 @@ export function useAudioList() {
       }
     }
     // 筛选变更后重新拉取列表（对齐旧版行为）
+    fetchAudios();
+  }
+
+  /** INT-423/467：可见性筛选切换（全部/共享/私有；含刷新与分页重置） */
+  function handleVisibilityFilterChange(value: string | number) {
+    filters.value.visibility = String(value) === 'all' ? '' : String(value);
+    currentPage.value = 1;
     fetchAudios();
   }
 
@@ -508,6 +521,7 @@ export function useAudioList() {
     applyFilters,
     resetFilters,
     filterAudios,
+    handleVisibilityFilterChange,
     // 选择方法
     toggleSelectAll,
     toggleAudioSelection,

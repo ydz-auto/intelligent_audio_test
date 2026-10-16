@@ -47,6 +47,10 @@ export interface AudioInfo {
   annotations: AudioAnnotation[]
   createdAt?: string
   updatedAt?: string
+  /** INT-423/467：资源可见性（shared/private，跟随所属用例；私有仅 owner+admin 可见） */
+  visibility?: string
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失按非私有处理） */
+  createdByUserId?: number | null
   /** 前端本地兼容别名（历史消费方依赖，W2 清理） */
   filename?: string
   filepath?: string
@@ -243,6 +247,8 @@ export interface AudioQueryParams {
   direction?: string
   /** 算法类型过滤（按音频-算法关联匹配；'all' 视为不过滤） */
   algorithmType?: string
+  /** INT-423/467：可见性过滤（private|shared；服务端行级过滤） */
+  visibility?: string
 }
 
 /** 文件夹树节点（前端通用视图模型：服务端目录树 / 客户端构建树共用） */

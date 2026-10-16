@@ -43,6 +43,8 @@ export interface TaskListQuery {
   cherryPick?: boolean
   // INT-301 F1：执行状态过滤（复用派生口径，命中行执行徽章 == 筛选值）
   executionStatus?: string
+  // INT-423/467：可见性过滤（private|shared；服务端行级过滤）
+  visibility?: string
 }
 
 /** camelCase 任务查询 → snake_case HTTP query（后端 TaskListQueryDto 契约） */
@@ -64,6 +66,8 @@ function toTaskListQueryDto(query: TaskListQuery): TaskListQueryDto {
   if (query.cherryPick !== undefined) dto.cherry_pick = query.cherryPick
   // INT-301 F1：执行状态过滤（复用派生口径，徽章与筛选一致）
   if (query.executionStatus !== undefined) dto.execution_status = query.executionStatus
+  // INT-423/467：可见性过滤（同名透传；后端 TaskListQuery.visibility）
+  if (query.visibility !== undefined) dto.visibility = query.visibility
   return dto
 }
 
@@ -228,5 +232,10 @@ export const tasksApi = {
 
   async update(id: string | number, taskData: { name?: string; description?: string }) {
     return request('PUT', `/tasks/${id}`, taskData);
+  },
+
+  /** 切换任务可见性（INT-423/467：PATCH /{id}/visibility，需 task:share + owner 校验） */
+  async updateVisibility(id: string | number, visibility: string) {
+    return request('PATCH', `/tasks/${id}/visibility`, { visibility });
   }
 };

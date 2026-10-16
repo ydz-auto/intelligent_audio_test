@@ -37,6 +37,10 @@ export function createEvalDimensionForm(state: EvalDimensionState) {
       { value: 'auto', label: '自动评估' },
       { value: 'manual', label: '人工评估' }
     ], group: '基本信息' },
+    { key: 'visibility', label: '可见性', type: 'radio', required: true, defaultValue: 'shared', options: [
+      { value: 'shared', label: '共享（所有有权限的用户可见）' },
+      { value: 'private', label: '私有（仅自己可见和操作）' }
+    ], group: '基本信息' },
     { key: 'categoryId', label: '所属分类', type: 'select', required: false, options: [
       { value: NEW_CATEGORY_FLAG, label: '+ 新建分类' },
       ...categories.value.map(c => ({ value: c.id, label: c.name }))

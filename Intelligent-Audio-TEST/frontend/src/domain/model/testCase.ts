@@ -6,6 +6,7 @@
  * 但 Domain 层统一 camelCase，Infrastructure adapter 层负责
  * 对 config 内所有 snake_case key 做深度递归转换。
  */
+import type { VisibilityType } from '../enums'
 
 // ============================================================
 // rounds-as-top-level 架构核心类型（权威定义；Presentation 层 re-export）
@@ -152,6 +153,10 @@ export interface TestCase {
   deletedAt?: string
   deletedByUserId?: number | null
   totalDuration?: number
+  /** INT-423/467：资源可见性（shared/private；私有仅 owner+admin 可见） */
+  visibility?: string
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失时按非私有处理） */
+  createdByUserId?: number | null
 }
 
 export interface TestCaseGroup {
@@ -198,6 +203,8 @@ export interface TestCaseDraft {
   algorithmType?: string
   algorithmParams?: RoundAlgorithmParams[]
   referenceParams?: RoundReferenceParams[]
+  /** INT-423/467：新建/编辑可见性（shared/private） */
+  visibility?: VisibilityType
 }
 
 // ===== 表单/操作类型（前端本地 Domain） =====
@@ -229,6 +236,10 @@ export interface TestCaseFormData {
   _originalGroup?: string
   /** 编辑前原始分组 id（前端本地状态） */
   _originalGroupId?: string
+  /** INT-423/467：可见性（新建默认取 localStorage 偏好；编辑沿用资源现值） */
+  visibility?: VisibilityType
+  /** INT-423/467：归属人 user_id（编辑模态 403 守卫：非 owner 打开私有资源隐藏保存/删除） */
+  createdByUserId?: number | null
 }
 
 /** 分组表单数据 */

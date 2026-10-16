@@ -49,6 +49,7 @@ export function useEvaluationDimensions() {
     filterStatus,
     filterCategory,
     filterAlgorithm,
+    filterVisibility,
     selectedDimensions,
     viewMode,
     isGroupExpanded,
@@ -112,6 +113,7 @@ export function useEvaluationDimensions() {
     filterStatus,
     filterCategory,
     filterAlgorithm,
+    filterVisibility,
     selectedDimensions,
     // 视图模式（列表/分组）
     viewMode,

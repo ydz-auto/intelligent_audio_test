@@ -18,8 +18,9 @@ export {
   ReportStatus,
   HttpStatus,
   FINISHED_STATUSES,
+  Visibility,
 } from '../enums'
-export type { TaskStatusType } from '../enums'
+export type { TaskStatusType, VisibilityType } from '../enums'
 
 // ===== 通用 =====
 

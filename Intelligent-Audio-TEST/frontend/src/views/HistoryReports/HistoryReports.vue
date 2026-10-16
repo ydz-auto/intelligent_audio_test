@@ -108,7 +108,16 @@
           title="算法筛选"
           @update:model-value="handleAlgorithmFilterChange"
         />
-        
+
+        <!-- INT-423/467：可见性筛选（全部/共享/私有；服务端 ?visibility= 行级过滤） -->
+        <BadgeFilter
+          :options="VISIBILITY_FILTER_OPTIONS"
+          :model-value="visibilityFilter || 'all'"
+          all-label="全部"
+          title="可见性"
+          @update:model-value="handleVisibilityFilterChange"
+        />
+
         <div class="sort-options">
           <span>排序：</span>
           <div class="sort-item" 
@@ -214,6 +223,8 @@
               <span class="report-card-status" :class="report.status === ReportStatus.DRAFT ? 'draft' : 'published'">
                 {{ report.status === ReportStatus.DRAFT ? '草稿' : '已发布' }}
               </span>
+              <!-- INT-423/467：可见性徽标（私有带锁图标） -->
+              <VisibilityBadge :visibility="report.visibility" />
               <span v-if="report.algorithmType" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithmType) }}</span>
               <span v-if="report.taskName" class="report-card-test-type">{{ report.taskName }}</span>
             </div>
@@ -332,6 +343,8 @@ import { benchmarkReportsPort } from '../../composables/benchmark/benchmarkRepor
 import BenchmarkReportPublishModal from '../../components/benchmark-report/BenchmarkReportPublishModal.vue';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
+import VisibilityBadge from '../../components/common/visibility/VisibilityBadge.vue';
+import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 
@@ -382,6 +395,8 @@ const {
   // 收藏 / 回收站（INT-141）
   favoriteOnly,
   trashMode,
+  visibilityFilter,
+  handleVisibilityFilterChange,
   toggleTrashMode,
   // INT-215：收藏筛选切换（FavoriteTrashBar）
   handleReportFavoriteFilterChange,

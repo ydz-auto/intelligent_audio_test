@@ -58,6 +58,9 @@ export function toAudioInfo(dto: AudioItemDto): AudioInfo {
     annotations: (dto?.annotations ?? []).map(toAnnotation),
     createdAt: dto?.created_at,
     updatedAt: dto?.updated_at,
+    // INT-423/467：可见性 + 归属人（两端同名，显式映射）
+    visibility: dto?.visibility ?? undefined,
+    createdByUserId: dto?.created_by_user_id ?? undefined,
     // 本地兼容别名（W2 由消费方清理）
     filename: dto?.original_filename ?? dto?.name,
     filepath: dto?.file_path,

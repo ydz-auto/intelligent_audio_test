@@ -59,6 +59,14 @@
           title="算法筛选"
           @update:model-value="applyFilters"
         />
+        <!-- INT-423/467：可见性筛选（全部/共享/私有；服务端行级过滤） -->
+        <BadgeFilter
+          :options="VISIBILITY_FILTER_OPTIONS"
+          :model-value="filters.visibility || 'all'"
+          all-label="全部"
+          title="可见性"
+          @update:model-value="handleVisibilityFilterChange"
+        />
       </div>
       <AudioListComponent
           :audios="formattedAudios"
@@ -184,6 +192,8 @@ import AudioPlayerModal from '../../components/common/audio/AudioPlayerModal.vue
 import BatchAnnotationModal from '../../components/common/modal/BatchAnnotationModal.vue';
 import ConvertModal from './ConvertModal.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
+import BadgeFilter from '../../components/common/BadgeFilter.vue';
+import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
 import { useAudioImport } from './audioImport';
 import type { AudioUploadTask } from '@/domain/model/audio';
 import { useUploadState } from '../../composables/upload/useUploadState';
@@ -220,9 +230,10 @@ const {
   loadSubTree,
   mergeSubTree,
   expandedFolders: expandedFolders,
-  switchView: switchView, 
-  applyFilters: applyFilters, 
-  resetFilters: resetFilters, 
+  switchView: switchView,
+  applyFilters: applyFilters,
+  resetFilters: resetFilters,
+  handleVisibilityFilterChange: handleVisibilityFilterChange,
   searchAudios: originalSearchAudios,
   filterAudios: originalFilterAudios,
   toggleTag: toggleTag,

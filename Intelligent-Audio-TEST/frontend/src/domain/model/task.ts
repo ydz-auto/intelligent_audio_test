@@ -2,7 +2,7 @@
  * Task 领域模型 —— camelCase
  * 对应后端 api_gateway/schemas/task.py::TaskListItem / TaskDetailData
  */
-import type { TaskStatusType } from '../enums'
+import type { TaskStatusType, VisibilityType } from '../enums'
 
 /** 任务关联设备简报 */
 export interface TaskDeviceBrief {
@@ -100,6 +100,10 @@ export interface Task {
   deletedByUserId?: number | null
   /** INT-339：挑选合并容器标记（专有关系表存在性判定） */
   isCherryPick?: boolean
+  /** INT-423/467：资源可见性（shared/private；私有仅 owner+admin 可见） */
+  visibility?: VisibilityType
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失时按非私有处理） */
+  createdByUserId?: number | null
   result?: any
   reports?: {
     count: number
@@ -121,6 +125,8 @@ export interface TaskCreateDraft {
    * 注：V9.7.31 后端 task.type 已废弃（归类由用例级 device_type 派生），
    * 网关 extra="ignore" 静默忽略，仅作契约兼容留痕 */
   type?: string
+  /** INT-423/467：新建可见性（默认 shared；私有仅 owner 可访问） */
+  visibility?: VisibilityType
   /** 对应 case_ids: List[str]（后端用例 ID 为字符串） */
   caseIds: string[]
   /** 对应 device_ids: List[int] */

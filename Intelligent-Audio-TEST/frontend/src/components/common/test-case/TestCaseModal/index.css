@@ -16,3 +16,25 @@
   border-top: 1px solid var(--border-color);
   background: var(--background-secondary);
 }
+
+/* INT-423/467：可见性守卫 + 分享/设为私有 */
+.visibility-denied-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin: 8px 20px 0;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.visibility-denied-bar i {
+  font-size: 12px;
+}
+
+.visibility-footer-action {
+  margin-right: auto;
+}

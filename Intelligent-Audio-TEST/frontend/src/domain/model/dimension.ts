@@ -106,6 +106,10 @@ export interface Dimension {
   status?: boolean
   createdAt?: string
   updatedAt?: string
+  /** INT-423/467：资源可见性（shared/private；私有仅 owner+admin 可见） */
+  visibility?: string
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失按非私有处理） */
+  createdByUserId?: number | null
   /** 评分单位 */
   scoreUnit?: string
   /** LLM 评审配置（维度附属） */

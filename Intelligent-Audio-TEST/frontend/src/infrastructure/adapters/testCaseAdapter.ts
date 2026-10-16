@@ -49,6 +49,9 @@ export function toTestCase(dto: TestCaseDto): TestCase {
     deletedAt: dto.deleted_at ?? undefined,
     deletedByUserId: dto.deleted_by_user_id ?? undefined,
     totalDuration: dto.total_duration ?? undefined,
+    // INT-423/467：可见性 + 归属人（两端同名，显式映射）
+    visibility: dto.visibility ?? undefined,
+    createdByUserId: dto.created_by_user_id ?? undefined,
   }
 }
 
@@ -83,6 +86,9 @@ export function toTagViewCase(dto: TagViewCaseDto): TestCase {
     deletedAt: dto.deletedAt ?? undefined,
     deletedByUserId: dto.deletedByUserId ?? undefined,
     totalDuration: dto.totalDuration ?? undefined,
+    // INT-423/467：标签视图顶层 camelCase 输出
+    visibility: dto.visibility ?? undefined,
+    createdByUserId: dto.createdByUserId ?? undefined,
   }
 }
 
@@ -108,5 +114,7 @@ export function toTestCaseUpsertDto(draft: TestCaseDraft): TestCaseUpsertDto {
     algorithm_params: draft.algorithmParams ? snakifyKeys(draft.algorithmParams) : undefined,
     reference_params: draft.referenceParams ? snakifyKeys(draft.referenceParams) : undefined,
     algorithm_type: draft.algorithmType,
+    // INT-423/467：新建/编辑可见性（缺省不发，后端回落 shared）
+    visibility: draft.visibility,
   }
 }

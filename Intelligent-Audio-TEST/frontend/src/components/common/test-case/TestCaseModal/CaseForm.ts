@@ -3,6 +3,7 @@ import { useAlgorithmConfig } from '../../../../composables/algorithm/useAlgorit
 import { useAlgorithmLabels } from '../../../../composables/algorithm/useAlgorithmLabels';
 import { tagsPort } from '../../../../composables/shared/tagsPort';
 import { algorithmPort } from '../../../../composables/algorithm/algorithmPort';
+import { getVisibilityPref, setVisibilityPref } from '../../../../composables/visibility/useVisibility';
 import type { TestCaseFormData, RoundConfigItem, PlaybackDevice } from '@/domain';
 
 export function useCaseForm(props: any, emit: any) {
@@ -46,6 +47,8 @@ export function useCaseForm(props: any, emit: any) {
       },
       // 新设计：algorithmParams 独立列（按轮分组），初始为空数组
       algorithmParams: [],
+      // INT-423/467：新建默认可见性（localStorage 偏好，缺省共享）
+      visibility: getVisibilityPref(),
     } as TestCaseFormData;
   }
 
@@ -184,6 +187,8 @@ export function useCaseForm(props: any, emit: any) {
         dimensions: [],
       },
       algorithmParams: normalizedAlgParams,
+      // INT-423/467：编辑沿用资源现值；新建取 localStorage 偏好
+      visibility: raw.visibility || getVisibilityPref(),
     };
     // 从独立列读取第一个 round 的 params，用于 AlgorithmSelector 的 initial-params（单轮编辑器）
     const groupedAlgParams = localFormData.value.algorithmParams as any[];
@@ -199,6 +204,14 @@ export function useCaseForm(props: any, emit: any) {
     // 写入后端期望的位置（case_config.voiceprintConfig / round_config.interferers）
     syncStructuredFields();
     emit('update', { ...localFormData.value });
+  }
+
+  /** INT-423/467：可见性选择器切换 → 落 localStorage 偏好（新建默认沿用） */
+  function handleVisibilityChange(v: string) {
+    const vis = (v === 'private' ? 'private' : 'shared') as TestCaseFormData['visibility'];
+    localFormData.value.visibility = vis;
+    setVisibilityPref(vis!);
+    emitFormData();
   }
 
   /**
@@ -492,6 +505,7 @@ export function useCaseForm(props: any, emit: any) {
     handleAudioSelectRequest,
     handleOverallDimensionsUpdate,
     handleGlobalNoiseUpdate,
+    handleVisibilityChange,
     playbackDevices,
     availableDimensions,
     roundConfigRef,

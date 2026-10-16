@@ -190,6 +190,10 @@ export interface ReportListItemDto {
   deleted?: boolean | null
   deleted_at?: string | null
   deleted_by_user_id?: number | null
+  /** INT-423/467：资源可见性（shared/private，后端 Visibility 原值） */
+  visibility?: string | null
+  /** INT-423/467：资源归属人 user_id（owner 判定；缺失按非私有处理） */
+  created_by_user_id?: number | null
 }
 
 /** 列表响应（ReportListData） */
@@ -285,6 +289,10 @@ export interface ReportDto {
   conclusion?: string | null
   /** 报告编辑标题（ReportUpdateRequest.title） */
   title?: string
+  /** INT-423/467：资源可见性（详情聚合根，shared/private） */
+  visibility?: string | null
+  /** INT-423/467：资源归属人 user_id */
+  created_by_user_id?: number | null
   /** 聚合根 config JSON（键为数据 key 非字段名） */
   config?: Record<string, unknown>
   /** 详情聚合根 summaries[]（摘要元数据行） */
@@ -354,6 +362,8 @@ export interface ReportListQueryDto {
   favorite?: boolean
   /** INT-141：仅回收站（软删除项，含删除人/删除时间） */
   deleted?: boolean
+  /** INT-423/467：可见性过滤（private|shared；服务端行级过滤） */
+  visibility?: string
 }
 
 /** 报告更新请求体（ReportUpdateRequest） */

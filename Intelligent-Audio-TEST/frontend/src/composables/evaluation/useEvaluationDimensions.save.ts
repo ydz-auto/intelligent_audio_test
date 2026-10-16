@@ -14,6 +14,7 @@ import { ApiEndpointStatus } from '../../domain/enums';
 import type { DimensionHealthCheckResult } from '../../domain/model/evaluationTypes';
 import type { ModalManager } from '../modal/useModal';
 import { SAVE_TYPE_ADD } from './useEvaluationDimensions.constants';
+import { setVisibilityPref } from '../visibility/useVisibility';
 import type { EvalDimensionState } from './useEvaluationDimensions.state';
 import type { EvalDimensionNormalizers } from './useEvaluationDimensions.normalize';
 
@@ -65,6 +66,9 @@ export function createEvalDimensionSave(state: EvalDimensionState, deps: SaveMod
     try {
       const data = payload.data !== undefined ? payload.data : payload;
       const dimensionData = { ...data };
+
+      // INT-423/467：可见性选择 → 记录 localStorage 偏好（新建默认沿用）
+      if (dimensionData.visibility) setVisibilityPref(dimensionData.visibility);
 
       // 依次规范化各字段
       normalizeRule(dimensionData);

@@ -46,10 +46,20 @@ export function useTestCaseManager() {
   /** 回收站模式（onlyDeleted 拉取 + 卡片操作切换为恢复/彻底删除） */
   const trashMode = ref(false);
 
+  /** INT-423/467：可见性筛选（'' | 'shared' | 'private'；服务端行级过滤） */
+  const visibilityFilter = ref('');
+
   const currentFetchExtra = () => ({
     favorite: favoriteOnly.value && !trashMode.value,
     onlyDeleted: trashMode.value,
+    visibility: visibilityFilter.value || undefined,
   });
+
+  /** INT-423/467：可见性筛选切换（含刷新） */
+  const handleVisibilityFilterChange = async (value: string | number) => {
+    visibilityFilter.value = String(value) === 'all' ? '' : String(value);
+    await refreshCurrentView();
+  };
 
   const handleFavoriteToggle = async (testCase: any) => {
     try {
@@ -317,5 +327,8 @@ export function useTestCaseManager() {
     handleFavoriteToggle,
     handleRestoreCase,
     handlePurgeCase,
+    // INT-423/467：可见性筛选
+    visibilityFilter,
+    handleVisibilityFilterChange,
   };
 }

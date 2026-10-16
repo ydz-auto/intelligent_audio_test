@@ -2,13 +2,15 @@ import { ref, computed, type Ref } from 'vue'
 import { tasksPort } from '../task/tasksPort'
 import { formatDurationSeconds, formatDurationText } from '../../utils/durationFormat'
 import type { APIConfig, TestCase } from '../../domain'
-import { TestType, TaskStatus, ApiEndpointStatus } from '../../domain/enums'
+import { TestType, TaskStatus, ApiEndpointStatus, type VisibilityType } from '../../domain/enums'
 import { useTestCaseStore } from '../../store/testCaseStore'
 
 interface UseTaskExecutionOptions {
   testType: typeof TestType[keyof typeof TestType]
   currentTaskId: Ref<string | number | null>
   taskName: Ref<string>
+  /** INT-423/467：新建任务可见性（默认 shared；私有仅 owner 可访问） */
+  taskVisibility: Ref<VisibilityType>
   // INT-282：未勾选用例时按筛选拉全量回退需要算法筛选条件（对齐基线 apiTest.ts:413-422）
   selectedAlgorithmType: Ref<string | null>
   concurrentTasks: Ref<number>
@@ -38,7 +40,7 @@ interface UseTaskExecutionOptions {
  */
 export function useTaskExecution(options: UseTaskExecutionOptions) {
   const {
-    testType, currentTaskId, taskName, concurrentTasks,
+    testType, currentTaskId, taskName, taskVisibility, concurrentTasks,
     selectedAlgorithmType,
     selectedTestCaseIds,
     selectedDeviceIds, e2eTestCases,
@@ -81,6 +83,8 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         // INT-282：显式携带执行口径（对齐 useE2eExecution 基线契约 type:'e2e'；
         // 后端 task.type 已废弃，网关忽略，归类由用例级 device_type 派生）
         type: TestType.E2E,
+        // INT-423/467：新建可见性（缺省后端回落 shared）
+        visibility: taskVisibility.value,
         deviceIds: selectedDeviceIds.value,
         caseIds: selectedCaseIds,
         config: { parallel: true, concurrentTasks: concurrentTasks.value },
@@ -174,6 +178,8 @@ export function useTaskExecution(options: UseTaskExecutionOptions) {
         // extra="ignore" 静默忽略该字段；任务归类由用例级 TaskCase.device_type 派生。
         // 此处显式传递仅为兼容消费方与后端未来恢复 type 列的契约留痕。
         type: TestType.API,
+        // INT-423/467：新建可见性（缺省后端回落 shared）
+        visibility: taskVisibility.value,
         caseIds,
         apiIds: selectedAPIIds.value,
         tags: [],

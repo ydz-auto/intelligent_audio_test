@@ -68,6 +68,17 @@
     <!-- 底部浮动操作按钮 -->
     <teleport to="#global-fixed-elements" v-if="report">
       <div id="floating-report-actions" class="rv-floating-report-actions">
+        <!-- INT-423/467：报告可见性徽标 + 分享/设为私有（仅 owner 或共享资源可切） -->
+        <VisibilityBadge :visibility="report.visibility" />
+        <button
+          v-if="canToggleReportVisibility"
+          class="rv-btn rv-btn-secondary"
+          :title="report.visibility === 'private' ? '将报告改为共享（所有有权限用户可见）' : '将报告设为私有（仅自己可见）'"
+          @click="toggleReportVisibility"
+        >
+          <i class="fas" :class="report.visibility === 'private' ? 'fa-users' : 'fa-lock'"></i>
+          {{ report.visibility === 'private' ? '设为共享' : '设为私有' }}
+        </button>
         <!-- INT-483：Benchmark 报告为发布时点定格快照，不提供编辑/保存 -->
         <button v-if="!isBenchmarkType" class="rv-btn rv-btn-primary" @click="saveReport">
           <i class="fas fa-save"></i> 保存
@@ -114,7 +125,7 @@
 import { ref, computed, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { sanitizeConclusion } from '../../utils/sanitize'
-import { ReportStatus } from '@/domain/enums'
+import { ReportStatus, Visibility } from '@/domain/enums'
 import type { ToastMessage } from '@/domain/model/ui'
 import { isComparisonReportType } from '@/domain/model/report'
 import TaskReportPanel from '../../components/report/TaskReportPanel.vue'
@@ -123,6 +134,8 @@ import BenchmarkReportPanel from './sections/BenchmarkReportPanel.vue'
 import { reportsPort } from '@/composables/report/reportsPort'
 import { comparisonReport } from '../../store/reportComparisonStore'
 import { copyToClipboard } from '../../utils/utils'
+import { isNotFoundOrForbidden, canEditResource } from '@/composables/visibility/useVisibility'
+import VisibilityBadge from '@/components/common/visibility/VisibilityBadge.vue'
 import {
   extractDevicesFromTasks,
   saveReport as saveComparisonReportApi,
@@ -153,6 +166,30 @@ function showToast(type: ToastMessage['type'], message: string): void {
 const isComparisonType = computed(() => {
   return isComparisonReportType(report.value?.type)
 })
+
+/** INT-423/467：报告是否可切换可见性（owner 或共享；私有非 owner 无权限） */
+const canToggleReportVisibility = computed(() => {
+  return canEditResource({
+    visibility: report.value?.visibility,
+    createdByUserId: report.value?.createdByUserId,
+  })
+})
+
+/** 分享 / 设为私有：PATCH /reports/{id}/visibility（需 report:share + owner 校验） */
+const toggleReportVisibility = async () => {
+  if (!report.value?.id || !canToggleReportVisibility.value) return
+  const next = report.value.visibility === Visibility.PRIVATE
+    ? Visibility.SHARED
+    : Visibility.PRIVATE
+  try {
+    await reportsPort.updateVisibility(report.value.id, next)
+    report.value.visibility = next
+    showToast('success', next === Visibility.SHARED ? '已改为共享' : '已设为私有')
+  } catch (e: any) {
+    console.error('切换报告可见性失败:', e)
+    showToast('error', e?.message || '切换可见性失败，请确认您有该报告的分享权限')
+  }
+}
 
 /** INT-483：Benchmark 报告类型（发布时点定格快照，不可编辑保存） */
 const isBenchmarkType = computed(() => report.value?.type === 'benchmark')
@@ -206,7 +243,8 @@ const loadReport = async (reportId: string) => {
     }
   } catch (e: any) {
     console.error('加载报告失败:', e)
-    error.value = e.message || '加载报告失败'
+    // INT-423/467：私有报告非 owner 路由直达 → 后端 404/403；统一文案不泄露资源名
+    error.value = isNotFoundOrForbidden(e) ? '资源不存在或无权访问' : (e.message || '加载报告失败')
   } finally {
     loading.value = false
   }

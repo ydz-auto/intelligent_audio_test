@@ -234,7 +234,19 @@
           />
         </div>
 
-        <!-- INT-215：收藏 / 回收站工具栏（日常视图专属；收藏视图承载于「收藏」页签，回收站不再作为状态徽章筛选项） -->
+        <!-- INT-423/467：可见性筛选（全部/共享/私有；服务端 ?visibility= 行级过滤） -->
+        <div class="filter-row" v-if="activeTab === 'daily'">
+          <BadgeFilter
+            :options="VISIBILITY_FILTER_OPTIONS"
+            :model-value="visibilityFilter || 'all'"
+            all-label="全部"
+            title="可见性"
+            @update:model-value="handleTaskVisibilityFilterChange"
+          />
+        </div>
+
+        <!-- INT-215：收藏 / 回收站工具栏（日常视图专属；INT-400 #13 收藏收编为工具条筛选，
+             回收站不再作为状态徽章筛选项） -->
         <FavoriteTrashBar
           v-if="activeTab === 'daily'"
           :favorite-only="favoriteOnly"
@@ -324,7 +336,12 @@
               // INT-215：回收站字段（已删除徽章 + 删除人/删除时间展示）；INT-239：删除时间改由 TaskCard 卡内 formatDate，视图层直通
               deleted: task.deleted,
               deletedAt: task.deletedAt,
-              deletedByUserId: task.deletedByUserId
+              deletedByUserId: task.deletedByUserId,
+              // INT-423/467：可见性徽标直通（私有带锁图标）
+              visibility: task.visibility,
+              createdByUserId: task.createdByUserId,
+              // INT-423/467：编辑/删除入口可见性（私有资源仅 owner 可编辑）
+              canEdit: canEditResource(task)
             }))"
             :is-selected="(task: any) => selectedTasks.has(task.id)"
             :show-checkbox="true"
@@ -449,6 +466,8 @@ import { usePickCart } from '../../composables/task/usePickCart';
 import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import FavoriteTrashBar from '../../components/common/FavoriteTrashBar.vue';
 import AlgorithmFilter from '../../components/algorithm/AlgorithmFilter.vue';
+import { VISIBILITY_FILTER_OPTIONS } from '../../composables/visibility/useVisibility';
+import { canEditResource } from '../../composables/visibility/useVisibility';
 
 const route = useRoute();
 const router = useRouter();
@@ -580,6 +599,9 @@ const {
   isFavorite,
   favoriteIds,
   batchPurge,
+  // INT-423/467：可见性筛选
+  visibilityFilter,
+  handleTaskVisibilityFilterChange,
   // INT-215：回收站工具栏（对齐报告/用例交互口径）
   taskTrashMode,
   toggleTaskTrashMode,
@@ -609,7 +631,8 @@ const taskActions = [
   { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => [...FINISHED_STATUSES].includes(task.status), disabled: (task: any) => isControlling.value.has(task.id) },
   { id: 'restore', label: '恢复', icon: 'fa-undo', type: 'success', show: (task: any) => filters.value.status === 'deleted' },
   { id: 'purge', label: '彻底删除', icon: 'fa-fire', type: 'danger', show: (task: any) => filters.value.status === 'deleted' },
-  { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.value.has(task.id) },
+  // INT-423/467：私有任务非 owner（含 admin）隐藏删除入口
+  { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', show: (task: any) => canEditResource(task), disabled: (task: any) => isControlling.value.has(task.id) },
 ];
 
 /** 各视图筛选状态适配为统一结构（search/type/algorithmType/status/timeRange/customRange/sort），

@@ -45,6 +45,7 @@ const buildFlow = (overrides: {
     testType: TestType.API,
     currentTaskId: ref<string | number | null>(null),
     taskName: ref('API测试任务'),
+    taskVisibility: ref<'shared' | 'private'>('shared'),
     selectedAlgorithmType: ref<string | null>(overrides.selectedAlgorithmType ?? 'voice_llm'),
     concurrentTasks: ref(5),
     selectedTestCaseIds: ref<(string | number)[]>(overrides.selectedTestCaseIds ?? []),
