@@ -151,8 +151,8 @@
       </div>
     </Teleport>
 
-    <!-- 批量更新标注模态窗 -->
-    <div class="modal-overlay" v-if="showBatchAnnotationModal" style="opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; display: flex !important;">
+    <!-- 批量更新标注模态窗（INT-293：独立 overlay 类，弃用 .modal-overlay 全局默认隐藏规则上的内联 !important hack） -->
+    <div class="batch-annotation-overlay" v-if="showBatchAnnotationModal">
       <div class="modal-container" @click.stop>
         <div class="modal-header">
           <h3>批量更新标注</h3>

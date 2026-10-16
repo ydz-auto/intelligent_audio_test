@@ -13,11 +13,18 @@ import { volumeToDb, DB_MIN, DB_MAX } from '../../utils/audioUtils';
 import { usePagination } from '../usePagination';
 import { useNotification } from '../modal/useNotification';
 
+/** SPL 映射列表单次拉取上限（服务端分页 per_page）；映射总数超过此值时前端提示仅展示前 N 条 */
+export const SPL_MAPPING_FETCH_LIMIT = 100;
+/** SPL 页设备选项单次拉取上限（服务端分页 per_page），避免魔法数字 */
+const SPL_DEVICE_FETCH_LIMIT = 1000;
+
 export function useSplMapping() {
   const notification = useNotification();
 
   // 响应式数据
   const mappingData = ref<SPLMapping[]>([]);
+  /** 服务端分页返回的匹配总数（用于判断列表是否被 per_page 上限截断） */
+  const mappingTotal = ref(0);
   // INT-289：映射列表加载态（首载 spinner，刷新保留旧数据）
   const loading = ref(false);
   const searchTerm = ref<string>('');
@@ -113,14 +120,20 @@ export function useSplMapping() {
         baseLevel: baseLevel,
         finalLevelMin: finalLevelMin,
         finalLevelMax: finalLevelMax,
-        // Domain 侧为 camelCase：updatedAt
-        measurementDate: m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : undefined
+        // 展示时间优先取校准时间（lastCalibratedAt，Domain 已声明），否则回退 updatedAt；
+        // 卡片标签为「更新时间」与数据口径对齐（INT-293 语义错位修复）
+        measurementDate: m.lastCalibratedAt
+          ? new Date(m.lastCalibratedAt).toLocaleDateString()
+          : m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : undefined
       };
     });
   });
 
   // 使用通用分页 composable
   const { currentPage, pageSize, totalItems, totalPages, paginatedItems: paginatedMappings } = usePagination(filteredMappings, ref(6));
+
+  /** 映射总数超过单次拉取上限时置位（列表仅展示前 SPL_MAPPING_FETCH_LIMIT 条，页面给出提示） */
+  const mappingListTruncated = computed(() => mappingTotal.value > SPL_MAPPING_FETCH_LIMIT);
 
   // 分页方法
   const handlePageChange = (page: number) => {
@@ -155,11 +168,12 @@ export function useSplMapping() {
         calibrationStatus: calibrationFilter.value === 'all' ? undefined : calibrationFilter.value,
         deviceId: deviceFilter.value === 'all' ? undefined : deviceFilter.value,
         page: 1,
-        perPage: 100
+        perPage: SPL_MAPPING_FETCH_LIMIT
       };
       const response = await splPort.getAll(params);
       if (response && response.items) {
         mappingData.value = response.items;
+        mappingTotal.value = response.total ?? response.items.length;
       }
     } catch (error) {
       console.error('获取映射数据失败:', error);
@@ -606,6 +620,14 @@ export function useSplMapping() {
       });
     }, { deep: true });
 
+    // INT-293：翻页不重绘——initCharts 仅 watch filteredMappings，翻页只改变
+    // paginatedMappings 不触发重绘，第 2 页起 canvas 空白；补 paginatedMappings watch
+    watch(paginatedMappings, () => {
+      nextTick(() => {
+        initCharts();
+      });
+    });
+
     watch(showDetailsModal, (newVal) => {
       if (newVal) {
         nextTick(() => {
@@ -629,7 +651,7 @@ export function useSplMapping() {
   async function fetchDevices() {
     try {
       // playbackPort.getAll 已展平为 Domain 数组
-      playbackDevices.value = await playbackPort.getAll({ perPage: 1000 });
+      playbackDevices.value = await playbackPort.getAll({ perPage: SPL_DEVICE_FETCH_LIMIT });
     } catch (error) {
       console.error('获取设备列表失败:', error);
       // INT-289：设备选项加载失败同走可见错误提示
@@ -639,6 +661,8 @@ export function useSplMapping() {
 
   return {
     mappingData,
+    mappingTotal,
+    mappingListTruncated,
     searchTerm,
     calibrationFilter,
     deviceFilter,

@@ -954,7 +954,7 @@
 
 .translation-item {
     background-color: var(--color-slate-50);
-    border: 1px solid #e4e7ed;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     padding: 15px;
     margin-bottom: 15px;
@@ -1219,4 +1219,30 @@
     background-color: var(--primary-light);
     color: var(--primary-color);
 }
+
+/* 批量更新标注弹窗 overlay（INT-293：独立类取代 .modal-overlay 全局默认隐藏规则上的内联 !important hack） */
+.batch-annotation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: color-mix(in srgb, var(--color-black) 50%, transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    pointer-events: auto;
+}
+
+.batch-annotation-overlay .modal-container {
+    width: 90%;
+    max-width: 640px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background-color: var(--background-primary);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-lg);
+}
+
 

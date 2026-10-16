@@ -273,13 +273,14 @@
   <AlgorithmConfigModal
     v-model:visible="algorithmModalVisible"
     :mode="algorithmModalMode"
-    :edit-data="(algorithmEditData as any)"
+    :edit-data="algorithmEditDataForModal"
   />
 </template>
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { TestType, ViewMode, DeviceStatus } from '@/domain/enums'
+import type { AlgorithmDefinition } from '@/domain'
 import { useTestFlow } from '../../composables/shared/useTestFlow'
 import ProgressNav from '../../components/layout/ProgressNav.vue'
 import TestCaseListContainer from '../../components/common/test-case/TestCaseListContainer.vue'
@@ -336,6 +337,12 @@ const {
   toggleEditConclusion, cancelEditConclusion, saveConclusion,
   exportResults, publishReport, startNewTest,
 } = flow
+
+// INT-293：算法编辑数据断言收敛——模板不再写 (algorithmEditData as any)，
+// 在 view 层以 AlgorithmConfigModal 期望的具体目标类型做一次边界转换
+const algorithmEditDataForModal = computed<AlgorithmDefinition | null>(() =>
+  algorithmEditData.value ? (algorithmEditData.value as unknown as AlgorithmDefinition) : null
+)
 
 // ============ 计算属性：根据 testType 派生 ============
 const pageTitle = computed(() => props.testType === TestType.E2E ? '端到端测试' : 'API测试')

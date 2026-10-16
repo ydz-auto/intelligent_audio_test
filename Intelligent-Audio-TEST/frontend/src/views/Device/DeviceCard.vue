@@ -150,7 +150,7 @@ margin-bottom: 20px;
 display: flex;
 flex-direction: column;
 gap: 16px;
-background: white;
+background: var(--color-white);
 border-radius: 12px;
 box-shadow: 0 4px 12px color-mix(in srgb, var(--color-black) 8%, transparent);
 transition: all 0.3s ease;
@@ -274,7 +274,7 @@ border-radius: 8px;
     background: var(--color-white, #fff);
     border: 1px solid var(--border-color, #e5e5e5);
     border-radius: 8px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 8px 24px color-mix(in srgb, var(--color-black) 12%, transparent);
     padding: 4px;
     z-index: 1002;
 }

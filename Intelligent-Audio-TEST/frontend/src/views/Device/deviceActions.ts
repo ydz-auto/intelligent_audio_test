@@ -212,13 +212,32 @@ export async function batchHealthCheck() {
     return;
   }
 
+  // 单设备失败不中断循环：累计失败数，结束后一并提示
+  let failedCount = 0;
+
   try {
+    // PLAYBACK Tab：checkStatus() 为全量查询，循环内对 N 台设备重复调用 N 次×全量是浪费——
+    // 先查一次并统一回写状态（INT-293）
+    if (activeTab.value === DeviceTabType.PLAYBACK) {
+      const result = await playbackPort.checkStatus() as { id: string | number; status: string }[];
+      if (result && Array.isArray(result)) {
+        result.forEach(item => {
+          const playbackDeviceIndex = playbackDevices.value.findIndex(d => d.id === item.id);
+          if (playbackDeviceIndex > -1) {
+            playbackDevices.value[playbackDeviceIndex].status = item.status as any;
+          }
+        });
+      }
+    }
+
     for (const deviceId of selectedDevices.value) {
+      if (activeTab.value === DeviceTabType.PLAYBACK) {
+        continue; // 播放设备状态已在上方全量回写
+      }
+
       let deviceList: DeviceUnion[] = [];
       if (activeTab.value === DeviceTabType.TEST) {
         deviceList = testDevices.value;
-      } else if (activeTab.value === DeviceTabType.PLAYBACK) {
-        deviceList = playbackDevices.value;
       } else if (activeTab.value === DeviceTabType.API) {
         deviceList = apiDevices.value;
       } else {
@@ -230,22 +249,25 @@ export async function batchHealthCheck() {
         deviceList[deviceIndex].status = DeviceStatus.TESTING;
       }
 
-      if (activeTab.value === DeviceTabType.TEST) {
-        await devicesPort.healthCheck([deviceId]);
-      } else if (activeTab.value === DeviceTabType.PLAYBACK) {
-        const result = await playbackPort.checkStatus() as { id: string | number; status: string }[];
-        result.forEach(item => {
-          const playbackDeviceIndex = playbackDevices.value.findIndex(d => d.id === item.id);
-          if (playbackDeviceIndex > -1) {
-            playbackDevices.value[playbackDeviceIndex].status = item.status as any;
-          }
-        });
-      } else if (activeTab.value === DeviceTabType.API) {
-        await apisPort.testConnection(deviceId as string | number);
+      try {
+        if (activeTab.value === DeviceTabType.TEST) {
+          await devicesPort.healthCheck([deviceId]);
+        } else if (activeTab.value === DeviceTabType.API) {
+          await apisPort.testConnection(deviceId as string | number);
+        }
+      } catch {
+        // 单设备失败仅计数，不中断剩余设备的检查（INT-293）
+        failedCount += 1;
+        if (deviceIndex > -1) {
+          deviceList[deviceIndex].status = DeviceStatus.OFFLINE;
+        }
       }
     }
 
     selectedDevices.value = [];
+    if (failedCount > 0) {
+      notification.warning(`批量健康检查完成，${failedCount} 台设备检查失败`);
+    }
   } catch (error) {
     console.error('批量健康检查失败:', error);
     const errorMessage = error instanceof Error ? error.message : '未知错误';

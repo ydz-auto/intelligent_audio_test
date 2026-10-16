@@ -98,20 +98,22 @@
                 <i class="fas fa-search search-icon"></i>
                 <input type="text" class="search-input" placeholder="搜索映射名称或设备..." v-model="searchTerm" @input="searchMappings">
               </div>
-              <div class="filter-select">
-                <select class="form-input" v-model="calibrationFilter" @change="filterMappings()">
-                  <option value="all">所有状态</option>
-                  <option value="calibrated">已校准</option>
-                  <option value="uncalibrated">未校准</option>
-                </select>
-              </div>
-              <div class="filter-select">
-                <select class="form-input" v-model="deviceFilter" @change="filterByDevice()">
-                  <option value="all">所有设备</option>
-                  <option v-for="device in playbackDevices" :key="device.id" :value="device.id">
-                    {{ device.name }}{{ device.model ? ` (${device.model})` : '' }}
-                  </option>
-                </select>
+              <!-- INT-293：原生 select 迁移 BadgeFilter（对齐 Device.vue 筛选栏视觉） -->
+              <div class="filter-bar">
+                <BadgeFilter
+                  :options="CALIBRATION_STATUS_OPTIONS"
+                  :model-value="calibrationFilter"
+                  all-label="所有状态"
+                  title="状态"
+                  @update:model-value="onCalibrationFilterChange"
+                />
+                <BadgeFilter
+                  :options="deviceFilterOptions"
+                  :model-value="deviceFilter"
+                  all-label="所有设备"
+                  title="设备"
+                  @update:model-value="onDeviceFilterChange"
+                />
               </div>
             </div>
           </div>
@@ -138,7 +140,7 @@
                     <p><strong>关联设备：</strong>{{ mapping.deviceName }}{{ mapping.deviceModel ? ` (${mapping.deviceModel})` : '' }}</p>
                     <p v-if="mapping.description"><strong>描述：</strong>{{ mapping.description }}</p>
                     <p><strong>校准点数：</strong>{{ mapping.calibrationPointsCount || 0 }}</p>
-                    <p><strong>校准时间：</strong>{{ mapping.measurementDate || '未校准' }}</p>
+                    <p><strong>更新时间：</strong>{{ mapping.measurementDate || '未校准' }}</p>
                   </div>
                   <div class="mapping-details">
                     <div class="detail-item">
@@ -199,6 +201,12 @@
           @page-size-change="handlePageSizeChange"
         />
       </div>
+
+      <!-- INT-293：映射总数超过单次拉取上限时的截断提示（不再静默截断） -->
+      <div v-if="mappingListTruncated" class="spl-truncated-hint">
+        <i class="fas fa-info-circle"></i>
+        <p>映射总数超过 {{ SPL_MAPPING_FETCH_LIMIT }} 条，列表仅展示前 {{ SPL_MAPPING_FETCH_LIMIT }} 条，请使用上方的状态/设备筛选定位。</p>
+      </div>
     </div>
 
     <!-- ============ 分区二：API/Realtime RMS-SPL（数字域）—— INT-300 ============ -->
@@ -256,20 +264,22 @@
                 <i class="fas fa-search search-icon"></i>
                 <input type="text" class="search-input" placeholder="搜索映射名称/供应商/API..." v-model="apiRms.searchTerm.value" @input="apiRms.filterMappings()">
               </div>
-              <div class="filter-select">
-                <select class="form-input" v-model="apiRms.calibrationFilter.value" @change="apiRms.filterMappings()">
-                  <option value="all">所有状态</option>
-                  <option :value="CalibrationStatus.CALIBRATED">已校准</option>
-                  <option :value="CalibrationStatus.UNCALIBRATED">未校准</option>
-                </select>
-              </div>
-              <div class="filter-select">
-                <select class="form-input" v-model="apiRms.apiFilter.value" @change="apiRms.filterByApi()">
-                  <option value="all">所有 API</option>
-                  <option v-for="api in apiRms.apiList.value" :key="api.id" :value="String(api.id)">
-                    {{ api.name }}{{ api.vendor ? ` (${api.vendor})` : '' }}
-                  </option>
-                </select>
+              <!-- INT-293：原生 select 迁移 BadgeFilter（对齐 Device.vue 筛选栏视觉） -->
+              <div class="filter-bar">
+                <BadgeFilter
+                  :options="CALIBRATION_STATUS_OPTIONS"
+                  :model-value="apiRms.calibrationFilter.value"
+                  all-label="所有状态"
+                  title="状态"
+                  @update:model-value="onApiCalibrationFilterChange"
+                />
+                <BadgeFilter
+                  :options="apiFilterOptions"
+                  :model-value="apiRms.apiFilter.value"
+                  all-label="所有 API"
+                  title="API"
+                  @update:model-value="onApiFilterChange"
+                />
               </div>
             </div>
           </div>
@@ -417,10 +427,11 @@
 </template>
 
 <script setup lang="ts">
-import { useSplMapping } from '../../composables/device/useSplMapping';
+import { useSplMapping, SPL_MAPPING_FETCH_LIMIT } from '../../composables/device/useSplMapping';
 import { useApiRmsSpl, CALIBRATION_STATUS_LABELS } from '../../composables/apiTest/useApiRmsSpl';
 import { onMounted, ref, computed } from 'vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
+import BadgeFilter from '../../components/common/BadgeFilter.vue';
 import { CalibrationStatus } from '../../domain/enums';
 import type { ApiCalibrationPoint } from '../../domain';
 
@@ -459,6 +470,7 @@ const {
   stats,
   playbackDevices,
   loading,
+  mappingListTruncated,
   showModal,
   showDetailsModal,
   searchMappings,
@@ -485,6 +497,51 @@ const {
 } = useSplMapping();
 
 const apiRms = useApiRmsSpl();
+
+// ===== 徽章筛选（INT-293：原生 select 迁移 BadgeFilter，选项与回调本地收敛） =====
+/** 校准状态筛选选项（设备域与数字域共用同一口径） */
+const CALIBRATION_STATUS_OPTIONS: { value: string; label: string }[] = [
+  { value: 'calibrated', label: '已校准' },
+  { value: 'uncalibrated', label: '未校准' },
+];
+
+/** 设备筛选选项（playbackDevices → {value: string, label}） */
+const deviceFilterOptions = computed(() =>
+  playbackDevices.value.map(d => ({
+    value: String(d.id),
+    label: `${d.name}${d.model ? ` (${d.model})` : ''}`
+  }))
+);
+
+/** API 筛选选项（数字域：apiRms.apiList → {value: string, label}） */
+const apiFilterOptions = computed(() =>
+  apiRms.apiList.value.map(a => ({
+    value: String(a.id),
+    label: `${a.name}${a.vendor ? ` (${a.vendor})` : ''}`
+  }))
+);
+
+/** 设备域状态徽章选中 → 收窄为字面量联合后触发服务端筛选 */
+function onCalibrationFilterChange(value: string | number) {
+  calibrationFilter.value = String(value) as 'all' | 'calibrated' | 'uncalibrated';
+  filterMappings();
+}
+
+function onDeviceFilterChange(value: string | number) {
+  deviceFilter.value = String(value);
+  filterByDevice();
+}
+
+/** 数字域状态/API 徽章选中 → 触发 apiRms 服务端筛选 */
+function onApiCalibrationFilterChange(value: string | number) {
+  apiRms.calibrationFilter.value = String(value) as 'all' | 'calibrated' | 'uncalibrated';
+  apiRms.filterMappings();
+}
+
+function onApiFilterChange(value: string | number) {
+  apiRms.apiFilter.value = String(value);
+  apiRms.filterByApi();
+}
 
 /** 已校准映射（校准点明细区） */
 const calibratedMappings = computed(() =>
@@ -515,23 +572,46 @@ onMounted(async () => {
 <style scoped>
 @import './splMapping.css';
 
+/* 徽章筛选替换原生 select 后：card-actions 允许换行（splMapping.css 原为 nowrap），
+   对齐 Device.vue 筛选栏视觉 */
+.card-actions {
+    flex-wrap: wrap !important;
+    white-space: normal !important;
+    row-gap: 10px;
+}
+
+/* 映射总数超过单次拉取上限时的截断提示 */
+.spl-truncated-hint {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: color-mix(in srgb, var(--color-ant-gold-6, #faad14) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-ant-gold-6, #faad14) 40%, transparent);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.spl-truncated-hint i {
+    color: var(--warning-color, #faad14);
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.spl-truncated-hint p {
+    margin: 0;
+    line-height: 1.6;
+}
+
 
 /* active-icon - 自全局样式就近迁移 */
 .active-icon {
     background: color-mix(in srgb, var(--success) 10%, transparent);
     color: var(--success-color);
 }
-
-.active-icon {
-    background: color-mix(in srgb, var(--success) 10%, transparent);
-    color: var(--success-color);
-}
 /* test-icon - 自全局样式就近迁移 */
-.test-icon {
-    background: color-mix(in srgb, var(--color-ant-gold-6) 10%, transparent);
-    color: var(--warning-color);
-}
-
 .test-icon {
     background: color-mix(in srgb, var(--color-ant-gold-6) 10%, transparent);
     color: var(--warning-color);
