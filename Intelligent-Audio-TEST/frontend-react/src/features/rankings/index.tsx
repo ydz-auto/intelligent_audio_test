@@ -6,7 +6,7 @@
  */
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { Lock, RefreshCw, Trophy } from 'lucide-react'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import {
   DEFAULT_RANKING_SEARCH,
@@ -14,8 +14,10 @@ import {
   type RankingSearch,
 } from '@/application/rankings/rankingFilters'
 import { useBenchmarkAccess } from '@/application/rankings/useBenchmarkAccess'
+import { useComputeRanking } from '@/application/rankings/useComputeRanking'
 import { useRankings } from '@/application/rankings/useRankings'
 import { PageTransition } from '@/components/page-transition'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -36,6 +38,21 @@ export function RankingsPage() {
   const { canRead, canCompute } = useBenchmarkAccess()
   const ranking = useRankings(filters, canRead)
   const { view, setView } = useRankingView()
+
+  // 重算链路（页面层统一持有：筛选行「立即计算」与空态「立即计算」共用同一
+  // ConfirmDialog + mutation——§5.2；空态不再是清空筛选的假导航）
+  const compute = useComputeRanking()
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const handleCompute = useCallback(() => {
+    compute.mutate(
+      {
+        suite: filters.suite || undefined,
+        category: filters.category || undefined,
+        source: filters.source || undefined,
+      },
+      { onSettled: () => setConfirmOpen(false) }
+    )
+  }, [compute, filters])
 
   // URL `algorithm=` 可还原 → 页内 store（页内独立，不写回全局）
   const setAlgorithm = useRankingAlgorithmStore((s) => s.setAlgorithm)
@@ -115,7 +132,7 @@ export function RankingsPage() {
           ) : ranking.groups.length === 0 ? (
             <EmptyState
               canCompute={canCompute}
-              onCompute={() => void navigate({ to: '/rankings' })}
+              onCompute={() => setConfirmOpen(true)}
             />
           ) : (
             <>
@@ -125,6 +142,8 @@ export function RankingsPage() {
                 onFilterChange={handleFilterChange}
                 onReset={handleReset}
                 isFetching={ranking.isFetching}
+                onCompute={() => setConfirmOpen(true)}
+                computePending={compute.isPending}
               />
               {ranking.groups.map((group) => (
                 <MetricGroupCard
@@ -136,6 +155,17 @@ export function RankingsPage() {
               ))}
             </>
           )}
+
+          {/* 重算确认弹窗（§5.2：筛选行与空态共用；计算是同步接口不做轮询） */}
+          <ConfirmDialog
+            open={confirmOpen}
+            onOpenChange={setConfirmOpen}
+            title='重新计算排行？'
+            desc='将合并平台实测与外部基线全量重算，期间现有排行保持可查看。'
+            confirmText='开始计算'
+            handleConfirm={handleCompute}
+            isLoading={compute.isPending}
+          />
         </PageTransition>
       </div>
       <PublicFooter />

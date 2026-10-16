@@ -17,6 +17,7 @@
 import json
 import os
 import time
+from urllib.parse import unquote
 
 import pytest
 from selenium import webdriver
@@ -294,6 +295,44 @@ def test_recompute_confirm_dialog(drv):
     assert '将合并平台实测与外部基线全量重算，期间现有排行保持可查看。' in dialog, '弹窗描述缺失'
     drv.find_element(By.XPATH, "//button[contains(., '开始计算')]").click()
     _wait_text(drv, '排行计算完成', timeout=15)
+
+
+def test_reset_clears_subject_search_no_refeed(drv):
+    """P2-1 返修：重置清空主体搜索（输入框 + URL subjectName），防抖不回灌旧值。"""
+    _reset_page_state(drv)
+    _goto(drv, '/rankings')
+    _wait_text(drv, '全部测试集')
+    search_input = drv.find_element(By.XPATH, "//input[@aria-label='搜索主体']")
+    search_input.send_keys('远场')
+    time.sleep(1.0)
+    # current_url 中文为 percent-encoded，先 unquote 再断言
+    assert 'subjectName=远场' in unquote(drv.current_url), '主体搜索未写入 URL subjectName'
+    assert '末字延迟 · 通用' not in _body_text(drv), '主体筛选未生效'
+    drv.find_element(By.XPATH, "//button[@aria-label='重置']").click()
+    time.sleep(1.0)
+    assert 'subjectName=远场' not in unquote(drv.current_url), '重置后 URL 仍残留 subjectName=远场'
+    val = drv.find_element(By.XPATH, "//input[@aria-label='搜索主体']").get_attribute('value')
+    assert val == '', f'重置后主体输入框未清空：{val!r}'
+    _wait_text(drv, '末字延迟 · 通用', timeout=10)
+    # 回灌验证：重置后 1.5s URL 不得复活 subjectName=远场（旧实现 300ms 防抖回灌）
+    time.sleep(1.5)
+    assert 'subjectName=远场' not in unquote(drv.current_url), f'防抖回灌导致 subjectName 复活：{unquote(drv.current_url)}'
+
+
+def test_empty_state_compute_shared_chain(drv):
+    """P2-2 返修：空态「立即计算」走共享重算链路（确认弹窗 → 开始计算 → toast），不静默清筛选。"""
+    _reset_page_state(drv)
+    _goto(drv, '/rankings?subjectName=不存在')
+    _wait_text(drv, '暂无排行数据')
+    assert 'subjectName=不存在' in unquote(drv.current_url), '前置：空态 URL 应含 subjectName=不存在'
+    drv.find_element(By.XPATH, "//button[contains(., '立即计算')]").click()
+    time.sleep(0.6)
+    dialog = _body_text(drv)
+    assert '重新计算排行？' in dialog, '空态立即计算未弹确认框'
+    drv.find_element(By.XPATH, "//button[contains(., '开始计算')]").click()
+    _wait_text(drv, '排行计算完成', timeout=15)
+    # 不静默清筛选（旧实现直接 navigate('/rankings') 裸 URL 清空全部筛选）
+    assert 'subjectName=不存在' in unquote(drv.current_url), '空态计算静默清空了筛选 URL'
 
 
 def test_dark_theme_renders(drv):

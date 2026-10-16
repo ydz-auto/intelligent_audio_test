@@ -4,14 +4,12 @@
  * 全部筛选状态由页面层写 URL search；本组件只负责 UI 与本地输入态。
  */
 import { LoaderCircle, Search, RotateCcw } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useRankingSubjects } from '@/application/rankings/useRankingSubjects'
-import { useComputeRanking } from '@/application/rankings/useComputeRanking'
 import { useBenchmarkAccess } from '@/application/rankings/useBenchmarkAccess'
 import { useMetricMappings } from '@/application/rankings/useMetricMappings'
 import { hasActiveFilters } from '@/application/rankings/rankingFilters'
-import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -37,8 +35,12 @@ export function RankingFiltersBar(props: {
   onFilterChange: (patch: Partial<RankingFilters>) => void
   onReset: () => void
   isFetching: boolean
+  /** 触发重算（确认弹窗由页面层统一持有，空态「立即计算」共用同一链路） */
+  onCompute: () => void
+  /** 重算 mutation 进行中（按钮 loading 态） */
+  computePending: boolean
 }) {
-  const { filters, suites, onFilterChange, onReset, isFetching } = props
+  const { filters, suites, onFilterChange, onReset, isFetching, onCompute, computePending } = props
   const { mappings, isFailed: mappingsFailed } = useMetricMappings()
   const { canCompute } = useBenchmarkAccess()
 
@@ -51,6 +53,14 @@ export function RankingFiltersBar(props: {
     }, 300)
     return () => clearTimeout(timer)
   }, [subjectInput, filters.subjectName, onFilterChange])
+
+  // 外部把 subjectName 清空（重置导航/URL 回退）时同步清空本地输入——
+  // 防抖 effect 不再把旧输入回灌 URL（P2-1 修复：subjectInput 不随 props 同步的复活路径）
+  useEffect(() => {
+    setSubjectInput((prev) =>
+      filters.subjectName === '' && prev !== '' ? '' : prev
+    )
+  }, [filters.subjectName])
 
   const [subjectOpen, setSubjectOpen] = useState(false)
   const { subjects } = useRankingSubjects(filters.suite, subjectInput.trim() !== '')
@@ -84,20 +94,13 @@ export function RankingFiltersBar(props: {
     }
   }
 
-  // 重算 mutation + 确认弹窗
-  const compute = useComputeRanking()
-  const [confirmOpen, setConfirmOpen] = useState(false)
-
-  const handleCompute = useCallback(() => {
-    compute.mutate(
-      {
-        suite: filters.suite || undefined,
-        category: filters.category || undefined,
-        source: filters.source || undefined,
-      },
-      { onSettled: () => setConfirmOpen(false) }
-    )
-  }, [compute, filters])
+  // 重置：先清本地输入与联想（取消防抖回灌），再走页面层 URL 重置
+  const handleReset = () => {
+    setSubjectInput('')
+    setSubjectOpen(false)
+    setActiveIndex(-1)
+    onReset()
+  }
 
   const showSuggestion = subjectOpen && suggestions.length > 0
 
@@ -232,7 +235,7 @@ export function RankingFiltersBar(props: {
           <Button
             variant='ghost'
             size='sm'
-            onClick={onReset}
+            onClick={handleReset}
             aria-label='重置'
           >
             <RotateCcw aria-hidden='true' className='size-3.5' />
@@ -240,8 +243,8 @@ export function RankingFiltersBar(props: {
           </Button>
         )}
         {canCompute && (
-          <Button size='sm' onClick={() => setConfirmOpen(true)}>
-            {compute.isPending ? (
+          <Button size='sm' onClick={onCompute}>
+            {computePending ? (
               <>
                 <Spinner aria-hidden='true' />
                 计算中…
@@ -252,16 +255,6 @@ export function RankingFiltersBar(props: {
           </Button>
         )}
       </div>
-
-      <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
-        title='重新计算排行？'
-        desc='将合并平台实测与外部基线全量重算，期间现有排行保持可查看。'
-        confirmText='开始计算'
-        handleConfirm={handleCompute}
-        isLoading={compute.isPending}
-      />
     </div>
   )
 }

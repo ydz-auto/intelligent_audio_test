@@ -6,6 +6,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchBenchmarkRankingSubjects } from '@/infrastructure/api/benchmarkApi'
+import { mapRankingSubjectDto } from '@/infrastructure/adapters/benchmarkAdapter'
 
 export interface RankingSubjectsResult {
   subjects: string[]
@@ -20,7 +21,7 @@ export function useRankingSubjects(suite: string, enabled: boolean): RankingSubj
       if (!envelope.success || !envelope.data) {
         return []
       }
-      return envelope.data.items.map((item) => item.subject_name)
+      return envelope.data.items.map(mapRankingSubjectDto)
     },
     staleTime: 5 * 60_000,
     enabled,

@@ -34,9 +34,7 @@ export function DeltaText(props: {
     <span
       className={cn(
         'tabular-nums inline-flex items-center gap-0.5',
-        better
-          ? 'text-success dark:text-emerald-400'
-          : 'text-destructive dark:text-rose-400',
+        better ? 'text-success' : 'text-destructive',
         props.className
       )}
       title={better ? '优于基线' : '劣于基线'}

@@ -12,6 +12,7 @@ import type {
 import type {
   BenchmarkMetricMappingDto,
   BenchmarkRankingDto,
+  BenchmarkSubjectDto,
 } from '@/infrastructure/mock/benchmark-mock'
 
 /** 排行行 DTO → Domain（全字段映射；baselineId 仅排障用，组件不显示） */
@@ -57,6 +58,11 @@ export function mapMetricMappingDto(dto: BenchmarkMetricMappingDto): MetricMappi
     scenarioTags: dto.scenario_tags,
     active: dto.active,
   }
+}
+
+/** 主体联想 DTO → Domain（subject_name 单一字段 → string 名称清单；搜索联想数据源） */
+export function mapRankingSubjectDto(dto: BenchmarkSubjectDto): string {
+  return dto.subject_name
 }
 
 /**
