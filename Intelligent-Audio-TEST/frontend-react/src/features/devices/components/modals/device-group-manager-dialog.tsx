@@ -7,11 +7,12 @@
  * DeviceGroupMember 只关联被测设备表，§11-5）。
  * P3-15 返修：播放设备组类型创建整项禁用 + Tooltip「播放设备分组暂未实装」；
  * P3-16 返修：补复制（「{name}（副本）」）/重命名/移动/批量添加·移除成员；
- * P3-17 返修：本地分组只首开种子化，不再每次打开重置（新建不再静默丢失）。
+ * P3-17 返修：本地分组以 props 首载同步一次后归本地持有，不再每次打开重置（新建不再静默丢失）；
+ * 复验回归修复：常驻挂载 + mockLatency 异步首载下，props 空→非空时同步一次（ref 标记防后续覆盖）。
  * 删除 ConfirmDialog destructive（含成员时走 cascade=true 口径文案）。
  */
 import { ChevronDown, ChevronRight, Copy, Move, Pencil, Plus, Trash2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -130,8 +131,17 @@ export function DeviceGroupManagerDialog(props: DeviceGroupManagerDialogProps) {
   const [groupDesc, setGroupDesc] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<DeviceGroup | null>(null)
   const [memberAdd, setMemberAdd] = useState<Record<number, string>>({})
-  // P3-17：本地分组只首开种子化，不再每次打开重置（新建/复制/重命名即时可见不丢失）
+  // P3-17：本地分组以 props 首载同步一次后即归本地持有（新建/复制/重命名即时可见不丢失）
   const [groups, setGroups] = useState<DeviceGroup[]>(props.groups)
+  const groupsSeeded = useRef<boolean>(props.groups.length > 0)
+  // 复验回归修复：弹窗常驻挂载 + mockLatency 异步首载 → 挂载时 props.groups 为空，useState 种子捕获空数组；
+  // 查询数据到达（空→非空）时同步一次；ref 置位后后续 props 更新不再覆盖本地增量（P3-17 目标不丢）
+  useEffect(() => {
+    if (!groupsSeeded.current && props.groups.length > 0) {
+      groupsSeeded.current = true
+      setGroups(props.groups)
+    }
+  }, [props.groups])
   const [bulkAddTarget, setBulkAddTarget] = useState<DeviceGroup | null>(null)
   const [renameTarget, setRenameTarget] = useState<DeviceGroup | null>(null)
   const [renameValue, setRenameValue] = useState('')
