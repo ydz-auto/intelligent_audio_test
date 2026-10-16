@@ -64,6 +64,7 @@ interface ExecutionResultsProps {
   report: ReportDetailData
   roundTabs: RoundTab[]
   activeRoundTab: string
+  setActiveRoundTab: (label: string) => void
   activeRoundTag: string | null
 }
 
@@ -72,6 +73,7 @@ export function ExecutionResults({
   report,
   roundTabs,
   activeRoundTab,
+  setActiveRoundTab,
   activeRoundTag,
 }: ExecutionResultsProps) {
   const [playingAudio, setPlayingAudio] = useState<AudioItemMeta>()
@@ -305,7 +307,7 @@ export function ExecutionResults({
                   ? 'bg-primary text-primary-foreground'
                   : 'text-muted-foreground hover:bg-muted'
               )}
-              onClick={() => undefined}
+              onClick={() => setActiveRoundTab(tab.label)}
             >
               {tab.label}
             </button>

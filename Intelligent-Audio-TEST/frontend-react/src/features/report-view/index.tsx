@@ -195,6 +195,7 @@ export function ReportViewPage() {
           onBack={handleBack}
           onEdit={() => setEditing((v) => !v)}
           onSave={() => setEditing(false)}
+          onRename={() => setRenameOpen(true)}
           onPublish={() => setPublishOpen(true)}
           onUnpublish={() => {
             void reportActions.unpublish(report.id, report.name)
@@ -219,6 +220,7 @@ export function ReportViewPage() {
                 report={report}
                 isExporting={exportOpen}
                 editing={editing}
+                canEdit={hasPermission('report:update')}
                 onStartEditing={() => setEditing(true)}
                 onExitEditing={() => setEditing(false)}
                 onSaveAnalysis={(content) => void saveAnalysis(content)}
@@ -228,6 +230,7 @@ export function ReportViewPage() {
                 report={report}
                 isExporting={exportOpen}
                 editing={editing}
+                canEdit={hasPermission('report:update')}
                 onStartEditing={() => setEditing(true)}
                 onExitEditing={() => setEditing(false)}
                 onSaveAnalysis={(content) => void saveAnalysis(content)}
@@ -266,7 +269,7 @@ export function ReportViewPage() {
         onOpenChange={setExportOpen}
         scope={report.name}
         count={1}
-        onExport={(format) => toast.success(`报告已导出（${format.toUpperCase()}）`)}
+        onExport={(format) => void reportActions.exportReport([report.id], format)}
       />
       <PublishReportDialog
         open={publishOpen}

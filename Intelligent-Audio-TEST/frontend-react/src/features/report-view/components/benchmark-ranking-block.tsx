@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useBenchmarkRanking, type BenchmarkSourceFilter } from '@/application/report-view/use-benchmark-ranking'
+import { CHART_COLORS } from '@/infrastructure/adapters/chartConfig'
 import { cn } from '@/lib/utils'
 
 const SOURCE_FILTERS: { value: BenchmarkSourceFilter; label: string }[] = [
@@ -85,7 +86,7 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
           data: list,
           barWidth: 18,
           itemStyle: {
-            color: isDark ? '#3b82f6' : '#1976D2',
+            color: CHART_COLORS.primary,
             borderRadius: [0, 4, 4, 0],
           },
           label: {
@@ -99,8 +100,8 @@ export function BenchmarkRankingBlock({ reportId, reportName }: BenchmarkRanking
           markLine: {
             silent: true,
             symbol: 'none',
-            lineStyle: { type: 'dashed', color: '#FFA940', width: 1.5 },
-            label: { formatter: '中位数 {c}', color: '#FFA940', fontSize: 10 },
+            lineStyle: { type: 'dashed', color: CHART_COLORS.warning, width: 1.5 },
+            label: { formatter: '中位数 {c}', color: CHART_COLORS.warning, fontSize: 10 },
             data: [{ xAxis: data.median, label: { formatter: '中位数' } }],
           },
         },

@@ -22,9 +22,12 @@ export function useCaseTagComparison(report: ReportDetailData) {
   const summary = report.summary
   const allMetrics: ReportMetricConfig[] = summary.all_metrics
   const [activeDisplayType, setActiveDisplayType] = useState<DisplayType>('table')
+  // 表单草稿态（筛选卡绑定；「应用筛选」提交后才生效）
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [selectedGroups, setSelectedGroups] = useState<string[]>([])
+  // 已应用态（驱动结果）
+  const [appliedMetrics, setAppliedMetrics] = useState<string[]>([])
+  const [appliedTags, setAppliedTags] = useState<string[]>([])
 
   /** 标签来源合并（updateData 平移：allTags + allCaseTags + tag_metric_data + cases.tags） */
   const allTags = useMemo(() => {
@@ -79,16 +82,30 @@ export function useCaseTagComparison(report: ReportDetailData) {
 
   const filteredTags = useMemo(() => {
     const all = Object.keys(matrix)
-    if (selectedTags.length > 0) return selectedTags
+    if (appliedTags.length > 0) return appliedTags
     return all
-  }, [matrix, selectedTags])
+  }, [matrix, appliedTags])
 
   const availableMetrics = useMemo(
     () => allMetrics.map((m) => m.name),
     [allMetrics]
   )
   const effectiveMetrics =
-    selectedMetrics.length > 0 ? selectedMetrics : availableMetrics
+    appliedMetrics.length > 0 ? appliedMetrics : availableMetrics
+
+  /** 「应用筛选」：把表单草稿提交为生效条件（立即生效） */
+  const applyFilters = () => {
+    setAppliedTags(selectedTags)
+    setAppliedMetrics(selectedMetrics)
+  }
+
+  /** 「重置」：清空草稿与已应用条件 */
+  const resetFilters = () => {
+    setSelectedTags([])
+    setSelectedMetrics([])
+    setAppliedTags([])
+    setAppliedMetrics([])
+  }
 
   return {
     allTags,
@@ -101,10 +118,10 @@ export function useCaseTagComparison(report: ReportDetailData) {
     setSelectedMetrics,
     selectedTags,
     setSelectedTags,
-    selectedGroups,
-    setSelectedGroups,
     activeDisplayType,
     setActiveDisplayType,
     effectiveMetrics,
+    applyFilters,
+    resetFilters,
   }
 }

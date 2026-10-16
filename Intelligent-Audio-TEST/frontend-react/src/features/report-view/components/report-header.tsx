@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileDown,
   Pencil,
+  PenSquare,
   Printer,
   RefreshCw,
   Rocket,
@@ -38,6 +39,7 @@ interface ReportHeaderProps {
   onBack: () => void
   onEdit: () => void
   onSave: () => void
+  onRename: () => void
   onPublish: () => void
   onUnpublish: () => void
   onExport: () => void
@@ -55,6 +57,7 @@ export function ReportHeader({
   onBack,
   onEdit,
   onSave,
+  onRename,
   onPublish,
   onUnpublish,
   onExport,
@@ -134,6 +137,12 @@ export function ReportHeader({
               <Button variant='secondary' size='sm' onClick={onSave}>
                 <Rocket data-icon='inline-start' />
                 保存
+              </Button>
+            )}
+            {hasPermission('report:update') && (
+              <Button variant='outline' size='sm' onClick={onRename}>
+                <PenSquare data-icon='inline-start' />
+                重命名
               </Button>
             )}
             {hasPermission('report:publish') && report.status === 'draft' && (

@@ -45,6 +45,7 @@ export function CaseReportDetail({ caseItem, report }: CaseReportDetailProps) {
         report={report}
         roundTabs={roundState.roundTabs}
         activeRoundTab={roundState.activeRoundTab}
+        setActiveRoundTab={roundState.setActiveRoundTab}
         activeRoundTag={roundState.activeRoundTag}
       />
 

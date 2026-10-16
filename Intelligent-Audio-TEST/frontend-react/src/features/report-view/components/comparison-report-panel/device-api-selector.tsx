@@ -22,10 +22,17 @@ export function DeviceApiSelector({
 }: DeviceApiSelectorProps) {
   const devices = report.summary.devices ?? []
   const apis = report.summary.apis ?? []
+  const empty = devices.length === 0 && apis.length === 0
 
   return (
     <div className='rounded-2xl border p-4'>
       <p className='text-sm font-semibold'>选择要对比的设备和API</p>
+      {empty ? (
+        <div className='text-muted-foreground mt-3 flex h-20 items-center justify-center rounded-lg border text-xs'>
+          <Globe aria-hidden='true' className='mr-1.5 size-4' />
+          暂无设备与API
+        </div>
+      ) : (
       <div className='mt-3 grid gap-1.5 sm:grid-cols-2'>
         {devices.map((device) => (
           <SelectorRow
@@ -48,6 +55,7 @@ export function DeviceApiSelector({
           />
         ))}
       </div>
+      )}
     </div>
   )
 }

@@ -1,13 +1,15 @@
 /**
- * features/reports/lib/search 纯函数测试（对位规范 §3.5 + 口径修正 2026-10-16：
+ * infrastructure/adapters/reportAdapter 纯函数测试（对位规范 §3.5 + 口径修正 2026-10-16：
  * 取消双页签后 report_type 一律由 URL type 透传、默认 undefined=全部）。
  */
 import { describe, expect, it } from 'vitest'
 
 import {
   buildReportListQuery,
+  buildShowcaseQuery,
+  computeShowcaseTimeRange,
   computeTimeRange,
-} from '@/features/reports/lib/search'
+} from '@/infrastructure/adapters/reportAdapter'
 import type { ReportsSearch } from '@/features/reports/types'
 
 const baseSearch: ReportsSearch = {
@@ -81,5 +83,27 @@ describe('buildReportListQuery', () => {
     })
     expect(query.start_time).toBe('2026-10-01 09:00')
     expect(query.end_time).toBe('2026-10-16 18:00')
+  })
+})
+
+describe('buildShowcaseQuery / computeShowcaseTimeRange', () => {
+  it('展示页无 timeRange 返回空时间窗口、report_type 透传', () => {
+    const query = buildShowcaseQuery({
+      view: 'table',
+      page: 1,
+      pageSize: 20,
+      type: 'benchmark',
+      sortBy: 'created_at',
+      sortOrder: 'desc',
+    })
+    expect(query.report_type).toBe('benchmark')
+    expect(query.start_time).toBeUndefined()
+    expect(query.favorite).toBe(false)
+    expect(query.deleted).toBe(false)
+  })
+
+  it('展示页 custom 时间范围折叠', () => {
+    const range = computeShowcaseTimeRange('custom', '2026-10-01T09:00:00', '2026-10-16T18:00:00')
+    expect(range).toEqual({ startTime: '2026-10-01 09:00', endTime: '2026-10-16 18:00' })
   })
 })

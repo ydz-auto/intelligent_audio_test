@@ -36,6 +36,7 @@ import type {
   DistributionChartData,
 } from '@/application/report-view/use-report-charts'
 import {
+  CHART_COLORS,
   getDefaultChartConfig,
   rebinDistributionData,
 } from '@/application/report-view/use-report-charts'
@@ -233,11 +234,23 @@ export function ReportChart({
       } as ChartOptions
     }
 
-    // 热力图色阶：v 值归一化到 chart 色板 alpha 分级（§3.7 色阶 --chart-1..5 alpha）
+    // 热力图色阶：v 值归一化到 chart 色板 alpha 分级（§3.7 色阶 --chart-1..5 alpha，token 化）
+    const hexToRgba = (hex: string, alpha: number): string => {
+      const value = hex.replace('#', '')
+      const r = parseInt(value.slice(0, 2), 16)
+      const g = parseInt(value.slice(2, 4), 16)
+      const b = parseInt(value.slice(4, 6), 16)
+      return `rgba(${r},${g},${b},${alpha})`
+    }
     const heatmapColor = (v: number, min: number, max: number): string => {
       const range = max - min || 1
       const t = Math.min(1, Math.max(0, (v - min) / range))
-      const stops = ['rgba(25,118,210,0.18)', 'rgba(82,196,26,0.35)', 'rgba(255,169,64,0.6)', 'rgba(245,34,45,0.85)']
+      const stops = [
+        hexToRgba(CHART_COLORS.primary, 0.18),
+        hexToRgba(CHART_COLORS.success, 0.35),
+        hexToRgba(CHART_COLORS.warning, 0.6),
+        hexToRgba(CHART_COLORS.purple, 0.85),
+      ]
       return stops[Math.min(stops.length - 1, Math.floor(t * stops.length))]
     }
 

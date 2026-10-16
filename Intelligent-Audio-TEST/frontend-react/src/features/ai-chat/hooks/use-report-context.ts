@@ -1,7 +1,7 @@
 /**
  * 报告上下文选择器数据（interfaces 层 hooks；08_AI对话页.md §3.5）。
  * 数据源 GET /reports（report:read 可先行）+ GET /tasks（task:read）；
- * mock 常量（红线④），后续接线换 reportsApi/tasksApi。
+ * mock 常量（红线④），后续接线换 reports-api/tasks-api。
  */
 import { useMemo } from 'react'
 

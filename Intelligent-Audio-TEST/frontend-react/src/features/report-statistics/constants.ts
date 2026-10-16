@@ -1,7 +1,11 @@
 /**
  * 报告统计分析常量（interfaces/features/report-statistics 层；15_报告域.md §2.2，INT-381 返修补全）。
  * 文案对照 §7「报告统计分析页面」与报告管理功能设计文档.md §3.6.1/:318-340 + §5.2.4/:570-594。
+ * StatisticDimension 类型驻留 domain/models/report-statistics.ts（application 层反向引用解耦）。
  */
+import type { StatisticDimension } from '@/domain/models/report-statistics'
+
+export type { StatisticDimension } from '@/domain/models/report-statistics'
 
 /** 统计维度（维度 Select；§2.2 时间/任务类型/设备类型/评估维度） */
 export const STATISTIC_DIMENSIONS: { value: StatisticDimension; label: string }[] = [
@@ -10,8 +14,6 @@ export const STATISTIC_DIMENSIONS: { value: StatisticDimension; label: string }[
   { value: 'device_type', label: '设备类型' },
   { value: 'metric', label: '评估维度' },
 ]
-
-export type StatisticDimension = 'time' | 'task_type' | 'device_type' | 'metric'
 
 /** 四标签页（§5.2.4） */
 export const STATISTIC_TABS: { value: StatisticTab; label: string }[] = [
@@ -58,16 +60,13 @@ export const REPORT_FORM_FORMATS: { value: string; label: string }[] = [
   { value: 'html', label: 'HTML' },
 ]
 
-/** 统计结果表列头（详细/异常页签共用） */
-export const STATISTIC_TABLE_COLUMNS = ['统计维度', '统计值', '占比', '环比', '状态'] as const
-
-/** 执行摘要统计卡（§2.2 功能：报告数量/用例执行/评估指标/设备性能） */
+/** 执行摘要统计卡（§2.2 功能：报告数量/用例执行统计/评估指标/设备性能） */
 export const STATISTIC_SUMMARY_CARDS: {
   key: 'reports' | 'cases' | 'metrics' | 'devices'
   label: string
 }[] = [
   { key: 'reports', label: '报告数量' },
-  { key: 'cases', label: '测试用例执行' },
+  { key: 'cases', label: '测试用例执行统计' },
   { key: 'metrics', label: '评估指标' },
   { key: 'devices', label: '设备性能' },
 ]

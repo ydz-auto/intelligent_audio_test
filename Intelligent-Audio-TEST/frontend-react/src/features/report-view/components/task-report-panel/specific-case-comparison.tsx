@@ -81,14 +81,16 @@ export function SpecificCaseComparison({
   const [detailCase, setDetailCase] = useState<ReportCaseItem>()
   const [downloadingId, setDownloadingId] = useState<string>()
   const [downloadTarget, setDownloadTarget] = useState<ReportCaseItem>()
+  const [downloadSize, setDownloadSize] = useState(0)
 
   const handleDownload = async (caseId: string) => {
     setDownloadingId(caseId)
     try {
-      await downloadLogs(caseId)
+      const { size } = await downloadLogs(caseId)
       const target =
         items.find((c) => c.id === caseId) ??
         fallbackCases.find((c) => c.id === caseId)
+      setDownloadSize(size)
       setDownloadTarget(target)
     } finally {
       setDownloadingId(undefined)
@@ -445,7 +447,7 @@ export function SpecificCaseComparison({
           if (!open) setDownloadTarget(undefined)
         }}
         caseName={downloadTarget?.name ?? ''}
-        totalSize={1024 * 380}
+        totalSize={downloadSize}
         onComplete={() => {
           setDownloadTarget(undefined)
           toast.success('日志下载完成')

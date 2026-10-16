@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { usePermissions } from '@/application/hooks/use-permissions'
+import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { useReportList } from '@/application/reports/use-report-list'
 import { useReportCounts } from '@/application/reports/use-report-counts'
 import { useReportSummaryCounts } from '@/application/reports/use-report-summary-counts'
@@ -30,10 +31,9 @@ import {
   useReportActions,
 } from '@/application/reports/use-report-actions'
 import type { ReportListItem } from '@/domain/models/report'
-import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
 import type { ReportsSearch } from '@/features/reports/types'
 import { getLinkedAlgorithmLabel, toReportAlgorithmType } from '@/features/reports/lib/algorithm'
-import { buildReportListQuery } from '@/features/reports/lib/search'
+import { buildReportListQuery } from '@/infrastructure/adapters/reportAdapter'
 
 import { ReportHero } from './components/report-hero'
 import { ReportAdvancedSearch } from './components/report-advanced-search'
@@ -60,7 +60,7 @@ export function ReportCenterPage() {
   const rawSearch = useSearch({ strict: false }) as unknown as ReportsSearch
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
-  const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
+  const { algorithmId: globalAlgorithmId } = useGlobalAlgorithm()
   const reportActions = useReportActions()
   const batchActions = useBatchReportActions()
   const summaryCountsQuery = useReportSummaryCounts()

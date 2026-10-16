@@ -8,6 +8,7 @@ import { ChevronDown } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { cn } from '@/lib/utils'
+import { Input } from '@/components/ui/input'
 import type { MetricMatrix, ReportMetricConfig } from '@/domain/models/report'
 import { useReportCharts, type DisplayType } from '@/application/report-view/use-report-charts'
 import { formatMetricForDisplay, getMetricUnit } from '@/application/report-view/use-report-summary'
@@ -25,6 +26,8 @@ interface MetricMatrixTableProps {
   onDisplayTypeChange: (type: DisplayType) => void
   /** 导出模式（P2-12：强制展开 + 表格视图，canvas 图表不克隆进静态 HTML） */
   isExporting?: boolean
+  /** 分组/标签重命名映射（old → new；矩阵键保持原名，展示名跟随映射） */
+  groupLabels?: Record<string, string>
   /** 表头/单元格重命名（分组名/资源 label 编辑） */
   onRename?: (group: string, resource: string | undefined, next: string) => void
 }
@@ -37,12 +40,30 @@ export function MetricMatrixTable({
   displayType,
   onDisplayTypeChange,
   isExporting,
+  groupLabels,
   onRename,
 }: MetricMatrixTableProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [editingGroup, setEditingGroup] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState('')
   const { series, distribution } = useReportCharts(matrix, groups, resources, metric.name, displayType)
   const forceOpen = Boolean(isExporting)
   const isDistribution = displayType === 'distribution' && !forceOpen
+
+  const startRename = (group: string) => {
+    if (!onRename) return
+    setEditingGroup(group)
+    setEditValue(groupLabels?.[group] ?? group)
+  }
+  const commitRename = () => {
+    if (editingGroup && onRename && editValue.trim()) {
+      const current = groupLabels?.[editingGroup] ?? editingGroup
+      if (editValue.trim() !== current) {
+        onRename(editingGroup, undefined, editValue.trim())
+      }
+    }
+    setEditingGroup(null)
+  }
 
   const tableCells = useMemo(
     () =>
@@ -111,17 +132,30 @@ export function MetricMatrixTable({
                   {tableCells.map(({ group, cells }) => (
                     <tr key={group} className='hover:bg-muted/30 border-b last:border-0'>
                       <td className='px-3 py-2 text-sm font-medium'>
-                        {onRename ? (
+                        {editingGroup === group ? (
+                          <Input
+                            autoFocus
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={commitRename}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitRename()
+                              if (e.key === 'Escape') setEditingGroup(null)
+                            }}
+                            aria-label='重命名分组'
+                            className='h-7 w-44 text-xs'
+                          />
+                        ) : onRename ? (
                           <button
                             type='button'
                             className='hover:text-foreground text-muted-foreground text-left transition-colors'
-                            onClick={() => onRename(group, undefined, `${group} (编辑)`) }
+                            onClick={() => startRename(group)}
                             title='点击重命名分组'
                           >
-                            {group}
+                            {groupLabels?.[group] ?? group}
                           </button>
                         ) : (
-                          group
+                          groupLabels?.[group] ?? group
                         )}
                       </td>
                       {cells.map((cell, i) => (

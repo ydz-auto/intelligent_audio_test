@@ -16,6 +16,8 @@ interface TaskReportPanelProps {
   report: ReportDetailData
   isExporting?: boolean
   editing: boolean
+  /** report:update 权限（§6 RBAC：无权限 readonly 冻结快照，隐藏编辑钮） */
+  canEdit: boolean
   onStartEditing: () => void
   onExitEditing: () => void
   onSaveAnalysis: (content: string) => void
@@ -25,6 +27,7 @@ export function TaskReportPanel({
   report,
   isExporting,
   editing,
+  canEdit,
   onStartEditing,
   onExitEditing,
   onSaveAnalysis,
@@ -49,7 +52,7 @@ export function TaskReportPanel({
         <AnalysisEditor
           title='分析结论'
           analysis={report.analysis}
-          readonly={false}
+          readonly={!canEdit}
           editing={editing}
           onStartEditing={onStartEditing}
           onExitEditing={onExitEditing}

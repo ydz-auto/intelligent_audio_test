@@ -25,11 +25,11 @@ describe('报告统计分析（INT-500）', () => {
     ])
   })
 
-  it('统计卡四枚（报告数量/用例执行/评估指标/设备性能）', () => {
+  it('统计卡四枚（报告数量/用例执行统计/评估指标/设备性能）', () => {
     const data = computeStatistics('time')
     expect(data.summary.map((s) => s.label)).toEqual([
       '报告数量',
-      '测试用例执行',
+      '测试用例执行统计',
       '评估指标',
       '设备性能',
     ])

@@ -7,7 +7,8 @@
 import { useQuery } from '@tanstack/react-query'
 
 import type { ChartSeriesData } from '@/application/report-view/use-report-charts'
-import type { StatisticDimension } from '@/features/report-statistics/constants'
+import { CHART_COLORS, colorArray } from '@/application/report-view/use-report-charts'
+import type { StatisticDimension } from '@/domain/models/report-statistics'
 
 export interface StatisticsTimeRange {
   start?: string
@@ -72,7 +73,7 @@ export function computeStatistics(dimension: StatisticDimension): ReportStatisti
 
   const summary: StatisticSummaryItem[] = [
     { key: 'reports', label: '报告数量', value: 42, hint: '近30天 32 · 草稿 8 · 已发布 2' },
-    { key: 'cases', label: '测试用例执行', value: 1186, hint: '完成 1092 · 失败 54 · 通过率 92.1%' },
+    { key: 'cases', label: '测试用例执行统计', value: 1186, hint: '完成 1092 · 失败 54 · 通过率 92.1%' },
     { key: 'metrics', label: '评估指标', value: 24, hint: '主维度 8 · 子维度 16' },
     { key: 'devices', label: '设备性能', value: 8, hint: '在线 6 · 离线 2 · 平均延迟 412ms' },
   ]
@@ -98,8 +99,8 @@ export function computeStatistics(dimension: StatisticDimension): ReportStatisti
       {
         label: '执行用例数',
         data: dimension === 'time' ? [286, 298, 312, 334, 328, 342] : [1186, 1092, 54, 342, 92.1, 412].slice(0, labels.length),
-        backgroundColor: 'rgba(25,118,210,0.35)',
-        borderColor: '#1976D2',
+        backgroundColor: colorArray(0, '59'),
+        borderColor: CHART_COLORS.primary,
       },
     ],
   }
@@ -120,7 +121,7 @@ export function computeStatistics(dimension: StatisticDimension): ReportStatisti
           { x: 98.1, y: 398 },
           { x: 90.2, y: 520 },
         ],
-        backgroundColor: '#1976D2',
+        backgroundColor: CHART_COLORS.primary,
         pointRadius: 5,
       },
     ],

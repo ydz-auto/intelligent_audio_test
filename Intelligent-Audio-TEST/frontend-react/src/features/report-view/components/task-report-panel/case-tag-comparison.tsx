@@ -2,9 +2,11 @@
  * 按用例标签对比（15_报告域.md §3.3.6，CaseTagComparison 对位）。
  * 标签筛选器按分类分组展示（分类组头 + 组内标签，标签带 category_id/category_name）；
  * 矩阵行按单标签独立均值；+ 评估维度多选 + 每维度矩阵（表格/图表）。
+ * 「应用筛选」提交草稿条件生效（draft→applied）；标签名可点击内联重命名 → 防抖 PUT 回写
+ * （useReportSummaryEdit，§3.6/验收 #3）。
  */
 import { ChevronDown } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -17,7 +19,8 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { useCaseTagComparison } from '@/application/report-view/use-case-tag-comparison'
 import { getValidResources } from '@/application/report-view/use-report-summary'
-import type { ReportDetailData } from '@/domain/models/report'
+import { useReportSummaryEdit } from '@/application/report-view/use-report-summary-edit'
+import type { ReportDetailData, ReportTag } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
 import { MetricMatrixTable } from './metric-matrix-table'
@@ -42,9 +45,29 @@ export function CaseTagComparison({
     activeDisplayType,
     setActiveDisplayType,
     effectiveMetrics,
+    applyFilters,
+    resetFilters,
   } = useCaseTagComparison(report)
   const resources = getValidResources(report.summary)
   const [collapsed, setCollapsed] = useState(false)
+  const { scheduleSaveSummary } = useReportSummaryEdit(report.id)
+
+  // 标签重命名本地映射（old→new；矩阵键保持原名，展示名跟随）
+  const [renames, setRenames] = useState<Record<string, string>>({})
+
+  const handleRename = useCallback(
+    (tag: string, _resource: string | undefined, next: string) => {
+      setRenames((prev) => ({ ...prev, [tag]: next }))
+      const renameIn = (list: ReportTag[]) =>
+        list.map((t) => (t.tag_name === tag ? { ...t, tag_name: next } : t))
+      // 持久化：更新源 allCaseTags + allTags 中对应标签名 → 200ms 防抖 → PUT /reports/{id}
+      scheduleSaveSummary({
+        allCaseTags: renameIn(report.summary.all_case_tags ?? []),
+        allTags: renameIn(report.summary.all_tags ?? []),
+      })
+    },
+    [report.summary.all_case_tags, report.summary.all_tags, scheduleSaveSummary]
+  )
 
   const showTags = useMemo(() => filteredTags, [filteredTags])
 
@@ -86,7 +109,7 @@ export function CaseTagComparison({
                           )
                         }}
                       />
-                      {tag.tag_name}
+                      {renames[tag.tag_name] ?? tag.tag_name}
                     </label>
                   ))}
                 </div>
@@ -114,8 +137,8 @@ export function CaseTagComparison({
               variant='ghost'
               size='sm'
               onClick={() => {
-                setSelectedTags([])
-                setSelectedMetrics([])
+                resetFilters()
+                toast.success('筛选已重置')
               }}
             >
               重置
@@ -123,7 +146,7 @@ export function CaseTagComparison({
             <Button
               size='sm'
               onClick={() => {
-                // 标签/维度过滤为实时生效，此处显式提交并反馈
+                applyFilters()
                 toast.success('筛选已应用')
               }}
             >
@@ -149,6 +172,8 @@ export function CaseTagComparison({
                 displayType={activeDisplayType}
                 onDisplayTypeChange={setActiveDisplayType}
                 isExporting={isExporting}
+                groupLabels={renames}
+                onRename={handleRename}
               />
             )
           })

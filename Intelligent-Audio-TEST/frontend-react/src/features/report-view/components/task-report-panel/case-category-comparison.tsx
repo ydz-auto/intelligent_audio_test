@@ -1,9 +1,11 @@
 /**
  * 按用例分组对比（15_报告域.md §3.3.5，CaseCategoryComparison 对位）。
  * 筛选卡（用例名称搜索 / 用例分组多选 / 用例标签多选）+ 评估维度多选 + 每维度矩阵（表格/图表）。
+ * 「应用筛选」提交草稿条件生效（draft→applied）；分组名可点击内联重命名 → 防抖 PUT 回写
+ * （useReportSummaryEdit，§3.6/验收 #3）。
  */
 import { ChevronDown } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
@@ -17,6 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { useCaseCategoryComparison } from '@/application/report-view/use-case-category-comparison'
 import { getValidResources } from '@/application/report-view/use-report-summary'
+import { useReportSummaryEdit } from '@/application/report-view/use-report-summary-edit'
 import type { ReportDetailData } from '@/domain/models/report'
 import { cn } from '@/lib/utils'
 
@@ -44,9 +47,28 @@ export function CaseCategoryComparison({
     activeDisplayType,
     setActiveDisplayType,
     effectiveMetrics,
+    applyFilters,
+    resetFilters,
   } = useCaseCategoryComparison(report)
   const resources = getValidResources(report.summary)
   const [collapsed, setCollapsed] = useState(false)
+  const { scheduleSaveSummary } = useReportSummaryEdit(report.id)
+
+  // 分组重命名本地映射（old→new；矩阵键保持原名，展示名跟随）
+  const [renames, setRenames] = useState<Record<string, string>>({})
+
+  const handleRename = useCallback(
+    (group: string, _resource: string | undefined, next: string) => {
+      setRenames((prev) => ({ ...prev, [group]: next }))
+      // 持久化：更新源 case_categories 中对应分组名 → 200ms 防抖 → PUT /reports/{id}
+      scheduleSaveSummary({
+        caseCategories: report.summary.case_categories.map((c) =>
+          c.category_name === group ? { ...c, category_name: next } : c
+        ),
+      })
+    },
+    [report.summary.case_categories, scheduleSaveSummary]
+  )
 
   const showGroups = useMemo(() => filteredGroups, [filteredGroups])
 
@@ -70,7 +92,7 @@ export function CaseCategoryComparison({
       </div>
 
       <CollapsibleContent className='space-y-3'>
-        {/* 筛选卡（§3.3.5：用例名称 / 用例分组多选 / 评估维度多选；重置与应用筛选已接线） */}
+        {/* 筛选卡（§3.3.5：用例名称 / 用例分组多选 / 评估维度多选；「应用筛选」提交生效） */}
         <div className='rounded-xl border p-3'>
           <div className='flex flex-wrap items-end gap-3'>
             <div className='min-w-40 flex-1'>
@@ -105,7 +127,7 @@ export function CaseCategoryComparison({
                     )
                   }}
                 />
-                {g}
+                {renames[g] ?? g}
               </label>
             ))}
           </div>
@@ -130,9 +152,8 @@ export function CaseCategoryComparison({
               variant='ghost'
               size='sm'
               onClick={() => {
-                setKeyword('')
-                setSelectedGroups([])
-                setSelectedMetrics([])
+                resetFilters()
+                toast.success('筛选已重置')
               }}
             >
               重置
@@ -140,7 +161,7 @@ export function CaseCategoryComparison({
             <Button
               size='sm'
               onClick={() => {
-                // 分组/维度/关键字过滤为实时生效，此处显式提交并反馈
+                applyFilters()
                 toast.success('筛选已应用')
               }}
             >
@@ -166,6 +187,8 @@ export function CaseCategoryComparison({
                 displayType={activeDisplayType}
                 onDisplayTypeChange={setActiveDisplayType}
                 isExporting={isExporting}
+                groupLabels={renames}
+                onRename={handleRename}
               />
             )
           })

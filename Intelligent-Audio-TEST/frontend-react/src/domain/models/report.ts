@@ -67,6 +67,8 @@ export interface ReportCounts {
   draft: number
   published: number
   comparison: number
+  /** Benchmark 报告计数（P3-：徽章行 4 枚固定，Benchmark 分项供类型 chips/后续消费） */
+  benchmark?: number
 }
 
 /** GET /reports 查询（report.py ReportListQuery；favorite/deleted 直传） */

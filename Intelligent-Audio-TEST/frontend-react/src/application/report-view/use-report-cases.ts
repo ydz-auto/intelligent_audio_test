@@ -106,9 +106,9 @@ export function useReportCases(reportId: number, fallbackCases: ReportCaseItem[]
 
   const downloadLogs = useCallback(
     async (caseId: string) => {
-      await downloadCaseLogs(reportId, caseId)
-      // 进度演示：桩 resolve 后由 Dialog 走 0→100 进度（见 modals/log-download-progress-dialog）
-      return { size: 1024 * 380 }
+      // 消费桩返回的真实 blob 大小（P2-7：不再伪造 size，进度 Dialog 按实值推进）
+      const result = await downloadCaseLogs(reportId, caseId)
+      return { size: result.size }
     },
     [reportId]
   )

@@ -26,9 +26,14 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
   const summary = report.summary
   const allMetrics: ReportMetricConfig[] = summary.all_metrics
   const [activeDisplayType, setActiveDisplayType] = useState<DisplayType>('table')
+  // 表单草稿态（筛选卡绑定；「应用筛选」提交后才生效）
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([])
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [keyword, setKeyword] = useState('')
+  // 已应用态（驱动结果）
+  const [appliedMetrics, setAppliedMetrics] = useState<string[]>([])
+  const [appliedGroups, setAppliedGroups] = useState<string[]>([])
+  const [appliedKeyword, setAppliedKeyword] = useState('')
 
   const groupKeys = useMemo(
     () => summary.case_categories.map((c) => c.category_name ?? c.category_id ?? ''),
@@ -50,17 +55,34 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
 
   const filteredGroups = useMemo(() => {
     const all = Object.keys(matrix)
-    if (selectedGroups.length > 0) return selectedGroups
-    if (keyword) return all.filter((g) => g.includes(keyword))
+    if (appliedGroups.length > 0) return appliedGroups
+    if (appliedKeyword) return all.filter((g) => g.includes(appliedKeyword))
     return all
-  }, [matrix, selectedGroups, keyword])
+  }, [matrix, appliedGroups, appliedKeyword])
 
   const availableMetrics = useMemo(
     () => allMetrics.map((m) => m.name),
     [allMetrics]
   )
   const effectiveMetrics =
-    selectedMetrics.length > 0 ? selectedMetrics : availableMetrics
+    appliedMetrics.length > 0 ? appliedMetrics : availableMetrics
+
+  /** 「应用筛选」：把表单草稿提交为生效条件（跳过防抖，立即生效） */
+  const applyFilters = () => {
+    setAppliedKeyword(keyword)
+    setAppliedGroups(selectedGroups)
+    setAppliedMetrics(selectedMetrics)
+  }
+
+  /** 「重置」：清空草稿与已应用条件 */
+  const resetFilters = () => {
+    setKeyword('')
+    setSelectedGroups([])
+    setSelectedMetrics([])
+    setAppliedKeyword('')
+    setAppliedGroups([])
+    setAppliedMetrics([])
+  }
 
   return {
     groupKeys,
@@ -77,5 +99,7 @@ export function useCaseCategoryComparison(report: ReportDetailData) {
     activeDisplayType,
     setActiveDisplayType,
     effectiveMetrics,
+    applyFilters,
+    resetFilters,
   }
 }

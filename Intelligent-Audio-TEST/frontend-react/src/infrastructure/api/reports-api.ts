@@ -183,13 +183,6 @@ export async function publishBenchmarkReport(): Promise<{ reportId: number }> {
   return { reportId: 1185 }
 }
 
-export async function fetchReportCases(
-  _reportId: number,
-  _query: ReportSearchCasesRequest
-): Promise<ReportCaseListData> {
-  return MOCK_REPORT_CASE_LIST_DATA
-}
-
 /** 用例 metrics 键提取（dict {resource:{metric}} 与 list [{resource,metrics}] 双格式） */
 function caseMetricKeys(item: ReportCaseItem): string[] {
   if (Array.isArray(item.metrics)) {
@@ -278,14 +271,6 @@ export async function downloadCaseLogs(
 ): Promise<{ blob: Blob; size: number }> {
   const blob = new Blob(['mock logs'], { type: 'application/zip' })
   return { blob, size: blob.size }
-}
-
-/** POST /reports/case-averages（按任务筛选用例平均值；task_id 路径 mock 演示） */
-export async function getCaseAverages(
-  _taskId: number,
-  _filters: { tags?: string[]; categories?: string[]; includeUntagged?: boolean }
-): Promise<Record<string, number>> {
-  return { 唤醒成功率: 95.8, 识别准确率: 93.1 }
 }
 
 // ---------------------------------------------------------------------------

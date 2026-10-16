@@ -11,13 +11,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { SectionPageLayout } from '@/components/layout/components/section-page-layout'
 import { usePublishedReportList } from '@/application/reports-showcase/use-published-report-list'
-import { useAlgorithmStore } from '@/infrastructure/stores/algorithm-store'
+import { useGlobalAlgorithm } from '@/application/hooks/use-global-algorithm'
 import { toReportAlgorithmType } from '@/features/reports/lib/algorithm'
-import { buildShowcaseQuery } from '@/features/reports-showcase/lib/search'
+import { buildShowcaseQuery } from '@/infrastructure/adapters/reportAdapter'
 import { ReportsPagination } from '@/features/reports/components/reports-pagination'
 import type { ShowcaseSearch } from '@/features/reports-showcase/types'
 
-import { AlgorithmCardGrid } from '@/components/algorithm-card-grid'
+import { AlgorithmCardGrid, ALL_ALGORITHMS_SENTINEL } from '@/components/algorithm-card-grid'
 import { ReportShowcaseHero } from './components/report-showcase-hero'
 import { ReportShowcaseToolbar } from './components/report-showcase-toolbar'
 import { ReportShowcaseList } from './components/report-showcase-list'
@@ -26,7 +26,7 @@ import { ReportShowcaseCardGrid } from './components/report-showcase-card-grid'
 export function ReportShowcasePage() {
   const rawSearch = useSearch({ strict: false }) as unknown as ShowcaseSearch
   const navigate = useNavigate()
-  const globalAlgorithmId = useAlgorithmStore((s) => s.algorithmId)
+  const { algorithmId: globalAlgorithmId, setAlgorithmId } = useGlobalAlgorithm()
 
   const search: ShowcaseSearch = {
     ...rawSearch,
@@ -37,16 +37,48 @@ export function ReportShowcasePage() {
     sortOrder: rawSearch.sortOrder ?? 'desc',
   }
 
-  // INT-442：大卡写回全局 store → 列表自动附 algorithm_type（'' = 全部算法不筛选）
-  const effectiveAlgorithmType = useMemo(
+  // INT-442：算法大卡写回全局 store → URL 回写保持可分享；URL 显式值（非 'none'）优先，
+  // 'none' = 本页解除全局算法（列表不筛选，大卡选中态与之一致）；无显式值回退全局 store。
+  const storeAlgorithmType = useMemo(
     () => (globalAlgorithmId ? toReportAlgorithmType(globalAlgorithmId) : undefined),
     [globalAlgorithmId]
   )
+  const effectiveAlgorithmType =
+    search.algorithmType === 'none'
+      ? undefined
+      : (search.algorithmType ?? storeAlgorithmType)
+
+  // store→URL 回写：大卡点击（store 变化）后 URL 跟随（''=全部算法 → 'none'）
+  const lastStoreTypeRef = useRef(storeAlgorithmType)
+  useEffect(() => {
+    const prev = lastStoreTypeRef.current
+    lastStoreTypeRef.current = storeAlgorithmType
+    if (prev === storeAlgorithmType) return
+    const next = storeAlgorithmType ?? 'none'
+    if (search.algorithmType !== next) {
+      void navigate({
+        to: '/reports',
+        search: (s) => ({ ...s, algorithmType: next, page: 1 }) as unknown as typeof s,
+      })
+    }
+  }, [storeAlgorithmType, search.algorithmType, navigate])
+
+  // URL 'none' 与 store 已选矛盾（store 已选但列表不筛）：仅首次进入页面时置空 store，
+  // 令大卡选中态一致；后续大卡点击（store 变化）是用户意图，优先于 URL 'none'（store→URL 回写覆盖）。
+  const noneInitializedRef = useRef(false)
+  useEffect(() => {
+    if (!noneInitializedRef.current) {
+      noneInitializedRef.current = true
+      if (search.algorithmType === 'none' && globalAlgorithmId) {
+        setAlgorithmId(ALL_ALGORITHMS_SENTINEL)
+      }
+    }
+  }, [search.algorithmType, globalAlgorithmId, setAlgorithmId])
 
   const query = useMemo(
     () => ({
       ...buildShowcaseQuery(search),
-      algorithm_type: search.algorithmType === 'none' ? undefined : effectiveAlgorithmType,
+      algorithm_type: effectiveAlgorithmType,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(search), effectiveAlgorithmType]
@@ -180,8 +212,14 @@ export function ReportShowcasePage() {
             onViewModeChange={handleViewModeChange}
           />
 
-          {search.view === 'card' && !listQuery.isLoading ? (
-            <ReportShowcaseCardGrid items={items} onCardClick={handleRowClick} />
+          {search.view === 'card' ? (
+            <ReportShowcaseCardGrid
+              items={items}
+              isLoading={listQuery.isLoading}
+              hasError={listQuery.isError}
+              onRetry={() => void listQuery.refetch()}
+              onCardClick={handleRowClick}
+            />
           ) : (
             <ReportShowcaseList
               items={items}
