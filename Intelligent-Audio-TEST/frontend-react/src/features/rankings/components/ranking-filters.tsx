@@ -1,0 +1,267 @@
+/**
+ * 排行榜筛选行（14_benchmark排行.md §4.3/§5.2）：测试集 / 指标 / 数据来源 Select
+ * + 主体搜索联想（防抖 300ms，键盘可选）+ 重置 + 立即计算（RBAC 门控）。
+ * 全部筛选状态由页面层写 URL search；本组件只负责 UI 与本地输入态。
+ */
+import { LoaderCircle, Search, RotateCcw } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+
+import { useRankingSubjects } from '@/application/rankings/useRankingSubjects'
+import { useComputeRanking } from '@/application/rankings/useComputeRanking'
+import { useBenchmarkAccess } from '@/application/rankings/useBenchmarkAccess'
+import { useMetricMappings } from '@/application/rankings/useMetricMappings'
+import { hasActiveFilters } from '@/application/rankings/rankingFilters'
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Spinner } from '@/components/ui/spinner'
+import type { RankingFilters } from '@/domain/models/benchmark'
+import { cn } from '@/lib/utils'
+
+const SOURCE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '', label: '全部来源' },
+  { value: 'platform_test', label: '平台实测' },
+  { value: 'external_import', label: '外部基线' },
+]
+
+export function RankingFiltersBar(props: {
+  filters: RankingFilters
+  suites: string[]
+  onFilterChange: (patch: Partial<RankingFilters>) => void
+  onReset: () => void
+  isFetching: boolean
+}) {
+  const { filters, suites, onFilterChange, onReset, isFetching } = props
+  const { mappings, isFailed: mappingsFailed } = useMetricMappings()
+  const { canCompute } = useBenchmarkAccess()
+
+  // 主体搜索：本地输入态 + 防抖 300ms 写 URL
+  const [subjectInput, setSubjectInput] = useState(filters.subjectName)
+  useEffect(() => {
+    if (subjectInput === filters.subjectName) return
+    const timer = setTimeout(() => {
+      onFilterChange({ subjectName: subjectInput.trim() })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [subjectInput, filters.subjectName, onFilterChange])
+
+  const [subjectOpen, setSubjectOpen] = useState(false)
+  const { subjects } = useRankingSubjects(filters.suite, subjectInput.trim() !== '')
+  const suggestions = useMemo(() => {
+    const query = subjectInput.trim()
+    if (!query) return []
+    return subjects.filter((name) => name.includes(query)).slice(0, 8)
+  }, [subjects, subjectInput])
+
+  // 主体联想：键盘上下选择 / 回车确认 / Escape 关闭
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const handleSubjectKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setActiveIndex((prev) => (prev + 1) % Math.max(suggestions.length, 1))
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setActiveIndex((prev) =>
+        prev <= 0 ? suggestions.length - 1 : prev - 1
+      )
+    } else if (event.key === 'Enter') {
+      const pick = suggestions[activeIndex]
+      if (pick) {
+        event.preventDefault()
+        setSubjectInput(pick)
+        setSubjectOpen(false)
+        onFilterChange({ subjectName: pick })
+      }
+    } else if (event.key === 'Escape') {
+      setSubjectOpen(false)
+    }
+  }
+
+  // 重算 mutation + 确认弹窗
+  const compute = useComputeRanking()
+  const [confirmOpen, setConfirmOpen] = useState(false)
+
+  const handleCompute = useCallback(() => {
+    compute.mutate(
+      {
+        suite: filters.suite || undefined,
+        category: filters.category || undefined,
+        source: filters.source || undefined,
+      },
+      { onSettled: () => setConfirmOpen(false) }
+    )
+  }, [compute, filters])
+
+  const showSuggestion = subjectOpen && suggestions.length > 0
+
+  return (
+    <div className='flex flex-wrap items-center gap-2'>
+      {/* 测试集 */}
+      <Select
+        value={filters.suite}
+        onValueChange={(value) => onFilterChange({ suite: value ?? '' })}
+      >
+        <SelectTrigger size='sm' className='w-40' aria-label='测试集'>
+          <SelectValue placeholder='全部测试集' />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value=''>全部测试集</SelectItem>
+          {suites.map((suite) => (
+            <SelectItem key={suite} value={suite}>
+              {suite}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* 指标（映射接口失败退化为纯文本输入，不打断页面） */}
+      {mappingsFailed ? (
+        <Input
+          aria-label='指标代码'
+          placeholder='指标代码'
+          value={filters.metricCode}
+          onChange={(e) => onFilterChange({ metricCode: e.target.value })}
+          className='h-8 w-40'
+        />
+      ) : (
+        <Select
+          value={filters.metricCode}
+          onValueChange={(value) => onFilterChange({ metricCode: value ?? '' })}
+        >
+          <SelectTrigger size='sm' className='w-40' aria-label='指标'>
+            <SelectValue placeholder='全部指标' />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value=''>全部指标</SelectItem>
+            {mappings.map((mapping) => (
+              <SelectItem key={mapping.metricCode} value={mapping.metricCode}>
+                {mapping.metricName}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+
+      {/* 数据来源 */}
+      <Select
+        value={filters.source}
+        onValueChange={(value) => onFilterChange({ source: value ?? '' })}
+      >
+        <SelectTrigger size='sm' className='w-32' aria-label='数据来源'>
+          <SelectValue placeholder='全部来源' />
+        </SelectTrigger>
+        <SelectContent>
+          {SOURCE_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* 搜索主体（联想下拉） */}
+      <div className='relative min-w-0 basis-52'>
+        <Search
+          aria-hidden='true'
+          className='text-muted-foreground absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2'
+        />
+        <Input
+          aria-label='搜索主体'
+          aria-expanded={showSuggestion}
+          value={subjectInput}
+          onChange={(e) => {
+            setSubjectInput(e.target.value)
+            setSubjectOpen(true)
+            setActiveIndex(-1)
+          }}
+          onFocus={() => setSubjectOpen(true)}
+          onBlur={() => setTimeout(() => setSubjectOpen(false), 150)}
+          onKeyDown={handleSubjectKeyDown}
+          placeholder='搜索主体名称…'
+          className='h-8 pl-8'
+        />
+        {showSuggestion && (
+          <ul
+            role='listbox'
+            aria-label='主体联想'
+            className='bg-popover text-popover-foreground border-border absolute z-20 mt-1 w-full overflow-hidden rounded-lg border p-1 shadow-md'
+          >
+            {suggestions.map((name, index) => (
+              <li
+                key={name}
+                role='option'
+                aria-selected={index === activeIndex}
+                className={cn(
+                  'flex cursor-pointer items-center rounded-md px-2.5 py-1.5 text-sm',
+                  index === activeIndex ? 'bg-muted' : 'hover:bg-muted/60'
+                )}
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  setSubjectInput(name)
+                  setSubjectOpen(false)
+                  onFilterChange({ subjectName: name })
+                }}
+              >
+                {name}
+              </li>
+            ))}
+            {suggestions.length === 0 && (
+              <li className='text-muted-foreground px-2.5 py-1.5 text-sm'>
+                未找到匹配的主体
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
+
+      <div className='ms-auto flex items-center gap-1.5'>
+        {isFetching && (
+          <LoaderCircle
+            aria-hidden='true'
+            className='text-muted-foreground size-4 animate-spin'
+          />
+        )}
+        {hasActiveFilters(filters) && (
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={onReset}
+            aria-label='重置'
+          >
+            <RotateCcw aria-hidden='true' className='size-3.5' />
+            重置
+          </Button>
+        )}
+        {canCompute && (
+          <Button size='sm' onClick={() => setConfirmOpen(true)}>
+            {compute.isPending ? (
+              <>
+                <Spinner aria-hidden='true' />
+                计算中…
+              </>
+            ) : (
+              '立即计算'
+            )}
+          </Button>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title='重新计算排行？'
+        desc='将合并平台实测与外部基线全量重算，期间现有排行保持可查看。'
+        confirmText='开始计算'
+        handleConfirm={handleCompute}
+        isLoading={compute.isPending}
+      />
+    </div>
+  )
+}
