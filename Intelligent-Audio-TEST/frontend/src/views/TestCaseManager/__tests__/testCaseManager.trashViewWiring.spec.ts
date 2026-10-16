@@ -61,6 +61,7 @@ vi.mock('@/composables/modal/useDeleteConfirm', () => ({
 
 import { provideNotification } from '@/composables/modal/useNotification';
 import { ViewMode } from '@/domain/enums';
+import { useTestCaseStore } from '@/store/testCaseStore';
 import { useTestCaseManager } from '../TestCaseManager';
 
 const show = vi.fn();
@@ -122,6 +123,25 @@ describe('currentFetchExtra：分组 / 标签双视图参数贯通（INT-215 P1 
     const params = lastGetAllParams();
     expect(params.onlyDeleted).toBe(true);
     expect(params.favorite).toBe(false);
+  });
+
+  it('回收站态分组展开路径：fetchCasesByGroup 入参 onlyDeleted=true 并装载已删用例（INT-526 回归）', async () => {
+    const vm = useTestCaseManager();
+    const store = useTestCaseStore();
+    ports.getAll.mockResolvedValue({
+      items: [{ id: 'd1', name: '已删用例', deleted: true, groupId: 'g1', groupName: '分组A' }],
+      total: 1, page: 1, per_page: 20, pages: 1,
+    });
+    vm.trashMode.value = true;
+
+    // 容器 toggleCategory 展开路径：useTestCaseGroupExpand 按 trashMode 注入 onlyDeleted
+    await store.fetchCasesByGroup('g1', { onlyDeleted: vm.trashMode.value });
+
+    const params = lastGetAllParams();
+    expect(params.onlyDeleted).toBe(true);
+    // 已删用例装载进 loadedGroupCases，卡片带删除 meta
+    expect(store.loadedGroupCases['g1']?.map(c => c.id)).toEqual(['d1']);
+    expect(store.loadedGroupCases['g1']?.[0]?.deleted).toBe(true);
   });
 });
 

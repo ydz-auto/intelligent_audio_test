@@ -27,6 +27,8 @@ export interface GroupPaginationInfo extends PaginationInfo {
   testType?: string;
   keyword?: string;
   dimensionId?: number;
+  // INT-526：回收站态 onlyDeleted 随首拉写入分页状态，loadMore 续拉沿用
+  onlyDeleted?: boolean;
 }
 
 export const useTestCaseStore = defineStore('testCase', () => {

@@ -30,7 +30,9 @@ export function useTestCaseGroupExpand(
   tagViewLoading?: Ref<boolean>,
   onLoadMoreTags?: () => void,
   dimensionFilter?: Ref<number | 'all'>,
-  searchQuery?: Ref<string>
+  searchQuery?: Ref<string>,
+  // INT-526：回收站态分组展开懒加载需按 trashMode 透传 onlyDeleted（§5.3 双视图贯通）
+  trashMode?: Ref<boolean>
 ) {
   const expandedCategories = ref<Record<string, boolean>>({});
   const expandedTagCategories = ref<Record<string, boolean>>({});
@@ -61,7 +63,8 @@ export function useTestCaseGroupExpand(
         const testType = testTypeFilter.value === 'all' ? undefined : testTypeFilter.value;
         const keyword = searchQuery?.value || undefined;
         const dimensionId = dimensionFilter && dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
-        await store.fetchCasesByGroup(groupInfo.id, { algorithmType, testType, keyword, dimensionId });
+        // INT-526：回收站态展开传 onlyDeleted=true，已删用例卡片带删除时间/删除人
+        await store.fetchCasesByGroup(groupInfo.id, { algorithmType, testType, keyword, dimensionId, onlyDeleted: trashMode?.value ?? false });
       }
     }
   };

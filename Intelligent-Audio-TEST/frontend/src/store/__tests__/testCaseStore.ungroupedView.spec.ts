@@ -199,3 +199,52 @@ describe('INT-249：容器默认视图为标签视图', () => {
     expect(state.innerViewMode.value).toBe(ViewMode.GROUP);
   });
 });
+
+describe('INT-526：回收站态分组展开透传 onlyDeleted（§5.3 双视图贯通）', () => {
+  it('fetchCasesByGroup 回收站态（onlyDeleted=true）入参透传', async () => {
+    testcasesPortMocks.getAll.mockResolvedValue({
+      items: [caseOf(1, { groupId: 'g1', groupName: '分组A', deleted: true })],
+      total: 1, page: 1, perPage: 20, pages: 1,
+    });
+
+    const store = useTestCaseStore();
+    await store.fetchCasesByGroup('g1', { onlyDeleted: true });
+
+    expect(testcasesPortMocks.getAll).toHaveBeenCalledWith(expect.objectContaining({ onlyDeleted: true, groupId: 'g1' }));
+    // 已删用例装载进 loadedGroupCases（卡片 meta 带 deleted）
+    expect(store.loadedGroupCases['g1']?.map(c => c.id)).toEqual([1]);
+    expect(store.loadedGroupCases['g1']?.[0]?.deleted).toBe(true);
+  });
+
+  it('fetchCasesByGroup 普通态默认 onlyDeleted=false（活跃口径）', async () => {
+    testcasesPortMocks.getAll.mockResolvedValue({
+      items: [caseOf(1, { groupId: 'g1', groupName: '分组A' })],
+      total: 1, page: 1, perPage: 20, pages: 1,
+    });
+
+    const store = useTestCaseStore();
+    await store.fetchCasesByGroup('g1');
+
+    expect(testcasesPortMocks.getAll).toHaveBeenCalledWith(expect.objectContaining({ onlyDeleted: false }));
+  });
+
+  it('loadMoreGroupCases 分页续拉携带 onlyDeleted（翻页不回退活跃口径）', async () => {
+    testcasesPortMocks.getAll
+      .mockResolvedValueOnce({
+        items: [caseOf(1, { groupId: 'g1', groupName: '分组A', deleted: true })],
+        total: 3, page: 1, perPage: 20, pages: 2,
+      })
+      .mockResolvedValueOnce({
+        items: [caseOf(2, { groupId: 'g1', groupName: '分组A', deleted: true })],
+        total: 3, page: 2, perPage: 20, pages: 2,
+      });
+
+    const store = useTestCaseStore();
+    await store.fetchCasesByGroup('g1', { onlyDeleted: true });
+    vi.clearAllMocks();
+    await store.loadMoreGroupCases('g1');
+
+    expect(testcasesPortMocks.getAll).toHaveBeenCalledWith(expect.objectContaining({ page: 2, onlyDeleted: true }));
+    expect(store.loadedGroupCases['g1']?.map(c => c.id)).toEqual([1, 2]);
+  });
+});

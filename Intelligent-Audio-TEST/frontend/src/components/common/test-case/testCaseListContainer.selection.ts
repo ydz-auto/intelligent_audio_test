@@ -89,7 +89,11 @@ export function createSelectionModule(props: any, emit: any, state: ContainerSta
 
     // INT-249：未分组虚拟分组无后端 group 口径（按名查询会落空），按当前筛选拉全量无分组用例后取 ID
     if (group === UNGROUPED_GROUP_NAME) {
-      await store.fetchCasesByGroup(UNGROUPED_GROUP_ID, { algorithmType, testType, keyword, dimensionId });
+      await store.fetchCasesByGroup(UNGROUPED_GROUP_ID, {
+        algorithmType, testType, keyword, dimensionId,
+        // INT-526：回收站态未分组桶全选圈定与可见数据一致（仅已删项），普通态不发送
+        onlyDeleted: (props as any).trashMode ? true : undefined,
+      });
       const ungroupedCases = store.loadedGroupCases[UNGROUPED_GROUP_ID] || [];
       const allIds = ungroupedCases.map(tc => tc.id);
 

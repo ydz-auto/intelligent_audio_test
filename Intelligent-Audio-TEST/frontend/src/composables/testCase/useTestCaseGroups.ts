@@ -137,7 +137,9 @@ export function useTestCaseGroups(store: {
         algorithmType: params.algorithmType,
         type: params.testType,
         dimensionId: params.dimensionId,
-        includeDeleted: params.includeDeleted || false
+        includeDeleted: params.includeDeleted || false,
+        // INT-526：回收站态分组展开/懒加载与主拉取 fetchTestCases 口径一致（§5.3 双视图贯通）
+        onlyDeleted: params.onlyDeleted || false
       })
 
       let casesData: TestCase[] = []
@@ -177,7 +179,9 @@ export function useTestCaseGroups(store: {
         algorithmType: params.algorithmType,
         testType: params.testType,
         keyword: params.keyword,
-        dimensionId: params.dimensionId
+        dimensionId: params.dimensionId,
+        // INT-526：回收站态分页续拉需保留 onlyDeleted，避免翻页退化回活跃口径
+        onlyDeleted: params.onlyDeleted || false
       }
 
       const group = fullGroupsMap.value[groupKey]
@@ -223,7 +227,9 @@ export function useTestCaseGroups(store: {
       algorithmType: currentPagination.algorithmType,
       testType: currentPagination.testType,
       keyword: currentPagination.keyword,
-      dimensionId: currentPagination.dimensionId
+      dimensionId: currentPagination.dimensionId,
+      // INT-526：分页续拉随首拉口径续传 onlyDeleted
+      onlyDeleted: currentPagination.onlyDeleted
     })
   }
 

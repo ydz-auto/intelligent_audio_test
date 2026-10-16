@@ -10,6 +10,7 @@
 import { computed, watch } from 'vue';
 import { useTestCaseGroupExpand } from '../../../composables/testCase/useTestCaseGroupExpand';
 import { useTestCaseFilters } from '../../../composables/testCase/useTestCaseFilters';
+import { useTestCaseStore } from '../../../store/testCaseStore';
 import { ViewMode } from '@/domain/enums';
 import type { ContainerState } from './testCaseListContainer.state';
 
@@ -45,7 +46,9 @@ export function createGroupExpandModule(props: any, emit: any, state: ContainerS
     computed(() => props.tagViewLoading ?? false),
     () => emit('loadMoreTags'),
     dimensionFilter,
-    searchQuery
+    searchQuery,
+    // INT-526：回收站态分组展开透传 trashMode → onlyDeleted
+    computed(() => props.trashMode ?? false)
   );
 
   const {
@@ -118,6 +121,9 @@ export function createGroupExpandModule(props: any, emit: any, state: ContainerS
   watch(() => props.trashMode, () => {
     currentPage.value = 1;
     selectedCases.value = [];
+    // INT-526：进出回收站清空已加载分组用例缓存——否则普通态展开过的分组在回收站态
+    // 复用活跃用例缓存（loadedGroupCases 非空跳过重拉），已删用例仍不可见
+    useTestCaseStore().resetGroupCache();
   });
 
   // ===== 选中用例上报 =====
