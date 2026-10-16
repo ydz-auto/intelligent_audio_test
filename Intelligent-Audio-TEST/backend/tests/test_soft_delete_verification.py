@@ -640,6 +640,7 @@ def _report_artifacts(task_id):
         'raw_resources': list((_json_norm(raw.raw_data) or {}) if raw else {}),
         'header_total': summary.total_cases if summary else None,
         'header_completed': summary.completed_cases if summary else None,
+        'header_failed': summary.failed_cases if summary else None,
         'header_pass_rate': summary.pass_rate if summary else None,
     }
 
@@ -748,17 +749,16 @@ def test_d2_alive_ungrouped_case_keeps_default_group_in_real_report(app, reporta
 
 
 def test_d2_partial_exclusion_records_reason_and_keeps_counts_consistent(app, reportable):
-    """D2 残留（**本卡目标 4 未达成，红锚点**）：部分剔除既无日志，报告头计数还与明细矛盾
+    """B1 判据（总控裁定后转绿）：部分剔除**留痕 + 报告头计数与明细同集合**
 
-    口径是「软删即不可用 + 执行/报告口径一致」。整单剔除时开发侧做成了显式失败（已验）；
-    但**任务里还有存活用例**时（开卡实测的 63 条关系就是这种形态），软删用例的结果被
-    上游门禁静默丢掉：`logs` 表里没有任何一行提到它，且报告 header 的
-    `total_cases`/`completed_cases` 仍取自 `task.total_cases`（任务级计数器，软删不改），
-    于是出现本卡点名的「任务里 N 例、报告里 N-1 例」—— 报告头写 2 例/通过 2 例
-    （pass_rate 100%），明细只有 1 行。
+    口径是「软删即不可用 + 执行/报告口径一致」。整单剔除时是显式失败（已验）；
+    任务里还有存活用例时（开卡实测的 63 条关系就是这种形态），软删用例的结果会被
+    上游门禁摘掉，若不留痕、且 header 仍取任务级计数器，就出现本卡点名的
+    「任务里 N 例、报告里 N-1 例」—— 报告头写 2 例/通过 2 例（pass_rate 100%），
+    明细只有 1 行。
 
-    期望（目标 4「要么拒绝、要么跳过并**记录可见原因**」+「执行/报告口径一致」）：
-    1. 被剔除的用例留下可见记录（`logs` 行含其 id 或明确说明被剔除）；
+    本条是本轮 B1 的**验收判据**（上一轮为红锚点，`43686798` 后应转绿）：
+    1. 被剔除的用例留下可见记录（`logs` 行含其 id）；
     2. 报告 header 计数与明细口径一致（软删用例不计入）。
     """
     from backend.controllers.report_controller_task import ReportControllerTask
@@ -774,7 +774,7 @@ def test_d2_partial_exclusion_records_reason_and_keeps_counts_consistent(app, re
     _drop_reports(task_id)
 
     ReportControllerTask._generate_task_report_async(
-        task_id, f'复核D2残留_{uuid.uuid4().hex[:6]}', None)
+        task_id, f'复核B1残留_{uuid.uuid4().hex[:6]}', None)
 
     payload = _report_artifacts(task_id)
     assert payload is not None, '还有存活用例时报告应生成成功'
@@ -971,3 +971,488 @@ def test_m4_auth_disabled_restores_header_trust(app, client):
     row = _raw_trace(case.id)
     assert row[1] is not None
     assert row[2] == OPERATOR_ID, f'过渡期请求头应仍生效，实际 {row[2]!r}'
+
+
+# ==========================================================================
+# B1 复验（总控裁定 2026-10-16：报告头计数与明细**同集合**，分母取存活用例数）
+#
+# 开发侧自测的 `test_report_artifacts_unchanged_when_no_soft_deleted_case` 刻意让
+# 任务计数器与关系表不一致（total_cases=5 / 实际 2 例）来证明「不含软删用例时仍走
+# 原计数器口径」。本组从**另外两个角度**独立覆盖同一条裁定：
+#   · 口径 C 的**鉴别点** —— 存活但无结果的用例必须仍留在分母（否则就是 `len(results)`，
+#     会把 pass_rate 抬高，属另一种少报）；
+#   · **正常构造**（计数器 == 关系表 == 明细）下的三表逐字段不变。
+# ==========================================================================
+
+def _new_report_task(specs, counters=None):
+    """本轮新增的造数入口：逐例可控「有无结果」「TaskCase 状态」，并可覆盖任务级计数器
+
+    :param specs: [(TestCase, 是否有结果, TaskCase.status)] —— 无结果的用例用来构造
+        「存活但未执行完」的形态（它在分母里、但不在 results 里）
+    :param counters: (total, completed, failed) 覆盖 `test_tasks` 计数器；
+        None 则按 specs 长度填成「看起来全通过」，用于识别 header 是否真按存活集合重算
+    :return: 与 `_new_reportable_task` 同构的 dict（可被 `_purge_report_task` 清理）
+    """
+    from backend.models.models import (
+        Device, Dimension, TaskCase, TestResult, TestResultDimension,
+    )
+
+    suffix = uuid.uuid4().hex[:8]
+    device = Device(name=f'B1复验设备_{suffix}', model='M1', type='phone', system='Android',
+                    system_version='14', app_name='App', app_version='1.0', status='online')
+    dimension = Dimension(name=f'B1复验维度_{suffix}', type='auto', result_type=1, weight=1,
+                          status=True, deleted=False, statistic_method='average')
+    db.session.add_all([device, dimension])
+    db.session.flush()
+
+    n = len(specs)
+    total, completed, failed = counters if counters else (n, n, 0)
+    task = Task(name=f'B1复验任务_{suffix}', type='e2e', status='completed',
+                total_cases=total, completed_cases=completed, failed_cases=failed,
+                algorithm_type='asr')
+    db.session.add(task)
+    db.session.flush()
+
+    result_ids = {}
+    for case, has_result, tc_status in specs:
+        db.session.add(TaskCase(task_id=task.id, test_case_id=case.id, status=tc_status,
+                                execution_status='completed', evaluation_status='completed',
+                                deleted=False))
+        if not has_result:
+            continue
+        result = TestResult(task_id=task.id, test_case_id=case.id, device_id=device.id,
+                            api_id=None, execution_status='completed',
+                            result_data={'result_type': 'default'}, deleted=False)
+        db.session.add(result)
+        db.session.flush()
+        db.session.add(TestResultDimension(
+            test_result_id=result.id, dimension_id=dimension.id, round_number=None,
+            dimension_value=0.5, score=0.5, status='passed', evaluation_status='completed',
+        ))
+        result_ids[case.id] = result.id
+    db.session.commit()
+
+    return {
+        'task_id': task.id,
+        'device_id': device.id,
+        'dimension_id': dimension.id,
+        'case_ids': [c.id for c, _r, _s in specs],
+        'result_ids': result_ids,
+    }
+
+
+@pytest.fixture
+def report_task():
+    """`_new_report_task` 的夹具（造数 + 收尾清理）"""
+    created = {}
+
+    def _make(specs, counters=None):
+        created.clear()
+        created.update(_new_report_task(specs, counters))
+        return created
+
+    yield _make
+    _purge_report_task(created)
+
+
+def _log_rows(task_id):
+    """读回该任务的日志行（等异步队列落库后）"""
+    _drain_logs()
+    return db.session.execute(text(
+        'SELECT level, module, content FROM logs WHERE task_id = :tid ORDER BY id'
+    ), {'tid': task_id}).fetchall()
+
+
+def _exclusion_warnings(task_id, case_id):
+    """挑出「提到该用例」的 WARNING 行（正文含 id 即算，不绑死措辞）"""
+    return [r for r in _log_rows(task_id)
+            if r[0] == 'WARNING' and case_id in (r[2] or '')]
+
+
+def _three_tables(task_id):
+    """抓 `report_summaries` / `report_cases` / `report_metric_stats` 的逐字段快照
+
+    剔除 id / report_id / 名称 / 时间戳等易变字段，用于「改动前后逐字段相同」的比对。
+    """
+    from backend.models.models import Report, ReportCase, ReportMetricStats, ReportSummary
+
+    report = Report.query.filter(Report.task_id == task_id, Report.deleted == False).first()
+    assert report is not None, '报告未落库'
+    summary = ReportSummary.query.filter_by(report_id=report.id).first()
+    stats = ReportMetricStats.query.filter_by(report_id=report.id).first()
+    cases = ReportCase.query.filter_by(report_id=report.id).order_by(ReportCase.test_case_id).all()
+
+    def _norm(value):
+        for _ in range(2):
+            if not isinstance(value, str):
+                break
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                break
+        return value
+
+    return {
+        'summary': {
+            'total_cases': summary.total_cases,
+            'completed_cases': summary.completed_cases,
+            'failed_cases': summary.failed_cases,
+            'pass_rate': summary.pass_rate,
+        },
+        'cases': [
+            {'test_case_id': c.test_case_id, 'name': c.name, 'category': c.category,
+             'tags': _norm(c.tags), 'metrics': _norm(c.metrics), 'results': _norm(c.results)}
+            for c in cases
+        ],
+        'metric_stats': {
+            'metric_data': _norm(stats.metric_data) if stats else None,
+            'tag_metric_data': _norm(stats.tag_metric_data) if stats else None,
+            'case_type_stats': _norm(stats.case_type_stats) if stats else None,
+            'device_stats': _norm(stats.device_stats) if stats else None,
+        },
+    }
+
+
+def test_b1_surviving_case_without_result_stays_in_denominator(app, report_task):
+    """口径 C 的**鉴别点**：存活但无结果的用例必须留在分母里，不能被 `len(results)` 抹掉
+
+    裁定明确否掉了「直接用 `len(results)`」——那是「有结果的用例数」，会把存活但未执行完
+    的用例从分母里去掉，从而**抬高 pass_rate**，属另一种少报。
+
+    构造：A（有结果、completed）、B（**无结果**、pending）、C（软删、有结果）。
+    任务级计数器故意写成「3 例全通过」，好让 header 一旦偷懒取计数器就立刻暴露。
+    期望（分母 = 存活用例 {A, B}）：明细 2 行、`total_cases=2`、`completed_cases=1`、
+    `pass_rate=50.0`。若实现改用 `len(results)` 会得到 1 / 1 / 100.0 —— 本条即红。
+    """
+    from backend.controllers.report_controller_task import ReportControllerTask
+
+    group = _new_group()
+    case_a = _new_case(group)
+    case_b = _new_case(group)
+    case_c = _new_case(group)
+    built = report_task([(case_a, True, 'completed'),
+                         (case_b, False, 'pending'),
+                         (case_c, True, 'completed')])
+    task_id = built['task_id']
+
+    case_c.deleted = True
+    db.session.commit()
+    _drop_reports(task_id)
+
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'B1分母_{uuid.uuid4().hex[:6]}', None)
+    payload = _report_artifacts(task_id)
+    assert payload is not None, '还有存活用例时报告应生成成功'
+
+    assert sorted(payload['case_ids']) == sorted([case_a.id, case_b.id]), (
+        f'明细应是存活用例 {sorted([case_a.id, case_b.id])}，实际 {sorted(payload["case_ids"])}'
+    )
+    assert payload['header_total'] == 2, (
+        f"分母应取存活用例数 2（含无结果的 B），实际 {payload['header_total']} —— "
+        f"若为 1 说明改用 len(results)，会把未执行完的用例从分母抹掉"
+    )
+    assert payload['header_completed'] == 1, (
+        f"分子应只数 completed 的存活用例 1（B 是 pending），实际 {payload['header_completed']}"
+    )
+    assert payload['header_pass_rate'] == 50.0, (
+        f'pass_rate 应为 1/2=50.0，实际 {payload["header_pass_rate"]} —— '
+        f'高于 50 即「把未执行完的用例从分母抹掉」导致的抬高'
+    )
+
+
+def test_b1_soft_deleted_case_without_result_is_excluded_and_logged(app, report_task):
+    """软删用例**从未执行**（明细里本来就没有它）时，门禁与留痕同样要覆盖到
+
+    门禁若从 `results` 反推被剔除的用例，这种形态会整条漏掉：用例没跑过 ⇒ 没有结果 ⇒
+    不在 `results` 里 ⇒ 既不会被留痕，也不会从 header 分母里去掉。正确做法是从
+    **任务用例集合**（`task_case_relations`）反推。
+
+    构造：A（存活、有结果）、B（**软删且无结果**）。期望：明细 1 行、header 1/1、
+    且 `logs` 里有 WARNING 提到 B 的 id。
+    """
+    from backend.controllers.report_controller_task import ReportControllerTask
+
+    group = _new_group()
+    case_a = _new_case(group)
+    case_b = _new_case(group)
+    built = report_task([(case_a, True, 'completed'), (case_b, False, 'completed')])
+    task_id = built['task_id']
+
+    case_b.deleted = True
+    db.session.commit()
+    _drop_reports(task_id)
+
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'B1无结果软删_{uuid.uuid4().hex[:6]}', None)
+    payload = _report_artifacts(task_id)
+    assert payload is not None, '还有存活用例时报告应生成成功'
+
+    assert payload['case_ids'] == [case_a.id], f'明细应只剩 A：{payload["case_ids"]!r}'
+    assert payload['header_total'] == 1, (
+        f'从未执行的软删用例也必须从分母去掉，实际 total_cases={payload["header_total"]} '
+        f'（为 2 说明门禁是从 results 反推的，漏掉了无结果的那条）'
+    )
+    assert payload['header_completed'] == 1, payload['header_completed']
+
+    warnings = _exclusion_warnings(task_id, case_b.id)
+    assert warnings, (
+        f'无结果的软删用例被静默剔除：logs 里没有 WARNING 提到 {case_b.id}。'
+        f'该任务本次日志：{[(r[0], (r[2] or "")[:60]) for r in _log_rows(task_id)]}'
+    )
+
+
+def test_b1_exclusion_trace_is_per_case_warning_on_report_module(app, report_task):
+    """剔除留痕的**形态**：`report` 模块下的 WARNING、逐条一条、正文含用例 id
+
+    目标 4 的字面要求是「跳过并记录**可见原因**」。这里不看实现措辞，只钉三件事：
+    级别是 WARNING（不是 DEBUG/INFO）、module 是 `report`（可被日志页按模块筛到）、
+    以及**每个**被剔除的用例都各自留下一条（两个被剔除就至少两条）。
+    """
+    from backend.controllers.report_controller_task import ReportControllerTask
+
+    group = _new_group()
+    case_alive = _new_case(group)
+    case_gone_1 = _new_case(group)
+    case_gone_2 = _new_case(group)
+    built = report_task([(case_alive, True, 'completed'),
+                         (case_gone_1, True, 'completed'),
+                         (case_gone_2, True, 'completed')])
+    task_id = built['task_id']
+
+    case_gone_1.deleted = True
+    case_gone_2.deleted = True
+    db.session.commit()
+    _drop_reports(task_id)
+
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'B1留痕形态_{uuid.uuid4().hex[:6]}', None)
+    payload = _report_artifacts(task_id)
+    assert payload is not None and payload['case_ids'] == [case_alive.id], payload
+    assert payload['header_total'] == 1, payload['header_total']
+
+    for case_id in (case_gone_1.id, case_gone_2.id):
+        hits = _exclusion_warnings(task_id, case_id)
+        assert hits, f'被剔除的用例 {case_id} 没有留下 WARNING 记录'
+        assert all(r[1] == 'report' for r in hits), (
+            f'留痕不在 report 模块下，日志页按模块筛不到：{[(r[1], r[2][:40]) for r in hits]}'
+        )
+
+
+def test_b1_surviving_failed_case_counts_as_failed_not_completed(app, report_task):
+    """`_surviving_case_counts` 的分子口径：存活用例按 `TaskCase.status` 分流
+
+    构造：A（存活、status=failed、有结果）、B（存活、status=completed、有结果）、
+    C（软删）。期望 total=2 / completed=1 / failed=1 / pass_rate=50.0 ——
+    失败的存活用例必须落在 `failed_cases` 而不是被算成通过。
+    """
+    from backend.controllers.report_controller_task import ReportControllerTask
+
+    group = _new_group()
+    case_failed = _new_case(group)
+    case_ok = _new_case(group)
+    case_gone = _new_case(group)
+    built = report_task([(case_failed, True, 'failed'),
+                         (case_ok, True, 'completed'),
+                         (case_gone, True, 'completed')],
+                        counters=(3, 3, 0))
+    task_id = built['task_id']
+
+    case_gone.deleted = True
+    db.session.commit()
+    _drop_reports(task_id)
+
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'B1失败分流_{uuid.uuid4().hex[:6]}', None)
+    payload = _report_artifacts(task_id)
+    assert payload is not None, '报告应生成成功'
+    assert payload['header_total'] == 2, payload['header_total']
+    assert payload['header_completed'] == 1, (
+        f"completed_cases 应只数 completed 的存活用例 1，实际 {payload['header_completed']}"
+    )
+    assert payload['header_failed'] == 1, (
+        f"failed_cases 应数 failed 的存活用例 1，实际 {payload['header_failed']}"
+    )
+    assert payload['header_pass_rate'] == 50.0, payload['header_pass_rate']
+
+
+def test_b1_no_soft_deleted_case_keeps_task_counter_verbatim(app, report_task):
+    """不变量（裁定第 3 条，**正常构造**）：不含软删用例时 header 仍逐字段取任务计数器
+
+    开发侧那条刻意让计数器与关系表**不一致**（total_cases=5 / 实际 2 例）来证明走 else
+    分支；本条用**正常构造**再钉一次，并顺带确认「header ≠ 明细行数」在无剔除时是
+    **既有语义**（明细只含有结果的存活用例，header 是任务快照）—— 本卡只把差异钉死在
+    「含软删用例」这一种情况上。
+
+    同一条断言在**修复前的树**上也必须绿（见负控），那才是「改动前后逐字段相同」。
+    """
+    from backend.controllers.report_controller_task import ReportControllerTask
+
+    group = _new_group()
+    case_a = _new_case(group)
+    case_b = _new_case(group)
+    built = report_task([(case_a, True, 'completed'), (case_b, True, 'completed')],
+                        counters=(5, 4, 1))          # 计数器故意与关系表不一致
+    task_id = built['task_id']
+
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'B1不变量_{uuid.uuid4().hex[:6]}', None)
+    payload = _report_artifacts(task_id)
+    assert payload is not None, '报告应生成成功'
+
+    assert payload['header_total'] == 5, (
+        f'不含软删用例时必须原样取 task.total_cases=5，实际 {payload["header_total"]} —— '
+        f'说明改动越界到了无剔除场景'
+    )
+    assert payload['header_completed'] == 3, (
+        f'completed 应为 task.completed_cases - task.failed_cases = 4-1 = 3，'
+        f'实际 {payload["header_completed"]}'
+    )
+    assert payload['header_failed'] == 1, payload['header_failed']
+    assert payload['header_pass_rate'] == 60.0, payload['header_pass_rate']
+    assert len(payload['case_ids']) == 2, payload['case_ids']
+
+    # 三表逐字段不变：同一任务再生成一次，快照必须完全一致
+    first = _three_tables(task_id)
+    _drop_reports(task_id)
+    ReportControllerTask._generate_task_report_async(
+        task_id, f'B1不变量二次_{uuid.uuid4().hex[:6]}', None)
+    second = _three_tables(task_id)
+    assert first == second, (
+        '不含软删用例时两次生成的报告内容不一致：\n'
+        + json.dumps({'first': first, 'second': second}, ensure_ascii=False, indent=2)[:2000]
+    )
+
+
+def _new_merged_report_task(group, cases_by_source, merged_counters=(2, 2, 0)):
+    """造一个合并任务（type='merged' + `task_merge_relations`），逐源任务给出用例及其 TaskCase 状态
+
+    :param cases_by_source: [[(TestCase, TaskCase.status), ...], ...] —— 每个源任务一组
+    :return: dict(task_id=合并任务 id / source_task_ids / case_ids / device_id / dimension_id)
+    """
+    from backend.models.models import (
+        Device, Dimension, TaskCase, TaskMergeRelation, TestResult, TestResultDimension,
+    )
+
+    suffix = uuid.uuid4().hex[:8]
+    device = Device(name=f'B1合并设备_{suffix}', model='M1', type='phone', system='Android',
+                    system_version='14', app_name='App', app_version='1.0', status='online')
+    dimension = Dimension(name=f'B1合并维度_{suffix}', type='auto', result_type=1, weight=1,
+                          status=True, deleted=False, statistic_method='average')
+    db.session.add_all([device, dimension])
+    db.session.flush()
+
+    merged = Task(name=f'B1合并任务_{suffix}', type='merged', status='completed',
+                  total_cases=merged_counters[0], completed_cases=merged_counters[1],
+                  failed_cases=merged_counters[2], algorithm_type='asr')
+    db.session.add(merged)
+    db.session.flush()
+
+    source_ids = []
+    all_case_ids = []
+    for index, entries in enumerate(cases_by_source):
+        source = Task(name=f'B1源任务{index}_{suffix}', type='e2e', status='completed',
+                      total_cases=len(entries), completed_cases=len(entries), failed_cases=0,
+                      algorithm_type='asr')
+        db.session.add(source)
+        db.session.flush()
+        source_ids.append(source.id)
+        db.session.add(TaskMergeRelation(merged_task_id=merged.id, source_task_id=source.id))
+        for case, tc_status in entries:
+            all_case_ids.append(case.id)
+            db.session.add(TaskCase(task_id=source.id, test_case_id=case.id, status=tc_status,
+                                    execution_status='completed',
+                                    evaluation_status='completed', deleted=False))
+            result = TestResult(task_id=source.id, test_case_id=case.id, device_id=device.id,
+                                api_id=None, execution_status='completed',
+                                result_data={'result_type': 'default'}, deleted=False)
+            db.session.add(result)
+            db.session.flush()
+            db.session.add(TestResultDimension(
+                test_result_id=result.id, dimension_id=dimension.id, round_number=None,
+                dimension_value=0.5, score=0.5, status='passed', evaluation_status='completed',
+            ))
+    db.session.commit()
+    return {
+        'task_id': merged.id,
+        'source_task_ids': source_ids,
+        'device_id': device.id,
+        'dimension_id': dimension.id,
+        'case_ids': all_case_ids,
+    }
+
+
+def test_b1_merged_task_counts_duplicate_case_exactly_once(app):
+    """合并任务下同一用例跨源任务状态冲突：**恰好计一次**（本轮观察，非阻塞）
+
+    合并任务的 `task_ids_for_query` 是**源任务**集合，`_surviving_case_counts` 用
+    `status_by_case.setdefault(...)` 去重 —— 同一用例在多个源任务下各有一行 `TaskCase`
+    时，**取哪一行由返回顺序决定**（该查询没有 `ORDER BY`）。
+
+    实测（HEAD `43686798`，X 在源任务 2 通过、在源任务 3 失败）：
+        TaskCase 行 = [(2, X, 'completed'), (3, X, 'failed')]
+        报告头      = total_cases=1 / completed_cases=1 / failed_cases=0 / pass_rate=100.0
+    即**在某个源任务里失败的用例，报告头按通过计**（取到了先返回的那一行）。
+    老口径（`task.completed_cases - task.failed_cases`）取任务计数器、不存在这个歧义，
+    所以这是本次改动在「合并任务 + 含软删用例」这一窄口上新引入的。
+
+    **本卡不打回**：总控裁定的口径 C 只说「取存活用例在任务关系表里的执行状态」，
+    没有规定同一用例跨源任务状态冲突时的优先级 —— 属口径空白而非实现违约；
+    且该分支只在合并任务**含软删用例**时进入。此处只钉住不依赖优先级的那一半：
+    每个存活用例**恰好计一次**（不会既算通过又算失败，也不会漏计），并把这个
+    观察留在用例里，供后续（VEGA-44 / 合并任务报告口径）决定要不要定优先级。
+    """
+    from backend.controllers.report_controller_task import ReportControllerTask
+    from backend.models.models import TaskMergeRelation
+
+    group = _new_group()
+    case_x = _new_case(group)        # 跨源任务状态冲突：源任务 2 通过 / 源任务 3 失败
+    case_c = _new_case(group)        # 软删（用来触发存活集合分支）
+    built = _new_merged_report_task(
+        group,
+        [
+            [(case_x, 'completed'), (case_c, 'completed')],
+            [(case_x, 'failed')],
+        ],
+    )
+    task_id = built['task_id']
+    try:
+        case_c.deleted = True
+        db.session.commit()
+        _drop_reports(task_id)
+
+        ReportControllerTask._generate_task_report_async(
+            task_id, f'B1合并探针_{uuid.uuid4().hex[:6]}', None)
+        payload = _report_artifacts(task_id)
+        assert payload is not None, '合并任务报告应生成成功'
+
+        rows = db.session.execute(text(
+            'SELECT task_id, test_case_id, status FROM task_case_relations '
+            'WHERE test_case_id = :cid ORDER BY task_id'
+        ), {'cid': case_x.id}).fetchall()
+        print(f'\n[观察] 合并任务 {task_id} 报告头：{payload}')
+        print(f'[观察] X 的 TaskCase 行（按 task_id 排序）：{rows}')
+
+        # 唯一硬断言：明细里的存活用例，报告头必须把它**恰好计一次**
+        assert payload['case_ids'] == [case_x.id], payload['case_ids']
+        assert payload['header_total'] == 1, payload['header_total']
+        assert (payload['header_completed'] or 0) + (payload['header_failed'] or 0) == 1, (
+            f"跨源任务状态冲突的用例必须恰好计一次，实际 completed={payload['header_completed']} "
+            f"failed={payload['header_failed']}"
+        )
+    finally:
+        for source_id in built['source_task_ids']:
+            for sql in (
+                'DELETE FROM test_result_dimensions WHERE test_result_id IN '
+                '(SELECT id FROM test_results WHERE task_id = :tid)',
+                'DELETE FROM test_results WHERE task_id = :tid',
+                'DELETE FROM task_case_relations WHERE task_id = :tid',
+                'DELETE FROM task_merge_relations WHERE merged_task_id = :tid OR source_task_id = :tid',
+                'DELETE FROM logs WHERE task_id = :tid',
+                'DELETE FROM test_tasks WHERE id = :tid',
+            ):
+                try:
+                    db.session.execute(text(sql), {'tid': source_id})
+                    db.session.commit()
+                except Exception:
+                    db.session.rollback()
+        _purge_report_task(built)
