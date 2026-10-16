@@ -294,6 +294,14 @@ class ReportQueryMixin:
             .outerjoin(ReportSummary, self.PO_CLASS.id == ReportSummary.report_id)
             .filter(self.PO_CLASS.deleted == False)  # noqa: E712
         )
+        # INT-465 修复（P2）：趋势查询注入行级过滤，与 list_reports/count_reports
+        # 同一口径——私有报告的名称/成功率/时长不得进入非 owner 的趋势结果
+        query = query.filter(visible_condition(
+            self.PO_CLASS.created_by_user_id,
+            self.PO_CLASS.visibility,
+            get_current_user_id(),
+            get_current_user_is_admin(),
+        ))
         if report_type:
             query = query.filter(self.PO_CLASS.type == report_type)
         if task_id:

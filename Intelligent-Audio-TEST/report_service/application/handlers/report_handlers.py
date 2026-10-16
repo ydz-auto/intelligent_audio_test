@@ -114,14 +114,23 @@ class ReportCommandHandler:
 
         Returns:
             新创建的报告 ID
+
+        Raises:
+            ValueError: visibility 非 shared/private 时（与 evaluation 同口径 400）
         """
+        from shared.models.common_enums import Visibility
+        vis = command.visibility or Visibility.SHARED.value
+        # INT-465 修复（P3）：与 evaluation parse_visibility 同口径校验——
+        # 非法值直接透传会落库并被行级过滤降级为近似私有，口径不一致
+        if vis not in (Visibility.SHARED.value, Visibility.PRIVATE.value):
+            raise ValueError('visibility 仅支持 shared/private')
         aggregate = ReportAggregate(
             id=0,
             task_id=command.task_id,
             report_type=command.report_type,
             status=ReportStatus.PENDING.value,
             config=dict(command.config),
-            visibility=command.visibility or 'shared',
+            visibility=vis,
         )
         return self.repository.add(aggregate)
 
@@ -175,9 +184,14 @@ class ReportCommandHandler:
     def handle_update_status(self, command: UpdateReportStatusCommand) -> None:
         """处理更新报告状态命令。
 
-        Args:
-            command: UpdateReportStatusCommand
+        用于报告生成流转（pending → generating → completed/failed）与
+        发布路径（网关 PUT /reports/{id}/status，对应 POST /reports/{id}/publish）。
+
+        INT-465 命令侧校验：私有报告非 owner 发布/流转抛 VisibilityDenied（403），
+        与 update/delete 写口径闭合（内部生成引擎直调 repository.update_status，
+        不经本 Handler，不受此校验影响）。
         """
+        self._ensure_report_visible(command.report_id)
         self.repository.update_status(command.report_id, command.status)
 
     def _ensure_report_visible(self, report_id: int) -> None:

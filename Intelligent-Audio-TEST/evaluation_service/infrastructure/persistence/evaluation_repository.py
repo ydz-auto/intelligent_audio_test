@@ -68,6 +68,8 @@ class EvaluationRepository(EvaluationRepositoryABC):
 
         created_by_user_id（INT-841）：从 x-user-id 上下文取 JWT 操作人，
         未认证（AUTH_MODE=off）为 None → NULL。
+        INT-465 修复：新建分类写 owner——行级过滤/命令侧校验依赖
+        created_by_user_id，缺 owner 会使私有分类创建者本人被锁死。
         """
         from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
@@ -106,10 +108,15 @@ class EvaluationRepository(EvaluationRepositoryABC):
         created_by_user_id（INT-841）：从 x-user-id 上下文取 JWT 操作人，
         未认证（AUTH_MODE=off）为 None → NULL。create_data 来自应用层
         字段白名单（DIMENSION_MODEL_FIELDS），不含操作人列。
+        INT-465 修复：新建维度写 owner——行级过滤/命令侧校验依赖
+        created_by_user_id，缺 owner 会使私有维度创建者本人被锁死。
+        setdefault：调用方显式携带 owner（如导入/seed）时保留原值。
         """
         from shared.infrastructure.user_context import get_current_user_id
         session = get_db_session()
-        dim = Dimension(**create_data, created_by_user_id=get_current_user_id())
+        create_data = dict(create_data)
+        create_data.setdefault('created_by_user_id', get_current_user_id())
+        dim = Dimension(**create_data)
         session.add(dim)
         session.flush()
         return dim
