@@ -60,7 +60,7 @@ export function useLogArchive() {
   const archivedError = ref('');
 
   // —— 归档文件下载/删除（{filename} 端点） ——
-  /** 归档文件逻辑 key（如 task_case/493/case-1/2026-10-15.json） */
+  /** 归档文件名（端点单段契约：裸文件名；传带斜杠的整串逻辑 key 由 logsApi 取末段） */
   const archiveFilename = ref('');
   const fileBusy = ref(false);
 

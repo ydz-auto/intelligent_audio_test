@@ -112,7 +112,7 @@ export const logsApi = {
 
   /** 下载归档文件（GET /logs/archive/{filename}：后端返回 JSON 文件流） */
   async downloadArchive(filename: string, options: RequestOptions = {}): Promise<Blob> {
-    const data = await request<Blob>('GET', `/logs/archive/${encodeURIComponent(filename)}`, null, {
+    const data = await request<Blob>('GET', `/logs/archive/${encodeURIComponent(toArchiveFilename(filename))}`, null, {
       ...options,
       responseType: 'blob',
     });
@@ -121,8 +121,19 @@ export const logsApi = {
 
   /** 删除归档文件（DELETE /logs/archive/{filename}） */
   async deleteArchive(filename: string, options: RequestOptions = {}): Promise<void> {
-    await request('DELETE', `/logs/archive/${encodeURIComponent(filename)}`, null, options);
+    await request('DELETE', `/logs/archive/${encodeURIComponent(toArchiveFilename(filename))}`, null, options);
   },
 };
+
+/**
+ * 归档文件逻辑 key → 端点单段 filename 契约。
+ * 后端 {filename} 为 FastAPI 单段路由：整串逻辑 key（含 /）即使 encodeURIComponent 为 %2F，
+ * 服务端解码回 / 后路由无法匹配（恒 404）；且 download/delete 服务内部按「末段后缀」搜索匹配，
+ * 故取逻辑 key 最后一段（裸文件名）传参。
+ */
+function toArchiveFilename(filename: string): string {
+  const segments = filename.split('/').filter(Boolean);
+  return segments.length ? segments[segments.length - 1] : filename;
+}
 
 export type { Log };

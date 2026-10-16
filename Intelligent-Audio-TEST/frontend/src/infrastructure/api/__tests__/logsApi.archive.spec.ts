@@ -68,24 +68,36 @@ describe('logsApi 归档 5 端点', () => {
     expect(result.total).toBe(0);
   });
 
-  it('downloadArchive：GET /logs/archive/{filename}，blob 响应', async () => {
+  it('downloadArchive：GET /logs/archive/{filename}，整串逻辑 key 取末段裸文件名，blob 响应', async () => {
     mockedRequest.mockResolvedValue('json-bytes');
     const result = await logsApi.downloadArchive('task_case/493/case-1/2026-10-15.json');
+    // 单段 {filename} 路由契约：整串 key 含 / 会 %2F 编码致路由恒 404，须取末段裸文件名
     expect(mockedRequest).toHaveBeenCalledWith(
       'GET',
-      '/logs/archive/task_case%2F493%2Fcase-1%2F2026-10-15.json',
+      '/logs/archive/2026-10-15.json',
       null,
       expect.objectContaining({ responseType: 'blob' }),
     );
     expect(result).toBeTruthy();
   });
 
-  it('deleteArchive：DELETE /logs/archive/{filename}', async () => {
+  it('downloadArchive：裸文件名原样传参（无 %2F）', async () => {
+    mockedRequest.mockResolvedValue('json-bytes');
+    await logsApi.downloadArchive('2026-10-15.json');
+    expect(mockedRequest).toHaveBeenCalledWith(
+      'GET',
+      '/logs/archive/2026-10-15.json',
+      null,
+      expect.objectContaining({ responseType: 'blob' }),
+    );
+  });
+
+  it('deleteArchive：DELETE /logs/archive/{filename}，整串逻辑 key 取末段裸文件名', async () => {
     mockedRequest.mockResolvedValue(undefined);
     await logsApi.deleteArchive('task_case/493/case-1/2026-10-15.json');
     expect(mockedRequest).toHaveBeenCalledWith(
       'DELETE',
-      '/logs/archive/task_case%2F493%2Fcase-1%2F2026-10-15.json',
+      '/logs/archive/2026-10-15.json',
       null,
       expect.anything(),
     );

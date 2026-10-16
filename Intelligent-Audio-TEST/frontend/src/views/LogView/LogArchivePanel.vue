@@ -153,7 +153,7 @@
               <input
                 class="form-input"
                 type="text"
-                placeholder="如 task_case/493/case-1/2026-10-15.json"
+                placeholder="如 2026-10-15.json（归档文件名末段）"
                 v-model="archiveFilename"
               />
             </label>
@@ -176,7 +176,7 @@
               <span>删除</span>
             </button>
           </div>
-          <p class="archive-file-hint">下载需 <code>log:read</code>，删除需 <code>log:manage</code>；文件为 OSS archives 桶逻辑 key。</p>
+          <p class="archive-file-hint">下载需 <code>log:read</code>，删除需 <code>log:manage</code>；输入归档文件名（逻辑 key 末段，如 2026-10-15.json），带斜杠的整串 key 会取末段。</p>
         </section>
       </div>
     </div>
