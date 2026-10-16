@@ -372,7 +372,7 @@
 接口前缀：`/api/v1/benchmarks`。
 
 ```http
-POST /api/v1/benchmarks/ranking/compute          # 全量重算排行（异步 + 进度轮询）
+POST /api/v1/benchmarks/ranking/compute          # 全量重算排行（同步接口；失败不触碰 ReadModel，上次结果保持可查看——INT-482 落地口径，原「异步 + 进度轮询」废弃）
 GET  /api/v1/benchmarks/ranking?suite=full-duplex-v1&category=voice_llm&metricCode=WER
 GET  /api/v1/benchmarks/ranking?publishedTaskId=123
 GET  /api/v1/benchmarks/ranking?source=platform_test   # 仅看平台实测
