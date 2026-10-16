@@ -1,0 +1,86 @@
+/**
+ * 任务级报告面板（15_报告域.md §3.3，TaskReportPanel 对位）。
+ * 分区顺序固定：总览 → 设备与API → 分析结论 → 对比表格（动态）→ 用例分组 → 用例标签 → 具体用例。
+ */
+import type { ReportDetailData } from '@/domain/models/report'
+
+import { ReportOverviewCard } from './report-overview-card'
+import { ReportResourceStats } from '../report-resource-stats'
+import { AnalysisEditor } from './analysis-editor'
+import { ComparisonTable } from './comparison-table'
+import { CaseCategoryComparison } from './case-category-comparison'
+import { CaseTagComparison } from './case-tag-comparison'
+import { SpecificCaseComparison } from './specific-case-comparison'
+
+interface TaskReportPanelProps {
+  report: ReportDetailData
+  isExporting?: boolean
+  editing: boolean
+  onStartEditing: () => void
+  onExitEditing: () => void
+  onSaveAnalysis: (content: string) => void
+}
+
+export function TaskReportPanel({
+  report,
+  isExporting,
+  editing,
+  onStartEditing,
+  onExitEditing,
+  onSaveAnalysis,
+}: TaskReportPanelProps) {
+  const tables = report.summary.tables ?? []
+
+  return (
+    <div className='space-y-6'>
+      {/* §3.3.1 总览 */}
+      <section id='report-overview' className='scroll-mt-20 space-y-3'>
+        <h3 className='text-sm font-semibold'>总览</h3>
+        <ReportOverviewCard report={report} />
+      </section>
+
+      {/* §3.3.2 设备与 API */}
+      <section id='report-resource-stats' className='scroll-mt-20'>
+        <ReportResourceStats report={report} />
+      </section>
+
+      {/* §3.3.3 分析结论 */}
+      <section id='report-conclusion' className='scroll-mt-20'>
+        <AnalysisEditor
+          title='分析结论'
+          analysis={report.analysis}
+          readonly={false}
+          editing={editing}
+          onStartEditing={onStartEditing}
+          onExitEditing={onExitEditing}
+          onSaveAnalysis={onSaveAnalysis}
+        />
+      </section>
+
+      {/* §3.3.4 对比表格（动态） */}
+      {tables.length > 0 && (
+        <section id='report-comparison-tables' className='scroll-mt-20 space-y-3'>
+          <h3 className='text-sm font-semibold'>对比表格</h3>
+          {tables.map((table, index) => (
+            <ComparisonTable key={index} table={table} isExporting={isExporting} />
+          ))}
+        </section>
+      )}
+
+      {/* §3.3.5 按用例分组对比 */}
+      <section id='report-case-category' className='scroll-mt-20'>
+        <CaseCategoryComparison report={report} isExporting={isExporting} />
+      </section>
+
+      {/* §3.3.6 按用例标签对比 */}
+      <section id='report-case-tag' className='scroll-mt-20'>
+        <CaseTagComparison report={report} isExporting={isExporting} />
+      </section>
+
+      {/* §3.3.7 具体用例 */}
+      <section id='report-specific-cases' className='scroll-mt-20'>
+        <SpecificCaseComparison report={report} isExporting={isExporting} />
+      </section>
+    </div>
+  )
+}

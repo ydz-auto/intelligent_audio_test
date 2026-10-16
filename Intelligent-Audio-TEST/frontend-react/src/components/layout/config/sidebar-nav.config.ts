@@ -82,7 +82,7 @@ export const ROOT_SIDEBAR_NAV: NavGroup[] = [
       },
       {
         title: '报告中心',
-        url: '/reports',
+        url: '/report-center',
         icon: FileBarChart,
         requiredPermission: 'report:read',
       },

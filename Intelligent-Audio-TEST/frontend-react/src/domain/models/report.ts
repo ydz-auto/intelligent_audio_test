@@ -3,8 +3,11 @@
  * 形态对照 api_gateway/schemas/report.py 实测 schema（ReportListItem/ReportListData/
  * ReportSummarySimplified/ReportDetailData/ReportDeviceStat/ReportApiStat/ReportListQuery
  * /ReportSearchCasesRequest），tab-counts 对照 report_query_sevice.get_tab_counts 返回
- * （all/draft/published/comparison 四键）。mock 常量见 infrastructure/mock/reports-mock.ts，
- * 后续接线仅替换 api 桩，页面与 hook 不返工（红线④）。
+ * （all/draft/published/comparison 四键）。
+ * INT-434 重实施（v2.2）：按 15_报告域.md §1 实测层级补 raw_data / all_metrics 配置数组 /
+ * tag_metric_data / case_type_stats / tables / field_mappings / detailed_results /
+ * 用例级全量字段（results/referenceParams/algorithmResults/audios）。
+ * mock 常量见 infrastructure/mock/reports-mock.ts，后续接线仅替换 api 桩，页面与 hook 不返工（红线④）。
  */
 
 export type ReportType = 'task' | 'comparison' | 'secondary_comparison'
@@ -152,12 +155,40 @@ export interface ReportResourceHeader {
   editable?: boolean
 }
 
-/** metric_data 扁平格式（规范 §4.3：[{resource, metrics:[{id,metric,value}]}]） */
+/** metric_data 扁平格式（§1.2：[{resource, metrics:[{id,metric,value}]}]） */
 export interface ReportMetricDataGroup {
   resource: string
   metrics: ReportMetricValue[]
 }
 
+/** §1.2 raw_data 资源级原始值集合（flatten_raw_data 归一） */
+export interface ReportRawDataGroup {
+  resource: string
+  metrics: { metric: string; values: number[] }[]
+}
+
+/** §1.2 all_metrics 指标配置（normalize.py 按 raw_data 过滤 + 补回主维度） */
+export interface ReportMetricConfig {
+  id?: number | string
+  name: string
+  unit?: string
+  decimal_places?: number
+  statistic_method?: string
+  dimension_type?: 'main' | 'sub'
+  parent_dimension_id?: number | string
+  parent_dimension_name?: string
+}
+
+/** §1.2 all_case_tags 标签（负责人新加：标签含分类） */
+export interface ReportTag {
+  id?: string
+  tag_id?: string
+  tag_name: string
+  category_id?: string
+  category_name?: string
+}
+
+/** §1.2 case_categories 用例分组 */
 export interface ReportCaseCategory {
   id?: string
   category_id?: string
@@ -165,27 +196,112 @@ export interface ReportCaseCategory {
   metrics?: ReportMetricValue[]
 }
 
-export interface ReportTag {
-  id?: string
-  tag_id?: string
-  tag_name: string
+/** §1.2 tag_metric_data（flatten_tag_metric_data） */
+export interface ReportTagMetricGroup {
+  resource: string
+  tags: {
+    tag_id?: string
+    tag_name: string
+    category_id?: string
+    category_name?: string
+    metrics: ReportMetricValue[]
+  }[]
 }
 
-/** GET /reports/{id} summary 子集（report.py ReportSummarySimplified） */
+/** §1.2 case_type_stats（flatten_case_type_stats） */
+export interface ReportCaseTypeStatGroup {
+  group_id: number | string
+  group_name: string
+  metrics: ReportMetricValue[]
+}
+
+/** §1.2 tables（报告生成时预烘焙的对比表格） */
+export interface ReportComparisonTable {
+  title: string
+  columns: ReportComparisonColumn[]
+  data: Record<string, unknown>[]
+  default_collapsed?: boolean
+}
+
+export interface ReportComparisonColumn {
+  key: string
+  label: string
+  type?: 'status' | 'percentage' | 'number' | 'text' | 'icon'
+}
+
+/** §1.2 field_mappings（用例卡片字段映射） */
+export interface ReportFieldMappings {
+  algorithmType: { result: string[]; reference: string[] }
+}
+
+/** §1.2/§1.3 用例音频 */
+export interface ReportAudioItem {
+  audio_id: number | string
+  audio_name?: string
+  audio_type?: string
+  spl?: number
+  play_order?: number
+  noise_spl?: number
+  device_name?: string
+  /** 结果音频 url（外链） */
+  url?: string
+}
+
+/** §1.3 用例执行结果行 */
+export interface ReportCaseResult {
+  resource: string
+  status?: string
+  startTime?: string
+  endTime?: string
+}
+
+/** §1.3 算法结果扁平项（_expand_rounds 展开 @round:N） */
+export interface ReportAlgorithmResult {
+  paramCode: string
+  paramType?: string
+  label?: string
+  roundNumber?: number
+  dimensionName?: string
+  device?: string
+  value?: unknown
+  /** 多轮结构（voice_llm 保留 rounds 为 json） */
+  rounds?: unknown
+}
+
+/** §1.3 用例参考参数 */
+export interface ReportReferenceParam {
+  code: string
+  type?: string
+  value?: unknown
+  segments?: unknown
+  text?: string
+  json?: unknown
+}
+
+/** GET /reports/{id} summary 子集（report.py ReportSummarySimplified 全字段，INT-439 v2.2） */
 export interface ReportSummary {
   total_cases: number
   completed_cases: number
   failed_cases: number
   resources: string[]
   resource_headers: ReportResourceHeader[]
+  raw_data: ReportRawDataGroup[]
   metric_data: ReportMetricDataGroup[]
+  tag_metric_data: ReportTagMetricGroup[]
   case_categories: ReportCaseCategory[]
   all_case_tags: ReportTag[]
-  all_metrics: string[]
+  all_tags?: ReportTag[]
+  all_metrics: ReportMetricConfig[]
+  case_type_stats: ReportCaseTypeStatGroup[]
   device_stats: ReportDeviceStat[]
   api_stats: ReportApiStat[]
   devices: ReportDeviceInfo[]
   apis: ReportApiInfo[]
+  tables?: ReportComparisonTable[]
+  field_mappings?: ReportFieldMappings[]
+  /** 用例聚合（SpecificCase/Tag/Category 回退重算源） */
+  cases?: ReportCaseItem[]
+  detailed_results?: unknown[]
 }
 
 /** GET /reports/{id}（report.py ReportDetailData） */
@@ -208,50 +324,31 @@ export interface ReportDetailData {
   deleted_by_user_id?: number
 }
 
-/** 具体用例（POST /reports/{id}/cases/search 返回项；字段照规范 §4.7 平移） */
-export interface ReportCaseAudio {
-  audio_id: number | string
-  audio_name?: string
-  audio_type?: string
-  spl?: number
-  play_order?: number
-  noise_spl?: number
-  device_name?: string
-}
-
-export interface ReportCaseMetric {
-  id?: number
-  metric: string
-  value: number
-  decimal_places?: number
-}
-
-export interface ReportCaseAsr {
-  reference?: string
-  /** 各设备/API 实际返回文本（key=resource，照 algorithm_type 区分结构） */
-  results?: Record<string, string>
-}
-
-export interface ReportCaseTranslation {
-  reference?: string
-  direction?: string
-  results?: Record<string, string>
-}
-
+/** 具体用例（POST /reports/{id}/cases/search 返回项；build_case_item 全字段，§1.3） */
 export interface ReportCaseItem {
   id: string
   name: string
+  description?: string
   category?: string
   tags: string[]
-  overall_status: 'pass' | 'fail' | 'skip' | 'unknown'
-  description?: string
-  metrics: ReportCaseMetric[]
-  audios: ReportCaseAudio[]
-  asr?: ReportCaseAsr
-  translation?: ReportCaseTranslation
+  /** {resource:{dimension:value}} 或 [{resource, metrics}] 双格式（按算法类型区分） */
+  metrics: ReportCaseMetrics
+  results: ReportCaseResult[]
+  audios: ReportAudioItem[]
+  referenceParams?: Record<string, ReportReferenceParam>
+  algorithmResults?: ReportAlgorithmResult[]
+  algorithmType?: string
   logs?: string
+  /** 展示态覆盖字段（详情 Dialog 消费） */
+  overall_status?: 'pass' | 'fail' | 'warning' | 'skip' | 'unknown'
 }
 
+/** 用例 metrics 双格式 */
+export type ReportCaseMetrics =
+  | Record<string, Record<string, number>>
+  | ReportMetricDataGroup[]
+
+/** 用例搜索分页响应 */
 export interface ReportCaseListData {
   items: ReportCaseItem[]
   total: number
@@ -274,4 +371,18 @@ export interface ReportSearchCasesRequest {
   sort_order?: 'asc' | 'desc'
   page: number
   per_page: number
+}
+
+/** 分组/标签对比矩阵（§3.3.5/3.3.6：{分组:{资源:{指标:number|number[]}}}） */
+export type MetricMatrix = Record<
+  string,
+  Record<string, Record<string, number | number[]>>
+>
+
+/** PUT /reports/{id} 摘要字段白名单（ReportUpdateSummaryField 在册） */
+export interface ReportSummaryUpdate {
+  caseCategories?: ReportCaseCategory[]
+  allCaseTags?: ReportTag[]
+  allTags?: ReportTag[]
+  resourceHeaders?: ReportResourceHeader[]
 }

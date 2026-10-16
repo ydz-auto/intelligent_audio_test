@@ -2,18 +2,18 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 
 import { hasPermission } from '@/domain/models/user'
-import { ReportCenterPage } from '@/features/reports'
+import { ReportShowcasePage } from '@/features/reports-showcase'
 import { useAuthStore } from '@/infrastructure/stores/auth-store'
 
 /**
- * 报告中心 /reports（INT-434 落位；旧链 /test-reports、/history-reports redirect 见同层路由）。
- * beforeLoad：report:read 守卫 → 无码整页 /403（顶部导航「报告」+ 侧栏「报告中心」同码隐藏）。
- * validateSearch：URL 态全量（tab/page/pageSize/search/type/status/timeRange/startTime/endTime/
- * algorithmType/favorite/trash/sortBy/sortOrder），zod .catch 兜底，URL 可分享（规范 §3.2）。
+ * 报告展示页 /reports（INT-434 重实施 / INT-441 双入口拆分；15_报告域.md §2.1）。
+ * 顶部导航「报告」直达，对外展示已发布报告、弱管理；管理操作集中在 /report-center。
+ * beforeLoad：report:read 守卫 → 无码整页 /403（顶部导航「报告」同码隐藏）。
+ * validateSearch：URL 态（view/page/pageSize/search/type/timeRange/startTime/endTime/
+ * algorithmType/sortBy/sortOrder），zod .catch 兜底，URL 可分享。
  */
-export const reportsSearchSchema = z
+export const reportsShowcaseSearchSchema = z
   .object({
-    tab: z.enum(['test', 'history']).catch('history'),
     view: z.enum(['table', 'card']).catch('table'),
     page: z.coerce.number().int().min(1).catch(1),
     pageSize: z.coerce.number().int().min(1).catch(20),
@@ -22,7 +22,6 @@ export const reportsSearchSchema = z
       .enum(['task', 'comparison', 'secondary_comparison'])
       .optional()
       .catch(undefined),
-    status: z.enum(['draft', 'published']).optional().catch(undefined),
     timeRange: z
       .enum(['today', 'yesterday', 'week', 'month', 'custom'])
       .optional()
@@ -30,31 +29,21 @@ export const reportsSearchSchema = z
     startTime: z.string().optional().catch(undefined),
     endTime: z.string().optional().catch(undefined),
     algorithmType: z.string().optional().catch(undefined),
-    favorite: z
-      .enum(['true', 'false'])
-      .optional()
-      .transform((v) => v === 'true')
-      .catch(false),
-    trash: z
-      .enum(['true', 'false'])
-      .optional()
-      .transform((v) => v === 'true')
-      .catch(false),
     sortBy: z.enum(['created_at', 'name', 'pass_rate', 'total_cases']).catch('created_at'),
     sortOrder: z.enum(['asc', 'desc']).catch('desc'),
   })
   .partial()
   .catch({})
 
-export type { ReportsSearch } from '@/features/reports/types'
+export type { ShowcaseSearch } from '@/features/reports-showcase/types'
 
 export const Route = createFileRoute('/_authenticated/reports')({
-  validateSearch: reportsSearchSchema,
+  validateSearch: reportsShowcaseSearchSchema,
   beforeLoad: () => {
     const user = useAuthStore.getState().user
     if (!hasPermission(user, 'report:read')) {
       throw redirect({ to: '/403' })
     }
   },
-  component: ReportCenterPage,
+  component: ReportShowcasePage,
 })

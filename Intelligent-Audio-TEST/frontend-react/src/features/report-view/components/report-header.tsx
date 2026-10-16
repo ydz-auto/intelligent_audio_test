@@ -31,9 +31,13 @@ interface ReportHeaderProps {
   report: ReportDetailData
   hasPermission: (permission: string) => boolean
   editing: boolean
+  /** 返回按钮文案（回退来源入口：管理页进→报告中心，展示页进→报告展示） */
+  backLabel: string
   onBack: () => void
   onEdit: () => void
+  onSave: () => void
   onPublish: () => void
+  onUnpublish: () => void
   onExport: () => void
   onRegenerate: () => void
   onCopyLink: () => void
@@ -44,9 +48,12 @@ export function ReportHeader({
   report,
   hasPermission,
   editing,
+  backLabel,
   onBack,
   onEdit,
+  onSave,
   onPublish,
+  onUnpublish,
   onExport,
   onRegenerate,
   onCopyLink,
@@ -61,7 +68,7 @@ export function ReportHeader({
     <div className='space-y-4'>
       <Button variant='ghost' size='sm' onClick={onBack} className='-ml-2'>
         <ArrowLeft data-icon='inline-start' />
-        返回报告中心
+        {backLabel}
       </Button>
 
       <div className='bg-card from-primary/5 via-transparent to-transparent rounded-2xl border bg-gradient-to-br p-5 sm:p-6'>
@@ -119,10 +126,21 @@ export function ReportHeader({
                 {editing ? '退出编辑' : '编辑'}
               </Button>
             )}
+            {editing && hasPermission('report:update') && (
+              <Button variant='secondary' size='sm' onClick={onSave}>
+                <Rocket data-icon='inline-start' />
+                保存
+              </Button>
+            )}
             {hasPermission('report:publish') && report.status === 'draft' && (
               <Button variant='secondary' size='sm' onClick={onPublish}>
                 <Rocket data-icon='inline-start' />
                 发布
+              </Button>
+            )}
+            {hasPermission('report:publish') && report.status === 'published' && (
+              <Button variant='outline' size='sm' onClick={onUnpublish}>
+                取消发布
               </Button>
             )}
             {hasPermission('report:create') && (

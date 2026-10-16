@@ -1,44 +1,46 @@
 /**
- * /report/$reportId 报告查看（INT-434 落位；阅读优先版式，规范 §4）。
- * 返回行 + 报告头 + 主列分节（总览/设备与API/评估指标/分析结论/具体用例/对比差异）
- * + 右导航 scrollspy + 底部操作条 + 弹窗群（导出/发布/重新生成）。
+ * /report/$reportId 报告查看（INT-434 重实施；15_报告域.md §3 真实层级重做）。
+ * 壳：返回行（回退来源入口）+ 报告头 + 主列按 type 分发（task→任务级面板 / comparison→对比家族）
+ * + 右导航 scrollspy + 底部操作条 + 导出/打印 + 弹窗群（导出/发布/重新生成/重命名）。
  */
-import { useNavigate, useParams } from '@tanstack/react-router'
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePermissions } from '@/application/hooks/use-permissions'
 import { useReportDetail } from '@/application/report-view/use-report-detail'
-import { updateReport } from '@/infrastructure/api/reports-api'
+import { useReportAnalysis } from '@/application/report-view/use-report-analysis'
+import { ExportReportDialog } from '@/features/reports/components/modals/export-report-dialog'
+import { PublishReportDialog, RegenerateReportDialog } from '@/features/reports/components/modals/report-confirm-dialogs'
+import { ReportRenameDialog } from '@/features/reports/components/modals/report-rename-dialog'
 
 import { ReportHeader } from './components/report-header'
-import { ReportOverview } from './components/report-overview'
-import { ReportResourceStats } from './components/report-resource-stats'
-import { ReportCharts } from './components/report-charts'
-import { ReportConclusion } from './components/report-conclusion'
-import { ReportCaseList } from './components/report-case-list'
-import { ReportComparisonSection } from './components/report-comparison-section'
-import {
-  ReportReadingNav,
-  type ReadingNavSection,
-} from './components/report-reading-nav'
-import { ExportReportDialog } from '@/features/reports/components/modals/export-report-dialog'
-import {
-  PublishReportDialog,
-  RegenerateReportDialog,
-} from '@/features/reports/components/modals/report-confirm-dialogs'
+import { ReportReadingNav, type ReadingNavSection } from './components/report-reading-nav'
+import { TaskReportPanel } from './components/task-report-panel'
+import { ComparisonReportPanel } from './components/comparison-report-panel'
 
 import '@/features/report-view/report-print.css'
 
-const SECTION_IDS = {
-  overview: 'report-overview',
-  resources: 'report-resource-stats',
-  charts: 'report-charts',
-  conclusion: 'report-conclusion',
-  cases: 'report-cases',
-  comparison: 'report-comparison',
+const NAV = {
+  task: [
+    { id: 'report-overview', label: '总览' },
+    { id: 'report-resource-stats', label: '设备与API' },
+    { id: 'report-conclusion', label: '分析结论' },
+    { id: 'report-comparison-tables', label: '对比表格' },
+    { id: 'report-case-category', label: '用例分组' },
+    { id: 'report-case-tag', label: '用例标签' },
+    { id: 'report-specific-cases', label: '具体用例' },
+  ],
+  comparison: [
+    { id: 'report-resource-stats', label: '设备与API' },
+    { id: 'report-conclusion', label: '分析结论' },
+    { id: 'report-case-category', label: '用例分组' },
+    { id: 'report-case-tag', label: '用例标签' },
+    { id: 'report-specific-cases', label: '具体用例' },
+  ],
 } as const
 
 function DetailSkeleton() {
@@ -46,11 +48,7 @@ function DetailSkeleton() {
     <div className='mx-auto w-full max-w-[1200px] space-y-4 px-4 py-6 sm:px-6' aria-busy='true'>
       <Skeleton className='h-8 w-36' />
       <Skeleton className='h-28 w-full rounded-2xl' />
-      <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className='h-24 w-full' />
-        ))}
-      </div>
+      <Skeleton className='h-40 w-full' />
       <Skeleton className='h-48 w-full' />
       <Skeleton className='h-48 w-full' />
     </div>
@@ -59,6 +57,7 @@ function DetailSkeleton() {
 
 export function ReportViewPage() {
   const { reportId: reportIdParam } = useParams({ strict: false })
+  const search = useSearch({ strict: false }) as unknown as { from?: string }
   const reportId = Number(reportIdParam)
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
@@ -69,31 +68,37 @@ export function ReportViewPage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
   const [regenerateOpen, setRegenerateOpen] = useState(false)
-
-  const [activeSection, setActiveSection] = useState<string>(SECTION_IDS.overview)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [activeSection, setActiveSection] = useState('report-overview')
   const [progress, setProgress] = useState(0)
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
 
+  // 回退来源入口（15_报告域.md §3.1：管理页进→/report-center，展示页进→/reports，无来源默认 /reports）
+  const backTarget = useMemo(() => {
+    if (search.from === 'showcase') return { to: '/reports' as const }
+    return { to: '/report-center' as const }
+  }, [search.from])
+  const backLabel = search.from === 'showcase' ? '← 返回报告展示' : '← 返回报告中心'
+
+  const { saveConclusion: saveAnalysis } = useReportAnalysis(reportId, report?.analysis)
+
   const sections = useMemo<ReadingNavSection[]>(() => {
-    const isComparison =
-      report?.type === 'comparison' || report?.type === 'secondary_comparison'
-    return [
-      { id: SECTION_IDS.overview, label: '总览' },
-      { id: SECTION_IDS.resources, label: '设备与API' },
-      { id: SECTION_IDS.charts, label: '评估指标' },
-      { id: SECTION_IDS.conclusion, label: '分析结论' },
-      { id: SECTION_IDS.cases, label: '具体用例' },
-      ...(isComparison ? [{ id: SECTION_IDS.comparison, label: '对比差异' }] : []),
-    ]
+    const isComparison = report?.type === 'comparison' || report?.type === 'secondary_comparison'
+    const base = isComparison ? [...NAV.comparison] : [...NAV.task]
+    if (isComparison && report?.type === 'secondary_comparison') {
+      base.push({ id: 'report-compare-diff', label: '对比差异' })
+    }
+    return base
   }, [report?.type])
 
   // scrollspy + 阅读进度条
   useEffect(() => {
+    if (!sections.length) return
     const handleScroll = () => {
       const max = document.documentElement.scrollHeight - window.innerHeight
       setProgress(max > 0 ? (window.scrollY / max) * 100 : 0)
       const offset = window.scrollY + 140
-      let current: string = SECTION_IDS.overview
+      let current = sections[0].id
       for (const section of sections) {
         const el = sectionRefs.current[section.id]
         if (el && el.getBoundingClientRect().top + window.scrollY <= offset) {
@@ -112,14 +117,25 @@ export function ReportViewPage() {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const handleBack = () => void navigate({ to: '/reports' })
+  const handleBack = () => void navigate(backTarget)
 
   if (detailQuery.isLoading || !report) {
     return <DetailSkeleton />
   }
 
-  const isComparison =
-    report.type === 'comparison' || report.type === 'secondary_comparison'
+  if (detailQuery.isError || !Number.isFinite(reportId) || reportId <= 0) {
+    return (
+      <Empty className='min-h-[420px]'>
+        <EmptyHeader>
+          <EmptyMedia variant='icon' />
+          <EmptyTitle>报告不存在</EmptyTitle>
+          <EmptyDescription>请提供有效的报告ID</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    )
+  }
+
+  const isComparison = report.type === 'comparison' || report.type === 'secondary_comparison'
 
   return (
     <div className='report-view-container print:mx-auto print:max-w-none'>
@@ -128,85 +144,51 @@ export function ReportViewPage() {
           report={report}
           hasPermission={hasPermission}
           editing={editing}
+          backLabel={backLabel}
           onBack={handleBack}
           onEdit={() => setEditing((v) => !v)}
+          onSave={() => setEditing(false)}
           onPublish={() => setPublishOpen(true)}
+          onUnpublish={() => {
+            void import('@/infrastructure/api/reports-api').then(({ updateReport }) =>
+              updateReport(report.id, { name: report.name })
+            )
+            toast.success('已取消发布')
+          }}
           onExport={() => setExportOpen(true)}
           onRegenerate={() => setRegenerateOpen(true)}
-          onCopyLink={() => toast.success('链接已复制')}
+          onCopyLink={() => {
+            void navigator.clipboard?.writeText(`${window.location.origin}/report/${report.id}`)
+            toast.success('链接已复制')
+          }}
           onClose={handleBack}
         />
 
         <div className='mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px]'>
-          <main className='min-w-0 space-y-8'>
-            <section
-              id={SECTION_IDS.overview}
+          <main className='min-w-0 space-y-6'>
+            <div
               ref={(el) => {
-                sectionRefs.current[SECTION_IDS.overview] = el
+                sectionRefs.current['report-overview'] = el
               }}
-              className='scroll-mt-20'
             >
-              <ReportOverview report={report} />
-            </section>
-
-            <section
-              id={SECTION_IDS.resources}
-              ref={(el) => {
-                sectionRefs.current[SECTION_IDS.resources] = el
-              }}
-              className='scroll-mt-20'
-            >
-              <ReportResourceStats report={report} />
-            </section>
-
-            <section
-              id={SECTION_IDS.charts}
-              ref={(el) => {
-                sectionRefs.current[SECTION_IDS.charts] = el
-              }}
-              className='scroll-mt-20'
-            >
-              <ReportCharts report={report} />
-            </section>
-
-            <section
-              id={SECTION_IDS.conclusion}
-              ref={(el) => {
-                sectionRefs.current[SECTION_IDS.conclusion] = el
-              }}
-              className='scroll-mt-20'
-            >
-              <ReportConclusion
-                report={report}
-                editing={editing}
-                onExitEditing={() => setEditing(false)}
-                onSaveAnalysis={(analysis) => {
-                  void updateReport(report.id, { analysis })
-                }}
-              />
-            </section>
-
-            <section
-              id={SECTION_IDS.cases}
-              ref={(el) => {
-                sectionRefs.current[SECTION_IDS.cases] = el
-              }}
-              className='scroll-mt-20'
-            >
-              <ReportCaseList report={report} />
-            </section>
-
-            {isComparison && (
-              <section
-                id={SECTION_IDS.comparison}
-                ref={(el) => {
-                  sectionRefs.current[SECTION_IDS.comparison] = el
-                }}
-                className='scroll-mt-20 print:block'
-              >
-                <ReportComparisonSection report={report} />
-              </section>
-            )}
+              {isComparison ? (
+                <ComparisonReportPanel
+                  report={report}
+                  editing={editing}
+                  onStartEditing={() => setEditing(true)}
+                  onExitEditing={() => setEditing(false)}
+                  onSaveAnalysis={(content) => void saveAnalysis(content)}
+                />
+              ) : (
+                <TaskReportPanel
+                  report={report}
+                  editing={editing}
+                  onStartEditing={() => setEditing(true)}
+                  onExitEditing={() => setEditing(false)}
+                  onSaveAnalysis={(content) => void saveAnalysis(content)}
+                />
+              )}
+            </div>
           </main>
 
           <aside className='print:hidden'>
@@ -265,6 +247,16 @@ export function ReportViewPage() {
           )
           toast.success('报告已重新生成')
         }}
+      />
+      <ReportRenameDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        report={report}
+        onConfirm={(target, payload) =>
+          void import('@/infrastructure/api/reports-api').then(({ updateReport }) =>
+            updateReport(target.id, payload)
+          )
+        }
       />
     </div>
   )

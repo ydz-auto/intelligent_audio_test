@@ -1,7 +1,8 @@
 /**
- * /reports 报告中心（INT-434 落位；规范 §3）。
+ * /report-center 报告中心·管理页（INT-434 重实施落位；15_报告域.md §2，INT-360 版式保留）。
  * 版式对位 newAPI 模型价格页：双页签 + Hero 头 + 统计徽章行 + 工具栏 + 数据表/卡片
  * + 收藏/回收站工具条 + 批量浮条 + 分页 + 弹窗群（生成/导出/发布/删除/对比/重命名/进度）。
+ * 管理操作集中本页（INT-441 双入口拆分：展示页 /reports 见 features/reports-showcase/）。
  * URL 态全部经 TanStack validateSearch（features/reports/types.ts），页面以 navigate 回写。
  */
 import { useNavigate, useSearch } from '@tanstack/react-router'
@@ -110,7 +111,7 @@ export function ReportCenterPage() {
   const setSearch = useCallback(
     (patch: Record<string, unknown>) => {
       void navigate({
-        to: '/reports',
+        to: '/report-center',
         search: (prev) => ({ ...prev, ...patch }) as unknown as typeof prev,
       })
     },

@@ -1,20 +1,28 @@
 /**
  * 报告域 mock 常量（红线④：数据一律 mock，不接真实后端）。
- * 字段形态对照 api_gateway/schemas/report.py 实测 schema（见 domain/models/report.ts），
- * 数字口径与基座控制台 mock（任务 342/已完成 297、设备 8 在线/2 离线）互不打架。
- * 列表与详情 id 联动：1201=任务报告、1190=对比报告、1188=二次对比报告，供详情页/行菜单跳转核对。
+ * 字段形态对照 api_gateway/schemas/report.py 实测 schema + INT-439 报告域 v2.2 层级
+ * （见 domain/models/report.ts 与 doc/UX设计规范/15_报告域.md §1），数字口径与基座
+ * 控制台 mock（任务 342/已完成 297、设备 8 在线/2 离线）互不打架。
+ * 列表与详情 id 联动：1201=任务报告、1190=对比报告、1188=二次对比报告，供详情页跳转核对。
  */
 import type {
+  ReportApiInfo,
   ReportApiStat,
   ReportCaseCategory,
   ReportCaseItem,
   ReportCaseListData,
+  ReportComparisonTable,
   ReportDetailData,
+  ReportDeviceInfo,
   ReportDeviceStat,
   ReportListItem,
   ReportListData,
+  ReportMetricConfig,
+  ReportRawDataGroup,
+  ReportSummary,
   ReportTabCounts,
   ReportTag,
+  ReportTagMetricGroup,
 } from '@/domain/models/report'
 
 /** GET /reports 列表 mock（分页在 useReportList 中按 per_page 截断模拟） */
@@ -210,6 +218,7 @@ export const REPORT_ALGORITHMS = [
   'wakeword_detect',
   'tts_eval',
   'spl_eval',
+  'voice_llm',
 ] as const
 
 /** 生成报告 Dialog 任务选择器（GET /tasks 只读子集：已完成任务） */
@@ -220,6 +229,63 @@ export const MOCK_COMPLETED_TASKS = [
   { id: 1015, name: 'TTS 自然度主观评估（第 1 期）', type: 'api', status: 'completed', completed_at: '2026-09-28T09:30:00' },
 ] as const
 
+// ---------------------------------------------------------------------------
+// 算法定义 mock（INT-436/INT-442「当前算法」大卡：GET /algorithm/definitions 形态）
+// ---------------------------------------------------------------------------
+
+export interface MockAlgorithmDefinition {
+  type: string
+  name: string
+  group_name?: string
+  category?: string
+  description: string
+  status?: string
+  icon?: string
+}
+
+/** GET /algorithm/definitions（algorithm:read；AlgorithmDefinitionDto 形态） */
+export const MOCK_ALGORITHM_DEFINITIONS: MockAlgorithmDefinition[] = [
+  {
+    type: 'asr-v3',
+    name: '通用识别引擎',
+    group_name: '语音识别',
+    category: 'asr',
+    description: '端到端语音识别基线模型，覆盖远场/近场/噪声三类场景。',
+    status: 'online',
+    icon: 'audio-waveform',
+  },
+  {
+    type: 'asr-stream',
+    name: '流式识别引擎',
+    group_name: '语音识别',
+    category: 'asr',
+    description: '低延迟流式转写引擎，适合实时字幕与对话场景。',
+    status: 'online',
+    icon: 'activity',
+  },
+  {
+    type: 'eval-ensemble',
+    name: '多维评估集成',
+    group_name: '评估算法',
+    category: 'eval',
+    description: '多维度指标集成评估算法，输出 WER/LLM 评分/延迟等综合结论。',
+    status: 'online',
+    icon: 'gauge',
+  },
+]
+
+/** GET /algorithm/options（algorithm:read；AlgorithmOptionDto 形态——仅在线算法） */
+export const MOCK_ALGORITHM_OPTIONS = MOCK_ALGORITHM_DEFINITIONS.map((a) => ({
+  value: a.type,
+  name: a.name,
+  group_name: a.group_name,
+  icon: a.icon,
+}))
+
+// ---------------------------------------------------------------------------
+// 报告详情 mock（INT-439 v2.2 层级：任务级 TaskReportPanel + 对比家族）
+// ---------------------------------------------------------------------------
+
 /** 报告详情 mock 源（key=报告 id；消费方按 id 取，缺省回退 1201） */
 export const MOCK_REPORT_DETAILS: Record<number, ReportDetailData> = {
   1201: buildTaskReportDetail(),
@@ -227,37 +293,46 @@ export const MOCK_REPORT_DETAILS: Record<number, ReportDetailData> = {
   1188: buildComparisonReportDetail('secondary_comparison'),
 }
 
-function buildTaskReportDetail(): ReportDetailData {
+function buildTaskSummary(): ReportSummary {
+  const allMetrics: ReportMetricConfig[] = [
+    { id: 'm-wakeup', name: '唤醒成功率', unit: '%', decimal_places: 1, dimension_type: 'main' },
+    { id: 'm-wakeup-false', name: '误唤醒率', unit: '%', decimal_places: 1, dimension_type: 'sub', parent_dimension_id: 'm-wakeup', parent_dimension_name: '唤醒成功率' },
+    { id: 'm-acc', name: '识别准确率', unit: '%', decimal_places: 1, dimension_type: 'main' },
+    { id: 'm-wer', name: '平均WER', unit: '%', decimal_places: 2, dimension_type: 'sub', parent_dimension_id: 'm-acc', parent_dimension_name: '识别准确率' },
+    { id: 'm-latency', name: '平均响应时间', unit: 'ms', decimal_places: 0, dimension_type: 'main' },
+  ]
+
   const deviceStats: ReportDeviceStat[] = [
     {
       id: 1, name: '智能音箱-旗舰-01', model: 'Xiaomi Speaker Pro', type: 'smart_speaker',
       system: 'MIUI Home', system_version: '3.2.1', status: 'online',
       total_cases: 48, completed_cases: 48, failed_cases: 3, success_rate: 93.8,
-      metrics: { 唤醒成功率: 96.5, 平均响应: 412, 稳定性: 0.98 },
+      metrics: { 唤醒成功率: 96.5, 识别准确率: 94.2, 平均响应时间: 412 },
     },
     {
       id: 2, name: '智能音箱-旗舰-02', model: 'Xiaomi Speaker Pro', type: 'smart_speaker',
       system: 'MIUI Home', system_version: '3.2.1', status: 'offline',
       total_cases: 24, completed_cases: 24, failed_cases: 1, success_rate: 95.8,
-      metrics: { 唤醒成功率: 95.4, 平均响应: 428, 稳定性: 0.97 },
+      metrics: { 唤醒成功率: 95.4, 识别准确率: 93.1, 平均响应时间: 428 },
     },
     {
       id: 3, name: '智能音箱-入门-03', model: 'Xiaomi Speaker Lite', type: 'smart_speaker',
       system: 'MIUI Home', system_version: '2.9.0', status: 'online',
       total_cases: 24, completed_cases: 24, failed_cases: 2, success_rate: 91.7,
-      metrics: { 唤醒成功率: 93.1, 平均响应: 486, 稳定性: 0.95 },
+      metrics: { 唤醒成功率: 93.1, 识别准确率: 91.8, 平均响应时间: 486 },
     },
   ]
-  const deviceApiStats: ReportApiStat[] = [
+
+  const apiStats: ReportApiStat[] = [
     {
       id: 101, name: 'asr-streaming-v3', status: 'active', max_process: 32, health_score: 0.92,
       total_cases: 48, completed_cases: 48, failed_cases: 3, success_rate: 93.8,
-      avg_response_time: 385, stability: 0.98, metrics: { 平均响应: 385, 稳定性: 0.98 },
+      avg_response_time: 385, stability: 0.98, metrics: { 平均响应时间: 385, 稳定性: 0.98 },
     },
     {
       id: 102, name: 'wakeword-detect-v2', status: 'active', max_process: 16, health_score: 0.88,
       total_cases: 48, completed_cases: 48, failed_cases: 3, success_rate: 93.8,
-      avg_response_time: 201, stability: 0.99, metrics: { 平均响应: 201, 稳定性: 0.99 },
+      avg_response_time: 201, stability: 0.99, metrics: { 平均响应时间: 201, 稳定性: 0.99 },
     },
   ]
 
@@ -269,63 +344,230 @@ function buildTaskReportDetail(): ReportDetailData {
     { key: 'api_102', label: 'wakeword-detect-v2', type: 'api', id: 102, name: 'wakeword-detect-v2' },
   ]
 
-  const metricData = [
+  const rawData: ReportRawDataGroup[] = [
     {
       resource: 'device_1',
       metrics: [
-        { id: 1, metric: '唤醒成功率', value: 96.5 },
-        { id: 2, metric: '识别准确率', value: 94.2 },
-        { id: 3, metric: '平均响应时间(ms)', value: 412 },
+        { metric: '唤醒成功率', values: [100, 96.5, 93.2, 100, 88.5, 97.8, 92.4, 95.1, 100, 91.2] },
+        { metric: '识别准确率', values: [96.8, 93.4, 90.1, 95.6, 88.2, 94.7, 92.3, 97.2, 90.8, 93.9] },
+        { metric: '平均响应时间', values: [405, 412, 430, 398, 452, 421, 409, 416, 445, 402] },
       ],
     },
     {
       resource: 'device_2',
       metrics: [
-        { id: 1, metric: '唤醒成功率', value: 95.4 },
-        { id: 2, metric: '识别准确率', value: 93.1 },
-        { id: 3, metric: '平均响应时间(ms)', value: 428 },
+        { metric: '唤醒成功率', values: [95.4, 92.8, 97.1, 94.5, 90.6, 96.2, 93.8, 98.0, 91.9, 95.7] },
+        { metric: '识别准确率', values: [93.1, 91.4, 95.2, 92.8, 88.6, 94.1, 91.5, 96.0, 90.2, 93.7] },
+        { metric: '平均响应时间', values: [428, 415, 439, 421, 456, 430, 422, 418, 441, 425] },
       ],
     },
     {
       resource: 'device_3',
       metrics: [
-        { id: 1, metric: '唤醒成功率', value: 93.1 },
-        { id: 2, metric: '识别准确率', value: 91.8 },
-        { id: 3, metric: '平均响应时间(ms)', value: 486 },
+        { metric: '唤醒成功率', values: [91.2, 94.8, 88.9, 93.5, 90.1, 95.2, 89.8, 92.6, 94.3, 90.9] },
+        { metric: '识别准确率', values: [91.8, 90.2, 93.5, 89.7, 92.4, 88.9, 94.1, 90.6, 92.8, 91.4] },
+        { metric: '平均响应时间', values: [486, 470, 502, 478, 495, 481, 510, 469, 488, 479] },
       ],
     },
     {
       resource: 'api_101',
       metrics: [
-        { id: 1, metric: '唤醒成功率', value: 96.0 },
-        { id: 2, metric: '识别准确率', value: 94.5 },
-        { id: 3, metric: '平均响应时间(ms)', value: 385 },
+        { metric: '唤醒成功率', values: [96.0, 94.8, 97.2, 95.5, 93.1, 96.8, 94.2, 97.9, 95.0, 96.4] },
+        { metric: '识别准确率', values: [94.5, 92.8, 95.6, 93.4, 90.8, 94.9, 92.1, 96.2, 93.5, 94.7] },
+        { metric: '平均响应时间', values: [385, 392, 378, 401, 396, 382, 390, 375, 398, 386] },
       ],
     },
     {
       resource: 'api_102',
       metrics: [
-        { id: 1, metric: '唤醒成功率', value: 95.2 },
-        { id: 2, metric: '识别准确率', value: 92.7 },
-        { id: 3, metric: '平均响应时间(ms)', value: 201 },
+        { metric: '唤醒成功率', values: [95.2, 93.8, 96.4, 94.1, 91.6, 95.8, 93.2, 97.0, 94.4, 95.6] },
+        { metric: '识别准确率', values: [92.7, 90.4, 94.1, 91.8, 88.9, 93.2, 90.6, 95.0, 91.4, 93.8] },
+        { metric: '平均响应时间', values: [201, 208, 195, 212, 198, 204, 210, 192, 206, 199] },
+      ],
+    },
+  ]
+
+  const metricData = [
+    {
+      resource: 'device_1',
+      metrics: [
+        { id: 'm-wakeup', metric: '唤醒成功率', value: 96.5 },
+        { id: 'm-wakeup-false', metric: '误唤醒率', value: 3.5 },
+        { id: 'm-acc', metric: '识别准确率', value: 94.2 },
+        { id: 'm-wer', metric: '平均WER', value: 5.8 },
+        { id: 'm-latency', metric: '平均响应时间', value: 412 },
+      ],
+    },
+    {
+      resource: 'device_2',
+      metrics: [
+        { id: 'm-wakeup', metric: '唤醒成功率', value: 95.4 },
+        { id: 'm-wakeup-false', metric: '误唤醒率', value: 4.1 },
+        { id: 'm-acc', metric: '识别准确率', value: 93.1 },
+        { id: 'm-wer', metric: '平均WER', value: 6.9 },
+        { id: 'm-latency', metric: '平均响应时间', value: 428 },
+      ],
+    },
+    {
+      resource: 'device_3',
+      metrics: [
+        { id: 'm-wakeup', metric: '唤醒成功率', value: 93.1 },
+        { id: 'm-wakeup-false', metric: '误唤醒率', value: 5.2 },
+        { id: 'm-acc', metric: '识别准确率', value: 91.8 },
+        { id: 'm-wer', metric: '平均WER', value: 8.2 },
+        { id: 'm-latency', metric: '平均响应时间', value: 486 },
+      ],
+    },
+    {
+      resource: 'api_101',
+      metrics: [
+        { id: 'm-wakeup', metric: '唤醒成功率', value: 96.0 },
+        { id: 'm-wakeup-false', metric: '误唤醒率', value: 3.9 },
+        { id: 'm-acc', metric: '识别准确率', value: 94.5 },
+        { id: 'm-wer', metric: '平均WER', value: 5.5 },
+        { id: 'm-latency', metric: '平均响应时间', value: 385 },
+      ],
+    },
+    {
+      resource: 'api_102',
+      metrics: [
+        { id: 'm-wakeup', metric: '唤醒成功率', value: 95.2 },
+        { id: 'm-wakeup-false', metric: '误唤醒率', value: 4.6 },
+        { id: 'm-acc', metric: '识别准确率', value: 92.7 },
+        { id: 'm-wer', metric: '平均WER', value: 7.3 },
+        { id: 'm-latency', metric: '平均响应时间', value: 201 },
       ],
     },
   ]
 
   const caseCategories: ReportCaseCategory[] = [
-    { category_id: 'grp-wakeup', category_name: '唤醒场景', metrics: [{ id: 1, metric: '唤醒成功率', value: 95.8 }] },
-    { category_id: 'grp-noise', category_name: '噪声场景', metrics: [{ id: 1, metric: '识别准确率', value: 88.4 }] },
-    { category_id: 'grp-farfield', category_name: '远场场景', metrics: [{ id: 1, metric: '识别准确率', value: 90.2 }] },
+    { category_id: 'grp-wakeup', category_name: '唤醒场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 95.8 }] },
+    { category_id: 'grp-noise', category_name: '噪声场景', metrics: [{ id: 'm-acc', metric: '识别准确率', value: 88.4 }] },
+    { category_id: 'grp-farfield', category_name: '远场场景', metrics: [{ id: 'm-acc', metric: '识别准确率', value: 90.2 }] },
   ]
 
   const allCaseTags: ReportTag[] = [
-    { tag_id: 't-01', tag_name: '远场' },
-    { tag_id: 't-02', tag_name: '近场' },
-    { tag_id: 't-03', tag_name: '噪声' },
-    { tag_id: 't-04', tag_name: '唤醒' },
-    { tag_id: 't-05', tag_name: '方言' },
+    { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景' },
+    { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景' },
+    { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境' },
+    { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-type', category_name: '用例类型' },
+    { tag_id: 't-05', tag_name: '方言', category_id: 'tag-cat-type', category_name: '用例类型' },
   ]
 
+  const tagMetricData: ReportTagMetricGroup[] = [
+    {
+      resource: 'device_1',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 94.8 }, { id: 'm-acc', metric: '识别准确率', value: 90.2 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 98.2 }, { id: 'm-acc', metric: '识别准确率', value: 96.8 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 88.4 }, { id: 'm-acc', metric: '识别准确率', value: 86.1 }] },
+        { tag_id: 't-04', tag_name: '唤醒', category_id: 'tag-cat-type', category_name: '用例类型', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 96.5 }, { id: 'm-latency', metric: '平均响应时间', value: 412 }] },
+      ],
+    },
+    {
+      resource: 'device_2',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 93.6 }, { id: 'm-acc', metric: '识别准确率', value: 88.9 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 97.4 }, { id: 'm-acc', metric: '识别准确率', value: 95.2 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 87.1 }, { id: 'm-acc', metric: '识别准确率', value: 84.6 }] },
+      ],
+    },
+    {
+      resource: 'api_101',
+      tags: [
+        { tag_id: 't-01', tag_name: '远场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 95.1 }, { id: 'm-acc', metric: '识别准确率', value: 91.5 }] },
+        { tag_id: 't-02', tag_name: '近场', category_id: 'tag-cat-scene', category_name: '场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 98.6 }, { id: 'm-acc', metric: '识别准确率', value: 97.1 }] },
+        { tag_id: 't-03', tag_name: '噪声', category_id: 'tag-cat-env', category_name: '环境', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 89.2 }, { id: 'm-acc', metric: '识别准确率', value: 87.4 }] },
+      ],
+    },
+  ]
+
+  const tables: ReportComparisonTable[] = [
+    {
+      title: '设备/API信息对比',
+      default_collapsed: true,
+      columns: [
+        { key: 'name', label: '名称' },
+        { key: 'type', label: '类型' },
+        { key: 'version', label: '版本' },
+        { key: 'status', label: '状态', type: 'status' },
+        { key: 'totalCases', label: '用例数', type: 'number' },
+        { key: 'successRate', label: '成功率', type: 'percentage' },
+      ],
+      data: [
+        { name: '智能音箱-旗舰-01', type: '设备', version: '3.2.1', status: 'online', totalCases: 48, successRate: 93.8 },
+        { name: '智能音箱-旗舰-02', type: '设备', version: '3.2.1', status: 'offline', totalCases: 24, successRate: 95.8 },
+        { name: '智能音箱-入门-03', type: '设备', version: '2.9.0', status: 'online', totalCases: 24, successRate: 91.7 },
+        { name: 'asr-streaming-v3', type: 'API', version: 'v3', status: 'active', totalCases: 48, successRate: 93.8 },
+        { name: 'wakeword-detect-v2', type: 'API', version: 'v2', status: 'active', totalCases: 48, successRate: 93.8 },
+      ],
+    },
+    {
+      title: '用例执行数量对比',
+      default_collapsed: true,
+      columns: [
+        { key: 'name', label: '名称' },
+        { key: 'total', label: '总数', type: 'number' },
+        { key: 'executed', label: '已执行', type: 'number' },
+        { key: 'completed', label: '完成', type: 'number' },
+        { key: 'failed', label: '失败', type: 'number' },
+        { key: 'successRate', label: '成功率', type: 'percentage' },
+        { key: 'failedRate', label: '失败率', type: 'percentage' },
+      ],
+      data: [
+        { name: '智能音箱-旗舰-01', total: 48, executed: 48, completed: 45, failed: 3, successRate: 93.8, failedRate: 6.2 },
+        { name: '智能音箱-旗舰-02', total: 24, executed: 24, completed: 23, failed: 1, successRate: 95.8, failedRate: 4.2 },
+        { name: '智能音箱-入门-03', total: 24, executed: 24, completed: 22, failed: 2, successRate: 91.7, failedRate: 8.3 },
+        { name: 'asr-streaming-v3', total: 48, executed: 48, completed: 45, failed: 3, successRate: 93.8, failedRate: 6.2 },
+        { name: 'wakeword-detect-v2', total: 48, executed: 48, completed: 45, failed: 3, successRate: 93.8, failedRate: 6.2 },
+      ],
+    },
+  ]
+
+  return {
+    total_cases: 48,
+    completed_cases: 48,
+    failed_cases: 3,
+    resources: ['device_1', 'device_2', 'device_3', 'api_101', 'api_102'],
+    resource_headers: resourceHeaders,
+    raw_data: rawData,
+    metric_data: metricData,
+    tag_metric_data: tagMetricData,
+    case_categories: caseCategories,
+    all_case_tags: allCaseTags,
+    all_tags: allCaseTags,
+    all_metrics: allMetrics,
+    case_type_stats: [
+      { group_id: 'grp-wakeup', group_name: '唤醒场景', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 95.8 }] },
+      { group_id: 'grp-noise', group_name: '噪声场景', metrics: [{ id: 'm-acc', metric: '识别准确率', value: 88.4 }] },
+      { group_id: 'grp-farfield', group_name: '远场场景', metrics: [{ id: 'm-acc', metric: '识别准确率', value: 90.2 }] },
+    ],
+    device_stats: deviceStats,
+    api_stats: apiStats,
+    devices: [
+      { id: 1, name: '智能音箱-旗舰-01', model: 'Xiaomi Speaker Pro', type: 'smart_speaker', system: 'MIUI Home', system_version: '3.2.1', status: 'online', last_online_at: '2026-10-15T08:40:00' },
+      { id: 2, name: '智能音箱-旗舰-02', model: 'Xiaomi Speaker Pro', type: 'smart_speaker', system: 'MIUI Home', system_version: '3.2.1', status: 'offline', last_online_at: '2026-10-14T19:10:00' },
+      { id: 3, name: '智能音箱-入门-03', model: 'Xiaomi Speaker Lite', type: 'smart_speaker', system: 'MIUI Home', system_version: '2.9.0', status: 'online', last_online_at: '2026-10-15T08:38:00' },
+    ],
+    apis: [
+      { id: 101, name: 'asr-streaming-v3', vendor: '内部 ASR', status: 'active', max_process: 32, health_score: 0.92 },
+      { id: 102, name: 'wakeword-detect-v2', vendor: '内部唤醒', status: 'active', max_process: 16, health_score: 0.88 },
+    ],
+    tables,
+    field_mappings: [
+      {
+        algorithmType: {
+          result: ['asr_text', 'transcript', 'wer_score'],
+          reference: ['reference_text', 'stmRef', 'rttmRef'],
+        },
+      },
+    ],
+    cases: MOCK_REPORT_CASES,
+    detailed_results: [],
+  }
+}
+
+function buildTaskReportDetail(): ReportDetailData {
   return {
     id: 1201,
     name: '旗舰音箱全量回归 · 第 3 轮报告',
@@ -338,28 +580,7 @@ function buildTaskReportDetail(): ReportDetailData {
     status: 'published',
     analysis:
       '本轮回归共执行 48 条用例，整体通过率 93.8%。唤醒成功率在近场场景表现稳定（≥96%），噪声场景下识别准确率降至 88.4%，建议重点优化远场与噪声组合场景的唤醒阈值。\n\nasr-streaming-v3 与 wakeword-detect-v2 双算法对比：流式识别平均响应 385ms，优于唤醒检测链路（201ms 响应但后续转写链路略增延迟）。入门机型（智能音箱-入门-03）识别准确率较旗舰低约 2.4 个百分点，属预期硬件差异。',
-    summary: {
-      total_cases: 48,
-      completed_cases: 48,
-      failed_cases: 3,
-      resources: ['device_1', 'device_2', 'device_3', 'api_101', 'api_102'],
-      resource_headers: resourceHeaders,
-      metric_data: metricData,
-      case_categories: caseCategories,
-      all_case_tags: allCaseTags,
-      all_metrics: ['唤醒成功率', '识别准确率', '平均响应时间(ms)'],
-      device_stats: deviceStats,
-      api_stats: deviceApiStats,
-      devices: [
-        { id: 1, name: '智能音箱-旗舰-01', model: 'Xiaomi Speaker Pro', type: 'smart_speaker', system: 'MIUI Home', system_version: '3.2.1', status: 'online', last_online_at: '2026-10-15T08:40:00' },
-        { id: 2, name: '智能音箱-旗舰-02', model: 'Xiaomi Speaker Pro', type: 'smart_speaker', system: 'MIUI Home', system_version: '3.2.1', status: 'offline', last_online_at: '2026-10-14T19:10:00' },
-        { id: 3, name: '智能音箱-入门-03', model: 'Xiaomi Speaker Lite', type: 'smart_speaker', system: 'MIUI Home', system_version: '2.9.0', status: 'online', last_online_at: '2026-10-15T08:38:00' },
-      ],
-      apis: [
-        { id: 101, name: 'asr-streaming-v3', vendor: '内部 ASR', status: 'active', max_process: 32, health_score: 0.92 },
-        { id: 102, name: 'wakeword-detect-v2', vendor: '内部唤醒', status: 'active', max_process: 16, health_score: 0.88 },
-      ],
-    },
+    summary: buildTaskSummary(),
     created_at: '2026-10-15T09:20:00',
     updated_at: '2026-10-15T09:20:00',
   }
@@ -367,165 +588,326 @@ function buildTaskReportDetail(): ReportDetailData {
 
 function buildComparisonReportDetail(type: 'comparison' | 'secondary_comparison'): ReportDetailData {
   const isSecondary = type === 'secondary_comparison'
+
+  const comparisonDevices: ReportDeviceInfo[] = [
+    { id: 1, name: '智能音箱-旗舰-01', model: 'Xiaomi Speaker Pro', type: 'smart_speaker', system: 'MIUI Home', system_version: '3.2.1', status: 'online', last_online_at: '2026-10-15T08:40:00' },
+    { id: 2, name: '智能音箱-旗舰-02', model: 'Xiaomi Speaker Pro', type: 'smart_speaker', system: 'MIUI Home', system_version: '3.2.1', status: 'offline', last_online_at: '2026-10-14T19:10:00' },
+    { id: 3, name: '智能音箱-入门-03', model: 'Xiaomi Speaker Lite', type: 'smart_speaker', system: 'MIUI Home', system_version: '2.9.0', status: 'online', last_online_at: '2026-10-15T08:38:00' },
+  ]
+  const comparisonApis: ReportApiInfo[] = [
+    { id: 101, name: 'asr-streaming-v3', vendor: '内部 ASR', status: 'active', max_process: 32, health_score: 0.92 },
+    { id: 102, name: 'wakeword-detect-v2', vendor: '内部唤醒', status: 'active', max_process: 16, health_score: 0.88 },
+  ]
+
+  const baseSummary: ReportSummary = {
+    total_cases: 48,
+    completed_cases: 48,
+    failed_cases: 3,
+    resources: ['task_1041', 'task_1037', 'task_1035', 'task_1042'],
+    resource_headers: [
+      { key: 'task_1041', label: '车载语音助手唤醒词响应测试', type: 'task', id: 1041, name: '车载语音助手唤醒词响应测试' },
+      { key: 'task_1037', label: '多方言识别准确性抽样测试', type: 'task', id: 1037, name: '多方言识别准确性抽样测试' },
+      { key: 'task_1035', label: 'Q3 音箱品类回归汇总（合并自 4 个任务）', type: 'task', id: 1035, name: 'Q3 音箱品类回归汇总' },
+      { key: 'task_1042', label: '智能音箱旗舰机型全量回归 · 第 3 轮', type: 'task', id: 1042, name: '智能音箱旗舰机型全量回归 · 第 3 轮' },
+    ],
+    raw_data: [],
+    metric_data: [
+      { resource: 'task_1041', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 96.2 }, { id: 'm-acc', metric: '识别准确率', value: 92.1 }, { id: 'm-latency', metric: '平均响应时间', value: 205 }] },
+      { resource: 'task_1037', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 90.4 }, { id: 'm-acc', metric: '识别准确率', value: 84.7 }, { id: 'm-latency', metric: '平均响应时间', value: 390 }] },
+      { resource: 'task_1035', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 97.1 }, { id: 'm-acc', metric: '识别准确率', value: 96.9 }, { id: 'm-latency', metric: '平均响应时间', value: 402 }] },
+      { resource: 'task_1042', metrics: [{ id: 'm-wakeup', metric: '唤醒成功率', value: 95.8 }, { id: 'm-acc', metric: '识别准确率', value: 93.8 }, { id: 'm-latency', metric: '平均响应时间', value: 412 }] },
+    ],
+    tag_metric_data: [],
+    case_categories: [],
+    all_case_tags: [],
+    all_tags: [],
+    all_metrics: [
+      { id: 'm-wakeup', name: '唤醒成功率', unit: '%', decimal_places: 1, dimension_type: 'main' },
+      { id: 'm-acc', name: '识别准确率', unit: '%', decimal_places: 1, dimension_type: 'main' },
+      { id: 'm-latency', name: '平均响应时间', unit: 'ms', decimal_places: 0, dimension_type: 'main' },
+    ],
+    case_type_stats: [],
+    device_stats: [
+      { id: 1, name: '智能音箱-旗舰-01', model: 'Xiaomi Speaker Pro', type: 'smart_speaker', system: 'MIUI Home', system_version: '3.2.1', status: 'online', total_cases: 48, completed_cases: 48, failed_cases: 3, success_rate: 93.8, metrics: { 唤醒成功率: 96.5 } },
+      { id: 2, name: '智能音箱-旗舰-02', model: 'Xiaomi Speaker Pro', type: 'smart_speaker', system: 'MIUI Home', system_version: '3.2.1', status: 'offline', total_cases: 24, completed_cases: 24, failed_cases: 1, success_rate: 95.8, metrics: { 唤醒成功率: 95.4 } },
+    ],
+    api_stats: [
+      { id: 101, name: 'asr-streaming-v3', status: 'active', max_process: 32, health_score: 0.92, total_cases: 48, completed_cases: 48, failed_cases: 3, success_rate: 93.8, avg_response_time: 385, stability: 0.98, metrics: { 平均响应时间: 385, 稳定性: 0.98 } },
+      { id: 102, name: 'wakeword-detect-v2', status: 'active', max_process: 16, health_score: 0.88, total_cases: 48, completed_cases: 48, failed_cases: 3, success_rate: 93.8, avg_response_time: 201, stability: 0.99, metrics: { 平均响应时间: 201, 稳定性: 0.99 } },
+    ],
+    devices: comparisonDevices,
+    apis: comparisonApis,
+    tables: [
+      {
+        title: '设备/API信息对比',
+        default_collapsed: true,
+        columns: [
+          { key: 'name', label: '名称' },
+          { key: 'type', label: '类型' },
+          { key: 'version', label: '版本' },
+          { key: 'status', label: '状态', type: 'status' },
+          { key: 'totalCases', label: '用例数', type: 'number' },
+          { key: 'successRate', label: '成功率', type: 'percentage' },
+        ],
+        data: [
+          { name: '智能音箱-旗舰-01', type: '设备', version: '3.2.1', status: 'online', totalCases: 48, successRate: 93.8 },
+          { name: '智能音箱-旗舰-02', type: '设备', version: '3.2.1', status: 'offline', totalCases: 24, successRate: 95.8 },
+          { name: 'asr-streaming-v3', type: 'API', version: 'v3', status: 'active', totalCases: 48, successRate: 93.8 },
+          { name: 'wakeword-detect-v2', type: 'API', version: 'v2', status: 'active', totalCases: 48, successRate: 93.8 },
+        ],
+      },
+      {
+        title: '用例执行数量对比',
+        default_collapsed: true,
+        columns: [
+          { key: 'name', label: '名称' },
+          { key: 'total', label: '总数', type: 'number' },
+          { key: 'executed', label: '已执行', type: 'number' },
+          { key: 'completed', label: '完成', type: 'number' },
+          { key: 'failed', label: '失败', type: 'number' },
+          { key: 'successRate', label: '成功率', type: 'percentage' },
+          { key: 'failedRate', label: '失败率', type: 'percentage' },
+        ],
+        data: [
+          { name: '智能音箱-旗舰-01', total: 48, executed: 48, completed: 45, failed: 3, successRate: 93.8, failedRate: 6.2 },
+          { name: '智能音箱-旗舰-02', total: 24, executed: 24, completed: 23, failed: 1, successRate: 95.8, failedRate: 4.2 },
+          { name: 'asr-streaming-v3', total: 48, executed: 48, completed: 45, failed: 3, successRate: 93.8, failedRate: 6.2 },
+          { name: 'wakeword-detect-v2', total: 48, executed: 48, completed: 45, failed: 3, successRate: 93.8, failedRate: 6.2 },
+        ],
+      },
+    ],
+    field_mappings: [
+      { algorithmType: { result: ['asr_text', 'transcript'], reference: ['reference_text'] } },
+    ],
+    cases: [],
+    detailed_results: [],
+  }
+
+  if (isSecondary) {
+    return {
+      id: 1188,
+      name: '二次对比：方言识别 × 噪声场景',
+      type,
+      task_id: undefined,
+      task_type: undefined,
+      task_name: '3 个报告对比',
+      algorithm_type: 'asr_streaming',
+      description: '基于报告 1197/1200/1201 的二次对比：噪声场景下的识别差异。',
+      status: 'published',
+      analysis:
+        '二次对比显示：在噪声场景下，方言识别准确率整体下降约 6 个百分点；旗舰音箱的波束成形对车载噪声的抑制优于单麦克风链路。',
+      summary: baseSummary,
+      created_at: '2026-10-15T11:30:00',
+      updated_at: '2026-10-15T11:30:00',
+    }
+  }
+
   return {
-    id: isSecondary ? 1188 : 1190,
-    name: isSecondary
-      ? '二次对比：方言识别 × 噪声场景'
-      : '旗舰音箱 vs 车载助手 唤醒性能对比报告',
+    id: 1190,
+    name: '旗舰音箱 vs 车载助手 唤醒性能对比报告',
     type,
     task_id: undefined,
     task_type: undefined,
-    task_name: isSecondary ? '3 个报告对比' : '4 个任务对比',
+    task_name: '4 个任务对比',
     algorithm_type: 'wakeword_detect',
-    description: isSecondary
-      ? '基于报告 1197/1200/1201 的二次对比：噪声场景下的识别差异。'
-      : '对比任务 1041/1037/1035/1042 的唤醒性能与识别准确率差异。',
+    description: '对比任务 1041/1037/1035/1042 的唤醒性能与识别准确率差异。',
     status: 'published',
-    analysis: isSecondary
-      ? '二次对比显示：在噪声场景下，方言识别准确率整体下降约 6 个百分点；旗舰音箱的波束成形对车载噪声的抑制优于单麦克风链路。'
-      : '四任务对比显示：车载助手唤醒响应（wakeword-detect-v2）在近场表现最优；旗舰音箱在远场识别准确率上领先约 3 个百分点。',
-    summary: {
-      total_cases: 0,
-      completed_cases: 0,
-      failed_cases: 0,
-      resources: ['task_1041', 'task_1037', 'task_1035', 'task_1042'],
-      resource_headers: [
-        { key: 'task_1041', label: '车载语音助手唤醒词响应测试', type: 'task', id: 1041, name: '车载语音助手唤醒词响应测试' },
-        { key: 'task_1037', label: '多方言识别准确性抽样测试', type: 'task', id: 1037, name: '多方言识别准确性抽样测试' },
-        { key: 'task_1035', label: 'Q3 音箱品类回归汇总（合并自 4 个任务）', type: 'task', id: 1035, name: 'Q3 音箱品类回归汇总' },
-        { key: 'task_1042', label: '智能音箱旗舰机型全量回归 · 第 3 轮', type: 'task', id: 1042, name: '智能音箱旗舰机型全量回归 · 第 3 轮' },
-      ],
-      metric_data: [
-        { resource: 'task_1041', metrics: [{ id: 1, metric: '唤醒成功率', value: 96.2 }, { id: 2, metric: '识别准确率', value: 92.1 }, { id: 3, metric: '平均响应时间(ms)', value: 205 }] },
-        { resource: 'task_1037', metrics: [{ id: 1, metric: '唤醒成功率', value: 90.4 }, { id: 2, metric: '识别准确率', value: 84.7 }, { id: 3, metric: '平均响应时间(ms)', value: 390 }] },
-        { resource: 'task_1035', metrics: [{ id: 1, metric: '唤醒成功率', value: 97.1 }, { id: 2, metric: '识别准确率', value: 96.9 }, { id: 3, metric: '平均响应时间(ms)', value: 402 }] },
-        { resource: 'task_1042', metrics: [{ id: 1, metric: '唤醒成功率', value: 95.8 }, { id: 2, metric: '识别准确率', value: 93.8 }, { id: 3, metric: '平均响应时间(ms)', value: 412 }] },
-      ],
-      case_categories: [],
-      all_case_tags: [],
-      all_metrics: ['唤醒成功率', '识别准确率', '平均响应时间(ms)'],
-      device_stats: [],
-      api_stats: [],
-      devices: [],
-      apis: [],
-    },
-    created_at: isSecondary ? '2026-10-15T11:30:00' : '2026-10-15T10:02:00',
-    updated_at: isSecondary ? '2026-10-15T11:30:00' : '2026-10-15T10:02:00',
+    analysis:
+      '四任务对比显示：车载助手唤醒响应（wakeword-detect-v2）在近场表现最优；旗舰音箱在远场识别准确率上领先约 3 个百分点。',
+    summary: baseSummary,
+    created_at: '2026-10-15T10:02:00',
+    updated_at: '2026-10-15T10:02:00',
   }
 }
 
-/** 具体用例列表 mock（POST /reports/{id}/cases/search 形态；1201 详情页展示） */
+/** 具体用例列表 mock（POST /reports/{id}/cases/search 形态；build_case_item 全字段，§1.3） */
 const MOCK_REPORT_CASES: ReportCaseItem[] = [
   {
     id: 'c-1042-001',
     name: '远场唤醒-客厅 3 米',
+    description: '客厅 3 米距离，环境噪声 35dB，测试两次唤醒词响应。',
     category: 'grp-farfield',
     tags: ['远场', '唤醒'],
-    overall_status: 'pass',
-    description: '客厅 3 米距离，环境噪声 35dB，测试两次唤醒词响应。',
-    metrics: [
-      { id: 1, metric: '唤醒成功率', value: 100, decimal_places: 1 },
-      { id: 2, metric: '识别准确率', value: 96.8, decimal_places: 1 },
-      { id: 3, metric: '平均响应时间(ms)', value: 418, decimal_places: 0 },
+    algorithmType: 'asr_streaming',
+    metrics: {
+      device_1: { 唤醒成功率: 100, 识别准确率: 96.8, 平均响应时间: 418 },
+      api_101: { 唤醒成功率: 100, 识别准确率: 97.2, 平均响应时间: 396 },
+    },
+    results: [
+      { resource: 'device_1', status: 'completed', startTime: '2026-10-15T08:42:00', endTime: '2026-10-15T08:42:02' },
+      { resource: 'api_101', status: 'completed', startTime: '2026-10-15T08:42:00', endTime: '2026-10-15T08:42:01' },
     ],
     audios: [
       { audio_id: 'a-9001', audio_name: '唤醒词-远场-客厅.wav', audio_type: 'wakeword', spl: 55, play_order: 1, noise_spl: 35, device_name: '智能音箱-旗舰-01' },
     ],
-    asr: {
-      reference: '小爱同学，今天天气怎么样？',
-      results: {
-        '智能音箱-旗舰-01': '小爱同学，今天天气怎么样？',
-        'asr-streaming-v3': '小爱同学，今天天气怎么样？',
-        'wakeword-detect-v2': '小爱同学，今天天气怎么样？',
-      },
+    referenceParams: {
+      asr_text: { code: 'asr_text', type: 'text', value: '小爱同学，今天天气怎么样？' },
     },
-    translation: undefined,
+    algorithmResults: [
+      { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，今天天气怎么样？', device: 'device_1' },
+      { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 2.1, device: 'device_1' },
+    ],
+    overall_status: 'pass',
     logs: '[2026-10-15 08:42:01] 唤醒词检测命中\n[2026-10-15 08:42:01] ASR 请求 -> asr-streaming-v3\n[2026-10-15 08:42:02] ASR 响应 418ms\n[2026-10-15 08:42:02] 文本匹配成功 (相似度 0.98)',
   },
   {
     id: 'c-1042-002',
     name: '噪声场景-厨房设备运行',
+    description: '厨房设备运行噪声 60dB，测试唤醒词误唤醒与识别。',
     category: 'grp-noise',
     tags: ['噪声', '唤醒'],
-    overall_status: 'fail',
-    description: '厨房设备运行噪声 60dB，测试唤醒词误唤醒与识别。',
-    metrics: [
-      { id: 1, metric: '唤醒成功率', value: 66.7, decimal_places: 1 },
-      { id: 2, metric: '识别准确率', value: 78.2, decimal_places: 1 },
-      { id: 3, metric: '平均响应时间(ms)', value: 536, decimal_places: 0 },
+    algorithmType: 'asr_streaming',
+    metrics: {
+      device_1: { 唤醒成功率: 66.7, 识别准确率: 78.2, 平均响应时间: 536 },
+      api_101: { 唤醒成功率: 66.7, 识别准确率: 80.1, 平均响应时间: 512 },
+    },
+    results: [
+      { resource: 'device_1', status: 'failed', startTime: '2026-10-15T08:50:11', endTime: '2026-10-15T08:50:12' },
+      { resource: 'api_101', status: 'completed', startTime: '2026-10-15T08:50:11', endTime: '2026-10-15T08:50:12' },
     ],
     audios: [
       { audio_id: 'a-9002', audio_name: '唤醒词-噪声-厨房.wav', audio_type: 'wakeword', spl: 58, play_order: 1, noise_spl: 60, device_name: '智能音箱-旗舰-01' },
     ],
-    asr: {
-      reference: '小爱同学，播放一首歌',
-      results: {
-        '智能音箱-旗舰-01': '小爱同学，播放一首歌',
-        'asr-streaming-v3': '小爱同学，播放一首歌',
-        'wakeword-detect-v2': '小爱同学，播放一首（超时）',
-      },
+    referenceParams: {
+      asr_text: { code: 'asr_text', type: 'text', value: '小爱同学，播放一首歌' },
     },
-    translation: undefined,
+    algorithmResults: [
+      { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，播放一首歌', device: 'device_1' },
+      { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 12.4, device: 'device_1' },
+    ],
+    overall_status: 'fail',
     logs: '[2026-10-15 08:50:11] 唤醒词检测命中\n[2026-10-15 08:50:12] ASR 响应 536ms\n[2026-10-15 08:50:12] wakeword-detect-v2 转写超时，降级重试',
   },
   {
     id: 'c-1042-003',
     name: '近场唤醒-桌面 0.5 米',
+    description: '桌面 0.5 米，安静环境，唤醒词连续三次。',
     category: 'grp-wakeup',
     tags: ['近场', '唤醒'],
-    overall_status: 'pass',
-    description: '桌面 0.5 米，安静环境，唤醒词连续三次。',
-    metrics: [
-      { id: 1, metric: '唤醒成功率', value: 100, decimal_places: 1 },
-      { id: 2, metric: '识别准确率', value: 98.2, decimal_places: 1 },
-      { id: 3, metric: '平均响应时间(ms)', value: 212, decimal_places: 0 },
+    algorithmType: 'asr_streaming',
+    metrics: {
+      device_2: { 唤醒成功率: 100, 识别准确率: 98.2, 平均响应时间: 212 },
+      api_101: { 唤醒成功率: 100, 识别准确率: 98.8, 平均响应时间: 188 },
+    },
+    results: [
+      { resource: 'device_2', status: 'completed', startTime: '2026-10-15T08:58:31', endTime: '2026-10-15T08:58:31' },
+      { resource: 'api_101', status: 'completed', startTime: '2026-10-15T08:58:31', endTime: '2026-10-15T08:58:31' },
     ],
     audios: [
       { audio_id: 'a-9003', audio_name: '唤醒词-近场-桌面.wav', audio_type: 'wakeword', spl: 62, play_order: 1, noise_spl: 30, device_name: '智能音箱-旗舰-02' },
     ],
-    asr: {
-      reference: '小爱同学，明天早上叫我起床',
-      results: {
-        '智能音箱-旗舰-02': '小爱同学，明天早上叫我起床',
-        'asr-streaming-v3': '小爱同学，明天早上叫我起床',
-      },
+    referenceParams: {
+      asr_text: { code: 'asr_text', type: 'text', value: '小爱同学，明天早上叫我起床' },
     },
-    translation: undefined,
+    algorithmResults: [
+      { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '小爱同学，明天早上叫我起床', device: 'device_2' },
+      { paramCode: 'wer_score', paramType: 'number', label: 'WER 评分', value: 0.8, device: 'device_2' },
+    ],
+    overall_status: 'pass',
     logs: '[2026-10-15 08:58:31] 唤醒词检测命中\n[2026-10-15 08:58:31] ASR 响应 212ms',
   },
   {
     id: 'c-1042-004',
     name: '方言识别-粤语日常指令',
+    description: '粤语日常指令识别，安静环境。',
     category: 'grp-wakeup',
     tags: ['方言', '近场'],
-    overall_status: 'pass',
-    description: '粤语日常指令识别，安静环境。',
-    metrics: [
-      { id: 1, metric: '唤醒成功率', value: 100, decimal_places: 1 },
-      { id: 2, metric: '识别准确率', value: 91.5, decimal_places: 1 },
+    algorithmType: 'asr_streaming',
+    metrics: {
+      device_1: { 唤醒成功率: 100, 识别准确率: 91.5, 平均响应时间: 388 },
+      api_101: { 唤醒成功率: 100, 识别准确率: 92.6, 平均响应时间: 372 },
+    },
+    results: [
+      { resource: 'device_1', status: 'completed', startTime: '2026-10-15T09:02:01', endTime: '2026-10-15T09:02:02' },
+      { resource: 'api_101', status: 'completed', startTime: '2026-10-15T09:02:01', endTime: '2026-10-15T09:02:01' },
     ],
     audios: [],
-    asr: {
-      reference: '帮我睇下听日天气',
-      results: {
-        '智能音箱-旗舰-01': '帮我睇下听日天气',
-        'asr-streaming-v3': '帮我睇下听日天气',
-      },
+    referenceParams: {
+      asr_text: { code: 'asr_text', type: 'text', value: '帮我睇下听日天气' },
     },
-    translation: { reference: '帮我看看明天天气', direction: '粤语 → 普通话', results: { '智能音箱-旗舰-01': '帮我看看明天天气' } },
+    algorithmResults: [
+      { paramCode: 'asr_text', paramType: 'text', label: '识别文本', value: '帮我睇下听日天气', device: 'device_1' },
+      { paramCode: 'trans_result', paramType: 'text', label: '翻译结果', value: '帮我看看明天天气', device: 'device_1' },
+    ],
+    overall_status: 'pass',
     logs: '[2026-10-15 09:02:01] ASR 请求 -> asr-streaming-v3\n[2026-10-15 09:02:02] 翻译链路启用 粤语→普通话',
   },
   {
     id: 'c-1042-005',
+    name: '多轮对话-闲聊上下文（voice_llm）',
+    description: 'voice_llm 三轮连续对话，验证上下文保持与每轮 WER/LLM 评分。',
+    category: 'grp-wakeup',
+    tags: ['近场', '唤醒'],
+    algorithmType: 'voice_llm',
+    metrics: [
+      { resource: 'device_1', metrics: [{ id: 'm-wer', metric: '平均WER', value: 4.6 }, { id: 'm-latency', metric: '平均响应时间', value: 342 }] },
+      { resource: 'api_101', metrics: [{ id: 'm-wer', metric: '平均WER', value: 3.9 }, { id: 'm-latency', metric: '平均响应时间', value: 318 }] },
+    ],
+    results: [
+      { resource: 'device_1', status: 'completed', startTime: '2026-10-15T09:05:00', endTime: '2026-10-15T09:05:06' },
+      { resource: 'api_101', status: 'completed', startTime: '2026-10-15T09:05:00', endTime: '2026-10-15T09:05:05' },
+    ],
+    audios: [
+      { audio_id: 'a-9004', audio_name: '对话-第1轮.wav', audio_type: 'dialogue', spl: 58, play_order: 1, noise_spl: 32, device_name: '智能音箱-旗舰-01' },
+    ],
+    referenceParams: {
+      'answer@round:1': { code: 'answer@round:1', type: 'text', value: '好的，我已经记住今天的天气了。' },
+      'answer@round:2': { code: 'answer@round:2', type: 'text', value: '明天多云，出门记得带伞。' },
+      'answer@round:3': { code: 'answer@round:3', type: 'text', value: '好的，还有什么需要帮忙的吗？' },
+    },
+    algorithmResults: [
+      {
+        paramCode: 'answer@round:1', paramType: 'text', label: 'answer (第1轮)', roundNumber: 1, value: '好的，我已经记住今天的天气了。', device: 'device_1',
+      },
+      {
+        paramCode: 'answer@round:2', paramType: 'text', label: 'answer (第2轮)', roundNumber: 2, value: '明天多云，出门记得带伞。', device: 'device_1',
+      },
+      {
+        paramCode: 'answer@round:3', paramType: 'text', label: 'answer (第3轮)', roundNumber: 3, value: '好的，还有什么需要帮忙的吗？', device: 'device_1',
+      },
+      {
+        paramCode: 'multi_round_result', paramType: 'json', label: '多轮结果', device: 'device_1',
+        rounds: [
+          {
+            round: 0,
+            input: { audio_name: '对话-第1轮.wav' },
+            output: { asr_text: '好的，我已经记住今天的天气了。' },
+            evaluation: { wer: 4.2, llm_judge: 9.1, latency: 342, reasoning: '回答自然，上下文保持良好。' },
+            interruption: { detected: false },
+          },
+          {
+            round: 1,
+            input: { audio_name: '对话-第2轮.wav' },
+            output: { asr_text: '明天多云，出门记得带伞。' },
+            evaluation: { wer: 3.1, llm_judge: 9.4, latency: 338, reasoning: '信息准确，语气连贯。' },
+            interruption: { detected: false },
+          },
+          {
+            round: 2,
+            input: { audio_name: '对话-第3轮.wav' },
+            output: { asr_text: '好的，还有什么需要帮忙的吗？' },
+            evaluation: { wer: 6.5, llm_judge: 8.6, latency: 356, reasoning: '收尾自然，等待用户继续。' },
+            interruption: { detected: true },
+          },
+        ],
+      },
+    ],
+    overall_status: 'pass',
+    logs: '[2026-10-15 09:05:00] voice_llm 三轮对话执行\n[2026-10-15 09:05:06] 多轮聚合：平均 WER 4.6% / LLM 评分 9.0 / 延迟 345ms',
+  },
+  {
+    id: 'c-1042-006',
     name: '误触测试-连续播报中唤醒',
+    description: '播报持续中唤醒词误触，本轮跳过（人工复核）。',
     category: 'grp-noise',
     tags: ['噪声', '唤醒'],
-    overall_status: 'skip',
-    description: '播报持续中唤醒词误触，本轮跳过（人工复核）。',
-    metrics: [],
+    algorithmType: 'wakeword_detect',
+    metrics: {},
+    results: [
+      { resource: 'device_1', status: 'skipped', startTime: '2026-10-15T09:10:00', endTime: '2026-10-15T09:10:00' },
+    ],
     audios: [],
-    asr: undefined,
-    translation: undefined,
+    overall_status: 'skip',
     logs: '[2026-10-15 09:10:00] 用例标记跳过（人工复核）',
   },
 ] satisfies ReportCaseItem[]
