@@ -64,11 +64,15 @@ const textClass = computed<Record<string, boolean>>(() => {
   return { 'delta-better': isBetter, 'delta-worse': !isBetter }
 })
 
+/** 基线差 tooltip：高/低于外部基线 + 更优/更差（语义随指标 direction 翻转，对位审计修复） */
 const tooltip = computed<string>(() => {
-  if (!arrow.value) return ''
-  return arrow.value === '↑'
-    ? '优于外部基线'
-    : '低于外部基线'
+  const { source, deltaExternal, direction } = props.row
+  if (source !== BenchmarkSource.PLATFORM_TEST || deltaExternal === null || deltaExternal === undefined || deltaExternal === 0) {
+    return ''
+  }
+  const isHigher = deltaExternal > 0
+  const isBetter = direction === BenchmarkDirection.HIGHER_IS_BETTER ? isHigher : !isHigher
+  return `${isHigher ? '高于' : '低于'}外部基线（${isBetter ? '更优' : '更差'}）`
 })
 </script>
 

@@ -21,9 +21,11 @@ let chartInstance: Chart | null = null
 
 const hasRows = computed(() => props.group.rows.length > 0)
 
-/** 横向条形：按名次升序自上而下（chart.js 横向 y 轴自下而上，故翻转 labels/data 顺序） */
+/** 绘制序行：名次升序自上而下（chart.js 横向 y 轴自下而上，故翻转 labels/data 顺序） */
+const sortedRows = computed(() => [...props.group.rows].sort((a, b) => b.rank - a.rank))
+
 function buildChartData() {
-  const rows = [...props.group.rows].sort((a, b) => b.rank - a.rank) // 绘制序反转
+  const rows = sortedRows.value
   const labels = rows.map((r) => r.subjectName)
   const values = rows.map((r) => r.metricValue)
   const sources = rows.map((r) => r.source)
@@ -73,13 +75,13 @@ function renderChart() {
           callbacks: {
             title: (items) => items[0]?.label || '',
             label: (item) => {
-              const idx = item.dataIndex
-              const row = props.group.rows.find((r) => r.subjectName === item.label)
+              // indexAxis:'y' 横向条形：parsed.x = 数据值、parsed.y = 类别下标（chart.js v4）
+              const row = sortedRows.value[item.dataIndex]
               const source = row
                 ? BenchmarkSourceLabels[row.source] || row.source
                 : ''
               const unit = props.group.unit ? props.group.unit : ''
-              return ` ${formatMetricValue(item.parsed.y)}${unit} · ${source}`
+              return ` ${formatMetricValue(item.parsed.x)}${unit} · ${source}`
             },
           },
         },
