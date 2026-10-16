@@ -62,6 +62,7 @@
 | `task:merge` | 合并任务 | `POST /api/v1/tasks/merge` |
 | `task:batch` | 批量操作任务 | `POST /api/v1/tasks/batch-action`、`PATCH /tasks/{id}/cases` |
 | `task:reextract` | 重新提取设备结果 | `POST /api/v1/tasks/{id}/reextract` |
+| `task:share` | 分享任务（数据可见性，INT-423 行级共享授权） | 由 423-2/3/4 起的数据可见性路由按 `visibility` 行级过滤 |
 
 ### 3.2 测试用例（testcase）
 
@@ -74,6 +75,7 @@
 | `testcase:copy` | 复制用例 | `POST /api/v1/testcases/{id}/copy` |
 | `testcase:preview` | 预览执行/停止预览 | `POST /testcases/{id}/preview`、`POST /testcases/{id}/stop_preview`、`POST /testcases/{id}/stop-preview` |
 | `testcase:import_export` | 导入/导出/模板下载 | `POST /testcases/export`、`POST /testcases/import`、`GET /testcases/template/download`、`POST /testcases/import/preview` |
+| `testcase:share` | 分享测试用例（数据可见性，INT-423 行级共享授权） | 由 423-2/3/4 起的数据可见性路由按 `visibility` 行级过滤 |
 
 ### 3.3 音频管理（audio）
 
@@ -85,6 +87,7 @@
 | `audio:delete` | 删除音频 | `DELETE /api/v1/audios/{id}` |
 | `audio:convert` | 音频转码/预览 | `POST /audios/{id}/convert`、`POST /audios/{id}/preview`、`POST /audios/{id}/stop-preview` |
 | `audio:folder` | 文件夹树管理 | `POST /api/v1/audios/folder-tree` |
+| `audio:share` | 分享音频（数据可见性，INT-423 行级共享授权） | 由 423-2/3/4 起的数据可见性路由按 `visibility` 行级过滤 |
 
 ### 3.4 被测设备（device）
 
@@ -137,6 +140,7 @@
 | `report:publish` | 发布报告 | `POST /api/v1/reports/{id}/publish` |
 | `report:compare` | 报告对比/二次对比/均值/导出 | `POST /reports/compare`、`POST /reports/secondary-compare`、`POST /reports/case-averages`、`POST /reports/export` |
 | `report:download_log` | 下载用例日志 | `GET /api/v1/reports/{id}/cases/{cid}/logs/download` |
+| `report:share` | 分享报告（数据可见性，INT-423 行级共享授权） | 由 423-2/3/4 起的数据可见性路由按 `visibility` 行级过滤 |
 
 ### 3.9 评估维度（evaluation）
 
@@ -147,6 +151,7 @@
 | `evaluation:dim_manage` | 维度 CRUD / 批量 / 计算 | `POST /evaluation/dimensions`、`PUT /evaluation/dimensions/{id}`、`DELETE /evaluation/dimensions/{id}`、`POST /evaluation/dimensions/{id}/calculate`、`POST /evaluation/dimensions/batch` |
 | `evaluation:category_manage` | 评估分类 CRUD | `POST /evaluation/categories`、`PUT /evaluation/categories/{id}`、`DELETE /evaluation/categories/{id}` |
 | `evaluation:import_export` | 维度导入/导出 | `POST /evaluation/dimensions/import`、`GET /evaluation/dimensions/export` |
+| `evaluation:share` | 分享评估维度/分类（数据可见性，INT-423 行级共享授权） | 由 423-2/3/4 起的数据可见性路由按 `visibility` 行级过滤 |
 
 ### 3.10 算法配置（algorithm）
 
@@ -166,6 +171,7 @@
 | `group:create` | 创建分组 | `POST /api/v1/groups` |
 | `group:update` | 修改分组/移动用例 | `PUT /api/v1/groups/{id}`、`POST /groups/move-cases` |
 | `group:delete` | 删除分组 | `DELETE /api/v1/groups/{id}` |
+| `group:share` | 分享用例分组（数据可见性，INT-423 行级共享授权） | 由 423-2/3/4 起的数据可见性路由按 `visibility` 行级过滤 |
 
 ### 3.12 标签管理（tag）
 
@@ -175,6 +181,7 @@
 | `tag:create` | 创建标签/分类 | `POST /api/v1/tags`、`POST /tags/categories` |
 | `tag:update` | 修改标签/分类/批量分类 | `PUT /api/v1/tags/{id}`、`PUT /tags/categories/{id}`、`PUT /tags/batch-category` |
 | `tag:delete` | 删除标签/分类 | `DELETE /api/v1/tags/{id}`、`DELETE /tags/categories/{id}` |
+| `tag:share` | 分享标签/分类（数据可见性，INT-423 行级共享授权） | 由 423-2/3/4 起的数据可见性路由按 `visibility` 行级过滤 |
 
 ### 3.13 日志（log）
 
@@ -250,6 +257,7 @@
 | task:merge | ✓ | ✓ | ✗ | ✗ | ✗ |
 | task:batch | ✓ | ✓ | ✗ | ✗ | ✗ |
 | task:reextract | ✓ | ✓ | ✗ | ✗ | ✗ |
+| task:share | ✓ | ✓ | ✗ | ✗ | ✗ |
 | **测试用例** | | | | | |
 | testcase:read | ✓ | ✓ | ✓ | ✗ | ✗ |
 | testcase:create | ✓ | ✓ | ✗ | ✗ | ✗ |
@@ -258,6 +266,7 @@
 | testcase:copy | ✓ | ✓ | ✗ | ✗ | ✗ |
 | testcase:preview | ✓ | ✓ | ✗ | ✗ | ✗ |
 | testcase:import_export | ✓ | ✓ | ✗ | ✗ | ✗ |
+| testcase:share | ✓ | ✓ | ✗ | ✗ | ✗ |
 | **音频** | | | | | |
 | audio:read | ✓ | ✓ | ✓ | ✗ | ✗ |
 | audio:upload | ✓ | ✓ | ✗ | ✗ | ✗ |
@@ -265,6 +274,7 @@
 | audio:delete | ✓ | ✓ | ✗ | ✗ | ✗ |
 | audio:convert | ✓ | ✓ | ✗ | ✗ | ✗ |
 | audio:folder | ✓ | ✓ | ✗ | ✗ | ✗ |
+| audio:share | ✓ | ✓ | ✗ | ✗ | ✗ |
 | **被测设备** | | | | | |
 | device:read | ✓ | ✓ | ✗ | ✓ | ✗ |
 | device:create | ✓ | ✗ | ✗ | ✓ | ✗ |
@@ -297,6 +307,7 @@
 | report:publish | ✓ | ✗ | ✓ | ✗ | ✗ |
 | report:compare | ✓ | ✓ | ✓ | ✗ | ✓ |
 | report:download_log | ✓ | ✓ | ✓ | ✗ | ✗ |
+| report:share | ✓ | ✓ | ✓ | ✗ | ✗ |
 | **Benchmark 排行** | | | | | |
 | benchmark:ranking:read | ✓ | ✓ | ✓ | ✗ | ✗ |
 | benchmark:ranking:compute | ✓ | ✓ | ✓ | ✗ | ✗ |
@@ -310,6 +321,7 @@
 | evaluation:dim_manage | ✓ | ✓ | ✓ | ✗ | ✗ |
 | evaluation:category_manage | ✓ | ✓ | ✓ | ✗ | ✗ |
 | evaluation:import_export | ✓ | ✓ | ✓ | ✗ | ✗ |
+| evaluation:share | ✓ | ✓ | ✓ | ✗ | ✗ |
 | **算法配置** | | | | | |
 | algorithm:read | ✓ | ✓ | ✓ | ✗ | ✗ |
 | algorithm:definition_manage | ✓ | ✗ | ✓ | ✗ | ✗ |
@@ -321,11 +333,13 @@
 | group:create | ✓ | ✓ | ✗ | ✗ | ✗ |
 | group:update | ✓ | ✓ | ✗ | ✗ | ✗ |
 | group:delete | ✓ | ✓ | ✗ | ✗ | ✗ |
+| group:share | ✓ | ✓ | ✗ | ✗ | ✗ |
 | **标签** | | | | | |
 | tag:read | ✓ | ✓ | ✓ | ✗ | ✗ |
 | tag:create | ✓ | ✓ | ✗ | ✗ | ✗ |
 | tag:update | ✓ | ✓ | ✗ | ✗ | ✗ |
 | tag:delete | ✓ | ✓ | ✗ | ✗ | ✗ |
+| tag:share | ✓ | ✓ | ✗ | ✗ | ✗ |
 | **日志** | | | | | |
 | log:read | ✓ | ✓ | ✓ | ✗ | ✗ |
 | log:manage | ✓ | ✓ | ✗ | ✗ | ✗ |
@@ -359,8 +373,8 @@
 | 角色 | 权限范围 | 权限点数 |
 |---|---|---|
 | `admin` | 全部权限 | 全部（含用户/角色/权限管理） |
-| `tester` | 用例/音频/任务/报告/评估/算法参数/Benchmark 排行的读写 + 执行，不含设备/SPL 管理、算法定义管理、报告发布、用户角色管理 | 73 个 |
-| `algo_engineer` | 报告/评估/算法配置/Benchmark 排行的读写 + 报告发布/对比，不含测试执行、设备管理、用户角色管理 | 37 个 |
+| `tester` | 用例/音频/任务/报告/评估/算法参数/Benchmark 排行的读写 + 执行，不含设备/SPL 管理、算法定义管理、报告发布、用户角色管理 | 80 个 |
+| `algo_engineer` | 报告/评估/算法配置/Benchmark 排行的读写 + 报告发布/对比，不含测试执行、设备管理、用户角色管理 | 39 个 |
 | `device_admin` | 被测设备/播放设备/SPL/首页/SSE 的全权管理，不含用例/任务/报告/算法/用户角色管理 | ~25 个 |
 | `guest` | 报告只读 + 报告对比 + 首页统计 + SSE + 认证，不可看日志、不可执行任何写操作 | ~8 个 |
 

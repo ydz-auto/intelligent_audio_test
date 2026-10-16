@@ -25,6 +25,17 @@ class EntityType(str, Enum):
     TESTCASE = 'testcase'
 
 
+class Visibility(str, Enum):
+    """数据可见性枚举（INT-423 数据可见性体系一期基座）
+
+    仅二值（负责人拍板，共享范围由 RBAC 角色承载，不加团队/多级可见性）：
+    - SHARED  共享（默认；存量行为，所有有权用户可见）
+    - PRIVATE 私有（仅 owner 与 admin 可见，行级过滤走 visibility_filter）
+    """
+    SHARED = 'shared'
+    PRIVATE = 'private'
+
+
 class ReportStatus(str, Enum):
     """报告状态枚举"""
     DRAFT = 'draft'
@@ -349,6 +360,8 @@ class AuditEvent(str, Enum):
     AI_REVIEW_INITIATED = 'AI_REVIEW_INITIATED'
     AI_REVIEW_ADOPTED = 'AI_REVIEW_ADOPTED'
     AI_REVIEW_REJECTED = 'AI_REVIEW_REJECTED'
+    # 数据可见性审计（INT-423，category='System'）——私有资源被非 owner 访问（越权命中/尝试）时落一条
+    PRIVATE_RESOURCE_ACCESS = 'PRIVATE_RESOURCE_ACCESS'
 
 
 class AuthErrorCode(str, Enum):
