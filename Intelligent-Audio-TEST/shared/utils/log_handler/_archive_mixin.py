@@ -50,10 +50,13 @@ class _ArchiveMixin:
 
         def _save_archive(stored_path, logs):
             """上传归档到存储（合并已存在文件，按时间排序）"""
+            # stored_path 是 archives 类目内的逻辑 key，不重复携带 category；
+            # 完整存储路径 = category('archives') + key（INT-554 单前缀一致）
+            archive_path = f'archives/{stored_path}'
             existing_logs = []
-            if storage.exists(stored_path):
+            if storage.exists(archive_path):
                 try:
-                    data = storage.load_bytes(stored_path)
+                    data = storage.load_bytes(archive_path)
                     existing_logs = json.loads(data)
                 except Exception:
                     existing_logs = []
@@ -65,7 +68,8 @@ class _ArchiveMixin:
             )
 
         archived_count = 0
-        # groups key 格式: 'task_case/{task_id}/{case_id}/{date}' etc.
+        # groups key 格式: 'tasks/{task_id}/{case_id}/{date}'、'tasks/{task_id}/{date}'、
+        # 'cases/{case_id}/{date}'、'other/{date}'（与读侧前缀口径一致）
         for group_key, logs in groups.items():
             archived_count += len(logs)
             _save_archive(f'{group_key}.json', logs)

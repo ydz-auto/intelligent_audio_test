@@ -84,10 +84,13 @@ class LogCommandService:
 
             def save_archive(stored_path, logs):
                 """上传归档到存储（合并已存在的）"""
+                # stored_path 是 archives 类目内的逻辑 key，不重复携带 category；
+                # 完整存储路径 = category('archives') + key（INT-554 单前缀修复）
+                archive_path = f'archives/{stored_path}'
                 existing_logs = []
-                if storage.exists(stored_path):
+                if storage.exists(archive_path):
                     try:
-                        data = storage.load_bytes(stored_path)
+                        data = storage.load_bytes(archive_path)
                         existing_logs = json.loads(data)
                     except Exception:
                         existing_logs = []
@@ -98,10 +101,12 @@ class LogCommandService:
                     'archives', stored_path, content_type='application/json'
                 )
 
-            # groups key 格式: 'task_case/{task_id}/{case_id}/{date}' etc.
-            group_counts = {'task_case': 0, 'task': 0, 'case': 0, 'other': 0}
+            # groups key 格式: 'tasks/{task_id}/{case_id}/{date}'、'tasks/{task_id}/{date}'、
+            # 'cases/{case_id}/{date}'、'other/{date}'——与读侧 get_archive_status /
+            # get_archived_logs 的 tasks/ cases/ other/ 前缀口径一致（INT-554）
+            group_counts = {'tasks': 0, 'cases': 0, 'other': 0}
             for group_key, logs in groups.items():
-                stored_path = f'archives/{group_key}.json'
+                stored_path = f'{group_key}.json'
                 save_archive(stored_path, logs)
                 prefix = group_key.split('/')[0]
                 group_counts[prefix] = group_counts.get(prefix, 0) + 1
@@ -111,7 +116,7 @@ class LogCommandService:
                 deleted_count=result.get('deleted_count', 0),
                 archive_file=None,
                 remaining_count=result.get('remaining_count', 0)
-            ), f"成功归档 {archived_count} 条日志 (任务用例: {group_counts.get('task_case', 0)}, 任务: {group_counts.get('task', 0)}, 用例: {group_counts.get('case', 0)}, 其他: {group_counts.get('other', 0)})")
+            ), f"成功归档 {archived_count} 条日志 (任务: {group_counts.get('tasks', 0)}, 用例: {group_counts.get('cases', 0)}, 其他: {group_counts.get('other', 0)})")
 
         except Exception as e:
             return error_response(f"归档失败: {str(e)}", code=500)

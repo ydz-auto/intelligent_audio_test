@@ -492,10 +492,15 @@ class LogQueryService:
             if not matching_keys:
                 return error_response("归档文件不存在", code=404)
 
-            # 下载到临时文件再返回
+            # 下载到临时文件再返回。用 load_bytes 写入已打开的句柄后立即关闭，
+            # 避免 NamedTemporaryFile 句柄未关闭时再落盘同一路径触发
+            # Windows WinError 32（文件占用）（INT-554）。
             import tempfile
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.json')
-            storage.load_file(f'archives/{matching_keys[0]}', tmp.name)
+            try:
+                tmp.write(storage.load_bytes(f'archives/{matching_keys[0]}'))
+            finally:
+                tmp.close()
             return FileResponse(tmp.name, headers={"Content-Disposition": f"attachment; filename={filename}"})
         except Exception as e:
             return error_response(f"下载失败: {str(e)}", code=500)

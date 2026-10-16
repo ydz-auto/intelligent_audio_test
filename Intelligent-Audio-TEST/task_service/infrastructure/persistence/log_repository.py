@@ -362,11 +362,11 @@ class LogRepository(LogRepositoryABC):
             for log in cold_logs:
                 log_date = (log.time or datetime.now()).strftime('%Y-%m-%d')
                 if log.task_id and log.test_case_id:
-                    key = f'task_case/{log.task_id}/{log.test_case_id}/{log_date}'
+                    key = f'tasks/{log.task_id}/{log.test_case_id}/{log_date}'
                 elif log.task_id:
-                    key = f'task/{log.task_id}/{log_date}'
+                    key = f'tasks/{log.task_id}/{log_date}'
                 elif log.test_case_id:
-                    key = f'case/{log.test_case_id}/{log_date}'
+                    key = f'cases/{log.test_case_id}/{log_date}'
                 else:
                     key = f'other/{log_date}'
                 groups.setdefault(key, []).append(_log_po_to_dict(log))
