@@ -133,7 +133,7 @@
 | `/Evaluation` | 评估维度（侧栏「测试域」组） | `evaluation:read` | AuthenticatedLayout | INT-356 ✅（11_用例域 §4.1）；导航落位 INT-417 |
 | `/SPLMapping` | SPL 映射·物理+数字双口径（侧栏「测试域」组） | `spl:read`+`digital_spl:read` | AuthenticatedLayout | INT-361 ✅（页面规范，16_设备域 §4）；导航落位 INT-417 |
 | `/TagManagement` | 标签管理（侧栏「测试域」组） | `tag:read` | AuthenticatedLayout | INT-356 ✅（11_用例域 §4.2）；导航落位 INT-417 |
-| `/profile` | 个人中心（用户自己的管理） | 登录即可（无权限码） | AuthenticatedLayout | INT-358 ⏳ |
+| `/profile` | 个人中心（用户自己的管理） | 登录即可（无权限码） | AuthenticatedLayout | INT-358 ✅ |
 | `/system-settings/*` | 系统设置工作区（drill-in，§3.4 域树） | 入口：任一设置域权限（§3.4 集合）；域级再分域守卫 | AuthenticatedLayout（侧栏换树） | INT-347 ✅ / INT-362 ✅ |
 | `/rankings` | Benchmark 排行（公开数据页） | 页面公开；数据接口 `benchmark:ranking:read`；导航项按该码渲染 | PublicLayout | INT-359 ✅ |
 | `/user-guide` | 文档 | 公开（全员） | PublicLayout | INT-349 ✅ |
