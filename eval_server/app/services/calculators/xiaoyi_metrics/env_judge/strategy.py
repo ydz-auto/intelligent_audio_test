@@ -332,10 +332,11 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
             agg[f'n_{field}'] = count
             agg[field] = round(count / n_reject_rounds, 3) if n_reject_rounds else 0
         # 整体 rate 按成功/失败轮数重算（与 _calculate_per_round 同构，不再继承末轮单轮 rate）
+        # 注意：不在此设置 is_success —— 基础设施把 is_success=False 视为"评估内部失败"并丢弃结果，
+        # 拒识失败是合法评估结论，只通过 rate 字段表达
         n_succ = agg.get('n_rate_success', 0) or 0
         n_fail = agg.get('n_rate_failure', 0) or 0
         agg['rate'] = '拒识成功' if n_succ > n_fail else '拒识失败'
-        agg['is_success'] = agg['rate'] == '拒识成功'
         for dict_field in _COUNT_DICT_FIELDS:
             merged = {}
             for r in reject_results:
@@ -476,10 +477,11 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
 
         # 整体 rate 按成功/失败轮数重算（成功 > 失败 → 拒识成功，否则拒识失败；
         # 不再继承最后一轮的单轮 rate，避免 1成1询1败等分布被末轮结果带偏）
+        # 注意：不在此设置 is_success —— 基础设施把 is_success=False 视为"评估内部失败"并丢弃结果，
+        # 拒识失败是合法评估结论，只通过 rate 字段表达
         n_succ = agg.get('n_rate_success', 0) or 0
         n_fail = agg.get('n_rate_failure', 0) or 0
         agg['rate'] = '拒识成功' if n_succ > n_fail else '拒识失败'
-        agg['is_success'] = agg['rate'] == '拒识成功'
 
         # count 字典合并累加（rate_success_count / rate_inquiry_count / rate_failure_count）
         for dict_field in _COUNT_DICT_FIELDS:
