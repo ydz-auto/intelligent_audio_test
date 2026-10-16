@@ -23,6 +23,7 @@
 import json
 import os
 import logging
+from difflib import SequenceMatcher
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -52,6 +53,12 @@ logger = logging.getLogger(__name__)
 
 # ─────────── 场景定义 ───────────
 # 有语义场景：环境声含可识别的语音内容
+# ASR 文本与参考内容的最低字符关联度阈值（仅有语义场景启用）：
+# 模型 ASR 转写与参考内容关联度低于该值时，视为模型未复述/未理解环境音内容
+# （如闲聊、反问、答非所问），直接判失败，避免裁判 LLM 依据参考答案幻觉打高分。
+# 实测参考：正确复述 ratio≥0.33，反问/闲聊 ratio≤0.13。
+TEXT_SIMILARITY_THRESHOLD = 0.15
+
 ENVIRONMENT_SCENES = {
     '新闻广播': '环境中出现新闻播报内容，包含时事新闻、社会事件、体育赛事等可识别的新闻信息。',
     '公共广播': '环境中出现公共交通或场所广播，如地铁站台广播、机场航班广播、商场通知等结构化播报内容。',
@@ -478,6 +485,7 @@ def evaluate_env_judge(
         'score': None,
         'reason': '',
         'ai_answer': '',
+        'text_similarity': None,
         'response_latency_ms': None,
         'env_sound_start_ms': None,
         'env_sound_end_ms': None,
@@ -524,6 +532,30 @@ def evaluate_env_judge(
             result['reason'] = '模型未输出可识别语音（ASR 为空），未理解环境音内容。'
         logger.warning(f'[env_judge] {result["message"]}')
         return result
+
+    # ─── 1.2 ASR 文本相关性辅助校验（仅有语义场景） ───
+    # 模型 ASR 转写与参考内容字符关联度过低时，说明模型输出与环境音内容无关
+    # （闲聊/反问/答非所问），直接判失败，作为裁判 LLM 之外的兜底判断。
+    # 无语义场景参考文本过短，字符重叠噪声大，不启用。
+    if script_type == 'semantic' and answer_text.strip():
+        text_similarity = round(
+            SequenceMatcher(None, answer_text, correctAnswer).ratio(), 4
+        )
+        result['text_similarity'] = text_similarity
+        if text_similarity < TEXT_SIMILARITY_THRESHOLD:
+            result['understand_correct'] = False
+            result['understand_correct_pass'] = 0
+            result['score'] = 1
+            result['message'] = (
+                f'ai_wav ASR 文本与参考内容关联度过低(text_similarity={text_similarity})，'
+                '模型未复述/未理解环境音内容，判为失败'
+            )
+            result['reason'] = (
+                f'模型输出（{answer_text[:60]}{"…" if len(answer_text) > 60 else ""}）'
+                f'与参考内容无关，未复述/未理解环境音内容。'
+            )
+            logger.warning(f'[env_judge] {result["message"]}')
+            return result
 
     # 构建 prompt（注入模型 ASR 转写文本，裁判以此为准判断模型实际输出）
     prompt = build_env_judge_prompt(correctAnswer, script_type,
