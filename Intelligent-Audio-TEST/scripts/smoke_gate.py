@@ -16,11 +16,14 @@ INT-95 附加条款移交：主链实机验收（7/7 步）通过后，把其精
    不依赖外网真实裁判；:5097 已监听则复用常驻实例，未监听则本脚本自起子进程、
    结束时回收（只回收自己起的）。
 3. **隔离数据自建自清**：全部资源（API 配置/音频/用例/任务/报告）挂唯一
-   run tag 前缀（INT314SMOKE_<tag>_），finally 清理（软删资源走 DELETE，
-   与 tests/api/test_e2e_full_chain.py 同口径）；失败也清理，清理失败在
-   结果中如实标注——绝不依赖 reset_test_db.py 兜底（那是全量清库，会误伤
-   并行验收数据）。
-4. **四步断言**（任一步失败输出响应原文与定位，退出码 1）：
+   run tag 前缀（INT314SMOKE_<tag>_），**创建即登记**（每建成功一个立即写入
+   created registry，中途失败也不丢已登记资源），finally 按 registry 全量
+   清理（软删资源走 DELETE，与 tests/api/test_e2e_full_chain.py 同口径）；
+   失败路径同样执行零残留终检，清理失败在结果中如实标注——绝不依赖
+   reset_test_db.py 兜底（那是全量清库，会误伤并行验收数据）。
+4. **四步断言**（任一步失败输出响应原文与定位，退出码 1；任何异常——含
+   非 GateFail 逃逸——统一收敛进失败路径，保证 `--json` 恒输出含
+   fail_detail/residue/tag，推送卡失败留证也是机器可读）：
    - S1 登录：GET /auth/login/encryption-key（白名单非 401）→ RSA-OAEP 前端
      同款加密 → POST /auth/login → access_token。
    - S2 建用例：上传 dry 样例音频（presign→OSS 直传→complete-direct）→
@@ -32,6 +35,9 @@ INT-95 附加条款移交：主链实机验收（7/7 步）通过后，把其精
    voice_llm/turn_eval 维度种子（scripts/migrations seed 脚本，DATABASE_URI
    指向隔离库，幂等原地更新）——隔离库被 reset_test_db.py 清空后本门禁仍可
    一键自愈重建。
+6. **前置：dry 样例 wav**（doc/voice_llm/样例/2026144010.wav、2026144019.wav）。
+   `*.wav` 被 .gitignore 排除，全新检出/新 worktree 需先从主检出复制；缺失时
+   S2 在任何写操作之前以 GateFail（带完整路径）失败，不产生残留。
 
 用法（项目环境 python，仓库根执行）：
     python scripts/smoke_gate.py              # 四步门禁（自动确保栈/替身/种子）
@@ -52,6 +58,7 @@ import socket
 import subprocess
 import sys
 import time
+import traceback
 import urllib.request
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -104,6 +111,22 @@ def resp_data(r):
     if r.status_code >= 400 or not (body.get('success') or body.get('code') in (0, 200, 201)):
         raise GateFail(f'HTTP {r.status_code}: {json.dumps(body, ensure_ascii=False)[:400]}')
     return body.get('data') or {}
+
+
+def _exc_detail(e) -> str:
+    """非 GateFail 异常 → 含定位的失败原文（type: message @ file:line）。
+
+    保证任何异常逃逸都能在 --json 的 fail_detail 里给出「原文 + 定位」
+    （验收标准 1/3），而不是只剩裸 traceback。
+    """
+    tb = e.__traceback__
+    loc = ''
+    if tb is not None:
+        frames = traceback.extract_tb(tb)
+        if frames:
+            last = frames[-1]
+            loc = f'{os.path.basename(last.filename)}:{last.lineno}'
+    return f'{type(e).__name__}: {e}' + (f' @ {loc}' if loc else '')
 
 
 # ── 前置 0a：并行隔离栈（复用或拉起）────────────────────────────────
@@ -315,10 +338,30 @@ def H(token):
 
 
 # ── S2 建用例（上传 dry 样例 → voice_llm API 用例，多轮 + 维度绑定）──
-def s2_create_case(token: str) -> dict:
-    """返回创建的资源清单（供 finally 清理）：api_cfg_id/audio_ids/tc_id 等。"""
+def s2_create_case(token: str, created: dict) -> dict:
+    """创建即登记（INT-314 验收 P1 修复）：每建成功一个资源立即写入传入的
+    created registry，调用方 main 的 finally 据此全量清理——即使函数中途
+    失败，已登记资源也不会丢（不再依赖函数返回后才登记）。
+
+    返回同一 created（内容含 api_cfg_id/audio_ids/group_ids/tc_id 等）。
+    """
+    created.setdefault('audio_ids', [])
+    created.setdefault('tc_ids', [])
+    created.setdefault('api_cfg_ids', [])
+    created.setdefault('group_ids', [])
+
+    # 0. 前置：dry 样例 wav 缺失检查（INT-314 验收 P3）——在任何写操作之前
+    #    失败，带完整路径定位。*.wav 被 .gitignore 排除，全新检出/新 worktree
+    #    需先从主检出复制到 doc/voice_llm/样例/。
+    missing = [os.path.join(SAMPLE_DIR, name) for name in SAMPLE_AUDIO_FILES
+               if not os.path.isfile(os.path.join(SAMPLE_DIR, name))]
+    if missing:
+        raise GateFail(
+            'dry 样例音频缺失（前置：doc/voice_llm/样例/ 需存在 dry wav，'
+            '*.wav 被 .gitignore 排除不随检出带入，请从主检出复制）: '
+            + '; '.join(missing))
+
     h = H(token)
-    created = {'audio_ids': [], 'tc_ids': [], 'api_cfg_ids': [], 'group_ids': []}
 
     # turn_eval 主维度（bootstrap 播种的维度族，api_url 已指 :5097）
     conn = psycopg2.connect(_isolated_db_url(), connect_timeout=5)
@@ -341,14 +384,16 @@ def s2_create_case(token: str) -> dict:
                          'adapter_class': 'MockDialogAdapter', 'status': 'online',
                          'meta': {'purpose': 'int314-smoke-gate', 'mode': 'dialog'}})
     api_cfg_id = resp_data(r).get('id')
-    assert api_cfg_id, f'API 配置创建失败: {r.text[:300]}'
+    if not api_cfg_id:
+        raise GateFail(f'API 配置创建失败: {r.text[:300]}')
     created['api_cfg_ids'].append(api_cfg_id)
 
     # 0b. 上传 dry 样例音频（presign → OSS 直传 → complete-direct）
     files = []
     for name in SAMPLE_AUDIO_FILES:
         p = os.path.join(SAMPLE_DIR, name)
-        assert os.path.isfile(p), f'样例音频不存在: {p}'
+        if not os.path.isfile(p):
+            raise GateFail(f'样例音频缺失: {p}')
         with open(p, 'rb') as f:
             files.append({'path': p, 'name': name, 'size': os.path.getsize(p),
                           'md5': hashlib.md5(f.read()).hexdigest(),
@@ -356,14 +401,16 @@ def s2_create_case(token: str) -> dict:
 
     r = httpx.post(f'{API_BASE}/audios/upload/init', headers=h, **CK)
     upload_task_id = resp_data(r).get('taskId') or resp_data(r).get('task_id')
-    assert upload_task_id, 'upload/init 未返回 taskId'
+    if not upload_task_id:
+        raise GateFail(f'upload/init 未返回 taskId: {r.text[:300]}')
 
     r = httpx.post(f'{API_BASE}/audios/upload/register', headers=h, **CK,
                    json={'taskId': upload_task_id,
                          'files': [{'name': f['name'], 'size': f['size'], 'md5': f['md5'],
                                     'relativePath': f['relativePath']} for f in files]})
     reg = resp_data(r).get('files', [])
-    assert len(reg) == len(files), f'register 文件数不符: {r.text[:300]}'
+    if len(reg) != len(files):
+        raise GateFail(f'register 文件数不符: {r.text[:300]}')
     file_ids = [rf.get('fileId') or rf.get('file_id') for rf in reg]
 
     for idx, (f, fid) in enumerate(zip(files, file_ids)):
@@ -392,7 +439,8 @@ def s2_create_case(token: str) -> dict:
                     purl = resp_data(rr).get('url')
                 with open(f['path'], 'rb') as fh:
                     pr = httpx.put(purl, content=fh.read(), timeout=60, **CK)
-                assert pr.status_code == 200, f'OSS PUT {pr.status_code}: {pr.text[:200]}'
+                if pr.status_code != 200:
+                    raise GateFail(f'OSS PUT {pr.status_code}: {pr.text[:200]}')
                 uploaded.append({'PartNumber': pi + 1,
                                  'ETag': pr.headers.get('ETag', '').strip('"')})
             r = httpx.post(f'{API_BASE}/audios/upload/complete-direct', headers=h, **CK,
@@ -400,7 +448,8 @@ def s2_create_case(token: str) -> dict:
                                  'filename': f['name'], 'md5': f['md5'],
                                  'fileSize': f['size'], 'audioType': 'dry'})
             audio_id = resp_data(r).get('audioId') or resp_data(r).get('audio_id')
-        assert audio_id, f'音频 {f["name"]} 未获得 audioId: {r.text[:300]}'
+        if not audio_id:
+            raise GateFail(f'音频 {f["name"]} 未获得 audioId: {r.text[:300]}')
         created['audio_ids'].append(audio_id)
 
         # merge 归档（不自动建用例，用例在下方显式创建以便绑定维度）
@@ -409,13 +458,15 @@ def s2_create_case(token: str) -> dict:
                              'audioType': 'dry', 'createTestCase': False,
                              'testTypes': ['api'], 'inheritTags': True, 'dimensions': {}})
         md = resp_data(r)
-        assert md.get('status') == 'completed' or md.get('audioId'), f'merge 未完成: {md}'
+        if md.get('status') != 'completed' and not md.get('audioId'):
+            raise GateFail(f'merge 未完成: {json.dumps(md, ensure_ascii=False)[:300]}')
 
     # 0b-1. 用例分组（testcases 创建要求 group_id）
     r = httpx.post(f'{API_BASE}/groups', headers=h, **CK,
                    json={'name': f'{TAG}_组'})
     grp_id = resp_data(r).get('id')
-    assert grp_id, f'分组创建失败: {r.text[:300]}'
+    if not grp_id:
+        raise GateFail(f'分组创建失败: {r.text[:300]}')
     created['group_ids'].append(grp_id)
 
     # 0c. 创建 voice_llm API 用例：2 轮 × (dry 音频 + turn_eval 主维度)
@@ -431,7 +482,8 @@ def s2_create_case(token: str) -> dict:
                          'config': {'rounds': rounds}})
     tc = resp_data(r)
     tc_id = tc.get('id') or tc.get('case_id')
-    assert tc_id, f'用例创建失败: {r.text[:400]}'
+    if not tc_id:
+        raise GateFail(f'用例创建失败: {r.text[:400]}')
     created['tc_ids'].append(tc_id)
     step('S2 建用例（dry 样例上传 + voice_llm API 用例 + turn_eval 维度绑定）', True,
          f'audio={created["audio_ids"]} tc={tc_id}')
@@ -450,7 +502,8 @@ def s3_execute(token: str, created: dict) -> int:
                          'case_ids': [tc_id],
                          'api_ids': [created['api_cfg_id']]})
     task_id = resp_data(r).get('id')
-    assert task_id, f'任务创建失败: {r.text[:400]}'
+    if not task_id:
+        raise GateFail(f'任务创建失败: {r.text[:400]}')
     created['task_id'] = task_id
 
     r = httpx.patch(f'{API_BASE}/tasks/{task_id}/cases', headers=h, **CK,
@@ -626,28 +679,35 @@ def main():
 
         try:
             token = s1_login()
-            created = s2_create_case(token)
+            s2_create_case(token, created)   # 创建即登记：中途失败已登记资源不丢（P1）
             s3_execute(token, created)
             s4_report(token, created)
         except GateFail as e:
             exit_code = 1
             fail_detail = str(e)
+        except Exception as e:
+            # 非 GateFail 异常（如 AssertionError）也收敛进失败路径，保证
+            # --json 恒输出（验收标准 1/3 留证契约），并带 file:line 定位
+            exit_code = 1
+            fail_detail = f'异常逃逸（已收敛）: {_exc_detail(e)}'
         finally:
-            if token and created and not args.keep_data:
+            if not args.keep_data:
                 residue = cleanup(token, created)
 
         print()
         passed = sum(1 for _, ok, _ in _STEPS if ok)
         total = len(_STEPS)
-        if exit_code == 0 and not args.keep_data:
+        # 零残留终检：成功与失败路径都执行（验收 P1 修复点）；--keep-data 调试除外
+        if not args.keep_data:
             leftover = residue_check()
             if leftover:
                 exit_code = 1
-                fail_detail = (f'清理残留（数据零残留不满足）: {leftover}；'
-                               f'可按 tag {TAG} 手动清理后复跑')
-        if exit_code == 0 and residue:
+                note = f'数据残留（零残留终检不满足，可按 tag {TAG} 手动清理后复跑）: {leftover}'
+                fail_detail = note if not fail_detail else f'{fail_detail}；{note}'
+        if residue:
             exit_code = 1
-            fail_detail = f'清理残留（数据零残留不满足）: {residue}'
+            note = f'清理失败（未删资源，可按 tag {TAG} 手动清理后复跑）: {residue}'
+            fail_detail = note if not fail_detail else f'{fail_detail}；{note}'
         print(f'==== INT-314 冒烟门禁: {passed}/{total} 步 PASS '
               f'{"—— 门禁通过，可推送" if exit_code == 0 else "—— 门禁不通过，暂停推送"} ====')
         if exit_code != 0:
@@ -660,6 +720,12 @@ def main():
         fail_detail = f'前置失败: {e}'
         print(f'[FAIL] {fail_detail}')
         print('==== INT-314 冒烟门禁: 前置失败 —— 门禁不通过，暂停推送 ====')
+    except Exception as e:
+        # 前置阶段非 GateFail 异常同样收敛（--json 恒输出）
+        exit_code = 1
+        fail_detail = f'前置异常: {_exc_detail(e)}'
+        print(f'[FAIL] {fail_detail}')
+        print('==== INT-314 冒烟门禁: 前置异常 —— 门禁不通过，暂停推送 ====')
     finally:
         if judge_proc is not None:
             try:
